@@ -105,6 +105,17 @@ type ServiceProjection = (
 	decodex_protocol::ClientProfile,
 );
 
+struct CollaborationComponent(gpui::Entity<AgentSurface>);
+impl gpui::Render for CollaborationComponent {
+	fn render(
+		&mut self,
+		_: &mut gpui::Window,
+		cx: &mut gpui::Context<Self>,
+	) -> impl gpui::IntoElement {
+		self.0.update(cx, |surface, cx| surface.render_collaboration_component(cx))
+	}
+}
+
 fn main() -> Result<()> {
 	let output = env::var_os("DECODEX_VISUAL_OUTPUT")
 		.map(PathBuf::from)
@@ -141,7 +152,26 @@ fn main() -> Result<()> {
 			read_service_projection(PathBuf::from(root), &output, automatic_recap || live_media)
 		})
 		.transpose()?;
-	let window: AnyWindowHandle = if integrations {
+	let window: AnyWindowHandle = if env::var("DECODEX_VISUAL_COMPONENT").as_deref()
+		== Ok("collaboration")
+	{
+		cx.open_offscreen_window(gpui::size(gpui::px(1536.), gpui::px(1024.)), |_, cx| {
+			cx.new(|cx| {
+				let surface = cx.new(|cx| {
+					let mut surface = AgentSurface::new(cx);
+					surface.visual_workspace_fixture(cx);
+					surface.visual_workspace_page("workbench", cx);
+					if let Ok(count) = env::var("DECODEX_VISUAL_GRAPH_AGENTS") {
+						surface.visual_relation_density(count.parse().expect("agent count"), cx);
+					}
+					surface
+				});
+				cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+				CollaborationComponent(surface)
+			})
+		})?
+		.into()
+	} else if integrations {
 		cx.open_offscreen_window(gpui::size(gpui::px(1_180.0), gpui::px(1_400.0)), |_, cx| {
 			cx.new(|cx| {
 				let mut surface = AgentSurface::new(cx);
@@ -201,6 +231,10 @@ fn main() -> Result<()> {
 	};
 
 	settle_capture_layout(&mut cx, window)?;
+	capture_graph_zoom(&mut cx, window)?;
+	if env::var("DECODEX_VISUAL_COMPONENT_MOTION").as_deref() == Ok("actions") {
+		capture_collaboration_actions(&mut cx, window, &output)?;
+	}
 
 	if let Some(panel_motion) = panel_motion {
 		animate_panel_motion(&mut cx, window, &panel_motion)?;
@@ -218,6 +252,50 @@ fn main() -> Result<()> {
 
 	println!("{}", output.display());
 
+	Ok(())
+}
+
+fn capture_graph_zoom(cx: &mut VisualTestAppContext, window: AnyWindowHandle) -> Result<()> {
+	let Ok(scale) = env::var("DECODEX_VISUAL_GRAPH_ZOOM") else { return Ok(()) };
+	let scale: f32 = scale.parse()?;
+	let surface = cx.update_window(window, |view, _, cx| {
+		view.downcast::<CollaborationComponent>()
+			.expect("graph zoom requires the isolated collaboration component")
+			.read(cx)
+			.0
+			.clone()
+	})?;
+	surface.update(cx, |surface, cx| {
+		if let Ok(layout) = env::var("DECODEX_VISUAL_GRAPH_LAYOUT") {
+			surface.visual_relation_layout(&layout, cx);
+		}
+		surface.visual_relation_zoom(scale, cx);
+	});
+	settle_capture_layout(cx, window)
+}
+
+fn capture_collaboration_actions(
+	cx: &mut VisualTestAppContext,
+	window: AnyWindowHandle,
+	output: &Path,
+) -> Result<()> {
+	let surface = cx.update_window(window, |view, _, cx| {
+		view.downcast::<CollaborationComponent>()
+			.expect("isolated component capture")
+			.read(cx)
+			.0
+			.clone()
+	})?;
+	for (step, delay, name) in
+		[(3, 300, "three"), (4, 80, "moving"), (4, 300, "settled"), (4, 6500, "one")]
+	{
+		surface.update(cx, |surface, cx| surface.visual_collaboration_actions(step, cx));
+		cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
+		thread::sleep(Duration::from_millis(delay));
+		cx.advance_clock(Duration::from_millis(delay));
+		cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
+		cx.capture_screenshot(window)?.save(output.with_extension(format!("{name}.png")))?;
+	}
 	Ok(())
 }
 

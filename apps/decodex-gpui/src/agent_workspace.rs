@@ -12,9 +12,9 @@ use ui_theme::{
 	TEXT_MUTED, TREE_ROW_HEIGHT,
 };
 
-// The close control is removed in the next frame. Keep subsequent keyboard actions
-// on the persistent shell instead of its now-detached focus node.
-fn restore_shell_focus(window: &mut Window, cx: &mut gpui::App) {
+// Pane controls can leave the dispatch tree after a layout change. Keep keyboard
+// actions on the persistent shell instead of a detached control focus node.
+pub(super) fn restore_shell_focus(window: &mut Window, cx: &mut gpui::App) {
 	if let Some(shell) = window.root::<crate::shell::Shell>().flatten() {
 		let focus = shell.read(cx).root_focus.clone();
 		window.focus(&focus, cx);
@@ -28,7 +28,6 @@ fn action_accessible_label(id: &str, label: &str) -> String {
 		match id {
 			"new-project" => "New project",
 			"graph-up" => "Parent work scope",
-			"graph-close" => "Close Dock",
 			"handoff-close" => "Collapse task details",
 			"zoom-in" => "Zoom in",
 			"zoom-out" => "Zoom out",
@@ -194,7 +193,7 @@ impl AgentSurface {
 	}
 
 	pub(crate) fn panel_glyph(index: usize) -> AnyElement {
-		panel_icon(["workspace-sidebar", "workspace-graph", "workspace-agents"][index], None)
+		action_icon(["workspace-sidebar", "workspace-graph", "workspace-agents"][index])
 			.expect("known panel glyph")
 	}
 
@@ -229,20 +228,30 @@ impl AgentSurface {
 			return;
 		}
 
-		if self.workspace.graph_expanded || self.workspace.chat_expanded {
-			self.workspace.graph_expanded = false;
-			self.workspace.chat_expanded = false;
+		if self.workspace.graph_expanded {
+			self.toggle_graph_fullscreen(cx);
+		} else if self.workspace.chat_expanded {
+			self.toggle_chat_fullscreen(cx);
 		} else if self.workspace.focused_panel == Some(super::workspace_size::Panel::Bottom)
 			&& self.workspace.graph_visible
 		{
-			self.workspace.graph_expanded = true;
+			self.toggle_graph_fullscreen(cx);
 		} else {
-			self.workspace.chat_expanded = true;
+			self.toggle_chat_fullscreen(cx);
 		}
+	}
+
+	pub(super) fn toggle_graph_fullscreen(&mut self, cx: &mut Context<Self>) {
+		self.reveal_relations_after_resize();
+		self.workspace.graph_expanded = !self.workspace.graph_expanded;
+		self.workspace.chat_expanded = false;
 		cx.notify();
 	}
 
 	pub(super) fn toggle_chat_fullscreen(&mut self, cx: &mut Context<Self>) {
+		if self.workspace.graph_expanded {
+			self.reveal_relations_after_resize();
+		}
 		self.workspace.focused_panel = None;
 		self.workspace.chat_expanded = !self.workspace.chat_expanded;
 		self.workspace.graph_expanded = false;
@@ -254,6 +263,9 @@ impl AgentSurface {
 			return;
 		}
 
+		if self.workspace.graph_expanded {
+			self.reveal_relations_after_resize();
+		}
 		self.workspace.graph_visible = !self.workspace.graph_visible;
 		self.workspace.graph_expanded = false;
 
@@ -485,13 +497,8 @@ impl AgentSurface {
 			false
 		};
 		let accessible = action_accessible_label(&id, &label);
-		let expanded = match id.as_str() {
-			"graph-expand" => Some(self.workspace.graph_expanded),
-			"chat-expand" => Some(self.workspace.chat_expanded),
-			_ => None,
-		};
-		let icon = panel_icon(&id, expanded);
-		let closes_dock = id == "graph-close";
+		let icon = action_icon(&id);
+		let restores_focus = id.starts_with("graph-usage-");
 		let icon_only = icon.is_some();
 		let show_tip = is_tab || icon_only || id.starts_with("attention-");
 		let tip = accessible.clone();
@@ -508,7 +515,6 @@ impl AgentSurface {
 			.when(active && !is_tab, |row| row.bg(gpui::rgba(0xffffff0d)))
 			.tab_index(0)
 			.aria_label(accessible)
-			.when_some(expanded, |button, value| button.aria_expanded(value))
 			.when(show_tip, |button| {
 				button.tooltip(move |_, cx| cx.new(|_| PanelTip(tip.clone())).into())
 			})
@@ -532,14 +538,14 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 				action(s, cx);
-				if closes_dock {
+				if restores_focus {
 					restore_shell_focus(window, cx);
 				}
 			}))
 			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					keyboard(s, cx);
-					if closes_dock {
+					if restores_focus {
 						restore_shell_focus(window, cx);
 					}
 
@@ -1321,19 +1327,12 @@ impl AgentSurface {
 		}
 
 		chat = chat.child(
-			gpui::div().absolute().top(gpui::px(6.)).right(gpui::px(8.)).occlude().child(
-				self.workspace_action(
-					"chat-expand".into(),
-					if self.workspace.chat_expanded {
-						"Restore layout · Shift-Esc"
-					} else {
-						"Expand conversation · Shift-Esc"
-					}
-					.into(),
-					|s, cx| s.toggle_chat_fullscreen(cx),
-					cx,
-				),
-			),
+			gpui::div()
+				.absolute()
+				.top(gpui::px(6.))
+				.right(gpui::px(8.))
+				.occlude()
+				.child(self.panel_controls(super::panel_controls::Panel::Conversation, cx)),
 		);
 
 		let chat = self.workspace_details_overlay(chat, selected.as_ref(), window, cx);
@@ -2608,16 +2607,12 @@ pub(super) fn clock_label(micros: i64) -> String {
 	format!("{:02}:{:02}:{:02}", (seconds / 3_600) % 24, (seconds / 60) % 60, seconds % 60)
 }
 
-fn panel_icon(id: &str, expanded: Option<bool>) -> Option<AnyElement> {
-	if let Some(expanded) = expanded {
-		let key = if id == "graph-expand" { "dock-expansion" } else { "chat-expansion" };
-		return Some(workspace_symbols::panel_expansion(key, expanded).into_any_element());
-	}
+fn action_icon(id: &str) -> Option<AnyElement> {
 	let symbol = match id {
 		"workspace-sidebar" => crate::shell::workspace_symbols::Symbol::Sidebar,
 		"workspace-graph" => crate::shell::workspace_symbols::Symbol::Graph,
 		"workspace-agents" => crate::shell::workspace_symbols::Symbol::Agents,
-		"graph-close" | "tree-close" => crate::shell::workspace_symbols::Symbol::Close,
+		"tree-close" => crate::shell::workspace_symbols::Symbol::Close,
 		"graph-up" | "graph-home" => crate::shell::workspace_symbols::Symbol::Back,
 		"board-show-graph" => crate::shell::workspace_symbols::Symbol::Graph,
 		"board-show-list" => crate::shell::workspace_symbols::Symbol::AllWork,
@@ -2640,6 +2635,76 @@ fn preview_tip(_: &mut Window, cx: &mut gpui::App) -> gpui::AnyView {
 
 #[cfg(test)]
 mod tests {
+	#[gpui::test]
+	fn fullscreen_controls_keep_shift_escape_working_after_clicks(cx: &mut gpui::TestAppContext) {
+		cx.update(crate::shell::bind_keys);
+		let (shell, visual) = cx.add_window_view(|window, cx| {
+			crate::shell::Shell::new(window, cx, crate::shell::ConnectionView::Stopped)
+		});
+		shell.update(visual, |s, cx| {
+			s.agent.update(cx, |agent, cx| {
+				agent.visual_workspace_fixture(cx);
+				agent.visual_workspace_page("workbench-split", cx);
+			})
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1000.)));
+		visual.update(crate::ui_frame::draw_frame);
+		std::thread::sleep(std::time::Duration::from_millis(260));
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_frame);
+		let dock = visual.debug_bounds("graph-expand").expect("Dock panel control");
+		let chat = visual.debug_bounds("chat-expand").expect("conversation panel control");
+		assert_eq!(dock.size, chat.size, "pane controls share the same click target");
+		let group = visual.debug_bounds("relations-pane-controls").unwrap();
+		let close = visual.debug_bounds("graph-close").unwrap();
+		assert!(dock.right() < close.left(), "pane actions have separate click targets");
+		assert_eq!(group.right(), close.right(), "no extra outer frame gutter");
+		for control in ["graph-expand", "chat-expand"] {
+			let button = visual.debug_bounds(control).expect("fullscreen control");
+			let agent = shell.read_with(visual, |s, _| s.agent.clone());
+			visual.simulate_mouse_move(button.center(), None, Default::default());
+			visual.simulate_click(button.center(), Default::default());
+			std::thread::sleep(std::time::Duration::from_millis(260));
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+			assert_eq!(
+				agent.read_with(visual, |a, _| (
+					a.workspace.graph_expanded,
+					a.workspace.chat_expanded
+				)),
+				(control == "graph-expand", control == "chat-expand"),
+				"{control} expands the selected pane"
+			);
+			if control == "graph-expand" {
+				for selector in ["relations-usage", "graph-usage-time", "relations-out"] {
+					let bounds = visual.debug_bounds(selector).expect(selector);
+					visual.simulate_mouse_move(bounds.center(), None, Default::default());
+					visual.simulate_click(bounds.center(), Default::default());
+					visual.run_until_parked();
+					visual.update(crate::ui_frame::draw_frame);
+				}
+				assert!(visual.debug_bounds("graph-usage-time").is_none(), "menu closed");
+				assert!(
+					visual.update(|window, cx| shell.read(cx).root_focus.is_focused(window)),
+					"canvas controls retain persistent keyboard focus"
+				);
+			}
+			visual.simulate_keystrokes("shift-escape");
+			std::thread::sleep(std::time::Duration::from_millis(260));
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+			assert_eq!(
+				agent.read_with(visual, |a, _| (
+					a.workspace.graph_expanded,
+					a.workspace.chat_expanded
+				)),
+				(false, false),
+				"{control} shortcut restores layout"
+			);
+			assert!(visual.debug_bounds("chat-expand").is_some(), "{control} restores chat");
+		}
+	}
+
 	use std::thread;
 
 	use gpui::{AppContext as _, Focusable as _};

@@ -9,6 +9,53 @@ pub(super) struct Preview {
 	pub task: String,
 	pub text: String,
 	pub running: Option<String>,
+	pub recent: Vec<Operation>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct Operation {
+	pub id: String,
+	pub text: String,
+}
+
+fn recent(entries: &[AgentTimelineEntry], turn: &str) -> Vec<Operation> {
+	let mut seen = std::collections::BTreeSet::new();
+	let mut operations = Vec::new();
+	for entry in entries.iter().rev() {
+		let AgentTimelineContent::Item {
+			turn_id,
+			item_id,
+			activity: Some(activity),
+			collaboration,
+			..
+		} = &entry.content
+		else {
+			continue;
+		};
+		if turn_id != turn || !seen.insert(item_id) {
+			continue;
+		}
+		let label =
+			super::super::native_timeline::activity_label(activity, collaboration.as_ref(), &[]);
+		let source = if !activity.detail.trim().is_empty()
+			&& collaboration.is_none()
+			&& label != activity.detail
+		{
+			format!("{label} · {}", activity.detail)
+		} else {
+			label
+		};
+		let label = text(&source);
+		if label.is_empty() {
+			continue;
+		}
+		operations.push(Operation { id: format!("{turn}:{item_id}"), text: label });
+		if operations.len() == 3 {
+			break;
+		}
+	}
+	operations.reverse();
+	operations
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -203,6 +250,7 @@ pub(super) fn latest(entries: &[AgentTimelineEntry], turn: Option<&str>) -> Opti
 		task,
 		text: preview_text,
 		running,
+		recent: recent(entries, turn),
 	})
 }
 
@@ -380,6 +428,43 @@ mod tests {
 			assignments(&[explicit, event], "parent")["child"],
 			"Review the soup ingredients"
 		);
+	}
+
+	#[test]
+	fn recent_operations_keep_three_distinct_native_items_and_latest_revision() {
+		let mut entries = Vec::new();
+		for (id, label) in [
+			("a", "Read Cargo.toml"),
+			("b", "Run cargo check"),
+			("c", "Inspect failure"),
+			("d", "Run cargo test"),
+			("d", "Tests passed"),
+		] {
+			let mut entry = item("now", "commandExecution", "");
+			if let AgentTimelineContent::Item { item_id, activity, .. } = &mut entry.content {
+				*item_id = id.into();
+				*activity = Some(decodex_protocol::AgentActivityDto {
+					turn_id: "now".into(),
+					item_id: id.into(),
+					kind: "commandExecution".into(),
+					status: "completed".into(),
+					label: "Command".into(),
+					detail: label.into(),
+					plugin_id: None,
+					read_only_hint: None,
+					native_timestamp_ms: None,
+					duration_ms: None,
+				});
+			}
+			entries.push(entry);
+		}
+		let preview = latest(&entries, Some("now")).unwrap();
+		assert_eq!(
+			preview.recent.iter().map(|op| op.id.as_str()).collect::<Vec<_>>(),
+			["now:b", "now:c", "now:d"]
+		);
+		assert_eq!(preview.recent[2].text, "Command · Tests passed");
+		assert!(latest(&entries, Some("next")).is_none());
 	}
 
 	#[test]

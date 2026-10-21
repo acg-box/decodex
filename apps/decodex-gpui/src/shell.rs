@@ -942,7 +942,10 @@ impl Shell {
 	}
 
 	fn interrupt_reply(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
-		if event.keystroke.key != "escape" || event.is_held {
+		if event.keystroke.key != "escape"
+			|| event.keystroke.modifiers != gpui::Modifiers::default()
+			|| event.is_held
+		{
 			return;
 		}
 		if self.selected == Destination::Agent {

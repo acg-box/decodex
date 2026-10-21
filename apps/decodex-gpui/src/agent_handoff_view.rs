@@ -38,7 +38,7 @@ impl AgentSurface {
 
 	pub(super) fn handoff_canvas(&self, cx: &mut Context<Self>) -> AnyElement {
 		let floating = !self.work_board.graph;
-		let mut header = gpui::div()
+		let header = gpui::div()
 			.h(gpui::px(38.))
 			.flex_none()
 			.flex()
@@ -49,34 +49,7 @@ impl AgentSurface {
 			} else {
 				gpui::div().flex_1().into_any_element()
 			})
-			.child(
-				self.workspace_action(
-					"graph-expand".into(),
-					if self.workspace.graph_expanded {
-						"Restore layout · Shift-Esc"
-					} else {
-						"Expand Dock · Shift-Esc"
-					}
-					.into(),
-					|s, cx| {
-						s.workspace.graph_expanded = !s.workspace.graph_expanded;
-						s.workspace.chat_expanded = false;
-						cx.notify();
-					},
-					cx,
-				),
-			);
-
-		header = header.child(self.workspace_action(
-			"graph-close".into(),
-			"Close Dock".into(),
-			|s, cx| {
-				s.workspace.graph_visible = false;
-				s.workspace.graph_expanded = false;
-				cx.notify();
-			},
-			cx,
-		));
+			.child(self.panel_controls(super::panel_controls::Panel::Dock, cx));
 
 		let mut panel = gpui::div()
 			.id("work-dock")
@@ -93,7 +66,6 @@ impl AgentSurface {
 		if floating {
 			return panel
 				.child(gpui::div().flex_1().min_h_0().child(self.render_work_board(cx)))
-				.child(header.absolute().top_0().right_0())
 				.when(!self.workspace.graph_expanded, |panel| {
 					panel.child(self.dock_resize_handle(cx))
 				})

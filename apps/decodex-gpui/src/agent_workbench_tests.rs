@@ -225,15 +225,18 @@ fn selecting_agents_keeps_the_single_composer_in_the_center(cx: &mut gpui::TestA
 	let metrics = visual.debug_bounds("relation-metrics-release").unwrap();
 	assert!(metrics.size.height > gpui::px(0.));
 	assert!(visual.debug_bounds("workbench-clear").is_none(), "inspection has no Back page");
-	let history = visual.debug_bounds("workbench-history").unwrap();
-	visual.simulate_click(history.center(), Default::default());
-	visual.update(crate::ui_frame::draw_frame);
-	assert!(visual.debug_bounds("workbench-history-section").is_some());
+	assert!(
+		visual.debug_bounds("workbench-history").is_none(),
+		"collaboration has no duplicate history navigation"
+	);
 	assert!(visual.debug_bounds("workbench-body").is_some());
 	assert!(visual.debug_bounds("workbench-composer").is_none());
 	assert!(visual.debug_bounds("floating-composer").is_some());
 	surface.read_with(visual, |s, _| {
-		assert!(s.graph_has_composer(), "history does not change the central message recipient");
+		assert!(
+			s.graph_has_composer(),
+			"collaboration does not change the central message recipient"
+		);
 		assert_eq!(s.selected.as_deref(), Some("agent"));
 		assert_eq!(s.work_board.view.picked_agent.as_deref(), Some("release"));
 	});

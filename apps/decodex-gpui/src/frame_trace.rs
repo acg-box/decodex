@@ -31,13 +31,26 @@ fn record_row(
 	height: f32,
 	scroll_offset: Option<f32>,
 ) {
+	record(
+		|at_ms| serde_json::json!({"at_ms": at_ms, "position": position, "phase": phase, "progress": progress, "height": height, "scroll_offset": scroll_offset}),
+	);
+}
+
+/// Record only Graph geometry and reveal state, with no task identifiers or text.
+pub(crate) fn graph_paint(zoom: f32, pan: (f32, f32), size: (f32, f32), reveal: f32) {
+	record(
+		|at_ms| serde_json::json!({"at_ms": at_ms, "phase": "graph", "zoom": zoom, "pan": [pan.0, pan.1], "size": [size.0, size.1], "reveal": reveal}),
+	);
+}
+
+fn record(row: impl FnOnce(f64) -> serde_json::Value) {
 	if !profiler::trace_enabled() {
 		return;
 	}
 	let Some((start, rows)) = ROWS.get() else { return };
 	let mut rows = rows.lock().expect("row frame measurements");
 	if rows.len() < 16_384 {
-		rows.push(serde_json::json!({"at_ms": start.elapsed().as_secs_f64() * 1_000., "position": position, "phase": phase, "progress": progress, "height": height, "scroll_offset": scroll_offset}));
+		rows.push(row(start.elapsed().as_secs_f64() * 1_000.));
 	}
 }
 
@@ -59,9 +72,13 @@ pub(crate) fn start(cx: &mut gpui::App) {
 					handle.update(cx, |_, window, _| {
 						#[cfg(all(target_os = "macos", not(test)))]
 						let glass = crate::ui_theme::native_glass_panel::observed_style(window);
+						#[cfg(all(target_os = "macos", not(test)))]
+						let rendering = crate::ui_theme::native_glass_panel::observed_rendering(window);
 						#[cfg(any(not(target_os = "macos"), test))]
 						let glass = None::<isize>;
-						serde_json::json!({"window": format!("{:?}", handle.window_id()), "key": window.is_window_active(), "glass_style": glass})
+						#[cfg(any(not(target_os = "macos"), test))]
+						let rendering = None::<serde_json::Value>;
+						serde_json::json!({"window": format!("{:?}", handle.window_id()), "key": window.is_window_active(), "glass_style": glass, "rendering": rendering})
 					}).ok()
 				}).collect();
 				serde_json::json!({"at_ms": start.elapsed().as_secs_f64() * 1_000., "application_active": crate::ui_frame::application_active(), "full_background_rendering": crate::ui_frame::background_rendering(None), "windows": windows})
@@ -105,13 +122,15 @@ pub(crate) fn start(cx: &mut gpui::App) {
 				}))
 			})
 			.collect();
-		let (viewport, arrivals): (Vec<_>, Vec<_>) = ROWS
+		let (graph, recorded_rows): (Vec<_>, Vec<_>) = ROWS
 			.get()
 			.map(|(_, rows)| rows.lock().expect("row frame measurements").clone())
 			.unwrap_or_default()
 			.into_iter()
-			.partition(|row| row["phase"] == "viewport");
-		let report = serde_json::json!({"schema": 5, "started_at_ms": started_at_ms, "note": "CPU draw and platform submission timing; excludes GPU completion and screen scanout. Activity samples distinguish foreground from hidden or inactive windows. Native glass styles: 0 regular, 1 clear. Row arrivals record presentation progress without message content. Viewport height is the scroll maximum after layout.", "frames": rows, "presentations": presentations, "activity": *activity.lock().expect("frame activity"), "row_arrivals": arrivals, "viewport": viewport});
+			.partition(|row| row["phase"] == "graph");
+		let (viewport, arrivals): (Vec<_>, Vec<_>) =
+			recorded_rows.into_iter().partition(|row| row["phase"] == "viewport");
+		let report = serde_json::json!({"schema": 5, "started_at_ms": started_at_ms, "note": "CPU draw and platform submission timing; excludes GPU completion and screen scanout. Activity samples distinguish foreground from hidden or inactive windows. Native glass styles: 0 regular, 1 clear. Row arrivals record presentation progress without message content. Viewport height is the scroll maximum after layout. Graph frames record only camera geometry and reveal opacity.", "frames": rows, "presentations": presentations, "activity": *activity.lock().expect("frame activity"), "row_arrivals": arrivals, "viewport": viewport, "graph_frames": graph});
 
 		if let Err(error) = fs::write(path, report.to_string()) {
 			eprintln!("Could not write frame measurements: {error}");

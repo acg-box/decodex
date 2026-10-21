@@ -245,14 +245,14 @@ impl Ink {
 
 pub(super) fn route(a: &Node, b: &Node) -> Route {
 	let dx = b.x - a.x;
-	let dy = b.y + b.height() / 2. - a.y - a.height() / 2.;
+	let dy = b.port_y() - a.port_y();
 	let gap_x = if dx >= 0. { b.x - a.x - a.width() } else { a.x - b.x - b.width() };
 	let gap_y = dy.abs() - (a.height() + b.height()) / 2.;
 	// Relation type never changes geometry or creates a hook in a shared edge.
 	if gap_x >= 0. && gap_x >= gap_y {
 		let forward = dx >= 0.;
-		let start = (a.x + if forward { a.width() } else { 0. }, a.y + a.height() / 2.);
-		let end = (b.x + if forward { 0. } else { b.width() }, b.y + b.height() / 2.);
+		let start = (a.x + if forward { a.width() } else { 0. }, a.port_y());
+		let end = (b.x + if forward { 0. } else { b.width() }, b.port_y());
 		let bend = (end.0 - start.0) / 2.;
 		Route::curve(start, (start.0 + bend, start.1), (end.0 - bend, end.1), end)
 	} else {
@@ -268,6 +268,7 @@ pub(super) fn route(a: &Node, b: &Node) -> Route {
 struct Card {
 	key: String,
 	bounds: [f32; 4],
+	port_y: f32,
 }
 
 impl Card {
@@ -321,6 +322,7 @@ impl Cache {
 			.iter()
 			.map(|n| Card {
 				key: n.key.clone(),
+				port_y: n.port_y(),
 				bounds: [
 					n.x - CLEARANCE,
 					n.y - CLEARANCE,
@@ -369,8 +371,8 @@ fn tree_route(a: &Node, b: &Node, nodes: &[Node], edges: &[Edge], cards: &[Card]
 	let mut branches = Vec::new();
 	let middle = |node: &Node| (node.x + node.width() / 2., node.y + node.height() / 2.);
 	if children.iter().all(|node| node.x >= a.x + a.width() + CLEARANCE * 2.) {
-		let start = (a.x + a.width(), middle(a).1);
-		branches.push(Route::branch(start, (b.x, middle(b).1), true));
+		let start = (a.x + a.width(), a.port_y());
+		branches.push(Route::branch(start, (b.x, b.port_y()), true));
 	}
 	if children.iter().all(|node| node.y >= a.y + a.height() + CLEARANCE * 2.) {
 		let start = (middle(a).0, a.y + a.height());
@@ -424,8 +426,8 @@ struct Port {
 fn ports(node: &Node, preferred: Point, cards: &[Card]) -> Vec<Port> {
 	let center = (node.x + node.width() / 2., node.y + node.height() / 2.);
 	let mut ports: Vec<_> = [
-		((node.x, center.1), (-CLEARANCE, 0.)),
-		((node.x + node.width(), center.1), (CLEARANCE, 0.)),
+		((node.x, node.port_y()), (-CLEARANCE, 0.)),
+		((node.x + node.width(), node.port_y()), (CLEARANCE, 0.)),
 		((center.0, node.y), (0., -CLEARANCE)),
 		((center.0, node.y + node.height()), (0., CLEARANCE)),
 	]
@@ -567,11 +569,9 @@ impl<'a> Grid<'a> {
 mod tests {
 	use super::*;
 	#[test]
-	fn summary_ports_follow_the_card_edges_at_every_camera_scale() {
-		for scale in [1., 0.65, 0.4, 0.15] {
-			let layout = super::super::card::Layout::new(scale);
-			let mut a = node("parent", 0., 0.);
-			a.size = (layout.width / scale, layout.height / scale);
+	fn resource_ports_follow_the_card_edges_at_every_camera_scale() {
+		for scale in [1., 0.85, 0.7] {
+			let a = node("parent", 0., 0.);
 			for (x, y) in [(a.width() + 80. / scale, 0.), (0., a.height() + 80. / scale)] {
 				let b = Node { key: "child".into(), x, y, ..a.clone() };
 				let path = route(&a, &b);
@@ -588,11 +588,9 @@ mod tests {
 		}
 	}
 	#[test]
-	fn summary_branches_keep_facing_ports_and_smooth_tangents_at_every_scale() {
-		for scale in [1., 0.65, 0.4, 0.15] {
-			let layout = super::super::card::Layout::new(scale);
-			let mut a = node("parent", 0., 0.);
-			a.size = (layout.width / scale, layout.height / scale);
+	fn resource_branches_keep_facing_ports_and_smooth_tangents_at_every_scale() {
+		for scale in [1., 0.85, 0.7] {
+			let a = node("parent", 0., 0.);
 			let b = Node {
 				key: "child".into(),
 				x: a.width() + 80. / scale,
@@ -603,7 +601,7 @@ mod tests {
 			let route = &paths["parent-child"];
 			assert_eq!(route.curves.len(), 1, "one continuous curve without small elbows");
 			assert_eq!(route.curves[0].start, (a.width(), a.height() / 2.));
-			assert_eq!(route.curves.last().unwrap().end, (b.x, b.y + b.height() / 2.));
+			assert_eq!(route.curves.last().unwrap().end, (b.x, b.port_y()));
 			let curve = &route.curves[0];
 			assert_eq!(curve.start.1, curve.first.1);
 			assert_eq!(curve.second.1, curve.end.1);
@@ -624,7 +622,10 @@ mod tests {
 			status: String::new(),
 			color: 0,
 			row: None,
+			activity: Default::default(),
 			size: (224., 48.),
+			port_offset: 24.,
+			base_height: 48.,
 			x,
 			y,
 		}
@@ -706,8 +707,8 @@ mod tests {
 	fn curve_avoidance_distinguishes_empty_control_hulls_from_real_obstacles() {
 		let curve =
 			Curve { start: (0., 0.), first: (150., 0.), second: (150., 100.), end: (300., 100.) };
-		let beside = Card { key: "beside".into(), bounds: [250., 0., 280., 25.] };
-		let across = Card { key: "across".into(), bounds: [140., 40., 160., 60.] };
+		let beside = Card { key: "beside".into(), bounds: [250., 0., 280., 25.], port_y: 12.5 };
+		let across = Card { key: "across".into(), bounds: [140., 40., 160., 60.], port_y: 50. };
 		assert!(!beside.blocks_curve(&curve));
 		assert!(across.blocks_curve(&curve));
 	}

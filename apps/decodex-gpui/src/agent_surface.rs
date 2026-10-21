@@ -43,6 +43,7 @@ mod native_composer;
 mod native_model_menu;
 #[path = "agent_timeline.rs"] mod native_timeline;
 #[path = "agent_output_stream.rs"] mod output_stream;
+#[path = "agent_panel_controls.rs"] mod panel_controls;
 #[path = "agent_permissions.rs"] mod permissions;
 #[path = "agent_progress.rs"] mod progress;
 #[path = "agent_prompt_edit.rs"] mod prompt_edit;

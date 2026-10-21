@@ -1,23 +1,28 @@
 //! Agent topology: typed connections are inspectable evidence, never inferred from message prose.
 #[cfg(any(test, feature = "visual-capture"))] use super::Brief;
 use super::{
-	AMBER, AgentSurface, AnyElement, BTreeMap, BTreeSet, Context, FluentBuilder, GREEN,
-	InteractiveElement, IntoElement, ParentElement, Row, Styled, TEXT_MUTED,
+	super::workspace::restore_shell_focus, AMBER, AgentSurface, AnyElement, BTreeMap, BTreeSet,
+	Context, FluentBuilder, GREEN, InteractiveElement, IntoElement, ParentElement, Row, Styled,
+	TEXT_MUTED,
 };
-use crate::ui_theme::TEXT;
+use crate::{ui_motion::SmoothControl, ui_theme::TEXT};
 use gpui::AppContext;
+#[path = "agent_relation_allocation.rs"] mod allocation;
 #[path = "agent_relation_card.rs"] mod card;
-#[path = "agent_relation_details.rs"] mod details;
 #[path = "agent_relation_header.rs"] mod header;
 #[path = "agent_relation_hover.rs"] mod hover;
 #[path = "agent_relation_layout.rs"] mod layout;
 #[path = "agent_relation_metrics.rs"] pub(super) mod metrics;
+#[path = "agent_relation_minimap.rs"] mod minimap;
+#[path = "agent_relation_picker.rs"] mod picker;
 #[path = "agent_relation_resources.rs"] mod resources;
 #[path = "agent_relation_route.rs"] mod routing;
 use routing::Route;
 #[cfg(test)] use routing::route;
 #[path = "agent_relation_scopes.rs"] mod scopes;
+#[path = "agent_relation_stream.rs"] mod stream;
 #[path = "agent_relation_style.rs"] mod style;
+#[path = "agent_relation_usage.rs"] mod usage;
 #[path = "agent_relation_visibility.rs"] mod visibility;
 use gpui::{
 	MouseButton, MouseDownEvent, MouseMoveEvent, PathBuilder, Role, ScrollEvent, SharedString,
@@ -38,13 +43,20 @@ fn grid_spacing(scale: f32) -> f32 {
 pub(super) struct View {
 	pub(super) camera_fixed: bool,
 	reveal_after_resize: bool,
+	resize_anchor: Option<String>,
 	flow_clock: std::cell::OnceCell<std::time::Instant>,
 	positions: BTreeMap<String, (f32, f32)>,
 	pan: (f32, f32),
 	zoom: Option<f32>,
 	viewport: (f32, f32),
+	display_scale: f32,
 	layout_viewport: (f32, f32),
 	layout: std::cell::RefCell<layout::Cache>,
+	layout_mode: layout::Mode,
+	layout_drag: Option<picker::Drag>,
+	motion: Option<SceneMotion>,
+	map_drag: Option<minimap::Drag>,
+	activity: std::cell::RefCell<BTreeMap<String, stream::Stream>>,
 	routing: std::cell::RefCell<routing::Cache>,
 	visibility: std::cell::RefCell<visibility::Cache>,
 	origin: (f32, f32),
@@ -54,8 +66,15 @@ pub(super) struct View {
 	pub(super) edge: Option<Edge>,
 	pub(super) show_record: bool,
 	legend_visible: bool,
+	usage_metric: usage::Metric,
+	usage_hidden: bool,
+	usage_menu: bool,
 	hover: hover::Hover,
 	pub(super) picked_agent: Option<String>,
+}
+struct SceneMotion {
+	from: BTreeMap<String, (f32, f32)>,
+	progress: crate::ui_motion::Tween,
 }
 struct Drag {
 	key: Option<String>,
@@ -99,13 +118,13 @@ pub(super) struct Edge {
 	pub(super) from: String,
 	pub(super) to: String,
 	pub(super) kind: Kind,
-	in_progress: bool,
-	color: u32,
-	label: String,
-	detail: String,
-	excerpt: Option<String>,
-	source: Option<(String, String)>,
-	link: Option<String>,
+	pub(super) in_progress: bool,
+	pub(super) color: u32,
+	pub(super) label: String,
+	pub(super) detail: String,
+	pub(super) excerpt: Option<String>,
+	pub(super) source: Option<(String, String)>,
+	pub(super) link: Option<String>,
 }
 impl Edge {
 	fn executing(&self, target: &Node, connected: bool) -> bool {
@@ -127,17 +146,12 @@ pub(super) struct Node {
 	status: String,
 	color: u32,
 	row: Option<Row>,
+	activity: stream::Frame,
 	pub(super) size: (f32, f32),
+	port_offset: f32,
+	base_height: f32,
 	pub(super) x: f32,
 	pub(super) y: f32,
-}
-fn compact_name(value: &str) -> String {
-	let first = value.split(['\n', '：']).next().unwrap_or(value).trim();
-	if first.chars().count() <= 32 {
-		first.to_owned()
-	} else {
-		format!("{}…", first.chars().take(31).collect::<String>().trim_end())
-	}
 }
 impl Node {
 	fn screen_rect(&self, scale: f32, pan: (f32, f32)) -> card::Rect {
@@ -160,8 +174,12 @@ impl Node {
 	fn height(&self) -> f32 {
 		self.size.1
 	}
+
+	fn port_y(&self) -> f32 {
+		self.y + self.port_offset
+	}
 }
-struct RelationTip(String);
+pub(super) struct RelationTip(pub(super) String);
 impl gpui::Render for RelationTip {
 	fn render(&mut self, _: &mut gpui::Window, _: &mut Context<Self>) -> impl IntoElement {
 		crate::ui_motion::tooltip_surface(gpui::div())
@@ -179,6 +197,46 @@ pub(super) struct Graph {
 	paths: BTreeMap<String, std::rc::Rc<Route>>,
 }
 impl Graph {
+	fn ancestor_edges(&self, mut target: Option<String>) -> BTreeSet<String> {
+		let mut selected_path = BTreeSet::new();
+		while let Some(key) = target.take() {
+			let Some(edge) = self.edges.iter().find(|edge| edge.kind.hierarchy() && edge.to == key)
+			else {
+				break;
+			};
+			if !selected_path.insert(edge.id.clone()) {
+				break;
+			}
+			target = Some(edge.from.clone());
+		}
+		selected_path
+	}
+
+	/// Draw only real, exposed route endpoints. Routing owns side selection and
+	/// obstacle avoidance; decoration must never invent another attachment point.
+	fn connection_ports(&self, lines: &[visibility::Link]) -> BTreeMap<String, Vec<(f32, f32)>> {
+		let mut ports = BTreeMap::<String, Vec<(f32, f32)>>::new();
+		for link in lines {
+			let (edge, path) = (&link.base, &link.path);
+			for (key, point) in [
+				(&edge.from, path.curves.first().expect("route start").start),
+				(&edge.to, path.curves.last().expect("route end").end),
+			] {
+				let Some(node) =
+					self.nodes.iter().find(|node| &node.key == key && node.row.is_some())
+				else {
+					continue;
+				};
+				let local = (point.0 - node.x, point.1 - node.y);
+				let entry = ports.entry(key.clone()).or_default();
+				if !entry.contains(&local) {
+					entry.push(local);
+				}
+			}
+		}
+		ports
+	}
+
 	fn connections(&self) -> Vec<Edge> {
 		let mut connections: Vec<Edge> = Vec::new();
 		for edge in &self.edges {
@@ -257,27 +315,116 @@ impl Graph {
 }
 
 impl AgentSurface {
+	pub(in super::super) fn reveal_relations_after_resize(&mut self) {
+		let graph = self.relation_graph();
+		let view = &mut self.work_board.view;
+		let scale = view.zoom.unwrap_or(1.).clamp(card::MIN_ZOOM, card::MAX_ZOOM);
+		let center = (view.viewport.0 / 2., view.viewport.1 / 2.);
+		view.resize_anchor = view.picked_agent.clone().or_else(|| {
+			graph
+				.nodes
+				.iter()
+				.filter(|node| node.row.is_some())
+				.min_by(|a, b| {
+					let distance = |node: &Node| {
+						let rect = node.screen_rect(scale, view.pan);
+						(rect.x + rect.width / 2. - center.0).powi(2)
+							+ (rect.y + rect.height / 2. - center.1).powi(2)
+					};
+					distance(a).total_cmp(&distance(b))
+				})
+				.map(|node| node.key.clone())
+		});
+		view.reveal_after_resize = view.resize_anchor.is_some();
+	}
+
 	pub(in super::super) fn clear_relation_selection(&mut self) {
 		self.work_board.view.picked_agent = None;
 		self.work_board.view.edge = None;
 		self.work_board.focus = None;
 	}
 
+	pub(super) fn locate_relation_agent(&mut self, key: &str, cx: &mut Context<Self>) {
+		self.select_workbench_agent(key, cx);
+		let graph = self.relation_graph();
+		let Some(node) = graph.nodes.iter().find(|node| node.key == key) else { return };
+		let scale = self.relation_scale();
+		let view = &mut self.work_board.view;
+		let rect = node.screen_rect(scale, view.pan);
+		if rect.x < 0.
+			|| rect.y < 0.
+			|| rect.x + rect.width > view.viewport.0
+			|| rect.y + rect.height > view.viewport.1
+		{
+			view.pan = (
+				view.viewport.0 / 2. - (node.x + node.width() / 2.) * scale,
+				view.viewport.1 / 2. - (node.y + node.height() / 2.) * scale,
+			);
+		}
+		cx.notify();
+	}
+
 	pub(super) fn relation_graph(&self) -> Graph {
+		self.relation_graph_at(std::time::Instant::now())
+	}
+
+	fn relation_graph_at(&self, now: std::time::Instant) -> Graph {
+		self.relation_graph_with_layout(now, card::Layout::new(self.relation_scale()))
+	}
+
+	fn relation_graph_with_layout(&self, now: std::time::Instant, layout: card::Layout) -> Graph {
 		let mut graph =
 			Graph { scopes: vec![], nodes: vec![], edges: vec![], paths: BTreeMap::new() };
 		let Some(snapshot) = &self.snapshot else { return graph };
-		let rows = self.factory_rows();
+		let mut rows = self.factory_rows();
+		rows.sort_by_key(|row| {
+			let owner = snapshot
+				.work_items
+				.iter()
+				.position(|work| work.id == row.work)
+				.unwrap_or(usize::MAX);
+			let child = self
+				.native_agents
+				.lists
+				.get(&row.work)
+				.and_then(|agents| {
+					agents.iter().position(|agent| Some(&agent.thread_id) == row.thread.as_ref())
+				})
+				.unwrap_or(0);
+			(owner, row.native, child)
+		});
 		let included: BTreeSet<String> = rows.iter().map(|r| r.key.clone()).collect();
+		let mut streams = self.work_board.view.activity.borrow_mut();
+		streams.retain(|key, _| included.contains(key));
 		for source in rows.iter().filter(|r| included.contains(&r.key)) {
 			let mut row = source.clone();
 			if self.graph_question(&row).is_some() {
 				row.status = "Needs you".into();
 				row.color = AMBER;
 			}
+			let (task, _) = self.graph_preview(&row);
+			let identity = self.relation_agent_name(&row);
+			let separate_task = !task.is_empty() && task != identity;
+			let title_rows =
+				if separate_task || (layout.full_detail() && identity.chars().count() > 24) {
+					2
+				} else {
+					1
+				};
+			let (scope, operations) = self.graph_operations(&row);
+			let stream = streams
+				.entry(row.key.clone())
+				.or_insert_with(|| stream::Stream::new(&scope, &operations, now));
+			stream.sync(&scope, &operations, now);
+			let activity = stream.frame(now, crate::ui_motion::reduced());
+			let height = layout.world_height(
+				title_rows,
+				1 + usize::from(separate_task),
+				activity.height / stream::LINE,
+			);
 			graph.nodes.push(Node {
 				key: row.key.clone(),
-				title: compact_name(if row.native { &row.owner } else { &row.title }),
+				title: identity,
 				status: if row.review {
 					format!("{} · Result unread", row.status)
 				} else {
@@ -285,11 +432,15 @@ impl AgentSurface {
 				},
 				color: row.color,
 				row: Some(row),
-				size: (card::WIDTH, card::HEIGHT),
+				activity,
+				size: (card::WIDTH, height),
+				base_height: layout.world_height(title_rows, 1 + usize::from(separate_task), 0.),
+				port_offset: if layout.overview() { height / 2. } else { card::PORT_Y },
 				x: 0.,
 				y: 0.,
 			});
 		}
+		drop(streams);
 		let thread_keys: BTreeMap<_, _> =
 			rows.iter().filter_map(|r| Some((r.thread.clone()?, r.key.clone()))).collect();
 		self.add_assigned_relations(&mut graph, &included);
@@ -309,7 +460,7 @@ impl AgentSurface {
 
 		self.add_relation_resources(&rows, &included, &mut graph);
 
-		self.place_relation_nodes(&mut graph);
+		self.place_relation_nodes(&mut graph, layout);
 		graph.paths =
 			self.work_board.view.routing.borrow_mut().paths(&graph.nodes, &graph.connections());
 		graph.scope_bounds(&snapshot.workspaces);
@@ -317,38 +468,30 @@ impl AgentSurface {
 	}
 
 	fn relation_scale(&self) -> f32 {
-		self.work_board.view.zoom.unwrap_or(1.)
+		self.work_board.view.zoom.unwrap_or(1.).clamp(card::MIN_ZOOM, card::MAX_ZOOM)
 	}
 
 	fn relation_controls(&self, cx: &mut Context<Self>) -> AnyElement {
 		let scale = self.relation_scale();
 		let pan = self.work_board.view.pan;
 		let layout_viewport = self.work_board.view.layout_viewport;
-		let cluster = || {
-			gpui::div()
-				.flex()
-				.items_center()
-				.h(gpui::px(26.))
-				.rounded(gpui::px(7.))
-				.px(gpui::px(2.))
-				.gap(gpui::px(1.))
-				.bg(gpui::rgba(0xffffff06))
-		};
+		let cluster = crate::ui_theme::canvas_control_group;
 		gpui::div()
+			.id("relations-toolbar")
 			.debug_selector(|| "relations-toolbar".into())
 			.w_full()
 			.h(gpui::px(38.))
 			.px_2()
-			.pr(gpui::px(68.))
 			.flex_none()
 			.flex()
 			.items_center()
 			.gap_2()
 			.text_size(gpui::px(11.))
+			.child(self.relation_layout_picker(cx))
 			.child(gpui::div().flex_1())
-			.child(self.relation_selection_label(cx))
 			.child(
 				cluster()
+					.debug_selector(|| "relations-layout-controls".into())
 					.child(self.graph_control(
 						"arrange",
 						crate::shell::workspace_symbols::icon_sized(
@@ -368,7 +511,7 @@ impl AgentSurface {
 							crate::shell::workspace_symbols::Symbol::Fit,
 							14.,
 						),
-						"Fit all agents and workspace boundaries",
+						&format!("Frame agents (minimum {:.0}%)", card::MIN_ZOOM * 100.),
 						|s, cx| {
 							s.work_board.view.camera_fixed = true;
 							s.fit_relations();
@@ -376,17 +519,19 @@ impl AgentSurface {
 						},
 						cx,
 					))
-					.child(self.relation_legend_toggle(cx)),
+					.child(self.relation_legend_toggle(cx))
+					.child(self.relation_usage_options(cx)),
 			)
 			.child(
 				cluster()
+					.debug_selector(|| "relations-zoom-controls".into())
 					.child(self.graph_control(
 						"out",
 						"−",
-						"Zoom out",
+						&format!("Zoom out (minimum {:.0}%)", card::MIN_ZOOM * 100.),
 						move |s, cx| {
 							s.work_board.view.hold_camera(scale, pan, layout_viewport);
-							s.zoom_relations(scale, scale / 1.2, None);
+							s.zoom_relations(scale, scale - 0.05, None);
 							cx.notify();
 						},
 						cx,
@@ -408,13 +553,111 @@ impl AgentSurface {
 						"Zoom in (maximum 100%)",
 						move |s, cx| {
 							s.work_board.view.hold_camera(scale, pan, layout_viewport);
-							s.zoom_relations(scale, scale * 1.2, None);
+							s.zoom_relations(scale, scale + 0.05, None);
 							cx.notify();
 						},
 						cx,
 					)),
 			)
+			.child(self.panel_controls(super::super::panel_controls::Panel::Dock, cx))
 			.into_any_element()
+	}
+
+	fn switch_relation_layout(&mut self, mode: layout::Mode, cx: &mut Context<Self>) {
+		if self.work_board.view.layout_mode == mode {
+			return;
+		}
+		let before = self.relation_graph();
+		let old_pan = self.work_board.view.pan;
+		let scale = self.relation_scale();
+		let center = (self.work_board.view.viewport.0 / 2., self.work_board.view.viewport.1 / 2.);
+		let anchor = self.work_board.view.picked_agent.clone().or_else(|| {
+			before
+				.nodes
+				.iter()
+				.filter(|node| node.row.is_some())
+				.min_by(|a, b| {
+					let distance = |node: &Node| {
+						((node.x + node.width() / 2.) * scale + old_pan.0 - center.0).powi(2)
+							+ ((node.y + node.height() / 2.) * scale + old_pan.1 - center.1).powi(2)
+					};
+					distance(a).total_cmp(&distance(b))
+				})
+				.map(|node| node.key.clone())
+		});
+		let view = &mut self.work_board.view;
+		view.layout_mode = mode;
+		view.motion = None;
+		view.map_drag = None;
+		view.drag = None;
+		view.positions.clear();
+		view.hover.update(None, std::time::Instant::now());
+		let target = self.relation_graph();
+		if let Some(node) = target.nodes.iter().find(|node| Some(&node.key) == anchor.as_ref()) {
+			self.work_board.view.pan = (
+				center.0 - (node.x + node.width() / 2.) * scale,
+				center.1 - (node.y + node.height() / 2.) * scale,
+			);
+		}
+		self.animate_relation_change(&before, old_pan);
+		cx.notify();
+	}
+
+	fn animate_relation_change(&mut self, before: &Graph, old_pan: (f32, f32)) {
+		let scale = self.relation_scale();
+		let view = &mut self.work_board.view;
+		view.camera_fixed = true;
+		view.zoom = Some(scale);
+		let mut progress = crate::ui_motion::Tween::new(0.);
+		progress.target(1., std::time::Instant::now());
+		view.motion = Some(SceneMotion {
+			from: before
+				.nodes
+				.iter()
+				.map(|node| {
+					(
+						node.key.clone(),
+						(
+							node.x + (old_pan.0 - view.pan.0) / scale,
+							node.y + (old_pan.1 - view.pan.1) / scale,
+						),
+					)
+				})
+				.collect(),
+			progress,
+		});
+	}
+
+	fn navigate_relation_center(&mut self, center: (f32, f32), cx: &mut Context<Self>) {
+		let before = self.relation_graph();
+		let old_pan = self.work_board.view.pan;
+		let scale = self.relation_scale();
+		let view = &mut self.work_board.view;
+		view.motion = None;
+		view.pan =
+			(view.viewport.0 / 2. - center.0 * scale, view.viewport.1 / 2. - center.1 * scale);
+		view.hover.update(None, std::time::Instant::now());
+		self.animate_relation_change(&before, old_pan);
+		cx.notify();
+	}
+
+	fn navigate_relation_agent(&mut self, key: &str, cx: &mut Context<Self>) {
+		let before = self.relation_graph();
+		let old_pan = self.work_board.view.pan;
+		self.work_board.view.motion = None;
+		let target = self.relation_graph();
+		let Some(node) = target.nodes.iter().find(|node| node.key == key) else {
+			return;
+		};
+		let center = (node.x + node.width() / 2., node.y + node.height() / 2.);
+		self.select_workbench_agent(key, cx);
+		let scale = self.relation_scale();
+		let view = &mut self.work_board.view;
+		view.pan =
+			(view.viewport.0 / 2. - center.0 * scale, view.viewport.1 / 2. - center.1 * scale);
+		view.hover.update(None, std::time::Instant::now());
+		self.animate_relation_change(&before, old_pan);
+		cx.notify();
 	}
 
 	fn graph_control(
@@ -428,10 +671,13 @@ impl AgentSurface {
 		let action = std::rc::Rc::new(action);
 		let keyboard = action.clone();
 		let tip = description.to_owned();
+		let selector = format!("relations-{id}");
 		gpui::div()
-			.id(SharedString::from(format!("relations-{id}")))
+			.id(SharedString::from(selector.clone()))
+			.debug_selector(move || selector.clone())
 			.role(Role::Button)
 			.aria_label(description.to_owned())
+			.when(id == "usage", |button| button.aria_expanded(self.work_board.view.usage_menu))
 			.occlude()
 			.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 			.tab_index(0)
@@ -447,13 +693,18 @@ impl AgentSurface {
 			.hover(|d| d.bg(gpui::rgba(0xffffff10)))
 			.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
 			.child(label)
-			.on_click(cx.listener(move |s, _, _, cx| action(s, cx)))
-			.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
+			.on_click(cx.listener(move |s, _, window, cx| {
+				action(s, cx);
+				restore_shell_focus(window, cx);
+			}))
+			.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, window, cx| {
 				if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 					keyboard(s, cx);
+					restore_shell_focus(window, cx);
 					cx.stop_propagation();
 				}
 			}))
+			.smooth()
 			.into_any_element()
 	}
 
@@ -472,8 +723,8 @@ impl AgentSurface {
 			.collect();
 		let mut canvas = gpui::div()
 			.id("relations-canvas")
-			.bg(gpui::rgba(crate::ui_theme::COLLABORATION_SURFACE))
 			.debug_selector(|| "relations-canvas".into())
+			.font_family(crate::ui_theme::FONT_FAMILY)
 			.relative()
 			.flex_1()
 			.min_w_0()
@@ -517,9 +768,19 @@ impl AgentSurface {
 					cx.notify();
 				}),
 			);
+		let (lines, moving) = self.work_board.view.visibility.borrow_mut().sample(
+			graph,
+			self.relation_context(),
+			self.work_board.view.edge.as_ref(),
+			self.command_connection_ready(),
+			std::time::Instant::now(),
+		);
 		canvas = self.relation_scope_layer(canvas, graph, scale, pan);
-		canvas = self.relation_connection_layer(canvas, graph, cx);
-		canvas = self.relation_node_layer(canvas, graph, cx);
+		canvas = self.relation_connection_layer(canvas, graph, &lines, moving, cx);
+		canvas = self.relation_node_layer(canvas, graph, &lines, cx);
+		if let Some(map) = self.relation_minimap(graph, cx) {
+			canvas = canvas.child(map);
+		}
 
 		canvas = canvas.child(
 			gpui::div()
@@ -531,7 +792,11 @@ impl AgentSurface {
 				.justify_end()
 				.items_end()
 				.gap(gpui::px(8.))
-				.when(self.work_board.view.legend_visible, |d| d.child(self.relation_legend())),
+				.child(crate::ui_motion::disclosure(
+					"graph-legend-reveal",
+					self.work_board.view.legend_visible,
+					self.relation_legend(),
+				)),
 		);
 		gpui::div()
 			.size_full()
@@ -539,6 +804,11 @@ impl AgentSurface {
 			.flex_col()
 			.child(self.relation_controls(cx))
 			.child(canvas)
+			.child(crate::ui_motion::disclosure(
+				"graph-usage-reveal",
+				!self.work_board.view.usage_hidden,
+				self.relation_usage(cx),
+			))
 			.into_any_element()
 	}
 
@@ -548,6 +818,10 @@ impl AgentSurface {
 		hit_boxes: &[(String, card::Rect)],
 		cx: &mut Context<Self>,
 	) {
+		if self.work_board.view.map_drag.is_some() {
+			self.move_relation_minimap(e, cx);
+			return;
+		}
 		let scale = self.relation_scale();
 		if e.pressed_button != Some(MouseButton::Left) {
 			let dragging = self.work_board.view.drag.is_some();
@@ -720,7 +994,10 @@ impl AgentSurface {
 					status: "Referenced thread".into(),
 					color: Kind::Context.color(),
 					row: None,
+					activity: Default::default(),
 					size: (224., 48.),
+					port_offset: 24.,
+					base_height: 48.,
 					x: 0.,
 					y: 0.,
 				});
@@ -743,16 +1020,15 @@ impl AgentSurface {
 			else {
 				continue;
 			};
-			let mut latest = BTreeMap::new();
-			for (item, call) in &brief.relations {
-				for receiver in &call.receiver_thread_ids {
-					latest.insert(
+			let calls = brief.relations.iter().flat_map(|(item, call)| {
+				call.receiver_thread_ids.iter().map(move |receiver| {
+					(
 						(call.sender_thread_id.clone(), receiver.clone(), call.tool.clone()),
 						(item, call),
-					);
-				}
-			}
-			for ((sender, receiver, tool), (item, call)) in latest {
+					)
+				})
+			});
+			for ((sender, receiver, tool), (item, call)) in calls {
 				let (Some(from), Some(to)) = (thread_keys.get(&sender), thread_keys.get(&receiver))
 				else {
 					continue;
@@ -782,7 +1058,7 @@ impl AgentSurface {
 				let label = match tool.as_str() {
 					"subAgentActivity/started" => "Started agent".into(),
 					"subAgentActivity/interacted" => "Interacted".into(),
-					"subAgentActivity/completed" => "Finished".into(),
+					"subAgentActivity/completed" => "Turn completed".into(),
 					"subAgentActivity/interrupted" => "Interrupted".into(),
 					"spawnAgent" => "Started agent".into(),
 					"sendInput" | "sendMessage" | "followupTask" => "Sent input".into(),
@@ -849,59 +1125,35 @@ impl AgentSurface {
 		}
 	}
 
-	fn place_relation_nodes(&self, graph: &mut Graph) {
-		for node in &mut graph.nodes {
-			node.size = (card::WIDTH, if node.row.is_some() { card::HEIGHT } else { 48. });
-		}
-		self.work_board.view.layout.borrow_mut().place(graph, self.work_board.view.layout_viewport);
+	fn place_relation_nodes(&self, graph: &mut Graph, layout: card::Layout) {
+		self.work_board.view.layout.borrow_mut().place(
+			graph,
+			self.work_board.view.layout_viewport,
+			self.work_board.view.layout_mode,
+		);
 		resources::place_resources(graph);
 		for node in &mut graph.nodes {
-			node.x = snap(node.x);
-			node.y = snap(node.y);
 			if let Some(&(x, y)) = self.work_board.view.positions.get(&node.key) {
 				node.x = x;
 				node.y = y;
 			}
+			if layout.points() && node.row.is_some() {
+				let inset = layout.point_inset();
+				node.x += inset.0;
+				node.y += inset.1;
+				node.size = (layout.point_size(), layout.point_size());
+				node.port_offset = node.height() / 2.;
+			}
 		}
-	}
-
-	fn relation_selection_label(&self, cx: &mut Context<Self>) -> AnyElement {
-		let focused = self.work_board.focus.is_some() || self.work_board.view.edge.is_some();
-		let label = self
-			.work_board
-			.focus
-			.as_ref()
-			.and_then(|key| self.board_rows().into_iter().find(|r| &r.key == key))
-			.map(|r| compact_name(if r.native { &r.owner } else { &r.title }))
-			.unwrap_or_else(|| if focused { "Connection".into() } else { String::new() });
-		gpui::div()
-			.max_w(gpui::px(120.))
-			.min_w_0()
-			.flex()
-			.items_center()
-			.gap_1()
-			.child(
-				gpui::div()
-					.min_w_0()
-					.text_ellipsis()
-					.whitespace_nowrap()
-					.text_color(gpui::rgb(TEXT_MUTED))
-					.child(label),
-			)
-			.when(focused, |d| {
-				d.child(self.graph_control(
-					"clear",
-					"×",
-					"Clear selection",
-					|s, cx| {
-						s.work_board.focus = None;
-						s.work_board.view.edge = None;
-						cx.notify();
-					},
-					cx,
-				))
-			})
-			.into_any_element()
+		if let Some(motion) = &self.work_board.view.motion {
+			let progress = motion.progress.sample(std::time::Instant::now());
+			for node in &mut graph.nodes {
+				if let Some(&(x, y)) = motion.from.get(&node.key) {
+					node.x = x + (node.x - x) * progress;
+					node.y = y + (node.y - y) * progress;
+				}
+			}
+		}
 	}
 
 	fn relation_scope_layer(
@@ -911,6 +1163,9 @@ impl AgentSurface {
 		scale: f32,
 		pan: (f32, f32),
 	) -> gpui::Stateful<gpui::Div> {
+		if card::Layout::new(scale).points() {
+			return canvas;
+		}
 		for scope in &graph.scopes {
 			let [left, top, right, bottom] = scope.bounds;
 			canvas = canvas.child(
@@ -953,22 +1208,19 @@ impl AgentSurface {
 		&self,
 		mut canvas: gpui::Stateful<gpui::Div>,
 		graph: &Graph,
+		lines: &[visibility::Link],
+		moving: bool,
 		cx: &mut Context<Self>,
 	) -> gpui::Stateful<gpui::Div> {
 		let scale = self.relation_scale();
 		let pan = self.work_board.view.pan;
-		let (lines, moving) = self.work_board.view.visibility.borrow_mut().sample(
-			graph,
-			self.relation_context(),
-			self.work_board.view.edge.as_ref(),
-			self.command_connection_ready(),
-			std::time::Instant::now(),
-		);
-		canvas = self.paint_relation_connections(canvas, graph, &lines, moving, cx);
+		canvas = self.paint_relation_connections(canvas, graph, lines, moving, cx);
+		if card::Layout::new(scale).points() {
+			return canvas;
+		}
 		for link in lines {
 			if link.detail <= 0.001
-				|| (link.fact.kind.hierarchy()
-					&& !link.active
+				|| (link.base.kind.hierarchy()
 					&& self
 						.work_board
 						.view
@@ -978,8 +1230,8 @@ impl AgentSurface {
 			{
 				continue;
 			}
-			let edge = link.fact;
-			let (a, b, path) = (link.source, link.target, link.path);
+			let edge = link.fact.clone();
+			let (a, b, path) = (&link.source, &link.target, &link.path);
 			let label = graph.connection_label(&edge);
 			let [left, top, _, _] = label.bounds(path.label);
 			let picked = edge.clone();
@@ -1059,19 +1311,21 @@ impl AgentSurface {
 		&self,
 		mut canvas: gpui::Stateful<gpui::Div>,
 		graph: &Graph,
+		lines: &[visibility::Link],
 		cx: &mut Context<Self>,
 	) -> gpui::Stateful<gpui::Div> {
 		let scale = self.relation_scale();
 		let pan = self.work_board.view.pan;
 		let neighborhood = self.relation_neighborhood(graph);
 		let layout_viewport = self.work_board.view.layout_viewport;
-		let layout = card::Layout::new(scale);
+		let layout = card::Layout::new(scale).on_display(self.work_board.view.display_scale);
+		let mut ports = graph.connection_ports(lines);
 		for node in &graph.nodes {
 			let opacity = self.work_board.view.visibility.borrow().node_opacity(graph, node);
 			if opacity <= 0.001 {
 				continue;
 			}
-			let (selected, faded) = self.relation_node_emphasis(node, graph, &neighborhood);
+			let (emphasized, faded) = self.relation_node_emphasis(node, graph, &neighborhood);
 			let key = node.key.clone();
 			let row = node.row.clone();
 			let target = graph
@@ -1085,7 +1339,12 @@ impl AgentSurface {
 			let keyboard_row = row.clone();
 			let keyboard_target = target.clone();
 			let dragkey = key.clone();
-			let origin = (node.x, node.y);
+			let origin = if layout.points() && node.row.is_some() {
+				let inset = layout.point_inset();
+				(node.x - inset.0, node.y - inset.1)
+			} else {
+				(node.x, node.y)
+			};
 
 			let view = self
 				.relation_node_surface(node)
@@ -1141,16 +1400,18 @@ impl AgentSurface {
 			canvas = canvas.child(card::Card {
 				key: node.key.clone(),
 				surface: view,
-				content: self.relation_node_content(node, layout),
-				emphasis: if self.relation_node_current(node) {
-					1.
-				} else if selected {
-					0.45
+				content: if layout.points() && node.row.is_some() {
+					card::point(&node.key, node.color, emphasized)
 				} else {
-					0.
+					self.relation_node_content(node, layout)
 				},
 				faded,
 				visibility: opacity,
+				frame: node.row.as_ref().filter(|_| !layout.points()).map(|_| card::Frame {
+					zoom: scale,
+					selected: emphasized,
+					ports: ports.remove(&node.key).unwrap_or_default(),
+				}),
 			});
 		}
 		canvas
@@ -1170,22 +1431,35 @@ impl AgentSurface {
 			self.work_board.view.zoom = Some(scale);
 		}
 		let resized = self.work_board.view.viewport != size;
-		let reveal = resized && std::mem::take(&mut self.work_board.view.reveal_after_resize);
+		let reveal = resized && self.work_board.view.reveal_after_resize;
 		if resized || self.work_board.view.node_count != node_count {
 			self.work_board.view.node_count = node_count;
 			self.work_board.view.viewport = size;
 			if reveal {
 				let graph = self.relation_graph();
-				if let Some(node) = graph
-					.nodes
-					.iter()
-					.find(|node| self.work_board.view.picked_agent.as_ref() == Some(&node.key))
-				{
+				if let Some(node) = graph.nodes.iter().find(|node| {
+					self.work_board.view.resize_anchor.as_ref().or(self
+						.work_board
+						.view
+						.picked_agent
+						.as_ref())
+						== Some(&node.key)
+				}) {
 					self.work_board.view.pan = (
 						size.0 / 2. - (node.x + node.width() / 2.) * scale,
 						size.1 / 2. - (node.y + node.height() / 2.) * scale,
 					);
 					cx.notify();
+				}
+				if !self
+					.workspace
+					.sidebar_motion
+					.borrow()
+					.as_ref()
+					.is_some_and(|motion| motion.moving(std::time::Instant::now()))
+				{
+					self.work_board.view.reveal_after_resize = false;
+					self.work_board.view.resize_anchor = None;
 				}
 			} else if !self.work_board.view.camera_fixed {
 				self.work_board.view.layout_viewport = size;
@@ -1203,18 +1477,41 @@ impl AgentSurface {
 		moving: bool,
 		cx: &mut Context<Self>,
 	) -> gpui::Stateful<gpui::Div> {
+		let moving = moving
+			|| self
+				.work_board
+				.view
+				.motion
+				.as_ref()
+				.is_some_and(|motion| motion.progress.moving(std::time::Instant::now()));
 		let scale = self.relation_scale();
 		let pan = self.work_board.view.pan;
 		let flow_started = *self.work_board.view.flow_clock.get_or_init(std::time::Instant::now);
 		let reduce_motion = crate::ui_motion::reduced() || !crate::ui_motion::animations_active();
 		let paint_lines = lines.to_vec();
+		let selected_path = graph.ancestor_edges(
+			self.relation_context()
+				.map(str::to_owned)
+				.or_else(|| self.work_board.view.edge.as_ref().map(|edge| edge.to.clone())),
+		);
 		let hover_pending = self.work_board.view.hover.pending(std::time::Instant::now());
 		let entity = cx.entity().downgrade();
 		let node_count = graph.nodes.len();
 		canvas = canvas.child(
 			gpui::canvas(
-				move |bounds, _, cx| {
+				move |bounds, window, cx| {
 					let _ = entity.update(cx, |s, cx| {
+						crate::frame_trace::graph_paint(
+							scale,
+							pan,
+							(f32::from(bounds.size.width), f32::from(bounds.size.height)),
+							s.workspace.arrival.progress(0.06),
+						);
+						let density = window.scale_factor();
+						if s.work_board.view.display_scale != density {
+							s.work_board.view.display_scale = density;
+							cx.notify();
+						}
 						s.update_relation_viewport(bounds, scale, node_count, cx)
 					});
 				},
@@ -1227,15 +1524,20 @@ impl AgentSurface {
 					paint_relation_grid(bounds, scale, pan, window);
 					for link in &paint_lines {
 						if link.base.kind.hierarchy() {
-							let opacity = 1. - link.dim * 0.65 * (1. - link.detail);
+							let opacity = 1. - link.dim * 0.4 * (1. - link.detail);
 							if let Ok(path) = link
 								.path
-								.stroke(link.base.kind, bounds.origin, scale, pan, 1.6, false)
+								.stroke(link.base.kind, bounds.origin, scale, pan, 1.1, false)
 								.build()
 							{
 								base.push(
 									path,
-									(link.base.color << 8) | (0xa0 as f32 * opacity) as u32,
+									((if selected_path.contains(&link.base.id) {
+										card::SELECTED
+									} else {
+										link.base.color
+									}) << 8)
+										| (0xd0 as f32 * opacity) as u32,
 								);
 							}
 						}
@@ -1245,6 +1547,12 @@ impl AgentSurface {
 						let reversed =
 							(link.fact.from != link.base.from).then(|| link.path.reversed());
 						let route = reversed.as_ref().unwrap_or(&link.path);
+						if link.base.kind.hierarchy() {
+							if link.active && !reduce_motion {
+								flows.push((reversed, link.path.as_ref(), link.detail * 0.65));
+							}
+							continue;
+						}
 						let color =
 							if link.active { crate::ui_theme::BLUE } else { link.fact.color };
 						let mut ink = route.clone();
@@ -1287,9 +1595,12 @@ impl AgentSurface {
 	fn relation_node_surface(&self, node: &Node) -> gpui::Stateful<gpui::Div> {
 		let scale = self.relation_scale();
 		let pan = self.work_board.view.pan;
-		let layout = card::Layout::new(scale);
+		let layout = card::Layout::new(scale).on_display(self.work_board.view.display_scale);
 		let name = format!("relation-node-{}", node.key);
 		let preview = node.row.as_ref().map(|row| self.graph_preview(row));
+		let tip = node.row.as_ref().map(|row| {
+			format!("{} · {}\n{}", self.relation_agent_number(row), node.title, node.status)
+		});
 		gpui::div()
 			.id(SharedString::from(name.clone()))
 			.debug_selector(move || name.clone())
@@ -1305,52 +1616,65 @@ impl AgentSurface {
 					.unwrap_or_default()
 			))
 			.absolute()
-			.left(gpui::px(node.x * scale + pan.0))
-			.top(gpui::px(node.y * scale + pan.1))
-			.w(gpui::px(node.width() * scale))
-			.h(gpui::px(node.height() * scale))
-			.rounded(gpui::px(if node.key.starts_with("resource:") {
-				3. * layout.chrome_scale
-			} else {
-				8. * layout.chrome_scale
-			}))
-			.border(gpui::px(0.75 * scale))
+			.left(gpui::px(layout.pixel(node.x * scale + pan.0)))
+			.top(gpui::px(layout.pixel(node.y * scale + pan.1)))
+			.w(gpui::px(layout.pixel(node.width() * scale)))
+			.h(gpui::px(layout.pixel(node.height() * scale)))
+			.when(node.row.is_none(), |surface| {
+				surface
+					.rounded(gpui::px(3. * layout.zoom))
+					.border(gpui::px(0.75 * scale))
+					.border_color(gpui::rgb(crate::ui_theme::LINE_STRONG))
+					.bg(gpui::rgb(0x222228))
+					.overflow_hidden()
+			})
 			.text_color(gpui::rgb(TEXT))
+			.when(layout.points(), |surface| {
+				surface.tooltip(move |_, cx| {
+					cx.new(|_| RelationTip(tip.clone().unwrap_or_default())).into()
+				})
+			})
 			.cursor_pointer()
-			.overflow_hidden()
 	}
 
 	fn relation_node_content(&self, node: &Node, layout: card::Layout) -> AnyElement {
 		let scale = self.relation_scale();
 		let width = if node.row.is_some() { layout.width } else { node.width() * scale };
-		let height = if node.row.is_some() { layout.height } else { node.height() * scale };
-		let preview = node.row.as_ref().map(|row| {
-			let (task, operation) = self.graph_preview(row);
-			let text = if row.group == 1 { operation } else { self.work_activity_summary(row).1 };
-			(task, text)
-		});
+		let height = layout.pixel(node.height() * scale);
+		let preview = node.row.as_ref().map(|row| self.graph_preview(row).0);
 		gpui::div()
+			.relative()
 			.w(gpui::px(width))
 			.h(gpui::px(height))
-			.px(gpui::px(layout.inset_x))
-			.py(gpui::px(layout.inset_y))
+			.px(gpui::px(if node.row.is_some() {
+				layout.spacing(card::INSET_X)
+			} else {
+				8. * scale
+			}))
+			.when(node.row.is_some(), |body| body.py(gpui::px(layout.spacing(card::INSET_Y))))
 			.flex()
 			.flex_col()
-			.justify_between()
-			.gap(gpui::px(layout.gap))
-			.when_some(preview, |view, (task, preview)| {
+			.when(layout.overview(), |body| body.justify_center())
+			.when(!layout.overview(), |body| body.justify_between())
+			.gap(gpui::px(layout.gap()))
+			.when_some(preview, |view, task| {
 				view.child(header::Header {
 					key: node.key.clone(),
-					show_assignment: node.row.as_ref().is_some_and(|row| row.native),
 					identity: node
 						.row
 						.as_ref()
-						.map(|row| if row.native { row.owner.clone() } else { row.title.clone() })
+						.map(|row| self.relation_agent_name(row))
 						.unwrap_or_default(),
-					task,
-					preview: if preview == node.status { String::new() } else { preview },
-					layout,
+					number: node
+						.row
+						.as_ref()
+						.map(|row| self.relation_agent_number(row))
+						.unwrap_or_default(),
 					color: node.color,
+					selected: self.relation_node_current(node),
+					task,
+					activity: node.activity.clone(),
+					layout,
 				})
 			})
 			.when(node.row.is_none(), |view| {
@@ -1363,8 +1687,43 @@ impl AgentSurface {
 						.child(node.title.clone()),
 				)
 			})
-			.when(node.row.is_some(), |view| view.child(self.node_metrics(node, layout)))
+			.when(node.row.is_some() && !layout.overview(), |view| {
+				view.child(self.node_metrics(node, layout))
+			})
 			.into_any_element()
+	}
+
+	pub(super) fn relation_agent_number(&self, row: &Row) -> String {
+		self.snapshot
+			.as_ref()
+			.and_then(|snapshot| snapshot.agent_slots.get(&row.key))
+			.map_or_else(|| "—".into(), |slot| format!("A{slot}"))
+	}
+
+	/// Agent identity follows explicit project and role metadata, never prompt prose.
+	pub(in super::super) fn relation_agent_name(&self, row: &Row) -> String {
+		if row.native && !row.owner.trim().is_empty() {
+			return row.owner.clone();
+		}
+		let snapshot = self.snapshot.as_ref();
+		let work = snapshot
+			.and_then(|snapshot| snapshot.work_items.iter().find(|work| work.id == row.work));
+		if work.is_some_and(|work| work.parent_goal_id.is_none()) {
+			return "Main".into();
+		}
+		if let Some(workspace) = snapshot.and_then(|snapshot| {
+			snapshot
+				.workspaces
+				.iter()
+				.find(|workspace| Some(&workspace.id) == row.workspace.as_ref())
+		}) {
+			return workspace.name.clone();
+		}
+		if work.is_some_and(|work| work.kind == decodex_protocol::AgentWorkKindDto::Manager) {
+			"Project lead".into()
+		} else {
+			"Worker".into()
+		}
 	}
 
 	fn relation_node_current(&self, node: &Node) -> bool {
@@ -1429,8 +1788,8 @@ fn paint_relation_grid(
 	window: &mut gpui::Window,
 ) {
 	let spacing = grid_spacing(scale);
-	// Grid dots never overlap. Give the whole background one draw order instead
-	// of inserting thousands of independent bounds into the scene's order tree.
+	// GPUI snaps these square dots to physical pixels. Rounding a one-point
+	// dot softens all four pixels on a Retina display.
 	window.paint_layer(bounds, |window| {
 		let mut x = pan.0.rem_euclid(spacing);
 		while x < f32::from(bounds.size.width) {
@@ -1441,7 +1800,7 @@ fn paint_relation_grid(
 						bounds.origin + gpui::point(gpui::px(x), gpui::px(y)),
 						gpui::size(gpui::px(1.), gpui::px(1.)),
 					),
-					gpui::rgba(0xffffff06),
+					gpui::rgba(0xffffff18),
 				));
 				y += spacing;
 			}
@@ -1463,6 +1822,7 @@ impl View {
 	}
 
 	fn finish_drag(&mut self) {
+		self.map_drag = None;
 		if let Some(Drag { key: Some(key), origin, .. }) = self.drag.take()
 			&& self.moved
 		{
@@ -1525,10 +1885,34 @@ impl AgentSurface {
 			self.work_board.view.viewport.0 / 2.,
 			self.work_board.view.viewport.1 / 2.,
 		));
+		let old_layout = card::Layout::new(old);
+		let next_layout = card::Layout::new(next.clamp(card::MIN_ZOOM, card::MAX_ZOOM));
+		let anchor = (old_layout.zoom_range() != next_layout.zoom_range())
+			.then(|| {
+				self.relation_graph().nodes.into_iter().find_map(|node| {
+					let rect = node.screen_rect(old, self.work_board.view.pan);
+					rect.contains(center.0, center.1).then(|| {
+						(
+							node.key,
+							((center.0 - rect.x) / rect.width, (center.1 - rect.y) / rect.height),
+						)
+					})
+				})
+			})
+			.flatten();
 		self.work_board.view.zoom_around(old, next, center);
+		if let Some((key, relative)) = anchor
+			&& let Some(node) = self.relation_graph().nodes.iter().find(|node| node.key == key)
+		{
+			self.work_board.view.pan = (
+				center.0 - (node.x + node.width() * relative.0) * next_layout.zoom,
+				center.1 - (node.y + node.height() * relative.1) * next_layout.zoom,
+			);
+		}
 	}
 
 	fn arrange_relations(&mut self) {
+		self.work_board.view.motion = None;
 		self.work_board.view.positions.clear();
 		self.work_board.view.drag = None;
 		self.work_board.view.moved = false;
@@ -1542,42 +1926,68 @@ impl AgentSurface {
 	}
 
 	fn frame_relations(&mut self) {
+		self.work_board.view.motion = None;
 		// An explicit frame operation fits the current pane. Ordinary panel
 		// resizing keeps the camera, and does not enter this path when fixed.
 		self.work_board.view.layout_viewport = self.work_board.view.viewport;
-		let graph = self.relation_graph();
-		let keys = graph
-			.nodes
-			.iter()
-			.filter(|node| node.row.is_some())
-			.map(|node| node.key.clone())
-			.collect();
-		let Some([min_x, min_y, max_x, max_y]) = graph.layout_bounds(&keys) else {
-			return;
-		};
 		let (w, h) = self.work_board.view.viewport;
 		if w <= 48. || h <= 48. {
 			return;
 		}
-		let width = (max_x - min_x).max(1.);
-		let height = (max_y - min_y).max(1.);
 		let top = FRAME_INSET;
 		let usable_height = (h - 2. * FRAME_INSET).max(1.);
 		// Fit visible cards and scope labels exactly. Hidden evidence routes do
 		// not reserve another margin or force a root-only close-up.
-		let low = ((w - 2. * FRAME_INSET) / width)
-			.min(usable_height / height)
-			.clamp(card::MIN_ZOOM, card::MAX_ZOOM);
-		self.work_board.view.zoom = Some(low);
-		self.work_board.view.pan = (
-			(w - width * low) / 2. - min_x * low,
-			top + (usable_height - height * low) / 2. - min_y * low,
-		);
+		let now = std::time::Instant::now();
+		for zoom in [1., 0.6, 0.3, card::MIN_ZOOM] {
+			let layout = card::Layout::new(zoom);
+			let graph = self.relation_graph_with_layout(now, layout);
+			let keys = graph
+				.nodes
+				.iter()
+				.filter(|node| node.row.is_some())
+				.map(|node| node.key.clone())
+				.collect();
+			let Some([min_x, min_y, max_x, max_y]) = graph.layout_bounds(&keys) else { return };
+			let width = (max_x - min_x).max(1.);
+			let height = (max_y - min_y).max(1.);
+			let fitted = ((w - 2. * FRAME_INSET) / width).min(usable_height / height);
+			let (min, max) = layout.zoom_range();
+			if fitted < min && !layout.points() {
+				continue;
+			}
+			let scale = fitted.clamp(min, max);
+			self.work_board.view.zoom = Some(scale);
+			self.work_board.view.pan = (
+				(w - width * scale) / 2. - min_x * scale,
+				top + (usable_height - height * scale) / 2. - min_y * scale,
+			);
+			break;
+		}
 	}
 }
 
 #[cfg(any(test, feature = "visual-capture"))]
 impl AgentSurface {
+	#[cfg(feature = "visual-capture")]
+	#[allow(dead_code)] // Only the isolated native capture driver selects a test layout.
+	pub(crate) fn visual_relation_layout(&mut self, name: &str, cx: &mut Context<Self>) {
+		let mode = layout::Mode::ALL
+			.into_iter()
+			.find(|mode| mode.label().eq_ignore_ascii_case(name))
+			.expect("known capture layout");
+		self.switch_relation_layout(mode, cx);
+	}
+
+	#[allow(dead_code)] // Only the isolated native capture driver sets a test camera.
+	pub(crate) fn visual_relation_zoom(&mut self, scale: f32, cx: &mut Context<Self>) {
+		self.work_board.view.camera_fixed = true;
+		self.frame_relations();
+		let old = self.relation_scale();
+		self.zoom_relations(old, scale, None);
+		cx.notify();
+	}
+
 	pub(crate) fn visual_relation_resource_focus(&mut self) {
 		self.work_board.view.edge =
 			self.relation_graph().edges.into_iter().find(|e| e.kind == Kind::Resource);
@@ -1646,8 +2056,488 @@ impl AgentSurface {
 #[cfg(test)]
 mod fit_tests {
 	use super::*;
+
 	#[gpui::test]
-	fn relation_record_labels_scale_with_cards_and_stay_clear_of_them(
+	fn fullscreen_restore_keeps_an_agent_visible_after_manual_zoom(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(super::super::tests::fixture);
+		surface.update(cx, |s, cx| {
+			s.workspace.graph_visible = true;
+			s.workspace.graph_expanded = true;
+			s.work_board.view.camera_fixed = true;
+			s.work_board.view.viewport = (1200., 900.);
+			s.work_board.view.layout_viewport = (1200., 900.);
+			s.work_board.view.zoom = Some(0.7);
+			s.work_board.view.pan = (200., 500.);
+			s.toggle_graph_fullscreen(cx);
+			assert!(!s.workspace.graph_expanded);
+			let anchor = s.work_board.view.resize_anchor.clone().expect("visible context");
+			let count = s.relation_graph().nodes.len();
+			s.update_relation_viewport(
+				gpui::Bounds::new(
+					gpui::point(gpui::px(0.), gpui::px(0.)),
+					gpui::size(gpui::px(800.), gpui::px(240.)),
+				),
+				0.7,
+				count,
+				cx,
+			);
+			let graph = s.relation_graph();
+			let node = graph.nodes.iter().find(|node| node.key == anchor).unwrap();
+			let rect = node.screen_rect(0.7, s.work_board.view.pan);
+			assert!(rect.x >= 0. && rect.x + rect.width <= 800.);
+			assert!(rect.y >= 0. && rect.y + rect.height <= 240.);
+			assert_eq!(s.work_board.view.zoom, Some(0.7));
+			assert!(!s.work_board.view.reveal_after_resize);
+		});
+	}
+
+	#[gpui::test]
+	fn names_follow_roles_and_explicit_projects_instead_of_changing_prompts(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(super::super::tests::fixture);
+		surface.update(cx, |s, _| {
+			s.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == "release")
+				.unwrap()
+				.kind = decodex_protocol::AgentWorkKindDto::Manager;
+			let mut row = s.factory_rows().into_iter().find(|row| row.key == "release").unwrap();
+			row.workspace = None;
+			let name = s.relation_agent_name(&row);
+			assert_eq!(name, "Project lead");
+			row.title = "A completely different and much longer request for this project".into();
+			assert_eq!(s.relation_agent_name(&row), name);
+			s.snapshot.as_mut().unwrap().workspaces.push(decodex_protocol::WorkspaceDto {
+				id: "named-project".into(),
+				name: "Decodex".into(),
+				directory: "/tmp/decodex".into(),
+				work_ids: vec![row.work.clone()],
+			});
+			row.workspace = Some("named-project".into());
+			assert_eq!(s.relation_agent_name(&row), "Decodex");
+			row.native = true;
+			row.owner = "Euler".into();
+			assert_eq!(s.relation_agent_name(&row), "Euler");
+			let main = s.factory_rows().into_iter().find(|row| row.key == "agent").unwrap();
+			assert_eq!(s.relation_agent_name(&main), "Main");
+		});
+	}
+
+	#[gpui::test]
+	fn actions_grow_the_footprint_on_arrival_and_release_it_after_fading(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(super::super::tests::fixture);
+		surface.update(cx, |s, _| {
+			s.work_board.view.zoom = Some(1.);
+			let now = std::time::Instant::now();
+			let row = s.factory_rows().into_iter().find(|row| row.key == "release").unwrap();
+			let (_, operations) = s.graph_operations(&row);
+			assert!(operations.is_empty());
+			let empty = s
+				.relation_graph_at(now)
+				.nodes
+				.into_iter()
+				.find(|node| node.key == row.key)
+				.unwrap();
+			let brief = s.work_board.briefs.entry(row.key.clone()).or_insert_with(|| Brief {
+				output: None,
+				source_thread: row.thread.clone(),
+				assignments: Default::default(),
+				outcome: None,
+				preview: None,
+				question: None,
+				resources: None,
+				relations: vec![],
+				metrics: Default::default(),
+				stamp: String::new(),
+				read_at: now,
+			});
+			brief.preview = Some(super::super::activity::Preview {
+				turn: "footprint".into(),
+				task: row.title.clone(),
+				text: "Check".into(),
+				running: None,
+				recent: (0..3)
+					.map(|i| super::super::activity::Operation {
+						id: format!("step-{i}"),
+						text: format!("Check {i}"),
+					})
+					.collect(),
+			});
+			let arrival = now + std::time::Duration::from_secs(1);
+			s.relation_graph_at(arrival);
+			let three = s
+				.relation_graph_at(arrival + std::time::Duration::from_millis(300))
+				.nodes
+				.into_iter()
+				.find(|node| node.key == row.key)
+				.unwrap();
+			assert_eq!(three.activity.lines.len(), 3);
+			assert!(three.height() > empty.height() + 3. * stream::LINE);
+			let idle = arrival + std::time::Duration::from_secs(7);
+			s.relation_graph_at(idle);
+			let settled = s
+				.relation_graph_at(idle + std::time::Duration::from_millis(300))
+				.nodes
+				.into_iter()
+				.find(|node| node.key == row.key)
+				.unwrap();
+			assert_eq!(settled.activity.lines.len(), 1);
+			assert!(settled.height() > empty.height());
+			assert!(
+				settled.height() + 2. * stream::LINE < three.height(),
+				"idle cards release the two absent rows"
+			);
+		});
+	}
+
+	#[gpui::test]
+	fn changing_detail_tiers_keeps_the_pointed_agent_under_the_pointer(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(super::super::tests::fixture);
+		surface.update(cx, |s, _| {
+			s.work_board.view.zoom = Some(1.);
+			let center = (350., 240.);
+			for next in [0.6, 0.25, 0.19, 0.05, 0.2, 0.8, 1.] {
+				let old = s.relation_scale();
+				let node = s
+					.relation_graph()
+					.nodes
+					.into_iter()
+					.find(|node| node.key == "release")
+					.unwrap();
+				s.work_board.view.pan = (
+					center.0 - (node.x + node.width() / 2.) * old,
+					center.1 - (node.y + node.height() / 2.) * old,
+				);
+				s.zoom_relations(old, next, Some(center));
+				let node = s
+					.relation_graph()
+					.nodes
+					.into_iter()
+					.find(|node| node.key == "release")
+					.unwrap();
+				let rect = node.screen_rect(next, s.work_board.view.pan);
+				assert!((rect.x + rect.width / 2. - center.0).abs() < 0.01);
+				assert!((rect.y + rect.height / 2. - center.1).abs() < 0.01);
+			}
+		});
+	}
+	#[gpui::test]
+	fn graph_control_groups_share_one_row_and_equal_gutters(cx: &mut gpui::TestAppContext) {
+		let (_, visual) = cx.add_window_view(|_, cx| super::super::tests::fixture(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1000.)));
+		visual.update(crate::ui_frame::draw_frame);
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_frame);
+		let groups =
+			["relations-layout-controls", "relations-zoom-controls", "relations-pane-controls"]
+				.map(|selector| visual.debug_bounds(selector).expect(selector));
+		for pair in groups.windows(2) {
+			assert_eq!(pair[0].center().y, pair[1].center().y);
+			assert_eq!(pair[0].size.height, pair[1].size.height);
+			assert!((f32::from(pair[1].left() - pair[0].right()) - 8.).abs() <= 0.5);
+		}
+	}
+
+	#[gpui::test]
+	fn layouts_and_map_navigation_preserve_the_main_chat_and_collaboration(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(super::super::tests::fixture);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_page("workbench", cx);
+			s.visual_relation_density(103, cx);
+			s.work_board.view.viewport = (815., 683.);
+			s.work_board.view.layout_viewport = (815., 683.);
+			s.work_board.view.zoom = Some(1.);
+			s.composer.update(cx, |input, cx| input.set_content("Preserve the Main draft", cx));
+			let main = (s.selected.clone(), s.native_agents.selected.clone());
+			let collaboration = s.work_board.collaboration_expanded.clone();
+			let original = s.relation_graph();
+			let identities: BTreeSet<_> = original.nodes.iter().map(|n| n.key.clone()).collect();
+			let edges: BTreeSet<_> = original
+				.edges
+				.iter()
+				.map(|e| (e.id.clone(), e.from.clone(), e.to.clone()))
+				.collect();
+			for mode in layout::Mode::ALL {
+				s.switch_relation_layout(mode, cx);
+				s.work_board.view.motion = None;
+				s.navigate_relation_agent("density-006", cx);
+				s.work_board.view.motion = None;
+				let graph = s.relation_graph();
+				assert_eq!(
+					graph.nodes.iter().map(|n| n.key.clone()).collect::<BTreeSet<_>>(),
+					identities
+				);
+				assert_eq!(
+					graph
+						.edges
+						.iter()
+						.map(|e| (e.id.clone(), e.from.clone(), e.to.clone()))
+						.collect::<BTreeSet<_>>(),
+					edges
+				);
+				assert_eq!(s.work_board.view.zoom, Some(1.));
+				assert_eq!(s.work_board.view.picked_agent.as_deref(), Some("density-006"));
+				let node = graph.nodes.iter().find(|n| n.key == "density-006").unwrap();
+				let r = node.screen_rect(1., s.work_board.view.pan);
+				assert!((r.x + r.width / 2. - 815. / 2.).abs() < 0.01);
+				assert!((r.y + r.height / 2. - 683. / 2.).abs() < 0.01);
+				assert_eq!((s.selected.clone(), s.native_agents.selected.clone()), main);
+				assert_eq!(s.work_board.collaboration_expanded, collaboration);
+				assert_eq!(s.composer.read(cx).content(), "Preserve the Main draft");
+			}
+		});
+	}
+
+	#[gpui::test]
+	fn large_graph_map_is_below_the_toolbar_and_its_owner_labels_are_clickable(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| {
+			let mut s = super::super::tests::fixture(cx);
+			s.visual_workspace_page("workbench", cx);
+			s.visual_relation_density(103, cx);
+			s
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1536.), gpui::px(1024.)));
+		visual.update(crate::ui_frame::draw_frame);
+		visual.run_until_parked();
+		surface.update(visual, |s, cx| s.visual_relation_zoom(1., cx));
+		visual.update(crate::ui_frame::draw_frame);
+		let map = visual.debug_bounds("relations-minimap").expect("large graph map");
+		let canvas = visual.debug_bounds("relations-canvas").unwrap();
+		assert!((f32::from(map.left() - canvas.left()) - 12.).abs() < 0.01);
+		assert!((f32::from(map.top() - canvas.top()) - 12.).abs() < 0.01);
+		let main = surface.read_with(visual, |s, _| s.selected.clone());
+		let target =
+			visual.debug_bounds("relations-map-agent-density-001").expect("project shortcut");
+		visual.simulate_click(target.center(), Default::default());
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.work_board.view.picked_agent.as_deref(), Some("density-001"));
+			assert_eq!(s.selected, main);
+			assert_eq!(s.work_board.view.zoom, Some(1.));
+		});
+		for mode in layout::Mode::ALL {
+			surface.update(visual, |s, cx| {
+				s.switch_relation_layout(mode, cx);
+				s.work_board.view.motion = None;
+			});
+			visual.update(crate::ui_frame::draw_frame);
+			let map = visual.debug_bounds("relations-minimap").unwrap();
+			let root = visual.debug_bounds("relations-map-agent-agent").expect("root shortcut");
+			assert!(root.left() >= map.left() && root.right() <= map.right());
+			assert!(root.top() >= map.top() && root.bottom() <= map.bottom());
+			visual.simulate_click(root.center(), Default::default());
+			surface.read_with(visual, |s, _| {
+				assert_eq!(s.work_board.view.picked_agent.as_deref(), Some("agent"));
+				assert_eq!(s.selected, main);
+				assert_eq!(s.work_board.view.zoom, Some(1.));
+			});
+		}
+	}
+
+	#[gpui::test]
+	fn a_hundred_agents_keep_their_ids_topology_and_geometry_across_zoom(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| {
+			let mut surface = super::super::tests::fixture(cx);
+			surface.visual_workspace_page("workbench", cx);
+			surface.visual_relation_density(100, cx);
+			surface
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1600.), gpui::px(1000.)));
+		visual.update(crate::ui_frame::draw_frame);
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_frame);
+		surface.update(visual, |s, cx| s.visual_relation_zoom(1., cx));
+		visual.update(crate::ui_frame::draw_frame);
+		let geometry = |s: &AgentSurface| {
+			s.relation_graph()
+				.nodes
+				.into_iter()
+				.map(|node| (node.key, node.x, node.y, node.size))
+				.collect::<Vec<_>>()
+		};
+		let before = surface.read_with(visual, |s, _| geometry(s));
+		for scale in [
+			1.,
+			0.9,
+			0.8,
+			0.7 - f32::EPSILON,
+			0.7,
+			0.6,
+			0.45 - f32::EPSILON,
+			0.45,
+			0.35,
+			0.25,
+			0.2,
+			0.19,
+			0.1,
+			0.05,
+			0.2,
+			1.,
+		] {
+			surface.update(visual, |s, cx| {
+				s.visual_relation_zoom(scale, cx);
+				if (scale * 100.).round() >= 70. {
+					assert_eq!(geometry(s), before, "full-detail geometry is reversible");
+				}
+				let graph = s.relation_graph();
+				assert_eq!(graph.nodes.len(), 100);
+				assert_eq!(graph.edges.len(), 99);
+				let slots: BTreeSet<_> =
+					s.factory_rows().iter().map(|row| s.relation_agent_number(row)).collect();
+				assert_eq!(slots.len(), 100);
+				assert!(slots.contains("A99"));
+				assert_eq!(s.work_statistics().unwrap().samples.len(), 100);
+			});
+			visual.update(crate::ui_frame::draw_frame);
+			assert!(visual.debug_bounds("graph-usage-segment-density-099").is_some());
+			let layout = card::Layout::new(scale);
+			assert_eq!(visual.debug_bounds("relation-metrics-agent").is_some(), !layout.overview());
+			assert_eq!(
+				visual.debug_bounds("relation-preview-agent").is_some(),
+				layout.full_detail()
+			);
+			assert_eq!(visual.debug_bounds("relation-tokens-agent").is_some(), !layout.overview());
+			assert_eq!(visual.debug_bounds("relation-number-agent").is_some(), !layout.points());
+			assert_eq!(visual.debug_bounds("relation-status-agent").is_some(), !layout.points());
+			assert_eq!(visual.debug_bounds("relation-point-agent").is_some(), layout.points());
+			assert_eq!(
+				visual.debug_bounds("relation-assignment-agent").is_some(),
+				!layout.overview()
+			);
+			assert!(surface.read_with(visual, |s, _| s.relation_scale()) >= card::MIN_ZOOM);
+		}
+	}
+
+	#[gpui::test]
+	fn zoom_controls_reach_selectable_and_draggable_points_in_every_layout(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| {
+			let mut s = super::super::tests::fixture(cx);
+			s.workspace.graph_visible = true;
+			s.workspace.graph_expanded = true;
+			s.composer.update(cx, |input, cx| input.set_content("Keep the Main draft", cx));
+			s
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1000.)));
+		visual.update(crate::ui_frame::draw_frame);
+		visual.run_until_parked();
+		let main = surface
+			.read_with(visual, |s, _| (s.selected.clone(), s.native_agents.selected.clone()));
+		for mode in layout::Mode::ALL {
+			surface.update(visual, |s, cx| {
+				s.switch_relation_layout(mode, cx);
+				s.work_board.view.motion = None;
+				s.visual_relation_zoom(0.25, cx);
+			});
+			for _ in 0..5 {
+				visual.update(crate::ui_frame::draw_frame);
+				let out = visual.debug_bounds("relations-out").unwrap();
+				visual.simulate_click(out.center(), Default::default());
+			}
+			surface.update(visual, |s, _| {
+				assert_eq!(s.relation_scale(), 0.05);
+				s.work_board.view.picked_agent = None;
+				let graph = s.relation_graph();
+				let node = graph.nodes.iter().find(|n| n.key == "release").unwrap();
+				let view = &mut s.work_board.view;
+				view.pan = (
+					view.viewport.0 / 2. - (node.x + node.width() / 2.) * 0.05,
+					view.viewport.1 / 2. - (node.y + node.height() / 2.) * 0.05,
+				);
+			});
+			visual.update(crate::ui_frame::draw_frame);
+			let dot = visual.debug_bounds("relation-point-release").expect("point at 5%");
+			assert_eq!(dot.size, gpui::size(gpui::px(3.), gpui::px(3.)));
+			visual.simulate_click(dot.center(), Default::default());
+			surface.read_with(visual, |s, cx| {
+				assert_eq!(s.work_board.view.picked_agent.as_deref(), Some("release"));
+				assert_eq!((s.selected.clone(), s.native_agents.selected.clone()), main);
+				assert_eq!(s.composer.read(cx).content(), "Keep the Main draft");
+			});
+			for _ in 0..2 {
+				visual.update(crate::ui_frame::draw_frame);
+				let dot = visual.debug_bounds("relation-point-release").unwrap();
+				let start = dot.center();
+				let end = start + gpui::point(gpui::px(16.), gpui::px(16.));
+				let before = surface.read_with(visual, |s, _| {
+					let node =
+						s.relation_graph().nodes.into_iter().find(|n| n.key == "release").unwrap();
+					(node.x, node.y)
+				});
+				visual.simulate_mouse_down(start, MouseButton::Left, Default::default());
+				visual.simulate_mouse_move(end, Some(MouseButton::Left), Default::default());
+				visual.simulate_mouse_up(end, MouseButton::Left, Default::default());
+				surface.read_with(visual, |s, _| {
+					let graph = s.relation_graph();
+					let node = graph.nodes.iter().find(|n| n.key == "release").unwrap();
+					let inset = card::Layout::new(0.05).point_inset();
+					let expected = (
+						snap(before.0 - inset.0 + 320.) + inset.0,
+						snap(before.1 - inset.1 + 320.) + inset.1,
+					);
+					assert!((node.x - expected.0).abs() < 0.01);
+					assert!((node.y - expected.1).abs() < 0.01);
+				});
+			}
+		}
+	}
+
+	#[gpui::test]
+	fn point_routes_attach_to_the_visible_dot_and_keep_centers_across_zoom(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(super::super::tests::fixture);
+		surface.update(cx, |s, cx| {
+			s.visual_relation_density(103, cx);
+			for mode in layout::Mode::ALL {
+				s.work_board.view.layout_mode = mode;
+				s.work_board.view.zoom = Some(0.2);
+				let centers: BTreeMap<_, _> = s
+					.relation_graph()
+					.nodes
+					.into_iter()
+					.map(|n| (n.key.clone(), (n.x + n.width() / 2., n.y + n.height() / 2.)))
+					.collect();
+				for zoom in [0.19, 0.15, 0.05] {
+					s.work_board.view.zoom = Some(zoom);
+					let graph = s.relation_graph();
+					for node in &graph.nodes {
+						let center = centers[&node.key];
+						assert!((node.x + node.width() / 2. - center.0).abs() < 0.01);
+						assert!((node.y + node.height() / 2. - center.1).abs() < 0.01);
+					}
+					for edge in graph.connections() {
+						let path = &graph.paths[&edge.id];
+						for (key, point) in [(&edge.from, path.at(0.)), (&edge.to, path.at(1.))] {
+							let center = centers[key];
+							let radius = card::Layout::new(zoom).point_size() / 2.;
+							assert!(
+								((point.0 - center.0).hypot(point.1 - center.1) - radius).abs()
+									< 0.01
+							);
+						}
+					}
+				}
+			}
+		});
+	}
+
+	#[gpui::test]
+	fn inspected_relation_record_labels_scale_with_nodes_and_stay_clear_of_them(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| super::super::tests::fixture(cx));
@@ -1662,7 +2552,7 @@ mod fit_tests {
 		});
 		for viewport in [(800., 900.), (1600., 500.)] {
 			surface.update(visual, |s, _| s.work_board.view.layout_viewport = viewport);
-			for scale in [1., 0.8, 0.5, 0.32, 0.15, 0.05, 0.5, 1.] {
+			for scale in [1., 0.9, 0.8, 0.75, 0.7, 0.9, 1.] {
 				let (name, expected) = surface.update(visual, |s, cx| {
 					s.work_board.view.zoom = Some(scale);
 					let graph = s.relation_graph();
@@ -1694,7 +2584,9 @@ mod fit_tests {
 						(400. - link.path.label.0 * scale, 300. - link.path.label.1 * scale);
 					let name = "relation-edge-reply:fixture-release:review-wait:fixture-reviewer";
 					assert_eq!(format!("relation-edge-{}", link.fact.id), name);
+					let inspected = link.fact.clone();
 					drop(cache);
+					s.work_board.view.edge = Some(inspected);
 					cx.notify();
 					(
 						name,
@@ -1717,7 +2609,7 @@ mod fit_tests {
 	}
 
 	#[gpui::test]
-	fn independent_trees_keep_their_lanes_across_summary_zoom(cx: &mut gpui::TestAppContext) {
+	fn independent_trees_keep_their_lanes_across_readable_zoom(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(super::super::tests::fixture);
 		surface.update(cx, |s, _| {
 			let root = s.root_id().unwrap();
@@ -1764,7 +2656,7 @@ mod fit_tests {
 					.collect::<Vec<_>>()
 			};
 			let world = geometry(&graph);
-			for zoom in [0.83, 0.65, 0.48, 0.33, 0.15, 0.05, 0.48, 1.] {
+			for zoom in [0.95, 0.9, 0.83, 0.75, 0.7, 0.83, 1.] {
 				s.work_board.view.zoom = Some(zoom);
 				let graph = s.relation_graph();
 				assert_eq!(lanes(&graph), original, "roots changed lanes at {zoom}");
@@ -1774,7 +2666,7 @@ mod fit_tests {
 	}
 
 	#[gpui::test]
-	fn summary_zoom_keeps_the_pointed_agent_stationary_and_returns_without_drift(
+	fn readable_zoom_keeps_the_pointed_agent_stationary_and_returns_without_drift(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(super::super::tests::fixture);
@@ -1786,7 +2678,7 @@ mod fit_tests {
 			let graph = s.relation_graph();
 			let node = graph.nodes.iter().find(|node| node.key == "release").unwrap();
 			let center = (node.x + node.width() / 2. + 45., node.y + node.height() / 2. - 19.);
-			for scale in [0.8, 0.65, 0.48, 0.33, 0.15, 0.05, 0.33, 0.65, 1.] {
+			for scale in [0.9, 0.85, 0.8, 0.75, 0.7, 0.8, 0.9, 1.] {
 				let old = s.relation_scale();
 				s.zoom_relations(old, scale, Some(center));
 				let graph = s.relation_graph();
@@ -1806,7 +2698,7 @@ mod fit_tests {
 	}
 
 	#[gpui::test]
-	fn archived_coordinator_does_not_crop_the_remaining_forest(cx: &mut gpui::TestAppContext) {
+	fn archived_coordinator_keeps_the_remaining_forest_readable(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(super::super::tests::fixture);
 		surface.update(cx, |s, _| {
 			let root = s.root_id().unwrap();
@@ -1823,7 +2715,8 @@ mod fit_tests {
 			let camera = (s.work_board.view.zoom, s.work_board.view.pan);
 			s.fit_relations();
 			assert_eq!(camera, (s.work_board.view.zoom, s.work_board.view.pan));
-			for node in &graph.nodes {
+			assert!((card::MIN_ZOOM..=card::MAX_ZOOM).contains(&scale));
+			for node in graph.nodes.iter().filter(|_| scale > card::MIN_ZOOM) {
 				assert!(
 					node.x * scale + pan.0 >= FRAME_INSET - 0.01,
 					"{} at {scale}, pan {pan:?}, size {:?}, position {:?}; graph {:?}",
@@ -1853,124 +2746,245 @@ mod fit_tests {
 	}
 
 	#[gpui::test]
-	fn card_content_fits_across_zoom_levels_below_the_toolbar(cx: &mut gpui::TestAppContext) {
-		let (surface, visual) = cx.add_window_view(|_, cx| super::super::tests::fixture(cx));
-		surface.update(visual, |s, _| {
-			s.workspace.graph_visible = true;
-			s.workspace.graph_expanded = true;
-			s.work_board.view.camera_fixed = true;
-			let row = s.board_rows().into_iter().find(|row| row.key == "release").unwrap();
-			s.work_board.briefs.insert(
-				row.key.clone(),
-				Brief {
-					output: None,
-					source_thread: row.thread.clone(),
-					assignments: Default::default(),
-					outcome: None,
-					preview: None,
-					question: None,
-					resources: None,
-					relations: vec![],
-					stamp: s.brief_stamp(&row),
-					read_at: std::time::Instant::now(),
-					metrics: crate::ui_work_metrics::Sample {
-						tokens: Some(151744),
-						stats: Some(decodex_protocol::AgentThreadMetrics {
-							completed_ms: Some(123 * 3_600_000 + 59 * 60_000),
-							active_ms: None,
-							generating: false,
-							rate: Some(decodex_protocol::AgentOutputRate {
-								estimated: true,
-								active: false,
-								output_tokens: 795,
-								duration_ms: 10000,
-								started_at_ms: 0,
-								completed_at_ms: Some(10000),
-							}),
-						}),
-						..Default::default()
-					},
-				},
-			);
-		});
-		let mut previous: Option<gpui::Size<gpui::Pixels>> = None;
-		for scale in [
-			1., 0.9, 0.81, 0.79, 0.7, 0.65, 0.6, 0.5, 0.47, 0.46, 0.4, 0.32, 0.3, 0.25, 0.2, 0.15,
-			0.1, 0.05,
-		] {
-			surface.update(visual, |s, cx| {
-				s.work_board.view.zoom = Some(scale);
-				let graph = s.relation_graph();
-				let node = graph.nodes.iter().find(|node| node.key == "release").unwrap();
-				for a in graph.nodes.iter().filter(|node| node.row.is_some()) {
-					assert_eq!(a.width(), card::WIDTH);
-					assert_eq!(a.height(), card::HEIGHT);
-					for b in
-						graph.nodes.iter().filter(|node| node.row.is_some() && node.key != a.key)
-					{
-						assert!(
-							a.x + a.width() <= b.x
-								|| b.x + b.width() <= a.x
-								|| a.y + a.height() <= b.y
-								|| b.y + b.height() <= a.y,
-							"overlapping cards at zoom {scale}: {} / {}",
-							a.key,
-							b.key
-						);
-					}
+	fn visible_ports_follow_the_router_on_all_sides_and_share_branch_origins(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(super::super::tests::fixture);
+		surface.update(cx, |s, _| {
+			let initial = s.relation_graph();
+			let mut parent = initial.nodes.iter().find(|node| node.row.is_some()).unwrap().clone();
+			parent.key = "parent".into();
+			parent.x = 0.;
+			parent.y = 0.;
+			let (w, h, y) = (parent.width(), parent.height(), card::PORT_Y);
+			let mut edge = initial.edges.iter().find(|edge| edge.kind.hierarchy()).unwrap().clone();
+			edge.id = "parent-child".into();
+			edge.from = "parent".into();
+			edge.to = "child".into();
+			for (position, start, end) in [
+				((w + 100., 0.), (w, y), (0., y)),
+				((-w - 100., 0.), (0., y), (w, y)),
+				((0., h + 100.), (w / 2., h), (w / 2., 0.)),
+				((0., -h - 100.), (w / 2., 0.), (w / 2., h)),
+			] {
+				let child =
+					Node { key: "child".into(), x: position.0, y: position.1, ..parent.clone() };
+				let nodes = vec![parent.clone(), child];
+				let paths = routing::Cache::default().paths(&nodes, std::slice::from_ref(&edge));
+				let mut graph = Graph { scopes: vec![], nodes, edges: vec![edge.clone()], paths };
+				let (lines, _) = visibility::Cache::default().sample(
+					&graph,
+					None,
+					None,
+					false,
+					std::time::Instant::now(),
+				);
+				let ports = graph.connection_ports(&lines);
+				assert_eq!(ports["parent"], vec![start]);
+				assert_eq!(ports["child"], vec![end]);
+				if position.1 > 0. {
+					let mut sibling = graph.nodes[1].clone();
+					sibling.key = "sibling".into();
+					sibling.x += w + 24.;
+					let mut branch = edge.clone();
+					branch.id = "parent-sibling".into();
+					branch.to = "sibling".into();
+					graph.nodes.push(sibling);
+					graph.edges.push(branch);
+					graph.paths = routing::Cache::default().paths(&graph.nodes, &graph.edges);
+					let (lines, _) = visibility::Cache::default().sample(
+						&graph,
+						None,
+						None,
+						false,
+						std::time::Instant::now(),
+					);
+					assert_eq!(graph.connection_ports(&lines)["parent"], vec![start]);
 				}
-				s.work_board.view.pan = (32. - node.x * scale, 32. - node.y * scale);
-				cx.notify();
-			});
-			visual.update(crate::ui_frame::draw_frame);
-			let card = visual.debug_bounds("relation-node-release").unwrap();
-			if let Some(previous) = previous {
+				for edge in &mut graph.edges {
+					edge.kind = Kind::Message;
+				}
+				let (hidden, _) = visibility::Cache::default().sample(
+					&graph,
+					None,
+					None,
+					false,
+					std::time::Instant::now(),
+				);
 				assert!(
-					card.size.width < previous.width && card.size.height <= previous.height,
-					"card grew or stopped narrowing at {scale}: {:?} vs {previous:?}",
-					card.size
+					graph.connection_ports(&hidden).is_empty(),
+					"hidden links have no floating ports"
 				);
 			}
-			previous = Some(card.size);
-			// The native renderer rounds bounds to the display's pixel grid.
-			assert!((f32::from(card.size.width) - card::WIDTH * scale).abs() <= 0.5);
-			assert!((f32::from(card.size.height) - card::HEIGHT * scale).abs() <= 0.5);
-			let toolbar = visual.debug_bounds("relations-toolbar").unwrap();
-			assert!(card.top() > toolbar.bottom());
-			// At overview scale, verify the footprint. Subpixel text and insets
-			// round to the display grid and are inspected after zooming back in.
-			if scale < 0.15 {
-				continue;
-			}
-			let layout = card::Layout::new(scale);
-			assert_eq!(layout.text_scale, scale);
-			let task = visual
-				.debug_bounds("relation-task-release")
-				.expect("work remains visible at every zoom");
-			let metrics = visual.debug_bounds("relation-metrics-release").unwrap();
-			let tokens = visual.debug_bounds("relation-tokens-release").unwrap();
-			assert!(tokens.left() >= metrics.left() && tokens.right() <= metrics.right());
-			assert!(tokens.top() >= metrics.top() && tokens.bottom() < metrics.bottom());
-			assert!(task.left() > card.left() && task.right() < card.right());
-			assert!(task.top() > card.top() && task.bottom() < metrics.top());
-			if let Some(preview) = visual.debug_bounds("relation-preview-release") {
+		});
+	}
+
+	fn long_metrics_fixture(cx: &mut Context<AgentSurface>) -> AgentSurface {
+		let mut s = super::super::tests::fixture(cx);
+		s.workspace.graph_visible = true;
+		s.workspace.graph_expanded = true;
+		s.work_board.view.camera_fixed = true;
+		let row = s.board_rows().into_iter().find(|row| row.key == "release").unwrap();
+		s.snapshot.as_mut().unwrap().agent_slots.insert(row.key.clone(), 1234);
+		s.work_board.briefs.insert(
+			row.key.clone(),
+			Brief {
+				output: None,
+				source_thread: row.thread.clone(),
+				assignments: Default::default(),
+				outcome: None,
+				preview: Some(super::super::activity::Preview {
+					turn: "readable-type".into(),
+					task: "Verify long metrics and recent actions".into(),
+					text: "Inspect the resulting graph".into(),
+					running: None,
+					recent: (0..3)
+						.map(|index| super::super::activity::Operation {
+							id: format!("readable-{index}"),
+							text: format!("Inspect operation {index}"),
+						})
+						.collect(),
+				}),
+				question: None,
+				resources: None,
+				relations: vec![],
+				stamp: s.brief_stamp(&row),
+				read_at: std::time::Instant::now(),
+				metrics: crate::ui_work_metrics::Sample {
+					tokens: Some(999_900_000),
+					stats: Some(decodex_protocol::AgentThreadMetrics {
+						completed_ms: Some(999 * 3_600_000 + 59 * 60_000),
+						active_ms: None,
+						generating: false,
+						rate: Some(decodex_protocol::AgentOutputRate {
+							estimated: false,
+							active: false,
+							output_tokens: 999_900,
+							duration_ms: 1000,
+							started_at_ms: 0,
+							completed_at_ms: Some(10000),
+						}),
+					}),
+					..Default::default()
+				},
+			},
+		);
+		s
+	}
+
+	#[gpui::test]
+	fn card_content_fits_across_zoom_levels_below_the_toolbar(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| long_metrics_fixture(cx));
+		let handle = visual.update(|window, _| window.window_handle());
+		for density in [2., 1., 2.] {
+			visual.simulate_window_scale_factor_change(handle, density);
+			let mut previous: Option<gpui::Size<gpui::Pixels>> = None;
+			for scale in [1., 0.95, 0.9, 0.85, 0.8, 0.75, 0.7] {
+				let world_height = surface.update(visual, |s, cx| {
+					s.work_board.view.zoom = Some(scale);
+					let graph = s.relation_graph();
+					let node = graph.nodes.iter().find(|node| node.key == "release").unwrap();
+					for a in graph.nodes.iter().filter(|node| node.row.is_some()) {
+						assert_eq!(a.width(), card::WIDTH);
+						assert!(a.height() > 0.);
+						for b in graph
+							.nodes
+							.iter()
+							.filter(|node| node.row.is_some() && node.key != a.key)
+						{
+							assert!(
+								a.x + a.width() <= b.x
+									|| b.x + b.width() <= a.x
+									|| a.y + a.height() <= b.y
+									|| b.y + b.height() <= a.y,
+								"overlapping cards at zoom {scale}: {} / {}",
+								a.key,
+								b.key
+							);
+						}
+					}
+					s.work_board.view.pan = (32. - node.x * scale, 32. - node.y * scale);
+					cx.notify();
+					node.height()
+				});
+				visual.update(crate::ui_frame::draw_frame);
+				let card = visual.debug_bounds("relation-node-release").unwrap();
+				if let Some(previous) = previous {
+					assert!(
+						card.size.width < previous.width && card.size.height <= previous.height,
+						"card grew or stopped narrowing at {scale}: {:?} vs {previous:?}",
+						card.size
+					);
+				}
+				previous = Some(card.size);
+				// The native renderer rounds bounds to the display's pixel grid.
+				assert!((f32::from(card.size.width) - card::WIDTH * scale).abs() <= 0.5);
+				assert!((f32::from(card.size.height) - world_height * scale).abs() <= 0.5);
+				let toolbar = visual.debug_bounds("relations-toolbar").unwrap();
+				assert!(card.top() > toolbar.bottom());
+				let layout = card::Layout::new(scale).on_display(density);
+				assert!(layout.title_size() >= 10.5 && layout.detail_size() >= 9.5);
+				assert_eq!((layout.title_size() * density).fract(), 0.);
+				assert_eq!((layout.detail_size() * density).fract(), 0.);
+				let task = visual
+					.debug_bounds("relation-identity-release")
+					.expect("work remains visible at every zoom");
 				let metrics = visual.debug_bounds("relation-metrics-release").unwrap();
-				assert!(preview.left() > card.left() && preview.right() < card.right());
-				assert!(metrics.left() > card.left() && metrics.right() < card.right());
-				assert!(preview.bottom() < metrics.top(), "zoom {scale}: {preview:?}, {metrics:?}");
-				assert!(metrics.bottom() < card.bottom(), "zoom {scale}: {metrics:?}, {card:?}");
+				let tokens = visual.debug_bounds("relation-tokens-release").unwrap();
+				assert!(tokens.left() >= metrics.left() && tokens.right() <= metrics.right());
+				assert!(tokens.top() >= metrics.top() && tokens.bottom() <= metrics.bottom());
+				assert!(task.left() > card.left() && task.right() <= card.right());
+				assert!(task.top() >= card.top() && task.bottom() < metrics.top());
+				if let Some(preview) = visual.debug_bounds("relation-preview-release") {
+					let metrics = visual.debug_bounds("relation-metrics-release").unwrap();
+					assert!(preview.left() >= card.left() && preview.right() <= card.right());
+					assert!(metrics.left() > card.left() && metrics.right() < card.right());
+					assert!(
+						preview.bottom() < metrics.top(),
+						"zoom {scale}: {preview:?}, {metrics:?}"
+					);
+					assert!(
+						metrics.bottom() < card.bottom(),
+						"zoom {scale}: {metrics:?}, {card:?}"
+					);
+				}
+				let identity = visual.debug_bounds("relation-identity-release").unwrap();
+				let metrics = visual.debug_bounds("relation-metrics-release").unwrap();
+				assert!(
+					identity.left() > card.left() && identity.right() <= card.right(),
+					"zoom {scale}: {identity:?}, {card:?}"
+				);
+				assert!(
+					f32::from(metrics.size.height) <= layout.metrics_height() + 0.5,
+					"metrics at zoom {scale}, display {density}: {metrics:?}, reserved {}; values {:?} {:?} {:?}",
+					layout.metrics_height(),
+					tokens,
+					visual.debug_bounds("relation-time-release"),
+					visual.debug_bounds("relation-rate-release")
+				);
+				let time = visual.debug_bounds("relation-time-release").unwrap();
+				assert!(time.left() >= metrics.left() && time.right() <= metrics.right());
+				assert!(time.top() >= metrics.top() && time.bottom() <= metrics.bottom());
+				let rate = visual.debug_bounds("relation-rate-release").unwrap();
+				assert!(
+					rate.left() >= metrics.left() && rate.right() <= metrics.right(),
+					"zoom {scale}, display {density}: tokens {tokens:?}, time {time:?}, rate {rate:?}, metrics {metrics:?}"
+				);
+				assert!(rate.top() >= metrics.top() && rate.bottom() <= metrics.bottom());
+				assert_eq!(tokens.top(), time.top(), "time remains on the token row");
+				assert_eq!(tokens.top(), rate.top(), "speed remains on the token row");
+				let number = visual.debug_bounds("relation-number-release").unwrap();
+				assert!(number.left() > identity.right() && number.right() <= card.right());
+				assert_eq!(number.top(), identity.top());
+				assert!(visual.debug_bounds("relation-status-release").is_some());
+				assert!(visual.debug_bounds("relation-mark-release").is_none());
+				assert!(metrics.top() > card.top() && metrics.bottom() < card.bottom());
+				assert!(
+					f32::from(card.bottom() - metrics.bottom())
+						<= layout.spacing(card::INSET_Y) + 1.,
+					"metrics leave only the native inset at the bottom of the card"
+				);
 			}
-			let identity = visual.debug_bounds("relation-identity-release").unwrap();
-			let metrics = visual.debug_bounds("relation-metrics-release").unwrap();
-			assert!(
-				identity.left() > card.left() && identity.right() < card.right(),
-				"zoom {scale}: {identity:?}, {card:?}"
-			);
-			assert!((f32::from(metrics.size.height) - layout.metrics_height()).abs() <= 0.5);
-			let time = visual.debug_bounds("relation-time-release").unwrap();
-			assert!(time.left() >= metrics.left() && time.right() <= metrics.right());
-			assert!(time.top() >= metrics.top() && time.bottom() <= metrics.bottom());
-			assert!(metrics.top() > card.top() && metrics.bottom() < card.bottom());
 		}
 	}
 
@@ -1982,10 +2996,10 @@ mod fit_tests {
 			s.workspace.graph_visible = true;
 			s.workspace.graph_expanded = true;
 			s.work_board.view.camera_fixed = true;
-			s.work_board.view.zoom = Some(0.5);
+			s.work_board.view.zoom = Some(0.85);
 			let graph = s.relation_graph();
 			let node = graph.nodes.iter().find(|node| node.key == "release").unwrap();
-			s.work_board.view.pan = (40. - node.x * 0.5, 80. - node.y * 0.5);
+			s.work_board.view.pan = (40. - node.x * 0.85, 80. - node.y * 0.85);
 			cx.notify();
 		});
 		visual.update(crate::ui_frame::draw_frame);
@@ -2083,10 +3097,10 @@ mod fit_tests {
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.work_board.view.pan = (80., -30.);
-			s.work_board.view.zoom = Some(0.42);
+			s.work_board.view.zoom = Some(0.82);
 			s.select_workbench_agent("agent", cx);
 			assert_eq!(s.work_board.view.pan, (80., -30.));
-			assert_eq!(s.work_board.view.zoom, Some(0.42));
+			assert_eq!(s.work_board.view.zoom, Some(0.82));
 			assert_eq!(s.work_board.view.picked_agent.as_deref(), Some("agent"));
 			s.select_workbench_agent("agent", cx);
 			assert_eq!(s.work_board.view.picked_agent.as_deref(), Some("agent"));
@@ -2104,7 +3118,7 @@ mod fit_tests {
 			s.visual_workspace_fixture(cx);
 			s.work_board.view.camera_fixed = true;
 			s.work_board.view.pan = (80., -30.);
-			s.work_board.view.zoom = Some(0.42);
+			s.work_board.view.zoom = Some(0.82);
 			let row = s.factory_rows().into_iter().find(|row| row.key == "release").unwrap();
 			s.open_graph_agent(&row, cx);
 			assert_eq!(s.work_board.view.picked_agent.as_deref(), Some("release"));
@@ -2118,7 +3132,7 @@ mod fit_tests {
 				graph.nodes.iter().find(|node| node.key == "release").unwrap()
 			));
 			assert_eq!(s.work_board.view.pan, (80., -30.));
-			assert_eq!(s.work_board.view.zoom, Some(0.42));
+			assert_eq!(s.work_board.view.zoom, Some(0.82));
 			// Reopening the current conversation also releases metric-only selection.
 			s.select_workbench_agent("release", cx);
 			s.open_page("agent", cx);
@@ -2137,7 +3151,7 @@ mod fit_tests {
 			s.work_board.view.camera_fixed = true;
 			s.work_board.view.viewport = (1200., 900.);
 			s.work_board.view.layout_viewport = (1200., 900.);
-			s.work_board.view.zoom = Some(0.15);
+			s.work_board.view.zoom = Some(0.75);
 			s.work_board.view.pan = (200., 500.);
 			let row = s.factory_rows().into_iter().find(|row| row.key == "release").unwrap();
 			s.open_graph_agent(&row, cx);
@@ -2156,7 +3170,7 @@ mod fit_tests {
 					gpui::point(gpui::px(0.), gpui::px(0.)),
 					gpui::size(gpui::px(1200.), gpui::px(900.)),
 				),
-				0.15,
+				0.75,
 				count,
 				cx,
 			);
@@ -2170,12 +3184,12 @@ mod fit_tests {
 					gpui::point(gpui::px(0.), gpui::px(0.)),
 					gpui::size(gpui::px(800.), gpui::px(240.)),
 				),
-				0.15,
+				0.75,
 				count,
 				cx,
 			);
 			let graph = s.relation_graph();
-			assert_eq!(s.work_board.view.zoom, Some(0.15));
+			assert_eq!(s.work_board.view.zoom, Some(0.75));
 			assert_eq!(
 				graph
 					.nodes
@@ -2236,7 +3250,7 @@ mod fit_tests {
 	}
 
 	#[gpui::test]
-	fn initial_camera_fits_every_card_in_wide_shallow_and_narrow_panes(
+	fn initial_camera_frames_agents_without_shrinking_below_readable_size(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(super::super::tests::fixture);
@@ -2246,7 +3260,8 @@ mod fit_tests {
 				s.frame_relations();
 				let scale = s.relation_scale();
 				assert!((card::MIN_ZOOM..=card::MAX_ZOOM).contains(&scale));
-				for node in s.relation_graph().nodes {
+				for node in s.relation_graph().nodes.into_iter().filter(|_| scale > card::MIN_ZOOM)
+				{
 					let bounds = node.screen_rect(scale, s.work_board.view.pan);
 					assert!(bounds.x >= FRAME_INSET - 1. && bounds.y >= FRAME_INSET - 1.);
 					assert!(bounds.x + bounds.width <= viewport.0 - FRAME_INSET + 1.);
@@ -2268,8 +3283,15 @@ mod fit_tests {
 			assert!(s.relation_graph().nodes.iter().any(|node| node.row.is_none()));
 			s.work_board.view.viewport = (920., 680.);
 			s.fit_relations();
-			assert!(
-				s.relation_scale() >= 0.85,
+			let before = (s.work_board.view.zoom, s.work_board.view.pan);
+			for brief in s.work_board.briefs.values_mut() {
+				brief.resources = None;
+			}
+			s.snapshot.as_mut().unwrap().context_references.clear();
+			s.fit_relations();
+			assert_eq!(
+				before,
+				(s.work_board.view.zoom, s.work_board.view.pan),
 				"invisible attachments cannot reserve overview space"
 			);
 		});
@@ -2350,7 +3372,8 @@ mod fit_tests {
 				let first = node("a-reading");
 				let last = node("c-reading");
 				assert!(
-					(last.x - first.x).abs() + (last.y - first.y).abs() <= 272.,
+					(last.x - first.x).abs() + (last.y - first.y).abs()
+						<= first.width().max(first.height()) + 2. * GRID,
 					"another workspace must not leave empty rows or columns"
 				);
 				assert_eq!(graph.nodes.len(), count + 4);
@@ -2411,11 +3434,8 @@ mod fit_tests {
 			}];
 			s.workspace.workspace_filter = Some("scope-a".into());
 			let graph = s.relation_graph();
-			for node in &graph.nodes {
-				for coordinate in [node.x, node.y, node.x + node.width(), node.y + node.height()] {
-					assert_eq!(coordinate, snap(coordinate));
-				}
-			}
+			// Native point geometry follows animated content heights. Workspace
+			// frames and explicitly dragged positions retain the world lattice.
 			for scope in &graph.scopes {
 				for coordinate in scope.bounds {
 					assert_eq!(coordinate, snap(coordinate));
@@ -2520,7 +3540,10 @@ mod fit_tests {
 			status: String::new(),
 			color: 0,
 			row: None,
+			activity: Default::default(),
 			size: (224., 48.),
+			port_offset: 24.,
+			base_height: 48.,
 			x: 120.,
 			y: 80.,
 		};
@@ -2540,7 +3563,10 @@ mod fit_tests {
 			status: String::new(),
 			color: 0,
 			row: None,
+			activity: Default::default(),
 			size: (224., 48.),
+			port_offset: 24.,
+			base_height: 48.,
 			x: 80.,
 			y: 64.,
 		};

@@ -36,7 +36,7 @@ verify_signing_team() {
 
 # Packaging selects a requirement; it never builds or embeds Codex.
 case "${DECODEX_BUILD_CHANNEL:-development}" in
-    development) RUNTIME_LOCK="$ROOT/codex-runtime.lock.json" ;;
+    development) RUNTIME_LOCK=${DECODEX_RUNTIME_LOCK_PATH:-"$ROOT/codex-runtime.lock.json"} ;;
     release)
         RUNTIME_LOCK=${DECODEX_RUNTIME_LOCK_PATH:-"$ROOT/codex-runtime.release.lock.json"}
         # Validate against this checkout's reviewed baseline before changing the stage.
