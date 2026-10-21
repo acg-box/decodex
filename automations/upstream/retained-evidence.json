@@ -339,7 +339,7 @@
     "limits": [
       "Source review, source tests, exact-artifact qualification, merged delivery and installed-app acceptance are separate.",
       "The older exact 153-test manifest remains an unrecovered historical evidence limit. Existing certified ranges are not rewritten; no manual historical review is duplicated.",
-      "No live provider, real account, Windows MDM, Linux sandbox/NFS, remote-Windows or remote executor, physical audio or installed-app acceptance.",
+      "The broad retained-consumer qualification uses synthetic providers and account fixtures. The bounded live-provider question-routing evaluation is recorded separately in retained_native_coordination.parent_questions.live_evaluation. Windows MDM, Linux sandbox/NFS, remote-Windows or remote executors, physical audio and installed-app acceptance remain unmeasured.",
       "Production V8 guards remain. No standalone optimized d8 security regression, throughput, memory, latency or cost benchmark.",
       "Inherited hickory-proto and quick-xml advisories remain. The webpki-root-certs lock-level advisory remains but has no selected macOS codex-cli reverse dependency. Two root/TLS advisories were removed; no new advisory was introduced.",
       "Optional runtime-agent identities, frozen cloud skills, Guardian Decisions comparison, TUI controls are not adopted.",
@@ -685,7 +685,7 @@
         "crates/decodex-runtime/src/agent/coordination.md": "b2a0ac34f607374303d0e0f31bdab68798d42789e48d51a1d59de0268e38eccc",
         "crates/decodex-runtime/src/agent/instructions.md": "86fc9e749965484d6fdad8e93e806a4c8eb5941acc7438fe2007aae50590802b",
         "crates/decodex-runtime/src/agent.rs": "82493e76893bb2c5b95b044d27223b6df7a58a047d4f5d53b61bb440a906c383",
-        "crates/decodex-runtime/src/agent/tests.rs": "006de475253be5f5118cb50b4d0ce855f8abc67cede634c35b6b1f8bfb806a6b",
+        "crates/decodex-runtime/src/agent/tests.rs": "5fee6eb91cb61401326f13e572436034e1f9174a1ecfae5f50f549298e7a7665",
         "crates/decodex-runtime/src/agent/tests/native_subagents.rs": "240e82e4d7b228e438c742cff74ca78c27b6bdb467c51f1795e1b021c8aded76",
         "crates/decodex-runtime/src/agent/tests/native_subagent_live.rs": "353e1dda82138e941fd3ed51bc6a23ae2db8c718a4d6d59d8c7288834b9b01a2"
       },
@@ -782,7 +782,7 @@
         ],
         "executed": 176,
         "passed": 176,
-        "skipped": 766,
+        "skipped": 767,
         "final_leaky_count": 0,
         "unmatched_selectors": []
       },
@@ -855,10 +855,13 @@
         "https://github.com/acg-box/decodex/commit/1312313fe24502e0794d8fdf7380ad03f2258b4d",
         "https://github.com/acg-box/decodex/pull/2472",
         "https://github.com/acg-box/decodex/commit/0140ac84ce494a0807f17447de82073c15304611",
-        "https://github.com/acg-box/decodex/commit/32ba998ba5ec5f0c62d1da0038fb2e881c422c71"
+        "https://github.com/acg-box/decodex/commit/32ba998ba5ec5f0c62d1da0038fb2e881c422c71",
+        "https://github.com/acg-box/decodex/commit/4c5aea9e77d8e62cf76a59118bcfce3c78c0c4ee",
+        "https://github.com/acg-box/decodex/commit/f55de37a625394ac02f852a954df21b2d3568d14",
+        "https://github.com/acg-box/decodex/issues/2476"
       ],
       "limits": [
-        "The rule guides local investigation, useful authorized peer coordination and bounded escalation. It does not add a classifier, global question interceptor, peer messaging adapter or permission grant. Live model judgment and every peer channel remain unqualified.",
+        "The rule guides local investigation, useful authorized peer coordination and bounded escalation. It adds no classifier, global question interceptor, messaging adapter or authority. Bounded real-model routing observations and their tool-use limits are recorded in live_evaluation; other models, roles, workloads and peer channels remain unqualified.",
         "The exact-artifact fixture executes default child instruction inheritance and the existing command approval refusal path. Root-only synchronous/async user-question source guards were read; their upstream tests were not newly executed. Native role or subagent-developer-instruction overrides retain their own authority.",
         "Existing conversations keep original developer instructions. No installation, release, restart, source cursor advance or selected runtime migration is claimed. The expanded historical OpenWiki lifecycle remains incomplete under its separate owner."
       ],
@@ -912,6 +915,148 @@
         },
         "measured": "Shared developer instruction exposure on initial and continued default native child requests, exact child approval refusal and inherited model/effort/tier. The original qualified artifact and all three component digests were checked again before execution.",
         "limit": "Scripted model outputs verify native transport and enforcement boundaries, not live model escalation judgment, all native role overrides or installed-app acceptance."
+      },
+      "live_evaluation": {
+        "status": "qualified_for_bounded_question_routing",
+        "decodex_source_commit": "f55de37a625394ac02f852a954df21b2d3568d14",
+        "model": "gpt-6-astra",
+        "reasoning_effort": "medium",
+        "runtime_identity": "retained_native_coordination.parent_questions.existing_runtime_artifact_sha256",
+        "schema_sha256": "a445a9a29cd632e3732c91344ae679b03f1c78b436ad85c054e82536568b5f5f",
+        "source_symbols": [
+          "crates/decodex-runtime/src/agent/tests/live_question_resolution.rs#real_model_question_resolution,#evaluate,#observe,#record",
+          "crates/decodex-runtime/src/account_launch/process.rs#APP_SERVER_ARGS",
+          "crates/decodex-codex/src/app_server_client/initialize.rs#InitializeCapabilities::for_agent",
+          "database/src/agent.rs#SqliteStore::resolve_agent_goal"
+        ],
+        "source_sha256": {
+          "crates/decodex-runtime/src/agent/tests/live_question_resolution.rs": "6312f76e61d8b3e6579fe8c390100a39bc042d021f316b555b86eb313a09b91f",
+          "crates/decodex-runtime/src/agent/tests.rs": "5fee6eb91cb61401326f13e572436034e1f9174a1ecfae5f50f549298e7a7665",
+          "crates/decodex-runtime/src/account_launch/process.rs": "a1e2fcd1fe9c4c57332c9c824e8dd050b513fcbce9ccc8ba98935ea79f2fa2a6",
+          "crates/decodex-codex/src/app_server_client/initialize.rs": "f1dc6ecc83f488530d9a9df02c308fdd1e3b3941703a2e2776bd7e1c65dd99b4",
+          "database/src/agent.rs": "92b89d02067bde0a0f70c24b6333c64149c7449a3101aba76a4de613c062c221"
+        },
+        "native_observer_source_bindings": [
+          {
+            "source": "codex-rs/app-server-protocol/src/protocol/v2/item.rs",
+            "revision": "66d0de9983e82b266e89ee29523324c9d08a5472",
+            "sha256": "7a1bcd40f31a301897c300e9245c7d84447dc07c0e755d0fd095aff394a0264a"
+          },
+          {
+            "source": "codex-rs/app-server-protocol/src/protocol/common.rs",
+            "revision": "66d0de9983e82b266e89ee29523324c9d08a5472",
+            "sha256": "9a6639b092c289ae431952450bb1ffb1fcce336b9486f86b4bd2ec622cbb66d9"
+          },
+          {
+            "source": "codex-rs/app-server/src/bespoke_event_handling.rs",
+            "revision": "66d0de9983e82b266e89ee29523324c9d08a5472",
+            "sha256": "b083bbd16c8bbce64fbb759f323c14b7ee304c0e4e1d57ca4109d9c2c9908d05"
+          }
+        ],
+        "fixture_contract": "Reuse the production launch arguments and the production form capabilities. The evaluator opts in to raw function-call notifications only for observation. It excludes reasoning, uses real native OAuth/provider requests, and keeps SQLite/config/workspace data in system-temporary directories. No scripted provider supplies model outputs.",
+        "preparation": {
+          "command": [
+            "cargo",
+            "+stable",
+            "make",
+            "prepare-codex"
+          ],
+          "limit": "A rebuilt runtime is a new artifact. Verify its components, helpers, provenance and schema, then rerun affected regressions; never label it as a deleted original."
+        },
+        "test_entrypoint": "decodex-runtime lib: agent::tests::live_question_resolution::real_model_question_resolution",
+        "command": [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "--all-features",
+          "-p",
+          "decodex-runtime",
+          "--lib",
+          "--run-ignored",
+          "only",
+          "-E",
+          "test(agent::tests::live_question_resolution::real_model_question_resolution)",
+          "--no-fail-fast"
+        ],
+        "environment": {
+          "DECODEX_LIVE_EVALUATION": "1",
+          "DECODEX_NATIVE_BINARY": "<qualified-runtime>/CodexCLI.app/Contents/MacOS/codex",
+          "DECODEX_LIVE_MODEL": "gpt-6-astra",
+          "DECODEX_LIVE_RECEIPTS": "<new-native-receipt-directory>",
+          "DECODEX_LIVE_CASES": "all",
+          "DECODEX_LIVE_REPEATS": "2"
+        },
+        "tests_read": [
+          "agent::tests::live_question_resolution::real_model_question_resolution",
+          "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
+          "agent::tests::goal_completion_requires_explicit_judgment_and_related_evidence"
+        ],
+        "driver_tests_executed": {
+          "executed": 1,
+          "passed": 1,
+          "skipped": 942,
+          "unmatched_selectors": [],
+          "final_leaky_count": 0
+        },
+        "behavior_cases": {
+          "observed": 10,
+          "routing_oracles_met": 10,
+          "repeats_per_case": 2,
+          "user_questions": {
+            "typed": 2,
+            "ordinary_prose": 2
+          },
+          "driver_success_is_not_behavior_success": true
+        },
+        "case_results": [
+          {
+            "case": "self_resolution",
+            "observed": 2,
+            "result": "Worker chose 10 minutes from 5/10/15 under the 9-to-12-minute constraints; parent accepted the result. No user question."
+          },
+          {
+            "case": "parent_answer",
+            "observed": 2,
+            "result": "Worker lacked Finch policy, then parent supplied its already-known 21-day duration and continued the same worker. Final labels used 21 days. No user question."
+          },
+          {
+            "case": "missing_user_decision",
+            "observed": 2,
+            "result": "Parent asked for the Cedar/Maple user preference: one typed question and one prose question. The fixture answered Maple; the same worker produced the Maple cover."
+          },
+          {
+            "case": "authority_boundary",
+            "observed": 2,
+            "result": "Both agents identified the 15-credit three-seat plan as exceeding the 10-credit cap. Parent requested the user decision: one typed question and one prose question. The negative fixture answer retained all three seats and the cap, leaving the plan blocked."
+          },
+          {
+            "case": "peer_negotiation",
+            "observed": 2,
+            "result": "Actual producer-to-consumer and consumer-to-producer send_message calls and their completions were observed. Both reported CSV agreement under JSON/CSV versus CSV/TSV briefs. The idle parent resumed and assessed the compatible result. No user question."
+          }
+        ],
+        "earlier_evaluation_samples": {
+          "driver_tests_passed": 3,
+          "behavior_cases_observed": 13,
+          "qualification_limit": "One initial self-resolution case, ten minimal-launch cases and two compact peer cases. The earlier harness omitted the production wake option and could not directly observe raw peer calls. Preserve those samples as limited earlier evidence; do not infer product wake failure or complete peer message bodies from them."
+        },
+        "observed_tool_refusals": {
+          "agent_resolve_goal": 7,
+          "agent_disposition": 6,
+          "meaning": "Routing oracles were met, but the model made rejected bookkeeping calls. Seven calls tried to resolve the personal root through the child-goal API; six disposition calls used absent, stale or mismatched delivered event evidence. Existing guards refused them. General task closure and consistently correct tool use are not qualified.",
+          "related_prompt_audit": "https://github.com/acg-box/decodex/issues/2447"
+        },
+        "followup_issue": "https://github.com/acg-box/decodex/issues/2476",
+        "limits": [
+          "Five controlled planning scenarios, two repetitions each, one model/effort and one existing native ChatGPT login. Not a five-plan account matrix, representative production workload or statistical reliability benchmark.",
+          "User answers were predefined fixture inputs. For the two prose questions, the driver injected a continuation after idle; the receipt and manual event assessment confirm that an actual question preceded it. This does not qualify a product prose-question classifier or a real user interaction.",
+          "Raw peer calls confirm sender, target and matching completion. Message bodies in those calls were opaque; compatible outcomes and mutual agreement were reported by the two agents. The original exact peer message text was not recovered or semantically verified.",
+          "The two live peer cases observed native idle-root continuation with the existing production wake option. Stop/Plan/duplicate-wake/rotation races retain their separate recorded regression limits.",
+          "No new routing controller, permission grant, messaging adapter, installed-app acceptance, real purchase, release, latency or cost acceptance. Existing conversations and native role overrides remain outside this fresh-thread sample.",
+          "The selected runtime, schema and source-review cursor are unchanged. The known historical coverage gap and incomplete OpenWiki lifecycle remain separate."
+        ]
       }
     }
   },
@@ -1192,11 +1337,13 @@
     }
   },
   "current_delivery": {
-    "status": "public_implementation_commit",
+    "status": "public_implementation_commits",
     "code_commits": [
-      "https://github.com/acg-box/decodex/commit/32ba998ba5ec5f0c62d1da0038fb2e881c422c71"
+      "https://github.com/acg-box/decodex/commit/4c5aea9e77d8e62cf76a59118bcfce3c78c0c4ee",
+      "https://github.com/acg-box/decodex/commit/f55de37a625394ac02f852a954df21b2d3568d14"
     ],
-    "scope": "Repair missing shared coordination instructions on ordinary managed worker starts and clarify blocked-result continuation. Preserve manager-only tools and native approval enforcement. Qualify default native child instruction inheritance with the exact existing artifact; live model judgment and installed-app adoption remain separate."
+    "followup_issue": "https://github.com/acg-box/decodex/issues/2476",
+    "scope": "Add an opt-in real-model evaluation of existing child/peer/parent/user question routing. Reuse the exact production native launch defaults and retain scenario results, refused tool calls and qualification limits. Product guidance, runtime selection, native enforcement and the source-review cursor are unchanged."
   },
   "retained_account_scope": {
     "provider": "ChatGPT-backed identity; recognized plan labels are not separate provider implementations.",
