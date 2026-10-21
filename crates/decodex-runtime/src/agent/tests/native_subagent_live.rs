@@ -139,6 +139,11 @@ async fn native_child_approval_round_trip() {
 		while let Ok(body) = requests_rx.try_recv() {
 			if request_count == 0 { assert_eq!(body["service_tier"], "priority"); }
 			if is_child(&body) {
+                assert!(body["input"].as_array().unwrap().iter().any(|item| {
+                    item["role"] == "developer" && item["content"].as_array().is_some_and(|content| {
+                        content.iter().any(|part| part["text"].as_str().is_some_and(|text| text.contains(crate::agent::COORDINATION)))
+                    })
+                }), "native child receives the shared coordination instructions");
                 assert_eq!(body["model"], "gpt-5.6-sol", "child keeps the invoking model");
                 assert_eq!(body["reasoning"]["effort"], "medium", "child keeps the invoking effort");
 

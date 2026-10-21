@@ -578,12 +578,14 @@ impl AgentCoordinator {
 			params["config"]["model_reasoning_effort"] = serde_json::json!(effort);
 		}
 
+		params["developerInstructions"] =
+			serde_json::json!(if agent { INSTRUCTIONS } else { COORDINATION });
+
 		if agent {
 			// Native task plans supply milestones without promoting chat or tool calls
 			// into work. Supported by the pinned upstream protocol and binary.
 			params["config"]["tools.update_plan.enabled"] = serde_json::json!(true);
 			params["config"]["features.realtime_conversation"] = serde_json::json!(true);
-			params["developerInstructions"] = serde_json::json!(INSTRUCTIONS);
 			params["dynamicTools"] = tools();
 		}
 
