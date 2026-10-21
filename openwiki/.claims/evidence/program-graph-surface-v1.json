@@ -1,28 +1,32 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:773e7e72ba6f283890dffa44b5e7cc4c9d4523beb6f0a089cc4b70af3196c05c",
+  "pageVersion": "sha256:0af270a4455903bf07a59c4cfff5178368246fc06d6afc83f5c1dedd24a4f00e",
   "claims": [
     {
       "id": "claim_8a327f0888fc4a0fbce7d1a521327a83",
-      "statement": "The current Agent graph projects snapshot dependencies and report relations; the right panel renders selected work, connection details or a workbench overview.",
+      "statement": "The current Agent graph presents work relationships, while the right Collaboration panel groups recorded exchanges and pending response requests across chats.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_graph.rs",
-          "version": "repo-file-v1:sha256:aee015a2bdb3fb31c3136251d7b3274f7ae034433f94ef8739ddd2aadf5bc933"
+          "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
+          "version": "repo-file-v1:sha256:9e9962f9a94992b0baad5f00223ec540840ff6672d23e729eea366fd12b02bec"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_tree.rs#L32-L47",
-          "version": "repo-lines-v1:sha256:941e01244807957181c660a3a10668560191a111545f9702c23a24135b015d4a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmMDcwMWM0NGMwZTVkNzEyZGMyNTJmMzRjZTNiY2RiYzVlMTdjMTdjNjE3ZmQ5MjhiNzU3ODhiM2JkODFlZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFmNzZmYzViMTlhZWQ0ZjFlZmFjOTg1ZThiNjViOTIzMGU4MTcwNjNjNDVhYTc4MGVlZDdlOGMzNDEwNGY0MWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_relation_canvas.rs",
+          "version": "repo-file-v1:sha256:321659e3bbb66a9dba428df5ef609e05d1f61321c882ad894075b9306f687be4"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workbench.rs#L704-L746",
-          "version": "repo-lines-v1:sha256:8e1b5e39b813cd4b58dbca891fb4917764fba17c7a3886425595ead2c60d5db4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjMmU5ZjRkZDIxMGZmODhiMDA3OTJmZGZkMWQ2ZWJkZWEyNzEwM2I3OTRlMzA5YWJlNTVjMWQ3N2VjY2M3M2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhMTQzNjE0OTYzYTQxMDE2YWE1NjVlYzM4YThjYWIyYjI2MzkxMmZhYTkzMzRkYjkwOWQzNzk0ZDllYmMzNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlZjIyMTFmNjc1MDdlMTNkNmE1NTZjMzBkZDlkZWI0NWQwOTc4MWVlZTFmMTc1MjExZDUyMzhmMzk5NDkzY2MifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
+          "version": "repo-file-v1:sha256:2385efed543e4b17d01d59fc612756f0f9b77c8555c0a32a46cc93717dd22319"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workbench.rs",
+          "version": "repo-file-v1:sha256:70080f93e98bef5959419b5bf94804be2f5f89bd800f82b07ec0a9f3496d0cdb"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T09:01:22.045Z"
+    "at": "2026-10-21T14:42:59.992Z"
   }
 }

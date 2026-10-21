@@ -18,8 +18,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/account_feedback.rs
   - id: openwiki-source-6512b631b67649d924c16ba3
     resource: repo://apps/decodex-gpui/src/agent_archive.rs
-  - id: openwiki-source-ec2c431b14759817413ba09e
-    resource: repo://apps/decodex-gpui/src/agent_graph.rs
+  - id: openwiki-source-3708e6cf9324a8ff1f6c39ae
+    resource: repo://apps/decodex-gpui/src/agent_collaboration_tests.rs
+  - id: openwiki-source-2a6989c7fa25b9681df71f95
+    resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
   - id: openwiki-source-2ee1164d01a09b38a208f1ac
     resource: repo://apps/decodex-gpui/src/agent_markdown.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
@@ -28,23 +30,25 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_text_selection.rs
   - id: openwiki-source-51a4755f3c4ddd78511e5c8e
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
-  - id: openwiki-source-c0e58bc836ac05c982449723
-    resource: repo://apps/decodex-gpui/src/agent_workbench.rs
+  - id: openwiki-source-5d032c6be684964aa2c401fa
+    resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-a1a71f71175b6cac3a5f1346
     resource: repo://apps/decodex-gpui/src/native_glass_panel.rs
   - id: openwiki-source-2986b39185cca5c00a29ad1d
     resource: repo://apps/decodex-gpui/src/shell_status.rs
-generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
+generated: { by: "codex", at: "2026-10-21T14:42:59.992Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T09:01:22.045Z
+    at: 2026-10-21T14:42:59.992Z
 ---
 
 # Desktop workspace and native glass
 
 ## Information hierarchy
 
-The Agent conversation is the primary workspace. The left sidebar selects the overview and projects. The right Agent workbench shows the selected work item or connection, with an overview when nothing is selected. The bottom graph presents Agent relationships, including dependencies and reports. A historical Program/Factory graph is not the current desktop surface.
+The Agent conversation is the primary workspace. The left sidebar selects the overview and projects. The right Collaboration panel keeps recorded exchanges and pending response requests visible across chats. The bottom Dock presents Agent relationships through its graph or list. A historical Program/Factory graph is not the current desktop surface.
+
+Collaboration groups source-backed exchanges by participant pair and expands their recorded text without switching the active chat or draft. A participant control locates that Agent in the graph. Tool completion alone is not delivery, and a context reference is not a message. Missing reply text remains explicit. Pending user requests retain their existing native controls; this panel does not answer them automatically or create a second question store.
 
 Global shortcuts in `shell.rs` are Command-E for the left sidebar, Command-B for the inspector/agent side, and Command-J for the graph. Window controls stay in the global shell. Settings is a separate presentation with bounded scrolling and shared spacing tokens.
 
@@ -70,7 +74,7 @@ See [Accounts and routing](../operations/accounts-and-routing.md) and [Reset Car
 
 Markdown renders native text, code, lists, and links. Text selection and clipboard operations are read-only. One rendered message shares a selection document across its text blocks. This does not create a selection spanning all messages. Copy controls show short success feedback. Duration and abbreviated token counts remain together at the end of each answer; hovering this row shows detailed usage without changing transcript height.
 
-The history rail follows the reading position. Expanding connection details must preserve the anchor. A centered jump-to-latest control represents ongoing work while the user reads older messages. Input controls expose attachments, delivery policy, model/effort, microphone, and live voice without moving execution authority into the UI.
+The history rail follows the reading position. Expanding collaboration exchanges preserves the selected chat and draft. A centered jump-to-latest control represents ongoing work while the user reads older messages. Input controls expose attachments, delivery policy, model/effort, microphone, and live voice without moving execution authority into the UI.
 
 ## State and errors
 
@@ -91,6 +95,8 @@ Keep each label about one user need. Account warning popovers state what happene
 ## Verification
 
 Use GPUI tests in `shell.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
+
+The collaboration tests check cross-chat visibility, expansion without draft changes, participant location and the distinction between recorded messages, tool completion and context references. Their definitions were inspected for this update; this documentation run did not execute the new GPUI suite or accept the installed app.
 
 `StatusPanelLifecycleTests` checks first-open and repeated menu focus, foreground application identity, hidden workspace visibility, and fixed-top resizing. `AccountPanelPresentationTests` checks synchronized row movement, clipping, interruption and reduced motion. The GPUI `account_feedback` test checks first-click opening, outside-click closing, unchanged row height, and retention of the warning source. Its opt-in `DECODEX_MEASURE_ACCOUNT_MOTION=1` presentation sampling separates initial response delay from animation cadence; it does not prove sustained display FPS. `DECODEX_CAPTURE_ACCOUNT_MOTION` selects a screenshot directory for visual review.
 

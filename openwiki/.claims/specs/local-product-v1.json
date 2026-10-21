@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:86d954a7522717a1b7b538bbff9d5ebe1c2329a2cad905a0688dbb1c3d184cc9",
+  "pageVersion": "sha256:75c60a03da2c68ce141360d733a878f6ef9e4951a7cbb92153a382d4572b345f",
   "claims": [
     {
       "id": "claim_43cc36a83ec3487a92f18c719c5bdd1a",
@@ -102,19 +102,19 @@
     },
     {
       "id": "claim_19f0aa9f9a6a4980821a59efb88e10c7",
-      "statement": "The right panel renders selected work, connection details or a workbench overview, and Markdown selection shares a document across a rendered message's blocks.",
+      "statement": "The current Agent graph presents work relationships; the right Collaboration panel keeps recorded exchanges and pending response requests visible across chats while expansion preserves the active chat and draft.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_markdown.rs#L256-L321",
-          "version": "repo-lines-v1:sha256:2cfedc2187e449730436f69464bfce305a3b97a18e0ef2818e663626aaaeac64:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViZDlkYTMwMjE5NjY0N2ExM2IzMDM3ZTQyZjVjMjE3YWI3ZDk3NjVhMjQ3OWM1ODIzN2M1Njg1MGQ0MzQyMTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1ZjI5ZmE5YzBlYmJjOGY1YjIxNWUxYzc1ZGVlOTY5MWViYjdjYzhjYzZhMDc2YjVhMzg3Mjg2YTRhYjk5YWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzYTQ4MzQwZTY2NzYyOTVmOTQzYWVkM2Y3YzVlMjY0M2U5N2VjYTA2NGEyMjhhODQ4MDY0MzVjYmM1OGJjYzgifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
+          "version": "repo-file-v1:sha256:9e9962f9a94992b0baad5f00223ec540840ff6672d23e729eea366fd12b02bec"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_text_selection.rs",
-          "version": "repo-file-v1:sha256:9b91c82a4f99a2be1d169dccc29d264702ca4614d2abb3b72068bfe5259d1bc5"
+          "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
+          "version": "repo-file-v1:sha256:c3c753e8cc9b2662901460d3e935fce30250b8d5baabea800994a304e72c0516"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workbench.rs#L704-L746",
-          "version": "repo-lines-v1:sha256:8e1b5e39b813cd4b58dbca891fb4917764fba17c7a3886425595ead2c60d5db4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjMmU5ZjRkZDIxMGZmODhiMDA3OTJmZGZkMWQ2ZWJkZWEyNzEwM2I3OTRlMzA5YWJlNTVjMWQ3N2VjY2M3M2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhMTQzNjE0OTYzYTQxMDE2YWE1NjVlYzM4YThjYWIyYjI2MzkxMmZhYTkzMzRkYjkwOWQzNzk0ZDllYmMzNGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJlZjIyMTFmNjc1MDdlMTNkNmE1NTZjMzBkZDlkZWI0NWQwOTc4MWVlZTFmMTc1MjExZDUyMzhmMzk5NDkzY2MifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
+          "version": "repo-file-v1:sha256:2385efed543e4b17d01d59fc612756f0f9b77c8555c0a32a46cc93717dd22319"
         }
       ]
     },
@@ -131,10 +131,24 @@
           "version": "repo-file-v1:sha256:df87cab1b7d420e4626ee4db794ce79060f08bf96a2078c5ea3122c2db346641"
         }
       ]
+    },
+    {
+      "id": "claim_bb700edce911452b994a561afdc1bc69",
+      "statement": "Markdown selection shares one document across the text blocks of a rendered message without spanning every message.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_markdown.rs#L256-L321",
+          "version": "repo-lines-v1:sha256:2cfedc2187e449730436f69464bfce305a3b97a18e0ef2818e663626aaaeac64:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViZDlkYTMwMjE5NjY0N2ExM2IzMDM3ZTQyZjVjMjE3YWI3ZDk3NjVhMjQ3OWM1ODIzN2M1Njg1MGQ0MzQyMTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1ZjI5ZmE5YzBlYmJjOGY1YjIxNWUxYzc1ZGVlOTY5MWViYjdjYzhjYzZhMDc2YjVhMzg3Mjg2YTRhYjk5YWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzYTQ4MzQwZTY2NzYyOTVmOTQzYWVkM2Y3YzVlMjY0M2U5N2VjYTA2NGEyMjhhODQ4MDY0MzVjYmM1OGJjYzgifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_text_selection.rs",
+          "version": "repo-file-v1:sha256:9b91c82a4f99a2be1d169dccc29d264702ca4614d2abb3b72068bfe5259d1bc5"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T09:01:22.045Z"
+    "at": "2026-10-21T14:45:12.016Z"
   }
 }

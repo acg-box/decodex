@@ -54,10 +54,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
+generated: { by: "codex", at: "2026-10-21T14:42:59.992Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T14:39:50.043Z
+    at: 2026-10-21T14:42:59.992Z
 ---
 
 
@@ -183,6 +183,8 @@ scripts/macos/test_decodex_app_stage.sh
 A full Xcode installation and its Metal toolchain are required for GPUI. The scripts use the selected developer directory unless `DEVELOPER_DIR` is set. No Beta-specific path is required. The canonical stage script requires valid configured signing authority and rejects ad-hoc signing. It builds one app with the unified helper, native-client FFI, Swift menu-bar library and Sparkle. It embeds a runtime requirement, not the Codex binary or schemas. Neither staging nor application startup compiles Codex. Development staging uses `codex-runtime.lock.json`; set `DECODEX_BUILD_CHANNEL=release` for official Release staging, which requires `codex-runtime.release.lock.json` to cover the current baseline. Staging does not install the app. `DECODEX_SPARKLE_PUBLIC_KEY` supplies the public update key when configuring a distributable app; the private signing key is not an app input.
 
 The staging test verifies payload counts, Info.plist, signatures, team identity, native ABI and a deliberately mismatched ABI fixture. Python reads piped entitlement bytes explicitly for compatibility. A passing package test is not live UI, speech, release notarization or installation acceptance.
+
+An explicit `DECODEX_RUNTIME_LOCK_PATH` can select a prepared requirement for development staging. This selection does not qualify another artifact or compile Codex. Release staging still checks its selected official requirement against the development baseline.
 
 ## Native macOS tests
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:53c27e594eb5a603cf6c81801739f520d7657852529a461b4176a242bcb98a30",
+  "pageVersion": "sha256:e2d5240ce818c09826e23ac7b7569697432d36c352f8e945ccbec20335b38262",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -26,7 +26,7 @@
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
-          "version": "repo-file-v1:sha256:64553118fbb0ec5ca2425b859a1e469e8e84875c60375311db0d378ca756b765"
+          "version": "repo-file-v1:sha256:4c8dab6abd1a26b236184a5c514f9ec27668dbc396b1f8271cf189ea8efb9baf"
         },
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
@@ -76,7 +76,7 @@
       "evidence": [
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
-          "version": "repo-file-v1:sha256:64553118fbb0ec5ca2425b859a1e469e8e84875c60375311db0d378ca756b765"
+          "version": "repo-file-v1:sha256:4c8dab6abd1a26b236184a5c514f9ec27668dbc396b1f8271cf189ea8efb9baf"
         },
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
@@ -189,10 +189,20 @@
           "version": "repo-file-v1:sha256:9967bc667c8ad13bb20300e90c3a545ac265c9f6d2b44549a7d3d022a8ba1374"
         }
       ]
+    },
+    {
+      "id": "claim_c9ae32cdf38245d0b9a3247e03d104db",
+      "statement": "Development staging honors an explicit DECODEX_RUNTIME_LOCK_PATH requirement without compiling Codex, while release staging retains the development-baseline check.",
+      "evidence": [
+        {
+          "resource": "repo://scripts/macos/stage_decodex_app.sh",
+          "version": "repo-file-v1:sha256:4c8dab6abd1a26b236184a5c514f9ec27668dbc396b1f8271cf189ea8efb9baf"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T14:39:50.043Z"
+    "at": "2026-10-21T14:42:59.992Z"
   }
 }

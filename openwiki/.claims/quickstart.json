@@ -1,22 +1,22 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:efeed83109694ce3b9f2bbe9464da7cd416b1353f994c057d9d2b6501ba651d2",
+  "pageVersion": "sha256:d136aebd11e107a7b9f452989fb166fedf902d5ff861ce53ee19d6ee630a5de1",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
-      "statement": "The current Agent graph presents dependencies and reports; the right workbench renders selected work, connection details or an overview, replacing the historical Factory surface.",
+      "statement": "The current Agent graph presents work relationships; the right Collaboration panel keeps recorded exchanges and pending response requests visible across chats while expansion preserves the active chat and draft.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_graph.rs",
-          "version": "repo-file-v1:sha256:aee015a2bdb3fb31c3136251d7b3274f7ae034433f94ef8739ddd2aadf5bc933"
+          "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
+          "version": "repo-file-v1:sha256:9e9962f9a94992b0baad5f00223ec540840ff6672d23e729eea366fd12b02bec"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
+          "version": "repo-file-v1:sha256:c3c753e8cc9b2662901460d3e935fce30250b8d5baabea800994a304e72c0516"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
           "version": "repo-file-v1:sha256:2385efed543e4b17d01d59fc612756f0f9b77c8555c0a32a46cc93717dd22319"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_workbench.rs",
-          "version": "repo-file-v1:sha256:c5710534cd230da268ee62988ef523a0f33dab488fe038a1ac167aac56e64b3c"
         }
       ]
     },
@@ -103,6 +103,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T09:01:22.045Z"
+    "at": "2026-10-21T14:42:59.992Z"
   }
 }

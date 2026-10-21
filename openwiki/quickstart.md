@@ -6,12 +6,12 @@ tags: ["decodex", "architecture"]
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
-  - id: openwiki-source-ec2c431b14759817413ba09e
-    resource: repo://apps/decodex-gpui/src/agent_graph.rs
+  - id: openwiki-source-3708e6cf9324a8ff1f6c39ae
+    resource: repo://apps/decodex-gpui/src/agent_collaboration_tests.rs
+  - id: openwiki-source-2a6989c7fa25b9681df71f95
+    resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
   - id: openwiki-source-51a4755f3c4ddd78511e5c8e
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
-  - id: openwiki-source-c0e58bc836ac05c982449723
-    resource: repo://apps/decodex-gpui/src/agent_workbench.rs
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-cc0439b23243c3697ba49199
@@ -26,10 +26,10 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
+generated: { by: "codex", at: "2026-10-21T14:42:59.992Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T09:01:22.045Z
+    at: 2026-10-21T14:42:59.992Z
 ---
 
 # OpenWiki quickstart
@@ -60,7 +60,7 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 
 - `decodex serve` is the service and SQLite product-state owner. GPUI and CLI use typed local clients. The bundled helper is `decodex`, not `decodexd`.
 - The protocol crate’s `CURRENT_VERSION` and the embedded migration ledger define compatibility. Read these owners instead of copying version numbers into operational instructions.
-- The Agent graph presents dependencies and reports; the right workbench shows selected work, connection details or an overview. Historical Factory diagrams do not define the current desktop.
+- The Agent graph presents work relationships; the right Collaboration panel keeps recorded exchanges and pending response requests visible across chats. Expanding an exchange preserves the active chat and draft. Historical Factory diagrams do not define the current desktop.
 - Account admission accepts native `plus`, `pro`, `prolite`, `promax` and `team` plans. OAuth and PAT use the same plan scope; native identity, quota and entitlement remain authoritative. See [Accounts](operations/accounts-and-routing.md).
 - Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.
 - Unknown submission outcomes require exact receipts or native history. They do not authorize replay. Unavailable conversations keep readable history.
