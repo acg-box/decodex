@@ -14,6 +14,7 @@ use tokio::{process::Command, sync::mpsc::Receiver, time};
 
 use crate::{
 	account_import::{self, CredentialSource},
+	account_launch::process::APP_SERVER_ARGS,
 	agent::tests::{self, AgentConfig, AgentCoordinator, AppServerClient, ServerEvent, Value},
 	native_agents,
 };
@@ -112,7 +113,11 @@ async fn evaluate(binary: &str, model: &str, output: &Path, scenario: &Scenario,
 	let (mut agent, _, _store_home) = tests::fixture().await;
 	let mut command = Command::new(binary);
 
-	command.arg("app-server").current_dir(&workspace).env("HOME", &home).env("CODEX_HOME", &home);
+	command
+		.args(APP_SERVER_ARGS)
+		.current_dir(&workspace)
+		.env("HOME", &home)
+		.env("CODEX_HOME", &home);
 	let (client, mut events, mut process) = AppServerClient::spawn(&mut command).unwrap();
 
 	agent.client = client;
@@ -120,7 +125,13 @@ async fn evaluate(binary: &str, model: &str, output: &Path, scenario: &Scenario,
 	agent.config.sandbox = "read-only".into();
 	let mut log = File::create(output.join(format!("{}-{repeat}.jsonl", scenario.id))).unwrap();
 	let outcome = AssertUnwindSafe(time::timeout(Duration::from_secs(240), async {
-		agent.initialize().await.unwrap();
+		// Keep the product form capabilities and observe native peer calls for evaluation only.
+		let mut capabilities = serde_json::to_value(decodex_codex::app_server_client::InitializeCapabilities::for_agent()).unwrap();
+		capabilities["optOutNotificationMethods"] = serde_json::json!([]);
+		agent.client.initialize(serde_json::json!({"clientInfo":{"name":"decodex_agent_evaluation","version":env!("CARGO_PKG_VERSION")},"capabilities":capabilities})).await.unwrap();
+		let config = agent.client.request("config/read", serde_json::json!({"includeLayers":false})).await.unwrap();
+		assert_eq!(config["config"]["features"]["wake_on_agent_messages"], true);
+		writeln!(log, "{}", serde_json::json!({"evaluationScope":{"model":model,"effort":"medium","launchArgs":APP_SERVER_ARGS,"rawPeerCallObservation":true}})).unwrap();
 		// Reuse the existing production external-auth boundary; never log the credential request.
 		agent.client.request("account/login/start", serde_json::json!({"type":"chatgptAuthTokens","accessToken":source.bundle.access_token(),"chatgptAccountId":source.provider.account_id(),"chatgptPlanType":source.bundle.plan_type()})).await.map_err(|_| "native credential projection failed").unwrap();
 		let catalog = agent.client.request("model/list", serde_json::json!({})).await.unwrap();
@@ -220,9 +231,17 @@ fn record(log: &mut File, event: &ServerEvent, elapsed_ms: u128) {
 	let value = match event {
 		ServerEvent::Notification { method, params }
 			if method == "item/completed"
+				|| method == "rawResponseItem/completed"
 				|| method == "turn/completed"
 				|| method == "thread/tokenUsage/updated" =>
 		{
+			if method == "rawResponseItem/completed"
+				&& !matches!(
+					params["item"]["type"].as_str(),
+					Some("function_call" | "function_call_output")
+				) {
+				return;
+			}
 			if params["item"]["type"] == "reasoning" {
 				return;
 			}
