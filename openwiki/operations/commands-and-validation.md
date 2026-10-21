@@ -54,10 +54,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-17T04:57:07.940Z" }
+generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-17T05:27:59.815Z
+    at: 2026-10-21T14:39:50.043Z
 ---
 
 
@@ -203,6 +203,10 @@ Makefile.toml owns the complete gate and tool-specific formatter/linter settings
 ## Evidence boundaries
 
 Report source checks, unit tests, signed build, visual acceptance, provider acceptance, PR merge and installed release separately. For UI changes test focus, typing, selection, scrolling, panel transitions and task switching. Preserve failure output; screenshots that fail or return blank do not establish that the app itself is blank.
+
+### Nextest exit markers
+
+A `LEAK` marker can accompany a passed test when its captured output remains open after process exit. Diagnose the exact runner, test cohort and pipe owners before attributing the marker to application cleanup. The [retained diagnosis](../../automations/upstream/retained-evidence.json) records a macOS Nextest 0.9.143 capture-inheritance reproduction, its upstream fix and separate isolated and serial controls. It does not establish that every future marker has that cause. The original isolated test did not reproduce the marker, and the original event has no pipe trace. Do not suppress the test, lower the timeout or claim that an unexecuted runner upgrade has passed.
 
 [Wiki maintenance](wiki-maintenance.md) describes the separate documentation lifecycle.
 

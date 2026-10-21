@@ -60,10 +60,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-17T04:57:07.940Z" }
+generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-17T05:27:59.815Z
+    at: 2026-10-21T14:39:50.043Z
 ---
 
 # Runtime Architecture
@@ -103,7 +103,7 @@ Retired repository/GitHub effect orchestration does not return through a wiki up
 
 ## Native launch policy
 
-Decodex constructs and attests one fixed app-server argument list. It enables native tool-description-first ordering, native subagent context defaults, and full-fork prefix preservation. The dotted prefix option preserves the existing `multi_agent_v2` selection; it does not enable multi-agent execution by itself. Code Mode hosting transport stays under native configuration.
+Decodex constructs and attests one fixed app-server argument list. It enables native tool-description-first ordering, native subagent context defaults, Agent message wakeups, and full-fork prefix preservation. The dotted prefix option preserves the existing `multi_agent_v2` selection; it does not enable multi-agent execution by itself. Code Mode hosting transport stays under native configuration.
 
 The embedded runtime requirement selects the exact component. Development uses a reviewed upstream commit; production selects a qualified official Release. Check the actual component and its generated protocol schema before claiming that an API is available. See [upstream maintenance](../operations/codex-upstream-autopilot.md).
 

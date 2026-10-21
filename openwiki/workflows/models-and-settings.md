@@ -20,10 +20,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_native_goal.rs
   - id: openwiki-source-d28152527a1218d5afb307f7
     resource: repo://crates/decodex-runtime/src/agent_search_settings.rs
-generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
+generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-15T06:39:54.695Z
+    at: 2026-10-21T09:01:22.045Z
 ---
 
 # Model selection and settings ownership
@@ -64,7 +64,7 @@ Memory availability comes from the native feature observation. A capability flag
 
 ## Native launch defaults
 
-The attested app-server launch enables description-first Code Mode and native child context limits. It also enables fork-prefix preservation through the dotted `features.multi_agent_v2.preserve_fork_prefix` option, which preserves the user's existing multi-agent enablement. These are runtime launch defaults, not new desktop switches. Description ordering does not itself enable Code Mode.
+The attested app-server launch enables description-first Code Mode, native child context limits and Agent message wakeups. It also enables fork-prefix preservation through the dotted `features.multi_agent_v2.preserve_fork_prefix` option, which preserves the user's existing multi-agent enablement. These are runtime launch defaults, not new desktop switches. Description ordering does not itself enable Code Mode.
 
 Native Codex retains transport selection. The integration does not force shared gRPC hosting or a global tool-output retention setting. Fork-prefix preservation and child context limits have bounded compatibility evidence; they do not establish provider cache savings, latency improvements or better model answers. Follow [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) when evaluating those effects.
 

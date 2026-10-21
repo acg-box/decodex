@@ -5,7 +5,7 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-15T06:39:54.695Z
+    at: 2026-10-21T14:39:50.043Z
 sources:
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
@@ -25,10 +25,16 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_visibility.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-6e91ea695daa42f5ed1edb74
+    resource: repo://crates/decodex-runtime/src/agent/async_projection.rs
+  - id: openwiki-source-a5bf72500fe69a895fca0dac
+    resource: repo://crates/decodex-runtime/src/agent/coordination.md
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-52d3ef4824079f66e9063566
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
+  - id: openwiki-source-c128f93c524a45d623373bc4
+    resource: repo://crates/decodex-runtime/src/agent/observations.rs
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
@@ -41,7 +47,7 @@ sources:
     resource: repo://database/src/agent_guardian.rs
   - id: openwiki-source-e1fc2e0e81623c7dd7ff5417
     resource: repo://database/src/agent_process.rs
-generated: { by: "codex", at: "2026-10-14T05:36:25.710Z" }
+generated: { by: "codex", at: "2026-10-21T14:39:50.043Z" }
 ---
 
 # Agent coordination and native conversations
@@ -55,6 +61,14 @@ The GPUI composer sends typed commands to the service-owned `AgentHost`. The hos
 `agent/instructions.md` defines the behavioral policy. A worker finishing is evidence for the Agent to assess, not automatic parent-goal completion. Dependencies require accepted, resolved work. Review starts after an artifact exists; a review does not grant execution permission. Continuation can invalidate previous acceptance.
 
 ## Delegation instructions and native subagents
+
+### Questions, receipts and completion
+
+Agents first investigate questions within their assigned scope and authority. They can coordinate directly through existing authorized channels. They ask the responsible parent when a blocker remains or a decision exceeds their delegation. The parent checks instructions and evidence before asking the user. A managed worker without a parent messaging tool returns its blocker and evidence in its work result. The parent can answer through the existing continuation path. These are model instructions; they do not grant new permissions or add a question router.
+
+An Agent conversation stays open for later requests. Resolve a separate child goal, and assess worker results with `agent_disposition`. Each disposition uses current pending receipt IDs for the exact work item. Do not acknowledge a handled receipt again. The Agent's own user input is acknowledged when its turn ends.
+
+`agent_continue_worker` starts another turn only when the worker is idle. A question can arrive while its current turn still runs. A Busy reply means the instruction was not sent or queued. Finish the parent turn, wait for completion, inspect `agent_list_work`, then continue the same idle worker. A committed `decodex/work_instruction` retires earlier worker questions; later questions remain available.
 
 Decodex worker tools create persistent work records and dispatch their bound native conversations. Native Codex subagents remain a separate execution owner. Their requests and approvals follow verified native ancestry. The desktop presents both forms of work without turning a native child into a local manager.
 
@@ -84,13 +98,13 @@ A future change must define a cutover before moving pending messages. Stop local
 
 ## Archive synchronization
 
-Codex owns the archive state. The service observes the exact native thread IDs bound to retained local work. It searches active threads first, then searches archived threads for the remaining IDs. Both lists include every provider and source kind. A positive archived observation hides that work; a positive active observation restores it. An absent ID, an empty title or a completed status does not authorize deletion.
+Codex owns the archive state. The service observes the exact native thread IDs bound to retained local work. It searches active threads first, then searches archived threads for the remaining IDs. Both lists include every provider and source kind. A positive archived observation hides non-root work; a positive active observation restores it. The personal Agent entry remains present. An absent ID, an empty title or a completed status does not authorize deletion.
 
-The reader orders native pages by update time and stops when it finds every requested ID. It does not need to read the entire archive. Transport frame limits, a whole-read deadline and a retained-ID and cursor budget bound the operation. Valid positive observations from completed pages remain usable if a later page fails or times out. IDs without positive evidence retain their previous visibility.
+The reader orders native pages by update time and stops when it finds every requested ID. It does not need to read the entire archive. Native thread metadata supplies working-directory filters when every binding can be read. Otherwise, the reader scans the complete catalogs. Transport frame limits, per-page deadlines, and retained-ID and cursor budgets bound the operation. Valid positive observations remain usable if a later page fails or times out. IDs without positive evidence retain their previous visibility.
 
 Archive observations refresh in the background on a five-second interval. Only one refresh runs at a time within a native process generation; a changed set of bindings can request an earlier refresh. Work snapshots use confirmed observations without waiting for the native read. A new process starts with no inherited observations, and a late result from an earlier process cannot replace them. The service does not write a second archive flag into SQLite.
 
-The active snapshot supplies the work list and relationship graph. Filtering removes incident relationships, pending-event entries, context references and workspace membership from that view. Live descendants remain visible under their nearest visible ancestor. The stored work and original hierarchy remain intact; a later positive active observation shows them again after restoration in Codex, without an application restart.
+The active snapshot supplies the work list and relationship graph. Archived non-root work is hidden. The personal Agent remains as the coordination entry point, with its archive state available to the input gate. Filtering removes incident relationships, pending-event entries and context references from the view. Hidden work leaves workspace membership. Live descendants remain visible under their nearest visible ancestor. Stored work and the original hierarchy remain intact. A later positive active observation restores visibility without an application restart.
 
 Native child lists explicitly include all providers and exclude archived threads. Only a complete valid list replaces the previous list. When a child leaves that list, the desktop saves its draft and closes its affected tabs. Removal of one local owner clears only that owner's child state. Other open conversations keep their connection, input and view state.
 

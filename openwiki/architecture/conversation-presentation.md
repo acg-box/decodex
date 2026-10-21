@@ -20,6 +20,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_mermaid/parse.rs
   - id: openwiki-source-cdf91143ee7350a723ed596e
     resource: repo://apps/decodex-gpui/src/agent_mermaid/tests.rs
+  - id: openwiki-source-ae2ce5cda718ede63f50be9b
+    resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-56b561d7e6dd906d218aa9d1
@@ -38,6 +40,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-7b89f5bc6ecd604ca4e97dc2
     resource: repo://apps/decodex-gpui/src/composer_text.rs
+  - id: openwiki-source-592957b8edd8a689f738c189
+    resource: repo://apps/decodex-gpui/src/ui_frame.rs
   - id: openwiki-source-246a7882a46c2cac4571760d
     resource: repo://apps/decodex-gpui/src/ui_loading.rs
   - id: openwiki-source-afbf2d30c0979a844373d8e5
@@ -60,10 +64,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/media_tests.rs
   - id: openwiki-source-8d3e8e016f038e821f68dd0c
     resource: repo://crates/decodex-runtime/src/agent/timeline/media.rs
-generated: { by: "codex", at: "2026-10-17T05:27:59.815Z" }
+generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-17T05:27:59.815Z
+    at: 2026-10-21T14:39:50.043Z
 ---
 
 
@@ -119,9 +123,9 @@ These defaults apply to new conversations. Saving them does not restart a loaded
 
 The shared GPUI popover moves into place by four points as one opaque surface. Its background, shadow and content move together, without a height clip or separate primitive fades. The menu overlays the page so the layout does not clip its blur and shadow.
 
-Animation requests use the workspace frame owner on macOS and the normal GPUI animation-frame path elsewhere. Native glass surfaces have their own host integration. Keep these ownership boundaries intact when changing a disclosure: transcript expansion must not recreate or change the composer's material.
+Presentation entities request GPUI animation frames while application policy permits animation. Keyboard focus does not set the cadence of sibling windows. Native glass surfaces have their own host integration. Transcript expansion must not recreate or change the composer's material.
 
-Streamed model output, dictation and Live captions share a grapheme-safe text reveal. Its rate adapts to the pending text and time remaining, with a 120 ms catch-up target. Corrections replace the visible prefix without replaying it; reduced motion reveals the current text directly. This is a presentation policy, not a guarantee about transport latency or microphone readiness.
+Streamed model output, dictation and Live captions share a grapheme-safe text reveal. Model output uses an adaptive reserve across network gaps, with a 300–700 ms receive horizon. Completion limits the remaining reveal deadline to 160 ms. Dictation and Live captions keep a 120 ms response horizon. Corrections replace the visible prefix without replay. Reduced motion reveals current text directly. These are presentation policies, not transport-latency or microphone-readiness guarantees.
 
 ## Mermaid flowcharts
 

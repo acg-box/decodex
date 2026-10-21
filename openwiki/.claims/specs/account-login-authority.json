@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6d584e22ac252dd5314f393ecf4c60afdedd5db4ee4f3f7045d9a34e680d96f1",
+  "pageVersion": "sha256:4806b13556c5f9f0a24cb3bbbdb0ca596c095d955185ff53bcc73f9194b4c21b",
   "claims": [
     {
       "id": "claim_a3c49fc4897341d8af55579dc54de44e",
@@ -8,11 +8,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/client.rs",
-          "version": "repo-file-v1:sha256:ad4174b72fcdb6d1a36be8f4ddcd20974ed544da0985415c4acad13f86cd898f"
+          "version": "repo-file-v1:sha256:c1e86365a739b2bd7b2214189e0c85322bf39810764b019bb903d4b0b75cfa3c"
         },
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L275-L292",
-          "version": "repo-lines-v1:sha256:4c2c6c8cd9c86e4990b13a676d068d9423bc04cd687e42aca2d6ae1f08c642e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkZGU4NTVjZjVjNjk2OTdiNWJlZTE1NjQyNzMwYjYzYzIwOWI3MWNjMjc4NWM3ZDFiNjczZWExOWNiYzhlZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L289-L307",
+          "version": "repo-lines-v1:sha256:c87a72631b158db790112cb16ce8e8bd264007a68e3730767f9d1f1d0c32ca8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZDA5NzgzZTA2YzlkMGI3MDhhMTFiNTU3N2M2MWNlMjBhZGRjNjZjYmVmMGJkZjc5ODQ2ZWZiN2M5OWM3YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjZkOWNlOGNkNmRlNjQ0YTM4Y2QwYjA0NTRmYjkzYjBjMWEzNTFlNzAyYjc1ODI0NmE2ZTZkZWI3N2Y1MzkifQ"
         }
       ]
     },
@@ -26,13 +26,13 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_login.rs",
-          "version": "repo-file-v1:sha256:2965c6f70e788ceab1cd2899708b848b8f667592365d67f14f71387ab636e71f"
+          "version": "repo-file-v1:sha256:18697f264e4e15faa664d3c43cb376bdc28eb9d56377876c9f2c971d0ad53adf"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-14T05:36:25.710Z"
+    "at": "2026-10-21T09:01:22.045Z"
   }
 }

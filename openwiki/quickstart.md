@@ -10,22 +10,26 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_graph.rs
   - id: openwiki-source-51a4755f3c4ddd78511e5c8e
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
+  - id: openwiki-source-c0e58bc836ac05c982449723
+    resource: repo://apps/decodex-gpui/src/agent_workbench.rs
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
+  - id: openwiki-source-ff8abff5a675874c627f1969
+    resource: repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-17T07:29:15.006Z" }
+generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-17T07:29:15.006Z
+    at: 2026-10-21T09:01:22.045Z
 ---
 
 # OpenWiki quickstart
@@ -37,7 +41,7 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 | Task | Read first |
 | --- | --- |
 | Understand service, clients and storage | [Runtime architecture](architecture/runtime-architecture.md) |
-| Trace Agent coordination and native children | [Agent coordination](architecture/chief-coordination.md) |
+| Trace Agent coordination, question escalation, event receipts or Busy recovery | [Agent coordination](architecture/chief-coordination.md) |
 | Change conversation layout, loading or motion | [Conversation presentation](architecture/conversation-presentation.md), [Desktop workspace](architecture/desktop-workspace.md) |
 | Change input, branches, drafts, read state, export or recap | [Conversations and recovery](workflows/conversations-and-recovery.md) |
 | Change model, effort, Goal, search or native launch defaults | [Models and settings](workflows/models-and-settings.md) |
@@ -56,7 +60,8 @@ Decodex is a local workspace above Codex app-server. The primary Agent can discu
 
 - `decodex serve` is the service and SQLite product-state owner. GPUI and CLI use typed local clients. The bundled helper is `decodex`, not `decodexd`.
 - The protocol crate’s `CURRENT_VERSION` and the embedded migration ledger define compatibility. Read these owners instead of copying version numbers into operational instructions.
-- The Agent graph presents dependencies and reports; the separate tree presents parent ownership. Historical Factory diagrams do not define the current desktop.
+- The Agent graph presents dependencies and reports; the right workbench shows selected work, connection details or an overview. Historical Factory diagrams do not define the current desktop.
+- Account admission accepts native `plus`, `pro`, `prolite`, `promax` and `team` plans. OAuth and PAT use the same plan scope; native identity, quota and entitlement remain authoritative. See [Accounts](operations/accounts-and-routing.md).
 - Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.
 - Unknown submission outcomes require exact receipts or native history. They do not authorize replay. Unavailable conversations keep readable history.
 - Local plugin management and embedded MCP HTML widgets are retired. Codex owns configuration and native execution; Decodex retains tool observations, native forms and readable history.

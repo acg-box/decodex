@@ -60,10 +60,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-17T04:57:07.940Z" }
+generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-17T05:27:59.815Z
+    at: 2026-10-21T14:39:50.043Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -176,6 +176,12 @@ The ignored prediction fixture checks parent context and tool-catalog inheritanc
 
 For a runtime change to prediction compaction, also test a fork above the compaction threshold. Check pre-turn, tool-continuation and post-turn boundaries in both native history modes. The prediction must preserve its inherited context while the parent retains normal compaction. Check context-limit failures and model-requested context resets separately. The local inheritance fixture alone does not cover these cases.
 
-The native launch fixture checks description-first Code Mode, child context defaults and fork-prefix preservation while retaining boolean and table forms of the user's multi-agent selection. Semantic prefix preservation does not prove provider cache savings. Synthetic context-limit and compaction probes do not prove real-provider latency or cost improvements. Code Mode transport remains controlled by native configuration; this integration adds no transport selector or universal tool-output retention policy.
+The native launch fixture checks description-first Code Mode, child context defaults, Agent message wakeups and fork-prefix preservation while retaining boolean and table forms of the user's multi-agent selection. Semantic prefix preservation does not prove provider cache savings. Synthetic context-limit and compaction probes do not prove real-provider latency or cost improvements. Code Mode transport remains controlled by native configuration; this integration adds no transport selector or universal tool-output retention policy.
+
+## Question routing, completion and cancellation
+
+The [retained coordination evidence](../../automations/upstream/retained-evidence.json) records the bounded real-model evaluations for self-resolution, peer coordination, parent escalation, user decisions and persistent Agent completion. It also records exact inbox-receipt handling, separate child-goal resolution and recovery after an idle-only Busy refusal. Busy means the continuation was not sent or queued. The model should finish its current turn, wait for the existing worker and reassess that same worker before sending a follow-up. These evaluations used one model and effort with controlled scenarios and predefined user choices. They do not establish every model, permission configuration, race or real user interaction. This Wiki refresh did not repeat them.
+
+The [sampling qualification](../../automations/upstream/qualification.json) separately records explicit cancellation of Ask separately. Closing its panel only hides presentation; Cancel answer targets the exact native sampling request. A cancellation request, native acknowledgement and a result that wins a race are different outcomes. Preserve exact request ownership and uncertain-state readback. This is not cancellation of the parent conversation or a general scheduler. These receipts do not establish installed-app acceptance.
 
 These fixture definitions specify what can be checked. They do not claim a new execution result from this documentation refresh, installed-app acceptance, or release delivery.

@@ -1,18 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b1a71100f720bb0d213f9ba2cb6ad42d2658fb940831036493ed69d9ca93b059",
+  "pageVersion": "sha256:e8746efc4022cfb6db173f937c29d4c0a3b146161eb07d8a7ebcf027906c4e05",
   "claims": [
     {
       "id": "claim_738021d152cc4128af3d3b4b217fe92c",
       "statement": "Account Route holds service-owned routing/account locks and checks shared-auth liveness and exact source identity before authoritative completion.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L525-L652",
-          "version": "repo-lines-v1:sha256:b2fd0961feab2f57378f906e7f5e0e1da6c28d3e627f9fed45ccbe2ed93ccbfc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTI4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2YWMzYmVjNjlhMTQ0NDk4NmQyYTFkYTc2ODI3ZjYxODYwNDY2ZDg5NmEyMzJmNmJjZTAwZTU5ZWE2MjJiZWY1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiNWU1OWU2ZjE2ZjI0MzNhYzBkY2M0NTliM2JjOTljYzBjMDUzOTlhZjZkNThmZjUxNzBiNmU0M2E0ZmE3MDVjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlYzEzMDYxNzE4OWVjZDI4MTgzY2NmYzk4NTE2MTc3NmQ4NzQxZmUwNWJjODA5NDRhYjQ4YmI4ZjM3ODRjZjlhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI2ODk1Yjk4ZTM2ZWRiZWM1ZGViYTdlNDU1MzUzMTMyMTUxNGMzYzVhYzc5NWVkMzEyYmZkZjc5YTJlODFhNDZlIn0"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L832-L900",
-          "version": "repo-lines-v1:sha256:5908b53824f91419b6794ebbe129f018729ab889407573ee37201440606699a1:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3NjUzMDVjY2U5NDAyNjVhYTE4MWU3MjEzMGYzZDU3MzZiZWNjMzYyZTk4YjhhY2RiNDEwYWRkMDEyODg1YzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVhZDllOTZlY2JkY2VhNzc2MzE3Y2NkNjljOGRmMzQzYTNkMzVkZTExNmFlZmFjNTgzMzE4YTU2MTlkZGMwNWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhiZWU4Yjc5ZmNmNzc5M2M0MmFlYTU2ZDAwNmM4ZjYyNjcyODE1ZjdhZGQyYjIwN2NhYTI0MjgwZDE1OWVmN2MifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs",
+          "version": "repo-file-v1:sha256:7deb050ff7430319ee4cd56797817463b4eb5a87ab440f7455215986ae9eec2d"
         }
       ]
     },
@@ -67,7 +63,7 @@
           "version": "repo-lines-v1:sha256:c2de080b4effd234613fce1f76100cd1d0b5e2236e7ddc370c444c0e86b2b65f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2ZWM0ZTQ1MzljOTQ3OTZmODljMjk1Y2RjNTJkZjZiOTg4NjJhZTIxOGNjZGFhYjRiMmNiMTNmZWI0NmY0ZTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4NmZkYTBjNGNmMjQ2YzVhMTRlMzU1ZTdhZjAyNjQ1OWI3OGI2ZGNhNDEwYWRhNmY5ZDZmN2ExNTI0M2UwZWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MzgyMzEwZGVkNWYwZWMyMGM2MzdmMjEyYWZlZWM1ZDE4OTY1NzRlMDViZGU2Y2I0Njk3YmNjZTkxZTQ4NjAifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L1292-L1332",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L1298-L1338",
           "version": "repo-lines-v1:sha256:02a76291224e3b0dc38f5632e27cf0447b2946c2d27769a0e9018fecf758b9ad:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxNzA4OTc1ODkxMDA3YTAwMTZkZDZkOTg5NWNjODA0ZDdmMDk4YzUzN2NiMDU3MDIzZTU1NTNiNjk5YTIxZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyZjBhNTc4MWJiYTFjNTI4NjcyNzU3ZjEwNGZkN2IwZWZhMzRkYzVhNDgxMzM3NjRmMjQ0M2YxZDNmYWVkZGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRhOTMxZTQ4NGRmZTllMzU5OWFhNDRiMjM1Njk0MjRiMDFmNjZiMzg5MzI1OGI0N2ZmMmQwMDhjMzdhNzRiOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjczZGMwNjUxOTk2ZWZjNmJhYWY4MDAzNDE5MzgwNDYyMjBhNzM2YTYxYjUzNTM4MGU2ODFlZDZiNzM3Yzk3NzEifQ"
         }
       ]
@@ -77,11 +73,11 @@
       "statement": "Known imported PAT sources can be resolved from exact stored bindings without per-observation network hydration; unknown shared PAT sources require explicit import, and explicit refresh rechecks the same account and user identity.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1696-L1722",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L1715-L1741",
           "version": "repo-lines-v1:sha256:10ded1ac09b245186144991d86ab06029f983f2129ee455e1d61e0c4863cdb37:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4MWRlMTc4ZDFlZjc0NGYwNzQyOWVlZjMwOWQ0Y2Y4YzZkZmE2YjJhY2Q5NjFlNThkMDJiZWEzMDgzODk3OTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI2Zjc0ZDk2ZGIwOWIzMGQ2MmIyMTRmYjQyMzQ4ZDg5ZDQzOGYxZjZjYTY5MDZhNGM4MTVkY2ZhMjQ5MzYxODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ0ZjMxMGM0ZDdjMmUzNDI2NDNjMDZlNmEzMDZlZjE5MWIzZmM5YzU2ZWJiNjBhZDA0YjE2NTVkOWZjYzVlN2MifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L301-L341",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L308-L348",
           "version": "repo-lines-v1:sha256:08a51de5d0559a9b9693dc6b4c8dbcaada49e9ca5b4d12fcc57332bd84edb6f9:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0NTIwNzYwNTdkNGM3MjdkN2VmZjc3YTZkYTU2MDNmNzNlYjJiYjg0NDJiY2Q0MGI1YjVhNmM3ZTZlYWU4NDYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQzYjZmYzQyNDNmYjRkZDZmODgyMTcwNmUxYWQ5MjAzZDNlYmY3OGQ2NmRmZTBmYTE5ZTNiZTg5NjRkZjBjYzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI1ZmUwZTViNTY1NDAyYjJiODFkOTBjNDVkOTVkZjhlNWEzZmFjYTNlYjA3MzAxYjA4MTQ1ZGE4OTk0M2YzODMifQ"
         }
       ]
@@ -101,12 +97,12 @@
       "statement": "GPUI retains two aligned quota slots with local reset timestamps, a separator and flexible progress tracks; unavailable windows use placeholders rather than zero-percent observations.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/quota_meter.rs#L67-L148",
-          "version": "repo-lines-v1:sha256:e823ae1c3166e4979cf8e603db5852bbcab4441c278774866f68463ea5e1657d:eyJzZWxlY3RlZExpbmVDb3VudCI6ODIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmYTdhMzk0MWFiMGI0ZDQ5ZjhhOWQzNzFiODc0MzE5ZDRiNWNiYzE3YTc5MDAwNjI2ZTgzODU4NWNiNGZkODkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3ZGIzNTkzODE1MTVjMGQ4MzNhY2ViN2ZjYWViMDg1MDFjZGVkNjM5YjY1M2U3ZWY4MmUxNmRjMzAzOGU2MTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVjYzJhNWI0NDQ1YTNhMGNhOWUzYjQ5ZGYyYjI2MzE4ZTk3MmIxYzljZmJmN2Y2OTE3MDhmOWEzMGRjMmEyMGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzN2FjMDBjYzJhMzRjNGFhMzQ0ODU2NWExYzhkYmYwNzU2ZDBkNWRkNzcyNDM5NjM0YmI3Nzg3YmQ1OGU2MTUifQ"
+          "resource": "repo://apps/decodex-gpui/src/quota_meter.rs",
+          "version": "repo-file-v1:sha256:c41264045728d9422be8cdec1337f4b7235a9e1bccf19b3aa1df0b7a5cfe60f2"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3882-L3919",
-          "version": "repo-lines-v1:sha256:62c486d767ed58bb772c7bc5881de483ddf754bc018af8c18c3d6a939b78ae66:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5NWRkNWU4NDc3OWRlMjZhMjQ3ZTcxMTQyMDZkMTM5YjU3ZGJhMjYxYTBkYjFlODEzOGQ3M2VmYjhiMDI3MzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzZWFlYjlhNTI0ODI1YjcyMzUyZmRmZDIxMTM2YTViMWJjZmRjZjJhNjRmZGY1MTkzNWExNzAwNzZkM2NiYmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdjOWI5NDlhOTQ1ZmEzZTczYjdjOGM0MTM5MmNiNmUzYjBmN2Q4ZDJmN2QyMzMwMWJmZjBiMGMzMWU4NDc3OTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkMGY2MmFjZmI3MTBkYjlkMjFiODc4MjYzN2Y2NjZlM2VjNzcyNWFmN2U4NDNlMGExZTc0MTk1NzM4Y2NkYzQifQ"
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3930-L3980",
+          "version": "repo-lines-v1:sha256:6ed10217f0e3f7ebb1bcc560a809d43f15a77c88043f763dc974404f525b3044:eyJzZWxlY3RlZExpbmVDb3VudCI6NTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4MTNlOGEyNTVkZmUwZWI5NjNiOTFlZWI1NGZlZWVjMTNjOThmNzJjMmVkNzhmYzA3MTQ4YTUxMGU1Y2M0Y2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4NzM0MTFmMDcyZDZiYjMxZGY4YjdiYWY5NWJlNTAxODFhODMxM2FkZjNhZTI0MGM5NjAxZmRlYWNhYjA0YjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzMDcyM2RhMmVhNmUxNDlkNGI1MGY4ZGQwZDRmMTNmYTRmYTk0OGVhNGQ3MTY4Nzg3N2E1NzhiYTk0ODQwYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhOTc4M2VlODY1Yjk3NDc5NGMwOGE1ODNhMzA0ZjYxMjc0ZWU1YTgxOThjOTdhYzNkY2RmZWYxNjFhNWI2ZDgifQ"
         }
       ]
     },
@@ -128,7 +124,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:7bda9b71655442070e48b381967f8bf969c44e71abe505b41e328267300812f5"
+          "version": "repo-file-v1:sha256:91beb78147ebff869ea104a5eb1b3069ff3876d9970eef21e11a25e0ae2f7e49"
         }
       ]
     },
@@ -137,7 +133,7 @@
       "statement": "Sign out can supersede an exact rejected refresh after revision and credential checks; the original failure remains in the journal, while pending and ambiguous refreshes still block logout.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L2994-L3180",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L3024-L3210",
           "version": "repo-lines-v1:sha256:aefd9f6f9e4c8b9f61fb8c3838dbf8641e2fca437ee33683938319c17e2220f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTg3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4ZTA4MGJmNGE3NDU0MTdlMDIxNWE2ZjFlZDJjNTM2ZGJiZmQ0OTg2ZTU0YWNkOTc3M2FiOTI4OTU1MDk1N2JmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJlNTA0YjRiMjBiZjJmMjg4MGRjY2RlNGQzYTEwNmExMzRiYmEzOTExMDM5MGE3ZDQxMDA1MGM5ZWFkNWVmZmI1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhOWVmZjAyMDk3MDIwMDgzYmRhZDlkNzQ5NDZhNjk2ODQ1ZmY5ZTVlMTcwMGI1YzBhNWMyOTFjNTAyMTE2ZWNkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkODBhNjQzNWIzMTM5YmFkNWM3NDFmNGZiYWQ3OTIyMzQ5MDc2ZDE4M2U2NTM1ZWM2OTMxMGMyN2YwMzQ0ODgzIn0"
         },
         {
@@ -149,10 +145,24 @@
           "version": "repo-lines-v1:sha256:425e37a5351f4e4abbfe751e1d061188ec9f955ef8315ef968fb99450ba67fb0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1YmJhZjVjNWFjMDFiM2EwNTQzYWQwNzQ2MGQ2MWM5MDhmNzNhMGNkZWIzMmVlOTU0MTU5ODJmMzk5ZDU2NjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllOWQyZTAzNmU3NGNhYjJkYjI4NzA2OWUzZTEzOWRmZjY5YTFiZGVkZDBiZjJmYTFiZTVmMGMwYTQ2ZWJkNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmOGJjNThhNjI3OTYxODlhZWQyNTJmN2EyY2U2YzA4NDZjM2FiYTY3OWRmMjkwOWFiYzc3ZDQ2ZjY1NTMxYzQifQ"
         }
       ]
+    },
+    {
+      "id": "claim_d1427e7ac52743d587d3d2d07b03c414",
+      "statement": "Account admission accepts only plus, pro, prolite, promax and team for OAuth and PAT credentials, with Team classified as a workspace plan and absent or unknown plans rejected.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5589-L5603",
+          "version": "repo-lines-v1:sha256:5b47136506971aa4b802d62886d89a48e0c90fbd6e2a71d224b33796f0c135ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmNjk5MTEzNTNhZjE0Y2FiOWFmMzljZjU2NDA5YzMyNDJlYzAyOTdjMTVmMmU3ZWQxMjAzMGM2M2M2M2EzZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1NTgxZDhlMGQzMjM1MGEzMDlmMjBlYjVhMzNmYzYyYzg3ZWZlNzRmM2UzMGRhMTQ0Yzg5YmYzMmExYWIyYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5N2M4ZTkyYWMwMjViYTIwYzAwMzE4NzgxOThiYTlmMTY5NTA1MzNjOGQzMjkxYjA0NGEzY2Q5MzUzY2FlNzMifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs",
+          "version": "repo-file-v1:sha256:df87cab1b7d420e4626ee4db794ce79060f08bf96a2078c5ea3122c2db346641"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-14T02:32:34.699Z"
+    "at": "2026-10-21T09:01:22.045Z"
   }
 }

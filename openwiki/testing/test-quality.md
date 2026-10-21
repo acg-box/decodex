@@ -6,14 +6,16 @@ tags: [testing, maintenance]
 sources:
   - id: openwiki-source-95772fa38252ded838ec3a2f
     resource: repo://.config/nextest.toml
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-c740d34a4e6c4e581873e50e
     resource: repo://crates/decodex-account-login/src/lib.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
-generated: { by: "codex", at: "2026-09-29T06:54:38.514Z" }
+generated: { by: "codex", at: "2026-10-21T14:39:50.043Z" }
 verified:
-  - by: openwiki/0.7.0
-    at: 2026-10-03T17:31:35.485Z
+  - by: openwiki/0.7.2
+    at: 2026-10-21T14:39:50.043Z
 ---
 
 # Test quality and coverage
@@ -35,7 +37,7 @@ A source scan can enforce a narrow explicit boundary, but it does not prove exec
 
 ## Avoid duplicate execution
 
-The default nextest filter excludes the visual-capture and native-glass diagnostic binaries because they import application test modules. The main application owns those tests. All targets still compile. A target with its own independent behavior tests, such as the weather preview, remains in the test set.
+The default nextest filter excludes shared application tests from the workbench visual-capture binary and excludes the native-glass diagnostic binary. The main application owns those shared tests. The visual-capture binary's own `capture_send_tests::` remain selected. All targets still compile. A target with independent behavior tests, such as the weather preview, remains in the test set.
 
 Process fixtures have a separate serialized test group. CLI shutdown fixtures reserve the available test threads so unrelated heavy work does not consume their bounded startup window. These scheduling rules protect test reliability; they are not performance acceptance.
 
@@ -46,6 +48,8 @@ Small local fixtures can be clearer than a shared test framework. Share setup wh
 Motion tests should use controlled times where possible. Fixed intermediate wall-clock samples do not establish smooth animation. Installed-app review is still needed for material, clipping, alignment and scrolling.
 
 ## Cleanup evidence
+
+Nextest `LEAK` output means that captured output did not close within the runner's exit window; it does not by itself identify an application-owned survivor. The retained macOS Nextest 0.9.143 investigation reproduced sibling capture-pipe inheritance. The original test passed repeated isolated checks; the original marker had no pipe trace. Preserve those limits and diagnose a new marker on its own evidence. Do not change the timeout, skip tests or serialize the default suite merely to hide the marker. See the [validation guide](../operations/commands-and-validation.md#nextest-exit-markers) and [portable diagnosis](../../automations/upstream/retained-evidence.json).
 
 Record the removed assertion, the contract it purported to protect, and the retained owner or reason it is no longer needed. Validate the affected owner before merging a coherent batch. A repository-wide search is candidate discovery, not proof that every scenario was reviewed. Do not use deleted line or test counts as a completion target.
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3d4e78070426f9bce3d3b980f1cbd926c427e7c39091cf6eb17b75973beccb51",
+  "pageVersion": "sha256:4e927df49cf329cf0ea98a629fed46b486f01ae277689800ee4849729920970f",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_model_settings.rs#L1-L40",
-          "version": "repo-lines-v1:sha256:b787692890ae786ac679fe4b891930e7ee23f316e315963a626d8daf5d6d4111:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Zjc3MmEwYzE4N2UzOTg4NWI1YmQ1MWQyNjM1ZmM5NDM1OTMwN2FmY2U2NjNlMTlkOTIxZmU1YTgxNTk0NWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjM2EyMDc3NGQ1YzJiYjRjNzkwYzE4ODkwYTljNDk0Y2NiNTEwZmM4ZThjMDllYzc0NTE5YmMxNjRmYzc4NGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwN2E3ZmIzYzJlY2QxOTNhNjVkYTVmMjgyYzliNDhiYTFiMzRiMWE0MjNkMmUwNDEyZWEwNzM5Yjc3MGE5NDIifQ"
+          "version": "repo-lines-v1:sha256:70d30fdb44d468c6171283a395344e8891df0377dc39617bb8cb7f2211ae7d6f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Zjc3MmEwYzE4N2UzOTg4NWI1YmQ1MWQyNjM1ZmM5NDM1OTMwN2FmY2U2NjNlMTlkOTIxZmU1YTgxNTk0NWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjM2EyMDc3NGQ1YzJiYjRjNzkwYzE4ODkwYTljNDk0Y2NiNTEwZmM4ZThjMDllYzc0NTE5YmMxNjRmYzc4NGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwN2E3ZmIzYzJlY2QxOTNhNjVkYTVmMjgyYzliNDhiYTFiMzRiMWE0MjNkMmUwNDEyZWEwNzM5Yjc3MGE5NDIifQ"
         }
       ]
     },
@@ -52,21 +52,21 @@
     },
     {
       "id": "claim_44c1374d75fc42698bc1e9b1bcbfd46c",
-      "statement": "The fixed attested app-server launch enables description-first Code Mode, native child context limits and dotted fork-prefix preservation while leaving multi-agent enablement and transport selection native-owned.",
+      "statement": "The fixed attested app-server launch enables description-first Code Mode, native child context limits, Agent message wakeups and dotted fork-prefix preservation while leaving multi-agent enablement and transport selection native-owned.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L1395-L1410",
-          "version": "repo-lines-v1:sha256:bb7f46217b99d418ed68ba49a9ca915258d28814b6c6d94d31a731aa9b7070aa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU0MmZmOTBlYzA5NzdhMjYyZTA4NmJkMDhlZmFmODZiMzI2Nzg2ZGI2YzVjMDEyMTY5OWZhY2ZiNzRjYmE2MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg5MTUyNzhjZDk2NmZiMDE3NDgxZjgwYjM4ZmQyOWUwODAyZWRkZDFlN2I4ZDIyMWJlNmY4NTlhMTgyN2JhNDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxYzIxMmM0MmYxZTRkNTNlNWQyZWU0OTI0Y2NkZDM3OTU4YTRmNjJjZTQ2ZTU4M2YyY2ZmZGY2MWFkZTAwMjgifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L1395-L1416",
+          "version": "repo-lines-v1:sha256:46e45205f692ef3918ba27a01985983e92c62d5d01358fdb82f0d4271b41a5b9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2NTcwYWIyNjlmYmUzMzFlN2Q3MmIwY2RmOGM3OGQ3ZTlkNzE4ZTBkN2IxMzI3MThkMmJiNWM2YzNmMjgxNmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhiODhkYmNiMGE3ODA4NDVlZjAyMjNjOTZlMTBjMmUzNTFmNGM3NGMxMTc2NGI1ZDk0OWVhN2RmYTQxNzU4MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxYzIxMmM0MmYxZTRkNTNlNWQyZWU0OTI0Y2NkZDM3OTU4YTRmNjJjZTQ2ZTU4M2YyY2ZmZGY2MWFkZTAwMjgifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs",
-          "version": "repo-file-v1:sha256:69c8dc7ce60ce7308be8eea518d1200d5f675fdc3ec011d5cbc753845f6b3933"
+          "version": "repo-file-v1:sha256:0cee214b3a0c949a43d6823350ebde61a2d8d60335df4cc06ad5cd60c5513e71"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-15T06:39:54.695Z"
+    "at": "2026-10-21T09:01:22.045Z"
   }
 }

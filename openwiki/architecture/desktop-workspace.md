@@ -24,25 +24,27 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_markdown.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
-  - id: openwiki-source-77f7f96f348908c8779b5df6
-    resource: repo://apps/decodex-gpui/src/agent_selectable_text.rs
+  - id: openwiki-source-15ee466228bdb01892c9678b
+    resource: repo://apps/decodex-gpui/src/agent_text_selection.rs
   - id: openwiki-source-51a4755f3c4ddd78511e5c8e
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
+  - id: openwiki-source-c0e58bc836ac05c982449723
+    resource: repo://apps/decodex-gpui/src/agent_workbench.rs
   - id: openwiki-source-a1a71f71175b6cac3a5f1346
     resource: repo://apps/decodex-gpui/src/native_glass_panel.rs
   - id: openwiki-source-2986b39185cca5c00a29ad1d
     resource: repo://apps/decodex-gpui/src/shell_status.rs
-generated: { by: "codex", at: "2026-09-30T18:35:20.136Z" }
+generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T02:32:34.699Z
+    at: 2026-10-21T09:01:22.045Z
 ---
 
 # Desktop workspace and native glass
 
 ## Information hierarchy
 
-The Agent conversation is the primary workspace. The left sidebar selects the overview and projects; the right agent tree describes ownership; the bottom graph describes work dependencies and reports. A historical Program/Factory graph is not the current desktop surface.
+The Agent conversation is the primary workspace. The left sidebar selects the overview and projects. The right Agent workbench shows the selected work item or connection, with an overview when nothing is selected. The bottom graph presents Agent relationships, including dependencies and reports. A historical Program/Factory graph is not the current desktop surface.
 
 Global shortcuts in `shell.rs` are Command-E for the left sidebar, Command-B for the inspector/agent side, and Command-J for the graph. Window controls stay in the global shell. Settings is a separate presentation with bounded scrolling and shared spacing tokens.
 
@@ -50,7 +52,7 @@ Global shortcuts in `shell.rs` are Command-E for the left sidebar, Command-B for
 
 `window_material.rs` selects Regular or Clear material. macOS uses native Liquid Glass when supported; the fallback requests GPUI platform blur. Actual transparency depends on platform compositor support. Reduced-transparency preferences and `DECODEX_DISABLE_LIQUID_GLASS` prevent the small native-glass panels.
 
-`native_glass_panel.rs` bridges composition only. GPUI still owns UI state, layout and event handlers. The composer is an attached child window created by the main workspace, not another application or service. Settings must not create one. The workspace remains the main window while an attached control can own keyboard focus. Animation scheduling uses the key child's display cadence to avoid throttling a focused composer's parent.
+`native_glass_panel.rs` bridges composition only. GPUI still owns UI state, layout and event handlers. The composer is an attached child window created by the main workspace, not another application or service. Settings must not create one. The workspace remains the main window while an attached control can own keyboard focus. See [conversation presentation](conversation-presentation.md#floating-controls-and-motion) for frame ownership and animation policy.
 
 The composer is unavailable for archived or blocked conversations and certain detail/full-screen states. Reopening includes a short layout-settling interval; failures fall back to GPUI presentation. Notification placement and opacity belong to the same native-panel composition boundary.
 
@@ -66,7 +68,7 @@ See [Accounts and routing](../operations/accounts-and-routing.md) and [Reset Car
 
 ## Reading and input
 
-Markdown renders native text, code, lists, and links. Text selection and clipboard operations are read-only. Selection currently belongs to each rendered text block; this is not one continuous selection across all messages. Copy controls show short success feedback. Duration and abbreviated token counts remain together at the end of each answer; hovering this row shows detailed usage without changing transcript height.
+Markdown renders native text, code, lists, and links. Text selection and clipboard operations are read-only. One rendered message shares a selection document across its text blocks. This does not create a selection spanning all messages. Copy controls show short success feedback. Duration and abbreviated token counts remain together at the end of each answer; hovering this row shows detailed usage without changing transcript height.
 
 The history rail follows the reading position. Expanding connection details must preserve the anchor. A centered jump-to-latest control represents ongoing work while the user reads older messages. Input controls expose attachments, delivery policy, model/effort, microphone, and live voice without moving execution authority into the UI.
 
