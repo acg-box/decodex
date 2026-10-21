@@ -8,6 +8,58 @@ use tokio::{
 use crate::agent::tests::{self, AppServerClient, EnqueueAgentEvent, ServerEvent};
 
 #[tokio::test]
+async fn delegated_instruction_retires_only_older_questions() {
+	for live in [true, false] {
+		let question = |id| serde_json::json!({"id":id,"type":"agentMessage","delivery":"async","questions":[{"title":"Choose a title"}]});
+		let instruction = serde_json::json!({"id":"delegated-answer","type":"functionCallOutput","namespace":"decodex","name":"work_instruction","output":"The user selected Maple."});
+		let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","historyMode":"legacy","turns":[
+			{"id":"old","status":"completed","items":[question("old-question")]},
+			{"id":"new","status":"completed","items":[instruction,question("new-question")]}
+		]}}});
+		let (mut agent, mut sent, _directory) = tests::fixture_with_history(history).await;
+		agent.start_agent("agent", "Coordinate").await.unwrap();
+		agent
+			.observe_async_question_item("opaque thread/1", "old", &question("old-question"))
+			.await
+			.unwrap();
+		while sent.try_recv().is_ok() {}
+		// Wakes, retries and output from other namespaces do not answer a question.
+		for (namespace, name) in
+			[("decodex", "work_wake"), ("decodex", "capacity_retry"), ("other", "work_instruction")]
+		{
+			let mut unrelated = instruction.clone();
+			unrelated["namespace"] = serde_json::json!(namespace);
+			unrelated["name"] = serde_json::json!(name);
+			agent
+				.handle_event(ServerEvent::Notification {
+					method: "item/completed".into(),
+					params: serde_json::json!({"threadId":"opaque thread/1","turnId":"new","item":unrelated}),
+				})
+				.await
+				.unwrap();
+		}
+		assert_eq!(agent.store.read_agent_async_questions("agent".into()).await.unwrap().len(), 1);
+		assert!(sent.try_recv().is_err());
+		if live {
+			agent
+				.handle_event(ServerEvent::Notification {
+					method: "item/completed".into(),
+					params: serde_json::json!({"threadId":"opaque thread/1","turnId":"new","item":instruction}),
+				})
+				.await
+				.unwrap();
+		} else {
+			agent.store.queue_agent_async_reconnection().await.unwrap();
+			agent.recover_async_questions().await.unwrap();
+		}
+		assert!(!agent.store.agent_async_questions_recovering("agent".into()).await.unwrap());
+		let remaining = agent.store.read_agent_async_questions("agent".into()).await.unwrap();
+		assert_eq!(remaining.len(), 1);
+		assert_eq!(remaining[0].item_id, "new-question");
+	}
+}
+
+#[tokio::test]
 async fn native_changes_during_question_rebuild_preserve_recovery_until_fresh_read() {
 	for change in ["revert", "input", "disconnect"] {
 		let (mut agent, mut sent, _directory) = tests::fixture().await;

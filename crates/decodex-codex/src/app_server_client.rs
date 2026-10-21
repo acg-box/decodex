@@ -1219,24 +1219,33 @@ mod tests {
 
 	#[tokio::test]
 	async fn committed_input_invalidates_questions_without_invalidating_history_pages() {
-		let (incoming, frames) = mpsc::channel(8);
-		let (outgoing, mut writes) = mpsc::channel(8);
-		let (client, _events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
-		let history = client.history_guard(0).unwrap();
-		let question = client.question_guard(0).unwrap();
+		for item in [
+			serde_json::json!({"id":"input","type":"userMessage","content":[{"type":"text","text":"new input"}]}),
+			serde_json::json!({"id":"input","type":"functionCallOutput","namespace":"decodex","name":"work_instruction","output":"The user selected Maple."}),
+		] {
+			let (incoming, frames) = mpsc::channel(8);
+			let (outgoing, mut writes) = mpsc::channel(8);
+			let (client, _events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+			let history = client.history_guard(0).unwrap();
+			let question = client.question_guard(0).unwrap();
 
-		incoming.send(Ok(serde_json::json!({"method":"item/completed","params":{"threadId":"thread","turnId":"turn","item":{"id":"input","type":"userMessage","content":[{"type":"text","text":"new input"}]}}}))).await.unwrap();
+			incoming.send(Ok(serde_json::json!({"method":"item/completed","params":{"threadId":"thread","turnId":"turn","item":item}}))).await.unwrap();
 
-		assert!(matches!(
-			client.request_with_history("turn/steer", serde_json::json!({}), question).await,
-			Err(ClientError::StaleHistory)
-		));
-		assert!(writes.try_recv().is_err());
-		assert_eq!(client.question_revision(), 1);
-		assert_eq!(client.history_revision(), 0);
-		assert!(history.is_live());
-		assert!(client.question_guard(0).is_none());
-		assert!(client.question_guard(1).is_some());
+			assert!(matches!(
+				time::timeout(
+					Duration::from_secs(2),
+					client.request_with_history("turn/steer", serde_json::json!({}), question)
+				)
+				.await,
+				Ok(Err(ClientError::StaleHistory))
+			));
+			assert!(writes.try_recv().is_err());
+			assert_eq!(client.question_revision(), 1);
+			assert_eq!(client.history_revision(), 0);
+			assert!(history.is_live());
+			assert!(client.question_guard(0).is_none());
+			assert!(client.question_guard(1).is_some());
+		}
 	}
 
 	#[tokio::test]
