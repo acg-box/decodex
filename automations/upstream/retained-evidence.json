@@ -690,7 +690,7 @@
       "source_sha256": {
         "crates/decodex-runtime/src/agent/coordination.md": "b2a0ac34f607374303d0e0f31bdab68798d42789e48d51a1d59de0268e38eccc",
         "crates/decodex-runtime/src/agent/instructions.md": "5bcfa29f7a67cc02f7640fd09b07e22e1bd9318d123a993f4315dfe37097640b",
-        "crates/decodex-runtime/src/agent.rs": "c702c8d0bc851cd161aac41e312dc3f0932f9de3c3cf9b598a4d4e8f7b24d56b",
+        "crates/decodex-runtime/src/agent.rs": "7600f509436f03dbbcf23c5f6cc2a64c173c6fd909480eed7e883d9fcab97e25",
         "crates/decodex-runtime/src/agent/tests.rs": "b51fcd53fef366e8dbb83a9ae1f6dfea567dce19d36b0daf08fb7e8eec603898",
         "crates/decodex-runtime/src/agent/tests/native_subagents.rs": "240e82e4d7b228e438c742cff74ca78c27b6bdb467c51f1795e1b021c8aded76",
         "crates/decodex-runtime/src/agent/tests/native_subagent_live.rs": "353e1dda82138e941fd3ed51bc6a23ae2db8c718a4d6d59d8c7288834b9b01a2",
@@ -699,7 +699,7 @@
         "crates/decodex-runtime/src/agent/async_projection.rs": "2c9333ab8719073325fa6cf393ff1325cb0a095378f3d61da8077ee306f3c213",
         "crates/decodex-runtime/src/agent/tests/async_recovery.rs": "154dc51377c6374b60910ea81fc6abe8b931905c2babbd697ebe924f9aafbc44",
         "database/src/agent_questions.rs": "cef75c7453256b270600b08dca030f48bcaae5e9838897425b312ac0550a64d9",
-        "crates/decodex-runtime/src/agent/tests/completion_contract.rs": "444a4fcdd9f0b756944c95bb81b1e58876db432e48c9661406b660f4ae93883a",
+        "crates/decodex-runtime/src/agent/tests/completion_contract.rs": "716c18f218075173509edfcb7a5bc044c93f7a6bcfa5f52e30fc855153c8ba60",
         "crates/decodex-runtime/src/agent/observations.rs": "5756bbbcc7daf60b037faacfc8b8f867d33f606cdb06d306fbc9cc228123453e",
         "database/src/agent.rs": "92b89d02067bde0a0f70c24b6333c64149c7449a3101aba76a4de613c062c221",
         "crates/decodex-codex/src/app_server_client/server_requests.rs": "cd3e965b9c08b58282433c50fbab43886c90aa04d49a2dac280ff080212b3b95"
@@ -1208,18 +1208,20 @@
       },
       "busy_recovery": {
         "status": "qualified_for_bounded_busy_refusal_recovery",
-        "decodex_source_commit": "6d8ee502bb85b644b8f1728288a8e9d8bcda64ad",
-        "delivery_source_reference": "https://github.com/acg-box/decodex/commit/6d8ee502bb85b644b8f1728288a8e9d8bcda64ad",
-        "contract": "Explain that the worker is still running and this instruction was not sent or queued. Wait for the current turn to finish, inspect agent_list_work for idle state, then retry the same worker. The tool description tells the manager to finish its turn and wait for the completion receipt. No dispatch or queue behavior changes.",
+        "decodex_source_commit": "2cff08e8716ed4e8dac1347a0d45df82937c7849",
+        "delivery_source_reference": "https://github.com/acg-box/decodex/commit/2cff08e8716ed4e8dac1347a0d45df82937c7849",
+        "contract": "For an agent_continue_worker tool reply, explain that the work is still running and this instruction was not sent or queued. Wait for the current turn to finish, inspect agent_list_work for idle state, then retry the original worker. The tool description tells the manager to finish its turn and wait for the completion receipt. Dispatch behavior and the shared Busy error stay unchanged.",
         "source_symbols": [
-          "crates/decodex-runtime/src/agent.rs#AgentError::fmt,#tools,#continue_worker,#validate_dispatch_prerequisites",
+          "crates/decodex-runtime/src/agent.rs#AgentCoordinator::handle_request,#tools,#continue_worker,#validate_dispatch_prerequisites",
           "crates/decodex-runtime/src/agent/tests/completion_contract.rs#busy_worker_refuses_unsent_input_then_continues_once_idle",
-          "crates/decodex-runtime/src/agent/tests/live_question_resolution.rs#SCENARIOS::busy_worker_recovery,#real_model_question_resolution,#evaluate,#observe"
+          "crates/decodex-runtime/src/agent/tests/live_question_resolution.rs#SCENARIOS,#real_model_question_resolution,#evaluate,#observe"
         ],
         "source_sha256": {
-          "crates/decodex-runtime/src/agent.rs": "c702c8d0bc851cd161aac41e312dc3f0932f9de3c3cf9b598a4d4e8f7b24d56b",
-          "crates/decodex-runtime/src/agent/tests/completion_contract.rs": "444a4fcdd9f0b756944c95bb81b1e58876db432e48c9661406b660f4ae93883a",
-          "crates/decodex-runtime/src/agent/tests/live_question_resolution.rs": "f900b360495332fc7ee93b155eccb393e5f7961ed15a0e40b442c191523e0594"
+          "crates/decodex-runtime/src/agent.rs": "7600f509436f03dbbcf23c5f6cc2a64c173c6fd909480eed7e883d9fcab97e25",
+          "crates/decodex-runtime/src/agent/tests/completion_contract.rs": "716c18f218075173509edfcb7a5bc044c93f7a6bcfa5f52e30fc855153c8ba60",
+          "crates/decodex-runtime/src/agent/tests/live_question_resolution.rs": "f900b360495332fc7ee93b155eccb393e5f7961ed15a0e40b442c191523e0594",
+          "crates/decodex-runtime/src/agent/voice.rs": "fae1e033065ce574cd68acfd360a80b49d95a3a565ad548b2a491591c43733f7",
+          "crates/decodex-runtime/src/agent_host.rs": "89a860995f1e35abd8be01fff174c66c77bde446d261254180ed2a5b051a3fd7"
         },
         "runtime_identity": "retained_native_coordination.parent_questions.existing_runtime_artifact_sha256",
         "selected_runtime_source": "66d0de9983e82b266e89ee29523324c9d08a5472",
@@ -1263,7 +1265,8 @@
           "agent::tests::completion_contract::completion_errors_preserve_evidence_and_allow_the_correct_closure",
           "agent::tests::completion_contract::personal_agent_closure_explains_the_target_without_changing_it",
           "agent::tests::completion_contract::user_input_finishes_without_resolving_the_agent_conversation",
-          "agent::tests::live_question_resolution::real_model_question_resolution"
+          "agent::tests::live_question_resolution::real_model_question_resolution",
+          "agent::tests::async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade"
         ],
         "regular_validation": {
           "entrypoint": "decodex-runtime lib",
@@ -1291,7 +1294,18 @@
             "executed": 1,
             "failed": 1,
             "skipped": 948,
-            "reason": "The error was only Agent: Busy."
+            "reason": "The actual dynamic-tool reply was only Agent: Busy.",
+            "test_scaffold_source": "2cff08e8716ed4e8dac1347a0d45df82937c7849"
+          },
+          "leak_markers": 1,
+          "isolated_recheck": {
+            "test": "agent::tests::async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade",
+            "executed": 1,
+            "passed": 1,
+            "skipped": 948,
+            "leak_markers": 0,
+            "unmatched_selectors": 0,
+            "limit": "One existing test emitted a Nextest LEAK marker in the full cohort and passed on immediate isolated rerun. The test does not exercise the changed worker-tool reply. The exit-marker cause is unmeasured; no test or teardown policy was changed."
           }
         },
         "live_validation": {
@@ -1391,8 +1405,10 @@
           "Four controlled samples on gpt-6-astra at medium effort with one existing native login. The concurrency case explicitly requests one early attempt. No statistical reliability, other-model, account-plan, production-load, latency or cost claim.",
           "The two ordinary question samples used registered forms and predefined fixture user answers. No injected idle answer was needed. Both concurrency samples recovered one real Busy refusal, continued the same worker once, returned Maple / Final Report, and left no unresolved questions or processable receipts.",
           "New native conversations receive the tool description. Existing conversations retain their native tool definitions; the updated Busy error still applies to this source build. No rewrite of saved conversation instructions.",
-          "The existing CLI, both helpers and generated schema matched retained identities. No runtime migration, installed-app interaction, installation, packaging, release or publication. Source review stays at the existing fixed cursor."
-        ]
+          "The existing CLI, both helpers and generated schema matched retained identities. No runtime migration, installed-app interaction, installation, packaging, release or publication. Source review stays at the existing fixed cursor.",
+          "The final 182-test regular cohort passed with one Nextest exit marker on an existing async-answer fixture. Its isolated rerun passed without a marker. This does not establish a resource-leak fix or its cause."
+        ],
+        "consumer_boundary": "The guidance is selected only by AgentCoordinator::handle_request for AgentError::Busy from agent_continue_worker. Voice start also uses Busy for a different admission condition. Its caller and shared AgentError::fmt remain unchanged; no voice behavior is qualified by the new live samples."
       }
     }
   },
