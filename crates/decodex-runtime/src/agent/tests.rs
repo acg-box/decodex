@@ -2129,6 +2129,15 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 	);
 	assert!(starts[2]["params"]["dynamicTools"].is_array());
 	assert!(starts[3]["params"].get("dynamicTools").is_none());
+	for start in &starts {
+		let instructions = if start["params"]["dynamicTools"].is_array() {
+			agent::INSTRUCTIONS
+		} else {
+			agent::COORDINATION
+		};
+
+		assert_eq!(start["params"]["developerInstructions"], instructions);
+	}
 	assert_eq!(
 		starts[3]["params"]["cwd"],
 		serde_json::json!(directory.path().canonicalize().unwrap())
