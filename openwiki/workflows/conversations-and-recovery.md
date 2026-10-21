@@ -20,12 +20,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-3362ac542db6e3212a621c47
     resource: repo://apps/decodex-gpui/src/agent_recap_automatic.rs
+  - id: openwiki-source-912dbe8f46e7ec6026887bbe
+    resource: repo://apps/decodex-gpui/src/agent_sample.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-5606e779f593d160176b0a27
     resource: repo://apps/decodex-gpui/src/agent_transcript.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
+  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
+    resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-ecdf4586908bb6226955607a
     resource: repo://crates/decodex-codex/src/app_server_client/history_item.rs
   - id: openwiki-source-830a575f82404942511da59b
@@ -38,16 +42,18 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_detail.rs
   - id: openwiki-source-3d25cb6558fde84d70520ac2
     resource: repo://crates/decodex-runtime/src/agent_read_state.rs
+  - id: openwiki-source-72323573c4abb11c31ffbeec
+    resource: repo://crates/decodex-runtime/src/agent_sample.rs
   - id: openwiki-source-5a9a9e8bb72a23939f23f6f6
     resource: repo://crates/decodex-runtime/src/agent_transcript.rs
   - id: openwiki-source-f4bc7020783c49a911b7fb29
     resource: repo://crates/decodex-runtime/src/agent_visibility.rs
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
-generated: { by: "codex", at: "2026-10-13T07:13:39.526Z" }
+generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T05:36:25.710Z
+    at: 2026-10-21T14:42:59.992Z
 ---
 
 # Conversation input, history and recovery
@@ -66,7 +72,7 @@ Persist input before dispatch. A lost response can mean that an operation ran. C
 
 ## Native archive changes
 
-Codex owns archive state. A confirmed archive removes the bound work from the active list and graph, while the service keeps its stored history and original relationships. Active descendants stay visible under their nearest visible ancestor. See [archive synchronization](../architecture/chief-coordination.md#archive-synchronization).
+Codex owns archive state. A confirmed archive removes non-root bound work from the active list and graph, while the service keeps its stored history and original relationships. The personal Main entry remains present and carries its archive state. Active descendants stay visible under their nearest visible ancestor. See [archive synchronization](../architecture/chief-coordination.md#archive-synchronization).
 
 When a refreshed active snapshot removes the selected conversation or its composer owner, the desktop stops voice input and saves the draft under its original work and thread identity. Normal navigation restores the next conversation's own draft. If no conversation remains active, sending stays unavailable; a retained draft cannot start a replacement conversation or move to Main. A failed snapshot read does not trigger this transition.
 
@@ -112,9 +118,11 @@ Expanded tool and file details can read the exact native history item. Unsupport
 
 Manual recap is available. Automatic recap is a separate preference and defaults off; it is unrelated to scheduled upstream maintenance. Recap generation uses the native task and exact publication identity. A foreground result does not qualify a long background eligibility timer.
 
-Recap uses a temporary native thread with tools disabled. For absent or built-in permission profiles, it selects the native `:read-only` default explicitly, so a managed workspace default cannot override the read-only request. An explicit custom profile keeps its own restrictions. The adapter checks the returned profile or sandbox and the ephemeral-thread flag before it starts inference.
+Recap requests an isolated temporary native thread with tools disabled. For absent or built-in permission profiles, it selects the native `:read-only` default explicitly, so a managed workspace default cannot override the read-only request. An explicit custom profile keeps its own restrictions. The adapter checks the returned profile or sandbox and the ephemeral-thread flag before it starts inference. The retained native qualification still observed a model-required `apply_patch` entry: it verified environment denial, not removal of every tool name from the model catalog.
 
 Asynchronous questions keep explicit answers and Skip. The separately retained nonblocking timeout policy can produce an empty answer after its grace/countdown conditions; it is not a general permission to answer questions for the user.
+
+For parent escalation and exact event receipts, use [Agent coordination](../architecture/chief-coordination.md#delegation-instructions-and-native-subagents). In Ask separately, **Close** hides the panel; **Cancel answer** requests cancellation of its exact native sampling request. A late result or uncertain cancellation keeps its original request identity. This does not cancel the parent conversation.
 
 ## Explicit prediction capability
 

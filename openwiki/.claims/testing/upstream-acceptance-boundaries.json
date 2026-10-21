@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c94993e7e03df4af3d019688d9d6eca71560f447ec95ed840d2ac0a19758e75e",
+  "pageVersion": "sha256:3f76241c9443d1bb32563ff9c9b008c97584108f7dcf7d9b9dc3932e70106167",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -25,8 +25,8 @@
           "version": "repo-file-v1:sha256:4026d80f10adb0d5eff3665018cbb5e64ec3135a742c39f3c7dcad3cc24a80ce"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs#L334-L348",
-          "version": "repo-lines-v1:sha256:7d9be1a2a20fb30743800efbe2dcb5ff8079b8c3704593d95cbfa0b731821f12:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJkN2ZkNzAzNzMzMmE4NzIxOGYzMDFjYTY0MzliMWRlY2ZjYWJjOGI5YzRlYzIxZjAzMmEzOTlkNWQ3YzQ5YjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE1ZGM5MDg3M2I3MzQ0YTc2MWI3NmFiZjZmYjYzNzNkNmIzNzE4NDNjYTI5MzQxOTY0Zjc2MmMwOGRkOWU3YzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlNGMwODUzYTM2ODhhYTQ3ODc5YzBmMzQxYmVhOWE4ZmI1ZTc3ZGMzMTMxOGQ2NDBkZDVhYTE0MjkyOTQ5MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM0M2Y3NTM3OGM3OGZlZDA3M2M4MjgxYWZkMTNjMzBlMzM5MWMxNTMwNWQxMGQ2MjZjNDg1MWE4OTU5ZTRlNDkifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs#L344-L359",
+          "version": "repo-lines-v1:sha256:f08138a5ec8e5805c6bfcdf11ff68f5ed47fb3d1d8763bf8a9ff1a0ed350baac:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkZDIwZmZkOTA5OTE3YWI5Njc4ZjM4ODc0N2NhNDI5ODM2MzhmMTcyMDllMWZjOWE3Njg2NTJkMzBlZWQ4YzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlYTNkYTJkNWE4MjY5ODJkOWNlMWFiYTYzMjg2NTE0ZjIyYTRjOTU4MDAwZDBmYTUxMzUxMDRhYTVkYzMzYTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZGVmZWFlNjI3N2FhNjY3YmQwNjM5YmU0OTZhMDM1OWMxZTBhYjQxYmNmYjcyYWNmYzFiOTU4MjYwOWY5NTAifQ"
         }
       ]
     },
@@ -66,11 +66,11 @@
     },
     {
       "id": "claim_ebce14433a7a4d669e2530ad10c73bdb",
-      "statement": "The native launch fixture verifies description-first Code Mode, child context defaults and fork-prefix preservation while retaining boolean and table multi-agent enablement settings.",
+      "statement": "The native launch fixture verifies description-first Code Mode, child context defaults, Agent message wakeups and fork-prefix preservation while retaining boolean and table multi-agent enablement settings.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs",
-          "version": "repo-file-v1:sha256:69c8dc7ce60ce7308be8eea518d1200d5f675fdc3ec011d5cbc753845f6b3933"
+          "version": "repo-file-v1:sha256:0cee214b3a0c949a43d6823350ebde61a2d8d60335df4cc06ad5cd60c5513e71"
         }
       ]
     },
@@ -79,20 +79,20 @@
       "statement": "The terminal projection retains native status and bounded error details; capacity retry requires exact failed-turn readback with serverOverloaded, and existing tests cover Other errors plus public failure size and privacy limits.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L232-L385",
-          "version": "repo-lines-v1:sha256:4085122edd2761423797b9888d0473da9cd5cc2fd115b994034d6982e262ab8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTU0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkYjExMmI2ZTkwZjcyZWVkNTc2MjE1YTY1NWU1YzU3OWZlMzQ4ODRkMzFlMTEwNWZiNWMxZjg0NTQ4YjRjZWJiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMjBiMWJhZjUyZDE1ZWNmZThmN2I0YmE1M2Y5NzVhZmMxMWQ0MTRhMzlhMjY5Y2JiNzY1Y2ZhZDFkYmNjNzZmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4ODlhOWIwYTBmNDcwYjY5ZmM4ZDU0YmJlMjJiNWM5MmQ0NmM5Y2U5MWQ0NTliYjVlYjcwYTJiOWY2YWQzNWE2In0"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:7600f509436f03dbbcf23c5f6cc2a64c173c6fd909480eed7e883d9fcab97e25"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/result_messages.rs#L9-L38",
-          "version": "repo-lines-v1:sha256:6ad3d595fd482444599d887a9122f62c9a98d14f65423657fea051e381d9d46a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwZTVhZDE4OTI3NDRhZjZjODhmN2E3ZTBmNzRiYWY5YmQ4OTI4NTliMmI4YmFlOWQxZmZlMDAzNThmZTg2ZmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzMWM1NTZmNWRkZWZmYzUxYTJkYzVlNTYzYTMwYjQxZmJiODZiZDZiNzQxMjM2ZTY5ZGJiNDRkNTY2ZTk5NGUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliYjllZjIyNTQxZDQyYWQ4ODFmYWNkNGVjMDNkNzllZmQyZWY5MDhmNzJiZGRmYThiN2YwMTc3YmQxMmE4NDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRmMzhkMDkzZTQ0ODNiMWNjMzVkYTNjNTI5YmUwODZlNWFmNDczOTc5YTMwMjRjNGIxOTVmNWE5NmZiMTIyMTgifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/result_messages.rs",
+          "version": "repo-file-v1:sha256:2f27554efebd734619c170e05ddb29ae6c1b89fa0791245ab365bb1b80ae47d6"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs#L238-L271",
-          "version": "repo-lines-v1:sha256:7dfaef33f20b965ea0cfebe46de2f73ee1c17e9833d4a5c9bacbe0ae451318c2:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiZDM0OGU4Y2E2ZTgwNjlhMDUyNzY0ZDcwZjM4MWI3NmFlODcxYTNhMDdkZjc4N2IyZjBjYmE5OTkzNjAzYmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc3NzJlOTI3NWNiNmEyNGZmYTg5NTJjY2E3N2U2YTRhNWEyYWRlNjNjZWQ0MzUxYzZiYzU4NjBhYWZlNTIyZDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5YTY3N2NmNzUxYjQxMTcxYmNjOTYwN2UzNWUyODE1MmRhMTQ4Zjg0NWFmZWVlODU0MTgzMWIxZGExYTY4YzcifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs",
+          "version": "repo-file-v1:sha256:4e60ed41a85b505619a7a5993d54afb183bf77acfd622cac2ef571df33d6a85b"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs#L660-L690",
-          "version": "repo-lines-v1:sha256:0bebe01a77d862102d9ccc16c22f1d5162abbe62ddfc85f5e1ae8c1cec2d05d0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzNWI0ZmQ2YjE3MDRhMzdhYzRiYjQxNGNhM2ZmN2Y1MTEwNmFiYTVlMDE4NTdlOTM2ZGI0MzlmZTA4NzY0MzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3MThjM2YxMzAyMzIxYWJiZTUzYWI4YjljN2E5M2YzM2UxZDBkM2Q0MDYzNmRmNjZhMzI2MzBlM2I2ZDAzMGMifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs",
+          "version": "repo-file-v1:sha256:50f2a5519000e2ac0f4dbd33fd9917c5d050d0d2492b72919ea098fd15e188e9"
         }
       ]
     },
@@ -101,7 +101,7 @@
       "statement": "External context is sent as function_call_output through thread/inject_items; the lost-injection and lost-follow-up response test confirms that recovery retains an unknown outcome without replaying either request.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1346-L1361",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1351-L1366",
           "version": "repo-lines-v1:sha256:bc50eb129bc3ec0c12b2018556e2ce03d02e3860b29f914e175d959ada8bf996:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkY2FkYmNhM2U5OWE2NjVlYzI1Yzk2ZTRhNzEwNTFkYjIzZjA4M2U5MDc1ZjJmNTljMDFlZTQwMTRiNjM2ZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmNjIzYTM0ZTk2OWRmODg3NzNmYzc2MzVlMmMyODYyZGRiMzVjNTljODkxMDRkZTM1ZTEyYmIxNzc1YzZhZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1NTA4YTBjYTIwNDQ5NzNjZDg1MDYyNDljZTFjMTlmZDlhMjdlMjM0YmEzYzA5MzIwYzFlMWNkYTkzN2I4NzMifQ"
         },
         {
@@ -116,11 +116,11 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:3a53272dd8534bd7f7adfe933c60f5c14a012acb6538d99e4863e61fe992514b"
+          "version": "repo-file-v1:sha256:a4c2634d185f39899f8ebcdede0a0b3888edec0f7c7d959212d937b3ba45e460"
         },
         {
           "resource": "repo://crates/decodex-components/tests/development.rs",
-          "version": "repo-file-v1:sha256:877e8395b94697d157d59ab01064a5b8a8f6cf6132ce71b5d80cf3e12da055b5"
+          "version": "repo-file-v1:sha256:3d30a2f62ce7e188604dd47a1c96a302e95af7e1182d93c1ecf55d40253a538a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs",
@@ -148,7 +148,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-components/tests/development.rs",
-          "version": "repo-file-v1:sha256:877e8395b94697d157d59ab01064a5b8a8f6cf6132ce71b5d80cf3e12da055b5"
+          "version": "repo-file-v1:sha256:3d30a2f62ce7e188604dd47a1c96a302e95af7e1182d93c1ecf55d40253a538a"
         },
         {
           "resource": "repo://crates/decodex-components/tests/official_release.rs",
@@ -176,15 +176,15 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs",
-          "version": "repo-file-v1:sha256:1702990d1d598a4c7c50dee1470a0838554d82f256d68edd65b7334b0d787508"
+          "version": "repo-file-v1:sha256:fad943d1230eb6d05676914a6d1a436fee610c2f72277f157c415dbca1c217ca"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline/metrics.rs",
-          "version": "repo-file-v1:sha256:e9063f0a7ad4da51eb0dbd3db312470b7515cfd77dfcb29580361a3f3b323ccc"
+          "version": "repo-file-v1:sha256:e39be70a97742e2a03f989d13435f3bc4a679fff5fad0e2ef7f2af354a7c7215"
         },
         {
           "resource": "repo://database/src/agent_output.rs",
-          "version": "repo-file-v1:sha256:c8109b579d4b765e2d1fb25e2c686f6c0ffecc1e3e1a5625f1230bf85802cfb7"
+          "version": "repo-file-v1:sha256:3daff72708c5535f17146fc1645ba846de996e687f77bcd81949b7a1e8be7160"
         }
       ]
     },
@@ -225,7 +225,7 @@
       "statement": "The delegation regression distinguishes direct user input from initial and follow-up work_instruction outputs that request native retention; the dispatch encoder does not select scheduled wakes or capacity retries for retention.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1238-L1352",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1243-L1357",
           "version": "repo-lines-v1:sha256:5d9d5c881f9272bfdc31d9ab28409b08964324cfa88db2cde6f693ee24ada2ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI3NTIzNjQ0MTgxNDAyZGRiY2RiN2I0MWEzYzc2YTFhNzE1NzAyNGZiNzc2NjAxNTBjODQxN2Q2MWIxMTBlOTU2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhZDZlMjExMmYyNDE4ZWYzNjk3OWYzOWVhMDUyNmJhNGUxOGU0ZmE0MTQ2NTQyM2ZhYjMzZmNmMzcyMmQ2MzhlIn0"
         },
         {
@@ -250,11 +250,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:fe6981376eb4e70e0731129d3bc621b546e979a74a93c013fee4cee344ec1489"
+          "version": "repo-file-v1:sha256:edfef08ebe485073cf98b0d312933d12388750f2da24f3ded8fcf67ad90e54f2"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:94cb983cf8c368491e8b61e2467526a7225100aecd9faf92a06a58d3f5df0dac"
+          "version": "repo-file-v1:sha256:9967bc667c8ad13bb20300e90c3a545ac265c9f6d2b44549a7d3d022a8ba1374"
         }
       ]
     },
@@ -264,21 +264,41 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:fe6981376eb4e70e0731129d3bc621b546e979a74a93c013fee4cee344ec1489"
+          "version": "repo-file-v1:sha256:edfef08ebe485073cf98b0d312933d12388750f2da24f3ded8fcf67ad90e54f2"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
-          "version": "repo-file-v1:sha256:0999d0d37642469714f1d4cdc8373d0b93aeb31a56acb5475204dd36b706296a"
+          "version": "repo-file-v1:sha256:a1e2fcd1fe9c4c57332c9c824e8dd050b513fcbce9ccc8ba98935ea79f2fa2a6"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:573a46a8a961ba92827559edd97fc6e9fb365c03a11b164ac8cc23b32d7b14e9"
+          "version": "repo-file-v1:sha256:7600f509436f03dbbcf23c5f6cc2a64c173c6fd909480eed7e883d9fcab97e25"
+        }
+      ]
+    },
+    {
+      "id": "claim_09935890d45a421e8c4d7f91b5638912",
+      "statement": "Retained real-model coordination evaluations cover controlled question-routing, persistent completion and Busy-recovery scenarios with predefined user choices, while preserving model, race and installed-app limits.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:9967bc667c8ad13bb20300e90c3a545ac265c9f6d2b44549a7d3d022a8ba1374"
+        }
+      ]
+    },
+    {
+      "id": "claim_364383870a84498195285fa8a0c2bc72",
+      "statement": "The retained sampling qualification separates presentation closure, exact native request cancellation, acknowledgement races and installed-app acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:edfef08ebe485073cf98b0d312933d12388750f2da24f3ded8fcf67ad90e54f2"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-17T05:27:59.815Z"
+    "at": "2026-10-21T14:39:50.043Z"
   }
 }

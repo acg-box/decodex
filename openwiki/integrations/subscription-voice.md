@@ -18,8 +18,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/native_audio_owner.rs
   - id: openwiki-source-7bc7ef970363495451bd9aac
     resource: repo://apps/decodex-gpui/src/native_dictation_capture.rs
-  - id: openwiki-source-7647aba6b390035d3777c2b5
-    resource: repo://apps/decodex-gpui/src/native_voice_audio.rs
+  - id: openwiki-source-09e15400c0eb6fa34f087b07
+    resource: repo://apps/decodex-gpui/src/native_input_queue.rs
+  - id: openwiki-source-95412047c2ed776dd7116977
+    resource: repo://apps/decodex-gpui/src/native_live_audio.rs
   - id: openwiki-source-d1f06f7b22d0c2eec328d95f
     resource: repo://apps/decodex-gpui/src/native_voice_transport.rs
   - id: openwiki-source-c990afbb3dfa828de42edbc3
@@ -36,10 +38,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/dictation.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-12T18:37:44.705Z" }
+generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T03:59:08.643Z
+    at: 2026-10-21T14:42:59.992Z
 ---
 
 # Subscription dictation and live voice
@@ -59,9 +61,9 @@ The Swift URLSession adapter connects to the subscription dictation stream and t
 
 Audio, authentication and the draft are not stored in SQLite by this gateway. Starting without a ready account fails clearly. The composer buffers captured audio while the subscription handshake is pending and drains that audio before sending Finish. The service rejects audio submitted before its Listening state; the UI therefore waits for that state before upload. Capture feedback continues while a network request is pending. Disconnect before final correction preserves received text and does not replay audio. The endpoint is a subscription transport dependency, not a promise that every account or future server version supports it.
 
-Dictation and Live share the Apple audio implementation in `native_voice_audio.rs`, called from Rust through Objective-C bindings. The owner selects the input before enabling voice processing for Live, with minimum other-audio ducking. Dictation uses raw microphone input without a playback node or voice processing. Its AVAudioSinkNode accepts the hardware format, and a Rust converter supplies 24 kHz mono PCM. Live uses 48 kHz mono client connections. Swift retains permission and device discovery, not the capture engine.
+Dictation and Live share the resource owner in `native_voice_audio.rs` but use separate hardware implementations. Dictation uses an input-only Apple Audio Queue, with mono Float32 capture at the requested 24 kHz rate and conversion to PCM16 for upload. It has no playback graph. Live uses WebRTC's platform audio device and software echo cancellation, noise suppression and gain control. Swift retains permission and device discovery.
 
-The shared `native_audio_owner.rs` thread owns one Apple audio graph. Dictation preparation does not start recording. A session leases its PCM queues; returned queues permit reuse of the prepared graph for the same device and mode. Start clears old captured samples and playback, then resumes the engine. Finish pauses hardware and drains the remaining dictation samples. Cancellation pauses hardware independently of network teardown, and identity checks discard late releases from an old session. The owner handles hardware route changes while retaining session queues. The first received PCM sample emits the Listening event and the `dictation_sink_first_pcm_ms` diagnostic. This measures capture startup, not subscription connection time or time to recognized text. Preparation and buffering reduce work on the click path; they do not establish a millisecond latency guarantee. Actual first-word completeness, microphone quality, device switching and playback effects require installed acceptance.
+The shared `native_audio_owner.rs` thread caches a stopped resource for each mode but leases only one session at a time. Preparation does not start recording. Dictation returns its PCM queues for reuse; a released Live factory is replaced and the next one is prepared. Start clears old capture and playback buffers before enabling I/O. Finish stops hardware and drains the remaining dictation samples. Cancellation stops hardware independently of network teardown, and identity checks discard late releases from an old session. The owner handles hardware route changes while retaining session queues. The first received dictation PCM sample emits the Listening event and the `dictation_sink_first_pcm_ms` diagnostic. This measures capture startup, not subscription connection time or time to recognized text. Preparation and buffering do not establish a latency guarantee. First-word completeness, microphone quality, device switching and playback effects require installed acceptance.
 
 The versioned `decodex_dictation_create_v2` symbol binds the Rust session to the matching native message contract. This adapter remains in the existing signed application library.
 
@@ -71,11 +73,11 @@ The coordinator uses native `thread/realtime/start` and `thread/realtime/stop` w
 
 Local transcript storage keeps newer received text when a delayed final is a shorter prefix of that text. The saved text remains marked incomplete. An empty final does not erase the received tail; normal closure can save it. Expanded finals and normal transcription corrections still replace provisional text. Saving a transcript never resubmits it as native input.
 
-The Rust media owner creates a native libwebrtc peer connection for each live call. No WebView or JavaScript media runtime is used. Swift handles microphone permission and device discovery; Rust calls Apple AVAudioEngine through Objective-C bindings for live capture and playback. The service retains subscription authentication, session binding and native RPC.
+The Rust media owner creates a native libwebrtc peer connection for each live call. No WebView or JavaScript media runtime is used. Swift handles microphone permission and device discovery; Rust owns WebRTC's platform audio-device lifecycle. The service retains subscription authentication, session binding and native RPC.
 
-One AVAudioEngine processes both microphone and remote playback audio. All client connections use 48 kHz mono; Apple handles hardware conversion and voice processing. Bounded PCM queues connect the audio callbacks to a 10 ms transport loop. Libwebrtc device recording and playback are disabled. The ordered data channel carries caption events, and readiness requires both the peer connection and that channel. Mute disables the outgoing track, including when requested before negotiation.
+The Live factory selects the requested input and default output without starting I/O during preparation. Recording and playback start only after the peer connection and ordered caption channel are ready. The production call uses WebRTC's platform audio device. A separate test PCM path uses 48 kHz mono frames and a 10 ms transport loop; that path is not the production microphone implementation. Mute disables the outgoing track, including when requested before negotiation.
 
-Closing the Rust media owner cancels its capture and peer connection worker. The shared audio owner pauses hardware independently of peer teardown and can retain the stopped graph for reuse. Each call leases separate PCM queues. Provider findings can retire local microphone authority even if stop acknowledgment is lost. Unknown native stop outcomes must not be treated as a guaranteed remote stop.
+Closing the Rust media owner cancels its capture and peer connection worker. The shared owner stops hardware independently of peer teardown and prepares a new Live factory after release. Provider findings can retire local microphone authority even if stop acknowledgment is lost. Unknown native stop outcomes must not be treated as a guaranteed remote stop.
 
 The native media ABI is version 4. The static libwebrtc archive needs the Objective-C linker flag in the GPUI build script. Bundles include its license notices under `Resources/ThirdPartyNotices`. Subscription voice does not switch to API-key billing.
 

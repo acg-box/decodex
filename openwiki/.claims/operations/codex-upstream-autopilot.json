@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1a5633cad72dbd75c41ef3ea703dabe94d36d2ef5db8283cb941d577714a1626",
+  "pageVersion": "sha256:a6cf2108025fb699014851d2e4b0e76bef2b5200b2f260e2067b7aa06a530a81",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -95,7 +95,7 @@
       "statement": "Agent continuation distinguishes user input from application tool output: initial delegation and explicit follow-up work_instruction outputs request native retention while scheduled wakes, capacity retries and other external results remain unselected and keep tool authority.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1238-L1352",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1243-L1357",
           "version": "repo-lines-v1:sha256:5d9d5c881f9272bfdc31d9ab28409b08964324cfa88db2cde6f693ee24ada2ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI3NTIzNjQ0MTgxNDAyZGRiY2RiN2I0MWEzYzc2YTFhNzE1NzAyNGZiNzc2NjAxNTBjODQxN2Q2MWIxMTBlOTU2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhZDZlMjExMmYyNDE4ZWYzNjk3OWYzOWVhMDUyNmJhNGUxOGU0ZmE0MTQ2NTQyM2ZhYjMzZmNmMzcyMmQ2MzhlIn0"
         },
         {
@@ -128,7 +128,7 @@
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
-          "version": "repo-file-v1:sha256:6e1c9957e318f9e9c5e58d31fb68759b057c1347696481f1896c1c53f44e5102"
+          "version": "repo-file-v1:sha256:4c8dab6abd1a26b236184a5c514f9ec27668dbc396b1f8271cf189ea8efb9baf"
         }
       ]
     },
@@ -156,7 +156,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:94cb983cf8c368491e8b61e2467526a7225100aecd9faf92a06a58d3f5df0dac"
+          "version": "repo-file-v1:sha256:9967bc667c8ad13bb20300e90c3a545ac265c9f6d2b44549a7d3d022a8ba1374"
         }
       ]
     },
@@ -176,7 +176,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/current-review.json",
-          "version": "repo-file-v1:sha256:1f1ac0ce621b8709e10b2864cef84b8cf180dbaaad497d0e8dcfe3550c97a26f"
+          "version": "repo-file-v1:sha256:f19d4a54f0519e12516733cdd9c2e1500b813894c3281cddab6afff8c52aacdb"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
@@ -184,13 +184,13 @@
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:fe6981376eb4e70e0731129d3bc621b546e979a74a93c013fee4cee344ec1489"
+          "version": "repo-file-v1:sha256:edfef08ebe485073cf98b0d312933d12388750f2da24f3ded8fcf67ad90e54f2"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-17T07:29:15.006Z"
+    "at": "2026-10-21T14:42:59.992Z"
   }
 }

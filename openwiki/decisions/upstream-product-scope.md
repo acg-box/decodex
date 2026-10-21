@@ -28,8 +28,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
+  - id: openwiki-source-f4724776aade804ebf838e2e
+    resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-e2f4e298ab0a4c683b92158d
     resource: repo://crates/decodex-runtime/src/account_service/personal_access_token.rs
+  - id: openwiki-source-ff8abff5a675874c627f1969
+    resource: repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs
   - id: openwiki-source-4e8482c0f2dbe370858a1b11
     resource: repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs
   - id: openwiki-source-720a745d503e0e60ebcad0c5
@@ -48,10 +52,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
   - id: openwiki-source-2da6601c3f30e806c504e991
     resource: repo://crates/decodex-runtime/src/host_credentials.rs
-generated: { by: "codex", at: "2026-10-14T05:36:25.710Z" }
+generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-15T20:50:23.059Z
+    at: 2026-10-21T09:01:22.045Z
 ---
 
 # Product scope and native ownership
@@ -67,7 +71,7 @@ Decodex supplies a local workspace, account policy, work relationships and reada
 | Tools and connections | Show observed capabilities and origin, and select enabled native skills for input. Configure plugin installation and connections per account in Codex. Discovery does not install or enable tools. |
 | Rich output | Render supported Markdown and structured content. The embedded MCP HTML viewer and its callback execution path are retired. |
 | Approvals and recovery | Use exact current request identity and native enforcement. Unknown outcomes require reconciliation, not automatic replay. |
-| Accounts | Keep multi-account routing and native credential ownership. Imported ChatGPT PAT accounts use their verified identity without synthetic OAuth expiry or refresh tokens. |
+| Accounts | Admit only native `plus`, `pro`, `prolite`, `promax` and `team` plans. Keep multi-account routing and native credential ownership. Imported ChatGPT PAT accounts use their verified identity without synthetic OAuth expiry or refresh tokens. |
 | Voice | Retain the subscription dictation and live paths described in the voice integration page. Source support is not an installed-app acceptance result. |
 
 The bridge admits installed-plugin observations but rejects local plugin list/read/install/reconcile management and MCP configuration reload. Historical plugin observations remain readable; these records do not restore removed management controls.
@@ -84,7 +88,7 @@ Eligible root conversations expose native read receipts in task preferences. Rea
 
 The client also exposes a bounded, explicitly invoked ephemeral prediction fork. It inherits the loaded parent's context, tools and permissions. It is not a tool-free recap, an automatic background job, or a composer suggestion interface. Its caller must own authorization and event routing. The isolated recap path remains separate.
 
-Native launch policy enables description-first tool ordering, full-fork prefix preservation and model-specific subagent context defaults. The native configuration still selects Code Mode hosting transport.
+Native launch policy enables description-first tool ordering, full-fork prefix preservation, model-specific subagent context defaults and Agent message wakeups. The native configuration still selects Code Mode hosting transport.
 
 Background compaction and retention of delegation instructions are configurable native additions. Task preferences > Context defaults reads and writes the same native configuration used by manual `config.toml` edits. Explicit off values remain valid; saving a default does not restart loaded conversations. The panel distinguishes a saved user value from a project override.
 

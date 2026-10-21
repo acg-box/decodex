@@ -18,12 +18,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_skill_roots.rs
   - id: openwiki-source-8b32cad13ab2428dd54bd986
     resource: repo://crates/decodex-runtime/src/agent_skills.rs
-  - id: openwiki-source-a09c082db4ad1473c4d1e557
-    resource: repo://crates/decodex-runtime/src/application.rs
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T05:36:25.710Z
+    at: 2026-10-21T14:39:50.043Z
 ---
 
 # Native tools and connection ownership

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4437bd294fc67d9a268ddbba62dedb78077374f1d49aecfbf5d9b111a23a968a",
+  "pageVersion": "sha256:97645b8eb2f8f1c1a81a49cb7e5e6b0dc4c74b18ccdd98721583fa95c9afc619",
   "claims": [
     {
       "id": "claim_3f139c853db04d169600a9ee50a8d9b8",
@@ -27,7 +27,7 @@
       "statement": "The account-owned bridge rejects local plugin management and retired widget resource/tool-call methods while retaining native integration observations.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L733-L776",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L750-L793",
           "version": "repo-lines-v1:sha256:c6d3d32d87a2b9459e0ee8c261b88bd9386392bb456ff9dd93eed96d99ba76ba:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0ZDAyMDk0NDNhMGVhMDQxNTNlYjM3YzdhNGYzMTU4OGE0MDBmNGE0ZTNkYTE0NDc3ZmVjYTRhYmQ4M2YzYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1YmZmMDY0M2Y4MTMwOWI5OTYzNjY3ODkyZTMzYWNhYzU2NzBiMzQ2YWZjMDc5MDk2Mjc0ZTA5Y2QzNTk0MjUifQ"
         }
       ]
@@ -37,8 +37,8 @@
       "statement": "The composer offers only enabled native skills for the selected source and inserts the exact name and absolute path as an input attachment without installing or enabling plugins.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_skills.rs#L166-L187",
-          "version": "repo-lines-v1:sha256:9ebce433c329585a5b149c1ffef90e6cdc0d3ed5144a0e7ada1d5058a0002186:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY3YWMzYWNhZjVlNWNmNzg4MzFiZjQxOTBiZmMyZDhjNDYxY2ExYmM5M2VmY2QzMDQ5OWZlZDI4MGNmOTM1ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM1MTQ4MTUwZDUyZDdjYTI0ZmZhODUzNTE5NjliNzc4ZTQ0ZGM4MjNkMjM4NjJhZWQ5ZDM0ZTllN2FmOGJiNzcifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_skills.rs#L166-L194",
+          "version": "repo-lines-v1:sha256:23027d77dad3b1152f8828f4dfae0421fd87c3bf4e8a325b039d2962aebdd22c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3ZGU5OWU0OTQ5ODExZmFkNDNiNTZhOTY0NTJjYzc4NmRiODgxZDE3ZjIzN2FiYWFlODk0YTU5Zjg4NmUyNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwNzcwYjYwZDU1ZmQ3YjE5NWI0Zjk2NzJhZjkzYjFkY2EyMjA0OTk2MWZhOGMxMWQ2ZGMwZGRhOGQ3YmFiZDQifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_skills.rs#L1-L108",
@@ -51,7 +51,7 @@
       "statement": "DECODEX_SKILL_ROOTS is captured at service startup as an optional absolute path list and applied through native skills/extraRoots/set on fresh retained Agent processes; native discovery remains unchanged when the variable is absent.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1950-L2005",
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L2034-L2089",
           "version": "repo-lines-v1:sha256:aa3f2ea38c791996308791502e0e922f953c2f37d89d6157fc95d2ce15ffe781:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4MGE3NmVlZTVjZjNiYWViN2VkZDA1MzQ1M2Q4OGE2ZDQ4ZTA1NDE1Y2JkOGZjNjI4ZjA2OWMxNzU1NGYxNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiZDYyMjhiZjUwNjZjMTkxOWJiMGU2YzAxZDU3NTBiOGYxYWY5NWQxNzQ1NjEyOGQyN2E0YTFmMWExOTg2OWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyOGJkYjkwYTFkYTM4ZjJkZTVlMzQ4Mjk2OGUwNzUwMWJhNDJlMDljNjU2ZmQ3MTI0OWRhYmQxYmVhYWMyOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhODFhMzNlNjdjNGNiNDNlZTJlMWUzODdkMTg1YjIwMWY5MzZjNjZjNWIyNzkzNzU2OWE1ZjViMjFlN2YyZTgifQ"
         },
         {
@@ -65,22 +65,22 @@
       "statement": "Local saved and effective connector approval/reviewer management commands are retired, while native integration observations and pending approval handling remain separate capabilities.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1358-L1372",
-          "version": "repo-lines-v1:sha256:244d500bde892c5d53adda89f1e7b16f7d5db66bff91e2e82ebd3d3c2dd104ea:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNkMzQ3OGQ1NjY4OGVjNWYxZDVjOTNhZWVhNDQyNjc1ZGMxOGMzODMyMmM3YzZhOGY0NDFhNmRlYjUyZmVlOGMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5NTQ2YTExZTJkNDIzMWU0Y2VhYmQ5ZmZhMDg4ZWMxNzFkMmMwZGRiODZkNzQ5Zjc4MGY0MWM0ZTc5ZWM3NmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjYzBkN2JkYmI3MzM4ZmI4ODVhZGI1ZTE2NzYzN2MwMDQ5NTg1ZjY1ZmZiNzFmOWE5NmFkMGM0YmM3ODNiMjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc3MTA4MjJjMjk3ZWEzNDdhMmUzMWQzOGZlZjdlMmFjMDM0NzdiYjE0YTczNDRkM2Q3Y2U0YmFmZjhlMWIzZmIifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L986-L1001",
+          "version": "repo-lines-v1:sha256:359c5cd359abedd93f41e57246f7b935447c103dc4033da7c4a923e5c732a998:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZlMDc3OGEzNjg0ZWY2ZjFkOWUwOTRhNTM4NTAxNTMyYWViZDM2ODFmZTM4OWQ5MjI2YmUzNzFmMDIzYTlhMDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ0NTRiMDRkMGZmMTM5NGU5Y2RkNTRmMGE1ZjZhYzY0ZDA5MzNmMTRhNzk0MTNkMTNjYThhYTBiMTNkODFjYzYifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1423-L1435",
+          "version": "repo-lines-v1:sha256:4e928b32a699ea432c5486c3fcc6666b7110d33c764f2a5c2aea537ef4f30143:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxMTU0ZGViZTBlNjlhNThlYThjZGFkNzhmZmMxZjhiM2I1NmViMDliNGYyNWI3OGU1ZjU1YjYxNTcwZmQxMjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2MTYxMjM2MTMyZjZmYTI1OGI1YWYzODdkMGUyYmI4M2E4OTk1NjlkNDlkN2M3ZDAyYWNjZjFjNGVmNjVhNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5NzhkNzlkZjYyMGEyYzI5YjhhNzVhYTRhMjg1MTYwMWI0MjFkY2JiM2YxYjlmMTQ1Y2VhMjg5ZWMzYTEzNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhMjgxNjI5YjJhOTQwZTRmMTc2MzQ4N2U1YTY0ZTM1ZmIxYmE1MDI4NjM4MjEzZDRmOWMxMjMxMDc0NDE4NmUifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_integrations.rs#L87-L120",
           "version": "repo-lines-v1:sha256:354ca1614d4c92092782d2ed11747714de9ef9088b7719702c5ffaeca90cd2a4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViNjIxYmFhYTI2MjM1ODgwMDI0MzEwNTBlMjIzZDQ2OTg2NTBmNzM3ODJlM2RkZWNhOTExZTg0MDkyMTc4MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzMjAyMDJjYzY0OGNhZGNhMTZmODVkMDY1ZTQzMTFjYTNhMzMwOWFmNWNiZDM2MTBkMTZhNmQzMjFmN2FmODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlYTI0MGMzMmYzMmMxZTNmN2NkMjJjOTgyZTViNmM4YjBhNTNhZmQxZWEwMzZiM2QxYTVhOTM5Yjg0YjVkMTcifQ"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/application.rs",
-          "version": "repo-file-v1:sha256:52b7e50d1a348e5b372a0020da707b0e4985822af9471d9c6a586138e460fcd3"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-14T05:36:25.710Z"
+    "at": "2026-10-21T14:39:50.043Z"
   }
 }

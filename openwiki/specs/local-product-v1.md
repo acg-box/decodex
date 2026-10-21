@@ -8,10 +8,22 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift
   - id: openwiki-source-acf49c93c3e80379f0023c71
     resource: repo://apps/decodex-gpui/src/accounts.rs
+  - id: openwiki-source-3708e6cf9324a8ff1f6c39ae
+    resource: repo://apps/decodex-gpui/src/agent_collaboration_tests.rs
+  - id: openwiki-source-2a6989c7fa25b9681df71f95
+    resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
+  - id: openwiki-source-2ee1164d01a09b38a208f1ac
+    resource: repo://apps/decodex-gpui/src/agent_markdown.rs
+  - id: openwiki-source-15ee466228bdb01892c9678b
+    resource: repo://apps/decodex-gpui/src/agent_text_selection.rs
+  - id: openwiki-source-51a4755f3c4ddd78511e5c8e
+    resource: repo://apps/decodex-gpui/src/agent_tree.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
+  - id: openwiki-source-ff8abff5a675874c627f1969
+    resource: repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-a67672a943dfe221574b2501
@@ -20,10 +32,10 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-dd24c2ff3c2515a21892e312
     resource: repo://database/src/program_cycles.rs
-generated: { by: "codex", at: "2026-10-10T06:49:11.265Z" }
+generated: { by: "codex", at: "2026-10-21T14:45:12.016Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T02:32:34.699Z
+    at: 2026-10-21T14:45:12.016Z
 ---
 
 # Current local product contract
@@ -42,11 +54,13 @@ Agent retains work relationships, event dispositions, dependencies, reviews and 
 
 ## User interaction
 
-The conversation is primary. The tree represents ownership and the graph represents work relationships. Current archive/ownership failures appear within the selected conversation. Known external ownership rejects new messages rather than queuing them for later. Archive restore is explicit and verified by exact native identity/readback.
+The conversation is primary. The graph represents work relationships; the right Collaboration panel keeps recorded exchanges and pending response requests visible across chats. Expanding an exchange preserves the active chat and draft. Current archive/ownership failures appear within the selected conversation. Known external ownership rejects new messages rather than queuing them for later. Archive restore is explicit and verified by exact native identity/readback.
 
-Markdown text can be selected per block. Response metadata separates duration from optional usage details. Dictation updates the draft with partial and final transcript revisions; live voice attaches to the native Agent thread.
+Markdown text selection shares one document across the blocks of a rendered message. Response metadata separates duration from optional usage details. Dictation updates the draft with partial and final transcript revisions; live voice attaches to the native Agent thread.
 
 ## Account effects
+
+Account admission accepts only native `plus`, `pro`, `prolite`, `promax` and `team` plans for OAuth and PAT credentials. Native identity, model entitlement and observed quota remain separate facts. See [account operations](../operations/accounts-and-routing.md).
 
 Route is one synchronous service-owned command. It locks routing and account state, derives current revisions, checks liveness/shared-source identity, refreshes when required and commits an authoritative projection. The retired Pending-route shape and 100 ms retry loop are not current requirements.
 

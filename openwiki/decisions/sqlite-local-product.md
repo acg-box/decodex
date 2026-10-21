@@ -13,7 +13,7 @@ sources:
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-13T03:59:08.643Z
+    at: 2026-10-21T09:01:22.045Z
 ---
 
 > Current decision retained: one local SQLite owner. Use the embedded migration ledger for the current schema version, not the historical no-migration server-store policy. See [Runtime architecture](../architecture/runtime-architecture.md).

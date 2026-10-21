@@ -26,21 +26,25 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-e2f4e298ab0a4c683b92158d
     resource: repo://crates/decodex-runtime/src/account_service/personal_access_token.rs
+  - id: openwiki-source-ff8abff5a675874c627f1969
+    resource: repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs
   - id: openwiki-source-e32adebfd6d3bf27dc186bad
     resource: repo://crates/decodex-runtime/src/agent/tests/auth_recovery.rs
   - id: openwiki-source-63bea5f3704fcd7e4b161192
     resource: repo://database/src/account_lifecycle.rs
   - id: openwiki-source-9b561c5dd3054cdff0599fb9
     resource: repo://database/src/quota_activation.rs
-generated: { by: "codex", at: "2026-10-13T07:37:30.807Z" }
+generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-14T02:32:34.699Z
+    at: 2026-10-21T14:42:59.992Z
 ---
 
 # Account routing and recovery
 
 ## Service ownership
+
+Account admission is limited to the native plans `plus`, `pro`, `prolite`, `promax` and `team`, with case-insensitive names. Missing, unknown and other plans are rejected. The same admission rule applies to OAuth and PAT credentials. Team is the workspace plan within this scope; the four individual plans share the existing account flow. Admission does not grant a model entitlement or a fixed quota. Native identity, usage and workspace policy remain authoritative.
 
 `AccountService` owns account credentials, route selection and refresh coordination. Clients submit typed commands and receive credential-free results. Current Route is a synchronous service transaction: it holds route/account locks, checks revisions and native liveness, refreshes when needed, compares the exact shared-auth source, reads back and records authoritative completion or refusal.
 
