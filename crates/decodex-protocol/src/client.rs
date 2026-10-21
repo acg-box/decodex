@@ -3691,6 +3691,7 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		| AgentActionDto::RecoverPromptFork { work_id, .. }
 		| AgentActionDto::RecoverPromptEdit { work_id, .. }
 		| AgentActionDto::GenerateSample { work_id, .. }
+		| AgentActionDto::CancelSample { work_id, .. }
 		| AgentActionDto::GenerateRecap { work_id, .. }
 		| AgentActionDto::CancelRecap { work_id, .. }
 		| AgentActionDto::SetThreadReadState { work_id, .. }

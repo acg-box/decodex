@@ -1,12 +1,13 @@
 //! Explicit sample commands use the current admitted native connection without blocking its actor.
 use std::time::Duration;
 
-use decodex_codex::app_server_client::ClientError;
+use decodex_codex::app_server_client::{ClientError, NativeThreadSampleOutcome};
 use decodex_database::AgentVoiceHistoryRevision;
 use decodex_protocol::{
 	AgentActionDto, AgentSampleAnswer, AgentSampleStatus, EntityId, MAX_AGENT_SAMPLE_PROMPT_BYTES,
 	WireText,
 };
+use tokio::sync::oneshot;
 
 use crate::{
 	agent_host::{AgentHost, AgentHostError},
@@ -19,10 +20,16 @@ impl AgentHost {
 		key: &str,
 		action: AgentActionDto,
 	) -> Result<String, AgentHostError> {
-		let AgentActionDto::GenerateSample { work_id, thread_id, prompt } = action else {
-			unreachable!("sample action")
-		};
-		self.start_sample(key, work_id.as_str(), thread_id.as_str(), prompt.as_str().into()).await
+		match action {
+			AgentActionDto::GenerateSample { work_id, thread_id, prompt } =>
+				self.start_sample(key, work_id.as_str(), thread_id.as_str(), prompt.as_str().into())
+					.await,
+			AgentActionDto::CancelSample { work_id, request_id } => {
+				self.samples.cancel_request(work_id.as_str(), request_id.as_str())?;
+				Ok(work_id.as_str().to_owned())
+			},
+			_ => unreachable!("sample action"),
+		}
 	}
 
 	async fn sample_source(&self, work: &str, thread: &str) -> Option<Source> {
@@ -81,7 +88,7 @@ impl AgentHost {
 		if voice.open_calls > 0 {
 			return Err("Finish the voice conversation before asking separately".into());
 		}
-		self.samples.start(
+		let cancellation = self.samples.start(
 			Source { key: source.key.clone(), client: source.client.clone() },
 			key,
 			&prompt,
@@ -90,7 +97,7 @@ impl AgentHost {
 		let host = self.clone();
 		let key = key.to_owned();
 		tokio::spawn(async move {
-			host.run_sample(source, key, prompt, voice).await;
+			host.run_sample(source, key, prompt, voice, cancellation).await;
 		});
 		Ok(work.into())
 	}
@@ -101,6 +108,7 @@ impl AgentHost {
 		key: String,
 		prompt: String,
 		voice: AgentVoiceHistoryRevision,
+		cancellation: oneshot::Receiver<()>,
 	) {
 		let result = tokio::time::timeout(Duration::from_secs(40), async {
 			let guard = source
@@ -112,8 +120,17 @@ impl AgentHost {
 				.thread_latest_turn_id(&source.key.thread)
 				.await?
 				.ok_or(ClientError::InvalidFrame)?;
-			let native =
-				source.client.sample_thread(&source.key.thread, &latest, &prompt, guard).await?;
+			let native = source
+				.client
+				.sample_thread_cancellable(
+					&source.key.thread,
+					&latest,
+					&prompt,
+					guard,
+					cancellation,
+				)
+				.await?;
+			let NativeThreadSampleOutcome::Answer(native) = native else { return Ok(None) };
 			let current = self
 				.sample_source(&source.key.work, &source.key.thread)
 				.await
@@ -132,7 +149,7 @@ impl AgentHost {
 			{
 				return Err(ClientError::StaleHistory);
 			}
-			Ok(AgentSampleAnswer {
+			Ok(Some(AgentSampleAnswer {
 				source_turn_id: WireText::new(native.source_turn_id)
 					.map_err(|_| ClientError::InvalidFrame)?,
 				response_id: WireText::new(native.response_id)
@@ -141,7 +158,7 @@ impl AgentHost {
 				input_tokens: native.input_tokens,
 				cached_input_tokens: native.cached_input_tokens,
 				output_tokens: native.output_tokens,
-			})
+			}))
 		})
 		.await
 		.unwrap_or(Err(ClientError::Io));

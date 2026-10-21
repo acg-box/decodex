@@ -491,7 +491,17 @@ async fn serve(
 
 			let serial = requests.fetch_add(1, Ordering::AcqRel);
 
-			if hold_shutdown_response(&mut socket).await {
+			let held = if env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_some() {
+				Some("active")
+			} else if env::var_os("DECODEX_TEST_NATIVE_SAMPLE").is_some()
+				&& input.to_string().contains("Hold this sample until cancellation.")
+			{
+				Some("sample")
+			} else {
+				None
+			};
+			if let Some(witness) = held {
+				hold_fixture_response(&mut socket, witness).await;
 				continue;
 			}
 
@@ -549,11 +559,7 @@ async fn serve(
 	}
 }
 
-async fn hold_shutdown_response(socket: &mut tokio::io::BufReader<TcpStream>) -> bool {
-	if env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_none() {
-		return false;
-	}
-
+async fn hold_fixture_response(socket: &mut tokio::io::BufReader<TcpStream>, witness: &str) {
 	let home = PathBuf::from(env::var_os("DECODEX_TEST_ACCOUNT_HOME").expect("isolated home"));
 
 	socket
@@ -564,7 +570,8 @@ async fn hold_shutdown_response(socket: &mut tokio::io::BufReader<TcpStream>) ->
 		.await
 		.expect("pending fixture response");
 
-	fs::write(home.join("active-provider-started"), "pending\n").expect("active witness");
+	fs::write(home.join(format!("{witness}-provider-started")), "pending\n")
+		.expect("pending witness");
 
 	let mut byte = [0];
 	let read = socket.read(&mut byte).await;
@@ -575,7 +582,6 @@ async fn hold_shutdown_response(socket: &mut tokio::io::BufReader<TcpStream>) ->
 		"provider did not observe cancellation: {read:?}"
 	);
 
-	fs::write(home.join("active-provider-closed"), "closed\n").expect("closure witness");
-
-	true
+	fs::write(home.join(format!("{witness}-provider-closed")), "closed\n")
+		.expect("closure witness");
 }

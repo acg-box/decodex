@@ -7,13 +7,19 @@ use decodex_protocol::{
 };
 use tokio::sync::watch;
 
+pub(super) enum Operation {
+	Read,
+	Generate(WireText),
+	Cancel(WireText),
+}
+
 pub(super) type Update = (Option<AgentSampleStatus>, String);
 
 pub(super) async fn run(
 	profile: ClientProfile,
 	work: EntityId,
 	thread: WireText,
-	prompt: Option<WireText>,
+	operation: Operation,
 	mut closed: watch::Receiver<bool>,
 	updates: watch::Sender<Option<Update>>,
 ) {
@@ -21,29 +27,42 @@ pub(super) async fn run(
 		return;
 	}
 	let client = AgentClient::new(profile);
-	let mut expected = None;
-	if let Some(prompt) = prompt {
-		let key =
-			IdempotencyKey::new(super::unique_command()).expect("bounded sample command identity");
-		expected = Some(WireText::new(key.as_str()).expect("bounded request identity"));
-		if let Ok(AgentCommandResponse::Rejected { error }) = client
-			.execute(
-				AgentActionDto::GenerateSample {
-					work_id: work.clone(),
-					thread_id: thread.clone(),
-					prompt,
-				},
-				key,
+	let (expected, action) = match operation {
+		Operation::Read => (None, None),
+		Operation::Generate(prompt) => {
+			let key = IdempotencyKey::new(super::unique_command())
+				.expect("bounded sample command identity");
+			(
+				Some(WireText::new(key.as_str()).expect("bounded request identity")),
+				Some((
+					AgentActionDto::GenerateSample {
+						work_id: work.clone(),
+						thread_id: thread.clone(),
+						prompt,
+					},
+					key,
+				)),
 			)
-			.await
-		{
-			let message = match error {
-				CommandError::ApplicationUnavailable { message } => message.as_str().to_owned(),
-				_ => "This sample was not accepted. Refresh its status before trying again.".into(),
-			};
-			let _ = updates.send(Some((None, message)));
-			return;
-		}
+		},
+		Operation::Cancel(request_id) => {
+			let key = IdempotencyKey::new(super::unique_command())
+				.expect("bounded cancellation command identity");
+			(
+				Some(request_id.clone()),
+				Some((AgentActionDto::CancelSample { work_id: work.clone(), request_id }, key)),
+			)
+		},
+	};
+	if let Some((action, key)) = action
+		&& let Ok(AgentCommandResponse::Rejected { error }) = client.execute(action, key).await
+	{
+		let message = match error {
+			CommandError::ApplicationUnavailable { message } => message.as_str().to_owned(),
+			_ => "This sample action was not accepted. Refresh its status before trying again."
+				.into(),
+		};
+		let _ = updates.send(Some((None, message)));
+		return;
 	}
 	loop {
 		if *closed.borrow() || closed.has_changed().is_err() {
@@ -60,7 +79,10 @@ pub(super) async fn run(
 			{
 				let active = matches!(
 					state.phase,
-					AgentSamplePhase::Pending | AgentSamplePhase::Ready | AgentSamplePhase::NoText
+					AgentSamplePhase::Pending
+						| AgentSamplePhase::Cancelling
+						| AgentSamplePhase::Ready
+						| AgentSamplePhase::NoText
 				);
 				let message = phase_message(state.phase).into();
 				let _ = updates.send(Some((Some(state), message)));
@@ -88,6 +110,9 @@ pub(super) const fn phase_message(phase: AgentSamplePhase) -> &'static str {
 		AgentSamplePhase::Idle => "Ask for another perspective on this conversation.",
 		AgentSamplePhase::Pending =>
 			"Asking separately… Closing this panel leaves the request running.",
+		AgentSamplePhase::Cancelling =>
+			"Cancelling the separate answer… Waiting for native cleanup.",
+		AgentSamplePhase::Cancelled => "The separate answer was cancelled.",
 		AgentSamplePhase::Ready => "Separate answer",
 		AgentSamplePhase::NoText =>
 			"The model returned no text, possibly because it attempted a tool call. No tools were executed.",

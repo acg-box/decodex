@@ -946,7 +946,7 @@ impl AgentHost {
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
 
-						let defer_dispatch = matches!(&request.action,AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..}|AgentActionDto::DiscardEmptyWork{..}|AgentActionDto::GenerateSample{..});
+						let defer_dispatch = matches!(&request.action,AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..}|AgentActionDto::DiscardEmptyWork{..}|AgentActionDto::GenerateSample{..}|AgentActionDto::CancelSample{..});
 
 						if !defer_dispatch && !matches!(&request.action, AgentActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
 
@@ -1555,8 +1555,8 @@ impl AgentHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
-			action @ AgentActionDto::GenerateSample { .. } =>
-				self.handle_sample(&key, action).await,
+			action @ (AgentActionDto::GenerateSample { .. }
+			| AgentActionDto::CancelSample { .. }) => self.handle_sample(&key, action).await,
 			action @ (AgentActionDto::AddWorkspace { .. }
 			| AgentActionDto::DiscardEmptyWork { .. }
 			| AgentActionDto::NewConversation { .. }) =>

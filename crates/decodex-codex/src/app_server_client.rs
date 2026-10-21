@@ -80,7 +80,8 @@ pub use self::{
 	realtime_preferences::{NativeVoiceSettings, is_realtime_voice_write},
 	recovery_auth::NativeRecoveryAuth,
 	sample::{
-		MAX_SAMPLE_OUTPUT_BYTES, MAX_SAMPLE_PROMPT_BYTES, NativeThreadSample, is_thread_sample,
+		MAX_SAMPLE_OUTPUT_BYTES, MAX_SAMPLE_PROMPT_BYTES, NativeThreadSample,
+		NativeThreadSampleOutcome, is_thread_sample, is_thread_sample_cancel,
 	},
 	search_preferences::{NativeSearchSettings, is_search_mode_write},
 	server_requests::{HistoryGuard, ServerRequestGuard, invalidates_question_state},
@@ -237,9 +238,21 @@ impl Guard {
 }
 
 enum Outbound {
-	Request { method: String, params: Value, reply: Reply, guard: Option<Guard> },
-	Message { value: Value, reply: Reply, guard: Option<Guard> },
-	Shutdown { reply: Reply },
+	Request {
+		method: String,
+		params: Value,
+		reply: Reply,
+		guard: Option<Guard>,
+		written: Option<oneshot::Sender<RequestId>>,
+	},
+	Message {
+		value: Value,
+		reply: Reply,
+		guard: Option<Guard>,
+	},
+	Shutdown {
+		reply: Reply,
+	},
 }
 
 enum FrameSink {
@@ -592,6 +605,7 @@ impl AppServerClient {
 				params,
 				reply,
 				guard: Some(Guard::History(guard)),
+				written: None,
 			})
 			.await
 			.map_err(|_| ClientError::Closed)?;
@@ -632,6 +646,7 @@ impl AppServerClient {
 				params,
 				reply,
 				guard: Some(Guard::Request(guard)),
+				written: None,
 			})
 			.await
 			.map_err(|_| ClientError::Closed)?;
@@ -680,7 +695,13 @@ impl AppServerClient {
 		let (reply, result) = oneshot::channel();
 
 		self.outbound
-			.send(Outbound::Request { method: method.into(), params, reply, guard: None })
+			.send(Outbound::Request {
+				method: method.into(),
+				params,
+				reply,
+				guard: None,
+				written: None,
+			})
 			.await
 			.map_err(|_| ClientError::Closed)?;
 
@@ -993,7 +1014,7 @@ async fn run_frames(
 
 						if let Err(error) = result { break error; }
 					},
-					Outbound::Request { method, params, reply, .. } => {
+					Outbound::Request { method, params, reply, written, .. } => {
 						// Timed-out callers must not consume admission slots indefinitely.
 						// This releases bookkeeping only; it does not cancel or replay native work.
 						pending.retain(|_, request| !request.reply.is_closed());
@@ -1027,9 +1048,10 @@ async fn run_frames(
 							continue;
 						}
 
-						pending.insert(id, PendingReply{reply,permissions});
+						pending.insert(id.clone(), PendingReply{reply,permissions});
 
 						if let Err(error) = result { break error; }
+						if let Some(written) = written { let _ = written.send(id); }
 					},
 				}
 			},

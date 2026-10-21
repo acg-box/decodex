@@ -507,6 +507,13 @@ pub enum AgentActionDto {
 		/// Explicit question; at most 4000 UTF-8 bytes.
 		prompt: WireText,
 	},
+	/// Cancel only the displayed separate-answer request; keep the source conversation intact.
+	CancelSample {
+		/// Owning local root task.
+		work_id: EntityId,
+		/// Original generation command key, not a native thread or turn identity.
+		request_id: WireText,
+	},
 	/// Start an optional recap for the exact displayed native thread.
 	GenerateRecap {
 		/// Owning local task.

@@ -312,6 +312,11 @@ fn validate_inherited_request(method: &Value, params: &Value) -> Option<Result<(
 				.then_some(())
 				.ok_or(ClientError::InvalidFrame),
 		),
+		"thread/sample/cancel" => Some(
+			app_server_client::is_thread_sample_cancel(params)
+				.then_some(())
+				.ok_or(ClientError::InvalidFrame),
+		),
 		_ => None,
 	}
 }
