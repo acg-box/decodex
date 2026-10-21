@@ -1305,7 +1305,94 @@
             "skipped": 948,
             "leak_markers": 0,
             "unmatched_selectors": 0,
-            "limit": "One existing test emitted a Nextest LEAK marker in the full cohort and passed on immediate isolated rerun. The test does not exercise the changed worker-tool reply. The exit-marker cause is unmeasured; no test or teardown policy was changed."
+            "limit": "The original cohort had one Nextest LEAK marker and its immediate isolated recheck passed. See exit_marker_diagnosis for the subsequent source review, stress reproduction and capture-inheritance evidence. The original run did not retain a descriptor trace."
+          },
+          "exit_marker_diagnosis": {
+            "status": "runner_capture_inheritance_reproduced_no_decodex_patch_needed",
+            "decodex_source_commit": "0ede4b7324da4d37b74b6cbac588b88222db7e72",
+            "finding": "On macOS, concurrent Nextest 0.9.143 spawns can inherit sibling capture writers. A sibling that exits can then exceed the unchanged 100 ms output-close timeout. Same-snapshot lsof observations found foreign capture writers held by sibling test processes for all four tests that received LEAK markers in this reproduction.",
+            "runner": {
+              "name": "cargo-nextest",
+              "observed_version": "0.9.143",
+              "platform": "aarch64-apple-darwin",
+              "source_commit": "60fa45f638ffc3f35e74afa65737f45fcd32db2a",
+              "source_symbols_read": {
+                "at_observed_version": [
+                  "nextest-runner/src/test_command/imp.rs#spawn"
+                ],
+                "at_fix_commit": [
+                  "nextest-runner/src/test_command.rs#create_pipe,#spawn_process,#spawn_piped"
+                ]
+              },
+              "upstream_fix": "https://github.com/nextest-rs/nextest/pull/3553",
+              "fix_commit": "e4ed09c700c717a3b6083593cce5a23237dbff0a",
+              "first_fixed_release": "https://github.com/nextest-rs/nextest/releases/tag/cargo-nextest-0.9.145",
+              "upstream_regression_read": "nextest-runner/src/test_command/imp.rs#tests::concurrent_spawns_do_not_inherit_capture_pipes",
+              "upstream_tests_executed": 0,
+              "source_sha256": {
+                "nextest-runner/src/test_command/imp.rs@cargo-nextest-0.9.143": "96cf46123b70b4e2bb63c18d8d967f90b3a229c077f910917fae63e25967714a"
+              }
+            },
+            "decodex_source_symbols_read": [
+              "crates/decodex-runtime/src/agent/tests.rs#fixture_with_history,#fixture,#async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade",
+              "crates/decodex-runtime/src/agent.rs#AgentCoordinator::new,#start_agent,#answer_async_question",
+              "crates/decodex-codex/src/app_server_client.rs#AppServerClient::from_io",
+              "database/src/lib.rs#SqliteStore::open,#open_verified"
+            ],
+            "tests_read": [
+              "agent::tests::async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade",
+              "agent::tests::async_question_upgrade_reads_native_history_and_preserves_later_questions",
+              "agent::tests::async_answers_target_running_and_idle_workers_and_preserve_sibling_questions",
+              "agent::tests::async_recovery::delegated_instruction_retires_only_older_questions",
+              "agent::tests::archive::restore_preserves_identity_and_pending_input_without_creating_a_turn"
+            ],
+            "source_sha256": {
+              "crates/decodex-runtime/src/agent/tests.rs": "b51fcd53fef366e8dbb83a9ae1f6dfea567dce19d36b0daf08fb7e8eec603898",
+              "crates/decodex-runtime/src/agent/tests/async_recovery.rs": "154dc51377c6374b60910ea81fc6abe8b931905c2babbd697ebe924f9aafbc44",
+              "crates/decodex-runtime/src/agent/tests/archive.rs": "417312952c249883e3e200b179ed67a9181fdb7147b0774827af73aa34159881",
+              "crates/decodex-codex/src/app_server_client.rs": "62df90d0c8602e5d936bff80dc2aed099c23e59d09bf6f8ddbaa9b5911d8109c",
+              ".config/nextest.toml": "ebfde6502524c4aa2f3c07de620ed43bf23f5ed08c88691ec851dc0a978f6c8a"
+            },
+            "executed_checks": [
+              {
+                "command": "cargo +stable nextest run --locked -p decodex-runtime --lib --no-tests fail -E 'test(=agent::tests::async_answer_does_not_fork_an_old_manager_thread_for_tool_upgrade)' --stress-count 100 --status-level leak",
+                "distinct_tests": 1,
+                "executed": 100,
+                "passed": 100,
+                "leak_markers": 0,
+                "skipped_per_iteration": 948,
+                "unmatched_selectors": 0
+              },
+              {
+                "command": "cargo +stable nextest run --locked -p decodex-runtime --lib --no-tests fail -E 'test(agent::tests::)' --stress-count 12 --status-level leak",
+                "distinct_tests": 182,
+                "executed": 2184,
+                "passed": 2184,
+                "leak_markers": 5,
+                "distinct_leaky_tests": 4,
+                "skipped_per_iteration": 767,
+                "unmatched_selectors": 0,
+                "observation": "Same-snapshot lsof records identified 13 inherited capture descriptor pairs between sibling test processes. Detailed process identities and raw snapshots remain in the native receipt.",
+                "observation_command": "lsof -nP -F pfcnt -a -p <comma-separated-sibling-test-pids>",
+                "observation_method": "Within one snapshot, match a PIPE endpoint on a descriptor above 2 with standard output or error on another test process with the same parent. Do not pair pipe addresses across snapshots: the kernel can reuse them."
+              },
+              {
+                "command": "cargo +stable nextest run --locked --all-features -p decodex-runtime --lib --no-tests fail -E 'test(agent::tests::)' -j 1 --status-level leak",
+                "distinct_tests": 182,
+                "executed": 182,
+                "passed": 182,
+                "leak_markers": 0,
+                "skipped": 767,
+                "unmatched_selectors": 0,
+                "purpose": "Compare unchanged tests without concurrent runner spawns; this does not change repository defaults."
+              }
+            ],
+            "disposition": "No Decodex production or test-cleanup patch is needed for this marker. The supported host-tool update must include Nextest fix 3553. This investigation does not install or replace host tools, change leak timeouts, skip tests or serialize the repository suite by default.",
+            "limits": [
+              "The original single-marker run has no descriptor trace. The mechanism is reproduced on current unchanged application source; the historical event is not retroactively traced.",
+              "The fixed Nextest version was inspected through official source, regression code and release notes, but was not installed or executed.",
+              "No native runtime migration, live-provider rerun or installed-app acceptance is claimed."
+            ]
           }
         },
         "live_validation": {
