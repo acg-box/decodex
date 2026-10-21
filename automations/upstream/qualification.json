@@ -3195,7 +3195,9 @@
   },
   "historical_scope": {
     "certified_ranges": "Preserved in native state; this qualification covers only the fixed current target and retained source/behavior limits.",
-    "unrecovered": "Older exact 153-test manifest remains unknown."
+    "unrecovered": "Older exact 153-test manifest remains unknown.",
+    "conditional_remote_credential_snapshot": "Earlier qualification could not qualify conditional remote credential snapshots because fixture DNS failed or returned a reserved address. Native address protection stays enabled. Current consumers use private stdio; reopen only with a concrete retained remote consumer. Original source assertions and historical delivery evidence remain in Git.",
+    "prior_public_evidence": "https://github.com/acg-box/decodex/blob/69fe45a5d2d2a6e093568ce69bff50415378cc41/automations/upstream/qualification.json"
   },
   "native_agent_message_wake": {
     "test": "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
@@ -3231,8 +3233,8 @@
       "Source review cursor, selected runtime, installed binary and automation schedule are unchanged."
     ]
   },
-  "delivery_reference": "Pending focused maintenance PR; no merged delivery claimed.",
-  "delivery_status": "pending",
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2484",
+  "delivery_status": "merged",
   "qualification_fixture_revision": "cd8f9f4c9ba9b3733eec0276e82bbf60928d93de",
   "qualification_source_binding": {
     "consumer_baseline": "69fe45a5d2d2a6e093568ce69bff50415378cc41",
@@ -3276,5 +3278,31 @@
       ]
     },
     "limits": "Product implementation and its original GUI evidence remain at the linked delivery. Current requalification covers native ownership, cancellation/complete races, child cleanup and parent preservation; GUI source is unchanged."
+  },
+  "delivery_merge_commit": "fead52f5e3d37b7ffb09a9954c03160a5f3caee4",
+  "delivery_ci": {
+    "head": "e212f6cf14dd7cba126025a33defcbc7c9959c13",
+    "checks": [
+      {
+        "name": "Analyze (javascript-typescript)",
+        "conclusion": "SUCCESS",
+        "details_url": "https://github.com/acg-box/decodex/actions/runs/39673239659/job/119476310099"
+      },
+      {
+        "name": "Analyze (python)",
+        "conclusion": "SUCCESS",
+        "details_url": "https://github.com/acg-box/decodex/actions/runs/39673239659/job/119476309854"
+      },
+      {
+        "name": "Analyze (rust)",
+        "conclusion": "SUCCESS",
+        "details_url": "https://github.com/acg-box/decodex/actions/runs/39673239659/job/119476310097"
+      },
+      {
+        "name": "CodeQL",
+        "conclusion": "SUCCESS",
+        "details_url": "https://github.com/acg-box/decodex/runs/119476644316"
+      }
+    ]
   }
 }

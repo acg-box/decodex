@@ -21,7 +21,7 @@
     "tests_read_source_revision_body_count": 171,
     "tests_read_unique_function_count": 157,
     "source_read_scope": "Complete non-generated commit diffs and relevant affected implementation/test bodies. Mechanical unrelated fixture edits and native TUI dispatch arms use complete changed diffs and representative bodies, not claims that entire unrelated test suites were reread. Source-body reuse is explicitly digest-bound; it is not runtime qualification.",
-    "certification": "Consecutive diff, relevant implementation/test bodies, current consumers and exact-artifact/test receipts reconciled. Git delivery is separately pending.",
+    "certification": "Consecutive diff, relevant implementation/test bodies, current consumers, exact-artifact/test receipts and verified merged delivery are reconciled. Installed-app acceptance remains separate.",
     "source_tests_executed_count": 185,
     "native_behavior_tests_executed_count": 37,
     "local_projection_tests_executed_count": 2,
@@ -177,7 +177,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -459,7 +459,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -661,7 +661,7 @@
       ],
       "decodex_consumer": "scripts/macos/build_codex_source.mts selects unversioned stable and --locked. Decodex Rust policy is unchanged. Audio/TUI fixture edits have no retained product consumer.",
       "tests_executed": [],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -903,7 +903,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -1073,7 +1073,7 @@
       ],
       "decodex_consumer": "account_launch/process.rs launches private app-server stdio; no native TUI process or TUI permission label consumer.",
       "tests_executed": [],
-      "runtime_disposition": "No selected consumer; read-only source classification, exclusions retained.",
+      "runtime_disposition": "No selected consumer; source review complete with product/platform exclusions retained.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -1296,7 +1296,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -1706,7 +1706,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance.",
       "selector_reconciliation": "The record-7 cleanup selector was renamed in record 8. cleanup_reclaims_unpublished_and_aged_legacy_clones passed at the fixed target; the intermediate name did not execute."
     },
@@ -1814,7 +1814,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance.",
       "selector_reconciliation": "The record-7 cleanup selector was renamed in record 8. cleanup_reclaims_unpublished_and_aged_legacy_clones passed at the fixed target; the intermediate name did not execute."
     },
@@ -2180,7 +2180,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -2267,7 +2267,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -2286,7 +2286,7 @@
       "tests_read": [],
       "decodex_consumer": "scripts/macos/build_codex_source.mts invokes the official Cargo package builder, never Bazel; this tool is not acquired or installed.",
       "tests_executed": [],
-      "runtime_disposition": "No selected consumer; read-only source classification, exclusions retained.",
+      "runtime_disposition": "No selected consumer; source review complete with product/platform exclusions retained.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance.",
       "test_limit": "No upstream test body is added. Complete Bazel macro, wrapper and changed release-action source are read; Bazel path is not used or executed by Decodex.",
       "non_rust_symbols_read": [
@@ -2795,7 +2795,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -2916,7 +2916,7 @@
       "tests_read": [],
       "decodex_consumer": "Native login and MCP ownership; account_launch/agent_process_native_discovery_tests.rs. Record 27 refines grant preference and recovery.",
       "tests_executed": [],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -2999,7 +2999,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance.",
       "test_limit": "No test behavior is added by this commit. Relevant existing tests/consumers are recorded separately; platform and unused build paths are not execution evidence.",
       "additional_source_read": [
@@ -3237,7 +3237,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -3319,7 +3319,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "No selected consumer; read-only source classification, exclusions retained.",
+      "runtime_disposition": "No selected consumer; source review complete with product/platform exclusions retained.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -3464,7 +3464,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -3543,7 +3543,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -3894,7 +3894,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -4034,7 +4034,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "No selected consumer; read-only source classification, exclusions retained.",
+      "runtime_disposition": "No selected consumer; source review complete with product/platform exclusions retained.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -4431,7 +4431,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance.",
       "additional_source_read": [
         "codex-rs/history/src/rollout_payload.rs#From<&RolloutItem>"
@@ -4738,7 +4738,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "No selected consumer; read-only source classification, exclusions retained.",
+      "runtime_disposition": "No selected consumer; source review complete with product/platform exclusions retained.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -4871,7 +4871,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -5110,7 +5110,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -5140,7 +5140,7 @@
       ],
       "decodex_consumer": "No executable behavior changes and no current Decodex remote relay consumer; complete test body read, not executed on this host.",
       "tests_executed": [],
-      "runtime_disposition": "No new runtime behavior; source test qualification recorded separately.",
+      "runtime_disposition": "Source-only test change reviewed; final target tests are reconciled where applicable.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -5457,7 +5457,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -5917,7 +5917,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -6009,7 +6009,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "No new runtime behavior; source test qualification recorded separately.",
+      "runtime_disposition": "Source-only test change reviewed; final target tests are reconciled where applicable.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -6116,7 +6116,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -6475,7 +6475,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -6939,7 +6939,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Native API is included; new Decodex product surface awaits a user decision.",
+      "runtime_disposition": "Native API included in the qualified merged runtime; Decodex product surface awaits the recorded user decision.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -7144,7 +7144,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -7226,7 +7226,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -7669,7 +7669,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -7861,7 +7861,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -8117,7 +8117,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Native API is included; new Decodex product surface awaits a user decision.",
+      "runtime_disposition": "Native API included in the qualified merged runtime; Decodex product surface awaits the recorded user decision.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -8348,7 +8348,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -8593,7 +8593,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -8709,7 +8709,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance.",
       "test_limit": "No test behavior is added by this commit. Relevant existing tests/consumers are recorded separately; platform and unused build paths are not execution evidence."
     },
@@ -8948,7 +8948,7 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -9070,7 +9070,7 @@
       "tests_read": [],
       "decodex_consumer": "No selected Decodex board UI/automatic policy. Native existing discussion registration remains unchanged.",
       "tests_executed": [],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     },
     {
@@ -9315,7 +9315,7 @@
       "tests_read": [],
       "decodex_consumer": "No Decodex invocation or NFS migration workflow. Command is not executed and no data migration is performed; no new test body is introduced upstream.",
       "tests_executed": [],
-      "runtime_disposition": "No selected consumer; read-only source classification, exclusions retained.",
+      "runtime_disposition": "No selected consumer; source review complete with product/platform exclusions retained.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance.",
       "test_limit": "No test behavior is added by this commit. Relevant existing tests/consumers are recorded separately; platform and unused build paths are not execution evidence."
     },
@@ -10040,11 +10040,15 @@
           "passed": true
         }
       ],
-      "runtime_disposition": "Exact candidate source inclusion and retained native regressions qualified; Git delivery remains pending.",
+      "runtime_disposition": "Exact candidate source inclusion and applicable retained native regressions qualified; runtime requirement and reusable fixtures merged in https://github.com/acg-box/decodex/pull/2484.",
       "validation_limits": "macOS arm64 retained private-stdio boundary only. Tests read are not tests executed; no live account/provider, physical audio, Windows/Linux/NFS/remote executor or installed-app acceptance."
     }
   ],
   "source_digests": [
+    {
+      "path": "bazel/tools/dsymutil",
+      "sha256": "d99f57ec7e351a8a44f207b63f91076b060567f0a3080175e18cf1543f9d4488"
+    },
     {
       "path": "codex-rs/analytics/src/client.rs",
       "sha256": "4d7c7c9f1adece502981b5bc4663dcd5213c9aed39b804cf69e64b21bbcc0bb4"
@@ -10690,6 +10694,10 @@
       "sha256": "d65cc1d3db2f24baf15d63a4f3f347d0bfadd0f36def463c0bdbe630f3c399ea"
     },
     {
+      "path": "codex-rs/features/src/lib.rs",
+      "sha256": "cc1a0b1d04ac932bf96985b207b01ac30b429e682a0d4e90f4cf181de537f8ba"
+    },
+    {
       "path": "codex-rs/feedback/src/archive.rs",
       "sha256": "2ffcd5897b1af210ec332ee5d4674e6f9b3451ae3536085ff1b77ca4e29cf1a8"
     },
@@ -10838,12 +10846,28 @@
       "sha256": "911eb3181a793b7836ad0e3329b13b41412d89994d4082cb0c9499ba688e6630"
     },
     {
+      "path": "codex-rs/rmcp-client/src/oauth/credential_store.rs",
+      "sha256": "f6c565b5c8149ea064d6f7dfc80df9ef560ad389b0d4951676f4a0e6de0a83d3"
+    },
+    {
       "path": "codex-rs/rmcp-client/src/oauth/ema_identity.rs",
       "sha256": "91d8a163f5f726058029dd46bda047404e1c6056bbce82d3377e8760a6211cb0"
     },
     {
       "path": "codex-rs/rmcp-client/src/oauth/ema_identity_tests.rs",
       "sha256": "a1c8f5bd9f320575954dc824802657e2e9f30d76c423de7713f81bd0de5609ed"
+    },
+    {
+      "path": "codex-rs/rmcp-client/src/oauth/tests/persistor_tests.rs",
+      "sha256": "0661815a285b9aedd3c3cd100de9da68bd85a03fa105e6acdf61242753818932"
+    },
+    {
+      "path": "codex-rs/rmcp-client/src/oauth/tests/telemetry_tests.rs",
+      "sha256": "5595f06a9e0457b055a5003709b23633895209f0ec6fdd3d56326c5ffc112ade"
+    },
+    {
+      "path": "codex-rs/rmcp-client/src/rmcp_client.rs",
+      "sha256": "8073658039e4193628483c05cf8d5cdd6e5a80c0a8fcca22a2c49084b5ec1e17"
     },
     {
       "path": "codex-rs/rmcp-client/src/startup_error.rs",
@@ -11064,11 +11088,17 @@
     {
       "path": "codex-rs/voice-host/src/playback.rs",
       "sha256": "ce7f223effaf488557f7faca64d8ed2fa264c510babdf3c2d91de86abd16468c"
+    },
+    {
+      "path": "defs.bzl",
+      "sha256": "ddb7f98b0b2846cc1b94ea7b9e7bdda1641500e97b7abce0160da7702daaf603"
     }
   ],
   "source_archive": {
     "url": "https://codeload.github.com/openai/codex/tar.gz/17a0e6f63fad13f577ef87b36b4ea37fc06385e9",
     "sha256": "e2ae2c374ffa178c6bf99eed855727393eb9e4ed80605dc6b37b7c9b6e00bfa9"
   },
-  "delivery_status": "pending"
+  "delivery_status": "merged",
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2484",
+  "delivery_merge_commit": "fead52f5e3d37b7ffb09a9954c03160a5f3caee4"
 }

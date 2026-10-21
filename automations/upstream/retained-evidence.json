@@ -15,7 +15,8 @@
     "https://github.com/acg-box/decodex/pull/2465",
     "https://github.com/acg-box/decodex/pull/2466",
     "https://github.com/acg-box/decodex/pull/2470",
-    "https://github.com/acg-box/decodex/pull/2471"
+    "https://github.com/acg-box/decodex/pull/2471",
+    "https://github.com/acg-box/decodex/pull/2484"
   ],
   "retained_native_consumers": {
     "execution": "Use the repository native-test entrypoints with the exact candidate CLI and bundled helpers; inspect test registration and require every selector to execute.",
@@ -780,7 +781,7 @@
     },
     "source_review_evidence": "automations/upstream/current-review.json",
     "selected_runtime_source": "17a0e6f63fad13f577ef87b36b4ea37fc06385e9",
-    "runtime_disposition": "Qualified fixed development artifact; Git delivery is recorded separately. New feedback/storage product controls are not implemented.",
+    "runtime_disposition": "Qualified fixed development artifact merged in https://github.com/acg-box/decodex/pull/2484. New optional product controls remain unimplemented.",
     "qualified_source_limits": "65 retained source contracts compared with current main evidence: 49 byte-identical and 16 changed with read source plus actual candidate regressions. Earlier certified ranges and unknown historical 153-test manifest remain unchanged.",
     "tests_read_unique_function_count": 157,
     "tests_read_source_revision_body_count": 171,
@@ -2051,9 +2052,11 @@
     }
   },
   "current_delivery": {
-    "status": "pending",
-    "code_commit": "cd8f9f4c9ba9b3733eec0276e82bbf60928d93de",
-    "scope": "Qualify the fixed official runtime, preserve resumed settings and native diagnostic storage, and retain exact reusable regression/evidence. No new optional product controls, installation or release."
+    "status": "merged",
+    "pull_request": "https://github.com/acg-box/decodex/pull/2484",
+    "merge_commit": "fead52f5e3d37b7ffb09a9954c03160a5f3caee4",
+    "head": "e212f6cf14dd7cba126025a33defcbc7c9959c13",
+    "scope": "Qualified fixed official runtime; preserved cold-resume model settings and configured native diagnostic storage. New feedback/storage controls remain user decisions; no installation or release."
   },
   "retained_account_scope": {
     "provider": "ChatGPT-backed identity; recognized plan labels are not separate provider implementations.",
