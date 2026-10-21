@@ -69,6 +69,7 @@ enum AccountControlResult: Equatable, Sendable {
 
 enum AccountControlRejection: String, Decodable, Equatable, Sendable {
 	case invalidRequest = "invalid_request"
+	case unsupportedPlan = "unsupported_plan"
 	case accountNotFound = "account_not_found"
 	case staleAccount = "stale_account"
 	case staleRoutingControl = "stale_routing_control"
@@ -99,6 +100,8 @@ enum AccountControlRejection: String, Decodable, Equatable, Sendable {
 		switch self {
 		case .invalidRequest:
 			return "The account request was invalid."
+		case .unsupportedPlan:
+			return "Use a Plus, Pro, Pro (More), Pro (Max), or Team account."
 		case .accountNotFound:
 			return "The account no longer exists."
 		case .staleAccount:
@@ -222,6 +225,7 @@ enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
 	case accountMismatch = "account_mismatch"
 	case accountChanged = "account_changed"
 	case accountUnavailable = "account_unavailable"
+	case unsupportedPlan = "unsupported_plan"
 	case recoveryChanged = "recovery_changed"
 	case providerAlreadyEnrolled = "provider_already_enrolled"
 	case credentialStoreUnavailable = "credential_store_unavailable"
@@ -244,6 +248,8 @@ enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
 			return "The account changed. Close this login and try again."
 		case .accountUnavailable:
 			return "This account is not available for login."
+		case .unsupportedPlan:
+			return "Use a Plus, Pro, Pro (More), Pro (Max), or Team account."
 		case .recoveryChanged:
 			return "This login recovery changed. Refresh the account and try again."
 		case .providerAlreadyEnrolled:

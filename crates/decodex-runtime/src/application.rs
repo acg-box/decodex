@@ -3042,6 +3042,8 @@ pub(crate) fn account_lifecycle_command_error(error: AccountLifecycleError) -> C
 			account_rejection(AccountCommandRejectionDto::CredentialStoreUnavailable, None),
 		AccountLifecycleError::CredentialImport =>
 			account_rejection(AccountCommandRejectionDto::InvalidRequest, None),
+		AccountLifecycleError::UnsupportedPlan =>
+			account_rejection(AccountCommandRejectionDto::UnsupportedPlan, None),
 		AccountLifecycleError::CodexIsRunning =>
 			account_rejection(AccountCommandRejectionDto::CodexIsRunning, None),
 		AccountLifecycleError::AuthSourceAccountUnknown =>

@@ -232,6 +232,8 @@ pub enum AccountLoginFailure {
 	AccountChanged,
 	/// The target Account is unavailable for installation.
 	AccountUnavailable,
+	/// The observed plan is outside the current account-pool scope or is absent.
+	UnsupportedPlan,
 	/// The same provider identity is already enrolled.
 	ProviderAlreadyEnrolled,
 	/// The exact recovery operation changed.
