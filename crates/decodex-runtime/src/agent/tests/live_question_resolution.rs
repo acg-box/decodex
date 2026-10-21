@@ -18,7 +18,7 @@ use crate::{
 	agent::tests::{self, AgentConfig, AgentCoordinator, AppServerClient, ServerEvent, Value},
 	native_agents,
 };
-use decodex_database::AgentDispatchState;
+use decodex_database::{AgentDispatchState, AgentWorkStatus};
 use decodex_protocol::NativeAgentsResult;
 
 struct Scenario {
@@ -67,6 +67,14 @@ const SCENARIOS: &[Scenario] = &[
 		id: "peer_negotiation",
 		parent: "Arrange two native specialists named producer and consumer to agree one serialization format for a fixture handoff. Each must read only its own brief: producer.txt or consumer.txt in the current directory. Give each the other's native agent path. Their briefs authorize direct communication within this evaluation. The parent should assess their eventual agreement. Do not read either private brief yourself, preselect the format, create managed work, or involve external services. This is a planning task; no file changes are needed.",
 		worker: None,
+		user_answer: None,
+	},
+	Scenario {
+		id: "child_goal_completion",
+		parent: "Own a preassigned child goal named goal and its preassigned worker named worker. The goal is to report the sum of 14 and 9. Assess the worker result and complete that goal. Do not create other work. This is a planning fixture with no external action.",
+		worker: Some(
+			"Report the sum of 14 and 9 with a short calculation. No files or external services are needed.",
+		),
 		user_answer: None,
 	},
 ];
@@ -139,8 +147,14 @@ async fn evaluate(binary: &str, model: &str, output: &Path, scenario: &Scenario,
 		let input = format!("This is an isolated real-model evaluation, with no live external task or purchase. All work must stay inside this temporary fixture and its agents. Do not inspect account files, invoke external services, install, publish, or start other applications. The user authorized the fixture's agent communication. {}", scenario.parent);
 
 		agent.start_agent("agent", &input).await.unwrap();
+		let owner = if scenario.id == "child_goal_completion" {
+			agent.create_goal("agent", "goal", "Report the sum of 14 and 9").await.unwrap();
+			"goal"
+		} else {
+			"agent"
+		};
 		if let Some(prompt) = scenario.worker {
-			agent.create_worker("agent", "worker", prompt).await.unwrap();
+			agent.create_worker(owner, "worker", prompt).await.unwrap();
 		}
 
 		observe(&mut agent, &mut events, &mut log, scenario).await;
@@ -213,12 +227,27 @@ async fn observe(
 			break;
 		}
 	}
-	for work in agent.store.list_agent_work_items().await.unwrap() {
+	let work = agent.store.list_agent_work_items().await.unwrap();
+	let pending = agent.store.list_agent_wake_events("agent".into(), 1_000).await.unwrap();
+	let questions = agent.store.read_agent_async_questions("agent".into()).await.unwrap();
+	let closed = work.iter().all(|item| {
+		item.dispatch_state == AgentDispatchState::Idle
+			&& item.status
+				== if item.id == "agent" {
+					AgentWorkStatus::Open
+				} else {
+					AgentWorkStatus::Resolved
+				}
+	}) && pending.is_empty()
+		&& questions.is_empty();
+	writeln!(log, "{}", serde_json::json!({"lifecycleEnd":{"closed":closed,"work":work,"pendingReceipts":pending,"unansweredQuestions":questions.len()}})).unwrap();
+	for work in work {
 		let events = agent.store.read_agent_work_events(work.id.clone(), 1_000).await.unwrap();
 		writeln!(log, "{}", serde_json::json!({"workEvents":{"id":work.id,"events":events}}))
 			.unwrap();
 	}
 	log.flush().unwrap();
+	assert!(closed, "completion state remains open; inspect the lifecycle receipt");
 }
 
 async fn native_children_busy(agent: &AgentCoordinator, log: &mut File) -> bool {
