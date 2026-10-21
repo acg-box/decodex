@@ -30,6 +30,14 @@ struct Scenario {
 
 const SCENARIOS: &[Scenario] = &[
 	Scenario {
+		id: "busy_worker_recovery",
+		parent: "Own the preassigned worker named worker. The fixture user has selected Maple as the report cover title. This is a concurrency evaluation: make exactly one immediate agent_continue_worker attempt with that decision, before inspecting work. Then use the tool response and current work state to complete and assess the same worker's cover. Do not create other work, ask the user again or write files.",
+		worker: Some(
+			"Prepare a report cover with title Cedar or Maple and subtitle Final Report. The title must reflect the user's choice, which was not supplied in your context. Both meet the documented constraints. Do not invent that preference or write files. Request the missing choice from your parent, then return the cover when it is supplied.",
+		),
+		user_answer: None,
+	},
+	Scenario {
 		id: "self_resolution",
 		parent: "Own a preassigned worker named worker. It will check a fixture polling interval. Assess its result and finish the task. Do not create other work. No additional user decision is needed by this task charter.",
 		worker: Some(
