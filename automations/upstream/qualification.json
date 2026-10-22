@@ -3393,21 +3393,18 @@
     "Model-required apply_patch may remain registered in isolated recap; the retained contract verifies environment denial and parent preservation, not absence from the model catalog."
   ],
   "documentation_lifecycle": {
-    "status": "complete",
-    "authority": "The user assigned the historical repository-wide Wiki lifecycle to the maintenance owner.",
-    "scope": "Reconcile current documentation with Decodex main without restoring retired capabilities.",
-    "source_baseline": "3092e5cdbb770e1bb5c97f20a5f5244524cd01cc",
-    "planned_pages": 41,
-    "completed_pages": 41,
-    "original_attention_claims": 122,
-    "openwiki_finish": "complete",
-    "owner": "Codex maintenance owner under explicit user assignment",
-    "remaining_pages": 0,
-    "verification": "Current source, affected test definitions, existing portable qualifications and exact Git-history links were checked. This documentation batch ran no native, model, audio or installed-app tests.",
-    "limits": [
-      "Historical external issue states and frozen experiment results were preserved, not requalified.",
-      "Source review cursor, selected runtime, installed binary and automation schedule are unchanged."
-    ]
+    "status": "incomplete",
+    "selected_pages": [
+      "openwiki/testing/upstream-acceptance-boundaries.md",
+      "openwiki/architecture/runtime-architecture.md",
+      "openwiki/workflows/conversations-and-recovery.md"
+    ],
+    "completed_selected_pages": 0,
+    "reason": "OpenWiki automatically prepended unrelated stale/unresolved architecture and workspace/Agent claim jobs; the first job requires broader source ownership reconciliation outside this maintenance batch.",
+    "owner": "Repository documentation owners for current Agent/Workspace and presentation changes; upstream maintainer owns the three selected runtime pages after that queue is reconciled.",
+    "next_action": "Resume through openwiki_begin at current main, inspect the current job queue, reconcile broader architecture claims with their source owners, then write the assigned runtime pages through submit_page and finish. Do not hand-edit generated state.",
+    "first_pending_page": "openwiki/architecture/chief-coordination.md",
+    "historical_completed_lifecycle": "The earlier completed documentation lifecycle remains evidence of its own source snapshot only."
   },
   "delivery_reference": "Pending focused maintenance PR.",
   "delivery_status": "pending",
