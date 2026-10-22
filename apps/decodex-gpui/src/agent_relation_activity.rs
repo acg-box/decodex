@@ -25,8 +25,10 @@ fn recent(entries: &[AgentTimelineEntry], turn: &str) -> Vec<Operation> {
 		let AgentTimelineContent::Item {
 			turn_id,
 			item_id,
-			activity: Some(activity),
+			activity,
 			collaboration,
+			kind,
+			text: message,
 			..
 		} = &entry.content
 		else {
@@ -35,15 +37,24 @@ fn recent(entries: &[AgentTimelineEntry], turn: &str) -> Vec<Operation> {
 		if turn_id != turn || !seen.insert(item_id) {
 			continue;
 		}
-		let label =
-			super::super::native_timeline::activity_label(activity, collaboration.as_ref(), &[]);
-		let source = if !activity.detail.trim().is_empty()
-			&& collaboration.is_none()
-			&& label != activity.detail
-		{
-			format!("{label} · {}", activity.detail)
+		let source = if let Some(activity) = activity {
+			let label = super::super::native_timeline::activity_label(
+				activity,
+				collaboration.as_ref(),
+				&[],
+			);
+			if !activity.detail.trim().is_empty()
+				&& collaboration.is_none()
+				&& label != activity.detail
+			{
+				format!("{label} · {}", activity.detail)
+			} else {
+				label
+			}
+		} else if kind == "agentMessage" {
+			message.clone()
 		} else {
-			label
+			continue;
 		};
 		let label = text(&source);
 		if label.is_empty() {
@@ -395,6 +406,34 @@ mod tests {
 		assert_eq!(preview.task, "Review the scroll behavior");
 		assert!(preview.text.is_empty());
 		assert!(latest(&[item("next", "agentMessage", "Only a reply")], None).is_none());
+	}
+
+	#[test]
+	fn recent_output_keeps_native_ids_and_rejects_other_turns_and_user_messages() {
+		let message = |turn: &str, id: &str, body: &str| {
+			let mut entry = item(turn, "agentMessage", body);
+			if let AgentTimelineContent::Item { item_id, .. } = &mut entry.content {
+				*item_id = id.into();
+			}
+			entry
+		};
+		let entries = vec![
+			message("old", "old", "Previous task output"),
+			item("now", "userMessage", "Please inspect the reconnect"),
+			message("now", "1", "Read the connection path"),
+			message("now", "2", "Starting the probe"),
+			message("now", "2", "**Probe completed**"),
+			message("now", "3", "Compare the full reply"),
+			message("now", "4", "All checks passed"),
+		];
+		assert_eq!(
+			recent(&entries, "now"),
+			vec![
+				Operation { id: "now:2".into(), text: "Probe completed".into() },
+				Operation { id: "now:3".into(), text: "Compare the full reply".into() },
+				Operation { id: "now:4".into(), text: "All checks passed".into() },
+			]
+		);
 	}
 
 	#[test]
