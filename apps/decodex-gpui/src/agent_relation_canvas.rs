@@ -12,6 +12,7 @@ use gpui::AppContext;
 #[path = "agent_relation_header.rs"] mod header;
 #[path = "agent_relation_hover.rs"] mod hover;
 #[path = "agent_relation_layout.rs"] mod layout;
+#[path = "agent_relation_mascot.rs"] mod mascot;
 #[path = "agent_relation_metrics.rs"] pub(super) mod metrics;
 #[path = "agent_relation_minimap.rs"] mod minimap;
 #[path = "agent_relation_picker.rs"] mod picker;
@@ -58,6 +59,7 @@ pub(super) struct View {
 	motion: Option<SceneMotion>,
 	map_drag: Option<minimap::Drag>,
 	activity: std::cell::RefCell<BTreeMap<String, stream::Stream>>,
+	mascots: std::cell::RefCell<BTreeMap<String, mascot::Actor>>,
 	routing: std::cell::RefCell<routing::Cache>,
 	visibility: std::cell::RefCell<visibility::Cache>,
 	origin: (f32, f32),
@@ -412,37 +414,23 @@ impl AgentSurface {
 		let included: BTreeSet<String> = rows.iter().map(|r| r.key.clone()).collect();
 		let mut streams = self.work_board.view.activity.borrow_mut();
 		streams.retain(|key, _| included.contains(key));
+		self.work_board.view.mascots.borrow_mut().retain(|key, _| included.contains(key));
 		for source in rows.iter().filter(|r| included.contains(&r.key)) {
 			let mut row = source.clone();
 			if self.graph_question(&row).is_some() {
 				row.status = "Needs you".into();
 				row.color = AMBER;
 			}
-			let (task, _) = self.graph_preview(&row);
 			let identity = self.relation_agent_name(&row);
-			let separate_task = !task.is_empty() && task != identity;
-			let expanded = self.relation_row_current(&row) && !layout.overview();
-			let sections = 1 + usize::from(separate_task);
 			let (scope, operations) = self.graph_operations(&row);
 			let stream = streams
 				.entry(row.key.clone())
 				.or_insert_with(|| stream::Stream::new(&scope, &operations, now));
 			stream.sync(&scope, &operations, now);
 			let activity = stream.frame(now, crate::ui_motion::reduced());
-			let detail_sections = 1 + usize::from(separate_task);
-			let layout_height = layout.world_height(
-				detail_sections,
-				detail_sections,
-				activity.height / stream::LINE,
-			);
-			let activity = if expanded {
-				activity
-			} else if row.group != 2 {
-				activity.latest()
-			} else {
-				Default::default()
-			};
-			let height = layout.world_height(sections, sections, activity.height / stream::LINE);
+			let layout_height = layout.world_height(activity.height / stream::LINE);
+			let activity = if layout.full_detail() { activity } else { activity.latest() };
+			let height = layout.world_height(activity.height / stream::LINE);
 			graph.nodes.push(Node {
 				key: row.key.clone(),
 				title: identity,
@@ -455,7 +443,7 @@ impl AgentSurface {
 				row: Some(row),
 				activity,
 				size: (card::WIDTH, height),
-				base_height: layout.world_height(detail_sections, detail_sections, 0.),
+				base_height: layout.world_height(0.),
 				layout_height,
 				navigation: (0., 0.),
 				port_offset: if layout.overview() { height / 2. } else { card::PORT_Y },
@@ -1644,7 +1632,10 @@ impl AgentSurface {
 			.tab_index(0)
 			.aria_label(format!(
 				"{} · {} · {}",
-				node.row.as_ref().map(|row| row.title.as_str()).unwrap_or(&node.title),
+				node.row
+					.as_ref()
+					.map(|row| format!("{} · {}", self.relation_agent_number(row), row.title))
+					.unwrap_or_else(|| node.title.clone()),
 				node.status,
 				preview
 					.as_ref()
@@ -1715,13 +1706,18 @@ impl AgentSurface {
 			.when(!layout.overview(), |body| body.justify_between())
 			.gap(gpui::px(layout.gap()))
 			.when_some(preview, |view, task| {
+				let now = std::time::Instant::now();
+				let status = node.row.as_ref().map(|row| row.status.as_str()).unwrap_or_default();
+				let avatar = self
+					.work_board
+					.view
+					.mascots
+					.borrow_mut()
+					.entry(node.key.clone())
+					.or_insert_with(|| mascot::Actor::new(&node.key, status, now))
+					.frame(status, now);
 				view.child(header::Header {
 					key: node.key.clone(),
-					identity: node
-						.row
-						.as_ref()
-						.map(|row| self.relation_agent_name(row))
-						.unwrap_or_default(),
 					number: node
 						.row
 						.as_ref()
@@ -1730,6 +1726,8 @@ impl AgentSurface {
 					color: node.color,
 					selected: self.relation_node_current(node),
 					task,
+					status: status.to_owned(),
+					avatar,
 					activity: node.activity.clone(),
 					layout,
 				})
@@ -2213,7 +2211,7 @@ mod fit_tests {
 		let surface = cx.new(super::super::tests::fixture);
 		surface.update(cx, |s, _| {
 			s.work_board.view.zoom = Some(1.);
-			s.work_board.view.picked_agent = Some("release".into());
+			s.work_board.view.picked_agent = Some("agent".into());
 			let now = std::time::Instant::now();
 			let row = s.factory_rows().into_iter().find(|row| row.key == "release").unwrap();
 			let (_, operations) = s.graph_operations(&row);
@@ -2258,7 +2256,11 @@ mod fit_tests {
 				.find(|node| node.key == row.key)
 				.unwrap();
 			assert_eq!(three.activity.lines.len(), 3);
-			assert!(three.height() > empty.height() + 3. * stream::LINE);
+			assert_eq!(three.activity.height, 3. * stream::LINE);
+			assert!(
+				three.height() > empty.height(),
+				"activity uses the portrait space before growing"
+			);
 			let idle = arrival + std::time::Duration::from_secs(7);
 			s.relation_graph_at(idle);
 			let settled = s
@@ -2268,11 +2270,13 @@ mod fit_tests {
 				.find(|node| node.key == row.key)
 				.unwrap();
 			assert_eq!(settled.activity.lines.len(), 1);
-			assert!(settled.height() > empty.height());
-			assert!(
-				settled.height() + 2. * stream::LINE < three.height(),
-				"idle cards release the two absent rows"
+			assert_eq!(settled.activity.height, stream::LINE);
+			assert_eq!(
+				settled.height(),
+				empty.height(),
+				"one retained update fits beside the avatar"
 			);
+			assert!(settled.height() < three.height(), "absent rows release their space");
 		});
 	}
 
@@ -2490,8 +2494,8 @@ mod fit_tests {
 				"the quiet fixture must not repeat its last reply at any zoom"
 			);
 			assert_eq!(visual.debug_bounds("relation-tokens-agent").is_some(), !layout.overview());
-			assert_eq!(visual.debug_bounds("relation-number-agent").is_some(), !layout.points());
-			assert_eq!(visual.debug_bounds("relation-status-agent").is_some(), !layout.points());
+			assert_eq!(visual.debug_bounds("relation-number-agent").is_some(), layout.labels());
+			assert_eq!(visual.debug_bounds("relation-status-agent").is_some(), layout.labels());
 			assert_eq!(
 				visual.debug_bounds("relation-point-agent").is_some(),
 				layout.card_presence() < 1.
@@ -3164,8 +3168,15 @@ mod fit_tests {
 				assert_eq!(tokens.top(), time.top(), "time remains on the token row");
 				assert_eq!(tokens.top(), rate.top(), "speed remains on the token row");
 				let number = visual.debug_bounds("relation-number-release").unwrap();
-				assert!(number.left() > identity.right() && number.right() <= card.right());
+				assert!(number.left() >= identity.left() && number.right() <= identity.right());
 				assert_eq!(number.top(), identity.top());
+				let avatar = visual.debug_bounds("relation-avatar-release").unwrap();
+				let assignment = visual.debug_bounds("relation-assignment-release").unwrap();
+				assert!(
+					avatar.right() < assignment.left(),
+					"activity sits to the right of the portrait"
+				);
+				assert!(number.bottom() <= avatar.bottom() && avatar.bottom() < metrics.top());
 				assert!(visual.debug_bounds("relation-status-release").is_some());
 				assert!(visual.debug_bounds("relation-mark-release").is_none());
 				assert!(metrics.top() > card.top() && metrics.bottom() < card.bottom());

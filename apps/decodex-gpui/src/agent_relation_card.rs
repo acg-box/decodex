@@ -16,18 +16,19 @@ use gpui::{
 pub(super) const WIDTH: f32 = 328.;
 pub(super) const INSET_X: f32 = 10.;
 pub(super) const INSET_Y: f32 = 8.;
+pub(super) const PORTRAIT_WIDTH: f32 = 80.;
+pub(super) const PORTRAIT_HEIGHT: f32 = 44.;
 pub(super) const PORT_Y: f32 = INSET_Y + crate::ui_theme::LABEL_LINE_HEIGHT / 2.;
 pub(super) const SELECTED: u32 = crate::ui_theme::BLUE;
 pub(super) const SECONDARY_TEXT: u32 = foreground::SECONDARY;
 pub(super) const ACTIVITY_TEXT: u32 = foreground::BODY;
-pub(super) const ALLOCATION_TEXT: u32 = foreground::SECONDARY;
 pub(super) const MIN_ZOOM: f32 = 0.05;
 pub(super) const MAX_ZOOM: f32 = 1.;
 pub(super) const FULL_DETAIL_ZOOM: f32 = 0.7;
 const POINT_ZOOM: f32 = 0.2;
 const MORPH_MARGIN: f32 = 0.04;
 const SUMMARY_ZOOM: f32 = 0.45;
-pub(super) const OVERVIEW_HEIGHT: f32 = 64.;
+pub(super) const OVERVIEW_HEIGHT: f32 = 112.;
 
 #[derive(Clone, Copy)]
 pub(super) struct Layout {
@@ -77,10 +78,6 @@ impl Layout {
 
 	pub(super) fn title_size(self) -> f32 {
 		self.font(foreground::BODY_SIZE, if self.labels() { 10.5 } else { 9. })
-	}
-
-	pub(super) fn task_size(self) -> f32 {
-		self.font(foreground::METRIC_SIZE, 10.5)
 	}
 
 	pub(super) fn detail_size(self) -> f32 {
@@ -156,13 +153,6 @@ impl Layout {
 			/ self.display_scale
 	}
 
-	pub(super) fn task_line(self) -> f32 {
-		((crate::ui_theme::LABEL_LINE_HEIGHT * self.zoom).max(self.task_size() + 3.)
-			* self.display_scale)
-			.ceil()
-			/ self.display_scale
-	}
-
 	pub(super) fn spacing(self, points: f32) -> f32 {
 		self.pixel(points * self.zoom)
 	}
@@ -176,26 +166,32 @@ impl Layout {
 		self.detail_line()
 	}
 
-	/// Reserve the current content, not the maximum number of future action rows.
-	/// Each detail tier keeps a stable footprint across its camera range and displays.
-	pub(super) fn world_height(self, title_rows: usize, sections: usize, actions: f32) -> f32 {
+	pub(super) fn header_height(self, actions: f32) -> f32 {
+		let portrait = self.spacing(PORTRAIT_HEIGHT)
+			+ if self.labels() { self.title_line() + self.spacing(2.) } else { 0. };
+		let activity = if self.overview() {
+			self.title_line().max(self.detail_line())
+		} else {
+			self.title_line()
+				+ if actions > 0. { self.spacing(4.) + actions * self.detail_line() } else { 0. }
+		};
+		portrait.max(activity)
+	}
+
+	/// The avatar and current activity determine the footprint, without reserving
+	/// blank rows for future updates. Values do not resize the agent.
+	pub(super) fn world_height(self, actions: f32) -> f32 {
 		if self.overview() {
 			return OVERVIEW_HEIGHT;
 		}
-		let (range, title_rows, sections, actions) = if self.full_detail() {
-			([FULL_DETAIL_ZOOM, MAX_ZOOM], title_rows, sections, actions)
+		let range = if self.full_detail() {
+			[FULL_DETAIL_ZOOM, MAX_ZOOM]
 		} else {
-			([SUMMARY_ZOOM, FULL_DETAIL_ZOOM - 0.01], title_rows, sections, actions)
+			[SUMMARY_ZOOM, FULL_DETAIL_ZOOM - 0.01]
 		};
 		range.into_iter().fold(0., |height, zoom| {
 			let layout = Self::new(zoom);
-			let gaps = sections.saturating_sub(1) as f32 + if actions > 0. { 1. } else { 0. };
-			let tasks = sections.saturating_sub(1);
-			let header = title_rows.saturating_sub(tasks) as f32 * layout.title_line()
-				+ tasks as f32 * layout.task_line()
-				+ gaps * layout.spacing(2.)
-				+ if actions > 0. { layout.spacing(4.) } else { 0. }
-				+ actions * layout.detail_line();
+			let header = layout.header_height(actions);
 			height.max(
 				((header + layout.gap() + layout.metrics_height() + 2. * layout.spacing(INSET_Y))
 					/ zoom)
@@ -270,7 +266,7 @@ fn point(key: &str, color: u32, selected: bool) -> AnyElement {
 		.into_any_element()
 }
 
-/// Corner marks and actual routed endpoints share the card's vector surface.
+/// Selected agents get corner marks; routed endpoints remain visible for all agents.
 /// Ports are local world coordinates; the router alone chooses their side.
 pub(super) struct Frame {
 	pub zoom: f32,
@@ -290,25 +286,26 @@ impl Frame {
 				let right = snap(f32::from(bounds.right())) - 1.;
 				let bottom = snap(f32::from(bounds.bottom())) - 1.;
 				let length = snap((8. * self.zoom).max(5.));
-				let color = crate::ui_theme::rgb(if self.selected { SELECTED } else { 0xc2bbc9 })
-					.opacity(self.presence * if self.selected { 0.8 } else { 0.4 });
-				for (x, y, dx, dy) in [
-					(left, top, 1., 1.),
-					(right, top, -1., 1.),
-					(left, bottom, 1., -1.),
-					(right, bottom, -1., -1.),
-				] {
-					for (x, y, width, height) in [
-						(x + if dx < 0. { 1. - length } else { 0. }, y, length, 1.),
-						(x, y + if dy < 0. { 1. - length } else { 0. }, 1., length),
+				let color = crate::ui_theme::rgb(SELECTED).opacity(self.presence * 0.8);
+				if self.selected {
+					for (x, y, dx, dy) in [
+						(left, top, 1., 1.),
+						(right, top, -1., 1.),
+						(left, bottom, 1., -1.),
+						(right, bottom, -1., -1.),
 					] {
-						window.paint_quad(gpui::fill(
-							gpui::Bounds::new(
-								gpui::point(gpui::px(x), gpui::px(y)),
-								gpui::size(gpui::px(width), gpui::px(height)),
-							),
-							color,
-						));
+						for (x, y, width, height) in [
+							(x + if dx < 0. { 1. - length } else { 0. }, y, length, 1.),
+							(x, y + if dy < 0. { 1. - length } else { 0. }, 1., length),
+						] {
+							window.paint_quad(gpui::fill(
+								gpui::Bounds::new(
+									gpui::point(gpui::px(x), gpui::px(y)),
+									gpui::size(gpui::px(width), gpui::px(height)),
+								),
+								color,
+							));
+						}
 					}
 				}
 				for &(x, y) in &self.ports {

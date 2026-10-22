@@ -38,13 +38,15 @@ pub(super) struct Frame {
 }
 
 impl Frame {
-	/// Keep the current action in the overview; selection reveals the recent rows.
+	/// Keep one update at a distance; readable zoom reveals the recent rows.
 	pub(super) fn latest(mut self) -> Self {
 		self.lines.retain(|line| Some(&line.id) == self.latest.as_ref());
 		for line in &mut self.lines {
 			line.y = 0.;
 		}
 		self.height = if self.lines.is_empty() { 0. } else { LINE };
+		// Hidden rows do not keep requesting frames during their six-second hold.
+		self.moving = self.lines.iter().any(|line| line.opacity < 1.);
 		self
 	}
 }

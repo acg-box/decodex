@@ -65,9 +65,15 @@ fn parts(text: &str, with_unit: bool) -> (&str, Option<&str>) {
 	}
 }
 
-fn readout_value(text: String, with_unit: bool, layout: super::card::Layout) -> gpui::Div {
+fn readout_value(
+	text: String,
+	with_unit: bool,
+	accent: u32,
+	layout: super::card::Layout,
+) -> gpui::Div {
 	let (value, unit) = parts(&text, with_unit);
 	gpui::div()
+		.relative()
 		.flex()
 		.items_baseline()
 		.whitespace_nowrap()
@@ -76,6 +82,15 @@ fn readout_value(text: String, with_unit: bool, layout: super::card::Layout) -> 
 		.line_height(gpui::px(layout.detail_line()))
 		.font_weight(gpui::FontWeight::MEDIUM)
 		.text_color(crate::ui_theme::rgb(foreground::BODY))
+		.child(
+			gpui::div()
+				.absolute()
+				.bottom_0()
+				.left_0()
+				.w(gpui::px(layout.spacing(8.)))
+				.h(gpui::px(1.))
+				.bg(crate::ui_theme::rgb(accent)),
+		)
 		.child(value.to_owned())
 		.when_some(unit, |row, unit| {
 			row.child(
@@ -92,7 +107,6 @@ fn readout_value(text: String, with_unit: bool, layout: super::card::Layout) -> 
 struct Readout {
 	key: String,
 	metrics: Metrics,
-	share: Option<f32>,
 	layout: super::card::Layout,
 }
 
@@ -100,7 +114,6 @@ impl RenderOnce for Readout {
 	fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
 		let layout = self.layout.on_display(window.scale_factor());
 		let [tokens, time, rate] = labels(self.metrics);
-		let share = self.share.map(|value| format!("· {} of tokens", percentage(Some(value))));
 		let measure_text = |text: &str, size: f32, weight: gpui::FontWeight| {
 			let mut font = window.text_style().font();
 			font.weight = weight;
@@ -132,22 +145,14 @@ impl RenderOnce for Readout {
 		let available = layout.width - 2. * layout.spacing(super::card::INSET_X);
 		let gap = layout.spacing(8.);
 		let values = [measure(&tokens, true), measure(&time, false), measure(&rate, true)];
-		// Keep real values until their shaped glyphs no longer fit. Allocation is
-		// supplementary: it yields before duration or throughput at smaller sizes.
+		// Keep the three real readouts on one baseline while their shaped glyphs fit.
+		// Allocation belongs to the shared usage strip, not the actor HUD.
 		let show_time = values[0] + gap + values[1] <= available;
 		let all_values = values.iter().sum::<f32>() + 2. * gap;
 		let show_rate = all_values <= available;
-		let show_share = show_rate
-			&& share.as_ref().is_some_and(|share| {
-				all_values
-					+ gap
-					+ measure_text(share, layout.detail_size(), gpui::FontWeight::NORMAL)
-					<= available
-			});
 		let token_selector = format!("relation-tokens-{}", self.key);
 		let time_selector = format!("relation-time-{}", self.key);
 		let rate_selector = format!("relation-rate-{}", self.key);
-		let share_selector = format!("relation-token-share-{}", self.key);
 		gpui::div()
 			.w_full()
 			.h(gpui::px(layout.detail_line()))
@@ -161,34 +166,19 @@ impl RenderOnce for Readout {
 			.font_weight(gpui::FontWeight::NORMAL)
 			.text_color(crate::ui_theme::rgb(foreground::BODY))
 			.child(
-				gpui::div()
-					.flex_1()
-					.min_w_0()
-					.flex()
-					.items_center()
-					.gap(gpui::px(gap))
-					.child(
-						gpui::div()
-							.debug_selector(move || token_selector.clone())
-							.flex_none()
-							.child(readout_value(tokens, true, layout)),
-					)
-					.when(show_share, |group| {
-						group.child(
-							gpui::div()
-								.debug_selector(move || share_selector.clone())
-								.flex_none()
-								.text_color(crate::ui_theme::rgb(super::card::ALLOCATION_TEXT))
-								.child(share.unwrap_or_default()),
-						)
-					}),
+				gpui::div().flex_1().min_w_0().flex().items_center().gap(gpui::px(gap)).child(
+					gpui::div()
+						.debug_selector(move || token_selector.clone())
+						.flex_none()
+						.child(readout_value(tokens, true, crate::ui_theme::BLUE, layout)),
+				),
 			)
 			.when(show_time, |row| {
 				row.child(
 					gpui::div()
 						.debug_selector(move || time_selector.clone())
 						.flex_none()
-						.child(readout_value(time, false, layout)),
+						.child(readout_value(time, false, crate::ui_theme::AMBER, layout)),
 				)
 			})
 			.when(show_rate, |row| {
@@ -196,7 +186,7 @@ impl RenderOnce for Readout {
 					gpui::div()
 						.debug_selector(move || rate_selector.clone())
 						.flex_none()
-						.child(readout_value(rate, true, layout)),
+						.child(readout_value(rate, true, crate::ui_theme::GREEN, layout)),
 				)
 			})
 	}
@@ -235,7 +225,7 @@ impl AgentSurface {
 			.aria_label(description)
 			.w_full()
 			.flex_none()
-			.child(Readout { key: node.key.clone(), metrics, share, layout })
+			.child(Readout { key: node.key.clone(), metrics, layout })
 			.into_any_element()
 	}
 
@@ -287,12 +277,7 @@ mod tests {
 				.w(gpui::px(layout.width))
 				.px(gpui::px(layout.spacing(super::super::card::INSET_X)))
 				.font_family(crate::ui_theme::FONT_FAMILY)
-				.child(Readout {
-					key: "fixture".into(),
-					metrics: self.metrics,
-					share: Some(0.3),
-					layout,
-				})
+				.child(Readout { key: "fixture".into(), metrics: self.metrics, layout })
 		}
 	}
 
@@ -353,9 +338,6 @@ mod tests {
 							"{name} overflows at {zoom} on {density}x: {bounds:?}"
 						);
 					}
-				}
-				if zoom == 1. {
-					assert!(visual.debug_bounds("relation-token-share-fixture").is_some());
 				}
 			}
 		}

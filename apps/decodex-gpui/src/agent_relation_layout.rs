@@ -585,7 +585,7 @@ mod tests {
 					(
 						i.to_string(),
 						None,
-						super::super::card::Layout::new(1.).world_height(2, 2, 1.).to_bits(),
+						super::super::card::Layout::new(1.).world_height(1.).to_bits(),
 					)
 				})
 				.collect(),
@@ -604,8 +604,8 @@ mod tests {
 					assert!(
 						x + WIDTH <= bx
 							|| bx + WIDTH <= x
-							|| y + super::super::card::Layout::new(1.).world_height(2, 2, 1.) <= by
-							|| by + super::super::card::Layout::new(1.).world_height(2, 2, 1.) <= y
+							|| y + super::super::card::Layout::new(1.).world_height(1.) <= by
+							|| by + super::super::card::Layout::new(1.).world_height(1.) <= y
 					);
 				}
 			}
@@ -622,7 +622,7 @@ mod tests {
 							format!("project-{}", if i <= 6 { i } else { 1 + (i - 7) / 16 })
 						}),
 						super::super::card::Layout::new(zoom)
-							.world_height(2, 2, if i % 3 == 0 { 3. } else { 0. })
+							.world_height(if i % 3 == 0 { 3. } else { 0. })
 							.to_bits(),
 					)
 				})
