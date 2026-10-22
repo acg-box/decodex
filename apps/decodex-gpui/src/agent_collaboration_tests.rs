@@ -179,6 +179,42 @@ fn receipt(id: i64, kind: decodex_protocol::AgentExchangeKind) -> AgentExchangeD
 }
 
 #[gpui::test]
+fn source_reference_fits_one_line_and_copies_its_exact_value(cx: &mut gpui::TestAppContext) {
+	const THREAD: &str = "01a15360-31f5-7523-be26-3f961aa42d19";
+	let (surface, visual) = cx.add_window_view(|_, cx| {
+		let mut s = AgentSurface::new(cx);
+		s.visual_workspace_fixture(cx);
+		s.visual_workbench_page("workbench", cx);
+		s.workspace.agent_panel_width = 240.;
+		let mut record = receipt(70, decodex_protocol::AgentExchangeKind::NotSent);
+		record.thread_id = Some(THREAD.into());
+		s.work_board.collaboration.source =
+			s.snapshot.as_ref().and_then(|snapshot| snapshot.runtime_source.clone());
+		s.work_board.collaboration.entries.insert(70, record);
+		s.work_board.collaboration_expanded = Some("unsent:70".into());
+		s.work_board.collaboration.source_open = Some("unsent:70".into());
+		s.composer.update(cx, |input, cx| input.set_content("Preserve this draft", cx));
+		s
+	});
+	visual.simulate_resize(gpui::size(gpui::px(1536.), gpui::px(1024.)));
+	visual.update(crate::ui_frame::draw_frame);
+	let value = visual.debug_bounds("collaboration-reference-unsent:70-Thread").unwrap();
+	let panel = visual.debug_bounds("workbench-body").unwrap();
+	assert!(f32::from(value.size.height) <= 24.);
+	assert!(value.left() >= panel.left() && value.right() <= panel.right());
+	let copy = visual.debug_bounds("copy-collaboration-reference-unsent:70-Thread").unwrap();
+	visual.simulate_click(copy.center(), Default::default());
+	visual.update(|_, cx| {
+		assert_eq!(cx.read_from_clipboard().and_then(|item| item.text()).as_deref(), Some(THREAD));
+	});
+	surface.read_with(visual, |s, cx| {
+		assert_eq!(s.selected.as_deref(), Some("agent"));
+		assert_eq!(s.composer.read(cx).content(), "Preserve this draft");
+		assert_eq!(s.work_board.collaboration.entries[&70].thread_id.as_deref(), Some(THREAD));
+	});
+}
+
+#[gpui::test]
 fn managed_receipts_keep_busy_delivery_and_assessment_separate(cx: &mut gpui::TestAppContext) {
 	use decodex_protocol::{AgentExchangeAssessment as A, AgentExchangeKind as K};
 	let surface = cx.new(|cx| {

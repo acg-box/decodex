@@ -16,12 +16,16 @@ use decodex_protocol::{
 };
 use gpui::{AnyElement, SharedString, prelude::*};
 use std::{collections::BTreeMap, time::Instant};
-const SECONDARY: u32 = 0xd1cbd6;
+use ui_theme::foreground;
 #[path = "agent_collaboration_cases.rs"] mod cases;
 use cases::exchanges;
 #[cfg(test)]
 #[path = "agent_collaboration_tests.rs"]
 mod tests;
+
+fn same_excerpt(a: &str, b: &str) -> bool {
+	a.split_whitespace().eq(b.split_whitespace())
+}
 
 #[derive(Default)]
 pub(in super::super) struct State {
@@ -221,14 +225,8 @@ impl AgentSurface {
 				state: "Reported",
 				color: ui_theme::BLUE,
 				request: None,
-				steps: vec![
-					(
-						"Report",
-						"Reported output is available in the original child conversation.".into(),
-					),
-					("Review", "No structured acceptance or reply linkage is available.".into()),
-				],
-				source: format!("Native report · {thread} / {turn}"),
+				steps: vec![("Review", "Acceptance and reply linkage are unknown.".into())],
+				source: "Native report".into(),
 				source_text,
 				source_row: row.clone(),
 				source_event: None,
@@ -263,9 +261,10 @@ impl AgentSurface {
 			.min_h(gpui::px(22.))
 			.flex()
 			.items_center()
-			.text_size(gpui::px(10.5))
+			.text_size(gpui::px(foreground::METRIC_SIZE))
 			.line_height(gpui::px(18.))
-			.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+			.font_weight(gpui::FontWeight::MEDIUM)
+			.text_color(gpui::rgb(foreground::SECONDARY))
 			.cursor_pointer()
 			.hover(|style| style.text_color(gpui::rgb(ui_theme::BLUE)))
 			.on_click(cx.listener(move |s, _, window, cx| {
@@ -319,8 +318,49 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.child(label)
+			.child(number)
 			.smooth()
+			.into_any_element()
+	}
+
+	fn collaboration_source_field(
+		&self,
+		case: &Exchange,
+		label: &'static str,
+		value: &str,
+	) -> AnyElement {
+		let key = format!("collaboration-reference-{}-{label}", case.id);
+		gpui::div()
+			.w_full()
+			.min_w_0()
+			.flex()
+			.items_center()
+			.gap(gpui::px(8.))
+			.child(gpui::div().w(gpui::px(40.)).flex_none().child(label))
+			.child(
+				gpui::div()
+					.debug_selector({
+						let key = key.clone();
+						move || key.clone()
+					})
+					.flex_1()
+					.min_w_0()
+					.whitespace_nowrap()
+					.text_ellipsis()
+					.overflow_hidden()
+					.child(value.to_owned()),
+			)
+			.child(crate::shell::agent_surface::markdown::copy_button(
+				&format!("copy-{key}"),
+				match label {
+					"Thread" => "Copy thread ID",
+					"Turn" => "Copy turn ID",
+					"Item" => "Copy item ID",
+					"Event" => "Copy event ID",
+					_ => "Copy source ID",
+				},
+				value.to_owned(),
+			))
 			.into_any_element()
 	}
 
@@ -339,6 +379,8 @@ impl AgentSurface {
 
 	fn collaboration_exchange_header(&self, case: &Exchange, cx: &mut Context<Self>) -> AnyElement {
 		let expanded = self.work_board.collaboration_expanded.as_ref() == Some(&case.id);
+		let source_open =
+			expanded && self.work_board.collaboration.source_open.as_ref() == Some(&case.id);
 		let key = case.id.clone();
 		let edge = case.edge.clone();
 		let keyboard_key = key.clone();
@@ -350,21 +392,30 @@ impl AgentSurface {
 			.flex()
 			.items_center()
 			.gap(gpui::px(5.))
-			.text_size(gpui::px(10.))
+			.text_size(gpui::px(foreground::CAPTION_SIZE))
 			.line_height(gpui::px(19.))
+			.font_weight(gpui::FontWeight::MEDIUM)
+			.text_color(gpui::rgb(foreground::SECONDARY))
 			.child(
 				gpui::div().flex_none().size(gpui::px(4.)).rounded_full().bg(gpui::rgb(case.color)),
 			)
 			.child(self.collaboration_participant(&case.from, &case.id, cx))
-			.child(gpui::div().flex_none().text_color(gpui::rgb(ui_theme::TEXT_MUTED)).child("→"));
+			.child(gpui::div().flex_none().text_color(gpui::rgb(foreground::SECONDARY)).child("→"));
 		route = if let Some(to) = &case.to {
 			route.child(self.collaboration_participant(to, &case.id, cx))
 		} else {
 			route.child(if case.question.is_some() { "You" } else { "Unknown" })
 		};
-		route = route
-			.child(gpui::div().flex_1())
-			.child(gpui::div().flex_none().text_color(gpui::rgb(case.color)).child(case.state));
+		route = route.child(gpui::div().flex_1()).child(
+			gpui::div()
+				.flex_none()
+				.text_color(gpui::rgb(if matches!(case.state, "Reported" | "Recorded") {
+					foreground::SECONDARY
+				} else {
+					case.color
+				}))
+				.child(case.state),
+		);
 		let title = gpui::div()
 			.id(SharedString::from(selector.clone()))
 			.debug_selector(move || selector.clone())
@@ -387,11 +438,11 @@ impl AgentSurface {
 						gpui::div()
 							.flex_1()
 							.min_w_0()
-							.text_size(gpui::px(12.5))
-							.line_height(gpui::px(18.))
-							.font_weight(gpui::FontWeight::SEMIBOLD)
-							.text_color(gpui::rgb(ui_theme::TEXT))
-							.line_clamp(2)
+							.text_size(gpui::px(12.))
+							.line_height(gpui::px(19.))
+							.font_weight(gpui::FontWeight::NORMAL)
+							.text_color(gpui::rgb(foreground::PRIMARY))
+							.line_clamp(if expanded { 2 } else { 1 })
 							.text_ellipsis()
 							.child(case.title.clone()),
 					)
@@ -400,15 +451,27 @@ impl AgentSurface {
 						expanded,
 					)),
 			)
-			.child(
-				gpui::div()
-					.text_size(gpui::px(11.5))
-					.line_height(gpui::px(17.))
-					.text_color(gpui::rgb(SECONDARY))
-					.line_clamp(2)
-					.text_ellipsis()
-					.child(case.summary.clone()),
-			)
+			.when(!source_open || !same_excerpt(&case.summary, &case.source_text), |header| {
+				header.child(
+					gpui::div()
+						.text_size(gpui::px(11.5))
+						.line_height(gpui::px(ui_theme::BODY_LINE_HEIGHT))
+						.text_color(gpui::rgb(foreground::BODY))
+						.line_clamp(
+							if expanded
+								|| !matches!(
+									case.state,
+									"Reported" | "Recorded" | "Shared" | "Accepted"
+								) {
+								2
+							} else {
+								1
+							},
+						)
+						.text_ellipsis()
+						.child(case.summary.clone()),
+				)
+			})
 			.on_click(cx.listener(move |s, _, window, cx| {
 				s.toggle_collaboration_exchange(&key, edge.as_ref(), cx);
 				restore_shell_focus(window, cx);
@@ -426,9 +489,16 @@ impl AgentSurface {
 
 	fn collaboration_exchange(&self, case: &Exchange, cx: &mut Context<Self>) -> AnyElement {
 		let expanded = self.work_board.collaboration_expanded.as_ref() == Some(&case.id);
+		let source_open = self.work_board.collaboration.source_open.as_ref() == Some(&case.id);
+		let related = self.work_board.view.picked_agent.as_ref().is_some_and(|key| {
+			case.from.key == *key || case.to.as_ref().is_some_and(|row| row.key == *key)
+		});
 		let mut context =
 			gpui::div().w_full().min_w_0().flex().flex_col().gap(gpui::px(7.)).pt(gpui::px(4.));
-		if let Some(request) = &case.request {
+		if let Some(request) = case.request.as_ref().filter(|request| {
+			!same_excerpt(request, &case.summary)
+				&& !(source_open && same_excerpt(request, &case.source_text))
+		}) {
 			context = context.child(
 				gpui::div()
 					.w_full()
@@ -438,16 +508,17 @@ impl AgentSurface {
 					.pl(gpui::px(8.))
 					.child(
 						gpui::div()
-							.text_size(gpui::px(9.))
+							.text_size(gpui::px(foreground::CAPTION_SIZE))
 							.line_height(gpui::px(15.))
-							.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+							.font_weight(gpui::FontWeight::MEDIUM)
+							.text_color(gpui::rgb(foreground::SECONDARY))
 							.child("Request"),
 					)
 					.child(
 						gpui::div()
 							.text_size(gpui::px(11.5))
 							.line_height(gpui::px(17.))
-							.text_color(gpui::rgb(ui_theme::TEXT))
+							.text_color(gpui::rgb(foreground::BODY))
 							.line_clamp(3)
 							.text_ellipsis()
 							.child(request.clone()),
@@ -467,35 +538,40 @@ impl AgentSurface {
 					.child(question.question.title.clone()),
 			));
 		}
+		let mut source_notes = Vec::new();
 		for (label, fact) in &case.steps {
-			context = context.child(
-				gpui::div()
-					.w_full()
-					.min_w_0()
-					.flex()
-					.items_start()
-					.gap(gpui::px(8.))
-					.child(
-						gpui::div()
-							.w(gpui::px(46.))
-							.flex_none()
-							.text_size(gpui::px(9.5))
-							.line_height(gpui::px(17.))
-							.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
-							.child(*label),
-					)
-					.child(
-						gpui::div()
-							.flex_1()
-							.min_w_0()
-							.text_size(gpui::px(11.))
-							.line_height(gpui::px(17.))
-							.text_color(gpui::rgb(SECONDARY))
-							.line_clamp(3)
-							.text_ellipsis()
-							.child(fact.clone()),
-					),
-			);
+			let note = gpui::div()
+				.w_full()
+				.min_w_0()
+				.flex()
+				.items_start()
+				.gap(gpui::px(8.))
+				.child(
+					gpui::div()
+						.w(gpui::px(46.))
+						.flex_none()
+						.text_size(gpui::px(foreground::CAPTION_SIZE))
+						.line_height(gpui::px(18.))
+						.font_weight(gpui::FontWeight::MEDIUM)
+						.text_color(gpui::rgb(foreground::SECONDARY))
+						.child(*label),
+				)
+				.child(
+					gpui::div()
+						.flex_1()
+						.min_w_0()
+						.text_size(gpui::px(11.5))
+						.line_height(gpui::px(18.))
+						.text_color(gpui::rgb(foreground::BODY))
+						.line_clamp(3)
+						.text_ellipsis()
+						.child(fact.clone()),
+				);
+			if matches!(case.state, "Reported" | "Recorded" | "Shared") {
+				source_notes.push(note.into_any_element());
+			} else {
+				context = context.child(note);
+			}
 		}
 		let key = case.id.clone();
 		let source_key = key.clone();
@@ -548,32 +624,37 @@ impl AgentSurface {
 			));
 		}
 		context = context.child(actions);
-		let source_open = self.work_board.collaboration.source_open.as_ref() == Some(&case.id);
 		let mut source = gpui::div()
 			.w_full()
 			.min_w_0()
 			.flex()
 			.flex_col()
 			.gap(gpui::px(4.))
-			.text_size(gpui::px(10.))
-			.line_height(gpui::px(15.))
-			.text_color(gpui::rgb(ui_theme::TEXT_MUTED));
-		let mut identity = case.source.clone();
+			.text_size(gpui::px(foreground::CAPTION_SIZE))
+			.line_height(gpui::px(17.))
+			.text_color(gpui::rgb(foreground::SECONDARY))
+			.children(source_notes);
+		source = if matches!(case.source.as_str(), "Native report" | "Native question") {
+			source.child(gpui::div().child(case.source.clone()))
+		} else {
+			source.child(self.collaboration_source_field(case, "Source", &case.source))
+		};
 		if let Some(event) = case.source_event {
-			identity.push_str(&format!("\nEvent: {event}"));
+			source =
+				source.child(self.collaboration_source_field(case, "Event", &event.to_string()));
 		}
 		if let Some(thread) = &case.source_thread {
-			identity.push_str(&format!("\nThread: {thread}"));
+			source = source.child(self.collaboration_source_field(case, "Thread", thread));
 		}
 		if let Some(turn) = &case.source_turn {
-			identity.push_str(&format!("\nTurn: {turn}"));
+			source = source.child(self.collaboration_source_field(case, "Turn", turn));
 		}
 		if let Some(item) = &case.source_item {
-			identity.push_str(&format!("\nItem: {item}"));
+			source = source.child(self.collaboration_source_field(case, "Item", item));
 		}
-		source = source
-			.child(gpui::div().w_full().min_w_0().whitespace_normal().child(identity))
-			.child(gpui::div().text_color(gpui::rgb(SECONDARY)).child(case.source_text.clone()));
+		source = source.child(
+			gpui::div().text_color(gpui::rgb(foreground::BODY)).child(case.source_text.clone()),
+		);
 		if case.source_thread.is_some() && case.source_thread == case.source_row.thread {
 			let row = case.source_row.clone();
 			source = source.child(self.collaboration_action(
@@ -595,9 +676,22 @@ impl AgentSurface {
 			.w_full()
 			.min_w_0()
 			.flex_none()
-			.py(gpui::px(11.))
+			.relative()
+			.py(gpui::px(12.))
 			.border_b_1()
 			.border_color(gpui::rgba(0xffffff12))
+			.when(related, |row| {
+				row.child(
+					gpui::div()
+						.debug_selector(|| "collaboration-selection-mark".into())
+						.absolute()
+						.left(gpui::px(-7.))
+						.top(gpui::px(12.))
+						.bottom(gpui::px(12.))
+						.border_l_1()
+						.border_color(gpui::rgb(ui_theme::BLUE)),
+				)
+			})
 			.child(self.collaboration_exchange_header(case, cx))
 			.child(ui_motion::disclosure(
 				SharedString::from(format!("collaboration-context-reveal-{}", case.id)),
@@ -621,7 +715,7 @@ impl AgentSurface {
 			.flex_col()
 			.text_size(gpui::px(11.))
 			.line_height(gpui::px(17.))
-			.text_color(gpui::rgb(ui_theme::TEXT_MUTED));
+			.text_color(gpui::rgb(foreground::SECONDARY));
 		let entries = self.workbench_entries();
 		for entry in entries.iter().filter(|entry| {
 			!entry.result
