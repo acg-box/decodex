@@ -1870,6 +1870,16 @@ impl AgentCoordinator {
 			} else {
 				self.tool(&item, &params).await
 			};
+			if matches!(&result, Err(AgentError::Busy)) && params["tool"] == "agent_continue_worker"
+			{
+				let target = exact(&params, "/arguments/id")?;
+				self.store.record_agent_observation(EnqueueAgentEvent {
+					source_event_id: serde_json::json!(["collaboration_refused", thread, params["turnId"], params.get("callId").unwrap_or(&serde_json::to_value(&id).expect("request identity"))]).to_string(),
+					work_item_id: item.id.clone(),
+					event_kind: "collaboration_refused".into(),
+					payload: serde_json::json!({"targetWorkId":target,"threadId":thread,"turnId":params["turnId"],"callId":params["callId"],"prompt":params["arguments"]["prompt"].as_str().unwrap_or_default().chars().take(4096).collect::<String>()}).to_string(),
+				}).await?;
+			}
 			let success = result.is_ok();
 			let text = match result {
 				Ok(value) => value.to_string(),

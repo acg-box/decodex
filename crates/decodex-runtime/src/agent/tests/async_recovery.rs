@@ -56,6 +56,15 @@ async fn delegated_instruction_retires_only_older_questions() {
 		let remaining = agent.store.read_agent_async_questions("agent".into()).await.unwrap();
 		assert_eq!(remaining.len(), 1);
 		assert_eq!(remaining[0].item_id, "new-question");
+		let projected =
+			agent.store.read_agent_collaboration_questions(vec!["agent".into()]).await.unwrap();
+		assert_eq!(projected.len(), 2);
+		assert!(
+			!projected.iter().find(|row| row.question.item_id == "old-question").unwrap().pending
+		);
+		assert!(
+			projected.iter().find(|row| row.question.item_id == "new-question").unwrap().pending
+		);
 	}
 }
 

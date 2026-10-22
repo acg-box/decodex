@@ -72,9 +72,10 @@ pub use self::{
 	},
 	accounts::AccountMetadata,
 	agent::{
-		AgentCapacityRetry, AgentDependency, AgentDispatchState, AgentDisposition, AgentInboxEvent,
-		AgentRecoveryKind, AgentStoreSnapshot, AgentTurnMetrics, AgentWorkItem, AgentWorkKind,
-		AgentWorkStatus, EnqueueAgentEvent,
+		AgentCapacityRetry, AgentCollaborationQuestion, AgentCollaborationRecord, AgentDependency,
+		AgentDispatchState, AgentDisposition, AgentInboxEvent, AgentRecoveryKind,
+		AgentStoreSnapshot, AgentTurnMetrics, AgentWorkItem, AgentWorkKind, AgentWorkStatus,
+		EnqueueAgentEvent,
 	},
 	agent_app_settings::{
 		AgentAppSettingsAttempt, AgentAppSettingsObservation, AgentAppSettingsReceipt,

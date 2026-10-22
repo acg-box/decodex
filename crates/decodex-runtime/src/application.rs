@@ -1,5 +1,6 @@
 //! Application-service seam used by the transport without exposing infrastructure.
 
+#[path = "application_collaboration.rs"] mod collaboration;
 #[path = "application_deliveries.rs"] mod deliveries;
 
 #[path = "application_account_nudge.rs"] mod account_nudge;
@@ -2851,6 +2852,7 @@ impl Application for ServiceApplication {
 			QueryPayload::GetAgentGuardianReviews { .. }
 			| QueryPayload::GetAgentGuardianDetail { .. } => self.query_guardian(&query.payload).await,
 			QueryPayload::GetAgentSnapshot => self.query_agent_snapshot().await,
+			QueryPayload::GetAgentExchanges { before } => self.query_exchanges(*before).await,
 			QueryPayload::GetAgentDeliveries { query } => self.query_deliveries(query).await,
 			QueryPayload::GetDesktopSettings
 			| QueryPayload::ListPrograms
@@ -5141,7 +5143,7 @@ fn agent_history_event_display(
 	completed_message_ids: &mut Vec<(String, String)>,
 ) -> Option<(&'static str, String)> {
 	Some(match event.event_kind.as_str() {
-			"reasoning_voice_handoff" | "plan_updated" => return None,
+			"reasoning_voice_handoff" | "plan_updated" | "collaboration_refused" => return None,
 			"auth_recovery_started" | "auth_recovery_completed" => ("auth_recovery", format!("{}\n\n{}: {}\n\nSaved event; current sign-in status is not confirmed by this record.", if event.event_kind == "auth_recovery_started" { "Codex reported that provider sign-in recovery started." } else { "Codex reported that provider sign-in recovery succeeded." }, value["provider"].as_str().unwrap_or("Provider"), value["message"].as_str().unwrap_or(""))),
 			"partial_output" => partial_history_text(event, value, rendered_sources)?,
 			"native_warning" => ("execution_notice", value["text"].as_str().unwrap_or("Codex reported a warning.").to_owned()),
