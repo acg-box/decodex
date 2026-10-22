@@ -11,6 +11,15 @@ use gpui::profiler::{self, FrameEvent, FrameTimingCollector};
 
 static ROWS: OnceLock<(Instant, Mutex<Vec<serde_json::Value>>)> = OnceLock::new();
 
+pub(crate) fn mermaid_prepared(duration: Duration, width: f32, height: f32) {
+	record(|at_ms| {
+		serde_json::json!({
+			"at_ms": at_ms, "phase": "mermaid_prepared", "height": height, "width": width,
+			"prepare_ms": duration.as_secs_f64() * 1_000.,
+		})
+	});
+}
+
 /// Trace row presentation alongside frame timing, without message content.
 pub(crate) fn row_arrival(position: u64, phase: &str, progress: f32, height: f32) {
 	record_row(Some(position), phase, Some(progress), height, None);

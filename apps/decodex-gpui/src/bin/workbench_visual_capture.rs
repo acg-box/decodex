@@ -37,6 +37,9 @@ mod history_pager;
 #[allow(dead_code)]
 #[path = "../native_menu_bar.rs"]
 mod native_menu_bar;
+#[cfg(target_os = "macos")]
+#[path = "probes/native_scroll.rs"]
+mod native_scroll;
 #[allow(dead_code)]
 #[path = "../native_updater.rs"]
 mod native_updater;
@@ -73,7 +76,7 @@ use std::{
 	io::Error,
 	path::{Path, PathBuf},
 	thread,
-	time::Duration,
+	time::{Duration, Instant},
 };
 
 use gpui::{
@@ -117,6 +120,12 @@ impl gpui::Render for CollaborationComponent {
 }
 
 fn main() -> Result<()> {
+	#[cfg(target_os = "macos")]
+	if env::var_os("DECODEX_VISUAL_NATIVE_SCROLL").is_some() {
+		native_scroll::run();
+		return Ok(());
+	}
+
 	let output = env::var_os("DECODEX_VISUAL_OUTPUT")
 		.map(PathBuf::from)
 		.unwrap_or_else(|| PathBuf::from("target/visual-tests/codex-workbench.png"));
@@ -245,6 +254,7 @@ fn main() -> Result<()> {
 	}
 
 	capture_interactions(&mut cx, window)?;
+	capture_frame_cost(&mut cx, window, &output)?;
 
 	let screenshot = cx.capture_screenshot(window)?;
 
@@ -252,6 +262,38 @@ fn main() -> Result<()> {
 
 	println!("{}", output.display());
 
+	Ok(())
+}
+
+fn capture_frame_cost(
+	cx: &mut VisualTestAppContext,
+	window: AnyWindowHandle,
+	output: &Path,
+) -> Result<()> {
+	if env::var_os("DECODEX_VISUAL_FRAME_COST").is_none() {
+		return Ok(());
+	}
+	let mut samples = Vec::with_capacity(120);
+	for _ in 0..120 {
+		let start = Instant::now();
+		cx.update_window(window, |_, window, cx| {
+			window.refresh();
+			window.draw(cx).clear(cx);
+		})?;
+		samples.push(start.elapsed().as_secs_f64() * 1_000.);
+	}
+	let mean = samples.iter().sum::<f64>() / samples.len() as f64;
+	samples.sort_by(f64::total_cmp);
+	fs::write(
+		output.with_extension("frames.json"),
+		serde_json::to_vec_pretty(&serde_json::json!({
+			"scope": "CPU frame construction in a settled native offscreen window; excludes GPU and display timing",
+			"samples": samples.len(), "mean_ms": mean,
+			"p50_ms": samples[samples.len() / 2],
+			"p95_ms": samples[samples.len() * 95 / 100],
+			"max_ms": samples[samples.len() - 1]
+		}))?,
+	)?;
 	Ok(())
 }
 

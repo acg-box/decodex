@@ -1,0 +1,134 @@
+[
+  [
+    "agentflow",
+    "agentflow-beta TB\n  brief[\"Release brief\"]@{ shape: input }\n  flow writer[\"Drafting Agent\"]\n    draft[\"Draft the notes\"]@{ shape: task }\n    lookup[\"changelog_search\"]@{ shape: tool }\n    guide[\"Tone of voice\"]@{ shape: refdoc }\n    draft --> lookup\n    draft -.- guide\n  end\n  flow reviewer[\"Review Agent\"]\n    check[\"Check the claims\"]@{ shape: task }\n    ok[\"Accurate?\"]@{ shape: decision }\n    check --> ok\n  end\n  publish[\"Publish\"]@{ shape: action }\n  brief --> writer\n  writer --> reviewer\n  ok --> publish\n"
+  ],
+  [
+    "architecture",
+    "architecture-beta\n    group api(cloud)[API]\n\n    service db(database)[Database] in api\n    service disk1(disk)[Storage] in api\n    service disk2(disk)[Storage] in api\n    service server(server)[Server] in api\n\n    db:L -- R:server\n    disk1:T -- B:server\n    disk2:T -- B:db\n"
+  ],
+  [
+    "block",
+    "block\ncolumns 1\n  db((\"DB\"))\n  blockArrowId6<[\"&nbsp;&nbsp;&nbsp;\"]>(down)\n  block:ID\n    A\n    B[\"A wide one in the middle\"]\n    C\n  end\n  space\n  D\n  ID --> D\n  C --> D\n  style B fill:#969,stroke:#333,stroke-width:4px\n"
+  ],
+  [
+    "c4",
+    "    C4Context\n      title System Context diagram for Internet Banking System\n      Enterprise_Boundary(b0, \"BankBoundary0\") {\n        Person(customerA, \"Banking Customer A\", \"A customer of the bank, with personal bank accounts.\")\n        Person(customerB, \"Banking Customer B\")\n        Person_Ext(customerC, \"Banking Customer C\", \"desc\")\n\n        Person(customerD, \"Banking Customer D\", \"A customer of the bank, <br/> with personal bank accounts.\")\n\n        System(SystemAA, \"Internet Banking System\", \"Allows customers to view information about their bank accounts, and make payments.\")\n\n        Enterprise_Boundary(b1, \"BankBoundary\") {\n\n          SystemDb_Ext(SystemE, \"Mainframe Banking System\", \"Stores all of the core banking information about customers, accounts, transactions, etc.\")\n\n          System_Boundary(b2, \"BankBoundary2\") {\n            System(SystemA, \"Banking System A\")\n            System(SystemB, \"Banking System B\", \"A system of the bank, with personal bank accounts. next line.\")\n          }\n\n          System_Ext(SystemC, \"E-mail system\", \"The internal Microsoft Exchange e-mail system.\")\n          SystemDb(SystemD, \"Banking System D Database\", \"A system of the bank, with personal bank accounts.\")\n\n          Boundary(b3, \"BankBoundary3\", \"boundary\") {\n            SystemQueue(SystemF, \"Banking System F Queue\", \"A system of the bank.\")\n            SystemQueue_Ext(SystemG, \"Banking System G Queue\", \"A system of the bank, with personal bank accounts.\")\n          }\n        }\n      }\n\n      BiRel(customerA, SystemAA, \"Uses\")\n      BiRel(SystemAA, SystemE, \"Uses\")\n      Rel(SystemAA, SystemC, \"Sends e-mails\", \"SMTP\")\n      Rel(SystemC, customerA, \"Sends e-mails to\")\n\n      UpdateElementStyle(customerA, $fontColor=\"red\", $bgColor=\"gray\", $borderColor=\"red\")\n      UpdateRelStyle(customerA, SystemAA, $textColor=\"blue\", $lineColor=\"blue\", $offsetX=\"5\")\n      UpdateRelStyle(SystemAA, SystemE, $textColor=\"blue\", $lineColor=\"blue\", $offsetY=\"-10\")\n      UpdateRelStyle(SystemAA, SystemC, $textColor=\"blue\", $lineColor=\"blue\", $offsetY=\"-40\", $offsetX=\"-50\")\n      UpdateRelStyle(SystemC, customerA, $textColor=\"red\", $lineColor=\"red\", $offsetX=\"-50\", $offsetY=\"20\")\n\n      UpdateLayoutConfig($c4ShapeInRow=\"3\", $c4BoundaryInRow=\"1\")\n\n\n"
+  ],
+  [
+    "class",
+    "---\nconfig:\n  class:\n    hierarchicalNamespaces: false\n---\nclassDiagram\n    namespace Earth.Volcano.Summit {\n        class Crater {\n            +erupt()\n        }\n    }\n    namespace Earth.Volcano.Slope {\n        class LavaFlow {\n            +buildLand()\n        }\n    }\n    namespace Earth {\n        class Hotspot {\n            +meltRock()\n        }\n    }\n    Hotspot --> Crater : feeds\n    Hotspot --> LavaFlow : feeds\n"
+  ],
+  [
+    "cynefin",
+    "cynefin-beta\n  title Incident Response\n\n  complex\n    \"Investigate root cause\"\n    \"Run chaos experiment\"\n\n  complicated\n    \"Analyze performance data\"\n    \"Expert review needed\"\n\n  clear\n    \"Restart service\"\n    \"Apply known fix\"\n\n  chaotic\n    \"Page on-call immediately\"\n\n  confusion\n    \"Unknown failure mode\"\n"
+  ],
+  [
+    "er",
+    "---\nconfig:\n  theme: default\n  look: classic\n  layout: dagre\n---\nerDiagram\n  CUSTOMER ||--o{ ORDER : places\n  ORDER ||--|{ LINE_ITEM : contains\n  PRODUCT ||--o{ LINE_ITEM : \"appears in\"\n  CUSTOMER {\n    string name\n    string email\n  }\n  ORDER {\n    int id\n    date placedAt\n  }\n  LINE_ITEM {\n    int quantity\n    float price\n  }\n  PRODUCT {\n    string sku\n    string title\n  }\n"
+  ],
+  [
+    "eventmodeling",
+    "eventmodeling\n\ntimeframe 01 ui CartUI\ntimeframe 02 command AddItem { description: string }\ntimeframe 03 event ItemAdded { description: string }\n"
+  ],
+  [
+    "flowchart",
+    "flowchart LR\n  subgraph Client\n    UI[Web app]\n    Cache[(Local cache)]\n  end\n  subgraph Services\n    API[API gateway]\n    Auth[Auth service]\n    Orders[Order service]\n  end\n  subgraph Storage\n    DB[(Orders DB)]\n  end\n  UI --> API\n  UI --> Cache\n  API --> Auth\n  API --> Orders\n  Orders --> DB\n  Auth -. token .-> UI\n"
+  ],
+  [
+    "gantt",
+    "gantt\n    title A Gantt Diagram\n    dateFormat YYYY-MM-DD\n    section Section\n        A task          :a1, 2014-01-01, 30d\n        Another task    :after a1, 20d\n    section Another\n        Task in Another :2014-01-12, 12d\n        another task    :24d\n"
+  ],
+  [
+    "git",
+    "---\nconfig:\n  logLevel: 'debug'\n  theme: 'base'\n  gitGraph:\n    showBranches: false\n---\n      gitGraph\n        commit\n        branch hotfix\n        checkout hotfix\n        commit\n        branch develop\n        checkout develop\n        commit id:\"ash\" tag:\"abc\"\n        branch featureB\n        checkout featureB\n        commit type:HIGHLIGHT\n        checkout main\n        checkout hotfix\n        commit type:NORMAL\n        checkout develop\n        commit type:REVERSE\n        checkout featureB\n        commit\n        checkout main\n        merge hotfix\n        checkout featureB\n        commit\n        checkout develop\n        branch featureA\n        commit\n        checkout develop\n        merge hotfix\n        checkout featureA\n        commit\n        checkout featureB\n        commit\n        checkout develop\n        merge featureA\n        branch release\n        checkout release\n        commit\n        checkout main\n        commit\n        checkout release\n        merge main\n        checkout develop\n        merge release\n"
+  ],
+  [
+    "info",
+    "info\n"
+  ],
+  [
+    "ishikawa",
+    "ishikawa-beta\n    Blurry Photo\n    Process\n        Out of focus\n        Shutter speed too slow\n        Protective film not removed\n        Beautification filter applied\n    User\n        Shaky hands\n    Equipment\n        LENS\n            Inappropriate lens\n            Damaged lens\n            Dirty lens\n        SENSOR\n            Damaged sensor\n            Dirty sensor\n    Environment\n        Subject moved too quickly\n        Too dark\n"
+  ],
+  [
+    "journey",
+    "journey\n    title My working day\n    section Go to work\n      Make tea: 5: Me\n      Go upstairs: 3: Me\n      Do work: 1: Me, Cat\n    section Go home\n      Go downstairs: 5: Me\n      Sit down: 5: Me\n"
+  ],
+  [
+    "kanban",
+    "kanban\n  column1[Column Title]\n    task1[Task Description]\n"
+  ],
+  [
+    "mindmap",
+    "mindmap\n  root((Hawaiʻi))\n    History\n      Old legends\n      ::icon(fa fa-book)\n      Voyaging\n        Polynesian navigators who sailed by the stars\n    Nature\n      Mountains<br/>and volcanoes\n      Ocean life\n        Reef\n            Sea turtles\n            Monk seals\n            Parrotfish\n    Culture\n      Hula and lei\n      ʻUkulele\n"
+  ],
+  [
+    "packet",
+    "---\ntitle: \"TCP Packet\"\n---\npacket\n0-15: \"Source Port\"\n16-31: \"Destination Port\"\n32-63: \"Sequence Number\"\n64-95: \"Acknowledgment Number\"\n96-99: \"Data Offset\"\n100-105: \"Reserved\"\n106: \"URG\"\n107: \"ACK\"\n108: \"PSH\"\n109: \"RST\"\n110: \"SYN\"\n111: \"FIN\"\n112-127: \"Window\"\n128-143: \"Checksum\"\n144-159: \"Urgent Pointer\"\n160-191: \"(Options and Padding)\"\n192-255: \"Data (variable length)\"\n"
+  ],
+  [
+    "pie",
+    "pie title Fish caught by the crew\n    \"ʻAhi\" : 386\n    \"Mahimahi\" : 85\n    \"Ono\" : 15\n"
+  ],
+  [
+    "quadrant",
+    "quadrantChart\n    title Reach and engagement of campaigns\n    x-axis Low Reach --> High Reach\n    y-axis Low Engagement --> High Engagement\n    quadrant-1 We should expand\n    quadrant-2 Need to promote\n    quadrant-3 Re-evaluate\n    quadrant-4 May be improved\n    Campaign A: [0.3, 0.6]\n    Campaign B: [0.45, 0.23]\n    Campaign C: [0.57, 0.69]\n    Campaign D: [0.78, 0.34]\n    Campaign E: [0.40, 0.34]\n    Campaign F: [0.35, 0.78]\n"
+  ],
+  [
+    "radar",
+    "---\ntitle: \"Grades\"\n---\nradar-beta\n  axis m[\"Math\"], s[\"Science\"], e[\"English\"]\n  axis h[\"History\"], g[\"Geography\"], a[\"Art\"]\n  curve a[\"Alice\"]{85, 90, 80, 70, 75, 90}\n  curve b[\"Bob\"]{70, 75, 85, 80, 90, 85}\n\n  max 100\n  min 0\n"
+  ],
+  [
+    "railroad",
+    "railroad-ebnf-beta\ntitle \"Arithmetic Expression Grammar\"\n\nexpression = term ( ( \"+\" | \"-\" ) term )* ;\nterm = factor ( ( \"*\" | \"/\" ) factor )* ;\nfactor = number | \"(\" expression \")\" ;\nnumber = digit+ ;\ndigit = \"0\" | \"1\" | \"2\" | \"3\" | \"4\" | \"5\" | \"6\" | \"7\" | \"8\" | \"9\" ;\n"
+  ],
+  [
+    "requirement",
+    "requirementDiagram\n  requirement checkout_req {\n    id: 1\n    text: Orders must be payable online.\n    risk: high\n    verifymethod: test\n  }\n  functionalRequirement payment_req {\n    id: 1.1\n    text: Card payments must be authorized.\n    risk: high\n    verifymethod: test\n  }\n  element checkout_service {\n    type: service\n  }\n  checkout_req - contains -> payment_req\n  checkout_service - satisfies -> payment_req\n"
+  ],
+  [
+    "sankey",
+    "---\nconfig:\n  sankey:\n    showValues: false\n---\nsankey\n\nAgricultural 'waste',Bio-conversion,124.729\nBio-conversion,Liquid,0.597\nBio-conversion,Losses,26.862\nBio-conversion,Solid,280.322\nBio-conversion,Gas,81.144\nBiofuel imports,Liquid,35\nBiomass imports,Solid,35\nCoal imports,Coal,11.606\nCoal reserves,Coal,63.965\nCoal,Solid,75.571\nDistrict heating,Industry,10.639\nDistrict heating,Heating and cooling - commercial,22.505\nDistrict heating,Heating and cooling - homes,46.184\nElectricity grid,Over generation / exports,104.453\nElectricity grid,Heating and cooling - homes,113.726\nElectricity grid,H2 conversion,27.14\nElectricity grid,Industry,342.165\nElectricity grid,Road transport,37.797\nElectricity grid,Agriculture,4.412\nElectricity grid,Heating and cooling - commercial,40.858\nElectricity grid,Losses,56.691\nElectricity grid,Rail transport,7.863\nElectricity grid,Lighting & appliances - commercial,90.008\nElectricity grid,Lighting & appliances - homes,93.494\nGas imports,Ngas,40.719\nGas reserves,Ngas,82.233\nGas,Heating and cooling - commercial,0.129\nGas,Losses,1.401\nGas,Thermal generation,151.891\nGas,Agriculture,2.096\nGas,Industry,48.58\nGeothermal,Electricity grid,7.013\nH2 conversion,H2,20.897\nH2 conversion,Losses,6.242\nH2,Road transport,20.897\nHydro,Electricity grid,6.995\nLiquid,Industry,121.066\nLiquid,International shipping,128.69\nLiquid,Road transport,135.835\nLiquid,Domestic aviation,14.458\nLiquid,International aviation,206.267\nLiquid,Agriculture,3.64\nLiquid,National navigation,33.218\nLiquid,Rail transport,4.413\nMarine algae,Bio-conversion,4.375\nNgas,Gas,122.952\nNuclear,Thermal generation,839.978\nOil imports,Oil,504.287\nOil reserves,Oil,107.703\nOil,Liquid,611.99\nOther waste,Solid,56.587\nOther waste,Bio-conversion,77.81\nPumped heat,Heating and cooling - homes,193.026\nPumped heat,Heating and cooling - commercial,70.672\nSolar PV,Electricity grid,59.901\nSolar Thermal,Heating and cooling - homes,19.263\nSolar,Solar Thermal,19.263\nSolar,Solar PV,59.901\nSolid,Agriculture,0.882\nSolid,Thermal generation,400.12\nSolid,Industry,46.477\nThermal generation,Electricity grid,525.531\nThermal generation,Losses,787.129\nThermal generation,District heating,79.329\nTidal,Electricity grid,9.452\nUK land based bioenergy,Bio-conversion,182.01\nWave,Electricity grid,19.013\nWind,Electricity grid,289.366\n"
+  ],
+  [
+    "sequence",
+    "sequenceDiagram\n  autonumber\n  actor Customer\n  participant Web as Web app\n  participant API as API gateway\n  participant Bank\n  Customer->>Web: Place order\n  Web->>API: POST /orders\n  activate API\n  API->>Bank: Authorize payment\n  Bank-->>API: Approved\n  API-->>Web: 201 Created\n  deactivate API\n  Web-->>Customer: Order confirmed\n  Note over Customer,Bank: One order, one transaction\n"
+  ],
+  [
+    "state",
+    "---\nconfig:\n  theme: default\n  look: classic\n  layout: dagre\n---\nstateDiagram-v2\n  [*] --> Draft\n  Draft --> Submitted : submit\n  state Review {\n    [*] --> Screening\n    Screening --> Decision\n  }\n  Submitted --> Review\n  Review --> Published : approved\n  Review --> Draft : rejected\n  Published --> [*]\n"
+  ],
+  [
+    "swimlane",
+    "---\nconfig:\n  theme: default\n  look: classic\n---\nswimlane-beta LR\n  subgraph Customer\n    Browse[Browse catalog]\n    Pay[Pay]\n  end\n  subgraph Warehouse\n    Pick[Pick items]\n    Ship[Ship order]\n  end\n  subgraph Finance\n    Invoice[Raise invoice]\n  end\n  Browse --> Pay\n  Pay --> Pick\n  Pick --> Ship\n  Pay --> Invoice\n"
+  ],
+  [
+    "timeline",
+    "timeline\n    title Timeline of the Hawaiian Islands\n    section Older islands\n        Kauaʻi : 5 million years old, Canyons, Sea <br>cliffs\n        Oʻahu : 3 million years old, Diamond Head, Surf breaks\n        Molokaʻi : 2 million years old, Fishponds, Tall cliffs\n    section Younger islands\n        Maui : 1 million years old, Haleakalā, Whale watching\n        Hawaiʻi : Still growing, Mauna Kea, Kīlauea\n"
+  ],
+  [
+    "treemap",
+    "treemap-beta\n\"Products\"\n    \"Electronics\"\n        \"Phones\": 50\n        \"Computers\": 30\n        \"Accessories\": 20\n    \"Clothing\"\n        \"Men's\": 40\n        \"Women's\": 40\n"
+  ],
+  [
+    "treeview",
+    "treeView-beta\n├── src/\n│   ├── App.tsx :::highlight icon(logos:react) ## main component\n│   └── index.ts ## entry point\n├── .env ## environment variables\n├── Dockerfile\n└── package.json\n"
+  ],
+  [
+    "usecase",
+    "---\nconfig:\n  theme: default\n  look: classic\n  layout: dagre\n---\nusecase-beta\ndirection LR\nactor Customer\nactor Support\nsystemBoundary Storefront\n  Browse(\"Browse catalog\")\n  Checkout(\"Checkout\")\nend\nsystemBoundary Fulfilment\n  Track(\"Track delivery\")\nend\nCustomer --> Browse\nCustomer --> Checkout\nCustomer --> Track\nSupport --> Track\nCheckout ..> : include Browse\n"
+  ],
+  [
+    "venn",
+    "venn-beta\n  title What makes a good feature\n  set Desirable\n  set Feasible\n  set Viable\n  union Desirable,Feasible[\"Buildable\"]\n  union Feasible,Viable[\"Sustainable\"]\n  union Desirable,Viable[\"Marketable\"]\n  union Desirable,Feasible,Viable[\"Ship it\"]\n"
+  ],
+  [
+    "wardley",
+    "wardley-beta\ntitle Tea Shop Value Chain\n\nanchor Business [0.95, 0.63]\ncomponent Cup of Tea [0.79, 0.61]\ncomponent Tea [0.63, 0.81]\ncomponent Hot Water [0.52, 0.80]\ncomponent Kettle [0.43, 0.35]\ncomponent Power [0.10, 0.70]\n\nBusiness -> Cup of Tea\nCup of Tea -> Tea\nCup of Tea -> Hot Water\nHot Water -> Kettle\nKettle -> Power\n\nevolve Kettle 0.62\nevolve Power 0.89\n\nnote \"Standardizing power allows Kettles to evolve faster\" [0.30, 0.49]\n"
+  ],
+  [
+    "xychart",
+    "xychart\n    title \"Ocean Temperature\"\n    x-axis [jan, feb, mar, apr, may, jun, jul, aug, sep, oct, nov, dec]\n    y-axis \"Temperature (in °F)\" 74 --> 82\n    bar [76.3, 75.9, 76.0, 76.7, 77.8, 78.9, 79.9, 80.7, 81.1, 80.5, 79.1, 77.4]\n    line [76.3, 75.9, 76.0, 76.7, 77.8, 78.9, 79.9, 80.7, 81.1, 80.5, 79.1, 77.4]\n"
+  ]
+]

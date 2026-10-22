@@ -1,220 +1,55 @@
-// Adapted from openai/codex at 595cc91e8cbb1c2ca822d0311dcf12709410c582.
-// Copyright OpenAI. Licensed under Apache-2.0; see LICENSE-APACHE.
-//! Bounded, terminal-native Mermaid diagram prototype.
-//!
-//! Supports flowcharts, sequences, states, classes, and entity relationships.
-//! Graph edges own separate lanes and endpoint positions. Crossings never join routes. Unsupported
-//! syntax and outputs exceeding the caller's width return errors, leaving source fallback to
-//! the caller. This crate performs no I/O and does not depend on a Mermaid implementation.
+//! Ondine owns Mermaid syntax and layout; the desktop owns presentation and resource limits.
+#[path = "agent_mermaid/svg.rs"] mod svg;
 
-#[path = "agent_mermaid/draw.rs"] mod draw;
-#[path = "agent_mermaid/output.rs"] mod output;
-#[path = "agent_mermaid/parse.rs"] mod parse;
-#[path = "agent_mermaid/relations.rs"] mod relations;
-#[path = "agent_mermaid/sequence.rs"] mod sequence;
-#[path = "agent_mermaid/state.rs"] mod state;
-
-pub use output::{Role, Span};
-
+use gpui::{RenderImage, SvgRenderer};
 use std::{
-	error::Error,
-	fmt::{self, Display, Formatter},
+	sync::Arc,
+	time::{SystemTime, UNIX_EPOCH},
 };
 
-const MAX_SOURCE: usize = 16 * 1_024;
-const MAX_NODES: usize = 16;
-const MAX_EDGES: usize = 24;
-const MAX_LABEL: usize = 40;
-const MAX_CELLS: usize = 64 * 1_024;
+// Bound decoded images as well as SVG text. A small SVG can describe a very large canvas.
+const MAX_PIXELS: f64 = 8. * 1_024. * 1_024.;
+const MAX_SIDE: f64 = 8_192.;
+const OPTIONS: &str = r#"{"fontSize":13,"padding":12,"responsive":false,"autoDirection":false,"images":false,"links":false,"maxEdges":512,"outputLimit":1048576}"#;
 
-/// A diagram cannot be faithfully represented by this bounded prototype.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RenderError {
-	/// Syntax or text is outside the explicitly supported subset.
-	Unsupported,
-	/// A source, diagram, label, or canvas limit was exceeded.
-	Limit,
-	/// The complete diagram exceeds the supplied display width.
-	TooWide,
-}
-impl Error for RenderError {}
-
-impl Display for RenderError {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		f.write_str(match self {
-			Self::Unsupported => "unsupported Mermaid syntax or label",
-			Self::Limit => "diagram exceeds prototype limits",
-			Self::TooWide => "diagram exceeds available display width",
-		})
-	}
+pub(super) struct Diagram {
+	pub image: Arc<RenderImage>,
+	pub width: f32,
+	pub height: f32,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-enum Direction {
-	#[default]
-	Down,
-	Up,
-	Right,
-	Left,
-}
-impl Direction {
-	fn parse(text: &str) -> Result<Self, RenderError> {
-		match text {
-			"TD" | "TB" => Ok(Self::Down),
-			"BT" => Ok(Self::Up),
-			"LR" => Ok(Self::Right),
-			"RL" => Ok(Self::Left),
-			_ => Err(RenderError::Unsupported),
-		}
-	}
+pub(super) fn prepare(source: &str, renderer: &SvgRenderer) -> Result<Diagram, String> {
+	let rendered = compile(source)?;
+	let svg = renderer.parse_svg(rendered.svg.as_bytes()).map_err(|e| e.to_string())?;
+	let image = renderer.render_parsed(&svg, 1.0_f32).map_err(|e| e.to_string())?;
+
+	Ok(Diagram { image, width: rendered.width as f32, height: rendered.height as f32 })
 }
 
-#[derive(Debug, Eq, PartialEq)]
-enum Shape {
-	Rectangle,
-	Decision,
-	Stadium,
-}
+fn compile(source: &str) -> Result<ondine::Rendered, String> {
+	let now = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?;
+	let mut rendered =
+		ondine::render(source, OPTIONS, now.as_secs_f64() * 1_000.).map_err(|e| e.message)?;
 
-#[derive(Debug, Eq, PartialEq)]
-struct Node {
-	id: String,
-	label: String,
-	shape: Shape,
-	declared: bool,
-	members: Vec<String>,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-struct Edge {
-	from: usize,
-	to: usize,
-	label: String,
-	target_label: String,
-	source_tip: char,
-	target_tip: char,
-	dashed: bool,
-}
-impl Edge {
-	fn directed(from: usize, to: usize, label: String) -> Self {
-		Self {
-			from,
-			to,
-			label,
-			target_label: String::new(),
-			source_tip: '─',
-			target_tip: '◄',
-			dashed: false,
-		}
-	}
-}
-
-#[derive(Debug, Default, Eq, PartialEq)]
-struct Graph {
-	direction: Direction,
-	nodes: Vec<Node>,
-	edges: Vec<Edge>,
-}
-impl Graph {
-	fn node(&mut self, id: &str) -> Result<usize, RenderError> {
-		if let Some(index) = self.nodes.iter().position(|node| node.id == id) {
-			return Ok(index);
-		}
-
-		if self.nodes.len() == MAX_NODES {
-			return Err(RenderError::Limit);
-		}
-
-		self.nodes.push(Node {
-			id: id.to_owned(),
-			label: id.to_owned(),
-			shape: Shape::Rectangle,
-			declared: false,
-			members: Vec::new(),
-		});
-
-		Ok(self.nodes.len() - 1)
-	}
-}
-
-/// Render a bounded subset of Mermaid as plain Unicode text.
-///
-/// Supports flowcharts, sequence diagrams, flat state diagrams, class diagrams, and ER diagrams.
-/// See the crate README for each grammar and its limits. Unknown syntax, unsafe terminal text,
-/// and diagrams exceeding `max_width` return errors; no partial result is returned.
-#[cfg(test)]
-pub fn render(source: &str, max_width: usize) -> Result<String, RenderError> {
-	Ok(render_spans(source, max_width)?
-		.into_iter()
-		.map(|line| line.into_iter().map(|span| span.text).collect::<String>())
-		.collect::<Vec<_>>()
-		.join("\n"))
-}
-
-/// Render the same bounded diagram as lines of semantic spans for caller-provided styling.
-pub fn render_spans(source: &str, max_width: usize) -> Result<Vec<Vec<Span>>, RenderError> {
-	if source.len() > MAX_SOURCE {
-		return Err(RenderError::Limit);
-	}
-	// Entity escapes need decoding. Reject them before statement splitting can
-	// discard their semicolon and render a different label.
-	if source.lines().filter(|line| !line.trim_start().starts_with("%%")).any(|line| {
-		line.match_indices(['#', '&']).any(|(index, _)| {
-			let after = &line[index + 1..];
-			let len = after.bytes().take_while(|b| b.is_ascii_alphanumeric() || *b == b'_').count();
-
-			len > 0 && after[len..].starts_with(';')
-		})
-	}) {
-		return Err(RenderError::Unsupported);
+	// GPUI rasterizes SVG at 2x. Reject excessive dimensions before parsing fonts or allocating
+	// pixels.
+	if !canvas_fits(rendered.width, rendered.height) {
+		return Err("Diagram exceeds the desktop image limit".into());
 	}
 
-	let statements = source
-		.lines()
-		.filter(|line| !line.trim_start().starts_with("%%"))
-		.flat_map(|line| line.split(';'))
-		.map(str::trim)
-		.filter(|line| !line.is_empty())
-		.collect::<Vec<_>>();
+	rendered.svg = svg::desktop(&rendered.svg)?;
 
-	if source.lines().any(|line| line.trim_start().starts_with("%%{")) {
-		return Err(RenderError::Unsupported);
-	}
-
-	let (header, body) = statements.split_first().ok_or(RenderError::Unsupported)?;
-
-	match *header {
-		"sequenceDiagram" => sequence::render(body, max_width),
-		"stateDiagram-v2" | "stateDiagram" | "classDiagram" | "erDiagram" =>
-			draw::render(&relations::parse(header, body)?, max_width),
-		_ => draw::render(&parse::parse(header, body)?, max_width),
-	}
+	Ok(rendered)
 }
 
-#[cfg(test)]
-fn assert_snapshot(name: &str, actual: &str) {
-	let snapshot = match name {
-		"branches_merges_and_retry_loop" => include_str!(
-			"agent_mermaid/snapshots/codex_mermaid__tests__branches_merges_and_retry_loop.snap"
-		),
-		"sequence" =>
-			include_str!("agent_mermaid/snapshots/codex_mermaid__families_tests__sequence.snap"),
-		"state" =>
-			include_str!("agent_mermaid/snapshots/codex_mermaid__families_tests__state.snap"),
-		"class" =>
-			include_str!("agent_mermaid/snapshots/codex_mermaid__families_tests__class.snap"),
-		"er" => include_str!("agent_mermaid/snapshots/codex_mermaid__families_tests__er.snap"),
-		"LR" => include_str!("agent_mermaid/snapshots/codex_mermaid__families_tests__LR.snap"),
-		_ => panic!("unknown upstream snapshot"),
-	};
-	let (_, expected) = snapshot.split_once("\n---\n").expect("snapshot metadata");
-
-	assert_eq!(actual, expected.trim_end_matches('\n'), "{name}");
+fn canvas_fits(width: f64, height: f64) -> bool {
+	width > 0.
+		&& height > 0.
+		&& width * 2. <= MAX_SIDE
+		&& height * 2. <= MAX_SIDE
+		&& width * height * 4. <= MAX_PIXELS
 }
 
-#[cfg(test)]
-#[path = "agent_mermaid/families_tests.rs"]
-mod families_tests;
 #[cfg(test)]
 #[path = "agent_mermaid/tests.rs"]
 mod tests;

@@ -230,6 +230,9 @@ fn a_diagram_shares_selection_with_the_surrounding_paragraphs(cx: &mut gpui::Tes
 		process: false,
 	});
 	draw(visual);
+	visual.run_until_parked();
+	draw(visual);
+	assert!(visual.debug_bounds("mermaid-image-selection-preview-1").is_some());
 	let selected = copy_drag(visual, "selection-preview-0", "selection-preview-2", false);
 	assert!(selected.starts_with("Before.\n\n"));
 	assert!(selected.contains('A') && selected.contains('B'));
