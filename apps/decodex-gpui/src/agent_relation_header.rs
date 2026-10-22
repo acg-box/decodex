@@ -1,6 +1,6 @@
 //! Compact canvas labels with an inline status light and a quiet agent number.
 use super::stream;
-use crate::{ui_motion, ui_theme::TEXT};
+use crate::{ui_motion, ui_theme::foreground};
 use gpui::{App, IntoElement, RenderOnce, Window, prelude::*};
 
 #[derive(IntoElement)]
@@ -24,9 +24,13 @@ impl RenderOnce for Header {
 		let number_selector = format!("relation-number-{}", self.key);
 		let light_selector = format!("relation-status-{}", self.key);
 		let task_selector = format!("relation-assignment-{}", self.key);
-		let wrap_title = layout.full_detail()
-			&& self.identity == self.task
-			&& self.identity.chars().count() > 24;
+		let overview_task_selector = task_selector.clone();
+		let role_selector = format!("relation-role-{}", self.key);
+		let separate_task = !self.task.is_empty() && self.task != self.identity;
+		let task = if separate_task { self.task } else { self.identity.clone() };
+		let details = separate_task && !layout.overview();
+		let title = if details { self.identity.clone() } else { task.clone() };
+		let line = if details { layout.task_line() } else { layout.title_line() };
 		gpui::div()
 			.w_full()
 			.flex_none()
@@ -39,44 +43,60 @@ impl RenderOnce for Header {
 					.w_full()
 					.flex()
 					.items_start()
-					.when(layout.overview(), |row| row.justify_center().items_center())
-					.gap(gpui::px(layout.spacing(5.)))
+					.when(!layout.labels(), |row| row.justify_center().items_center())
+					.gap(gpui::px(layout.spacing(7.)))
 					.child(
 						gpui::div()
 							.debug_selector(move || light_selector.clone())
 							.flex_none()
-							.mt(gpui::px((layout.title_line() - 4.) / 2.))
-							.when(layout.overview(), |light| light.mt_0())
+							.mt(gpui::px((line - 4.) / 2.))
+							.when(!layout.labels(), |light| light.mt_0())
 							.size(gpui::px(4.))
 							.rounded_full()
 							.bg(gpui::rgb(self.color)),
 					)
-					.when(!layout.overview(), |row| {
+					.when(layout.labels(), |row| {
 						row.child(
 							gpui::div()
-								.debug_selector(move || identity_selector.clone())
 								.flex_1()
 								.min_w_0()
-								.h(gpui::px(layout.title_line() * if wrap_title { 2. } else { 1. }))
-								.text_size(gpui::px(layout.title_size()))
-								.line_height(gpui::px(layout.title_line()))
-								.text_color(gpui::rgb(TEXT))
-								.font_weight(gpui::FontWeight::SEMIBOLD)
-								.when(wrap_title, |title| title.whitespace_normal().line_clamp(2))
-								.when(!wrap_title, |title| title.whitespace_nowrap())
-								.text_ellipsis()
-								.overflow_hidden()
-								.child(self.identity.clone()),
+								.when(details, |slot| {
+									slot.debug_selector(move || role_selector.clone())
+								})
+								.when(!details && separate_task, |slot| {
+									slot.debug_selector(move || overview_task_selector.clone())
+								})
+								.child(
+									gpui::div()
+										.debug_selector(move || identity_selector.clone())
+										.h(gpui::px(line))
+										.text_size(gpui::px(if details {
+											layout.task_size()
+										} else {
+											layout.title_size()
+										}))
+										.line_height(gpui::px(line))
+										.text_color(gpui::rgb(if details {
+											foreground::BODY
+										} else {
+											foreground::PRIMARY
+										}))
+										.font_weight(gpui::FontWeight::NORMAL)
+										.whitespace_nowrap()
+										.text_ellipsis()
+										.overflow_hidden()
+										.child(title),
+								),
 						)
 					})
 					.child(
 						gpui::div()
 							.debug_selector(move || number_selector.clone())
 							.flex_none()
-							.h(gpui::px(layout.title_line()))
+							.h(gpui::px(line))
 							.font_family("Menlo")
 							.text_size(gpui::px(layout.detail_size()))
-							.line_height(gpui::px(layout.title_line()))
+							.line_height(gpui::px(line))
 							.text_color(gpui::rgb(if self.selected {
 								crate::ui_theme::BLUE
 							} else {
@@ -85,25 +105,21 @@ impl RenderOnce for Header {
 							.child(self.number),
 					),
 			)
-			.when(
-				!layout.overview() && !self.task.is_empty() && self.task != self.identity,
-				|body| {
-					body.child(
-						gpui::div()
-							.debug_selector(move || task_selector.clone())
-							.h(gpui::px(layout.task_line()))
-							.text_size(gpui::px(layout.task_size()))
-							.line_height(gpui::px(layout.task_line()))
-							.text_color(gpui::rgb(super::card::TASK_TEXT))
-							.font_weight(gpui::FontWeight::NORMAL)
-							.whitespace_nowrap()
-							.text_ellipsis()
-							.overflow_hidden()
-							.child(self.task),
-					)
-				},
-			)
-			.when(layout.full_detail() && has_actions, |body| body.child(actions))
+			.when(details, |body| {
+				body.child(
+					gpui::div()
+						.debug_selector(move || task_selector.clone())
+						.h(gpui::px(layout.title_line()))
+						.text_size(gpui::px(layout.title_size()))
+						.line_height(gpui::px(layout.title_line()))
+						.text_color(gpui::rgb(foreground::PRIMARY))
+						.whitespace_nowrap()
+						.text_ellipsis()
+						.overflow_hidden()
+						.child(task),
+				)
+			})
+			.when(!layout.overview() && has_actions, |body| body.child(actions))
 	}
 }
 
@@ -139,7 +155,7 @@ fn action_rows(
 				.right_0()
 				.top(gpui::px(line.y * activity_scale))
 				.h(gpui::px(layout.detail_line()))
-				.text_size(gpui::px(layout.detail_size()))
+				.text_size(gpui::px(layout.activity_size()))
 				.line_height(gpui::px(layout.detail_line()))
 				.text_color(gpui::rgb(super::card::ACTIVITY_TEXT))
 				.whitespace_nowrap()

@@ -34,6 +34,19 @@ pub(super) struct Frame {
 	pub lines: Vec<Line>,
 	pub height: f32,
 	pub moving: bool,
+	latest: Option<String>,
+}
+
+impl Frame {
+	/// Keep the current action in the overview; selection reveals the recent rows.
+	pub(super) fn latest(mut self) -> Self {
+		self.lines.retain(|line| Some(&line.id) == self.latest.as_ref());
+		for line in &mut self.lines {
+			line.y = 0.;
+		}
+		self.height = if self.lines.is_empty() { 0. } else { LINE };
+		self
+	}
 }
 
 impl Stream {
@@ -134,6 +147,7 @@ impl Stream {
 			lines,
 			height: if reduced { self.rows.len() as f32 * LINE } else { self.height.sample(now) },
 			moving,
+			latest,
 		}
 	}
 }
@@ -143,6 +157,24 @@ mod tests {
 	use super::*;
 	fn operations(ids: &[&str]) -> Vec<Operation> {
 		ids.iter().map(|id| Operation { id: (*id).into(), text: format!("Run {id}") }).collect()
+	}
+	#[test]
+	fn compact_view_keeps_the_latest_arrival_and_preserves_recent_actions() {
+		let now = Instant::now();
+		let mut stream = Stream::new("turn", &operations(&["1", "2", "3"]), now);
+		stream.sync("turn", &operations(&["2", "3", "4"]), now + FADE);
+		let frame = stream.frame(now + FADE + FADE / 2, false);
+		assert!(frame.lines.iter().any(|line| line.id == "1"), "old row is still leaving");
+		let compact = frame.latest();
+		assert_eq!(compact.lines.len(), 1);
+		assert_eq!(compact.lines[0].id, "4");
+		assert_eq!(compact.lines[0].y, 0.);
+		assert_eq!(compact.height, LINE);
+		let expanded = stream.frame(now + FADE * 3, false);
+		assert_eq!(
+			expanded.lines.iter().map(|line| line.id.as_str()).collect::<Vec<_>>(),
+			["2", "3", "4"]
+		);
 	}
 	#[test]
 	fn repeated_reads_and_streaming_updates_do_not_replay_old_actions() {

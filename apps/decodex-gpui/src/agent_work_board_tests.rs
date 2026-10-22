@@ -121,6 +121,12 @@ fn graph_preview_rejects_old_turns_and_threads_without_repositioning_other_nodes
 			},
 		);
 		assert_eq!(s.graph_preview(&row), ("Check sign-in".into(), "cargo test sign_in".into()));
+		let mut quiet = row.clone();
+		quiet.group = 2;
+		assert!(s.graph_operations(&quiet).1.is_empty(), "a quiet reply is not live activity");
+		assert_eq!(s.graph_preview(&quiet).1, "cargo test sign_in", "the source remains readable");
+		quiet.group = 1;
+		assert_eq!(s.graph_operations(&quiet).1[0].text, "cargo test sign_in");
 		s.work_board.briefs.get_mut(&row.key).unwrap().question =
 			Some("Which format do you prefer?".into());
 		assert_eq!(

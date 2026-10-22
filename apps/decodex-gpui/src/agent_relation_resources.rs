@@ -33,6 +33,7 @@ impl AgentSurface {
 					.to_owned();
 				if !graph.nodes.iter().any(|n| n.key == key) {
 					graph.nodes.push(Node {
+						navigation: (0., 0.),
 						key: key.clone(),
 						title,
 						status: resource.attachment_type.clone(),
@@ -42,6 +43,7 @@ impl AgentSurface {
 						size: (WIDTH, 48.),
 						port_offset: 24.,
 						base_height: 48.,
+						layout_height: 48.,
 						x: 0.,
 						y: 0.,
 					});

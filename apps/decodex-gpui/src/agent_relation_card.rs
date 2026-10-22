@@ -1,5 +1,8 @@
 //! Unframed agent footprints retain readable type throughout the supported camera range.
-use crate::ui_motion::{self, Tween};
+use crate::{
+	ui_motion::{self, Tween},
+	ui_theme::foreground,
+};
 use gpui::{
 	AnyElement, App, Div, InteractiveElement as _, IntoElement, ParentElement as _, RenderOnce,
 	SharedString, Stateful, Styled as _, Window, prelude::FluentBuilder as _,
@@ -15,10 +18,9 @@ pub(super) const INSET_X: f32 = 10.;
 pub(super) const INSET_Y: f32 = 8.;
 pub(super) const PORT_Y: f32 = INSET_Y + crate::ui_theme::LABEL_LINE_HEIGHT / 2.;
 pub(super) const SELECTED: u32 = crate::ui_theme::BLUE;
-pub(super) const SECONDARY_TEXT: u32 = 0xc7c2cd;
-pub(super) const TASK_TEXT: u32 = 0xe0d8ea;
-pub(super) const ACTIVITY_TEXT: u32 = 0xd3cbdc;
-pub(super) const ALLOCATION_TEXT: u32 = 0xc1b4dd;
+pub(super) const SECONDARY_TEXT: u32 = foreground::SECONDARY;
+pub(super) const ACTIVITY_TEXT: u32 = foreground::BODY;
+pub(super) const ALLOCATION_TEXT: u32 = foreground::SECONDARY;
 pub(super) const MIN_ZOOM: f32 = 0.05;
 pub(super) const MAX_ZOOM: f32 = 1.;
 pub(super) const FULL_DETAIL_ZOOM: f32 = 0.7;
@@ -74,15 +76,23 @@ impl Layout {
 	}
 
 	pub(super) fn title_size(self) -> f32 {
-		self.font(crate::ui_theme::BODY_SIZE, if self.overview() { 9. } else { 10.5 })
+		self.font(foreground::BODY_SIZE, if self.labels() { 10.5 } else { 9. })
 	}
 
 	pub(super) fn task_size(self) -> f32 {
-		self.font(crate::ui_theme::BODY_SIZE - 1., 10.)
+		self.font(foreground::METRIC_SIZE, 10.5)
 	}
 
 	pub(super) fn detail_size(self) -> f32 {
-		self.font(crate::ui_theme::CAPTION_SIZE, if self.overview() { 9. } else { 9.5 })
+		self.font(foreground::CAPTION_SIZE, if self.overview() { 9. } else { 9.5 })
+	}
+
+	pub(super) fn metric_size(self) -> f32 {
+		self.font(foreground::METRIC_SIZE, 10.)
+	}
+
+	pub(super) fn activity_size(self) -> f32 {
+		self.font(foreground::CAPTION_SIZE, 10.5)
 	}
 
 	pub(super) fn full_detail(self) -> bool {
@@ -91,6 +101,10 @@ impl Layout {
 
 	pub(super) fn overview(self) -> bool {
 		self.zoom + 4. * f32::EPSILON < SUMMARY_ZOOM
+	}
+
+	pub(super) fn labels(self) -> bool {
+		self.zoom + 4. * f32::EPSILON >= 0.30
 	}
 
 	pub(super) fn points(self) -> bool {
@@ -135,7 +149,8 @@ impl Layout {
 	}
 
 	pub(super) fn detail_line(self) -> f32 {
-		((crate::ui_theme::CAPTION_LINE_HEIGHT * self.zoom).max(self.detail_size() + 3.)
+		((crate::ui_theme::CAPTION_LINE_HEIGHT * self.zoom)
+			.max(self.metric_size().max(self.activity_size()) + 3.)
 			* self.display_scale)
 			.ceil()
 			/ self.display_scale
@@ -153,7 +168,7 @@ impl Layout {
 	}
 
 	pub(super) fn gap(self) -> f32 {
-		self.spacing(4.)
+		self.spacing(8.)
 	}
 
 	/// Values and their optional token allocation share one baseline.
@@ -170,7 +185,7 @@ impl Layout {
 		let (range, title_rows, sections, actions) = if self.full_detail() {
 			([FULL_DETAIL_ZOOM, MAX_ZOOM], title_rows, sections, actions)
 		} else {
-			([SUMMARY_ZOOM, FULL_DETAIL_ZOOM - 0.01], title_rows, sections, 0.)
+			([SUMMARY_ZOOM, FULL_DETAIL_ZOOM - 0.01], title_rows, sections, actions)
 		};
 		range.into_iter().fold(0., |height, zoom| {
 			let layout = Self::new(zoom);

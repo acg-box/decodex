@@ -72,10 +72,11 @@ impl AgentSurface {
 		let agents: Vec<_> = graph.nodes.iter().filter(|node| node.row.is_some()).collect();
 		let mut bounds = [f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
 		for node in &agents {
-			bounds[0] = bounds[0].min(node.x);
-			bounds[1] = bounds[1].min(node.y);
-			bounds[2] = bounds[2].max(node.x + node.width());
-			bounds[3] = bounds[3].max(node.y + node.height());
+			let (x, y) = node.navigation;
+			bounds[0] = bounds[0].min(x);
+			bounds[1] = bounds[1].min(y);
+			bounds[2] = bounds[2].max(x + node.width());
+			bounds[3] = bounds[3].max(y + node.layout_height);
 		}
 		let zoom = self.relation_scale();
 		let view = &self.work_board.view;
@@ -85,7 +86,10 @@ impl AgentSurface {
 			.map(|node| {
 				(
 					node.key.clone(),
-					projection.point((node.x + node.width() / 2., node.y + node.height() / 2.)),
+					projection.point((
+						node.navigation.0 + node.width() / 2.,
+						node.navigation.1 + node.layout_height / 2.,
+					)),
 				)
 			})
 			.collect();

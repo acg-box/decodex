@@ -1,5 +1,6 @@
 //! Per-agent usage, time, rate and the share of recorded conversation tokens.
 use super::{AgentSurface, AnyElement, Context, Node};
+use crate::ui_theme::foreground;
 use gpui::{App, IntoElement, RenderOnce, Window, prelude::*};
 pub(in super::super) type Metrics = crate::ui_work_metrics::Sample;
 
@@ -57,6 +58,36 @@ fn percentage(value: Option<f32>) -> String {
 	}
 }
 
+fn parts(text: &str, with_unit: bool) -> (&str, Option<&str>) {
+	match (with_unit, text.split_once(' ')) {
+		(true, Some((value, unit))) => (value, Some(unit)),
+		_ => (text, None),
+	}
+}
+
+fn readout_value(text: String, with_unit: bool, layout: super::card::Layout) -> gpui::Div {
+	let (value, unit) = parts(&text, with_unit);
+	gpui::div()
+		.flex()
+		.items_baseline()
+		.whitespace_nowrap()
+		.gap(gpui::px(layout.spacing(3.)))
+		.text_size(gpui::px(layout.metric_size()))
+		.line_height(gpui::px(layout.detail_line()))
+		.font_weight(gpui::FontWeight::MEDIUM)
+		.text_color(gpui::rgb(foreground::BODY))
+		.child(value.to_owned())
+		.when_some(unit, |row, unit| {
+			row.child(
+				gpui::div()
+					.text_size(gpui::px(layout.detail_size()))
+					.font_weight(gpui::FontWeight::NORMAL)
+					.text_color(gpui::rgb(foreground::SECONDARY))
+					.child(unit.to_owned()),
+			)
+		})
+}
+
 #[derive(IntoElement)]
 struct Readout {
 	key: String,
@@ -70,15 +101,15 @@ impl RenderOnce for Readout {
 		let layout = self.layout.on_display(window.scale_factor());
 		let [tokens, time, rate] = labels(self.metrics);
 		let share = self.share.map(|value| format!("· {} of tokens", percentage(Some(value))));
-		let mut font = window.text_style().font();
-		font.weight = gpui::FontWeight::NORMAL;
-		let measure = |text: &str| {
+		let measure_text = |text: &str, size: f32, weight: gpui::FontWeight| {
+			let mut font = window.text_style().font();
+			font.weight = weight;
 			f32::from(
 				window
 					.text_system()
 					.shape_line(
 						text.to_owned().into(),
-						gpui::px(layout.detail_size()),
+						gpui::px(size),
 						&[gpui::TextRun {
 							len: text.len(),
 							font: font.clone(),
@@ -90,16 +121,29 @@ impl RenderOnce for Readout {
 			)
 			.ceil()
 		};
+		let measure = |text: &str, with_unit: bool| {
+			let (value, unit) = parts(text, with_unit);
+			measure_text(value, layout.metric_size(), gpui::FontWeight::MEDIUM)
+				+ unit.map_or(0., |unit| {
+					layout.spacing(3.)
+						+ measure_text(unit, layout.detail_size(), gpui::FontWeight::NORMAL)
+				})
+		};
 		let available = layout.width - 2. * layout.spacing(super::card::INSET_X);
 		let gap = layout.spacing(8.);
-		let values = [measure(&tokens), measure(&time), measure(&rate)];
+		let values = [measure(&tokens, true), measure(&time, false), measure(&rate, true)];
 		// Keep real values until their shaped glyphs no longer fit. Allocation is
 		// supplementary: it yields before duration or throughput at smaller sizes.
 		let show_time = values[0] + gap + values[1] <= available;
 		let all_values = values.iter().sum::<f32>() + 2. * gap;
 		let show_rate = all_values <= available;
 		let show_share = show_rate
-			&& share.as_ref().is_some_and(|share| all_values + gap + measure(share) <= available);
+			&& share.as_ref().is_some_and(|share| {
+				all_values
+					+ gap
+					+ measure_text(share, layout.detail_size(), gpui::FontWeight::NORMAL)
+					<= available
+			});
 		let token_selector = format!("relation-tokens-{}", self.key);
 		let time_selector = format!("relation-time-{}", self.key);
 		let rate_selector = format!("relation-rate-{}", self.key);
@@ -115,7 +159,7 @@ impl RenderOnce for Readout {
 			.text_size(gpui::px(layout.detail_size()))
 			.line_height(gpui::px(layout.detail_line()))
 			.font_weight(gpui::FontWeight::NORMAL)
-			.text_color(gpui::rgb(crate::ui_theme::TEXT))
+			.text_color(gpui::rgb(foreground::BODY))
 			.child(
 				gpui::div()
 					.flex_1()
@@ -127,7 +171,7 @@ impl RenderOnce for Readout {
 						gpui::div()
 							.debug_selector(move || token_selector.clone())
 							.flex_none()
-							.child(tokens),
+							.child(readout_value(tokens, true, layout)),
 					)
 					.when(show_share, |group| {
 						group.child(
@@ -144,7 +188,7 @@ impl RenderOnce for Readout {
 					gpui::div()
 						.debug_selector(move || time_selector.clone())
 						.flex_none()
-						.child(time),
+						.child(readout_value(time, false, layout)),
 				)
 			})
 			.when(show_rate, |row| {
@@ -152,7 +196,7 @@ impl RenderOnce for Readout {
 					gpui::div()
 						.debug_selector(move || rate_selector.clone())
 						.flex_none()
-						.child(rate),
+						.child(readout_value(rate, true, layout)),
 				)
 			})
 	}

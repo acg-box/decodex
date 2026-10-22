@@ -151,6 +151,10 @@ pub(super) struct Node {
 	pub(super) size: (f32, f32),
 	port_offset: f32,
 	base_height: f32,
+	// Available detail controls placement; inspection changes only the visible footprint.
+	layout_height: f32,
+	// Navigation uses the final placement while the canvas animates x and y.
+	navigation: (f32, f32),
 	pub(super) x: f32,
 	pub(super) y: f32,
 }
@@ -417,23 +421,28 @@ impl AgentSurface {
 			let (task, _) = self.graph_preview(&row);
 			let identity = self.relation_agent_name(&row);
 			let separate_task = !task.is_empty() && task != identity;
-			let title_rows =
-				if separate_task || (layout.full_detail() && identity.chars().count() > 24) {
-					2
-				} else {
-					1
-				};
+			let expanded = self.relation_row_current(&row) && !layout.overview();
+			let sections = 1 + usize::from(separate_task);
 			let (scope, operations) = self.graph_operations(&row);
 			let stream = streams
 				.entry(row.key.clone())
 				.or_insert_with(|| stream::Stream::new(&scope, &operations, now));
 			stream.sync(&scope, &operations, now);
 			let activity = stream.frame(now, crate::ui_motion::reduced());
-			let height = layout.world_height(
-				title_rows,
-				1 + usize::from(separate_task),
+			let detail_sections = 1 + usize::from(separate_task);
+			let layout_height = layout.world_height(
+				detail_sections,
+				detail_sections,
 				activity.height / stream::LINE,
 			);
+			let activity = if expanded {
+				activity
+			} else if row.group != 2 {
+				activity.latest()
+			} else {
+				Default::default()
+			};
+			let height = layout.world_height(sections, sections, activity.height / stream::LINE);
 			graph.nodes.push(Node {
 				key: row.key.clone(),
 				title: identity,
@@ -446,7 +455,9 @@ impl AgentSurface {
 				row: Some(row),
 				activity,
 				size: (card::WIDTH, height),
-				base_height: layout.world_height(title_rows, 1 + usize::from(separate_task), 0.),
+				base_height: layout.world_height(detail_sections, detail_sections, 0.),
+				layout_height,
+				navigation: (0., 0.),
 				port_offset: if layout.overview() { height / 2. } else { card::PORT_Y },
 				x: 0.,
 				y: 0.,
@@ -657,12 +668,12 @@ impl AgentSurface {
 		let before = self.relation_graph();
 		let old_pan = self.work_board.view.pan;
 		self.work_board.view.motion = None;
+		self.select_workbench_agent(key, cx);
 		let target = self.relation_graph();
 		let Some(node) = target.nodes.iter().find(|node| node.key == key) else {
 			return;
 		};
 		let center = (node.x + node.width() / 2., node.y + node.height() / 2.);
-		self.select_workbench_agent(key, cx);
 		let scale = self.relation_scale();
 		let view = &mut self.work_board.view;
 		view.pan =
@@ -1010,6 +1021,8 @@ impl AgentSurface {
 					size: (224., 48.),
 					port_offset: 24.,
 					base_height: 48.,
+					layout_height: 48.,
+					navigation: (0., 0.),
 					x: 0.,
 					y: 0.,
 				});
@@ -1158,8 +1171,10 @@ impl AgentSurface {
 				node.x += inset.0;
 				node.y += inset.1;
 				node.size = layout.node_size(node.height());
+				node.layout_height = node.height();
 				node.port_offset = node.height() / 2.;
 			}
+			node.navigation = (node.x, node.y);
 		}
 		if let Some(motion) = &self.work_board.view.motion {
 			let progress = motion.progress.sample(std::time::Instant::now());
@@ -1648,11 +1663,7 @@ impl AgentSurface {
 					.overflow_hidden()
 			})
 			.text_color(gpui::rgb(TEXT))
-			.when(layout.card_presence() < 1., |surface| {
-				surface.tooltip(move |_, cx| {
-					cx.new(|_| RelationTip(tip.clone().unwrap_or_default())).into()
-				})
-			})
+			.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone().unwrap_or_default())).into())
 			.cursor_pointer()
 	}
 
@@ -1771,18 +1782,20 @@ impl AgentSurface {
 	}
 
 	fn relation_node_current(&self, node: &Node) -> bool {
+		node.row.as_ref().is_some_and(|row| self.relation_row_current(row))
+	}
+
+	fn relation_row_current(&self, row: &Row) -> bool {
 		if let Some(picked) = &self.work_board.view.picked_agent {
-			return picked == &node.key;
+			return picked == &row.key;
 		}
-		node.row.as_ref().is_some_and(|row| {
-			if row.native {
-				self.native_agents.selected.as_ref().is_some_and(|(owner, thread)| {
-					owner == &row.work && row.thread.as_ref() == Some(thread)
-				})
-			} else {
-				self.native_agents.selected.is_none() && self.selected.as_ref() == Some(&row.work)
-			}
-		})
+		if row.native {
+			self.native_agents.selected.as_ref().is_some_and(|(owner, thread)| {
+				owner == &row.work && row.thread.as_ref() == Some(thread)
+			})
+		} else {
+			self.native_agents.selected.is_none() && self.selected.as_ref() == Some(&row.work)
+		}
 	}
 
 	fn relation_node_emphasis(
@@ -2198,6 +2211,7 @@ mod fit_tests {
 		let surface = cx.new(super::super::tests::fixture);
 		surface.update(cx, |s, _| {
 			s.work_board.view.zoom = Some(1.);
+			s.work_board.view.picked_agent = Some("release".into());
 			let now = std::time::Instant::now();
 			let row = s.factory_rows().into_iter().find(|row| row.key == "release").unwrap();
 			let (_, operations) = s.graph_operations(&row);
@@ -2469,9 +2483,9 @@ mod fit_tests {
 			assert!(visual.debug_bounds("graph-usage-segment-density-099").is_some());
 			let layout = card::Layout::new(scale);
 			assert_eq!(visual.debug_bounds("relation-metrics-agent").is_some(), !layout.overview());
-			assert_eq!(
-				visual.debug_bounds("relation-preview-agent").is_some(),
-				layout.full_detail()
+			assert!(
+				visual.debug_bounds("relation-preview-agent").is_none(),
+				"the quiet fixture must not repeat its last reply at any zoom"
 			);
 			assert_eq!(visual.debug_bounds("relation-tokens-agent").is_some(), !layout.overview());
 			assert_eq!(visual.debug_bounds("relation-number-agent").is_some(), !layout.points());
@@ -2480,10 +2494,7 @@ mod fit_tests {
 				visual.debug_bounds("relation-point-agent").is_some(),
 				layout.card_presence() < 1.
 			);
-			assert_eq!(
-				visual.debug_bounds("relation-assignment-agent").is_some(),
-				!layout.overview()
-			);
+			assert_eq!(visual.debug_bounds("relation-assignment-agent").is_some(), layout.labels());
 			assert!(surface.read_with(visual, |s, _| s.relation_scale()) >= card::MIN_ZOOM);
 		}
 	}
@@ -3721,6 +3732,8 @@ mod fit_tests {
 			size: (224., 48.),
 			port_offset: 24.,
 			base_height: 48.,
+			layout_height: 48.,
+			navigation: (120., 80.),
 			x: 120.,
 			y: 80.,
 		};
@@ -3749,6 +3762,8 @@ mod fit_tests {
 			size: (224., 48.),
 			port_offset: 24.,
 			base_height: 48.,
+			layout_height: 48.,
+			navigation: (80., 64.),
 			x: 80.,
 			y: 64.,
 		};

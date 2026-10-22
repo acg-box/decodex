@@ -523,7 +523,8 @@ impl AgentSurface {
 			);
 		}
 		let mut operations = preview.map(|preview| preview.recent.clone()).unwrap_or_default();
-		if operations.is_empty() {
+		// A quiet thread's last reply is not a current operation. Keep it in history.
+		if operations.is_empty() && row.group != 2 {
 			let text = self.work_activity_summary(row).1;
 			if !text.is_empty() {
 				operations.push(activity::Operation { id: "latest".into(), text });

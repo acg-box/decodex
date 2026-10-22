@@ -618,6 +618,7 @@ mod tests {
 	fn node(key: &str, x: f32, y: f32) -> Node {
 		Node {
 			key: key.into(),
+			navigation: (x, y),
 			title: key.into(),
 			status: String::new(),
 			color: 0,
@@ -626,6 +627,7 @@ mod tests {
 			size: (224., 48.),
 			port_offset: 24.,
 			base_height: 48.,
+			layout_height: 48.,
 			x,
 			y,
 		}

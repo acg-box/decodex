@@ -81,6 +81,18 @@ pub(crate) const AMBER: u32 = 0xe0b56f;
 pub(crate) const ERROR: u32 = 0xef4444;
 pub(crate) const MOTION_PANEL: Duration = Duration::from_millis(240);
 
+/// Reading roles for the workspace. Materials and composer tokens stay separate.
+pub(crate) mod foreground {
+	pub(crate) const PRIMARY: u32 = 0xf2f1f4;
+	pub(crate) const BODY: u32 = 0xdfdee4;
+	pub(crate) const SECONDARY: u32 = 0xbbb8c4;
+	pub(crate) const BODY_SIZE: f32 = super::BODY_SIZE;
+	pub(crate) const CAPTION_SIZE: f32 = super::CAPTION_SIZE;
+	pub(crate) const METRIC_SIZE: f32 = 11.;
+	pub(crate) const READING_SIZE: f32 = super::BODY_SIZE;
+	pub(crate) const READING_LINE_HEIGHT: f32 = 20.;
+}
+
 /// The composer keeps its native material unless the user selects a plain surface.
 pub(crate) fn composer_glass(value: Option<bool>) -> bool {
 	static CACHE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(u8::MAX);

@@ -326,11 +326,14 @@ impl AgentSurface {
 					.h(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
 					.min_w_0()
 					.flex()
-					.justify_between()
+					.items_baseline()
+					.gap(gpui::px(6.))
+					.pr(gpui::px(8.))
 					.overflow_hidden()
 					.whitespace_nowrap()
-					.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+					.text_size(gpui::px(ui_theme::foreground::METRIC_SIZE))
 					.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
+					.font_weight(gpui::FontWeight::MEDIUM)
 					.text_color(gpui::rgb(if selected || hovered {
 						ui_theme::TEXT
 					} else {
@@ -338,8 +341,11 @@ impl AgentSurface {
 					}))
 					.when(width >= 22., |label| label.child(number))
 					.when(width >= 48., |label| {
-						label
-							.child(gpui::div().text_color(gpui::rgb(ui_theme::TEXT)).child(percent))
+						label.child(
+							gpui::div()
+								.text_color(gpui::rgb(ui_theme::foreground::PRIMARY))
+								.child(percent),
+						)
 					}),
 			)
 			.child(super::allocation::Mark { key: motion_key, selected, hovered });

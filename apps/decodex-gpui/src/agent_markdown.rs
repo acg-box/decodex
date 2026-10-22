@@ -27,7 +27,10 @@ use gpui::{
 	AnyElement, App, FontStyle, HighlightStyle, KeyDownEvent, RenderOnce, StrikethroughStyle,
 };
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag};
-use ui_theme::{BLUE, BODY_LINE_HEIGHT, BODY_SIZE, TEXT_MUTED};
+use ui_theme::{
+	BLUE, TEXT_MUTED,
+	foreground::{READING_LINE_HEIGHT as BODY_LINE_HEIGHT, READING_SIZE as BODY_SIZE},
+};
 
 #[cfg(test)] use crate::shell::agent_surface::{ClipboardItem, Context};
 use crate::{
@@ -267,6 +270,7 @@ pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
 		.flex_col()
 		.gap_1()
 		.text_size(gpui::px(12.))
+		.font_weight(FontWeight::NORMAL)
 		.line_height(gpui::px(19.))
 		.text_color(gpui::rgb(TEXT_MUTED))
 		.children(document.nodes.get_or_init(|| parse(text)).iter().enumerate().map(
@@ -310,7 +314,9 @@ pub(super) fn render(text: &str, key: &str) -> AnyElement {
 		.flex_col()
 		.gap_2()
 		.text_size(gpui::px(BODY_SIZE))
+		.font_weight(FontWeight::NORMAL)
 		.line_height(gpui::px(BODY_LINE_HEIGHT))
+		.text_color(gpui::rgb(ui_theme::foreground::PRIMARY))
 		.children(
 			document
 				.nodes
@@ -465,7 +471,7 @@ fn append_inline(nodes: &[Node], style: HighlightStyle, link: Option<&str>, out:
 				let mut next = style;
 
 				match kind {
-					Kind::Strong => next.font_weight = Some(FontWeight::BOLD),
+					Kind::Strong => next.font_weight = Some(FontWeight::MEDIUM),
 					Kind::Emphasis => next.font_style = Some(FontStyle::Italic),
 					Kind::InlineCode => next.background_color = Some(gpui::rgba(0xffffff12).into()),
 					Kind::Link(_) => next.color = Some(gpui::rgb(BLUE).into()),
@@ -593,13 +599,12 @@ fn render_node_content(
 		Kind::Paragraph | Kind::Cell | Kind::Heading(_) => gpui::div()
 			.when(matches!(kind, Kind::Cell), |d| d.flex_1().min_w_0().p_2())
 			.when(matches!(kind, Kind::Heading(_)), |d| {
-				d.font_weight(FontWeight::SEMIBOLD).mt_2().text_size(gpui::px(
-					if let Kind::Heading(level) = kind {
-						19.0 - (*level as f32) * 1.0
-					} else {
-						14.0
-					},
-				))
+				let size = match kind {
+					Kind::Heading(1) => 14.,
+					Kind::Heading(2) => 13.,
+					_ => BODY_SIZE,
+				};
+				d.font_weight(FontWeight::MEDIUM).mt_2().text_size(gpui::px(size))
 			})
 			.child(inline(children, key, selection))
 			.into_any_element(),
@@ -612,7 +617,7 @@ fn render_node_content(
 			.items_stretch()
 			.border_b_1()
 			.border_color(gpui::rgba(0xffffff12))
-			.when(*header, |d| d.font_weight(FontWeight::SEMIBOLD).bg(gpui::rgba(0xffffff08)))
+			.when(*header, |d| d.font_weight(FontWeight::MEDIUM).bg(gpui::rgba(0xffffff08)))
 			.children(children.iter().enumerate().map(|(i, n)| {
 				if i > 0 {
 					selection.separate("\t");
@@ -870,7 +875,7 @@ mod tests {
 
 			assert_eq!(out.text, "Deep 中文After limit", "depth {depth}");
 			assert!(out.highlights.iter().any(|(range, style)| {
-				&out.text[range.clone()] == "limit" && style.font_weight == Some(FontWeight::BOLD)
+				&out.text[range.clone()] == "limit" && style.font_weight == Some(FontWeight::MEDIUM)
 			}));
 		}
 	}
@@ -1033,9 +1038,10 @@ mod tests {
 		markdown::append_inline(&nodes, HighlightStyle::default(), None, &mut out);
 
 		assert_eq!(out.text, "中文 and source with code");
-		assert!(out.highlights.iter().any(
-			|(r, s)| &out.text[r.clone()] == "中文" && s.font_weight == Some(FontWeight::BOLD)
-		));
+		assert!(
+			out.highlights.iter().any(|(r, s)| &out.text[r.clone()] == "中文"
+				&& s.font_weight == Some(FontWeight::MEDIUM))
+		);
 		assert_eq!(&out.text[out.links[0].0.clone()], "source");
 	}
 

@@ -89,7 +89,7 @@ impl Cache {
 					(
 						n.key.clone(),
 						n.row.as_ref().and_then(|r| r.workspace.clone()),
-						n.height().to_bits(),
+						n.layout_height.to_bits(),
 					)
 				})
 				.collect(),
