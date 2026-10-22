@@ -1,0 +1,107 @@
+/* Motion acts on part groups and does not replace the selected traits. */
+svg[data-state] { --pixel-duration: 2800ms; --pixel-step: 700ms; }
+svg [data-motion="left-hand"] { --hand-out-x: -1px; }
+svg [data-motion="right-hand"] { --hand-out-x: 1px; }
+
+svg[data-state="idle"] [data-motion="cloud"] { animation: cloudlet-idle 2800ms steps(1, end) infinite; }
+svg[data-state="idle"] [data-motion="left-hand"] { animation: cloudlet-idle-hand 2800ms steps(1, end) 180ms infinite; }
+svg[data-state="idle"] [data-motion="right-hand"] { animation: cloudlet-idle-hand 2800ms steps(1, end) 450ms infinite; }
+
+/* The cloud and hands hop together; released pixels drift independently. */
+svg[data-state="hopping"] { --hop-duration: 900ms; }
+svg[data-state="hopping"] [data-motion="actor"] { animation: cloudlet-hop var(--hop-duration) steps(1, end) infinite; }
+svg[data-state="hopping"] [data-motion="left-hand"],
+svg[data-state="hopping"] [data-motion="right-hand"] { animation: cloudlet-hop-hands var(--hop-duration) steps(1, end) infinite; }
+
+svg[data-state="working"] [data-motion="cloud"] { animation: cloudlet-work 1400ms steps(1, end) infinite; }
+svg[data-state="working"] [data-motion="left-hand"],
+svg[data-state="working"] [data-motion="right-hand"] { --work-lift: -2px; animation: cloudlet-work-hand 700ms steps(1, end) infinite; }
+svg[data-state="working"] [data-motion="right-hand"] { animation-delay: -350ms; }
+svg[data-state="working"][data-held-side="left"] [data-motion="left-hand"],
+svg[data-state="working"][data-held-side="right"] [data-motion="right-hand"] { --work-lift: -1px; }
+svg[data-state="working"][data-held-side="right"] [data-motion="cloud"] { animation-delay: -350ms; }
+
+/* Released pixels stay beyond the cloud's full four-pixel celebration hop. */
+svg [data-particle] { --birth-x: 0px; --birth-y: -2px; --near-scale: 1; transform-box: fill-box; transform-origin: center; }
+svg [data-particle="2"] { --birth-y: -3px; }
+svg [data-particle="3"] { --birth-x: -6px; --birth-y: 1px; --near-scale: .5; }
+svg:is([data-state="working"], [data-state="hopping"], [data-state="done"]) [data-particle] { animation: cloudlet-pixel-drift var(--pixel-duration) steps(1, end) infinite, cloudlet-pixel-fade var(--pixel-duration) linear infinite; }
+svg:is([data-state="working"], [data-state="hopping"], [data-state="done"]) [data-particle="1"] { animation-delay: calc(0ms - var(--pixel-step)); }
+svg:is([data-state="working"], [data-state="hopping"], [data-state="done"]) [data-particle="2"] { animation-delay: calc(0ms - var(--pixel-step) * 2); }
+svg:is([data-state="working"], [data-state="hopping"], [data-state="done"]) [data-particle="3"] { animation-delay: calc(0ms - var(--pixel-step) * 3); }
+
+svg[data-state="waiting"] [data-motion="actor"] { animation: cloudlet-wait 3600ms steps(1, end) infinite; }
+svg[data-state="waiting"] [data-motion="left-hand"],
+svg[data-state="waiting"] [data-motion="right-hand"] { animation: cloudlet-wait-hands 3600ms steps(1, end) infinite; }
+svg[data-state="waiting"] [data-layer="particles"] { animation: cloudlet-wait-pixels 3600ms linear infinite; }
+
+svg[data-state="done"] { --pixel-duration: 2200ms; --pixel-step: 550ms; }
+svg[data-state="done"] [data-motion="actor"] { animation: cloudlet-done 2200ms steps(1, end) infinite; }
+svg[data-state="done"] [data-motion="left-hand"],
+svg[data-state="done"] [data-motion="right-hand"] { animation: cloudlet-cheer-hands 2200ms steps(1, end) infinite; }
+
+/* Wave the free hand; keep the object steady in the other hand. */
+svg[data-state="attention"] [data-motion="actor"] { animation: cloudlet-attention 2400ms steps(1, end) infinite; }
+svg[data-state="attention"][data-held-side="right"] [data-motion="left-hand"],
+svg[data-state="attention"]:not([data-held-side="right"]) [data-motion="right-hand"] { animation: cloudlet-wave 2400ms steps(1, end) infinite; }
+svg[data-state="attention"] [data-layer="particles"] { animation: cloudlet-attention-pixels 2400ms linear infinite; }
+
+svg[data-paused="true"] * { animation-play-state: paused !important; }
+svg[data-loop="once"] * { animation-iteration-count: 1 !important; animation-fill-mode: both !important; }
+
+@keyframes cloudlet-idle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
+@keyframes cloudlet-idle-hand { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
+@keyframes cloudlet-hop {
+  0%, 14%, 70%, 100% { transform: translateY(0); }
+  24%, 56% { transform: translateY(-1px); }
+  36%, 44% { transform: translateY(-2px); }
+}
+@keyframes cloudlet-hop-hands {
+  0%, 14%, 78%, 100% { transform: translate(0, 0); }
+  22%, 64% { transform: translate(0, -1px); }
+  38%, 50% { transform: translate(var(--hand-out-x), -2px); }
+}
+@keyframes cloudlet-work { 0%, 32%, 82%, 100% { transform: translateY(0); } 18%, 68% { transform: translateY(-1px); } }
+@keyframes cloudlet-work-hand {
+  0%, 10%, 86%, 100% { transform: translate(0, 0); }
+  24% { transform: translate(0, -1px); }
+  42% { transform: translate(var(--hand-out-x), var(--work-lift)); }
+  64% { transform: translate(var(--hand-out-x), -1px); }
+}
+@keyframes cloudlet-pixel-drift {
+  0%, 10% { transform: translate(var(--birth-x), var(--birth-y)) scale(var(--near-scale)); }
+  25% { transform: translate(calc(var(--birth-x) + 1px), calc(var(--birth-y) - 1px)) scale(var(--near-scale)); }
+  40% { transform: translate(calc(var(--birth-x) + 2px), calc(var(--birth-y) - 2px)) scale(var(--near-scale)); }
+  55% { transform: translate(calc(var(--birth-x) + 3px), calc(var(--birth-y) - 3px)) scale(var(--near-scale)); }
+  70% { transform: translate(calc(var(--birth-x) + 4px), calc(var(--birth-y) - 4px)) scale(.5); }
+  85%, 100% { transform: translate(calc(var(--birth-x) + 5px), calc(var(--birth-y) - 5px)) scale(.5); }
+}
+@keyframes cloudlet-pixel-fade { 0%, 100% { opacity: 0; } 12% { opacity: 1; } 55% { opacity: .85; } 80% { opacity: .35; } 94% { opacity: 0; } }
+@keyframes cloudlet-wait { 0%, 18%, 90%, 100% { transform: translateY(0); } 40%, 72% { transform: translateY(1px); } }
+@keyframes cloudlet-wait-hands { 0%, 24%, 96%, 100% { transform: translateY(0); } 48%, 78% { transform: translateY(1px); } }
+@keyframes cloudlet-wait-pixels { 0%, 100% { opacity: .65; } 50% { opacity: .35; } }
+@keyframes cloudlet-done {
+  0%, 4%, 44%, 58%, 100% { transform: translateY(0); }
+  8%, 39%, 51% { transform: translateY(-1px); }
+  12%, 34% { transform: translateY(-2px); }
+  16%, 29% { transform: translateY(-3px); }
+  22% { transform: translateY(-4px); }
+}
+@keyframes cloudlet-cheer-hands {
+  0%, 6%, 70%, 100% { transform: translate(0, 0); }
+  12%, 48% { transform: translate(var(--hand-out-x), -1px); }
+  20%, 36% { transform: translate(var(--hand-out-x), -2px); }
+  62% { transform: translate(0, -1px); }
+}
+@keyframes cloudlet-attention { 0%, 8%, 56%, 100% { transform: translateY(0); } 14%, 44% { transform: translateY(-1px); } }
+@keyframes cloudlet-wave {
+  0%, 8%, 58%, 100% { transform: translate(0, 0); }
+  12%, 48% { transform: translate(0, -1px); }
+  18%, 30%, 42% { transform: translate(var(--hand-out-x), -2px); }
+  24%, 36% { transform: translate(0, -3px); }
+}
+@keyframes cloudlet-attention-pixels { 0%, 58%, 100% { opacity: .65; } 20%, 36% { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  svg[data-state] * { animation: none !important; }
+}
