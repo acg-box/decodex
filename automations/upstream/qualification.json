@@ -3406,8 +3406,8 @@
     "first_pending_page": "openwiki/architecture/chief-coordination.md",
     "historical_completed_lifecycle": "The earlier completed documentation lifecycle remains evidence of its own source snapshot only."
   },
-  "delivery_reference": "Pending focused maintenance PR.",
-  "delivery_status": "pending",
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2489",
+  "delivery_status": "public_pull_request_reference",
   "qualification_fixture_revision": "088f16fe1501a2c1ef306a02f073cbb2a9c5927b",
   "qualification_source_binding": {
     "consumer_baseline": "86207f028d9c266c01bbc352cc8ce956d4a08c8f",

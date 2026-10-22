@@ -16,7 +16,8 @@
     "https://github.com/acg-box/decodex/pull/2466",
     "https://github.com/acg-box/decodex/pull/2470",
     "https://github.com/acg-box/decodex/pull/2471",
-    "https://github.com/acg-box/decodex/pull/2484"
+    "https://github.com/acg-box/decodex/pull/2484",
+    "https://github.com/acg-box/decodex/pull/2489"
   ],
   "retained_native_consumers": {
     "execution": "Use the repository native-test entrypoints with the exact candidate CLI and bundled helpers; inspect test registration and require every selector to execute.",
@@ -825,7 +826,7 @@
     },
     "source_review_evidence": "automations/upstream/current-review.json",
     "selected_runtime_source": "40db507eeca2ff778c040c325449eb72e90c0590",
-    "runtime_disposition": "Qualified fixed development artifact; required Git delivery is separately pending. Optional Guardian observation remains unselected.",
+    "runtime_disposition": "Qualified fixed development artifact; Git delivery and exact-head CI are recorded at https://github.com/acg-box/decodex/pull/2489. Optional Guardian private-review observation remains unselected.",
     "qualified_source_limits": "65 retained source contracts: 54 byte-identical and 11 changed with read source plus exact-artifact retained regressions. Three conditional MITM source checks fail at host reserved-address DNS protection. Earlier certified ranges and the unknown historical 153-test manifest are preserved.",
     "tests_read_unique_function_count": 81,
     "tests_read_source_revision_body_count": 83,
@@ -2122,9 +2123,11 @@
     }
   },
   "current_delivery": {
-    "status": "pending",
+    "status": "public_pull_request_reference",
     "code_commit": "088f16fe1501a2c1ef306a02f073cbb2a9c5927b",
-    "scope": "Qualify the fixed official runtime and preserve finished-source sampling, exact MCP cancellation, paginated cold resume and unchanged settings checkpoints. Optional product controls remain unselected; no app installation or release."
+    "scope": "Qualify the fixed official runtime and preserve finished-source sampling, exact MCP cancellation, paginated cold resume and unchanged settings checkpoints. Optional product controls remain unselected; no app installation or release.",
+    "pull_request": "https://github.com/acg-box/decodex/pull/2489",
+    "state_source": "Read the linked public PR for current merge state and exact-head checks; source/artifact qualification alone does not establish delivery."
   },
   "retained_account_scope": {
     "provider": "ChatGPT-backed identity; recognized plan labels are not separate provider implementations.",

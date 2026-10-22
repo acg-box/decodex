@@ -21,7 +21,7 @@
     "tests_read_source_revision_body_count": 83,
     "tests_read_unique_function_count": 81,
     "source_read_scope": "Changed behavior and non-generated diffs, relevant implementation/test bodies, current consumers and explicit no-consumer boundaries. Generated schema/snapshot screening does not establish compatibility. Mechanical test relocation uses a complete body-pair comparison plus read module/selector differences and representative complete bodies.",
-    "certification": "All 51 consecutive commits have read behavior, relevant source/test bodies or mechanical/workflow evidence, concrete current consumers/exclusions and reconciled validation limits. Source review is complete; required Git delivery is pending.",
+    "certification": "All 51 consecutive commits have read behavior, relevant source/test bodies or mechanical/workflow evidence, concrete current consumers/exclusions and reconciled validation limits. Source review is complete; Git delivery and exact-head CI are recorded at the linked public pull request.",
     "source_tests_executed_count": 207,
     "source_tests_passed_count": 204,
     "source_tests_failed_count": 3,
@@ -321,7 +321,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -404,7 +404,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -525,7 +525,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -712,7 +712,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -923,7 +923,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -1222,7 +1222,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance.",
       "conditional_limit": "Three upstream MITM source tests fail at reserved-address DNS protection on this host. No mitigation was disabled; hook/method assertions beyond that guard remain unverified. The native proxy loopback regression passes."
     },
@@ -1704,7 +1704,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -1817,7 +1817,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -1959,7 +1959,7 @@
       "decodex_consumer": "account_launch/process.rs::APP_SERVER_ARGS supplies native feature overrides after app-server; the public CLI remains the execution boundary.",
       "diff_sha256": "614e13bd5e3cd7c1d93241cb869558fcef6d763f70acdd483cb96776ba5382d9",
       "tests_executed": [],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance.",
       "test_scope": "No applicable retained-runtime test body is changed in this workflow/feature-declaration-only scope. Actual declarations, command bodies and mechanical canary adjustments were read; no test execution is inferred."
     },
@@ -2104,7 +2104,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -2287,7 +2287,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -2426,7 +2426,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -2617,7 +2617,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -2688,7 +2688,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -2972,7 +2972,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -3076,7 +3076,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -3172,7 +3172,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -3291,7 +3291,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -3397,7 +3397,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance.",
       "conditional_limit": "Three upstream MITM source tests fail at reserved-address DNS protection on this host. No mitigation was disabled; hook/method assertions beyond that guard remain unverified. The native proxy loopback regression passes."
     },
@@ -3484,7 +3484,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -3685,7 +3685,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -3839,7 +3839,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -3932,7 +3932,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     },
     {
@@ -4191,7 +4191,7 @@
           "status": "passed"
         }
       ],
-      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is separately pending.",
+      "runtime_disposition": "Included in the exact candidate; retained native boundary regressions pass within qualification.json limits. Git delivery is recorded at the linked public pull request.",
       "validation_limits": "Source tests and exact macOS arm64 private-stdio artifact checks are separate. No live account/provider, physical audio, Windows/Linux runtime, remote executor or installed-app acceptance."
     }
   ],
@@ -4649,5 +4649,6 @@
     "url": "https://codeload.github.com/openai/codex/tar.gz/40db507eeca2ff778c040c325449eb72e90c0590",
     "sha256": "6432bb335076ff9b5a9b137a42e25aead4112d5ea6b99d80bbfd7c16c1513175"
   },
-  "delivery_status": "pending"
+  "delivery_status": "public_pull_request_reference",
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2489"
 }
