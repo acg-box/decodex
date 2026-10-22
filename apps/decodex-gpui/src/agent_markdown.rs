@@ -134,7 +134,7 @@ impl RenderOnce for CopyButton {
 			.justify_center()
 			.rounded(gpui::px(6.))
 			.cursor_pointer()
-			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+			.hover(|s| s.bg(crate::ui_theme::rgba(HOVER_FILL)))
 			.on_click(move |_, _, cx| {
 				clipboard::copy(click_text.clone(), self.rich, cx);
 
@@ -164,7 +164,7 @@ impl RenderOnce for CopyButton {
 					} else {
 						br#"<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><path d="M3.75 3H9.75V10.5H3.75ZM7.5 .75H1.5V8.25" fill="none" stroke="white" stroke-width="1.1"/></svg>"#.as_slice()
 					})
-					.text_color(gpui::rgb(if copied { BLUE } else { TEXT_MUTED }))
+					.text_color(crate::ui_theme::rgb(if copied { BLUE } else { TEXT_MUTED }))
 					.size(gpui::px(12.)),
 			)
 			.smooth()
@@ -272,7 +272,7 @@ pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
 		.text_size(gpui::px(12.))
 		.font_weight(FontWeight::NORMAL)
 		.line_height(gpui::px(19.))
-		.text_color(gpui::rgb(TEXT_MUTED))
+		.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 		.children(document.nodes.get_or_init(|| parse(text)).iter().enumerate().map(
 			|(i, node)| {
 				let key = format!("{key}-{i}");
@@ -316,7 +316,7 @@ pub(super) fn render(text: &str, key: &str) -> AnyElement {
 		.text_size(gpui::px(BODY_SIZE))
 		.font_weight(FontWeight::NORMAL)
 		.line_height(gpui::px(BODY_LINE_HEIGHT))
-		.text_color(gpui::rgb(ui_theme::foreground::PRIMARY))
+		.text_color(crate::ui_theme::rgb(ui_theme::foreground::PRIMARY))
 		.children(
 			document
 				.nodes
@@ -473,8 +473,9 @@ fn append_inline(nodes: &[Node], style: HighlightStyle, link: Option<&str>, out:
 				match kind {
 					Kind::Strong => next.font_weight = Some(FontWeight::MEDIUM),
 					Kind::Emphasis => next.font_style = Some(FontStyle::Italic),
-					Kind::InlineCode => next.background_color = Some(gpui::rgba(0xffffff12).into()),
-					Kind::Link(_) => next.color = Some(gpui::rgb(BLUE).into()),
+					Kind::InlineCode =>
+						next.background_color = Some(crate::ui_theme::rgba(0xffffff12).into()),
+					Kind::Link(_) => next.color = Some(crate::ui_theme::rgb(BLUE).into()),
 					Kind::Strike =>
 						next.strikethrough =
 							Some(StrikethroughStyle { thickness: gpui::px(1.0), color: None }),
@@ -560,8 +561,11 @@ fn render_node_content(
 ) -> AnyElement {
 	let NodeContent::Block(kind, children) = &node.content else {
 		return match &node.content {
-			NodeContent::Rule =>
-				gpui::div().h(gpui::px(1.0)).my_2().bg(gpui::rgba(0xffffff18)).into_any_element(),
+			NodeContent::Rule => gpui::div()
+				.h(gpui::px(1.0))
+				.my_2()
+				.bg(crate::ui_theme::rgba(0xffffff18))
+				.into_any_element(),
 			_ =>
 				gpui::div().child(inline(slice::from_ref(node), key, selection)).into_any_element(),
 		};
@@ -616,8 +620,10 @@ fn render_node_content(
 			.flex()
 			.items_stretch()
 			.border_b_1()
-			.border_color(gpui::rgba(0xffffff12))
-			.when(*header, |d| d.font_weight(FontWeight::MEDIUM).bg(gpui::rgba(0xffffff08)))
+			.border_color(crate::ui_theme::rgba(0xffffff12))
+			.when(*header, |d| {
+				d.font_weight(FontWeight::MEDIUM).bg(crate::ui_theme::rgba(0xffffff08))
+			})
 			.children(children.iter().enumerate().map(|(i, n)| {
 				if i > 0 {
 					selection.separate("\t");
@@ -638,10 +644,10 @@ fn render_node_content(
 			.flex_col()
 			.gap_2()
 			.when(matches!(kind, Kind::Quote), |d| {
-				d.pl_3().border_l_2().border_color(gpui::rgb(BLUE))
+				d.pl_3().border_l_2().border_color(crate::ui_theme::rgb(BLUE))
 			})
 			.when(matches!(kind, Kind::Table), |d| {
-				d.border_1().border_color(gpui::rgba(0xffffff12)).rounded_md()
+				d.border_1().border_color(crate::ui_theme::rgba(0xffffff12)).rounded_md()
 			})
 			.children(children.iter().enumerate().map(|(i, n)| {
 				if matches!(kind, Kind::Table) && i > 0 {
@@ -688,7 +694,7 @@ fn render_list(
 						.w(gpui::px(marker_width))
 						.flex_shrink_0()
 						.text_right()
-						.text_color(gpui::rgb(TEXT_MUTED))
+						.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 						.child(start.map_or_else(
 							|| "•".into(),
 							|start| format!("{}.", start + index as u64),

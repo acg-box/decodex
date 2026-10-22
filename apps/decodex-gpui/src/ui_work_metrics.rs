@@ -23,7 +23,7 @@ impl Icon {
 			.data(self.source().1)
 			.size(gpui::px(size))
 			.flex_none()
-			.text_color(gpui::rgb(color))
+			.text_color(crate::ui_theme::rgb(color))
 	}
 }
 

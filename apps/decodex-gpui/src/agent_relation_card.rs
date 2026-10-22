@@ -256,7 +256,7 @@ fn point(key: &str, color: u32, selected: bool) -> AnyElement {
 		.relative()
 		.size_full()
 		.rounded_full()
-		.bg(gpui::rgb(color))
+		.bg(crate::ui_theme::rgb(color))
 		.when(selected, |dot| {
 			dot.child(
 				gpui::div()
@@ -264,7 +264,7 @@ fn point(key: &str, color: u32, selected: bool) -> AnyElement {
 					.inset(gpui::px(-2.))
 					.rounded_full()
 					.border_1()
-					.border_color(gpui::rgb(SELECTED)),
+					.border_color(crate::ui_theme::rgb(SELECTED)),
 			)
 		})
 		.into_any_element()
@@ -290,7 +290,7 @@ impl Frame {
 				let right = snap(f32::from(bounds.right())) - 1.;
 				let bottom = snap(f32::from(bounds.bottom())) - 1.;
 				let length = snap((8. * self.zoom).max(5.));
-				let color = gpui::rgb(if self.selected { SELECTED } else { 0xc2bbc9 })
+				let color = crate::ui_theme::rgb(if self.selected { SELECTED } else { 0xc2bbc9 })
 					.opacity(self.presence * if self.selected { 0.8 } else { 0.4 });
 				for (x, y, dx, dy) in [
 					(left, top, 1., 1.),
@@ -343,8 +343,12 @@ impl Frame {
 					if let Ok(path) = ring.build() {
 						window.paint_path(
 							path,
-							gpui::rgb(if self.selected { SELECTED } else { SECONDARY_TEXT })
-								.opacity(self.presence),
+							crate::ui_theme::rgb(if self.selected {
+								SELECTED
+							} else {
+								SECONDARY_TEXT
+							})
+							.opacity(self.presence),
 						);
 					}
 				}

@@ -123,10 +123,10 @@ impl SettingsSurface {
 			.py_2()
 			.rounded_md()
 			.border_1()
-			.border_color(gpui::rgb(ui_theme::LINE_STRONG))
+			.border_color(crate::ui_theme::rgb(ui_theme::LINE_STRONG))
 			.cursor_pointer()
-			.hover(|s| s.bg(gpui::rgba(ui_theme::HOVER_FILL)))
-			.focus_visible(|s| s.border_color(gpui::rgb(ui_theme::BLUE)))
+			.hover(|s| s.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)))
+			.focus_visible(|s| s.border_color(crate::ui_theme::rgb(ui_theme::BLUE)))
 			.on_click(cx.listener(move |this, _, _, cx| this.update_action(action, cx)))
 			.on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
 				if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
@@ -197,7 +197,7 @@ impl SettingsSurface {
 					)),
 			)
 			.child(component)
-			.child(gpui::div().text_color(gpui::rgb(ui_theme::TEXT_MUTED)).child(
+			.child(gpui::div().text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED)).child(
 				"Release components download automatically. Sessions start when the pinned component is ready.",
 			))
 			.into_any_element()

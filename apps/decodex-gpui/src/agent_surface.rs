@@ -2232,7 +2232,7 @@ impl AgentSurface {
 					.tab_index(0)
 					.aria_label("Review request")
 					.cursor_pointer()
-					.text_color(gpui::rgb(BLUE))
+					.text_color(crate::ui_theme::rgb(BLUE))
 					.on_click(cx.listener(move |s, _, _, cx| s.load_request(id, cx)))
 					.child(if event.event_kind == "user_input_pending" {
 						"Answer a question"
@@ -2261,7 +2261,7 @@ impl AgentSurface {
 			.role(Role::Button)
 			.tab_index(28)
 			.cursor_pointer()
-			.text_color(gpui::rgb(BLUE))
+			.text_color(crate::ui_theme::rgb(BLUE))
 			.on_click(cx.listener(move |surface, _, _, cx| {
 				surface.open_page(&selected, cx);
 				cx.notify();
@@ -2315,7 +2315,7 @@ impl AgentSurface {
 					.items_center()
 					.cursor_pointer()
 					.rounded(gpui::px(6.0))
-					.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+					.hover(|s| s.bg(crate::ui_theme::rgba(HOVER_FILL)))
 					.on_click(cx.listener(|s, _, _, cx| {
 						s.workspace.setup_expanded = !s.workspace.setup_expanded;
 
@@ -2680,7 +2680,7 @@ fn next_check_text(due: i64) -> String {
 fn muted(text: impl Into<SharedString>) -> impl IntoElement {
 	gpui::div()
 		.text_size(gpui::px(CAPTION_SIZE))
-		.text_color(gpui::rgb(TEXT_MUTED))
+		.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 		.child(text.into())
 }
 
@@ -2784,7 +2784,11 @@ fn history_entry_presented(
 			.w_full()
 			.py_2()
 			.text_size(gpui::px(11.))
-			.text_color(gpui::rgb(if entry.kind == "stopped" { TEXT_MUTED } else { AMBER }))
+			.text_color(crate::ui_theme::rgb(if entry.kind == "stopped" {
+				TEXT_MUTED
+			} else {
+				AMBER
+			}))
 			.child(SelectableText {
 				key: format!("notice-{identity}"),
 				text: entry.text.clone(),
@@ -2817,7 +2821,7 @@ fn history_entry_presented(
 						.px(gpui::px(12.))
 						.py(gpui::px(7.))
 						.rounded(gpui::px(10.))
-						.bg(gpui::rgba(0xffffff0e))
+						.bg(crate::ui_theme::rgba(0xffffff0e))
 				})
 				.when(!user, |body| body.w_full().py(gpui::px(2.)))
 				.when(entry.kind == "instruction", |body| body.child(muted("Task input")))

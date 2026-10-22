@@ -199,7 +199,7 @@ impl AgentSurface {
 		if self.sample.work.as_deref() != Some(work) {
 			return gpui::div().into_any_element();
 		}
-		let mut panel = gpui::div().id("sample-panel").debug_selector(|| "sample-panel".into()).w_full().min_w_0().flex().flex_col().gap_2().p_3().rounded_lg().bg(gpui::rgba(0xffffff06))
+		let mut panel = gpui::div().id("sample-panel").debug_selector(|| "sample-panel".into()).w_full().min_w_0().flex().flex_col().gap_2().p_3().rounded_lg().bg(crate::ui_theme::rgba(0xffffff06))
 			.child("Ask separately")
 			.child("One answer from this conversation, without tool execution. Uses its model and quota. Your conversation and draft stay unchanged.")
 			.child(self.sample.feedback.clone());

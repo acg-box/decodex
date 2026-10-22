@@ -53,7 +53,7 @@ impl RenderOnce for Header {
 							.when(!layout.labels(), |light| light.mt_0())
 							.size(gpui::px(4.))
 							.rounded_full()
-							.bg(gpui::rgb(self.color)),
+							.bg(crate::ui_theme::rgb(self.color)),
 					)
 					.when(layout.labels(), |row| {
 						row.child(
@@ -76,7 +76,7 @@ impl RenderOnce for Header {
 											layout.title_size()
 										}))
 										.line_height(gpui::px(line))
-										.text_color(gpui::rgb(if details {
+										.text_color(crate::ui_theme::rgb(if details {
 											foreground::BODY
 										} else {
 											foreground::PRIMARY
@@ -97,7 +97,7 @@ impl RenderOnce for Header {
 							.font_family("Menlo")
 							.text_size(gpui::px(layout.detail_size()))
 							.line_height(gpui::px(line))
-							.text_color(gpui::rgb(if self.selected {
+							.text_color(crate::ui_theme::rgb(if self.selected {
 								crate::ui_theme::BLUE
 							} else {
 								super::card::SECONDARY_TEXT
@@ -112,7 +112,7 @@ impl RenderOnce for Header {
 						.h(gpui::px(layout.title_line()))
 						.text_size(gpui::px(layout.title_size()))
 						.line_height(gpui::px(layout.title_line()))
-						.text_color(gpui::rgb(foreground::PRIMARY))
+						.text_color(crate::ui_theme::rgb(foreground::PRIMARY))
 						.whitespace_nowrap()
 						.text_ellipsis()
 						.overflow_hidden()
@@ -157,7 +157,7 @@ fn action_rows(
 				.h(gpui::px(layout.detail_line()))
 				.text_size(gpui::px(layout.activity_size()))
 				.line_height(gpui::px(layout.detail_line()))
-				.text_color(gpui::rgb(super::card::ACTIVITY_TEXT))
+				.text_color(crate::ui_theme::rgb(super::card::ACTIVITY_TEXT))
 				.whitespace_nowrap()
 				.text_ellipsis()
 				.overflow_hidden()

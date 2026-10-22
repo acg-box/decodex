@@ -124,7 +124,7 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 						.size(gpui::px(7.))
 						.flex_none()
 						.rounded_full()
-						.bg(gpui::rgb(presentation.color)),
+						.bg(crate::ui_theme::rgb(presentation.color)),
 				)
 				.child(
 					gpui::div()
@@ -138,7 +138,7 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 						)
 						.child(
 							gpui::div()
-								.text_color(gpui::rgb(WB_TEXT_MUTED))
+								.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
 								.child(presentation.detail),
 						),
 				),
@@ -153,7 +153,7 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 				.flex_col()
 				.gap_2()
 				.child(gpui::div().font_weight(FontWeight::MEDIUM).child(title))
-				.child(gpui::div().text_color(gpui::rgb(WB_TEXT_MUTED)).child(detail)),
+				.child(gpui::div().text_color(crate::ui_theme::rgb(WB_TEXT_MUTED)).child(detail)),
 		);
 	}
 	content = content
@@ -188,7 +188,7 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 		)
 		.child(
 			gpui::div()
-				.text_color(gpui::rgb(WB_TEXT_MUTED))
+				.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
 				.child("Checks cover local services. Chat errors appear in the input bar."),
 		)
 		.child(details_toggle(shell, cx));
@@ -215,11 +215,11 @@ fn details_toggle(shell: &Shell, cx: &Context<Shell>) -> AnyElement {
 		.items_center()
 		.gap_2()
 		.border_t_1()
-		.border_color(gpui::rgba(0xffffff10))
+		.border_color(crate::ui_theme::rgba(0xffffff10))
 		.cursor_pointer()
-		.text_color(gpui::rgb(WB_TEXT_MUTED))
-		.hover(|el| el.text_color(gpui::rgb(WB_TEXT)))
-		.focus_visible(|el| el.bg(gpui::rgba(HOVER_FILL)))
+		.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
+		.hover(|el| el.text_color(crate::ui_theme::rgb(WB_TEXT)))
+		.focus_visible(|el| el.bg(crate::ui_theme::rgba(HOVER_FILL)))
 		.on_click(cx.listener(|shell, _, _, cx| {
 			shell.diagnostics.expanded = !shell.diagnostics.expanded;
 			cx.notify();
@@ -250,7 +250,7 @@ fn technical_details(snapshot: &HealthSnapshot) -> AnyElement {
 				.flex_col()
 				.gap_2()
 				.child(gpui::div().font_weight(FontWeight::MEDIUM).child("Agent process"))
-				.child(gpui::div().text_color(gpui::rgb(WB_TEXT_MUTED)).child(
+				.child(gpui::div().text_color(crate::ui_theme::rgb(WB_TEXT_MUTED)).child(
 					native_process_summary(
 						snapshot.report.as_ref().and_then(|report| report.native_process()),
 					),
@@ -336,12 +336,14 @@ fn control(
 		.items_center()
 		.justify_center()
 		.border_1()
-		.border_color(gpui::rgba(0xffffff16))
+		.border_color(crate::ui_theme::rgba(0xffffff16))
 		.cursor_pointer()
-		.text_color(gpui::rgb(WB_TEXT_MUTED))
-		.hover(|el| el.bg(gpui::rgba(HOVER_FILL)).text_color(gpui::rgb(WB_TEXT)))
+		.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
+		.hover(|el| {
+			el.bg(crate::ui_theme::rgba(HOVER_FILL)).text_color(crate::ui_theme::rgb(WB_TEXT))
+		})
 		.active(|el| el.opacity(0.7))
-		.focus_visible(|el| el.border_color(gpui::rgb(crate::ui_theme::BLUE)))
+		.focus_visible(|el| el.border_color(crate::ui_theme::rgb(crate::ui_theme::BLUE)))
 		.on_click(cx.listener(move |shell, _, _, cx| {
 			click(shell, cx);
 			cx.notify();

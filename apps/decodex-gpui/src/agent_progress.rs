@@ -163,7 +163,7 @@ impl AgentSurface {
 			.pl(gpui::px(12.))
 			.mt(gpui::px(6.))
 			.border_l_1()
-			.border_color(gpui::rgba(0xffffff18));
+			.border_color(crate::ui_theme::rgba(0xffffff18));
 
 		for item in items {
 			let status = if item.status == "running"
@@ -212,7 +212,7 @@ impl AgentSurface {
 			.w_full()
 			.max_w(gpui::px(560.))
 			.text_size(gpui::px(11.))
-			.text_color(gpui::rgb(TEXT_MUTED))
+			.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 			.child(
 				gpui::div()
 					.id("progress-toggle")

@@ -44,7 +44,7 @@ impl StrokeBatch {
 
 	pub(super) fn paint(&mut self, window: &mut gpui::Window) {
 		for (color, path) in self.0.drain(..) {
-			window.paint_path(path, gpui::rgba(color));
+			window.paint_path(path, crate::ui_theme::rgba(color));
 		}
 	}
 }
@@ -67,7 +67,7 @@ impl AgentSurface {
 			.rounded(gpui::px(5.))
 			.cursor_pointer()
 			.occlude()
-			.hover(|d| d.bg(gpui::rgba(0xffffff10)))
+			.hover(|d| d.bg(crate::ui_theme::rgba(0xffffff10)))
 			.tooltip(move |_, cx| cx.new(|_| RelationTip(label.into())).into())
 			.child(crate::shell::workspace_symbols::icon_sized(
 				if hidden {
@@ -117,7 +117,7 @@ impl AgentSurface {
 									.stroke(kind, bounds.origin, 1., (0., 0.), 1.2, false)
 									.build()
 								{
-									window.paint_path(path, gpui::rgb(kind.color()));
+									window.paint_path(path, crate::ui_theme::rgb(kind.color()));
 								}
 							},
 						)
@@ -142,7 +142,12 @@ impl AgentSurface {
 					.flex_none()
 					.whitespace_nowrap()
 					.gap(gpui::px(5.))
-					.child(gpui::div().size(gpui::px(5.)).rounded_full().bg(gpui::rgb(color)))
+					.child(
+						gpui::div()
+							.size(gpui::px(5.))
+							.rounded_full()
+							.bg(crate::ui_theme::rgb(color)),
+					)
 					.child(label),
 			);
 		}
@@ -153,7 +158,7 @@ impl AgentSurface {
 			.items_end()
 			.gap(gpui::px(5.))
 			.text_size(gpui::px(10.))
-			.text_color(gpui::rgb(TEXT_MUTED))
+			.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 			.child(links)
 			.child(lights)
 			.into_any_element()
@@ -213,9 +218,9 @@ impl Route {
 				path,
 				gpui::linear_gradient(
 					angle.rem_euclid(360.),
-					gpui::linear_color_stop(gpui::rgba(0xdbe5ff00), 0.),
+					gpui::linear_color_stop(crate::ui_theme::rgba(0xdbe5ff00), 0.),
 					gpui::linear_color_stop(
-						gpui::rgb(0xdbe5ff).opacity(opacity * visibility * 0.95),
+						crate::ui_theme::rgb(0xdbe5ff).opacity(opacity * visibility * 0.95),
 						1.,
 					),
 				),

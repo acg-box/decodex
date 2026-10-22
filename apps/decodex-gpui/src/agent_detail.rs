@@ -151,7 +151,7 @@ impl AgentSurface {
 					.aria_label(format!("Inspect {}", item.label))
 					.aria_expanded(expanded)
 					.cursor_pointer()
-					.hover(|d| d.bg(gpui::rgba(HOVER_FILL)))
+					.hover(|d| d.bg(crate::ui_theme::rgba(HOVER_FILL)))
 					.on_click(
 						cx.listener(move |s, _, _, cx| s.toggle_activity_detail(click.clone(), cx)),
 					)
@@ -177,19 +177,21 @@ impl AgentSurface {
 					.overflow_y_scroll()
 					.p(gpui::px(10.))
 					.rounded(gpui::px(7.))
-					.bg(gpui::rgba(0x10101445))
+					.bg(crate::ui_theme::rgba(0x10101445))
 					.when(!markdown_reply, |d| d.font_family("Menlo"))
 					.text_size(gpui::px(if markdown_reply { 13. } else { 11.5 }))
 					.line_height(gpui::px(if markdown_reply { 19. } else { 16. }))
-					.text_color(gpui::rgb(TEXT))
+					.text_color(crate::ui_theme::rgb(TEXT))
 					.child(ui_loading::content(format!("detail-{key}"), result.is_some(), body))
 					.children(agents)
 					.child(metadata_toggle)
 					.child(ui_motion::disclosure(
 						SharedString::from(format!("tool-reference-body-{key}")),
 						metadata_open,
-						gpui::div().mt(gpui::px(6.)).text_color(gpui::rgb(TEXT_MUTED)).child(
-							SelectableText {
+						gpui::div()
+							.mt(gpui::px(6.))
+							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+							.child(SelectableText {
 								key: format!("detail-metadata-{key}"),
 								text: format!(
 									"{} · {}\nTurn {}\nCall {}",
@@ -197,8 +199,7 @@ impl AgentSurface {
 								),
 								highlights: Vec::new(),
 								links: Vec::new(),
-							},
-						),
+							}),
 					)),
 			))
 			.into_any_element()

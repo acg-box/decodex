@@ -10,9 +10,12 @@ use gpui::{
 	SharedString, StatefulInteractiveElement, Styled, Task, Window,
 };
 
-use crate::shell::agent_surface::{
-	markdown::{self, Node, mermaid, mermaid::Diagram},
-	selectable_text::Document,
+use crate::{
+	shell::agent_surface::{
+		markdown::{self, Node, mermaid, mermaid::Diagram},
+		selectable_text::Document,
+	},
+	ui_theme::appearance::Theme,
 };
 
 // Adapted from the upstream closing-fence check; see agent_mermaid/NOTICE.md.
@@ -60,20 +63,28 @@ struct State {
 // application so returning rows retain both their image and geometry on their first frame.
 #[derive(Default)]
 struct Images {
-	entries: VecDeque<(Arc<str>, Arc<Diagram>)>,
+	entries: VecDeque<(Arc<str>, Theme, Arc<Diagram>)>,
 	bytes: usize,
 }
 impl gpui::Global for Images {}
 impl Images {
-	fn get(&mut self, source: &str) -> Option<Arc<Diagram>> {
-		let index = self.entries.iter().position(|(key, _)| &**key == source)?;
+	fn get(&mut self, source: &str, theme: Theme) -> Option<Arc<Diagram>> {
+		let index = self
+			.entries
+			.iter()
+			.position(|(key, appearance, _)| &**key == source && *appearance == theme)?;
 		let entry = self.entries.remove(index)?;
-		let diagram = entry.1.clone();
+		let diagram = entry.2.clone();
 		self.entries.push_back(entry);
 		Some(diagram)
 	}
 
-	fn insert(&mut self, source: Arc<str>, diagram: Arc<Diagram>) -> Vec<Arc<Diagram>> {
+	fn insert(
+		&mut self,
+		source: Arc<str>,
+		theme: Theme,
+		diagram: Arc<Diagram>,
+	) -> Vec<Arc<Diagram>> {
 		let limit = if cfg!(feature = "visual-capture")
 			&& std::env::var("DECODEX_VISUAL_SCROLL_CACHE").as_deref() == Ok("off")
 		{
@@ -82,10 +93,10 @@ impl Images {
 			64 * 1_024 * 1_024
 		};
 		self.bytes += image_bytes(&source, &diagram);
-		self.entries.push_back((source, diagram));
+		self.entries.push_back((source, theme, diagram));
 		let mut evicted = Vec::new();
 		while self.bytes > limit || self.entries.len() > 64 {
-			let (source, diagram) = self.entries.pop_front().expect("cache exceeds its limit");
+			let (source, _, diagram) = self.entries.pop_front().expect("cache exceeds its limit");
 			self.bytes -= image_bytes(&source, &diagram);
 			evicted.push(diagram);
 		}
@@ -106,9 +117,10 @@ fn release_image(diagram: &Arc<Diagram>, cx: &mut App) {
 }
 
 impl State {
-	fn new(source: Arc<str>, cx: &mut Context<Self>) -> Self {
-		let cached = cx.default_global::<Images>().get(&source);
-		let task = if cached.is_some() { Task::ready(()) } else { Self::prepare(source, cx) };
+	fn new(source: Arc<str>, theme: Theme, cx: &mut Context<Self>) -> Self {
+		let cached = cx.default_global::<Images>().get(&source, theme);
+		let task =
+			if cached.is_some() { Task::ready(()) } else { Self::prepare(source, theme, cx) };
 		cx.on_release(|state, cx| {
 			if let Some(Ok(diagram)) = &state.result {
 				release_image(diagram, cx);
@@ -119,12 +131,12 @@ impl State {
 		Self { result: cached.map(Ok), _task: task }
 	}
 
-	fn prepare(source: Arc<str>, cx: &mut Context<Self>) -> Task<()> {
+	fn prepare(source: Arc<str>, theme: Theme, cx: &mut Context<Self>) -> Task<()> {
 		let renderer = cx.svg_renderer();
 		let input = source.clone();
 		let future = cx.background_executor().spawn(async move {
 			let started = std::time::Instant::now();
-			let result = mermaid::prepare(&input, &renderer);
+			let result = mermaid::prepare(&input, &renderer, theme);
 			if let Ok(diagram) = &result {
 				crate::frame_trace::mermaid_prepared(
 					started.elapsed(),
@@ -138,10 +150,12 @@ impl State {
 			let result = future.await;
 			let _ = state.update(cx, |state, cx| {
 				let result = result.map(|diagram| {
-					if let Some(cached) = cx.default_global::<Images>().get(&source) {
+					if let Some(cached) = cx.default_global::<Images>().get(&source, theme) {
 						return cached;
 					}
-					for evicted in cx.default_global::<Images>().insert(source, diagram.clone()) {
+					for evicted in
+						cx.default_global::<Images>().insert(source, theme, diagram.clone())
+					{
 						release_image(&evicted, cx);
 					}
 					diagram
@@ -159,12 +173,14 @@ impl RenderOnce for Mermaid {
 		// reply, owns the cache key. A changed diagram gets new state and cannot show a stale
 		// result.
 		let state_key = SharedString::from(format!(
-			"mermaid-state-{}-{:016x}",
+			"mermaid-state-{}-{:016x}-{:?}",
 			self.key,
-			gpui::hash(&self.source)
+			gpui::hash(&self.source),
+			Theme::current()
 		));
-		let state =
-			window.use_keyed_state(state_key, cx, |_, cx| State::new(self.source.clone(), cx));
+		let state = window.use_keyed_state(state_key, cx, |_, cx| {
+			State::new(self.source.clone(), Theme::current(), cx)
+		});
 		let diagram = match &state.read(cx).result {
 			Some(Ok(diagram)) => {
 				let _ = self.geometry.set((diagram.width, diagram.height));
@@ -197,7 +213,7 @@ impl RenderOnce for Mermaid {
 				.flex()
 				.items_center()
 				.justify_center()
-				.text_color(gpui::rgb(crate::ui_theme::TEXT_MUTED))
+				.text_color(crate::ui_theme::rgb(crate::ui_theme::TEXT_MUTED))
 				.child("Rendering diagram…")
 				.into_any_element()
 		};
@@ -221,8 +237,8 @@ fn frame(
 		.p_3()
 		.rounded(gpui::px(10.))
 		.border_1()
-		.border_color(gpui::rgba(0xffffff0c))
-		.bg(gpui::rgba(0xffffff03))
+		.border_color(crate::ui_theme::rgba(0xffffff0c))
+		.bg(crate::ui_theme::rgba(0xffffff03))
 		.child(gpui::div().flex().w_full().justify_end().child(markdown::copy_button(
 			&format!("mermaid-copy-{key}"),
 			"Copy Mermaid source",

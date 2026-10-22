@@ -80,7 +80,7 @@ pub(super) fn render(
 						connected = true;
 					}
 					if let Ok(path) = line.build() {
-						window.paint_path(path, gpui::rgb(BLUE));
+						window.paint_path(path, crate::ui_theme::rgb(BLUE));
 					}
 					// Fade at fixed screen edges, not at sample boundaries.
 					for (x, angle, width) in [(0., 90., 12.), (width - 8., 270., 8.)] {
@@ -91,8 +91,8 @@ pub(super) fn render(
 							),
 							gpui::linear_gradient(
 								angle,
-								gpui::linear_color_stop(gpui::rgb(0x141418), 0.),
-								gpui::linear_color_stop(gpui::rgba(0x14141800), 1.),
+								gpui::linear_color_stop(crate::ui_theme::rgb(0x141418), 0.),
+								gpui::linear_color_stop(crate::ui_theme::rgba(0x14141800), 1.),
 							),
 						));
 					}

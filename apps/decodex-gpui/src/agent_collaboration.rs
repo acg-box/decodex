@@ -264,9 +264,9 @@ impl AgentSurface {
 			.text_size(gpui::px(foreground::METRIC_SIZE))
 			.line_height(gpui::px(18.))
 			.font_weight(gpui::FontWeight::MEDIUM)
-			.text_color(gpui::rgb(foreground::SECONDARY))
+			.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
 			.cursor_pointer()
-			.hover(|style| style.text_color(gpui::rgb(ui_theme::BLUE)))
+			.hover(|style| style.text_color(crate::ui_theme::rgb(ui_theme::BLUE)))
 			.on_click(cx.listener(move |s, _, window, cx| {
 				action(s, cx);
 				restore_shell_focus(window, cx);
@@ -306,7 +306,7 @@ impl AgentSurface {
 			.text_ellipsis()
 			.overflow_hidden()
 			.cursor_pointer()
-			.hover(|link| link.text_color(gpui::rgb(ui_theme::BLUE)))
+			.hover(|link| link.text_color(crate::ui_theme::rgb(ui_theme::BLUE)))
 			.on_click(cx.listener(move |s, _, window, cx| {
 				s.locate_relation_agent(&key, cx);
 				restore_shell_focus(window, cx);
@@ -395,12 +395,21 @@ impl AgentSurface {
 			.text_size(gpui::px(foreground::CAPTION_SIZE))
 			.line_height(gpui::px(19.))
 			.font_weight(gpui::FontWeight::MEDIUM)
-			.text_color(gpui::rgb(foreground::SECONDARY))
+			.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
 			.child(
-				gpui::div().flex_none().size(gpui::px(4.)).rounded_full().bg(gpui::rgb(case.color)),
+				gpui::div()
+					.flex_none()
+					.size(gpui::px(4.))
+					.rounded_full()
+					.bg(crate::ui_theme::rgb(case.color)),
 			)
 			.child(self.collaboration_participant(&case.from, &case.id, cx))
-			.child(gpui::div().flex_none().text_color(gpui::rgb(foreground::SECONDARY)).child("→"));
+			.child(
+				gpui::div()
+					.flex_none()
+					.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
+					.child("→"),
+			);
 		route = if let Some(to) = &case.to {
 			route.child(self.collaboration_participant(to, &case.id, cx))
 		} else {
@@ -409,11 +418,13 @@ impl AgentSurface {
 		route = route.child(gpui::div().flex_1()).child(
 			gpui::div()
 				.flex_none()
-				.text_color(gpui::rgb(if matches!(case.state, "Reported" | "Recorded") {
-					foreground::SECONDARY
-				} else {
-					case.color
-				}))
+				.text_color(crate::ui_theme::rgb(
+					if matches!(case.state, "Reported" | "Recorded") {
+						foreground::SECONDARY
+					} else {
+						case.color
+					},
+				))
 				.child(case.state),
 		);
 		let title = gpui::div()
@@ -441,7 +452,7 @@ impl AgentSurface {
 							.text_size(gpui::px(12.))
 							.line_height(gpui::px(19.))
 							.font_weight(gpui::FontWeight::NORMAL)
-							.text_color(gpui::rgb(foreground::PRIMARY))
+							.text_color(crate::ui_theme::rgb(foreground::PRIMARY))
 							.line_clamp(if expanded { 2 } else { 1 })
 							.text_ellipsis()
 							.child(case.title.clone()),
@@ -456,7 +467,7 @@ impl AgentSurface {
 					gpui::div()
 						.text_size(gpui::px(11.5))
 						.line_height(gpui::px(ui_theme::BODY_LINE_HEIGHT))
-						.text_color(gpui::rgb(foreground::BODY))
+						.text_color(crate::ui_theme::rgb(foreground::BODY))
 						.line_clamp(
 							if expanded
 								|| !matches!(
@@ -504,21 +515,21 @@ impl AgentSurface {
 					.w_full()
 					.min_w_0()
 					.border_l_1()
-					.border_color(gpui::rgba(0xaaa0c450))
+					.border_color(crate::ui_theme::rgba(0xaaa0c450))
 					.pl(gpui::px(8.))
 					.child(
 						gpui::div()
 							.text_size(gpui::px(foreground::CAPTION_SIZE))
 							.line_height(gpui::px(15.))
 							.font_weight(gpui::FontWeight::MEDIUM)
-							.text_color(gpui::rgb(foreground::SECONDARY))
+							.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
 							.child("Request"),
 					)
 					.child(
 						gpui::div()
 							.text_size(gpui::px(11.5))
 							.line_height(gpui::px(17.))
-							.text_color(gpui::rgb(foreground::BODY))
+							.text_color(crate::ui_theme::rgb(foreground::BODY))
 							.line_clamp(3)
 							.text_ellipsis()
 							.child(request.clone()),
@@ -533,7 +544,7 @@ impl AgentSurface {
 					.text_size(gpui::px(11.5))
 					.line_height(gpui::px(17.))
 					.border_l_1()
-					.border_color(gpui::rgba(0xd4b27c60))
+					.border_color(crate::ui_theme::rgba(0xd4b27c60))
 					.pl(gpui::px(8.))
 					.child(question.question.title.clone()),
 			));
@@ -553,7 +564,7 @@ impl AgentSurface {
 						.text_size(gpui::px(foreground::CAPTION_SIZE))
 						.line_height(gpui::px(18.))
 						.font_weight(gpui::FontWeight::MEDIUM)
-						.text_color(gpui::rgb(foreground::SECONDARY))
+						.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
 						.child(*label),
 				)
 				.child(
@@ -562,7 +573,7 @@ impl AgentSurface {
 						.min_w_0()
 						.text_size(gpui::px(11.5))
 						.line_height(gpui::px(18.))
-						.text_color(gpui::rgb(foreground::BODY))
+						.text_color(crate::ui_theme::rgb(foreground::BODY))
 						.line_clamp(3)
 						.text_ellipsis()
 						.child(fact.clone()),
@@ -632,7 +643,7 @@ impl AgentSurface {
 			.gap(gpui::px(4.))
 			.text_size(gpui::px(foreground::CAPTION_SIZE))
 			.line_height(gpui::px(17.))
-			.text_color(gpui::rgb(foreground::SECONDARY))
+			.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
 			.children(source_notes);
 		source = if matches!(case.source.as_str(), "Native report" | "Native question") {
 			source.child(gpui::div().child(case.source.clone()))
@@ -653,7 +664,9 @@ impl AgentSurface {
 			source = source.child(self.collaboration_source_field(case, "Item", item));
 		}
 		source = source.child(
-			gpui::div().text_color(gpui::rgb(foreground::BODY)).child(case.source_text.clone()),
+			gpui::div()
+				.text_color(crate::ui_theme::rgb(foreground::BODY))
+				.child(case.source_text.clone()),
 		);
 		if case.source_thread.is_some() && case.source_thread == case.source_row.thread {
 			let row = case.source_row.clone();
@@ -679,7 +692,7 @@ impl AgentSurface {
 			.relative()
 			.py(gpui::px(12.))
 			.border_b_1()
-			.border_color(gpui::rgba(0xffffff12))
+			.border_color(crate::ui_theme::rgba(0xffffff12))
 			.when(related, |row| {
 				row.child(
 					gpui::div()
@@ -689,7 +702,7 @@ impl AgentSurface {
 						.top(gpui::px(12.))
 						.bottom(gpui::px(12.))
 						.border_l_1()
-						.border_color(gpui::rgb(ui_theme::BLUE)),
+						.border_color(crate::ui_theme::rgb(ui_theme::BLUE)),
 				)
 			})
 			.child(self.collaboration_exchange_header(case, cx))
@@ -715,7 +728,7 @@ impl AgentSurface {
 			.flex_col()
 			.text_size(gpui::px(11.))
 			.line_height(gpui::px(17.))
-			.text_color(gpui::rgb(foreground::SECONDARY));
+			.text_color(crate::ui_theme::rgb(foreground::SECONDARY));
 		let entries = self.workbench_entries();
 		for entry in entries.iter().filter(|entry| {
 			!entry.result

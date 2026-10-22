@@ -111,8 +111,8 @@ impl AgentSurface {
 			.h(gpui::px(HEIGHT))
 			.rounded(gpui::px(7.))
 			.border_1()
-			.border_color(gpui::rgba(0xffffff24))
-			.bg(gpui::rgb(0x464646))
+			.border_color(crate::ui_theme::rgba(0xffffff24))
+			.bg(crate::ui_theme::rgb(0x464646))
 			.overflow_hidden()
 			.occlude()
 			.on_scroll(|_, _, cx| cx.stop_propagation())
@@ -167,8 +167,8 @@ impl AgentSurface {
 					.h(gpui::px(view.viewport.1 / zoom * projection.scale))
 					.rounded(gpui::px(3.))
 					.border_1()
-					.border_color(gpui::rgba(0xb0c6f3b0))
-					.bg(gpui::rgba(0x8baaf70a)),
+					.border_color(crate::ui_theme::rgba(0xb0c6f3b0))
+					.bg(crate::ui_theme::rgba(0x8baaf70a)),
 			);
 		for node in &agents {
 			let point = points[&node.key];
@@ -179,7 +179,7 @@ impl AgentSurface {
 					.top(gpui::px(point.1 - 1.75))
 					.size(gpui::px(3.5))
 					.rounded_full()
-					.bg(gpui::rgb(node.color)),
+					.bg(crate::ui_theme::rgb(node.color)),
 			);
 		}
 		Some(self.relation_map_labels(map, graph, &points, cx))
@@ -284,7 +284,7 @@ impl AgentSurface {
 			.justify_center()
 			.font_family("Menlo")
 			.text_size(gpui::px(9.))
-			.text_color(gpui::rgb(
+			.text_color(crate::ui_theme::rgb(
 				if self.work_board.view.picked_agent.as_ref() == Some(&node.key) {
 					crate::ui_theme::BLUE
 				} else {
@@ -293,7 +293,7 @@ impl AgentSurface {
 			))
 			.rounded(gpui::px(3.))
 			.cursor_pointer()
-			.hover(|d| d.bg(gpui::rgba(0xffffff12)))
+			.hover(|d| d.bg(crate::ui_theme::rgba(0xffffff12)))
 			.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.navigate_relation_agent(&key, cx);
@@ -348,7 +348,7 @@ fn map_connections(links: Vec<((f32, f32), (f32, f32))>) -> impl IntoElement {
 				path.line_to(bounds.origin + gpui::point(gpui::px(to.0), gpui::px(to.1)));
 			}
 			if let Ok(path) = path.build() {
-				window.paint_path(path, gpui::rgba(0xd0c8d94a));
+				window.paint_path(path, crate::ui_theme::rgba(0xd0c8d94a));
 			}
 		},
 	)

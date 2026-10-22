@@ -63,9 +63,13 @@ impl AgentSurface {
 					.child(format!("{}{}", if chosen { "✓ " } else { "" }, label))
 					.text_size(gpui::px(11.))
 					.rounded(gpui::px(8.))
-					.bg(gpui::rgba(if chosen { 0xffffff16 } else { 0x00000000 }))
+					.bg(crate::ui_theme::rgba(if chosen { 0xffffff16 } else { 0x00000000 }))
 					.hover(move |s| {
-						s.bg(gpui::rgba(if chosen { SELECTED_HOVER_FILL } else { HOVER_FILL }))
+						s.bg(crate::ui_theme::rgba(if chosen {
+							SELECTED_HOVER_FILL
+						} else {
+							HOVER_FILL
+						}))
 					})
 					.on_click(cx.listener(move |s, _, _, cx| {
 						if available {

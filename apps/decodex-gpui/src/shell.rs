@@ -1889,8 +1889,8 @@ impl Render for Shell {
 			.min_h(gpui::px(720.0))
 			.flex()
 			.flex_col()
-			.bg(gpui::rgba(SHELL_MATERIAL))
-			.text_color(gpui::rgb(WB_TEXT));
+			.bg(crate::ui_theme::rgba(SHELL_MATERIAL))
+			.text_color(crate::ui_theme::rgb(WB_TEXT));
 
 		#[cfg(all(target_os = "macos", not(test)))]
 		self.agent.update(cx, |agent, cx| {
@@ -1998,8 +1998,8 @@ impl Render for SettingsWindow {
 			.size_full()
 			.flex()
 			.font_family(FONT_FAMILY)
-			.text_color(gpui::rgb(WB_TEXT))
-			.bg(gpui::rgba(SHELL_MATERIAL))
+			.text_color(crate::ui_theme::rgb(WB_TEXT))
+			.bg(crate::ui_theme::rgba(SHELL_MATERIAL))
 			.key_context("SettingsWindow")
 			.track_focus(&self.focus)
 			.on_action(cx.listener(|_, _: &CloseWindow, window, cx| {
@@ -2081,8 +2081,8 @@ impl Render for AccountDrag {
 			.px_3()
 			.py_2()
 			.rounded(gpui::px(8.))
-			.bg(gpui::rgb(0x29292d))
-			.text_color(gpui::rgb(WB_TEXT))
+			.bg(crate::ui_theme::rgb(0x29292d))
+			.text_color(crate::ui_theme::rgb(WB_TEXT))
 			.text_size(gpui::px(12.))
 			.child(self.label.clone())
 	}
@@ -2771,7 +2771,7 @@ fn tooltip_surface(text: SharedString, color: u32) -> Div {
 	crate::ui_motion::tooltip_surface(gpui::div())
 		.px_2()
 		.py_1()
-		.text_color(gpui::rgb(color))
+		.text_color(crate::ui_theme::rgb(color))
 		.child(text)
 }
 
@@ -2811,7 +2811,7 @@ fn topbar_controls(
 						.h(gpui::px(12.))
 						.mx(gpui::px(4.))
 						.flex_none()
-						.bg(gpui::rgba(0xffffff30)),
+						.bg(crate::ui_theme::rgba(0xffffff30)),
 				)
 			},
 		)
@@ -2834,15 +2834,15 @@ fn topbar_controls(
 				.justify_center()
 				.rounded(gpui::px(6.0))
 				.border_1()
-				.border_color(gpui::rgba(0x00000000))
+				.border_color(crate::ui_theme::rgba(0x00000000))
 				.bg(
 					if matches!(
 						shell.selected,
 						Destination::Settings | Destination::Accounts | Destination::Health
 					) {
-						gpui::rgba(0xffffff0a)
+						crate::ui_theme::rgba(0xffffff0a)
 					} else {
-						gpui::rgba(0x00000000)
+						crate::ui_theme::rgba(0x00000000)
 					},
 				)
 				.text_color(
@@ -2850,20 +2850,20 @@ fn topbar_controls(
 						shell.selected,
 						Destination::Settings | Destination::Accounts | Destination::Health
 					) {
-						gpui::rgb(WB_TEXT)
+						crate::ui_theme::rgb(WB_TEXT)
 					} else {
-						gpui::rgb(WB_TEXT_MUTED)
+						crate::ui_theme::rgb(WB_TEXT_MUTED)
 					},
 				)
 				.occlude()
 				.cursor_pointer()
 				.hover(|element| {
 					element
-						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
-						.text_color(gpui::rgb(WB_TEXT))
+						.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(crate::ui_theme::rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
-				.focus_visible(|element| element.border_color(gpui::rgba(0x8baaf780)))
+				.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
+				.focus_visible(|element| element.border_color(crate::ui_theme::rgba(0x8baaf780)))
 				.on_mouse_down(MouseButton::Left, |_, window, cx| {
 					window.prevent_default();
 					cx.stop_propagation();
@@ -2906,10 +2906,11 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		.flex()
 		.items_center()
 		.justify_center()
-		.when(active && index == 0, |el| el.bg(gpui::rgba(0xffffff0c)))
+		.when(active && index == 0, |el| el.bg(crate::ui_theme::rgba(0xffffff0c)))
 		.when(!enabled, |el| el.opacity(0.35))
 		.when(enabled, |el| {
-			el.cursor_pointer().hover(|el| el.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)))
+			el.cursor_pointer()
+				.hover(|el| el.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL)))
 		})
 		.occlude()
 		.on_mouse_down(MouseButton::Left, |_, window, cx| {
@@ -3136,9 +3137,9 @@ fn health_component_row(
 		.justify_between()
 		.gap_4()
 		.border_b_1()
-		.border_color(gpui::rgba(0xffffff0a))
+		.border_color(crate::ui_theme::rgba(0xffffff0a))
 		.text_size(gpui::px(BODY_SIZE))
-		.text_color(gpui::rgb(WB_TEXT_MUTED))
+		.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
 		.child(gpui::div().flex_1().min_w_0().flex().flex_col().gap_1().child(label).when(
 			!presentation.detail.is_empty()
 				&& !matches!(presentation.label, "Not checked" | "Disabled"),
@@ -3146,7 +3147,7 @@ fn health_component_row(
 				element.child(
 					gpui::div()
 						.text_size(gpui::px(BODY_SIZE))
-						.text_color(gpui::rgb(WB_TEXT_FAINT))
+						.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 						.child(presentation.detail),
 				)
 			},
@@ -3164,7 +3165,7 @@ fn health_component_row(
 						.size(gpui::px(5.0))
 						.min_w(gpui::px(5.0))
 						.rounded_full()
-						.bg(gpui::rgb(presentation.color)),
+						.bg(crate::ui_theme::rgb(presentation.color)),
 				)
 				.child(presentation.label),
 		)
@@ -3205,14 +3206,14 @@ fn health_component_section(
 					gpui::div()
 						.text_size(gpui::px(BODY_SIZE))
 						.font_weight(FontWeight::SEMIBOLD)
-						.text_color(gpui::rgb(WB_TEXT))
+						.text_color(crate::ui_theme::rgb(WB_TEXT))
 						.child(title),
 				)
 				.when(!detail.is_empty(), |heading| {
 					heading.child(
 						gpui::div()
 							.text_size(gpui::px(BODY_SIZE))
-							.text_color(gpui::rgb(WB_TEXT_FAINT))
+							.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 							.child(detail),
 					)
 				}),
@@ -3224,9 +3225,9 @@ fn health_component_section(
 				.aria_label(title)
 				.px_4()
 				.border_1()
-				.border_color(gpui::rgba(0xffffff10))
+				.border_color(crate::ui_theme::rgba(0xffffff10))
 				.rounded(gpui::px(10.0))
-				.bg(gpui::rgba(0xffffff04))
+				.bg(crate::ui_theme::rgba(0xffffff04))
 				.children(rows),
 		)
 		.into_any_element()
@@ -3252,12 +3253,20 @@ fn refresh_control(
 		.rounded(gpui::px(8.0))
 		.border_1()
 		.border_color(if can_refresh && focus.is_focused(window) {
-			gpui::rgb(WB_BLUE)
+			crate::ui_theme::rgb(WB_BLUE)
 		} else {
-			gpui::rgba(0xffffff16)
+			crate::ui_theme::rgba(0xffffff16)
 		})
-		.bg(if can_refresh { gpui::rgba(0xffffff08) } else { gpui::rgba(0xffffff03) })
-		.text_color(if can_refresh { gpui::rgb(WB_TEXT_MUTED) } else { gpui::rgb(WB_TEXT_FAINT) })
+		.bg(if can_refresh {
+			crate::ui_theme::rgba(0xffffff08)
+		} else {
+			crate::ui_theme::rgba(0xffffff03)
+		})
+		.text_color(if can_refresh {
+			crate::ui_theme::rgb(WB_TEXT_MUTED)
+		} else {
+			crate::ui_theme::rgb(WB_TEXT_FAINT)
+		})
 		.when(can_refresh, |element| {
 			element
 				.key_context("HealthRefresh")
@@ -3269,11 +3278,11 @@ fn refresh_control(
 				.cursor_pointer()
 				.hover(|element| {
 					element
-						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
-						.text_color(gpui::rgb(WB_TEXT))
+						.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(crate::ui_theme::rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
-				.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
+				.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
+				.focus_visible(|element| element.border_color(crate::ui_theme::rgb(WB_BLUE)))
 		})
 		.text_size(gpui::px(11.0))
 		.child("Refresh")
@@ -3300,7 +3309,7 @@ fn destination_header(
 			gpui::div()
 				.text_size(gpui::px(HEADING_SIZE))
 				.font_weight(FontWeight::SEMIBOLD)
-				.text_color(gpui::rgb(WB_TEXT))
+				.text_color(crate::ui_theme::rgb(WB_TEXT))
 				.child(selected.label()),
 		);
 	let header = gpui::div()
@@ -3311,8 +3320,8 @@ fn destination_header(
 		.items_center()
 		.justify_between()
 		.border_b_1()
-		.border_color(gpui::rgba(0xffffff0d))
-		.bg(gpui::rgba(0x00000014))
+		.border_color(crate::ui_theme::rgba(0xffffff0d))
+		.bg(crate::ui_theme::rgba(0x00000014))
 		.child(title);
 
 	if selected == Destination::Health {
@@ -3342,37 +3351,37 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 				.gap_3()
 				.rounded(gpui::px(14.0))
 				.border_1()
-				.border_color(gpui::rgba(0xffffff10))
-				.bg(gpui::rgba(SURFACE_RAISED_MATERIAL))
+				.border_color(crate::ui_theme::rgba(0xffffff10))
+				.bg(crate::ui_theme::rgba(SURFACE_RAISED_MATERIAL))
 				.child(
 					gpui::div()
 						.font_family(FONT_FAMILY)
 						.text_size(gpui::px(11.0))
-						.text_color(gpui::rgb(WB_ACCENT))
+						.text_color(crate::ui_theme::rgb(WB_ACCENT))
 						.child("Not available yet"),
 				)
 				.child(
 					gpui::div()
 						.text_size(gpui::px(18.0))
 						.font_weight(FontWeight::SEMIBOLD)
-						.text_color(gpui::rgb(WB_TEXT))
+						.text_color(crate::ui_theme::rgb(WB_TEXT))
 						.child(selected.label()),
 				)
 				.child(
 					gpui::div()
 						.text_size(gpui::px(11.0))
 						.line_height(gpui::px(17.0))
-						.text_color(gpui::rgb(WB_TEXT_MUTED))
+						.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
 						.child(selected.description()),
 				)
 				.child(
 					gpui::div()
 						.pt_3()
 						.border_t_1()
-						.border_color(gpui::rgba(0xffffff0d))
+						.border_color(crate::ui_theme::rgba(0xffffff0d))
 						.font_family(FONT_FAMILY)
 						.text_size(gpui::px(11.0))
-						.text_color(gpui::rgb(WB_TEXT_FAINT))
+						.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 						.child("This feature is not available in this version."),
 				),
 		)
@@ -3419,21 +3428,23 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 				.debug_selector(move || format!("account-card-{index}"))
 				.w_full()
 				.rounded(gpui::px(8.))
-				.bg(gpui::rgba(if fixed == Some(&account.account_id) {
+				.bg(crate::ui_theme::rgba(if fixed == Some(&account.account_id) {
 					0xffffff0a
 				} else {
 					0xffffff04
 				}))
 				.cursor_pointer()
-				.hover(|style| style.bg(gpui::rgba(0xffffff0c)))
+				.hover(|style| style.bg(crate::ui_theme::rgba(0xffffff0c)))
 				.on_click(cx.listener(move |shell, _, _, cx| {
 					shell.toggle_account_activity(profile_id.clone(), cx);
 				}))
 				.when(snapshot.can_manage, |row| {
-					row.drag_over::<AccountDrag>(|style, _, _, _| style.bg(gpui::rgba(0x8baaf72a)))
-						.on_drop(cx.listener(move |s, drag: &AccountDrag, _, cx| {
-							s.drop_account(drag, &target, cx)
-						}))
+					row.drag_over::<AccountDrag>(|style, _, _, _| {
+						style.bg(crate::ui_theme::rgba(0x8baaf72a))
+					})
+					.on_drop(cx.listener(
+						move |s, drag: &AccountDrag, _, cx| s.drop_account(drag, &target, cx),
+					))
 				})
 				.flex()
 				.flex_col()
@@ -3540,7 +3551,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 								} else {
 									gpui::div()
 										.text_size(gpui::px(11.))
-										.text_color(gpui::rgb(WB_TEXT_MUTED))
+										.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
 										.child(accounts_load_label(snapshot.load))
 										.into_any_element()
 								},
@@ -3569,17 +3580,17 @@ fn empty_accounts() -> impl IntoElement {
 		.gap_2()
 		.rounded(gpui::px(12.0))
 		.border_1()
-		.border_color(gpui::rgba(0xffffff0d))
-		.bg(gpui::rgba(0xffffff04))
+		.border_color(crate::ui_theme::rgba(0xffffff0d))
+		.bg(crate::ui_theme::rgba(0xffffff04))
 		.text_size(gpui::px(11.0))
-		.text_color(gpui::rgb(WB_TEXT_MUTED))
+		.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
 		.debug_selector(|| "accounts-empty".into())
 		.child("No accounts added")
 		.child(
 			gpui::div()
 				.font_family(FONT_FAMILY)
 				.text_size(gpui::px(11.0))
-				.text_color(gpui::rgb(WB_TEXT_FAINT))
+				.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 				.child("Sign in above to add your first account."),
 		)
 }
@@ -3599,18 +3610,26 @@ fn account_mode_button(
 		.flex()
 		.items_center()
 		.rounded(gpui::px(7.0))
-		.bg(if selected { gpui::rgba(0x60a5fa16) } else { gpui::rgba(0x00000000) })
+		.bg(if selected {
+			crate::ui_theme::rgba(0x60a5fa16)
+		} else {
+			crate::ui_theme::rgba(0x00000000)
+		})
 		.text_size(gpui::px(11.0))
-		.text_color(if selected { gpui::rgb(WB_TEXT) } else { gpui::rgb(WB_TEXT_MUTED) })
+		.text_color(if selected {
+			crate::ui_theme::rgb(WB_TEXT)
+		} else {
+			crate::ui_theme::rgb(WB_TEXT_MUTED)
+		})
 		.when(can_manage && !selected, |button| {
 			button
 				.cursor_pointer()
 				.hover(|element| {
 					element
-						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
-						.text_color(gpui::rgb(WB_TEXT))
+						.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(crate::ui_theme::rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
+				.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
 				.on_click(cx.listener(|shell, _, _, cx| shell.select_balanced_accounts(cx)))
 		})
 		.child(label)
@@ -3659,17 +3678,17 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 					gpui::div()
 						.font_family(FONT_FAMILY)
 						.text_size(gpui::px(11.0))
-						.text_color(gpui::rgb(WB_TEXT))
+						.text_color(crate::ui_theme::rgb(WB_TEXT))
 						.child("Add account"),
 				)
 				.when_some(status, |row, status| {
 					row.child(
-						gpui::div().text_size(gpui::px(10.5)).text_color(gpui::rgb(WB_TEXT_MUTED)).child(status),
+						gpui::div().text_size(gpui::px(10.5)).text_color(crate::ui_theme::rgb(WB_TEXT_MUTED)).child(status),
 					)
 				})
 				.when_some(prompt, |details, (code, url)| {
 					details.child(account_login_prompt(code, url)).child(
-						gpui::div().text_size(gpui::px(10.5)).text_color(gpui::rgb(WB_TEXT_MUTED)).child("Use this code only for the sign-in you started in Decodex. Cancel if someone else asked you to enter a code."),
+						gpui::div().text_size(gpui::px(10.5)).text_color(crate::ui_theme::rgb(WB_TEXT_MUTED)).child("Use this code only for the sign-in you started in Decodex. Cancel if someone else asked you to enter a code."),
 					)
 				}),
 		)
@@ -3750,7 +3769,7 @@ fn account_login_prompt(code: String, url: String) -> AnyElement {
 			gpui::div()
 				.font_family("SF Mono")
 				.text_size(gpui::px(13.0))
-				.text_color(gpui::rgb(WB_TEXT))
+				.text_color(crate::ui_theme::rgb(WB_TEXT))
 				.child(code),
 		)
 		.child(
@@ -3761,7 +3780,7 @@ fn account_login_prompt(code: String, url: String) -> AnyElement {
 				.text_ellipsis()
 				.font_family(FONT_FAMILY)
 				.text_size(gpui::px(11.0))
-				.text_color(gpui::rgb(WB_TEXT_FAINT))
+				.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 				.child(url),
 		)
 		.into_any_element()
@@ -3785,17 +3804,17 @@ fn account_login_button(
 		.justify_center()
 		.rounded(gpui::px(7.0))
 		.text_size(gpui::px(11.0))
-		.text_color(gpui::rgb(if enabled { WB_TEXT_MUTED } else { WB_TEXT_FAINT }))
+		.text_color(crate::ui_theme::rgb(if enabled { WB_TEXT_MUTED } else { WB_TEXT_FAINT }))
 		.opacity(if enabled { 1.0 } else { 0.55 })
 		.when(enabled, |button| {
 			button
 				.cursor_pointer()
 				.hover(|element| {
 					element
-						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
-						.text_color(gpui::rgb(WB_TEXT))
+						.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(crate::ui_theme::rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
+				.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
 		})
 		.child(label)
 }
@@ -3962,7 +3981,7 @@ fn account_pool_summary(
 							.h(gpui::px(14.))
 							.flex_none()
 							.mx(gpui::px(2.))
-							.bg(gpui::rgba(0xffffff26)),
+							.bg(crate::ui_theme::rgba(0xffffff26)),
 					)
 					.child(quota_meter::meter(
 						"7d",
@@ -3993,12 +4012,16 @@ fn account_pool_summary(
 						.items_center()
 						.justify_center()
 						.rounded(gpui::px(7.0))
-						.bg(if fixed { gpui::rgba(0x8baaf738) } else { gpui::rgba(0x00000000) })
+						.bg(if fixed {
+							crate::ui_theme::rgba(0x8baaf738)
+						} else {
+							crate::ui_theme::rgba(0x00000000)
+						})
 						.text_size(gpui::px(11.0))
 						.text_color(if fixed {
-							gpui::rgb(WB_BLUE)
+							crate::ui_theme::rgb(WB_BLUE)
 						} else {
-							gpui::rgb(WB_TEXT_MUTED)
+							crate::ui_theme::rgb(WB_TEXT_MUTED)
 						})
 						.on_click(cx.listener(move |shell, _, _, cx| {
 							cx.stop_propagation();
@@ -4012,10 +4035,10 @@ fn account_pool_summary(
 								.cursor_pointer()
 								.hover(|element| {
 									element
-										.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
-										.text_color(gpui::rgb(WB_TEXT))
+										.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+										.text_color(crate::ui_theme::rgb(WB_TEXT))
 								})
-								.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
+								.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
 						})
 						.child(workspace_symbols::icon(if fixed {
 							workspace_symbols::Symbol::AccountRouteActive
@@ -4253,15 +4276,15 @@ fn account_row_action(
 		.rounded(gpui::px(6.0))
 		.font_family(FONT_FAMILY)
 		.text_size(gpui::px(11.0))
-		.text_color(gpui::rgb(if enabled { WB_TEXT_MUTED } else { WB_TEXT_FAINT }))
+		.text_color(crate::ui_theme::rgb(if enabled { WB_TEXT_MUTED } else { WB_TEXT_FAINT }))
 		.opacity(if enabled { 1.0 } else { 0.5 })
 		.when(enabled, |button| {
 			button
 				.cursor_pointer()
 				.hover(|element| {
 					element
-						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
-						.text_color(gpui::rgb(WB_TEXT))
+						.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(crate::ui_theme::rgb(WB_TEXT))
 				})
 				.active(|element| element.opacity(0.9))
 		})
@@ -4472,8 +4495,8 @@ fn conversation_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 		.flex()
 		.flex_col()
 		.border_r_1()
-		.border_color(gpui::rgba(0xffffff0d))
-		.bg(gpui::rgba(SIDEBAR_MATERIAL))
+		.border_color(crate::ui_theme::rgba(0xffffff0d))
+		.bg(crate::ui_theme::rgba(SIDEBAR_MATERIAL))
 		.child(conversation_sessions_header(shell, cx))
 		.child(
 			gpui::div()
@@ -4575,16 +4598,26 @@ fn inspector_tab(
 		.items_center()
 		.justify_center()
 		.rounded(gpui::px(6.0))
-		.bg(if is_selected { gpui::rgba(0xffffff0e) } else { gpui::rgba(0x00000000) })
+		.bg(if is_selected {
+			crate::ui_theme::rgba(0xffffff0e)
+		} else {
+			crate::ui_theme::rgba(0x00000000)
+		})
 		.text_size(gpui::px(11.0))
 		.font_weight(if is_selected { FontWeight::MEDIUM } else { FontWeight::NORMAL })
-		.text_color(if is_selected { gpui::rgb(WB_TEXT) } else { gpui::rgb(WB_TEXT_FAINT) })
+		.text_color(if is_selected {
+			crate::ui_theme::rgb(WB_TEXT)
+		} else {
+			crate::ui_theme::rgb(WB_TEXT_FAINT)
+		})
 		.cursor_pointer()
 		.hover(|element| {
-			element.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)).text_color(gpui::rgb(WB_TEXT))
+			element
+				.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+				.text_color(crate::ui_theme::rgb(WB_TEXT))
 		})
-		.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
-		.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
+		.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
+		.focus_visible(|element| element.border_color(crate::ui_theme::rgb(WB_BLUE)))
 		.on_click(cx.listener(move |shell, _, _, cx| {
 			shell.inspector_tab = tab;
 
@@ -4607,7 +4640,7 @@ fn inspector_metadata_row(label: &'static str, value: String) -> AnyElement {
 			gpui::div()
 				.w(gpui::px(78.0))
 				.min_w(gpui::px(78.0))
-				.text_color(gpui::rgb(WB_TEXT_FAINT))
+				.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 				.child(label),
 		)
 		.child(
@@ -4615,7 +4648,7 @@ fn inspector_metadata_row(label: &'static str, value: String) -> AnyElement {
 				.min_w_0()
 				.flex_1()
 				.font_family(FONT_FAMILY)
-				.text_color(gpui::rgb(WB_TEXT_MUTED))
+				.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
 				.text_right()
 				.overflow_hidden()
 				.whitespace_nowrap()
@@ -4634,7 +4667,7 @@ fn conversation_native_settings_inspector(
 			.debug_selector(|| "conversation-native-settings-unavailable".into())
 			.role(Role::Status)
 			.text_size(gpui::px(11.0))
-			.text_color(gpui::rgb(WB_TEXT_FAINT))
+			.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 			.child("Native settings have not been observed.")
 			.into_any_element();
 	};
@@ -4650,7 +4683,7 @@ fn conversation_native_settings_inspector(
 		.child(
 			gpui::div()
 				.text_size(gpui::px(11.0))
-				.text_color(gpui::rgb(WB_TEXT_FAINT))
+				.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 				.child("Last read from Codex"),
 		)
 		.child(inspector_metadata_row("Model", settings.model.as_str().to_owned()))
@@ -4669,7 +4702,7 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 			.py_8()
 			.text_center()
 			.text_size(gpui::px(11.0))
-			.text_color(gpui::rgb(WB_TEXT_FAINT))
+			.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 			.child("Select a conversation to view its context.")
 			.into_any_element();
 	};
@@ -4689,7 +4722,7 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 				.aria_level(2)
 				.text_size(gpui::px(14.0))
 				.font_weight(FontWeight::SEMIBOLD)
-				.text_color(gpui::rgb(WB_TEXT))
+				.text_color(crate::ui_theme::rgb(WB_TEXT))
 				.child(task.title.as_str().to_owned()),
 		)
 		.child(inspector_metadata_row(
@@ -4714,7 +4747,7 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 				gpui::div()
 					.text_size(gpui::px(11.0))
 					.line_height(gpui::px(14.0))
-					.text_color(gpui::rgb(WB_TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
 					.whitespace_normal()
 					.child(program.instructions.as_str().to_owned()),
 			);
@@ -4736,9 +4769,9 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 				.justify_center()
 				.rounded(gpui::px(7.0))
 				.border_1()
-				.border_color(gpui::rgba(0xffffff16))
+				.border_color(crate::ui_theme::rgba(0xffffff16))
 				.text_size(gpui::px(11.0))
-				.text_color(gpui::rgb(WB_BLUE))
+				.text_color(crate::ui_theme::rgb(WB_BLUE))
 				.cursor_pointer()
 				.on_click(cx.listener(move |_, _, _, cx| cx.open_url(&url)))
 				.child("Open in Codex")
@@ -4748,7 +4781,7 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 		content = content.child(
 			gpui::div()
 				.text_size(gpui::px(11.0))
-				.text_color(gpui::rgb(WB_TEXT_FAINT))
+				.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 				.child("Codex link becomes available after exact provider-thread readback."),
 		);
 	}
@@ -4787,11 +4820,15 @@ fn activity_inspector_row(
 						.mt(gpui::px(5.0))
 						.size(gpui::px(5.0))
 						.rounded_full()
-						.bg(gpui::rgb(color)),
+						.bg(crate::ui_theme::rgb(color)),
 				)
 				.when(index + 1 < 8, |element| {
 					element.child(
-						gpui::div().mt_1().w(gpui::px(1.0)).flex_1().bg(gpui::rgba(0xffffff0c)),
+						gpui::div()
+							.mt_1()
+							.w(gpui::px(1.0))
+							.flex_1()
+							.bg(crate::ui_theme::rgba(0xffffff0c)),
 					)
 				}),
 		)
@@ -4810,8 +4847,12 @@ fn activity_inspector_row(
 						.justify_between()
 						.gap_2()
 						.text_size(gpui::px(11.0))
-						.child(gpui::div().text_color(gpui::rgb(WB_TEXT_MUTED)).child(kind))
-						.child(gpui::div().text_color(gpui::rgb(WB_TEXT_FAINT)).child(role)),
+						.child(
+							gpui::div().text_color(crate::ui_theme::rgb(WB_TEXT_MUTED)).child(kind),
+						)
+						.child(
+							gpui::div().text_color(crate::ui_theme::rgb(WB_TEXT_FAINT)).child(role),
+						),
 				)
 				.child(
 					gpui::div()
@@ -4819,7 +4860,7 @@ fn activity_inspector_row(
 						.overflow_hidden()
 						.text_size(gpui::px(11.0))
 						.line_height(gpui::px(14.0))
-						.text_color(gpui::rgb(WB_TEXT_FAINT))
+						.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 						.whitespace_normal()
 						.child(summary),
 				),
@@ -4874,10 +4915,15 @@ fn activity_inspector_content(shell: &Shell) -> AnyElement {
 				.items_center()
 				.gap_2()
 				.rounded(gpui::px(8.0))
-				.bg(gpui::rgba(0xffffff07))
+				.bg(crate::ui_theme::rgba(0xffffff07))
 				.text_size(gpui::px(11.0))
-				.text_color(gpui::rgb(WB_TEXT_MUTED))
-				.child(gpui::div().size(gpui::px(5.0)).rounded_full().bg(gpui::rgb(task_color)))
+				.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
+				.child(
+					gpui::div()
+						.size(gpui::px(5.0))
+						.rounded_full()
+						.bg(crate::ui_theme::rgb(task_color)),
+				)
 				.child(task_state),
 		)
 		.when(
@@ -4888,7 +4934,7 @@ fn activity_inspector_content(shell: &Shell) -> AnyElement {
 						.py_6()
 						.text_center()
 						.text_size(gpui::px(11.0))
-						.text_color(gpui::rgb(WB_TEXT_FAINT))
+						.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 						.child("Activity appears after verified history readback."),
 				)
 			},
@@ -4913,8 +4959,8 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.flex()
 		.flex_col()
 		.border_l_1()
-		.border_color(gpui::rgba(0xffffff0f))
-		.bg(gpui::rgba(SIDEBAR_MATERIAL))
+		.border_color(crate::ui_theme::rgba(0xffffff0f))
+		.bg(crate::ui_theme::rgba(SIDEBAR_MATERIAL))
 		.child(
 			gpui::div()
 				.h(gpui::px(44.0))
@@ -4924,7 +4970,7 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.items_center()
 				.justify_between()
 				.border_b_1()
-				.border_color(gpui::rgba(0xffffff0d))
+				.border_color(crate::ui_theme::rgba(0xffffff0d))
 				.child(
 					gpui::div()
 						.id("inspector-tabs")
@@ -4934,7 +4980,7 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.flex()
 						.gap_1()
 						.rounded(gpui::px(8.0))
-						.bg(gpui::rgba(0x00000024))
+						.bg(crate::ui_theme::rgba(0x00000024))
 						.child(inspector_tab(
 							"inspector-context",
 							"Context",
@@ -4961,17 +5007,19 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.items_center()
 						.rounded(gpui::px(6.0))
 						.border_1()
-						.border_color(gpui::rgba(0xffffff10))
+						.border_color(crate::ui_theme::rgba(0xffffff10))
 						.text_size(gpui::px(11.0))
-						.text_color(gpui::rgb(WB_TEXT_MUTED))
+						.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
 						.cursor_pointer()
 						.hover(|element| {
 							element
-								.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
-								.text_color(gpui::rgb(WB_TEXT))
+								.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+								.text_color(crate::ui_theme::rgb(WB_TEXT))
 						})
-						.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
-						.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
+						.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
+						.focus_visible(|element| {
+							element.border_color(crate::ui_theme::rgb(WB_BLUE))
+						})
 						.on_click(cx.listener(|shell, _, _, cx| {
 							shell.select_destination(Destination::Agent, cx);
 						}))
@@ -5010,11 +5058,15 @@ fn conversation_transcript(
 						.px_3()
 						.py_2()
 						.rounded(gpui::px(8.0))
-						.bg(gpui::rgba(0xffffff0a))
+						.bg(crate::ui_theme::rgba(0xffffff0a))
 						.border_1()
-						.border_color(gpui::rgba(if pending { 0x7aa2ff32 } else { 0xffffff0b }))
+						.border_color(crate::ui_theme::rgba(if pending {
+							0x7aa2ff32
+						} else {
+							0xffffff0b
+						}))
 						.text_size(gpui::px(11.0))
-						.text_color(gpui::rgb(WB_TEXT))
+						.text_color(crate::ui_theme::rgb(WB_TEXT))
 						.whitespace_normal()
 						.child(text),
 				)
@@ -5029,7 +5081,7 @@ fn conversation_transcript(
 							.mt(gpui::px(5.0))
 							.size(gpui::px(5.0))
 							.rounded_full()
-							.bg(gpui::rgb(WB_ACCENT)),
+							.bg(crate::ui_theme::rgb(WB_ACCENT)),
 					)
 				})
 				.child(
@@ -5037,7 +5089,7 @@ fn conversation_transcript(
 						.flex_1()
 						.min_w_0()
 						.text_size(gpui::px(11.0))
-						.text_color(gpui::rgb(WB_TEXT))
+						.text_color(crate::ui_theme::rgb(WB_TEXT))
 						.whitespace_normal()
 						.child(text),
 				)
@@ -5051,16 +5103,18 @@ fn conversation_transcript(
 				.gap_2()
 				.rounded(gpui::px(6.0))
 				.text_size(gpui::px(11.0))
-				.text_color(gpui::rgb(WB_TEXT_FAINT))
+				.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 				.child(
 					gpui::div()
 						.font_family(FONT_FAMILY)
 						.text_size(gpui::px(11.0))
-						.text_color(gpui::rgb(if status == HistoryItemStatusDto::Failed {
-							WB_AMBER
-						} else {
-							WB_TEXT_FAINT
-						}))
+						.text_color(crate::ui_theme::rgb(
+							if status == HistoryItemStatusDto::Failed {
+								WB_AMBER
+							} else {
+								WB_TEXT_FAINT
+							},
+						))
 						.child(history_kind_label(kind, status)),
 				)
 				.child(
@@ -5100,7 +5154,7 @@ fn conversation_transcript(
 						.max_w(gpui::px(760.0))
 						.py_3()
 						.text_size(gpui::px(11.0))
-						.text_color(gpui::rgb(WB_TEXT_FAINT))
+						.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 						.child(history_status),
 				),
 			)
@@ -5130,11 +5184,15 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.justify_center()
 		.rounded_sm()
 		.text_size(gpui::px(11.0))
-		.text_color(if can_previous { gpui::rgb(WB_TEXT_MUTED) } else { gpui::rgb(WB_TEXT_FAINT) })
+		.text_color(if can_previous {
+			crate::ui_theme::rgb(WB_TEXT_MUTED)
+		} else {
+			crate::ui_theme::rgb(WB_TEXT_FAINT)
+		})
 		.when(can_previous, |element| {
 			element
 				.cursor_pointer()
-				.hover(|element| element.bg(gpui::rgba(ui_theme::HOVER_FILL)))
+				.hover(|element| element.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.show_previous_history(window, cx);
 				}))
@@ -5151,11 +5209,15 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.justify_center()
 		.rounded_sm()
 		.text_size(gpui::px(11.0))
-		.text_color(if can_retry { gpui::rgb(WB_TEXT_MUTED) } else { gpui::rgb(WB_TEXT_FAINT) })
+		.text_color(if can_retry {
+			crate::ui_theme::rgb(WB_TEXT_MUTED)
+		} else {
+			crate::ui_theme::rgb(WB_TEXT_FAINT)
+		})
 		.when(can_retry, |element| {
 			element
 				.cursor_pointer()
-				.hover(|element| element.bg(gpui::rgba(ui_theme::HOVER_FILL)))
+				.hover(|element| element.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.retry_history(window, cx);
 				}))
@@ -5173,11 +5235,15 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.justify_center()
 		.rounded_sm()
 		.text_size(gpui::px(11.0))
-		.text_color(if can_next { gpui::rgb(WB_TEXT_MUTED) } else { gpui::rgb(WB_TEXT_FAINT) })
+		.text_color(if can_next {
+			crate::ui_theme::rgb(WB_TEXT_MUTED)
+		} else {
+			crate::ui_theme::rgb(WB_TEXT_FAINT)
+		})
 		.when(can_next, |element| {
 			element
 				.cursor_pointer()
-				.hover(|element| element.bg(gpui::rgba(ui_theme::HOVER_FILL)))
+				.hover(|element| element.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.show_next_history(window, cx);
 				}))
@@ -5283,8 +5349,8 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.flex_col()
 				.rounded(gpui::px(11.0))
 				.border_1()
-				.border_color(gpui::rgba(0xffffff16))
-				.bg(gpui::rgba(COMPOSER_MATERIAL))
+				.border_color(crate::ui_theme::rgba(0xffffff16))
+				.bg(crate::ui_theme::rgba(COMPOSER_MATERIAL))
 				.shadow(vec![
 					BoxShadow::new(
 						gpui::px(0.0),
@@ -5332,7 +5398,7 @@ fn conversation_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 										gpui::div()
 											.font_family(FONT_FAMILY)
 											.text_size(gpui::px(11.0))
-											.text_color(gpui::rgb(WB_TEXT_FAINT))
+											.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 											.child(format!("{composer_len}/{MAX_COMPOSER_BYTES}")),
 									)
 								})
@@ -5459,9 +5525,9 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 					.py_1()
 					.rounded_md()
 					.text_color(if current == id && !shell.conversations.service_tier_unknown() {
-						gpui::rgb(WB_AMBER)
+						crate::ui_theme::rgb(WB_AMBER)
 					} else {
-						gpui::rgb(WB_TEXT_MUTED)
+						crate::ui_theme::rgb(WB_TEXT_MUTED)
 					})
 					.child(if choice.description.is_empty() {
 						choice.name
@@ -5551,7 +5617,7 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.min_h_0()
 						.flex()
 						.flex_col()
-						.bg(gpui::rgba(CONTENT_MATERIAL))
+						.bg(crate::ui_theme::rgba(CONTENT_MATERIAL))
 						.child(
 							gpui::div()
 								.h(gpui::px(44.0))
@@ -5561,18 +5627,18 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 								.items_center()
 								.gap_3()
 								.border_b_1()
-								.border_color(gpui::rgba(0xffffff0d))
+								.border_color(crate::ui_theme::rgba(0xffffff0d))
 								.child(
 									gpui::div()
 										.size(gpui::px(6.0))
 										.rounded_full()
-										.bg(gpui::rgb(state_color)),
+										.bg(crate::ui_theme::rgb(state_color)),
 								)
 								.child(
 									gpui::div()
 										.text_size(gpui::px(11.0))
 										.font_weight(FontWeight::MEDIUM)
-										.text_color(gpui::rgb(WB_TEXT))
+										.text_color(crate::ui_theme::rgb(WB_TEXT))
 										.child(state_label),
 								)
 								.child(
@@ -5583,7 +5649,7 @@ fn conversations_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 										.whitespace_nowrap()
 										.text_ellipsis()
 										.text_size(gpui::px(11.0))
-										.text_color(gpui::rgb(WB_TEXT_FAINT))
+										.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 										.child(detail),
 								)
 								.child(history_page_controls(shell, cx)),
@@ -5648,12 +5714,17 @@ fn connection_status(presentation: ConnectionPresentation) -> AnyElement {
 		.items_center()
 		.gap_3()
 		.border_t_1()
-		.border_color(gpui::rgba(0xffffff0d))
-		.bg(gpui::rgba(0x00000016))
+		.border_color(crate::ui_theme::rgba(0xffffff0d))
+		.bg(crate::ui_theme::rgba(0x00000016))
 		.font_family(FONT_FAMILY)
 		.text_size(gpui::px(11.0))
-		.text_color(gpui::rgb(WB_TEXT_FAINT))
-		.child(gpui::div().size(gpui::px(6.0)).rounded_full().bg(gpui::rgb(presentation.color)))
+		.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
+		.child(
+			gpui::div()
+				.size(gpui::px(6.0))
+				.rounded_full()
+				.bg(crate::ui_theme::rgb(presentation.color)),
+		)
 		.child(gpui::div().w(gpui::px(110.0)).min_w(gpui::px(110.0)).child(presentation.label))
 		.child(
 			gpui::div()
@@ -5716,7 +5787,7 @@ fn destination_content(
 		.h_full()
 		.flex()
 		.flex_col()
-		.bg(gpui::rgba(CONTENT_MATERIAL))
+		.bg(crate::ui_theme::rgba(CONTENT_MATERIAL))
 		.child(destination_header(selected, &shell.health, refresh_focus, window, cx))
 		.child(content)
 		.child(connection_status(presentation))
@@ -5741,7 +5812,7 @@ fn settings_navigation(
 		.gap(gpui::px(3.0))
 		.text_size(gpui::px(BODY_SIZE))
 		.pr(gpui::px(16.))
-		.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
+		.bg(crate::ui_theme::rgba(AGENT_SIDEBAR_MATERIAL))
 		.child(
 			gpui::div()
 				.px_2()
@@ -5792,9 +5863,11 @@ fn settings_navigation(
 				.flex()
 				.items_center()
 				.cursor_pointer()
-				.when(active, |row| row.bg(gpui::rgba(0xffffff0c)).text_color(gpui::rgb(TEXT)))
+				.when(active, |row| {
+					row.bg(crate::ui_theme::rgba(0xffffff0c)).text_color(crate::ui_theme::rgb(TEXT))
+				})
 				.hover(move |row| {
-					row.bg(gpui::rgba(if active {
+					row.bg(crate::ui_theme::rgba(if active {
 						SELECTED_HOVER_FILL
 					} else {
 						ui_theme::HOVER_FILL
@@ -5834,7 +5907,7 @@ fn settings_workspace_content(
 		.min_h_0()
 		.h_full()
 		.overflow_hidden()
-		.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
+		.bg(crate::ui_theme::rgba(AGENT_SIDEBAR_MATERIAL))
 		.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
 		.flex()
 		.flex_col();
@@ -5925,6 +5998,7 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 			move |window, cx| {
 				cx.new(|cx| {
 					ui_motion::observe_activation(window, cx);
+					crate::ui_theme::appearance::observe(window, cx);
 					{
 						window.on_next_frame(|window, _| window_material::configure(window));
 						cx.observe_window_appearance(window, |_, window, _| {
@@ -6003,16 +6077,26 @@ fn composer_send(can_send: bool, cx: &mut Context<Shell>) -> AnyElement {
 		.items_center()
 		.justify_center()
 		.rounded(gpui::px(7.0))
-		.bg(if can_send { gpui::rgb(WB_TEXT) } else { gpui::rgba(0xffffff08) })
+		.bg(if can_send {
+			crate::ui_theme::rgb(WB_TEXT)
+		} else {
+			crate::ui_theme::rgba(0xffffff08)
+		})
 		.text_size(gpui::px(11.0))
 		.font_weight(FontWeight::SEMIBOLD)
-		.text_color(if can_send { gpui::rgb(WB_CANVAS) } else { gpui::rgb(WB_TEXT_FAINT) })
+		.text_color(if can_send {
+			crate::ui_theme::rgb(WB_CANVAS)
+		} else {
+			crate::ui_theme::rgb(WB_TEXT_FAINT)
+		})
 		.when(can_send, |element| {
 			element
 				.cursor_pointer()
 				.hover(|element| element.opacity(0.9))
 				.active(|element| element.opacity(0.72))
-				.focus_visible(|element| element.border_1().border_color(gpui::rgb(WB_BLUE)))
+				.focus_visible(|element| {
+					element.border_1().border_color(crate::ui_theme::rgb(WB_BLUE))
+				})
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.submit_conversation(window, cx);
 				}))
@@ -6034,15 +6118,19 @@ fn composer_interrupt(can_interrupt: bool, cx: &mut Context<Shell>) -> AnyElemen
 		.justify_center()
 		.rounded(gpui::px(7.0))
 		.border_1()
-		.border_color(gpui::rgba(0xffffff12))
+		.border_color(crate::ui_theme::rgba(0xffffff12))
 		.text_size(gpui::px(11.0))
-		.text_color(if can_interrupt { gpui::rgb(WB_TEXT_MUTED) } else { gpui::rgb(WB_TEXT_FAINT) })
+		.text_color(if can_interrupt {
+			crate::ui_theme::rgb(WB_TEXT_MUTED)
+		} else {
+			crate::ui_theme::rgb(WB_TEXT_FAINT)
+		})
 		.when(can_interrupt, |element| {
 			element
 				.cursor_pointer()
-				.hover(|element| element.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)))
-				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
-				.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
+				.hover(|element| element.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL)))
+				.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
+				.focus_visible(|element| element.border_color(crate::ui_theme::rgb(WB_BLUE)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.interrupt_conversation(window, cx);
 				}))
@@ -6069,13 +6157,21 @@ fn composer_recover(
 		.justify_center()
 		.rounded(gpui::px(7.0))
 		.border_1()
-		.border_color(if can_recover { gpui::rgba(0xf59e0b55) } else { gpui::rgba(0xffffff10) })
+		.border_color(if can_recover {
+			crate::ui_theme::rgba(0xf59e0b55)
+		} else {
+			crate::ui_theme::rgba(0xffffff10)
+		})
 		.text_size(gpui::px(11.0))
-		.text_color(if can_recover { gpui::rgb(WB_AMBER) } else { gpui::rgb(WB_TEXT_FAINT) })
+		.text_color(if can_recover {
+			crate::ui_theme::rgb(WB_AMBER)
+		} else {
+			crate::ui_theme::rgb(WB_TEXT_FAINT)
+		})
 		.when(can_recover, |element| {
 			element
 				.cursor_pointer()
-				.hover(|element| element.bg(gpui::rgba(0xf59e0b12)))
+				.hover(|element| element.bg(crate::ui_theme::rgba(0xf59e0b12)))
 				.active(|element| element.opacity(0.72))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.recover_conversation(window, cx);
@@ -6097,14 +6193,16 @@ fn composer_model_control(model_label: String, cx: &mut Context<Shell>) -> AnyEl
 		.items_center()
 		.rounded(gpui::px(6.0))
 		.border_1()
-		.border_color(gpui::rgba(0xffffff10))
-		.bg(gpui::rgba(0x00000018))
+		.border_color(crate::ui_theme::rgba(0xffffff10))
+		.bg(crate::ui_theme::rgba(0x00000018))
 		.font_family(FONT_FAMILY)
 		.text_size(gpui::px(11.0))
-		.text_color(gpui::rgb(WB_TEXT_MUTED))
+		.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
 		.cursor_pointer()
 		.hover(|element| {
-			element.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)).text_color(gpui::rgb(WB_TEXT))
+			element
+				.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+				.text_color(crate::ui_theme::rgb(WB_TEXT))
 		})
 		.active(|element| element.opacity(0.72))
 		.on_click(cx.listener(|shell, _, _, cx| shell.cycle_conversation_model(cx)))
@@ -6125,21 +6223,35 @@ fn composer_fast_control(fast_enabled: bool, cx: &mut Context<Shell>) -> AnyElem
 		.gap_1()
 		.rounded(gpui::px(6.0))
 		.border_1()
-		.border_color(if fast_enabled { gpui::rgba(0xffa45d40) } else { gpui::rgba(0xffffff10) })
-		.bg(if fast_enabled { gpui::rgba(0xff8a3d16) } else { gpui::rgba(0x00000018) })
+		.border_color(if fast_enabled {
+			crate::ui_theme::rgba(0xffa45d40)
+		} else {
+			crate::ui_theme::rgba(0xffffff10)
+		})
+		.bg(if fast_enabled {
+			crate::ui_theme::rgba(0xff8a3d16)
+		} else {
+			crate::ui_theme::rgba(0x00000018)
+		})
 		.font_family(FONT_FAMILY)
 		.text_size(gpui::px(11.0))
-		.text_color(if fast_enabled { gpui::rgb(WB_AMBER) } else { gpui::rgb(WB_TEXT_MUTED) })
+		.text_color(if fast_enabled {
+			crate::ui_theme::rgb(WB_AMBER)
+		} else {
+			crate::ui_theme::rgb(WB_TEXT_MUTED)
+		})
 		.cursor_pointer()
 		.hover(|element| {
-			element.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)).text_color(gpui::rgb(WB_TEXT))
+			element
+				.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+				.text_color(crate::ui_theme::rgb(WB_TEXT))
 		})
 		.active(|element| element.opacity(0.72))
 		.on_click(cx.listener(|shell, _, _, cx| shell.toggle_conversation_fast(cx)))
 		.child(gpui::div().size(gpui::px(4.0)).rounded_full().bg(if fast_enabled {
-			gpui::rgb(WB_AMBER)
+			crate::ui_theme::rgb(WB_AMBER)
 		} else {
-			gpui::rgb(WB_TEXT_FAINT)
+			crate::ui_theme::rgb(WB_TEXT_FAINT)
 		}))
 		.child("Fast")
 		.into_any_element()
@@ -6157,14 +6269,16 @@ fn composer_effort_control(effort_label: String, cx: &mut Context<Shell>) -> Any
 		.items_center()
 		.rounded(gpui::px(6.0))
 		.border_1()
-		.border_color(gpui::rgba(0xffffff10))
-		.bg(gpui::rgba(0x00000018))
+		.border_color(crate::ui_theme::rgba(0xffffff10))
+		.bg(crate::ui_theme::rgba(0x00000018))
 		.font_family(FONT_FAMILY)
 		.text_size(gpui::px(11.0))
-		.text_color(gpui::rgb(WB_TEXT_MUTED))
+		.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
 		.cursor_pointer()
 		.hover(|element| {
-			element.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)).text_color(gpui::rgb(WB_TEXT))
+			element
+				.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+				.text_color(crate::ui_theme::rgb(WB_TEXT))
 		})
 		.active(|element| element.opacity(0.72))
 		.on_click(cx.listener(|shell, _, _, cx| shell.cycle_conversation_effort(cx)))
@@ -6190,15 +6304,19 @@ fn topbar_sessions_toggle(
 		.rounded(gpui::px(7.0))
 		.border_1()
 		.border_color(if left_sidebar_visible {
-			gpui::rgba(0xffffff20)
+			crate::ui_theme::rgba(0xffffff20)
 		} else {
-			gpui::rgba(0xffffff10)
+			crate::ui_theme::rgba(0xffffff10)
 		})
-		.bg(if left_sidebar_visible { gpui::rgba(0xffffff10) } else { gpui::rgba(0x00000000) })
-		.text_color(if left_sidebar_visible {
-			gpui::rgb(WB_TEXT)
+		.bg(if left_sidebar_visible {
+			crate::ui_theme::rgba(0xffffff10)
 		} else {
-			gpui::rgb(WB_TEXT_MUTED)
+			crate::ui_theme::rgba(0x00000000)
+		})
+		.text_color(if left_sidebar_visible {
+			crate::ui_theme::rgb(WB_TEXT)
+		} else {
+			crate::ui_theme::rgb(WB_TEXT_MUTED)
 		})
 		.cursor_pointer()
 		.occlude()
@@ -6207,10 +6325,12 @@ fn topbar_sessions_toggle(
 			cx.stop_propagation();
 		})
 		.hover(|element| {
-			element.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)).text_color(gpui::rgb(WB_TEXT))
+			element
+				.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+				.text_color(crate::ui_theme::rgb(WB_TEXT))
 		})
-		.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
-		.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
+		.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
+		.focus_visible(|element| element.border_color(crate::ui_theme::rgb(WB_BLUE)))
 		.on_click(cx.listener(|shell, _, _, cx| {
 			shell.set_left_sidebar_visible(!shell.left_sidebar_visible, cx);
 		}))
@@ -6238,12 +6358,20 @@ fn topbar_inspector_toggle(
 		.rounded(gpui::px(7.0))
 		.border_1()
 		.border_color(if inspector_visible {
-			gpui::rgba(0xffffff20)
+			crate::ui_theme::rgba(0xffffff20)
 		} else {
-			gpui::rgba(0xffffff10)
+			crate::ui_theme::rgba(0xffffff10)
 		})
-		.bg(if inspector_visible { gpui::rgba(0xffffff10) } else { gpui::rgba(0x00000000) })
-		.text_color(if inspector_visible { gpui::rgb(WB_TEXT) } else { gpui::rgb(WB_TEXT_MUTED) })
+		.bg(if inspector_visible {
+			crate::ui_theme::rgba(0xffffff10)
+		} else {
+			crate::ui_theme::rgba(0x00000000)
+		})
+		.text_color(if inspector_visible {
+			crate::ui_theme::rgb(WB_TEXT)
+		} else {
+			crate::ui_theme::rgb(WB_TEXT_MUTED)
+		})
 		.cursor_pointer()
 		.occlude()
 		.on_mouse_down(MouseButton::Left, |_, window, cx| {
@@ -6251,10 +6379,12 @@ fn topbar_inspector_toggle(
 			cx.stop_propagation();
 		})
 		.hover(|element| {
-			element.bg(gpui::rgba(crate::ui_theme::HOVER_FILL)).text_color(gpui::rgb(WB_TEXT))
+			element
+				.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+				.text_color(crate::ui_theme::rgb(WB_TEXT))
 		})
-		.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
-		.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
+		.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
+		.focus_visible(|element| element.border_color(crate::ui_theme::rgb(WB_BLUE)))
 		.on_click(cx.listener(|shell, _, _, cx| {
 			shell.set_inspector_visible(!shell.inspector_visible, cx);
 		}))
@@ -6287,7 +6417,12 @@ fn account_pool_header(
 					.flex()
 					.items_center()
 					.gap_2()
-					.child(gpui::div().size(gpui::px(6.0)).rounded_full().bg(gpui::rgb(WB_GREEN)))
+					.child(
+						gpui::div()
+							.size(gpui::px(6.0))
+							.rounded_full()
+							.bg(crate::ui_theme::rgb(WB_GREEN)),
+					)
 					.child(
 						gpui::div()
 							.text_size(gpui::px(12.5))
@@ -6298,7 +6433,7 @@ fn account_pool_header(
 						gpui::div()
 							.font_family(FONT_FAMILY)
 							.text_size(gpui::px(11.0))
-							.text_color(gpui::rgb(WB_TEXT_FAINT))
+							.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 							.child(format!("{available} of {count} available")),
 					),
 			),
@@ -6358,9 +6493,9 @@ fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement
 						.text_size(gpui::px(10.5))
 						.font_weight(FontWeight::SEMIBOLD)
 						.text_color(if enabled {
-							gpui::rgb(WB_TEXT)
+							crate::ui_theme::rgb(WB_TEXT)
 						} else {
-							gpui::rgb(WB_TEXT_FAINT)
+							crate::ui_theme::rgb(WB_TEXT_FAINT)
 						})
 						.child(email.unwrap_or(account.alias.as_str()).to_owned()),
 				)
@@ -6375,7 +6510,7 @@ fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement
 								.gap_2()
 								.font_family(FONT_FAMILY)
 								.text_size(gpui::px(10.5))
-								.text_color(gpui::rgb(WB_TEXT_FAINT))
+								.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 								.child(account_readiness_status(account)),
 						)
 					},
@@ -6417,20 +6552,28 @@ fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyE
 				.rounded(gpui::px(9.0))
 				.border_1()
 				.border_color(if is_selected {
-					gpui::rgba(0xffffff18)
+					crate::ui_theme::rgba(0xffffff18)
 				} else {
-					gpui::rgba(0x00000000)
+					crate::ui_theme::rgba(0x00000000)
 				})
-				.bg(if is_selected { gpui::rgba(0xffffff0f) } else { gpui::rgba(0x00000000) })
+				.bg(if is_selected {
+					crate::ui_theme::rgba(0xffffff0f)
+				} else {
+					crate::ui_theme::rgba(0x00000000)
+				})
 				.text_size(gpui::px(11.0))
-				.text_color(if is_selected { gpui::rgb(WB_TEXT) } else { gpui::rgb(WB_TEXT_MUTED) })
+				.text_color(if is_selected {
+					crate::ui_theme::rgb(WB_TEXT)
+				} else {
+					crate::ui_theme::rgb(WB_TEXT_MUTED)
+				})
 				.hover(|element| {
 					element
-						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
-						.text_color(gpui::rgb(WB_TEXT))
+						.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(crate::ui_theme::rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
-				.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
+				.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
+				.focus_visible(|element| element.border_color(crate::ui_theme::rgb(WB_BLUE)))
 				.cursor_pointer()
 				.on_click(cx.listener(move |shell, _, window, cx| {
 					shell.choose_conversation(conversation_id.clone(), window, cx);
@@ -6454,7 +6597,7 @@ fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyE
 								.size(gpui::px(5.0))
 								.min_w(gpui::px(5.0))
 								.rounded_full()
-								.bg(gpui::rgb(conversation_state_color(state))),
+								.bg(crate::ui_theme::rgb(conversation_state_color(state))),
 						)
 						.child(
 							gpui::div()
@@ -6471,7 +6614,7 @@ fn conversation_session_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyE
 						.pl(gpui::px(13.0))
 						.font_family(FONT_FAMILY)
 						.text_size(gpui::px(11.0))
-						.text_color(gpui::rgb(WB_TEXT_FAINT))
+						.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 						.child(format!("{} · {short_id}", conversation_state_label(state))),
 				)
 		})
@@ -6506,7 +6649,7 @@ fn conversation_sessions_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 		.items_center()
 		.justify_between()
 		.border_b_1()
-		.border_color(gpui::rgba(0xffffff0d))
+		.border_color(crate::ui_theme::rgba(0xffffff0d))
 		.child(
 			gpui::div()
 				.min_w_0()
@@ -6515,7 +6658,7 @@ fn conversation_sessions_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 				.gap_1()
 				.font_weight(FontWeight::SEMIBOLD)
 				.text_size(gpui::px(11.0))
-				.text_color(gpui::rgb(WB_TEXT))
+				.text_color(crate::ui_theme::rgb(WB_TEXT))
 				.relative()
 				.child(shell.titlebar.control())
 				.child("Sessions")
@@ -6528,7 +6671,7 @@ fn conversation_sessions_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 							.text_ellipsis()
 							.font_weight(FontWeight::NORMAL)
 							.text_size(gpui::px(11.0))
-							.text_color(gpui::rgb(WB_TEXT_FAINT))
+							.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
 							.child(status),
 					)
 				}),
@@ -6556,16 +6699,18 @@ fn conversation_sessions_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 						.items_center()
 						.rounded(gpui::px(7.0))
 						.border_1()
-						.border_color(gpui::rgba(0xffffff14))
+						.border_color(crate::ui_theme::rgba(0xffffff14))
 						.text_size(gpui::px(11.0))
-						.text_color(gpui::rgb(WB_TEXT_MUTED))
+						.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
 						.hover(|element| {
 							element
-								.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
-								.text_color(gpui::rgb(WB_TEXT))
+								.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+								.text_color(crate::ui_theme::rgb(WB_TEXT))
 						})
-						.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
-						.focus_visible(|element| element.border_color(gpui::rgb(WB_BLUE)))
+						.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
+						.focus_visible(|element| {
+							element.border_color(crate::ui_theme::rgb(WB_BLUE))
+						})
 						.cursor_pointer()
 						.on_click(cx.listener(|shell, _, window, cx| {
 							shell.start_new_conversation(window, cx);
@@ -6597,19 +6742,19 @@ fn conversation_refresh_button(
 		.rounded(gpui::px(7.0))
 		.text_size(gpui::px(refresh_text_size))
 		.text_color(if can_refresh_all {
-			gpui::rgb(WB_TEXT_MUTED)
+			crate::ui_theme::rgb(WB_TEXT_MUTED)
 		} else {
-			gpui::rgb(WB_TEXT_FAINT)
+			crate::ui_theme::rgb(WB_TEXT_FAINT)
 		})
 		.when(can_refresh_all, |element| {
 			element
 				.cursor_pointer()
 				.hover(|element| {
 					element
-						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
-						.text_color(gpui::rgb(WB_TEXT))
+						.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(crate::ui_theme::rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
+				.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.refresh_conversation(window, cx);
 				}))
@@ -6630,16 +6775,20 @@ fn conversation_archive_button(can_control: bool, cx: &mut Context<Shell>) -> An
 		.items_center()
 		.rounded(gpui::px(7.0))
 		.text_size(gpui::px(11.0))
-		.text_color(if can_control { gpui::rgb(WB_TEXT_MUTED) } else { gpui::rgb(WB_TEXT_FAINT) })
+		.text_color(if can_control {
+			crate::ui_theme::rgb(WB_TEXT_MUTED)
+		} else {
+			crate::ui_theme::rgb(WB_TEXT_FAINT)
+		})
 		.when(can_control, |element| {
 			element
 				.cursor_pointer()
 				.hover(|element| {
 					element
-						.bg(gpui::rgba(crate::ui_theme::HOVER_FILL))
-						.text_color(gpui::rgb(WB_TEXT))
+						.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+						.text_color(crate::ui_theme::rgb(WB_TEXT))
 				})
-				.active(|element| element.bg(gpui::rgba(PRESSED_FILL)))
+				.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.archive_conversation(window, cx);
 				}))

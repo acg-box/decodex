@@ -1,6 +1,7 @@
 //! Ondine owns Mermaid syntax and layout; the desktop owns presentation and resource limits.
 #[path = "agent_mermaid/svg.rs"] mod svg;
 
+use crate::ui_theme::appearance::Theme;
 use gpui::{RenderImage, SvgRenderer};
 use std::{
 	sync::Arc,
@@ -18,15 +19,19 @@ pub(super) struct Diagram {
 	pub height: f32,
 }
 
-pub(super) fn prepare(source: &str, renderer: &SvgRenderer) -> Result<Diagram, String> {
-	let rendered = compile(source)?;
+pub(super) fn prepare(
+	source: &str,
+	renderer: &SvgRenderer,
+	theme: Theme,
+) -> Result<Diagram, String> {
+	let rendered = compile(source, theme)?;
 	let svg = renderer.parse_svg(rendered.svg.as_bytes()).map_err(|e| e.to_string())?;
 	let image = renderer.render_parsed(&svg, 1.0_f32).map_err(|e| e.to_string())?;
 
 	Ok(Diagram { image, width: rendered.width as f32, height: rendered.height as f32 })
 }
 
-fn compile(source: &str) -> Result<ondine::Rendered, String> {
+fn compile(source: &str, theme: Theme) -> Result<ondine::Rendered, String> {
 	let now = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?;
 	let mut rendered =
 		ondine::render(source, OPTIONS, now.as_secs_f64() * 1_000.).map_err(|e| e.message)?;
@@ -37,7 +42,7 @@ fn compile(source: &str) -> Result<ondine::Rendered, String> {
 		return Err("Diagram exceeds the desktop image limit".into());
 	}
 
-	rendered.svg = svg::desktop(&rendered.svg)?;
+	rendered.svg = svg::desktop(&rendered.svg, theme)?;
 
 	Ok(rendered)
 }

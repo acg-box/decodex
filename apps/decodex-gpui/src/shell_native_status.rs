@@ -36,7 +36,7 @@ impl Render for StatusPanel {
 			.w_full()
 			.p(gpui::px(12.))
 			.font_family(FONT_FAMILY)
-			.text_color(gpui::rgb(TEXT))
+			.text_color(crate::ui_theme::rgb(TEXT))
 			.on_key_down({
 				let owner = owner.clone();
 
@@ -67,10 +67,10 @@ impl Render for StatusPanel {
 				gpui::div()
 					.w_full()
 					.rounded(gpui::px(14.))
-					.bg(gpui::rgb(0x29292d))
+					.bg(crate::ui_theme::rgb(0x29292d))
 					.shadow(vec![gpui::BoxShadow {
 						inset: false,
-						color: gpui::rgba(0x00000024).into(),
+						color: crate::ui_theme::rgba(0x00000024).into(),
 						offset: gpui::point(gpui::px(0.), gpui::px(4.)),
 						blur_radius: gpui::px(12.),
 						spread_radius: gpui::px(-3.),
@@ -161,6 +161,7 @@ fn create(
 			move |window, cx| {
 				cx.new(|cx| {
 					ui_motion::observe_activation(window, cx);
+					crate::ui_theme::appearance::observe(window, cx);
 					let observation = cx.observe(&owner, |_, _, cx| cx.notify());
 
 					StatusPanel { owner, surface: None, _observation: observation }

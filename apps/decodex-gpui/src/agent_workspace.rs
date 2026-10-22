@@ -112,7 +112,7 @@ fn connection_recovery_notice(
 			gpui::div()
 				.w_full()
 				.text_center()
-				.text_color(gpui::rgb(Tone::Error.color()))
+				.text_color(crate::ui_theme::rgb(Tone::Error.color()))
 				.child(message),
 		)
 		.child(
@@ -123,7 +123,7 @@ fn connection_recovery_notice(
 				.aria_label(label)
 				.tab_index(0)
 				.cursor_pointer()
-				.text_color(gpui::rgb(BLUE))
+				.text_color(crate::ui_theme::rgb(BLUE))
 				.child(label)
 				.on_click(move |_, window, cx| open_connection_settings(destination, window, cx))
 				.on_key_down(move |event: &KeyDownEvent, window, cx| {
@@ -168,7 +168,7 @@ impl Render for PanelTip {
 		crate::ui_motion::tooltip_surface(gpui::div())
 			.px_2()
 			.py_1()
-			.text_color(gpui::rgb(TEXT))
+			.text_color(crate::ui_theme::rgb(TEXT))
 			.text_size(gpui::px(11.0))
 			.child(self.0.clone())
 	}
@@ -512,7 +512,7 @@ impl AgentSurface {
 			.id(SharedString::from(id))
 			.role(if is_tab { Role::Tab } else { Role::Button })
 			.aria_selected(active)
-			.when(active && !is_tab, |row| row.bg(gpui::rgba(0xffffff0d)))
+			.when(active && !is_tab, |row| row.bg(crate::ui_theme::rgba(0xffffff0d)))
 			.tab_index(0)
 			.aria_label(accessible)
 			.when(show_tip, |button| {
@@ -529,10 +529,14 @@ impl AgentSurface {
 			.cursor_pointer()
 			.when(!is_tree && !is_tab, |button| {
 				button.hover(move |s| {
-					s.bg(gpui::rgba(if active { SELECTED_HOVER_FILL } else { HOVER_FILL }))
+					s.bg(crate::ui_theme::rgba(if active {
+						SELECTED_HOVER_FILL
+					} else {
+						HOVER_FILL
+					}))
 				})
 			})
-			.when(is_tree, |button| button.hover(|s| s.text_color(gpui::rgb(TEXT))))
+			.when(is_tree, |button| button.hover(|s| s.text_color(crate::ui_theme::rgb(TEXT))))
 			.on_click(cx.listener(move |s, _, window, cx| {
 				if is_tree || is_tab {
 					cx.stop_propagation();
@@ -564,8 +568,8 @@ impl AgentSurface {
 					.min_w_0()
 					.text_size(gpui::px(12.))
 					.line_height(gpui::px(18.))
-					.text_color(gpui::rgb(if active { TEXT } else { TEXT_MUTED }))
-					.hover(|style| style.text_color(gpui::rgb(TEXT)))
+					.text_color(crate::ui_theme::rgb(if active { TEXT } else { TEXT_MUTED }))
+					.hover(|style| style.text_color(crate::ui_theme::rgb(TEXT)))
 			})
 			.when(is_event || is_prompt, |button| button.w_full().min_w_0())
 			.child(if let Some(icon) = icon {
@@ -716,8 +720,10 @@ impl AgentSurface {
 				.items_center()
 				.rounded(gpui::px(7.))
 				.cursor_pointer()
-				.bg(gpui::rgba(if active { 0xffffff10 } else { 0xffffff00 }))
-				.hover(move |s| s.bg(gpui::rgba(if active { 0xffffff18 } else { HOVER_FILL })))
+				.bg(crate::ui_theme::rgba(if active { 0xffffff10 } else { 0xffffff00 }))
+				.hover(move |s| {
+					s.bg(crate::ui_theme::rgba(if active { 0xffffff18 } else { HOVER_FILL }))
+				})
 				.on_click(cx.listener(move |s, event: &gpui::ClickEvent, _, cx| {
 					if event.click_count() == 2
 						&& s.workspace.preview_page.as_deref() == Some(&row_select)
@@ -967,8 +973,8 @@ impl AgentSurface {
 							.gap(gpui::px(5.))
 							.h(gpui::px(20.))
 							.text_size(gpui::px(11.))
-							.text_color(gpui::rgb(TEXT_MUTED))
-							.hover(|s| s.text_color(gpui::rgb(TEXT)))
+							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+							.hover(|s| s.text_color(crate::ui_theme::rgb(TEXT)))
 							.child("Details")
 							.child(workspace_symbols::disclosure_chevron(
 								"connection-details-chevron",
@@ -995,7 +1001,7 @@ impl AgentSurface {
 					.pt(gpui::px(8.))
 					.text_size(gpui::px(11.))
 					.line_height(gpui::px(17.))
-					.text_color(gpui::rgb(TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 					.child(format!("{reason}\n{}", detail.unwrap_or_default())),
 			))
 			.into_any_element()
@@ -1248,7 +1254,7 @@ impl AgentSurface {
 				.debug_selector(|| "workspace-connecting".into())
 				.size_full()
 				.py(gpui::px(WINDOW_CONTROLS_CLEARANCE))
-				.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
+				.bg(crate::ui_theme::rgba(AGENT_SIDEBAR_MATERIAL))
 				.flex()
 				.items_center()
 				.justify_center()
@@ -1289,7 +1295,7 @@ impl AgentSurface {
 			.overflow_hidden()
 			.flex()
 			.flex_col()
-			.bg(gpui::rgba(AGENT_CHAT_OVERLAY));
+			.bg(crate::ui_theme::rgba(AGENT_CHAT_OVERLAY));
 
 		chat = chat.when(self.native_agents.selected.is_none(), |chat| {
 			chat.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)))
@@ -1349,7 +1355,9 @@ impl AgentSurface {
 			.bottom_0()
 			// Expanded maps place this footer outside the canvas. Continue the
 			// same surface to the window edge behind the floating glass editor.
-			.when(self.workspace.graph_expanded, |footer| footer.bg(gpui::rgba(AGENT_CHAT_OVERLAY)))
+			.when(self.workspace.graph_expanded, |footer| {
+				footer.bg(crate::ui_theme::rgba(AGENT_CHAT_OVERLAY))
+			})
 			.child(self.composer_footer(window, cx))
 			.child(
 				gpui::canvas(
@@ -1450,11 +1458,11 @@ impl AgentSurface {
 		self.workspace_resize_root(cx)
 			.size_full()
 			.relative()
-			.bg(gpui::rgba(AGENT_SIDEBAR_MATERIAL))
+			.bg(crate::ui_theme::rgba(AGENT_SIDEBAR_MATERIAL))
 			.flex()
 			.text_size(gpui::px(BODY_SIZE))
 			.font_family(FONT_FAMILY)
-			.text_color(gpui::rgb(TEXT))
+			.text_color(crate::ui_theme::rgb(TEXT))
 			.on_action(cx.listener(|_, _: &SubmitComposer, _, cx| cx.stop_propagation()))
 			.child(self.sidebar_slot(wide, window, cx))
 			.child(main)
@@ -1712,7 +1720,7 @@ impl AgentSurface {
 				gpui::div()
 					.p_3()
 					.text_size(gpui::px(12.))
-					.text_color(gpui::rgb(TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 					.child("No dependencies are recorded for this task."),
 			);
 		}
@@ -1732,7 +1740,7 @@ impl AgentSurface {
 				gpui::div()
 					.px_2()
 					.text_size(gpui::px(11.0))
-					.text_color(gpui::rgb(AMBER))
+					.text_color(crate::ui_theme::rgb(AMBER))
 					.child("Dependency cycle · review work relations"),
 			);
 		}
@@ -1881,7 +1889,7 @@ impl AgentSurface {
 							if let Ok(path) = path.build() {
 								window.paint_path(
 									path,
-									gpui::rgb(if blocked {
+									crate::ui_theme::rgb(if blocked {
 										AMBER
 									} else if report {
 										BLUE
@@ -1954,7 +1962,7 @@ impl AgentSurface {
 			.h(gpui::px((66.0 * zoom).max(42.)))
 			.border_1()
 			.border_color(
-				gpui::rgb(
+				crate::ui_theme::rgb(
 					if self.handoffs.focus.as_ref().or(self.workspace.dock_record.as_ref())
 						== Some(&id)
 					{
@@ -1971,12 +1979,12 @@ impl AgentSurface {
 			.bg(
 				if self.handoffs.focus.as_ref().or(self.workspace.dock_record.as_ref()) == Some(&id)
 				{
-					gpui::rgba(0x35353ce8)
+					crate::ui_theme::rgba(0x35353ce8)
 				} else {
-					gpui::rgba(0x242427db)
+					crate::ui_theme::rgba(0x242427db)
 				},
 			)
-			.hover(|style| style.bg(gpui::rgba(0x3a3a40eb)))
+			.hover(|style| style.bg(crate::ui_theme::rgba(0x3a3a40eb)))
 			.cursor_pointer()
 			.overflow_hidden()
 			.text_size(gpui::px((12.0 * zoom).max(10.0)))
@@ -1996,7 +2004,7 @@ impl AgentSurface {
 			.child(
 				gpui::div()
 					.text_size(gpui::px((11.0 * zoom).max(10.0)))
-					.text_color(gpui::rgb(color))
+					.text_color(crate::ui_theme::rgb(color))
 					.whitespace_nowrap()
 					.text_ellipsis()
 					.child(status),

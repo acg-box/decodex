@@ -194,8 +194,8 @@ impl AgentSurface {
 			.rounded(gpui::px(7.))
 			.text_size(gpui::px(crate::ui_theme::BODY_SIZE))
 			.cursor_pointer()
-			.bg(gpui::rgba(if draft { 0x00000000 } else { 0xffffff08 }))
-			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+			.bg(crate::ui_theme::rgba(if draft { 0x00000000 } else { 0xffffff08 }))
+			.hover(|s| s.bg(crate::ui_theme::rgba(HOVER_FILL)))
 			.child(
 				gpui::div()
 					.when(!draft, |d| d.flex_1())
@@ -249,7 +249,7 @@ impl AgentSurface {
 						.px_2()
 						.py_1()
 						.text_size(gpui::px(12.))
-						.text_color(gpui::rgb(TEXT_MUTED))
+						.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 						.child("No matching workspaces")
 				}))
 				.child(self.add_workspace_button(cx));
@@ -271,7 +271,7 @@ impl AgentSurface {
 			.children(self.workspace.folder_error.as_ref().map(|error| {
 				gpui::div()
 					.text_size(gpui::px(12.))
-					.text_color(gpui::rgb(crate::ui_theme::ERROR))
+					.text_color(crate::ui_theme::rgb(crate::ui_theme::ERROR))
 					.child(error.clone())
 			}))
 			.into_any_element()
@@ -324,7 +324,7 @@ impl AgentSurface {
 					.gap_2()
 					.rounded(gpui::px(6.))
 					.cursor_pointer()
-					.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+					.hover(|s| s.bg(crate::ui_theme::rgba(HOVER_FILL)))
 					.child(gpui::div().w(gpui::px(16.)).flex_none().children(
 						active.then(|| workspace_symbols::icon_sized(Symbol::Confirm, 13.)),
 					))
@@ -344,7 +344,7 @@ impl AgentSurface {
 							.children((!path.is_empty()).then(|| {
 								gpui::div()
 									.text_size(gpui::px(11.))
-									.text_color(gpui::rgb(TEXT_MUTED))
+									.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 									.text_ellipsis()
 									.child(path)
 							})),
@@ -374,7 +374,7 @@ impl AgentSurface {
 			.rounded(gpui::px(6.))
 			.cursor_pointer()
 			.text_size(gpui::px(crate::ui_theme::BODY_SIZE))
-			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+			.hover(|s| s.bg(crate::ui_theme::rgba(HOVER_FILL)))
 			.child("+ Add folder")
 			.on_click(cx.listener(|s, _, _, cx| {
 				s.workspace.workspace_picker = None;
@@ -498,7 +498,7 @@ impl AgentSurface {
 			.gap(gpui::px(6.))
 			.rounded(gpui::px(7.))
 			.cursor_pointer()
-			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+			.hover(|s| s.bg(crate::ui_theme::rgba(HOVER_FILL)))
 			.child(
 				gpui::div()
 					.w(gpui::px(crate::ui_theme::CONVERSATION_TAB_SIZE))
@@ -513,7 +513,7 @@ impl AgentSurface {
 				gpui::div()
 					.min_w(gpui::px(120.))
 					.whitespace_nowrap()
-					.text_color(gpui::rgb(TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 					.child(label),
 			)
 			.on_click(cx.listener(move |s, _, _, cx| action(s, cx)))
@@ -619,7 +619,7 @@ impl AgentSurface {
 					.gap_3()
 					.rounded(gpui::px(7.))
 					.cursor_pointer()
-					.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+					.hover(|s| s.bg(crate::ui_theme::rgba(HOVER_FILL)))
 					.child(
 						gpui::div()
 							.flex_1()
@@ -634,14 +634,14 @@ impl AgentSurface {
 							.overflow_hidden()
 							.text_ellipsis()
 							.text_size(gpui::px(11.))
-							.text_color(gpui::rgb(TEXT_MUTED))
+							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 							.child(workspace_name.to_owned()),
 					)
 					.child(
 						gpui::div()
 							.w(gpui::px(110.))
 							.text_size(gpui::px(11.))
-							.text_color(gpui::rgb(color))
+							.text_color(crate::ui_theme::rgb(color))
 							.child(status),
 					)
 					.on_click(cx.listener(move |s, _, _, cx| {
@@ -657,7 +657,10 @@ impl AgentSurface {
 		}
 		if count == 0 {
 			list = list.child(
-				gpui::div().p_4().text_color(gpui::rgb(TEXT_MUTED)).child("No matching work."),
+				gpui::div()
+					.p_4()
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+					.child("No matching work."),
 			);
 		}
 		gpui::div()

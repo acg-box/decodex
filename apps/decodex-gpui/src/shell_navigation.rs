@@ -120,7 +120,9 @@ impl Shell {
 			.rounded(gpui::px(5.0))
 			.occlude()
 			.when(!enabled, |el| el.opacity(0.25))
-			.when(enabled, |el| el.cursor_pointer().hover(|el| el.bg(gpui::rgba(HOVER_FILL))))
+			.when(enabled, |el| {
+				el.cursor_pointer().hover(|el| el.bg(crate::ui_theme::rgba(HOVER_FILL)))
+			})
 			.on_mouse_down(MouseButton::Left, |_, window, cx| {
 				window.prevent_default();
 				cx.stop_propagation();

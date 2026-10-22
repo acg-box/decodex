@@ -80,7 +80,7 @@ impl Render for ComposerPanel {
 				forward(parent, &DismissStatus, cx);
 			})
 			.text_size(gpui::px(BODY_SIZE))
-			.text_color(gpui::rgb(TEXT))
+			.text_color(crate::ui_theme::rgb(TEXT))
 			.on_children_prepainted(move |bounds, _, cx| {
 				if let Some(bounds) = bounds.first() {
 					let height = f32::from(bounds.size.height).max(42.);
@@ -374,6 +374,7 @@ fn create_panel(
 			move |window, cx| {
 				cx.new(|cx| {
 					ui_motion::observe_activation(window, cx);
+					crate::ui_theme::appearance::observe(window, cx);
 					cx.observe_window_activation(
 						window,
 						|panel: &mut ComposerPanel, window, cx| {

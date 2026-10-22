@@ -190,7 +190,7 @@ impl gpui::Render for RelationTip {
 		crate::ui_motion::tooltip_surface(gpui::div())
 			.p_2()
 			.max_w(gpui::px(360.))
-			.text_color(gpui::rgb(TEXT))
+			.text_color(crate::ui_theme::rgb(TEXT))
 			.text_size(gpui::px(12.))
 			.child(self.0.clone())
 	}
@@ -713,7 +713,7 @@ impl AgentSurface {
 			.justify_center()
 			.rounded(gpui::px(4.))
 			.cursor_pointer()
-			.hover(|d| d.bg(gpui::rgba(0xffffff10)))
+			.hover(|d| d.bg(crate::ui_theme::rgba(0xffffff10)))
 			.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
 			.child(label)
 			.on_click(cx.listener(move |s, _, window, cx| {
@@ -1211,7 +1211,7 @@ impl AgentSurface {
 					.px(gpui::px(12. * scale))
 					.pt(gpui::px(8. * scale))
 					.text_size(gpui::px(11. * scale))
-					.text_color(gpui::rgb(TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 					.child(
 						gpui::div()
 							.flex()
@@ -1219,14 +1219,14 @@ impl AgentSurface {
 							.gap(gpui::px(8. * scale))
 							.child(
 								gpui::div()
-									.text_color(gpui::rgb(0xc5c6ce))
+									.text_color(crate::ui_theme::rgb(0xc5c6ce))
 									.font_weight(gpui::FontWeight::MEDIUM)
 									.child(scope.title.clone()),
 							)
 							.child(
 								gpui::div()
 									.text_size(gpui::px(10. * scale))
-									.text_color(gpui::rgb(TEXT_MUTED))
+									.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 									.child(format!("{} agents", scope.count)),
 							),
 					),
@@ -1293,11 +1293,13 @@ impl AgentSurface {
 					.justify_center()
 					.whitespace_nowrap()
 					.rounded(gpui::px(3. * scale))
-					.bg(gpui::rgba((crate::ui_theme::COMPOSER_MATERIAL & 0xffffff00) | 0xe8))
+					.bg(crate::ui_theme::rgba(
+						(crate::ui_theme::COMPOSER_MATERIAL & 0xffffff00) | 0xe8,
+					))
 					.opacity(link.detail * graph.layout.card_presence())
 					.text_size(gpui::px(style::ConnectionLabel::FONT_SIZE * scale))
 					.line_height(gpui::px(16. * scale))
-					.text_color(gpui::rgb(edge.color))
+					.text_color(crate::ui_theme::rgb(edge.color))
 					.cursor_pointer()
 					.child(label.text)
 					.on_mouse_down(
@@ -1658,11 +1660,11 @@ impl AgentSurface {
 				surface
 					.rounded(gpui::px(3. * layout.zoom))
 					.border(gpui::px(0.75 * scale))
-					.border_color(gpui::rgb(crate::ui_theme::LINE_STRONG))
-					.bg(gpui::rgb(0x222228))
+					.border_color(crate::ui_theme::rgb(crate::ui_theme::LINE_STRONG))
+					.bg(crate::ui_theme::rgb(0x222228))
 					.overflow_hidden()
 			})
-			.text_color(gpui::rgb(TEXT))
+			.text_color(crate::ui_theme::rgb(TEXT))
 			.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone().unwrap_or_default())).into())
 			.cursor_pointer()
 	}
@@ -1857,7 +1859,7 @@ fn paint_relation_grid(
 						bounds.origin + gpui::point(gpui::px(x), gpui::px(y)),
 						gpui::size(gpui::px(1.), gpui::px(1.)),
 					),
-					gpui::rgba(0xffffff18),
+					crate::ui_theme::rgba(0xffffff18),
 				));
 				y += spacing;
 			}

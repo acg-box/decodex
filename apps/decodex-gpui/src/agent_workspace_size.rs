@@ -308,7 +308,7 @@ impl AgentSurface {
 			.tab_index(0)
 			.role(Role::Slider)
 			.aria_label("Sidebar width. Drag or use Left and Right. Double-click to reset.")
-			.hover(|s| s.bg(gpui::rgba(0xffffff18)))
+			.hover(|s| s.bg(crate::ui_theme::rgba(0xffffff18)))
 			.on_mouse_down(
 				MouseButton::Left,
 				cx.listener(move |s, event: &MouseDownEvent, window, cx| {
@@ -375,7 +375,7 @@ impl AgentSurface {
 			.cursor_row_resize()
 			.role(Role::Slider)
 			.aria_label("Dock height. Drag to resize. Double-click to reset. Control-Option minus or equals adjusts the selected panel.")
-			.hover(|s| s.bg(gpui::rgba(0xffffff18)))
+			.hover(|s| s.bg(crate::ui_theme::rgba(0xffffff18)))
 			.on_mouse_down(
 				MouseButton::Left,
 				cx.listener(|s, event: &MouseDownEvent, window, cx| {

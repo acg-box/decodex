@@ -13,49 +13,58 @@ use gpui::{
 
 use crate::{ui_motion, ui_theme::TEXT_MUTED};
 
-static IMAGES: LazyLock<[Arc<Image>; 39]> = LazyLock::new(|| {
-	let sources: [&[u8]; 39] = [
-		include_bytes!("../../../assets/workspace-symbols/sidebar.png"),
-		include_bytes!("../../../assets/workspace-symbols/graph.png"),
-		include_bytes!("../../../assets/workspace-symbols/expand.png"),
-		include_bytes!("../../../assets/workspace-symbols/settings.png"),
-		include_bytes!("../../../assets/workspace-symbols/close.png"),
-		include_bytes!("../../../assets/workspace-symbols/plus.png"),
-		include_bytes!("../../../assets/workspace-symbols/minus.png"),
-		include_bytes!("../../../assets/workspace-symbols/back.png"),
-		include_bytes!("../../../assets/workspace-symbols/forward.png"),
-		include_bytes!("../../../assets/workspace-symbols/agents.png"),
-		include_bytes!("../../../assets/workspace-symbols/fast.png"),
-		include_bytes!("../../../assets/workspace-symbols/chevron-down.png"),
-		include_bytes!("../../../assets/workspace-symbols/microphone.png"),
-		include_bytes!("../../../assets/workspace-symbols/bell.png"),
-		include_bytes!("../../../assets/workspace-symbols/bell-attention.png"),
-		include_bytes!("../../../assets/workspace-symbols/bell-info.png"),
-		include_bytes!("../../../assets/workspace-symbols/bell-error.png"),
-		include_bytes!("../../../assets/workspace-symbols/arrow-down.png"),
-		include_bytes!("../../../assets/workspace-symbols/account-route.png"),
-		include_bytes!("../../../assets/workspace-symbols/account-logout.png"),
-		include_bytes!("../../../assets/workspace-symbols/confirm.png"),
-		include_bytes!("../../../assets/workspace-symbols/account-route-active.png"),
-		include_bytes!("../../../assets/workspace-symbols/power-on.png"),
-		include_bytes!("../../../assets/workspace-symbols/power-off.png"),
-		include_bytes!("../../../assets/workspace-symbols/eye.png"),
-		include_bytes!("../../../assets/workspace-symbols/eye-slash.png"),
-		include_bytes!("../../../assets/workspace-symbols/lock.png"),
-		include_bytes!("../../../assets/workspace-symbols/account-sign-in.png"),
-		include_bytes!("../../../assets/workspace-symbols/account-warning.png"),
-		include_bytes!("../../../assets/workspace-symbols/reset-cards.png"),
-		include_bytes!("../../../assets/workspace-symbols/account-reorder.png"),
-		include_bytes!("../../../assets/workspace-symbols/account-warning-amber.png"),
-		include_bytes!("../../../assets/workspace-symbols/all-work.png"),
-		include_bytes!("../../../assets/workspace-symbols/arrange.png"),
-		include_bytes!("../../../assets/workspace-symbols/fit.png"),
-		include_bytes!("../../../assets/workspace-symbols/waveform.png"),
-		include_bytes!("../../../assets/workspace-symbols/restore.png"),
-		include_bytes!("../../../assets/workspace-symbols/document.png"),
-		include_bytes!("../../../assets/workspace-symbols/link.png"),
+// Preserve the existing dark artwork and load its paired light palette on demand.
+macro_rules! symbol_sources {
+	($($name:literal),* $(,)?) => {[
+		[$(include_bytes!(concat!("../../../assets/workspace-symbols/", $name, ".png")) as &[u8]),*],
+		[$(include_bytes!(concat!("../../../assets/workspace-symbols/light/", $name, ".png")) as &[u8]),*],
+	]};
+}
+static IMAGES: LazyLock<[[Arc<Image>; 39]; 2]> = LazyLock::new(|| {
+	let sources = symbol_sources![
+		"sidebar",
+		"graph",
+		"expand",
+		"settings",
+		"close",
+		"plus",
+		"minus",
+		"back",
+		"forward",
+		"agents",
+		"fast",
+		"chevron-down",
+		"microphone",
+		"bell",
+		"bell-attention",
+		"bell-info",
+		"bell-error",
+		"arrow-down",
+		"account-route",
+		"account-logout",
+		"confirm",
+		"account-route-active",
+		"power-on",
+		"power-off",
+		"eye",
+		"eye-slash",
+		"lock",
+		"account-sign-in",
+		"account-warning",
+		"reset-cards",
+		"account-reorder",
+		"account-warning-amber",
+		"all-work",
+		"arrange",
+		"fit",
+		"waveform",
+		"restore",
+		"document",
+		"link",
 	];
-	sources.map(|bytes| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))
+	sources.map(|variant| {
+		variant.map(|bytes| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))
+	})
 });
 
 #[derive(Clone, Copy)]
@@ -148,7 +157,7 @@ impl RenderOnce for DisclosureChevron {
 		if progress == 0. || progress == 1. {
 			return gpui::svg()
 				.data(br#"<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 12 12"><path d="M2 4L6 8L10 4" fill="none" stroke="white" stroke-width="1.2"/></svg>"#)
-				.text_color(gpui::rgb(TEXT_MUTED))
+				.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 				.with_transformation(gpui::Transformation::rotate(gpui::radians(progress * std::f32::consts::PI)))
 				.size(gpui::px(12.))
 				.flex_none()
@@ -174,7 +183,7 @@ impl RenderOnce for DisclosureChevron {
 				);
 
 				if let Ok(path) = path.build() {
-					window.paint_path(path, gpui::rgb(TEXT_MUTED));
+					window.paint_path(path, crate::ui_theme::rgb(TEXT_MUTED));
 				}
 			},
 		)
@@ -215,7 +224,16 @@ pub(super) fn icon(symbol: Symbol) -> AnyElement {
 }
 
 pub(super) fn icon_sized(symbol: Symbol, size: f32) -> AnyElement {
-	gpui::img(IMAGES[symbol as usize].clone()).size(gpui::px(size)).flex_none().into_any_element()
+	gpui::img(
+		IMAGES[usize::from(
+			crate::ui_theme::appearance::Theme::current()
+				== crate::ui_theme::appearance::Theme::Light,
+		)][symbol as usize]
+			.clone(),
+	)
+	.size(gpui::px(size))
+	.flex_none()
+	.into_any_element()
 }
 
 pub(super) fn disclosure_chevron(id: impl Into<ElementId>, expanded: bool) -> DisclosureChevron {

@@ -158,7 +158,7 @@ impl Element for ComposerTextElement {
 								origin + gpui::point(x, y + top),
 								gpui::size((end - x).max(gpui::px(1.0)), line_height),
 							),
-							gpui::rgba(0x60a5fa40),
+							crate::ui_theme::rgba(0x60a5fa40),
 						));
 					}
 				}
@@ -282,7 +282,7 @@ fn shape_with_style(
 	let run = TextRun {
 		len: text.len(),
 		font: style.font(),
-		color: if empty { gpui::rgb(0x89909c).into() } else { style.color },
+		color: if empty { crate::ui_theme::rgb(0x89909c).into() } else { style.color },
 		background_color: None,
 		underline: None,
 		strikethrough: None,

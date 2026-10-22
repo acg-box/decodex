@@ -1,5 +1,6 @@
 //! Desktop integration contracts, independent of Ondine's parser and layout test suite.
 use super::{canvas_fits, compile, svg};
+use crate::ui_theme::appearance::Theme;
 
 #[gpui::test]
 fn every_diagram_type_rasterizes_with_the_desktop_theme(cx: &mut gpui::TestAppContext) {
@@ -8,8 +9,8 @@ fn every_diagram_type_rasterizes_with_the_desktop_theme(cx: &mut gpui::TestAppCo
 	assert_eq!(fixtures.len(), 33);
 	let renderer = cx.update(|cx| cx.svg_renderer());
 	for (kind, source) in fixtures {
-		let diagram =
-			super::prepare(&source, &renderer).unwrap_or_else(|error| panic!("{kind}: {error}"));
+		let diagram = super::prepare(&source, &renderer, Theme::Dark)
+			.unwrap_or_else(|error| panic!("{kind}: {error}"));
 		assert!(
 			diagram.image.as_bytes(0).is_some_and(|pixels| {
 				pixels.as_chunks::<4>().0.iter().any(|pixel| pixel[3] != 0)
@@ -47,7 +48,7 @@ fn supported_diagrams_use_ondine_and_keep_authored_labels() {
 		("pie\n\"Cats\" : 2\n\"Dogs\" : 3", "pie", "Cats"),
 		("mindmap\n  root((Project))\n    Design\n    Build", "mindmap", "Project"),
 	] {
-		let rendered = compile(source).expect("supported diagram");
+		let rendered = compile(source, Theme::Dark).expect("supported diagram");
 		assert_eq!(rendered.r#type, kind);
 		let document = roxmltree::Document::parse(&rendered.svg).expect("valid SVG");
 		assert!(
@@ -72,7 +73,7 @@ fn supported_diagrams_use_ondine_and_keep_authored_labels() {
 #[test]
 fn theme_resolution_preserves_label_text_and_xml_escaping() {
 	let input = r#"<svg xmlns="http://www.w3.org/2000/svg" style="--_fg:var(--ondine-fg,#000);--font:&quot;A &amp; B&quot;;font-family:var(--font)"><text fill="var(--_fg)">var(--_fg) &amp; &lt;literal&gt;</text><path stroke="color-mix(in srgb,var(--ondine-surface-alt) 50%,var(--ondine-bg))"/></svg>"#;
-	let svg = svg::desktop(input).expect("desktop SVG");
+	let svg = svg::desktop(input, Theme::Dark).expect("desktop SVG");
 	let document = roxmltree::Document::parse(&svg).expect("escaping remains valid XML");
 	let root = document.root_element();
 	assert_eq!(root.attribute("style"), Some("font-family:\"A & B\""));
@@ -84,9 +85,22 @@ fn theme_resolution_preserves_label_text_and_xml_escaping() {
 }
 
 #[test]
+fn light_and_dark_diagrams_keep_the_same_geometry_and_authored_fills() {
+	let source = "flowchart LR\nA[Request] --> B[Response]\nstyle A fill:#ff1234";
+	let dark = compile(source, Theme::Dark).expect("dark diagram");
+	let light = compile(source, Theme::Light).expect("light diagram");
+	assert_eq!((light.width, light.height), (dark.width, dark.height));
+	assert!(light.svg.contains("#242329"));
+	assert!(dark.svg.contains("#eeeaf0"));
+	for diagram in [light, dark] {
+		assert!(diagram.svg.contains("#ff1234"), "authored fills remain literal");
+	}
+}
+
+#[test]
 fn rectangle_corners_use_svg_geometry_and_keep_authored_overrides() {
 	let input = r#"<svg xmlns="http://www.w3.org/2000/svg"><rect width="40" height="24" rx="2" style="rx:var(--ondine-radius,0);rx:8px;ry:3px;fill:var(--ondine-surface)"/></svg>"#;
-	let svg = svg::desktop(input).expect("desktop corners");
+	let svg = svg::desktop(input, Theme::Dark).expect("desktop corners");
 	let document = roxmltree::Document::parse(&svg).expect("valid SVG");
 	let rect = document.root_element().first_element_child().expect("rect");
 	assert_eq!(rect.attribute("rx"), Some("8px"));
@@ -96,9 +110,11 @@ fn rectangle_corners_use_svg_geometry_and_keep_authored_overrides() {
 
 #[test]
 fn authored_styles_remain_and_links_do_not_become_interactive_resources() {
-	let rendered =
-		compile("flowchart TD\nA --> B\nstyle A fill:#f00\nclick A \"https://example.test\"")
-			.expect("styled diagram");
+	let rendered = compile(
+		"flowchart TD\nA --> B\nstyle A fill:#f00\nclick A \"https://example.test\"",
+		Theme::Dark,
+	)
+	.expect("styled diagram");
 	let document = roxmltree::Document::parse(&rendered.svg).expect("valid SVG");
 	assert!(
 		document
@@ -121,7 +137,7 @@ fn invalid_and_excessive_diagrams_return_to_the_source_fallback() {
 		"x".repeat(50_001),
 		format!("flowchart TD\n{}", "A --> B\n".repeat(513)),
 	] {
-		assert!(compile(&source).is_err());
+		assert!(compile(&source, Theme::Dark).is_err());
 	}
 	assert!(canvas_fits(1_024., 1_024.));
 	for (width, height) in

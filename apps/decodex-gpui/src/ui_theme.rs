@@ -12,6 +12,10 @@
 pub(crate) mod native_glass_panel;
 #[path = "window_material.rs"] pub(crate) mod window_material;
 
+#[path = "ui_appearance.rs"] pub(crate) mod appearance;
+#[path = "ui_palette.rs"] mod palette;
+pub(crate) use palette::{rgb, rgba};
+
 use std::time::Duration;
 
 use gpui::{
@@ -108,9 +112,9 @@ pub(crate) fn floating_group() -> Div {
 		.items_center()
 		.gap_1()
 		.rounded(gpui::px(CONTROL_RADIUS))
-		.bg(gpui::rgb(TOPBAR_MATERIAL >> 8))
+		.bg(rgb(TOPBAR_MATERIAL >> 8))
 		.border_1()
-		.border_color(gpui::rgba(0xffffff12))
+		.border_color(rgba(0xffffff12))
 }
 
 /// Graph controls share shell geometry, with a clear surface of their own.
@@ -141,7 +145,7 @@ pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
 		.aria_label(title)
 		.text_size(gpui::px(HEADING_SIZE))
 		.font_weight(FontWeight::SEMIBOLD)
-		.text_color(gpui::rgb(TEXT))
+		.text_color(rgb(TEXT))
 		.child(title)
 }
 

@@ -282,7 +282,7 @@ fn debug_header(data: &Debug) -> AnyElement {
 			.child(
 				gpui::div()
 					.debug_selector(move || format!("performance-{id}-label"))
-					.text_color(gpui::rgb(TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 					.child(label),
 			)
 			.child(number(id, value))
@@ -305,12 +305,14 @@ fn work_header(data: &Work) -> AnyElement {
 		.items_baseline()
 		.justify_center()
 		.gap_1()
-		.child(number("work-rate", data.rate.clone()).text_color(gpui::rgb(if data.live {
-			BLUE
-		} else {
-			TEXT_MUTED
-		})))
-		.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(data.unit()))
+		.child(
+			number("work-rate", data.rate.clone()).text_color(crate::ui_theme::rgb(if data.live {
+				BLUE
+			} else {
+				TEXT_MUTED
+			})),
+		)
+		.child(gpui::div().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child(data.unit()))
 		.into_any_element()
 }
 fn work_minimal(data: &Work) -> AnyElement {
@@ -320,12 +322,12 @@ fn work_minimal(data: &Work) -> AnyElement {
 		.items_baseline()
 		.gap(gpui::px(3.))
 		.whitespace_nowrap()
-		.text_color(gpui::rgb(if data.live { BLUE } else { TEXT_MUTED }))
+		.text_color(crate::ui_theme::rgb(if data.live { BLUE } else { TEXT_MUTED }))
 		.child(number("live-rate", data.rate.clone()))
 		.child(
 			gpui::div()
 				.text_size(gpui::px(TEXT_SIZE))
-				.text_color(gpui::rgb(TEXT_MUTED))
+				.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 				.child(data.unit()),
 		)
 		.into_any_element()
@@ -340,7 +342,7 @@ fn debug_minimal(data: &Debug) -> AnyElement {
 		.child(
 			gpui::div()
 				.text_size(gpui::px(TEXT_SIZE))
-				.text_color(gpui::rgb(TEXT_MUTED))
+				.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 				.child("FPS"),
 		)
 		.into_any_element()
@@ -442,7 +444,7 @@ fn live_row(
 				.w(gpui::px(columns[0]))
 				.flex_none()
 				.font_weight(FontWeight::MEDIUM)
-				.text_color(gpui::rgb(BLUE))
+				.text_color(crate::ui_theme::rgb(BLUE))
 				.child(row.agent.clone()),
 		)
 		.child(
@@ -460,7 +462,7 @@ fn live_row(
 				.w(gpui::px(columns[1]))
 				.flex_none()
 				.text_right()
-				.text_color(gpui::rgb(TEXT_MUTED))
+				.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 				.child(elapsed),
 		)
 }
@@ -544,7 +546,7 @@ fn debug_details(
 				.gap_2()
 				.child(metric("draw", "Draw p95", data.draw.clone()).w(gpui::px(columns[0])).when(
 					island.display_hz.is_some_and(|hz| island.metrics.draw_ms > 1000. / hz),
-					|d| d.text_color(gpui::rgb(AMBER)),
+					|d| d.text_color(crate::ui_theme::rgb(AMBER)),
 				))
 				.child(chart::render(&island.history, window, cx)),
 		)
@@ -564,7 +566,7 @@ fn metric(id: &'static str, label: &'static str, value: String) -> gpui::Div {
 				.debug_selector(move || format!("performance-{id}-label"))
 				.text_size(gpui::px(TEXT_SIZE))
 				.line_height(gpui::px(12.))
-				.text_color(gpui::rgb(if id == "draw" { BLUE } else { TEXT_MUTED }))
+				.text_color(crate::ui_theme::rgb(if id == "draw" { BLUE } else { TEXT_MUTED }))
 				.child(label),
 		)
 		.child(number(id, value).w_full().text_left())

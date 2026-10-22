@@ -637,7 +637,7 @@ impl AgentSurface {
 						.h(gpui::px(28.))
 						.w(gpui::px(width))
 						.rounded_full()
-						.bg(gpui::rgba(SURFACE_OVERLAY_MATERIAL))
+						.bg(crate::ui_theme::rgba(SURFACE_OVERLAY_MATERIAL))
 						.flex()
 						.items_center()
 						.justify_center()
@@ -645,7 +645,7 @@ impl AgentSurface {
 						.opacity(opacity)
 						.cursor_pointer()
 						.on_scroll(cx.listener(|s, event, _, cx| s.scroll_history(event, cx)))
-						.hover(|d| d.bg(gpui::rgba(0x302d397c)))
+						.hover(|d| d.bg(crate::ui_theme::rgba(0x302d397c)))
 						.on_click(cx.listener(|s, _, _, cx| s.jump_to_latest(cx)))
 						.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
 							if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
@@ -659,7 +659,7 @@ impl AgentSurface {
 									gpui::div()
 										.size(gpui::px(3.))
 										.rounded_full()
-										.bg(gpui::rgb(BLUE))
+										.bg(crate::ui_theme::rgb(BLUE))
 										.opacity(
 											0.35 + 0.65 * ((phase - i as f32 * 0.7).sin() + 1.)
 												/ 2.,
@@ -825,9 +825,11 @@ impl AgentSurface {
 								let activity =
 									(1. - (index as f32 - active_position).abs()).clamp(0., 1.);
 								let color = if working && index == last {
-									gpui::rgb(BLUE)
+									crate::ui_theme::rgb(BLUE)
 								} else {
-									gpui::rgba((TEXT << 8) | (100. + 155. * activity) as u32)
+									crate::ui_theme::rgba(
+										(TEXT << 8) | (100. + 155. * activity) as u32,
+									)
 								};
 								let width = 7.0 + influence * 7.0;
 								let height = 2.0 + influence;
@@ -906,13 +908,13 @@ impl Render for HistoryPreview {
 			.child(
 				gpui::div()
 					.text_size(gpui::px(10.0))
-					.text_color(gpui::rgb(TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 					.child(self.mark.time.clone()),
 			)
 			.child(
 				gpui::div()
 					.font_weight(gpui::FontWeight::MEDIUM)
-					.text_color(gpui::rgb(TEXT))
+					.text_color(crate::ui_theme::rgb(TEXT))
 					.child(self.mark.question.clone()),
 			)
 			.when(!self.mark.answer.is_empty(), |panel| {
@@ -920,8 +922,8 @@ impl Render for HistoryPreview {
 					gpui::div()
 						.pt_2()
 						.border_t_1()
-						.border_color(gpui::rgba(0xffffff14))
-						.text_color(gpui::rgb(0xc4c4ce))
+						.border_color(crate::ui_theme::rgba(0xffffff14))
+						.text_color(crate::ui_theme::rgb(0xc4c4ce))
 						.child(self.mark.answer.clone()),
 				)
 			})

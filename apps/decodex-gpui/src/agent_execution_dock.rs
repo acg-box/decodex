@@ -178,7 +178,7 @@ impl AgentSurface {
 			.items_center()
 			.gap_2()
 			.border_b_1()
-			.border_color(gpui::rgba(0xffffff0c))
+			.border_color(crate::ui_theme::rgba(0xffffff0c))
 			.child(crate::ui_feedback::execution_icon(
 				format!("execution-status-{}-{}", step.turn_id, step.item_id),
 				&step.status,
@@ -196,9 +196,13 @@ impl AgentSurface {
 						format!("{} · {}", step.label, step.detail)
 					}),
 			)
-			.child(gpui::div().w(gpui::px(44.)).text_color(gpui::rgb(TEXT_MUTED)).child(
-				step.duration_ms.map(|ms| format!("{:.1}s", ms as f64 / 1000.)).unwrap_or_default(),
-			));
+			.child(
+				gpui::div().w(gpui::px(44.)).text_color(crate::ui_theme::rgb(TEXT_MUTED)).child(
+					step.duration_ms
+						.map(|ms| format!("{:.1}s", ms as f64 / 1000.))
+						.unwrap_or_default(),
+				),
+			);
 		self.detail_row(work, step, None, row, cx)
 	}
 }

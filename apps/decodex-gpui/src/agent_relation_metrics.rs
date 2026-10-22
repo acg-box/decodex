@@ -75,14 +75,14 @@ fn readout_value(text: String, with_unit: bool, layout: super::card::Layout) -> 
 		.text_size(gpui::px(layout.metric_size()))
 		.line_height(gpui::px(layout.detail_line()))
 		.font_weight(gpui::FontWeight::MEDIUM)
-		.text_color(gpui::rgb(foreground::BODY))
+		.text_color(crate::ui_theme::rgb(foreground::BODY))
 		.child(value.to_owned())
 		.when_some(unit, |row, unit| {
 			row.child(
 				gpui::div()
 					.text_size(gpui::px(layout.detail_size()))
 					.font_weight(gpui::FontWeight::NORMAL)
-					.text_color(gpui::rgb(foreground::SECONDARY))
+					.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
 					.child(unit.to_owned()),
 			)
 		})
@@ -159,7 +159,7 @@ impl RenderOnce for Readout {
 			.text_size(gpui::px(layout.detail_size()))
 			.line_height(gpui::px(layout.detail_line()))
 			.font_weight(gpui::FontWeight::NORMAL)
-			.text_color(gpui::rgb(foreground::BODY))
+			.text_color(crate::ui_theme::rgb(foreground::BODY))
 			.child(
 				gpui::div()
 					.flex_1()
@@ -178,7 +178,7 @@ impl RenderOnce for Readout {
 							gpui::div()
 								.debug_selector(move || share_selector.clone())
 								.flex_none()
-								.text_color(gpui::rgb(super::card::ALLOCATION_TEXT))
+								.text_color(crate::ui_theme::rgb(super::card::ALLOCATION_TEXT))
 								.child(share.unwrap_or_default()),
 						)
 					}),

@@ -35,7 +35,7 @@ impl Render for ModelMenu {
 			.p(gpui::px(composer::MODEL_MENU_SHADOW))
 			.font_family(FONT_FAMILY)
 			.text_size(gpui::px(BODY_SIZE))
-			.text_color(gpui::rgb(TEXT))
+			.text_color(crate::ui_theme::rgb(TEXT))
 			.on_key_down({
 				let owner = owner.clone();
 				move |event, _, cx| {
@@ -153,6 +153,7 @@ fn create(
 			move |window, cx| {
 				cx.new(|cx| {
 					ui_motion::observe_activation(window, cx);
+					crate::ui_theme::appearance::observe(window, cx);
 					cx.observe_window_activation(window, |panel: &mut ModelMenu, window, cx| {
 						if !window.is_window_active() && !ui_motion::application_active() {
 							panel.owner.update(cx, |s, cx| {

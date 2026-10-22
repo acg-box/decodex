@@ -185,7 +185,7 @@ impl Panel {
 			.whitespace_nowrap()
 			.text_size(gpui::px(ui_theme::CAPTION_SIZE))
 			.line_height(gpui::px(META_HEIGHT))
-			.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+			.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
 			.child(gpui::div().flex_none().font_weight(gpui::FontWeight::MEDIUM).child(identity))
 			.child(gpui::div().flex_1())
 			.when(self.width >= 220., |row| {
@@ -232,7 +232,7 @@ impl Panel {
 						.whitespace_normal()
 						.text_size(gpui::px(11.5))
 						.line_height(gpui::px(16.))
-						.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+						.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
 						.child(entry.summary.clone()),
 				)
 			});
@@ -281,7 +281,7 @@ impl Panel {
 							.gap(gpui::px(6.))
 							.text_size(gpui::px(ui_theme::CAPTION_SIZE))
 							.line_height(gpui::px(14.))
-							.text_color(gpui::rgb(color))
+							.text_color(crate::ui_theme::rgb(color))
 							.child(label)
 							.child(gpui::div().flex_1())
 							.child(clock(update.created_at_micros)),
@@ -294,7 +294,7 @@ impl Panel {
 							.whitespace_normal()
 							.text_size(gpui::px(11.5))
 							.line_height(gpui::px(16.))
-							.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+							.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
 							.child(update.summary.clone()),
 					),
 			);
@@ -366,7 +366,7 @@ impl Panel {
 			.items_center()
 			.justify_center()
 			.cursor_pointer()
-			.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+			.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
 			.child(workspace_symbols::icon_sized(Symbol::Forward, 13.))
 			.on_click(cx.listener(move |_, _, _, cx| {
 				cx.stop_propagation();
@@ -404,7 +404,7 @@ impl Panel {
 			.gap(gpui::px(5.))
 			.text_size(gpui::px(11.5))
 			.line_height(gpui::px(16.))
-			.text_color(gpui::rgb(ui_theme::BLUE))
+			.text_color(crate::ui_theme::rgb(ui_theme::BLUE))
 			.child(workspace_symbols::icon_sized(
 				if target.starts_with("file:") { Symbol::Document } else { Symbol::Link },
 				12.,
@@ -484,7 +484,7 @@ impl Panel {
 						.left(gpui::px((RAIL_WIDTH - 7.) / 2.))
 						.size(gpui::px(7.))
 						.rounded_full()
-						.bg(gpui::rgb(color)),
+						.bg(crate::ui_theme::rgb(color)),
 				),
 			)
 			.child(self.row_body(entry, layout, window, cx));
@@ -501,7 +501,7 @@ impl Panel {
 						.items_center()
 						.text_size(gpui::px(11.))
 						.font_weight(gpui::FontWeight::MEDIUM)
-						.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+						.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
 						.child(day_label(entry.updated_at_micros)),
 				)
 			})

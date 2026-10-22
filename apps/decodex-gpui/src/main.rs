@@ -103,6 +103,7 @@ fn main() {
 	});
 	application.run(move |cx: &mut App| {
 		frame_trace::start(cx);
+		ui_theme::appearance::initialize(cx);
 		shell::bind_keys(cx);
 		install_application_menu(cx);
 		#[cfg(target_os = "macos")]
@@ -146,6 +147,7 @@ fn main() {
 
 					cx.new(|cx| {
 						ui_motion::observe_activation(window, cx);
+						crate::ui_theme::appearance::observe(window, cx);
 						Shell::new(window, cx, initial_connection)
 							.with_account_login(account_login)
 							.with_agent_profile(agent_profile, cx)

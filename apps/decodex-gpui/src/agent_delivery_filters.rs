@@ -149,7 +149,7 @@ impl Panel {
 					.rounded(gpui::px(6.))
 					.cursor_pointer()
 					.text_size(gpui::px(11.5))
-					.text_color(gpui::rgb(if active {
+					.text_color(crate::ui_theme::rgb(if active {
 						ui_theme::BLUE
 					} else {
 						ui_theme::TEXT_MUTED
@@ -178,7 +178,7 @@ impl Panel {
 						.items_center()
 						.justify_center()
 						.cursor_pointer()
-						.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+						.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
 						.child(workspace_symbols::icon_sized(Symbol::Restore, 12.))
 						.on_click(cx.listener(|s, _, _, cx| s.reset_time(cx)))
 						.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
@@ -235,7 +235,7 @@ impl Panel {
 			.items_center()
 			.gap(gpui::px(5.))
 			.rounded(gpui::px(6.))
-			.bg(gpui::rgba(if active { 0x8aaaff20 } else { 0x00000000 }))
+			.bg(crate::ui_theme::rgba(if active { 0x8aaaff20 } else { 0x00000000 }))
 			.text_size(gpui::px(11.5))
 			.overflow_hidden()
 			.cursor_pointer()
@@ -324,7 +324,7 @@ impl Panel {
 					.rounded(gpui::px(6.))
 					.cursor_pointer()
 					.text_size(gpui::px(11.5))
-					.bg(gpui::rgba(if self.filter.period == period {
+					.bg(crate::ui_theme::rgba(if self.filter.period == period {
 						0x8aaaff1c
 					} else {
 						0x00000000
@@ -377,15 +377,15 @@ impl Panel {
 					.gap(gpui::px(7.))
 					.rounded(gpui::px(6.))
 					.cursor_pointer()
-					.bg(gpui::rgba(if selected { 0x8aaaff1c } else { 0x00000000 }))
-					.hover(|s| s.bg(gpui::rgba(0xffffff0a)))
+					.bg(crate::ui_theme::rgba(if selected { 0x8aaaff1c } else { 0x00000000 }))
+					.hover(|s| s.bg(crate::ui_theme::rgba(0xffffff0a)))
 					.child(
 						gpui::div()
 							.w(gpui::px(18.))
 							.flex_none()
 							.text_size(gpui::px(12.5))
 							.font_weight(gpui::FontWeight::SEMIBOLD)
-							.text_color(gpui::rgb(ui_theme::BLUE))
+							.text_color(crate::ui_theme::rgb(ui_theme::BLUE))
 							.child(slot.map_or_else(
 								|| "·".into(),
 								|_| {
@@ -414,7 +414,7 @@ impl Panel {
 							gpui::div()
 								.flex_none()
 								.text_size(gpui::px(10.))
-								.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+								.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
 								.child(format!("A{n}")),
 						)
 					})

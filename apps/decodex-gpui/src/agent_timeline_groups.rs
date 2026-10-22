@@ -60,8 +60,8 @@ impl AgentSurface {
 			.text_size(gpui::px(13.))
 			.font_weight(FontWeight::NORMAL)
 			.line_height(gpui::px(18.))
-			.text_color(gpui::rgb(TEXT_MUTED))
-			.hover(|s| s.text_color(gpui::rgb(TEXT)))
+			.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+			.hover(|s| s.text_color(crate::ui_theme::rgb(TEXT)))
 			.child(process_label(group.count))
 			.child(workspace_symbols::process_chevron(
 				SharedString::from(format!("turn-chevron-{identity}")),

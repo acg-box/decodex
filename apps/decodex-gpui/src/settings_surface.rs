@@ -14,7 +14,7 @@ use gpui::{
 		Styled,
 	},
 };
-use ui_theme::window_material::GlassStyle;
+use ui_theme::{appearance::Appearance, window_material::GlassStyle};
 
 use crate::{
 	composer_input::cursor::{Preference, Shape},
@@ -341,7 +341,10 @@ impl SettingsSurface {
 					) {
 						ui_loading::loading("").into_any_element()
 					} else {
-						gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child("—").into_any_element()
+						gpui::div()
+							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+							.child("—")
+							.into_any_element()
 					},
 				)
 				.into_any_element();
@@ -378,17 +381,25 @@ impl SettingsSurface {
 			.items_center()
 			.rounded_full()
 			.border_1()
-			.border_color(gpui::rgb(if enabled { BLUE } else { LINE }))
-			.bg(if enabled { gpui::rgba(0x8baaf730) } else { gpui::rgba(0xffffff0c) })
+			.border_color(crate::ui_theme::rgb(if enabled { BLUE } else { LINE }))
+			.bg(if enabled {
+				crate::ui_theme::rgba(0x8baaf730)
+			} else {
+				crate::ui_theme::rgba(0xffffff0c)
+			})
 			.opacity(if interactive { 1.0 } else { 0.58 })
 			.when(interactive, |toggle| {
 				toggle
 					.cursor_pointer()
 					.hover(move |element| {
-						element.border_color(gpui::rgb(if enabled { BLUE } else { TEXT_MUTED }))
+						element.border_color(crate::ui_theme::rgb(if enabled {
+							BLUE
+						} else {
+							TEXT_MUTED
+						}))
 					})
 					.active(|element| element.opacity(0.9))
-					.focus_visible(|element| element.border_color(gpui::rgb(BLUE)))
+					.focus_visible(|element| element.border_color(crate::ui_theme::rgb(BLUE)))
 					.on_click(cx.listener(match preference {
 						DesktopPreference::Quota => Self::toggle_activation,
 						DesktopPreference::MenuBar => Self::toggle_menubar,
@@ -398,11 +409,10 @@ impl SettingsSurface {
 			.child(ui_motion::switch_knob(
 				knob,
 				enabled,
-				gpui::div().size(gpui::px(14.0)).rounded_full().bg(gpui::rgb(if enabled {
-					BLUE
-				} else {
-					TEXT_MUTED
-				})),
+				gpui::div()
+					.size(gpui::px(14.0))
+					.rounded_full()
+					.bg(crate::ui_theme::rgb(if enabled { BLUE } else { TEXT_MUTED })),
 			))
 			.smooth()
 			.enabled(interactive)
@@ -429,27 +439,34 @@ impl SettingsSurface {
 			.items_center()
 			.rounded_full()
 			.border_1()
-			.border_color(gpui::rgb(if enabled { BLUE } else { LINE }))
-			.bg(if enabled { gpui::rgba(0x8baaf730) } else { gpui::rgba(0xffffff0c) })
+			.border_color(crate::ui_theme::rgb(if enabled { BLUE } else { LINE }))
+			.bg(if enabled {
+				crate::ui_theme::rgba(0x8baaf730)
+			} else {
+				crate::ui_theme::rgba(0xffffff0c)
+			})
 			.opacity(if interactive { 1.0 } else { 0.58 })
 			.when(interactive, |toggle| {
 				toggle
 					.cursor_pointer()
 					.hover(move |element| {
-						element.border_color(gpui::rgb(if enabled { BLUE } else { TEXT_MUTED }))
+						element.border_color(crate::ui_theme::rgb(if enabled {
+							BLUE
+						} else {
+							TEXT_MUTED
+						}))
 					})
 					.active(|element| element.opacity(0.9))
-					.focus_visible(|element| element.border_color(gpui::rgb(BLUE)))
+					.focus_visible(|element| element.border_color(crate::ui_theme::rgb(BLUE)))
 					.on_click(cx.listener(Self::toggle_launch_at_login))
 			})
 			.child(ui_motion::switch_knob(
 				"login-knob",
 				enabled,
-				gpui::div().size(gpui::px(14.0)).rounded_full().bg(gpui::rgb(if enabled {
-					BLUE
-				} else {
-					TEXT_MUTED
-				})),
+				gpui::div()
+					.size(gpui::px(14.0))
+					.rounded_full()
+					.bg(crate::ui_theme::rgb(if enabled { BLUE } else { TEXT_MUTED })),
 			))
 			.smooth()
 			.enabled(interactive)
@@ -489,11 +506,17 @@ impl SettingsSurface {
 				.items_center()
 				.rounded_full()
 				.border_1()
-				.border_color(gpui::rgb(if enabled { BLUE } else { LINE }))
-				.bg(if enabled { gpui::rgba(0x8baaf730) } else { gpui::rgba(0xffffff0c) })
+				.border_color(crate::ui_theme::rgb(if enabled { BLUE } else { LINE }))
+				.bg(if enabled {
+					crate::ui_theme::rgba(0x8baaf730)
+				} else {
+					crate::ui_theme::rgba(0xffffff0c)
+				})
 				.cursor_pointer()
-				.hover(move |d| d.border_color(gpui::rgb(if enabled { BLUE } else { TEXT_MUTED })))
-				.focus_visible(|d| d.border_color(gpui::rgb(BLUE)))
+				.hover(move |d| {
+					d.border_color(crate::ui_theme::rgb(if enabled { BLUE } else { TEXT_MUTED }))
+				})
+				.focus_visible(|d| d.border_color(crate::ui_theme::rgb(BLUE)))
 				.on_click(cx.listener(move |_, _, _, cx| {
 					preference(Some(!enabled));
 
@@ -510,11 +533,10 @@ impl SettingsSurface {
 				.child(ui_motion::switch_knob(
 					knob,
 					enabled,
-					gpui::div().size(gpui::px(14.)).rounded_full().bg(gpui::rgb(if enabled {
-						BLUE
-					} else {
-						TEXT_MUTED
-					})),
+					gpui::div()
+						.size(gpui::px(14.))
+						.rounded_full()
+						.bg(crate::ui_theme::rgb(if enabled { BLUE } else { TEXT_MUTED })),
 				))
 				.smooth(),
 		)
@@ -556,7 +578,7 @@ impl SettingsSurface {
 										.justify_center()
 										.rounded(gpui::px(7.))
 										.cursor_pointer()
-										.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+										.hover(|s| s.bg(crate::ui_theme::rgba(HOVER_FILL)))
 										.on_click(cx.listener(move |_, _, _, cx| {
 											let mut pref = PanelDefaults::configured();
 
@@ -640,7 +662,7 @@ impl SettingsSurface {
 					.gap_1()
 					.p_1()
 					.rounded(gpui::px(9.))
-					.bg(gpui::rgba(0xffffff08))
+					.bg(crate::ui_theme::rgba(0xffffff08))
 					.children(values.into_iter().map(|(label, value)| {
 						gpui::div()
 							.id(SharedString::from(format!("{title}-{label}")))
@@ -659,8 +681,8 @@ impl SettingsSurface {
 							.rounded(gpui::px(6.))
 							.text_size(gpui::px(11.))
 							.cursor_pointer()
-							.when(value == current, |d| d.bg(gpui::rgba(0xffffff16)))
-							.hover(|d| d.bg(gpui::rgba(HOVER_FILL)))
+							.when(value == current, |d| d.bg(crate::ui_theme::rgba(0xffffff16)))
+							.hover(|d| d.bg(crate::ui_theme::rgba(HOVER_FILL)))
 							.on_click(cx.listener(move |_, _, _, cx| {
 								value.select(cx);
 								cx.notify();
@@ -679,6 +701,57 @@ impl SettingsSurface {
 		}))
 	}
 
+	fn appearance_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		let selected = Appearance::current();
+		ui_theme::settings_row().px_0().child(gpui::div().flex_1().child("Theme")).child(
+			gpui::div()
+				.flex()
+				.gap_1()
+				.p_1()
+				.rounded(gpui::px(9.))
+				.bg(ui_theme::rgba(0xffffff08))
+				.children(
+					[
+						(Appearance::System, "System"),
+						(Appearance::Light, "Light"),
+						(Appearance::Dark, "Dark"),
+					]
+					.into_iter()
+					.map(|(value, label)| {
+						gpui::div()
+							.id(label)
+							.debug_selector(move || format!("theme-{label}"))
+							.role(Role::Button)
+							.aria_label(format!("Theme: {label}"))
+							.aria_toggled(if value == selected {
+								Toggled::True
+							} else {
+								Toggled::False
+							})
+							.tab_index(0)
+							.px_3()
+							.h(gpui::px(26.))
+							.flex()
+							.items_center()
+							.rounded(gpui::px(6.))
+							.text_size(gpui::px(11.))
+							.cursor_pointer()
+							.when(value == selected, |d| d.bg(ui_theme::rgba(0xffffff16)))
+							.hover(|d| d.bg(ui_theme::rgba(HOVER_FILL)))
+							.on_click(cx.listener(move |_, _, _, cx| value.select(cx)))
+							.on_key_down(cx.listener(move |_, event: &KeyDownEvent, _, cx| {
+								if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+									value.select(cx);
+									cx.stop_propagation();
+								}
+							}))
+							.child(label)
+							.smooth()
+					}),
+				),
+		)
+	}
+
 	fn glass_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		let style = GlassStyle::configured();
 
@@ -688,7 +761,7 @@ impl SettingsSurface {
 				.gap_1()
 				.p_1()
 				.rounded(gpui::px(9.))
-				.bg(gpui::rgba(0xffffff08))
+				.bg(crate::ui_theme::rgba(0xffffff08))
 				.children(
 					[(GlassStyle::Regular, "Regular"), (GlassStyle::Clear, "Clear")]
 						.into_iter()
@@ -711,8 +784,8 @@ impl SettingsSurface {
 								.rounded(gpui::px(6.))
 								.text_size(gpui::px(11.))
 								.cursor_pointer()
-								.when(value == style, |d| d.bg(gpui::rgba(0xffffff16)))
-								.hover(|d| d.bg(gpui::rgba(HOVER_FILL)))
+								.when(value == style, |d| d.bg(crate::ui_theme::rgba(0xffffff16)))
+								.hover(|d| d.bg(crate::ui_theme::rgba(HOVER_FILL)))
 								.on_click(cx.listener(move |_, _, _, cx| {
 									value.select(cx);
 									cx.notify();
@@ -745,9 +818,14 @@ impl SettingsSurface {
 					.child(gpui::div().flex_1().child("Auto-activate weekly quota"))
 					.child(self.toggle(DesktopPreference::Quota, cx)),
 			)
-			.child(gpui::div().text_size(gpui::px(11.)).text_color(gpui::rgb(TEXT_MUTED)).child(
-				"Start the next weekly window with a small request. Uses quota; no chat is saved.",
-			))
+			.child(
+				gpui::div()
+					.text_size(gpui::px(11.))
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+					.child(
+						"Start the next weekly window with a small request. Uses quota; no chat is saved.",
+					),
+			)
 			.into_any_element()
 	}
 
@@ -773,7 +851,7 @@ impl SettingsSurface {
 				)
 				.child(group().child(settings_group_title("Task recaps"))
 						.child(ui_theme::settings_row().px_0().child(gpui::div().flex_1().child("Automatic task recaps")).child(self.toggle(DesktopPreference::Recap, cx)))
-						.child(gpui::div().text_size(gpui::px(11.)).text_color(gpui::rgb(TEXT_MUTED)).child("After 30 minutes away, recap the selected task when it has new completed work. Uses its model and quota."))
+						.child(gpui::div().text_size(gpui::px(11.)).text_color(crate::ui_theme::rgb(TEXT_MUTED)).child("After 30 minutes away, recap the selected task when it has new completed work. Uses its model and quota."))
 				)
 				.child(group().child(settings_group_title("Power")).child(self.power_control(cx)))
 				.child(
@@ -800,6 +878,9 @@ impl SettingsSurface {
 				.flex_col()
 				.gap(gpui::px(24.))
 				.child(
+					group().child(self.appearance_controls(cx)),
+				)
+				.child(
 					group().child(settings_group_title("Materials"))
 						.child(self.preference_control(
 							"composer-liquid-glass", "composer-liquid-glass-knob",
@@ -811,7 +892,7 @@ impl SettingsSurface {
 						.child(self.preference_control(
 							"debug-mode", "debug-mode-knob", "Debug mode",
 							crate::ui_performance::preference, cx,
-						)).child(gpui::div().text_size(gpui::px(11.)).text_color(gpui::rgb(TEXT_MUTED))
+						)).child(gpui::div().text_size(gpui::px(11.)).text_color(crate::ui_theme::rgb(TEXT_MUTED))
 							.child("Show live rendering and system GPU metrics in the top bar.")),
 				)
 				.child(
@@ -829,7 +910,7 @@ impl SettingsSurface {
 					group().child(settings_group_title("Animation")).child(self.preference_control(
 						"full-background-rendering", "full-background-rendering-knob",
 						"Full rendering in background", crate::ui_frame::background_rendering, cx,
-					)).child(gpui::div().text_size(gpui::px(11.)).text_color(gpui::rgb(TEXT_MUTED))
+					)).child(gpui::div().text_size(gpui::px(11.)).text_color(crate::ui_theme::rgb(TEXT_MUTED))
 						.child("Keep animations and the display frame rate when Decodex is inactive. Uses more energy.")),
 				)
 				.child(
@@ -859,7 +940,7 @@ impl Render for SettingsSurface {
 			.min_h_0()
 			.text_size(gpui::px(BODY_SIZE))
 			.line_height(gpui::px(BODY_LINE_HEIGHT))
-			.text_color(gpui::rgb(TEXT))
+			.text_color(crate::ui_theme::rgb(TEXT))
 			.child(
 				gpui::div()
 					.id(("settings-scroll-viewport", self.category as usize))
@@ -892,7 +973,7 @@ fn settings_group_title(label: &'static str) -> impl IntoElement {
 	gpui::div()
 		.text_size(gpui::px(11.))
 		.font_weight(FontWeight::MEDIUM)
-		.text_color(gpui::rgb(TEXT_MUTED))
+		.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 		.mb(gpui::px(4.))
 		.child(label)
 }
@@ -947,9 +1028,9 @@ fn quote_attribution() -> impl IntoElement {
 		.tab_index(0)
 		.aria_label("Quotes from ZenQuotes. Visit the website.")
 		.text_size(gpui::px(11.))
-		.text_color(gpui::rgb(TEXT_MUTED))
+		.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 		.cursor_pointer()
-		.hover(|d| d.text_color(gpui::rgb(TEXT)))
+		.hover(|d| d.text_color(crate::ui_theme::rgb(TEXT)))
 		.on_click(|_, _, cx| cx.open_url("https://zenquotes.io/"))
 		.on_key_down(|event, _, cx| {
 			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {

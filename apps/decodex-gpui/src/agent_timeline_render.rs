@@ -32,7 +32,7 @@ fn speaker(text: impl Into<SharedString>) -> Div {
 		.text_size(gpui::px(foreground::METRIC_SIZE))
 		.line_height(gpui::px(crate::ui_theme::CAPTION_LINE_HEIGHT))
 		.font_weight(gpui::FontWeight::MEDIUM)
-		.text_color(gpui::rgb(foreground::SECONDARY))
+		.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
 		.child(text.into())
 }
 
@@ -755,7 +755,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 						.py(gpui::px(5.))
 						.text_size(gpui::px(12.))
 						.line_height(gpui::px(18.))
-						.text_color(gpui::rgb(TEXT_MUTED))
+						.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 						.child(crate::ui_feedback::execution_icon(
 							format!("wait-{identity}"),
 							"recorded",
@@ -845,7 +845,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			.group_hover(group.clone(), |style| style.opacity(1.))
 			.focus(|style| style.opacity(1.))
 			.cursor_pointer()
-			.hover(|style| style.bg(gpui::rgba(HOVER_FILL)))
+			.hover(|style| style.bg(crate::ui_theme::rgba(HOVER_FILL)))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.review_prompt(&owner, &thread, &turn, &item, cx);
 			}))
@@ -860,7 +860,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			.child(
 				gpui::svg()
 					.data(br#"<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"><path d="M2 9L9 2L12 5L5 12L1 13ZM7 4L10 7" fill="none" stroke="white" stroke-width="1.1"/></svg>"#)
-					.text_color(gpui::rgb(TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 					.size(gpui::px(14.)),
 			);
 
@@ -906,7 +906,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			.rounded(gpui::px(6.))
 			.text_size(gpui::px(12.))
 			.line_height(gpui::px(18.))
-			.text_color(gpui::rgb(TEXT_MUTED))
+			.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 			.child(crate::ui_feedback::execution_icon(
 				format!("execution-status-{identity}"),
 				&activity.status,
@@ -1076,7 +1076,7 @@ pub(super) fn process_indent(content: impl IntoElement) -> AnyElement {
 				.w_full()
 				.min_w_0()
 				.border_l_1()
-				.border_color(gpui::rgba(0xffffff14))
+				.border_color(crate::ui_theme::rgba(0xffffff14))
 				.pl(gpui::px(14.))
 				.child(content),
 		)

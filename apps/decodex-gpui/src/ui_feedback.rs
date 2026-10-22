@@ -54,7 +54,11 @@ impl Tone {
 			Self::Success => br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="m5 8 2 2 4-4"/></g></svg>"#,
 			Self::Warning | Self::Error => br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 4.7v4M8 11v.1"/></g></svg>"#,
 		};
-		gpui::svg().data(data).size(gpui::px(14.)).flex_none().text_color(gpui::rgb(self.color()))
+		gpui::svg()
+			.data(data)
+			.size(gpui::px(14.))
+			.flex_none()
+			.text_color(crate::ui_theme::rgb(self.color()))
 	}
 
 	pub(crate) fn row(self, id: impl Into<ElementId>, message: &str) -> Stateful<Div> {
@@ -65,8 +69,8 @@ impl Tone {
 		gpui::div()
 			.rounded(gpui::px(12.))
 			.border_1()
-			.border_color(gpui::rgba((self.color() << 8) | 0x26))
-			.bg(gpui::rgba((self.color() << 8) | 0x07))
+			.border_color(crate::ui_theme::rgba((self.color() << 8) | 0x26))
+			.bg(crate::ui_theme::rgba((self.color() << 8) | 0x07))
 			.px(gpui::px(NOTICE_PADDING))
 			.py(gpui::px(6.))
 			.text_size(gpui::px(NOTICE_TEXT_SIZE))
@@ -108,7 +112,7 @@ impl Tone {
 			.gap(gpui::px(7.))
 			.text_size(gpui::px(NOTICE_TEXT_SIZE))
 			.line_height(gpui::px(NOTICE_LINE_HEIGHT))
-			.text_color(gpui::rgb(self.color()))
+			.text_color(crate::ui_theme::rgb(self.color()))
 			.child(
 				gpui::div()
 					.h(gpui::px(NOTICE_LINE_HEIGHT))
@@ -285,7 +289,7 @@ pub(crate) fn execution_icon(id: impl Into<SharedString>, status: &str) -> State
 			gpui::svg()
 				.data(br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></g></svg>"#)
 				.size(gpui::px(14.))
-				.text_color(gpui::rgb(TEXT_MUTED))
+				.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 				.into_any_element()
 		} else if running {
 			crate::ui_loading::loading("").into_any_element()
@@ -401,7 +405,7 @@ impl RenderOnce for Notice {
 				let icon = if feedback.busy {
 					gpui::svg()
 						.data(br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 2a6 6 0 1 1-6 6" fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round"/></svg>"#)
-						.size(gpui::px(14.)).flex_none().text_color(gpui::rgb(tone.color()))
+						.size(gpui::px(14.)).flex_none().text_color(crate::ui_theme::rgb(tone.color()))
 						.with_transformation(gpui::Transformation::rotate(gpui::radians(
 							if reduced { 0. } else { elapsed * std::f32::consts::TAU / 1.2 },
 						)))

@@ -54,7 +54,7 @@ impl AgentSurface {
 					.child(
 						gpui::div()
 							.text_size(gpui::px(11.))
-							.text_color(gpui::rgb(TEXT_MUTED))
+							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 							.child("Model options are unavailable. Reopen to retry."),
 					)
 					.into_any_element(),
@@ -83,18 +83,22 @@ impl AgentSurface {
 						.h(gpui::px(ui_theme::CONTROL_SIZE))
 						.px(gpui::px(7.))
 						.rounded(gpui::px(6.))
-						.bg(if selected { gpui::rgba(0xffffff0c) } else { gpui::rgba(0x00000000) })
+						.bg(if selected {
+							crate::ui_theme::rgba(0xffffff0c)
+						} else {
+							crate::ui_theme::rgba(0x00000000)
+						})
 						.flex()
 						.items_center()
 						.justify_between()
 						.cursor_pointer()
 						.hover(move |d| {
-							d.bg(gpui::rgba(if selected {
+							d.bg(crate::ui_theme::rgba(if selected {
 								SELECTED_HOVER_FILL
 							} else {
 								HOVER_FILL
 							}))
-							.text_color(gpui::rgb(TEXT))
+							.text_color(crate::ui_theme::rgb(TEXT))
 						})
 						.on_click(cx.listener(move |s, _, _, cx| {
 							s.select_composer_option("model", &click_model, cx)
@@ -124,7 +128,7 @@ impl AgentSurface {
 							gpui::div()
 								.w(gpui::px(16.))
 								.text_size(gpui::px(13.))
-								.text_color(gpui::rgb(TEXT_MUTED))
+								.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 								.child(if selected { "✓" } else { "" }),
 						)
 						.smooth(),
@@ -162,19 +166,19 @@ impl RenderOnce for StopMark {
 					.absolute()
 					.size(gpui::px(24.))
 					.rounded_full()
-					.bg(gpui::rgba(0xf5c98500 | (strength * 48.) as u32)),
+					.bg(crate::ui_theme::rgba(0xf5c98500 | (strength * 48.) as u32)),
 			)
 			.child(
 				gpui::div()
 					.size(gpui::px(9.))
 					.rounded(gpui::px(2.))
-					.bg(gpui::rgb(CANVAS))
+					.bg(crate::ui_theme::rgb(CANVAS))
 					.opacity(0.9 - pending * 0.35)
 					.child(
 						gpui::div()
 							.size_full()
 							.rounded(gpui::px(2.))
-							.bg(gpui::rgba(0xf5c98500 | (strength * 255.) as u32)),
+							.bg(crate::ui_theme::rgba(0xf5c98500 | (strength * 255.) as u32)),
 					),
 			)
 	}
@@ -244,7 +248,11 @@ pub(super) fn live_mark() -> AnyElement {
 		.justify_center()
 		.gap(gpui::px(2.))
 		.children([4., 8., 12., 8., 4.].map(|height| {
-			gpui::div().w(gpui::px(1.5)).h(gpui::px(height)).rounded_full().bg(gpui::rgb(0xf4f2f7))
+			gpui::div()
+				.w(gpui::px(1.5))
+				.h(gpui::px(height))
+				.rounded_full()
+				.bg(crate::ui_theme::rgb(0xf4f2f7))
 		}))
 		.into_any_element()
 }
@@ -263,7 +271,7 @@ pub(super) fn launch_mark() -> impl IntoElement {
 			path.line_to(origin + gpui::point(gpui::px(13.), gpui::px(8.)));
 
 			if let Ok(path) = path.build() {
-				window.paint_path(path, gpui::rgb(TEXT));
+				window.paint_path(path, crate::ui_theme::rgb(TEXT));
 			}
 		},
 	)

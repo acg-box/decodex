@@ -501,14 +501,18 @@ pub(super) fn row(
 		strip = strip.child(
 			shell::account_row_action("reset-card", index, "Use reset card", "", enabled)
 				.border_1()
-				.border_color(gpui::rgba(0xffffff26))
+				.border_color(crate::ui_theme::rgba(0xffffff26))
 				.id(SharedString::from(format!("reset-card-{}-{index}", account_id.as_str())))
 				.debug_selector({
 					let id = account_id.clone();
 
 					move || format!("reset-card-{}-{index}", id.as_str())
 				})
-				.text_color(gpui::rgb(if armed.is_some() { WB_AMBER } else { WB_TEXT_MUTED }))
+				.text_color(crate::ui_theme::rgb(if armed.is_some() {
+					WB_AMBER
+				} else {
+					WB_TEXT_MUTED
+				}))
 				.tooltip(move |_, cx| cx.new(|_| ControlTooltip(tip.clone())).into())
 				.child(title)
 				.on_click(cx.listener(move |shell, _, _, cx| {

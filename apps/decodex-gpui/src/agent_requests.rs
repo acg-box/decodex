@@ -185,7 +185,7 @@ impl AgentSurface {
 			.p_3()
 			.rounded(gpui::px(8.0))
 			.border_1()
-			.border_color(gpui::rgba(0xffffff18))
+			.border_color(crate::ui_theme::rgba(0xffffff18))
 			.flex()
 			.flex_col()
 			.gap_2();
@@ -205,7 +205,7 @@ impl AgentSurface {
 					.tab_index(0)
 					.aria_label("Send answers")
 					.cursor_pointer()
-					.text_color(gpui::rgb(BLUE))
+					.text_color(crate::ui_theme::rgb(BLUE))
 					.on_click(cx.listener(|s, _, _, cx| s.submit_answers(cx)))
 					.child("Send answers")
 					.smooth(),
@@ -580,7 +580,7 @@ impl AgentSurface {
 					.aria_label(label.clone())
 					.p_2()
 					.rounded(gpui::px(6.0))
-					.bg(gpui::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
+					.bg(crate::ui_theme::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
 					.cursor_pointer()
 					.on_click(cx.listener(move |_, _, _, cx| {
 						input.update(cx, |input, cx| input.set_content(&answer, cx));
@@ -625,8 +625,8 @@ impl AgentSurface {
 			.items_center()
 			.rounded(gpui::px(5.0))
 			.cursor_pointer()
-			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
-			.text_color(gpui::rgb(BLUE))
+			.hover(|s| s.bg(crate::ui_theme::rgba(HOVER_FILL)))
+			.text_color(crate::ui_theme::rgb(BLUE))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				if s.generation == generation && s.request_reader.revision == revision
 					&& matches!(&s.request, Some(AgentRequestResult::Available { event_id, .. }) if *event_id == event) {

@@ -80,7 +80,7 @@ impl AgentSurface {
 					gpui::div()
 						.px_3()
 						.text_size(gpui::px(11.))
-						.text_color(gpui::rgb(TEXT_MUTED))
+						.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 						.child(self.graph_context()),
 				)
 				.child(gpui::div().flex_1().min_h_0().child(self.workspace_dependency_graph(cx)));
@@ -117,8 +117,8 @@ impl AgentSurface {
 			.overflow_hidden()
 			.rounded(gpui::px(9.))
 			.border_1()
-			.border_color(gpui::rgba(0xffffff24))
-			.bg(gpui::rgba(0x242427f8))
+			.border_color(crate::ui_theme::rgba(0xffffff24))
+			.bg(crate::ui_theme::rgba(0x242427f8))
 			.children(self.handoff_details(cx))
 			.into_any_element()
 	}
@@ -150,8 +150,11 @@ impl AgentSurface {
 			let id = item.work.clone();
 			let label = "Respond";
 			row = row.child(
-				gpui::div().flex_none().rounded(gpui::px(5.)).bg(gpui::rgba(0x6b9fff20)).child(
-					self.workspace_action(
+				gpui::div()
+					.flex_none()
+					.rounded(gpui::px(5.))
+					.bg(crate::ui_theme::rgba(0x6b9fff20))
+					.child(self.workspace_action(
 						"dock-next-action".into(),
 						format!(
 							"{label}: {}",
@@ -178,8 +181,7 @@ impl AgentSurface {
 							s.activate_graph_node(&id, cx);
 						},
 						cx,
-					),
-				),
+					)),
 			);
 		}
 		row.into_any_element()
@@ -250,16 +252,14 @@ impl AgentSurface {
 		let attention = item.as_ref().is_some_and(|h| h.attention);
 		let result = item.as_ref().is_some_and(|h| h.result);
 
-		let mut header = if self.work_board.graph {
-			self.handoff_header(work, cx)
-		} else {
-			gpui::div()
-				.flex()
-				.flex_col()
-				.gap_2()
-				.child(self.work_label(work))
-				.child(gpui::div().text_color(gpui::rgb(state.color)).child(state.label))
-		};
+		let mut header =
+			if self.work_board.graph {
+				self.handoff_header(work, cx)
+			} else {
+				gpui::div().flex().flex_col().gap_2().child(self.work_label(work)).child(
+					gpui::div().text_color(crate::ui_theme::rgb(state.color)).child(state.label),
+				)
+			};
 		if result && attention {
 			let item = item.clone().expect("unread result");
 			header = header.child(gpui::div().flex().child(self.workspace_action(

@@ -381,7 +381,8 @@ impl AgentSurface {
 			if tasks.is_empty() {
 				continue;
 			}
-			body = body.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(label));
+			body =
+				body.child(gpui::div().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child(label));
 			for task in tasks {
 				let id = task.id.clone();
 				body = body.child(self.workspace_action(
@@ -449,7 +450,8 @@ impl AgentSurface {
 		};
 		if let Some((text, label)) = excerpt {
 			if label != "Final response" {
-				body = body.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(label));
+				body = body
+					.child(gpui::div().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child(label));
 			}
 			body = body.child(
 				gpui::div()
@@ -461,13 +463,15 @@ impl AgentSurface {
 		} else {
 			let loading = self.dock_evidence.key.as_ref() == Some(&self.dock_evidence_key(work))
 				&& self.dock_evidence.task.is_some();
-			body = body.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child(if loading {
-				"Loading task activity…"
-			} else if running {
-				"Running · No activity received for this turn yet."
-			} else {
-				"No final response is available here. Open the conversation to review its history."
-			}));
+			body = body.child(gpui::div().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child(
+				if loading {
+					"Loading task activity…"
+				} else if running {
+					"Running · No activity received for this turn yet."
+				} else {
+					"No final response is available here. Open the conversation to review its history."
+				},
+			));
 		}
 		body.child(gpui::div().flex().child(source))
 	}

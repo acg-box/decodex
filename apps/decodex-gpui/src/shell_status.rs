@@ -334,9 +334,9 @@ impl Shell {
 			.items_center()
 			.justify_center()
 			.text_size(gpui::px(11.))
-			.text_color(gpui::rgb(WB_TEXT_MUTED))
+			.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
 			.cursor_pointer()
-			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+			.hover(|s| s.bg(crate::ui_theme::rgba(HOVER_FILL)))
 			.occlude()
 			.on_mouse_down(
 				gpui::MouseButton::Left,
@@ -376,8 +376,8 @@ impl Shell {
 						.h(gpui::px(14.))
 						.px(gpui::px(3.))
 						.rounded_full()
-						.bg(gpui::rgb(color))
-						.text_color(gpui::rgb(0x17171a))
+						.bg(crate::ui_theme::rgb(color))
+						.text_color(crate::ui_theme::rgb(0x17171a))
 						.text_size(gpui::px(9.))
 						.flex()
 						.items_center()
@@ -408,7 +408,7 @@ impl Shell {
 					.child(
 						gpui::div()
 							.text_size(gpui::px(12.))
-							.text_color(gpui::rgb(WB_TEXT))
+							.text_color(crate::ui_theme::rgb(WB_TEXT))
 							.child("Notifications"),
 					)
 					.when(!notices.is_empty(), |d| {
@@ -419,9 +419,9 @@ impl Shell {
 								.aria_label("Clear all notifications")
 								.tab_index(0)
 								.text_size(gpui::px(11.))
-								.text_color(gpui::rgb(WB_TEXT_MUTED))
+								.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
 								.cursor_pointer()
-								.hover(|d| d.text_color(gpui::rgb(WB_TEXT)))
+								.hover(|d| d.text_color(crate::ui_theme::rgb(WB_TEXT)))
 								.on_click(cx.listener(|s, _, _, cx| {
 									let notices = s.notifications(
 										&shell::connection_presentation(s.connection),
@@ -442,7 +442,7 @@ impl Shell {
 			panel = panel.child(
 				gpui::div()
 					.text_size(gpui::px(11.))
-					.text_color(gpui::rgb(WB_TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
 					.child("No notifications."),
 			);
 		}
@@ -473,7 +473,7 @@ impl Shell {
 											.flex_1()
 											.min_w_0()
 											.text_size(gpui::px(11.))
-											.text_color(gpui::rgb(notice.color))
+											.text_color(crate::ui_theme::rgb(notice.color))
 											.child(notice.title.clone()),
 									)
 									.child(
@@ -491,7 +491,7 @@ impl Shell {
 											.justify_center()
 											.rounded(gpui::px(5.))
 											.cursor_pointer()
-											.hover(|d| d.bg(gpui::rgba(HOVER_FILL)))
+											.hover(|d| d.bg(crate::ui_theme::rgba(HOVER_FILL)))
 											.on_click(cx.listener(move |s, _, _, cx| {
 												s.dismissed_notifications
 													.borrow_mut()
@@ -506,7 +506,7 @@ impl Shell {
 									gpui::div()
 										.text_size(gpui::px(11.))
 										.line_height(gpui::px(17.))
-										.text_color(gpui::rgb(notice.color))
+										.text_color(crate::ui_theme::rgb(notice.color))
 										.child(notice.detail),
 								)
 							})
@@ -542,9 +542,9 @@ impl Shell {
 			.flex()
 			.items_center()
 			.text_size(gpui::px(11.))
-			.text_color(gpui::rgb(WB_BLUE))
+			.text_color(crate::ui_theme::rgb(WB_BLUE))
 			.cursor_pointer()
-			.hover(|d| d.bg(gpui::rgba(HOVER_FILL)))
+			.hover(|d| d.bg(crate::ui_theme::rgba(HOVER_FILL)))
 			.on_click(cx.listener(move |s, event, window, cx| {
 				s.status_open = false;
 

@@ -71,7 +71,7 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 		.flex_col()
 		.gap(gpui::px(6.))
 		.text_size(gpui::px(11.))
-		.text_color(gpui::rgb(WB_TEXT_MUTED));
+		.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED));
 	let profile = match snapshot.and_then(|s| s.result.as_ref()) {
 		Some(
 			AccountProfileResult::Current(profile) | AccountProfileResult::Cached { profile, .. },
@@ -106,7 +106,7 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 				.items_end()
 				.gap(gpui::px(1.5))
 				.border_b_1()
-				.border_color(gpui::rgba(0xffffff16))
+				.border_color(crate::ui_theme::rgba(0xffffff16))
 				.children(profile.daily_usage.iter().enumerate().map(|(index, day)| {
 					let tip = format!("{}: {} tokens", day.start_date.as_str(), day.tokens);
 
@@ -119,7 +119,11 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 							(20. * (day.tokens as f32 / peak as f32).sqrt()).max(2.)
 						}))
 						.rounded(gpui::px(1.5))
-						.bg(gpui::rgb(if day.tokens == 0 { WB_TEXT_FAINT } else { WB_BLUE }))
+						.bg(crate::ui_theme::rgb(if day.tokens == 0 {
+							WB_TEXT_FAINT
+						} else {
+							WB_BLUE
+						}))
 						.tooltip(move |_, cx| cx.new(|_| ControlTooltip(tip.clone())).into())
 				})),
 		);

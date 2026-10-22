@@ -761,15 +761,19 @@ impl ComposerInput {
 			.rounded(gpui::px(if workbench { 8.0 } else { 6.0 }))
 			.border_1()
 			.border_color(if workbench {
-				gpui::rgba(0x00000000)
+				crate::ui_theme::rgba(0x00000000)
 			} else if focus_handle.is_focused(window) {
-				gpui::rgb(0x817789)
+				crate::ui_theme::rgb(0x817789)
 			} else {
-				gpui::rgb(0x3c3744)
+				crate::ui_theme::rgb(0x3c3744)
 			})
-			.bg(if workbench { gpui::rgba(0x00000000) } else { gpui::rgba(FIELD_MATERIAL) })
+			.bg(if workbench {
+				crate::ui_theme::rgba(0x00000000)
+			} else {
+				crate::ui_theme::rgba(FIELD_MATERIAL)
+			})
 			.text_size(gpui::px(BODY_SIZE))
-			.text_color(gpui::rgb(0xeeeaf0))
+			.text_color(crate::ui_theme::rgb(0xeeeaf0))
 			.child(ComposerTextElement { input: entity })
 			.into_any_element()
 	}

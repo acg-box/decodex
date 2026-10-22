@@ -1,5 +1,6 @@
 //! Code keeps its own horizontal viewport; its toolbar stays with the message.
-use gpui::{AnyElement, px, rgb, rgba};
+use crate::ui_theme::{rgb, rgba};
+use gpui::{AnyElement, px};
 
 use super::{
 	IntoElement as _, Node, ParentElement as _, SharedString, StatefulInteractiveElement as _,

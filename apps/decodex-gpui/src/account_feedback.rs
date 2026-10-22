@@ -39,11 +39,11 @@ impl RenderOnce for AccountFeedback {
 			.w(gpui::px(240.))
 			.p_3()
 			.rounded(gpui::px(10.))
-			.bg(gpui::rgba(SURFACE_OVERLAY_MATERIAL))
+			.bg(crate::ui_theme::rgba(SURFACE_OVERLAY_MATERIAL))
 			.border_1()
-			.border_color(gpui::rgba(0xffffff14))
+			.border_color(crate::ui_theme::rgba(0xffffff14))
 			.text_size(gpui::px(12.))
-			.text_color(gpui::rgb(self.color))
+			.text_color(crate::ui_theme::rgb(self.color))
 			.cursor_default()
 			.debug_selector(move || popup_selector.clone())
 			.on_click(|_, _, cx| cx.stop_propagation())
@@ -73,7 +73,7 @@ impl RenderOnce for AccountFeedback {
 			.justify_center()
 			.rounded(gpui::px(6.))
 			.cursor_pointer()
-			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+			.hover(|s| s.bg(crate::ui_theme::rgba(HOVER_FILL)))
 			.on_key_down(move |event, _, cx| {
 				if open && event.keystroke.key == "escape" {
 					dismiss.update(cx, |s, cx| {

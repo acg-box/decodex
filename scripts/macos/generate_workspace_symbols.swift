@@ -4,6 +4,7 @@ import AppKit
 
 let output = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "assets/workspace-symbols", isDirectory: true)
 try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+let light = CommandLine.arguments.contains("--light")
 let symbols = [
     "document": "doc.text",
     "link": "link",
@@ -65,7 +66,16 @@ for (name, symbolName) in symbols {
     symbol.draw(in: NSRect(x: (16-size.width)/2, y: (16-size.height)/2, width: size.width, height: size.height),
         from: .zero, operation: .sourceOver, fraction: 1)
     // Keep status tints equal to ui_theme::{ERROR, AMBER, BLUE}.
-    (name == "send" ? NSColor(srgbRed: 0.04, green: 0.04, blue: 0.06, alpha: 1)
+    let lightColor: NSColor = name == "send"
+        ? NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+        : name == "account-warning" || name == "bell-error"
+            ? NSColor(srgbRed: 200.0/255, green: 50.0/255, blue: 50.0/255, alpha: 1)
+        : name == "bell-attention" || name == "account-warning-amber"
+            ? NSColor(srgbRed: 149.0/255, green: 96.0/255, blue: 24.0/255, alpha: 1)
+        : name == "bell-info" || name == "account-route-active" || name == "power-on"
+            ? NSColor(srgbRed: 59.0/255, green: 96.0/255, blue: 187.0/255, alpha: 1)
+        : NSColor(srgbRed: 63.0/255, green: 61.0/255, blue: 71.0/255, alpha: 1)
+    (light ? lightColor : name == "send" ? NSColor(srgbRed: 0.04, green: 0.04, blue: 0.06, alpha: 1)
         : name == "account-warning" || name == "bell-error" ? NSColor(srgbRed: 239.0/255, green: 68.0/255, blue: 68.0/255, alpha: 1)
         : name == "bell-attention" || name == "account-warning-amber" ? NSColor(srgbRed: 224.0/255, green: 181.0/255, blue: 111.0/255, alpha: 1)
         : name == "bell-info" || name == "account-route-active" || name == "power-on" ? NSColor(srgbRed: 139.0/255, green: 170.0/255, blue: 247.0/255, alpha: 1)

@@ -99,10 +99,10 @@ impl AgentSurface {
 					.rounded(gpui::px(5.))
 					.border_1()
 					.border_color(gpui::transparent_black())
-					.text_color(gpui::rgb(if active { TEXT } else { TEXT_MUTED }))
+					.text_color(crate::ui_theme::rgb(if active { TEXT } else { TEXT_MUTED }))
 					.cursor_pointer()
-					.when(!held, |d| d.hover(|d| d.text_color(gpui::rgb(TEXT))))
-					.focus_visible(|d| d.border_color(gpui::rgb(ui_theme::BLUE)))
+					.when(!held, |d| d.hover(|d| d.text_color(crate::ui_theme::rgb(TEXT))))
+					.focus_visible(|d| d.border_color(crate::ui_theme::rgb(ui_theme::BLUE)))
 					.on_click(cx.listener(move |s, event: &gpui::ClickEvent, window, cx| {
 						// Pointer clicks are committed by the captured release, including outside
 						// the track.
@@ -208,7 +208,7 @@ impl gpui::RenderOnce for Thumb {
 			.w(gpui::px(SEGMENT))
 			.h(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT - (INSET + 1.) * 2.))
 			.rounded(gpui::px(5.))
-			.bg(gpui::rgba(ui_theme::PRESSED_FILL))
+			.bg(crate::ui_theme::rgba(ui_theme::PRESSED_FILL))
 	}
 }
 
