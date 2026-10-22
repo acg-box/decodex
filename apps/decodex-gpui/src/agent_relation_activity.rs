@@ -79,7 +79,22 @@ impl Output {
 
 /// Retain the returned answer for in-place reading; cards derive their own excerpt.
 pub(super) fn output(entries: &[AgentTimelineEntry]) -> Option<Output> {
-	latest_output(entries).map(|output| Output {
+	let latest = latest_output(entries)?;
+	// Terminal briefs prefer the native final answer. Commentary remains in the live preview.
+	// Missing phases retain the legacy display path; an explicit commentary phase is not a result.
+	let message = |phase: Option<&str>| {
+		entries.iter().rev().find_map(|entry| match &entry.content {
+			AgentTimelineContent::Item {
+				turn_id, kind, text, truncated, phase: observed, ..
+			} if turn_id == latest.turn
+				&& kind == "agentMessage"
+				&& !text.trim().is_empty()
+				&& observed.as_deref() == phase =>
+				Some(OutputRef { turn: turn_id, text, truncated: *truncated }),
+			_ => None,
+		})
+	};
+	message(Some("final_answer")).or_else(|| message(None)).map(|output| Output {
 		turn: output.turn.into(),
 		text: output.text.into(),
 		truncated: output.truncated,
@@ -274,6 +289,33 @@ mod tests {
 				attachments: vec![],
 			},
 		}
+	}
+
+	#[test]
+	fn terminal_briefs_prefer_the_complete_final_answer_over_commentary() {
+		let mut final_answer = item("turn", "agentMessage", "Complete result.\n\nFinal paragraph.");
+		if let AgentTimelineContent::Item { phase, .. } = &mut final_answer.content {
+			*phase = Some("final_answer".into());
+		}
+		let mut commentary = item("turn", "agentMessage", "Finishing the check");
+		if let AgentTimelineContent::Item { phase, .. } = &mut commentary.content {
+			*phase = Some("commentary".into());
+		}
+		let entries = vec![final_answer, commentary.clone()];
+		assert_eq!(output(&entries).unwrap().text, "Complete result.\n\nFinal paragraph.");
+		assert_eq!(
+			latest_output(&entries).unwrap().text,
+			"Finishing the check",
+			"live preview keeps its existing behavior"
+		);
+		assert!(
+			output(&[commentary]).is_none(),
+			"an explicit commentary phase is not a returned result"
+		);
+		assert_eq!(
+			output(&[item("legacy", "agentMessage", "Legacy result")]).unwrap().text,
+			"Legacy result"
+		);
 	}
 
 	#[test]
