@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(super) struct Board {
 	pub(super) graph: bool,
 	collaboration_expanded: Option<String>,
+	collaboration: workbench::Collaboration,
 	focus: Option<String>,
 	view: relations::View,
 	pub(super) briefs: BTreeMap<String, Brief>,
@@ -708,6 +709,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn refresh_factory_briefs(&mut self, cx: &mut Context<Self>) {
+		self.refresh_collaboration(cx);
 		if self.work_board.brief_task.is_some() || !self.command_connection_ready() {
 			return;
 		}

@@ -1067,15 +1067,19 @@ impl AgentSurface {
 						.retain(|e| !(e.kind == Kind::Spawned && e.from == *from && e.to == *to));
 				}
 				let native_activity = tool.starts_with("subAgentActivity/");
-				let label = match tool.as_str() {
-					"subAgentActivity/started" => "Started agent".into(),
-					"subAgentActivity/interacted" => "Interacted".into(),
-					"subAgentActivity/completed" => "Turn completed".into(),
-					"subAgentActivity/interrupted" => "Interrupted".into(),
-					"spawnAgent" => "Started agent".into(),
-					"sendInput" | "sendMessage" | "followupTask" => "Sent input".into(),
-					"wait" => "Waited".into(),
-					_ => format!("{} · {}", tool, call.status),
+				let label = match (tool.as_str(), call.status.as_str()) {
+					(_, "failed") => "Call failed".into(),
+					(_, "interrupted") => "Call interrupted".into(),
+					(tool, _) => match tool {
+						"subAgentActivity/started" => "Started agent".into(),
+						"subAgentActivity/interacted" => "Interacted".into(),
+						"subAgentActivity/completed" => "Turn completed".into(),
+						"subAgentActivity/interrupted" => "Interrupted".into(),
+						"spawnAgent" => "Started agent".into(),
+						"sendInput" | "sendMessage" | "followupTask" => "Sent input".into(),
+						"wait" => "Waited".into(),
+						_ => format!("{} · {}", tool, call.status),
+					},
 				};
 				let detail = if native_activity {
 					format!(

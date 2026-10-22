@@ -2,6 +2,7 @@
 use super::{AgentSurface, Context, Row};
 use crate::shell::agent_surface::ui_theme;
 #[path = "agent_collaboration.rs"] mod collaboration;
+pub(super) use collaboration::State as Collaboration;
 #[cfg(any(test, feature = "visual-capture"))]
 #[path = "agent_collaboration_fixture.rs"]
 mod reference_fixture;
