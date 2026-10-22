@@ -8,8 +8,8 @@ use gpui::AnyElement;
 #[cfg(test)] use crate::shell::agent_surface::IdempotencyKey;
 #[cfg(test)] use crate::shell::agent_surface::native_timeline;
 use crate::shell::agent_surface::{
-	self, AgentHistoryResult, AgentSurface, FluentBuilder, InteractiveElement, IntoElement,
-	ParentElement, PendingCommand, Styled, ui_theme::USER_MESSAGE_ACTION_SIZE,
+	self, AgentHistoryResult, AgentSurface, InteractiveElement, IntoElement, ParentElement,
+	PendingCommand,
 };
 use decodex_protocol::{AgentHistoryEntryDto, AgentTimelineContent};
 
@@ -152,21 +152,12 @@ impl AgentSurface {
 					turn_id: None,
 					weather: vec![],
 				};
-				let native = self
-					.snapshot
-					.as_ref()
-					.and_then(|s| s.work_items.iter().find(|w| w.id == work))
-					.is_some_and(|w| self.native_history_active(w));
-
 				gpui::div()
 					.debug_selector(|| "sending-message-preview".into())
 					.child(agent_surface::history_entry_with_key(
 						&entry,
 						&format!("sending-{}", p.key),
 					))
-					.when(native, |row| {
-						row.child(gpui::div().h(gpui::px(USER_MESSAGE_ACTION_SIZE)))
-					})
 					.into_any_element()
 			})
 			.collect()

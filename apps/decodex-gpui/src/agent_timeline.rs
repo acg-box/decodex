@@ -1,5 +1,8 @@
 //! Native timeline page state. Native IDs remain distinct from local inbox row IDs.
 #[path = "agent_timeline_completion.rs"] mod completion;
+#[cfg(test)]
+#[path = "agent_conversation_review.rs"]
+mod conversation_review;
 #[path = "agent_timeline_groups.rs"] mod groups;
 #[path = "agent_timeline_inputs.rs"] mod inputs;
 #[path = "agent_timeline_media.rs"] mod media;
@@ -331,7 +334,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		let owner = work.id.clone();
 		let thread = work.codex_thread_id.clone();
-		let mut controls = gpui::div().flex().flex_col().gap(gpui::px(ROW_GAP)).child(
+		let mut controls = gpui::div().flex().flex_col().gap_2().child(
 			gpui::div().debug_selector(|| "native-latest-action".into()).child(
 				self.workspace_action(
 					"native-timeline-refresh".into(),
@@ -380,14 +383,16 @@ impl AgentSurface {
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
-	) -> AnyElement {
+	) -> Option<AnyElement> {
 		let mut panel = gpui::div().flex().flex_col().gap(gpui::px(ROW_GAP));
 
 		// The history surface owns loading feedback and its handoff to content.
-		if self.timeline.native.requested.as_ref().is_some_and(|(id, thread)| {
-			id == &work.id && Some(thread) == work.codex_thread_id.as_ref()
-		}) && let Some(message) = self.timeline.native.notice
-		{
+		let notice = self.timeline.native.notice.filter(|_| {
+			self.timeline.native.requested.as_ref().is_some_and(|(id, thread)| {
+				id == &work.id && Some(thread) == work.codex_thread_id.as_ref()
+			})
+		});
+		if let Some(message) = notice {
 			panel = panel.child(
 				gpui::div()
 					.debug_selector(|| "native-history-notice".into())
@@ -402,11 +407,13 @@ impl AgentSurface {
 			.is_some_and(|b| b.work == work.id && Some(&b.thread) == work.codex_thread_id.as_ref())
 		{
 			if self.timeline.native.show_saved {
-				return panel
-					.child(agent_surface::muted(
-						"Saved local records can include earlier thread bindings and delivery receipts.",
-					))
-					.into_any_element();
+				return Some(
+					panel
+						.child(agent_surface::muted(
+							"Saved local records can include earlier thread bindings and delivery receipts.",
+						))
+						.into_any_element(),
+				);
 			}
 
 			if self.timeline.native.browsing_window {
@@ -420,8 +427,8 @@ impl AgentSurface {
 				));
 			}
 
-			for item in &self.timeline.native.summary {
-				panel = panel.child(self.native_summary_row(work, item, cx));
+			if !self.timeline.native.summary.is_empty() {
+				panel = panel.child(self.native_summary_exchanges(work, cx));
 			}
 
 			panel = self.append_native_history_rows(panel, work, cx);
@@ -431,19 +438,22 @@ impl AgentSurface {
 		}
 
 		if !self.native_history_active(work) && !self.native_history_loading(work) {
-			return panel.into_any_element();
+			// An absent source must not insert an empty row and an extra message gap.
+			return notice.map(|_| panel.into_any_element());
 		}
-		ui_loading::history(
-			format!("native-history-{}", work.id),
-			self.native_history_active(work),
-			self.timeline.native.task.is_none()
-				&& !self.native_pagination_settling()
-				&& !self.history_viewport_fill_ready(),
-			self.timeline.scroll.get(&work.id).cloned().unwrap_or_default(),
-			panel,
+		Some(
+			ui_loading::history(
+				format!("native-history-{}", work.id),
+				self.native_history_active(work),
+				self.timeline.native.task.is_none()
+					&& !self.native_pagination_settling()
+					&& !self.history_viewport_fill_ready(),
+				self.timeline.scroll.get(&work.id).cloned().unwrap_or_default(),
+				panel,
+			)
+			.with_arrival(self.timeline.native.arrival.clone())
+			.into_any_element(),
 		)
-		.with_arrival(self.timeline.native.arrival.clone())
-		.into_any_element()
 	}
 
 	pub(super) fn native_pagination_feedback(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -533,13 +543,8 @@ impl AgentSurface {
 		let waits = waits::groups(&self.timeline.native.entries, indices);
 		let hidden: BTreeSet<_> =
 			waits.values().flat_map(|group| group.indices.iter().skip(1)).collect();
-		let body = gpui::div()
-			.w_full()
-			.min_w_0()
-			.flex()
-			.flex_col()
-			.gap(gpui::px(scroll::ROW_GAP))
-			.children(indices.iter().filter(|i| !hidden.contains(i)).map(|i| {
+		let body = gpui::div().w_full().min_w_0().flex().flex_col().gap_2().children(
+			indices.iter().filter(|i| !hidden.contains(i)).map(|i| {
 				if let Some(group) = waits.get(i) {
 					self.native_wait_group(work, group, anchor, archived, cx)
 				} else {
@@ -552,7 +557,8 @@ impl AgentSurface {
 						cx,
 					)
 				}
-			}));
+			}),
+		);
 		if archived { render::process_indent(body) } else { body.into_any_element() }
 	}
 
@@ -1538,6 +1544,90 @@ mod tests {
 		});
 		assert!(visual.debug_bounds("loading-feedback-Loading earlier history").is_none());
 		assert!(visual.debug_bounds("native-timeline-retry").is_none());
+	}
+
+	#[gpui::test]
+	fn summary_turns_keep_steering_order_with_right_inputs_and_full_width_answers(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1400.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| Some(&work.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("thread".into());
+			let binding = Binding {
+				work: work.id.clone(),
+				thread: "thread".into(),
+				account: "account".into(),
+			};
+			s.timeline.native.requested = Some((work.id.clone(), "thread".into()));
+			let entries = [
+				("one", "request", "userMessage", "First request"),
+				("one", "steering", "userMessage", "Keep the first request"),
+				("one", "answer", "agentMessage", "First answer"),
+				("two", "next", "userMessage", "Second request"),
+				("two", "answer", "agentMessage", "Second answer"),
+			]
+			.into_iter()
+			.map(|(turn, item, kind, text)| AgentTimelineContent::Item {
+				turn_id: turn.into(),
+				item_id: item.into(),
+				kind: kind.into(),
+				text: text.into(),
+				phase: None,
+				app_ui: false,
+				truncated: false,
+				activity: None,
+				attachments: vec![],
+				collaboration: None,
+			})
+			.collect();
+			s.timeline.native.accept_summary(binding, entries);
+			cx.notify();
+		});
+		for width in [1_400., 1_800.] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(1400.)));
+			visual.update(crate::ui_frame::draw_frame);
+			let first = visual.debug_bounds("native-summary-exchange-one-request").unwrap();
+			let next = visual.debug_bounds("native-summary-exchange-two-next").unwrap();
+			let footer = visual.debug_bounds("floating-composer").unwrap();
+			assert!(visual.debug_bounds("conversation-history-rail").is_none());
+			assert!(
+				(first.center().x - footer.center().x).abs() <= gpui::px(1.),
+				"an unavailable history navigator must not offset the conversation"
+			);
+			let gap = gpui::px(crate::ui_theme::MESSAGE_GAP);
+			assert!((next.top() - first.bottom() - gap).abs() <= gpui::px(1.));
+			let request_row = visual.debug_bounds("native-summary-content-one-request").unwrap();
+			let steering_row = visual.debug_bounds("native-summary-content-one-steering").unwrap();
+			let answer_row = visual.debug_bounds("native-summary-content-one-answer").unwrap();
+			assert_eq!(request_row.top(), first.top(), "input must not add a second gap");
+			assert!((steering_row.top() - request_row.bottom() - gap).abs() <= gpui::px(1.));
+			assert!((answer_row.top() - steering_row.bottom() - gap).abs() <= gpui::px(1.));
+			let request =
+				visual.debug_bounds(r#"["summary","agent","thread","one","request"]-0"#).unwrap();
+			let steering =
+				visual.debug_bounds(r#"["summary","agent","thread","one","steering"]-0"#).unwrap();
+			let answer =
+				visual.debug_bounds(r#"["summary","agent","thread","one","answer"]-0"#).unwrap();
+			assert!(request.top() < steering.top() && steering.top() < answer.top());
+			assert!(request.left() > answer.left() + gpui::px(50.));
+			assert!((f32::from(first.right() - request.right()) - 12.).abs() <= 1.);
+			assert!((f32::from(first.right() - steering.right()) - 12.).abs() <= 1.);
+			assert!((f32::from(first.left() - answer.left())).abs() <= 1.);
+			assert!((f32::from(first.size.width - answer.size.width)).abs() <= 1.);
+			assert!(first.size.width > gpui::px(600.), "do not restore the narrow column");
+		}
+		surface.read_with(visual, |s, _| assert_eq!(s.timeline.native.summary.len(), 5));
 	}
 
 	#[gpui::test]

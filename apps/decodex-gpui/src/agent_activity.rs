@@ -644,6 +644,7 @@ impl AgentSurface {
 						.gap(gpui::px(5.))
 						.opacity(opacity)
 						.cursor_pointer()
+						.on_scroll(cx.listener(|s, event, _, cx| s.scroll_history(event, cx)))
 						.hover(|d| d.bg(gpui::rgba(0x302d397c)))
 						.on_click(cx.listener(|s, _, _, cx| s.jump_to_latest(cx)))
 						.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
@@ -677,9 +678,15 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		// Reserve a stable gutter while histories load or agents change.
+		if self.timeline.marks.len() < 2 {
+			return gpui::div().into_any_element();
+		}
+		// Overlay the existing text inset so navigation never changes line wrapping.
 		gpui::div()
-			.relative()
+			.absolute()
+			.top_0()
+			.right_0()
+			.bottom_0()
 			.w(gpui::px(crate::ui_theme::HISTORY_RAIL_WIDTH))
 			.flex_none()
 			.overflow_hidden()
@@ -748,7 +755,8 @@ impl AgentSurface {
 		let mut rail = gpui::div()
 			.id("conversation-history-rail")
 			.debug_selector(|| "conversation-history-rail".into())
-			.w(gpui::px(44.0))
+			.on_scroll(cx.listener(|s, event, _, cx| s.scroll_history(event, cx)))
+			.w_full()
 			.flex_none()
 			.h_full()
 			// Keep the first tick below the conversation's expand control.
@@ -821,7 +829,7 @@ impl AgentSurface {
 								} else {
 									gpui::rgba((TEXT << 8) | (100. + 155. * activity) as u32)
 								};
-								let width = 7.0 + influence * 16.0;
+								let width = 7.0 + influence * 7.0;
 								let height = 2.0 + influence;
 
 								window.paint_quad(gpui::fill(
@@ -1009,7 +1017,13 @@ mod tests {
 		});
 		let rail = visual.debug_bounds("conversation-history-rail").unwrap();
 		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
-		assert!(rail.left() >= transcript.right(), "timeline replaces the right scrollbar");
+		let content = visual.debug_bounds("conversation-content").unwrap();
+		assert!(
+			rail.left() >= content.right() - gpui::px(crate::ui_theme::CONVERSATION_INSET),
+			"navigation must stay outside the message text"
+		);
+		assert_eq!(rail.right(), transcript.right());
+		assert_eq!(rail.size.width, gpui::px(crate::ui_theme::CONVERSATION_INSET));
 		visual.simulate_mouse_move(bounds.center(), gpui::MouseButton::Left, Default::default());
 		// No clock advance: cached content must appear before the default tooltip dwell.
 		visual.run_until_parked();
@@ -1885,7 +1899,13 @@ phase: None,
 			window.draw(cx).clear(cx);
 		});
 
-		assert_eq!(scroll.offset().y, gpui::px(-100.0), "wheel delta must be applied once");
+		assert_eq!(
+			scroll.offset().y,
+			gpui::px(-100.0),
+			"wheel delta must be applied once: pointer {position:?}, viewport {:?}, composer {:?}",
+			scroll.bounds(),
+			visual.debug_bounds("floating-composer").unwrap(),
+		);
 
 		let previous = scroll.offset().y;
 

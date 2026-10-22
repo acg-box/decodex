@@ -176,7 +176,7 @@ impl AgentSurface {
 							.pl(gpui::px(20.))
 							.flex()
 							.flex_col()
-							.gap(gpui::px(super::scroll::ROW_GAP))
+							.gap_2()
 							.children(indices.iter().map(|&index| {
 								let entry = &s.timeline.native.entries[index];
 								let identity = serde_json::json!([
