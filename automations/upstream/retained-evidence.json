@@ -614,7 +614,7 @@
       },
       {
         "test": "mcp_cancel.py",
-        "behavior": "Two exact-artifact legacy/paginated cases: native turn interruption sends notifications/cancelled with the exact tools/call identity, and a subsequent tool uses the same MCP connection without replay."
+        "behavior": "Two exact-artifact legacy/paginated cases: native turn interruption sends notifications/cancelled with the exact tools/call identity, and a subsequent tool uses the same MCP connection without replay. Exactly one initialize request proves that the MCP connection is not restarted."
       }
     ],
     "command": [

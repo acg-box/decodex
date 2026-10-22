@@ -18,6 +18,9 @@ def mcp_server(record):
     for line in sys.stdin:
         frame = json.loads(line)
         method = frame.get("method")
+        if method in ["initialize", "tools/call", "notifications/cancelled"]:
+            with Path(record).open("a") as output:
+                output.write(json.dumps(frame) + "\n")
         if method == "initialize":
             send(frame["id"], {"protocolVersion": frame["params"]["protocolVersion"],
                                "capabilities": {"tools": {}}, "serverInfo": {"name": "fixture", "version": "1"}})
@@ -28,8 +31,6 @@ def mcp_server(record):
                 for name in ["wait", "next"]
             ]})
         elif method in ["tools/call", "notifications/cancelled"]:
-            with Path(record).open("a") as output:
-                output.write(json.dumps(frame) + "\n")
             if method == "tools/call" and frame["params"]["name"] == "next":
                 send(frame["id"], {"content": [{"type": "text", "text": "Connection preserved."}], "isError": False})
         elif "id" in frame:
@@ -115,10 +116,12 @@ def case(mode):
                 calls = [f for f in events() if f.get("method") == "tools/call"]
                 assert [f["params"]["name"] for f in calls] == ["wait", "next"]
                 assert calls[1]["id"] != calls[0]["id"]
+                assert len([f for f in events() if f.get("method") == "initialize"]) == 1, "MCP must not reconnect"
                 assert len([f for f in events() if f.get("method") == "notifications/cancelled"]) == 1
                 assert len(requests) == 3, "Cancellation must not replay inference or tool calls"
                 return {"history_mode": mode, "requests": len(requests), "exact_request_canceled": True,
-                        "connection_reused": True, "tool_calls": len(calls), "cancellations": 1}
+                        "connection_reused": True, "initializations": 1,
+                        "tool_calls": len(calls), "cancellations": 1}
             finally:
                 session.close()
     finally:

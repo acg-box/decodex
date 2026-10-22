@@ -2060,7 +2060,7 @@
     },
     {
       "source": "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py",
-      "sha256": "ad56584249efed6f0bc8283908ef39cc9c6313ca701cc409c157396c11ec2598"
+      "sha256": "ff2dce50665fb8610921915491907998c1bc0034475d63deedf031321f5e4fb1"
     },
     {
       "source": "crates/decodex-runtime/tests/native_qualification/native_session.py",
@@ -2724,7 +2724,7 @@
     },
     "mcp_cancel_before_after": {
       "fixture": "crates/decodex-runtime/tests/native_qualification/mcp_cancel.py",
-      "fixture_sha256": "ad56584249efed6f0bc8283908ef39cc9c6313ca701cc409c157396c11ec2598",
+      "fixture_sha256": "ff2dce50665fb8610921915491907998c1bc0034475d63deedf031321f5e4fb1",
       "baseline_source": "17a0e6f63fad13f577ef87b36b4ea37fc06385e9",
       "baseline_exit": 1,
       "baseline_failure": "No notifications/cancelled arrives after interrupting the in-flight native MCP call.",
@@ -2736,6 +2736,7 @@
             "requests": 3,
             "exact_request_canceled": true,
             "connection_reused": true,
+            "initializations": 1,
             "tool_calls": 2,
             "cancellations": 1
           },
@@ -2744,6 +2745,7 @@
             "requests": 3,
             "exact_request_canceled": true,
             "connection_reused": true,
+            "initializations": 1,
             "tool_calls": 2,
             "cancellations": 1
           }
@@ -2752,7 +2754,8 @@
         "cli_sha256": "3e2c71ea59203fa76e3a0dcb75184fa461017f48b068f81920c215504eba5c9d",
         "source_commit": "40db507eeca2ff778c040c325449eb72e90c0590",
         "scope": "Exact packaged private-stdio CLI, stdio MCP fixture and loopback provider; no live account or installed app."
-      }
+      },
+      "connection_reuse_assertion": "Exactly one MCP initialize request across interrupted tools/call and the subsequent successful tool call."
     },
     "thread_settings_before_after": {
       "fixture": "crates/decodex-runtime/tests/native_qualification/thread_settings.py",
@@ -3413,7 +3416,8 @@
     "consumer_baseline": "86207f028d9c266c01bbc352cc8ce956d4a08c8f",
     "code_and_fixture_revision": "088f16fe1501a2c1ef306a02f073cbb2a9c5927b",
     "runtime_lock_sha256": "ade6137dae75cbabbfc20ce38cd1f5cec4ce99755398ace30f3c8390207d35a0",
-    "limits": "Actual signed components, schema and current code/fixture bytes are bound separately. Installed binary identity and acceptance are not inferred."
+    "limits": "Actual signed components, schema and current code/fixture bytes are bound separately. Installed binary identity and acceptance are not inferred.",
+    "fixture_reconciliation": "Unchanged source/fixture hashes retain their exact-artifact proof. The MCP cancellation fixture adds a one-initialization assertion and reruns against both baseline and candidate; other behavior is unchanged."
   },
   "approved_sampling_cancellation": {
     "status": "retained_approved_capability",
