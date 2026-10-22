@@ -16,7 +16,7 @@ pub const MAX_SAMPLE_OUTPUT_BYTES: usize = 64 * 1_024;
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NativeThreadSample {
-	/// Latest completed source turn checked by the native server.
+	/// Latest finished source turn checked by the native server.
 	pub source_turn_id: String,
 	/// Exact model response identity.
 	pub response_id: String,
@@ -65,7 +65,7 @@ pub fn is_thread_sample_cancel(params: &Value) -> bool {
 
 impl AppServerClient {
 	/// Request one answer without submitting input to the parent or executing tools.
-	/// Native requires an idle persistent root and its latest completed turn.
+	/// Native requires an idle persistent root and its latest finished turn.
 	/// A timeout or lost reply is never retried or replaced with a tool-enabled fork.
 	pub async fn sample_thread(
 		&self,

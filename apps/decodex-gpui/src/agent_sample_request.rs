@@ -117,7 +117,7 @@ pub(super) const fn phase_message(phase: AgentSamplePhase) -> &'static str {
 		AgentSamplePhase::NoText =>
 			"The model returned no text, possibly because it attempted a tool call. No tools were executed.",
 		AgentSamplePhase::Failed =>
-			"Could not obtain an answer. Use a completed, idle conversation and refresh before trying again.",
+			"Could not obtain an answer. Use an idle conversation with a finished turn, then refresh and try again.",
 		AgentSamplePhase::Unconfirmed =>
 			"The answer could not be confirmed and may still use quota. Refresh status before choosing a new request.",
 		AgentSamplePhase::Obsolete =>
