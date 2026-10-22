@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cloudlets — Motion preview</title>
+<style>
+  :root { color-scheme: dark; font: 15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color: #f1eff7; background: #0b0a0f; }
+  * { box-sizing: border-box; }
+  body { margin: 0 auto; max-width: 1320px; padding: 38px 42px 80px; }
+  h1 { font-size: 32px; letter-spacing: -.9px; margin: 0; }
+  h2 { font-size: 19px; margin: 0 0 16px; font-weight: 600; }
+  p { margin: 5px 0 0; color: #a6a0b5; }
+  header { margin-bottom: 38px; }
+  a { color: #a9e7dc; text-underline-offset: 4px; }
+  button,input,select { font: inherit; }
+  button { cursor: pointer; }
+  button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,a:focus-visible { outline: 2px solid #a9e7dc; outline-offset: 4px; }
+  .workbench { display: grid; grid-template-columns: 1fr 1.15fr; gap: 48px; align-items: center; padding-bottom: 36px; border-bottom: 1px solid #292530; }
+  .stage { min-height: 300px; display: grid; place-content: center; justify-items: center; }
+  .motion-caption { display: flex; align-items: center; gap: 8px; margin: -12px 0 20px; color: #bcb5cd; font-size: 13px; }
+  .motion-dot { width: 6px; height: 6px; background: #a9e7dc; border-radius: 50%; }
+  #hero svg { display: block; width: 360px; max-width: 100%; height: auto; }
+  .sizes { display: flex; align-items: center; gap: 25px; color: #827c91; font-size: 12px; }
+  .size { display: flex; align-items: center; gap: 7px; }
+  svg { overflow: visible; image-rendering: pixelated; }
+  .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 17px 18px; }
+  label { display: grid; gap: 6px; color: #a6a0b5; font-size: 12px; }
+  select,input { width: 100%; color: #f1eff7; background: #17141e; border: 1px solid #393240; border-radius: 7px; padding: 9px 11px; min-width: 0; }
+  .seed { display: flex; gap: 8px; margin-top: 24px; }
+  .seed input { min-width: 0; flex: 1; }
+  .action { border: 1px solid #393240; border-radius: 7px; color: #f1eff7; background: #211c29; padding: 8px 14px; white-space: nowrap; }
+  .primary { background: #a9e7dc; color: #132b29; border-color: #a9e7dc; }
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .motion-lab { padding: 30px 0; border-bottom: 1px solid #292530; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .section-header h2 { margin: 0; }
+  .playback { display: flex; gap: 8px; }
+  .playback button[aria-pressed="true"] { border-color: #a9e7dc; color: #a9e7dc; }
+  .motion-grid { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 10px; margin-top: 17px; }
+  .motion-card { min-width: 0; padding: 8px 10px 14px; color: inherit; background: transparent; border: 1px solid #292530; border-radius: 8px; text-align: left; }
+  .motion-card:hover { background: #18141f; }
+  .motion-card[aria-pressed="true"] { border-color: #a9e7dc; background: #121d1c; }
+  .motion-card svg { width: 100%; height: auto; display: block; }
+  .motion-card strong { display: block; font-size: 13px; font-weight: 500; }
+  .motion-card span { display: block; font-size: 11px; color: #9b94a9; margin-top: 5px; line-height: 1.4; }
+  .gallery { padding-top: 33px; }
+  .preset-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 13px; }
+  .preset { border: 1px solid transparent; border-radius: 9px; background: transparent; color: inherit; text-align: left; padding: 10px 11px 13px; }
+  .preset:hover { background: #18141f; }
+  .preset[aria-pressed="true"] { border-color: #595065; background: #18141f; }
+  .preset svg { width: 100%; height: auto; display: block; }
+  .preset strong { display: block; margin-top: -10px; font-size: 14px; font-weight: 500; }
+  .preset span { display: block; font-size: 11px; color: #9b94a9; margin-top: 3px; }
+  details { border-top: 1px solid #292530; margin-top: 32px; padding-top: 22px; }
+  summary { cursor: pointer; color: #a6a0b5; }
+  .references { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-top: 20px; }
+  .references img { width: 100%; display: block; }
+  .references a { font-size: 12px; }
+  @media(max-width:800px) { body { padding: 24px 20px 50px; } .workbench { grid-template-columns: 1fr; gap: 20px; } .stage { min-height: 240px; } .preset-grid { grid-template-columns: repeat(3,1fr); } .motion-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } .section-header { align-items: flex-start; flex-direction: column; } }
+  @media(max-width:480px) { .preset-grid,.motion-grid { grid-template-columns: repeat(2,1fr); } .references { grid-template-columns: 1fr; } .seed { flex-wrap: wrap; } .actions { flex-wrap: wrap; } }
+</style>
+<style id="cloudlet-motion-style">__MOTION_CSS__</style>
+<header><h1>Cloudlets</h1><p>Choose a combination and watch it move.</p></header>
+<main>
+  <section class="workbench" aria-label="Combination editor">
+    <div class="stage"><div id="hero" aria-live="polite"></div><div class="motion-caption"><span class="motion-dot"></span><span id="motion-label">Hopping</span></div><div class="sizes" id="sizes"></div></div>
+    <div>
+      <div class="controls" id="controls"></div>
+      <div class="seed"><input id="seed" aria-label="Agent seed" value="agent-cloudlet-42"><button class="action primary" id="from-seed">From seed</button><button class="action" id="shuffle">Shuffle</button></div>
+      <div class="actions"><button class="action" id="download">Save animated SVG</button><button class="action" id="reset">Original combination</button></div>
+      <p id="status" role="status" style="font-size:12px;min-height:22px;margin-top:11px"></p>
+    </div>
+  </section>
+  <section class="motion-lab" aria-label="Animation comparison">
+    <div class="section-header"><h2>Animation states</h2><div class="playback"><button class="action" id="pause" aria-pressed="false">Pause motion</button><button class="action" id="tour" aria-pressed="false">Play state tour</button></div></div>
+    <p style="font-size:13px">The same combination in every state. Select a state to see it above.</p>
+    <div class="motion-grid" id="motions"></div>
+  </section>
+  <section class="gallery"><h2>12 saved combinations</h2><div class="preset-grid" id="presets">__PRESET_CARDS__</div></section>
+  <details><summary>Approved image references</summary><div class="references"><a href="approved/pastel-mix.png"><img src="approved/pastel-mix.png" alt="Approved pastel combinations">Pastel mix</a><a href="approved/soft-mix.png"><img src="approved/soft-mix.png" alt="Approved soft combinations">Soft mix</a><a href="approved/contrast-mix.png"><img src="approved/contrast-mix.png" alt="Approved contrast combinations">Contrast mix</a></div></details>
+</main>
+<script type="module">
+__CLOUDLET_SOURCE__
+
+const fields = [
+  ["body", "Body", bodies], ["palette", "Color", palettes],
+  ["expression", "Eyes", expressions], ["accessory", "Accessory", accessories],
+  ["hands", "Hands", handStyles], ["prop", "Held object", props],
+  ["heldSide", "Holding hand", {left:{label:"Left"},right:{label:"Right"}}],
+];
+const motionStates = {
+  idle: {label:"Idle",description:"Floats gently with relaxed hands."},
+  hopping: {label:"Hopping",description:"Hops in place and lifts its hands as pixels drift away."},
+  working: {label:"Working",description:"Works with alternating hands and a steady grip."},
+  waiting: {label:"Waiting",description:"Settles lower with relaxed hands and soft pixels."},
+  done: {label:"Done",description:"Celebrates with a higher hop and both hands."},
+  attention: {label:"Needs attention",description:"Waves its free hand with a soft pixel pulse."},
+};
+const states = Object.keys(motionStates);
+let current = { ...presets[0] };
+let state = "hopping";
+let paused = false;
+let tourTimer = null;
+const controls = document.querySelector("#controls");
+for (const [key, label, choices] of [...fields, ["state", "State", motionStates]]) {
+  const field = document.createElement("label");
+  field.textContent = label;
+  const select = document.createElement("select");
+  select.id = `trait-${key}`;
+  select.name = key;
+  for (const [id, option] of Object.entries(choices)) select.add(new Option(option.label, id));
+  select.addEventListener("change", () => {
+    if (key === "state") { stopTour(); selectState(select.value); }
+    else { current = { ...current, [key]: select.value }; paint(); }
+  });
+  field.append(select);
+  controls.append(field);
+}
+
+function paint() {
+  document.querySelector("#hero").innerHTML = renderSvg(current, {id:"hero-cloudlet",size:360,state});
+  document.querySelector("#sizes").innerHTML = [16,24,32,48].map(size => `<div class="size">${renderSvg(current,{id:`size-${size}`,size,state})}<span>${size}px</span></div>`).join("");
+  document.querySelector("#motions").innerHTML = states.map(motion => `<button class="motion-card" data-motion-state="${motion}" aria-pressed="false">${renderSvg(current,{id:`motion-${motion}`,size:180,state:motion})}<strong>${motionStates[motion].label}</strong><span>${motionStates[motion].description}</span></button>`).join("");
+  for (const [key] of fields) document.querySelector(`#trait-${key}`).value = current[key];
+  for (const button of document.querySelectorAll("[data-preset]")) {
+    const preset = presets.find(p => p.id === button.dataset.preset);
+    button.setAttribute("aria-pressed",String(fields.every(([key]) => current[key] === preset[key])));
+  }
+  document.querySelector("#status").textContent = current.hands === "none" && current.prop !== "none" ? "Held object is kept in the selection and shown when hands are enabled." : "Each selection changes only that part. State does not change the selected traits.";
+  selectState(state);
+  applyPlayback();
+}
+function selectState(next) {
+  state = next;
+  document.querySelector("#trait-state").value = state;
+  document.querySelector("#motion-label").textContent = `${motionStates[state].label}${paused ? " · Paused" : " · Playing"}`;
+  for (const svg of document.querySelectorAll("#hero svg,#sizes svg,#presets svg")) svg.dataset.state = state;
+  for (const button of document.querySelectorAll("[data-motion-state]")) button.setAttribute("aria-pressed",String(button.dataset.motionState === state));
+}
+function applyPlayback() {
+  for (const svg of document.querySelectorAll("svg[data-state]")) svg.dataset.paused = String(paused);
+  document.querySelector("#pause").textContent = paused ? "Resume motion" : "Pause motion";
+  document.querySelector("#pause").setAttribute("aria-pressed",String(paused));
+  selectState(state);
+}
+function stopTour() {
+  clearInterval(tourTimer);
+  tourTimer = null;
+  document.querySelector("#tour").textContent = "Play state tour";
+  document.querySelector("#tour").setAttribute("aria-pressed","false");
+}
+document.querySelector("#motions").addEventListener("click",event => {
+  const button = event.target.closest("[data-motion-state]");
+  if(button) { stopTour(); selectState(button.dataset.motionState); }
+});
+document.querySelector("#pause").addEventListener("click",() => { paused = !paused; if(paused) stopTour(); applyPlayback(); });
+document.querySelector("#tour").addEventListener("click",() => {
+  if(tourTimer !== null) { stopTour(); return; }
+  paused = false;
+  applyPlayback();
+  selectState("idle");
+  document.querySelector("#tour").textContent = "Stop state tour";
+  document.querySelector("#tour").setAttribute("aria-pressed","true");
+  tourTimer = setInterval(() => selectState(states[(states.indexOf(state)+1)%states.length]),4000);
+});
+document.querySelectorAll("[data-preset]").forEach(button => button.addEventListener("click", () => { current = {...presets.find(p => p.id === button.dataset.preset)}; paint(); }));
+function seedSelection() { current = traitsFromSeed(document.querySelector("#seed").value); paint(); }
+document.querySelector("#from-seed").addEventListener("click", seedSelection);
+document.querySelector("#seed").addEventListener("keydown", event => { if(event.key === "Enter") seedSelection(); });
+document.querySelector("#shuffle").addEventListener("click", () => { document.querySelector("#seed").value = crypto.randomUUID(); seedSelection(); });
+document.querySelector("#reset").addEventListener("click", () => { current = {...presets[0]}; paint(); });
+document.querySelector("#download").addEventListener("click", () => {
+  const motionCss = document.querySelector("#cloudlet-motion-style").textContent;
+  const animated = renderSvg(current,{id:"cloudlet",size:320,state}).replace("><title",`><style>${motionCss}</style><title`);
+  const url = URL.createObjectURL(new Blob([animated],{type:"image/svg+xml"}));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `cloudlet-${current.palette}-${current.expression}-${current.accessory}-${current.prop}-${state}.svg`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url),1000);
+});
+paint();
+</script>
+</html>

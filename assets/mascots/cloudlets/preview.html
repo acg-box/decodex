@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cloudlets — Motion preview</title>
+<style>
+  :root { color-scheme: dark; font: 15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color: #f1eff7; background: #0b0a0f; }
+  * { box-sizing: border-box; }
+  body { margin: 0 auto; max-width: 1320px; padding: 38px 42px 80px; }
+  h1 { font-size: 32px; letter-spacing: -.9px; margin: 0; }
+  h2 { font-size: 19px; margin: 0 0 16px; font-weight: 600; }
+  p { margin: 5px 0 0; color: #a6a0b5; }
+  header { margin-bottom: 38px; }
+  a { color: #a9e7dc; text-underline-offset: 4px; }
+  button,input,select { font: inherit; }
+  button { cursor: pointer; }
+  button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,a:focus-visible { outline: 2px solid #a9e7dc; outline-offset: 4px; }
+  .workbench { display: grid; grid-template-columns: 1fr 1.15fr; gap: 48px; align-items: center; padding-bottom: 36px; border-bottom: 1px solid #292530; }
+  .stage { min-height: 300px; display: grid; place-content: center; justify-items: center; }
+  .motion-caption { display: flex; align-items: center; gap: 8px; margin: -12px 0 20px; color: #bcb5cd; font-size: 13px; }
+  .motion-dot { width: 6px; height: 6px; background: #a9e7dc; border-radius: 50%; }
+  #hero svg { display: block; width: 360px; max-width: 100%; height: auto; }
+  .sizes { display: flex; align-items: center; gap: 25px; color: #827c91; font-size: 12px; }
+  .size { display: flex; align-items: center; gap: 7px; }
+  svg { overflow: visible; image-rendering: pixelated; }
+  .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 17px 18px; }
+  label { display: grid; gap: 6px; color: #a6a0b5; font-size: 12px; }
+  select,input { width: 100%; color: #f1eff7; background: #17141e; border: 1px solid #393240; border-radius: 7px; padding: 9px 11px; min-width: 0; }
+  .seed { display: flex; gap: 8px; margin-top: 24px; }
+  .seed input { min-width: 0; flex: 1; }
+  .action { border: 1px solid #393240; border-radius: 7px; color: #f1eff7; background: #211c29; padding: 8px 14px; white-space: nowrap; }
+  .primary { background: #a9e7dc; color: #132b29; border-color: #a9e7dc; }
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .motion-lab { padding: 30px 0; border-bottom: 1px solid #292530; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .section-header h2 { margin: 0; }
+  .playback { display: flex; gap: 8px; }
+  .playback button[aria-pressed="true"] { border-color: #a9e7dc; color: #a9e7dc; }
+  .motion-grid { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 10px; margin-top: 17px; }
+  .motion-card { min-width: 0; padding: 8px 10px 14px; color: inherit; background: transparent; border: 1px solid #292530; border-radius: 8px; text-align: left; }
+  .motion-card:hover { background: #18141f; }
+  .motion-card[aria-pressed="true"] { border-color: #a9e7dc; background: #121d1c; }
+  .motion-card svg { width: 100%; height: auto; display: block; }
+  .motion-card strong { display: block; font-size: 13px; font-weight: 500; }
+  .motion-card span { display: block; font-size: 11px; color: #9b94a9; margin-top: 5px; line-height: 1.4; }
+  .gallery { padding-top: 33px; }
+  .preset-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 13px; }
+  .preset { border: 1px solid transparent; border-radius: 9px; background: transparent; color: inherit; text-align: left; padding: 10px 11px 13px; }
+  .preset:hover { background: #18141f; }
+  .preset[aria-pressed="true"] { border-color: #595065; background: #18141f; }
+  .preset svg { width: 100%; height: auto; display: block; }
+  .preset strong { display: block; margin-top: -10px; font-size: 14px; font-weight: 500; }
+  .preset span { display: block; font-size: 11px; color: #9b94a9; margin-top: 3px; }
+  details { border-top: 1px solid #292530; margin-top: 32px; padding-top: 22px; }
+  summary { cursor: pointer; color: #a6a0b5; }
+  .references { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-top: 20px; }
+  .references img { width: 100%; display: block; }
+  .references a { font-size: 12px; }
+  @media(max-width:800px) { body { padding: 24px 20px 50px; } .workbench { grid-template-columns: 1fr; gap: 20px; } .stage { min-height: 240px; } .preset-grid { grid-template-columns: repeat(3,1fr); } .motion-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } .section-header { align-items: flex-start; flex-direction: column; } }
+  @media(max-width:480px) { .preset-grid,.motion-grid { grid-template-columns: repeat(2,1fr); } .references { grid-template-columns: 1fr; } .seed { flex-wrap: wrap; } .actions { flex-wrap: wrap; } }
+</style>
+<style id="cloudlet-motion-style">/* Motion acts on part groups and does not replace the selected traits. */
+svg[data-state] { --pixel-duration: 2800ms; --pixel-step: 700ms; }
+svg [data-motion="left-hand"] { --hand-out-x: -1px; }
+svg [data-motion="right-hand"] { --hand-out-x: 1px; }
+
+svg[data-state="idle"] [data-motion="cloud"] { animation: cloudlet-idle 2800ms steps(1, end) infinite; }
+svg[data-state="idle"] [data-motion="left-hand"] { animation: cloudlet-idle-hand 2800ms steps(1, end) 180ms infinite; }
+svg[data-state="idle"] [data-motion="right-hand"] { animation: cloudlet-idle-hand 2800ms steps(1, end) 450ms infinite; }
+
+/* The cloud and hands hop together; released pixels drift independently. */
+svg[data-state="hopping"] { --hop-duration: 900ms; }
+svg[data-state="hopping"] [data-motion="actor"] { animation: cloudlet-hop var(--hop-duration) steps(1, end) infinite; }
+svg[data-state="hopping"] [data-motion="left-hand"],
+svg[data-state="hopping"] [data-motion="right-hand"] { animation: cloudlet-hop-hands var(--hop-duration) steps(1, end) infinite; }
+
+svg[data-state="working"] [data-motion="cloud"] { animation: cloudlet-work 1400ms steps(1, end) infinite; }
+svg[data-state="working"] [data-motion="left-hand"],
+svg[data-state="working"] [data-motion="right-hand"] { --work-lift: -2px; animation: cloudlet-work-hand 700ms steps(1, end) infinite; }
+svg[data-state="working"] [data-motion="right-hand"] { animation-delay: -350ms; }
+svg[data-state="working"][data-held-side="left"] [data-motion="left-hand"],
+svg[data-state="working"][data-held-side="right"] [data-motion="right-hand"] { --work-lift: -1px; }
+svg[data-state="working"][data-held-side="right"] [data-motion="cloud"] { animation-delay: -350ms; }
+
+/* Released pixels stay beyond the cloud's full four-pixel celebration hop. */
+svg [data-particle] { --birth-x: 0px; --birth-y: -2px; --near-scale: 1; transform-box: fill-box; transform-origin: center; }
+svg [data-particle="2"] { --birth-y: -3px; }
+svg [data-particle="3"] { --birth-x: -6px; --birth-y: 1px; --near-scale: .5; }
+svg:is([data-state="working"], [data-state="hopping"], [data-state="done"]) [data-particle] { animation: cloudlet-pixel-drift var(--pixel-duration) steps(1, end) infinite, cloudlet-pixel-fade var(--pixel-duration) linear infinite; }
+svg:is([data-state="working"], [data-state="hopping"], [data-state="done"]) [data-particle="1"] { animation-delay: calc(0ms - var(--pixel-step)); }
+svg:is([data-state="working"], [data-state="hopping"], [data-state="done"]) [data-particle="2"] { animation-delay: calc(0ms - var(--pixel-step) * 2); }
+svg:is([data-state="working"], [data-state="hopping"], [data-state="done"]) [data-particle="3"] { animation-delay: calc(0ms - var(--pixel-step) * 3); }
+
+svg[data-state="waiting"] [data-motion="actor"] { animation: cloudlet-wait 3600ms steps(1, end) infinite; }
+svg[data-state="waiting"] [data-motion="left-hand"],
+svg[data-state="waiting"] [data-motion="right-hand"] { animation: cloudlet-wait-hands 3600ms steps(1, end) infinite; }
+svg[data-state="waiting"] [data-layer="particles"] { animation: cloudlet-wait-pixels 3600ms linear infinite; }
+
+svg[data-state="done"] { --pixel-duration: 2200ms; --pixel-step: 550ms; }
+svg[data-state="done"] [data-motion="actor"] { animation: cloudlet-done 2200ms steps(1, end) infinite; }
+svg[data-state="done"] [data-motion="left-hand"],
+svg[data-state="done"] [data-motion="right-hand"] { animation: cloudlet-cheer-hands 2200ms steps(1, end) infinite; }
+
+/* Wave the free hand; keep the object steady in the other hand. */
+svg[data-state="attention"] [data-motion="actor"] { animation: cloudlet-attention 2400ms steps(1, end) infinite; }
+svg[data-state="attention"][data-held-side="right"] [data-motion="left-hand"],
+svg[data-state="attention"]:not([data-held-side="right"]) [data-motion="right-hand"] { animation: cloudlet-wave 2400ms steps(1, end) infinite; }
+svg[data-state="attention"] [data-layer="particles"] { animation: cloudlet-attention-pixels 2400ms linear infinite; }
+
+svg[data-paused="true"] * { animation-play-state: paused !important; }
+svg[data-loop="once"] * { animation-iteration-count: 1 !important; animation-fill-mode: both !important; }
+
+@keyframes cloudlet-idle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
+@keyframes cloudlet-idle-hand { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
+@keyframes cloudlet-hop {
+  0%, 14%, 70%, 100% { transform: translateY(0); }
+  24%, 56% { transform: translateY(-1px); }
+  36%, 44% { transform: translateY(-2px); }
+}
+@keyframes cloudlet-hop-hands {
+  0%, 14%, 78%, 100% { transform: translate(0, 0); }
+  22%, 64% { transform: translate(0, -1px); }
+  38%, 50% { transform: translate(var(--hand-out-x), -2px); }
+}
+@keyframes cloudlet-work { 0%, 32%, 82%, 100% { transform: translateY(0); } 18%, 68% { transform: translateY(-1px); } }
+@keyframes cloudlet-work-hand {
+  0%, 10%, 86%, 100% { transform: translate(0, 0); }
+  24% { transform: translate(0, -1px); }
+  42% { transform: translate(var(--hand-out-x), var(--work-lift)); }
+  64% { transform: translate(var(--hand-out-x), -1px); }
+}
+@keyframes cloudlet-pixel-drift {
+  0%, 10% { transform: translate(var(--birth-x), var(--birth-y)) scale(var(--near-scale)); }
+  25% { transform: translate(calc(var(--birth-x) + 1px), calc(var(--birth-y) - 1px)) scale(var(--near-scale)); }
+  40% { transform: translate(calc(var(--birth-x) + 2px), calc(var(--birth-y) - 2px)) scale(var(--near-scale)); }
+  55% { transform: translate(calc(var(--birth-x) + 3px), calc(var(--birth-y) - 3px)) scale(var(--near-scale)); }
+  70% { transform: translate(calc(var(--birth-x) + 4px), calc(var(--birth-y) - 4px)) scale(.5); }
+  85%, 100% { transform: translate(calc(var(--birth-x) + 5px), calc(var(--birth-y) - 5px)) scale(.5); }
+}
+@keyframes cloudlet-pixel-fade { 0%, 100% { opacity: 0; } 12% { opacity: 1; } 55% { opacity: .85; } 80% { opacity: .35; } 94% { opacity: 0; } }
+@keyframes cloudlet-wait { 0%, 18%, 90%, 100% { transform: translateY(0); } 40%, 72% { transform: translateY(1px); } }
+@keyframes cloudlet-wait-hands { 0%, 24%, 96%, 100% { transform: translateY(0); } 48%, 78% { transform: translateY(1px); } }
+@keyframes cloudlet-wait-pixels { 0%, 100% { opacity: .65; } 50% { opacity: .35; } }
+@keyframes cloudlet-done {
+  0%, 4%, 44%, 58%, 100% { transform: translateY(0); }
+  8%, 39%, 51% { transform: translateY(-1px); }
+  12%, 34% { transform: translateY(-2px); }
+  16%, 29% { transform: translateY(-3px); }
+  22% { transform: translateY(-4px); }
+}
+@keyframes cloudlet-cheer-hands {
+  0%, 6%, 70%, 100% { transform: translate(0, 0); }
+  12%, 48% { transform: translate(var(--hand-out-x), -1px); }
+  20%, 36% { transform: translate(var(--hand-out-x), -2px); }
+  62% { transform: translate(0, -1px); }
+}
+@keyframes cloudlet-attention { 0%, 8%, 56%, 100% { transform: translateY(0); } 14%, 44% { transform: translateY(-1px); } }
+@keyframes cloudlet-wave {
+  0%, 8%, 58%, 100% { transform: translate(0, 0); }
+  12%, 48% { transform: translate(0, -1px); }
+  18%, 30%, 42% { transform: translate(var(--hand-out-x), -2px); }
+  24%, 36% { transform: translate(0, -3px); }
+}
+@keyframes cloudlet-attention-pixels { 0%, 58%, 100% { opacity: .65; } 20%, 36% { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  svg[data-state] * { animation: none !important; }
+}
+</style>
+<header><h1>Cloudlets</h1><p>Choose a combination and watch it move.</p></header>
+<main>
+  <section class="workbench" aria-label="Combination editor">
+    <div class="stage"><div id="hero" aria-live="polite"></div><div class="motion-caption"><span class="motion-dot"></span><span id="motion-label">Hopping</span></div><div class="sizes" id="sizes"></div></div>
+    <div>
+      <div class="controls" id="controls"></div>
+      <div class="seed"><input id="seed" aria-label="Agent seed" value="agent-cloudlet-42"><button class="action primary" id="from-seed">From seed</button><button class="action" id="shuffle">Shuffle</button></div>
+      <div class="actions"><button class="action" id="download">Save animated SVG</button><button class="action" id="reset">Original combination</button></div>
+      <p id="status" role="status" style="font-size:12px;min-height:22px;margin-top:11px"></p>
+    </div>
+  </section>
+  <section class="motion-lab" aria-label="Animation comparison">
+    <div class="section-header"><h2>Animation states</h2><div class="playback"><button class="action" id="pause" aria-pressed="false">Pause motion</button><button class="action" id="tour" aria-pressed="false">Play state tour</button></div></div>
+    <p style="font-size:13px">The same combination in every state. Select a state to see it above.</p>
+    <div class="motion-grid" id="motions"></div>
+  </section>
+  <section class="gallery"><h2>12 saved combinations</h2><div class="preset-grid" id="presets"><button class="preset" data-preset="mint-book" aria-pressed="false" aria-label="Load Mint, Blue book"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 32" width="240" height="192" shape-rendering="crispEdges" role="img" aria-labelledby="preset-mint-book-title" data-state="idle" data-held-side="left"><title id="preset-mint-book-title">Mint cloudlet, square eyes, side earpiece, blue book</title><defs><clipPath id="preset-mint-book-mask"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z"/></clipPath></defs><g data-layer="particles" data-motion="particles"><g data-particle="0"><rect x="25" y="7" width="2" height="2" fill="#cefff0"/></g><g data-particle="1"><rect x="28" y="9" width="2" height="2" fill="#cefff0"/></g><g data-particle="2"><rect x="31" y="11" width="2" height="2" fill="#cefff0"/></g><g data-particle="3"><rect x="34" y="5" width="2" height="2" fill="#cefff0"/></g></g><g data-motion="actor"><g data-motion="cloud"><g data-layer="body"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z" fill="#9be9dc"/><g clip-path="url(#preset-mint-book-mask)"><rect x="9" y="15" width="2" height="4" fill="#50cdbf"/><rect x="10" y="18" width="3" height="2" fill="#50cdbf"/><rect x="12" y="19" width="3" height="2" fill="#50cdbf"/><rect x="20" y="7" width="2" height="2" fill="#cefff0"/><rect x="23" y="9" width="2" height="2" fill="#cefff0"/><rect x="26" y="11" width="2" height="2" fill="#cefff0"/><rect x="28" y="13" width="2" height="2" fill="#cefff0"/><rect x="30" y="15" width="2" height="4" fill="#cefff0"/></g></g><g data-layer="expression" transform="translate(17 16)"><rect x="0" y="0" width="2" height="2" fill="#10121c"/><rect x="5" y="0" width="2" height="2" fill="#10121c"/></g><g data-layer="accessory" transform="translate(12 11)"><rect x="-1.5" y="1.5" width="0.5" height="2" fill="#1c2235"/><rect x="-2" y="3" width="2" height="2" fill="#1c2235"/><rect x="-1.5" y="3.5" width="0.5" height="1" fill="#343d54"/></g></g><g data-motion="left-hand"><g data-layer="left-hand" transform="translate(6 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#cefff0"/><rect x="-1.5" y="-1" width="3" height="2" fill="#9be9dc"/><rect x="-1" y="1" width="2" height="0.5" fill="#50cdbf"/><rect x="-1" y="-1" width="1" height="0.5" fill="#cefff0"/><g data-layer="prop" transform="translate(0 -1)"><rect x="-2" y="-5" width="4" height="4.5" fill="#304d99"/><rect x="-1.5" y="-4.5" width="3" height="4" fill="#4d7bda"/><rect x="-1" y="-4.5" width="2.5" height="0.5" fill="#dceeff"/><rect x="1" y="-4" width="0.5" height="3.5" fill="#dceeff"/></g></g></g><g data-motion="right-hand"><g data-layer="right-hand" transform="translate(35 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#cefff0"/><rect x="-1.5" y="-1" width="3" height="2" fill="#9be9dc"/><rect x="-1" y="1" width="2" height="0.5" fill="#50cdbf"/><rect x="-1" y="-1" width="1" height="0.5" fill="#cefff0"/></g></g></g></svg><strong>Mint</strong><span>Square eyes · Side earpiece · Blue book</span></button>
+<button class="preset" data-preset="lilac-pencil" aria-pressed="false" aria-label="Load Lilac, Pencil"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 32" width="240" height="192" shape-rendering="crispEdges" role="img" aria-labelledby="preset-lilac-pencil-title" data-state="idle" data-held-side="right"><title id="preset-lilac-pencil-title">Lilac cloudlet, relaxed eyes, square glasses, pencil</title><defs><clipPath id="preset-lilac-pencil-mask"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z"/></clipPath></defs><g data-layer="particles" data-motion="particles"><g data-particle="0"><rect x="25" y="7" width="2" height="2" fill="#ead7ff"/></g><g data-particle="1"><rect x="28" y="9" width="2" height="2" fill="#ead7ff"/></g><g data-particle="2"><rect x="31" y="11" width="2" height="2" fill="#ead7ff"/></g><g data-particle="3"><rect x="34" y="5" width="2" height="2" fill="#ead7ff"/></g></g><g data-motion="actor"><g data-motion="cloud"><g data-layer="body"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z" fill="#c9a7ee"/><g clip-path="url(#preset-lilac-pencil-mask)"><rect x="9" y="15" width="2" height="4" fill="#a875db"/><rect x="10" y="18" width="3" height="2" fill="#a875db"/><rect x="12" y="19" width="3" height="2" fill="#a875db"/><rect x="20" y="7" width="2" height="2" fill="#ead7ff"/><rect x="23" y="9" width="2" height="2" fill="#ead7ff"/><rect x="26" y="11" width="2" height="2" fill="#ead7ff"/><rect x="28" y="13" width="2" height="2" fill="#ead7ff"/><rect x="30" y="15" width="2" height="4" fill="#ead7ff"/></g></g><g data-layer="expression" transform="translate(17 16)"><rect x="0" y="1" width="2" height="1" fill="#181323"/><rect x="5" y="1" width="2" height="1" fill="#181323"/></g><g data-layer="accessory" transform="translate(17 16)"><rect x="-1" y="-1" width="4" height="0.5" fill="#1c2235"/><rect x="-1" y="-1" width="0.5" height="4" fill="#1c2235"/><rect x="2.5" y="-1" width="0.5" height="4" fill="#1c2235"/><rect x="-1" y="2.5" width="4" height="0.5" fill="#1c2235"/><rect x="4" y="-1" width="4" height="0.5" fill="#1c2235"/><rect x="4" y="-1" width="0.5" height="4" fill="#1c2235"/><rect x="7.5" y="-1" width="0.5" height="4" fill="#1c2235"/><rect x="4" y="2.5" width="4" height="0.5" fill="#1c2235"/><rect x="3" y="0.5" width="1" height="0.5" fill="#1c2235"/><rect x="-2" y="0.5" width="1" height="0.5" fill="#1c2235"/><rect x="8" y="0.5" width="1" height="0.5" fill="#1c2235"/></g></g><g data-motion="left-hand"><g data-layer="left-hand" transform="translate(6 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#ead7ff"/><rect x="-1.5" y="-1" width="3" height="2" fill="#c9a7ee"/><rect x="-1" y="1" width="2" height="0.5" fill="#a875db"/><rect x="-1" y="-1" width="1" height="0.5" fill="#ead7ff"/></g></g><g data-motion="right-hand"><g data-layer="right-hand" transform="translate(35 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#ead7ff"/><rect x="-1.5" y="-1" width="3" height="2" fill="#c9a7ee"/><rect x="-1" y="1" width="2" height="0.5" fill="#a875db"/><rect x="-1" y="-1" width="1" height="0.5" fill="#ead7ff"/><g data-layer="prop" transform="translate(0 -1)"><rect x="-0.5" y="-5" width="1" height="4" fill="#edbb4c"/><rect x="-0.5" y="-5.5" width="1" height="1" fill="#ed88a5"/><rect x="-0.5" y="-4.5" width="1" height="0.5" fill="#d6deec"/><rect x="-0.5" y="-1" width="1" height="0.5" fill="#f0d1a2"/><rect x="0" y="-0.5" width="0.5" height="0.5" fill="#1c2235"/></g></g></g></g></svg><strong>Lilac</strong><span>Relaxed eyes · Square glasses · Pencil</span></button>
+<button class="preset" data-preset="sky-magnifier" aria-pressed="false" aria-label="Load Sky, Magnifying glass"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 32" width="240" height="192" shape-rendering="crispEdges" role="img" aria-labelledby="preset-sky-magnifier-title" data-state="idle" data-held-side="left"><title id="preset-sky-magnifier-title">Sky cloudlet, happy eyes, sprout, magnifying glass</title><defs><clipPath id="preset-sky-magnifier-mask"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z"/></clipPath></defs><g data-layer="particles" data-motion="particles"><g data-particle="0"><rect x="25" y="7" width="2" height="2" fill="#d1f0ff"/></g><g data-particle="1"><rect x="28" y="9" width="2" height="2" fill="#d1f0ff"/></g><g data-particle="2"><rect x="31" y="11" width="2" height="2" fill="#d1f0ff"/></g><g data-particle="3"><rect x="34" y="5" width="2" height="2" fill="#d1f0ff"/></g></g><g data-motion="actor"><g data-motion="cloud"><g data-layer="body"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z" fill="#98d7f7"/><g clip-path="url(#preset-sky-magnifier-mask)"><rect x="9" y="15" width="2" height="4" fill="#56b6e7"/><rect x="10" y="18" width="3" height="2" fill="#56b6e7"/><rect x="12" y="19" width="3" height="2" fill="#56b6e7"/><rect x="20" y="7" width="2" height="2" fill="#d1f0ff"/><rect x="23" y="9" width="2" height="2" fill="#d1f0ff"/><rect x="26" y="11" width="2" height="2" fill="#d1f0ff"/><rect x="28" y="13" width="2" height="2" fill="#d1f0ff"/><rect x="30" y="15" width="2" height="4" fill="#d1f0ff"/></g></g><g data-layer="expression" transform="translate(17 16)"><rect x="0" y="1" width="1" height="1" fill="#111926"/><rect x="1" y="0" width="1" height="1" fill="#111926"/><rect x="2" y="1" width="1" height="1" fill="#111926"/><rect x="5" y="1" width="1" height="1" fill="#111926"/><rect x="6" y="0" width="1" height="1" fill="#111926"/><rect x="7" y="1" width="1" height="1" fill="#111926"/></g><g data-layer="accessory" transform="translate(12 11)"><rect x="0" y="-2" width="0.5" height="4" fill="#327b50"/><rect x="-2" y="-2" width="2" height="1" fill="#50c37c"/><rect x="-2.5" y="-3" width="2" height="1" fill="#7be498"/><rect x="0.5" y="-1.5" width="2" height="1" fill="#50c37c"/><rect x="1" y="-2.5" width="2" height="1" fill="#7be498"/></g></g><g data-motion="left-hand"><g data-layer="left-hand" transform="translate(6 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#d1f0ff"/><rect x="-1.5" y="-1" width="3" height="2" fill="#98d7f7"/><rect x="-1" y="1" width="2" height="0.5" fill="#56b6e7"/><rect x="-1" y="-1" width="1" height="0.5" fill="#d1f0ff"/><g data-layer="prop" transform="translate(0 -1)"><rect x="-0.5" y="-2" width="1" height="2" fill="#bd915f"/><rect x="-1" y="-5" width="2" height="0.5" fill="#1c2235"/><rect x="-2" y="-4.5" width="1" height="2" fill="#1c2235"/><rect x="1" y="-4.5" width="1" height="2" fill="#1c2235"/><rect x="-1" y="-2.5" width="2" height="0.5" fill="#1c2235"/><rect x="-1" y="-4.5" width="2" height="2" fill="#a9e4fa"/><rect x="-0.5" y="-4.5" width="1" height="0.5" fill="#effcff"/></g></g></g><g data-motion="right-hand"><g data-layer="right-hand" transform="translate(35 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#d1f0ff"/><rect x="-1.5" y="-1" width="3" height="2" fill="#98d7f7"/><rect x="-1" y="1" width="2" height="0.5" fill="#56b6e7"/><rect x="-1" y="-1" width="1" height="0.5" fill="#d1f0ff"/></g></g></g></svg><strong>Sky</strong><span>Happy eyes · Sprout · Magnifying glass</span></button>
+<button class="preset" data-preset="peach-wrench" aria-pressed="false" aria-label="Load Peach, Spanner"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 32" width="240" height="192" shape-rendering="crispEdges" role="img" aria-labelledby="preset-peach-wrench-title" data-state="idle" data-held-side="right"><title id="preset-peach-wrench-title">Peach cloudlet, dot eyes, star pin, spanner</title><defs><clipPath id="preset-peach-wrench-mask"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z"/></clipPath></defs><g data-layer="particles" data-motion="particles"><g data-particle="0"><rect x="25" y="7" width="2" height="2" fill="#ffe1cf"/></g><g data-particle="1"><rect x="28" y="9" width="2" height="2" fill="#ffe1cf"/></g><g data-particle="2"><rect x="31" y="11" width="2" height="2" fill="#ffe1cf"/></g><g data-particle="3"><rect x="34" y="5" width="2" height="2" fill="#ffe1cf"/></g></g><g data-motion="actor"><g data-motion="cloud"><g data-layer="body"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z" fill="#ffb5a1"/><g clip-path="url(#preset-peach-wrench-mask)"><rect x="9" y="15" width="2" height="4" fill="#ee887b"/><rect x="10" y="18" width="3" height="2" fill="#ee887b"/><rect x="12" y="19" width="3" height="2" fill="#ee887b"/><rect x="20" y="7" width="2" height="2" fill="#ffe1cf"/><rect x="23" y="9" width="2" height="2" fill="#ffe1cf"/><rect x="26" y="11" width="2" height="2" fill="#ffe1cf"/><rect x="28" y="13" width="2" height="2" fill="#ffe1cf"/><rect x="30" y="15" width="2" height="4" fill="#ffe1cf"/></g></g><g data-layer="expression" transform="translate(17 16)"><rect x="0.5" y="0.5" width="1" height="1.5" fill="#201922"/><rect x="5.5" y="0.5" width="1" height="1.5" fill="#201922"/></g><g data-layer="accessory" transform="translate(12 11)"><rect x="0" y="-1" width="1" height="3" fill="#edb947"/><rect x="-1" y="0" width="3" height="1" fill="#edb947"/><rect x="-0.5" y="1" width="0.5" height="0.5" fill="#edb947"/><rect x="1" y="1" width="0.5" height="0.5" fill="#edb947"/><rect x="0" y="0" width="1" height="0.5" fill="#fff0a2"/></g></g><g data-motion="left-hand"><g data-layer="left-hand" transform="translate(6 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#ffe1cf"/><rect x="-1.5" y="-1" width="3" height="2" fill="#ffb5a1"/><rect x="-1" y="1" width="2" height="0.5" fill="#ee887b"/><rect x="-1" y="-1" width="1" height="0.5" fill="#ffe1cf"/></g></g><g data-motion="right-hand"><g data-layer="right-hand" transform="translate(35 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#ffe1cf"/><rect x="-1.5" y="-1" width="3" height="2" fill="#ffb5a1"/><rect x="-1" y="1" width="2" height="0.5" fill="#ee887b"/><rect x="-1" y="-1" width="1" height="0.5" fill="#ffe1cf"/><g data-layer="prop" transform="translate(0 -1)"><rect x="-0.5" y="-3.5" width="1" height="3.5" fill="#6daec1"/><rect x="-1.5" y="-5" width="1" height="2" fill="#a9dce7"/><rect x="0.5" y="-5" width="1" height="2" fill="#a9dce7"/><rect x="-1.5" y="-3.5" width="3" height="1" fill="#6daec1"/></g></g></g></g></svg><strong>Peach</strong><span>Dot eyes · Star pin · Spanner</span></button>
+<button class="preset" data-preset="butter-mug" aria-pressed="false" aria-label="Load Butter, Coffee mug"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 32" width="240" height="192" shape-rendering="crispEdges" role="img" aria-labelledby="preset-butter-mug-title" data-state="idle" data-held-side="left"><title id="preset-butter-mug-title">Butter cloudlet, square eyes, navy cap, coffee mug</title><defs><clipPath id="preset-butter-mug-mask"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z"/></clipPath></defs><g data-layer="particles" data-motion="particles"><g data-particle="0"><rect x="25" y="7" width="2" height="2" fill="#fff7c8"/></g><g data-particle="1"><rect x="28" y="9" width="2" height="2" fill="#fff7c8"/></g><g data-particle="2"><rect x="31" y="11" width="2" height="2" fill="#fff7c8"/></g><g data-particle="3"><rect x="34" y="5" width="2" height="2" fill="#fff7c8"/></g></g><g data-motion="actor"><g data-motion="cloud"><g data-layer="body"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z" fill="#ffe994"/><g clip-path="url(#preset-butter-mug-mask)"><rect x="9" y="15" width="2" height="4" fill="#efc25b"/><rect x="10" y="18" width="3" height="2" fill="#efc25b"/><rect x="12" y="19" width="3" height="2" fill="#efc25b"/><rect x="20" y="7" width="2" height="2" fill="#fff7c8"/><rect x="23" y="9" width="2" height="2" fill="#fff7c8"/><rect x="26" y="11" width="2" height="2" fill="#fff7c8"/><rect x="28" y="13" width="2" height="2" fill="#fff7c8"/><rect x="30" y="15" width="2" height="4" fill="#fff7c8"/></g></g><g data-layer="expression" transform="translate(17 16)"><rect x="0" y="0" width="2" height="2" fill="#211d27"/><rect x="5" y="0" width="2" height="2" fill="#211d27"/></g><g data-layer="accessory" transform="translate(12 11)"><rect x="-1" y="-2" width="3" height="1" fill="#2b4b9c"/><rect x="-2" y="-1" width="4" height="2" fill="#2b4b9c"/><rect x="-2.5" y="1" width="5.5" height="0.5" fill="#203773"/><rect x="0" y="-0.5" width="1" height="0.5" fill="#b9e6ef"/></g></g><g data-motion="left-hand"><g data-layer="left-hand" transform="translate(6 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#fff7c8"/><rect x="-1.5" y="-1" width="3" height="2" fill="#ffe994"/><rect x="-1" y="1" width="2" height="0.5" fill="#efc25b"/><rect x="-1" y="-1" width="1" height="0.5" fill="#fff7c8"/><g data-layer="prop" transform="translate(0 -1)"><rect x="-1.5" y="-3.5" width="3" height="3" fill="#fff1cc"/><rect x="-1" y="-3.5" width="2" height="0.5" fill="#765440"/><rect x="1.5" y="-3" width="1" height="0.5" fill="#fff1cc"/><rect x="2" y="-2.5" width="0.5" height="1" fill="#fff1cc"/><rect x="1.5" y="-1.5" width="1" height="0.5" fill="#fff1cc"/><rect x="-1" y="-0.5" width="2" height="0.5" fill="#d8c6a5"/></g></g></g><g data-motion="right-hand"><g data-layer="right-hand" transform="translate(35 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#fff7c8"/><rect x="-1.5" y="-1" width="3" height="2" fill="#ffe994"/><rect x="-1" y="1" width="2" height="0.5" fill="#efc25b"/><rect x="-1" y="-1" width="1" height="0.5" fill="#fff7c8"/></g></g></g></svg><strong>Butter</strong><span>Square eyes · Navy cap · Coffee mug</span></button>
+<button class="preset" data-preset="cream-brush" aria-pressed="false" aria-label="Load Cream, Paintbrush"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 32" width="240" height="192" shape-rendering="crispEdges" role="img" aria-labelledby="preset-cream-brush-title" data-state="idle" data-held-side="right"><title id="preset-cream-brush-title">Cream cloudlet, relaxed eyes, leaf pin, paintbrush</title><defs><clipPath id="preset-cream-brush-mask"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z"/></clipPath></defs><g data-layer="particles" data-motion="particles"><g data-particle="0"><rect x="25" y="7" width="2" height="2" fill="#fff9e8"/></g><g data-particle="1"><rect x="28" y="9" width="2" height="2" fill="#fff9e8"/></g><g data-particle="2"><rect x="31" y="11" width="2" height="2" fill="#fff9e8"/></g><g data-particle="3"><rect x="34" y="5" width="2" height="2" fill="#fff9e8"/></g></g><g data-motion="actor"><g data-motion="cloud"><g data-layer="body"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z" fill="#fff0cd"/><g clip-path="url(#preset-cream-brush-mask)"><rect x="9" y="15" width="2" height="4" fill="#e9cd96"/><rect x="10" y="18" width="3" height="2" fill="#e9cd96"/><rect x="12" y="19" width="3" height="2" fill="#e9cd96"/><rect x="20" y="7" width="2" height="2" fill="#fff9e8"/><rect x="23" y="9" width="2" height="2" fill="#fff9e8"/><rect x="26" y="11" width="2" height="2" fill="#fff9e8"/><rect x="28" y="13" width="2" height="2" fill="#fff9e8"/><rect x="30" y="15" width="2" height="4" fill="#fff9e8"/></g></g><g data-layer="expression" transform="translate(17 16)"><rect x="0" y="1" width="2" height="1" fill="#24202b"/><rect x="5" y="1" width="2" height="1" fill="#24202b"/></g><g data-layer="accessory" transform="translate(12 11)"><rect x="0" y="-1" width="1" height="3" fill="#347d54"/><rect x="-1.5" y="-1.5" width="1.5" height="1" fill="#68ce8b"/><rect x="-2" y="-2" width="1.5" height="1" fill="#96e5a8"/><rect x="1" y="-0.5" width="1" height="1" fill="#68ce8b"/></g></g><g data-motion="left-hand"><g data-layer="left-hand" transform="translate(6 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#fff9e8"/><rect x="-1.5" y="-1" width="3" height="2" fill="#fff0cd"/><rect x="-1" y="1" width="2" height="0.5" fill="#e9cd96"/><rect x="-1" y="-1" width="1" height="0.5" fill="#fff9e8"/></g></g><g data-motion="right-hand"><g data-layer="right-hand" transform="translate(35 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#fff9e8"/><rect x="-1.5" y="-1" width="3" height="2" fill="#fff0cd"/><rect x="-1" y="1" width="2" height="0.5" fill="#e9cd96"/><rect x="-1" y="-1" width="1" height="0.5" fill="#fff9e8"/><g data-layer="prop" transform="translate(0 -1)"><rect x="-0.5" y="-3" width="1" height="3" fill="#316f84"/><rect x="-0.5" y="-4" width="1" height="1" fill="#fff1cc"/><rect x="-0.5" y="-5.5" width="1" height="1.5" fill="#ee947e"/><rect x="0" y="-6" width="0.5" height="1" fill="#ee947e"/></g></g></g></g></svg><strong>Cream</strong><span>Relaxed eyes · Leaf pin · Paintbrush</span></button>
+<button class="preset" data-preset="rose-notebook" aria-pressed="false" aria-label="Load Rose, Burgundy notebook"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 32" width="240" height="192" shape-rendering="crispEdges" role="img" aria-labelledby="preset-rose-notebook-title" data-state="idle" data-held-side="left"><title id="preset-rose-notebook-title">Rose cloudlet, happy eyes, bow, burgundy notebook</title><defs><clipPath id="preset-rose-notebook-mask"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z"/></clipPath></defs><g data-layer="particles" data-motion="particles"><g data-particle="0"><rect x="25" y="7" width="2" height="2" fill="#ffd8e0"/></g><g data-particle="1"><rect x="28" y="9" width="2" height="2" fill="#ffd8e0"/></g><g data-particle="2"><rect x="31" y="11" width="2" height="2" fill="#ffd8e0"/></g><g data-particle="3"><rect x="34" y="5" width="2" height="2" fill="#ffd8e0"/></g></g><g data-motion="actor"><g data-motion="cloud"><g data-layer="body"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z" fill="#f3a3b9"/><g clip-path="url(#preset-rose-notebook-mask)"><rect x="9" y="15" width="2" height="4" fill="#d96c92"/><rect x="10" y="18" width="3" height="2" fill="#d96c92"/><rect x="12" y="19" width="3" height="2" fill="#d96c92"/><rect x="20" y="7" width="2" height="2" fill="#ffd8e0"/><rect x="23" y="9" width="2" height="2" fill="#ffd8e0"/><rect x="26" y="11" width="2" height="2" fill="#ffd8e0"/><rect x="28" y="13" width="2" height="2" fill="#ffd8e0"/><rect x="30" y="15" width="2" height="4" fill="#ffd8e0"/></g></g><g data-layer="expression" transform="translate(17 16)"><rect x="0" y="1" width="1" height="1" fill="#251827"/><rect x="1" y="0" width="1" height="1" fill="#251827"/><rect x="2" y="1" width="1" height="1" fill="#251827"/><rect x="5" y="1" width="1" height="1" fill="#251827"/><rect x="6" y="0" width="1" height="1" fill="#251827"/><rect x="7" y="1" width="1" height="1" fill="#251827"/></g><g data-layer="accessory" transform="translate(12 11)"><rect x="-2" y="-1" width="1" height="3" fill="#b194e9"/><rect x="-1" y="-0.5" width="1" height="2" fill="#9a79cf"/><rect x="0" y="0" width="1" height="1" fill="#d7b9fc"/><rect x="1" y="-0.5" width="1" height="2" fill="#9a79cf"/><rect x="2" y="-1" width="1" height="3" fill="#b194e9"/></g></g><g data-motion="left-hand"><g data-layer="left-hand" transform="translate(6 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#ffd8e0"/><rect x="-1.5" y="-1" width="3" height="2" fill="#f3a3b9"/><rect x="-1" y="1" width="2" height="0.5" fill="#d96c92"/><rect x="-1" y="-1" width="1" height="0.5" fill="#ffd8e0"/><g data-layer="prop" transform="translate(0 -1)"><rect x="-2" y="-5" width="4" height="4.5" fill="#8e3c5d"/><rect x="-1.5" y="-4.5" width="3" height="0.5" fill="#fff1cc"/><rect x="-1.5" y="-4" width="0.5" height="3.5" fill="#d88b9c"/><rect x="-0.5" y="-3.5" width="1.5" height="0.5" fill="#fff1cc"/></g></g></g><g data-motion="right-hand"><g data-layer="right-hand" transform="translate(35 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#ffd8e0"/><rect x="-1.5" y="-1" width="3" height="2" fill="#f3a3b9"/><rect x="-1" y="1" width="2" height="0.5" fill="#d96c92"/><rect x="-1" y="-1" width="1" height="0.5" fill="#ffd8e0"/></g></g></g></svg><strong>Rose</strong><span>Happy eyes · Bow · Burgundy notebook</span></button>
+<button class="preset" data-preset="periwinkle-map" aria-pressed="false" aria-label="Load Periwinkle, Folded map"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 32" width="240" height="192" shape-rendering="crispEdges" role="img" aria-labelledby="preset-periwinkle-map-title" data-state="idle" data-held-side="right"><title id="preset-periwinkle-map-title">Periwinkle cloudlet, dot eyes, round glasses, folded map</title><defs><clipPath id="preset-periwinkle-map-mask"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z"/></clipPath></defs><g data-layer="particles" data-motion="particles"><g data-particle="0"><rect x="25" y="7" width="2" height="2" fill="#e0e3ff"/></g><g data-particle="1"><rect x="28" y="9" width="2" height="2" fill="#e0e3ff"/></g><g data-particle="2"><rect x="31" y="11" width="2" height="2" fill="#e0e3ff"/></g><g data-particle="3"><rect x="34" y="5" width="2" height="2" fill="#e0e3ff"/></g></g><g data-motion="actor"><g data-motion="cloud"><g data-layer="body"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z" fill="#aeb5fc"/><g clip-path="url(#preset-periwinkle-map-mask)"><rect x="9" y="15" width="2" height="4" fill="#7f88e7"/><rect x="10" y="18" width="3" height="2" fill="#7f88e7"/><rect x="12" y="19" width="3" height="2" fill="#7f88e7"/><rect x="20" y="7" width="2" height="2" fill="#e0e3ff"/><rect x="23" y="9" width="2" height="2" fill="#e0e3ff"/><rect x="26" y="11" width="2" height="2" fill="#e0e3ff"/><rect x="28" y="13" width="2" height="2" fill="#e0e3ff"/><rect x="30" y="15" width="2" height="4" fill="#e0e3ff"/></g></g><g data-layer="expression" transform="translate(17 16)"><rect x="0.5" y="0.5" width="1" height="1.5" fill="#171c31"/><rect x="5.5" y="0.5" width="1" height="1.5" fill="#171c31"/></g><g data-layer="accessory" transform="translate(17 16)"><rect x="0" y="-1" width="2" height="0.5" fill="#1c2235"/><rect x="-0.5" y="-0.5" width="0.5" height="3" fill="#1c2235"/><rect x="2" y="-0.5" width="0.5" height="3" fill="#1c2235"/><rect x="0" y="2.5" width="2" height="0.5" fill="#1c2235"/><rect x="5" y="-1" width="2" height="0.5" fill="#1c2235"/><rect x="4.5" y="-0.5" width="0.5" height="3" fill="#1c2235"/><rect x="7" y="-0.5" width="0.5" height="3" fill="#1c2235"/><rect x="5" y="2.5" width="2" height="0.5" fill="#1c2235"/><rect x="2.5" y="0.5" width="2" height="0.5" fill="#1c2235"/><rect x="-1.5" y="0.5" width="1" height="0.5" fill="#1c2235"/><rect x="7.5" y="0.5" width="1" height="0.5" fill="#1c2235"/></g></g><g data-motion="left-hand"><g data-layer="left-hand" transform="translate(6 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#e0e3ff"/><rect x="-1.5" y="-1" width="3" height="2" fill="#aeb5fc"/><rect x="-1" y="1" width="2" height="0.5" fill="#7f88e7"/><rect x="-1" y="-1" width="1" height="0.5" fill="#e0e3ff"/></g></g><g data-motion="right-hand"><g data-layer="right-hand" transform="translate(35 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#e0e3ff"/><rect x="-1.5" y="-1" width="3" height="2" fill="#aeb5fc"/><rect x="-1" y="1" width="2" height="0.5" fill="#7f88e7"/><rect x="-1" y="-1" width="1" height="0.5" fill="#e0e3ff"/><g data-layer="prop" transform="translate(0 -1)"><rect x="-2" y="-4" width="1.5" height="3.5" fill="#c9eee4"/><rect x="-0.5" y="-3.5" width="1.5" height="3.5" fill="#9bccc3"/><rect x="1" y="-4" width="1.5" height="3.5" fill="#c9eee4"/><rect x="-1.5" y="-2" width="0.5" height="0.5" fill="#1c2235"/><rect x="-0.5" y="-1.5" width="0.5" height="0.5" fill="#1c2235"/><rect x="0.5" y="-2" width="0.5" height="0.5" fill="#1c2235"/><rect x="1.5" y="-2.5" width="0.5" height="0.5" fill="#1c2235"/></g></g></g></g></svg><strong>Periwinkle</strong><span>Dot eyes · Round glasses · Folded map</span></button>
+<button class="preset" data-preset="ice-camera" aria-pressed="false" aria-label="Load Ice, Camera"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 32" width="240" height="192" shape-rendering="crispEdges" role="img" aria-labelledby="preset-ice-camera-title" data-state="idle" data-held-side="left"><title id="preset-ice-camera-title">Ice cloudlet, wink, side earpiece, camera</title><defs><clipPath id="preset-ice-camera-mask"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z"/></clipPath></defs><g data-layer="particles" data-motion="particles"><g data-particle="0"><rect x="25" y="7" width="2" height="2" fill="#e0f6ff"/></g><g data-particle="1"><rect x="28" y="9" width="2" height="2" fill="#e0f6ff"/></g><g data-particle="2"><rect x="31" y="11" width="2" height="2" fill="#e0f6ff"/></g><g data-particle="3"><rect x="34" y="5" width="2" height="2" fill="#e0f6ff"/></g></g><g data-motion="actor"><g data-motion="cloud"><g data-layer="body"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z" fill="#9bdbfa"/><g clip-path="url(#preset-ice-camera-mask)"><rect x="9" y="15" width="2" height="4" fill="#4caee6"/><rect x="10" y="18" width="3" height="2" fill="#4caee6"/><rect x="12" y="19" width="3" height="2" fill="#4caee6"/><rect x="20" y="7" width="2" height="2" fill="#e0f6ff"/><rect x="23" y="9" width="2" height="2" fill="#e0f6ff"/><rect x="26" y="11" width="2" height="2" fill="#e0f6ff"/><rect x="28" y="13" width="2" height="2" fill="#e0f6ff"/><rect x="30" y="15" width="2" height="4" fill="#e0f6ff"/></g></g><g data-layer="expression" transform="translate(17 16)"><rect x="0" y="0" width="2" height="2" fill="#172332"/><rect x="5" y="1" width="1" height="1" fill="#172332"/><rect x="6" y="0" width="1" height="1" fill="#172332"/><rect x="7" y="1" width="1" height="1" fill="#172332"/></g><g data-layer="accessory" transform="translate(12 11)"><rect x="-1.5" y="1.5" width="0.5" height="2" fill="#1c2235"/><rect x="-2" y="3" width="2" height="2" fill="#1c2235"/><rect x="-1.5" y="3.5" width="0.5" height="1" fill="#343d54"/></g></g><g data-motion="left-hand"><g data-layer="left-hand" transform="translate(6 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#e0f6ff"/><rect x="-1.5" y="-1" width="3" height="2" fill="#9bdbfa"/><rect x="-1" y="1" width="2" height="0.5" fill="#4caee6"/><rect x="-1" y="-1" width="1" height="0.5" fill="#e0f6ff"/><g data-layer="prop" transform="translate(0 -1)"><rect x="-2" y="-3" width="4" height="2.5" fill="#a1a6b4"/><rect x="-1" y="-3.5" width="1.5" height="0.5" fill="#c7ccd7"/><rect x="-1.5" y="-2.5" width="3" height="1.5" fill="#1c2235"/><rect x="-0.5" y="-2.5" width="1" height="1.5" fill="#75d1f4"/><rect x="0.5" y="-2" width="0.5" height="0.5" fill="#c4f5fc"/></g></g></g><g data-motion="right-hand"><g data-layer="right-hand" transform="translate(35 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#e0f6ff"/><rect x="-1.5" y="-1" width="3" height="2" fill="#9bdbfa"/><rect x="-1" y="1" width="2" height="0.5" fill="#4caee6"/><rect x="-1" y="-1" width="1" height="0.5" fill="#e0f6ff"/></g></g></g></svg><strong>Ice</strong><span>Wink · Side earpiece · Camera</span></button>
+<button class="preset" data-preset="sage-key" aria-pressed="false" aria-label="Load Sage, Brass key"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 32" width="240" height="192" shape-rendering="crispEdges" role="img" aria-labelledby="preset-sage-key-title" data-state="idle" data-held-side="right"><title id="preset-sage-key-title">Sage cloudlet, square eyes, amber badge, brass key</title><defs><clipPath id="preset-sage-key-mask"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z"/></clipPath></defs><g data-layer="particles" data-motion="particles"><g data-particle="0"><rect x="25" y="7" width="2" height="2" fill="#d8f7d9"/></g><g data-particle="1"><rect x="28" y="9" width="2" height="2" fill="#d8f7d9"/></g><g data-particle="2"><rect x="31" y="11" width="2" height="2" fill="#d8f7d9"/></g><g data-particle="3"><rect x="34" y="5" width="2" height="2" fill="#d8f7d9"/></g></g><g data-motion="actor"><g data-motion="cloud"><g data-layer="body"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z" fill="#a2d6ac"/><g clip-path="url(#preset-sage-key-mask)"><rect x="9" y="15" width="2" height="4" fill="#65a977"/><rect x="10" y="18" width="3" height="2" fill="#65a977"/><rect x="12" y="19" width="3" height="2" fill="#65a977"/><rect x="20" y="7" width="2" height="2" fill="#d8f7d9"/><rect x="23" y="9" width="2" height="2" fill="#d8f7d9"/><rect x="26" y="11" width="2" height="2" fill="#d8f7d9"/><rect x="28" y="13" width="2" height="2" fill="#d8f7d9"/><rect x="30" y="15" width="2" height="4" fill="#d8f7d9"/></g></g><g data-layer="expression" transform="translate(17 16)"><rect x="0" y="0" width="2" height="2" fill="#15291f"/><rect x="5" y="0" width="2" height="2" fill="#15291f"/></g><g data-layer="accessory" transform="translate(12 11)"><rect x="-0.5" y="-1" width="1" height="3" fill="#edb947"/><rect x="-1" y="-0.5" width="2" height="2" fill="#edb947"/><rect x="-0.5" y="-0.5" width="0.5" height="1" fill="#ffe697"/></g></g><g data-motion="left-hand"><g data-layer="left-hand" transform="translate(6 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#d8f7d9"/><rect x="-1.5" y="-1" width="3" height="2" fill="#a2d6ac"/><rect x="-1" y="1" width="2" height="0.5" fill="#65a977"/><rect x="-1" y="-1" width="1" height="0.5" fill="#d8f7d9"/></g></g><g data-motion="right-hand"><g data-layer="right-hand" transform="translate(35 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#d8f7d9"/><rect x="-1.5" y="-1" width="3" height="2" fill="#a2d6ac"/><rect x="-1" y="1" width="2" height="0.5" fill="#65a977"/><rect x="-1" y="-1" width="1" height="0.5" fill="#d8f7d9"/><g data-layer="prop" transform="translate(0 -1)"><rect x="-1" y="-5" width="2" height="0.5" fill="#edb947"/><rect x="-1.5" y="-4.5" width="0.5" height="1.5" fill="#edb947"/><rect x="1" y="-4.5" width="0.5" height="1.5" fill="#edb947"/><rect x="-1" y="-3" width="2" height="0.5" fill="#edb947"/><rect x="-0.5" y="-2.5" width="1" height="2.5" fill="#edb947"/><rect x="0.5" y="-1" width="1" height="0.5" fill="#edb947"/></g></g></g></g></svg><strong>Sage</strong><span>Square eyes · Amber badge · Brass key</span></button>
+<button class="preset" data-preset="coral-envelope" aria-pressed="false" aria-label="Load Coral, Envelope"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 32" width="240" height="192" shape-rendering="crispEdges" role="img" aria-labelledby="preset-coral-envelope-title" data-state="idle" data-held-side="left"><title id="preset-coral-envelope-title">Coral cloudlet, relaxed eyes, blue barrette, envelope</title><defs><clipPath id="preset-coral-envelope-mask"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z"/></clipPath></defs><g data-layer="particles" data-motion="particles"><g data-particle="0"><rect x="25" y="7" width="2" height="2" fill="#ffd0b6"/></g><g data-particle="1"><rect x="28" y="9" width="2" height="2" fill="#ffd0b6"/></g><g data-particle="2"><rect x="31" y="11" width="2" height="2" fill="#ffd0b6"/></g><g data-particle="3"><rect x="34" y="5" width="2" height="2" fill="#ffd0b6"/></g></g><g data-motion="actor"><g data-motion="cloud"><g data-layer="body"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z" fill="#ff947e"/><g clip-path="url(#preset-coral-envelope-mask)"><rect x="9" y="15" width="2" height="4" fill="#e86458"/><rect x="10" y="18" width="3" height="2" fill="#e86458"/><rect x="12" y="19" width="3" height="2" fill="#e86458"/><rect x="20" y="7" width="2" height="2" fill="#ffd0b6"/><rect x="23" y="9" width="2" height="2" fill="#ffd0b6"/><rect x="26" y="11" width="2" height="2" fill="#ffd0b6"/><rect x="28" y="13" width="2" height="2" fill="#ffd0b6"/><rect x="30" y="15" width="2" height="4" fill="#ffd0b6"/></g></g><g data-layer="expression" transform="translate(17 16)"><rect x="0" y="1" width="2" height="1" fill="#281a22"/><rect x="5" y="1" width="2" height="1" fill="#281a22"/></g><g data-layer="accessory" transform="translate(12 11)"><rect x="-1" y="-0.5" width="3" height="1" fill="#3a9bd5"/><rect x="-0.5" y="-1" width="2" height="1" fill="#83d1f5"/></g></g><g data-motion="left-hand"><g data-layer="left-hand" transform="translate(6 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#ffd0b6"/><rect x="-1.5" y="-1" width="3" height="2" fill="#ff947e"/><rect x="-1" y="1" width="2" height="0.5" fill="#e86458"/><rect x="-1" y="-1" width="1" height="0.5" fill="#ffd0b6"/><g data-layer="prop" transform="translate(0 -1)"><rect x="-2" y="-3" width="4" height="2.5" fill="#fff1cc"/><rect x="-2" y="-3" width="0.5" height="0.5" fill="#ae946f"/><rect x="-1.5" y="-2.5" width="0.5" height="0.5" fill="#ae946f"/><rect x="-1" y="-2" width="2" height="0.5" fill="#ae946f"/><rect x="1" y="-2.5" width="0.5" height="0.5" fill="#ae946f"/><rect x="1.5" y="-3" width="0.5" height="0.5" fill="#ae946f"/></g></g></g><g data-motion="right-hand"><g data-layer="right-hand" transform="translate(35 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#ffd0b6"/><rect x="-1.5" y="-1" width="3" height="2" fill="#ff947e"/><rect x="-1" y="1" width="2" height="0.5" fill="#e86458"/><rect x="-1" y="-1" width="1" height="0.5" fill="#ffd0b6"/></g></g></g></svg><strong>Coral</strong><span>Relaxed eyes · Blue barrette · Envelope</span></button>
+<button class="preset" data-preset="midnight-hourglass" aria-pressed="false" aria-label="Load Midnight, Hourglass"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 32" width="240" height="192" shape-rendering="crispEdges" role="img" aria-labelledby="preset-midnight-hourglass-title" data-state="idle" data-held-side="right"><title id="preset-midnight-hourglass-title">Midnight cloudlet, square eyes, moon pin, hourglass</title><defs><clipPath id="preset-midnight-hourglass-mask"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z"/></clipPath></defs><g data-layer="particles" data-motion="particles"><g data-particle="0"><rect x="25" y="7" width="2" height="2" fill="#8292e5"/></g><g data-particle="1"><rect x="28" y="9" width="2" height="2" fill="#8292e5"/></g><g data-particle="2"><rect x="31" y="11" width="2" height="2" fill="#8292e5"/></g><g data-particle="3"><rect x="34" y="5" width="2" height="2" fill="#8292e5"/></g></g><g data-motion="actor"><g data-motion="cloud"><g data-layer="body"><path d="M16 7h6v1h-6zM14 8h8v1h-8zM13 9h12v1h-12zM13 10h12v1h-12zM13 11h15v1h-15zM13 12h15v1h-15zM11 13h18v1h-18zM10 14h19v1h-19zM9 15h21v1h-21zM9 16h23v1h-23zM9 17h23v1h-23zM9 18h23v1h-23zM10 19h22v1h-22zM11 20h20v1h-20z" fill="#384c8f"/><g clip-path="url(#preset-midnight-hourglass-mask)"><rect x="9" y="15" width="2" height="4" fill="#25345f"/><rect x="10" y="18" width="3" height="2" fill="#25345f"/><rect x="12" y="19" width="3" height="2" fill="#25345f"/><rect x="20" y="7" width="2" height="2" fill="#8292e5"/><rect x="23" y="9" width="2" height="2" fill="#8292e5"/><rect x="26" y="11" width="2" height="2" fill="#8292e5"/><rect x="28" y="13" width="2" height="2" fill="#8292e5"/><rect x="30" y="15" width="2" height="4" fill="#8292e5"/></g></g><g data-layer="expression" transform="translate(17 16)"><rect x="0" y="0" width="2" height="2" fill="#d0f9db"/><rect x="5" y="0" width="2" height="2" fill="#d0f9db"/></g><g data-layer="accessory" transform="translate(12 11)"><rect x="0" y="-1.5" width="1" height="0.5" fill="#f5f3e9"/><rect x="-1" y="-1" width="1" height="3" fill="#d9dce5"/><rect x="0" y="1.5" width="2" height="0.5" fill="#d9dce5"/><rect x="-0.5" y="1" width="2" height="0.5" fill="#f5f3e9"/><rect x="1" y="1" width="1" height="0.5" fill="#d9dce5"/></g></g><g data-motion="left-hand"><g data-layer="left-hand" transform="translate(6 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#8292e5"/><rect x="-1.5" y="-1" width="3" height="2" fill="#384c8f"/><rect x="-1" y="1" width="2" height="0.5" fill="#25345f"/><rect x="-1" y="-1" width="1" height="0.5" fill="#8292e5"/></g></g><g data-motion="right-hand"><g data-layer="right-hand" transform="translate(35 19)"><rect x="-1" y="-1.5" width="2" height="0.5" fill="#8292e5"/><rect x="-1.5" y="-1" width="3" height="2" fill="#384c8f"/><rect x="-1" y="1" width="2" height="0.5" fill="#25345f"/><rect x="-1" y="-1" width="1" height="0.5" fill="#8292e5"/><g data-layer="prop" transform="translate(0 -1)"><rect x="-1.5" y="-5" width="3" height="0.5" fill="#fff1cc"/><rect x="-1.5" y="-0.5" width="3" height="0.5" fill="#fff1cc"/><rect x="-1" y="-4.5" width="0.5" height="4" fill="#fff1cc"/><rect x="0.5" y="-4.5" width="0.5" height="4" fill="#fff1cc"/><rect x="-0.5" y="-4" width="1" height="0.5" fill="#edb947"/><rect x="0" y="-3.5" width="0.5" height="2" fill="#edb947"/><rect x="-0.5" y="-1.5" width="1" height="0.5" fill="#edb947"/></g></g></g></g></svg><strong>Midnight</strong><span>Square eyes · Moon pin · Hourglass</span></button></div></section>
+  <details><summary>Approved image references</summary><div class="references"><a href="approved/pastel-mix.png"><img src="approved/pastel-mix.png" alt="Approved pastel combinations">Pastel mix</a><a href="approved/soft-mix.png"><img src="approved/soft-mix.png" alt="Approved soft combinations">Soft mix</a><a href="approved/contrast-mix.png"><img src="approved/contrast-mix.png" alt="Approved contrast combinations">Contrast mix</a></div></details>
+</main>
+<script type="module">
+// Pixel geometry is local to each part. Bodies provide placement anchors.
+const part = (label, rects) => ({ label, rects });
+const rect = (x, y, width, height, fill) => [x, y, width, height, fill];
+
+const bodies = {
+  original: {
+    label: "Original cloud",
+    viewBox: [0, 0, 40, 32],
+    firstRow: 7,
+    rows: [[16, 6], [14, 8], [13, 12], [13, 12], [13, 15], [13, 15], [11, 18], [10, 19], [9, 21], [9, 23], [9, 23], [9, 23], [10, 22], [11, 20]],
+    shade: [[9, 15, 2, 4], [10, 18, 3, 2], [12, 19, 3, 2]],
+    highlight: [[20, 7, 2, 2], [23, 9, 2, 2], [26, 11, 2, 2], [28, 13, 2, 2], [30, 15, 2, 4]],
+    particles: [[25, 7, 2, 2], [28, 9, 2, 2], [31, 11, 2, 2], [34, 5, 2, 2]],
+    anchors: { face: [17, 16], accessory: [12, 11], leftHand: [6, 19], rightHand: [35, 19] },
+    reference: "source/original-cloudlets.png",
+  },
+};
+
+const palettes = {
+  mint: { label: "Mint", base: "#9be9dc", light: "#cefff0", shade: "#50cdbf", ink: "#10121c" },
+  lilac: { label: "Lilac", base: "#c9a7ee", light: "#ead7ff", shade: "#a875db", ink: "#181323" },
+  sky: { label: "Sky", base: "#98d7f7", light: "#d1f0ff", shade: "#56b6e7", ink: "#111926" },
+  peach: { label: "Peach", base: "#ffb5a1", light: "#ffe1cf", shade: "#ee887b", ink: "#201922" },
+  butter: { label: "Butter", base: "#ffe994", light: "#fff7c8", shade: "#efc25b", ink: "#211d27" },
+  cream: { label: "Cream", base: "#fff0cd", light: "#fff9e8", shade: "#e9cd96", ink: "#24202b" },
+  rose: { label: "Rose", base: "#f3a3b9", light: "#ffd8e0", shade: "#d96c92", ink: "#251827" },
+  periwinkle: { label: "Periwinkle", base: "#aeb5fc", light: "#e0e3ff", shade: "#7f88e7", ink: "#171c31" },
+  ice: { label: "Ice", base: "#9bdbfa", light: "#e0f6ff", shade: "#4caee6", ink: "#172332" },
+  sage: { label: "Sage", base: "#a2d6ac", light: "#d8f7d9", shade: "#65a977", ink: "#15291f" },
+  coral: { label: "Coral", base: "#ff947e", light: "#ffd0b6", shade: "#e86458", ink: "#281a22" },
+  midnight: { label: "Midnight", base: "#384c8f", light: "#8292e5", shade: "#25345f", ink: "#d0f9db" },
+};
+
+const expressions = {
+  square: part("Square eyes", [[0, 0, 2, 2, "ink"], [5, 0, 2, 2, "ink"]]),
+  sleepy: part("Relaxed eyes", [[0, 1, 2, 1, "ink"], [5, 1, 2, 1, "ink"]]),
+  cheerful: part("Happy eyes", [[0, 1, 1, 1, "ink"], [1, 0, 1, 1, "ink"], [2, 1, 1, 1, "ink"], [5, 1, 1, 1, "ink"], [6, 0, 1, 1, "ink"], [7, 1, 1, 1, "ink"]]),
+  dot: part("Dot eyes", [[0.5, 0.5, 1, 1.5, "ink"], [5.5, 0.5, 1, 1.5, "ink"]]),
+  wink: part("Wink", [[0, 0, 2, 2, "ink"], [5, 1, 1, 1, "ink"], [6, 0, 1, 1, "ink"], [7, 1, 1, 1, "ink"]]),
+};
+
+const dark = "#1c2235";
+const gold = "#edb947";
+const paper = "#fff1cc";
+const blue = "#4d7bda";
+const accessories = {
+  none: part("None", []),
+  headset: part("Side earpiece", [[-1.5, 1.5, 0.5, 2, dark], [-2, 3, 2, 2, dark], [-1.5, 3.5, 0.5, 1, "#343d54"]]),
+  "square-glasses": { ...part("Square glasses", [[-1, -1, 4, 0.5, dark], [-1, -1, 0.5, 4, dark], [2.5, -1, 0.5, 4, dark], [-1, 2.5, 4, 0.5, dark], [4, -1, 4, 0.5, dark], [4, -1, 0.5, 4, dark], [7.5, -1, 0.5, 4, dark], [4, 2.5, 4, 0.5, dark], [3, 0.5, 1, 0.5, dark], [-2, 0.5, 1, 0.5, dark], [8, 0.5, 1, 0.5, dark]]), anchor: "face" },
+  "round-glasses": { ...part("Round glasses", [[0, -1, 2, 0.5, dark], [-0.5, -0.5, 0.5, 3, dark], [2, -0.5, 0.5, 3, dark], [0, 2.5, 2, 0.5, dark], [5, -1, 2, 0.5, dark], [4.5, -0.5, 0.5, 3, dark], [7, -0.5, 0.5, 3, dark], [5, 2.5, 2, 0.5, dark], [2.5, 0.5, 2, 0.5, dark], [-1.5, 0.5, 1, 0.5, dark], [7.5, 0.5, 1, 0.5, dark]]), anchor: "face" },
+  sprout: part("Sprout", [[0, -2, 0.5, 4, "#327b50"], [-2, -2, 2, 1, "#50c37c"], [-2.5, -3, 2, 1, "#7be498"], [0.5, -1.5, 2, 1, "#50c37c"], [1, -2.5, 2, 1, "#7be498"]]),
+  "star-pin": part("Star pin", [[0, -1, 1, 3, gold], [-1, 0, 3, 1, gold], [-0.5, 1, 0.5, 0.5, gold], [1, 1, 0.5, 0.5, gold], [0, 0, 1, 0.5, "#fff0a2"]]),
+  "navy-cap": part("Navy cap", [[-1, -2, 3, 1, "#2b4b9c"], [-2, -1, 4, 2, "#2b4b9c"], [-2.5, 1, 5.5, 0.5, "#203773"], [0, -0.5, 1, 0.5, "#b9e6ef"]]),
+  "leaf-pin": part("Leaf pin", [[0, -1, 1, 3, "#347d54"], [-1.5, -1.5, 1.5, 1, "#68ce8b"], [-2, -2, 1.5, 1, "#96e5a8"], [1, -0.5, 1, 1, "#68ce8b"]]),
+  bow: part("Bow", [[-2, -1, 1, 3, "#b194e9"], [-1, -0.5, 1, 2, "#9a79cf"], [0, 0, 1, 1, "#d7b9fc"], [1, -0.5, 1, 2, "#9a79cf"], [2, -1, 1, 3, "#b194e9"]]),
+  badge: part("Amber badge", [[-0.5, -1, 1, 3, gold], [-1, -0.5, 2, 2, gold], [-0.5, -0.5, 0.5, 1, "#ffe697"]]),
+  barrette: part("Blue barrette", [[-1, -0.5, 3, 1, "#3a9bd5"], [-0.5, -1, 2, 1, "#83d1f5"]]),
+  "moon-pin": part("Moon pin", [[0, -1.5, 1, 0.5, "#f5f3e9"], [-1, -1, 1, 3, "#d9dce5"], [0, 1.5, 2, 0.5, "#d9dce5"], [-0.5, 1, 2, 0.5, "#f5f3e9"], [1, 1, 1, 0.5, "#d9dce5"]]),
+};
+
+// The prop origin is the grip point; either hand can use every prop.
+const props = {
+  none: part("Empty hand", []),
+  "blue-book": part("Blue book", [[-2, -5, 4, 4.5, "#304d99"], [-1.5, -4.5, 3, 4, blue], [-1, -4.5, 2.5, 0.5, "#dceeff"], [1, -4, 0.5, 3.5, "#dceeff"]]),
+  pencil: part("Pencil", [[-0.5, -5, 1, 4, "#edbb4c"], [-0.5, -5.5, 1, 1, "#ed88a5"], [-0.5, -4.5, 1, 0.5, "#d6deec"], [-0.5, -1, 1, 0.5, "#f0d1a2"], [0, -0.5, 0.5, 0.5, dark]]),
+  magnifier: part("Magnifying glass", [[-0.5, -2, 1, 2, "#bd915f"], [-1, -5, 2, 0.5, dark], [-2, -4.5, 1, 2, dark], [1, -4.5, 1, 2, dark], [-1, -2.5, 2, 0.5, dark], [-1, -4.5, 2, 2, "#a9e4fa"], [-0.5, -4.5, 1, 0.5, "#effcff"]]),
+  wrench: part("Spanner", [[-0.5, -3.5, 1, 3.5, "#6daec1"], [-1.5, -5, 1, 2, "#a9dce7"], [0.5, -5, 1, 2, "#a9dce7"], [-1.5, -3.5, 3, 1, "#6daec1"]]),
+  mug: part("Coffee mug", [[-1.5, -3.5, 3, 3, paper], [-1, -3.5, 2, 0.5, "#765440"], [1.5, -3, 1, 0.5, paper], [2, -2.5, 0.5, 1, paper], [1.5, -1.5, 1, 0.5, paper], [-1, -0.5, 2, 0.5, "#d8c6a5"]]),
+  paintbrush: part("Paintbrush", [[-0.5, -3, 1, 3, "#316f84"], [-0.5, -4, 1, 1, paper], [-0.5, -5.5, 1, 1.5, "#ee947e"], [0, -6, 0.5, 1, "#ee947e"]]),
+  notebook: part("Burgundy notebook", [[-2, -5, 4, 4.5, "#8e3c5d"], [-1.5, -4.5, 3, 0.5, paper], [-1.5, -4, 0.5, 3.5, "#d88b9c"], [-0.5, -3.5, 1.5, 0.5, paper]]),
+  map: part("Folded map", [[-2, -4, 1.5, 3.5, "#c9eee4"], [-0.5, -3.5, 1.5, 3.5, "#9bccc3"], [1, -4, 1.5, 3.5, "#c9eee4"], [-1.5, -2, 0.5, 0.5, dark], [-0.5, -1.5, 0.5, 0.5, dark], [0.5, -2, 0.5, 0.5, dark], [1.5, -2.5, 0.5, 0.5, dark]]),
+  camera: part("Camera", [[-2, -3, 4, 2.5, "#a1a6b4"], [-1, -3.5, 1.5, 0.5, "#c7ccd7"], [-1.5, -2.5, 3, 1.5, dark], [-0.5, -2.5, 1, 1.5, "#75d1f4"], [0.5, -2, 0.5, 0.5, "#c4f5fc"]]),
+  key: part("Brass key", [[-1, -5, 2, 0.5, gold], [-1.5, -4.5, 0.5, 1.5, gold], [1, -4.5, 0.5, 1.5, gold], [-1, -3, 2, 0.5, gold], [-0.5, -2.5, 1, 2.5, gold], [0.5, -1, 1, 0.5, gold]]),
+  envelope: part("Envelope", [[-2, -3, 4, 2.5, paper], [-2, -3, 0.5, 0.5, "#ae946f"], [-1.5, -2.5, 0.5, 0.5, "#ae946f"], [-1, -2, 2, 0.5, "#ae946f"], [1, -2.5, 0.5, 0.5, "#ae946f"], [1.5, -3, 0.5, 0.5, "#ae946f"]]),
+  hourglass: part("Hourglass", [[-1.5, -5, 3, 0.5, paper], [-1.5, -0.5, 3, 0.5, paper], [-1, -4.5, 0.5, 4, paper], [0.5, -4.5, 0.5, 4, paper], [-0.5, -4, 1, 0.5, gold], [0, -3.5, 0.5, 2, gold], [-0.5, -1.5, 1, 0.5, gold]]),
+};
+
+const handStyles = {
+  floating: part("Floating ball hands", [[-1, -1.5, 2, 0.5, "light"], [-1.5, -1, 3, 2, "base"], [-1, 1, 2, 0.5, "shade"], [-1, -1, 1, 0.5, "light"]]),
+  none: part("No hands", []),
+};
+
+const presetGroups = [
+  { id: "pastel", label: "Pastel mix", reference: "approved/pastel-mix.png" },
+  { id: "soft", label: "Soft mix", reference: "approved/soft-mix.png" },
+  { id: "contrast", label: "Contrast mix", reference: "approved/contrast-mix.png" },
+];
+
+const preset = (id, group, cell, palette, expression, accessory, prop, heldSide) => ({ id, group, cell, body: "original", palette, expression, accessory, prop, hands: "floating", heldSide });
+const presets = [
+  preset("mint-book", "pastel", "top-left", "mint", "square", "headset", "blue-book", "left"),
+  preset("lilac-pencil", "pastel", "top-right", "lilac", "sleepy", "square-glasses", "pencil", "right"),
+  preset("sky-magnifier", "pastel", "bottom-left", "sky", "cheerful", "sprout", "magnifier", "left"),
+  preset("peach-wrench", "pastel", "bottom-right", "peach", "dot", "star-pin", "wrench", "right"),
+  preset("butter-mug", "soft", "top-left", "butter", "square", "navy-cap", "mug", "left"),
+  preset("cream-brush", "soft", "top-right", "cream", "sleepy", "leaf-pin", "paintbrush", "right"),
+  preset("rose-notebook", "soft", "bottom-left", "rose", "cheerful", "bow", "notebook", "left"),
+  preset("periwinkle-map", "soft", "bottom-right", "periwinkle", "dot", "round-glasses", "map", "right"),
+  preset("ice-camera", "contrast", "top-left", "ice", "wink", "headset", "camera", "left"),
+  preset("sage-key", "contrast", "top-right", "sage", "square", "badge", "key", "right"),
+  preset("coral-envelope", "contrast", "bottom-left", "coral", "sleepy", "barrette", "envelope", "left"),
+  preset("midnight-hourglass", "contrast", "bottom-right", "midnight", "square", "moon-pin", "hourglass", "right"),
+];
+
+const catalog = { version: 1, rendering: "pixel-grid-preview", bodies, palettes, expressions, accessories, props, handStyles, presetGroups, presets };
+
+function hash32(value) {
+  let hash = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(String(value))) {
+    hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
+  }
+  return hash;
+}
+
+// Each category has its own hash stream. Adding a choice affects only that category.
+function pick(seed, category, choices) {
+  return Object.keys(choices).reduce((best, id) =>
+    best === null || hash32(`${seed}:${category}:${id}`) > hash32(`${seed}:${category}:${best}`) ? id : best, null);
+}
+
+function traitsFromSeed(seed, overrides = {}) {
+  return {
+    body: pick(seed, "body", bodies),
+    palette: pick(seed, "palette", palettes),
+    expression: pick(seed, "expression", expressions),
+    accessory: pick(seed, "accessory", accessories),
+    prop: pick(seed, "prop", props),
+    hands: "floating",
+    heldSide: hash32(`${seed}:held-side`) % 2 ? "right" : "left",
+    ...overrides,
+  };
+}
+
+function rectangles(rects, palette) {
+  return rects.map(([x, y, width, height, fill]) => `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="${palette[fill] ?? fill}"/>`).join("");
+}
+
+function place(layer, point, content) {
+  return `<g data-layer="${layer}" transform="translate(${point.join(" ")})">${content}</g>`;
+}
+
+function bodyPath(body) {
+  return body.rows.map(([x, width], row) => `M${x} ${body.firstRow + row}h${width}v1h-${width}z`).join("");
+}
+
+function bodyMarkup(body, palette, id) {
+  return `<g data-layer="body"><path d="${bodyPath(body)}" fill="${palette.base}"/><g clip-path="url(#${id}-mask)">${rectangles(body.shade.map(r => [...r, "shade"]), palette)}${rectangles(body.highlight.map(r => [...r, "light"]), palette)}</g></g>`;
+}
+
+function renderBodySvg(bodyId = "original", paletteId = "mint") {
+  const body = bodies[bodyId];
+  const palette = palettes[paletteId];
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${body.viewBox.join(" ")}" shape-rendering="crispEdges"><defs><clipPath id="body-mask"><path d="${bodyPath(body)}"/></clipPath></defs>${bodyMarkup(body, palette, "body")}</svg>`;
+}
+
+function renderSvg(traits, { size = 240, id = "cloudlet", state = "idle" } = {}) {
+  const body = bodies[traits.body];
+  const palette = palettes[traits.palette];
+  const expression = expressions[traits.expression];
+  const accessory = accessories[traits.accessory];
+  const prop = props[traits.prop];
+  const hands = handStyles[traits.hands];
+  if (!body || !palette || !expression || !accessory || !prop || !hands || !["left", "right"].includes(traits.heldSide)) {
+    throw new Error("Unknown cloudlet trait");
+  }
+  if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(id)) throw new Error("Invalid SVG id");
+  if (!["idle", "hopping", "working", "waiting", "done", "attention"].includes(state)) throw new Error("Unknown state");
+  const mask = bodyPath(body);
+  const geometry = bodyMarkup(body, palette, id);
+  const eyes = place("expression", body.anchors.face, rectangles(expression.rects, palette));
+  const adornment = place("accessory", body.anchors[accessory.anchor ?? "accessory"], rectangles(accessory.rects, palette));
+  const particles = `<g data-layer="particles" data-motion="particles">${body.particles.map((r, index) => `<g data-particle="${index}">${rectangles([[...r, "light"]], palette)}</g>`).join("")}</g>`;
+  const hand = side => {
+    if (traits.hands === "none") return "";
+    const held = traits.heldSide === side ? place("prop", [0, -1], rectangles(prop.rects, palette)) : "";
+    return `<g data-motion="${side}-hand">${place(`${side}-hand`, body.anchors[`${side}Hand`], `${rectangles(hands.rects, palette)}${held}`)}</g>`;
+  };
+  const actor = `<g data-motion="actor"><g data-motion="cloud">${geometry}${eyes}${adornment}</g>${hand("left")}${hand("right")}</g>`;
+  const heldSide = traits.hands !== "none" && traits.prop !== "none" ? traits.heldSide : "none";
+  const title = `${palette.label} cloudlet, ${expression.label.toLowerCase()}, ${accessory.label.toLowerCase()}, ${prop.label.toLowerCase()}`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${body.viewBox.join(" ")}" width="${size}" height="${size * body.viewBox[3] / body.viewBox[2]}" shape-rendering="crispEdges" role="img" aria-labelledby="${id}-title" data-state="${state}" data-held-side="${heldSide}"><title id="${id}-title">${title}</title><defs><clipPath id="${id}-mask"><path d="${mask}"/></clipPath></defs>${particles}${actor}</svg>`;
+}
+
+function renderPartSvg(kind, id) {
+  const collections = { expression: expressions, accessory: accessories, prop: props, hands: handStyles };
+  const selected = collections[kind]?.[id];
+  if (!selected) throw new Error("Unknown part");
+  const viewBox = kind === "prop" ? "-4 -9 8 10" : kind === "expression" ? "-2 -2 12 6" : kind === "hands" ? "-2 -2 4 4" : "-4 -4 16 12";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" shape-rendering="crispEdges">${rectangles(selected.rects, palettes.mint)}</svg>`;
+}
+
+
+const fields = [
+  ["body", "Body", bodies], ["palette", "Color", palettes],
+  ["expression", "Eyes", expressions], ["accessory", "Accessory", accessories],
+  ["hands", "Hands", handStyles], ["prop", "Held object", props],
+  ["heldSide", "Holding hand", {left:{label:"Left"},right:{label:"Right"}}],
+];
+const motionStates = {
+  idle: {label:"Idle",description:"Floats gently with relaxed hands."},
+  hopping: {label:"Hopping",description:"Hops in place and lifts its hands as pixels drift away."},
+  working: {label:"Working",description:"Works with alternating hands and a steady grip."},
+  waiting: {label:"Waiting",description:"Settles lower with relaxed hands and soft pixels."},
+  done: {label:"Done",description:"Celebrates with a higher hop and both hands."},
+  attention: {label:"Needs attention",description:"Waves its free hand with a soft pixel pulse."},
+};
+const states = Object.keys(motionStates);
+let current = { ...presets[0] };
+let state = "hopping";
+let paused = false;
+let tourTimer = null;
+const controls = document.querySelector("#controls");
+for (const [key, label, choices] of [...fields, ["state", "State", motionStates]]) {
+  const field = document.createElement("label");
+  field.textContent = label;
+  const select = document.createElement("select");
+  select.id = `trait-${key}`;
+  select.name = key;
+  for (const [id, option] of Object.entries(choices)) select.add(new Option(option.label, id));
+  select.addEventListener("change", () => {
+    if (key === "state") { stopTour(); selectState(select.value); }
+    else { current = { ...current, [key]: select.value }; paint(); }
+  });
+  field.append(select);
+  controls.append(field);
+}
+
+function paint() {
+  document.querySelector("#hero").innerHTML = renderSvg(current, {id:"hero-cloudlet",size:360,state});
+  document.querySelector("#sizes").innerHTML = [16,24,32,48].map(size => `<div class="size">${renderSvg(current,{id:`size-${size}`,size,state})}<span>${size}px</span></div>`).join("");
+  document.querySelector("#motions").innerHTML = states.map(motion => `<button class="motion-card" data-motion-state="${motion}" aria-pressed="false">${renderSvg(current,{id:`motion-${motion}`,size:180,state:motion})}<strong>${motionStates[motion].label}</strong><span>${motionStates[motion].description}</span></button>`).join("");
+  for (const [key] of fields) document.querySelector(`#trait-${key}`).value = current[key];
+  for (const button of document.querySelectorAll("[data-preset]")) {
+    const preset = presets.find(p => p.id === button.dataset.preset);
+    button.setAttribute("aria-pressed",String(fields.every(([key]) => current[key] === preset[key])));
+  }
+  document.querySelector("#status").textContent = current.hands === "none" && current.prop !== "none" ? "Held object is kept in the selection and shown when hands are enabled." : "Each selection changes only that part. State does not change the selected traits.";
+  selectState(state);
+  applyPlayback();
+}
+function selectState(next) {
+  state = next;
+  document.querySelector("#trait-state").value = state;
+  document.querySelector("#motion-label").textContent = `${motionStates[state].label}${paused ? " · Paused" : " · Playing"}`;
+  for (const svg of document.querySelectorAll("#hero svg,#sizes svg,#presets svg")) svg.dataset.state = state;
+  for (const button of document.querySelectorAll("[data-motion-state]")) button.setAttribute("aria-pressed",String(button.dataset.motionState === state));
+}
+function applyPlayback() {
+  for (const svg of document.querySelectorAll("svg[data-state]")) svg.dataset.paused = String(paused);
+  document.querySelector("#pause").textContent = paused ? "Resume motion" : "Pause motion";
+  document.querySelector("#pause").setAttribute("aria-pressed",String(paused));
+  selectState(state);
+}
+function stopTour() {
+  clearInterval(tourTimer);
+  tourTimer = null;
+  document.querySelector("#tour").textContent = "Play state tour";
+  document.querySelector("#tour").setAttribute("aria-pressed","false");
+}
+document.querySelector("#motions").addEventListener("click",event => {
+  const button = event.target.closest("[data-motion-state]");
+  if(button) { stopTour(); selectState(button.dataset.motionState); }
+});
+document.querySelector("#pause").addEventListener("click",() => { paused = !paused; if(paused) stopTour(); applyPlayback(); });
+document.querySelector("#tour").addEventListener("click",() => {
+  if(tourTimer !== null) { stopTour(); return; }
+  paused = false;
+  applyPlayback();
+  selectState("idle");
+  document.querySelector("#tour").textContent = "Stop state tour";
+  document.querySelector("#tour").setAttribute("aria-pressed","true");
+  tourTimer = setInterval(() => selectState(states[(states.indexOf(state)+1)%states.length]),4000);
+});
+document.querySelectorAll("[data-preset]").forEach(button => button.addEventListener("click", () => { current = {...presets.find(p => p.id === button.dataset.preset)}; paint(); }));
+function seedSelection() { current = traitsFromSeed(document.querySelector("#seed").value); paint(); }
+document.querySelector("#from-seed").addEventListener("click", seedSelection);
+document.querySelector("#seed").addEventListener("keydown", event => { if(event.key === "Enter") seedSelection(); });
+document.querySelector("#shuffle").addEventListener("click", () => { document.querySelector("#seed").value = crypto.randomUUID(); seedSelection(); });
+document.querySelector("#reset").addEventListener("click", () => { current = {...presets[0]}; paint(); });
+document.querySelector("#download").addEventListener("click", () => {
+  const motionCss = document.querySelector("#cloudlet-motion-style").textContent;
+  const animated = renderSvg(current,{id:"cloudlet",size:320,state}).replace("><title",`><style>${motionCss}</style><title`);
+  const url = URL.createObjectURL(new Blob([animated],{type:"image/svg+xml"}));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `cloudlet-${current.palette}-${current.expression}-${current.accessory}-${current.prop}-${state}.svg`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url),1000);
+});
+paint();
+</script>
+</html>
