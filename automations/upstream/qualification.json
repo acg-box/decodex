@@ -3411,10 +3411,10 @@
   },
   "delivery_reference": "https://github.com/acg-box/decodex/pull/2489",
   "delivery_status": "public_pull_request_reference",
-  "qualification_fixture_revision": "088f16fe1501a2c1ef306a02f073cbb2a9c5927b",
+  "qualification_fixture_revision": "a73a46be8873e2dab8424bcf3ffd18f287bda94a",
   "qualification_source_binding": {
     "consumer_baseline": "86207f028d9c266c01bbc352cc8ce956d4a08c8f",
-    "code_and_fixture_revision": "088f16fe1501a2c1ef306a02f073cbb2a9c5927b",
+    "code_and_fixture_revision": "a73a46be8873e2dab8424bcf3ffd18f287bda94a",
     "runtime_lock_sha256": "ade6137dae75cbabbfc20ce38cd1f5cec4ce99755398ace30f3c8390207d35a0",
     "limits": "Actual signed components, schema and current code/fixture bytes are bound separately. Installed binary identity and acceptance are not inferred.",
     "fixture_reconciliation": "Unchanged source/fixture hashes retain their exact-artifact proof. The MCP cancellation fixture adds a one-initialization assertion and reruns against both baseline and candidate; other behavior is unchanged."
