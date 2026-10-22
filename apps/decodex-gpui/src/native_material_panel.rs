@@ -1,7 +1,8 @@
-//! A foreground-owning native material for small GPUI child windows.
+//! Native material views and foreground-owning GPUI child windows.
 //! UI state and event handlers remain in GPUI; AppKit owns only composition.
 use std::{cell::Cell, env, ptr};
 
+use super::material::{GlassStyle, Material, Surface};
 use gpui::{Bounds, Pixels, Window, WindowBackgroundAppearance};
 use objc2::{
 	self,
@@ -13,9 +14,52 @@ use objc2_core_foundation::CGAffineTransform;
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
+struct Attachment {
+	handle: gpui::AnyWindowHandle,
+	surface: Option<Surface>,
+}
+
 thread_local! {
-	// Non-owning handles; the corresponding GlassPanel registers and removes each entry.
-	static ATTACHED_WINDOWS: std::cell::RefCell<std::collections::HashMap<usize, gpui::AnyWindowHandle>> = Default::default();
+	// Non-owning handles; each MaterialPanel registers and removes its entry.
+	static ATTACHED_WINDOWS: std::cell::RefCell<std::collections::HashMap<usize, Attachment>> = Default::default();
+}
+
+pub(crate) fn material_class(material: Material) -> Option<&'static AnyClass> {
+	match material {
+		Material::Thin => AnyClass::get(c"DecodexThinMaterialView"),
+		Material::LiquidGlass
+			if env::var_os("DECODEX_DISABLE_LIQUID_GLASS").is_none() && !reduced_transparency() =>
+			AnyClass::get(c"NSGlassEffectView"),
+		Material::LiquidGlass => None,
+	}
+}
+
+pub(crate) fn create_surface(material: Material, radius: f64) -> Option<Retained<NSView>> {
+	let class = material_class(material)?;
+	unsafe {
+		let allocated: objc2::rc::Allocated<NSView> = objc2::msg_send![class, alloc];
+		let surface: Retained<NSView> = objc2::msg_send![allocated, initWithFrame: NSRect::new(NSPoint::new(0., 0.), NSSize::new(0., 0.))];
+		let _: () = objc2::msg_send![&*surface, setCornerRadius: radius];
+		let _: () = objc2::msg_send![&*surface, setAutoresizingMask: 18_usize];
+		Some(surface)
+	}
+}
+
+pub(crate) fn observed_material(window: &Window) -> Option<&'static str> {
+	let content = native(window)?.contentView()?;
+	for view in content.subviews().iter() {
+		for (name, label) in
+			[(c"DecodexThinMaterialView", "thin"), (c"NSGlassEffectView", "liquid-glass")]
+		{
+			if let Some(class) = AnyClass::get(name) {
+				let matches: bool = unsafe { objc2::msg_send![&*view, isKindOfClass: class] };
+				if matches {
+					return Some(label);
+				}
+			}
+		}
+	}
+	None
 }
 
 /// Read the native material for opt-in frame diagnostics.
@@ -106,9 +150,13 @@ pub(crate) fn observed_rendering(window: &Window) -> Option<serde_json::Value> {
 	}
 }
 
-/// Retains the installed glass so style updates cannot mistake it for a window backdrop.
-pub(crate) struct GlassPanel {
-	glass: Retained<NSView>,
+/// Owns composition separately from the editor and its window lifecycle.
+pub(crate) struct MaterialPanel {
+	surface: Option<Surface>,
+	material: Option<Material>,
+	radius: f64,
+	host: Retained<NSView>,
+	material_view: Retained<NSView>,
 	foreground: Retained<NSView>,
 	native: Retained<NSWindow>,
 	parent: Retained<NSWindow>,
@@ -117,19 +165,27 @@ pub(crate) struct GlassPanel {
 	opacity: Cell<f32>,
 	window_observer: Retained<AnyObject>,
 }
-impl GlassPanel {
-	pub(crate) fn install(parent: &Window, window: &mut Window, radius: f64) -> Option<Self> {
-		Self::install_surface(parent, window, Some(radius))
+impl MaterialPanel {
+	pub(crate) fn install_input_bar(
+		parent: &Window,
+		window: &mut Window,
+		radius: f64,
+	) -> Option<Self> {
+		Self::install_surface(parent, window, Some((Surface::InputBar, radius)))
 	}
 
 	pub(crate) fn install_overlay(parent: &Window, window: &mut Window) -> Option<Self> {
 		Self::install_surface(parent, window, None)
 	}
 
-	fn install_surface(parent: &Window, window: &mut Window, radius: Option<f64>) -> Option<Self> {
-		if radius.is_some() && !available() {
-			return None;
-		}
+	fn install_surface(
+		parent: &Window,
+		window: &mut Window,
+		configuration: Option<(Surface, f64)>,
+	) -> Option<Self> {
+		let surface = configuration.map(|(surface, _)| surface);
+		let radius = configuration.map_or(0., |(_, radius)| radius);
+		let material = surface.map(Surface::material);
 
 		let parent = native(parent)?;
 		let native = native(window)?;
@@ -141,22 +197,24 @@ impl GlassPanel {
 				| NSWindowCollectionBehavior::IgnoresCycle
 				| NSWindowCollectionBehavior::FullScreenAuxiliary,
 		);
-		native.setTitle(&NSString::from_str(if radius.is_some() {
+		native.setTitle(&NSString::from_str(if surface.is_some() {
 			"Decodex Composer"
 		} else {
 			"Decodex Status"
 		}));
 
-		let class = AnyClass::get(if radius.is_some() { c"NSGlassEffectView" } else { c"NSView" })?;
-
 		window.set_background_appearance(WindowBackgroundAppearance::Transparent);
 
 		unsafe {
-			let glass: Retained<NSView> = objc2::msg_send![class, new];
+			let material_view: Retained<NSView> = if let Some(material) = material {
+				create_surface(material, radius)?
+			} else {
+				objc2::msg_send![AnyClass::get(c"NSView")?, new]
+			};
 
-			glass.setFrame(content.bounds());
+			material_view.setFrame(content.bounds());
 
-			let _: () = objc2::msg_send![&*glass, setAutoresizingMask: 18_usize];
+			let _: () = objc2::msg_send![&*material_view, setAutoresizingMask: 18_usize];
 
 			gpu.removeFromSuperview();
 			// GPUI owns Metal drawable sizing. Keep AppKit autoresizing off this
@@ -173,22 +231,21 @@ impl GlassPanel {
 			];
 			let _: () = objc2::msg_send![&*gpu, addTrackingArea: &*tracking];
 
-			if let Some(radius) = radius {
-				let _: () = objc2::msg_send![&*glass, setCornerRadius: radius];
+			let host: Retained<NSView> = objc2::msg_send![AnyClass::get(c"NSView")?, new];
+			host.setFrame(content.bounds());
+			let _: () = objc2::msg_send![&*host, setAutoresizingMask: 18_usize];
+			host.addSubview(&gpu);
+			if surface.is_some() {
 				// Glass may lay out its content view itself. Give it a plain host,
 				// so its layout never changes the Metal view behind GPUI's back.
-				let host: Retained<NSView> = objc2::msg_send![AnyClass::get(c"NSView")?, new];
-				host.setFrame(content.bounds());
-				let _: () = objc2::msg_send![&*host, setAutoresizingMask: 18_usize];
-				host.addSubview(&gpu);
-				let _: () = objc2::msg_send![&*glass, setContentView: &*host];
+				let _: () = objc2::msg_send![&*material_view, setContentView: &*host];
 			} else {
-				glass.addSubview(&gpu);
+				material_view.addSubview(&host);
 
 				let _: () = objc2::msg_send![&*native, setHasShadow: false];
 			}
 
-			content.addSubview(&glass);
+			content.addSubview(&material_view);
 
 			let _: () = objc2::msg_send![&*native, setStyleMask: 0_usize];
 			let _: () = objc2::msg_send![&*native, setLevel: 0_isize];
@@ -199,18 +256,22 @@ impl GlassPanel {
 			let _: () = objc2::msg_send![&*native, setAlphaValue: 0.0_f64];
 			let _: () = objc2::msg_send![&*parent, addChildWindow: &*native, ordered: 1_isize];
 			let window_observer = observe_panel_window(&native)?;
-			if radius.is_some() {
-				update_focus_material(&native);
-			}
-
 			ATTACHED_WINDOWS.with(|windows| {
-				windows
-					.borrow_mut()
-					.insert(&*native as *const NSWindow as usize, Window::window_handle(window));
+				windows.borrow_mut().insert(
+					&*native as *const NSWindow as usize,
+					Attachment { handle: Window::window_handle(window), surface },
+				);
 			});
 
+			if material == Some(Material::LiquidGlass) {
+				apply_glass_style(&material_view, Surface::InputBar, native.isKeyWindow());
+			}
 			Some(Self {
-				glass,
+				surface,
+				material,
+				radius,
+				host,
+				material_view,
 				foreground: gpu,
 				native,
 				parent,
@@ -219,6 +280,38 @@ impl GlassPanel {
 				opacity: Cell::new(0.),
 				window_observer,
 			})
+		}
+	}
+
+	/// Replace only the material host; the editor view and its focus stay intact.
+	pub(crate) fn refresh_material(&mut self) {
+		let Some(surface) = self.surface else { return };
+		let material = surface.material();
+		if self.material == Some(material) {
+			return;
+		}
+		let Some(replacement) = create_surface(material, self.radius) else { return };
+		let Some(content) = self.native.contentView() else { return };
+		replacement.setFrame(content.bounds());
+		let had_focus = self.native.firstResponder().is_some_and(|first| {
+			std::ptr::eq(
+				(&*first as *const objc2_app_kit::NSResponder).cast::<AnyObject>(),
+				(&*self.foreground as *const NSView).cast::<AnyObject>(),
+			)
+		});
+		unsafe {
+			let _: () = objc2::msg_send![&*self.material_view, setContentView: None::<&NSView>];
+			let _: () = objc2::msg_send![&*replacement, setContentView: &*self.host];
+		}
+		content.addSubview(&replacement);
+		self.material_view.removeFromSuperview();
+		self.material_view = replacement;
+		self.material = Some(material);
+		if had_focus {
+			self.focus_text();
+		}
+		if material == Material::LiquidGlass {
+			apply_glass_style(&self.material_view, surface, self.native.isKeyWindow());
 		}
 	}
 
@@ -246,7 +339,7 @@ impl GlassPanel {
 				self.native.setFrame_display(frame, false);
 			}
 			if resize && let Some(content) = self.native.contentView() {
-				self.glass.setFrame(content.bounds());
+				self.material_view.setFrame(content.bounds());
 				// Call the resize hook, not setFrame:, so the drawable and GPUI
 				// viewport use the same size. The foreground has one layout owner.
 				self.foreground.setFrameSize(content.bounds().size);
@@ -309,7 +402,7 @@ impl GlassPanel {
 	}
 }
 
-impl Drop for GlassPanel {
+impl Drop for MaterialPanel {
 	fn drop(&mut self) {
 		ATTACHED_WINDOWS.with(|windows| {
 			windows.borrow_mut().remove(&(&*self.native as *const NSWindow as usize));
@@ -333,14 +426,13 @@ impl Drop for GlassPanel {
 
 /// Attached panels own their material independently of window backdrops.
 pub(crate) fn owns_material(window: &Window) -> bool {
-	ATTACHED_WINDOWS
-		.with(|windows| windows.borrow().values().any(|handle| *handle == window.window_handle()))
+	ATTACHED_WINDOWS.with(|windows| {
+		windows.borrow().values().any(|attachment| attachment.handle == window.window_handle())
+	})
 }
 
-pub(crate) fn available() -> bool {
-	AnyClass::get(c"NSGlassEffectView").is_some()
-		&& env::var_os("DECODEX_DISABLE_LIQUID_GLASS").is_none()
-		&& !reduced_transparency()
+pub(crate) fn available(surface: Surface) -> bool {
+	material_class(surface.material()).is_some()
 }
 
 fn reduced_transparency() -> bool {
@@ -367,6 +459,13 @@ fn native(window: &Window) -> Option<Retained<NSWindow>> {
 // GPUI delivers its activation state asynchronously, after AppKit's focus frame.
 // Update the material in that native transaction, without waiting for GPUI render.
 fn update_focus_material(window: &NSWindow) {
+	let surface = ATTACHED_WINDOWS.with(|windows| {
+		windows
+			.borrow()
+			.get(&(window as *const NSWindow as usize))
+			.and_then(|attachment| attachment.surface)
+	});
+	let Some(surface) = surface else { return };
 	let Some(content) = window.contentView() else { return };
 	let Some(class) = AnyClass::get(c"NSGlassEffectView") else { return };
 	let Some(glass) = content
@@ -376,19 +475,24 @@ fn update_focus_material(window: &NSWindow) {
 	else {
 		return;
 	};
-	let clear = window.isKeyWindow();
+	apply_glass_style(&glass, surface, window.isKeyWindow());
+}
+
+pub(crate) fn apply_glass_style(glass: &NSView, surface: Surface, key: bool) {
+	let clear = match surface {
+		Surface::Window => GlassStyle::configured() == GlassStyle::Clear,
+		Surface::InputBar => key,
+	};
 	unsafe {
-		let style: isize = objc2::msg_send![&*glass, style];
+		let style: isize = objc2::msg_send![glass, style];
 		if style == isize::from(clear) {
 			return;
 		}
-		let _: () = objc2::msg_send![&*glass, setStyle: isize::from(clear)];
-		// Keep Clear readable without an opaque fill over the native material.
-		let tint: Option<Retained<AnyObject>> = clear.then(|| {
-			objc2::msg_send![AnyClass::get(c"NSColor").expect("AppKit"),
-				colorWithSRGBRed: 0.10_f64, green: 0.11_f64, blue: 0.13_f64, alpha: 0.18_f64]
+		let _: () = objc2::msg_send![glass, setStyle: isize::from(clear)];
+		let tint: Option<Retained<AnyObject>> = (clear && surface == Surface::InputBar).then(|| {
+			objc2::msg_send![AnyClass::get(c"NSColor").expect("AppKit"), colorWithSRGBRed: 0.10_f64, green: 0.11_f64, blue: 0.13_f64, alpha: 0.18_f64]
 		});
-		let _: () = objc2::msg_send![&*glass, setTintColor: tint.as_deref()];
+		let _: () = objc2::msg_send![glass, setTintColor: tint.as_deref()];
 	}
 }
 

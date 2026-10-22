@@ -14,7 +14,10 @@ use gpui::{
 		Styled,
 	},
 };
-use ui_theme::{appearance::Appearance, window_material::GlassStyle};
+use ui_theme::{
+	appearance::Appearance,
+	material::{GlassStyle, Material, Surface},
+};
 
 use crate::{
 	composer_input::cursor::{Preference, Shape},
@@ -752,26 +755,32 @@ impl SettingsSurface {
 		)
 	}
 
-	fn glass_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		let style = GlassStyle::configured();
-
-		ui_theme::settings_row().px_0().child(gpui::div().flex_1().child("Glass appearance")).child(
-			gpui::div()
-				.flex()
-				.gap_1()
-				.p_1()
-				.rounded(gpui::px(9.))
-				.bg(crate::ui_theme::rgba(0xffffff08))
-				.children(
-					[(GlassStyle::Regular, "Regular"), (GlassStyle::Clear, "Clear")]
-						.into_iter()
-						.map(|(value, label)| {
+	fn material_controls(&self, surface: Surface, cx: &mut Context<Self>) -> impl IntoElement {
+		let selected = surface.material();
+		let id = match surface {
+			Surface::Window => "window-material",
+			Surface::InputBar => "input-bar-material",
+		};
+		ui_theme::settings_row()
+			.id(id)
+			.px_0()
+			.child(gpui::div().flex_1().child(surface.label()))
+			.child(
+				gpui::div()
+					.flex()
+					.gap_1()
+					.p_1()
+					.rounded(gpui::px(9.))
+					.bg(ui_theme::rgba(0xffffff08))
+					.children([Material::Thin, Material::LiquidGlass].into_iter().map(
+						|material| {
+							let label = material.label();
 							gpui::div()
 								.id(label)
-								.debug_selector(move || label.to_string())
+								.debug_selector(move || format!("{id}-{label}"))
 								.role(Role::Button)
-								.aria_label(format!("Glass appearance: {label}"))
-								.aria_toggled(if value == style {
+								.aria_label(format!("{}: {label}", surface.label()))
+								.aria_toggled(if material == selected {
 									Toggled::True
 								} else {
 									Toggled::False
@@ -784,24 +793,83 @@ impl SettingsSurface {
 								.rounded(gpui::px(6.))
 								.text_size(gpui::px(11.))
 								.cursor_pointer()
-								.when(value == style, |d| d.bg(crate::ui_theme::rgba(0xffffff16)))
-								.hover(|d| d.bg(crate::ui_theme::rgba(HOVER_FILL)))
-								.on_click(cx.listener(move |_, _, _, cx| {
-									value.select(cx);
-									cx.notify();
-								}))
+								.when(material == selected, |d| d.bg(ui_theme::rgba(0xffffff16)))
+								.hover(|d| d.bg(ui_theme::rgba(HOVER_FILL)))
+								.on_click(
+									cx.listener(move |_, _, _, cx| surface.select(material, cx)),
+								)
 								.on_key_down(cx.listener(move |_, event: &KeyDownEvent, _, cx| {
 									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-										value.select(cx);
-										cx.notify();
+										surface.select(material, cx);
 										cx.stop_propagation();
 									}
 								}))
 								.child(label)
 								.smooth()
-						}),
-				),
-		)
+						},
+					)),
+			)
+	}
+
+	fn glass_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		let style = GlassStyle::configured();
+
+		ui_theme::settings_row()
+			.px_0()
+			.child(gpui::div().flex_1().child("Window Liquid Glass style"))
+			.child(
+				gpui::div()
+					.flex()
+					.gap_1()
+					.p_1()
+					.rounded(gpui::px(9.))
+					.bg(crate::ui_theme::rgba(0xffffff08))
+					.children(
+						[(GlassStyle::Regular, "Regular"), (GlassStyle::Clear, "Clear")]
+							.into_iter()
+							.map(|(value, label)| {
+								gpui::div()
+									.id(label)
+									.debug_selector(move || label.to_string())
+									.role(Role::Button)
+									.aria_label(format!("Window Liquid Glass style: {label}"))
+									.aria_toggled(if value == style {
+										Toggled::True
+									} else {
+										Toggled::False
+									})
+									.tab_index(0)
+									.px_3()
+									.h(gpui::px(26.))
+									.flex()
+									.items_center()
+									.rounded(gpui::px(6.))
+									.text_size(gpui::px(11.))
+									.cursor_pointer()
+									.when(value == style, |d| {
+										d.bg(crate::ui_theme::rgba(0xffffff16))
+									})
+									.hover(|d| d.bg(crate::ui_theme::rgba(HOVER_FILL)))
+									.on_click(cx.listener(move |_, _, _, cx| {
+										value.select(cx);
+										cx.notify();
+									}))
+									.on_key_down(cx.listener(
+										move |_, event: &KeyDownEvent, _, cx| {
+											if ["enter", "space"]
+												.contains(&event.keystroke.key.as_str())
+											{
+												value.select(cx);
+												cx.notify();
+												cx.stop_propagation();
+											}
+										},
+									))
+									.child(label)
+									.smooth()
+							}),
+					),
+			)
 	}
 }
 
@@ -882,10 +950,9 @@ impl SettingsSurface {
 				)
 				.child(
 					group().child(settings_group_title("Materials"))
-						.child(self.preference_control(
-							"composer-liquid-glass", "composer-liquid-glass-knob",
-							"Liquid Glass input bar", ui_theme::composer_glass, cx,
-						)).child(self.glass_controls(cx)),
+						.child(self.material_controls(Surface::Window, cx))
+						.child(self.material_controls(Surface::InputBar, cx))
+						.when(Surface::Window.material() == Material::LiquidGlass, |group| group.child(self.glass_controls(cx))),
 				)
 				.child(
 					group().child(settings_group_title("Developer"))
@@ -1044,7 +1111,7 @@ fn quote_attribution() -> impl IntoElement {
 #[cfg(test)]
 mod tests {
 	use gpui::{self, AppContext as _, TestAppContext};
-	use ui_theme::window_material::GlassStyle;
+	use ui_theme::material::{GlassStyle, Material, Surface};
 
 	use crate::settings_surface::{
 		self, Context, DesktopSettingsCommandState, DesktopSettingsController,
@@ -1231,8 +1298,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn composer_glass_switch_defaults_to_on_and_retains_the_users_choice(cx: &mut TestAppContext) {
-		assert!(crate::ui_theme::composer_glass(None));
+	fn window_and_input_material_controls_stay_independent(cx: &mut TestAppContext) {
 		let (_, visual) = cx.add_window_view(|_, cx| {
 			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
 			settings.category = SettingsCategory::Appearance;
@@ -1242,13 +1308,32 @@ mod tests {
 			window.resize(gpui::size(gpui::px(800.), gpui::px(900.)));
 			window.draw(cx).clear(cx);
 		});
-		let toggle =
-			visual.debug_bounds("composer-liquid-glass").expect("composer material switch");
-		visual.simulate_click(toggle.center(), Default::default());
-		assert!(!crate::ui_theme::composer_glass(None));
-		visual.update(|window, cx| window.draw(cx).clear(cx));
-		visual.simulate_click(toggle.center(), Default::default());
-		assert!(crate::ui_theme::composer_glass(None));
+		for target in [Surface::InputBar, Surface::Window] {
+			let id = if target == Surface::Window {
+				"window-material-Thin"
+			} else {
+				"input-bar-material-Thin"
+			};
+			let bounds = visual.debug_bounds(id).expect("material control");
+			visual.simulate_click(bounds.center(), Default::default());
+			assert_eq!(target.material(), Material::Thin);
+			if target == Surface::InputBar {
+				assert_eq!(Surface::Window.material(), Material::LiquidGlass);
+			}
+			visual.update(|window, cx| window.draw(cx).clear(cx));
+		}
+		assert!(visual.debug_bounds("Regular").is_none(), "glass style has no effect on Thin");
+		for target in [Surface::Window, Surface::InputBar] {
+			let id = if target == Surface::Window {
+				"window-material-Liquid Glass"
+			} else {
+				"input-bar-material-Liquid Glass"
+			};
+			let bounds = visual.debug_bounds(id).expect("material control");
+			visual.simulate_click(bounds.center(), Default::default());
+			visual.update(|window, cx| window.draw(cx).clear(cx));
+		}
+		assert!(visual.debug_bounds("Regular").is_some());
 	}
 
 	#[gpui::test]

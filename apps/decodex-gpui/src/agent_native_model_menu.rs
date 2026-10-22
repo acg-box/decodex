@@ -8,7 +8,7 @@ use gpui::{
 use crate::{
 	shell::agent_surface::{AgentSurface, composer},
 	ui_motion,
-	ui_theme::{BODY_SIZE, FONT_FAMILY, TEXT, native_glass_panel::GlassPanel},
+	ui_theme::{BODY_SIZE, FONT_FAMILY, TEXT, native_material_panel::MaterialPanel},
 };
 
 #[derive(Default)]
@@ -21,7 +21,7 @@ pub(super) struct NativeModelMenu {
 
 struct ModelMenu {
 	owner: Entity<AgentSurface>,
-	surface: Option<GlassPanel>,
+	surface: Option<MaterialPanel>,
 	focus: FocusHandle,
 	_observation: Subscription,
 }
@@ -174,7 +174,7 @@ fn create(
 		.ok()?;
 	let installed = child
 		.update(cx, |panel, child_window, _| {
-			panel.surface = GlassPanel::install_overlay(window, child_window);
+			panel.surface = MaterialPanel::install_overlay(window, child_window);
 			if let Some(surface) = &panel.surface {
 				surface.set_title("Decodex Model Menu");
 				surface.focus_text();

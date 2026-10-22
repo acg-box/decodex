@@ -1,9 +1,12 @@
 //! Window material policy. Platform details stay behind one application interface.
 #[cfg(all(target_os = "macos", not(test)))]
 mod macos {
-	use crate::ui_theme::window_material::{GlassStyle, Window, WindowBackgroundAppearance};
+	use crate::ui_theme::{
+		material::{Material, Surface},
+		window_material::{Window, WindowBackgroundAppearance},
+	};
 
-	use objc2::{msg_send, rc::Retained, runtime::AnyClass};
+	use objc2::{msg_send, rc::Retained};
 
 	use objc2_app_kit::{
 		NSView, NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState,
@@ -12,71 +15,54 @@ mod macos {
 
 	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-	pub(super) fn saved_clear() -> bool {
-		unsafe {
-			msg_send![&*defaults(), boolForKey: &*objc2_foundation::NSString::from_str("DecodexGlassClear")]
-		}
-	}
-
-	pub(super) fn save_clear(clear: bool) {
-		unsafe {
-			let _: () = msg_send![&*defaults(), setBool: clear, forKey: &*objc2_foundation::NSString::from_str("DecodexGlassClear")];
-		}
-	}
-
-	// Public AppKit bridge; reference longbridge/gpui-component#2440.
-	pub(super) fn apply(window: &mut Window, style: GlassStyle) -> bool {
+	pub(super) fn apply(window: &mut Window, material: Material) -> bool {
 		let Some(content) = content(window) else { return false };
-		let Some(class) = AnyClass::get(c"NSGlassEffectView") else { return false };
-		let existing = content
-			.subviews()
-			.iter()
-			.find(|child| unsafe { msg_send![&**child, isKindOfClass: class] });
-
-		// Foreground panels own their GPUI view through contentView. Never remove
-		// that view when updating the window-backdrop preference.
-		if let Some(glass) = existing.as_ref() {
-			let foreground: Option<Retained<NSView>> = unsafe { msg_send![&**glass, contentView] };
-
-			if foreground.is_some() {
-				unsafe {
-					let _: () = msg_send![&**glass, setStyle: match style { GlassStyle::Regular => 0_isize, GlassStyle::Clear => 1_isize }];
-				}
-
-				return true;
+		let identifier = objc2_foundation::NSString::from_str("decodex-window-material");
+		let existing = content.subviews().iter().find(|view| unsafe {
+			let tag: Option<Retained<objc2_foundation::NSString>> = msg_send![&**view, identifier];
+			tag.is_some_and(|tag| tag == identifier)
+		});
+		let Some(class) = super::super::native_material_panel::material_class(material) else {
+			if let Some(existing) = existing {
+				existing.removeFromSuperview();
 			}
-		}
-
-		let reduce_transparency: bool = unsafe {
-			let workspace: Retained<objc2::runtime::AnyObject> =
-				msg_send![AnyClass::get(c"NSWorkspace").expect("AppKit"), sharedWorkspace];
-
-			msg_send![&*workspace, accessibilityDisplayShouldReduceTransparency]
-		};
-
-		if reduce_transparency || std::env::var_os("DECODEX_DISABLE_LIQUID_GLASS").is_some() {
-			if let Some(glass) = existing {
-				glass.removeFromSuperview();
-			}
-
 			return false;
-		}
-
-		unsafe {
-			let glass: Retained<NSView> = existing.unwrap_or_else(|| msg_send![class, new]);
-			let _: () = msg_send![&*glass, setStyle: match style { GlassStyle::Regular => 0_isize, GlassStyle::Clear => 1_isize }];
-
-			glass.setFrame(content.bounds());
-
-			let _: () = msg_send![&*glass, setAutoresizingMask: 18_usize];
-
-			window.set_background_appearance(WindowBackgroundAppearance::Transparent);
-
-			if glass.superview().is_none() {
-				let _: () = msg_send![&*content, addSubview: &*glass, positioned: -1_isize, relativeTo: std::ptr::null::<NSView>()];
+		};
+		let surface = if let Some(existing) =
+			existing.filter(|view| unsafe { msg_send![&**view, isKindOfClass: class] })
+		{
+			existing
+		} else {
+			// Only the backdrop changes. GPUI keeps its view, drawable and layout.
+			for view in content.subviews().iter() {
+				let tag: Option<Retained<objc2_foundation::NSString>> =
+					unsafe { msg_send![&*view, identifier] };
+				if tag.is_some_and(|tag| tag == identifier) {
+					view.removeFromSuperview();
+				}
 			}
+			let Some(surface) = super::super::native_material_panel::create_surface(material, 0.)
+			else {
+				return false;
+			};
+			unsafe {
+				let _: () = msg_send![&*surface, setIdentifier: &*identifier];
+				let _: () = msg_send![&*content, addSubview: &*surface, positioned: -1_isize, relativeTo: std::ptr::null::<NSView>()];
+			}
+			surface
+		};
+		surface.setFrame(content.bounds());
+		unsafe {
+			let _: () = msg_send![&*surface, setAutoresizingMask: 18_usize];
 		}
-
+		if material == Material::LiquidGlass {
+			super::super::native_material_panel::apply_glass_style(
+				&surface,
+				Surface::Window,
+				false,
+			);
+		}
+		window.set_background_appearance(WindowBackgroundAppearance::Transparent);
 		true
 	}
 
@@ -92,13 +78,6 @@ mod macos {
 		}
 	}
 
-	// Host-local appearance preferences belong to AppKit, not account or conversation state.
-	fn defaults() -> Retained<objc2::runtime::AnyObject> {
-		unsafe {
-			msg_send![AnyClass::get(c"NSUserDefaults").expect("Foundation"), standardUserDefaults]
-		}
-	}
-
 	fn content(window: &Window) -> Option<Retained<NSView>> {
 		let handle = HasWindowHandle::window_handle(window).ok()?;
 		let RawWindowHandle::AppKit(handle) = handle.as_raw() else { return None };
@@ -109,78 +88,25 @@ mod macos {
 	}
 }
 
-use std::{
-	env,
-	sync::atomic::{AtomicU8, Ordering},
-};
-
-use gpui::{App, Window, WindowBackgroundAppearance};
-
-static STYLE: AtomicU8 = AtomicU8::new(2);
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) enum GlassStyle {
-	#[default]
-	Regular,
-	Clear,
-}
-impl GlassStyle {
-	pub(crate) fn configured() -> Self {
-		let cached = STYLE.load(Ordering::Relaxed);
-
-		if cached < 2 {
-			return if cached == 1 { Self::Clear } else { Self::Regular };
-		}
-
-		#[allow(unused_mut)]
-		let mut clear = env::var("DECODEX_GLASS_STYLE").as_deref() == Ok("clear");
-
-		#[cfg(all(target_os = "macos", not(test)))]
-		if std::env::var_os("DECODEX_GLASS_STYLE").is_none() {
-			clear = macos::saved_clear();
-		}
-
-		STYLE.store(u8::from(clear), Ordering::Relaxed);
-
-		if clear { Self::Clear } else { Self::Regular }
-	}
-
-	pub(crate) fn select(self, cx: &mut App) {
-		STYLE.store(u8::from(self == Self::Clear), Ordering::Relaxed);
-
-		#[cfg(all(target_os = "macos", not(test)))]
-		macos::save_clear(self == Self::Clear);
-
-		cx.defer(move |cx| {
-			for handle in cx.windows() {
-				let _ = handle.update(cx, |_, window, _| apply(window, self));
-			}
-
-			cx.refresh_windows();
-		});
-	}
-}
+use super::material::{Material, Surface};
+use gpui::{Window, WindowBackgroundAppearance};
 
 pub(crate) fn configure(window: &mut Window) {
-	apply(window, GlassStyle::configured());
+	apply(window, Surface::Window.material());
 }
 
-/// Native Liquid Glass where available; GPUI's platform blur everywhere else.
-/// GPUI can ignore blur on platforms without compositor support.
-pub(crate) fn apply(window: &mut Window, style: GlassStyle) {
+/// Prefer the selected system material; use platform blur if it is unavailable.
+pub(crate) fn apply(window: &mut Window, material: Material) {
 	#[cfg(all(target_os = "macos", not(test)))]
-	if super::native_glass_panel::owns_material(window) {
+	if super::native_material_panel::owns_material(window) {
 		return;
 	}
 	#[cfg(all(target_os = "macos", not(test)))]
-	if macos::apply(window, style) {
+	if macos::apply(window, material) {
 		return;
 	}
-
-	let _ = style;
-
+	let _ = material;
 	window.set_background_appearance(WindowBackgroundAppearance::Blurred);
-
 	#[cfg(all(target_os = "macos", not(test)))]
 	macos::configure_vibrancy(window);
 }

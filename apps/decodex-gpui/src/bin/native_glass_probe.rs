@@ -31,7 +31,8 @@ mod probe {
 	use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 	use crate::composer_input::{self, ComposerInput, SubmitComposer};
-	#[cfg(not(test))] use crate::ui_theme::{native_glass_panel::GlassPanel, window_material};
+	#[cfg(not(test))]
+	use crate::ui_theme::{native_material_panel::MaterialPanel, window_material};
 
 	struct Backdrop {
 		child: Option<WindowHandle<Composer>>,
@@ -146,7 +147,7 @@ mod probe {
 				.update(cx, |_, parent, cx| {
 					child
 						.update(cx, |_, window, _| {
-							let mut panel = GlassPanel::install_overlay(parent, window)
+							let mut panel = MaterialPanel::install_overlay(parent, window)
 								.expect("install production status overlay");
 
 							panel.place(Bounds::new(
@@ -161,11 +162,11 @@ mod probe {
 								unsafe { foreground.superview() }.expect("live material fixture");
 							let count = content.subviews().len();
 
-							for style in [
-								window_material::GlassStyle::Clear,
-								window_material::GlassStyle::Regular,
+							for material in [
+								crate::ui_theme::material::Material::Thin,
+								crate::ui_theme::material::Material::LiquidGlass,
 							] {
-								window_material::apply(window, style);
+								window_material::apply(window, material);
 
 								assert_eq!(
 									content.subviews().len(),
@@ -183,12 +184,15 @@ mod probe {
 							}
 
 							eprintln!(
-								"material-probe: status overlay preserved across Clear and Regular"
+								"material-probe: status overlay preserved across Thin and Liquid Glass"
 							);
 						})
 						.expect("live material fixture");
 
-					window_material::apply(parent, window_material::GlassStyle::Regular);
+					window_material::apply(
+						parent,
+						crate::ui_theme::material::Material::LiquidGlass,
+					);
 
 					let class = AnyClass::get(c"NSGlassEffectView").expect("macOS glass class");
 

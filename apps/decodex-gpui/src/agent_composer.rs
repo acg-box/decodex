@@ -102,7 +102,6 @@ impl AgentSurface {
 	#[cfg(any(test, target_os = "macos"))]
 	pub(super) fn native_composer_requested(&self, allowed: bool, supported: bool) -> bool {
 		allowed
-			&& ui_theme::composer_glass(None)
 			&& supported
 			&& !self.workspace_connecting()
 			&& !self.workspace.browsing
@@ -1582,10 +1581,12 @@ mod tests {
 			assert!(s.native_composer_requested(true, true));
 			assert!(!s.native_composer_requested(false, true));
 			assert!(!s.native_composer_requested(true, false));
-			crate::ui_theme::composer_glass(Some(false));
-			assert!(!s.native_composer_requested(true, true));
+			crate::ui_theme::material::Surface::InputBar
+				.select(crate::ui_theme::material::Material::Thin, cx);
+			assert!(s.native_composer_requested(true, true));
 			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
-			crate::ui_theme::composer_glass(Some(true));
+			crate::ui_theme::material::Surface::InputBar
+				.select(crate::ui_theme::material::Material::LiquidGlass, cx);
 			assert!(s.native_composer_requested(true, true));
 		});
 	}

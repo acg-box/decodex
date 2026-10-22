@@ -7,9 +7,10 @@
 //! Page owners keep their domain-specific layout. This module owns only the
 //! material, color, and motion values that must remain stable across pages.
 
+#[path = "ui_material.rs"] pub(crate) mod material;
 #[cfg(all(target_os = "macos", not(test)))]
-#[path = "native_glass_panel.rs"]
-pub(crate) mod native_glass_panel;
+#[path = "native_material_panel.rs"]
+pub(crate) mod native_material_panel;
 #[path = "window_material.rs"] pub(crate) mod window_material;
 
 #[path = "ui_appearance.rs"] pub(crate) mod appearance;
@@ -95,12 +96,6 @@ pub(crate) mod foreground {
 	pub(crate) const METRIC_SIZE: f32 = 11.;
 	pub(crate) const READING_SIZE: f32 = super::BODY_SIZE;
 	pub(crate) const READING_LINE_HEIGHT: f32 = 20.;
-}
-
-/// The composer keeps its native material unless the user selects a plain surface.
-pub(crate) fn composer_glass(value: Option<bool>) -> bool {
-	static CACHE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(u8::MAX);
-	crate::ui_preferences::boolean("composerLiquidGlass", &CACHE, value, true)
 }
 
 pub(crate) fn floating_group() -> Div {

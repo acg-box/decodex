@@ -9,7 +9,8 @@ use crate::{
 	shell::{self, Shell},
 	ui_motion,
 	ui_theme::{
-		CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, FONT_FAMILY, TEXT, native_glass_panel::GlassPanel,
+		CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, FONT_FAMILY, TEXT,
+		native_material_panel::MaterialPanel,
 	},
 };
 
@@ -22,7 +23,7 @@ pub(super) struct NativeStatus {
 }
 pub(super) struct StatusPanel {
 	owner: Entity<Shell>,
-	surface: Option<GlassPanel>,
+	surface: Option<MaterialPanel>,
 	_observation: Subscription,
 }
 impl Render for StatusPanel {
@@ -171,7 +172,7 @@ fn create(
 		.ok()?;
 	let installed = child
 		.update(cx, |s, child_window, _| {
-			s.surface = GlassPanel::install_overlay(window, child_window);
+			s.surface = MaterialPanel::install_overlay(window, child_window);
 
 			s.surface.is_some()
 		})
