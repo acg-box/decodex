@@ -1777,7 +1777,7 @@
           "entrypoint": "integration:all"
         }
       ],
-      "decodex_consumer": "agent_sample_host.rs::handle_native_sample and app_server_client/sample.rs::sample_thread_cancellable pass the latest native turn identity without a completed-status restriction.",
+      "decodex_consumer": "agent_sample_host.rs::start_sample and app_server_client/sample.rs::sample_thread_cancellable pass the latest native turn identity without a completed-status restriction. GPUI can_open_sample admits a native root without filtering finished status; its failure hint now says finished turn.",
       "diff_sha256": "b7e2eaa3d9b333375ab11f2a927d31423d40f5c8a553c31ce8efb6c4e4272af1",
       "tests_executed": [
         {

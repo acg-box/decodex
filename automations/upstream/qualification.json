@@ -3451,5 +3451,11 @@
       ]
     },
     "limits": "Product implementation and its original GUI evidence remain at the linked delivery. Current requalification covers native ownership, cancellation/complete races, child cleanup and parent preservation; GUI source is unchanged."
+  },
+  "presentation_copy": {
+    "source": "apps/decodex-gpui/src/agent_sample_request.rs",
+    "sha256": "2fd2718c88722254c370b633d436c8ef9b9928df65c862100a3c02eda0a9aaa2",
+    "change": "Use finished turn in the existing failure hint, consistent with failed/interrupted source sampling. Root/open action source has no completed-status filter.",
+    "verification": "Source and Rust formatting reviewed; no new GPUI or installed-app execution is claimed."
   }
 }
