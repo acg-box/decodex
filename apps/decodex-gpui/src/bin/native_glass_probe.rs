@@ -554,8 +554,10 @@ mod probe {
 #[cfg(any(test, target_os = "macos"))] use futures_util as _;
 
 use libc as _;
+use ondine as _;
 use pulldown_cmark as _;
 use reqwest as _;
+use roxmltree as _;
 use serde as _;
 use serde_json as _;
 use sha2 as _;

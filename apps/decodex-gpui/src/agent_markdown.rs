@@ -19,6 +19,7 @@ use std::{
 	ops::Range,
 	rc::Rc,
 	slice,
+	sync::{Arc, OnceLock},
 	time::Duration,
 };
 
@@ -47,7 +48,7 @@ enum Kind {
 	Item,
 	Quote,
 	Code { language: Option<String> },
-	Mermaid { fence: Range<usize>, content_end: usize },
+	Mermaid { fence: Range<usize>, content_end: usize, geometry: Arc<OnceLock<(f32, f32)>> },
 	Table,
 	Row(bool),
 	Cell,
@@ -330,7 +331,7 @@ fn tag_kind(tag: Tag<'_>, range: Range<usize>) -> Kind {
 		Tag::BlockQuote(_) => Kind::Quote,
 		Tag::CodeBlock(CodeBlockKind::Fenced(info))
 			if info.split([',', ' ', '\t']).next() == Some("mermaid") =>
-			Kind::Mermaid { content_end: range.start, fence: range },
+			Kind::Mermaid { content_end: range.start, fence: range, geometry: Arc::default() },
 		Tag::CodeBlock(CodeBlockKind::Fenced(info)) => Kind::Code {
 			language: info
 				.split([',', ' ', '\t'])
@@ -385,7 +386,7 @@ fn parse(text: &str) -> Vec<Node> {
 						continue;
 					}
 
-					if let Kind::Mermaid { fence, content_end } = &kind
+					if let Kind::Mermaid { fence, content_end, .. } = &kind
 						&& !mermaid_view::has_closing_fence(text, fence.clone(), *content_end)
 					{
 						kind = Kind::Code { language: Some("mermaid".into()) };
@@ -566,10 +567,8 @@ fn render_node_content(
 		}) {
 		return render_math_paragraph(children, key, selection);
 	}
-	if matches!(kind, Kind::Mermaid { .. })
-		&& let Some(diagram) = mermaid_view::render(children, key, selection)
-	{
-		return diagram;
+	if let Kind::Mermaid { geometry, .. } = kind {
+		return mermaid_view::render(children, key, geometry.clone(), selection);
 	}
 
 	match kind {

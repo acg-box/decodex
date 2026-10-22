@@ -2148,6 +2148,9 @@ impl AgentSurface {
                     }
 				}
 			},
+			"mermaid" => self.visual_mermaid_page(cx),
+			#[cfg(feature = "visual-capture")]
+			"mermaid-scroll" => self.visual_mermaid_scroll_page(cx),
 			"task-references" => self.visual_task_references(),
 			"conversation" => {
 				self.workspace.graph_visible = false;
@@ -2156,6 +2159,20 @@ impl AgentSurface {
 		}
 
 		cx.notify();
+	}
+
+	fn visual_mermaid_page(&mut self, cx: &mut Context<Self>) {
+		self.visual_workspace_page("markdown", cx);
+		let source = std::env::var("DECODEX_VISUAL_MERMAID").unwrap_or_else(|_| {
+			"flowchart LR\nA([Request]) --> B{Valid?}\nB -->|Yes| C[(Database)]\nB -->|No| D[Retry]\nD --> A".into()
+		});
+		if let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut self.history {
+			for entry in entries.iter_mut().filter(|entry| entry.kind == "assistant") {
+				entry.text = format!(
+					"## Mermaid preview\n\n```mermaid\n{source}\n```\n\nThe diagram keeps its original source for copying."
+				);
+			}
+		}
 	}
 
 	fn visual_composer_page(&mut self, page: &str, cx: &mut Context<Self>) {

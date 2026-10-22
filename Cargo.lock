@@ -967,6 +967,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "compiler"
+version = "0.0.0"
+source = "git+https://github.com/wevm/ondine.git?rev=6a1586e5af980e67c104239593ae931837157b8b#6a1586e5af980e67c104239593ae931837157b8b"
+
+[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1475,6 +1480,7 @@ name = "decodex-gpui"
 version = "0.2.0"
 dependencies = [
  "block2 0.6.2",
+ "compiler",
  "decodex-components",
  "decodex-protocol",
  "futures-util",
@@ -1491,6 +1497,7 @@ dependencies = [
  "pulldown-cmark",
  "raw-window-handle",
  "reqwest 0.13.5",
+ "roxmltree 0.21.1",
  "rtrb 0.4.0",
  "serde",
  "serde_json",

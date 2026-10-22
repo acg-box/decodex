@@ -1,361 +1,132 @@
-use unicode_width::UnicodeWidthStr;
+//! Desktop integration contracts, independent of Ondine's parser and layout test suite.
+use super::{canvas_fits, compile, svg};
 
-// Adapted from openai/codex at 595cc91e8cbb1c2ca822d0311dcf12709410c582.
-// Copyright OpenAI. Licensed under Apache-2.0; see LICENSE-APACHE.
-use crate::shell::agent_surface::markdown::mermaid::{self, RenderError, Role};
-
-#[test]
-fn branches_merges_and_retry_loop() {
-	let source = "flowchart TD\nA[Checkout] --> B{In stock?}\nB -->|yes| C[Reserve]\nB -->|no| D[Waitlist]\nC --> E{Paid?}\nE -->|yes| F[Ship]\nE -->|no| G[Retry payment]\nG --> E\nD --> H[Notify buyer]\nF --> H";
-
-	super::assert_snapshot(
-		"branches_merges_and_retry_loop",
-		&mermaid::render(source, 100).expect("valid upstream diagram fixture"),
-	);
-}
-
-#[test]
-fn rejects_partial_or_unsupported_input() {
-	for source in [
-		"flowchart TD; subgraph X; A; end",
-		"flowchart TD; A --> B; garbage syntax",
-		"flowchart TD; A -.-> B",
-		"flowchart TD; A & B --> C",
-		"flowchart TD; A[one]; A[two]",
-		"flowchart TD; A[<b>HTML</b>]",
-		"flowchart TD; A[&#27;]",
-		"flowchart TD; A[\u{1b}]",
-		"flowchart TD; A[e\u{301}]",
-		"flowchart TD; A[👍🏽]",
-		"flowchart TD; A[👩\u{200d}💻]",
-		"flowchart TD; A[✈\u{fe0f}]",
-		"flowchart TD; A[zero\u{200b}width]",
-		"flowchart TD; A[left\u{202e}right]",
-		"flowchart TD; A[\u{2066}isolated\u{2069}]",
-		"flowchart TD; A[unclosed",
-		"flowchart TD; click A",
-		"flowchart TD; A((circle))",
-		"flowchart TD; A -->|unclosed B",
-		"flowchart TD; A[\"unclosed quote]",
-		"flowchart TD; A[foo;bar]",
-		"flowchart TD; A[لا]",
-		"flowchart TD; A -->|yes┐| B",
-	] {
-		assert_eq!(
-			mermaid::render(source, /* max_width */ 100),
-			Err(RenderError::Unsupported),
-			"{source:?}"
+#[gpui::test]
+fn every_diagram_type_rasterizes_with_the_desktop_theme(cx: &mut gpui::TestAppContext) {
+	let fixtures: Vec<(String, String)> =
+		serde_json::from_str(include_str!("fixtures.json")).expect("diagram fixtures");
+	assert_eq!(fixtures.len(), 33);
+	let renderer = cx.update(|cx| cx.svg_renderer());
+	for (kind, source) in fixtures {
+		let diagram =
+			super::prepare(&source, &renderer).unwrap_or_else(|error| panic!("{kind}: {error}"));
+		assert!(
+			diagram.image.as_bytes(0).is_some_and(|pixels| {
+				pixels.as_chunks::<4>().0.iter().any(|pixel| pixel[3] != 0)
+			}),
+			"{kind}: empty image"
 		);
 	}
 }
 
 #[test]
-fn entity_escapes_keep_complete_source_fallback() {
-	for entity in ["#9829;", "#semi;", "&amp;", "&#38;", "&#x26;"] {
-		for source in [
-			format!("sequenceDiagram\nA->>B: {entity}"),
-			format!("stateDiagram-v2; A-->B: {entity}"),
-			format!("classDiagram; class A; A: {entity}"),
-			format!("erDiagram; A ||--|| B: {entity}"),
-			format!("flowchart TD; A[{entity}]"),
-		] {
-			assert_eq!(mermaid::render(&source, 180), Err(RenderError::Unsupported), "{source}");
+fn supported_diagrams_use_ondine_and_keep_authored_labels() {
+	for (source, kind, label) in [
+		(
+			"flowchart LR\nsubgraph Client\nA[\"用户\"] --> B[(Database)]\nend\nB -.-> A",
+			"flowchart",
+			"用户",
+		),
+		(
+			"flowchart TD; A([\"请求<br>Ready\"]) --> B[Work<br/>next] --> C{\"Done?<br />Retry?\"}",
+			"flowchart",
+			"Ready",
+		),
+		("sequenceDiagram\nautonumber\nA->>+B: Request\nB-->>-A: Reply", "sequence", "Request"),
+		(
+			"stateDiagram-v2\nstate Work {\n[*] --> Ready\nReady --> Done\n}\n[*] --> Work",
+			"state",
+			"Ready",
+		),
+		(
+			"classDiagram\nnamespace Models {\nclass Animal\nclass Dog\n}\nAnimal <|-- Dog",
+			"class",
+			"Animal",
+		),
+		("erDiagram\nORDER ||--|{ LINE-ITEM : contains", "er", "LINE-ITEM"),
+		("pie\n\"Cats\" : 2\n\"Dogs\" : 3", "pie", "Cats"),
+		("mindmap\n  root((Project))\n    Design\n    Build", "mindmap", "Project"),
+	] {
+		let rendered = compile(source).expect("supported diagram");
+		assert_eq!(rendered.r#type, kind);
+		let document = roxmltree::Document::parse(&rendered.svg).expect("valid SVG");
+		assert!(
+			document
+				.descendants()
+				.any(|node| node.is_text() && node.text().is_some_and(|text| text.contains(label)))
+		);
+		for node in document.descendants().filter(roxmltree::Node::is_element) {
+			for attribute in node.attributes().filter(|attribute| {
+				matches!(attribute.name(), "style" | "fill" | "stroke" | "font-weight")
+			}) {
+				assert!(
+					!attribute.value().contains("var("),
+					"unresolved presentation: {attribute:?}"
+				);
+				assert!(!attribute.value().contains("color-mix("));
+			}
 		}
 	}
 }
 
 #[test]
-fn source_graph_and_width_limits() {
-	for source in [
-		" ".repeat(16 * 1_024 + 1),
-		format!("graph TD; A[{}]", "x".repeat(41)),
-		format!("graph TD; {}", (0..17).map(|n| format!("N{n};")).collect::<String>()),
-		format!("graph TD; {}", "A-->B;".repeat(25)),
-	] {
-		assert_eq!(mermaid::render(&source, /* max_width */ 200), Err(RenderError::Limit));
-	}
-
-	let output = mermaid::render("graph TD; A --> B", /* max_width */ 100)
-		.expect("valid upstream diagram fixture");
-	let width =
-		output.lines().map(UnicodeWidthStr::width).max().expect("valid upstream diagram fixture");
-
-	assert_eq!(mermaid::render("graph TD; A --> B", width), Ok(output));
-	assert_eq!(mermaid::render("graph TD; A --> B", width - 1), Err(RenderError::TooWide));
-	assert_eq!(mermaid::render("graph TD; A", /* max_width */ 0), Err(RenderError::TooWide));
+fn theme_resolution_preserves_label_text_and_xml_escaping() {
+	let input = r#"<svg xmlns="http://www.w3.org/2000/svg" style="--_fg:var(--ondine-fg,#000);--font:&quot;A &amp; B&quot;;font-family:var(--font)"><text fill="var(--_fg)">var(--_fg) &amp; &lt;literal&gt;</text><path stroke="color-mix(in srgb,var(--ondine-surface-alt) 50%,var(--ondine-bg))"/></svg>"#;
+	let svg = svg::desktop(input).expect("desktop SVG");
+	let document = roxmltree::Document::parse(&svg).expect("escaping remains valid XML");
+	let root = document.root_element();
+	assert_eq!(root.attribute("style"), Some("font-family:\"A & B\""));
+	let text = root.first_element_child().expect("text element");
+	assert_eq!(text.text(), Some("var(--_fg) & <literal>"));
+	assert_eq!(text.attribute("fill"), Some("#eeeaf0"));
+	let path = root.last_element_child().expect("path element");
+	assert_eq!(path.attribute("stroke"), Some("#1a191f"));
 }
 
 #[test]
-fn reconstruct_every_edge_from_rendered_paths() {
-	// All 512 directed graphs on three nodes, including self-loops, cycles, fan-in and fan-out.
-	// Reconstruct connections from the emitted glyphs without consulting the renderer's layout.
-	for (mask, direction) in
-		(0_u16..512).flat_map(|mask| ["TD", "BT", "LR", "RL"].map(|direction| (mask, direction)))
+fn rectangle_corners_use_svg_geometry_and_keep_authored_overrides() {
+	let input = r#"<svg xmlns="http://www.w3.org/2000/svg"><rect width="40" height="24" rx="2" style="rx:var(--ondine-radius,0);rx:8px;ry:3px;fill:var(--ondine-surface)"/></svg>"#;
+	let svg = svg::desktop(input).expect("desktop corners");
+	let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+	let rect = document.root_element().first_element_child().expect("rect");
+	assert_eq!(rect.attribute("rx"), Some("8px"));
+	assert_eq!(rect.attribute("ry"), Some("3px"));
+	assert!(rect.attribute("style").is_some_and(|style| !style.contains("rx:")));
+}
+
+#[test]
+fn authored_styles_remain_and_links_do_not_become_interactive_resources() {
+	let rendered =
+		compile("flowchart TD\nA --> B\nstyle A fill:#f00\nclick A \"https://example.test\"")
+			.expect("styled diagram");
+	let document = roxmltree::Document::parse(&rendered.svg).expect("valid SVG");
+	assert!(
+		document
+			.descendants()
+			.any(|node| node.attributes().any(|attribute| attribute.value().contains("#f00")))
+	);
+	assert!(rendered.links.is_empty());
+	assert!(
+		!document
+			.descendants()
+			.any(|node| matches!(node.tag_name().name(), "a" | "image" | "script"))
+	);
+}
+
+#[test]
+fn invalid_and_excessive_diagrams_return_to_the_source_fallback() {
+	for source in [
+		"not a diagram".into(),
+		"flowchart TD\nA[unclosed".into(),
+		"x".repeat(50_001),
+		format!("flowchart TD\n{}", "A --> B\n".repeat(513)),
+	] {
+		assert!(compile(&source).is_err());
+	}
+	assert!(canvas_fits(1_024., 1_024.));
+	for (width, height) in
+		[(0., 10.), (f64::NAN, 10.), (f64::INFINITY, 10.), (4_097., 1.), (2_048., 2_048.)]
 	{
-		let mut source = format!("graph {direction}; A; B; C;");
-		let mut expected = Vec::new();
-
-		for from in 0..3 {
-			for to in 0..3 {
-				if mask & (1 << (from * 3 + to)) != 0 {
-					let a = char::from(b'A' + from);
-					let b = char::from(b'A' + to);
-
-					source.push_str(&format!("{a}-->{b};"));
-					expected.push((a, b));
-				}
-			}
-		}
-
-		let output =
-			mermaid::render(&source, /* max_width */ 100).expect("valid upstream diagram fixture");
-		let mut rows =
-			output.lines().map(|line| line.chars().collect::<Vec<_>>()).collect::<Vec<_>>();
-
-		if matches!(direction, "LR" | "RL") {
-			let width = rows.iter().map(Vec::len).max().expect("valid upstream diagram fixture");
-
-			rows = (0..width)
-				.map(|x| {
-					rows.iter()
-						.map(|row| match row.get(x).copied().unwrap_or(' ') {
-							'─' => '│',
-							'│' => '─',
-							'┐' => '└',
-							'└' => '┐',
-							'┬' => '├',
-							'▲' => '◄',
-							other => other,
-						})
-						.collect()
-				})
-				.collect();
-		}
-
-		let mut order = Vec::new();
-		let mut owners = vec![' '; rows.len()];
-
-		for (top, row) in rows.iter().enumerate() {
-			if row.first() != Some(&'┌') {
-				continue;
-			}
-
-			let bottom = (top + 1..rows.len())
-				.find(|y| rows[*y].first() == Some(&'└'))
-				.expect("valid upstream diagram fixture");
-			let owner = rows[top..=bottom]
-				.iter()
-				.flatten()
-				.find(|ch| matches!(ch, 'A' | 'B' | 'C'))
-				.expect("valid upstream diagram fixture");
-
-			owners[top..=bottom].fill(*owner);
-			order.push(*owner);
-		}
-
-		assert_eq!(
-			order,
-			if matches!(direction, "BT" | "RL") {
-				vec!['C', 'B', 'A']
-			} else {
-				vec!['A', 'B', 'C']
-			}
-		);
-
-		let mut actual = Vec::new();
-
-		for (y, row) in rows.iter().enumerate() {
-			if let Some(port) = row.windows(2).position(|pair| pair == ['├', '─']) {
-				let lane = (port + 1..row.len())
-					.find(|x| matches!(row[*x], '┐' | '┘'))
-					.expect("valid upstream diagram fixture");
-				let mut target = y;
-
-				loop {
-					target = if row[lane] == '┐' { target + 1 } else { target - 1 };
-
-					let ch = rows[target][lane];
-
-					if matches!(ch, '┘' | '┐') {
-						break;
-					}
-
-					assert!(matches!(ch, '│' | '╪'), "broken vertical path: {source}");
-				}
-
-				assert_eq!(&rows[target][port..port + 2], &['├', '◄']);
-				assert!(rows[target][port + 2..lane].iter().all(|ch| matches!(ch, '─' | '╪')));
-
-				actual.push((owners[y], owners[target]));
-			}
-		}
-
-		actual.sort_unstable();
-
-		assert_eq!(actual, expected, "{source}");
-	}
-}
-
-#[test]
-fn semantic_spans_distinguish_labels_from_matching_endpoint_glyphs() {
-	let lines = super::render_spans("sequenceDiagram; A-xB: x", /* max_width */ 100)
-		.expect("valid upstream diagram fixture");
-	let roles = lines
-		.iter()
-		.flatten()
-		.flat_map(|span| span.text.chars().filter(|ch| *ch == 'x').map(|_| span.role))
-		.collect::<Vec<_>>();
-
-	assert_eq!(roles, vec![Role::Text, Role::Edge]);
-	assert_eq!(
-		lines[0]
-			.iter()
-			.find(|span| span.text.contains('┌'))
-			.expect("valid upstream diagram fixture")
-			.role,
-		Role::Node
-	);
-
-	for direction in ["TD", "BT", "LR", "RL"] {
-		let lines = super::render_spans(
-			&format!("flowchart {direction}; A --> B"),
-			/* max_width */ 100,
-		)
-		.expect("valid upstream diagram fixture");
-		let ports = lines
-			.iter()
-			.flatten()
-			.flat_map(|span| {
-				span.text.chars().filter(|ch| matches!(ch, '├' | '┬')).map(|_| span.role)
-			})
-			.collect::<Vec<_>>();
-
-		assert_eq!(ports, vec![Role::Node, Role::Node]);
-	}
-}
-
-#[test]
-fn stadium_shapes_references_and_widths() {
-	for direction in ["TD", "BT", "LR", "RL"] {
-		let source = format!(
-			"flowchart {direction}; A; A([开始]); A([开始]) --> B[Work] --> C{{Done?}}; C --> A"
-		);
-		let output = mermaid::render(&source, 100).expect("mixed stadium flowchart");
-
-		assert!(output.contains('╭') && output.contains('╯'));
-		assert!(output.contains('┌') && output.contains('◇'));
-
-		let width = output.lines().map(UnicodeWidthStr::width).max().expect("rendered lines");
-
-		assert_eq!(mermaid::render(&source, width), Ok(output));
-		assert_eq!(mermaid::render(&source, width - 1), Err(RenderError::TooWide));
-	}
-	for source in [
-		"A([unclosed]",
-		"A([unclosed)",
-		"A([])",
-		"A([nested[label]])",
-		"A([one]); A([two])",
-		"A([same]); A[same]",
-		"A{same}; A([same])",
-		"A([label]) trailing",
-	] {
-		assert_eq!(
-			mermaid::render(&format!("flowchart TD; {source}"), 100),
-			Err(RenderError::Unsupported),
-			"{source}"
-		);
-	}
-
-	assert_eq!(
-		mermaid::render(&format!("graph TD; A([{}])", "x".repeat(41)), 100),
-		Err(RenderError::Limit)
-	);
-}
-
-#[test]
-fn unsupported_long_shape_delimiters_keep_source_fallback() {
-	for declaration in ["A[(Database)]", "A[[Subroutine]]", "A[/Input/]", "A{{Hexagon}}"] {
-		assert_eq!(
-			mermaid::render(&format!("flowchart TD; {declaration}"), 100),
-			Err(RenderError::Unsupported),
-			"{declaration}"
-		);
-	}
-}
-
-#[test]
-fn multiline_flowchart_nodes_preserve_lines_in_every_direction() {
-	for direction in ["TD", "BT", "LR", "RL"] {
-		let source = format!(
-			"flowchart {direction}; A; A([\"请求<br>Ready\"]) --> B[Work<br/>next] --> C{{\"Done?<br />Retry?\"}}; C --> A"
-		);
-		let output = mermaid::render(&source, 100).expect("multiline flowchart");
-
-		for (first, second) in [("请求", "Ready"), ("Work", "next"), ("◇ Done?", "Retry?")] {
-			let first_row =
-				output.lines().position(|line| line.contains(first)).expect("first line");
-			let second_row =
-				output.lines().position(|line| line.contains(second)).expect("second line");
-
-			assert_eq!(second_row, first_row + 1, "{direction}: {output}");
-		}
-
-		assert_eq!(output.matches('◇').count(), 1);
-		assert!(!output.contains("<br"));
-		assert!(output.contains('╭') && output.contains('╯'));
-
-		let width = output.lines().map(UnicodeWidthStr::width).max().expect("rendered width");
-
-		assert_eq!(mermaid::render(&source, width), Ok(output));
-		assert_eq!(mermaid::render(&source, width - 1), Err(RenderError::TooWide));
-	}
-}
-
-#[test]
-fn multiline_flowchart_labels_keep_per_line_width_and_canvas_limits() {
-	let source = format!("graph LR; A[\"{}<br/>{}\"] --> B[Done]", "界".repeat(20), "x".repeat(40));
-
-	assert!(mermaid::render(&source, 100).is_ok());
-	assert_eq!(
-		mermaid::render(&format!("graph TD; A[ok<br />{}]", "界".repeat(21)), 100),
-		Err(RenderError::Limit)
-	);
-	assert_eq!(
-		mermaid::render(&format!("graph TD; A[{}{}]", "x".repeat(40), "<br>".repeat(3_000)), 100),
-		Err(RenderError::Limit)
-	);
-
-	for tag in ["<br>", "<br/>", "<br />"] {
-		let source = format!("graph TD; A[one{tag}two]; A[\"one<br>two\"]");
-		let output = mermaid::render(&source, 100).expect("equivalent multiline declarations");
-
-		assert_eq!(output.matches("one").count(), 1);
-		assert_eq!(output.matches("two").count(), 1);
-	}
-}
-
-#[test]
-fn malformed_multiline_labels_and_edge_breaks_keep_source_fallback() {
-	for body in [
-		"A[<br/><br />]",
-		"A[one<br> <br>two]",
-		"A[one<br><b>two</b>]",
-		"A[one<br class='x'>two]",
-		"A[one<BR>two]",
-		"A[one<br\t/>two]",
-		"A[one<br>e\u{301}]",
-		"A[one<br>\u{1b}]",
-		"A[\"one<br>two]",
-		"A[\"one\"<br>two\"]",
-		"A[\"`one<br>two`\"]",
-		"A -->|one<br>two| B",
-		"A[one<br>two]; A[one<br>other]",
-	] {
-		assert_eq!(
-			mermaid::render(&format!("flowchart TD; {body}"), 100),
-			Err(RenderError::Unsupported),
-			"{body}"
-		);
+		assert!(!canvas_fits(width, height));
 	}
 }

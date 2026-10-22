@@ -33,6 +33,66 @@ pub(super) use render::activity_label;
 use scroll::{ROW_GAP, Viewport};
 
 impl AgentSurface {
+	#[cfg(feature = "visual-capture")]
+	pub(crate) fn visual_mermaid_scroll_page(&mut self, cx: &mut Context<Self>) {
+		self.visual_workspace_page("markdown", cx);
+		let work = "agent";
+		let thread = "mermaid-scroll-fixture";
+		let fixtures: Vec<(String, String)> =
+			serde_json::from_str(include_str!("agent_mermaid/fixtures.json")).expect("fixtures");
+		let diagrams: Vec<_> = fixtures
+			.into_iter()
+			.filter(|(kind, _)| matches!(kind.as_str(), "flowchart" | "sequence" | "pie"))
+			.collect();
+		let plain = std::env::var("DECODEX_VISUAL_SCROLL_CONTENT").as_deref() == Ok("plain");
+		let entries = (0..36)
+			.map(|position| {
+				let (kind, source) = &diagrams[position as usize % diagrams.len()];
+				let language = if plain { "text" } else { "mermaid" };
+				AgentTimelineEntry {
+					position,
+					content: AgentTimelineContent::Item {
+						turn_id: format!("turn-{position}"),
+						item_id: format!("item-{position}"),
+						kind: "agentMessage".into(),
+						text: format!(
+							"## Review {} · {kind}\n\n中文与 English 混合内容，检查滚动时的文字、图形和布局稳定性。\n\n```{language}\n{source}\n%% Entry {position}\n```\n\nThis response keeps the original source available for copying.\n",
+							position + 1
+						),
+						phase: None,
+						app_ui: false,
+						truncated: false,
+						activity: None,
+						attachments: vec![],
+						collaboration: None,
+					},
+				}
+			})
+			.collect();
+		for item in &mut self.snapshot.as_mut().expect("fixture snapshot").work_items {
+			if item.id == work {
+				item.codex_thread_id = Some(thread.into());
+			}
+		}
+		self.timeline.native = Timeline {
+			binding: Some(Binding {
+				work: work.into(),
+				thread: thread.into(),
+				account: "scroll-fixture".into(),
+			}),
+			requested: Some((work.into(), thread.into())),
+			entries,
+			..Default::default()
+		};
+		self.timeline.follow_paused.insert(work.into());
+		self.timeline
+			.scroll
+			.entry(work.into())
+			.or_default()
+			.set_offset(gpui::point(gpui::px(0.), gpui::px(0.)));
+		cx.notify();
+	}
+
 	pub(super) fn restore_prompt_presentation(
 		&mut self,
 		work: &str,
