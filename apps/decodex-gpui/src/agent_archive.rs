@@ -279,6 +279,9 @@ impl AgentSurface {
 			.justify_between()
 			.gap_3()
 			.bg(crate::ui_theme::rgba(PANEL_HEADER_TINT))
+			.when(!self.workspace.graph_visible || self.workspace.chat_expanded, |panel| {
+				panel.rounded_t(gpui::px(ui_theme::WORKSPACE_RADIUS))
+			})
 			.text_size(gpui::px(11.))
 			.child(
 				gpui::div()

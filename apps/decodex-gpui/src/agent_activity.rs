@@ -620,7 +620,7 @@ impl AgentSurface {
 			.right_0()
 			.flex()
 			.justify_center()
-			.bottom(gpui::px(self.workspace.composer_overlay_height + 8.))
+			.bottom(gpui::px(self.workspace_composer_clearance() + 8.))
 			.when(opacity > 0.001, |d| {
 				d.child(
 					gpui::div()
@@ -694,7 +694,7 @@ impl AgentSurface {
 				gpui::div()
 					.absolute()
 					.inset_0()
-					.bottom(gpui::px(self.workspace.composer_overlay_height))
+					.bottom(gpui::px(self.workspace_composer_clearance()))
 					.child(self.history_rail(window, cx)),
 			)
 			.into_any_element()
@@ -1847,8 +1847,11 @@ phase: None,
 			let transcript = visual.debug_bounds("workspace-transcript").unwrap();
 			let footer = visual.debug_bounds("floating-composer").unwrap();
 			assert!(
-				(transcript.bottom() - footer.bottom()).abs() < gpui::px(1.),
-				"{text}: history must extend behind the floating input"
+				(transcript.bottom() + gpui::px(crate::ui_theme::WORKSPACE_INSET)
+					- footer.bottom())
+				.abs()
+					< gpui::px(1.),
+				"{text}: history must extend behind the floating input to the inset edge"
 			);
 			let clearance = surface.read_with(visual, |s, _| s.workspace.composer_overlay_height);
 			assert!(
@@ -1884,10 +1887,11 @@ phase: None,
 
 		assert!(scroll.max_offset().y >= gpui::px(100.), "fixture must allow the full wheel delta");
 		assert!(
-			(scroll.bounds().bottom() - visual.debug_bounds("floating-composer").unwrap().bottom())
-				.abs()
+			(scroll.bounds().bottom() + gpui::px(crate::ui_theme::WORKSPACE_INSET)
+				- visual.debug_bounds("floating-composer").unwrap().bottom())
+			.abs()
 				< gpui::px(1.),
-			"history must continue behind the composer"
+			"history must continue behind the composer to the inset edge"
 		);
 
 		let position = scroll.bounds().center();

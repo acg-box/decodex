@@ -200,6 +200,11 @@ impl AgentSurface {
 		tween.sample(now)
 	}
 
+	pub(super) fn workspace_composer_clearance(&self) -> f32 {
+		// The editor anchors to the outer frame; scrolling content ends at its inset.
+		(self.workspace.composer_overlay_height - crate::ui_theme::WORKSPACE_INSET).max(0.)
+	}
+
 	pub(super) fn workspace_graph_size(&self, window: &Window, _wide: bool) -> (f32, f32) {
 		if !self.workspace.graph_visible
 			|| self.workspace.chat_expanded
@@ -211,8 +216,15 @@ impl AgentSurface {
 		let viewport = window.viewport_size();
 		let sidebar = self.workspace_sidebar_width(window);
 		let available = (
-			f32::from(viewport.width) - sidebar - self.agent_tree_width(window),
-			(f32::from(viewport.height) - WINDOW_CONTROLS_CLEARANCE).max(0.0),
+			(f32::from(viewport.width)
+				- sidebar
+				- self.agent_tree_width(window)
+				- 2. * crate::ui_theme::WORKSPACE_INSET)
+				.max(0.),
+			(f32::from(viewport.height)
+				- WINDOW_CONTROLS_CLEARANCE
+				- 2. * crate::ui_theme::WORKSPACE_INSET)
+				.max(0.0),
 		);
 
 		if self.workspace.graph_expanded {
@@ -220,7 +232,7 @@ impl AgentSurface {
 		}
 		// Question choices can make the composer taller than a normal draft.
 		// Retain a readable transcript and usable timeline above that overlay.
-		let chat_minimum = (self.workspace.composer_overlay_height + 160.).max(240.);
+		let chat_minimum = (self.workspace_composer_clearance() + 160.).max(240.);
 		let height = self
 			.workspace
 			.graph_panel_height
@@ -564,6 +576,17 @@ mod tests {
 		let composer = visual.debug_bounds("floating-composer").unwrap();
 		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
 		let header = visual.debug_bounds("work-dock").unwrap();
+		let frame = visual.debug_bounds("workspace-center-frame").unwrap();
+		let plane = visual.debug_bounds("workspace-content-plane").unwrap();
+		let inset = gpui::px(crate::ui_theme::WORKSPACE_INSET);
+		assert_eq!(plane.origin.x, frame.origin.x + inset);
+		assert_eq!(plane.origin.y, frame.origin.y + inset);
+		assert_eq!(plane.size.width, frame.size.width - 2. * inset);
+		assert_eq!(plane.bottom(), frame.bottom() - inset);
+		assert_eq!(composer.origin.x, frame.origin.x);
+		assert_eq!(composer.size.width, frame.size.width);
+		assert_eq!(composer.bottom(), frame.bottom());
+		assert_eq!(header.size.width, plane.size.width);
 		assert!(header.origin.y < transcript.origin.y);
 		assert!(visual.debug_bounds("dock-toggle").is_none());
 		assert!(header.bottom() <= transcript.origin.y);
@@ -598,6 +621,76 @@ mod tests {
 		visual.update(|w, cx| w.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("work-dock").unwrap().size.height > gpui::px(38.));
 		assert!(visual.debug_bounds("dock-toggle").is_none());
+	}
+
+	#[gpui::test]
+	fn inset_workspace_preserves_editor_across_pane_modes(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.work_board.graph = false;
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+		});
+		for (width, height) in [(1400., 900.), (820., 620.)] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(height)));
+			for (graph, graph_full, chat_full, archived, browsing) in [
+				(true, false, false, false, false),
+				(false, false, false, false, false),
+				(true, true, false, false, false),
+				(true, false, true, false, false),
+				(true, true, false, true, false),
+				(true, true, false, false, true),
+			] {
+				surface.update(visual, |s, cx| {
+					s.workspace.graph_visible = graph;
+					s.workspace.graph_expanded = graph_full;
+					s.workspace.chat_expanded = chat_full;
+					s.workspace.browsing = browsing;
+					let archived_ids = &mut s.snapshot.as_mut().unwrap().archived_work_ids;
+					archived_ids.clear();
+					if archived {
+						archived_ids.insert("agent".into());
+					}
+					cx.notify();
+				});
+				visual.update(crate::ui_frame::draw_frame);
+				std::thread::sleep(
+					crate::ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40),
+				);
+				visual.update(crate::ui_frame::draw_frame);
+				let frame = visual.debug_bounds("workspace-center-frame").unwrap();
+				let plane = visual.debug_bounds("workspace-content-plane").unwrap();
+				let inset = gpui::px(crate::ui_theme::WORKSPACE_INSET);
+				assert_eq!(plane.origin, frame.origin + gpui::point(inset, inset));
+				assert_eq!(plane.size.width, frame.size.width - 2. * inset);
+				assert_eq!(plane.bottom(), frame.bottom() - inset);
+				let composer = visual.debug_bounds("floating-composer");
+				let has_composer = !archived && !browsing;
+				assert_eq!(composer.is_some(), has_composer);
+				if let Some(composer) = composer {
+					assert_eq!(composer.origin.x, frame.origin.x);
+					assert_eq!(composer.size.width, frame.size.width);
+					assert_eq!(composer.bottom(), frame.bottom());
+				}
+				let backdrop = visual.debug_bounds("workspace-composer-backdrop");
+				assert_eq!(backdrop.is_some(), graph_full && has_composer);
+				if let Some(backdrop) = backdrop {
+					assert_eq!(backdrop.origin.x, plane.origin.x);
+					assert_eq!(backdrop.size.width, plane.size.width);
+					assert_eq!(backdrop.bottom(), plane.bottom());
+					assert_eq!(
+						visual.debug_bounds("work-dock").unwrap().bottom(),
+						backdrop.origin.y
+					);
+				}
+				if graph_full && !has_composer {
+					assert_eq!(visual.debug_bounds("work-dock").unwrap().bottom(), plane.bottom());
+				}
+				surface.update(visual, |s, cx| {
+					assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+				});
+			}
+		}
 	}
 
 	#[gpui::test]
@@ -823,7 +916,7 @@ mod tests {
 
 				assert_eq!(
 					s.workspace_graph_size(window, true).1,
-					900. - super::WINDOW_CONTROLS_CLEARANCE
+					900. - super::WINDOW_CONTROLS_CLEARANCE - 2. * crate::ui_theme::WORKSPACE_INSET
 				);
 
 				s.workspace.graph_visible = false;

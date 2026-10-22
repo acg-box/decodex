@@ -7,9 +7,9 @@ use gpui::{
 };
 use graph::{Layout, Node};
 use ui_theme::{
-	AGENT_CHAT_OVERLAY, AGENT_SIDEBAR_MATERIAL, AMBER, BLUE, BODY_LINE_HEIGHT, BODY_SIZE,
-	CHROME_CONTROL_SIZE, CONTROL_MARGIN, FONT_FAMILY, HOVER_FILL, SELECTED_HOVER_FILL, TEXT,
-	TEXT_MUTED, TREE_ROW_HEIGHT,
+	AGENT_SIDEBAR_MATERIAL, AMBER, BLUE, BODY_LINE_HEIGHT, BODY_SIZE, CHROME_CONTROL_SIZE,
+	CONTROL_MARGIN, FONT_FAMILY, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED,
+	TREE_ROW_HEIGHT,
 };
 
 // Pane controls can leave the dispatch tree after a layout change. Keep keyboard
@@ -1117,7 +1117,7 @@ impl AgentSurface {
 				.flex_col()
 				.items_center()
 				.justify_center()
-				.pb(gpui::px(self.workspace.composer_overlay_height))
+				.pb(gpui::px(self.workspace_composer_clearance()))
 				.gap_2()
 				.child(gpui::div().text_size(gpui::px(20.)).child("What would you like to do?"))
 				.child(self.workspace_choices(true, cx))
@@ -1154,7 +1154,7 @@ impl AgentSurface {
 						.debug_selector(|| "conversation-content".into())
 						.min_h(gpui::px(voice_min_height))
 						.pt(gpui::px(16.))
-						.pb(gpui::px(self.workspace.composer_overlay_height))
+						.pb(gpui::px(self.workspace_composer_clearance()))
 						.px(gpui::px(ui_theme::CONVERSATION_INSET))
 						.w_full()
 						.max_w(gpui::px(
@@ -1295,7 +1295,11 @@ impl AgentSurface {
 			.overflow_hidden()
 			.flex()
 			.flex_col()
-			.bg(crate::ui_theme::rgba(AGENT_CHAT_OVERLAY));
+			.bg(ui_theme::workspace_palette().conversation)
+			.rounded_b(gpui::px(ui_theme::WORKSPACE_RADIUS))
+			.when(self.workspace_graph_size(window, wide).1 <= 0.1, |chat| {
+				chat.rounded_t(gpui::px(ui_theme::WORKSPACE_RADIUS))
+			});
 
 		chat = chat.when(self.native_agents.selected.is_none(), |chat| {
 			chat.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)))
@@ -1323,9 +1327,7 @@ impl AgentSurface {
 				.child(self.latest_button(window, cx)),
 		);
 
-		if floating_composer && !self.workspace.browsing {
-			chat = chat.child(self.floating_composer(window, cx));
-		} else if !is_agent && let Some(work) = selected.as_ref() {
+		if !is_agent && let Some(work) = selected.as_ref() {
 			chat = chat
 				.child(self.recovered_draft_panel(cx))
 				.child(self.conversation_activity(cx))
@@ -1353,11 +1355,6 @@ impl AgentSurface {
 			.left_0()
 			.right_0()
 			.bottom_0()
-			// Expanded maps place this footer outside the canvas. Continue the
-			// same surface to the window edge behind the floating glass editor.
-			.when(self.workspace.graph_expanded, |footer| {
-				footer.bg(crate::ui_theme::rgba(AGENT_CHAT_OVERLAY))
-			})
 			.child(self.composer_footer(window, cx))
 			.child(
 				gpui::canvas(
@@ -1380,6 +1377,78 @@ impl AgentSurface {
 			)
 	}
 
+	fn workspace_center(
+		&self,
+		chat: AnyElement,
+		height: f32,
+		has_composer: bool,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Div {
+		let palette = ui_theme::workspace_palette();
+		// One clipped work surface joins the map and transcript. The native editor
+		// remains on the outer frame so its width and bottom anchor do not change.
+		let plane = gpui::div()
+			.debug_selector(|| "workspace-content-plane".into())
+			.relative()
+			.flex_1()
+			.min_w_0()
+			.min_h_0()
+			.w_full()
+			.overflow_hidden()
+			.flex()
+			.flex_col()
+			.child(
+				gpui::div()
+					.flex_none()
+					.overflow_hidden()
+					.w_full()
+					.h(gpui::px(height))
+					.rounded_t(gpui::px(ui_theme::WORKSPACE_RADIUS))
+					.when(self.workspace.graph_expanded && !has_composer, |graph| {
+						graph.rounded_b(gpui::px(ui_theme::WORKSPACE_RADIUS))
+					})
+					.bg(palette.graph)
+					.opacity(self.workspace.arrival.progress(0.06))
+					.when(height > 0.1, |panel| panel.child(self.handoff_canvas(cx))),
+			)
+			.when(!self.workspace.graph_expanded, |plane| {
+				plane.child(
+					gpui::div()
+						.relative()
+						.flex_1()
+						.min_h_0()
+						.min_w_0()
+						.flex()
+						.flex_col()
+						.child(chat)
+						.when(height > 0.1, |reading| reading.child(ui_theme::workspace_seam())),
+				)
+			})
+			.when(self.workspace.graph_expanded && has_composer, |plane| {
+				plane.child(
+					gpui::div()
+						.debug_selector(|| "workspace-composer-backdrop".into())
+						.flex_1()
+						.min_h_0()
+						.w_full()
+						.rounded_b(gpui::px(ui_theme::WORKSPACE_RADIUS))
+						.bg(palette.conversation),
+				)
+			});
+		gpui::div()
+			.debug_selector(|| "workspace-center-frame".into())
+			.relative()
+			.flex_1()
+			.min_w_0()
+			.h_full()
+			.p(gpui::px(ui_theme::WORKSPACE_INSET))
+			.flex()
+			.flex_col()
+			.child(plane)
+			.when(has_composer, |center| center.child(self.floating_composer(window, cx)))
+	}
+
 	fn workspace_frame(
 		&mut self,
 		chat: AnyElement,
@@ -1388,8 +1457,9 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let (graph_width, graph_height) = self.workspace_graph_size(window, wide);
-		let graph_height = if self.workspace.graph_expanded && self.graph_has_composer() {
-			(graph_height - self.workspace.composer_overlay_height).max(120.)
+		let has_composer = self.graph_has_composer() && !self.workspace.browsing;
+		let graph_height = if self.workspace.graph_expanded && has_composer {
+			(graph_height - self.workspace_composer_clearance()).max(120.)
 		} else {
 			graph_height
 		};
@@ -1404,27 +1474,7 @@ impl AgentSurface {
 			window,
 			cx,
 		);
-		// The top panel owns its space. Chat follows it in normal layout flow.
-		let center = gpui::div()
-			.relative()
-			.flex_1()
-			.min_w_0()
-			.h_full()
-			.flex()
-			.flex_col()
-			.child(
-				gpui::div()
-					.flex_none()
-					.overflow_hidden()
-					.w_full()
-					.h(gpui::px(displayed_height))
-					.opacity(self.workspace.arrival.progress(0.06))
-					.when(displayed_height > 0.1, |panel| panel.child(self.handoff_canvas(cx))),
-			)
-			.when(!self.workspace.graph_expanded, |center| center.child(chat))
-			.when(self.workspace.graph_expanded && self.graph_has_composer(), |center| {
-				center.child(self.floating_composer(window, cx))
-			});
+		let center = self.workspace_center(chat, displayed_height, has_composer, window, cx);
 
 		let right_width = ui_motion::direct_value(
 			"agent-tree-panel",
@@ -1444,7 +1494,7 @@ impl AgentSurface {
 				.opacity(self.workspace.arrival.progress(0.08))
 				.when(right_width > 0.1, |panel| panel.child(self.agent_tree(right_width, cx))),
 		);
-		// Share one glass plane with the left sidebar; only the conversation adds a light tint.
+		// Sidebars share the native plane; Thin adds subtle graph and reading tints.
 		let main = gpui::div()
 			.flex_1()
 			.min_w_0()

@@ -35,6 +35,8 @@ pub(crate) const TREE_ROW_HEIGHT: f32 = 24.0;
 pub(crate) const CONVERSATION_TAB_SIZE: f32 = 28.0;
 pub(crate) const CONVERSATION_TAB_GAP: f32 = 2.0;
 pub(crate) const SIDEBAR_INSET: f32 = 6.0;
+pub(crate) const WORKSPACE_INSET: f32 = 6.0;
+pub(crate) const WORKSPACE_RADIUS: f32 = 12.0;
 pub(crate) const MESSAGE_GAP: f32 = 20.0;
 pub(crate) const USER_MESSAGE_ACTION_SIZE: f32 = 24.0;
 pub(crate) const METADATA_GAP: f32 = 4.0;
@@ -85,6 +87,38 @@ pub(crate) const GREEN: u32 = 0x77c99a;
 pub(crate) const AMBER: u32 = 0xe0b56f;
 pub(crate) const ERROR: u32 = 0xef4444;
 pub(crate) const MOTION_PANEL: Duration = Duration::from_millis(240);
+
+/// Thin separates regions by tone; glass keeps its existing shared plane.
+pub(crate) struct WorkspacePalette {
+	pub(crate) graph: gpui::Rgba,
+	pub(crate) conversation: gpui::Rgba,
+}
+
+pub(crate) fn workspace_palette() -> WorkspacePalette {
+	if material::Surface::Window.material() == material::Material::LiquidGlass {
+		return WorkspacePalette { graph: gpui::rgba(0), conversation: rgba(AGENT_CHAT_OVERLAY) };
+	}
+	// Neutral tints leave the native matte material underneath. Only the reading
+	// plane is lighter; sidebars stay on the shared window surface.
+	let (graph, conversation) = match appearance::Theme::current() {
+		appearance::Theme::Dark => (0x00000028, 0xffffff06),
+		appearance::Theme::Light => (0x00000008, 0xffffffb0),
+	};
+	WorkspacePalette { graph: gpui::rgba(graph), conversation: gpui::rgba(conversation) }
+}
+
+/// A shallow fold between the map and reading plane, without a divider stroke.
+pub(crate) fn workspace_seam() -> Div {
+	let alpha = match appearance::Theme::current() {
+		appearance::Theme::Dark => 0x14,
+		appearance::Theme::Light => 0x09,
+	};
+	gpui::div().absolute().top_0().left_0().right_0().h(gpui::px(6.)).bg(gpui::linear_gradient(
+		180.,
+		gpui::linear_color_stop(gpui::rgba(alpha), 0.),
+		gpui::linear_color_stop(gpui::rgba(0), 1.),
+	))
+}
 
 /// Reading roles for the workspace. Materials and composer tokens stay separate.
 pub(crate) mod foreground {
