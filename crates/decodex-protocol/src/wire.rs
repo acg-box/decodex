@@ -21,12 +21,12 @@ use crate::{
 	AgentAppSettingsResult, AgentAppUiCall, AgentAppUiCallReview, AgentAppUiReceiptRequest,
 	AgentAppUiReceiptResult, AgentAppUiRequest, AgentAppUiResult, AgentArchiveResult,
 	AgentCapabilitiesResult, AgentContextSettingsResult, AgentDeliveriesResult, AgentDeliveryQuery,
-	AgentGuardianDetailResult, AgentGuardianReviewsResult, AgentHistoryResult,
-	AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult,
-	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentModelSelectionState,
-	AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall,
-	AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult, AgentRequestResult,
-	AgentResourcesResult, AgentSampleStatus, AgentSavedAppSettingsResult,
+	AgentExchangesResult, AgentGuardianDetailResult, AgentGuardianReviewsResult,
+	AgentHistoryResult, AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState,
+	AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult,
+	AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult,
+	AgentPendingAppUiCall, AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult,
+	AgentRequestResult, AgentResourcesResult, AgentSampleStatus, AgentSavedAppSettingsResult,
 	AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget, AgentSnapshotResult,
 	AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult, AgentTranscriptRequest,
 	AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
@@ -2453,6 +2453,11 @@ pub enum QueryPayload {
 	},
 	/// Read the complete bounded Agent work graph and pending result metadata.
 	GetAgentSnapshot,
+	/// Read exact managed collaboration receipts without changing execution.
+	GetAgentExchanges {
+		/// Read events strictly before this source event, or the latest page.
+		before: Option<i64>,
+	},
 	/// Read recent durable task deliveries with agent and time filters.
 	GetAgentDeliveries {
 		/// Local agent and time filters.
@@ -3232,6 +3237,8 @@ pub enum QueryResultPayload {
 	AgentRequest(AgentRequestResult),
 	/// Complete bounded Agent work and pending event projection.
 	AgentSnapshot(AgentSnapshotResult),
+	/// Exact managed collaboration receipts.
+	AgentExchanges(AgentExchangesResult),
 	/// Complete daemon-owned desktop settings projection.
 	DesktopSettings(DesktopSettingsResult),
 	/// Bounded current Program selector projection.

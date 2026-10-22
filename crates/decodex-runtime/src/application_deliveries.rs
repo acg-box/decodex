@@ -221,7 +221,7 @@ fn reported_result(text: &str) -> (String, Vec<AgentDeliveryArtifact>) {
 	(summary.split_whitespace().collect::<Vec<_>>().join(" "), artifacts)
 }
 
-fn result_text(value: &Value) -> String {
+pub(super) fn result_text(value: &Value) -> String {
 	let messages = value.pointer("/threadReadback/assistantMessages");
 	let parsed =
 		messages.and_then(Value::as_str).and_then(|s| serde_json::from_str::<Value>(s).ok());

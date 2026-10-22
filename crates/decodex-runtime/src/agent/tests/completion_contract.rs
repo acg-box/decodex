@@ -16,6 +16,7 @@ async fn busy_worker_refuses_unsent_input_then_continues_once_idle() {
 	assert!(matches!(error, tests::AgentError::Busy));
 	assert!(sent.try_recv().is_err(), "Busy must not send native input");
 	let mut params = command.clone();
+	params["callId"] = serde_json::json!("continue-maple");
 	params["threadId"] = serde_json::json!(agent.codex_thread_id);
 	params["turnId"] = serde_json::json!(agent.active_turn_id);
 	coordinator
@@ -46,6 +47,24 @@ async fn busy_worker_refuses_unsent_input_then_continues_once_idle() {
 		"Busy must not queue an instruction"
 	);
 
+	let observations = coordinator
+		.store
+		.read_agent_collaboration(vec!["agent".into(), "worker".into()], None)
+		.await
+		.unwrap();
+	let refused = observations
+		.iter()
+		.find(|record| record.event.event_kind == "collaboration_refused")
+		.unwrap();
+	assert_eq!(refused.event.disposition, Some(AgentDisposition::Resolved));
+	assert!(refused.event.delivered_turn_id.is_none());
+	assert_eq!(
+		serde_json::from_str::<serde_json::Value>(&refused.event.payload).unwrap()["callId"],
+		"continue-maple"
+	);
+	assert!(
+		coordinator.store.list_agent_wake_events("agent".into(), 100).await.unwrap().is_empty()
+	);
 	tests::complete(&mut coordinator, "worker").await;
 	coordinator.tool(&agent, &command).await.unwrap();
 	let continued = coordinator.store.get_agent_work_item("worker".into()).await.unwrap();
@@ -56,6 +75,51 @@ async fn busy_worker_refuses_unsent_input_then_continues_once_idle() {
 		.collect();
 	assert_eq!(starts.len(), 1);
 	assert_eq!(starts[0]["params"]["toolOutput"]["output"], "Use Maple");
+	tests::complete(&mut coordinator, "worker").await;
+	let records =
+		coordinator.store.read_agent_collaboration(vec!["worker".into()], None).await.unwrap();
+	let completed = records
+		.iter()
+		.find(|record| {
+			record.event.event_kind == "worker_turn_completed"
+				&& serde_json::from_str::<serde_json::Value>(&record.event.payload).unwrap()["terminal"]
+					["turn"]["id"]
+					== continued.active_turn_id.as_deref().unwrap()
+		})
+		.unwrap();
+	assert!(
+		completed.instruction_event_id.is_some(),
+		"link by acknowledged turn, independently of the history page"
+	);
+	assert!(completed.event.disposition.is_none(), "a result must remain pending until assessed");
+	coordinator
+		.store
+		.dispose_agent_event(
+			completed.event.id,
+			AgentDisposition::Resolved,
+			"The label uses Maple.".into(),
+			None,
+		)
+		.await
+		.unwrap();
+	assert_eq!(
+		coordinator.store.get_agent_work_item("agent".into()).await.unwrap().status,
+		AgentWorkStatus::Open,
+		"accepting a worker result does not resolve its manager"
+	);
+	let root =
+		tests::DecodexRoot::new(_directory.path().canonicalize().unwrap().join("root")).unwrap();
+	let reopened = tests::SqliteStore::open(&root.paths()).unwrap();
+	let restored = reopened.read_agent_collaboration(vec!["worker".into()], None).await.unwrap();
+	assert_eq!(
+		restored
+			.iter()
+			.find(|record| record.event.id == completed.event.id)
+			.unwrap()
+			.event
+			.disposition,
+		Some(AgentDisposition::Resolved)
+	);
 }
 
 #[tokio::test]

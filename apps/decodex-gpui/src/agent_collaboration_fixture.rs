@@ -169,7 +169,8 @@ impl AgentSurface {
 		self.workspace.graph_visible = true;
 		self.workspace.graph_expanded = true;
 		self.work_board.view.picked_agent = Some("native:mira:ref-nora".into());
-		self.work_board.collaboration_expanded = Some("mira|native:mira:ref-nora".into());
+		self.work_board.collaboration_expanded =
+			Some("call:ref-mira:request-mira-nora:ref-nora".into());
 		self.publish_usage();
 		cx.notify();
 	}

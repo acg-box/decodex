@@ -1,6 +1,11 @@
 //! Typed vNext wire contracts and same-UID local transport shared by clients and
 //! `decodex serve`.
 
+mod agent_collaboration;
+pub use agent_collaboration::{
+	AgentExchangeAssessment, AgentExchangeDto, AgentExchangeKind, AgentExchangeQuestionDto,
+	AgentExchangesResult,
+};
 mod agent_deliveries;
 pub use agent_deliveries::{
 	AgentDeliveriesResult, AgentDeliveryArtifact, AgentDeliveryEntry, AgentDeliveryExtent,

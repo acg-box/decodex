@@ -27,3 +27,9 @@ threads-required = 'num-test-threads'
 filter           = 'test(voice::transport::tests::native_call_exchanges) or test(voice::transport::tests::remote_channel_loss)'
 test-group       = 'native-media'
 threads-required = 'num-test-threads'
+
+# This full-frame check samples the middle of a 200 ms disclosure transition.
+# Reserve the runner so concurrent rendering cannot skip that wall-clock window.
+[[profile.default.overrides]]
+filter           = 'test(exchange_disclosure_animates_in_both_directions_without_changing_the_draft)'
+threads-required = 'num-test-threads'

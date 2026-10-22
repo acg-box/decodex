@@ -1328,6 +1328,26 @@ impl AgentClient {
 		}
 	}
 
+	/// Read source-bound collaboration receipts. Reads never authorize a retry or assessment.
+	pub async fn exchanges(
+		&self,
+		before: Option<i64>,
+	) -> Result<crate::AgentExchangesResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport
+				.query_inner("agent-exchanges", QueryPayload::GetAgentExchanges { before }),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::AgentExchanges(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read the latest bounded visible history for the selected work.
 	pub async fn history(&self, work_id: EntityId) -> Result<AgentHistoryResult, ClientFailure> {
 		self.history_page(work_id, None).await

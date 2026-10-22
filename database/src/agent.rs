@@ -1,6 +1,8 @@
 //! Durable Agent work and inbox facts. The caller owns planning and judgment.
 
 mod capacity;
+mod collaboration;
+pub use collaboration::{AgentCollaborationQuestion, AgentCollaborationRecord};
 mod delegation;
 mod steer;
 
@@ -682,7 +684,7 @@ impl SqliteStore {
 				let now=crate::unix_micros()?;
 				let previous:i64=transaction.query_row("SELECT coalesce(max(id),0) FROM agent_inbox_events WHERE work_item_id=?1",[&id],|row|row.get(0)).map_err(error::sqlite_error)?;
 				let source=serde_json::json!(["work_instruction",id,previous]).to_string();
-				let payload=serde_json::json!({"text":text,"source":"manager"}).to_string();
+				let payload=serde_json::json!({"text":text,"source":"manager","threadId":work.codex_thread_id}).to_string();
 
 				if payload.len()>65_536 {return Err(StoreError::InvalidInput("instruction exceeds saved event bound"));}
 
@@ -1005,7 +1007,7 @@ impl SqliteStore {
 	) -> Result<AgentInboxEvent, StoreError> {
 		if !matches!(
 			input.event_kind.as_str(),
-			"assistant_message" | "token_usage" | "context_compacted"
+			"assistant_message" | "token_usage" | "context_compacted" | "collaboration_refused"
 		) || !serde_json::from_str::<Value>(&input.payload).is_ok_and(|value| value.is_object())
 		{
 			return Err(StoreError::InvalidInput("invalid Agent observation"));
