@@ -144,12 +144,8 @@ impl Layout {
 			/ self.display_scale
 	}
 
-	pub(super) fn detail_line(self) -> f32 {
-		((crate::ui_theme::CAPTION_LINE_HEIGHT * self.zoom)
-			.max(self.metric_size().max(self.activity_size()) + 3.)
-			* self.display_scale)
-			.ceil()
-			/ self.display_scale
+	pub(super) fn metric_line(self) -> f32 {
+		((self.metric_size() + 1.5) * self.display_scale).ceil() / self.display_scale
 	}
 
 	pub(super) fn activity_line(self) -> f32 {
@@ -166,7 +162,7 @@ impl Layout {
 
 	/// Three compact status tracks form one block under the numbered portrait.
 	pub(super) fn metrics_height(self) -> f32 {
-		3. * self.detail_line() + 2. * self.spacing(1.)
+		3. * self.metric_line() + 2. * self.spacing(1.)
 	}
 
 	pub(super) fn header_height(self, actions: f32) -> f32 {

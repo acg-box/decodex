@@ -1,8 +1,9 @@
 //! Per-agent usage, time, rate and the share of recorded conversation tokens.
 use super::{AgentSurface, AnyElement, Context, Node};
-use crate::{ui_theme::foreground, ui_work_metrics::Icon};
+use crate::ui_theme::foreground;
 use gpui::{App, IntoElement, RenderOnce, Window, prelude::*};
 pub(in super::super) type Metrics = crate::ui_work_metrics::Sample;
+const BAR_WIDTH: f32 = 68.;
 
 // Graph labels have bounded magnitudes. Full native counters and time remain in
 // the accessible description; the graph never grows when a counter gains a digit.
@@ -51,37 +52,24 @@ fn percentage(value: Option<f32>) -> String {
 	}
 }
 
-fn icon_size(layout: super::card::Layout) -> f32 {
-	layout.spacing(10.).max(8.)
-}
-
-fn readout_value(text: String, icon: Icon, accent: u32, layout: super::card::Layout) -> gpui::Div {
+fn readout_value(text: String, accent: u32, layout: super::card::Layout) -> gpui::Div {
 	gpui::div()
-		.relative()
 		.w_full()
-		.h(gpui::px(layout.detail_line()))
-		.px(gpui::px(layout.spacing(2.)))
+		.h(gpui::px(layout.metric_line()))
+		.px(gpui::px(layout.spacing(4.)))
 		.flex_none()
 		.flex()
 		.items_center()
-		.justify_between()
+		.justify_center()
 		.whitespace_nowrap()
-		.gap(gpui::px(layout.spacing(3.)))
+		.rounded(gpui::px(layout.spacing(2.).max(1.)))
+		.bg(crate::ui_theme::rgb(accent))
 		.text_size(gpui::px(layout.metric_size()))
-		.line_height(gpui::px(layout.detail_line()))
+		.line_height(gpui::px(layout.metric_line()))
 		.font_weight(gpui::FontWeight::MEDIUM)
-		.text_color(crate::ui_theme::rgb(foreground::BODY))
-		// The tracks identify each stat; they do not imply a capacity or progress.
-		.child(
-			gpui::div()
-				.absolute()
-				.left_0()
-				.right_0()
-				.bottom_0()
-				.h(gpui::px(layout.pixel(0.5).max(0.5)))
-				.bg(crate::ui_theme::rgb(accent).opacity(0.45)),
-		)
-		.child(icon.element(icon_size(layout), accent))
+		// The inverse foreground keeps real values readable inside the colored
+		// strip in both themes. Bar length does not imply task progress.
+		.text_color(crate::ui_theme::rgb(crate::ui_theme::CANVAS))
 		.child(text)
 }
 
@@ -115,12 +103,10 @@ impl RenderOnce for Readout {
 					.width,
 			)
 			.ceil()
-				+ icon_size(layout)
-				+ layout.spacing(3.)
 		};
 		let values = [measure(&tokens), measure(&time), measure(&rate)];
-		let width = (values.into_iter().fold(0., f32::max) + 2. * layout.spacing(2.))
-			.max(layout.spacing(super::card::PORTRAIT_WIDTH));
+		let width = (values.into_iter().fold(0., f32::max) + 2. * layout.spacing(4.))
+			.max(layout.spacing(BAR_WIDTH));
 		let token_selector = format!("relation-tokens-{}", self.key);
 		let time_selector = format!("relation-time-{}", self.key);
 		let rate_selector = format!("relation-rate-{}", self.key);
@@ -133,7 +119,7 @@ impl RenderOnce for Readout {
 			.whitespace_nowrap()
 			.gap(gpui::px(layout.spacing(1.)))
 			.text_size(gpui::px(layout.detail_size()))
-			.line_height(gpui::px(layout.detail_line()))
+			.line_height(gpui::px(layout.metric_line()))
 			.font_weight(gpui::FontWeight::NORMAL)
 			.text_color(crate::ui_theme::rgb(foreground::BODY))
 			.child(
@@ -141,21 +127,21 @@ impl RenderOnce for Readout {
 					.debug_selector(move || token_selector.clone())
 					.w_full()
 					.flex_none()
-					.child(readout_value(tokens, Icon::Tokens, crate::ui_theme::BLUE, layout)),
+					.child(readout_value(tokens, crate::ui_theme::BLUE, layout)),
 			)
 			.child(
 				gpui::div()
 					.debug_selector(move || time_selector.clone())
 					.w_full()
 					.flex_none()
-					.child(readout_value(time, Icon::Time, crate::ui_theme::AMBER, layout)),
+					.child(readout_value(time, crate::ui_theme::AMBER, layout)),
 			)
 			.child(
 				gpui::div()
 					.debug_selector(move || rate_selector.clone())
 					.w_full()
 					.flex_none()
-					.child(readout_value(rate, Icon::Speed, crate::ui_theme::GREEN, layout)),
+					.child(readout_value(rate, crate::ui_theme::GREEN, layout)),
 			)
 	}
 }
@@ -290,7 +276,8 @@ mod tests {
 					assert!(lower.top() >= upper.bottom());
 					assert!(f32::from(lower.top() - upper.bottom()) <= layout.spacing(1.) + 0.5);
 				}
-				assert!(f32::from(tokens.size.width) <= layout.spacing(80.).max(80.));
+				assert!(f32::from(tokens.size.width) <= BAR_WIDTH);
+				assert!(f32::from(rate.bottom() - tokens.top()) <= layout.metrics_height() + 0.5);
 				for name in
 					["relation-tokens-fixture", "relation-time-fixture", "relation-rate-fixture"]
 				{
