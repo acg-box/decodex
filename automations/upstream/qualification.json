@@ -5123,7 +5123,7 @@
   },
   "rg_helper": {
     "status": "passed",
-    "sha256": "1780f65b7e414a6cc62efac953734529e98c2763a08d65a54ca24a05b26abfd3",
+    "sha256": "cdbd12cd8f86a0e2c0812500f10a90295a7e43923d823d87c98cddb15513742d",
     "version": "ripgrep 15.2.0 (rev e89fff89ac)",
     "contract": "Packaged helper finds an exact marker in a system-temporary fixture; strict signature and architecture checked separately."
   },

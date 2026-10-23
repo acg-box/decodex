@@ -594,7 +594,7 @@
     "evidence": "automations/upstream/qualification.json",
     "source_archive_sha256": "a2f261cf958b24fc87cf7257674134146d0c02a5f2badeaed9964e162f03f28c",
     "schema_sha256": "9a924f38f788323f6ac1070f8adc6a6813a247f2cc881bc244e4211da676c338",
-    "evidence_sha256": "0292fabeb8e69f5b43f97cfb239654c315a4a206a8ac11060e7e31e97b19fd90",
+    "evidence_sha256": "7018db90e4c1e3839a6e24930866d3facc8300c7c501babc81847f0a6965090a",
     "limits": [
       "Source review, source tests, exact-artifact qualification, Git delivery and installed-app acceptance remain separate.",
       "No live account/provider, physical audio, Windows/Linux/NFS runtime, remote production executor or installed-app acceptance. Signed macOS arm64 private-stdio behavior and both packaged helpers were exercised.",
