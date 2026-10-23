@@ -57,14 +57,30 @@ fn icon_size(layout: super::card::Layout) -> f32 {
 
 fn readout_value(text: String, icon: Icon, accent: u32, layout: super::card::Layout) -> gpui::Div {
 	gpui::div()
+		.relative()
+		.w_full()
+		.h(gpui::px(layout.detail_line()))
+		.px(gpui::px(layout.spacing(2.)))
+		.flex_none()
 		.flex()
 		.items_center()
+		.justify_between()
 		.whitespace_nowrap()
 		.gap(gpui::px(layout.spacing(3.)))
 		.text_size(gpui::px(layout.metric_size()))
 		.line_height(gpui::px(layout.detail_line()))
 		.font_weight(gpui::FontWeight::MEDIUM)
 		.text_color(crate::ui_theme::rgb(foreground::BODY))
+		// The tracks identify each stat; they do not imply a capacity or progress.
+		.child(
+			gpui::div()
+				.absolute()
+				.left_0()
+				.right_0()
+				.bottom_0()
+				.h(gpui::px(layout.pixel(0.5).max(0.5)))
+				.bg(crate::ui_theme::rgb(accent).opacity(0.45)),
+		)
 		.child(icon.element(icon_size(layout), accent))
 		.child(text)
 }
@@ -102,29 +118,20 @@ impl RenderOnce for Readout {
 				+ icon_size(layout)
 				+ layout.spacing(3.)
 		};
-		let available =
-			layout.width - 2. * layout.spacing(super::card::INSET_X) - layout.spacing(8.);
-		let gap = layout.spacing(6.);
 		let values = [measure(&tokens), measure(&time), measure(&rate)];
-		// Keep the three real readouts on one baseline while their shaped glyphs fit.
-		// Allocation belongs to the shared usage strip, not the actor HUD.
-		let show_time = values[0] + gap + values[1] <= available;
-		let all_values = values.iter().sum::<f32>() + 2. * gap;
-		let show_rate = all_values <= available;
-		let width = values[0]
-			+ if show_time { gap + values[1] } else { 0. }
-			+ if show_rate { gap + values[2] } else { 0. };
+		let width = (values.into_iter().fold(0., f32::max) + 2. * layout.spacing(2.))
+			.max(layout.spacing(super::card::PORTRAIT_WIDTH));
 		let token_selector = format!("relation-tokens-{}", self.key);
 		let time_selector = format!("relation-time-{}", self.key);
 		let rate_selector = format!("relation-rate-{}", self.key);
 		gpui::div()
 			.w(gpui::px(width))
-			.h(gpui::px(layout.detail_line()))
+			.h(gpui::px(layout.metrics_height()))
 			.flex_none()
 			.flex()
-			.items_center()
+			.flex_col()
 			.whitespace_nowrap()
-			.gap(gpui::px(gap))
+			.gap(gpui::px(layout.spacing(1.)))
 			.text_size(gpui::px(layout.detail_size()))
 			.line_height(gpui::px(layout.detail_line()))
 			.font_weight(gpui::FontWeight::NORMAL)
@@ -132,25 +139,24 @@ impl RenderOnce for Readout {
 			.child(
 				gpui::div()
 					.debug_selector(move || token_selector.clone())
+					.w_full()
 					.flex_none()
 					.child(readout_value(tokens, Icon::Tokens, crate::ui_theme::BLUE, layout)),
 			)
-			.when(show_time, |row| {
-				row.child(
-					gpui::div()
-						.debug_selector(move || time_selector.clone())
-						.flex_none()
-						.child(readout_value(time, Icon::Time, crate::ui_theme::AMBER, layout)),
-				)
-			})
-			.when(show_rate, |row| {
-				row.child(
-					gpui::div()
-						.debug_selector(move || rate_selector.clone())
-						.flex_none()
-						.child(readout_value(rate, Icon::Speed, crate::ui_theme::GREEN, layout)),
-				)
-			})
+			.child(
+				gpui::div()
+					.debug_selector(move || time_selector.clone())
+					.w_full()
+					.flex_none()
+					.child(readout_value(time, Icon::Time, crate::ui_theme::AMBER, layout)),
+			)
+			.child(
+				gpui::div()
+					.debug_selector(move || rate_selector.clone())
+					.w_full()
+					.flex_none()
+					.child(readout_value(rate, Icon::Speed, crate::ui_theme::GREEN, layout)),
+			)
 	}
 }
 
@@ -185,7 +191,6 @@ impl AgentSurface {
 			.debug_selector(move || selector.clone())
 			.role(gpui::Role::Group)
 			.aria_label(description)
-			.ml(gpui::px(layout.spacing(8.)))
 			.flex_none()
 			.child(Readout { key: node.key.clone(), metrics, layout })
 			.into_any_element()
@@ -244,7 +249,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn metric_values_keep_one_baseline_and_use_available_space_below_seventy_percent(
+	fn metric_values_stay_in_one_narrow_three_row_block_across_readable_zoom(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (view, visual) = cx.add_window_view(|_, _| Fixture {
@@ -277,22 +282,18 @@ mod tests {
 				visual.update(crate::ui_frame::draw_frame);
 				let tokens = visual.debug_bounds("relation-tokens-fixture").unwrap();
 				let time = visual.debug_bounds("relation-time-fixture").unwrap();
-				assert!(time.left() > tokens.right());
-				assert_eq!(tokens.top(), time.top());
-				if zoom >= 0.6 {
-					let rate = visual
-						.debug_bounds("relation-rate-fixture")
-						.expect("normal token, time and rate values still fit at 60%");
-					assert!(rate.left() > time.right());
-					assert_eq!(rate.top(), tokens.top());
-				}
 				let layout = super::super::card::Layout::new(zoom).on_display(density);
-				for name in [
-					"relation-tokens-fixture",
-					"relation-time-fixture",
-					"relation-rate-fixture",
-					"relation-token-share-fixture",
-				] {
+				let rate = visual.debug_bounds("relation-rate-fixture").unwrap();
+				for (upper, lower) in [(tokens, time), (time, rate)] {
+					assert_eq!(upper.left(), lower.left());
+					assert_eq!(upper.size.width, lower.size.width);
+					assert!(lower.top() >= upper.bottom());
+					assert!(f32::from(lower.top() - upper.bottom()) <= layout.spacing(1.) + 0.5);
+				}
+				assert!(f32::from(tokens.size.width) <= layout.spacing(80.).max(80.));
+				for name in
+					["relation-tokens-fixture", "relation-time-fixture", "relation-rate-fixture"]
+				{
 					if let Some(bounds) = visual.debug_bounds(name) {
 						assert!(
 							f32::from(bounds.right())

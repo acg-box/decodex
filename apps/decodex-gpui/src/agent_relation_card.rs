@@ -10,8 +10,8 @@ use gpui::{
 
 // Geometry stays in world space. Text stops shrinking before it becomes illegible.
 // At 100%, graph type uses the same sizes as the native shell.
-// Compact symbols keep the longest counters on one HUD baseline, including at
-// the full-detail threshold and the one-times display font floor.
+// A compact three-row HUD stays centered under the portrait, with readable
+// counters at the full-detail threshold and the one-times display font floor.
 pub(super) const WIDTH: f32 = 288.;
 pub(super) const INSET_X: f32 = 10.;
 pub(super) const INSET_Y: f32 = 8.;
@@ -152,6 +152,10 @@ impl Layout {
 			/ self.display_scale
 	}
 
+	pub(super) fn activity_line(self) -> f32 {
+		((self.activity_size() + 2.) * self.display_scale).ceil() / self.display_scale
+	}
+
 	pub(super) fn spacing(self, points: f32) -> f32 {
 		self.pixel(points * self.zoom)
 	}
@@ -160,16 +164,17 @@ impl Layout {
 		self.spacing(2.)
 	}
 
-	/// The three source-bound counters share one compact baseline.
+	/// Three compact status tracks form one block under the numbered portrait.
 	pub(super) fn metrics_height(self) -> f32 {
-		self.detail_line()
+		3. * self.detail_line() + 2. * self.spacing(1.)
 	}
 
 	pub(super) fn header_height(self, actions: f32) -> f32 {
 		let portrait = self.spacing(PORTRAIT_HEIGHT)
-			+ if self.labels() { self.title_line() + self.spacing(2.) } else { 0. };
-		let activity = self.spacing(6.)
-			+ if actions > 0. { actions * self.detail_line() } else { self.title_line() };
+			+ if self.labels() { self.title_line() + self.spacing(2.) } else { 0. }
+			+ if !self.overview() { self.gap() + self.metrics_height() } else { 0. };
+		let activity = self.spacing(8.)
+			+ if actions > 0. { actions * self.activity_line() } else { self.title_line() };
 		portrait.max(activity)
 	}
 
@@ -185,14 +190,8 @@ impl Layout {
 		let range = [min, max];
 		range.into_iter().fold(0., |height, zoom| {
 			let layout = Self::new(zoom);
-			height.max(
-				((layout.header_height(actions)
-					+ layout.gap()
-					+ layout.metrics_height()
-					+ 2. * layout.spacing(INSET_Y))
-					/ zoom)
-					.ceil(),
-			)
+			height
+				.max(((layout.header_height(actions) + 2. * layout.spacing(INSET_Y)) / zoom).ceil())
 		})
 	}
 }

@@ -298,7 +298,9 @@ impl Tree {
 			self.children.iter().map(|child| child.layout(input, horizontal)).collect();
 		let leaves = self.children.iter().all(|child| child.children.is_empty());
 		let mut block = if leaves && children.len() >= 4 {
-			let columns = children.len().div_ceil(4).clamp(2, 4);
+			// Keep taller character HUDs in a compact shelf rather than forcing
+			// small parallel groups into four rows.
+			let columns = (1 + (children.len() - 1).isqrt()).clamp(2, 4);
 			Block::grid(children, columns)
 		} else if children.len() >= 4 {
 			Block::pack(children, WORKSPACE_GAP, input.viewport)

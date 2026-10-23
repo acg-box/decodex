@@ -719,13 +719,28 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	/// Keep the active character above overlapping nodes, using the same order
+	/// for painting and pointer targets after compact layouts or manual dragging.
+	fn relation_nodes<'a>(&'a self, graph: &'a Graph) -> impl DoubleEndedIterator<Item = &'a Node> {
+		let foreground =
+			self.work_board.view.drag.as_ref().and_then(|drag| drag.key.as_deref()).or(self
+				.work_board
+				.view
+				.picked_agent
+				.as_deref());
+		graph
+			.nodes
+			.iter()
+			.filter(move |node| Some(node.key.as_str()) != foreground)
+			.chain(graph.nodes.iter().filter(move |node| Some(node.key.as_str()) == foreground))
+	}
+
 	pub(super) fn relation_canvas(&self, graph: &Graph, cx: &mut Context<Self>) -> AnyElement {
 		let scale = self.relation_scale();
 		let pan = self.work_board.view.pan;
 		let layout_viewport = self.work_board.view.layout_viewport;
-		let hit_boxes: Vec<_> = graph
-			.nodes
-			.iter()
+		let hit_boxes: Vec<_> = self
+			.relation_nodes(graph)
 			.filter(|node| {
 				node.row.is_some()
 					|| self.work_board.view.visibility.borrow().node_opacity(graph, node) > 0.5
@@ -1342,7 +1357,7 @@ impl AgentSurface {
 		let layout_viewport = self.work_board.view.layout_viewport;
 		let layout = graph.layout.on_display(self.work_board.view.display_scale);
 		let mut ports = graph.connection_ports(lines);
-		for node in &graph.nodes {
+		for node in self.relation_nodes(graph) {
 			let opacity = self.work_board.view.visibility.borrow().node_opacity(graph, node);
 			if opacity <= 0.001 {
 				continue;
@@ -1733,6 +1748,7 @@ impl AgentSurface {
 					task,
 					status: status.to_owned(),
 					avatar,
+					metrics: (!layout.overview()).then(|| self.node_metrics(node, layout)),
 					activity: node.activity.clone(),
 					layout,
 				})
@@ -1746,9 +1762,6 @@ impl AgentSurface {
 						.text_ellipsis()
 						.child(node.title.clone()),
 				)
-			})
-			.when(node.row.is_some() && !layout.overview(), |view| {
-				view.child(self.node_metrics(node, layout))
 			})
 			.into_any_element()
 	}
@@ -2581,8 +2594,13 @@ mod fit_tests {
 						snap(before.0 - inset.0 + 320.) + inset.0,
 						snap(before.1 - inset.1 + 320.) + inset.1,
 					);
-					assert!((node.x - expected.0).abs() < 0.01);
-					assert!((node.y - expected.1).abs() < 0.01);
+					assert!(
+						(node.x - expected.0).abs() < 0.01 && (node.y - expected.1).abs() < 0.01,
+						"{mode:?}: drag from {before:?} to {expected:?}, got ({}, {}), picked {:?}",
+						node.x,
+						node.y,
+						s.work_board.view.picked_agent
+					);
 				});
 			}
 		}
@@ -3172,8 +3190,16 @@ mod fit_tests {
 					"zoom {scale}, display {density}: tokens {tokens:?}, time {time:?}, rate {rate:?}, metrics {metrics:?}"
 				);
 				assert!(rate.top() >= metrics.top() && rate.bottom() <= metrics.bottom());
-				assert_eq!(tokens.top(), time.top(), "time remains on the token row");
-				assert_eq!(tokens.top(), rate.top(), "speed remains on the token row");
+				for (upper, lower) in [(tokens, time), (time, rate)] {
+					assert_eq!(upper.left(), lower.left(), "the status tracks share one left edge");
+					assert_eq!(
+						upper.right(),
+						lower.right(),
+						"the status tracks share one right edge"
+					);
+					assert!(lower.top() >= upper.bottom(), "the three stats stack vertically");
+					assert!(f32::from(lower.top() - upper.bottom()) <= layout.spacing(1.) + 0.5);
+				}
 				let number = visual.debug_bounds("relation-number-release").unwrap();
 				assert!(number.left() >= identity.left() && number.right() <= identity.right());
 				assert_eq!(number.top(), identity.top());
@@ -3184,7 +3210,8 @@ mod fit_tests {
 					"activity sits to the right of the portrait"
 				);
 				assert!(
-					f32::from(preview.left() - avatar.right()) <= layout.spacing(6.) + 0.5,
+					f32::from(preview.left() - avatar.right().max(metrics.right()))
+						<= layout.spacing(4.) + 0.5,
 					"activity stays close to the character"
 				);
 				assert!(
@@ -3196,12 +3223,14 @@ mod fit_tests {
 					f32::from(metrics.top() - number.bottom()) <= layout.gap() + 3.,
 					"the HUD stays immediately below the numbered portrait"
 				);
-				for (left, right) in [(tokens, time), (time, rate)] {
-					assert!(
-						f32::from(right.left() - left.right()) <= layout.spacing(6.) + 1.,
-						"HUD values do not stretch to the row's ends"
-					);
-				}
+				assert!(
+					f32::from(metrics.center().x - avatar.center().x).abs() <= 0.5,
+					"the status block stays centered under the character"
+				);
+				assert!(
+					f32::from(metrics.size.width) <= 80.,
+					"long native counters still form a small block"
+				);
 				assert!(visual.debug_bounds("relation-status-release").is_some());
 				let selection = visual.debug_bounds("relation-selection-release").unwrap();
 				assert_eq!(selection.size.width, avatar.size.width);

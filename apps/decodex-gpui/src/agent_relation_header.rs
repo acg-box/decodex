@@ -12,6 +12,7 @@ pub(super) struct Header {
 	pub task: String,
 	pub status: String,
 	pub avatar: mascot::Avatar,
+	pub metrics: Option<gpui::AnyElement>,
 	pub activity: stream::Frame,
 	pub layout: super::card::Layout,
 }
@@ -37,63 +38,74 @@ impl RenderOnce for Header {
 			.min_w_0()
 			.flex()
 			.items_start()
-			.gap(gpui::px(layout.spacing(6.)))
+			.gap(gpui::px(layout.spacing(4.)))
 			.when(!layout.labels(), |body| body.justify_center())
 			.child(
 				gpui::div()
-					.debug_selector(move || avatar_selector.clone())
 					.flex_none()
-					.w(gpui::px(layout.spacing(super::card::PORTRAIT_WIDTH)))
 					.flex()
 					.flex_col()
 					.items_center()
-					.gap(gpui::px(layout.spacing(2.)))
+					.gap(gpui::px(layout.gap()))
 					.child(
 						gpui::div()
-							.relative()
+							.debug_selector(move || avatar_selector.clone())
+							.flex_none()
 							.w(gpui::px(layout.spacing(super::card::PORTRAIT_WIDTH)))
-							.h(gpui::px(layout.spacing(super::card::PORTRAIT_HEIGHT)))
-							.child(selection)
-							.child(self.avatar.element(layout)),
-					)
-					.when(layout.labels(), |portrait| {
-						portrait.child(
-							gpui::div()
-								.debug_selector(move || identity_selector.clone())
-								.h(gpui::px(layout.title_line()))
-								.flex()
-								.items_center()
-								.gap(gpui::px(layout.spacing(5.)))
-								.child(
+							.flex()
+							.flex_col()
+							.items_center()
+							.gap(gpui::px(layout.spacing(2.)))
+							.child(
+								gpui::div()
+									.relative()
+									.w(gpui::px(layout.spacing(super::card::PORTRAIT_WIDTH)))
+									.h(gpui::px(layout.spacing(super::card::PORTRAIT_HEIGHT)))
+									.child(selection)
+									.child(self.avatar.element(layout)),
+							)
+							.when(layout.labels(), |portrait| {
+								portrait.child(
 									gpui::div()
-										.debug_selector(move || light_selector.clone())
-										.size(gpui::px(4.))
-										.rounded_full()
-										.bg(crate::ui_theme::rgb(self.color)),
+										.debug_selector(move || identity_selector.clone())
+										.h(gpui::px(layout.title_line()))
+										.flex()
+										.items_center()
+										.gap(gpui::px(layout.spacing(5.)))
+										.child(
+											gpui::div()
+												.debug_selector(move || light_selector.clone())
+												.size(gpui::px(4.))
+												.rounded_full()
+												.bg(crate::ui_theme::rgb(self.color)),
+										)
+										.child(
+											gpui::div()
+												.debug_selector(move || number_selector.clone())
+												.font_family("Menlo")
+												.text_size(gpui::px(layout.title_size()))
+												.line_height(gpui::px(layout.title_line()))
+												.font_weight(gpui::FontWeight::MEDIUM)
+												.text_color(crate::ui_theme::rgb(
+													if self.selected {
+														crate::ui_theme::BLUE
+													} else {
+														foreground::PRIMARY
+													},
+												))
+												.child(self.number),
+										),
 								)
-								.child(
-									gpui::div()
-										.debug_selector(move || number_selector.clone())
-										.font_family("Menlo")
-										.text_size(gpui::px(layout.title_size()))
-										.line_height(gpui::px(layout.title_line()))
-										.font_weight(gpui::FontWeight::MEDIUM)
-										.text_color(crate::ui_theme::rgb(if self.selected {
-											crate::ui_theme::BLUE
-										} else {
-											foreground::PRIMARY
-										}))
-										.child(self.number),
-								),
-						)
-					}),
+							}),
+					)
+					.when_some(self.metrics, |portrait, metrics| portrait.child(metrics)),
 			)
 			.when(layout.labels(), |body| {
 				body.child(
 					gpui::div()
 						.flex_1()
 						.min_w_0()
-						.pt(gpui::px(layout.spacing(6.)))
+						.pt(gpui::px(layout.spacing(8.)))
 						.flex()
 						.flex_col()
 						.when(!has_actions, |details| {
@@ -174,7 +186,7 @@ fn action_rows(
 	window: &mut Window,
 	cx: &mut App,
 ) -> gpui::Div {
-	let activity_scale = layout.detail_line() / stream::LINE;
+	let activity_scale = layout.activity_line() / stream::LINE;
 	if frame.moving && layout.labels() {
 		ui_motion::request_frame(window, cx);
 	}
@@ -197,9 +209,9 @@ fn action_rows(
 				.left_0()
 				.right_0()
 				.top(gpui::px(line.y * activity_scale))
-				.h(gpui::px(layout.detail_line()))
+				.h(gpui::px(layout.activity_line()))
 				.text_size(gpui::px(layout.activity_size()))
-				.line_height(gpui::px(layout.detail_line()))
+				.line_height(gpui::px(layout.activity_line()))
 				.text_color(crate::ui_theme::rgb(super::card::ACTIVITY_TEXT))
 				.whitespace_nowrap()
 				.text_ellipsis()
