@@ -19,7 +19,7 @@ pub(super) struct Header {
 impl RenderOnce for Header {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let layout = self.layout.on_display(window.scale_factor());
-		let frame = if layout.overview() { self.activity.latest() } else { self.activity };
+		let frame = self.activity;
 		let has_actions = frame.height > 0.;
 		let actions_height = frame.height / stream::LINE;
 		let identity_selector = format!("relation-identity-{}", self.key);
@@ -28,6 +28,7 @@ impl RenderOnce for Header {
 		let task_selector = format!("relation-assignment-{}", self.key);
 		let avatar_selector = format!("relation-avatar-{}", self.key);
 		let actions = action_rows(&self.key, frame, layout, window, cx);
+		let selection = selection_mark(&self.key, self.selected, layout, window, cx);
 		let task = if self.task.is_empty() { self.status } else { self.task };
 		gpui::div()
 			.w_full()
@@ -35,8 +36,8 @@ impl RenderOnce for Header {
 			.flex_none()
 			.min_w_0()
 			.flex()
-			.items_center()
-			.gap(gpui::px(layout.spacing(12.)))
+			.items_start()
+			.gap(gpui::px(layout.spacing(6.)))
 			.when(!layout.labels(), |body| body.justify_center())
 			.child(
 				gpui::div()
@@ -47,7 +48,14 @@ impl RenderOnce for Header {
 					.flex_col()
 					.items_center()
 					.gap(gpui::px(layout.spacing(2.)))
-					.child(self.avatar.element(layout))
+					.child(
+						gpui::div()
+							.relative()
+							.w(gpui::px(layout.spacing(super::card::PORTRAIT_WIDTH)))
+							.h(gpui::px(layout.spacing(super::card::PORTRAIT_HEIGHT)))
+							.child(selection)
+							.child(self.avatar.element(layout)),
+					)
 					.when(layout.labels(), |portrait| {
 						portrait.child(
 							gpui::div()
@@ -85,10 +93,10 @@ impl RenderOnce for Header {
 					gpui::div()
 						.flex_1()
 						.min_w_0()
+						.pt(gpui::px(layout.spacing(6.)))
 						.flex()
 						.flex_col()
-						.justify_center()
-						.when(!layout.overview() || !has_actions, |details| {
+						.when(!has_actions, |details| {
 							details.child(
 								gpui::div()
 									.debug_selector(move || task_selector.clone())
@@ -109,6 +117,56 @@ impl RenderOnce for Header {
 	}
 }
 
+/// Selection belongs to the character. Fade its small ground ring without
+/// changing the hit bounds, the sprite's motion, or the node's placement.
+fn selection_mark(
+	key: &str,
+	selected: bool,
+	layout: super::card::Layout,
+	window: &mut Window,
+	cx: &mut App,
+) -> gpui::Div {
+	let selector = format!("relation-selection-{key}");
+	let opacity = ui_motion::value(
+		gpui::SharedString::from(format!("graph-selection-{key}")),
+		if selected { 1. } else { 0. },
+		window,
+		cx,
+	);
+	gpui::div()
+		.debug_selector(move || selector.clone())
+		.absolute()
+		.inset_0()
+		.opacity(opacity)
+		.child(
+			gpui::canvas(
+				|_, _, _| (),
+				move |bounds, _, window, _| {
+					let center = gpui::point(
+						bounds.center().x,
+						bounds.top() + gpui::px(layout.spacing(42.)),
+					);
+					let (rx, ry) = (layout.spacing(22.), layout.spacing(2.5).max(1.));
+					let p = |x, y| center + gpui::point(gpui::px(x), gpui::px(y));
+					let mut ring = gpui::PathBuilder::stroke(gpui::px(1.));
+					let k = 0.552_284_8;
+					ring.move_to(p(rx, 0.));
+					ring.cubic_bezier_to(p(0., ry), p(rx, k * ry), p(k * rx, ry));
+					ring.cubic_bezier_to(p(-rx, 0.), p(-k * rx, ry), p(-rx, k * ry));
+					ring.cubic_bezier_to(p(0., -ry), p(-rx, -k * ry), p(-k * rx, -ry));
+					ring.cubic_bezier_to(p(rx, 0.), p(k * rx, -ry), p(rx, -k * ry));
+					if let Ok(path) = ring.build() {
+						window.paint_path(
+							path,
+							crate::ui_theme::rgb(crate::ui_theme::BLUE).opacity(0.65),
+						);
+					}
+				},
+			)
+			.size_full(),
+		)
+}
+
 fn action_rows(
 	key: &str,
 	frame: stream::Frame,
@@ -127,7 +185,6 @@ fn action_rows(
 		})
 		.relative()
 		.w_full()
-		.when(!layout.overview(), |actions| actions.mt(gpui::px(layout.spacing(4.))))
 		.h(gpui::px(frame.height * activity_scale))
 		.flex_none()
 		.overflow_hidden();

@@ -486,7 +486,7 @@ mod tests {
 			extents.push(bounds(&positions, &input));
 			assert_eq!(positions, input.arrange());
 		}
-		assert!(extents[0].0 > extents[0].1 * 2.);
+		assert!(extents[0].0 > extents[0].1, "the compact tree retains its horizontal extent");
 		assert_eq!(
 			extents[0], extents[1],
 			"an explicit layout must not change direction on resize"

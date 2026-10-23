@@ -10,10 +10,9 @@ use gpui::{
 
 // Geometry stays in world space. Text stops shrinking before it becomes illegible.
 // At 100%, graph type uses the same sizes as the native shell.
-// Reserve the longest compact counters, including the native average-rate caption,
-// at the full-detail threshold and the one-times display font floor.
-// Values never resize a node.
-pub(super) const WIDTH: f32 = 328.;
+// Compact symbols keep the longest counters on one HUD baseline, including at
+// the full-detail threshold and the one-times display font floor.
+pub(super) const WIDTH: f32 = 288.;
 pub(super) const INSET_X: f32 = 10.;
 pub(super) const INSET_Y: f32 = 8.;
 pub(super) const PORTRAIT_WIDTH: f32 = 80.;
@@ -158,10 +157,10 @@ impl Layout {
 	}
 
 	pub(super) fn gap(self) -> f32 {
-		self.spacing(8.)
+		self.spacing(2.)
 	}
 
-	/// Values and their optional token allocation share one baseline.
+	/// The three source-bound counters share one compact baseline.
 	pub(super) fn metrics_height(self) -> f32 {
 		self.detail_line()
 	}
@@ -169,12 +168,8 @@ impl Layout {
 	pub(super) fn header_height(self, actions: f32) -> f32 {
 		let portrait = self.spacing(PORTRAIT_HEIGHT)
 			+ if self.labels() { self.title_line() + self.spacing(2.) } else { 0. };
-		let activity = if self.overview() {
-			self.title_line().max(self.detail_line())
-		} else {
-			self.title_line()
-				+ if actions > 0. { self.spacing(4.) + actions * self.detail_line() } else { 0. }
-		};
+		let activity = self.spacing(6.)
+			+ if actions > 0. { actions * self.detail_line() } else { self.title_line() };
 		portrait.max(activity)
 	}
 
@@ -184,16 +179,17 @@ impl Layout {
 		if self.overview() {
 			return OVERVIEW_HEIGHT;
 		}
-		let range = if self.full_detail() {
-			[FULL_DETAIL_ZOOM, MAX_ZOOM]
-		} else {
-			[SUMMARY_ZOOM, FULL_DETAIL_ZOOM - 0.01]
-		};
+		// Keep one camera footprint per detail tier. Content stays top-aligned;
+		// readable font floors must not move the agent under the zoom pointer.
+		let (min, max) = self.zoom_range();
+		let range = [min, max];
 		range.into_iter().fold(0., |height, zoom| {
 			let layout = Self::new(zoom);
-			let header = layout.header_height(actions);
 			height.max(
-				((header + layout.gap() + layout.metrics_height() + 2. * layout.spacing(INSET_Y))
+				((layout.header_height(actions)
+					+ layout.gap()
+					+ layout.metrics_height()
+					+ 2. * layout.spacing(INSET_Y))
 					/ zoom)
 					.ceil(),
 			)
@@ -266,48 +262,21 @@ fn point(key: &str, color: u32, selected: bool) -> AnyElement {
 		.into_any_element()
 }
 
-/// Selected agents get corner marks; routed endpoints remain visible for all agents.
+/// Routed endpoints remain visible without framing the character and its activity.
 /// Ports are local world coordinates; the router alone chooses their side.
-pub(super) struct Frame {
+pub(super) struct Ports {
 	pub zoom: f32,
 	pub selected: bool,
 	pub presence: f32,
 	pub ports: Vec<(f32, f32)>,
 }
-impl Frame {
+impl Ports {
 	fn element(self) -> impl IntoElement {
 		gpui::canvas(
 			|_, _, _| (),
 			move |bounds, _, window, _| {
 				let density = window.scale_factor();
 				let snap = |v: f32| (v * density).round() / density;
-				let left = snap(f32::from(bounds.left()));
-				let top = snap(f32::from(bounds.top()));
-				let right = snap(f32::from(bounds.right())) - 1.;
-				let bottom = snap(f32::from(bounds.bottom())) - 1.;
-				let length = snap((8. * self.zoom).max(5.));
-				let color = crate::ui_theme::rgb(SELECTED).opacity(self.presence * 0.8);
-				if self.selected {
-					for (x, y, dx, dy) in [
-						(left, top, 1., 1.),
-						(right, top, -1., 1.),
-						(left, bottom, 1., -1.),
-						(right, bottom, -1., -1.),
-					] {
-						for (x, y, width, height) in [
-							(x + if dx < 0. { 1. - length } else { 0. }, y, length, 1.),
-							(x, y + if dy < 0. { 1. - length } else { 0. }, 1., length),
-						] {
-							window.paint_quad(gpui::fill(
-								gpui::Bounds::new(
-									gpui::point(gpui::px(x), gpui::px(y)),
-									gpui::size(gpui::px(width), gpui::px(height)),
-								),
-								color,
-							));
-						}
-					}
-				}
 				for &(x, y) in &self.ports {
 					let center = (
 						snap(f32::from(bounds.left()) + x * self.zoom),
@@ -377,7 +346,7 @@ pub(super) struct Card {
 	pub content: AnyElement,
 	pub faded: bool,
 	pub visibility: f32,
-	pub frame: Option<Frame>,
+	pub ports: Option<Ports>,
 }
 impl RenderOnce for Card {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -397,7 +366,7 @@ impl RenderOnce for Card {
 		}
 		self.surface
 			.opacity(self.visibility * arrival)
-			.when_some(self.frame, |surface, frame| surface.child(frame.element()))
+			.when_some(self.ports, |surface, ports| surface.child(ports.element()))
 			.child(gpui::div().size_full().opacity(1. - 0.08 * dim).child(self.content))
 	}
 }

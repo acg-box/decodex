@@ -1425,7 +1425,7 @@ impl AgentSurface {
 				content: self.relation_node_presentation(node, layout, emphasized),
 				faded,
 				visibility: opacity,
-				frame: node.row.as_ref().filter(|_| !layout.points()).map(|_| card::Frame {
+				ports: node.row.as_ref().filter(|_| !layout.points()).map(|_| card::Ports {
 					zoom: scale,
 					selected: emphasized,
 					presence: layout.card_presence(),
@@ -1672,14 +1672,19 @@ impl AgentSurface {
 				node.color,
 				selected,
 				layout,
-				(!layout.points()).then(|| self.relation_node_content(node, layout)),
+				(!layout.points()).then(|| self.relation_node_content(node, layout, selected)),
 			)
 		} else {
-			self.relation_node_content(node, layout)
+			self.relation_node_content(node, layout, selected)
 		}
 	}
 
-	fn relation_node_content(&self, node: &Node, layout: card::Layout) -> AnyElement {
+	fn relation_node_content(
+		&self,
+		node: &Node,
+		layout: card::Layout,
+		selected: bool,
+	) -> AnyElement {
 		let scale = self.relation_scale();
 		let width = if node.row.is_some() { layout.width } else { node.width() * scale };
 		let height = layout.pixel(
@@ -1702,8 +1707,8 @@ impl AgentSurface {
 			.when(node.row.is_some(), |body| body.py(gpui::px(layout.spacing(card::INSET_Y))))
 			.flex()
 			.flex_col()
+			.items_start()
 			.when(layout.overview(), |body| body.justify_center())
-			.when(!layout.overview(), |body| body.justify_between())
 			.gap(gpui::px(layout.gap()))
 			.when_some(preview, |view, task| {
 				let now = std::time::Instant::now();
@@ -1724,7 +1729,7 @@ impl AgentSurface {
 						.map(|row| self.relation_agent_number(row))
 						.unwrap_or_default(),
 					color: node.color,
-					selected: self.relation_node_current(node),
+					selected,
 					task,
 					status: status.to_owned(),
 					avatar,
@@ -2205,9 +2210,7 @@ mod fit_tests {
 	}
 
 	#[gpui::test]
-	fn actions_grow_the_footprint_on_arrival_and_release_it_after_fading(
-		cx: &mut gpui::TestAppContext,
-	) {
+	fn actions_use_the_portrait_space_and_release_rows_after_fading(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(super::super::tests::fixture);
 		surface.update(cx, |s, _| {
 			s.work_board.view.zoom = Some(1.);
@@ -2257,9 +2260,10 @@ mod fit_tests {
 				.unwrap();
 			assert_eq!(three.activity.lines.len(), 3);
 			assert_eq!(three.activity.height, 3. * stream::LINE);
+			assert_eq!(three.height(), empty.height(), "three updates fit beside the portrait");
 			assert!(
-				three.height() > empty.height(),
-				"activity uses the portrait space before growing"
+				card::Layout::new(1.).header_height(3.) >= three.activity.height,
+				"the visible updates fit without reserving a separate title row"
 			);
 			let idle = arrival + std::time::Duration::from_secs(7);
 			s.relation_graph_at(idle);
@@ -2276,7 +2280,10 @@ mod fit_tests {
 				empty.height(),
 				"one retained update fits beside the avatar"
 			);
-			assert!(settled.height() < three.height(), "absent rows release their space");
+			assert!(
+				settled.activity.height < three.activity.height,
+				"absent rows release their space"
+			);
 		});
 	}
 
@@ -3171,19 +3178,39 @@ mod fit_tests {
 				assert!(number.left() >= identity.left() && number.right() <= identity.right());
 				assert_eq!(number.top(), identity.top());
 				let avatar = visual.debug_bounds("relation-avatar-release").unwrap();
-				let assignment = visual.debug_bounds("relation-assignment-release").unwrap();
+				let preview = visual.debug_bounds("relation-preview-release").unwrap();
 				assert!(
-					avatar.right() < assignment.left(),
+					avatar.right() < preview.left(),
 					"activity sits to the right of the portrait"
 				);
+				assert!(
+					f32::from(preview.left() - avatar.right()) <= layout.spacing(6.) + 0.5,
+					"activity stays close to the character"
+				);
+				assert!(
+					visual.debug_bounds("relation-assignment-release").is_none(),
+					"live activity does not repeat the assignment above it"
+				);
 				assert!(number.bottom() <= avatar.bottom() && avatar.bottom() < metrics.top());
+				assert!(
+					f32::from(metrics.top() - number.bottom()) <= layout.gap() + 3.,
+					"the HUD stays immediately below the numbered portrait"
+				);
+				for (left, right) in [(tokens, time), (time, rate)] {
+					assert!(
+						f32::from(right.left() - left.right()) <= layout.spacing(6.) + 1.,
+						"HUD values do not stretch to the row's ends"
+					);
+				}
 				assert!(visual.debug_bounds("relation-status-release").is_some());
-				assert!(visual.debug_bounds("relation-mark-release").is_none());
+				let selection = visual.debug_bounds("relation-selection-release").unwrap();
+				assert_eq!(selection.size.width, avatar.size.width);
+				assert!(selection.bottom() <= number.top(), "selection belongs to the portrait");
 				assert!(metrics.top() > card.top() && metrics.bottom() < card.bottom());
 				assert!(
-					f32::from(card.bottom() - metrics.bottom())
-						<= layout.spacing(card::INSET_Y) + 1.,
-					"metrics leave only the native inset at the bottom of the card"
+					metrics.size.width
+						< card.size.width - gpui::px(2. * layout.spacing(card::INSET_X)),
+					"the HUD uses its content width, not the camera footprint"
 				);
 			}
 		}

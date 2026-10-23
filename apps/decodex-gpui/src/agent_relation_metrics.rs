@@ -1,6 +1,6 @@
 //! Per-agent usage, time, rate and the share of recorded conversation tokens.
 use super::{AgentSurface, AnyElement, Context, Node};
-use crate::ui_theme::foreground;
+use crate::{ui_theme::foreground, ui_work_metrics::Icon};
 use gpui::{App, IntoElement, RenderOnce, Window, prelude::*};
 pub(in super::super) type Metrics = crate::ui_work_metrics::Sample;
 
@@ -36,14 +36,7 @@ fn labels(metrics: Metrics) -> [String; 3] {
 		|value| if value < 1000 { value.to_string() } else { compact(value as f64) },
 	);
 	let rate = metrics.rate().map_or_else(|| "—".into(), |(value, _)| compact(value));
-	[
-		format!("{tokens} tok"),
-		time_label(metrics.time()),
-		format!(
-			"{rate} {}",
-			if metrics.stats.is_some() { metrics.rate_caption() } else { "tok/s" }
-		),
-	]
+	[tokens, time_label(metrics.time()), format!("{rate}/s")]
 }
 
 fn fraction(value: Option<u64>, total: u128) -> Option<f32> {
@@ -58,49 +51,22 @@ fn percentage(value: Option<f32>) -> String {
 	}
 }
 
-fn parts(text: &str, with_unit: bool) -> (&str, Option<&str>) {
-	match (with_unit, text.split_once(' ')) {
-		(true, Some((value, unit))) => (value, Some(unit)),
-		_ => (text, None),
-	}
+fn icon_size(layout: super::card::Layout) -> f32 {
+	layout.spacing(10.).max(8.)
 }
 
-fn readout_value(
-	text: String,
-	with_unit: bool,
-	accent: u32,
-	layout: super::card::Layout,
-) -> gpui::Div {
-	let (value, unit) = parts(&text, with_unit);
+fn readout_value(text: String, icon: Icon, accent: u32, layout: super::card::Layout) -> gpui::Div {
 	gpui::div()
-		.relative()
 		.flex()
-		.items_baseline()
+		.items_center()
 		.whitespace_nowrap()
 		.gap(gpui::px(layout.spacing(3.)))
 		.text_size(gpui::px(layout.metric_size()))
 		.line_height(gpui::px(layout.detail_line()))
 		.font_weight(gpui::FontWeight::MEDIUM)
 		.text_color(crate::ui_theme::rgb(foreground::BODY))
-		.child(
-			gpui::div()
-				.absolute()
-				.bottom_0()
-				.left_0()
-				.w(gpui::px(layout.spacing(8.)))
-				.h(gpui::px(1.))
-				.bg(crate::ui_theme::rgb(accent)),
-		)
-		.child(value.to_owned())
-		.when_some(unit, |row, unit| {
-			row.child(
-				gpui::div()
-					.text_size(gpui::px(layout.detail_size()))
-					.font_weight(gpui::FontWeight::NORMAL)
-					.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
-					.child(unit.to_owned()),
-			)
-		})
+		.child(icon.element(icon_size(layout), accent))
+		.child(text)
 }
 
 #[derive(IntoElement)]
@@ -114,15 +80,15 @@ impl RenderOnce for Readout {
 	fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
 		let layout = self.layout.on_display(window.scale_factor());
 		let [tokens, time, rate] = labels(self.metrics);
-		let measure_text = |text: &str, size: f32, weight: gpui::FontWeight| {
+		let measure = |text: &str| {
 			let mut font = window.text_style().font();
-			font.weight = weight;
+			font.weight = gpui::FontWeight::MEDIUM;
 			f32::from(
 				window
 					.text_system()
 					.shape_line(
 						text.to_owned().into(),
-						gpui::px(size),
+						gpui::px(layout.metric_size()),
 						&[gpui::TextRun {
 							len: text.len(),
 							font: font.clone(),
@@ -133,28 +99,26 @@ impl RenderOnce for Readout {
 					.width,
 			)
 			.ceil()
+				+ icon_size(layout)
+				+ layout.spacing(3.)
 		};
-		let measure = |text: &str, with_unit: bool| {
-			let (value, unit) = parts(text, with_unit);
-			measure_text(value, layout.metric_size(), gpui::FontWeight::MEDIUM)
-				+ unit.map_or(0., |unit| {
-					layout.spacing(3.)
-						+ measure_text(unit, layout.detail_size(), gpui::FontWeight::NORMAL)
-				})
-		};
-		let available = layout.width - 2. * layout.spacing(super::card::INSET_X);
-		let gap = layout.spacing(8.);
-		let values = [measure(&tokens, true), measure(&time, false), measure(&rate, true)];
+		let available =
+			layout.width - 2. * layout.spacing(super::card::INSET_X) - layout.spacing(8.);
+		let gap = layout.spacing(6.);
+		let values = [measure(&tokens), measure(&time), measure(&rate)];
 		// Keep the three real readouts on one baseline while their shaped glyphs fit.
 		// Allocation belongs to the shared usage strip, not the actor HUD.
 		let show_time = values[0] + gap + values[1] <= available;
 		let all_values = values.iter().sum::<f32>() + 2. * gap;
 		let show_rate = all_values <= available;
+		let width = values[0]
+			+ if show_time { gap + values[1] } else { 0. }
+			+ if show_rate { gap + values[2] } else { 0. };
 		let token_selector = format!("relation-tokens-{}", self.key);
 		let time_selector = format!("relation-time-{}", self.key);
 		let rate_selector = format!("relation-rate-{}", self.key);
 		gpui::div()
-			.w_full()
+			.w(gpui::px(width))
 			.h(gpui::px(layout.detail_line()))
 			.flex_none()
 			.flex()
@@ -166,19 +130,17 @@ impl RenderOnce for Readout {
 			.font_weight(gpui::FontWeight::NORMAL)
 			.text_color(crate::ui_theme::rgb(foreground::BODY))
 			.child(
-				gpui::div().flex_1().min_w_0().flex().items_center().gap(gpui::px(gap)).child(
-					gpui::div()
-						.debug_selector(move || token_selector.clone())
-						.flex_none()
-						.child(readout_value(tokens, true, crate::ui_theme::BLUE, layout)),
-				),
+				gpui::div()
+					.debug_selector(move || token_selector.clone())
+					.flex_none()
+					.child(readout_value(tokens, Icon::Tokens, crate::ui_theme::BLUE, layout)),
 			)
 			.when(show_time, |row| {
 				row.child(
 					gpui::div()
 						.debug_selector(move || time_selector.clone())
 						.flex_none()
-						.child(readout_value(time, false, crate::ui_theme::AMBER, layout)),
+						.child(readout_value(time, Icon::Time, crate::ui_theme::AMBER, layout)),
 				)
 			})
 			.when(show_rate, |row| {
@@ -186,7 +148,7 @@ impl RenderOnce for Readout {
 					gpui::div()
 						.debug_selector(move || rate_selector.clone())
 						.flex_none()
-						.child(readout_value(rate, true, crate::ui_theme::GREEN, layout)),
+						.child(readout_value(rate, Icon::Speed, crate::ui_theme::GREEN, layout)),
 				)
 			})
 	}
@@ -223,7 +185,7 @@ impl AgentSurface {
 			.debug_selector(move || selector.clone())
 			.role(gpui::Role::Group)
 			.aria_label(description)
-			.w_full()
+			.ml(gpui::px(layout.spacing(8.)))
 			.flex_none()
 			.child(Readout { key: node.key.clone(), metrics, layout })
 			.into_any_element()

@@ -9,11 +9,15 @@ use std::time::Instant;
 #[derive(Clone, Copy)]
 pub(crate) enum Icon {
 	Tokens,
+	Time,
+	Speed,
 }
 impl Icon {
 	fn source(self) -> (&'static str, &'static [u8]) {
 		match self {
 			Self::Tokens => ("work-metric-tokens", br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2 5l6-3 6 3-6 3-6-3Zm0 3 6 3 6-3M2 11l6 3 6-3" fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>"#),
+			Self::Time => ("work-metric-time", br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="white" stroke-width="1.3"/><path d="M8 4.5V8l2.5 1.5" fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>"#),
+			Self::Speed => ("work-metric-speed", br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M3 12a6 6 0 1 1 10 0M8 9l3-4M6 12h4" fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>"#),
 		}
 	}
 
