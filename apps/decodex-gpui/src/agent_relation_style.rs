@@ -161,6 +161,8 @@ impl AgentSurface {
 			.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 			.child(links)
 			.child(lights)
+			.child("Bars: tokens · time · speed")
+			.child("Fill: value / graph maximum, not completion")
 			.into_any_element()
 	}
 }

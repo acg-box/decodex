@@ -1357,6 +1357,8 @@ impl AgentSurface {
 		let layout_viewport = self.work_board.view.layout_viewport;
 		let layout = graph.layout.on_display(self.work_board.view.display_scale);
 		let mut ports = graph.connection_ports(lines);
+		let metrics_scale =
+			metrics::Scale::new(graph.nodes.iter().map(|node| self.metrics_for(node)));
 		for node in self.relation_nodes(graph) {
 			let opacity = self.work_board.view.visibility.borrow().node_opacity(graph, node);
 			if opacity <= 0.001 {
@@ -1437,7 +1439,7 @@ impl AgentSurface {
 			canvas = canvas.child(card::Card {
 				key: node.key.clone(),
 				surface: view,
-				content: self.relation_node_presentation(node, layout, emphasized),
+				content: self.relation_node_presentation(node, layout, emphasized, metrics_scale),
 				faded,
 				visibility: opacity,
 				ports: node.row.as_ref().filter(|_| !layout.points()).map(|_| card::Ports {
@@ -1680,6 +1682,7 @@ impl AgentSurface {
 		node: &Node,
 		layout: card::Layout,
 		selected: bool,
+		metrics_scale: metrics::Scale,
 	) -> AnyElement {
 		if node.row.is_some() && layout.overview() {
 			card::overview(
@@ -1687,10 +1690,11 @@ impl AgentSurface {
 				node.color,
 				selected,
 				layout,
-				(!layout.points()).then(|| self.relation_node_content(node, layout, selected)),
+				(!layout.points())
+					.then(|| self.relation_node_content(node, layout, selected, metrics_scale)),
 			)
 		} else {
-			self.relation_node_content(node, layout, selected)
+			self.relation_node_content(node, layout, selected, metrics_scale)
 		}
 	}
 
@@ -1699,6 +1703,7 @@ impl AgentSurface {
 		node: &Node,
 		layout: card::Layout,
 		selected: bool,
+		metrics_scale: metrics::Scale,
 	) -> AnyElement {
 		let scale = self.relation_scale();
 		let width = if node.row.is_some() { layout.width } else { node.width() * scale };
@@ -1748,7 +1753,8 @@ impl AgentSurface {
 					task,
 					status: status.to_owned(),
 					avatar,
-					metrics: (!layout.overview()).then(|| self.node_metrics(node, layout)),
+					metrics: (!layout.overview())
+						.then(|| self.node_metrics(node, layout, metrics_scale)),
 					activity: node.activity.clone(),
 					layout,
 				})

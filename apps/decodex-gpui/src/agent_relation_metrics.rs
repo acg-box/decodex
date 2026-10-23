@@ -5,6 +5,40 @@ use gpui::{App, IntoElement, RenderOnce, Window, prelude::*};
 pub(in super::super) type Metrics = crate::ui_work_metrics::Sample;
 const BAR_WIDTH: f32 = 68.;
 
+/// One comparison range per graph, derived only from source-bound samples.
+/// Cumulative counts and observed rates have no common capacity or task target.
+#[derive(Clone, Copy, Default)]
+pub(super) struct Scale([f64; 3]);
+impl Scale {
+	pub(super) fn new(samples: impl IntoIterator<Item = Metrics>) -> Self {
+		let mut maxima = [0_f64; 3];
+		for sample in samples {
+			for (maximum, value) in maxima.iter_mut().zip(values(sample)) {
+				if let Some(value) = value {
+					*maximum = maximum.max(value);
+				}
+			}
+		}
+		Self(maxima)
+	}
+
+	fn fills(self, sample: Metrics) -> [f32; 3] {
+		let values = values(sample);
+		std::array::from_fn(|index| match values[index] {
+			Some(value) if self.0[index] > 0. => (value / self.0[index]).clamp(0., 1.) as f32,
+			_ => 0.,
+		})
+	}
+}
+
+fn values(sample: Metrics) -> [Option<f64>; 3] {
+	[
+		sample.tokens.map(|value| value as f64),
+		sample.time().map(|value| value as f64),
+		sample.rate().map(|(value, _)| value),
+	]
+}
+
 // Graph labels have bounded magnitudes. Full native counters and time remain in
 // the accessible description; the graph never grows when a counter gains a digit.
 fn compact(mut value: f64) -> String {
@@ -52,38 +86,88 @@ fn percentage(value: Option<f32>) -> String {
 	}
 }
 
-fn readout_value(text: String, accent: u32, layout: super::card::Layout) -> gpui::Div {
+fn value_text(text: String, width: f32, layout: super::card::Layout) -> gpui::Div {
 	gpui::div()
-		.w_full()
+		.absolute()
+		.left_0()
+		.top_0()
+		.w(gpui::px(width))
 		.h(gpui::px(layout.metric_line()))
-		.px(gpui::px(layout.spacing(4.)))
-		.flex_none()
 		.flex()
 		.items_center()
 		.justify_center()
 		.whitespace_nowrap()
-		.rounded(gpui::px(layout.spacing(2.).max(1.)))
-		.bg(crate::ui_theme::rgb(accent))
 		.text_size(gpui::px(layout.metric_size()))
 		.line_height(gpui::px(layout.metric_line()))
 		.font_weight(gpui::FontWeight::MEDIUM)
-		// The inverse foreground keeps real values readable inside the colored
-		// strip in both themes. Bar length does not imply task progress.
-		.text_color(crate::ui_theme::rgb(crate::ui_theme::CANVAS))
 		.child(text)
+}
+
+fn readout_value(
+	text: String,
+	accent: u32,
+	amount: f32,
+	width: f32,
+	fill_selector: String,
+	layout: super::card::Layout,
+) -> gpui::Div {
+	let inset = layout.pixel(0.5).max(0.5);
+	let radius = layout.spacing(2.).max(1.);
+	gpui::div()
+		.relative()
+		.w_full()
+		.h(gpui::px(layout.metric_line()))
+		.flex_none()
+		.rounded(gpui::px(radius))
+		.bg(crate::ui_theme::rgb(crate::ui_theme::LINE_STRONG))
+		.overflow_hidden()
+		.child(
+			value_text(text.clone(), width, layout)
+				.text_color(crate::ui_theme::rgb(foreground::PRIMARY)),
+		)
+		.child(
+			gpui::div()
+				.debug_selector(move || fill_selector.clone())
+				.absolute()
+				.left(gpui::px(inset))
+				.top(gpui::px(inset))
+				.bottom(gpui::px(inset))
+				.w(gpui::px(layout.pixel((width - 2. * inset) * amount)))
+				.rounded(gpui::px((radius - inset).max(0.5)))
+				.bg(crate::ui_theme::rgb(accent))
+				.overflow_hidden()
+				// The same label uses inverse ink only over the colored fill.
+				// Both copies share one pixel grid and one text origin.
+				.child(
+					value_text(text, width, layout)
+						.left(gpui::px(-inset))
+						.top(gpui::px(-inset))
+						.text_color(crate::ui_theme::rgb(crate::ui_theme::CANVAS)),
+				),
+		)
 }
 
 #[derive(IntoElement)]
 struct Readout {
 	key: String,
 	metrics: Metrics,
+	scale: Scale,
 	layout: super::card::Layout,
 }
 
 impl RenderOnce for Readout {
-	fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let layout = self.layout.on_display(window.scale_factor());
 		let [tokens, time, rate] = labels(self.metrics);
+		let targets = self.scale.fills(self.metrics);
+		let fills: [f32; 3] = std::array::from_fn(|index| {
+			crate::ui_motion::value(
+				gpui::SharedString::from(format!("graph-stat-fill-{}-{index}", self.key)),
+				targets[index],
+				window,
+				cx,
+			)
+		});
 		let measure = |text: &str| {
 			let mut font = window.text_style().font();
 			font.weight = gpui::FontWeight::MEDIUM;
@@ -110,6 +194,8 @@ impl RenderOnce for Readout {
 		let token_selector = format!("relation-tokens-{}", self.key);
 		let time_selector = format!("relation-time-{}", self.key);
 		let rate_selector = format!("relation-rate-{}", self.key);
+		let fill_selectors =
+			["tokens", "time", "rate"].map(|kind| format!("relation-fill-{}-{kind}", self.key));
 		gpui::div()
 			.w(gpui::px(width))
 			.h(gpui::px(layout.metrics_height()))
@@ -127,21 +213,42 @@ impl RenderOnce for Readout {
 					.debug_selector(move || token_selector.clone())
 					.w_full()
 					.flex_none()
-					.child(readout_value(tokens, crate::ui_theme::BLUE, layout)),
+					.child(readout_value(
+						tokens,
+						crate::ui_theme::BLUE,
+						fills[0],
+						width,
+						fill_selectors[0].clone(),
+						layout,
+					)),
 			)
 			.child(
 				gpui::div()
 					.debug_selector(move || time_selector.clone())
 					.w_full()
 					.flex_none()
-					.child(readout_value(time, crate::ui_theme::AMBER, layout)),
+					.child(readout_value(
+						time,
+						crate::ui_theme::AMBER,
+						fills[1],
+						width,
+						fill_selectors[1].clone(),
+						layout,
+					)),
 			)
 			.child(
 				gpui::div()
 					.debug_selector(move || rate_selector.clone())
 					.w_full()
 					.flex_none()
-					.child(readout_value(rate, crate::ui_theme::GREEN, layout)),
+					.child(readout_value(
+						rate,
+						crate::ui_theme::GREEN,
+						fills[2],
+						width,
+						fill_selectors[2].clone(),
+						layout,
+					)),
 			)
 	}
 }
@@ -160,7 +267,12 @@ impl AgentSurface {
 			.unwrap_or_default()
 	}
 
-	pub(super) fn node_metrics(&self, node: &Node, layout: super::card::Layout) -> AnyElement {
+	pub(super) fn node_metrics(
+		&self,
+		node: &Node,
+		layout: super::card::Layout,
+		scale: Scale,
+	) -> AnyElement {
 		let metrics = self.metrics_for(node);
 		let share = fraction(metrics.tokens, self.recorded_token_total());
 		let selector = format!("relation-metrics-{}", node.key);
@@ -176,9 +288,9 @@ impl AgentSurface {
 			.id(gpui::SharedString::from(selector.clone()))
 			.debug_selector(move || selector.clone())
 			.role(gpui::Role::Group)
-			.aria_label(description)
+			.aria_label(format!("{description} Bar fills compare recorded values with the largest agent in this graph; they do not show completion."))
 			.flex_none()
-			.child(Readout { key: node.key.clone(), metrics, layout })
+			.child(Readout { key: node.key.clone(), metrics, scale, layout })
 			.into_any_element()
 	}
 
@@ -218,6 +330,36 @@ impl AgentSurface {
 mod tests {
 	use super::*;
 
+	#[test]
+	fn bar_ranges_compare_each_recorded_metric_and_keep_missing_values_empty() {
+		let sample = |tokens, ms, output| Metrics {
+			tokens: Some(tokens),
+			stats: Some(decodex_protocol::AgentThreadMetrics {
+				completed_ms: Some(ms),
+				rate: Some(decodex_protocol::AgentOutputRate {
+					estimated: true,
+					active: false,
+					output_tokens: output,
+					duration_ms: 1_000,
+					started_at_ms: 0,
+					completed_at_ms: Some(1_000),
+				}),
+				..Default::default()
+			}),
+			..Default::default()
+		};
+		let first = sample(1_000, 10_000, 100);
+		let second = sample(500, 20_000, 20);
+		let zero = sample(0, 0, 0);
+		let missing = Metrics::default();
+		let scale = Scale::new([first, second, zero, missing]);
+		assert_eq!(scale.fills(first), [1., 0.5, 1.]);
+		assert_eq!(scale.fills(second), [0.5, 1., 0.2]);
+		assert_eq!(scale.fills(zero), [0.; 3]);
+		assert_eq!(scale.fills(missing), [0.; 3]);
+		assert_eq!(Scale::new([zero, missing]).fills(zero), [0.; 3]);
+	}
+
 	struct Fixture {
 		zoom: f32,
 		metrics: Metrics,
@@ -230,7 +372,12 @@ mod tests {
 				.w(gpui::px(layout.width))
 				.px(gpui::px(layout.spacing(super::super::card::INSET_X)))
 				.font_family(crate::ui_theme::FONT_FAMILY)
-				.child(Readout { key: "fixture".into(), metrics: self.metrics, layout })
+				.child(Readout {
+					key: "fixture".into(),
+					metrics: self.metrics,
+					scale: Scale([1_000_000., 120_000., 100.]),
+					layout,
+				})
 		}
 	}
 
@@ -278,6 +425,23 @@ mod tests {
 				}
 				assert!(f32::from(tokens.size.width) <= BAR_WIDTH);
 				assert!(f32::from(rate.bottom() - tokens.top()) <= layout.metrics_height() + 0.5);
+				let inset = layout.pixel(0.5).max(0.5);
+				for (name, track, fraction) in [
+					("relation-fill-fixture-tokens", tokens, 0.514759),
+					("relation-fill-fixture-time", time, 76_000. / 120_000.),
+					("relation-fill-fixture-rate", rate, 0.731),
+				] {
+					let fill = visual.debug_bounds(name).unwrap();
+					assert_eq!(fill.left(), track.left() + gpui::px(inset));
+					assert_eq!(fill.top(), track.top() + gpui::px(inset));
+					assert!(fill.bottom() < track.bottom());
+					assert!(fill.right() < track.right());
+					let inner_width = f32::from(track.size.width) - 2. * inset;
+					assert!(
+						(f32::from(fill.size.width) - inner_width * fraction).abs() <= 1. / density,
+						"{name} fill lost its proportion at {zoom} on {density}x: {fill:?}"
+					);
+				}
 				for name in
 					["relation-tokens-fixture", "relation-time-fixture", "relation-rate-fixture"]
 				{
