@@ -1292,12 +1292,20 @@ impl AgentSurface {
 			return canvas;
 		}
 		if self.work_board.view.presentation == layout::Presentation::Together {
+			let coordinators = self
+				.snapshot
+				.iter()
+				.flat_map(|snapshot| &snapshot.work_items)
+				.filter(|work| work.parent_goal_id.is_none())
+				.map(|work| work.id.clone())
+				.collect::<Vec<_>>();
 			canvas = groups::paint(
 				canvas,
 				graph,
 				scale,
 				pan,
 				self.work_board.view.picked_agent.as_deref(),
+				&coordinators,
 			);
 		}
 		for scope in &graph.scopes {
@@ -3441,6 +3449,29 @@ mod fit_tests {
 				);
 			}
 		}
+	}
+
+	#[gpui::test]
+	fn archived_coordinator_keeps_visible_team_boundaries(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| {
+			let mut s = super::super::tests::fixture(cx);
+			s.visual_workspace_page("workbench", cx);
+			s.snapshot.as_mut().unwrap().archived_work_ids.insert("agent".into());
+			s.workspace.graph_expanded = true;
+			s.work_board.view.presentation = layout::Presentation::Together;
+			s.work_board.view.camera_fixed = true;
+			s.work_board.view.zoom = Some(1.);
+			s
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1600.), gpui::px(1000.)));
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("relation-team-mira").is_some());
+		assert!(visual.debug_bounds("relation-team-sage").is_some());
+		assert!(visual.debug_bounds("relation-team-agent").is_none());
+		surface.read_with(visual, |s, _| {
+			assert!(s.snapshot.as_ref().unwrap().archived_work_ids.contains(&"agent".to_owned()));
+			assert_eq!(s.selected.as_deref(), Some("agent"));
+		});
 	}
 
 	#[gpui::test]
