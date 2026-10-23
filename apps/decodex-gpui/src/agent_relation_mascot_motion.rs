@@ -22,6 +22,8 @@ impl State {
 
 	pub(super) fn pose(self, seconds: f32, held_right: bool) -> Pose {
 		let mut pose = Pose::default();
+		let blink = seconds.rem_euclid(5.8);
+		pose.blink = (2.05..2.20).contains(&blink) || (2.33..2.42).contains(&blink);
 		let (period, actor, hands): (f32, Steps, Steps) = match self {
 			Self::Hopping => (
 				0.9,
@@ -49,11 +51,11 @@ impl State {
 			),
 			Self::Attention => (2.4, &[(0., 0.), (0.14, -1.), (0.56, 0.)], &[]),
 			Self::Working => {
-				let cloud_t = ((seconds + if held_right { 0.35 } else { 0. }) / 1.4).fract();
+				let cloud_t = ((seconds + if held_right { 0.21 } else { 0. }) / 0.92).fract();
 				pose.cloud[1] =
-					step(cloud_t, &[(0., 0.), (0.18, -1.), (0.32, 0.), (0.68, -1.), (0.82, 0.)]);
+					step(cloud_t, &[(0., 0.), (0.18, -0.8), (0.36, 0.), (0.68, -0.5), (0.86, 0.)]);
 				for (right, hand) in [(false, &mut pose.left), (true, &mut pose.right)] {
-					let t = ((seconds + if right { 0.35 } else { 0. }) / 0.7).fract();
+					let t = ((seconds + if right { 0.24 } else { 0. }) / 0.48).fract();
 					hand[0] =
 						if (0.42..0.86).contains(&t) { if right { 1. } else { -1. } } else { 0. };
 					hand[1] = step(
@@ -61,7 +63,7 @@ impl State {
 						&[
 							(0., 0.),
 							(0.24, -1.),
-							(0.42, if right == held_right { -1. } else { -2. }),
+							(0.42, if right == held_right { -2. } else { -3. }),
 							(0.64, -1.),
 							(0.86, 0.),
 						],
@@ -69,7 +71,24 @@ impl State {
 				}
 				return pose;
 			},
-			Self::Idle => return pose,
+			Self::Idle => {
+				let breath = (seconds * std::f32::consts::TAU / 3.8).sin();
+				pose.cloud = [0.16 * (seconds * 0.8).sin(), -0.30 * breath];
+				pose.left = [0., -0.40 * (seconds * 1.1).sin()];
+				pose.right = [0., -0.40 * (seconds * 1.1 + 0.65).sin()];
+				// One small stretch per long cycle; seeds offset each actor.
+				let stretch = seconds.rem_euclid(9.4);
+				if (5.5..6.2).contains(&stretch) {
+					let amount = ((stretch - 5.5) / 0.7 * std::f32::consts::PI).sin();
+					pose.cloud[1] -= 0.65 * amount;
+					if held_right {
+						pose.left[1] -= 1.2 * amount;
+					} else {
+						pose.right[1] -= 1.2 * amount;
+					}
+				}
+				return pose;
+			},
 		};
 		let t = (seconds / period).fract();
 		let y = step(t, actor);
@@ -114,6 +133,7 @@ impl State {
 #[derive(Default)]
 pub(super) struct Pose {
 	pub cloud: [f32; 2],
+	pub blink: bool,
 	pub left: [f32; 2],
 	pub right: [f32; 2],
 }

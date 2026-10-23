@@ -81,6 +81,7 @@ struct Pixel {
 }
 struct Drawing {
 	cloud: Vec<Pixel>,
+	eyes: Vec<Pixel>,
 	left: Vec<Pixel>,
 	right: Vec<Pixel>,
 	particles: Vec<Pixel>,
@@ -131,7 +132,7 @@ impl Drawing {
 				}
 			}
 		}
-		cloud.extend(pixels(&CATALOG.expressions[&traits.expression], body.anchors["face"]));
+		let eyes = pixels(&CATALOG.expressions[&traits.expression], body.anchors["face"]);
 		let accessory = &CATALOG.accessories[&traits.accessory];
 		cloud.extend(pixels(
 			accessory,
@@ -147,6 +148,7 @@ impl Drawing {
 		};
 		Self {
 			cloud,
+			eyes,
 			left: hand("leftHand", !traits.held_right),
 			right: hand("rightHand", traits.held_right),
 			particles: body
@@ -165,6 +167,7 @@ pub(super) struct Actor {
 	state: State,
 	changed: Instant,
 	arrival: bool,
+	idle_phase: f32,
 }
 impl Actor {
 	pub(super) fn new(seed: &str, status: &str, now: Instant) -> Self {
@@ -173,6 +176,7 @@ impl Actor {
 			state: State::for_status(status),
 			changed: now,
 			arrival: false,
+			idle_phase: (hash(seed) % 5800) as f32 / 1000.,
 		}
 	}
 
@@ -195,7 +199,11 @@ impl Actor {
 		} else {
 			self.state
 		};
-		Avatar { drawing: self.drawing.clone(), state: animation, seconds }
+		Avatar {
+			drawing: self.drawing.clone(),
+			state: animation,
+			seconds: seconds + if animation == State::Idle { self.idle_phase } else { 0. },
+		}
 	}
 }
 
@@ -214,14 +222,15 @@ impl Avatar {
 
 	pub(super) fn element(self, layout: card::Layout) -> impl IntoElement {
 		let state = if ui_motion::reduced() { State::Idle } else { self.state };
-		let pose = state.pose(self.seconds, self.drawing.held_right);
+		let pose = state
+			.pose(if ui_motion::reduced() { 0. } else { self.seconds }, self.drawing.held_right);
 		gpui::canvas(
 			|_, _, _| (),
 			move |bounds, _, window: &mut Window, cx: &mut App| {
 				if bounds.intersect(&window.content_mask().bounds).is_empty() {
 					return;
 				}
-				if state != State::Idle {
+				if !ui_motion::reduced() {
 					ui_motion::request_frame(window, cx);
 				}
 				let scale = f32::from(bounds.size.width) / 40.;
@@ -260,6 +269,19 @@ impl Avatar {
 				] {
 					for pixel in pixels {
 						paint(pixel, offset, 1., 1.);
+					}
+				}
+				for eye in &self.drawing.eyes {
+					if pose.blink {
+						let [x, _, w, _] = eye.rect;
+						paint(
+							&Pixel { rect: [x, 17.3, w, 0.45], color: eye.color },
+							pose.cloud,
+							1.,
+							1.,
+						);
+					} else {
+						paint(eye, pose.cloud, 1., 1.);
 					}
 				}
 			},
