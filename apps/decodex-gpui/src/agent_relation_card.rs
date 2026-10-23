@@ -24,7 +24,6 @@ pub(super) const IDENTITY_GAP: f32 = 3.;
 pub(super) const DETAILS_TOP: f32 = 4.;
 pub(super) const SELECTED: u32 = crate::ui_theme::BLUE;
 pub(super) const SECONDARY_TEXT: u32 = foreground::SECONDARY;
-pub(super) const ACTIVITY_TEXT: u32 = foreground::BODY;
 pub(super) const MIN_ZOOM: f32 = 0.05;
 pub(super) const MAX_ZOOM: f32 = 1.;
 pub(super) const FULL_DETAIL_ZOOM: f32 = 0.7;
@@ -226,8 +225,8 @@ impl Layout {
 		let details = if self.labels() {
 			self.spacing(DETAILS_TOP)
 				+ self.title_line()
-				+ if self.activity_visible() {
-					self.spacing(IDENTITY_GAP) + actions.max(1.) * self.activity_line()
+				+ if self.activity_visible() && actions > 0. {
+					self.spacing(IDENTITY_GAP) + actions * self.activity_line()
 				} else {
 					0.
 				}

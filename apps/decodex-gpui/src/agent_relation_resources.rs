@@ -36,6 +36,7 @@ impl AgentSurface {
 						navigation: (0., 0.),
 						key: key.clone(),
 						title,
+						assignment: String::new(),
 						status: resource.attachment_type.clone(),
 						color: Kind::Resource.color(),
 						row: None,

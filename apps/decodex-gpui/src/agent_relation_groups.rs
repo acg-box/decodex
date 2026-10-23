@@ -1,7 +1,63 @@
-//! Open team brackets expose immediate ownership without adding another card.
-use super::{Graph, card, stream};
-use crate::ui_theme::{self, foreground};
-use gpui::{InteractiveElement as _, ParentElement as _, Styled as _};
+//! Selection reveals the whole ownership branch, with no second routing algorithm.
+use super::{BTreeMap, Graph, Node, card, header};
+use crate::ui_theme;
+use gpui::{ParentElement as _, Styled as _};
+
+// Routing obstacles describe painted text, not the blank area below it.
+// Keep the character/HUD attachment intact so connections still end outside it.
+pub(super) fn routing_nodes(graph: &Graph) -> Vec<Node> {
+	let layout = graph.layout;
+	graph
+		.nodes
+		.iter()
+		.cloned()
+		.map(|mut node| {
+			if node.row.is_some() && node.attachment.is_some() && layout.labels() {
+				let text = layout.spacing(card::DETAILS_TOP)
+					+ layout.title_line()
+					+ if layout.activity_visible() {
+						layout.spacing(card::IDENTITY_GAP)
+							+ header::detail_rows(&node.assignment, &node.activity)
+								* layout.activity_line()
+					} else {
+						0.
+					};
+				node.size.1 = card::INSET_Y + text / layout.zoom + 3.;
+			}
+			node
+		})
+		.collect()
+}
+
+pub(super) fn focus(graph: &Graph, picked: Option<&str>) -> BTreeMap<String, f32> {
+	let mut result = BTreeMap::new();
+	let Some(picked) = picked else {
+		return result;
+	};
+	let mut depths = BTreeMap::from([(picked.to_owned(), 0_usize)]);
+	let mut queue = vec![picked.to_owned()];
+	while let Some(parent) = queue.pop() {
+		let depth = depths[&parent];
+		for edge in graph.edges.iter().filter(|edge| edge.kind.hierarchy() && edge.from == parent) {
+			result.insert(edge.id.clone(), if depth == 0 { 0.84 } else { 0.58 });
+			if !depths.contains_key(&edge.to) {
+				depths.insert(edge.to.clone(), depth + 1);
+				queue.push(edge.to.clone());
+			}
+		}
+	}
+	let mut ancestors = std::collections::BTreeSet::from([picked.to_owned()]);
+	let mut queue = vec![picked.to_owned()];
+	while let Some(child) = queue.pop() {
+		for edge in graph.edges.iter().filter(|edge| edge.kind.hierarchy() && edge.to == child) {
+			result.entry(edge.id.clone()).or_insert(0.34);
+			if ancestors.insert(edge.from.clone()) {
+				queue.push(edge.from.clone());
+			}
+		}
+	}
+	result
+}
 
 pub(super) fn paint(
 	mut canvas: gpui::Stateful<gpui::Div>,
@@ -9,93 +65,44 @@ pub(super) fn paint(
 	scale: f32,
 	pan: (f32, f32),
 	picked: Option<&str>,
-	coordinators: &[String],
 ) -> gpui::Stateful<gpui::Div> {
-	for leader in graph.nodes.iter().filter(|node| node.row.is_some()) {
-		// Use recorded ownership, not missing visible edges: the coordinator can be archived.
-		if coordinators.contains(&leader.key) {
-			continue;
-		}
-		let children: Vec<_> = graph
-			.edges
-			.iter()
-			.filter(|edge| edge.kind.hierarchy() && edge.from == leader.key)
-			.filter_map(|edge| graph.nodes.iter().find(|node| node.key == edge.to))
-			.collect();
-		if children.is_empty() {
-			continue;
-		}
-		let highlighted = picked == Some(leader.key.as_str())
-			|| children.iter().any(|child| picked == Some(child.key.as_str()));
-		let mut bounds = [f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
-		for node in std::iter::once(leader).chain(children) {
-			let height = graph.layout.header_height(if graph.layout.activity_visible() {
-				node.activity.height / stream::LINE
-			} else {
-				0.
-			}) / scale;
-			let top = node.y
-				+ if graph.layout.overview() {
-					(node.height() - height) / 2.
-				} else {
-					card::INSET_Y
-				};
-			bounds[0] = bounds[0].min(node.x - 6.);
-			bounds[1] = bounds[1].min(top - 6.);
-			bounds[2] = bounds[2].max(node.x + node.width() + 6.);
-			bounds[3] = bounds[3].max(top + height + 6.);
-		}
-		let opacity = graph.layout.card_presence();
-		let key = format!("relation-team-{}", leader.key);
-		let selector = key.clone();
+	let focus = focus(graph, picked);
+	let presence = graph.layout.card_presence();
+	for edge in graph.edges.iter().filter(|edge| edge.kind.hierarchy()) {
+		let target = focus.get(&edge.id).copied().unwrap_or(0.);
+		let Some(path) = graph.paths.get(&edge.id).cloned() else { continue };
+		let id = format!("team-focus-edge-{}", edge.id);
 		canvas = canvas.child(
-			gpui::div()
-				.debug_selector(move || selector.clone())
-				.child(
-					gpui::canvas(
-						|_, _, _| (),
-						move |canvas_bounds, _, window, cx| {
-							let selected = crate::ui_motion::value(
-								gpui::SharedString::from(key.clone()),
-								if highlighted { 1. } else { 0. },
-								window,
-								cx,
+			gpui::div().absolute().inset_0().child(
+				gpui::canvas(
+					|_, _, _| (),
+					move |bounds, _, window, cx| {
+						let alpha = crate::ui_motion::value(id.clone(), target, window, cx);
+						if alpha <= 0.001 {
+							return;
+						}
+						let mut ink = gpui::PathBuilder::stroke(gpui::px(1.));
+						let p = |point: (f32, f32)| {
+							bounds.origin
+								+ gpui::point(
+									gpui::px(point.0 * scale + pan.0),
+									gpui::px(point.1 * scale + pan.1),
+								)
+						};
+						for curve in &path.curves {
+							ink.move_to(p(curve.start));
+							ink.cubic_bezier_to(p(curve.end), p(curve.first), p(curve.second));
+						}
+						if let Ok(ink) = ink.build() {
+							window.paint_path(
+								ink,
+								ui_theme::rgb(ui_theme::BLUE).opacity(alpha * presence),
 							);
-							let [l, t, r, b] = [
-								bounds[0] * scale + pan.0,
-								bounds[1] * scale + pan.1,
-								bounds[2] * scale + pan.0,
-								bounds[3] * scale + pan.1,
-							];
-							let radius = (6. * scale).max(3.);
-							let arm = (14. * scale).max(6.);
-							let p =
-								|x, y| canvas_bounds.origin + gpui::point(gpui::px(x), gpui::px(y));
-							let mut path = gpui::PathBuilder::stroke(gpui::px(0.75));
-							for (edge, sign) in [(l, 1.), (r, -1.)] {
-								path.move_to(p(edge + sign * arm, t));
-								path.line_to(p(edge + sign * radius, t));
-								path.curve_to(p(edge, t + radius), p(edge, t));
-								path.line_to(p(edge, b - radius));
-								path.curve_to(p(edge + sign * radius, b), p(edge, b));
-								path.line_to(p(edge + sign * arm, b));
-							}
-							if let Ok(path) = path.build() {
-								let color =
-									if highlighted { ui_theme::BLUE } else { foreground::BODY };
-								window.paint_path(
-									path,
-									ui_theme::rgb(color)
-										.opacity((0.30 + selected * 0.35) * opacity),
-								);
-							}
-						},
-					)
-					.size_full(),
+						}
+					},
 				)
-				.absolute()
-				.inset_0()
 				.size_full(),
+			),
 		);
 	}
 	canvas

@@ -126,26 +126,38 @@ fn exchange_disclosure_animates_in_both_directions_without_changing_the_draft(
 	let closed = height(visual);
 	let header = visual.debug_bounds(control_id).unwrap();
 	visual.simulate_click(header.center(), Default::default());
-	visual.update(crate::ui_frame::draw_frame);
-	visual.update(crate::ui_frame::draw_frame);
+	// Inspect every presented frame. A later sample can miss the middle when
+	// native layout takes longer; the contract is visible interpolation.
+	let mut opening = Vec::new();
+	for _ in 0..2 {
+		visual.update(crate::ui_frame::draw_frame);
+		opening.push(height(visual));
+	}
 	std::thread::sleep(std::time::Duration::from_millis(55));
 	visual.update(crate::ui_frame::draw_frame);
-	let middle = height(visual);
+	opening.push(height(visual));
 	std::thread::sleep(std::time::Duration::from_millis(240));
 	visual.update(crate::ui_frame::draw_frame);
 	let open = height(visual);
 	assert!(open > closed + 5., "recorded exchange must open: {closed}, {open}");
-	assert!(middle > closed && middle < open, "opening must interpolate: {middle}");
+	assert!(
+		opening.iter().any(|height| *height > closed && *height < open),
+		"opening must interpolate: {opening:?}"
+	);
 	let row = visual.debug_bounds(row_id).unwrap();
 	let panel = visual.debug_bounds("workbench-body").unwrap();
 	assert!(row.left() >= panel.left() && row.right() <= panel.right());
 	let header = visual.debug_bounds(control_id).unwrap();
 	visual.simulate_click(header.center(), Default::default());
 	visual.update(crate::ui_frame::draw_frame);
+	let first_closing = height(visual);
 	std::thread::sleep(std::time::Duration::from_millis(55));
 	visual.update(crate::ui_frame::draw_frame);
-	let closing = height(visual);
-	assert!(closing > closed && closing < open, "closing must interpolate: {closing}");
+	let closing = [first_closing, height(visual)];
+	assert!(
+		closing.iter().any(|height| *height > closed && *height < open),
+		"closing must interpolate: {closing:?}"
+	);
 	std::thread::sleep(std::time::Duration::from_millis(240));
 	visual.update(crate::ui_frame::draw_frame);
 	assert!((height(visual) - closed).abs() <= 1.);

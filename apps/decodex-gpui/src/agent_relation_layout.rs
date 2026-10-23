@@ -18,7 +18,7 @@ impl Presentation {
 	pub(super) fn width(self) -> f32 {
 		match self {
 			Self::Links => WIDTH,
-			Self::Together => 216.,
+			Self::Together => 280.,
 		}
 	}
 

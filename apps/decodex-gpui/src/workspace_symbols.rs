@@ -20,7 +20,7 @@ macro_rules! symbol_sources {
 		[$(include_bytes!(concat!("../../../assets/workspace-symbols/light/", $name, ".png")) as &[u8]),*],
 	]};
 }
-static IMAGES: LazyLock<[[Arc<Image>; 39]; 2]> = LazyLock::new(|| {
+static IMAGES: LazyLock<[[Arc<Image>; 46]; 2]> = LazyLock::new(|| {
 	let sources = symbol_sources![
 		"sidebar",
 		"graph",
@@ -61,6 +61,13 @@ static IMAGES: LazyLock<[[Arc<Image>; 39]; 2]> = LazyLock::new(|| {
 		"restore",
 		"document",
 		"link",
+		"activity-goal",
+		"activity-search",
+		"activity-edit",
+		"activity-command",
+		"activity-handoff",
+		"team-members",
+		"team-parent",
 	];
 	sources.map(|variant| {
 		variant.map(|bytes| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))
@@ -108,6 +115,13 @@ pub(super) enum Symbol {
 	Restore,
 	Document,
 	Link,
+	ActivityGoal,
+	ActivitySearch,
+	ActivityEdit,
+	ActivityCommand,
+	ActivityHandoff,
+	TeamMembers,
+	TeamParent,
 }
 
 /// Both panel controls use their layout state and the same interruptible transition.

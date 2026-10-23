@@ -384,11 +384,11 @@ fn tree_route(a: &Node, b: &Node, nodes: &[Node], edges: &[Edge], cards: &[Card]
 		.collect();
 	let mut branches = Vec::new();
 	let (aa, bb) = (a.connection_bounds(), b.connection_bounds());
-	if children.iter().all(|node| node.x >= a.x + a.width() + CLEARANCE * 2.) {
+	if children.iter().all(|node| node.connection_bounds()[0] >= aa[2] + CLEARANCE) {
 		let start = (aa[2], a.port_y());
 		branches.push(Route::branch(start, (bb[0], b.port_y()), true));
 	}
-	if children.iter().all(|node| node.y >= a.y + a.height() + CLEARANCE * 2.) {
+	if children.iter().all(|node| node.connection_bounds()[1] >= aa[3] + CLEARANCE) {
 		let start = (a.connection_center().0, aa[3]);
 		branches.push(Route::branch(start, (b.connection_center().0, bb[1]), false));
 	}
@@ -689,6 +689,7 @@ mod tests {
 			key: key.into(),
 			navigation: (x, y),
 			title: key.into(),
+			assignment: String::new(),
 			status: String::new(),
 			color: 0,
 			row: None,

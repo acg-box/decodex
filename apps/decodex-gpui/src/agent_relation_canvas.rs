@@ -151,6 +151,7 @@ impl Edge {
 pub(super) struct Node {
 	pub(super) key: String,
 	title: String,
+	assignment: String,
 	status: String,
 	color: u32,
 	row: Option<Row>,
@@ -223,21 +224,6 @@ pub(super) struct Graph {
 	paths: BTreeMap<String, std::rc::Rc<Route>>,
 }
 impl Graph {
-	fn ancestor_edges(&self, mut target: Option<String>) -> BTreeSet<String> {
-		let mut selected_path = BTreeSet::new();
-		while let Some(key) = target.take() {
-			let Some(edge) = self.edges.iter().find(|edge| edge.kind.hierarchy() && edge.to == key)
-			else {
-				break;
-			};
-			if !selected_path.insert(edge.id.clone()) {
-				break;
-			}
-			target = Some(edge.from.clone());
-		}
-		selected_path
-	}
-
 	/// Draw only real, exposed route endpoints. Routing owns side selection and
 	/// obstacle avoidance; decoration must never invent another attachment point.
 	fn connection_ports(&self, lines: &[visibility::Link]) -> BTreeMap<String, Vec<(f32, f32)>> {
@@ -447,12 +433,14 @@ impl AgentSurface {
 				.or_insert_with(|| stream::Stream::new(&scope, &operations, now));
 			stream.sync(&scope, &operations, now);
 			let activity = stream.frame(now, crate::ui_motion::reduced());
-			let layout_height = layout.world_height(activity.height / stream::LINE);
+			let assignment = self.graph_preview(&row).0;
+			let layout_height = layout.world_height(header::detail_rows(&assignment, &activity));
 			let activity = if layout.full_detail() { activity } else { activity.latest() };
-			let height = layout.world_height(activity.height / stream::LINE);
+			let height = layout.world_height(header::detail_rows(&assignment, &activity));
 			graph.nodes.push(Node {
 				key: row.key.clone(),
 				title: identity,
+				assignment,
 				status: if row.review {
 					format!("{} · Result unread", row.status)
 				} else {
@@ -491,8 +479,12 @@ impl AgentSurface {
 		self.add_relation_resources(&rows, &included, &mut graph);
 
 		self.place_relation_nodes(&mut graph, layout);
-		graph.paths =
-			self.work_board.view.routing.borrow_mut().paths(&graph.nodes, &graph.connections());
+		graph.paths = self
+			.work_board
+			.view
+			.routing
+			.borrow_mut()
+			.paths(&groups::routing_nodes(&graph), &graph.connections());
 		graph.scope_bounds(&snapshot.workspaces);
 		graph
 	}
@@ -885,8 +877,10 @@ impl AgentSurface {
 			std::time::Instant::now(),
 		);
 		canvas = self.relation_scope_layer(canvas, graph, scale, pan);
-		canvas = self.relation_connection_layer(canvas, graph, &lines, moving, cx);
+		canvas = self.paint_relation_connections(canvas, graph, &lines, moving, cx);
 		canvas = self.relation_node_layer(canvas, graph, &lines, cx);
+		// Visible relationship labels keep their own hit targets above transparent node areas.
+		canvas = self.relation_label_layer(canvas, graph, &lines, cx);
 		if let Some(map) = self.relation_minimap(graph, cx) {
 			canvas = canvas.child(map);
 		}
@@ -1100,6 +1094,7 @@ impl AgentSurface {
 					title: current
 						.map(|w| self.work_label(w))
 						.unwrap_or_else(|| "Referenced conversation".into()),
+					assignment: String::new(),
 					status: "Referenced thread".into(),
 					color: Kind::Context.color(),
 					row: None,
@@ -1292,20 +1287,12 @@ impl AgentSurface {
 			return canvas;
 		}
 		if self.work_board.view.presentation == layout::Presentation::Together {
-			let coordinators = self
-				.snapshot
-				.iter()
-				.flat_map(|snapshot| &snapshot.work_items)
-				.filter(|work| work.parent_goal_id.is_none())
-				.map(|work| work.id.clone())
-				.collect::<Vec<_>>();
 			canvas = groups::paint(
 				canvas,
 				graph,
 				scale,
 				pan,
 				self.work_board.view.picked_agent.as_deref(),
-				&coordinators,
 			);
 		}
 		for scope in &graph.scopes {
@@ -1347,17 +1334,15 @@ impl AgentSurface {
 		canvas
 	}
 
-	fn relation_connection_layer(
+	fn relation_label_layer(
 		&self,
 		mut canvas: gpui::Stateful<gpui::Div>,
 		graph: &Graph,
 		lines: &[visibility::Link],
-		moving: bool,
 		cx: &mut Context<Self>,
 	) -> gpui::Stateful<gpui::Div> {
 		let scale = self.relation_scale();
 		let pan = self.work_board.view.pan;
-		canvas = self.paint_relation_connections(canvas, graph, lines, moving, cx);
 		if graph.layout.points()
 			|| self.work_board.view.presentation == layout::Presentation::Together
 		{
@@ -1478,6 +1463,16 @@ impl AgentSurface {
 				continue;
 			}
 			let (emphasized, faded) = self.relation_node_emphasis(node, graph, &neighborhood);
+			let faded =
+				faded && self.work_board.view.presentation != layout::Presentation::Together;
+			let children =
+				graph.edges.iter().filter(|e| e.kind.hierarchy() && e.from == node.key).count();
+			let coordinator = self
+				.snapshot
+				.iter()
+				.flat_map(|s| &s.work_items)
+				.any(|w| w.id == node.key && w.parent_goal_id.is_none());
+			let team_members = (children > 0 && !coordinator).then_some(children + 1);
 			let key = node.key.clone();
 			let row = node.row.clone();
 			let target = graph
@@ -1559,7 +1554,13 @@ impl AgentSurface {
 			canvas = canvas.child(card::Card {
 				key: node.key.clone(),
 				surface: view,
-				content: self.relation_node_presentation(node, layout, emphasized, parent),
+				content: self.relation_node_presentation(
+					node,
+					layout,
+					emphasized,
+					parent,
+					team_members,
+				),
 				faded,
 				visibility: opacity,
 				ports: node.row.as_ref().filter(|_| !layout.points()).map(|_| card::Ports {
@@ -1653,10 +1654,10 @@ impl AgentSurface {
 		let paint_lines = lines.to_vec();
 		let wire_presence = self.relation_wire_presence(std::time::Instant::now());
 		let graph_moving = graph.layout.moving;
-		let selected_path = graph.ancestor_edges(
+		let selected_path = groups::focus(
+			graph,
 			self.relation_context()
-				.map(str::to_owned)
-				.or_else(|| self.work_board.view.edge.as_ref().map(|edge| edge.to.clone())),
+				.or_else(|| self.work_board.view.edge.as_ref().map(|edge| edge.to.as_str())),
 		);
 		let hover_pending = self.work_board.view.hover.pending(std::time::Instant::now());
 		let entity = cx.entity().downgrade();
@@ -1697,7 +1698,7 @@ impl AgentSurface {
 							{
 								base.push(
 									path,
-									((if selected_path.contains(&link.base.id) {
+									((if selected_path.contains_key(&link.base.id) {
 										card::SELECTED
 									} else {
 										link.base.color
@@ -1821,6 +1822,7 @@ impl AgentSurface {
 		layout: card::Layout,
 		selected: bool,
 		parent: Option<String>,
+		team_members: Option<usize>,
 	) -> AnyElement {
 		if node.row.is_some() && layout.overview() {
 			card::overview(
@@ -1828,11 +1830,12 @@ impl AgentSurface {
 				node.color,
 				selected,
 				layout,
-				(!layout.points())
-					.then(|| self.relation_node_content(node, layout, selected, parent)),
+				(!layout.points()).then(|| {
+					self.relation_node_content(node, layout, selected, parent, team_members)
+				}),
 			)
 		} else {
-			self.relation_node_content(node, layout, selected, parent)
+			self.relation_node_content(node, layout, selected, parent, team_members)
 		}
 	}
 
@@ -1842,6 +1845,7 @@ impl AgentSurface {
 		layout: card::Layout,
 		selected: bool,
 		parent: Option<String>,
+		team_members: Option<usize>,
 	) -> AnyElement {
 		let scale = self.relation_scale();
 		let width = if node.row.is_some() { layout.width } else { node.width() * scale };
@@ -1852,7 +1856,7 @@ impl AgentSurface {
 				node.height()
 			} * scale,
 		);
-		let preview = node.row.as_ref().map(|row| self.graph_preview(row).0);
+		let preview = node.row.as_ref().map(|_| node.assignment.clone());
 		gpui::div()
 			.relative()
 			.w(gpui::px(width))
@@ -1898,6 +1902,7 @@ impl AgentSurface {
 					}
 				}
 				view.child(header::Header {
+					team_members,
 					key: node.key.clone(),
 					parent,
 					number: node
@@ -1909,7 +1914,6 @@ impl AgentSurface {
 					selected,
 					picked: self.work_board.view.picked_agent.as_deref() == Some(node.key.as_str()),
 					task,
-					status: status.to_owned(),
 					avatar,
 					metrics: (!layout.overview()).then(|| self.node_metrics(node, layout)),
 					activity: node.activity.clone(),
@@ -2457,9 +2461,11 @@ mod fit_tests {
 				"the visible updates fit without reserving a separate title row"
 			);
 			let idle = arrival + std::time::Duration::from_secs(7);
-			s.relation_graph_at(idle);
+			for i in 0..4 {
+				s.relation_graph_at(idle + std::time::Duration::from_millis(i * 300));
+			}
 			let settled = s
-				.relation_graph_at(idle + std::time::Duration::from_millis(300))
+				.relation_graph_at(idle + std::time::Duration::from_millis(1500))
 				.nodes
 				.into_iter()
 				.find(|node| node.key == row.key)
@@ -2693,7 +2699,7 @@ mod fit_tests {
 			);
 			assert_eq!(visual.debug_bounds("relation-tokens-agent").is_some(), !layout.overview());
 			assert_eq!(visual.debug_bounds("relation-number-agent").is_some(), layout.labels());
-			assert_eq!(visual.debug_bounds("relation-status-agent").is_some(), !layout.points());
+			assert_eq!(visual.debug_bounds("relation-status-agent").is_some(), layout.labels());
 			assert_eq!(
 				visual.debug_bounds("relation-point-agent").is_some(),
 				layout.card_presence() < 1.
@@ -3408,7 +3414,7 @@ mod fit_tests {
 						"activity stays close to the character"
 					);
 					assert_eq!(
-						number.left(),
+						identity.left(),
 						preview.left(),
 						"identity and activity share one text edge"
 					);
@@ -3418,8 +3424,9 @@ mod fit_tests {
 					);
 				}
 				assert!(
-					visual.debug_bounds("relation-assignment-release").is_none(),
-					"live activity does not repeat the assignment above it"
+					visual.debug_bounds("relation-assignment-release").is_some()
+						== layout.activity_visible(),
+					"the current assignment stays distinct from recent activity"
 				);
 				assert!(number.bottom() <= avatar.bottom() && avatar.bottom() < metrics.top());
 				assert!(
@@ -3449,6 +3456,33 @@ mod fit_tests {
 				);
 			}
 		}
+	}
+
+	#[gpui::test]
+	fn selected_team_reveals_descendants_and_ancestors_without_foreign_branches(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(super::super::tests::fixture);
+		surface.update(cx, |s, _| {
+			let graph = s.relation_graph();
+			let all = groups::focus(&graph, Some("agent"));
+			let branch = groups::focus(&graph, Some("mira"));
+			for edge in graph.edges.iter().filter(|edge| edge.kind.hierarchy()) {
+				if edge.from == "agent" || edge.from == "mira" {
+					assert!(all.contains_key(&edge.id), "root includes deeper ownership");
+				}
+				if edge.from == "mira" || (edge.from == "agent" && edge.to == "mira") {
+					assert!(
+						branch.contains_key(&edge.id),
+						"selected branch and ancestor remain visible"
+					);
+				}
+				if edge.from == "sage" {
+					assert!(!branch.contains_key(&edge.id));
+				}
+			}
+			assert!(groups::focus(&graph, None).is_empty());
+		});
 	}
 
 	#[gpui::test]
@@ -4090,6 +4124,7 @@ mod fit_tests {
 		let node = Node {
 			key: "a".into(),
 			title: "A".into(),
+			assignment: String::new(),
 			status: String::new(),
 			color: 0,
 			row: None,
@@ -4120,6 +4155,7 @@ mod fit_tests {
 		let a = Node {
 			key: "hubble".into(),
 			title: "Hubble".into(),
+			assignment: String::new(),
 			status: String::new(),
 			color: 0,
 			row: None,

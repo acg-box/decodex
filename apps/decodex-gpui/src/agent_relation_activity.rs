@@ -18,6 +18,8 @@ pub(super) struct Operation {
 	pub text: String,
 }
 
+pub(super) const MAX_RECENT: usize = 5;
+
 fn recent(entries: &[AgentTimelineEntry], turn: &str) -> Vec<Operation> {
 	let mut seen = std::collections::BTreeSet::new();
 	let mut operations = Vec::new();
@@ -61,7 +63,7 @@ fn recent(entries: &[AgentTimelineEntry], turn: &str) -> Vec<Operation> {
 			continue;
 		}
 		operations.push(Operation { id: format!("{turn}:{item_id}"), text: label });
-		if operations.len() == 3 {
+		if operations.len() == MAX_RECENT {
 			break;
 		}
 	}
@@ -425,6 +427,8 @@ mod tests {
 			message("now", "2", "**Probe completed**"),
 			message("now", "3", "Compare the full reply"),
 			message("now", "4", "All checks passed"),
+			message("now", "5", "Review complete"),
+			message("now", "6", "Handed off"),
 		];
 		assert_eq!(
 			recent(&entries, "now"),
@@ -432,6 +436,8 @@ mod tests {
 				Operation { id: "now:2".into(), text: "Probe completed".into() },
 				Operation { id: "now:3".into(), text: "Compare the full reply".into() },
 				Operation { id: "now:4".into(), text: "All checks passed".into() },
+				Operation { id: "now:5".into(), text: "Review complete".into() },
+				Operation { id: "now:6".into(), text: "Handed off".into() },
 			]
 		);
 	}
@@ -512,7 +518,7 @@ mod tests {
 	}
 
 	#[test]
-	fn recent_operations_keep_three_distinct_native_items_and_latest_revision() {
+	fn recent_operations_keep_five_distinct_native_items_and_latest_revision() {
 		let mut entries = Vec::new();
 		for (id, label) in [
 			("a", "Read Cargo.toml"),
@@ -520,6 +526,8 @@ mod tests {
 			("c", "Inspect failure"),
 			("d", "Run cargo test"),
 			("d", "Tests passed"),
+			("e", "Review completed"),
+			("f", "Findings delivered"),
 		] {
 			let mut entry = item("now", "commandExecution", "");
 			if let AgentTimelineContent::Item { item_id, activity, .. } = &mut entry.content {
@@ -542,7 +550,7 @@ mod tests {
 		let preview = latest(&entries, Some("now")).unwrap();
 		assert_eq!(
 			preview.recent.iter().map(|op| op.id.as_str()).collect::<Vec<_>>(),
-			["now:b", "now:c", "now:d"]
+			["now:b", "now:c", "now:d", "now:e", "now:f"]
 		);
 		assert_eq!(preview.recent[2].text, "Command · Tests passed");
 		assert!(latest(&entries, Some("next")).is_none());

@@ -7,12 +7,12 @@ use gpui::{App, InteractiveElement as _, IntoElement, RenderOnce, Window, prelud
 pub(super) struct Header {
 	pub key: String,
 	pub parent: Option<String>,
+	pub team_members: Option<usize>,
 	pub number: String,
 	pub color: u32,
 	pub selected: bool,
 	pub picked: bool,
 	pub task: String,
-	pub status: String,
 	pub avatar: mascot::Avatar,
 	pub metrics: Option<gpui::AnyElement>,
 	pub activity: stream::Frame,
@@ -24,62 +24,21 @@ impl RenderOnce for Header {
 		let h = self;
 		let layout = h.layout.on_display(window.scale_factor());
 		let show_activity = layout.activity_visible();
-		let count = if show_activity { h.activity.height / stream::LINE } else { 0. };
+		let count = if show_activity { detail_rows(&h.task, &h.activity) } else { 0. };
 		let portrait_width = layout.portrait_spacing(super::card::PORTRAIT_WIDTH);
 		let selection = selection_mark(&h.key, h.selected, layout, window, cx);
 		let avatar_selector = format!("relation-avatar-{}", h.key);
 		let identity_selector = format!("relation-identity-{}", h.key);
-		let task_selector = format!("relation-assignment-{}", h.key);
 		let status_selector = format!("relation-status-{}", h.key);
 		let number_selector = format!("relation-number-{}", h.key);
-		let hint = h
-			.picked
-			.then(|| h.parent.as_ref().map(|parent| format!("Reports to {parent}")))
-			.flatten();
-		let mut figure = gpui::div()
+		let figure = gpui::div()
 			.debug_selector(move || avatar_selector.clone())
 			.relative()
 			.flex_none()
 			.w(gpui::px(portrait_width))
 			.h(gpui::px(layout.portrait_spacing(super::card::PORTRAIT_HEIGHT)))
 			.child(selection)
-			.child(h.avatar.element(layout))
-			.child(
-				gpui::div()
-					.debug_selector(move || status_selector.clone())
-					.absolute()
-					.left(gpui::px(portrait_width + 4.))
-					.top(gpui::px(layout.portrait_spacing(27.)))
-					.size(gpui::px(layout.spacing(5.).max(4.) + 2.))
-					.rounded_full()
-					.border_1()
-					.border_color(crate::ui_theme::rgba(0x00000070))
-					.bg(crate::ui_theme::rgb(h.color)),
-			);
-		if let Some(text) = hint {
-			let hint_selector = format!("relation-owner-hint-{}", h.key);
-			let width = layout.pixel(measure_hint(&text, layout, window).ceil() + 10.);
-			let height = layout.title_line() + 6.;
-			figure = figure.child(
-				crate::ui_motion::tooltip_surface(gpui::div())
-					.debug_selector(move || hint_selector.clone())
-					.absolute()
-					.left(gpui::px(layout.pixel(portrait_width - width - 4.)))
-					.top(gpui::px(-height - 2.))
-					.w(gpui::px(width))
-					.h(gpui::px(height))
-					.font_family(crate::ui_theme::FONT_FAMILY)
-					.font_weight(gpui::FontWeight::NORMAL)
-					.text_size(gpui::px(layout.title_size()))
-					.line_height(gpui::px(layout.title_line()))
-					.text_color(crate::ui_theme::rgb(foreground::PRIMARY))
-					.whitespace_nowrap()
-					.flex()
-					.items_center()
-					.justify_center()
-					.child(text),
-			);
-		}
+			.child(h.avatar.element(layout));
 		let portrait = gpui::div()
 			.flex_none()
 			.w(gpui::px(portrait_width))
@@ -128,47 +87,41 @@ impl RenderOnce for Header {
 				gpui::div()
 					.debug_selector(move || identity_selector.clone())
 					.h(gpui::px(layout.title_line()))
-					.child(identity),
+					.flex()
+					.items_center()
+					.gap(gpui::px(4.))
+					.child(
+						gpui::div()
+							.debug_selector(move || status_selector.clone())
+							.size(gpui::px(4.))
+							.flex_none()
+							.rounded_full()
+							.bg(crate::ui_theme::rgb(h.color)),
+					)
+					.child(identity)
+					.when_some(
+						h.team_members.filter(|_| !h.picked || layout.zoom > 0.5),
+						|row, count| row.child(information_rows::team(&h.key, count, layout)),
+					)
+					.when(h.picked, |row| {
+						row.when_some(h.parent.clone(), |row, parent| {
+							row.child(information_rows::parent(&h.key, parent, layout))
+						})
+					}),
 			);
 		if show_activity {
-			let activity = if h.activity.height > 0. {
-				action_rows(&h.key, h.activity, layout, window, cx)
-			} else {
-				gpui::div()
-					.debug_selector(move || task_selector.clone())
-					.w_full()
-					.h(gpui::px(layout.activity_line()))
-					.text_size(gpui::px(layout.activity_size()))
-					.line_height(gpui::px(layout.activity_line()))
-					.text_color(crate::ui_theme::rgb(foreground::PRIMARY))
-					.whitespace_nowrap()
-					.text_ellipsis()
-					.overflow_hidden()
-					.child(if h.task.is_empty() { h.status } else { h.task })
-			};
-			details = details.child(activity);
+			let mut content = gpui::div().flex().flex_col().w_full();
+			if !h.task.is_empty() {
+				content = content.child(information_rows::goal(&h.key, h.task.clone(), layout));
+			}
+			if h.activity.height > 0. {
+				content = content.child(action_rows(&h.key, h.activity, layout, window, cx));
+			}
+			details = details.child(content);
 		}
 		body = body.child(details);
 		body
 	}
-}
-
-fn measure_hint(text: &str, layout: super::card::Layout, window: &mut Window) -> f32 {
-	let mut font = window.text_style().font();
-	font.family = crate::ui_theme::FONT_FAMILY.into();
-	font.weight = gpui::FontWeight::NORMAL;
-	font.features = gpui::FontFeatures::default();
-	f32::from(
-		window
-			.text_system()
-			.shape_line(
-				text.to_owned().into(),
-				gpui::px(layout.title_size()),
-				&[gpui::TextRun { len: text.len(), font, ..Default::default() }],
-				None,
-			)
-			.width,
-	)
 }
 
 /// Selection belongs to the character. Fade its small ground ring without
@@ -222,6 +175,8 @@ fn selection_mark(
 		)
 }
 
+#[path = "agent_relation_rows.rs"] mod information_rows;
+
 fn action_rows(
 	key: &str,
 	frame: stream::Frame,
@@ -229,43 +184,9 @@ fn action_rows(
 	window: &mut Window,
 	cx: &mut App,
 ) -> gpui::Div {
-	let activity_scale = layout.activity_line() / stream::LINE;
-	if frame.moving && layout.activity_visible() {
-		ui_motion::request_frame(window, cx);
-	}
-	let mut actions = gpui::div()
-		.debug_selector({
-			let key = key.to_owned();
-			move || format!("relation-preview-{key}")
-		})
-		.relative()
-		.w_full()
-		.h(gpui::px(frame.height * activity_scale))
-		.flex_none()
-		.overflow_hidden();
-	for line in frame.lines {
-		let selector = format!("relation-operation-{key}-{}", line.id);
-		actions = actions.child(
-			gpui::div()
-				.debug_selector(move || selector.clone())
-				.absolute()
-				.left_0()
-				.right_0()
-				.top(gpui::px(line.y * activity_scale))
-				.h(gpui::px(layout.activity_line()))
-				.text_size(gpui::px(layout.activity_size()))
-				.line_height(gpui::px(layout.activity_line()))
-				.text_color(crate::ui_theme::rgb(if line.current {
-					foreground::PRIMARY
-				} else {
-					super::card::ACTIVITY_TEXT
-				}))
-				.whitespace_nowrap()
-				.text_ellipsis()
-				.overflow_hidden()
-				.opacity(line.opacity)
-				.child(line.text),
-		);
-	}
-	actions
+	information_rows::render(key, frame, layout, window, cx)
+}
+
+pub(super) fn detail_rows(task: &str, activity: &stream::Frame) -> f32 {
+	activity.height / stream::LINE + if task.is_empty() { 0. } else { 1. }
 }
