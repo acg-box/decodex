@@ -308,6 +308,10 @@ fn capture_graph_zoom(cx: &mut VisualTestAppContext, window: AnyWindowHandle) ->
 			.clone()
 	})?;
 	surface.update(cx, |surface, cx| {
+		if let Ok(view) = env::var("DECODEX_VISUAL_GRAPH_VIEW") {
+			assert!(["links", "together"].contains(&view.as_str()), "known agent view");
+			surface.visual_relation_presentation(view == "together", cx);
+		}
 		if let Ok(layout) = env::var("DECODEX_VISUAL_GRAPH_LAYOUT") {
 			surface.visual_relation_layout(&layout, cx);
 		}

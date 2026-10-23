@@ -383,6 +383,11 @@ pub(crate) struct Tween {
 	duration: Duration,
 }
 impl Tween {
+	pub(crate) fn duration(mut self, duration: Duration) -> Self {
+		self.duration = duration;
+		self
+	}
+
 	pub(crate) fn new(value: f32) -> Self {
 		Self {
 			from: value,

@@ -205,6 +205,13 @@ pub(super) struct Avatar {
 	seconds: f32,
 }
 impl Avatar {
+	/// Travel is a presentation pose; it never changes the native work state.
+	pub(super) fn travelling(mut self, seconds: f32) -> Self {
+		self.state = State::Hopping;
+		self.seconds = seconds;
+		self
+	}
+
 	pub(super) fn element(self, layout: card::Layout) -> impl IntoElement {
 		let state = if ui_motion::reduced() { State::Idle } else { self.state };
 		let pose = state.pose(self.seconds, self.drawing.held_right);

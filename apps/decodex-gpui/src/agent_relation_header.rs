@@ -1,11 +1,15 @@
 //! A numbered Cloudlet with source-bound activity alongside it.
 use super::{mascot, stream};
 use crate::{ui_motion, ui_theme::foreground};
-use gpui::{App, IntoElement, RenderOnce, Window, prelude::*};
+use gpui::{
+	App, InteractiveElement as _, IntoElement, RenderOnce, StatefulInteractiveElement as _, Window,
+	prelude::*,
+};
 
 #[derive(IntoElement)]
 pub(super) struct Header {
 	pub key: String,
+	pub parent: Option<String>,
 	pub number: String,
 	pub color: u32,
 	pub selected: bool,
@@ -28,6 +32,7 @@ impl RenderOnce for Header {
 		let light_selector = format!("relation-status-{}", self.key);
 		let task_selector = format!("relation-assignment-{}", self.key);
 		let avatar_selector = format!("relation-avatar-{}", self.key);
+		let parent_selector = format!("relation-parent-{}", self.key);
 		let actions = action_rows(&self.key, frame, layout, window, cx);
 		let selection = selection_mark(&self.key, self.selected, layout, window, cx);
 		let task = if self.task.is_empty() { self.status } else { self.task };
@@ -58,7 +63,19 @@ impl RenderOnce for Header {
 					.size(gpui::px(4.))
 					.rounded_full()
 					.bg(crate::ui_theme::rgb(self.color)),
-			);
+			)
+			.when_some(self.parent, |identity, parent| {
+				identity.child(
+					gpui::div()
+						.id(gpui::SharedString::from(parent_selector.clone()))
+						.debug_selector(move || parent_selector.clone())
+						.role(gpui::Role::Group)
+						.aria_label(format!("Reports to {parent}"))
+						.text_size(gpui::px(layout.detail_size()))
+						.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
+						.child(format!("↑ {parent}")),
+				)
+			});
 		gpui::div()
 			.w_full()
 			.h(gpui::px(layout.header_height(actions_height)))

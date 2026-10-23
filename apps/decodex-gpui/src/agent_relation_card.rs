@@ -37,6 +37,7 @@ pub(super) struct Layout {
 	pub width: f32,
 	pub zoom: f32,
 	pub moving: bool,
+	world_width: f32,
 	display_scale: f32,
 	presence: f32,
 }
@@ -47,9 +48,20 @@ impl Layout {
 			width: WIDTH * zoom,
 			zoom,
 			moving: false,
+			world_width: WIDTH,
 			display_scale: 1.,
 			presence: t * t * (3. - 2. * t),
 		}
+	}
+
+	pub(super) fn with_width(mut self, width: f32) -> Self {
+		self.world_width = width;
+		self.width = width * self.zoom;
+		self
+	}
+
+	pub(super) fn world_width(self) -> f32 {
+		self.world_width
 	}
 
 	pub(super) fn with_presence(mut self, presence: f32, moving: bool) -> Self {
@@ -115,17 +127,18 @@ impl Layout {
 	}
 
 	pub(super) fn node_size(self, height: f32) -> (f32, f32) {
+		let width = self.world_width;
 		if !self.overview() {
-			return (WIDTH, height);
+			return (width, height);
 		}
 		let dot = self.point_size();
-		(dot + (WIDTH - dot) * self.presence, dot + (height - dot) * self.presence)
+		(dot + (width - dot) * self.presence, dot + (height - dot) * self.presence)
 	}
 
 	/// Both representations retain one world-space center and one manual position.
 	pub(super) fn node_inset(self) -> (f32, f32) {
 		let (width, height) = self.node_size(OVERVIEW_HEIGHT);
-		((WIDTH - width) / 2., (OVERVIEW_HEIGHT - height) / 2.)
+		((self.world_width - width) / 2., (OVERVIEW_HEIGHT - height) / 2.)
 	}
 
 	/// Route around the character and its HUD, independently of the activity column.
@@ -136,7 +149,7 @@ impl Layout {
 		let height = (self.portrait_spacing(PORTRAIT_HEIGHT)
 			+ if self.overview() { 0. } else { self.gap() + self.metrics_height() })
 			/ z;
-		let left = if self.labels() { INSET_X } else { (WIDTH - portrait) / 2. };
+		let left = if self.labels() { INSET_X } else { (self.world_width - portrait) / 2. };
 		let top = if self.overview() {
 			(OVERVIEW_HEIGHT - self.header_height(actions) / z) / 2.
 		} else {

@@ -55,6 +55,9 @@ pub(super) struct View {
 	layout_viewport: (f32, f32),
 	layout: std::cell::RefCell<layout::Cache>,
 	layout_mode: layout::Mode,
+	presentation: layout::Presentation,
+	parked_positions: BTreeMap<String, (f32, f32)>,
+	wires: Option<crate::ui_motion::Tween>,
 	layout_drag: Option<picker::Drag>,
 	motion: Option<SceneMotion>,
 	map_drag: Option<minimap::Drag>,
@@ -78,6 +81,7 @@ pub(super) struct View {
 struct SceneMotion {
 	from: BTreeMap<String, (f32, f32)>,
 	progress: crate::ui_motion::Tween,
+	started: std::time::Instant,
 }
 struct Drag {
 	key: Option<String>,
@@ -394,7 +398,8 @@ impl AgentSurface {
 	}
 
 	fn relation_layout_at(&self, now: std::time::Instant) -> card::Layout {
-		let layout = card::Layout::new(self.relation_scale());
+		let layout = card::Layout::new(self.relation_scale())
+			.with_width(self.work_board.view.presentation.width());
 		self.work_board.view.card_transition.as_ref().map_or(layout, |transition| {
 			layout.with_presence(
 				if layout.overview() { transition.sample(now) } else { 1. },
@@ -455,7 +460,7 @@ impl AgentSurface {
 				color: row.color,
 				row: Some(row),
 				activity,
-				size: (card::WIDTH, height),
+				size: (layout.world_width(), height),
 				base_height: layout.world_height(0.),
 				layout_height,
 				navigation: (0., 0.),
@@ -512,6 +517,7 @@ impl AgentSurface {
 			.gap_2()
 			.text_size(gpui::px(11.))
 			.child(self.relation_layout_picker(cx))
+			.child(self.relation_presentation_picker(cx))
 			.child(gpui::div().flex_1())
 			.child(
 				cluster()
@@ -627,28 +633,91 @@ impl AgentSurface {
 		cx.notify();
 	}
 
+	fn switch_relation_presentation(&mut self, mode: layout::Presentation, cx: &mut Context<Self>) {
+		if self.work_board.view.presentation == mode {
+			return;
+		}
+		let before = self.relation_graph();
+		let pan = self.work_board.view.pan;
+		let scale = self.relation_scale();
+		let center = (
+			(self.work_board.view.viewport.0 / 2. - pan.0) / scale,
+			(self.work_board.view.viewport.1 / 2. - pan.1) / scale,
+		);
+		let anchor = self.work_board.view.picked_agent.clone().or_else(|| {
+			before
+				.nodes
+				.iter()
+				.filter(|node| node.row.is_some())
+				.min_by(|a, b| {
+					let distance = |n: &Node| {
+						let p = n.connection_center();
+						(p.0 - center.0).hypot(p.1 - center.1)
+					};
+					distance(a).total_cmp(&distance(b))
+				})
+				.map(|node| node.key.clone())
+		});
+		let view = &mut self.work_board.view;
+		view.presentation = mode;
+		view.motion = None;
+		view.drag = None;
+		view.map_drag = None;
+		std::mem::swap(&mut view.positions, &mut view.parked_positions);
+		view.hover.update(None, std::time::Instant::now());
+		view.wires.get_or_insert_with(|| crate::ui_motion::Tween::new(1.)).target(
+			if mode == layout::Presentation::Links { 1. } else { 0. },
+			std::time::Instant::now(),
+		);
+		// Retain the selected character's screen position as its team gathers.
+		let target = self.relation_graph();
+		if let Some((old, new)) = anchor.as_ref().and_then(|key| {
+			Some((
+				before.nodes.iter().find(|n| &n.key == key)?,
+				target.nodes.iter().find(|n| &n.key == key)?,
+			))
+		}) {
+			let (a, b) = (old.connection_center(), new.connection_center());
+			self.work_board.view.pan = (pan.0 + (a.0 - b.0) * scale, pan.1 + (a.1 - b.1) * scale);
+		}
+		self.animate_relation_change(&before, pan);
+		cx.notify();
+	}
+
+	fn relation_wire_presence(&self, now: std::time::Instant) -> f32 {
+		self.work_board.view.wires.as_ref().map_or(
+			if self.work_board.view.presentation == layout::Presentation::Links { 1. } else { 0. },
+			|wires| wires.sample(now),
+		)
+	}
+
 	fn animate_relation_change(&mut self, before: &Graph, old_pan: (f32, f32)) {
 		let scale = self.relation_scale();
 		let view = &mut self.work_board.view;
 		view.camera_fixed = true;
 		view.zoom = Some(scale);
+		let started = std::time::Instant::now();
 		let mut progress = crate::ui_motion::Tween::new(0.);
-		progress.target(1., std::time::Instant::now());
+		if view.presentation == layout::Presentation::Together {
+			progress = progress.duration(std::time::Duration::from_millis(560));
+		}
+		progress.target(1., started);
 		view.motion = Some(SceneMotion {
 			from: before
 				.nodes
 				.iter()
 				.map(|node| {
-					(
-						node.key.clone(),
+					(node.key.clone(), {
+						let center = node.connection_center();
 						(
-							node.x + node.width() / 2. + (old_pan.0 - view.pan.0) / scale,
-							node.y + node.height() / 2. + (old_pan.1 - view.pan.1) / scale,
-						),
-					)
+							center.0 + (old_pan.0 - view.pan.0) / scale,
+							center.1 + (old_pan.1 - view.pan.1) / scale,
+						)
+					})
 				})
 				.collect(),
 			progress,
+			started,
 		});
 	}
 
@@ -1175,6 +1244,7 @@ impl AgentSurface {
 			graph,
 			self.work_board.view.layout_viewport,
 			self.work_board.view.layout_mode,
+			self.work_board.view.presentation,
 		);
 		resources::place_resources(graph);
 		for node in &mut graph.nodes {
@@ -1202,8 +1272,9 @@ impl AgentSurface {
 			let progress = motion.progress.sample(std::time::Instant::now());
 			for node in &mut graph.nodes {
 				if let Some(&(x, y)) = motion.from.get(&node.key) {
-					node.x = x + (node.x + node.width() / 2. - x) * progress - node.width() / 2.;
-					node.y = y + (node.y + node.height() / 2. - y) * progress - node.height() / 2.;
+					let center = node.connection_center();
+					node.x += (x - center.0) * (1. - progress);
+					node.y += (y - center.1) * (1. - progress);
 				}
 			}
 		}
@@ -1269,7 +1340,9 @@ impl AgentSurface {
 		let scale = self.relation_scale();
 		let pan = self.work_board.view.pan;
 		canvas = self.paint_relation_connections(canvas, graph, lines, moving, cx);
-		if graph.layout.points() {
+		if graph.layout.points()
+			|| self.work_board.view.presentation == layout::Presentation::Together
+		{
 			return canvas;
 		}
 		for link in lines {
@@ -1318,7 +1391,11 @@ impl AgentSurface {
 					.bg(crate::ui_theme::rgba(
 						(crate::ui_theme::COMPOSER_MATERIAL & 0xffffff00) | 0xe8,
 					))
-					.opacity(link.detail * graph.layout.card_presence())
+					.opacity(
+						link.detail
+							* graph.layout.card_presence()
+							* self.relation_wire_presence(std::time::Instant::now()),
+					)
 					.text_size(gpui::px(style::ConnectionLabel::FONT_SIZE * scale))
 					.line_height(gpui::px(16. * scale))
 					.text_color(crate::ui_theme::rgb(edge.color))
@@ -1375,6 +1452,7 @@ impl AgentSurface {
 		let neighborhood = self.relation_neighborhood(graph);
 		let layout_viewport = self.work_board.view.layout_viewport;
 		let layout = graph.layout.on_display(self.work_board.view.display_scale);
+		let wire_presence = self.relation_wire_presence(std::time::Instant::now());
 		let mut ports = graph.connection_ports(lines);
 		let metrics_scale =
 			metrics::Scale::new(graph.nodes.iter().map(|node| self.metrics_for(node)));
@@ -1403,6 +1481,17 @@ impl AgentSurface {
 			} else {
 				(node.x, node.y)
 			};
+			let parent = (self.work_board.view.presentation == layout::Presentation::Together)
+				.then(|| {
+					graph
+						.edges
+						.iter()
+						.find(|e| e.kind.hierarchy() && e.to == node.key)
+						.and_then(|edge| graph.nodes.iter().find(|n| n.key == edge.from))
+						.and_then(|n| n.row.as_ref())
+						.map(|row| self.relation_agent_number(row))
+				})
+				.flatten();
 
 			let view = self
 				.relation_node_surface(node, layout)
@@ -1458,13 +1547,19 @@ impl AgentSurface {
 			canvas = canvas.child(card::Card {
 				key: node.key.clone(),
 				surface: view,
-				content: self.relation_node_presentation(node, layout, emphasized, metrics_scale),
+				content: self.relation_node_presentation(
+					node,
+					layout,
+					emphasized,
+					metrics_scale,
+					parent,
+				),
 				faded,
 				visibility: opacity,
 				ports: node.row.as_ref().filter(|_| !layout.points()).map(|_| card::Ports {
 					zoom: scale,
 					selected: emphasized,
-					presence: layout.card_presence(),
+					presence: layout.card_presence() * wire_presence,
 					ports: ports.remove(&node.key).unwrap_or_default(),
 				}),
 			});
@@ -1536,6 +1631,12 @@ impl AgentSurface {
 			|| self
 				.work_board
 				.view
+				.wires
+				.as_ref()
+				.is_some_and(|w| w.moving(std::time::Instant::now()))
+			|| self
+				.work_board
+				.view
 				.motion
 				.as_ref()
 				.is_some_and(|motion| motion.progress.moving(std::time::Instant::now()));
@@ -1544,6 +1645,7 @@ impl AgentSurface {
 		let flow_started = *self.work_board.view.flow_clock.get_or_init(std::time::Instant::now);
 		let reduce_motion = crate::ui_motion::reduced() || !crate::ui_motion::animations_active();
 		let paint_lines = lines.to_vec();
+		let wire_presence = self.relation_wire_presence(std::time::Instant::now());
 		let graph_moving = graph.layout.moving;
 		let selected_path = graph.ancestor_edges(
 			self.relation_context()
@@ -1578,9 +1680,10 @@ impl AgentSurface {
 					let mut flows = Vec::new();
 					let mut highlights = BTreeMap::<u32, routing::Ink>::new();
 					paint_relation_grid(bounds, scale, pan, window);
-					for link in &paint_lines {
+					for link in paint_lines.iter().filter(|_| wire_presence > 0.001) {
 						if link.base.kind.hierarchy() {
-							let opacity = 1. - link.dim * 0.4 * (1. - link.detail);
+							let opacity =
+								(1. - link.dim * 0.4 * (1. - link.detail)) * wire_presence;
 							if let Ok(path) = link
 								.path
 								.stroke(link.base.kind, bounds.origin, scale, pan, 1.1, false)
@@ -1622,7 +1725,10 @@ impl AgentSurface {
 							.stroke(link.fact.kind, bounds.origin, scale, pan, 1.6, false)
 							.build()
 						{
-							detail.push(path, (color << 8) | (0xdd as f32 * link.detail) as u32);
+							detail.push(
+								path,
+								(color << 8) | (0xdd as f32 * link.detail * wire_presence) as u32,
+							);
 						}
 						if link.active && !reduce_motion {
 							flows.push((reversed, link.path.as_ref(), link.detail));
@@ -1634,7 +1740,14 @@ impl AgentSurface {
 					let phase = (flow_started.elapsed().as_secs_f32() / 2.8).fract();
 					for (reversed, forward, opacity) in flows {
 						let route = reversed.as_ref().unwrap_or(forward);
-						route.paint_flow(bounds.origin, scale, pan, phase, opacity, window);
+						route.paint_flow(
+							bounds.origin,
+							scale,
+							pan,
+							phase,
+							opacity * wire_presence,
+							window,
+						);
 						animate = true;
 					}
 					if animate {
@@ -1702,6 +1815,7 @@ impl AgentSurface {
 		layout: card::Layout,
 		selected: bool,
 		metrics_scale: metrics::Scale,
+		parent: Option<String>,
 	) -> AnyElement {
 		if node.row.is_some() && layout.overview() {
 			card::overview(
@@ -1709,11 +1823,12 @@ impl AgentSurface {
 				node.color,
 				selected,
 				layout,
-				(!layout.points())
-					.then(|| self.relation_node_content(node, layout, selected, metrics_scale)),
+				(!layout.points()).then(|| {
+					self.relation_node_content(node, layout, selected, metrics_scale, parent)
+				}),
 			)
 		} else {
-			self.relation_node_content(node, layout, selected, metrics_scale)
+			self.relation_node_content(node, layout, selected, metrics_scale, parent)
 		}
 	}
 
@@ -1723,6 +1838,7 @@ impl AgentSurface {
 		layout: card::Layout,
 		selected: bool,
 		metrics_scale: metrics::Scale,
+		parent: Option<String>,
 	) -> AnyElement {
 		let scale = self.relation_scale();
 		let width = if node.row.is_some() { layout.width } else { node.width() * scale };
@@ -1752,7 +1868,7 @@ impl AgentSurface {
 			.when_some(preview, |view, task| {
 				let now = std::time::Instant::now();
 				let status = node.row.as_ref().map(|row| row.status.as_str()).unwrap_or_default();
-				let avatar = self
+				let mut avatar = self
 					.work_board
 					.view
 					.mascots
@@ -1760,8 +1876,27 @@ impl AgentSurface {
 					.entry(node.key.clone())
 					.or_insert_with(|| mascot::Actor::new(&node.key, status, now))
 					.frame(status, now);
+				if self.work_board.view.presentation == layout::Presentation::Together {
+					if let Some(motion) = &self.work_board.view.motion {
+						let offset = node.connection_center();
+						let target = (
+							node.navigation.0 + offset.0 - node.x,
+							node.navigation.1 + offset.1 - node.y,
+						);
+						if motion.progress.moving(now)
+							&& motion
+								.from
+								.get(&node.key)
+								.is_some_and(|p| (p.0 - target.0).hypot(p.1 - target.1) > 1.)
+						{
+							avatar =
+								avatar.travelling(now.duration_since(motion.started).as_secs_f32());
+						}
+					}
+				}
 				view.child(header::Header {
 					key: node.key.clone(),
+					parent,
 					number: node
 						.row
 						.as_ref()
@@ -2059,7 +2194,8 @@ impl AgentSurface {
 		// not reserve another margin or force a root-only close-up.
 		let now = std::time::Instant::now();
 		for zoom in [1., 0.6, 0.3, card::MIN_ZOOM] {
-			let layout = card::Layout::new(zoom);
+			let layout =
+				card::Layout::new(zoom).with_width(self.work_board.view.presentation.width());
 			let graph = self.relation_graph_with_layout(now, layout.with_presence(1., false));
 			let keys = graph
 				.nodes
@@ -2106,6 +2242,15 @@ impl AgentSurface {
 		self.zoom_relations(old, scale, None);
 		self.work_board.view.card_transition = None;
 		cx.notify();
+	}
+
+	#[cfg(feature = "visual-capture")]
+	#[allow(dead_code)]
+	pub(crate) fn visual_relation_presentation(&mut self, together: bool, cx: &mut Context<Self>) {
+		self.switch_relation_presentation(
+			if together { layout::Presentation::Together } else { layout::Presentation::Links },
+			cx,
+		);
 	}
 
 	pub(crate) fn visual_relation_resource_focus(&mut self) {

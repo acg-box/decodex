@@ -96,7 +96,9 @@ impl AgentSurface {
 		let links: Vec<_> = graph
 			.edges
 			.iter()
-			.filter(|edge| edge.kind.hierarchy())
+			.filter(|edge| {
+				edge.kind.hierarchy() && view.presentation == layout::Presentation::Links
+			})
 			.filter_map(|edge| Some((*points.get(&edge.from)?, *points.get(&edge.to)?)))
 			.collect();
 		let (left, top) = projection.point((-view.pan.0 / zoom, -view.pan.1 / zoom));
