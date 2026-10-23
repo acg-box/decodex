@@ -19,10 +19,10 @@ impl AgentSurface {
 			.and_then(|brief| brief.preview.as_mut())
 		{
 			let actions = [
-				"Read the context fixture",
-				"Prepare 256k input",
-				"Run the native probe",
-				"Collect the complete reply",
+				"Read · context-fixture.json",
+				"Prepare the 256k input for the native continuity probe.",
+				"Run · Verify the complete answer after reconnecting the browser.",
+				"The complete answer survived the reconnect, including the final code block. The full evidence is attached to the conversation.",
 			];
 			preview.recent = actions
 				.iter()
@@ -32,6 +32,11 @@ impl AgentSurface {
 				.map(|(index, text)| activity::Operation {
 					id: format!("motion:{index}"),
 					text: (*text).into(),
+					kind: if index == 3 {
+						activity::OperationKind::Result
+					} else {
+						activity::OperationKind::Action
+					},
 				})
 				.collect();
 		}
@@ -133,6 +138,11 @@ impl AgentSurface {
 						recent: vec![activity::Operation {
 							id: format!("reference:{id}"),
 							text: action.into(),
+							kind: match id {
+								"nora" => activity::OperationKind::Question,
+								"theo" | "tess" | "eden" => activity::OperationKind::Result,
+								_ => activity::OperationKind::Action,
+							},
 						}],
 					}),
 					question: None,
@@ -305,14 +315,14 @@ fn reference_text(id: &str) -> (&'static str, &'static str) {
 	match id {
 		"agent" => ("Follow up on active projects", "Checking the blocked handoff"),
 		"mira" => ("Pro continuity", "Reviewing recovery proposal"),
-		"nora" => ("Profile recovery", "Waiting for your decision"),
+		"nora" => ("Profile recovery", "Use the existing browser profile for this recovery test?"),
 		"lin" => ("Long-context probe", "Running 256k input"),
 		"sol" => ("Recovery research", "Comparing native result paths"),
 		"sage" => ("Graph workspace", "Reviewing compact nodes"),
 		"iris" => ("Node layout", "Checking 24-agent spacing"),
-		"theo" => ("Inspector", "Connecting selected artifact"),
+		"theo" => ("Inspector", "Selection now opens the matching conversation."),
 		"ravi" => ("Local release", "Collecting acceptance"),
-		"tess" => ("UI checks", "Checking material continuity"),
+		"tess" => ("UI checks", "The composer and window materials are unchanged."),
 		_ => ("Runtime", "Connection healthy"),
 	}
 }

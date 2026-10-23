@@ -12,6 +12,7 @@ pub(super) struct Header {
 	pub color: u32,
 	pub selected: bool,
 	pub picked: bool,
+	pub live: bool,
 	pub task: String,
 	pub avatar: mascot::Avatar,
 	pub metrics: Option<gpui::AnyElement>,
@@ -24,14 +25,13 @@ impl RenderOnce for Header {
 		let h = self;
 		let layout = h.layout.on_display(window.scale_factor());
 		let show_activity = layout.activity_visible();
-		let task_lines = information_rows::measure(
-			&h.task,
-			layout,
-			information_rows::TASK_LINES,
-			cx.text_system(),
-		);
-		let count =
-			if show_activity { h.activity.height / stream::LINE + task_lines as f32 } else { 0. };
+		let task_lines = information_rows::task_excerpt(&h.task, layout, cx.text_system()).lines;
+		let gap = content_gap(task_lines, &h.activity, layout);
+		let count = if show_activity {
+			h.activity.height / stream::LINE + task_lines as f32 + gap
+		} else {
+			0.
+		};
 		let portrait_width = layout.portrait_spacing(super::card::PORTRAIT_WIDTH);
 		let selection = selection_mark(&h.key, h.selected, layout, window, cx);
 		let avatar_selector = format!("relation-avatar-{}", h.key);
@@ -117,17 +117,20 @@ impl RenderOnce for Header {
 					}),
 			);
 		if show_activity {
-			let mut content = gpui::div().flex().flex_col().w_full();
+			let mut content =
+				gpui::div().flex().flex_col().w_full().gap(gpui::px(gap * layout.activity_line()));
 			if !h.task.is_empty() {
 				content = content.child(information_rows::goal(
 					&h.key,
-					h.task.clone(),
+					&h.task,
 					layout,
-					task_lines,
+					cx.text_system(),
 				));
 			}
 			if h.activity.height > 0. {
-				content = content.child(action_rows(&h.key, h.activity, layout, window, cx));
+				content = content.child(information_rows::render(
+					&h.key, h.activity, layout, h.live, window, cx,
+				));
 			}
 			details = details.child(content);
 		}
@@ -189,14 +192,8 @@ fn selection_mark(
 
 #[path = "agent_relation_rows.rs"] mod information_rows;
 
-fn action_rows(
-	key: &str,
-	frame: stream::Frame,
-	layout: super::card::Layout,
-	window: &mut Window,
-	cx: &mut App,
-) -> gpui::Div {
-	information_rows::render(key, frame, layout, window, cx)
+fn content_gap(task_lines: usize, frame: &stream::Frame, layout: super::card::Layout) -> f32 {
+	if task_lines > 0 && frame.height > 0. { 4. / layout.activity_line() } else { 0. }
 }
 
 pub(super) fn detail_rows(
@@ -205,44 +202,39 @@ pub(super) fn detail_rows(
 	layout: super::card::Layout,
 	text_system: &std::sync::Arc<gpui::TextSystem>,
 ) -> f32 {
+	let (min, max) = layout.zoom_range();
+	let task_lines = [min, max]
+		.into_iter()
+		.map(|zoom| {
+			information_rows::task_excerpt(
+				task,
+				super::card::Layout::new(zoom).with_width(layout.world_width()),
+				text_system,
+			)
+			.lines
+		})
+		.max()
+		.unwrap_or(0);
 	activity.layout_height / stream::LINE
-		+ reserved_lines(task, layout, information_rows::TASK_LINES, text_system) as f32
+		+ task_lines as f32
+		+ content_gap(task_lines, activity, layout)
 }
 
 pub(super) fn operation_height(
 	text: &str,
-	current: bool,
 	layout: super::card::Layout,
 	text_system: &std::sync::Arc<gpui::TextSystem>,
 ) -> (f32, f32) {
-	let text = information_rows::action(text).1;
-	let limit = information_rows::action_lines(current);
-	(
-		information_rows::measure(text, layout, limit, text_system) as f32 * stream::LINE,
-		reserved_lines(text, layout, limit, text_system) as f32 * stream::LINE,
-	)
-}
-
-/// Layout uses the largest wrapped height within a zoom tier. The painted
-/// messages still use their current height, so zooming does not rearrange teams
-/// and short messages do not acquire empty lines between them.
-fn reserved_lines(
-	text: &str,
-	layout: super::card::Layout,
-	limit: usize,
-	text_system: &std::sync::Arc<gpui::TextSystem>,
-) -> usize {
+	let height = |layout| {
+		information_rows::message_height(
+			information_rows::message_excerpt(text, layout, text_system).lines,
+			layout,
+		)
+	};
 	let (min, max) = layout.zoom_range();
-	[min, max]
+	let reserved = [min, max]
 		.into_iter()
-		.map(|zoom| {
-			information_rows::measure(
-				text,
-				super::card::Layout::new(zoom).with_width(layout.world_width()),
-				limit,
-				text_system,
-			)
-		})
-		.max()
-		.unwrap_or(0)
+		.map(|zoom| height(super::card::Layout::new(zoom).with_width(layout.world_width())))
+		.fold(0., f32::max);
+	(height(layout), reserved)
 }

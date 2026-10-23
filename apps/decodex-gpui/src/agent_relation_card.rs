@@ -112,13 +112,19 @@ impl Layout {
 	}
 
 	pub(super) fn text_width(self) -> f32 {
+		(self.details_width() - 2. * self.bubble_padding()).max(1.)
+	}
+
+	pub(super) fn details_width(self) -> f32 {
 		(self.width
 			- 2. * self.spacing(INSET_X)
 			- self.portrait_spacing(PORTRAIT_WIDTH)
-			- self.details_gap()
-			- self.pixel(12.)
-			- 5.)
-			.max(1.)
+			- self.details_gap())
+		.max(1.)
+	}
+
+	pub(super) fn bubble_padding(self) -> f32 {
+		self.spacing(7.).max(5.)
 	}
 
 	pub(super) fn full_detail(self) -> bool {

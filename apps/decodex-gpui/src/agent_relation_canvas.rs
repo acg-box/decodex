@@ -433,15 +433,9 @@ impl AgentSurface {
 				.or_insert_with(|| stream::Stream::new(&scope, &operations, now));
 			stream.sync(&scope, &operations, now);
 			let text_layout = layout.on_display(self.work_board.view.display_scale);
-			let activity =
-				stream.measured_frame(now, crate::ui_motion::reduced(), |text, current| {
-					header::operation_height(
-						text,
-						current,
-						text_layout,
-						&self.work_board.text_system,
-					)
-				});
+			let activity = stream.measured_frame(now, crate::ui_motion::reduced(), |text| {
+				header::operation_height(text, text_layout, &self.work_board.text_system)
+			});
 			let assignment = self.graph_preview(&row).0;
 			let layout_height = layout.world_height(header::detail_rows(
 				&assignment,
@@ -449,7 +443,6 @@ impl AgentSurface {
 				text_layout,
 				&self.work_board.text_system,
 			));
-			let activity = if layout.full_detail() { activity } else { activity.latest() };
 			let height = layout.world_height(header::detail_rows(
 				&assignment,
 				&activity,
@@ -1904,6 +1897,7 @@ impl AgentSurface {
 					color: node.color,
 					selected,
 					picked: self.work_board.view.picked_agent.as_deref() == Some(node.key.as_str()),
+					live: node.row.as_ref().is_some_and(|row| row.group == 1),
 					task,
 					avatar,
 					metrics: (!layout.overview()).then(|| self.node_metrics(node, layout)),
@@ -2396,7 +2390,9 @@ mod fit_tests {
 	}
 
 	#[gpui::test]
-	fn actions_use_the_portrait_space_and_release_rows_after_fading(cx: &mut gpui::TestAppContext) {
+	fn messages_use_one_slot_without_replaying_history_or_expiring_the_last_reply(
+		cx: &mut gpui::TestAppContext,
+	) {
 		let surface = cx.new(super::super::tests::fixture);
 		surface.update(cx, |s, _| {
 			s.work_board.view.zoom = Some(1.);
@@ -2433,6 +2429,7 @@ mod fit_tests {
 					.map(|i| super::super::activity::Operation {
 						id: format!("step-{i}"),
 						text: format!("Check {i}"),
+						kind: super::super::activity::OperationKind::Action,
 					})
 					.collect(),
 			});
@@ -2444,13 +2441,9 @@ mod fit_tests {
 				.into_iter()
 				.find(|node| node.key == row.key)
 				.unwrap();
-			assert_eq!(three.activity.lines.len(), 3);
-			assert_eq!(three.activity.height, 3. * stream::LINE);
-			assert_eq!(three.height(), empty.height(), "three updates fit beside the portrait");
-			assert!(
-				card::Layout::new(1.).header_height(3.) >= three.activity.height,
-				"the visible updates fit without reserving a separate title row"
-			);
+			assert_eq!(three.activity.lines.len(), 1);
+			assert_eq!(three.activity.lines[0].text, "Check 2");
+			assert!(three.height() >= empty.height());
 			let idle = arrival + std::time::Duration::from_secs(7);
 			for i in 0..4 {
 				s.relation_graph_at(idle + std::time::Duration::from_millis(i * 300));
@@ -2462,16 +2455,12 @@ mod fit_tests {
 				.find(|node| node.key == row.key)
 				.unwrap();
 			assert_eq!(settled.activity.lines.len(), 1);
-			assert_eq!(settled.activity.height, stream::LINE);
 			assert_eq!(
 				settled.height(),
-				empty.height(),
-				"one retained update fits beside the avatar"
+				three.height(),
+				"quiet time does not erase or reflow the last reply"
 			);
-			assert!(
-				settled.activity.height < three.activity.height,
-				"absent rows release their space"
-			);
+			assert_eq!(settled.activity.height, three.activity.height);
 		});
 	}
 
@@ -2674,6 +2663,10 @@ mod fit_tests {
 				let graph = s.relation_graph();
 				assert_eq!(graph.nodes.len(), 100);
 				assert_eq!(graph.edges.len(), 99);
+				let messages =
+					&graph.nodes.iter().find(|node| node.key == "agent").unwrap().activity.lines;
+				assert_eq!(messages.len(), 1, "retain the quiet agent's one native reply");
+				assert_eq!(messages[0].kind, super::super::activity::OperationKind::Message);
 				let slots: BTreeSet<_> =
 					s.factory_rows().iter().map(|row| s.relation_agent_number(row)).collect();
 				assert_eq!(slots.len(), 100);
@@ -2684,9 +2677,10 @@ mod fit_tests {
 			assert!(visual.debug_bounds("graph-usage-segment-density-099").is_some());
 			let layout = card::Layout::new(scale);
 			assert_eq!(visual.debug_bounds("relation-metrics-agent").is_some(), !layout.overview());
-			assert!(
-				visual.debug_bounds("relation-preview-agent").is_none(),
-				"the quiet fixture must not repeat its last reply at any zoom"
+			assert_eq!(
+				visual.debug_bounds("relation-preview-agent").is_some(),
+				layout.activity_visible(),
+				"show one retained reply only at readable zoom"
 			);
 			assert_eq!(visual.debug_bounds("relation-tokens-agent").is_some(), !layout.overview());
 			assert_eq!(visual.debug_bounds("relation-number-agent").is_some(), layout.labels());
@@ -3242,6 +3236,7 @@ mod fit_tests {
 						.map(|index| super::super::activity::Operation {
 							id: format!("readable-{index}"),
 							text: format!("Inspect operation {index}"),
+							kind: super::super::activity::OperationKind::Action,
 						})
 						.collect(),
 				}),

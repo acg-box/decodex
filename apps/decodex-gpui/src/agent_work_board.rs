@@ -396,15 +396,7 @@ impl AgentSurface {
 			return ("Now".into(), live.action);
 		}
 		if let Some(output) = self.work_output(row) {
-			let complete = self
-				.work_board
-				.briefs
-				.get(&row.key)
-				.filter(|brief| brief.source_thread == row.thread)
-				.and_then(|brief| brief.outcome.as_ref())
-				.is_some_and(|(turn, status)| {
-					turn.as_str() == output.turn && status == "completed"
-				});
+			let complete = self.work_output_complete(row, output.turn);
 			if row.group != 1 || !complete {
 				return (
 					if complete { "Latest result" } else { "Latest update" }.into(),
@@ -420,6 +412,15 @@ impl AgentSurface {
 			return (if row.group == 1 { "Now" } else { "Last activity" }.into(), operation);
 		}
 		(row.status.clone(), String::new())
+	}
+
+	fn work_output_complete(&self, row: &Row, turn: &str) -> bool {
+		self.work_board
+			.briefs
+			.get(&row.key)
+			.filter(|brief| brief.source_thread == row.thread)
+			.and_then(|brief| brief.outcome.as_ref())
+			.is_some_and(|(observed, status)| observed == turn && status == "completed")
 	}
 
 	fn graph_preview(&self, row: &Row) -> (String, String) {
@@ -530,16 +531,35 @@ impl AgentSurface {
 				scope,
 				vec![activity::Operation {
 					id: format!("question:{question}"),
-					text: activity::text(question),
+					text: activity::plain(question),
+					kind: activity::OperationKind::Question,
 				}],
 			);
 		}
 		let mut operations = preview.map(|preview| preview.recent.clone()).unwrap_or_default();
+		if operations.is_empty()
+			&& self.live_work_activity(row).is_none()
+			&& let Some(output) = self.work_output(row)
+		{
+			operations.push(activity::Operation {
+				id: format!("{}:output", output.turn),
+				text: activity::plain(output.text),
+				kind: if self.work_output_complete(row, output.turn) {
+					activity::OperationKind::Result
+				} else {
+					activity::OperationKind::Message
+				},
+			});
+		}
 		// Retain native messages, but do not invent an operation for a quiet thread.
 		if operations.is_empty() && row.group != 2 {
 			let text = self.work_activity_summary(row).1;
 			if !text.is_empty() {
-				operations.push(activity::Operation { id: "latest".into(), text });
+				operations.push(activity::Operation {
+					id: "latest".into(),
+					text,
+					kind: activity::OperationKind::Action,
+				});
 			}
 		}
 		(scope, operations)

@@ -16,6 +16,16 @@ pub(super) struct Preview {
 pub(super) struct Operation {
 	pub id: String,
 	pub text: String,
+	pub kind: OperationKind,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum OperationKind {
+	#[default]
+	Action,
+	Message,
+	Result,
+	Question,
 }
 
 pub(super) const MAX_RECENT: usize = 5;
@@ -23,6 +33,12 @@ pub(super) const MAX_RECENT: usize = 5;
 fn recent(entries: &[AgentTimelineEntry], turn: &str) -> Vec<Operation> {
 	let mut seen = std::collections::BTreeSet::new();
 	let mut operations = Vec::new();
+	let completed = entries.iter().any(|entry| {
+		matches!(
+			&entry.content,
+			AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } if turn_id == turn
+		)
+	});
 	for entry in entries.iter().rev() {
 		let AgentTimelineContent::Item {
 			turn_id,
@@ -30,6 +46,7 @@ fn recent(entries: &[AgentTimelineEntry], turn: &str) -> Vec<Operation> {
 			activity,
 			collaboration,
 			kind,
+			phase,
 			text: message,
 			..
 		} = &entry.content
@@ -58,11 +75,18 @@ fn recent(entries: &[AgentTimelineEntry], turn: &str) -> Vec<Operation> {
 		} else {
 			continue;
 		};
-		let label = text(&source);
+		let label = plain(&source);
 		if label.is_empty() {
 			continue;
 		}
-		operations.push(Operation { id: format!("{turn}:{item_id}"), text: label });
+		let kind = if activity.is_some() {
+			OperationKind::Action
+		} else if phase.as_deref() == Some("final_answer") || (completed && phase.is_none()) {
+			OperationKind::Result
+		} else {
+			OperationKind::Message
+		};
+		operations.push(Operation { id: format!("{turn}:{item_id}"), text: label, kind });
 		if operations.len() == MAX_RECENT {
 			break;
 		}
@@ -171,6 +195,18 @@ pub(super) fn assignments(
 }
 
 pub(super) fn text(source: &str) -> String {
+	let compact = plain(source);
+	let mut chars = compact.chars();
+	let mut preview: String = chars.by_ref().take(180).collect();
+	if chars.next().is_some() {
+		preview = preview.trim_end().to_owned();
+		preview.push('…');
+	}
+	preview
+}
+
+/// Graph excerpts use a larger bounded source; other previews retain their limit.
+pub(super) fn plain(source: &str) -> String {
 	// Bound markdown work even when the underlying message contains a large document.
 	let bounded: String = source.chars().take(640).collect();
 	let plain: String = Parser::new_ext(&bounded, Options::ENABLE_TABLES)
@@ -187,14 +223,7 @@ pub(super) fn text(source: &str) -> String {
 			_ => None,
 		})
 		.collect();
-	let compact = plain.split_whitespace().collect::<Vec<_>>().join(" ");
-	let mut chars = compact.chars();
-	let mut preview: String = chars.by_ref().take(180).collect();
-	if chars.next().is_some() {
-		preview = preview.trim_end().to_owned();
-		preview.push('…');
-	}
-	preview
+	plain.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 pub(super) fn latest(entries: &[AgentTimelineEntry], turn: Option<&str>) -> Option<Preview> {
@@ -434,11 +463,31 @@ mod tests {
 		assert_eq!(
 			recent(&entries, "now"),
 			vec![
-				Operation { id: "now:2".into(), text: "Probe completed".into() },
-				Operation { id: "now:3".into(), text: "Compare the full reply".into() },
-				Operation { id: "now:4".into(), text: "All checks passed".into() },
-				Operation { id: "now:5".into(), text: "Review complete".into() },
-				Operation { id: "now:6".into(), text: "Handed off".into() },
+				Operation {
+					id: "now:2".into(),
+					text: "Probe completed".into(),
+					kind: OperationKind::Message
+				},
+				Operation {
+					id: "now:3".into(),
+					text: "Compare the full reply".into(),
+					kind: OperationKind::Message
+				},
+				Operation {
+					id: "now:4".into(),
+					text: "All checks passed".into(),
+					kind: OperationKind::Message
+				},
+				Operation {
+					id: "now:5".into(),
+					text: "Review complete".into(),
+					kind: OperationKind::Message
+				},
+				Operation {
+					id: "now:6".into(),
+					text: "Handed off".into(),
+					kind: OperationKind::Message
+				},
 			]
 		);
 	}
@@ -566,5 +615,6 @@ mod tests {
 		let preview = text(&"图".repeat(1000));
 		assert_eq!(preview.chars().count(), 181);
 		assert!(preview.ends_with('…'));
+		assert_eq!(plain(&"图".repeat(1000)).chars().count(), 640);
 	}
 }

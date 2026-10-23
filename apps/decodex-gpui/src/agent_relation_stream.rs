@@ -1,35 +1,25 @@
-//! Bounded action rows move upward on arrival and settle to the latest action.
-use super::super::activity::{MAX_RECENT, Operation};
-use crate::ui_motion::Tween;
+//! One current message per agent. Replacements crossfade without replaying history.
+use super::super::activity::{MAX_RECENT, Operation, OperationKind};
 use std::time::{Duration, Instant};
 
 pub(super) const LINE: f32 = crate::ui_theme::CAPTION_LINE_HEIGHT;
-const HOLD: Duration = Duration::from_secs(6);
-const FADE: Duration = Duration::from_millis(240);
-
-struct Row {
-	operation: Operation,
-	observed: Instant,
-	y: Tween,
-	height: f32,
-}
+const FADE: Duration = Duration::from_millis(200);
 
 pub(super) struct Stream {
 	scope: String,
 	seen: Vec<String>,
-	rows: Vec<Row>,
-	leaving: Option<(Row, Instant)>,
-	height: Tween,
+	current: Option<Operation>,
+	previous: Option<Operation>,
+	changed: Instant,
 }
 
 #[derive(Clone)]
 pub(super) struct Line {
 	pub id: String,
 	pub text: String,
-	pub current: bool,
+	pub kind: OperationKind,
 	pub y: f32,
 	pub height: f32,
-	pub layout_height: f32,
 	pub opacity: f32,
 }
 
@@ -41,37 +31,15 @@ pub(super) struct Frame {
 	pub moving: bool,
 }
 
-impl Frame {
-	/// Keep one update at a distance; readable zoom reveals the recent rows.
-	pub(super) fn latest(mut self) -> Self {
-		self.lines.retain(|line| line.current);
-		for line in &mut self.lines {
-			line.y = 0.;
-		}
-		self.height = self.lines.first().map_or(0., |line| line.height);
-		self.layout_height = self.lines.first().map_or(0., |line| line.layout_height);
-		// Hidden rows do not keep requesting frames during their six-second hold.
-		self.moving = self.lines.iter().any(|line| line.opacity < 1.);
-		self
-	}
-}
-
 impl Stream {
 	pub fn new(scope: &str, operations: &[Operation], now: Instant) -> Self {
-		let mut stream = Self {
+		Self {
 			scope: scope.into(),
-			seen: vec![],
-			rows: vec![],
-			leaving: None,
-			height: Tween::new(0.),
-		};
-		stream.sync(scope, operations, now);
-		for (index, row) in stream.rows.iter_mut().enumerate() {
-			row.y = Tween::new(index as f32 * LINE);
-			row.observed = now - FADE;
+			seen: operations.iter().map(|op| op.id.clone()).collect(),
+			current: operations.last().cloned(),
+			previous: None,
+			changed: now - FADE,
 		}
-		stream.height = Tween::new(stream.rows.len() as f32 * LINE);
-		stream
 	}
 
 	pub fn sync(&mut self, scope: &str, operations: &[Operation], now: Instant) {
@@ -79,109 +47,80 @@ impl Stream {
 			*self = Self::new(scope, operations, now);
 			return;
 		}
-		for operation in
-			operations.iter().rev().take(MAX_RECENT).collect::<Vec<_>>().into_iter().rev()
+		let Some(next) = operations.last() else {
+			if self.current.as_ref().is_some_and(|current| current.kind == OperationKind::Question)
+			{
+				self.current = None;
+				self.previous = None;
+			}
+			return;
+		};
+		if self.current.as_ref().is_some_and(|current| current.id == next.id) {
+			// A streaming delta or final phase updates the same bubble in place.
+			self.current = Some(next.clone());
+		} else if !self.seen.contains(&next.id)
+			|| next.kind == OperationKind::Question
+			|| self.current.as_ref().is_some_and(|current| current.kind == OperationKind::Question)
 		{
-			if let Some(row) = self.rows.iter_mut().find(|row| row.operation.id == operation.id) {
-				row.operation.text.clone_from(&operation.text);
-			} else if !self.seen.contains(&operation.id) {
-				self.seen.push(operation.id.clone());
-				self.rows.push(Row {
-					operation: operation.clone(),
-					observed: now,
-					y: Tween::new(self.rows.iter().map(|row| row.height).sum::<f32>() + 5.),
-					height: LINE,
-				});
-				if self.rows.len() > MAX_RECENT {
-					let mut oldest = self.rows.remove(0);
-					oldest.y.target(-oldest.height, now);
-					if self.leaving.is_none() {
-						self.leaving = Some((oldest, now));
-					}
-				}
+			self.previous = self.current.replace(next.clone());
+			self.changed = now;
+		}
+		for op in operations {
+			if !self.seen.contains(&op.id) {
+				self.seen.push(op.id.clone());
 			}
 		}
-		if self.seen.len() > 12 {
-			self.seen.drain(..self.seen.len() - 12);
+		if self.seen.len() > MAX_RECENT * 2 {
+			self.seen.drain(..self.seen.len() - MAX_RECENT * 2);
 		}
-	}
-
-	#[cfg(test)]
-	pub fn frame(&mut self, now: Instant, reduced: bool) -> Frame {
-		self.measured_frame(now, reduced, |_, _| (LINE, LINE))
 	}
 
 	pub fn measured_frame(
 		&mut self,
 		now: Instant,
 		reduced: bool,
-		mut measure: impl FnMut(&str, bool) -> (f32, f32),
+		mut measure: impl FnMut(&str) -> (f32, f32),
 	) -> Frame {
-		if self.leaving.as_ref().is_some_and(|(_, started)| now.duration_since(*started) >= FADE) {
-			self.leaving = None;
+		let progress = if reduced {
+			1.
+		} else {
+			(now.duration_since(self.changed).as_secs_f32() / FADE.as_secs_f32()).min(1.)
+		};
+		if progress >= 1. {
+			self.previous = None;
 		}
-		// Expire from the oldest end only. Fade and compact together; an old
-		// snapshot cannot cause newer actions to disappear first.
-		if self.leaving.is_none()
-			&& self.rows.len() > 1
-			&& now.duration_since(self.rows[0].observed) >= HOLD
-		{
-			let mut oldest = self.rows.remove(0);
-			oldest.y.target(-oldest.height, now);
-			self.leaving = Some((oldest, now));
-		}
-		let mut moving = false;
-		let mut lines = Vec::new();
-		let count = self.rows.len();
-		let mut height = 0.;
-		let mut layout_height = 0.;
-		for (index, row) in self.rows.iter_mut().enumerate() {
-			let age = now.duration_since(row.observed);
-			let newest = index + 1 == count;
-			let arrival =
-				if reduced { 1. } else { (age.as_secs_f32() / FADE.as_secs_f32()).min(1.) };
-			let opacity = arrival;
-			let measured = measure(&row.operation.text, newest);
-			row.height = measured.0;
-			layout_height += measured.1;
-			row.y.target(height, now);
-			moving |= row.y.moving(now) || arrival < 1. || !newest;
-			lines.push(Line {
-				id: row.operation.id.clone(),
-				text: row.operation.text.clone(),
-				current: newest,
-				y: if reduced { height } else { row.y.sample(now) },
-				height: row.height,
-				layout_height: measured.1,
-				opacity,
-			});
-			height += row.height;
-		}
-		if let Some((row, started)) = &self.leaving {
-			let progress = now.duration_since(*started).as_secs_f32() / FADE.as_secs_f32();
-			if !reduced && progress < 1. {
-				lines.push(Line {
-					id: row.operation.id.clone(),
-					text: row.operation.text.clone(),
-					current: false,
-					y: row.y.sample(now),
-					height: row.height,
-					layout_height: row.height,
+		let Some(current) = &self.current else { return Frame::default() };
+		let measured = measure(&current.text);
+		let mut frame = Frame {
+			height: measured.0,
+			layout_height: measured.1,
+			moving: progress < 1.,
+			lines: vec![Line {
+				id: current.id.clone(),
+				text: current.text.clone(),
+				kind: current.kind,
+				y: (1. - progress) * 3.,
+				height: measured.0,
+				opacity: progress,
+			}],
+		};
+		if let Some(previous) = &self.previous {
+			let measured = measure(&previous.text);
+			frame.height = frame.height.max(measured.0);
+			frame.layout_height = frame.layout_height.max(measured.1);
+			frame.lines.insert(
+				0,
+				Line {
+					id: previous.id.clone(),
+					text: previous.text.clone(),
+					kind: previous.kind,
+					y: -progress * 3.,
+					height: measured.0,
 					opacity: 1. - progress,
-				});
-				moving = true;
-			} else {
-				self.leaving = None;
-			}
+				},
+			);
 		}
-		self.height.target(height, now);
-		moving |= self.height.moving(now);
-		Frame {
-			lines,
-			height: if reduced { height } else { self.height.sample(now) },
-			layout_height,
-			moving,
-		}
+		frame
 	}
 }
 
@@ -189,92 +128,104 @@ impl Stream {
 mod tests {
 	use super::*;
 	fn operations(ids: &[&str]) -> Vec<Operation> {
-		ids.iter().map(|id| Operation { id: (*id).into(), text: format!("Run {id}") }).collect()
+		ids.iter()
+			.map(|id| Operation {
+				id: (*id).into(),
+				text: format!("Run {id}"),
+				kind: OperationKind::Action,
+			})
+			.collect()
+	}
+	fn frame(stream: &mut Stream, now: Instant, reduced: bool) -> Frame {
+		stream.measured_frame(now, reduced, |_| (LINE, LINE))
 	}
 
 	#[test]
-	fn wrapped_rows_use_their_actual_height_and_keep_the_last_result() {
-		let now = Instant::now();
-		let mut stream = Stream::new("turn", &operations(&["1", "2", "3"]), now);
-		let mut frame = stream.measured_frame(now, true, |_, current| {
-			if current { (4. * LINE, 5. * LINE) } else { (2. * LINE, 3. * LINE) }
-		});
-		assert_eq!(
-			frame.lines.iter().map(|line| line.y).collect::<Vec<_>>(),
-			[0., 2. * LINE, 4. * LINE]
-		);
-		assert_eq!(frame.height, 8. * LINE);
-		assert_eq!(frame.layout_height, 11. * LINE);
-		assert_eq!(frame.clone().latest().height, 4. * LINE);
-		for i in 0..4 {
-			frame = stream.measured_frame(now + HOLD + FADE * i, true, |_, current| {
-				if current { (4. * LINE, 5. * LINE) } else { (2. * LINE, 3. * LINE) }
-			});
-		}
-		assert_eq!(frame.lines.len(), 1);
-		assert_eq!(frame.lines[0].id, "3");
-		assert_eq!(frame.height, 4. * LINE);
-	}
-	#[test]
-	fn overflow_moves_the_oldest_up_and_keeps_five_actions() {
+	fn restored_history_shows_only_the_latest_message() {
 		let now = Instant::now();
 		let mut stream = Stream::new("turn", &operations(&["1", "2", "3", "4", "5"]), now);
-		stream.sync("turn", &operations(&["2", "3", "4", "5", "6"]), now + FADE);
-		let frame = stream.frame(now + FADE + FADE / 2, false);
-		assert!(frame.lines.iter().any(|line| line.id == "1" && line.opacity < 1.));
-		assert_eq!(frame.lines.iter().filter(|line| line.current).count(), 1);
-		let frame = stream.frame(now + FADE * 3, false);
-		assert_eq!(
-			frame.lines.iter().map(|line| line.id.as_str()).collect::<Vec<_>>(),
-			["2", "3", "4", "5", "6"]
-		);
-		let compact = frame.latest();
-		assert_eq!(compact.lines.len(), 1);
-		assert_eq!(compact.lines[0].id, "6");
-		assert_eq!(compact.lines[0].y, 0.);
+		let result = frame(&mut stream, now, false);
+		assert_eq!(result.lines.len(), 1);
+		assert_eq!(result.lines[0].id, "5");
+		assert_eq!(result.lines[0].opacity, 1.);
+		assert!(!result.moving);
 	}
+
 	#[test]
-	fn quiet_history_expires_oldest_first_then_compacts_to_one() {
+	fn new_message_crossfades_in_the_same_slot_then_keeps_only_one() {
 		let now = Instant::now();
-		let mut stream = Stream::new("turn", &operations(&["1", "2", "3", "4", "5"]), now);
-		let first = stream.frame(now + HOLD, false);
-		assert_eq!(first.lines.last().unwrap().id, "1");
-		let second = stream.frame(now + HOLD + FADE, false);
-		assert_eq!(second.lines.last().unwrap().id, "2");
-		for i in 2..7 {
-			stream.frame(now + HOLD + FADE * i, false);
-		}
-		let final_frame = stream.frame(now + HOLD + FADE * 8, false);
-		assert_eq!(final_frame.lines.len(), 1);
-		assert_eq!(final_frame.lines[0].id, "5");
-		assert_eq!(final_frame.lines[0].y, 0.);
-		assert_eq!(final_frame.height, LINE);
+		let mut stream = Stream::new("turn", &operations(&["1"]), now);
+		stream.sync("turn", &operations(&["1", "2"]), now);
+		let result = frame(&mut stream, now + FADE / 2, false);
+		assert_eq!(result.lines.len(), 2);
+		assert_eq!(result.height, LINE, "messages share one slot instead of forming a log");
+		assert!(result.lines[0].opacity > 0. && result.lines[0].opacity < 1.);
+		assert_eq!(result.lines[0].opacity + result.lines[1].opacity, 1.);
+		let result = frame(&mut stream, now + FADE, false);
+		assert_eq!(result.lines.len(), 1);
+		assert_eq!(result.lines[0].id, "2");
+		assert!(!result.moving);
+		assert_eq!(frame(&mut stream, now + Duration::from_secs(600), false).lines[0].id, "2");
 	}
+
 	#[test]
-	fn old_snapshots_do_not_replay_and_updates_keep_the_latest_text() {
+	fn old_snapshots_do_not_replay_and_deltas_do_not_restart_the_fade() {
 		let now = Instant::now();
 		let mut stream = Stream::new("turn", &operations(&["a", "b", "c"]), now);
-		for i in 0..6 {
-			stream.frame(now + HOLD + FADE * i, false);
-		}
-		let mut updated = operations(&["a", "b", "c"]);
-		updated[2].text = "Command finished".into();
-		let later = now + HOLD + FADE * 7;
-		stream.sync("turn", &updated, later);
-		let frame = stream.frame(later + FADE, false);
-		assert_eq!(frame.lines.len(), 1);
-		assert_eq!(frame.lines[0].text, "Command finished");
-		assert!(!frame.moving);
+		stream.sync("turn", &operations(&["a", "b"]), now);
+		assert_eq!(frame(&mut stream, now, false).lines[0].id, "c");
+		let mut update = operations(&["c"]);
+		update[0].text = "Finished the check".into();
+		update[0].kind = OperationKind::Result;
+		stream.sync("turn", &update, now + FADE);
+		let result = frame(&mut stream, now + FADE, false);
+		assert_eq!(result.lines[0].text, "Finished the check");
+		assert_eq!(result.lines[0].kind, OperationKind::Result);
+		assert_eq!(result.lines[0].opacity, 1.);
+		assert!(!result.moving);
 	}
+
 	#[test]
-	fn new_turn_and_reduced_motion_preserve_one_current_action() {
+	fn new_turn_clears_old_content_and_reduced_motion_finishes_the_replacement() {
 		let now = Instant::now();
 		let mut stream = Stream::new("old", &operations(&["1", "2"]), now);
+		stream.sync("new", &[], now);
+		assert!(frame(&mut stream, now, false).lines.is_empty());
 		stream.sync("new", &operations(&["next"]), now);
-		let frame = stream.frame(now, true);
-		assert_eq!(frame.lines.len(), 1);
-		assert_eq!(frame.lines[0].text, "Run next");
-		assert_eq!(frame.lines[0].opacity, 1.);
-		assert_eq!(frame.height, LINE);
+		let result = frame(&mut stream, now, true);
+		assert_eq!(result.lines.len(), 1);
+		assert_eq!(result.lines[0].opacity, 1.);
+		assert!(!result.moving);
+	}
+
+	#[test]
+	fn questions_stay_until_withdrawn_and_then_restore_the_last_native_message() {
+		let now = Instant::now();
+		let original = operations(&["a"]);
+		let question = vec![Operation {
+			id: "question".into(),
+			text: "Which profile?".into(),
+			kind: OperationKind::Question,
+		}];
+		let mut stream = Stream::new("turn", &original, now);
+		stream.sync("turn", &question, now);
+		assert_eq!(
+			frame(&mut stream, now + Duration::from_secs(3600), false).lines[0].kind,
+			OperationKind::Question
+		);
+		stream.sync("turn", &original, now + Duration::from_secs(3601));
+		assert_eq!(frame(&mut stream, now + Duration::from_secs(3601), true).lines[0].id, "a");
+		stream.sync("turn", &question, now + Duration::from_secs(3602));
+		stream.sync("turn", &[], now + Duration::from_secs(3603));
+		assert!(frame(&mut stream, now + Duration::from_secs(3603), false).lines.is_empty());
+	}
+
+	#[test]
+	fn first_arrival_requests_frames_even_without_an_outgoing_message() {
+		let now = Instant::now();
+		let mut stream = Stream::new("turn", &[], now);
+		stream.sync("turn", &operations(&["a"]), now);
+		assert!(frame(&mut stream, now, false).moving);
+		assert_eq!(frame(&mut stream, now + FADE, false).lines[0].opacity, 1.);
 	}
 }
