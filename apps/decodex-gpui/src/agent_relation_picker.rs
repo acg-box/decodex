@@ -353,7 +353,7 @@ mod tests {
 		});
 		std::thread::sleep(std::time::Duration::from_millis(600));
 		visual.update(crate::ui_frame::draw_frame);
-		assert!(visual.debug_bounds("relation-parent-mira").is_some());
+		assert!(visual.debug_bounds("relation-owner-hint-mira").is_some());
 		assert!(visual.debug_bounds("relation-metrics-mira").is_some());
 		surface.read_with(visual, |s, _| {
 			assert_eq!(s.relation_wire_presence(std::time::Instant::now()), 0.);
@@ -375,7 +375,7 @@ mod tests {
 			assert_eq!(s.work_board.view.positions["mira"], (176., 96.));
 			assert_eq!((s.selected.clone(), s.native_agents.selected.clone()), main);
 		});
-		assert!(visual.debug_bounds("relation-parent-mira").is_none());
+		assert!(visual.debug_bounds("relation-owner-hint-mira").is_some());
 	}
 
 	#[gpui::test]

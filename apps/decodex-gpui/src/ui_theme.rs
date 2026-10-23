@@ -28,7 +28,6 @@ pub(crate) const FONT_FAMILY: &str = ".SystemUIFont";
 pub(crate) const BODY_SIZE: f32 = 12.5;
 pub(crate) const CAPTION_SIZE: f32 = 10.5;
 pub(crate) const CAPTION_LINE_HEIGHT: f32 = 14.;
-pub(crate) const LABEL_LINE_HEIGHT: f32 = 16.;
 pub(crate) const HEADING_SIZE: f32 = 15.0;
 pub(crate) const BODY_LINE_HEIGHT: f32 = 19.0;
 pub(crate) const TREE_ROW_HEIGHT: f32 = 24.0;
@@ -125,7 +124,6 @@ pub(crate) mod foreground {
 	pub(crate) const PRIMARY: u32 = 0xf2f1f4;
 	pub(crate) const BODY: u32 = 0xdfdee4;
 	pub(crate) const SECONDARY: u32 = 0xbbb8c4;
-	pub(crate) const BODY_SIZE: f32 = super::BODY_SIZE;
 	pub(crate) const CAPTION_SIZE: f32 = super::CAPTION_SIZE;
 	pub(crate) const METRIC_SIZE: f32 = 11.;
 	pub(crate) const READING_SIZE: f32 = super::BODY_SIZE;

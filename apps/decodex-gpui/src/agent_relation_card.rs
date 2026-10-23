@@ -17,7 +17,9 @@ pub(super) const INSET_X: f32 = 10.;
 pub(super) const INSET_Y: f32 = 8.;
 pub(super) const PORTRAIT_WIDTH: f32 = 80.;
 pub(super) const PORTRAIT_HEIGHT: f32 = 44.;
-pub(super) const COLUMN_GAP: f32 = 6.;
+pub(super) const COLUMN_GAP: f32 = 16.;
+const TEXT_SIZE: f32 = 10.5;
+const MIN_TEXT_SIZE: f32 = 10.;
 pub(super) const IDENTITY_GAP: f32 = 3.;
 pub(super) const DETAILS_TOP: f32 = 4.;
 pub(super) const SELECTED: u32 = crate::ui_theme::BLUE;
@@ -91,19 +93,23 @@ impl Layout {
 	}
 
 	pub(super) fn title_size(self) -> f32 {
-		self.font(foreground::BODY_SIZE, if self.labels() { 10.5 } else { 9. })
-	}
-
-	pub(super) fn detail_size(self) -> f32 {
-		self.font(foreground::CAPTION_SIZE, if self.overview() { 9. } else { 9.5 })
+		self.font(TEXT_SIZE, MIN_TEXT_SIZE)
 	}
 
 	pub(super) fn metric_size(self) -> f32 {
-		self.font(foreground::METRIC_SIZE, 10.)
+		self.title_size()
 	}
 
 	pub(super) fn activity_size(self) -> f32 {
-		self.font(foreground::CAPTION_SIZE, 10.5)
+		self.title_size()
+	}
+
+	pub(super) fn activity_visible(self) -> bool {
+		self.labels() && self.zoom > 0.5 + f32::EPSILON
+	}
+
+	pub(super) fn details_gap(self) -> f32 {
+		self.spacing(COLUMN_GAP).max(13.)
 	}
 
 	pub(super) fn full_detail(self) -> bool {
@@ -182,10 +188,7 @@ impl Layout {
 	}
 
 	pub(super) fn title_line(self) -> f32 {
-		((crate::ui_theme::LABEL_LINE_HEIGHT * self.zoom).max(self.title_size() + 3.)
-			* self.display_scale)
-			.ceil()
-			/ self.display_scale
+		self.pixel(self.title_size() + 2.)
 	}
 
 	pub(super) fn metric_line(self) -> f32 {
@@ -209,7 +212,7 @@ impl Layout {
 	}
 
 	pub(super) fn gap(self) -> f32 {
-		self.spacing(2.)
+		self.pixel(0.5).max(0.5)
 	}
 
 	/// Three compact status tracks form one block under the numbered portrait.
@@ -219,12 +222,15 @@ impl Layout {
 
 	pub(super) fn header_height(self, actions: f32) -> f32 {
 		let portrait = self.portrait_spacing(PORTRAIT_HEIGHT)
-			+ if !self.overview() { self.gap() + self.metrics_height() } else { 0. };
+			+ if self.overview() { 0. } else { self.gap() + self.metrics_height() };
 		let details = if self.labels() {
 			self.spacing(DETAILS_TOP)
 				+ self.title_line()
-				+ self.spacing(IDENTITY_GAP)
-				+ if actions > 0. { actions * self.activity_line() } else { self.title_line() }
+				+ if self.activity_visible() {
+					self.spacing(IDENTITY_GAP) + actions.max(1.) * self.activity_line()
+				} else {
+					0.
+				}
 		} else {
 			0.
 		};
@@ -247,6 +253,13 @@ impl Layout {
 				.max(((layout.header_height(actions) + 2. * layout.spacing(INSET_Y)) / zoom).ceil())
 		})
 	}
+}
+
+pub(super) fn number_features() -> gpui::FontFeatures {
+	static FEATURES: std::sync::OnceLock<gpui::FontFeatures> = std::sync::OnceLock::new();
+	FEATURES
+		.get_or_init(|| gpui::FontFeatures(std::sync::Arc::new(vec![("tnum".into(), 1)])))
+		.clone()
 }
 
 /// Keep native text at its display size while the footprint opens around its center.

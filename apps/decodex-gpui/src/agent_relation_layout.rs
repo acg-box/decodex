@@ -321,7 +321,10 @@ impl Tree {
 	}
 
 	fn layout(&self, input: &Input, horizontal: bool) -> Block {
-		let gap = input.presentation.gap(SIBLING_GAP, 12.);
+		let gap = input.presentation.gap(
+			SIBLING_GAP,
+			if self.children.iter().any(|child| !child.children.is_empty()) { 40. } else { 12. },
+		);
 		let height = f32::from_bits(input.nodes[self.index].2);
 		let children: Vec<_> =
 			self.children.iter().map(|child| child.layout(input, horizontal)).collect();
@@ -344,8 +347,8 @@ impl Tree {
 			let step = if horizontal {
 				input.width + input.column_gap
 			} else {
-				(base + input.presentation.gap(84., 16.))
-					.max(height + input.presentation.gap(24., 16.))
+				(base + input.presentation.gap(84., 4.))
+					.max(height + input.presentation.gap(24., 4.))
 			};
 			block.offset(if horizontal { step } else { 0. }, if horizontal { 0. } else { step });
 			if horizontal {

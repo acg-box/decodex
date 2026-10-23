@@ -162,7 +162,8 @@ impl AgentSurface {
 			.child(links)
 			.child(lights)
 			.child("Bars: tokens · time · speed")
-			.child("Fill: value / graph maximum, not completion")
+			.child("Rulers: 2M tokens · 30 min · 100 tok/s")
+			.child("Fixed display scales, not limits or completion")
 			.into_any_element()
 	}
 }

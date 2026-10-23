@@ -1,4 +1,5 @@
 //! Pixel-step poses ported from the approved Cloudlets motion.css.
+type Steps = &'static [(f32, f32)];
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum State {
 	Idle,
@@ -21,7 +22,7 @@ impl State {
 
 	pub(super) fn pose(self, seconds: f32, held_right: bool) -> Pose {
 		let mut pose = Pose::default();
-		let (period, actor, hands): (f32, &[(f32, f32)], &[(f32, f32)]) = match self {
+		let (period, actor, hands): (f32, Steps, Steps) = match self {
 			Self::Hopping => (
 				0.9,
 				&[(0., 0.), (0.24, -1.), (0.36, -2.), (0.56, -1.), (0.7, 0.)],

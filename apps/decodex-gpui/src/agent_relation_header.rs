@@ -1,10 +1,7 @@
 //! A numbered Cloudlet with source-bound activity alongside it.
 use super::{mascot, stream};
 use crate::{ui_motion, ui_theme::foreground};
-use gpui::{
-	App, InteractiveElement as _, IntoElement, RenderOnce, StatefulInteractiveElement as _, Window,
-	prelude::*,
-};
+use gpui::{App, InteractiveElement as _, IntoElement, RenderOnce, Window, prelude::*};
 
 #[derive(IntoElement)]
 pub(super) struct Header {
@@ -13,6 +10,7 @@ pub(super) struct Header {
 	pub number: String,
 	pub color: u32,
 	pub selected: bool,
+	pub picked: bool,
 	pub task: String,
 	pub status: String,
 	pub avatar: mascot::Avatar,
@@ -23,117 +21,154 @@ pub(super) struct Header {
 
 impl RenderOnce for Header {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let layout = self.layout.on_display(window.scale_factor());
-		let frame = self.activity;
-		let has_actions = frame.height > 0.;
-		let actions_height = frame.height / stream::LINE;
-		let identity_selector = format!("relation-identity-{}", self.key);
-		let number_selector = format!("relation-number-{}", self.key);
-		let light_selector = format!("relation-status-{}", self.key);
-		let task_selector = format!("relation-assignment-{}", self.key);
-		let avatar_selector = format!("relation-avatar-{}", self.key);
-		let parent_selector = format!("relation-parent-{}", self.key);
-		let actions = action_rows(&self.key, frame, layout, window, cx);
-		let selection = selection_mark(&self.key, self.selected, layout, window, cx);
-		let task = if self.task.is_empty() { self.status } else { self.task };
-		let identity = gpui::div()
-			.debug_selector(move || identity_selector.clone())
-			.h(gpui::px(layout.title_line()))
+		let h = self;
+		let layout = h.layout.on_display(window.scale_factor());
+		let show_activity = layout.activity_visible();
+		let count = if show_activity { h.activity.height / stream::LINE } else { 0. };
+		let portrait_width = layout.portrait_spacing(super::card::PORTRAIT_WIDTH);
+		let selection = selection_mark(&h.key, h.selected, layout, window, cx);
+		let avatar_selector = format!("relation-avatar-{}", h.key);
+		let identity_selector = format!("relation-identity-{}", h.key);
+		let task_selector = format!("relation-assignment-{}", h.key);
+		let status_selector = format!("relation-status-{}", h.key);
+		let number_selector = format!("relation-number-{}", h.key);
+		let hint = h
+			.picked
+			.then(|| h.parent.as_ref().map(|parent| format!("Reports to {parent}")))
+			.flatten();
+		let mut figure = gpui::div()
+			.debug_selector(move || avatar_selector.clone())
+			.relative()
 			.flex_none()
-			.flex()
-			.items_center()
-			.gap(gpui::px(layout.spacing(4.)))
+			.w(gpui::px(portrait_width))
+			.h(gpui::px(layout.portrait_spacing(super::card::PORTRAIT_HEIGHT)))
+			.child(selection)
+			.child(h.avatar.element(layout))
 			.child(
 				gpui::div()
-					.debug_selector(move || number_selector.clone())
-					.font_family("Menlo")
+					.debug_selector(move || status_selector.clone())
+					.absolute()
+					.left(gpui::px(portrait_width + 4.))
+					.top(gpui::px(layout.portrait_spacing(27.)))
+					.size(gpui::px(layout.spacing(5.).max(4.) + 2.))
+					.rounded_full()
+					.border_1()
+					.border_color(crate::ui_theme::rgba(0x00000070))
+					.bg(crate::ui_theme::rgb(h.color)),
+			);
+		if let Some(text) = hint {
+			let hint_selector = format!("relation-owner-hint-{}", h.key);
+			let width = layout.pixel(measure_hint(&text, layout, window).ceil() + 10.);
+			let height = layout.title_line() + 6.;
+			figure = figure.child(
+				crate::ui_motion::tooltip_surface(gpui::div())
+					.debug_selector(move || hint_selector.clone())
+					.absolute()
+					.left(gpui::px(layout.pixel(portrait_width - width - 4.)))
+					.top(gpui::px(-height - 2.))
+					.w(gpui::px(width))
+					.h(gpui::px(height))
+					.font_family(crate::ui_theme::FONT_FAMILY)
+					.font_weight(gpui::FontWeight::NORMAL)
 					.text_size(gpui::px(layout.title_size()))
 					.line_height(gpui::px(layout.title_line()))
-					.font_weight(gpui::FontWeight::MEDIUM)
-					.text_color(crate::ui_theme::rgb(if self.selected {
-						crate::ui_theme::BLUE
-					} else {
-						foreground::PRIMARY
-					}))
-					.child(self.number),
-			)
-			.child(
-				gpui::div()
-					.debug_selector(move || light_selector.clone())
-					.size(gpui::px(4.))
-					.rounded_full()
-					.bg(crate::ui_theme::rgb(self.color)),
-			)
-			.when_some(self.parent, |identity, parent| {
-				identity.child(
-					gpui::div()
-						.id(gpui::SharedString::from(parent_selector.clone()))
-						.debug_selector(move || parent_selector.clone())
-						.role(gpui::Role::Group)
-						.aria_label(format!("Reports to {parent}"))
-						.text_size(gpui::px(layout.detail_size()))
-						.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
-						.child(format!("↑ {parent}")),
-				)
-			});
-		gpui::div()
-			.w_full()
-			.h(gpui::px(layout.header_height(actions_height)))
+					.text_color(crate::ui_theme::rgb(foreground::PRIMARY))
+					.whitespace_nowrap()
+					.flex()
+					.items_center()
+					.justify_center()
+					.child(text),
+			);
+		}
+		let portrait = gpui::div()
 			.flex_none()
-			.min_w_0()
+			.w(gpui::px(portrait_width))
+			.flex()
+			.flex_col()
+			.items_center()
+			.gap(gpui::px(layout.gap()))
+			.child(figure)
+			.when_some(h.metrics, |portrait, metrics| portrait.child(metrics));
+		let mut body = gpui::div()
+			.w_full()
+			.h(gpui::px(layout.header_height(count)))
+			.font_family(crate::ui_theme::FONT_FAMILY)
+			.font_weight(gpui::FontWeight::NORMAL)
+			.flex_none()
 			.flex()
 			.items_start()
-			.gap(gpui::px(layout.spacing(super::card::COLUMN_GAP)))
-			.when(!layout.labels(), |body| body.justify_center())
+			.gap(gpui::px(layout.details_gap()))
+			.child(portrait);
+		if !layout.labels() {
+			return body.justify_center();
+		}
+		let identity = gpui::div()
+			.debug_selector(move || number_selector.clone())
+			.h(gpui::px(layout.title_line()))
+			.flex_none()
+			.font_family(crate::ui_theme::FONT_FAMILY)
+			.font_features(super::card::number_features())
+			.text_size(gpui::px(layout.title_size()))
+			.line_height(gpui::px(layout.title_line()))
+			.font_weight(gpui::FontWeight::NORMAL)
+			.text_color(crate::ui_theme::rgb(if h.selected {
+				crate::ui_theme::BLUE
+			} else {
+				foreground::PRIMARY
+			}))
+			.child(h.number);
+		let mut details = gpui::div()
+			.flex_1()
+			.min_w_0()
+			.pt(gpui::px(layout.spacing(super::card::DETAILS_TOP)))
+			.flex()
+			.flex_col()
+			.gap(gpui::px(layout.spacing(super::card::IDENTITY_GAP)))
 			.child(
 				gpui::div()
-					.flex_none()
-					.w(gpui::px(layout.portrait_spacing(super::card::PORTRAIT_WIDTH)))
-					.flex()
-					.flex_col()
-					.items_center()
-					.gap(gpui::px(layout.gap()))
-					.child(
-						gpui::div()
-							.debug_selector(move || avatar_selector.clone())
-							.relative()
-							.flex_none()
-							.w(gpui::px(layout.portrait_spacing(super::card::PORTRAIT_WIDTH)))
-							.h(gpui::px(layout.portrait_spacing(super::card::PORTRAIT_HEIGHT)))
-							.child(selection)
-							.child(self.avatar.element(layout)),
-					)
-					.when_some(self.metrics, |portrait, metrics| portrait.child(metrics)),
-			)
-			.when(layout.labels(), |body| {
-				body.child(
-					gpui::div()
-						.flex_1()
-						.min_w_0()
-						.pt(gpui::px(layout.spacing(super::card::DETAILS_TOP)))
-						.flex()
-						.flex_col()
-						.gap(gpui::px(layout.spacing(super::card::IDENTITY_GAP)))
-						.child(identity)
-						.when(!has_actions, |details| {
-							details.child(
-								gpui::div()
-									.debug_selector(move || task_selector.clone())
-									.h(gpui::px(layout.title_line()))
-									.text_size(gpui::px(layout.title_size()))
-									.line_height(gpui::px(layout.title_line()))
-									.font_weight(gpui::FontWeight::NORMAL)
-									.text_color(crate::ui_theme::rgb(foreground::PRIMARY))
-									.whitespace_nowrap()
-									.text_ellipsis()
-									.overflow_hidden()
-									.child(task),
-							)
-						})
-						.when(has_actions, |details| details.child(actions)),
-				)
-			})
+					.debug_selector(move || identity_selector.clone())
+					.h(gpui::px(layout.title_line()))
+					.child(identity),
+			);
+		if show_activity {
+			let activity = if h.activity.height > 0. {
+				action_rows(&h.key, h.activity, layout, window, cx)
+			} else {
+				gpui::div()
+					.debug_selector(move || task_selector.clone())
+					.w_full()
+					.h(gpui::px(layout.activity_line()))
+					.text_size(gpui::px(layout.activity_size()))
+					.line_height(gpui::px(layout.activity_line()))
+					.text_color(crate::ui_theme::rgb(foreground::PRIMARY))
+					.whitespace_nowrap()
+					.text_ellipsis()
+					.overflow_hidden()
+					.child(if h.task.is_empty() { h.status } else { h.task })
+			};
+			details = details.child(activity);
+		}
+		body = body.child(details);
+		body
 	}
+}
+
+fn measure_hint(text: &str, layout: super::card::Layout, window: &mut Window) -> f32 {
+	let mut font = window.text_style().font();
+	font.family = crate::ui_theme::FONT_FAMILY.into();
+	font.weight = gpui::FontWeight::NORMAL;
+	font.features = gpui::FontFeatures::default();
+	f32::from(
+		window
+			.text_system()
+			.shape_line(
+				text.to_owned().into(),
+				gpui::px(layout.title_size()),
+				&[gpui::TextRun { len: text.len(), font, ..Default::default() }],
+				None,
+			)
+			.width,
+	)
 }
 
 /// Selection belongs to the character. Fade its small ground ring without
@@ -195,7 +230,7 @@ fn action_rows(
 	cx: &mut App,
 ) -> gpui::Div {
 	let activity_scale = layout.activity_line() / stream::LINE;
-	if frame.moving && layout.labels() {
+	if frame.moving && layout.activity_visible() {
 		ui_motion::request_frame(window, cx);
 	}
 	let mut actions = gpui::div()

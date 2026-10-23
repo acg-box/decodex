@@ -9,6 +9,7 @@ use crate::{ui_motion::SmoothControl, ui_theme::TEXT};
 use gpui::AppContext;
 #[path = "agent_relation_allocation.rs"] mod allocation;
 #[path = "agent_relation_card.rs"] mod card;
+#[path = "agent_relation_groups.rs"] mod groups;
 #[path = "agent_relation_header.rs"] mod header;
 #[path = "agent_relation_hover.rs"] mod hover;
 #[path = "agent_relation_layout.rs"] mod layout;
@@ -1290,6 +1291,15 @@ impl AgentSurface {
 		if graph.layout.points() {
 			return canvas;
 		}
+		if self.work_board.view.presentation == layout::Presentation::Together {
+			canvas = groups::paint(
+				canvas,
+				graph,
+				scale,
+				pan,
+				self.work_board.view.picked_agent.as_deref(),
+			);
+		}
 		for scope in &graph.scopes {
 			let [left, top, right, bottom] = scope.bounds;
 			canvas = canvas.child(
@@ -1454,8 +1464,6 @@ impl AgentSurface {
 		let layout = graph.layout.on_display(self.work_board.view.display_scale);
 		let wire_presence = self.relation_wire_presence(std::time::Instant::now());
 		let mut ports = graph.connection_ports(lines);
-		let metrics_scale =
-			metrics::Scale::new(graph.nodes.iter().map(|node| self.metrics_for(node)));
 		for node in self.relation_nodes(graph) {
 			let opacity = self.work_board.view.visibility.borrow().node_opacity(graph, node);
 			if opacity <= 0.001 {
@@ -1481,17 +1489,13 @@ impl AgentSurface {
 			} else {
 				(node.x, node.y)
 			};
-			let parent = (self.work_board.view.presentation == layout::Presentation::Together)
-				.then(|| {
-					graph
-						.edges
-						.iter()
-						.find(|e| e.kind.hierarchy() && e.to == node.key)
-						.and_then(|edge| graph.nodes.iter().find(|n| n.key == edge.from))
-						.and_then(|n| n.row.as_ref())
-						.map(|row| self.relation_agent_number(row))
-				})
-				.flatten();
+			let parent = graph
+				.edges
+				.iter()
+				.find(|e| e.kind.hierarchy() && e.to == node.key)
+				.and_then(|edge| graph.nodes.iter().find(|n| n.key == edge.from))
+				.and_then(|n| n.row.as_ref())
+				.map(|row| self.relation_agent_number(row));
 
 			let view = self
 				.relation_node_surface(node, layout)
@@ -1547,13 +1551,7 @@ impl AgentSurface {
 			canvas = canvas.child(card::Card {
 				key: node.key.clone(),
 				surface: view,
-				content: self.relation_node_presentation(
-					node,
-					layout,
-					emphasized,
-					metrics_scale,
-					parent,
-				),
+				content: self.relation_node_presentation(node, layout, emphasized, parent),
 				faded,
 				visibility: opacity,
 				ports: node.row.as_ref().filter(|_| !layout.points()).map(|_| card::Ports {
@@ -1814,7 +1812,6 @@ impl AgentSurface {
 		node: &Node,
 		layout: card::Layout,
 		selected: bool,
-		metrics_scale: metrics::Scale,
 		parent: Option<String>,
 	) -> AnyElement {
 		if node.row.is_some() && layout.overview() {
@@ -1823,12 +1820,11 @@ impl AgentSurface {
 				node.color,
 				selected,
 				layout,
-				(!layout.points()).then(|| {
-					self.relation_node_content(node, layout, selected, metrics_scale, parent)
-				}),
+				(!layout.points())
+					.then(|| self.relation_node_content(node, layout, selected, parent)),
 			)
 		} else {
-			self.relation_node_content(node, layout, selected, metrics_scale, parent)
+			self.relation_node_content(node, layout, selected, parent)
 		}
 	}
 
@@ -1837,7 +1833,6 @@ impl AgentSurface {
 		node: &Node,
 		layout: card::Layout,
 		selected: bool,
-		metrics_scale: metrics::Scale,
 		parent: Option<String>,
 	) -> AnyElement {
 		let scale = self.relation_scale();
@@ -1876,22 +1871,22 @@ impl AgentSurface {
 					.entry(node.key.clone())
 					.or_insert_with(|| mascot::Actor::new(&node.key, status, now))
 					.frame(status, now);
-				if self.work_board.view.presentation == layout::Presentation::Together {
-					if let Some(motion) = &self.work_board.view.motion {
-						let offset = node.connection_center();
-						let target = (
-							node.navigation.0 + offset.0 - node.x,
-							node.navigation.1 + offset.1 - node.y,
-						);
-						if motion.progress.moving(now)
-							&& motion
-								.from
-								.get(&node.key)
-								.is_some_and(|p| (p.0 - target.0).hypot(p.1 - target.1) > 1.)
-						{
-							avatar =
-								avatar.travelling(now.duration_since(motion.started).as_secs_f32());
-						}
+				if self.work_board.view.presentation == layout::Presentation::Together
+					&& let Some(motion) = &self.work_board.view.motion
+				{
+					let offset = node.connection_center();
+					let target = (
+						node.navigation.0 + offset.0 - node.x,
+						node.navigation.1 + offset.1 - node.y,
+					);
+					if motion.progress.moving(now)
+						&& motion
+							.from
+							.get(&node.key)
+							.is_some_and(|p| (p.0 - target.0).hypot(p.1 - target.1) > 1.)
+					{
+						avatar =
+							avatar.travelling(now.duration_since(motion.started).as_secs_f32());
 					}
 				}
 				view.child(header::Header {
@@ -1904,11 +1899,11 @@ impl AgentSurface {
 						.unwrap_or_default(),
 					color: node.color,
 					selected,
+					picked: self.work_board.view.picked_agent.as_deref() == Some(node.key.as_str()),
 					task,
 					status: status.to_owned(),
 					avatar,
-					metrics: (!layout.overview())
-						.then(|| self.node_metrics(node, layout, metrics_scale)),
+					metrics: (!layout.overview()).then(|| self.node_metrics(node, layout)),
 					activity: node.activity.clone(),
 					layout,
 				})
@@ -1986,6 +1981,11 @@ impl AgentSurface {
 			== Some(node.key.as_str())
 			|| self.work_board.view.picked_agent.as_ref() == Some(&node.key);
 		let selected = linked
+			|| self.work_board.view.picked_agent.as_ref().is_some_and(|picked| {
+				graph.edges.iter().any(|edge| {
+					edge.kind.hierarchy() && edge.to == *picked && edge.from == node.key
+				})
+			})
 			|| self.work_board.view.edge.as_ref().is_some_and(|e| {
 				e.from == node.key
 					|| e.to == node.key
@@ -2685,12 +2685,15 @@ mod fit_tests {
 			);
 			assert_eq!(visual.debug_bounds("relation-tokens-agent").is_some(), !layout.overview());
 			assert_eq!(visual.debug_bounds("relation-number-agent").is_some(), layout.labels());
-			assert_eq!(visual.debug_bounds("relation-status-agent").is_some(), layout.labels());
+			assert_eq!(visual.debug_bounds("relation-status-agent").is_some(), !layout.points());
 			assert_eq!(
 				visual.debug_bounds("relation-point-agent").is_some(),
 				layout.card_presence() < 1.
 			);
-			assert_eq!(visual.debug_bounds("relation-assignment-agent").is_some(), layout.labels());
+			assert_eq!(
+				visual.debug_bounds("relation-assignment-agent").is_some(),
+				layout.activity_visible()
+			);
 			assert!(surface.read_with(visual, |s, _| s.relation_scale()) >= card::MIN_ZOOM);
 		}
 	}
@@ -3321,9 +3324,10 @@ mod fit_tests {
 				assert!((f32::from(card.size.height) - world_height * scale).abs() <= 0.5);
 				let toolbar = visual.debug_bounds("relations-toolbar").unwrap();
 				assert!(card.top() > toolbar.bottom());
-				assert!(layout.title_size() >= 10.5 && layout.detail_size() >= 9.5);
+				assert!(layout.title_size() >= 10.);
+				assert_eq!(layout.metric_size(), layout.title_size());
+				assert_eq!(layout.activity_size(), layout.title_size());
 				assert_eq!((layout.title_size() * density).fract(), 0.);
-				assert_eq!((layout.detail_size() * density).fract(), 0.);
 				let task = visual
 					.debug_bounds("relation-identity-release")
 					.expect("work remains visible at every zoom");
@@ -3383,22 +3387,28 @@ mod fit_tests {
 				assert!(number.left() >= identity.left() && number.right() <= identity.right());
 				assert_eq!(number.top(), identity.top());
 				let avatar = visual.debug_bounds("relation-avatar-release").unwrap();
-				let preview = visual.debug_bounds("relation-preview-release").unwrap();
-				assert!(
-					avatar.right() < preview.left(),
-					"activity sits to the right of the portrait"
-				);
-				assert!(
-					f32::from(preview.left() - avatar.right().max(metrics.right()))
-						<= layout.spacing(card::COLUMN_GAP) + 0.5,
-					"activity stays close to the character"
-				);
-				assert_eq!(
-					number.left(),
-					preview.left(),
-					"identity and activity share one text edge"
-				);
-				assert!(number.bottom() < preview.top(), "identity titles its own activity column");
+				let preview = visual.debug_bounds("relation-preview-release");
+				assert_eq!(preview.is_some(), layout.activity_visible());
+				if let Some(preview) = preview {
+					assert!(
+						avatar.right() < preview.left(),
+						"activity sits to the right of the portrait"
+					);
+					assert!(
+						f32::from(preview.left() - avatar.right().max(metrics.right()))
+							<= layout.details_gap() + 0.5,
+						"activity stays close to the character"
+					);
+					assert_eq!(
+						number.left(),
+						preview.left(),
+						"identity and activity share one text edge"
+					);
+					assert!(
+						number.bottom() < preview.top(),
+						"identity titles its own activity column"
+					);
+				}
 				assert!(
 					visual.debug_bounds("relation-assignment-release").is_none(),
 					"live activity does not repeat the assignment above it"
@@ -3416,7 +3426,10 @@ mod fit_tests {
 					f32::from(metrics.size.width) <= 80.,
 					"long native counters still form a small block"
 				);
-				assert!(visual.debug_bounds("relation-status-release").is_some());
+				let status = visual.debug_bounds("relation-status-release").unwrap();
+				assert!(status.left() >= avatar.right() + gpui::px(4.));
+				assert!(status.right() < number.left());
+				assert!(status.bottom() <= avatar.bottom());
 				let selection = visual.debug_bounds("relation-selection-release").unwrap();
 				assert_eq!(selection, avatar, "selection belongs only to the portrait");
 				assert!(selection.bottom() < metrics.top());
@@ -3426,6 +3439,73 @@ mod fit_tests {
 						< card.size.width - gpui::px(2. * layout.spacing(card::INSET_X)),
 					"the HUD uses its content width, not the camera footprint"
 				);
+			}
+		}
+	}
+
+	#[gpui::test]
+	fn explicit_child_selection_reveals_its_recorded_parent_without_changing_the_chat(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| {
+			let mut s = super::super::tests::fixture(cx);
+			s.visual_workspace_page("workbench", cx);
+			s.workspace.graph_expanded = true;
+			s.work_board.view.camera_fixed = true;
+			s.work_board.view.zoom = Some(1.);
+			s.work_board.view.picked_agent = None;
+			s.composer.update(cx, |input, cx| input.set_content("Keep this Main draft", cx));
+			s
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1600.), gpui::px(1000.)));
+		let child = "native:mira:ref-nora";
+		let parent = "mira";
+		let before = surface.read_with(visual, |s, _| {
+			assert!(
+				s.relation_graph()
+					.edges
+					.iter()
+					.any(|edge| edge.kind.hierarchy() && edge.from == parent && edge.to == child)
+			);
+			(s.selected.clone(), s.native_agents.selected.clone())
+		});
+		for mode in layout::Mode::ALL {
+			for presentation in [layout::Presentation::Links, layout::Presentation::Together] {
+				surface.update(visual, |s, cx| {
+					s.work_board.view.layout_mode = mode;
+					s.work_board.view.presentation = presentation;
+					s.work_board.view.picked_agent = None;
+					cx.notify();
+				});
+				visual.update(crate::ui_frame::draw_frame);
+				assert!(visual.debug_bounds("relation-owner-hint-native:mira:ref-nora").is_none());
+				let shape = surface.update(visual, |s, cx| {
+					let graph = s.relation_graph();
+					let shape: Vec<_> =
+						graph.nodes.iter().map(|n| (n.key.clone(), n.x, n.y, n.size)).collect();
+					s.select_workbench_agent(child, cx);
+					shape
+				});
+				visual.update(crate::ui_frame::draw_frame);
+				assert!(visual.debug_bounds("relation-owner-hint-native:mira:ref-nora").is_some());
+				assert!(visual.debug_bounds("relation-owner-hint-mira").is_none());
+				surface.read_with(visual, |s, cx| {
+					let graph = s.relation_graph();
+					assert_eq!(
+						graph
+							.nodes
+							.iter()
+							.map(|n| (n.key.clone(), n.x, n.y, n.size))
+							.collect::<Vec<_>>(),
+						shape
+					);
+					let owner = graph.nodes.iter().find(|n| n.key == parent).unwrap();
+					assert!(
+						s.relation_node_emphasis(owner, &graph, &s.relation_neighborhood(&graph)).0
+					);
+					assert_eq!((s.selected.clone(), s.native_agents.selected.clone()), before);
+					assert_eq!(s.composer.read(cx).content(), "Keep this Main draft");
+				});
 			}
 		}
 	}
