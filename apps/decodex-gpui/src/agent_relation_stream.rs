@@ -11,6 +11,7 @@ struct Row {
 	operation: Operation,
 	observed: Instant,
 	y: Tween,
+	height: f32,
 }
 
 pub(super) struct Stream {
@@ -27,6 +28,8 @@ pub(super) struct Line {
 	pub text: String,
 	pub current: bool,
 	pub y: f32,
+	pub height: f32,
+	pub layout_height: f32,
 	pub opacity: f32,
 }
 
@@ -34,6 +37,7 @@ pub(super) struct Line {
 pub(super) struct Frame {
 	pub lines: Vec<Line>,
 	pub height: f32,
+	pub layout_height: f32,
 	pub moving: bool,
 }
 
@@ -44,7 +48,8 @@ impl Frame {
 		for line in &mut self.lines {
 			line.y = 0.;
 		}
-		self.height = if self.lines.is_empty() { 0. } else { LINE };
+		self.height = self.lines.first().map_or(0., |line| line.height);
+		self.layout_height = self.lines.first().map_or(0., |line| line.layout_height);
 		// Hidden rows do not keep requesting frames during their six-second hold.
 		self.moving = self.lines.iter().any(|line| line.opacity < 1.);
 		self
@@ -84,11 +89,12 @@ impl Stream {
 				self.rows.push(Row {
 					operation: operation.clone(),
 					observed: now,
-					y: Tween::new(self.rows.len() as f32 * LINE + 5.),
+					y: Tween::new(self.rows.iter().map(|row| row.height).sum::<f32>() + 5.),
+					height: LINE,
 				});
 				if self.rows.len() > MAX_RECENT {
 					let mut oldest = self.rows.remove(0);
-					oldest.y.target(-LINE, now);
+					oldest.y.target(-oldest.height, now);
 					if self.leaving.is_none() {
 						self.leaving = Some((oldest, now));
 					}
@@ -100,7 +106,17 @@ impl Stream {
 		}
 	}
 
+	#[cfg(test)]
 	pub fn frame(&mut self, now: Instant, reduced: bool) -> Frame {
+		self.measured_frame(now, reduced, |_, _| (LINE, LINE))
+	}
+
+	pub fn measured_frame(
+		&mut self,
+		now: Instant,
+		reduced: bool,
+		mut measure: impl FnMut(&str, bool) -> (f32, f32),
+	) -> Frame {
 		if self.leaving.as_ref().is_some_and(|(_, started)| now.duration_since(*started) >= FADE) {
 			self.leaving = None;
 		}
@@ -111,27 +127,35 @@ impl Stream {
 			&& now.duration_since(self.rows[0].observed) >= HOLD
 		{
 			let mut oldest = self.rows.remove(0);
-			oldest.y.target(-LINE, now);
+			oldest.y.target(-oldest.height, now);
 			self.leaving = Some((oldest, now));
 		}
 		let mut moving = false;
 		let mut lines = Vec::new();
 		let count = self.rows.len();
+		let mut height = 0.;
+		let mut layout_height = 0.;
 		for (index, row) in self.rows.iter_mut().enumerate() {
 			let age = now.duration_since(row.observed);
 			let newest = index + 1 == count;
 			let arrival =
 				if reduced { 1. } else { (age.as_secs_f32() / FADE.as_secs_f32()).min(1.) };
 			let opacity = arrival;
-			row.y.target(index as f32 * LINE, now);
+			let measured = measure(&row.operation.text, newest);
+			row.height = measured.0;
+			layout_height += measured.1;
+			row.y.target(height, now);
 			moving |= row.y.moving(now) || arrival < 1. || !newest;
 			lines.push(Line {
 				id: row.operation.id.clone(),
 				text: row.operation.text.clone(),
 				current: newest,
-				y: if reduced { index as f32 * LINE } else { row.y.sample(now) },
+				y: if reduced { height } else { row.y.sample(now) },
+				height: row.height,
+				layout_height: measured.1,
 				opacity,
 			});
+			height += row.height;
 		}
 		if let Some((row, started)) = &self.leaving {
 			let progress = now.duration_since(*started).as_secs_f32() / FADE.as_secs_f32();
@@ -141,6 +165,8 @@ impl Stream {
 					text: row.operation.text.clone(),
 					current: false,
 					y: row.y.sample(now),
+					height: row.height,
+					layout_height: row.height,
 					opacity: 1. - progress,
 				});
 				moving = true;
@@ -148,11 +174,12 @@ impl Stream {
 				self.leaving = None;
 			}
 		}
-		self.height.target(self.rows.len() as f32 * LINE, now);
+		self.height.target(height, now);
 		moving |= self.height.moving(now);
 		Frame {
 			lines,
-			height: if reduced { self.rows.len() as f32 * LINE } else { self.height.sample(now) },
+			height: if reduced { height } else { self.height.sample(now) },
+			layout_height,
 			moving,
 		}
 	}
@@ -163,6 +190,30 @@ mod tests {
 	use super::*;
 	fn operations(ids: &[&str]) -> Vec<Operation> {
 		ids.iter().map(|id| Operation { id: (*id).into(), text: format!("Run {id}") }).collect()
+	}
+
+	#[test]
+	fn wrapped_rows_use_their_actual_height_and_keep_the_last_result() {
+		let now = Instant::now();
+		let mut stream = Stream::new("turn", &operations(&["1", "2", "3"]), now);
+		let mut frame = stream.measured_frame(now, true, |_, current| {
+			if current { (4. * LINE, 5. * LINE) } else { (2. * LINE, 3. * LINE) }
+		});
+		assert_eq!(
+			frame.lines.iter().map(|line| line.y).collect::<Vec<_>>(),
+			[0., 2. * LINE, 4. * LINE]
+		);
+		assert_eq!(frame.height, 8. * LINE);
+		assert_eq!(frame.layout_height, 11. * LINE);
+		assert_eq!(frame.clone().latest().height, 4. * LINE);
+		for i in 0..4 {
+			frame = stream.measured_frame(now + HOLD + FADE * i, true, |_, current| {
+				if current { (4. * LINE, 5. * LINE) } else { (2. * LINE, 3. * LINE) }
+			});
+		}
+		assert_eq!(frame.lines.len(), 1);
+		assert_eq!(frame.lines[0].id, "3");
+		assert_eq!(frame.height, 4. * LINE);
 	}
 	#[test]
 	fn overflow_moves_the_oldest_up_and_keeps_five_actions() {

@@ -273,13 +273,9 @@ pub(super) fn latest(entries: &[AgentTimelineEntry], turn: Option<&str>) -> Opti
 			})
 		})
 		.flatten();
-	(!task.is_empty() || !preview_text.is_empty() || running.is_some()).then(|| Preview {
-		turn: turn.into(),
-		task,
-		text: preview_text,
-		running,
-		recent: recent(entries, turn),
-	})
+	let recent = recent(entries, turn);
+	(!task.is_empty() || !preview_text.is_empty() || running.is_some() || !recent.is_empty())
+		.then(|| Preview { turn: turn.into(), task, text: preview_text, running, recent })
 }
 
 #[cfg(test)]
@@ -407,7 +403,12 @@ mod tests {
 		let preview = latest(&entries, None).unwrap();
 		assert_eq!(preview.task, "Review the scroll behavior");
 		assert!(preview.text.is_empty());
-		assert!(latest(&[item("next", "agentMessage", "Only a reply")], None).is_none());
+		let reply = latest(&[item("next", "agentMessage", "Only a reply")], None).unwrap();
+		assert!(reply.task.is_empty() && reply.text.is_empty() && reply.running.is_none());
+		assert_eq!(
+			reply.recent[0].text, "Only a reply",
+			"keep the returned message without inventing an operation"
+		);
 	}
 
 	#[test]
@@ -443,7 +444,7 @@ mod tests {
 	}
 
 	#[test]
-	fn final_answers_stay_in_the_conversation_and_errors_keep_their_assignment() {
+	fn returned_answers_are_not_live_operations_and_errors_keep_their_assignment() {
 		let mut answer = item("turn", "agentMessage", "Created the reading guide.");
 		if let AgentTimelineContent::Item { phase, .. } = &mut answer.content {
 			*phase = Some("final_answer".into());

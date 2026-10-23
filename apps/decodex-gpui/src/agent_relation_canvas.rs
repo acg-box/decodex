@@ -432,11 +432,30 @@ impl AgentSurface {
 				.entry(row.key.clone())
 				.or_insert_with(|| stream::Stream::new(&scope, &operations, now));
 			stream.sync(&scope, &operations, now);
-			let activity = stream.frame(now, crate::ui_motion::reduced());
+			let text_layout = layout.on_display(self.work_board.view.display_scale);
+			let activity =
+				stream.measured_frame(now, crate::ui_motion::reduced(), |text, current| {
+					header::operation_height(
+						text,
+						current,
+						text_layout,
+						&self.work_board.text_system,
+					)
+				});
 			let assignment = self.graph_preview(&row).0;
-			let layout_height = layout.world_height(header::detail_rows(&assignment, &activity));
+			let layout_height = layout.world_height(header::detail_rows(
+				&assignment,
+				&activity,
+				text_layout,
+				&self.work_board.text_system,
+			));
 			let activity = if layout.full_detail() { activity } else { activity.latest() };
-			let height = layout.world_height(header::detail_rows(&assignment, &activity));
+			let height = layout.world_height(header::detail_rows(
+				&assignment,
+				&activity,
+				text_layout,
+				&self.work_board.text_system,
+			));
 			graph.nodes.push(Node {
 				key: row.key.clone(),
 				title: identity,
@@ -479,12 +498,10 @@ impl AgentSurface {
 		self.add_relation_resources(&rows, &included, &mut graph);
 
 		self.place_relation_nodes(&mut graph, layout);
-		graph.paths = self
-			.work_board
-			.view
-			.routing
-			.borrow_mut()
-			.paths(&groups::routing_nodes(&graph), &graph.connections());
+		graph.paths = self.work_board.view.routing.borrow_mut().paths(
+			&groups::routing_nodes(&graph, &self.work_board.text_system),
+			&graph.connections(),
+		);
 		graph.scope_bounds(&snapshot.workspaces);
 		graph
 	}
@@ -814,14 +831,6 @@ impl AgentSurface {
 		let scale = self.relation_scale();
 		let pan = self.work_board.view.pan;
 		let layout_viewport = self.work_board.view.layout_viewport;
-		let hit_boxes: Vec<_> = self
-			.relation_nodes(graph)
-			.filter(|node| {
-				node.row.is_some()
-					|| self.work_board.view.visibility.borrow().node_opacity(graph, node) > 0.5
-			})
-			.map(|node| (node.key.clone(), node.screen_rect(scale, pan)))
-			.collect();
 		let mut canvas = gpui::div()
 			.id("relations-canvas")
 			.debug_selector(|| "relations-canvas".into())
@@ -854,9 +863,9 @@ impl AgentSurface {
 						Some(Drag { key: None, start: e.position, last: e.position, origin: pan });
 				}),
 			)
-			.on_mouse_move(cx.listener(move |s, e: &MouseMoveEvent, _, cx| {
-				s.move_relation_pointer(e, &hit_boxes, cx)
-			}))
+			.on_mouse_move(
+				cx.listener(move |s, e: &MouseMoveEvent, _, cx| s.move_relation_pointer(e, cx)),
+			)
 			.on_hover(cx.listener(|s, inside, _, cx| {
 				if !inside && s.work_board.view.hover.update(None, std::time::Instant::now()) {
 					cx.notify();
@@ -915,12 +924,7 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn move_relation_pointer(
-		&mut self,
-		e: &MouseMoveEvent,
-		hit_boxes: &[(String, card::Rect)],
-		cx: &mut Context<Self>,
-	) {
+	fn move_relation_pointer(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
 		if self.work_board.view.map_drag.is_some() {
 			self.move_relation_minimap(e, cx);
 			return;
@@ -929,16 +933,7 @@ impl AgentSurface {
 		if e.pressed_button != Some(MouseButton::Left) {
 			let dragging = self.work_board.view.drag.is_some();
 			self.work_board.view.finish_drag();
-			let view = &mut self.work_board.view;
-			let x = f32::from(e.position.x) - view.origin.0;
-			let y = f32::from(e.position.y) - view.origin.1;
-			let now = std::time::Instant::now();
-			let next = hit_boxes
-				.iter()
-				.rev()
-				.find(|(_, bounds)| bounds.contains(x, y))
-				.map(|(key, _)| key.clone());
-			if view.hover.update(next, now) || dragging {
+			if dragging {
 				cx.notify();
 			}
 			return;
@@ -1778,9 +1773,6 @@ impl AgentSurface {
 		let layout = layout.on_display(self.work_board.view.display_scale);
 		let name = format!("relation-node-{}", node.key);
 		let preview = node.row.as_ref().map(|row| self.graph_preview(row));
-		let tip = node.row.as_ref().map(|row| {
-			format!("{} · {}\n{}", self.relation_agent_number(row), node.title, node.status)
-		});
 		gpui::div()
 			.id(SharedString::from(name.clone()))
 			.debug_selector(move || name.clone())
@@ -1812,7 +1804,6 @@ impl AgentSurface {
 					.overflow_hidden()
 			})
 			.text_color(crate::ui_theme::rgb(TEXT))
-			.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone().unwrap_or_default())).into())
 			.cursor_pointer()
 	}
 
@@ -3604,6 +3595,10 @@ mod fit_tests {
 		let card = visual.debug_bounds("relation-node-release").unwrap();
 		visual.simulate_mouse_move(card.center(), None, Default::default());
 		visual.update(crate::ui_frame::draw_frame);
+		assert!(
+			surface.read_with(visual, |s, _| s.relation_context().is_none()),
+			"hover does not select, reveal a branch, or open a floating card"
+		);
 		assert_eq!(
 			visual.debug_bounds("relation-node-release").unwrap().size,
 			card.size,

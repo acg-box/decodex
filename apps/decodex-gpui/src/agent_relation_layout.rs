@@ -18,7 +18,7 @@ impl Presentation {
 	pub(super) fn width(self) -> f32 {
 		match self {
 			Self::Links => WIDTH,
-			Self::Together => 280.,
+			Self::Together => 344.,
 		}
 	}
 
@@ -326,14 +326,32 @@ impl Tree {
 			if self.children.iter().any(|child| !child.children.is_empty()) { 40. } else { 12. },
 		);
 		let height = f32::from_bits(input.nodes[self.index].2);
+		let base =
+			input.base_heights.get(self.index).copied().map(f32::from_bits).unwrap_or(height);
+		let step = if horizontal {
+			input.width + input.column_gap
+		} else {
+			(base + input.presentation.gap(84., 4.)).max(height + input.presentation.gap(24., 4.))
+		};
 		let children: Vec<_> =
 			self.children.iter().map(|child| child.layout(input, horizontal)).collect();
 		let leaves = self.children.iter().all(|child| child.children.is_empty());
 		let mut block = if leaves && children.len() >= 4 {
-			// Keep taller character HUDs in a compact shelf rather than forcing
-			// small parallel groups into four rows.
-			let columns = (1 + (children.len() - 1).isqrt()).clamp(2, 4);
-			Block::grid(children, columns, gap)
+			// Balance the actual footprints and their parent as one compact group.
+			// Use a stable aspect so resizing or zooming does not reshuffle a tree.
+			(2..=children.len().min(4))
+				.map(|columns| Block::grid(children.clone(), columns, gap))
+				.max_by(|a, b| {
+					let score = |block: &Block| {
+						let width =
+							(block.width + if horizontal { step } else { 0. }).max(input.width);
+						let height =
+							(block.height + if horizontal { 0. } else { step }).max(height);
+						-((width / height) / (4. / 3.)).ln().abs()
+					};
+					score(a).total_cmp(&score(b))
+				})
+				.unwrap_or_default()
 		} else if children.len() >= 4 {
 			Block::pack(children, input.presentation.gap(WORKSPACE_GAP, 36.), input.viewport)
 		} else {
@@ -342,14 +360,6 @@ impl Tree {
 		if !block.positions.is_empty() {
 			// New activity first uses the existing connector clearance. It must
 			// not move every sibling when the first operation appears.
-			let base =
-				input.base_heights.get(self.index).copied().map(f32::from_bits).unwrap_or(height);
-			let step = if horizontal {
-				input.width + input.column_gap
-			} else {
-				(base + input.presentation.gap(84., 4.))
-					.max(height + input.presentation.gap(24., 4.))
-			};
 			block.offset(if horizontal { step } else { 0. }, if horizontal { 0. } else { step });
 			if horizontal {
 				block.width += step;

@@ -12,7 +12,7 @@ use gpui::{
 // At 100%, graph type uses the same sizes as the native shell.
 // A compact three-row HUD stays centered under the portrait, with readable
 // counters at the full-detail threshold and the one-times display font floor.
-pub(super) const WIDTH: f32 = 288.;
+pub(super) const WIDTH: f32 = 352.;
 pub(super) const INSET_X: f32 = 10.;
 pub(super) const INSET_Y: f32 = 8.;
 pub(super) const PORTRAIT_WIDTH: f32 = 80.;
@@ -109,6 +109,16 @@ impl Layout {
 
 	pub(super) fn details_gap(self) -> f32 {
 		self.spacing(COLUMN_GAP).max(13.)
+	}
+
+	pub(super) fn text_width(self) -> f32 {
+		(self.width
+			- 2. * self.spacing(INSET_X)
+			- self.portrait_spacing(PORTRAIT_WIDTH)
+			- self.details_gap()
+			- self.pixel(12.)
+			- 5.)
+			.max(1.)
 	}
 
 	pub(super) fn full_detail(self) -> bool {

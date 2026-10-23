@@ -1069,7 +1069,9 @@ fn native_completion_requests_fresh_metrics_without_blank_preview(cx: &mut gpui:
 }
 
 #[gpui::test]
-fn moving_across_card_children_keeps_one_hover_target(cx: &mut gpui::TestAppContext) {
+fn moving_across_card_children_does_not_focus_or_rearrange_the_graph(
+	cx: &mut gpui::TestAppContext,
+) {
 	let (surface, visual) = cx.add_window_view(|_, cx| {
 		let mut s = fixture(cx);
 		s.workspace.graph_expanded = true;
@@ -1089,8 +1091,8 @@ fn moving_across_card_children_keeps_one_hover_target(cx: &mut gpui::TestAppCont
 		let p = bounds.origin + gpui::point(bounds.size.width * 0.5, bounds.size.height * fraction);
 		visual.simulate_mouse_move(p, None, Default::default());
 		visual.update(|w, cx| w.draw(cx).clear(cx));
-		surface.read_with(visual, |s, _| assert_eq!(s.relation_context(), Some("release")));
-		// The delayed inspection may enlarge its overlay; it must not move the graph.
+		surface.read_with(visual, |s, _| assert_eq!(s.relation_context(), None));
+		// Pointer-only movement must not open an inspection or move the graph.
 		assert_eq!(visual.debug_bounds("relation-node-release").unwrap().origin, bounds.origin);
 		surface.read_with(visual, |s, _| {
 			for (before, after) in layout.iter().zip(s.relation_graph().nodes) {

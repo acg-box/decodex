@@ -9,8 +9,8 @@ use super::{
 use gpui::{AnyElement, prelude::FluentBuilder};
 use std::collections::{BTreeMap, BTreeSet};
 
-#[derive(Default)]
 pub(super) struct Board {
+	text_system: std::sync::Arc<gpui::TextSystem>,
 	pub(super) graph: bool,
 	collaboration_expanded: Option<String>,
 	collaboration: workbench::Collaboration,
@@ -31,12 +31,24 @@ impl Board {
 		self.focus = None;
 	}
 
-	pub(super) fn new(_: &mut Context<AgentSurface>) -> Self {
-		Self::default()
+	pub(super) fn new(cx: &mut Context<AgentSurface>) -> Self {
+		Self {
+			text_system: cx.text_system().clone(),
+			graph: false,
+			collaboration_expanded: None,
+			collaboration: Default::default(),
+			focus: None,
+			view: Default::default(),
+			briefs: Default::default(),
+			usage: None,
+			token_gaps: 0,
+			brief_task: None,
+			reload_pending: Default::default(),
+		}
 	}
 
-	pub(super) fn clear(&mut self, _: &mut Context<AgentSurface>) {
-		*self = Self::default();
+	pub(super) fn clear(&mut self, cx: &mut Context<AgentSurface>) {
+		*self = Self::new(cx);
 	}
 }
 #[derive(Clone)]
@@ -523,7 +535,7 @@ impl AgentSurface {
 			);
 		}
 		let mut operations = preview.map(|preview| preview.recent.clone()).unwrap_or_default();
-		// A quiet thread's last reply is not a current operation. Keep it in history.
+		// Retain native messages, but do not invent an operation for a quiet thread.
 		if operations.is_empty() && row.group != 2 {
 			let text = self.work_activity_summary(row).1;
 			if !text.is_empty() {

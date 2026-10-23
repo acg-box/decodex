@@ -208,7 +208,7 @@ impl Route {
 		let from = point_at_distance(tail);
 		let to = point_at_distance(head);
 		let angle = f32::from(to.x - from.x).atan2(-f32::from(to.y - from.y)).to_degrees();
-		let mut trail = PathBuilder::stroke(gpui::px(1.6 * scale));
+		let mut trail = stroke_builder(1.6);
 		trail.move_to(from);
 		for &(sample, distance) in samples {
 			if distance > tail && distance < head {
@@ -242,35 +242,14 @@ impl Route {
 	) -> PathBuilder {
 		let point =
 			|(x, y)| origin + gpui::point(gpui::px(x * scale + pan.0), gpui::px(y * scale + pan.1));
-		let mut path = PathBuilder::default().with_style(gpui::PathStyle::Stroke(
-			gpui::StrokeOptions::default()
-				.with_line_width((width * scale).max(1.))
-				.with_tolerance(0.05),
-		));
-		path.move_to(point(self.curves[0].start));
+		let mut path = stroke_builder(width);
 		if let Some((dash, gap)) = kind.pattern() {
-			let (dash, gap) = (dash * scale, gap * scale);
-			let mut last = point(self.curves[0].start);
-			let mut distance = 0_f32;
-			for i in 1..=160 {
-				let next = point(self.at(i as f32 / 160.));
-				let dx = f32::from(next.x - last.x);
-				let dy = f32::from(next.y - last.y);
-				distance += dx.hypot(dy);
-				if distance % (dash + gap) < dash {
-					path.line_to(next);
-				} else {
-					path.move_to(next);
-				}
-				last = next;
-			}
-		} else {
-			for curve in if complete { &self.curves } else { &self.ink } {
-				if !complete {
-					path.move_to(point(curve.start));
-				}
-				path.cubic_bezier_to(point(curve.end), point(curve.first), point(curve.second));
-			}
+			path = path
+				.dash_array(&[gpui::px((dash * scale).max(2.)), gpui::px((gap * scale).max(3.))]);
+		}
+		for curve in if complete { &self.curves } else { &self.ink } {
+			path.move_to(point(curve.start));
+			path.cubic_bezier_to(point(curve.end), point(curve.first), point(curve.second));
 		}
 		if kind != Kind::Resource && (complete || self.ink_arrow) {
 			let curve = self.curves.last().expect("connection curve");
@@ -290,6 +269,14 @@ impl Route {
 		}
 		path
 	}
+}
+
+/// Stroke weight stays in display points. Zoom changes the route, not its
+/// legibility. Native curve tessellation and MSAA cover the final pixel edges.
+fn stroke_builder(width: f32) -> PathBuilder {
+	PathBuilder::default().with_style(gpui::PathStyle::Stroke(
+		gpui::StrokeOptions::default().with_line_width(width.max(1.5)).with_tolerance(0.015),
+	))
 }
 
 /// Fade at both ends of the cycle; a clipped pulse must not flash at its destination.

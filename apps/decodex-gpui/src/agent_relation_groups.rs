@@ -5,7 +5,10 @@ use gpui::{ParentElement as _, Styled as _};
 
 // Routing obstacles describe painted text, not the blank area below it.
 // Keep the character/HUD attachment intact so connections still end outside it.
-pub(super) fn routing_nodes(graph: &Graph) -> Vec<Node> {
+pub(super) fn routing_nodes(
+	graph: &Graph,
+	text_system: &std::sync::Arc<gpui::TextSystem>,
+) -> Vec<Node> {
 	let layout = graph.layout;
 	graph
 		.nodes
@@ -17,8 +20,12 @@ pub(super) fn routing_nodes(graph: &Graph) -> Vec<Node> {
 					+ layout.title_line()
 					+ if layout.activity_visible() {
 						layout.spacing(card::IDENTITY_GAP)
-							+ header::detail_rows(&node.assignment, &node.activity)
-								* layout.activity_line()
+							+ header::detail_rows(
+								&node.assignment,
+								&node.activity,
+								layout,
+								text_system,
+							) * layout.activity_line()
 					} else {
 						0.
 					};
@@ -81,19 +88,10 @@ pub(super) fn paint(
 						if alpha <= 0.001 {
 							return;
 						}
-						let mut ink = gpui::PathBuilder::stroke(gpui::px(1.));
-						let p = |point: (f32, f32)| {
-							bounds.origin
-								+ gpui::point(
-									gpui::px(point.0 * scale + pan.0),
-									gpui::px(point.1 * scale + pan.1),
-								)
-						};
-						for curve in &path.curves {
-							ink.move_to(p(curve.start));
-							ink.cubic_bezier_to(p(curve.end), p(curve.first), p(curve.second));
-						}
-						if let Ok(ink) = ink.build() {
+						if let Ok(ink) = path
+							.stroke(super::Kind::Assigned, bounds.origin, scale, pan, 1.5, true)
+							.build()
+						{
 							window.paint_path(
 								ink,
 								ui_theme::rgb(ui_theme::BLUE).opacity(alpha * presence),
