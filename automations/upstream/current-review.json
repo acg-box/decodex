@@ -7171,6 +7171,6 @@
     "git_tree_listing_sha256": "5e7a0077f15d06ce98fd03c3b19043a17db8d897eb21965006732f19d9676f75",
     "cargo_lock_sha256": "d661437f2dae702b0beb404df06ef60219845c5ce909138427ac4a3947b8cb2c"
   },
-  "delivery_status": "qualified; public Git delivery reference pending",
-  "delivery_reference": null
+  "delivery_status": "Public PR reference; read the linked PR for exact-head checks and current merge state. Qualification alone does not attest merge.",
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2490"
 }

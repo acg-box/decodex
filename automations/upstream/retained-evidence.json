@@ -17,7 +17,8 @@
     "https://github.com/acg-box/decodex/pull/2470",
     "https://github.com/acg-box/decodex/pull/2471",
     "https://github.com/acg-box/decodex/pull/2484",
-    "https://github.com/acg-box/decodex/pull/2489"
+    "https://github.com/acg-box/decodex/pull/2489",
+    "https://github.com/acg-box/decodex/pull/2490"
   ],
   "retained_native_consumers": {
     "execution": "Use the repository native-test entrypoints with the exact candidate CLI and both packaged helpers; verify each actual matched identity.",
@@ -593,7 +594,7 @@
     "evidence": "automations/upstream/qualification.json",
     "source_archive_sha256": "a2f261cf958b24fc87cf7257674134146d0c02a5f2badeaed9964e162f03f28c",
     "schema_sha256": "9a924f38f788323f6ac1070f8adc6a6813a247f2cc881bc244e4211da676c338",
-    "evidence_sha256": "67a8c25f9b5235d0674966f998822d76209665ceb9b235f315f16ae847223a79",
+    "evidence_sha256": "0292fabeb8e69f5b43f97cfb239654c315a4a206a8ac11060e7e31e97b19fd90",
     "limits": [
       "Source review, source tests, exact-artifact qualification, Git delivery and installed-app acceptance remain separate.",
       "No live account/provider, physical audio, Windows/Linux/NFS runtime, remote production executor or installed-app acceptance. Signed macOS arm64 private-stdio behavior and both packaged helpers were exercised.",
@@ -905,9 +906,9 @@
       "optional decision": 5
     },
     "source_review_evidence": "automations/upstream/current-review.json",
-    "source_review_evidence_sha256": "cbf1eea081f5e00b8d67532059114b00b26c3c9c1e153affd2dc3da3762ecbd5",
+    "source_review_evidence_sha256": "0c0b0b5c54033bb5e52b4ff9274903165f17d96f4dbcaefb8ff8ee18ff7e4ebb",
     "selected_runtime_source": "970111f6cb62cc02fe36a82ea7d71b37a2889c97",
-    "runtime_disposition": "Qualified fixed development artifact; public Git delivery and exact-head CI are separate.",
+    "runtime_disposition": "Qualified fixed development artifact; Git delivery and exact-head CI are recorded at https://github.com/acg-box/decodex/pull/2490. Optional product additions remain unselected.",
     "qualified_source_limits": [
       "Source review, source tests, exact-artifact qualification, Git delivery and installed-app acceptance remain separate.",
       "No live account/provider, physical audio, Windows/Linux/NFS runtime, remote production executor or installed-app acceptance. Signed macOS arm64 private-stdio behavior and both packaged helpers were exercised.",
@@ -1570,11 +1571,11 @@
     }
   },
   "current_delivery": {
-    "status": "qualified; public delivery pending",
+    "status": "public_pull_request_reference",
     "code_commit": "1d2e6aa1e0e988bf8f8d51f7d80ac12fd5441c23",
     "scope": "Qualify the fixed official development runtime, preserve terminal model errors without retries and accept large explicit model catalogs. Preserve existing runtime/helper, sampling, MCP, parent coordination and account boundaries. No installation or release.",
-    "pull_request": null,
-    "state_source": "Read the public PR after creation for current merge state and exact-head checks."
+    "pull_request": "https://github.com/acg-box/decodex/pull/2490",
+    "state_source": "Read the linked public PR for current merge state and exact-head checks. Source/artifact qualification alone does not establish delivery."
   },
   "retained_account_scope": {
     "provider": "ChatGPT-backed identity; recognized plan labels are not separate provider implementations.",

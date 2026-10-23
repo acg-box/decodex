@@ -5737,8 +5737,8 @@
     "first_page_claim_issues": 5,
     "historical_completed_lifecycle": "The earlier completed lifecycle attests only its own source snapshot. This attempt has not completed any selected page."
   },
-  "delivery_reference": null,
-  "delivery_status": "qualified; public Git delivery reference pending",
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2490",
+  "delivery_status": "Public PR reference; read the linked PR for exact-head checks and current merge state. Qualification alone does not attest merge.",
   "qualification_fixture_revision": "1d2e6aa1e0e988bf8f8d51f7d80ac12fd5441c23",
   "qualification_source_binding": {
     "consumer_baseline": "f6640838f0997493704ff87e46205b46a700eef2",
