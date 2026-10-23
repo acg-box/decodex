@@ -244,21 +244,22 @@ impl Ink {
 }
 
 pub(super) fn route(a: &Node, b: &Node) -> Route {
-	let dx = b.x - a.x;
+	let (a_bounds, b_bounds) = (a.connection_bounds(), b.connection_bounds());
+	let dx = b.connection_center().0 - a.connection_center().0;
 	let dy = b.port_y() - a.port_y();
-	let gap_x = if dx >= 0. { b.x - a.x - a.width() } else { a.x - b.x - b.width() };
-	let gap_y = dy.abs() - (a.height() + b.height()) / 2.;
+	let gap_x = if dx >= 0. { b_bounds[0] - a_bounds[2] } else { a_bounds[0] - b_bounds[2] };
+	let gap_y = dy.abs() - (a_bounds[3] - a_bounds[1] + b_bounds[3] - b_bounds[1]) / 2.;
 	// Relation type never changes geometry or creates a hook in a shared edge.
 	if gap_x >= 0. && gap_x >= gap_y {
 		let forward = dx >= 0.;
-		let start = (a.x + if forward { a.width() } else { 0. }, a.port_y());
-		let end = (b.x + if forward { 0. } else { b.width() }, b.port_y());
+		let start = (a_bounds[if forward { 2 } else { 0 }], a.port_y());
+		let end = (b_bounds[if forward { 0 } else { 2 }], b.port_y());
 		let bend = (end.0 - start.0) / 2.;
 		Route::curve(start, (start.0 + bend, start.1), (end.0 - bend, end.1), end)
 	} else {
 		let forward = dy >= 0.;
-		let start = (a.x + a.width() / 2., a.y + if forward { a.height() } else { 0. });
-		let end = (b.x + b.width() / 2., b.y + if forward { 0. } else { b.height() });
+		let start = (a.connection_center().0, a_bounds[if forward { 3 } else { 1 }]);
+		let end = (b.connection_center().0, b_bounds[if forward { 1 } else { 3 }]);
 		let bend = (end.1 - start.1) / 2.;
 		Route::curve(start, (start.0, start.1 + bend), (end.0, end.1 - bend), end)
 	}
@@ -320,15 +321,28 @@ impl Cache {
 	pub(super) fn paths(&mut self, nodes: &[Node], edges: &[Edge]) -> BTreeMap<String, Rc<Route>> {
 		let cards: Vec<_> = nodes
 			.iter()
-			.map(|n| Card {
-				key: n.key.clone(),
-				port_y: n.port_y(),
-				bounds: [
-					n.x - CLEARANCE,
-					n.y - CLEARANCE,
-					n.x + n.width() + CLEARANCE,
-					n.y + n.height() + CLEARANCE,
-				],
+			.flat_map(|n| {
+				let [left, top, right, bottom] = n.connection_bounds();
+				let mut cards = vec![Card {
+					key: n.key.clone(),
+					port_y: n.port_y(),
+					bounds: [
+						left - CLEARANCE,
+						top - CLEARANCE,
+						right + CLEARANCE,
+						bottom + CLEARANCE,
+					],
+				}];
+				// Keep the source and target's own activity text out of the route too.
+				// A right port inside this column is not exposed; use another side.
+				if n.attachment.is_some() && right + 3. < n.x + n.width() {
+					cards.push(Card {
+						key: format!("activity:{}", n.key),
+						port_y: n.port_y(),
+						bounds: [right + 3., n.y, n.x + n.width(), n.y + n.height()],
+					});
+				}
+				cards
 			})
 			.collect();
 		let pairs: Vec<_> =
@@ -369,14 +383,14 @@ fn tree_route(a: &Node, b: &Node, nodes: &[Node], edges: &[Edge], cards: &[Card]
 		.filter_map(|edge| nodes.iter().find(|node| node.key == edge.to))
 		.collect();
 	let mut branches = Vec::new();
-	let middle = |node: &Node| (node.x + node.width() / 2., node.y + node.height() / 2.);
+	let (aa, bb) = (a.connection_bounds(), b.connection_bounds());
 	if children.iter().all(|node| node.x >= a.x + a.width() + CLEARANCE * 2.) {
-		let start = (a.x + a.width(), a.port_y());
-		branches.push(Route::branch(start, (b.x, b.port_y()), true));
+		let start = (aa[2], a.port_y());
+		branches.push(Route::branch(start, (bb[0], b.port_y()), true));
 	}
 	if children.iter().all(|node| node.y >= a.y + a.height() + CLEARANCE * 2.) {
-		let start = (middle(a).0, a.y + a.height());
-		branches.push(Route::branch(start, (middle(b).0, b.y), false));
+		let start = (a.connection_center().0, aa[3]);
+		branches.push(Route::branch(start, (b.connection_center().0, bb[1]), false));
 	}
 	branches.into_iter().find(|path| {
 		!cards.iter().any(|card| {
@@ -404,6 +418,24 @@ fn avoid_cards(direct: Route, a: &Node, b: &Node, cards: &[Card]) -> Route {
 		};
 		cost(a, b).total_cmp(&cost(c, d))
 	});
+	// An activity column can cover a facing port without blocking the free space
+	// between characters. Try exposed tangents before adding gutter corners.
+	if a.attachment.is_some() || b.attachment.is_some() {
+		for (start, end) in &pairs {
+			let reach = (distance(start.anchor, end.anchor) * 0.35).clamp(24., 72.);
+			let path = Route::curve(
+				start.anchor,
+				toward(start.anchor, start.outer, reach),
+				toward(end.anchor, end.outer, reach),
+				end.anchor,
+			);
+			if !cards.iter().any(|card| {
+				card.key != a.key && card.key != b.key && card.blocks_curve(&path.curves[0])
+			}) {
+				return path;
+			}
+		}
+	}
 	for (start, end) in pairs {
 		if let Some(mut points) =
 			Grid::new(cards, start.outer, end.outer).path(start.outer, end.outer)
@@ -424,12 +456,13 @@ struct Port {
 }
 
 fn ports(node: &Node, preferred: Point, cards: &[Card]) -> Vec<Port> {
-	let center = (node.x + node.width() / 2., node.y + node.height() / 2.);
+	let center = node.connection_center();
+	let [left, top, right, bottom] = node.connection_bounds();
 	let mut ports: Vec<_> = [
-		((node.x, node.port_y()), (-CLEARANCE, 0.)),
-		((node.x + node.width(), node.port_y()), (CLEARANCE, 0.)),
-		((center.0, node.y), (0., -CLEARANCE)),
-		((center.0, node.y + node.height()), (0., CLEARANCE)),
+		((left, node.port_y()), (-CLEARANCE, 0.)),
+		((right, node.port_y()), (CLEARANCE, 0.)),
+		((center.0, top), (0., -CLEARANCE)),
+		((center.0, bottom), (0., CLEARANCE)),
 	]
 	.into_iter()
 	.map(|(anchor, offset)| Port { anchor, outer: (anchor.0 + offset.0, anchor.1 + offset.1) })
@@ -568,6 +601,42 @@ impl<'a> Grid<'a> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn character_connections_keep_the_source_and_targets_own_activity_columns_clear() {
+		let mut a = node("parent", 0., 0.);
+		a.attachment = Some([6., 6., 80., 42.]);
+		for (x, y) in [(400., 0.), (400., 100.), (400., -100.), (0., 180.)] {
+			let b = Node { key: "child".into(), x, y, ..a.clone() };
+			let nodes = vec![a.clone(), b];
+			let paths = Cache::default().paths(&nodes, &[edge("parent", "child")]);
+			let path = &paths["parent-child"];
+			assert!(path.is_visible(), "an exposed character must remain connected");
+			assert_eq!(path.curves.len(), 1, "free character space needs no gutter elbows");
+			for i in 0..=1000 {
+				let (x, y) = path.at(i as f32 / 1000.);
+				for node in &nodes {
+					let [left, top, right, bottom] = node.connection_bounds();
+					assert!(
+						!(x > left + 0.01
+							&& x < right - 0.01
+							&& y > top + 0.01
+							&& y < bottom - 0.01),
+						"connection entered the character or HUD"
+					);
+					assert!(
+						!(x > node.x + 83.
+							&& x < node.x + node.width()
+							&& y > node.y
+							&& y < node.y + node.height()),
+						"connection crossed {} activity at ({x}, {y})",
+						node.key
+					);
+				}
+			}
+		}
+	}
+
 	#[test]
 	fn resource_ports_follow_the_card_edges_at_every_camera_scale() {
 		for scale in [1., 0.85, 0.7] {
@@ -625,7 +694,7 @@ mod tests {
 			row: None,
 			activity: Default::default(),
 			size: (224., 48.),
-			port_offset: 24.,
+			attachment: None,
 			base_height: 48.,
 			layout_height: 48.,
 			x,

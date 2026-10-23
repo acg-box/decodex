@@ -20,7 +20,6 @@ pub(super) const PORTRAIT_HEIGHT: f32 = 44.;
 pub(super) const COLUMN_GAP: f32 = 6.;
 pub(super) const IDENTITY_GAP: f32 = 3.;
 pub(super) const DETAILS_TOP: f32 = 4.;
-pub(super) const PORT_Y: f32 = INSET_Y + crate::ui_theme::LABEL_LINE_HEIGHT / 2.;
 pub(super) const SELECTED: u32 = crate::ui_theme::BLUE;
 pub(super) const SECONDARY_TEXT: u32 = foreground::SECONDARY;
 pub(super) const ACTIVITY_TEXT: u32 = foreground::BODY;
@@ -127,6 +126,34 @@ impl Layout {
 	pub(super) fn node_inset(self) -> (f32, f32) {
 		let (width, height) = self.node_size(OVERVIEW_HEIGHT);
 		((WIDTH - width) / 2., (OVERVIEW_HEIGHT - height) / 2.)
+	}
+
+	/// Route around the character and its HUD, independently of the activity column.
+	/// During the point morph the same attachment contracts into the visible dot.
+	pub(super) fn character_bounds(self, actions: f32) -> [f32; 4] {
+		let z = self.zoom;
+		let portrait = self.portrait_spacing(PORTRAIT_WIDTH) / z;
+		let height = (self.portrait_spacing(PORTRAIT_HEIGHT)
+			+ if self.overview() { 0. } else { self.gap() + self.metrics_height() })
+			/ z;
+		let left = if self.labels() { INSET_X } else { (WIDTH - portrait) / 2. };
+		let top = if self.overview() {
+			(OVERVIEW_HEIGHT - self.header_height(actions) / z) / 2.
+		} else {
+			INSET_Y
+		};
+		let inset = if self.overview() { self.node_inset() } else { (0., 0.) };
+		let (width, node_height) = self.node_size(self.world_height(actions));
+		let center = (width / 2., node_height / 2.);
+		let r = self.point_size() / 2.;
+		let point = [center.0 - r, center.1 - r, center.0 + r, center.1 + r];
+		let character = [
+			left - inset.0 - 3.,
+			top - inset.1 - 3.,
+			left + portrait - inset.0 + 3.,
+			top + height - inset.1 + 3.,
+		];
+		std::array::from_fn(|i| point[i] + (character[i] - point[i]) * self.presence)
 	}
 
 	pub(super) fn zoom_range(self) -> (f32, f32) {

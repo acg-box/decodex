@@ -151,7 +151,8 @@ pub(super) struct Node {
 	row: Option<Row>,
 	activity: stream::Frame,
 	pub(super) size: (f32, f32),
-	port_offset: f32,
+	// Character/HUD attachment in local world coordinates; resources use their full bounds.
+	attachment: Option<[f32; 4]>,
 	base_height: f32,
 	// Available detail controls placement; inspection changes only the visible footprint.
 	layout_height: f32,
@@ -183,7 +184,19 @@ impl Node {
 	}
 
 	fn port_y(&self) -> f32 {
-		self.y + self.port_offset
+		let [_, top, _, bottom] = self.connection_bounds();
+		(top + bottom) / 2.
+	}
+
+	fn connection_bounds(&self) -> [f32; 4] {
+		let [left, top, right, bottom] =
+			self.attachment.unwrap_or([0., 0., self.width(), self.height()]);
+		[self.x + left, self.y + top, self.x + right, self.y + bottom]
+	}
+
+	fn connection_center(&self) -> (f32, f32) {
+		let [left, top, right, bottom] = self.connection_bounds();
+		((left + right) / 2., (top + bottom) / 2.)
 	}
 }
 pub(super) struct RelationTip(pub(super) String);
@@ -446,7 +459,7 @@ impl AgentSurface {
 				base_height: layout.world_height(0.),
 				layout_height,
 				navigation: (0., 0.),
-				port_offset: if layout.overview() { height / 2. } else { card::PORT_Y },
+				attachment: None,
 				x: 0.,
 				y: 0.,
 			});
@@ -1022,7 +1035,7 @@ impl AgentSurface {
 					row: None,
 					activity: Default::default(),
 					size: (224., 48.),
-					port_offset: 24.,
+					attachment: None,
 					base_height: 48.,
 					layout_height: 48.,
 					navigation: (0., 0.),
@@ -1175,7 +1188,13 @@ impl AgentSurface {
 				node.y += inset.1;
 				node.size = layout.node_size(node.height());
 				node.layout_height = node.height();
-				node.port_offset = node.height() / 2.;
+			}
+			if node.row.is_some() {
+				node.attachment = Some(
+					layout
+						.on_display(self.work_board.view.display_scale)
+						.character_bounds(node.activity.height / stream::LINE),
+				);
 			}
 			node.navigation = (node.x, node.y);
 		}
@@ -2697,11 +2716,13 @@ mod fit_tests {
 							let (x, y) = (point.0 - node.x, point.1 - node.y);
 							assert!(x >= -0.01 && x <= node.width() + 0.01);
 							assert!(y >= -0.01 && y <= node.height() + 0.01);
+							let [left, top, right, bottom] = node.connection_bounds();
 							assert!(
-								x.abs() < 0.01
-									|| y.abs() < 0.01
-									|| (x - node.width()).abs() < 0.01
-									|| (y - node.height()).abs() < 0.01
+								(point.0 - left).abs() < 0.01
+									|| (point.0 - right).abs() < 0.01
+									|| (point.1 - top).abs() < 0.01
+									|| (point.1 - bottom).abs() < 0.01,
+								"the morph must attach to the visible character or dot"
 							);
 						}
 					}
@@ -2975,17 +2996,13 @@ mod fit_tests {
 			parent.key = "parent".into();
 			parent.x = 0.;
 			parent.y = 0.;
-			let (w, h, y) = (parent.width(), parent.height(), card::PORT_Y);
+			let (w, h) = (parent.width(), parent.height());
+			let [left, top, right, bottom] = parent.connection_bounds();
 			let mut edge = initial.edges.iter().find(|edge| edge.kind.hierarchy()).unwrap().clone();
 			edge.id = "parent-child".into();
 			edge.from = "parent".into();
 			edge.to = "child".into();
-			for (position, start, end) in [
-				((w + 100., 0.), (w, y), (0., y)),
-				((-w - 100., 0.), (0., y), (w, y)),
-				((0., h + 100.), (w / 2., h), (w / 2., 0.)),
-				((0., -h - 100.), (w / 2., 0.), (w / 2., h)),
-			] {
+			for position in [(w + 100., 0.), (-w - 100., 0.), (0., h + 100.), (0., -h - 100.)] {
 				let child =
 					Node { key: "child".into(), x: position.0, y: position.1, ..parent.clone() };
 				let nodes = vec![parent.clone(), child];
@@ -3005,8 +3022,13 @@ mod fit_tests {
 					std::time::Instant::now(),
 				);
 				let ports = graph.connection_ports(&lines);
-				assert_eq!(ports["parent"], vec![start]);
-				assert_eq!(ports["child"], vec![end]);
+				for key in ["parent", "child"] {
+					let port = ports[key][0];
+					assert!(port.0 >= left && port.0 <= right && port.1 >= top && port.1 <= bottom);
+					assert!(port.0 == left || port.0 == right || port.1 == top || port.1 == bottom);
+					assert!(port.0 < w / 2., "attach to the character, never the activity column");
+				}
+				let start = ports["parent"][0];
 				if position.1 > 0. {
 					let mut sibling = graph.nodes[1].clone();
 					sibling.key = "sibling".into();
@@ -3817,7 +3839,7 @@ mod fit_tests {
 			row: None,
 			activity: Default::default(),
 			size: (224., 48.),
-			port_offset: 24.,
+			attachment: None,
 			base_height: 48.,
 			layout_height: 48.,
 			navigation: (120., 80.),
@@ -3847,7 +3869,7 @@ mod fit_tests {
 			row: None,
 			activity: Default::default(),
 			size: (224., 48.),
-			port_offset: 24.,
+			attachment: None,
 			base_height: 48.,
 			layout_height: 48.,
 			navigation: (80., 64.),

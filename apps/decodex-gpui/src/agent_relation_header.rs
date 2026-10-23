@@ -71,6 +71,7 @@ impl RenderOnce for Header {
 			.child(
 				gpui::div()
 					.flex_none()
+					.w(gpui::px(layout.portrait_spacing(super::card::PORTRAIT_WIDTH)))
 					.flex()
 					.flex_col()
 					.items_center()

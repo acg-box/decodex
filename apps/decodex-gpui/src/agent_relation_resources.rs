@@ -41,7 +41,7 @@ impl AgentSurface {
 						row: None,
 						activity: Default::default(),
 						size: (WIDTH, 48.),
-						port_offset: 24.,
+						attachment: None,
 						base_height: 48.,
 						layout_height: 48.,
 						x: 0.,
