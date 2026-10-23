@@ -145,7 +145,7 @@ impl Layout {
 	}
 
 	pub(super) fn metric_line(self) -> f32 {
-		((self.metric_size() + 1.5) * self.display_scale).ceil() / self.display_scale
+		((self.metric_size() + 0.5) * self.display_scale).ceil() / self.display_scale
 	}
 
 	pub(super) fn activity_line(self) -> f32 {
@@ -162,7 +162,7 @@ impl Layout {
 
 	/// Three compact status tracks form one block under the numbered portrait.
 	pub(super) fn metrics_height(self) -> f32 {
-		3. * self.metric_line() + 2. * self.spacing(1.)
+		3. * self.metric_line()
 	}
 
 	pub(super) fn header_height(self, actions: f32) -> f32 {

@@ -112,14 +112,11 @@ fn readout_value(
 	layout: super::card::Layout,
 ) -> gpui::Div {
 	let inset = layout.pixel(0.5).max(0.5);
-	let radius = layout.spacing(2.).max(1.);
 	gpui::div()
 		.relative()
 		.w_full()
 		.h(gpui::px(layout.metric_line()))
 		.flex_none()
-		.rounded(gpui::px(radius))
-		.bg(crate::ui_theme::rgb(crate::ui_theme::LINE_STRONG))
 		.overflow_hidden()
 		.child(
 			value_text(text.clone(), width, layout)
@@ -133,7 +130,6 @@ fn readout_value(
 				.top(gpui::px(inset))
 				.bottom(gpui::px(inset))
 				.w(gpui::px(layout.pixel((width - 2. * inset) * amount)))
-				.rounded(gpui::px((radius - inset).max(0.5)))
 				.bg(crate::ui_theme::rgb(accent))
 				.overflow_hidden()
 				// The same label uses inverse ink only over the colored fill.
@@ -203,7 +199,10 @@ impl RenderOnce for Readout {
 			.flex()
 			.flex_col()
 			.whitespace_nowrap()
-			.gap(gpui::px(layout.spacing(1.)))
+			// One shared track and no row gaps keep the HUD a single compact block.
+			.bg(crate::ui_theme::rgb(crate::ui_theme::LINE_STRONG))
+			.rounded(gpui::px(layout.spacing(1.5).max(1.)))
+			.overflow_hidden()
 			.text_size(gpui::px(layout.detail_size()))
 			.line_height(gpui::px(layout.metric_line()))
 			.font_weight(gpui::FontWeight::NORMAL)
@@ -420,11 +419,12 @@ mod tests {
 				for (upper, lower) in [(tokens, time), (time, rate)] {
 					assert_eq!(upper.left(), lower.left());
 					assert_eq!(upper.size.width, lower.size.width);
-					assert!(lower.top() >= upper.bottom());
-					assert!(f32::from(lower.top() - upper.bottom()) <= layout.spacing(1.) + 0.5);
+					assert_eq!(lower.top(), upper.bottom(), "rows form one continuous track");
 				}
 				assert!(f32::from(tokens.size.width) <= BAR_WIDTH);
-				assert!(f32::from(rate.bottom() - tokens.top()) <= layout.metrics_height() + 0.5);
+				assert_eq!(f32::from(rate.bottom() - tokens.top()), layout.metrics_height());
+				assert!(layout.metric_size() >= 10., "compact tracks keep the readable font floor");
+				assert!(f32::from(tokens.size.height) <= layout.metric_size() + 1.);
 				let inset = layout.pixel(0.5).max(0.5);
 				for (name, track, fraction) in [
 					("relation-fill-fixture-tokens", tokens, 0.514759),
