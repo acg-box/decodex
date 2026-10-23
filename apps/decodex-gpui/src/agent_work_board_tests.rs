@@ -323,9 +323,13 @@ fn missing_token_statistics_notify_only_after_a_successful_completed_turn(
 fn graph_nodes_select_the_exact_agent_and_keep_the_graph_open(cx: &mut gpui::TestAppContext) {
 	let (_root, profile, server) = super::super::wire_test_support::fixture(|_| async {});
 	server.join().unwrap();
-	for (key, selector) in [
-		("release", "relation-node-release"),
-		("native:release:native-child", "relation-node-native:release:native-child"),
+	for (key, selector, target_selector) in [
+		("release", "relation-node-release", "relation-avatar-release"),
+		(
+			"native:release:native-child",
+			"relation-node-native:release:native-child",
+			"relation-avatar-native:release:native-child",
+		),
 	] {
 		let (surface, visual) = cx.add_window_view(|_, cx| {
 			let mut s = fixture(cx);
@@ -338,9 +342,10 @@ fn graph_nodes_select_the_exact_agent_and_keep_the_graph_open(cx: &mut gpui::Tes
 		visual.run_until_parked();
 		visual.update(|w, cx| w.draw(cx).clear(cx));
 		let node = visual.debug_bounds(selector).unwrap();
+		let target = visual.debug_bounds(target_selector).unwrap().center();
 		let canvas = visual.debug_bounds("relations-canvas").unwrap();
-		assert!(canvas.contains(&node.center()), "the selected card must be visible");
-		visual.simulate_mouse_down(node.center(), gpui::MouseButton::Left, Default::default());
+		assert!(canvas.contains(&target), "the selected portrait must be visible");
+		visual.simulate_mouse_down(target, gpui::MouseButton::Left, Default::default());
 		let positions = surface.read_with(visual, |s, _| {
 			s.relation_graph().nodes.into_iter().map(|n| (n.key, n.x, n.y)).collect::<Vec<_>>()
 		});
@@ -350,7 +355,7 @@ fn graph_nodes_select_the_exact_agent_and_keep_the_graph_open(cx: &mut gpui::Tes
 			Some(node),
 			"a pending fit cannot move the pressed card"
 		);
-		visual.simulate_mouse_up(node.center(), gpui::MouseButton::Left, Default::default());
+		visual.simulate_mouse_up(target, gpui::MouseButton::Left, Default::default());
 		surface.read_with(visual, |s, _| {
 			assert_eq!(s.selected.as_deref(), Some("agent"));
 			assert_eq!(s.work_board.view.picked_agent.as_deref(), Some(key));
@@ -369,7 +374,7 @@ fn graph_nodes_select_the_exact_agent_and_keep_the_graph_open(cx: &mut gpui::Tes
 		});
 		visual.update(|w, cx| w.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("agent-usage-popover").is_none());
-		let position = visual.debug_bounds(selector).unwrap().center();
+		let position = visual.debug_bounds(target_selector).unwrap().center();
 		visual.simulate_event(gpui::MouseDownEvent {
 			position,
 			button: gpui::MouseButton::Left,
@@ -633,7 +638,7 @@ fn dragging_a_node_changes_layout_without_switching_the_conversation(
 		visual.update(|w, cx| w.draw(cx).clear(cx));
 		visual.run_until_parked();
 		visual.update(|w, cx| w.draw(cx).clear(cx));
-		let start = visual.debug_bounds("relation-node-release").unwrap().center();
+		let start = visual.debug_bounds("relation-avatar-release").unwrap().center();
 		visual.simulate_mouse_down(start, gpui::MouseButton::Left, Default::default());
 		// Pressing freezes the presented layout before measuring world movement.
 		let before = surface.read_with(visual, |s, _| {

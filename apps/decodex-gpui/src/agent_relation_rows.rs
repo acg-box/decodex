@@ -217,14 +217,28 @@ pub(super) fn team(key: &str, count: usize, layout: card::Layout) -> gpui::Div {
 		.ml(gpui::px(6.))
 		.flex_none()
 		.h(gpui::px(layout.title_line()))
-		.text_size(gpui::px(layout.pixel((11.5 * layout.zoom).max(11.))))
+		.text_size(gpui::px(layout.title_size()))
+		.line_height(gpui::px(layout.title_line()))
 		.font_features(card::number_features())
 		.text_color(ui_theme::rgb(ui_theme::foreground::BODY))
-		.child(workspace_symbols::icon_sized(
-			Symbol::TeamMembers,
-			layout.pixel((14. * layout.zoom).max(13.)),
-		))
-		.child(count.to_string())
+		.child(
+			gpui::div()
+				.debug_selector({
+					let key = key.to_owned();
+					move || format!("relation-team-icon-{key}")
+				})
+				.size(gpui::px(layout.title_size()))
+				.flex_none()
+				.child(workspace_symbols::icon_sized(Symbol::TeamMembers, layout.title_size())),
+		)
+		.child(
+			gpui::div()
+				.debug_selector({
+					let key = key.to_owned();
+					move || format!("relation-team-count-{key}")
+				})
+				.child(count.to_string()),
+		)
 }
 
 pub(super) fn parent(key: &str, parent: String, layout: card::Layout) -> gpui::Div {

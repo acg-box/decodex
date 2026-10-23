@@ -5,7 +5,8 @@ use crate::{
 };
 use gpui::{
 	AnyElement, App, Div, InteractiveElement as _, IntoElement, ParentElement as _, RenderOnce,
-	SharedString, Stateful, Styled as _, Window, prelude::FluentBuilder as _,
+	SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, Window,
+	prelude::FluentBuilder as _,
 };
 
 // Geometry stays in world space. Text stops shrinking before it becomes illegible.
@@ -277,6 +278,44 @@ pub(super) fn number_features() -> gpui::FontFeatures {
 		.clone()
 }
 
+type PointerAction<E> = std::rc::Rc<dyn Fn(&E, &mut Window, &mut App)>;
+
+/// The camera footprint is not an input target. Only visible content selects an
+/// agent; only its portrait or overview point starts an agent drag.
+#[derive(Clone)]
+pub(super) struct Interaction {
+	pub click: PointerAction<gpui::ClickEvent>,
+	pub drag: PointerAction<gpui::MouseDownEvent>,
+}
+impl Interaction {
+	pub(super) fn keyboard(&self, view: Stateful<Div>) -> Stateful<Div> {
+		let keyboard = self.click.clone();
+		let accessible = self.click.clone();
+		view.on_key_down(move |event, window, cx| {
+			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				keyboard(&gpui::ClickEvent::default(), window, cx);
+				cx.stop_propagation();
+			}
+		})
+		.on_a11y_action(gpui::AccessibleAction::Click, move |_, window, cx| {
+			accessible(&gpui::ClickEvent::default(), window, cx);
+		})
+	}
+
+	pub(super) fn apply(&self, view: Stateful<Div>, draggable: bool) -> Stateful<Div> {
+		let click = self.click.clone();
+		let drag = self.drag.clone();
+		view.cursor_pointer().on_click(move |event, window, cx| click(event, window, cx)).when(
+			draggable,
+			|view| {
+				view.on_mouse_down(gpui::MouseButton::Left, move |event, window, cx| {
+					drag(event, window, cx);
+				})
+			},
+		)
+	}
+}
+
 /// Keep native text at its display size while the footprint opens around its center.
 pub(super) fn overview(
 	key: &str,
@@ -284,6 +323,7 @@ pub(super) fn overview(
 	selected: bool,
 	layout: Layout,
 	body: Option<AnyElement>,
+	interaction: &Interaction,
 ) -> AnyElement {
 	let presence = layout.card_presence();
 	let inset = layout.node_inset();
@@ -311,9 +351,13 @@ pub(super) fn overview(
 					// Retire the dot before it can overprint the centered agent number.
 					.opacity((1. - 2. * presence).max(0.))
 					.child(
-						gpui::div()
-							.size(gpui::px(layout.spacing(layout.point_size())))
-							.child(point(key, color, selected)),
+						interaction.apply(
+							gpui::div()
+								.id(SharedString::from(format!("relation-point-target-{key}")))
+								.size(gpui::px(layout.spacing(layout.point_size())))
+								.child(point(key, color, selected)),
+							true,
+						),
 					),
 			)
 		})

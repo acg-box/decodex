@@ -11,7 +11,7 @@ let symbols = [
     "activity-edit": "pencil",
     "activity-command": "terminal",
     "activity-handoff": "arrow.turn.up.right",
-    "team-members": "person.2",
+    "team-members": "rectangle.3.group",
     "team-parent": "arrow.turn.up.left",
     "document": "doc.text",
     "link": "link",

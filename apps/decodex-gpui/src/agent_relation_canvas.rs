@@ -1471,8 +1471,6 @@ impl AgentSurface {
 						|| (e.to == node.key && e.kind == Kind::Resource)
 				})
 				.cloned();
-			let keyboard_row = row.clone();
-			let keyboard_target = target.clone();
 			let dragkey = key.clone();
 			let origin = if layout.overview() && node.row.is_some() {
 				let inset = layout.node_inset();
@@ -1488,41 +1486,22 @@ impl AgentSurface {
 				.and_then(|n| n.row.as_ref())
 				.map(|row| self.relation_agent_number(row));
 
-			let view = self
-				.relation_node_surface(node, layout)
-				.when(node.row.is_none(), |d| d.opacity(opacity))
-				.on_mouse_down(
-					MouseButton::Left,
-					cx.listener(move |s, e: &MouseDownEvent, _, cx| {
-						// Initial fitting can follow the frame that installed this handler.
-						// Freeze the camera the user saw, rather than a pending fit.
-						s.work_board.view.moved = false;
-						s.work_board.view.hold_camera(scale, pan, layout_viewport);
-						s.work_board.view.drag = Some(Drag {
-							key: Some(dragkey.clone()),
-							start: e.position,
-							last: e.position,
-							origin,
-						});
-						cx.stop_propagation();
-					}),
-				)
-				.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
-					if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-						if let Some(row) = &keyboard_row {
-							s.select_workbench_agent(&row.key, cx);
-						} else {
-							s.work_board.focus = None;
-							s.work_board.view.picked_agent = None;
-							s.work_board.view.edge = keyboard_target.clone();
-							s.workspace.agent_tree_visible = true;
-							cx.notify();
-						}
-						cx.stop_propagation();
-					}
-				}))
-				.on_click(cx.listener(move |s, event: &gpui::ClickEvent, _, cx| {
-					if s.work_board.view.moved {
+			let interaction = card::Interaction {
+				drag: std::rc::Rc::new(cx.listener(move |s, e: &MouseDownEvent, _, cx| {
+					// Initial fitting can follow the frame that installed this handler.
+					// Freeze the camera the user saw, rather than a pending fit.
+					s.work_board.view.moved = false;
+					s.work_board.view.hold_camera(scale, pan, layout_viewport);
+					s.work_board.view.drag = Some(Drag {
+						key: Some(dragkey.clone()),
+						start: e.position,
+						last: e.position,
+						origin,
+					});
+					cx.stop_propagation();
+				})),
+				click: std::rc::Rc::new(cx.listener(move |s, event: &gpui::ClickEvent, _, cx| {
+					if s.work_board.view.moved && !matches!(event, gpui::ClickEvent::Keyboard(_)) {
 						return;
 					}
 					if let Some(row) = &row {
@@ -1538,7 +1517,12 @@ impl AgentSurface {
 						s.workspace.agent_tree_visible = true;
 						cx.notify();
 					}
-				}));
+				})),
+			};
+			let view = interaction.keyboard(
+				self.relation_node_surface(node, layout)
+					.when(node.row.is_none(), |d| interaction.apply(d.opacity(opacity), true)),
+			);
 			canvas = canvas.child(card::Card {
 				key: node.key.clone(),
 				surface: view,
@@ -1548,6 +1532,7 @@ impl AgentSurface {
 					emphasized,
 					parent,
 					team_members,
+					&interaction,
 				),
 				faded,
 				visibility: opacity,
@@ -1797,7 +1782,6 @@ impl AgentSurface {
 					.overflow_hidden()
 			})
 			.text_color(crate::ui_theme::rgb(TEXT))
-			.cursor_pointer()
 	}
 
 	fn relation_node_presentation(
@@ -1807,6 +1791,7 @@ impl AgentSurface {
 		selected: bool,
 		parent: Option<String>,
 		team_members: Option<usize>,
+		interaction: &card::Interaction,
 	) -> AnyElement {
 		if node.row.is_some() && layout.overview() {
 			card::overview(
@@ -1815,11 +1800,19 @@ impl AgentSurface {
 				selected,
 				layout,
 				(!layout.points()).then(|| {
-					self.relation_node_content(node, layout, selected, parent, team_members)
+					self.relation_node_content(
+						node,
+						layout,
+						selected,
+						parent,
+						team_members,
+						interaction,
+					)
 				}),
+				interaction,
 			)
 		} else {
-			self.relation_node_content(node, layout, selected, parent, team_members)
+			self.relation_node_content(node, layout, selected, parent, team_members, interaction)
 		}
 	}
 
@@ -1830,6 +1823,7 @@ impl AgentSurface {
 		selected: bool,
 		parent: Option<String>,
 		team_members: Option<usize>,
+		interaction: &card::Interaction,
 	) -> AnyElement {
 		let scale = self.relation_scale();
 		let width = if node.row.is_some() { layout.width } else { node.width() * scale };
@@ -1903,6 +1897,7 @@ impl AgentSurface {
 					metrics: (!layout.overview()).then(|| self.node_metrics(node, layout)),
 					activity: node.activity.clone(),
 					layout,
+					interaction: interaction.clone(),
 				})
 			})
 			.when(node.row.is_none(), |view| {
@@ -2694,6 +2689,107 @@ mod fit_tests {
 				layout.activity_visible()
 			);
 			assert!(surface.read_with(visual, |s, _| s.relation_scale()) >= card::MIN_ZOOM);
+		}
+	}
+
+	#[gpui::test]
+	fn empty_footprints_and_text_pan_the_canvas_while_portraits_move_the_agent(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| {
+			let mut s = super::super::tests::fixture(cx);
+			s.workspace.graph_visible = true;
+			s.workspace.graph_expanded = true;
+			s.composer.update(cx, |input, cx| input.set_content("Keep the Main draft", cx));
+			s
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1000.)));
+		visual.update(crate::ui_frame::draw_frame);
+		visual.run_until_parked();
+		let main = surface.read_with(visual, |s, _| s.selected.clone());
+		for mode in layout::Mode::ALL {
+			for scale in [0.5, 0.75, 1.] {
+				surface.update(visual, |s, cx| {
+					s.switch_relation_layout(mode, cx);
+					s.work_board.view.motion = None;
+					s.work_board.view.positions.clear();
+					s.visual_relation_zoom(scale, cx);
+					let graph = s.relation_graph();
+					let node = graph.nodes.iter().find(|n| n.key == "release").unwrap();
+					let view = &mut s.work_board.view;
+					view.picked_agent = None;
+					view.pan = (
+						view.viewport.0 / 2. - (node.x + node.width() / 2.) * scale,
+						view.viewport.1 / 2. - (node.y + node.height() / 2.) * scale,
+					);
+					for (i, other) in graph.nodes.iter().filter(|n| n.key != "release").enumerate()
+					{
+						view.positions
+							.insert(other.key.clone(), (10000. + i as f32 * 1000., 10000.));
+					}
+				});
+				visual.update(crate::ui_frame::draw_frame);
+				let avatar = visual.debug_bounds("relation-avatar-release").unwrap();
+				let identity = visual.debug_bounds("relation-identity-release").unwrap();
+				let gap = gpui::point((avatar.right() + identity.left()) / 2., avatar.center().y);
+				visual.simulate_click(gap, Default::default());
+				surface.read_with(visual, |s, _| {
+					assert!(
+						s.work_board.view.picked_agent.is_none(),
+						"empty space is not an agent"
+					);
+				});
+				for target in ["gap", "padding", "identity", "message"] {
+					let avatar = visual.debug_bounds("relation-avatar-release").unwrap();
+					let identity = visual.debug_bounds("relation-identity-release").unwrap();
+					let bounds = visual.debug_bounds("relation-node-release").unwrap();
+					let start = match target {
+						"gap" =>
+							gpui::point((avatar.right() + identity.left()) / 2., avatar.center().y),
+						"padding" => gpui::point(avatar.center().x, bounds.bottom() - gpui::px(1.)),
+						"identity" =>
+							visual.debug_bounds("relation-number-release").unwrap().center(),
+						_ => {
+							let Some(message) = visual.debug_bounds("relation-preview-release")
+							else {
+								continue;
+							};
+							message.center()
+						},
+					};
+					let (positions, pan) = surface.read_with(visual, |s, _| {
+						(s.work_board.view.positions.clone(), s.work_board.view.pan)
+					});
+					let end = start + gpui::point(gpui::px(18.), gpui::px(12.));
+					visual.simulate_mouse_down(start, MouseButton::Left, Default::default());
+					visual.simulate_mouse_move(end, Some(MouseButton::Left), Default::default());
+					visual.simulate_mouse_up(end, MouseButton::Left, Default::default());
+					surface.read_with(visual, |s, _| {
+						assert_eq!(s.work_board.view.positions, positions, "{mode:?} at {scale}");
+						assert_eq!(s.work_board.view.pan, (pan.0 + 18., pan.1 + 12.));
+						assert!(s.work_board.view.picked_agent.is_none());
+					});
+					visual.update(crate::ui_frame::draw_frame);
+				}
+				let identity = visual.debug_bounds("relation-number-release").unwrap();
+				visual.simulate_click(identity.center(), Default::default());
+				surface.read_with(visual, |s, cx| {
+					assert_eq!(s.work_board.view.picked_agent.as_deref(), Some("release"));
+					assert_eq!(s.selected, main);
+					assert_eq!(s.composer.read(cx).content(), "Keep the Main draft");
+				});
+				visual.update(crate::ui_frame::draw_frame);
+				let avatar = visual.debug_bounds("relation-avatar-release").unwrap();
+				let pan = surface.read_with(visual, |s, _| s.work_board.view.pan);
+				let end = avatar.center() + gpui::point(gpui::px(18.), gpui::px(12.));
+				visual.simulate_mouse_down(avatar.center(), MouseButton::Left, Default::default());
+				visual.simulate_mouse_move(end, Some(MouseButton::Left), Default::default());
+				visual.simulate_mouse_up(end, MouseButton::Left, Default::default());
+				surface.read_with(visual, |s, _| {
+					assert_eq!(s.work_board.view.pan, pan, "portrait drag keeps the camera still");
+					assert!(s.work_board.view.positions.contains_key("release"));
+				});
+			}
 		}
 	}
 
@@ -3548,6 +3644,17 @@ mod fit_tests {
 		assert!(visual.debug_bounds("relation-team-mira").is_some());
 		assert!(visual.debug_bounds("relation-team-sage").is_some());
 		assert!(visual.debug_bounds("relation-team-agent").is_none());
+		for zoom in [0.35, 0.5, 0.75, 1.] {
+			surface.update(visual, |s, cx| s.visual_relation_zoom(zoom, cx));
+			visual.update(crate::ui_frame::draw_frame);
+			let team = visual.debug_bounds("relation-team-mira").unwrap();
+			let icon = visual.debug_bounds("relation-team-icon-mira").unwrap();
+			let count = visual.debug_bounds("relation-team-count-mira").unwrap();
+			assert_eq!(icon.center().y, team.center().y);
+			assert_eq!(count.center().y, team.center().y);
+			assert!(icon.right() < count.left());
+			assert!(icon.top() >= team.top() && icon.bottom() <= team.bottom());
+		}
 		surface.read_with(visual, |s, _| {
 			assert!(s.snapshot.as_ref().unwrap().archived_work_ids.contains(&"agent".to_owned()));
 			assert_eq!(s.selected.as_deref(), Some("agent"));

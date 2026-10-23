@@ -18,6 +18,7 @@ pub(super) struct Header {
 	pub metrics: Option<gpui::AnyElement>,
 	pub activity: stream::Frame,
 	pub layout: super::card::Layout,
+	pub interaction: super::card::Interaction,
 }
 
 impl RenderOnce for Header {
@@ -47,6 +48,7 @@ impl RenderOnce for Header {
 			.child(selection)
 			.child(h.avatar.element(layout));
 		let portrait = gpui::div()
+			.id(gpui::SharedString::from(format!("relation-portrait-target-{}", h.key)))
 			.flex_none()
 			.w(gpui::px(portrait_width))
 			.flex()
@@ -55,6 +57,7 @@ impl RenderOnce for Header {
 			.gap(gpui::px(layout.gap()))
 			.child(figure)
 			.when_some(h.metrics, |portrait, metrics| portrait.child(metrics));
+		let portrait = h.interaction.apply(portrait, true);
 		let mut body = gpui::div()
 			.w_full()
 			.h(gpui::px(layout.header_height(count)))
@@ -84,6 +87,7 @@ impl RenderOnce for Header {
 			}))
 			.child(h.number);
 		let mut details = gpui::div()
+			.id(gpui::SharedString::from(format!("relation-details-target-{}", h.key)))
 			.flex_1()
 			.min_w_0()
 			.pt(gpui::px(layout.spacing(super::card::DETAILS_TOP)))
@@ -134,7 +138,7 @@ impl RenderOnce for Header {
 			}
 			details = details.child(content);
 		}
-		body = body.child(details);
+		body = body.child(h.interaction.apply(details, false));
 		body
 	}
 }
