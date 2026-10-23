@@ -436,7 +436,7 @@ impl AgentSurface {
 			let activity = stream.measured_frame(now, crate::ui_motion::reduced(), |text| {
 				header::operation_height(text, text_layout, &self.work_board.text_system)
 			});
-			let assignment = self.graph_preview(&row).0;
+			let assignment = self.graph_purpose(&row);
 			let layout_height = layout.world_height(header::detail_rows(
 				&assignment,
 				&activity,
@@ -3220,6 +3220,15 @@ mod fit_tests {
 		s.work_board.view.camera_fixed = true;
 		let row = s.board_rows().into_iter().find(|row| row.key == "release").unwrap();
 		s.snapshot.as_mut().unwrap().agent_slots.insert(row.key.clone(), 1234);
+		let purpose = "Please verify that the graph preserves long metric values and the ending of each complete native answer.";
+		s.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|work| work.id == row.work)
+			.unwrap()
+			.title = purpose.chars().take(64).collect();
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
@@ -3229,14 +3238,14 @@ mod fit_tests {
 				outcome: None,
 				preview: Some(super::super::activity::Preview {
 					turn: "readable-type".into(),
-					task: "Verify long metrics and recent actions".into(),
+					task: purpose.into(),
 					text: "Inspect the resulting graph".into(),
 					running: None,
 					recent: (0..3)
 						.map(|index| super::super::activity::Operation {
 							id: format!("readable-{index}"),
-							text: format!("Inspect operation {index}"),
-							kind: super::super::activity::OperationKind::Action,
+							text: "Simmer canned tomatoes, white beans, and vegetable broth for 10 minutes, then stir in a pinch of dried basil.".into(),
+							kind: super::super::activity::OperationKind::Result,
 						})
 						.collect(),
 				}),
@@ -3348,6 +3357,57 @@ mod fit_tests {
 					assert!(
 						metrics.bottom() < card.bottom(),
 						"zoom {scale}: {metrics:?}, {card:?}"
+					);
+					let message = visual.debug_bounds("relation-message-body-release").unwrap();
+					let assignment = visual.debug_bounds("relation-assignment-release").unwrap();
+					assert!(
+						assignment.bottom() < preview.top(),
+						"purpose and message stay separate"
+					);
+					assert!(
+						message.bottom() <= preview.bottom() && preview.bottom() < card.bottom()
+					);
+					let text = surface.read_with(visual, |s, _| {
+						s.relation_graph()
+							.nodes
+							.into_iter()
+							.find(|node| node.key == "release")
+							.unwrap()
+							.activity
+							.lines
+							.last()
+							.unwrap()
+							.text
+							.clone()
+					});
+					let shaped_height = visual.update(|window, _| {
+						let run = gpui::TextRun {
+							len: text.len(),
+							font: gpui::font(crate::ui_theme::FONT_FAMILY),
+							color: crate::ui_theme::rgb(TEXT).into(),
+							background_color: None,
+							underline: None,
+							strikethrough: None,
+						};
+						window
+							.text_system()
+							.shape_text(
+								text.into(),
+								gpui::px(layout.activity_size()),
+								&[run],
+								Some(message.size.width),
+								None,
+							)
+							.unwrap()
+							.iter()
+							.map(|line| {
+								f32::from(line.size(gpui::px(layout.activity_line())).height)
+							})
+							.sum::<f32>()
+					});
+					assert!(
+						shaped_height <= f32::from(message.size.height) + 0.5,
+						"the complete native sentence fits at zoom {scale} on display {density}"
 					);
 				}
 				let identity = visual.debug_bounds("relation-identity-release").unwrap();

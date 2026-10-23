@@ -490,6 +490,30 @@ impl AgentSurface {
 		brief.assignments.get(thread).cloned()
 	}
 
+	fn graph_purpose(&self, row: &Row) -> String {
+		let input = self.graph_preview(row).0;
+		let source = if row.native {
+			self.native_assignment(row).unwrap_or(input)
+		} else if self.root_id().as_ref() == Some(&row.work)
+			|| (row.title.chars().count() == 64
+				&& !activity::wording::message(&row.title)
+					.ends_with(['.', '?', '!', '。', '？', '！'])
+				&& !input.is_empty())
+		{
+			// Older saved conversations used a 64-character prompt prefix.
+			// Use a complete observed request when that prefix has no sentence.
+			input
+		} else {
+			row.title.clone()
+		};
+		let purpose = activity::wording::purpose(&source);
+		if purpose == self.relation_agent_number(row) || purpose == self.relation_agent_name(row) {
+			String::new()
+		} else {
+			purpose
+		}
+	}
+
 	fn graph_operations(&self, row: &Row) -> (String, Vec<activity::Operation>) {
 		let turn = self
 			.snapshot
@@ -543,7 +567,7 @@ impl AgentSurface {
 		{
 			operations.push(activity::Operation {
 				id: format!("{}:output", output.turn),
-				text: activity::plain(output.text),
+				text: activity::wording::message(output.text),
 				kind: if self.work_output_complete(row, output.turn) {
 					activity::OperationKind::Result
 				} else {

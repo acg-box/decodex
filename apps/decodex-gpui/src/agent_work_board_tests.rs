@@ -1007,14 +1007,40 @@ fn graph_recovers_native_responsibility_from_exact_parent_assignment(
 			},
 		);
 		assert_eq!(s.graph_preview(&row), ("Review connector routing".into(), String::new()));
+		assert_eq!(s.graph_purpose(&row), "Review connector routing");
 		let brief = s.work_board.briefs.get_mut(&parent.key).unwrap();
 		brief.assignments = BTreeMap::from([("sibling".into(), "Review connector routing".into())]);
 		assert_eq!(s.graph_preview(&row), (String::new(), String::new()));
+		assert!(s.graph_purpose(&row).is_empty(), "a sibling's assignment cannot name this agent");
 		let brief = s.work_board.briefs.get_mut(&parent.key).unwrap();
 		brief.assignments =
 			BTreeMap::from([(row.thread.clone().unwrap(), "Review connector routing".into())]);
 		brief.source_thread = Some("previous-parent-thread".into());
 		assert_eq!(s.graph_preview(&row), (String::new(), String::new()));
+	});
+}
+
+#[gpui::test]
+fn graph_purposes_keep_manual_names_and_replace_only_incomplete_legacy_prefixes(
+	cx: &mut gpui::TestAppContext,
+) {
+	let surface = cx.new(fixture);
+	surface.update(cx, |s, _| {
+		let mut row = s.board_rows().into_iter().find(|row| row.key == "release").unwrap();
+		row.title = "Reconnect checks".into();
+		let request = "Please verify that a browser reconnect preserves the final paragraph and every code block. Report the evidence.";
+		s.work_board.briefs.insert(row.key.clone(), Brief {
+			output: None, source_thread: row.thread.clone(), assignments: Default::default(), outcome: None,
+			preview: Some(activity::Preview { turn: "reference".into(), task: request.into(), text: "Checks passed".into(), running: None, recent: vec![] }),
+			question: None, resources: None, relations: vec![], metrics: Default::default(), stamp: s.brief_stamp(&row), read_at: std::time::Instant::now(),
+		});
+		assert_eq!(s.graph_purpose(&row), "Reconnect checks");
+		row.title = request.chars().take(64).collect();
+		assert_eq!(s.graph_purpose(&row), "Verify that a browser reconnect preserves the final paragraph and every code block");
+		row.title = "Help me plan a small soup dinner for two. Have two agents work i".into();
+		assert_eq!(s.graph_purpose(&row), "Plan a small soup dinner for two");
+		row.title = s.relation_agent_number(&row);
+		assert!(s.graph_purpose(&row).is_empty(), "do not repeat the agent's number as its purpose");
 	});
 }
 

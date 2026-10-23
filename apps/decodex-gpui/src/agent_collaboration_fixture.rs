@@ -31,7 +31,7 @@ impl AgentSurface {
 				.skip(step.saturating_sub(3))
 				.map(|(index, text)| activity::Operation {
 					id: format!("motion:{index}"),
-					text: (*text).into(),
+					text: activity::wording::message(text),
 					kind: if index == 3 {
 						activity::OperationKind::Result
 					} else {
@@ -85,7 +85,7 @@ impl AgentSurface {
 			let mut work = template.clone();
 			work.id = id.into();
 			work.parent_goal_id = parent.map(str::to_owned);
-			work.title = title.into();
+			work.title = if id == "agent" { title } else { reference_text(id).0 }.into();
 			work.kind = AgentWorkKindDto::Manager;
 			work.codex_thread_id = Some(format!("ref-{id}"));
 			work.active_turn_id = Some("reference".into());

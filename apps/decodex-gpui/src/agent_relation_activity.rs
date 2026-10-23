@@ -3,6 +3,8 @@ use decodex_protocol::{AgentTimelineContent, AgentTimelineEntry};
 use pulldown_cmark::{Event, Options, Parser, TagEnd};
 use std::collections::BTreeMap;
 
+#[path = "agent_relation_wording.rs"] pub(super) mod wording;
+
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Preview {
 	pub turn: String,
@@ -75,7 +77,7 @@ fn recent(entries: &[AgentTimelineEntry], turn: &str) -> Vec<Operation> {
 		} else {
 			continue;
 		};
-		let label = plain(&source);
+		let label = if activity.is_some() { plain(&source) } else { wording::message(&source) };
 		if label.is_empty() {
 			continue;
 		}
@@ -170,7 +172,7 @@ pub(super) fn assignments(
 			"spawnAgent" | "sendInput" | "sendMessage" | "followupTask"
 		) && !call.prompt.trim().is_empty();
 		let label = if explicit {
-			text(&call.prompt)
+			wording::message(&call.prompt)
 		} else if let Some(activity) =
 			activity.as_ref().filter(|activity| activity.kind == "subAgentActivity")
 		{
@@ -271,7 +273,7 @@ pub(super) fn latest(entries: &[AgentTimelineEntry], turn: Option<&str>) -> Opti
 			_ => None,
 		})
 	};
-	let task = task.map(|source| text(source)).unwrap_or_default();
+	let task = task.map(|source| wording::message(source)).unwrap_or_default();
 	let preview_text = error.map(text).or_else(operation).unwrap_or_default();
 	let completed = entries.iter().any(|entry| {
 		matches!(

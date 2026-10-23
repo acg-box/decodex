@@ -9,14 +9,9 @@ use crate::{
 };
 use gpui::{App, InteractiveElement as _, ParentElement as _, Styled as _, Window};
 
-pub(super) const TASK_LINES: usize = 2;
-const MESSAGE_LINES: usize = 3;
-const TASK_LABEL: f32 = 31.;
-
 pub(super) struct Excerpt<'a> {
 	pub text: &'a str,
 	pub lines: usize,
-	pub abbreviated: bool,
 }
 
 /// Use the same native font and word boundaries as the painted text. The graph
@@ -25,34 +20,18 @@ fn excerpt<'a>(
 	text: &'a str,
 	layout: card::Layout,
 	width: f32,
-	limit: usize,
 	text_system: &std::sync::Arc<gpui::TextSystem>,
 ) -> Excerpt<'a> {
 	if text.is_empty() {
-		return Excerpt { text, lines: 0, abbreviated: false };
+		return Excerpt { text, lines: 0 };
 	}
 	let mut wrapper = text_system
 		.line_wrapper(gpui::font(ui_theme::FONT_FAMILY), gpui::px(layout.activity_size()));
 	let fragments = [gpui::LineFragment::text(text)];
-	let boundaries: Vec<_> =
-		wrapper.wrap_line(&fragments, gpui::px(width), gpui::IndentAdjustment::NoIndent).collect();
-	let end = boundaries.get(limit - 1).map_or(text.len(), |boundary| boundary.ix);
-	// Prefer one complete sentence. A graph bubble is a glanceable excerpt,
-	// while the native conversation keeps the complete answer.
-	let sentence = text.char_indices().find_map(|(index, character)| {
-		let end = index + character.len_utf8();
-		(matches!(character, '。' | '！' | '？')
-			|| (matches!(character, '.' | '!' | '?')
-				&& text[end..].chars().next().is_none_or(char::is_whitespace)))
-		.then_some(end)
-	});
-	let end = sentence.filter(|sentence| *sentence <= end).unwrap_or(end);
-	let body = text[..end].trim();
-	let fragments = [gpui::LineFragment::text(body)];
 	let lines = 1 + wrapper
 		.wrap_line(&fragments, gpui::px(width), gpui::IndentAdjustment::NoIndent)
 		.count();
-	Excerpt { text: body, lines: lines.min(limit), abbreviated: end < text.len() }
+	Excerpt { text, lines }
 }
 
 pub(super) fn task_excerpt<'a>(
@@ -60,7 +39,7 @@ pub(super) fn task_excerpt<'a>(
 	layout: card::Layout,
 	text_system: &std::sync::Arc<gpui::TextSystem>,
 ) -> Excerpt<'a> {
-	excerpt(text, layout, (layout.details_width() - TASK_LABEL).max(1.), TASK_LINES, text_system)
+	excerpt(text, layout, layout.details_width(), text_system)
 }
 
 pub(super) fn message_excerpt<'a>(
@@ -68,7 +47,7 @@ pub(super) fn message_excerpt<'a>(
 	layout: card::Layout,
 	text_system: &std::sync::Arc<gpui::TextSystem>,
 ) -> Excerpt<'a> {
-	excerpt(action(text).1, layout, layout.text_width(), MESSAGE_LINES, text_system)
+	excerpt(action(text).1, layout, layout.text_width(), text_system)
 }
 
 pub(super) fn message_height(lines: usize, layout: card::Layout) -> f32 {
@@ -155,11 +134,7 @@ pub(super) fn render(
 						.flex_none()
 						.text_color(ui_theme::rgb(color))
 						.child(workspace_symbols::icon_sized(symbol, layout.pixel(11.)))
-						.child(if excerpt.abbreviated {
-							format!("{title} · excerpt")
-						} else {
-							title.to_owned()
-						}),
+						.child(title),
 				)
 				.child(
 					gpui::div()
@@ -167,7 +142,6 @@ pub(super) fn render(
 						.min_w_0()
 						.w_full()
 						.h(gpui::px(excerpt.lines as f32 * layout.activity_line()))
-						.overflow_hidden()
 						.child(excerpt.text.to_owned()),
 				),
 		);
@@ -190,14 +164,10 @@ pub(super) fn goal(
 		.w_full()
 		.h(gpui::px(layout.activity_line() * excerpt.lines as f32))
 		.flex_none()
-		.flex()
-		.items_start()
-		.gap(gpui::px(4.))
 		.text_size(gpui::px(layout.activity_size()))
 		.line_height(gpui::px(layout.activity_line()))
-		.text_color(ui_theme::rgb(ui_theme::foreground::BODY))
-		.child(gpui::div().w(gpui::px(TASK_LABEL - 4.)).flex_none().child("Task"))
-		.child(gpui::div().flex_1().min_w_0().overflow_hidden().child(excerpt.text.to_owned()))
+		.text_color(ui_theme::rgb(ui_theme::foreground::PRIMARY))
+		.child(excerpt.text.to_owned())
 }
 
 /// One quiet foreground shape. The small tail points back to the character;
@@ -283,7 +253,9 @@ mod tests {
 	use super::*;
 
 	#[gpui::test]
-	fn excerpts_fit_their_roles_at_each_readable_scale(cx: &mut gpui::TestAppContext) {
+	fn complete_thoughts_wrap_without_losing_their_ending_at_any_readable_scale(
+		cx: &mut gpui::TestAppContext,
+	) {
 		let system = cx.update(|cx| cx.text_system().clone());
 		for zoom in [0.55, 0.64, 0.75, 1.] {
 			let layout = card::Layout::new(zoom).on_display(2.);
@@ -291,12 +263,12 @@ mod tests {
 			assert_eq!(message_excerpt("Done", layout, &system).lines, 1);
 			let text = "Compare the recovered answer with the original response, then verify that the final paragraph and all code blocks are complete.";
 			let message = message_excerpt(text, layout, &system);
-			assert!(message.lines <= MESSAGE_LINES);
-			assert!(text.starts_with(message.text));
+			assert_eq!(message.text, text);
+			assert!(message.lines >= 3);
 			assert!(!message.text.ends_with('…'));
-			assert!(task_excerpt(text, layout, &system).lines <= TASK_LINES);
+			assert_eq!(task_excerpt(text, layout, &system).text, text);
 			let cjk = "检查恢复后的完整答复，并确认最后一段和代码块都没有丢失。".repeat(3);
-			assert!(message_excerpt(&cjk, layout, &system).lines <= MESSAGE_LINES);
+			assert_eq!(message_excerpt(&cjk, layout, &system).text, cjk);
 		}
 		let layout = card::Layout::new(1.).on_display(2.);
 		let excerpt = message_excerpt(
@@ -304,8 +276,10 @@ mod tests {
 			layout,
 			&system,
 		);
-		assert_eq!(excerpt.text, "All checks passed.");
-		assert!(excerpt.abbreviated);
+		assert_eq!(
+			excerpt.text,
+			"All checks passed. There are 47 detailed observations in the report."
+		);
 	}
 
 	#[test]
