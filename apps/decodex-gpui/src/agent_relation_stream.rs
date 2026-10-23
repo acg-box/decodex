@@ -25,6 +25,7 @@ pub(super) struct Stream {
 pub(super) struct Line {
 	pub id: String,
 	pub text: String,
+	pub current: bool,
 	pub y: f32,
 	pub opacity: f32,
 }
@@ -34,13 +35,12 @@ pub(super) struct Frame {
 	pub lines: Vec<Line>,
 	pub height: f32,
 	pub moving: bool,
-	latest: Option<String>,
 }
 
 impl Frame {
 	/// Keep one update at a distance; readable zoom reveals the recent rows.
 	pub(super) fn latest(mut self) -> Self {
-		self.lines.retain(|line| Some(&line.id) == self.latest.as_ref());
+		self.lines.retain(|line| line.current);
 		for line in &mut self.lines {
 			line.y = 0.;
 		}
@@ -125,6 +125,7 @@ impl Stream {
 			lines.push(Line {
 				id: row.operation.id.clone(),
 				text: row.operation.text.clone(),
+				current: newest,
 				y: if reduced { index as f32 * LINE } else { row.y.sample(now) },
 				opacity,
 			});
@@ -135,6 +136,7 @@ impl Stream {
 				lines.push(Line {
 					id: row.operation.id.clone(),
 					text: row.operation.text.clone(),
+					current: false,
 					y: row.y.sample(now),
 					opacity: 1. - progress,
 				});
@@ -149,7 +151,6 @@ impl Stream {
 			lines,
 			height: if reduced { self.rows.len() as f32 * LINE } else { self.height.sample(now) },
 			moving,
-			latest,
 		}
 	}
 }
@@ -167,6 +168,8 @@ mod tests {
 		stream.sync("turn", &operations(&["2", "3", "4"]), now + FADE);
 		let frame = stream.frame(now + FADE + FADE / 2, false);
 		assert!(frame.lines.iter().any(|line| line.id == "1"), "old row is still leaving");
+		assert_eq!(frame.lines.iter().filter(|line| line.current).count(), 1);
+		assert!(frame.lines.iter().any(|line| line.id == "4" && line.current));
 		let compact = frame.latest();
 		assert_eq!(compact.lines.len(), 1);
 		assert_eq!(compact.lines[0].id, "4");

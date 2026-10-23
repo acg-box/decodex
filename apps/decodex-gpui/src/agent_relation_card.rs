@@ -17,6 +17,9 @@ pub(super) const INSET_X: f32 = 10.;
 pub(super) const INSET_Y: f32 = 8.;
 pub(super) const PORTRAIT_WIDTH: f32 = 80.;
 pub(super) const PORTRAIT_HEIGHT: f32 = 44.;
+pub(super) const COLUMN_GAP: f32 = 6.;
+pub(super) const IDENTITY_GAP: f32 = 3.;
+pub(super) const DETAILS_TOP: f32 = 4.;
 pub(super) const PORT_Y: f32 = INSET_Y + crate::ui_theme::LABEL_LINE_HEIGHT / 2.;
 pub(super) const SELECTED: u32 = crate::ui_theme::BLUE;
 pub(super) const SECONDARY_TEXT: u32 = foreground::SECONDARY;
@@ -27,6 +30,7 @@ pub(super) const FULL_DETAIL_ZOOM: f32 = 0.7;
 const POINT_ZOOM: f32 = 0.2;
 const MORPH_MARGIN: f32 = 0.04;
 const SUMMARY_ZOOM: f32 = 0.45;
+const LABEL_ZOOM: f32 = 0.30;
 pub(super) const OVERVIEW_HEIGHT: f32 = 112.;
 
 #[derive(Clone, Copy)]
@@ -100,7 +104,7 @@ impl Layout {
 	}
 
 	pub(super) fn labels(self) -> bool {
-		self.zoom + 4. * f32::EPSILON >= 0.30
+		self.zoom + 4. * f32::EPSILON >= LABEL_ZOOM
 	}
 
 	pub(super) fn points(self) -> bool {
@@ -156,6 +160,14 @@ impl Layout {
 		self.pixel(points * self.zoom)
 	}
 
+	/// Balance the figure with readable counters without enlarging its 100% size.
+	/// The floor grows gradually before the HUD appears, preserving the point morph.
+	pub(super) fn portrait_spacing(self, points: f32) -> f32 {
+		let presence = ((self.zoom - LABEL_ZOOM) / (SUMMARY_ZOOM - LABEL_ZOOM)).clamp(0., 1.);
+		let width = self.pixel((PORTRAIT_WIDTH * self.zoom).max(56. * presence));
+		self.pixel(points * width / PORTRAIT_WIDTH)
+	}
+
 	pub(super) fn gap(self) -> f32 {
 		self.spacing(2.)
 	}
@@ -166,12 +178,17 @@ impl Layout {
 	}
 
 	pub(super) fn header_height(self, actions: f32) -> f32 {
-		let portrait = self.spacing(PORTRAIT_HEIGHT)
-			+ if self.labels() { self.title_line() + self.spacing(2.) } else { 0. }
+		let portrait = self.portrait_spacing(PORTRAIT_HEIGHT)
 			+ if !self.overview() { self.gap() + self.metrics_height() } else { 0. };
-		let activity = self.spacing(8.)
-			+ if actions > 0. { actions * self.activity_line() } else { self.title_line() };
-		portrait.max(activity)
+		let details = if self.labels() {
+			self.spacing(DETAILS_TOP)
+				+ self.title_line()
+				+ self.spacing(IDENTITY_GAP)
+				+ if actions > 0. { actions * self.activity_line() } else { self.title_line() }
+		} else {
+			0.
+		};
+		portrait.max(details)
 	}
 
 	/// The avatar and current activity determine the footprint, without reserving

@@ -3104,7 +3104,7 @@ mod fit_tests {
 		for density in [2., 1., 2.] {
 			visual.simulate_window_scale_factor_change(handle, density);
 			let mut previous: Option<gpui::Size<gpui::Pixels>> = None;
-			for scale in [1., 0.95, 0.9, 0.85, 0.8, 0.75, 0.7] {
+			for scale in [1., 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.6, 0.55, 0.5, 0.45] {
 				let world_height = surface.update(visual, |s, cx| {
 					s.work_board.view.zoom = Some(scale);
 					let graph = s.relation_graph();
@@ -3134,12 +3134,19 @@ mod fit_tests {
 				});
 				visual.update(crate::ui_frame::draw_frame);
 				let card = visual.debug_bounds("relation-node-release").unwrap();
+				let layout = card::Layout::new(scale).on_display(density);
 				if let Some(previous) = previous {
 					assert!(
-						card.size.width < previous.width && card.size.height <= previous.height,
-						"card grew or stopped narrowing at {scale}: {:?} vs {previous:?}",
+						card.size.width < previous.width,
+						"card stopped narrowing at {scale}: {:?} vs {previous:?}",
 						card.size
 					);
+					if layout.full_detail() {
+						assert!(
+							card.size.height <= previous.height,
+							"full-detail footprint grows at {scale}"
+						);
+					}
 				}
 				previous = Some(card.size);
 				// The native renderer rounds bounds to the display's pixel grid.
@@ -3147,7 +3154,6 @@ mod fit_tests {
 				assert!((f32::from(card.size.height) - world_height * scale).abs() <= 0.5);
 				let toolbar = visual.debug_bounds("relations-toolbar").unwrap();
 				assert!(card.top() > toolbar.bottom());
-				let layout = card::Layout::new(scale).on_display(density);
 				assert!(layout.title_size() >= 10.5 && layout.detail_size() >= 9.5);
 				assert_eq!((layout.title_size() * density).fract(), 0.);
 				assert_eq!((layout.detail_size() * density).fract(), 0.);
@@ -3159,13 +3165,13 @@ mod fit_tests {
 				assert!(tokens.left() >= metrics.left() && tokens.right() <= metrics.right());
 				assert!(tokens.top() >= metrics.top() && tokens.bottom() <= metrics.bottom());
 				assert!(task.left() > card.left() && task.right() <= card.right());
-				assert!(task.top() >= card.top() && task.bottom() < metrics.top());
+				assert!(task.top() >= card.top() && task.bottom() < card.bottom());
 				if let Some(preview) = visual.debug_bounds("relation-preview-release") {
 					let metrics = visual.debug_bounds("relation-metrics-release").unwrap();
 					assert!(preview.left() >= card.left() && preview.right() <= card.right());
 					assert!(metrics.left() > card.left() && metrics.right() < card.right());
 					assert!(
-						preview.bottom() < metrics.top(),
+						preview.left() >= metrics.right(),
 						"zoom {scale}: {preview:?}, {metrics:?}"
 					);
 					assert!(
@@ -3217,17 +3223,23 @@ mod fit_tests {
 				);
 				assert!(
 					f32::from(preview.left() - avatar.right().max(metrics.right()))
-						<= layout.spacing(4.) + 0.5,
+						<= layout.spacing(card::COLUMN_GAP) + 0.5,
 					"activity stays close to the character"
 				);
+				assert_eq!(
+					number.left(),
+					preview.left(),
+					"identity and activity share one text edge"
+				);
+				assert!(number.bottom() < preview.top(), "identity titles its own activity column");
 				assert!(
 					visual.debug_bounds("relation-assignment-release").is_none(),
 					"live activity does not repeat the assignment above it"
 				);
 				assert!(number.bottom() <= avatar.bottom() && avatar.bottom() < metrics.top());
 				assert!(
-					f32::from(metrics.top() - number.bottom()) <= layout.gap() + 3.,
-					"the HUD stays immediately below the numbered portrait"
+					f32::from(metrics.top() - avatar.bottom()) <= layout.gap() + 0.5,
+					"only the HUD sits immediately below the portrait"
 				);
 				assert!(
 					f32::from(metrics.center().x - avatar.center().x).abs() <= 0.5,
@@ -3239,8 +3251,8 @@ mod fit_tests {
 				);
 				assert!(visual.debug_bounds("relation-status-release").is_some());
 				let selection = visual.debug_bounds("relation-selection-release").unwrap();
-				assert_eq!(selection.size.width, avatar.size.width);
-				assert!(selection.bottom() <= number.top(), "selection belongs to the portrait");
+				assert_eq!(selection, avatar, "selection belongs only to the portrait");
+				assert!(selection.bottom() < metrics.top());
 				assert!(metrics.top() > card.top() && metrics.bottom() < card.bottom());
 				assert!(
 					metrics.size.width

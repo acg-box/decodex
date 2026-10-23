@@ -257,8 +257,8 @@ impl Avatar {
 				}
 			},
 		)
-		.w(gpui::px(layout.spacing(card::PORTRAIT_WIDTH)))
-		.h(gpui::px(layout.spacing(card::PORTRAIT_HEIGHT)))
+		.w(gpui::px(layout.portrait_spacing(card::PORTRAIT_WIDTH)))
+		.h(gpui::px(layout.portrait_spacing(card::PORTRAIT_HEIGHT)))
 	}
 }
 
