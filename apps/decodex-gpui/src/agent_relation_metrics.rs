@@ -3,7 +3,7 @@ use super::{AgentSurface, AnyElement, Context, Node};
 use crate::ui_theme::foreground;
 use gpui::{App, IntoElement, RenderOnce, Window, prelude::*};
 pub(in super::super) type Metrics = crate::ui_work_metrics::Sample;
-const BAR_WIDTH: f32 = 60.;
+const BAR_WIDTH: f32 = 64.;
 // Fixed display rulers; never task completion, context limits, or budgets.
 const REFERENCES: [f64; 3] = [2_000_000., 1_800_000., 100.];
 fn ruler(value: Option<f64>, reference: f64) -> Option<(f32, bool)> {
@@ -117,7 +117,7 @@ fn render_hud(
 			)
 		})
 		.fold(0., f32::max);
-	let width = layout.pixel(layout.spacing(BAR_WIDTH).max(52.).max(widest.ceil() + 6.));
+	let width = layout.pixel(layout.spacing(BAR_WIDTH).max(54.).max(widest.ceil() + 6.));
 	let inset = layout.pixel(0.5).max(0.5);
 	let hud_selector = format!("relation-hud-{key}");
 	let mut block = gpui::div()
@@ -143,13 +143,23 @@ fn render_hud(
 		let kind = ["tokens", "time", "rate"][index];
 		let selector = format!("relation-{kind}-{key}");
 		let fill_selector = format!("relation-fill-{key}-{kind}");
+		let track_selector = format!("relation-track-{key}-{kind}");
 		let mut row = gpui::div()
 			.debug_selector(move || selector.clone())
 			.relative()
 			.w(gpui::px(width))
 			.h(gpui::px(layout.metric_line()))
 			.flex_none()
-			.bg(crate::ui_theme::rgb(color).opacity(0.08));
+			.child(
+				gpui::div()
+					.debug_selector(move || track_selector.clone())
+					.absolute()
+					.top_0()
+					.left_0()
+					.right_0()
+					.bottom(gpui::px(layout.gap()))
+					.bg(crate::ui_theme::rgb(color).opacity(0.06)),
+			);
 		if amount > 0. {
 			row = row.child(
 				gpui::div()
@@ -157,22 +167,10 @@ fn render_hud(
 					.absolute()
 					.left(gpui::px(inset))
 					.top(gpui::px(inset))
-					.bottom(gpui::px(inset))
+					.bottom(gpui::px(inset + layout.gap()))
 					.w(gpui::px(amount))
 					.rounded(gpui::px(1.))
-					.bg(crate::ui_theme::rgb(color).opacity(0.30)),
-			);
-		}
-		// Small ruler divisions stay in the track and do not compete with the value.
-		for quarter in 1..4 {
-			row = row.child(
-				gpui::div()
-					.absolute()
-					.left(gpui::px(layout.pixel(inset + inner * quarter as f32 / 4.)))
-					.bottom(gpui::px(inset))
-					.w(gpui::px(inset))
-					.h(gpui::px(2.))
-					.bg(crate::ui_theme::rgb(color).opacity(0.20)),
+					.bg(crate::ui_theme::rgb(color).opacity(0.26)),
 			);
 		}
 		if readout.is_some_and(|(_, exceeded)| exceeded) {
@@ -344,7 +342,7 @@ mod tests {
 				for (upper, lower) in [(tokens, time), (time, rate)] {
 					assert_eq!(upper.left(), lower.left());
 					assert_eq!(upper.size.width, lower.size.width);
-					assert_eq!(lower.top(), upper.bottom(), "rows form one continuous track");
+					assert_eq!(lower.top(), upper.bottom(), "rows form one continuous block");
 				}
 				assert!(f32::from(tokens.size.width) <= BAR_WIDTH);
 				assert_eq!(f32::from(rate.bottom() - tokens.top()), layout.metrics_height());
@@ -376,6 +374,15 @@ mod tests {
 				});
 				assert!(f32::from(tokens.size.height) <= layout.metric_size() + 1.);
 				let inset = layout.pixel(0.5).max(0.5);
+				for (selector, row) in [
+					("relation-track-fixture-tokens", tokens),
+					("relation-track-fixture-time", time),
+					("relation-track-fixture-rate", rate),
+				] {
+					let track = visual.debug_bounds(selector).unwrap();
+					assert_eq!(track.top(), row.top());
+					assert_eq!(track.bottom(), row.bottom() - gpui::px(layout.gap()));
+				}
 				for (name, track, fraction) in [
 					("relation-fill-fixture-tokens", tokens, 514_759. / 2_000_000.),
 					("relation-fill-fixture-time", time, 76_000. / 1_800_000.),
