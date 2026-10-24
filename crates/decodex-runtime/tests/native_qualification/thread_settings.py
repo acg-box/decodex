@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from native_session import Session
 
 
-def case(mode):
+def case(mode, unchanged=False):
     requests = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -56,26 +56,43 @@ def case(mode):
             config.write_text(base)
             session = Session(home)
             try:
-                thread = session.call("thread/start", {
+                started = session.call("thread/start", {
                     "cwd": home, "historyMode": mode, "approvalPolicy": "never", "sandbox": "read-only",
-                })["thread"]["id"]
-                session.call("thread/settings/update", {
-                    "threadId": thread, "serviceTier": "flex", "summary": "concise",
-                })
+                })["thread"]
+                thread = started["id"]
+                if not unchanged:
+                    session.call("thread/settings/update", {
+                        "threadId": thread, "serviceTier": "flex", "summary": "concise",
+                    })
                 session.call("turn/start", {
                     "threadId": thread, "input": [{"type": "text", "text": "Retain these settings."}],
                 })
                 session.done()
-                assert requests[-1]["service_tier"] == "flex"
-                assert requests[-1]["reasoning"]["summary"] == "concise"
+                if not unchanged:
+                    assert requests[-1]["service_tier"] == "flex"
+                    assert requests[-1]["reasoning"]["summary"] == "concise"
             finally:
                 session.close()
 
-            # A later global preference must not replace the saved thread selection.
-            config.write_text('service_tier="default"\nmodel_reasoning_summary="detailed"\n' + base)
+            def checkpoints():
+                return [item["payload"] for line in Path(started["path"]).read_text().splitlines()
+                        if (item := json.loads(line)).get("type") == "event_msg"
+                        and item["payload"].get("type") == "thread_settings_applied"]
+
+            if unchanged:
+                before = checkpoints()
+                assert before, "The materialized thread must contain settings"
+            else:
+                # A later global preference must not replace the saved thread selection.
+                config.write_text('service_tier="default"\nmodel_reasoning_summary="detailed"\n' + base)
             session = Session(home)
             try:
                 resumed = session.call("thread/resume", {"threadId": thread, "excludeTurns": True})
+                if unchanged:
+                    assert checkpoints() == before, "Cold resume appended redundant settings"
+                    assert len(requests) == 1, "Cold resume must not run inference"
+                    return {"history_mode": mode, "requests": len(requests),
+                            "unchanged_settings_checkpoints": len(before), "resume_did_not_append": True}
                 assert resumed["serviceTier"] == "flex", "Cold resume lost the selected service tier"
                 session.call("turn/start", {
                     "threadId": thread, "input": [{"type": "text", "text": "Use the retained settings."}],
@@ -94,7 +111,7 @@ def case(mode):
 
 
 def main():
-    results = [case(mode) for mode in ["legacy", "paginated"]]
+    results = [case(mode) for mode in ["legacy", "paginated"]] + [case("legacy", unchanged=True)]
     binary = Path(os.environ["QUALIFIED_CODEX_BINARY"])
     result = {
         "status": "passed", "cases": results, "case_count": len(results),
@@ -105,7 +122,7 @@ def main():
     Path(os.environ["DECODEX_QUALIFICATION_OUTPUT"], "thread-settings-native.json").write_text(
         json.dumps(result, indent=2) + "\n"
     )
-    print("Cold resume preserved the selected tier and summary in legacy and paginated history.")
+    print("Cold resume preserved tier and summary in both history modes and skipped unchanged settings checkpoints.")
 
 
 if __name__ == "__main__":

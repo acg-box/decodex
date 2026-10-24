@@ -6,6 +6,20 @@ final class AccountProfileNativeClientTests: XCTestCase {
 	private let accountID = "11111111-1111-4111-8111-111111111111"
 	private let serverID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
+	func testUnsupportedPlanRetainsFreeClaims() async throws {
+		let result = try await profile(
+			json: document(result: """
+			{"outcome":"unavailable","data":{"error":"unsupported_plan","email":{"visibility":"redacted"},"plan_type":"free"}}
+			"""), includeEmail: false
+		)
+		guard case .unavailable(let unavailable) = result else {
+			return XCTFail("Expected unsupported plan.")
+		}
+		XCTAssertEqual(unavailable.error, .unsupportedPlan)
+		XCTAssertEqual(unavailable.claims.planType, "free")
+		XCTAssertNil(unavailable.claims.email)
+	}
+
 	func testProfileRequestPinsAuthorityAndIncludesExactEmailBoolean() async throws {
 		let authority = ResetCardAuthority(profileName: "local", serverID: serverID)
 		let accountID = accountID

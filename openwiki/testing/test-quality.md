@@ -6,16 +6,18 @@ tags: [testing, maintenance]
 sources:
   - id: openwiki-source-95772fa38252ded838ec3a2f
     resource: repo://.config/nextest.toml
+  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
+    resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-c740d34a4e6c4e581873e50e
     resource: repo://crates/decodex-account-login/src/lib.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
-generated: { by: "codex", at: "2026-10-21T14:39:50.043Z" }
+generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T21:02:44.368Z
+    at: 2026-10-24T06:15:55.391Z
 ---
 
 # Test quality and coverage
@@ -41,6 +43,8 @@ The default nextest filter excludes shared application tests from the workbench 
 
 Process fixtures have a separate serialized test group. CLI shutdown fixtures reserve the available test threads so unrelated heavy work does not consume their bounded startup window. These scheduling rules protect test reliability; they are not performance acceptance.
 
+The native-media group also runs one exchange at a time. Its packet-flow tests and the wall-clock collaboration-disclosure fixture reserve the runner's test threads while they check timing-sensitive behavior. This reservation does not establish frame rate or production latency.
+
 ## Share setup only when it helps
 
 Small local fixtures can be clearer than a shared test framework. Share setup when its identity and lifecycle are truly the same. Keep different startup orders, native versus fabricated servers, and separate public consumers independent. Similar names do not make two failure scenarios duplicates.
@@ -49,7 +53,7 @@ Motion tests should use controlled times where possible. Fixed intermediate wall
 
 ## Cleanup evidence
 
-Nextest `LEAK` output means that captured output did not close within the runner's exit window; it does not by itself identify an application-owned survivor. The retained macOS Nextest 0.9.143 investigation reproduced sibling capture-pipe inheritance. The original test passed repeated isolated checks; the original marker had no pipe trace. Preserve those limits and diagnose a new marker on its own evidence. Do not change the timeout, skip tests or serialize the default suite merely to hide the marker. See the [validation guide](../operations/commands-and-validation.md#nextest-exit-markers) and [portable diagnosis](../../automations/upstream/retained-evidence.json).
+Nextest `LEAK` output means that captured output did not close within the runner's exit window; it does not by itself identify an application-owned survivor. The historical macOS Nextest 0.9.143 investigation reproduced sibling capture-pipe inheritance. The original test passed repeated isolated checks; the original marker had no pipe trace. The current qualification records a separate marker and passing isolated rerun, without claiming the same cause. Preserve those limits and diagnose each new marker on its own evidence. Do not change the timeout, skip tests or serialize the default suite merely to hide a marker. See the [validation guide](../operations/commands-and-validation.md#nextest-exit-markers) and its immutable historical diagnosis link.
 
 Record the removed assertion, the contract it purported to protect, and the retained owner or reason it is no longer needed. Validate the affected owner before merging a coherent batch. A repository-wide search is candidate discovery, not proof that every scenario was reviewed. Do not use deleted line or test counts as a completion target.
 

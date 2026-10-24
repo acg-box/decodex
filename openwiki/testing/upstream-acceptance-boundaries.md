@@ -52,8 +52,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
   - id: openwiki-source-ec5c9f32d2135154f4297a49
     resource: repo://crates/decodex-runtime/src/conversation.rs
+  - id: openwiki-source-07c9cc033899826079f8efb5
+    resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
   - id: openwiki-source-c772fc057f500f765d09a3c7
     resource: repo://crates/decodex-runtime/tests/native_qualification/log_storage.py
+  - id: openwiki-source-88b81a215b1bac061dad80ec
+    resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
+  - id: openwiki-source-c6bea677adcde563202b65b9
+    resource: repo://crates/decodex-runtime/tests/native_qualification/response_identity.py
   - id: openwiki-source-b30d382781a313611ecd221f
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-a6440a3d3a3c3121fd4c553f
@@ -64,10 +70,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-21T21:02:44.368Z" }
+generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T21:02:44.368Z
+    at: 2026-10-24T06:15:55.391Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -119,13 +125,17 @@ The signed stage test checks that the app contains the runtime requirement and S
 
 The [portable qualification record](../../automations/upstream/qualification.json) identifies exact source tests, artifact and helper hashes, reusable probes and limits. The [retained evidence index](../../automations/upstream/retained-evidence.json) identifies the current native consumers. Native run receipts retain raw output; Git retains replaced compact records.
 
-An original upstream source fixture can require private startup arguments that the production CLI does not expose. Qualify that fixture through the original standalone launcher and registered test harness. Record its identity and required build options separately. Passing that source fixture does not establish behavior through a production API. Test supported production inputs against the exact selected CLI and helpers as a separate step.
+The current source cohort uses a `dev-small` app-server helper with explicit `CARGO_BIN_EXE_*` paths; helper-spawn cases also use the exact signed candidate CLI. The qualification record preserves both roles and the original assertions. Older source fixtures that require private startup arguments retain their own launcher and build limits in Git history. Passing a source fixture does not establish behavior through a production API. Test supported production inputs against the exact selected CLI and helpers as a separate step.
 
 Earlier conditional remote-credential snapshot cases failed because the host resolver returned a reserved address or could not resolve a fixture hostname. Native address protection remained enabled. Current Decodex runtime consumers use app-server stdio and do not provision a remote executor. The record qualifies retained consumers within that scope; it does not qualify the failed conditional remote behavior. Reopen that proof when a concrete retained remote consumer exists or the fixture can use compatible system DNS. Preserve the failure evidence, original assertions and native policy.
 
 ## Terminal errors and external context
 
 The terminal projection retains the native turn status and bounds its error details. Capacity retry requires an exact failed-turn readback with `serverOverloaded`. The `quota_other_errors_and_missing_history_do_not_schedule_capacity_retries` test includes the `other` error classification. The `failed_turn_keeps_public_reason_and_explicit_bounds` test checks the public failure reason and its size and privacy limits.
+
+The exact-artifact `model_errors.py` probe covers HTTP 404, SSE `error` and SSE `response.failed` carrying `model_not_found`. Each candidate case makes one request without retry and preserves `modelNotFound` plus the provider message in live, stored and cold history. The native capacity fixture also checks that Decodex does not schedule another attempt. Source tests cover additional HTTP and WebSocket mappings; these source cases are not additional artifact transport executions.
+
+`large_catalog.py` checks native discovery from an explicitly configured synthetic catalog larger than 1 MiB. `response_identity.py` checks that a provider message without an ID keeps one native identity through live events, storage and cold read. The identity probe passes on both the previous and candidate artifacts; it does not establish a reproduced defect in the previous artifact.
 
 `inject_external_context` sends a `function_call_output` through `thread/inject_items`. The `uncertain_context_injection_or_following_turn_is_not_replayed_after_restart` test checks a lost injection response and a lost follow-up response. Recovery keeps the outcome unknown and does not replay either request.
 
@@ -160,7 +170,7 @@ python3 crates/decodex-runtime/tests/native_qualification/thread_settings.py
 python3 crates/decodex-runtime/tests/native_qualification/log_storage.py
 ```
 
-The [qualification record](../../automations/upstream/qualification.json) binds each probe to the exact CLI and packaged helpers. It records the prior-artifact failure and candidate success separately. The checked-in probe implementations remain available after local build products are removed. A rebuilt artifact requires its own identity and qualification; these results do not establish installed-app or real-provider acceptance.
+The [qualification record](../../automations/upstream/qualification.json) binds each probe to the exact CLI and packaged helpers. The [earlier storage before/after receipt](https://github.com/acg-box/decodex/blob/f6640838f0997493704ff87e46205b46a700eef2/automations/upstream/qualification.json) retains its original artifact scope; the current record contains the selected artifact's requalification. The checked-in probe implementations remain available after local build products are removed. A rebuilt artifact requires its own identity and qualification; these results do not establish installed-app or real-provider acceptance.
 
 ## Context defaults and selected retention
 
@@ -199,7 +209,7 @@ The native launch fixture checks description-first Code Mode, child context defa
 
 ## Question routing, completion and cancellation
 
-The [retained coordination evidence](../../automations/upstream/retained-evidence.json) records the bounded real-model evaluations for self-resolution, peer coordination, parent escalation, user decisions and persistent Agent completion. It also records exact inbox-receipt handling, separate child-goal resolution and recovery after an idle-only Busy refusal. Busy means the continuation was not sent or queued. The model should finish its current turn, wait for the existing worker and reassess that same worker before sending a follow-up. These evaluations used one model and effort with controlled scenarios and predefined user choices. They do not establish every model, permission configuration, race or real user interaction. This Wiki refresh did not repeat them.
+The [retained coordination evidence](../../automations/upstream/retained-evidence.json) links the bounded historical real-model evaluations for self-resolution, peer coordination, parent escalation, user decisions and persistent Agent completion. It retains the current contract for exact inbox receipts, separate child-goal resolution and recovery after an idle-only Busy refusal. Busy means the continuation was not sent or queued. The model should finish its current turn, wait for the existing worker and reassess that same worker before sending a follow-up. The historical evaluations used one model and effort with controlled scenarios and predefined user choices. Current synthetic child-approval and local library regressions are separate requalification; they do not repeat real-model judgment or establish every model, permission configuration, race or installed interaction.
 
 The [sampling qualification](../../automations/upstream/qualification.json) separately records explicit cancellation of Ask separately. Closing its panel only hides presentation; Cancel answer targets the exact native sampling request. A cancellation request, native acknowledgement and a result that wins a race are different outcomes. Preserve exact request ownership and uncertain-state readback. This is not cancellation of the parent conversation or a general scheduler. These receipts do not establish installed-app acceptance.
 

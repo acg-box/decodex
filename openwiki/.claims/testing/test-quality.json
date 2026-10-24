@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b5d3a3e1923c2a81188f59a5f136d2780b6d8a6a68a42f6dbcb630e5b09b85d7",
+  "pageVersion": "sha256:359743ac71cb377fd191c68b419588f359d9c886233e5c743d6b72a66252af3e",
   "claims": [
     {
       "id": "claim_070657bf065541118dc7ae41cdeffc2c",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://.config/nextest.toml",
-          "version": "repo-file-v1:sha256:ebfde6502524c4aa2f3c07de620ed43bf23f5ed08c88691ec851dc0a978f6c8a"
+          "version": "repo-file-v1:sha256:0628e8b2a1386725ffc17a1e8281faac94ad2f69f330f41e4b0d8271c64b44e2"
         }
       ]
     },
@@ -34,17 +34,31 @@
     },
     {
       "id": "claim_cdec182fee104c07abe30713fd28a444",
-      "statement": "The retained macOS Nextest 0.9.143 diagnosis reproduced sibling capture-pipe inheritance; the original isolated test passed, and the original marker lacks a pipe trace.",
+      "statement": "The current qualification records a passed test with a Nextest LEAK marker and a passing isolated rerun without the marker; historical capture-inheritance diagnosis retains its original evidence limits and does not establish a universal cause.",
       "evidence": [
         {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
+        },
+        {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:861483ff4a3b9f70089d186e1835489654621471ad0653cc6f50999a12c3f167"
+          "version": "repo-file-v1:sha256:c2679cbdef5fee4a799c90f3887b10fc268c644dee120e5f7a912ed0fa843a82"
+        }
+      ]
+    },
+    {
+      "id": "claim_8881e69892df4702a8f16118a94c0403",
+      "statement": "Nextest serializes native-media exchanges and reserves global test threads for the selected native packet-flow and collaboration-disclosure timing fixtures; these scheduling rules do not establish display performance.",
+      "evidence": [
+        {
+          "resource": "repo://.config/nextest.toml",
+          "version": "repo-file-v1:sha256:0628e8b2a1386725ffc17a1e8281faac94ad2f69f330f41e4b0d8271c64b44e2"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T21:02:44.368Z"
+    "at": "2026-10-24T06:15:55.391Z"
   }
 }

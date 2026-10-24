@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a33abcd585922db7abb9d525a00fb5a9317670700b293d523d323f0ef9420b31",
+  "pageVersion": "sha256:9c774b4a6b0688396b6da1becf20f35600347654c62533d889809595c723e680",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -80,7 +80,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:7600f509436f03dbbcf23c5f6cc2a64c173c6fd909480eed7e883d9fcab97e25"
+          "version": "repo-file-v1:sha256:8d5a68c0f85bfd64f23ec6fc2b9d1496902f84452c0f8a3c1eb8c7399d2ce598"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/result_messages.rs",
@@ -116,7 +116,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:0c9959369bdf30c017c6c04b07ec7f65def0d85af43dced071d1988d12d517d7"
+          "version": "repo-file-v1:sha256:54a46fcc88c494723e218f88707fd138e11d5c06b5ceddf817c1344788a9fb68"
         },
         {
           "resource": "repo://crates/decodex-components/tests/development.rs",
@@ -246,15 +246,15 @@
     },
     {
       "id": "claim_a9b3c30e842a40e79f50064e788b13af",
-      "statement": "The compact qualification record separates exact source test identities and private source-fixture launcher evidence from production CLI/helper behavior and installed-application acceptance.",
+      "statement": "The current qualification separates dev-small source-test helpers, exact signed CLI/helper behavior, reusable fixture identities and installed-application acceptance; historical private source launchers retain their original scope.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:c3b5e5a0c25deb74135ca38eeae00d304eaefcb7480ed2f602bc54d757dbebf3"
+          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:861483ff4a3b9f70089d186e1835489654621471ad0653cc6f50999a12c3f167"
+          "version": "repo-file-v1:sha256:c2679cbdef5fee4a799c90f3887b10fc268c644dee120e5f7a912ed0fa843a82"
         }
       ]
     },
@@ -264,7 +264,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:c3b5e5a0c25deb74135ca38eeae00d304eaefcb7480ed2f602bc54d757dbebf3"
+          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
@@ -272,17 +272,17 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:7600f509436f03dbbcf23c5f6cc2a64c173c6fd909480eed7e883d9fcab97e25"
+          "version": "repo-file-v1:sha256:8d5a68c0f85bfd64f23ec6fc2b9d1496902f84452c0f8a3c1eb8c7399d2ce598"
         }
       ]
     },
     {
       "id": "claim_09935890d45a421e8c4d7f91b5638912",
-      "statement": "Retained real-model coordination evaluations cover controlled question-routing, persistent completion and Busy-recovery scenarios with predefined user choices, while preserving model, race and installed-app limits.",
+      "statement": "The retained coordination index links historical bounded real-model question-routing, completion and Busy-recovery evaluations; current synthetic child-approval and local regression qualification remains separate from real-model judgment and installed-app acceptance.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:861483ff4a3b9f70089d186e1835489654621471ad0653cc6f50999a12c3f167"
+          "version": "repo-file-v1:sha256:c2679cbdef5fee4a799c90f3887b10fc268c644dee120e5f7a912ed0fa843a82"
         }
       ]
     },
@@ -292,7 +292,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:c3b5e5a0c25deb74135ca38eeae00d304eaefcb7480ed2f602bc54d757dbebf3"
+          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
         }
       ]
     },
@@ -302,7 +302,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py",
-          "version": "repo-file-v1:sha256:8f05cbba8cf955a99d87e237b23e7cb35f19bb3503b3fe7819b4a21e763f2abf"
+          "version": "repo-file-v1:sha256:781055b5e62f333908268a1cabcc027cb700ce4ebc9e0ee8af5b2bd29e7bd65d"
         }
       ]
     },
@@ -315,10 +315,32 @@
           "version": "repo-file-v1:sha256:d9e381f28e75106fd3b5400cdcb399bf610b6888f1311af8f144b33fd86d58d1"
         }
       ]
+    },
+    {
+      "id": "claim_3a78009e5c004d35998807366c36ae57",
+      "statement": "The current exact-artifact probes retain terminal modelNotFound without retries across live, stored and cold history, admit an explicit model catalog larger than 1 MiB, and verify stable missing-provider item identity; the identity case passes on both old and candidate artifacts.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
+          "version": "repo-file-v1:sha256:a471440d6c494a5abd9f72346901fe14aeb8ee432f8e8fd3ef73373e174d645a"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/model_errors.py",
+          "version": "repo-file-v1:sha256:53cb76bde58dfaac958cc1b31e2c91abb16aa3595a7c2540d898d14df1147205"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/response_identity.py",
+          "version": "repo-file-v1:sha256:8d078b642d80ad0fcfe35b4ae5d4c0c2e97144c022fabf3380520ea1766d3e82"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T21:02:44.368Z"
+    "at": "2026-10-24T06:15:55.391Z"
   }
 }

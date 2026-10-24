@@ -397,7 +397,9 @@ impl Shell {
 				(pending
 					|| (visible
 						&& self.expanded_accounts.contains(&account.account_id)
-						&& !shell::account_needs_login(account)))
+						&& !shell::account_needs_login(account)
+						&& account.lifecycle_readiness
+							!= decodex_protocol::AccountLifecycleReadinessDto::UnsupportedPlan))
 					&& row.is_none_or(|row| {
 						row.checked.is_none_or(|at| {
 							at.elapsed() >= Duration::from_secs(if row.blocked { 5 } else { 30 })
@@ -428,6 +430,11 @@ pub(super) fn row(
 	account: &AccountDto,
 	cx: &mut Context<Shell>,
 ) -> Option<AnyElement> {
+	if account.lifecycle_readiness
+		== decodex_protocol::AccountLifecycleReadinessDto::UnsupportedPlan
+	{
+		return None;
+	}
 	let state = shell.reset_cards.rows.get(&account.account_id)?;
 	let Some(ResetCardInventoryResult::Available {
 		cards, details_complete, account_revision, ..

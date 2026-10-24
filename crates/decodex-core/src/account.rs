@@ -290,6 +290,8 @@ pub struct AccountOperationStatus {
 pub enum AccountLifecycleReadiness {
 	/// All account admission boundaries agree.
 	Ready,
+	/// The current credential has a plan that Decodex does not admit.
+	UnsupportedPlan,
 	/// The registry has no current credential binding.
 	CredentialAbsent,
 	/// The host credential store could not be read.
@@ -501,6 +503,8 @@ pub enum AccountSelectionRecovery {
 	EnableAccount,
 	/// Install credentials for an account.
 	EnrollCredentials,
+	/// Use a supported plan and sign in again.
+	UseSupportedPlan,
 	/// Reconcile or cancel the unsettled credential operation.
 	ResolveCredentialOperation,
 	/// Restore exact registry and host-store agreement.

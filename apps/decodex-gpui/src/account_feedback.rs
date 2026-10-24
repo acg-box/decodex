@@ -126,6 +126,12 @@ impl RenderOnce for AccountFeedback {
 }
 
 pub(super) fn for_account(shell: &Shell, account: &AccountDto) -> Option<(String, u32)> {
+	if account.lifecycle_readiness == AccountLifecycleReadinessDto::UnsupportedPlan {
+		return Some((
+			"This plan is not supported in Decodex. After you upgrade, sign in again.".into(),
+			AMBER,
+		));
+	}
 	if shell::account_needs_login(account) {
 		return Some(("Sign in again to use this account, or log out.".into(), ERROR));
 	}
@@ -180,11 +186,11 @@ mod tests {
 	use crate::{
 		client_lifecycle::ConnectionView,
 		shell::{Destination, Shell, account_feedback},
-		ui_theme::ERROR,
+		ui_theme::{AMBER, ERROR},
 	};
 	use decodex_protocol::{
-		AccountCommandRejectionDto, AccountObservedStateDto, AccountProfileEmailDto,
-		AccountProfileErrorDto, AccountProfileResult, EntityRevision,
+		AccountCommandRejectionDto, AccountLifecycleReadinessDto, AccountObservedStateDto,
+		AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult, EntityRevision,
 	};
 
 	#[gpui::test]
@@ -311,5 +317,33 @@ mod tests {
 				Some(("Sign in again to use this account, or log out.".into(), ERROR))
 			);
 		});
+	}
+
+	#[gpui::test]
+	fn unsupported_plan_hides_quota_and_offers_reauthentication(cx: &mut TestAppContext) {
+		let (shell, visual) =
+			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
+		shell.update(visual, |s, cx| {
+			s.visual_accounts_and_health();
+			s.accounts.accounts[0].lifecycle_readiness =
+				AccountLifecycleReadinessDto::UnsupportedPlan;
+			s.selected = Destination::Accounts;
+			let account = &s.accounts.accounts[0];
+			assert_eq!(super::shell::account_readiness_status(account), "Plan not supported");
+			assert_eq!(
+				account_feedback::for_account(s, account),
+				Some((
+					"This plan is not supported in Decodex. After you upgrade, sign in again."
+						.into(),
+					AMBER,
+				))
+			);
+			cx.notify();
+		});
+		visual.update(|window, cx| {
+			window.draw(cx).clear(cx);
+		});
+		assert!(visual.debug_bounds("account-quota-0").is_none());
+		assert!(visual.debug_bounds("account-login-0").is_some());
 	}
 }

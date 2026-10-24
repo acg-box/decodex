@@ -44,6 +44,7 @@ const RESET_CREDIT_DETAIL_RETRY_DELAY: Duration = Duration::from_millis(250);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AccountApiRuntimeError {
 	AccountUnavailable,
+	UnsupportedPlan,
 	CredentialUnavailable,
 	CredentialBusy,
 	RefreshRejected,
@@ -537,6 +538,7 @@ fn map_protocol_error(error: AccountApiProtocolError) -> AccountApiRuntimeError 
 fn map_account_service_error(error: AccountLifecycleError) -> AccountApiRuntimeError {
 	match error {
 		AccountLifecycleError::AccountMissing => AccountApiRuntimeError::AccountUnavailable,
+		AccountLifecycleError::UnsupportedPlan => AccountApiRuntimeError::UnsupportedPlan,
 		AccountLifecycleError::CredentialAbsent
 		| AccountLifecycleError::CredentialStore(_)
 		| AccountLifecycleError::NotReady(
@@ -556,7 +558,6 @@ fn map_account_service_error(error: AccountLifecycleError) -> AccountApiRuntimeE
 		AccountLifecycleError::Refresh(CredentialRefreshError::Ambiguous) =>
 			AccountApiRuntimeError::RefreshAmbiguous,
 		AccountLifecycleError::AccountDisabled
-		| AccountLifecycleError::UnsupportedPlan
 		| AccountLifecycleError::NotReady(_)
 		| AccountLifecycleError::OperationRejected(_)
 		| AccountLifecycleError::CredentialImport

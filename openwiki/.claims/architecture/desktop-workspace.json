@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a2639f6d4e9e432723985456a10f2ddc73c2dc37ca4cdbb3913702c6957d27cc",
+  "pageVersion": "sha256:6417df3e01a17d99001fb9efba592cf388f8935a583bdaede6eecf9c2975a7f4",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -8,11 +8,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
-          "version": "repo-file-v1:sha256:9e9962f9a94992b0baad5f00223ec540840ff6672d23e729eea366fd12b02bec"
+          "version": "repo-file-v1:sha256:cf7267ec7f000910e7e9473f6536ffa866b610f5d4bf67fbdfb8c9204149b19f"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
-          "version": "repo-file-v1:sha256:c3c753e8cc9b2662901460d3e935fce30250b8d5baabea800994a304e72c0516"
+          "version": "repo-file-v1:sha256:3fec0fe1263de777dbd431c294831a0d3c025706d3d36354846c758079aa62a4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
@@ -20,7 +20,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:2d9afda6e529d8fb112b3e6c774ccf4be823683061fd453ed09a6babc4b000d5"
+          "version": "repo-file-v1:sha256:24cf1693cae58c3a2ddcc1e2c7b65b90c1797556d83673930521303011c792cd"
         }
       ]
     },
@@ -53,11 +53,11 @@
       "statement": "Conversation selection is read-only and shares one selection document across the text blocks of a rendered message. Copy controls show transient success feedback; selection does not span all messages.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_markdown.rs#L256-L321",
+          "resource": "repo://apps/decodex-gpui/src/agent_markdown.rs#L257-L322",
           "version": "repo-lines-v1:sha256:2cfedc2187e449730436f69464bfce305a3b97a18e0ef2818e663626aaaeac64:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViZDlkYTMwMjE5NjY0N2ExM2IzMDM3ZTQyZjVjMjE3YWI3ZDk3NjVhMjQ3OWM1ODIzN2M1Njg1MGQ0MzQyMTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1ZjI5ZmE5YzBlYmJjOGY1YjIxNWUxYzc1ZGVlOTY5MWViYjdjYzhjYzZhMDc2YjVhMzg3Mjg2YTRhYjk5YWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzYTQ4MzQwZTY2NzYyOTVmOTQzYWVkM2Y3YzVlMjY0M2U5N2VjYTA2NGEyMjhhODQ4MDY0MzVjYmM1OGJjYzgifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_markdown.rs#L99-L154",
+          "resource": "repo://apps/decodex-gpui/src/agent_markdown.rs#L100-L155",
           "version": "repo-lines-v1:sha256:db8ad6043fb3f461cd7462b9b0e7bd76b7742e5f67cda94eb129ec68bbedabd3:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzZDY2MTNmNGVhZDc0YWQ1ODhhZTA2N2IyZmI0OTI4ODk3OWY2YWU2YWRjNmYwZDZmYTY0ZmVhY2YxZWQ1YzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYzc2MDIwYmFlNzA1NzdlNjRiMzMwZGNhODNmZGYyNGYzZDc1OTNhMDE1NGQ4YWJlYzZkYzYzZjU4OTdmZDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5MzI4NjJkMDY2YTVhZmQwZDA1MTdkZGJiNjgxMjNhMTYzNmRiMGMwNWU1YTBlMDI0NGJkODI5YmJlNmI0MWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzMzE4ZTRlZjFjMjA5NjE0YzhmYjExYjI0ZmM4YjRiNjc1NmEyYmRlZThhZThkMjNmYTVjZWRkMGIxMTkzZWMifQ"
         },
         {
@@ -137,6 +137,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T14:42:59.992Z"
+    "at": "2026-10-24T06:08:33.099Z"
   }
 }

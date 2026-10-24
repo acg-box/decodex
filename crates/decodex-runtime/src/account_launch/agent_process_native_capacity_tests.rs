@@ -191,6 +191,12 @@ async fn installed_throttling_and_quota_do_not_schedule_capacity_retries() {
 	}
 }
 
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; native model availability classification"]
+async fn installed_model_not_found_does_not_schedule_capacity_retries() {
+	native_error_classification("model_not_found", "modelNotFound", 1).await;
+}
+
 async fn native_error_classification(code: &'static str, expected: &str, requests: usize) {
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let home = tempfile::tempdir().expect("isolated home");

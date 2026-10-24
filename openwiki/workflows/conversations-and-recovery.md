@@ -38,6 +38,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs
   - id: openwiki-source-95a7168e447de14b4b758f16
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs
+  - id: openwiki-source-9e21e877b2d7ad96b0a4d637
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs
   - id: openwiki-source-720a745d503e0e60ebcad0c5
     resource: repo://crates/decodex-runtime/src/agent_detail.rs
   - id: openwiki-source-3d25cb6558fde84d70520ac2
@@ -50,10 +52,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_visibility.rs
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
-generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
+  - id: openwiki-source-88b81a215b1bac061dad80ec
+    resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
+  - id: openwiki-source-c6bea677adcde563202b65b9
+    resource: repo://crates/decodex-runtime/tests/native_qualification/response_identity.py
+generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T21:02:44.368Z
+    at: 2026-10-24T06:15:55.391Z
 ---
 
 # Conversation input, history and recovery
@@ -107,6 +113,12 @@ Unfinished edit entries, Refresh conversation and Show saved local records live 
 Current native timeline readers preserve complete selected items through paging. Large approvals, long tool output, unfinished answers, native image references and public reasoning must not become fabricated complete text. Optional math, Mermaid, weather and rich previews keep source access and literal fallback. A historical opaque media reference does not prove the underlying media is currently available.
 
 Complete Markdown export reads the full native conversation through its history owner. The service transfers bounded chunks tied to the exact source and export token, then releases the temporary document. The desktop can save it to a file or copy it. **Loaded excerpt** is a distinct action and must not be described as a complete export when older history is not loaded.
+
+## Terminal model errors and item identity
+
+A native `modelNotFound` result is terminal. Its provider message and typed classification remain available in live results, stored history and a cold read; Decodex does not turn it into a capacity retry. Capacity recovery requires its own exact failed-turn evidence. A changed model or later user request is a separate action.
+
+Native history also keeps one nonempty item identity when a provider assistant message omits its ID. The source-access and cold-read probes inspect the existing result without another inference request. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md#terminal-errors-and-external-context) for the exact artifact and transport limits.
 
 ## Read state and exact item details
 

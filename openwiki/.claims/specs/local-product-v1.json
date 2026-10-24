@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:75c60a03da2c68ce141360d733a878f6ef9e4951a7cbb92153a382d4572b345f",
+  "pageVersion": "sha256:5caa15e3368c4bdc95fdfe2f2f0eb6af68664f56a90a9b369a65f45ed0072076",
   "claims": [
     {
       "id": "claim_43cc36a83ec3487a92f18c719c5bdd1a",
@@ -11,7 +11,7 @@
           "version": "repo-file-v1:sha256:7deb050ff7430319ee4cd56797817463b4eb5a87ab440f7455215986ae9eec2d"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/application.rs#L1141-L1150",
+          "resource": "repo://crates/decodex-runtime/src/application.rs#L1142-L1151",
           "version": "repo-lines-v1:sha256:624860728f2a3c17b560f7d3af612c37f7800688a5c5e47bf2a40ecf0373cfeb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwYWUyY2FkNzA2OGI3ZTE5ZTg4YWRlOGIxMDUyOTIyMzc3ODhiYzM3YTBmYjU0YTU2MTY0ZjkwMDY0MTBhMmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiNGU1YjRmMmY4ODVkMTkyMzU5OWYzZDBjY2ZhMWQzOGU0NTQzZDZlMDYzMTUwMmYxODk2ZWM0ZWU3MTk1MjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNhODZkYzI1YzQxNThlN2I2Zjc2NTdjY2M5ZWQ2ZmUzM2M1YWYzNGY2Y2JiNTQ3MWRlNjMyMDE3MzA1ODZlYWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU3M2FhNThjMWY2ODg1ZjRiNDQ3NjBlYjc4ZTAzNWJlNjI2OGVkZGJhNTNhMTY3YzcwOTk2ZmVmNzc1MTVjYjMifQ"
         }
       ]
@@ -77,7 +77,7 @@
       "statement": "The exact local protocol is defined by CURRENT_VERSION, and the SQLite schema version is defined by the embedded migration ledger.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L289-L307",
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L294-L312",
           "version": "repo-lines-v1:sha256:c87a72631b158db790112cb16ce8e8bd264007a68e3730767f9d1f1d0c32ca8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZDA5NzgzZTA2YzlkMGI3MDhhMTFiNTU3N2M2MWNlMjBhZGRjNjZjYmVmMGJkZjc5ODQ2ZWZiN2M5OWM3YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjZkOWNlOGNkNmRlNjQ0YTM4Y2QwYjA0NTRmYjkzYjBjMWEzNTFlNzAyYjc1ODI0NmE2ZTZkZWI3N2Y1MzkifQ"
         },
         {
@@ -91,7 +91,7 @@
       "statement": "Historical Program aggregates and Domain Pack projections remain read-only compatibility data rather than an active execution scheduler.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/application.rs#L1482-L1497",
+          "resource": "repo://crates/decodex-runtime/src/application.rs#L1483-L1498",
           "version": "repo-lines-v1:sha256:a294a7f6446ae8018e2af84c04419f9177b76991e36245aed43dfd0163c083b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFmOTYyNzdjOTEwZGIxNTY5M2UzMzAzNzNiMmU0ODRmNmU0OTkwNWY5N2RjZDFkYWYwYmYzOTZkOTVjZDQ1OGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWNhZGI2NzZiNDIxNWMxNjA2ZTIyMDBiZTcxYWEwOTdlYWFjMDc4OWI4YzE5OWVjZmFiYTc2ZmVlNWRhYjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjYTJlMzY0OGI1YTJhNTk5N2YwYmE4MDE5ZDMyNDc3YjkzOWNmYzFmODI4ZGM4MTU2YmFmNDQ4YjZjNDMwYmIifQ"
         },
         {
@@ -106,11 +106,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
-          "version": "repo-file-v1:sha256:9e9962f9a94992b0baad5f00223ec540840ff6672d23e729eea366fd12b02bec"
+          "version": "repo-file-v1:sha256:cf7267ec7f000910e7e9473f6536ffa866b610f5d4bf67fbdfb8c9204149b19f"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
-          "version": "repo-file-v1:sha256:c3c753e8cc9b2662901460d3e935fce30250b8d5baabea800994a304e72c0516"
+          "version": "repo-file-v1:sha256:3fec0fe1263de777dbd431c294831a0d3c025706d3d36354846c758079aa62a4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
@@ -137,7 +137,7 @@
       "statement": "Markdown selection shares one document across the text blocks of a rendered message without spanning every message.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_markdown.rs#L256-L321",
+          "resource": "repo://apps/decodex-gpui/src/agent_markdown.rs#L257-L322",
           "version": "repo-lines-v1:sha256:2cfedc2187e449730436f69464bfce305a3b97a18e0ef2818e663626aaaeac64:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViZDlkYTMwMjE5NjY0N2ExM2IzMDM3ZTQyZjVjMjE3YWI3ZDk3NjVhMjQ3OWM1ODIzN2M1Njg1MGQ0MzQyMTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1ZjI5ZmE5YzBlYmJjOGY1YjIxNWUxYzc1ZGVlOTY5MWViYjdjYzhjYzZhMDc2YjVhMzg3Mjg2YTRhYjk5YWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzYTQ4MzQwZTY2NzYyOTVmOTQzYWVkM2Y3YzVlMjY0M2U5N2VjYTA2NGEyMjhhODQ4MDY0MzVjYmM1OGJjYzgifQ"
         },
         {
@@ -149,6 +149,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T14:45:12.016Z"
+    "at": "2026-10-24T06:08:33.099Z"
   }
 }

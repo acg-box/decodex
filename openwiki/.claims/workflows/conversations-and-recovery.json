@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7b3ca06f0c42e98ff3e02803f82195d5fcc5140704d4e49dfba37471394fe3b3",
+  "pageVersion": "sha256:17e9fda802e7ca56c8692e46c3d665535686f211af66ba53b9c0c1ee302f9daa",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -152,7 +152,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:2d9afda6e529d8fb112b3e6c774ccf4be823683061fd453ed09a6babc4b000d5"
+          "version": "repo-file-v1:sha256:24cf1693cae58c3a2ddcc1e2c7b65b90c1797556d83673930521303011c792cd"
         }
       ]
     },
@@ -190,7 +190,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:c3b5e5a0c25deb74135ca38eeae00d304eaefcb7480ed2f602bc54d757dbebf3"
+          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
         }
       ]
     },
@@ -204,17 +204,39 @@
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:c3b5e5a0c25deb74135ca38eeae00d304eaefcb7480ed2f602bc54d757dbebf3"
+          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_sample.rs",
           "version": "repo-file-v1:sha256:1afa44f18b36095f9c709b52df0e533f167edee272a833c647082fc2ac1e41e9"
         }
       ]
+    },
+    {
+      "id": "claim_54ba9b4addae4564a39fe312714a9960",
+      "statement": "Terminal modelNotFound results preserve the provider message and typed classification in live, stored and cold history without a Decodex capacity retry; native item-identity qualification reads the existing assistant item without replaying inference.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs",
+          "version": "repo-file-v1:sha256:133a9d76582029e3f1857870f6bba1f8b62cc45f7047c814e82df88feb66df7d"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/model_errors.py",
+          "version": "repo-file-v1:sha256:53cb76bde58dfaac958cc1b31e2c91abb16aa3595a7c2540d898d14df1147205"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/response_identity.py",
+          "version": "repo-file-v1:sha256:8d078b642d80ad0fcfe35b4ae5d4c0c2e97144c022fabf3380520ea1766d3e82"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T21:02:44.368Z"
+    "at": "2026-10-24T06:15:55.391Z"
   }
 }
