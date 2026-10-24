@@ -330,6 +330,7 @@ mod tests {
 					50. - node.x * 0.75,
 					s.work_board.view.viewport.1 - height - 16. - node.y * 0.75,
 				);
+				cx.notify();
 			});
 			visual.update(crate::ui_frame::draw_frame);
 			let team = visual.debug_bounds("relation-team-release").unwrap();
@@ -339,9 +340,10 @@ mod tests {
 			let framed = surface.read_with(visual, |s, _| s.work_board.view.pan);
 			let focus = visual.update(|window, cx| window.focused(cx).unwrap());
 			for key in ["enter", "space"] {
-				surface.update(visual, |s, _| {
+				surface.update(visual, |s, cx| {
 					s.work_board.view.pan.0 += 25.;
 					s.work_board.view.pan.1 += 45.;
+					cx.notify();
 				});
 				visual.update(|window, cx| window.focus(&focus, cx));
 				visual.simulate_keystrokes(key);

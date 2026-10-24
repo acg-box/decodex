@@ -29,8 +29,7 @@ impl AgentSurface {
 		self.workspace.agent_panel_width.min((width - left - 440.0).max(0.0))
 	}
 
-	pub(super) fn agent_tree(&self, width: f32, cx: &mut Context<Self>) -> AnyElement {
-		self.deliveries.update(cx, |panel, cx| panel.set_width(width, cx));
+	pub(super) fn agent_tree(&self, cx: &mut Context<Self>) -> AnyElement {
 		gpui::div()
 			.id("agent-panel-focus")
 			.relative()

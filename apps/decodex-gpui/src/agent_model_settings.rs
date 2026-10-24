@@ -31,7 +31,7 @@ pub(super) struct Panel {
 }
 
 impl Panel {
-	fn observe(&mut self, work: String, state: AgentModelSettingsResult) {
+	fn observe(&mut self, work: String, state: AgentModelSettingsResult) -> bool {
 		// A failed read contains no new model observation. Keep the last native
 		// value for this binding; source or thread changes invalidate it separately.
 		if state == AgentModelSettingsResult::Unavailable
@@ -39,9 +39,13 @@ impl Panel {
 				self.observations.get(&work),
 				Some(AgentModelSettingsResult::Available { .. })
 			) {
-			return;
+			return false;
+		}
+		if self.observations.get(&work) == Some(&state) {
+			return false;
 		}
 		self.observations.insert(work, state);
+		true
 	}
 }
 
@@ -219,7 +223,8 @@ impl AgentSurface {
 		let mut panel = gpui::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
 			"native-model-settings-read".into(),
 			"Refresh model".into(),
-			self.model_settings.task.is_some(),
+			self.model_settings.task.is_some()
+				&& !self.model_settings.observations.contains_key(&work.id),
 			cx,
 			move |s, cx| s.read_model_settings(&owner, cx),
 		));
@@ -256,9 +261,8 @@ impl AgentSurface {
 			return;
 		}
 
+		let initial = !self.model_settings.observations.contains_key(work);
 		self.model_settings.work = Some(work.into());
-
-		cx.notify();
 
 		let binding = self.snapshot.as_ref().and_then(|snapshot| {
 			let thread =
@@ -269,10 +273,13 @@ impl AgentSurface {
 		let (Some(profile), Some((source, thread)), Ok(work_id)) =
 			(self.profile.clone(), binding, EntityId::new(work.to_owned()))
 		else {
-			self.model_settings
+			let previous = self
+				.model_settings
 				.observations
 				.insert(work.into(), AgentModelSettingsResult::Unavailable);
-
+			if previous != Some(AgentModelSettingsResult::Unavailable) {
+				cx.notify();
+			}
 			return;
 		};
 		let selection = self.selected.clone();
@@ -319,16 +326,21 @@ impl AgentSurface {
 
 				let state = if matches!(&state,AgentModelSettingsResult::Available{thread_id,work_id,..} if thread_id.as_str()!=thread || work_id.as_str()!=work) {AgentModelSettingsResult::Unavailable} else {state};
 
+				let effort = s.effort.clone();
 				s.adopt_composer_observation(&work, &state, intent_revision, &input_at_read, cx);
-				s.model_settings.observe(work, state);
+				let changed = s.model_settings.observe(work, state);
 
 				s.model_settings.task = None;
 
-				cx.notify();
+				if changed || effort != s.effort {
+					cx.notify();
+				}
 			});
 		}));
 
-		cx.notify();
+		if initial {
+			cx.notify();
+		}
 	}
 }
 

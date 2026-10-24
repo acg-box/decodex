@@ -550,6 +550,7 @@ pub(super) struct Card {
 	pub content: AnyElement,
 	pub faded: bool,
 	pub visibility: f32,
+	pub mascot_opacity: Option<std::rc::Rc<std::cell::Cell<f32>>>,
 	pub ports: Option<Ports>,
 }
 impl RenderOnce for Card {
@@ -568,9 +569,19 @@ impl RenderOnce for Card {
 		if moving {
 			ui_motion::request_frame(window, cx);
 		}
+		if let Some(opacity) = self.mascot_opacity {
+			opacity.set(self.visibility * arrival * (1. - 0.08 * dim));
+		}
 		self.surface
 			.opacity(self.visibility * arrival)
 			.when_some(self.ports, |surface, ports| surface.child(ports.element()))
-			.child(gpui::div().size_full().opacity(1. - 0.08 * dim).child(self.content))
+			// The graph already supplies this card's bounds. Measure its contents
+			// once in that slot, outside the graph's intrinsic flex layout passes.
+			.child(
+				gpui::div()
+					.size_full()
+					.opacity(1. - 0.08 * dim)
+					.child(crate::ui_layout::panel(self.content)),
+			)
 	}
 }

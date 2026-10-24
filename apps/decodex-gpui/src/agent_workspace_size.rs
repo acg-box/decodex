@@ -14,7 +14,7 @@ use crate::{
 			StatefulInteractiveElement, Styled, Window, graph,
 		},
 	},
-	ui_motion,
+	ui_motion, ui_theme,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -285,13 +285,27 @@ impl AgentSurface {
 			.debug_selector(|| "left-panel-slot".into())
 			.on_hover(cx.listener(|s, hovered: &bool, _, cx| s.sidebar_hover(*hovered, cx)))
 			.flex_none()
+			.relative()
 			.w(gpui::px(width))
 			.h_full()
 			.overflow_hidden()
 			.capture_any_mouse_down(
 				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Left)),
 			)
-			.child(self.workspace_sidebar(cx))
+			.when(width > 0.1, |panel| {
+				panel.child(crate::ui_layout::pane(self.sidebar_presentation.clone(), window))
+			})
+			.when(width > 0.1, |panel| {
+				panel.child(
+					gpui::div()
+						.absolute()
+						.right_0()
+						.top_0()
+						.bottom_0()
+						.w(gpui::px(1.))
+						.bg(ui_theme::rgba(ui_theme::PANEL_DIVIDER)),
+				)
+			})
 			.into_any_element()
 	}
 

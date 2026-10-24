@@ -146,12 +146,12 @@ impl AgentSurface {
 		.then_some(self.output_stream.messages.as_slice())
 	}
 
-	pub(super) fn retire_native_output(&mut self) {
-		let Some(binding) = &self.timeline.native.binding else { return };
+	pub(super) fn retire_native_output(&mut self) -> bool {
+		let Some(binding) = &self.timeline.native.binding else { return false };
 		if self.output_stream.owner.as_ref() != Some(&binding.work)
 			|| self.output_stream.thread.as_ref() != Some(&binding.thread)
 		{
-			return;
+			return false;
 		}
 		let completed: std::collections::BTreeSet<_> = self
 			.timeline
@@ -164,7 +164,9 @@ impl AgentSurface {
 				_ => None,
 			})
 			.collect();
+		let before = self.output_stream.messages.len();
 		self.output_stream.messages.retain(|m| !completed.contains(&m.turn_id));
+		before != self.output_stream.messages.len()
 	}
 }
 

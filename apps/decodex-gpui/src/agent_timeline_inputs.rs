@@ -172,9 +172,11 @@ impl AgentSurface {
 				let receipts = &mut surface.timeline.native.input_receipts;
 
 				receipts.task = None;
-				receipts.result = Some(result.unwrap_or(AgentInputReceiptsResult::Unavailable));
-
-				cx.notify();
+				let result = result.unwrap_or(AgentInputReceiptsResult::Unavailable);
+				if receipts.result.as_ref() != Some(&result) {
+					receipts.result = Some(result);
+					cx.notify();
+				}
 			});
 		}));
 	}

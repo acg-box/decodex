@@ -186,6 +186,11 @@ pub(crate) struct AgentSurface {
 	workspace: WorkspaceView,
 	workspace_presentation: Entity<crate::ui_frame::Presentation<Self>>,
 	transcript_presentation: Entity<crate::ui_frame::Presentation<Self>>,
+	sidebar_presentation: Entity<crate::ui_frame::Presentation<Self>>,
+	graph_presentation: Entity<crate::ui_frame::Presentation<Self>>,
+	graph_actors_presentation: Entity<crate::ui_frame::Presentation<Self>>,
+	graph_foreground_presentation: Entity<crate::ui_frame::Presentation<Self>>,
+	activity_presentation: Entity<crate::ui_frame::Presentation<Self>>,
 	profile: Option<ClientProfile>,
 	snapshot: Option<AgentSnapshotDto>,
 	state: LoadState,
@@ -335,6 +340,38 @@ impl AgentSurface {
 			crate::ui_frame::Presentation::new(&owner, Self::render_workspace_view, cx);
 		let transcript_presentation =
 			crate::ui_frame::Presentation::new(&owner, Self::render_transcript_view, cx);
+		let sidebar_presentation = crate::ui_frame::Presentation::new(
+			&owner,
+			|s, _, cx| {
+				crate::frame_trace::surface_render("sidebar");
+				s.workspace_sidebar(cx)
+			},
+			cx,
+		);
+		let graph_presentation = crate::ui_frame::Presentation::new(
+			&owner,
+			|s, _, cx| {
+				crate::frame_trace::surface_render("graph");
+				s.prepare_graph_layers();
+				s.handoff_canvas(cx)
+			},
+			cx,
+		);
+		let graph_actors_presentation =
+			crate::ui_frame::Presentation::new(&owner, |s, _, _| s.render_graph_actors(), cx);
+		let graph_foreground_presentation = crate::ui_frame::Presentation::new(
+			&owner,
+			|s, _, cx| s.render_graph_foreground(cx),
+			cx,
+		);
+		let activity_presentation = crate::ui_frame::Presentation::new(
+			&owner,
+			|s, _, cx| {
+				crate::frame_trace::surface_render("activity");
+				s.agent_tree(cx)
+			},
+			cx,
+		);
 
 		let deliveries = cx.new(|_| deliveries::Panel::default());
 		cx.subscribe(&deliveries, |s, _, event: &deliveries::OpenDelivery, cx| {
@@ -407,6 +444,11 @@ impl AgentSurface {
 			workspace: WorkspaceView::default(),
 			workspace_presentation,
 			transcript_presentation,
+			sidebar_presentation,
+			graph_presentation,
+			graph_actors_presentation,
+			graph_foreground_presentation,
+			activity_presentation,
 			accounts: vec![],
 			composer,
 			model,
@@ -1521,44 +1563,48 @@ impl AgentSurface {
 					return;
 				}
 
-				let changed = match &result {
-					Ok(AgentSnapshotResult::Available(snapshot)) =>
-						surface.snapshot.as_ref() != Some(snapshot),
-					_ => true,
-				};
-
-				surface.apply_refreshed_snapshot(result, cx);
-				if surface.connection_initializing() {
-					cx.notify();
-					return;
-				}
-				surface.refresh_native_goal(cx);
-				surface.refresh_read_state(cx);
-				surface.refresh_dock_evidence(cx);
-				surface.refresh_factory_briefs(cx);
-				surface.refresh_deliveries(cx);
-
-				if !surface.connection_initializing()
-					&& (surface.current_model_catalog(cx).is_none()
-						|| surface
-							.capabilities_checked
-							.is_none_or(|at| at.elapsed().as_secs() >= 60))
-				{
-					surface.load_capabilities(cx);
-				}
-				if changed || surface.timeline.read_at.is_none_or(|at| at.elapsed().as_secs() >= 2)
-				{
-					surface.load_history(cx);
-				}
-
-				surface.sync_request(cx);
-				surface.refresh_composer_model_settings(cx);
-				surface.tick_question_timeout(cx);
-				cx.notify();
+				surface.finish_snapshot_refresh(result, cx);
 			});
 		}));
 
 		if !background {
+			cx.notify();
+		}
+	}
+
+	fn finish_snapshot_refresh(
+		&mut self,
+		result: Result<AgentSnapshotResult, ()>,
+		cx: &mut Context<Self>,
+	) {
+		let previous = self.displayed_load_state().clone();
+		let changed = match &result {
+			Ok(AgentSnapshotResult::Available(snapshot)) =>
+				self.snapshot.as_ref() != Some(snapshot),
+			_ => true,
+		};
+		self.apply_refreshed_snapshot(result, cx);
+		if !self.connection_initializing() {
+			self.refresh_native_goal(cx);
+			self.refresh_read_state(cx);
+			self.refresh_dock_evidence(cx);
+			self.refresh_factory_briefs(cx);
+			self.refresh_deliveries(cx);
+			if self.current_model_catalog(cx).is_none()
+				|| self.capabilities_checked.is_none_or(|at| at.elapsed().as_secs() >= 60)
+			{
+				self.load_capabilities(cx);
+			}
+			if changed || self.timeline.read_at.is_none_or(|at| at.elapsed().as_secs() >= 2) {
+				self.load_history(cx);
+			}
+			self.sync_request(cx);
+			self.refresh_composer_model_settings(cx);
+			self.tick_question_timeout(cx);
+		}
+		// Background reads keep recovery and question timers live. An identical
+		// snapshot must not invalidate every presentation pane twice a second.
+		if changed || previous != *self.displayed_load_state() || self.request.is_some() {
 			cx.notify();
 		}
 	}
@@ -2428,6 +2474,7 @@ impl Render for AgentSurface {
 
 impl AgentSurface {
 	fn render_workspace_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+		crate::frame_trace::surface_render("workspace");
 		use gpui::Focusable as _;
 		let old_focus = self.conversation_composer().focus_handle(cx);
 		self.sync_question_editor(cx);
@@ -3092,6 +3139,49 @@ mod tests {
 		assert!(!agent_surface::should_poll_snapshot(false, &LoadState::Unavailable));
 		assert!(!agent_surface::should_poll_snapshot(true, &LoadState::Loading));
 		assert!(agent_surface::should_poll_snapshot(true, &LoadState::Ready));
+	}
+
+	#[gpui::test]
+	fn unchanged_snapshot_polls_do_not_invalidate_the_workspace(cx: &mut gpui::TestAppContext) {
+		use std::{cell::Cell, rc::Rc};
+		let surface = cx.new(|cx| {
+			let mut s = AgentSurface::new(cx);
+			s.visual_workspace_fixture(cx);
+			s
+		});
+		let notifications = Rc::new(Cell::new(0));
+		cx.update(|cx| {
+			let notifications = notifications.clone();
+			cx.observe(&surface, move |_, _| notifications.set(notifications.get() + 1)).detach();
+		});
+		for _ in 0..4 {
+			surface.update(cx, |s, cx| {
+				let snapshot = s.snapshot.clone().expect("fixture snapshot");
+				s.status_before_refresh = Some(LoadState::Ready);
+				s.state = LoadState::Loading;
+				s.finish_snapshot_refresh(Ok(AgentSnapshotResult::Available(snapshot)), cx);
+			});
+			cx.run_until_parked();
+		}
+		assert_eq!(notifications.get(), 0, "identical background reads stay quiet");
+		surface.update(cx, |s, cx| {
+			let mut snapshot = s.snapshot.clone().expect("fixture snapshot");
+			snapshot.work_items[0].title.push_str(" changed");
+			s.finish_snapshot_refresh(Ok(AgentSnapshotResult::Available(snapshot)), cx);
+		});
+		cx.run_until_parked();
+		assert_eq!(notifications.get(), 1, "changed work must still repaint");
+		for _ in 0..3 {
+			surface.update(cx, |s, cx| s.finish_snapshot_refresh(Err(()), cx));
+			cx.run_until_parked();
+		}
+		assert_eq!(notifications.get(), 4, "failed reads must repaint invalidated panels");
+		surface.update(cx, |s, cx| {
+			let snapshot = s.snapshot.clone().expect("retained snapshot");
+			s.finish_snapshot_refresh(Ok(AgentSnapshotResult::Available(snapshot)), cx);
+		});
+		cx.run_until_parked();
+		assert_eq!(notifications.get(), 5, "recovery must repaint even with identical work");
 	}
 
 	#[gpui::test]

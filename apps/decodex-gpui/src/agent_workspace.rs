@@ -1121,6 +1121,7 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		crate::frame_trace::surface_render("transcript");
 		self.prepare_transcript_history(window, cx);
 		let selected = self.conversation_work();
 		let is_agent = self.native_agents.selected.is_some() || self.selected_is_agent();
@@ -1354,10 +1355,9 @@ impl AgentSurface {
 				.min_h_0()
 				.flex()
 				.relative()
-				// Repaint the current transcript geometry. Whole-scene replay can
-				// retain old pixels during scrolling and native panel transitions.
-				// Markdown shaping and history preparation retain their own caches.
-				.child(self.transcript_presentation.clone())
+				// Each bounded pane owns its animation demand. Graph motion must not
+				// rebuild static history; scrolling and geometry changes invalidate it.
+				.child(crate::ui_layout::pane(self.transcript_presentation.clone(), window))
 				.when(!self.is_new_conversation(), |row| {
 					row.child(self.history_rail_slot(window, cx))
 				})
@@ -1423,6 +1423,9 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Div {
 		let palette = ui_theme::workspace_palette();
+		if height <= 0.1 {
+			self.stop_graph_actors();
+		}
 		// One clipped work surface joins the map and transcript. The native editor
 		// remains on the outer frame so its width and bottom anchor do not change.
 		let plane = gpui::div()
@@ -1438,6 +1441,7 @@ impl AgentSurface {
 			.child(
 				gpui::div()
 					.flex_none()
+					.relative()
 					.overflow_hidden()
 					.w_full()
 					.h(gpui::px(height))
@@ -1447,7 +1451,11 @@ impl AgentSurface {
 					})
 					.bg(palette.graph)
 					.opacity(self.workspace.arrival.progress(0.06))
-					.when(height > 0.1, |panel| panel.child(self.handoff_canvas(cx))),
+					.when(height > 0.1, |panel| {
+						panel
+							.child(crate::ui_layout::pane(self.graph_presentation.clone(), window))
+							.child(self.graph_layers())
+					}),
 			)
 			.when(!self.workspace.graph_expanded, |plane| {
 				plane.child(
@@ -1525,11 +1533,25 @@ impl AgentSurface {
 		let body = gpui::div().flex_1().min_h_0().flex().overflow_hidden().child(center).child(
 			gpui::div()
 				.flex_none()
+				.relative()
 				.w(gpui::px(right_width))
 				.h_full()
 				.overflow_hidden()
 				.opacity(self.workspace.arrival.progress(0.08))
-				.when(right_width > 0.1, |panel| panel.child(self.agent_tree(right_width, cx))),
+				.when(right_width > 0.1, |panel| {
+					self.deliveries.update(cx, |panel, cx| panel.set_width(right_width, cx));
+					panel
+						.child(crate::ui_layout::pane(self.activity_presentation.clone(), window))
+						.child(
+							gpui::div()
+								.absolute()
+								.left_0()
+								.top_0()
+								.bottom_0()
+								.w(gpui::px(1.))
+								.bg(ui_theme::rgba(ui_theme::PANEL_DIVIDER)),
+						)
+				}),
 		);
 		// Sidebars share the native plane; Thin adds subtle graph and reading tints.
 		let main = gpui::div()

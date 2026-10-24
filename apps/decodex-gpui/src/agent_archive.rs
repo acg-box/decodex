@@ -31,7 +31,9 @@ pub(super) struct Panel {
 	pub(super) feedback: String,
 }
 impl Panel {
-	fn apply_read(&mut self, result: AgentArchiveResult, explicit: bool) {
+	fn apply_read(&mut self, result: AgentArchiveResult, explicit: bool) -> bool {
+		let previous = self.result.clone();
+		let feedback = self.feedback.clone();
 		let failed = matches!(
 			result,
 			AgentArchiveResult::Unavailable
@@ -49,6 +51,7 @@ impl Panel {
 
 			self.result = Some(result);
 		}
+		self.result != previous || self.feedback != feedback
 	}
 }
 
@@ -136,9 +139,7 @@ impl AgentSurface {
 
 		self.archive.request = None;
 
-		self.archive.apply_read(result, explicit);
-
-		true
+		self.archive.apply_read(result, explicit)
 	}
 
 	fn restore_archive(&mut self, work: &str, thread: &str, cx: &mut Context<Self>) {
@@ -359,6 +360,19 @@ mod tests {
 	use crate::shell::agent_surface::archive::{
 		self, AgentArchiveResult, AgentSurface, AgentWorkItemDto, Panel,
 	};
+
+	#[test]
+	fn unchanged_archive_state_stays_quiet_and_restore_feedback_still_updates() {
+		let mut panel = Panel::default();
+		let state = AgentArchiveResult::Archived { thread_id: "thread".into() };
+		assert!(panel.apply_read(state.clone(), false));
+		assert!(!panel.apply_read(state.clone(), false));
+		assert!(!panel.apply_read(AgentArchiveResult::Unavailable, false));
+		assert!(panel.apply_read(AgentArchiveResult::Unavailable, true));
+		assert!(panel.apply_read(state.clone(), false));
+		assert!(!panel.apply_read(state, false));
+		assert!(panel.apply_read(AgentArchiveResult::Active { thread_id: "thread".into() }, false));
+	}
 	#[cfg(test)]
 	use crate::shell::agent_surface::archive::{
 		AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,

@@ -121,6 +121,7 @@ impl AgentSurface {
 				}
 				let (applied, read) =
 					result.unwrap_or((mark.map(|_| false), AgentReadStateResult::Unavailable));
+				let changed = read_text(s.read_state.result.as_ref()) != read_text(Some(&read));
 				s.read_state.result = Some(read);
 				s.read_state.read_at = Some(Instant::now());
 				if let Some(applied) = applied {
@@ -131,10 +132,14 @@ impl AgentSurface {
 					}
 					.into();
 				}
-				cx.notify();
+				if changed || applied.is_some() {
+					cx.notify();
+				}
 			});
 		}));
-		cx.notify();
+		if self.read_state.result.is_none() {
+			cx.notify();
+		}
 	}
 
 	pub(super) fn read_state_panel(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -145,22 +150,22 @@ impl AgentSurface {
 			.then_some(self.read_state.result.as_ref())
 			.flatten();
 		let mut panel = gpui::div().flex().flex_col().gap_2().child(read_text(current));
-		if self.read_state.task.is_none() {
+		// Background reads do not remove actions or replace verified status.
+		// The request owner coalesces clicks while a read is in progress.
+		panel = panel.child(self.workspace_action(
+			"native-read-state-refresh".into(),
+			"Refresh read status".into(),
+			|s, cx| s.load_read_state(None, cx),
+			cx,
+		));
+		if let Some(AgentReadStateResult::Available { first_unread, .. }) = current {
+			let read = first_unread.is_some();
 			panel = panel.child(self.workspace_action(
-				"native-read-state-refresh".into(),
-				"Refresh read status".into(),
-				|s, cx| s.load_read_state(None, cx),
+				"native-read-state-mark".into(),
+				if read { "Mark as read" } else { "Mark as unread" }.into(),
+				move |s, cx| s.load_read_state(Some(read), cx),
 				cx,
 			));
-			if let Some(AgentReadStateResult::Available { first_unread, .. }) = current {
-				let read = first_unread.is_some();
-				panel = panel.child(self.workspace_action(
-					"native-read-state-mark".into(),
-					if read { "Mark as read" } else { "Mark as unread" }.into(),
-					move |s, cx| s.load_read_state(Some(read), cx),
-					cx,
-				));
-			}
 		}
 		panel.child(self.read_state.feedback.clone()).into_any_element()
 	}

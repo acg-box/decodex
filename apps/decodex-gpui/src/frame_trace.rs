@@ -11,6 +11,13 @@ use gpui::profiler::{self, FrameEvent, FrameTimingCollector};
 
 static ROWS: OnceLock<(Instant, Mutex<Vec<serde_json::Value>>)> = OnceLock::new();
 
+/// Count region rebuilds without recording conversation content or identifiers.
+pub(crate) fn surface_render(surface: &'static str) {
+	record(
+		|at_ms| serde_json::json!({"at_ms": at_ms, "phase": "surface_render", "surface": surface}),
+	);
+}
+
 pub(crate) fn mermaid_prepared(duration: Duration, width: f32, height: f32) {
 	record(|at_ms| {
 		serde_json::json!({
@@ -91,7 +98,7 @@ pub(crate) fn start(cx: &mut gpui::App) {
 						let material = None::<&str>;
 						#[cfg(any(not(target_os = "macos"), test))]
 						let rendering = None::<serde_json::Value>;
-						serde_json::json!({"window": format!("{:?}", handle.window_id()), "key": window.is_window_active(), "glass_style": glass, "material": material, "rendering": rendering})
+						serde_json::json!({"window": format!("{:?}", handle.window_id()), "key": window.is_window_active(), "visible": window.is_visible(), "accessibility_active": window.is_a11y_active(), "glass_style": glass, "material": material, "rendering": rendering})
 					}).ok()
 				}).collect();
 				serde_json::json!({"at_ms": start.elapsed().as_secs_f64() * 1_000., "application_active": crate::ui_frame::application_active(), "full_background_rendering": crate::ui_frame::background_rendering(None), "windows": windows})
@@ -135,15 +142,17 @@ pub(crate) fn start(cx: &mut gpui::App) {
 				}))
 			})
 			.collect();
-		let (graph, recorded_rows): (Vec<_>, Vec<_>) = ROWS
+		let (surfaces, recorded_rows): (Vec<_>, Vec<_>) = ROWS
 			.get()
 			.map(|(_, rows)| rows.lock().expect("row frame measurements").clone())
 			.unwrap_or_default()
 			.into_iter()
-			.partition(|row| row["phase"] == "graph");
+			.partition(|row| row["phase"] == "surface_render");
+		let (graph, recorded_rows): (Vec<_>, Vec<_>) =
+			recorded_rows.into_iter().partition(|row| row["phase"] == "graph");
 		let (viewport, arrivals): (Vec<_>, Vec<_>) =
 			recorded_rows.into_iter().partition(|row| row["phase"] == "viewport");
-		let report = serde_json::json!({"schema": 5, "started_at_ms": started_at_ms, "note": "CPU draw and platform submission timing; excludes GPU completion and screen scanout. Activity samples distinguish foreground from hidden or inactive windows. Native glass styles: 0 regular, 1 clear. Row arrivals record presentation progress without message content. Viewport height is the scroll maximum after layout. Graph frames record only camera geometry and reveal opacity.", "frames": rows, "presentations": presentations, "activity": *activity.lock().expect("frame activity"), "row_arrivals": arrivals, "viewport": viewport, "graph_frames": graph});
+		let report = serde_json::json!({"schema": 5, "started_at_ms": started_at_ms, "note": "CPU draw and platform submission timing; excludes GPU completion and screen scanout. Activity samples distinguish foreground from hidden or inactive windows. Native glass styles: 0 regular, 1 clear. Row arrivals record presentation progress without message content. Viewport height is the scroll maximum after layout. Graph frames record only camera geometry and reveal opacity. Surface renders count region rebuilds without identifiers or content.", "frames": rows, "presentations": presentations, "activity": *activity.lock().expect("frame activity"), "row_arrivals": arrivals, "viewport": viewport, "graph_frames": graph, "surface_renders": surfaces});
 
 		if let Err(error) = fs::write(path, report.to_string()) {
 			eprintln!("Could not write frame measurements: {error}");

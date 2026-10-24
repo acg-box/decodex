@@ -13,6 +13,7 @@ use gpui::AppContext;
 #[path = "agent_relation_groups.rs"] mod groups;
 #[path = "agent_relation_header.rs"] mod header;
 #[path = "agent_relation_hover.rs"] mod hover;
+#[path = "agent_relation_layers.rs"] mod layers;
 #[path = "agent_relation_layout.rs"] mod layout;
 #[path = "agent_relation_mascot.rs"] mod mascot;
 #[path = "agent_relation_metrics.rs"] pub(super) mod metrics;
@@ -65,6 +66,7 @@ pub(super) struct View {
 	map_drag: Option<minimap::Drag>,
 	activity: std::cell::RefCell<BTreeMap<String, stream::Stream>>,
 	mascots: std::cell::RefCell<BTreeMap<String, mascot::Actor>>,
+	layers: layers::Layers,
 	routing: std::cell::RefCell<routing::Cache>,
 	visibility: std::cell::RefCell<visibility::Cache>,
 	origin: (f32, f32),
@@ -451,12 +453,7 @@ impl AgentSurface {
 				text_layout,
 				&self.work_board.text_system,
 			));
-			let height = layout.world_height(header::detail_rows(
-				&assignment,
-				&activity,
-				text_layout,
-				&self.work_board.text_system,
-			));
+			let height = layout_height;
 			let attachment = Some(text_layout.character_bounds(activity.height / stream::LINE));
 			let title_lines = header::content_rows(
 				&assignment,
@@ -902,8 +899,31 @@ impl AgentSurface {
 		canvas = self.relation_scope_layer(canvas, graph, scale, pan);
 		canvas = self.paint_relation_connections(canvas, graph, &lines, moving, cx);
 		canvas = self.relation_node_layer(canvas, graph, &lines, cx);
+		self.work_board.view.layers.links.replace(lines);
+		canvas = canvas.child(self.work_board.view.layers.bounds_recorder());
+		gpui::div()
+			.size_full()
+			.flex()
+			.flex_col()
+			.child(self.relation_controls(cx))
+			.child(canvas)
+			.child(crate::ui_motion::disclosure(
+				"graph-usage-reveal",
+				!self.work_board.view.usage_hidden,
+				self.relation_usage(cx),
+			))
+			.into_any_element()
+	}
+
+	fn relation_foreground(
+		&self,
+		mut canvas: gpui::Stateful<gpui::Div>,
+		graph: &Graph,
+		lines: &[visibility::Link],
+		cx: &mut Context<Self>,
+	) -> gpui::Stateful<gpui::Div> {
 		// Visible relationship labels keep their own hit targets above transparent node areas.
-		canvas = self.relation_label_layer(canvas, graph, &lines, cx);
+		canvas = self.relation_label_layer(canvas, graph, lines, cx);
 		if let Some(map) = self.relation_minimap(graph, cx) {
 			canvas = canvas.child(map);
 		}
@@ -924,18 +944,7 @@ impl AgentSurface {
 					self.relation_legend(),
 				)),
 		);
-		gpui::div()
-			.size_full()
-			.flex()
-			.flex_col()
-			.child(self.relation_controls(cx))
-			.child(canvas)
-			.child(crate::ui_motion::disclosure(
-				"graph-usage-reveal",
-				!self.work_board.view.usage_hidden,
-				self.relation_usage(cx),
-			))
-			.into_any_element()
+		canvas
 	}
 
 	fn move_relation_pointer(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
@@ -1605,6 +1614,13 @@ impl AgentSurface {
 				),
 				faded,
 				visibility: opacity,
+				mascot_opacity: self
+					.work_board
+					.view
+					.mascots
+					.borrow()
+					.get(&node.key)
+					.map(mascot::Actor::opacity),
 				ports: node.row.as_ref().filter(|_| !layout.points()).map(|_| card::Ports {
 					zoom: scale,
 					selected: emphasized,
@@ -1987,7 +2003,14 @@ impl AgentSurface {
 					.mascots
 					.borrow_mut()
 					.entry(node.key.clone())
-					.or_insert_with(|| mascot::Actor::new(&node.key, status, now))
+					.or_insert_with(|| {
+						mascot::Actor::new(
+							&node.key,
+							status,
+							now,
+							self.work_board.view.layers.actors.clone(),
+						)
+					})
 					.frame(status, now);
 				if self.work_board.view.presentation == layout::Presentation::Together
 					&& let Some(motion) = &self.work_board.view.motion

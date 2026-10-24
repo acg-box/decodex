@@ -4,13 +4,194 @@ use crate::ui_motion;
 use gpui::{App, IntoElement, Styled as _, Window};
 use serde::Deserialize;
 use std::{
+	cell::{Cell, RefCell},
 	collections::BTreeMap,
+	rc::Rc,
 	sync::{Arc, LazyLock},
-	time::Instant,
+	time::{Duration, Instant},
 };
 
 #[path = "agent_relation_mascot_motion.rs"] mod motion;
 use motion::State;
+
+const IDLE_INTERVAL: Duration = Duration::from_millis(50);
+const ACTION_INTERVAL: Duration = Duration::from_millis(16);
+
+/// Poll poses without drawing identical pixels. Other motion keeps display cadence.
+#[derive(Clone, Default)]
+pub(super) struct Clock(Rc<Cell<u64>>);
+impl Clock {
+	fn cancel(&self) {
+		if self.0.get() % 2 == 1 {
+			self.0.set(self.0.get().wrapping_add(1));
+		}
+	}
+
+	fn request(
+		&self,
+		window: &Window,
+		cx: &mut App,
+		interval: Duration,
+		mut changed: impl FnMut() -> Option<bool> + 'static,
+	) {
+		if !ui_motion::animations_active() || self.0.get() % 2 == 1 {
+			return;
+		}
+		let token = self.0.get().wrapping_add(1);
+		self.0.set(token);
+		let pending = self.0.clone();
+		let target = window.window_handle();
+		let view = window.current_view();
+		cx.spawn(async move |cx| {
+			while pending.get() == token {
+				cx.background_executor().timer(interval).await;
+				if pending.get() != token {
+					break;
+				}
+				let result = target.update(cx, |_, window, cx| {
+					if !window.is_visible() {
+						// Keep one dirty pose ready for the next visible frame.
+						cx.notify(view);
+						return None;
+					}
+					if ui_motion::reduced() || !ui_motion::animations_active() {
+						return None;
+					}
+					let redraw = changed();
+					if redraw == Some(true) {
+						cx.notify(view);
+					}
+					redraw
+				});
+				if !matches!(result, Ok(Some(false))) {
+					break;
+				}
+			}
+			if pending.get() == token {
+				pending.set(token.wrapping_add(1));
+			}
+		})
+		.detach();
+	}
+}
+
+/// Layout publishes visible actor slots; only this sibling layer advances their poses.
+#[derive(Clone, Default)]
+pub(super) struct Scene {
+	placements: Rc<RefCell<Vec<Placement>>>,
+	painted: Rc<RefCell<Painted>>,
+	clock: Clock,
+}
+#[derive(Default)]
+struct Painted {
+	pixels: Vec<PaintedPixel>,
+	density: f32,
+	mask: gpui::ContentMask<gpui::Pixels>,
+}
+#[derive(Debug, PartialEq)]
+struct PaintedPixel {
+	bounds: gpui::Bounds<gpui::Pixels>,
+	color: u32,
+	opacity: f32,
+}
+struct Placement {
+	figure: Figure,
+	bounds: gpui::Bounds<gpui::Pixels>,
+	mask: gpui::ContentMask<gpui::Pixels>,
+	presence: f32,
+}
+impl Scene {
+	pub(super) fn clear(&self) {
+		self.clock.cancel();
+		self.placements.borrow_mut().clear();
+		self.painted.borrow_mut().pixels.clear();
+	}
+
+	fn pixels(
+		placements: &[Placement],
+		now: Instant,
+		density: f32,
+		mask: gpui::ContentMask<gpui::Pixels>,
+		reduced: bool,
+	) -> Vec<PaintedPixel> {
+		let mut pixels = Vec::new();
+		for placement in placements {
+			let opacity = placement.presence * placement.figure.opacity.get();
+			let clip = placement.mask.bounds.intersect(&mask.bounds);
+			if opacity <= 0.001 || placement.bounds.intersect(&clip).is_empty() {
+				continue;
+			}
+			let start = pixels.len();
+			placement.figure.pixels(placement.bounds, now, density, opacity, reduced, &mut pixels);
+			for pixel in &mut pixels[start..] {
+				pixel.bounds = pixel.bounds.intersect(&clip);
+			}
+		}
+		pixels.retain(|pixel| !pixel.bounds.is_empty());
+		pixels
+	}
+
+	pub(super) fn element(&self) -> impl IntoElement {
+		let scene = self.clone();
+		gpui::canvas(
+			|_, _, _| (),
+			move |_, _, window, cx| {
+				let density = window.scale_factor();
+				let mask = window.content_mask();
+				let reduced = ui_motion::reduced();
+				let pixels = Self::pixels(
+					&scene.placements.borrow(),
+					Instant::now(),
+					density,
+					mask,
+					reduced,
+				);
+				// This sibling layer has a fixed paint order. One layer bound avoids
+				// inserting every artwork rectangle into GPUI's overlap tree.
+				window.paint_layer(mask.bounds, |window| {
+					for pixel in &pixels {
+						window.paint_quad(gpui::fill(
+							pixel.bounds,
+							gpui::rgb(pixel.color).opacity(pixel.opacity),
+						));
+					}
+				});
+				let visible = !pixels.is_empty();
+				scene.painted.replace(Painted { pixels, density, mask });
+				if visible && !reduced {
+					// Keep the existing idle artwork cadence. Active poses can advance
+					// at display speed, independently of scrolling and camera motion.
+					let interval = if scene.placements.borrow().iter().any(|placement| {
+						placement.figure.sample(Instant::now(), false).0 != State::Idle
+					}) {
+						ACTION_INTERVAL
+					} else {
+						IDLE_INTERVAL
+					};
+					let placements = Rc::downgrade(&scene.placements);
+					let painted = Rc::downgrade(&scene.painted);
+					scene.clock.request(window, cx, interval, move || {
+						let placements = placements.upgrade()?;
+						let painted = painted.upgrade()?;
+						let painted = painted.borrow();
+						Some(
+							Self::pixels(
+								&placements.borrow(),
+								Instant::now(),
+								painted.density,
+								painted.mask,
+								false,
+							) != painted.pixels,
+						)
+					});
+				} else {
+					scene.clock.cancel();
+				}
+			},
+		)
+		.size_full()
+	}
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -164,20 +345,28 @@ impl Drawing {
 /// One actor per stable agent identity; repeated reads do not restart its motion.
 pub(super) struct Actor {
 	drawing: Arc<Drawing>,
+	scene: Scene,
+	opacity: Rc<Cell<f32>>,
 	state: State,
 	changed: Instant,
 	arrival: bool,
 	idle_phase: f32,
 }
 impl Actor {
-	pub(super) fn new(seed: &str, status: &str, now: Instant) -> Self {
+	pub(super) fn new(seed: &str, status: &str, now: Instant, scene: Scene) -> Self {
 		Self {
 			drawing: Arc::new(Drawing::new(seed)),
+			scene,
+			opacity: Rc::new(Cell::new(1.)),
 			state: State::for_status(status),
 			changed: now,
 			arrival: false,
 			idle_phase: (hash(seed) % 5800) as f32 / 1000.,
 		}
+	}
+
+	pub(super) fn opacity(&self) -> Rc<Cell<f32>> {
+		self.opacity.clone()
 	}
 
 	pub(super) fn frame(&mut self, status: &str, now: Instant) -> Avatar {
@@ -200,100 +389,310 @@ impl Actor {
 			self.state
 		};
 		Avatar {
-			drawing: self.drawing.clone(),
-			state: animation,
-			seconds: seconds + if animation == State::Idle { self.idle_phase } else { 0. },
+			scene: self.scene.clone(),
+			figure: Figure {
+				drawing: self.drawing.clone(),
+				opacity: self.opacity.clone(),
+				state: animation,
+				seconds: seconds + if animation == State::Idle { self.idle_phase } else { 0. },
+				at: now,
+				settles: match animation {
+					State::Hopping if self.arrival => Some(State::Working),
+					State::Done => Some(State::Idle),
+					_ => None,
+				},
+				idle_phase: self.idle_phase,
+			},
 		}
 	}
 }
 
 pub(super) struct Avatar {
+	scene: Scene,
+	figure: Figure,
+}
+struct Figure {
 	drawing: Arc<Drawing>,
+	opacity: Rc<Cell<f32>>,
 	state: State,
 	seconds: f32,
+	at: Instant,
+	settles: Option<State>,
+	idle_phase: f32,
 }
 impl Avatar {
 	/// Travel is a presentation pose; it never changes the native work state.
 	pub(super) fn travelling(mut self, seconds: f32) -> Self {
-		self.state = State::Hopping;
-		self.seconds = seconds;
+		self.figure.state = State::Hopping;
+		self.figure.seconds = seconds;
+		self.figure.settles = None;
 		self
 	}
 
 	pub(super) fn element(self, layout: card::Layout) -> impl IntoElement {
-		let state = if ui_motion::reduced() { State::Idle } else { self.state };
-		let pose = state
-			.pose(if ui_motion::reduced() { 0. } else { self.seconds }, self.drawing.held_right);
+		let presence = if layout.overview() { layout.card_presence() } else { 1. };
 		gpui::canvas(
-			|_, _, _| (),
-			move |bounds, _, window: &mut Window, cx: &mut App| {
-				if bounds.intersect(&window.content_mask().bounds).is_empty() {
-					return;
-				}
-				if !ui_motion::reduced() {
-					ui_motion::request_frame(window, cx);
-				}
-				let scale = f32::from(bounds.size.width) / 40.;
-				let density = window.scale_factor();
-				let snap = |value: f32| (value * density).round() / density;
-				let mut paint = |pixel: &Pixel, offset: [f32; 2], size: f32, opacity: f32| {
-					let [x, y, w, h] = pixel.rect;
-					let left = snap(
-						f32::from(bounds.left()) + (x + offset[0] + w * (1. - size) / 2.) * scale,
-					);
-					let top = snap(
-						f32::from(bounds.top()) + (y + offset[1] + h * (1. - size) / 2.) * scale,
-					);
-					let right = snap(
-						f32::from(bounds.left()) + (x + offset[0] + w * (1. + size) / 2.) * scale,
-					);
-					let bottom = snap(
-						f32::from(bounds.top()) + (y + offset[1] + h * (1. + size) / 2.) * scale,
-					);
-					window.paint_quad(gpui::fill(
-						gpui::Bounds::new(
-							gpui::point(gpui::px(left), gpui::px(top)),
-							gpui::size(gpui::px(right - left), gpui::px(bottom - top)),
-						),
-						gpui::rgb(pixel.color).opacity(opacity),
-					));
-				};
-				for (index, pixel) in self.drawing.particles.iter().enumerate() {
-					let particle = pose.particle(state, self.seconds, index);
-					paint(pixel, particle.offset, particle.size, particle.opacity);
-				}
-				for (pixels, offset) in [
-					(&self.drawing.cloud, pose.cloud),
-					(&self.drawing.left, pose.left),
-					(&self.drawing.right, pose.right),
-				] {
-					for pixel in pixels {
-						paint(pixel, offset, 1., 1.);
-					}
-				}
-				for eye in &self.drawing.eyes {
-					if pose.blink {
-						let [x, _, w, _] = eye.rect;
-						paint(
-							&Pixel { rect: [x, 17.3, w, 0.45], color: eye.color },
-							pose.cloud,
-							1.,
-							1.,
-						);
-					} else {
-						paint(eye, pose.cloud, 1., 1.);
-					}
+			move |bounds, window, _| {
+				let mask = window.content_mask();
+				if !bounds.intersect(&mask.bounds).is_empty() {
+					self.scene.placements.borrow_mut().push(Placement {
+						figure: self.figure,
+						bounds,
+						mask,
+						presence,
+					});
 				}
 			},
+			|_, _, _, _| {},
 		)
 		.w(gpui::px(layout.portrait_spacing(card::PORTRAIT_WIDTH)))
 		.h(gpui::px(layout.portrait_spacing(card::PORTRAIT_HEIGHT)))
+	}
+}
+impl Figure {
+	fn sample(&self, now: Instant, reduced: bool) -> (State, f32) {
+		if reduced {
+			return (State::Idle, 0.);
+		}
+		let mut seconds = self.seconds + now.saturating_duration_since(self.at).as_secs_f32();
+		let mut state = self.state;
+		if let Some(next) = self.settles
+			&& seconds >= if state == State::Done { 2.2 } else { 0.9 }
+		{
+			state = next;
+			if state == State::Idle {
+				seconds += self.idle_phase;
+			}
+		}
+		(state, seconds)
+	}
+
+	fn pixels(
+		&self,
+		bounds: gpui::Bounds<gpui::Pixels>,
+		now: Instant,
+		density: f32,
+		alpha: f32,
+		reduced: bool,
+		pixels: &mut Vec<PaintedPixel>,
+	) {
+		let (state, seconds) = self.sample(now, reduced);
+		let pose = state.pose(seconds, self.drawing.held_right);
+		let scale = f32::from(bounds.size.width) / 40.;
+		let snap = |value: f32| (value * density).round() / density;
+		let mut paint = |pixel: &Pixel, offset: [f32; 2], size: f32, opacity: f32| {
+			let [x, y, w, h] = pixel.rect;
+			// Move each part as one physical-pixel translation. Rounding every
+			// rectangle after adding a subpixel pose deforms the outline and
+			// creates redraws even when the part has not moved by a pixel.
+			let origin = [
+				snap(f32::from(bounds.left())) + snap(offset[0] * scale),
+				snap(f32::from(bounds.top())) + snap(offset[1] * scale),
+			];
+			let left = origin[0] + snap((x + w * (1. - size) / 2.) * scale);
+			let top = origin[1] + snap((y + h * (1. - size) / 2.) * scale);
+			let right = origin[0] + snap((x + w * (1. + size) / 2.) * scale);
+			let bottom = origin[1] + snap((y + h * (1. + size) / 2.) * scale);
+			pixels.push(PaintedPixel {
+				bounds: gpui::Bounds::new(
+					gpui::point(gpui::px(left), gpui::px(top)),
+					gpui::size(gpui::px(right - left), gpui::px(bottom - top)),
+				),
+				color: pixel.color,
+				opacity: opacity * alpha,
+			});
+		};
+		for (index, pixel) in self.drawing.particles.iter().enumerate() {
+			let particle = pose.particle(state, seconds, index);
+			paint(pixel, particle.offset, particle.size, particle.opacity);
+		}
+		for (pixels, offset) in [
+			(&self.drawing.cloud, pose.cloud),
+			(&self.drawing.left, pose.left),
+			(&self.drawing.right, pose.right),
+		] {
+			for pixel in pixels {
+				paint(pixel, offset, 1., 1.);
+			}
+		}
+		for eye in &self.drawing.eyes {
+			if pose.blink {
+				let [x, _, w, _] = eye.rect;
+				paint(&Pixel { rect: [x, 17.3, w, 0.45], color: eye.color }, pose.cloud, 1., 1.);
+			} else {
+				paint(eye, pose.cloud, 1., 1.);
+			}
+		}
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	struct AnimationFixture {
+		clock: Clock,
+		visible: bool,
+	}
+	impl gpui::Render for AnimationFixture {
+		fn render(
+			&mut self,
+			window: &mut Window,
+			cx: &mut gpui::Context<Self>,
+		) -> impl IntoElement {
+			if self.visible {
+				self.clock.request(window, cx, IDLE_INTERVAL, || Some(true));
+				self.clock.request(window, cx, IDLE_INTERVAL, || Some(true));
+			}
+			gpui::div()
+		}
+	}
+
+	struct PixelFixture {
+		clock: Clock,
+		changed: Rc<Cell<bool>>,
+		checks: Rc<Cell<usize>>,
+	}
+	impl gpui::Render for PixelFixture {
+		fn render(
+			&mut self,
+			window: &mut Window,
+			cx: &mut gpui::Context<Self>,
+		) -> impl IntoElement {
+			let changed = self.changed.clone();
+			let checks = self.checks.clone();
+			self.clock.request(window, cx, IDLE_INTERVAL, move || {
+				checks.set(checks.get() + 1);
+				Some(changed.get())
+			});
+			gpui::div()
+		}
+	}
+
+	#[gpui::test]
+	fn visible_actors_share_one_tick_and_hidden_actors_stop(cx: &mut gpui::TestAppContext) {
+		let (view, visual) =
+			cx.add_window_view(|_, _| AnimationFixture { clock: Clock::default(), visible: true });
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.run_until_parked();
+		let notifications = Rc::new(Cell::new(0));
+		visual.update(|_, cx| {
+			let notifications = notifications.clone();
+			cx.observe(&view, move |_, _| notifications.set(notifications.get() + 1)).detach();
+		});
+		visual.executor().advance_clock(Duration::from_millis(49));
+		visual.run_until_parked();
+		assert_eq!(notifications.get(), 0);
+		visual.executor().advance_clock(Duration::from_millis(1));
+		visual.run_until_parked();
+		assert_eq!(notifications.get(), 1, "visible actors must share one redraw notification");
+		view.update(visual, |view, cx| {
+			view.visible = false;
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.run_until_parked();
+		notifications.set(0);
+		// A tick that was queued while visible may finish once after hiding.
+		visual.executor().advance_clock(Duration::from_millis(50));
+		visual.run_until_parked();
+		assert!(notifications.get() <= 1);
+		notifications.set(0);
+		visual.executor().advance_clock(Duration::from_millis(150));
+		visual.run_until_parked();
+		assert_eq!(notifications.get(), 0, "a hidden graph must not retain an animation loop");
+	}
+
+	#[gpui::test]
+	fn unchanged_pixels_do_not_request_frames_and_cancellation_stops_polling(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let notifications = Rc::new(Cell::new(0));
+		let changed = Rc::new(Cell::new(false));
+		let checks = Rc::new(Cell::new(0));
+		let (view, visual) = cx.add_window_view(|_, _| PixelFixture {
+			clock: Clock::default(),
+			changed: changed.clone(),
+			checks: checks.clone(),
+		});
+		visual.update(|window, cx| {
+			let notifications = notifications.clone();
+			cx.observe(&view, move |_, _| notifications.set(notifications.get() + 1)).detach();
+			window.draw(cx).clear(cx);
+		});
+		for _ in 0..4 {
+			visual.executor().advance_clock(IDLE_INTERVAL);
+			visual.run_until_parked();
+		}
+		assert!(checks.get() > 0);
+		assert_eq!(notifications.get(), 0);
+		changed.set(true);
+		visual.executor().advance_clock(IDLE_INTERVAL);
+		visual.run_until_parked();
+		assert_eq!(notifications.get(), 1);
+		visual.update(|window, cx| {
+			changed.set(false);
+			window.draw(cx).clear(cx);
+			let clock = view.read(cx).clock.clone();
+			clock.cancel();
+		});
+		let before = checks.get();
+		visual.executor().advance_clock(Duration::from_millis(100));
+		visual.run_until_parked();
+		assert_eq!(checks.get(), before);
+	}
+
+	#[test]
+	fn pixel_comparison_keeps_crisp_geometry_and_ignores_subpixel_pose_changes() {
+		let now = Instant::now();
+		let mut actor = Actor::new("main", "Idle", now, Scene::default());
+		let figure = actor.frame("Idle", now).figure;
+		let bounds = gpui::Bounds::new(
+			gpui::point(gpui::px(20.25), gpui::px(30.25)),
+			gpui::size(gpui::px(13.2), gpui::px(10.56)),
+		);
+		let pixels = |time| {
+			let mut result = Vec::new();
+			figure.pixels(bounds, time, 2., 0.8, false, &mut result);
+			result
+		};
+		let first = pixels(now);
+		assert_eq!(pixels(now + Duration::from_micros(1)), first);
+		assert!((1..625).any(|step| pixels(now + Duration::from_millis(step * 16)) != first));
+		let frames: Vec<_> =
+			(0..120).map(|step| pixels(now + Duration::from_millis(step * 16))).collect();
+		let changed = frames.windows(2).filter(|pair| pair[0] != pair[1]).count();
+		assert!(changed < 60, "small actors must not draw every display tick: {changed}");
+		assert!(first.iter().all(|pixel| {
+			[pixel.bounds.left(), pixel.bounds.top(), pixel.bounds.right(), pixel.bounds.bottom()]
+				.into_iter()
+				.all(|edge| (f32::from(edge) * 2.).fract() == 0.)
+		}));
+	}
+
+	#[test]
+	fn moving_a_pixel_part_keeps_its_outline_rigid_at_thumbnail_zoom() {
+		let now = Instant::now();
+		let mut actor = Actor::new("main", "Waiting", now, Scene::default());
+		let figure = actor.frame("Waiting", now).figure;
+		let bounds = gpui::Bounds::new(
+			gpui::point(gpui::px(20.25), gpui::px(30.25)),
+			gpui::size(gpui::px(13.2), gpui::px(10.56)),
+		);
+		let mut before = Vec::new();
+		let mut after = Vec::new();
+		figure.pixels(bounds, now, 2., 1., false, &mut before);
+		figure.pixels(bounds, now + Duration::from_millis(1600), 2., 1., false, &mut after);
+		let start = figure.drawing.particles.len();
+		for index in start..start + figure.drawing.cloud.len() {
+			assert_eq!(before[index].bounds.size, after[index].bounds.size);
+			assert_eq!(
+				after[index].bounds.origin - before[index].bounds.origin,
+				gpui::point(gpui::px(0.), gpui::px(0.5))
+			);
+		}
+	}
+
 	#[test]
 	fn artwork_is_finite_and_identity_is_stable() {
 		for seed in ["main", "release", "native:thread-1", "专项负责人", "A1234"] {
@@ -340,23 +739,42 @@ mod tests {
 	fn completion_plays_once_and_repeated_reads_do_not_restart_it() {
 		use std::time::Duration;
 		let now = Instant::now();
-		let mut actor = Actor::new("main", "Running", now);
+		let mut actor = Actor::new("main", "Running", now, Scene::default());
 		let later = |ms| now + Duration::from_millis(ms);
-		assert_eq!(actor.frame("Running", later(200)).state, State::Working);
-		assert_eq!(actor.frame("Idle", later(300)).state, State::Done);
-		assert_eq!(actor.frame("Idle", later(900)).state, State::Done);
-		assert_eq!(actor.frame("Idle", later(2600)).state, State::Idle);
-		assert_eq!(actor.frame("Idle", later(2800)).state, State::Idle);
-		assert_eq!(actor.frame("Running", later(3000)).state, State::Hopping);
-		assert_eq!(actor.frame("Running", later(4000)).state, State::Working);
+		assert_eq!(actor.frame("Running", later(200)).figure.state, State::Working);
+		assert_eq!(actor.frame("Idle", later(300)).figure.state, State::Done);
+		assert_eq!(actor.frame("Idle", later(900)).figure.state, State::Done);
+		assert_eq!(actor.frame("Idle", later(2600)).figure.state, State::Idle);
+		assert_eq!(actor.frame("Idle", later(2800)).figure.state, State::Idle);
+		assert_eq!(actor.frame("Running", later(3000)).figure.state, State::Hopping);
+		assert_eq!(actor.frame("Running", later(4000)).figure.state, State::Working);
 	}
 
 	#[test]
 	fn lost_execution_status_does_not_celebrate_a_completion() {
 		let now = Instant::now();
 		for status in ["Not running", "Status unavailable", "Unknown", "Archived", "Error"] {
-			let mut actor = Actor::new("main", "Running", now);
-			assert_ne!(actor.frame(status, now).state, State::Done);
+			let mut actor = Actor::new("main", "Running", now, Scene::default());
+			assert_ne!(actor.frame(status, now).figure.state, State::Done);
 		}
+	}
+
+	#[test]
+	fn cached_figures_advance_and_finish_without_a_model_refresh() {
+		let now = Instant::now();
+		let mut actor = Actor::new("main", "Idle", now, Scene::default());
+		let started = now + Duration::from_millis(100);
+		let hopping = actor.frame("Running", started).figure;
+		assert_eq!(hopping.sample(started, false).0, State::Hopping);
+		assert_eq!(hopping.sample(started + Duration::from_secs(1), false).0, State::Working);
+		let completed = started + Duration::from_secs(2);
+		let done = actor.frame("Idle", completed).figure;
+		assert_eq!(done.sample(completed, true), (State::Idle, 0.));
+		assert_eq!(done.sample(completed, false).0, State::Done);
+		assert_eq!(done.sample(completed + Duration::from_secs(3), false).0, State::Idle);
+		assert!(
+			done.sample(completed + Duration::from_secs(4), false).1
+				> done.sample(completed + Duration::from_secs(3), false).1
+		);
 	}
 }

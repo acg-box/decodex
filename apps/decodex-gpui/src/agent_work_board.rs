@@ -292,13 +292,6 @@ fn native_state(status: &str) -> (&'static str, u8, u32) {
 	}
 }
 
-impl AgentSurface {
-	pub(super) fn render_work_board(&self, cx: &mut Context<Self>) -> AnyElement {
-		let graph = self.relation_graph();
-		self.relation_canvas(&graph, cx)
-	}
-}
-
 pub(super) struct Brief {
 	source_thread: Option<String>,
 	output: Option<activity::Output>,

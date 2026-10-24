@@ -194,13 +194,13 @@ impl AgentSurface {
 			.flex_col()
 			.gap(gpui::px(crate::ui_theme::MESSAGE_GAP));
 		let mut current_turn = None;
-		let mut exchange: Option<gpui::Stateful<Div>> = None;
+		let mut exchange: Option<(String, gpui::Stateful<Div>)> = None;
 		for item in &self.timeline.native.summary {
 			let Some(row) = self.native_summary_row(work, item, cx) else { continue };
 			let AgentTimelineContent::Item { turn_id, item_id, .. } = item else { continue };
 			if current_turn != Some(turn_id) {
-				if let Some(previous) = exchange.take() {
-					body = body.child(previous);
+				if let Some((key, previous)) = exchange.take() {
+					body = body.child(self.summary_exchange(key, previous, cx));
 				}
 				let identity = serde_json::json!([
 					"summary-exchange",
@@ -211,7 +211,8 @@ impl AgentSurface {
 				])
 				.to_string();
 				let selector = format!("native-summary-exchange-{turn_id}-{item_id}");
-				exchange = Some(
+				exchange = Some((
+					identity.clone(),
 					gpui::div()
 						.id(SharedString::from(identity))
 						.debug_selector(move || selector.clone())
@@ -222,12 +223,33 @@ impl AgentSurface {
 						.flex()
 						.flex_col()
 						.gap(gpui::px(crate::ui_theme::MESSAGE_GAP)),
-				);
+				));
 				current_turn = Some(turn_id);
 			}
-			exchange = exchange.map(|group| group.child(row));
+			exchange = exchange.map(|(key, group)| (key, group.child(row)));
 		}
-		body.children(exchange).into_any_element()
+		body.children(exchange.map(|(key, group)| self.summary_exchange(key, group, cx)))
+			.into_any_element()
+	}
+
+	fn summary_exchange(
+		&self,
+		key: String,
+		group: gpui::Stateful<Div>,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let focus = self
+			.timeline
+			.native
+			.summary_focus
+			.borrow_mut()
+			.entry(key)
+			.or_insert_with(|| cx.focus_handle())
+			.clone();
+		crate::ui_layout::visible(group.track_focus(&focus), move |window, cx| {
+			focus.contains_focused(window, cx)
+		})
+		.into_any_element()
 	}
 
 	pub(super) fn native_summary_row(

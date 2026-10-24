@@ -596,11 +596,11 @@ fn canvas_edge_inspection_preserves_conversation(cx: &mut gpui::TestAppContext) 
 		s
 	});
 	visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
-	visual.update(|w, cx| w.draw(cx).clear(cx));
+	visual.update(crate::ui_frame::draw_frame);
 	visual.run_until_parked();
-	visual.update(|w, cx| w.draw(cx).clear(cx));
+	visual.update(crate::ui_frame::draw_frame);
 	visual.run_until_parked();
-	visual.update(|w, cx| w.draw(cx).clear(cx));
+	visual.update(crate::ui_frame::draw_frame);
 	assert!(visual.debug_bounds("relations-canvas").is_some());
 	// History is disclosed after selecting an agent; both underlying facts survive.
 	assert!(visual.debug_bounds("relation-edge-context:42:verify:thread-flow").is_none());
@@ -610,9 +610,9 @@ fn canvas_edge_inspection_preserves_conversation(cx: &mut gpui::TestAppContext) 
 		assert!(graph.edges.iter().any(|e| e.id == "dependency:flow:verify"));
 		s.select_workbench_agent("verify", cx);
 	});
-	visual.update(|w, cx| w.draw(cx).clear(cx));
+	visual.update(crate::ui_frame::draw_frame);
 	std::thread::sleep(std::time::Duration::from_millis(220));
-	visual.update(|w, cx| w.draw(cx).clear(cx));
+	visual.update(crate::ui_frame::draw_frame);
 	let edge = visual.debug_bounds("relation-edge-context:42:verify:thread-flow").unwrap();
 	visual.simulate_click(edge.center(), Default::default());
 	surface.read_with(visual, |s, _| {
