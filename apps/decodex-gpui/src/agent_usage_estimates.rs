@@ -238,12 +238,15 @@ mod tests {
 			};
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agents: Default::default(),
+				guardian: Default::default(),
+				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
-				workspaces: vec![],
+				projects: vec![],
 				work_items: vec![work("root"), work("other")],
 				dependencies: vec![],
 				pending_events: vec![],
@@ -286,12 +289,15 @@ mod tests {
 	fn estimates_discard_changed_sources_and_late_reopened_requests(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
 		let snapshot = |source: &str, thread: &str| AgentSnapshotDto {
+			agents: Default::default(),
+			guardian: Default::default(),
+			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: Some(EntityId::new(source).unwrap()),
-			workspaces: vec![],
+			projects: vec![],
 			dependencies: vec![],
 			pending_events: vec![],
 			work_items: vec![AgentWorkItemDto {

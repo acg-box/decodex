@@ -869,12 +869,15 @@ mod timing_tests {
 
 		surface.update(visual, |s, cx| {
             s.apply_result(Ok(requests::AgentSnapshotResult::Available(requests::AgentSnapshotDto {
+		agents: Default::default(),
+		guardian: Default::default(),
+		portfolio: Default::default(),
                 archived_work_ids: Default::default(),
                 agent_slots: Default::default(),
                 context_references: vec![],
 connection_initializing: false,
                 runtime_source: None,
-                workspaces: vec![], dependencies: vec![],
+                projects: vec![], dependencies: vec![],
                 work_items: vec![requests::AgentWorkItemDto {
                     id:"root".into(), parent_goal_id:None, kind:requests::AgentWorkKindDto::Goal,
                     title:"Agent".into(),codex_thread_id:Some("thread".into()),active_turn_id:Some("turn".into()),

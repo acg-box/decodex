@@ -86,7 +86,7 @@ impl AgentSurface {
 			files: false,
 			directories: true,
 			multiple: false,
-			prompt: Some("Add workspace".into()),
+			prompt: Some("Add Project".into()),
 		});
 		cx.spawn(async move |surface, cx| {
 			let Ok(Ok(Some(paths))) = selected.await else { return };
@@ -98,9 +98,9 @@ impl AgentSurface {
 					let directory =
 						decodex_protocol::WireText::new(path.to_string_lossy().into_owned())
 							.map_err(|_| "Folder path is too long".to_owned())?;
-					let action = super::AgentActionDto::AddWorkspace {
-						workspace_id: decodex_protocol::EntityId::new(format!(
-							"workspace-{}",
+					let action = super::AgentActionDto::AddProject {
+						project_id: decodex_protocol::EntityId::new(format!(
+							"project-{}",
 							super::unique_command()
 						))
 						.expect("generated workspace identity is valid"),
@@ -158,9 +158,9 @@ impl AgentSurface {
 
 	pub(super) fn workspace_choices(&self, draft: bool, cx: &mut Context<Self>) -> AnyElement {
 		let selected = self.workspace_selection(draft);
-		let fallback = if draft { "No workspace" } else { "All workspaces" };
-		let workspaces = self.snapshot.as_ref().map(|s| s.workspaces.as_slice()).unwrap_or(&[]);
-		let name = workspaces
+		let fallback = if draft { "No Project" } else { "All Projects" };
+		let projects = self.snapshot.as_ref().map(|s| s.projects.as_slice()).unwrap_or(&[]);
+		let name = projects
 			.iter()
 			.find(|w| Some(&w.id) == selected.as_ref())
 			.map(|w| w.name.as_str())
@@ -250,7 +250,7 @@ impl AgentSurface {
 						.py_1()
 						.text_size(gpui::px(12.))
 						.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-						.child("No matching workspaces")
+						.child("No matching Projects")
 				}))
 				.child(self.add_workspace_button(cx));
 			anchor =
@@ -284,12 +284,12 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> (gpui::Stateful<gpui::Div>, bool) {
 		let selected = self.workspace_selection(draft);
-		let fallback = if draft { "No workspace" } else { "All workspaces" };
-		let workspaces = self.snapshot.as_ref().map(|s| s.workspaces.as_slice()).unwrap_or(&[]);
+		let fallback = if draft { "No Project" } else { "All Projects" };
+		let projects = self.snapshot.as_ref().map(|s| s.projects.as_slice()).unwrap_or(&[]);
 		let query = search.read(cx).content().trim().to_lowercase();
 		let mut choices = vec![(None, fallback.to_owned(), String::new())];
 		choices.extend(
-			workspaces
+			projects
 				.iter()
 				.filter(|w| {
 					w.name.to_lowercase().contains(&query)
@@ -367,7 +367,7 @@ impl AgentSurface {
 		gpui::div()
 			.id("add-workspace-folder")
 			.role(Role::Button)
-			.aria_label("Add workspace folder")
+			.aria_label("Add Project folder")
 			.tab_index(0)
 			.px_2()
 			.py_1()
@@ -401,7 +401,7 @@ impl AgentSurface {
 			self.workspace.workspace_picker = None;
 		} else {
 			let input = cx.new(|cx| {
-				ComposerInput::with_placeholder(47, "Search folders…", "Search workspaces", cx)
+				ComposerInput::with_placeholder(47, "Search folders…", "Search projects", cx)
 			});
 			cx.observe(&input, |_, _, cx| cx.notify()).detach();
 			window.focus(&input.read(cx).focus_handle(cx), cx);
@@ -534,10 +534,9 @@ impl AgentSurface {
 		let mut seen = std::collections::BTreeSet::new();
 		let mut work = snapshot.work_items.iter().collect::<Vec<_>>();
 		work.sort_by_key(|w| std::cmp::Reverse(w.updated_at_micros));
-		let workspace_for = |id: &str| {
-			snapshot.workspaces.iter().find(|p| p.work_ids.iter().any(|work| work == id))
-		};
-		let matches = |title: &str, workspace: Option<&decodex_protocol::WorkspaceDto>| {
+		let workspace_for =
+			|id: &str| snapshot.projects.iter().find(|p| p.agent_ids.iter().any(|work| work == id));
+		let matches = |title: &str, workspace: Option<&decodex_protocol::ProjectDto>| {
 			!selected_workspace.is_some_and(|id| workspace.is_none_or(|p| p.id != id))
 				&& (query.is_empty()
 					|| format!("{title} {}", workspace.map(|p| p.name.as_str()).unwrap_or(""))
@@ -586,6 +585,12 @@ impl AgentSurface {
 	}
 
 	pub(super) fn render_work_browser(&self, cx: &mut Context<Self>) -> AnyElement {
+		if self.workspace.guardian_open {
+			return self.render_global_guardian(cx);
+		}
+		if self.workspace.portfolio_mode {
+			return self.render_work_portfolio(cx);
+		}
 		let query = self.work_search.read(cx).content().trim().to_lowercase();
 		let selected_workspace = self.workspace.workspace_filter.as_deref();
 		let filters = self.workspace_choices(false, cx);

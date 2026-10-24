@@ -131,12 +131,15 @@ fn automatic_driver_generates_once_after_progress_and_cancels_exact_request_on_f
 		s.state = LoadState::Ready;
 		s.selected = Some("work".into());
 		s.snapshot = Some(AgentSnapshotDto {
+			agents: Default::default(),
+			guardian: Default::default(),
+			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: Some(EntityId::new("runtime").unwrap()),
-			workspaces: vec![],
+			projects: vec![],
 			dependencies: vec![],
 			pending_events: vec![],
 			work_items: vec![AgentWorkItemDto {

@@ -498,7 +498,7 @@ impl AgentSurface {
 			&groups::routing_nodes(&graph, &self.work_board.text_system),
 			&graph.connections(),
 		);
-		graph.scope_bounds(&snapshot.workspaces);
+		graph.scope_bounds(&snapshot.projects);
 		graph
 	}
 
@@ -959,6 +959,9 @@ impl AgentSurface {
 	fn add_assigned_relations(&self, graph: &mut Graph, included: &BTreeSet<String>) {
 		let Some(snapshot) = &self.snapshot else { return };
 		for work in &snapshot.work_items {
+			if snapshot.agents.iter().any(|a| a.id == work.id) {
+				continue;
+			}
 			if let Some(parent) = &work.parent_goal_id
 				&& included.contains(parent)
 				&& included.contains(&work.id)
@@ -1461,8 +1464,8 @@ impl AgentSurface {
 			let coordinator = self
 				.snapshot
 				.iter()
-				.flat_map(|s| &s.work_items)
-				.any(|w| w.id == node.key && w.parent_goal_id.is_none());
+				.flat_map(|s| s.agents.iter())
+				.any(|a| a.id == node.key && a.assistant);
 			let team_members =
 				(children > 0 && !coordinator).then(|| groups::descendants(graph, &node.key).len());
 			let parent = graph
@@ -1948,21 +1951,16 @@ impl AgentSurface {
 		let snapshot = self.snapshot.as_ref();
 		let work = snapshot
 			.and_then(|snapshot| snapshot.work_items.iter().find(|work| work.id == row.work));
-		if work.is_some_and(|work| work.parent_goal_id.is_none()) {
-			return "Main".into();
+		if let Some(agent) = snapshot.and_then(|s| s.agents.iter().find(|a| a.id == row.work)) {
+			return agent.name.clone();
 		}
-		if let Some(workspace) = snapshot.and_then(|snapshot| {
-			snapshot
-				.workspaces
-				.iter()
-				.find(|workspace| Some(&workspace.id) == row.workspace.as_ref())
-		}) {
-			return workspace.name.clone();
+		if work.is_some_and(|work| work.parent_goal_id.is_none()) {
+			return "Assistant".into();
 		}
 		if work.is_some_and(|work| work.kind == decodex_protocol::AgentWorkKindDto::Manager) {
-			"Project lead".into()
+			"Agent".into()
 		} else {
-			"Worker".into()
+			"Legacy execution".into()
 		}
 	}
 
@@ -2349,22 +2347,28 @@ mod fit_tests {
 			let mut row = s.factory_rows().into_iter().find(|row| row.key == "release").unwrap();
 			row.workspace = None;
 			let name = s.relation_agent_name(&row);
-			assert_eq!(name, "Project lead");
+			assert_eq!(name, "Agent");
 			row.title = "A completely different and much longer request for this project".into();
 			assert_eq!(s.relation_agent_name(&row), name);
-			s.snapshot.as_mut().unwrap().workspaces.push(decodex_protocol::WorkspaceDto {
+			s.snapshot.as_mut().unwrap().projects.push(decodex_protocol::ProjectDto {
+				native_project_id: None,
+				lead_agent_id: None,
 				id: "named-project".into(),
 				name: "Decodex".into(),
 				directory: "/tmp/decodex".into(),
-				work_ids: vec![row.work.clone()],
+				agent_ids: vec![row.work.clone()],
 			});
 			row.workspace = Some("named-project".into());
-			assert_eq!(s.relation_agent_name(&row), "Decodex");
+			assert_eq!(
+				s.relation_agent_name(&row),
+				"Agent",
+				"Project membership does not rename an independent Agent"
+			);
 			row.native = true;
 			row.owner = "Euler".into();
 			assert_eq!(s.relation_agent_name(&row), "Euler");
 			let main = s.factory_rows().into_iter().find(|row| row.key == "agent").unwrap();
-			assert_eq!(s.relation_agent_name(&main), "Main");
+			assert_eq!(s.relation_agent_name(&main), "Assistant");
 		});
 	}
 
@@ -4142,18 +4146,22 @@ mod fit_tests {
 					snapshot.work_items.push(work(&id, Some("b-project")));
 					project.push(id);
 				}
-				snapshot.workspaces = vec![
-					decodex_protocol::WorkspaceDto {
+				snapshot.projects = vec![
+					decodex_protocol::ProjectDto {
+						native_project_id: None,
+						lead_agent_id: None,
 						id: "reading".into(),
 						name: "Reading".into(),
 						directory: "/tmp/reading".into(),
-						work_ids: vec!["a-reading".into(), "c-reading".into()],
+						agent_ids: vec!["a-reading".into(), "c-reading".into()],
 					},
-					decodex_protocol::WorkspaceDto {
+					decodex_protocol::ProjectDto {
+						native_project_id: None,
+						lead_agent_id: None,
 						id: "project".into(),
 						name: "Project".into(),
 						directory: "/tmp/project".into(),
-						work_ids: project,
+						agent_ids: project,
 					},
 				];
 				let graph = s.relation_graph();
@@ -4189,11 +4197,13 @@ mod fit_tests {
 			unassigned.parent_goal_id = Some("agent".into());
 			unassigned.codex_thread_id = None;
 			snapshot.work_items.push(unassigned);
-			snapshot.workspaces = vec![decodex_protocol::WorkspaceDto {
+			snapshot.projects = vec![decodex_protocol::ProjectDto {
+				native_project_id: None,
+				lead_agent_id: None,
 				id: "project".into(),
 				name: "Project".into(),
 				directory: "/tmp/project".into(),
-				work_ids: works,
+				agent_ids: works,
 			}];
 			s.work_board.view.layout_viewport = (1600., 600.);
 			let graph = s.relation_graph();
@@ -4215,11 +4225,13 @@ mod fit_tests {
 			let original = s.relation_graph();
 			let works: Vec<_> =
 				s.snapshot.as_ref().unwrap().work_items.iter().map(|w| w.id.clone()).collect();
-			s.snapshot.as_mut().unwrap().workspaces = vec![decodex_protocol::WorkspaceDto {
+			s.snapshot.as_mut().unwrap().projects = vec![decodex_protocol::ProjectDto {
+				native_project_id: None,
+				lead_agent_id: None,
 				id: "scope-a".into(),
 				name: "Workspace A".into(),
 				directory: "/tmp/a".into(),
-				work_ids: vec![works[0].clone()],
+				agent_ids: vec![works[0].clone()],
 			}];
 			s.workspace.workspace_filter = Some("scope-a".into());
 			let graph = s.relation_graph();

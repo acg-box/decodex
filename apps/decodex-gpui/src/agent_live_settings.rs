@@ -29,6 +29,7 @@ pub(super) struct Panel {
 }
 
 enum Edit {
+	#[cfg(test)]
 	AgentReviewer(AgentReviewer),
 	Model(decodex_protocol::AgentLiveModelSelection),
 }
@@ -41,6 +42,7 @@ impl Edit {
 		models: Option<&[AgentModelDto]>,
 	) -> Option<AgentActionDto> {
 		Some(match self {
+			#[cfg(test)]
 			Self::AgentReviewer(reviewer) => AgentActionDto::SetLiveReviewer {
 				work_id: work.clone(),
 				turn_id: turn.clone(),
@@ -273,29 +275,8 @@ impl AgentSurface {
 				{
 					panel = panel.child(self.live_model_controls(work, models, cx));
 				}
-				if *can_update && self.live_reviewer.reviewed {
-					for (id, label, reviewer) in [
-						("live-reviewer-user", "Ask me", AgentReviewer::User),
-						("live-reviewer-auto", "Automatic review", AgentReviewer::AutoReview),
-					] {
-						let (owner, target) = (work.id.clone(), turn.clone());
-
-						panel = panel.child(mcp_forms::mcp_button(
-							id.into(),
-							label.into(),
-							false,
-							cx,
-							move |s, cx| {
-								s.update_live_settings(
-									owner.clone(),
-									target.clone(),
-									Some(Edit::AgentReviewer(reviewer)),
-									cx,
-								)
-							},
-						));
-					}
-				}
+				panel = panel
+					.child("Guardian review routing is controlled from global Guardian settings.");
 			}
 		}
 

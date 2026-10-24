@@ -163,9 +163,9 @@ impl AgentSurface {
 		let Some(snapshot) = &self.snapshot else { return Vec::new() };
 		let workspace_for = |id: &str| {
 			snapshot
-				.workspaces
+				.projects
 				.iter()
-				.find(|w| w.work_ids.iter().any(|work| work == id))
+				.find(|w| w.agent_ids.iter().any(|work| work == id))
 				.map(|w| w.id.clone())
 		};
 		let mut rows = Vec::new();

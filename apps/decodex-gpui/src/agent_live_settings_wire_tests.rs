@@ -92,12 +92,15 @@ fn reviewed_live_turn_is_invalidated_even_if_the_old_identity_returns(cx: &mut T
 
 	for change in ["thread", "turn", "idle", "removed", "source"] {
 		let original = AgentSnapshotDto {
+			agents: Default::default(),
+			guardian: Default::default(),
+			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: Some(EntityId::new("source").unwrap()),
-			workspaces: vec![],
+			projects: vec![],
 			work_items: vec![work()],
 			dependencies: vec![],
 			pending_events: vec![],
@@ -142,8 +145,23 @@ fn reviewed_live_turn_is_invalidated_even_if_the_old_identity_returns(cx: &mut T
 }
 
 #[gpui::test]
-fn reviewer_click_sends_exact_turn_once_and_reads_unknown_receipt(cx: &mut TestAppContext) {
-	exercise_live_settings(cx, false);
+fn per_agent_reviewer_controls_are_absent(cx: &mut TestAppContext) {
+	let (_, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, _| {
+			s.apply_result(Ok(AgentSnapshotResult::Available(running_snapshot())));
+			s.live_reviewer.work = Some("root".into());
+			s.live_reviewer.state = Some(live_state(0, false));
+			s.live_reviewer.reviewed = true;
+		});
+		ReviewerView { surface }
+	});
+	visual.update(|w, cx| {
+		w.resize(gpui::size(gpui::px(900.), gpui::px(600.)));
+		w.draw(cx).clear(cx);
+	});
+	assert!(visual.debug_bounds("live-reviewer-user").is_none());
+	assert!(visual.debug_bounds("live-reviewer-auto").is_none());
 }
 
 #[gpui::test]
@@ -160,12 +178,15 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 
 		surface.update(cx, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agents: Default::default(),
+				guardian: Default::default(),
+				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: Some(EntityId::new("source").unwrap()),
-				workspaces: vec![],
+				projects: vec![],
 				work_items: vec![work()],
 				dependencies: vec![],
 				pending_events: vec![],
@@ -278,12 +299,15 @@ fn child_navigation_and_disconnect_cannot_edit_the_parent_reviewer(cx: &mut Test
 		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
 		surface.update(cx, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agents: Default::default(),
+				guardian: Default::default(),
+				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: Some(EntityId::new("source").unwrap()),
-				workspaces: vec![],
+				projects: vec![],
 				work_items: vec![work()],
 				dependencies: vec![],
 				pending_events: vec![],
@@ -327,12 +351,15 @@ fn child_navigation_and_disconnect_cannot_edit_the_parent_reviewer(cx: &mut Test
 
 fn running_snapshot() -> AgentSnapshotDto {
 	AgentSnapshotDto {
+		agents: Default::default(),
+		guardian: Default::default(),
+		portfolio: Default::default(),
 		archived_work_ids: Default::default(),
 		agent_slots: Default::default(),
 		context_references: vec![],
 		connection_initializing: false,
 		runtime_source: Some(EntityId::new("source").unwrap()),
-		workspaces: vec![],
+		projects: vec![],
 		work_items: vec![work()],
 		dependencies: vec![],
 		pending_events: vec![],

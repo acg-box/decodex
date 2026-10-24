@@ -45,6 +45,7 @@ mod native_model_menu;
 #[path = "agent_output_stream.rs"] mod output_stream;
 #[path = "agent_panel_controls.rs"] mod panel_controls;
 #[path = "agent_permissions.rs"] mod permissions;
+#[path = "agent_portfolio.rs"] mod portfolio;
 #[path = "agent_progress.rs"] mod progress;
 #[path = "agent_prompt_edit.rs"] mod prompt_edit;
 #[path = "agent_prompts.rs"] mod prompts;
@@ -629,9 +630,9 @@ impl AgentSurface {
 		let selected = self.selected.as_ref()?;
 		self.snapshot
 			.as_ref()?
-			.workspaces
+			.projects
 			.iter()
-			.find(|workspace| workspace.work_ids.contains(selected))
+			.find(|workspace| workspace.agent_ids.contains(selected))
 			.map(|workspace| std::path::PathBuf::from(&workspace.directory))
 	}
 
@@ -844,7 +845,7 @@ impl AgentSurface {
 
 		if self.is_new_conversation() {
 			return Ok(AgentActionDto::NewConversation {
-				workspace_id: self
+				project_id: self
 					.workspace
 					.new_conversation_workspace
 					.as_deref()
@@ -2441,6 +2442,15 @@ impl AgentSurface {
 }
 
 struct WorkspaceView {
+	portfolio_mode: bool,
+	work_detail: Option<String>,
+	work_evidence: Option<decodex_protocol::work::WorkPortfolio>,
+	work_read_error: Option<String>,
+	assistant_picker: bool,
+	private_detail_text: Option<(String, String)>,
+	contribution_detail: Option<String>,
+	guardian_open: bool,
+	project_lead_picker: Option<String>,
 	arrival: crate::ui_loading::WorkspaceArrival,
 	new_conversation: Option<String>,
 	browsing: bool,
@@ -2486,6 +2496,15 @@ impl Default for WorkspaceView {
 	fn default() -> Self {
 		Self {
 			arrival: Default::default(),
+			portfolio_mode: false,
+			work_detail: None,
+			work_evidence: None,
+			work_read_error: None,
+			assistant_picker: false,
+			private_detail_text: None,
+			contribution_detail: None,
+			guardian_open: false,
+			project_lead_picker: None,
 			new_conversation: None,
 			browsing: false,
 			workspace_filter: None,
@@ -3125,12 +3144,15 @@ mod tests {
 			s.task = None;
 			s.apply_refreshed_snapshot(
 				Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+					agents: Default::default(),
+					guardian: Default::default(),
+					portfolio: Default::default(),
 					archived_work_ids: Default::default(),
 					agent_slots: Default::default(),
 					context_references: vec![],
 					connection_initializing: true,
 					runtime_source: None,
-					workspaces: vec![],
+					projects: vec![],
 					dependencies: vec![],
 					work_items: vec![],
 					pending_events: vec![],
@@ -3198,12 +3220,15 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		let input = surface.update(visual, |surface, cx| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agents: Default::default(),
+				guardian: Default::default(),
+				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
-				workspaces: vec![],
+				projects: vec![],
 				work_items: vec![],
 				dependencies: vec![],
 				pending_events: vec![],
@@ -3405,12 +3430,15 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agents: Default::default(),
+				guardian: Default::default(),
+				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
-				workspaces: vec![],
+				projects: vec![],
 				work_items: vec![AgentWorkItemDto {
 					id: "root".into(),
 					parent_goal_id: None,
@@ -3477,12 +3505,15 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agents: Default::default(),
+				guardian: Default::default(),
+				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
-				workspaces: vec![],
+				projects: vec![],
 				work_items: vec![AgentWorkItemDto {
 					id: "root".into(),
 					parent_goal_id: None,
@@ -3616,12 +3647,15 @@ mod tests {
 			assert!(!s.command_connection_ready());
 
 			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agents: Default::default(),
+				guardian: Default::default(),
+				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
-				workspaces: vec![],
+				projects: vec![],
 				work_items: vec![],
 				dependencies: vec![],
 				pending_events: vec![],
@@ -3744,12 +3778,15 @@ mod tests {
 
 		surface.update(visual, |surface, _| {
 			surface.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+				agents: Default::default(),
+				guardian: Default::default(),
+				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
-				workspaces: vec![],
+				projects: vec![],
 				work_items: vec![],
 				dependencies: vec![],
 				pending_events: vec![],
@@ -3837,12 +3874,15 @@ mod tests {
 				},
 			));
 			s.snapshot = Some(AgentSnapshotDto {
+				agents: Default::default(),
+				guardian: Default::default(),
+				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
-				workspaces: vec![],
+				projects: vec![],
 				work_items: vec![],
 				dependencies: vec![],
 				pending_events: vec![],

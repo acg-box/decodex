@@ -278,12 +278,11 @@ impl AgentSurface {
 	}
 
 	pub(super) fn root_id(&self) -> Option<String> {
-		self.snapshot
-			.as_ref()?
-			.work_items
-			.iter()
-			.find(|w| w.parent_goal_id.is_none())
-			.map(|w| w.id.clone())
+		let snapshot = self.snapshot.as_ref()?;
+		if let Some(agent) = snapshot.agents.iter().find(|a| a.assistant) {
+			return Some(agent.id.clone());
+		}
+		snapshot.work_items.iter().find(|w| w.parent_goal_id.is_none()).map(|w| w.id.clone())
 	}
 
 	pub(super) fn open_page(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -610,7 +609,7 @@ impl AgentSurface {
 		panel = panel
 			.child(self.work_navigation(
 				"new-conversation",
-				"New conversation",
+				"New Agent",
 				workspace_symbols::Symbol::Plus,
 				|s, cx| s.new_work_conversation(cx),
 				cx,
@@ -618,11 +617,37 @@ impl AgentSurface {
 			.child(self.workspace_tabs(cx))
 			.child(gpui::div().flex_1())
 			.child(self.work_navigation(
-				"all-work",
-				"All work",
+				"project-work",
+				"Work",
 				workspace_symbols::Symbol::AllWork,
 				|s, cx| {
 					s.stop_voice(cx);
+					s.workspace.portfolio_mode = true;
+					s.workspace.guardian_open = false;
+					s.workspace.browsing = true;
+					cx.notify();
+				},
+				cx,
+			))
+			.child(self.work_navigation(
+				"global-guardian",
+				"Guardian",
+				workspace_symbols::Symbol::AllWork,
+				|s, cx| {
+					s.workspace.guardian_open = true;
+					s.workspace.browsing = true;
+					cx.notify();
+				},
+				cx,
+			))
+			.child(self.work_navigation(
+				"all-work",
+				"Agents",
+				workspace_symbols::Symbol::AllWork,
+				|s, cx| {
+					s.stop_voice(cx);
+					s.workspace.portfolio_mode = false;
+					s.workspace.guardian_open = false;
 					s.workspace.browsing = true;
 					cx.notify();
 				},
@@ -636,7 +661,18 @@ impl AgentSurface {
 	}
 
 	pub(super) fn conversation_pages(&self) -> Vec<(String, String, bool)> {
-		let mut pages = vec![(self.root_id().unwrap_or_default(), "Main".into(), false)];
+		let mut pages = self
+			.root_id()
+			.map(|id| {
+				let name = self
+					.snapshot
+					.as_ref()
+					.and_then(|s| s.work_items.iter().find(|w| w.id == id))
+					.map(|w| self.work_label(w))
+					.unwrap_or_else(|| "Agent".into());
+				vec![(id, name, false)]
+			})
+			.unwrap_or_default();
 		let open = &self.workspace.pages;
 		if let Some(snapshot) = &self.snapshot {
 			pages.extend(open.iter().filter(|id| Some(*id) != self.root_id().as_ref()).filter_map(
@@ -1723,7 +1759,7 @@ impl AgentSurface {
 		if Some(&work.id) == self.root_id().as_ref()
 			&& ["Agent", "Main"].contains(&work.title.as_str())
 		{
-			return "Main".into();
+			return "Assistant".into();
 		}
 
 		if work.title == work.id && work.kind == AgentWorkKindDto::Task {
@@ -2145,12 +2181,15 @@ impl AgentSurface {
 				}
 
 				self.snapshot = Some(AgentSnapshotDto {
+					agents: Default::default(),
+					guardian: Default::default(),
+					portfolio: Default::default(),
 					archived_work_ids: Default::default(),
 					agent_slots: Default::default(),
 					context_references: vec![],
 					connection_initializing: false,
 					runtime_source: None,
-					workspaces: vec![],
+					projects: vec![],
 					work_items: vec![],
 					dependencies: vec![],
 					pending_events: vec![],
@@ -2296,12 +2335,15 @@ impl AgentSurface {
 			};
 
 		self.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
+			agents: Default::default(),
+			guardian: Default::default(),
+			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: None,
-			workspaces: vec![],
+			projects: vec![],
 			work_items: vec![
 				make("agent", None, "Agent", Open, Idle),
 				make("release", Some("agent"), "September release", UserDecision, Idle),
@@ -2619,9 +2661,11 @@ impl AgentSurface {
 
 			project.kind = AgentWorkKindDto::Manager;
 
-			snapshot.workspaces.push(decodex_protocol::WorkspaceDto {
+			snapshot.projects.push(decodex_protocol::ProjectDto {
+				native_project_id: None,
+				lead_agent_id: None,
 				id: "release-folder".into(),
-				work_ids: vec!["release".into()],
+				agent_ids: vec!["release".into()],
 				name: "September release".into(),
 				directory: "/Users/demo/projects/release".into(),
 			});
