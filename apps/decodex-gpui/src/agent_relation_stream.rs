@@ -1,4 +1,4 @@
-//! One current message per agent. Replacements crossfade without replaying history.
+//! One current message per agent. Replacements fade through without replaying history.
 use super::super::activity::{MAX_RECENT, Operation, OperationKind};
 use std::time::{Duration, Instant};
 
@@ -91,6 +91,10 @@ impl Stream {
 		}
 		let Some(current) = &self.current else { return Frame::default() };
 		let measured = measure(&current.text);
+		// Two readable messages in the same slot produce overlapping glyphs.
+		// Retire the old text before revealing the replacement; keep its footprint
+		// until the transition ends so the agent and its neighbours stay still.
+		let opacity = if self.previous.is_some() { (progress * 2. - 1.).max(0.) } else { progress };
 		let mut frame = Frame {
 			height: measured.0,
 			layout_height: measured.1,
@@ -101,7 +105,7 @@ impl Stream {
 				kind: current.kind,
 				y: (1. - progress) * 3.,
 				height: measured.0,
-				opacity: progress,
+				opacity,
 			}],
 		};
 		if let Some(previous) = &self.previous {
@@ -116,7 +120,7 @@ impl Stream {
 					kind: previous.kind,
 					y: -progress * 3.,
 					height: measured.0,
-					opacity: 1. - progress,
+					opacity: (1. - progress * 2.).max(0.),
 				},
 			);
 		}
@@ -152,15 +156,18 @@ mod tests {
 	}
 
 	#[test]
-	fn new_message_crossfades_in_the_same_slot_then_keeps_only_one() {
+	fn replacement_never_overprints_messages_and_then_keeps_only_one() {
 		let now = Instant::now();
 		let mut stream = Stream::new("turn", &operations(&["1"]), now);
 		stream.sync("turn", &operations(&["1", "2"]), now);
-		let result = frame(&mut stream, now + FADE / 2, false);
-		assert_eq!(result.lines.len(), 2);
-		assert_eq!(result.height, LINE, "messages share one slot instead of forming a log");
-		assert!(result.lines[0].opacity > 0. && result.lines[0].opacity < 1.);
-		assert_eq!(result.lines[0].opacity + result.lines[1].opacity, 1.);
+		for elapsed in [FADE / 4, FADE / 2, FADE * 3 / 4] {
+			let result = frame(&mut stream, now + elapsed, false);
+			assert_eq!(result.lines.len(), 2);
+			assert_eq!(result.height, LINE, "messages share one slot instead of forming a log");
+			assert!(result.lines.iter().filter(|line| line.opacity > 0.).count() <= 1);
+		}
+		assert!(frame(&mut stream, now + FADE / 4, false).lines[0].opacity > 0.);
+		assert!(frame(&mut stream, now + FADE * 3 / 4, false).lines[1].opacity > 0.);
 		let result = frame(&mut stream, now + FADE, false);
 		assert_eq!(result.lines.len(), 1);
 		assert_eq!(result.lines[0].id, "2");
