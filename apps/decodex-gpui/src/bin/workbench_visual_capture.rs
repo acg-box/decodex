@@ -316,6 +316,9 @@ fn capture_graph_zoom(cx: &mut VisualTestAppContext, window: AnyWindowHandle) ->
 			surface.visual_relation_layout(&layout, cx);
 		}
 		surface.visual_relation_zoom(scale, cx);
+		if let Ok(key) = env::var("DECODEX_VISUAL_GRAPH_TEAM") {
+			surface.visual_relation_team(&key, cx);
+		}
 	});
 	settle_capture_layout(cx, window)
 }

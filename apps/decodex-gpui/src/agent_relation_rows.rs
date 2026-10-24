@@ -152,7 +152,7 @@ pub(super) fn render(
 				.gap(gpui::px(5.))
 				.text_size(gpui::px(layout.activity_size()))
 				.line_height(gpui::px(layout.activity_line()))
-				.text_color(ui_theme::rgb(ui_theme::foreground::BODY))
+				.text_color(ui_theme::rgb(ui_theme::foreground::PRIMARY))
 				.opacity(line.opacity)
 				.child(
 					gpui::div()
@@ -194,7 +194,7 @@ pub(super) fn goal(
 		.flex_none()
 		.text_size(gpui::px(layout.activity_size()))
 		.line_height(gpui::px(layout.activity_line()))
-		.text_color(ui_theme::rgb(ui_theme::foreground::PRIMARY))
+		.text_color(ui_theme::rgb(ui_theme::foreground::BODY))
 		.child(excerpt.text.to_owned())
 }
 

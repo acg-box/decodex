@@ -2216,6 +2216,13 @@ impl AgentSurface {
 	}
 
 	#[cfg(feature = "visual-capture")]
+	#[allow(dead_code)] // The isolated driver can inspect a complete working team.
+	pub(crate) fn visual_relation_team(&mut self, key: &str, cx: &mut Context<Self>) {
+		assert!(self.factory_rows().iter().any(|row| row.key == key), "known capture team");
+		self.frame_relation_team(key, cx);
+	}
+
+	#[cfg(feature = "visual-capture")]
 	#[allow(dead_code)]
 	pub(crate) fn visual_relation_presentation(&mut self, together: bool, cx: &mut Context<Self>) {
 		self.switch_relation_presentation(

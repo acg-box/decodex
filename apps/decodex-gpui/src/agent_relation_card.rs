@@ -13,7 +13,9 @@ use gpui::{
 // At 100%, graph type uses the same sizes as the native shell.
 // A compact three-row HUD stays centered under the portrait, with readable
 // counters at the full-detail threshold and the one-times display font floor.
-pub(super) const WIDTH: f32 = 432.;
+// At 100%, a 256-point reading column leaves two complete agents within a
+// normal Graph pane. Keep the portrait, native type and numeric floors intact.
+pub(super) const WIDTH: f32 = 368.;
 pub(super) const INSET_X: f32 = 10.;
 pub(super) const INSET_Y: f32 = 8.;
 pub(super) const PORTRAIT_WIDTH: f32 = 80.;
