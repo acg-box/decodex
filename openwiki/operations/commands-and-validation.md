@@ -32,6 +32,8 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/apps_recovery.py
   - id: openwiki-source-e7a53f398340c29957bd81d3
     resource: repo://crates/decodex-runtime/tests/native_qualification/native_session.py
+  - id: openwiki-source-8e6f29de9ed0d4825985ec62
+    resource: repo://crates/decodex-runtime/tests/native_qualification/project_guardian.py
   - id: openwiki-source-2fee1dea7ba19d72acce7a3c
     resource: repo://crates/decodex-runtime/tests/native_qualification/proxy_headers.py
   - id: openwiki-source-aac8f76a32012d4a3e5a445d
@@ -54,10 +56,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
+generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T06:15:55.391Z
+    at: 2026-10-24T21:19:56.719Z
 ---
 
 
@@ -147,6 +149,7 @@ python3 crates/decodex-runtime/tests/native_qualification/log_storage.py
 python3 crates/decodex-runtime/tests/native_qualification/model_errors.py
 python3 crates/decodex-runtime/tests/native_qualification/large_catalog.py
 python3 crates/decodex-runtime/tests/native_qualification/response_identity.py
+python3 crates/decodex-runtime/tests/native_qualification/project_guardian.py
 ```
 
 These probes use loopback providers, synthetic account data and system-temporary homes. They close their own child processes and servers. They do not establish installed-app or live-provider acceptance. Keep raw output in the native run directory; keep current requirements, fixture implementations, hashes and limits in the repository.
@@ -154,6 +157,25 @@ These probes use loopback providers, synthetic account data and system-temporary
 A hook start event can precede native trust verification. The hook regression checks actual script effects after declaration or script changes, enablement changes and restart. The parallel tool regression requires both requests before either reply and verifies result order. The MCP status regression waits for discovery to finish, then checks opaque first-page metadata through tool pagination, status pagination and restart.
 
 Use the current [qualification record](../../automations/upstream/qualification.json) for the source-test helper recipe and exact registered identities. Its current source cohort uses a `dev-small` app-server helper. Helper-spawn cases also require the exact signed candidate CLI through `CARGO_BIN_EXE_codex`; `CARGO_BIN_EXE_codex-app-server` identifies the source helper. Record the helper and production CLI separately and preserve the original assertions and timeouts. Older private-hook launchers apply only to their recorded source snapshot; do not copy their private configuration into the production CLI.
+
+## Project, Work and global Guardian validation
+
+The exact commands and selected identities are in `retained_project_agent_work` in the [retained index](../../automations/upstream/retained-evidence.json). Prepare the selected package with `DECODEX_CODEX_DEVELOPMENT_RUNTIME` and `cargo +stable make prepare-codex` before native qualification. Set both `DECODEX_TEST_CODEX_BINARY` and `DECODEX_NATIVE_BINARY` to its CLI for the native Nextest matrix. The Python Project/Guardian probe uses `QUALIFIED_CODEX_BINARY`, not either Nextest variable. Keep packaged helpers intact and use an existing temporary output directory.
+
+```sh
+cargo +stable make check-rust
+cargo +stable make lint-rust
+cargo +nightly fmt --all -- --check
+cargo +stable make test-local-database
+cargo +stable nextest run --locked -p decodex-database --all-features --no-fail-fast
+cargo +stable nextest run --locked --workspace --all-targets --all-features --no-fail-fast
+```
+
+The change passed workspace checking, strict lint for 13 packages, formatting and the schema56/89-table local database gate. The database suite executed 188 tests successfully. The native selected matrix executed 13 successfully, excluding 985. The transport/receipt selection executed 28 successfully, excluding 970. Focused UI/runtime checks passed 6; Python checks passed 40; CLI diagnostics passed 2. Selected tests had zero unmatched identities. These cohorts overlap.
+
+The complete workspace run executed 2918 tests: 2916 passed, including one leaky pass, and two native audio ICE connection tests failed; 1154 were skipped. One identical timeout reproduced on untouched main under workspace feature unification. A package-only baseline run passed both, and the other current failure was not independently reproduced on main. The cause is unknown. Preserve both failures; do not turn a passing focused Work/Guardian cohort into a claim that the full suite passed.
+
+These checks do not install or start the product, spend real account capacity or measure live model judgment. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) for native V1/V2, missing private action association, bounded evidence and installed-app limits.
 
 ## Prepare Codex components
 
@@ -213,7 +235,7 @@ Report source checks, unit tests, signed build, visual acceptance, provider acce
 
 ### Nextest exit markers
 
-A `LEAK` marker can accompany a passed test when its captured output remains open after process exit. Diagnose the exact runner, test cohort and pipe owners before attributing the marker to application cleanup. The [historical diagnosis](https://github.com/acg-box/decodex/blob/f6640838f0997493704ff87e46205b46a700eef2/automations/upstream/retained-evidence.json) records a macOS Nextest 0.9.143 capture-inheritance reproduction, its upstream fix and separate isolated and serial controls. The current qualification separately records a passed in-memory test with a LEAK marker and a passing isolated rerun without the marker. Neither result establishes the cause of a future marker. The original event has no pipe trace. Do not suppress the test, lower the timeout or claim that an unexecuted runner upgrade has passed.
+A `LEAK` marker can accompany a passed test when its captured output remains open after process exit. Diagnose the exact runner, test cohort and pipe owners before attributing the marker to application cleanup. The [historical diagnosis](https://github.com/acg-box/decodex/blob/f6640838f0997493704ff87e46205b46a700eef2/automations/upstream/retained-evidence.json) records a macOS Nextest 0.9.143 capture-inheritance reproduction, its upstream fix and separate isolated and serial controls. The earlier component qualification separately records a passed in-memory test with a LEAK marker and a passing isolated rerun without the marker. The Project/Work complete suite separately records a leaky pass in `ui_working::tests::appearance_and_disappearance_share_one_continuous_fade`; its cause was not established. Neither result establishes the cause of a future marker. The original event has no pipe trace. Do not suppress the test, lower the timeout or claim that an unexecuted runner upgrade has passed.
 
 [Wiki maintenance](wiki-maintenance.md) describes the separate documentation lifecycle.
 

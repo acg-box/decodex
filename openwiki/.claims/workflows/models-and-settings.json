@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3a7b3bc62fc979b4b3390efe189d5ba8980354a603abf57d48c2794562ca1628",
+  "pageVersion": "sha256:ca9d6131e1eeb7832336f893c5401896f2c6a495a8f18958477201d05f20b57a",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -95,10 +95,42 @@
           "version": "repo-file-v1:sha256:a471440d6c494a5abd9f72346901fe14aeb8ee432f8e8fd3ef73373e174d645a"
         }
       ]
+    },
+    {
+      "id": "claim_b54318a17f6940828a6846a105e9dae7",
+      "statement": "Global Guardian controls reviewer intent and reports source-bound effective thread preference for future turns; per-Agent reviewer writes are rejected while native permissions and live model edits retain their own owners.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_live_settings.rs",
+          "version": "repo-file-v1:sha256:db1d21b38419d24a0f784a88dd3be745368d233395d54f0a7aee7d1f2f1e7e6c"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs#L1-L85",
+          "version": "repo-lines-v1:sha256:c995e9573182bf2421011a9163434bb93c3af8b7aee65c601d63606a9e159fda:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmZGZmOWFhM2JhNjlhMTA4NWEyNjc2OWM0NGIxY2MyNGUwNmRkZDlhYjM0OWRkNjg0Mzk4ZjIxNDNjYzkzNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5YWYzYmIwNGFiMDM5NDBhNDA4YzUwNzJhNWNjZGUxZjhjNTFlNzlhMjJiMTVlOTk0M2U5MWVjYTJhYzI4MWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwNzY0NDlhMDc3ZjA1ZTAxZTA3YzQ3MTk4ZWFhYTA2Njk0Y2NlYWFlMjFiYTA4MWY1NmYwMWM1Mjg3N2ZlZjcifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1528-L1546",
+          "version": "repo-lines-v1:sha256:cfd232ec73dc3a45871fb3cf4318614d9f69ffee74f348a28a0257a1c68bf34c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5OWY2NWUyZDI2OTYwNGYxOTgyZjJmOTZkYmI2MjA2NTgwYWU5YzZkYTdiYmU0OTM0MWIzZWU0NDAwNGQ1YjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwNThlYWViNTQ5M2EyYzdlMzMyMTk5ZjVmNjgxNDkwOWMwNjhiZmMwZGNmMGRkNjdiZmVhODM4MDUzY2E3MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiNWU2ZDJjY2FlMTc5Yzk0YmI0Yzc0OWZhZmJmNzQzNjVhZGNiNjliMWE3MzY4MTE2YTM3NDBlMjRlMGQwYzkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ccd13e613b464271a65d415e58c7bce2",
+      "statement": "Native model metadata and configuration determine the helper backend; the qualified synthetic matrix uses V1 and V2 at Medium without Ultra and leaves model judgment unmeasured.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
+          "version": "repo-file-v1:sha256:c7f9b1441a89892d12c549b5c15571496111ea4b911e9fa699af5f86e726db9d"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T06:15:55.391Z"
+    "at": "2026-10-24T21:19:56.719Z"
   }
 }

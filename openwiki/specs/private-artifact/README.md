@@ -11,7 +11,7 @@ sources:
 generated: { by: "codex", at: "2026-10-14T05:36:25.710Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T09:01:22.045Z
+    at: 2026-10-24T21:11:31.338Z
 ---
 
 > Current status: this is a frozen historical archive, not a live runtime, schema, generator input or delivery obligation. The original candidate/Linear status and hashes below are preserved observations; this refresh does not re-verify external issue closure or rerun those experiments. Current product owners are documented in [Runtime architecture](../../architecture/runtime-architecture.md). Repository/PR effect orchestration remains retired, and the current Rust exports do not restore this private-artifact design.

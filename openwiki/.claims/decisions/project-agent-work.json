@@ -1,48 +1,32 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5007694e0551bae01b33a2663739e3b57b6ddde5720ca676173e9bb6d19ea90c",
+  "pageVersion": "sha256:b4fafd1d4c78f117b0fdf95f63342546f9afa43ada8527747becf7ebcc1c6568",
   "claims": [
     {
-      "id": "claim_f117dc241b3d482da26703bc054c8ae4",
-      "statement": "The current create_goal path stores a separate outcome without creating or binding a native execution conversation.",
-      "evidence": [
-        {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L832-L862",
-          "version": "repo-lines-v1:sha256:7b25b80182ed849a92bcbd7d2089b7670f9355e34980dccd6aea1f72eff52e50:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3NDk5MmUxZDJjMjgxYmFjZTBjMjczMWFhM2Q1YTZmYzM4NWYyNTY3MmQ1MjcxY2E2ZjE4NGE1NjBhYTgzZjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk1NTViOGU1Y2Q2NmYxMDczNDVjYjBkNzFjNmMxOWI5NTAzMjU4OGE1NWZhNjdkZjJkNjU3OTNiZDRlMTFhZDIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhZGNmNWE5OThlYzM3MzcwNjNkZjMwZDUzNDczZWMxNzYzNGZjNDczNWZhYzIxOTQ0OTlmZTlhMzRkZDhlNTUifQ"
-        }
-      ]
-    },
-    {
       "id": "claim_820ae47a5a5d49aab10b5f306ac24685",
-      "statement": "Current user-conversation creation requires an existing personal root and stores the root identity in parent_goal_id; this is a migration boundary rather than an implemented flat Agent model.",
+      "statement": "User conversation creation persists an independent Agent with no required parent, while direct schema56 migration retains legacy identities and Project membership.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L738-L774",
-          "version": "repo-lines-v1:sha256:6365c188993fe0792d212a4803649ace78fc802e79ac41a3008f87b8184b8a62:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxZmNiNjNiYzM2YWUzOGM0N2Y3MDcyMjhhYmI0YjEzZjA3NTkxNTQxYTU1ODJkNTkxNTY3Y2FlZDg4NjNlZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwMzA3YTk0M2EzYmRmMmM1ZWYxMjhjYzAxY2M5YzVjYTY2OTE2YjZiODhlODkzMmQ1M2IxNTlmN2JkNWJhOGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4NzAyOGY3YjFmMjI3NTI0ZTZhYTE1Y2JlNTBkOWRmNmIzYWM4NTY0MzQ2NDhiYzQ5MmYzNzE0OTlmNTBiYmEifQ"
-        }
-      ]
-    },
-    {
-      "id": "claim_43ae3042b9f648cc8f9088f71eb47847",
-      "statement": "The current outstanding-delegation relation is keyed by work_id, and accepting an older result does not retire a newer recorded assignment.",
-      "evidence": [
-        {
-          "resource": "repo://database/migrations/0054_agent_delegations.sql#L1-L6",
-          "version": "repo-lines-v1:sha256:bb2ab837beb74726023e2243bafd31e860fe1b6794f92d5c61703c0ab39a0473:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTJhZTU0YTA2NTcxMTRiYzYyY2VjZTFjNzJkNjUzNDg4ODdiMmNlMGIzYzFkMmZjNzE3NTYxMGFjMTU2ZjY0OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzJjZDMxNDE1YzhmODc3OTcxMThkZmVlOTJjNDU2YTc3ODM4NGFkZjJmNjc0MWI4YmY0MDZkOGI5OTcxY2JlNyJ9"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L750-L781",
+          "version": "repo-lines-v1:sha256:95965309b130e386dd39df3352cd29cb2707f20cc7baf7e30a7bb6f50cf8e981:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxZmNiNjNiYzM2YWUzOGM0N2Y3MDcyMjhhYmI0YjEzZjA3NTkxNTQxYTU1ODJkNTkxNTY3Y2FlZDg4NjNlZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkNDU4NGMyM2VmNGZlMTlkNDEyMTAyNTY2YzViYmI5MTAzNzFjOWQzN2JkOGEwODNjY2VlNjBmN2RhZDgyYjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwMzA3YTk0M2EzYmRmMmM1ZWYxMjhjYzAxY2M5YzVjYTY2OTE2YjZiODhlODkzMmQ1M2IxNTlmN2JkNWJhOGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkZWI1MTc4YTdlOTA1OGY1ZjczNTQ4YTVlNGFhNTc5OGUwNDBhZTM1NmQzODUwZjAyMDk3MDU3ZGI0NDdhMWQifQ"
         },
         {
-          "resource": "repo://database/src/agent/delegation.rs",
-          "version": "repo-file-v1:sha256:6ed1afc4574302d5f0c25ab373169c46af426c0e07b744c23a0df72acd58f630"
+          "resource": "repo://database/migrations/0056_project_agent_work.sql",
+          "version": "repo-file-v1:sha256:ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699"
         }
       ]
     },
     {
       "id": "claim_0482be09d2cb4b3c9c3c6ea773e6ac05",
-      "statement": "Current delegation and wake admission preserve application tool authority instead of converting application-origin evidence into user authorization.",
+      "statement": "Delegation, Collaboration and current Work context retain application-evidence authority instead of becoming user authorization; authoritative Work changes require the actual delivered user decision.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1243-L1346",
-          "version": "repo-lines-v1:sha256:58b8eae97318c5bb726ff602146bf10da9ea895fc80c39f10d7a3bec4c23ede9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhY2U5YWU1OWI5YjY2ZTZhMDNkMDIyNTdiOTU4ZjFmYjNjM2JiM2IyNDkxZDNlYTJjYWQ2YTI1MGU3ZGMzMzgwIn0"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1247-L1355",
+          "version": "repo-lines-v1:sha256:e0ad341d1d141c699110b02b6523ea6ef5d2151f529f68b963753ce173ce1cfc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/work.rs#L47-L130",
+          "version": "repo-lines-v1:sha256:9d9125630cc1348076c91673956505512101a868760897dfa76b0c87635c7c41:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhhZmIxNWVkNTkzNTFhNjBhMDNiODAyYjE1MGZmNmVjNDk1M2ZjNmE3NjhkZjA2MTY4ZTI5YWU4MzlkZTU3MjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxODIyYTE1M2EwYzAxYTE3Mjg2YjYwMjJmMGU2M2FlNzE5ZGVmMDZlYWFiM2IxY2ZkZDc3NDI4YzYxOWJhZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1ODkwMzc2NmI4NGYzM2JkNmZkZDRiOGUzZmYxMzZhZTI0Njk3YTg1YThhMGM1YjViZGQyMzVlMTYwZGI0NmQifQ"
         }
       ]
     },
@@ -51,8 +35,8 @@
       "statement": "Native-turn recovery reuses exact owned native thread and turn identities and records terminal results without replaying local input.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/native_turns.rs#L1-L112",
-          "version": "repo-lines-v1:sha256:4fb6dbaf1f0db20a301ea1614bc35736c30bdfd1d4bf7260b5fe480bb8220b12:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1OTcyMjA3MTI5MGY4MjUwYTIwZmM1NTQ5Mzg2ZTUwNzcwYzFiZTkxMmI5OWE4MGMzODZiMmUzOTQzZTAwZWEyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2Y2M3ZmVjMTIxZTg4NTVkZTQxZmY3OTUxMWRmZDhkNzA1M2RlNGRiYmJmNzYyZjAxNjlkOWQwNTIxMTIxZmYyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0ZTM0NWYzZGQ4OWIxODg2MWFjNDdiYmM5ZGExYzU0N2E2YTQ1YzgwYTVjYmRiNjcxMmRjOTM5ZThjYTQ4ODgwIn0"
+          "resource": "repo://crates/decodex-runtime/src/agent/native_turns.rs#L1-L115",
+          "version": "repo-lines-v1:sha256:b46906a6b67956f3a0a59da9db5766d82ad1e94db5d19af6e7cf91e2922380db:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI1OTcyMjA3MTI5MGY4MjUwYTIwZmM1NTQ5Mzg2ZTUwNzcwYzFiZTkxMmI5OWE4MGMzODZiMmUzOTQzZTAwZWEyIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2Y2M3ZmVjMTIxZTg4NTVkZTQxZmY3OTUxMWRmZDhkNzA1M2RlNGRiYmJmNzYyZjAxNjlkOWQwNTIxMTIxZmYyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0ZTM0NWYzZGQ4OWIxODg2MWFjNDdiYmM5ZGExYzU0N2E2YTQ1YzgwYTVjYmRiNjcxMmRjOTM5ZThjYTQ4ODgwIn0"
         },
         {
           "resource": "repo://database/src/agent_native_turns.rs#L9-L30",
@@ -62,25 +46,33 @@
     },
     {
       "id": "claim_da0cb2371ac4440b9bd464f8d7485d6b",
-      "statement": "The current delivery projection aggregates conversation-owned progress and selects the latest owner reply rather than a complete per-Work requirement and Result assessment relation.",
+      "statement": "Separate Work requirements, exact Results, scoped reuse and owner assessment now accompany the retained conversation delivery projection; native completion alone does not complete Work.",
       "evidence": [
         {
-          "resource": "repo://database/src/agent_deliveries.rs#L30-L85",
-          "version": "repo-lines-v1:sha256:0b89a171d8beb61ac558658e9d6cee039955834d34355468161a32a53bd4db6b:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY5NmIzOWYyZDY0MDkwYjQwYzliYzAwNjEyZWM1YzYwYmQ0ZWFjYjkyYTE1YTI5ZjI1OTBiODBjNzI2OGJhZGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjNTRjM2IwMDZlMTBmNGY4MzEzODk4N2E3ZjNmNGE2YWJlMDA4ZDc3ZTkxN2M0YTI3OTBhNGM3ZjFjOTg2YmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNmZjY4NjJkNDhlNjZjZjIwMGM0MTRlN2UwNTBjM2U5NDFkMGVmYmMyYmNiOGE5MmIzZThiODJhOGNkMWUyZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJmYTQ1YzI3ZWNiZTJiNmQ0ODQ1OGQyYTkwNDNhZjQ0NmY0MDI0ZWU1ZTY3NjQwNmE2N2MxOGQ4OTlkMzg5OWYifQ"
+          "resource": "repo://crates/decodex-core/src/work.rs",
+          "version": "repo-file-v1:sha256:e1045f29d21d012c893bf4f9f0668c745c1a0752e27f500a47454cfe1aed7f47"
+        },
+        {
+          "resource": "repo://database/src/works.rs",
+          "version": "repo-file-v1:sha256:9fae2b7e75b33ade985004e3613c7de156eb8065661b3d85e22a4421384c60ab"
+        },
+        {
+          "resource": "repo://database/src/works/commands.rs",
+          "version": "repo-file-v1:sha256:3bc77003902aa98bcfd2aafe6b31a3d42be0ee4115224938778c66753a1ea7af"
         }
       ]
     },
     {
       "id": "claim_5abfcf5d17ac4d19b4475850bbff4b46",
-      "statement": "Current saved permission-profile selection is separate from live reviewer editing, whose write path validates an exact active turn; these paths do not implement a global Guardian setting.",
+      "statement": "Global Guardian owns reviewer intent and per-source readback for future turns, rejects per-Agent reviewer overrides and preserves native execution permissions, active captures and pending human approvals.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/permissions.rs#L26-L40",
-          "version": "repo-lines-v1:sha256:4b0a15b9c44bc8513eb9024b0e5de804f2d950483f8f13f8dca550bb55b12ea0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0OTFhNWRmYzQ3ZDhmMTY4NjhlYjMxZjM5M2EyYmE5YWFhYzk4ZWQ2OWFmNjIxYjI4ZWIwM2RiZjlkYmI3ZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhZjU2OWMwZWE5NWZkMTFmMGE5MzhiNGExZTMwYTkwMTc5NGVhYTQyZTRmMDA0MWMxMGE1ZDI3YjA4ZDUyMjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI5OGViMWY0MWYxOTdjMWYzY2E4MmM3MGQyNzQ5YjNhNDdmMmE3YTRhYzZmZmY2MjI0OGU2ODkyZjc1YjhmM2EifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs#L1-L85",
+          "version": "repo-lines-v1:sha256:c995e9573182bf2421011a9163434bb93c3af8b7aee65c601d63606a9e159fda:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmZGZmOWFhM2JhNjlhMTA4NWEyNjc2OWM0NGIxY2MyNGUwNmRkZDlhYjM0OWRkNjg0Mzk4ZjIxNDNjYzkzNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5YWYzYmIwNGFiMDM5NDBhNDA4YzUwNzJhNWNjZGUxZjhjNTFlNzlhMjJiMTVlOTk0M2U5MWVjYTJhYzI4MWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwNzY0NDlhMDc3ZjA1ZTAxZTA3YzQ3MTk4ZWFhYTA2Njk0Y2NlYWFlMjFiYTA4MWY1NmYwMWM1Mjg3N2ZlZjcifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_live_settings.rs#L109-L145",
-          "version": "repo-lines-v1:sha256:af63435783325f05cb75f701244598f8542f9d9c44b7a03eaf5e27d1d221db4f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhNDYwMjc0Mzg0ZDU5ZTI3Zjg2NDY4YWRjZmM4N2U4YTU2OTM3MDc2MmY5MjhjOWIwOTJkYThiMmE2NWFlYjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzM2I0MmI0ZGUzM2E2NTZjMjQzMDcxNWY3Mzk5YTZmZmE2NTFkZTExY2E3MjRkYmJjOTJmOTVkOWZkZDU4ZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdjODgzMDQwYjZmM2VkMGQ3NjNhNzI2MzQxZDIzMDk4MDEyYjgwYWNmMDk3N2U0Y2MxNjE1ZjFkMmY4NzZhNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxOWM1MTg3YmZmZGM3MGU5MjgzNWY0NmQ2ZjVhOGZhMzdiY2U2Mjk1OTk2ZjZkMmQwMjExZjQ2OWU1NDcwZTcifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1528-L1546",
+          "version": "repo-lines-v1:sha256:cfd232ec73dc3a45871fb3cf4318614d9f69ffee74f348a28a0257a1c68bf34c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5OWY2NWUyZDI2OTYwNGYxOTgyZjJmOTZkYmI2MjA2NTgwYWU5YzZkYTdiYmU0OTM0MWIzZWU0NDAwNGQ1YjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwNThlYWViNTQ5M2EyYzdlMzMyMTk5ZjVmNjgxNDkwOWMwNjhiZmMwZGNmMGRkNjdiZmVhODM4MDUzY2E3MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiNWU2ZDJjY2FlMTc5Yzk0YmI0Yzc0OWZhZmJmNzQzNjVhZGNiNjliMWE3MzY4MTE2YTM3NDBlMjRlMGQwYzkifQ"
         }
       ]
     },
@@ -90,13 +82,65 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/guardian.rs",
-          "version": "repo-file-v1:sha256:b480c41ed4d566f2031cbe063670b1451aaf4d1df95ca63f810e1b3b733bd69e"
+          "version": "repo-file-v1:sha256:95d4b1d0a1b1c38069a29c4ef4badc89348f7b28637c35b441b708dd97f04cb4"
+        }
+      ]
+    },
+    {
+      "id": "claim_1c21d83e6bc749d9a15f5832705e747b",
+      "statement": "The default Work tool revision uses native helper execution and a durable quiescent migration journal; uncertain replacement or retirement stays parked and old source history remains read-only.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tool_migration.rs",
+          "version": "repo-file-v1:sha256:907ed4275de6ac66f931df9b580be60b4158fb2cd2a8dd1faa3c32367aeb4bf6"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/work.rs#L453-L479",
+          "version": "repo-lines-v1:sha256:1df0dbffb9b471f614814e8c74cc95be40dcb6d4fdf791b3eda4be8960b5b7d8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiOTY5YmE5MjYxNTk5ZGNmNTRlMGRmY2Y0NzgwY2Q5ZDY0MWE3ZjE3NTFmNzg2NDdhNGE2NmM4NWQwZGQ3ODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkMDhjYzkxNjRkM2UzMWI3OTI3OTBiODlkMDVhN2Y3NTgyMjk2YzljOTIwYzI4ZWU0NzIwOWUzZDBlYTIyNzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_47ac168f0ad448b89c37cec3e99ae081",
+      "statement": "Independent Collaboration Requests preserve separate delivery, acceptance, return, assessment, repair and cancellation under stable request and immutable instruction identities.",
+      "evidence": [
+        {
+          "resource": "repo://database/migrations/0056_project_agent_work.sql",
+          "version": "repo-file-v1:sha256:ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699"
+        },
+        {
+          "resource": "repo://database/src/works/collaboration.rs",
+          "version": "repo-file-v1:sha256:3c8e9c55c8b978854a4551c91a48429b0bf1ff9e1a5cde3bbd817fc0130edf39"
+        }
+      ]
+    },
+    {
+      "id": "claim_65dc4ffbc0ca4c5fa09541e2abff961c",
+      "statement": "Optional private Review Details retain verified reviewer output and terminal metadata within bounded storage, exclude raw reasoning and never guess an unavailable action Review association.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
+          "version": "repo-file-v1:sha256:131f5d872210abf936e8e602328d7cf1fa8252941ba1832176c2bb32ea1d4839"
+        },
+        {
+          "resource": "repo://database/src/guardian_settings.rs",
+          "version": "repo-file-v1:sha256:55f3c9a78b8ba21e28125f3d4edb836ccfb6a155b603390e95c8fd5ca78e61b9"
+        }
+      ]
+    },
+    {
+      "id": "claim_34feace5f90e48a6aa0933ff5407a043",
+      "statement": "Qualification retains exact source, artifact, test identities and selected behavior limits; the complete suite has two unresolved audio timeouts and does not establish installed-app or live-account acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-22T20:51:42.199Z"
+    "at": "2026-10-24T21:19:56.719Z"
   }
 }

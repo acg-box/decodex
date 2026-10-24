@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6269f57d05573a56ab102eac8b9aeca86df75f20472ee110786543c615151f06",
+  "pageVersion": "sha256:47d82af0041ff75bd91aa0d83c4b61a13aec0daf758059047ca8fb0d7ebfdf1f",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -33,7 +33,7 @@
           "version": "repo-lines-v1:sha256:e730ee0cb44b1c4ae1c87a6c36d03c6f1331bac286b45cc2e5e5d7748c37d43c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwYTBkZmUwZjk0YTlmZmQ0MDRkZGEyNGMyZWQ3ZDIyOTA4MTIwNmZmMTE1ZmIxOTE5ZjhlZDNhY2IwMjIzNjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2YzM0ODNhOGY0ZDNhM2Q0YTc3OTMxOTNiYzM1YjI3ZDNiY2ZlMjU0OTI0ZWM2MGE4YjZmM2NlZmQ5NjJmZTQifQ"
         },
         {
-          "resource": "repo://crates/decodex-protocol/src/client.rs#L2429-L2456",
+          "resource": "repo://crates/decodex-protocol/src/client.rs#L2508-L2535",
           "version": "repo-lines-v1:sha256:f9076f56054fb5de44d6c9b0483832b918a24c0b0193ecdb0dbe39c73f00ef75:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzMDMxNjg5NzQxYmNjM2ZlMmIxYmNiMDFjMDE3ZDNkYTg0YjcyN2JjMzY0ODQzY2RmMjI4ZWI2YWY5MmUwNTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYzBjMmJhYThjYjgxMTg0MzAxZjA4OGYwNzFkZWNjNzgwMzgzNTMyNDM4YTVjYTVhNjMwNzIzM2E4N2JkZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxODUxNjFiNGVmZmVlNzE1NGNmNWUxNTUxYTMyZjFmMWY5NWZiYjhkNmZmZjhiODQzMzMyMzVlNzllYmViZmUifQ"
         }
       ]
@@ -162,7 +162,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
-          "version": "repo-file-v1:sha256:6af26e0fcf62138cd48a89eb7eace6cea5a363a184014d8b4ea8a5ac6301cd53"
+          "version": "repo-file-v1:sha256:605ffdeeaca4c28f8e06e189a793ee042da7286418568a80b62eeeb1ceb98367"
         }
       ]
     },
@@ -176,7 +176,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/native_subagents.rs",
-          "version": "repo-file-v1:sha256:44070964c9d226b24d58a4875397552b2d66b03427d1f67bcf0ffe4fabd6dd59"
+          "version": "repo-file-v1:sha256:9e5e9c8cf88442215235adba888e636353fb70fb0526124dd839670fed18fcec"
         }
       ]
     },
@@ -222,11 +222,11 @@
     },
     {
       "id": "claim_d696bde2a2b24968b97c2bb47091ff9a",
-      "statement": "Decodex requests retention only for work_instruction tool outputs and leaves work_wake, capacity_retry and injected external results unselected; the setting requests native preservation rather than replacing durable work records.",
+      "statement": "Compatibility delegation instructions can request native tool-output retention, while wakes, capacity retries and external evidence remain unselected; retention does not replace durable Work records.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:8d5a68c0f85bfd64f23ec6fc2b9d1496902f84452c0f8a3c1eb8c7399d2ce598"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1247-L1355",
+          "version": "repo-lines-v1:sha256:e0ad341d1d141c699110b02b6523ea6ef5d2151f529f68b963753ce173ce1cfc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
@@ -276,7 +276,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:c2679cbdef5fee4a799c90f3887b10fc268c644dee120e5f7a912ed0fa843a82"
+          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
         }
       ]
     },
@@ -301,10 +301,56 @@
           "version": "repo-file-v1:sha256:53cb76bde58dfaac958cc1b31e2c91abb16aa3595a7c2540d898d14df1147205"
         }
       ]
+    },
+    {
+      "id": "claim_1ce4bc16c65a4c05a3083d4e278d3156",
+      "statement": "Project, Agent and Work remain separate durable business objects; native Codex owns execution, while scoped commands, Collaboration and global Guardian application receipts remain in Decodex.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
+          "version": "repo-file-v1:sha256:131f5d872210abf936e8e602328d7cf1fa8252941ba1832176c2bb32ea1d4839"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
+          "version": "repo-file-v1:sha256:dd9ef5ba2a31400ca4e973700dd4ca2418c96c818f0126d5b1d365f61569b7be"
+        },
+        {
+          "resource": "repo://database/src/works.rs",
+          "version": "repo-file-v1:sha256:9fae2b7e75b33ade985004e3613c7de156eb8065661b3d85e22a4421384c60ab"
+        }
+      ]
+    },
+    {
+      "id": "claim_d253a751cef64b8e8fd316634981b84e",
+      "statement": "Protocol 3.0 explicitly rejects incompatible clients while retaining publication-instance receipts for reconnect and idempotent recovery.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L298-L318",
+          "version": "repo-lines-v1:sha256:4e348b96cdd833f2bc43461fd7ce1c187194dd0f0573aba0897ccf467bbb6893:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2M2NhYzIyNmZhN2FjOTE1MGUwMTZlODZiODM2YTViMjg5Y2MxNjU4YzNmYTA3YjI1YTdhY2Q5NDMxNTY5YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRkMTAyZWNmMDUwZGViNTQ0YjM1YTJkNDIxYzhmNGMzMzlkYjJmYjE0NmVhYzE1YzY2MGUyZGViYTJjZDUyYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzNzAzOTQzYjAxNmE4ZjUwOWFkZDU4ZGRhNTI1YzJmMzY2N2EwOTMxNWFlYjgwNDQwODIwZTU3ODMwMjBlNTgifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/websocket.rs#L3515-L3523",
+          "version": "repo-lines-v1:sha256:3dfb254af5b2f635a8bee7a28cea6b5b4f4d9f45086451973149f77a5d56ff24:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWE5MWNmMmYxYjYxYTJkYTJlYWUyNjlkNmFmNzIwMjMxZTI1MTllYjZiNDhiMDNiMWQ0NzI3ZjU4YWJiNTY2ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNmEwY2UyMjZmYjg4MmM1MWNiOGQyNTIxNjkwZmJjMmQyZjc5ZmI0ZjEyY2U5ZTVhOWJjNjgwYzI2ZmM1ZGE5NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGE1MjBkMWZmNmE4ZjE5ZTU0ZjkwNWE4ZDY1ZWY1OGRmOWFkZDI4MTc3ZmI1MTY4ZjRmYmJlYTY5YTZjNzViNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjM2M2I3ZDA4YWE2OWNkY2I5ZjMyYmRmZDNlNmZmYmE3ZDNkZmVkYWFkN2YxYmFiYTVlNTE4MDBmNWJiYmMyZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_abd92ada558047829480d7e1ef9c4c2d",
+      "statement": "Selected Work evidence uses digest-checked bounded pages and applies Agent and granted Material scope before database record limits.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/work_portfolio.rs#L1-L48",
+          "version": "repo-lines-v1:sha256:9e28633fdeb22c4318631264a89dca2c528bf43a9ec43bc12f75c259080e7d98:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1OWM1ODIzODNmOWE5ZDdmNTExNDE4NWY4ODYzMGM0NzMzMDM3Y2E1NTRkOWFhOGVjZmZiMmU0MGI5YjZjNjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4NjU4YTdhM2JhODU4YmNkMzAxMjk0NTAyM2Y4ZmMyMTJkZjlkMzBjM2QyNzk5ZWQ1OGQzN2EyMmRhNTJiZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkyMTg4MTZmMzA0ZjQ4YzQ0OGQ5Y2NhMmZlMjZhMjg1OTVkOGNjZWJiNTgxOGJkMDFiYWM1ZjM3YTRlNjg2MzEifQ"
+        },
+        {
+          "resource": "repo://database/src/works.rs",
+          "version": "repo-file-v1:sha256:9fae2b7e75b33ade985004e3613c7de156eb8065661b3d85e22a4421384c60ab"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T06:15:55.391Z"
+    "at": "2026-10-24T21:19:56.719Z"
   }
 }

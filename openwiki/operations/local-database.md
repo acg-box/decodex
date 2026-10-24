@@ -8,6 +8,8 @@ sources:
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
+  - id: openwiki-source-d511cef2848dd5f6968572ae
+    resource: repo://crates/decodex-runtime/src/agent/tool_migration.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-2da6601c3f30e806c504e991
@@ -16,19 +18,45 @@ sources:
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
   - id: openwiki-source-8076269b8760701249ad3b9c
     resource: repo://database/migrations/0052_personal_access_token_credentials.sql
+  - id: openwiki-source-bdc10e06c0058b26a9bde83d
+    resource: repo://database/migrations/0056_project_agent_work.sql
   - id: openwiki-source-58c0167d31c3e40dc89591ab
     resource: repo://database/src/agent_fork.rs
+  - id: openwiki-source-0f0fc00c258a3ddad6935fcc
+    resource: repo://database/src/agent_tool_migration.rs
+  - id: openwiki-source-d1279ad243eb550afec4d0e6
+    resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
+  - id: openwiki-source-28af4781ad8d9558410630da
+    resource: repo://database/src/works.rs
+  - id: openwiki-source-c0eb738b42368debe7ef7545
+    resource: repo://database/src/works/commands.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T06:08:33.099Z
+    at: 2026-10-24T21:19:56.719Z
 ---
 
 # Local database operations
+
+## Project, Agent and Work migration
+
+The current ledger ends at schema 56, `0056_project_agent_work.sql`. It applies one direct transaction under the existing digest-checked migration owner. The migration renames Workspace directory and membership data to Projects and Project Agents. It adds persistent Agent responsibilities, separate Work, immutable requirements, scoped Materials, Results and explicit reuse, Collaboration Requests and issued instructions, stable command receipts, global Guardian settings/source receipts, private observations and native tool-migration journals.
+
+Existing conversation, inbox, native binding and genuine old execution records survive. Passive historical outcomes acquire Work owners and explicit legacy requirements. A migrated completed outcome retains a historical assessment with a no-new-qualification limit. No old executor becomes a native Subagent by renaming a row. The application does not require a reset, a second database or a dual-write migration.
+
+Work commands validate the current owner, expected requirements, holds and related evidence inside an immediate transaction. A committed command ID replays only the exact same actor and content. Completion requires current related Results and handled required requests. Old Results stay historical unless a new reuse assessment relates them to current requirements. SQL applies Agent and granted Material scope before bounded reads.
+
+Native contribution intent and exact direct-call identities are attribution records, not another executor or mailbox. Missing or ambiguous binding remains Unknown. The service reconciles exact native history before another external action. Peer requests use the existing inbox and exact delivered-turn receipts; restart does not imply acceptance.
+
+Tool migration uses `reserved`, `created`, `retiring`, `unknown` and `applied` outcomes. It preserves exact old/new identities and requested settings. Positive native retirement is required before the local binding switches. The previous context remains read-only history. Uncertain creation/retirement parks the migration; database retry does not recreate a native thread.
+
+Global Guardian stores desired reviewer preference and Review Details opt-in separately from source-specific effective receipts. Private records are deduplicated by reviewer thread, turn and item. Records are bounded to 64 KiB and the newest 128; small snapshot previews and exact selected reads stay separate. These records do not grant execution authority or complete Work.
+
+Protocol 3.0 is the matching direct public-contract change. Old clients fail exact negotiation. The migration and runtime tests use temporary roots; this task did not migrate the user's installed database. The local gate passed schema56/89-table integrity and 188 database tests passed. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
 
 ## Authority and paths
 

@@ -3,40 +3,52 @@ type: Decision
 title: "Project, Agent and Work contract"
 description: "Accepted architecture, shared English vocabulary, minimum Work and Collaboration contracts, recovery, and global Guardian controls."
 tags: ["decodex", "architecture", "agents", "contracts", "guardian"]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-22T20:51:42.199Z
 sources:
-  - id: openwiki-source-a053194f0c54bd9453573384
-    resource: repo://crates/decodex-codex/src/app_server_client/permissions.rs
-  - id: openwiki-source-098c6a9588eb0a1e1188f475
-    resource: repo://crates/decodex-runtime/src/agent_live_settings.rs
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
+  - id: openwiki-source-991553c8d747a54ecf5a9376
+    resource: repo://crates/decodex-core/src/work.rs
+  - id: openwiki-source-c75093d19a3bc72db5836102
+    resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-a4a2658e06fa2cf48ff4589e
+    resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
   - id: openwiki-source-cd44bbfa50ac15a596e824a2
     resource: repo://crates/decodex-runtime/src/agent/guardian.rs
   - id: openwiki-source-2fd274a65db230908814f7da
     resource: repo://crates/decodex-runtime/src/agent/native_turns.rs
-  - id: openwiki-source-dc98e0a4203f94a608c96afd
-    resource: repo://database/migrations/0054_agent_delegations.sql
-  - id: openwiki-source-8fb98024229a4675beaa73d0
-    resource: repo://database/src/agent_deliveries.rs
+  - id: openwiki-source-d511cef2848dd5f6968572ae
+    resource: repo://crates/decodex-runtime/src/agent/tool_migration.rs
+  - id: openwiki-source-b1dd4c8ab85f342314daa6f1
+    resource: repo://crates/decodex-runtime/src/agent/work.rs
+  - id: openwiki-source-bdc10e06c0058b26a9bde83d
+    resource: repo://database/migrations/0056_project_agent_work.sql
   - id: openwiki-source-3030ced79067a3721a08b107
     resource: repo://database/src/agent_native_turns.rs
-  - id: openwiki-source-9782a193c0b21f967135010a
-    resource: repo://database/src/agent/delegation.rs
-generated: { by: "codex", at: "2026-10-22T20:51:42.199Z" }
+  - id: openwiki-source-d1279ad243eb550afec4d0e6
+    resource: repo://database/src/guardian_settings.rs
+  - id: openwiki-source-28af4781ad8d9558410630da
+    resource: repo://database/src/works.rs
+  - id: openwiki-source-4e05748daab41d1c9c2f54dd
+    resource: repo://database/src/works/collaboration.rs
+  - id: openwiki-source-c0eb738b42368debe7ef7545
+    resource: repo://database/src/works/commands.rs
+generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-24T21:19:56.719Z
 ---
 
 # Project, Agent and Work contract
 
 ## Decision and implementation status
 
-Status: **Accepted design; implementation pending.** The user approved this architecture, global Guardian controls, and the English vocabulary below. This page is the canonical decision for that scope. It supersedes earlier design proposals that require fixed L0/L1/L2 management levels, mandatory routing through Main, permanent component managers, or several concurrent conversations that share one Agent identity.
+Status: **Accepted and implemented in the Project, Agent and Work change.** The user approved this architecture, global Guardian controls, and the English vocabulary below. This page is the canonical decision for that scope. It supersedes earlier design proposals that require fixed L0/L1/L2 management levels, mandatory routing through Main, permanent component managers, or several concurrent conversations that share one Agent identity.
 
-This decision applies to general-purpose work, including research, planning, writing, operations, analysis and software. It does not authorize installation, release, changes to a maintenance schedule, or automatic execution of all historical optional proposals. It does not certify an installed application. A documentation update does not migrate stored conversations, apply native settings, or enable Review Details.
+This decision applies to general-purpose work, including research, planning, writing, operations, analysis and software. It does not authorize installation, release, changes to a maintenance schedule, or automatic execution of all historical optional proposals. It does not certify an installed application. Documentation alone does not establish a migration of an installed application. Review Details remains an explicit global opt-in.
 
-Normative sections define the target. [Current implementation and migration](#current-implementation-and-migration) identifies reusable behavior and required changes. Older qualification records retain their original source, artifact and behavior limits. An older record that calls Review Details unselected describes its qualification scope; the product decision on this page is now accepted.
+The normative sections define the contract. [Current implementation and migration](#current-implementation-and-migration) describes the implementation and remaining qualification limits. Older qualification records retain their original source, artifact and behavior limits. An older record that calls Review Details unselected describes its qualification scope; the product decision on this page is now accepted.
 
 ## Canonical vocabulary
 
@@ -58,7 +70,7 @@ Use one English vocabulary in the UI, code, database and documentation. Identifi
 | Review | Guardian's assessment of one action. It is separate from assessment of a Work Result. |
 | Review Details | Supported detailed native reviewer records associated with a Review. |
 
-Native Thread, Turn and Goal keep their distinct execution meanings and protocol names. Existing Main, manager, worker, Task and Goal storage names are compatibility facts until their migrations complete. They do not define the target business model. In the target, Project replaces Workspace as the business term; existing directory and membership data must survive migration.
+Native Thread, Turn and Goal keep their distinct execution meanings and protocol names. Some legacy execution readers and viewport identifiers retain old names for actual compatibility. They do not define the business model. Project replaces Workspace in the business schema and public protocol; existing directory and membership data survives the direct migration.
 
 ## Responsibilities and native ownership
 
@@ -125,7 +137,7 @@ Use two execution paths with this shared attribution contract:
 - Native Subagent contributions use native spawn, message, follow-up, wait, interruption and recovery behavior. Do not add a second mailbox for those native messages.
 - Independent Agent contributions use the existing Decodex inbox and root-conversation admission path, extended with request identities and explicit acceptance. Preserve tool authority for application-origin input.
 
-The selected native interface must actually support each operation. A helper follow-up API must not be assumed to be a generic bus for unrelated root conversations. The [inspected native implementation](https://github.com/openai/codex/blob/970111f6cb62cc02fe36a82ea7d71b37a2889c97/codex-rs/core/src/agent/control/api.rs#L126-L147) rejects a follow-up that targets a root. This source reference does not select or qualify that runtime for Decodex.
+The selected native interface must actually support each operation. A helper follow-up API must not be assumed to be a generic bus for unrelated root conversations. The [inspected native implementation](https://github.com/openai/codex/blob/970111f6cb62cc02fe36a82ea7d71b37a2889c97/codex-rs/core/src/agent/control/api.rs#L126-L147) rejects a follow-up that targets a root. The selected development artifact uses this exact source. Its affected native behavior was tested separately; source inclusion alone does not establish qualification.
 
 When an independent Agent is busy, a durable request can wait without being reported as accepted. The recipient can decline or identify a conflict. The requester then chooses another path or records a blocker. Do not add an automatic global priority optimizer or require the Assistant to arbitrate every request. Preserve user-input priority, explicit pauses and current native ownership gates.
 
@@ -194,7 +206,7 @@ Subagents follow the actual native parent permission rules. An independent Agent
 
 ### Review Details lifecycle
 
-The user selected this capability as part of the global design. Keep its opt-in in global Guardian settings, not on individual Agents. Before implementation, qualify the native event subscription and configuration against the exact selected binary and helpers. Do not copy the reviewer or enforcement engine.
+The user selected this capability as part of the global design. Keep its opt-in in global Guardian settings, not on individual Agents. The implementation qualifies its native event subscription and configuration against the exact selected binary and helpers; future runtime changes must repeat the affected checks. Do not copy the reviewer or enforcement engine.
 
 Observe only records exposed by the supported native protocol. Preserve the private reviewer's thread and turn identity, and associate records with the actual Review and target operation. Never attach them to the latest parent turn or latest Review by guesswork. A missing association remains explicit.
 
@@ -214,7 +226,7 @@ This example illustrates the contract. The places, amounts and outcomes are assu
 | Family Trip | Iris | B2: Accommodation comparison and cost plan. |
 
 1. The user discusses the goals directly with Sage and Iris. Work becomes explicit when an outcome and criteria are clear. The Assistant need not participate.
-2. Each owner chooses direct execution or authorized native Subagents. The authority to delegate is explicit and does not depend on Ultra. Actual delegation behavior still needs qualification with supported model and native settings.
+2. Each owner chooses direct execution or authorized native Subagents. The authority to delegate is explicit and does not depend on Ultra. The synthetic native matrix qualifies supported V1 and V2 paths. It does not measure live model judgment or delegation quality.
 3. The user has permitted a bounded exchange of public venue and transport Materials. Sage asks Iris for those Materials for A1. The request waits while Iris is busy and becomes Accepted only when she accepts it. Her family information is not shared. This contribution is a Collaboration Request, not another permanent Agent or a fifth independent Work.
 4. The user changes the market from 60 people to 80 people, fully indoors, with the same budget. Sage updates A1 and A2 and their affected instructions. B1 and B2 keep their requirements. Old venue capacity evidence cannot close A1; unchanged transport evidence can be checked for reuse.
 5. Sage finds that insurance in A2 still uses 60 people and returns the same contribution for repair. Iris finds that a proposed hotel does not fit B1's accessible route and arranges a compatible revision. The original Work identities and owners remain.
@@ -222,46 +234,42 @@ This example illustrates the contract. The places, amounts and outcomes are assu
 
 ## Current implementation and migration
 
-The following are current source facts, not proof that the complete target is implemented:
+Schema 56 migrates directly to Project membership, persistent Agent responsibilities and separate Work. Protocol 3.0 rejects incompatible clients explicitly. There is no dual business-name API or gradual rollout. The migration preserves genuine legacy execution, instructions, native identities, inbox receipts and historical completion limits. A migrated historical outcome is not newly qualified Result evidence. No legacy executor is relabelled as a native Subagent.
 
-- AgentCoordinator::create_goal stores a separate outcome without creating a native execution conversation. This is a reusable Work foundation.
-- Current conversation creation still requires a personal root and uses parent_goal_id. The target must remove the resulting mandatory business hierarchy while preserving identities and history.
-- The agent_delegations table uses work_id as its primary key. Its current outstanding-assignment relation cannot represent several independent requests to one Agent without extension. Its older-Result protection remains useful.
-- dispatch_input preserves application tool authority for delegation and wakes. It does not turn those inputs into user authorization.
-- recover_native_turns and native terminal receipts recover exact existing execution without replaying local input. Native child ownership uses verified spawn ancestry; a fork alone does not grant it.
-- Current deliveries aggregate conversation progress and latest reply data. A separate passive Work does not yet have the complete target requirement, native Result and assessment association.
-- Current permission selection submits a named native profile separately from the reviewer. Live reviewer edits target the active turn. These controls are not a persistent global Guardian implementation.
-- Current Guardian denial approval uses the exact saved Review and does not start a turn or retry the action. Guardian observations are evidence, not Work completion.
-
-| Area | Decision |
+| Area | Implemented behavior |
 | --- | --- |
-| Agent identity, exact native bindings, canonical input and uncertainty fences | Retain. |
-| Native Subagent execution, activity, usage, context and approval ancestry | Retain under native ownership; add Work attribution. |
-| Separate outcome records, scoped references, dependencies, inbox and assessments | Retain as foundations; extend their business associations. |
-| Independent Collaboration Requests | Add stable per-request identity, acceptance, targeted Results, repair and cancellation to existing transport. |
-| Requirement changes and completion | Add current-requirement checks and atomic owner assessment; preserve older evidence. |
-| Project integration | Preserve current directory and membership data. Adopt supported native Project identity and catalog ownership only after exact-interface qualification; retain Decodex Work and responsibility associations. |
-| Global Guardian and Review Details | Implement the accepted global controls and native observation boundary. Preserve native enforcement and truthful per-source readback. |
-| Default temporary execution through agent_create_work and agent_continue_worker | Retire from the new delegation path only after native replacement behavior is qualified and existing consumers and in-flight Work are handled. |
-| Automatic creation of persistent subordinate managers | Remove from the target Agent tool surface. User-created persistent Agents remain supported. |
-| Existing automation, external evidence, native recovery and independent-request wakes | Preserve their real consumers; do not delete them as if they were all duplicate Subagent scheduling. |
+| Agent identity | User-created independent Agent, one current native conversation. Assistant is optional; Project Lead selects an existing Agent. A legacy parent identifier does not confer business authority. |
+| Work | Current immutable requirements, one owner, explicit state and holds, scoped Materials, exact Results, reuse assessment and atomic completion checks. |
+| Collaboration | Stable request and instruction identities, durable busy queue, exact delivered-turn acceptance, targeted return, assessment, repair and scoped cancellation. |
+| Native execution | Intent before native call, exact direct-call attribution, native messages, waits and continuation. Unbound or ambiguous evidence stays Unknown without a duplicate spawn. |
+| Project | Supported native Project create/read/list and exact idempotency, with Decodex Work and responsibilities retained locally. Native Project catalog does not prove desktop saved-Project synchronization. |
+| Guardian | Global Ask Me or Automatic Review, separate desired and per-source effective receipts, no editable per-Agent reviewer override. Native permissions and Full Access remain separate. |
+| Review Details | Explicit global opt-in; verified private reviewer/parent identity; native assistant output and terminal metadata only. No raw reasoning frames, parent-history pollution, action replay or guessed action association. |
+| Presentation | Existing desktop Work and Guardian entries, Project grouping, existing-Agent responsibility selectors, clickable Materials, Results and Collaboration evidence. |
+| Compatibility | Retained real old execution, archive, forks, input, automation and evidence consumers. New default helper creation uses native tools. |
 
-Do not replace an existing managed worker with a differently labelled native child. Preserve unfinished Work, historical identities and supported compatibility readers until their consumers are migrated. New business code uses the canonical names; protocol compatibility must remain explicit.
+The default tool revision advertises `work_read` and `work_manage`. Managed temporary-worker creation/continuation, subordinate-manager creation and old goal/dependency tools are retired from that surface and rejected if an old schema still advertises them. Existing automation and native recovery remain; no duplicate Work controller, native mailbox or permanent review department is introduced.
 
-## Qualification and completion of implementation
+An existing native tool set migrates only when its source and descendants are quiescent and inspectable. The durable journal saves replacement identity before retirement, preserves model/provider/effort/tier/permissions and history, verifies actual resumed settings and requires positive archive acknowledgment before the binding switches. Unknown creation or retirement stays parked. The old context remains read-only history; the service never resets it or blindly creates a replacement.
 
-Use the repository-selected native artifact, its helpers and generated schema. A source commit, version label, ancestry or matching schema alone does not prove behavior. Source review, executed tests, merged delivery and installed-app acceptance are separate evidence.
+A Project association is business scope. A native conversation still has one actual execution directory, Project and permission boundary. Work association does not switch them. Work Pause blocks new Decodex contributions and completion; already-running native actions, Goals and children require native control. These limits are visible in the UI.
 
-Implementation must cover these meaningful cases:
+## Qualification and evidence limits
 
-- One Agent handles two Works; a Result for one cannot complete the other. Self-produced and delegated Results follow the same rule.
-- Busy independent requests survive restart without duplicate admission or a false Accepted status. Wrong recipients and ungranted private references are rejected.
-- Lost acknowledgment is reconciled without replay. Duplicate and missed native terminal events recover one Result and one pending assessment.
-- A change during execution rejects stale completion. Valid old Materials can be explicitly reused. Repair preserves identity and cancels only the affected contribution.
-- Subagent completion can reach an idle owner through supported native behavior without a second local wake. Pauses, cancellation and active-turn ownership remain effective.
-- Global Guardian preferences are checked against actual effective native settings before and after restart. Managed restrictions, pending human approvals, inherited child policy and uncertain setting writes retain their boundaries.
-- Optional Review Details preserve private reviewer identity, parent-history isolation, interruption scope and bounded recovery. Observation never authorizes execution or retries an action.
+The selected development source is official Codex `970111f6cb62cc02fe36a82ea7d71b37a2889c97`. Explicit `cargo +stable make prepare-codex` verifies the actual package, CLI, Code Mode helper, search helper, provenance and generated schema. This change keeps the selected runtime baseline; it does not advance the upstream review cursor or identify the installed application. Component hashes, retained regression identities, entrypoints and reproducible commands are in [retained evidence](../../automations/upstream/retained-evidence.json), under `retained_project_agent_work`.
 
-Existing relevant tests include database agent/tests/delegation.rs, runtime agent/tests/completion_contract.rs, agent/tests/native_agent_wake.rs, account_launch/agent_process_native_permission_tests.rs, account_launch/agent_process_native_guardian_evidence_tests.rs and agent/tests/guardian.rs. Read test bodies and verify actual matched test counts when executing them. Their existence or historical receipts do not establish the new global behavior. This documentation task did not execute application or native runtime tests.
+Executed validation for this change:
 
-See [current Agent coordination](../architecture/chief-coordination.md), [approvals and native ownership](../workflows/approvals-and-native-ownership.md), [product scope](upstream-product-scope.md), and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
+- Workspace all-target/all-feature check, strict lint for 13 packages and nightly format check passed.
+- Database suite: 188 passed. The scope regression first reproduced the old failure with unrelated records ahead of the Agent's own Work and authorized Material, then passed after scope moved before the SQL limit.
+- Exact-artifact native matrix: 13 passed, 985 excluded by its selector, zero unmatched selected tests. It covers native V1/V2 contributions, V2 idle wake, tool migration, Project/global reviewer/private records, child approvals and retained context/permission behavior.
+- Transport and receipt suite: 28 passed, 970 excluded by selector. Focused UI/runtime checks: 6 passed. Python checks: 40 passed. CLI diagnostics: 2 passed. Local database gate passed with schema 56 and 89 tables. Counts overlap; do not add them as distinct tests.
+- Complete workspace suite: 2918 executed, 2916 passed including one leaky pass, 2 failed, 1154 skipped. The two failures are native audio ICE connection timeouts. One identical timeout reproduced on untouched main under workspace features; a package-only baseline run passed both. The other failing test was not independently reproduced on main. The cause remains unknown. No audio test was removed or weakened.
+
+The selected model catalog and configuration determine the native multi-agent backend. The synthetic matrix uses V2 with `gpt-5.6-sol` and V1 with `gpt-5.6-luna`, both at Medium. A false V2 feature flag alone does not establish V1. Qualified V2 supplies idle-owner completion wakeups; V1 requires native wait for required Results. Nested Code Mode delegation attribution remains unqualified and Unknown.
+
+Global reviewer updates set the native thread preference for subsequent turns. Active turns, pending human approvals and already-created child captures retain native ownership. Private reviewer records lack exact action Review IDs in this runtime; the UI states the association is unavailable. It retains at most 128 records, at most 64 KiB each, previews the newest 32 and retrieves a selected exact record separately. Reconnect gaps remain explicit.
+
+Work evidence reads apply scope before a 100-record limit per category and expose `has_more`. Selected evidence uses digest-checked 8 KiB pages up to 32 MiB. Missing, changed or oversized evidence stays unavailable. These are bounded views, not proof that the whole history was read.
+
+Synthetic provider tests establish the measured native integration contracts. They do not establish live-account/model quality, installed-app visual or interaction acceptance, reservations, payments or other real external outcomes. Source inclusion and digest checks prove provenance, not semantic correctness. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).

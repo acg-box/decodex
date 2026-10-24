@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:cc74b1cdc4cb93f36230e7c956199c28f4d73ec58870dd4c52723b4f5a308e03",
+  "pageVersion": "sha256:733c659f19abc56c0a07da4e6ecfca1c1423ca731bb278f54bcef654d0c8a10c",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -60,7 +60,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:610499c7a4a169915be1fced9fcf818c8d2f4873ac2f801aeb8d60894ba603e1"
+          "version": "repo-file-v1:sha256:614721f8ad12456e506c29dd38ff91c95a4c74422fd568d976f816acf54f190b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_live_audio.rs",
@@ -88,7 +88,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:610499c7a4a169915be1fced9fcf818c8d2f4873ac2f801aeb8d60894ba603e1"
+          "version": "repo-file-v1:sha256:614721f8ad12456e506c29dd38ff91c95a4c74422fd568d976f816acf54f190b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_audio_owner.rs",
@@ -166,7 +166,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:610499c7a4a169915be1fced9fcf818c8d2f4873ac2f801aeb8d60894ba603e1"
+          "version": "repo-file-v1:sha256:614721f8ad12456e506c29dd38ff91c95a4c74422fd568d976f816acf54f190b"
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
@@ -208,7 +208,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_dictation.rs",
-          "version": "repo-file-v1:sha256:aec31862bbaed5408f4b12a2de0e764084fba5e2db965c01aeba28fc684ac73e"
+          "version": "repo-file-v1:sha256:a9440c701ae0c447251715a38f51c4f7cc7cc635bcc526be8e10e344eeada90b"
         }
       ]
     },
@@ -225,6 +225,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T14:42:59.992Z"
+    "at": "2026-10-24T21:11:31.338Z"
   }
 }

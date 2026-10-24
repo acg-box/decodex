@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4122c76aa1f054a34b7ce044a398b7f6b8f4e2e7243cd8c1c13f6240e9c9cffe",
+  "pageVersion": "sha256:034ca017594945e534896c27b4e8edaf536568821350d72e120d3602e55d23db",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -17,7 +17,7 @@
       "statement": "The native bridge retains installed-plugin observations but rejects plugin list/read/install/reconcile management and MCP configuration reload; historical plugin state is still persisted as observations.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L750-L791",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L771-L812",
           "version": "repo-lines-v1:sha256:54d229cbf84d87383e867f093b72e720d3db151884b97c6a1006816ad9a88a74:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0ZDAyMDk0NDNhMGVhMDQxNTNlYjM3YzdhNGYzMTU4OGE0MDBmNGE0ZTNkYTE0NDc3ZmVjYTRhYmQ4M2YzYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkifQ"
         },
         {
@@ -134,11 +134,11 @@
     },
     {
       "id": "claim_6f8c8a882cfc49fcbe2ad7d42a33ef9d",
-      "statement": "Only work_instruction outputs request native retention; wakes, capacity retries and injected external result batches remain unselected while delegation inputs retain tool authority.",
+      "statement": "The compatibility path requests retention only for work_instruction outputs; wakes, capacity retries and injected evidence remain unselected and retain application authority.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:8d5a68c0f85bfd64f23ec6fc2b9d1496902f84452c0f8a3c1eb8c7399d2ce598"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1247-L1355",
+          "version": "repo-lines-v1:sha256:e0ad341d1d141c699110b02b6523ea6ef5d2151f529f68b963753ce173ce1cfc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
@@ -173,12 +173,12 @@
       "statement": "Account admission accepts only the native plus, pro, prolite, promax and team plans, case-insensitively; absent and unknown plans remain unsupported.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5589-L5603",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5604-L5618",
           "version": "repo-lines-v1:sha256:5b47136506971aa4b802d62886d89a48e0c90fbd6e2a71d224b33796f0c135ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmNjk5MTEzNTNhZjE0Y2FiOWFmMzljZjU2NDA5YzMyNDJlYzAyOTdjMTVmMmU3ZWQxMjAzMGM2M2M2M2EzZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1NTgxZDhlMGQzMjM1MGEzMDlmMjBlYjVhMzNmYzYyYzg3ZWZlNzRmM2UzMGRhMTQ0Yzg5YmYzMmExYWIyYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5N2M4ZTkyYWMwMjViYTIwYzAwMzE4NzgxOThiYTlmMTY5NTA1MzNjOGQzMjkxYjA0NGEzY2Q5MzUzY2FlNzMifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs",
-          "version": "repo-file-v1:sha256:df87cab1b7d420e4626ee4db794ce79060f08bf96a2078c5ea3122c2db346641"
+          "version": "repo-file-v1:sha256:a699da5c8e090fe7bd07682cee3fc3f9d1908a38d6ea557e618b1e86e2efe9b1"
         }
       ]
     },
@@ -191,10 +191,42 @@
           "version": "repo-lines-v1:sha256:46e45205f692ef3918ba27a01985983e92c62d5d01358fdb82f0d4271b41a5b9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2NTcwYWIyNjlmYmUzMzFlN2Q3MmIwY2RmOGM3OGQ3ZTlkNzE4ZTBkN2IxMzI3MThkMmJiNWM2YzNmMjgxNmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhiODhkYmNiMGE3ODA4NDVlZjAyMjNjOTZlMTBjMmUzNTFmNGM3NGMxMTc2NGI1ZDk0OWVhN2RmYTQxNzU4MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxYzIxMmM0MmYxZTRkNTNlNWQyZWU0OTI0Y2NkZDM3OTU4YTRmNjJjZTQ2ZTU4M2YyY2ZmZGY2MWFkZTAwMjgifQ"
         }
       ]
+    },
+    {
+      "id": "claim_52eb8e8acaa34810819bb23c97df6feb",
+      "statement": "Current product scope includes separate Project, Agent and Work records, scoped peer Collaboration, native helper execution and direct schema56/protocol3 migration while preserving actual legacy execution.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L298-L318",
+          "version": "repo-lines-v1:sha256:4e348b96cdd833f2bc43461fd7ce1c187194dd0f0573aba0897ccf467bbb6893:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2M2NhYzIyNmZhN2FjOTE1MGUwMTZlODZiODM2YTViMjg5Y2MxNjU4YzNmYTA3YjI1YTdhY2Q5NDMxNTY5YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRkMTAyZWNmMDUwZGViNTQ0YjM1YTJkNDIxYzhmNGMzMzlkYjJmYjE0NmVhYzE1YzY2MGUyZGViYTJjZDUyYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzNzAzOTQzYjAxNmE4ZjUwOWFkZDU4ZGRhNTI1YzJmMzY2N2EwOTMxNWFlYjgwNDQwODIwZTU3ODMwMjBlNTgifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
+          "version": "repo-file-v1:sha256:dd9ef5ba2a31400ca4e973700dd4ca2418c96c818f0126d5b1d365f61569b7be"
+        },
+        {
+          "resource": "repo://database/migrations/0056_project_agent_work.sql",
+          "version": "repo-file-v1:sha256:ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699"
+        }
+      ]
+    },
+    {
+      "id": "claim_a9a16ba608b9409b958efbec4515c3fa",
+      "statement": "Global Guardian and opt-in bounded private observations are implemented with per-source effective receipts and explicit missing action association, without selecting the separate Guardian V3 experiment.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
+          "version": "repo-file-v1:sha256:131f5d872210abf936e8e602328d7cf1fa8252941ba1832176c2bb32ea1d4839"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-22T20:51:42.199Z"
+    "at": "2026-10-24T21:19:56.719Z"
   }
 }

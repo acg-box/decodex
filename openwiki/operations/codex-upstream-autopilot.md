@@ -33,10 +33,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-17T07:29:15.006Z" }
+generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T06:15:55.391Z
+    at: 2026-10-24T21:19:56.719Z
 ---
 
 
@@ -93,7 +93,7 @@ The ancestry check preserves source inclusion; it does not prove behavior. Verif
 
 `AgentCoordinator::dispatch_input` sends direct root requests and saved user replies as user input. Delegation, scheduled wakes and capacity retries use an empty input array and a `decodex` tool output named `work_instruction`, `work_wake` or `capacity_retry`. A retry retains its native retry trigger. Rejection must not cause the application to replay this output as user input.
 
-The encoder adds `retain: true` only to `work_instruction` outputs. This covers initial delegation and explicit follow-up instructions. Scheduled wakes, capacity retries and other external results do not request retention. The output keeps its application tool role. Native feature configuration and the native retention budget decide whether it survives compaction; the annotation does not force preservation.
+The encoder adds `retain: true` only to `work_instruction` outputs. This covers compatibility initial delegation and explicit follow-up instructions. Scheduled wakes, capacity retries and other external results do not request retention. The output keeps its application tool role. Native feature configuration and the native retention budget decide whether it survives compaction; the annotation does not force preservation.
 
 Validate selected retention against the exact native artifact. Check compaction and cold resume, tool provenance, absence of duplicate insertion, and the disabled-feature and unselected-output controls. Save the dated qualification receipt in the automation directory. This wiki records the ownership boundary and reusable procedure.
 
@@ -118,3 +118,7 @@ Match checks to the changed behavior. Use isolated system-temporary fixtures, re
 Report useful merges and actionable blockers concisely; remain quiet when nothing changes. Optional proposals require a user decision before implementation. When enabled by the current operator decision, run once daily without a task-defined duration limit. Continue across small review and delivery batches until the fixed upstream target and its required repair, artifact qualification, PR, CI and merge work are complete. End early only when a concrete blocker requires user input or an external change. Save the exact continuation and pending CI head, preserve active processes and changes, and prevent overlapping runs.
 
 The automation directory's `state.json` owns the current reviewed cursor, next unreviewed commit, pending adaptations, PRs and separate baseline-audit queue. Apply the latest explicit operator decision; neither old pause notes nor old resumption notes determine current host state. Complete or repair existing PRs first; avoid overlapping runs and duplicate implementation.
+
+## Project and Work delivery evidence
+
+The retained index has a separate `retained_project_agent_work` qualification for the direct schema56/protocol3 change and global Guardian. It records exact source, artifact/helper/schema identities, reusable tests, executed counts and unmeasured limits. It does not advance the upstream source-review cursor or certify the installed app. The accepted private Review Details decision is implemented; unrelated optional proposals keep their recorded decisions. Native automation state and its paused schedule remain separate authority. Reconcile this product delivery with current main and pending native receipts before an explicitly authorized maintenance resume.

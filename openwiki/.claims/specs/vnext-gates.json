@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:55c28e9f9d4cb0e1eca17ff07f63b90fec8ba38ea1652699132fa67e882311c5",
+  "pageVersion": "sha256:930fe78968fdd7416f8f492d21be2f323d83ca1189cbe83b90e4b05182529cec",
   "claims": [
     {
       "id": "claim_0a3f727a31ee46ffb4817dbb5d71e57d",
@@ -12,13 +12,13 @@
         },
         {
           "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:916f8d6615e3a14e74743fda320f3e6ccf4956b872b66fa6f761f0a73a03a43e"
+          "version": "repo-file-v1:sha256:c28cb3a289bd31e3aab3dd4c715f33354eb5d0874ea1fa16099c8fd5ebf50657"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T09:01:22.045Z"
+    "at": "2026-10-24T21:11:31.338Z"
   }
 }

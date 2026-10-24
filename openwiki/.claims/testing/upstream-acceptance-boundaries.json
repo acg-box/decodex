@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9c774b4a6b0688396b6da1becf20f35600347654c62533d889809595c723e680",
+  "pageVersion": "sha256:57889f3af52eae1f580a18e4bf591edd54bf86eba86cf5407d96ad49f2346ccb",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -80,7 +80,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:8d5a68c0f85bfd64f23ec6fc2b9d1496902f84452c0f8a3c1eb8c7399d2ce598"
+          "version": "repo-file-v1:sha256:21606f7d55eb010c9ebd76f0728c2be4c8b637d02d5f380ea470a3e9dc743ac9"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/result_messages.rs",
@@ -101,7 +101,7 @@
       "statement": "External context is sent as function_call_output through thread/inject_items; the lost-injection and lost-follow-up response test confirms that recovery retains an unknown outcome without replaying either request.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1351-L1366",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1361-L1376",
           "version": "repo-lines-v1:sha256:bc50eb129bc3ec0c12b2018556e2ce03d02e3860b29f914e175d959ada8bf996:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkY2FkYmNhM2U5OWE2NjVlYzI1Yzk2ZTRhNzEwNTFkYjIzZjA4M2U5MDc1ZjJmNTljMDFlZTQwMTRiNjM2ZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmNjIzYTM0ZTk2OWRmODg3NzNmYzc2MzVlMmMyODYyZGRiMzVjNTljODkxMDRkZTM1ZTEyYmIxNzc1YzZhZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1NTA4YTBjYTIwNDQ5NzNjZDg1MDYyNDljZTFjMTlmZDlhMjdlMjM0YmEzYzA5MzIwYzFlMWNkYTkzN2I4NzMifQ"
         },
         {
@@ -222,11 +222,11 @@
     },
     {
       "id": "claim_7211de2ff37642dfb26b759882fec18c",
-      "statement": "The delegation regression distinguishes direct user input from initial and follow-up work_instruction outputs that request native retention; the dispatch encoder does not select scheduled wakes or capacity retries for retention.",
+      "statement": "The compatibility delegation regression distinguishes direct user input from tool-authority work_instruction outputs requesting retention, without selecting scheduled wakes or capacity retries.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1243-L1357",
-          "version": "repo-lines-v1:sha256:5d9d5c881f9272bfdc31d9ab28409b08964324cfa88db2cde6f693ee24ada2ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI3NTIzNjQ0MTgxNDAyZGRiY2RiN2I0MWEzYzc2YTFhNzE1NzAyNGZiNzc2NjAxNTBjODQxN2Q2MWIxMTBlOTU2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhZDZlMjExMmYyNDE4ZWYzNjk3OWYzOWVhMDUyNmJhNGUxOGU0ZmE0MTQ2NTQyM2ZhYjMzZmNmMzcyMmQ2MzhlIn0"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1247-L1355",
+          "version": "repo-lines-v1:sha256:e0ad341d1d141c699110b02b6523ea6ef5d2151f529f68b963753ce173ce1cfc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs#L151-L225",
@@ -254,7 +254,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:c2679cbdef5fee4a799c90f3887b10fc268c644dee120e5f7a912ed0fa843a82"
+          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
         }
       ]
     },
@@ -272,7 +272,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:8d5a68c0f85bfd64f23ec6fc2b9d1496902f84452c0f8a3c1eb8c7399d2ce598"
+          "version": "repo-file-v1:sha256:21606f7d55eb010c9ebd76f0728c2be4c8b637d02d5f380ea470a3e9dc743ac9"
         }
       ]
     },
@@ -282,7 +282,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:c2679cbdef5fee4a799c90f3887b10fc268c644dee120e5f7a912ed0fa843a82"
+          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
         }
       ]
     },
@@ -337,10 +337,70 @@
           "version": "repo-file-v1:sha256:8d078b642d80ad0fcfe35b4ae5d4c0c2e97144c022fabf3380520ea1766d3e82"
         }
       ]
+    },
+    {
+      "id": "claim_9e162a8070e54cc684d9821ff8282bd5",
+      "statement": "Project Work qualification separately records exact CLI/helper/schema identities, source and executed-test limits, passing native/local cohorts and a complete workspace result with two unresolved media failures.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
+        }
+      ]
+    },
+    {
+      "id": "claim_1e1fe48fb67c4ab083f21d46a9a22fac",
+      "statement": "Native Project/global Guardian/private records and quiescent tool migration are exercised through the retained production bridge, while V1/V2 qualification uses native model selection and excludes nested Code Mode Work attribution.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs",
+          "version": "repo-file-v1:sha256:a7583373e3a464de6396fed52288aa8650b127438064acc4df3cfcadfd9eb4f5"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
+          "version": "repo-file-v1:sha256:c7f9b1441a89892d12c549b5c15571496111ea4b911e9fa699af5f86e726db9d"
+        }
+      ]
+    },
+    {
+      "id": "claim_a3c38da871a246d5816248b765d86057",
+      "statement": "The native private-record observer preserves reviewer and parent identity, excludes raw reasoning, retains no guessed action Review link and cannot complete Work or alter parent history.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
+          "version": "repo-file-v1:sha256:131f5d872210abf936e8e602328d7cf1fa8252941ba1832176c2bb32ea1d4839"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/project_guardian.py",
+          "version": "repo-file-v1:sha256:2c9429ce26a700a4fd27145fa9022df4d6bc426ade5b8b512f329131afb2ad42"
+        }
+      ]
+    },
+    {
+      "id": "claim_3bc628b3b686467989218f48d0ff5e31",
+      "statement": "Work qualification tests enforce four-Work Result separation, current requirements, scoped reads before limits and digest-bound selected evidence without installed-app or live-model acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/work_contract.rs",
+          "version": "repo-file-v1:sha256:047e633c397341c31db242a9129ae53566a6cdd29886a1a01b2d8bdc751611fc"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/work_portfolio.rs",
+          "version": "repo-file-v1:sha256:fd24557ef9583bda2f5781f4ad15afa19ae006533728ccc087fc47a38209b7a2"
+        },
+        {
+          "resource": "repo://database/src/works/tests.rs",
+          "version": "repo-file-v1:sha256:7995d3e2ab0c9c1b2bcb8e67141fe4db3c9621326bbdda85b488e0b06c0f4b43"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T06:15:55.391Z"
+    "at": "2026-10-24T21:21:22.212Z"
   }
 }

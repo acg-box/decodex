@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f76ff11e361be6c2f79e0feadc5c7a0d3f0caca9788151decc29441e3400a56e",
+  "pageVersion": "sha256:2350471a4012a34e9a9adac581ff8f4b891e7dde9881b1ab0553fa116d3c34cd",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
-      "statement": "Agent is a general-purpose primary agent that can handle simple work directly and coordinate workers or subordinate Agents while treating worker completion as evidence rather than automatic goal acceptance.",
+      "statement": "Persistent Agents handle general-purpose Work directly or use native Codex Subagents; only the user creates persistent Agents, and helper completion is evidence for an explicit Work assessment.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
-          "version": "repo-file-v1:sha256:5bcfa29f7a67cc02f7640fd09b07e22e1bd9318d123a993f4315dfe37097640b"
+          "version": "repo-file-v1:sha256:a32503172f93bd1e5dee1c1714d75236457b0df869ea9953fee9fc7f4da104e9"
         }
       ]
     },
@@ -18,11 +18,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:8d5a68c0f85bfd64f23ec6fc2b9d1496902f84452c0f8a3c1eb8c7399d2ce598"
+          "version": "repo-file-v1:sha256:21606f7d55eb010c9ebd76f0728c2be4c8b637d02d5f380ea470a3e9dc743ac9"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:89a860995f1e35abd8be01fff174c66c77bde446d261254180ed2a5b051a3fd7"
+          "version": "repo-file-v1:sha256:fd7d9b900316d869373270312fe07918d777a7bc4c8320125530f4f865db7092"
         }
       ]
     },
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/native_subagents.rs",
-          "version": "repo-file-v1:sha256:44070964c9d226b24d58a4875397552b2d66b03427d1f67bcf0ffe4fabd6dd59"
+          "version": "repo-file-v1:sha256:9e5e9c8cf88442215235adba888e636353fb70fb0526124dd839670fed18fcec"
         }
       ]
     },
@@ -52,17 +52,17 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:8d5a68c0f85bfd64f23ec6fc2b9d1496902f84452c0f8a3c1eb8c7399d2ce598"
+          "version": "repo-file-v1:sha256:21606f7d55eb010c9ebd76f0728c2be4c8b637d02d5f380ea470a3e9dc743ac9"
         }
       ]
     },
     {
       "id": "claim_af405f5b67ff48c885f3f48eb4e14942",
-      "statement": "Explicit conversation branches reserve independent local work, retain the source role and tool version, and gain source-process ownership only through an acknowledged fork record; they do not copy pending work or create another personal Main.",
+      "statement": "Explicit branches reserve independent local conversation records, retain the source role, Project and tool version, and acquire source-process ownership only through acknowledged fork evidence without copying pending inbox work.",
       "evidence": [
         {
-          "resource": "repo://database/src/agent_fork.rs#L123-L176",
-          "version": "repo-lines-v1:sha256:e388f9a788b7520d96ca7e61d8e2a8f182552c7fb47716049923d52f343d941a:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxNzk0NjU4NmU1NzcwODk3NzliOWRjNWFmMmIzMmRkNGRmYjFlNGE1ZmRjOGQwM2FmYjFhNDBiYTk5YWIzYWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU4YTI4OTE2YTdlNGI2MjBkZTA4ZDA0N2Q2MDBiNTFmY2RiMTE1Yzk1NDViOGFiZTNlOWEwNjYzOTA3MDEwMDUifQ"
+          "resource": "repo://database/src/agent_fork.rs#L123-L183",
+          "version": "repo-lines-v1:sha256:e7da4791a3b61a3fad524caf505091e236201487449eb5d416c609e9693ae4a2:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIyODE1YWJkYjBkMjZmZDE1M2MyNTcyMGRmMjJmNTEyYjVmMjcxZmQyYjBiMDdiNThlODg5MjgwMTQ1MGQ3MWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxNzk0NjU4NmU1NzcwODk3NzliOWRjNWFmMmIzMmRkNGRmYjFlNGE1ZmRjOGQwM2FmYjFhNDBiYTk5YWIzYWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1OGU1YThiNDE1MWI4MmE5NmZiNTgwNWM3YzRlNjI0M2I1Nzk3YmU3MzliMDNmOTA2MDVkMTgxMzJlMmU4NjkifQ"
         },
         {
           "resource": "repo://database/src/agent_process.rs#L207-L231",
@@ -90,7 +90,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs#L112-L172",
-          "version": "repo-lines-v1:sha256:41fded977dae7fdd1e87faecfab372e92ca1029b2d49c9cbf55b9d791b57d54e:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyOGZmMjlhNzYyYzVmYzNhMTZiNTcwYzhjZWM0ZjBiY2E3ZjY4ZDM3MTAwMjMxMGYwNjRmZGY5NzU2ODM4YzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2ZjdiZTc0MDdkNmY2NTYwZGY1NzMwMWJlYjA0ZDc0YjgzOWVkYjAxMGI4Mzc4ODZhNGU0Y2QwOWQ3ODk2ZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyYTZiNDNhZTNjMjFlNDE0NzlkOWZhZTVjOTkzNzdhNWZjZjdjOTliMTI1OTE4ZGI1NjkyN2U1MzE3YzI0YmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNmNzk4ZWQzODExOGQzZTdhY2NjNTdjMmVmM2VjNWJkZjVlYjEwNjlkNjA4MTQ1YjYxNjc0ZGFhMzEzMWJlZjQifQ"
+          "version": "repo-lines-v1:sha256:afb06253bed1f0802735796e56d2315b23a68c505ad0f960dca56f8ebc5599dd:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyOGZmMjlhNzYyYzVmYzNhMTZiNTcwYzhjZWM0ZjBiY2E3ZjY4ZDM3MTAwMjMxMGYwNjRmZGY5NzU2ODM4YzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2ZjdiZTc0MDdkNmY2NTYwZGY1NzMwMWJlYjA0ZDc0YjgzOWVkYjAxMGI4Mzc4ODZhNGU0Y2QwOWQ3ODk2ZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyYTZiNDNhZTNjMjFlNDE0NzlkOWZhZTVjOTkzNzdhNWZjZjdjOTliMTI1OTE4ZGI1NjkyN2U1MzE3YzI0YmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNmNzk4ZWQzODExOGQzZTdhY2NjNTdjMmVmM2VjNWJkZjVlYjEwNjlkNjA4MTQ1YjYxNjc0ZGFhMzEzMWJlZjQifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/application.rs#L524-L556",
@@ -125,7 +125,7 @@
           "version": "repo-lines-v1:sha256:01c34d4c187ce5b5e1f1b9e306bb86b7a2021654405172e9499904d36c3616e5:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzMDhmNDBjYTJjMWQ1YjQ1NjUxYzNjYjcwMDQ4NGRlYjJiYWFiMzU0MjIxYWJlYjRjNzI3YmFlMmNkNzVkMzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhMTc4MDFhNzdhZjc0ZDAwM2M5ZmVjNmQ1ODU4MjNiYTExNzhkMzQ2ZGY1MTMwNTc1ZDFmMTFhNTliOGQ1OGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAyNWY1OTQ3N2VkYjIzZTRlY2ZmOTgyMjQwNjRmNjkyN2FlODgyYWVhYTVjZmZhMjkwZDI3YTFmN2QzOGVjZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBkYTlhMzc5NTg0YWU2N2JiZDUzMjJiZjFkMDY3YTQ3NjUxMjIzMWJlNzM4MTg1MmViZDhmYmM5MmNlODVhM2EifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1568-L1596",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1569-L1597",
           "version": "repo-lines-v1:sha256:e3d56c214340302f093ad29523c93992ab20b3e59da38bad72dec5656749bf5f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4NDA2NWNjOTFkNmQyZmM1ZjNlMTg4ODFkZDkwNGQxN2YxNGFlODk0YjAzMDJlZjk0OGE2YjMxNDgwODQ0M2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzNzRiMmQ2MTMxZjU3MzI0OTI0YWM1NGY3ODRlYTBhZDc4ZjNmMzBjY2M1ZDVhYjRjMGVjMjVhYjhhMmM1ZjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgxOWY1MDE3OTNiZjgzNjk5Njc5MzY0NzFhMDQ3NmM1NmE0MjFlYmVkZTQyNWNjYmNmNTgyMDBhNGUwZjJiNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyYzdlYjhiMzk1NWZjZTJiNDcyYzNkOGE3ZjI4Y2Y3ZjdiOTEwOGVkOTA5ZDY5YThmZDk0NjYzMTY5N2YyMDMifQ"
         }
       ]
@@ -150,11 +150,11 @@
     },
     {
       "id": "claim_18500d28f7d3446d9b89404d8112b300",
-      "statement": "Decodex requests native retention only for work_instruction tool outputs used for initial delegation and explicit follow-up instructions; work_wake, capacity_retry and injected external result batches do not request it, and delegation inputs retain application tool authority.",
+      "statement": "Compatibility work_instruction outputs can request bounded native retention; wake and capacity retry evidence does not request it, and retained tool evidence does not replace durable Work ownership.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:8d5a68c0f85bfd64f23ec6fc2b9d1496902f84452c0f8a3c1eb8c7399d2ce598"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1247-L1355",
+          "version": "repo-lines-v1:sha256:e0ad341d1d141c699110b02b6523ea6ef5d2151f529f68b963753ce173ce1cfc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
@@ -176,59 +176,107 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:8d5a68c0f85bfd64f23ec6fc2b9d1496902f84452c0f8a3c1eb8c7399d2ce598"
+          "version": "repo-file-v1:sha256:21606f7d55eb010c9ebd76f0728c2be4c8b637d02d5f380ea470a3e9dc743ac9"
         }
       ]
     },
     {
       "id": "claim_d61e8eba93614bd48a20f01904b174c1",
-      "statement": "Shared coordination instructions let agents investigate and coordinate within existing authority before escalating remaining blockers to a parent. Parents ask the user only for missing decisions, authority or answers that investigation cannot establish reliably.",
+      "statement": "Shared instructions keep routine investigation within existing authority, use native helper messages or scoped peer requests, and escalate missing user decisions through the responsible Work owner without answering human approvals.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/coordination.md",
-          "version": "repo-file-v1:sha256:b2a0ac34f607374303d0e0f31bdab68798d42789e48d51a1d59de0268e38eccc"
+          "version": "repo-file-v1:sha256:05322d51661773771b61aba3d0b307aa1c984cf1c90f7e5dc8aece435e1ff1fa"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
-          "version": "repo-file-v1:sha256:5bcfa29f7a67cc02f7640fd09b07e22e1bd9318d123a993f4315dfe37097640b"
+          "version": "repo-file-v1:sha256:a32503172f93bd1e5dee1c1714d75236457b0df869ea9953fee9fc7f4da104e9"
         }
       ]
     },
     {
       "id": "claim_b1d316b45bb941b58f101c90f8924315",
-      "statement": "Agent conversations remain open; only separate child goals can be resolved. Dispositions require current pending receipts for the exact work item, and the Agent's own user input is acknowledged automatically when its turn ends.",
+      "statement": "Agent conversations remain open independently of Work; Work completion requires a current owner assessment rather than a native turn, message or helper finishing.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L2190-L2270",
-          "version": "repo-lines-v1:sha256:07ca2c7b4ef5921189652d590745c622fd6bf9acfbe4226acf82c40730cb244c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwZWFjYzhjYWEyNTlkMmQ3MTg0ZTI5ZDU4MWU0YzVjMDMxMTRjMzMyZjM4Y2I3M2JjMzdjYmVkM2Y5MjZkZjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk3YTNjMTUzZmE3NGYyMzBlMmFlZjNmN2QwNWU0MWY4NmRjNWVhYzIxZjc0YTdmMTI4MTY3NWExOTNiYmVjMzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkzMzI2ZjAwNjdjYmQwYjc0ODY2NzBhZDFjNWYwYWM2YTVkZWVjYjEzMWQ0NTViMGI4MWRjOTgyMjhjZDM5ODkifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
+          "version": "repo-file-v1:sha256:a32503172f93bd1e5dee1c1714d75236457b0df869ea9953fee9fc7f4da104e9"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
-          "version": "repo-file-v1:sha256:5bcfa29f7a67cc02f7640fd09b07e22e1bd9318d123a993f4315dfe37097640b"
+          "resource": "repo://database/src/works/commands.rs",
+          "version": "repo-file-v1:sha256:3bc77003902aa98bcfd2aafe6b31a3d42be0ee4115224938778c66753a1ea7af"
         }
       ]
     },
     {
-      "id": "claim_9df3e725afec4f83a93dfc10b7093159",
-      "statement": "A Busy reply from agent_continue_worker means the instruction was not sent or queued. The parent waits for completion and checks idle dispatch state before continuing the same worker; committed work_instruction input retires older questions without removing later ones.",
+      "id": "claim_af26026b25e7474cad372d3117541ddd",
+      "statement": "Work commands persist immutable requirements, scoped Materials and exact Results with idempotent receipts, while native Codex remains the executor and native attribution uncertainty never authorizes a duplicate spawn.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1845-L1901",
-          "version": "repo-lines-v1:sha256:3b1c068c91a808c315f453393fe86dff84c10a37d354cff9629d340d2abf012e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiOGJlZjAzOTEzMjJkNDEyNDM3ODBkN2Q5NTk0MjI5MTg2MGY2YmM1NTE2YWYwZDQ2NGExNDcyMDdhOTU4MWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1MjVhYTRlZWY3MmE2Nzc1NWE1NDI0NDE2MmNkNmQyODNjNTA2ODFkMGNmM2MwNmQ4Mjg2ZGViMjZmZmY1ODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyMGIxYmFmNTJkMTVlY2ZlOGY3YjRiYTUzZjk3NWFmYzExZDQxNGEzOWEyNjljYmI3NjVjZmFkMWRiY2M3NmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg2NjU4OTY5MzFmMzMwOGE0NjYwZTY1NzlmZTI1ZDRlYjQ4MTBiMjI3MzliYmRiMjJlOTdhNGVhNDY3ZmMwODgifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
+          "version": "repo-file-v1:sha256:dd9ef5ba2a31400ca4e973700dd4ca2418c96c818f0126d5b1d365f61569b7be"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/async_projection.rs",
-          "version": "repo-file-v1:sha256:2c9333ab8719073325fa6cf393ff1325cb0a095378f3d61da8077ee306f3c213"
+          "resource": "repo://database/src/works/commands.rs",
+          "version": "repo-file-v1:sha256:3bc77003902aa98bcfd2aafe6b31a3d42be0ee4115224938778c66753a1ea7af"
+        }
+      ]
+    },
+    {
+      "id": "claim_88a460ecbec844b1b78b2e5460f2be3e",
+      "statement": "Independent Collaboration queues in the existing inbox, requires exact delivered-turn acceptance, preserves repair instructions and late evidence, and keeps required unassessed requests from completing Work.",
+      "evidence": [
+        {
+          "resource": "repo://database/src/works/collaboration.rs",
+          "version": "repo-file-v1:sha256:3c8e9c55c8b978854a4551c91a48429b0bf1ff9e1a5cde3bbd817fc0130edf39"
+        }
+      ]
+    },
+    {
+      "id": "claim_a35e1115d8d84a4cb0f66aadcaeb3c2a",
+      "statement": "Agent and Material scope is applied before bounded SQL reads; shared Project membership or a Work association does not grant private conversation access or switch the native execution directory.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
+          "version": "repo-file-v1:sha256:a32503172f93bd1e5dee1c1714d75236457b0df869ea9953fee9fc7f4da104e9"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/observations.rs",
-          "version": "repo-file-v1:sha256:5756bbbcc7daf60b037faacfc8b8f867d33f606cdb06d306fbc9cc228123453e"
+          "resource": "repo://database/src/works.rs",
+          "version": "repo-file-v1:sha256:9fae2b7e75b33ade985004e3613c7de156eb8065661b3d85e22a4421384c60ab"
+        }
+      ]
+    },
+    {
+      "id": "claim_8f6913dd64954ad088481c0581befbbc",
+      "statement": "Tool-surface migration waits for native quiescence, saves the known replacement, verifies settings and positive retirement before switching, and parks uncertain outcomes while retaining read-only previous history.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tool_migration.rs",
+          "version": "repo-file-v1:sha256:907ed4275de6ac66f931df9b580be60b4158fb2cd2a8dd1faa3c32367aeb4bf6"
+        },
+        {
+          "resource": "repo://database/src/agent_tool_migration.rs",
+          "version": "repo-file-v1:sha256:37ecc85a8ef1bd4d488463ce804c67b9a0612fa67e54dbda0c50c324a1d8f191"
+        }
+      ]
+    },
+    {
+      "id": "claim_c9fb26caf353428699f28264db963d51",
+      "statement": "Native V2 continuation and V1 native waits retain native ownership; the qualified Work path excludes nested Code Mode attribution and does not depend on Ultra.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
+          "version": "repo-file-v1:sha256:dd9ef5ba2a31400ca4e973700dd4ca2418c96c818f0126d5b1d365f61569b7be"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-22T20:51:42.199Z"
+    "at": "2026-10-24T21:19:56.719Z"
   }
 }

@@ -24,27 +24,31 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-ff8abff5a675874c627f1969
     resource: repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs
+  - id: openwiki-source-acd129fd3a88516b785fc929
+    resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
+  - id: openwiki-source-bdc10e06c0058b26a9bde83d
+    resource: repo://database/migrations/0056_project_agent_work.sql
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-dd24c2ff3c2515a21892e312
     resource: repo://database/src/program_cycles.rs
-generated: { by: "codex", at: "2026-10-22T20:51:42.199Z" }
+generated: { by: "codex", at: "2026-10-24T21:19:56.719Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-22T20:51:42.199Z
+    at: 2026-10-24T21:19:56.719Z
 ---
 
 # Current local product contract
 
-This page describes the implemented local-product boundary. The accepted [Project, Agent and Work contract](../decisions/project-agent-work.md) defines the target architecture, shared English vocabulary and global Guardian controls. Its implementation and qualification are pending. Existing Main, manager and worker structures below are compatibility facts, not a required target hierarchy.
+This page describes the implemented local-product boundary. The accepted [Project, Agent and Work contract](../decisions/project-agent-work.md) defines the implemented architecture, shared English vocabulary and global Guardian controls. Its synthetic native and local qualification is recorded separately from installed-app acceptance. Legacy execution readers retain some old names without imposing a business hierarchy.
 
 ## Product and storage
 
-Decodex is a local general-purpose agent workspace. Agent is the primary conversation and can organize workers and subordinate Agents. Ordinary native Conversations remain a separate execution path. The service is `decodex serve`; SQLite is the sole normal durable store. The embedded migration ledger defines its schema version. `CURRENT_VERSION` in the protocol crate defines the exact client/service protocol.
+Decodex is a local general-purpose agent workspace. A user-created Agent has one current native conversation and can own several Works. It uses native Subagents for temporary execution and scoped Collaboration Requests for independent peers. Ordinary native Conversations remain a separate execution path. The service is `decodex serve`; SQLite is the sole normal durable store. The embedded migration ledger defines its schema version. `CURRENT_VERSION` in the protocol crate defines the exact client/service protocol.
 
 Clients do not read SQLite, provider credentials or Codex auth files. The signed app contains one GUI executable, one unified service helper and native libraries. Attached glass windows are presentation components, not new state owners.
 
@@ -52,7 +56,7 @@ Clients do not read SQLite, provider credentials or Codex auth files. The signed
 
 Codex app-server owns provider execution and native thread history. The runtime binds exact account, process generation, thread and turn identities before accepting effects. It re-observes native state rather than assuming that another client cannot change a thread. A missing, interrupted or unknown result does not authorize replay.
 
-Agent retains work relationships, event dispositions, dependencies, reviews and follow-up obligations in SQLite. A worker result requires assessment before parent completion. Existing native threads are preserved during recovery; optional metadata errors are isolated from the main transport.
+Agent retains work relationships, event dispositions, dependencies, reviews and follow-up obligations in SQLite. A returned contribution requires assessment against current Work requirements before completion. Normal recovery preserves exact native identities. A separate quiescent tool-set migration retains previous history and requires positive replacement/retirement receipts; optional metadata errors stay isolated from the transport.
 
 ## User interaction
 
@@ -83,3 +87,7 @@ Conversation branches and canonical input handback are described in [conversatio
 ## Verification map
 
 Use [Agent coordination](../architecture/chief-coordination.md), [Desktop workspace](../architecture/desktop-workspace.md), [Account lifecycle](account-lifecycle-authority.md), [Login](account-login-authority.md), [Subscription voice](../integrations/subscription-voice.md) and [Commands and validation](../operations/commands-and-validation.md). Tests, signed packaging, live behavior and merged delivery are separate claims.
+
+## Project, Agent and Work
+
+Current coordination uses separate Project, persistent Agent and Work objects with native Subagents, scoped independent Collaboration and global Guardian. Assistant and Project Lead are responsibilities of existing Agents. Direct schema56/protocol3 migration preserves actual old execution and history; historical Factory plans do not restore a second executor. Read the [canonical contract](../decisions/project-agent-work.md) and its explicit qualification limits.
