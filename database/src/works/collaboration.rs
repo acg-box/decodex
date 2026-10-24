@@ -129,7 +129,7 @@ pub(super) fn cancel_work(c: &Connection, work: &str) -> Result<(), StoreError> 
 	let requests = super::ids(
 		c,
 		"SELECT id FROM collaboration_requests WHERE work_id=?1 AND state<>'closed'",
-		Some(work),
+		[Some(work)],
 	)?;
 	for id in requests {
 		let q = request(c, &id)?;

@@ -81,6 +81,72 @@ fn assessment(revision: &str, ids: &[&str]) -> WorkAssessment {
 }
 
 #[tokio::test]
+async fn agent_scope_precedes_work_and_material_page_limits() {
+	let home = tempfile::tempdir().unwrap();
+	let store = SqliteStore::open_test(&home.path().join("scope.db")).unwrap();
+	agents(&store).await;
+	for i in 0..100 {
+		let id = format!("other-{i:03}");
+		apply(&store, "sage", &id, WorkCommand::Create { work: work(&id, "sage") }).await;
+	}
+	apply(&store, "iris", "iris-work", WorkCommand::Create { work: work("z-iris", "iris") }).await;
+	apply(&store, "sage", "shared-work", WorkCommand::Create { work: work("shared", "sage") })
+		.await;
+	for i in 0..101 {
+		let id = if i == 0 { "shared-material".into() } else { format!("private-{i}") };
+		apply(
+			&store,
+			"sage",
+			&format!("material-{i}"),
+			WorkCommand::AddMaterial {
+				material: Material {
+					id,
+					work_id: "shared".into(),
+					title: "Evidence".into(),
+					reference: "https://example.com/evidence".into(),
+					sha256: None,
+				},
+			},
+		)
+		.await;
+	}
+	apply(
+		&store,
+		"sage",
+		"request",
+		WorkCommand::Request {
+			request: CollaborationRequest {
+				id: "request".into(),
+				work_id: "shared".into(),
+				recipient_agent_id: "iris".into(),
+				instruction: CollaborationInstruction {
+					id: "instruction".into(),
+					requirements_id: "r1".into(),
+					text: "Inspect only the selected evidence".into(),
+					material_ids: vec!["shared-material".into()],
+					event_id: None,
+					delivered_turn_id: None,
+				},
+				state: CollaborationState::Pending,
+				required: true,
+				outcome: None,
+				note: None,
+			},
+		},
+	)
+	.await;
+	let visible = store.agent_work_portfolio("iris".into(), None).await.unwrap();
+	assert!(
+		visible.works.iter().any(|w| w.id == "z-iris"),
+		"unrelated Work cannot consume this Agent's page"
+	);
+	assert_eq!(visible.works.len(), 2);
+	assert_eq!(visible.materials.len(), 1, "private evidence cannot consume the granted page");
+	assert_eq!(visible.materials[0].id, "shared-material");
+	assert!(!visible.has_more);
+}
+
+#[tokio::test]
 async fn results_cannot_complete_another_work_or_stale_requirements() {
 	let home = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&home.path().join("work.db")).unwrap();

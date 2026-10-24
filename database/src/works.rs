@@ -137,10 +137,14 @@ fn request(c: &Connection, id: &str) -> Result<CollaborationRequest, StoreError>
 		note: row.6,
 	})
 }
-fn ids(c: &Connection, sql: &str, filter: Option<&str>) -> Result<Vec<String>, StoreError> {
+fn ids(
+	c: &Connection,
+	sql: &str,
+	values: impl rusqlite::Params,
+) -> Result<Vec<String>, StoreError> {
 	c.prepare(sql)
 		.map_err(sqlite_error)?
-		.query_map([filter], |r| r.get(0))
+		.query_map(values, |r| r.get(0))
 		.map_err(sqlite_error)?
 		.collect::<Result<_, _>>()
 		.map_err(|e| sqlite_error(e).into())
@@ -148,15 +152,15 @@ fn ids(c: &Connection, sql: &str, filter: Option<&str>) -> Result<Vec<String>, S
 fn json_rows<T: DeserializeOwned>(
 	c: &Connection,
 	sql: &str,
-	filter: Option<&str>,
+	values: impl rusqlite::Params,
 ) -> Result<Vec<T>, StoreError> {
-	ids(c, sql, filter)?.into_iter().map(decode).collect()
+	ids(c, sql, values)?.into_iter().map(decode).collect()
 }
 fn assessment_pending(c: &Connection, work: Option<&str>) -> Result<Vec<String>, StoreError> {
 	ids(
 		c,
-		"SELECT w.id FROM works w WHERE (?1 IS NULL OR w.id=?1) AND w.state='open' AND EXISTS(SELECT 1 FROM work_results r WHERE r.work_id=w.id AND (r.requirements_id=w.requirements_id OR EXISTS(SELECT 1 FROM work_result_reuse u WHERE u.work_id=w.id AND u.requirements_id=w.requirements_id AND u.result_id=r.id))) ORDER BY w.id LIMIT 100",
-		work,
+		"SELECT w.id FROM works w WHERE (?1 IS NULL OR w.id IN(SELECT value FROM json_each(?1))) AND w.state='open' AND EXISTS(SELECT 1 FROM work_results r WHERE r.work_id=w.id AND (r.requirements_id=w.requirements_id OR EXISTS(SELECT 1 FROM work_result_reuse u WHERE u.work_id=w.id AND u.requirements_id=w.requirements_id AND u.result_id=r.id))) ORDER BY w.id LIMIT 100",
+		[work],
 	)
 }
 
@@ -193,17 +197,35 @@ impl SqliteStore {
 		&self,
 		work_id: Option<String>,
 	) -> Result<WorkPortfolio, StoreError> {
-		self.run(move|c| {
-			let tx=c.transaction().map_err(sqlite_error)?;
-			let works=ids(&tx,"SELECT id FROM works WHERE (?1 IS NULL OR id=?1) ORDER BY id LIMIT 101",work_id.as_deref())?.into_iter().map(|id|read_work(&tx,&id)).collect::<Result<Vec<_>,_>>()?;
-			let collaborations=ids(&tx,"SELECT id FROM collaboration_requests WHERE (?1 IS NULL OR work_id=?1) ORDER BY id LIMIT 101",work_id.as_deref())?.into_iter().map(|id|request(&tx,&id)).collect::<Result<Vec<_>,_>>()?;
-			let results=json_rows(&tx,"SELECT record_json FROM work_results WHERE (?1 IS NULL OR work_id=?1) ORDER BY rowid DESC LIMIT 101",work_id.as_deref())?;
-			let materials=json_rows(&tx,"SELECT record_json FROM work_materials WHERE (?1 IS NULL OR work_id=?1) ORDER BY rowid DESC LIMIT 101",work_id.as_deref())?;
-			let native_contributions=tx.prepare("SELECT id,work_id,requirements_id,instruction,child_thread_id,parent_turn_id,parent_item_id FROM native_work_contributions WHERE (?1 IS NULL OR work_id=?1) ORDER BY rowid DESC LIMIT 101").map_err(sqlite_error)?.query_map([work_id.as_deref()],|r|Ok(decodex_core::work::NativeContribution{id:r.get(0)?,work_id:r.get(1)?,requirements_id:r.get(2)?,instruction:r.get(3)?,child_thread_id:r.get(4)?,parent_turn_id:r.get(5)?,parent_item_id:r.get(6)?})).map_err(sqlite_error)?.collect::<Result<_,_>>().map_err(sqlite_error)?;
-			let mut result=WorkPortfolio{awaiting_assessment:Vec::new(),summary_only:false,native_contributions,works,collaborations,results,materials,has_more:false};
-			result.has_more=[result.works.len(),result.collaborations.len(),result.results.len(),result.materials.len(),result.native_contributions.len()].iter().any(|n|*n>PAGE_SIZE);
-			result.awaiting_assessment=assessment_pending(&tx,work_id.as_deref())?;
-			result.works.truncate(PAGE_SIZE);result.collaborations.truncate(PAGE_SIZE);result.results.truncate(PAGE_SIZE);result.materials.truncate(PAGE_SIZE);result.native_contributions.truncate(PAGE_SIZE);
+		self.scoped_work_portfolio(work_id, None).await
+	}
+
+	async fn scoped_work_portfolio(
+		&self,
+		work_id: Option<String>,
+		actor: Option<String>,
+	) -> Result<WorkPortfolio, StoreError> {
+		self.run(move |c| {
+			let tx = c.transaction().map_err(sqlite_error)?;
+			let mut works = ids(&tx,
+				"SELECT w.id FROM works w WHERE (?1 IS NULL OR w.id=?1) AND (?2 IS NULL OR w.owner_agent_id=?2 OR EXISTS(SELECT 1 FROM collaboration_requests q WHERE q.work_id=w.id AND q.recipient_agent_id=?2)) ORDER BY CASE w.state WHEN 'open' THEN 0 WHEN 'blocked' THEN 1 ELSE 2 END,w.id LIMIT 101",
+				params![work_id, actor])?.into_iter().map(|id| read_work(&tx,&id)).collect::<Result<Vec<_>,_>>()?;
+			let work_has_more = works.len() > PAGE_SIZE;
+			works.truncate(PAGE_SIZE);
+			let selected = serde_json::to_string(&works.iter().map(|w| &w.id).collect::<Vec<_>>()).map_err(|_| invalid("invalid Work selection"))?;
+			let collaborations = ids(&tx,
+				"SELECT id FROM collaboration_requests WHERE work_id IN(SELECT value FROM json_each(?1)) AND (?2 IS NULL OR recipient_agent_id=?2 OR work_id IN(SELECT id FROM works WHERE owner_agent_id=?2)) ORDER BY CASE state WHEN 'closed' THEN 1 ELSE 0 END,id LIMIT 101",
+				params![selected, actor])?.into_iter().map(|id|request(&tx,&id)).collect::<Result<Vec<_>,_>>()?;
+			let results = json_rows(&tx,
+				"SELECT record_json FROM work_results WHERE work_id IN(SELECT value FROM json_each(?1)) AND (?2 IS NULL OR agent_id=?2 OR work_id IN(SELECT id FROM works WHERE owner_agent_id=?2)) ORDER BY rowid DESC LIMIT 101",
+				params![selected, actor])?;
+			let materials = json_rows(&tx,
+				"SELECT m.record_json FROM work_materials m WHERE m.work_id IN(SELECT value FROM json_each(?1)) AND (?2 IS NULL OR m.work_id IN(SELECT id FROM works WHERE owner_agent_id=?2) OR EXISTS(SELECT 1 FROM collaboration_requests q JOIN collaboration_instructions i ON i.id=q.instruction_id JOIN json_each(i.material_ids_json) g ON g.value=m.id WHERE q.work_id=m.work_id AND q.recipient_agent_id=?2)) ORDER BY m.rowid DESC LIMIT 101",
+				params![selected, actor])?;
+			let native_contributions=tx.prepare("SELECT id,work_id,requirements_id,instruction,child_thread_id,parent_turn_id,parent_item_id FROM native_work_contributions WHERE work_id IN(SELECT value FROM json_each(?1)) AND (?2 IS NULL OR work_id IN(SELECT id FROM works WHERE owner_agent_id=?2)) ORDER BY rowid DESC LIMIT 101").map_err(sqlite_error)?.query_map(params![selected, actor],|r|Ok(decodex_core::work::NativeContribution{id:r.get(0)?,work_id:r.get(1)?,requirements_id:r.get(2)?,instruction:r.get(3)?,child_thread_id:r.get(4)?,parent_turn_id:r.get(5)?,parent_item_id:r.get(6)?})).map_err(sqlite_error)?.collect::<Result<_,_>>().map_err(sqlite_error)?;
+			let mut result=WorkPortfolio{awaiting_assessment:assessment_pending(&tx,Some(&selected))?,summary_only:false,native_contributions,works,collaborations,results,materials,has_more:work_has_more};
+			result.has_more |= [result.collaborations.len(),result.results.len(),result.materials.len(),result.native_contributions.len()].iter().any(|n|*n>PAGE_SIZE);
+			result.collaborations.truncate(PAGE_SIZE);result.results.truncate(PAGE_SIZE);result.materials.truncate(PAGE_SIZE);result.native_contributions.truncate(PAGE_SIZE);
 			tx.commit().map_err(sqlite_error)?;Ok(result)
 		}).await
 	}
@@ -212,7 +234,7 @@ impl SqliteStore {
 	pub async fn work_overview(&self) -> Result<WorkPortfolio, StoreError> {
 		self.run(move |c| {
 			let mut works =
-				ids(c, "SELECT id FROM works WHERE ?1 IS NULL ORDER BY id LIMIT 101", None)?
+				ids(c, "SELECT id FROM works WHERE ?1 IS NULL ORDER BY CASE state WHEN 'open' THEN 0 WHEN 'blocked' THEN 1 ELSE 2 END,id LIMIT 101", [None::<&str>])?
 					.into_iter()
 					.map(|id| read_work(c, &id))
 					.collect::<Result<Vec<_>, _>>()?;
@@ -288,21 +310,14 @@ impl SqliteStore {
 		agent_id: String,
 		work_id: Option<String>,
 	) -> Result<WorkPortfolio, StoreError> {
-		let mut portfolio = self.work_portfolio(work_id).await?;
+		let mut portfolio = self.scoped_work_portfolio(work_id, Some(agent_id.clone())).await?;
 		let owned: std::collections::HashSet<_> = portfolio
 			.works
 			.iter()
 			.filter(|w| w.owner_agent_id == agent_id)
 			.map(|w| w.id.clone())
 			.collect();
-		portfolio
-			.collaborations
-			.retain(|q| owned.contains(&q.work_id) || q.recipient_agent_id == agent_id);
-		let incoming: std::collections::HashSet<_> =
-			portfolio.collaborations.iter().map(|q| q.work_id.clone()).collect();
-		portfolio.works.retain(|w| owned.contains(&w.id) || incoming.contains(&w.id));
 		portfolio.awaiting_assessment.retain(|id| owned.contains(id));
-		portfolio.native_contributions.retain(|c| owned.contains(&c.work_id));
 		for work in &mut portfolio.works {
 			if !owned.contains(&work.id) {
 				work.assessment = None;
@@ -310,15 +325,6 @@ impl SqliteStore {
 				work.resume_condition = None;
 			}
 		}
-		portfolio.results.retain(|r| owned.contains(&r.work_id) || r.agent_id == agent_id);
-		portfolio.materials.retain(|m| {
-			owned.contains(&m.work_id)
-				|| portfolio.collaborations.iter().any(|q| {
-					q.work_id == m.work_id
-						&& q.recipient_agent_id == agent_id
-						&& q.instruction.material_ids.contains(&m.id)
-				})
-		});
 		Ok(portfolio)
 	}
 

@@ -81,7 +81,7 @@ impl AgentSurface {
 		}
 		if snapshot.portfolio.has_more {
 			list = list.child(label(
-				"This view is bounded. Some older evidence is retained outside this page.",
+				"This view is bounded. Additional Work and evidence remain in the store.",
 			));
 		}
 		list.into_any_element()
