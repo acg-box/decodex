@@ -3517,7 +3517,7 @@ enum PublicationRequest {
 }
 
 const fn supports_publication_instance(version: ProtocolVersion) -> bool {
-	version.major == PUBLICATION_INSTANCE_MINIMUM_VERSION.major
+	version.major >= PUBLICATION_INSTANCE_MINIMUM_VERSION.major
 }
 
 // Tungstenite fixes this callback's error type to the full HTTP response.

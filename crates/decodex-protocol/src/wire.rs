@@ -5602,7 +5602,10 @@ mod tests {
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
 		let legacy = crate::ProtocolVersion { major: 1, minor: 5 };
-		let future = crate::ProtocolVersion { major: 2, minor: CURRENT_VERSION.minor + 1 };
+		let future = crate::ProtocolVersion {
+			major: CURRENT_VERSION.major,
+			minor: CURRENT_VERSION.minor + 1,
+		};
 		let query = QueryPayload::GetAccountProfile {
 			account_id: account_id.clone(),
 			include_email: false,
