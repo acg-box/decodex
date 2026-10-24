@@ -75,7 +75,7 @@ static IMAGES: LazyLock<[[Arc<Image>; 46]; 2]> = LazyLock::new(|| {
 });
 
 #[derive(Clone, Copy)]
-pub(super) enum Symbol {
+pub(crate) enum Symbol {
 	Sidebar,
 	Graph,
 	Expand,
@@ -237,7 +237,7 @@ pub(super) fn icon(symbol: Symbol) -> AnyElement {
 	icon_sized(symbol, size)
 }
 
-pub(super) fn icon_sized(symbol: Symbol, size: f32) -> AnyElement {
+pub(crate) fn icon_sized(symbol: Symbol, size: f32) -> AnyElement {
 	gpui::img(
 		IMAGES[usize::from(
 			crate::ui_theme::appearance::Theme::current()

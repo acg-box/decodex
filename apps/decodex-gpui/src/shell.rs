@@ -15,7 +15,7 @@ pub(crate) use native_titlebar::Titlebar;
 #[path = "quota_meter.rs"] mod quota_meter;
 #[path = "shell_reset_cards.rs"] mod reset_cards;
 #[path = "shell_status.rs"] mod status;
-#[path = "workspace_symbols.rs"] mod workspace_symbols;
+#[path = "workspace_symbols.rs"] pub(crate) mod workspace_symbols;
 
 pub(crate) use status::{
 	count_preference as notification_count_preference, question_notice_preference,
@@ -37,9 +37,9 @@ use std::{
 
 use gpui::{
 	Animation, AnimationExt, AnyElement, App, AppContext as _, AsyncApp, Bounds, BoxShadow,
-	ClipboardItem, Context, CursorStyle, Div, ElementId, Entity, FocusHandle, Focusable,
-	FontWeight, Global, Hsla, KeyBinding, KeyDownEvent, MouseButton, Render, Role, SharedString,
-	Stateful, Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBackgroundAppearance,
+	ClipboardItem, Context, CursorStyle, Div, Entity, FocusHandle, Focusable, FontWeight, Global,
+	Hsla, KeyBinding, KeyDownEvent, MouseButton, Render, Role, SharedString, Stateful,
+	Subscription, Task, TitlebarOptions, WeakEntity, Window, WindowBackgroundAppearance,
 	WindowBounds, WindowControlArea, WindowHandle, WindowOptions,
 	accesskit::Toggled,
 	ease_in_out,
@@ -71,11 +71,11 @@ use crate::{
 	ui_loading,
 	ui_motion::{self, SmoothControl},
 	ui_theme::{
-		self, ACCENT, AGENT_SIDEBAR_MATERIAL, AMBER, BLUE, BODY_SIZE, CANVAS, CHROME_CONTROL_SIZE,
-		COMPOSER_MATERIAL, CONTENT_MATERIAL, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, FONT_FAMILY,
-		GREEN, HEADING_SIZE, MOTION_PANEL, PRESSED_FILL, SELECTED_HOVER_FILL, SETTINGS_GROUP_GAP,
-		SETTINGS_INSET, SETTINGS_TOP, SETTINGS_WIDTH, SHELL_MATERIAL, SIDEBAR_MATERIAL,
-		SURFACE_RAISED_MATERIAL, TEXT, TEXT_FAINT, TEXT_MUTED, window_material,
+		self, AGENT_SIDEBAR_MATERIAL, BODY_SIZE, CHROME_CONTROL_SIZE, COMPOSER_MATERIAL,
+		CONTENT_MATERIAL, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, FONT_FAMILY, HEADING_SIZE,
+		MOTION_PANEL, PRESSED_FILL, SELECTED_HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET,
+		SETTINGS_TOP, SETTINGS_WIDTH, SHELL_MATERIAL, SIDEBAR_MATERIAL, SURFACE_RAISED_MATERIAL,
+		TEXT, window_material,
 	},
 };
 use account_feedback::AccountFeedback;
@@ -138,14 +138,6 @@ const WINDOW_CONTROLS_CLEARANCE: f32 = CONTROL_MARGIN * 2.0 + CONTROL_GROUP_HEIG
 const WORKBENCH_SESSION_SIDEBAR_WIDTH: f32 = 248.0;
 const WORKBENCH_INSPECTOR_WIDTH: f32 = 344.0;
 const LIFECYCLE_POLL: Duration = Duration::from_millis(40);
-const WB_CANVAS: u32 = CANVAS;
-const WB_TEXT: u32 = TEXT;
-const WB_TEXT_MUTED: u32 = TEXT_MUTED;
-const WB_TEXT_FAINT: u32 = TEXT_FAINT;
-const WB_ACCENT: u32 = ACCENT;
-const WB_BLUE: u32 = BLUE;
-const WB_GREEN: u32 = GREEN;
-const WB_AMBER: u32 = AMBER;
 const HEALTH_CORE_COMPONENTS: [DoctorComponent; 8] = [
 	DoctorComponent::Configuration,
 	DoctorComponent::ProductStore,
@@ -168,6 +160,15 @@ const HEALTH_APP_SERVER_COMPONENTS: [DoctorComponent; 8] = [
 ];
 const HEALTH_OPTIONAL_COMPONENTS: [DoctorComponent; 2] =
 	[DoctorComponent::BlobIntegrity, DoctorComponent::PluginReadiness];
+
+const WB_CANVAS: u32 = ui_theme::CANVAS;
+const WB_TEXT: u32 = ui_theme::TEXT;
+const WB_TEXT_MUTED: u32 = ui_theme::TEXT_MUTED;
+const WB_TEXT_FAINT: u32 = ui_theme::TEXT_FAINT;
+const WB_ACCENT: u32 = ui_theme::ACCENT;
+const WB_BLUE: u32 = ui_theme::BLUE;
+const WB_GREEN: u32 = ui_theme::GREEN;
+const WB_AMBER: u32 = ui_theme::AMBER;
 
 /// One window-owned production shell. Connection ownership lives at application scope.
 pub(crate) struct Shell {
@@ -723,6 +724,17 @@ impl Shell {
 		let mut shell = Self::visual_workbench(window, cx);
 
 		shell.selected = destination;
+		shell.settings_selected = destination;
+		if destination == Destination::Settings {
+			shell.settings.update(cx, |settings, _| {
+				settings.category =
+					match std::env::var("DECODEX_VISUAL_SETTINGS_CATEGORY").as_deref() {
+						Ok("appearance") => SettingsCategory::Appearance,
+						Ok("updates") => SettingsCategory::Updates,
+						_ => SettingsCategory::General,
+					};
+			});
+		}
 
 		if destination == Destination::Accounts
 			&& std::env::var_os("DECODEX_VISUAL_ACCOUNTS_EXPANDED").is_some()
@@ -1987,6 +1999,14 @@ pub(crate) struct SettingsWindow {
 	focus: FocusHandle,
 	_observation: Subscription,
 }
+impl SettingsWindow {
+	pub(crate) fn new(owner: Entity<Shell>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+		let focus = cx.focus_handle();
+		window.focus(&focus, cx);
+		let observation = cx.observe(&owner, |_, _, cx| cx.notify());
+		Self { owner, focus, _observation: observation }
+	}
+}
 impl Render for SettingsWindow {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let content = self.owner.update(cx, |s, cx| {
@@ -2038,7 +2058,7 @@ impl Global for LifecycleOwnerGlobal {}
 struct RefreshTooltip;
 impl Render for RefreshTooltip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		tooltip_surface("Refresh health".into(), WB_TEXT)
+		tooltip_surface("Refresh health".into(), ui_theme::TEXT)
 	}
 }
 
@@ -2048,7 +2068,7 @@ where
 	T: Clone + Into<SharedString> + 'static,
 {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		tooltip_surface(self.0.clone().into(), WB_TEXT)
+		tooltip_surface(self.0.clone().into(), ui_theme::TEXT)
 	}
 }
 
@@ -2470,17 +2490,17 @@ fn connection_presentation(view: ConnectionView) -> ConnectionPresentation {
 		ConnectionView::Connecting { .. } => ConnectionPresentation {
 			label: "Connecting",
 			detail: "Starting Decodex.".into(),
-			color: 0xf59e0b,
+			color: ui_theme::AMBER,
 		},
 		ConnectionView::Online { .. } => ConnectionPresentation {
 			label: "Online",
 			detail: "Connected and ready.".into(),
-			color: 0x22c55e,
+			color: ui_theme::GREEN,
 		},
 		ConnectionView::OfflineRetrying { .. } => ConnectionPresentation {
 			label: "Reconnecting",
 			detail: "Trying to restore Decodex.".into(),
-			color: 0xf97316,
+			color: ui_theme::AMBER,
 		},
 		ConnectionView::Incompatible(_) => ConnectionPresentation {
 			label: "Restart Decodex",
@@ -2490,17 +2510,17 @@ fn connection_presentation(view: ConnectionView) -> ConnectionPresentation {
 		ConnectionView::Quarantined { .. } => ConnectionPresentation {
 			label: "Restart Decodex",
 			detail: "Restart Decodex to restore the connection.".into(),
-			color: 0xdc2626,
+			color: ui_theme::ERROR,
 		},
 		ConnectionView::ShuttingDown => ConnectionPresentation {
 			label: "Shutting down",
 			detail: "Closing the retained session cooperatively".into(),
-			color: 0x94a3b8,
+			color: ui_theme::TEXT_MUTED,
 		},
 		ConnectionView::Stopped => ConnectionPresentation {
 			label: "Restart Decodex",
 			detail: "Restart Decodex to restore the connection.".into(),
-			color: 0x64748b,
+			color: ui_theme::TEXT_MUTED,
 		},
 	}
 }
@@ -2635,7 +2655,7 @@ fn publish_views(shell: &WeakEntity<Shell>, views: &Receiver<ConnectionView>, cx
 
 		let account_profile = shell.account_profile_controller.snapshot();
 		let desktop_settings = shell.desktop_settings.snapshot();
-		let auto_recap = desktop_settings.settings.is_some_and(|s| s.auto_recap)
+		let auto_recap = shell.settings.read(cx).automatic_recaps_enabled()
 			&& shell.selected == Destination::Agent
 			&& matches!(shell.connection, ConnectionView::Online { .. });
 
@@ -2909,8 +2929,7 @@ fn agent_panel_control(shell: &Shell, index: usize, cx: &Context<Shell>) -> AnyE
 		.when(active && index == 0, |el| el.bg(crate::ui_theme::rgba(0xffffff0c)))
 		.when(!enabled, |el| el.opacity(0.35))
 		.when(enabled, |el| {
-			el.cursor_pointer()
-				.hover(|el| el.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL)))
+			el.cursor_pointer().hover(|el| el.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)))
 		})
 		.occlude()
 		.on_mouse_down(MouseButton::Left, |_, window, cx| {
@@ -2966,7 +2985,7 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 		HealthLoadState::NeverRequested => HealthPresentation {
 			label: "No report yet",
 			detail: "Check local services to look for a problem.",
-			color: 0x64748b,
+			color: ui_theme::TEXT_MUTED,
 		},
 		HealthLoadState::Loading => HealthPresentation {
 			label: "Checking local services…",
@@ -2975,7 +2994,7 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 			} else {
 				"This checks local services. It does not start a conversation."
 			},
-			color: 0x60a5fa,
+			color: ui_theme::BLUE,
 		},
 		HealthLoadState::Ready => {
 			let core_statuses = HEALTH_CORE_COMPONENTS.map(|component| {
@@ -2991,13 +3010,13 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 					return HealthPresentation {
 						label: "Some features need attention",
 						detail: "Review the issue below, then check again.",
-						color: WB_AMBER,
+						color: ui_theme::AMBER,
 					};
 				}
 				HealthPresentation {
 					label: "Local services are ready",
 					detail: "No local configuration, storage or connection errors were found.",
-					color: 0x22c55e,
+					color: ui_theme::GREEN,
 				}
 			} else if core_statuses
 				.iter()
@@ -3012,19 +3031,19 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 				HealthPresentation {
 					label: "Some local checks are incomplete",
 					detail: "Check again to update the report.",
-					color: 0xf59e0b,
+					color: ui_theme::AMBER,
 				}
 			}
 		},
 		HealthLoadState::Offline => HealthPresentation {
 			label: "Cannot connect to local services",
 			detail: "Restart Decodex, then check again. Your history and drafts are saved.",
-			color: 0xf97316,
+			color: ui_theme::AMBER,
 		},
 		HealthLoadState::Stale => HealthPresentation {
 			label: "Report needs an update",
 			detail: "The connection changed. Check again for current results.",
-			color: 0xf59e0b,
+			color: ui_theme::AMBER,
 		},
 		HealthLoadState::Refused => HealthPresentation {
 			label: "Could not update the report",
@@ -3062,23 +3081,23 @@ fn component_label(component: DoctorComponent) -> &'static str {
 fn component_presentation(status: Option<DoctorStatus>) -> HealthPresentation {
 	match status {
 		Some(DoctorStatus::Ready) =>
-			HealthPresentation { label: "Ready", detail: "", color: 0x22c55e },
+			HealthPresentation { label: "Ready", detail: "", color: ui_theme::GREEN },
 		Some(DoctorStatus::Unavailable(DoctorIssue::Disabled))
 		| Some(DoctorStatus::Unknown(DoctorIssue::Disabled)) => HealthPresentation {
 			label: "Disabled",
 			detail: "This optional capability is intentionally disabled.",
-			color: 0x64748b,
+			color: ui_theme::TEXT_MUTED,
 		},
 		Some(DoctorStatus::Unavailable(DoctorIssue::NotProbed))
 		| Some(DoctorStatus::Unknown(DoctorIssue::NotProbed)) => HealthPresentation {
 			label: "Not checked",
 			detail: "The owning boundary did not run an active probe.",
-			color: 0x64748b,
+			color: ui_theme::TEXT_MUTED,
 		},
 		Some(DoctorStatus::Unknown(DoctorIssue::Plugin)) => HealthPresentation {
 			label: "Not configured",
 			detail: "No required plugin inventory is configured.",
-			color: 0x64748b,
+			color: ui_theme::TEXT_MUTED,
 		},
 		Some(DoctorStatus::Unavailable(issue)) => HealthPresentation {
 			label: "Unavailable",
@@ -3088,9 +3107,9 @@ fn component_presentation(status: Option<DoctorStatus>) -> HealthPresentation {
 		Some(DoctorStatus::Unknown(issue)) => HealthPresentation {
 			label: "Not verified",
 			detail: doctor_issue_detail(issue),
-			color: 0xf59e0b,
+			color: ui_theme::AMBER,
 		},
-		None => HealthPresentation { label: "No report", detail: "", color: 0x64748b },
+		None => HealthPresentation { label: "No report", detail: "", color: ui_theme::TEXT_MUTED },
 	}
 }
 
@@ -3239,19 +3258,10 @@ fn refresh_control(
 	window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	gpui::div()
-		.id("health-refresh")
-		.role(Role::Button)
+	ui_theme::settings_button_base("health-refresh", "Refresh")
 		.aria_label("Refresh health")
 		.tooltip(|_, cx| cx.new(|_| RefreshTooltip).into())
-		.h(gpui::px(30.0))
-		.min_w(gpui::px(74.0))
-		.px_3()
-		.flex()
-		.items_center()
-		.justify_center()
-		.rounded(gpui::px(8.0))
-		.border_1()
+		.tab_index(if can_refresh { 0 } else { -1 })
 		.border_color(if can_refresh && focus.is_focused(window) {
 			crate::ui_theme::rgb(WB_BLUE)
 		} else {
@@ -3284,8 +3294,6 @@ fn refresh_control(
 				.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
 				.focus_visible(|element| element.border_color(crate::ui_theme::rgb(WB_BLUE)))
 		})
-		.text_size(gpui::px(11.0))
-		.child("Refresh")
 		.smooth()
 		.into_any_element()
 }
@@ -3502,10 +3510,10 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.min_h_0()
 				.flex()
 				.flex_col()
-				.gap_3()
+				.gap_4()
 				.child(
-					gpui::div()
-						.flex()
+					ui_theme::settings_card()
+						.flex_row()
 						.items_center()
 						.justify_between()
 						.child(account_pool_header(
@@ -3526,12 +3534,24 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 									id: "account-global-warning".into(),
 									selector: "account-global-warning".into(),
 									text,
-									color: AMBER,
+									color: ui_theme::AMBER,
 								}),
 						),
 				)
-				.child(account_login_controls(shell, cx))
-				.child(shell.settings.update(cx, |settings, cx| settings.quota_control(cx)))
+				.child(ui_theme::settings_group(
+					"Sign-in and quota",
+					vec![
+						account_login_controls(shell, cx),
+						shell.settings.update(cx, |settings, cx| settings.quota_control(cx)),
+					],
+				))
+				.child(
+					gpui::div()
+						.text_size(gpui::px(12.))
+						.font_weight(FontWeight::MEDIUM)
+						.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
+						.child("Connected accounts"),
+				)
 				.child(
 					gpui::div()
 						.id("account-list")
@@ -3604,6 +3624,12 @@ fn account_mode_button(
 	gpui::div()
 		.id("accounts-balanced")
 		.role(Role::Button)
+		.aria_toggled(if selected {
+			gpui::accesskit::Toggled::True
+		} else {
+			gpui::accesskit::Toggled::False
+		})
+		.tab_index(if can_manage { 0 } else { -1 })
 		.aria_label("Use balanced routing for new conversations")
 		.h(gpui::px(28.0))
 		.px_3()
@@ -3631,6 +3657,13 @@ fn account_mode_button(
 				})
 				.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
 				.on_click(cx.listener(|shell, _, _, cx| shell.select_balanced_accounts(cx)))
+				.on_key_down(cx.listener(|shell, event: &gpui::KeyDownEvent, _, cx| {
+					if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str())
+					{
+						shell.select_balanced_accounts(cx);
+						cx.stop_propagation();
+					}
+				}))
 		})
 		.child(label)
 		.smooth()
@@ -3658,10 +3691,8 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 		})
 		.map(account_login_status_label);
 
-	gpui::div()
+	ui_theme::settings_row()
 		.id("account-login-controls")
-		.px_3()
-		.py(gpui::px(6.))
 		.flex()
 		.items_center()
 		.justify_between()
@@ -3673,7 +3704,7 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 				.min_w_0()
 				.flex()
 				.flex_col()
-				.gap_1()
+				.gap(gpui::px(2.0))
 				.child(
 					gpui::div()
 						.font_family(FONT_FAMILY)
@@ -3681,6 +3712,7 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 						.text_color(crate::ui_theme::rgb(WB_TEXT))
 						.child("Add account"),
 				)
+				.when(status.is_none() && prompt.is_none(), |row| row.child(gpui::div().text_size(gpui::px(11.5)).text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED)).child("Connect a Codex account to run conversations.")))
 				.when_some(status, |row, status| {
 					row.child(
 						gpui::div().text_size(gpui::px(10.5)).text_color(crate::ui_theme::rgb(WB_TEXT_MUTED)).child(status),
@@ -3698,7 +3730,7 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 				.items_center()
 				.gap_2()
 				.child(
-					account_login_button("account-login-browser", "Browser", available && !busy)
+					account_login_button("account-login-browser", "Open browser", available && !busy)
 						.when(available && !busy, |button| {
 							button.on_click(cx.listener(|shell, _, _, cx| {
 								shell.start_account_enrollment(
@@ -3786,26 +3818,17 @@ fn account_login_prompt(code: String, url: String) -> AnyElement {
 		.into_any_element()
 }
 
-fn account_login_button(
-	id: impl Into<ElementId>,
-	label: impl Into<SharedString>,
-	enabled: bool,
-) -> Stateful<Div> {
-	let label = label.into();
-
-	gpui::div()
-		.id(id)
-		.role(Role::Button)
-		.aria_label(label.clone())
-		.h(gpui::px(27.0))
-		.px_3()
-		.flex()
-		.items_center()
-		.justify_center()
-		.rounded(gpui::px(7.0))
-		.text_size(gpui::px(11.0))
-		.text_color(crate::ui_theme::rgb(if enabled { WB_TEXT_MUTED } else { WB_TEXT_FAINT }))
+fn account_login_button(id: &'static str, label: &'static str, enabled: bool) -> Stateful<Div> {
+	ui_theme::settings_button_base(id, label)
+		.tab_index(if enabled { 0 } else { -1 })
+		.focus_visible(|s| s.border_color(crate::ui_theme::rgb(ui_theme::BLUE)))
+		.text_color(crate::ui_theme::rgb(if enabled {
+			ui_theme::TEXT_MUTED
+		} else {
+			ui_theme::TEXT_FAINT
+		}))
 		.opacity(if enabled { 1.0 } else { 0.55 })
+		.when(!enabled, |button| button.cursor_default())
 		.when(enabled, |button| {
 			button
 				.cursor_pointer()
@@ -3816,7 +3839,6 @@ fn account_login_button(
 				})
 				.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
 		})
-		.child(label)
 }
 
 fn account_login_status_label(status: &AccountLoginStatus) -> String {
@@ -4253,7 +4275,7 @@ fn account_icon_action(
 				color: if matches!(symbol, workspace_symbols::Symbol::AccountWarning) {
 					ui_theme::ERROR
 				} else {
-					WB_TEXT
+					ui_theme::TEXT
 				},
 			})
 			.into()
@@ -4390,15 +4412,15 @@ fn conversation_state_label(state: ConversationState) -> &'static str {
 
 fn conversation_state_color(state: ConversationState) -> u32 {
 	match state {
-		ConversationState::ModelSettingsReviewRequired => 0xf59e0b,
-		ConversationState::Ready => 0x22c55e,
-		ConversationState::Running | ConversationState::Establishing => 0x60a5fa,
-		ConversationState::RoutingPending
+		ConversationState::Ready => ui_theme::GREEN,
+		ConversationState::Running | ConversationState::Establishing => ui_theme::BLUE,
+		ConversationState::ModelSettingsReviewRequired
+		| ConversationState::RoutingPending
 		| ConversationState::EstablishmentPending
 		| ConversationState::QuotaExhausted
-		| ConversationState::NoRoute => 0xf59e0b,
+		| ConversationState::NoRoute
+		| ConversationState::OutcomeUnknown => ui_theme::AMBER,
 		ConversationState::ManualRecovery => crate::ui_theme::ERROR,
-		ConversationState::OutcomeUnknown => 0xf59e0b,
 	}
 }
 
@@ -4618,7 +4640,7 @@ fn inspector_tab(
 		.cursor_pointer()
 		.hover(|element| {
 			element
-				.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+				.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL))
 				.text_color(crate::ui_theme::rgb(WB_TEXT))
 		})
 		.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
@@ -4802,9 +4824,9 @@ fn activity_inspector_row(
 	status: HistoryItemStatusDto,
 ) -> impl IntoElement {
 	let color = match status {
-		HistoryItemStatusDto::Streaming => WB_BLUE,
-		HistoryItemStatusDto::Completed => WB_TEXT_FAINT,
-		HistoryItemStatusDto::Failed => WB_AMBER,
+		HistoryItemStatusDto::Streaming => ui_theme::BLUE,
+		HistoryItemStatusDto::Completed => ui_theme::TEXT_FAINT,
+		HistoryItemStatusDto::Failed => ui_theme::AMBER,
 	};
 
 	gpui::div()
@@ -4876,7 +4898,7 @@ fn activity_inspector_content(shell: &Shell) -> AnyElement {
 	let task = shell.quick.selected_task();
 	let task_state =
 		task.map_or("No active conversation", |task| conversation_state_label(task.state));
-	let task_color = task.map_or(WB_TEXT_FAINT, |task| conversation_state_color(task.state));
+	let task_color = task.map_or(ui_theme::TEXT_FAINT, |task| conversation_state_color(task.state));
 	let mut items = shell
 		.history
 		.as_ref()
@@ -5564,7 +5586,8 @@ fn conversation_header_state(shell: &Shell) -> (&'static str, u32, String) {
 		selected_task
 			.map_or("No conversation selected", |task| conversation_state_label(task.state))
 	};
-	let state_color = selected_task.map_or(WB_BLUE, |task| conversation_state_color(task.state));
+	let state_color =
+		selected_task.map_or(ui_theme::BLUE, |task| conversation_state_color(task.state));
 	let detail = shell
 		.input_status
 		.as_ref()
@@ -5807,10 +5830,10 @@ fn settings_navigation(
 ) -> AnyElement {
 	let mut navigation = gpui::div()
 		.tab_group()
-		.w(gpui::px(192.0))
-		.min_w(gpui::px(192.0))
+		.w(gpui::px(184.0))
+		.min_w(gpui::px(184.0))
 		.h_full()
-		.p_3()
+		.p_4()
 		.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
 		.flex()
 		.flex_col()
@@ -5823,7 +5846,8 @@ fn settings_navigation(
 				.px_2()
 				.pt(gpui::px(SETTINGS_TOP))
 				.pb(gpui::px(SETTINGS_GROUP_GAP))
-				.text_size(gpui::px(13.0))
+				.text_size(gpui::px(15.0))
+				.line_height(gpui::px(20.0))
 				.font_weight(FontWeight::SEMIBOLD)
 				.child("Settings"),
 		);
@@ -5831,13 +5855,31 @@ fn settings_navigation(
 	for (section_index, (destination, category, label)) in [
 		(Destination::Settings, Some(SettingsCategory::General), "General"),
 		(Destination::Settings, Some(SettingsCategory::Appearance), "Appearance"),
-		(Destination::Settings, Some(SettingsCategory::Updates), "Updates & Components"),
+		(Destination::Settings, Some(SettingsCategory::Updates), "Updates"),
 		(Destination::Accounts, None, "Accounts"),
 		(Destination::Health, None, "Diagnostics"),
 	]
 	.into_iter()
 	.enumerate()
 	{
+		if section_index == 0 || section_index == 2 {
+			navigation = navigation.child(
+				gpui::div()
+					.px_2()
+					.pt(gpui::px(if section_index == 0 { 4. } else { 18. }))
+					.pb_2()
+					.text_size(gpui::px(10.5))
+					.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
+					.child(if section_index == 0 { "Preferences" } else { "Application" }),
+			);
+		}
+		let symbol = match section_index {
+			0 => workspace_symbols::Symbol::Settings,
+			1 => workspace_symbols::Symbol::Eye,
+			2 => workspace_symbols::Symbol::ArrowDown,
+			3 => workspace_symbols::Symbol::Agents,
+			_ => workspace_symbols::Symbol::Waveform,
+		};
 		let active = selected == destination
 			&& category.is_none_or(|category| shell.settings.read(cx).category == category);
 
@@ -5850,8 +5892,6 @@ fn settings_navigation(
 				.track_focus(&shell.settings_focus[section_index])
 				.key_context("Destination")
 				.on_action(cx.listener(move |s, _: &ActivateDestination, _, cx| {
-					s.select_settings_destination(destination, standalone, cx);
-
 					if let Some(category) = category {
 						s.settings.update(cx, |settings, cx| {
 							settings.category = category;
@@ -5859,6 +5899,7 @@ fn settings_navigation(
 							cx.notify();
 						});
 					}
+					s.select_settings_destination(destination, standalone, cx);
 				}))
 				.on_action(cx.listener(Shell::focus_next))
 				.on_action(cx.listener(Shell::focus_previous))
@@ -5879,8 +5920,6 @@ fn settings_navigation(
 					}))
 				})
 				.on_click(cx.listener(move |s, _, _, cx| {
-					s.select_settings_destination(destination, standalone, cx);
-
 					if let Some(category) = category {
 						s.settings.update(cx, |settings, cx| {
 							settings.category = category;
@@ -5888,13 +5927,30 @@ fn settings_navigation(
 							cx.notify();
 						});
 					}
+					s.select_settings_destination(destination, standalone, cx);
 				}))
+				.gap(gpui::px(8.0))
+				.child(workspace_symbols::icon_sized(symbol, 13.))
 				.child(label)
 				.smooth(),
 		);
 	}
 
-	navigation.into_any_element()
+	navigation
+		.child(gpui::div().flex_1())
+		.child(
+			gpui::div()
+				.px_2()
+				.pb_2()
+				.flex()
+				.flex_col()
+				.gap_1()
+				.text_size(gpui::px(10.5))
+				.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
+				.child("Decodex")
+				.child(format!("Version {}", env!("CARGO_PKG_VERSION"))),
+		)
+		.into_any_element()
 }
 
 fn settings_workspace_content(
@@ -5930,11 +5986,18 @@ fn settings_workspace_content(
 						.flex()
 						.items_center()
 						.justify_between()
-						.child(ui_theme::settings_title(if selected == Destination::Accounts {
-							"Accounts"
-						} else {
-							"Diagnostics"
-						}))
+						.child(ui_theme::settings_heading(
+							if selected == Destination::Accounts {
+								"Accounts"
+							} else {
+								"Diagnostics"
+							},
+							if selected == Destination::Accounts {
+								"Manage sign-in, usage, and account routing."
+							} else {
+								"Check local services and find details for troubleshooting."
+							},
+						))
 						.when(selected == Destination::Health, |d| {
 							d.child(refresh_control(
 								refresh_focus,
@@ -6040,13 +6103,7 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 					})
 					.detach();
 
-					let focus = cx.focus_handle();
-
-					window.focus(&focus, cx);
-
-					let observation = cx.observe(&owner, |_, _, cx| cx.notify());
-
-					SettingsWindow { owner, focus, _observation: observation }
+					SettingsWindow::new(owner, window, cx)
 				})
 			}
 		},
@@ -6206,7 +6263,7 @@ fn composer_model_control(model_label: String, cx: &mut Context<Shell>) -> AnyEl
 		.cursor_pointer()
 		.hover(|element| {
 			element
-				.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+				.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL))
 				.text_color(crate::ui_theme::rgb(WB_TEXT))
 		})
 		.active(|element| element.opacity(0.72))
@@ -6248,7 +6305,7 @@ fn composer_fast_control(fast_enabled: bool, cx: &mut Context<Shell>) -> AnyElem
 		.cursor_pointer()
 		.hover(|element| {
 			element
-				.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+				.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL))
 				.text_color(crate::ui_theme::rgb(WB_TEXT))
 		})
 		.active(|element| element.opacity(0.72))
@@ -6282,7 +6339,7 @@ fn composer_effort_control(effort_label: String, cx: &mut Context<Shell>) -> Any
 		.cursor_pointer()
 		.hover(|element| {
 			element
-				.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+				.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL))
 				.text_color(crate::ui_theme::rgb(WB_TEXT))
 		})
 		.active(|element| element.opacity(0.72))
@@ -6331,7 +6388,7 @@ fn topbar_sessions_toggle(
 		})
 		.hover(|element| {
 			element
-				.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+				.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL))
 				.text_color(crate::ui_theme::rgb(WB_TEXT))
 		})
 		.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
@@ -6385,7 +6442,7 @@ fn topbar_inspector_toggle(
 		})
 		.hover(|element| {
 			element
-				.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL))
+				.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL))
 				.text_color(crate::ui_theme::rgb(WB_TEXT))
 		})
 		.active(|element| element.bg(crate::ui_theme::rgba(PRESSED_FILL)))
@@ -6409,8 +6466,8 @@ fn account_pool_header(
 ) -> AnyElement {
 	gpui::div()
 		.flex_1()
-		.px(gpui::px(14.0))
-		.py(gpui::px(6.0))
+		.px(gpui::px(16.0))
+		.py(gpui::px(14.0))
 		.flex()
 		.items_center()
 		.justify_between()
@@ -6432,7 +6489,7 @@ fn account_pool_header(
 						gpui::div()
 							.text_size(gpui::px(12.5))
 							.font_weight(FontWeight::SEMIBOLD)
-							.child("Routing"),
+							.child("Account routing"),
 					)
 					.child(
 						gpui::div()
@@ -7418,6 +7475,72 @@ mod tests {
 				"Restart Decodex",
 			]
 		);
+	}
+
+	#[gpui::test]
+	fn status_colors_follow_theme_changes_across_settings_and_conversations(
+		cx: &mut TestAppContext,
+	) {
+		let original = ui_theme::ColorTheme::configured();
+		ui_theme::appearance::with_theme(ui_theme::appearance::Theme::Dark, || {
+			for theme in ui_theme::ColorTheme::ALL {
+				cx.update(|cx| theme.apply(cx));
+				let palette = theme.palette();
+				assert_eq!(
+					crate::ui_theme::rgb(
+						shell::connection_presentation(ConnectionView::Online {
+							generation: 4,
+							applied: None
+						})
+						.color
+					),
+					gpui::rgb(palette.green)
+				);
+				assert_eq!(
+					crate::ui_theme::rgb(
+						shell::connection_presentation(ConnectionView::Connecting { attempt: 1 })
+							.color
+					),
+					gpui::rgb(palette.amber)
+				);
+				for (status, color) in [
+					(Some(DoctorStatus::Ready), palette.green),
+					(Some(DoctorStatus::Unavailable(DoctorIssue::Authentication)), palette.error),
+					(Some(DoctorStatus::Unknown(DoctorIssue::Authentication)), palette.amber),
+					(Some(DoctorStatus::Unknown(DoctorIssue::Disabled)), palette.text_muted),
+					(None, palette.text_muted),
+				] {
+					assert_eq!(
+						crate::ui_theme::rgb(shell::component_presentation(status).color),
+						gpui::rgb(color)
+					);
+				}
+				for (state, color) in [
+					(ConversationState::Ready, palette.green),
+					(ConversationState::Running, palette.blue),
+					(ConversationState::QuotaExhausted, palette.amber),
+					(ConversationState::ManualRecovery, palette.error),
+				] {
+					assert_eq!(
+						crate::ui_theme::rgb(shell::conversation_state_color(state)),
+						gpui::rgb(color)
+					);
+				}
+				for (load, color) in [
+					(HealthLoadState::NeverRequested, palette.text_muted),
+					(HealthLoadState::Loading, palette.blue),
+					(HealthLoadState::Stale, palette.amber),
+					(HealthLoadState::Refused, palette.error),
+				] {
+					let snapshot = HealthSnapshot { load, report: None, can_refresh: false };
+					assert_eq!(
+						crate::ui_theme::rgb(shell::health_presentation(&snapshot).color),
+						gpui::rgb(color)
+					);
+				}
+			}
+		});
+		cx.update(|cx| original.apply(cx));
 	}
 
 	#[test]

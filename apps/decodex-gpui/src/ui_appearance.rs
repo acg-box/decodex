@@ -3,6 +3,8 @@ use std::cell::Cell;
 
 use gpui::{App, Context, Window, WindowAppearance};
 
+use super::ColorTheme;
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) enum Appearance {
 	#[default]
@@ -30,10 +32,12 @@ impl Appearance {
 		STATE.get().0
 	}
 
-	fn from_preference(value: Option<&str>) -> Self {
+	fn from_preference(value: Option<&str>, colors: ColorTheme) -> Self {
 		match value {
 			Some("light") => Self::Light,
 			Some("dark") => Self::Dark,
+			// Existing dark presets predate the separate appearance preference.
+			None if colors != ColorTheme::Decodex => Self::Dark,
 			_ => Self::System,
 		}
 	}
@@ -63,6 +67,11 @@ impl Appearance {
 
 	pub(crate) fn select(self, cx: &mut App) {
 		crate::ui_preferences::string(KEY, Some(self.preference()));
+		self.apply(cx);
+	}
+
+	/// Apply appearance without changing the saved preference.
+	pub(crate) fn apply(self, cx: &mut App) {
 		STATE.set((self, Theme::current()));
 		// None resumes system tracking. This also changes the native glass and
 		// menu-bar panels; no per-window AppKit override is needed.
@@ -80,7 +89,7 @@ impl Theme {
 
 pub(crate) fn initialize(cx: &mut App) {
 	let value = crate::ui_preferences::string(KEY, None);
-	let appearance = Appearance::from_preference(value.as_deref());
+	let appearance = Appearance::from_preference(value.as_deref(), ColorTheme::configured());
 	STATE.set((appearance, Theme::current()));
 	cx.set_window_appearance(appearance.native());
 	synchronize(cx.window_appearance(), cx);
@@ -126,11 +135,15 @@ mod tests {
 
 	#[test]
 	fn preferences_round_trip_and_unknown_values_follow_system() {
-		for choice in [Appearance::System, Appearance::Light, Appearance::Dark] {
-			assert_eq!(Appearance::from_preference(Some(choice.preference())), choice);
+		for colors in ColorTheme::ALL {
+			for choice in [Appearance::System, Appearance::Light, Appearance::Dark] {
+				assert_eq!(Appearance::from_preference(Some(choice.preference()), colors), choice);
+			}
+			let initial =
+				if colors == ColorTheme::Decodex { Appearance::System } else { Appearance::Dark };
+			assert_eq!(Appearance::from_preference(None, colors), initial);
+			assert_eq!(Appearance::from_preference(Some("obsolete"), colors), Appearance::System);
 		}
-		assert_eq!(Appearance::from_preference(None), Appearance::System);
-		assert_eq!(Appearance::from_preference(Some("obsolete")), Appearance::System);
 	}
 
 	#[test]

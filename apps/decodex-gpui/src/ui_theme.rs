@@ -15,7 +15,9 @@ pub(crate) mod native_material_panel;
 
 #[path = "ui_appearance.rs"] pub(crate) mod appearance;
 #[path = "ui_palette.rs"] mod palette;
-pub(crate) use palette::{rgb, rgba};
+pub(crate) use palette::ColorScheme;
+#[path = "ui_color_theme.rs"] mod color_themes;
+pub(crate) use color_themes::ColorTheme;
 
 use std::time::Duration;
 
@@ -23,6 +25,14 @@ use gpui::{
 	self, Div, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Role,
 	StatefulInteractiveElement as _, Styled as _,
 };
+
+pub(crate) fn rgb(token: u32) -> gpui::Rgba {
+	ColorScheme::current().rgb(token)
+}
+
+pub(crate) fn rgba(token: u32) -> gpui::Rgba {
+	ColorScheme::current().rgba(token)
+}
 
 pub(crate) const FONT_FAMILY: &str = ".SystemUIFont";
 pub(crate) const BODY_SIZE: f32 = 12.5;
@@ -51,10 +61,14 @@ pub(crate) const COMPOSER_RADIUS: f32 = 14.0;
 pub(crate) const COMPOSER_TOP_GAP: f32 = 8.0;
 pub(crate) const COMPOSER_BOTTOM_GAP: f32 = 12.0;
 // Settings share shell typography and a bounded reading width.
-pub(crate) const SETTINGS_WIDTH: f32 = 680.0;
+pub(crate) const SETTINGS_WIDTH: f32 = 740.0;
 pub(crate) const SETTINGS_INSET: f32 = 24.0;
-pub(crate) const SETTINGS_TOP: f32 = 12.0;
-pub(crate) const SETTINGS_GROUP_GAP: f32 = 16.0;
+pub(crate) const SETTINGS_TOP: f32 = 16.0;
+pub(crate) const SETTINGS_GROUP_GAP: f32 = 18.0;
+pub(crate) const SETTINGS_CONTROL_HEIGHT: f32 = 24.0;
+pub(crate) const SETTINGS_CONTROL_RADIUS: f32 = 5.0;
+pub(crate) const PANEL_DIVIDER: u32 = 0xffffff10;
+// Color values below are stable role IDs. ColorScheme resolves display colors.
 pub(crate) const CANVAS: u32 = 0x0b0a0f;
 // One bounded glass hierarchy. Large regions always own a material, while
 // nested components target a final composite opacity instead of repeating the
@@ -156,12 +170,13 @@ pub(crate) fn settings_header_inset() -> Div {
 pub(crate) fn settings_row() -> Div {
 	gpui::div()
 		.w_full()
-		.min_h(gpui::px(44.0))
-		.px(gpui::px(12.0))
-		.py(gpui::px(7.0))
+		.min_h(gpui::px(50.0))
+		.px(gpui::px(14.0))
+		.py(gpui::px(8.0))
 		.flex()
 		.items_center()
 		.gap(gpui::px(16.0))
+		.text_size(gpui::px(BODY_SIZE))
 }
 
 pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
@@ -170,10 +185,170 @@ pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
 		.role(Role::Heading)
 		.aria_level(1)
 		.aria_label(title)
-		.text_size(gpui::px(HEADING_SIZE))
+		.text_size(gpui::px(18.0))
+		.line_height(gpui::px(24.0))
 		.font_weight(FontWeight::SEMIBOLD)
 		.text_color(rgb(TEXT))
 		.child(title)
+}
+
+pub(crate) fn settings_heading(title: &'static str, description: &'static str) -> Div {
+	gpui::div().flex().flex_col().gap(gpui::px(6.0)).child(settings_title(title)).child(
+		gpui::div()
+			.text_size(gpui::px(11.5))
+			.line_height(gpui::px(17.0))
+			.text_color(rgb(TEXT_MUTED))
+			.child(description),
+	)
+}
+
+pub(crate) fn settings_label(
+	title: &'static str,
+	description: impl Into<gpui::SharedString>,
+) -> Div {
+	let description = description.into();
+	use gpui::prelude::FluentBuilder as _;
+	gpui::div()
+		.flex_1()
+		.min_w_0()
+		.flex()
+		.flex_col()
+		.gap(gpui::px(2.0))
+		.child(gpui::div().text_size(gpui::px(BODY_SIZE)).line_height(gpui::px(17.0)).child(title))
+		.when(!description.is_empty(), |label| {
+			label.child(
+				gpui::div()
+					.text_size(gpui::px(11.5))
+					.line_height(gpui::px(16.0))
+					.text_color(rgb(TEXT_MUTED))
+					.child(description),
+			)
+		})
+}
+
+pub(crate) fn settings_card() -> Div {
+	gpui::div()
+		.w_full()
+		.min_w_0()
+		.flex()
+		.flex_col()
+		.rounded(gpui::px(10.0))
+		.border_1()
+		.border_color(rgba(0xffffff0c))
+		.bg(rgba(0xffffff03))
+}
+
+pub(crate) fn settings_group(title: &'static str, rows: Vec<gpui::AnyElement>) -> Div {
+	use gpui::prelude::FluentBuilder as _;
+	gpui::div()
+		.w_full()
+		.flex()
+		.flex_col()
+		.gap_2()
+		.child(
+			gpui::div()
+				.id(gpui::SharedString::from(format!("settings-group-{title}")))
+				.role(Role::Heading)
+				.aria_level(2)
+				.text_size(gpui::px(11.5))
+				.font_weight(FontWeight::MEDIUM)
+				.text_color(rgb(TEXT_MUTED))
+				.child(title),
+		)
+		.child(settings_card().children(rows.into_iter().enumerate().map(|(index, row)| {
+			gpui::div()
+				.when(index > 0, |row| row.border_t_1().border_color(rgba(0xffffff08)))
+				.child(row)
+		})))
+}
+
+pub(crate) fn settings_button(
+	id: impl Into<gpui::SharedString>,
+	label: &'static str,
+) -> gpui::Stateful<Div> {
+	settings_button_base(id, label)
+		.cursor_pointer()
+		.hover(|s| s.bg(rgba(0xffffff0e)))
+		.active(|s| s.bg(rgba(PRESSED_FILL)))
+		.focus_visible(|s| s.border_color(rgb(BLUE)))
+}
+
+pub(crate) fn settings_button_base(
+	id: impl Into<gpui::SharedString>,
+	label: &'static str,
+) -> gpui::Stateful<Div> {
+	let id = id.into();
+	gpui::div()
+		.id(id.clone())
+		.debug_selector(move || id.to_string())
+		.role(Role::Button)
+		.aria_label(label)
+		.tab_index(0)
+		.h(gpui::px(SETTINGS_CONTROL_HEIGHT))
+		.px(gpui::px(8.0))
+		.flex_none()
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded(gpui::px(SETTINGS_CONTROL_RADIUS))
+		.border_1()
+		.border_color(rgba(0xffffff16))
+		.bg(rgba(0xffffff06))
+		.text_size(gpui::px(11.5))
+		.line_height(gpui::px(16.0))
+		.text_color(rgb(TEXT))
+		.child(label)
+}
+
+pub(crate) fn settings_segments(label: &'static str) -> gpui::Stateful<Div> {
+	let light = appearance::Theme::current() == appearance::Theme::Light;
+	gpui::div()
+		.id(gpui::SharedString::from(format!("settings-segments-{label}")))
+		.role(Role::RadioGroup)
+		.aria_label(label)
+		.flex()
+		.flex_none()
+		.gap(gpui::px(2.0))
+		.p(gpui::px(2.0))
+		.rounded(gpui::px(6.))
+		.bg(gpui::rgba(if light { 0x00000008 } else { 0x00000020 }))
+}
+
+pub(crate) fn settings_segment(
+	id: impl Into<gpui::ElementId>,
+	label: &'static str,
+	selected: bool,
+) -> gpui::Stateful<Div> {
+	use gpui::prelude::FluentBuilder as _;
+	let light = appearance::Theme::current() == appearance::Theme::Light;
+	let selected_fill = if light { gpui::rgba(0xfffffff0) } else { rgba(0xffffff12) };
+	let selected_hover = if light { gpui::rgba(0xffffffff) } else { rgba(SELECTED_HOVER_FILL) };
+	gpui::div()
+		.id(id)
+		.role(Role::RadioButton)
+		.aria_label(label)
+		.aria_toggled(if selected {
+			gpui::accesskit::Toggled::True
+		} else {
+			gpui::accesskit::Toggled::False
+		})
+		.tab_index(0)
+		.h(gpui::px(22.))
+		.px(gpui::px(8.0))
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded(gpui::px(4.))
+		.border_1()
+		.border_color(gpui::transparent_black())
+		.text_size(gpui::px(11.5))
+		.line_height(gpui::px(16.0))
+		.cursor_pointer()
+		.text_color(rgb(if selected { TEXT } else { TEXT_MUTED }))
+		.when(selected, |s| s.bg(selected_fill).border_color(rgba(0xffffff0c)))
+		.hover(move |s| s.bg(if selected { selected_hover } else { rgba(HOVER_FILL) }))
+		.focus_visible(|s| s.border_color(rgb(BLUE)))
+		.child(label)
 }
 
 /// Stable gutter shared by conversation history and composer alignment.

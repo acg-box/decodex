@@ -15,7 +15,7 @@ use crate::{
 		markdown::{self, Node, mermaid, mermaid::Diagram},
 		selectable_text::Document,
 	},
-	ui_theme::appearance::Theme,
+	ui_theme::ColorScheme,
 };
 
 // Adapted from the upstream closing-fence check; see agent_mermaid/NOTICE.md.
@@ -63,12 +63,12 @@ struct State {
 // application so returning rows retain both their image and geometry on their first frame.
 #[derive(Default)]
 struct Images {
-	entries: VecDeque<(Arc<str>, Theme, Arc<Diagram>)>,
+	entries: VecDeque<(Arc<str>, ColorScheme, Arc<Diagram>)>,
 	bytes: usize,
 }
 impl gpui::Global for Images {}
 impl Images {
-	fn get(&mut self, source: &str, theme: Theme) -> Option<Arc<Diagram>> {
+	fn get(&mut self, source: &str, theme: ColorScheme) -> Option<Arc<Diagram>> {
 		let index = self
 			.entries
 			.iter()
@@ -82,7 +82,7 @@ impl Images {
 	fn insert(
 		&mut self,
 		source: Arc<str>,
-		theme: Theme,
+		theme: ColorScheme,
 		diagram: Arc<Diagram>,
 	) -> Vec<Arc<Diagram>> {
 		let limit = if cfg!(feature = "visual-capture")
@@ -117,7 +117,7 @@ fn release_image(diagram: &Arc<Diagram>, cx: &mut App) {
 }
 
 impl State {
-	fn new(source: Arc<str>, theme: Theme, cx: &mut Context<Self>) -> Self {
+	fn new(source: Arc<str>, theme: ColorScheme, cx: &mut Context<Self>) -> Self {
 		let cached = cx.default_global::<Images>().get(&source, theme);
 		let task =
 			if cached.is_some() { Task::ready(()) } else { Self::prepare(source, theme, cx) };
@@ -131,7 +131,7 @@ impl State {
 		Self { result: cached.map(Ok), _task: task }
 	}
 
-	fn prepare(source: Arc<str>, theme: Theme, cx: &mut Context<Self>) -> Task<()> {
+	fn prepare(source: Arc<str>, theme: ColorScheme, cx: &mut Context<Self>) -> Task<()> {
 		let renderer = cx.svg_renderer();
 		let input = source.clone();
 		let future = cx.background_executor().spawn(async move {
@@ -176,10 +176,10 @@ impl RenderOnce for Mermaid {
 			"mermaid-state-{}-{:016x}-{:?}",
 			self.key,
 			gpui::hash(&self.source),
-			Theme::current()
+			ColorScheme::current()
 		));
 		let state = window.use_keyed_state(state_key, cx, |_, cx| {
-			State::new(self.source.clone(), Theme::current(), cx)
+			State::new(self.source.clone(), ColorScheme::current(), cx)
 		});
 		let diagram = match &state.read(cx).result {
 			Some(Ok(diagram)) => {

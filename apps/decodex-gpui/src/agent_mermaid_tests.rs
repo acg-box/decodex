@@ -1,5 +1,5 @@
 //! Closed fences, asynchronous image presentation, literal fallback and original source copy.
-use crate::ui_theme::appearance::Theme;
+use crate::ui_theme::{ColorScheme, ColorTheme, appearance::Theme};
 use gpui::{Modifiers, Render, ScrollDelta, ScrollEvent, TestAppContext};
 
 use super::{Context, IntoElement, Window};
@@ -61,21 +61,24 @@ fn prepared_images_evict_old_sources_within_the_memory_limit(cx: &mut TestAppCon
 	let (_, source) = fixtures.iter().find(|(kind, _)| kind == "sequence").expect("sequence");
 	let renderer = cx.update(|cx| cx.svg_renderer());
 	let diagram = std::sync::Arc::new(
-		markdown::mermaid::prepare(source, &renderer, Theme::Dark).expect("image"),
+		markdown::mermaid::prepare(source, &renderer, Theme::Dark.into()).expect("image"),
 	);
 	let mut images = super::Images::default();
 	for index in 0..80 {
-		images.insert(format!("source-{index}").into(), Theme::Dark, diagram.clone());
+		images.insert(format!("source-{index}").into(), Theme::Dark.into(), diagram.clone());
 		assert!(images.bytes <= 64 * 1_024 * 1_024);
 	}
 	assert!(images.entries.len() < 64, "the image byte limit must trigger before the item limit");
-	assert!(images.get("source-0", Theme::Dark).is_none());
+	assert!(images.get("source-0", Theme::Dark.into()).is_none());
 	let recent = images.entries.front().expect("retained image").0.clone();
 	let older = images.entries.get(1).expect("another retained image").0.clone();
-	assert!(images.get(&recent, Theme::Dark).is_some());
-	images.insert("new-source".into(), Theme::Dark, diagram);
-	assert!(images.get(&recent, Theme::Dark).is_some(), "a viewed image stays resident");
-	assert!(images.get(&older, Theme::Dark).is_none(), "the oldest unviewed image is evicted");
+	assert!(images.get(&recent, Theme::Dark.into()).is_some());
+	images.insert("new-source".into(), Theme::Dark.into(), diagram);
+	assert!(images.get(&recent, Theme::Dark.into()).is_some(), "a viewed image stays resident");
+	assert!(
+		images.get(&older, Theme::Dark.into()).is_none(),
+		"the oldest unviewed image is evicted"
+	);
 }
 
 #[gpui::test]
@@ -83,8 +86,17 @@ fn theme_change_repaints_cached_diagrams_without_moving_them(cx: &mut TestAppCon
 	let (preview, visual) = cx
 		.add_window_view(|_, _| Preview { text: "```mermaid\nflowchart LR; A --> B\n```".into() });
 	let mut first_size = None;
-	for theme in [Theme::Dark, Theme::Light, Theme::Dark] {
+	let original = ColorTheme::configured();
+	for (theme, colors) in [
+		(Theme::Dark, ColorTheme::Decodex),
+		(Theme::Light, ColorTheme::Decodex),
+		(Theme::Dark, ColorTheme::TokyoNight),
+		(Theme::Dark, ColorTheme::GruvboxDark),
+		(Theme::Dark, ColorTheme::TokyoNight),
+	] {
+		visual.update(|_, cx| colors.apply(cx));
 		crate::ui_theme::appearance::with_theme(theme, || {
+			let scheme = ColorScheme::current();
 			preview.update(visual, |_, cx| cx.refresh_windows());
 			visual.update(|window, cx| window.draw(cx).clear(cx));
 			visual.run_until_parked();
@@ -94,13 +106,14 @@ fn theme_change_repaints_cached_diagrams_without_moving_them(cx: &mut TestAppCon
 					cx.default_global::<super::Images>()
 						.entries
 						.iter()
-						.any(|(_, cached, _)| *cached == theme)
+						.any(|(_, cached, _)| *cached == scheme)
 				);
 			});
 			let size = visual.debug_bounds("mermaid-diagram-preview-0").expect("diagram").size;
 			assert_eq!(*first_size.get_or_insert(size), size);
 		});
 	}
+	visual.update(|_, cx| original.apply(cx));
 }
 
 #[gpui::test]

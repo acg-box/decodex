@@ -176,31 +176,6 @@ impl RenderOnce for Control {
 }
 
 #[derive(IntoElement)]
-pub(crate) struct SwitchKnob {
-	id: &'static str,
-	enabled: bool,
-	child: AnyElement,
-}
-impl RenderOnce for SwitchKnob {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let target = if self.enabled { 16.0 } else { 0.0 };
-		let state = window.use_keyed_state(self.id, cx, |_, _| Tween::new(target));
-		let now = Instant::now();
-		let offset = state.update(cx, |s, _| {
-			s.target(target, now);
-
-			s.sample(now)
-		});
-
-		if state.read(cx).moving(now) {
-			request_frame(window, cx);
-		}
-
-		gpui::div().ml(gpui::px(offset)).size(gpui::px(14.0)).child(self.child)
-	}
-}
-
-#[derive(IntoElement)]
 pub(crate) struct Disclosure {
 	id: ElementId,
 	visible: bool,
@@ -417,6 +392,14 @@ impl Tween {
 	}
 
 	pub(crate) fn target(&mut self, value: f32, now: Instant) {
+		if self.to == value
+			&& (self.from == self.to || now.duration_since(self.started) >= self.duration)
+		{
+			// A completed transition is static. Do not query AppKit again for
+			// every unrelated frame until the target actually changes.
+			self.from = value;
+			return;
+		}
 		if (self.from != self.to || self.to != value) && reduced() {
 			self.from = value;
 			self.to = value;
@@ -549,10 +532,6 @@ pub(crate) fn direct_value(
 	value
 }
 
-pub(crate) fn switch_knob(id: &'static str, enabled: bool, child: impl IntoElement) -> SwitchKnob {
-	SwitchKnob { id, enabled, child: child.into_any_element() }
-}
-
 pub(crate) fn disclosure(
 	id: impl Into<ElementId>,
 	visible: bool,
@@ -626,6 +605,24 @@ mod tests {
 		assert_eq!(tween.sample(end), 0.0);
 		assert!(!tween.moving(end));
 	}
+
+	#[test]
+	fn completed_targets_settle_and_retarget_without_a_position_jump() {
+		let mut tween = Tween::new(0.);
+		let start = Instant::now();
+		tween.target(1., start);
+		let end = start + Duration::from_millis(220);
+		tween.target(1., end);
+		assert_eq!(tween.from, tween.to);
+		assert!(!tween.moving(end));
+		tween.target(0., end);
+		assert_eq!(tween.sample(end), 1.);
+		let middle = end + Duration::from_millis(60);
+		let position = tween.sample(middle);
+		tween.target(1., middle);
+		assert_eq!(tween.sample(middle), position);
+		assert!(tween.moving(middle));
+	}
 }
 
 /// The title's first grapheme carries state without adding a badge or changing layout.
@@ -645,7 +642,7 @@ impl RenderOnce for AgentRailStatus {
 			"Completed" | "completed" | "Resolved" => (crate::ui_theme::GREEN, false),
 			_ => (crate::ui_theme::TEXT, false),
 		};
-		let color = crate::ui_theme::appearance::Theme::current().hex(color);
+		let color = crate::ui_theme::ColorScheme::current().hex(color);
 		let mut channels = [0.; 3];
 		for (index, channel) in channels.iter_mut().enumerate() {
 			*channel = value(

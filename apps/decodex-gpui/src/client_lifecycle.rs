@@ -506,6 +506,14 @@ impl ClientLifecycle {
 	where
 		I: LifecycleIo,
 	{
+		// The server reads queries in order. Send small local preferences before
+		// account or conversation queries that can wait for native provider work.
+		if !requires_snapshot
+			&& let Some(dispatch) =
+				self.desktop_settings.try_take_dispatch(generation, &self.server_id)
+		{
+			return SessionStep::DesktopSettings(dispatch);
+		}
 		let accounts = self.accounts.clone();
 		let account_profile = self.account_profile.clone();
 		let desktop_settings = self.desktop_settings.clone();
