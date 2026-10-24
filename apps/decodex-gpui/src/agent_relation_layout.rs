@@ -2,9 +2,9 @@
 use super::{BTreeMap, FRAME_INSET, Graph};
 
 const WIDTH: f32 = super::card::WIDTH;
-const SIBLING_GAP: f32 = 32.;
-const COLUMN_GAP: f32 = 76.;
-const ROW_GAP: f32 = 36.;
+const SIBLING_GAP: f32 = 24.;
+const COLUMN_GAP: f32 = 48.;
+const ROW_GAP: f32 = 24.;
 // Keep project boundaries clear without adding a full empty hierarchy rank.
 const WORKSPACE_GAP: f32 = 88.;
 
@@ -15,13 +15,6 @@ pub(super) enum Presentation {
 	Together,
 }
 impl Presentation {
-	pub(super) fn width(self) -> f32 {
-		match self {
-			Self::Links => WIDTH,
-			Self::Together => 344.,
-		}
-	}
-
 	fn gap(self, usual: f32, together: f32) -> f32 {
 		if self == Self::Together { together } else { usual }
 	}
@@ -130,7 +123,7 @@ impl Cache {
 				})
 				.collect(),
 			viewport,
-			width: graph.nodes.iter().map(|node| node.width()).fold(presentation.width(), f32::max),
+			width: graph.nodes.iter().map(|node| node.width()).fold(WIDTH, f32::max),
 			column_gap: presentation.gap(COLUMN_GAP.max(label_gap), 24.),
 		};
 		if self.input != input {
@@ -217,7 +210,7 @@ impl Input {
 		let block = match self.mode {
 			Mode::Tree | Mode::Grouped => Block::pack(
 				trees.iter().map(|tree| tree.layout(self, self.mode == Mode::Grouped)).collect(),
-				self.presentation.gap(WORKSPACE_GAP, 36.),
+				self.presentation.gap(WORKSPACE_GAP, 24.),
 				available,
 			),
 			Mode::Radial => self.radial(&trees),
@@ -226,7 +219,7 @@ impl Input {
 	}
 
 	fn radial(&self, trees: &[Tree]) -> Block {
-		let gap = self.presentation.gap(WORKSPACE_GAP, 36.);
+		let gap = self.presentation.gap(WORKSPACE_GAP, 24.);
 		let (root, branches) = if trees.len() == 1 && !trees[0].children.is_empty() {
 			(Some(trees[0].index), trees[0].children.as_slice())
 		} else {
@@ -323,7 +316,7 @@ impl Tree {
 	fn layout(&self, input: &Input, horizontal: bool) -> Block {
 		let gap = input.presentation.gap(
 			SIBLING_GAP,
-			if self.children.iter().any(|child| !child.children.is_empty()) { 40. } else { 12. },
+			if self.children.iter().any(|child| !child.children.is_empty()) { 24. } else { 12. },
 		);
 		let height = f32::from_bits(input.nodes[self.index].2);
 		let base =
@@ -331,7 +324,7 @@ impl Tree {
 		let step = if horizontal {
 			input.width + input.column_gap
 		} else {
-			(base + input.presentation.gap(84., 4.)).max(height + input.presentation.gap(24., 4.))
+			(base + input.presentation.gap(28., 8.)).max(height + input.presentation.gap(24., 8.))
 		};
 		let children: Vec<_> =
 			self.children.iter().map(|child| child.layout(input, horizontal)).collect();
@@ -353,7 +346,7 @@ impl Tree {
 				})
 				.unwrap_or_default()
 		} else if children.len() >= 4 {
-			Block::pack(children, input.presentation.gap(WORKSPACE_GAP, 36.), input.viewport)
+			Block::pack(children, input.presentation.gap(WORKSPACE_GAP, 24.), input.viewport)
 		} else {
 			Block::siblings(children, horizontal, gap)
 		};
@@ -561,7 +554,6 @@ mod tests {
 				w * h
 			};
 			source.presentation = Presentation::Together;
-			source.width = Presentation::Together.width();
 			source.column_gap = 24.;
 			let positions = source.arrange();
 			assert_eq!(positions.len(), source.nodes.len());

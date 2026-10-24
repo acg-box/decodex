@@ -13,15 +13,14 @@ use gpui::{
 // At 100%, graph type uses the same sizes as the native shell.
 // A compact three-row HUD stays centered under the portrait, with readable
 // counters at the full-detail threshold and the one-times display font floor.
-pub(super) const WIDTH: f32 = 352.;
+pub(super) const WIDTH: f32 = 432.;
 pub(super) const INSET_X: f32 = 10.;
 pub(super) const INSET_Y: f32 = 8.;
 pub(super) const PORTRAIT_WIDTH: f32 = 80.;
 pub(super) const PORTRAIT_HEIGHT: f32 = 44.;
-pub(super) const COLUMN_GAP: f32 = 16.;
+pub(super) const COLUMN_GAP: f32 = 12.;
 const TEXT_SIZE: f32 = 10.5;
 const MIN_TEXT_SIZE: f32 = 10.;
-pub(super) const IDENTITY_GAP: f32 = 3.;
 pub(super) const DETAILS_TOP: f32 = 4.;
 pub(super) const SELECTED: u32 = crate::ui_theme::BLUE;
 pub(super) const SECONDARY_TEXT: u32 = foreground::SECONDARY;
@@ -109,11 +108,11 @@ impl Layout {
 	}
 
 	pub(super) fn details_gap(self) -> f32 {
-		self.spacing(COLUMN_GAP).max(13.)
+		self.spacing(COLUMN_GAP).max(10.)
 	}
 
 	pub(super) fn text_width(self) -> f32 {
-		(self.details_width() - 2. * self.bubble_padding()).max(1.)
+		(self.details_width() - 2. * self.bubble_padding() - self.title_size() - 5.).max(1.)
 	}
 
 	pub(super) fn details_width(self) -> f32 {
@@ -176,7 +175,7 @@ impl Layout {
 			(OVERVIEW_HEIGHT - self.header_height(actions) / z) / 2.
 		} else {
 			INSET_Y
-		};
+		} + self.metadata_height() / z;
 		let inset = if self.overview() { self.node_inset() } else { (0., 0.) };
 		let (width, node_height) = self.node_size(self.world_height(actions));
 		let center = (width / 2., node_height / 2.);
@@ -201,6 +200,24 @@ impl Layout {
 		} else {
 			(SUMMARY_ZOOM, FULL_DETAIL_ZOOM - 0.01)
 		}
+	}
+
+	/// Hidden activity must not determine the height of a readable team.
+	pub(super) fn activity_range(self) -> Option<(f32, f32)> {
+		let (min, max) = self.zoom_range();
+		(max > 0.5).then_some((min.max(0.5 + 2. * f32::EPSILON), max))
+	}
+
+	pub(super) fn at_zoom(self, zoom: f32) -> Self {
+		Self::new(zoom).with_width(self.world_width).on_display(self.display_scale)
+	}
+
+	pub(super) fn metadata_gap(self) -> f32 {
+		self.spacing(3.).max(2.)
+	}
+
+	pub(super) fn metadata_height(self) -> f32 {
+		if self.labels() { self.title_line() + self.metadata_gap() } else { 0. }
 	}
 
 	pub(super) fn title_line(self) -> f32 {
@@ -239,18 +256,12 @@ impl Layout {
 	pub(super) fn header_height(self, actions: f32) -> f32 {
 		let portrait = self.portrait_spacing(PORTRAIT_HEIGHT)
 			+ if self.overview() { 0. } else { self.gap() + self.metrics_height() };
-		let details = if self.labels() {
-			self.spacing(DETAILS_TOP)
-				+ self.title_line()
-				+ if self.activity_visible() && actions > 0. {
-					self.spacing(IDENTITY_GAP) + actions * self.activity_line()
-				} else {
-					0.
-				}
+		let details = if self.activity_visible() && actions > 0. {
+			self.spacing(DETAILS_TOP) + actions * self.activity_line()
 		} else {
 			0.
 		};
-		portrait.max(details)
+		self.metadata_height() + portrait.max(details)
 	}
 
 	/// The avatar and current activity determine the footprint, without reserving
@@ -262,9 +273,9 @@ impl Layout {
 		// Keep one camera footprint per detail tier. Content stays top-aligned;
 		// readable font floors must not move the agent under the zoom pointer.
 		let (min, max) = self.zoom_range();
-		let range = [min, max];
-		range.into_iter().fold(0., |height, zoom| {
-			let layout = Self::new(zoom);
+		let range = [min, max].into_iter().chain(self.activity_range().map(|(min, _)| min));
+		range.fold(0., |height, zoom| {
+			let layout = self.at_zoom(zoom);
 			height
 				.max(((layout.header_height(actions) + 2. * layout.spacing(INSET_Y)) / zoom).ceil())
 		})

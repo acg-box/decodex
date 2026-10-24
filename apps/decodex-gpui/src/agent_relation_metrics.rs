@@ -149,7 +149,7 @@ fn render_hud(
 			.w(gpui::px(width))
 			.h(gpui::px(layout.metric_line()))
 			.flex_none()
-			.bg(crate::ui_theme::rgb(color).opacity(0.12));
+			.bg(crate::ui_theme::rgb(color).opacity(0.08));
 		if amount > 0. {
 			row = row.child(
 				gpui::div()
@@ -160,7 +160,7 @@ fn render_hud(
 					.bottom(gpui::px(inset))
 					.w(gpui::px(amount))
 					.rounded(gpui::px(1.))
-					.bg(crate::ui_theme::rgb(color).opacity(0.44)),
+					.bg(crate::ui_theme::rgb(color).opacity(0.30)),
 			);
 		}
 		// Small ruler divisions stay in the track and do not compete with the value.
@@ -172,7 +172,7 @@ fn render_hud(
 					.bottom(gpui::px(inset))
 					.w(gpui::px(inset))
 					.h(gpui::px(2.))
-					.bg(crate::ui_theme::rgb(color).opacity(0.30)),
+					.bg(crate::ui_theme::rgb(color).opacity(0.20)),
 			);
 		}
 		if readout.is_some_and(|(_, exceeded)| exceeded) {

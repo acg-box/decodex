@@ -362,15 +362,35 @@ impl AgentSurface {
 		let Some(node) = graph.nodes.iter().find(|node| node.key == key) else { return };
 		let scale = self.relation_scale();
 		let view = &mut self.work_board.view;
-		let rect = node.screen_rect(scale, view.pan);
-		if rect.x < 0.
-			|| rect.y < 0.
-			|| rect.x + rect.width > view.viewport.0
-			|| rect.y + rect.height > view.viewport.1
+		let members = groups::descendants(&graph, key);
+		let team = graph
+			.nodes
+			.iter()
+			.filter(|node| members.contains_key(&node.key))
+			.map(|node| node.screen_rect(scale, view.pan))
+			.reduce(|a, b| {
+				let (x, y) = (a.x.min(b.x), a.y.min(b.y));
+				card::Rect {
+					x,
+					y,
+					width: (a.x + a.width).max(b.x + b.width) - x,
+					height: (a.y + a.height).max(b.y + b.height) - y,
+				}
+			});
+		let rect = team
+			.filter(|rect| {
+				rect.width <= view.viewport.0 - 2. * FRAME_INSET
+					&& rect.height <= view.viewport.1 - 2. * FRAME_INSET
+			})
+			.unwrap_or_else(|| node.screen_rect(scale, view.pan));
+		if rect.x < FRAME_INSET
+			|| rect.y < FRAME_INSET
+			|| rect.x + rect.width > view.viewport.0 - FRAME_INSET
+			|| rect.y + rect.height > view.viewport.1 - FRAME_INSET
 		{
 			view.pan = (
-				view.viewport.0 / 2. - (node.x + node.width() / 2.) * scale,
-				view.viewport.1 / 2. - (node.y + node.height() / 2.) * scale,
+				view.pan.0 + view.viewport.0 / 2. - rect.x - rect.width / 2.,
+				view.pan.1 + view.viewport.1 / 2. - rect.y - rect.height / 2.,
 			);
 		}
 		cx.notify();
@@ -385,8 +405,7 @@ impl AgentSurface {
 	}
 
 	fn relation_layout_at(&self, now: std::time::Instant) -> card::Layout {
-		let layout = card::Layout::new(self.relation_scale())
-			.with_width(self.work_board.view.presentation.width());
+		let layout = card::Layout::new(self.relation_scale());
 		self.work_board.view.card_transition.as_ref().map_or(layout, |transition| {
 			layout.with_presence(
 				if layout.overview() { transition.sample(now) } else { 1. },
@@ -2186,8 +2205,7 @@ impl AgentSurface {
 		// not reserve another margin or force a root-only close-up.
 		let now = std::time::Instant::now();
 		for zoom in [1., 0.6, 0.3, card::MIN_ZOOM] {
-			let layout =
-				card::Layout::new(zoom).with_width(self.work_board.view.presentation.width());
+			let layout = card::Layout::new(zoom);
 			let graph = self.relation_graph_with_layout(now, layout.with_presence(1., false));
 			let keys = graph
 				.nodes
@@ -2619,6 +2637,56 @@ mod fit_tests {
 	}
 
 	#[gpui::test]
+	fn locating_a_fitting_team_reveals_all_members_without_changing_the_chat_or_zoom(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(super::super::tests::fixture);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_page("workbench", cx);
+			s.composer.update(cx, |input, cx| input.set_content("Keep this Main draft", cx));
+			let main = (s.selected.clone(), s.native_agents.selected.clone());
+			for mode in layout::Mode::ALL {
+				for presentation in [layout::Presentation::Links, layout::Presentation::Together] {
+					let view = &mut s.work_board.view;
+					view.layout_mode = mode;
+					view.presentation = presentation;
+					view.viewport = (1400., 900.);
+					view.layout_viewport = view.viewport;
+					view.camera_fixed = true;
+					view.zoom = Some(0.6);
+					view.pan = (-10000., -10000.);
+					let before = s.relation_graph();
+					let shape = |g: &Graph| {
+						g.nodes
+							.iter()
+							.map(|n| (n.key.clone(), n.x, n.y, n.size))
+							.collect::<Vec<_>>()
+					};
+					s.locate_relation_agent("mira", cx);
+					let after = s.relation_graph();
+					assert_eq!(shape(&after), shape(&before));
+					let members = groups::descendants(&after, "mira");
+					assert!(members.len() > 1);
+					for node in after.nodes.iter().filter(|n| members.contains_key(&n.key)) {
+						let rect = node.screen_rect(0.6, s.work_board.view.pan);
+						assert!(
+							rect.x >= FRAME_INSET && rect.y >= FRAME_INSET,
+							"{mode:?} / {presentation:?}: {rect:?}"
+						);
+						assert!(
+							rect.x + rect.width <= 1400. - FRAME_INSET
+								&& rect.y + rect.height <= 900. - FRAME_INSET
+						);
+					}
+					assert_eq!(s.work_board.view.zoom, Some(0.6));
+					assert_eq!((s.selected.clone(), s.native_agents.selected.clone()), main);
+					assert_eq!(s.composer.read(cx).content(), "Keep this Main draft");
+				}
+			}
+		});
+	}
+
+	#[gpui::test]
 	fn a_hundred_agents_keep_their_ids_topology_and_geometry_across_zoom(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -2740,8 +2808,7 @@ mod fit_tests {
 				});
 				visual.update(crate::ui_frame::draw_frame);
 				let avatar = visual.debug_bounds("relation-avatar-release").unwrap();
-				let identity = visual.debug_bounds("relation-identity-release").unwrap();
-				let gap = gpui::point((avatar.right() + identity.left()) / 2., avatar.center().y);
+				let gap = gpui::point(avatar.right() + gpui::px(5.), avatar.center().y);
 				visual.simulate_click(gap, Default::default());
 				surface.read_with(visual, |s, _| {
 					assert!(
@@ -2751,11 +2818,9 @@ mod fit_tests {
 				});
 				for target in ["gap", "padding", "identity", "message"] {
 					let avatar = visual.debug_bounds("relation-avatar-release").unwrap();
-					let identity = visual.debug_bounds("relation-identity-release").unwrap();
 					let bounds = visual.debug_bounds("relation-node-release").unwrap();
 					let start = match target {
-						"gap" =>
-							gpui::point((avatar.right() + identity.left()) / 2., avatar.center().y),
+						"gap" => gpui::point(avatar.right() + gpui::px(5.), avatar.center().y),
 						"padding" => gpui::point(avatar.center().x, bounds.bottom() - gpui::px(1.)),
 						"identity" =>
 							visual.debug_bounds("relation-number-release").unwrap().center(),
@@ -3389,7 +3454,7 @@ mod fit_tests {
 		for density in [2., 1., 2.] {
 			visual.simulate_window_scale_factor_change(handle, density);
 			let mut previous: Option<gpui::Size<gpui::Pixels>> = None;
-			for scale in [1., 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.6, 0.55, 0.5, 0.45] {
+			for scale in [1., 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.6, 0.55, 0.51, 0.5, 0.45] {
 				let world_height = surface.update(visual, |s, cx| {
 					s.work_board.view.zoom = Some(scale);
 					let graph = s.relation_graph();
@@ -3566,13 +3631,13 @@ mod fit_tests {
 						"activity stays close to the character"
 					);
 					assert_eq!(
-						identity.left(),
+						visual.debug_bounds("relation-assignment-release").unwrap().left(),
 						preview.left(),
-						"identity and activity share one text edge"
+						"purpose and activity share one text edge"
 					);
 					assert!(
 						number.bottom() < preview.top(),
-						"identity titles its own activity column"
+						"identity stays above the character and activity"
 					);
 				}
 				assert!(
@@ -3580,7 +3645,8 @@ mod fit_tests {
 						== layout.activity_visible(),
 					"the current assignment stays distinct from recent activity"
 				);
-				assert!(number.bottom() <= avatar.bottom() && avatar.bottom() < metrics.top());
+				assert!(number.bottom() < avatar.top() && avatar.bottom() < metrics.top());
+				assert_eq!(identity.center().x, avatar.center().x);
 				assert!(
 					f32::from(metrics.top() - avatar.bottom()) <= layout.gap() + 0.5,
 					"only the HUD sits immediately below the portrait"
@@ -3594,9 +3660,9 @@ mod fit_tests {
 					"long native counters still form a small block"
 				);
 				let status = visual.debug_bounds("relation-status-release").unwrap();
-				assert!(status.left() >= avatar.right() + gpui::px(4.));
+				assert!(status.left() >= identity.left());
 				assert!(status.right() < number.left());
-				assert!(status.bottom() <= avatar.bottom());
+				assert!(status.bottom() < avatar.top());
 				let selection = visual.debug_bounds("relation-selection-release").unwrap();
 				assert_eq!(selection, avatar, "selection belongs only to the portrait");
 				assert!(selection.bottom() < metrics.top());

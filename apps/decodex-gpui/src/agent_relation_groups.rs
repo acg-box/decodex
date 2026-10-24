@@ -16,10 +16,9 @@ pub(super) fn routing_nodes(
 		.cloned()
 		.map(|mut node| {
 			if node.row.is_some() && node.attachment.is_some() && layout.labels() {
-				let text = layout.spacing(card::DETAILS_TOP)
-					+ layout.title_line()
+				let text = layout.metadata_height()
 					+ if layout.activity_visible() {
-						layout.spacing(card::IDENTITY_GAP)
+						layout.spacing(card::DETAILS_TOP)
 							+ header::detail_rows(
 								&node.assignment,
 								&node.activity,
@@ -41,16 +40,10 @@ pub(super) fn focus(graph: &Graph, picked: Option<&str>) -> BTreeMap<String, f32
 	let Some(picked) = picked else {
 		return result;
 	};
-	let mut depths = BTreeMap::from([(picked.to_owned(), 0_usize)]);
-	let mut queue = vec![picked.to_owned()];
-	while let Some(parent) = queue.pop() {
-		let depth = depths[&parent];
-		for edge in graph.edges.iter().filter(|edge| edge.kind.hierarchy() && edge.from == parent) {
-			result.insert(edge.id.clone(), if depth == 0 { 0.84 } else { 0.58 });
-			if !depths.contains_key(&edge.to) {
-				depths.insert(edge.to.clone(), depth + 1);
-				queue.push(edge.to.clone());
-			}
+	let depths = descendants(graph, picked);
+	for edge in graph.edges.iter().filter(|edge| edge.kind.hierarchy()) {
+		if let Some(depth) = depths.get(&edge.from) {
+			result.insert(edge.id.clone(), if *depth == 0 { 0.84 } else { 0.58 });
 		}
 	}
 	let mut ancestors = std::collections::BTreeSet::from([picked.to_owned()]);
@@ -64,6 +57,21 @@ pub(super) fn focus(graph: &Graph, picked: Option<&str>) -> BTreeMap<String, f32
 		}
 	}
 	result
+}
+
+pub(super) fn descendants(graph: &Graph, picked: &str) -> BTreeMap<String, usize> {
+	let mut depths = BTreeMap::from([(picked.to_owned(), 0_usize)]);
+	let mut queue = vec![picked.to_owned()];
+	while let Some(parent) = queue.pop() {
+		let depth = depths[&parent];
+		for edge in graph.edges.iter().filter(|edge| edge.kind.hierarchy() && edge.from == parent) {
+			if !depths.contains_key(&edge.to) {
+				depths.insert(edge.to.clone(), depth + 1);
+				queue.push(edge.to.clone());
+			}
+		}
+	}
+	depths
 }
 
 pub(super) fn paint(

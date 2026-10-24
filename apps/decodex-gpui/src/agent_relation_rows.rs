@@ -7,7 +7,10 @@ use crate::{
 	shell::workspace_symbols::{self, Symbol},
 	ui_motion, ui_theme,
 };
-use gpui::{App, InteractiveElement as _, ParentElement as _, Styled as _, Window};
+use gpui::{
+	App, InteractiveElement as _, ParentElement as _, StatefulInteractiveElement as _, Styled as _,
+	Window,
+};
 
 pub(super) struct Excerpt<'a> {
 	pub text: &'a str,
@@ -54,9 +57,31 @@ pub(super) fn message_height(lines: usize, layout: card::Layout) -> f32 {
 	if lines == 0 {
 		return 0.;
 	}
-	// Header, body and insets are measured in the same line units as the graph.
-	(2. * layout.bubble_padding() + 2. + (1 + lines) as f32 * layout.activity_line()) * stream::LINE
+	// The semantic icon shares the first text line; it does not reserve a label row.
+	(2. * layout.bubble_padding() + lines as f32 * layout.activity_line()) * stream::LINE
 		/ layout.activity_line()
+}
+
+fn bubble_width(
+	excerpt: &Excerpt<'_>,
+	layout: card::Layout,
+	system: &gpui::WindowTextSystem,
+) -> f32 {
+	if excerpt.lines != 1 || excerpt.text.contains('\n') {
+		return layout.details_width();
+	}
+	let line = system.shape_line(
+		excerpt.text.to_owned().into(),
+		gpui::px(layout.activity_size()),
+		&[gpui::TextRun {
+			len: excerpt.text.len(),
+			font: gpui::font(ui_theme::FONT_FAMILY),
+			..Default::default()
+		}],
+		None,
+	);
+	(f32::from(line.width).ceil() + 1. + 2. * layout.bubble_padding() + layout.title_size() + 5.)
+		.min(layout.details_width())
 }
 
 pub(super) fn action(text: &str) -> (Symbol, &str) {
@@ -106,41 +131,44 @@ pub(super) fn render(
 				(action(&line.text).0, if live { "Now" } else { "Last action" }, ui_theme::BLUE),
 		};
 		let excerpt = message_excerpt(&line.text, layout, cx.text_system());
+		let width = bubble_width(&excerpt, layout, window.text_system());
 		let selector = format!("relation-operation-{key}-{}", line.id);
 		let body_selector = format!("relation-message-body-{key}");
 		rows = rows.child(
 			gpui::div()
+				.id(gpui::SharedString::from(selector.clone()))
 				.debug_selector(move || selector.clone())
+				.role(gpui::Role::Group)
+				.aria_label(format!("{title}: {}", excerpt.text))
 				.absolute()
 				.left_0()
-				.right_0()
+				.w(gpui::px(width))
 				.top(gpui::px(line.y * scale))
 				.h(gpui::px(line.height * scale))
 				.child(bubble_shape(layout))
 				.p(gpui::px(layout.bubble_padding()))
 				.flex()
-				.flex_col()
-				.gap(gpui::px(2.))
+				.items_start()
+				.gap(gpui::px(5.))
 				.text_size(gpui::px(layout.activity_size()))
 				.line_height(gpui::px(layout.activity_line()))
-				.text_color(ui_theme::rgb(ui_theme::foreground::PRIMARY))
+				.text_color(ui_theme::rgb(ui_theme::foreground::BODY))
 				.opacity(line.opacity)
 				.child(
 					gpui::div()
-						.flex()
-						.items_center()
-						.gap(gpui::px(4.))
-						.h(gpui::px(layout.activity_line()))
+						.mt(gpui::px(
+							layout.pixel((layout.activity_line() - layout.title_size()) / 2.),
+						))
+						.size(gpui::px(layout.title_size()))
 						.flex_none()
 						.text_color(ui_theme::rgb(color))
-						.child(workspace_symbols::icon_sized(symbol, layout.pixel(11.)))
-						.child(title),
+						.child(workspace_symbols::icon_sized(symbol, layout.title_size())),
 				)
 				.child(
 					gpui::div()
 						.debug_selector(move || body_selector.clone())
 						.min_w_0()
-						.w_full()
+						.flex_1()
 						.h(gpui::px(excerpt.lines as f32 * layout.activity_line()))
 						.child(excerpt.text.to_owned()),
 				),
@@ -214,7 +242,6 @@ pub(super) fn team(key: &str, count: usize, layout: card::Layout) -> gpui::Div {
 		.flex()
 		.items_center()
 		.gap(gpui::px(3.))
-		.ml(gpui::px(6.))
 		.flex_none()
 		.h(gpui::px(layout.title_line()))
 		.text_size(gpui::px(layout.title_size()))
@@ -303,5 +330,40 @@ mod tests {
 		}
 		assert_eq!(action("Read · file:42").1, "file:42");
 		assert_eq!(action("Run · printf a · b").1, "printf a · b");
+	}
+
+	#[gpui::test]
+	fn short_bubbles_fit_their_text_and_long_replies_use_the_reading_column(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let visual = cx.add_empty_window();
+		visual.update(|window, cx| {
+			let system = cx.text_system();
+			for density in [1., 2.] {
+				for zoom in [0.51, 0.75, 1.] {
+					let layout = card::Layout::new(zoom).on_display(density);
+					let short = message_excerpt("Done", layout, system);
+					let width = bubble_width(&short, layout, window.text_system());
+					assert!(width < layout.details_width() / 2.);
+					assert_eq!(
+						excerpt(
+							short.text,
+							layout,
+							width - 2. * layout.bubble_padding() - layout.title_size() - 5.,
+							system
+						)
+						.lines,
+						1
+					);
+					let long = message_excerpt(
+						"Verify the entire recovered response, including the final paragraph, all source links, and every code block before returning the result.",
+						layout,
+						system,
+					);
+					assert!(long.lines > 1);
+					assert_eq!(bubble_width(&long, layout, window.text_system()), layout.details_width());
+				}
+			}
+		});
 	}
 }

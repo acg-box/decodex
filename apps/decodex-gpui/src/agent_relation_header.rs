@@ -21,14 +21,79 @@ pub(super) struct Header {
 	pub interaction: super::card::Interaction,
 }
 
+impl Header {
+	fn metadata(&self, layout: super::card::Layout) -> gpui::Div {
+		let portrait_width = layout.portrait_spacing(super::card::PORTRAIT_WIDTH);
+		let identity_selector = format!("relation-identity-{}", self.key);
+		let status_selector = format!("relation-status-{}", self.key);
+		let number_selector = format!("relation-number-{}", self.key);
+		let identity = gpui::div()
+			.id(gpui::SharedString::from(format!("relation-identity-target-{}", self.key)))
+			.debug_selector(move || identity_selector.clone())
+			.w(gpui::px(portrait_width))
+			.h(gpui::px(layout.title_line()))
+			.flex_none()
+			.flex()
+			.items_center()
+			.justify_center()
+			.gap(gpui::px(4.))
+			.child(
+				gpui::div()
+					.debug_selector(move || status_selector.clone())
+					.size(gpui::px(4.))
+					.flex_none()
+					.rounded_full()
+					.bg(crate::ui_theme::rgb(self.color)),
+			)
+			.child(
+				gpui::div()
+					.debug_selector(move || number_selector.clone())
+					.h(gpui::px(layout.title_line()))
+					.flex_none()
+					.font_features(super::card::number_features())
+					.text_size(gpui::px(layout.title_size()))
+					.line_height(gpui::px(layout.title_line()))
+					.text_color(crate::ui_theme::rgb(if self.selected {
+						crate::ui_theme::BLUE
+					} else {
+						foreground::BODY
+					}))
+					.child(self.number.clone()),
+			);
+		gpui::div()
+			.w_full()
+			.h(gpui::px(layout.title_line()))
+			.flex_none()
+			.flex()
+			.items_center()
+			.gap(gpui::px(layout.details_gap()))
+			.child(self.interaction.apply(identity, false))
+			.child(
+				gpui::div()
+					.flex_1()
+					.min_w_0()
+					.flex()
+					.items_center()
+					.when_some(self.team_members, |row, count| {
+						row.child(information_rows::team(&self.key, count, layout))
+					})
+					.when(self.picked, |row| {
+						row.when_some(self.parent.clone(), |row, parent| {
+							row.child(information_rows::parent(&self.key, parent, layout))
+						})
+					}),
+			)
+	}
+}
+
 impl RenderOnce for Header {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let layout = self.layout.on_display(window.scale_factor());
+		let metadata = layout.labels().then(|| self.metadata(layout));
 		let h = self;
-		let layout = h.layout.on_display(window.scale_factor());
-		let show_activity = layout.activity_visible();
 		let task_lines = information_rows::task_excerpt(&h.task, layout, cx.text_system()).lines;
 		let gap = content_gap(task_lines, &h.activity, layout);
-		let count = if show_activity {
+		let count = if layout.activity_visible() {
 			h.activity.height / stream::LINE + task_lines as f32 + gap
 		} else {
 			0.
@@ -36,9 +101,6 @@ impl RenderOnce for Header {
 		let portrait_width = layout.portrait_spacing(super::card::PORTRAIT_WIDTH);
 		let selection = selection_mark(&h.key, h.selected, layout, window, cx);
 		let avatar_selector = format!("relation-avatar-{}", h.key);
-		let identity_selector = format!("relation-identity-{}", h.key);
-		let status_selector = format!("relation-status-{}", h.key);
-		let number_selector = format!("relation-number-{}", h.key);
 		let figure = gpui::div()
 			.debug_selector(move || avatar_selector.clone())
 			.relative()
@@ -57,7 +119,12 @@ impl RenderOnce for Header {
 			.gap(gpui::px(layout.gap()))
 			.child(figure)
 			.when_some(h.metrics, |portrait, metrics| portrait.child(metrics));
-		let portrait = h.interaction.apply(portrait, true);
+		let mut content = gpui::div()
+			.w_full()
+			.flex()
+			.items_start()
+			.gap(gpui::px(layout.details_gap()))
+			.child(h.interaction.apply(portrait, true));
 		let mut body = gpui::div()
 			.w_full()
 			.h(gpui::px(layout.header_height(count)))
@@ -65,66 +132,21 @@ impl RenderOnce for Header {
 			.font_weight(gpui::FontWeight::NORMAL)
 			.flex_none()
 			.flex()
-			.items_start()
-			.gap(gpui::px(layout.details_gap()))
-			.child(portrait);
-		if !layout.labels() {
-			return body.justify_center();
-		}
-		let identity = gpui::div()
-			.debug_selector(move || number_selector.clone())
-			.h(gpui::px(layout.title_line()))
-			.flex_none()
-			.font_family(crate::ui_theme::FONT_FAMILY)
-			.font_features(super::card::number_features())
-			.text_size(gpui::px(layout.title_size()))
-			.line_height(gpui::px(layout.title_line()))
-			.font_weight(gpui::FontWeight::NORMAL)
-			.text_color(crate::ui_theme::rgb(if h.selected {
-				crate::ui_theme::BLUE
-			} else {
-				foreground::PRIMARY
-			}))
-			.child(h.number);
-		let mut details = gpui::div()
-			.id(gpui::SharedString::from(format!("relation-details-target-{}", h.key)))
-			.flex_1()
-			.min_w_0()
-			.pt(gpui::px(layout.spacing(super::card::DETAILS_TOP)))
-			.flex()
 			.flex_col()
-			.gap(gpui::px(layout.spacing(super::card::IDENTITY_GAP)))
-			.child(
-				gpui::div()
-					.debug_selector(move || identity_selector.clone())
-					.h(gpui::px(layout.title_line()))
-					.flex()
-					.items_center()
-					.gap(gpui::px(4.))
-					.child(
-						gpui::div()
-							.debug_selector(move || status_selector.clone())
-							.size(gpui::px(4.))
-							.flex_none()
-							.rounded_full()
-							.bg(crate::ui_theme::rgb(h.color)),
-					)
-					.child(identity)
-					.when_some(
-						h.team_members.filter(|_| !h.picked || layout.zoom > 0.5),
-						|row, count| row.child(information_rows::team(&h.key, count, layout)),
-					)
-					.when(h.picked, |row| {
-						row.when_some(h.parent.clone(), |row, parent| {
-							row.child(information_rows::parent(&h.key, parent, layout))
-						})
-					}),
-			);
-		if show_activity {
-			let mut content =
-				gpui::div().flex().flex_col().w_full().gap(gpui::px(gap * layout.activity_line()));
+			.gap(gpui::px(layout.metadata_gap()));
+		let Some(metadata) = metadata else { return body.child(content.justify_center()) };
+		body = body.child(metadata);
+		if layout.activity_visible() {
+			let mut details = gpui::div()
+				.id(gpui::SharedString::from(format!("relation-details-target-{}", h.key)))
+				.flex_1()
+				.min_w_0()
+				.pt(gpui::px(layout.spacing(super::card::DETAILS_TOP)))
+				.flex()
+				.flex_col()
+				.gap(gpui::px(gap * layout.activity_line()));
 			if !h.task.is_empty() {
-				content = content.child(information_rows::goal(
+				details = details.child(information_rows::goal(
 					&h.key,
 					&h.task,
 					layout,
@@ -132,14 +154,13 @@ impl RenderOnce for Header {
 				));
 			}
 			if h.activity.height > 0. {
-				content = content.child(information_rows::render(
+				details = details.child(information_rows::render(
 					&h.key, h.activity, layout, h.live, window, cx,
 				));
 			}
-			details = details.child(content);
+			content = content.child(h.interaction.apply(details, false));
 		}
-		body = body.child(h.interaction.apply(details, false));
-		body
+		body.child(content)
 	}
 }
 
@@ -206,17 +227,10 @@ pub(super) fn detail_rows(
 	layout: super::card::Layout,
 	text_system: &std::sync::Arc<gpui::TextSystem>,
 ) -> f32 {
-	let (min, max) = layout.zoom_range();
+	let Some((min, max)) = layout.activity_range() else { return 0. };
 	let task_lines = [min, max]
 		.into_iter()
-		.map(|zoom| {
-			information_rows::task_excerpt(
-				task,
-				super::card::Layout::new(zoom).with_width(layout.world_width()),
-				text_system,
-			)
-			.lines
-		})
+		.map(|zoom| information_rows::task_excerpt(task, layout.at_zoom(zoom), text_system).lines)
 		.max()
 		.unwrap_or(0);
 	activity.layout_height / stream::LINE
@@ -235,10 +249,8 @@ pub(super) fn operation_height(
 			layout,
 		)
 	};
-	let (min, max) = layout.zoom_range();
-	let reserved = [min, max]
-		.into_iter()
-		.map(|zoom| height(super::card::Layout::new(zoom).with_width(layout.world_width())))
-		.fold(0., f32::max);
-	(height(layout), reserved)
+	let Some((min, max)) = layout.activity_range() else { return (0., 0.) };
+	let reserved =
+		[min, max].into_iter().map(|zoom| height(layout.at_zoom(zoom))).fold(0., f32::max);
+	(if layout.activity_visible() { height(layout) } else { 0. }, reserved)
 }
