@@ -50,7 +50,9 @@ pub(super) fn message_excerpt<'a>(
 	layout: card::Layout,
 	text_system: &std::sync::Arc<gpui::TextSystem>,
 ) -> Excerpt<'a> {
-	excerpt(action(text).1, layout, layout.text_width(), text_system)
+	// The icon reinforces the source action; it must not replace its verb.
+	// A filename alone cannot distinguish reading, editing and running it.
+	excerpt(text, layout, layout.text_width(), text_system)
 }
 
 pub(super) fn message_height(lines: usize, layout: card::Layout) -> f32 {
@@ -84,20 +86,19 @@ fn bubble_width(
 		.min(layout.details_width())
 }
 
-pub(super) fn action(text: &str) -> (Symbol, &str) {
-	let Some((kind, body)) = text.split_once(" · ") else { return (Symbol::Document, text) };
-	let icon = match kind {
+fn action_icon(text: &str) -> Symbol {
+	let kind = text.split_once(" · ").map_or(text, |(kind, _)| kind);
+	match kind {
 		"Plan" => Symbol::ActivityGoal,
 		"Read" | "Reading file" => Symbol::Document,
 		"Find" | "Search" | "Searching the web" => Symbol::ActivitySearch,
 		"Edit" | "Applying changes" => Symbol::ActivityEdit,
-		"Run" | "Running command" => Symbol::ActivityCommand,
+		"Run" | "Running command" | "Command" => Symbol::ActivityCommand,
 		"Test" | "Done" => Symbol::Confirm,
 		"Review" => Symbol::Eye,
 		"Send" => Symbol::ActivityHandoff,
-		_ => return (Symbol::Document, text),
-	};
-	(icon, body)
+		_ => Symbol::Document,
+	}
 }
 
 pub(super) fn render(
@@ -128,7 +129,7 @@ pub(super) fn render(
 			OperationKind::Message =>
 				(Symbol::Document, if live { "Update" } else { "Last message" }, ui_theme::BLUE),
 			OperationKind::Action =>
-				(action(&line.text).0, if live { "Now" } else { "Last action" }, ui_theme::BLUE),
+				(action_icon(&line.text), if live { "Now" } else { "Last action" }, ui_theme::BLUE),
 		};
 		let excerpt = message_excerpt(&line.text, layout, cx.text_system());
 		let width = bubble_width(&excerpt, layout, window.text_system());
@@ -323,13 +324,25 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn unknown_labels_preserve_the_complete_source_text() {
-		for source in ["Read account_route.rs", "Custom tool · file:42", "Inspect · a · b"] {
-			assert_eq!(action(source).1, source);
+	#[gpui::test]
+	fn operation_bubbles_keep_the_source_action_and_its_complete_object(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let system = cx.update(|cx| cx.text_system().clone());
+		for zoom in [1., 0.75, 0.51] {
+			let layout = card::Layout::new(zoom).on_display(2.);
+			for source in [
+				"Read account_route.rs",
+				"Custom tool · file:42",
+				"Inspect · a · b",
+				"Read · file:42",
+				"Reading file · 恢复记录.rs",
+				"Edit · file:42",
+				"Run · printf a · b",
+			] {
+				assert_eq!(message_excerpt(source, layout, &system).text, source);
+			}
 		}
-		assert_eq!(action("Read · file:42").1, "file:42");
-		assert_eq!(action("Run · printf a · b").1, "printf a · b");
 	}
 
 	#[gpui::test]
