@@ -8,6 +8,7 @@ use super::{
 use crate::{ui_motion::SmoothControl, ui_theme::TEXT};
 use gpui::AppContext;
 #[path = "agent_relation_allocation.rs"] mod allocation;
+#[path = "agent_relation_camera.rs"] mod camera;
 #[path = "agent_relation_card.rs"] mod card;
 #[path = "agent_relation_groups.rs"] mod groups;
 #[path = "agent_relation_header.rs"] mod header;
@@ -354,46 +355,6 @@ impl AgentSurface {
 		self.work_board.view.picked_agent = None;
 		self.work_board.view.edge = None;
 		self.work_board.focus = None;
-	}
-
-	pub(super) fn locate_relation_agent(&mut self, key: &str, cx: &mut Context<Self>) {
-		self.select_workbench_agent(key, cx);
-		let graph = self.relation_graph();
-		let Some(node) = graph.nodes.iter().find(|node| node.key == key) else { return };
-		let scale = self.relation_scale();
-		let view = &mut self.work_board.view;
-		let members = groups::descendants(&graph, key);
-		let team = graph
-			.nodes
-			.iter()
-			.filter(|node| members.contains_key(&node.key))
-			.map(|node| node.screen_rect(scale, view.pan))
-			.reduce(|a, b| {
-				let (x, y) = (a.x.min(b.x), a.y.min(b.y));
-				card::Rect {
-					x,
-					y,
-					width: (a.x + a.width).max(b.x + b.width) - x,
-					height: (a.y + a.height).max(b.y + b.height) - y,
-				}
-			});
-		let rect = team
-			.filter(|rect| {
-				rect.width <= view.viewport.0 - 2. * FRAME_INSET
-					&& rect.height <= view.viewport.1 - 2. * FRAME_INSET
-			})
-			.unwrap_or_else(|| node.screen_rect(scale, view.pan));
-		if rect.x < FRAME_INSET
-			|| rect.y < FRAME_INSET
-			|| rect.x + rect.width > view.viewport.0 - FRAME_INSET
-			|| rect.y + rect.height > view.viewport.1 - FRAME_INSET
-		{
-			view.pan = (
-				view.pan.0 + view.viewport.0 / 2. - rect.x - rect.width / 2.,
-				view.pan.1 + view.viewport.1 / 2. - rect.y - rect.height / 2.,
-			);
-		}
-		cx.notify();
 	}
 
 	pub(super) fn relation_graph(&self) -> Graph {

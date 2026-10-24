@@ -91,13 +91,8 @@ impl RenderOnce for Header {
 		let layout = self.layout.on_display(window.scale_factor());
 		let metadata = layout.labels().then(|| self.metadata(layout));
 		let h = self;
-		let task_lines = information_rows::task_excerpt(&h.task, layout, cx.text_system()).lines;
+		let (task_lines, count) = content_rows(&h.task, &h.activity, layout, cx.text_system());
 		let gap = content_gap(task_lines, &h.activity, layout);
-		let count = if layout.activity_visible() {
-			h.activity.height / stream::LINE + task_lines as f32 + gap
-		} else {
-			0.
-		};
 		let portrait_width = layout.portrait_spacing(super::card::PORTRAIT_WIDTH);
 		let selection = selection_mark(&h.key, h.selected, layout, window, cx);
 		let avatar_selector = format!("relation-avatar-{}", h.key);
@@ -219,6 +214,20 @@ fn selection_mark(
 
 fn content_gap(task_lines: usize, frame: &stream::Frame, layout: super::card::Layout) -> f32 {
 	if task_lines > 0 && frame.height > 0. { 4. / layout.activity_line() } else { 0. }
+}
+
+/// The painted header and camera share the exact current text measurement.
+pub(super) fn content_rows(
+	task: &str,
+	activity: &stream::Frame,
+	layout: super::card::Layout,
+	text_system: &std::sync::Arc<gpui::TextSystem>,
+) -> (usize, f32) {
+	if !layout.activity_visible() {
+		return (0, 0.);
+	}
+	let lines = information_rows::task_excerpt(task, layout, text_system).lines;
+	(lines, activity.height / stream::LINE + lines as f32 + content_gap(lines, activity, layout))
 }
 
 pub(super) fn detail_rows(
