@@ -1,4 +1,4 @@
-"""Focused tests for the attested zero-finding Rust style boundary."""
+"""Check style findings and coverage without pinning the installed tool build."""
 
 from contextlib import redirect_stdout, redirect_stderr
 from copy import deepcopy
@@ -29,20 +29,18 @@ Found 1 style violation(s).
 
 
 class VstyleAuditTests(unittest.TestCase):
-    """Require attested coverage and reject every finding without exemptions."""
+    """Require rule coverage and reject every finding without exemptions."""
 
     def setUp(self) -> None:
         self.contract = vstyle_audit.load_contract()
         self.contract["minimum_checked_files"] = 1
-        self.contract["rust_rules"] = [RULE]
+        self.contract["required_rust_rules"] = [RULE]
 
-    def audit_result(self, output, returncode=0):
-        tool = self.contract["tool"]
-        version = f"vibe-style {tool['version']}-{tool['git_short']}-test-host"
+    def audit_result(self, output, returncode=0, version="vibe-style 0.2.8", rules=None):
+        rules = [RULE] if rules is None else rules
         responses = [
-            CompletedProcess([], 0, "host: test-host\n", ""),
             CompletedProcess([], 0, version, ""),
-            CompletedProcess([], 0, f"{RULE}\timplemented\n", ""),
+            CompletedProcess([], 0, "".join(f"{rule}\timplemented\n" for rule in rules), ""),
             CompletedProcess([], returncode, output, ""),
         ]
         with (
@@ -79,11 +77,25 @@ class VstyleAuditTests(unittest.TestCase):
                 with self.assertRaises(vstyle_audit.AuditError):
                     self.audit_result(output, status)
 
-    def test_version_and_rule_mismatches_fail_closed(self):
+    def test_released_and_source_builds_do_not_require_a_pinned_version(self):
+        for version in [
+            "vibe-style 0.2.8-582e658-aarch64-apple-darwin",
+            "vibe-style 0.2.9-crates.io-x86_64-unknown-linux-gnu",
+            "vibe-style 1.0.0",
+        ]:
+            with self.subTest(version=version):
+                self.assertEqual(self.audit_result("Checked 1 file(s).\n", version=version), 0)
+
+    def test_additional_rules_are_checked_without_changing_the_contract(self):
+        rules = [RULE, "RUST-STYLE-NEW-001"]
+        self.assertEqual(self.audit_result("Checked 1 file(s).\n", rules=rules), 0)
+        self.assertEqual(
+            self.audit_result(OUTPUT.replace(RULE, "RUST-STYLE-NEW-001"), 1, rules=rules), 1
+        )
+
+    def test_missing_or_duplicate_rule_coverage_fails(self):
         with self.assertRaises(vstyle_audit.AuditError):
-            vstyle_audit.validate_version("vibe-style wrong", self.contract, "test-host")
-        with self.assertRaises(vstyle_audit.AuditError):
-            vstyle_audit.validate_rules([RULE, "RUST-STYLE-NEW-001"], self.contract)
+            vstyle_audit.validate_rules([], self.contract)
         with self.assertRaises(vstyle_audit.AuditError):
             vstyle_audit.parse_coverage(f"{RULE}\timplemented\n{RULE}\timplemented\n")
 
