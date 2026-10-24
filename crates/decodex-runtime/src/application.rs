@@ -118,12 +118,12 @@ use decodex_protocol::{
 	MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_PAGE_SIZE, McpLoginPhase, McpLoginRequest,
 	McpLoginStatus, ModelCatalogPurpose, NativeAgentsResult, NativeProcessDiagnostics,
 	ProgramCycleDto, ProgramCycleResult, ProgramEdgeDto, ProgramListResult, ProgramNodeDto,
-	ProgramNodeFieldDto, ProgramNodeKind, ProgramRelationKind, ProgramSummaryDto, PromptEditPhase,
-	PromptEditStatus, PromptForkResult, PromptInputSendStatus, PromptInputUploadStatus,
-	ProviderThreadId, QueryEnvelope, QueryPayload, QueryResultPayload, ResetCardDescriptorDto,
-	ResetCardError, ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
-	ResetCardOperationView, ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem, WireText,
-	WorkspaceDto,
+	ProgramNodeFieldDto, ProgramNodeKind, ProgramRelationKind, ProgramSummaryDto, ProjectDto,
+	PromptEditPhase, PromptEditStatus, PromptForkResult, PromptInputSendStatus,
+	PromptInputUploadStatus, ProviderThreadId, QueryEnvelope, QueryPayload, QueryResultPayload,
+	ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult, ResetCardObservationDto,
+	ResetCardOperationResult, ResetCardOperationView, ResetCardOutcome, ResultPayload,
+	Sha256Digest, SnapshotItem, WireText,
 };
 
 const ACCOUNT_COMMAND_RECEIPT_SCHEMA: &str = "decodex/account-command-result/1";
@@ -2849,6 +2849,9 @@ impl Application for ServiceApplication {
 				self.query_history(work_id.as_str(), *before).await,
 			QueryPayload::GetAgentArchiveState { .. }
 			| QueryPayload::GetAgentInstallState { .. } => self.query_native_lifecycle(&query.payload).await,
+			QueryPayload::GetWorkDetail { .. } | QueryPayload::GetPrivateReviewDetails { .. } =>
+				query_work_evidence(&self.store, &query.payload).await,
+
 			QueryPayload::GetAgentGuardianReviews { .. }
 			| QueryPayload::GetAgentGuardianDetail { .. } => self.query_guardian(&query.payload).await,
 			QueryPayload::GetAgentSnapshot => self.query_agent_snapshot().await,
@@ -6172,6 +6175,58 @@ async fn query_agent_usage(
 	serde_json::from_value(usage).ok()
 }
 
+async fn query_work_evidence(store: &ProductStore, query: &QueryPayload) -> QueryResultPayload {
+	match query {
+		QueryPayload::GetWorkDetail { work_id, digest, offset } => {
+			let result = match store {
+				ProductStore::Available(store) =>
+					crate::work_portfolio::read(
+						store,
+						work_id.as_str(),
+						digest.as_ref().map(|d| d.as_str()),
+						*offset,
+					)
+					.await,
+				ProductStore::Unavailable(_) => decodex_protocol::WorkDetailResult::Unavailable,
+			};
+			QueryResultPayload::WorkDetail(result)
+		},
+		QueryPayload::GetPrivateReviewDetails {
+			reviewer_thread_id,
+			reviewer_turn_id,
+			item_id,
+			offset,
+		} => {
+			let result = match store {
+				ProductStore::Available(store) =>
+					crate::agent_guardian::private_detail(
+						store,
+						reviewer_thread_id.as_str(),
+						reviewer_turn_id.as_str(),
+						item_id.as_str(),
+						*offset,
+					)
+					.await,
+				ProductStore::Unavailable(_) =>
+					decodex_protocol::PrivateReviewDetailsResult::Unavailable,
+			};
+			QueryResultPayload::PrivateReviewDetails(result)
+		},
+		_ => QueryResultPayload::WorkDetail(decodex_protocol::WorkDetailResult::Unavailable),
+	}
+}
+
+fn project_dto(w: decodex_database::Project) -> ProjectDto {
+	ProjectDto {
+		native_project_id: w.native_project_id,
+		lead_agent_id: w.lead_agent_id,
+		id: w.id,
+		name: w.name,
+		directory: w.directory,
+		agent_ids: w.agent_ids,
+	}
+}
+
 async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSnapshotResult {
 	let ProductStore::Available(store) = store else {
 		return decodex_protocol::AgentSnapshotResult::Unavailable;
@@ -6182,7 +6237,7 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	else {
 		return decodex_protocol::AgentSnapshotResult::Unavailable;
 	};
-	let (work_items, dependencies, pending_events, managers, workspaces) = match records {
+	let (work_items, dependencies, pending_events, managers, projects) = match records {
 		AgentStoreSnapshot::CapacityExceeded { work_items, dependencies, pending_events } => {
 			return decodex_protocol::AgentSnapshotResult::CapacityExceeded {
 				work_items,
@@ -6195,29 +6250,29 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 			dependencies,
 			pending_events,
 			managers,
-			workspaces,
-		} => (work_items, dependencies, pending_events, managers, workspaces),
+			projects,
+		} => (work_items, dependencies, pending_events, managers, projects),
 	};
 	let counts = (work_items.len() as u64, dependencies.len() as u64, pending_events.len() as u64);
 	let Some(context_references) = query_agent_context_references(store).await else {
 		return decodex_protocol::AgentSnapshotResult::Unavailable;
 	};
 
+	let (Ok(agents), Ok(guardian), Ok(portfolio)) =
+		(store.agents().await, store.guardian_state().await, store.work_overview().await)
+	else {
+		return decodex_protocol::AgentSnapshotResult::Unavailable;
+	};
 	let snapshot = AgentSnapshotDto {
+		agents: Box::new(agents),
+		guardian: Box::new(guardian),
+		portfolio: Box::new(portfolio),
 		archived_work_ids: Default::default(),
 		agent_slots: Default::default(),
 		context_references,
 		connection_initializing: false,
 		runtime_source: None,
-		workspaces: workspaces
-			.into_iter()
-			.map(|w| WorkspaceDto {
-				id: w.id,
-				name: w.name,
-				directory: w.directory,
-				work_ids: w.work_ids,
-			})
-			.collect(),
+		projects: projects.into_iter().map(project_dto).collect(),
 		work_items: work_items
 			.into_iter()
 			.map(|item| AgentWorkItemDto {

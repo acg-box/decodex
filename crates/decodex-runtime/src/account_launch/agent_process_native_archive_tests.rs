@@ -177,12 +177,15 @@ fn snapshot(ids: &[String]) -> AgentSnapshotDto {
 		})
 		.collect();
 	AgentSnapshotDto {
+		agents: Default::default(),
+		guardian: Default::default(),
+		portfolio: Default::default(),
 		archived_work_ids: Default::default(),
 		agent_slots: Default::default(),
 		context_references: vec![],
 		connection_initializing: false,
 		runtime_source: None,
-		workspaces: vec![],
+		projects: vec![],
 		work_items,
 		dependencies: vec![],
 		pending_events: vec![],

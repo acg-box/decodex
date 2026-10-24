@@ -656,7 +656,7 @@ async fn qualify_hierarchy(client: &AgentClient, root: &DecodexRoot) -> SmokeRes
 		}
 	}
 
-	if !graph.workspaces.is_empty() {
+	if !graph.projects.is_empty() {
 		return Err("manager creation unexpectedly created a folder workspace".into());
 	}
 

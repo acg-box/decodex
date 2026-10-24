@@ -172,7 +172,7 @@ async fn goal_recovery_hydrates_only_exact_active_unloaded_thread() {
 
 				assert_eq!(
 					request["params"],
-					serde_json::json!({"threadId":"opaque thread/1","excludeTurns":true,"experimentalRawEvents":true})
+					serde_json::json!({"threadId":"opaque thread/1","excludeTurns":true,"experimentalRawEvents":true,"config":{"features.guardian_recorded_items":false}})
 				);
 			}
 		}

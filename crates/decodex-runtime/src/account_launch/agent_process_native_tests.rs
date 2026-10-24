@@ -27,6 +27,7 @@
 #[path = "agent_process_native_ordinary_effort_tests.rs"] mod ordinary_effort;
 #[path = "agent_process_native_permission_tests.rs"] mod permissions;
 #[path = "agent_process_native_prediction_tests.rs"] mod prediction;
+#[path = "agent_process_native_project_work_tests.rs"] mod project_work;
 #[path = "agent_process_native_read_state_tests.rs"] mod read_state;
 #[path = "agent_process_native_realtime_tests.rs"] mod realtime;
 #[path = "agent_process_native_reasoning_tests.rs"] mod reasoning;
@@ -92,6 +93,18 @@ struct NativeSession {
 }
 impl NativeSession {
 	fn start(binary: &OsStr, home: &Path) -> Self {
+		Self::with_capabilities(
+			binary,
+			home,
+			decodex_codex::app_server_client::InitializeCapabilities::default(),
+		)
+	}
+
+	fn with_capabilities(
+		binary: &OsStr,
+		home: &Path,
+		capabilities: decodex_codex::app_server_client::InitializeCapabilities,
+	) -> Self {
 		let mut child = NativeChild(
 			Command::new(binary)
 				.arg("app-server")
@@ -119,7 +132,7 @@ impl NativeSession {
 			}
 		});
 
-		writeln!(stdin, "{}", serde_json::json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"decodex_native_history_test","version":"0.1"},"capabilities":{"experimentalApi":true,"optOutNotificationMethods":["rawResponseItem/completed"]}}})).expect("native session setup");
+		writeln!(stdin, "{}", serde_json::json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"decodex_native_history_test","version":"0.1"},"capabilities":capabilities}})).expect("native session setup");
 
 		let deadline = Instant::now() + Duration::from_secs(15);
 

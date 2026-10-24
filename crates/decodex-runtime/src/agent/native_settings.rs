@@ -10,7 +10,7 @@ impl AgentCoordinator {
 			let revision = self.client.history_revision();
 			let response = self
 				.client
-				.thread_resume(Self::resume_usage_params(thread))
+				.thread_resume(self.resume_observer_params(thread, true).await?)
 				.await
 				.map_err(|error| super::resume_error(error, thread))?;
 
@@ -40,6 +40,7 @@ impl AgentCoordinator {
 		if let Some(thread) = params["threadId"].as_str() {
 			self.cancel_changed_capacity_selection(thread, &params["threadSettings"]).await?;
 			self.persist_task_settings(thread).await?;
+			self.sync_global_guardian().await?;
 		}
 
 		Ok(true)
@@ -55,6 +56,19 @@ impl AgentCoordinator {
 		agent_models::persist_current(&self.store, &self.client, thread, generation).await?;
 
 		Ok(())
+	}
+
+	pub(super) async fn resume_observer_params(
+		&self,
+		thread: &str,
+		summary: bool,
+	) -> Result<Value, AgentError> {
+		let mut params =
+			if summary { Self::resume_usage_params(thread) } else { Self::resume_params(thread) };
+		let details = self.store.guardian_settings().await?.review_details;
+		params["experimentalRawEvents"] = serde_json::json!(true);
+		params["config"] = serde_json::json!({"features.guardian_recorded_items":details});
+		Ok(params)
 	}
 
 	pub(super) fn resume_usage_params(thread: &str) -> Value {

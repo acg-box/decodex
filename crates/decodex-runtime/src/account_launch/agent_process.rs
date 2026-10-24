@@ -321,6 +321,30 @@ fn validate_inherited_request(method: &Value, params: &Value) -> Option<Result<(
 	}
 }
 
+fn validate_catalog_method(method: &Value, params: &Value) -> Option<Result<(), ClientError>> {
+	let valid = match method.as_str()? {
+		"project/create" => app_server_client::is_project_create(params),
+		"project/read" => app_server_client::is_project_read(params),
+		"project/list" => app_server_client::is_project_list(params),
+		"thread/name/set" => app_server_client::is_thread_name_selection(params),
+		_ => return None,
+	};
+	Some(if valid { Ok(()) } else { Err(ClientError::InvalidFrame) })
+}
+
+fn validate_config_write(params: &Value) -> Result<(), ClientError> {
+	if app_server_client::is_hook_settings_write(params)
+		|| app_server_client::is_app_tool_exposure_write(params)
+		|| app_server_client::is_realtime_voice_write(params)
+		|| app_server_client::is_search_mode_write(params)
+		|| app_server_client::is_context_preference_write(params)
+	{
+		Ok(())
+	} else {
+		Err(ClientError::InvalidFrame)
+	}
+}
+
 fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), ClientError> {
 	if let Some(result) = validate_inherited_request(method, params) {
 		return result;
@@ -349,21 +373,18 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 		};
 	}
 	if method == "config/batchWrite" {
-		return if app_server_client::is_hook_settings_write(params)
-			|| app_server_client::is_app_tool_exposure_write(params)
-			|| app_server_client::is_realtime_voice_write(params)
-			|| app_server_client::is_search_mode_write(params)
-			|| app_server_client::is_context_preference_write(params)
-		{
-			Ok(())
-		} else {
-			Err(ClientError::InvalidFrame)
-		};
+		return validate_config_write(params);
 	}
+
+	if let Some(valid) = validate_catalog_method(method, params) {
+		return valid;
+	}
+
 	if method == "thread/settings/update" {
 		return if app_server_client::is_thread_model_selection(params)
 			|| app_server_client::is_thread_model_recovery_update(params)
 			|| app_server_client::is_thread_permission_selection(params)
+			|| app_server_client::is_thread_reviewer_selection(params)
 		{
 			Ok(())
 		} else {

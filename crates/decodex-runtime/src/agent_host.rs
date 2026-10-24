@@ -1532,9 +1532,9 @@ impl AgentHost {
 					key,
 				)
 				.await,
-			AgentActionDto::SetLiveReviewer { work_id, turn_id, review_token, reviewer } =>
-				self.set_live_settings((&work_id, &turn_id, &review_token), reviewer.into(), key)
-					.await,
+			AgentActionDto::SetLiveReviewer { .. } => Err(AgentHostError::Rejected(
+				"Guardian is controlled from global settings. Per-Agent reviewer overrides are retired.",
+			)),
 			AgentActionDto::SetLiveModel { work_id, turn_id, review_token, model, effort } =>
 				self.set_live_settings(
 					(&work_id, &turn_id, &review_token),
@@ -1543,6 +1543,81 @@ impl AgentHost {
 				)
 				.await,
 			_ => Err(AgentHostError::Rejected("Unsupported settings action.")),
+		}
+	}
+
+	async fn handle_work_action(
+		&self,
+		key: String,
+		action: AgentActionDto,
+		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, AgentHostError> {
+		match action {
+			AgentActionDto::SetAssistant { agent_id, enabled } => {
+				self.store
+					.set_assistant(agent_id.as_str().into(), enabled)
+					.await
+					.map_err(|_| AgentHostError::Rejected("Choose an existing Agent"))?;
+				Ok(agent_id.as_str().into())
+			},
+			AgentActionDto::SetProjectLead { project_id, agent_id } => {
+				self.store
+					.set_project_lead(project_id.as_str().into(), agent_id.as_str().into())
+					.await
+					.map_err(|_| {
+						AgentHostError::Rejected("Select an existing Project and Agent")
+					})?;
+				Ok(project_id.as_str().into())
+			},
+			AgentActionDto::SetGuardian {
+				settings_id,
+				expected_revision,
+				reviewer,
+				review_details,
+			} => {
+				if settings_id.as_str() != "guardian-global" {
+					return Err("Invalid global settings identity".into());
+				}
+				self.store
+					.set_guardian_settings(expected_revision, reviewer, review_details)
+					.await
+					.map_err(|_| {
+						AgentHostError::Rejected(
+							"Global Guardian settings changed. Refresh before saving.",
+						)
+					})?;
+				if let Some((_, coordinator, _)) = active.as_ref() {
+					coordinator.sync_global_guardian().await.map_err(|_| {
+						AgentHostError::Unknown(
+							"Preference saved; native source application remains pending. Refresh the source receipts.",
+						)
+					})?;
+				}
+				Ok("guardian-global".into())
+			},
+			AgentActionDto::ManageWork { agent_id, command } => {
+				if matches!(
+					command,
+					decodex_core::work::WorkCommand::RecordResult { .. }
+						| decodex_core::work::WorkCommand::BindSubagent { .. }
+						| decodex_core::work::WorkCommand::Complete { .. }
+				) {
+					let (_, coordinator, _) = active.as_mut().ok_or("Agent is not connected")?;
+					coordinator.verify_work_command(agent_id.as_str(), &command).await.map_err(
+						|_| {
+							AgentHostError::Rejected(
+								"Exact Result or native assignment source could not be verified",
+							)
+						},
+					)?;
+				}
+				self.store.apply_work_command(agent_id.as_str().into(), key, command, true).await.map_err(|_| AgentHostError::Rejected("Work changed or the requested transition is invalid. Refresh its current requirements and evidence."))?;
+				if let Some((_, coordinator, _)) = active.as_mut() {
+					let _ = coordinator.wake_pending().await;
+				}
+				Ok(agent_id.as_str().into())
+			},
+			_ => Err("Unsupported Work action".into()),
 		}
 	}
 
@@ -1555,9 +1630,14 @@ impl AgentHost {
 		let (action, input_options) = normalize_input(action)?;
 
 		match action {
+			action @ (AgentActionDto::SetAssistant { .. }
+			| AgentActionDto::SetProjectLead { .. }
+			| AgentActionDto::SetGuardian { .. }
+			| AgentActionDto::ManageWork { .. }) => self.handle_work_action(key, action, active).await,
+
 			action @ (AgentActionDto::GenerateSample { .. }
 			| AgentActionDto::CancelSample { .. }) => self.handle_sample(&key, action).await,
-			action @ (AgentActionDto::AddWorkspace { .. }
+			action @ (AgentActionDto::AddProject { .. }
 			| AgentActionDto::DiscardEmptyWork { .. }
 			| AgentActionDto::NewConversation { .. }) =>
 				self.handle_workspace_action(&key, action, active).await,
@@ -1709,10 +1789,10 @@ impl AgentHost {
 				Ok(work_id.as_str().into())
 			},
 
-			AgentActionDto::AddWorkspace { workspace_id, directory } =>
-				AgentCoordinator::register_workspace(
+			AgentActionDto::AddProject { project_id, directory } =>
+				AgentCoordinator::register_project(
 					&self.store,
-					workspace_id.as_str(),
+					project_id.as_str(),
 					directory.as_str(),
 				)
 				.await
@@ -1722,7 +1802,7 @@ impl AgentHost {
 					)
 				}),
 			AgentActionDto::NewConversation {
-				workspace_id,
+				project_id,
 				work_id,
 				text,
 				execution,
@@ -1735,7 +1815,7 @@ impl AgentHost {
 					&self.store,
 					work_id.as_str(),
 					user_input(work_id.as_str(), key, text.as_str(), Some(&options)),
-					workspace_id.map(|id| id.as_str().to_owned()),
+					project_id.map(|id| id.as_str().to_owned()),
 				)
 				.await
 				.map_err(|_| "Conversation could not be created")?;
@@ -2493,9 +2573,9 @@ mod tests {
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let path = directory.path().to_str().unwrap();
-		let workspace = AgentCoordinator::register_workspace(&store, "folder", path).await.unwrap();
+		let workspace = AgentCoordinator::register_project(&store, "folder", path).await.unwrap();
 		assert_eq!(
-			AgentCoordinator::register_workspace(&store, "same-folder", path).await.unwrap(),
+			AgentCoordinator::register_project(&store, "same-folder", path).await.unwrap(),
 			workspace
 		);
 		assert!(store.list_agent_work_items().await.unwrap().is_empty());
@@ -2535,9 +2615,9 @@ mod tests {
 			.is_err()
 		);
 		assert!(store.get_agent_work_item("invalid".into()).await.is_err());
-		let folders = store.workspaces().await.unwrap();
+		let folders = store.projects().await.unwrap();
 		assert_eq!(folders.len(), 1);
-		assert_eq!(folders[0].work_ids, vec!["one", "two"]);
+		assert_eq!(folders[0].agent_ids, vec!["one", "two"]);
 	}
 
 	#[tokio::test]
@@ -2554,10 +2634,10 @@ mod tests {
 		)
 		.await
 		.unwrap();
-		assert_eq!(work.parent_goal_id.as_deref(), Some("main"));
+		assert_eq!(work.parent_goal_id, None);
 		assert!(work.codex_thread_id.is_none());
 		assert_eq!(work.dispatch_state, super::AgentDispatchState::Idle);
-		assert!(store.workspaces().await.unwrap().is_empty());
+		assert!(store.projects().await.unwrap().is_empty());
 		assert!(store.read_agent_process_binding("main").await.unwrap().is_none());
 		super::persist_input(&store, "new-chat", "first-input", "Improve sidebar navigation", None)
 			.await
@@ -2568,7 +2648,7 @@ mod tests {
 		drop(store);
 		let reopened = SqliteStore::open(&root.paths()).unwrap();
 		let saved = reopened.get_agent_work_item("new-chat".into()).await.unwrap();
-		assert_eq!(saved.title, "Improve sidebar navigation");
+		assert_eq!(saved.title, "New Agent");
 		assert!(saved.codex_thread_id.is_none());
 		assert_eq!(reopened.list_agent_work_items().await.unwrap().len(), 2);
 	}

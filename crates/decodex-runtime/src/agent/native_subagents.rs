@@ -19,6 +19,24 @@ pub(crate) async fn request_owner(
 	client: &AppServerClient,
 	thread: &str,
 ) -> Result<AgentWorkItem, AgentError> {
+	resolve_owner(store, client, thread, false).await
+}
+
+/// Resolve preserved ancestry for read-only Result evidence. This grants no input authority.
+pub(crate) async fn history_owner(
+	store: &SqliteStore,
+	client: &AppServerClient,
+	thread: &str,
+) -> Result<AgentWorkItem, AgentError> {
+	resolve_owner(store, client, thread, true).await
+}
+
+async fn resolve_owner(
+	store: &SqliteStore,
+	client: &AppServerClient,
+	thread: &str,
+	history: bool,
+) -> Result<AgentWorkItem, AgentError> {
 	let work = store.list_agent_work_items().await?;
 	let resolve = async {
 		let mut current = thread.to_owned();
@@ -33,6 +51,15 @@ pub(crate) async fn request_owner(
 				work.iter().find(|item| item.codex_thread_id.as_ref() == Some(&current))
 			{
 				return Ok(owner.clone());
+			}
+
+			if history {
+				for candidate in &work {
+					if store.agent_previous_threads(candidate.id.clone()).await?.contains(&current)
+					{
+						return Ok(candidate.clone());
+					}
+				}
 			}
 
 			let native = client.thread_read(serde_json::json!({"threadId":current})).await?;

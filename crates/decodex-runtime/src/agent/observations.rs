@@ -328,6 +328,7 @@ impl AgentCoordinator {
 			&& let (Some(thread), Some(turn)) =
 				(params["threadId"].as_str(), params["turnId"].as_str())
 		{
+			self.recover_native_contribution(thread, turn, &params["item"]).await?;
 			self.observe_completed_input(thread, turn, &params["item"]).await?;
 		}
 		if method != "thread/tokenUsage/updated"

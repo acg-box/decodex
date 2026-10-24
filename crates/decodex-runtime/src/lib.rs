@@ -124,3 +124,5 @@ impl ServiceComposition {
 		bootstrap::bootstrap(root).await
 	}
 }
+
+mod work_portfolio;

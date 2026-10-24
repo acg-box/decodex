@@ -34,6 +34,7 @@
 #[path = "tests/steer_receipts.rs"] mod steer_receipts;
 #[path = "tests/task_history.rs"] mod task_history;
 #[path = "tests/unsent_input.rs"] mod unsent_input;
+#[path = "tests/work_contract.rs"] mod work_contract;
 
 use std::{iter, slice, time::Duration};
 
@@ -847,6 +848,7 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 	let mut threads = 0;
 	let mut turns = 0;
 	let mut settings = std::collections::HashMap::<String, Value>::new();
+	let mut projects = std::collections::HashMap::<String, Value>::new();
 	let mut faults = FixtureFaults {
 		injected: false,
 		archived: history["_archived"] == true,
@@ -869,6 +871,16 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 		}
 
 		let result = match request["method"].as_str() {
+			Some("project/list") =>
+				serde_json::json!({"data":projects.values().cloned().collect::<Vec<_>>(),"nextCursor":null}),
+			Some("project/create") => {
+				let id = format!("project-{}", projects.len() + 1);
+				let project = serde_json::json!({"id":id,"name":request["params"]["name"],"roots":request["params"]["roots"]});
+				projects.insert(id, project.clone());
+				serde_json::json!({"project":project})
+			},
+			Some("project/read") =>
+				serde_json::json!({"project":projects.get(request["params"]["projectId"].as_str().unwrap())}),
 			Some("thread/list") =>
 				serde_json::json!({"data":if request["params"]["archived"]==faults.archived {vec![serde_json::json!({"id":"opaque thread/1"})]} else {vec![]},"nextCursor":null}),
 			Some("thread/unarchive") => {
@@ -999,7 +1011,14 @@ async fn unloaded_thread_resumes_exact_identity_without_new_thread() {
 		"config",
 		"developerInstructions",
 	] {
-		assert!(resumes[0]["params"].get(field).is_none(), "resume must preserve {field}");
+		if field == "config" {
+			assert_eq!(
+				resumes[0]["params"]["config"],
+				serde_json::json!({"features.guardian_recorded_items":false})
+			);
+		} else {
+			assert!(resumes[0]["params"].get(field).is_none(), "resume must preserve {field}");
+		}
 	}
 }
 
@@ -2057,7 +2076,7 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
 
-	AgentCoordinator::register_workspace(
+	AgentCoordinator::register_project(
 		&coordinator.store,
 		"folder",
 		directory.path().to_str().unwrap(),
@@ -2121,7 +2140,8 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 
 	assert_eq!(starts.len(), 5);
 	assert_eq!(starts[0]["params"]["threadSource"], "user");
-	assert!(starts[1..].iter().all(|start| start["params"].get("threadSource").is_none()));
+	assert_eq!(starts[4]["params"]["threadSource"], "user");
+	assert!(starts[1..4].iter().all(|start| start["params"].get("threadSource").is_none()));
 	assert!(
 		starts[1]["params"]["dynamicTools"]
 			.as_array()
@@ -2147,7 +2167,7 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 }
 
 #[tokio::test]
-async fn legacy_manager_keeps_native_thread_without_replaying_saved_input() {
+async fn legacy_context_waits_for_positive_native_retirement_without_replay() {
 	let (mut coordinator, mut sent, directory) = fixture().await;
 	let original = coordinator.start_agent("agent", "Original request").await.unwrap();
 
@@ -2171,7 +2191,10 @@ async fn legacy_manager_keeps_native_thread_without_replaying_saved_input() {
 
 	while sent.try_recv().is_ok() {}
 
-	coordinator.continue_worker("agent", "One new request").await.unwrap();
+	assert!(matches!(
+		coordinator.continue_worker("agent", "One new request").await,
+		Err(AgentError::MigrationPending(_))
+	));
 
 	let upgraded = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
 
@@ -2181,12 +2204,9 @@ async fn legacy_manager_keeps_native_thread_without_replaying_saved_input() {
 	let messages: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 
 	assert_eq!(messages.iter().filter(|message| message["method"] == "thread/start").count(), 0);
-	assert_eq!(messages.iter().filter(|message| message["method"] == "turn/start").count(), 1);
+	assert_eq!(messages.iter().filter(|message| message["method"] == "turn/start").count(), 0);
 	assert!(!messages.iter().any(|message| message["method"] == "thread/inject_items"));
 
-	let start = messages.iter().find(|message| message["method"] == "turn/start").unwrap();
-
-	assert_eq!(start["params"]["input"][0]["text"], "One new request");
 	assert_eq!(
 		db.query_row("SELECT count(*) FROM agent_thread_revisions", [], |row| row.get::<_, i64>(0))
 			.unwrap(),
@@ -2313,9 +2333,7 @@ async fn external_writer_release_requires_a_new_send() {
 	let input =
 		coordinator.store.list_agent_wake_events("agent".into(), 10).await.unwrap().pop().unwrap();
 
-	assert!(
-		matches!(coordinator.wake_pending().await, Err(AgentError::ThreadOwnedElsewhere { ref thread_id }) if Some(thread_id) == original.codex_thread_id.as_ref())
-	);
+	coordinator.wake_pending().await.unwrap();
 
 	let before = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
 
@@ -2347,16 +2365,11 @@ async fn external_writer_release_requires_a_new_send() {
 		.await
 		.unwrap();
 	let notice = coordinator.store.list_agent_thread_in_use_events().await.unwrap().remove(0);
-	for _ in 0..2 {
-		assert!(matches!(
-			coordinator.check_due_followups(1).await,
-			Err(AgentError::ThreadOwnedElsewhere { .. })
-		));
-		coordinator.store.resolve_agent_delivery_failure("agent".into()).await.unwrap();
-		let blocked = coordinator.store.list_agent_thread_in_use_events().await.unwrap();
-		assert_eq!(blocked.len(), 1);
-		assert_eq!(blocked[0].id, notice.id);
-	}
+	coordinator.check_due_followups(1).await.unwrap();
+	coordinator.store.resolve_agent_delivery_failure("agent".into()).await.unwrap();
+	let blocked = coordinator.store.list_agent_thread_in_use_events().await.unwrap();
+	assert_eq!(blocked.len(), 1);
+	assert_eq!(blocked[0].id, notice.id);
 	coordinator.wake_pending().await.unwrap();
 	assert!(coordinator.store.list_agent_thread_in_use_events().await.unwrap().is_empty());
 
@@ -4291,9 +4304,13 @@ async fn missed_native_active_turn_recovery_rejects_reverted_readback() {
 			);
 
 			if request["method"] == "thread/resume" {
-				for field in ["cwd", "model", "sandbox", "approvalPolicy", "config"] {
+				for field in ["cwd", "model", "sandbox", "approvalPolicy"] {
 					assert!(request["params"].get(field).is_none());
 				}
+				assert_eq!(
+					request["params"]["config"],
+					serde_json::json!({"features.guardian_recorded_items":false})
+				);
 			}
 		}
 	}

@@ -153,8 +153,8 @@ pub(crate) fn retain_active(snapshot: &mut AgentSnapshotDto, archived: &HashSet<
 		!inactive.contains(&reference.recipient_work_id)
 			&& !inactive.contains(&reference.source_work_id)
 	});
-	for workspace in &mut snapshot.workspaces {
-		workspace.work_ids.retain(|id| !hidden.contains(id));
+	for workspace in &mut snapshot.projects {
+		workspace.agent_ids.retain(|id| !hidden.contains(id));
 	}
 }
 
@@ -164,7 +164,7 @@ mod tests {
 	use decodex_codex::app_server_client::{AppServerClient, ThreadArchiveState};
 	use decodex_protocol::{
 		AgentDependencyDto, AgentDispatchStateDto, AgentSnapshotDto, AgentWorkItemDto,
-		AgentWorkKindDto, AgentWorkStatusDto, WorkspaceDto,
+		AgentWorkKindDto, AgentWorkStatusDto, ProjectDto,
 	};
 	use std::{
 		collections::{HashMap, HashSet},
@@ -252,16 +252,21 @@ mod tests {
 	}
 	fn snapshot() -> AgentSnapshotDto {
 		AgentSnapshotDto {
+			agents: Default::default(),
+			guardian: Default::default(),
+			portfolio: Default::default(),
 			archived_work_ids: Default::default(),
 			agent_slots: Default::default(),
 			context_references: vec![],
 			connection_initializing: false,
 			runtime_source: None,
-			workspaces: vec![WorkspaceDto {
+			projects: vec![ProjectDto {
+				native_project_id: None,
+				lead_agent_id: None,
 				id: "workspace".into(),
 				name: "Workspace".into(),
 				directory: "/fixture".into(),
-				work_ids: vec!["main".into(), "old".into(), "live".into()],
+				agent_ids: vec!["main".into(), "old".into(), "live".into()],
 			}],
 			work_items: vec![
 				work("main", None),
@@ -304,7 +309,7 @@ mod tests {
 			["main", "live"]
 		);
 		assert_eq!(visible.work_items[1].parent_goal_id.as_deref(), Some("main"));
-		assert_eq!(visible.workspaces[0].work_ids, ["main", "live"]);
+		assert_eq!(visible.projects[0].agent_ids, ["main", "live"]);
 		assert!(visible.dependencies.is_empty());
 		assert!(visible.is_valid());
 		assert_eq!(original.work_items.len(), 3, "retained source is unchanged");
