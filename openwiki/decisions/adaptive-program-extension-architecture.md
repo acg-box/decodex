@@ -9,10 +9,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-dd24c2ff3c2515a21892e312
     resource: repo://database/src/program_cycles.rs
-generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
+generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T09:01:22.045Z
+    at: 2026-10-24T21:11:31.338Z
 ---
 
 
@@ -27,3 +27,5 @@ The active desktop now centers on Agent and native conversation threads. `agent/
 The service entrypoint is `decodex serve`. Repository/GitHub effect orchestration has been retired. A Program proposal or retained historical command never grants fresh effect authority.
 
 Use [Agent coordination](../architecture/chief-coordination.md), [Desktop workspace](../architecture/desktop-workspace.md), and [Runtime architecture](../architecture/runtime-architecture.md) for current behavior. The [August design record](https://github.com/acg-box/decodex/blob/426e862a5978620ffad65fb3d0189cfa57392873/openwiki/decisions/adaptive-program-extension-architecture.md) remains available in Git history.
+
+The implemented [Project, Agent and Work contract](project-agent-work.md) owns current business coordination. Only users create persistent Agents; native helpers do not restore the historical Program execution lane.

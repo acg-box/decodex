@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ebaca3f64972182419e84150854d3e7efa2be88ce5e35ff4c5c668e05e77db8a",
+  "pageVersion": "sha256:8f07226efd416949f5b74ebf839640fa09da0a8aef0a983e707efbb153b73e40",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -8,11 +8,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
-          "version": "repo-file-v1:sha256:cf7267ec7f000910e7e9473f6536ffa866b610f5d4bf67fbdfb8c9204149b19f"
+          "version": "repo-file-v1:sha256:12397d9963f7616af8768f21407f3aeae1041ec981861284d742ee555b2255cb"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
-          "version": "repo-file-v1:sha256:3fec0fe1263de777dbd431c294831a0d3c025706d3d36354846c758079aa62a4"
+          "version": "repo-file-v1:sha256:17de3c2bb07b65019de3937223264df20da4c8c8e692853973de9047bf252bc3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
@@ -26,7 +26,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:7deb050ff7430319ee4cd56797817463b4eb5a87ab440f7455215986ae9eec2d"
+          "version": "repo-file-v1:sha256:473d11971830b92e711c50344c2f31625414543cf4bf96e657ac4cf8df5c2bd5"
         }
       ]
     },
@@ -36,7 +36,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:7deb050ff7430319ee4cd56797817463b4eb5a87ab440f7455215986ae9eec2d"
+          "version": "repo-file-v1:sha256:473d11971830b92e711c50344c2f31625414543cf4bf96e657ac4cf8df5c2bd5"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -49,12 +49,12 @@
       "statement": "The protocol crate CURRENT_VERSION and the embedded SQLite migration ledger define current local compatibility.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L294-L312",
-          "version": "repo-lines-v1:sha256:c87a72631b158db790112cb16ce8e8bd264007a68e3730767f9d1f1d0c32ca8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZDA5NzgzZTA2YzlkMGI3MDhhMTFiNTU3N2M2MWNlMjBhZGRjNjZjYmVmMGJkZjc5ODQ2ZWZiN2M5OWM3YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjZkOWNlOGNkNmRlNjQ0YTM4Y2QwYjA0NTRmYjkzYjBjMWEzNTFlNzAyYjc1ODI0NmE2ZTZkZWI3N2Y1MzkifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L297-L315",
+          "version": "repo-lines-v1:sha256:719725191d81e573df67520f2fcad60881a3be768a435464e9ccdac0abaff6ff:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZDA5NzgzZTA2YzlkMGI3MDhhMTFiNTU3N2M2MWNlMjBhZGRjNjZjYmVmMGJkZjc5ODQ2ZWZiN2M5OWM3YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjZkOWNlOGNkNmRlNjQ0YTM4Y2QwYjA0NTRmYjkzYjBjMWEzNTFlNzAyYjc1ODI0NmE2ZTZkZWI3N2Y1MzkifQ"
         },
         {
           "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:916f8d6615e3a14e74743fda320f3e6ccf4956b872b66fa6f761f0a73a03a43e"
+          "version": "repo-file-v1:sha256:c28cb3a289bd31e3aab3dd4c715f33354eb5d0874ea1fa16099c8fd5ebf50657"
         }
       ]
     },
@@ -91,18 +91,36 @@
       "statement": "Account admission accepts only native plus, pro, prolite, promax and team plans for OAuth and PAT credentials.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5589-L5603",
-          "version": "repo-lines-v1:sha256:5b47136506971aa4b802d62886d89a48e0c90fbd6e2a71d224b33796f0c135ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmNjk5MTEzNTNhZjE0Y2FiOWFmMzljZjU2NDA5YzMyNDJlYzAyOTdjMTVmMmU3ZWQxMjAzMGM2M2M2M2EzZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1NTgxZDhlMGQzMjM1MGEzMDlmMjBlYjVhMzNmYzYyYzg3ZWZlNzRmM2UzMGRhMTQ0Yzg5YmYzMmExYWIyYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5N2M4ZTkyYWMwMjViYTIwYzAwMzE4NzgxOThiYTlmMTY5NTA1MzNjOGQzMjkxYjA0NGEzY2Q5MzUzY2FlNzMifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5605-L5620",
+          "version": "repo-lines-v1:sha256:f2aad157ac011c19ef73d7df134cbff86acd5ea9f0abf61851e27450f4f6c470:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwYzg1OTVlZGM0M2VmMjkzNzg1MjU0NWYzNTIwZGQzNDgyMDRmZWE2N2I5NDJmMTRkMzZlNzEzZTM0NTFmZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkM2EwMmQxZGY1NDk3ZTVjMjY2ZGVjOGQ0MzRmYjk1OGEwODZhYTk2NDNmNzM4NjJlNjVhNTllNzg0ZWQ4ZTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhNmQ2NDJjYjBkMTk2ZDgxYzE5NjZmNGI5NDdjZTY4NDI4OTI0YzlmZmIxYjI5ZjkyNTMzZTYyYzc5ZmNkOWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg2MTU5NjYyZTAwOGEwMGQ2ZWQ0NGRkOTRhZGEzMzIxYjRjMDFlMGQ2MDFkNmI3YTc0MzEzMzE5ZTJiNmM3MTEifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs",
-          "version": "repo-file-v1:sha256:df87cab1b7d420e4626ee4db794ce79060f08bf96a2078c5ea3122c2db346641"
+          "version": "repo-file-v1:sha256:a699da5c8e090fe7bd07682cee3fc3f9d1908a38d6ea557e618b1e86e2efe9b1"
+        }
+      ]
+    },
+    {
+      "id": "claim_a69792c61f7b45988a3b128dd70179cf",
+      "statement": "The current business contract separates Project, user-created Agent and Work, uses native Subagents and scoped peer Collaboration, and presents global Guardian independently from native permissions.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
+          "version": "repo-file-v1:sha256:4ab55056b0f4205cd0fc351e7557065f41519869b8248c1049fda8781d964d00"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
+          "version": "repo-file-v1:sha256:a32503172f93bd1e5dee1c1714d75236457b0df869ea9953fee9fc7f4da104e9"
+        },
+        {
+          "resource": "repo://database/migrations/0056_project_agent_work.sql",
+          "version": "repo-file-v1:sha256:ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T06:08:33.099Z"
+    "at": "2026-10-24T21:19:56.719Z"
   }
 }

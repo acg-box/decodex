@@ -13,12 +13,16 @@ mod async_projection;
 mod background_terminals;
 mod checklist;
 mod file_changes;
+mod global_guardian;
 mod guardian;
 mod native_settings;
 mod native_turns;
+mod project;
 mod prompt_edit;
 mod reasoning;
 mod result_messages;
+mod tool_migration;
+mod work;
 pub(crate) use result_messages::usage as observed_usage;
 mod resume_recovery;
 mod task_history;
@@ -99,7 +103,7 @@ impl AgentConfig {
 	}
 }
 
-/// No native subagent interface or model engine is used here.
+/// Coordinate durable business records around native Codex execution and Subagents.
 pub struct AgentCoordinator {
 	voice: Option<VoiceConnection>,
 	store: SqliteStore,
@@ -399,6 +403,7 @@ impl AgentCoordinator {
 			.await?;
 		}
 
+		self.recover_native_contribution(thread, turn, entry).await?;
 		self.observe_steer_receipt(thread, turn, entry).await?;
 		self.observe_async_question_item(thread, turn, entry).await?;
 
@@ -426,14 +431,21 @@ impl AgentCoordinator {
 
 	async fn work_thread_params(&self, item: &AgentWorkItem) -> Result<Value, AgentError> {
 		let mut params = self.thread_params(self.is_manager(&item.id).await?);
+		let guardian = self.store.guardian_state().await?.settings;
+		params["approvalsReviewer"] = serde_json::json!(guardian.reviewer.native());
+		params["config"]["features.guardian_recorded_items"] =
+			serde_json::json!(guardian.review_details);
 
-		// start_agent creates the personal user root; subordinate managers and workers
-		// must not inherit its eligibility for full-access user-input forms.
+		// User-created Agents have native user sources. Retained legacy execution
+		// rows must not gain that eligibility through the business migration.
 		if item.parent_goal_id.is_none() {
 			params["threadSource"] = serde_json::json!("user");
 		}
 
 		params["experimentalRawEvents"] = serde_json::json!(true);
+		if let Some(project) = self.native_project(item).await? {
+			params["projectId"] = serde_json::json!(project);
+		}
 
 		// Upstream c1382380de69521303b416720a52f42d51af6248 verifies cwd in
 		// thread_start_respects_project_config_from_cwd (app-server thread_start tests).
@@ -446,7 +458,7 @@ impl AgentCoordinator {
 	}
 
 	/// Save a canonical folder independently from executable work.
-	pub(crate) async fn register_workspace(
+	pub(crate) async fn register_project(
 		store: &SqliteStore,
 		id: &str,
 		directory: &str,
@@ -461,7 +473,7 @@ impl AgentCoordinator {
 			.file_name()
 			.map(|s| s.to_string_lossy().into_owned())
 			.unwrap_or_else(|| path.display().to_string());
-		Ok(store.register_workspace(id.into(), name, path.to_string_lossy().into_owned()).await?)
+		Ok(store.register_project(id.into(), name, path.to_string_lossy().into_owned()).await?)
 	}
 
 	/// Create a subordinate manager in the parent conversation workspace.
@@ -741,20 +753,14 @@ impl AgentCoordinator {
 		input: EnqueueAgentEvent,
 		workspace: Option<String>,
 	) -> Result<AgentWorkItem, AgentError> {
-		let parent = store
-			.list_agent_work_items()
-			.await?
-			.into_iter()
-			.find(|w| w.parent_goal_id.is_none())
-			.ok_or_else(|| AgentError::Invalid("Start Main first".into()))?;
 		let now = now_micros()?;
 		Ok(store
 			.create_agent_conversation(
 				AgentWorkItem {
 					id: id.into(),
-					parent_goal_id: Some(parent.id),
+					parent_goal_id: None,
 					kind: AgentWorkKind::Goal,
-					title: "New conversation".into(),
+					title: "New Agent".into(),
 					instructions:
 						"Help the user with their requests. Use other agents when useful.".into(),
 					codex_thread_id: None,
@@ -799,7 +805,7 @@ impl AgentCoordinator {
 				id: id.into(),
 				parent_goal_id: None,
 				kind: AgentWorkKind::Goal,
-				title: "Main".into(),
+				title: "Assistant".into(),
 				instructions: prompt.into(),
 				codex_thread_id: None,
 				dispatch_state: AgentDispatchState::Idle,
@@ -940,11 +946,9 @@ impl AgentCoordinator {
 
 	async fn ensure_thread(&mut self, item: &AgentWorkItem) -> Result<AgentWorkItem, AgentError> {
 		if item.codex_thread_id.is_some() {
-			// Verified against Codex 0.155.0-alpha.9.2 generated schema and upstream
-			// 7d99ee82d74325cabf485ea1e2adbd0c2625ab19: resume has no dynamicTools.
-			// Keep native identity and history. Dynamic tools belong to thread creation;
-			// an application update must not silently replace an existing conversation.
-			return Ok(item.clone());
+			// Native dynamic tools are immutable. Use the explicit, receipt-bound context
+			// migration.
+			return self.migrate_tools(item).await;
 		}
 
 		self.store.begin_agent_thread_creation(item.id.clone()).await?;
@@ -1258,6 +1262,7 @@ impl AgentCoordinator {
 
 		let mut external = Vec::new();
 		let mut has_user_input = false;
+		let mut question_answer = false;
 		let mut automated = false;
 
 		for event_id in events {
@@ -1297,6 +1302,7 @@ impl AgentCoordinator {
 
 				apply_message_options(&mut params, &event.payload)?;
 			} else if event.event_kind == "async_question_answer" {
+				question_answer = true;
 				has_user_input = true;
 			} else {
 				automated |=
@@ -1342,6 +1348,10 @@ impl AgentCoordinator {
 			}
 		}
 
+		let context = self.store.agent_work_portfolio(item.id.clone(), None).await?;
+		if !question_answer && (!context.works.is_empty() || !context.collaborations.is_empty()) {
+			external.push(serde_json::json!({"kind":"current_work_context","authority":"application evidence; original decision sources retain their authority","portfolio":context}));
+		}
 		Ok((params, external))
 	}
 
@@ -1704,6 +1714,18 @@ impl AgentCoordinator {
 		self.voice_event(&event).await?;
 
 		if let ServerEvent::Notification { method, params } = &event {
+			if method == "rawResponseItem/completed" {
+				self.observe_native_work_dispatch(params).await?;
+			}
+			if method == "item/completed"
+				&& let (Some(thread), Some(turn)) =
+					(params["threadId"].as_str(), params["turnId"].as_str())
+			{
+				self.recover_native_contribution(thread, turn, &params["item"]).await?;
+			}
+			if self.global_guardian_notification(method, params).await? {
+				return Ok(());
+			}
 			self.pending_file_changes.observe(self.client.connection_identity(), method, params);
 			self.observe_reasoning_summary(method, params).await?;
 
@@ -2117,22 +2139,40 @@ impl AgentCoordinator {
 		}
 	}
 
-	async fn tool(&mut self, agent: &AgentWorkItem, params: &Value) -> Result<Value, AgentError> {
-		let managers = self.store.agent_manager_ids().await?;
-		let args = &params["arguments"];
-		let name = exact(params, "/tool")?;
-
-		if ["agent_resolve_goal", "agent_resolve_decision"].contains(&name.as_str()) {
+	async fn validate_legacy_resolution_scope(
+		&self,
+		agent: &AgentWorkItem,
+		name: &str,
+		args: &Value,
+		managers: &[String],
+	) -> Result<(), AgentError> {
+		if ["agent_resolve_goal", "agent_resolve_decision"].contains(&name) {
 			let id = exact(args, "/id")?;
 			let all = self.store.list_agent_work_items().await?;
 
 			if !all.iter().any(|work| {
 				work.id == id
-					&& (work.id == agent.id || belongs_to(work, &agent.id, &all, &managers))
+					&& (work.id == agent.id || belongs_to(work, &agent.id, &all, managers))
 			}) {
 				return Err(AgentError::Invalid("work is outside this manager scope".into()));
 			}
 		}
+
+		Ok(())
+	}
+
+	async fn tool(&mut self, agent: &AgentWorkItem, params: &Value) -> Result<Value, AgentError> {
+		let managers = self.store.agent_manager_ids().await?;
+		let args = &params["arguments"];
+		let name = exact(params, "/tool")?;
+		if let Some(error) = work::retired_tool(&name) {
+			return Err(error);
+		}
+		if ["work_read", "work_manage"].contains(&name.as_str()) {
+			return self.work_tool(agent, &name, args).await;
+		}
+
+		self.validate_legacy_resolution_scope(agent, &name, args, &managers).await?;
 
 		match exact(params, "/tool")?.as_str() {
 			"agent_read_work" => self.read_work_history(agent, args).await,
@@ -2396,10 +2436,10 @@ impl AgentCoordinator {
 		if self.dispatch_paused {
 			return Ok(());
 		}
+		self.sync_global_guardian().await?;
 
 		let notices = self.store.list_agent_thread_in_use_events().await?;
 		let mut blocked = std::collections::HashSet::new();
-		let mut root_blocked = None;
 
 		for notice in notices {
 			self.store.hold_agent_unsent_input(notice.work_item_id.clone()).await?;
@@ -2423,11 +2463,8 @@ impl AgentCoordinator {
 						blocked.insert(item.id.clone());
 						continue;
 					},
-					Err(error @ AgentError::ThreadOwnedElsewhere { .. }) => {
+					Err(AgentError::ThreadOwnedElsewhere { .. }) => {
 						blocked.insert(item.id.clone());
-						if item.parent_goal_id.is_none() {
-							root_blocked = Some(error);
-						}
 						continue;
 					},
 					Err(error) => return Err(error),
@@ -2508,21 +2545,18 @@ impl AgentCoordinator {
 				Ok(_) => {},
 				// A queued archived owner waits for explicit restoration. Its retained
 				// input must not stop later owners in this wake batch.
-				Err(AgentError::ThreadArchived) => {},
+				Err(AgentError::ThreadArchived | AgentError::MigrationPending(_)) => {},
 				Err(error @ AgentError::ThreadOwnedElsewhere { .. }) => {
 					self.store.hold_agent_unsent_input(agent.id.clone()).await?;
 					self.store
 						.record_agent_thread_in_use(agent.id.clone(), error.to_string())
 						.await?;
-					if agent.parent_goal_id.is_none() {
-						root_blocked = Some(error);
-					}
 				},
 				Err(error) => return Err(error),
 			}
 		}
 
-		root_blocked.map_or(Ok(()), Err)
+		Ok(())
 	}
 }
 
@@ -2553,6 +2587,8 @@ pub enum AgentError {
 	Busy,
 	/// A prior dispatch has no conclusive acknowledgment.
 	UnknownDispatch,
+	/// Native tool replacement is parked without discarding the original execution.
+	MigrationPending(String),
 	/// New task settings superseded an automatic capacity continuation.
 	CapacityRetrySuperseded,
 	/// Input was refused before dispatch and its durable claim has been released.
@@ -2771,6 +2807,9 @@ fn belongs_to(
 	work: &[AgentWorkItem],
 	managers: &[String],
 ) -> bool {
+	if managers.iter().any(|id| id == &item.id) {
+		return false;
+	}
 	let mut parent = item.parent_goal_id.as_deref();
 
 	for _ in 0..work.len() {
@@ -2792,7 +2831,7 @@ fn belongs_to(
 	false
 }
 
-fn tools() -> Value {
+fn legacy_tools() -> Value {
 	let mut specs = serde_json::json!([
 		{"name":"agent_create_work","description":"Create independent work for a concrete outcome; unresolved dependsOn work delays dispatch. Include a stable, concise title (usually 2-5 words) describing its purpose, without status or a repeated project prefix.","inputSchema":{"type":"object","properties":{"id":{"type":"string"},"title":{"type":"string","minLength":1,"maxLength":120},"prompt":{"type":"string"}},"required":["id","prompt"],"additionalProperties":false}},
 		{"name":"agent_list_work","description":"Inspect work and the current inbox. kind=agent is a persistent Agent conversation; kind=goal is a separate child outcome; kind=task is worker work. Inbox receipts belong to work_item_id and can be acknowledged once with agent_disposition.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
@@ -2830,3 +2869,22 @@ fn tools() -> Value {
 #[cfg(test)]
 #[path = "agent/tests.rs"]
 mod tests;
+
+fn tools() -> Value {
+	let mut specs = legacy_tools();
+	specs.as_array_mut().expect("tool array").retain(|spec| {
+		!matches!(
+			spec["name"].as_str(),
+			Some(
+				"agent_create_work"
+					| "agent_continue_worker"
+					| "agent_create_manager"
+					| "agent_create_goal"
+					| "agent_resolve_goal"
+					| "agent_add_dependency"
+			)
+		)
+	});
+	specs.as_array_mut().expect("tool array").extend(work::tools());
+	specs
+}

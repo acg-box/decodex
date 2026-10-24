@@ -24,6 +24,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-32afc8038b2c3b7df030c573
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_prediction_tests.rs
+  - id: openwiki-source-725813d500ec103482924456
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs
   - id: openwiki-source-21c0991a686dae637a3616cd
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_read_state_tests.rs
   - id: openwiki-source-68238f7343c9fc1bd11783f3
@@ -40,40 +42,52 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_context_settings_tests.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-a4a2658e06fa2cf48ff4589e
+    resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
   - id: openwiki-source-283a40a004fda23504fad7e1
     resource: repo://crates/decodex-runtime/src/agent/result_messages.rs
   - id: openwiki-source-5af40fd50adccf5d93ff82a0
     resource: repo://crates/decodex-runtime/src/agent/tests/capacity.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
+  - id: openwiki-source-a7b97dd347fbe2f630692d12
+    resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
+  - id: openwiki-source-1c25f1eb2ea8f33c9b46e78e
+    resource: repo://crates/decodex-runtime/src/agent/tests/work_contract.rs
   - id: openwiki-source-64d7588c1af50398568a792e
     resource: repo://crates/decodex-runtime/src/agent/timeline.rs
   - id: openwiki-source-74145d84eb83d80ec3062595
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
   - id: openwiki-source-ec5c9f32d2135154f4297a49
     resource: repo://crates/decodex-runtime/src/conversation.rs
+  - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
+    resource: repo://crates/decodex-runtime/src/work_portfolio.rs
   - id: openwiki-source-07c9cc033899826079f8efb5
     resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
   - id: openwiki-source-c772fc057f500f765d09a3c7
     resource: repo://crates/decodex-runtime/tests/native_qualification/log_storage.py
   - id: openwiki-source-88b81a215b1bac061dad80ec
     resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
+  - id: openwiki-source-8e6f29de9ed0d4825985ec62
+    resource: repo://crates/decodex-runtime/tests/native_qualification/project_guardian.py
   - id: openwiki-source-c6bea677adcde563202b65b9
     resource: repo://crates/decodex-runtime/tests/native_qualification/response_identity.py
   - id: openwiki-source-b30d382781a313611ecd221f
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-a6440a3d3a3c3121fd4c553f
     resource: repo://database/src/agent_output.rs
+  - id: openwiki-source-d09dfdea9b65815f3a76b46c
+    resource: repo://database/src/works/tests.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
   - id: openwiki-source-e8c30c6f5849a5077d7b4aa5
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
+generated: { by: "codex", at: "2026-10-24T21:21:22.212Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T06:15:55.391Z
+    at: 2026-10-24T21:21:22.212Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -209,8 +223,42 @@ The native launch fixture checks description-first Code Mode, child context defa
 
 ## Question routing, completion and cancellation
 
-The [retained coordination evidence](../../automations/upstream/retained-evidence.json) links the bounded historical real-model evaluations for self-resolution, peer coordination, parent escalation, user decisions and persistent Agent completion. It retains the current contract for exact inbox receipts, separate child-goal resolution and recovery after an idle-only Busy refusal. Busy means the continuation was not sent or queued. The model should finish its current turn, wait for the existing worker and reassess that same worker before sending a follow-up. The historical evaluations used one model and effort with controlled scenarios and predefined user choices. Current synthetic child-approval and local library regressions are separate requalification; they do not repeat real-model judgment or establish every model, permission configuration, race or installed interaction.
+The [retained coordination evidence](../../automations/upstream/retained-evidence.json) links the bounded historical real-model evaluations for self-resolution, peer coordination, parent escalation, user decisions and persistent Agent completion. Those evaluations cover the legacy managed-worker contract for exact inbox receipts, separate child-goal resolution and an idle-only Busy refusal. In that legacy continuation path, Busy means the instruction was not sent or queued, so the caller waits for the same worker. The new default uses native Subagents; independent Collaboration Requests have their own durable busy queue and acceptance contract. Do not apply the legacy Busy refusal as the current peer-queue behavior. The historical evaluations used one model and effort with controlled scenarios and predefined user choices. Current synthetic child-approval and local library regressions are separate requalification; they do not repeat real-model judgment or establish every model, permission configuration, race or installed interaction.
 
 The [sampling qualification](../../automations/upstream/qualification.json) separately records explicit cancellation of Ask separately. Closing its panel only hides presentation; Cancel answer targets the exact native sampling request. A cancellation request, native acknowledgement and a result that wins a race are different outcomes. Preserve exact request ownership and uncertain-state readback. This is not cancellation of the parent conversation or a general scheduler. These receipts do not establish installed-app acceptance.
 
 These fixture definitions specify what can be checked. They do not claim a new execution result from this documentation refresh, installed-app acceptance, or release delivery.
+
+## Project, Agent, Work and global Guardian
+
+The `retained_project_agent_work` entry in the [portable index](../../automations/upstream/retained-evidence.json) is the reconstruction authority for this change. It records contracts, current source symbols and digests, tests read separately from tests executed, exact selectors/entrypoints, artifact/helper/schema identities and public delivery. Detailed raw receipts stay in the native automation directory. Missing old local products do not erase certified earlier ranges; a rebuilt artifact needs its own identity and qualification.
+
+The selected official source is `970111f6cb62cc02fe36a82ea7d71b37a2889c97`. The package passed explicit `cargo +stable make prepare-codex` component, helper and schema verification. It did not replace the installed application or advance the upstream source-review cursor.
+
+| Executed check | Recorded outcome |
+| --- | --- |
+| Workspace check, strict lint, format | Passed; lint covered 13 packages. |
+| Database suite and schema gate | 188 passed; schema 56, 89 tables and integrity checks passed. |
+| Exact packaged native matrix | 13 passed; 985 excluded; zero unmatched selected tests. |
+| Transport/current Work receipts | 28 passed; 970 excluded. |
+| Focused rendered UI and runtime | 6 passed. |
+| Python and CLI diagnostics | 40 and 2 passed. |
+| Complete workspace/all-targets/all-features | 2918 executed: 2916 passed, 2 failed, 1154 skipped. One passed test had a LEAK marker. |
+
+Counts overlap. The two full-suite failures are `native_call_exchanges_audio_captions_mutes_and_releases_buffers` and `remote_channel_loss_reports_failure_and_releases_buffers`, both native ICE connection timeouts. Untouched main reproduced the second timeout with the same workspace features; a package-only two-test baseline passed both. The first failure was not independently reproduced on main. The common cause remains unknown. The leaky pass was `ui_working::tests::appearance_and_disappearance_share_one_continuous_fade`; no cause was established. No test was removed, suppressed or weakened.
+
+The native matrix covers production-bridge Project idempotency, reviewer routing and private observations; immutable tool migration and positive old-context retirement; V1 helper attribution; V2 idle-owner wake with both feature settings; child approval and MCP identity/policy; saved/live native permissions; failed compaction and restart; large Guardian actions; Code Mode yields and parallel dynamic-tool order. The reusable Python `project_guardian.py` adds a synthetic exact-CLI Project/private-review probe. It uses `QUALIFIED_CODEX_BINARY` and `DECODEX_QUALIFICATION_OUTPUT` as described in the [command guide](../operations/commands-and-validation.md#qualify-retained-native-behavior).
+
+Local regressions cover one Agent across four Works in two Projects, wrong-Work Result refusal, current-requirement guards, requirement changes, scoped Collaboration/repair/cancellation, exact command retry, lost delivery, source/digest verification, paused Work, restart and selected evidence paging. The SQL scope defect was reproduced before repair: unrelated earlier records hid the Agent's own Work. The repaired test also verifies that only granted Materials enter a bounded peer read.
+
+### Qualified native and presentation limits
+
+The native backend comes from model catalog metadata plus configuration. The matrix uses V2 `gpt-5.6-sol` and V1 `gpt-5.6-luna` at Medium. Disabling a V2 feature alone does not select V1. V2 native completion can wake an idle owner; V1 requires the native wait tool for required Results. These are synthetic provider decisions, not a measurement of live model autonomy or Ultra.
+
+Work attribution requires an exact direct native call. V2 canonical child history omits inbound Agent messages; the integration retains matched call and root-turn evidence. Missing, ambiguous and nested Code Mode attribution stays Unknown and does not authorize duplicate execution. Native Project catalog behavior is qualified; synchronization with desktop saved Projects is not.
+
+Global Guardian preference changes apply to subsequent native turns. Active turns, already-pending human approvals and previously captured child policy keep native ownership. Reviewer selection never grants Full Access. Private details retain verified native assistant output and item-free terminal metadata only. They exclude raw reasoning frames and do not enter parent canonical history, complete Work or replay actions. Exact action Review association is unavailable in this runtime and remains explicit. Optional records are limited to 128 at 64 KiB each, with 32 short overview previews; reconnect gaps remain visible.
+
+Agent/Material scope precedes SQL page limits. Work/evidence views keep at most 100 records per category and expose additional retained data. Selected evidence uses digest-checked 8 KiB pages up to 32 MiB. Work association does not move the native conversation to another execution directory or create another sandbox. Pause does not roll back existing native actions.
+
+The change has no installed-app, live-account, real model-quality, audible-quality or public release acceptance. Native provenance and local guards do not prove semantic correctness. Keep these limits when reusing qualification after cache or run-directory cleanup.

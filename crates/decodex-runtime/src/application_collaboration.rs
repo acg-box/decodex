@@ -192,7 +192,7 @@ mod tests {
 	use super::*;
 	use decodex_database::AgentInboxEvent;
 	fn snapshot() -> AgentSnapshotDto {
-		serde_json::from_value(serde_json::json!({"runtime_source":"test-source","connection_initializing":false,"workspaces":[],"work_items":[
+		serde_json::from_value(serde_json::json!({"runtime_source":"test-source","connection_initializing":false,"projects":[],"work_items":[
    {"id":"main","parent_goal_id":null,"kind":"manager","title":"Main","codex_thread_id":"main-thread","active_turn_id":null,"dispatch_state":"idle","status":"open","next_check_at_micros":null,"created_at_micros":1,"updated_at_micros":1},
    {"id":"lead","parent_goal_id":"main","kind":"manager","title":"Lead","codex_thread_id":"lead-thread","active_turn_id":null,"dispatch_state":"idle","status":"open","next_check_at_micros":null,"created_at_micros":1,"updated_at_micros":1},
    {"id":"goal","parent_goal_id":"lead","kind":"goal","title":"Goal","codex_thread_id":null,"active_turn_id":null,"dispatch_state":"idle","status":"open","next_check_at_micros":null,"created_at_micros":1,"updated_at_micros":1},

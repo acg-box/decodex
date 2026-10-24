@@ -1499,6 +1499,85 @@ impl AgentClient {
 		}
 	}
 
+	/// Read a complete selected Work with digest-bound paging. Does not resume an Agent.
+	pub async fn work_detail(
+		&self,
+		work_id: EntityId,
+	) -> Result<crate::work::WorkPortfolio, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let mut offset = 0;
+		let mut digest: Option<String> = None;
+		let mut complete = String::new();
+		loop {
+			let completed = time::timeout(
+				CLIENT_TIMEOUT,
+				self.transport.query_inner(
+					"decodex-work-detail",
+					QueryPayload::GetWorkDetail {
+						work_id: work_id.clone(),
+						digest: digest
+							.clone()
+							.map(WireText::new)
+							.transpose()
+							.map_err(|_| ClientFailure::ProtocolMalformed)?,
+						offset,
+					},
+				),
+			)
+			.await
+			.map_err(|_| ClientFailure::ProtocolTimeout)??;
+			close_one_shot_socket(completed.socket).await;
+			let QueryResultPayload::WorkDetail(page) = completed.value else {
+				return Err(ClientFailure::ProtocolMalformed);
+			};
+			if !page.matches_request(digest.as_deref(), offset) {
+				return Err(ClientFailure::ProtocolMalformed);
+			}
+			let crate::WorkDetailResult::Page { digest: observed, text, next_offset, .. } = page
+			else {
+				return Err(ClientFailure::ProtocolMalformed);
+			};
+			digest = Some(observed);
+			complete.push_str(&text);
+			if let Some(next) = next_offset {
+				offset = next;
+			} else {
+				return serde_json::from_str(&complete)
+					.map_err(|_| ClientFailure::ProtocolMalformed);
+			}
+		}
+	}
+
+	/// Read one selected private reviewer record, preserving explicit UTF-8 paging.
+	pub async fn private_review_details(
+		&self,
+		thread: WireText,
+		turn: WireText,
+		item: WireText,
+		offset: usize,
+	) -> Result<crate::PrivateReviewDetailsResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"decodex-private-review",
+				QueryPayload::GetPrivateReviewDetails {
+					reviewer_thread_id: thread,
+					reviewer_turn_id: turn,
+					item_id: item,
+					offset,
+				},
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::PrivateReviewDetails(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read one page of the exact saved Guardian action and rationale.
 	pub async fn guardian_detail(
 		&self,
@@ -2310,7 +2389,7 @@ impl AgentClient {
 							Some(_),
 							Some(ResultPayload::AgentAccepted { work_id }),
 							None,
-						) if matches!(action, AgentActionDto::AddWorkspace { .. })
+						) if matches!(action, AgentActionDto::AddProject { .. })
 							|| &work_id == agent_action_work_id(&action) =>
 							AgentCommandResponse::Accepted { work_id },
 						(CommandOutcome::Rejected, None, None, Some(error))
@@ -3689,7 +3768,11 @@ impl<T> CompletedOneShot<T> {
 
 fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 	match action {
-		AgentActionDto::AddWorkspace { workspace_id, .. } => workspace_id,
+		AgentActionDto::ManageWork { agent_id, .. } => agent_id,
+		AgentActionDto::SetGuardian { settings_id, .. } => settings_id,
+		AgentActionDto::SetProjectLead { project_id, .. } => project_id,
+		AgentActionDto::SetAssistant { agent_id, .. } => agent_id,
+		AgentActionDto::AddProject { project_id, .. } => project_id,
 		AgentActionDto::NewConversation { work_id, .. }
 		| AgentActionDto::DiscardEmptyWork { work_id } => work_id,
 		AgentActionDto::AcknowledgeAppUiCall { work_id, .. } => work_id,

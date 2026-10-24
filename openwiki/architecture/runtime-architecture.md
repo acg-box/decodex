@@ -34,6 +34,8 @@ sources:
     resource: repo://crates/decodex-components/src/pin.rs
   - id: openwiki-source-6230c010baca677fa60c32c1
     resource: repo://crates/decodex-protocol/src/client.rs
+  - id: openwiki-source-cc0439b23243c3697ba49199
+    resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-1f19769e3cb97a2389e92f82
     resource: repo://crates/decodex-runtime/src/account_launch.rs
   - id: openwiki-source-9e21e877b2d7ad96b0a4d637
@@ -48,14 +50,24 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_context_settings.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-a4a2658e06fa2cf48ff4589e
+    resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
   - id: openwiki-source-52d3ef4824079f66e9063566
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
+  - id: openwiki-source-b1dd4c8ab85f342314daa6f1
+    resource: repo://crates/decodex-runtime/src/agent/work.rs
+  - id: openwiki-source-a958837c2596362a3517c745
+    resource: repo://crates/decodex-runtime/src/websocket.rs
+  - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
+    resource: repo://crates/decodex-runtime/src/work_portfolio.rs
   - id: openwiki-source-07c9cc033899826079f8efb5
     resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
   - id: openwiki-source-88b81a215b1bac061dad80ec
     resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
+  - id: openwiki-source-28af4781ad8d9558410630da
+    resource: repo://database/src/works.rs
   - id: openwiki-source-87eeaebc39a3d2229938f9d2
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-e8c30c6f5849a5077d7b4aa5
@@ -66,10 +78,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
+generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T06:15:55.391Z
+    at: 2026-10-24T21:19:56.719Z
 ---
 
 # Runtime Architecture
@@ -106,6 +118,14 @@ Codex app-server owns provider threads and execution. Decodex adds durable work 
 Decodex resolves child requests through the verified native parent chain. The integration does not maintain a second child-admission lifecycle.
 
 Retired repository/GitHub effect orchestration does not return through a wiki update. Historical records remain readable; a historical operation shape is not live execution authority.
+
+## Project, Agent and Work boundary
+
+Project and Work are durable business records. A persistent Agent owns one current native conversation and can own several Works. Assistant and Project Lead select responsibilities of existing Agents. `work_read` and `work_manage` expose scoped evidence and atomic decisions. They do not create an execution engine. Native helpers use native spawn, messages, waits and continuation; independent Agents exchange scoped Collaboration Requests through the existing inbox.
+
+The overview contains Work headers. `work_portfolio` serves selected evidence in digest-checked 8 KiB pages with a 32 MiB ceiling. SQL applies Agent and granted Material scope before the per-category record limit. The global Guardian coordinator records desired reviewer preference and actual per-source application receipts. It does not own execution approval or business assessment. Optional private records exclude raw reasoning and preserve explicit missing action associations.
+
+Direct schema 56 migration preserves genuine legacy execution and history. New conversations advertise the canonical tool revision. Existing tool sets use a durable migration journal and exact native quiescence/readback. Unknown external effects remain parked. Previous thread history is read-only evidence, not input authority. See [coordination](chief-coordination.md) and [local database](../operations/local-database.md).
 
 ## Native launch policy
 
@@ -145,7 +165,7 @@ Changing the On or Off choice preserves an existing threshold table. Defaults ap
 
 Background compaction prepares a native summary before context fills. Native runtime eligibility and thresholds decide whether work starts. An enabled configuration value does not prove that a running conversation is using background compaction, or that hosted latency or cost improved.
 
-Tool-output retention selects only Decodex delegation instructions. The producer sends `retain: true` for `work_instruction` while preserving its tool authority. Codex decides whether to keep it under `retain_client_tool_outputs` and its retention budget. Ordinary results, wakes and retries do not all become permanent context. See [Agent coordination](chief-coordination.md#delegation-instructions-and-native-subagents).
+Compatibility tool-output retention selects only Decodex delegation instructions. The producer sends `retain: true` for `work_instruction` while preserving its tool authority. Codex decides whether to keep it under `retain_client_tool_outputs` and its retention budget. Ordinary results, wakes and retries do not all become permanent context. See [Agent coordination](chief-coordination.md#native-contributions-and-independent-collaboration).
 
 ## Components and app updates
 
@@ -165,7 +185,7 @@ Production staging selects a separate official Release requirement. Release pinn
 
 ## Protocol and safety
 
-Clients use same-UID local transport and exact protocol/artifact compatibility. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
+Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 3.0 carries Project, Agent, Work and global Guardian. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
 
 Native shutdown admission errors use code `-32600` and the structured `serverShuttingDown` reason. The older exact-message fallback applies only when error data is absent. A classified refusal alone never authorizes replay: callers must establish exact request identity and no prior effects.
 

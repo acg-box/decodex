@@ -9,12 +9,12 @@ pub(super) struct Scope {
 }
 
 impl Graph {
-	pub(super) fn scope_bounds(&mut self, workspaces: &[decodex_protocol::WorkspaceDto]) {
+	pub(super) fn scope_bounds(&mut self, projects: &[decodex_protocol::ProjectDto]) {
 		if !self.nodes.iter().any(|n| n.row.as_ref().is_some_and(|r| r.workspace.is_some())) {
 			return;
 		}
-		// A root that coordinates across workspaces belongs above those groups.
-		// Including it in "No workspace" would stretch that frame across all branches.
+		// A root that coordinates across projects belongs above those groups.
+		// Including it in "No Project" would stretch that frame across all branches.
 		let coordinator = self
 			.nodes
 			.iter()
@@ -52,9 +52,9 @@ impl Graph {
 				let title = row
 					.workspace
 					.as_ref()
-					.and_then(|id| workspaces.iter().find(|w| &w.id == id))
+					.and_then(|id| projects.iter().find(|w| &w.id == id))
 					.map(|w| w.name.clone())
-					.unwrap_or_else(|| "No workspace".into());
+					.unwrap_or_else(|| "No Project".into());
 				self.scopes.push(Scope { id: row.workspace.clone(), title, count: 1, bounds });
 			}
 		}

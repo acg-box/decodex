@@ -89,12 +89,15 @@ fn app_exposure_click_sends_once_and_reads_after_lost_reply(cx: &mut TestAppCont
 
 fn snapshot() -> AgentSnapshotDto {
 	AgentSnapshotDto {
+		agents: Default::default(),
+		guardian: Default::default(),
+		portfolio: Default::default(),
 		archived_work_ids: Default::default(),
 		agent_slots: Default::default(),
 		context_references: vec![],
 		connection_initializing: false,
 		runtime_source: Some(EntityId::new("native-source").unwrap()),
-		workspaces: vec![],
+		projects: vec![],
 		dependencies: vec![],
 		work_items: vec![AgentWorkItemDto {
 			id: "root".into(),

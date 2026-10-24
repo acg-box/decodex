@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6417df3e01a17d99001fb9efba592cf388f8935a583bdaede6eecf9c2975a7f4",
+  "pageVersion": "sha256:70465c59df938070aec759b23acf3e84add508bc3b7bf12b7b203329b0da67cc",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -8,11 +8,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
-          "version": "repo-file-v1:sha256:cf7267ec7f000910e7e9473f6536ffa866b610f5d4bf67fbdfb8c9204149b19f"
+          "version": "repo-file-v1:sha256:12397d9963f7616af8768f21407f3aeae1041ec981861284d742ee555b2255cb"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
-          "version": "repo-file-v1:sha256:3fec0fe1263de777dbd431c294831a0d3c025706d3d36354846c758079aa62a4"
+          "version": "repo-file-v1:sha256:17de3c2bb07b65019de3937223264df20da4c8c8e692853973de9047bf252bc3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
@@ -20,21 +20,21 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:24cf1693cae58c3a2ddcc1e2c7b65b90c1797556d83673930521303011c792cd"
+          "version": "repo-file-v1:sha256:4144fe9d5d5b5efd1833abb7ac329b904cf28e859d714e0f968fd06b4172f92d"
         }
       ]
     },
     {
       "id": "claim_adf48d529f1e46d69088e1b7e1d6a6eb",
-      "statement": "Native glass panels retain GPUI state and input ownership while AppKit supplies composition and attached-window focus handling.",
+      "statement": "Native material panels retain GPUI state and input ownership while AppKit supplies composition and attached-window focus handling.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_composer.rs",
-          "version": "repo-file-v1:sha256:4b953987153170731403be0fcfb6eebc7cc79eb52e88923deb55c913eea6533d"
+          "version": "repo-file-v1:sha256:14883f848aa633f8002d89f7dc4c496b07408e939592c82623da73d2480effc3"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/native_glass_panel.rs",
-          "version": "repo-file-v1:sha256:8268bcb278f6d3d9b3fe0d3040869b510050a5be496265d77eb5d9ae3fbb35d5"
+          "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
+          "version": "repo-file-v1:sha256:902b81c351c2315bf53997d5c26bc284f2bf79b53bcc094b46682a21b924198c"
         }
       ]
     },
@@ -53,12 +53,12 @@
       "statement": "Conversation selection is read-only and shares one selection document across the text blocks of a rendered message. Copy controls show transient success feedback; selection does not span all messages.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_markdown.rs#L257-L322",
-          "version": "repo-lines-v1:sha256:2cfedc2187e449730436f69464bfce305a3b97a18e0ef2818e663626aaaeac64:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViZDlkYTMwMjE5NjY0N2ExM2IzMDM3ZTQyZjVjMjE3YWI3ZDk3NjVhMjQ3OWM1ODIzN2M1Njg1MGQ0MzQyMTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1ZjI5ZmE5YzBlYmJjOGY1YjIxNWUxYzc1ZGVlOTY5MWViYjdjYzhjYzZhMDc2YjVhMzg3Mjg2YTRhYjk5YWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzYTQ4MzQwZTY2NzYyOTVmOTQzYWVkM2Y3YzVlMjY0M2U5N2VjYTA2NGEyMjhhODQ4MDY0MzVjYmM1OGJjYzgifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_markdown.rs#L260-L328",
+          "version": "repo-lines-v1:sha256:afee679e472c8209fb9093f327e3bf2a458fdb3a0262d59fee774bc4dc42f09e:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViZDlkYTMwMjE5NjY0N2ExM2IzMDM3ZTQyZjVjMjE3YWI3ZDk3NjVhMjQ3OWM1ODIzN2M1Njg1MGQ0MzQyMTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM1ZjI5ZmE5YzBlYmJjOGY1YjIxNWUxYzc1ZGVlOTY5MWViYjdjYzhjYzZhMDc2YjVhMzg3Mjg2YTRhYjk5YWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEzYTQ4MzQwZTY2NzYyOTVmOTQzYWVkM2Y3YzVlMjY0M2U5N2VjYTA2NGEyMjhhODQ4MDY0MzVjYmM1OGJjYzgifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_markdown.rs#L100-L155",
-          "version": "repo-lines-v1:sha256:db8ad6043fb3f461cd7462b9b0e7bd76b7742e5f67cda94eb129ec68bbedabd3:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzZDY2MTNmNGVhZDc0YWQ1ODhhZTA2N2IyZmI0OTI4ODk3OWY2YWU2YWRjNmYwZDZmYTY0ZmVhY2YxZWQ1YzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYzc2MDIwYmFlNzA1NzdlNjRiMzMwZGNhODNmZGYyNGYzZDc1OTNhMDE1NGQ4YWJlYzZkYzYzZjU4OTdmZDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5MzI4NjJkMDY2YTVhZmQwZDA1MTdkZGJiNjgxMjNhMTYzNmRiMGMwNWU1YTBlMDI0NGJkODI5YmJlNmI0MWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzMzE4ZTRlZjFjMjA5NjE0YzhmYjExYjI0ZmM4YjRiNjc1NmEyYmRlZThhZThkMjNmYTVjZWRkMGIxMTkzZWMifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_markdown.rs#L103-L158",
+          "version": "repo-lines-v1:sha256:286343010c6f8a5b01984283776a9fef39163a22c2e96c7b1d34ecc3cdd847f0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzZDY2MTNmNGVhZDc0YWQ1ODhhZTA2N2IyZmI0OTI4ODk3OWY2YWU2YWRjNmYwZDZmYTY0ZmVhY2YxZWQ1YzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkYzc2MDIwYmFlNzA1NzdlNjRiMzMwZGNhODNmZGYyNGYzZDc1OTNhMDE1NGQ4YWJlYzZkYzYzZjU4OTdmZDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY5MzI4NjJkMDY2YTVhZmQwZDA1MTdkZGJiNjgxMjNhMTYzNmRiMGMwNWU1YTBlMDI0NGJkODI5YmJlNmI0MWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzMzE4ZTRlZjFjMjA5NjE0YzhmYjExYjI0ZmM4YjRiNjc1NmEyYmRlZThhZThkMjNmYTVjZWRkMGIxMTkzZWMifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_text_selection.rs#L20-L95",
@@ -107,8 +107,8 @@
           "version": "repo-lines-v1:sha256:7adf4cf5a37a5cf98aa1edc83975910661797b0b009455947435b521ffc4f03c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YmZiY2I2OWM3MTIxZmE4Y2UxOTI1ZjM1YzU0ZTc2ODkxNGZkYTY0NDI0YzdmODQxNzE4N2MxZGM4YmY3MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1OTY1ZmU4Zjg5ZDU0OWU2YTkxY2Y5YjIxMGRjNTcwOGEwZDg1OTE5MWI5OTQyNmY5YTBjMzBkYzVkNmU5ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5M2NjZTJlMTY0ZWE0ZmFkMTRkMzYzYzdhYzQ4OTc5MDYzMDdkOWZmNTk4YWExMDdmNDYyZTkxMTg1NWJiYzkifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell_status.rs#L447-L514",
-          "version": "repo-lines-v1:sha256:d65ade9e4354806d6dc62aa04282fb959dc860b5bcb3e17982dceb5533c6d920:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmYWQxMjFmZGRlZGRmNGU0NzJmYzUyZDgxNDU3Y2VmMThjYmU2ZDg0MzNiMjQ0Y2NmMmYxMjYyNmRmNjc5YzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY1YWJjM2QzMTE1ZTkyZTk2ZjA4ZTc3ZTk5ZjYzMmE0ZjEwYWFmMGNkYzNkNDUwMGI2MDE5MGEwODg3NTUyMDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1MzU0NDA1YjNkYjY5MzljOTQ5Mjg1MTQzMTNjY2JlODVhN2NlMTg1OGUwZGMzNzMyNTAwNTkzNDRiYWVjMWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY3ODUzNGMwNjk1YTRhMDFhMzBkOGQ4NTM5OTcyNGViNzE0MDQ3ZDk4ZDc0MGEyMjgxOGU3NmE3MDE3YmY0YWUifQ"
+          "resource": "repo://apps/decodex-gpui/src/shell_status.rs#L450-L516",
+          "version": "repo-lines-v1:sha256:d95d03c0047739fb72e977cc436c1d5ac413953f94a23c9bb53f65d66431f272:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVjZjQ2NDBmOTlmZDY4Y2Y1YmMzY2M1Y2YwZjAwZjgyZDhlMjJkZTYyMTk2ZDQzMDAyNDI2N2JhNzJkMjViYTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5NzE1OWM4Yjg5NzM3YjFiMjE0NjE2ZmRiMjhlOWM0OGZjMTExYmExYjRjMWE0NWNkZTM0OTcwNjBjMDNkYWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4ODQ5NmU5NDQ4NGZmMjBjNTM0ZTE4MjcxZTFmNGJiMTVmMzU1ODBjYWU1NTBlNTZkMWNhZjI1N2QwMmFmYmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2ZTVlNGI0YmM0ZTU2MWMxMGFjNjIzYWY1N2ViNzFiNjc3YjIyZjI5ODJkMWQwMjZlNGYwZDcwYzcyMWEzMjEifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_status.rs#L583-L591",
@@ -130,13 +130,59 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/account_feedback.rs",
-          "version": "repo-file-v1:sha256:59c701f8586277f51a968e2d7f6ac0751d371d1a20fda6692e8b369c9a06bdb0"
+          "version": "repo-file-v1:sha256:90e4c74226e88ad47ed8c09d47fbbdd7680816bc2a94de254f0efa3b96e933cc"
+        }
+      ]
+    },
+    {
+      "id": "claim_9ddd3108eb424089a7b91446ef107583",
+      "statement": "The existing desktop adds Project-grouped Work with existing-Agent responsibility selectors, selected scoped evidence and global Guardian controls, while preserving conversations and the Collaboration panel.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
+          "version": "repo-file-v1:sha256:4ab55056b0f4205cd0fc351e7557065f41519869b8248c1049fda8781d964d00"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
+          "version": "repo-file-v1:sha256:4144fe9d5d5b5efd1833abb7ac329b904cf28e859d714e0f968fd06b4172f92d"
+        }
+      ]
+    },
+    {
+      "id": "claim_59f8b62c37b94b048d753af249881c24",
+      "statement": "Selected Work and private reviewer records load separately from bounded overview previews, retain explicit source and size limits, and do not treat cache or native completion as Work acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
+          "version": "repo-file-v1:sha256:4ab55056b0f4205cd0fc351e7557065f41519869b8248c1049fda8781d964d00"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/work_portfolio.rs",
+          "version": "repo-file-v1:sha256:fd24557ef9583bda2f5781f4ad15afa19ae006533728ccc087fc47a38209b7a2"
+        },
+        {
+          "resource": "repo://database/src/guardian_settings.rs",
+          "version": "repo-file-v1:sha256:55f3c9a78b8ba21e28125f3d4edb836ccfb6a155b603390e95c8fd5ca78e61b9"
+        }
+      ]
+    },
+    {
+      "id": "claim_fe5f5991ee5c40a0815857f47a9e5871",
+      "statement": "Pause Work blocks new contributions and completion without rolling back native execution; global Guardian settings are separate from native execution permissions.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
+          "version": "repo-file-v1:sha256:4ab55056b0f4205cd0fc351e7557065f41519869b8248c1049fda8781d964d00"
+        },
+        {
+          "resource": "repo://database/src/works/commands.rs",
+          "version": "repo-file-v1:sha256:3bc77003902aa98bcfd2aafe6b31a3d42be0ee4115224938778c66753a1ea7af"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T06:08:33.099Z"
+    "at": "2026-10-24T21:11:31.338Z"
   }
 }

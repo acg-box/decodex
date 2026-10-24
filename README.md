@@ -19,29 +19,28 @@ follow-up actions.
 
 ### Agent Coordination
 
-The personal Agent coordinates goals through independent Codex threads. It receives
-worker and automation results, requests repairs in the original worker thread, and
-reports decisions to the user. SQLite preserves work relationships and obligations
-across service restarts. Ordinary Conversations remain available for direct work.
-See [Agent coordination](openwiki/architecture/chief-coordination.md) for the current ownership model.
+Project, Agent and Work are separate. A user-created Agent has one current native conversation
+and can own several Works. Assistant and Project Lead are responsibilities of existing Agents.
+Agents use native Codex Subagents for bounded execution and scoped Collaboration Requests for
+independent peers. Work retains current requirements, Materials, Results and owner assessment
+across service restarts. Global Guardian controls native action review; execution permissions
+remain separate. See the [Project, Agent and Work contract](openwiki/decisions/project-agent-work.md).
 
 ## Status
 
 ### Supported product slice
 
 ```text
-User -> Agent conversation -> same-UID service -> durable inbox
-                                      |
-                                      v
-                         Agent thread <-> independent worker threads
-                                      |
-                         result / decision / next check
-                                      |
-                              user-facing briefing
+User <-> Agent conversation <-> Codex native Subagents
+              |
+       Project / Work / evidence
+              |
+       scoped Collaboration <-> independent Agent
 ```
 
+
 The Agent model chooses its decomposition and checks. Code owns durable state,
-message correlation, scheduling and actual permissions, not a mandatory sequence
+message correlation and coordination receipts; native Codex enforces execution permissions, not a mandatory sequence
 of planning and review roles. A Codex link is absent until readback supplies the exact provider thread ID; a
 Decodex Conversation UUID is never substituted. Provider thread identities are opaque, limited
 to the SQLite-compatible 512-byte boundary, and percent-encoded as exactly one deep-link path

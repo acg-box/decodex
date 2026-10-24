@@ -1,6 +1,7 @@
 //! Typed vNext wire contracts and same-UID local transport shared by clients and
 //! `decodex serve`.
 
+pub use decodex_core::{guardian, work};
 mod agent_collaboration;
 pub use agent_collaboration::{
 	AgentExchangeAssessment, AgentExchangeDto, AgentExchangeKind, AgentExchangeQuestionDto,
@@ -71,6 +72,7 @@ mod retained_session;
 mod voice;
 mod weather;
 mod wire;
+mod work_portfolio;
 
 pub use native_startup_config::{
 	NativeStartupConfigLocation, NativeStartupConfigStatus, NativeStartupConfiguration,
@@ -101,7 +103,7 @@ pub use self::{
 		AgentSnapshotResult, AgentStartDto, AgentTaskReferenceDto, AgentTurnUsageDto,
 		AgentUsageDetailsDto, AgentUsageDto, AgentWorkItemDto, AgentWorkKindDto,
 		AgentWorkStatusDto, MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS,
-		MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS, WorkspaceDto,
+		MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS, ProjectDto,
 	},
 	agent_app_exposure::{AgentAppExposureResult, AgentToolExposureSurface},
 	agent_app_settings::{
@@ -124,6 +126,7 @@ pub use self::{
 	agent_guardian::{
 		AgentGuardianDetailResult, AgentGuardianReviewDto, AgentGuardianReviewsResult,
 		AgentGuardianStatus, AgentGuardianSubmission, GUARDIAN_DETAIL_PAGE_BYTES,
+		PrivateReviewDetailsResult,
 	},
 	agent_hooks::{AgentHookChange, AgentHookDto, AgentHookEditReceipt, AgentHookSettingsState},
 	agent_integrations::{
@@ -295,7 +298,7 @@ pub use decodex_core::{FastModeFailure, global_fast_mode_enabled, set_global_fas
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 130 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 3, minor: 0 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
@@ -314,6 +317,8 @@ impl ProtocolVersion {
 		Ok(self)
 	}
 }
+
+pub use work_portfolio::{MAX_WORK_DETAIL_BYTES, WORK_DETAIL_PAGE_BYTES, WorkDetailResult};
 
 #[cfg(test)]
 mod tests {

@@ -1,11 +1,11 @@
 ---
 type: Reference
-title: "Agent coordination and native conversations"
+title: "Project, Agent and Work coordination"
 description: "Local work ownership, native conversation dispatch, explicit branches and recovery."
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T06:08:33.099Z
+    at: 2026-10-24T21:19:56.719Z
 sources:
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
@@ -13,6 +13,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_native_agents.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-d0b9aaf952250307abc4342e
     resource: repo://crates/decodex-codex/src/app_server_client/archive.rs
   - id: openwiki-source-2b08587e9b26e203156110c8
@@ -25,20 +27,20 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_visibility.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
-  - id: openwiki-source-6e91ea695daa42f5ed1edb74
-    resource: repo://crates/decodex-runtime/src/agent/async_projection.rs
   - id: openwiki-source-a5bf72500fe69a895fca0dac
     resource: repo://crates/decodex-runtime/src/agent/coordination.md
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-52d3ef4824079f66e9063566
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
-  - id: openwiki-source-c128f93c524a45d623373bc4
-    resource: repo://crates/decodex-runtime/src/agent/observations.rs
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
+  - id: openwiki-source-d511cef2848dd5f6968572ae
+    resource: repo://crates/decodex-runtime/src/agent/tool_migration.rs
+  - id: openwiki-source-b1dd4c8ab85f342314daa6f1
+    resource: repo://crates/decodex-runtime/src/agent/work.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-58c0167d31c3e40dc89591ab
@@ -47,54 +49,60 @@ sources:
     resource: repo://database/src/agent_guardian.rs
   - id: openwiki-source-e1fc2e0e81623c7dd7ff5417
     resource: repo://database/src/agent_process.rs
-generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
+  - id: openwiki-source-0f0fc00c258a3ddad6935fcc
+    resource: repo://database/src/agent_tool_migration.rs
+  - id: openwiki-source-28af4781ad8d9558410630da
+    resource: repo://database/src/works.rs
+  - id: openwiki-source-4e05748daab41d1c9c2f54dd
+    resource: repo://database/src/works/collaboration.rs
+  - id: openwiki-source-c0eb738b42368debe7ef7545
+    resource: repo://database/src/works/commands.rs
+generated: { by: "codex", at: "2026-10-24T21:19:56.719Z" }
 ---
 
-# Agent coordination and native conversations
+# Project, Agent and Work coordination
 
-Agent is the user's primary agent for general-purpose work: discussion, research, writing, planning, analysis, and software. It may handle simple work itself or organize workers and subordinate Agents. The user does not have to operate a delegation protocol.
+Project, Agent and Work are separate durable objects. An Agent has one current native conversation. Assistant and Project Lead are responsibilities of an existing Agent. The user can work directly with the Project Lead from discussion through delivery. One Agent can own Work in several Projects. There is no fixed L0/L1/L2 hierarchy or mandatory personal router.
+
+The [accepted contract](../decisions/project-agent-work.md) defines the shared vocabulary and minimum state rules. The default model tools are `work_read` and `work_manage`. Only the user creates persistent Agents. Native Codex supplies bounded Subagents; Decodex does not create a second temporary executor. The former managed-worker creation, continuation and goal tools are retired from the default tool surface and refused if an older conversation still advertises them. Compatibility storage preserves genuine old execution and history.
 
 ## Owners and flow
 
-The GPUI composer sends typed commands to the service-owned `AgentHost`. The host persists accepted input under a stable command identity. `AgentCoordinator` binds work items to native Codex threads, dispatches exact turns, observes results, and records decisions in SQLite. Codex owns native thread history and provider execution; Decodex owns work relationships and presentation.
+The desktop sends typed commands to the service. SQLite owns Project membership, Agent responsibilities, Work requirements, holds, Results, assessments and Collaboration Requests. Codex owns native threads, turns, Subagents, messages, waits, context, Goals, permissions and enforcement. Work commands persist business decisions; they do not spawn or message native helpers.
 
-`agent/instructions.md` defines the behavioral policy. A worker finishing is evidence for the Agent to assess, not automatic parent-goal completion. Dependencies require accepted, resolved work. Review starts after an artifact exists; a review does not grant execution permission. Continuation can invalidate previous acceptance.
+A Work has one accountable Agent, immutable requirements revisions and explicit completion criteria. The owner can perform it directly or use native helpers. `work_read` supplies current scoped evidence. `work_manage` uses a stable command ID and exact content for retries. The service verifies authority from the actual delivered user decision, then applies the command transactionally. A contributor's request is application evidence, not a new user instruction.
 
-## Delegation instructions and native subagents
+The evidence chain is Work -> requirements -> issued instruction -> execution -> Result -> assessment. Native evidence keeps exact thread, turn and item identities. Mutable files keep their digest and execution-directory boundary. Identity checks establish provenance; the owner still judges whether the Result meets the requirements. Native completion, transport delivery, acceptance, a Guardian Review and a read receipt do not complete Work.
 
-### Questions, receipts and completion
+Project membership does not grant private conversation access. Agent and granted Material scope is applied in SQL before bounded reads. A native conversation still has its actual execution directory and Project. Associating Work with another Project does not switch that directory, change permissions or create a sandbox. Use a separate execution context when hard isolation is required.
 
-Agents first investigate questions within their assigned scope and authority. They can coordinate directly through existing authorized channels. They ask the responsible parent when a blocker remains or a decision exceeds their delegation. The parent checks instructions and evidence before asking the user. A managed worker without a parent messaging tool returns its blocker and evidence in its work result. The parent can answer through the existing continuation path. These are model instructions; they do not grant new permissions or add a question router.
+## Native contributions and independent Collaboration
 
-An Agent conversation stays open for later requests. Resolve a separate child goal, and assess worker results with `agent_disposition`. Each disposition uses current pending receipt IDs for the exact work item. Do not acknowledge a handled receipt again. The Agent's own user input is acknowledged when its turn ends.
+The owner saves a contribution intent before native dispatch, uses the returned `nativePrompt`, then binds the observed direct native call. Recovery requires exact parent turn/call and child evidence. V1 uses its native tools and Result history. V2 uses matched delegation identities and root-turn evidence; canonical child history does not contain inbound Agent messages. Missing or ambiguous evidence stays Unknown. Nested Code Mode attribution is not qualified and does not justify a duplicate spawn.
 
-`agent_continue_worker` starts another turn only when the worker is idle. A question can arrive while its current turn still runs. A Busy reply means the instruction was not sent or queued. Finish the parent turn, wait for completion, inspect `agent_list_work`, then continue the same idle worker. A committed `decodex/work_instruction` retires earlier worker questions; later questions remain available.
+The selected native backend comes from native model metadata and configuration. A feature flag alone does not establish V1 or V2. Qualified V2 can wake its idle owner from native completion. V1 uses the native wait tool for required Results. Neither path needs Ultra or a local polling controller.
 
-Decodex worker tools create persistent work records and dispatch their bound native conversations. Native Codex subagents remain a separate execution owner. Their requests and approvals follow verified native ancestry. The desktop presents both forms of work without turning a native child into a local manager.
+Independent Agents cooperate through scoped Collaboration Requests in the existing durable inbox. Sending can queue while the recipient is busy. Delivery is distinct from acceptance; acceptance requires the exact delivered turn. A returned contribution remains pending until the owner accepts it or requests repair. Repair keeps the same request and adds a new immutable instruction. Required requests must be handled before Work completion. Cancellation affects that request; late evidence remains history.
 
-Decodex marks only its `work_instruction` tool outputs for native retention. This includes the initial delegated instruction and an explicit follow-up instruction. These inputs keep the `decodex` tool namespace and do not become user or developer messages. Ordinary `work_wake` notifications, capacity retries and injected external result batches do not request retention.
-
-Codex honors that request only when `features.retain_client_tool_outputs` is enabled and the output fits its shared retention budget. Preservation is bounded; it does not replace work records, delivery receipts or recovery checks. The Context defaults panel uses native configuration for this setting. See [Runtime architecture](runtime-architecture.md#context-defaults).
+Questions first stay within the assignment and existing authority. A Subagent uses native messages and waits. An independent Agent uses the scoped request. The owner escalates only missing decisions or authority to the user. Ask Me approvals remain human-owned. Agent conversations stay available after individual Work completes.
 
 ## Persistence and recovery
 
-Work, inbox events, dependencies, dispositions, process bindings, usage and pending requests survive service restart. Stable source IDs deduplicate external evidence. Unknown dispatch is not proof that no work started: reconcile exact thread/turn history instead of replaying.
+Work, instructions, inbox delivery, requirements, Results, assessments and command receipts survive restart. A retry with the same command ID and exact content returns its committed receipt before mutable external evidence is checked again. Unknown native effects are reconciled from exact history. No missing acknowledgment authorizes replay, a second spawn or optimistic completion.
 
-Existing Agent threads retain their identity and native capabilities; resumption does not fork an older thread merely to attach a new tool set. Prior-boot process death requires positive kernel evidence. Optional metadata failures do not close the shared transport.
+Changes preserve earlier instructions and Results. An old Result cannot complete a newer requirements revision. A hold blocks new Decodex contributions and completion. It does not roll back or automatically stop an already-running native action, Goal or child. Native interruption remains native-owned.
 
-When another client owns the conversation, sending is unavailable. The host rejects input when this state is known, without queuing a message. A race can leave previously accepted but unsent input; that input is retained as a user-decision record, not automatically resent when ownership becomes available. Availability checks do not create turns. Archive restoration is a separate, explicit desired-state operation.
+A tool-surface change uses the durable migration journal only after the source and descendants are quiescent and native inspection is available. It saves a positively known replacement before retiring the old source, verifies settings after resume and requires a positive archive receipt before switching. Uncertain creation or retirement stays parked. Previous thread history remains available read-only; its old parent identifiers grant no input authority.
 
-## Inbox ownership and native queues
+Known external ownership rejects input before enqueueing it. A race can leave accepted but unsent input; that input remains a user-decision record and needs a fresh explicit send when ownership returns. One Agent's external writer does not block unrelated Agents. Prior-boot process death still requires positive kernel evidence; optional metadata failures do not close the shared transport.
 
-Keep the Decodex inbox as the dispatch owner for Decodex work. A native user-message queue is not a replacement for the work scheduler. Do not write the same input to both queues.
+## Inbox and native queues
 
-Before dispatch, Decodex checks dependencies, work state and native thread ownership. It selects the execution settings, records the dispatch intent, then calls `turn/start`. The inbox also contains async question answers and external work evidence. These records have different input roles and recovery rules. A queued user message cannot represent all of them.
+The existing inbox owns Decodex user input, async answers and peer application evidence. These retain different provenance and recovery rules. Decodex validates dispatch state, dependencies and native ownership, records intent, then submits the exact native turn. It does not write the same input to a second native queue.
 
-The native `thread/queue` API stores user input for a native thread. Its start request does not carry Decodex dependencies, account selection or the local dispatch receipt. The upstream queue deletes an item after native admission reports `Started`. This deletion does not commit the Decodex receipt. See the [native queue implementation at the reviewed revision](https://github.com/openai/codex/blob/a397079287e6638b39dda329835350d93222681f/codex-rs/ext/queue/src/service.rs#L365-L445). This is source evidence, not a claim that Decodex has adopted or qualified that queue.
+Native user queues remain native-owned. They do not carry all local dependency, account, application-evidence and delivery semantics. A future queue cutover would need explicit reconciliation of uncertain admission before any pending input moves. No such cutover is part of this implementation.
 
-The current decision is to retain the existing inbox and direct native turn admission. There is no data migration and no second native enqueue operation. Native conversations and their existing queues remain native-owned; this decision does not remove their data.
-
-A future change must define a cutover before moving pending messages. Stop local dispatch for the exact source, reconcile every uncertain send against native history, and map each eligible user input to one stable native submission ID. Keep async answers and application evidence under their existing owners. Delete a local pending record only after the exact native submission or admitted turn is observed. On rollback, reconcile native admission before restoring local dispatch. Do not replay uncertain input or treat queue deletion as proof of delivery. Such a change must also preserve dependency checks and per-message execution settings; the current native queue API is not a drop-in replacement.
+The native context preference panel still edits `features.retain_client_tool_outputs`. Compatibility delegation records can request bounded retention for `work_instruction`; wake and retry evidence does not request it. Native retention does not replace durable Work records or their owner.
 
 ## Archive synchronization
 
@@ -104,7 +112,7 @@ The reader orders native pages by update time and stops when it finds every requ
 
 Archive observations refresh in the background on a five-second interval. Only one refresh runs at a time within a native process generation; a changed set of bindings can request an earlier refresh. Work snapshots use confirmed observations without waiting for the native read. A new process starts with no inherited observations, and a late result from an earlier process cannot replace them. The service does not write a second archive flag into SQLite.
 
-The active snapshot supplies the work list and relationship graph. Archived non-root work is hidden. The personal Agent remains as the coordination entry point, with its archive state available to the input gate. Filtering removes incident relationships, pending-event entries and context references from the view. Hidden work leaves workspace membership. Live descendants remain visible under their nearest visible ancestor. Stored work and the original hierarchy remain intact. A later positive active observation restores visibility without an application restart.
+The active snapshot supplies the work list and relationship graph. Archived non-root work is hidden. The personal Agent remains as the coordination entry point, with its archive state available to the input gate. Filtering removes incident relationships, pending-event entries and context references from the view. Hidden conversation records leave the active Project view. Live descendants remain visible under their nearest visible ancestor. Stored work and the original hierarchy remain intact. A later positive active observation restores visibility without an application restart.
 
 Native child lists explicitly include all providers and exclude archived threads. Only a complete valid list replaces the previous list. When a child leaves that list, the desktop saves its draft and closes its affected tabs. Removal of one local owner clears only that owner's child state. Other open conversations keep their connection, input and view state.
 
@@ -122,13 +130,13 @@ A user can create a native branch before an input or after its completed turn. T
 
 Decodex reserves a new local work item before the native request. It saves the acknowledged native ID before a separate history read. A lost creation reply stays uncertain and cannot authorize another fork. Recovery of a known ID reads its exact source and prefix without starting a model turn.
 
-The branch is a sibling of its source, or a child of personal Main when Main is the source. It keeps the source role, workspace and recorded tool version. It does not copy pending inbox work or dependency edges. An acknowledged fork has an explicit ownership record that permits it to use the source process. Other subordinate managers do not gain that authority. A branch does not create another personal Main or silently upgrade native tools.
+The branch is an independent user-created conversation. Legacy source relationships remain compatibility evidence, not a mandatory business hierarchy. It keeps the source role, Project association and recorded tool version. It does not copy pending inbox work or dependency edges. An acknowledged fork has an explicit ownership record that permits it to use the source process. Independent Agents do not gain that authority from an old parent identifier. A branch does not create another Assistant or silently upgrade native tools.
 
 Before-input branches use the existing canonical input and draft handback owner. After-turn branches do not prefill the selected input. See [conversation recovery](../workflows/conversations-and-recovery.md) for the user actions and uncertain-result behavior.
 
 ## Verification and navigation
 
-Select focused tests from `agent/tests.rs`, `agent/tests/native_subagents.rs`, `agent/tests/archive.rs`, `agent_host.rs` and `agent_visibility.rs`. For the Busy refusal contract, use `agent::tests::completion_contract::busy_worker_refuses_unsent_input_then_continues_once_idle`. Delegation retention and input authority have separate fixtures in `agent/tests/external_context.rs`. The desktop archive tests in `agent_native_agents.rs` cover unrelated conversations, retired tabs and retained drafts. Distinguish fixture tests from live provider tests and retained historical receipts.
+Run focused tests in `agent/tests.rs`, `agent/tests/native_subagents.rs`, `agent/tests/archive.rs`, `agent_host.rs` and `agent_visibility.rs`. The desktop archive tests in `agent_native_agents.rs` cover unrelated conversations, retired tabs and retained drafts. Distinguish fixture tests from live provider tests and retained historical receipts.
 
 See [Desktop workspace](desktop-workspace.md), [Subscription voice](../integrations/subscription-voice.md), and [Runtime architecture](runtime-architecture.md).
 

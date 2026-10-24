@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2190ea2760862b62c7dd3321f5cc3b2a9e965aaa14913b56895b8c06c4928405",
+  "pageVersion": "sha256:9037393d9494f491125499b7ae310d80b5814c05b7245e60ffbf313e98efa38c",
   "claims": [
     {
       "id": "claim_180212e57d1d44369eb0d24fc94defa4",
       "statement": "Native child approval ownership requires bounded verified thread-spawn ancestry; a fork does not establish local manager authority.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/native_subagents.rs#L21-L61",
-          "version": "repo-lines-v1:sha256:767a06c62ba522ca7d70ba6f5d45e45de0050b0fee6e4b4f3d5e4c16fba424d7:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyMmI2NzA0Y2VkMTY3ZjE5YjRkNWI5YWQ2ZWU4NmExZjIwMjNjMmRiNzUwZmE0ZTEzMjZiMTdlNDhmNzU1NDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUwMTVjMGI0ZWJmMmNiYzE3NWVlNzc0NDllNzkxNjRjMjQ3YmU3Y2I2M2MzNjgzZWZiYTA3MTNmMjEwOTMxYmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/native_subagents.rs",
+          "version": "repo-file-v1:sha256:9e5e9c8cf88442215235adba888e636353fb70fb0526124dd839670fed18fcec"
         }
       ]
     },
@@ -21,10 +21,62 @@
           "version": "repo-lines-v1:sha256:58e6bc8a573d9595e85125b32737356f7e7e564af7e0a50c5ade20957a51d8df:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3NTI0ODBkZWIyMzI1ZGJiYTJkM2Q2ZjczMGI2N2MwZGIxMTJlODY0MTk1YjdhNmNmZGY0MzM2ZmYwMmRhMGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllMTBjYmI3YmZjZmJkYTYwODYyZDUwMTEyM2M0YWFkNDMzMGMxYWE3MWY5MTZhZjhmNTQwNTM1MWUzMzM2M2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwZmY5NWMyY2UwMDUxMGM0MmMyMGE4MmIwZjQwYWY4OTYwNjE5NTY2ZjkyNTgyZmY2ZjQxOTczYTllZjc1OGUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_bcde900dcc80430cae0a5b8d6438b8f3",
+      "statement": "Global Guardian persists desired reviewer preference separately from native per-source application receipts; reviewer-only publication affects subsequent turns and leaves active captures, pending approvals and execution permissions unchanged.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/guardian_settings.rs",
+          "version": "repo-file-v1:sha256:886762d9b42e7f326272ae1c494554d3ed2cbcc398950e79baf46b23c07a35ee"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs#L1-L85",
+          "version": "repo-lines-v1:sha256:c995e9573182bf2421011a9163434bb93c3af8b7aee65c601d63606a9e159fda:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmZGZmOWFhM2JhNjlhMTA4NWEyNjc2OWM0NGIxY2MyNGUwNmRkZDlhYjM0OWRkNjg0Mzk4ZjIxNDNjYzkzNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5YWYzYmIwNGFiMDM5NDBhNDA4YzUwNzJhNWNjZGUxZjhjNTFlNzlhMjJiMTVlOTk0M2U5MWVjYTJhYzI4MWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwNzY0NDlhMDc3ZjA1ZTAxZTA3YzQ3MTk4ZWFhYTA2Njk0Y2NlYWFlMjFiYTA4MWY1NmYwMWM1Mjg3N2ZlZjcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_61a41353d7d945658e87540d4c4b6ac7",
+      "statement": "Per-Agent reviewer writes are retired and rejected; Ask Me approvals remain human-owned and native Full Access stays separate.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
+          "version": "repo-file-v1:sha256:a32503172f93bd1e5dee1c1714d75236457b0df869ea9953fee9fc7f4da104e9"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1528-L1546",
+          "version": "repo-lines-v1:sha256:cfd232ec73dc3a45871fb3cf4318614d9f69ffee74f348a28a0257a1c68bf34c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5OWY2NWUyZDI2OTYwNGYxOTgyZjJmOTZkYmI2MjA2NTgwYWU5YzZkYTdiYmU0OTM0MWIzZWU0NDAwNGQ1YjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwNThlYWViNTQ5M2EyYzdlMzMyMTk5ZjVmNjgxNDkwOWMwNjhiZmMwZGNmMGRkNjdiZmVhODM4MDUzY2E3MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiNWU2ZDJjY2FlMTc5Yzk0YmI0Yzc0OWZhZmJmNzQzNjVhZGNiNjliMWE3MzY4MTE2YTM3NDBlMjRlMGQwYzkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_637e08a812b748238103dae9e9ad775a",
+      "statement": "Opt-in private records verify Guardian source and parent ancestry, retain assistant output and item-free terminal metadata, exclude raw reasoning and leave missing action association explicit.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
+          "version": "repo-file-v1:sha256:131f5d872210abf936e8e602328d7cf1fa8252941ba1832176c2bb32ea1d4839"
+        }
+      ]
+    },
+    {
+      "id": "claim_c6dd22a99ae946c1864bad5cb32de8ff",
+      "statement": "Private details are limited to 128 records of 64KiB, with 32 previews and separate exact-record readback; opt-out stops new observations without clearing approval history.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs#L245-L377",
+          "version": "repo-lines-v1:sha256:267053f01ff7890937fd2f38bb66407621fe9b10f9bfc266134557bf3927f1e3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkZjYxMzI3ZGFmZWRmNGFlZWI2MDY0NzdhNDVhYTQ5NjU2MGFiMTdmNGZlYzY2NzkzNTA0ZWIxNjFmZDBkYjRlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1YTkxYzJjMWVkNTZiNzNkMTE3NTIxZWM3MjllZTRlMmY0Yjc5ZDlmNzNkMWZlYTMxY2I5N2YwNDNjNGE0YjhlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5MzZiYTI1OGEwNjBkMmFjNWU5NTFmYTdjMmViZDVlZWQ4ZmMwNTg1Y2MyODNiMzRmMzdhOGY1NzU2ZGY3YTc0In0"
+        },
+        {
+          "resource": "repo://database/src/guardian_settings.rs",
+          "version": "repo-file-v1:sha256:55f3c9a78b8ba21e28125f3d4edb836ccfb6a155b603390e95c8fd5ca78e61b9"
+        }
+      ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.0",
-    "at": "2026-10-03T17:31:35.485Z"
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-24T21:11:31.338Z"
   }
 }

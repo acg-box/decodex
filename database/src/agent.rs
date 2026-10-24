@@ -146,7 +146,7 @@ pub struct AgentInboxEvent {
 pub enum AgentStoreSnapshot {
 	Complete {
 		managers: Vec<String>,
-		workspaces: Vec<crate::Workspace>,
+		projects: Vec<crate::Project>,
 		work_items: Vec<AgentWorkItem>,
 		dependencies: Vec<AgentDependency>,
 		pending_events: Vec<AgentInboxEvent>,
@@ -183,6 +183,7 @@ impl SqliteStore {
 			if referenced { return Err(StoreError::InvalidInput("the local draft contains work or references")); }
 			tx.execute("DELETE FROM agent_root_settings WHERE root_id=?1", [&id]).map_err(error::sqlite_error)?;
 			tx.execute("DELETE FROM agent_tool_versions WHERE work_id=?1", [&id]).map_err(error::sqlite_error)?;
+			tx.execute("DELETE FROM agents WHERE id=?1", [&id]).map_err(error::sqlite_error)?;
 			tx.execute("DELETE FROM agent_managers WHERE work_id=?1", [&id]).map_err(error::sqlite_error)?;
 			tx.execute("DELETE FROM agent_work_items WHERE id=?1", [&id]).map_err(error::sqlite_error)?;
 			tx.commit().map_err(error::sqlite_error)?;
@@ -330,11 +331,11 @@ impl SqliteStore {
 			let dependencies = transaction.prepare("SELECT work_item_id, depends_on_id FROM agent_dependencies ORDER BY work_item_id, depends_on_id").map_err(error::sqlite_error)?.query_map([], |row| Ok(AgentDependency { work_item_id: row.get(0)?, depends_on_id: row.get(1)? })).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(error::sqlite_error)?;
 			let pending_events = transaction.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL ORDER BY id").map_err(error::sqlite_error)?.query_map([], event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(error::sqlite_error)?;
             let managers=transaction.prepare("SELECT work_id FROM agent_managers").map_err(error::sqlite_error)?.query_map([],|row|row.get(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<String>,_>>().map_err(error::sqlite_error)?;
-            let workspaces=crate::workspaces::read_workspaces(&transaction)?;
+            let projects=crate::projects::read_projects(&transaction)?;
 
             transaction.commit().map_err(error::sqlite_error)?;
 
-            Ok(AgentStoreSnapshot::Complete { managers,workspaces,work_items, dependencies, pending_events })
+            Ok(AgentStoreSnapshot::Complete { managers,projects,work_items, dependencies, pending_events })
 		}).await
 	}
 
@@ -447,7 +448,7 @@ impl SqliteStore {
 			if manager || item.parent_goal_id.is_none() {
 				transaction
 					.execute(
-						"INSERT INTO agent_tool_versions(work_id,version) VALUES(?1,3)",
+						"INSERT INTO agent_tool_versions(work_id,version) VALUES(?1,4)",
 						[&item.id],
 					)
 					.map_err(error::sqlite_error)?;
@@ -458,10 +459,11 @@ impl SqliteStore {
 					.map_err(error::sqlite_error)?;
 
 			}
+			if manager || item.parent_goal_id.is_none() { transaction.execute("INSERT INTO agents(id) VALUES(?1)", [&item.id]).map_err(error::sqlite_error)?; }
             if let Some(workspace) = workspace {
-                transaction.execute("INSERT INTO work_workspace(work_id,workspace_id) VALUES(?1,?2)",rusqlite::params![item.id,workspace]).map_err(error::sqlite_error)?;
+                transaction.execute("INSERT INTO project_agents(agent_id,project_id) VALUES(?1,?2)",rusqlite::params![item.id,workspace]).map_err(error::sqlite_error)?;
             } else if initial_input.is_none() {
-                transaction.execute("INSERT INTO work_workspace(work_id,workspace_id) SELECT ?1,workspace_id FROM work_workspace WHERE work_id=?2",rusqlite::params![item.id,item.parent_goal_id]).map_err(error::sqlite_error)?;
+                transaction.execute("INSERT INTO project_agents(agent_id,project_id) SELECT ?1,project_id FROM project_agents WHERE agent_id=?2",rusqlite::params![item.id,item.parent_goal_id]).map_err(error::sqlite_error)?;
             }
 
 			for dependency in depends_on {
@@ -661,12 +663,17 @@ impl SqliteStore {
 
 			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'dispatching', updated_at_micros = max(updated_at_micros, ?2) WHERE id = ?1", rusqlite::params![id, crate::unix_micros()?]).map_err(error::sqlite_error)?;
 
+			for event_id in &event_ids {
+				let stale:bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM collaboration_instructions i JOIN collaboration_requests q ON q.id=i.request_id JOIN works w ON w.id=q.work_id WHERE i.event_id=?1 AND (q.instruction_id<>i.id OR q.state='closed' OR w.state<>'open' OR w.requirements_id<>i.requirements_id))",[event_id],|r|r.get(0)).map_err(error::sqlite_error)?;
+				if stale {return Err(DatabaseError::Conflict.into());}
+			}
+
 			for event_id in event_ids {
 				let changed = transaction.execute("WITH RECURSIVE owned(id) AS (
 					SELECT ?2 UNION SELECT child.id FROM agent_work_items child JOIN owned ON child.parent_goal_id = owned.id WHERE owned.id=?2 OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=owned.id))
 					UPDATE agent_inbox_events SET delivery_work_item_id = ?2, delivered_turn_id = ''
 					WHERE id = ?1 AND work_item_id IN (SELECT id FROM owned) AND disposition IS NULL
-					AND (event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message') OR (event_kind='async_question_answer' AND work_item_id=?2 AND delivered_turn_id IS NULL)) AND (work_item_id=?2 OR event_kind='worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=work_item_id)) AND (work_item_id<>?2 OR event_kind<>'worker_turn_completed')
+					AND (event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message', 'collaboration_request', 'collaboration_result') OR (event_kind='async_question_answer' AND work_item_id=?2 AND delivered_turn_id IS NULL)) AND (work_item_id=?2 OR event_kind='worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=work_item_id)) AND (work_item_id<>?2 OR event_kind<>'worker_turn_completed')
 					AND (delivered_turn_id IS NULL OR (delivery_work_item_id = ?2 AND delivered_turn_id != ''))", rusqlite::params![event_id, id]).map_err(error::sqlite_error)?;
 
 				if changed != 1 { return Err(DatabaseError::Conflict.into()); }
@@ -1242,7 +1249,7 @@ impl SqliteStore {
 		let limit = page_limit(limit)?;
 
 		self.run(move |connection| {
-			connection.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL AND delivered_turn_id IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message') ORDER BY id LIMIT ?1").map_err(error::sqlite_error)?.query_map([limit], event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
+			connection.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL AND delivered_turn_id IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message', 'collaboration_request', 'collaboration_result') ORDER BY id LIMIT ?1").map_err(error::sqlite_error)?.query_map([limit], event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
 		}).await
 	}
 
@@ -1259,8 +1266,9 @@ impl SqliteStore {
 			connection.prepare("WITH RECURSIVE owned(id) AS (
 				SELECT ?1 UNION SELECT child.id FROM agent_work_items child JOIN owned ON child.parent_goal_id = owned.id WHERE owned.id = ?1 OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=owned.id))
 				SELECT * FROM agent_inbox_events WHERE work_item_id IN (SELECT id FROM owned)
-				AND disposition IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message')
+				AND disposition IS NULL AND event_kind IN ('worker_turn_completed', 'automation_result', 'followup_due', 'user_message', 'collaboration_request', 'collaboration_result')
                 AND (work_item_id <> ?1 OR event_kind <> 'worker_turn_completed') AND (work_item_id=?1 OR event_kind='worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=work_item_id))
+				AND NOT EXISTS(SELECT 1 FROM collaboration_instructions ci JOIN collaboration_requests cq ON cq.id=ci.request_id JOIN works cw ON cw.id=cq.work_id WHERE ci.event_id=agent_inbox_events.id AND (cw.state<>'open' OR cq.state='closed' OR cq.instruction_id<>ci.id OR cw.requirements_id<>ci.requirements_id))
 				AND (delivered_turn_id IS NULL OR (delivery_work_item_id = ?1 AND delivered_turn_id != ''))
 				ORDER BY delivered_turn_id IS NOT NULL, id LIMIT ?2")
 				.map_err(error::sqlite_error)?.query_map(rusqlite::params![agent_id, limit], event_row)

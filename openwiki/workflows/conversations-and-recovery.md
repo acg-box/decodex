@@ -50,16 +50,24 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_transcript.rs
   - id: openwiki-source-f4bc7020783c49a911b7fb29
     resource: repo://crates/decodex-runtime/src/agent_visibility.rs
+  - id: openwiki-source-acd129fd3a88516b785fc929
+    resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
+  - id: openwiki-source-d511cef2848dd5f6968572ae
+    resource: repo://crates/decodex-runtime/src/agent/tool_migration.rs
   - id: openwiki-source-88b81a215b1bac061dad80ec
     resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
   - id: openwiki-source-c6bea677adcde563202b65b9
     resource: repo://crates/decodex-runtime/tests/native_qualification/response_identity.py
-generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
+  - id: openwiki-source-0f0fc00c258a3ddad6935fcc
+    resource: repo://database/src/agent_tool_migration.rs
+  - id: openwiki-source-28af4781ad8d9558410630da
+    resource: repo://database/src/works.rs
+generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T06:15:55.391Z
+    at: 2026-10-24T21:11:31.338Z
 ---
 
 # Conversation input, history and recovery
@@ -70,6 +78,16 @@ The desktop composer stores editable client drafts. The service accepts a typed 
 
 The Agent composer and the separate ordinary History workbench share recovery mechanisms but are different consumers. Normal startup does not expose the ordinary workbench as a new navigation destination.
 
+## Persistent Agent and Work context
+
+Each user-created Agent has one current native conversation. It can own several Works and act as Project Lead without creating a permanent component manager. The Assistant is optional. Current Work requirements and authorized Materials are read before assignment, recovery and assessment; a compacted summary alone is not the authority. Different Work records do not create independent native directories or sandboxes within that conversation.
+
+The canonical tool revision uses Work business commands and native Subagents. Existing immutable tool sets use a durable context-migration journal. Migration waits for the source and descendants to be idle, with no active or paused native Goal or running background command. If native inspection is unavailable, it parks. It preserves actual model/provider/effort, explicit service tier and permission profile, and keeps an unset tier unset.
+
+The service saves the acknowledged replacement identity before metadata/readback, materializes an empty native context through supported naming, and verifies the resumed native settings. Only a positive retirement observation for the exact old context permits the atomic binding change. Unknown creation or retirement is not replayed. The old context remains read-only history and requires exact identity when read. Old parent identifiers never grant another persistent Agent input or private-history authority. No reset, unarchive or host-process termination is part of recovery.
+
+Work Results and command receipts are separate from the conversation's latest reply. Restored pending evidence remains awaiting the owner assessment. A requirement change rejects old completion; a pause stays effective after restart. Native continuation and exact terminal readback remain native-owned, with V1 native wait and qualified V2 idle wake limits in the [acceptance record](../testing/upstream-acceptance-boundaries.md).
+
 ## Drafts and uncertain outcomes
 
 `agent_draft_storage`, `agent_draft_recovery` and `ClientDraftStore` preserve unsent input and copies needed for conflict or uncertain-operation recovery. They are not a permanent archive of accepted edits. Shared-store conflicts retain the local edit and the competing saved copy; explicit recovery and export make the distinction visible. Quit can be cancelled while the conflict remains unresolved.
@@ -78,9 +96,9 @@ Persist input before dispatch. A lost response can mean that an operation ran. C
 
 ## Native archive changes
 
-Codex owns archive state. A confirmed archive removes non-root bound work from the active list and graph, while the service keeps its stored history and original relationships. The personal Main entry remains present and carries its archive state. Active descendants stay visible under their nearest visible ancestor. See [archive synchronization](../architecture/chief-coordination.md#archive-synchronization).
+Codex owns archive state. A confirmed archive removes non-root bound work from the active list and graph, while the service keeps its stored history and original relationships. The Assistant entry remains present and carries its archive state. Active descendants stay visible under their nearest visible ancestor. See [archive synchronization](../architecture/chief-coordination.md#archive-synchronization).
 
-When a refreshed active snapshot removes the selected conversation or its composer owner, the desktop stops voice input and saves the draft under its original work and thread identity. Normal navigation restores the next conversation's own draft. If no conversation remains active, sending stays unavailable; a retained draft cannot start a replacement conversation or move to Main. A failed snapshot read does not trigger this transition.
+When a refreshed active snapshot removes the selected conversation or its composer owner, the desktop stops voice input and saves the draft under its original work and thread identity. Normal navigation restores the next conversation's own draft. If no conversation remains active, sending stays unavailable; a retained draft cannot start a replacement conversation or move to the Assistant. A failed snapshot read does not trigger this transition.
 
 After Codex restores the original thread, a positive active-list observation restores its original relationships through the normal background refresh. An application restart is not required. Opening that conversation restores its saved draft under the original work and thread IDs. Native child tabs follow the same complete-list rule and retain their own draft when removed from the active view. An archive refresh does not delete accepted input or replay an uncertain command.
 
@@ -134,7 +152,7 @@ Recap requests an isolated temporary native thread with tools disabled. For abse
 
 Asynchronous questions keep explicit answers and Skip. The separately retained nonblocking timeout policy can produce an empty answer after its grace/countdown conditions; it is not a general permission to answer questions for the user.
 
-For parent escalation and exact event receipts, use [Agent coordination](../architecture/chief-coordination.md#delegation-instructions-and-native-subagents). In Ask separately, **Close** hides the panel; **Cancel answer** requests cancellation of its exact native sampling request. A late result or uncertain cancellation keeps its original request identity. This does not cancel the parent conversation.
+For parent escalation and exact event receipts, use [Agent coordination](../architecture/chief-coordination.md#native-contributions-and-independent-collaboration). In Ask separately, **Close** hides the panel; **Cancel answer** requests cancellation of its exact native sampling request. A late result or uncertain cancellation keeps its original request identity. This does not cancel the parent conversation.
 
 ## Explicit prediction capability
 

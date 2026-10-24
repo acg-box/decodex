@@ -140,7 +140,10 @@ async fn work_tools_distinguish_agent_conversations_from_child_goals() {
 	let kind = |id| work.iter().find(|item| item["id"] == id).unwrap()["kind"].clone();
 
 	assert_eq!(kind("agent"), "agent");
-	assert_eq!(kind("manager"), "agent");
+	assert!(
+		!work.iter().any(|item| item["id"] == "manager"),
+		"Independent Agent history requires an explicit scoped reference"
+	);
 	assert_eq!(kind("goal"), "goal");
 	assert_eq!(kind("worker"), "task");
 }

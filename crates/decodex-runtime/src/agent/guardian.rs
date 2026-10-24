@@ -51,7 +51,7 @@ impl AgentCoordinator {
 			return Err(stale());
 		}
 		if !self.loaded_threads.contains(&review.thread_id) {
-			let params = Self::resume_params(&review.thread_id);
+			let params = self.resume_observer_params(&review.thread_id, false).await?;
 			let response =
 				time::timeout(Duration::from_secs(20), self.client.thread_resume(params))
 					.await

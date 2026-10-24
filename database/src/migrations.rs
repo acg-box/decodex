@@ -7,7 +7,7 @@ use crate::{DatabaseError, account_alias, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
 
-const CURRENT_SCHEMA_VERSION: i64 = 55;
+const CURRENT_SCHEMA_VERSION: i64 = 56;
 const MIGRATIONS: &[Migration] = &[
 	Migration {
 		version: 48,
@@ -48,6 +48,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 55,
 		name: "agent_slots",
 		sql: include_str!("../migrations/0055_agent_slots.sql"),
+	},
+	Migration {
+		version: 56,
+		name: "project_agent_work",
+		sql: include_str!("../migrations/0056_project_agent_work.sql"),
 	},
 ];
 
@@ -356,3 +361,7 @@ mod workspace_tests;
 #[cfg(test)]
 #[path = "agent_coordination_migration_tests.rs"]
 mod agent_coordination_tests;
+
+#[cfg(test)]
+#[path = "project_work_migration_tests.rs"]
+mod project_work_tests;

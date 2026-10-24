@@ -2419,6 +2419,26 @@ pub enum QueryPayload {
 		work_id: EntityId,
 	},
 	/// Read saved native action reviews without invoking a model or replaying an action.
+	GetWorkDetail {
+		/// Exact business Work identity.
+		work_id: EntityId,
+		/// Digest from the first page; required for subsequent pages.
+		digest: Option<WireText>,
+		/// Exact UTF-8 byte offset.
+		offset: usize,
+	},
+	/// Read one exact retained private reviewer record.
+	GetPrivateReviewDetails {
+		/// Exact native private reviewer conversation.
+		reviewer_thread_id: WireText,
+		/// Exact private turn.
+		reviewer_turn_id: WireText,
+		/// Native item or retained record digest identity.
+		item_id: WireText,
+		/// UTF-8 byte offset into this exact retained record.
+		offset: usize,
+	},
+	/// Read saved native action-review evidence.
 	GetAgentGuardianReviews {
 		/// Exact local work identity.
 		work_id: EntityId,
@@ -3200,6 +3220,10 @@ pub enum QueryResultPayload {
 	/// Native resource associations for an exact work thread.
 	AgentResources(AgentResourcesResult),
 	/// Saved Guardian assessments and explicit user approval receipts.
+	PrivateReviewDetails(crate::PrivateReviewDetailsResult),
+	/// One exact selected Work view page.
+	WorkDetail(crate::WorkDetailResult),
+	/// Saved native action-review evidence.
 	AgentGuardianReviews(AgentGuardianReviewsResult),
 	/// Exact saved action detail page.
 	AgentGuardianDetail(AgentGuardianDetailResult),
@@ -5578,7 +5602,10 @@ mod tests {
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
 		let legacy = crate::ProtocolVersion { major: 1, minor: 5 };
-		let future = crate::ProtocolVersion { major: 2, minor: CURRENT_VERSION.minor + 1 };
+		let future = crate::ProtocolVersion {
+			major: CURRENT_VERSION.major,
+			minor: CURRENT_VERSION.minor + 1,
+		};
 		let query = QueryPayload::GetAccountProfile {
 			account_id: account_id.clone(),
 			include_email: false,

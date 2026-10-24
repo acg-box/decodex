@@ -7,23 +7,32 @@ use tokio::{net::TcpListener, process::Command, sync::mpsc, time};
 use crate::agent::{
 	tests,
 	tests::{
-		AgentConfig, AppServerClient, AsyncWriteExt, ServerEvent, Value, native_task_references,
+		AgentConfig, AgentCoordinator, AppServerClient, AsyncWriteExt, ServerEvent, Value,
+		native_task_references,
 	},
 };
+use decodex_core::work::{
+	NativeContribution, ResultSource, Work, WorkCommand, WorkRequirements, WorkResult, WorkState,
+};
 use decodex_database::AgentDispatchState;
+const NATIVE_ASSIGNMENT: &str =
+	"[Work: held-work; Requirements: r1; Contribution: held-child]\nHELD_CHILD_RESULT";
 
 fn is_child(body: &Value) -> bool {
-	body.to_string().contains("HELD_CHILD_RESULT")
-		&& !body["input"]
-			.as_array()
-			.expect("input")
-			.iter()
-			.any(|item| item["type"] == "function_call" && item["call_id"] == "spawn-child")
+	body["client_metadata"]["x-openai-subagent"].as_str().is_some_and(|role| role != "guardian")
 }
 
-fn response(body: &Value, serial: usize) -> Value {
-	if serial == 1 {
-		return serde_json::json!({"type":"function_call","id":"spawn-child","call_id":"spawn-child","namespace":"collaboration","name":"spawn_agent","arguments":serde_json::json!({"task_name":"worker","message":"HELD_CHILD_RESULT","fork_turns":"none"}).to_string()});
+fn response(body: &Value, serial: usize, v2: bool) -> Value {
+	if !v2 && serial == 1 {
+		return serde_json::json!({"type":"tool_search_call","call_id":"discover-native-spawn","execution":"client","arguments":{"query":"spawn agent","limit":1}});
+	}
+	if serial == if v2 { 1 } else { 2 } {
+		let arguments = if v2 {
+			serde_json::json!({"task_name":"worker","message":NATIVE_ASSIGNMENT,"fork_turns":"none"})
+		} else {
+			serde_json::json!({"message":NATIVE_ASSIGNMENT})
+		};
+		return serde_json::json!({"type":"function_call","id":"spawn-child","call_id":"spawn-child","namespace":if v2{"collaboration"}else{"multi_agent_v1"},"name":"spawn_agent","arguments":arguments.to_string()});
 	}
 
 	let input = body["input"].as_array().expect("input");
@@ -47,14 +56,14 @@ fn response(body: &Value, serial: usize) -> Value {
 	serde_json::json!({"type":"message","role":"assistant","phase":"final_answer","id":format!("message-{serial}"),"content":[{"type":"output_text","text":text}]})
 }
 
-async fn serve(listener: TcpListener, requests: mpsc::UnboundedSender<Value>) {
+async fn serve(listener: TcpListener, requests: mpsc::UnboundedSender<Value>, v2: bool) {
 	let mut serial = 0;
 
 	while let Ok((mut socket, _)) = listener.accept().await {
 		serial += 1;
 
 		let body = native_task_references::read_http_body(&mut socket).await;
-		let item = response(&body, serial);
+		let item = response(&body, serial, v2);
 
 		requests.send(body).expect("request observation");
 
@@ -81,51 +90,50 @@ async fn serve(listener: TcpListener, requests: mpsc::UnboundedSender<Value>) {
 #[ignore = "requires DECODEX_NATIVE_BINARY and its packaged helpers; isolated loopback provider"]
 async fn native_child_completion_wakes_idle_root_once() {
 	for enabled in [false, true] {
-		qualify(enabled).await;
+		qualify(enabled, true).await;
 	}
 }
 
-async fn qualify(enabled: bool) {
+#[tokio::test]
+#[ignore = "requires DECODEX_NATIVE_BINARY and packaged helpers; isolated native V1 Work attribution"]
+async fn native_v1_work_attribution_uses_the_native_executor() {
+	qualify(false, false).await;
+}
+
+async fn qualify(enabled: bool, v2: bool) {
 	let binary = env::var("DECODEX_NATIVE_BINARY").expect("exact native binary");
 	let directory = tempfile::tempdir().expect("fixture home");
 	let home = directory.path().canonicalize().expect("canonical home");
 	let listener = TcpListener::bind("127.0.0.1:0").await.expect("fixture listener");
 	let address = listener.local_addr().expect("fixture address");
 	let (requests_tx, mut requests_rx) = mpsc::unbounded_channel();
-	let backend = tokio::spawn(serve(listener, requests_tx));
+	let backend = tokio::spawn(serve(listener, requests_tx, v2));
+	// The native model catalog selects the backend. Disabling the V2 feature does
+	// not override a model that already selects V2.
+	let model = if v2 { "gpt-5.6-sol" } else { "gpt-5.6-luna" };
 
-	fs::write(home.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\nservice_tier=\"priority\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2=true\n[model_providers.fixture]\nname=\"Isolated root wake fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("fixture config");
+	fs::write(home.join("config.toml"),format!("model=\"{model}\"\nmodel_provider=\"fixture\"\nservice_tier=\"priority\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2={v2}\n[model_providers.fixture]\nname=\"Isolated root wake fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("fixture config");
 
 	let (mut agent, _, _store_home) = tests::fixture().await;
-	let mut command = Command::new(binary);
-
-	command
-		.args([
-			"app-server",
-			if enabled { "--enable" } else { "--disable" },
-			"wake_on_agent_messages",
-		])
-		.current_dir(&home)
-		.env_clear()
-		.env("HOME", &home)
-		.env("CODEX_HOME", &home)
-		.env("PATH", "/usr/bin:/bin");
-
+	let mut command = native_command(&binary, &home, enabled);
 	let (client, mut events, mut process) =
 		AppServerClient::spawn(&mut command).expect("native process");
 
 	agent.client = client;
-	agent.config =
-		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home.display().to_string());
+	agent.config = AgentConfig::new(model.into(), "medium".into(), home.display().to_string());
 	agent.config.sandbox = "read-only".into();
 
 	let outcome = AssertUnwindSafe(time::timeout(Duration::from_secs(60), async {
 		agent.initialize().await.expect("initialize");
-		agent.start_agent("agent", "ROOT_SPAWN").await.expect("start root");
+		AgentCoordinator::reserve_root(&agent.store,"agent","ROOT_SPAWN").await.unwrap();
+		prepare_work(&agent).await;
+		agent.start_reserved_agent("agent", "ROOT_SPAWN").await.expect("start root");
 
 		let initial = agent.store.get_agent_work_item("agent".into()).await.unwrap();
 		let root = initial.codex_thread_id.unwrap();
 		let initial_turn = initial.active_turn_id.unwrap();
+
+
 		let mut root_idle = false;
 		let mut pending_child = None;
 		let mut released_child = None;
@@ -192,6 +200,7 @@ async fn qualify(enabled: bool) {
 
 		assert!(root_idle && released_child.is_some());
 		assert_eq!(wake_turn.is_some(), enabled);
+		qualify_work_result(&mut agent).await;
 
 		// Recovery and the local due-work tick must not replay either completed root turn.
 		agent.recover_native_turns().await.unwrap();
@@ -214,8 +223,9 @@ async fn qualify(enabled: bool) {
 		let requests: Vec<_> = std::iter::from_fn(|| requests_rx.try_recv().ok()).collect();
 		let roots: Vec<_> = requests.iter().filter(|body| !is_child(body)).collect();
 
-		assert_eq!(requests.len(), if enabled { 5 } else { 4 });
-		assert_eq!(roots.len(), if enabled { 3 } else { 2 });
+		let discovery = usize::from(!v2);
+		assert_eq!(requests.len(), if enabled { 5 } else { 4 } + discovery);
+		assert_eq!(roots.len(), if enabled { 3 } else { 2 } + discovery);
 		if enabled {
 			let continuation = roots.last().unwrap();
 			let input = continuation["input"].as_array().unwrap();
@@ -232,4 +242,117 @@ async fn qualify(enabled: bool) {
 	process.shutdown().await.expect("shutdown owned native process");
 	backend.abort();
 	outcome.expect("native wake qualification panicked").expect("native wake deadline");
+}
+
+async fn prepare_work(agent: &AgentCoordinator) {
+	let work = Work {
+		id: "held-work".into(),
+		project_id: None,
+		owner_agent_id: "agent".into(),
+		title: "Inspect the held native contribution".into(),
+		requirements: WorkRequirements {
+			id: "r1".into(),
+			goal: "Return the isolated child result".into(),
+			criteria: "Exact native assignment and Result, no unrelated completion".into(),
+			source: "Synthetic user qualification".into(),
+		},
+		state: WorkState::Open,
+		reason: None,
+		resume_condition: None,
+		user_hold: false,
+		assessment: None,
+	};
+	agent
+		.store
+		.apply_work_command(
+			"agent".into(),
+			"native-work".into(),
+			WorkCommand::Create { work },
+			true,
+		)
+		.await
+		.unwrap();
+	agent
+		.store
+		.apply_work_command(
+			"agent".into(),
+			"prepare-child".into(),
+			WorkCommand::PrepareSubagent {
+				contribution: NativeContribution {
+					id: "held-child".into(),
+					work_id: "held-work".into(),
+					requirements_id: "r1".into(),
+					instruction: "HELD_CHILD_RESULT".into(),
+					child_thread_id: None,
+					parent_turn_id: None,
+					parent_item_id: None,
+				},
+			},
+			true,
+		)
+		.await
+		.unwrap();
+}
+
+async fn qualify_work_result(agent: &mut AgentCoordinator) {
+	let current = agent.store.get_agent_work_item("agent".into()).await.unwrap();
+	let sources = agent
+		.work_tool(&current, "work_read", &serde_json::json!({"nativeContributionId":"held-child"}))
+		.await
+		.unwrap();
+	let output = sources["outputs"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|o| o["kind"] == "agentMessage")
+		.expect("exact assigned child turn must remain readable");
+	let result = WorkResult {
+		id: "child-result".into(),
+		work_id: "held-work".into(),
+		requirements_id: "r1".into(),
+		instruction_id: None,
+		native_contribution_id: Some("held-child".into()),
+		agent_id: "agent".into(),
+		summary: "Native child returned".into(),
+		source: ResultSource::NativeItem {
+			thread_id: output["threadId"].as_str().unwrap().into(),
+			turn_id: output["turnId"].as_str().unwrap().into(),
+			item_id: output["itemId"].as_str().unwrap().into(),
+		},
+		limits: "Loopback fixture; no model quality claim".into(),
+	};
+	agent.verify_work_result("agent", &result).await.unwrap();
+	agent
+		.store
+		.apply_work_command(
+			"agent".into(),
+			"child-result".into(),
+			WorkCommand::RecordResult { result },
+			true,
+		)
+		.await
+		.unwrap();
+	assert_eq!(
+		agent.store.work_portfolio(Some("held-work".into())).await.unwrap().works[0].state,
+		WorkState::Open,
+		"Native completion and returned Result do not complete Work"
+	);
+}
+
+fn native_command(binary: &str, home: &std::path::Path, enabled: bool) -> Command {
+	let mut command = Command::new(binary);
+
+	command
+		.args([
+			"app-server",
+			if enabled { "--enable" } else { "--disable" },
+			"wake_on_agent_messages",
+		])
+		.current_dir(home)
+		.env_clear()
+		.env("HOME", home)
+		.env("CODEX_HOME", home)
+		.env("PATH", "/usr/bin:/bin");
+
+	command
 }

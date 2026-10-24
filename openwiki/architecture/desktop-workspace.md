@@ -26,20 +26,28 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_markdown.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
+  - id: openwiki-source-6a1c55b61be8ac251a493046
+    resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
   - id: openwiki-source-15ee466228bdb01892c9678b
     resource: repo://apps/decodex-gpui/src/agent_text_selection.rs
   - id: openwiki-source-51a4755f3c4ddd78511e5c8e
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
-  - id: openwiki-source-a1a71f71175b6cac3a5f1346
-    resource: repo://apps/decodex-gpui/src/native_glass_panel.rs
+  - id: openwiki-source-fca3688e96d92c09b7ba015f
+    resource: repo://apps/decodex-gpui/src/native_material_panel.rs
   - id: openwiki-source-2986b39185cca5c00a29ad1d
     resource: repo://apps/decodex-gpui/src/shell_status.rs
-generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
+  - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
+    resource: repo://crates/decodex-runtime/src/work_portfolio.rs
+  - id: openwiki-source-d1279ad243eb550afec4d0e6
+    resource: repo://database/src/guardian_settings.rs
+  - id: openwiki-source-c0eb738b42368debe7ef7545
+    resource: repo://database/src/works/commands.rs
+generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T06:08:33.099Z
+    at: 2026-10-24T21:11:31.338Z
 ---
 
 # Desktop workspace and native glass
@@ -52,11 +60,25 @@ Collaboration groups source-backed exchanges by participant pair and expands the
 
 Global shortcuts in `shell.rs` are Command-E for the left sidebar, Command-B for the inspector/agent side, and Command-J for the graph. Window controls stay in the global shell. Settings is a separate presentation with bounded scrolling and shared spacing tokens.
 
+## Project Work and Guardian
+
+Work and Guardian are entries in the existing sidebar. Work groups outcomes by Project and can show the same accountable Agent on several rows. Assistant and Project Lead selectors choose existing Agents; they do not create role-specific conversations. The existing conversation, Collaboration panel and Dock remain available.
+
+Expand a Work to read its current requirements, authoritative source, completion criteria, hold reason and resumption condition. Materials open their authorized references. Results show their exact native item or artifact digest. Collaboration Requests show their recipient, issued requirements, scoped Materials, delivery, acceptance, return and assessment. Discuss with owner opens that Agent's conversation. Awaiting Assessment is a derived activity label, not another Work state.
+
+The overview carries headers; selected Work evidence loads separately. Reads are bounded to 100 records per category and disclose additional retained evidence. Large selected records use digest-checked 8 KiB pages with a 32 MiB ceiling. The UI labels cached evidence and offers refresh when the source changed. A missing or stale read does not establish completion.
+
+Pause Work prevents new Decodex contributions and completion. It cannot roll back already-running actions and does not replace native interruption. Work association with a Project does not change the native conversation's working directory or execution permission.
+
+Guardian settings are global: Ask Me or Automatic Review. Full Access remains a separate native permission choice. Desired reviewer settings and actual per-source receipts are visible separately. Review Details is an optional bounded observation: the selected runtime does not provide exact action Review IDs for private reviewer records, so the UI displays Action association unavailable. It does not infer a link to the latest action. Turning details off stops new records; it does not erase retained history.
+
+Only native assistant output and item-free terminal metadata enter retained private records. Raw reasoning frames are excluded. The store retains at most 128 records of 64 KiB each; the snapshot previews the newest 32 and loads the exact selected record on demand. This is not a complete reviewer transcript or proof of a live approval decision.
+
 ## Material and focus ownership
 
 `window_material.rs` selects Regular or Clear material. macOS uses native Liquid Glass when supported; the fallback requests GPUI platform blur. Actual transparency depends on platform compositor support. Reduced-transparency preferences and `DECODEX_DISABLE_LIQUID_GLASS` prevent the small native-glass panels.
 
-`native_glass_panel.rs` bridges composition only. GPUI still owns UI state, layout and event handlers. The composer is an attached child window created by the main workspace, not another application or service. Settings must not create one. The workspace remains the main window while an attached control can own keyboard focus. See [conversation presentation](conversation-presentation.md#floating-controls-and-motion) for frame ownership and animation policy.
+`native_material_panel.rs` bridges composition only. GPUI still owns UI state, layout and event handlers. The composer is an attached child window created by the main workspace, not another application or service. Settings must not create one. The workspace remains the main window while an attached control can own keyboard focus. See [conversation presentation](conversation-presentation.md#floating-controls-and-motion) for frame ownership and animation policy.
 
 The composer is unavailable for archived or blocked conversations and certain detail/full-screen states. Reopening includes a short layout-settling interval; failures fall back to GPUI presentation. Notification placement and opacity belong to the same native-panel composition boundary.
 
@@ -96,7 +118,7 @@ Keep each label about one user need. Account warning popovers state what happene
 
 Use GPUI tests in `shell.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
 
-The collaboration fixtures check cross-chat visibility, expansion without draft changes, participant location and the distinction between recorded messages, tool completion and context references. These checks do not replace signed-app interaction acceptance.
+The Work portfolio fixtures check Project grouping, scoped evidence, source-bound detail loading, global reviewer controls and explicit limits. The collaboration fixtures check cross-chat visibility, expansion without draft changes, participant location and the distinction between recorded messages, tool completion and context references. These checks do not replace signed-app interaction acceptance.
 
 `StatusPanelLifecycleTests` checks first-open and repeated menu focus, foreground application identity, hidden workspace visibility, and fixed-top resizing. `AccountPanelPresentationTests` checks synchronized row movement, clipping, interruption and reduced motion. The GPUI `account_feedback` test checks first-click opening, outside-click closing, unchanged row height, and retention of the warning source. Its opt-in `DECODEX_MEASURE_ACCOUNT_MOTION=1` presentation sampling separates initial response delay from animation cadence; it does not prove sustained display FPS. `DECODEX_CAPTURE_ACCOUNT_MOTION` selects a screenshot directory for visual review.
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d65139b7a96a1a8ca3f097358d18303862755797eb392c341acb8cc199e35788",
+  "pageVersion": "sha256:3f514ca1286069e58cb4c149ec153f4ae8cc5d232096c3b6d3974b3ec35cadcb",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -93,12 +93,12 @@
           "version": "repo-lines-v1:sha256:3c768499f08523e870b3caec2d3aac9f8573f9288ce10092f78a249f283810b1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4NGU2YmFjODRlYjdkMjQ0NTA4NWNiNGFhYTBhYjIyMjliMWQ3NTllNTVmYmI0YmI3YjRjNTkxOTkyYjc1OTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNTAzMjQ5NjI1NjU2ODVhNTljMzk3NWUxYTU0MjRhODE3NWJhNDBmN2RmYTNhMDk2NTc5MTliMjFjZDkyNmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxYjRkMmIxMTA0NzMwMmU1MjQ0MTlhZmQ2ZDJhZTEyOTc1OTBhNzk1NTgwMmM0ZDQ0MmI2NjA4MzJmNTY2NDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzNDhhOGIzYmU0YTMxZTJhY2QyYzcwNTk1YjY0ZTA0MWRhMzYyZjg1YTA4MjU1OGJjMDk5YWU0ZTIzMDM5NmMifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1697-L1711",
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1777-L1791",
           "version": "repo-lines-v1:sha256:e1e036f0ce9d3cdc75b85cf83a09e19cf1e72b483f56052202810783f3debbd0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYyNWM4M2VjOWRhYTQwMTQxY2M0ZmU2ZjgxOWNmYTFhZjA4YzY0YThlYmFiODdlNTE1MjgwYzJkNWY4YzU2MzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxNWRmMTliOWZmZjgxYmY5NGRlMmJlZWU5NDc3MWFhZDA0ZDI0NzZlOGQzNmRlYzdkNWFhNjZmOTk3NDUyM2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjMjA4MGM1Y2YyMjc5NWQ0YTMxZWJmZTE5OTA1ZmM0MWQ2NWM5NmVmMTU3ZTZlYWZlMDRiYzRhMTdiY2IxZGMifQ"
         },
         {
-          "resource": "repo://database/src/agent.rs#L172-L192",
-          "version": "repo-lines-v1:sha256:6f0eed234abdc0c9641f32c3ac1c0d4c2fe35322b58b69e785d09af3b16b007a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhY2QzNjZhNTc1MDVhMWM0M2Y5NmNmZThmODk2ZTdhNzBjMWFmZjdiOTI3YjhkMDU2ZDZhZTc4ZTg0NGM3NzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAzZTRhNjZmMzg2ZjI4ODhkM2FkMWE3NDdkMDVmYzA0ZGIyNTkxZDJlOGU3ODY1YjVmNzAwOTk5OWM2OGM4YzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0YThmOTAzZTAxNzQ3NTU3ZWQxNDJiZjExNTA0MDZiYjgxYWY0NjRkMWZiMDFhOGY4OGZiMmVhYjUwODNkNTYifQ"
+          "resource": "repo://database/src/agent.rs#L172-L193",
+          "version": "repo-lines-v1:sha256:77a0504b8334c340137921a8be315b7c212c0b852be3d48af5d64f0642164f3c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhY2QzNjZhNTc1MDVhMWM0M2Y5NmNmZThmODk2ZTdhNzBjMWFmZjdiOTI3YjhkMDU2ZDZhZTc4ZTg0NGM3NzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAzZTRhNjZmMzg2ZjI4ODhkM2FkMWE3NDdkMDVmYzA0ZGIyNTkxZDJlOGU3ODY1YjVmNzAwOTk5OWM2OGM4YzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0YThmOTAzZTAxNzQ3NTU3ZWQxNDJiZjExNTA0MDZiYjgxYWY0NjRkMWZiMDFhOGY4OGZiMmVhYjUwODNkNTYifQ"
         }
       ]
     },
@@ -108,7 +108,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
-          "version": "repo-file-v1:sha256:88386134ec913c5fad7027c452a33d56fde002202f0a90583f086af632357db9"
+          "version": "repo-file-v1:sha256:c43c2d61db03b9aa8b5b147d9ffd059ac77782958395d8d04e381554287eee28"
         }
       ]
     },
@@ -122,7 +122,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:c2679cbdef5fee4a799c90f3887b10fc268c644dee120e5f7a912ed0fa843a82"
+          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
         }
       ]
     },
@@ -182,7 +182,7 @@
     },
     {
       "id": "claim_e28aa9df759e42009c72178b4951b10b",
-      "statement": "Current qualification records one passed in-memory test with a Nextest LEAK marker and a passing isolated rerun without the marker; older capture-inheritance diagnostics retain their historical source limits and do not establish the cause of this or future markers.",
+      "statement": "Earlier component qualification retains its passed in-memory LEAK and clean isolated rerun; the Project Work full-suite LEAK belongs to the appearance fade test and has no established cause.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
@@ -190,7 +190,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:c2679cbdef5fee4a799c90f3887b10fc268c644dee120e5f7a912ed0fa843a82"
+          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
         }
       ]
     },
@@ -203,10 +203,24 @@
           "version": "repo-file-v1:sha256:4c8dab6abd1a26b236184a5c514f9ec27668dbc396b1f8271cf189ea8efb9baf"
         }
       ]
+    },
+    {
+      "id": "claim_4030c1c3494548aa8534215ace264c45",
+      "statement": "Reproducible Project Work qualification commands distinguish preparation, exact-artifact native tests and overlapping local cohorts, with explicit audio failures and no installed-app or live-account acceptance claim.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/project_guardian.py",
+          "version": "repo-file-v1:sha256:2c9429ce26a700a4fd27145fa9022df4d6bc426ade5b8b512f329131afb2ad42"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T06:15:55.391Z"
+    "at": "2026-10-24T21:19:56.719Z"
   }
 }

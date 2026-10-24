@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:17e9fda802e7ca56c8692e46c3d665535686f211af66ba53b9c0c1ee302f9daa",
+  "pageVersion": "sha256:cf1b5a94c26b86270793bc97f217c3bbb51bbc2ec2d25492ead6d9fdf7d41d3e",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -88,7 +88,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_inspection.rs",
-          "version": "repo-file-v1:sha256:7a00a7823f88c59bfb9fd12b8bc8a19d83c3ea20889bfb447eba231243abc6f0"
+          "version": "repo-file-v1:sha256:561eeedb044660861a9877ae6039d9c41db5fd90e6321547f50366d0d54ae4f0"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs",
@@ -105,8 +105,8 @@
           "version": "repo-file-v1:sha256:3a888afd5334ef76e377710aff030b6f718a89cf171389a9864817ccffa27d58"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2290-L2361",
-          "version": "repo-lines-v1:sha256:6bbb5cfc144364a5bf475bf0acc62a62052823eca98359e831a50d6c6b672a44:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljMTkxM2Q2ODRlNThhYmJjNGMwNzZhNjU3MjIzMWFlNzgwYmQyMGJjZjc4MjYxZDY0M2JiYTBlN2MxODUzN2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2NDkzNjFlYjYxNzFiOGE3ZGQwNTEzMGU1YzNmOTlhYTk0ZjQwNmNiMDA1MGE2YzQ2ODAxZjE5ODJjNmUxYTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4NTNmOWJmOTNiODE0OTNmN2U0ODNkZTE1ZDc0Yjg5NWQ5YzM5OWZkZGY0YWJhNmY3MzZkOGZhY2E3MmVjZjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ0MjcwY2M4ZmM3OTUyMWU0Y2QwNjU3ZDQxYzVkYmQ5N2JkYjkxZTQ2MjA2ZDVlZTAxMDg0ZjYwNmJiNmE0MTkifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2354-L2372",
+          "version": "repo-lines-v1:sha256:9d369e5305b5c172071f85d926be3d26b25fd03f32f1fe5b8e984105e7d377b2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2NmI1YjkzMDg2NDc5ZmJiMjgzOTZiN2NlZjkzOGY3OWNiMzkyOWE3OGE4M2U2NGUwNjUyYzFkZWY3MmU4MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlNDM4OTRkNmQ1Y2Q5YTQxZmI2MDFmNWI3NjgxMmVhMjNlYTRjODdjNjY1OWY2MTE2MWNkYWE0MzQ1YjBkNDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjZTdkM2E5ZjcwYWZkY2JkOGNmMmZjZTM4NWZhMWZlODJjYWIxNjM1Y2IyYTM2MmVkMzcyYzc0NzYxOWU0YWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4ZjZjZjBiYmNlNzE4MjIxMTBlMDZjNDU3ZWE5YmY1YTM5MzEyNjU1YTMwZDRhOGYyMTg3MzBiYWNmYzBhOGMifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_read_state.rs",
@@ -143,16 +143,16 @@
       "statement": "When a refreshed active snapshot removes the selected conversation or composer owner, the desktop stops voice input, preserves the draft under its original owner, uses normal navigation to restore the next conversation's draft, and blocks sending when the retained owner is unavailable.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L437-L479",
-          "version": "repo-lines-v1:sha256:15eff6a7e1222f64751b86a1b1c520497667a774150a457b69a470d34b038085:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlNDViNzk4ZjAwZTBmOTgwZDNmOTJhNDQ5NjUwMmYwNWU2ZjkxOTM2ZWJkNGU3OTNlNWY4ZTJmYzA5MDU0YmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE0MmNjMzc5ZGNiYzgyZjEwOTk2ZjY2YmMwYzg2NjAzOGE4N2RlY2RiZWFiZGFkNmE5MTY1ZDcxNzNlNjIxMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRkYTAxZjNlOTA2NGM4ZTNlMmI5ZDJiMTAyODg2NmNlNGJmZGI0MmI1YTdjMTRmY2Y3MjMxY2FkNzAzMWY1MmEifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs",
+          "version": "repo-file-v1:sha256:cda5d971c76f393475068386793fc7f16c0391ea3b3aecf7521080959d91e3e8"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1566-L1603",
-          "version": "repo-lines-v1:sha256:55450e77e8ad94ad831e328b77efe60d5d4445d766684a4b1e66e97436e301d1:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViYTY3MzYwZWU2Y2E2MmE1MGFjOWIwOTFiMzM3YTljODRkODdiMWVmZDBmOWQ4OTQxYTBjYmIzODczNTZhZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwZjJmZTNiNGI5N2JmMjg2MGEwYjM3N2QyYmU0ODhiZjAyZTMxYThiYTI0Mzg1YmZhMzI1YTEwYjhkY2VkMzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5ODg4MjhlYWY1MzAzZjc4MmVkOTAxMmQ5MjY5ZjI4ZTMxNzA1ODJhODBhMTNiNWRmYzRkZjYwOWFjN2U5MDUifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
+          "version": "repo-file-v1:sha256:3082323b97d026ee46363f539b49ffcb51e90162c65a57963c596c4bec8ef7ea"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:24cf1693cae58c3a2ddcc1e2c7b65b90c1797556d83673930521303011c792cd"
+          "version": "repo-file-v1:sha256:4144fe9d5d5b5efd1833abb7ac329b904cf28e859d714e0f968fd06b4172f92d"
         }
       ]
     },
@@ -161,12 +161,12 @@
       "statement": "After native unarchive, a positive active-list observation restores the original local work relationship without an application restart; opening that work restores the draft under its original work and thread identities.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_archive.rs#L674-L739",
+          "resource": "repo://apps/decodex-gpui/src/agent_archive.rs#L680-L745",
           "version": "repo-lines-v1:sha256:7f55ca2ecf3a846548c678dc2eb604fe5c8962f500bb3bca2ed8c07c1ea08818:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5MDMyMmViYTI2YjFhNDRjOWZmMzEwZWEzZTJmYjI0NTMzNzMzMzgyODdjODE3NzcwNzFhNjQ1ZTUyYjI5OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1NmMzZTJkMzQ4ZGY4M2Y1ZmMxZGM1MGZkMWIzNjQ1MWRkMWU2Yzk2MWI1YjRhZDU3MjBhOWIwMjMzM2EzNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxMjY5YmEwZDUyODQyMzY4Y2EyMjAxYjQ0ZjIxM2E5YzA0YmY5OTM2MWI4MThjOWMyMzUzOGNmMzUxZDYyODEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlMjIyNjY1NGU2ZjE4Y2RiMTE3M2RiMmRiZGNhOTM0MGE5ZjI5M2NmNTViYjliZDE5ZTFhNTRlZjA3OTQ4OWMifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
-          "version": "repo-file-v1:sha256:88386134ec913c5fad7027c452a33d56fde002202f0a90583f086af632357db9"
+          "version": "repo-file-v1:sha256:c43c2d61db03b9aa8b5b147d9ffd059ac77782958395d8d04e381554287eee28"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs#L50-L76",
@@ -176,11 +176,11 @@
     },
     {
       "id": "claim_0875f598f61d4ea5927944c6a512fc88",
-      "statement": "Archive projection removes non-root archived work while preserving the personal Main entry and stored relationships.",
+      "statement": "Archive projection hides archived non-root conversation records while retaining the Assistant entry and stored relationships.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs#L112-L172",
-          "version": "repo-lines-v1:sha256:41fded977dae7fdd1e87faecfab372e92ca1029b2d49c9cbf55b9d791b57d54e:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyOGZmMjlhNzYyYzVmYzNhMTZiNTcwYzhjZWM0ZjBiY2E3ZjY4ZDM3MTAwMjMxMGYwNjRmZGY5NzU2ODM4YzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2ZjdiZTc0MDdkNmY2NTYwZGY1NzMwMWJlYjA0ZDc0YjgzOWVkYjAxMGI4Mzc4ODZhNGU0Y2QwOWQ3ODk2ZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyYTZiNDNhZTNjMjFlNDE0NzlkOWZhZTVjOTkzNzdhNWZjZjdjOTliMTI1OTE4ZGI1NjkyN2U1MzE3YzI0YmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNmNzk4ZWQzODExOGQzZTdhY2NjNTdjMmVmM2VjNWJkZjVlYjEwNjlkNjA4MTQ1YjYxNjc0ZGFhMzEzMWJlZjQifQ"
+          "version": "repo-lines-v1:sha256:afb06253bed1f0802735796e56d2315b23a68c505ad0f960dca56f8ebc5599dd:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyOGZmMjlhNzYyYzVmYzNhMTZiNTcwYzhjZWM0ZjBiY2E3ZjY4ZDM3MTAwMjMxMGYwNjRmZGY5NzU2ODM4YzgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2ZjdiZTc0MDdkNmY2NTYwZGY1NzMwMWJlYjA0ZDc0YjgzOWVkYjAxMGI4Mzc4ODZhNGU0Y2QwOWQ3ODk2ZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUyYTZiNDNhZTNjMjFlNDE0NzlkOWZhZTVjOTkzNzdhNWZjZjdjOTliMTI1OTE4ZGI1NjkyN2U1MzE3YzI0YmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNmNzk4ZWQzODExOGQzZTdhY2NjNTdjMmVmM2VjNWJkZjVlYjEwNjlkNjA4MTQ1YjYxNjc0ZGFhMzEzMWJlZjQifQ"
         }
       ]
     },
@@ -200,7 +200,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample.rs",
-          "version": "repo-file-v1:sha256:c15c42b7d0adbb1d764a30d82051991a40282056348700834e335b874ea89c12"
+          "version": "repo-file-v1:sha256:7096161b53b21750d2529cbb0fd48d7bce43d81f93ffea5fe7a118a9a1cc6d5f"
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
@@ -233,10 +233,38 @@
           "version": "repo-file-v1:sha256:8d078b642d80ad0fcfe35b4ae5d4c0c2e97144c022fabf3380520ea1766d3e82"
         }
       ]
+    },
+    {
+      "id": "claim_7e280b9c2a204c0dae598596688418bb",
+      "statement": "Native tool migration requires source and descendant quiescence, preserves reproducible settings, saves known identity before retirement and switches only after exact positive archive evidence, with unknown effects parked and old history retained read-only.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tool_migration.rs",
+          "version": "repo-file-v1:sha256:907ed4275de6ac66f931df9b580be60b4158fb2cd2a8dd1faa3c32367aeb4bf6"
+        },
+        {
+          "resource": "repo://database/src/agent_tool_migration.rs",
+          "version": "repo-file-v1:sha256:37ecc85a8ef1bd4d488463ce804c67b9a0612fa67e54dbda0c50c324a1d8f191"
+        }
+      ]
+    },
+    {
+      "id": "claim_dcc6a44fc1ee48fd992707f8f0700740",
+      "statement": "Persistent Agent identity is independent of Work outcomes; current requirements and exact Result receipts survive compaction and restart without making the conversation's latest reply a Work assessment.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
+          "version": "repo-file-v1:sha256:a32503172f93bd1e5dee1c1714d75236457b0df869ea9953fee9fc7f4da104e9"
+        },
+        {
+          "resource": "repo://database/src/works.rs",
+          "version": "repo-file-v1:sha256:9fae2b7e75b33ade985004e3613c7de156eb8065661b3d85e22a4421384c60ab"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T06:15:55.391Z"
+    "at": "2026-10-24T21:11:31.338Z"
   }
 }

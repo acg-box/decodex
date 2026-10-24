@@ -383,22 +383,54 @@ pub struct AgentTaskReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "action", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AgentActionDto {
+	/// Select or remove the optional personal-assistance responsibility.
+	SetAssistant {
+		/// Existing persistent Agent.
+		agent_id: EntityId,
+		/// This grants no manager authority over other Agents.
+		enabled: bool,
+	},
+	/// Assign a Project responsibility to an existing user-created Agent.
+	SetProjectLead {
+		/// Existing Project.
+		project_id: EntityId,
+		/// Existing independent Agent.
+		agent_id: EntityId,
+	},
+	/// Save the global Guardian preference; source receipts are observations, never overrides.
+	SetGuardian {
+		/// Global settings identity, always guardian-global.
+		settings_id: EntityId,
+		/// Last displayed desired-state revision.
+		expected_revision: u64,
+		/// Native review routing, separate from Full Access.
+		reviewer: decodex_core::guardian::ReviewPreference,
+		/// Optional native private reviewer observation.
+		review_details: bool,
+	},
+	/// Apply a user-authorized Work or Collaboration change without creating a native executor.
+	ManageWork {
+		/// Accountable Agent selected by the user.
+		agent_id: EntityId,
+		/// Current-requirement-fenced business mutation.
+		command: decodex_core::work::WorkCommand,
+	},
 	/// Discard an exact unused local draft. Bound threads and retained work are rejected.
 	DiscardEmptyWork {
 		/// Local draft selected for cleanup.
 		work_id: EntityId,
 	},
 	/// Register a folder without starting a conversation or agent.
-	AddWorkspace {
+	AddProject {
 		/// Stable folder identity supplied by the desktop.
-		workspace_id: EntityId,
+		project_id: EntityId,
 		/// Existing directory selected by the user.
 		directory: WireText,
 	},
 	/// Create a user conversation with its first submitted message.
 	NewConversation {
 		/// Optional directory scope, independent of parent ownership.
-		workspace_id: Option<EntityId>,
+		project_id: Option<EntityId>,
 		/// Stable local identity supplied by the desktop.
 		work_id: EntityId,
 		/// First submitted input.
@@ -1003,11 +1035,17 @@ pub struct AgentPendingEventDto {
 /// A saved folder shared by independent conversations.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct WorkspaceDto {
+pub struct ProjectDto {
+	/// Qualified native catalog identity; absent before source registration.
+	#[serde(default)]
+	pub native_project_id: Option<String>,
+	/// Existing accountable Project Lead; no new Agent or conversation is created.
+	#[serde(default)]
+	pub lead_agent_id: Option<String>,
 	/// Stable workspace identity.
 	pub id: String,
 	/// Explicit conversation membership, including delegated work.
-	pub work_ids: Vec<String>,
+	pub agent_ids: Vec<String>,
 	/// User-facing folder name.
 	pub name: String,
 	/// Canonical existing execution directory inherited by descendants.
@@ -1034,6 +1072,16 @@ pub struct AgentContextReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSnapshotDto {
+	/// User-created persistent collaborators. Legacy execution rows are separate compatibility
+	/// facts.
+	#[serde(default)]
+	pub agents: Box<Vec<decodex_core::work::Agent>>,
+	/// Global desired review preference and actual source readback.
+	#[serde(default)]
+	pub guardian: Box<decodex_core::guardian::GuardianState>,
+	/// Business outcomes and exact contribution evidence, separate from native conversations.
+	#[serde(default)]
+	pub portfolio: Box<decodex_core::work::WorkPortfolio>,
 	/// Confirmed native archives retained only as structural coordinator entries.
 	#[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
 	pub archived_work_ids: std::collections::BTreeSet<String>,
@@ -1049,7 +1097,7 @@ pub struct AgentSnapshotDto {
 	/// Opaque current account revision and process identity; absent while unavailable.
 	pub runtime_source: Option<EntityId>,
 	/// Saved folders with explicit conversation membership.
-	pub workspaces: Vec<WorkspaceDto>,
+	pub projects: Vec<ProjectDto>,
 	/// All work records.
 	pub work_items: Vec<AgentWorkItemDto>,
 	/// All explicit dependency edges.
@@ -1065,16 +1113,16 @@ impl AgentSnapshotDto {
 			|value: &Option<String>| value.as_deref().is_none_or(|value| text(value, 512));
 		let ids: HashSet<_> = self.work_items.iter().map(|item| item.id.as_str()).collect();
 
-		self.workspaces.len() <= MAX_AGENT_WORK_ITEMS
+		self.projects.len() <= MAX_AGENT_WORK_ITEMS
 			&& self.archived_work_ids.iter().all(|id| ids.contains(id.as_str()))
 			&& self.agent_slots.len() <= 1_024
 			&& self.agent_slots.keys().all(|key| text(key, 1_536))
 			&& self.agent_slots.values().collect::<HashSet<_>>().len() == self.agent_slots.len()
-			&& self.workspaces.iter().all(|workspace| {
+			&& self.projects.iter().all(|workspace| {
 				text(&workspace.name, 256)
 					&& text(&workspace.directory, 4_096)
 					&& text(&workspace.id, 512)
-					&& workspace.work_ids.iter().all(|id| ids.contains(id.as_str()))
+					&& workspace.agent_ids.iter().all(|id| ids.contains(id.as_str()))
 			})
 			&& self.work_items.len() <= MAX_AGENT_WORK_ITEMS
 			&& self.context_references.len() <= MAX_AGENT_DEPENDENCIES
@@ -1352,12 +1400,15 @@ mod tests {
 	fn agent_snapshot_roundtrip_retains_empty_available_and_explicit_capacity_failure() {
 		for value in [
 			AgentSnapshotResult::Available(AgentSnapshotDto {
+				agents: Default::default(),
+				guardian: Default::default(),
+				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
-				workspaces: vec![],
+				projects: vec![],
 				work_items: vec![],
 				dependencies: vec![],
 				pending_events: vec![],
@@ -1376,12 +1427,15 @@ mod tests {
 
 		assert!(
 			AgentSnapshotDto {
+				agents: Default::default(),
+				guardian: Default::default(),
+				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
-				workspaces: vec![],
+				projects: vec![],
 				work_items: vec![],
 				dependencies: vec![],
 				pending_events: vec![]

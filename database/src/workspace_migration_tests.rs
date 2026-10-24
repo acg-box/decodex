@@ -28,7 +28,15 @@ fn workspace_migration_preserves_history_and_closest_directory_without_agent_own
 	}
 	c.execute_batch("INSERT INTO agent_workspaces VALUES('outer','Outer','/outer'),('inner','Inner','/inner'),('duplicate','Duplicate','/outer'); INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES('input','child','user_message','original input',1);").unwrap();
 	migrations::migrate(&mut c).unwrap();
-	let scopes:Vec<(String,String)>=c.prepare("SELECT work_id,directory FROM work_workspace JOIN workspaces ON workspace_id=id ORDER BY work_id").unwrap().query_map([],|r|Ok((r.get(0)?,r.get(1)?))).unwrap().collect::<Result<_,_>>().unwrap();
+	let scopes: Vec<(String, String)> = c
+		.prepare(
+			"SELECT agent_id,directory FROM project_agents JOIN projects ON project_id=id ORDER BY agent_id",
+		)
+		.unwrap()
+		.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+		.unwrap()
+		.collect::<Result<_, _>>()
+		.unwrap();
 	assert_eq!(
 		scopes,
 		vec![
@@ -39,7 +47,7 @@ fn workspace_migration_preserves_history_and_closest_directory_without_agent_own
 		]
 	);
 	assert_eq!(
-		c.query_row("SELECT count(*) FROM workspaces", [], |r| r.get::<_, i64>(0)).unwrap(),
+		c.query_row("SELECT count(*) FROM projects", [], |r| r.get::<_, i64>(0)).unwrap(),
 		2
 	);
 	assert_eq!(
@@ -64,14 +72,15 @@ fn workspace_migration_preserves_history_and_closest_directory_without_agent_own
 		.unwrap(),
 		0
 	);
-	c.execute("INSERT INTO workspaces VALUES('empty','Empty','/empty')", []).unwrap();
+	c.execute("INSERT INTO projects(id,name,directory) VALUES('empty','Empty','/empty')", [])
+		.unwrap();
 	assert_eq!(
 		c.query_row("SELECT count(*) FROM agent_work_items", [], |r| r.get::<_, i64>(0)).unwrap(),
 		5
 	);
 	migrations::migrate(&mut c).unwrap();
 	assert_eq!(
-		c.query_row("SELECT count(*) FROM workspaces", [], |r| r.get::<_, i64>(0)).unwrap(),
+		c.query_row("SELECT count(*) FROM projects", [], |r| r.get::<_, i64>(0)).unwrap(),
 		3
 	);
 }

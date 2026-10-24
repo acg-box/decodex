@@ -14,10 +14,10 @@ sources:
     resource: repo://crates/decodex-account-login/src/lib.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
-generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
+generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T06:15:55.391Z
+    at: 2026-10-24T21:19:56.719Z
 ---
 
 # Test quality and coverage
@@ -53,8 +53,12 @@ Motion tests should use controlled times where possible. Fixed intermediate wall
 
 ## Cleanup evidence
 
-Nextest `LEAK` output means that captured output did not close within the runner's exit window; it does not by itself identify an application-owned survivor. The historical macOS Nextest 0.9.143 investigation reproduced sibling capture-pipe inheritance. The original test passed repeated isolated checks; the original marker had no pipe trace. The current qualification records a separate marker and passing isolated rerun, without claiming the same cause. Preserve those limits and diagnose each new marker on its own evidence. Do not change the timeout, skip tests or serialize the default suite merely to hide a marker. See the [validation guide](../operations/commands-and-validation.md#nextest-exit-markers) and its immutable historical diagnosis link.
+Nextest `LEAK` output means that captured output did not close within the runner's exit window; it does not by itself identify an application-owned survivor. The historical macOS Nextest 0.9.143 investigation reproduced sibling capture-pipe inheritance. The original test passed repeated isolated checks; the original marker had no pipe trace. The earlier component qualification records a separate marker and passing isolated rerun, without claiming the same cause. Preserve those limits and diagnose each new marker on its own evidence. Do not change the timeout, skip tests or serialize the default suite merely to hide a marker. See the [validation guide](../operations/commands-and-validation.md#nextest-exit-markers) and its immutable historical diagnosis link.
 
 Record the removed assertion, the contract it purported to protect, and the retained owner or reason it is no longer needed. Validate the affected owner before merging a coherent batch. A repository-wide search is candidate discovery, not proof that every scenario was reviewed. Do not use deleted line or test counts as a completion target.
 
 Earlier cleanup reports remain in Git history. They do not establish exhaustive semantic coverage of the current repository. See [Commands and validation](../operations/commands-and-validation.md) and [Acceptance boundaries](upstream-acceptance-boundaries.md).
+
+## Project and Work qualification
+
+The separate retained Project/Work qualification records actual native and local test cohorts. Its complete workspace run has 2918 executed, 2916 passed, two native audio ICE timeout failures and 1154 skipped. A passed appearance-fade test has a LEAK marker with unknown cause. One timeout reproduced on untouched main under workspace features; that does not prove both failures are baseline defects. Passing focused Work/Guardian tests does not make the complete suite green. Keep the original failed output in native receipts and use the retained index for exact identities and overlapping counts.

@@ -221,6 +221,37 @@ fn project(row: &AgentGuardianReview, generation: Option<&str>) -> Option<AgentG
 	Some(result)
 }
 
+pub(crate) async fn private_detail(
+	store: &SqliteStore,
+	thread: &str,
+	turn: &str,
+	item: &str,
+	offset: usize,
+) -> decodex_protocol::PrivateReviewDetailsResult {
+	use decodex_protocol::PrivateReviewDetailsResult;
+	let Ok(Some(text)) = store.private_review_record(thread.into(), turn.into(), item.into()).await
+	else {
+		return PrivateReviewDetailsResult::Unavailable;
+	};
+	if text.len() > 65536
+		|| offset >= text.len()
+		|| !text.is_char_boundary(offset)
+		|| decodex_core::contains_credential_material(&text)
+	{
+		return PrivateReviewDetailsResult::Unavailable;
+	}
+	let mut end = (offset + GUARDIAN_DETAIL_PAGE_BYTES).min(text.len());
+	while !text.is_char_boundary(end) {
+		end -= 1;
+	}
+	PrivateReviewDetailsResult::Available {
+		offset,
+		total_bytes: text.len(),
+		text: text[offset..end].into(),
+		next_offset: (end < text.len()).then_some(end),
+	}
+}
+
 #[cfg(test)]
 mod tests {
 

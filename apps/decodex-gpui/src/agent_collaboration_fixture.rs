@@ -97,7 +97,7 @@ impl AgentSurface {
 		snapshot.pending_events.clear();
 		snapshot.dependencies.clear();
 		snapshot.context_references.clear();
-		snapshot.workspaces.clear();
+		snapshot.projects.clear();
 		snapshot.archived_work_ids.clear();
 		self.native_agents.lists.clear();
 		for (owner, id, parent, name, task, state) in [
@@ -225,7 +225,7 @@ impl AgentSurface {
 		snapshot.pending_events.clear();
 		snapshot.dependencies.clear();
 		snapshot.context_references.clear();
-		snapshot.workspaces.clear();
+		snapshot.projects.clear();
 		snapshot.archived_work_ids.clear();
 		self.native_agents.lists.clear();
 		self.native_agents.selected = None;

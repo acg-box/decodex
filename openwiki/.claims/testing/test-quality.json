@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:359743ac71cb377fd191c68b419588f359d9c886233e5c743d6b72a66252af3e",
+  "pageVersion": "sha256:c9ebfc041372b0e009ed2d70f9ab2f6b8230c34b85bf5adc60d79077f0facee3",
   "claims": [
     {
       "id": "claim_070657bf065541118dc7ae41cdeffc2c",
@@ -27,14 +27,14 @@
       "statement": "Refresh endpoint tests exercise the fixed ordinary-build authority and, under the debug fixture feature, reject unsafe loopback endpoint forms.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L6867-L6897",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L6882-L6912",
           "version": "repo-lines-v1:sha256:1d6dfe7f7ea3db5285363f58baa71ed6d8e8ac928d587dd4a4bbe1e275f238fa:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiOGYxZWE3NWVmYWZjNmZlNzNlMjI3MmY4ZWI2NTczYzY2NWIxZGRhMTNiY2RmZDkwMjExMmNmNWQzMTFhM2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwOTIxZGVkZWQ2YzRjNWYwNGQ3NzY4ZWEyOTMxNWE1YWEyYzhiMzRlMWUxOWYwMjU0NmVhYmNhNTIxNjdhNjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQxMjA1MDRjYWRlMDJkN2MwY2QzY2FjMzgyNDNmOGU5MTdkMGU0NDI1NTM5ODE2ZmRiMjJlYWY1MjBhOThiZjMifQ"
         }
       ]
     },
     {
       "id": "claim_cdec182fee104c07abe30713fd28a444",
-      "statement": "The current qualification records a passed test with a Nextest LEAK marker and a passing isolated rerun without the marker; historical capture-inheritance diagnosis retains its original evidence limits and does not establish a universal cause.",
+      "statement": "The earlier component qualification retains its passed LEAK test and clean isolated rerun; the separate Project Work full suite records an appearance-fade LEAK of unknown cause and two unresolved audio timeouts.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
@@ -42,7 +42,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:c2679cbdef5fee4a799c90f3887b10fc268c644dee120e5f7a912ed0fa843a82"
+          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
         }
       ]
     },
@@ -59,6 +59,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T06:15:55.391Z"
+    "at": "2026-10-24T21:19:56.719Z"
   }
 }

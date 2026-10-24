@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ccd1c5d710aa5baffc3d1a2dde8c39f1263038400f7e817ec2b3913438f9bc12",
+  "pageVersion": "sha256:7547fd397df9671dd0be4bf61b111ffeac4aeaea0e454336c27ed95b189502f8",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -8,11 +8,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/application.rs",
-          "version": "repo-file-v1:sha256:56ba44de7a43dc2aa8383fcb292ae29dbf50f282a90a0c1da3aee97b8f311d78"
+          "version": "repo-file-v1:sha256:c99a4ab3ab0b203dfa098a3165ca62737535bdc67f90c2666fd3d058192c3294"
         },
         {
           "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:916f8d6615e3a14e74743fda320f3e6ccf4956b872b66fa6f761f0a73a03a43e"
+          "version": "repo-file-v1:sha256:c28cb3a289bd31e3aab3dd4c715f33354eb5d0874ea1fa16099c8fd5ebf50657"
         }
       ]
     },
@@ -22,7 +22,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:7deb050ff7430319ee4cd56797817463b4eb5a87ab440f7455215986ae9eec2d"
+          "version": "repo-file-v1:sha256:473d11971830b92e711c50344c2f31625414543cf4bf96e657ac4cf8df5c2bd5"
         }
       ]
     },
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:7deb050ff7430319ee4cd56797817463b4eb5a87ab440f7455215986ae9eec2d"
+          "version": "repo-file-v1:sha256:473d11971830b92e711c50344c2f31625414543cf4bf96e657ac4cf8df5c2bd5"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -45,8 +45,8 @@
       "statement": "Current local clients and service must agree on the exact CURRENT_VERSION protocol; packaged native compatibility is checked separately by the bundle contract verifier.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L294-L312",
-          "version": "repo-lines-v1:sha256:c87a72631b158db790112cb16ce8e8bd264007a68e3730767f9d1f1d0c32ca8a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZDA5NzgzZTA2YzlkMGI3MDhhMTFiNTU3N2M2MWNlMjBhZGRjNjZjYmVmMGJkZjc5ODQ2ZWZiN2M5OWM3YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjZkOWNlOGNkNmRlNjQ0YTM4Y2QwYjA0NTRmYjkzYjBjMWEzNTFlNzAyYjc1ODI0NmE2ZTZkZWI3N2Y1MzkifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L297-L315",
+          "version": "repo-lines-v1:sha256:719725191d81e573df67520f2fcad60881a3be768a435464e9ccdac0abaff6ff:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZDA5NzgzZTA2YzlkMGI3MDhhMTFiNTU3N2M2MWNlMjBhZGRjNjZjYmVmMGJkZjc5ODQ2ZWZiN2M5OWM3YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjZkOWNlOGNkNmRlNjQ0YTM4Y2QwYjA0NTRmYjkzYjBjMWEzNTFlNzAyYjc1ODI0NmE2ZTZkZWI3N2Y1MzkifQ"
         },
         {
           "resource": "repo://scripts/macos/verify_decodex_bundle_contracts.py",
@@ -67,7 +67,7 @@
           "version": "repo-file-v1:sha256:a9cb497d1fa84af093ba66bdf106fb009bf3179794de23eafdb34a24dc4a858b"
         },
         {
-          "resource": "repo://database/src/migrations.rs#L97-L155",
+          "resource": "repo://database/src/migrations.rs#L102-L160",
           "version": "repo-lines-v1:sha256:626487d7f9257edc8a7a0252542568a97b100eb908cc7b74ab73128eef19568c:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzYWNlOTQ5YjcyOWM4MjI2YzE0YWM1YzA2OGQ0ZjQ5NDQwMTJjMTg2ZGJjYzkyOWViOTlkNjBhODk1Njg4YTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhZGY0YTk2YTM1ZWFmNjBjZDMwNzIwMDZlZmEzMzUwODQ3NjMzNTc2MmY3MWJjN2NkY2U4NTUzMjllMTI1ZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyZjcxNWExMjAyMmNkOGNiODEzMmM2YmIyZDdlYmM0MGIwNjU2YTE1MzgzYWUwMWM5YjE3ZWFiZGE0YTVjMTYifQ"
         }
       ]
@@ -78,13 +78,69 @@
       "evidence": [
         {
           "resource": "repo://database/src/agent_fork.rs",
-          "version": "repo-file-v1:sha256:712f55c6cc1244a9218a6a73485de447ad2a1a36a927456d7b8d13722133aae7"
+          "version": "repo-file-v1:sha256:a34d2c3b6af1db67aa9864162b5cac5ad54c7d1e4fbcfdce57b5a47bf8682bc7"
+        }
+      ]
+    },
+    {
+      "id": "claim_f9532ca538ff489f970f38834f724331",
+      "statement": "Schema56 directly adds separate Project Agent Work and Collaboration state while preserving genuine legacy execution and explicit historical qualification limits without reset or dual writing.",
+      "evidence": [
+        {
+          "resource": "repo://database/migrations/0056_project_agent_work.sql",
+          "version": "repo-file-v1:sha256:ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699"
+        },
+        {
+          "resource": "repo://database/src/migrations.rs#L8-L63",
+          "version": "repo-lines-v1:sha256:631d563e7d9318cbf94c56d195f41254bd6a2077d3fc3b949ec371a874673288:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmOTFlNTk4NmU4OWZjNDI1OWRiY2VhMjU2MDRiNmI5YzMwMTc2NjdlOGRlMDZhOTIwYzY0NWNiMDcwYzVhYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiNGRhM2I1ZGMyYzkwZGI2NGEwMGE0MmNmZGNhZmViZGUzMDI2OTJjYWQ4MWFkNjI1YTgxNjNhZDVhNWMyYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkMjNjMWJiNjE2NjI5ZTVkYTUxNGJhMmI2Yjk4YWNkYzA1Y2M2ZTIwZTViNTEzYTM5MWY0MTBlYjk1ODQzZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyZGE5ZWM4MjY5ZTAwN2I3YmUzYTYyMTc1NDFjODJlZGUxZTQxMDgzZDQwNTA0MWVmYWZkN2ZkM2ZiYTUyYmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b432b4fbb40248bc81fcde5eb382fb08",
+      "statement": "Work commands use immediate transactions, exact idempotent receipts and current owner/requirements/evidence guards; scoped reads apply authority before bounded limits.",
+      "evidence": [
+        {
+          "resource": "repo://database/src/works.rs",
+          "version": "repo-file-v1:sha256:9fae2b7e75b33ade985004e3613c7de156eb8065661b3d85e22a4421384c60ab"
+        },
+        {
+          "resource": "repo://database/src/works/commands.rs",
+          "version": "repo-file-v1:sha256:3bc77003902aa98bcfd2aafe6b31a3d42be0ee4115224938778c66753a1ea7af"
+        }
+      ]
+    },
+    {
+      "id": "claim_2aa8f2a9a2d14842992cb9b946e3277a",
+      "statement": "Native tool migration journals exact source/replacement identities and switches only after positive retirement, while unknown external effects remain parked and old history remains read-only.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tool_migration.rs",
+          "version": "repo-file-v1:sha256:907ed4275de6ac66f931df9b580be60b4158fb2cd2a8dd1faa3c32367aeb4bf6"
+        },
+        {
+          "resource": "repo://database/src/agent_tool_migration.rs",
+          "version": "repo-file-v1:sha256:37ecc85a8ef1bd4d488463ce804c67b9a0612fa67e54dbda0c50c324a1d8f191"
+        }
+      ]
+    },
+    {
+      "id": "claim_274f511d5a484f5f8e48209137c998c5",
+      "statement": "Global Guardian stores desired settings, source application receipts and bounded deduplicated private observations separately from native approval authority and Work completion.",
+      "evidence": [
+        {
+          "resource": "repo://database/migrations/0056_project_agent_work.sql",
+          "version": "repo-file-v1:sha256:ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699"
+        },
+        {
+          "resource": "repo://database/src/guardian_settings.rs",
+          "version": "repo-file-v1:sha256:55f3c9a78b8ba21e28125f3d4edb836ccfb6a155b603390e95c8fd5ca78e61b9"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T06:08:33.099Z"
+    "at": "2026-10-24T21:19:56.719Z"
   }
 }

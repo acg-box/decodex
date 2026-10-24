@@ -155,7 +155,7 @@ mod tests {
 			.work_items
 			.retain(|work| ["agent", "release", "flow", "verify"].contains(&work.id.as_str()));
 		snapshot.archived_work_ids.insert("agent".into());
-		snapshot.workspaces.clear();
+		snapshot.projects.clear();
 		snapshot.dependencies.clear();
 		snapshot.context_references.clear();
 		for work in &mut snapshot.work_items {

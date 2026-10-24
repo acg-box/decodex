@@ -10,6 +10,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration_tests.rs
   - id: openwiki-source-2a6989c7fa25b9681df71f95
     resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
+  - id: openwiki-source-6a1c55b61be8ac251a493046
+    resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
   - id: openwiki-source-51a4755f3c4ddd78511e5c8e
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
   - id: openwiki-source-14193a66abfb7d3230f476bf
@@ -20,28 +22,43 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-ff8abff5a675874c627f1969
     resource: repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs
+  - id: openwiki-source-acd129fd3a88516b785fc929
+    resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
+  - id: openwiki-source-bdc10e06c0058b26a9bde83d
+    resource: repo://database/migrations/0056_project_agent_work.sql
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-21T14:42:59.992Z" }
+generated: { by: "codex", at: "2026-10-24T21:19:56.719Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T06:08:33.099Z
+    at: 2026-10-24T21:19:56.719Z
 ---
 
 # OpenWiki quickstart
 
 Decodex is a local workspace above Codex app-server. The primary Agent can discuss work, act directly, or coordinate other agents. Codex owns native conversation execution. Decodex owns local work relationships, account policy, recovery and presentation. “Chief” in older filenames and records is the former Agent name.
 
+## Project, Agent and Work
+
+The [canonical contract](decisions/project-agent-work.md) is implemented: Project provides continuing context, each user-created Agent has one current native conversation, and Work records an outcome with one accountable Agent, current requirements and evidence. Assistant is optional. Project Lead is a responsibility of an existing Agent. The same Agent can handle several Works.
+
+Agents use native Subagents for bounded execution and scoped Collaboration Requests for independent peers. Native Codex owns execution, context, permissions and continuation. Decodex owns durable business relationships, evidence, coordination and presentation. The default Work tools do not create another executor, and no part of this contract requires Ultra.
+
+Work and Guardian fit the existing desktop. Expand Work to inspect Materials, Collaboration, Results and assessment. Guardian has global Ask Me or Automatic Review and optional bounded Review Details; Full Access stays a separate native permission choice. Review records with no exact action association stay explicitly unassociated.
+
+Schema 56 and protocol 3.0 provide the direct migration while retaining genuine historical execution and uncertainty. The [acceptance record](testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian) distinguishes passing native/local cohorts from the complete suite's two audio timeouts. No app installation, release or live-account acceptance is implied.
+
 ## Start by task
 
 | Task | Read first |
 | --- | --- |
+| Change Project/Agent/Work contracts, recovery, global Guardian or canonical names | [Project, Agent and Work contract](decisions/project-agent-work.md) |
 | Understand service, clients and storage | [Runtime architecture](architecture/runtime-architecture.md) |
-| Trace Agent coordination, question escalation, event receipts or Busy recovery | [Agent coordination](architecture/chief-coordination.md) |
+| Trace native helper execution, peer Collaboration, question escalation or recovery | [Agent coordination](architecture/chief-coordination.md) |
 | Change conversation layout, loading or motion | [Conversation presentation](architecture/conversation-presentation.md), [Desktop workspace](architecture/desktop-workspace.md) |
 | Change input, branches, drafts, read state, export or recap | [Conversations and recovery](workflows/conversations-and-recovery.md) |
 | Change model, effort, Goal, search or native launch defaults | [Models and settings](workflows/models-and-settings.md) |

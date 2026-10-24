@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a9f39fcb80264d708ed9ec258fb94f5226a4819a206f24478d6f4c1f4edcb8e4",
+  "pageVersion": "sha256:a2b3e19c0e4b1e76909173dd306ae1d32e6604299d0cb4a5646056916a6c39f8",
   "claims": [
     {
       "id": "claim_57e074771dc449d381c92434a1615ca6",
-      "statement": "The current Agent policy supports general-purpose work and subordinate agents; historical Program aggregates remain a separate read-only compatibility surface.",
+      "statement": "Current Agent instructions support general-purpose Work with native Subagents and user-created persistent Agents; historical Program aggregates remain a separate read-only compatibility surface.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
-          "version": "repo-file-v1:sha256:5bcfa29f7a67cc02f7640fd09b07e22e1bd9318d123a993f4315dfe37097640b"
+          "version": "repo-file-v1:sha256:a32503172f93bd1e5dee1c1714d75236457b0df869ea9953fee9fc7f4da104e9"
         },
         {
           "resource": "repo://database/src/program_cycles.rs",
@@ -19,6 +19,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T09:01:22.045Z"
+    "at": "2026-10-24T21:11:31.338Z"
   }
 }

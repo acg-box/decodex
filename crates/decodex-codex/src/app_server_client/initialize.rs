@@ -16,6 +16,7 @@ impl InitializeCapabilities {
 	pub fn for_agent() -> Self {
 		Self {
 			extensions: Some(serde_json::json!({"openai/form":{},"openai/standard-form-input":{}})),
+			opt_out_notification_methods: &[],
 			..Self::default()
 		}
 	}
@@ -51,6 +52,7 @@ mod tests {
 			agent.as_object_mut().unwrap().remove("extensions"),
 			Some(serde_json::json!({"openai/form":{},"openai/standard-form-input":{}}))
 		);
-		assert_eq!(agent, ordinary);
+		assert_eq!(agent["experimentalApi"], ordinary["experimentalApi"]);
+		assert_eq!(agent["optOutNotificationMethods"], serde_json::json!([]));
 	}
 }

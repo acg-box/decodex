@@ -790,13 +790,16 @@
     {
       "id": "guardian-private-review-observation",
       "upstream_commit": "07316174c6f62deb20278c53add2dbd9dcf6da70",
-      "status": "awaiting_user_decision",
+      "status": "approved_implemented",
       "value": "Explain native Guardian decisions by observing private reviewer items with their original thread/turn identity, without adding them to parent history.",
       "maintenance_cost": "Medium: explicit transcript presentation, subscription ownership, bounded buffering and private-child identity tests. No copied reviewer or enforcement engine.",
-      "recommendation": "Defer until the user asks for review explanations; retain the experimental native default-off behavior.",
+      "recommendation": "Use the global opt-in Review Details surface with bounded private assistant output and lifecycle metadata. Keep missing action associations explicit.",
       "evidence": "codex-rs/core/src/session/mod.rs#deliver_event_raw; codex-rs/app-server/src/bespoke_event_handling.rs#apply_bespoke_event_handling; codex-rs/app-server/tests/suite/v2/guardian_sync_session_tests.rs#managed_reviewer_refreshes_global_instructions_before_reuse",
       "scope_boundary": "Distinct from Guardian fetching hosted conversation history and from selecting JSON input format; this is client observation of the private reviewer output.",
-      "qualification_limit": "Source and its controlled source regression were reviewed. Decodex adds no observer subscription, transcript control or automatic policy."
+      "qualification_limit": "Exact packaged CLI/helpers and synthetic source-bound observations. No exact action-level Review association, complete private reasoning transcript or installed-app acceptance.",
+      "decision": "User approved the global Guardian and Review Details contract in openwiki/decisions/project-agent-work.md.",
+      "qualification": "retained_project_agent_work",
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2494"
     },
     {
       "id": "native-attached-fork-workflow",
@@ -1820,5 +1823,241 @@
       "https://github.com/acg-box/decodex/commit/10d1181ec3652a429dc69d15525088c97a73fc40",
       "https://github.com/acg-box/decodex/pull/2473"
     ]
+  },
+  "retained_project_agent_work": {
+    "decision": "openwiki/decisions/project-agent-work.md",
+    "delivery_reference": "https://github.com/acg-box/decodex/pull/2494",
+    "delivery_state_source": "Read the public PR for merge state and exact-head checks. Qualification does not establish installed-app acceptance.",
+    "contracts": [
+      "Project, Agent and Work have distinct identities. Assistant and Project Lead are responsibilities of existing Agents; native Subagents remain native execution.",
+      "Current owner, current requirements and related Result assessment gate Work completion in one transaction. File Results bind actual bytes; native Results bind exact thread, turn and item.",
+      "Independent Collaboration Requests reuse inbox admission and user-input priority. Busy requests queue; delivery, acceptance, return and assessment remain distinct. Repair and cancellation target the exact instruction.",
+      "Direct native delegation binds saved intent to native assignment and output. Unknown or ambiguous evidence never authorizes another spawn. No duplicate helper executor or Work polling controller.",
+      "Global Guardian separates saved preference, queued publication and exact source readback. Pending human approvals keep their owner. Full Access remains separate native policy.",
+      "Review Details retain supported private assistant output and terminal metadata, with exact private identities, bounded storage and explicit association/reconnection limits.",
+      "Schema 56 preserves native identities and historical evidence. Protocol generation 3 rejects incompatible old clients. Immutable tool migration preserves original history and settings and requires positive native retirement.",
+      "Apply Agent and Material scope before page limits; prefer open and blocked Work over completed history. Unrelated records cannot consume the Agent evidence page."
+    ],
+    "source_symbols": [
+      "database/src/works.rs#apply_work_command,#work_command_applied,#agent_work_portfolio",
+      "database/src/works/commands.rs#complete,#revise",
+      "database/src/works/collaboration.rs#instruction,#returned,#apply",
+      "crates/decodex-runtime/src/agent/work.rs#verify_work_command,#verify_work_result,#recover_native_contribution,#observe_native_work_dispatch",
+      "crates/decodex-runtime/src/agent/tool_migration.rs#migrate_tools,#migration_quiescent",
+      "crates/decodex-runtime/src/agent/global_guardian.rs#sync_global_guardian,#global_guardian_notification",
+      "crates/decodex-runtime/src/work_portfolio.rs#read",
+      "apps/decodex-gpui/src/agent_portfolio.rs#render_work_portfolio,#render_global_guardian",
+      "database/src/works.rs#scoped_work_portfolio",
+      "crates/decodex-runtime/src/websocket.rs#supports_publication_instance"
+    ],
+    "source_sha256": {
+      "crates/decodex-core/src/work.rs": "e1045f29d21d012c893bf4f9f0668c745c1a0752e27f500a47454cfe1aed7f47",
+      "database/migrations/0056_project_agent_work.sql": "ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699",
+      "database/src/works/commands.rs": "3bc77003902aa98bcfd2aafe6b31a3d42be0ee4115224938778c66753a1ea7af",
+      "database/src/works/collaboration.rs": "3c8e9c55c8b978854a4551c91a48429b0bf1ff9e1a5cde3bbd817fc0130edf39",
+      "database/src/agent_tool_migration.rs": "37ecc85a8ef1bd4d488463ce804c67b9a0612fa67e54dbda0c50c324a1d8f191",
+      "crates/decodex-codex/src/app_server_client/projects.rs": "9d9f0d08212b87fe1da9788d2f8b9d9fc55f19e5b0dd73e87b22e8212b59a40e",
+      "crates/decodex-codex/src/app_server_client/guardian_settings.rs": "886762d9b42e7f326272ae1c494554d3ed2cbcc398950e79baf46b23c07a35ee",
+      "crates/decodex-runtime/src/agent/work.rs": "dd9ef5ba2a31400ca4e973700dd4ca2418c96c818f0126d5b1d365f61569b7be",
+      "crates/decodex-runtime/src/agent/tool_migration.rs": "907ed4275de6ac66f931df9b580be60b4158fb2cd2a8dd1faa3c32367aeb4bf6",
+      "crates/decodex-runtime/src/agent/global_guardian.rs": "131f5d872210abf936e8e602328d7cf1fa8252941ba1832176c2bb32ea1d4839",
+      "crates/decodex-runtime/src/agent/instructions.md": "a32503172f93bd1e5dee1c1714d75236457b0df869ea9953fee9fc7f4da104e9",
+      "crates/decodex-runtime/src/agent/coordination.md": "05322d51661773771b61aba3d0b307aa1c984cf1c90f7e5dc8aece435e1ff1fa",
+      "crates/decodex-runtime/tests/native_qualification/project_guardian.py": "2c9429ce26a700a4fd27145fa9022df4d6bc426ade5b8b512f329131afb2ad42",
+      "apps/decodex-gpui/src/agent_portfolio.rs": "4ab55056b0f4205cd0fc351e7557065f41519869b8248c1049fda8781d964d00",
+      "database/src/works.rs": "9fae2b7e75b33ade985004e3613c7de156eb8065661b3d85e22a4421384c60ab",
+      "crates/decodex-runtime/src/websocket.rs": "83501a77e6f8c091aa82475ccd18c106b417cc3c8fd21daae4047b890e9e44bf",
+      "crates/decodex-protocol/src/lib.rs": "90faf10025180aa5a61d0fb84f98b310762b69a58157c8ac17d1c0d8b6667599",
+      "crates/decodex-protocol/src/work_portfolio.rs": "f78fa71e4b678fbb6dcca85bbac58c31d853aa9077de37986f8b3e43baf4c2e6"
+    },
+    "tests_read": [
+      {
+        "source": "database/src/works/tests.rs",
+        "tests": [
+          "agent_scope_precedes_work_and_material_page_limits",
+          "results_cannot_complete_another_work_or_stale_requirements",
+          "busy_request_and_lost_ack_survive_restart_without_false_acceptance",
+          "user_holds_and_scoped_materials_do_not_grant_private_history",
+          "native_binding_and_completion_intents_stay_separate_after_restart",
+          "global_guardian_unknown_writes_and_observation_opt_out_survive_restart",
+          "native_tool_replacement_keeps_creation_and_retirement_separate_after_restart"
+        ],
+        "sha256": "7995d3e2ab0c9c1b2bcb8e67141fe4db3c9621326bbdda85b488e0b06c0f4b43"
+      },
+      {
+        "source": "database/src/project_work_migration_tests.rs",
+        "tests": [
+          "direct_migration_preserves_native_identity_directory_holds_and_completed_history"
+        ],
+        "sha256": "94f26398cc8b9d2036654f7c2d7df4ac541a65e67b0e8a0a0ee8e03e1563789f"
+      },
+      {
+        "source": "crates/decodex-runtime/src/agent/tests/work_contract.rs",
+        "tests": [
+          "four_works_in_two_projects_share_an_agent_without_sharing_results"
+        ],
+        "sha256": "047e633c397341c31db242a9129ae53566a6cdd29886a1a01b2d8bdc751611fc"
+      },
+      {
+        "source": "crates/decodex-runtime/src/work_portfolio.rs",
+        "tests": [
+          "selected_work_pages_keep_unicode_and_reject_a_changed_view"
+        ],
+        "sha256": "fd24557ef9583bda2f5781f4ad15afa19ae006533728ccc087fc47a38209b7a2"
+      },
+      {
+        "source": "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
+        "tests": [
+          "native_child_completion_wakes_idle_root_once",
+          "native_v1_work_attribution_uses_the_native_executor"
+        ],
+        "sha256": "c7f9b1441a89892d12c549b5c15571496111ea4b911e9fa699af5f86e726db9d"
+      },
+      {
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs",
+        "tests": [
+          "native_project_global_review_and_private_records_cross_retained_bridge",
+          "native_legacy_tools_migrate_once_and_retire_the_old_context"
+        ],
+        "sha256": "a7583373e3a464de6396fed52288aa8650b127438064acc4df3cfcadfd9eb4f5"
+      },
+      {
+        "source": "apps/decodex-gpui/src/agent_portfolio_tests.rs",
+        "tests": [
+          "two_projects_four_works_open_scoped_collaboration_material_and_result",
+          "guardian_click_sends_one_global_preference_without_claiming_application"
+        ],
+        "sha256": "72b2dcbc5731926b391ac6b9c47687df6cbead59c7ce8cc160e09141621224f7"
+      }
+    ],
+    "tests_executed": {
+      "selected_native": {
+        "entrypoint": "decodex-runtime/lib",
+        "run": 13,
+        "passed": 13,
+        "unmatched_selectors": [],
+        "tests": [
+          "account_launch::agent_process::native_tests::code_mode::installed_native_code_mode_yielded_cells_keep_their_outputs",
+          "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
+          "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart",
+          "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart",
+          "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
+          "account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart",
+          "account_launch::agent_process::native_tests::project_work::native_legacy_tools_migrate_once_and_retire_the_old_context",
+          "account_launch::agent_process::native_tests::project_work::native_project_global_review_and_private_records_cross_retained_bridge",
+          "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action",
+          "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
+          "agent::tests::native_agent_wake::native_v1_work_attribution_uses_the_native_executor",
+          "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
+          "agent::tests::native_subagent_live::native_child_approval_round_trip"
+        ],
+        "skipped": 985
+      },
+      "selected_rendered_and_runtime": {
+        "run": 6,
+        "passed": 6,
+        "tests": [
+          "shell::agent_surface::portfolio::tests::guardian_click_sends_one_global_preference_without_claiming_application",
+          "shell::agent_surface::portfolio::tests::two_projects_four_works_open_scoped_collaboration_material_and_result",
+          "agent::tests::legacy_context_waits_for_positive_native_retirement_without_replay",
+          "agent::tests::nested_managers_own_their_inbox_tools_and_workspace_directory",
+          "agent::tests::external_writer_release_requires_a_new_send",
+          "agent_host::tests::first_message_creates_conversation_and_survives_reopen"
+        ],
+        "entrypoints": [
+          "decodex-runtime/lib",
+          "decodex-gpui/bin:decodex-gpui"
+        ]
+      },
+      "repository_python": {
+        "run": 40,
+        "passed": 40
+      },
+      "cli_diagnostics": {
+        "run": 2,
+        "passed": 2
+      },
+      "workspace": {
+        "entrypoint": "workspace/all-targets/all-features",
+        "run": 2918,
+        "passed": 2916,
+        "failed": 2,
+        "skipped": 1154,
+        "leaky_passes": [
+          "decodex-gpui::bin/decodex-gpui ui_working::tests::appearance_and_disappearance_share_one_continuous_fade"
+        ],
+        "unmatched_selectors": [],
+        "failed_tests": [
+          "decodex-gpui::bin/decodex-gpui shell::agent_surface::voice::transport::tests::native_call_exchanges_audio_captions_mutes_and_releases_buffers",
+          "decodex-gpui::bin/decodex-gpui shell::agent_surface::voice::transport::tests::remote_channel_loss_reports_failure_and_releases_buffers"
+        ],
+        "limit": "Both existing native-media tests timed out in ICE connection. Unchanged main reproduced the same timeout in remote_channel_loss with identical workspace flags; its package-only two-test run passed. The first test failure was not independently reproduced on main. No test was excluded or weakened; the common cause remains unknown."
+      },
+      "database": {
+        "entrypoint": "decodex-database/all-features",
+        "run": 188,
+        "passed": 188,
+        "skipped": 0,
+        "unmatched_selectors": [],
+        "defect_reproduced_before_repair": "agent_scope_precedes_work_and_material_page_limits failed because 100 unrelated Works hid the current Agent Work. It passes after SQL scope precedes the page limit."
+      },
+      "transport_and_current_work": {
+        "entrypoint": "decodex-runtime/lib and websocket_protocol",
+        "run": 28,
+        "passed": 28,
+        "unmatched_selectors": [],
+        "selector": "binary(websocket_protocol) or test(creation_receipt_survives_store_and_service_restart_without_replay) or test(work_contract::) or test(work_portfolio::)",
+        "skipped": 970
+      },
+      "counts_overlap": true
+    },
+    "artifact": {
+      "source": "970111f6cb62cc02fe36a82ea7d71b37a2889c97",
+      "binary_sha256": "cbaaabb9381ce36f13c8605def36cede35826fa11b404b8ad4d81a0f648826cd",
+      "code_mode_host_sha256": "58e9e6a203e5885f8046af453081d9da9521452c704a79ceac519a3704cac340",
+      "rg_sha256": "cdbd12cd8f86a0e2c0812500f10a90295a7e43923d823d87c98cddb15513742d",
+      "schema_sha256": "9a924f38f788323f6ac1070f8adc6a6813a247f2cc881bc244e4211da676c338",
+      "preparation": "cargo +stable make prepare-codex",
+      "actual_preparation": "Verified development package import through DECODEX_CODEX_DEVELOPMENT_RUNTIME; component and schema checks reached Ready.",
+      "reconstruction": "Use the explicit preparation command to rebuild or import the locked artifact, then rerun affected exact-artifact regressions. A rebuild is fresh evidence, not the deleted original."
+    },
+    "commands": [
+      "cargo +stable make check-rust",
+      "cargo +stable make lint-rust",
+      "cargo +nightly fmt --all -- --check",
+      "cargo +stable make test-local-database",
+      "cargo +stable nextest run --locked --workspace --all-targets --all-features --no-fail-fast",
+      "DECODEX_TEST_CODEX_BINARY=\"$QUALIFIED_CODEX_BINARY\" DECODEX_NATIVE_BINARY=\"$QUALIFIED_CODEX_BINARY\" cargo +stable nextest run --locked -p decodex-runtime --all-features --run-ignored only -E \"test(project_work::) or test(native_child_completion_wakes_idle_root_once) or test(native_v1_work_attribution_uses_the_native_executor) or test(native_child_approval_round_trip) or test(native_child_mcp_input_preserves_policy_and_exact_request) or test(permissions::installed_) or test(installed_native_discards_partial_compaction_output_after_restart) or test(installed_native_preserves_prompt_before_compaction_error_and_after_restart) or test(installed_native_guardian_preserves_large_action) or test(installed_native_parallel_dynamic_tools_preserve_ids_and_result_order) or test(installed_native_code_mode_yielded_cells_keep_their_outputs)\" --test-threads 1 --no-fail-fast",
+      "QUALIFIED_CODEX_BINARY=\"$QUALIFIED_CODEX_BINARY\" DECODEX_QUALIFICATION_OUTPUT=\"$QUALIFICATION_OUTPUT\" python3 crates/decodex-runtime/tests/native_qualification/project_guardian.py"
+    ],
+    "limits": [
+      "Synthetic temporary homes and loopback provider. No real-account, live-provider reasoning-quality or installed-app acceptance. No installation or release.",
+      "Native model metadata and configuration select the backend. Medium gpt-5.6-sol exercises V2; Medium gpt-5.6-luna exercises V1. Disabling the V2 feature alone does not override a model-selected V2 backend.",
+      "Idle-owner message wake is qualified for V2. V1 needs native wait for required Results; no local duplicate wake engine is added.",
+      "Direct native calls are qualified. Nested Code Mode Work attribution is unqualified and remains Unknown when exact evidence is absent.",
+      "Native Project catalog and thread association are qualified; desktop saved-Project synchronization is not established.",
+      "Guardian thread preference applies to subsequent turns. Existing active turns, pending approvals and already-spawned child captures retain native ownership.",
+      "Review Details have no exact action-level Review ID in this protocol. Retain at most 128 records of 64 KiB; show 32 short previews. No complete private reasoning transcript or gap-free reconnect claim.",
+      "Old tool contracts migrate only after inspectable native quiescence. Active or paused Goals, live commands/descendants, unsupported settings and unknown creation/retirement stay parked without a reset.",
+      "Earlier certified source-review ranges and historical artifact qualifications keep their recorded limits; this implementation does not advance the upstream cursor.",
+      "The Work overview and each selected evidence category are bounded to 100 rows. has_more marks additional retained records; selected Work transport pages use 8 KiB UTF-8 slices and a 32 MiB assembled limit.",
+      "Both existing native-media tests timed out in ICE connection. Unchanged main reproduced the same timeout in remote_channel_loss with identical workspace flags; its package-only two-test run passed. The first test failure was not independently reproduced on main. No test was excluded or weakened; the common cause remains unknown."
+    ],
+    "validation": {
+      "workspace_check": "passed",
+      "strict_workspace_lint": {
+        "packages": 13,
+        "passed": 13
+      },
+      "nightly_format": "passed",
+      "local_database": {
+        "schema": 56,
+        "tables": 89,
+        "outcome": "passed"
+      },
+      "source_review_cursor": "unchanged",
+      "app_installation": "not_performed",
+      "release": "not_performed"
+    }
   }
 }

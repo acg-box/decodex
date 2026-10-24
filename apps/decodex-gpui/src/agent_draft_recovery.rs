@@ -378,12 +378,15 @@ mod tests {
 		// startup screen before the first snapshot is known.
 		surface.update(visual, |s, cx| {
 			s.snapshot = Some(decodex_protocol::AgentSnapshotDto {
+				agents: Default::default(),
+				guardian: Default::default(),
+				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
-				workspaces: vec![],
+				projects: vec![],
 				work_items: vec![],
 				dependencies: vec![],
 				pending_events: vec![],
@@ -474,12 +477,15 @@ mod tests {
 		// startup screen before the first snapshot is known.
 		surface.update(visual, |s, cx| {
 			s.snapshot = Some(decodex_protocol::AgentSnapshotDto {
+				agents: Default::default(),
+				guardian: Default::default(),
+				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
-				workspaces: vec![],
+				projects: vec![],
 				work_items: vec![],
 				dependencies: vec![],
 				pending_events: vec![],
@@ -664,12 +670,15 @@ mod tests {
 		// startup screen before the first snapshot is known.
 		surface.update(visual, |s, cx| {
 			s.snapshot = Some(decodex_protocol::AgentSnapshotDto {
+				agents: Default::default(),
+				guardian: Default::default(),
+				portfolio: Default::default(),
 				archived_work_ids: Default::default(),
 				agent_slots: Default::default(),
 				context_references: vec![],
 				connection_initializing: false,
 				runtime_source: None,
-				workspaces: vec![],
+				projects: vec![],
 				work_items: vec![],
 				dependencies: vec![],
 				pending_events: vec![],
