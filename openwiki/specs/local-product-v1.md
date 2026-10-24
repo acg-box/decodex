@@ -32,13 +32,15 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-dd24c2ff3c2515a21892e312
     resource: repo://database/src/program_cycles.rs
-generated: { by: "codex", at: "2026-10-21T14:45:12.016Z" }
+generated: { by: "codex", at: "2026-10-22T20:51:42.199Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T06:08:33.099Z
+    at: 2026-10-22T20:51:42.199Z
 ---
 
 # Current local product contract
+
+This page describes the implemented local-product boundary. The accepted [Project, Agent and Work contract](../decisions/project-agent-work.md) defines the target architecture, shared English vocabulary and global Guardian controls. Its implementation and qualification are pending. Existing Main, manager and worker structures below are compatibility facts, not a required target hierarchy.
 
 ## Product and storage
 

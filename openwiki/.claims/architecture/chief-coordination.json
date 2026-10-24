@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6bf55b0d3f9309bcab7b92be7d9a337edce4b1a9be5b7fb3ca3a25e435b3f574",
+  "pageVersion": "sha256:f76ff11e361be6c2f79e0feadc5c7a0d3f0caca9788151decc29441e3400a56e",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -213,22 +213,22 @@
       "statement": "A Busy reply from agent_continue_worker means the instruction was not sent or queued. The parent waits for completion and checks idle dispatch state before continuing the same worker; committed work_instruction input retires older questions without removing later ones.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1859-L1895",
-          "version": "repo-lines-v1:sha256:f3955a4c365c2c94819d6abbf720335d5cc87ed97b53a104980dfffb4c2cab66:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyNTM1ZDBjZDFiNTFjZGU0MTVmZWYxMTE3NWQ2YjdmNWU3MzBmNWI0OTNiMjZmNTg4MTM4MjE0MDcwNGI3NmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlMzRlZjE4OWI1NWZkY2E5Y2Q2ODVhMDJkOTQ1YWEyNDU2NzNmNzdlYzU2OWQ3YmNmODEyY2RjN2FjZWJhNDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjZjY1NjcwMGI1NTg0YjhkMTFhYjk4MGVlMzEyMGU1NWRjNjIyMjM3MTA1YzJiYzExODllYTVhMjI2YTRiNzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEyYmYyNDc1MzMyOTc0NjAyYzAzYzNmY2IyZDQxOTk2ZDNjN2JiYWVlNTI3Y2U1ZTFlN2NlYzk1NDhkYjM0ZjEifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1845-L1901",
+          "version": "repo-lines-v1:sha256:3b1c068c91a808c315f453393fe86dff84c10a37d354cff9629d340d2abf012e:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiOGJlZjAzOTEzMjJkNDEyNDM3ODBkN2Q5NTk0MjI5MTg2MGY2YmM1NTE2YWYwZDQ2NGExNDcyMDdhOTU4MWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1MjVhYTRlZWY3MmE2Nzc1NWE1NDI0NDE2MmNkNmQyODNjNTA2ODFkMGNmM2MwNmQ4Mjg2ZGViMjZmZmY1ODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEyMGIxYmFmNTJkMTVlY2ZlOGY3YjRiYTUzZjk3NWFmYzExZDQxNGEzOWEyNjljYmI3NjVjZmFkMWRiY2M3NmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg2NjU4OTY5MzFmMzMwOGE0NjYwZTY1NzlmZTI1ZDRlYjQ4MTBiMjI3MzliYmRiMjJlOTdhNGVhNDY3ZmMwODgifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/async_projection.rs",
           "version": "repo-file-v1:sha256:2c9333ab8719073325fa6cf393ff1325cb0a095378f3d61da8077ee306f3c213"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/observations.rs#L538-L548",
-          "version": "repo-lines-v1:sha256:7a316105072518c43fd5b777a058758533c0dbb2091b6692aeb56dd552d76450:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhZjU5ZjljYzFmOTZiMDhjMmMwMDliYzFkNzg3MmIyMDI3MmIwYzZmNjlhYTRmZjBhMzJkOTEzMDVjZWNhNzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjM2EyMDc3NGQ1YzJiYjRjNzkwYzE4ODkwYTljNDk0Y2NiNTEwZmM4ZThjMDllYzc0NTE5YmMxNjRmYzc4NGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyMzg1M2E5MDNhMjViMTAwZjVjMTQ5YTc5NDdjNDFkMWQ0OTYxZGRkODFjMjE3NWM5NWUyNjNlNDFjNTI3YTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyNjdlNWRjOWFlMTc0ZGQ1ZGE5YTA2ZDVlZWU1NmY5NzJlMzVkNWZjNzlhNGUzNjllYTUwM2VjMjU5Zjk4NmEifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/observations.rs",
+          "version": "repo-file-v1:sha256:5756bbbcc7daf60b037faacfc8b8f867d33f606cdb06d306fbc9cc228123453e"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T06:08:33.099Z"
+    "at": "2026-10-22T20:51:42.199Z"
   }
 }

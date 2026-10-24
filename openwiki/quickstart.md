@@ -26,20 +26,23 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-21T14:42:59.992Z" }
+generated: { by: "codex", at: "2026-10-22T20:51:42.199Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T06:08:33.099Z
+    at: 2026-10-22T20:51:42.199Z
 ---
 
 # OpenWiki quickstart
 
 Decodex is a local workspace above Codex app-server. The primary Agent can discuss work, act directly, or coordinate other agents. Codex owns native conversation execution. Decodex owns local work relationships, account policy, recovery and presentation. “Chief” in older filenames and records is the former Agent name.
 
+The accepted [Project, Agent and Work contract](decisions/project-agent-work.md) defines the target architecture, minimum contracts, global Guardian controls and shared English names. Implementation and qualification are pending; current implementation pages retain their source-specific compatibility names.
+
 ## Start by task
 
 | Task | Read first |
 | --- | --- |
+| Implement the accepted Project/Agent/Work architecture, recovery contracts, global Guardian or canonical names | [Project, Agent and Work contract](decisions/project-agent-work.md) |
 | Understand service, clients and storage | [Runtime architecture](architecture/runtime-architecture.md) |
 | Trace Agent coordination, question escalation, event receipts or Busy recovery | [Agent coordination](architecture/chief-coordination.md) |
 | Change conversation layout, loading or motion | [Conversation presentation](architecture/conversation-presentation.md), [Desktop workspace](architecture/desktop-workspace.md) |

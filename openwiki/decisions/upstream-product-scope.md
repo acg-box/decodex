@@ -52,15 +52,21 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
   - id: openwiki-source-2da6601c3f30e806c504e991
     resource: repo://crates/decodex-runtime/src/host_credentials.rs
-generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
+generated: { by: "codex", at: "2026-10-22T20:51:42.199Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T06:08:33.099Z
+    at: 2026-10-22T20:51:42.199Z
 ---
 
 # Product scope and native ownership
 
 Decodex supplies a local workspace, account policy, work relationships and readable evidence. Codex supplies native conversation and tool execution. Adopt native capabilities through the admitted protocol rather than building a parallel execution system.
+
+## Accepted coordination and Guardian target
+
+The [Project, Agent and Work contract](project-agent-work.md) is the accepted target for general-purpose collaboration. It defines shared English names for code and UI, an optional Assistant, existing Agents acting as Project Leads, one owner per Work, native Subagents, and scoped Collaboration Requests between independent Agents. It does not use fixed L0/L1/L2 business levels. The current implementation and its compatibility names remain documented below.
+
+Global Guardian controls and native private Review Details are now selected product scope. They are no longer awaiting a decision on whether to implement them. The target has no per-Agent Guardian override; actual native requirements and per-source effective settings remain authoritative. Review Details are diagnostic observation, not permission or Work acceptance. Implementation, exact-binary qualification and installed-app acceptance are pending. This decision does not enable a native flag, broaden Full Access, or select unrelated historical optional proposals.
 
 ## Current integration boundary
 
