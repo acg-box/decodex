@@ -1621,6 +1621,16 @@ impl AgentSurface {
 		}
 	}
 
+	fn relation_connections_moving(&self) -> bool {
+		self.work_board.view.wires.as_ref().is_some_and(|w| w.moving(std::time::Instant::now()))
+			|| self
+				.work_board
+				.view
+				.motion
+				.as_ref()
+				.is_some_and(|motion| motion.progress.moving(std::time::Instant::now()))
+	}
+
 	fn paint_relation_connections(
 		&self,
 		mut canvas: gpui::Stateful<gpui::Div>,
@@ -1629,19 +1639,7 @@ impl AgentSurface {
 		moving: bool,
 		cx: &mut Context<Self>,
 	) -> gpui::Stateful<gpui::Div> {
-		let moving = moving
-			|| self
-				.work_board
-				.view
-				.wires
-				.as_ref()
-				.is_some_and(|w| w.moving(std::time::Instant::now()))
-			|| self
-				.work_board
-				.view
-				.motion
-				.as_ref()
-				.is_some_and(|motion| motion.progress.moving(std::time::Instant::now()));
+		let moving = moving || self.relation_connections_moving();
 		let scale = self.relation_scale();
 		let pan = self.work_board.view.pan;
 		let flow_started = *self.work_board.view.flow_clock.get_or_init(std::time::Instant::now);
@@ -3417,6 +3415,160 @@ mod fit_tests {
 		s
 	}
 
+	fn assert_complete_message(
+		surface: &gpui::Entity<AgentSurface>,
+		visual: &mut gpui::VisualTestContext,
+		layout: card::Layout,
+		card: gpui::Bounds<gpui::Pixels>,
+		scale: f32,
+		density: f32,
+	) {
+		if let Some(preview) = visual.debug_bounds("relation-preview-release") {
+			let metrics = visual.debug_bounds("relation-metrics-release").unwrap();
+			assert!(preview.left() >= card.left() && preview.right() <= card.right());
+			assert!(metrics.left() > card.left() && metrics.right() < card.right());
+			assert!(preview.left() >= metrics.right(), "zoom {scale}: {preview:?}, {metrics:?}");
+			assert!(metrics.bottom() < card.bottom(), "zoom {scale}: {metrics:?}, {card:?}");
+			let message = visual.debug_bounds("relation-message-body-release").unwrap();
+			let assignment = visual.debug_bounds("relation-assignment-release").unwrap();
+			assert!(assignment.bottom() < preview.top(), "purpose and message stay separate");
+			assert!(message.bottom() <= preview.bottom() && preview.bottom() < card.bottom());
+			let text = surface.read_with(visual, |s, _| {
+				s.relation_graph()
+					.nodes
+					.into_iter()
+					.find(|node| node.key == "release")
+					.unwrap()
+					.activity
+					.lines
+					.last()
+					.unwrap()
+					.text
+					.clone()
+			});
+			let shaped_height = visual.update(|window, _| {
+				let run = gpui::TextRun {
+					len: text.len(),
+					font: gpui::font(crate::ui_theme::FONT_FAMILY),
+					color: crate::ui_theme::rgb(TEXT).into(),
+					background_color: None,
+					underline: None,
+					strikethrough: None,
+				};
+				window
+					.text_system()
+					.shape_text(
+						text.into(),
+						gpui::px(layout.activity_size()),
+						&[run],
+						Some(message.size.width),
+						None,
+					)
+					.unwrap()
+					.iter()
+					.map(|line| f32::from(line.size(gpui::px(layout.activity_line())).height))
+					.sum::<f32>()
+			});
+			assert!(
+				shaped_height <= f32::from(message.size.height) + 0.5,
+				"the complete native sentence fits at zoom {scale} on display {density}"
+			);
+		}
+	}
+
+	fn assert_character_hud(
+		visual: &mut gpui::VisualTestContext,
+		layout: card::Layout,
+		card: gpui::Bounds<gpui::Pixels>,
+		scale: f32,
+		density: f32,
+	) {
+		let tokens = visual.debug_bounds("relation-tokens-release").unwrap();
+		let identity = visual.debug_bounds("relation-identity-release").unwrap();
+		let metrics = visual.debug_bounds("relation-metrics-release").unwrap();
+		assert!(
+			identity.left() > card.left() && identity.right() <= card.right(),
+			"zoom {scale}: {identity:?}, {card:?}"
+		);
+		assert!(
+			f32::from(metrics.size.height) <= layout.metrics_height() + 0.5,
+			"metrics at zoom {scale}, display {density}: {metrics:?}, reserved {}; values {:?} {:?} {:?}",
+			layout.metrics_height(),
+			tokens,
+			visual.debug_bounds("relation-time-release"),
+			visual.debug_bounds("relation-rate-release")
+		);
+		let time = visual.debug_bounds("relation-time-release").unwrap();
+		assert!(time.left() >= metrics.left() && time.right() <= metrics.right());
+		assert!(time.top() >= metrics.top() && time.bottom() <= metrics.bottom());
+		let rate = visual.debug_bounds("relation-rate-release").unwrap();
+		assert!(
+			rate.left() >= metrics.left() && rate.right() <= metrics.right(),
+			"zoom {scale}, display {density}: tokens {tokens:?}, time {time:?}, rate {rate:?}, metrics {metrics:?}"
+		);
+		assert!(rate.top() >= metrics.top() && rate.bottom() <= metrics.bottom());
+		for (upper, lower) in [(tokens, time), (time, rate)] {
+			assert_eq!(upper.left(), lower.left(), "the status tracks share one left edge");
+			assert_eq!(upper.right(), lower.right(), "the status tracks share one right edge");
+			assert!(lower.top() >= upper.bottom(), "the three stats stack vertically");
+			assert!(f32::from(lower.top() - upper.bottom()) <= layout.spacing(1.) + 0.5);
+		}
+		let number = visual.debug_bounds("relation-number-release").unwrap();
+		assert!(number.left() >= identity.left() && number.right() <= identity.right());
+		assert_eq!(number.top(), identity.top());
+		let avatar = visual.debug_bounds("relation-avatar-release").unwrap();
+		let preview = visual.debug_bounds("relation-preview-release");
+		assert_eq!(preview.is_some(), layout.activity_visible());
+		if let Some(preview) = preview {
+			assert!(avatar.right() < preview.left(), "activity sits to the right of the portrait");
+			assert!(
+				f32::from(preview.left() - avatar.right().max(metrics.right()))
+					<= layout.details_gap() + 0.5,
+				"activity stays close to the character"
+			);
+			assert_eq!(
+				visual.debug_bounds("relation-assignment-release").unwrap().left(),
+				preview.left(),
+				"purpose and activity share one text edge"
+			);
+			assert!(
+				number.bottom() < preview.top(),
+				"identity stays above the character and activity"
+			);
+		}
+		assert!(
+			visual.debug_bounds("relation-assignment-release").is_some()
+				== layout.activity_visible(),
+			"the current assignment stays distinct from recent activity"
+		);
+		assert!(number.bottom() < avatar.top() && avatar.bottom() < metrics.top());
+		assert_eq!(identity.center().x, avatar.center().x);
+		assert!(
+			f32::from(metrics.top() - avatar.bottom()) <= layout.gap() + 0.5,
+			"only the HUD sits immediately below the portrait"
+		);
+		assert!(
+			f32::from(metrics.center().x - avatar.center().x).abs() <= 0.5,
+			"the status block stays centered under the character"
+		);
+		assert!(
+			f32::from(metrics.size.width) <= 80.,
+			"long native counters still form a small block"
+		);
+		let status = visual.debug_bounds("relation-status-release").unwrap();
+		assert!(status.left() >= identity.left());
+		assert!(status.right() < number.left());
+		assert!(status.bottom() < avatar.top());
+		let selection = visual.debug_bounds("relation-selection-release").unwrap();
+		assert_eq!(selection, avatar, "selection belongs only to the portrait");
+		assert!(selection.bottom() < metrics.top());
+		assert!(metrics.top() > card.top() && metrics.bottom() < card.bottom());
+		assert!(
+			metrics.size.width < card.size.width - gpui::px(2. * layout.spacing(card::INSET_X)),
+			"the HUD uses its content width, not the camera footprint"
+		);
+	}
+
 	#[gpui::test]
 	fn card_content_fits_across_zoom_levels_below_the_toolbar(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| long_metrics_fixture(cx));
@@ -3487,161 +3639,8 @@ mod fit_tests {
 				assert!(tokens.top() >= metrics.top() && tokens.bottom() <= metrics.bottom());
 				assert!(task.left() > card.left() && task.right() <= card.right());
 				assert!(task.top() >= card.top() && task.bottom() < card.bottom());
-				if let Some(preview) = visual.debug_bounds("relation-preview-release") {
-					let metrics = visual.debug_bounds("relation-metrics-release").unwrap();
-					assert!(preview.left() >= card.left() && preview.right() <= card.right());
-					assert!(metrics.left() > card.left() && metrics.right() < card.right());
-					assert!(
-						preview.left() >= metrics.right(),
-						"zoom {scale}: {preview:?}, {metrics:?}"
-					);
-					assert!(
-						metrics.bottom() < card.bottom(),
-						"zoom {scale}: {metrics:?}, {card:?}"
-					);
-					let message = visual.debug_bounds("relation-message-body-release").unwrap();
-					let assignment = visual.debug_bounds("relation-assignment-release").unwrap();
-					assert!(
-						assignment.bottom() < preview.top(),
-						"purpose and message stay separate"
-					);
-					assert!(
-						message.bottom() <= preview.bottom() && preview.bottom() < card.bottom()
-					);
-					let text = surface.read_with(visual, |s, _| {
-						s.relation_graph()
-							.nodes
-							.into_iter()
-							.find(|node| node.key == "release")
-							.unwrap()
-							.activity
-							.lines
-							.last()
-							.unwrap()
-							.text
-							.clone()
-					});
-					let shaped_height = visual.update(|window, _| {
-						let run = gpui::TextRun {
-							len: text.len(),
-							font: gpui::font(crate::ui_theme::FONT_FAMILY),
-							color: crate::ui_theme::rgb(TEXT).into(),
-							background_color: None,
-							underline: None,
-							strikethrough: None,
-						};
-						window
-							.text_system()
-							.shape_text(
-								text.into(),
-								gpui::px(layout.activity_size()),
-								&[run],
-								Some(message.size.width),
-								None,
-							)
-							.unwrap()
-							.iter()
-							.map(|line| {
-								f32::from(line.size(gpui::px(layout.activity_line())).height)
-							})
-							.sum::<f32>()
-					});
-					assert!(
-						shaped_height <= f32::from(message.size.height) + 0.5,
-						"the complete native sentence fits at zoom {scale} on display {density}"
-					);
-				}
-				let identity = visual.debug_bounds("relation-identity-release").unwrap();
-				let metrics = visual.debug_bounds("relation-metrics-release").unwrap();
-				assert!(
-					identity.left() > card.left() && identity.right() <= card.right(),
-					"zoom {scale}: {identity:?}, {card:?}"
-				);
-				assert!(
-					f32::from(metrics.size.height) <= layout.metrics_height() + 0.5,
-					"metrics at zoom {scale}, display {density}: {metrics:?}, reserved {}; values {:?} {:?} {:?}",
-					layout.metrics_height(),
-					tokens,
-					visual.debug_bounds("relation-time-release"),
-					visual.debug_bounds("relation-rate-release")
-				);
-				let time = visual.debug_bounds("relation-time-release").unwrap();
-				assert!(time.left() >= metrics.left() && time.right() <= metrics.right());
-				assert!(time.top() >= metrics.top() && time.bottom() <= metrics.bottom());
-				let rate = visual.debug_bounds("relation-rate-release").unwrap();
-				assert!(
-					rate.left() >= metrics.left() && rate.right() <= metrics.right(),
-					"zoom {scale}, display {density}: tokens {tokens:?}, time {time:?}, rate {rate:?}, metrics {metrics:?}"
-				);
-				assert!(rate.top() >= metrics.top() && rate.bottom() <= metrics.bottom());
-				for (upper, lower) in [(tokens, time), (time, rate)] {
-					assert_eq!(upper.left(), lower.left(), "the status tracks share one left edge");
-					assert_eq!(
-						upper.right(),
-						lower.right(),
-						"the status tracks share one right edge"
-					);
-					assert!(lower.top() >= upper.bottom(), "the three stats stack vertically");
-					assert!(f32::from(lower.top() - upper.bottom()) <= layout.spacing(1.) + 0.5);
-				}
-				let number = visual.debug_bounds("relation-number-release").unwrap();
-				assert!(number.left() >= identity.left() && number.right() <= identity.right());
-				assert_eq!(number.top(), identity.top());
-				let avatar = visual.debug_bounds("relation-avatar-release").unwrap();
-				let preview = visual.debug_bounds("relation-preview-release");
-				assert_eq!(preview.is_some(), layout.activity_visible());
-				if let Some(preview) = preview {
-					assert!(
-						avatar.right() < preview.left(),
-						"activity sits to the right of the portrait"
-					);
-					assert!(
-						f32::from(preview.left() - avatar.right().max(metrics.right()))
-							<= layout.details_gap() + 0.5,
-						"activity stays close to the character"
-					);
-					assert_eq!(
-						visual.debug_bounds("relation-assignment-release").unwrap().left(),
-						preview.left(),
-						"purpose and activity share one text edge"
-					);
-					assert!(
-						number.bottom() < preview.top(),
-						"identity stays above the character and activity"
-					);
-				}
-				assert!(
-					visual.debug_bounds("relation-assignment-release").is_some()
-						== layout.activity_visible(),
-					"the current assignment stays distinct from recent activity"
-				);
-				assert!(number.bottom() < avatar.top() && avatar.bottom() < metrics.top());
-				assert_eq!(identity.center().x, avatar.center().x);
-				assert!(
-					f32::from(metrics.top() - avatar.bottom()) <= layout.gap() + 0.5,
-					"only the HUD sits immediately below the portrait"
-				);
-				assert!(
-					f32::from(metrics.center().x - avatar.center().x).abs() <= 0.5,
-					"the status block stays centered under the character"
-				);
-				assert!(
-					f32::from(metrics.size.width) <= 80.,
-					"long native counters still form a small block"
-				);
-				let status = visual.debug_bounds("relation-status-release").unwrap();
-				assert!(status.left() >= identity.left());
-				assert!(status.right() < number.left());
-				assert!(status.bottom() < avatar.top());
-				let selection = visual.debug_bounds("relation-selection-release").unwrap();
-				assert_eq!(selection, avatar, "selection belongs only to the portrait");
-				assert!(selection.bottom() < metrics.top());
-				assert!(metrics.top() > card.top() && metrics.bottom() < card.bottom());
-				assert!(
-					metrics.size.width
-						< card.size.width - gpui::px(2. * layout.spacing(card::INSET_X)),
-					"the HUD uses its content width, not the camera footprint"
-				);
+				assert_complete_message(&surface, visual, layout, card, scale, density);
+				assert_character_hud(visual, layout, card, scale, density);
 			}
 		}
 	}
@@ -3702,7 +3701,7 @@ mod fit_tests {
 			assert!(icon.top() >= team.top() && icon.bottom() <= team.bottom());
 		}
 		surface.read_with(visual, |s, _| {
-			assert!(s.snapshot.as_ref().unwrap().archived_work_ids.contains(&"agent".to_owned()));
+			assert!(s.snapshot.as_ref().unwrap().archived_work_ids.contains("agent"));
 			assert_eq!(s.selected.as_deref(), Some("agent"));
 		});
 	}

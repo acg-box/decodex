@@ -498,12 +498,116 @@ impl AgentSurface {
 		gpui::div().w_full().min_w_0().child(route).child(title).into_any_element()
 	}
 
-	fn collaboration_exchange(&self, case: &Exchange, cx: &mut Context<Self>) -> AnyElement {
-		let expanded = self.work_board.collaboration_expanded.as_ref() == Some(&case.id);
-		let source_open = self.work_board.collaboration.source_open.as_ref() == Some(&case.id);
-		let related = self.work_board.view.picked_agent.as_ref().is_some_and(|key| {
-			case.from.key == *key || case.to.as_ref().is_some_and(|row| row.key == *key)
-		});
+	fn collaboration_exchange_actions(&self, case: &Exchange, cx: &mut Context<Self>) -> gpui::Div {
+		let key = case.id.clone();
+		let source_key = key.clone();
+		let mut actions = gpui::div()
+			.w_full()
+			.flex()
+			.flex_wrap()
+			.items_center()
+			.justify_between()
+			.gap(gpui::px(8.))
+			.child(self.collaboration_action(
+				format!("collaboration-source-{key}"),
+				"Source".into(),
+				move |s, cx| {
+					let state = &mut s.work_board.collaboration;
+					state.source_open = if state.source_open.as_ref() == Some(&source_key) {
+						None
+					} else {
+						Some(source_key.clone())
+					};
+					cx.notify();
+				},
+				cx,
+			));
+		let recipient = if case.state == "Not sent" {
+			Some(&case.from)
+		} else if case.state == "To review"
+			|| case.state == "Check result"
+			|| case.state == "Decision"
+			|| case.state == "Changes asked"
+		{
+			case.to.as_ref()
+		} else {
+			Some(&case.source_row)
+		};
+		if let Some(row) = recipient {
+			let row = row.clone();
+			let label = if case.question.as_ref().is_some_and(|question| question.pending) {
+				"Open question".into()
+			} else {
+				format!("Open {}", self.relation_agent_number(&row))
+			};
+			actions = actions.child(self.collaboration_action(
+				format!("collaboration-open-{key}"),
+				label,
+				move |s, cx| {
+					s.open_graph_agent(&row, cx);
+				},
+				cx,
+			));
+		}
+		actions
+	}
+
+	fn collaboration_exchange_source(
+		&self,
+		case: &Exchange,
+		source_notes: Vec<AnyElement>,
+		cx: &mut Context<Self>,
+	) -> gpui::Div {
+		let mut source = gpui::div()
+			.w_full()
+			.min_w_0()
+			.flex()
+			.flex_col()
+			.gap(gpui::px(4.))
+			.text_size(gpui::px(foreground::CAPTION_SIZE))
+			.line_height(gpui::px(17.))
+			.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
+			.children(source_notes);
+		source = if matches!(case.source.as_str(), "Native report" | "Native question") {
+			source.child(gpui::div().child(case.source.clone()))
+		} else {
+			source.child(self.collaboration_source_field(case, "Source", &case.source))
+		};
+		if let Some(event) = case.source_event {
+			source =
+				source.child(self.collaboration_source_field(case, "Event", &event.to_string()));
+		}
+		if let Some(thread) = &case.source_thread {
+			source = source.child(self.collaboration_source_field(case, "Thread", thread));
+		}
+		if let Some(turn) = &case.source_turn {
+			source = source.child(self.collaboration_source_field(case, "Turn", turn));
+		}
+		if let Some(item) = &case.source_item {
+			source = source.child(self.collaboration_source_field(case, "Item", item));
+		}
+		source = source.child(
+			gpui::div()
+				.text_color(crate::ui_theme::rgb(foreground::BODY))
+				.child(case.source_text.clone()),
+		);
+		if case.source_thread.is_some() && case.source_thread == case.source_row.thread {
+			let row = case.source_row.clone();
+			source = source.child(self.collaboration_action(
+				format!("collaboration-original-{}", case.id),
+				"Open original conversation".into(),
+				move |s, cx| s.open_graph_agent(&row, cx),
+				cx,
+			));
+		}
+		source
+	}
+
+	fn collaboration_exchange_context(
+		&self,
+		case: &Exchange,
+		source_open: bool,
+	) -> (gpui::Div, Vec<AnyElement>) {
 		let mut context =
 			gpui::div().w_full().min_w_0().flex().flex_col().gap(gpui::px(7.)).pt(gpui::px(4.));
 		if let Some(request) = case.request.as_ref().filter(|request| {
@@ -584,99 +688,19 @@ impl AgentSurface {
 				context = context.child(note);
 			}
 		}
-		let key = case.id.clone();
-		let source_key = key.clone();
-		let mut actions = gpui::div()
-			.w_full()
-			.flex()
-			.flex_wrap()
-			.items_center()
-			.justify_between()
-			.gap(gpui::px(8.))
-			.child(self.collaboration_action(
-				format!("collaboration-source-{key}"),
-				"Source".into(),
-				move |s, cx| {
-					let state = &mut s.work_board.collaboration;
-					state.source_open = if state.source_open.as_ref() == Some(&source_key) {
-						None
-					} else {
-						Some(source_key.clone())
-					};
-					cx.notify();
-				},
-				cx,
-			));
-		let recipient = if case.state == "Not sent" {
-			Some(&case.from)
-		} else if case.state == "To review"
-			|| case.state == "Check result"
-			|| case.state == "Decision"
-			|| case.state == "Changes asked"
-		{
-			case.to.as_ref()
-		} else {
-			Some(&case.source_row)
-		};
-		if let Some(row) = recipient {
-			let row = row.clone();
-			let label = if case.question.as_ref().is_some_and(|question| question.pending) {
-				"Open question".into()
-			} else {
-				format!("Open {}", self.relation_agent_number(&row))
-			};
-			actions = actions.child(self.collaboration_action(
-				format!("collaboration-open-{key}"),
-				label,
-				move |s, cx| {
-					s.open_graph_agent(&row, cx);
-				},
-				cx,
-			));
-		}
+		(context, source_notes)
+	}
+
+	fn collaboration_exchange(&self, case: &Exchange, cx: &mut Context<Self>) -> AnyElement {
+		let expanded = self.work_board.collaboration_expanded.as_ref() == Some(&case.id);
+		let source_open = self.work_board.collaboration.source_open.as_ref() == Some(&case.id);
+		let related = self.work_board.view.picked_agent.as_ref().is_some_and(|key| {
+			case.from.key == *key || case.to.as_ref().is_some_and(|row| row.key == *key)
+		});
+		let (mut context, source_notes) = self.collaboration_exchange_context(case, source_open);
+		let actions = self.collaboration_exchange_actions(case, cx);
 		context = context.child(actions);
-		let mut source = gpui::div()
-			.w_full()
-			.min_w_0()
-			.flex()
-			.flex_col()
-			.gap(gpui::px(4.))
-			.text_size(gpui::px(foreground::CAPTION_SIZE))
-			.line_height(gpui::px(17.))
-			.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
-			.children(source_notes);
-		source = if matches!(case.source.as_str(), "Native report" | "Native question") {
-			source.child(gpui::div().child(case.source.clone()))
-		} else {
-			source.child(self.collaboration_source_field(case, "Source", &case.source))
-		};
-		if let Some(event) = case.source_event {
-			source =
-				source.child(self.collaboration_source_field(case, "Event", &event.to_string()));
-		}
-		if let Some(thread) = &case.source_thread {
-			source = source.child(self.collaboration_source_field(case, "Thread", thread));
-		}
-		if let Some(turn) = &case.source_turn {
-			source = source.child(self.collaboration_source_field(case, "Turn", turn));
-		}
-		if let Some(item) = &case.source_item {
-			source = source.child(self.collaboration_source_field(case, "Item", item));
-		}
-		source = source.child(
-			gpui::div()
-				.text_color(crate::ui_theme::rgb(foreground::BODY))
-				.child(case.source_text.clone()),
-		);
-		if case.source_thread.is_some() && case.source_thread == case.source_row.thread {
-			let row = case.source_row.clone();
-			source = source.child(self.collaboration_action(
-				format!("collaboration-original-{}", case.id),
-				"Open original conversation".into(),
-				move |s, cx| s.open_graph_agent(&row, cx),
-				cx,
-			));
-		}
+		let source = self.collaboration_exchange_source(case, source_notes, cx);
 		context = context.child(ui_motion::disclosure(
 			SharedString::from(format!("collaboration-source-reveal-{}", case.id)),
 			source_open,

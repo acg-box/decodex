@@ -43,6 +43,16 @@ use decodex_protocol::AgentAttachmentDto;
 pub(super) const MODEL_MENU_WIDTH: f32 = 232.;
 pub(super) const MODEL_MENU_SHADOW: f32 = 8.;
 
+fn composer_hover_fill(send: bool, dictation_action: bool, menu_active: bool) -> gpui::Rgba {
+	if send && dictation_action {
+		crate::ui_theme::rgba(0xffffff20)
+	} else if send {
+		crate::ui_theme::rgb(0x606064)
+	} else {
+		crate::ui_theme::rgba(if menu_active { SELECTED_HOVER_FILL } else { HOVER_FILL })
+	}
+}
+
 #[cfg(any(test, target_os = "macos"))]
 pub(super) fn model_menu_bounds(
 	anchor: gpui::Bounds<gpui::Pixels>,
@@ -1012,17 +1022,7 @@ impl AgentSurface {
 				if disabled {
 					return d;
 				}
-				d.bg(if send && dictation_action {
-					crate::ui_theme::rgba(0xffffff20)
-				} else if send {
-					crate::ui_theme::rgb(0x606064)
-				} else {
-					crate::ui_theme::rgba(if menu_active {
-						SELECTED_HOVER_FILL
-					} else {
-						HOVER_FILL
-					})
-				})
+				d.bg(composer_hover_fill(send, dictation_action, menu_active))
 			})
 			.focus(|d| d.bg(crate::ui_theme::rgba(SELECTED_HOVER_FILL)))
 			.when(

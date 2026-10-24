@@ -174,7 +174,10 @@ fn step(t: f32, keys: &[(f32, f32)]) -> f32 {
 	keys.iter().rev().find(|(at, _)| t >= *at).map_or(0., |(_, value)| *value)
 }
 fn linear(t: f32, keys: &[(f32, f32)]) -> f32 {
-	let pair = keys.windows(2).find(|pair| t <= pair[1].0).unwrap();
+	let pair = keys
+		.windows(2)
+		.find(|pair| t <= pair[1].0)
+		.expect("particle opacity keyframes cover the complete phase");
 	pair[0].1 + (pair[1].1 - pair[0].1) * ((t - pair[0].0) / (pair[1].0 - pair[0].0))
 }
 
