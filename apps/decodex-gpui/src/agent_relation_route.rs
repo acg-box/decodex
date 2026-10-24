@@ -333,6 +333,18 @@ impl Cache {
 						bottom + CLEARANCE,
 					],
 				}];
+				if let Some([left, top, right, bottom]) = n.identity {
+					cards.push(Card {
+						key: format!("identity:{}", n.key),
+						port_y: n.y + (top + bottom) / 2.,
+						bounds: [
+							n.x + left - CLEARANCE,
+							n.y + top - CLEARANCE,
+							n.x + right + CLEARANCE,
+							n.y + bottom + CLEARANCE,
+						],
+					});
+				}
 				// Keep the source and target's own activity text out of the route too.
 				// A right port inside this column is not exposed; use another side.
 				if n.attachment.is_some() && right + 3. < n.x + n.width() {
@@ -392,22 +404,37 @@ fn tree_route(a: &Node, b: &Node, nodes: &[Node], edges: &[Edge], cards: &[Card]
 		let start = (a.connection_center().0, aa[3]);
 		branches.push(Route::branch(start, (b.connection_center().0, bb[1]), false));
 	}
-	branches.into_iter().find(|path| {
-		!cards.iter().any(|card| {
-			card.key != a.key
-				&& card.key != b.key
-				&& path.curves.iter().any(|curve| card.blocks_curve(curve))
-		})
+	branches.into_iter().find_map(|direct| {
+		if clears_cards(&direct, a, b, cards) {
+			return Some(direct);
+		}
+		let start = direct.curves[0].start;
+		if !ports(a, start, cards).iter().any(|port| port.anchor == start) {
+			return None;
+		}
+		// Siblings share an exposed origin even when their number blocks a top port.
+		let path = avoid_cards_from(direct, a, b, cards, Some(start));
+		path.is_visible().then_some(path)
 	})
 }
 
 fn avoid_cards(direct: Route, a: &Node, b: &Node, cards: &[Card]) -> Route {
-	if !cards.iter().any(|c| c.key != a.key && c.key != b.key && c.blocks_curve(&direct.curves[0]))
-	{
+	avoid_cards_from(direct, a, b, cards, None)
+}
+
+fn avoid_cards_from(
+	direct: Route,
+	a: &Node,
+	b: &Node,
+	cards: &[Card],
+	origin: Option<Point>,
+) -> Route {
+	if clears_cards(&direct, a, b, cards) {
 		return direct;
 	}
 	let curve = &direct.curves[0];
-	let starts = ports(a, curve.start, cards);
+	let mut starts = ports(a, curve.start, cards);
+	starts.retain(|port| origin.is_none_or(|origin| port.anchor == origin));
 	let ends = ports(b, curve.end, cards);
 	let mut pairs: Vec<_> = starts.iter().flat_map(|a| ends.iter().map(move |b| (a, b))).collect();
 	pairs.sort_by(|(a, b), (c, d)| {
@@ -429,9 +456,7 @@ fn avoid_cards(direct: Route, a: &Node, b: &Node, cards: &[Card]) -> Route {
 				toward(end.anchor, end.outer, reach),
 				end.anchor,
 			);
-			if !cards.iter().any(|card| {
-				card.key != a.key && card.key != b.key && card.blocks_curve(&path.curves[0])
-			}) {
+			if clears_cards(&path, a, b, cards) {
 				return path;
 			}
 		}
@@ -448,6 +473,14 @@ fn avoid_cards(direct: Route, a: &Node, b: &Node, cards: &[Card]) -> Route {
 	// A fully covered card has no exposed port. Do not draw a false shortcut
 	// through other cards while it is hidden beneath them during a drag.
 	Route::curve(curve.start, curve.start, curve.start, curve.start)
+}
+
+fn clears_cards(path: &Route, a: &Node, b: &Node, cards: &[Card]) -> bool {
+	!cards.iter().any(|card| {
+		card.key != a.key
+			&& card.key != b.key
+			&& path.curves.iter().any(|curve| card.blocks_curve(curve))
+	})
 }
 
 struct Port {
@@ -696,6 +729,7 @@ mod tests {
 			activity: Default::default(),
 			size: (224., 48.),
 			attachment: None,
+			identity: None,
 			base_height: 48.,
 			layout_height: 48.,
 			x,

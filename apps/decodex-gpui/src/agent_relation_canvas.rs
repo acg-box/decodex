@@ -160,6 +160,8 @@ pub(super) struct Node {
 	pub(super) size: (f32, f32),
 	// Character/HUD attachment in local world coordinates; resources use their full bounds.
 	attachment: Option<[f32; 4]>,
+	// Visible identity is a routing obstacle, never a connection attachment.
+	identity: Option<[f32; 4]>,
 	base_height: f32,
 	// Available detail controls placement; inspection changes only the visible footprint.
 	layout_height: f32,
@@ -279,6 +281,25 @@ impl Graph {
 		style::ConnectionLabel::new(if count > 1 { count.to_string() } else { edge.label.clone() })
 	}
 
+	/// Captions use free space along the route; they must not cover an agent.
+	fn connection_label_bounds(&self, edge: &Edge, path: &Route) -> Option<[f32; 4]> {
+		let label = self.connection_label(edge);
+		std::iter::once(path.label)
+			.chain((1..=64).flat_map(|step| {
+				let offset = step as f32 / 130.;
+				[path.at(0.5 - offset), path.at(0.5 + offset)]
+			}))
+			.map(|point| label.bounds(point))
+			.find(|bounds| {
+				self.nodes.iter().all(|node| {
+					bounds[2] <= node.x
+						|| node.x + node.width() <= bounds[0]
+						|| bounds[3] <= node.y
+						|| node.y + node.height() <= bounds[1]
+				})
+			})
+	}
+
 	fn bounds(&self, keys: &BTreeSet<String>, routes: bool) -> Option<[f32; 4]> {
 		let mut bounds: Option<[f32; 4]> = None;
 		let mut include = |x: f32, y: f32| {
@@ -314,9 +335,10 @@ impl Graph {
 				let (x, y) = path.at(i as f32 / 160.);
 				include(x, y);
 			}
-			let [left, top, right, bottom] = self.connection_label(&edge).bounds(path.label);
-			include(left, top);
-			include(right, bottom);
+			if let Some([left, top, right, bottom]) = self.connection_label_bounds(&edge, path) {
+				include(left, top);
+				include(right, bottom);
+			}
 		}
 		bounds
 	}
@@ -446,6 +468,7 @@ impl AgentSurface {
 				layout_height,
 				navigation: (0., 0.),
 				attachment: None,
+				identity: None,
 				x: 0.,
 				y: 0.,
 			});
@@ -1069,6 +1092,7 @@ impl AgentSurface {
 					activity: Default::default(),
 					size: (224., 48.),
 					attachment: None,
+					identity: None,
 					base_height: 48.,
 					layout_height: 48.,
 					navigation: (0., 0.),
@@ -1224,11 +1248,10 @@ impl AgentSurface {
 				node.layout_height = node.height();
 			}
 			if node.row.is_some() {
-				node.attachment = Some(
-					layout
-						.on_display(self.work_board.view.display_scale)
-						.character_bounds(node.activity.height / stream::LINE),
-				);
+				let native = layout.on_display(self.work_board.view.display_scale);
+				node.identity = native.identity_bounds(node.activity.height / stream::LINE);
+				node.attachment =
+					Some(native.character_bounds(node.activity.height / stream::LINE));
 			}
 			node.navigation = (node.x, node.y);
 		}
@@ -1331,7 +1354,9 @@ impl AgentSurface {
 			let edge = link.fact.clone();
 			let (a, b, path) = (&link.source, &link.target, &link.path);
 			let label = graph.connection_label(&edge);
-			let [left, top, _, _] = label.bounds(path.label);
+			let Some([left, top, _, _]) = graph.connection_label_bounds(&edge, path) else {
+				continue;
+			};
 			let picked = edge.clone();
 			let pressed_edge = edge.clone();
 			let keyboard_edge = edge.clone();
@@ -3063,7 +3088,7 @@ mod fit_tests {
 					let link = links.iter().find(|link| link.base.kind == Kind::Spawned).unwrap();
 					let label = graph.connection_label(&link.fact);
 					assert_eq!(label.text, "3");
-					let bounds = label.bounds(link.path.label);
+					let bounds = graph.connection_label_bounds(&link.fact, &link.path).unwrap();
 					for node in &graph.nodes {
 						assert!(
 							bounds[2] <= node.x
@@ -3074,8 +3099,10 @@ mod fit_tests {
 							node.key
 						);
 					}
-					s.work_board.view.pan =
-						(400. - link.path.label.0 * scale, 300. - link.path.label.1 * scale);
+					s.work_board.view.pan = (
+						400. - (bounds[0] + bounds[2]) / 2. * scale,
+						300. - (bounds[1] + bounds[3]) / 2. * scale,
+					);
 					let name = "relation-edge-reply:fixture-release:review-wait:fixture-reviewer";
 					assert_eq!(format!("relation-edge-{}", link.fact.id), name);
 					let inspected = link.fact.clone();
@@ -4300,6 +4327,7 @@ mod fit_tests {
 			activity: Default::default(),
 			size: (224., 48.),
 			attachment: None,
+			identity: None,
 			base_height: 48.,
 			layout_height: 48.,
 			navigation: (120., 80.),
@@ -4331,6 +4359,7 @@ mod fit_tests {
 			activity: Default::default(),
 			size: (224., 48.),
 			attachment: None,
+			identity: None,
 			base_height: 48.,
 			layout_height: 48.,
 			navigation: (80., 64.),

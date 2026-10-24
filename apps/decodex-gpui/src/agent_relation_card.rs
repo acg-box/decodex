@@ -162,6 +162,30 @@ impl Layout {
 		((self.world_width - width) / 2., (OVERVIEW_HEIGHT - height) / 2.)
 	}
 
+	fn header_origin(self, actions: f32) -> (f32, f32) {
+		let portrait = self.portrait_spacing(PORTRAIT_WIDTH) / self.zoom;
+		let left = if self.labels() { INSET_X } else { (self.world_width - portrait) / 2. };
+		let top = if self.overview() {
+			(OVERVIEW_HEIGHT - self.header_height(actions) / self.zoom) / 2.
+		} else {
+			INSET_Y
+		};
+		let inset = if self.overview() { self.node_inset() } else { (0., 0.) };
+		(left - inset.0, top - inset.1)
+	}
+
+	pub(super) fn identity_bounds(self, actions: f32) -> Option<[f32; 4]> {
+		self.labels().then(|| {
+			let (left, top) = self.header_origin(actions);
+			[
+				left,
+				top,
+				left + self.portrait_spacing(PORTRAIT_WIDTH) / self.zoom,
+				top + self.title_line() / self.zoom,
+			]
+		})
+	}
+
 	/// Route around the character and its HUD, independently of the activity column.
 	/// During the point morph the same attachment contracts into the visible dot.
 	pub(super) fn character_bounds(self, actions: f32) -> [f32; 4] {
@@ -170,23 +194,13 @@ impl Layout {
 		let height = (self.portrait_spacing(PORTRAIT_HEIGHT)
 			+ if self.overview() { 0. } else { self.gap() + self.metrics_height() })
 			/ z;
-		let left = if self.labels() { INSET_X } else { (self.world_width - portrait) / 2. };
-		let top = if self.overview() {
-			(OVERVIEW_HEIGHT - self.header_height(actions) / z) / 2.
-		} else {
-			INSET_Y
-		} + self.metadata_height() / z;
-		let inset = if self.overview() { self.node_inset() } else { (0., 0.) };
+		let (left, top) = self.header_origin(actions);
+		let top = top + self.metadata_height() / z;
 		let (width, node_height) = self.node_size(self.world_height(actions));
 		let center = (width / 2., node_height / 2.);
 		let r = self.point_size() / 2.;
 		let point = [center.0 - r, center.1 - r, center.0 + r, center.1 + r];
-		let character = [
-			left - inset.0 - 3.,
-			top - inset.1 - 3.,
-			left + portrait - inset.0 + 3.,
-			top + height - inset.1 + 3.,
-		];
+		let character = [left - 3., top - 3., left + portrait + 3., top + height + 3.];
 		std::array::from_fn(|i| point[i] + (character[i] - point[i]) * self.presence)
 	}
 

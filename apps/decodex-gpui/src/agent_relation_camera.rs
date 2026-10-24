@@ -385,4 +385,49 @@ mod tests {
 			}
 		});
 	}
+
+	#[gpui::test]
+	fn ownership_routes_do_not_cross_native_agent_identities(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| team_fixture(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1600.), gpui::px(1000.)));
+		visual.update(crate::ui_frame::draw_frame);
+		for density in [1., 2.] {
+			let handle = visual.update(|window, _| window.window_handle());
+			visual.simulate_window_scale_factor_change(handle, density);
+			for zoom in [1., 0.75, 0.5, 0.33] {
+				surface.update(visual, |s, _| {
+					s.work_board.view.zoom = Some(zoom);
+					s.work_board.view.pan = (20., 20.);
+					s.work_board.view.positions = [
+						("release".into(), (450., 20.)),
+						("flow".into(), (20., 340.)),
+						("verify".into(), (880., 340.)),
+					]
+					.into();
+				});
+				visual.update(crate::ui_frame::draw_frame);
+				let canvas = visual.debug_bounds("relations-canvas").unwrap();
+				let identities = [
+					"relation-identity-release",
+					"relation-identity-flow",
+					"relation-identity-verify",
+				]
+				.map(|selector| visual.debug_bounds(selector).unwrap());
+				surface.read_with(visual, |s, _| {
+					let graph = s.relation_graph();
+					for path in graph.paths.values() {
+						for sample in 0..=128 {
+							let (x, y) = path.at(sample as f32 / 128.);
+							let point = canvas.origin
+								+ gpui::point(gpui::px(x * zoom + 20.), gpui::px(y * zoom + 20.));
+							assert!(
+								!identities.iter().any(|identity| identity.contains(&point)),
+								"a wire crosses an identity at {zoom}x, {density}x: {point:?}, {identities:?}"
+							);
+						}
+					}
+				});
+			}
+		}
+	}
 }
