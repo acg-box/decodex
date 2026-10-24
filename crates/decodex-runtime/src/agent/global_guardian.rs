@@ -128,7 +128,13 @@ impl AgentCoordinator {
 		{
 			return Ok(true);
 		}
-		let raw = params.to_string();
+		// A terminal notification can include canonical items. Keep only lifecycle
+		// facts here; optional observation must not retain private reasoning items.
+		let raw = if method == "turn/completed" {
+			serde_json::json!({"threadId":thread,"turn":{"id":turn,"status":params["turn"]["status"],"error":params["turn"]["error"]}}).to_string()
+		} else {
+			params.to_string()
+		};
 		use sha2::{Digest as _, Sha256};
 		let digest: String =
 			Sha256::digest(raw.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
