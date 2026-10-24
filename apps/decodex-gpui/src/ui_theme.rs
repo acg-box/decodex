@@ -86,7 +86,9 @@ pub(crate) const COMPOSER_MATERIAL: u32 = 0x22222888;
 // Neutral feedback brightens the existing material without replacing it with an opaque tile.
 pub(crate) const HOVER_FILL: u32 = 0xffffff0c;
 pub(crate) const PRESSED_FILL: u32 = 0xffffff18;
-pub(crate) const SELECTED_HOVER_FILL: u32 = 0xffffff1b;
+pub(crate) const SELECTED_FILL: u32 = 0xe49a7018;
+pub(crate) const SELECTED_HOVER_FILL: u32 = 0xe49a7024;
+pub(crate) const SELECTED_BORDER: u32 = 0xe49a7066;
 pub(crate) const FIELD_MATERIAL: u32 = 0xffffff08;
 pub(crate) const SURFACE_OVERLAY_MATERIAL: u32 = 0x1d1a2470;
 pub(crate) const LINE_STRONG: u32 = 0x403b48;

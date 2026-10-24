@@ -455,33 +455,29 @@ impl SettingsSurface {
 					.rounded(gpui::px(6.))
 					.border_1()
 					.border_color(ui_theme::rgba(if selected {
-						(ui_theme::BLUE << 8) | 0x90
+						ui_theme::SELECTED_BORDER
 					} else {
 						0xffffff16
 					}))
-					.bg(ui_theme::rgba(if selected {
-						(ui_theme::BLUE << 8) | 0x12
-					} else {
-						0xffffff04
-					}))
+					.bg(ui_theme::rgba(if selected { ui_theme::SELECTED_FILL } else { 0xffffff04 }))
 					.text_size(gpui::px(11.5))
 					.line_height(gpui::px(17.))
 					.text_color(ui_theme::rgb(ui_theme::TEXT))
 					.cursor_pointer()
 					.hover(move |s| {
 						s.border_color(ui_theme::rgba(if selected {
-							(ui_theme::BLUE << 8) | 0xb0
+							(ui_theme::ACCENT << 8) | 0x90
 						} else {
 							0xffffff28
 						}))
 						.bg(ui_theme::rgba(if selected {
-							(ui_theme::BLUE << 8) | 0x1c
+							ui_theme::SELECTED_HOVER_FILL
 						} else {
 							0xffffff09
 						}))
 					})
 					.active(|s| s.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
-					.focus_visible(|s| s.border_color(ui_theme::rgb(ui_theme::BLUE)))
+					.focus_visible(|s| s.border_color(ui_theme::rgb(ui_theme::ACCENT)))
 					.child(
 						gpui::div()
 							.w(gpui::px(32.))
@@ -509,7 +505,7 @@ impl SettingsSurface {
 						gpui::div()
 							.size(gpui::px(12.))
 							.flex_none()
-							.text_color(ui_theme::rgb(ui_theme::BLUE))
+							.text_color(ui_theme::rgb(ui_theme::ACCENT))
 							.when(selected, |s| {
 								s.child(crate::shell::workspace_symbols::icon_sized(
 									crate::shell::workspace_symbols::Symbol::Confirm,
@@ -1151,7 +1147,7 @@ mod tests {
 		visual.update(|_, cx| Appearance::Light.apply(cx));
 		visual.update(|window, cx| {
 			assert_eq!(ui_theme::ColorTheme::configured(), ui_theme::ColorTheme::TokyoNight);
-			assert_eq!(ui_theme::ColorScheme::current().hex(ui_theme::TEXT), 0x242b36);
+			assert_eq!(ui_theme::ColorScheme::current().hex(ui_theme::TEXT), 0x2c2f36);
 			window.draw(cx).clear(cx);
 		});
 		visual.update(|_, cx| Appearance::Dark.apply(cx));

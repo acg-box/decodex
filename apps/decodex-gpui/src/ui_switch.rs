@@ -8,7 +8,8 @@ use gpui::{
 };
 
 use crate::ui_theme::{
-	BLUE, LINE_STRONG, SETTINGS_CONTROL_HEIGHT, SETTINGS_CONTROL_RADIUS, rgb, rgba,
+	ACCENT, CANVAS, LINE_STRONG, SETTINGS_CONTROL_HEIGHT, SETTINGS_CONTROL_RADIUS, TEXT,
+	appearance::Theme, rgb, rgba,
 };
 
 const TRAVEL: f32 = 12.;
@@ -98,6 +99,11 @@ impl RenderOnce for Switch {
 			.filter(|g| g.dragging)
 			.map_or(f32::from(enabled), |g| g.position);
 		let position = crate::ui_motion::direct_value(knob, target, dragging, window, cx);
+		let thumb = if Theme::current() == Theme::Dark {
+			rgb(TEXT).blend(rgb(CANVAS).opacity(position))
+		} else {
+			gpui::rgb(0xffffff)
+		};
 		let down = state.clone();
 		let key_state = state.clone();
 		let key_change = change.clone();
@@ -126,7 +132,7 @@ impl RenderOnce for Switch {
 			.border_color(rgba(0))
 			.opacity(if interactive { 1. } else { 0.45 })
 			.when(interactive, |d| d.cursor_pointer().hover(|d| d.opacity(0.86)))
-			.focus_visible(|d| d.border_color(rgb(BLUE)))
+			.focus_visible(|d| d.border_color(rgb(ACCENT)))
 			.when(interactive, |d| {
 				d.on_mouse_down(MouseButton::Left, move |event: &MouseDownEvent, _, cx| {
 					down.update(cx, |s, cx| {
@@ -178,7 +184,7 @@ impl RenderOnce for Switch {
 					.flex()
 					.items_center()
 					.rounded_full()
-					.bg(rgb(if position >= 0.5 { BLUE } else { LINE_STRONG }))
+					.bg(rgb(LINE_STRONG).blend(rgb(ACCENT).opacity(position)))
 					.child(
 						gpui::div()
 							.ml(gpui::px(position * TRAVEL))
@@ -187,7 +193,7 @@ impl RenderOnce for Switch {
 							.id(knob)
 							.debug_selector(move || knob.into())
 							.rounded_full()
-							.bg(gpui::rgb(0xffffff)),
+							.bg(thumb),
 					),
 			)
 			.child(pointer_events(state, enabled, interactive, change))

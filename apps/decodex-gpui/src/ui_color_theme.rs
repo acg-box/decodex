@@ -167,30 +167,30 @@ pub(crate) struct Palette {
 	pub(crate) error: u32,
 }
 
-// Decodex: graphite surfaces, cool paper text and one blue interaction accent.
-// Raised controls and overlays have their own tones; state colors carry meaning.
+// Decodex: neutral graphite, porcelain text, and a restrained silver-blue accent.
+// Surface and text ramps stay neutral; semantic colors are reserved for status.
 // Stable token IDs live in ui_theme; these are the resolved display colors.
 const DECODEX: Palette = Palette {
-	canvas: 0x15181d,
-	shell_material: 0x14171cb0,
-	content_material: 0x1a1d2378,
-	topbar_material: 0x171a2168,
-	agent_sidebar_material: 0x14171c90,
-	agent_chat_overlay: 0x1c20270e,
-	sidebar_material: 0x12151b84,
-	surface_raised_material: 0x252a3246,
-	composer_material: 0x282e3788,
-	surface_overlay_material: 0x2b323ce8,
-	surface_hover: 0x303945,
-	line_strong: 0x424c5a,
-	text: 0xe7ebf1,
-	text_body: 0xccd3de,
-	text_muted: 0x9aa5b4,
-	accent: 0x8caff4,
-	blue: 0x8caff4,
-	green: 0x82c8a4,
-	amber: 0xdfb579,
-	error: 0xf08c96,
+	canvas: 0x18191c,
+	shell_material: 0x17181ab0,
+	content_material: 0x20212478,
+	topbar_material: 0x1a1c2068,
+	agent_sidebar_material: 0x191b1f90,
+	agent_chat_overlay: 0x23262b0e,
+	sidebar_material: 0x14151884,
+	surface_raised_material: 0x2c2e3446,
+	composer_material: 0x2b2e3588,
+	surface_overlay_material: 0x2a2d34e8,
+	surface_hover: 0x353a43,
+	line_strong: 0x49505b,
+	text: 0xe8e8ea,
+	text_body: 0xcfd0d4,
+	text_muted: 0xa3a5ad,
+	accent: 0x9fb6df,
+	blue: 0x91b4dd,
+	green: 0x97b6a2,
+	amber: 0xd1b78f,
+	error: 0xdf9a9f,
 };
 
 impl Palette {
@@ -225,7 +225,7 @@ impl Palette {
 			0x302d39 | 0x30303a | 0x33333a | 0x35353c | 0x373737 | 0x141822 =>
 				self.surface_overlay_material >> 8,
 			0x3a3a40 | 0x464646 => self.surface_hover,
-			0xf2f1f4 | 0xf4f2f7 | 0xeeeaf0 | 0xe7e7ea => self.text,
+			0xffffff | 0xf2f1f4 | 0xf4f2f7 | 0xeeeaf0 | 0xe7e7ea => self.text,
 			0xdfdee4 | 0xc5c6ce | 0xc4c4ce | 0xc0c0c5 => self.text_body,
 			0xbbb8c4 | 0xaaa4af | 0xc2bbc9 | 0xd5d5da | 0xb5b2bd | 0x89909c | 0x817789
 			| 0x78818e | 0x94a3b8 | 0x64748b | 0xd0c8d9 | 0xaaa6b8 => self.text_muted,

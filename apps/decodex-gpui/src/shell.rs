@@ -5910,7 +5910,7 @@ fn settings_navigation(
 				.items_center()
 				.cursor_pointer()
 				.when(active, |row| {
-					row.bg(crate::ui_theme::rgba(0xffffff0c)).text_color(crate::ui_theme::rgb(TEXT))
+					row.bg(ui_theme::rgba(ui_theme::SELECTED_FILL)).text_color(ui_theme::rgb(TEXT))
 				})
 				.hover(move |row| {
 					row.bg(crate::ui_theme::rgba(if active {

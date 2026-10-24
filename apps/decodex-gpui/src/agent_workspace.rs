@@ -511,7 +511,7 @@ impl AgentSurface {
 			.id(SharedString::from(id))
 			.role(if is_tab { Role::Tab } else { Role::Button })
 			.aria_selected(active)
-			.when(active && !is_tab, |row| row.bg(crate::ui_theme::rgba(0xffffff0d)))
+			.when(active && !is_tab, |row| row.bg(ui_theme::rgba(ui_theme::SELECTED_FILL)))
 			.tab_index(0)
 			.aria_label(accessible)
 			.when(show_tip, |button| {
