@@ -4,6 +4,8 @@ title: "Model selection and settings ownership"
 description: "Native model, Goal and search settings, source-bound writes and memory observation."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
+    resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-f2483b817a8847254a871b51
     resource: repo://crates/decodex-codex/src/app_server_client/goals.rs
   - id: openwiki-source-3515e2ff1d1ef96caaa97617
@@ -24,12 +26,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_native_goal.rs
   - id: openwiki-source-d28152527a1218d5afb307f7
     resource: repo://crates/decodex-runtime/src/agent_search_settings.rs
+  - id: openwiki-source-07c9cc033899826079f8efb5
+    resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
   - id: openwiki-source-b30d382781a313611ecd221f
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
-generated: { by: "codex", at: "2026-10-21T21:02:44.368Z" }
+generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T21:02:44.368Z
+    at: 2026-10-24T06:15:55.391Z
 ---
 
 # Model selection and settings ownership
@@ -75,6 +79,10 @@ Memory availability comes from the native feature observation. A capability flag
 The attested app-server launch enables description-first Code Mode, native child context limits and Agent message wakeups. It also enables fork-prefix preservation through the dotted `features.multi_agent_v2.preserve_fork_prefix` option, which preserves the user's existing multi-agent enablement. These are runtime launch defaults, not new desktop switches. Description ordering does not itself enable Code Mode.
 
 Native Codex retains transport selection. The integration does not force shared gRPC hosting or a global tool-output retention setting. Fork-prefix preservation and child context limits have bounded compatibility evidence; they do not establish provider cache savings, latency improvements or better model answers. Follow [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) when evaluating those effects.
+
+## Explicit model catalogs
+
+Native model discovery accepts an explicitly configured catalog larger than 1 MiB in the current qualified runtime. The reusable `large_catalog.py` fixture checks that its selected model reaches `model/list`. This is a compatibility contract for native configuration; it does not add a provider or account setup control. The existing account-plan boundary remains unchanged.
 
 ## Known native limits
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e8a1b38eedc8de4b3e8e9b88cfc96a3b24da5a620e910cf8c7d6600a4e76bb35",
+  "pageVersion": "sha256:29a1322cf419cd10fc09ed52877a9f2439e6b03cdb3907391379c7ca76c7683e",
   "claims": [
     {
       "id": "claim_8a327f0888fc4a0fbce7d1a521327a83",
@@ -8,11 +8,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
-          "version": "repo-file-v1:sha256:9e9962f9a94992b0baad5f00223ec540840ff6672d23e729eea366fd12b02bec"
+          "version": "repo-file-v1:sha256:cf7267ec7f000910e7e9473f6536ffa866b610f5d4bf67fbdfb8c9204149b19f"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_relation_canvas.rs",
-          "version": "repo-file-v1:sha256:e40052b721d106196caf770766fbd18de7282ea5c6b8217e7e430d4c57e1b44c"
+          "version": "repo-file-v1:sha256:b93d85b954222f4c7cd11fab48606bb3dbf7f8fd7ec9ef418c89499d669861ff"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
@@ -20,13 +20,13 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workbench.rs",
-          "version": "repo-file-v1:sha256:70080f93e98bef5959419b5bf94804be2f5f89bd800f82b07ec0a9f3496d0cdb"
+          "version": "repo-file-v1:sha256:bbb93a68e80ec364a0c4c2699c77a6bce19799d48e8f5a0bdd7fe451f2ae23e7"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T15:20:47.860Z"
+    "at": "2026-10-24T06:08:33.099Z"
   }
 }

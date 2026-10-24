@@ -14,10 +14,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_mermaid_tests.rs
   - id: openwiki-source-4dfe438694434f1f2e34b2f9
     resource: repo://apps/decodex-gpui/src/agent_mermaid_view.rs
-  - id: openwiki-source-d626966ee70bffd764516a59
-    resource: repo://apps/decodex-gpui/src/agent_mermaid/draw.rs
-  - id: openwiki-source-63e4988aff5dd37bc614412f
-    resource: repo://apps/decodex-gpui/src/agent_mermaid/parse.rs
+  - id: openwiki-source-b223bcac929a26e81aa4ef37
+    resource: repo://apps/decodex-gpui/src/agent_mermaid.rs
   - id: openwiki-source-cdf91143ee7350a723ed596e
     resource: repo://apps/decodex-gpui/src/agent_mermaid/tests.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
@@ -52,8 +50,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
   - id: openwiki-source-d6e2f0d0037f3d6ddcd4f6ac
     resource: repo://apps/decodex-gpui/src/voice_conversation_groups.rs
-  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
-    resource: repo://automations/upstream/retained-evidence.json
+  - id: openwiki-source-651d1fb6c9e49916a916ab51
+    resource: repo://Cargo.toml
   - id: openwiki-source-2b08587e9b26e203156110c8
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-64d7588c1af50398568a792e
@@ -64,10 +62,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/media_tests.rs
   - id: openwiki-source-8d3e8e016f038e821f68dd0c
     resource: repo://crates/decodex-runtime/src/agent/timeline/media.rs
-generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
+generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T21:02:44.368Z
+    at: 2026-10-24T06:08:33.099Z
 ---
 
 
@@ -127,13 +125,15 @@ Presentation entities request GPUI animation frames while application policy per
 
 Streamed model output, dictation and Live captions share a grapheme-safe text reveal. Model output uses an adaptive reserve across network gaps, with a 300–700 ms receive horizon. Completion limits the remaining reveal deadline to 160 ms. Dictation and Live captions keep a 120 ms response horizon. Corrections replace the visible prefix without replay. Reduced motion reveals current text directly. These are presentation policies, not transport-latency or microphone-readiness guarantees.
 
-## Mermaid flowcharts
+## Mermaid diagrams
 
-The bounded Mermaid renderer supports stadium start/end nodes such as `A([Start])` alongside rectangular and decision nodes. It draws stadium nodes with rounded corners in all four flowchart directions. Repeated declarations must agree on label and shape. Malformed or unsupported diagrams retain the complete source fallback. Wide supported diagrams scroll horizontally, and the copy action retains the original Mermaid source.
+The pinned Ondine compiler owns Mermaid syntax and layout. Decodex adapts its SVG theme and rasterizes the result through GPUI. The desktop integration suite includes 33 diagram-family fixtures and examples with stadium nodes, Unicode labels and authored line breaks. The retired local parser and its 40-cell label limit do not define the current renderer.
 
-Flowchart node labels accept `<br>`, `<br/>` and `<br />` as line breaks in quoted or unquoted labels. For example, `A["Request<br/>completed"]` renders two visible lines. The 40-display-cell bound applies to each line, and a decision node places its diamond marker on the first line only. Rectangular, decision and stadium nodes retain their routing and width checks in all four directions.
+Desktop options disable image resources and interactive links. Compilation limits edges and SVG output, and the desktop rejects an excessive decoded canvas before font parsing or image allocation. These limits bound diagram preparation; they do not measure whole-frame performance.
 
-Other HTML, break tags in edge labels, empty labels, malformed quotes and unsupported text retain complete-source fallback. The viewport scrolls wide diagrams without wrapping, and Copy Mermaid source keeps the original tags, quotes and line endings. The [portable evidence index](../../automations/upstream/retained-evidence.json) retains the exact test selector and limits. General punctuation and edge grammar remain separate adoption decisions.
+Preparation runs in the background. A source-keyed application cache retains at most 64 images within a 64 MiB byte budget. Virtualized rows can reuse a prepared image. A small geometry record preserves row height while an evicted image is restored. A change to the diagram source selects new state; later prose in the same reply does not invalidate an unchanged diagram.
+
+Incomplete fences and failed compilation retain the literal source. Wide diagrams scroll without wrapping or changing image geometry. Copy Mermaid source preserves the original tags, quotes and line endings. The GPUI regression tests cover source copy, a narrow viewport, row culling and cache restoration. These tests are distinct from installed-app scrolling or frame-rate acceptance.
 
 ## Change and verify
 

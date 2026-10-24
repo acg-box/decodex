@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:dfa7a6ce4ffc15df7157a58efd4455d98a6c7de9dae37e76428b304a69db0e12",
+  "pageVersion": "sha256:d65139b7a96a1a8ca3f097358d18303862755797eb392c341acb8cc199e35788",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -97,7 +97,7 @@
           "version": "repo-lines-v1:sha256:e1e036f0ce9d3cdc75b85cf83a09e19cf1e72b483f56052202810783f3debbd0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYyNWM4M2VjOWRhYTQwMTQxY2M0ZmU2ZjgxOWNmYTFhZjA4YzY0YThlYmFiODdlNTE1MjgwYzJkNWY4YzU2MzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxNWRmMTliOWZmZjgxYmY5NGRlMmJlZWU5NDc3MWFhZDA0ZDI0NzZlOGQzNmRlYzdkNWFhNjZmOTk3NDUyM2QiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjMjA4MGM1Y2YyMjc5NWQ0YTMxZWJmZTE5OTA1ZmM0MWQ2NWM5NmVmMTU3ZTZlYWZlMDRiYzRhMTdiY2IxZGMifQ"
         },
         {
-          "resource": "repo://database/src/agent.rs#L170-L190",
+          "resource": "repo://database/src/agent.rs#L172-L192",
           "version": "repo-lines-v1:sha256:6f0eed234abdc0c9641f32c3ac1c0d4c2fe35322b58b69e785d09af3b16b007a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhY2QzNjZhNTc1MDVhMWM0M2Y5NmNmZThmODk2ZTdhNzBjMWFmZjdiOTI3YjhkMDU2ZDZhZTc4ZTg0NGM3NzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAzZTRhNjZmMzg2ZjI4ODhkM2FkMWE3NDdkMDVmYzA0ZGIyNTkxZDJlOGU3ODY1YjVmNzAwOTk5OWM2OGM4YzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0YThmOTAzZTAxNzQ3NTU3ZWQxNDJiZjExNTA0MDZiYjgxYWY0NjRkMWZiMDFhOGY4OGZiMmVhYjUwODNkNTYifQ"
         }
       ]
@@ -122,7 +122,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:861483ff4a3b9f70089d186e1835489654621471ad0653cc6f50999a12c3f167"
+          "version": "repo-file-v1:sha256:c2679cbdef5fee4a799c90f3887b10fc268c644dee120e5f7a912ed0fa843a82"
         }
       ]
     },
@@ -172,21 +172,25 @@
     },
     {
       "id": "claim_e52d8cb77a3d41a8acda75806a31a102",
-      "statement": "Upstream source app-server fixtures can need a standalone launcher with private hooks. The recorded exact harness and environment keep that launcher separate from the production CLI and preserve original assertions and timeouts.",
+      "statement": "The current upstream source qualification uses a dev-small app-server helper and supplies the exact signed candidate CLI for helper-spawn tests through explicit CARGO_BIN_EXE paths; source helpers, the production CLI and historical private-hook launcher scopes remain distinct.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:c3b5e5a0c25deb74135ca38eeae00d304eaefcb7480ed2f602bc54d757dbebf3"
+          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
         }
       ]
     },
     {
       "id": "claim_e28aa9df759e42009c72178b4951b10b",
-      "statement": "The retained macOS Nextest 0.9.143 diagnosis reproduced sibling capture-pipe inheritance and preserved isolated controls and original-event limits without a Decodex cleanup patch or timeout change.",
+      "statement": "Current qualification records one passed in-memory test with a Nextest LEAK marker and a passing isolated rerun without the marker; older capture-inheritance diagnostics retain their historical source limits and do not establish the cause of this or future markers.",
       "evidence": [
         {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
+        },
+        {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:861483ff4a3b9f70089d186e1835489654621471ad0653cc6f50999a12c3f167"
+          "version": "repo-file-v1:sha256:c2679cbdef5fee4a799c90f3887b10fc268c644dee120e5f7a912ed0fa843a82"
         }
       ]
     },
@@ -203,6 +207,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T21:02:44.368Z"
+    "at": "2026-10-24T06:15:55.391Z"
   }
 }
