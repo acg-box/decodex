@@ -276,11 +276,50 @@ async fn old_excluded_accounts_remain_readable_but_cannot_supply_work() {
 }
 
 #[tokio::test]
+async fn excluded_plan_rows_do_not_claim_admission_readiness() {
+	let (_directory, store, service) = fixture().await;
+	let (account, _) = legacy_account(&store, &service, 1, Some("free"), false).await;
+	let inspection = service.inspect(&account).await.unwrap();
+	let listed = service
+		.list()
+		.await
+		.unwrap()
+		.into_iter()
+		.find(|row| row.account.account_id == account)
+		.unwrap();
+
+	assert_eq!(inspection.readiness, decodex_core::AccountLifecycleReadiness::UnsupportedPlan);
+	assert_eq!(listed.readiness, inspection.readiness);
+	assert_eq!(listed.account.lifecycle_readiness, inspection.readiness);
+}
+
+#[tokio::test]
 async fn changed_plan_keeps_rotated_credentials_and_finishes_the_refusal_receipt() {
-	for pat in [false, true] {
+	for (plan, pat) in [("free", false), ("free", true), ("sci_plus", false), ("sci_plus", true)] {
 		let (_directory, store, service) = fixture().await;
 		let (account, binding) = legacy_account(&store, &service, 1, Some("pro"), pat).await;
 		let before = service.inspect(&account).await.unwrap().account;
+		let profiles = crate::account_profile::AccountProfileRuntime::new(
+			store.clone(),
+			Arc::clone(&service.credentials),
+		);
+		profiles
+			.observe_provider_profile(
+				&account,
+				before.revision,
+				binding.provider.clone(),
+				decodex_codex::AccountApiProfile {
+					display_name: None,
+					username: None,
+					lifetime_tokens: Some(100),
+					peak_daily_tokens: None,
+					longest_task_seconds: None,
+					current_streak_days: None,
+					longest_streak_days: None,
+					daily_usage: Vec::new(),
+				},
+			)
+			.await;
 		let operation = operation_id(2);
 		let command = CommandIdentity::new("plan-refresh", b"refresh account").unwrap();
 		let AccountCommandReceiptClaim::Owned(lease) = store
@@ -326,7 +365,7 @@ async fn changed_plan_keeps_rotated_credentials_and_finishes_the_refusal_receipt
 		.unwrap();
 		let refreshed = account_service::CredentialRefreshResult {
 			returned_provider: binding.provider.clone(),
-			bundle: bundle(binding.provider.account_id(), Some("sci_plus"), pat),
+			bundle: bundle(binding.provider.account_id(), Some(plan), pat),
 		};
 		let response = service.commit_refresh_command(
 			lease, &operation, &account, &binding,
@@ -336,11 +375,15 @@ async fn changed_plan_keeps_rotated_credentials_and_finishes_the_refusal_receipt
 
 		assert_eq!(response["unsupported"], true);
 		let after = service.inspect(&account).await.unwrap().account;
+		assert_eq!(
+			after.lifecycle_readiness,
+			decodex_core::AccountLifecycleReadiness::UnsupportedPlan
+		);
 		let successor = after.credential.unwrap();
 		assert_eq!(successor.version.get(), 2);
 		assert_eq!(
 			service.credentials.read_exact(&account, &successor).unwrap().bundle().plan_type(),
-			Some("sci_plus")
+			Some(plan)
 		);
 		assert!(after.unsettled_operation.is_none());
 		assert_eq!(
@@ -354,7 +397,66 @@ async fn changed_plan_keeps_rotated_credentials_and_finishes_the_refusal_receipt
 			service.api_credential_for_observation(&account, std::time::Duration::ZERO).await,
 			Err(AccountLifecycleError::UnsupportedPlan)
 		));
+		let profile = profiles.read_cached(&account, false, None).await;
+		assert!(matches!(profile,
+			crate::account_profile::AccountProfileRuntimeResult::Unavailable { claims, error: crate::account_profile::AccountProfileRuntimeError::UnsupportedPlan }
+			if claims.plan_type.as_deref() == Some(plan) && claims.email.is_none()
+		));
+		let failure = service
+			.select_initial(account_service::current_unix_micros().unwrap())
+			.await
+			.err()
+			.unwrap();
+		assert_eq!(failure.recovery, decodex_core::AccountSelectionRecovery::UseSupportedPlan);
 	}
+}
+
+#[tokio::test]
+async fn supported_reauthentication_restores_an_expired_account() {
+	let (_directory, store, service) = fixture().await;
+	let (account, binding) = legacy_account(&store, &service, 1, Some("free"), false).await;
+	let before = service.inspect(&account).await.unwrap().account;
+	assert_eq!(
+		before.lifecycle_readiness,
+		decodex_core::AccountLifecycleReadiness::UnsupportedPlan
+	);
+	let (_source, path) = super::owner_private_shared_codex_auth(
+		binding.provider.account_id(),
+		"fixture@example.invalid",
+	);
+	let command = CommandIdentity::new("supported-reauth", b"restore an upgraded account").unwrap();
+	let AccountCommandReceiptClaim::Owned(lease) = store
+		.reserve_account_command(
+			&command,
+			AccountCommandKind::Refresh,
+			account.as_str(),
+			Some(before.revision),
+		)
+		.await
+		.unwrap()
+	else {
+		panic!("fresh reauthentication command")
+	};
+	let response = service
+		.reauthenticate_from_credential_file_command(
+			lease,
+			operation_id(2),
+			&account,
+			before.revision,
+			None,
+			&path,
+			|result| Ok(serde_json::json!({"accepted": result.is_ok()})),
+		)
+		.await
+		.unwrap();
+	assert_eq!(response["accepted"], true);
+	let after = service.inspect(&account).await.unwrap();
+	assert_eq!(after.readiness, decodex_core::AccountLifecycleReadiness::Ready);
+	assert!(after.account.revision > before.revision);
+	assert!(after.account.enabled);
+	assert!(
+		service.api_credential_for_observation(&account, std::time::Duration::ZERO).await.is_ok()
+	);
 }
 
 #[tokio::test]

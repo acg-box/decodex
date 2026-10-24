@@ -708,6 +708,7 @@ fn map_api_error_to_quota(error: AccountApiRuntimeError) -> AccountQuotaObservat
 		| AccountApiRuntimeError::RefreshRejected
 		| AccountApiRuntimeError::RefreshAmbiguous
 		| AccountApiRuntimeError::AccessRejectedAfterRefresh
+		| AccountApiRuntimeError::UnsupportedPlan
 		| AccountApiRuntimeError::Unauthorized
 		| AccountApiRuntimeError::ProviderUnavailable =>
 			AccountQuotaObservationError::ProviderUnavailable,
@@ -717,6 +718,7 @@ fn map_api_error_to_quota(error: AccountApiRuntimeError) -> AccountQuotaObservat
 fn map_api_error_to_reset(error: AccountApiRuntimeError) -> ResetCardServiceError {
 	match error {
 		AccountApiRuntimeError::AccountUnavailable => ResetCardServiceError::AccountNotFound,
+		AccountApiRuntimeError::UnsupportedPlan => ResetCardServiceError::AccountStateRejected,
 		AccountApiRuntimeError::CredentialUnavailable => ResetCardServiceError::VaultUnavailable,
 		AccountApiRuntimeError::CredentialBusy => ResetCardServiceError::ProductStateUnavailable,
 		AccountApiRuntimeError::RefreshRejected => ResetCardServiceError::AccountStateRejected,
@@ -734,6 +736,7 @@ fn map_profile_api_error(error: AccountApiRuntimeError) -> AccountProfileRuntime
 	match error {
 		AccountApiRuntimeError::AccountUnavailable =>
 			AccountProfileRuntimeError::AccountUnavailable,
+		AccountApiRuntimeError::UnsupportedPlan => AccountProfileRuntimeError::UnsupportedPlan,
 		AccountApiRuntimeError::CredentialUnavailable =>
 			AccountProfileRuntimeError::CredentialUnavailable,
 		AccountApiRuntimeError::CredentialBusy => AccountProfileRuntimeError::CredentialBusy,

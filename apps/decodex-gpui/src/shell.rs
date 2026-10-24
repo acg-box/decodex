@@ -3933,7 +3933,10 @@ fn account_pool_summary(
 	let account_id = account.account_id.clone();
 	let enabled = account.enabled;
 	let needs_login = account_needs_login(account);
-	let pin_enabled = can_route && enabled && !fixed;
+	let unsupported_plan =
+		account.lifecycle_readiness == AccountLifecycleReadinessDto::UnsupportedPlan;
+	let show_quota = !needs_login && !unsupported_plan;
+	let pin_enabled = can_route && enabled && !fixed && !unsupported_plan;
 
 	gpui::div()
 		.id(("account-summary", index))
@@ -3942,7 +3945,7 @@ fn account_pool_summary(
 		.items_center()
 		.gap(gpui::px(2.0))
 		.child(account_row_identity(account, presentation.email.as_deref()))
-		.when(!needs_login, |row| {
+		.when(show_quota, |row| {
 			row.child(
 				gpui::div()
 					.debug_selector(move || format!("account-quota-{index}"))
@@ -3971,7 +3974,7 @@ fn account_pool_summary(
 					)),
 			)
 		})
-		.when(needs_login, |row| row.child(gpui::div().flex_1()))
+		.when(!show_quota, |row| row.child(gpui::div().flex_1()))
 		.when(presentation.can_manage, |row| {
 			row.child(account_reorder_handle(account, &presentation, cx))
 		})
@@ -4130,7 +4133,8 @@ fn account_management_actions(
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
 	let index = presentation.index;
-	let needs_login = account_needs_login(account);
+	let needs_login = account_needs_login(account)
+		|| account.lifecycle_readiness == AccountLifecycleReadinessDto::UnsupportedPlan;
 	let login_account_id = account.account_id.clone();
 	let logout_account_id = account.account_id.clone();
 	let login_account_revision = account.account_revision;
@@ -4271,6 +4275,7 @@ fn account_row_action(
 fn account_readiness_label(readiness: AccountLifecycleReadinessDto) -> &'static str {
 	match readiness {
 		AccountLifecycleReadinessDto::Ready => "Ready",
+		AccountLifecycleReadinessDto::UnsupportedPlan => "Plan not supported",
 		AccountLifecycleReadinessDto::CredentialAbsent => "Sign-in required",
 		AccountLifecycleReadinessDto::StoreUnavailable => "Sign-in unavailable",
 		AccountLifecycleReadinessDto::StoreMismatch => "Saved account mismatch",

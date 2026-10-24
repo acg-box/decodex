@@ -24,6 +24,7 @@ pub(crate) enum AccountProfileRuntimeResult {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AccountProfileRuntimeError {
 	AccountUnavailable,
+	UnsupportedPlan,
 	ProductStateUnavailable,
 	CredentialUnavailable,
 	CredentialBusy,
@@ -210,6 +211,11 @@ impl AccountProfileRuntime {
 				.and_then(|operation| recovery_profile_error(operation.recovery_code.as_deref()))
 				.or(Some(AccountProfileRuntimeError::ProviderUnavailable)),
 		};
+		if refresh_error == Some(AccountProfileRuntimeError::UnsupportedPlan) {
+			return self
+				.unavailable(account_id, include_email, AccountProfileRuntimeError::UnsupportedPlan)
+				.await;
+		}
 		let snapshot = match self.store.read_account_profile(account_id).await {
 			Ok(Some(snapshot)) => snapshot,
 			Ok(None) => {
@@ -270,10 +276,15 @@ impl AccountProfileRuntime {
 		include_email: bool,
 		error: AccountProfileRuntimeError,
 	) -> AccountProfileRuntimeResult {
-		let claims = self
-			.current_claims(account_id, include_email, None, None)
-			.await
-			.unwrap_or_else(ProfileClaims::redacted);
+		let claims = self.current_claims(account_id, include_email, None, None).await;
+		let error = if claims.as_ref().is_some_and(|claims| {
+			crate::account_service::account_plan_is_workspace(claims.plan_type.as_deref()).is_none()
+		}) {
+			AccountProfileRuntimeError::UnsupportedPlan
+		} else {
+			error
+		};
+		let claims = claims.unwrap_or_else(ProfileClaims::redacted);
 
 		AccountProfileRuntimeResult::Unavailable { claims: claims.into_view(), error }
 	}

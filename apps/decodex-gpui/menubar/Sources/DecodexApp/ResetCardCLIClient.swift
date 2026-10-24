@@ -104,6 +104,7 @@ enum ResetCardObservedState: String, Decodable, Equatable, Sendable {
 
 enum ResetCardLifecycleReadiness: String, Decodable, Equatable, Sendable {
 	case ready
+	case unsupportedPlan = "unsupported_plan"
 	case credentialAbsent = "credential_absent"
 	case storeUnavailable = "store_unavailable"
 	case storeMismatch = "store_mismatch"
@@ -271,6 +272,8 @@ struct ResetCardAccountRecord: Identifiable, Equatable, Sendable {
 			return "Disabled"
 		}
 		switch lifecycleReadiness {
+		case .unsupportedPlan:
+			return "Plan not supported"
 		case .credentialAbsent:
 			return "No credentials"
 		case .storeUnavailable:

@@ -80,6 +80,7 @@ struct ResetCardAccountState: Identifiable, Equatable {
 
 	var targets: [ResetCardUseTarget] {
 		guard let inventory,
+			account.lifecycleReadiness != .unsupportedPlan,
 			inventoryIsCurrent,
 			(error == nil || error?.isRetryableReadFailure == true),
 			inventory.observationError == nil,
@@ -115,7 +116,7 @@ struct ResetCardAccountState: Identifiable, Equatable {
 	}
 
 	var requiresLoginRefresh: Bool {
-		if account.observedState == .authFailed {
+		if account.observedState == .authFailed || account.lifecycleReadiness == .unsupportedPlan {
 			return true
 		}
 		return profileUnavailable?.error.requiresLogin == true
@@ -160,7 +161,7 @@ extension ResetCardAccountState {
 			return account.unsettledOperation == nil ? .ready : .operationPending
 		case .operationUnsettled:
 			return .operationPending
-		case .credentialAbsent, .storeUnavailable, .storeMismatch, .providerMismatch, .tombstoned:
+		case .unsupportedPlan, .credentialAbsent, .storeUnavailable, .storeMismatch, .providerMismatch, .tombstoned:
 			return .unavailable
 		}
 	}
@@ -3771,7 +3772,7 @@ private extension AccountProfileObservationError {
 		case .productStateUnavailable, .credentialUnavailable, .credentialBusy,
 			.providerUnavailable, .accountChanged:
 			return true
-		case .invalidRequest, .accountUnavailable, .refreshRejected, .refreshAmbiguous,
+		case .invalidRequest, .accountUnavailable, .unsupportedPlan, .refreshRejected, .refreshAmbiguous,
 			.accessRejectedAfterRefresh, .unauthorized,
 			.protocolUnavailable:
 			return false

@@ -4216,6 +4216,7 @@ const fn account_profile_error_dto(error: AccountProfileRuntimeError) -> Account
 	match error {
 		AccountProfileRuntimeError::AccountUnavailable =>
 			AccountProfileErrorDto::AccountUnavailable,
+		AccountProfileRuntimeError::UnsupportedPlan => AccountProfileErrorDto::UnsupportedPlan,
 		AccountProfileRuntimeError::ProductStateUnavailable =>
 			AccountProfileErrorDto::ProductStateUnavailable,
 		AccountProfileRuntimeError::CredentialUnavailable =>
@@ -4334,6 +4335,7 @@ const fn lifecycle_readiness_dto(
 ) -> AccountLifecycleReadinessDto {
 	match readiness {
 		AccountLifecycleReadiness::Ready => AccountLifecycleReadinessDto::Ready,
+		AccountLifecycleReadiness::UnsupportedPlan => AccountLifecycleReadinessDto::UnsupportedPlan,
 		AccountLifecycleReadiness::CredentialAbsent =>
 			AccountLifecycleReadinessDto::CredentialAbsent,
 		AccountLifecycleReadiness::StoreUnavailable =>
@@ -4356,6 +4358,7 @@ const fn selection_recovery_dto(recovery: AccountSelectionRecovery) -> AccountSe
 		AccountSelectionRecovery::EnableAccount => AccountSelectionRecoveryDto::EnableAccount,
 		AccountSelectionRecovery::EnrollCredentials =>
 			AccountSelectionRecoveryDto::EnrollCredentials,
+		AccountSelectionRecovery::UseSupportedPlan => AccountSelectionRecoveryDto::UseSupportedPlan,
 		AccountSelectionRecovery::ResolveCredentialOperation =>
 			AccountSelectionRecoveryDto::ResolveCredentialOperation,
 		AccountSelectionRecovery::RepairCredentialStore =>
