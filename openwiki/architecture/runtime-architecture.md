@@ -36,6 +36,8 @@ sources:
     resource: repo://crates/decodex-protocol/src/client.rs
   - id: openwiki-source-1f19769e3cb97a2389e92f82
     resource: repo://crates/decodex-runtime/src/account_launch.rs
+  - id: openwiki-source-9e21e877b2d7ad96b0a4d637
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs
   - id: openwiki-source-f5d073da07bcb17ee416f3b5
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
@@ -50,6 +52,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
+  - id: openwiki-source-07c9cc033899826079f8efb5
+    resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
+  - id: openwiki-source-88b81a215b1bac061dad80ec
+    resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
   - id: openwiki-source-87eeaebc39a3d2229938f9d2
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-e8c30c6f5849a5077d7b4aa5
@@ -60,10 +66,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
+generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T21:02:44.368Z
+    at: 2026-10-24T06:15:55.391Z
 ---
 
 # Runtime Architecture
@@ -152,6 +158,8 @@ Development keeps [the reviewed source requirement](../../codex-runtime.lock.jso
 Development artifacts use the same package verification and installation path. A local receipt binds archive and executable hashes to the fixed source commit and expected schema. CLI and Code Mode helper commit checks reject a different revision. A new artifact becomes selectable only after its installation verifies. Hashes and schema are integrity evidence; affected native regression tests still establish behavior.
 
 The [portable qualification record](../../automations/upstream/qualification.json) binds the current artifact, helper hashes, source checks and native consumer results to their limits. The [retained evidence index](../../automations/upstream/retained-evidence.json) supplies the reusable requirements and commands. The native automation directory owns detailed receipts and the live review cursor. A source-test launcher that enables private fixture hooks is separate from the production CLI; neither source-test success nor this record establishes installed-app acceptance.
+
+The current qualification retains terminal `modelNotFound` classification through live, stored and cold history without native retries or Decodex capacity retries. It also checks that an explicitly configured model catalog larger than 1 MiB reaches native model discovery. Reusable fixtures belong to `crates/decodex-runtime/tests/native_qualification/`; these synthetic provider cases do not add an account type or a provider setup control.
 
 Production staging selects a separate official Release requirement. Release pinning requires the Release to contain the current development baseline, and behavioral qualification must cover retained fixes. An older official Release is not a fallback. Packaging includes the requirement and Sparkle, but no Codex binary or schemas. See [Commands and validation](../operations/commands-and-validation.md).
 

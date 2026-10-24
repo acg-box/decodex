@@ -594,7 +594,7 @@
     "evidence": "automations/upstream/qualification.json",
     "source_archive_sha256": "a2f261cf958b24fc87cf7257674134146d0c02a5f2badeaed9964e162f03f28c",
     "schema_sha256": "9a924f38f788323f6ac1070f8adc6a6813a247f2cc881bc244e4211da676c338",
-    "evidence_sha256": "7018db90e4c1e3839a6e24930866d3facc8300c7c501babc81847f0a6965090a",
+    "evidence_sha256": "be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b",
     "limits": [
       "Source review, source tests, exact-artifact qualification, Git delivery and installed-app acceptance remain separate.",
       "No live account/provider, physical audio, Windows/Linux/NFS runtime, remote production executor or installed-app acceptance. Signed macOS arm64 private-stdio behavior and both packaged helpers were exercised.",
@@ -1193,20 +1193,18 @@
     }
   },
   "documentation_lifecycle": {
-    "status": "incomplete",
+    "status": "complete",
     "selected_pages": [
       "openwiki/testing/upstream-acceptance-boundaries.md",
       "openwiki/architecture/runtime-architecture.md",
       "openwiki/workflows/conversations-and-recovery.md"
     ],
-    "completed_selected_pages": 0,
-    "reason": "The accepted plan prepends unrelated stale/unresolved Agent/Workspace and presentation page jobs. First assignment is Chief Coordination with five claim issues; broad source-owner reconciliation is outside this runtime qualification batch.",
-    "owner": "Repository Agent/Workspace and presentation documentation owners; upstream maintainer owns the three selected runtime pages after that queue.",
-    "next_action": "Resume begin on current main, inspect the regenerated job queue, reconcile the broader claims with their source owners, then complete the assigned runtime pages through submit_page and finish.",
-    "first_pending_page": "openwiki/architecture/chief-coordination.md",
-    "queued_pages": 18,
-    "first_page_claim_issues": 5,
-    "historical_completed_lifecycle": "The earlier completed lifecycle attests only its own source snapshot. This attempt has not completed any selected page."
+    "completed_selected_pages": 3,
+    "completed_pages": 18,
+    "source_baseline": "e714e057d252ddba431ea4eb3309b521dbb7571c",
+    "method": "Supported sequential OpenWiki page jobs and successful final validation.",
+    "validation": "All assigned Claim issues were reconciled with current source and test bodies; finish returned complete.",
+    "limits": "Documentation closeout does not rerun runtime qualification or establish installed-app acceptance. The upstream source-review cursor and four optional product decisions are unchanged."
   },
   "retained_behavior_contracts": [
     {

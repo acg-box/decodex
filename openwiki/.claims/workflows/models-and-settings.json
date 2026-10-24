@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f36aa9b906672b711ad11a1229bac4d34e5c25e574e528637167d03a03fa6268",
+  "pageVersion": "sha256:3a7b3bc62fc979b4b3390efe189d5ba8980354a603abf57d48c2794562ca1628",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -78,13 +78,27 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py",
-          "version": "repo-file-v1:sha256:8f05cbba8cf955a99d87e237b23e7cb35f19bb3503b3fe7819b4a21e763f2abf"
+          "version": "repo-file-v1:sha256:781055b5e62f333908268a1cabcc027cb700ce4ebc9e0ee8af5b2bd29e7bd65d"
+        }
+      ]
+    },
+    {
+      "id": "claim_781e6a39d4954364aa46b3429385c7c9",
+      "statement": "The current qualified runtime admits an explicitly configured model catalog larger than 1 MiB through native model/list; the synthetic large_catalog.py fixture does not add a provider or account setup control.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
+          "version": "repo-file-v1:sha256:a471440d6c494a5abd9f72346901fe14aeb8ee432f8e8fd3ef73373e174d645a"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T21:02:44.368Z"
+    "at": "2026-10-24T06:15:55.391Z"
   }
 }

@@ -5,7 +5,7 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T14:39:50.043Z
+    at: 2026-10-24T06:08:33.099Z
 sources:
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
@@ -47,7 +47,7 @@ sources:
     resource: repo://database/src/agent_guardian.rs
   - id: openwiki-source-e1fc2e0e81623c7dd7ff5417
     resource: repo://database/src/agent_process.rs
-generated: { by: "codex", at: "2026-10-21T14:39:50.043Z" }
+generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
 ---
 
 # Agent coordination and native conversations
@@ -128,7 +128,7 @@ Before-input branches use the existing canonical input and draft handback owner.
 
 ## Verification and navigation
 
-Run focused tests in `agent/tests.rs`, `agent/tests/native_subagents.rs`, `agent/tests/archive.rs`, `agent_host.rs` and `agent_visibility.rs`. The desktop archive tests in `agent_native_agents.rs` cover unrelated conversations, retired tabs and retained drafts. Distinguish fixture tests from live provider tests and retained historical receipts.
+Select focused tests from `agent/tests.rs`, `agent/tests/native_subagents.rs`, `agent/tests/archive.rs`, `agent_host.rs` and `agent_visibility.rs`. For the Busy refusal contract, use `agent::tests::completion_contract::busy_worker_refuses_unsent_input_then_continues_once_idle`. Delegation retention and input authority have separate fixtures in `agent/tests/external_context.rs`. The desktop archive tests in `agent_native_agents.rs` cover unrelated conversations, retired tabs and retained drafts. Distinguish fixture tests from live provider tests and retained historical receipts.
 
 See [Desktop workspace](desktop-workspace.md), [Subscription voice](../integrations/subscription-voice.md), and [Runtime architecture](runtime-architecture.md).
 

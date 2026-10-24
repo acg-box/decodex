@@ -54,10 +54,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-21T21:02:44.368Z" }
+generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T21:02:44.368Z
+    at: 2026-10-24T06:15:55.391Z
 ---
 
 
@@ -144,13 +144,16 @@ python3 crates/decodex-runtime/tests/native_qualification/apps_recovery.py
 python3 crates/decodex-runtime/tests/native_qualification/proxy_headers.py
 python3 crates/decodex-runtime/tests/native_qualification/thread_settings.py
 python3 crates/decodex-runtime/tests/native_qualification/log_storage.py
+python3 crates/decodex-runtime/tests/native_qualification/model_errors.py
+python3 crates/decodex-runtime/tests/native_qualification/large_catalog.py
+python3 crates/decodex-runtime/tests/native_qualification/response_identity.py
 ```
 
 These probes use loopback providers, synthetic account data and system-temporary homes. They close their own child processes and servers. They do not establish installed-app or live-provider acceptance. Keep raw output in the native run directory; keep current requirements, fixture implementations, hashes and limits in the repository.
 
 A hook start event can precede native trust verification. The hook regression checks actual script effects after declaration or script changes, enablement changes and restart. The parallel tool regression requires both requests before either reply and verifies result order. The MCP status regression waits for discovery to finish, then checks opaque first-page metadata through tool pagination, status pagination and restart.
 
-Original upstream app-server integration tests can require private source-fixture hooks. Build their original standalone launcher with its required debug assertions, freeze that launcher outside Cargo output, and use the registered Rust harness with explicit `CARGO_BIN_EXE_*` paths. Cargo or Nextest can replace selected package binary paths. Record the source launcher and actual production CLI separately; preserve the original assertions and timeout. The [qualification record](../../automations/upstream/qualification.json) retains exact test identities, the launcher recipe and conditional remote-network limits.
+Use the current [qualification record](../../automations/upstream/qualification.json) for the source-test helper recipe and exact registered identities. Its current source cohort uses a `dev-small` app-server helper. Helper-spawn cases also require the exact signed candidate CLI through `CARGO_BIN_EXE_codex`; `CARGO_BIN_EXE_codex-app-server` identifies the source helper. Record the helper and production CLI separately and preserve the original assertions and timeouts. Older private-hook launchers apply only to their recorded source snapshot; do not copy their private configuration into the production CLI.
 
 ## Prepare Codex components
 
@@ -210,7 +213,7 @@ Report source checks, unit tests, signed build, visual acceptance, provider acce
 
 ### Nextest exit markers
 
-A `LEAK` marker can accompany a passed test when its captured output remains open after process exit. Diagnose the exact runner, test cohort and pipe owners before attributing the marker to application cleanup. The [retained diagnosis](../../automations/upstream/retained-evidence.json) records a macOS Nextest 0.9.143 capture-inheritance reproduction, its upstream fix and separate isolated and serial controls. It does not establish that every future marker has that cause. The original isolated test did not reproduce the marker, and the original event has no pipe trace. Do not suppress the test, lower the timeout or claim that an unexecuted runner upgrade has passed.
+A `LEAK` marker can accompany a passed test when its captured output remains open after process exit. Diagnose the exact runner, test cohort and pipe owners before attributing the marker to application cleanup. The [historical diagnosis](https://github.com/acg-box/decodex/blob/f6640838f0997493704ff87e46205b46a700eef2/automations/upstream/retained-evidence.json) records a macOS Nextest 0.9.143 capture-inheritance reproduction, its upstream fix and separate isolated and serial controls. The current qualification separately records a passed in-memory test with a LEAK marker and a passing isolated rerun without the marker. Neither result establishes the cause of a future marker. The original event has no pipe trace. Do not suppress the test, lower the timeout or claim that an unexecuted runner upgrade has passed.
 
 [Wiki maintenance](wiki-maintenance.md) describes the separate documentation lifecycle.
 

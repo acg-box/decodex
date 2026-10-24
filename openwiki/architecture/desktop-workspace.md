@@ -36,10 +36,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/native_glass_panel.rs
   - id: openwiki-source-2986b39185cca5c00a29ad1d
     resource: repo://apps/decodex-gpui/src/shell_status.rs
-generated: { by: "codex", at: "2026-10-21T14:42:59.992Z" }
+generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-21T14:42:59.992Z
+    at: 2026-10-24T06:08:33.099Z
 ---
 
 # Desktop workspace and native glass
@@ -96,7 +96,7 @@ Keep each label about one user need. Account warning popovers state what happene
 
 Use GPUI tests in `shell.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_markdown.rs`, `agent_archive.rs` and `settings_surface.rs`. Real macOS acceptance must also check focus, typing, scrolling, panel transitions, and transparency in the signed app. A white or missing automation screenshot alone is not evidence that the user sees a blank window.
 
-The collaboration tests check cross-chat visibility, expansion without draft changes, participant location and the distinction between recorded messages, tool completion and context references. Their definitions were inspected for this update; this documentation run did not execute the new GPUI suite or accept the installed app.
+The collaboration fixtures check cross-chat visibility, expansion without draft changes, participant location and the distinction between recorded messages, tool completion and context references. These checks do not replace signed-app interaction acceptance.
 
 `StatusPanelLifecycleTests` checks first-open and repeated menu focus, foreground application identity, hidden workspace visibility, and fixed-top resizing. `AccountPanelPresentationTests` checks synchronized row movement, clipping, interruption and reduced motion. The GPUI `account_feedback` test checks first-click opening, outside-click closing, unchanged row height, and retention of the warning source. Its opt-in `DECODEX_MEASURE_ACCOUNT_MOTION=1` presentation sampling separates initial response delay from animation cadence; it does not prove sustained display FPS. `DECODEX_CAPTURE_ACCOUNT_MOTION` selects a screenshot directory for visual review.
 
