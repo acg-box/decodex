@@ -208,7 +208,7 @@ impl Element for Group {
 		let sticky = top > bounds.top();
 		let header = self.header.take().expect("voice header prepaints once");
 		let mut header = if sticky {
-			gpui::div().w_full().bg(gpui::rgb(0x111113)).child(header).into_any_element()
+			gpui::div().w_full().bg(crate::ui_theme::rgb(0x111113)).child(header).into_any_element()
 		} else {
 			header
 		};

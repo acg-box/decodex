@@ -63,7 +63,7 @@ impl RenderOnce for Working {
 						.opacity(opacity)
 						.text_size(gpui::px(12.))
 						.line_height(gpui::px(18.))
-						.text_color(gpui::rgb(TEXT_MUTED))
+						.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 						.child(
 							gpui::div()
 								.relative()
@@ -100,11 +100,12 @@ impl RenderOnce for Working {
 													gpui::linear_gradient(
 														155.,
 														gpui::linear_color_stop(
-															gpui::rgba(0xe8f3f8ff).opacity(alpha),
+															crate::ui_theme::rgba(0xe8f3f8ff)
+																.opacity(alpha),
 															0.,
 														),
 														gpui::linear_color_stop(
-															gpui::rgba(0x9ec8d9ff)
+															crate::ui_theme::rgba(0x9ec8d9ff)
 																.opacity(alpha * 0.7),
 															1.,
 														),
@@ -119,7 +120,7 @@ impl RenderOnce for Working {
 												paint_particle(
 													window,
 													rim,
-													gpui::rgba(0xf1fcffff)
+													crate::ui_theme::rgba(0xf1fcffff)
 														.opacity(alpha * 0.55)
 														.into(),
 												);

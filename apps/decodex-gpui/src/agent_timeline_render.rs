@@ -16,7 +16,7 @@ use crate::{
 		},
 		workspace_symbols,
 	},
-	ui_theme::{HOVER_FILL, TEXT_MUTED, USER_MESSAGE_ACTION_SIZE},
+	ui_theme::{HOVER_FILL, TEXT_MUTED, USER_MESSAGE_ACTION_SIZE, foreground},
 };
 use decodex_protocol::{
 	AgentActivityDto, AgentCollaborationDto, AgentLiveMessageDto, AgentLiveMessageKind,
@@ -25,6 +25,15 @@ use decodex_protocol::{
 
 fn output_key(work: &AgentWorkItemDto, turn: &str, item: &str) -> String {
 	serde_json::json!(["output", work.id, work.codex_thread_id, turn, item]).to_string()
+}
+
+fn speaker(text: impl Into<SharedString>) -> Div {
+	gpui::div()
+		.text_size(gpui::px(foreground::METRIC_SIZE))
+		.line_height(gpui::px(crate::ui_theme::CAPTION_LINE_HEIGHT))
+		.font_weight(gpui::FontWeight::MEDIUM)
+		.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
+		.child(text.into())
 }
 
 /// Use source identities for names; keep unknown tool names available verbatim.
@@ -136,6 +145,7 @@ impl AgentSurface {
 					None,
 					Some(streamed),
 					false,
+					Some(self.timeline.native.completions.output(&message.item_id)),
 					None,
 				)
 			} else {
@@ -172,18 +182,73 @@ impl AgentSurface {
 		rows
 	}
 
+	pub(super) fn native_summary_exchanges(
+		&self,
+		work: &AgentWorkItemDto,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let mut body = gpui::div()
+			.w_full()
+			.min_w_0()
+			.flex()
+			.flex_col()
+			.gap(gpui::px(crate::ui_theme::MESSAGE_GAP));
+		let mut current_turn = None;
+		let mut exchange: Option<gpui::Stateful<Div>> = None;
+		for item in &self.timeline.native.summary {
+			let Some(row) = self.native_summary_row(work, item, cx) else { continue };
+			let AgentTimelineContent::Item { turn_id, item_id, .. } = item else { continue };
+			if current_turn != Some(turn_id) {
+				if let Some(previous) = exchange.take() {
+					body = body.child(previous);
+				}
+				let identity = serde_json::json!([
+					"summary-exchange",
+					work.id,
+					work.codex_thread_id,
+					turn_id,
+					item_id
+				])
+				.to_string();
+				let selector = format!("native-summary-exchange-{turn_id}-{item_id}");
+				exchange = Some(
+					gpui::div()
+						.id(SharedString::from(identity))
+						.debug_selector(move || selector.clone())
+						.role(Role::Group)
+						.aria_label("Conversation turn")
+						.w_full()
+						.min_w_0()
+						.flex()
+						.flex_col()
+						.gap(gpui::px(crate::ui_theme::MESSAGE_GAP)),
+				);
+				current_turn = Some(turn_id);
+			}
+			exchange = exchange.map(|group| group.child(row));
+		}
+		body.children(exchange).into_any_element()
+	}
+
 	pub(super) fn native_summary_row(
 		&self,
 		work: &AgentWorkItemDto,
 		item: &AgentTimelineContent,
 		cx: &mut Context<Self>,
-	) -> AnyElement {
+	) -> Option<AnyElement> {
 		let AgentTimelineContent::Item {
 			turn_id, item_id, kind, text, truncated, attachments, ..
 		} = item
 		else {
-			return gpui::div().into_any_element();
+			return None;
 		};
+		if matches!(kind.as_str(), "userMessage" | "agentMessage")
+			&& text.trim().is_empty()
+			&& !truncated
+			&& attachments.is_empty()
+		{
+			return None;
+		}
 		let identity =
 			serde_json::json!(["summary", work.id, work.codex_thread_id, turn_id, item_id])
 				.to_string();
@@ -191,34 +256,34 @@ impl AgentSurface {
 			&& attachments.is_empty()
 			&& let Some(text) = handoff(text)
 		{
-			return VoiceBlock {
-				viewport: Some(self.voice_history_viewport(cx)),
-				key: identity,
-				title: "Voice conversation".into(),
-				text,
-			}
-			.into_any_element();
+			return Some(
+				VoiceBlock {
+					viewport: Some(self.voice_history_viewport(cx)),
+					key: identity,
+					title: "Voice conversation".into(),
+					text,
+				}
+				.into_any_element(),
+			);
 		}
-		let mut row = gpui::div()
-			.w_full()
+		let user = kind == "userMessage";
+		let mut body = gpui::div()
 			.min_w_0()
 			.flex()
 			.flex_col()
-			.gap_1()
-			.debug_selector(|| "native-summary-message".into())
-			.child(agent_surface::muted(if kind == "userMessage" { "You" } else { "Assistant" }))
+			.gap(gpui::px(crate::ui_theme::METADATA_GAP))
 			.child(markdown::render(text, &identity));
 
 		for attachment in attachments {
-			row = row.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
+			body = body.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
 		}
 
 		if *truncated {
-			row = row
+			body = body
 				.child(agent_surface::muted("Some content was omitted from this history preview."));
 		}
 		if kind == "agentMessage" && !text.is_empty() {
-			row = row.child(markdown::response_copy_button(
+			body = body.child(markdown::response_copy_button(
 				&format!("copy-{identity}"),
 				"Copy response",
 				text.clone(),
@@ -227,10 +292,33 @@ impl AgentSurface {
 		if kind == "agentMessage"
 			&& let Some(action) = self.voice_read_action(&work.id, &identity, text, *truncated, cx)
 		{
-			row = row.child(action);
+			body = body.child(action);
 		}
 
-		row.into_any_element()
+		let message = self.native_message_entry(work, turn_id, text, kind);
+		let selector = format!("native-summary-content-{turn_id}-{item_id}");
+		let body = agent_surface::history_entry_presented(
+			&message,
+			&identity,
+			None,
+			Some(body.into_any_element()),
+			false,
+			None,
+			None,
+		)
+		.debug_selector(move || selector.clone());
+		Some(
+			gpui::div()
+				.id(SharedString::from(format!("summary-{identity}")))
+				.debug_selector(|| "native-summary-message".into())
+				.role(Role::Group)
+				.aria_label(if user { "You" } else { "Assistant" })
+				.w_full()
+				.min_w_0()
+				.flex()
+				.child(body)
+				.into_any_element(),
+		)
 	}
 
 	pub(super) fn native_timeline_row(
@@ -418,7 +506,7 @@ impl AgentSurface {
 			content @ AgentTimelineContent::Item { .. } =>
 				self.native_item_content(work, content, identity, archived, cx),
 			AgentTimelineContent::Speech { role, text, truncated, .. } => row
-				.child(agent_surface::muted(if role == "user" { "You" } else { "Assistant" }))
+				.child(speaker(if role == "user" { "You" } else { "Assistant" }))
 				.child(markdown::render(text, identity))
 				.when(*truncated, |r| r.child(agent_surface::muted("Voice transcript shortened.")))
 				.into_any_element(),
@@ -602,7 +690,10 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 				metrics,
 				streamed,
 				complete,
-				complete.then(|| self.timeline.native.completions.output(item_id)),
+				(kind == "agentMessage").then(|| self.timeline.native.completions.output(item_id)),
+				(kind == "userMessage")
+					.then(|| self.native_prompt_action(work, content, identity, cx))
+					.flatten(),
 			));
 
 			if kind == "agentMessage"
@@ -620,10 +711,6 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 					"Some content was omitted from this history preview.",
 				));
 			}
-			if kind == "userMessage" {
-				body = self.native_prompt_row(work, content, identity, body, cx);
-			}
-
 			return body.into_any_element();
 		}
 		if activity.is_some() && !*app_ui && attachments.is_empty() {
@@ -668,7 +755,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 						.py(gpui::px(5.))
 						.text_size(gpui::px(12.))
 						.line_height(gpui::px(18.))
-						.text_color(gpui::rgb(TEXT_MUTED))
+						.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 						.child(crate::ui_feedback::execution_icon(
 							format!("wait-{identity}"),
 							"recorded",
@@ -676,7 +763,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 						.child(label.to_owned()),
 				)
 			} else {
-				row.child(agent_surface::muted(label))
+				row.child(speaker(label.to_owned()))
 			}
 		});
 
@@ -725,26 +812,26 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 		row.into_any_element()
 	}
 
-	fn native_prompt_row(
+	fn native_prompt_action(
 		&self,
 		work: &AgentWorkItemDto,
 		content: &AgentTimelineContent,
 		identity: &str,
-		body: Div,
 		cx: &mut Context<Self>,
-	) -> Div {
+	) -> Option<AnyElement> {
 		if self.native_agents.selected.is_some() {
-			return body;
+			return None;
 		}
 		let AgentTimelineContent::Item { turn_id, item_id, .. } = content else {
 			unreachable!("prompt renderer")
 		};
-		let Some(thread) = &work.codex_thread_id else { return body };
+		let thread = work.codex_thread_id.as_ref()?;
 		let (owner, thread, turn, item) =
 			(work.id.clone(), thread.clone(), turn_id.clone(), item_id.clone());
 		let group: SharedString = format!("history-input-{identity}").into();
 		let keyboard_source = (owner.clone(), thread.clone(), turn.clone(), item.clone());
 		let edit = gpui::div()
+			.debug_selector(|| "edit-message-action".into())
 			.id(SharedString::from(format!("review-prompt-{identity}")))
 			.role(Role::Button)
 			.tab_index(0)
@@ -758,7 +845,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			.group_hover(group.clone(), |style| style.opacity(1.))
 			.focus(|style| style.opacity(1.))
 			.cursor_pointer()
-			.hover(|style| style.bg(gpui::rgba(HOVER_FILL)))
+			.hover(|style| style.bg(crate::ui_theme::rgba(HOVER_FILL)))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.review_prompt(&owner, &thread, &turn, &item, cx);
 			}))
@@ -773,11 +860,11 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			.child(
 				gpui::svg()
 					.data(br#"<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"><path d="M2 9L9 2L12 5L5 12L1 13ZM7 4L10 7" fill="none" stroke="white" stroke-width="1.1"/></svg>"#)
-					.text_color(gpui::rgb(TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 					.size(gpui::px(14.)),
 			);
 
-		body.group(group).child(gpui::div().flex().justify_end().child(edit))
+		Some(edit.into_any_element())
 	}
 
 	fn native_activity_content(
@@ -819,7 +906,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			.rounded(gpui::px(6.))
 			.text_size(gpui::px(12.))
 			.line_height(gpui::px(18.))
-			.text_color(gpui::rgb(TEXT_MUTED))
+			.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 			.child(crate::ui_feedback::execution_icon(
 				format!("execution-status-{identity}"),
 				&activity.status,
@@ -989,7 +1076,7 @@ pub(super) fn process_indent(content: impl IntoElement) -> AnyElement {
 				.w_full()
 				.min_w_0()
 				.border_l_1()
-				.border_color(gpui::rgba(0xffffff14))
+				.border_color(crate::ui_theme::rgba(0xffffff14))
 				.pl(gpui::px(14.))
 				.child(content),
 		)

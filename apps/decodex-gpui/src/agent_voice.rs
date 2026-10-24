@@ -742,7 +742,7 @@ impl AgentSurface {
 					.text_size(gpui::px(12.))
 					.child(gpui::div().flex_1().min_w_0().text_ellipsis().child(label))
 					.child(gpui::div().w(gpui::px(12.)).child(if selected { "✓" } else { "" }))
-					.hover(|d| d.bg(gpui::rgba(HOVER_FILL)))
+					.hover(|d| d.bg(crate::ui_theme::rgba(HOVER_FILL)))
 					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, window, cx| {
 						if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 							s.audio_input = keyboard_input.clone();
@@ -786,7 +786,7 @@ impl AgentSurface {
 					.role(Role::Status)
 					.w_full()
 					.min_w_0()
-					.text_color(gpui::rgb(TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 					.aria_label("Connecting voice. Microphone off until connected")
 					.child(crate::ui_loading::loading(""))
 					.into_any_element(),
@@ -852,7 +852,7 @@ impl AgentSurface {
 							let height =
 								2. + amplitudes[(distance * 6.).round() as usize] * envelope;
 							let alpha = if inactive { 0.35 } else { 0.3 + 0.7 * envelope };
-							let color = gpui::rgba(
+							let color = crate::ui_theme::rgba(
 								((if inactive { TEXT_MUTED } else { BLUE }) << 8)
 									| (alpha * 255.) as u32,
 							);
@@ -891,7 +891,7 @@ impl AgentSurface {
 				.items_center()
 				.gap(gpui::px(8.))
 				.text_size(gpui::px(11.))
-				.text_color(gpui::rgb(TEXT_MUTED))
+				.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 				.child(
 					gpui::div()
 						.id("voice-status")

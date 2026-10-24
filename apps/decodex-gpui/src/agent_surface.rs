@@ -2023,7 +2023,7 @@ impl AgentSurface {
 	fn history_panel(&self, work: &AgentWorkItemDto, cx: &mut Context<Self>) -> impl IntoElement {
 		if self.native_agents.selected.is_some() {
 			return self.history_activity(
-				gpui::div().w_full().min_w_0().child(self.native_timeline_panel(work, cx)),
+				gpui::div().w_full().min_w_0().children(self.native_timeline_panel(work, cx)),
 				work,
 				cx,
 			);
@@ -2038,7 +2038,7 @@ impl AgentSurface {
 			.when(self.prompt_editor_visible(&work.id), |panel| {
 				panel.child(self.prompt_edit_panel(&work.id, cx))
 			})
-			.child(self.native_timeline_panel(work, cx));
+			.children(self.native_timeline_panel(work, cx));
 
 		if self.native_history_active(work) {
 			// Receipts belong to the preceding response. Its footer already
@@ -2090,7 +2090,22 @@ impl AgentSurface {
 				for message in live.iter().filter(|message| {
 					work.active_turn_id.as_deref().is_none_or(|turn| turn == message.turn_id)
 				}) {
-					panel = panel.child(
+					let identity =
+						format!("live-{}-{}-{}", work.id, message.turn_id, message.item_id);
+					let answer = message.kind == AgentLiveMessageKind::AgentMessage;
+					let streamed = StreamingText::output(
+						if answer {
+							markdown::response_text(&message.text)
+						} else {
+							message.text.clone()
+						},
+						identity.clone(),
+						false,
+					)
+					.into_any_element();
+					let body = if answer {
+						speech_bubble("assistant", &message.text, &identity, Some(streamed))
+					} else {
 						gpui::div()
 							.w_full()
 							.py(gpui::px(2.))
@@ -2098,17 +2113,11 @@ impl AgentSurface {
 								(message.kind == AgentLiveMessageKind::ReasoningSummary)
 									.then(|| muted("Reasoning summary")),
 							)
-							.child(StreamingText::output(
-								message.text.clone(),
-								format!("live-{}-{}-{}", work.id, message.turn_id, message.item_id),
-								false,
-							))
-							.when(message.truncated, |row| {
-								row.child(muted(
-									"Partial output shortened; waiting for saved result.",
-								))
-							}),
-					);
+							.child(streamed)
+					};
+					panel = panel.child(body.when(message.truncated, |row| {
+						row.child(muted("Partial output shortened; waiting for saved result."))
+					}));
 				}
 
 				if entries.is_empty() && live.is_empty() {
@@ -2223,7 +2232,7 @@ impl AgentSurface {
 					.tab_index(0)
 					.aria_label("Review request")
 					.cursor_pointer()
-					.text_color(gpui::rgb(BLUE))
+					.text_color(crate::ui_theme::rgb(BLUE))
 					.on_click(cx.listener(move |s, _, _, cx| s.load_request(id, cx)))
 					.child(if event.event_kind == "user_input_pending" {
 						"Answer a question"
@@ -2252,7 +2261,7 @@ impl AgentSurface {
 			.role(Role::Button)
 			.tab_index(28)
 			.cursor_pointer()
-			.text_color(gpui::rgb(BLUE))
+			.text_color(crate::ui_theme::rgb(BLUE))
 			.on_click(cx.listener(move |surface, _, _, cx| {
 				surface.open_page(&selected, cx);
 				cx.notify();
@@ -2306,7 +2315,7 @@ impl AgentSurface {
 					.items_center()
 					.cursor_pointer()
 					.rounded(gpui::px(6.0))
-					.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+					.hover(|s| s.bg(crate::ui_theme::rgba(HOVER_FILL)))
 					.on_click(cx.listener(|s, _, _, cx| {
 						s.workspace.setup_expanded = !s.workspace.setup_expanded;
 
@@ -2671,7 +2680,7 @@ fn next_check_text(due: i64) -> String {
 fn muted(text: impl Into<SharedString>) -> impl IntoElement {
 	gpui::div()
 		.text_size(gpui::px(CAPTION_SIZE))
-		.text_color(gpui::rgb(TEXT_MUTED))
+		.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 		.child(text.into())
 }
 
@@ -2705,7 +2714,7 @@ fn history_entry_with_metrics(
 	identity: &str,
 	metrics: Option<AnyElement>,
 ) -> Div {
-	history_entry_presented(entry, identity, metrics, None, true, None)
+	history_entry_presented(entry, identity, metrics, None, true, None, None)
 }
 
 fn speech_bubble(role: &str, text: &str, identity: &str, streamed: Option<AnyElement>) -> Div {
@@ -2728,6 +2737,7 @@ fn speech_bubble(role: &str, text: &str, identity: &str, streamed: Option<AnyEle
 		streamed,
 		false,
 		None,
+		None,
 	)
 }
 
@@ -2738,6 +2748,7 @@ fn history_entry_presented(
 	streamed_body: Option<AnyElement>,
 	show_metadata: bool,
 	metadata_ready: Option<std::rc::Rc<std::cell::Cell<bool>>>,
+	input_action: Option<AnyElement>,
 ) -> Div {
 	if matches!(entry.kind.as_str(), "partial_plan" | "partial_answer") {
 		return gpui::div()
@@ -2773,7 +2784,11 @@ fn history_entry_presented(
 			.w_full()
 			.py_2()
 			.text_size(gpui::px(11.))
-			.text_color(gpui::rgb(if entry.kind == "stopped" { TEXT_MUTED } else { AMBER }))
+			.text_color(crate::ui_theme::rgb(if entry.kind == "stopped" {
+				TEXT_MUTED
+			} else {
+				AMBER
+			}))
 			.child(SelectableText {
 				key: format!("notice-{identity}"),
 				text: entry.text.clone(),
@@ -2787,7 +2802,15 @@ fn history_entry_presented(
 		.min_w_0()
 		.flex_none()
 		.flex()
-		.when(user, |row| row.child(gpui::div().flex_1().min_w_0()))
+		.when(user, |row| {
+			row.group(SharedString::from(format!("history-input-{identity}"))).child(
+				gpui::div().flex_1().min_w_0().relative().children(input_action.map(|action| {
+					// Use the existing empty space beside the bubble. Hidden controls
+					// must not reserve a row or move the next response.
+					gpui::div().absolute().right(gpui::px(4.)).top(gpui::px(5.)).child(action)
+				})),
+			)
+		})
 		.child(
 			gpui::div()
 				.min_w_0()
@@ -2798,7 +2821,7 @@ fn history_entry_presented(
 						.px(gpui::px(12.))
 						.py(gpui::px(7.))
 						.rounded(gpui::px(10.))
-						.bg(gpui::rgba(0xffffff0e))
+						.bg(crate::ui_theme::rgba(0xffffff0e))
 				})
 				.when(!user, |body| body.w_full().py(gpui::px(2.)))
 				.when(entry.kind == "instruction", |body| body.child(muted("Task input")))
@@ -2812,7 +2835,9 @@ fn history_entry_presented(
 						.enumerate()
 						.map(|(i, forecast)| weather::render(forecast, &format!("{identity}-{i}"))),
 				)
-				.when(!user, |body| {
+				// Native output keeps its footer mounted through live-to-saved
+				// promotion. Paths without completion metadata must not create one.
+				.when(!user && (show_metadata || metadata_ready.is_some()), |body| {
 					body.child(response_metrics::FinishedFooter {
 						visible: show_metadata,
 						ready: metadata_ready,

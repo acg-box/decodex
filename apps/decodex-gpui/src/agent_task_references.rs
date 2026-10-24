@@ -126,7 +126,7 @@ impl AgentSurface {
 						.py_1()
 						.rounded(gpui::px(6.))
 						.cursor_pointer()
-						.hover(|d| d.bg(gpui::rgba(HOVER_FILL)))
+						.hover(|d| d.bg(crate::ui_theme::rgba(HOVER_FILL)))
 						.child(
 							gpui::div()
 								.text_size(gpui::px(12.))
@@ -137,7 +137,7 @@ impl AgentSurface {
 						.child(
 							gpui::div()
 								.text_size(gpui::px(10.))
-								.text_color(gpui::rgb(TEXT_MUTED))
+								.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 								.child(work.id.clone()),
 						)
 						.on_click(cx.listener(move |s, _, _, cx| {
@@ -173,7 +173,7 @@ impl AgentSurface {
 			.child(
 				gpui::div()
 					.text_size(gpui::px(10.))
-					.text_color(gpui::rgb(TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 					.child("Sending grants read access to the selected task history."),
 			)
 			.child(list)
@@ -214,7 +214,7 @@ impl AgentSurface {
 					.px_2()
 					.py_1()
 					.rounded(gpui::px(6.))
-					.bg(gpui::rgba(0xffffff0a))
+					.bg(crate::ui_theme::rgba(0xffffff0a))
 					.text_size(gpui::px(11.))
 					.cursor_pointer()
 					.child(

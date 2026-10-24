@@ -19,7 +19,7 @@ use crate::shell::agent_surface::{
 
 type RowKey = (u64, u8, String);
 
-pub(super) const ROW_GAP: f32 = 8.;
+pub(super) const ROW_GAP: f32 = crate::ui_theme::MESSAGE_GAP;
 
 #[derive(Default)]
 pub(super) struct Viewport(Rc<RefCell<Geometry>>);

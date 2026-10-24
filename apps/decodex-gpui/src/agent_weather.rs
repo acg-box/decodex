@@ -47,12 +47,12 @@ impl RenderOnce for WeatherCard {
 			.max_w_full()
 			.flex_none()
 			.rounded(gpui::px(14.))
-			.bg(gpui::rgba(0xffffff08))
+			.bg(crate::ui_theme::rgba(0xffffff08))
 			.border_1()
-			.border_color(gpui::rgba(0xffffff10))
+			.border_color(crate::ui_theme::rgba(0xffffff10))
 			.shadow(vec![BoxShadow {
 				inset: false,
-				color: gpui::rgba(0x0000000d).into(),
+				color: crate::ui_theme::rgba(0x0000000d).into(),
 				offset: gpui::point(gpui::px(0.), gpui::px(3.)),
 				blur_radius: gpui::px(10.),
 				spread_radius: gpui::px(-3.),
@@ -105,7 +105,7 @@ impl RenderOnce for WeatherCard {
 						.justify_center()
 						.cursor_pointer()
 						.rounded(gpui::px(8.))
-						.hover(|s| s.bg(gpui::rgba(0xffffff0a)))
+						.hover(|s| s.bg(crate::ui_theme::rgba(0xffffff0a)))
 						.on_click(move |_, window, cx| {
 							state.update(cx, |s, cx| {
 								s.select(index);
@@ -113,11 +113,13 @@ impl RenderOnce for WeatherCard {
 							});
 							window.refresh();
 						})
-						.child(
-							gpui::div().size(gpui::px(5.)).rounded_full().bg(gpui::rgba(
-								if page == index { 0xffffffb0 } else { 0xffffff30 },
-							)),
-						)
+						.child(gpui::div().size(gpui::px(5.)).rounded_full().bg(
+							crate::ui_theme::rgba(if page == index {
+								0xffffffb0
+							} else {
+								0xffffff30
+							}),
+						))
 				})))
 			})
 			.into_any_element()
@@ -184,13 +186,13 @@ fn weather_hour(key: &str, i: usize, hour: &str, condition: &str, t: i32) -> Any
 		.child(
 			gpui::div()
 				.text_size(gpui::px(9.))
-				.text_color(gpui::rgb(0xaaa4af))
+				.text_color(crate::ui_theme::rgb(0xaaa4af))
 				.child(hour_label(hour)),
 		)
 		.child(
 			gpui::div()
 				.text_size(gpui::px(13.))
-				.text_color(gpui::rgb(0xd5e3f1))
+				.text_color(crate::ui_theme::rgb(0xd5e3f1))
 				.child(symbol(condition)),
 		)
 		.child(gpui::div().text_size(gpui::px(11.)).child(format!("{t}°")))
@@ -219,7 +221,7 @@ fn weather_header(weather: &WeatherForecast) -> AnyElement {
 				.child(
 					gpui::div()
 						.text_size(gpui::px(10.))
-						.text_color(gpui::rgb(0xaaa4af))
+						.text_color(crate::ui_theme::rgb(0xaaa4af))
 						.child(weather.condition.clone()),
 				),
 		)
@@ -231,7 +233,7 @@ fn weather_header(weather: &WeatherForecast) -> AnyElement {
 				.child(
 					gpui::div()
 						.text_size(gpui::px(16.))
-						.text_color(gpui::rgb(0xd5e3f1))
+						.text_color(crate::ui_theme::rgb(0xd5e3f1))
 						.child(symbol(&weather.condition)),
 				)
 				.child(

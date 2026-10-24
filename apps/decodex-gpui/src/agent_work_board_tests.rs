@@ -121,6 +121,12 @@ fn graph_preview_rejects_old_turns_and_threads_without_repositioning_other_nodes
 			},
 		);
 		assert_eq!(s.graph_preview(&row), ("Check sign-in".into(), "cargo test sign_in".into()));
+		let mut quiet = row.clone();
+		quiet.group = 2;
+		assert!(s.graph_operations(&quiet).1.is_empty(), "a quiet reply is not live activity");
+		assert_eq!(s.graph_preview(&quiet).1, "cargo test sign_in", "the source remains readable");
+		quiet.group = 1;
+		assert_eq!(s.graph_operations(&quiet).1[0].text, "cargo test sign_in");
 		s.work_board.briefs.get_mut(&row.key).unwrap().question =
 			Some("Which format do you prefer?".into());
 		assert_eq!(
@@ -317,9 +323,13 @@ fn missing_token_statistics_notify_only_after_a_successful_completed_turn(
 fn graph_nodes_select_the_exact_agent_and_keep_the_graph_open(cx: &mut gpui::TestAppContext) {
 	let (_root, profile, server) = super::super::wire_test_support::fixture(|_| async {});
 	server.join().unwrap();
-	for (key, selector) in [
-		("release", "relation-node-release"),
-		("native:release:native-child", "relation-node-native:release:native-child"),
+	for (key, selector, target_selector) in [
+		("release", "relation-node-release", "relation-avatar-release"),
+		(
+			"native:release:native-child",
+			"relation-node-native:release:native-child",
+			"relation-avatar-native:release:native-child",
+		),
 	] {
 		let (surface, visual) = cx.add_window_view(|_, cx| {
 			let mut s = fixture(cx);
@@ -332,9 +342,10 @@ fn graph_nodes_select_the_exact_agent_and_keep_the_graph_open(cx: &mut gpui::Tes
 		visual.run_until_parked();
 		visual.update(|w, cx| w.draw(cx).clear(cx));
 		let node = visual.debug_bounds(selector).unwrap();
+		let target = visual.debug_bounds(target_selector).unwrap().center();
 		let canvas = visual.debug_bounds("relations-canvas").unwrap();
-		assert!(canvas.contains(&node.center()), "the selected card must be visible");
-		visual.simulate_mouse_down(node.center(), gpui::MouseButton::Left, Default::default());
+		assert!(canvas.contains(&target), "the selected portrait must be visible");
+		visual.simulate_mouse_down(target, gpui::MouseButton::Left, Default::default());
 		let positions = surface.read_with(visual, |s, _| {
 			s.relation_graph().nodes.into_iter().map(|n| (n.key, n.x, n.y)).collect::<Vec<_>>()
 		});
@@ -344,7 +355,7 @@ fn graph_nodes_select_the_exact_agent_and_keep_the_graph_open(cx: &mut gpui::Tes
 			Some(node),
 			"a pending fit cannot move the pressed card"
 		);
-		visual.simulate_mouse_up(node.center(), gpui::MouseButton::Left, Default::default());
+		visual.simulate_mouse_up(target, gpui::MouseButton::Left, Default::default());
 		surface.read_with(visual, |s, _| {
 			assert_eq!(s.selected.as_deref(), Some("agent"));
 			assert_eq!(s.work_board.view.picked_agent.as_deref(), Some(key));
@@ -363,7 +374,7 @@ fn graph_nodes_select_the_exact_agent_and_keep_the_graph_open(cx: &mut gpui::Tes
 		});
 		visual.update(|w, cx| w.draw(cx).clear(cx));
 		assert!(visual.debug_bounds("agent-usage-popover").is_none());
-		let position = visual.debug_bounds(selector).unwrap().center();
+		let position = visual.debug_bounds(target_selector).unwrap().center();
 		visual.simulate_event(gpui::MouseDownEvent {
 			position,
 			button: gpui::MouseButton::Left,
@@ -627,7 +638,7 @@ fn dragging_a_node_changes_layout_without_switching_the_conversation(
 		visual.update(|w, cx| w.draw(cx).clear(cx));
 		visual.run_until_parked();
 		visual.update(|w, cx| w.draw(cx).clear(cx));
-		let start = visual.debug_bounds("relation-node-release").unwrap().center();
+		let start = visual.debug_bounds("relation-avatar-release").unwrap().center();
 		visual.simulate_mouse_down(start, gpui::MouseButton::Left, Default::default());
 		// Pressing freezes the presented layout before measuring world movement.
 		let before = surface.read_with(visual, |s, _| {
@@ -1001,14 +1012,40 @@ fn graph_recovers_native_responsibility_from_exact_parent_assignment(
 			},
 		);
 		assert_eq!(s.graph_preview(&row), ("Review connector routing".into(), String::new()));
+		assert_eq!(s.graph_purpose(&row), "Review connector routing");
 		let brief = s.work_board.briefs.get_mut(&parent.key).unwrap();
 		brief.assignments = BTreeMap::from([("sibling".into(), "Review connector routing".into())]);
 		assert_eq!(s.graph_preview(&row), (String::new(), String::new()));
+		assert!(s.graph_purpose(&row).is_empty(), "a sibling's assignment cannot name this agent");
 		let brief = s.work_board.briefs.get_mut(&parent.key).unwrap();
 		brief.assignments =
 			BTreeMap::from([(row.thread.clone().unwrap(), "Review connector routing".into())]);
 		brief.source_thread = Some("previous-parent-thread".into());
 		assert_eq!(s.graph_preview(&row), (String::new(), String::new()));
+	});
+}
+
+#[gpui::test]
+fn graph_purposes_keep_manual_names_and_replace_only_incomplete_legacy_prefixes(
+	cx: &mut gpui::TestAppContext,
+) {
+	let surface = cx.new(fixture);
+	surface.update(cx, |s, _| {
+		let mut row = s.board_rows().into_iter().find(|row| row.key == "release").unwrap();
+		row.title = "Reconnect checks".into();
+		let request = "Please verify that a browser reconnect preserves the final paragraph and every code block. Report the evidence.";
+		s.work_board.briefs.insert(row.key.clone(), Brief {
+			output: None, source_thread: row.thread.clone(), assignments: Default::default(), outcome: None,
+			preview: Some(activity::Preview { turn: "reference".into(), task: request.into(), text: "Checks passed".into(), running: None, recent: vec![] }),
+			question: None, resources: None, relations: vec![], metrics: Default::default(), stamp: s.brief_stamp(&row), read_at: std::time::Instant::now(),
+		});
+		assert_eq!(s.graph_purpose(&row), "Reconnect checks");
+		row.title = request.chars().take(64).collect();
+		assert_eq!(s.graph_purpose(&row), "Verify that a browser reconnect preserves the final paragraph and every code block");
+		row.title = "Help me plan a small soup dinner for two. Have two agents work i".into();
+		assert_eq!(s.graph_purpose(&row), "Plan a small soup dinner for two");
+		row.title = s.relation_agent_number(&row);
+		assert!(s.graph_purpose(&row).is_empty(), "do not repeat the agent's number as its purpose");
 	});
 }
 
@@ -1063,7 +1100,9 @@ fn native_completion_requests_fresh_metrics_without_blank_preview(cx: &mut gpui:
 }
 
 #[gpui::test]
-fn moving_across_card_children_keeps_one_hover_target(cx: &mut gpui::TestAppContext) {
+fn moving_across_card_children_does_not_focus_or_rearrange_the_graph(
+	cx: &mut gpui::TestAppContext,
+) {
 	let (surface, visual) = cx.add_window_view(|_, cx| {
 		let mut s = fixture(cx);
 		s.workspace.graph_expanded = true;
@@ -1083,8 +1122,8 @@ fn moving_across_card_children_keeps_one_hover_target(cx: &mut gpui::TestAppCont
 		let p = bounds.origin + gpui::point(bounds.size.width * 0.5, bounds.size.height * fraction);
 		visual.simulate_mouse_move(p, None, Default::default());
 		visual.update(|w, cx| w.draw(cx).clear(cx));
-		surface.read_with(visual, |s, _| assert_eq!(s.relation_context(), Some("release")));
-		// The delayed inspection may enlarge its overlay; it must not move the graph.
+		surface.read_with(visual, |s, _| assert_eq!(s.relation_context(), None));
+		// Pointer-only movement must not open an inspection or move the graph.
 		assert_eq!(visual.debug_bounds("relation-node-release").unwrap().origin, bounds.origin);
 		surface.read_with(visual, |s, _| {
 			for (before, after) in layout.iter().zip(s.relation_graph().nodes) {

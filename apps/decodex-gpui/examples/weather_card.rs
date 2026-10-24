@@ -5,6 +5,9 @@ mod ui_frame;
 #[allow(dead_code)] // The preview shares the boolean preference, but does not use string receipts.
 #[path = "../src/ui_preferences.rs"]
 mod ui_preferences;
+#[allow(dead_code)]
+#[path = "../src/ui_theme.rs"]
+mod ui_theme;
 #[path = "../src/agent_weather.rs"] mod weather_card;
 
 use futures_util as _;

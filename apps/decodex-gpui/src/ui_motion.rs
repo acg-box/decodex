@@ -351,9 +351,9 @@ pub(crate) fn tooltip_surface(surface: gpui::Div) -> gpui::Div {
 	surface
 		.rounded(gpui::px(8.))
 		.border_1()
-		.border_color(gpui::rgba(0xffffff24))
-		.bg(gpui::rgb(0x24242a))
-		.text_color(gpui::rgb(crate::ui_theme::TEXT))
+		.border_color(crate::ui_theme::rgba(0xffffff24))
+		.bg(crate::ui_theme::rgb(0x24242a))
+		.text_color(crate::ui_theme::rgb(crate::ui_theme::TEXT))
 		.text_size(gpui::px(11.))
 		.line_height(gpui::px(16.))
 		.max_w(gpui::px(360.))
@@ -364,11 +364,11 @@ pub(crate) fn menu_surface<T: gpui::Styled>(surface: T) -> T {
 	surface
 		.rounded(gpui::px(10.))
 		.border_1()
-		.border_color(gpui::rgba(0xffffff14))
-		.bg(gpui::rgb(0x29292d))
+		.border_color(crate::ui_theme::rgba(0xffffff14))
+		.bg(crate::ui_theme::rgb(0x29292d))
 		.shadow(vec![gpui::BoxShadow {
 			inset: false,
-			color: gpui::rgba(0x00000028).into(),
+			color: crate::ui_theme::rgba(0x00000028).into(),
 			offset: gpui::point(gpui::px(0.), gpui::px(3.)),
 			blur_radius: gpui::px(8.),
 			spread_radius: gpui::px(-2.),
@@ -383,6 +383,11 @@ pub(crate) struct Tween {
 	duration: Duration,
 }
 impl Tween {
+	pub(crate) fn duration(mut self, duration: Duration) -> Self {
+		self.duration = duration;
+		self
+	}
+
 	pub(crate) fn new(value: f32) -> Self {
 		Self {
 			from: value,
@@ -640,6 +645,7 @@ impl RenderOnce for AgentRailStatus {
 			"Completed" | "completed" | "Resolved" => (crate::ui_theme::GREEN, false),
 			_ => (crate::ui_theme::TEXT, false),
 		};
+		let color = crate::ui_theme::appearance::Theme::current().hex(color);
 		let mut channels = [0.; 3];
 		for (index, channel) in channels.iter_mut().enumerate() {
 			*channel = value(

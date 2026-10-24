@@ -278,7 +278,10 @@ impl AgentSurface {
 			.items_center()
 			.justify_between()
 			.gap_3()
-			.bg(gpui::rgba(PANEL_HEADER_TINT))
+			.bg(crate::ui_theme::rgba(PANEL_HEADER_TINT))
+			.when(!self.workspace.graph_visible || self.workspace.chat_expanded, |panel| {
+				panel.rounded_t(gpui::px(ui_theme::WORKSPACE_RADIUS))
+			})
 			.text_size(gpui::px(11.))
 			.child(
 				gpui::div()
@@ -288,7 +291,7 @@ impl AgentSurface {
 					.child(if restoring { "Unarchiving…" } else { "Archived" })
 					.child(
 						gpui::div()
-							.text_color(gpui::rgb(TEXT_MUTED))
+							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 							.child("History is available. Unarchive to continue."),
 					),
 			)
@@ -326,7 +329,7 @@ fn button(
 		.tab_index(0)
 		.aria_label(label)
 		.cursor_pointer()
-		.text_color(gpui::rgb(BLUE))
+		.text_color(crate::ui_theme::rgb(BLUE))
 		.h(gpui::px(ui_theme::CONTROL_SIZE))
 		.px_2()
 		.flex_none()
@@ -334,7 +337,7 @@ fn button(
 		.items_center()
 		.justify_center()
 		.rounded(gpui::px(5.))
-		.hover(|button| button.bg(gpui::rgba(ui_theme::HOVER_FILL)))
+		.hover(|button| button.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)))
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
 		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {

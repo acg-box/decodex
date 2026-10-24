@@ -6,6 +6,118 @@ fn short(text: &str) -> String {
 	text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(180).collect()
 }
 
+fn managed_state(case: &mut Exchange, record: &AgentExchangeDto, work: &Row, other: Option<&Row>) {
+	match record.kind {
+		KindDto::NotSent => {
+			case.state = "Not sent";
+			case.color = ui_theme::AMBER;
+			case.title = "Continue the same worker".into();
+			case.request = Some(record.excerpt.clone());
+			case.summary = match record.target_dispatch_state {
+				Some(decodex_protocol::AgentDispatchStateDto::Idle) =>
+					"Worker idle · instruction still not sent",
+				_ => "Busy · instruction not sent or queued",
+			}
+			.into();
+			case.steps.push(("Attempt", "Busy refused this continuation.".into()));
+			case.steps.push((
+				"Next",
+				match record.target_dispatch_state {
+					Some(decodex_protocol::AgentDispatchStateDto::Idle) =>
+						"The worker is idle. Retry through its owner on the same work item.",
+					Some(
+						decodex_protocol::AgentDispatchStateDto::Running
+						| decodex_protocol::AgentDispatchStateDto::Dispatching,
+					) => "Wait for the current turn, then ask the owner to retry.",
+					_ => "Check the same worker before retrying. This attempt remains unsent.",
+				}
+				.into(),
+			));
+		},
+		KindDto::Instruction => {
+			if let Some(other) = other {
+				case.from = other.clone();
+				case.to = Some(work.clone());
+			}
+			if record.delivered_turn_id.is_some() {
+				case.summary = "Instruction delivered · result not yet linked".into();
+				case.steps
+					.push(("Delivered", "The provider acknowledged this instruction.".into()));
+				case.steps.push(("Waiting", "No result is linked to this turn yet.".into()));
+				if record.thread_id.is_none() {
+					case.state = "Delivered";
+					case.color = ui_theme::TEXT_MUTED;
+					case.earlier = true;
+					case.summary = "Earlier instruction · result linkage unavailable".into();
+				}
+			} else {
+				case.state = "Unconfirmed";
+				case.color = ui_theme::AMBER;
+				case.summary = "Delivery has not been confirmed".into();
+				case.steps
+					.push(("Check", "Check the original worker before another attempt.".into()));
+			}
+		},
+		KindDto::Result => managed_result(case, record),
+	}
+}
+
+fn managed_result(case: &mut Exchange, record: &AgentExchangeDto) {
+	let completed = record.outcome.as_deref() == Some("completed");
+	case.state = if completed { "To review" } else { "Check result" };
+	case.color = if completed { ui_theme::BLUE } else { ui_theme::AMBER };
+	case.summary = if completed {
+		"Result received · assessment not recorded"
+	} else {
+		"The worker did not report successful completion"
+	}
+	.into();
+	case.steps.push((
+		"Result",
+		if record.excerpt.is_empty() {
+			"No result body is available.".into()
+		} else {
+			short(&record.excerpt)
+		},
+	));
+	case.steps.push((
+		"Receipt",
+		if record.delivered_turn_id.is_some() {
+			"Delivered to the responsible manager."
+		} else {
+			"The manager has not acknowledged delivery."
+		}
+		.into(),
+	));
+	match record.assessment {
+		Some(Assessment::Accepted) => {
+			case.state = "Accepted";
+			case.color = ui_theme::GREEN;
+			case.earlier = true;
+			case.summary = "The manager accepted this exact result".into();
+		},
+		Some(Assessment::FollowUp) => {
+			case.state = "Changes asked";
+			case.color = ui_theme::AMBER;
+			case.summary = "Follow-up requested · new result pending".into();
+		},
+		Some(Assessment::Wait) => {
+			case.state = "Waiting";
+			case.color = ui_theme::AMBER;
+			case.summary = "The manager deferred this assessment".into();
+		},
+		Some(Assessment::UserDecision) => {
+			case.state = "Decision";
+			case.color = ui_theme::AMBER;
+			case.summary = "The manager needs your decision".into();
+		},
+		None => {},
+	}
+	if let Some(note) = &record.assessment_note {
+		case.steps.push(("Review", short(note)));
+	}
+}
+
 fn managed(records: &[AgentExchangeDto], rows: &[Row]) -> Vec<Exchange> {
 	let mut cases = BTreeMap::new();
 	let mut sorted: Vec<_> = records.iter().collect();
@@ -54,115 +166,7 @@ fn managed(records: &[AgentExchangeDto], rows: &[Row]) -> Vec<Exchange> {
 			question: None,
 			order: record.event_id,
 		};
-		match record.kind {
-			KindDto::NotSent => {
-				case.state = "Not sent";
-				case.color = ui_theme::AMBER;
-				case.title = "Continue the same worker".into();
-				case.request = Some(record.excerpt.clone());
-				case.summary = match record.target_dispatch_state {
-					Some(decodex_protocol::AgentDispatchStateDto::Idle) =>
-						"Worker idle · instruction still not sent",
-					_ => "Busy · instruction not sent or queued",
-				}
-				.into();
-				case.steps.push(("Attempt", "Busy refused this continuation.".into()));
-				case.steps.push((
-					"Next",
-					match record.target_dispatch_state {
-						Some(decodex_protocol::AgentDispatchStateDto::Idle) =>
-							"The worker is idle. Retry through its owner on the same work item.",
-						Some(
-							decodex_protocol::AgentDispatchStateDto::Running
-							| decodex_protocol::AgentDispatchStateDto::Dispatching,
-						) => "Wait for the current turn, then ask the owner to retry.",
-						_ => "Check the same worker before retrying. This attempt remains unsent.",
-					}
-					.into(),
-				));
-			},
-			KindDto::Instruction => {
-				if let Some(other) = other {
-					case.from = other.clone();
-					case.to = Some(work.clone());
-				}
-				if record.delivered_turn_id.is_some() {
-					case.summary = "Instruction delivered · result not yet linked".into();
-					case.steps
-						.push(("Delivered", "The provider acknowledged this instruction.".into()));
-					case.steps.push(("Waiting", "No result is linked to this turn yet.".into()));
-					if record.thread_id.is_none() {
-						case.state = "Delivered";
-						case.color = ui_theme::TEXT_MUTED;
-						case.earlier = true;
-						case.summary = "Earlier instruction · result linkage unavailable".into();
-					}
-				} else {
-					case.state = "Unconfirmed";
-					case.color = ui_theme::AMBER;
-					case.summary = "Delivery has not been confirmed".into();
-					case.steps.push((
-						"Check",
-						"Check the original worker before another attempt.".into(),
-					));
-				}
-			},
-			KindDto::Result => {
-				let completed = record.outcome.as_deref() == Some("completed");
-				case.state = if completed { "To review" } else { "Check result" };
-				case.color = if completed { ui_theme::BLUE } else { ui_theme::AMBER };
-				case.summary = if completed {
-					"Result received · assessment not recorded"
-				} else {
-					"The worker did not report successful completion"
-				}
-				.into();
-				case.steps.push((
-					"Result",
-					if record.excerpt.is_empty() {
-						"No result body is available.".into()
-					} else {
-						short(&record.excerpt)
-					},
-				));
-				case.steps.push((
-					"Receipt",
-					if record.delivered_turn_id.is_some() {
-						"Delivered to the responsible manager."
-					} else {
-						"The manager has not acknowledged delivery."
-					}
-					.into(),
-				));
-				match record.assessment {
-					Some(Assessment::Accepted) => {
-						case.state = "Accepted";
-						case.color = ui_theme::GREEN;
-						case.earlier = true;
-						case.summary = "The manager accepted this exact result".into();
-					},
-					Some(Assessment::FollowUp) => {
-						case.state = "Changes asked";
-						case.color = ui_theme::AMBER;
-						case.summary = "Follow-up requested · new result pending".into();
-					},
-					Some(Assessment::Wait) => {
-						case.state = "Waiting";
-						case.color = ui_theme::AMBER;
-						case.summary = "The manager deferred this assessment".into();
-					},
-					Some(Assessment::UserDecision) => {
-						case.state = "Decision";
-						case.color = ui_theme::AMBER;
-						case.summary = "The manager needs your decision".into();
-					},
-					None => {},
-				}
-				if let Some(note) = &record.assessment_note {
-					case.steps.push(("Review", short(note)));
-				}
-			},
-		}
+		managed_state(&mut case, record, work, other);
 		if record.thread_id.is_some() && record.thread_id != work.thread {
 			case.state = "Earlier";
 			case.color = ui_theme::TEXT_MUTED;
@@ -198,6 +202,79 @@ fn managed(records: &[AgentExchangeDto], rows: &[Row]) -> Vec<Exchange> {
 		}
 	}
 	cases.into_values().collect()
+}
+
+fn append_questions(
+	cases: &mut Vec<Exchange>,
+	questions: &[AgentExchangeQuestionDto],
+	rows: &[Row],
+) {
+	for question in questions {
+		let Some(row) = rows.iter().find(|row| {
+			!row.native
+				&& row.work == question.work_id
+				&& row.thread.as_ref() == Some(&question.thread_id)
+		}) else {
+			continue;
+		};
+		cases.push(Exchange {
+			id: format!("question:{}:{}", question.work_id, question.question.id),
+			from: row.clone(),
+			to: None,
+			title: question.question.title.clone(),
+			summary: if question.pending {
+				"Native question · your response is needed"
+			} else {
+				"No longer pending · original source retained"
+			}
+			.into(),
+			state: if question.pending { "Question" } else { "Withdrawn" },
+			color: if question.pending { ui_theme::AMBER } else { ui_theme::TEXT_MUTED },
+			request: None,
+			steps: vec![(
+				"Question",
+				if question.pending {
+					"Open the original question to respond."
+				} else {
+					"A reply, continuation or dismissal removed this question from the pending list."
+				}
+				.into(),
+			)],
+			source: question.question.id.clone(),
+			source_text: question.question.title.clone(),
+			source_row: row.clone(),
+			source_event: None,
+			source_item: Some(question.item_id.clone()),
+			source_turn: Some(question.turn_id.clone()),
+			source_thread: Some(question.thread_id.clone()),
+			edge: None,
+			earlier: !question.pending,
+			question: Some(question.clone()),
+			order: 0,
+		});
+	}
+}
+
+fn native_state(edge: &Edge) -> (&'static str, u32, &'static str) {
+	match edge.kind {
+		Kind::Dependency if edge.label == "Prerequisite met" => (
+			"Ready",
+			ui_theme::TEXT_MUTED,
+			"Prerequisite resolved · downstream execution not confirmed",
+		),
+		Kind::Dependency =>
+			("Waiting", ui_theme::AMBER, "An explicit work dependency is outstanding"),
+		Kind::Wait if edge.in_progress =>
+			("Waiting", ui_theme::AMBER, "Waiting for the named agent"),
+		Kind::Returned =>
+			("Reported", ui_theme::BLUE, "A native event was recorded · acceptance unknown"),
+		Kind::Context =>
+			("Shared", ui_theme::TEXT_MUTED, "Context made available · reading is not confirmed"),
+		_ if edge.label.contains("failed") || edge.label.contains("interrupted") =>
+			("Unconfirmed", ui_theme::AMBER, "Check the source before continuing"),
+		_ if edge.in_progress => ("Working", ui_theme::GREEN, "The native call is in progress"),
+		_ => ("Recorded", ui_theme::TEXT_MUTED, "Native route recorded · outcome not confirmed"),
+	}
 }
 
 pub(super) fn exchanges(
@@ -238,29 +315,7 @@ pub(super) fn exchanges(
 			case.summary = "A target snapshot is available · reply linkage unknown".into();
 			continue;
 		}
-		let (state, color, summary) = match edge.kind {
-			Kind::Dependency if edge.label == "Prerequisite met" => (
-				"Ready",
-				ui_theme::TEXT_MUTED,
-				"Prerequisite resolved · downstream execution not confirmed",
-			),
-			Kind::Dependency =>
-				("Waiting", ui_theme::AMBER, "An explicit work dependency is outstanding"),
-			Kind::Wait if edge.in_progress =>
-				("Waiting", ui_theme::AMBER, "Waiting for the named agent"),
-			Kind::Returned =>
-				("Reported", ui_theme::BLUE, "A native event was recorded · acceptance unknown"),
-			Kind::Context => (
-				"Shared",
-				ui_theme::TEXT_MUTED,
-				"Context made available · reading is not confirmed",
-			),
-			_ if edge.label.contains("failed") || edge.label.contains("interrupted") =>
-				("Unconfirmed", ui_theme::AMBER, "Check the source before continuing"),
-			_ if edge.in_progress => ("Working", ui_theme::GREEN, "The native call is in progress"),
-			_ =>
-				("Recorded", ui_theme::TEXT_MUTED, "Native route recorded · outcome not confirmed"),
-		};
+		let (state, color, summary) = native_state(edge);
 		cases.push(Exchange {
 			id,
 			from: from.clone(),
@@ -321,50 +376,7 @@ pub(super) fn exchanges(
 			order: order as i64,
 		});
 	}
-	for question in questions {
-		let Some(row) = rows.iter().find(|row| {
-			!row.native
-				&& row.work == question.work_id
-				&& row.thread.as_ref() == Some(&question.thread_id)
-		}) else {
-			continue;
-		};
-		cases.push(Exchange {
-			id: format!("question:{}:{}", question.work_id, question.question.id),
-			from: row.clone(),
-			to: None,
-			title: question.question.title.clone(),
-			summary: if question.pending {
-				"Native question · your response is needed"
-			} else {
-				"No longer pending · original source retained"
-			}
-			.into(),
-			state: if question.pending { "Question" } else { "Withdrawn" },
-			color: if question.pending { ui_theme::AMBER } else { ui_theme::TEXT_MUTED },
-			request: None,
-			steps: vec![(
-				"Question",
-				if question.pending {
-					"Open the original question to respond."
-				} else {
-					"A reply, continuation or dismissal removed this question from the pending list."
-				}
-				.into(),
-			)],
-			source: question.question.id.clone(),
-			source_text: question.question.title.clone(),
-			source_row: row.clone(),
-			source_event: None,
-			source_item: Some(question.item_id.clone()),
-			source_turn: Some(question.turn_id.clone()),
-			source_thread: Some(question.thread_id.clone()),
-			edge: None,
-			earlier: !question.pending,
-			question: Some(question.clone()),
-			order: 0,
-		});
-	}
+	append_questions(&mut cases, questions, rows);
 	cases.sort_by_key(|case| {
 		(
 			case.earlier,

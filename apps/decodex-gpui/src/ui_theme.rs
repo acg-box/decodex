@@ -7,10 +7,15 @@
 //! Page owners keep their domain-specific layout. This module owns only the
 //! material, color, and motion values that must remain stable across pages.
 
+#[path = "ui_material.rs"] pub(crate) mod material;
 #[cfg(all(target_os = "macos", not(test)))]
-#[path = "native_glass_panel.rs"]
-pub(crate) mod native_glass_panel;
+#[path = "native_material_panel.rs"]
+pub(crate) mod native_material_panel;
 #[path = "window_material.rs"] pub(crate) mod window_material;
+
+#[path = "ui_appearance.rs"] pub(crate) mod appearance;
+#[path = "ui_palette.rs"] mod palette;
+pub(crate) use palette::{rgb, rgba};
 
 use std::time::Duration;
 
@@ -23,13 +28,14 @@ pub(crate) const FONT_FAMILY: &str = ".SystemUIFont";
 pub(crate) const BODY_SIZE: f32 = 12.5;
 pub(crate) const CAPTION_SIZE: f32 = 10.5;
 pub(crate) const CAPTION_LINE_HEIGHT: f32 = 14.;
-pub(crate) const LABEL_LINE_HEIGHT: f32 = 16.;
 pub(crate) const HEADING_SIZE: f32 = 15.0;
 pub(crate) const BODY_LINE_HEIGHT: f32 = 19.0;
 pub(crate) const TREE_ROW_HEIGHT: f32 = 24.0;
 pub(crate) const CONVERSATION_TAB_SIZE: f32 = 28.0;
 pub(crate) const CONVERSATION_TAB_GAP: f32 = 2.0;
 pub(crate) const SIDEBAR_INSET: f32 = 6.0;
+pub(crate) const WORKSPACE_INSET: f32 = 6.0;
+pub(crate) const WORKSPACE_RADIUS: f32 = 12.0;
 pub(crate) const MESSAGE_GAP: f32 = 20.0;
 pub(crate) const USER_MESSAGE_ACTION_SIZE: f32 = 24.0;
 pub(crate) const METADATA_GAP: f32 = 4.0;
@@ -81,10 +87,47 @@ pub(crate) const AMBER: u32 = 0xe0b56f;
 pub(crate) const ERROR: u32 = 0xef4444;
 pub(crate) const MOTION_PANEL: Duration = Duration::from_millis(240);
 
-/// The composer keeps its native material unless the user selects a plain surface.
-pub(crate) fn composer_glass(value: Option<bool>) -> bool {
-	static CACHE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(u8::MAX);
-	crate::ui_preferences::boolean("composerLiquidGlass", &CACHE, value, true)
+/// Thin separates regions by tone; glass keeps its existing shared plane.
+pub(crate) struct WorkspacePalette {
+	pub(crate) graph: gpui::Rgba,
+	pub(crate) conversation: gpui::Rgba,
+}
+
+pub(crate) fn workspace_palette() -> WorkspacePalette {
+	if material::Surface::Window.material() == material::Material::LiquidGlass {
+		return WorkspacePalette { graph: gpui::rgba(0), conversation: rgba(AGENT_CHAT_OVERLAY) };
+	}
+	// Neutral tints leave the native matte material underneath. Only the reading
+	// plane is lighter; sidebars stay on the shared window surface.
+	let (graph, conversation) = match appearance::Theme::current() {
+		appearance::Theme::Dark => (0x00000028, 0xffffff06),
+		appearance::Theme::Light => (0x00000008, 0xffffffb0),
+	};
+	WorkspacePalette { graph: gpui::rgba(graph), conversation: gpui::rgba(conversation) }
+}
+
+/// A shallow fold between the map and reading plane, without a divider stroke.
+pub(crate) fn workspace_seam() -> Div {
+	let alpha = match appearance::Theme::current() {
+		appearance::Theme::Dark => 0x14,
+		appearance::Theme::Light => 0x09,
+	};
+	gpui::div().absolute().top_0().left_0().right_0().h(gpui::px(6.)).bg(gpui::linear_gradient(
+		180.,
+		gpui::linear_color_stop(gpui::rgba(alpha), 0.),
+		gpui::linear_color_stop(gpui::rgba(0), 1.),
+	))
+}
+
+/// Reading roles for the workspace. Materials and composer tokens stay separate.
+pub(crate) mod foreground {
+	pub(crate) const PRIMARY: u32 = 0xf2f1f4;
+	pub(crate) const BODY: u32 = 0xdfdee4;
+	pub(crate) const SECONDARY: u32 = 0xbbb8c4;
+	pub(crate) const CAPTION_SIZE: f32 = super::CAPTION_SIZE;
+	pub(crate) const METRIC_SIZE: f32 = 11.;
+	pub(crate) const READING_SIZE: f32 = super::BODY_SIZE;
+	pub(crate) const READING_LINE_HEIGHT: f32 = 20.;
 }
 
 pub(crate) fn floating_group() -> Div {
@@ -96,9 +139,9 @@ pub(crate) fn floating_group() -> Div {
 		.items_center()
 		.gap_1()
 		.rounded(gpui::px(CONTROL_RADIUS))
-		.bg(gpui::rgb(TOPBAR_MATERIAL >> 8))
+		.bg(rgb(TOPBAR_MATERIAL >> 8))
 		.border_1()
-		.border_color(gpui::rgba(0xffffff12))
+		.border_color(rgba(0xffffff12))
 }
 
 /// Graph controls share shell geometry, with a clear surface of their own.
@@ -129,9 +172,9 @@ pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
 		.aria_label(title)
 		.text_size(gpui::px(HEADING_SIZE))
 		.font_weight(FontWeight::SEMIBOLD)
-		.text_color(gpui::rgb(TEXT))
+		.text_color(rgb(TEXT))
 		.child(title)
 }
 
 /// Stable gutter shared by conversation history and composer alignment.
-pub(crate) const HISTORY_RAIL_WIDTH: f32 = 44.;
+pub(crate) const HISTORY_RAIL_WIDTH: f32 = CONVERSATION_INSET;

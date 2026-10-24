@@ -42,6 +42,9 @@ fn work_activity_keeps_outputs_bound_to_their_thread_and_turn(cx: &mut gpui::Tes
 			s.work_activity_summary(&row),
 			("Latest result".into(), "Compatibility checks passed.".into())
 		);
+		let (_, operations) = s.graph_operations(&row);
+		assert_eq!(operations[0].kind, super::super::activity::OperationKind::Result);
+		assert_eq!(operations[0].text, "Compatibility checks passed.");
 		let complete_answer =
 			format!("{}Final verification result.", "Detailed evidence. ".repeat(80));
 		s.work_board.briefs.get_mut(&row.key).unwrap().output.as_mut().unwrap().text =
@@ -50,6 +53,7 @@ fn work_activity_keeps_outputs_bound_to_their_thread_and_turn(cx: &mut gpui::Tes
 		assert!(s.work_activity_summary(&row).1.chars().count() <= 181);
 		s.work_board.briefs.get_mut(&row.key).unwrap().source_thread = Some("other-thread".into());
 		assert!(s.work_activity_summary(&row).1.is_empty());
+		assert!(s.graph_operations(&row).1.is_empty());
 		s.work_board.briefs.get_mut(&row.key).unwrap().source_thread = row.thread.clone();
 		s.snapshot
 			.as_mut()

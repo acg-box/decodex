@@ -51,7 +51,7 @@ impl AgentSurface {
 		}
 
 		let identity = (work.id.clone(), review.review_id.clone());
-		let mut panel=gpui::div().p_3().rounded(gpui::px(8.0)).border_1().border_color(gpui::rgba(0xffffff30)).flex().flex_col().gap_3()
+		let mut panel=gpui::div().p_3().rounded(gpui::px(8.0)).border_1().border_color(crate::ui_theme::rgba(0xffffff30)).flex().flex_col().gap_3()
             .child("Conversation paused as a precaution")
             .child(agent_surface::muted("Codex could not confirm that the agent was following your instructions. Review the findings before continuing."));
 

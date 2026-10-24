@@ -2,11 +2,23 @@
 use super::{BTreeMap, FRAME_INSET, Graph};
 
 const WIDTH: f32 = super::card::WIDTH;
-const SIBLING_GAP: f32 = 32.;
-const COLUMN_GAP: f32 = 76.;
-const ROW_GAP: f32 = 36.;
+const SIBLING_GAP: f32 = 24.;
+const COLUMN_GAP: f32 = 48.;
+const ROW_GAP: f32 = 24.;
 // Keep project boundaries clear without adding a full empty hierarchy rank.
 const WORKSPACE_GAP: f32 = 88.;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum Presentation {
+	#[default]
+	Links,
+	Together,
+}
+impl Presentation {
+	fn gap(self, usual: f32, together: f32) -> f32 {
+		if self == Self::Together { together } else { usual }
+	}
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum Mode {
@@ -36,6 +48,7 @@ pub(super) struct Cache {
 #[derive(PartialEq)]
 struct Input {
 	mode: Mode,
+	presentation: Presentation,
 	base_heights: Vec<u32>,
 	nodes: Vec<(String, Option<String>, u32)>,
 	edges: Vec<(usize, usize)>,
@@ -47,6 +60,7 @@ impl Default for Input {
 	fn default() -> Self {
 		Self {
 			mode: Mode::default(),
+			presentation: Presentation::default(),
 			base_heights: vec![],
 			nodes: vec![],
 			edges: vec![],
@@ -70,7 +84,13 @@ struct Block {
 }
 
 impl Cache {
-	pub(super) fn place(&mut self, graph: &mut Graph, viewport: (f32, f32), mode: Mode) {
+	pub(super) fn place(
+		&mut self,
+		graph: &mut Graph,
+		viewport: (f32, f32),
+		mode: Mode,
+		presentation: Presentation,
+	) {
 		let indices: BTreeMap<_, _> =
 			graph.nodes.iter().enumerate().map(|(i, n)| (n.key.as_str(), i)).collect();
 		let label_gap = graph
@@ -81,6 +101,7 @@ impl Cache {
 			.fold(0., f32::max);
 		let input = Input {
 			mode,
+			presentation,
 			base_heights: graph.nodes.iter().map(|node| node.base_height.to_bits()).collect(),
 			nodes: graph
 				.nodes
@@ -89,7 +110,7 @@ impl Cache {
 					(
 						n.key.clone(),
 						n.row.as_ref().and_then(|r| r.workspace.clone()),
-						n.height().to_bits(),
+						n.layout_height.to_bits(),
 					)
 				})
 				.collect(),
@@ -103,7 +124,7 @@ impl Cache {
 				.collect(),
 			viewport,
 			width: graph.nodes.iter().map(|node| node.width()).fold(WIDTH, f32::max),
-			column_gap: COLUMN_GAP.max(label_gap),
+			column_gap: presentation.gap(COLUMN_GAP.max(label_gap), 24.),
 		};
 		if self.input != input {
 			self.positions = input.arrange();
@@ -183,13 +204,13 @@ impl Input {
 			forest.into_iter().flatten().collect()
 		};
 		let available = (
-			(self.viewport.0 - 2. * FRAME_INSET).max(WIDTH),
+			(self.viewport.0 - 2. * FRAME_INSET).max(self.width),
 			(self.viewport.1 - 2. * FRAME_INSET).max(320.),
 		);
 		let block = match self.mode {
 			Mode::Tree | Mode::Grouped => Block::pack(
 				trees.iter().map(|tree| tree.layout(self, self.mode == Mode::Grouped)).collect(),
-				WORKSPACE_GAP,
+				self.presentation.gap(WORKSPACE_GAP, 24.),
 				available,
 			),
 			Mode::Radial => self.radial(&trees),
@@ -198,6 +219,7 @@ impl Input {
 	}
 
 	fn radial(&self, trees: &[Tree]) -> Block {
+		let gap = self.presentation.gap(WORKSPACE_GAP, 24.);
 		let (root, branches) = if trees.len() == 1 && !trees[0].children.is_empty() {
 			(Some(trees[0].index), trees[0].children.as_slice())
 		} else {
@@ -227,12 +249,11 @@ impl Input {
 			directions.push((x, y));
 		}
 		let root_height = root.map_or(0., |index| f32::from_bits(self.nodes[index].2));
-		let rx = blocks.iter().map(|b| b.width).fold(self.width, f32::max) / 2.
-			+ self.width / 2.
-			+ WORKSPACE_GAP;
+		let rx =
+			blocks.iter().map(|b| b.width).fold(self.width, f32::max) / 2. + self.width / 2. + gap;
 		let ry = blocks.iter().map(|b| b.height).fold(root_height, f32::max) / 2.
 			+ root_height / 2.
-			+ WORKSPACE_GAP;
+			+ gap;
 		let mut factor = 1_f32;
 		let separation = |dx: f32, dy: f32, width: f32, height: f32| {
 			let along = |extent: f32, delta: f32| {
@@ -246,16 +267,16 @@ impl Input {
 				factor = factor.max(separation(
 					x * rx,
 					y * ry,
-					(block.width + self.width) / 2. + WORKSPACE_GAP,
-					(block.height + root_height) / 2. + WORKSPACE_GAP,
+					(block.width + self.width) / 2. + gap,
+					(block.height + root_height) / 2. + gap,
 				));
 			}
 			for (j, other) in blocks.iter().enumerate().take(i) {
 				factor = factor.max(separation(
 					(x - directions[j].0) * rx,
 					(y - directions[j].1) * ry,
-					(block.width + other.width) / 2. + WORKSPACE_GAP,
-					(block.height + other.height) / 2. + WORKSPACE_GAP,
+					(block.width + other.width) / 2. + gap,
+					(block.height + other.height) / 2. + gap,
 				));
 			}
 		}
@@ -293,28 +314,45 @@ impl Tree {
 	}
 
 	fn layout(&self, input: &Input, horizontal: bool) -> Block {
+		let gap = input.presentation.gap(
+			SIBLING_GAP,
+			if self.children.iter().any(|child| !child.children.is_empty()) { 24. } else { 12. },
+		);
 		let height = f32::from_bits(input.nodes[self.index].2);
+		let base =
+			input.base_heights.get(self.index).copied().map(f32::from_bits).unwrap_or(height);
+		let step = if horizontal {
+			input.width + input.column_gap
+		} else {
+			(base + input.presentation.gap(28., 8.)).max(height + input.presentation.gap(24., 8.))
+		};
 		let children: Vec<_> =
 			self.children.iter().map(|child| child.layout(input, horizontal)).collect();
 		let leaves = self.children.iter().all(|child| child.children.is_empty());
 		let mut block = if leaves && children.len() >= 4 {
-			let columns = children.len().div_ceil(4).clamp(2, 4);
-			Block::grid(children, columns)
+			// Balance the actual footprints and their parent as one compact group.
+			// Use a stable aspect so resizing or zooming does not reshuffle a tree.
+			(2..=children.len().min(4))
+				.map(|columns| Block::grid(children.clone(), columns, gap))
+				.max_by(|a, b| {
+					let score = |block: &Block| {
+						let width =
+							(block.width + if horizontal { step } else { 0. }).max(input.width);
+						let height =
+							(block.height + if horizontal { 0. } else { step }).max(height);
+						-((width / height) / (4. / 3.)).ln().abs()
+					};
+					score(a).total_cmp(&score(b))
+				})
+				.unwrap_or_default()
 		} else if children.len() >= 4 {
-			Block::pack(children, WORKSPACE_GAP, input.viewport)
+			Block::pack(children, input.presentation.gap(WORKSPACE_GAP, 24.), input.viewport)
 		} else {
-			Block::siblings(children, horizontal, SIBLING_GAP)
+			Block::siblings(children, horizontal, gap)
 		};
 		if !block.positions.is_empty() {
 			// New activity first uses the existing connector clearance. It must
 			// not move every sibling when the first operation appears.
-			let base =
-				input.base_heights.get(self.index).copied().map(f32::from_bits).unwrap_or(height);
-			let step = if horizontal {
-				input.width + input.column_gap
-			} else {
-				(base + 84.).max(height + 24.)
-			};
 			block.offset(if horizontal { step } else { 0. }, if horizontal { 0. } else { step });
 			if horizontal {
 				block.width += step;
@@ -336,7 +374,7 @@ impl Tree {
 }
 
 impl Block {
-	fn grid(blocks: Vec<Self>, columns: usize) -> Self {
+	fn grid(blocks: Vec<Self>, columns: usize, gap: f32) -> Self {
 		let mut result = Self::default();
 		let mut y = 0.;
 		for row in blocks.chunks(columns) {
@@ -348,7 +386,7 @@ impl Block {
 				block.offset(x, y);
 				result.positions.extend(block.positions);
 				result.width = result.width.max(x + width);
-				x += width + SIBLING_GAP;
+				x += width + gap;
 			}
 			result.height = y + height;
 			y += height + ROW_GAP;
@@ -486,7 +524,7 @@ mod tests {
 			extents.push(bounds(&positions, &input));
 			assert_eq!(positions, input.arrange());
 		}
-		assert!(extents[0].0 > extents[0].1 * 2.);
+		assert!(extents[0].0 > extents[0].1, "the compact tree retains its horizontal extent");
 		assert_eq!(
 			extents[0], extents[1],
 			"an explicit layout must not change direction on resize"
@@ -503,6 +541,40 @@ mod tests {
 		let mut indices: Vec<_> = positions.iter().map(|p| p.0).collect();
 		indices.sort_unstable();
 		assert_eq!(indices, (0..input.nodes.len()).collect::<Vec<_>>());
+	}
+
+	#[test]
+	fn together_keeps_all_hierarchy_members_in_compact_non_overlapping_formations() {
+		for mode in Mode::ALL {
+			let mut source = input((1400., 900.));
+			source.mode = mode;
+			let original = source.arrange();
+			let original_area = {
+				let (w, h) = bounds(&original, &source);
+				w * h
+			};
+			source.presentation = Presentation::Together;
+			source.column_gap = 24.;
+			let positions = source.arrange();
+			assert_eq!(positions.len(), source.nodes.len());
+			for &(i, x, y) in &positions {
+				for &(j, bx, by) in &positions {
+					if i != j {
+						assert!(
+							x + source.width <= bx
+								|| bx + source.width <= x
+								|| y + f32::from_bits(source.nodes[i].2) <= by
+								|| by + f32::from_bits(source.nodes[j].2) <= y
+						);
+					}
+				}
+			}
+			let (w, h) = positions.iter().fold((0_f32, 0_f32), |(w, h), &(i, x, y)| {
+				(w.max(x + source.width), h.max(y + f32::from_bits(source.nodes[i].2)))
+			});
+			assert!(w * h < original_area, "{mode:?} should gather its teams");
+			assert_eq!(positions, source.arrange(), "ongoing work does not make teams wander");
+		}
 	}
 
 	#[test]
@@ -585,7 +657,7 @@ mod tests {
 					(
 						i.to_string(),
 						None,
-						super::super::card::Layout::new(1.).world_height(2, 2, 1.).to_bits(),
+						super::super::card::Layout::new(1.).world_height(1.).to_bits(),
 					)
 				})
 				.collect(),
@@ -604,8 +676,8 @@ mod tests {
 					assert!(
 						x + WIDTH <= bx
 							|| bx + WIDTH <= x
-							|| y + super::super::card::Layout::new(1.).world_height(2, 2, 1.) <= by
-							|| by + super::super::card::Layout::new(1.).world_height(2, 2, 1.) <= y
+							|| y + super::super::card::Layout::new(1.).world_height(1.) <= by
+							|| by + super::super::card::Layout::new(1.).world_height(1.) <= y
 					);
 				}
 			}
@@ -622,7 +694,7 @@ mod tests {
 							format!("project-{}", if i <= 6 { i } else { 1 + (i - 7) / 16 })
 						}),
 						super::super::card::Layout::new(zoom)
-							.world_height(2, 2, if i % 3 == 0 { 3. } else { 0. })
+							.world_height(if i % 3 == 0 { 3. } else { 0. })
 							.to_bits(),
 					)
 				})

@@ -620,7 +620,7 @@ impl AgentSurface {
 			.right_0()
 			.flex()
 			.justify_center()
-			.bottom(gpui::px(self.workspace.composer_overlay_height + 8.))
+			.bottom(gpui::px(self.workspace_composer_clearance() + 8.))
 			.when(opacity > 0.001, |d| {
 				d.child(
 					gpui::div()
@@ -637,14 +637,15 @@ impl AgentSurface {
 						.h(gpui::px(28.))
 						.w(gpui::px(width))
 						.rounded_full()
-						.bg(gpui::rgba(SURFACE_OVERLAY_MATERIAL))
+						.bg(crate::ui_theme::rgba(SURFACE_OVERLAY_MATERIAL))
 						.flex()
 						.items_center()
 						.justify_center()
 						.gap(gpui::px(5.))
 						.opacity(opacity)
 						.cursor_pointer()
-						.hover(|d| d.bg(gpui::rgba(0x302d397c)))
+						.on_scroll(cx.listener(|s, event, _, cx| s.scroll_history(event, cx)))
+						.hover(|d| d.bg(crate::ui_theme::rgba(0x302d397c)))
 						.on_click(cx.listener(|s, _, _, cx| s.jump_to_latest(cx)))
 						.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
 							if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
@@ -658,7 +659,7 @@ impl AgentSurface {
 									gpui::div()
 										.size(gpui::px(3.))
 										.rounded_full()
-										.bg(gpui::rgb(BLUE))
+										.bg(crate::ui_theme::rgb(BLUE))
 										.opacity(
 											0.35 + 0.65 * ((phase - i as f32 * 0.7).sin() + 1.)
 												/ 2.,
@@ -677,9 +678,15 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		// Reserve a stable gutter while histories load or agents change.
+		if self.timeline.marks.len() < 2 {
+			return gpui::div().into_any_element();
+		}
+		// Overlay the existing text inset so navigation never changes line wrapping.
 		gpui::div()
-			.relative()
+			.absolute()
+			.top_0()
+			.right_0()
+			.bottom_0()
 			.w(gpui::px(crate::ui_theme::HISTORY_RAIL_WIDTH))
 			.flex_none()
 			.overflow_hidden()
@@ -687,7 +694,7 @@ impl AgentSurface {
 				gpui::div()
 					.absolute()
 					.inset_0()
-					.bottom(gpui::px(self.workspace.composer_overlay_height))
+					.bottom(gpui::px(self.workspace_composer_clearance()))
 					.child(self.history_rail(window, cx)),
 			)
 			.into_any_element()
@@ -748,7 +755,8 @@ impl AgentSurface {
 		let mut rail = gpui::div()
 			.id("conversation-history-rail")
 			.debug_selector(|| "conversation-history-rail".into())
-			.w(gpui::px(44.0))
+			.on_scroll(cx.listener(|s, event, _, cx| s.scroll_history(event, cx)))
+			.w_full()
 			.flex_none()
 			.h_full()
 			// Keep the first tick below the conversation's expand control.
@@ -817,11 +825,13 @@ impl AgentSurface {
 								let activity =
 									(1. - (index as f32 - active_position).abs()).clamp(0., 1.);
 								let color = if working && index == last {
-									gpui::rgb(BLUE)
+									crate::ui_theme::rgb(BLUE)
 								} else {
-									gpui::rgba((TEXT << 8) | (100. + 155. * activity) as u32)
+									crate::ui_theme::rgba(
+										(TEXT << 8) | (100. + 155. * activity) as u32,
+									)
 								};
-								let width = 7.0 + influence * 16.0;
+								let width = 7.0 + influence * 7.0;
 								let height = 2.0 + influence;
 
 								window.paint_quad(gpui::fill(
@@ -898,13 +908,13 @@ impl Render for HistoryPreview {
 			.child(
 				gpui::div()
 					.text_size(gpui::px(10.0))
-					.text_color(gpui::rgb(TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 					.child(self.mark.time.clone()),
 			)
 			.child(
 				gpui::div()
 					.font_weight(gpui::FontWeight::MEDIUM)
-					.text_color(gpui::rgb(TEXT))
+					.text_color(crate::ui_theme::rgb(TEXT))
 					.child(self.mark.question.clone()),
 			)
 			.when(!self.mark.answer.is_empty(), |panel| {
@@ -912,8 +922,8 @@ impl Render for HistoryPreview {
 					gpui::div()
 						.pt_2()
 						.border_t_1()
-						.border_color(gpui::rgba(0xffffff14))
-						.text_color(gpui::rgb(0xc4c4ce))
+						.border_color(crate::ui_theme::rgba(0xffffff14))
+						.text_color(crate::ui_theme::rgb(0xc4c4ce))
 						.child(self.mark.answer.clone()),
 				)
 			})
@@ -1009,7 +1019,13 @@ mod tests {
 		});
 		let rail = visual.debug_bounds("conversation-history-rail").unwrap();
 		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
-		assert!(rail.left() >= transcript.right(), "timeline replaces the right scrollbar");
+		let content = visual.debug_bounds("conversation-content").unwrap();
+		assert!(
+			rail.left() >= content.right() - gpui::px(crate::ui_theme::CONVERSATION_INSET),
+			"navigation must stay outside the message text"
+		);
+		assert_eq!(rail.right(), transcript.right());
+		assert_eq!(rail.size.width, gpui::px(crate::ui_theme::CONVERSATION_INSET));
 		visual.simulate_mouse_move(bounds.center(), gpui::MouseButton::Left, Default::default());
 		// No clock advance: cached content must appear before the default tooltip dwell.
 		visual.run_until_parked();
@@ -1831,8 +1847,11 @@ phase: None,
 			let transcript = visual.debug_bounds("workspace-transcript").unwrap();
 			let footer = visual.debug_bounds("floating-composer").unwrap();
 			assert!(
-				(transcript.bottom() - footer.bottom()).abs() < gpui::px(1.),
-				"{text}: history must extend behind the floating input"
+				(transcript.bottom() + gpui::px(crate::ui_theme::WORKSPACE_INSET)
+					- footer.bottom())
+				.abs()
+					< gpui::px(1.),
+				"{text}: history must extend behind the floating input to the inset edge"
 			);
 			let clearance = surface.read_with(visual, |s, _| s.workspace.composer_overlay_height);
 			assert!(
@@ -1868,10 +1887,11 @@ phase: None,
 
 		assert!(scroll.max_offset().y >= gpui::px(100.), "fixture must allow the full wheel delta");
 		assert!(
-			(scroll.bounds().bottom() - visual.debug_bounds("floating-composer").unwrap().bottom())
-				.abs()
+			(scroll.bounds().bottom() + gpui::px(crate::ui_theme::WORKSPACE_INSET)
+				- visual.debug_bounds("floating-composer").unwrap().bottom())
+			.abs()
 				< gpui::px(1.),
-			"history must continue behind the composer"
+			"history must continue behind the composer to the inset edge"
 		);
 
 		let position = scroll.bounds().center();
@@ -1885,7 +1905,13 @@ phase: None,
 			window.draw(cx).clear(cx);
 		});
 
-		assert_eq!(scroll.offset().y, gpui::px(-100.0), "wheel delta must be applied once");
+		assert_eq!(
+			scroll.offset().y,
+			gpui::px(-100.0),
+			"wheel delta must be applied once: pointer {position:?}, viewport {:?}, composer {:?}",
+			scroll.bounds(),
+			visual.debug_bounds("floating-composer").unwrap(),
+		);
 
 		let previous = scroll.offset().y;
 

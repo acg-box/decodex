@@ -117,7 +117,7 @@ impl AgentSurface {
 							gpui::div()
 								.p_2()
 								.rounded(gpui::px(6.))
-								.bg(gpui::rgba(0xffffff06))
+								.bg(crate::ui_theme::rgba(0xffffff06))
 								.child(title)
 								.child(if resource.payload_omitted {
 									"Resource details are unavailable for display.".into()

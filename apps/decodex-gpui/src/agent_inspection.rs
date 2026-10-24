@@ -28,11 +28,11 @@ impl AgentSurface {
 			.max_h(gpui::px(380.))
 			.overflow_y_scroll()
 			.rounded(gpui::px(18.))
-			.bg(gpui::rgb(0x29292e))
+			.bg(crate::ui_theme::rgb(0x29292e))
 			.p(gpui::px(16.))
 			.text_size(gpui::px(12.))
 			.line_height(gpui::px(18.))
-			.text_color(gpui::rgb(TEXT))
+			.text_color(crate::ui_theme::rgb(TEXT))
 			.flex()
 			.flex_col()
 			.gap(gpui::px(14.))
@@ -158,7 +158,7 @@ impl AgentSurface {
 					if let Some(link) = link {
 						row = row
 							.cursor_pointer()
-							.hover(|row| row.bg(gpui::rgba(HOVER_FILL)))
+							.hover(|row| row.bg(crate::ui_theme::rgba(HOVER_FILL)))
 							.on_click(cx.listener(move |_, _, _, cx| cx.open_url(link.as_str())));
 					}
 

@@ -278,7 +278,8 @@ impl gpui::RenderOnce for Scrollbar {
 			move |bounds, state, window, _| {
 				let Some((scroll, thumb, travel, hitbox)) = state else { return };
 				window.paint_quad(
-					gpui::fill(thumb, gpui::rgba(0xffffff55)).corner_radii(gpui::px(2.5)),
+					gpui::fill(thumb, crate::ui_theme::rgba(0xffffff55))
+						.corner_radii(gpui::px(2.5)),
 				);
 				let down_scroll = scroll.clone();
 				let down_drag = drag.clone();

@@ -257,7 +257,7 @@ fn selection_highlights(
 				.unwrap_or_default();
 
 			if selection.contains(&range.start) {
-				style.background_color = Some(gpui::rgba(0x788dff66).into());
+				style.background_color = Some(crate::ui_theme::rgba(0x788dff66).into());
 			}
 
 			(range, style)

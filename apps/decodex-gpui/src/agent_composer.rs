@@ -43,6 +43,16 @@ use decodex_protocol::AgentAttachmentDto;
 pub(super) const MODEL_MENU_WIDTH: f32 = 232.;
 pub(super) const MODEL_MENU_SHADOW: f32 = 8.;
 
+fn composer_hover_fill(send: bool, dictation_action: bool, menu_active: bool) -> gpui::Rgba {
+	if send && dictation_action {
+		crate::ui_theme::rgba(0xffffff20)
+	} else if send {
+		crate::ui_theme::rgb(0x606064)
+	} else {
+		crate::ui_theme::rgba(if menu_active { SELECTED_HOVER_FILL } else { HOVER_FILL })
+	}
+}
+
 #[cfg(any(test, target_os = "macos"))]
 pub(super) fn model_menu_bounds(
 	anchor: gpui::Bounds<gpui::Pixels>,
@@ -66,7 +76,7 @@ impl Render for ComposerTip {
 			.px_3()
 			.py_2()
 			.text_size(gpui::px(11.0))
-			.text_color(gpui::rgb(TEXT))
+			.text_color(crate::ui_theme::rgb(TEXT))
 			.child(self.0.clone())
 	}
 }
@@ -83,11 +93,11 @@ fn composer_capsule(native: bool) -> Stateful<Div> {
 		.px(gpui::px(10.))
 		.py(gpui::px(7.))
 		.rounded(gpui::px(ui_theme::COMPOSER_RADIUS))
-		.when(!native, |d| d.bg(gpui::rgb(0x27272b)))
+		.when(!native, |d| d.bg(crate::ui_theme::rgb(0x27272b)))
 		.when(!native, |d| {
 			d.shadow(vec![gpui::BoxShadow {
 				inset: false,
-				color: gpui::rgba(0x0000001a).into(),
+				color: crate::ui_theme::rgba(0x0000001a).into(),
 				offset: gpui::point(gpui::px(0.), gpui::px(4.)),
 				blur_radius: gpui::px(16.),
 				spread_radius: gpui::px(-5.),
@@ -102,7 +112,6 @@ impl AgentSurface {
 	#[cfg(any(test, target_os = "macos"))]
 	pub(super) fn native_composer_requested(&self, allowed: bool, supported: bool) -> bool {
 		allowed
-			&& ui_theme::composer_glass(None)
 			&& supported
 			&& !self.workspace_connecting()
 			&& !self.workspace.browsing
@@ -575,7 +584,7 @@ impl AgentSurface {
 							.max_h(gpui::px(120.))
 							.pb(gpui::px(4.))
 							.overflow_y_scroll()
-							.text_color(gpui::rgb(TEXT_MUTED))
+							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 							.child(agent_surface::selectable_text::SelectableText::plain(
 								draft_key, draft,
 							)),
@@ -984,7 +993,7 @@ impl AgentSurface {
 			.justify_center()
 			.text_size(gpui::px(12.0))
 			.line_height(gpui::px(16.0))
-			.text_color(gpui::rgb(if send { TEXT } else { TEXT_MUTED }))
+			.text_color(crate::ui_theme::rgb(if send { TEXT } else { TEXT_MUTED }))
 			.when(id == "model", |d| {
 				d.px(gpui::px(4.))
 					.text_size(gpui::px(ui_theme::BODY_SIZE))
@@ -997,12 +1006,15 @@ impl AgentSurface {
 			.when(["attachment-item", "audio-item", "delivery"].contains(&id), |d| {
 				d.w_full().h(gpui::px(32.)).justify_start().text_size(gpui::px(12.))
 			})
-			.when(self.composer_menu == Some(id), |d| d.bg(gpui::rgba(0xffffff12)))
+			.when(self.composer_menu == Some(id), |d| d.bg(crate::ui_theme::rgba(0xffffff12)))
 			.when(send, |d| {
-				d.w(gpui::px(28.)).h(gpui::px(28.)).rounded_full().bg(gpui::rgb(0x515155))
+				d.w(gpui::px(28.))
+					.h(gpui::px(28.))
+					.rounded_full()
+					.bg(crate::ui_theme::rgb(0x515155))
 			})
 			.when(dictation_action, |d| d.w(gpui::px(26.)).h(gpui::px(26.)).px_0().rounded_full())
-			.when(dictation_action && send, |d| d.bg(gpui::rgba(0xffffff12)))
+			.when(dictation_action && send, |d| d.bg(crate::ui_theme::rgba(0xffffff12)))
 			.when(id == "audio-item", |d| d.aria_expanded(self.composer_menu == Some("microphone")))
 			.when(disabled, |d| d.opacity(0.35))
 			.when(!disabled, |d| d.cursor_pointer())
@@ -1010,15 +1022,9 @@ impl AgentSurface {
 				if disabled {
 					return d;
 				}
-				d.bg(if send && dictation_action {
-					gpui::rgba(0xffffff20)
-				} else if send {
-					gpui::rgb(0x606064)
-				} else {
-					gpui::rgba(if menu_active { SELECTED_HOVER_FILL } else { HOVER_FILL })
-				})
+				d.bg(composer_hover_fill(send, dictation_action, menu_active))
 			})
-			.focus(|d| d.bg(gpui::rgba(SELECTED_HOVER_FILL)))
+			.focus(|d| d.bg(crate::ui_theme::rgba(SELECTED_HOVER_FILL)))
 			.when(
 				![
 					"model",
@@ -1106,7 +1112,7 @@ impl AgentSurface {
 					gpui::div()
 						.max_w(gpui::px(110.))
 						.text_ellipsis()
-						.text_color(gpui::rgb(TEXT_MUTED))
+						.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 						.child(label),
 				)
 				.child(workspace_symbols::disclosure_chevron(
@@ -1125,7 +1131,7 @@ impl AgentSurface {
 				.child(gpui::div().w(gpui::px(16.)).flex_none())
 				.child("Send mode")
 				.child(gpui::div().flex_1())
-				.child(gpui::div().text_color(gpui::rgb(TEXT)).child(label))
+				.child(gpui::div().text_color(crate::ui_theme::rgb(TEXT)).child(label))
 				.child(gpui::div().w(gpui::px(12.)).flex_none())
 				.into_any_element(),
 			"model" => gpui::div()
@@ -1133,17 +1139,17 @@ impl AgentSurface {
 				.items_center()
 				.gap(gpui::px(2.))
 				.whitespace_nowrap()
-				.text_color(gpui::rgb(TEXT))
+				.text_color(crate::ui_theme::rgb(TEXT))
 				.when(self.fast, |d| {
 					d.child(
 						gpui::div()
-							.text_color(gpui::rgb(BLUE))
+							.text_color(crate::ui_theme::rgb(BLUE))
 							.child(workspace_symbols::icon(Symbol::Fast)),
 					)
 				})
 				.child(gpui::div().max_w(gpui::px(180.)).text_ellipsis().child(label))
 				.when_some(self.composer_effort_value(cx), |row, effort| {
-					row.child(gpui::div().text_color(gpui::rgb(TEXT_MUTED)).child("·"))
+					row.child(gpui::div().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child("·"))
 						.child(controls::effort_indicator(&effort))
 				})
 				.into_any_element(),
@@ -1323,7 +1329,7 @@ impl AgentSurface {
 				.gap(gpui::px(4.))
 				.text_size(gpui::px(11.))
 				.line_height(gpui::px(16.))
-				.text_color(gpui::rgb(TEXT_MUTED))
+				.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 				.child(context_ring((percent / 100.0).clamp(0.0, 1.0) as f32))
 				.child(gpui::div().min_w_0().text_ellipsis().child(format!(
 					"CTX {} / {}",
@@ -1374,7 +1380,7 @@ impl AgentSurface {
 					.items_center()
 					.gap_2()
 					.rounded(gpui::px(6.0))
-					.bg(gpui::rgba(0xffffff0a))
+					.bg(crate::ui_theme::rgba(0xffffff0a))
 					.text_size(gpui::px(11.0))
 					.cursor_pointer()
 					.when(file.image, |d| {
@@ -1502,7 +1508,7 @@ fn save_clipboard_image(image: &Image) -> Result<std::path::PathBuf> {
 }
 
 fn context_ring(fraction: f32) -> impl IntoElement {
-	let fill = gpui::rgb(if fraction >= 0.9 {
+	let fill = crate::ui_theme::rgb(if fraction >= 0.9 {
 		0xed8585
 	} else if fraction >= 0.7 {
 		ui_theme::AMBER
@@ -1512,7 +1518,7 @@ fn context_ring(fraction: f32) -> impl IntoElement {
 	gpui::canvas(
 		|_, _, _| (),
 		move |bounds, _, window, _| {
-			for (portion, color) in [(1.0, gpui::rgba(0xffffff24)), (fraction, fill)] {
+			for (portion, color) in [(1.0, crate::ui_theme::rgba(0xffffff24)), (fraction, fill)] {
 				if portion <= 0.0 {
 					continue;
 				}
@@ -1575,10 +1581,12 @@ mod tests {
 			assert!(s.native_composer_requested(true, true));
 			assert!(!s.native_composer_requested(false, true));
 			assert!(!s.native_composer_requested(true, false));
-			crate::ui_theme::composer_glass(Some(false));
-			assert!(!s.native_composer_requested(true, true));
+			crate::ui_theme::material::Surface::InputBar
+				.select(crate::ui_theme::material::Material::Thin, cx);
+			assert!(s.native_composer_requested(true, true));
 			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
-			crate::ui_theme::composer_glass(Some(true));
+			crate::ui_theme::material::Surface::InputBar
+				.select(crate::ui_theme::material::Material::LiquidGlass, cx);
 			assert!(s.native_composer_requested(true, true));
 		});
 	}

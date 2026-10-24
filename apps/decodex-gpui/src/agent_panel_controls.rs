@@ -95,8 +95,8 @@ impl AgentSurface {
 			.border_1()
 			.border_color(gpui::transparent_black())
 			.cursor_pointer()
-			.hover(|button| button.bg(gpui::rgba(HOVER_FILL)))
-			.focus_visible(|button| button.border_color(gpui::rgb(BLUE)))
+			.hover(|button| button.bg(crate::ui_theme::rgba(HOVER_FILL)))
+			.focus_visible(|button| button.border_color(crate::ui_theme::rgb(BLUE)))
 			.on_click(cx.listener(move |s, _, window, cx| {
 				s.perform_panel_action(action, cx);
 				super::workspace::restore_shell_focus(window, cx);

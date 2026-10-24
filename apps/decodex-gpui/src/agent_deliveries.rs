@@ -286,7 +286,7 @@ impl Render for Panel {
 			.size_full()
 			.flex()
 			.flex_col()
-			.text_color(gpui::rgb(ui_theme::TEXT))
+			.text_color(crate::ui_theme::rgb(ui_theme::TEXT))
 			.child(self.header(cx))
 			.child(gpui::div().relative().flex_1().min_h_0().flex().flex_col().child(list).child(
 				ui_scroll::Scrollbar::new(
@@ -385,7 +385,7 @@ impl Panel {
 						.h(gpui::px((rail_end - start).max(0.)))
 						.w(gpui::px(2.))
 						.rounded_full()
-						.bg(gpui::rgba(0xaaa6b84a)),
+						.bg(crate::ui_theme::rgba(0xaaa6b84a)),
 				)
 				.child(rows.h(gpui::px(visible_height)));
 		}
@@ -396,7 +396,7 @@ impl Panel {
 				gpui::div()
 					.p_3()
 					.text_size(gpui::px(12.))
-					.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
 					.child(if self.failed {
 						"Could not load conversations. Retry"
 					} else if self.feed.loaded {
@@ -432,7 +432,7 @@ impl Panel {
 			.rounded(gpui::px(8.))
 			.py(gpui::px(7.))
 			.px(gpui::px(10.))
-			.bg(gpui::rgba(0x30303af0))
+			.bg(crate::ui_theme::rgba(0x30303af0))
 			.text_size(gpui::px(11.5))
 			.child("New updates · Back to latest")
 			.on_click(cx.listener(|s, _, _, cx| s.latest(cx)))
@@ -495,7 +495,7 @@ fn text_height(
 	let run = gpui::TextRun {
 		len: text.len(),
 		font,
-		color: gpui::rgb(ui_theme::TEXT).into(),
+		color: crate::ui_theme::rgb(ui_theme::TEXT).into(),
 		background_color: None,
 		underline: None,
 		strikethrough: None,

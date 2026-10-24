@@ -27,7 +27,10 @@ use gpui::{
 	AnyElement, App, FontStyle, HighlightStyle, KeyDownEvent, RenderOnce, StrikethroughStyle,
 };
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag};
-use ui_theme::{BLUE, BODY_LINE_HEIGHT, BODY_SIZE, TEXT_MUTED};
+use ui_theme::{
+	BLUE, TEXT_MUTED,
+	foreground::{READING_LINE_HEIGHT as BODY_LINE_HEIGHT, READING_SIZE as BODY_SIZE},
+};
 
 #[cfg(test)] use crate::shell::agent_surface::{ClipboardItem, Context};
 use crate::{
@@ -131,7 +134,7 @@ impl RenderOnce for CopyButton {
 			.justify_center()
 			.rounded(gpui::px(6.))
 			.cursor_pointer()
-			.hover(|s| s.bg(gpui::rgba(HOVER_FILL)))
+			.hover(|s| s.bg(crate::ui_theme::rgba(HOVER_FILL)))
 			.on_click(move |_, _, cx| {
 				clipboard::copy(click_text.clone(), self.rich, cx);
 
@@ -161,7 +164,7 @@ impl RenderOnce for CopyButton {
 					} else {
 						br#"<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><path d="M3.75 3H9.75V10.5H3.75ZM7.5 .75H1.5V8.25" fill="none" stroke="white" stroke-width="1.1"/></svg>"#.as_slice()
 					})
-					.text_color(gpui::rgb(if copied { BLUE } else { TEXT_MUTED }))
+					.text_color(crate::ui_theme::rgb(if copied { BLUE } else { TEXT_MUTED }))
 					.size(gpui::px(12.)),
 			)
 			.smooth()
@@ -267,8 +270,9 @@ pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
 		.flex_col()
 		.gap_1()
 		.text_size(gpui::px(12.))
+		.font_weight(FontWeight::NORMAL)
 		.line_height(gpui::px(19.))
-		.text_color(gpui::rgb(TEXT_MUTED))
+		.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 		.children(document.nodes.get_or_init(|| parse(text)).iter().enumerate().map(
 			|(i, node)| {
 				let key = format!("{key}-{i}");
@@ -310,7 +314,9 @@ pub(super) fn render(text: &str, key: &str) -> AnyElement {
 		.flex_col()
 		.gap_2()
 		.text_size(gpui::px(BODY_SIZE))
+		.font_weight(FontWeight::NORMAL)
 		.line_height(gpui::px(BODY_LINE_HEIGHT))
+		.text_color(crate::ui_theme::rgb(ui_theme::foreground::PRIMARY))
 		.children(
 			document
 				.nodes
@@ -465,10 +471,11 @@ fn append_inline(nodes: &[Node], style: HighlightStyle, link: Option<&str>, out:
 				let mut next = style;
 
 				match kind {
-					Kind::Strong => next.font_weight = Some(FontWeight::BOLD),
+					Kind::Strong => next.font_weight = Some(FontWeight::MEDIUM),
 					Kind::Emphasis => next.font_style = Some(FontStyle::Italic),
-					Kind::InlineCode => next.background_color = Some(gpui::rgba(0xffffff12).into()),
-					Kind::Link(_) => next.color = Some(gpui::rgb(BLUE).into()),
+					Kind::InlineCode =>
+						next.background_color = Some(crate::ui_theme::rgba(0xffffff12).into()),
+					Kind::Link(_) => next.color = Some(crate::ui_theme::rgb(BLUE).into()),
 					Kind::Strike =>
 						next.strikethrough =
 							Some(StrikethroughStyle { thickness: gpui::px(1.0), color: None }),
@@ -554,8 +561,11 @@ fn render_node_content(
 ) -> AnyElement {
 	let NodeContent::Block(kind, children) = &node.content else {
 		return match &node.content {
-			NodeContent::Rule =>
-				gpui::div().h(gpui::px(1.0)).my_2().bg(gpui::rgba(0xffffff18)).into_any_element(),
+			NodeContent::Rule => gpui::div()
+				.h(gpui::px(1.0))
+				.my_2()
+				.bg(crate::ui_theme::rgba(0xffffff18))
+				.into_any_element(),
 			_ =>
 				gpui::div().child(inline(slice::from_ref(node), key, selection)).into_any_element(),
 		};
@@ -593,13 +603,12 @@ fn render_node_content(
 		Kind::Paragraph | Kind::Cell | Kind::Heading(_) => gpui::div()
 			.when(matches!(kind, Kind::Cell), |d| d.flex_1().min_w_0().p_2())
 			.when(matches!(kind, Kind::Heading(_)), |d| {
-				d.font_weight(FontWeight::SEMIBOLD).mt_2().text_size(gpui::px(
-					if let Kind::Heading(level) = kind {
-						19.0 - (*level as f32) * 1.0
-					} else {
-						14.0
-					},
-				))
+				let size = match kind {
+					Kind::Heading(1) => 14.,
+					Kind::Heading(2) => 13.,
+					_ => BODY_SIZE,
+				};
+				d.font_weight(FontWeight::MEDIUM).mt_2().text_size(gpui::px(size))
 			})
 			.child(inline(children, key, selection))
 			.into_any_element(),
@@ -611,8 +620,10 @@ fn render_node_content(
 			.flex()
 			.items_stretch()
 			.border_b_1()
-			.border_color(gpui::rgba(0xffffff12))
-			.when(*header, |d| d.font_weight(FontWeight::SEMIBOLD).bg(gpui::rgba(0xffffff08)))
+			.border_color(crate::ui_theme::rgba(0xffffff12))
+			.when(*header, |d| {
+				d.font_weight(FontWeight::MEDIUM).bg(crate::ui_theme::rgba(0xffffff08))
+			})
 			.children(children.iter().enumerate().map(|(i, n)| {
 				if i > 0 {
 					selection.separate("\t");
@@ -633,10 +644,10 @@ fn render_node_content(
 			.flex_col()
 			.gap_2()
 			.when(matches!(kind, Kind::Quote), |d| {
-				d.pl_3().border_l_2().border_color(gpui::rgb(BLUE))
+				d.pl_3().border_l_2().border_color(crate::ui_theme::rgb(BLUE))
 			})
 			.when(matches!(kind, Kind::Table), |d| {
-				d.border_1().border_color(gpui::rgba(0xffffff12)).rounded_md()
+				d.border_1().border_color(crate::ui_theme::rgba(0xffffff12)).rounded_md()
 			})
 			.children(children.iter().enumerate().map(|(i, n)| {
 				if matches!(kind, Kind::Table) && i > 0 {
@@ -683,7 +694,7 @@ fn render_list(
 						.w(gpui::px(marker_width))
 						.flex_shrink_0()
 						.text_right()
-						.text_color(gpui::rgb(TEXT_MUTED))
+						.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 						.child(start.map_or_else(
 							|| "•".into(),
 							|start| format!("{}.", start + index as u64),
@@ -870,7 +881,7 @@ mod tests {
 
 			assert_eq!(out.text, "Deep 中文After limit", "depth {depth}");
 			assert!(out.highlights.iter().any(|(range, style)| {
-				&out.text[range.clone()] == "limit" && style.font_weight == Some(FontWeight::BOLD)
+				&out.text[range.clone()] == "limit" && style.font_weight == Some(FontWeight::MEDIUM)
 			}));
 		}
 	}
@@ -1033,9 +1044,10 @@ mod tests {
 		markdown::append_inline(&nodes, HighlightStyle::default(), None, &mut out);
 
 		assert_eq!(out.text, "中文 and source with code");
-		assert!(out.highlights.iter().any(
-			|(r, s)| &out.text[r.clone()] == "中文" && s.font_weight == Some(FontWeight::BOLD)
-		));
+		assert!(
+			out.highlights.iter().any(|(r, s)| &out.text[r.clone()] == "中文"
+				&& s.font_weight == Some(FontWeight::MEDIUM))
+		);
 		assert_eq!(&out.text[out.links[0].0.clone()], "source");
 	}
 

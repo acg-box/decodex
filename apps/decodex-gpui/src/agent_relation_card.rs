@@ -1,37 +1,46 @@
 //! Unframed agent footprints retain readable type throughout the supported camera range.
-use crate::ui_motion::{self, Tween};
+use crate::{
+	ui_motion::{self, Tween},
+	ui_theme::foreground,
+};
 use gpui::{
 	AnyElement, App, Div, InteractiveElement as _, IntoElement, ParentElement as _, RenderOnce,
-	SharedString, Stateful, Styled as _, Window, prelude::FluentBuilder as _,
+	SharedString, Stateful, StatefulInteractiveElement as _, Styled as _, Window,
+	prelude::FluentBuilder as _,
 };
 
 // Geometry stays in world space. Text stops shrinking before it becomes illegible.
 // At 100%, graph type uses the same sizes as the native shell.
-// Reserve the longest compact counters, including the native average-rate caption,
-// at the full-detail threshold and the one-times display font floor.
-// Values never resize a node.
-pub(super) const WIDTH: f32 = 328.;
+// A compact three-row HUD stays centered under the portrait, with readable
+// counters at the full-detail threshold and the one-times display font floor.
+// At 100%, a 256-point reading column leaves two complete agents within a
+// normal Graph pane. Keep the portrait, native type and numeric floors intact.
+pub(super) const WIDTH: f32 = 368.;
 pub(super) const INSET_X: f32 = 10.;
 pub(super) const INSET_Y: f32 = 8.;
-pub(super) const PORT_Y: f32 = INSET_Y + crate::ui_theme::LABEL_LINE_HEIGHT / 2.;
+pub(super) const PORTRAIT_WIDTH: f32 = 80.;
+pub(super) const PORTRAIT_HEIGHT: f32 = 44.;
+pub(super) const COLUMN_GAP: f32 = 12.;
+const TEXT_SIZE: f32 = 10.5;
+const MIN_TEXT_SIZE: f32 = 10.;
+pub(super) const DETAILS_TOP: f32 = 4.;
 pub(super) const SELECTED: u32 = crate::ui_theme::BLUE;
-pub(super) const SECONDARY_TEXT: u32 = 0xc7c2cd;
-pub(super) const TASK_TEXT: u32 = 0xe0d8ea;
-pub(super) const ACTIVITY_TEXT: u32 = 0xd3cbdc;
-pub(super) const ALLOCATION_TEXT: u32 = 0xc1b4dd;
+pub(super) const SECONDARY_TEXT: u32 = foreground::SECONDARY;
 pub(super) const MIN_ZOOM: f32 = 0.05;
 pub(super) const MAX_ZOOM: f32 = 1.;
 pub(super) const FULL_DETAIL_ZOOM: f32 = 0.7;
 const POINT_ZOOM: f32 = 0.2;
 const MORPH_MARGIN: f32 = 0.04;
 const SUMMARY_ZOOM: f32 = 0.45;
-pub(super) const OVERVIEW_HEIGHT: f32 = 64.;
+const LABEL_ZOOM: f32 = 0.30;
+pub(super) const OVERVIEW_HEIGHT: f32 = 112.;
 
 #[derive(Clone, Copy)]
 pub(super) struct Layout {
 	pub width: f32,
 	pub zoom: f32,
 	pub moving: bool,
+	world_width: f32,
 	display_scale: f32,
 	presence: f32,
 }
@@ -42,9 +51,20 @@ impl Layout {
 			width: WIDTH * zoom,
 			zoom,
 			moving: false,
+			world_width: WIDTH,
 			display_scale: 1.,
 			presence: t * t * (3. - 2. * t),
 		}
+	}
+
+	pub(super) fn with_width(mut self, width: f32) -> Self {
+		self.world_width = width;
+		self.width = width * self.zoom;
+		self
+	}
+
+	pub(super) fn world_width(self) -> f32 {
+		self.world_width
 	}
 
 	pub(super) fn with_presence(mut self, presence: f32, moving: bool) -> Self {
@@ -74,15 +94,39 @@ impl Layout {
 	}
 
 	pub(super) fn title_size(self) -> f32 {
-		self.font(crate::ui_theme::BODY_SIZE, if self.overview() { 9. } else { 10.5 })
+		self.font(TEXT_SIZE, MIN_TEXT_SIZE)
 	}
 
-	pub(super) fn task_size(self) -> f32 {
-		self.font(crate::ui_theme::BODY_SIZE - 1., 10.)
+	pub(super) fn metric_size(self) -> f32 {
+		self.title_size()
 	}
 
-	pub(super) fn detail_size(self) -> f32 {
-		self.font(crate::ui_theme::CAPTION_SIZE, if self.overview() { 9. } else { 9.5 })
+	pub(super) fn activity_size(self) -> f32 {
+		self.title_size()
+	}
+
+	pub(super) fn activity_visible(self) -> bool {
+		self.labels() && self.zoom > 0.5 + f32::EPSILON
+	}
+
+	pub(super) fn details_gap(self) -> f32 {
+		self.spacing(COLUMN_GAP).max(10.)
+	}
+
+	pub(super) fn text_width(self) -> f32 {
+		(self.details_width() - 2. * self.bubble_padding() - self.title_size() - 5.).max(1.)
+	}
+
+	pub(super) fn details_width(self) -> f32 {
+		(self.width
+			- 2. * self.spacing(INSET_X)
+			- self.portrait_spacing(PORTRAIT_WIDTH)
+			- self.details_gap())
+		.max(1.)
+	}
+
+	pub(super) fn bubble_padding(self) -> f32 {
+		self.spacing(7.).max(5.)
 	}
 
 	pub(super) fn full_detail(self) -> bool {
@@ -91,6 +135,10 @@ impl Layout {
 
 	pub(super) fn overview(self) -> bool {
 		self.zoom + 4. * f32::EPSILON < SUMMARY_ZOOM
+	}
+
+	pub(super) fn labels(self) -> bool {
+		self.zoom + 4. * f32::EPSILON >= LABEL_ZOOM
 	}
 
 	pub(super) fn points(self) -> bool {
@@ -102,17 +150,60 @@ impl Layout {
 	}
 
 	pub(super) fn node_size(self, height: f32) -> (f32, f32) {
+		let width = self.world_width;
 		if !self.overview() {
-			return (WIDTH, height);
+			return (width, height);
 		}
 		let dot = self.point_size();
-		(dot + (WIDTH - dot) * self.presence, dot + (height - dot) * self.presence)
+		(dot + (width - dot) * self.presence, dot + (height - dot) * self.presence)
 	}
 
 	/// Both representations retain one world-space center and one manual position.
 	pub(super) fn node_inset(self) -> (f32, f32) {
 		let (width, height) = self.node_size(OVERVIEW_HEIGHT);
-		((WIDTH - width) / 2., (OVERVIEW_HEIGHT - height) / 2.)
+		((self.world_width - width) / 2., (OVERVIEW_HEIGHT - height) / 2.)
+	}
+
+	fn header_origin(self, actions: f32) -> (f32, f32) {
+		let portrait = self.portrait_spacing(PORTRAIT_WIDTH) / self.zoom;
+		let left = if self.labels() { INSET_X } else { (self.world_width - portrait) / 2. };
+		let top = if self.overview() {
+			(OVERVIEW_HEIGHT - self.header_height(actions) / self.zoom) / 2.
+		} else {
+			INSET_Y
+		};
+		let inset = if self.overview() { self.node_inset() } else { (0., 0.) };
+		(left - inset.0, top - inset.1)
+	}
+
+	pub(super) fn identity_bounds(self, actions: f32) -> Option<[f32; 4]> {
+		self.labels().then(|| {
+			let (left, top) = self.header_origin(actions);
+			[
+				left,
+				top,
+				left + self.portrait_spacing(PORTRAIT_WIDTH) / self.zoom,
+				top + self.title_line() / self.zoom,
+			]
+		})
+	}
+
+	/// Route around the character and its HUD, independently of the activity column.
+	/// During the point morph the same attachment contracts into the visible dot.
+	pub(super) fn character_bounds(self, actions: f32) -> [f32; 4] {
+		let z = self.zoom;
+		let portrait = self.portrait_spacing(PORTRAIT_WIDTH) / z;
+		let height = (self.portrait_spacing(PORTRAIT_HEIGHT)
+			+ if self.overview() { 0. } else { self.gap() + self.metrics_height() })
+			/ z;
+		let (left, top) = self.header_origin(actions);
+		let top = top + self.metadata_height() / z;
+		let (width, node_height) = self.node_size(self.world_height(actions));
+		let center = (width / 2., node_height / 2.);
+		let r = self.point_size() / 2.;
+		let point = [center.0 - r, center.1 - r, center.0 + r, center.1 + r];
+		let character = [left - 3., top - 3., left + portrait + 3., top + height + 3.];
+		std::array::from_fn(|i| point[i] + (character[i] - point[i]) * self.presence)
 	}
 
 	pub(super) fn zoom_range(self) -> (f32, f32) {
@@ -127,66 +218,143 @@ impl Layout {
 		}
 	}
 
+	/// Hidden activity must not determine the height of a readable team.
+	pub(super) fn activity_range(self) -> Option<(f32, f32)> {
+		let (min, max) = self.zoom_range();
+		(max > 0.5).then_some((min.max(0.5 + 2. * f32::EPSILON), max))
+	}
+
+	pub(super) fn at_zoom(self, zoom: f32) -> Self {
+		Self::new(zoom).with_width(self.world_width).on_display(self.display_scale)
+	}
+
+	pub(super) fn metadata_gap(self) -> f32 {
+		self.spacing(3.).max(2.)
+	}
+
+	pub(super) fn metadata_height(self) -> f32 {
+		if self.labels() { self.title_line() + self.metadata_gap() } else { 0. }
+	}
+
 	pub(super) fn title_line(self) -> f32 {
-		((crate::ui_theme::LABEL_LINE_HEIGHT * self.zoom).max(self.title_size() + 3.)
-			* self.display_scale)
-			.ceil()
-			/ self.display_scale
+		self.pixel(self.title_size() + 2.)
 	}
 
-	pub(super) fn detail_line(self) -> f32 {
-		((crate::ui_theme::CAPTION_LINE_HEIGHT * self.zoom).max(self.detail_size() + 3.)
-			* self.display_scale)
-			.ceil()
-			/ self.display_scale
+	pub(super) fn metric_line(self) -> f32 {
+		((self.metric_size() + 0.5) * self.display_scale).ceil() / self.display_scale
 	}
 
-	pub(super) fn task_line(self) -> f32 {
-		((crate::ui_theme::LABEL_LINE_HEIGHT * self.zoom).max(self.task_size() + 3.)
-			* self.display_scale)
-			.ceil()
-			/ self.display_scale
+	pub(super) fn activity_line(self) -> f32 {
+		((self.activity_size() + 2.) * self.display_scale).ceil() / self.display_scale
 	}
 
 	pub(super) fn spacing(self, points: f32) -> f32 {
 		self.pixel(points * self.zoom)
 	}
 
+	/// Balance the figure with readable counters without enlarging its 100% size.
+	/// The floor grows gradually before the HUD appears, preserving the point morph.
+	pub(super) fn portrait_spacing(self, points: f32) -> f32 {
+		let presence = ((self.zoom - LABEL_ZOOM) / (SUMMARY_ZOOM - LABEL_ZOOM)).clamp(0., 1.);
+		let width = self.pixel((PORTRAIT_WIDTH * self.zoom).max(56. * presence));
+		self.pixel(points * width / PORTRAIT_WIDTH)
+	}
+
 	pub(super) fn gap(self) -> f32 {
-		self.spacing(4.)
+		self.pixel(0.5).max(0.5)
 	}
 
-	/// Values and their optional token allocation share one baseline.
+	/// Three compact status tracks form one block under the numbered portrait.
 	pub(super) fn metrics_height(self) -> f32 {
-		self.detail_line()
+		3. * self.metric_line()
 	}
 
-	/// Reserve the current content, not the maximum number of future action rows.
-	/// Each detail tier keeps a stable footprint across its camera range and displays.
-	pub(super) fn world_height(self, title_rows: usize, sections: usize, actions: f32) -> f32 {
+	pub(super) fn header_height(self, actions: f32) -> f32 {
+		let portrait = self.portrait_spacing(PORTRAIT_HEIGHT)
+			+ if self.overview() { 0. } else { self.gap() + self.metrics_height() };
+		let details = if self.activity_visible() && actions > 0. {
+			self.spacing(DETAILS_TOP) + actions * self.activity_line()
+		} else {
+			0.
+		};
+		self.metadata_height() + portrait.max(details)
+	}
+
+	/// The avatar and current activity determine the footprint, without reserving
+	/// blank rows for future updates. Values do not resize the agent.
+	pub(super) fn world_height(self, actions: f32) -> f32 {
 		if self.overview() {
 			return OVERVIEW_HEIGHT;
 		}
-		let (range, title_rows, sections, actions) = if self.full_detail() {
-			([FULL_DETAIL_ZOOM, MAX_ZOOM], title_rows, sections, actions)
-		} else {
-			([SUMMARY_ZOOM, FULL_DETAIL_ZOOM - 0.01], title_rows, sections, 0.)
-		};
-		range.into_iter().fold(0., |height, zoom| {
-			let layout = Self::new(zoom);
-			let gaps = sections.saturating_sub(1) as f32 + if actions > 0. { 1. } else { 0. };
-			let tasks = sections.saturating_sub(1);
-			let header = title_rows.saturating_sub(tasks) as f32 * layout.title_line()
-				+ tasks as f32 * layout.task_line()
-				+ gaps * layout.spacing(2.)
-				+ if actions > 0. { layout.spacing(4.) } else { 0. }
-				+ actions * layout.detail_line();
-			height.max(
-				((header + layout.gap() + layout.metrics_height() + 2. * layout.spacing(INSET_Y))
-					/ zoom)
-					.ceil(),
-			)
+		// Keep one camera footprint per detail tier. Content stays top-aligned;
+		// readable font floors must not move the agent under the zoom pointer.
+		let (min, max) = self.zoom_range();
+		let range = [min, max].into_iter().chain(self.activity_range().map(|(min, _)| min));
+		range.fold(0., |height, zoom| {
+			let layout = self.at_zoom(zoom);
+			height
+				.max(((layout.header_height(actions) + 2. * layout.spacing(INSET_Y)) / zoom).ceil())
 		})
+	}
+}
+
+pub(super) fn number_features() -> gpui::FontFeatures {
+	static FEATURES: std::sync::OnceLock<gpui::FontFeatures> = std::sync::OnceLock::new();
+	FEATURES
+		.get_or_init(|| gpui::FontFeatures(std::sync::Arc::new(vec![("tnum".into(), 1)])))
+		.clone()
+}
+
+type PointerAction<E> = std::rc::Rc<dyn Fn(&E, &mut Window, &mut App)>;
+
+/// The camera footprint is not an input target. Only visible content selects an
+/// agent; only its portrait or overview point starts an agent drag.
+#[derive(Clone)]
+pub(super) struct Interaction {
+	pub click: PointerAction<gpui::ClickEvent>,
+	pub drag: PointerAction<gpui::MouseDownEvent>,
+	pub team: PointerAction<gpui::ClickEvent>,
+}
+impl Interaction {
+	pub(super) fn keyboard(&self, view: Stateful<Div>) -> Stateful<Div> {
+		Self::keyboard_action(view, &self.click)
+	}
+
+	fn keyboard_action(
+		view: Stateful<Div>,
+		action: &PointerAction<gpui::ClickEvent>,
+	) -> Stateful<Div> {
+		let keyboard = action.clone();
+		let accessible = action.clone();
+		view.on_key_down(move |event, window, cx| {
+			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				keyboard(&gpui::ClickEvent::default(), window, cx);
+				cx.stop_propagation();
+			}
+		})
+		.on_a11y_action(gpui::AccessibleAction::Click, move |_, window, cx| {
+			accessible(&gpui::ClickEvent::default(), window, cx);
+		})
+	}
+
+	pub(super) fn frame_team(&self, view: Stateful<Div>) -> Stateful<Div> {
+		let action = self.team.clone();
+		Self::keyboard_action(view, &self.team)
+			.cursor_pointer()
+			.on_click(move |event, window, cx| action(event, window, cx))
+	}
+
+	pub(super) fn apply(&self, view: Stateful<Div>, draggable: bool) -> Stateful<Div> {
+		let click = self.click.clone();
+		let drag = self.drag.clone();
+		view.cursor_pointer().on_click(move |event, window, cx| click(event, window, cx)).when(
+			draggable,
+			|view| {
+				view.on_mouse_down(gpui::MouseButton::Left, move |event, window, cx| {
+					drag(event, window, cx);
+				})
+			},
+		)
 	}
 }
 
@@ -197,6 +365,7 @@ pub(super) fn overview(
 	selected: bool,
 	layout: Layout,
 	body: Option<AnyElement>,
+	interaction: &Interaction,
 ) -> AnyElement {
 	let presence = layout.card_presence();
 	let inset = layout.node_inset();
@@ -224,9 +393,13 @@ pub(super) fn overview(
 					// Retire the dot before it can overprint the centered agent number.
 					.opacity((1. - 2. * presence).max(0.))
 					.child(
-						gpui::div()
-							.size(gpui::px(layout.spacing(layout.point_size())))
-							.child(point(key, color, selected)),
+						interaction.apply(
+							gpui::div()
+								.id(SharedString::from(format!("relation-point-target-{key}")))
+								.size(gpui::px(layout.spacing(layout.point_size())))
+								.child(point(key, color, selected)),
+							true,
+						),
 					),
 			)
 		})
@@ -241,7 +414,7 @@ fn point(key: &str, color: u32, selected: bool) -> AnyElement {
 		.relative()
 		.size_full()
 		.rounded_full()
-		.bg(gpui::rgb(color))
+		.bg(crate::ui_theme::rgb(color))
 		.when(selected, |dot| {
 			dot.child(
 				gpui::div()
@@ -249,53 +422,27 @@ fn point(key: &str, color: u32, selected: bool) -> AnyElement {
 					.inset(gpui::px(-2.))
 					.rounded_full()
 					.border_1()
-					.border_color(gpui::rgb(SELECTED)),
+					.border_color(crate::ui_theme::rgb(SELECTED)),
 			)
 		})
 		.into_any_element()
 }
 
-/// Corner marks and actual routed endpoints share the card's vector surface.
+/// Routed endpoints remain visible without framing the character and its activity.
 /// Ports are local world coordinates; the router alone chooses their side.
-pub(super) struct Frame {
+pub(super) struct Ports {
 	pub zoom: f32,
 	pub selected: bool,
 	pub presence: f32,
 	pub ports: Vec<(f32, f32)>,
 }
-impl Frame {
+impl Ports {
 	fn element(self) -> impl IntoElement {
 		gpui::canvas(
 			|_, _, _| (),
 			move |bounds, _, window, _| {
 				let density = window.scale_factor();
 				let snap = |v: f32| (v * density).round() / density;
-				let left = snap(f32::from(bounds.left()));
-				let top = snap(f32::from(bounds.top()));
-				let right = snap(f32::from(bounds.right())) - 1.;
-				let bottom = snap(f32::from(bounds.bottom())) - 1.;
-				let length = snap((8. * self.zoom).max(5.));
-				let color = gpui::rgb(if self.selected { SELECTED } else { 0xc2bbc9 })
-					.opacity(self.presence * if self.selected { 0.8 } else { 0.4 });
-				for (x, y, dx, dy) in [
-					(left, top, 1., 1.),
-					(right, top, -1., 1.),
-					(left, bottom, 1., -1.),
-					(right, bottom, -1., -1.),
-				] {
-					for (x, y, width, height) in [
-						(x + if dx < 0. { 1. - length } else { 0. }, y, length, 1.),
-						(x, y + if dy < 0. { 1. - length } else { 0. }, 1., length),
-					] {
-						window.paint_quad(gpui::fill(
-							gpui::Bounds::new(
-								gpui::point(gpui::px(x), gpui::px(y)),
-								gpui::size(gpui::px(width), gpui::px(height)),
-							),
-							color,
-						));
-					}
-				}
 				for &(x, y) in &self.ports {
 					let center = (
 						snap(f32::from(bounds.left()) + x * self.zoom),
@@ -328,8 +475,12 @@ impl Frame {
 					if let Ok(path) = ring.build() {
 						window.paint_path(
 							path,
-							gpui::rgb(if self.selected { SELECTED } else { SECONDARY_TEXT })
-								.opacity(self.presence),
+							crate::ui_theme::rgb(if self.selected {
+								SELECTED
+							} else {
+								SECONDARY_TEXT
+							})
+							.opacity(self.presence),
 						);
 					}
 				}
@@ -361,7 +512,7 @@ pub(super) struct Card {
 	pub content: AnyElement,
 	pub faded: bool,
 	pub visibility: f32,
-	pub frame: Option<Frame>,
+	pub ports: Option<Ports>,
 }
 impl RenderOnce for Card {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -381,7 +532,7 @@ impl RenderOnce for Card {
 		}
 		self.surface
 			.opacity(self.visibility * arrival)
-			.when_some(self.frame, |surface, frame| surface.child(frame.element()))
+			.when_some(self.ports, |surface, ports| surface.child(ports.element()))
 			.child(gpui::div().size_full().opacity(1. - 0.08 * dim).child(self.content))
 	}
 }

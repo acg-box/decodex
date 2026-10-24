@@ -88,7 +88,7 @@ impl SettingsSurface {
 					.child(
 						gpui::div()
 							.text_size(gpui::px(11.))
-							.text_color(gpui::rgb(TEXT_MUTED))
+							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 							.child(
 								"Applies to this Mac on power and battery, even after quitting Decodex.",
 							),
@@ -109,14 +109,22 @@ impl SettingsSurface {
 					.items_center()
 					.rounded_full()
 					.border_1()
-					.border_color(gpui::rgb(if enabled { BLUE } else { LINE }))
-					.bg(if enabled { gpui::rgba(0x8baaf730) } else { gpui::rgba(0xffffff0c) })
+					.border_color(crate::ui_theme::rgb(if enabled { BLUE } else { LINE }))
+					.bg(if enabled {
+						crate::ui_theme::rgba(0x8baaf730)
+					} else {
+						crate::ui_theme::rgba(0xffffff0c)
+					})
 					.opacity(if interactive { 1. } else { 0.58 })
 					.when(interactive, |toggle| {
 						toggle
 							.cursor_pointer()
 							.hover(move |d| {
-								d.border_color(gpui::rgb(if enabled { BLUE } else { TEXT_MUTED }))
+								d.border_color(crate::ui_theme::rgb(if enabled {
+									BLUE
+								} else {
+									TEXT_MUTED
+								}))
 							})
 							.on_click(
 								cx.listener(move |s, _, _, cx| s.power_request(Some(!enabled), cx)),
@@ -131,11 +139,10 @@ impl SettingsSurface {
 					.child(ui_motion::switch_knob(
 						"power-sleep-knob",
 						enabled,
-						gpui::div().size(gpui::px(14.)).rounded_full().bg(gpui::rgb(if enabled {
-							BLUE
-						} else {
-							TEXT_MUTED
-						})),
+						gpui::div()
+							.size(gpui::px(14.))
+							.rounded_full()
+							.bg(crate::ui_theme::rgb(if enabled { BLUE } else { TEXT_MUTED })),
 					)),
 			)
 			.into_any_element()

@@ -404,7 +404,7 @@ pub(super) fn mcp_button(
 		.aria_label(label.clone())
 		.p_2()
 		.rounded(gpui::px(5.0))
-		.bg(gpui::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
+		.bg(crate::ui_theme::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
 		.cursor_pointer()
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
 		.on_key_down(cx.listener(move |s, key: &KeyDownEvent, _, cx| {

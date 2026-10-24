@@ -3,6 +3,8 @@ use decodex_protocol::{AgentTimelineContent, AgentTimelineEntry};
 use pulldown_cmark::{Event, Options, Parser, TagEnd};
 use std::collections::BTreeMap;
 
+#[path = "agent_relation_wording.rs"] pub(super) mod wording;
+
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Preview {
 	pub turn: String,
@@ -16,17 +18,38 @@ pub(super) struct Preview {
 pub(super) struct Operation {
 	pub id: String,
 	pub text: String,
+	pub kind: OperationKind,
 }
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum OperationKind {
+	#[default]
+	Action,
+	Message,
+	Result,
+	Question,
+}
+
+pub(super) const MAX_RECENT: usize = 5;
 
 fn recent(entries: &[AgentTimelineEntry], turn: &str) -> Vec<Operation> {
 	let mut seen = std::collections::BTreeSet::new();
 	let mut operations = Vec::new();
+	let completed = entries.iter().any(|entry| {
+		matches!(
+			&entry.content,
+			AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } if turn_id == turn
+		)
+	});
 	for entry in entries.iter().rev() {
 		let AgentTimelineContent::Item {
 			turn_id,
 			item_id,
-			activity: Some(activity),
+			activity,
 			collaboration,
+			kind,
+			phase,
+			text: message,
 			..
 		} = &entry.content
 		else {
@@ -35,22 +58,38 @@ fn recent(entries: &[AgentTimelineEntry], turn: &str) -> Vec<Operation> {
 		if turn_id != turn || !seen.insert(item_id) {
 			continue;
 		}
-		let label =
-			super::super::native_timeline::activity_label(activity, collaboration.as_ref(), &[]);
-		let source = if !activity.detail.trim().is_empty()
-			&& collaboration.is_none()
-			&& label != activity.detail
-		{
-			format!("{label} · {}", activity.detail)
+		let source = if let Some(activity) = activity {
+			let label = super::super::native_timeline::activity_label(
+				activity,
+				collaboration.as_ref(),
+				&[],
+			);
+			if !activity.detail.trim().is_empty()
+				&& collaboration.is_none()
+				&& label != activity.detail
+			{
+				format!("{label} · {}", activity.detail)
+			} else {
+				label
+			}
+		} else if kind == "agentMessage" {
+			message.clone()
 		} else {
-			label
+			continue;
 		};
-		let label = text(&source);
+		let label = if activity.is_some() { plain(&source) } else { wording::message(&source) };
 		if label.is_empty() {
 			continue;
 		}
-		operations.push(Operation { id: format!("{turn}:{item_id}"), text: label });
-		if operations.len() == 3 {
+		let kind = if activity.is_some() {
+			OperationKind::Action
+		} else if phase.as_deref() == Some("final_answer") || (completed && phase.is_none()) {
+			OperationKind::Result
+		} else {
+			OperationKind::Message
+		};
+		operations.push(Operation { id: format!("{turn}:{item_id}"), text: label, kind });
+		if operations.len() == MAX_RECENT {
 			break;
 		}
 	}
@@ -133,7 +172,7 @@ pub(super) fn assignments(
 			"spawnAgent" | "sendInput" | "sendMessage" | "followupTask"
 		) && !call.prompt.trim().is_empty();
 		let label = if explicit {
-			text(&call.prompt)
+			wording::message(&call.prompt)
 		} else if let Some(activity) =
 			activity.as_ref().filter(|activity| activity.kind == "subAgentActivity")
 		{
@@ -158,6 +197,18 @@ pub(super) fn assignments(
 }
 
 pub(super) fn text(source: &str) -> String {
+	let compact = plain(source);
+	let mut chars = compact.chars();
+	let mut preview: String = chars.by_ref().take(180).collect();
+	if chars.next().is_some() {
+		preview = preview.trim_end().to_owned();
+		preview.push('…');
+	}
+	preview
+}
+
+/// Graph excerpts use a larger bounded source; other previews retain their limit.
+pub(super) fn plain(source: &str) -> String {
 	// Bound markdown work even when the underlying message contains a large document.
 	let bounded: String = source.chars().take(640).collect();
 	let plain: String = Parser::new_ext(&bounded, Options::ENABLE_TABLES)
@@ -174,14 +225,7 @@ pub(super) fn text(source: &str) -> String {
 			_ => None,
 		})
 		.collect();
-	let compact = plain.split_whitespace().collect::<Vec<_>>().join(" ");
-	let mut chars = compact.chars();
-	let mut preview: String = chars.by_ref().take(180).collect();
-	if chars.next().is_some() {
-		preview = preview.trim_end().to_owned();
-		preview.push('…');
-	}
-	preview
+	plain.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 pub(super) fn latest(entries: &[AgentTimelineEntry], turn: Option<&str>) -> Option<Preview> {
@@ -229,7 +273,7 @@ pub(super) fn latest(entries: &[AgentTimelineEntry], turn: Option<&str>) -> Opti
 			_ => None,
 		})
 	};
-	let task = task.map(|source| text(source)).unwrap_or_default();
+	let task = task.map(|source| wording::message(source)).unwrap_or_default();
 	let preview_text = error.map(text).or_else(operation).unwrap_or_default();
 	let completed = entries.iter().any(|entry| {
 		matches!(
@@ -260,13 +304,9 @@ pub(super) fn latest(entries: &[AgentTimelineEntry], turn: Option<&str>) -> Opti
 			})
 		})
 		.flatten();
-	(!task.is_empty() || !preview_text.is_empty() || running.is_some()).then(|| Preview {
-		turn: turn.into(),
-		task,
-		text: preview_text,
-		running,
-		recent: recent(entries, turn),
-	})
+	let recent = recent(entries, turn);
+	(!task.is_empty() || !preview_text.is_empty() || running.is_some() || !recent.is_empty())
+		.then(|| Preview { turn: turn.into(), task, text: preview_text, running, recent })
 }
 
 #[cfg(test)]
@@ -394,11 +434,68 @@ mod tests {
 		let preview = latest(&entries, None).unwrap();
 		assert_eq!(preview.task, "Review the scroll behavior");
 		assert!(preview.text.is_empty());
-		assert!(latest(&[item("next", "agentMessage", "Only a reply")], None).is_none());
+		let reply = latest(&[item("next", "agentMessage", "Only a reply")], None).unwrap();
+		assert!(reply.task.is_empty() && reply.text.is_empty() && reply.running.is_none());
+		assert_eq!(
+			reply.recent[0].text, "Only a reply",
+			"keep the returned message without inventing an operation"
+		);
 	}
 
 	#[test]
-	fn final_answers_stay_in_the_conversation_and_errors_keep_their_assignment() {
+	fn recent_output_keeps_native_ids_and_rejects_other_turns_and_user_messages() {
+		let message = |turn: &str, id: &str, body: &str| {
+			let mut entry = item(turn, "agentMessage", body);
+			if let AgentTimelineContent::Item { item_id, .. } = &mut entry.content {
+				*item_id = id.into();
+			}
+			entry
+		};
+		let entries = vec![
+			message("old", "old", "Previous task output"),
+			item("now", "userMessage", "Please inspect the reconnect"),
+			message("now", "1", "Read the connection path"),
+			message("now", "2", "Starting the probe"),
+			message("now", "2", "**Probe completed**"),
+			message("now", "3", "Compare the full reply"),
+			message("now", "4", "All checks passed"),
+			message("now", "5", "Review complete"),
+			message("now", "6", "Handed off"),
+		];
+		assert_eq!(
+			recent(&entries, "now"),
+			vec![
+				Operation {
+					id: "now:2".into(),
+					text: "Probe completed".into(),
+					kind: OperationKind::Message
+				},
+				Operation {
+					id: "now:3".into(),
+					text: "Compare the full reply".into(),
+					kind: OperationKind::Message
+				},
+				Operation {
+					id: "now:4".into(),
+					text: "All checks passed".into(),
+					kind: OperationKind::Message
+				},
+				Operation {
+					id: "now:5".into(),
+					text: "Review complete".into(),
+					kind: OperationKind::Message
+				},
+				Operation {
+					id: "now:6".into(),
+					text: "Handed off".into(),
+					kind: OperationKind::Message
+				},
+			]
+		);
+	}
+
+	#[test]
+	fn returned_answers_are_not_live_operations_and_errors_keep_their_assignment() {
 		let mut answer = item("turn", "agentMessage", "Created the reading guide.");
 		if let AgentTimelineContent::Item { phase, .. } = &mut answer.content {
 			*phase = Some("final_answer".into());
@@ -473,7 +570,7 @@ mod tests {
 	}
 
 	#[test]
-	fn recent_operations_keep_three_distinct_native_items_and_latest_revision() {
+	fn recent_operations_keep_five_distinct_native_items_and_latest_revision() {
 		let mut entries = Vec::new();
 		for (id, label) in [
 			("a", "Read Cargo.toml"),
@@ -481,6 +578,8 @@ mod tests {
 			("c", "Inspect failure"),
 			("d", "Run cargo test"),
 			("d", "Tests passed"),
+			("e", "Review completed"),
+			("f", "Findings delivered"),
 		] {
 			let mut entry = item("now", "commandExecution", "");
 			if let AgentTimelineContent::Item { item_id, activity, .. } = &mut entry.content {
@@ -503,7 +602,7 @@ mod tests {
 		let preview = latest(&entries, Some("now")).unwrap();
 		assert_eq!(
 			preview.recent.iter().map(|op| op.id.as_str()).collect::<Vec<_>>(),
-			["now:b", "now:c", "now:d"]
+			["now:b", "now:c", "now:d", "now:e", "now:f"]
 		);
 		assert_eq!(preview.recent[2].text, "Command · Tests passed");
 		assert!(latest(&entries, Some("next")).is_none());
@@ -518,5 +617,6 @@ mod tests {
 		let preview = text(&"图".repeat(1000));
 		assert_eq!(preview.chars().count(), 181);
 		assert!(preview.ends_with('…'));
+		assert_eq!(plain(&"图".repeat(1000)).chars().count(), 640);
 	}
 }

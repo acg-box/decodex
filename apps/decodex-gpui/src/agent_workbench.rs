@@ -32,7 +32,7 @@ fn note(text: impl Into<gpui::SharedString>) -> gpui::Div {
 	gpui::div()
 		.text_size(gpui::px(12.))
 		.line_height(gpui::px(18.))
-		.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+		.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
 		.child(text.into())
 }
 
@@ -283,7 +283,7 @@ impl AgentSurface {
 			.min_w_0()
 			.py(gpui::px(10.))
 			.border_b_1()
-			.border_color(gpui::rgba(ui_theme::HOVER_FILL))
+			.border_color(crate::ui_theme::rgba(ui_theme::HOVER_FILL))
 			.child(
 				gpui::div()
 					.flex()
@@ -296,7 +296,7 @@ impl AgentSurface {
 							.flex_none()
 							.size(gpui::px(4.))
 							.rounded_full()
-							.bg(gpui::rgb(ui_theme::AMBER)),
+							.bg(crate::ui_theme::rgb(ui_theme::AMBER)),
 					)
 					.child(format!("{number} · {identity}")),
 			)

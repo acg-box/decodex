@@ -16,7 +16,7 @@ use crate::{
 	ui_motion,
 	ui_theme::{
 		BODY_SIZE, FONT_FAMILY, TEXT,
-		native_glass_panel::{self, GlassPanel},
+		native_material_panel::{self, MaterialPanel},
 	},
 };
 
@@ -44,7 +44,7 @@ impl Default for NativeComposer {
 struct ComposerPanel {
 	owner: Entity<AgentSurface>,
 	parent: AnyWindowHandle,
-	glass: Option<GlassPanel>,
+	surface: Option<MaterialPanel>,
 	_observation: Subscription,
 	input_focus: Option<gpui::FocusHandle>,
 }
@@ -55,6 +55,9 @@ pub(super) fn parent_window(window: &Window, cx: &App) -> Option<AnyWindowHandle
 
 impl Render for ComposerPanel {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		if let Some(surface) = self.surface.as_mut() {
+			surface.refresh_material();
+		}
 		let owner = self.owner.downgrade();
 		let capsule = self.owner.update(cx, |s, cx| {
 			s.sync_question_editor(cx);
@@ -80,7 +83,7 @@ impl Render for ComposerPanel {
 				forward(parent, &DismissStatus, cx);
 			})
 			.text_size(gpui::px(BODY_SIZE))
-			.text_color(gpui::rgb(TEXT))
+			.text_color(crate::ui_theme::rgb(TEXT))
 			.on_children_prepainted(move |bounds, _, cx| {
 				if let Some(bounds) = bounds.first() {
 					let height = f32::from(bounds.size.height).max(42.);
@@ -157,8 +160,8 @@ impl AgentSurface {
 				cx.activate(true);
 				let focus = panel.owner.read(cx).conversation_composer().focus_handle(cx);
 				window.focus(&focus, cx);
-				if let Some(glass) = &panel.glass {
-					glass.focus_text();
+				if let Some(surface) = &panel.surface {
+					surface.focus_text();
 				}
 				window.activate_window();
 			});
@@ -175,8 +178,10 @@ impl AgentSurface {
 	) {
 		// Inspector inventories are cached data, not modal surfaces. They must
 		// never replace the composer's material, even after Details closes.
-		let enabled = self.native_composer_requested(allowed, native_glass_panel::available())
-			&& !self.native_composer.failed;
+		let enabled = self.native_composer_requested(
+			allowed,
+			native_material_panel::available(crate::ui_theme::material::Surface::InputBar),
+		) && !self.native_composer.failed;
 
 		if enabled
 			&& !self.native_composer.enabled
@@ -190,8 +195,8 @@ impl AgentSurface {
 
 					window.focus(&focus, cx);
 
-					if let Some(glass) = &panel.glass {
-						glass.focus_text();
+					if let Some(surface) = &panel.surface {
+						surface.focus_text();
 					}
 
 					window.activate_window();
@@ -231,7 +236,7 @@ impl AgentSurface {
 				s.native_composer.failed = s.native_composer.child.is_none();
 				if s.native_composer.failed {
 					eprintln!(
-						"Decodex composer: native glass could not be created; Reload Workspace will retry."
+						"Decodex composer: native input bar material could not be created; Reload Workspace will retry."
 					);
 				}
 
@@ -259,16 +264,16 @@ impl AgentSurface {
 
 			if let Some(child) = child {
 				let _ = child.update(cx, |panel, window, cx| {
-					if let Some(glass) = &mut panel.glass {
+					if let Some(surface) = &mut panel.surface {
 						if enabled
 							&& let Some(bounds) = bounds
-							&& glass.place(bounds)
+							&& surface.place(bounds)
 						{
 							window.bounds_changed(cx);
 						}
 
-						glass.set_opacity(opacity);
-						glass.set_visible(enabled && bounds.is_some() && opacity > 0.001);
+						surface.set_opacity(opacity);
+						surface.set_visible(enabled && bounds.is_some() && opacity > 0.001);
 					}
 				});
 			}
@@ -374,6 +379,7 @@ fn create_panel(
 			move |window, cx| {
 				cx.new(|cx| {
 					ui_motion::observe_activation(window, cx);
+					crate::ui_theme::appearance::observe(window, cx);
 					cx.observe_window_activation(
 						window,
 						|panel: &mut ComposerPanel, window, cx| {
@@ -392,7 +398,7 @@ fn create_panel(
 					ComposerPanel {
 						owner,
 						parent,
-						glass: None,
+						surface: None,
 						_observation: observation,
 						input_focus: None,
 					}
@@ -402,13 +408,13 @@ fn create_panel(
 		.ok()?;
 	let installed = child
 		.update(cx, |s, window, _| {
-			s.glass = GlassPanel::install(
+			s.surface = MaterialPanel::install_input_bar(
 				parent_window,
 				window,
 				f64::from(crate::ui_theme::COMPOSER_RADIUS),
 			);
 
-			s.glass.is_some()
+			s.surface.is_some()
 		})
 		.unwrap_or(false);
 

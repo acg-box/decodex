@@ -340,7 +340,7 @@ impl AgentSurface {
 				.items_center()
 				.gap(gpui::px(8.))
 				.text_size(gpui::px(11.))
-				.text_color(gpui::rgb(TEXT_MUTED))
+				.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 				.child(
 					gpui::div().flex_1().min_w_0().flex().justify_center().child(
 						gpui::div()
@@ -381,7 +381,7 @@ impl AgentSurface {
 			.gap_0()
 			.p(gpui::px(1.))
 			.rounded_full()
-			.bg(gpui::rgba(0xffffff06))
+			.bg(crate::ui_theme::rgba(0xffffff06))
 			.child(self.composer_control(
 				"dictation-cancel",
 				"".into(),

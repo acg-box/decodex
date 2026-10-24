@@ -149,7 +149,7 @@ impl Cursor {
 		if fading || corners.is_some() {
 			ui_motion::request_frame(window, cx);
 		}
-		let mut color: gpui::Hsla = gpui::rgb(ui_theme::TEXT).into();
+		let mut color: gpui::Hsla = crate::ui_theme::rgb(ui_theme::TEXT).into();
 		color.a = opacity * if shape == Shape::Block { 0.32 } else { 1. };
 		if let Some(corners) = corners {
 			let mut path = gpui::PathBuilder::fill();

@@ -237,7 +237,7 @@ struct AccountPanelView: View {
 			)
 
 			Menu {
-				Picker("Material", selection: panelCardMaterialSelection) {
+				Picker("Card material", selection: panelCardMaterialSelection) {
 					ForEach(PanelCardMaterial.allCases) { material in
 						Text(material.title)
 							.tag(material)

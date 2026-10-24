@@ -19,10 +19,10 @@ impl AgentSurface {
 			.and_then(|brief| brief.preview.as_mut())
 		{
 			let actions = [
-				"Read the context fixture",
-				"Prepare 256k input",
-				"Run the native probe",
-				"Collect the complete reply",
+				"Read · context-fixture.json",
+				"Prepare the 256k input for the native continuity probe.",
+				"Run · Verify the complete answer after reconnecting the browser.",
+				"The complete answer survived the reconnect, including the final code block. The full evidence is attached to the conversation.",
 			];
 			preview.recent = actions
 				.iter()
@@ -31,7 +31,12 @@ impl AgentSurface {
 				.skip(step.saturating_sub(3))
 				.map(|(index, text)| activity::Operation {
 					id: format!("motion:{index}"),
-					text: (*text).into(),
+					text: activity::wording::message(text),
+					kind: if index == 3 {
+						activity::OperationKind::Result
+					} else {
+						activity::OperationKind::Action
+					},
 				})
 				.collect();
 		}
@@ -50,17 +55,17 @@ impl AgentSurface {
 			.flex()
 			.font_family(crate::ui_theme::FONT_FAMILY)
 			.font_weight(gpui::FontWeight::NORMAL)
-			.text_color(gpui::rgb(crate::ui_theme::TEXT))
-			.bg(gpui::rgb(0x303030))
+			.text_color(crate::ui_theme::rgb(crate::ui_theme::TEXT))
+			.bg(crate::ui_theme::rgb(0x303030))
 			.child(gpui::div().flex_1().min_w_0().h_full().child(self.render_work_board(cx)))
 			.child(
 				gpui::div()
 					.w(gpui::px(394.))
 					.flex_none()
 					.h_full()
-					.bg(gpui::rgb(0x373737))
+					.bg(crate::ui_theme::rgb(0x373737))
 					.border_l_1()
-					.border_color(gpui::rgba(0xffffff16))
+					.border_color(crate::ui_theme::rgba(0xffffff16))
 					.child(self.render_agent_workbench(cx)),
 			)
 			.into_any_element()
@@ -80,7 +85,7 @@ impl AgentSurface {
 			let mut work = template.clone();
 			work.id = id.into();
 			work.parent_goal_id = parent.map(str::to_owned);
-			work.title = title.into();
+			work.title = if id == "agent" { title } else { reference_text(id).0 }.into();
 			work.kind = AgentWorkKindDto::Manager;
 			work.codex_thread_id = Some(format!("ref-{id}"));
 			work.active_turn_id = Some("reference".into());
@@ -133,6 +138,11 @@ impl AgentSurface {
 						recent: vec![activity::Operation {
 							id: format!("reference:{id}"),
 							text: action.into(),
+							kind: match id {
+								"nora" => activity::OperationKind::Question,
+								"theo" | "tess" | "eden" => activity::OperationKind::Result,
+								_ => activity::OperationKind::Action,
+							},
 						}],
 					}),
 					question: None,
@@ -305,14 +315,14 @@ fn reference_text(id: &str) -> (&'static str, &'static str) {
 	match id {
 		"agent" => ("Follow up on active projects", "Checking the blocked handoff"),
 		"mira" => ("Pro continuity", "Reviewing recovery proposal"),
-		"nora" => ("Profile recovery", "Waiting for your decision"),
+		"nora" => ("Profile recovery", "Use the existing browser profile for this recovery test?"),
 		"lin" => ("Long-context probe", "Running 256k input"),
 		"sol" => ("Recovery research", "Comparing native result paths"),
 		"sage" => ("Graph workspace", "Reviewing compact nodes"),
 		"iris" => ("Node layout", "Checking 24-agent spacing"),
-		"theo" => ("Inspector", "Connecting selected artifact"),
+		"theo" => ("Inspector", "Selection now opens the matching conversation."),
 		"ravi" => ("Local release", "Collecting acceptance"),
-		"tess" => ("UI checks", "Checking material continuity"),
+		"tess" => ("UI checks", "The composer and window materials are unchanged."),
 		_ => ("Runtime", "Connection healthy"),
 	}
 }

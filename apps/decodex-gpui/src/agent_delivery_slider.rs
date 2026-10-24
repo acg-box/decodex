@@ -242,14 +242,14 @@ impl Panel {
 					.justify_between()
 					.text_size(gpui::px(10.))
 					.line_height(gpui::px(13.))
-					.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
 					.children((0..2).map(|end| {
 						gpui::div()
 							.flex()
 							.flex_col()
 							.when(end == 1, |d| d.items_end())
 							.when(p.is_some_and(|p| p.drag == Some(end)), |d| {
-								d.text_color(gpui::rgb(ui_theme::BLUE))
+								d.text_color(crate::ui_theme::rgb(ui_theme::BLUE))
 							})
 							.child(p.map_or_else(
 								|| "—".into(),
@@ -397,7 +397,7 @@ impl gpui::RenderOnce for Track {
 					.h(gpui::px(3.))
 					.w_full()
 					.rounded_full()
-					.bg(gpui::rgba(0xffffff20)),
+					.bg(crate::ui_theme::rgba(0xffffff20)),
 			)
 			.child(
 				gpui::div()
@@ -407,7 +407,7 @@ impl gpui::RenderOnce for Track {
 					.left(gpui::relative(from))
 					.w(gpui::relative((until - from).max(0.)))
 					.rounded_full()
-					.bg(gpui::rgb(ui_theme::BLUE)),
+					.bg(crate::ui_theme::rgb(ui_theme::BLUE)),
 			);
 		for fraction in [from, until] {
 			d = d.child(
@@ -419,7 +419,7 @@ impl gpui::RenderOnce for Track {
 					.w(gpui::px(10.))
 					.h(gpui::px(16.))
 					.rounded(gpui::px(4.))
-					.bg(gpui::rgb(0xc6cce0))
+					.bg(crate::ui_theme::rgb(0xc6cce0))
 					.flex()
 					.items_center()
 					.justify_center()
@@ -428,7 +428,7 @@ impl gpui::RenderOnce for Track {
 							.w(gpui::px(1.))
 							.h(gpui::px(6.))
 							.rounded_full()
-							.bg(gpui::rgba(0x17171c70)),
+							.bg(crate::ui_theme::rgba(0x17171c70)),
 					),
 			);
 		}

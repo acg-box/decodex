@@ -120,23 +120,28 @@ impl AgentSurface {
 				.child(self.relation_usage_control(Metric::Tokens, cx))
 				.child(self.relation_usage_control(Metric::Time, cx))
 				.child(
-					gpui::div().mt_1().border_t_1().border_color(gpui::rgba(0xffffff12)).child(
-						self.workspace_action(
-							"graph-usage-visibility".into(),
-							if self.work_board.view.usage_hidden {
-								"Show distribution"
-							} else {
-								"Hide distribution"
-							}
-							.into(),
-							|s, cx| {
-								s.work_board.view.usage_hidden = !s.work_board.view.usage_hidden;
-								s.work_board.view.usage_menu = false;
-								cx.notify();
-							},
-							cx,
+					gpui::div()
+						.mt_1()
+						.border_t_1()
+						.border_color(crate::ui_theme::rgba(0xffffff12))
+						.child(
+							self.workspace_action(
+								"graph-usage-visibility".into(),
+								if self.work_board.view.usage_hidden {
+									"Show distribution"
+								} else {
+									"Hide distribution"
+								}
+								.into(),
+								|s, cx| {
+									s.work_board.view.usage_hidden =
+										!s.work_board.view.usage_hidden;
+									s.work_board.view.usage_menu = false;
+									cx.notify();
+								},
+								cx,
+							),
 						),
-					),
 				);
 			anchor = anchor.child(
 				gpui::deferred(
@@ -185,14 +190,14 @@ impl AgentSurface {
 			.items_center()
 			.rounded(gpui::px(5.))
 			.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-			.text_color(gpui::rgb(if active {
+			.text_color(crate::ui_theme::rgb(if active {
 				ui_theme::TEXT
 			} else {
 				super::card::SECONDARY_TEXT
 			}))
-			.when(active, |button| button.bg(gpui::rgba(ui_theme::HOVER_FILL)))
+			.when(active, |button| button.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)))
 			.cursor_pointer()
-			.hover(|button| button.bg(gpui::rgba(ui_theme::HOVER_FILL)))
+			.hover(|button| button.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)))
 			.on_click(cx.listener(move |s, _, window, cx| {
 				s.set_relation_usage_metric(metric, cx);
 				restore_shell_focus(window, cx);
@@ -257,7 +262,7 @@ impl AgentSurface {
 				footer.child(
 					gpui::div()
 						.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-						.text_color(gpui::rgb(super::card::SECONDARY_TEXT))
+						.text_color(crate::ui_theme::rgb(super::card::SECONDARY_TEXT))
 						.child(if known { "No recorded usage" } else { "Usage unavailable" }),
 				)
 			})
@@ -326,20 +331,26 @@ impl AgentSurface {
 					.h(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
 					.min_w_0()
 					.flex()
-					.justify_between()
+					.items_baseline()
+					.gap(gpui::px(6.))
+					.pr(gpui::px(8.))
 					.overflow_hidden()
 					.whitespace_nowrap()
-					.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+					.text_size(gpui::px(ui_theme::foreground::METRIC_SIZE))
 					.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
-					.text_color(gpui::rgb(if selected || hovered {
+					.font_weight(gpui::FontWeight::MEDIUM)
+					.text_color(crate::ui_theme::rgb(if selected || hovered {
 						ui_theme::TEXT
 					} else {
 						super::card::SECONDARY_TEXT
 					}))
 					.when(width >= 22., |label| label.child(number))
 					.when(width >= 48., |label| {
-						label
-							.child(gpui::div().text_color(gpui::rgb(ui_theme::TEXT)).child(percent))
+						label.child(
+							gpui::div()
+								.text_color(crate::ui_theme::rgb(ui_theme::foreground::PRIMARY))
+								.child(percent),
+						)
 					}),
 			)
 			.child(super::allocation::Mark { key: motion_key, selected, hovered });

@@ -340,8 +340,8 @@ impl AgentSurface {
 			.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.into())).into())
 			.rounded(gpui::px(6.))
 			.cursor_pointer()
-			.hover(|style| style.bg(gpui::rgba(ui_theme::HOVER_FILL)))
-			.focus_visible(|style| style.bg(gpui::rgba(ui_theme::PRESSED_FILL)))
+			.hover(|style| style.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)))
+			.focus_visible(|style| style.bg(crate::ui_theme::rgba(ui_theme::PRESSED_FILL)))
 			.on_click(cx.listener(move |s, _, window, cx| {
 				s.perform_question_action(&target, &action, window, cx);
 				cx.stop_propagation();
@@ -386,7 +386,7 @@ impl AgentSurface {
 					.w(gpui::px(16.))
 					.flex_none()
 					.text_center()
-					.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
 					.child((index + 1).to_string()),
 			)
 			.child(gpui::div().flex_1().min_w_0().whitespace_normal().child(option.to_owned()))
@@ -505,7 +505,9 @@ impl AgentSurface {
 				.pt_1()
 				.pb_1()
 				.child(panel)
-				.child(gpui::div().h(gpui::px(1.)).mx_2().mt_2().bg(gpui::rgba(0xffffff14)))
+				.child(
+					gpui::div().h(gpui::px(1.)).mx_2().mt_2().bg(crate::ui_theme::rgba(0xffffff14)),
+				)
 				.into_any_element(),
 		)
 	}
@@ -534,7 +536,7 @@ impl AgentSurface {
 			.flex()
 			.items_center()
 			.justify_center()
-			.text_color(gpui::rgb(ui_theme::TEXT_MUTED))
+			.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
 			.child(workspace_symbols::icon_sized(Symbol::Close, 12.))
 			.smooth()
 			.enabled(!self.sending && !self.uncertain);

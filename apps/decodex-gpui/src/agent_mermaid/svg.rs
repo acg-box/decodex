@@ -2,9 +2,11 @@
 // Variable resolution follows Ondine's terminal adapter; see NOTICE.md and LICENSE-ONDINE.
 use std::{collections::HashMap, ops::Range};
 
-use crate::ui_theme::{ACCENT, AMBER, BLUE, CANVAS, ERROR, GREEN, TEXT, TEXT_MUTED};
+use crate::ui_theme::{
+	ACCENT, AMBER, BLUE, CANVAS, ERROR, GREEN, TEXT, TEXT_MUTED, appearance::Theme,
+};
 
-pub(super) fn desktop(svg: &str) -> Result<String, String> {
+pub(super) fn desktop(svg: &str, theme: Theme) -> Result<String, String> {
 	let document = roxmltree::Document::parse(svg).map_err(|e| e.to_string())?;
 	let style = document.root_element().attribute("style").unwrap_or_default();
 	let mut variables = HashMap::new();
@@ -18,25 +20,26 @@ pub(super) fn desktop(svg: &str) -> Result<String, String> {
 	}
 
 	let tint =
-		|color, opacity| u32::from(gpui::rgb(CANVAS).blend(gpui::rgb(color).alpha(opacity))) >> 8;
+		|color, opacity| u32::from(theme.rgb(CANVAS).blend(theme.rgb(color).alpha(opacity))) >> 8;
 	for (name, color) in [
-		("bg", CANVAS),
-		("fg", TEXT),
-		("muted", TEXT_MUTED),
+		("bg", theme.hex(CANVAS)),
+		("fg", theme.hex(TEXT)),
+		("muted", theme.hex(TEXT_MUTED)),
 		("line", tint(TEXT_MUTED, 0.8)),
 		("border", tint(TEXT_MUTED, 0.72)),
-		("accent", BLUE),
+		("accent", theme.hex(BLUE)),
 		("surface", tint(BLUE, 0.08)),
 		// This fill marks excluded periods and completed work, so it must remain visible.
 		("surface-alt", tint(TEXT_MUTED, 0.2)),
-		("critical", ERROR),
+		("critical", theme.hex(ERROR)),
 	] {
 		variables.insert(format!("--ondine-{name}"), format!("#{color:06x}"));
 	}
 	for (index, color) in
 		[BLUE, GREEN, AMBER, ACCENT, ERROR, TEXT_MUTED, 0xc4a7e7, 0x7dc4cf].into_iter().enumerate()
 	{
-		variables.insert(format!("--ondine-series-{}", index + 1), format!("#{color:06x}"));
+		variables
+			.insert(format!("--ondine-series-{}", index + 1), format!("#{:06x}", theme.hex(color)));
 	}
 	variables.insert("--ondine-font".into(), "Menlo, monospace".into());
 	for (name, value) in [

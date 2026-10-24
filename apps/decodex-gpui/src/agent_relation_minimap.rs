@@ -72,10 +72,11 @@ impl AgentSurface {
 		let agents: Vec<_> = graph.nodes.iter().filter(|node| node.row.is_some()).collect();
 		let mut bounds = [f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
 		for node in &agents {
-			bounds[0] = bounds[0].min(node.x);
-			bounds[1] = bounds[1].min(node.y);
-			bounds[2] = bounds[2].max(node.x + node.width());
-			bounds[3] = bounds[3].max(node.y + node.height());
+			let (x, y) = node.navigation;
+			bounds[0] = bounds[0].min(x);
+			bounds[1] = bounds[1].min(y);
+			bounds[2] = bounds[2].max(x + node.width());
+			bounds[3] = bounds[3].max(y + node.layout_height);
 		}
 		let zoom = self.relation_scale();
 		let view = &self.work_board.view;
@@ -85,14 +86,19 @@ impl AgentSurface {
 			.map(|node| {
 				(
 					node.key.clone(),
-					projection.point((node.x + node.width() / 2., node.y + node.height() / 2.)),
+					projection.point((
+						node.navigation.0 + node.width() / 2.,
+						node.navigation.1 + node.layout_height / 2.,
+					)),
 				)
 			})
 			.collect();
 		let links: Vec<_> = graph
 			.edges
 			.iter()
-			.filter(|edge| edge.kind.hierarchy())
+			.filter(|edge| {
+				edge.kind.hierarchy() && view.presentation == layout::Presentation::Links
+			})
 			.filter_map(|edge| Some((*points.get(&edge.from)?, *points.get(&edge.to)?)))
 			.collect();
 		let (left, top) = projection.point((-view.pan.0 / zoom, -view.pan.1 / zoom));
@@ -107,8 +113,8 @@ impl AgentSurface {
 			.h(gpui::px(HEIGHT))
 			.rounded(gpui::px(7.))
 			.border_1()
-			.border_color(gpui::rgba(0xffffff24))
-			.bg(gpui::rgb(0x464646))
+			.border_color(crate::ui_theme::rgba(0xffffff24))
+			.bg(crate::ui_theme::rgb(0x464646))
 			.overflow_hidden()
 			.occlude()
 			.on_scroll(|_, _, cx| cx.stop_propagation())
@@ -163,8 +169,8 @@ impl AgentSurface {
 					.h(gpui::px(view.viewport.1 / zoom * projection.scale))
 					.rounded(gpui::px(3.))
 					.border_1()
-					.border_color(gpui::rgba(0xb0c6f3b0))
-					.bg(gpui::rgba(0x8baaf70a)),
+					.border_color(crate::ui_theme::rgba(0xb0c6f3b0))
+					.bg(crate::ui_theme::rgba(0x8baaf70a)),
 			);
 		for node in &agents {
 			let point = points[&node.key];
@@ -175,7 +181,7 @@ impl AgentSurface {
 					.top(gpui::px(point.1 - 1.75))
 					.size(gpui::px(3.5))
 					.rounded_full()
-					.bg(gpui::rgb(node.color)),
+					.bg(crate::ui_theme::rgb(node.color)),
 			);
 		}
 		Some(self.relation_map_labels(map, graph, &points, cx))
@@ -264,23 +270,19 @@ impl AgentSurface {
 		let key = node.key.clone();
 		let keyboard = key.clone();
 		let selector = format!("relations-map-agent-{}", node.key);
-		gpui::div()
+		let button = gpui::div()
 			.id(SharedString::from(selector.clone()))
 			.debug_selector(move || selector.clone())
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(format!("Go to {number}, {}", node.title))
-			.absolute()
-			.left(gpui::px(bounds.x))
-			.top(gpui::px(bounds.y))
-			.w(gpui::px(bounds.width))
-			.h(gpui::px(bounds.height))
+			.size_full()
 			.flex()
 			.items_center()
 			.justify_center()
 			.font_family("Menlo")
 			.text_size(gpui::px(9.))
-			.text_color(gpui::rgb(
+			.text_color(crate::ui_theme::rgb(
 				if self.work_board.view.picked_agent.as_ref() == Some(&node.key) {
 					crate::ui_theme::BLUE
 				} else {
@@ -289,7 +291,7 @@ impl AgentSurface {
 			))
 			.rounded(gpui::px(3.))
 			.cursor_pointer()
-			.hover(|d| d.bg(gpui::rgba(0xffffff12)))
+			.hover(|d| d.bg(crate::ui_theme::rgba(0xffffff12)))
 			.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.navigate_relation_agent(&key, cx);
@@ -302,7 +304,16 @@ impl AgentSurface {
 				}
 			}))
 			.child(label)
-			.smooth()
+			.smooth();
+		// Feedback uses relative positioning. Keep the map coordinates on its
+		// outer footprint so labels cannot enter flow or cover another shortcut.
+		gpui::div()
+			.absolute()
+			.left(gpui::px(bounds.x))
+			.top(gpui::px(bounds.y))
+			.w(gpui::px(bounds.width))
+			.h(gpui::px(bounds.height))
+			.child(button)
 	}
 
 	pub(super) fn move_relation_minimap(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
@@ -344,7 +355,7 @@ fn map_connections(links: Vec<((f32, f32), (f32, f32))>) -> impl IntoElement {
 				path.line_to(bounds.origin + gpui::point(gpui::px(to.0), gpui::px(to.1)));
 			}
 			if let Ok(path) = path.build() {
-				window.paint_path(path, gpui::rgba(0xd0c8d94a));
+				window.paint_path(path, crate::ui_theme::rgba(0xd0c8d94a));
 			}
 		},
 	)

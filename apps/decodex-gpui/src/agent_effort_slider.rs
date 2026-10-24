@@ -37,7 +37,7 @@ impl AgentSurface {
 			.id("reasoning-configured")
 			.debug_selector(|| "reasoning-configured".into())
 			.text_size(gpui::px(12.))
-			.text_color(gpui::rgb(TEXT))
+			.text_color(crate::ui_theme::rgb(TEXT))
 			.child(
 				self.composer_effort_value(cx)
 					.as_deref()
@@ -104,7 +104,7 @@ impl AgentSurface {
 					.flex_none()
 					.text_size(gpui::px(12.))
 					.whitespace_nowrap()
-					.text_color(gpui::rgb(TEXT))
+					.text_color(crate::ui_theme::rgb(TEXT))
 					.child(label.clone()),
 			)
 			.child(
@@ -227,7 +227,7 @@ impl RenderOnce for SliderTrack {
 					.top(gpui::px(10. - feedback * 0.5))
 					.h(gpui::px(4. + feedback))
 					.rounded_full()
-					.bg(gpui::rgba(0xffffff18)),
+					.bg(crate::ui_theme::rgba(0xffffff18)),
 			)
 			.child(
 				gpui::div()
@@ -237,7 +237,7 @@ impl RenderOnce for SliderTrack {
 					.w(gpui::relative(fraction))
 					.h(gpui::px(4. + feedback))
 					.rounded_full()
-					.bg(gpui::rgb(if active { 0xe7e7ea } else { 0xc0c0c5 })),
+					.bg(crate::ui_theme::rgb(if active { 0xe7e7ea } else { 0xc0c0c5 })),
 			)
 			.children((0..self.count).map(|i| {
 				gpui::div()
@@ -248,7 +248,7 @@ impl RenderOnce for SliderTrack {
 					.w(gpui::px(2.))
 					.h(gpui::px(3.))
 					.rounded_full()
-					.bg(gpui::rgba(0xd5d5da85))
+					.bg(crate::ui_theme::rgba(0xd5d5da85))
 			}))
 			.child(
 				gpui::div()
@@ -259,7 +259,7 @@ impl RenderOnce for SliderTrack {
 					.w(gpui::px(thumb))
 					.h(gpui::px(thumb))
 					.rounded_full()
-					.bg(gpui::rgb(0xe7e7ea)),
+					.bg(crate::ui_theme::rgb(0xe7e7ea)),
 			)
 	}
 }

@@ -260,14 +260,14 @@ impl AgentSurface {
 						gpui::div()
 							.px_2()
 							.text_size(gpui::px(10.))
-							.text_color(gpui::rgb(TEXT_MUTED))
+							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 							.child(skill.description.as_str().to_owned()),
 					)
 					.child(
 						gpui::div()
 							.px_2()
 							.text_size(gpui::px(9.))
-							.text_color(gpui::rgb(TEXT_MUTED))
+							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 							.child(skill.path.as_str().to_owned()),
 					),
 			);

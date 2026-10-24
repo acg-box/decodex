@@ -80,14 +80,18 @@ pub(crate) fn start(cx: &mut gpui::App) {
 				let windows: Vec<_> = cx.windows().into_iter().filter_map(|handle| {
 					handle.update(cx, |_, window, _| {
 						#[cfg(all(target_os = "macos", not(test)))]
-						let glass = crate::ui_theme::native_glass_panel::observed_style(window);
+						let glass = crate::ui_theme::native_material_panel::observed_style(window);
 						#[cfg(all(target_os = "macos", not(test)))]
-						let rendering = crate::ui_theme::native_glass_panel::observed_rendering(window);
+						let material = crate::ui_theme::native_material_panel::observed_material(window);
+						#[cfg(all(target_os = "macos", not(test)))]
+						let rendering = crate::ui_theme::native_material_panel::observed_rendering(window);
 						#[cfg(any(not(target_os = "macos"), test))]
 						let glass = None::<isize>;
 						#[cfg(any(not(target_os = "macos"), test))]
+						let material = None::<&str>;
+						#[cfg(any(not(target_os = "macos"), test))]
 						let rendering = None::<serde_json::Value>;
-						serde_json::json!({"window": format!("{:?}", handle.window_id()), "key": window.is_window_active(), "glass_style": glass, "rendering": rendering})
+						serde_json::json!({"window": format!("{:?}", handle.window_id()), "key": window.is_window_active(), "glass_style": glass, "material": material, "rendering": rendering})
 					}).ok()
 				}).collect();
 				serde_json::json!({"at_ms": start.elapsed().as_secs_f64() * 1_000., "application_active": crate::ui_frame::application_active(), "full_background_rendering": crate::ui_frame::background_rendering(None), "windows": windows})

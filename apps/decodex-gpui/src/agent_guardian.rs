@@ -727,7 +727,7 @@ fn button(
 		.tab_index(0)
 		.aria_label(label.clone())
 		.cursor_pointer()
-		.text_color(gpui::rgb(BLUE))
+		.text_color(crate::ui_theme::rgb(BLUE))
 		.py_1()
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
 		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {

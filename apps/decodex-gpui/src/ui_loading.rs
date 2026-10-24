@@ -63,13 +63,13 @@ fn indicator(
 		.items_center()
 		.gap(gpui::px(8.))
 		.text_size(gpui::px(11.))
-		.text_color(gpui::rgb(TEXT_MUTED))
+		.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 		.child(gpui::div().flex().items_center().gap(gpui::px(4. * scale)).children((0..3).map(
 			|i| {
 				gpui::div()
 					.size(gpui::px(4. * scale))
 					.rounded_full()
-					.bg(gpui::rgb(TEXT_MUTED))
+					.bg(crate::ui_theme::rgb(TEXT_MUTED))
 					.opacity(if reduced {
 						0.6
 					} else {
@@ -104,7 +104,7 @@ impl RenderOnce for ConversationLoading {
 					.items_center()
 					.gap(gpui::px(8.))
 					.text_size(gpui::px(12.))
-					.text_color(gpui::rgb(TEXT_MUTED))
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 					.child(loading(""))
 					.child(self.label),
 			)
