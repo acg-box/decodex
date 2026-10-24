@@ -270,17 +270,13 @@ impl AgentSurface {
 		let key = node.key.clone();
 		let keyboard = key.clone();
 		let selector = format!("relations-map-agent-{}", node.key);
-		gpui::div()
+		let button = gpui::div()
 			.id(SharedString::from(selector.clone()))
 			.debug_selector(move || selector.clone())
 			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(format!("Go to {number}, {}", node.title))
-			.absolute()
-			.left(gpui::px(bounds.x))
-			.top(gpui::px(bounds.y))
-			.w(gpui::px(bounds.width))
-			.h(gpui::px(bounds.height))
+			.size_full()
 			.flex()
 			.items_center()
 			.justify_center()
@@ -308,7 +304,16 @@ impl AgentSurface {
 				}
 			}))
 			.child(label)
-			.smooth()
+			.smooth();
+		// Feedback uses relative positioning. Keep the map coordinates on its
+		// outer footprint so labels cannot enter flow or cover another shortcut.
+		gpui::div()
+			.absolute()
+			.left(gpui::px(bounds.x))
+			.top(gpui::px(bounds.y))
+			.w(gpui::px(bounds.width))
+			.h(gpui::px(bounds.height))
+			.child(button)
 	}
 
 	pub(super) fn move_relation_minimap(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {

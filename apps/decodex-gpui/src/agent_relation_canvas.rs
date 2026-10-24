@@ -2599,9 +2599,19 @@ mod fit_tests {
 			let root = visual.debug_bounds("relations-map-agent-agent").expect("root shortcut");
 			assert!(root.left() >= map.left() && root.right() <= map.right());
 			assert!(root.top() >= map.top() && root.bottom() <= map.bottom());
+			visual.simulate_mouse_move(root.center(), None, Default::default());
+			assert_eq!(
+				visual.debug_bounds("relations-map-agent-agent").unwrap(),
+				root,
+				"the minimap target stays still under the pointer in {mode:?}"
+			);
 			visual.simulate_click(root.center(), Default::default());
 			surface.read_with(visual, |s, _| {
-				assert_eq!(s.work_board.view.picked_agent.as_deref(), Some("agent"));
+				assert_eq!(
+					s.work_board.view.picked_agent.as_deref(),
+					Some("agent"),
+					"{mode:?}: {root:?}"
+				);
 				assert_eq!(s.selected, main);
 				assert_eq!(s.work_board.view.zoom, Some(1.));
 			});
