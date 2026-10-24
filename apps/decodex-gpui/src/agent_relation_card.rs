@@ -297,11 +297,19 @@ type PointerAction<E> = std::rc::Rc<dyn Fn(&E, &mut Window, &mut App)>;
 pub(super) struct Interaction {
 	pub click: PointerAction<gpui::ClickEvent>,
 	pub drag: PointerAction<gpui::MouseDownEvent>,
+	pub team: PointerAction<gpui::ClickEvent>,
 }
 impl Interaction {
 	pub(super) fn keyboard(&self, view: Stateful<Div>) -> Stateful<Div> {
-		let keyboard = self.click.clone();
-		let accessible = self.click.clone();
+		Self::keyboard_action(view, &self.click)
+	}
+
+	fn keyboard_action(
+		view: Stateful<Div>,
+		action: &PointerAction<gpui::ClickEvent>,
+	) -> Stateful<Div> {
+		let keyboard = action.clone();
+		let accessible = action.clone();
 		view.on_key_down(move |event, window, cx| {
 			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 				keyboard(&gpui::ClickEvent::default(), window, cx);
@@ -311,6 +319,13 @@ impl Interaction {
 		.on_a11y_action(gpui::AccessibleAction::Click, move |_, window, cx| {
 			accessible(&gpui::ClickEvent::default(), window, cx);
 		})
+	}
+
+	pub(super) fn frame_team(&self, view: Stateful<Div>) -> Stateful<Div> {
+		let action = self.team.clone();
+		Self::keyboard_action(view, &self.team)
+			.cursor_pointer()
+			.on_click(move |event, window, cx| action(event, window, cx))
 	}
 
 	pub(super) fn apply(&self, view: Stateful<Div>, draggable: bool) -> Stateful<Div> {

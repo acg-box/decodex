@@ -1419,9 +1419,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> gpui::Stateful<gpui::Div> {
 		let scale = self.relation_scale();
-		let pan = self.work_board.view.pan;
 		let neighborhood = self.relation_neighborhood(graph);
-		let layout_viewport = self.work_board.view.layout_viewport;
 		let layout = graph.layout.on_display(self.work_board.view.display_scale);
 		let wire_presence = self.relation_wire_presence(std::time::Instant::now());
 		let mut ports = graph.connection_ports(lines);
@@ -1440,24 +1438,8 @@ impl AgentSurface {
 				.iter()
 				.flat_map(|s| &s.work_items)
 				.any(|w| w.id == node.key && w.parent_goal_id.is_none());
-			let team_members = (children > 0 && !coordinator).then_some(children + 1);
-			let key = node.key.clone();
-			let row = node.row.clone();
-			let target = graph
-				.edges
-				.iter()
-				.find(|e| {
-					(e.from == node.key && e.kind == Kind::Context)
-						|| (e.to == node.key && e.kind == Kind::Resource)
-				})
-				.cloned();
-			let dragkey = key.clone();
-			let origin = if layout.overview() && node.row.is_some() {
-				let inset = layout.node_inset();
-				(node.x - inset.0, node.y - inset.1)
-			} else {
-				(node.x, node.y)
-			};
+			let team_members =
+				(children > 0 && !coordinator).then(|| groups::descendants(graph, &node.key).len());
 			let parent = graph
 				.edges
 				.iter()
@@ -1466,39 +1448,7 @@ impl AgentSurface {
 				.and_then(|n| n.row.as_ref())
 				.map(|row| self.relation_agent_number(row));
 
-			let interaction = card::Interaction {
-				drag: std::rc::Rc::new(cx.listener(move |s, e: &MouseDownEvent, _, cx| {
-					// Initial fitting can follow the frame that installed this handler.
-					// Freeze the camera the user saw, rather than a pending fit.
-					s.work_board.view.moved = false;
-					s.work_board.view.hold_camera(scale, pan, layout_viewport);
-					s.work_board.view.drag = Some(Drag {
-						key: Some(dragkey.clone()),
-						start: e.position,
-						last: e.position,
-						origin,
-					});
-					cx.stop_propagation();
-				})),
-				click: std::rc::Rc::new(cx.listener(move |s, event: &gpui::ClickEvent, _, cx| {
-					if s.work_board.view.moved && !matches!(event, gpui::ClickEvent::Keyboard(_)) {
-						return;
-					}
-					if let Some(row) = &row {
-						if event.click_count() == 2 {
-							s.open_graph_agent(row, cx);
-						} else {
-							s.select_workbench_agent(&row.key, cx);
-						}
-					} else {
-						s.work_board.focus = None;
-						s.work_board.view.picked_agent = None;
-						s.work_board.view.edge = target.clone();
-						s.workspace.agent_tree_visible = true;
-						cx.notify();
-					}
-				})),
-			};
+			let interaction = self.relation_node_interaction(node, graph, cx);
 			let view = interaction.keyboard(
 				self.relation_node_surface(node, layout)
 					.when(node.row.is_none(), |d| interaction.apply(d.opacity(opacity), true)),
@@ -1525,6 +1475,73 @@ impl AgentSurface {
 			});
 		}
 		canvas
+	}
+
+	fn relation_node_interaction(
+		&self,
+		node: &Node,
+		graph: &Graph,
+		cx: &mut Context<Self>,
+	) -> card::Interaction {
+		let scale = self.relation_scale();
+		let pan = self.work_board.view.pan;
+		let layout_viewport = self.work_board.view.layout_viewport;
+		let layout = graph.layout.on_display(self.work_board.view.display_scale);
+		let key = node.key.clone();
+		let row = node.row.clone();
+		let target = graph
+			.edges
+			.iter()
+			.find(|e| {
+				(e.from == node.key && e.kind == Kind::Context)
+					|| (e.to == node.key && e.kind == Kind::Resource)
+			})
+			.cloned();
+		let dragkey = key.clone();
+		let origin = if layout.overview() && node.row.is_some() {
+			let inset = layout.node_inset();
+			(node.x - inset.0, node.y - inset.1)
+		} else {
+			(node.x, node.y)
+		};
+		let teamkey = key.clone();
+		card::Interaction {
+			team: std::rc::Rc::new(cx.listener(move |s, _, _, cx| {
+				s.frame_relation_team(&teamkey, cx);
+				cx.stop_propagation();
+			})),
+			drag: std::rc::Rc::new(cx.listener(move |s, e: &MouseDownEvent, _, cx| {
+				// Initial fitting can follow the frame that installed this handler.
+				// Freeze the camera the user saw, rather than a pending fit.
+				s.work_board.view.moved = false;
+				s.work_board.view.hold_camera(scale, pan, layout_viewport);
+				s.work_board.view.drag = Some(Drag {
+					key: Some(dragkey.clone()),
+					start: e.position,
+					last: e.position,
+					origin,
+				});
+				cx.stop_propagation();
+			})),
+			click: std::rc::Rc::new(cx.listener(move |s, event: &gpui::ClickEvent, _, cx| {
+				if s.work_board.view.moved && !matches!(event, gpui::ClickEvent::Keyboard(_)) {
+					return;
+				}
+				if let Some(row) = &row {
+					if event.click_count() == 2 {
+						s.open_graph_agent(row, cx);
+					} else {
+						s.select_workbench_agent(&row.key, cx);
+					}
+				} else {
+					s.work_board.focus = None;
+					s.work_board.view.picked_agent = None;
+					s.work_board.view.edge = target.clone();
+					s.workspace.agent_tree_visible = true;
+					cx.notify();
+				}
+			})),
+		}
 	}
 
 	fn update_relation_viewport(
@@ -2148,48 +2165,6 @@ impl AgentSurface {
 
 	pub(super) fn fit_relations(&mut self) {
 		self.frame_relations();
-	}
-
-	fn frame_relations(&mut self) {
-		self.work_board.view.card_transition = None;
-		self.work_board.view.motion = None;
-		// An explicit frame operation fits the current pane. Ordinary panel
-		// resizing keeps the camera, and does not enter this path when fixed.
-		self.work_board.view.layout_viewport = self.work_board.view.viewport;
-		let (w, h) = self.work_board.view.viewport;
-		if w <= 48. || h <= 48. {
-			return;
-		}
-		let top = FRAME_INSET;
-		let usable_height = (h - 2. * FRAME_INSET).max(1.);
-		// Fit visible cards and scope labels exactly. Hidden evidence routes do
-		// not reserve another margin or force a root-only close-up.
-		let now = std::time::Instant::now();
-		for zoom in [1., 0.6, 0.3, card::MIN_ZOOM] {
-			let layout = card::Layout::new(zoom);
-			let graph = self.relation_graph_with_layout(now, layout.with_presence(1., false));
-			let keys = graph
-				.nodes
-				.iter()
-				.filter(|node| node.row.is_some())
-				.map(|node| node.key.clone())
-				.collect();
-			let Some([min_x, min_y, max_x, max_y]) = graph.layout_bounds(&keys) else { return };
-			let width = (max_x - min_x).max(1.);
-			let height = (max_y - min_y).max(1.);
-			let fitted = ((w - 2. * FRAME_INSET) / width).min(usable_height / height);
-			let (min, max) = layout.zoom_range();
-			if fitted < min && !layout.points() {
-				continue;
-			}
-			let scale = fitted.clamp(min, max);
-			self.work_board.view.zoom = Some(scale);
-			self.work_board.view.pan = (
-				(w - width * scale) / 2. - min_x * scale,
-				top + (usable_height - height * scale) / 2. - min_y * scale,
-			);
-			break;
-		}
 	}
 }
 

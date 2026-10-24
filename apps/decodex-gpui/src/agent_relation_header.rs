@@ -1,6 +1,9 @@
 //! A numbered Cloudlet with source-bound activity alongside it.
 use super::{mascot, stream};
-use crate::{ui_motion, ui_theme::foreground};
+use crate::{
+	ui_motion::{self, SmoothControl as _},
+	ui_theme::foreground,
+};
 use gpui::{App, InteractiveElement as _, IntoElement, RenderOnce, Window, prelude::*};
 
 #[derive(IntoElement)]
@@ -22,7 +25,12 @@ pub(super) struct Header {
 }
 
 impl Header {
-	fn metadata(&self, layout: super::card::Layout) -> gpui::Div {
+	fn metadata(
+		&self,
+		layout: super::card::Layout,
+		window: &mut Window,
+		cx: &mut App,
+	) -> gpui::Div {
 		let portrait_width = layout.portrait_spacing(super::card::PORTRAIT_WIDTH);
 		let identity_selector = format!("relation-identity-{}", self.key);
 		let status_selector = format!("relation-status-{}", self.key);
@@ -75,7 +83,7 @@ impl Header {
 					.flex()
 					.items_center()
 					.when_some(self.team_members, |row, count| {
-						row.child(information_rows::team(&self.key, count, layout))
+						row.child(self.team_button(count, layout, window, cx))
 					})
 					.when(self.picked, |row| {
 						row.when_some(self.parent.clone(), |row, parent| {
@@ -84,12 +92,44 @@ impl Header {
 					}),
 			)
 	}
+
+	fn team_button(
+		&self,
+		count: usize,
+		layout: super::card::Layout,
+		window: &mut Window,
+		cx: &mut App,
+	) -> gpui::AnyElement {
+		let focus = window
+			.use_keyed_state(
+				gpui::SharedString::from(format!("relation-team-focus-{}", self.key)),
+				cx,
+				|_, cx| cx.focus_handle().tab_stop(true),
+			)
+			.read(cx)
+			.clone();
+		let team = information_rows::team(&self.key, count, layout)
+			.id(gpui::SharedString::from(format!("relation-team-target-{}", self.key)))
+			.role(gpui::Role::Button)
+			.tab_index(0)
+			.track_focus(&focus)
+			.aria_label(format!("Frame {} team, {count} agents", self.number))
+			.px(gpui::px(3.))
+			.rounded(gpui::px(3.))
+			.hover(|style| style.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL)))
+			.focus_visible(|style| style.text_color(crate::ui_theme::rgb(crate::ui_theme::BLUE)))
+			.on_mouse_down(gpui::MouseButton::Left, move |_, window, cx| {
+				window.focus(&focus, cx);
+				cx.stop_propagation();
+			});
+		self.interaction.frame_team(team).smooth().into_any_element()
+	}
 }
 
 impl RenderOnce for Header {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let layout = self.layout.on_display(window.scale_factor());
-		let metadata = layout.labels().then(|| self.metadata(layout));
+		let metadata = layout.labels().then(|| self.metadata(layout, window, cx));
 		let h = self;
 		let (task_lines, count) = content_rows(&h.task, &h.activity, layout, cx.text_system());
 		let gap = content_gap(task_lines, &h.activity, layout);
