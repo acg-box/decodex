@@ -23,6 +23,9 @@ MIGRATIONS = (
     (51, "nullable_reset_credit_expiry", ROOT / "database/migrations/0051_nullable_reset_credit_expiry.sql"),
     (52, "personal_access_token_credentials", ROOT / "database/migrations/0052_personal_access_token_credentials.sql"),
     (53, "independent_workspaces", ROOT / "database/migrations/0053_independent_workspaces.sql"),
+    (54, "agent_delegations", ROOT / "database/migrations/0054_agent_delegations.sql"),
+    (55, "agent_slots", ROOT / "database/migrations/0055_agent_slots.sql"),
+    (56, "project_agent_work", ROOT / "database/migrations/0056_project_agent_work.sql"),
 )
 
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
@@ -90,8 +93,26 @@ REQUIRED_TABLES = frozenset(
         "agent_capacity_retries",
         "agent_live_output",
         "agent_managers",
-        "workspaces",
-        "work_workspace",
+        "projects",
+        "project_agents",
+        "agents",
+        "works",
+        "work_requirements",
+        "work_materials",
+        "work_results",
+        "work_result_reuse",
+        "work_commands",
+        "collaboration_requests",
+        "collaboration_instructions",
+        "native_work_contributions",
+        "native_work_dispatches",
+        "agent_tool_migrations",
+        "guardian_settings",
+        "guardian_sources",
+        "guardian_review_details",
+        "agent_closed_native_threads",
+        "agent_delegations",
+        "agent_slots",
         "agent_tool_versions",
         "agent_thread_revisions",
         "agent_usage",
@@ -103,7 +124,6 @@ REQUIRED_TABLES = frozenset(
         "agent_misalignment",
         "agent_guardian_reviews",
         "agent_guardian_approvals",
-
     }
 )
 
