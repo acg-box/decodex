@@ -1299,6 +1299,8 @@ pub enum AccountObservedStateDto {
 pub enum AccountLifecycleReadinessDto {
 	/// All admission boundaries agree.
 	Ready,
+	/// The current plan is not supported by Decodex.
+	UnsupportedPlan,
 	/// No current credential binding exists.
 	CredentialAbsent,
 	/// The host credential store is unavailable.
@@ -1512,6 +1514,8 @@ pub enum AccountProfileErrorDto {
 	InvalidRequest,
 	/// The account does not exist or is tombstoned.
 	AccountUnavailable,
+	/// The current plan is not supported by Decodex.
+	UnsupportedPlan,
 	/// Authoritative product state was unavailable.
 	ProductStateUnavailable,
 	/// The exact host credential item was absent, stale, or unavailable.
@@ -1804,6 +1808,8 @@ pub enum AccountSelectionRecoveryDto {
 	EnableAccount,
 	/// Install credentials for an account.
 	EnrollCredentials,
+	/// Use a supported plan and sign in again.
+	UseSupportedPlan,
 	/// Reconcile or cancel an unsettled credential operation.
 	ResolveCredentialOperation,
 	/// Restore registry and host-store agreement.
@@ -5666,6 +5672,7 @@ mod tests {
 
 		for (error, encoded) in [
 			(AccountProfileErrorDto::CredentialBusy, "credential_busy"),
+			(AccountProfileErrorDto::UnsupportedPlan, "unsupported_plan"),
 			(AccountProfileErrorDto::RefreshRejected, "refresh_rejected"),
 			(AccountProfileErrorDto::RefreshAmbiguous, "refresh_ambiguous"),
 			(AccountProfileErrorDto::AccessRejectedAfterRefresh, "access_rejected_after_refresh"),

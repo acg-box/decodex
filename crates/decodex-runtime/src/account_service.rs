@@ -279,14 +279,11 @@ impl AccountService {
 		Ok(ready)
 	}
 
-	/// List account registry state with its recorded lifecycle readiness.
+	/// List account registry state with admission readiness for the exact current credential.
 	pub async fn list(&self) -> Result<Vec<AccountInspection>, AccountLifecycleError> {
 		let accounts = self.store.read_account_registry(None, MAX_ACCOUNT_READ).await?;
 
-		Ok(accounts
-			.into_iter()
-			.map(|account| AccountInspection { readiness: account.lifecycle_readiness, account })
-			.collect())
+		Ok(accounts.into_iter().map(|account| self.inspect_record(account)).collect())
 	}
 
 	/// Inspect one account without exposing credential material.
@@ -295,9 +292,25 @@ impl AccountService {
 		account_id: &AccountId,
 	) -> Result<AccountInspection, AccountLifecycleError> {
 		let account = self.load_account(account_id).await?;
-		let readiness = account.lifecycle_readiness;
 
-		Ok(AccountInspection { account, readiness })
+		Ok(self.inspect_record(account))
+	}
+
+	fn inspect_record(&self, mut account: AccountRecord) -> AccountInspection {
+		// Credential rotation can change the plan without changing provider health or
+		// store agreement. Do not present that credential as ready for new work.
+		if matches!(
+			account.lifecycle_readiness,
+			AccountLifecycleReadiness::Ready | AccountLifecycleReadiness::CallbackCapabilityUnready
+		) && let Some(binding) = &account.credential
+			&& matches!(
+				self.read_supported_credential(&account.account_id, binding),
+				Err(AccountLifecycleError::UnsupportedPlan)
+			) {
+			account.lifecycle_readiness = AccountLifecycleReadiness::UnsupportedPlan;
+		}
+
+		AccountInspection { readiness: account.lifecycle_readiness, account }
 	}
 
 	/// Read only the credential-negative deterministic routing controls.
@@ -4597,6 +4610,9 @@ impl AccountService {
 
 		match account.lifecycle_readiness {
 			AccountLifecycleReadiness::Ready => {},
+			AccountLifecycleReadiness::UnsupportedPlan => {
+				return Err(AccountSelectionRecovery::UseSupportedPlan);
+			},
 			AccountLifecycleReadiness::CredentialAbsent => {
 				return Err(AccountSelectionRecovery::EnrollCredentials);
 			},
@@ -4612,19 +4628,18 @@ impl AccountService {
 			_ => return Err(AccountSelectionRecovery::RepairCredentialStore),
 		}
 
-		let score = quota_selection_score(account, now_unix_micros)?;
 		let binding =
 			account.credential.as_ref().ok_or(AccountSelectionRecovery::EnrollCredentials)?;
 
 		self.read_supported_credential(&account.account_id, binding).map_err(
 			|error| match error {
 				AccountLifecycleError::UnsupportedPlan =>
-					AccountSelectionRecovery::EnrollCredentials,
+					AccountSelectionRecovery::UseSupportedPlan,
 				_ => AccountSelectionRecovery::RepairCredentialStore,
 			},
 		)?;
 
-		Ok(score)
+		quota_selection_score(account, now_unix_micros)
 	}
 
 	fn read_supported_credential(

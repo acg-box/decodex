@@ -267,6 +267,9 @@ struct ResetCardAccountRow: View {
 	}
 
 	private var accountFeedback: (text: String, isDestructive: Bool)? {
+		if state.account.lifecycleReadiness == .unsupportedPlan {
+			return ("This plan is not supported in Decodex. After you upgrade, sign in again.", false)
+		}
 		var messages: [String] = []
 		var destructive = state.requiresLoginRefresh
 		if state.requiresLoginRefresh { messages.append("Sign in again to use this account.") }
@@ -315,6 +318,8 @@ struct ResetCardAccountRow: View {
 			return nil
 		}
 		switch state.account.lifecycleReadiness {
+		case .unsupportedPlan:
+			return "This plan is not supported in Decodex. After you upgrade, sign in again."
 		case .credentialAbsent:
 			return "Sign in to use this account."
 		case .storeUnavailable:

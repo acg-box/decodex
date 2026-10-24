@@ -7,6 +7,36 @@ import XCTest
 
 @MainActor
 final class AccountPanelPresentationTests: XCTestCase {
+	func testUnsupportedPlanDisablesWorkAndRetainedResetCards() throws {
+		let authority = ResetCardAuthority(
+			profileName: "local", serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		)
+		let account = ResetCardAccountRecord(
+			authority: authority,
+			accountID: "11111111-1111-4111-8111-111111111111",
+			alias: "Account TEST0-00000", accountRevision: 2, enabled: true,
+			observedState: .available, lifecycleReadiness: .unsupportedPlan,
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080)
+		)
+		let state = ResetCardAccountState(
+			account: account,
+			inventory: ResetCardInventory(
+				authority: authority, accountID: account.accountID,
+				accountRevision: account.accountRevision,
+				cards: [try ResetCardDescriptor(
+					grantedAtUnixSeconds: 1_700_000_000, expiresAtUnixSeconds: 1_800_000_000
+				)],
+				fiveHourQuota: account.fiveHourQuota, sevenDayQuota: account.sevenDayQuota,
+				observationError: nil
+			), error: nil, isRefreshing: false
+		)
+		XCTAssertEqual(account.statusLabel, "Plan not supported")
+		XCTAssertEqual(state.routeCapability, .unavailable)
+		XCTAssertTrue(state.requiresLoginRefresh)
+		XCTAssertTrue(state.targets.isEmpty)
+	}
+
 	func testSharedRouteOperationBlocksWithoutDimmingOtherAvailableRoutes() {
 		let presentation = AccountRouteActionPresentation(
 			isCurrent: false,

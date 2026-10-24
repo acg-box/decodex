@@ -3,6 +3,7 @@ import Foundation
 enum AccountProfileObservationError: String, Decodable, Equatable, Sendable {
 	case invalidRequest = "invalid_request"
 	case accountUnavailable = "account_unavailable"
+	case unsupportedPlan = "unsupported_plan"
 	case productStateUnavailable = "product_state_unavailable"
 	case credentialUnavailable = "credential_unavailable"
 	case credentialBusy = "credential_busy"
@@ -20,6 +21,8 @@ enum AccountProfileObservationError: String, Decodable, Equatable, Sendable {
 			return "We couldn’t load this account."
 		case .accountUnavailable:
 			return "This account is unavailable."
+		case .unsupportedPlan:
+			return "This plan is not supported in Decodex. After you upgrade, sign in again."
 		case .productStateUnavailable:
 			return "Account information is temporarily unavailable."
 		case .credentialUnavailable:
