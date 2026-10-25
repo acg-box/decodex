@@ -12,6 +12,8 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/DecodexNativeClient.swift
   - id: openwiki-source-90188458ff8e2e5499bd7ca8
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/NativeJournalFixture.swift
+  - id: openwiki-source-ca95ba5564216bb4898c8392
+    resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
@@ -58,16 +60,18 @@ sources:
     resource: repo://scripts/macos/compile_decodex_app_icon.sh
   - id: openwiki-source-58e225584250806d8658ea09
     resource: repo://scripts/macos/prepare_codex.mts
+  - id: openwiki-source-90e2e66c4c17531650b4f54e
+    resource: repo://scripts/macos/prepare_voice_acceptance.py
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-25T15:35:33.616Z" }
+generated: { by: "codex", at: "2026-10-25T16:38:56.487Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T15:35:33.616Z
+    at: 2026-10-25T16:38:56.487Z
 ---
 
 
@@ -229,6 +233,28 @@ cargo +stable nextest run --locked -p decodex-database \
 The control follow-up passed all three native tests and the selected hold test. Its earlier missing-variable and global-reviewer fixture failures remain in the separate receipt. These results do not replace the earlier full workspace suite. Cold native profile controls can be unavailable until the context loads; do not resume work implicitly to make a read succeed. For old encrypted helpers, compare the parent call and child input, then read the child's own output. Matching encrypted delivery establishes transport, not the prepared plaintext or a strong Work binding.
 
 The later `installed_acceptance` entry records authorized local development installation separately. Its two independent-Agent UI regressions failed before repair. The final UI package passed 1025 tests with 1031 skipped; complete runs retained cleanup markers in three unchanged tests, and all three isolated controls passed without a marker. Twelve selected native regressions had zero unmatched selectors. Strict lint for 13 packages and formatting passed. Use the entry's exact artifact identities and commands; do not count the older 2924-test workspace receipt as a fresh run of these UI repairs.
+
+### Synthetic online voice acceptance
+
+These ignored tests require explicit authority to send synthetic audio through an existing subscription connection. Use a signed service and the verified selected CLI and helpers. Prepare the runtime explicitly in a fresh system-temporary native home. Isolate both the product root and native home; setting only the product root leaves native history shared.
+
+Use the existing local bootstrap owners for the private configuration, server identity and task-scoped [execution authorization](../../crates/decodex-core/src/process_generation.rs). Enroll the existing login through the account CLI without copying the user's business database. Remove temporary authentication copies after enrollment. Start exactly one read-only Agent named `voice-acceptance`, with the instruction to reply only `VOICE_READY` and use no tools. Wait until it is idle. Keep the service's native HOME separate from the host tools' home and configuration.
+
+Set `DECODEX_VOICE_ACCEPTANCE_ROOT` to that isolated product root. Set `VOICE_FIXTURE_INPUT` to a system-temporary input directory. The prepared-root marker is a deliberate fixture guard, not a product permission override:
+
+```sh
+printf '%s\n' 'Decodex synthetic voice acceptance' > "$DECODEX_VOICE_ACCEPTANCE_ROOT/synthetic-voice-fixture"
+python3 scripts/macos/prepare_voice_acceptance.py "$VOICE_FIXTURE_INPUT"
+export DECODEX_VOICE_ACCEPTANCE_INPUT="$VOICE_FIXTURE_INPUT"
+cargo +stable nextest list --locked -p decodex-gpui --bin decodex-gpui --all-features \
+  --run-ignored only -E 'test(online_synthetic_)'
+cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui --all-features \
+  --run-ignored only -E 'test(online_synthetic_)' --test-threads 1 --retries 0 --no-fail-fast
+```
+
+The generator uses an already installed macOS Samantha English voice. It creates mono PCM16 at 24 kHz and 48 kHz and records input digests. It does not install a voice or open a microphone. The test fixture refuses a missing marker or a service with more than its single fixture Agent. The dictation test checks final words and unchanged Agent history. The live test uses manual PCM, checks final assistant text and decoded audio, then requires Ended after Stop.
+
+The final recorded cohort passed two tests, skipped 1023 and had no unmatched selector, retry or LEAK. Strict lint for 13 packages and formatting passed. Keep real-provider results separate from local hardware capture and installed UI checks. The user's separate playback observation was audible but quiet; it did not change system volume or routing. Preserve compact digests and domain receipts, close the owned service, then remove temporary homes, credentials, components and audio. See `retained_project_agent_work.online_voice_acceptance` and the [voice boundary](../integrations/subscription-voice.md#authorized-synthetic-online-checks).
 
 ## Prepare Codex components
 

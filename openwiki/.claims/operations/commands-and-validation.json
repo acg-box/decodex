@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:86384526fc29d1e85c52f7bd659244ddb789d31737b9850f4adad34d46b7c951",
+  "pageVersion": "sha256:fedde99f73abfcbc06607b83e5775e26ad43b46a69633edee81847e224d148ad",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -122,7 +122,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
+          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
         }
       ]
     },
@@ -190,7 +190,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
+          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
         }
       ]
     },
@@ -210,7 +210,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
+          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/project_guardian.py",
@@ -224,7 +224,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
+          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
         }
       ]
     },
@@ -238,7 +238,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
+          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
         }
       ]
     },
@@ -248,7 +248,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
+          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json",
@@ -266,7 +266,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
+          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs",
@@ -284,13 +284,31 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
+          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+        }
+      ]
+    },
+    {
+      "id": "claim_c63c35a4e6c84a109e25eeb5b887e636",
+      "statement": "Online voice acceptance uses an explicit isolated-root marker, a single idle fixture Agent and locally generated PCM; two opt-in tests qualify final dictation without task submission and live decoded speech followed by Ended, with separate hardware and installed-UI limits.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_voice_online_tests.rs",
+          "version": "repo-file-v1:sha256:cad7ec71da7116e523235e72d90bda9032c27a27d54c9f3050df48a879f21dfd"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+        },
+        {
+          "resource": "repo://scripts/macos/prepare_voice_acceptance.py",
+          "version": "repo-file-v1:sha256:b321425102f36f44e1a8fd3baeeca9a16201665468ec174a638b7d90cee43f83"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T15:35:33.616Z"
+    "at": "2026-10-25T16:38:56.487Z"
   }
 }

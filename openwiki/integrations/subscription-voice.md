@@ -24,6 +24,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/native_input_queue.rs
   - id: openwiki-source-95412047c2ed776dd7116977
     resource: repo://apps/decodex-gpui/src/native_live_audio.rs
+  - id: openwiki-source-ca95ba5564216bb4898c8392
+    resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
   - id: openwiki-source-d1f06f7b22d0c2eec328d95f
     resource: repo://apps/decodex-gpui/src/native_voice_transport.rs
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
@@ -40,12 +42,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/dictation_transcript.rs
   - id: openwiki-source-7b941e7c2c91cb7415f05243
     resource: repo://crates/decodex-runtime/src/dictation.rs
+  - id: openwiki-source-90e2e66c4c17531650b4f54e
+    resource: repo://scripts/macos/prepare_voice_acceptance.py
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-25T14:08:29.784Z" }
+generated: { by: "codex", at: "2026-10-25T16:38:56.487Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T15:35:33.616Z
+    at: 2026-10-25T16:38:56.487Z
 ---
 
 # Subscription dictation and live voice
@@ -124,6 +128,20 @@ cargo +stable nextest run --locked --workspace --all-targets --all-features \
 The current output was a virtual route. These checks establish capture, local PCM flow and device lifecycle; they do not establish physical-speaker output, speech intelligibility or audible quality. The full workspace suite was not repeated. No controlled lock experiment, provider voice session, installed-app test, installation or release occurred. The complete temporary acceptance directory and its exact-owned helper processes were removed after private database and source receipts were preserved.
 
 See [Agent coordination](../architecture/chief-coordination.md) and [Desktop workspace](../architecture/desktop-workspace.md).
+
+### Authorized synthetic online checks
+
+The later `online_voice_acceptance` entry in the [retained index](../../automations/upstream/retained-evidence.json) qualifies one existing subscription connection with local TTS input. The final run uses fresh product and native homes and the same verified CLI, Code Mode helper and search helper. The production voice implementation did not change.
+
+| Check | Observed result |
+| --- | --- |
+| Subscription dictation | The synthetic words were transcribed to final text. Agent history stayed unchanged. |
+| Native V3 WebRTC voice | Final assistant-role text and nonzero decoded speech returned. Explicit Stop reached Ended, with no active call, Agent turn or new Work left. |
+| Separate local playback | The user heard an actual reply and reported low volume. The test player used 0.5 gain and then 1.0; system volume and routing stayed unchanged. |
+
+The two explicit online tests passed with 1023 skipped, no unmatched selector, retry or LEAK. Strict lint for 13 packages and formatting passed. The [reusable input generator](../../scripts/macos/prepare_voice_acceptance.py) creates mono PCM16 at 24 kHz and 48 kHz. The ignored tests use the production service and manual PCM media branch with device recording and playout disabled. They never open a microphone. See [commands and prerequisites](../operations/commands-and-validation.md#synthetic-online-voice-acceptance).
+
+This is a bounded synthetic sample. Separate playback through the current virtual bridge does not qualify the installed UI's microphone-to-device-ADM path, all downstream devices, broad loudness, intelligibility or echo cancellation. No microphone audio was saved or uploaded. Temporary homes, credentials, components and audio were removed after private domain/history evidence was saved. One initial synthetic trial in the normal native home is confirmed archived; its inactive history remains native-owned. Official Codex Project presentation remains unobserved. No installation or release was needed for this follow-up.
 
 ## Retained voice preferences and limitations
 

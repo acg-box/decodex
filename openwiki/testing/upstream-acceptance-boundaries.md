@@ -12,6 +12,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
   - id: openwiki-source-032278b78f4f6cac0e654ef0
     resource: repo://apps/decodex-gpui/src/native_audio_owner_tests.rs
+  - id: openwiki-source-ca95ba5564216bb4898c8392
+    resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
   - id: openwiki-source-d1f06f7b22d0c2eec328d95f
     resource: repo://apps/decodex-gpui/src/native_voice_transport.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
@@ -100,12 +102,14 @@ sources:
     resource: repo://Makefile.toml
   - id: openwiki-source-e8c30c6f5849a5077d7b4aa5
     resource: repo://scripts/macos/build_codex_source.test.mts
+  - id: openwiki-source-90e2e66c4c17531650b4f54e
+    resource: repo://scripts/macos/prepare_voice_acceptance.py
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-25T15:35:33.616Z" }
+generated: { by: "codex", at: "2026-10-25T16:38:56.487Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T15:35:33.616Z
+    at: 2026-10-25T16:38:56.487Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -346,7 +350,17 @@ The separate `installed_acceptance` entry qualifies the signed development appli
 
 The final UI package passed 1025 tests with 1031 skipped and no unmatched selector. Its complete runs also reported cleanup markers in three unchanged tests; all three isolated controls passed without a marker. Their cause remains unknown. Twelve selected exact-artifact native regressions passed with 995 skipped and zero unmatched selectors on the recorded runtime-consumer baseline. Strict lint for 13 packages and formatting passed. The earlier 2924-test workspace receipt remains separate. No assertion, deadline or runner policy was weakened.
 
-This is one bounded real-provider scenario, not general model-quality acceptance. Data readback does not certify every preference or window position. The user removed controlled lock-screen testing and declined another official login. No microphone audio was uploaded. Physical-speaker audibility, live provider voice, entitlement and the old encrypted prepared-plaintext/Work-binding gaps remain unmeasured. Exact test identities, reusable fixture, source digests and reproducible commands remain available in the retained index after temporary products are removed.
+This is one bounded real-provider scenario, not general model-quality acceptance. Data readback does not certify every preference or window position. The user removed controlled lock-screen testing and declined another official login. No microphone audio was uploaded. That installed run did not qualify audible output or live provider voice. The later synthetic online checks below have their own limits. The old encrypted prepared-plaintext/Work-binding gaps remain unmeasured. Exact test identities, reusable fixture, source digests and reproducible commands remain available in the retained index after temporary products are removed.
+
+### Synthetic online voice and audible playback
+
+The separate `online_voice_acceptance` entry binds the ignored tests at source `4497c626c` to the unchanged installed service and selected native artifact. The final run used fresh product and native homes. Explicit preparation reached Ready, and actual CLI, Code Mode helper and search-helper bytes matched the retained identities. The production transport body was unchanged; only a test module was added.
+
+Both online tests passed with 1023 skipped and no unmatched selector, retry or LEAK. Subscription dictation returned the expected synthetic words without changing Agent history. Native WebRTC returned final assistant-role text and nonzero decoded audio, and explicit Stop reached Ended. The final fixture had no open call, active Agent turn or Work. Strict lint passed for 13 packages and formatting passed. The [input generator](../../scripts/macos/prepare_voice_acceptance.py) and [test implementation](../../apps/decodex-gpui/src/native_voice_online_tests.rs) retain the reusable fixture; see the [entrypoint and prerequisites](../operations/commands-and-validation.md#synthetic-online-voice-acceptance).
+
+The user separately heard an actual reply played through the current output route and reported low volume. The route used a virtual bridge. The test player used 0.5 and then 1.0 gain, while system volume and routing stayed unchanged. This observes audibility; it does not identify every downstream device or qualify broad loudness, intelligibility, echo cancellation or the installed UI's microphone-to-device-ADM path. No real microphone audio was saved or uploaded. One tested connection is not an entitlement guarantee for other accounts.
+
+Temporary homes, credential copies, component copies and generated audio were removed after private domain/history records and digests were saved. One initial synthetic trial in the normal native home is confirmed archived, with its inactive history kept under native ownership. The final isolated run is separate proof. Official Codex Project presentation remains unobserved, and controlled lock-screen testing remains excluded. This follow-up needed no production voice repair, installation or release. It does not explain earlier complete-suite cleanup markers.
 
 ### Qualified native and presentation limits
 

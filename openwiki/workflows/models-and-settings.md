@@ -43,7 +43,7 @@ sources:
 generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T15:35:33.616Z
+    at: 2026-10-25T16:38:56.487Z
 ---
 
 # Model selection and settings ownership
