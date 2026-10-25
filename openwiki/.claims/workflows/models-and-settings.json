@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:918b9bd7fdaa9c7d953ee9cf15b1a8af508351d4535f789c6c62a85ddb271bf2",
+  "pageVersion": "sha256:d43a1cfb72e4992c48ed5ec55369321758b5e49aeab402a7c8c74e83f77f5246",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -102,14 +102,14 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_live_settings.rs",
-          "version": "repo-file-v1:sha256:db1d21b38419d24a0f784a88dd3be745368d233395d54f0a7aee7d1f2f1e7e6c"
+          "version": "repo-file-v1:sha256:4caa963c0472c29a59d0495ac668f9199a8fde6194a04638ed3dfa8339273f3a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs#L1-L85",
           "version": "repo-lines-v1:sha256:c995e9573182bf2421011a9163434bb93c3af8b7aee65c601d63606a9e159fda:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmZGZmOWFhM2JhNjlhMTA4NWEyNjc2OWM0NGIxY2MyNGUwNmRkZDlhYjM0OWRkNjg0Mzk4ZjIxNDNjYzkzNmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5YWYzYmIwNGFiMDM5NDBhNDA4YzUwNzJhNWNjZGUxZjhjNTFlNzlhMjJiMTVlOTk0M2U5MWVjYTJhYzI4MWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwNzY0NDlhMDc3ZjA1ZTAxZTA3YzQ3MTk4ZWFhYTA2Njk0Y2NlYWFlMjFiYTA4MWY1NmYwMWM1Mjg3N2ZlZjcifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1529-L1547",
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1539-L1557",
           "version": "repo-lines-v1:sha256:cfd232ec73dc3a45871fb3cf4318614d9f69ffee74f348a28a0257a1c68bf34c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5OWY2NWUyZDI2OTYwNGYxOTgyZjJmOTZkYmI2MjA2NTgwYWU5YzZkYTdiYmU0OTM0MWIzZWU0NDAwNGQ1YjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwNThlYWViNTQ5M2EyYzdlMzMyMTk5ZjVmNjgxNDkwOWMwNjhiZmMwZGNmMGRkNjdiZmVhODM4MDUzY2E3MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiNWU2ZDJjY2FlMTc5Yzk0YmI0Yzc0OWZhZmJmNzQzNjVhZGNiNjliMWE3MzY4MTE2YTM3NDBlMjRlMGQwYzkifQ"
         }
       ]
@@ -120,17 +120,53 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
           "version": "repo-file-v1:sha256:5c68cd2e38d9511bcfe08f8601cebd784c8cf027c08bd95fea6602d70afe63c8"
         }
       ]
+    },
+    {
+      "id": "claim_43848a6538ce404db5d63364b84c640b",
+      "statement": "Agent preferences reads the loaded native memory summary explicitly through thread/memory/read, preserves native version selection and empty/unavailable states, copies original text only on action and invalidates replaced sources. It neither resumes nor writes/generates memory, and uses source/digest-bound 8 KiB pages up to 1 MiB.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_memory.rs",
+          "version": "repo-file-v1:sha256:833eb3197234bc9a6ff668b788ab0627914a4d287cc0940b7b0e1ac3395f01fa"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/memory.rs",
+          "version": "repo-file-v1:sha256:985de213ed02f43974da167023d3f9212cdfbb2ff830d3cbe8a4ccee93b60cb2"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs",
+          "version": "repo-file-v1:sha256:0b9c399018d483c8368743bfa474ee94dc50bf2e0684fb327433eb46165bf68f"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_memory.rs",
+          "version": "repo-file-v1:sha256:61cd2e3c38df6930abbb129f54c9d8541c029e3df2a27410f3116a472e56b86f"
+        }
+      ]
+    },
+    {
+      "id": "claim_7aa326c5953d42a5827bafb76f1053f1",
+      "statement": "Agent preferences and Work details show retained native usage with explicit source coverage; linked unshared turns do not establish billing, complete Work cost or elapsed time and missing history or child evidence remains unknown.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_usage_evidence.rs",
+          "version": "repo-file-v1:sha256:37c521d6f449fbd49a22247b359bb78b0987e89c6fae1b5a7f4b78b83a57ce31"
+        },
+        {
+          "resource": "repo://database/src/usage_evidence.rs",
+          "version": "repo-file-v1:sha256:2d0fa576e5cec98c0ce4b008c1654e05503f7d3d6c3d44b1bdf03a3ea3774242"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T16:38:56.487Z"
+    "at": "2026-10-25T20:12:58.607Z"
   }
 }

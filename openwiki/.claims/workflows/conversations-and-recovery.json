@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8864318cd5e1a889eea0035876230f5de8526384f8232432e6f5067a345faf45",
+  "pageVersion": "sha256:a106badb2956a6181b57e6e46cc257f4b884d617f82d280f6c8c0fbbf85b4107",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -102,11 +102,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_read_state.rs",
-          "version": "repo-file-v1:sha256:3a888afd5334ef76e377710aff030b6f718a89cf171389a9864817ccffa27d58"
+          "version": "repo-file-v1:sha256:7037191d04e5eb38102d3ce3a4f546f7727ba553936bfe3e0694f23c00723567"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2354-L2372",
-          "version": "repo-lines-v1:sha256:9d369e5305b5c172071f85d926be3d26b25fd03f32f1fe5b8e984105e7d377b2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2NmI1YjkzMDg2NDc5ZmJiMjgzOTZiN2NlZjkzOGY3OWNiMzkyOWE3OGE4M2U2NGUwNjUyYzFkZWY3MmU4MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlNDM4OTRkNmQ1Y2Q5YTQxZmI2MDFmNWI3NjgxMmVhMjNlYTRjODdjNjY1OWY2MTE2MWNkYWE0MzQ1YjBkNDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjZTdkM2E5ZjcwYWZkY2JkOGNmMmZjZTM4NWZhMWZlODJjYWIxNjM1Y2IyYTM2MmVkMzcyYzc0NzYxOWU0YWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4ZjZjZjBiYmNlNzE4MjIxMTBlMDZjNDU3ZWE5YmY1YTM5MzEyNjU1YTMwZDRhOGYyMTg3MzBiYWNmYzBhOGMifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2412-L2432",
+          "version": "repo-lines-v1:sha256:6aae6072fabc3d20ef752e58819f5d9b3ece95811ec8cae07e6070ca68b6daaf:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2NmI1YjkzMDg2NDc5ZmJiMjgzOTZiN2NlZjkzOGY3OWNiMzkyOWE3OGE4M2U2NGUwNjUyYzFkZWY3MmU4MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlNDM4OTRkNmQ1Y2Q5YTQxZmI2MDFmNWI3NjgxMmVhMjNlYTRjODdjNjY1OWY2MTE2MWNkYWE0MzQ1YjBkNDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjZTdkM2E5ZjcwYWZkY2JkOGNmMmZjZTM4NWZhMWZlODJjYWIxNjM1Y2IyYTM2MmVkMzcyYzc0NzYxOWU0YWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4ZjZjZjBiYmNlNzE4MjIxMTBlMDZjNDU3ZWE5YmY1YTM5MzEyNjU1YTMwZDRhOGYyMTg3MzBiYWNmYzBhOGMifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_read_state.rs",
@@ -148,11 +148,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:f68d8bf866333c5acde3acb9938b8835579a45ccb0c1ff910a16e5bd74d4eec4"
+          "version": "repo-file-v1:sha256:4811499c4567df61c7c0098acda4935eb830c8b29d712908a98069f81fa45a02"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:0265a718a4c0241a5cdb0c1d4d36893a51558e258650d9c2898fa9a811c0da14"
+          "version": "repo-file-v1:sha256:dd0503647f930907f3517c18882255c3f02cd0c0a6b95dcbcc02d125899411e2"
         }
       ]
     },
@@ -161,7 +161,7 @@
       "statement": "After native unarchive, a positive active-list observation restores the original local work relationship without an application restart; opening that work restores the draft under its original work and thread identities.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_archive.rs#L680-L745",
+          "resource": "repo://apps/decodex-gpui/src/agent_archive.rs#L721-L786",
           "version": "repo-lines-v1:sha256:7f55ca2ecf3a846548c678dc2eb604fe5c8962f500bb3bca2ed8c07c1ea08818:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM5MDMyMmViYTI2YjFhNDRjOWZmMzEwZWEzZTJmYjI0NTMzNzMzMzgyODdjODE3NzcwNzFhNjQ1ZTUyYjI5OWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE1NmMzZTJkMzQ4ZGY4M2Y1ZmMxZGM1MGZkMWIzNjQ1MWRkMWU2Yzk2MWI1YjRhZDU3MjBhOWIwMjMzM2EzNTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYxMjY5YmEwZDUyODQyMzY4Y2EyMjAxYjQ0ZjIxM2E5YzA0YmY5OTM2MWI4MThjOWMyMzUzOGNmMzUxZDYyODEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFlMjIyNjY1NGU2ZjE4Y2RiMTE3M2RiMmRiZGNhOTM0MGE5ZjI5M2NmNTViYjliZDE5ZTFhNTRlZjA3OTQ4OWMifQ"
         },
         {
@@ -236,11 +236,11 @@
     },
     {
       "id": "claim_7e280b9c2a204c0dae598596688418bb",
-      "statement": "Native tool migration requires source and descendant quiescence, preserves reproducible settings, saves known identity before retirement and switches only after exact positive archive evidence, with unknown effects parked and old history retained read-only.",
+      "statement": "Ordinary input preserves its original native conversation and tool set. Recovery of an existing tool-migration journal requires source and descendant quiescence, preserved settings, a known replacement identity and exact positive old-context archive evidence; unknown effects remain parked and old history stays read-only.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tool_migration.rs",
-          "version": "repo-file-v1:sha256:907ed4275de6ac66f931df9b580be60b4158fb2cd2a8dd1faa3c32367aeb4bf6"
+          "version": "repo-file-v1:sha256:d4ed48112dc09f21a353663156e68b2636d1616c2dadd18df01ed05b907fffe2"
         },
         {
           "resource": "repo://database/src/agent_tool_migration.rs",
@@ -265,6 +265,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T15:11:34.438Z"
+    "at": "2026-10-25T20:12:58.607Z"
   }
 }

@@ -5,7 +5,7 @@ pub use decodex_core::{guardian, work};
 mod agent_collaboration;
 pub use agent_collaboration::{
 	AgentExchangeAssessment, AgentExchangeDto, AgentExchangeKind, AgentExchangeQuestionDto,
-	AgentExchangesResult,
+	AgentExchangesResult, AgentPeerExchangeDto, AgentQuestionAnswerDto,
 };
 mod agent_deliveries;
 pub use agent_deliveries::{
@@ -28,6 +28,11 @@ mod agent_hooks;
 mod agent_integrations;
 mod agent_live_settings;
 mod agent_media;
+mod usage_evidence;
+pub use usage_evidence::{
+	UsageEvidenceResult, UsageEvidenceScope, UsageEvidenceSource, UsageEvidenceTotals,
+};
+mod agent_memory;
 mod agent_model_settings;
 mod agent_models;
 mod agent_native_goal;
@@ -73,6 +78,8 @@ mod voice;
 mod weather;
 mod wire;
 mod work_portfolio;
+
+pub use agent_memory::{AgentMemoryResult, MAX_MEMORY_BYTES, MEMORY_PAGE_BYTES};
 
 pub use native_startup_config::{
 	NativeStartupConfigLocation, NativeStartupConfigStatus, NativeStartupConfiguration,
@@ -298,7 +305,7 @@ pub use decodex_core::{FastModeFailure, global_fast_mode_enabled, set_global_fas
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 3, minor: 0 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 3, minor: 1 };
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {

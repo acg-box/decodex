@@ -23,6 +23,7 @@ mod agent_hooks;
 mod agent_host;
 mod agent_integrations;
 mod agent_live_settings;
+mod agent_memory;
 mod agent_model_settings;
 mod agent_models;
 mod agent_native_goal;

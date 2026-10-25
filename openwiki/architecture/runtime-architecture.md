@@ -50,6 +50,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_context_settings.rs
   - id: openwiki-source-1477615a268800361379ce21
     resource: repo://crates/decodex-runtime/src/agent_initial_settings.rs
+  - id: openwiki-source-dc51b38db429ec5fe466c5f2
+    resource: repo://crates/decodex-runtime/src/agent_memory.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
@@ -70,6 +72,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-b1dd4c8ab85f342314daa6f1
     resource: repo://crates/decodex-runtime/src/agent/work.rs
+  - id: openwiki-source-3c62f617dc1d15daed2c93e4
+    resource: repo://crates/decodex-runtime/src/application_collaboration.rs
   - id: openwiki-source-a958837c2596362a3517c745
     resource: repo://crates/decodex-runtime/src/websocket.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
@@ -86,6 +90,8 @@ sources:
     resource: repo://database/migrations/0059_native_assignment_proof.sql
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
+  - id: openwiki-source-8c78df4b382026886ac50894
+    resource: repo://database/src/usage_evidence.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
   - id: openwiki-source-87eeaebc39a3d2229938f9d2
@@ -98,10 +104,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-25T15:35:33.616Z" }
+generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T16:38:56.487Z
+    at: 2026-10-25T20:12:58.607Z
 ---
 
 # Runtime Architecture
@@ -147,7 +153,7 @@ The first actual user input can initialize an independent Agent without an Assis
 
 The overview contains Work headers. `work_portfolio` serves selected evidence in digest-checked 8 KiB pages with a 32 MiB ceiling. SQL applies Agent and granted Material scope before the per-category record limit. The global Guardian coordinator records desired reviewer preference and actual per-source application receipts. It does not own execution approval or business assessment. Optional private records exclude raw reasoning and preserve explicit missing action associations.
 
-Direct schema 56 migration preserves genuine legacy execution and history. New conversations advertise the canonical tool revision. Existing tool sets use a durable migration journal and exact native quiescence/readback. Unknown external effects remain parked. Previous thread history is read-only evidence, not input authority. See [coordination](chief-coordination.md) and [local database](../operations/local-database.md).
+Direct schema 56 migration preserves genuine legacy execution and history. New conversations advertise the canonical tool revision. Ordinary input keeps the retained native context. Only an existing tool-replacement journal uses exact native quiescence and readback during recovery. Unknown external effects remain parked. Previous thread history is read-only evidence, not input authority. See [coordination](chief-coordination.md) and [local database](../operations/local-database.md).
 
 Schema 57 adds immutable native child-input receipts. Direct-call attribution remains available. For nested V2 dispatch permitted by native configuration, the receipt joins exact child input with one parent activity and permits recovery without replay. Missing or ambiguous native evidence stays Unknown. V1 nested execution retains its existing native attribution path.
 
@@ -156,6 +162,8 @@ Schema 58 permits multiple immutable Agent bindings on one admitted native proce
 Before sending input to a retained conversation, the runtime reconciles its registered native Project after exact hydration. It assigns only an unassigned conversation and checks the returned identities. Conflicts park the affected Agent while independent input can continue. This keeps the execution directory and permissions; it does not establish official desktop sidebar synchronization. See the [native acceptance boundary](../testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian).
 
 After a completed Guardian review, optional history recovery can read up to 32 same-directory private candidates and five turns per candidate. It verifies the native parent before retaining exposed assistant output. This supports cold resume, where the selected native protocol has no raw-event subscription. Missing records and missing action Review associations remain explicit.
+
+Native memory inspection and retained usage use read-only local queries. The memory adapter reads the already-loaded native thread and preserves native version selection. Collaboration history and usage derive from existing exact source records; they add no executor, acceptance policy or monetary estimate. See [read-only evidence](chief-coordination.md#read-only-collaboration-evidence-and-usage).
 
 ## Native launch policy
 
@@ -217,7 +225,7 @@ Production staging selects a separate official Release requirement. Release pinn
 
 ## Protocol and safety
 
-Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 3.0 carries Project, Agent, Work and global Guardian. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
+Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 3.1 carries Project, Agent, Work and global Guardian. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
 
 Native shutdown admission errors use code `-32600` and the structured `serverShuttingDown` reason. The older exact-message fallback applies only when error data is absent. A classified refusal alone never authorizes replay: callers must establish exact request identity and no prior effects.
 

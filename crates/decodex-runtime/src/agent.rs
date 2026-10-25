@@ -1634,7 +1634,7 @@ impl AgentCoordinator {
 						source_event_id: serde_json::json!(["async_answer", id, key]).to_string(),
 						work_item_id: id.into(),
 						event_kind: "async_question_answer".into(),
-						payload: serde_json::json!({"text":reply.as_str(),"source":"user","asyncQuestionId":question_id}).to_string(),
+						payload: serde_json::json!({"text":reply.as_str(),"source":"user","asyncQuestionId":question_id,"threadId":source.thread_id}).to_string(),
 					})
 					.await?;
 

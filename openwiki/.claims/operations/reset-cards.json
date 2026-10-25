@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8880dfe58737966e613cd80f76a0c4ac587ca61ea204fbf6fcf98f2743d5cc5c",
+  "pageVersion": "sha256:eae1258655ce6ebcc090b4822c303e1c245f12a30bc59899628888b6487f937a",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -48,7 +48,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/client.rs",
-          "version": "repo-file-v1:sha256:b59c1c6846bdacdcbd0595622543d0f93051d20a50406f9bf7361c947076818c"
+          "version": "repo-file-v1:sha256:668b86d700145dfe2c573b070e64b8201a99775fc668f19992e3be2f6b9e1cb2"
         }
       ]
     },
@@ -102,11 +102,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:29b776bc52be42a57567df9feeb052de4afd0a28203528fdbfb4dea03a3a0562"
+          "version": "repo-file-v1:sha256:e9f06130bd27fd23ad039e0d831be2137d8420626a6be1d95ed42a353543d743"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
-          "version": "repo-file-v1:sha256:95ffba2d4256bdbda3af96cc51c317dcfe140ecaedb64fc4d43077809df1a171"
+          "version": "repo-file-v1:sha256:370fd1642b51719e6812807a40b9c97945681d6db0f3428afca7992d0c761d35"
         }
       ]
     },
@@ -124,13 +124,27 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
-          "version": "repo-file-v1:sha256:95ffba2d4256bdbda3af96cc51c317dcfe140ecaedb64fc4d43077809df1a171"
+          "version": "repo-file-v1:sha256:370fd1642b51719e6812807a40b9c97945681d6db0f3428afca7992d0c761d35"
+        }
+      ]
+    },
+    {
+      "id": "claim_98d5470c58d44bf6ae86eb65c7f07f4d",
+      "statement": "GPUI shows account feedback inline beside its owner with readable text and a severity icon; the native menu keeps compact warning popovers, and closing a popover does not clear unresolved source state.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift",
+          "version": "repo-file-v1:sha256:f3a26b5c8269dc0691fa1f227e5db787d985a79213ae594d0c449299fc5aa815"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/account_feedback.rs",
+          "version": "repo-file-v1:sha256:8ec5292f5757076d2ed025c5a977f487cac25e835e4e5fad29cfebc72c023dc3"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T21:11:31.338Z"
+    "at": "2026-10-25T20:12:58.607Z"
   }
 }

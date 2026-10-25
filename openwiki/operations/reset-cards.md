@@ -19,6 +19,8 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/ResetCardPendingAttemptStoreTests.swift
   - id: openwiki-source-2fab31262c7d705356b67f7b
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/ResetCardStoreRecoveryTests.swift
+  - id: openwiki-source-fecafeb22abda7dad3877372
+    resource: repo://apps/decodex-gpui/src/account_feedback.rs
   - id: openwiki-source-4b6e253ef76717138b4dd66e
     resource: repo://apps/decodex-gpui/src/shell_reset_cards.rs
   - id: openwiki-source-1291f5243fa6c9cb52149bda
@@ -35,10 +37,10 @@ sources:
     resource: repo://database/src/reset_cards.rs
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-09-30T18:35:20.136Z" }
+generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T21:11:31.338Z
+    at: 2026-10-25T20:12:58.607Z
 ---
 
 > Current scope: Reset Card redemption is available in Accounts and the explicit CLI, with durable account-scoped recovery. The embedded schema owns the redemption ledger and separate weekly activation records. The source/release comparison below is a version-bound implementation receipt, not a statement of the currently installed Codex version. Quota refill animation displays confirmed results; it does not redeem a card. See [Weekly activation](quota-activation.md).
@@ -56,7 +58,7 @@ Each card shows its expiry. Click the selected card once to arm `Confirm · 5s`,
 
 There is no separate Reset Cards expand button or manual refresh button in the compact account details. Inventory and operation-state reads remain service-backed. The CLI offers `reset-card list`, `use`, and `status`; `use` requires an explicit account revision, descriptor, and request key.
 
-Account warnings use a severity-colored exclamation icon. Click it to read the explanation; click outside to close it. The popover has no Dismiss button, and closing it does not clear an unresolved operation. Detailed feedback stays near its account. See [account presentation](accounts-and-routing.md#account-rows-and-details) and [menu focus and motion](../architecture/desktop-workspace.md#menu-focus-and-account-motion).
+In GPUI, account feedback appears inline beside its account, with readable text and a severity icon. The native menu uses a compact warning popover; click its icon to read it and click outside to close it. Closing presentation does not clear an unresolved operation. See [account presentation](accounts-and-routing.md#account-rows-and-details) and [menu focus and motion](../architecture/desktop-workspace.md#menu-focus-and-account-motion).
 
 ## Ownership and safety
 

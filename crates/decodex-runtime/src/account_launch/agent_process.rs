@@ -441,6 +441,7 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 				| "thread/revert"
 				| "thread/unsubscribe"
 				| "thread/read"
+				| "thread/memory/read"
 				| "thread/list"
 				| "thread/backgroundTerminals/list"
 				| "thread/backgroundTerminals/terminate"
@@ -1078,7 +1079,12 @@ mod tests {
 			.is_ok()
 		);
 
-		for method in ["experimentalFeature/enablement/set", "config/value/write", "memory/reset"] {
+		for method in [
+			"experimentalFeature/enablement/set",
+			"config/value/write",
+			"memory/reset",
+			"thread/memoryMode/set",
+		] {
 			assert!(
 				agent_process::validate_outbound(
 					&serde_json::json!({"id":43,"method":method,"params":{}}),

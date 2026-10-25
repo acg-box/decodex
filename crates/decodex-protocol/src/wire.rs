@@ -24,23 +24,24 @@ use crate::{
 	AgentExchangesResult, AgentGuardianDetailResult, AgentGuardianReviewsResult,
 	AgentHistoryResult, AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState,
 	AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult,
-	AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult,
-	AgentPendingAppUiCall, AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult,
-	AgentRequestResult, AgentResourcesResult, AgentSampleStatus, AgentSavedAppSettingsResult,
-	AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget, AgentSnapshotResult,
-	AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult, AgentTranscriptRequest,
-	AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
-	AgentVoiceStatus, CURRENT_VERSION, ConversationCreationReceiptRequest,
-	ConversationCreationReceiptResult, ConversationExecutionOverrides,
-	ConversationExecutionSettings, ConversationListCursor, ConversationListResult,
-	ConversationListSize, ConversationModelReviewResult, ConversationModelSettingsResult,
-	ConversationRecoveryAction, ConversationResult, ConversationSummary, ConversationTurnOutcome,
-	ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult, ConversationUnavailableReason,
-	ConversationWorkingDirectory, DictationRequest, DictationStatus, DoctorReport,
-	InitialModelCatalogRequest, InitialModelCatalogResult, InitialModelSource, McpLoginRequest,
-	McpLoginStatus, ModelCatalogPurpose, NativeAgentsResult, NativeStartupConfiguration,
-	PromptEditStatus, PromptForkResult, PromptInputSendIdentity, PromptInputSendStatus,
-	PromptInputUpload, PromptInputUploadStatus, ProtocolVersion, TaskRecapStatus,
+	AgentMemoryResult, AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult,
+	AgentOutputResult, AgentPendingAppUiCall, AgentPermissionState, AgentPluginSelectionState,
+	AgentReadStateResult, AgentRequestResult, AgentResourcesResult, AgentSampleStatus,
+	AgentSavedAppSettingsResult, AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget,
+	AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult,
+	AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest,
+	AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION,
+	ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
+	ConversationExecutionOverrides, ConversationExecutionSettings, ConversationListCursor,
+	ConversationListResult, ConversationListSize, ConversationModelReviewResult,
+	ConversationModelSettingsResult, ConversationRecoveryAction, ConversationResult,
+	ConversationSummary, ConversationTurnOutcome, ConversationTurnOutcomeRequest,
+	ConversationTurnOutcomeResult, ConversationUnavailableReason, ConversationWorkingDirectory,
+	DictationRequest, DictationStatus, DoctorReport, InitialModelCatalogRequest,
+	InitialModelCatalogResult, InitialModelSource, McpLoginRequest, McpLoginStatus,
+	ModelCatalogPurpose, NativeAgentsResult, NativeStartupConfiguration, PromptEditStatus,
+	PromptForkResult, PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload,
+	PromptInputUploadStatus, ProtocolVersion, TaskRecapStatus,
 	program_cycle::{ProgramCycleResult, ProgramListResult},
 };
 
@@ -2139,6 +2140,11 @@ impl AccountObservationSignal {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
+	/// Read actual retained native usage for an explicit Agent or Work.
+	GetUsageEvidence {
+		/// Product scope, independent of the selected conversation.
+		scope: crate::UsageEvidenceScope,
+	},
 	/// Read the current native process directory for canonical local media.
 	GetAgentPromptInputDirectory {
 		/// Exact task owner.
@@ -2211,6 +2217,18 @@ pub enum QueryPayload {
 	GetAgentContextSettings {
 		/// Owning task.
 		work_id: EntityId,
+	},
+
+	/// Read the native memory summary of an already-loaded conversation.
+	GetAgentMemory {
+		/// Exact local Agent.
+		work_id: EntityId,
+		/// Expected native conversation; a stale UI cannot select a replacement.
+		thread_id: WireText,
+		/// Complete source and summary digest from the first page.
+		digest: Option<WireText>,
+		/// Exact UTF-8 byte offset.
+		offset: usize,
 	},
 
 	/// Read connector exposure for an owned task.
@@ -3146,6 +3164,8 @@ impl ResultPayload {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
+	/// Actual retained counters, source identities and coverage limits.
+	UsageEvidence(crate::UsageEvidenceResult),
 	/// Durable data transfer status; not an inference receipt.
 	AgentPromptInputUpload(PromptInputUploadStatus),
 	/// Read-only canonical input acceptance.
@@ -3175,6 +3195,8 @@ pub enum QueryResultPayload {
 	AgentSearchSettings(AgentSearchSettingsResult),
 	/// Native context defaults and user preferences.
 	AgentContextSettings(AgentContextSettingsResult),
+	/// Read-only native memory observation.
+	AgentMemory(AgentMemoryResult),
 	/// Enabled native skills for the exact requested source.
 	AgentSkills(AgentSkillsResult),
 	/// Native connector exposure configuration.

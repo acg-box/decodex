@@ -30,6 +30,7 @@ use crate::ui_feedback::Feedback;
 #[path = "agent_live_settings.rs"] mod live_settings;
 #[path = "agent_markdown.rs"] mod markdown;
 #[path = "agent_mcp_forms.rs"] mod mcp_forms;
+#[path = "agent_memory.rs"] mod memory;
 #[path = "agent_misalignment.rs"] mod misalignment;
 #[path = "agent_model_settings.rs"] mod model_settings;
 #[path = "agent_models.rs"] mod models;
@@ -64,6 +65,7 @@ mod native_model_menu;
 #[path = "agent_text_reveal.rs"] mod text_reveal;
 #[path = "agent_transcript.rs"] mod transcript;
 #[path = "agent_usage_estimates.rs"] mod usage_estimates;
+#[path = "agent_usage_evidence.rs"] mod usage_evidence;
 #[path = "agent_voice.rs"] mod voice;
 #[path = "agent_voice_settings.rs"] mod voice_settings;
 #[path = "agent_weather.rs"] mod weather;
@@ -150,6 +152,8 @@ pub(crate) struct AgentSurface {
 	voice_settings: voice_settings::Panel,
 	search_settings: search_settings::Panel,
 	context_settings: context_settings::Panel,
+	memory_summary: memory::Panel,
+	usage_evidence: usage_evidence::Panel,
 	skills: Picker,
 	recap: recap::Panel,
 	sample: sample::Panel,
@@ -386,6 +390,8 @@ impl AgentSurface {
 			voice_settings: Default::default(),
 			search_settings: Default::default(),
 			context_settings: Default::default(),
+			memory_summary: Default::default(),
+			usage_evidence: Default::default(),
 			skills: Default::default(),
 			recap: Default::default(),
 			sample: Default::default(),
@@ -1363,6 +1369,8 @@ impl AgentSurface {
 		self.reset_voice_settings();
 		self.reset_search_settings();
 		self.reset_context_settings();
+		self.reset_memory_summary();
+		self.reset_usage_evidence();
 		self.reset_skill_picker();
 		self.reset_recap();
 		self.reset_sample();
@@ -1500,6 +1508,8 @@ impl AgentSurface {
 		self.reset_voice_settings();
 		self.reset_search_settings();
 		self.reset_context_settings();
+		self.reset_memory_summary();
+		self.reset_usage_evidence();
 		self.reset_skill_picker();
 		self.reset_recap();
 		self.reset_sample();
@@ -1670,6 +1680,8 @@ impl AgentSurface {
 				self.invalidate_voice_settings(&snapshot);
 				self.invalidate_search_settings(&snapshot);
 				self.invalidate_context_settings(&snapshot);
+				self.invalidate_memory_summary(&snapshot);
+				self.invalidate_usage_evidence(&snapshot);
 				self.invalidate_recap(&snapshot);
 				self.invalidate_sample(&snapshot);
 				self.invalidate_prompt_edit(&snapshot);
@@ -2408,6 +2420,8 @@ impl AgentSurface {
 					.child(self.voice_settings_panel(work, cx))
 					.child(self.search_settings_panel(work, cx))
 					.child(self.context_settings_panel(work, cx))
+					.child(self.memory_summary_panel(work, cx))
+					.child(self.agent_usage_panel(work, cx))
 					.child(self.usage_estimate_panel(work, cx))
 					.child(self.read_state_panel(cx))
 					.child(self.native_goal_panel(cx))

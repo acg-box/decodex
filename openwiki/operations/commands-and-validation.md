@@ -68,10 +68,14 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-25T16:38:56.487Z" }
+  - id: openwiki-source-5b64299c5e2f5b3bebd5f240
+    resource: repo://scripts/vnext/local_database_gate.py
+  - id: openwiki-source-bf4767337e400840122c176b
+    resource: repo://tests/scripts/test_gate_contract.py
+generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T16:38:56.487Z
+    at: 2026-10-25T20:12:58.607Z
 ---
 
 
@@ -169,6 +173,26 @@ These probes use loopback providers, synthetic account data and system-temporary
 A hook start event can precede native trust verification. The hook regression checks actual script effects after declaration or script changes, enablement changes and restart. The parallel tool regression requires both requests before either reply and verifies result order. The MCP status regression waits for discovery to finish, then checks opaque first-page metadata through tool pagination, status pagination and restart.
 
 Use the current [qualification record](../../automations/upstream/qualification.json) for the source-test helper recipe and exact registered identities. Its current source cohort uses a `dev-small` app-server helper. Helper-spawn cases also require the exact signed candidate CLI through `CARGO_BIN_EXE_codex`; `CARGO_BIN_EXE_codex-app-server` identifies the source helper. Record the helper and production CLI separately and preserve the original assertions and timeouts. Older private-hook launchers apply only to their recorded source snapshot; do not copy their private configuration into the production CLI.
+
+## Memory, collaboration history and actual usage
+
+`selected_read_views` in the [retained index](../../automations/upstream/retained-evidence.json) records the exact regression identities, source entrypoints, selected CLI and helper digests, generated schema digest and scope limits for these three views. Run preparation explicitly. Set `DECODEX_TEST_CODEX_BINARY` to the prepared CLI; keep its packaged helpers available.
+
+```sh
+DECODEX_CODEX_DEVELOPMENT_RUNTIME=<qualified-runtime-directory> cargo make prepare-codex
+DECODEX_TEST_CODEX_BINARY=<prepared-cli> cargo +stable nextest run --locked   -p decodex-runtime --lib --all-features --run-ignored only   -E 'test(installed_native_memory_view_selects_versions_without_model_calls_or_fallback) | test(installed_native_usage_restores_agent_baseline_after_cold_resume)'   --test-threads 1 --no-fail-fast
+cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui --all-features   -E 'test(memory_view_copies) | test(answered_question) | test(independent_repair_cycles) | test(usage_labels)'   --test-threads 1 --no-fail-fast
+cargo +stable nextest run --locked --workspace --all-targets --all-features   --test-threads 4 --no-fail-fast
+python3 -m unittest tests/scripts/test_vnext_architecture.py tests/scripts/test_account_login_architecture.py tests/scripts/test_gate_contract.py tests/scripts/test_vstyle_audit.py
+python3 scripts/vnext/local_database_gate.py
+cargo make fmt-rust-check
+```
+
+The qualification passed 2,998 workspace tests with 1,222 skipped, two exact-artifact native tests, four selected UI tests and 28 Python tests. The workspace run preceded one added memory copy/display test; the later four-test UI selection includes that test. Both selected native and UI cohorts had zero unmatched selectors. Strict Clippy passed for the five changed packages with the repository warning policy. Formatting passed. The database gate passed schema59 with 90 tables after its inventory was aligned with the existing Rust migration ledger; this change adds no migration.
+
+The native memory fixture checks version selection, disabled/missing/blank states and an unstarted thread with zero model requests. The usage fixture checks retained totals across a native process restart. These tests use temporary homes and a local Responses server. Upstream memory test bodies were read; upstream Rust tests were not executed in this qualification. The full `python3 scripts/vstyle_audit.py` run failed with 16,517 findings at implementation commit `1beae0c0415c28ef45d8afaa1bd8117832c62c25`. No exemption or all-inherited classification is recorded. Keep that result separate from the passed checks and the independent repository-wide style cleanup.
+
+These results establish source and fixture behavior. They do not establish installed-app interaction, real-provider billing, complete historical Work cost or elapsed time. A rebuilt runtime requires new artifact/schema observations and affected native regressions. See [Selected read-only views](../testing/upstream-acceptance-boundaries.md#selected-read-only-views).
 
 ## Project, Work and global Guardian validation
 

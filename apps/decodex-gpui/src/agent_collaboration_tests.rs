@@ -187,6 +187,7 @@ fn receipt(id: i64, kind: decodex_protocol::AgentExchangeKind) -> AgentExchangeD
 		assessment_note: None,
 		outcome: None,
 		created_at_micros: id,
+		collaboration: None,
 	}
 }
 
@@ -327,6 +328,7 @@ fn question_retirement_keeps_later_questions_and_rejects_rebound_sources(
 				options: vec![],
 			},
 			pending,
+			answer: None,
 		};
 		let mut old = question("old", false);
 		let later = question("later", true);
@@ -465,5 +467,88 @@ fn native_final_reports_keep_their_own_turn_and_do_not_invent_acceptance(
 				.iter()
 				.any(|case| case.id.starts_with("native-report:"))
 		);
+	});
+}
+
+#[gpui::test]
+fn answered_question_retains_reply_sources_without_claiming_resolution(
+	cx: &mut gpui::TestAppContext,
+) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.visual_workspace_fixture(cx);
+		s.visual_workbench_page("workbench", cx);
+		let mut graph = s.relation_graph();
+		graph.edges.clear();
+		let q = AgentExchangeQuestionDto {
+			work_id: "sage".into(),
+			thread_id: "ref-sage".into(),
+			turn_id: "question-turn".into(),
+			item_id: "question-item".into(),
+			question: decodex_protocol::AgentAsyncQuestionDto {
+				id: "question-id".into(),
+				title: "Which name?".into(),
+				options: vec![],
+				arrived_live: false,
+			},
+			pending: false,
+			answer: Some(decodex_protocol::AgentQuestionAnswerDto {
+				event_id: 71,
+				source_event_id: "exact-reply".into(),
+				text: "Use Maple".into(),
+				truncated: false,
+				delivered_turn_id: Some("reply-turn".into()),
+				turn_outcome: Some("completed".into()),
+			}),
+		};
+		let cases = exchanges(&graph, &s.factory_rows(), &[], &[q]);
+		let case = cases.iter().find(|c| c.id.starts_with("question:")).unwrap();
+		assert_eq!(case.state, "Answered");
+		assert!(case.steps.iter().any(|(label, text)| *label == "Answer" && text == "Use Maple"));
+		assert!(
+			case.steps
+				.iter()
+				.any(|(label, text)| *label == "Reply source" && text.contains("exact-reply"))
+		);
+		assert_eq!(case.source_turn.as_deref(), Some("question-turn"));
+		assert!(case.summary.contains("resolution is not inferred"));
+	});
+}
+
+#[gpui::test]
+fn independent_repair_cycles_never_borrow_the_current_assessment(cx: &mut gpui::TestAppContext) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.visual_workspace_fixture(cx);
+		s.visual_workbench_page("workbench", cx);
+		let mut graph = s.relation_graph();
+		graph.edges.clear();
+		let mut old = receipt(80, decodex_protocol::AgentExchangeKind::PeerInstruction);
+		old.collaboration = Some(decodex_protocol::AgentPeerExchangeDto {
+			work_id: "venue".into(),
+			request_id: "transport".into(),
+			instruction_id: "first".into(),
+			current: false,
+			state: None,
+			outcome: None,
+			note: None,
+		});
+		let mut latest = receipt(81, decodex_protocol::AgentExchangeKind::PeerResult);
+		latest.collaboration = Some(decodex_protocol::AgentPeerExchangeDto {
+			work_id: "venue".into(),
+			request_id: "transport".into(),
+			instruction_id: "repair".into(),
+			current: true,
+			state: Some("closed".into()),
+			outcome: Some("used".into()),
+			note: Some("Checked returned source".into()),
+		});
+		let cases = exchanges(&graph, &s.factory_rows(), &[old, latest], &[]);
+		let old = cases.iter().find(|c| c.id == "peer:transport:first").unwrap();
+		let latest = cases.iter().find(|c| c.id == "peer:transport:repair").unwrap();
+		assert_eq!(old.state, "Earlier");
+		assert_eq!(latest.state, "Used");
+		assert!(!old.steps.iter().any(|(label, _)| *label == "Assessment"));
+		assert!(latest.steps.iter().any(|(label, _)| *label == "Assessment"));
 	});
 }

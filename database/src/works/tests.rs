@@ -644,3 +644,71 @@ async fn native_tool_replacement_keeps_creation_and_retirement_separate_after_re
 	assert_eq!(store.agent_previous_threads("sage".into()).await.unwrap(), vec!["sage".to_owned()]);
 	assert_eq!(store.agent_tool_version("sage".into()).await.unwrap(), 4);
 }
+
+#[tokio::test]
+async fn collaboration_history_keeps_repair_cycles_and_exact_native_delivery_sources() {
+	let (home, store) = persistent_store();
+	agents(&store).await;
+	apply(&store, "sage", "venue", WorkCommand::Create { work: work("venue", "sage") }).await;
+	apply(
+		&store,
+		"sage",
+		"request",
+		WorkCommand::Request {
+			request: CollaborationRequest {
+				id: "transport".into(),
+				work_id: "venue".into(),
+				recipient_agent_id: "iris".into(),
+				instruction: instruction("i1"),
+				state: CollaborationState::Pending,
+				required: true,
+				outcome: None,
+				note: None,
+			},
+		},
+	)
+	.await;
+	let event = store.list_agent_wake_events("iris".into(), 100).await.unwrap()[0].id;
+	store.begin_agent_dispatch_with_events("iris".into(), vec![event]).await.unwrap();
+	store.reconcile_agent_dispatch("iris".into(), "receiving-turn".into()).await.unwrap();
+	apply(
+		&store,
+		"sage",
+		"repair",
+		WorkCommand::Repair {
+			request_id: "transport".into(),
+			expected_instruction: "i1".into(),
+			instruction: instruction("i2"),
+		},
+	)
+	.await;
+	apply(
+		&store,
+		"sage",
+		"cancel",
+		WorkCommand::CloseRequest {
+			request_id: "transport".into(),
+			instruction_id: "i2".into(),
+			outcome: "cancelled".into(),
+			note: "Scope changed".into(),
+		},
+	)
+	.await;
+	drop(store);
+	let store = SqliteStore::open_test(&home.path().join("work.db")).unwrap();
+	let records =
+		store.read_agent_collaboration(vec!["sage".into(), "iris".into()], None).await.unwrap();
+	assert_eq!(records.len(), 2);
+	let earlier = records.iter().find(|r| r.peer.as_ref().unwrap().instruction_id == "i1").unwrap();
+	assert!(!earlier.peer.as_ref().unwrap().current);
+	assert_eq!(earlier.event.delivered_turn_id.as_deref(), Some("receiving-turn"));
+	let payload: serde_json::Value = serde_json::from_str(&earlier.event.payload).unwrap();
+	assert!(payload.get("threadId").is_none(), "original request source remains immutable");
+	assert_eq!(earlier.peer.as_ref().unwrap().delivery_thread.as_deref(), Some("iris"));
+	let current = records.iter().find(|r| r.peer.as_ref().unwrap().current).unwrap();
+	assert_eq!(current.peer.as_ref().unwrap().outcome.as_deref(), Some("cancelled"));
+	assert_eq!(store.work_portfolio(None).await.unwrap().works[0].state, WorkState::Open);
+	let older =
+		store.read_agent_collaboration(vec!["iris".into()], Some(current.event.id)).await.unwrap();
+	assert_eq!(older[0].event.id, earlier.event.id);
+}

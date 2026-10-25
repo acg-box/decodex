@@ -109,6 +109,21 @@ async fn installed_native_usage_restores_agent_baseline_after_cold_resume() {
 		assert_eq!(usage["input_tokens"], 20, "restored baseline must exclude the first turn");
 		assert_eq!(usage["output_tokens"], 4);
 
+		let total = store
+			.read_usage_evidence(true, "agent".into())
+			.await
+			.unwrap()
+			.expect("retained Agent usage");
+		assert_eq!((total.turns, total.token_turns, total.duration_turns), (2, 2, 2));
+		assert_eq!(
+			(total.input_tokens, total.output_tokens),
+			(30, 6),
+			"sum whole-turn deltas once, never cumulative samples"
+		);
+		assert_eq!(total.unattributed_turns, 2);
+		assert!(total.sources.iter().any(|s| s.turn_id == first && s.event_id.is_some()));
+		assert!(total.sources.iter().any(|s| s.turn_id == second && s.event_id.is_some()));
+
 		let responses = store
 			.read_agent_response_usage(
 				"agent".into(),

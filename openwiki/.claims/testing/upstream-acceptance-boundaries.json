@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d5c96cce820a3769145cc0c8350fde49b623a237e66a0350b2d8e5e848342b54",
+  "pageVersion": "sha256:5b59ab920ba87952e0418834621fbe6fba7d1645cae0ae5cb5c4bb3f44d74336",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -80,7 +80,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:2e54c49aee3db22c4db73882576924c318de5d4abf35ff8261c42ba652797b59"
+          "version": "repo-file-v1:sha256:de0279d88b84185061c482b576d7a130cd9da54f048f9e5d03f31b15187508ef"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/result_messages.rs",
@@ -176,7 +176,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs",
-          "version": "repo-file-v1:sha256:fad943d1230eb6d05676914a6d1a436fee610c2f72277f157c415dbca1c217ca"
+          "version": "repo-file-v1:sha256:6ac785e80205742c5f2e5e0674cad080725e1a4738d80435eecdfd6ae13325f6"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline/metrics.rs",
@@ -254,7 +254,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         }
       ]
     },
@@ -272,7 +272,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:2e54c49aee3db22c4db73882576924c318de5d4abf35ff8261c42ba652797b59"
+          "version": "repo-file-v1:sha256:de0279d88b84185061c482b576d7a130cd9da54f048f9e5d03f31b15187508ef"
         }
       ]
     },
@@ -282,7 +282,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         }
       ]
     },
@@ -344,7 +344,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         }
       ]
     },
@@ -354,7 +354,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs",
@@ -362,7 +362,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs",
-          "version": "repo-file-v1:sha256:6168a37c2b9b7d7e0a5dac6f0243f11321e14ed8dbfc25d6c54ff39cd2f832bc"
+          "version": "repo-file-v1:sha256:1a019e049df3fbbee8bc346cdeeab4c3e9a329f5e9cc6d820dc5258e1251cfaf"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
@@ -398,7 +398,7 @@
         },
         {
           "resource": "repo://database/src/works/tests.rs",
-          "version": "repo-file-v1:sha256:596104af00a952287bba5fe7d472a5882eb392930091afffe370fb161f61d0a0"
+          "version": "repo-file-v1:sha256:35a1a80f378efac86d2e3c3f44f01db1305dd7e4b607c720bf4a7b2e50e71865"
         }
       ]
     },
@@ -430,7 +430,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         }
       ]
     },
@@ -440,7 +440,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json",
@@ -454,7 +454,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         }
       ]
     },
@@ -464,7 +464,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         }
       ]
     },
@@ -474,7 +474,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json",
@@ -488,7 +488,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         }
       ]
     },
@@ -498,7 +498,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs",
@@ -512,7 +512,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         }
       ]
     },
@@ -530,7 +530,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         }
       ]
     },
@@ -540,7 +540,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         }
       ]
     },
@@ -554,7 +554,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json",
@@ -572,17 +572,39 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         },
         {
           "resource": "repo://scripts/macos/prepare_voice_acceptance.py",
           "version": "repo-file-v1:sha256:b321425102f36f44e1a8fd3baeeca9a16201665468ec174a638b7d90cee43f83"
         }
       ]
+    },
+    {
+      "id": "claim_96374eda48054c87804828e0de44eeee",
+      "statement": "The three selected read-only views have separate source/schema, exact-artifact memory and usage, local collaboration/usage and four-test UI proof in selected_read_views. Qualification passed 2998 workspace, two native, four UI and 28 Python tests plus strict lint, format and schema59 gate; full vstyle failed with 16517 findings. No installed interaction, complete Work cost, release, runtime baseline, review cursor or schedule change is claimed.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs",
+          "version": "repo-file-v1:sha256:0b9c399018d483c8368743bfa474ee94dc50bf2e0684fb327433eb46165bf68f"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs",
+          "version": "repo-file-v1:sha256:6ac785e80205742c5f2e5e0674cad080725e1a4738d80435eecdfd6ae13325f6"
+        },
+        {
+          "resource": "repo://database/src/usage_evidence_tests.rs",
+          "version": "repo-file-v1:sha256:c7789c149e0f8cd36576b2faad4e75a5369567e9b8ea89ad39803c6973a1a95c"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T16:38:56.487Z"
+    "at": "2026-10-25T20:12:58.607Z"
   }
 }

@@ -1,5 +1,6 @@
 //! Bounded API-only client transport and profile projection.
 
+#[path = "client_inspection.rs"] mod inspection;
 #[path = "client_request.rs"] mod request_pages;
 
 use std::{

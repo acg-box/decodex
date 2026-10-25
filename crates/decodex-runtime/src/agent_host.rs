@@ -1390,6 +1390,16 @@ impl AgentHost {
 		Ok(work.into())
 	}
 
+	pub(crate) async fn memory_summary(
+		&self,
+		work: &str,
+		thread: &str,
+		digest: Option<&str>,
+		offset: usize,
+	) -> decodex_protocol::AgentMemoryResult {
+		crate::agent_memory::read(|| self.timeline_source(work, thread), digest, offset).await
+	}
+
 	pub(crate) async fn context_settings(&self, work: &str) -> AgentContextSettingsResult {
 		agent_context_settings::read(|| async {
 			let owner = self.store.get_agent_work_item(work.into()).await.ok()?;

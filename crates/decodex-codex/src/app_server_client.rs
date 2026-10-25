@@ -19,6 +19,7 @@ mod initialize;
 mod integrations;
 mod live_reviews;
 mod live_settings;
+mod memory;
 mod model_defaults;
 mod model_recovery;
 mod output_rate;
@@ -51,6 +52,8 @@ mod thread_plugins;
 mod timeline;
 mod transcript;
 mod usage;
+
+pub use memory::MAX_MEMORY_SUMMARY_BYTES;
 
 pub use self::{
 	account_nudge::{AccountNudgeCreditType, AccountNudgeOutcome},

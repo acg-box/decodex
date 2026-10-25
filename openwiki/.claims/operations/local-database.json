@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:34d9e4593bc1af89089d2a5c831052a5b1128d9663772ec566a0c9a604d96369",
+  "pageVersion": "sha256:ef73ad50bef22a6eed9581712adb0ccd512ba5b3ed4a69d8370786111d04d255",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/application.rs",
-          "version": "repo-file-v1:sha256:c99a4ab3ab0b203dfa098a3165ca62737535bdc67f90c2666fd3d058192c3294"
+          "version": "repo-file-v1:sha256:abf7cfbdaeb6494c27bff85f7f2386d85c754a47de8f6b6bbdb09981bfd8c492"
         },
         {
           "resource": "repo://database/src/migrations.rs",
@@ -45,8 +45,8 @@
       "statement": "Current local clients and service must agree on the exact CURRENT_VERSION protocol; packaged native compatibility is checked separately by the bundle contract verifier.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L297-L315",
-          "version": "repo-lines-v1:sha256:719725191d81e573df67520f2fcad60881a3be768a435464e9ccdac0abaff6ff:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZDA5NzgzZTA2YzlkMGI3MDhhMTFiNTU3N2M2MWNlMjBhZGRjNjZjYmVmMGJkZjc5ODQ2ZWZiN2M5OWM3YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjZkOWNlOGNkNmRlNjQ0YTM4Y2QwYjA0NTRmYjkzYjBjMWEzNTFlNzAyYjc1ODI0NmE2ZTZkZWI3N2Y1MzkifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L304-L322",
+          "version": "repo-lines-v1:sha256:4d53fe20e951753eeb9be022aeb913bda192636a5013335db0277475f165542c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZDA5NzgzZTA2YzlkMGI3MDhhMTFiNTU3N2M2MWNlMjBhZGRjNjZjYmVmMGJkZjc5ODQ2ZWZiN2M5OWM3YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjZkOWNlOGNkNmRlNjQ0YTM4Y2QwYjA0NTRmYjkzYjBjMWEzNTFlNzAyYjc1ODI0NmE2ZTZkZWI3N2Y1MzkifQ"
         },
         {
           "resource": "repo://scripts/macos/verify_decodex_bundle_contracts.py",
@@ -112,11 +112,11 @@
     },
     {
       "id": "claim_2aa8f2a9a2d14842992cb9b946e3277a",
-      "statement": "Native tool migration journals exact source/replacement identities and switches only after positive retirement, while unknown external effects remain parked and old history remains read-only.",
+      "statement": "Ordinary input retains its native context; only an existing tool-migration journal can recover exact source/replacement identities and switch after positive retirement. Unknown effects remain parked and old history remains read-only.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tool_migration.rs",
-          "version": "repo-file-v1:sha256:907ed4275de6ac66f931df9b580be60b4158fb2cd2a8dd1faa3c32367aeb4bf6"
+          "version": "repo-file-v1:sha256:d4ed48112dc09f21a353663156e68b2636d1616c2dadd18df01ed05b907fffe2"
         },
         {
           "resource": "repo://database/src/agent_tool_migration.rs",
@@ -162,7 +162,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         }
       ]
     },
@@ -186,13 +186,23 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
+        }
+      ]
+    },
+    {
+      "id": "claim_968638910f4c42cbbee88d97feb202cd",
+      "statement": "Current local protocol 3.1 includes the selected read-only view DTOs and rejects any different major or minor version.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-protocol/src/lib.rs",
+          "version": "repo-file-v1:sha256:0fececdd43aca36dbb34b02cc91830ed7d2245f8eb74b34f61cebdc1ff9e48df"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T16:38:56.487Z"
+    "at": "2026-10-25T20:12:58.607Z"
   }
 }
