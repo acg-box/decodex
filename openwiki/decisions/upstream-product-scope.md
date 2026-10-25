@@ -3,9 +3,6 @@ type: Reference
 title: "Retained upstream product capabilities"
 description: "Current native integration, account and conversation scope, with excluded duplicate surfaces."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
@@ -74,6 +71,9 @@ sources:
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
 generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T08:56:12.608Z
 ---
 
 # Product scope and native ownership

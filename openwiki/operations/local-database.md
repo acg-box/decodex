@@ -3,9 +3,6 @@ type: Reference
 title: "Local database operations"
 description: "Service-owned SQLite upgrades, account routing and durable credential and branch records."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
@@ -48,6 +45,9 @@ sources:
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
 generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T08:56:12.608Z
 ---
 
 # Local database operations

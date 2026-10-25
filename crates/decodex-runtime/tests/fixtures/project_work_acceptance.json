@@ -42,5 +42,28 @@
     "Under Automatic Review, perform another harmless explicit escalation, inspect the native review, and verify the output file. Repeat after restart with Review Details enabled. Full Access is a separate native permission setting.",
     "Check both native Project identities and membership through native API readback. Record official desktop Project presentation separately; API readback is not visual acceptance.",
     "Open Work, Collaboration, Material and Result details in the source-built UI. Record accessibility inspection separately from screenshot or installed-app acceptance."
-  ]
+  ],
+  "controls_followup": {
+    "pause_and_resume": [
+      "Create one disposable control Work without changing the four completed Works or their Results.",
+      "Click Pause Work in the actual UI and refresh its saved details. Verify Blocked, user_hold=true and Resume Work.",
+      "Restart the isolated service and UI. Verify the same hold and reason before sending more input.",
+      "Ask the owner to attempt one prepared contribution. Verify rejection and absence of the proposed contribution.",
+      "Record a valid current Result. Ask the owner to attempt completion while paused; verify the state guard rejects it. An empty Result list tests evidence validation instead.",
+      "Click Resume Work, verify Open and user_hold=false, then let the owner assess the same Result and complete only the control Work."
+    ],
+    "full_access": [
+      "Choose a caller-owned disposable marker outside the Project and the ordinary writable temporary roots. Do not use personal files.",
+      "Under :workspace, ask the Agent to write the marker once using use_default permissions. Forbid escalation and alternate paths. Verify denial and no file.",
+      "Read the actual native profile catalog and select :danger-full-access with its current review token. Verify target_observed.",
+      "Repeat the same write, then restart and repeat without a permission override. Verify the file bytes and successful native command exits.",
+      "Restore :workspace through a fresh native review. Repeat the write and verify denial and unchanged marker bytes.",
+      "Keep global Guardian preference separate. Cold-source controls can remain unavailable until the native context loads; do not resume work implicitly to make a read succeed."
+    ],
+    "historical_routing": [
+      "For an old encrypted assignment, verify native parent metadata, the spawn activity and exact ciphertext equality between the parent call and child input.",
+      "Read the child's own returned Result, excluding inherited parent history. Record any claimed Work or contribution as corroboration.",
+      "Keep native ownership, encrypted delivery, declared Work association and exact prepared-instruction proof separate. Do not write a strong Work binding from chronology, a similar name or a model claim."
+    ]
+  }
 }

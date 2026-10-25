@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d3d35dc977f8ac65fe3d4ebee87f6266527a410cffeab18204a023186e6190b1",
+  "pageVersion": "sha256:d6b6904cd0a42d4d03db95dd6976c4b7a24d082140de86fafaa7ff758d98b842",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -122,7 +122,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
         }
       ]
     },
@@ -190,7 +190,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
         }
       ]
     },
@@ -210,7 +210,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/project_guardian.py",
@@ -224,7 +224,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
         }
       ]
     },
@@ -238,31 +238,49 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
         }
       ]
     },
     {
       "id": "claim_8318903bd76348d2b558cab7c869d516",
-      "statement": "The source-built lifecycle acceptance retains a reusable two-Project/four-Work scenario and separate actual bundle/native identities; its final 2924-test workspace run, nine native tests, 13-package lint and schema59 checks passed, with explicit live-UI and encrypted-proof limits.",
+      "statement": "The source-built lifecycle acceptance retains a reusable two-Project/four-Work scenario and separate actual bundle/native identities; its final 2924-test workspace run, nine native tests, 13-package lint and schema59 checks remain separate from the later control follow-up, which verifies live Pause/Resume and Full Access with explicit encrypted-proof and official-UI limits.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json",
-          "version": "repo-file-v1:sha256:4a47beb3af95e0d64e3882d9cc10a5c6999eb38328c59516d3029a8885d9b615"
+          "version": "repo-file-v1:sha256:3cbef7954bd56baca4a913af067c020dbc894fe81fe1804745d7a35e5e58af5a"
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
           "version": "repo-file-v1:sha256:4c8dab6abd1a26b236184a5c514f9ec27668dbc396b1f8271cf189ea8efb9baf"
         }
       ]
+    },
+    {
+      "id": "claim_a01d754029e34e0598df058a18e07201",
+      "statement": "The selected control cohort requires DECODEX_TEST_CODEX_BINARY and DECODEX_NATIVE_BINARY to point to the same verified prepared CLI; three native permission tests and one database hold test passed after correcting a missing environment variable and an outdated global-reviewer fixture.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs",
+          "version": "repo-file-v1:sha256:19466b3021ea6d604c15df46e4744220e371f79f9b375506a701793b23ab7a2f"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs",
+          "version": "repo-file-v1:sha256:eca6eea4f9f1a8cc7fddfab49ce2c45fd98247bf6423d048b02d5fea51c1fa23"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T06:52:57.034Z"
+    "at": "2026-10-25T08:56:12.608Z"
   }
 }

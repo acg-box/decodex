@@ -3,9 +3,6 @@ type: Reference
 title: "Upstream integration acceptance boundaries"
 description: "Source, native fixture, signed desktop, installation and physical voice evidence boundaries."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-95772fa38252ded838ec3a2f
     resource: repo://.config/nextest.toml
@@ -59,6 +56,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
   - id: openwiki-source-a7b97dd347fbe2f630692d12
     resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
+  - id: openwiki-source-24139c353e393a9759b0267a
+    resource: repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs
   - id: openwiki-source-1c25f1eb2ea8f33c9b46e78e
     resource: repo://crates/decodex-runtime/src/agent/tests/work_contract.rs
   - id: openwiki-source-64d7588c1af50398568a792e
@@ -97,7 +96,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
+generated: { by: "codex", at: "2026-10-25T08:56:12.608Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T08:56:12.608Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -294,7 +296,7 @@ The `live_acceptance` entry under `retained_project_agent_work` records the late
 | Two Projects and four Works | Two independent Agents each owned two Works. Discussion preceded assignment. All four completed under their current requirements. |
 | Change and peer repair | Market attendance changed from 60 to 80. The same request received a second instruction. Mandatory cost was 1160, optional transport 160, combined cost 1320 against a 1200 budget. The trip stayed at 240. |
 | Results and restart | Fourteen Results were retained; all twelve file-backed Result digests matched. Agent/native identities, current Work states, the recovered binding, Results and Guardian details survived service restart. |
-| Native helper recovery | The new prepared native task name recovered its existing child and parent activity without another spawn. Two original unnamed encrypted helpers remain unconfirmed as Work bindings. |
+| Native helper recovery | The new prepared native task name recovered its existing child and parent activity without another spawn. Later inspection recovered the native owners and exact encrypted delivery of the two old helpers; their formal Work bindings remain unconfirmed. |
 | Global Guardian | A pending Ask Me approval survived a switch to Automatic Review and required its original human response. Automatic Review then executed authorized harmless probes. Five private output records were retained, including a probe on the clean committed source bundle after restart. |
 | Source-built interface | Work, requirements, same-request repair, Material and Result file reveals, global settings and selected private identities were opened. This was a source bundle, not the installed application. |
 | Final repository checks | 2924 workspace tests passed, 1159 skipped, no LEAK. Nine exact-artifact native tests passed with 998 skipped and zero unmatched selectors. Strict lint passed for 13 packages; format and schema59 integrity checks passed. |
@@ -303,7 +305,18 @@ Counts overlap. An earlier complete run passed its assertions with two LEAK mark
 
 The [reusable scenario](../../crates/decodex-runtime/tests/fixtures/project_work_acceptance.json) retains input tables, discussion and assignment prompts, the change request and expected arithmetic. Detailed receipts stay in the native automation directory. Rebuilds need their own component identity and qualification; they are not the original artifact.
 
-This was one controlled real-provider scenario, not general model-quality acceptance. Native Project API identity and membership passed separately; official Codex Project presentation was not observed because the available UI tool denied access. User hold persistence and explicit release passed through the user API and repository UI tests, while the live Pause/Resume UI click itself is not certified. No live Full Access transition, installation, release, controlled lock-screen test or audible acceptance was performed.
+This was one controlled real-provider scenario, not general model-quality acceptance. Native Project API identity and membership passed separately. Official Codex Project presentation remains unobserved: the available UI tool denies access, and the user saw the isolated official app at onboarding. No installation, release, controlled lock-screen test or audible acceptance was performed.
+
+The later `controls_followup` record adds the following live checks without changing the four original Works or their Result records:
+
+| Control | Observed result |
+| --- | --- |
+| Pause and restart | The actual Pause Work button set a user hold. It remained visible after service and UI restart. A real Agent could not prepare a helper or complete the Work with valid Result evidence. |
+| Resume | The actual Resume Work button released the hold. The owner then completed only the disposable control Work. |
+| Full Access | The same write outside the Project failed under Workspace permissions, succeeded under Full Access, succeeded after restart without an override, and failed after Workspace permissions were restored. Global Guardian preference remained separate. |
+| Old encrypted helpers | Native parentage and identical encrypted send/receive payloads identify the venue and lodging children. Their own returned messages name the expected contributions. The exact prepared plaintext remains unproved, so no strong Work binding was written. |
+
+The follow-up passed three selected native permission tests, one selected database hold test, strict lint for 13 packages and formatting. It did not rerun the earlier full workspace suite. An initial missing binary environment variable and an outdated per-thread reviewer fixture failed separately. The corrected fixture sets global Automatic Review and preserves its original permission, directory and request-count assertions. Cold profile controls can remain unavailable until the native context loads; this does not authorize an implicit resume. See the exact selectors, artifact references and limits in the [retained index](../../automations/upstream/retained-evidence.json).
 
 ### Qualified native and presentation limits
 

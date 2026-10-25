@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:03c752b83b02f4162eec7f32afa1d787a309f7b333dffc5295d46b02131af343",
+  "pageVersion": "sha256:bd8403eb747f4b53d9493c1706204bfd3b67804d5e22e8f20a4cb59e2e44ff75",
   "claims": [
     {
       "id": "claim_070657bf065541118dc7ae41cdeffc2c",
@@ -42,7 +42,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
         }
       ]
     },
@@ -62,7 +62,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
         }
       ]
     },
@@ -72,13 +72,27 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+        }
+      ]
+    },
+    {
+      "id": "claim_b445d0678d0d4a108f9e1c0efe6623bf",
+      "statement": "The control follow-up retained its missing-binary setup failure and stale per-thread reviewer fixture failure separately. It explicitly sets global Automatic Review, preserves native permission and request-count assertions, and passes three native permission tests plus one database hold test; real UI and provider probes remain separate from the unrepeated full workspace suite.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs",
+          "version": "repo-file-v1:sha256:eca6eea4f9f1a8cc7fddfab49ce2c45fd98247bf6423d048b02d5fea51c1fa23"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T06:52:57.034Z"
+    "at": "2026-10-25T08:56:12.608Z"
   }
 }

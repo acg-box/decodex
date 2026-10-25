@@ -2783,12 +2783,12 @@
       ],
       "limits": [
         "One controlled real-provider scenario with one model/effort; no general model-quality guarantee.",
-        "Two original unnamed encrypted helpers remain unconfirmed. New task-name recovery proves routing, not encrypted text.",
+        "Native ownership and encrypted delivery of the two original helpers were recovered in controls_followup. Their prepared plaintext and formal Work bindings remain unproved.",
         "Official Codex Project UI was not observed because the UI tool denied access. Native Project API identity and membership are separate proof.",
-        "User hold persistence and release passed through the user API and repository UI tests; the real-model Pause/Resume UI click itself is not certified.",
+        "The original run covered user holds through API calls. Live Pause/Resume buttons and enforcement were later qualified in controls_followup.",
         "Private observations have no exact action Review association. Recovery reads at most 32 same-directory private candidates and five turns each; omissions remain possible.",
         "The earlier two LEAK passes were not reproduced in isolated controls; their cause is unknown.",
-        "No live Full Access transition, installation, release, lock-screen reproduction or audible acceptance."
+        "Full Access transitions were later qualified in controls_followup. No installation, release, controlled lock-screen reproduction or audible acceptance."
       ],
       "counts_overlap": true,
       "source_review_cursor_changed": false,
@@ -2827,6 +2827,145 @@
         "codex-rs/core/src/guardian/review_session_setup.rs": "f90e34fe07f4cee823d11d82c602586488cea688f4dceea21e2579e45959bfe0",
         "codex-rs/core/src/session/mod.rs": "82e8b9ee3ba0144d2ac81eb62b4d7e8d2e5ee036e7751f24376602843e4cf092"
       }
+    },
+    "controls_followup": {
+      "behavior_source_revision": "8e2bb2d048de36ddb754d2e8cacb20343c9adcd0",
+      "test_and_fixture_revision": "b0ed1cbb7a3a21a98c04fa5a3d81c371322870a4",
+      "delivery_reference": "https://github.com/acg-box/decodex/commit/b0ed1cbb7a3a21a98c04fa5a3d81c371322870a4",
+      "product_source_changes": false,
+      "fixture": "crates/decodex-runtime/tests/fixtures/project_work_acceptance.json#controls_followup",
+      "artifact_reference": "retained_project_agent_work.live_acceptance.artifact",
+      "source_bundle_reference": "retained_project_agent_work.live_acceptance.source_bundle",
+      "source_symbols": {
+        "apps/decodex-gpui/src/agent_portfolio.rs": [
+          "AgentSurface::work_contract_detail"
+        ],
+        "crates/decodex-runtime/src/agent_permissions.rs": [
+          "read",
+          "write",
+          "persist_current"
+        ],
+        "crates/decodex-runtime/src/agent/global_guardian.rs": [
+          "AgentCoordinator::sync_global_guardian"
+        ],
+        "database/src/works/commands.rs": [
+          "set_state",
+          "prepare_subagent",
+          "complete"
+        ]
+      },
+      "source_sha256": {
+        "crates/decodex-runtime/src/agent/tests/native_permissions.rs": "eca6eea4f9f1a8cc7fddfab49ce2c45fd98247bf6423d048b02d5fea51c1fa23",
+        "crates/decodex-runtime/tests/fixtures/project_work_acceptance.json": "3cbef7954bd56baca4a913af067c020dbc894fe81fe1804745d7a35e5e58af5a",
+        "crates/decodex-runtime/src/agent_permissions.rs": "98de154f3177e2983bddbb1348f33a119993311f314862b4edca7ef4b77470c7",
+        "crates/decodex-runtime/src/agent/global_guardian.rs": "131f5d872210abf936e8e602328d7cf1fa8252941ba1832176c2bb32ea1d4839",
+        "database/src/works/commands.rs": "3bc77003902aa98bcfd2aafe6b31a3d42be0ee4115224938778c66753a1ea7af",
+        "apps/decodex-gpui/src/agent_portfolio.rs": "ac882b62c5f858ed92b4749c4ff4945dba9e7da76d74fbd375122e2806d54d86"
+      },
+      "contracts": [
+        "User Pause blocks new Work contributions and completion. Already-running native actions are outside this control.",
+        "User Resume releases the hold. Valid current evidence and owner assessment remain necessary.",
+        "Native Full Access changes execution permissions independently of the global Guardian reviewer.",
+        "Native ownership and encrypted delivery are not proof that the prepared plaintext instruction was received."
+      ],
+      "live_scenario": {
+        "model": "gpt-6-astra",
+        "effort": "medium",
+        "ultra": false,
+        "pause_ui": "The actual Pause Work button set Blocked and user_hold=true. The UI and store retained the hold after restart.",
+        "held_native_attempts": "A real Agent failed to prepare a helper and failed to complete the Work even with valid current Result evidence.",
+        "resume_ui": "The actual Resume Work button set Open and user_hold=false; the real Agent then completed the disposable control Work.",
+        "isolation": "The four prior Works and their Result records were unchanged. No proposed helper was created.",
+        "full_access_sequence": [
+          "Workspace write outside the Project was denied with exit 1.",
+          "Reviewed Full Access selection reached target_observed; the same write succeeded with exit 0.",
+          "After service restart, the write succeeded with exit 0 without another permission override.",
+          "Reviewed restoration to Workspace reached target_observed; the same write was denied with exit 1 and retained file bytes were unchanged."
+        ],
+        "guardian": "Global Automatic Review stayed selected. The five prior private review records were unchanged during the permission probes."
+      },
+      "old_assignments": [
+        {
+          "contribution": "market_venue_check_r1",
+          "owner": "sage",
+          "work": "market_venue",
+          "native_task": "venue_check",
+          "native_parentage": "verified",
+          "parent_call_to_child_ciphertext": "exact match",
+          "returned_result": "The child identified this contribution and returned the 880-credit venue check.",
+          "prepared_plaintext": "unproved",
+          "product_binding": "left unknown"
+        },
+        {
+          "contribution": "lodging_check_r1",
+          "owner": "iris",
+          "work": "trip_lodging",
+          "native_task": "lodging_check",
+          "native_parentage": "verified",
+          "parent_call_to_child_ciphertext": "exact match",
+          "returned_result": "The child identified this contribution and returned the 240-credit trip check.",
+          "prepared_plaintext": "unproved",
+          "product_binding": "left unknown"
+        }
+      ],
+      "test_fixture_repair": "The old native permission test selected a per-thread automatic reviewer but kept the global Ask Me default. Set and assert global Automatic Review; retain all native profile, policy, cwd and request-count assertions.",
+      "tests_read": [
+        "account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart",
+        "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
+        "agent::tests::native_permissions::native_agent_resume_preserves_selected_profile_policy_and_cwd",
+        "works::tests::user_holds_and_scoped_materials_do_not_grant_private_history"
+      ],
+      "executed": {
+        "native_permissions": {
+          "selectors": [
+            "account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart",
+            "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
+            "agent::tests::native_permissions::native_agent_resume_preserves_selected_profile_policy_and_cwd"
+          ],
+          "passed": 3,
+          "skipped": 1004,
+          "unmatched": 0
+        },
+        "work_hold": {
+          "package": "decodex-database",
+          "selector": "works::tests::user_holds_and_scoped_materials_do_not_grant_private_history",
+          "passed": 1,
+          "skipped": 189,
+          "unmatched": 0
+        },
+        "strict_lint": {
+          "packages_passed": 13
+        },
+        "format": "passed",
+        "initial_attempts": "One test lacked its documented DECODEX_NATIVE_BINARY environment variable. With that supplied, the old fixture failed its cold reviewer assertion. Both failures are retained separately from the corrected three-test pass.",
+        "full_workspace_suite": "Not rerun for this test-only follow-up; the prior 2924-test pass remains a separate qualification."
+      },
+      "commands": [
+        "cargo +stable make prepare-codex",
+        "Set DECODEX_TEST_CODEX_BINARY and DECODEX_NATIVE_BINARY to the same verified prepared CLI.",
+        "cargo +stable nextest run --locked -p decodex-runtime --run-ignored only --test-threads 1 -E \"test(account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart) or test(account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart) or test(agent::tests::native_permissions::native_agent_resume_preserves_selected_profile_policy_and_cwd)\"",
+        "cargo +stable nextest run --locked -p decodex-database -E \"test(works::tests::user_holds_and_scoped_materials_do_not_grant_private_history)\"",
+        "python3 scripts/lint_rust_workspace.py",
+        "cargo +nightly fmt --all -- --check"
+      ],
+      "limits": [
+        "A controlled real-provider sample proves these observed transitions, not general model quality.",
+        "Cold native profile controls remain unavailable until the context loads. No implicit resume was added because native resume can continue queued work.",
+        "Old helper parentage and encrypted delivery are recovered; exact prepared-instruction proof and formal Work bindings remain unknown.",
+        "Official Project presentation is unverified. The user observed the isolated official app at onboarding; its Project list was not yet visible.",
+        "No installation, release, controlled lock-screen test or physical audio acceptance."
+      ],
+      "raw_receipt_sha256": {
+        "controls-proof.json": "e44dd453dba8724200e8b61820f285c37cc7f66fe6990b8bb82cf4121c658510",
+        "old-assignment-forensics.json": "42f46688043fef1aaf5a131e168d15fbda75e6b70815c21d33c9cfca2338a458",
+        "permission-command-calls.json": "cf5ace9771459c104df451c78c2a2020a0cbfa89d6159d787ed349521dc64acd",
+        "native-permission-regressions-aligned.log": "6c76c4ee60eaa3f65f1b1dd5ce5013dc68e7950e1f4d9b7967044c1c9454043c",
+        "work-hold-regression.log": "98fd9ccf6cb93b36904e4c8e43a33f9687505f4dd5f218d6ec13b74cd2d71c12",
+        "strict-lint.log": "f427cf58df37c8399e90a390551781225d9d0205e10465ee69cc6d7b592ad03d"
+      },
+      "source_review_cursor_changed": false,
+      "installation": false,
+      "release": false
     }
   }
 }

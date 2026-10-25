@@ -3,9 +3,6 @@ type: Reference
 title: "Runtime architecture"
 description: "Service ownership, fixed Codex components, shared acquisition and app updates."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
@@ -102,6 +99,9 @@ sources:
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
 generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T08:56:12.608Z
 ---
 
 # Runtime Architecture

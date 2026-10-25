@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f41fcaac10b5fbf6f3bd47c163d5bd45a74f97152621a686bf3beadfaac151fb",
+  "pageVersion": "sha256:ebe6cdb1fa1a921dec62415f600601666b0cc20975b8b522593779d19545fd61",
   "claims": [
     {
       "id": "claim_820ae47a5a5d49aab10b5f306ac24685",
@@ -134,7 +134,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
         }
       ]
     },
@@ -180,7 +180,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
         }
       ]
     },
@@ -200,15 +200,15 @@
     },
     {
       "id": "claim_056a2bd08ba947adaa1293e623bd5448",
-      "statement": "The later isolated real-provider acceptance used two Projects and four completed Works with gpt-6-astra at Medium; nine native tests, 2924 workspace tests and strict lint for 13 packages passed, while official Codex Project UI, two old unnamed encrypted helpers and the live Pause/Resume UI click retain explicit limits.",
+      "statement": "The original isolated real-provider acceptance used two Projects and four completed Works with gpt-6-astra at Medium; nine native tests, 2924 workspace tests and strict lint for 13 packages passed. The control follow-up separately qualifies live Pause/Resume and Full Access, while official Project presentation and old prepared-plaintext proof remain unverified.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json",
-          "version": "repo-file-v1:sha256:4a47beb3af95e0d64e3882d9cc10a5c6999eb38328c59516d3029a8885d9b615"
+          "version": "repo-file-v1:sha256:3cbef7954bd56baca4a913af067c020dbc894fe81fe1804745d7a35e5e58af5a"
         }
       ]
     },
@@ -225,10 +225,44 @@
           "version": "repo-file-v1:sha256:089792ed78bb1fb6d0d734b49bf2edc57bcfa96f233eb217d276f164872aeebb"
         }
       ]
+    },
+    {
+      "id": "claim_2b25537012f04371b9d65ce4f94ee3da",
+      "statement": "The control follow-up verified real UI pause and resume, persistence of the hold, native rejection of preparation and valid-evidence completion while paused, and completion after release without changing the original four Works and Results.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+        }
+      ]
+    },
+    {
+      "id": "claim_a14e8ae7c91741ceb385960bd275df1c",
+      "statement": "The control follow-up verified an outside-Project write denied under Workspace permissions, allowed under Full Access before and after restart, then denied after Workspace restoration; three native permission tests, one hold test, strict lint and format checks passed. The test fixture explicitly uses the global reviewer without weakening its original assertions.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs",
+          "version": "repo-file-v1:sha256:eca6eea4f9f1a8cc7fddfab49ce2c45fd98247bf6423d048b02d5fea51c1fa23"
+        }
+      ]
+    },
+    {
+      "id": "claim_9b1adb35cbd946958e32dfa8838ca5ff",
+      "statement": "The old venue and lodging helpers have verified native parents and matching encrypted send/receive payloads, but exact prepared plaintext remains unverified and their formal Work bindings remain Unknown.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T06:52:57.034Z"
+    "at": "2026-10-25T08:56:12.608Z"
   }
 }

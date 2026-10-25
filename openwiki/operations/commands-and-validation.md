@@ -3,9 +3,6 @@ type: Reference
 title: "Commands and validation"
 description: "Repository command authority and source, native and desktop acceptance boundaries."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-95772fa38252ded838ec3a2f
     resource: repo://.config/nextest.toml
@@ -31,8 +28,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs
   - id: openwiki-source-053611cb863c8c6865cef2ca
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs
+  - id: openwiki-source-8deed3df92ee012fa13bfea8
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-24139c353e393a9759b0267a
+    resource: repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs
   - id: openwiki-source-275dc903aab820a109a196b4
     resource: repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json
   - id: openwiki-source-ba12412e93bca80301ac28a3
@@ -63,7 +64,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
+generated: { by: "codex", at: "2026-10-25T08:56:12.608Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T08:56:12.608Z
 ---
 
 
@@ -210,7 +214,19 @@ Build the source app with the repository staging command. This creates a signed 
 DECODEX_APP_STAGE_DIR="$(mktemp -d)/stage" sh scripts/macos/stage_decodex_app.sh
 ```
 
-Record the bundle's actual service build identity and component digests separately from the selected native CLI and helpers. Check the native Project catalog and membership separately from official desktop presentation. The latter was not observed in this acceptance. Record encrypted task-name attribution as routing proof, not plaintext verification. User hold persistence and explicit release passed through the user API; the live Pause/Resume UI click itself remains uncertified.
+Record the bundle's actual service build identity and component digests separately from the selected native CLI and helpers. Check the native Project catalog and membership separately from official desktop presentation. The latter remains unobserved. Record encrypted task-name attribution as routing proof, not plaintext verification. The control follow-up verified actual Pause/Resume buttons, hold persistence, native rejection while held, and completion after release. It also verified Full Access with a denied/allowed/denied write sequence and a restart between the allowed writes.
+
+Use `controls_followup` in the reusable scenario for these probes. Set both `DECODEX_TEST_CODEX_BINARY` and `DECODEX_NATIVE_BINARY` to the same verified prepared CLI. The three selected native tests use two environment-variable names:
+
+```sh
+export DECODEX_NATIVE_BINARY="$DECODEX_TEST_CODEX_BINARY"
+cargo +stable nextest run --locked -p decodex-runtime --run-ignored only --test-threads 1 \
+  -E 'test(installed_permission_selection_publishes_and_survives_native_restart) or test(installed_named_permission_selection_during_active_turn_survives_restart) or test(native_agent_resume_preserves_selected_profile_policy_and_cwd)'
+cargo +stable nextest run --locked -p decodex-database \
+  -E 'test(works::tests::user_holds_and_scoped_materials_do_not_grant_private_history)'
+```
+
+The control follow-up passed all three native tests and the selected hold test. Its earlier missing-variable and global-reviewer fixture failures remain in the separate receipt. These results do not replace the earlier full workspace suite. Cold native profile controls can be unavailable until the context loads; do not resume work implicitly to make a read succeed. For old encrypted helpers, compare the parent call and child input, then read the child's own output. Matching encrypted delivery establishes transport, not the prepared plaintext or a strong Work binding.
 
 ## Prepare Codex components
 
