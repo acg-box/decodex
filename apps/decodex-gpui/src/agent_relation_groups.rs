@@ -16,18 +16,12 @@ pub(super) fn routing_nodes(
 		.cloned()
 		.map(|mut node| {
 			if node.row.is_some() && node.attachment.is_some() && layout.labels() {
-				let text = layout.metadata_height()
-					+ if layout.activity_visible() {
-						layout.spacing(card::DETAILS_TOP)
-							+ header::detail_rows(
-								&node.assignment,
-								&node.activity,
-								layout,
-								text_system,
-							) * layout.activity_line()
-					} else {
-						0.
-					};
+				let text = layout.header_height(header::detail_rows(
+					&node.assignment,
+					&node.activity,
+					layout,
+					text_system,
+				));
 				node.size.1 = card::INSET_Y + text / layout.zoom + 3.;
 			}
 			node

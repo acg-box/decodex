@@ -324,8 +324,12 @@ mod tests {
 				s.work_board.view.motion = None;
 				let graph = s.relation_graph();
 				let node = graph.nodes.iter().find(|node| node.key == "release").unwrap();
-				s.work_board.view.pan =
-					(50. - node.x * 0.75, s.work_board.view.viewport.1 - 70. - node.y * 0.75);
+				let height = s.relation_painted_rect(node, &graph).height;
+				// Keep the lead's current nameplate clickable while its team is offscreen.
+				s.work_board.view.pan = (
+					50. - node.x * 0.75,
+					s.work_board.view.viewport.1 - height - 16. - node.y * 0.75,
+				);
 			});
 			visual.update(crate::ui_frame::draw_frame);
 			let team = visual.debug_bounds("relation-team-release").unwrap();

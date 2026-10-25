@@ -20,10 +20,8 @@ pub(super) const INSET_X: f32 = 10.;
 pub(super) const INSET_Y: f32 = 8.;
 pub(super) const PORTRAIT_WIDTH: f32 = 80.;
 pub(super) const PORTRAIT_HEIGHT: f32 = 44.;
-pub(super) const COLUMN_GAP: f32 = 12.;
 const TEXT_SIZE: f32 = 10.5;
 const MIN_TEXT_SIZE: f32 = 10.;
-pub(super) const DETAILS_TOP: f32 = 4.;
 pub(super) const SELECTED: u32 = crate::ui_theme::BLUE;
 pub(super) const SECONDARY_TEXT: u32 = foreground::SECONDARY;
 pub(super) const MIN_ZOOM: f32 = 0.05;
@@ -97,6 +95,10 @@ impl Layout {
 		self.font(TEXT_SIZE, MIN_TEXT_SIZE)
 	}
 
+	pub(super) fn team_icon_size(self) -> f32 {
+		self.pixel(self.title_size() + 5.)
+	}
+
 	pub(super) fn metric_size(self) -> f32 {
 		self.title_size()
 	}
@@ -109,24 +111,37 @@ impl Layout {
 		self.labels() && self.zoom > 0.5 + f32::EPSILON
 	}
 
-	pub(super) fn details_gap(self) -> f32 {
-		self.spacing(COLUMN_GAP).max(10.)
-	}
-
 	pub(super) fn text_width(self) -> f32 {
 		(self.details_width() - 2. * self.bubble_padding() - self.title_size() - 5.).max(1.)
 	}
 
 	pub(super) fn details_width(self) -> f32 {
-		(self.width
-			- 2. * self.spacing(INSET_X)
-			- self.portrait_spacing(PORTRAIT_WIDTH)
-			- self.details_gap())
-		.max(1.)
+		self.spacing(256.).min(self.width - 2. * self.spacing(INSET_X)).max(1.)
+	}
+
+	pub(super) fn speech_left(self) -> f32 {
+		(self.width - 2. * self.spacing(INSET_X) - self.details_width()) / 2.
+	}
+
+	pub(super) fn caption_width(self) -> f32 {
+		self.spacing(220.).min(self.width - 2. * self.spacing(INSET_X)).max(1.)
 	}
 
 	pub(super) fn bubble_padding(self) -> f32 {
-		self.spacing(7.).max(5.)
+		self.spacing(8.).max(6.)
+	}
+
+	pub(super) fn speech_offset(self, rows: f32) -> f32 {
+		if self.activity_visible() && rows > 0. {
+			rows * self.activity_line() - self.spacing(2.)
+		} else {
+			0.
+		}
+	}
+
+	/// The short tail stays centered over the character as the bubble resizes.
+	pub(super) fn speech_tip(self, _height: f32) -> (f32, f32) {
+		(self.details_width() / 2., self.spacing(5.).max(4.))
 	}
 
 	pub(super) fn full_detail(self) -> bool {
@@ -166,38 +181,65 @@ impl Layout {
 
 	fn header_origin(self, actions: f32) -> (f32, f32) {
 		let portrait = self.portrait_spacing(PORTRAIT_WIDTH) / self.zoom;
-		let left = if self.labels() { INSET_X } else { (self.world_width - portrait) / 2. };
+		let left = (self.world_width - portrait) / 2.;
 		let top = if self.overview() {
 			(OVERVIEW_HEIGHT - self.header_height(actions) / self.zoom) / 2.
 		} else {
-			INSET_Y
+			INSET_Y + self.speech_offset(actions) / self.zoom
 		};
 		let inset = if self.overview() { self.node_inset() } else { (0., 0.) };
 		(left - inset.0, top - inset.1)
 	}
 
-	pub(super) fn identity_bounds(self, actions: f32) -> Option<[f32; 4]> {
+	pub(super) fn identity_bounds(self, actions: f32, title_lines: usize) -> Option<[f32; 4]> {
 		self.labels().then(|| {
 			let (left, top) = self.header_origin(actions);
+			let top = top
+				+ (self.portrait_spacing(PORTRAIT_HEIGHT)
+					+ if self.overview() { 0. } else { self.gap() + self.metrics_height() }
+					+ self.metadata_gap())
+					/ self.zoom;
+			if self.activity_visible() && title_lines > 0 {
+				[
+					INSET_X,
+					top,
+					self.world_width - INSET_X,
+					top + title_lines as f32 * self.title_line() / self.zoom,
+				]
+			} else {
+				[
+					left,
+					top,
+					left + self.portrait_spacing(PORTRAIT_WIDTH) / self.zoom,
+					top + self.title_line() / self.zoom,
+				]
+			}
+		})
+	}
+
+	pub(super) fn speech_bounds(self, rows: f32) -> Option<[f32; 4]> {
+		(self.activity_visible() && rows > 0.).then(|| {
+			let width = self.details_width() / self.zoom;
+			let left = (self.world_width - width) / 2.;
 			[
 				left,
-				top,
-				left + self.portrait_spacing(PORTRAIT_WIDTH) / self.zoom,
-				top + self.title_line() / self.zoom,
+				INSET_Y,
+				left + width,
+				INSET_Y + (rows * self.activity_line() + self.speech_tip(0.).1) / self.zoom,
 			]
 		})
 	}
 
-	/// Route around the character and its HUD, independently of the activity column.
+	/// Route around the character and its HUD, independently of its speech.
 	/// During the point morph the same attachment contracts into the visible dot.
 	pub(super) fn character_bounds(self, actions: f32) -> [f32; 4] {
 		let z = self.zoom;
 		let portrait = self.portrait_spacing(PORTRAIT_WIDTH) / z;
 		let height = (self.portrait_spacing(PORTRAIT_HEIGHT)
-			+ if self.overview() { 0. } else { self.gap() + self.metrics_height() })
+			+ if self.overview() { 0. } else { self.gap() + self.metrics_height() }
+			+ self.metadata_height())
 			/ z;
 		let (left, top) = self.header_origin(actions);
-		let top = top + self.metadata_height() / z;
 		let (width, node_height) = self.node_size(self.world_height(actions));
 		let center = (width / 2., node_height / 2.);
 		let r = self.point_size() / 2.;
@@ -272,12 +314,8 @@ impl Layout {
 	pub(super) fn header_height(self, actions: f32) -> f32 {
 		let portrait = self.portrait_spacing(PORTRAIT_HEIGHT)
 			+ if self.overview() { 0. } else { self.gap() + self.metrics_height() };
-		let details = if self.activity_visible() && actions > 0. {
-			self.spacing(DETAILS_TOP) + actions * self.activity_line()
-		} else {
-			0.
-		};
-		self.metadata_height() + portrait.max(details)
+		let details = if self.activity_visible() { actions * self.activity_line() } else { 0. };
+		self.metadata_height() + portrait + details
 	}
 
 	/// The avatar and current activity determine the footprint, without reserving

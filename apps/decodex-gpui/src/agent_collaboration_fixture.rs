@@ -10,6 +10,45 @@ use decodex_protocol::{
 use gpui::prelude::*;
 
 impl AgentSurface {
+	#[cfg(any(test, feature = "visual-capture"))]
+	#[allow(dead_code)]
+	pub(crate) fn visual_speech_sample(&mut self, step: usize, cx: &mut Context<Self>) {
+		let texts = [
+			"Checking the recovered answer.",
+			"The recovered answer contains every paragraph and all three code blocks. I am comparing the final source links before I finish the check.",
+			"All source links match.",
+			"The answer is complete.",
+			"The answer is complete. The final paragraph, source links and code blocks all match the original response.",
+		];
+		let step = step.min(texts.len() - 1);
+		let turn = self
+			.snapshot
+			.as_ref()
+			.and_then(|snapshot| snapshot.work_items.iter().find(|work| work.id == "agent"))
+			.and_then(|work| work.active_turn_id.clone())
+			.unwrap_or_else(|| "speech-sizing".into());
+		if let Some(brief) = self.work_board.briefs.get_mut("agent") {
+			brief.output = None;
+			brief.outcome = None;
+			brief.preview = Some(activity::Preview {
+				turn,
+				task: "Verify response".into(),
+				text: texts[step].into(),
+				running: None,
+				recent: vec![activity::Operation {
+					id: format!("speech:{}", step.min(3)),
+					text: texts[step].into(),
+					kind: if step == 2 {
+						activity::OperationKind::Action
+					} else {
+						activity::OperationKind::Message
+					},
+				}],
+			});
+		}
+		cx.notify();
+	}
+
 	#[allow(dead_code)] // Only the isolated capture driver advances these events.
 	pub(crate) fn visual_collaboration_actions(&mut self, step: usize, cx: &mut Context<Self>) {
 		if let Some(preview) = self
@@ -46,6 +85,7 @@ impl AgentSurface {
 	#[allow(dead_code)] // Shared source is also compiled into the application binary.
 	pub(crate) fn render_collaboration_component(
 		&self,
+		show_inspector: bool,
 		cx: &mut Context<Self>,
 	) -> gpui::AnyElement {
 		// The offscreen fixture supplies a deterministic compositor backdrop.
@@ -58,16 +98,18 @@ impl AgentSurface {
 			.text_color(crate::ui_theme::rgb(crate::ui_theme::TEXT))
 			.bg(crate::ui_theme::rgb(0x303030))
 			.child(gpui::div().flex_1().min_w_0().h_full().child(self.render_work_board(cx)))
-			.child(
-				gpui::div()
-					.w(gpui::px(394.))
-					.flex_none()
-					.h_full()
-					.bg(crate::ui_theme::rgb(0x373737))
-					.border_l_1()
-					.border_color(crate::ui_theme::rgba(0xffffff16))
-					.child(self.render_agent_workbench(cx)),
-			)
+			.when(show_inspector, |view| {
+				view.child(
+					gpui::div()
+						.w(gpui::px(394.))
+						.flex_none()
+						.h_full()
+						.bg(crate::ui_theme::rgb(0x373737))
+						.border_l_1()
+						.border_color(crate::ui_theme::rgba(0xffffff16))
+						.child(self.render_agent_workbench(cx)),
+				)
+			})
 			.into_any_element()
 	}
 

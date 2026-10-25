@@ -85,6 +85,10 @@ struct SceneMotion {
 	progress: crate::ui_motion::Tween,
 	started: std::time::Instant,
 }
+struct TextWidths {
+	nameplate: f32,
+	speech: Option<f32>,
+}
 struct Drag {
 	key: Option<String>,
 	start: gpui::Point<gpui::Pixels>,
@@ -162,6 +166,8 @@ pub(super) struct Node {
 	attachment: Option<[f32; 4]>,
 	// Visible identity is a routing obstacle, never a connection attachment.
 	identity: Option<[f32; 4]>,
+	// Only visible speech is an obstacle; empty camera space never blocks a link.
+	speech: Option<[f32; 4]>,
 	base_height: f32,
 	// Available detail controls placement; inspection changes only the visible footprint.
 	layout_height: f32,
@@ -451,6 +457,17 @@ impl AgentSurface {
 				text_layout,
 				&self.work_board.text_system,
 			));
+			let attachment = Some(text_layout.character_bounds(activity.height / stream::LINE));
+			let title_lines = header::content_rows(
+				&assignment,
+				&activity,
+				text_layout,
+				&self.work_board.text_system,
+			)
+			.0;
+			let identity_bounds =
+				text_layout.identity_bounds(activity.height / stream::LINE, title_lines);
+			let speech = text_layout.speech_bounds(activity.height / stream::LINE);
 			graph.nodes.push(Node {
 				key: row.key.clone(),
 				title: identity,
@@ -467,8 +484,9 @@ impl AgentSurface {
 				base_height: layout.world_height(0.),
 				layout_height,
 				navigation: (0., 0.),
-				attachment: None,
-				identity: None,
+				attachment,
+				identity: identity_bounds,
+				speech,
 				x: 0.,
 				y: 0.,
 			});
@@ -1096,6 +1114,7 @@ impl AgentSurface {
 					size: (224., 48.),
 					attachment: None,
 					identity: None,
+					speech: None,
 					base_height: 48.,
 					layout_height: 48.,
 					navigation: (0., 0.),
@@ -1238,11 +1257,8 @@ impl AgentSurface {
 			self.work_board.view.presentation,
 		);
 		resources::place_resources(graph);
+		let text_widths = self.relation_text_widths(graph, layout);
 		for node in &mut graph.nodes {
-			if let Some(&(x, y)) = self.work_board.view.positions.get(&node.key) {
-				node.x = x;
-				node.y = y;
-			}
 			if layout.overview() && node.row.is_some() {
 				let inset = layout.node_inset();
 				node.x += inset.0;
@@ -1252,9 +1268,36 @@ impl AgentSurface {
 			}
 			if node.row.is_some() {
 				let native = layout.on_display(self.work_board.view.display_scale);
-				node.identity = native.identity_bounds(node.activity.height / stream::LINE);
+				let title_lines = header::content_rows(
+					&node.assignment,
+					&node.activity,
+					native,
+					&self.work_board.text_system,
+				)
+				.0;
+				node.identity =
+					native.identity_bounds(node.activity.height / stream::LINE, title_lines);
+				if let Some(bounds) = node.identity.as_mut()
+					&& let Some(widths) = text_widths.get(&node.key)
+				{
+					bounds[0] = (native.world_width() - widths.nameplate) / 2.;
+					bounds[2] = bounds[0] + widths.nameplate;
+				}
+				node.speech = native.speech_bounds(node.activity.height / stream::LINE);
+				if let Some(bounds) = node.speech.as_mut()
+					&& let Some(width) = text_widths.get(&node.key).and_then(|widths| widths.speech)
+				{
+					bounds[0] = (native.world_width() - width) / 2.;
+					bounds[2] = bounds[0] + width;
+				}
 				node.attachment =
 					Some(native.character_bounds(node.activity.height / stream::LINE));
+			}
+			if let Some(&(x, y)) = self.work_board.view.positions.get(&node.key) {
+				let offset =
+					node.attachment.map_or((0., 0.), |b| ((b[0] + b[2]) / 2., (b[1] + b[3]) / 2.));
+				node.x = x - offset.0;
+				node.y = y - offset.1;
 			}
 			node.navigation = (node.x, node.y);
 		}
@@ -1268,6 +1311,89 @@ impl AgentSurface {
 				}
 			}
 		}
+	}
+
+	fn relation_node_relatives(
+		&self,
+		node: &Node,
+		graph: &Graph,
+	) -> (Option<String>, Option<usize>) {
+		let children = graph.edges.iter().any(|e| e.kind.hierarchy() && e.from == node.key);
+		let coordinator = self
+			.snapshot
+			.iter()
+			.flat_map(|s| s.agents.iter())
+			.any(|a| a.id == node.key && a.assistant);
+		let team = (children && !coordinator).then(|| groups::descendants(graph, &node.key).len());
+		let parent = graph
+			.edges
+			.iter()
+			.find(|e| e.kind.hierarchy() && e.to == node.key)
+			.and_then(|e| graph.nodes.iter().find(|n| n.key == e.from))
+			.and_then(|n| n.row.as_ref())
+			.map(|row| self.relation_agent_number(row));
+		(parent, team)
+	}
+
+	fn relation_text_widths(
+		&self,
+		graph: &Graph,
+		layout: card::Layout,
+	) -> BTreeMap<String, TextWidths> {
+		if !layout.activity_visible() {
+			return BTreeMap::new();
+		}
+		let native = layout.on_display(self.work_board.view.display_scale);
+		let text = gpui::WindowTextSystem::new(self.work_board.text_system.clone());
+		let measure = |value: &str, numeric: bool| {
+			let mut font = gpui::font(crate::ui_theme::FONT_FAMILY);
+			if numeric {
+				font.features = card::number_features();
+			}
+			f32::from(
+				text.shape_line(
+					value.to_owned().into(),
+					gpui::px(native.title_size()),
+					&[gpui::TextRun { len: value.len(), font, ..Default::default() }],
+					None,
+				)
+				.width,
+			)
+		};
+		graph
+			.nodes
+			.iter()
+			.filter_map(|node| {
+				let row = node.row.as_ref()?;
+				let (parent, team) = self.relation_node_relatives(node, graph);
+				let mut width = 7. + measure(&self.relation_agent_number(row), true);
+				if self.work_board.view.picked_agent.as_deref() == Some(&node.key)
+					&& parent.is_some()
+				{
+					width += 10.
+						+ native.title_size()
+						+ measure(parent.as_deref().unwrap_or_default(), false);
+				} else if let Some(team) = team {
+					width += 7. + native.team_icon_size() + measure(&team.to_string(), true);
+				}
+				if !node.assignment.is_empty() {
+					width += 6. + measure(&node.assignment, false).min(native.caption_width());
+				}
+				Some((
+					node.key.clone(),
+					TextWidths {
+						nameplate: (width + 1.) / native.zoom,
+						speech: header::speech_width(
+							&node.activity,
+							native,
+							&self.work_board.text_system,
+							&text,
+						)
+						.map(|width| width / native.zoom),
+					},
+				))
+			})
+			.collect()
 	}
 
 	fn relation_scope_layer(
@@ -1459,22 +1585,7 @@ impl AgentSurface {
 			let (emphasized, faded) = self.relation_node_emphasis(node, graph, &neighborhood);
 			let faded =
 				faded && self.work_board.view.presentation != layout::Presentation::Together;
-			let children =
-				graph.edges.iter().filter(|e| e.kind.hierarchy() && e.from == node.key).count();
-			let coordinator = self
-				.snapshot
-				.iter()
-				.flat_map(|s| s.agents.iter())
-				.any(|a| a.id == node.key && a.assistant);
-			let team_members =
-				(children > 0 && !coordinator).then(|| groups::descendants(graph, &node.key).len());
-			let parent = graph
-				.edges
-				.iter()
-				.find(|e| e.kind.hierarchy() && e.to == node.key)
-				.and_then(|edge| graph.nodes.iter().find(|n| n.key == edge.from))
-				.and_then(|n| n.row.as_ref())
-				.map(|row| self.relation_agent_number(row));
+			let (parent, team_members) = self.relation_node_relatives(node, graph);
 
 			let interaction = self.relation_node_interaction(node, graph, cx);
 			let view = interaction.keyboard(
@@ -1514,7 +1625,6 @@ impl AgentSurface {
 		let scale = self.relation_scale();
 		let pan = self.work_board.view.pan;
 		let layout_viewport = self.work_board.view.layout_viewport;
-		let layout = graph.layout.on_display(self.work_board.view.display_scale);
 		let key = node.key.clone();
 		let row = node.row.clone();
 		let target = graph
@@ -1526,12 +1636,7 @@ impl AgentSurface {
 			})
 			.cloned();
 		let dragkey = key.clone();
-		let origin = if layout.overview() && node.row.is_some() {
-			let inset = layout.node_inset();
-			(node.x - inset.0, node.y - inset.1)
-		} else {
-			(node.x, node.y)
-		};
+		let origin = if node.row.is_some() { node.connection_center() } else { (node.x, node.y) };
 		let teamkey = key.clone();
 		card::Interaction {
 			team: std::rc::Rc::new(cx.listener(move |s, _, _, cx| {
@@ -2175,6 +2280,7 @@ impl AgentSurface {
 	}
 
 	fn arrange_relations(&mut self) {
+		self.work_board.view.layout.replace(Default::default());
 		self.work_board.view.motion = None;
 		self.work_board.view.positions.clear();
 		self.work_board.view.drag = None;
@@ -2894,7 +3000,7 @@ mod fit_tests {
 				let before = surface.read_with(visual, |s, _| {
 					let node =
 						s.relation_graph().nodes.into_iter().find(|n| n.key == "release").unwrap();
-					(node.x, node.y)
+					node.connection_center()
 				});
 				visual.simulate_mouse_down(start, MouseButton::Left, Default::default());
 				visual.simulate_mouse_move(end, Some(MouseButton::Left), Default::default());
@@ -2902,13 +3008,11 @@ mod fit_tests {
 				surface.read_with(visual, |s, _| {
 					let graph = s.relation_graph();
 					let node = graph.nodes.iter().find(|n| n.key == "release").unwrap();
-					let inset = card::Layout::new(0.05).node_inset();
-					let expected = (
-						snap(before.0 - inset.0 + 320.) + inset.0,
-						snap(before.1 - inset.1 + 320.) + inset.1,
-					);
+					let expected = (snap(before.0 + 320.), snap(before.1 + 320.));
+					let center = node.connection_center();
 					assert!(
-						(node.x - expected.0).abs() < 0.01 && (node.y - expected.1).abs() < 0.01,
+						(center.0 - expected.0).abs() < 0.01
+							&& (center.1 - expected.1).abs() < 0.01,
 						"{mode:?}: drag from {before:?} to {expected:?}, got ({}, {}), picked {:?}",
 						node.x,
 						node.y,
@@ -3196,6 +3300,59 @@ mod fit_tests {
 	}
 
 	#[gpui::test]
+	fn speech_growth_keeps_characters_and_connection_anchors_stationary(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(super::super::tests::fixture);
+		surface.update(cx, |s, cx| {
+			s.visual_relation_density(3, cx);
+			s.work_board.view.zoom = Some(1.);
+			s.work_board.view.layout_viewport = (1200., 900.);
+			for mode in layout::Mode::ALL {
+				s.work_board.view.layout_mode = mode;
+				for presentation in [layout::Presentation::Links, layout::Presentation::Together] {
+					s.work_board.view.presentation = presentation;
+					s.work_board.view.layout.replace(Default::default());
+					s.work_board.view.activity.borrow_mut().clear();
+					s.visual_speech_sample(0, cx);
+					let now = std::time::Instant::now();
+					let first = s.relation_graph_at(now);
+					let anchors: Vec<_> = first.nodes.iter().map(Node::connection_center).collect();
+					for step in 1..5 {
+						s.visual_speech_sample(step, cx);
+						let expected_text = s.work_board.briefs["agent"]
+							.preview
+							.as_ref()
+							.unwrap()
+							.recent
+							.last()
+							.unwrap()
+							.text
+							.clone();
+						for ms in [0, 35, 70, 105, 140, 210, 280, 500] {
+							let graph = s.relation_graph_at(
+								now + std::time::Duration::from_millis(step as u64 * 1000 + ms),
+							);
+							let speaker =
+								graph.nodes.iter().find(|node| node.key == "agent").unwrap();
+							assert_eq!(speaker.activity.lines.last().unwrap().text, expected_text);
+							for (node, expected) in graph.nodes.iter().zip(&anchors) {
+								let center = node.connection_center();
+								assert!(
+									(center.0 - expected.0).abs() < 0.01
+										&& (center.1 - expected.1).abs() < 0.01,
+									"{mode:?}/{presentation:?}: {} moved during message {step}: {center:?} vs {expected:?}",
+									node.key
+								);
+							}
+						}
+					}
+				}
+			}
+		});
+	}
+
+	#[gpui::test]
 	fn readable_zoom_keeps_the_pointed_agent_stationary_and_returns_without_drift(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -3316,7 +3473,7 @@ mod fit_tests {
 					let port = ports[key][0];
 					assert!(port.0 >= left && port.0 <= right && port.1 >= top && port.1 <= bottom);
 					assert!(port.0 == left || port.0 == right || port.1 == top || port.1 == bottom);
-					assert!(port.0 < w / 2., "attach to the character, never the activity column");
+					assert!(port.0 >= left && port.0 <= right, "attach to the centered character");
 				}
 				let start = ports["parent"][0];
 				if position.1 > 0. {
@@ -3431,12 +3588,18 @@ mod fit_tests {
 			let metrics = visual.debug_bounds("relation-metrics-release").unwrap();
 			assert!(preview.left() >= card.left() && preview.right() <= card.right());
 			assert!(metrics.left() > card.left() && metrics.right() < card.right());
-			assert!(preview.left() >= metrics.right(), "zoom {scale}: {preview:?}, {metrics:?}");
+			assert!(preview.bottom() <= metrics.top(), "zoom {scale}: {preview:?}, {metrics:?}");
 			assert!(metrics.bottom() < card.bottom(), "zoom {scale}: {metrics:?}, {card:?}");
 			let message = visual.debug_bounds("relation-message-body-release").unwrap();
 			let assignment = visual.debug_bounds("relation-assignment-release").unwrap();
-			assert!(assignment.bottom() < preview.top(), "purpose and message stay separate");
-			assert!(message.bottom() <= preview.bottom() && preview.bottom() < card.bottom());
+			assert!(metrics.bottom() < assignment.top(), "purpose stays below the character HUD");
+			let avatar = visual.debug_bounds("relation-avatar-release").unwrap();
+			assert!(preview.top() < avatar.top(), "speech floats above its speaker");
+			assert!(
+				message.bottom() <= preview.bottom() + gpui::px(0.5)
+					&& preview.bottom() < card.bottom(),
+				"complete speech bounds at zoom {scale}, density {density}: message {message:?}, preview {preview:?}, card {card:?}"
+			);
 			let text = surface.read_with(visual, |s, _| {
 				s.relation_graph()
 					.nodes
@@ -3524,20 +3687,25 @@ mod fit_tests {
 		let preview = visual.debug_bounds("relation-preview-release");
 		assert_eq!(preview.is_some(), layout.activity_visible());
 		if let Some(preview) = preview {
-			assert!(avatar.right() < preview.left(), "activity sits to the right of the portrait");
 			assert!(
-				f32::from(preview.left() - avatar.right().max(metrics.right()))
-					<= layout.details_gap() + 0.5,
-				"activity stays close to the character"
+				(avatar.center().x - preview.center().x).abs() <= gpui::px(0.5),
+				"speech is centered on its speaker within display rounding"
+			);
+			let (tip_x, tip_y) = layout.speech_tip(f32::from(preview.size.height));
+			let speech_tip = preview.bottom_left() + gpui::point(gpui::px(tip_x), gpui::px(tip_y));
+			assert!((speech_tip.x - avatar.center().x).abs() <= gpui::px(0.5));
+			assert!(speech_tip.y >= avatar.top() && speech_tip.y - avatar.top() <= gpui::px(8.));
+			assert!(
+				visual.debug_bounds("relation-assignment-release").unwrap().left() > number.right(),
+				"the task title follows the compact agent number"
+			);
+			assert!(
+				number.top() > metrics.bottom(),
+				"identity stays with the nameplate below the character"
 			);
 			assert_eq!(
-				visual.debug_bounds("relation-assignment-release").unwrap().left(),
-				preview.left(),
-				"purpose and activity share one text edge"
-			);
-			assert!(
-				number.bottom() < preview.top(),
-				"identity stays above the character and activity"
+				number.top(),
+				visual.debug_bounds("relation-assignment-release").unwrap().top()
 			);
 		}
 		assert!(
@@ -3545,8 +3713,14 @@ mod fit_tests {
 				== layout.activity_visible(),
 			"the current assignment stays distinct from recent activity"
 		);
-		assert!(number.bottom() < avatar.top() && avatar.bottom() < metrics.top());
-		assert_eq!(identity.center().x, avatar.center().x);
+		assert!(number.top() > metrics.bottom() && avatar.bottom() < metrics.top());
+		if let Some(title) = visual.debug_bounds("relation-assignment-release") {
+			assert!(
+				((identity.left() + title.right()) / 2. - avatar.center().x).abs() <= gpui::px(0.5)
+			);
+		} else {
+			assert!((identity.center().x - avatar.center().x).abs() <= gpui::px(0.5));
+		}
 		assert!(
 			f32::from(metrics.top() - avatar.bottom()) <= layout.gap() + 0.5,
 			"only the HUD sits immediately below the portrait"
@@ -3562,7 +3736,7 @@ mod fit_tests {
 		let status = visual.debug_bounds("relation-status-release").unwrap();
 		assert!(status.left() >= identity.left());
 		assert!(status.right() < number.left());
-		assert!(status.bottom() < avatar.top());
+		assert!(status.top() > metrics.bottom());
 		let selection = visual.debug_bounds("relation-selection-release").unwrap();
 		assert_eq!(selection, avatar, "selection belongs only to the portrait");
 		assert!(selection.bottom() < metrics.top());
@@ -4346,6 +4520,7 @@ mod fit_tests {
 			size: (224., 48.),
 			attachment: None,
 			identity: None,
+			speech: None,
 			base_height: 48.,
 			layout_height: 48.,
 			navigation: (120., 80.),
@@ -4378,6 +4553,7 @@ mod fit_tests {
 			size: (224., 48.),
 			attachment: None,
 			identity: None,
+			speech: None,
 			base_height: 48.,
 			layout_height: 48.,
 			navigation: (80., 64.),

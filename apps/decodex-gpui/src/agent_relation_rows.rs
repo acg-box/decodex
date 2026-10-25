@@ -1,4 +1,4 @@
-//! Compact source activity beside the character, using the shared native symbols.
+//! Compact speech above the character, using the shared native symbols.
 use super::{
 	super::{super::activity::OperationKind, card},
 	stream,
@@ -42,7 +42,7 @@ pub(super) fn task_excerpt<'a>(
 	layout: card::Layout,
 	text_system: &std::sync::Arc<gpui::TextSystem>,
 ) -> Excerpt<'a> {
-	excerpt(text, layout, layout.details_width(), text_system)
+	excerpt(text, layout, layout.caption_width(), text_system)
 }
 
 pub(super) fn message_excerpt<'a>(
@@ -64,7 +64,7 @@ pub(super) fn message_height(lines: usize, layout: card::Layout) -> f32 {
 		/ layout.activity_line()
 }
 
-fn bubble_width(
+pub(super) fn bubble_width(
 	excerpt: &Excerpt<'_>,
 	layout: card::Layout,
 	system: &gpui::WindowTextSystem,
@@ -110,9 +110,20 @@ pub(super) fn render(
 	cx: &mut App,
 ) -> gpui::Div {
 	let scale = layout.activity_line() / stream::LINE;
-	if frame.moving {
-		ui_motion::request_frame(window, cx);
-	}
+	let target_width = frame.lines.last().map_or(0., |line| {
+		bubble_width(
+			&message_excerpt(&line.text, layout, cx.text_system()),
+			layout,
+			window.text_system(),
+		)
+	});
+	let width = ui_motion::value(
+		gpui::SharedString::from(format!("relation-speech-width-{key}")),
+		target_width,
+		window,
+		cx,
+	);
+	let left = (layout.details_width() - width) / 2.;
 	let mut rows = gpui::div()
 		.debug_selector({
 			let key = key.to_owned();
@@ -121,7 +132,16 @@ pub(super) fn render(
 		.relative()
 		.w_full()
 		.h(gpui::px(frame.height * scale))
-		.flex_none();
+		.flex_none()
+		.child(
+			gpui::div()
+				.absolute()
+				.left(gpui::px(left))
+				.top_0()
+				.w(gpui::px(width))
+				.h(gpui::px(frame.height * scale))
+				.child(bubble_shape(layout)),
+		);
 	for line in frame.lines {
 		let (symbol, title, color) = match line.kind {
 			OperationKind::Question => (Symbol::BellAttention, "Needs you", ui_theme::AMBER),
@@ -132,7 +152,6 @@ pub(super) fn render(
 				(action_icon(&line.text), if live { "Now" } else { "Last action" }, ui_theme::BLUE),
 		};
 		let excerpt = message_excerpt(&line.text, layout, cx.text_system());
-		let width = bubble_width(&excerpt, layout, window.text_system());
 		let selector = format!("relation-operation-{key}-{}", line.id);
 		let body_selector = format!("relation-message-body-{key}");
 		rows = rows.child(
@@ -142,11 +161,11 @@ pub(super) fn render(
 				.role(gpui::Role::Group)
 				.aria_label(format!("{title}: {}", excerpt.text))
 				.absolute()
-				.left_0()
+				.left(gpui::px(left))
 				.w(gpui::px(width))
 				.top(gpui::px(line.y * scale))
-				.h(gpui::px(line.height * scale))
-				.child(bubble_shape(layout))
+				.h(gpui::px(frame.height * scale))
+				.overflow_hidden()
 				.p(gpui::px(layout.bubble_padding()))
 				.flex()
 				.items_start()
@@ -196,10 +215,11 @@ pub(super) fn goal(
 		.text_size(gpui::px(layout.activity_size()))
 		.line_height(gpui::px(layout.activity_line()))
 		.text_color(ui_theme::rgb(ui_theme::foreground::BODY))
+		.text_center()
 		.child(excerpt.text.to_owned())
 }
 
-/// One quiet foreground shape. The small tail points back to the character;
+/// One quiet foreground shape. Its lower tail points down to the character;
 /// it has no hover state, elevation, blur, or separate material.
 fn bubble_shape(layout: card::Layout) -> gpui::Div {
 	gpui::div().absolute().inset_0().child(
@@ -210,6 +230,7 @@ fn bubble_shape(layout: card::Layout) -> gpui::Div {
 				let h = f32::from(bounds.size.height);
 				let r = layout.spacing(7.).max(5.);
 				let k = r * 0.552_284_8;
+				let tip_y = layout.speech_tip(h).1;
 				let p = |x, y| bounds.origin + gpui::point(gpui::px(x), gpui::px(y));
 				let mut path = gpui::PathBuilder::fill();
 				path.move_to(p(r, 0.));
@@ -217,11 +238,11 @@ fn bubble_shape(layout: card::Layout) -> gpui::Div {
 				path.cubic_bezier_to(p(w, r), p(w - r + k, 0.), p(w, r - k));
 				path.line_to(p(w, h - r));
 				path.cubic_bezier_to(p(w - r, h), p(w, h - r + k), p(w - r + k, h));
+				path.line_to(p(w / 2. + 4., h));
+				path.line_to(p(w / 2., h + tip_y));
+				path.line_to(p(w / 2. - 4., h));
 				path.line_to(p(r, h));
 				path.cubic_bezier_to(p(0., h - r), p(r - k, h), p(0., h - r + k));
-				path.line_to(p(0., r + 7.));
-				path.line_to(p(-4., r + 3.));
-				path.line_to(p(0., r + 1.));
 				path.line_to(p(0., r));
 				path.cubic_bezier_to(p(r, 0.), p(0., r - k), p(r - k, 0.));
 				path.close();
@@ -235,6 +256,9 @@ fn bubble_shape(layout: card::Layout) -> gpui::Div {
 }
 
 pub(super) fn team(key: &str, count: usize, layout: card::Layout) -> gpui::Div {
+	// Spend the small badge's empty padding on a readable people silhouette.
+	// Its width stays stable, including when a long agent number shares the row.
+	let icon_size = layout.team_icon_size();
 	gpui::div()
 		.debug_selector({
 			let key = key.to_owned();
@@ -242,7 +266,7 @@ pub(super) fn team(key: &str, count: usize, layout: card::Layout) -> gpui::Div {
 		})
 		.flex()
 		.items_center()
-		.gap(gpui::px(3.))
+		.gap(gpui::px(2.))
 		.flex_none()
 		.h(gpui::px(layout.title_line()))
 		.text_size(gpui::px(layout.title_size()))
@@ -255,9 +279,16 @@ pub(super) fn team(key: &str, count: usize, layout: card::Layout) -> gpui::Div {
 					let key = key.to_owned();
 					move || format!("relation-team-icon-{key}")
 				})
-				.size(gpui::px(layout.title_size()))
+				.relative()
+				.w(gpui::px(icon_size))
+				.h(gpui::px(layout.title_line()))
 				.flex_none()
-				.child(workspace_symbols::icon_sized(Symbol::TeamMembers, layout.title_size())),
+				.child(
+					gpui::div()
+						.absolute()
+						.top(gpui::px((layout.title_line() - icon_size) / 2.))
+						.child(workspace_symbols::icon_sized(Symbol::TeamMembers, icon_size)),
+				),
 		)
 		.child(
 			gpui::div()
@@ -269,7 +300,7 @@ pub(super) fn team(key: &str, count: usize, layout: card::Layout) -> gpui::Div {
 		)
 }
 
-pub(super) fn parent(key: &str, parent: String, layout: card::Layout) -> gpui::Div {
+pub(super) fn parent(key: &str, parent: String, layout: card::Layout) -> gpui::Stateful<gpui::Div> {
 	let row = gpui::div()
 		.debug_selector({
 			let key = key.to_owned();
@@ -283,11 +314,10 @@ pub(super) fn parent(key: &str, parent: String, layout: card::Layout) -> gpui::D
 		.h(gpui::px(layout.title_line()))
 		.text_size(gpui::px(layout.title_size()))
 		.text_color(ui_theme::rgb(ui_theme::foreground::BODY));
-	if layout.zoom >= 0.9 {
-		row.child(format!("Reports to {parent}"))
-	} else {
-		row.child(workspace_symbols::icon_sized(Symbol::TeamParent, 11.)).child(parent)
-	}
+	row.id(gpui::SharedString::from(format!("relation-parent-{key}")))
+		.aria_label(format!("Reports to {parent}"))
+		.child(workspace_symbols::icon_sized(Symbol::TeamParent, layout.title_size()))
+		.child(parent)
 }
 
 #[cfg(test)]
