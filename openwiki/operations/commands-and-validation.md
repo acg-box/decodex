@@ -64,10 +64,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-25T08:56:12.608Z" }
+generated: { by: "codex", at: "2026-10-25T15:35:33.616Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T14:08:29.784Z
+    at: 2026-10-25T15:35:33.616Z
 ---
 
 
@@ -227,6 +227,8 @@ cargo +stable nextest run --locked -p decodex-database \
 ```
 
 The control follow-up passed all three native tests and the selected hold test. Its earlier missing-variable and global-reviewer fixture failures remain in the separate receipt. These results do not replace the earlier full workspace suite. Cold native profile controls can be unavailable until the context loads; do not resume work implicitly to make a read succeed. For old encrypted helpers, compare the parent call and child input, then read the child's own output. Matching encrypted delivery establishes transport, not the prepared plaintext or a strong Work binding.
+
+The later `installed_acceptance` entry records authorized local development installation separately. Its two independent-Agent UI regressions failed before repair. The final UI package passed 1025 tests with 1031 skipped; complete runs retained cleanup markers in three unchanged tests, and all three isolated controls passed without a marker. Twelve selected native regressions had zero unmatched selectors. Strict lint for 13 packages and formatting passed. Use the entry's exact artifact identities and commands; do not count the older 2924-test workspace receipt as a fresh run of these UI repairs.
 
 ## Prepare Codex components
 

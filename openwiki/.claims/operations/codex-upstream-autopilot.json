@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:731b5700da8ff4d15bc4643909601a9e680f8512eeb1a6468616dc90300accd9",
+  "pageVersion": "sha256:ee367bd7b10334b3a896b614fc165d39f3a0a1c0204499b70d69180935e40155",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -156,7 +156,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
+          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
         }
       ]
     },
@@ -190,17 +190,17 @@
     },
     {
       "id": "claim_346cc9b53b5a46c6a39285162057b99b",
-      "statement": "The separate Project Agent Work retained qualification records artifact and test limits without advancing native automation source-review state or installed-app acceptance.",
+      "statement": "Project Agent Work retains original source and artifact qualification and a separate authorized installed development acceptance with its own application identity and limits; neither advances native source-review state nor authorizes release, schedule activation or a runtime-baseline change.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
+          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T14:08:29.784Z"
+    "at": "2026-10-25T15:35:33.616Z"
   }
 }

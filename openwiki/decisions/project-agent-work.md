@@ -6,6 +6,12 @@ tags: ["decodex", "architecture", "agents", "contracts", "guardian"]
 sources:
   - id: openwiki-source-95772fa38252ded838ec3a2f
     resource: repo://.config/nextest.toml
+  - id: openwiki-source-1b7747f8ae67c32e5670817d
+    resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
+  - id: openwiki-source-5da2f5dd568514f1f464d177
+    resource: repo://apps/decodex-gpui/src/agent_surface.rs
+  - id: openwiki-source-5d032c6be684964aa2c401fa
+    resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-991553c8d747a54ecf5a9376
@@ -54,10 +60,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-25T08:56:12.608Z" }
+generated: { by: "codex", at: "2026-10-25T15:35:33.616Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T14:08:29.784Z
+    at: 2026-10-25T15:35:33.616Z
 ---
 
 # Project, Agent and Work contract
@@ -308,4 +314,10 @@ The same follow-up verified native Full Access by behavior: a write outside the 
 
 The old venue and lodging helpers have verified native parents and matching encrypted send/receive payloads. Their own returned messages identify the expected contributions. The prepared plaintext still cannot be verified, so their formal Work bindings remain Unknown. The follow-up did not invent a binding or replay either assignment.
 
-These controlled scenarios do not establish general model quality, installed-app acceptance, reservations or payments. The user saw the isolated official app at onboarding; its Project list remains unobserved. No controlled lock-screen test, installation or release was performed. Source inclusion and digest checks prove provenance, not semantic correctness. Exact commands and limits are in `retained_project_agent_work.controls_followup`; see [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
+These earlier controlled scenarios do not establish general model quality, installed-app acceptance, reservations or payments. Their receipts performed no installation or release. The user saw the isolated official app at onboarding; its Project list remains unobserved. Source inclusion and digest checks prove provenance, not semantic correctness. Exact commands and limits are in `retained_project_agent_work.controls_followup`.
+
+A separate local installed development qualification is retained in `retained_project_agent_work.installed_acceptance`. It binds the signed application, service, native components, reusable fixture, exact regressions and measured limits. Two independent Agents completed four Works across two Projects, including native contributions, one revised Collaboration Request, changed requirements, rework and owner assessment. Pause and Resume, restart recovery, global Guardian and the Workspace/Full Access permission sequence passed. Native Project identities and membership and Decodex Project presentation passed; official Codex desktop presentation remains unobserved.
+
+This qualification repaired two independent-Agent UI defects: canonical Agents now retain their composer and approval controls, and input targets the selected independent conversation instead of falling back to the first Agent. Each new regression reproduced its original failure. Final installed input received the second Agent's reply, and its Allow once action produced the exact test file. Replacement and restart preserved the measured core records, held inputs, draft bytes and configuration. This does not certify every preference or window position.
+
+The final UI package passed 1025 tests with 1031 skipped and no unmatched selector. Complete runs also reported cleanup markers in three unchanged tests; all three isolated controls passed without a marker. The cause remains unknown. Twelve exact-artifact native regressions, strict lint for 13 packages and formatting passed within their recorded source limits. The earlier full-workspace receipt remains separate. Temporary test data and owned processes were cleaned after private evidence was saved. No release or controlled lock-screen test was performed; physical-speaker audibility, live provider voice and the old encrypted assignment gaps remain unmeasured. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
