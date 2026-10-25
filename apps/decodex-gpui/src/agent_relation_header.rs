@@ -87,19 +87,16 @@ impl Header {
 			.flex_none()
 			.flex()
 			.items_start()
+			.justify_center()
 			.gap(gpui::px(6.))
 			.child(identity)
-			.child(gpui::div().w(gpui::px(layout.caption_width())).flex_none().when(
-				layout.activity_visible() && !self.task.is_empty(),
-				|row| {
-					row.child(information_rows::goal(
-						&self.key,
-						&self.task,
-						layout,
-						cx.text_system(),
-					))
-				},
-			));
+			.when(layout.activity_visible() && !self.task.is_empty(), |row| {
+				row.child(
+					gpui::div().max_w(gpui::px(layout.caption_width())).flex_none().child(
+						information_rows::goal(&self.key, &self.task, layout, cx.text_system()),
+					),
+				)
+			});
 		self.interaction.apply(caption, false)
 	}
 
@@ -139,6 +136,9 @@ impl Header {
 impl RenderOnce for Header {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let layout = self.layout.on_display(window.scale_factor());
+		if self.activity.moving && layout.activity_visible() {
+			ui_motion::request_frame(window, cx);
+		}
 		let metadata = layout.labels().then(|| self.metadata(layout, window, cx));
 		let h = self;
 		let (_, count) = content_rows(&h.task, &h.activity, layout, cx.text_system());
@@ -168,8 +168,8 @@ impl RenderOnce for Header {
 			.w_full()
 			.mt(gpui::px(layout.speech_offset(h.activity.height / stream::LINE)))
 			.flex()
-			.items_start()
-			.gap(gpui::px(layout.details_gap()))
+			.items_center()
+			.justify_center()
 			.child(h.interaction.apply(portrait, true));
 		let mut body = gpui::div()
 			.w_full()
@@ -251,8 +251,8 @@ fn selection_mark(
 #[path = "agent_relation_rows.rs"] mod information_rows;
 
 fn content_gap(height: f32, layout: super::card::Layout) -> f32 {
-	-(height * layout.activity_line() / stream::LINE).min(layout.speech_overlap())
-		/ layout.activity_line()
+	// The sprite has transparent headroom. Let the short tail enter that space.
+	if height > 0. { -layout.spacing(2.) / layout.activity_line() } else { 0. }
 }
 
 /// The painted header and camera share the exact current text measurement.

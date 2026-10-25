@@ -108,14 +108,14 @@ type ServiceProjection = (
 	decodex_protocol::ClientProfile,
 );
 
-struct CollaborationComponent(gpui::Entity<AgentSurface>);
+struct CollaborationComponent(gpui::Entity<AgentSurface>, bool);
 impl gpui::Render for CollaborationComponent {
 	fn render(
 		&mut self,
 		_: &mut gpui::Window,
 		cx: &mut gpui::Context<Self>,
 	) -> impl gpui::IntoElement {
-		self.0.update(cx, |surface, cx| surface.render_collaboration_component(cx))
+		self.0.update(cx, |surface, cx| surface.render_collaboration_component(self.1, cx))
 	}
 }
 
@@ -164,7 +164,9 @@ fn main() -> Result<()> {
 	let window: AnyWindowHandle = if env::var("DECODEX_VISUAL_COMPONENT").as_deref()
 		== Ok("collaboration")
 	{
-		cx.open_offscreen_window(gpui::size(gpui::px(1536.), gpui::px(1024.)), |_, cx| {
+		let speech = env::var("DECODEX_VISUAL_COMPONENT_MOTION").as_deref() == Ok("speech");
+		let size = if speech { (520., 420.) } else { (1536., 1024.) };
+		cx.open_offscreen_window(gpui::size(gpui::px(size.0), gpui::px(size.1)), |_, cx| {
 			cx.new(|cx| {
 				let surface = cx.new(|cx| {
 					let mut surface = AgentSurface::new(cx);
@@ -176,7 +178,7 @@ fn main() -> Result<()> {
 					surface
 				});
 				cx.observe(&surface, |_, _, cx| cx.notify()).detach();
-				CollaborationComponent(surface)
+				CollaborationComponent(surface, !speech)
 			})
 		})?
 		.into()
@@ -241,9 +243,7 @@ fn main() -> Result<()> {
 
 	settle_capture_layout(&mut cx, window)?;
 	capture_graph_zoom(&mut cx, window)?;
-	if env::var("DECODEX_VISUAL_COMPONENT_MOTION").as_deref() == Ok("actions") {
-		capture_collaboration_actions(&mut cx, window, &output)?;
-	}
+	capture_component_motion(&mut cx, window, &output)?;
 
 	if let Some(panel_motion) = panel_motion {
 		animate_panel_motion(&mut cx, window, &panel_motion)?;
@@ -297,6 +297,18 @@ fn capture_frame_cost(
 	Ok(())
 }
 
+fn capture_component_motion(
+	cx: &mut VisualTestAppContext,
+	window: AnyWindowHandle,
+	output: &Path,
+) -> Result<()> {
+	match env::var("DECODEX_VISUAL_COMPONENT_MOTION").as_deref() {
+		Ok("actions") => capture_collaboration_actions(cx, window, output),
+		Ok("speech") => capture_speech_sequence(cx, window, output),
+		_ => Ok(()),
+	}
+}
+
 fn capture_graph_zoom(cx: &mut VisualTestAppContext, window: AnyWindowHandle) -> Result<()> {
 	let Ok(scale) = env::var("DECODEX_VISUAL_GRAPH_ZOOM") else { return Ok(()) };
 	let scale: f32 = scale.parse()?;
@@ -345,6 +357,38 @@ fn capture_collaboration_actions(
 		cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
 		cx.capture_screenshot(window)?.save(output.with_extension(format!("{name}.png")))?;
 	}
+	Ok(())
+}
+
+fn capture_speech_sequence(
+	cx: &mut VisualTestAppContext,
+	window: AnyWindowHandle,
+	output: &Path,
+) -> Result<()> {
+	let surface = cx.update_window(window, |view, _, cx| {
+		view.downcast::<CollaborationComponent>()
+			.expect("isolated speech capture")
+			.read(cx)
+			.0
+			.clone()
+	})?;
+	let frames = output.with_extension("frames");
+	fs::create_dir_all(&frames)?;
+	let start = Instant::now();
+	let mut samples = Vec::new();
+	for frame in 0..75 {
+		if frame % 15 == 0 {
+			surface.update(cx, |surface, cx| surface.visual_speech_sample(frame / 15, cx));
+		}
+		cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
+		// Uncompressed capture keeps PNG encoding out of the animation clock.
+		let file = frames.join(format!("{frame:04}.bmp"));
+		cx.capture_screenshot(window)?.save(&file)?;
+		samples.push(serde_json::json!({"frame":frame,"elapsed":start.elapsed().as_secs_f64()}));
+		thread::sleep(Duration::from_millis(16));
+		cx.advance_clock(Duration::from_millis(16));
+	}
+	fs::write(output.with_extension("frames.json"), serde_json::to_vec_pretty(&samples)?)?;
 	Ok(())
 }
 

@@ -1,4 +1,4 @@
-//! Compact source activity beside the character, using the shared native symbols.
+//! Compact speech above the character, using the shared native symbols.
 use super::{
 	super::{super::activity::OperationKind, card},
 	stream,
@@ -110,9 +110,20 @@ pub(super) fn render(
 	cx: &mut App,
 ) -> gpui::Div {
 	let scale = layout.activity_line() / stream::LINE;
-	if frame.moving {
-		ui_motion::request_frame(window, cx);
-	}
+	let target_width = frame.lines.last().map_or(0., |line| {
+		bubble_width(
+			&message_excerpt(&line.text, layout, cx.text_system()),
+			layout,
+			window.text_system(),
+		)
+	});
+	let width = ui_motion::value(
+		gpui::SharedString::from(format!("relation-speech-width-{key}")),
+		target_width,
+		window,
+		cx,
+	);
+	let left = (layout.details_width() - width) / 2.;
 	let mut rows = gpui::div()
 		.debug_selector({
 			let key = key.to_owned();
@@ -121,7 +132,16 @@ pub(super) fn render(
 		.relative()
 		.w_full()
 		.h(gpui::px(frame.height * scale))
-		.flex_none();
+		.flex_none()
+		.child(
+			gpui::div()
+				.absolute()
+				.left(gpui::px(left))
+				.top_0()
+				.w(gpui::px(width))
+				.h(gpui::px(frame.height * scale))
+				.child(bubble_shape(layout)),
+		);
 	for line in frame.lines {
 		let (symbol, title, color) = match line.kind {
 			OperationKind::Question => (Symbol::BellAttention, "Needs you", ui_theme::AMBER),
@@ -132,7 +152,6 @@ pub(super) fn render(
 				(action_icon(&line.text), if live { "Now" } else { "Last action" }, ui_theme::BLUE),
 		};
 		let excerpt = message_excerpt(&line.text, layout, cx.text_system());
-		let width = bubble_width(&excerpt, layout, window.text_system());
 		let selector = format!("relation-operation-{key}-{}", line.id);
 		let body_selector = format!("relation-message-body-{key}");
 		rows = rows.child(
@@ -142,11 +161,11 @@ pub(super) fn render(
 				.role(gpui::Role::Group)
 				.aria_label(format!("{title}: {}", excerpt.text))
 				.absolute()
-				.left_0()
+				.left(gpui::px(left))
 				.w(gpui::px(width))
 				.top(gpui::px(line.y * scale))
-				.h(gpui::px(line.height * scale))
-				.child(bubble_shape(layout))
+				.h(gpui::px(frame.height * scale))
+				.overflow_hidden()
 				.p(gpui::px(layout.bubble_padding()))
 				.flex()
 				.items_start()
@@ -196,6 +215,7 @@ pub(super) fn goal(
 		.text_size(gpui::px(layout.activity_size()))
 		.line_height(gpui::px(layout.activity_line()))
 		.text_color(ui_theme::rgb(ui_theme::foreground::BODY))
+		.text_center()
 		.child(excerpt.text.to_owned())
 }
 
@@ -210,7 +230,7 @@ fn bubble_shape(layout: card::Layout) -> gpui::Div {
 				let h = f32::from(bounds.size.height);
 				let r = layout.spacing(7.).max(5.);
 				let k = r * 0.552_284_8;
-				let (tip_x, tip_y) = layout.speech_tip(h);
+				let tip_y = layout.speech_tip(h).1;
 				let p = |x, y| bounds.origin + gpui::point(gpui::px(x), gpui::px(y));
 				let mut path = gpui::PathBuilder::fill();
 				path.move_to(p(r, 0.));
@@ -218,13 +238,9 @@ fn bubble_shape(layout: card::Layout) -> gpui::Div {
 				path.cubic_bezier_to(p(w, r), p(w - r + k, 0.), p(w, r - k));
 				path.line_to(p(w, h - r));
 				path.cubic_bezier_to(p(w - r, h), p(w, h - r + k), p(w - r + k, h));
-				path.line_to(p(r + 8., h));
-				path.cubic_bezier_to(
-					p(tip_x, h + tip_y),
-					p(r + 5., h + 8.),
-					p(tip_x + 8., h + tip_y - 2.),
-				);
-				path.cubic_bezier_to(p(r, h), p(tip_x + 4., h + tip_y - 8.), p(r - 2., h + 3.));
+				path.line_to(p(w / 2. + 4., h));
+				path.line_to(p(w / 2., h + tip_y));
+				path.line_to(p(w / 2. - 4., h));
 				path.line_to(p(r, h));
 				path.cubic_bezier_to(p(0., h - r), p(r - k, h), p(0., h - r + k));
 				path.line_to(p(0., r));

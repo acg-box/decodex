@@ -50,11 +50,13 @@ struct Input {
 	mode: Mode,
 	presentation: Presentation,
 	base_heights: Vec<u32>,
+	anchors: Vec<u32>,
 	nodes: Vec<(String, Option<String>, u32)>,
 	edges: Vec<(usize, usize)>,
 	viewport: (f32, f32),
 	width: f32,
 	column_gap: f32,
+	zoom: u32,
 }
 impl Default for Input {
 	fn default() -> Self {
@@ -62,11 +64,13 @@ impl Default for Input {
 			mode: Mode::default(),
 			presentation: Presentation::default(),
 			base_heights: vec![],
+			anchors: vec![],
 			nodes: vec![],
 			edges: vec![],
 			viewport: (0., 0.),
 			width: WIDTH,
 			column_gap: COLUMN_GAP,
+			zoom: 1_f32.to_bits(),
 		}
 	}
 }
@@ -103,6 +107,11 @@ impl Cache {
 			mode,
 			presentation,
 			base_heights: graph.nodes.iter().map(|node| node.base_height.to_bits()).collect(),
+			anchors: graph
+				.nodes
+				.iter()
+				.map(|node| node.attachment.map_or(0., |b| b[1]).to_bits())
+				.collect(),
 			nodes: graph
 				.nodes
 				.iter()
@@ -125,11 +134,22 @@ impl Cache {
 			viewport,
 			width: graph.nodes.iter().map(|node| node.width()).fold(WIDTH, f32::max),
 			column_gap: presentation.gap(COLUMN_GAP.max(label_gap), 24.),
+			zoom: graph.layout.zoom.to_bits(),
 		};
-		if self.input != input {
+		if !self.input.same_arrangement(&input) {
 			self.positions = input.arrange();
-			self.input = input;
+		} else if graph.layout.activity_visible()
+			&& self.input.zoom == input.zoom
+			&& self.input.anchors != input.anchors
+		{
+			// Speech grows upward from a fixed character. Text updates do not
+			// rearrange its team or move the connection's visible attachment.
+			for (index, _, y) in &mut self.positions {
+				*y += f32::from_bits(self.input.anchors[*index])
+					- f32::from_bits(input.anchors[*index]);
+			}
 		}
+		self.input = input;
 
 		for &(index, x, y) in &self.positions {
 			graph.nodes[index].x = x + 32.;
@@ -139,6 +159,19 @@ impl Cache {
 }
 
 impl Input {
+	fn same_arrangement(&self, next: &Self) -> bool {
+		self.mode == next.mode
+			&& self.presentation == next.presentation
+			&& self.base_heights == next.base_heights
+			&& self.edges == next.edges
+			&& self.viewport == next.viewport
+			&& self.width == next.width
+			&& self.column_gap == next.column_gap
+			&& (self.zoom == next.zoom
+				|| self.nodes.iter().map(|n| n.2).eq(next.nodes.iter().map(|n| n.2)))
+			&& self.nodes.iter().map(|n| (&n.0, &n.1)).eq(next.nodes.iter().map(|n| (&n.0, &n.1)))
+	}
+
 	fn forest(&self) -> Vec<Vec<Tree>> {
 		let mut groups: BTreeMap<_, Vec<usize>> = BTreeMap::new();
 		for (i, (key, scope, _)) in self.nodes.iter().enumerate() {

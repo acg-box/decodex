@@ -451,6 +451,8 @@ impl AgentSurface {
 				text_layout,
 				&self.work_board.text_system,
 			));
+			let attachment = Some(text_layout.character_bounds(activity.height / stream::LINE));
+			let identity_bounds = text_layout.identity_bounds(activity.height / stream::LINE);
 			graph.nodes.push(Node {
 				key: row.key.clone(),
 				title: identity,
@@ -467,8 +469,8 @@ impl AgentSurface {
 				base_height: layout.world_height(0.),
 				layout_height,
 				navigation: (0., 0.),
-				attachment: None,
-				identity: None,
+				attachment,
+				identity: identity_bounds,
 				x: 0.,
 				y: 0.,
 			});
@@ -1239,10 +1241,6 @@ impl AgentSurface {
 		);
 		resources::place_resources(graph);
 		for node in &mut graph.nodes {
-			if let Some(&(x, y)) = self.work_board.view.positions.get(&node.key) {
-				node.x = x;
-				node.y = y;
-			}
 			if layout.overview() && node.row.is_some() {
 				let inset = layout.node_inset();
 				node.x += inset.0;
@@ -1255,6 +1253,12 @@ impl AgentSurface {
 				node.identity = native.identity_bounds(node.activity.height / stream::LINE);
 				node.attachment =
 					Some(native.character_bounds(node.activity.height / stream::LINE));
+			}
+			if let Some(&(x, y)) = self.work_board.view.positions.get(&node.key) {
+				let offset =
+					node.attachment.map_or((0., 0.), |b| ((b[0] + b[2]) / 2., (b[1] + b[3]) / 2.));
+				node.x = x - offset.0;
+				node.y = y - offset.1;
 			}
 			node.navigation = (node.x, node.y);
 		}
@@ -1514,7 +1518,6 @@ impl AgentSurface {
 		let scale = self.relation_scale();
 		let pan = self.work_board.view.pan;
 		let layout_viewport = self.work_board.view.layout_viewport;
-		let layout = graph.layout.on_display(self.work_board.view.display_scale);
 		let key = node.key.clone();
 		let row = node.row.clone();
 		let target = graph
@@ -1526,12 +1529,7 @@ impl AgentSurface {
 			})
 			.cloned();
 		let dragkey = key.clone();
-		let origin = if layout.overview() && node.row.is_some() {
-			let inset = layout.node_inset();
-			(node.x - inset.0, node.y - inset.1)
-		} else {
-			(node.x, node.y)
-		};
+		let origin = if node.row.is_some() { node.connection_center() } else { (node.x, node.y) };
 		let teamkey = key.clone();
 		card::Interaction {
 			team: std::rc::Rc::new(cx.listener(move |s, _, _, cx| {
@@ -2175,6 +2173,7 @@ impl AgentSurface {
 	}
 
 	fn arrange_relations(&mut self) {
+		self.work_board.view.layout.replace(Default::default());
 		self.work_board.view.motion = None;
 		self.work_board.view.positions.clear();
 		self.work_board.view.drag = None;
@@ -2894,7 +2893,7 @@ mod fit_tests {
 				let before = surface.read_with(visual, |s, _| {
 					let node =
 						s.relation_graph().nodes.into_iter().find(|n| n.key == "release").unwrap();
-					(node.x, node.y)
+					node.connection_center()
 				});
 				visual.simulate_mouse_down(start, MouseButton::Left, Default::default());
 				visual.simulate_mouse_move(end, Some(MouseButton::Left), Default::default());
@@ -2902,13 +2901,11 @@ mod fit_tests {
 				surface.read_with(visual, |s, _| {
 					let graph = s.relation_graph();
 					let node = graph.nodes.iter().find(|n| n.key == "release").unwrap();
-					let inset = card::Layout::new(0.05).node_inset();
-					let expected = (
-						snap(before.0 - inset.0 + 320.) + inset.0,
-						snap(before.1 - inset.1 + 320.) + inset.1,
-					);
+					let expected = (snap(before.0 + 320.), snap(before.1 + 320.));
+					let center = node.connection_center();
 					assert!(
-						(node.x - expected.0).abs() < 0.01 && (node.y - expected.1).abs() < 0.01,
+						(center.0 - expected.0).abs() < 0.01
+							&& (center.1 - expected.1).abs() < 0.01,
 						"{mode:?}: drag from {before:?} to {expected:?}, got ({}, {}), picked {:?}",
 						node.x,
 						node.y,
@@ -3196,6 +3193,59 @@ mod fit_tests {
 	}
 
 	#[gpui::test]
+	fn speech_growth_keeps_characters_and_connection_anchors_stationary(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(super::super::tests::fixture);
+		surface.update(cx, |s, cx| {
+			s.visual_relation_density(3, cx);
+			s.work_board.view.zoom = Some(1.);
+			s.work_board.view.layout_viewport = (1200., 900.);
+			for mode in layout::Mode::ALL {
+				s.work_board.view.layout_mode = mode;
+				for presentation in [layout::Presentation::Links, layout::Presentation::Together] {
+					s.work_board.view.presentation = presentation;
+					s.work_board.view.layout.replace(Default::default());
+					s.work_board.view.activity.borrow_mut().clear();
+					s.visual_speech_sample(0, cx);
+					let now = std::time::Instant::now();
+					let first = s.relation_graph_at(now);
+					let anchors: Vec<_> = first.nodes.iter().map(Node::connection_center).collect();
+					for step in 1..5 {
+						s.visual_speech_sample(step, cx);
+						let expected_text = s.work_board.briefs["agent"]
+							.preview
+							.as_ref()
+							.unwrap()
+							.recent
+							.last()
+							.unwrap()
+							.text
+							.clone();
+						for ms in [0, 35, 70, 105, 140, 210, 280, 500] {
+							let graph = s.relation_graph_at(
+								now + std::time::Duration::from_millis(step as u64 * 1000 + ms),
+							);
+							let speaker =
+								graph.nodes.iter().find(|node| node.key == "agent").unwrap();
+							assert_eq!(speaker.activity.lines.last().unwrap().text, expected_text);
+							for (node, expected) in graph.nodes.iter().zip(&anchors) {
+								let center = node.connection_center();
+								assert!(
+									(center.0 - expected.0).abs() < 0.01
+										&& (center.1 - expected.1).abs() < 0.01,
+									"{mode:?}/{presentation:?}: {} moved during message {step}: {center:?} vs {expected:?}",
+									node.key
+								);
+							}
+						}
+					}
+				}
+			}
+		});
+	}
+
+	#[gpui::test]
 	fn readable_zoom_keeps_the_pointed_agent_stationary_and_returns_without_drift(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -3316,7 +3366,7 @@ mod fit_tests {
 					let port = ports[key][0];
 					assert!(port.0 >= left && port.0 <= right && port.1 >= top && port.1 <= bottom);
 					assert!(port.0 == left || port.0 == right || port.1 == top || port.1 == bottom);
-					assert!(port.0 < w / 2., "attach to the character, never the activity column");
+					assert!(port.0 >= left && port.0 <= right, "attach to the centered character");
 				}
 				let start = ports["parent"][0];
 				if position.1 > 0. {
@@ -3438,7 +3488,11 @@ mod fit_tests {
 			assert!(metrics.bottom() < assignment.top(), "purpose stays below the character HUD");
 			let avatar = visual.debug_bounds("relation-avatar-release").unwrap();
 			assert!(preview.top() < avatar.top(), "speech floats above its speaker");
-			assert!(message.bottom() <= preview.bottom() && preview.bottom() < card.bottom());
+			assert!(
+				message.bottom() <= preview.bottom() + gpui::px(0.5)
+					&& preview.bottom() < card.bottom(),
+				"complete speech bounds at zoom {scale}, density {density}: message {message:?}, preview {preview:?}, card {card:?}"
+			);
 			let text = surface.read_with(visual, |s, _| {
 				s.relation_graph()
 					.nodes
@@ -3527,21 +3581,13 @@ mod fit_tests {
 		assert_eq!(preview.is_some(), layout.activity_visible());
 		if let Some(preview) = preview {
 			assert!(
-				avatar.center().x < preview.left(),
-				"speech floats to the upper right of the portrait"
-			);
-			assert!(
-				f32::from(preview.left() - avatar.right().max(metrics.right()))
-					<= layout.details_gap() + 0.5,
-				"activity stays close to the character"
+				(avatar.center().x - preview.center().x).abs() <= gpui::px(0.5),
+				"speech is centered on its speaker within display rounding"
 			);
 			let (tip_x, tip_y) = layout.speech_tip(f32::from(preview.size.height));
 			let speech_tip = preview.bottom_left() + gpui::point(gpui::px(tip_x), gpui::px(tip_y));
-			assert!(avatar.contains(&speech_tip), "the speech tail points into its own portrait");
-			assert!(
-				speech_tip.y < avatar.top() + avatar.size.height * 0.75,
-				"speech points at the head, not the HUD"
-			);
+			assert!((speech_tip.x - avatar.center().x).abs() <= gpui::px(0.5));
+			assert!(speech_tip.y >= avatar.top() && speech_tip.y - avatar.top() <= gpui::px(8.));
 			assert!(
 				visual.debug_bounds("relation-assignment-release").unwrap().left() > number.right(),
 				"the task title follows the compact agent number"
@@ -3561,7 +3607,13 @@ mod fit_tests {
 			"the current assignment stays distinct from recent activity"
 		);
 		assert!(number.top() > metrics.bottom() && avatar.bottom() < metrics.top());
-		assert_eq!(identity.left(), avatar.left());
+		if let Some(title) = visual.debug_bounds("relation-assignment-release") {
+			assert!(
+				((identity.left() + title.right()) / 2. - avatar.center().x).abs() <= gpui::px(0.5)
+			);
+		} else {
+			assert!((identity.center().x - avatar.center().x).abs() <= gpui::px(0.5));
+		}
 		assert!(
 			f32::from(metrics.top() - avatar.bottom()) <= layout.gap() + 0.5,
 			"only the HUD sits immediately below the portrait"

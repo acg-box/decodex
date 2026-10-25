@@ -20,7 +20,6 @@ pub(super) const INSET_X: f32 = 10.;
 pub(super) const INSET_Y: f32 = 8.;
 pub(super) const PORTRAIT_WIDTH: f32 = 80.;
 pub(super) const PORTRAIT_HEIGHT: f32 = 44.;
-pub(super) const COLUMN_GAP: f32 = 12.;
 const TEXT_SIZE: f32 = 10.5;
 const MIN_TEXT_SIZE: f32 = 10.;
 pub(super) const SELECTED: u32 = crate::ui_theme::BLUE;
@@ -108,54 +107,37 @@ impl Layout {
 		self.labels() && self.zoom > 0.5 + f32::EPSILON
 	}
 
-	pub(super) fn details_gap(self) -> f32 {
-		self.spacing(COLUMN_GAP).max(10.)
-	}
-
 	pub(super) fn text_width(self) -> f32 {
 		(self.details_width() - 2. * self.bubble_padding() - self.title_size() - 5.).max(1.)
 	}
 
 	pub(super) fn details_width(self) -> f32 {
-		(self.width - 2. * self.spacing(INSET_X) - self.speech_left()).max(1.)
+		self.spacing(256.).min(self.width - 2. * self.spacing(INSET_X)).max(1.)
 	}
 
 	pub(super) fn speech_left(self) -> f32 {
-		self.portrait_spacing(PORTRAIT_WIDTH) * 0.75 + self.details_gap()
+		(self.width - 2. * self.spacing(INSET_X) - self.details_width()) / 2.
 	}
 
 	pub(super) fn caption_width(self) -> f32 {
-		(self.width
-			- 2. * self.spacing(INSET_X)
-			- self.portrait_spacing(PORTRAIT_WIDTH)
-			- self.details_gap())
-		.max(1.)
+		self.spacing(220.).min(self.width - 2. * self.spacing(INSET_X)).max(1.)
 	}
 
 	pub(super) fn bubble_padding(self) -> f32 {
-		self.spacing(7.).max(5.)
-	}
-
-	pub(super) fn speech_overlap(self) -> f32 {
-		self.portrait_spacing(PORTRAIT_HEIGHT) * 0.32
+		self.spacing(8.).max(6.)
 	}
 
 	pub(super) fn speech_offset(self, rows: f32) -> f32 {
-		if self.activity_visible() {
-			(rows * self.activity_line() - self.speech_overlap()).max(0.)
+		if self.activity_visible() && rows > 0. {
+			rows * self.activity_line() - self.spacing(2.)
 		} else {
 			0.
 		}
 	}
 
-	/// The bubble points down to the upper-right side of its own character.
-	pub(super) fn speech_tip(self, height: f32) -> (f32, f32) {
-		(
-			-self.details_gap(),
-			self.speech_offset(height / self.activity_line())
-				+ self.portrait_spacing(PORTRAIT_HEIGHT) * 0.58
-				- height,
-		)
+	/// The short tail stays centered over the character as the bubble resizes.
+	pub(super) fn speech_tip(self, _height: f32) -> (f32, f32) {
+		(self.details_width() / 2., self.spacing(5.).max(4.))
 	}
 
 	pub(super) fn full_detail(self) -> bool {
@@ -195,7 +177,7 @@ impl Layout {
 
 	fn header_origin(self, actions: f32) -> (f32, f32) {
 		let portrait = self.portrait_spacing(PORTRAIT_WIDTH) / self.zoom;
-		let left = if self.labels() { INSET_X } else { (self.world_width - portrait) / 2. };
+		let left = (self.world_width - portrait) / 2.;
 		let top = if self.overview() {
 			(OVERVIEW_HEIGHT - self.header_height(actions) / self.zoom) / 2.
 		} else {
