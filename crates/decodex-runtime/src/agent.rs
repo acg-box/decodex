@@ -948,9 +948,9 @@ impl AgentCoordinator {
 
 	async fn ensure_thread(&mut self, item: &AgentWorkItem) -> Result<AgentWorkItem, AgentError> {
 		if item.codex_thread_id.is_some() {
-			// Native dynamic tools are immutable. Use the explicit, receipt-bound context
-			// migration.
-			return self.migrate_tools(item).await;
+			// Continue the exact native context. Only an existing replacement receipt
+			// can require tool-migration recovery; a version difference cannot start one.
+			return self.recover_tool_migration(item).await;
 		}
 
 		self.store.begin_agent_thread_creation(item.id.clone()).await?;

@@ -2172,7 +2172,69 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 }
 
 #[tokio::test]
-async fn legacy_context_waits_for_positive_native_retirement_without_replay() {
+async fn legacy_conversation_continues_its_original_context_after_store_reopen() {
+	for version in [1, 3] {
+		let (mut agent, mut sent, directory) = fixture().await;
+		let original = agent.start_agent("agent", "Original request").await.unwrap();
+		complete(&mut agent, "agent").await;
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+		let db = Connection::open(root.paths().product_database_file()).unwrap();
+		db.execute("UPDATE agent_tool_versions SET version=?1 WHERE work_id='agent'", [version])
+			.unwrap();
+		while sent.try_recv().is_ok() {}
+		for (key, input) in
+			[("restore", "Continue the existing plan"), ("followup", "Keep that plan")]
+		{
+			agent.store = SqliteStore::open(&root.paths()).unwrap();
+			agent.loaded_threads.clear();
+			agent.enqueue_user_message("agent", key, input).await.unwrap();
+			agent.wake_pending().await.unwrap();
+			agent.wake_pending().await.unwrap();
+			let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
+			assert!(requests.iter().all(|r| !matches!(
+				r["method"].as_str(),
+				Some("thread/start" | "thread/fork" | "thread/archive" | "thread/inject_items")
+			)));
+			let resumes: Vec<_> =
+				requests.iter().filter(|r| r["method"] == "thread/resume").collect();
+			assert_eq!(resumes.len(), 1);
+			for parameter in
+				["permissions", "sandbox", "approvalPolicy", "model", "serviceTier", "dynamicTools"]
+			{
+				assert!(resumes[0]["params"].get(parameter).is_none());
+			}
+			let turns: Vec<_> = requests.iter().filter(|r| r["method"] == "turn/start").collect();
+			assert_eq!(turns.len(), 1, "a queued input is dispatched once");
+			assert_eq!(
+				turns[0]["params"]["threadId"].as_str(),
+				original.codex_thread_id.as_deref()
+			);
+			assert!(turns[0]["params"]["input"].to_string().contains(input));
+			complete(&mut agent, "agent").await;
+		}
+		assert_eq!(agent.store.agent_tool_version("agent".into()).await.unwrap(), version);
+		assert!(agent.store.agent_tool_migration("agent".into()).await.unwrap().is_none());
+		assert_eq!(
+			agent.store.get_agent_work_item("agent".into()).await.unwrap().codex_thread_id,
+			original.codex_thread_id
+		);
+		assert_eq!(
+			db.query_row("SELECT count(*) FROM agent_thread_revisions", [], |r| r.get::<_, i64>(0))
+				.unwrap(),
+			0
+		);
+		let caller = agent.store.get_agent_work_item("agent".into()).await.unwrap();
+		assert!(
+			agent
+				.tool(&caller, &serde_json::json!({"tool":"agent_create_work","arguments":{}}))
+				.await
+				.is_err()
+		);
+	}
+}
+
+#[tokio::test]
+async fn unresolved_legacy_replacement_is_not_replayed_by_continuation() {
 	let (mut coordinator, mut sent, directory) = fixture().await;
 	let original = coordinator.start_agent("agent", "Original request").await.unwrap();
 
@@ -2193,6 +2255,15 @@ async fn legacy_context_waits_for_positive_native_retirement_without_replay() {
 	let db = Connection::open(root.paths().product_database_file()).unwrap();
 
 	db.execute("DELETE FROM agent_tool_versions WHERE work_id='agent'", []).unwrap();
+	coordinator
+		.store
+		.reserve_agent_tool_migration(
+			"agent".into(),
+			original.codex_thread_id.clone().unwrap(),
+			"{}".into(),
+		)
+		.await
+		.unwrap();
 
 	while sent.try_recv().is_ok() {}
 
