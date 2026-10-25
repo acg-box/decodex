@@ -5,7 +5,7 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T08:56:12.608Z
+    at: 2026-10-25T14:08:29.784Z
 sources:
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs

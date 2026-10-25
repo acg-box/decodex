@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a23d21d0ac8026a265438030beb767a67a3b165ac47768f1e87202a546fe376f",
+  "pageVersion": "sha256:1feb517ff6bb42faf33a832df9d1f9045fe06a87f666a167f97af312c856ea45",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -242,13 +242,41 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
+        }
+      ]
+    },
+    {
+      "id": "claim_a11af58ada704e8881c849d2d09abcd7",
+      "statement": "The authorized media hardware follow-up passed three existing opt-in physical USB capture, mode-switch, deferred-capture and local native PCM tests plus two separate synthetic media tests, without saved microphone audio, uploads, retries or system route changes.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_audio_owner_tests.rs",
+          "version": "repo-file-v1:sha256:a8733ca3080f07153ff9940ddcf11ceeaec5fe9da6a459b05d281442799b278b"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
+          "version": "repo-file-v1:sha256:7755a053ce0cd9f4ccd3529f0760e3a4a9db2eb4dcbf85baceebe9342e879434"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
+        }
+      ]
+    },
+    {
+      "id": "claim_7d09e284287d484ba966f7e337600f67",
+      "statement": "The current output route was virtual; the hardware follow-up does not qualify physical speaker output, intelligibility, audible quality, controlled lock behavior, a provider voice session or installed-app behavior. The temporary fixture and its exact-owned helpers were removed after receipt preservation.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T08:56:12.608Z"
+    "at": "2026-10-25T14:08:29.784Z"
   }
 }

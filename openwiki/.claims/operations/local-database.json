@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:472e6512daca87af9456fe7c9f17fd566d5b6c7f95590f462f2fb2a414b432dc",
+  "pageVersion": "sha256:f8cf094674dc8d55c965e6e3c4c63cbd173601715dc2f44c42be995abfddeb8e",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -162,7 +162,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
         }
       ]
     },
@@ -186,13 +186,13 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T08:56:12.608Z"
+    "at": "2026-10-25T14:08:29.784Z"
   }
 }

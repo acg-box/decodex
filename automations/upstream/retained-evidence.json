@@ -2966,6 +2966,107 @@
       "source_review_cursor_changed": false,
       "installation": false,
       "release": false
+    },
+    "media_hardware_followup": {
+      "source_revision": "2da218b63ef39fc6dc98e518dff975852bd78929",
+      "delivery_reference": "https://github.com/acg-box/decodex/commit/2da218b63ef39fc6dc98e518dff975852bd78929",
+      "product_changes": false,
+      "source_sha256": {
+        "apps/decodex-gpui/src/native_audio_owner_tests.rs": "a8733ca3080f07153ff9940ddcf11ceeaec5fe9da6a459b05d281442799b278b",
+        "apps/decodex-gpui/src/native_audio_owner.rs": "6277865d54ed83acd1ba986d876958bceba2428c052ed1b702faa7b702d39426",
+        "apps/decodex-gpui/src/native_voice_transport.rs": "7755a053ce0cd9f4ccd3529f0760e3a4a9db2eb4dcbf85baceebe9342e879434",
+        "apps/decodex-gpui/src/native_live_audio.rs": "3043a84c1bf0a25748dbf6012b7c08c06d23a5682c261b46553fafef7c650c7d",
+        "apps/decodex-gpui/src/native_audio_route.rs": "8750e41f1c7fff110aaa1abf2f02b8e7e1fbd389a43431fbc2f938b9b2713ec7",
+        "apps/decodex-gpui/src/native_voice_audio.rs": "74b0d5655015ca52e3804d2290aee7f28eecd8b362108bf8dd9d139db20168fe"
+      },
+      "test_artifact_sha256": "50204ae5193392f1919b4904ce850748b08be1190c3761ebf90712ab9241645a",
+      "native_runtime_reference": "retained_project_agent_work.live_acceptance.artifact",
+      "source_symbols": {
+        "apps/decodex-gpui/src/native_audio_owner.rs": [
+          "Owner::start",
+          "Session::pause",
+          "Session::drop"
+        ],
+        "apps/decodex-gpui/src/native_live_audio.rs": [
+          "Live::start",
+          "Live::stop"
+        ],
+        "apps/decodex-gpui/src/native_voice_transport.rs": [
+          "Transport::start_device",
+          "connect_fixture_peer"
+        ]
+      },
+      "contracts": [
+        "Preparation does not record. Capture begins only after resume.",
+        "The selected physical input supports repeated dictation/live capture and releases capture before transport teardown.",
+        "Native device PCM reaches only the controlled local peer; mode switching retains warmed DSP."
+      ],
+      "tests_read": [
+        "shell::agent_surface::voice::audio::owner::tests::prepared_live_reserves_its_factory_without_starting_io",
+        "shell::agent_surface::voice::audio::owner::tests::production_owner_captures_across_modes_and_stops_before_transport_teardown",
+        "shell::agent_surface::voice::transport::tests::native_device_calls_use_prewarmed_dsp_across_dictation"
+      ],
+      "executed": {
+        "native_device": {
+          "selected": [
+            "shell::agent_surface::voice::audio::owner::tests::prepared_live_reserves_its_factory_without_starting_io",
+            "shell::agent_surface::voice::audio::owner::tests::production_owner_captures_across_modes_and_stops_before_transport_teardown",
+            "shell::agent_surface::voice::transport::tests::native_device_calls_use_prewarmed_dsp_across_dictation"
+          ],
+          "passed": 3,
+          "skipped": 1018,
+          "unmatched": 0,
+          "retries": 0,
+          "duration_seconds": 19.184
+        },
+        "synthetic_media": {
+          "selected": [
+            "shell::agent_surface::voice::transport::tests::native_call_exchanges_audio_captions_mutes_and_releases_buffers",
+            "shell::agent_surface::voice::transport::tests::remote_channel_loss_reports_failure_and_releases_buffers"
+          ],
+          "passed": 2,
+          "skipped": 1019,
+          "unmatched": 0,
+          "retries": 0,
+          "duration_seconds": 4.682
+        },
+        "full_workspace": "Not rerun. No source or test code changed."
+      },
+      "devices": {
+        "input": "Current physical USB input; resolved locally without changing the system route.",
+        "output": "Current virtual output route; no physical-speaker or audible-quality claim."
+      },
+      "commands": [
+        "Resolve a physical input ID on the test host and set DECODEX_AUDIO_TEST_DEVICE_ID. Keep device IDs out of portable evidence.",
+        "cargo +stable nextest run --locked --workspace --all-targets --all-features --run-ignored only --test-threads 1 --retries 0 --no-fail-fast -E \"binary_id(decodex-gpui::bin/decodex-gpui) and (test(shell::agent_surface::voice::audio::owner::tests::prepared_live_reserves_its_factory_without_starting_io) or test(shell::agent_surface::voice::audio::owner::tests::production_owner_captures_across_modes_and_stops_before_transport_teardown) or test(shell::agent_surface::voice::transport::tests::native_device_calls_use_prewarmed_dsp_across_dictation))\"",
+        "cargo +stable nextest run --locked --workspace --all-targets --all-features --retries 0 --no-fail-fast -E \"binary_id(decodex-gpui::bin/decodex-gpui) and (test(native_call_exchanges_audio_captions_mutes_and_releases_buffers) or test(remote_channel_loss_reports_failure_and_releases_buffers))\""
+      ],
+      "qualification_limits": [
+        "Explicit user permission covered local microphone and playback tests only. Audio was not saved or uploaded.",
+        "Physical capture, local PCM delivery and device release passed for one host and current input. Speech intelligibility, echo-cancellation quality and physical speaker output were not measured.",
+        "No controlled lock-screen or firewall-denial experiment. The user asked why a lock was needed; no lock was performed.",
+        "No provider entitlement, external voice-service, installed-app, installation or release qualification.",
+        "Official Project UI remains deferred after the user declined an extra login. Historical old prepared plaintext remains unproved."
+      ],
+      "cleanup": {
+        "temporary_test_processes_remaining": 0,
+        "temporary_test_copies_remaining": 0,
+        "temporary_authentication_copies_remaining": 0,
+        "complete_fixture_directory_removed": true,
+        "private_database_and_source_receipts_preserved": true,
+        "user_installed_app_untouched": true
+      },
+      "receipt_sha256": {
+        "physical-audio.log": "b080586a056b86892396a130f5d1ae4bebc48512f85d87666681cf4f884b180a",
+        "physical-audio-exit.json": "8728f5cd05a8dfd99db4e16a173adf926573b9cb9fe570dd020420c9bdfed7b7",
+        "media-unlocked.log": "da47618ac183957daafb97f1f8e47bf72009922f521b84f73f9140da912664bc",
+        "media-selected.json": "2b8cc8f32a52aed634c4badba0636427c15902d1e97ac52ff0c7a7ecb68c1e42",
+        "cleanup-proof.json": "ecf452e6fca051cfeae77fa0a5613fc3ecb3ba07197586a8aabe7ade83d417d0"
+      },
+      "source_review_cursor_changed": false,
+      "schedule_changed": false,
+      "installation": false,
+      "release": false
     }
   }
 }

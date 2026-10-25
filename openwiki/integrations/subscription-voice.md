@@ -42,10 +42,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/dictation.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-25T02:09:34.237Z" }
+generated: { by: "codex", at: "2026-10-25T14:08:29.784Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T08:56:12.608Z
+    at: 2026-10-25T14:08:29.784Z
 ---
 
 # Subscription dictation and live voice
@@ -108,6 +108,20 @@ These tests need incoming network access for the actual compiled test executable
 The `retained_project_agent_work.native_media_followup` section in [retained evidence](../../automations/upstream/retained-evidence.json) preserves the original two failed results and the separate passing reruns. The audio sources, dependencies and WebRTC features match across the pre-change baseline and current main. Each source passed 40 repeated media executions without retries; current main also passed all 2918 workspace tests. Historical firewall events support an external admission cause. Recovered `loginwindow` info/debug events place both failed workspace tests within the locked interval. The already-allowed package-only baseline also passed both tests while locked. After unlock, the workspace test binary received a firewall prompt, then a known allow verdict. This supports an admission request left unattended during locking; it does not show that locking alone broke audio. The evidence is retrospective, with no new controlled lock or firewall-denial experiment. Physical audio, provider behavior and installed-app acceptance remain separate.
 
 For a lock correlation, include the preceding lock and subsequent unlock in the log time window. Read the info/debug state transitions as well as the firewall verdicts. A short window around the timeout can omit the state transition and cannot establish that the session stayed unlocked.
+
+### Authorized local hardware checks
+
+The later `media_hardware_followup` record in the [retained evidence](../../automations/upstream/retained-evidence.json) qualifies one host's current physical USB input. With explicit microphone permission, three existing opt-in tests passed: deferred Live capture, repeated dictation/Live capture with release before transport teardown, and native device PCM delivery to a local peer across dictation. The two synthetic ICE/media tests also passed separately. No retries, saved microphone audio, uploads or system route changes were used.
+
+Resolve the input ID locally and set `DECODEX_AUDIO_TEST_DEVICE_ID` before running:
+
+```sh
+cargo +stable nextest run --locked --workspace --all-targets --all-features \
+  --run-ignored only --test-threads 1 --retries 0 --no-fail-fast \
+  -E 'binary_id(decodex-gpui::bin/decodex-gpui) and (test(prepared_live_reserves_its_factory_without_starting_io) or test(production_owner_captures_across_modes_and_stops_before_transport_teardown) or test(native_device_calls_use_prewarmed_dsp_across_dictation))'
+```
+
+The current output was a virtual route. These checks establish capture, local PCM flow and device lifecycle; they do not establish physical-speaker output, speech intelligibility or audible quality. The full workspace suite was not repeated. No controlled lock experiment, provider voice session, installed-app test, installation or release occurred. The complete temporary acceptance directory and its exact-owned helper processes were removed after private database and source receipts were preserved.
 
 See [Agent coordination](../architecture/chief-coordination.md) and [Desktop workspace](../architecture/desktop-workspace.md).
 

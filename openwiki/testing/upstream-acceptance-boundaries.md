@@ -8,6 +8,10 @@ sources:
     resource: repo://.config/nextest.toml
   - id: openwiki-source-0a61b25348131fe1bb6e1d12
     resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
+  - id: openwiki-source-032278b78f4f6cac0e654ef0
+    resource: repo://apps/decodex-gpui/src/native_audio_owner_tests.rs
+  - id: openwiki-source-d1f06f7b22d0c2eec328d95f
+    resource: repo://apps/decodex-gpui/src/native_voice_transport.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
@@ -96,10 +100,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-25T08:56:12.608Z" }
+generated: { by: "codex", at: "2026-10-25T14:08:29.784Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T08:56:12.608Z
+    at: 2026-10-25T14:08:29.784Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -317,6 +321,14 @@ The later `controls_followup` record adds the following live checks without chan
 | Old encrypted helpers | Native parentage and identical encrypted send/receive payloads identify the venue and lodging children. Their own returned messages name the expected contributions. The exact prepared plaintext remains unproved, so no strong Work binding was written. |
 
 The follow-up passed three selected native permission tests, one selected database hold test, strict lint for 13 packages and formatting. It did not rerun the earlier full workspace suite. An initial missing binary environment variable and an outdated per-thread reviewer fixture failed separately. The corrected fixture sets global Automatic Review and preserves its original permission, directory and request-count assertions. Cold profile controls can remain unavailable until the native context loads; this does not authorize an implicit resume. See the exact selectors, artifact references and limits in the [retained index](../../automations/upstream/retained-evidence.json).
+
+### Local hardware capture follow-up
+
+The later `media_hardware_followup` record uses the unchanged product source at `2da218b63ef39fc6dc98e518dff975852bd78929`. Three existing opt-in tests passed with an authorized physical USB microphone: deferred Live capture, repeated capture across dictation and Live modes with timely release, and native PCM delivery to a local peer across dictation. The two synthetic ICE/media tests passed separately. Each selected test ran once with no retry; the cohorts skipped 1018 and 1019 tests respectively. They are separate from earlier full-suite counts.
+
+No microphone audio was saved or uploaded, and no system route was changed. The output route was virtual, so physical-speaker output, speech intelligibility and audible quality remain unmeasured. No controlled lock-screen or firewall-denial test was performed. Provider entitlement, a live provider voice session and installed-app behavior remain separate. See [local hardware commands](../integrations/subscription-voice.md#authorized-local-hardware-checks).
+
+The temporary acceptance directory, test application copies, authentication copies and exact-owned helper processes were removed after the accepted database, native source history and file digests were preserved in private receipts. The user's installed applications and unrelated processes were not changed. No product or test code changed for this follow-up; no installation or release occurred.
 
 ### Qualified native and presentation limits
 
