@@ -10,11 +10,14 @@ use decodex_protocol::{
 };
 use gpui::{AnyElement, StatefulInteractiveElement};
 
-fn label(text: impl Into<SharedString>) -> gpui::Div {
-	gpui::div()
+fn label(text: impl Into<SharedString>) -> gpui::Stateful<gpui::Div> {
+	readable(text)
 		.text_color(crate::ui_theme::rgb(crate::ui_theme::TEXT_MUTED))
 		.text_size(gpui::px(12.))
-		.child(text.into())
+}
+fn readable(text: impl Into<SharedString>) -> gpui::Stateful<gpui::Div> {
+	let text = text.into();
+	gpui::div().id(text.clone()).role(gpui::Role::Label).aria_label(text.clone()).child(text)
 }
 fn state(work: &Work) -> &'static str {
 	match work.state {
@@ -101,7 +104,7 @@ impl AgentSurface {
 				"Requirements {} · {}",
 				work.requirements.id, work.requirements.source
 			)))
-			.child(work.requirements.goal.clone())
+			.child(readable(work.requirements.goal.clone()))
 			.child(label(format!("Completion criteria: {}", work.requirements.criteria)));
 		let owner = work.owner_agent_id.clone();
 		panel = panel.child(mcp_forms::mcp_button(
@@ -170,7 +173,7 @@ impl AgentSurface {
 					),
 					native.requirements_id
 				)))
-				.child(native.instruction.clone());
+				.child(readable(native.instruction.clone()));
 		}
 		panel = panel.child(label("Results"));
 		for result in portfolio.results.iter().filter(|r| r.work_id == work.id) {
@@ -195,14 +198,15 @@ impl AgentSurface {
 		}
 
 		if let Some(assessment) = &work.assessment {
-			panel = panel.child(label("Owner assessment")).child(assessment.summary.clone()).child(
-				label(format!(
+			panel = panel
+				.child(label("Owner assessment"))
+				.child(readable(assessment.summary.clone()))
+				.child(label(format!(
 					"Requirements {} · Results {} · Limits: {}",
 					assessment.requirements_id,
 					assessment.result_ids.join(", "),
 					assessment.limits
-				)),
-			);
+				)));
 		}
 		panel.into_any_element()
 	}
@@ -230,6 +234,10 @@ impl AgentSurface {
 				.unwrap_or(&source.agent_id);
 			panel = panel.child(
 				gpui::div()
+					.id(SharedString::from(format!(
+						"guardian-source-{}-{}",
+						source.source_id, source.agent_id
+					)))
 					.flex()
 					.flex_col()
 					.gap_1()
@@ -704,7 +712,7 @@ impl AgentSurface {
 							})
 							.unwrap_or_else(|| "Not admitted".into())
 					)))
-					.child(request.instruction.text.clone())
+					.child(readable(request.instruction.text.clone()))
 					.child(label(format!(
 						"Shared Materials: {}",
 						request.instruction.material_ids.join(", ")
