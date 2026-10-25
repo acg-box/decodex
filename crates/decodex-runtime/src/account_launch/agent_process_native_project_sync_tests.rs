@@ -6,6 +6,48 @@ use decodex_database::EnqueueAgentEvent;
 use std::{env, time::Duration};
 
 #[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; first-input native Project dispatch"]
+async fn native_new_project_conversations_materialize_before_first_input() {
+	let (home, mut session, store, mut agent, backend) = project_work::setup(|serial| {
+		serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"First Project input received"}]})
+	})
+	.await;
+	let outcome = tokio::time::timeout(Duration::from_secs(60), async {
+		for id in ["sage", "iris"] {
+			let directory = home.path().join(id);
+			std::fs::create_dir(&directory).unwrap();
+			store.register_project(id.into(), id.into(), directory.display().to_string()).await.unwrap();
+			AgentCoordinator::create_conversation(&store, id, EnqueueAgentEvent {
+				source_event_id: format!("{id}-first-input"), work_item_id: id.into(), event_kind: "user_message".into(), payload: "{\"source\":\"user\",\"text\":\"Discuss this Project before creating Work\"}".into(),
+			}, Some(id.into())).await.unwrap();
+		}
+		agent.wake_pending().await.unwrap();
+		let mut finished = std::collections::HashSet::new();
+		while finished.len() < 2 {
+			let event = session.events.recv().await.unwrap();
+			if let super::ServerEvent::Notification { method, params } = &event
+				&& method == "turn/completed"
+			{
+				finished.insert(params["threadId"].as_str().unwrap().to_owned());
+			}
+			agent.handle_event(event).await.unwrap();
+		}
+		for id in ["sage", "iris"] {
+			let item = store.get_agent_work_item(id.into()).await.unwrap();
+			let thread = item.codex_thread_id.unwrap();
+			assert!(finished.contains(&thread));
+			let project = store.projects().await.unwrap().into_iter().find(|p| p.id == id).unwrap();
+			let read = session.client.thread_read(serde_json::json!({"threadId":thread,"includeTurns":false})).await.unwrap();
+			assert_eq!(read["thread"]["projectId"].as_str(), project.native_project_id.as_deref());
+			assert_eq!(read["thread"]["name"], item.title);
+			assert!(store.list_agent_wake_events(id.into(), 100).await.unwrap().iter().all(|e| e.event_kind != "user_message" || e.delivered_turn_id.is_some()));
+		}
+	}).await;
+	backend.abort();
+	outcome.unwrap();
+}
+
+#[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native Project reconciliation"]
 async fn native_project_reconciles_retained_conversation_and_survives_restart() {
 	let (home, mut session, store, mut agent, backend) = project_work::setup(|serial| {

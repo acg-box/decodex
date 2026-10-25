@@ -98,6 +98,7 @@ impl AgentCoordinator {
 			return Ok(());
 		}
 
+		self.attach_native_thread_owner(thread).await?;
 		self.expect_usage_replay(thread, &resumed, revision).await;
 		self.loaded_threads.insert(thread.clone());
 		self.persist_task_settings(thread).await?;

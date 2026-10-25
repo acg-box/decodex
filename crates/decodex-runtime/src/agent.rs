@@ -993,6 +993,10 @@ impl AgentCoordinator {
 			));
 		}
 
+		// A paginated context is initially staged by Codex. Persist its metadata
+		// through the native API before Project reconciliation or a restart.
+		self.client.name_thread(&thread, &item.title).await?;
+		self.attach_native_thread_owner(&thread).await?;
 		self.store.initialize_agent_usage(thread.clone()).await?;
 		self.persist_task_settings(&thread).await?;
 		self.loaded_threads.insert(thread);

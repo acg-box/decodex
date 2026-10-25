@@ -1,5 +1,6 @@
 //! Single service-owned Agent actor. The existing Conversation runtime owns its account process.
 
+#[path = "agent_initial_settings.rs"] mod initial_settings;
 #[path = "agent_prompt_edit_host.rs"] mod prompt_edit;
 #[path = "agent_prompt_upload_host.rs"] mod prompt_upload;
 #[path = "agent_recap/host.rs"] mod recap;
@@ -2201,7 +2202,8 @@ impl AgentHost {
 			.find(|work| work.parent_goal_id.is_none())?;
 		let settings = match self.store.read_agent_root_settings(&root.id).await {
 			Ok(Some(encoded)) => decode_settings(&encoded),
-			_ => None,
+			Ok(None) => self.initial_agent_settings(&root).await,
+			Err(_) => None,
 		};
 		let Some((config, account)) = settings else {
 			self.record_error(&root.id, "configuration_needs_attention").await;

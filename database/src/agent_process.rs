@@ -1,5 +1,7 @@
 //! Agent process admission and safe account rotation without replacing conversations.
 
+mod attachments;
+
 use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -272,6 +274,7 @@ fn admission_digest(
 mod tests {
 	mod app_settings;
 	mod app_ui_calls;
+	mod attachments;
 	mod fork;
 	mod guardian_notices;
 	mod hooks;
