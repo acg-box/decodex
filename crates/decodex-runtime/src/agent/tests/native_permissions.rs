@@ -1,4 +1,4 @@
-//! Qualify permission-preserving Agent hydration against the installed native server.
+//! Qualify native permission hydration with the configured global reviewer.
 use std::{
 	env, fs,
 	panic::AssertUnwindSafe,
@@ -18,7 +18,7 @@ use crate::agent::tests::{
 	native_goal_fixture,
 };
 use decodex_codex::app_server_client::{NativeTaskPermissions, ThreadPermissionSelection};
-use decodex_core::DecodexRoot;
+use decodex_core::{DecodexRoot, guardian::ReviewPreference};
 use decodex_database::AgentPermissionAttempt;
 
 #[tokio::test]
@@ -42,6 +42,10 @@ async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
 	)).unwrap();
 
 	let (mut agent, _, store_home) = tests::fixture().await;
+
+	// Reviewer authority is global. Keep this permission test's native selection
+	// consistent with the persisted preference across both coordinator instances.
+	agent.store.set_guardian_settings(1, ReviewPreference::AutomaticReview, false).await.unwrap();
 
 	agent.config =
 		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), home.display().to_string());
@@ -72,6 +76,11 @@ async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
 
 		let result = AssertUnwindSafe(time::timeout(Duration::from_secs(40), async {
 			agent.initialize().await.unwrap();
+			assert_eq!(
+				agent.store.guardian_settings().await.unwrap().reviewer,
+				ReviewPreference::AutomaticReview,
+				"cold={cold}"
+			);
 
 			if !cold {
 				select_native_permissions(&mut agent, &mut events, &workspace).await;
