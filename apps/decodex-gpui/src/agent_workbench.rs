@@ -281,9 +281,9 @@ impl AgentSurface {
 			.flex_none()
 			.w_full()
 			.min_w_0()
-			.py(gpui::px(10.))
-			.border_b_1()
-			.border_color(crate::ui_theme::rgba(ui_theme::HOVER_FILL))
+			.p(gpui::px(10.))
+			.rounded(gpui::px(12.))
+			.bg(crate::ui_theme::rgba(ui_theme::FIELD_MATERIAL))
 			.child(
 				gpui::div()
 					.flex()
@@ -296,7 +296,7 @@ impl AgentSurface {
 							.flex_none()
 							.size(gpui::px(4.))
 							.rounded_full()
-							.bg(crate::ui_theme::rgb(ui_theme::AMBER)),
+							.bg(crate::ui_theme::rgb(ui_theme::WARNING)),
 					)
 					.child(format!("{number} · {identity}")),
 			)

@@ -1,4 +1,5 @@
 //! Saved task permission profiles; current-turn reviewer controls remain separate.
+use crate::ui_feedback::{self, Feedback};
 use gpui::AnyElement;
 #[cfg(test)] use gpui::px;
 use tokio::runtime::Builder;
@@ -23,7 +24,7 @@ pub(super) struct Panel {
 	work: Option<String>,
 	task: Option<Task<()>>,
 	epoch: u64,
-	feedback: String,
+	feedback: Feedback,
 	reviewed: bool,
 }
 impl AgentSurface {
@@ -134,12 +135,11 @@ impl AgentSurface {
 		self.permission_profiles.work = Some(work.clone());
 		self.permission_profiles.state = None;
 		self.permission_profiles.reviewed = false;
-		self.permission_profiles.feedback = if saving {
+		self.permission_profiles.feedback = Feedback::loading(if saving {
 			"Submitting permission selection…"
 		} else {
 			"Reading native permission profiles…"
-		}
-		.into();
+		});
 
 		let key =
 			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
@@ -184,15 +184,19 @@ impl AgentSurface {
 
 				s.permission_profiles.reviewed = !saving;
 				s.permission_profiles.feedback = match outcome {
-					Some(Ok(AgentCommandResponse::Accepted { .. })) =>
+					Some(Ok(AgentCommandResponse::Accepted { .. })) => Feedback::info(
 						"Selection queued. The native state below determines whether it took effect.",
-					Some(Ok(AgentCommandResponse::Rejected { .. })) =>
+					),
+					Some(Ok(AgentCommandResponse::Rejected { .. })) => Feedback::error(
 						"Selection was not accepted. Refresh the permissions before choosing again.",
-					Some(_) => "Selection could not be confirmed. It was not retried.",
-					None if saving => "Selection could not be confirmed. Refresh its saved state.",
-					None => "Profiles apply to this task. Native policy controls availability.",
-				}
-				.into();
+					),
+					Some(_) =>
+						Feedback::warning("Selection could not be confirmed. It was not retried."),
+					None if saving => Feedback::warning(
+						"Selection could not be confirmed. Refresh its saved state.",
+					),
+					None => Feedback::default(),
+				};
 				s.permission_profiles.state = Some(match state {
 					AgentPermissionState::Available { ref work_id, ref thread_id, .. }
 						if work_id.as_str() != work || thread_id.as_str() != thread =>
@@ -234,7 +238,11 @@ impl AgentSurface {
 			return panel.into_any_element();
 		}
 
-		panel = panel.child(self.permission_profiles.feedback.clone());
+		panel = panel.children(ui_feedback::inline_feedback(
+			"permission-settings-feedback",
+			"Task permissions",
+			&self.permission_profiles.feedback,
+		));
 
 		match &self.permission_profiles.state {
 			Some(AgentPermissionState::Available {
@@ -258,8 +266,13 @@ impl AgentSurface {
 				}
 
 				if !can_update {
-					panel =
-						panel.child("Permissions cannot change while the task is changing state.");
+					panel = panel.children(ui_feedback::inline_feedback(
+						"permission-settings-read-only",
+						"Read-only",
+						&Feedback::neutral(
+							"Permissions cannot change while the task is changing state.",
+						),
+					));
 				}
 
 				for (index, p) in profiles.iter().enumerate() {
@@ -303,14 +316,24 @@ impl AgentSurface {
 					.child("Refresh to check the native state. The selection will not be resent.");
 			},
 			Some(AgentPermissionState::Unsupported) => {
-				panel = panel.child("This Codex version does not provide permission profiles.");
+				panel = panel.children(ui_feedback::inline_feedback(
+					"permission-settings-unsupported",
+					"Not available",
+					&Feedback::info("This Codex version does not provide permission profiles."),
+				));
 			},
-			Some(AgentPermissionState::Unavailable) => {
-				panel = panel.child(
-					"Current native permissions are unavailable. Refresh after the task reconnects.",
-				);
+			Some(AgentPermissionState::Unavailable)
+				if self.permission_profiles.feedback.is_empty() =>
+			{
+				panel = panel.children(ui_feedback::inline_feedback(
+					"permission-settings-unavailable",
+					"Permissions unavailable",
+					&Feedback::warning(
+						"Current native permissions are unavailable. Refresh after the task reconnects.",
+					),
+				));
 			},
-			None => {},
+			Some(AgentPermissionState::Unavailable) | None => {},
 		}
 
 		panel.into_any_element()

@@ -8,8 +8,8 @@ use gpui::{
 };
 
 use crate::ui_theme::{
-	ACCENT, CANVAS, LINE_STRONG, SETTINGS_CONTROL_HEIGHT, SETTINGS_CONTROL_RADIUS, TEXT,
-	appearance::Theme, rgb, rgba,
+	ACCENT, CONTROL_ACTIVE_FILL, LINE_STRONG, ON_PRIMARY, SETTINGS_CONTROL_HEIGHT,
+	SETTINGS_CONTROL_RADIUS, TEXT, appearance::Theme, rgb, rgba,
 };
 
 const TRAVEL: f32 = 12.;
@@ -100,7 +100,7 @@ impl RenderOnce for Switch {
 			.map_or(f32::from(enabled), |g| g.position);
 		let position = crate::ui_motion::direct_value(knob, target, dragging, window, cx);
 		let thumb = if Theme::current() == Theme::Dark {
-			rgb(TEXT).blend(rgb(CANVAS).opacity(position))
+			rgb(TEXT).blend(rgb(ON_PRIMARY).opacity(position))
 		} else {
 			gpui::rgb(0xffffff)
 		};
@@ -184,7 +184,7 @@ impl RenderOnce for Switch {
 					.flex()
 					.items_center()
 					.rounded_full()
-					.bg(rgb(LINE_STRONG).blend(rgb(ACCENT).opacity(position)))
+					.bg(rgb(LINE_STRONG).blend(rgb(CONTROL_ACTIVE_FILL).opacity(position)))
 					.child(
 						gpui::div()
 							.ml(gpui::px(position * TRAVEL))

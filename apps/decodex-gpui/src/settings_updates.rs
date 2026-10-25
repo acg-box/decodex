@@ -1,7 +1,12 @@
 //! App updates use Sparkle; component preparation always uses this build's lock.
-use crate::{native_updater::NativeUpdater, settings_surface::SettingsSurface, ui_theme};
+use crate::{
+	native_updater::NativeUpdater,
+	settings_surface::SettingsSurface,
+	ui_feedback::{self, Feedback},
+	ui_theme,
+};
 use decodex_components::{ComponentStore, InstallProgress, RuntimeLock};
-use gpui::{AnyElement, Context, KeyDownEvent, Role, prelude::*};
+use gpui::{AnyElement, Context, KeyDownEvent, prelude::*};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -22,7 +27,7 @@ pub(super) struct Updates {
 	shared: Arc<Mutex<ComponentState>>,
 	shown: ComponentState,
 	native: NativeUpdater,
-	app_message: String,
+	app_feedback: Option<Feedback>,
 }
 
 impl Updates {
@@ -33,7 +38,7 @@ impl Updates {
 			shared: Arc::new(Mutex::new(shown.clone())),
 			shown,
 			native: NativeUpdater::new(),
-			app_message: "Check for a new version of Decodex.".into(),
+			app_feedback: None,
 		}
 	}
 
@@ -94,10 +99,10 @@ impl SettingsSurface {
 	fn update_action(&mut self, action: Action, cx: &mut Context<Self>) {
 		match action {
 			Action::Check => {
-				self.updates.app_message =
-					self.updates.native.check().err().unwrap_or_else(|| {
-						"The update window will show available versions.".into()
-					});
+				self.updates.app_feedback = Some(match self.updates.native.check() {
+					Ok(()) => Feedback::info("The update window will show available versions."),
+					Err(error) => Feedback::error(error),
+				});
 			},
 			Action::Prepare => self.updates.prepare_runtime(),
 		}
@@ -115,7 +120,7 @@ impl SettingsSurface {
 		ui_theme::settings_button(id, label)
 			.on_click(cx.listener(move |this, _, _, cx| this.update_action(action, cx)))
 			.on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
-				if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					this.update_action(action, cx);
 					cx.stop_propagation();
 				}
@@ -133,54 +138,41 @@ impl SettingsSurface {
 				}
 			})
 			.unwrap_or_else(|_| "Version unavailable".into());
-		let (status, color) = match &self.updates.shown {
-			ComponentState::Unchecked => ("", ui_theme::TEXT_MUTED),
-			ComponentState::Ready => ("Ready", ui_theme::GREEN),
-			ComponentState::Preparing(_) => ("Preparing", ui_theme::BLUE),
-			ComponentState::Failed(_) => ("Needs attention", ui_theme::AMBER),
+		let action = match self.updates.shown {
+			ComponentState::Preparing(_) => None,
+			ComponentState::Failed(_) => Some(("updates-retry-runtime", "Retry download")),
+			_ => Some(("updates-prepare-runtime", "Check component")),
 		};
 		let mut component = ui_theme::settings_card().p_4().gap_3()
             .child(gpui::div().flex().items_center().justify_between().gap_4()
-                .child(gpui::div().flex().flex_col().gap_1()
+                .child(gpui::div().flex_1().min_w_0().flex().flex_col().gap_1()
                     .child(gpui::div().text_size(gpui::px(13.)).font_weight(gpui::FontWeight::SEMIBOLD).child("Codex"))
                     .child(gpui::div().text_size(gpui::px(11.5)).text_color(ui_theme::rgb(ui_theme::TEXT_MUTED)).child(version)))
-                .when(!status.is_empty(), |header| header.child(gpui::div().flex().items_center().gap_2().text_size(gpui::px(11.5))
-                    .child(gpui::div().size(gpui::px(6.)).rounded_full().bg(ui_theme::rgb(color))).child(status))))
+                .when_some(action, |header, (id, label)| header.child(self.update_button(id, label, Action::Prepare, cx))))
             .child(gpui::div().text_size(gpui::px(12.)).line_height(gpui::px(18.)).text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
                 .child("The component that runs your conversations. Decodex prepares the required version automatically."));
 		match &self.updates.shown {
-			ComponentState::Unchecked | ComponentState::Ready => {
-				component = component.child(gpui::div().flex().child(self.update_button(
-					"updates-prepare-runtime",
-					"Check component",
-					Action::Prepare,
-					cx,
-				)));
+			ComponentState::Unchecked => {},
+			ComponentState::Ready => {
+				component = component.children(ui_feedback::inline_feedback(
+					"updates-component-ready",
+					"Codex is ready",
+					&Feedback::success("The required component is available."),
+				));
 			},
 			ComponentState::Failed(error) => {
-				component = component
-					.child(
-						gpui::div()
-							.text_size(gpui::px(12.))
-							.text_color(ui_theme::rgb(ui_theme::AMBER))
-							.child(error.clone()),
-					)
-					.child(gpui::div().flex().child(self.update_button(
-						"updates-retry-runtime",
-						"Retry download",
-						Action::Prepare,
-						cx,
-					)));
+				component = component.children(ui_feedback::inline_feedback(
+					"updates-component-error",
+					"Could not prepare Codex",
+					&Feedback::error(error.clone()),
+				));
 			},
 			ComponentState::Preparing(progress) => {
-				component = component.child(
-					gpui::div()
-						.id("updates-component-status")
-						.role(Role::Status)
-						.text_size(gpui::px(12.))
-						.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-						.child(progress_text(progress)),
-				);
+				component = component.children(ui_feedback::inline_feedback(
+					"updates-component-status",
+					"Preparing Codex",
+					&Feedback::info(progress_text(progress)),
+				));
 				if let InstallProgress::Downloading { received, total: Some(total) } = progress
 					&& *total > 0
 				{
@@ -253,8 +245,11 @@ impl SettingsSurface {
 							.text_size(gpui::px(12.))
 							.line_height(gpui::px(18.))
 							.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-							.child(self.updates.app_message.clone()),
-					),
+							.child("Check for a new version of Decodex."),
+					)
+					.children(self.updates.app_feedback.as_ref().and_then(|feedback| {
+						ui_feedback::inline_feedback("updates-app-feedback", "App update", feedback)
+					})),
 			)
 			.child(self.component_card(cx))
 			.into_any_element()

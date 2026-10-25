@@ -17,6 +17,7 @@ pub(crate) enum ColorTheme {
 	#[default]
 	Decodex,
 	TokyoNight,
+	Nightfox,
 	CatppuccinMocha,
 	Dracula,
 	Nord,
@@ -31,26 +32,29 @@ pub(crate) enum ColorTheme {
 }
 
 impl ColorTheme {
-	pub(crate) const ALL: [Self; 13] = [
+	// The product theme stays first; presets follow their display names alphabetically.
+	pub(crate) const ALL: [Self; 14] = [
 		Self::Decodex,
-		Self::TokyoNight,
+		Self::AyuDark,
 		Self::CatppuccinMocha,
 		Self::Dracula,
-		Self::Nord,
-		Self::GruvboxDark,
-		Self::OneDark,
-		Self::AyuDark,
-		Self::RosePine,
-		Self::Kanagawa,
 		Self::Everforest,
-		Self::SolarizedDark,
 		Self::GithubDark,
+		Self::GruvboxDark,
+		Self::Kanagawa,
+		Self::Nightfox,
+		Self::Nord,
+		Self::OneDark,
+		Self::RosePine,
+		Self::SolarizedDark,
+		Self::TokyoNight,
 	];
 
 	pub(crate) fn id(self) -> &'static str {
 		match self {
 			Self::Decodex => "decodex",
 			Self::TokyoNight => "tokyo-night",
+			Self::Nightfox => "nightfox",
 			Self::CatppuccinMocha => "catppuccin-mocha",
 			Self::Dracula => "dracula",
 			Self::Nord => "nord",
@@ -69,6 +73,7 @@ impl ColorTheme {
 		match self {
 			Self::Decodex => "Decodex",
 			Self::TokyoNight => "Tokyo Night",
+			Self::Nightfox => "Nightfox",
 			Self::CatppuccinMocha => "Catppuccin Mocha",
 			Self::Dracula => "Dracula",
 			Self::Nord => "Nord",
@@ -106,7 +111,11 @@ impl ColorTheme {
 
 	fn cache(self) {
 		#[cfg(not(test))]
-		SELECTED.store(self as u8, Ordering::Relaxed);
+		SELECTED.store(
+			Self::ALL.iter().position(|theme| *theme == self).expect("built-in theme in catalog")
+				as u8,
+			Ordering::Relaxed,
+		);
 		#[cfg(test)]
 		SELECTED.set(Some(self));
 	}
@@ -129,6 +138,7 @@ impl ColorTheme {
 		match self {
 			Self::Decodex => &DECODEX,
 			Self::TokyoNight => &TOKYO_NIGHT,
+			Self::Nightfox => &NIGHTFOX,
 			Self::CatppuccinMocha => &CATPPUCCIN_MOCHA,
 			Self::Dracula => &DRACULA,
 			Self::Nord => &NORD,
@@ -154,43 +164,79 @@ pub(crate) struct Palette {
 	pub(crate) sidebar_material: u32,
 	pub(crate) surface_raised_material: u32,
 	pub(crate) composer_material: u32,
+	pub(crate) message_material: u32,
 	pub(crate) surface_overlay_material: u32,
 	pub(crate) surface_hover: u32,
+	pub(crate) selection_fill: u32,
+	pub(crate) selection_hover: u32,
+	pub(crate) selection_border: u32,
+	pub(crate) control_selected_fill: u32,
+	pub(crate) control_selected_hover: u32,
+	pub(crate) control_selected_border: u32,
 	pub(crate) line_strong: u32,
 	pub(crate) text: u32,
 	pub(crate) text_body: u32,
 	pub(crate) text_muted: u32,
 	pub(crate) accent: u32,
+	pub(crate) primary_fill: u32,
+	pub(crate) control_active_fill: u32,
+	pub(crate) on_primary: u32,
 	pub(crate) blue: u32,
 	pub(crate) green: u32,
 	pub(crate) amber: u32,
 	pub(crate) error: u32,
+	pub(crate) status_info: u32,
+	pub(crate) status_success: u32,
+	pub(crate) status_warning: u32,
+	pub(crate) status_error: u32,
+	// Catalog order: mint, lilac, sky, peach, butter, cream, rose,
+	// periwinkle, ice, sage, coral, midnight. Identity does not depend on theme.
+	pub(crate) mascot_bases: [u32; 12],
 }
 
-// Decodex: neutral graphite, porcelain text, and a restrained silver-blue accent.
-// Surface and text ramps stay neutral; semantic colors are reserved for status.
+// Decodex uses one low-chroma blue scale from the frame to the reading surfaces.
+// Brighter blues mark actions; nearby blue-gray steps distinguish content and controls.
+// Solid controls have a separate foreground; text accents do not set button brightness.
 // Stable token IDs live in ui_theme; these are the resolved display colors.
 const DECODEX: Palette = Palette {
-	canvas: 0x18191c,
-	shell_material: 0x17181ab0,
-	content_material: 0x20212478,
-	topbar_material: 0x1a1c2068,
-	agent_sidebar_material: 0x191b1f90,
-	agent_chat_overlay: 0x23262b0e,
-	sidebar_material: 0x14151884,
-	surface_raised_material: 0x2c2e3446,
-	composer_material: 0x2b2e3588,
-	surface_overlay_material: 0x2a2d34e8,
-	surface_hover: 0x353a43,
-	line_strong: 0x49505b,
-	text: 0xe8e8ea,
-	text_body: 0xcfd0d4,
-	text_muted: 0xa3a5ad,
-	accent: 0x9fb6df,
-	blue: 0x91b4dd,
-	green: 0x97b6a2,
-	amber: 0xd1b78f,
-	error: 0xdf9a9f,
+	canvas: 0x141a24,
+	shell_material: 0x181e29f8,
+	content_material: 0x202733f0,
+	topbar_material: 0x1c2431f0,
+	agent_sidebar_material: 0x19212df0,
+	agent_chat_overlay: 0x202733db,
+	sidebar_material: 0x151c27f8,
+	surface_raised_material: 0x272f3ea0,
+	composer_material: 0x2a3342f8,
+	message_material: 0x2d3748b8,
+	surface_overlay_material: 0x2b3443fa,
+	surface_hover: 0x333c4d,
+	selection_fill: 0x2e4568e8,
+	selection_hover: 0x39567aed,
+	selection_border: 0x85aff780,
+	control_selected_fill: 0x9faec638,
+	control_selected_hover: 0xaabbd24a,
+	control_selected_border: 0xb1c2db40,
+	line_strong: 0x47556c,
+	text: 0xdee2ea,
+	text_body: 0xc7ceda,
+	text_muted: 0x9faaba,
+	accent: 0x85aff7,
+	primary_fill: 0x426fbf,
+	control_active_fill: 0x54698e,
+	on_primary: 0xffffff,
+	blue: 0x85aff7,
+	green: 0xa0baa9,
+	amber: 0xd4b58a,
+	error: 0xdf969c,
+	status_info: 0x9eb8df,
+	status_success: 0xaab9d8,
+	status_warning: 0xd6b99a,
+	status_error: 0xdf969c,
+	mascot_bases: [
+		0x89a6ca, 0xa89bc7, 0x7da1dc, 0xc89c8d, 0xc2ad8e, 0xbdc3cd, 0xc69aac, 0x969fcb, 0x95b3d4,
+		0x98a8bd, 0xd2939b, 0x7e94ba,
+	],
 };
 
 impl Palette {
@@ -204,7 +250,14 @@ impl Palette {
 			super::SIDEBAR_MATERIAL => self.sidebar_material,
 			super::SURFACE_RAISED_MATERIAL => self.surface_raised_material,
 			super::COMPOSER_MATERIAL => self.composer_material,
+			super::MESSAGE_MATERIAL => self.message_material,
 			super::SURFACE_OVERLAY_MATERIAL => self.surface_overlay_material,
+			super::SELECTED_FILL => self.selection_fill,
+			super::SELECTED_HOVER_FILL => self.selection_hover,
+			super::SELECTED_BORDER => self.selection_border,
+			super::CONTROL_SELECTED_FILL => self.control_selected_fill,
+			super::CONTROL_SELECTED_HOVER => self.control_selected_hover,
+			super::CONTROL_SELECTED_BORDER => self.control_selected_border,
 			_ => return None,
 		})
 	}
@@ -212,6 +265,13 @@ impl Palette {
 	/// Map the shared dark tokens without changing authored content colors.
 	pub(super) fn resolve(&self, token: u32) -> u32 {
 		match token {
+			super::PRIMARY_FILL => self.primary_fill,
+			super::CONTROL_ACTIVE_FILL => self.control_active_fill,
+			super::ON_PRIMARY => self.on_primary,
+			super::INFO => self.status_info,
+			super::SUCCESS => self.status_success,
+			super::WARNING => self.status_warning,
+			super::ERROR => self.status_error,
 			0x0b0a0f => self.canvas,
 			0x101014 => self.shell_material >> 8,
 			0x141419 | 0x141418 | 0x111113 => self.content_material >> 8,
@@ -219,9 +279,11 @@ impl Palette {
 			0x17171c | 0x17171a => self.agent_sidebar_material >> 8,
 			0x100e15 => self.sidebar_material >> 8,
 			0x17151e => self.surface_raised_material >> 8,
-			0x1d1a24 => self.surface_overlay_material >> 8,
-			0x222228 | 0x24242a | 0x242427 | 0x27272b => self.composer_material >> 8,
-			0x29292d | 0x29292e | 0x252830 | 0x303030 => self.surface_raised_material >> 8,
+			0x1d1a24 | 0x24242a => self.surface_overlay_material >> 8,
+			0x222228 | 0x27272b => self.composer_material >> 8,
+			0x222c3a => self.message_material >> 8,
+			0x242427 | 0x29292d | 0x29292e | 0x252830 | 0x303030 =>
+				self.surface_raised_material >> 8,
 			0x302d39 | 0x30303a | 0x33333a | 0x35353c | 0x373737 | 0x141822 =>
 				self.surface_overlay_material >> 8,
 			0x3a3a40 | 0x464646 => self.surface_hover,
@@ -237,7 +299,7 @@ impl Palette {
 			0xe0b56f | 0xf59e0b | 0xf5c985 | 0xd4b27c => self.amber,
 			0xf97316 | 0xe49a70 | 0xffa45d | 0xff8a3d | 0xa5a0ed | 0xaaa0c4 | 0xc4a7e7
 			| 0xb0a0d8 | 0xad9ae8 | 0xcac4f4 | 0xd1c2f4 => self.accent,
-			0xed8585 | 0xdc2626 | 0xef4444 => self.error,
+			0xed8585 | 0xdc2626 => self.error,
 			_ => token,
 		}
 	}
@@ -258,19 +320,58 @@ impl Palette {
 			sidebar_material: (sidebar << 8) | 0x84,
 			surface_raised_material: (raised << 8) | 0x46,
 			composer_material: (raised << 8) | 0x88,
+			message_material: (raised << 8) | 0x94,
 			surface_overlay_material: (raised << 8) | 0xd8,
 			surface_hover: raised,
+			selection_fill: (accent << 8) | 0x1c,
+			selection_hover: (accent << 8) | 0x24,
+			selection_border: (accent << 8) | 0x88,
+			control_selected_fill: (text << 8) | 0x18,
+			control_selected_hover: (accent << 8) | 0x24,
+			control_selected_border: (text << 8) | 0x0c,
 			line_strong: border,
 			text,
 			text_body: text,
 			text_muted: muted,
 			accent,
+			primary_fill: accent,
+			control_active_fill: accent,
+			on_primary: canvas,
 			blue,
 			green,
 			amber,
 			error,
+			// Small status labels need more light than large chart marks.
+			status_info: mix(blue, text, 25),
+			status_success: mix(green, text, 12),
+			status_warning: mix(amber, text, 15),
+			status_error: mix(error, text, 60),
+			mascot_bases: [
+				mix(blue, green, 35),
+				mix(accent, blue, 25),
+				blue,
+				mix(error, amber, 25),
+				amber,
+				mix(text, amber, 12),
+				error,
+				mix(blue, accent, 45),
+				mix(blue, text, 25),
+				green,
+				mix(error, amber, 12),
+				mix(blue, canvas, 18),
+			],
 		}
 	}
+}
+
+/// Mix authored palette channels once, before character geometry is cached.
+pub(super) const fn mix(a: u32, b: u32, percent: u32) -> u32 {
+	const fn channel(a: u32, b: u32, percent: u32, shift: u32) -> u32 {
+		(((a >> shift) & 255) * (100 - percent) + ((b >> shift) & 255) * percent) / 100
+	}
+	(channel(a, b, percent, 16) << 16)
+		| (channel(a, b, percent, 8) << 8)
+		| channel(a, b, percent, 0)
 }
 
 // Palette sources; material alpha and semantic role assignment are Decodex-specific.
@@ -279,6 +380,12 @@ const TOKYO_NIGHT: Palette = Palette::dark(
 	[0x1a1b26, 0x16161e, 0x292e42],
 	[0xc0caf5, 0xa9b1d6, 0x414868],
 	[0xbb9af7, 0x7aa2f7, 0x9ece6a, 0xe0af68, 0xf7768e],
+);
+// https://github.com/EdenEast/nightfox.nvim/blob/main/lua/nightfox/palette/nightfox.lua
+const NIGHTFOX: Palette = Palette::dark(
+	[0x192330, 0x131a24, 0x212e3f],
+	[0xcdcecf, 0xaeafb0, 0x39506d],
+	[0x719cd6, 0x719cd6, 0x81b29a, 0xdbc074, 0xc94f6d],
 );
 // https://github.com/catppuccin/palette/blob/main/palette.json (Mocha)
 const CATPPUCCIN_MOCHA: Palette = Palette::dark(
@@ -365,6 +472,16 @@ mod tests {
 	}
 
 	#[test]
+	fn catalog_pins_decodex_then_sorts_presets_by_name() {
+		assert_eq!(ColorTheme::ALL[0], ColorTheme::Decodex);
+		assert!(
+			ColorTheme::ALL[1..]
+				.windows(2)
+				.all(|pair| { pair[0].name().to_lowercase() < pair[1].name().to_lowercase() })
+		);
+	}
+
+	#[test]
 	fn every_palette_keeps_body_and_secondary_text_readable() {
 		fn luminance(rgb: u32) -> f64 {
 			[16, 8, 0]
@@ -386,6 +503,7 @@ mod tests {
 			for background in [
 				palette.canvas,
 				palette.composer_material >> 8,
+				palette.message_material >> 8,
 				palette.surface_overlay_material >> 8,
 				palette.surface_hover,
 			] {

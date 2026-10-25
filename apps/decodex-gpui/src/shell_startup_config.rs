@@ -1,4 +1,5 @@
 //! On-demand native configuration checks in the existing diagnostic details.
+use crate::ui_feedback::{self, Feedback};
 use std::path::PathBuf;
 
 use gpui::{
@@ -24,7 +25,7 @@ pub(super) struct Panel {
 	result: Option<NativeStartupConfiguration>,
 	task: Option<Task<()>>,
 	epoch: u64,
-	feedback: String,
+	feedback: Feedback,
 }
 impl Panel {
 	pub(super) fn reset(&mut self) {
@@ -58,7 +59,7 @@ fn start(shell: &mut Shell, cx: &mut Context<Shell>) {
 	let epoch = panel.epoch;
 	panel.source = Some(owner.clone());
 	panel.result = None;
-	panel.feedback = "Checking the selected native component and configuration…".into();
+	panel.feedback = Feedback::info("Checking the selected native component and configuration…");
 	let directory =
 		ConversationWorkingDirectory::new(owner.directory.to_string_lossy().into_owned())
 			.expect("source directory was validated");
@@ -79,10 +80,15 @@ fn start(shell: &mut Shell, cx: &mut Context<Shell>) {
 			if current {
 				panel.feedback.clear();
 				panel.result = result;
-					if panel.result.is_none() { panel.feedback = "The local service could not complete this check. Reconnect and check again.".into(); }
+				if panel.result.is_none() {
+					panel.feedback = Feedback::warning(
+						"The local service could not complete this check. Reconnect and check again.",
+					);
+				}
 			} else {
 				panel.result = None;
-				panel.feedback = "The selected folder or connection changed. Check again.".into();
+				panel.feedback =
+					Feedback::warning("The selected folder or connection changed. Check again.");
 			}
 			cx.notify();
 		});
@@ -106,12 +112,20 @@ pub(super) fn content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			start,
 		));
 	} else {
-		group = group.child(
-			"Connect to the local service and select an available folder to check configuration.",
-		);
+		group = group.children(ui_feedback::inline_feedback(
+			"native-startup-unavailable",
+			"Configuration check unavailable",
+			&Feedback::info(
+				"Connect to the local service and select an available folder to check configuration.",
+			),
+		));
 	}
 	if !panel.feedback.is_empty() {
-		group = group.child(panel.feedback.clone());
+		group = group.children(ui_feedback::inline_feedback(
+			"native-startup-feedback",
+			"Configuration check",
+			&panel.feedback,
+		));
 	}
 	if let Some(result) = result {
 		let text = result.report_text();

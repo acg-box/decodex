@@ -16,6 +16,7 @@ use super::{
 	native_process_summary,
 };
 use crate::{
+	ui_feedback::{self, Feedback, Tone},
 	ui_motion::SmoothControl as _,
 	ui_theme::{self, BODY_SIZE, HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_WIDTH},
 };
@@ -100,6 +101,12 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 	let presentation = health_presentation(snapshot);
 	let expanded = shell.diagnostics.expanded;
 	let report = report_text(snapshot);
+	let tone = match snapshot.load {
+		HealthLoadState::Ready if issues(snapshot).is_empty() => Tone::Success,
+		HealthLoadState::NeverRequested | HealthLoadState::Loading => Tone::Info,
+		HealthLoadState::Refused => Tone::Error,
+		_ => Tone::Warning,
+	};
 	let mut content = gpui::div()
 		.w_full()
 		.max_w(gpui::px(SETTINGS_WIDTH))
@@ -113,38 +120,15 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 				.p_4()
 				.id("health-query-status")
 				.debug_selector(|| "health-query-status".into())
-				.role(Role::Status)
-				.aria_label(format!("Diagnostics: {}", presentation.label))
-				.flex_row()
-				.items_start()
-				.gap_3()
-				.child(
-					gpui::div()
-						.mt(gpui::px(6.))
-						.size(gpui::px(7.))
-						.flex_none()
-						.rounded_full()
-						.bg(ui_theme::rgb(presentation.color)),
-				)
-				.child(
-					gpui::div()
-						.min_w_0()
-						.flex_1()
-						.flex()
-						.flex_col()
-						.gap_2()
-						.child(
-							gpui::div().font_weight(FontWeight::SEMIBOLD).child(presentation.label),
-						)
-						.child(
-							gpui::div()
-								.text_size(gpui::px(11.5))
-								.line_height(gpui::px(16.0))
-								.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-								.child(presentation.detail),
-						),
-				),
+				.child(ui_feedback::status_row(
+					"health-summary",
+					tone,
+					presentation.label,
+					presentation.detail,
+					tone.icon(),
+				)),
 		);
+
 	for (index, issue) in issues(snapshot).into_iter().enumerate() {
 		let (title, detail) = issue_description(issue);
 		content = content.child(
@@ -152,13 +136,14 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 				.p_4()
 				.id(("health-issue", index))
 				.debug_selector(move || format!("health-issue-{index}"))
-				.flex()
-				.flex_col()
-				.gap_2()
-				.child(gpui::div().font_weight(FontWeight::MEDIUM).child(title))
-				.child(gpui::div().text_color(ui_theme::rgb(ui_theme::TEXT_MUTED)).child(detail)),
+				.children(ui_feedback::inline_feedback(
+					format!("health-issue-message-{index}"),
+					title,
+					&Feedback::warning(detail),
+				)),
 		);
 	}
+
 	content = content
 		.child(
 			gpui::div()

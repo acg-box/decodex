@@ -675,10 +675,10 @@ fn dragging_a_node_changes_layout_without_switching_the_conversation(
 #[test]
 fn native_states_keep_requests_errors_and_inactivity_distinct() {
 	for (native, label, color) in [
-		("active", "Running", crate::ui_theme::BLUE),
-		("running", "Running", crate::ui_theme::BLUE),
-		("waitingOnApproval", "Approval", AMBER),
-		("waitingOnUserInput", "Input needed", AMBER),
+		("active", "Running", crate::ui_theme::INFO),
+		("running", "Running", crate::ui_theme::INFO),
+		("waitingOnApproval", "Approval", WARNING),
+		("waitingOnUserInput", "Input needed", WARNING),
 		("systemError", "Error", crate::ui_theme::ERROR),
 		("idle", "Idle", TEXT_MUTED),
 		("notLoaded", "Not running", TEXT_MUTED),

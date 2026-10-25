@@ -1,4 +1,17 @@
-//! Operation feedback carries its meaning from the source to one compact presentation.
+//! Feedback is placed by scope, not by severity.
+//!
+//! - A field or operation error stays beside the affected control.
+//! - A send restriction replaces the composer with one persistent status and recovery action.
+//!   Archived and externally owned conversations are read-only states, not failed operations.
+//! - A message receipt stays with its message; it never becomes a global notification.
+//! - App-wide connection, account and background notices belong to the notification center.
+//! - Centered empty states are reserved for a surface with no usable content. Modal alerts are
+//!   reserved for decisions that must precede an explicit action.
+//!
+//! Text and actions are left aligned within the owning content column. Inline surfaces use
+//! a light border, not elevation. Only overlays have shadows. Tone supplements an icon and
+//! explicit wording; it does not determine placement, focus or automatic dismissal. A blocking
+//! status remains until its cause is resolved, and never discards the user's saved draft.
 use std::{
 	ops::Deref,
 	time::{Duration, Instant},
@@ -12,11 +25,13 @@ use gpui::{
 
 use crate::{
 	ui_motion::{self, Tween},
-	ui_theme::{AMBER, CONVERSATION_INSET, ERROR, GREEN, METADATA_GAP, TEXT_MUTED},
+	ui_theme::{
+		CONVERSATION_INSET, CONVERSATION_WIDTH, ERROR, INFO, METADATA_GAP, SUCCESS, TEXT,
+		TEXT_MUTED, WARNING,
+	},
 };
 
 const NOTICE_PADDING: f32 = 12.;
-const NOTICE_FRAME: f32 = 2. * (NOTICE_PADDING + 1.);
 const NOTICE_TEXT_SIZE: f32 = 12.;
 const NOTICE_LINE_HEIGHT: f32 = 18.;
 
@@ -24,6 +39,7 @@ const NOTICE_LINE_HEIGHT: f32 = 18.;
 pub(crate) enum Tone {
 	#[default]
 	Neutral,
+	Info,
 	Success,
 	Warning,
 	Error,
@@ -33,8 +49,9 @@ impl Tone {
 	pub(crate) fn color(self) -> u32 {
 		match self {
 			Self::Neutral => TEXT_MUTED,
-			Self::Success => GREEN,
-			Self::Warning => AMBER,
+			Self::Info => INFO,
+			Self::Success => SUCCESS,
+			Self::Warning => WARNING,
 			Self::Error => ERROR,
 		}
 	}
@@ -42,6 +59,7 @@ impl Tone {
 	pub(crate) fn label(self) -> &'static str {
 		match self {
 			Self::Neutral => "Status",
+			Self::Info => "Information",
 			Self::Success => "Success",
 			Self::Warning => "Attention",
 			Self::Error => "Error",
@@ -50,9 +68,10 @@ impl Tone {
 
 	pub(crate) fn icon(self) -> impl gpui::IntoElement {
 		let data: &'static [u8] = match self {
-			Self::Neutral => br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 4.7v.1"/></g></svg>"#,
+			Self::Neutral | Self::Info => br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 4.7v.1"/></g></svg>"#,
 			Self::Success => br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="m5 8 2 2 4-4"/></g></svg>"#,
-			Self::Warning | Self::Error => br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 4.7v4M8 11v.1"/></g></svg>"#,
+			Self::Warning => br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 4.7v4M8 11v.1"/></g></svg>"#,
+			Self::Error => br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="m6 6 4 4M10 6l-4 4"/></g></svg>"#,
 		};
 		gpui::svg()
 			.data(data)
@@ -69,8 +88,8 @@ impl Tone {
 		gpui::div()
 			.rounded(gpui::px(12.))
 			.border_1()
-			.border_color(crate::ui_theme::rgba((self.color() << 8) | 0x26))
-			.bg(crate::ui_theme::rgba((self.color() << 8) | 0x07))
+			.border_color(crate::ui_theme::rgb(self.color()).opacity(0.22))
+			.bg(crate::ui_theme::rgb(self.color()).opacity(0.04))
 			.px(gpui::px(NOTICE_PADDING))
 			.py(gpui::px(6.))
 			.text_size(gpui::px(NOTICE_TEXT_SIZE))
@@ -78,7 +97,7 @@ impl Tone {
 	}
 
 	pub(crate) fn banner(self, content: impl IntoElement) -> Div {
-		notice_rail(self.surface().max_w_full().child(content)).py(gpui::px(METADATA_GAP))
+		notice_rail(self.surface().w_full().child(content)).py(gpui::px(METADATA_GAP))
 	}
 
 	pub(crate) fn disclosure(
@@ -123,29 +142,108 @@ impl Tone {
 			)
 			.child(gpui::div().min_w_0().child(message.to_owned()))
 	}
+}
 
-	pub(crate) fn composer_row(
-		self,
-		id: impl Into<ElementId>,
-		message: &str,
-		icon: impl IntoElement,
-	) -> Stateful<Div> {
-		self.row_with_icon(id, message, icon)
-			.debug_selector(|| "conversation-unavailable".into())
-			.w_full()
-			.min_w_0()
-			.min_h(gpui::px(40.))
-			.items_center()
-			.justify_center()
+/// A persistent state uses the same icon, title, explanation and trailing-action layout.
+/// The owner supplies the surface so a composer never acquires a second enclosing border.
+pub(crate) fn status_row(
+	id: impl Into<ElementId>,
+	tone: Tone,
+	title: &str,
+	detail: &str,
+	icon: impl IntoElement,
+) -> Stateful<Div> {
+	state_row(id, tone, title, detail, icon, false)
+}
+
+/// A known read-only restriction keeps its explanation beside the title when space allows.
+pub(crate) fn read_only_row(
+	id: impl Into<ElementId>,
+	title: &str,
+	detail: &str,
+	icon: impl IntoElement,
+) -> Stateful<Div> {
+	state_row(id, Tone::Neutral, title, detail, icon, true)
+}
+
+fn state_row(
+	id: impl Into<ElementId>,
+	tone: Tone,
+	title: &str,
+	detail: &str,
+	icon: impl IntoElement,
+	inline: bool,
+) -> Stateful<Div> {
+	gpui::div()
+		.id(id)
+		.role(Role::Status)
+		.aria_label(format!("{title}. {detail}"))
+		.w_full()
+		.min_w_0()
+		.min_h(gpui::px(if inline { 32. } else { 44. }))
+		.flex()
+		.items_center()
+		.gap(gpui::px(10.))
+		.text_size(gpui::px(NOTICE_TEXT_SIZE))
+		.line_height(gpui::px(NOTICE_LINE_HEIGHT))
+		.child(gpui::div().flex_none().text_color(crate::ui_theme::rgb(tone.color())).child(icon))
+		.child(
+			gpui::div()
+				.flex_1()
+				.min_w_0()
+				.flex()
+				.when(inline, |text| {
+					text.flex_wrap().items_center().gap_x(gpui::px(8.)).gap_y(gpui::px(2.))
+				})
+				.when(!inline, |text| text.flex_col().gap(gpui::px(2.)))
+				.child(
+					gpui::div()
+						.font_weight(gpui::FontWeight::MEDIUM)
+						.text_color(crate::ui_theme::rgb(TEXT))
+						.child(title.to_owned()),
+				)
+				.when(!detail.is_empty(), |d| {
+					d.child(
+						gpui::div()
+							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+							.child(detail.to_owned()),
+					)
+				}),
+		)
+}
+
+/// Local feedback stays in its owning form or setting, without a second card or shadow.
+pub(crate) fn inline_feedback(
+	id: impl Into<SharedString>,
+	title: &str,
+	feedback: &Feedback,
+) -> Option<AnyElement> {
+	if feedback.is_empty() {
+		return None;
 	}
+	let id = id.into();
+	let selector = id.to_string();
+	Some(
+		status_row(id, feedback.tone, title, &feedback.message, feedback.tone.icon())
+			.debug_selector(move || selector.clone())
+			.min_h(gpui::px(0.))
+			.items_start()
+			.py(gpui::px(6.))
+			.into_any_element(),
+	)
 }
 
 fn notice_rail(content: impl IntoElement) -> Div {
-	gpui::div().w_full().flex().justify_center().px(gpui::px(CONVERSATION_INSET)).child(content)
+	gpui::div()
+		.w_full()
+		.flex()
+		.justify_center()
+		.px(gpui::px(CONVERSATION_INSET))
+		.child(gpui::div().w_full().min_w_0().max_w(gpui::px(CONVERSATION_WIDTH)).child(content))
 }
 
 #[derive(IntoElement)]
-/// Expand one centered surface without reflowing its text during the transition.
+/// Expand a receipt in place without moving its leading edge or reflowing its text.
 pub(crate) struct ExpandableNotice {
 	id: SharedString,
 	tone: Tone,
@@ -154,19 +252,12 @@ pub(crate) struct ExpandableNotice {
 	detail: Box<dyn FnOnce(&mut App) -> AnyElement>,
 }
 
-#[derive(Default)]
-struct NoticeGeometry {
-	available: f32,
-	header: f32,
-	detail: f32,
-}
-
 impl RenderOnce for ExpandableNotice {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let geometry = window.use_keyed_state(
 			SharedString::from(format!("notice-geometry-{}", self.id)),
 			cx,
-			|_, _| NoticeGeometry::default(),
+			|_, _| 0_f32,
 		);
 		let progress = ui_motion::value(
 			SharedString::from(format!("notice-disclosure-{}", self.id)),
@@ -174,45 +265,24 @@ impl RenderOnce for ExpandableNotice {
 			window,
 			cx,
 		);
-		let measured = geometry.read(cx);
-		let available = measured.available;
-		let compact = (measured.header + NOTICE_FRAME).min(available);
-		let width = compact + (available - compact) * progress;
-		let height = measured.detail * progress;
-		let header_geometry = geometry.clone();
+		let height = *geometry.read(cx) * progress;
 		let detail_geometry = geometry.clone();
-		let card = self
-			.tone
+		self.tone
 			.surface()
-			.max_w_full()
+			.w_full()
 			.min_w_0()
 			.overflow_hidden()
 			.debug_selector(|| "expandable-notice-card".into())
-			.when(available > 0., |d| d.w(gpui::px(width)))
 			.child(
-				gpui::div()
-					.w_full()
-					.flex()
-					.justify_center()
-					.on_children_prepainted(move |bounds, _, cx| {
-						if let Some(bounds) = bounds.first() {
-							let width = f32::from(bounds.size.width);
-							header_geometry.update(cx, |s, cx| {
-								if (s.header - width).abs() > 0.5 {
-									s.header = width;
-									cx.notify();
-								}
-							});
-						}
-					})
-					.child(
-						gpui::div()
-							.flex_none()
-							.h(gpui::px(NOTICE_LINE_HEIGHT))
-							.flex()
-							.items_center()
-							.child(self.header),
-					),
+				gpui::div().w_full().flex().child(
+					gpui::div()
+						.w_full()
+						.min_w_0()
+						.min_h(gpui::px(NOTICE_LINE_HEIGHT))
+						.flex()
+						.items_center()
+						.child(self.header),
+				),
 			)
 			.child(
 				gpui::div()
@@ -220,23 +290,19 @@ impl RenderOnce for ExpandableNotice {
 					.h(gpui::px(height))
 					.overflow_hidden()
 					.flex()
-					.justify_center()
 					.opacity(((progress - 0.25) / 0.75).clamp(0., 1.))
 					.when(self.expanded || progress > 0., |d| {
 						d.child(
 							gpui::div()
-								.flex_none()
-								// Measure at the final width; only the outer surface changes size.
-								.when(available > 0., |d| {
-									d.w(gpui::px((available - NOTICE_FRAME).max(0.)))
-								})
+								.w_full()
+								.min_w_0()
 								.debug_selector(|| "expandable-notice-detail".into())
 								.on_children_prepainted(move |bounds, _, cx| {
 									if let Some(bounds) = bounds.first() {
 										let height = f32::from(bounds.size.height);
 										detail_geometry.update(cx, |s, cx| {
-											if (s.detail - height).abs() > 0.5 {
-												s.detail = height;
+											if (*s - height).abs() > 0.5 {
+												*s = height;
 												cx.notify();
 											}
 										});
@@ -245,19 +311,7 @@ impl RenderOnce for ExpandableNotice {
 								.child((self.detail)(cx)),
 						)
 					}),
-			);
-		notice_rail(gpui::div().w_full().flex().justify_center().child(card))
-			.on_children_prepainted(move |bounds, _, cx| {
-				if let Some(bounds) = bounds.first() {
-					let width = f32::from(bounds.size.width);
-					geometry.update(cx, |s, cx| {
-						if (s.available - width).abs() > 0.5 {
-							s.available = width;
-							cx.notify();
-						}
-					});
-				}
-			})
+			)
 	}
 }
 
@@ -265,7 +319,7 @@ impl RenderOnce for ExpandableNotice {
 /// Keep the state name available to assistive technology without repeating it visually.
 pub(crate) fn execution_icon(id: impl Into<SharedString>, status: &str) -> Stateful<Div> {
 	let (tone, label, running) = match status {
-		"running" | "inProgress" | "Running" => (Tone::Neutral, "Running", true),
+		"running" | "inProgress" | "Running" => (Tone::Info, "Running", true),
 		"completed" => (Tone::Success, "Completed", false),
 		"failed" => (Tone::Error, "Failed", false),
 		"declined" => (Tone::Warning, "Declined", false),
@@ -311,7 +365,11 @@ impl Feedback {
 	}
 
 	pub(crate) fn loading(message: impl Into<String>) -> Self {
-		Self { message: message.into(), busy: true, ..Self::default() }
+		Self { message: message.into(), tone: Tone::Info, busy: true }
+	}
+
+	pub(crate) fn info(message: impl Into<String>) -> Self {
+		Self { message: message.into(), tone: Tone::Info, ..Self::default() }
 	}
 
 	pub(crate) fn success(message: impl Into<String>) -> Self {
@@ -415,7 +473,8 @@ impl RenderOnce for Notice {
 				};
 				let row = tone.row_with_icon("conversation-feedback-status", &feedback.message, icon)
 					.debug_selector(|| "conversation-activity-status".into())
-					.justify_center()
+					.w_full()
+					.min_w_0()
 					.children(self.action.filter(|_| current));
 				slot.child(
 					gpui::div().w_full().flex_none()
@@ -621,7 +680,7 @@ mod tests {
 	struct DisclosureView(bool);
 	impl Render for DisclosureView {
 		fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
-			gpui::div().w(gpui::px(500.)).child(Tone::Warning.disclosure(
+			gpui::div().w(gpui::px(500.)).px(gpui::px(CONVERSATION_INSET)).child(Tone::Warning.disclosure(
 				"saved-input",
 				self.0,
 				gpui::div().flex_none().child(Tone::Warning.row("header", "Message not sent")),
@@ -631,29 +690,29 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn disclosure_moves_as_one_surface_without_reflowing_its_detail(cx: &mut gpui::TestAppContext) {
+	fn disclosure_keeps_its_leading_edge_and_text_width_while_height_changes(
+		cx: &mut gpui::TestAppContext,
+	) {
 		let (view, visual) = cx.add_window_view(|_, _| DisclosureView(false));
 		for _ in 0..4 {
 			visual.update(crate::ui_frame::draw_frame);
 		}
 		let compact = visual.debug_bounds("expandable-notice-card").unwrap();
 		assert_eq!(compact.size.height, gpui::px(32.));
-		let first_frame_limit = (gpui::px(468.) - compact.size.width) * 0.25;
+		assert_eq!(compact.size.width, gpui::px(468.));
 		view.update(visual, |s, cx| {
 			s.0 = true;
 			cx.notify();
 		});
 		visual.update(crate::ui_frame::draw_frame);
 		let first_opening = visual.debug_bounds("expandable-notice-card").unwrap();
-		assert!(
-			(first_opening.size.width - compact.size.width).abs() < first_frame_limit,
-			"compact={compact:?}, first_opening={first_opening:?}"
-		);
+		assert_eq!(first_opening.size.width, compact.size.width);
+		assert_eq!(first_opening.left(), compact.left());
 		std::thread::sleep(Duration::from_millis(70));
 		visual.update(crate::ui_frame::draw_frame);
 		let opening = visual.debug_bounds("expandable-notice-card").unwrap();
 		let detail = visual.debug_bounds("expandable-notice-detail").unwrap();
-		assert!(opening.size.width > compact.size.width && opening.size.width < gpui::px(468.));
+		assert_eq!(opening.size.width, compact.size.width);
 		std::thread::sleep(SETTLE);
 		visual.update(crate::ui_frame::draw_frame);
 		let open = visual.debug_bounds("expandable-notice-card").unwrap();
@@ -668,25 +727,25 @@ mod tests {
 			cx.notify();
 		});
 		visual.update(crate::ui_frame::draw_frame);
-		assert!(
-			(visual.debug_bounds("expandable-notice-card").unwrap().size.width - open.size.width)
-				.abs()
-				< first_frame_limit
+		assert_eq!(
+			visual.debug_bounds("expandable-notice-card").unwrap().size.width,
+			open.size.width
 		);
 		std::thread::sleep(Duration::from_millis(70));
 		visual.update(crate::ui_frame::draw_frame);
 		let closing = visual.debug_bounds("expandable-notice-card").unwrap();
-		assert!(closing.size.width > compact.size.width && closing.size.width < open.size.width);
+		assert_eq!(closing.size.width, open.size.width);
+		assert!(
+			closing.size.height > compact.size.height && closing.size.height < open.size.height
+		);
 		view.update(visual, |s, cx| {
 			s.0 = true;
 			cx.notify();
 		});
 		visual.update(crate::ui_frame::draw_frame);
-		assert!(
-			(visual.debug_bounds("expandable-notice-card").unwrap().size.width
-				- closing.size.width)
-				.abs()
-				< first_frame_limit
+		assert_eq!(
+			visual.debug_bounds("expandable-notice-card").unwrap().size.width,
+			closing.size.width
 		);
 		std::thread::sleep(SETTLE);
 		visual.update(crate::ui_frame::draw_frame);

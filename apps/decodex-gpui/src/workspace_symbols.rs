@@ -1,26 +1,27 @@
 //! Native macOS SF Symbols, rendered at 3x and embedded for bundle-independent use.
-use std::{
-	f32::consts::FRAC_PI_2,
-	sync::{Arc, LazyLock},
-};
+use std::{f32::consts::FRAC_PI_2, sync::LazyLock};
 
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use gpui::{
-	self, AnyElement, App, ElementId, Image, ImageFormat, PathBuilder, RenderOnce, Window,
+	self, AnyElement, App, ElementId, PathBuilder, RenderOnce, Window,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _,
 	},
 };
 
-use crate::{ui_motion, ui_theme::TEXT_MUTED};
+use crate::{
+	ui_motion,
+	ui_theme::{self, TEXT_MUTED},
+};
 
-// Preserve the existing dark artwork and load its paired light palette on demand.
+// GPUI uses an SVG's alpha as a tintable mask. Keep the native symbol artwork
+// and cache one template per shape, independent of appearance and status color.
 macro_rules! symbol_sources {
 	($($name:literal),* $(,)?) => {[
-		[$(include_bytes!(concat!("../../../assets/workspace-symbols/", $name, ".png")) as &[u8]),*],
-		[$(include_bytes!(concat!("../../../assets/workspace-symbols/light/", $name, ".png")) as &[u8]),*],
+		$(include_bytes!(concat!("../../../assets/workspace-symbols/", $name, ".png")) as &[u8]),*
 	]};
 }
-static IMAGES: LazyLock<[[Arc<Image>; 46]; 2]> = LazyLock::new(|| {
+static TEMPLATES: LazyLock<[String; 44]> = LazyLock::new(|| {
 	let sources = symbol_sources![
 		"sidebar",
 		"graph",
@@ -50,10 +51,8 @@ static IMAGES: LazyLock<[[Arc<Image>; 46]; 2]> = LazyLock::new(|| {
 		"eye-slash",
 		"lock",
 		"account-sign-in",
-		"account-warning",
 		"reset-cards",
 		"account-reorder",
-		"account-warning-amber",
 		"all-work",
 		"arrange",
 		"fit",
@@ -69,8 +68,11 @@ static IMAGES: LazyLock<[[Arc<Image>; 46]; 2]> = LazyLock::new(|| {
 		"team-members",
 		"team-parent",
 	];
-	sources.map(|variant| {
-		variant.map(|bytes| Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec())))
+	sources.map(|bytes| {
+		format!(
+			r#"<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><image width="48" height="48" href="data:image/png;base64,{}"/></svg>"#,
+			STANDARD.encode(bytes),
+		)
 	})
 });
 
@@ -104,10 +106,8 @@ pub(crate) enum Symbol {
 	EyeSlash,
 	Lock,
 	AccountSignIn,
-	AccountWarning,
 	ResetCards,
 	AccountReorder,
-	AccountWarningAmber,
 	AllWork,
 	Arrange,
 	Fit,
@@ -238,16 +238,29 @@ pub(super) fn icon(symbol: Symbol) -> AnyElement {
 }
 
 pub(crate) fn icon_sized(symbol: Symbol, size: f32) -> AnyElement {
-	gpui::img(
-		IMAGES[usize::from(
-			crate::ui_theme::appearance::Theme::current()
-				== crate::ui_theme::appearance::Theme::Light,
-		)][symbol as usize]
-			.clone(),
-	)
-	.size(gpui::px(size))
-	.flex_none()
-	.into_any_element()
+	SymbolIcon { symbol, size }.into_any_element()
+}
+
+#[derive(gpui::IntoElement)]
+struct SymbolIcon {
+	symbol: Symbol,
+	size: f32,
+}
+impl RenderOnce for SymbolIcon {
+	fn render(self, window: &mut Window, _cx: &mut App) -> impl IntoElement {
+		let color = match self.symbol {
+			Symbol::BellAttention => ui_theme::rgb(ui_theme::WARNING).into(),
+			Symbol::BellError => ui_theme::rgb(ui_theme::ERROR).into(),
+			Symbol::BellInfo => ui_theme::rgb(ui_theme::INFO).into(),
+			Symbol::AccountRouteActive | Symbol::PowerOn => ui_theme::rgb(ui_theme::SUCCESS).into(),
+			_ => window.text_style().color,
+		};
+		gpui::svg()
+			.data(TEMPLATES[self.symbol as usize].as_bytes())
+			.text_color(color)
+			.size(gpui::px(self.size))
+			.flex_none()
+	}
 }
 
 pub(super) fn disclosure_chevron(id: impl Into<ElementId>, expanded: bool) -> DisclosureChevron {
@@ -260,4 +273,24 @@ pub(super) fn process_chevron(id: impl Into<ElementId>, expanded: bool) -> Proce
 
 pub(super) fn panel_expansion(id: &'static str, expanded: bool) -> PanelExpansion {
 	PanelExpansion { id, expanded }
+}
+
+#[cfg(test)]
+mod tests {
+	use super::TEMPLATES;
+
+	#[gpui::test]
+	fn native_symbol_templates_preserve_visible_alpha(cx: &mut gpui::TestAppContext) {
+		let renderer = cx.update(|cx| cx.svg_renderer());
+		for (index, template) in TEMPLATES.iter().enumerate() {
+			let image = renderer
+				.render_single_frame(template.as_bytes(), 1.)
+				.unwrap_or_else(|error| panic!("symbol {index}: {error}"));
+			assert_eq!(image.size(0), gpui::size(gpui::DevicePixels(96), gpui::DevicePixels(96)));
+			let pixels = image.as_bytes(0).expect("symbol pixels");
+			let alpha: Vec<_> = pixels.as_chunks::<4>().0.iter().map(|pixel| pixel[3]).collect();
+			assert!(alpha.iter().any(|value| *value != 0), "symbol {index}: empty mask");
+			assert!(alpha.contains(&0), "symbol {index}: lost transparent background");
+		}
+	}
 }

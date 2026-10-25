@@ -1,5 +1,5 @@
 //! Host-owned macOS sleep policy. Never stores a competing application preference.
-use gpui::{AnyElement, Task};
+use gpui::{AnyElement, Styled as _, Task, prelude::FluentBuilder as _};
 
 use crate::settings_surface::{Context, IntoElement, ParentElement, SettingsSurface, ui_theme};
 
@@ -70,32 +70,49 @@ impl SettingsSurface {
 		let enabled = self.power.enabled.unwrap_or(false);
 		let interactive = self.power.enabled.is_some() && !self.power.pending;
 
-		ui_theme::settings_row()
-			.child(ui_theme::settings_label(
-				"Prevent system sleep",
-				"Applies to this Mac on power and battery, even after quitting Decodex.",
-			))
+		gpui::div()
+			.w_full()
+			.flex()
+			.flex_col()
 			.child(
-				super::switch::settings_switch(
-					"prevent-system-sleep",
-					"power-sleep-knob",
-					"Prevent system sleep",
-					enabled,
-					interactive,
-				)
-				.aria_description(if self.power.pending {
-					"Checking the system setting"
-				} else if self.power.enabled.is_none() {
-					"The system setting is unavailable"
-				} else {
-					"Changes the macOS sleep setting"
-				})
-				.on_change(
-					cx.listener(move |s, desired: &bool, _, cx| {
-						s.power_request(Some(*desired), cx)
-					}),
-				),
+				ui_theme::settings_row()
+					.child(ui_theme::settings_label(
+						"Prevent system sleep",
+						"Applies to this Mac on power and battery, even after quitting Decodex.",
+					))
+					.child(
+						super::switch::settings_switch(
+							"prevent-system-sleep",
+							"power-sleep-knob",
+							"Prevent system sleep",
+							enabled,
+							interactive,
+						)
+						.aria_description(if self.power.pending {
+							"Checking the system setting"
+						} else if self.power.enabled.is_none() {
+							"The system setting is unavailable"
+						} else {
+							"Changes the macOS sleep setting"
+						})
+						.on_change(cx.listener(
+							move |s, desired: &bool, _, cx| s.power_request(Some(*desired), cx),
+						)),
+					),
 			)
+			.children(super::setting_notice(
+				"power-settings-feedback",
+				"System sleep setting unavailable",
+				self.power
+					.error
+					.as_ref()
+					.map(|message| crate::ui_feedback::Feedback::error(message.clone())),
+			))
+			.when(self.power.error.is_some(), |d| {
+				d.child(super::setting_action("power-settings-retry", "Retry", cx, |s, cx| {
+					s.power_request(None, cx)
+				}))
+			})
 			.into_any_element()
 	}
 }

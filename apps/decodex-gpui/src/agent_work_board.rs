@@ -4,7 +4,7 @@
 #[path = "agent_workbench.rs"] mod workbench;
 use super::{
 	AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, Styled,
-	ui_theme::{AMBER, GREEN, TEXT_MUTED},
+	ui_theme::{SUCCESS, TEXT_MUTED, WARNING},
 };
 use gpui::{AnyElement, prelude::FluentBuilder};
 use std::collections::{BTreeMap, BTreeSet};
@@ -282,9 +282,9 @@ fn apply_outcome(row: &mut Row, outcome: &str) {
 
 fn native_state(status: &str) -> (&'static str, u8, u32) {
 	match status {
-		"active" | "running" => ("Running", 1, crate::ui_theme::BLUE),
-		"waitingOnApproval" => ("Approval", 0, AMBER),
-		"waitingOnUserInput" => ("Input needed", 0, AMBER),
+		"active" | "running" => ("Running", 1, crate::ui_theme::INFO),
+		"waitingOnApproval" => ("Approval", 0, WARNING),
+		"waitingOnUserInput" => ("Input needed", 0, WARNING),
 		"systemError" => ("Error", 0, crate::ui_theme::ERROR),
 		"idle" => ("Idle", 2, TEXT_MUTED),
 		"notLoaded" => ("Not running", 2, TEXT_MUTED),

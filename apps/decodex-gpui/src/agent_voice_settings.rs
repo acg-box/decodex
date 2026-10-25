@@ -1,4 +1,5 @@
 //! Select the next call's voice without changing a live audio session.
+use crate::ui_feedback::{self, Feedback};
 use gpui::{AnyElement, AppContext as _};
 use tokio::runtime::Builder;
 
@@ -17,7 +18,7 @@ pub(super) struct Panel {
 	state: Option<AgentVoiceSettingsResult>,
 	task: Option<Task<()>>,
 	epoch: u64,
-	feedback: String,
+	feedback: Feedback,
 }
 
 struct NextCall {
@@ -172,7 +173,7 @@ impl AgentSurface {
 		}
 
 		let Some(profile) = self.profile.clone() else {
-			self.voice_settings.feedback = "No service connection is available.".into();
+			self.voice_settings.feedback = Feedback::error("No service connection is available.");
 
 			cx.notify();
 
@@ -206,8 +207,11 @@ impl AgentSurface {
 		let generation = self.generation;
 
 		self.voice_settings.state = None;
-		self.voice_settings.feedback =
-			if voice.is_some() { "Saving voice…" } else { "Reading voice settings…" }.into();
+		self.voice_settings.feedback = Feedback::loading(if voice.is_some() {
+			"Saving voice…"
+		} else {
+			"Reading voice settings…"
+		});
 
 		let key =
 			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
@@ -238,8 +242,7 @@ impl AgentSurface {
 				let (outcome, state) =
 					result.unwrap_or((None, AgentVoiceSettingsResult::Unavailable));
 
-				s.voice_settings.feedback =
-					feedback(voice.as_ref(), outcome.as_ref(), &state).into();
+				s.voice_settings.feedback = feedback(voice.as_ref(), outcome.as_ref(), &state);
 				s.voice_settings.state = Some(state);
 
 				cx.notify();
@@ -280,9 +283,13 @@ impl AgentSurface {
 			return panel.into_any_element();
 		}
 
-		panel = panel
-			.child("Applies to your next voice conversation.")
-			.child(self.voice_settings.feedback.clone());
+		panel = panel.child("Applies to your next voice conversation.").children(
+			ui_feedback::inline_feedback(
+				"voice-settings-feedback",
+				"Voice settings",
+				&self.voice_settings.feedback,
+			),
+		);
 
 		if self.voice_settings.task.is_some() {
 			return panel.into_any_element();
@@ -329,8 +336,6 @@ impl AgentSurface {
 					},
 				));
 			}
-		} else {
-			panel = panel.child("Voice settings are unavailable. Refresh to try again.");
 		}
 
 		panel.child(self.advanced_voice_options(work, cx)).into_any_element()
@@ -341,7 +346,7 @@ fn feedback(
 	voice: Option<&WireText>,
 	outcome: Option<&Result<AgentCommandResponse, ClientFailure>>,
 	state: &AgentVoiceSettingsResult,
-) -> &'static str {
+) -> Feedback {
 	match (voice, outcome, state) {
 		(
 			Some(voice),
@@ -349,15 +354,17 @@ fn feedback(
 			AgentVoiceSettingsResult::Available { effective, preference, .. },
 		) if preference.as_ref() == Some(voice) =>
 			if effective.as_ref() == Some(voice) {
-				"Voice saved for your next conversation."
+				Feedback::success("Voice saved for your next conversation.")
 			} else {
-				"Voice saved. This project's settings select a different voice."
+				Feedback::info("Voice saved. This project's settings select a different voice.")
 			},
 		(Some(_), Some(Ok(AgentCommandResponse::Rejected { .. })), _) =>
-			"The change was not accepted. Review the refreshed settings.",
-		(Some(_), _, _) =>
+			Feedback::error("The change was not accepted. Review the refreshed settings."),
+		(Some(_), _, _) => Feedback::warning(
 			"The save could not be confirmed. Review the refreshed settings before trying again.",
-		(None, _, _) => "Choose a voice for future conversations.",
+		),
+		(None, _, AgentVoiceSettingsResult::Available { .. }) => Feedback::default(),
+		(None, _, _) => Feedback::warning("Voice settings are unavailable. Refresh to try again."),
 	}
 }
 

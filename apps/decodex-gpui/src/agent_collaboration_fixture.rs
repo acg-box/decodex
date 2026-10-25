@@ -99,8 +99,13 @@ impl AgentSurface {
 			.text_color(crate::ui_theme::rgb(crate::ui_theme::TEXT))
 			.bg(crate::ui_theme::rgb(0x303030))
 			.child(
-				gpui::div().relative().flex_1().min_w_0().h_full()
-					.child(self.render_work_board(cx)).child(self.graph_layers()),
+				gpui::div()
+					.relative()
+					.flex_1()
+					.min_w_0()
+					.h_full()
+					.child(self.render_work_board(cx))
+					.child(self.graph_layers()),
 			)
 			.when(show_inspector, |view| {
 				view.child(

@@ -1,4 +1,5 @@
 //! Source-checked native observations with explicit next-message choices kept separate.
+use gpui::prelude::FluentBuilder as _;
 use std::collections::BTreeMap;
 
 use gpui::AnyElement;
@@ -232,18 +233,32 @@ impl AgentSurface {
 		if self.model_settings.observations.contains_key(&work.id)
 			|| self.model_settings.work.as_ref() == Some(&work.id)
 		{
+			let state = self.model_settings.observations.get(&work.id);
 			let text = self
 				.model_settings
 				.observations
 				.get(&work.id)
 				.map(settings_text)
 				.unwrap_or_else(|| "Reading native settings…".into());
+			let feedback = match state {
+				Some(AgentModelSettingsResult::Available { .. }) => None,
+				Some(AgentModelSettingsResult::Unavailable) =>
+					Some(crate::ui_feedback::Feedback::warning(text.clone())),
+				_ => Some(crate::ui_feedback::Feedback::info(text.clone())),
+			};
 
 			panel = panel
 				.child(
 					gpui::div()
 						.debug_selector(|| "native-model-settings-observation".into())
-						.child(text),
+						.when(feedback.is_none(), |d| d.child(text))
+						.children(feedback.as_ref().and_then(|feedback| {
+							crate::ui_feedback::inline_feedback(
+								"model-settings-feedback",
+								"Model settings",
+								feedback,
+							)
+						})),
 				)
 				.child(agent_surface::muted(
 					"Last read of task settings. Individual turns may use different settings.",

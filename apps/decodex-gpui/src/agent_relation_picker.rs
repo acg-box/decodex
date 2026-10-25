@@ -74,7 +74,7 @@ impl AgentSurface {
 					.flex()
 					.items_center()
 					.justify_center()
-					.rounded(gpui::px(5.))
+					.rounded(gpui::px(8.))
 					.border_1()
 					.border_color(gpui::transparent_black())
 					.text_color(ui_theme::rgb(if current == mode { TEXT } else { TEXT_MUTED }))
@@ -156,7 +156,7 @@ impl AgentSurface {
 					.flex()
 					.items_center()
 					.justify_center()
-					.rounded(gpui::px(5.))
+					.rounded(gpui::px(8.))
 					.border_1()
 					.border_color(gpui::transparent_black())
 					.text_color(crate::ui_theme::rgb(if active { TEXT } else { TEXT_MUTED }))
@@ -274,8 +274,10 @@ impl gpui::RenderOnce for PresentationThumb {
 			.top(gpui::px(INSET))
 			.w(gpui::px(SEGMENT))
 			.h(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT - (INSET + 1.) * 2.))
-			.rounded(gpui::px(5.))
-			.bg(ui_theme::rgba(ui_theme::PRESSED_FILL))
+			.rounded(gpui::px(8.))
+			.border_1()
+			.border_color(gpui::transparent_black())
+			.bg(ui_theme::rgba(ui_theme::CONTROL_SELECTED_FILL))
 	}
 }
 impl gpui::RenderOnce for Thumb {
@@ -290,8 +292,10 @@ impl gpui::RenderOnce for Thumb {
 			.top(gpui::px(INSET))
 			.w(gpui::px(SEGMENT))
 			.h(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT - (INSET + 1.) * 2.))
-			.rounded(gpui::px(5.))
-			.bg(crate::ui_theme::rgba(ui_theme::PRESSED_FILL))
+			.rounded(gpui::px(8.))
+			.border_1()
+			.border_color(gpui::transparent_black())
+			.bg(ui_theme::rgba(ui_theme::CONTROL_SELECTED_FILL))
 	}
 }
 

@@ -5,11 +5,11 @@
 
 #[path = "settings_power.rs"] mod power;
 #[path = "ui_switch.rs"] mod switch;
+#[path = "settings_themes.rs"] mod themes;
 #[path = "settings_updates.rs"] mod updates;
 
 use gpui::{
 	AnyElement, ClickEvent, Context, FontWeight, KeyDownEvent, Render, Role, SharedString, Window,
-	accesskit::Toggled,
 	prelude::{
 		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
 		Styled,
@@ -28,6 +28,7 @@ use crate::{
 	},
 	native_menu_bar::{LaunchAtLoginState, NativeMenuBarHost},
 	panel_preferences::PanelDefaults,
+	ui_feedback::{self, Feedback},
 	ui_loading,
 	ui_scroll::SmoothScrollArea,
 	ui_theme::{
@@ -170,7 +171,9 @@ impl SettingsSurface {
 
 		if snapshot != self.snapshot {
 			self.snapshot = snapshot;
-			self.preference_error = None;
+			if snapshot.command == DesktopSettingsCommandState::Accepted {
+				self.preference_error = None;
+			}
 
 			self.apply_snapshot(snapshot);
 			cx.notify();
@@ -250,42 +253,24 @@ impl SettingsSurface {
 	}
 
 	fn menubar_needs_attention(&self) -> bool {
-		!matches!(self.runtime, MenuBarRuntimeState::Visible | MenuBarRuntimeState::Hidden)
-			|| !matches!(
-				self.detail.as_ref(),
-				"Menu bar enabled." | "The Decodex menu-bar item is disabled."
-			)
+		self.runtime == MenuBarRuntimeState::Unavailable
 	}
 
-	pub(crate) fn notifications(&self) -> Vec<(&'static str, String)> {
+	pub(crate) fn notifications(&self) -> Vec<(&'static str, Feedback)> {
 		let mut notices = Vec::new();
 
 		if let Some(error) = &self.power.error {
-			notices.push(("System sleep", error.clone()));
+			notices.push(("System sleep", Feedback::error(error.clone())));
 		}
 
 		if self.menubar_needs_attention() {
-			notices.push(("Menu bar", self.detail.to_string()));
+			notices.push(("Menu bar", Feedback::error(self.detail.to_string())));
 		}
-		if let Some(error) = &self.preference_error {
-			notices.push(("Settings", error.to_string()));
-		} else if matches!(
-			self.snapshot.load,
-			DesktopSettingsLoadState::Offline
-				| DesktopSettingsLoadState::Unavailable
-				| DesktopSettingsLoadState::Refused
-		) || matches!(
-			self.snapshot.command,
-			DesktopSettingsCommandState::Refused | DesktopSettingsCommandState::OutcomeUnknown
-		) {
-			notices.push(("Settings", settings_detail(self.snapshot).into()));
+		if let Some(feedback) = self.quota_feedback() {
+			notices.push(("Quota", feedback));
 		}
-		if !matches!(
-			self.launch_at_login,
-			LaunchAtLoginState::Enabled | LaunchAtLoginState::NotRegistered
-		) || self.launch_at_login_detail.as_ref() != launch_at_login_detail(self.launch_at_login)
-		{
-			notices.push(("Launch at login", self.launch_at_login_detail.to_string()));
+		if let Some(feedback) = self.launch_at_login_feedback() {
+			notices.push(("Launch at login", feedback));
 		}
 
 		notices
@@ -293,6 +278,7 @@ impl SettingsSurface {
 
 	fn toggle_quota(&mut self, cx: &mut Context<Self>) {
 		let Some(settings) = self.snapshot.settings else { return };
+		self.preference_error = None;
 		let result = self.controller.set_auto_activate_quota(!settings.auto_activate_quota);
 		if let Err(error) = result {
 			self.preference_error = Some(input_error_detail(error).into());
@@ -358,21 +344,29 @@ impl SettingsSurface {
 		_: &mut Window,
 		cx: &mut Context<Self>,
 	) {
+		self.open_login_items(cx);
+	}
+
+	fn open_login_items(&mut self, cx: &mut Context<Self>) {
 		if let Err(failure) = self.menu_bar.open_login_items_settings() {
 			self.launch_at_login_detail = failure.detail().into();
 		}
+		cx.notify();
+	}
 
+	fn retry_launch_at_login(&mut self, cx: &mut Context<Self>) {
+		self.refresh_launch_at_login();
 		cx.notify();
 	}
 
 	fn quota_toggle(&self, cx: &mut Context<Self>) -> AnyElement {
 		if self.snapshot.settings.is_none() {
-			let loading = matches!(
-				self.snapshot.load,
-				DesktopSettingsLoadState::NeverRequested | DesktopSettingsLoadState::Loading
-			);
+			let loading = self.snapshot.load == DesktopSettingsLoadState::Loading;
 			return gpui::div()
-				.id("quota-loading")
+				.id("quota-read-state")
+				.debug_selector(move || {
+					if loading { "quota-request-pending" } else { "quota-unavailable" }.into()
+				})
 				.flex_none()
 				.flex()
 				.items_center()
@@ -410,119 +404,110 @@ impl SettingsSurface {
 		.on_change(cx.listener(|s, _, _, cx| s.toggle_launch_at_login(cx)))
 	}
 
-	fn launch_at_login_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		let description = if matches!(
+	fn launch_at_login_feedback(&self) -> Option<Feedback> {
+		(!matches!(
 			self.launch_at_login,
 			LaunchAtLoginState::NotRegistered | LaunchAtLoginState::Enabled
-		) {
-			SharedString::from("Open Decodex quietly when you sign in to your Mac.")
-		} else {
-			self.launch_at_login_detail.clone()
-		};
-		ui_theme::settings_row()
-			.child(ui_theme::settings_label("Launch at login", description))
-			.child(self.launch_at_login_toggle(cx))
+		) || self.launch_at_login_detail.as_ref() != launch_at_login_detail(self.launch_at_login))
+		.then(|| match self.launch_at_login {
+			LaunchAtLoginState::RequiresApproval | LaunchAtLoginState::NotFound =>
+				Feedback::info(self.launch_at_login_detail.to_string()),
+			_ => Feedback::error(self.launch_at_login_detail.to_string()),
+		})
+	}
+
+	fn launch_at_login_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		gpui::div()
+			.w_full()
+			.flex()
+			.flex_col()
+			.child(
+				ui_theme::settings_row()
+					.child(ui_theme::settings_label(
+						"Launch at login",
+						"Open Decodex quietly when you sign in to your Mac.",
+					))
+					.child(self.launch_at_login_toggle(cx)),
+			)
+			.children(setting_notice(
+				"launch-at-login-feedback",
+				match self.launch_at_login {
+					LaunchAtLoginState::RequiresApproval => "Approval required",
+					LaunchAtLoginState::NotFound => "Setup required",
+					_ => "Startup needs attention",
+				},
+				self.launch_at_login_feedback(),
+			))
+			.when(self.launch_at_login == LaunchAtLoginState::RequiresApproval, |d| {
+				d.child(setting_action(
+					"launch-at-login-open-settings",
+					"Open Login Items",
+					cx,
+					Self::open_login_items,
+				))
+			})
+			.when(self.launch_at_login == LaunchAtLoginState::OperationFailed, |d| {
+				d.child(setting_action(
+					"launch-at-login-retry",
+					"Retry",
+					cx,
+					Self::retry_launch_at_login,
+				))
+			})
+	}
+
+	fn menu_bar_card(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		gpui::div()
+			.w_full()
+			.flex()
+			.flex_col()
+			.child(
+				ui_theme::settings_row()
+					.child(ui_theme::settings_label(
+						"Show in menu bar",
+						"Keep quick access to Decodex in the macOS menu bar.",
+					))
+					.child(self.menu_bar_toggle(cx)),
+			)
+			.children(setting_notice(
+				"menubar-runtime-status",
+				"Menu bar unavailable",
+				self.menubar_needs_attention().then(|| Feedback::error(self.detail.to_string())),
+			))
 	}
 }
 
-impl SettingsSurface {
-	fn theme_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		let current = ui_theme::ColorTheme::configured();
-		gpui::div()
-			.id("color-theme-picker")
-			.role(Role::RadioGroup)
-			.aria_label("Color theme")
-			.grid()
-			.grid_cols(3)
-			.gap(gpui::px(8.))
-			.children(ui_theme::ColorTheme::ALL.into_iter().map(|theme| {
-				let colors = theme.palette();
-				let selected = current == theme;
-				let id = format!("color-theme-{}", theme.id());
-				gpui::div()
-					.id(SharedString::from(id.clone()))
-					.debug_selector(move || id.clone())
-					.role(Role::RadioButton)
-					.aria_label(format!("{} color theme", theme.name()))
-					.aria_toggled(if selected { Toggled::True } else { Toggled::False })
-					.tab_index(0)
-					.min_w_0()
-					.h(gpui::px(42.))
-					.px(gpui::px(8.))
-					.flex()
-					.items_center()
-					.gap(gpui::px(8.))
-					.rounded(gpui::px(6.))
-					.border_1()
-					.border_color(ui_theme::rgba(if selected {
-						ui_theme::SELECTED_BORDER
-					} else {
-						0xffffff16
-					}))
-					.bg(ui_theme::rgba(if selected { ui_theme::SELECTED_FILL } else { 0xffffff04 }))
-					.text_size(gpui::px(11.5))
-					.line_height(gpui::px(17.))
-					.text_color(ui_theme::rgb(ui_theme::TEXT))
-					.cursor_pointer()
-					.hover(move |s| {
-						s.border_color(ui_theme::rgba(if selected {
-							(ui_theme::ACCENT << 8) | 0x90
-						} else {
-							0xffffff28
-						}))
-						.bg(ui_theme::rgba(if selected {
-							ui_theme::SELECTED_HOVER_FILL
-						} else {
-							0xffffff09
-						}))
-					})
-					.active(|s| s.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
-					.focus_visible(|s| s.border_color(ui_theme::rgb(ui_theme::ACCENT)))
-					.child(
-						gpui::div()
-							.w(gpui::px(32.))
-							.h(gpui::px(28.))
-							.flex_none()
-							.rounded(gpui::px(4.))
-							.bg(gpui::rgb(colors.canvas))
-							.p(gpui::px(6.))
-							.flex()
-							.flex_col()
-							.justify_between()
-							.children(
-								[(18., colors.accent), (13., colors.blue), (16., colors.green)]
-									.map(|(width, color)| {
-										gpui::div()
-											.w(gpui::px(width))
-											.h(gpui::px(3.))
-											.rounded_full()
-											.bg(gpui::rgb(color))
-									}),
-							),
-					)
-					.child(gpui::div().flex_1().truncate().child(theme.name()))
-					.child(
-						gpui::div()
-							.size(gpui::px(12.))
-							.flex_none()
-							.text_color(ui_theme::rgb(ui_theme::ACCENT))
-							.when(selected, |s| {
-								s.child(crate::shell::workspace_symbols::icon_sized(
-									crate::shell::workspace_symbols::Symbol::Confirm,
-									12.,
-								))
-							}),
-					)
-					.on_click(cx.listener(move |_, _, _, cx| theme.select(cx)))
-					.on_key_down(cx.listener(move |_, e: &KeyDownEvent, _, cx| {
-						if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-							theme.select(cx);
-							cx.stop_propagation();
-						}
-					}))
-			}))
-	}
+fn setting_action(
+	id: &'static str,
+	label: &'static str,
+	cx: &Context<SettingsSurface>,
+	action: fn(&mut SettingsSurface, &mut Context<SettingsSurface>),
+) -> AnyElement {
+	gpui::div()
+		.flex()
+		.px(gpui::px(14.))
+		.pb_2()
+		.child(
+			ui_theme::settings_button(id, label)
+				.on_click(cx.listener(move |s, _, _, cx| action(s, cx)))
+				.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+					if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str())
+					{
+						action(s, cx);
+						cx.stop_propagation();
+					}
+				})),
+		)
+		.into_any_element()
+}
 
+fn setting_notice(id: &'static str, title: &str, feedback: Option<Feedback>) -> Option<AnyElement> {
+	feedback
+		.and_then(|feedback| ui_feedback::inline_feedback(id, title, &feedback))
+		.map(|notice| gpui::div().px(gpui::px(14.)).pb_2().child(notice).into_any_element())
+}
+
+impl SettingsSurface {
 	fn preference_control(
 		&self,
 		id: &'static str,
@@ -812,13 +797,44 @@ impl SettingsSurface {
 }
 
 impl SettingsSurface {
+	fn quota_feedback(&self) -> Option<Feedback> {
+		self.preference_error
+			.as_ref()
+			.map(|message| Feedback::error(message.to_string()))
+			.or_else(|| match self.snapshot.command {
+				DesktopSettingsCommandState::Refused =>
+					Some(Feedback::error(settings_detail(self.snapshot))),
+				DesktopSettingsCommandState::OutcomeUnknown =>
+					Some(Feedback::warning(settings_detail(self.snapshot))),
+				_ => None,
+			})
+			.or_else(|| match self.snapshot.load {
+				DesktopSettingsLoadState::Refused =>
+					Some(Feedback::error(settings_detail(self.snapshot))),
+				DesktopSettingsLoadState::Offline | DesktopSettingsLoadState::Unavailable =>
+					Some(Feedback::warning(settings_detail(self.snapshot))),
+				_ => None,
+			})
+	}
+
 	pub(crate) fn quota_control(&self, cx: &mut Context<Self>) -> AnyElement {
-		ui_theme::settings_row()
-			.child(ui_theme::settings_label(
-				"Auto-activate weekly quota",
-				"Start the next weekly window with a small request. Uses quota; no chat is saved.",
+		gpui::div()
+			.w_full()
+			.flex()
+			.flex_col()
+			.child(
+				ui_theme::settings_row()
+					.child(ui_theme::settings_label(
+						"Auto-activate weekly quota",
+						"Start the next weekly window with a small request. Uses quota; no chat is saved.",
+					))
+					.child(self.quota_toggle(cx)),
+			)
+			.children(setting_notice(
+				"quota-settings-feedback",
+				"Quota setting needs attention",
+				self.quota_feedback(),
 			))
-			.child(self.quota_toggle(cx))
 			.into_any_element()
 	}
 
@@ -828,8 +844,7 @@ impl SettingsSurface {
             SettingsCategory::General => gpui::div().flex().flex_col().gap(gpui::px(SETTINGS_GROUP_GAP))
                 .child(ui_theme::settings_group("Startup", vec![
                     self.launch_at_login_card(cx).into_any_element(),
-                    ui_theme::settings_row().child(ui_theme::settings_label("Show in menu bar", "Keep quick access to Decodex in the macOS menu bar."))
-                        .child(self.menu_bar_toggle(cx)).into_any_element(),
+                    self.menu_bar_card(cx).into_any_element(),
                 ]))
                 .child(ui_theme::settings_group("Notifications", vec![
                     self.preference_control("notification-count-preference", "notification-count-knob", "Notification count", "Show unread notices on the notification button.", crate::shell::notification_count_preference, cx).into_any_element(),
@@ -842,11 +857,11 @@ impl SettingsSurface {
                 .child(ui_theme::settings_group("Power", vec![self.power_control(cx)]))
                 .into_any_element(),
             SettingsCategory::Appearance => gpui::div().flex().flex_col().gap(gpui::px(SETTINGS_GROUP_GAP))
-                .child(ui_theme::settings_card().child(self.appearance_controls(cx)))
+                .child(gpui::div().border_b_1().border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER)).child(self.appearance_controls(cx)))
                 .child(gpui::div().flex().flex_col().gap_2()
                     .child(settings_group_title("Color theme"))
                     .child(gpui::div().text_size(gpui::px(11.5)).text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-                        .child("Custom palettes use dark appearance."))
+                        .child(self.theme_description()))
                     .child(self.theme_controls(cx)))
                 .child(ui_theme::settings_group("Materials", {
                     let mut controls = vec![
@@ -1017,6 +1032,24 @@ mod tests {
 		}
 	}
 
+	fn scroll_to_theme(visual: &mut gpui::VisualTestContext, selector: &'static str) {
+		let viewport = visual.debug_bounds("color-theme-picker").expect("theme viewport");
+		assert_eq!(viewport.size.height, gpui::px(192.));
+		let target = visual.debug_bounds(selector).expect("theme option");
+		let distance = if target.top() < viewport.top() {
+			target.top() - viewport.top() - gpui::px(4.)
+		} else {
+			(target.bottom() - viewport.bottom() + gpui::px(4.)).max(gpui::px(0.))
+		};
+		visual.simulate_event(gpui::ScrollEvent {
+			position: viewport.center(),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), -distance)),
+			..Default::default()
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(viewport.contains(&visual.debug_bounds(selector).unwrap().center()));
+	}
+
 	#[gpui::test]
 	fn switch_thumbs_fit_both_track_positions(cx: &mut TestAppContext) {
 		struct Switches;
@@ -1087,6 +1120,44 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn theme_gallery_scrolls_then_hands_boundary_wheel_events_to_the_page(cx: &mut TestAppContext) {
+		let (_, visual) = cx.add_window_view(|_, cx| {
+			let mut surface = SettingsSurface::new(DesktopSettingsController::production(), cx);
+			surface.category = SettingsCategory::Appearance;
+			surface
+		});
+		visual.update(|window, cx| {
+			window.resize(gpui::size(gpui::px(920.), gpui::px(700.)));
+			window.draw(cx).clear(cx);
+		});
+		let first = visual.debug_bounds("color-theme-decodex").unwrap();
+		let fifth = visual.debug_bounds("color-theme-everforest").unwrap();
+		let sixth = visual.debug_bounds("color-theme-github-dark").unwrap();
+		assert_eq!(first.top(), fifth.top(), "five previews fit in the standard settings window");
+		assert!(fifth.right() <= visual.debug_bounds("color-theme-picker").unwrap().right());
+		assert!(sixth.top() >= first.bottom());
+		visual.update(|window, cx| {
+			window.resize(gpui::size(gpui::px(800.), gpui::px(700.)));
+			window.draw(cx).clear(cx);
+		});
+		let before = visual.debug_bounds("color-theme-picker").expect("theme viewport");
+		let last = visual.debug_bounds("color-theme-tokyo-night").expect("last theme");
+		let to_end = last.bottom() - before.bottom() + before.size.height;
+		let wheel = gpui::ScrollEvent {
+			position: before.center(),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), -to_end)),
+			..Default::default()
+		};
+		visual.simulate_event(wheel.clone());
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert_eq!(visual.debug_bounds("color-theme-picker").unwrap(), before);
+		assert!(before.contains(&visual.debug_bounds("color-theme-tokyo-night").unwrap().center()));
+		visual.simulate_event(wheel);
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("color-theme-picker").unwrap().top() < before.top());
+	}
+
+	#[gpui::test]
 	fn theme_cards_apply_every_preset_and_keep_other_windows_in_sync(cx: &mut TestAppContext) {
 		let (_, visual) = cx.add_window_view(|_, cx| {
 			Appearance::Light.apply(cx);
@@ -1102,23 +1173,28 @@ mod tests {
 		let option_width = visual.debug_bounds("color-theme-decodex").unwrap().size.width;
 		for (theme, selector) in ui_theme::ColorTheme::ALL.into_iter().zip([
 			"color-theme-decodex",
-			"color-theme-tokyo-night",
+			"color-theme-ayu-dark",
 			"color-theme-catppuccin-mocha",
 			"color-theme-dracula",
-			"color-theme-nord",
-			"color-theme-gruvbox-dark",
-			"color-theme-one-dark",
-			"color-theme-ayu-dark",
-			"color-theme-rose-pine",
-			"color-theme-kanagawa",
 			"color-theme-everforest",
-			"color-theme-solarized-dark",
 			"color-theme-github-dark",
+			"color-theme-gruvbox-dark",
+			"color-theme-kanagawa",
+			"color-theme-nightfox",
+			"color-theme-nord",
+			"color-theme-one-dark",
+			"color-theme-rose-pine",
+			"color-theme-solarized-dark",
+			"color-theme-tokyo-night",
 		]) {
+			scroll_to_theme(visual, selector);
 			let bounds = visual.debug_bounds(selector).expect("theme card");
 			assert!(
 				(bounds.size.width - option_width).abs() <= gpui::px(1.),
-				"theme options must have equal widths"
+				"{} width {:?} differs from {:?}",
+				theme.name(),
+				bounds.size.width,
+				option_width
 			);
 			visual.simulate_click(bounds.center(), Default::default());
 			assert_eq!(ui_theme::ColorTheme::configured(), theme);
@@ -1136,7 +1212,7 @@ mod tests {
 			SettingsSurface::new(DesktopSettingsController::production(), cx)
 		});
 		second.update(|window, cx| {
-			assert_eq!(ui_theme::ColorTheme::configured(), ui_theme::ColorTheme::GithubDark);
+			assert_eq!(ui_theme::ColorTheme::configured(), ui_theme::ColorTheme::TokyoNight);
 			window.draw(cx).clear(cx);
 		});
 		second.update(|_, cx| ui_theme::ColorTheme::TokyoNight.select(cx));
@@ -1147,11 +1223,19 @@ mod tests {
 		visual.update(|_, cx| Appearance::Light.apply(cx));
 		visual.update(|window, cx| {
 			assert_eq!(ui_theme::ColorTheme::configured(), ui_theme::ColorTheme::TokyoNight);
-			assert_eq!(ui_theme::ColorScheme::current().hex(ui_theme::TEXT), 0x2c2f36);
+			assert_eq!(
+				ui_theme::ColorScheme::current().color_theme(),
+				ui_theme::ColorTheme::Decodex
+			);
+			assert_eq!(ui_theme::ColorScheme::current().hex(ui_theme::TEXT), 0x252c39);
 			window.draw(cx).clear(cx);
 		});
 		visual.update(|_, cx| Appearance::Dark.apply(cx));
 		visual.update(|window, cx| {
+			assert_eq!(
+				ui_theme::ColorScheme::current().color_theme(),
+				ui_theme::ColorTheme::TokyoNight
+			);
 			assert_eq!(ui_theme::ColorScheme::current().hex(ui_theme::TEXT), 0xc0caf5);
 			window.draw(cx).clear(cx);
 		});
@@ -1179,7 +1263,7 @@ mod tests {
 			window.focus_next(cx);
 		});
 		visual.simulate_keystrokes("enter");
-		assert_eq!(ui_theme::ColorTheme::configured(), ui_theme::ColorTheme::TokyoNight);
+		assert_eq!(ui_theme::ColorTheme::configured(), ui_theme::ColorTheme::AyuDark);
 	}
 
 	#[gpui::test]
@@ -1228,6 +1312,41 @@ mod tests {
 		assert!(visual.debug_bounds("automatic-recap-toggle").is_some());
 		assert!(visual.debug_bounds("recap-loading").is_none());
 		assert!(visual.debug_bounds("loading-feedback-").is_none());
+	}
+
+	#[gpui::test]
+	fn quota_shows_loading_only_for_an_active_read(cx: &mut TestAppContext) {
+		struct QuotaView(gpui::Entity<SettingsSurface>);
+		impl Render for QuotaView {
+			fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+				self.0.update(cx, |s, cx| s.quota_control(cx))
+			}
+		}
+		let (view, visual) = cx.add_window_view(|_, cx| {
+			QuotaView(
+				cx.new(|cx| SettingsSurface::new(DesktopSettingsController::production(), cx)),
+			)
+		});
+		let settings = view.read_with(visual, |view, _| view.0.clone());
+		for load in [
+			DesktopSettingsLoadState::NeverRequested,
+			DesktopSettingsLoadState::Loading,
+			DesktopSettingsLoadState::Offline,
+		] {
+			settings.update(visual, |s, cx| {
+				s.snapshot.load = load;
+				cx.notify();
+			});
+			visual.update(|w, cx| w.draw(cx).clear(cx));
+			assert_eq!(
+				visual.debug_bounds("quota-request-pending").is_some(),
+				load == DesktopSettingsLoadState::Loading
+			);
+			assert_eq!(
+				visual.debug_bounds("quota-unavailable").is_some(),
+				load != DesktopSettingsLoadState::Loading
+			);
+		}
 	}
 
 	#[gpui::test]
@@ -1448,7 +1567,7 @@ mod tests {
 					.read(cx)
 					.notifications()
 					.iter()
-					.any(|(_, detail)| detail == "The service refused the change.")
+					.any(|(_, feedback)| feedback.message == "The service refused the change.")
 			);
 		});
 
@@ -1578,6 +1697,35 @@ mod tests {
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_490.0), gpui::px(1_055.0)));
 			window.draw(cx).clear(cx);
+		});
+	}
+	#[gpui::test]
+	fn local_setting_failures_are_visible_beside_their_controls(cx: &mut TestAppContext) {
+		let (settings, visual) = cx.add_window_view(|_, cx| {
+			SettingsSurface::new(DesktopSettingsController::production(), cx)
+		});
+		settings.update(visual, |s, cx| {
+			s.runtime = MenuBarRuntimeState::Unavailable;
+			s.detail = "The menu bar could not be updated.".into();
+			s.launch_at_login = LaunchAtLoginState::OperationFailed;
+			s.launch_at_login_detail = "Startup could not be changed.".into();
+			s.power.error = Some("The system setting could not be read.".into());
+			cx.notify();
+		});
+		visual.update(|w, cx| {
+			w.resize(gpui::size(gpui::px(920.), gpui::px(1000.)));
+			w.draw(cx).clear(cx);
+		});
+		for id in ["launch-at-login-feedback", "menubar-runtime-status", "power-settings-feedback"]
+		{
+			assert!(visual.debug_bounds(id).is_some(), "{id} must be visible at its setting");
+		}
+		settings.read_with(visual, |s, _| {
+			for (title, feedback) in s.notifications() {
+				if matches!(title, "Launch at login" | "Menu bar" | "System sleep") {
+					assert_eq!(feedback.tone, crate::ui_feedback::Tone::Error);
+				}
+			}
 		});
 	}
 }

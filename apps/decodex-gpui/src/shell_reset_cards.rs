@@ -18,7 +18,7 @@ use time::OffsetDateTime;
 use tokio::runtime::Builder;
 
 use crate::shell::{
-	self, ControlTooltip, Destination, Shell, WB_AMBER, WB_TEXT_MUTED,
+	self, ControlTooltip, Destination, Shell, WB_TEXT_MUTED, WB_WARNING,
 	quota_meter::{self, ResetFill},
 	workspace_symbols::{self, Symbol},
 };
@@ -436,11 +436,22 @@ pub(super) fn row(
 		return None;
 	}
 	let state = shell.reset_cards.rows.get(&account.account_id)?;
+	let notice = || {
+		crate::ui_feedback::inline_feedback(
+			format!("reset-card-feedback-{}", account.account_id.as_str()),
+			"Reset cards",
+			&if state.blocked {
+				crate::ui_feedback::Feedback::warning(state.message.clone())
+			} else {
+				crate::ui_feedback::Feedback::default()
+			},
+		)
+	};
 	let Some(ResetCardInventoryResult::Available {
 		cards, details_complete, account_revision, ..
 	}) = &state.inventory
 	else {
-		return None;
+		return notice();
 	};
 	let mut descriptors: Vec<_> = cards
 		.iter()
@@ -456,7 +467,7 @@ pub(super) fn row(
 	}
 
 	if descriptors.is_empty() {
-		return None;
+		return notice();
 	}
 
 	let mut strip = gpui::div()
@@ -516,7 +527,7 @@ pub(super) fn row(
 					move || format!("reset-card-{}-{index}", id.as_str())
 				})
 				.text_color(crate::ui_theme::rgb(if armed.is_some() {
-					WB_AMBER
+					WB_WARNING
 				} else {
 					WB_TEXT_MUTED
 				}))
@@ -532,7 +543,7 @@ pub(super) fn row(
 		);
 	}
 
-	Some(strip.into_any_element())
+	Some(gpui::div().w_full().flex().flex_col().child(strip).children(notice()).into_any_element())
 }
 
 fn terminal(state: ResetCardOperationResult) -> bool {

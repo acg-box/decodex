@@ -111,6 +111,13 @@ impl RenderOnce for ScrollArea {
 				if delta == gpui::px(0.) {
 					return;
 				}
+				let current = wheel_state.read(cx).scroll.offset().y;
+				let maximum = wheel_state.read(cx).scroll.max_offset().y.max(gpui::px(0.));
+				if (delta > gpui::px(0.) && current >= gpui::px(0.))
+					|| (delta < gpui::px(0.) && current <= -maximum)
+				{
+					return;
+				}
 
 				wheel_state.update(cx, |s, _| {
 					let current = f32::from(s.scroll.offset().y);

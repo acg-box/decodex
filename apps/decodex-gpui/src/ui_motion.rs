@@ -340,7 +340,7 @@ pub(crate) fn menu_surface<T: gpui::Styled>(surface: T) -> T {
 		.rounded(gpui::px(10.))
 		.border_1()
 		.border_color(crate::ui_theme::rgba(0xffffff14))
-		.bg(crate::ui_theme::rgb(0x29292d))
+		.bg(crate::ui_theme::rgb(crate::ui_theme::SURFACE_OVERLAY_MATERIAL >> 8))
 		.shadow(vec![gpui::BoxShadow {
 			inset: false,
 			color: crate::ui_theme::rgba(0x00000028).into(),
@@ -636,10 +636,10 @@ impl RenderOnce for AgentRailStatus {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let (color, busy) = match self.state.as_str() {
 			"Running" | "Starting" | "running" | "working" | "active" =>
-				(crate::ui_theme::BLUE, true),
-			"Needs you" | "Needs attention" | "Blocked" => (crate::ui_theme::AMBER, false),
+				(crate::ui_theme::INFO, true),
+			"Needs you" | "Needs attention" | "Blocked" => (crate::ui_theme::WARNING, false),
 			"failed" | "systemError" | "Failed" => (crate::ui_theme::ERROR, false),
-			"Completed" | "completed" | "Resolved" => (crate::ui_theme::GREEN, false),
+			"Completed" | "completed" | "Resolved" => (crate::ui_theme::SUCCESS, false),
 			_ => (crate::ui_theme::TEXT, false),
 		};
 		let color = crate::ui_theme::ColorScheme::current().hex(color);

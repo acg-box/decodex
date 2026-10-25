@@ -68,14 +68,15 @@ use crate::{
 	health_query::{HealthLoadState, HealthQuery, HealthSnapshot},
 	history_pager::{HistoryLoadState, HistoryPageSource, HistoryPager, HistorySnapshot},
 	settings_surface::{SettingsCategory, SettingsSurface},
+	ui_feedback::{self, Feedback},
 	ui_loading,
 	ui_motion::{self, SmoothControl},
 	ui_theme::{
-		self, AGENT_SIDEBAR_MATERIAL, BODY_SIZE, CHROME_CONTROL_SIZE, COMPOSER_MATERIAL,
-		CONTENT_MATERIAL, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, FONT_FAMILY, HEADING_SIZE,
-		MOTION_PANEL, PRESSED_FILL, SELECTED_HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET,
-		SETTINGS_TOP, SETTINGS_WIDTH, SHELL_MATERIAL, SIDEBAR_MATERIAL, SURFACE_RAISED_MATERIAL,
-		TEXT, window_material,
+		self, BODY_SIZE, CHROME_CONTROL_SIZE, COMPOSER_MATERIAL, CONTENT_MATERIAL,
+		CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, FONT_FAMILY, HEADING_SIZE, MOTION_PANEL,
+		PRESSED_FILL, SELECTED_HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_TOP,
+		SETTINGS_WIDTH, SETTINGS_WINDOW_MIN_WIDTH, SHELL_MATERIAL, SIDEBAR_MATERIAL,
+		SURFACE_RAISED_MATERIAL, TEXT, window_material,
 	},
 };
 use account_feedback::AccountFeedback;
@@ -167,8 +168,8 @@ const WB_TEXT_MUTED: u32 = ui_theme::TEXT_MUTED;
 const WB_TEXT_FAINT: u32 = ui_theme::TEXT_FAINT;
 const WB_ACCENT: u32 = ui_theme::ACCENT;
 const WB_BLUE: u32 = ui_theme::BLUE;
-const WB_GREEN: u32 = ui_theme::GREEN;
-const WB_AMBER: u32 = ui_theme::AMBER;
+const WB_SUCCESS: u32 = ui_theme::SUCCESS;
+const WB_WARNING: u32 = ui_theme::WARNING;
 
 /// One window-owned production shell. Connection ownership lives at application scope.
 pub(crate) struct Shell {
@@ -197,6 +198,7 @@ pub(crate) struct Shell {
 	account_login: Option<Arc<AccountLoginController>>,
 	account_login_status: Option<AccountLoginStatus>,
 	account_login_error: Option<SharedString>,
+	account_login_target: Option<EntityId>,
 	account_login_updates: Option<Receiver<Result<AccountLoginStatus, ClientFailure>>>,
 	account_login_task: Option<Task<()>>,
 	account_login_cancellation: Option<Arc<AtomicBool>>,
@@ -212,6 +214,7 @@ pub(crate) struct Shell {
 	accounts_controller: AccountsController,
 	accounts: AccountsSnapshot,
 	account_status: Option<SharedString>,
+	account_status_target: Option<EntityId>,
 	health_query: HealthQuery,
 	health: HealthSnapshot,
 	diagnostics: diagnostics::Diagnostics,
@@ -364,6 +367,7 @@ impl Shell {
 			account_login: None,
 			account_login_status: None,
 			account_login_error: None,
+			account_login_target: None,
 			account_login_updates: None,
 			account_login_task: None,
 			account_login_cancellation: None,
@@ -380,6 +384,7 @@ impl Shell {
 			accounts_controller,
 			accounts,
 			account_status: None,
+			account_status_target: None,
 			health_query,
 			health,
 			diagnostics: Default::default(),
@@ -1080,6 +1085,8 @@ impl Shell {
 		self.accounts_controller.deactivate();
 
 		self.accounts_controller = accounts;
+		self.account_status = None;
+		self.account_status_target = None;
 
 		if self.selected == Destination::Accounts
 			|| (self.settings_window.is_some() && self.settings_selected == Destination::Accounts)
@@ -1101,6 +1108,7 @@ impl Shell {
 		enabled: bool,
 		cx: &mut Context<Self>,
 	) {
+		self.account_status_target = Some(account_id.clone());
 		self.account_status = self
 			.accounts_controller
 			.set_enabled(account_id, enabled)
@@ -1113,6 +1121,7 @@ impl Shell {
 	}
 
 	fn select_fixed_account(&mut self, account_id: &EntityId, cx: &mut Context<Self>) {
+		self.account_status_target = Some(account_id.clone());
 		self.account_status = self
 			.accounts_controller
 			.select_fixed(account_id)
@@ -1125,6 +1134,7 @@ impl Shell {
 	}
 
 	fn select_balanced_accounts(&mut self, cx: &mut Context<Self>) {
+		self.account_status_target = None;
 		self.account_status = self
 			.accounts_controller
 			.select_balanced()
@@ -1137,6 +1147,7 @@ impl Shell {
 	}
 
 	fn logout_account(&mut self, account_id: &EntityId, cx: &mut Context<Self>) {
+		self.account_status_target = Some(account_id.clone());
 		if self.pending_account_logout.as_ref() != Some(account_id) {
 			self.pending_account_logout = Some(account_id.clone());
 			self.account_status =
@@ -1160,6 +1171,7 @@ impl Shell {
 	}
 
 	fn move_account(&mut self, account_id: &EntityId, offset: isize, cx: &mut Context<Self>) {
+		self.account_status_target = Some(account_id.clone());
 		self.account_status = self
 			.accounts_controller
 			.move_account(account_id, offset)
@@ -1230,6 +1242,9 @@ impl Shell {
 	}
 
 	fn start_account_enrollment(&mut self, method: AccountLoginMethod, cx: &mut Context<Self>) {
+		if self.account_login_task.is_none() {
+			self.account_login_target = None;
+		}
 		let start = account_login_start(method, None);
 
 		self.start_account_login(start, cx);
@@ -1242,6 +1257,9 @@ impl Shell {
 		recovery_operation_id: Option<EntityId>,
 		cx: &mut Context<Self>,
 	) {
+		if self.account_login_task.is_none() {
+			self.account_login_target = Some(account_id.clone());
+		}
 		let start = account_login_start(
 			AccountLoginMethod::DeviceCode,
 			Some((account_id, expected_revision, recovery_operation_id)),
@@ -2490,17 +2508,17 @@ fn connection_presentation(view: ConnectionView) -> ConnectionPresentation {
 		ConnectionView::Connecting { .. } => ConnectionPresentation {
 			label: "Connecting",
 			detail: "Starting Decodex.".into(),
-			color: ui_theme::AMBER,
+			color: ui_theme::INFO,
 		},
 		ConnectionView::Online { .. } => ConnectionPresentation {
 			label: "Online",
 			detail: "Connected and ready.".into(),
-			color: ui_theme::GREEN,
+			color: ui_theme::SUCCESS,
 		},
 		ConnectionView::OfflineRetrying { .. } => ConnectionPresentation {
 			label: "Reconnecting",
 			detail: "Trying to restore Decodex.".into(),
-			color: ui_theme::AMBER,
+			color: ui_theme::WARNING,
 		},
 		ConnectionView::Incompatible(_) => ConnectionPresentation {
 			label: "Restart Decodex",
@@ -2994,7 +3012,7 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 			} else {
 				"This checks local services. It does not start a conversation."
 			},
-			color: ui_theme::BLUE,
+			color: ui_theme::INFO,
 		},
 		HealthLoadState::Ready => {
 			let core_statuses = HEALTH_CORE_COMPONENTS.map(|component| {
@@ -3010,13 +3028,13 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 					return HealthPresentation {
 						label: "Some features need attention",
 						detail: "Review the issue below, then check again.",
-						color: ui_theme::AMBER,
+						color: ui_theme::WARNING,
 					};
 				}
 				HealthPresentation {
 					label: "Local services are ready",
 					detail: "No local configuration, storage or connection errors were found.",
-					color: ui_theme::GREEN,
+					color: ui_theme::SUCCESS,
 				}
 			} else if core_statuses
 				.iter()
@@ -3031,19 +3049,19 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 				HealthPresentation {
 					label: "Some local checks are incomplete",
 					detail: "Check again to update the report.",
-					color: ui_theme::AMBER,
+					color: ui_theme::WARNING,
 				}
 			}
 		},
 		HealthLoadState::Offline => HealthPresentation {
 			label: "Cannot connect to local services",
 			detail: "Restart Decodex, then check again. Your history and drafts are saved.",
-			color: ui_theme::AMBER,
+			color: ui_theme::WARNING,
 		},
 		HealthLoadState::Stale => HealthPresentation {
 			label: "Report needs an update",
 			detail: "The connection changed. Check again for current results.",
-			color: ui_theme::AMBER,
+			color: ui_theme::WARNING,
 		},
 		HealthLoadState::Refused => HealthPresentation {
 			label: "Could not update the report",
@@ -3081,7 +3099,7 @@ fn component_label(component: DoctorComponent) -> &'static str {
 fn component_presentation(status: Option<DoctorStatus>) -> HealthPresentation {
 	match status {
 		Some(DoctorStatus::Ready) =>
-			HealthPresentation { label: "Ready", detail: "", color: ui_theme::GREEN },
+			HealthPresentation { label: "Ready", detail: "", color: ui_theme::SUCCESS },
 		Some(DoctorStatus::Unavailable(DoctorIssue::Disabled))
 		| Some(DoctorStatus::Unknown(DoctorIssue::Disabled)) => HealthPresentation {
 			label: "Disabled",
@@ -3107,7 +3125,7 @@ fn component_presentation(status: Option<DoctorStatus>) -> HealthPresentation {
 		Some(DoctorStatus::Unknown(issue)) => HealthPresentation {
 			label: "Not verified",
 			detail: doctor_issue_detail(issue),
-			color: ui_theme::AMBER,
+			color: ui_theme::WARNING,
 		},
 		None => HealthPresentation { label: "No report", detail: "", color: ui_theme::TEXT_MUTED },
 	}
@@ -3408,11 +3426,27 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 		.iter()
 		.enumerate()
 		.map(|(index, account)| {
+			let account_state = account_feedback::for_account(shell, account);
 			let row = account_pool_row(
 				account,
 				AccountRowPresentation {
 					reset_fill: shell.reset_fill_for(account),
-					feedback: account_feedback::for_account(shell, account),
+					feedback:
+						(if shell.account_login_target.as_ref() == Some(&account.account_id) {
+							account_login_feedback(shell).filter(|feedback| {
+								feedback.tone != ui_feedback::Tone::Success
+									|| account_state.is_none()
+							})
+						} else {
+							None
+						})
+						.or_else(|| {
+							(shell.account_status_target.as_ref() == Some(&account.account_id))
+								.then(|| account_operation_feedback(shell))
+								.flatten()
+						})
+						.map(|feedback| (feedback.message, feedback.tone.color()))
+						.or(account_state),
 					email: shell.account_emails.get(account),
 					controls_busy: snapshot.controls_busy(),
 					index,
@@ -3476,6 +3510,61 @@ fn account_pool_rows(shell: &Shell, cx: &mut Context<Shell>) -> Vec<AnyElement> 
 		.collect()
 }
 
+fn account_operation_feedback(shell: &Shell) -> Option<Feedback> {
+	if let Some(message) = &shell.account_status {
+		return Some(if shell.pending_account_logout.is_some() {
+			Feedback::info(message.to_string())
+		} else {
+			Feedback::error(message.to_string())
+		});
+	}
+	if let Some(rejection) = shell.accounts.rejection {
+		return Some(Feedback::error(account_rejection_label(rejection)));
+	}
+	match shell.accounts.command {
+		AccountCommandState::OutcomeUnknown =>
+			account_command_label(shell.accounts.command).map(Feedback::warning),
+		AccountCommandState::Refused =>
+			account_command_label(shell.accounts.command).map(Feedback::error),
+		_ => None,
+	}
+}
+
+fn account_list_feedback(snapshot: &AccountsSnapshot) -> Option<Feedback> {
+	match snapshot.load {
+		AccountsLoadState::Ready => None,
+		AccountsLoadState::NeverRequested | AccountsLoadState::Loading
+			if !snapshot.accounts.is_empty() =>
+			None,
+		AccountsLoadState::NeverRequested | AccountsLoadState::Loading =>
+			Some(Feedback::info("Loading accounts…")),
+		AccountsLoadState::Refused => Some(Feedback::error(accounts_load_label(snapshot.load))),
+		_ => Some(Feedback::warning(accounts_load_label(snapshot.load))),
+	}
+}
+
+fn account_login_feedback(shell: &Shell) -> Option<Feedback> {
+	if let Some(message) = &shell.account_login_error {
+		return Some(match message.as_ref() {
+			"Cancelling sign-in…" => Feedback::info(message.to_string()),
+			"Sign-in code copied." | "Sign-in link copied." =>
+				Feedback::success(message.to_string()),
+			_ => Feedback::error(message.to_string()),
+		});
+	}
+	let status = shell.account_login_status.as_ref()?;
+	let message = account_login_status_label(status);
+	Some(match status.state {
+		AccountLoginState::Failed
+			if status.failure == Some(decodex_protocol::AccountLoginFailure::OutcomeUnknown) =>
+			Feedback::warning(message),
+		AccountLoginState::Failed => Feedback::error(message),
+		AccountLoginState::Completed => Feedback::success(message),
+		AccountLoginState::Cancelled => Feedback::neutral(message),
+		_ => Feedback::info(message),
+	})
+}
+
 fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let snapshot = &shell.accounts;
 	let rows = account_pool_rows(shell, cx);
@@ -3511,33 +3600,41 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.flex()
 				.flex_col()
 				.gap_4()
-				.child(
-					ui_theme::settings_card()
-						.flex_row()
-						.items_center()
-						.justify_between()
-						.child(account_pool_header(
-							count,
-							available,
-							balanced,
-							can_manage,
-							shell.account_emails.visible,
-							cx,
-						))
-						.children(
-							snapshot
-								.rejection
-								.map(account_rejection_label)
-								.map(str::to_owned)
-								.or_else(|| shell.account_status.as_ref().map(ToString::to_string))
-								.map(|text| AccountFeedback {
-									id: "account-global-warning".into(),
-									selector: "account-global-warning".into(),
-									text,
-									color: ui_theme::AMBER,
-								}),
-						),
+				.child(ui_theme::settings_card().flex_row().items_center().justify_between().child(
+					account_pool_header(
+						count,
+						available,
+						balanced,
+						can_manage,
+						shell.account_emails.visible,
+						cx,
+					),
+				))
+				.children(
+					account_operation_feedback(shell)
+						.filter(|_| {
+							shell.account_status_target.as_ref().is_none_or(|target| {
+								!snapshot
+									.accounts
+									.iter()
+									.any(|account| &account.account_id == target)
+							})
+						})
+						.and_then(|feedback| {
+							ui_feedback::inline_feedback(
+								"account-global-warning",
+								"Account update",
+								&feedback,
+							)
+						}),
 				)
+				.children(account_list_feedback(snapshot).and_then(|feedback| {
+					ui_feedback::inline_feedback(
+						"account-list-feedback",
+						"Account connection",
+						&feedback,
+					)
+				}))
 				.child(ui_theme::settings_group(
 					"Sign-in and quota",
 					vec![
@@ -3561,22 +3658,6 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 						.flex()
 						.flex_col()
 						.gap_2()
-						.when(count == 0 && snapshot.load != AccountsLoadState::Ready, |list| {
-							list.child(
-								if matches!(
-									snapshot.load,
-									AccountsLoadState::NeverRequested | AccountsLoadState::Loading
-								) {
-									ui_loading::loading("Loading accounts").into_any_element()
-								} else {
-									gpui::div()
-										.text_size(gpui::px(11.))
-										.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
-										.child(accounts_load_label(snapshot.load))
-										.into_any_element()
-								},
-							)
-						})
 						.when(count == 0 && snapshot.load == AccountsLoadState::Ready, |list| {
 							list.child(empty_accounts())
 						})
@@ -3673,23 +3754,19 @@ fn account_mode_button(
 fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let busy = shell.account_login_task.is_some();
 	let available = shell.account_login.is_some();
-	let prompt = shell.account_login_status.as_ref().and_then(|status| status.prompt.as_ref()).map(
-		|prompt| {
-			(prompt.user_code.as_str().to_owned(), prompt.verification_url.as_str().to_owned())
-		},
-	);
-	let status = shell
+	let prompt = shell
 		.account_login_status
 		.as_ref()
-		.filter(|status| {
-			!matches!(
-				status.state,
-				AccountLoginState::Completed
-					| AccountLoginState::Failed
-					| AccountLoginState::Cancelled
-			)
+		.filter(|_| busy)
+		.and_then(|status| status.prompt.as_ref())
+		.map(|prompt| {
+			(prompt.user_code.as_str().to_owned(), prompt.verification_url.as_str().to_owned())
+		});
+	let status = account_login_feedback(shell).filter(|_| {
+		shell.account_login_target.as_ref().is_none_or(|target| {
+			!shell.accounts.accounts.iter().any(|account| &account.account_id == target)
 		})
-		.map(account_login_status_label);
+	});
 
 	ui_theme::settings_row()
 		.id("account-login-controls")
@@ -3713,11 +3790,7 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 						.child("Add account"),
 				)
 				.when(status.is_none() && prompt.is_none(), |row| row.child(gpui::div().text_size(gpui::px(11.5)).text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED)).child("Connect a Codex account to run conversations.")))
-				.when_some(status, |row, status| {
-					row.child(
-						gpui::div().text_size(gpui::px(10.5)).text_color(crate::ui_theme::rgb(WB_TEXT_MUTED)).child(status),
-					)
-				})
+				.children(status.as_ref().and_then(|feedback| ui_feedback::inline_feedback("account-login-feedback", "Sign-in", feedback)))
 				.when_some(prompt, |details, (code, url)| {
 					details.child(account_login_prompt(code, url)).child(
 						gpui::div().text_size(gpui::px(10.5)).text_color(crate::ui_theme::rgb(WB_TEXT_MUTED)).child("Use this code only for the sign-in you started in Decodex. Cancel if someone else asked you to enter a code."),
@@ -3749,7 +3822,7 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 						}),
 				)
 				.when(
-					shell.account_login_status.as_ref().is_some_and(|status| {
+					busy && shell.account_login_status.as_ref().is_some_and(|status| {
 						status.prompt.is_some() || status.authorization_url.is_some()
 					}),
 					|actions| {
@@ -3849,15 +3922,36 @@ fn account_login_status_label(status: &AccountLoginStatus) -> String {
 			"Complete sign-in in the browser, then return to Decodex.".into(),
 		AccountLoginState::Installing =>
 			"Installing the verified account through the Decodex service…".into(),
-		AccountLoginState::Completed => status.resolved_account_id.as_ref().map_or_else(
-			|| "Account sign-in completed.".into(),
-			|account_id| format!("Account {} is ready.", account_id.as_str()),
-		),
+		AccountLoginState::Completed => "Sign-in complete. The account is ready to use.".into(),
 		AccountLoginState::Failed => status.failure.map_or_else(
 			|| "Could not sign in. Try again.".into(),
-			|failure| format!("Account sign-in failed: {failure:?}."),
+			|failure| account_login_failure_message(failure).into(),
 		),
 		AccountLoginState::Cancelled => "Sign-in cancelled.".into(),
+	}
+}
+
+fn account_login_failure_message(failure: decodex_protocol::AccountLoginFailure) -> &'static str {
+	use decodex_protocol::AccountLoginFailure as Failure;
+	match failure {
+		Failure::LoginFailed | Failure::DeviceAuthorizationRejected =>
+			"Sign-in was not completed. Start a new sign-in to try again.",
+		Failure::LoginTimedOut | Failure::SessionNotFound =>
+			"This sign-in expired. Start a new sign-in to try again.",
+		Failure::AccountMismatch | Failure::AccountChanged | Failure::RecoveryChanged =>
+			"The selected account changed. Review the account, then sign in again.",
+		Failure::AccountUnavailable
+		| Failure::CredentialStoreUnavailable
+		| Failure::ServiceUnavailable =>
+			"Account sign-in is temporarily unavailable. Check the local connection, then try again.",
+		Failure::UnsupportedPlan =>
+			"This account plan is not supported. Sign in with a supported account.",
+		Failure::ProviderAlreadyEnrolled =>
+			"This account is already connected. Use its existing entry in the account list.",
+		Failure::OutcomeUnknown =>
+			"Sign-in could not be confirmed. Check the account list before trying again.",
+		Failure::Busy =>
+			"Another sign-in is still active. Finish or cancel it before trying again.",
 	}
 }
 
@@ -3962,6 +4056,19 @@ fn account_pool_row(
 		.gap(gpui::px(6.0))
 		.relative()
 		.child(summary)
+		.children(presentation.feedback.as_ref().map(|(text, color)| AccountFeedback {
+			id: format!("account-feedback-{}", account.account_id.as_str()).into(),
+			selector: format!(
+				"{}-{index}",
+				if account_needs_login(account) {
+					"account-login-warning"
+				} else {
+					"account-warning"
+				}
+			),
+			text: text.clone(),
+			color: *color,
+		}))
 		.into_any_element()
 }
 
@@ -4190,15 +4297,6 @@ fn account_management_actions(
 		.justify_start()
 		.items_center()
 		.gap(gpui::px(2.))
-		.children(presentation.feedback.as_ref().map(|(text, color)| AccountFeedback {
-			id: format!("account-feedback-{}", account.account_id.as_str()).into(),
-			selector: format!(
-				"{}-{index}",
-				if needs_login { "account-login-warning" } else { "account-warning" }
-			),
-			text: text.clone(),
-			color: *color,
-		}))
 		.child(
 			gpui::div()
 				.flex()
@@ -4270,15 +4368,7 @@ fn account_icon_action(
 		.px_0()
 		.tab_index(0)
 		.tooltip(move |_, cx| {
-			cx.new(|_| StatusTooltip {
-				text: label.into(),
-				color: if matches!(symbol, workspace_symbols::Symbol::AccountWarning) {
-					ui_theme::ERROR
-				} else {
-					ui_theme::TEXT
-				},
-			})
-			.into()
+			cx.new(|_| StatusTooltip { text: label.into(), color: ui_theme::TEXT }).into()
 		})
 		.child(workspace_symbols::icon(symbol))
 }
@@ -4412,14 +4502,14 @@ fn conversation_state_label(state: ConversationState) -> &'static str {
 
 fn conversation_state_color(state: ConversationState) -> u32 {
 	match state {
-		ConversationState::Ready => ui_theme::GREEN,
-		ConversationState::Running | ConversationState::Establishing => ui_theme::BLUE,
+		ConversationState::Ready => ui_theme::SUCCESS,
+		ConversationState::Running | ConversationState::Establishing => ui_theme::INFO,
 		ConversationState::ModelSettingsReviewRequired
 		| ConversationState::RoutingPending
 		| ConversationState::EstablishmentPending
 		| ConversationState::QuotaExhausted
 		| ConversationState::NoRoute
-		| ConversationState::OutcomeUnknown => ui_theme::AMBER,
+		| ConversationState::OutcomeUnknown => ui_theme::WARNING,
 		ConversationState::ManualRecovery => crate::ui_theme::ERROR,
 	}
 }
@@ -4824,9 +4914,9 @@ fn activity_inspector_row(
 	status: HistoryItemStatusDto,
 ) -> impl IntoElement {
 	let color = match status {
-		HistoryItemStatusDto::Streaming => ui_theme::BLUE,
+		HistoryItemStatusDto::Streaming => ui_theme::INFO,
 		HistoryItemStatusDto::Completed => ui_theme::TEXT_FAINT,
-		HistoryItemStatusDto::Failed => ui_theme::AMBER,
+		HistoryItemStatusDto::Failed => ui_theme::ERROR,
 	};
 
 	gpui::div()
@@ -5137,7 +5227,7 @@ fn conversation_transcript(
 						.text_size(gpui::px(11.0))
 						.text_color(crate::ui_theme::rgb(
 							if status == HistoryItemStatusDto::Failed {
-								WB_AMBER
+								ui_theme::ERROR
 							} else {
 								WB_TEXT_FAINT
 							},
@@ -5552,7 +5642,7 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 					.py_1()
 					.rounded_md()
 					.text_color(if current == id && !shell.conversations.service_tier_unknown() {
-						crate::ui_theme::rgb(WB_AMBER)
+						crate::ui_theme::rgb(ui_theme::ACCENT)
 					} else {
 						crate::ui_theme::rgb(WB_TEXT_MUTED)
 					})
@@ -5840,7 +5930,7 @@ fn settings_navigation(
 		.gap(gpui::px(3.0))
 		.text_size(gpui::px(BODY_SIZE))
 		.pr(gpui::px(16.))
-		.bg(crate::ui_theme::rgba(AGENT_SIDEBAR_MATERIAL))
+		.bg(crate::ui_theme::rgba(ui_theme::SIDEBAR_MATERIAL))
 		.child(
 			gpui::div()
 				.px_2()
@@ -5968,7 +6058,7 @@ fn settings_workspace_content(
 		.min_h_0()
 		.h_full()
 		.overflow_hidden()
-		.bg(crate::ui_theme::rgba(AGENT_SIDEBAR_MATERIAL))
+		.bg(crate::ui_theme::rgba(CONTENT_MATERIAL))
 		.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
 		.flex()
 		.flex_col();
@@ -6043,7 +6133,8 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 		.into_iter()
 		.filter_map(|w| w.downcast::<Shell>())
 		.find(|w| w.entity(cx).is_ok_and(|entity| entity == owner));
-	let bounds = Bounds::centered(None, gpui::size(gpui::px(920.), gpui::px(620.)), cx);
+	let bounds =
+		Bounds::centered(None, gpui::size(gpui::px(SETTINGS_WINDOW_MIN_WIDTH), gpui::px(620.)), cx);
 
 	match cx.open_window(
 		WindowOptions {
@@ -6054,7 +6145,7 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 			}),
 			window_background: WindowBackgroundAppearance::Blurred,
 			window_bounds: Some(WindowBounds::Windowed(bounds)),
-			window_min_size: Some(gpui::size(gpui::px(860.), gpui::px(480.))),
+			window_min_size: Some(gpui::size(gpui::px(SETTINGS_WINDOW_MIN_WIDTH), gpui::px(480.))),
 			// Install the accessibility adapter before the first key-window notification.
 			focus: false,
 			show: false,
@@ -6115,6 +6206,7 @@ fn open_settings_window(owner: Entity<Shell>, cx: &mut App) {
 		},
 		Err(error) => {
 			owner.update(cx, |s, cx| {
+				s.account_status_target = None;
 				s.account_status = Some(format!("Could not open Settings: {error}").into());
 
 				cx.notify();
@@ -6220,20 +6312,20 @@ fn composer_recover(
 		.rounded(gpui::px(7.0))
 		.border_1()
 		.border_color(if can_recover {
-			crate::ui_theme::rgba(0xf59e0b55)
+			crate::ui_theme::rgb(ui_theme::WARNING).opacity(0.33)
 		} else {
 			crate::ui_theme::rgba(0xffffff10)
 		})
 		.text_size(gpui::px(11.0))
 		.text_color(if can_recover {
-			crate::ui_theme::rgb(WB_AMBER)
+			crate::ui_theme::rgb(WB_WARNING)
 		} else {
 			crate::ui_theme::rgb(WB_TEXT_FAINT)
 		})
 		.when(can_recover, |element| {
 			element
 				.cursor_pointer()
-				.hover(|element| element.bg(crate::ui_theme::rgba(0xf59e0b12)))
+				.hover(|element| element.bg(crate::ui_theme::rgb(ui_theme::WARNING).opacity(0.07)))
 				.active(|element| element.opacity(0.72))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.recover_conversation(window, cx);
@@ -6286,32 +6378,36 @@ fn composer_fast_control(fast_enabled: bool, cx: &mut Context<Shell>) -> AnyElem
 		.rounded(gpui::px(6.0))
 		.border_1()
 		.border_color(if fast_enabled {
-			crate::ui_theme::rgba(0xffa45d40)
+			crate::ui_theme::rgba(ui_theme::SELECTED_BORDER)
 		} else {
 			crate::ui_theme::rgba(0xffffff10)
 		})
 		.bg(if fast_enabled {
-			crate::ui_theme::rgba(0xff8a3d16)
+			crate::ui_theme::rgba(ui_theme::CONTROL_SELECTED_FILL)
 		} else {
 			crate::ui_theme::rgba(0x00000018)
 		})
 		.font_family(FONT_FAMILY)
 		.text_size(gpui::px(11.0))
 		.text_color(if fast_enabled {
-			crate::ui_theme::rgb(WB_AMBER)
+			crate::ui_theme::rgb(WB_TEXT)
 		} else {
 			crate::ui_theme::rgb(WB_TEXT_MUTED)
 		})
 		.cursor_pointer()
-		.hover(|element| {
+		.hover(move |element| {
 			element
-				.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL))
+				.bg(crate::ui_theme::rgba(if fast_enabled {
+					ui_theme::CONTROL_SELECTED_HOVER
+				} else {
+					ui_theme::HOVER_FILL
+				}))
 				.text_color(crate::ui_theme::rgb(WB_TEXT))
 		})
 		.active(|element| element.opacity(0.72))
 		.on_click(cx.listener(|shell, _, _, cx| shell.toggle_conversation_fast(cx)))
 		.child(gpui::div().size(gpui::px(4.0)).rounded_full().bg(if fast_enabled {
-			crate::ui_theme::rgb(WB_AMBER)
+			crate::ui_theme::rgb(WB_TEXT)
 		} else {
 			crate::ui_theme::rgb(WB_TEXT_FAINT)
 		}))
@@ -6483,7 +6579,7 @@ fn account_pool_header(
 						gpui::div()
 							.size(gpui::px(6.0))
 							.rounded_full()
-							.bg(crate::ui_theme::rgb(WB_GREEN)),
+							.bg(crate::ui_theme::rgb(WB_SUCCESS)),
 					)
 					.child(
 						gpui::div()
@@ -6985,9 +7081,19 @@ mod tests {
 				load == AccountsLoadState::Ready
 			);
 			assert_eq!(
-				visual.debug_bounds("loading-feedback-Loading accounts").is_some(),
-				load == AccountsLoadState::Loading
+				visual.debug_bounds("account-list-feedback").is_some(),
+				load != AccountsLoadState::Ready
 			);
+			shell.read_with(visual, |s, _| {
+				assert_eq!(
+					shell::account_list_feedback(&s.accounts).map(|feedback| feedback.tone),
+					match load {
+						AccountsLoadState::Loading => Some(crate::ui_feedback::Tone::Info),
+						AccountsLoadState::Offline => Some(crate::ui_feedback::Tone::Warning),
+						_ => None,
+					}
+				);
+			});
 		}
 	}
 
@@ -7041,6 +7147,7 @@ mod tests {
 			shell.update(visual, |s, cx| {
 				s.visual_accounts_and_health();
 				s.selected = Destination::Accounts;
+				s.account_login_task = Some(cx.background_executor().spawn(std::future::pending()));
 				s.account_login_status = Some(
 					serde_json::from_value(serde_json::json!({
 						"session_id":"10000000-0000-4000-8000-000000000001",
@@ -7067,6 +7174,16 @@ mod tests {
 				shell.read_with(visual, |s, _| s.account_login_error.clone()),
 				Some(notice.into())
 			);
+			shell.update(visual, |s, cx| {
+				s.account_login_task = None;
+				s.account_login_error = None;
+				s.account_login_status.as_mut().unwrap().state =
+					decodex_protocol::AccountLoginState::Completed;
+				cx.notify();
+			});
+			visual.update(|window, cx| window.draw(cx).clear(cx));
+			assert!(visual.debug_bounds("account-login-copy").is_none());
+			assert!(visual.debug_bounds("account-login-feedback").is_some());
 		}
 	}
 
@@ -7494,19 +7611,25 @@ mod tests {
 						})
 						.color
 					),
-					gpui::rgb(palette.green)
+					gpui::rgb(palette.status_success)
 				);
 				assert_eq!(
 					crate::ui_theme::rgb(
 						shell::connection_presentation(ConnectionView::Connecting { attempt: 1 })
 							.color
 					),
-					gpui::rgb(palette.amber)
+					gpui::rgb(palette.status_info)
 				);
 				for (status, color) in [
-					(Some(DoctorStatus::Ready), palette.green),
-					(Some(DoctorStatus::Unavailable(DoctorIssue::Authentication)), palette.error),
-					(Some(DoctorStatus::Unknown(DoctorIssue::Authentication)), palette.amber),
+					(Some(DoctorStatus::Ready), palette.status_success),
+					(
+						Some(DoctorStatus::Unavailable(DoctorIssue::Authentication)),
+						palette.status_error,
+					),
+					(
+						Some(DoctorStatus::Unknown(DoctorIssue::Authentication)),
+						palette.status_warning,
+					),
 					(Some(DoctorStatus::Unknown(DoctorIssue::Disabled)), palette.text_muted),
 					(None, palette.text_muted),
 				] {
@@ -7516,10 +7639,10 @@ mod tests {
 					);
 				}
 				for (state, color) in [
-					(ConversationState::Ready, palette.green),
-					(ConversationState::Running, palette.blue),
-					(ConversationState::QuotaExhausted, palette.amber),
-					(ConversationState::ManualRecovery, palette.error),
+					(ConversationState::Ready, palette.status_success),
+					(ConversationState::Running, palette.status_info),
+					(ConversationState::QuotaExhausted, palette.status_warning),
+					(ConversationState::ManualRecovery, palette.status_error),
 				] {
 					assert_eq!(
 						crate::ui_theme::rgb(shell::conversation_state_color(state)),
@@ -7528,9 +7651,9 @@ mod tests {
 				}
 				for (load, color) in [
 					(HealthLoadState::NeverRequested, palette.text_muted),
-					(HealthLoadState::Loading, palette.blue),
-					(HealthLoadState::Stale, palette.amber),
-					(HealthLoadState::Refused, palette.error),
+					(HealthLoadState::Loading, palette.status_info),
+					(HealthLoadState::Stale, palette.status_warning),
+					(HealthLoadState::Refused, palette.status_error),
 				] {
 					let snapshot = HealthSnapshot { load, report: None, can_refresh: false };
 					assert_eq!(
@@ -8066,6 +8189,28 @@ mod tests {
 
 		settings.simulate_keystrokes("shift-tab enter");
 		shell.read_with(settings, |s, _| assert_eq!(s.settings_selected, Destination::Accounts));
+	}
+
+	#[gpui::test]
+	fn settings_minimum_window_keeps_five_theme_previews_per_row(cx: &mut TestAppContext) {
+		let (shell, visual) = open_shell(cx);
+		visual.simulate_keystrokes("cmd-,");
+		let handle = shell.read_with(visual, |s, _| s.settings_window.expect("settings window"));
+		let settings = &mut gpui::VisualTestContext::from_window(handle.into(), visual);
+		settings.simulate_resize(gpui::size(
+			gpui::px(ui_theme::SETTINGS_WINDOW_MIN_WIDTH),
+			gpui::px(480.),
+		));
+		settings.simulate_keystrokes("tab tab enter");
+		settings.update(|window, cx| window.draw(cx).clear(cx));
+		let gallery = settings.debug_bounds("color-theme-picker").expect("theme gallery");
+		let first = settings.debug_bounds("color-theme-decodex").expect("first preview");
+		let fifth = settings.debug_bounds("color-theme-everforest").expect("fifth preview");
+		let sixth = settings.debug_bounds("color-theme-github-dark").expect("sixth preview");
+		assert_eq!(first.top(), fifth.top(), "five previews must fit beside settings navigation");
+		assert!(first.left() >= gallery.left());
+		assert!(fifth.right() < gallery.right(), "leave room for the gallery scrollbar");
+		assert!(sixth.top() >= first.bottom(), "keep five previews per row");
 	}
 
 	#[gpui::test]

@@ -3,7 +3,7 @@ use super::{PerformanceIsland, bytes, chart, timing};
 use crate::{
 	ui_live_activity::{CAPSULE_HEIGHT, Sizing},
 	ui_motion,
-	ui_theme::{AMBER, BLUE, TEXT_MUTED},
+	ui_theme::{BLUE, TEXT_MUTED, WARNING},
 };
 use gpui::{AnyElement, FontFeatures, FontWeight, IntoElement, prelude::*};
 use std::sync::{Arc, OnceLock};
@@ -546,7 +546,7 @@ fn debug_details(
 				.gap_2()
 				.child(metric("draw", "Draw p95", data.draw.clone()).w(gpui::px(columns[0])).when(
 					island.display_hz.is_some_and(|hz| island.metrics.draw_ms > 1000. / hz),
-					|d| d.text_color(crate::ui_theme::rgb(AMBER)),
+					|d| d.text_color(crate::ui_theme::rgb(WARNING)),
 				))
 				.child(chart::render(&island.history, window, cx)),
 		)

@@ -76,21 +76,22 @@ impl RenderOnce for Mark {
 			window,
 			cx,
 		);
-		let base = crate::ui_theme::rgb(0xaaa0c4);
-		let bright = crate::ui_theme::rgb(0xd1c2f4);
+		let base = crate::ui_theme::rgb(crate::ui_theme::BLUE);
+		let bright = crate::ui_theme::rgb(crate::ui_theme::TEXT);
 		let from = gpui::Rgba {
 			r: base.r + (bright.r - base.r) * hovered,
 			g: base.g + (bright.g - base.g) * hovered,
 			b: base.b + (bright.b - base.b) * hovered,
 			a: 1.,
 		};
-		let to = crate::ui_theme::rgb(crate::ui_theme::BLUE);
+		let to = crate::ui_theme::rgb(crate::ui_theme::ACCENT);
 		let selector = format!("graph-allocation-mark-{}", self.key);
 		gpui::div()
 			.debug_selector(move || selector.clone())
 			.w_full()
 			.h(gpui::px(2.))
 			.flex_none()
+			.rounded_full()
 			.bg(gpui::Rgba {
 				r: from.r + (to.r - from.r) * selected,
 				g: from.g + (to.g - from.g) * selected,

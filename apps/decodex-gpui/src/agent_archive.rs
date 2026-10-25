@@ -3,7 +3,7 @@ use std::{rc::Rc, time::Duration};
 
 use gpui::{AnyElement, KeyDownEvent};
 use tokio::runtime::Builder;
-use ui_theme::{BLUE, PANEL_HEADER_TINT, TEXT_MUTED};
+use ui_theme::BLUE;
 
 #[cfg(test)] use crate::shell::agent_surface::AgentDispatchStateDto;
 #[cfg(test)] use crate::shell::agent_surface::AgentSnapshotDto;
@@ -15,6 +15,7 @@ use crate::{
 		Context, EntityId, FluentBuilder, IdempotencyKey, InteractiveElement, IntoElement,
 		ParentElement, Role, StatefulInteractiveElement, Styled, Task, WireText, ui_theme,
 	},
+	ui_feedback::{self, Tone},
 	ui_motion::SmoothControl as _,
 };
 use decodex_protocol::AgentArchiveResult;
@@ -255,52 +256,74 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		if self.archive.owner.as_deref() != Some(&work.id) {
+		if !self.selected_is_archived() {
 			return gpui::div().into_any_element();
 		}
 
-		let restoring = self.archive.mutation.is_some();
+		let current = self.archive.owner.as_deref() == Some(&work.id);
+		let restoring = current && self.archive.mutation.is_some();
+		let feedback = if current { self.archive.feedback.as_str() } else { "" };
 		let thread = match &self.archive.result {
-			Some(AgentArchiveResult::Archived { thread_id }) => Some(thread_id.clone()),
-			_ if restoring => None,
-			_ => return gpui::div().into_any_element(),
+			Some(AgentArchiveResult::Archived { thread_id }) if current && !restoring =>
+				Some(thread_id.clone()),
+			_ => None,
 		};
 		let work = work.id.clone();
+		let tone = if !restoring && !feedback.is_empty() { Tone::Warning } else { Tone::Neutral };
+		let detail = if restoring {
+			"Restoring this conversation. Your history is kept."
+		} else if !feedback.is_empty() {
+			feedback
+		} else {
+			"This conversation is read-only. Unarchive to send messages."
+		};
+		let icon = crate::shell::workspace_symbols::icon_sized(
+			crate::shell::workspace_symbols::Symbol::Lock,
+			16.,
+		);
+		let row = if !restoring && feedback.is_empty() {
+			ui_feedback::read_only_row("archive-status", "Archived", detail, icon)
+		} else {
+			ui_feedback::status_row(
+				"archive-status",
+				tone,
+				if restoring { "Unarchiving…" } else { "Archived" },
+				detail,
+				icon,
+			)
+		}
+		.when_some(thread.clone(), |row, thread| {
+			row.child(button("archive-restore", "Unarchive", cx, move |s, cx| {
+				s.restore_archive(&work, &thread, cx)
+			}))
+		})
+		.when(thread.is_none() && !restoring, |row| {
+			row.child(button("archive-check", "Check status", cx, |s, cx| {
+				s.load_archive_state(true, cx)
+			}))
+		});
 
 		gpui::div()
 			.debug_selector(|| "archive-banner".into())
 			.w_full()
 			.flex_none()
-			.px(gpui::px(20.))
-			// Leave a separate hit target for the conversation fullscreen control.
-			.pr(gpui::px(48.))
-			.py(gpui::px(10.))
+			.px(gpui::px(ui_theme::CONVERSATION_INSET))
+			.pt(gpui::px(ui_theme::COMPOSER_TOP_GAP))
+			.pb(gpui::px(ui_theme::COMPOSER_BOTTOM_GAP))
 			.flex()
 			.items_center()
-			.justify_between()
-			.gap_3()
-			.bg(crate::ui_theme::rgba(PANEL_HEADER_TINT))
-			.when(!self.workspace.graph_visible || self.workspace.chat_expanded, |panel| {
-				panel.rounded_t(gpui::px(ui_theme::WORKSPACE_RADIUS))
-			})
-			.text_size(gpui::px(11.))
+			.justify_center()
 			.child(
-				gpui::div()
-					.flex()
-					.flex_col()
-					.gap_1()
-					.child(if restoring { "Unarchiving…" } else { "Archived" })
-					.child(
-						gpui::div()
-							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-							.child("History is available. Unarchive to continue."),
-					),
+				super::composer::composer_capsule(false)
+					.id("archive-read-only")
+					.debug_selector(|| "archive-surface".into())
+					.rounded(gpui::px(10.))
+					.py(gpui::px(4.))
+					.border_color(crate::ui_theme::rgb(ui_theme::LINE_STRONG).opacity(0.22))
+					.bg(crate::ui_theme::rgba(ui_theme::FIELD_MATERIAL))
+					.shadow(Vec::<gpui::BoxShadow>::new())
+					.child(row),
 			)
-			.when_some(thread, |panel, thread| {
-				panel.child(button("archive-restore", "Unarchive", cx, move |s, cx| {
-					s.restore_archive(&work, &thread, cx)
-				}))
-			})
 			.into_any_element()
 	}
 }
@@ -396,6 +419,10 @@ mod tests {
 		thread::sleep(Duration::from_millis(240));
 		visual.update(crate::ui_frame::draw_frame);
 		let bounds = visual.debug_bounds("archive-restore").expect("restore action");
+		let status = visual.debug_bounds("archive-banner").expect("read-only footer");
+		let frame = visual.debug_bounds("workspace-center-frame").expect("conversation frame");
+		assert_eq!(status.bottom(), frame.bottom(), "read-only state replaces the bottom input");
+		assert!(visual.debug_bounds("composer-editor-area").is_none());
 		let epoch = surface.update(visual, |s, cx| {
 			s.archive.request = Some(cx.spawn(async |_, _| future::pending::<()>().await));
 			cx.notify();
@@ -589,8 +616,8 @@ mod tests {
 		let bounds = visual.debug_bounds("archive-restore").expect("explicit restore control");
 		let fullscreen = visual.debug_bounds("chat-expand").expect("conversation fullscreen");
 		assert!(
-			bounds.right() + gpui::px(8.) <= fullscreen.left(),
-			"archive actions have separate hit targets"
+			bounds.top() >= fullscreen.bottom() + gpui::px(8.),
+			"archive recovery stays below the transcript controls"
 		);
 
 		visual.simulate_mouse_down(

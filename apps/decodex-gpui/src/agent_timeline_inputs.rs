@@ -47,20 +47,22 @@ impl AgentSurface {
 		let expanded = self.timeline.expanded_records.contains(&key);
 		let title =
 			if entry.kind == "unsent_input" { "Message not sent" } else { "Delivery unconfirmed" };
+		let tone = if entry.kind == "unsent_input" { Tone::Error } else { Tone::Warning };
 		let entry = entry.clone();
 		gpui::div()
 			.w_full()
 			.flex_none()
 			.child(
-				Tone::Warning.disclosure(
+				tone.disclosure(
 					key.clone(),
 					expanded,
 					gpui::div()
 						.flex()
-						.flex_none()
+						.w_full()
 						.items_center()
 						.gap(gpui::px(7.))
-						.child(self.saved_input_toggle(key.clone(), title, expanded, cx))
+						.justify_between()
+						.child(self.saved_input_toggle(key.clone(), title, tone, expanded, cx))
 						.child(markdown::copy_button(
 							&format!("{key}-copy"),
 							"Copy saved message",
@@ -88,12 +90,12 @@ impl AgentSurface {
 		&self,
 		key: String,
 		title: &'static str,
+		tone: Tone,
 		expanded: bool,
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let keyboard = key.clone();
-		Tone::Warning
-			.row(SharedString::from(format!("{key}-toggle")), title)
+		tone.row(SharedString::from(format!("{key}-toggle")), title)
 			.debug_selector(|| "saved-input-toggle".into())
 			.role(Role::Button)
 			.tab_index(0)
@@ -522,12 +524,14 @@ mod tests {
 		}
 		let banner = visual.debug_bounds("saved-input-banner").unwrap();
 		let card = visual.debug_bounds("expandable-notice-card").unwrap();
-		assert_eq!(card.size.height, gpui::px(32.));
-		assert!((card.center().x - banner.center().x).abs() < gpui::px(1.));
-		assert!(
-			card.size.width < banner.size.width * 0.75,
-			"{card:?} must stay compact in {banner:?}"
+		assert_eq!(
+			card.size.height,
+			gpui::px(38.),
+			"the copy control must fit inside the receipt header"
 		);
+		assert!((card.center().x - banner.center().x).abs() < gpui::px(1.));
+		assert_eq!(card.left(), banner.left(), "receipt follows its message column");
+		assert_eq!(card.size.width, banner.size.width);
 		let assert_spacing = |visual: &mut gpui::VisualTestContext| {
 			let metrics = visual.debug_bounds("turn-metrics-hover").unwrap();
 			let card = visual.debug_bounds("expandable-notice-card").unwrap();

@@ -79,9 +79,9 @@ fn theme_resolution_preserves_label_text_and_xml_escaping() {
 	assert_eq!(root.attribute("style"), Some("font-family:\"A & B\""));
 	let text = root.first_element_child().expect("text element");
 	assert_eq!(text.text(), Some("var(--_fg) & <literal>"));
-	assert_eq!(text.attribute("fill"), Some("#e8e8ea"));
+	assert_eq!(text.attribute("fill"), Some("#dee2ea"));
 	let path = root.last_element_child().expect("path element");
-	assert_eq!(path.attribute("stroke"), Some("#25272a"));
+	assert_eq!(path.attribute("stroke"), Some("#212833"));
 }
 
 #[test]
@@ -93,8 +93,8 @@ fn light_and_dark_diagrams_keep_the_same_geometry_and_authored_fills() {
 		.expect("Tokyo Night diagram");
 	assert_eq!((light.width, light.height), (dark.width, dark.height));
 	assert_eq!((tokyo.width, tokyo.height), (dark.width, dark.height));
-	assert!(light.svg.contains("#2c2f36"));
-	assert!(dark.svg.contains("#e8e8ea"));
+	assert!(light.svg.contains("#252c39"));
+	assert!(dark.svg.contains("#dee2ea"));
 	assert!(tokyo.svg.contains("#c0caf5"));
 	for diagram in [light, dark, tokyo] {
 		assert!(diagram.svg.contains("#ff1234"), "authored fills remain literal");

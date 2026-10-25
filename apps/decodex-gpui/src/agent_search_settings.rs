@@ -1,4 +1,5 @@
 //! Choose native search defaults without changing loaded conversations.
+use crate::ui_feedback::{self, Feedback};
 use gpui::AnyElement;
 #[cfg(test)] use gpui::px;
 use tokio::runtime::Builder;
@@ -20,7 +21,7 @@ pub(super) struct Panel {
 	state: Option<AgentSearchSettingsResult>,
 	task: Option<Task<()>>,
 	epoch: u64,
-	feedback: String,
+	feedback: Feedback,
 }
 
 impl AgentSurface {
@@ -56,7 +57,7 @@ impl AgentSurface {
 		}
 
 		let Some(profile) = self.profile.clone() else {
-			self.search_settings.feedback = "No service connection is available.".into();
+			self.search_settings.feedback = Feedback::error("No service connection is available.");
 
 			cx.notify();
 
@@ -90,8 +91,11 @@ impl AgentSurface {
 		let generation = self.generation;
 
 		self.search_settings.state = None;
-		self.search_settings.feedback =
-			if mode.is_some() { "Saving search…" } else { "Reading search settings…" }.into();
+		self.search_settings.feedback = Feedback::loading(if mode.is_some() {
+			"Saving search…"
+		} else {
+			"Reading search settings…"
+		});
 
 		let key =
 			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
@@ -122,8 +126,7 @@ impl AgentSurface {
 				let (outcome, state) =
 					result.unwrap_or((None, AgentSearchSettingsResult::Unavailable));
 
-				s.search_settings.feedback =
-					feedback(mode.as_ref(), outcome.as_ref(), &state).into();
+				s.search_settings.feedback = feedback(mode.as_ref(), outcome.as_ref(), &state);
 				s.search_settings.state = Some(state);
 
 				cx.notify();
@@ -161,7 +164,7 @@ impl AgentSurface {
 
 		panel = panel
 			.child("Shared across accounts in Codex user settings. Applies to new conversations. Project settings can override this default; loaded conversations keep their current mode.")
-			.child(self.search_settings.feedback.clone());
+			.children(ui_feedback::inline_feedback("search-settings-feedback", "Search settings", &self.search_settings.feedback));
 
 		if self.search_settings.task.is_some() {
 			return panel.into_any_element();
@@ -220,8 +223,6 @@ impl AgentSurface {
 					},
 				));
 			}
-		} else {
-			panel = panel.child("Search settings are unavailable. Refresh to try again.");
 		}
 
 		panel.into_any_element()
@@ -232,7 +233,7 @@ fn feedback(
 	mode: Option<&WireText>,
 	outcome: Option<&Result<AgentCommandResponse, ClientFailure>>,
 	state: &AgentSearchSettingsResult,
-) -> &'static str {
+) -> Feedback {
 	match (mode, outcome, state) {
 		(
 			Some(mode),
@@ -240,15 +241,19 @@ fn feedback(
 			AgentSearchSettingsResult::Available { effective, preference, .. },
 		) if preference.as_ref() == Some(mode) =>
 			if effective.as_ref() == Some(mode) {
-				"Search default saved for new conversations."
+				Feedback::success("Search default saved for new conversations.")
 			} else {
-				"Search saved. This project's settings select a different search mode."
+				Feedback::info(
+					"Search saved. This project's settings select a different search mode.",
+				)
 			},
 		(Some(_), Some(Ok(AgentCommandResponse::Rejected { .. })), _) =>
-			"The change was not accepted. Review the refreshed settings.",
-		(Some(_), _, _) =>
+			Feedback::error("The change was not accepted. Review the refreshed settings."),
+		(Some(_), _, _) => Feedback::warning(
 			"The save could not be confirmed. Review the refreshed settings before trying again.",
-		(None, _, _) => "Choose a search mode for new conversations.",
+		),
+		(None, _, AgentSearchSettingsResult::Available { .. }) => Feedback::default(),
+		(None, _, _) => Feedback::warning("Search settings are unavailable. Refresh to try again."),
 	}
 }
 

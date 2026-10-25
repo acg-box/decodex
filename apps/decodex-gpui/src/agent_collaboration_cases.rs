@@ -10,7 +10,7 @@ fn managed_state(case: &mut Exchange, record: &AgentExchangeDto, work: &Row, oth
 	match record.kind {
 		KindDto::NotSent => {
 			case.state = "Not sent";
-			case.color = ui_theme::AMBER;
+			case.color = ui_theme::WARNING;
 			case.title = "Continue the same worker".into();
 			case.request = Some(record.excerpt.clone());
 			case.summary = match record.target_dispatch_state {
@@ -52,7 +52,7 @@ fn managed_state(case: &mut Exchange, record: &AgentExchangeDto, work: &Row, oth
 				}
 			} else {
 				case.state = "Unconfirmed";
-				case.color = ui_theme::AMBER;
+				case.color = ui_theme::WARNING;
 				case.summary = "Delivery has not been confirmed".into();
 				case.steps
 					.push(("Check", "Check the original worker before another attempt.".into()));
@@ -65,7 +65,7 @@ fn managed_state(case: &mut Exchange, record: &AgentExchangeDto, work: &Row, oth
 fn managed_result(case: &mut Exchange, record: &AgentExchangeDto) {
 	let completed = record.outcome.as_deref() == Some("completed");
 	case.state = if completed { "To review" } else { "Check result" };
-	case.color = if completed { ui_theme::BLUE } else { ui_theme::AMBER };
+	case.color = if completed { ui_theme::SUCCESS } else { ui_theme::WARNING };
 	case.summary = if completed {
 		"Result received · assessment not recorded"
 	} else {
@@ -92,23 +92,23 @@ fn managed_result(case: &mut Exchange, record: &AgentExchangeDto) {
 	match record.assessment {
 		Some(Assessment::Accepted) => {
 			case.state = "Accepted";
-			case.color = ui_theme::GREEN;
+			case.color = ui_theme::SUCCESS;
 			case.earlier = true;
 			case.summary = "The manager accepted this exact result".into();
 		},
 		Some(Assessment::FollowUp) => {
 			case.state = "Changes asked";
-			case.color = ui_theme::AMBER;
+			case.color = ui_theme::WARNING;
 			case.summary = "Follow-up requested · new result pending".into();
 		},
 		Some(Assessment::Wait) => {
 			case.state = "Waiting";
-			case.color = ui_theme::AMBER;
+			case.color = ui_theme::WARNING;
 			case.summary = "The manager deferred this assessment".into();
 		},
 		Some(Assessment::UserDecision) => {
 			case.state = "Decision";
-			case.color = ui_theme::AMBER;
+			case.color = ui_theme::WARNING;
 			case.summary = "The manager needs your decision".into();
 		},
 		None => {},
@@ -151,7 +151,7 @@ fn managed(records: &[AgentExchangeDto], rows: &[Row]) -> Vec<Exchange> {
 			title: work.title.clone(),
 			summary: String::new(),
 			state: "Continuing",
-			color: ui_theme::GREEN,
+			color: ui_theme::SUCCESS,
 			request,
 			steps: vec![],
 			source: record.source_event_id.clone(),
@@ -229,7 +229,7 @@ fn append_questions(
 			}
 			.into(),
 			state: if question.pending { "Question" } else { "Withdrawn" },
-			color: if question.pending { ui_theme::AMBER } else { ui_theme::TEXT_MUTED },
+			color: if question.pending { ui_theme::WARNING } else { ui_theme::TEXT_MUTED },
 			request: None,
 			steps: vec![(
 				"Question",
@@ -263,16 +263,16 @@ fn native_state(edge: &Edge) -> (&'static str, u32, &'static str) {
 			"Prerequisite resolved · downstream execution not confirmed",
 		),
 		Kind::Dependency =>
-			("Waiting", ui_theme::AMBER, "An explicit work dependency is outstanding"),
+			("Waiting", ui_theme::WARNING, "An explicit work dependency is outstanding"),
 		Kind::Wait if edge.in_progress =>
-			("Waiting", ui_theme::AMBER, "Waiting for the named agent"),
+			("Waiting", ui_theme::WARNING, "Waiting for the named agent"),
 		Kind::Returned =>
-			("Reported", ui_theme::BLUE, "A native event was recorded · acceptance unknown"),
+			("Reported", ui_theme::INFO, "A native event was recorded · acceptance unknown"),
 		Kind::Context =>
 			("Shared", ui_theme::TEXT_MUTED, "Context made available · reading is not confirmed"),
 		_ if edge.label.contains("failed") || edge.label.contains("interrupted") =>
-			("Unconfirmed", ui_theme::AMBER, "Check the source before continuing"),
-		_ if edge.in_progress => ("Working", ui_theme::GREEN, "The native call is in progress"),
+			("Unconfirmed", ui_theme::WARNING, "Check the source before continuing"),
+		_ if edge.in_progress => ("Working", ui_theme::INFO, "The native call is in progress"),
 		_ => ("Recorded", ui_theme::TEXT_MUTED, "Native route recorded · outcome not confirmed"),
 	}
 }

@@ -9,18 +9,19 @@ use gpui::{
 
 use crate::{
 	account_profile::{self, AccountProfileLoadState},
-	accounts::{AccountCommandState, AccountsLoadState},
+	accounts::AccountsLoadState,
 	shell::{
 		self, ConnectionPresentation, Destination, Shell, WB_BLUE, WB_TEXT, WB_TEXT_MUTED,
 		workspace_symbols::{self, Symbol},
 	},
+	ui_feedback::{self, Tone},
 	ui_motion::{self, SmoothControl},
 	ui_preferences,
 	ui_theme::{
-		AMBER, BLUE, CHROME_CONTROL_SIZE, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, ERROR, HOVER_FILL,
+		CHROME_CONTROL_SIZE, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, ERROR, HOVER_FILL, WARNING,
 	},
 };
-use decodex_protocol::{AccountLoginState, AccountProfileResult};
+use decodex_protocol::AccountProfileResult;
 
 #[derive(Clone, Copy)]
 enum Recovery {
@@ -33,7 +34,7 @@ struct Notice {
 	title: SharedString,
 	detail: String,
 	recovery: Recovery,
-	color: u32,
+	tone: Tone,
 	identity: Option<String>,
 }
 impl Notice {
@@ -42,22 +43,42 @@ impl Notice {
 	}
 
 	fn new(title: impl Into<SharedString>, detail: impl Into<String>, recovery: Recovery) -> Self {
-		Self { title: title.into(), detail: detail.into(), recovery, color: AMBER, identity: None }
+		Self {
+			title: title.into(),
+			detail: detail.into(),
+			recovery,
+			tone: Tone::Warning,
+			identity: None,
+		}
 	}
 
 	fn error(mut self) -> Self {
-		self.color = ERROR;
+		self.tone = Tone::Error;
 
 		self
 	}
 
 	fn info(mut self) -> Self {
-		self.color = BLUE;
+		self.tone = Tone::Info;
+
+		self
+	}
+
+	fn success(mut self) -> Self {
+		self.tone = Tone::Success;
 
 		self
 	}
 }
 impl Shell {
+	fn settings_feedback_visible(&self, destination: Destination) -> bool {
+		if self.settings_window.is_some() {
+			self.settings_selected == destination
+		} else {
+			self.selected == destination
+		}
+	}
+
 	pub(super) fn render_status_center(
 		&self,
 		connection: &ConnectionPresentation,
@@ -125,16 +146,20 @@ impl Shell {
 			.read(cx)
 			.notifications()
 			.into_iter()
-			.map(|(title, detail)| {
-				Notice::new(
+			.map(|(title, feedback)| {
+				let mut notice = Notice::new(
 					title,
-					detail,
-					if title == "Launch at login" {
+					feedback.message,
+					if title == "Quota" {
+						Recovery::Accounts
+					} else if title == "Launch at login" {
 						Recovery::LoginItems
 					} else {
 						Recovery::General
 					},
-				)
+				);
+				notice.tone = feedback.tone;
+				notice
 			})
 			.collect::<Vec<_>>();
 
@@ -151,19 +176,27 @@ impl Shell {
 			notices.insert(0, notice);
 		}
 
-		notices.extend(
-			agent
-				.operation_notices()
-				.into_iter()
-				.map(|(title, detail)| Notice::new(title, detail, Recovery::None)),
-		);
+		notices.extend(agent.operation_notices().into_iter().map(|(title, detail)| {
+			let notice = Notice::new(title, detail, Recovery::None);
+			if matches!(title, "Experimental Codex features" | "Token statistics unavailable") {
+				notice.info()
+			} else {
+				notice
+			}
+		}));
 
 		if connection.label != "Online" {
-			notices.push(Notice::new(
-				connection.label,
-				connection.detail.to_string(),
-				Recovery::None,
-			));
+			let mut notice =
+				Notice::new(connection.label, connection.detail.to_string(), Recovery::None);
+			notice.tone = match self.connection {
+				crate::client_lifecycle::ConnectionView::Connecting { .. } => Tone::Info,
+				crate::client_lifecycle::ConnectionView::Incompatible(_)
+				| crate::client_lifecycle::ConnectionView::Quarantined { .. }
+				| crate::client_lifecycle::ConnectionView::Stopped => Tone::Error,
+				crate::client_lifecycle::ConnectionView::ShuttingDown => Tone::Neutral,
+				_ => Tone::Warning,
+			};
+			notices.push(notice);
 		}
 
 		let mut seen = HashSet::new();
@@ -174,7 +207,30 @@ impl Shell {
 		let mut dismissed = self.dismissed_notifications.borrow_mut();
 
 		dismissed.retain(|key| current.contains(key));
-		notices.retain(|notice| !dismissed.contains(&notice.key()));
+		let general_visible = self.settings_feedback_visible(Destination::Settings)
+			&& self.settings.read(cx).category
+				== crate::settings_surface::SettingsCategory::General;
+		let accounts_visible = self.settings_feedback_visible(Destination::Accounts);
+		// Suppress only the duplicate presentation, after retaining source identities.
+		// Opening a settings page must not reset the user's dismissal of an active issue.
+		notices.retain(|notice| {
+			!dismissed.contains(&notice.key())
+				&& !match notice.recovery {
+					Recovery::General | Recovery::LoginItems => general_visible,
+					Recovery::Accounts =>
+						accounts_visible && notice.title.as_ref() != "Account profile",
+					Recovery::None => false,
+				}
+		});
+		// Keep urgent app-wide failures ahead of background information. Stable
+		// sorting preserves arrival order among notices with the same severity.
+		notices.sort_by_key(|notice| match notice.tone {
+			Tone::Error => 0,
+			Tone::Warning => 1,
+			Tone::Info => 2,
+			Tone::Success => 3,
+			Tone::Neutral => 4,
+		});
 
 		notices
 	}
@@ -183,24 +239,15 @@ impl Shell {
 		let snapshot = &self.accounts;
 
 		if let Some(alias) = &snapshot.route_success_alias {
-			notices.push(Notice::new(format!("Switched to {alias}."), "", Recovery::None).info());
+			notices.push(
+				Notice::new(format!("Switched to {alias}."), "", Recovery::Accounts).success(),
+			);
 		}
 
-		if let Some(detail) = &self.account_status {
-			notices.push(Notice::new("Accounts", detail.to_string(), Recovery::Accounts));
-		}
-		if let Some(rejection) = snapshot.rejection {
-			notices.push(Notice::new(
-				"Accounts",
-				shell::account_rejection_label(rejection),
-				Recovery::Accounts,
-			));
-		} else if matches!(
-			snapshot.command,
-			AccountCommandState::Refused | AccountCommandState::OutcomeUnknown
-		) && let Some(detail) = shell::account_command_label(snapshot.command)
-		{
-			notices.push(Notice::new("Accounts", detail, Recovery::Accounts));
+		if let Some(feedback) = shell::account_operation_feedback(self) {
+			let mut notice = Notice::new("Accounts", feedback.message, Recovery::Accounts);
+			notice.tone = feedback.tone;
+			notices.push(notice);
 		}
 
 		if matches!(
@@ -209,46 +256,19 @@ impl Shell {
 				| AccountsLoadState::Stale
 				| AccountsLoadState::Unavailable
 				| AccountsLoadState::Refused
-		) {
-			notices.push(Notice::new(
-				"Accounts",
-				shell::accounts_load_label(snapshot.load),
-				Recovery::Accounts,
-			));
+		) && let Some(feedback) = shell::account_list_feedback(snapshot)
+		{
+			let mut notice = Notice::new("Accounts", feedback.message, Recovery::Accounts);
+			notice.tone = feedback.tone;
+			notices.push(notice);
 		}
 
-		if let Some(detail) = &self.account_login_error {
-			if detail.as_ref() != "Cancelling sign-in…" {
-				let notice = Notice::new("Account sign-in", detail.to_string(), Recovery::Accounts);
-
-				notices.push(
-					if matches!(detail.as_ref(), "Sign-in code copied." | "Sign-in link copied.") {
-						notice.info()
-					} else {
-						notice
-					},
-				);
-			}
-		} else if let Some(status) = &self.account_login_status {
-			match status.state {
-				AccountLoginState::Failed => notices.push(
-					Notice::new(
-						"Account sign-in",
-						shell::account_login_status_label(status),
-						Recovery::Accounts,
-					)
-					.error(),
-				),
-				AccountLoginState::Completed | AccountLoginState::Cancelled => notices.push(
-					Notice::new(
-						"Account sign-in",
-						shell::account_login_status_label(status),
-						Recovery::Accounts,
-					)
-					.info(),
-				),
-				_ => {},
-			}
+		if self.account_login_task.is_none()
+			&& let Some(feedback) = shell::account_login_feedback(self)
+		{
+			let mut notice = Notice::new("Account sign-in", feedback.message, Recovery::Accounts);
+			notice.tone = feedback.tone;
+			notices.push(notice);
 		}
 
 		if matches!(
@@ -361,7 +381,7 @@ impl Shell {
 				Symbol::Bell
 			} else if color == ERROR {
 				Symbol::BellError
-			} else if color == AMBER {
+			} else if color == WARNING {
 				Symbol::BellAttention
 			} else {
 				Symbol::BellInfo
@@ -460,58 +480,55 @@ impl Shell {
 						let key = notice.key();
 
 						gpui::div()
+							.w_full()
+							.pb_2()
+							.border_b_1()
+							.border_color(
+								crate::ui_theme::rgb(crate::ui_theme::LINE_STRONG).opacity(0.35),
+							)
 							.flex()
 							.flex_col()
 							.gap_1()
 							.child(
-								gpui::div()
-									.flex()
-									.items_center()
-									.justify_between()
-									.child(
-										gpui::div()
-											.flex_1()
-											.min_w_0()
-											.text_size(gpui::px(11.))
-											.text_color(crate::ui_theme::rgb(notice.color))
-											.child(notice.title.clone()),
-									)
-									.child(
-										gpui::div()
-											.id(SharedString::from(format!(
-												"dismiss-notice-{index}"
-											)))
-											.role(Role::Button)
-											.aria_label(format!("Dismiss {}", notice.title))
-											.tab_index(0)
-											.size(gpui::px(22.))
-											.flex_shrink_0()
-											.flex()
-											.items_center()
-											.justify_center()
-											.rounded(gpui::px(5.))
-											.cursor_pointer()
-											.hover(|d| d.bg(crate::ui_theme::rgba(HOVER_FILL)))
-											.on_click(cx.listener(move |s, _, _, cx| {
-												s.dismissed_notifications
-													.borrow_mut()
-													.insert(key.clone());
-												cx.notify();
-											}))
-											.child(workspace_symbols::icon(Symbol::Close)),
-									),
-							)
-							.when(!notice.detail.is_empty(), |d| {
-								d.child(
-									gpui::div()
-										.text_size(gpui::px(11.))
-										.line_height(gpui::px(17.))
-										.text_color(crate::ui_theme::rgb(notice.color))
-										.child(notice.detail),
+								ui_feedback::status_row(
+									SharedString::from(format!("notification-{index}")),
+									notice.tone,
+									&notice.title,
+									&notice.detail,
+									notice.tone.icon(),
 								)
-							})
+								.items_start()
+								.child(
+									gpui::div()
+										.id(SharedString::from(format!("dismiss-notice-{index}")))
+										.role(Role::Button)
+										.aria_label(format!("Dismiss {}", notice.title))
+										.tab_index(0)
+										.size(gpui::px(22.))
+										.flex_shrink_0()
+										.flex()
+										.items_center()
+										.justify_center()
+										.rounded(gpui::px(5.))
+										.cursor_pointer()
+										.hover(|d| d.bg(crate::ui_theme::rgba(HOVER_FILL)))
+										.on_click(cx.listener(move |s, _, _, cx| {
+											s.dismissed_notifications
+												.borrow_mut()
+												.insert(key.clone());
+											cx.notify();
+										}))
+										.child(workspace_symbols::icon(Symbol::Close)),
+								),
+							)
 							.when(!matches!(notice.recovery, Recovery::None), |d| {
-								d.child(self.notification_action(index, notice.recovery, cx))
+								d.child(
+									gpui::div().pl(gpui::px(24.)).child(self.notification_action(
+										index,
+										notice.recovery,
+										cx,
+									)),
+								)
 							})
 					})),
 			)
@@ -583,10 +600,10 @@ pub(crate) fn question_notice_preference(value: Option<bool>) -> bool {
 fn notice_color(notices: &[Notice]) -> u32 {
 	notices
 		.iter()
-		.find(|n| n.color == ERROR)
-		.or_else(|| notices.iter().find(|n| n.color == AMBER))
+		.find(|n| n.tone == Tone::Error)
+		.or_else(|| notices.iter().find(|n| n.tone == Tone::Warning))
 		.or(notices.first())
-		.map_or(WB_TEXT_MUTED, |n| n.color)
+		.map_or(WB_TEXT_MUTED, |n| n.tone.color())
 }
 
 #[cfg(test)]
@@ -773,6 +790,13 @@ mod tests {
 			s.dismissed_notifications.borrow_mut().insert(key);
 
 			assert!(!s.notifications(&connection, cx).iter().any(|n| n.title == "Accounts"));
+			s.selected = shell::Destination::Accounts;
+			s.notifications(&connection, cx);
+			s.selected = shell::Destination::Agent;
+			assert!(
+				!s.notifications(&connection, cx).iter().any(|n| n.detail == "Failed"),
+				"visiting local feedback must not clear dismissal"
+			);
 
 			s.account_status = Some("Different failure".into());
 

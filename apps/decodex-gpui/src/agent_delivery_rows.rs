@@ -264,7 +264,7 @@ impl Panel {
 		for (update, height) in &layout.updates {
 			let (label, color) = match update.kind {
 				AgentDeliveryUpdateKind::Progress => ("Progress", ui_theme::TEXT_MUTED),
-				AgentDeliveryUpdateKind::Decision => ("Your choice", ui_theme::BLUE),
+				AgentDeliveryUpdateKind::Decision => ("Your choice", ui_theme::INFO),
 				AgentDeliveryUpdateKind::Result => ("Earlier result", ui_theme::TEXT_MUTED),
 			};
 			details = details.child(
@@ -404,7 +404,7 @@ impl Panel {
 			.gap(gpui::px(5.))
 			.text_size(gpui::px(11.5))
 			.line_height(gpui::px(16.))
-			.text_color(crate::ui_theme::rgb(ui_theme::BLUE))
+			.text_color(crate::ui_theme::rgb(ui_theme::INFO))
 			.child(workspace_symbols::icon_sized(
 				if target.starts_with("file:") { Symbol::Document } else { Symbol::Link },
 				12.,
@@ -443,12 +443,12 @@ impl Panel {
 		let Placement { date, height } = placement;
 		let (label, color) = match entry.kind {
 			Kind::Requested => ("Planned", ui_theme::TEXT_MUTED),
-			Kind::Working => ("In progress", ui_theme::BLUE),
+			Kind::Working => ("In progress", ui_theme::INFO),
 			Kind::Waiting => ("Waiting", ui_theme::TEXT_MUTED),
-			Kind::Unconfirmed => ("Check outcome", ui_theme::AMBER),
-			Kind::Result => ("Ready", ui_theme::GREEN),
-			Kind::Accepted => ("Done", ui_theme::GREEN),
-			Kind::NeedsInput => ("Needs you", ui_theme::AMBER),
+			Kind::Unconfirmed => ("Check outcome", ui_theme::WARNING),
+			Kind::Result => ("Ready", ui_theme::SUCCESS),
+			Kind::Accepted => ("Done", ui_theme::SUCCESS),
+			Kind::NeedsInput => ("Needs you", ui_theme::WARNING),
 			Kind::Failed => ("Failed", ui_theme::ERROR),
 			Kind::Stopped => ("Stopped", ui_theme::TEXT_MUTED),
 		};

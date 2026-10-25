@@ -96,7 +96,7 @@ use crate::{
 	shell::{workspace_symbols, workspace_symbols::Symbol},
 	ui_loading,
 	ui_motion::{self, SmoothControl},
-	ui_theme::{self, AMBER, BLUE, CAPTION_SIZE, HOVER_FILL, MESSAGE_GAP, TEXT_MUTED},
+	ui_theme::{self, BLUE, CAPTION_SIZE, HOVER_FILL, MESSAGE_GAP, TEXT_MUTED, WARNING},
 	ui_working::Working,
 };
 use activity::{HistoryKey, HistoryMark, HistoryNavigation, WheelScroll};
@@ -2853,7 +2853,7 @@ fn history_entry_presented(
 			.text_color(crate::ui_theme::rgb(if entry.kind == "stopped" {
 				TEXT_MUTED
 			} else {
-				AMBER
+				WARNING
 			}))
 			.child(SelectableText {
 				key: format!("notice-{identity}"),
@@ -2887,7 +2887,7 @@ fn history_entry_presented(
 						.px(gpui::px(12.))
 						.py(gpui::px(7.))
 						.rounded(gpui::px(10.))
-						.bg(crate::ui_theme::rgba(0xffffff0e))
+						.bg(crate::ui_theme::rgba(crate::ui_theme::MESSAGE_MATERIAL))
 				})
 				.when(!user, |body| body.w_full().py(gpui::px(2.)))
 				.when(entry.kind == "instruction", |body| body.child(muted("Task input")))

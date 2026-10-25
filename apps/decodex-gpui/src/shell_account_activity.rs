@@ -78,7 +78,13 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 		) => profile,
 		_ => {
 			return if snapshot.is_none() {
-				content.child("Loading activity…").into_any_element()
+				content
+					.children(crate::ui_feedback::inline_feedback(
+						format!("account-activity-loading-{}", account.as_str()),
+						"Account activity",
+						&crate::ui_feedback::Feedback::info("Loading activity…"),
+					))
+					.into_any_element()
 			} else {
 				gpui::div().into_any_element()
 			};

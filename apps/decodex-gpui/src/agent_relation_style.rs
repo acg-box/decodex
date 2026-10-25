@@ -1,8 +1,8 @@
 //! One visual grammar for graph edges. Line patterns denote relation types, not certainty.
 use super::{
-	AMBER, AgentSurface, AnyElement, AppContext, Context, GREEN, InteractiveElement, IntoElement,
-	Kind, MouseButton, ParentElement, PathBuilder, RelationTip, Role, Route,
-	StatefulInteractiveElement, Styled, TEXT_MUTED,
+	AgentSurface, AnyElement, AppContext, Context, InteractiveElement, IntoElement, Kind,
+	MouseButton, ParentElement, PathBuilder, RelationTip, Role, Route, SUCCESS,
+	StatefulInteractiveElement, Styled, TEXT_MUTED, WARNING,
 };
 use crate::ui_motion::SmoothControl;
 
@@ -129,9 +129,9 @@ impl AgentSurface {
 		}
 		let mut lights = gpui::div().flex().flex_wrap().items_center().gap(gpui::px(12.));
 		for (color, label) in [
-			(crate::ui_theme::BLUE, "Active"),
-			(GREEN, "Complete"),
-			(AMBER, "Waiting"),
+			(crate::ui_theme::INFO, "Active"),
+			(SUCCESS, "Complete"),
+			(WARNING, "Waiting"),
 			(crate::ui_theme::ERROR, "Error"),
 			(TEXT_MUTED, "Inactive / unknown"),
 		] {

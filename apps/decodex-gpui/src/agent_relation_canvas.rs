@@ -1,9 +1,9 @@
 //! Agent topology: typed connections are inspectable evidence, never inferred from message prose.
 #[cfg(any(test, feature = "visual-capture"))] use super::Brief;
 use super::{
-	super::workspace::restore_shell_focus, AMBER, AgentSurface, AnyElement, BTreeMap, BTreeSet,
-	Context, FluentBuilder, GREEN, InteractiveElement, IntoElement, ParentElement, Row, Styled,
-	TEXT_MUTED,
+	super::workspace::restore_shell_focus, AgentSurface, AnyElement, BTreeMap, BTreeSet, Context,
+	FluentBuilder, InteractiveElement, IntoElement, ParentElement, Row, SUCCESS, Styled,
+	TEXT_MUTED, WARNING,
 };
 use crate::{ui_motion::SmoothControl, ui_theme::TEXT};
 use gpui::AppContext;
@@ -117,13 +117,13 @@ impl Kind {
 	fn color(self) -> u32 {
 		match self {
 			Self::Assigned | Self::Spawned => 0xb5b2bd,
-			Self::Dependency => AMBER,
+			Self::Dependency => WARNING,
 			Self::Context => 0xb0a0d8,
 			Self::Resource => 0x9cbacb,
 			Self::Message => 0x8b9fff,
 			Self::Control => TEXT_MUTED,
-			Self::Wait => AMBER,
-			Self::Returned => GREEN,
+			Self::Wait => WARNING,
+			Self::Returned => SUCCESS,
 		}
 	}
 }
@@ -434,7 +434,7 @@ impl AgentSurface {
 			let mut row = source.clone();
 			if self.graph_question(&row).is_some() {
 				row.status = "Needs you".into();
-				row.color = AMBER;
+				row.color = WARNING;
 			}
 			let identity = self.relation_agent_name(&row);
 			let (scope, operations) = self.graph_operations(&row);
@@ -802,7 +802,7 @@ impl AgentSurface {
 			.flex()
 			.items_center()
 			.justify_center()
-			.rounded(gpui::px(4.))
+			.rounded(gpui::px(8.))
 			.cursor_pointer()
 			.hover(|d| d.bg(crate::ui_theme::rgba(0xffffff10)))
 			.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
@@ -1083,7 +1083,7 @@ impl AgentSurface {
 					to: edge.work_item_id.clone(),
 					kind: Kind::Dependency,
 					excerpt: None,
-					color: if blocked { AMBER } else { TEXT_MUTED },
+					color: if blocked { WARNING } else { TEXT_MUTED },
 					label: if blocked { "Waiting" } else { "Prerequisite met" }.into(),
 					detail: if blocked {
 						"This recorded prerequisite has not been resolved."
@@ -1837,7 +1837,7 @@ impl AgentSurface {
 							continue;
 						}
 						let color =
-							if link.active { crate::ui_theme::BLUE } else { link.fact.color };
+							if link.active { crate::ui_theme::INFO } else { link.fact.color };
 						let mut ink = route.clone();
 						if link.fact.kind.pattern().is_none() {
 							highlights

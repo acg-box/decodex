@@ -16,6 +16,7 @@ pub(crate) mod native_material_panel;
 #[path = "ui_appearance.rs"] pub(crate) mod appearance;
 #[path = "ui_palette.rs"] mod palette;
 pub(crate) use palette::ColorScheme;
+#[cfg(test)] pub(crate) use palette::MASCOT_FAMILIES;
 #[path = "ui_color_theme.rs"] mod color_themes;
 pub(crate) use color_themes::ColorTheme;
 
@@ -31,7 +32,19 @@ pub(crate) fn rgb(token: u32) -> gpui::Rgba {
 }
 
 pub(crate) fn rgba(token: u32) -> gpui::Rgba {
-	ColorScheme::current().rgba(token)
+	let colors = ColorScheme::current();
+	let surface = match token {
+		COMPOSER_MATERIAL => material::Surface::InputBar,
+		SHELL_MATERIAL
+		| SIDEBAR_MATERIAL
+		| AGENT_SIDEBAR_MATERIAL
+		| TOPBAR_MATERIAL
+		| CONTENT_MATERIAL
+		| AGENT_CHAT_OVERLAY
+		| SURFACE_OVERLAY_MATERIAL => material::Surface::Window,
+		_ => return colors.rgba(token),
+	};
+	colors.material(token, surface.material())
 }
 
 pub(crate) const FONT_FAMILY: &str = ".SystemUIFont";
@@ -44,8 +57,6 @@ pub(crate) const TREE_ROW_HEIGHT: f32 = 24.0;
 pub(crate) const CONVERSATION_TAB_SIZE: f32 = 28.0;
 pub(crate) const CONVERSATION_TAB_GAP: f32 = 2.0;
 pub(crate) const SIDEBAR_INSET: f32 = 6.0;
-pub(crate) const WORKSPACE_INSET: f32 = 6.0;
-pub(crate) const WORKSPACE_RADIUS: f32 = 12.0;
 pub(crate) const MESSAGE_GAP: f32 = 20.0;
 pub(crate) const USER_MESSAGE_ACTION_SIZE: f32 = 24.0;
 pub(crate) const METADATA_GAP: f32 = 4.0;
@@ -54,6 +65,9 @@ pub(crate) const CHROME_CONTROL_SIZE: f32 = 24.0;
 pub(crate) const CONTROL_GROUP_HEIGHT: f32 = 28.0;
 pub(crate) const CONTROL_MARGIN: f32 = 8.0;
 pub(crate) const CONTROL_RADIUS: f32 = 8.0;
+pub(crate) const WORKSPACE_GUTTER: f32 = 8.0;
+pub(crate) const WORKSPACE_RADIUS: f32 = 16.0;
+pub(crate) const CONVERSATION_HEADER_HEIGHT: f32 = 28.0;
 // Conversation text and composer share a bounded, responsive reading column.
 pub(crate) const CONVERSATION_WIDTH: f32 = 880.0;
 pub(crate) const CONVERSATION_INSET: f32 = 16.0;
@@ -62,6 +76,8 @@ pub(crate) const COMPOSER_TOP_GAP: f32 = 8.0;
 pub(crate) const COMPOSER_BOTTOM_GAP: f32 = 12.0;
 // Settings share shell typography and a bounded reading width.
 pub(crate) const SETTINGS_WIDTH: f32 = 740.0;
+// Leave room for navigation, page insets, five theme previews and their scrollbar.
+pub(crate) const SETTINGS_WINDOW_MIN_WIDTH: f32 = 920.0;
 pub(crate) const SETTINGS_INSET: f32 = 24.0;
 pub(crate) const SETTINGS_TOP: f32 = 16.0;
 pub(crate) const SETTINGS_GROUP_GAP: f32 = 18.0;
@@ -83,12 +99,16 @@ pub(crate) const AGENT_CHAT_OVERLAY: u32 = 0x17171c0e;
 pub(crate) const SIDEBAR_MATERIAL: u32 = 0x100e1584;
 pub(crate) const SURFACE_RAISED_MATERIAL: u32 = 0x17151e46;
 pub(crate) const COMPOSER_MATERIAL: u32 = 0x22222888;
+pub(crate) const MESSAGE_MATERIAL: u32 = 0x222c3a94;
 // Neutral feedback brightens the existing material without replacing it with an opaque tile.
 pub(crate) const HOVER_FILL: u32 = 0xffffff0c;
 pub(crate) const PRESSED_FILL: u32 = 0xffffff18;
-pub(crate) const SELECTED_FILL: u32 = 0xe49a7018;
-pub(crate) const SELECTED_HOVER_FILL: u32 = 0xe49a7024;
-pub(crate) const SELECTED_BORDER: u32 = 0xe49a7066;
+pub(crate) const SELECTED_FILL: u32 = 0xe49a7024;
+pub(crate) const SELECTED_HOVER_FILL: u32 = 0xe49a7030;
+pub(crate) const SELECTED_BORDER: u32 = 0xe49a7088;
+pub(crate) const CONTROL_SELECTED_FILL: u32 = 0xf2f1f418;
+pub(crate) const CONTROL_SELECTED_HOVER: u32 = 0xf2f1f430;
+pub(crate) const CONTROL_SELECTED_BORDER: u32 = 0xf2f1f40c;
 pub(crate) const FIELD_MATERIAL: u32 = 0xffffff08;
 pub(crate) const SURFACE_OVERLAY_MATERIAL: u32 = 0x1d1a2470;
 pub(crate) const LINE_STRONG: u32 = 0x403b48;
@@ -97,20 +117,38 @@ pub(crate) const TEXT: u32 = 0xeeeaf0;
 pub(crate) const TEXT_MUTED: u32 = 0xaaa4af;
 pub(crate) const TEXT_FAINT: u32 = 0xaaa4af;
 pub(crate) const ACCENT: u32 = 0xe49a70;
+// Primary surfaces are independent of the text and selection accent.
+pub(crate) const PRIMARY_FILL: u32 = 0xd9363e;
+pub(crate) const CONTROL_ACTIVE_FILL: u32 = 0x375ca8;
+pub(crate) const ON_PRIMARY: u32 = 0xfdfdfd;
 pub(crate) const BLUE: u32 = 0x8baaf7;
 pub(crate) const GREEN: u32 = 0x77c99a;
 pub(crate) const AMBER: u32 = 0xe0b56f;
+// Semantic roles stay separate from chart hues and primary button colors.
+pub(crate) const INFO: u32 = 0x6495ed;
+pub(crate) const SUCCESS: u32 = 0x2e8b57;
+pub(crate) const WARNING: u32 = 0xdaa520;
 pub(crate) const ERROR: u32 = 0xef4444;
 pub(crate) const MOTION_PANEL: Duration = Duration::from_millis(240);
 
-/// Thin separates regions by tone; glass keeps its existing shared plane.
+/// The reading plane keeps its tone when the outer frame becomes translucent.
 pub(crate) struct WorkspacePalette {
 	pub(crate) graph: gpui::Rgba,
 	pub(crate) conversation: gpui::Rgba,
 }
 
 pub(crate) fn workspace_palette() -> WorkspacePalette {
-	if material::Surface::Window.material() == material::Material::LiquidGlass {
+	let colors = ColorScheme::current();
+	let glass = material::Surface::Window.material() == material::Material::LiquidGlass;
+	if appearance::Theme::current() == appearance::Theme::Dark
+		&& colors.color_theme() == ColorTheme::Decodex
+	{
+		return WorkspacePalette {
+			graph: colors.rgb(CANVAS).opacity(if glass { 0.8 } else { 0.86 }),
+			conversation: rgba(if glass { AGENT_CHAT_OVERLAY } else { CONTENT_MATERIAL }),
+		};
+	}
+	if glass {
 		return WorkspacePalette { graph: gpui::rgba(0), conversation: rgba(AGENT_CHAT_OVERLAY) };
 	}
 	// Neutral tints leave the native matte material underneath. Only the reading
@@ -120,19 +158,6 @@ pub(crate) fn workspace_palette() -> WorkspacePalette {
 		appearance::Theme::Light => (0x00000008, 0xffffffb0),
 	};
 	WorkspacePalette { graph: gpui::rgba(graph), conversation: gpui::rgba(conversation) }
-}
-
-/// A shallow fold between the map and reading plane, without a divider stroke.
-pub(crate) fn workspace_seam() -> Div {
-	let alpha = match appearance::Theme::current() {
-		appearance::Theme::Dark => 0x14,
-		appearance::Theme::Light => 0x09,
-	};
-	gpui::div().absolute().top_0().left_0().right_0().h(gpui::px(6.)).bg(gpui::linear_gradient(
-		180.,
-		gpui::linear_color_stop(gpui::rgba(alpha), 0.),
-		gpui::linear_color_stop(gpui::rgba(0), 1.),
-	))
 }
 
 /// Reading roles for the workspace. Materials and composer tokens stay separate.
@@ -162,7 +187,10 @@ pub(crate) fn floating_group() -> Div {
 
 /// Graph controls share shell geometry, with a clear surface of their own.
 pub(crate) fn canvas_control_group() -> Div {
-	floating_group().bg(gpui::transparent_black())
+	floating_group()
+		.rounded(gpui::px(10.))
+		.border_color(gpui::transparent_black())
+		.bg(rgba(FIELD_MATERIAL))
 }
 
 pub(crate) fn settings_header_inset() -> Div {
@@ -237,7 +265,7 @@ pub(crate) fn settings_card() -> Div {
 		.rounded(gpui::px(10.0))
 		.border_1()
 		.border_color(rgba(0xffffff0c))
-		.bg(rgba(0xffffff03))
+		.bg(rgba(SURFACE_RAISED_MATERIAL))
 }
 
 pub(crate) fn settings_group(title: &'static str, rows: Vec<gpui::AnyElement>) -> Div {
@@ -252,16 +280,26 @@ pub(crate) fn settings_group(title: &'static str, rows: Vec<gpui::AnyElement>) -
 				.id(gpui::SharedString::from(format!("settings-group-{title}")))
 				.role(Role::Heading)
 				.aria_level(2)
+				.aria_label(title)
 				.text_size(gpui::px(11.5))
 				.font_weight(FontWeight::MEDIUM)
 				.text_color(rgb(TEXT_MUTED))
 				.child(title),
 		)
-		.child(settings_card().children(rows.into_iter().enumerate().map(|(index, row)| {
+		.child(
 			gpui::div()
-				.when(index > 0, |row| row.border_t_1().border_color(rgba(0xffffff08)))
-				.child(row)
-		})))
+				.w_full()
+				.min_w_0()
+				.flex()
+				.flex_col()
+				.border_t_1()
+				.border_color(rgba(PANEL_DIVIDER))
+				.children(rows.into_iter().enumerate().map(|(index, row)| {
+					gpui::div()
+						.when(index > 0, |row| row.border_t_1().border_color(rgba(0xffffff08)))
+						.child(row)
+				})),
+		)
 }
 
 pub(crate) fn settings_button(
@@ -272,7 +310,7 @@ pub(crate) fn settings_button(
 		.cursor_pointer()
 		.hover(|s| s.bg(rgba(0xffffff0e)))
 		.active(|s| s.bg(rgba(PRESSED_FILL)))
-		.focus_visible(|s| s.border_color(rgb(BLUE)))
+		.focus_visible(|s| s.border_color(rgb(ACCENT)))
 }
 
 pub(crate) fn settings_button_base(
@@ -323,12 +361,13 @@ pub(crate) fn settings_segment(
 ) -> gpui::Stateful<Div> {
 	use gpui::prelude::FluentBuilder as _;
 	let light = appearance::Theme::current() == appearance::Theme::Light;
-	let selected_fill = if light { gpui::rgba(0xfffffff0) } else { rgba(0xffffff12) };
-	let selected_hover = if light { gpui::rgba(0xffffffff) } else { rgba(SELECTED_HOVER_FILL) };
+	let selected_fill = if light { gpui::rgba(0xfffffff0) } else { rgba(CONTROL_SELECTED_FILL) };
+	let selected_hover = if light { gpui::rgba(0xffffffff) } else { rgba(CONTROL_SELECTED_HOVER) };
 	gpui::div()
 		.id(id)
 		.role(Role::RadioButton)
 		.aria_label(label)
+		.aria_selected(selected)
 		.aria_toggled(if selected {
 			gpui::accesskit::Toggled::True
 		} else {
@@ -347,9 +386,9 @@ pub(crate) fn settings_segment(
 		.line_height(gpui::px(16.0))
 		.cursor_pointer()
 		.text_color(rgb(if selected { TEXT } else { TEXT_MUTED }))
-		.when(selected, |s| s.bg(selected_fill).border_color(rgba(0xffffff0c)))
+		.when(selected, |s| s.bg(selected_fill).border_color(rgba(CONTROL_SELECTED_BORDER)))
 		.hover(move |s| s.bg(if selected { selected_hover } else { rgba(HOVER_FILL) }))
-		.focus_visible(|s| s.border_color(rgb(BLUE)))
+		.focus_visible(|s| s.border_color(rgb(ACCENT)))
 		.child(label)
 }
 

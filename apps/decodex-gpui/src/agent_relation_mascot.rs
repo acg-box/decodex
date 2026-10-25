@@ -1,6 +1,6 @@
-//! Native Cloudlets geometry. The approved catalog is the only artwork source.
+//! Native Cloudlets geometry from the approved catalog, colored by the active theme.
 use super::card;
-use crate::ui_motion;
+use crate::{ui_motion, ui_theme::ColorScheme};
 use gpui::{App, IntoElement, Styled as _, Window};
 use serde::Deserialize;
 use std::{
@@ -269,13 +269,18 @@ struct Drawing {
 	held_right: bool,
 }
 impl Drawing {
-	fn new(seed: &str) -> Self {
+	fn new(seed: &str, theme: ColorScheme) -> Self {
 		let traits = Traits::for_seed(seed);
 		let body = &CATALOG.bodies["original"];
-		let palette = &CATALOG.palettes[&traits.palette];
-		let color = |fill: &str| {
-			let hex = palette.get(fill).map_or(fill, String::as_str);
-			u32::from_str_radix(hex.trim_start_matches('#'), 16).expect("catalog color")
+		let palette = theme.mascot_colors(&traits.palette);
+		let color = |fill: &str| match fill {
+			"base" => palette.base,
+			"shade" => palette.shade,
+			"light" => palette.light,
+			"ink" => palette.ink,
+			_ => palette.accessory(
+				u32::from_str_radix(fill.trim_start_matches('#'), 16).expect("catalog color"),
+			),
 		};
 		let pixels = |part: &Part, origin: [f32; 2]| -> Vec<Pixel> {
 			part.rects
@@ -344,6 +349,8 @@ impl Drawing {
 
 /// One actor per stable agent identity; repeated reads do not restart its motion.
 pub(super) struct Actor {
+	seed: String,
+	theme: ColorScheme,
 	drawing: Arc<Drawing>,
 	scene: Scene,
 	opacity: Rc<Cell<f32>>,
@@ -354,8 +361,11 @@ pub(super) struct Actor {
 }
 impl Actor {
 	pub(super) fn new(seed: &str, status: &str, now: Instant, scene: Scene) -> Self {
+		let theme = ColorScheme::current();
 		Self {
-			drawing: Arc::new(Drawing::new(seed)),
+			seed: seed.into(),
+			theme,
+			drawing: Arc::new(Drawing::new(seed, theme)),
 			scene,
 			opacity: Rc::new(Cell::new(1.)),
 			state: State::for_status(status),
@@ -370,6 +380,11 @@ impl Actor {
 	}
 
 	pub(super) fn frame(&mut self, status: &str, now: Instant) -> Avatar {
+		let theme = ColorScheme::current();
+		if theme != self.theme {
+			self.drawing = Arc::new(Drawing::new(&self.seed, theme));
+			self.theme = theme;
+		}
 		let state = State::for_status(status);
 		if self.state == State::Done && state == State::Idle {
 			if now.duration_since(self.changed).as_secs_f32() >= 2.2 {
@@ -697,7 +712,7 @@ mod tests {
 	fn artwork_is_finite_and_identity_is_stable() {
 		for seed in ["main", "release", "native:thread-1", "专项负责人", "A1234"] {
 			assert_eq!(Traits::for_seed(seed), Traits::for_seed(seed));
-			let drawing = Drawing::new(seed);
+			let drawing = Drawing::new(seed, ColorScheme::current());
 			for pixel in drawing
 				.cloud
 				.iter()
@@ -734,6 +749,44 @@ mod tests {
 				held_right: false
 			}
 		);
+	}
+
+	#[gpui::test]
+	fn theme_changes_recolor_cached_artwork_without_restarting_motion(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use crate::ui_theme::{
+			ColorTheme,
+			appearance::{self, Theme},
+		};
+		let original = ColorTheme::configured();
+		appearance::with_theme(Theme::Dark, || {
+			cx.update(|cx| ColorTheme::Decodex.apply(cx));
+			let now = Instant::now();
+			let mut actor = Actor::new("main", "Running", now, Scene::default());
+			let first = actor.frame("Running", now).figure.drawing;
+			let repeated = actor.frame("Running", now + Duration::from_millis(10)).figure.drawing;
+			assert!(Arc::ptr_eq(&first, &repeated));
+			cx.update(|cx| ColorTheme::Nightfox.apply(cx));
+			let themed = actor.frame("Running", now + Duration::from_millis(20)).figure.drawing;
+			assert!(!Arc::ptr_eq(&first, &themed));
+			assert_eq!(actor.changed, now);
+			assert_eq!(actor.state, State::Working);
+			assert_eq!(
+				first.cloud.iter().map(|p| p.rect).collect::<Vec<_>>(),
+				themed.cloud.iter().map(|p| p.rect).collect::<Vec<_>>()
+			);
+			assert_ne!(first.cloud[0].color, themed.cloud[0].color);
+			assert!(Arc::ptr_eq(
+				&themed,
+				&actor.frame("Running", now + Duration::from_millis(30)).figure.drawing
+			));
+		});
+		cx.update(|cx| original.apply(cx));
+		assert_eq!(CATALOG.palettes.len(), crate::ui_theme::MASCOT_FAMILIES.len());
+		for family in CATALOG.palettes.keys() {
+			assert!(crate::ui_theme::MASCOT_FAMILIES.contains(&family.as_str()));
+		}
 	}
 	#[test]
 	fn completion_plays_once_and_repeated_reads_do_not_restart_it() {
