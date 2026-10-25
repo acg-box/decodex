@@ -40,10 +40,10 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-25T15:35:33.616Z" }
+generated: { by: "codex", at: "2026-10-25T16:38:56.487Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T15:35:33.616Z
+    at: 2026-10-25T16:38:56.487Z
 ---
 
 # OpenWiki quickstart
@@ -62,7 +62,7 @@ Schema 56 and protocol 3.0 provide the direct business migration. Schema 57 reta
 
 A separate control follow-up verifies actual Pause/Resume buttons and Full Access behavior across restart. It identifies the native owners of the old encrypted helpers, but leaves their unproved Work bindings unchanged. See `controls_followup` in the [retained evidence](../automations/upstream/retained-evidence.json).
 
-A later [installed development acceptance](testing/upstream-acceptance-boundaries.md#installed-development-acceptance) verifies the same business lifecycle locally and repairs independent-Agent composer, approval and input ownership. Its signed artifact, preserved data scope, 1025 passed UI tests, three unexplained complete-run cleanup markers and clean isolated controls are retained separately. Native Project membership and Decodex presentation passed; official desktop Project presentation and live provider voice remain unmeasured. No public release occurred.
+A later [installed development acceptance](testing/upstream-acceptance-boundaries.md#installed-development-acceptance) verifies the same business lifecycle locally and repairs independent-Agent composer, approval and input ownership. Its signed artifact, preserved data scope, 1025 passed UI tests, three unexplained complete-run cleanup markers and clean isolated controls are retained separately. Native Project membership and Decodex presentation passed; official desktop Project presentation remains unobserved. A [separate synthetic online voice qualification](testing/upstream-acceptance-boundaries.md#synthetic-online-voice-and-audible-playback) passed two tests for dictation, returned speech and explicit closure. The user heard separate playback and reported low volume. Installed-UI device-ADM and broad audio quality remain outside that sample. No public release occurred.
 
 ## Start by task
 

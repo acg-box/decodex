@@ -12,6 +12,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
+  - id: openwiki-source-ca95ba5564216bb4898c8392
+    resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-991553c8d747a54ecf5a9376
@@ -60,10 +62,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-25T15:35:33.616Z" }
+generated: { by: "codex", at: "2026-10-25T16:38:56.487Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T15:35:33.616Z
+    at: 2026-10-25T16:38:56.487Z
 ---
 
 # Project, Agent and Work contract
@@ -320,4 +322,6 @@ A separate local installed development qualification is retained in `retained_pr
 
 This qualification repaired two independent-Agent UI defects: canonical Agents now retain their composer and approval controls, and input targets the selected independent conversation instead of falling back to the first Agent. Each new regression reproduced its original failure. Final installed input received the second Agent's reply, and its Allow once action produced the exact test file. Replacement and restart preserved the measured core records, held inputs, draft bytes and configuration. This does not certify every preference or window position.
 
-The final UI package passed 1025 tests with 1031 skipped and no unmatched selector. Complete runs also reported cleanup markers in three unchanged tests; all three isolated controls passed without a marker. The cause remains unknown. Twelve exact-artifact native regressions, strict lint for 13 packages and formatting passed within their recorded source limits. The earlier full-workspace receipt remains separate. Temporary test data and owned processes were cleaned after private evidence was saved. No release or controlled lock-screen test was performed; physical-speaker audibility, live provider voice and the old encrypted assignment gaps remain unmeasured. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
+The final UI package passed 1025 tests with 1031 skipped and no unmatched selector. Complete runs also reported cleanup markers in three unchanged tests; all three isolated controls passed without a marker. The cause remains unknown. Twelve exact-artifact native regressions, strict lint for 13 packages and formatting passed within their recorded source limits. The earlier full-workspace receipt remains separate. Temporary test data and owned processes were cleaned after private evidence was saved. That installed run performed no release or controlled lock-screen test and did not measure audible output or live provider voice. The old encrypted assignment gaps remain unmeasured.
+
+The separate `online_voice_acceptance` entry later qualifies synthetic subscription dictation and native WebRTC voice through the same service and runtime. Both explicit online tests passed in fresh product and native homes, with 1023 skipped, no unmatched selector, retry or LEAK. Dictation left Agent history unchanged; live voice returned final assistant text and decoded speech, then reached Ended. The user heard a separately played reply and reported low volume. This does not measure an installed-UI microphone-to-device call or broad loudness and echo-cancellation quality. Production voice code required no change. Temporary data and owned processes were cleaned; one initial synthetic trial in the normal native home is confirmed archived. Official Project presentation remains unobserved. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:728f46b94c56d80cfdc9dc284f11ce45dc3e7361f9af62048f5a4aca86420d08",
+  "pageVersion": "sha256:4881c0af550f88c0e268aaca0ffcc1a62de89c16dfa31562611b8a537c34bffb",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -68,7 +68,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:7755a053ce0cd9f4ccd3529f0760e3a4a9db2eb4dcbf85baceebe9342e879434"
+          "version": "repo-file-v1:sha256:e554a0457f00bc53f6a113b1f5e7e0d7b52ba586fc9bb056ead6a0f22005062d"
         }
       ]
     },
@@ -96,7 +96,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:7755a053ce0cd9f4ccd3529f0760e3a4a9db2eb4dcbf85baceebe9342e879434"
+          "version": "repo-file-v1:sha256:e554a0457f00bc53f6a113b1f5e7e0d7b52ba586fc9bb056ead6a0f22005062d"
         }
       ]
     },
@@ -152,7 +152,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:7755a053ce0cd9f4ccd3529f0760e3a4a9db2eb4dcbf85baceebe9342e879434"
+          "version": "repo-file-v1:sha256:e554a0457f00bc53f6a113b1f5e7e0d7b52ba586fc9bb056ead6a0f22005062d"
         }
       ]
     },
@@ -184,7 +184,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:7755a053ce0cd9f4ccd3529f0760e3a4a9db2eb4dcbf85baceebe9342e879434"
+          "version": "repo-file-v1:sha256:e554a0457f00bc53f6a113b1f5e7e0d7b52ba586fc9bb056ead6a0f22005062d"
         }
       ]
     },
@@ -231,7 +231,7 @@
           "version": "repo-lines-v1:sha256:7ed67ab14439eac9e0d0b806cdf59026d9e78b0195f93ddbebf756f6cf697045:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2U0ZjIxNDE3OGEwZmJiZTI4ZjQ0MTgxMmUwY2UxZTYxNTAyZDM5NTI4YjhmY2ZkOTlkYWI4Nzg3NDllNjExMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGNlY2U3ZWNhOTQ0NjNhYzZlOGY1MjZkNzQ0MmMwYzUxNTdjMTJiMjJiOGFhYTkxZmY1MTgyNmVjYTI0YjMzMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjUwNTJhMDQ2NmU2ZDMwMjE5NDMwMTNiNGM0ZDJhNjVhMWQ0N2JhMDUyZTExY2FkN2E1ZDRlYzUxYTk1NTZmOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTc3NmFiNDE0OTJiODEwOTZhNzU2MGM4ZmQ3YmJiZjUyYmU0YWRmYTVkZTY0ZDBiOTUwNjJkMWE4NWQyNGRlYyJ9"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs#L619-L864",
+          "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs#L623-L868",
           "version": "repo-lines-v1:sha256:0961e731570180cf9997c7b0d1ecb28d01eb75f3754005132605ec6b86239706:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQ2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5ZWEzNTcwYTMwMWE5MmFjYjQ3MTBlMDc2YWEwNzUzZTk4MGU2MTRmNGJkMmMyMTlhY2QwN2Y4MWE4YWJiZDZmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMWRmMTFkN2IwYTBhN2YxOWQ3ZWExMmU4Y2YzN2QwMzFjNzUxODU5NzI3ZWE3OTgyNTQ0MzcyYWYzNzZmOWE5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
@@ -242,7 +242,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
+          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
         }
       ]
     },
@@ -256,11 +256,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:7755a053ce0cd9f4ccd3529f0760e3a4a9db2eb4dcbf85baceebe9342e879434"
+          "version": "repo-file-v1:sha256:e554a0457f00bc53f6a113b1f5e7e0d7b52ba586fc9bb056ead6a0f22005062d"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
+          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
         }
       ]
     },
@@ -270,13 +270,31 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
+          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+        }
+      ]
+    },
+    {
+      "id": "claim_843e34c16566488a87240a0903735df3",
+      "statement": "Two opt-in synthetic online tests qualify final dictation without task submission and native WebRTC speech followed by Ended in fresh product and native homes; separate audible playback was user-confirmed but quiet, with device-ADM, broad quality and official desktop UI limits retained.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_voice_online_tests.rs",
+          "version": "repo-file-v1:sha256:cad7ec71da7116e523235e72d90bda9032c27a27d54c9f3050df48a879f21dfd"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+        },
+        {
+          "resource": "repo://scripts/macos/prepare_voice_acceptance.py",
+          "version": "repo-file-v1:sha256:b321425102f36f44e1a8fd3baeeca9a16201665468ec174a638b7d90cee43f83"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T15:35:33.616Z"
+    "at": "2026-10-25T16:38:56.487Z"
   }
 }
