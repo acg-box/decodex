@@ -164,7 +164,6 @@ impl SqliteStore {
 			}
 
             tx.execute("INSERT INTO project_agents(agent_id,project_id) SELECT ?1,project_id FROM project_agents WHERE agent_id=?2", rusqlite::params![attempt.target_work,a.work]).map_err(error::sqlite_error)?;
-
 			tx.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'thread_fork_attempt',?3,?4,'resolved','reserved',?4)", rusqlite::params![attempt.key(),a.work,serde_json::json!(attempt).to_string(),now]).map_err(error::sqlite_error)?;
 
 			let saved=receipt(&tx,&attempt.key())?;

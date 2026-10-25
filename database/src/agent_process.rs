@@ -35,6 +35,7 @@ impl SqliteStore {
 		let Some(generation) = generation else {
 			return self.agent_thread_is_owned(work, thread, None).await;
 		};
+
 		self.run(move |connection| hosts_thread(connection, &work, &thread, &generation)).await
 	}
 

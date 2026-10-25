@@ -357,6 +357,9 @@ fn schema_inventory(
 #[path = "account_alias_migration_tests.rs"]
 mod account_alias_tests;
 #[cfg(test)]
+#[path = "agent_coordination_migration_tests.rs"]
+mod agent_coordination_tests;
+#[cfg(test)]
 #[path = "initial_model_source_migration_tests.rs"]
 mod initial_model_source_tests;
 #[cfg(test)]
@@ -366,17 +369,11 @@ mod misalignment_voice_tests;
 #[path = "pat_credential_migration_tests.rs"]
 mod pat_credential_tests;
 #[cfg(test)]
+#[path = "project_work_migration_tests.rs"]
+mod project_work_tests;
+#[cfg(test)]
 #[path = "reset_credit_expiry_migration_tests.rs"]
 mod reset_credit_expiry_tests;
-
 #[cfg(test)]
 #[path = "workspace_migration_tests.rs"]
 mod workspace_tests;
-
-#[cfg(test)]
-#[path = "agent_coordination_migration_tests.rs"]
-mod agent_coordination_tests;
-
-#[cfg(test)]
-#[path = "project_work_migration_tests.rs"]
-mod project_work_tests;

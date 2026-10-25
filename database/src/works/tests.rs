@@ -1,5 +1,15 @@
+use rusqlite::Connection;
+use tempfile::TempDir;
+
 use crate::{AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus, SqliteStore};
-use decodex_core::work::*;
+use decodex_core::{
+	guardian::{GuardianSource, ReviewDetails, ReviewPreference},
+	work::{
+		CollaborationInstruction, CollaborationRequest, CollaborationState, Material,
+		NativeContribution, NativeWorkDelivery, ResultSource, Work, WorkAssessment, WorkCommand,
+		WorkPortfolio, WorkRequirements, WorkResult, WorkState,
+	},
+};
 
 fn requirements(id: &str) -> WorkRequirements {
 	WorkRequirements {
@@ -9,6 +19,7 @@ fn requirements(id: &str) -> WorkRequirements {
 		source: "explicit-user-decision".into(),
 	}
 }
+
 fn work(id: &str, owner: &str) -> Work {
 	Work {
 		id: id.into(),
@@ -23,6 +34,7 @@ fn work(id: &str, owner: &str) -> Work {
 		assessment: None,
 	}
 }
+
 fn result(
 	id: &str,
 	work: &str,
@@ -46,6 +58,56 @@ fn result(
 		limits: "Fixture evidence; no actual reservation".into(),
 	}
 }
+
+fn assessment(revision: &str, ids: &[&str]) -> WorkAssessment {
+	WorkAssessment {
+		requirements_id: revision.into(),
+		result_ids: ids.iter().map(|s| (*s).into()).collect(),
+		summary: "The current criteria are met".into(),
+		limits: "Planning only, not a booking".into(),
+	}
+}
+
+fn instruction(id: &str) -> CollaborationInstruction {
+	CollaborationInstruction {
+		id: id.into(),
+		requirements_id: "r1".into(),
+		text: "Compare public accessible transport routes".into(),
+		material_ids: vec![],
+		event_id: None,
+		delivered_turn_id: None,
+	}
+}
+
+fn assert_repaired_request(p: &WorkPortfolio) {
+	assert_eq!(p.collaborations[0].id, "transport");
+	assert_eq!(p.collaborations[0].instruction.id, "i2");
+	assert_eq!(p.collaborations[0].state, CollaborationState::Pending);
+	assert_eq!(p.results.len(), 2);
+}
+
+fn persistent_store() -> (TempDir, SqliteStore) {
+	let home = tempfile::tempdir().unwrap();
+	let store = SqliteStore::open_test(&home.path().join("work.db")).unwrap();
+
+	(home, store)
+}
+
+fn transport_request() -> WorkCommand {
+	WorkCommand::Request {
+		request: CollaborationRequest {
+			id: "transport".into(),
+			work_id: "venue".into(),
+			recipient_agent_id: "iris".into(),
+			instruction: instruction("i1"),
+			state: CollaborationState::Pending,
+			required: true,
+			outcome: None,
+			note: None,
+		},
+	}
+}
+
 async fn agents(store: &SqliteStore) {
 	for id in ["sage", "iris"] {
 		store
@@ -68,32 +130,31 @@ async fn agents(store: &SqliteStore) {
 		store.bind_agent_thread(id.into(), id.into()).await.unwrap();
 	}
 }
+
 async fn apply(store: &SqliteStore, actor: &str, id: &str, command: WorkCommand) {
 	store.apply_work_command(actor.into(), id.into(), command, true).await.unwrap();
-}
-fn assessment(revision: &str, ids: &[&str]) -> WorkAssessment {
-	WorkAssessment {
-		requirements_id: revision.into(),
-		result_ids: ids.iter().map(|s| (*s).into()).collect(),
-		summary: "The current criteria are met".into(),
-		limits: "Planning only, not a booking".into(),
-	}
 }
 
 #[tokio::test]
 async fn agent_scope_precedes_work_and_material_page_limits() {
 	let home = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&home.path().join("scope.db")).unwrap();
+
 	agents(&store).await;
+
 	for i in 0..100 {
 		let id = format!("other-{i:03}");
+
 		apply(&store, "sage", &id, WorkCommand::Create { work: work(&id, "sage") }).await;
 	}
+
 	apply(&store, "iris", "iris-work", WorkCommand::Create { work: work("z-iris", "iris") }).await;
 	apply(&store, "sage", "shared-work", WorkCommand::Create { work: work("shared", "sage") })
 		.await;
+
 	for i in 0..101 {
 		let id = if i == 0 { "shared-material".into() } else { format!("private-{i}") };
+
 		apply(
 			&store,
 			"sage",
@@ -110,6 +171,7 @@ async fn agent_scope_precedes_work_and_material_page_limits() {
 		)
 		.await;
 	}
+
 	apply(
 		&store,
 		"sage",
@@ -135,7 +197,9 @@ async fn agent_scope_precedes_work_and_material_page_limits() {
 		},
 	)
 	.await;
+
 	let visible = store.agent_work_portfolio("iris".into(), None).await.unwrap();
+
 	assert!(
 		visible.works.iter().any(|w| w.id == "z-iris"),
 		"unrelated Work cannot consume this Agent's page"
@@ -150,10 +214,13 @@ async fn agent_scope_precedes_work_and_material_page_limits() {
 async fn results_cannot_complete_another_work_or_stale_requirements() {
 	let home = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&home.path().join("work.db")).unwrap();
+
 	agents(&store).await;
+
 	for id in ["venue", "budget"] {
 		apply(&store, "sage", id, WorkCommand::Create { work: work(id, "sage") }).await;
 	}
+
 	apply(
 		&store,
 		"sage",
@@ -161,6 +228,7 @@ async fn results_cannot_complete_another_work_or_stale_requirements() {
 		WorkCommand::RecordResult { result: result("e1", "venue", "r1", "sage", None) },
 	)
 	.await;
+
 	assert!(
 		store
 			.apply_work_command(
@@ -176,6 +244,7 @@ async fn results_cannot_complete_another_work_or_stale_requirements() {
 			.await
 			.is_err()
 	);
+
 	apply(
 		&store,
 		"sage",
@@ -187,6 +256,7 @@ async fn results_cannot_complete_another_work_or_stale_requirements() {
 		},
 	)
 	.await;
+
 	assert!(
 		store
 			.apply_work_command(
@@ -202,6 +272,7 @@ async fn results_cannot_complete_another_work_or_stale_requirements() {
 			.await
 			.is_err()
 	);
+
 	apply(
 		&store,
 		"sage",
@@ -225,62 +296,39 @@ async fn results_cannot_complete_another_work_or_stale_requirements() {
 		},
 	)
 	.await;
+
 	let p = store.work_portfolio(None).await.unwrap();
+
 	assert_eq!(p.works.iter().find(|w| w.id == "venue").unwrap().state, WorkState::Completed);
 	assert_eq!(p.works.iter().find(|w| w.id == "budget").unwrap().state, WorkState::Open);
 	assert_eq!(p.results[0].requirements_id, "r1");
 }
-fn instruction(id: &str) -> CollaborationInstruction {
-	CollaborationInstruction {
-		id: id.into(),
-		requirements_id: "r1".into(),
-		text: "Compare public accessible transport routes".into(),
-		material_ids: vec![],
-		event_id: None,
-		delivered_turn_id: None,
-	}
-}
+
 #[tokio::test]
 async fn busy_request_and_lost_ack_survive_restart_without_false_acceptance() {
 	let (home, store) = persistent_store();
 	let path = home.path().join("work.db");
+
 	agents(&store).await;
 	apply(&store, "sage", "venue", WorkCommand::Create { work: work("venue", "sage") }).await;
-	let command = WorkCommand::Request {
-		request: CollaborationRequest {
-			id: "transport".into(),
-			work_id: "venue".into(),
-			recipient_agent_id: "iris".into(),
-			instruction: instruction("i1"),
-			state: CollaborationState::Pending,
-			required: true,
-			outcome: None,
-			note: None,
-		},
-	};
+
+	let command = transport_request();
+
 	apply(&store, "sage", "request", command.clone()).await;
 	apply(&store, "sage", "request", command).await;
+
 	let events = store.list_agent_wake_events("iris".into(), 100).await.unwrap();
+
 	assert_eq!(events.len(), 1);
-	assert!(
-		store
-			.apply_work_command(
-				"iris".into(),
-				"early".into(),
-				WorkCommand::Respond {
-					request_id: "transport".into(),
-					instruction_id: "i1".into(),
-					accept: true,
-					note: "Ready".into()
-				},
-				false
-			)
-			.await
-			.is_err()
-	);
+
+	assert_unadmitted_response_fails(&store).await;
+
 	store.begin_agent_dispatch_with_events("iris".into(), vec![events[0].id]).await.unwrap();
+
 	drop(store);
+
 	let store = SqliteStore::open_test(&path).unwrap();
+
 	assert_eq!(
 		store.work_portfolio(None).await.unwrap().collaborations[0].state,
 		CollaborationState::Pending
@@ -288,7 +336,9 @@ async fn busy_request_and_lost_ack_survive_restart_without_false_acceptance() {
 	assert!(
 		store.begin_agent_dispatch_with_events("iris".into(), vec![events[0].id]).await.is_err()
 	);
+
 	store.reconcile_agent_dispatch("iris".into(), "exact-turn".into()).await.unwrap();
+
 	apply(
 		&store,
 		"iris",
@@ -329,6 +379,7 @@ async fn busy_request_and_lost_ack_survive_restart_without_false_acceptance() {
 	)
 	.await;
 	assert_repaired_request(&store.work_portfolio(None).await.unwrap());
+
 	assert!(
 		store
 			.apply_work_command(
@@ -344,6 +395,7 @@ async fn busy_request_and_lost_ack_survive_restart_without_false_acceptance() {
 			.await
 			.is_err()
 	);
+
 	apply(
 		&store,
 		"sage",
@@ -358,17 +410,21 @@ async fn busy_request_and_lost_ack_survive_restart_without_false_acceptance() {
 		},
 	)
 	.await;
+
 	assert_eq!(
 		store.get_agent_work_item("iris".into()).await.unwrap().active_turn_id.as_deref(),
 		Some("exact-turn")
 	);
 }
+
 #[tokio::test]
 async fn user_holds_and_scoped_materials_do_not_grant_private_history() {
 	let home = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&home.path().join("work.db")).unwrap();
+
 	agents(&store).await;
 	apply(&store, "sage", "work", WorkCommand::Create { work: work("venue", "sage") }).await;
+
 	for id in ["public", "private"] {
 		apply(
 			&store,
@@ -386,8 +442,11 @@ async fn user_holds_and_scoped_materials_do_not_grant_private_history() {
 		)
 		.await;
 	}
+
 	let mut i = instruction("i1");
+
 	i.material_ids = vec!["public".into()];
+
 	apply(
 		&store,
 		"sage",
@@ -406,12 +465,15 @@ async fn user_holds_and_scoped_materials_do_not_grant_private_history() {
 		},
 	)
 	.await;
+
 	let p = store.agent_work_portfolio("iris".into(), None).await.unwrap();
+
 	assert_eq!(p.materials.len(), 1);
 	assert_eq!(p.materials[0].id, "public");
 	assert!(
 		store.agent_task_reference_target("iris".into(), "sage".into()).await.unwrap().is_none()
 	);
+
 	apply(
 		&store,
 		"sage",
@@ -426,6 +488,7 @@ async fn user_holds_and_scoped_materials_do_not_grant_private_history() {
 		},
 	)
 	.await;
+
 	assert!(
 		store
 			.apply_work_command(
@@ -451,6 +514,7 @@ async fn native_binding_and_completion_intents_stay_separate_after_restart() {
 	let home = tempfile::tempdir().unwrap();
 	let path = home.path().join("work.db");
 	let store = SqliteStore::open_test(&path).unwrap();
+
 	agents(&store).await;
 	apply(&store, "sage", "work", WorkCommand::Create { work: work("venue", "sage") }).await;
 	apply(
@@ -470,6 +534,7 @@ async fn native_binding_and_completion_intents_stay_separate_after_restart() {
 		},
 	)
 	.await;
+
 	store
 		.record_native_work_dispatch(
 			"native-routes".into(),
@@ -479,12 +544,16 @@ async fn native_binding_and_completion_intents_stay_separate_after_restart() {
 		)
 		.await
 		.unwrap();
+
 	drop(store);
+
 	let store = SqliteStore::open_test(&path).unwrap();
 	let p = store.work_portfolio(None).await.unwrap();
+
 	assert!(p.native_contributions[0].child_thread_id.is_none());
 	assert_eq!(p.works[0].state, WorkState::Open);
 	assert!(store.native_work_delivery("native-routes".into()).await.unwrap().is_none());
+
 	let delivery = NativeWorkDelivery {
 		parent_thread_id: "sage".into(),
 		parent_turn_id: "parent-turn".into(),
@@ -493,18 +562,26 @@ async fn native_binding_and_completion_intents_stay_separate_after_restart() {
 		message_id: "native-message".into(),
 		assignment_proof: Default::default(),
 	};
+
 	for _ in 0..2 {
 		store.record_native_work_delivery("native-routes".into(), delivery.clone()).await.unwrap();
 	}
+
 	let mut changed = delivery.clone();
+
 	changed.child_turn_id = "another-turn".into();
+
 	assert!(store.record_native_work_delivery("native-routes".into(), changed).await.is_err());
+
 	drop(store);
+
 	let store = SqliteStore::open_test(&path).unwrap();
+
 	assert_eq!(store.native_work_delivery("native-routes".into()).await.unwrap(), Some(delivery));
 	assert!(
 		store.native_contribution("native-routes".into()).await.unwrap().child_thread_id.is_none()
 	);
+
 	apply(
 		&store,
 		"sage",
@@ -517,12 +594,17 @@ async fn native_binding_and_completion_intents_stay_separate_after_restart() {
 		},
 	)
 	.await;
+
 	let mut r = result("native-result", "venue", "r1", "sage", None);
+
 	r.native_contribution_id = Some("native-routes".into());
+
 	apply(&store, "sage", "returned", WorkCommand::RecordResult { result: r }).await;
 	drop(store);
+
 	let store = SqliteStore::open_test(&path).unwrap();
 	let p = store.work_portfolio(None).await.unwrap();
+
 	assert_eq!(p.results.len(), 1);
 	assert_eq!(p.works[0].state, WorkState::Open);
 	assert_eq!(p.native_contributions[0].child_thread_id.as_deref(), Some("child"));
@@ -530,12 +612,14 @@ async fn native_binding_and_completion_intents_stay_separate_after_restart() {
 
 #[tokio::test]
 async fn global_guardian_unknown_writes_and_observation_opt_out_survive_restart() {
-	use decodex_core::guardian::{GuardianSource, ReviewDetails, ReviewPreference};
 	let home = tempfile::tempdir().unwrap();
 	let path = home.path().join("work.db");
 	let store = SqliteStore::open_test(&path).unwrap();
+
 	agents(&store).await;
+
 	store.set_guardian_settings(1, ReviewPreference::AutomaticReview, true).await.unwrap();
+
 	let mut source = GuardianSource {
 		source_id: "native-generation-one".into(),
 		agent_id: "sage".into(),
@@ -545,18 +629,27 @@ async fn global_guardian_unknown_writes_and_observation_opt_out_survive_restart(
 		effective_reviewer: None,
 		detail: "Reserved".into(),
 	};
+
 	assert!(store.reserve_guardian_source(source.clone()).await.unwrap());
+
 	source.outcome = "unknown".into();
+
 	store.observe_guardian_source(source.clone()).await.unwrap();
+
 	drop(store);
+
 	let store = SqliteStore::open_test(&path).unwrap();
+
 	assert!(!store.reserve_guardian_source(source.clone()).await.unwrap());
+
 	source.source_id = "native-generation-two".into();
+
 	assert!(store.reserve_guardian_source(source).await.unwrap());
 	assert_eq!(
 		store.guardian_state().await.unwrap().settings.reviewer,
 		ReviewPreference::AutomaticReview
 	);
+
 	let details = ReviewDetails {
 		parent_thread_id: Some("sage".into()),
 		truncated: false,
@@ -566,46 +659,47 @@ async fn global_guardian_unknown_writes_and_observation_opt_out_survive_restart(
 		review_id: None,
 		record: "{\"text\":\"synthetic review\"}".into(),
 	};
+
 	store.record_review_details(Some("sage".into()), details.clone()).await.unwrap();
 	store.record_review_details(Some("sage".into()), details.clone()).await.unwrap();
+
 	assert_eq!(store.guardian_state().await.unwrap().details.len(), 1);
+
 	store.set_guardian_settings(2, ReviewPreference::AskMe, false).await.unwrap();
+
 	let mut other = details;
+
 	other.item_id = "later".into();
+
 	store.record_review_details(Some("sage".into()), other).await.unwrap();
+
 	assert_eq!(store.guardian_state().await.unwrap().details.len(), 1);
-}
-
-fn assert_repaired_request(p: &WorkPortfolio) {
-	assert_eq!(p.collaborations[0].id, "transport");
-	assert_eq!(p.collaborations[0].instruction.id, "i2");
-	assert_eq!(p.collaborations[0].state, CollaborationState::Pending);
-	assert_eq!(p.results.len(), 2);
-}
-
-fn persistent_store() -> (tempfile::TempDir, SqliteStore) {
-	let home = tempfile::tempdir().unwrap();
-	let store = SqliteStore::open_test(&home.path().join("work.db")).unwrap();
-	(home, store)
 }
 
 #[tokio::test]
 async fn native_tool_replacement_keeps_creation_and_retirement_separate_after_restart() {
 	let (home, store) = persistent_store();
+
 	agents(&store).await;
+
 	let path = home.path().join("work.db");
-	let connection = rusqlite::Connection::open(&path).unwrap();
+	let connection = Connection::open(&path).unwrap();
+
 	connection
 		.execute("UPDATE agent_tool_versions SET version=3 WHERE work_id IN('sage','iris')", [])
 		.unwrap();
+
 	drop(connection);
+
 	assert!(
 		store
 			.reserve_agent_tool_migration("sage".into(), "sage".into(), "{}".into())
 			.await
 			.unwrap()
 	);
+
 	store.record_agent_tool_context("sage".into(), Some("replacement".into())).await.unwrap();
+
 	assert!(
 		store
 			.finish_agent_tool_migration("sage".into(), "sage".into(), Some("replacement".into()))
@@ -618,9 +712,13 @@ async fn native_tool_replacement_keeps_creation_and_retirement_separate_after_re
 			.await
 			.unwrap()
 	);
+
 	store.record_agent_tool_context("iris".into(), None).await.unwrap();
+
 	drop(store);
+
 	let store = SqliteStore::open_test(&path).unwrap();
+
 	assert_eq!(
 		store.get_agent_work_item("sage".into()).await.unwrap().codex_thread_id.as_deref(),
 		Some("sage")
@@ -636,11 +734,32 @@ async fn native_tool_replacement_keeps_creation_and_retirement_separate_after_re
 			.unwrap(),
 		"A missing creation receipt never permits another context"
 	);
+
 	store.retire_agent_tool_context("sage".into()).await.unwrap();
 	store
 		.finish_agent_tool_migration("sage".into(), "sage".into(), Some("replacement".into()))
 		.await
 		.unwrap();
+
 	assert_eq!(store.agent_previous_threads("sage".into()).await.unwrap(), vec!["sage".to_owned()]);
 	assert_eq!(store.agent_tool_version("sage".into()).await.unwrap(), 4);
+}
+
+async fn assert_unadmitted_response_fails(store: &SqliteStore) {
+	assert!(
+		store
+			.apply_work_command(
+				"iris".into(),
+				"early".into(),
+				WorkCommand::Respond {
+					request_id: "transport".into(),
+					instruction_id: "i1".into(),
+					accept: true,
+					note: "Ready".into()
+				},
+				false
+			)
+			.await
+			.is_err()
+	);
 }

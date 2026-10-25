@@ -2,13 +2,26 @@
 
 mod capacity;
 mod collaboration;
-pub use collaboration::{AgentCollaborationQuestion, AgentCollaborationRecord};
 mod delegation;
 mod steer;
 
-pub use capacity::AgentCapacityRetry;
+pub use self::{
+	capacity::AgentCapacityRetry,
+	collaboration::{AgentCollaborationQuestion, AgentCollaborationRecord},
+};
 
 pub(crate) use capacity::cancel_pending as cancel_pending_capacity;
+
+use rusqlite::{Connection, Error, OptionalExtension as _, Row, Transaction, TransactionBehavior};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::{
+	AgentLiveOutput, AgentTurnExecution, DatabaseError, Project, SqliteStore, StoreError,
+	agent_models, agent_output, agent_permissions, agent_plugins, agent_prompt_edit,
+	agent_prompt_inputs, agent_questions, agent_request_payload, agent_task_references,
+	agent_turn_execution, error, projects,
+};
 
 /// Recovery checks have separate lifecycles; model refresh does not block chat input.
 #[derive(Clone, Copy)]
@@ -18,16 +31,6 @@ pub enum AgentRecoveryKind {
 	/// Refresh an individual conversation's preferred model when available.
 	Model,
 }
-
-use rusqlite::{Connection, Error, OptionalExtension as _, Row, TransactionBehavior};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-
-use crate::{
-	AgentLiveOutput, AgentTurnExecution, DatabaseError, SqliteStore, StoreError, agent_models,
-	agent_output, agent_permissions, agent_plugins, agent_prompt_edit, agent_prompt_inputs,
-	agent_questions, agent_request_payload, agent_task_references, agent_turn_execution, error,
-};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -94,59 +97,11 @@ pub enum AgentDispatchState {
 	Unknown,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct AgentWorkItem {
-	pub id: String,
-	pub parent_goal_id: Option<String>,
-	pub kind: AgentWorkKind,
-	pub title: String,
-	pub instructions: String,
-	/// An opaque app-server identity. No UUID or filesystem interpretation is permitted.
-	pub codex_thread_id: Option<String>,
-	pub dispatch_state: AgentDispatchState,
-	pub active_turn_id: Option<String>,
-	pub status: AgentWorkStatus,
-	pub next_check_at_micros: Option<i64>,
-	pub created_at_micros: i64,
-	pub updated_at_micros: i64,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct AgentDependency {
-	pub work_item_id: String,
-	pub depends_on_id: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct EnqueueAgentEvent {
-	/// Stable identity supplied by the event source; retries must reuse this value.
-	pub source_event_id: String,
-	pub work_item_id: String,
-	pub event_kind: String,
-	pub payload: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct AgentInboxEvent {
-	pub id: i64,
-	pub source_event_id: String,
-	pub work_item_id: String,
-	pub event_kind: String,
-	pub payload: String,
-	pub created_at_micros: i64,
-	pub disposition: Option<AgentDisposition>,
-	pub disposition_note: Option<String>,
-	pub disposed_at_micros: Option<i64>,
-	/// Empty while dispatch is claimed or unknown; the exact turn ID after acknowledgment.
-	/// This delivery fence never disposes the event.
-	pub delivered_turn_id: Option<String>,
-}
-
 /// One atomic bounded read for a public projection.
 pub enum AgentStoreSnapshot {
 	Complete {
 		managers: Vec<String>,
-		projects: Vec<crate::Project>,
+		projects: Vec<Project>,
 		work_items: Vec<AgentWorkItem>,
 		dependencies: Vec<AgentDependency>,
 		pending_events: Vec<AgentInboxEvent>,
@@ -158,35 +113,30 @@ pub enum AgentStoreSnapshot {
 	},
 }
 
-/// Saved usage fields for one exact native completed turn.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AgentTurnMetrics {
-	/// Exact native turn identity.
-	pub turn_id: String,
-	/// Acknowledged whole-turn counter delta, absent when not known.
-	pub usage_json: Option<String>,
-	/// Latest provider usage observation retained with this completion.
-	pub observation_json: Option<String>,
-}
-
 impl SqliteStore {
 	/// Discard an unused local draft, never an executed or referenced conversation.
 	pub async fn discard_empty_agent_work(&self, id: String) -> Result<(), StoreError> {
 		bounded(&id, 512)?;
+
 		self.run(move |connection| {
 			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let Some(work) = tx.query_row("SELECT * FROM agent_work_items WHERE id=?1", [&id], work_row).optional().map_err(error::sqlite_error)? else { return Ok(()); };
+
 			if work.parent_goal_id.is_none() || work.codex_thread_id.is_some() || work.dispatch_state != AgentDispatchState::Idle || work.active_turn_id.is_some() || work.next_check_at_micros.is_some() {
 				return Err(StoreError::InvalidInput("only an unused local draft can be discarded"));
 			}
+
 			let referenced: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items WHERE parent_goal_id=?1 UNION ALL SELECT 1 FROM agent_inbox_events WHERE work_item_id=?1 UNION ALL SELECT 1 FROM agent_dependencies WHERE work_item_id=?1 OR depends_on_id=?1 UNION ALL SELECT 1 FROM agent_thread_revisions WHERE work_id=?1 UNION ALL SELECT 1 FROM agent_prompt_inputs WHERE work_item_id=?1 UNION ALL SELECT 1 FROM agent_prompt_input_chunks WHERE work_item_id=?1)", [&id], |row| row.get(0)).map_err(error::sqlite_error)?;
+
 			if referenced { return Err(StoreError::InvalidInput("the local draft contains work or references")); }
+
 			tx.execute("DELETE FROM agent_root_settings WHERE root_id=?1", [&id]).map_err(error::sqlite_error)?;
 			tx.execute("DELETE FROM agent_tool_versions WHERE work_id=?1", [&id]).map_err(error::sqlite_error)?;
 			tx.execute("DELETE FROM agents WHERE id=?1", [&id]).map_err(error::sqlite_error)?;
 			tx.execute("DELETE FROM agent_managers WHERE work_id=?1", [&id]).map_err(error::sqlite_error)?;
 			tx.execute("DELETE FROM agent_work_items WHERE id=?1", [&id]).map_err(error::sqlite_error)?;
 			tx.commit().map_err(error::sqlite_error)?;
+
 			Ok(())
 		}).await
 	}
@@ -331,7 +281,7 @@ impl SqliteStore {
 			let dependencies = transaction.prepare("SELECT work_item_id, depends_on_id FROM agent_dependencies ORDER BY work_item_id, depends_on_id").map_err(error::sqlite_error)?.query_map([], |row| Ok(AgentDependency { work_item_id: row.get(0)?, depends_on_id: row.get(1)? })).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(error::sqlite_error)?;
 			let pending_events = transaction.prepare("SELECT * FROM agent_inbox_events WHERE disposition IS NULL ORDER BY id").map_err(error::sqlite_error)?.query_map([], event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(error::sqlite_error)?;
             let managers=transaction.prepare("SELECT work_id FROM agent_managers").map_err(error::sqlite_error)?.query_map([],|row|row.get(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<String>,_>>().map_err(error::sqlite_error)?;
-            let projects=crate::projects::read_projects(&transaction)?;
+            let projects=projects::read_projects(&transaction)?;
 
             transaction.commit().map_err(error::sqlite_error)?;
 
@@ -380,6 +330,7 @@ impl SqliteStore {
 		{
 			return Err(StoreError::InvalidInput("conversation requires its first user message"));
 		}
+
 		self.create_agent_work_record(item, true, workspace, Vec::new(), Some(input)).await
 	}
 
@@ -460,6 +411,7 @@ impl SqliteStore {
 
 			}
 			if manager || item.parent_goal_id.is_none() { transaction.execute("INSERT INTO agents(id) VALUES(?1)", [&item.id]).map_err(error::sqlite_error)?; }
+
             if let Some(workspace) = workspace {
                 transaction.execute("INSERT INTO project_agents(agent_id,project_id) VALUES(?1,?2)",rusqlite::params![item.id,workspace]).map_err(error::sqlite_error)?;
             } else if initial_input.is_none() {
@@ -665,9 +617,9 @@ impl SqliteStore {
 
 			for event_id in &event_ids {
 				let stale:bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM collaboration_instructions i JOIN collaboration_requests q ON q.id=i.request_id JOIN works w ON w.id=q.work_id WHERE i.event_id=?1 AND (q.instruction_id<>i.id OR q.state='closed' OR w.state<>'open' OR w.requirements_id<>i.requirements_id))",[event_id],|r|r.get(0)).map_err(error::sqlite_error)?;
+
 				if stale {return Err(DatabaseError::Conflict.into());}
 			}
-
 			for event_id in event_ids {
 				let changed = transaction.execute("WITH RECURSIVE owned(id) AS (
 					SELECT ?2 UNION SELECT child.id FROM agent_work_items child JOIN owned ON child.parent_goal_id = owned.id WHERE owned.id=?2 OR NOT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=owned.id))
@@ -696,6 +648,7 @@ impl SqliteStore {
 				if payload.len()>65_536 {return Err(StoreError::InvalidInput("instruction exceeds saved event bound"));}
 
 				transaction.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,'work_instruction',?3,?4,?2,'')",rusqlite::params![source,id,payload,now]).map_err(error::sqlite_error)?;
+
 				delegation::begin(&transaction, &id, transaction.last_insert_rowid())?;
 			}
 
@@ -866,6 +819,7 @@ impl SqliteStore {
 			}
 
 			let mut input = input;
+
             if matches!(input.event_kind.as_str(), "agent_turn_completed" | "worker_turn_completed") {
                 input.event_kind = if delegation::awaiting_result(&transaction, &id)? {
                     "worker_turn_completed"
@@ -873,6 +827,7 @@ impl SqliteStore {
                     "agent_turn_completed"
                 }.into();
             }
+
             let mut payload: Value = serde_json::from_str(&input.payload).unwrap_or_default();
             let eligible = work.status == AgentWorkStatus::Open
                 && matches!(input.event_kind.as_str(), "agent_turn_completed" | "worker_turn_completed")
@@ -1082,7 +1037,9 @@ impl SqliteStore {
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(error::sqlite_error)?;
 			let event = insert_event(&transaction, input, observation)?;
+
 			transaction.commit().map_err(error::sqlite_error)?;
+
 			Ok(event)
 		})
 		.await
@@ -1150,6 +1107,7 @@ impl SqliteStore {
 	pub async fn resolve_agent_event_failure(&self, root: String) -> Result<(), StoreError> {
 		self.run(move |connection| {
 			connection.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Native event processing recovered after persisted state reconciliation.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind='event_processing_failed' AND disposition IS NULL", rusqlite::params![root,crate::unix_micros()?]).map_err(error::sqlite_error)?;
+
 			Ok(())
 		}).await
 	}
@@ -1165,11 +1123,14 @@ impl SqliteStore {
 			AgentRecoveryKind::PersistedState => "recovery_needs_attention",
 			AgentRecoveryKind::Model => "model_recovery_failed",
 		};
+
 		if let Some(detail) = error {
 			return self.record_agent_processing_notice(work, detail, kind).await;
 		}
+
 		self.run(move |connection| {
 			connection.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Recovery no longer requires attention.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND event_kind=?3 AND disposition IS NULL", rusqlite::params![work,crate::unix_micros()?,kind]).map_err(error::sqlite_error)?;
+
 			Ok(())
 		}).await
 	}
@@ -1472,6 +1433,7 @@ impl SqliteStore {
 				rusqlite::params![id, disposition.as_str(), note, now]).map_err(error::sqlite_error)?;
 			transaction.execute("UPDATE agent_work_items SET status = ?2, next_check_at_micros = ?3, updated_at_micros = max(updated_at_micros, ?4) WHERE id = ?1 AND (?6<>'worker_turn_completed' OR NOT EXISTS(SELECT 1 FROM agent_delegations WHERE work_id=?1 AND instruction_event_id>?5))",
 				rusqlite::params![event.work_item_id, disposition.as_str(), next_check_at_micros, now,event.id,event.event_kind]).map_err(error::sqlite_error)?;
+
 			if disposition == AgentDisposition::Resolved && event.event_kind == "worker_turn_completed" {
 				delegation::accept(&transaction, &event.work_item_id, event.id)?;
 			}
@@ -1511,6 +1473,65 @@ impl SqliteStore {
 			connection.prepare("SELECT work.* FROM agent_work_items AS work WHERE next_check_at_micros <= ?1 AND NOT EXISTS (SELECT 1 FROM agent_inbox_events AS event WHERE event.source_event_id = json_array('followup_due', work.id, work.next_check_at_micros)) ORDER BY next_check_at_micros, id LIMIT ?2").map_err(error::sqlite_error)?.query_map(rusqlite::params![now_micros, limit], work_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
 		}).await
 	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct AgentWorkItem {
+	pub id: String,
+	pub parent_goal_id: Option<String>,
+	pub kind: AgentWorkKind,
+	pub title: String,
+	pub instructions: String,
+	/// An opaque app-server identity. No UUID or filesystem interpretation is permitted.
+	pub codex_thread_id: Option<String>,
+	pub dispatch_state: AgentDispatchState,
+	pub active_turn_id: Option<String>,
+	pub status: AgentWorkStatus,
+	pub next_check_at_micros: Option<i64>,
+	pub created_at_micros: i64,
+	pub updated_at_micros: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct AgentDependency {
+	pub work_item_id: String,
+	pub depends_on_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct EnqueueAgentEvent {
+	/// Stable identity supplied by the event source; retries must reuse this value.
+	pub source_event_id: String,
+	pub work_item_id: String,
+	pub event_kind: String,
+	pub payload: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct AgentInboxEvent {
+	pub id: i64,
+	pub source_event_id: String,
+	pub work_item_id: String,
+	pub event_kind: String,
+	pub payload: String,
+	pub created_at_micros: i64,
+	pub disposition: Option<AgentDisposition>,
+	pub disposition_note: Option<String>,
+	pub disposed_at_micros: Option<i64>,
+	/// Empty while dispatch is claimed or unknown; the exact turn ID after acknowledgment.
+	/// This delivery fence never disposes the event.
+	pub delivered_turn_id: Option<String>,
+}
+
+/// Saved usage fields for one exact native completed turn.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AgentTurnMetrics {
+	/// Exact native turn identity.
+	pub turn_id: String,
+	/// Acknowledged whole-turn counter delta, absent when not known.
+	pub usage_json: Option<String>,
+	/// Latest provider usage observation retained with this completion.
+	pub observation_json: Option<String>,
 }
 
 pub(crate) fn read_work(connection: &Connection, id: &str) -> Result<AgentWorkItem, StoreError> {
@@ -1644,14 +1665,14 @@ fn event_row(row: &Row<'_>) -> rusqlite::Result<AgentInboxEvent> {
 }
 
 fn insert_event(
-	transaction: &rusqlite::Transaction<'_>,
+	transaction: &Transaction<'_>,
 	input: EnqueueAgentEvent,
 	observation: bool,
 ) -> Result<AgentInboxEvent, StoreError> {
 	bounded(&input.source_event_id, 2_048)?;
 	bounded(&input.event_kind, 128)?;
-	let compact = agent_request_payload::compact(&input)?;
 
+	let compact = agent_request_payload::compact(&input)?;
 	let previous = transaction
 		.query_row(
 			"SELECT * FROM agent_inbox_events WHERE source_event_id = ?1",
@@ -1704,6 +1725,7 @@ fn insert_event(
 					observation.then_some("resolved"), observation.then_some("Provider observation recorded; work judgment unchanged."), observation.then_some(now)]).map_err(error::sqlite_error)?;
 
 	let event_id = transaction.last_insert_rowid();
+
 	if input.event_kind == "user_message"
 		&& let Ok(payload) = serde_json::from_str::<Value>(&input.payload)
 		&& let Some(text) = payload["text"].as_str()
@@ -1715,11 +1737,11 @@ fn insert_event(
 			.chars()
 			.take(64)
 			.collect::<String>();
+
 		if !title.is_empty() {
 			transaction.execute("UPDATE agent_work_items SET title=?2,updated_at_micros=?3 WHERE id=?1 AND title='New conversation' AND codex_thread_id IS NULL", rusqlite::params![input.work_item_id,title,now]).map_err(error::sqlite_error)?;
 		}
 	}
-
 	if compact.is_some() {
 		transaction
 			.execute(
@@ -1804,10 +1826,13 @@ mod tests {
 	async fn discard_empty_work_preserves_root_bound_history_and_dependencies() {
 		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("discard.sqlite3")).unwrap();
+
 		store.create_agent_work_item(item("root", None)).await.unwrap();
+
 		for id in ["empty", "bound", "history", "dependency", "dependent"] {
 			store.create_agent_work_item(item(id, Some("root"))).await.unwrap();
 		}
+
 		store.bind_agent_thread("bound".into(), "native".into()).await.unwrap();
 		store
 			.enqueue_agent_event(EnqueueAgentEvent {
@@ -1821,11 +1846,14 @@ mod tests {
 		store.add_agent_dependency("dependent".into(), "dependency".into()).await.unwrap();
 		store.discard_empty_agent_work("empty".into()).await.unwrap();
 		store.discard_empty_agent_work("empty".into()).await.unwrap();
+
 		assert!(store.get_agent_work_item("empty".into()).await.is_err());
+
 		for id in ["root", "bound", "history", "dependency", "dependent"] {
 			assert!(store.discard_empty_agent_work(id.into()).await.is_err(), "must retain {id}");
 			assert!(store.get_agent_work_item(id.into()).await.is_ok());
 		}
+
 		assert_eq!(store.read_agent_work_events("history".into(), 10).await.unwrap().len(), 1);
 	}
 
@@ -2576,20 +2604,27 @@ mod tests {
 	async fn delivery_processing_cannot_release_an_external_writer() {
 		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
+
 		store.create_agent_work_item(item("agent", None)).await.unwrap();
 		store.record_agent_thread_in_use("agent".into(), "Open elsewhere".into()).await.unwrap();
+
 		let notice = store.list_agent_thread_in_use_events().await.unwrap().remove(0);
 
 		for _ in 0..3 {
 			store.resolve_agent_delivery_failure("agent".into()).await.unwrap();
+
 			let blocked = store.list_agent_thread_in_use_events().await.unwrap();
+
 			assert_eq!(blocked.len(), 1);
 			assert_eq!(blocked[0].id, notice.id);
+
 			store
 				.record_agent_delivery_failure("agent".into(), "Unrelated processing failed".into())
 				.await
 				.unwrap();
+
 			let blocked = store.list_agent_thread_in_use_events().await.unwrap();
+
 			assert_eq!(blocked.len(), 1);
 			assert_eq!(blocked[0].id, notice.id);
 			assert!(matches!(
@@ -2636,7 +2671,9 @@ mod tests {
 		assert_eq!(store.list_pending_agent_events(10).await.unwrap().len(), 2);
 
 		store.resolve_agent_delivery_failure("agent".into()).await.unwrap();
+
 		assert_eq!(store.list_pending_agent_events(10).await.unwrap().len(), 2);
+
 		store.resolve_agent_thread_in_use("agent".into()).await.unwrap();
 
 		let pending = store.list_pending_agent_events(10).await.unwrap();
@@ -2654,29 +2691,39 @@ mod tests {
 	async fn recovery_receipts_clear_only_their_phase_and_allow_later_failures() {
 		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("recovery.sqlite3")).unwrap();
+
 		store.create_agent_work_item(item("agent", None)).await.unwrap();
 		store
 			.record_agent_delivery_failure("agent".into(), "Unconfirmed input".into())
 			.await
 			.unwrap();
+
 		for kind in [AgentRecoveryKind::PersistedState, AgentRecoveryKind::Model] {
 			store
 				.record_agent_recovery("agent".into(), kind, Some("Check failed".into()))
 				.await
 				.unwrap();
 		}
+
 		assert_eq!(store.list_pending_agent_events(10).await.unwrap().len(), 3);
+
 		store.record_agent_recovery("agent".into(), AgentRecoveryKind::Model, None).await.unwrap();
+
 		let pending = store.list_pending_agent_events(10).await.unwrap();
+
 		assert_eq!(pending.len(), 2);
 		assert!(pending.iter().any(|event| event.event_kind == "recovery_needs_attention"));
+
 		store
 			.record_agent_recovery("agent".into(), AgentRecoveryKind::PersistedState, None)
 			.await
 			.unwrap();
+
 		let pending = store.list_pending_agent_events(10).await.unwrap();
+
 		assert_eq!(pending.len(), 1);
 		assert_eq!(pending[0].event_kind, "wake_failed");
+
 		store
 			.record_agent_recovery(
 				"agent".into(),
@@ -2685,6 +2732,7 @@ mod tests {
 			)
 			.await
 			.unwrap();
+
 		assert_eq!(store.list_pending_agent_events(10).await.unwrap().len(), 2);
 		assert_eq!(
 			store.get_agent_work_item("agent".into()).await.unwrap().status,
@@ -2696,7 +2744,9 @@ mod tests {
 	async fn event_processing_recovery_preserves_input_and_separate_delivery_failures() {
 		let directory = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&directory.path().join("agent.sqlite3")).unwrap();
+
 		store.create_agent_work_item(item("agent", None)).await.unwrap();
+
 		let input = store
 			.enqueue_agent_event(EnqueueAgentEvent {
 				source_event_id: "saved-input".into(),
@@ -2706,10 +2756,12 @@ mod tests {
 			})
 			.await
 			.unwrap();
+
 		store
 			.record_agent_delivery_failure("agent".into(), "Delivery unavailable".into())
 			.await
 			.unwrap();
+
 		for _ in 0..2 {
 			store
 				.record_agent_event_failure(
@@ -2719,16 +2771,23 @@ mod tests {
 				.await
 				.unwrap();
 		}
+
 		assert_eq!(store.list_pending_agent_events(10).await.unwrap().len(), 3);
+
 		store.resolve_agent_event_failure("agent".into()).await.unwrap();
+
 		let pending = store.list_pending_agent_events(10).await.unwrap();
+
 		assert_eq!(pending.len(), 2);
 		assert!(
 			pending.iter().any(|event| event.id == input.id && event.delivered_turn_id.is_none())
 		);
 		assert!(pending.iter().any(|event| event.event_kind == "wake_failed"));
+
 		store.record_agent_event_failure("agent".into(), "Later failure".into()).await.unwrap();
+
 		let events = store.read_agent_work_events("agent".into(), 10).await.unwrap();
+
 		assert_eq!(
 			events.iter().filter(|event| event.event_kind == "event_processing_failed").count(),
 			2

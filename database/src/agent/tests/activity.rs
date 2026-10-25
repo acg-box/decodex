@@ -204,7 +204,9 @@ async fn check_delayed_activity(kind: &str) {
 
 	assert_eq!(activity.len(), 1, "{kind}");
 	assert_eq!(activity[0].delivered_turn_id.as_deref(), Some("old"));
+
 	let payload: Value = serde_json::from_str(&activity[0].payload).unwrap();
+
 	assert_eq!(payload["status"], "failed");
 	assert_eq!(payload["detail"], "Exit code -1");
 	assert_eq!(payload["duration_ms"], 0);

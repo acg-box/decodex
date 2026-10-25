@@ -7,15 +7,10 @@ mod account_profiles;
 mod account_usage;
 mod accounts;
 mod agent;
-mod agent_deliveries;
-pub use agent_deliveries::{DeliveryPage, DeliveryRecord};
-mod guardian_settings;
-mod projects;
-mod works;
-pub use projects::Project;
 mod agent_app_settings;
 mod agent_app_ui_calls;
 mod agent_config_journal;
+mod agent_deliveries;
 mod agent_dispatch_rejection;
 mod agent_fork;
 mod agent_guardian;
@@ -38,7 +33,6 @@ mod agent_request_payload;
 mod agent_response_usage;
 mod agent_settings_observations;
 mod agent_slots;
-pub use agent_slots::AgentSlot;
 mod agent_task_references;
 mod agent_tool_migration;
 mod agent_turn_execution;
@@ -51,15 +45,18 @@ mod conversations;
 mod credentials;
 mod desktop_settings;
 mod error;
+mod guardian_settings;
 mod migrations;
 mod process_generations;
 mod program_cycles;
+mod projects;
 mod provider_attempts;
 mod quota_activation;
 mod reset_cards;
 mod role_profiles;
 mod runtime_sessions;
 mod transfers;
+mod works;
 
 pub use self::{
 	account_lifecycle::{
@@ -182,6 +179,9 @@ pub use self::{
 		LocalAccountTransferOutcome,
 	},
 };
+pub use agent_deliveries::{DeliveryPage, DeliveryRecord};
+pub use agent_slots::AgentSlot;
+pub use projects::Project;
 
 #[cfg(test)] use std::fs::OpenOptions;
 #[cfg(unix)] use std::os::unix::fs::MetadataExt as _;
@@ -967,11 +967,14 @@ mod tests {
 				)
 				.await
 				.expect("prepare logout recovery");
+
 			if !accepted {
 				assert!(matches!(outcome, AccountLifecycleMutationOutcome::Rejected { .. }));
 				assert!(store.read_account_operation(&logout_id).await.unwrap().is_none());
+
 				continue;
 			}
+
 			assert!(matches!(outcome, AccountLifecycleMutationOutcome::Applied(_)));
 			assert!(
 				store
@@ -982,9 +985,11 @@ mod tests {
 					.superseded_by_operation_id
 					.is_none()
 			);
+
 			store
 				.delete_credential(&fixture_key(1, DIGEST_ONE, OPERATION_ONE))
 				.expect("remove exact credential");
+
 			for (from, to) in [
 				(AccountOperationPhase::Prepared, AccountOperationPhase::StoreApplied),
 				(AccountOperationPhase::StoreApplied, AccountOperationPhase::Committed),
@@ -994,7 +999,9 @@ mod tests {
 					AccountLifecycleMutationOutcome::Applied(_)
 				));
 			}
+
 			let recovery = store.read_account_operation(&recovery_id).await.unwrap().unwrap();
+
 			assert_eq!(recovery.recovery_code.as_deref(), Some(reason));
 			assert_eq!(recovery.superseded_by_operation_id, Some(logout_id));
 			assert!(store.read_unsettled_account_operations(512).await.unwrap().is_empty());
