@@ -144,8 +144,8 @@ async fn native_project_global_review_and_private_records_cross_retained_bridge(
 }
 
 #[tokio::test]
-#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated immutable native tool migration"]
-async fn native_legacy_tools_migrate_once_and_retire_the_old_context() {
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; recorded immutable native tool replacement"]
+async fn native_recorded_tool_replacement_retires_only_its_exact_old_context() {
 	let (home,mut session,store,mut agent,backend)=setup(|serial|serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Retained answer"}]})).await;
 	time::timeout(Duration::from_secs(60),async{
 		let old=session.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request","approvalsReviewer":"user","permissions":":read-only","model":"gpt-5.6-sol","config":{"model_reasoning_effort":"medium"},"dynamicTools":[{"name":"agent_create_work","description":"Legacy managed execution","inputSchema":{"type":"object","properties":{}}}]})).await.expect("Project and Work qualification fixture");
@@ -154,10 +154,119 @@ async fn native_legacy_tools_migrate_once_and_retire_the_old_context() {
 		let turn=session.client.turn_start(serde_json::json!({"threadId":old_id,"input":[{"type":"text","text":"Historical user decision"}]})).await.expect("Project and Work qualification fixture");let _=turn;finish(&mut session,&mut agent,old_id).await;
 		let goal=session.client.thread_goal(old_id).await;assert!(goal.is_ok(),"Native Goal read: {goal:?}");
 		let background=session.client.request("thread/backgroundTerminals/list",serde_json::json!({"threadId":old_id,"limit":1})).await;assert!(background.is_ok(),"Native background read: {background:?}");
+		// Only an already-recorded replacement enters retirement. Ordinary
+		// continuation cannot reserve or create another native conversation.
+		session.client.thread_resume(serde_json::json!({"threadId":old_id,"excludeTurns":true})).await.expect("Project and Work qualification fixture");
+		let (permissions,_)=session.client.observed_task_permissions(old_id).expect("Project and Work qualification fixture");
+		let (models,_)=session.client.configured_task_models(old_id).expect("Project and Work qualification fixture");
+		let mut replacement=serde_json::json!({"cwd":permissions.cwd,"historyMode":"paginated","approvalPolicy":permissions.approval_policy,"approvalsReviewer":permissions.approvals_reviewer,"permissions":permissions.profile_id,"model":models.model,"modelProvider":models.model_provider,"serviceTier":models.service_tier,"config":{"model_reasoning_effort":models.effort},"dynamicTools":[{"name":"work_read","description":"Fixture Work reader","inputSchema":{"type":"object","properties":{}}},{"name":"work_manage","description":"Fixture Work commands","inputSchema":{"type":"object","properties":{}}}]} );
+		if models.service_tier.is_none(){replacement.as_object_mut().unwrap().remove("serviceTier");}
+		assert!(store.reserve_agent_tool_migration("sage".into(),old_id.into(),replacement.to_string()).await.expect("Project and Work qualification fixture"));
+		let created=session.client.thread_start(replacement.clone()).await.expect("Project and Work qualification fixture");
+		let replacement_id=created["thread"]["id"].as_str().expect("Project and Work qualification fixture");
+		session.client.name_thread(replacement_id,"Retain the source").await.expect("Project and Work qualification fixture");
+		let verified=session.client.thread_resume(serde_json::json!({"threadId":replacement_id,"excludeTurns":true})).await.expect("Project and Work qualification fixture");
+		for field in ["cwd","approvalPolicy","approvalsReviewer","model","modelProvider","serviceTier"] {assert_eq!(verified[field],replacement[field],"replacement {field}");}
+		assert_eq!(verified["reasoningEffort"],replacement["config"]["model_reasoning_effort"]);
+		assert_eq!(NativeTaskPermissions::from_thread_response(&verified).unwrap().profile_id,permissions.profile_id);
+		store.record_agent_tool_context("sage".into(),Some(replacement_id.into())).await.expect("Project and Work qualification fixture");
 		agent.continue_worker("sage","Continue through the new Work contract").await.expect("Project and Work qualification fixture");let current=store.get_agent_work_item("sage".into()).await.expect("Project and Work qualification fixture").codex_thread_id.expect("Project and Work qualification fixture");assert_ne!(current,old_id);finish(&mut session,&mut agent,&current).await;
 		assert_eq!(session.client.thread_archive_state(old_id).await.expect("Project and Work qualification fixture"),ThreadArchiveState::Archived);assert_eq!(store.agent_previous_threads("sage".into()).await.expect("Project and Work qualification fixture"),vec![old_id.to_owned()]);assert_eq!(store.agent_tool_version("sage".into()).await.expect("Project and Work qualification fixture"),4);
 		let actual=session.client.thread_resume(serde_json::json!({"threadId":current,"excludeTurns":true})).await.expect("Project and Work qualification fixture");let expected=NativeTaskPermissions::from_thread_response(&old).expect("Project and Work qualification fixture");let migrated=NativeTaskPermissions::from_thread_response(&actual).expect("Project and Work qualification fixture");assert_eq!(expected.profile_id,migrated.profile_id);assert_eq!(expected.sandbox_policy,migrated.sandbox_policy);assert_eq!(actual["reasoningEffort"],"medium");
 		agent.continue_worker("sage","Second continuation uses the same native context").await.expect("Project and Work qualification fixture");assert_eq!(store.get_agent_work_item("sage".into()).await.expect("Project and Work qualification fixture").codex_thread_id.as_deref(),Some(current.as_str()));finish(&mut session,&mut agent,&current).await;
 	}).await.expect("bounded native migration");
 	backend.abort();
+}
+
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; retained continuation after native restart"]
+async fn native_legacy_continuation_preserves_history_and_permissions_after_restart() {
+	let (home, mut session, store, mut agent, backend) = setup(|serial| {
+		serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Retained answer"}]})
+	})
+	.await;
+	let outcome = time::timeout(Duration::from_secs(60), async {
+		let old = session
+			.client
+			.thread_start(serde_json::json!({
+				"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"on-request",
+				"approvalsReviewer":"user","sandbox":"read-only","model":"gpt-5.6-sol",
+				"config":{"model_reasoning_effort":"medium"},
+				"dynamicTools":[{"name":"agent_create_work","description":"Legacy execution",
+					"inputSchema":{"type":"object","properties":{}}}]
+			}))
+			.await
+			.unwrap();
+		let thread = old["thread"]["id"].as_str().unwrap();
+		let expected = NativeTaskPermissions::from_thread_response(&old).unwrap();
+		assert!(expected.profile_id.is_none(), "retain the original unnamed sandbox");
+		AgentCoordinator::reserve_root(&store, "sage", "Retain the source").await.unwrap();
+		store.bind_agent_thread("sage".into(), thread.into()).await.unwrap();
+		let root = decodex_core::DecodexRoot::new(home.path().canonicalize().unwrap().join("data"))
+			.unwrap();
+		rusqlite::Connection::open(root.paths().product_database_file())
+			.unwrap()
+			.execute("UPDATE agent_tool_versions SET version=3 WHERE work_id='sage'", [])
+			.unwrap();
+		let first = session
+			.client
+			.turn_start(serde_json::json!({
+				"threadId":thread,"input":[{"type":"text","text":"Historical user decision"}]
+			}))
+			.await
+			.unwrap();
+		let first_turn = first["turn"]["id"].as_str().unwrap();
+		finish(&mut session, &mut agent, thread).await;
+		let history = session.client.thread_read_turn(thread, first_turn).await.unwrap();
+		agent.continue_worker("sage", "Continue the same conversation").await.unwrap();
+		finish(&mut session, &mut agent, thread).await;
+		drop(agent);
+		drop(session);
+		let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
+		let mut session = NativeSession::with_capabilities(
+			&binary,
+			home.path(),
+			InitializeCapabilities::for_agent(),
+		);
+		let reopened = SqliteStore::open(&root.paths()).unwrap();
+		let mut config = AgentConfig::new(
+			"gpt-5.6-sol".into(),
+			"medium".into(),
+			home.path().display().to_string(),
+		);
+		config.sandbox = "read-only".into();
+		let mut agent =
+			AgentCoordinator::new(reopened.clone(), session.client.clone(), config).unwrap();
+		agent.continue_worker("sage", "Continue after process restart").await.unwrap();
+		finish(&mut session, &mut agent, thread).await;
+		let current = reopened.get_agent_work_item("sage".into()).await.unwrap();
+		assert_eq!(current.codex_thread_id.as_deref(), Some(thread));
+		assert_eq!(reopened.agent_tool_version("sage".into()).await.unwrap(), 3);
+		assert!(reopened.agent_tool_migration("sage".into()).await.unwrap().is_none());
+		assert!(reopened.agent_previous_threads("sage".into()).await.unwrap().is_empty());
+		assert_eq!(
+			session.client.thread_archive_state(thread).await.unwrap(),
+			ThreadArchiveState::Active
+		);
+		let resumed = session
+			.client
+			.thread_resume(serde_json::json!({
+				"threadId":thread,"excludeTurns":true
+			}))
+			.await
+			.unwrap();
+		let actual = NativeTaskPermissions::from_thread_response(&resumed).unwrap();
+		assert_eq!(actual.cwd, expected.cwd);
+		assert_eq!(actual.profile_id, expected.profile_id);
+		assert_eq!(actual.sandbox_policy, expected.sandbox_policy);
+		assert_eq!(actual.approval_policy, expected.approval_policy);
+		assert_eq!(actual.approvals_reviewer, expected.approvals_reviewer);
+		assert_eq!(resumed["model"], old["model"]);
+		assert_eq!(resumed["reasoningEffort"], old["reasoningEffort"]);
+		let retained = session.client.thread_read_turn(thread, first_turn).await.unwrap();
+		assert_eq!(retained["thread"]["turns"], history["thread"]["turns"]);
+	})
+	.await;
+	backend.abort();
+	outcome.expect("bounded retained native continuation");
 }
