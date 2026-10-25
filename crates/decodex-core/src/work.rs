@@ -217,7 +217,7 @@ pub struct NativeContribution {
 	pub child_thread_id: Option<String>,
 	/// Exact parent native turn with the verified collaboration or child activity.
 	pub parent_turn_id: Option<String>,
-	/// Exact native collaboration or child activity item. V2 instruction proof is the child input.
+	/// Exact native parent activity, matched through received input or native task identity.
 	pub parent_item_id: Option<String>,
 }
 
@@ -234,8 +234,43 @@ pub struct NativeWorkDelivery {
 	pub child_turn_id: String,
 	/// Exact inbound native message, independent of a later parent activity.
 	pub message_id: String,
+	/// How the native receiving message was associated with its prepared assignment.
+	#[serde(default)]
+	pub assignment_proof: NativeAssignmentProof,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+/// Retained evidence used to associate a native assignment with a Work.
+pub enum NativeAssignmentProof {
+	/// The exact prepared prompt was visible in native input.
+	#[default]
+	Plaintext,
+	/// The exact native task name matched; the provider encrypted the prompt.
+	NativeTaskName,
+}
+
+impl NativeAssignmentProof {
+	/// Stable storage spelling for the observed proof.
+	pub fn as_str(self) -> &'static str {
+		match self {
+			Self::Plaintext => "plaintext",
+			Self::NativeTaskName => "native_task_name",
+		}
+	}
 }
 impl NativeContribution {
+	/// A native-compatible name retained across retries of this assignment.
+	pub fn native_task_name(&self) -> String {
+		use sha2::{Digest as _, Sha256};
+		let digest: String = Sha256::digest(self.id.as_bytes())
+			.iter()
+			.take(16)
+			.map(|byte| format!("{byte:02x}"))
+			.collect();
+		format!("work_{digest}")
+	}
+
 	/// Exact prompt to pass to the native helper. A missing binding never authorizes duplicate
 	/// spawn.
 	pub fn native_prompt(&self) -> String {

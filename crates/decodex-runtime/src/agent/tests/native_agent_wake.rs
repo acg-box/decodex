@@ -18,6 +18,18 @@ use decodex_database::AgentDispatchState;
 const NATIVE_ASSIGNMENT: &str =
 	"[Work: held-work; Requirements: r1; Contribution: held-child]\nHELD_CHILD_RESULT";
 
+fn contribution() -> NativeContribution {
+	NativeContribution {
+		id: "held-child".into(),
+		work_id: "held-work".into(),
+		requirements_id: "r1".into(),
+		instruction: "HELD_CHILD_RESULT".into(),
+		child_thread_id: None,
+		parent_turn_id: None,
+		parent_item_id: None,
+	}
+}
+
 fn is_child(body: &Value) -> bool {
 	body["client_metadata"]["x-openai-subagent"].as_str().is_some_and(|role| role != "guardian")
 }
@@ -28,7 +40,7 @@ fn response(body: &Value, serial: usize, v2: bool, nested: bool) -> Value {
 	}
 	if serial == if v2 { 1 } else { 2 } {
 		let arguments = if v2 {
-			serde_json::json!({"task_name":"worker","message":NATIVE_ASSIGNMENT,"fork_turns":"none"})
+			serde_json::json!({"task_name":contribution().native_task_name(),"message":NATIVE_ASSIGNMENT,"fork_turns":"none"})
 		} else {
 			serde_json::json!({"message":NATIVE_ASSIGNMENT})
 		};
@@ -285,7 +297,7 @@ async fn qualify_reopened_store(agent: &AgentCoordinator, home: &std::path::Path
 		// Reconstruct the durable crash point after input was observed, before its
 		// parent call and child binding were committed. The actual native history stays intact.
 		let c = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
-		c.execute_batch("BEGIN; DELETE FROM native_work_dispatches WHERE contribution_id='held-child'; DELETE FROM work_commands WHERE id='native-binding:held-child'; UPDATE native_work_contributions SET child_thread_id=NULL,parent_turn_id=NULL,parent_item_id=NULL WHERE id='held-child'; COMMIT;").unwrap();
+		c.execute_batch("BEGIN; DELETE FROM native_work_deliveries WHERE contribution_id='held-child'; DELETE FROM native_work_dispatches WHERE contribution_id='held-child'; DELETE FROM work_commands WHERE id='native-binding:held-child'; UPDATE native_work_contributions SET child_thread_id=NULL,parent_turn_id=NULL,parent_item_id=NULL WHERE id='held-child'; COMMIT;").unwrap();
 	}
 	let reopened = decodex_database::SqliteStore::open(&root.paths()).unwrap();
 	let mut recovered =
@@ -326,17 +338,7 @@ async fn prepare_work(agent: &AgentCoordinator) {
 		.apply_work_command(
 			"agent".into(),
 			"prepare-child".into(),
-			WorkCommand::PrepareSubagent {
-				contribution: NativeContribution {
-					id: "held-child".into(),
-					work_id: "held-work".into(),
-					requirements_id: "r1".into(),
-					instruction: "HELD_CHILD_RESULT".into(),
-					child_thread_id: None,
-					parent_turn_id: None,
-					parent_item_id: None,
-				},
-			},
+			WorkCommand::PrepareSubagent { contribution: contribution() },
 			true,
 		)
 		.await

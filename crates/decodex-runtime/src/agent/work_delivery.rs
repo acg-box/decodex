@@ -1,8 +1,52 @@
-//! Attribute plaintext native delivery without inspecting executable Code Mode text.
+//! Attribute native delivery without interpreting Code Mode or decrypting private input.
 use super::{AgentCoordinator, AgentError, Value};
-use decodex_core::work::NativeWorkDelivery;
+use decodex_core::work::{NativeAssignmentProof, NativeWorkDelivery};
 
 impl AgentCoordinator {
+	pub(super) async fn named_native_dispatch(
+		&self,
+		contribution: &decodex_core::work::NativeContribution,
+		parent: &str,
+		turn: &str,
+		child: &str,
+	) -> Result<Option<String>, AgentError> {
+		let read = self
+			.client
+			.thread_read(serde_json::json!({"threadId":child,"includeTurns":false}))
+			.await?;
+		let source = &read["thread"]["source"]["subAgent"]["thread_spawn"];
+		if read["thread"]["id"] != child
+			|| read["thread"]["parentThreadId"] != parent
+			|| source["parent_thread_id"] != parent
+			|| source["agent_path"] != format!("/root/{}", contribution.native_task_name())
+		{
+			return Ok(None);
+		}
+		let page = self.client.thread_history_page(child, None, 5).await?;
+		if !page["turns"]
+			.as_array()
+			.is_some_and(|turns| turns.iter().any(|t| t["rootTurnId"] == turn))
+		{
+			return Ok(None);
+		}
+		let history = self.client.thread_read_turn(parent, turn).await?;
+		let Some(activity) = assignment_activity(&history, parent, turn, child) else {
+			return Ok(None);
+		};
+		let Some(call) = activity["id"].as_str() else {
+			return Ok(None);
+		};
+		self.store
+			.record_native_work_dispatch(
+				contribution.id.clone(),
+				parent.into(),
+				turn.into(),
+				call.into(),
+			)
+			.await?;
+		Ok(Some(call.into()))
+	}
+
 	pub(super) async fn observe_native_work_delivery(
 		&self,
 		params: &Value,
@@ -13,7 +57,11 @@ impl AgentCoordinator {
 			return Ok(());
 		};
 		let Some(recipient) = params["item"]["recipient"].as_str() else { return Ok(()) };
-		let Some(prompt) = assignment_payload(&params["item"], recipient) else { return Ok(()) };
+		let prompt = assignment_payload(&params["item"], recipient);
+		let encrypted = encrypted_assignment(&params["item"], recipient);
+		if prompt.is_none() && !encrypted {
+			return Ok(());
+		}
 		let Ok(history) = self.client.thread_read_turn(child, turn).await else { return Ok(()) };
 		let source = &history["thread"]["source"]["subAgent"]["thread_spawn"];
 		let (Some(parent), Some(path)) =
@@ -43,7 +91,9 @@ impl AgentCoordinator {
 		};
 		let portfolio = self.store.agent_work_portfolio(owner.id.clone(), None).await?;
 		let mut matches = portfolio.native_contributions.iter().filter(|c| {
-			c.native_prompt() == prompt && c.child_thread_id.as_deref().is_none_or(|id| id == child)
+			(prompt.is_some_and(|prompt| c.native_prompt() == prompt)
+				|| (encrypted && path == format!("/root/{}", c.native_task_name())))
+				&& c.child_thread_id.as_deref().is_none_or(|id| id == child)
 		});
 		let Some(contribution) = matches.next() else { return Ok(()) };
 		if matches.next().is_some() {
@@ -58,6 +108,11 @@ impl AgentCoordinator {
 					child_thread_id: child.into(),
 					child_turn_id: turn.into(),
 					message_id: message.into(),
+					assignment_proof: if encrypted {
+						NativeAssignmentProof::NativeTaskName
+					} else {
+						NativeAssignmentProof::Plaintext
+					},
 				},
 			)
 			.await?;
@@ -141,6 +196,37 @@ fn assignment_payload<'a>(item: &'a Value, recipient: &str) -> Option<&'a str> {
 	})
 }
 
+fn encrypted_assignment(item: &Value, recipient: &str) -> bool {
+	if item["type"] != "agent_message"
+		|| item["author"] != "/root"
+		|| item["recipient"] != recipient
+	{
+		return false;
+	}
+	let Some(content) = item["content"].as_array().filter(|c| c.len() == 2) else {
+		return false;
+	};
+	let Some(provenance) = item
+		.pointer("/internal_chat_message_metadata_passthrough/content_item_metadata")
+		.and_then(Value::as_array)
+	else {
+		return false;
+	};
+	provenance.len() == 2
+		&& provenance.iter().all(|p| {
+			p["provenance"]["type"] == "tool" && p["provenance"]["namespace"] == "collaboration"
+		})
+		&& content[0]["type"] == "input_text"
+		&& ["NEW_TASK", "MESSAGE"].iter().any(|kind| {
+			content[0]["text"]
+				== format!(
+					"Message Type: {kind}\nTask name: {recipient}\nSender: /root\nPayload:\n"
+				)
+		})
+		&& content[1]["type"] == "encrypted_content"
+		&& content[1]["encrypted_content"].as_str().is_some_and(|s| !s.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -161,5 +247,17 @@ mod tests {
 		assert!(assignment_activity(&history, "parent", "turn", "child").is_some());
 		history["thread"]["turns"][0]["items"].as_array_mut().unwrap().push(activity);
 		assert!(assignment_activity(&history, "parent", "turn", "child").is_none());
+	}
+
+	#[test]
+	fn encrypted_assignment_retains_only_native_routing_proof() {
+		let item = serde_json::json!({"type":"agent_message","author":"/root","recipient":"/root/work_test","content":[{"type":"input_text","text":"Message Type: NEW_TASK\nTask name: /root/work_test\nSender: /root\nPayload:\n"},{"type":"encrypted_content","encrypted_content":"opaque-native-input"}],"internal_chat_message_metadata_passthrough":{"content_item_metadata":[{"provenance":{"type":"tool","namespace":"collaboration"}},{"provenance":{"type":"tool","namespace":"collaboration"}}]}});
+		assert!(encrypted_assignment(&item, "/root/work_test"));
+		assert!(assignment_payload(&item, "/root/work_test").is_none());
+		assert!(!encrypted_assignment(&item, "/root/other"));
+		let mut quoted = item;
+		quoted["internal_chat_message_metadata_passthrough"]["content_item_metadata"][1]["provenance"]
+			["type"] = serde_json::json!("user");
+		assert!(!encrypted_assignment(&quoted, "/root/work_test"));
 	}
 }
