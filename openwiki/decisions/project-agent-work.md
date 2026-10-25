@@ -3,9 +3,6 @@ type: Decision
 title: "Project, Agent and Work contract"
 description: "Accepted architecture, shared English vocabulary, minimum Work and Collaboration contracts, recovery, and global Guardian controls."
 tags: ["decodex", "architecture", "agents", "contracts", "guardian"]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-95772fa38252ded838ec3a2f
     resource: repo://.config/nextest.toml
@@ -31,6 +28,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/project.rs
   - id: openwiki-source-a7b97dd347fbe2f630692d12
     resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
+  - id: openwiki-source-24139c353e393a9759b0267a
+    resource: repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs
   - id: openwiki-source-d511cef2848dd5f6968572ae
     resource: repo://crates/decodex-runtime/src/agent/tool_migration.rs
   - id: openwiki-source-4f59431f3f6264a65208bdcb
@@ -55,7 +54,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
+generated: { by: "codex", at: "2026-10-25T08:56:12.608Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T08:56:12.608Z
 ---
 
 # Project, Agent and Work contract
@@ -300,4 +302,10 @@ Work evidence reads apply scope before a 100-record limit per category and expos
 
 Synthetic provider tests establish only the measured native integration contracts. A later isolated real-provider scenario used `gpt-6-astra` at Medium, two Projects and four Works. It completed native delegation, the same peer request with a repair instruction, current owner assessments, restart recovery and global Guardian checks. Its final workspace run passed 2924 tests with 1159 skipped and no LEAK; nine exact-artifact native tests and strict lint for 13 packages passed. The reusable scenario and exact counts are in `retained_project_agent_work.live_acceptance`.
 
-The real scenario does not establish general model quality, installed-app acceptance, reservations or payments. Official Codex Project presentation remains unobserved. Two original unnamed encrypted helpers remain unconfirmed; the named replacement assignment was recovered without another spawn. User hold persistence and explicit release passed through the user API, while the live Pause/Resume UI click itself is not certified. No live Full Access transition, controlled lock-screen test, installation or release was performed. Source inclusion and digest checks prove provenance, not semantic correctness. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
+The control follow-up exercised the actual Pause Work and Resume Work buttons. The hold survived service and UI restart. A real Agent could not prepare a contribution or complete the paused Work with valid Result evidence. After explicit UI release, it completed the disposable control Work. The four original Works and their Results did not change.
+
+The same follow-up verified native Full Access by behavior: a write outside the Project failed under Workspace permissions, succeeded under Full Access, succeeded after restart, and failed again after Workspace permissions were restored. Global Automatic Review stayed separate. Three native permission regressions, one database hold regression, strict lint for 13 packages and formatting passed. An old native test now sets the global reviewer explicitly instead of expecting a per-Agent override to survive it; all original permission, directory and request-count assertions remain.
+
+The old venue and lodging helpers have verified native parents and matching encrypted send/receive payloads. Their own returned messages identify the expected contributions. The prepared plaintext still cannot be verified, so their formal Work bindings remain Unknown. The follow-up did not invent a binding or replay either assignment.
+
+These controlled scenarios do not establish general model quality, installed-app acceptance, reservations or payments. The user saw the isolated official app at onboarding; its Project list remains unobserved. No controlled lock-screen test, installation or release was performed. Source inclusion and digest checks prove provenance, not semantic correctness. Exact commands and limits are in `retained_project_agent_work.controls_followup`; see [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).

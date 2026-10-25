@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5220ec736c709f05e663012f9036d20de77f21729dbb9b151555f7d0a7a82fe4",
+  "pageVersion": "sha256:b73ea4df9ecc9d6a657b95d1d319c74174d088235b15ea5cfc6f93915c6a25b8",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -266,7 +266,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
@@ -359,10 +359,20 @@
           "version": "repo-file-v1:sha256:089792ed78bb1fb6d0d734b49bf2edc57bcfa96f233eb217d276f164872aeebb"
         }
       ]
+    },
+    {
+      "id": "claim_519da84e84364cd08c77dc75160687fd",
+      "statement": "The control acceptance follow-up verified native owner links and exact encrypted delivery for the old venue and lodging helpers. Their own returned messages identified the expected contributions, but prepared-plaintext proof remained unavailable and no inferred Work binding was written.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T06:52:57.034Z"
+    "at": "2026-10-25T08:56:12.608Z"
   }
 }

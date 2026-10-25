@@ -3,9 +3,6 @@ type: Reference
 title: "OpenWiki quickstart"
 description: "Task entrypoints for current native conversations, account routing, product scope and evidence."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
@@ -43,7 +40,10 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
+generated: { by: "codex", at: "2026-10-25T08:56:12.608Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T08:56:12.608Z
 ---
 
 # OpenWiki quickstart
@@ -59,6 +59,8 @@ Agents use native Subagents for bounded execution and scoped Collaboration Reque
 Work and Guardian fit the existing desktop. Expand Work to inspect Materials, Collaboration, Results and assessment. Guardian has global Ask Me or Automatic Review and optional bounded Review Details; Full Access stays a separate native permission choice. Review records with no exact action association stay explicitly unassociated.
 
 Schema 56 and protocol 3.0 provide the direct business migration. Schema 57 retains native input receipts; schemas 58 and 59 preserve independent process ownership and distinguish plaintext from native task-name proof. Independent conversations can start without an Assistant. Native Project reconciliation, named assignment recovery and Guardian detail recovery preserve native execution ownership. The [acceptance record](testing/upstream-acceptance-boundaries.md#source-built-real-provider-acceptance) documents a source-built real-provider run with two Projects and four completed Works, nine passed native tests and 2924 passed workspace tests. Original failures, unknown old encrypted bindings and unobserved official Codex Project presentation remain explicit. No app installation or release was performed.
+
+A separate control follow-up verifies actual Pause/Resume buttons and Full Access behavior across restart. It identifies the native owners of the old encrypted helpers, but leaves their unproved Work bindings unchanged. See `controls_followup` in the [retained evidence](../automations/upstream/retained-evidence.json).
 
 ## Start by task
 

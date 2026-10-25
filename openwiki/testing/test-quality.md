@@ -3,9 +3,6 @@ type: Guide
 title: Test quality and coverage
 description: Behavior-first test ownership, useful architecture checks, and the limits of cleanup and visual evidence.
 tags: [testing, maintenance]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-95772fa38252ded838ec3a2f
     resource: repo://.config/nextest.toml
@@ -17,7 +14,12 @@ sources:
     resource: repo://crates/decodex-account-login/src/lib.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
-generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
+  - id: openwiki-source-24139c353e393a9759b0267a
+    resource: repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs
+generated: { by: "codex", at: "2026-10-25T08:56:12.608Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T08:56:12.608Z
 ---
 
 # Test quality and coverage
@@ -66,3 +68,5 @@ The separate retained Project/Work qualification records actual native and local
 The later native Project and nested Work follow-up retains a separate initial full run with 2918 passed, three failures and one passed-test LEAK. Two failures were the unchanged frame samples named above; the same test executable passed each sample five times in isolation. The other failure was an old native fixture missing `projectId`, now corrected to match the real response. The final full run passed 2921 tests with 1157 skipped and no LEAK. The first follow-up LEAK was in the native resume test and has no established cause. These later passes do not replace its receipt or prove a general scheduler defect. The index retains the original identities, the artifact digest, source comparisons and the ten isolated executions.
 
 The later source-built lifecycle acceptance records another distinct result: its final full run passed 2924 tests with 1159 skipped and no LEAK. An earlier run passed all assertions but marked two tests as leaky; both unchanged tests passed in isolation. That clean result does not explain the earlier markers. The current source, native artifact, selectors and limits are under `retained_project_agent_work.live_acceptance` in the [portable index](../../automations/upstream/retained-evidence.json).
+
+The control follow-up keeps its setup failures separate from product behavior. One native permission test first lacked its documented binary environment variable. It then exposed a stale fixture assumption: a per-thread automatic reviewer was expected to survive the persisted global Ask Me setting. The fixture now sets and checks global Automatic Review while retaining all profile, policy, directory and request-count assertions. The final selected cohort passed three native permission tests and one database hold test. Live UI and real-provider probes separately verified Pause/Resume and Full Access. The full workspace suite was not repeated for this test-only change.

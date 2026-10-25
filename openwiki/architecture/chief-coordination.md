@@ -5,7 +5,7 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T06:52:57.034Z
+    at: 2026-10-25T08:56:12.608Z
 sources:
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
@@ -81,7 +81,7 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
+generated: { by: "codex", at: "2026-10-25T08:56:12.608Z" }
 ---
 
 # Project, Agent and Work coordination
@@ -110,7 +110,9 @@ Before dispatch, Decodex resumes the exact retained native conversation and reco
 
 The owner saves a contribution intent before native dispatch. A new helper uses the returned `nativeTaskName` as its native task name and `nativePrompt` as its message. Direct native calls retain their existing attribution. Visible child input can prove the exact prompt, sender, recipient, ancestry and receiving turn; one unique parent activity then completes the binding.
 
-Native V2 can encrypt the child input. In that case, Decodex can verify the prepared task name, native parent metadata, root turn and unique parent activity. It records this as task-identity proof, not plaintext verification. Source history can recover a named assignment after a missed input event. The legacy unnamed encrypted assignments remain Unknown; their prompts are not reconstructed.
+Native V2 can encrypt the child input. In that case, Decodex can verify the prepared task name, native parent metadata, root turn and unique parent activity. It records this as task-identity proof, not plaintext verification. Source history can recover a named assignment after a missed input event. The legacy unnamed encrypted Work bindings remain Unknown; their prompts are not reconstructed.
+
+The control acceptance follow-up recovered the native owner and exact encrypted delivery for the old venue and lodging helpers. Their own returned messages identified the expected Work contributions. This corroborates the result association, but it does not prove that the encrypted input equals the prepared instruction. The follow-up did not write inferred Work bindings. See `retained_project_agent_work.controls_followup` in the [retained evidence](../../automations/upstream/retained-evidence.json).
 
 An exact `work_read` request can inspect up to five recent parent turns and use native child history to recover an existing binding. It does not spawn, resend or run a polling controller. Result evidence must match the recorded receiving turn or verified root-turn assignment. Script text, quoted messages and timing do not establish dispatch. V1 retains its native prompt and activity path.
 

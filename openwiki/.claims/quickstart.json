@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:27a717b2ede0228391f2dca7f56b7b4851284dac64df7a8f64748cd79f3cb3bb",
+  "pageVersion": "sha256:beb377ab23bba3c79b84e190e04a931cdbe0dc7db891ffd1a835fe5bb0dc3d6a",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -124,7 +124,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_initial_settings.rs",
@@ -139,10 +139,20 @@
           "version": "repo-file-v1:sha256:c49bd47c9d4f22c1e43ff5c27def8ba36ff0725c355fc9327515408d4400a179"
         }
       ]
+    },
+    {
+      "id": "claim_e860f6de17fe421c9f0322f6267a1fa5",
+      "statement": "A separate control follow-up verifies real Pause/Resume controls and Full Access across restart, recovers old helper native ownership and leaves unproved Work bindings unchanged.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T06:52:57.034Z"
+    "at": "2026-10-25T08:56:12.608Z"
   }
 }

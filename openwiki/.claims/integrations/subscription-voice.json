@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:792017deabb40f6b3aa0a99cdadd27beb1a53cce8b8162dbedf6e8dca97b24d6",
+  "pageVersion": "sha256:a23d21d0ac8026a265438030beb767a67a3b165ac47768f1e87202a546fe376f",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -241,14 +241,14 @@
       "statement": "The media follow-up retains original failures and passing reruns with recovered lock and firewall history: an already-allowed package-only baseline passed while locked, and the workspace binary received its prompt and allow verdict after unlock; a new controlled lock experiment and physical or installed-app acceptance remain unqualified.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-evidence.json#L2062-L2832",
-          "version": "repo-lines-v1:sha256:51787deba6902dcb324a4b12e1c37e79c9ea2f9f32c8e70ecd56b21f55e951b1:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3MjU4MWI4NGIzMWJkNTE5OTgxYjA5N2MwOTM5MDk1YjQ4OTJhODI1NmM3MzdkMzJkY2QyNDhkOWYzODVhZWNlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIxOGU3MDJkYjE4NDM1Y2RlYjQ3NThlNzdjYjljZmY4YzUzODNjMDhhOTZmMjhiNjc1OWQ0NTg2MzgzMTZkZDc1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T06:52:57.034Z"
+    "at": "2026-10-25T08:56:12.608Z"
   }
 }
