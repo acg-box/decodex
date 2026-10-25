@@ -8,30 +8,11 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use reqwest::{Client, Proxy, Response, redirect::Policy};
-use tokio::time;
+use reqwest::{Proxy, redirect::Policy};
+use serde::Serialize;
+use tokio::{task, time};
 
-use crate::{Cancellation, Config, Error};
-
-pub(super) enum Route {
-	Direct,
-	Proxy(Box<Proxy>),
-}
-
-#[cfg(target_os = "macos")]
-enum RouteFailureClass {
-	InvalidProxyConfig,
-	ProxyResolutionUnavailable,
-	UnsupportedProxyScheme,
-	ConnectTimeout,
-}
-
-#[cfg(target_os = "macos")]
-enum SystemProxyDecision {
-	Direct,
-	Proxy { url: String },
-	Unavailable { failure: RouteFailureClass },
-}
+use crate::{Cancellation, Config, OAUTH_CLIENT_ID};
 
 // Async login and blocking service refresh share the same transport policy.
 // Neither redirects nor automatic retries may replay a one-time credential.
@@ -61,12 +42,13 @@ macro_rules! configure_client {
 	}};
 }
 
-pub(super) fn client(config: &Config, route: Option<Route>) -> Result<Client, Error> {
-	#[cfg(test)]
-	let route = route.or_else(|| config.fallback_proxy_fixture.as_ref().map(|_| Route::Direct));
-	configure_client!(Client::builder(), config.http_timeout, Duration::from_secs(10), route)
-		.build()
-		.map_err(|_| Error::Unavailable)
+// Native external-auth callbacks time out after 10 seconds (upstream c2f7fe89).
+// Leave time for persistence and the reply; a proxy fallback shares this budget.
+const REFRESH_TIMEOUT: Duration = Duration::from_secs(8);
+
+pub(super) enum Route {
+	Direct,
+	Proxy(Box<Proxy>),
 }
 
 /// Secret-free transport outcome. A request that might have reached the provider is not replayed.
@@ -78,9 +60,20 @@ pub enum RefreshTransportError {
 	Ambiguous,
 }
 
-// Native external-auth callbacks time out after 10 seconds (upstream c2f7fe89).
-// Leave time for persistence and the reply; a proxy fallback shares this budget.
-const REFRESH_TIMEOUT: Duration = Duration::from_secs(8);
+#[cfg(target_os = "macos")]
+enum RouteFailureClass {
+	InvalidProxyConfig,
+	ProxyResolutionUnavailable,
+	UnsupportedProxyScheme,
+	ConnectTimeout,
+}
+
+#[cfg(target_os = "macos")]
+enum SystemProxyDecision {
+	Direct,
+	Proxy { url: String },
+	Unavailable { failure: RouteFailureClass },
+}
 
 /// Blocking OAuth transport for the account service's blocking worker.
 /// Uses the same network policy and destination-specific proxy resolution as login.
@@ -117,20 +110,22 @@ impl RefreshTransport {
 		&self,
 		endpoint: &str,
 		refresh_token: &str,
-		resolve_route: impl FnOnce(&str) -> Result<Route, Error>,
+		resolve_route: impl FnOnce(&str) -> Result<Route, crate::Error>,
 	) -> Result<reqwest::blocking::Response, RefreshTransportError> {
-		#[derive(serde::Serialize)]
+		#[derive(Serialize)]
 		struct Grant<'a> {
 			client_id: &'static str,
 			grant_type: &'static str,
 			refresh_token: &'a str,
 		}
+
 		let grant =
-			Grant { client_id: crate::OAUTH_CLIENT_ID, grant_type: "refresh_token", refresh_token };
+			Grant { client_id: OAUTH_CLIENT_ID, grant_type: "refresh_token", refresh_token };
 		let started = Instant::now();
 		let send = |client: &reqwest::blocking::Client, timeout| {
 			client.post(endpoint).json(&grant).timeout(timeout).send()
 		};
+
 		match send(&self.client, REFRESH_TIMEOUT) {
 			Ok(response) => Ok(response),
 			Err(error) if error.is_connect() => {
@@ -140,11 +135,47 @@ impl RefreshTransport {
 					.checked_sub(started.elapsed())
 					.filter(|duration| !duration.is_zero())
 					.ok_or(RefreshTransportError::Unavailable)?;
+
 				send(&Self::client(Some(route))?, remaining).map_err(classify_refresh_transport)
 			},
 			Err(error) => Err(classify_refresh_transport(error)),
 		}
 	}
+}
+
+pub(super) fn client(
+	config: &Config,
+	route: Option<Route>,
+) -> Result<reqwest::Client, crate::Error> {
+	#[cfg(test)]
+	let route = route.or_else(|| config.fallback_proxy_fixture.as_ref().map(|_| Route::Direct));
+
+	configure_client!(
+		reqwest::Client::builder(),
+		config.http_timeout,
+		Duration::from_secs(10),
+		route
+	)
+	.build()
+	.map_err(|_| crate::Error::Unavailable)
+}
+
+pub(super) async fn exchange(
+	config: &Config,
+	client: &reqwest::Client,
+	body: &str,
+	cancellation: &Cancellation,
+	deadline: Instant,
+) -> Result<reqwest::Response, crate::Error> {
+	#[cfg(test)]
+	if let Some(proxy) = &config.fallback_proxy_fixture {
+		return exchange_with_route(config, client, body, cancellation, deadline, |_| async {
+			Proxy::all(proxy).map(Box::new).map(Route::Proxy).map_err(|_| crate::Error::Unavailable)
+		})
+		.await;
+	}
+
+	exchange_with_route(config, client, body, cancellation, deadline, resolve).await
 }
 
 fn classify_refresh_transport(error: reqwest::Error) -> RefreshTransportError {
@@ -155,35 +186,41 @@ fn classify_refresh_transport(error: reqwest::Error) -> RefreshTransportError {
 	}
 }
 
-pub(super) async fn exchange(
-	config: &Config,
-	client: &Client,
-	body: &str,
-	cancellation: &Cancellation,
-	deadline: Instant,
-) -> Result<Response, Error> {
-	#[cfg(test)]
-	if let Some(proxy) = &config.fallback_proxy_fixture {
-		return exchange_with_route(config, client, body, cancellation, deadline, |_| async {
-			Proxy::all(proxy).map(Box::new).map(Route::Proxy).map_err(|_| Error::Unavailable)
-		})
-		.await;
-	}
+fn resolve_blocking(url: &str) -> Result<Route, crate::Error> {
+	#[cfg(target_os = "macos")]
+	{
+		match macos::resolve(url) {
+			SystemProxyDecision::Proxy { url } => Proxy::all(url)
+				.map(Box::new)
+				.map(Route::Proxy)
+				.map_err(|_| crate::Error::Unavailable),
+			SystemProxyDecision::Direct => Ok(Route::Direct),
+			SystemProxyDecision::Unavailable { failure } => {
+				let _ = failure;
 
-	exchange_with_route(config, client, body, cancellation, deadline, resolve).await
+				Err(crate::Error::Unavailable)
+			},
+		}
+	}
+	#[cfg(not(target_os = "macos"))]
+	{
+		let _ = url;
+
+		Err(crate::Error::Unavailable)
+	}
 }
 
 async fn exchange_with_route<F, R>(
 	config: &Config,
-	initial: &Client,
+	initial: &reqwest::Client,
 	body: &str,
 	cancellation: &Cancellation,
 	deadline: Instant,
 	resolve_route: F,
-) -> Result<Response, Error>
+) -> Result<reqwest::Response, crate::Error>
 where
 	F: FnOnce(String) -> R,
-	R: Future<Output = Result<Route, Error>>,
+	R: Future<Output = Result<Route, crate::Error>>,
 {
 	let url = crate::endpoint(config, "oauth/token")?;
 	// Preserve the transport classification until the replay decision. Redirects are
@@ -204,9 +241,9 @@ where
 			let route = tokio::select! {
 				biased;
 
-				_ = cancellation.cancelled() => return Err(Error::Cancelled),
+				_ = cancellation.cancelled() => return Err(crate::Error::Cancelled),
 				route = time::timeout(crate::remaining(deadline)?, resolve_route(url.to_string())) =>
-					route.map_err(|_| Error::TimedOut)??,
+					route.map_err(|_| crate::Error::TimedOut)??,
 			};
 			let fallback = client(config, Some(route))?;
 
@@ -221,34 +258,14 @@ where
 			)
 			.await
 		},
-		Err(_) => Err(Error::Unavailable),
+		Err(_) => Err(crate::Error::Unavailable),
 	}
 }
 
-async fn resolve(url: String) -> Result<Route, Error> {
-	tokio::task::spawn_blocking(move || resolve_blocking(&url))
+async fn resolve(url: String) -> Result<Route, crate::Error> {
+	task::spawn_blocking(move || resolve_blocking(&url))
 		.await
-		.map_err(|_| Error::Unavailable)?
-}
-
-fn resolve_blocking(url: &str) -> Result<Route, Error> {
-	#[cfg(target_os = "macos")]
-	{
-		match macos::resolve(url) {
-			SystemProxyDecision::Proxy { url } =>
-				Proxy::all(url).map(Box::new).map(Route::Proxy).map_err(|_| Error::Unavailable),
-			SystemProxyDecision::Direct => Ok(Route::Direct),
-			SystemProxyDecision::Unavailable { failure } => {
-				let _ = failure;
-				Err(Error::Unavailable)
-			},
-		}
-	}
-	#[cfg(not(target_os = "macos"))]
-	{
-		let _ = url;
-		Err(Error::Unavailable)
-	}
+		.map_err(|_| crate::Error::Unavailable)?
 }
 
 #[cfg(test)]

@@ -1,6 +1,11 @@
 //! Reviewer-only publication. This never changes approval policy or execution permissions.
-use super::{AppServerClient, ClientError, HistoryGuard};
+use std::time::Duration;
+
 use serde_json::Value;
+use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
+
 impl AppServerClient {
 	/// Publish the review preference for subsequent turns of one exact source.
 	/// Success acknowledges publication; the caller must inspect native effective readback.
@@ -11,18 +16,22 @@ impl AppServerClient {
 		guard: HistoryGuard,
 	) -> Result<(), ClientError> {
 		let params = serde_json::json!({"threadId":thread,"approvalsReviewer":reviewer});
+
 		if !is_thread_reviewer_selection(&params) {
 			return Err(ClientError::InvalidFrame);
 		}
-		let result = tokio::time::timeout(
-			std::time::Duration::from_secs(8),
+
+		let result = time::timeout(
+			Duration::from_secs(8),
 			self.request_with_history("thread/settings/update", params, guard),
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
+
 		if result.as_object().is_none_or(|v| !v.is_empty()) {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		Ok(())
 	}
 }

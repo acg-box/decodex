@@ -1,6 +1,8 @@
 //! Read-only collaboration receipts. Delivery and assessment are separate facts.
 use serde::{Deserialize, Serialize};
 
+use crate::{AgentAsyncQuestionDto, AgentDispatchStateDto, EntityId};
+
 /// One exact managed exchange source, independent of chat history pagination.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -14,7 +16,7 @@ pub struct AgentExchangeDto {
 	/// Responsible manager, or the explicit target of a refused continuation.
 	pub other_work_id: Option<String>,
 	/// Current explicit execution state of the refused target, independent of that attempt.
-	pub target_dispatch_state: Option<crate::AgentDispatchStateDto>,
+	pub target_dispatch_state: Option<AgentDispatchStateDto>,
 	/// Native source conversation, when recorded.
 	pub thread_id: Option<String>,
 	/// Exact native turn, when recorded.
@@ -80,7 +82,7 @@ pub struct AgentExchangeQuestionDto {
 	/// Exact native source item.
 	pub item_id: String,
 	/// Original stable question identity and bounded public text.
-	pub question: crate::AgentAsyncQuestionDto,
+	pub question: AgentAsyncQuestionDto,
 	/// True only while the existing native question projection considers it pending.
 	pub pending: bool,
 }
@@ -92,7 +94,7 @@ pub enum AgentExchangesResult {
 	/// Latest source records, newest first.
 	Available {
 		/// Current account and service binding.
-		source: crate::EntityId,
+		source: EntityId,
 		/// Exact retained exchange sources.
 		entries: Vec<AgentExchangeDto>,
 		/// Current and earlier native questions from their existing owner tables.

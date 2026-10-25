@@ -1,9 +1,11 @@
 //! Native read receipts. Reading does not acknowledge a conversation.
-use super::{AppServerClient, ClientError, HistoryGuard};
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::time::Duration;
 use tokio::time;
+
+use crate::app_server_client::{AppServerClient, ClientError, HistoryGuard};
 
 /// The first unread position in a durable native conversation.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -18,6 +20,7 @@ pub enum NativeUnreadPosition {
 		turn_id: String,
 	},
 }
+
 /// A native receipt. Its revision has meaning only within this thread and source.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,17 +31,7 @@ pub struct NativeReadState {
 	/// Native compare-and-set token.
 	pub revision: String,
 }
-fn valid_id(value: &str) -> bool {
-	!value.is_empty() && value.len() <= 512 && !value.chars().any(char::is_control)
-}
-/// Admit only explicit, revision-bound native receipt writes.
-pub fn is_thread_read_state_update(value: &Value) -> bool {
-	value.as_object().is_some_and(|v| v.len() == 3)
-		&& value["threadId"].as_str().is_some_and(valid_id)
-		&& value["expectedRevision"].as_str().is_some_and(valid_id)
-		&& matches!(value["operation"]["type"].as_str(), Some("read" | "unread"))
-		&& value["operation"].as_object().is_some_and(|v| v.len() == 1)
-}
+
 impl AppServerClient {
 	/// Read metadata without loading turns, starting a turn, or marking anything read.
 	pub async fn thread_read_state(
@@ -48,6 +41,7 @@ impl AppServerClient {
 		if !valid_id(thread) {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let result = time::timeout(
 			Duration::from_secs(20),
 			self.request(
@@ -57,12 +51,15 @@ impl AppServerClient {
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
+
 		if result["thread"]["id"] != thread {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let Some(state) = result.get("readState").filter(|v| !v.is_null()) else {
 			return Ok(None);
 		};
+
 		parse_state(state.clone()).map(Some)
 	}
 
@@ -75,32 +72,52 @@ impl AppServerClient {
 		guard: HistoryGuard,
 	) -> Result<NativeReadState, ClientError> {
 		let params = serde_json::json!({"threadId":thread,"expectedRevision":revision,"operation":{"type":if read {"read"} else {"unread"}}});
+
 		if !is_thread_read_state_update(&params) {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let result = time::timeout(
 			Duration::from_secs(20),
 			self.request_with_history("thread/readState/update", params, guard),
 		)
 		.await
 		.map_err(|_| ClientError::Io)??;
+
 		parse_state(result["readState"].clone())
 	}
 }
+
+/// Admit only explicit, revision-bound native receipt writes.
+pub fn is_thread_read_state_update(value: &Value) -> bool {
+	value.as_object().is_some_and(|v| v.len() == 3)
+		&& value["threadId"].as_str().is_some_and(valid_id)
+		&& value["expectedRevision"].as_str().is_some_and(valid_id)
+		&& matches!(value["operation"]["type"].as_str(), Some("read" | "unread"))
+		&& value["operation"].as_object().is_some_and(|v| v.len() == 1)
+}
+
+fn valid_id(value: &str) -> bool {
+	!value.is_empty() && value.len() <= 512 && !value.chars().any(char::is_control)
+}
+
 fn parse_state(value: Value) -> Result<NativeReadState, ClientError> {
 	let state: NativeReadState =
 		serde_json::from_value(value).map_err(|_| ClientError::InvalidFrame)?;
+
 	if !valid_id(&state.revision)
 		|| matches!(&state.first_unread,Some(NativeUnreadPosition::Turn{turn_id}) if !valid_id(turn_id))
 	{
 		return Err(ClientError::InvalidFrame);
 	}
+
 	Ok(state)
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::app_server_client::read_state;
+
 	#[test]
 	fn missing_or_unknown_read_positions_never_mean_read() {
 		for value in [
@@ -108,10 +125,11 @@ mod tests {
 			serde_json::json!({"revision":"a","firstUnread":{"type":"future"}}),
 			serde_json::json!({"revision":"","firstUnread":null}),
 		] {
-			assert!(parse_state(value).is_err());
+			assert!(read_state::parse_state(value).is_err());
 		}
+
 		assert!(
-			parse_state(serde_json::json!({"revision":"a","firstUnread":null}))
+			read_state::parse_state(serde_json::json!({"revision":"a","firstUnread":null}))
 				.unwrap()
 				.first_unread
 				.is_none()

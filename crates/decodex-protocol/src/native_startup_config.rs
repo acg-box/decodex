@@ -1,8 +1,10 @@
 //! Safe native startup requirements and explicit diagnostic source identity.
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+
 /// Native sign-in methods reported by the current startup requirements snapshot.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NativeStartupLoginMethod {
 	/// ChatGPT sign-in.
@@ -12,7 +14,7 @@ pub enum NativeStartupLoginMethod {
 }
 
 /// Safe configuration location. Native error messages and source excerpts are not retained.
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NativeStartupConfigLocation {
 	/// Absolute configuration path, with credential-like or control text excluded.
@@ -24,7 +26,7 @@ pub struct NativeStartupConfigLocation {
 }
 
 /// Result of one native startup configuration check, separate from service and account health.
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum NativeStartupConfigStatus {
 	/// Native configuration loaded and returned a requirements snapshot.
@@ -48,7 +50,7 @@ pub enum NativeStartupConfigStatus {
 }
 
 /// A sanitized snapshot from the shared native sign-in, not a selected task account override.
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct NativeStartupConfiguration {
 	/// Exact checked directory, when it is safe to display.
@@ -58,7 +60,6 @@ pub struct NativeStartupConfiguration {
 	/// Configuration result; it does not change the service health report.
 	pub status: NativeStartupConfigStatus,
 }
-
 impl NativeStartupConfiguration {
 	/// Return a short description of the configuration result.
 	pub const fn summary(&self) -> &'static str {
@@ -77,9 +78,11 @@ impl NativeStartupConfiguration {
 			"{}\nUses the shared Codex sign-in. Account overrides for a task are not checked.",
 			self.summary()
 		);
+
 		if let Some(directory) = &self.directory {
 			text.push_str(&format!("\nDirectory: {directory}"));
 		}
+
 		match &self.status {
 			NativeStartupConfigStatus::Loaded { version, login_methods, requirements_present } => {
 				let methods = login_methods.as_ref().map_or_else(
@@ -88,6 +91,7 @@ impl NativeStartupConfiguration {
 						if methods.is_empty() {
 							return "None".into();
 						}
+
 						methods
 							.iter()
 							.map(|m| match m {
@@ -98,6 +102,7 @@ impl NativeStartupConfiguration {
 							.join(", ")
 					},
 				);
+
 				text.push_str(&format!(
 					"\nNative version: {version}\nAllowed sign-in methods: {methods}\nNative requirements: {}",
 					if *requirements_present { "Present" } else { "None reported" }
@@ -105,6 +110,7 @@ impl NativeStartupConfiguration {
 			},
 			NativeStartupConfigStatus::Rejected { location: Some(location), .. } => {
 				text.push_str(&format!("\nConfiguration: {}", location.file));
+
 				if let Some(line) = location.line {
 					text.push_str(&format!("\nLine: {line}"));
 				}
@@ -114,9 +120,11 @@ impl NativeStartupConfiguration {
 			},
 			_ => {},
 		}
+
 		if let Some(digest) = &self.codex_sha256 {
 			text.push_str(&format!("\nCodex SHA-256: {digest}"));
 		}
+
 		text
 	}
 }
@@ -162,7 +170,7 @@ impl NativeStartupConfiguration {
 }
 fn valid_path(value: &str) -> bool {
 	!value.is_empty()
-		&& value.len() <= 4096
+		&& value.len() <= 4_096
 		&& Path::new(value).is_absolute()
 		&& !value.chars().any(char::is_control)
 		&& !decodex_core::contains_credential_material(value)
@@ -170,7 +178,8 @@ fn valid_path(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use super::{NativeStartupConfigStatus, NativeStartupConfiguration};
+	use crate::native_startup_config::{NativeStartupConfigStatus, NativeStartupConfiguration};
+
 	#[test]
 	fn successful_startup_configuration_requires_exact_source_and_artifact_identity() {
 		let mut report = NativeStartupConfiguration {
@@ -182,10 +191,15 @@ mod tests {
 				requirements_present: false,
 			},
 		};
+
 		assert!(!report.is_valid());
+
 		report.codex_sha256 = Some("a".repeat(64));
+
 		assert!(report.is_valid());
+
 		report.directory = None;
+
 		assert!(!report.is_valid());
 	}
 }

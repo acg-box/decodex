@@ -5,17 +5,18 @@ use std::{
 };
 
 use reqwest::Proxy;
+use serde_json::Value;
 use tokio::{
 	io::{AsyncBufReadExt as _, AsyncReadExt as _, AsyncWriteExt as _, BufReader},
 	net::TcpListener,
 	sync::oneshot,
-	task::JoinHandle,
+	task::{self, JoinHandle},
 };
 use url::Url;
 
 use crate::{
 	Cancellation, Config, Error,
-	system_proxy::{self, Route},
+	system_proxy::{self, RefreshTransport, Route},
 };
 
 fn config(url: &str) -> Config {
@@ -250,16 +251,17 @@ async fn a_failed_fallback_is_terminal() {
 async fn refresh_connection_failure_uses_same_destination_proxy_and_oauth_grant() {
 	let (proxy, request) =
 		server(Some("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")).await;
-	let response = tokio::task::spawn_blocking(move || {
-		let transport = system_proxy::RefreshTransport {
-			client: system_proxy::RefreshTransport::client(Some(Route::Direct)).unwrap(),
-		};
+	let response = task::spawn_blocking(move || {
+		let transport =
+			RefreshTransport { client: RefreshTransport::client(Some(Route::Direct)).unwrap() };
+
 		transport
 			.refresh_with_route(
 				"http://127.0.0.1:0/oauth/token",
 				"fixture-refresh",
 				|destination| {
 					assert_eq!(destination, "http://127.0.0.1:0/oauth/token");
+
 					Ok(Route::Proxy(Box::new(Proxy::all(proxy).unwrap())))
 				},
 			)
@@ -268,12 +270,17 @@ async fn refresh_connection_failure_uses_same_destination_proxy_and_oauth_grant(
 	})
 	.await
 	.unwrap();
+
 	assert_eq!(response, reqwest::StatusCode::OK);
+
 	let request = request.await.unwrap();
+
 	assert!(request.starts_with("POST http://127.0.0.1:0/oauth/token HTTP/1.1"));
 	assert!(request.contains("application/json"));
 	assert!(request.contains("originator: codex_cli_rs"));
-	let grant: serde_json::Value = serde_json::from_str(request.lines().last().unwrap()).unwrap();
+
+	let grant: Value = serde_json::from_str(request.lines().last().unwrap()).unwrap();
+
 	assert_eq!(
 		grant,
 		serde_json::json!({"client_id": crate::OAUTH_CLIENT_ID,"grant_type":"refresh_token","refresh_token":"fixture-refresh"})
@@ -290,10 +297,10 @@ async fn refresh_never_replays_after_response_loss_redirect_or_provider_error() 
 		Some("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"),
 	] {
 		let (url, request) = server(reply).await;
-		let outcome = tokio::task::spawn_blocking(move || {
-			let transport = system_proxy::RefreshTransport {
-				client: system_proxy::RefreshTransport::client(Some(Route::Direct)).unwrap(),
-			};
+		let outcome = task::spawn_blocking(move || {
+			let transport =
+				RefreshTransport { client: RefreshTransport::client(Some(Route::Direct)).unwrap() };
+
 			transport
 				.refresh_with_route(&format!("{url}/oauth/token"), "fixture-refresh", |_| {
 					panic!("must not replay a dispatched refresh through another route")
@@ -302,11 +309,13 @@ async fn refresh_never_replays_after_response_loss_redirect_or_provider_error() 
 		})
 		.await
 		.unwrap();
+
 		match reply {
 			None => assert_eq!(outcome, Err(system_proxy::RefreshTransportError::Ambiguous)),
 			Some(reply) if reply.contains("307") => assert_eq!(outcome.unwrap().as_u16(), 307),
 			Some(_) => assert_eq!(outcome.unwrap().as_u16(), 503),
 		}
+
 		assert!(request.await.unwrap().contains("fixture-refresh"));
 	}
 }

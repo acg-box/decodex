@@ -39,8 +39,9 @@ use crate::{
 	ConversationWorkingDirectory, DictationRequest, DictationStatus, DoctorReport,
 	InitialModelCatalogRequest, InitialModelCatalogResult, InitialModelSource, McpLoginRequest,
 	McpLoginStatus, ModelCatalogPurpose, NativeAgentsResult, NativeStartupConfiguration,
-	PromptEditStatus, PromptForkResult, PromptInputSendIdentity, PromptInputSendStatus,
-	PromptInputUpload, PromptInputUploadStatus, ProtocolVersion, TaskRecapStatus,
+	PrivateReviewDetailsResult, PromptEditStatus, PromptForkResult, PromptInputSendIdentity,
+	PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus, ProtocolVersion,
+	TaskRecapStatus, WorkDetailResult,
 	program_cycle::{ProgramCycleResult, ProgramListResult},
 };
 
@@ -3220,9 +3221,9 @@ pub enum QueryResultPayload {
 	/// Native resource associations for an exact work thread.
 	AgentResources(AgentResourcesResult),
 	/// Saved Guardian assessments and explicit user approval receipts.
-	PrivateReviewDetails(crate::PrivateReviewDetailsResult),
+	PrivateReviewDetails(PrivateReviewDetailsResult),
 	/// One exact selected Work view page.
-	WorkDetail(crate::WorkDetailResult),
+	WorkDetail(WorkDetailResult),
 	/// Saved native action-review evidence.
 	AgentGuardianReviews(AgentGuardianReviewsResult),
 	/// Exact saved action detail page.

@@ -1,5 +1,8 @@
 //! Domain, application, configuration, and owned local-storage foundations for Decodex vNext.
 
+pub mod guardian;
+pub mod work;
+
 mod account;
 mod account_alias;
 mod blob;
@@ -10,7 +13,6 @@ mod continuation;
 mod conversation;
 mod execution;
 mod fast_mode;
-pub mod guardian;
 mod identity;
 mod managed_run;
 #[cfg(unix)] mod path_unix;
@@ -24,7 +26,6 @@ mod reset_card;
 mod routing;
 mod service_tier;
 mod storage;
-pub mod work;
 mod work_item;
 
 pub use self::{

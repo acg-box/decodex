@@ -1,6 +1,7 @@
 //! Bounded, read-only delivery timeline queries.
-use crate::EntityId;
 use serde::{Deserialize, Serialize};
+
+use crate::EntityId;
 
 /// Date bounds are inclusive at the start and exclusive at the end.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

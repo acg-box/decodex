@@ -1,6 +1,7 @@
 //! Exact-thread archive membership. Native thread/read has no archived field.
 use std::{
 	collections::{BTreeSet, HashMap, HashSet},
+	mem,
 	time::Duration,
 };
 
@@ -34,9 +35,11 @@ impl AppServerClient {
 	) -> HashMap<String, ThreadArchiveState> {
 		let mut pending = threads.clone();
 		let mut observed = HashMap::new();
+
 		if pending.is_empty() || pending.iter().any(|id| valid_id(id).is_err()) {
 			return observed;
 		}
+
 		let directories = self.archive_directories(threads).await;
 		let mut budget = MAX_FRAME_BYTES;
 		let scan = async {
@@ -54,25 +57,31 @@ impl AppServerClient {
 							},
 						);
 					}
+
 					pending.is_empty()
 				})
 				.await?;
+
 				if pending.is_empty() {
 					break;
 				}
 			}
+
 			Ok::<_, ClientError>(())
 		};
+
 		if scan.await.is_ok() {
 			for id in pending {
 				observed.insert(id, ThreadArchiveState::NotFound);
 			}
 		}
+
 		observed
 	}
 
 	async fn archive_directories(&self, threads: &HashSet<String>) -> Option<Value> {
 		let mut directories = BTreeSet::new();
+
 		for thread in threads {
 			let response = time::timeout(
 				Duration::from_secs(8),
@@ -81,8 +90,10 @@ impl AppServerClient {
 			.await
 			.ok()?
 			.ok()?;
+
 			directories.insert(archive_directory(&response, thread).ok()?.to_owned());
 		}
+
 		// Native metadata supplies the scope. If a binding cannot be read, inspect
 		// the full catalogs so absence is never inferred from a stale local folder.
 		Some(serde_json::json!(directories))
@@ -141,11 +152,14 @@ impl AppServerClient {
 		budget: &mut usize,
 	) -> Result<HashSet<String>, ClientError> {
 		let mut ids = HashSet::new();
+
 		self.visit_archive_catalog(cwd.map(Value::from), archived, budget, |id| {
 			ids.insert(id.to_owned());
+
 			target == Some(id)
 		})
 		.await?;
+
 		Ok(ids)
 	}
 
@@ -159,6 +173,7 @@ impl AppServerClient {
 		let mut cursor: Option<String> = None;
 		let mut cursors = HashSet::new();
 		let mut ids = HashSet::new();
+
 		loop {
 			let mut params = serde_json::json!({
 				"archived":archived,"cursor":cursor,"limit":100,"modelProviders":[],
@@ -166,30 +181,40 @@ impl AppServerClient {
 				"sortKey":"updated_at",
 				"sourceKinds":["cli","vscode","exec","appServer","subAgent","subAgentReview","subAgentCompact","subAgentThreadSpawn","subAgentOther","unknown"]
 			});
+
 			if let Some(cwd) = &cwd {
 				params["cwd"] = cwd.clone();
 			}
+
 			let page = time::timeout(Duration::from_secs(8), self.request("thread/list", params))
 				.await
 				.map_err(|_| ClientError::Io)??;
 			let data = page["data"].as_array().ok_or(ClientError::InvalidFrame)?;
+
 			if data.len() > 100 {
 				return Err(ClientError::InvalidFrame);
 			}
+
 			let mut page_ids = Vec::with_capacity(data.len());
+
 			for item in data {
 				let id = item["id"].as_str().ok_or(ClientError::InvalidFrame)?;
+
 				valid_id(id)?;
+
 				// The transport bounds each response. Bound retained identities here;
 				// unrelated previews must not cap the number of archive pages.
 				*budget = budget
-					.checked_sub(id.len() + std::mem::size_of::<String>())
+					.checked_sub(id.len() + mem::size_of::<String>())
 					.ok_or(ClientError::CapacityExceeded)?;
+
 				if !ids.insert(id.to_owned()) {
 					return Err(ClientError::InvalidFrame);
 				}
+
 				page_ids.push(id);
 			}
+
 			let next = match page.get("nextCursor") {
 				Some(Value::Null) => None,
 				Some(Value::String(next))
@@ -197,17 +222,20 @@ impl AppServerClient {
 					Some(next.clone()),
 				_ => return Err(ClientError::InvalidFrame),
 			};
+
 			for id in page_ids {
 				if observe(id) {
 					return Ok(());
 				}
 			}
+
 			if next.is_none() {
 				return Ok(());
 			}
+
 			*budget = budget
 				.checked_sub(
-					next.as_ref().map_or(0, |cursor| cursor.len() + std::mem::size_of::<String>()),
+					next.as_ref().map_or(0, |cursor| cursor.len() + mem::size_of::<String>()),
 				)
 				.ok_or(ClientError::CapacityExceeded)?;
 			cursor = next;
@@ -255,7 +283,10 @@ fn valid_id(id: &str) -> Result<(), ClientError> {
 
 #[cfg(test)]
 mod tests {
-	use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+	use tokio::{
+		io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+		time,
+	};
 
 	use crate::app_server_client::archive::{
 		AppServerClient, ClientError, ThreadArchiveState, Value,
@@ -272,12 +303,17 @@ mod tests {
 		loop {
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 			if request["method"] != "thread/read" {
 				assert_eq!(request["params"]["cwd"], serde_json::json!(["/workspace"]));
+
 				return request;
 			}
+
 			assert_eq!(request["params"]["includeTurns"], false);
+
 			let response = serde_json::json!({"id":request["id"],"result":{"thread":{"id":request["params"]["threadId"],"cwd":"/workspace"}}});
+
 			writer.write_all(format!("{response}\n").as_bytes()).await.unwrap();
 		}
 	}
@@ -290,6 +326,7 @@ mod tests {
 		let server = tokio::spawn(async move {
 			let (r, mut w) = io::split(remote);
 			let mut lines = BufReader::new(r).lines();
+
 			for (archived, response) in [
 				(false, page(&["root", "target"], serde_json::json!("unrelated-active-page"))),
 				(false, page(&["root"], Value::Null)),
@@ -297,11 +334,13 @@ mod tests {
 				(false, page(&["root", "target"], serde_json::json!("unrelated-active-page"))),
 			] {
 				let request = next_catalog_request(&mut lines, &mut w).await;
+
 				assert_eq!(request["method"], "thread/list");
 				assert_eq!(request["params"]["archived"], archived);
 				assert_eq!(request["params"]["sortKey"], "updated_at");
 				assert_eq!(request["params"]["useStateDbOnly"], true);
 				assert!(request["params"].get("projectId").is_none());
+
 				w.write_all(
 					format!("{}\n", serde_json::json!({"id":request["id"],"result":response}))
 						.as_bytes(),
@@ -311,14 +350,17 @@ mod tests {
 			}
 		});
 		let threads = std::collections::HashSet::from(["root".to_owned(), "target".to_owned()]);
+
 		for expected in
 			[ThreadArchiveState::Active, ThreadArchiveState::Archived, ThreadArchiveState::Active]
 		{
 			let observed = client.observe_thread_archives(&threads).await;
+
 			assert_eq!(observed.get("root"), Some(&ThreadArchiveState::Active));
 			assert_eq!(observed.get("target"), Some(&expected));
 			assert_eq!(observed.len(), 2);
 		}
+
 		client.close();
 		server.await.unwrap();
 	}
@@ -331,15 +373,19 @@ mod tests {
 		let server = tokio::spawn(async move {
 			let (r, mut w) = io::split(remote);
 			let mut lines = BufReader::new(r).lines();
+
 			for (archived, ids, next) in [
 				(false, vec!["active"], Value::Null),
 				(true, vec!["archived"], serde_json::json!("last")),
 				(true, vec![], Value::Null),
 			] {
 				let request = next_catalog_request(&mut lines, &mut w).await;
+
 				assert_eq!(request["params"]["archived"], archived);
+
 				// Every page progresses within its deadline, but the catalog takes nine seconds.
-				tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+				time::sleep(std::time::Duration::from_secs(3)).await;
+
 				w.write_all(
 					format!(
 						"{}\n",
@@ -358,6 +404,7 @@ mod tests {
 				"missing".into(),
 			]))
 			.await;
+
 		assert_eq!(
 			observed,
 			std::collections::HashMap::from([
@@ -366,6 +413,7 @@ mod tests {
 				("missing".into(), ThreadArchiveState::NotFound),
 			])
 		);
+
 		client.close();
 		server.await.unwrap();
 	}
@@ -380,27 +428,32 @@ mod tests {
 			let mut lines = BufReader::new(r).lines();
 			let request: Value =
 				serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 			assert_eq!(request["method"], "thread/read");
+
 			w.write_all(
 				format!(
 					"{}\n",
-					serde_json::json!({"id":request["id"],"error":{"code":-32600,"message":"unavailable"}})
+					serde_json::json!({"id":request["id"],"error":{"code":-32_600,"message":"unavailable"}})
 				)
 				.as_bytes(),
 			)
 			.await
 			.unwrap();
+
 			for response in [
 				page(&["active"], serde_json::json!("next")),
 				serde_json::json!({"data":null,"nextCursor":null}),
 			] {
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				assert_eq!(request["method"], "thread/list");
 				assert!(
 					request["params"].get("cwd").is_none(),
 					"unknown metadata requires the complete catalogs"
 				);
+
 				w.write_all(
 					format!("{}\n", serde_json::json!({"id":request["id"],"result":response}))
 						.as_bytes(),
@@ -415,10 +468,12 @@ mod tests {
 				"missing".to_owned(),
 			]))
 			.await;
+
 		assert_eq!(
 			observed,
 			std::collections::HashMap::from([("active".to_owned(), ThreadArchiveState::Active)])
 		);
+
 		client.close();
 		server.await.unwrap();
 	}
@@ -432,9 +487,11 @@ mod tests {
 		let server = tokio::spawn(async move {
 			let (r, mut w) = io::split(remote);
 			let mut lines = BufReader::new(r).lines();
+
 			for page in pages {
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				assert_eq!(request["method"], "thread/list");
 				assert_eq!(request["params"]["archived"], true);
 				assert_eq!(request["params"]["useStateDbOnly"], true);
@@ -443,6 +500,7 @@ mod tests {
 					request["params"].get("projectId").is_none(),
 					"unassigned threads must be included"
 				);
+
 				w.write_all(
 					format!("{}\n", serde_json::json!({"id":request["id"],"result":page}))
 						.as_bytes(),
@@ -453,8 +511,10 @@ mod tests {
 		});
 		let mut budget = super::MAX_FRAME_BYTES;
 		let result = client.archive_catalog(None, true, None, &mut budget).await;
+
 		client.close();
 		server.await.unwrap();
+
 		result
 	}
 
@@ -466,7 +526,9 @@ mod tests {
 		])
 		.await
 		.unwrap();
+
 		assert_eq!(result, std::collections::HashSet::from(["first".into(), "second".into()]));
+
 		for pages in [
 			vec![page(&["first"], serde_json::json!("next"))],
 			vec![
@@ -488,6 +550,7 @@ mod tests {
 			"nextCursor": if page == 102 { Value::Null } else { serde_json::json!(format!("page-{}", page + 1)) }
 		})).collect();
 		let archived = inspect_catalog(pages).await.unwrap();
+
 		assert_eq!(archived.len(), 10_300);
 		assert!(archived.contains("thread-102-99"));
 	}

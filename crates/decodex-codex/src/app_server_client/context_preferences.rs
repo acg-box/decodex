@@ -23,7 +23,6 @@ pub struct NativeContextSettings {
 	/// Explicit user values; absent values use the native default.
 	pub preference: [Option<bool>; 2],
 }
-
 impl NativeContextSettings {
 	/// Bind a settings review to the native file version and effective configuration.
 	pub fn fingerprint(&self) -> String {

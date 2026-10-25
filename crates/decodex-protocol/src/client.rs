@@ -28,27 +28,31 @@ use crate::{
 	AgentActivityDetailCursor, AgentActivityDetailResult, AgentAppExposureResult, AgentAppUiCall,
 	AgentAppUiCallReview, AgentAppUiReceiptRequest, AgentAppUiReceiptResult, AgentAppUiRequest,
 	AgentAppUiResult, AgentArchiveResult, AgentCapabilitiesResult, AgentContextSettingsResult,
-	AgentExecutionOverrides, AgentGuardianDetailResult, AgentGuardianReviewsResult,
-	AgentHistoryResult, AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState,
-	AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult,
-	AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult,
-	AgentPendingAppUiCall, AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult,
-	AgentRequestResult, AgentResourcesResult, AgentSampleStatus, AgentSearchSettingsResult,
-	AgentSkillsResult, AgentSkillsTarget, AgentSnapshotResult, AgentSteerIdentity,
-	AgentSteerReceiptResult, AgentTimelineResult, AgentTranscriptRequest, AgentTranscriptResult,
-	AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult, AgentVoiceStatus,
-	CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult,
-	CommandEnvelope, CommandError, CommandOutcome, CommandPayload, CommandResultEnvelope,
-	CorrelationId, DictationRequest, DictationStatus, DoctorReport, EntityId, EntityRevision,
-	IdempotencyKey, InitialModelCatalogRequest, InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES,
-	MAX_AGENT_APP_UI_RECEIPT_BYTES, MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest,
-	McpLoginStatus, NativeAgentsResult, PromptDraft, PromptEditStatus, PromptForkResult,
-	PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus,
-	ProtocolVersion, QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition,
-	Refusal, RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult,
-	ResetCardOperationResult, ResultPayload, RetainedSessionConfig, RetainedSessionFailure,
-	ServerId, ServerMessage, TRANSCRIPT_CHUNK_BYTES, TaskRecapStatus, WireText,
+	AgentDeliveriesResult, AgentDeliveryQuery, AgentExchangesResult, AgentExecutionOverrides,
+	AgentGuardianDetailResult, AgentGuardianReviewsResult, AgentHistoryResult,
+	AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult,
+	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentModelSelectionState,
+	AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall,
+	AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult, AgentRequestResult,
+	AgentResourcesResult, AgentSampleStatus, AgentSearchSettingsResult, AgentSkillsResult,
+	AgentSkillsTarget, AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult,
+	AgentTimelineResult, AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult,
+	AgentVoiceRequest, AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION,
+	ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult, CommandEnvelope,
+	CommandError, CommandOutcome, CommandPayload, CommandResultEnvelope,
+	ConversationWorkingDirectory, CorrelationId, DictationRequest, DictationStatus, DoctorReport,
+	EntityId, EntityRevision, IdempotencyKey, InitialModelCatalogRequest,
+	InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES, MAX_AGENT_APP_UI_RECEIPT_BYTES,
+	MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest, McpLoginStatus,
+	NativeAgentsResult, NativeStartupConfiguration, PrivateReviewDetailsResult, PromptDraft,
+	PromptEditStatus, PromptForkResult, PromptInputSendIdentity, PromptInputSendStatus,
+	PromptInputUpload, PromptInputUploadStatus, ProtocolVersion, QueryEnvelope, QueryId,
+	QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope,
+	ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult, ResultPayload,
+	RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage, TRANSCRIPT_CHUNK_BYTES,
+	TaskRecapStatus, WireText, WorkDetailResult,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
+	work::WorkPortfolio,
 };
 use decodex_core::{
 	BlobHash, ConfigError, DecodexClientConfig, DecodexRoot, MAX_NATIVE_MESSAGE_BYTES, PathError,
@@ -670,6 +674,7 @@ impl AgentClient {
 	/// Read the latest explicit sample; polling never starts inference.
 	pub async fn sample(&self, work_id: EntityId) -> Result<AgentSampleStatus, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -679,7 +684,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentSample(status)
 				if status.work_id == work_id && status.is_valid() =>
@@ -1311,9 +1318,10 @@ impl AgentClient {
 	/// Read recent delivery milestones without starting or resuming any conversation.
 	pub async fn deliveries(
 		&self,
-		query: crate::AgentDeliveryQuery,
-	) -> Result<crate::AgentDeliveriesResult, ClientFailure> {
+		query: AgentDeliveryQuery,
+	) -> Result<AgentDeliveriesResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport
@@ -1321,7 +1329,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentDeliveries(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1332,8 +1342,9 @@ impl AgentClient {
 	pub async fn exchanges(
 		&self,
 		before: Option<i64>,
-	) -> Result<crate::AgentExchangesResult, ClientFailure> {
+	) -> Result<AgentExchangesResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport
@@ -1341,7 +1352,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentExchanges(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1500,14 +1513,13 @@ impl AgentClient {
 	}
 
 	/// Read a complete selected Work with digest-bound paging. Does not resume an Agent.
-	pub async fn work_detail(
-		&self,
-		work_id: EntityId,
-	) -> Result<crate::work::WorkPortfolio, ClientFailure> {
+	pub async fn work_detail(&self, work_id: EntityId) -> Result<WorkPortfolio, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let mut offset = 0;
 		let mut digest: Option<String> = None;
 		let mut complete = String::new();
+
 		loop {
 			let completed = time::timeout(
 				CLIENT_TIMEOUT,
@@ -1526,19 +1538,25 @@ impl AgentClient {
 			)
 			.await
 			.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 			close_one_shot_socket(completed.socket).await;
+
 			let QueryResultPayload::WorkDetail(page) = completed.value else {
 				return Err(ClientFailure::ProtocolMalformed);
 			};
+
 			if !page.matches_request(digest.as_deref(), offset) {
 				return Err(ClientFailure::ProtocolMalformed);
 			}
-			let crate::WorkDetailResult::Page { digest: observed, text, next_offset, .. } = page
-			else {
+
+			let WorkDetailResult::Page { digest: observed, text, next_offset, .. } = page else {
 				return Err(ClientFailure::ProtocolMalformed);
 			};
+
 			digest = Some(observed);
+
 			complete.push_str(&text);
+
 			if let Some(next) = next_offset {
 				offset = next;
 			} else {
@@ -1555,8 +1573,9 @@ impl AgentClient {
 		turn: WireText,
 		item: WireText,
 		offset: usize,
-	) -> Result<crate::PrivateReviewDetailsResult, ClientFailure> {
+	) -> Result<PrivateReviewDetailsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -1571,7 +1590,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::PrivateReviewDetails(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -2450,9 +2471,10 @@ impl DoctorClient {
 	/// Inspect startup configuration through the local service without starting a conversation.
 	pub async fn startup_configuration(
 		&self,
-		directory: crate::ConversationWorkingDirectory,
-	) -> Result<crate::NativeStartupConfiguration, ClientFailure> {
+		directory: ConversationWorkingDirectory,
+	) -> Result<NativeStartupConfiguration, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(40),
@@ -2467,7 +2489,9 @@ impl DoctorClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::NativeStartupConfiguration(result)
 				if result.is_valid() && result.directory.as_deref() == Some(expected.as_str()) =>
