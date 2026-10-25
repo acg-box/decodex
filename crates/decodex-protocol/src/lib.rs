@@ -5,7 +5,7 @@ pub use decodex_core::{guardian, work};
 mod agent_collaboration;
 pub use agent_collaboration::{
 	AgentExchangeAssessment, AgentExchangeDto, AgentExchangeKind, AgentExchangeQuestionDto,
-	AgentExchangesResult,
+	AgentExchangesResult, AgentPeerExchangeDto, AgentQuestionAnswerDto,
 };
 mod agent_deliveries;
 pub use agent_deliveries::{
