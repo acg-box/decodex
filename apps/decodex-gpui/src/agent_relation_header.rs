@@ -121,7 +121,7 @@ impl Header {
 			.tab_index(0)
 			.track_focus(&focus)
 			.aria_label(format!("Frame {} team, {count} agents", self.number))
-			.px(gpui::px(3.))
+			.px(gpui::px(1.))
 			.rounded(gpui::px(3.))
 			.hover(|style| style.bg(crate::ui_theme::rgba(crate::ui_theme::HOVER_FILL)))
 			.focus_visible(|style| style.text_color(crate::ui_theme::rgb(crate::ui_theme::BLUE)))

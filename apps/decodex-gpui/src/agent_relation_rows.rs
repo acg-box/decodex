@@ -256,6 +256,9 @@ fn bubble_shape(layout: card::Layout) -> gpui::Div {
 }
 
 pub(super) fn team(key: &str, count: usize, layout: card::Layout) -> gpui::Div {
+	// Spend the small badge's empty padding on a readable people silhouette.
+	// Its width stays stable, including when a long agent number shares the row.
+	let icon_size = layout.team_icon_size();
 	gpui::div()
 		.debug_selector({
 			let key = key.to_owned();
@@ -263,7 +266,7 @@ pub(super) fn team(key: &str, count: usize, layout: card::Layout) -> gpui::Div {
 		})
 		.flex()
 		.items_center()
-		.gap(gpui::px(3.))
+		.gap(gpui::px(2.))
 		.flex_none()
 		.h(gpui::px(layout.title_line()))
 		.text_size(gpui::px(layout.title_size()))
@@ -276,9 +279,16 @@ pub(super) fn team(key: &str, count: usize, layout: card::Layout) -> gpui::Div {
 					let key = key.to_owned();
 					move || format!("relation-team-icon-{key}")
 				})
-				.size(gpui::px(layout.title_size()))
+				.relative()
+				.w(gpui::px(icon_size))
+				.h(gpui::px(layout.title_line()))
 				.flex_none()
-				.child(workspace_symbols::icon_sized(Symbol::TeamMembers, layout.title_size())),
+				.child(
+					gpui::div()
+						.absolute()
+						.top(gpui::px((layout.title_line() - icon_size) / 2.))
+						.child(workspace_symbols::icon_sized(Symbol::TeamMembers, icon_size)),
+				),
 		)
 		.child(
 			gpui::div()

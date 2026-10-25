@@ -95,6 +95,10 @@ impl Layout {
 		self.font(TEXT_SIZE, MIN_TEXT_SIZE)
 	}
 
+	pub(super) fn team_icon_size(self) -> f32 {
+		self.pixel(self.title_size() + 5.)
+	}
+
 	pub(super) fn metric_size(self) -> f32 {
 		self.title_size()
 	}

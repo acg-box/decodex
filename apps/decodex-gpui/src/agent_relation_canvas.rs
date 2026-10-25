@@ -1374,7 +1374,7 @@ impl AgentSurface {
 						+ native.title_size()
 						+ measure(parent.as_deref().unwrap_or_default(), false);
 				} else if let Some(team) = team {
-					width += 12. + native.title_size() + measure(&team.to_string(), true);
+					width += 7. + native.team_icon_size() + measure(&team.to_string(), true);
 				}
 				if !node.assignment.is_empty() {
 					width += 6. + measure(&node.assignment, false).min(native.caption_width());
