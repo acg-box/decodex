@@ -23,6 +23,7 @@ mod reasoning;
 mod result_messages;
 mod tool_migration;
 mod work;
+mod work_delivery;
 pub(crate) use result_messages::usage as observed_usage;
 mod resume_recovery;
 mod task_history;

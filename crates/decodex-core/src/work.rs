@@ -220,6 +220,21 @@ pub struct NativeContribution {
 	/// Exact native collaboration or child activity item. V2 instruction proof is the child input.
 	pub parent_item_id: Option<String>,
 }
+
+/// Exact native input observed before its parent activity is necessarily available.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct NativeWorkDelivery {
+	/// Native owner conversation, verified from the child's source.
+	pub parent_thread_id: String,
+	/// Native root turn that issued this instruction.
+	pub parent_turn_id: String,
+	/// Genuine native child that received the instruction.
+	pub child_thread_id: String,
+	/// Exact receiving turn; other turns cannot supply this contribution's Results.
+	pub child_turn_id: String,
+	/// Exact inbound native message, independent of a later parent activity.
+	pub message_id: String,
+}
 impl NativeContribution {
 	/// Exact prompt to pass to the native helper. A missing binding never authorizes duplicate
 	/// spawn.

@@ -4,8 +4,8 @@ mod commands;
 #[cfg(test)] mod tests;
 
 use decodex_core::work::{
-	CollaborationRequest, CollaborationState, Work, WorkCommand, WorkPortfolio, WorkRequirements,
-	WorkState,
+	CollaborationRequest, CollaborationState, NativeWorkDelivery, Work, WorkCommand, WorkPortfolio,
+	WorkRequirements, WorkState,
 };
 use rusqlite::{Connection, OptionalExtension as _, params};
 use serde::{Serialize, de::DeserializeOwned};
@@ -412,7 +412,46 @@ impl SqliteStore {
 		for value in [&id, &thread, &turn, &call] {
 			text(value, 512)?;
 		}
-		self.run(move|c|{let n=c.execute("INSERT INTO native_work_dispatches VALUES(?1,?2,?3,?4) ON CONFLICT(contribution_id) DO UPDATE SET thread_id=excluded.thread_id WHERE thread_id=excluded.thread_id AND turn_id=excluded.turn_id AND call_id=excluded.call_id",params![id,thread,turn,call]).map_err(sqlite_error)?;if n!=1{return Err(conflict());}Ok(())}).await
+		self.run(move|c|{let n=c.execute("INSERT INTO native_work_dispatches(contribution_id,thread_id,turn_id,call_id) VALUES(?1,?2,?3,?4) ON CONFLICT(contribution_id) DO UPDATE SET thread_id=excluded.thread_id WHERE thread_id=excluded.thread_id AND turn_id=excluded.turn_id AND call_id=excluded.call_id",params![id,thread,turn,call]).map_err(sqlite_error)?;if n!=1{return Err(conflict());}Ok(())}).await
+	}
+
+	/// Preserve the exact native receiving turn and message without replaying input.
+	pub async fn record_native_work_delivery(
+		&self,
+		id: String,
+		delivery: NativeWorkDelivery,
+	) -> Result<(), StoreError> {
+		for value in [
+			&id,
+			&delivery.parent_thread_id,
+			&delivery.parent_turn_id,
+			&delivery.child_thread_id,
+			&delivery.child_turn_id,
+			&delivery.message_id,
+		] {
+			text(value, 512)?;
+		}
+		self.run(move |c| {
+			let n = c.execute(
+				"INSERT INTO native_work_deliveries VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(contribution_id) DO UPDATE SET message_id=excluded.message_id WHERE parent_thread_id=excluded.parent_thread_id AND parent_turn_id=excluded.parent_turn_id AND child_thread_id=excluded.child_thread_id AND child_turn_id=excluded.child_turn_id AND message_id=excluded.message_id",
+				params![id, delivery.parent_thread_id, delivery.parent_turn_id, delivery.child_thread_id, delivery.child_turn_id, delivery.message_id],
+			).map_err(sqlite_error)?;
+			if n != 1 { return Err(conflict()); }
+			Ok(())
+		}).await
+	}
+
+	/// Read retained inbound assignment identity. Missing evidence remains unknown.
+	pub async fn native_work_delivery(
+		&self,
+		id: String,
+	) -> Result<Option<NativeWorkDelivery>, StoreError> {
+		self.run(move |c| {
+			c.query_row(
+				"SELECT parent_thread_id,parent_turn_id,child_thread_id,child_turn_id,message_id FROM native_work_deliveries WHERE contribution_id=?1",
+				[id], |r| Ok(NativeWorkDelivery { parent_thread_id:r.get(0)?, parent_turn_id:r.get(1)?, child_thread_id:r.get(2)?, child_turn_id:r.get(3)?, message_id:r.get(4)? }),
+			).optional().map_err(|e| sqlite_error(e).into())
+		}).await
 	}
 
 	/// Read the exact retained dispatch receipt. Its absence never authorizes another spawn.

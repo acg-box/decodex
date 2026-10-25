@@ -7,7 +7,7 @@ use crate::{DatabaseError, account_alias, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
 
-const CURRENT_SCHEMA_VERSION: i64 = 56;
+const CURRENT_SCHEMA_VERSION: i64 = 57;
 const MIGRATIONS: &[Migration] = &[
 	Migration {
 		version: 48,
@@ -53,6 +53,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 56,
 		name: "project_agent_work",
 		sql: include_str!("../migrations/0056_project_agent_work.sql"),
+	},
+	Migration {
+		version: 57,
+		name: "native_work_delivery",
+		sql: include_str!("../migrations/0057_native_work_delivery.sql"),
 	},
 ];
 
