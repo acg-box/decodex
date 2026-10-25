@@ -107,6 +107,7 @@ impl AgentSurface {
 				"Requirements {} · {}",
 				work.requirements.id, work.requirements.source
 			)))
+			.child(self.work_usage_panel(work, cx))
 			.child(readable(work.requirements.goal.clone()))
 			.child(label(format!("Completion criteria: {}", work.requirements.criteria)));
 

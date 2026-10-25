@@ -4,8 +4,12 @@ title: "Retained upstream product capabilities"
 description: "Current native integration, account and conversation scope, with excluded duplicate surfaces."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-d9c9b48c73ee4a2adc90f01c
+    resource: repo://apps/decodex-gpui/src/agent_collaboration_cases.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
+  - id: openwiki-source-9c68c30b2ff24ddf9a764d74
+    resource: repo://apps/decodex-gpui/src/agent_memory.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
@@ -14,6 +18,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-01379a7fb49ab2d638863891
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
+  - id: openwiki-source-0d053d4de2f668168f982629
+    resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
@@ -70,10 +76,10 @@ sources:
     resource: repo://database/migrations/0056_project_agent_work.sql
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-25T15:35:33.616Z" }
+generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T16:38:56.487Z
+    at: 2026-10-25T20:12:58.607Z
 ---
 
 # Product scope and native ownership
@@ -86,7 +92,7 @@ The [Project, Agent and Work contract](project-agent-work.md) is the accepted an
 
 Global Guardian controls and native private Review Details are now selected product scope. They are no longer awaiting a decision on whether to implement them. The target has no per-Agent Guardian override; actual native requirements and per-source effective settings remain authoritative. Review Details are diagnostic observation, not permission or Work acceptance. Implementation, exact-artifact qualification and a separate local installed development acceptance are recorded in the retained evidence index. The installed scenario qualifies two Projects and four Works, independent-Agent input and approval ownership, Pause/Resume, restart recovery, global Guardian and the Workspace/Full Access sequence. Official Codex desktop Project presentation remains unobserved. A controlled scenario does not establish general model quality. This decision does not enable a native flag, broaden Full Access, or select unrelated historical optional proposals.
 
-The default coordination surface uses `work_read` and `work_manage`. Only users create persistent Agents. Native Subagents own temporary execution. Managed-worker/manager creation and old goal/dependency tools are retired from new conversations and refused in legacy schemas. Real legacy execution and history stay readable; quiescent tool-set migration does not relabel them as native children.
+The default coordination surface uses `work_read` and `work_manage`. Only users create persistent Agents. Native Subagents own temporary execution. Managed-worker/manager creation and old goal/dependency tools are retired from new conversations and refused in legacy schemas. Real legacy execution and history stay readable; recovery of existing tool-replacement journals does not relabel them as native children.
 
 Global Guardian changes the thread preference for subsequent turns and reports per-source receipts. Existing active captures and pending human approvals retain native ownership. Optional private details retain bounded assistant output and terminal metadata without raw reasoning. Exact action associations are unavailable in the selected runtime and remain explicit. This does not select the separate native Guardian V3 experiment or add a per-Agent override.
 
@@ -95,6 +101,18 @@ Schema 56 and protocol 3.0 implement the direct business migration. Native Proje
 The retained-conversation repair reconciles unassigned native Project membership before input and preserves conflicts for inspection. Schema 57 retains actual native child-input receipts for Work attribution when native configuration permits nested V2 Code Mode. Recovery joins exact evidence without replay. V1 nesting remains supported; V2 keeps its direct-only default. These are repairs to retained integration contracts. Native Project identity and membership and Decodex Project presentation passed in the separate installed qualification. Official desktop saved-Project/sidebar presentation remains unobserved. See the [canonical contract](project-agent-work.md#qualification-and-evidence-limits).
 
 The lifecycle follow-up preserves this scope. Schema 58 records independent Agent ownership on a shared admitted native process. Schema 59 distinguishes visible input from native task-name proof for encrypted assignments. Guardian history recovery uses supported native reads after restart and preserves missing action associations. These changes repair retained behavior; they add no new reviewer or helper executor. The later installed qualification also repaired independent Agents that lacked conversation controls or sent input to the first Agent. It records the exact development artifact, preserved data scope and three unexplained complete-suite cleanup markers separately from the earlier full-workspace pass. Isolated controls passed; they do not establish the cleanup cause.
+
+## Selected read-only views
+
+The selected scope includes three views in the existing desktop:
+
+- **Native memory summary:** Read and copy the current loaded root conversation's native summary. Codex selects the memory version and availability. Decodex adds no memory writer, automatic retention policy or implicit resume.
+- **Collaboration history:** Retain exact local question replies, their delivery and receiving-turn outcome, plus independent contribution cycles and explicit owner assessments. A reply or returned contribution does not establish resolution or complete Work. Missing external reply bodies remain unknown.
+- **Actual usage:** Read known whole-turn token deltas and recorded duration for a persistent Agent or retained Work references. Shared Work references, missing counters and unobserved child usage remain explicit. Linked turns can contain other activity; recorded duration is not Work elapsed time and these values are not a bill.
+
+These views use local protocol 3.1 and existing source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [retained evidence index](../../automations/upstream/retained-evidence.json). Installed-app acceptance remains separate.
+
+The persistent attached-fork product workflow, native Guardian V3 experiment and custom managed configuration server remain undecided. Existing explicit user branches, global Guardian and native managed requirements keep their current scope.
 
 ## Current integration boundary
 

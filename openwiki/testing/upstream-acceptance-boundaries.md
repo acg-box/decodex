@@ -32,6 +32,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
+  - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs
   - id: openwiki-source-32afc8038b2c3b7df030c573
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_prediction_tests.rs
   - id: openwiki-source-1b314e86ab2f1adbc0ede4c8
@@ -96,6 +98,8 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-a6440a3d3a3c3121fd4c553f
     resource: repo://database/src/agent_output.rs
+  - id: openwiki-source-2b705b409434252a7417e708
+    resource: repo://database/src/usage_evidence_tests.rs
   - id: openwiki-source-d09dfdea9b65815f3a76b46c
     resource: repo://database/src/works/tests.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
@@ -106,10 +110,10 @@ sources:
     resource: repo://scripts/macos/prepare_voice_acceptance.py
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-25T16:38:56.487Z" }
+generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T16:38:56.487Z
+    at: 2026-10-25T20:12:58.607Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -130,6 +134,25 @@ verified:
 `Makefile.toml` defines workspace checks. Isolated native fixtures exercise a named Codex binary and must keep their declared environment and effect prerequisites. The signed bundle contract checks packaging, signatures and ABI compatibility; it does not exercise live microphone, network or focus behavior.
 
 For native compatibility, record the upstream commit separately from the installed binary and generated schema. Test the actual consumer contract. A schema field or retained database row is not proof of a delivered UI or supported execution path.
+
+## Selected read-only views
+
+The approved views add native memory inspection, collaboration reply/contribution history and retained Agent/Work usage. Their current contract and portable proof are under `selected_read_views` in the [retained index](../../automations/upstream/retained-evidence.json). Public delivery is tracked in [PR #2508](https://github.com/acg-box/decodex/pull/2508); inspect its current head and checks separately from local qualification.
+
+| Evidence | Qualified behavior and limits |
+| --- | --- |
+| Native source and schema | Official source `970111f6cb62cc02fe36a82ea7d71b37a2889c97`, selected CLI and both helpers were identified. A fresh experimental schema was generated and hashed. The upstream memory implementation and test bodies were read; upstream Rust tests were not executed in this qualification. |
+| Exact-artifact memory fixture | Native version selection, disabled/missing/blank summaries and an unstarted thread were checked without fallback or model requests. The read does not resume a cold context, write memory or generate a summary. |
+| Exact-artifact usage fixture | Two controlled responses across native process restart retain input 30/output 6 and two native durations without counting cumulative usage twice. This does not measure live-provider billing. |
+| Local collaboration regressions | Saved local answers use exact Agent/thread/question identity. Delivery, receiving-turn completion and resolution stay distinct. Independent request repair cycles retain their own immutable instruction and assessment. Unknown external answer bodies remain unknown. |
+| Local usage regressions | Exact Agent/thread/turn identities deduplicate retained totals after store reopen. Missing usage remains unknown; turns linked to several Works are excluded from Work totals. Preview limits do not limit aggregate totals. |
+| GPUI regressions | Four selected tests check exact memory copy, draft preservation and binding invalidation, answered-question sources, separate repair cycles and usage labels/limits. They establish fixture interaction, not installed-app acceptance. |
+
+The full workspace run passed 2,998 tests and skipped 1,222. It preceded one added memory copy/display test; the later four-test UI cohort includes that test. Two exact-artifact native tests, four selected UI tests and 28 Python tests passed, with zero unmatched native/UI selectors. Strict Clippy passed for five changed packages; formatting and the schema59/90-table database gate passed. The gate inventory was repaired to match the existing canonical migration ledger; no migration was added.
+
+The full vstyle audit failed with 16,517 findings at implementation commit `1beae0c0415c28ef45d8afaa1bd8117832c62c25`. This qualification does not exempt those findings or classify them all as inherited. The independent repository-wide style cleanup retains that work. Exact selectors, entrypoints, commands and selected source digests remain in the portable index after local products are removed.
+
+A Work result or delivery identifies a linked native turn; it does not prove that every action in the turn belongs to that Work. Input includes cached input, and output includes reasoning. Missing historical or child receipts remain unknown. Summed native duration can overlap and is not Work elapsed time. No complete Work cost, monetary allocation, installed-app interaction, real-provider acceptance, app installation or release is claimed. The selected runtime baseline, upstream review cursor and automation schedule do not change. Attached forks, Guardian V3 and custom managed configuration remain undecided. A rebuilt runtime requires new artifact/helper/schema observations and affected regressions; it is not the original deleted artifact.
 
 ## Historical receipts
 

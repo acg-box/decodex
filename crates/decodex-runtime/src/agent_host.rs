@@ -27,8 +27,8 @@ use crate::{
 	account_observation::AccountObservationService,
 	agent::{AgentInputExtras, misalignment, native_subagents, timeline, timeline::media},
 	agent_app_exposure, agent_capabilities, agent_context_settings, agent_detail, agent_hooks,
-	agent_integrations, agent_live_settings, agent_model_settings, agent_models, agent_native_goal,
-	agent_permissions, agent_read_state,
+	agent_integrations, agent_live_settings, agent_memory, agent_model_settings, agent_models,
+	agent_native_goal, agent_permissions, agent_read_state,
 	agent_recap::Recaps,
 	agent_resources,
 	agent_sample::Samples,
@@ -54,13 +54,13 @@ use decodex_protocol::{
 	AgentActionDto, AgentActivityDetailCursor, AgentAppExposureResult, AgentArchiveResult,
 	AgentAttachmentDto, AgentCapabilitiesResult, AgentContextFeature, AgentContextSettingsResult,
 	AgentHookSettingsState, AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest,
-	AgentMediaResult, AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult,
-	AgentPermissionState, AgentReadStateResult, AgentRequestedDecision, AgentResourcesResult,
-	AgentSandboxDto, AgentSearchSettingsResult, AgentSkillsResult, AgentSnapshotDto, AgentStartDto,
-	AgentToolExposureSurface, AgentTranscriptRequest, AgentTranscriptResult,
-	AgentUsageEstimateResult, AgentVoicePhase, AgentVoiceRequest, AgentVoiceSettingsResult,
-	AgentVoiceStatus, DictationRequest, DictationStatus, HistoryText, McpLoginPhase,
-	McpLoginRequest, McpLoginStatus, NativeProcessDiagnostics,
+	AgentMediaResult, AgentMemoryResult, AgentModelSelectionState, AgentModelSettingsResult,
+	AgentNativeGoalResult, AgentPermissionState, AgentReadStateResult, AgentRequestedDecision,
+	AgentResourcesResult, AgentSandboxDto, AgentSearchSettingsResult, AgentSkillsResult,
+	AgentSnapshotDto, AgentStartDto, AgentToolExposureSurface, AgentTranscriptRequest,
+	AgentTranscriptResult, AgentUsageEstimateResult, AgentVoicePhase, AgentVoiceRequest,
+	AgentVoiceSettingsResult, AgentVoiceStatus, DictationRequest, DictationStatus, HistoryText,
+	McpLoginPhase, McpLoginRequest, McpLoginStatus, NativeProcessDiagnostics,
 };
 use prompt_edit::Reviews;
 use weather::CachedWeather;
@@ -1400,6 +1400,16 @@ impl AgentHost {
 		.await?;
 
 		Ok(work.into())
+	}
+
+	pub(crate) async fn memory_summary(
+		&self,
+		work: &str,
+		thread: &str,
+		digest: Option<&str>,
+		offset: usize,
+	) -> AgentMemoryResult {
+		agent_memory::read(|| self.timeline_source(work, thread), digest, offset).await
 	}
 
 	pub(crate) async fn context_settings(&self, work: &str) -> AgentContextSettingsResult {

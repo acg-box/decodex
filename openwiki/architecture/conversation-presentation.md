@@ -62,10 +62,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/media_tests.rs
   - id: openwiki-source-8d3e8e016f038e821f68dd0c
     resource: repo://crates/decodex-runtime/src/agent/timeline/media.rs
-generated: { by: "codex", at: "2026-10-24T06:08:33.099Z" }
+generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T15:11:34.438Z
+    at: 2026-10-25T20:12:58.607Z
 ---
 
 
@@ -131,7 +131,7 @@ The pinned Ondine compiler owns Mermaid syntax and layout. Decodex adapts its SV
 
 Desktop options disable image resources and interactive links. Compilation limits edges and SVG output, and the desktop rejects an excessive decoded canvas before font parsing or image allocation. These limits bound diagram preparation; they do not measure whole-frame performance.
 
-Preparation runs in the background. A source-keyed application cache retains at most 64 images within a 64 MiB byte budget. Virtualized rows can reuse a prepared image. A small geometry record preserves row height while an evicted image is restored. A change to the diagram source selects new state; later prose in the same reply does not invalidate an unchanged diagram.
+Preparation runs in the background. An application cache keyed by source and selected color scheme retains at most 64 images within a 64 MiB byte budget. Virtualized rows can reuse a prepared image. A small geometry record preserves row height while an evicted image is restored. A change to the diagram source or color scheme selects new state; later prose in the same reply does not invalidate an unchanged diagram.
 
 Incomplete fences and failed compilation retain the literal source. Wide diagrams scroll without wrapping or changing image geometry. Copy Mermaid source preserves the original tags, quotes and line endings. The GPUI regression tests cover source copy, a narrow viewport, row culling and cache restoration. These tests are distinct from installed-app scrolling or frame-rate acceptance.
 

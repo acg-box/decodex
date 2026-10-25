@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:fdb72f6cdcde931e0d9cc713ae5d82c8313f4c9ebb4a45f56ad8d74731adb340",
+  "pageVersion": "sha256:6ec87faa099f4e14e3bcc853f467d7a54ee32a0768e39f5d8cf656aac7a86b61",
   "claims": [
     {
       "id": "claim_e3d4a7229d7246c2a324ba1df3c12052",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:11091659f62d795f648a60ca86eb7784e0e14097ab95acf685722083603a66e9"
+          "version": "repo-file-v1:sha256:bc71791e16a5ed445f6596e753d832823402787293df65f51ed9723eb31e29f1"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/conversation.rs",
@@ -19,6 +19,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T06:52:57.034Z"
+    "at": "2026-10-25T20:12:58.607Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:854b363d5052867f82270b2a88ecc92e083998ccd6bf4108eaa495b52a25df11",
+  "pageVersion": "sha256:602b22c656485174e3760fe67f4a7525f5a711bc6ac1e2bbe36764cfee4be67d",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -8,15 +8,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
-          "version": "repo-file-v1:sha256:12397d9963f7616af8768f21407f3aeae1041ec981861284d742ee555b2255cb"
+          "version": "repo-file-v1:sha256:e86225db05876938fd27baa3d1b5c4331fcc8286a939760f4f5bc306923ddae2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
-          "version": "repo-file-v1:sha256:17de3c2bb07b65019de3937223264df20da4c8c8e692853973de9047bf252bc3"
+          "version": "repo-file-v1:sha256:5041a912c573d7376fe474b77b340990b1b69d55991d5aac351d5378a47b7199"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:2385efed543e4b17d01d59fc612756f0f9b77c8555c0a32a46cc93717dd22319"
+          "version": "repo-file-v1:sha256:a8f5c805ec9e3bcc5a27ac1249bbc89efebda3686f0067702c8a8da5dfe8f07f"
         }
       ]
     },
@@ -49,8 +49,8 @@
       "statement": "The protocol crate CURRENT_VERSION and the embedded SQLite migration ledger define current local compatibility.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L297-L315",
-          "version": "repo-lines-v1:sha256:719725191d81e573df67520f2fcad60881a3be768a435464e9ccdac0abaff6ff:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZDA5NzgzZTA2YzlkMGI3MDhhMTFiNTU3N2M2MWNlMjBhZGRjNjZjYmVmMGJkZjc5ODQ2ZWZiN2M5OWM3YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjZkOWNlOGNkNmRlNjQ0YTM4Y2QwYjA0NTRmYjkzYjBjMWEzNTFlNzAyYjc1ODI0NmE2ZTZkZWI3N2Y1MzkifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L304-L322",
+          "version": "repo-lines-v1:sha256:4d53fe20e951753eeb9be022aeb913bda192636a5013335db0277475f165542c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZDA5NzgzZTA2YzlkMGI3MDhhMTFiNTU3N2M2MWNlMjBhZGRjNjZjYmVmMGJkZjc5ODQ2ZWZiN2M5OWM3YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjZkOWNlOGNkNmRlNjQ0YTM4Y2QwYjA0NTRmYjkzYjBjMWEzNTFlNzAyYjc1ODI0NmE2ZTZkZWI3N2Y1MzkifQ"
         },
         {
           "resource": "repo://database/src/migrations.rs",
@@ -106,7 +106,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:ac882b62c5f858ed92b4749c4ff4945dba9e7da76d74fbd375122e2806d54d86"
+          "version": "repo-file-v1:sha256:359100795a1b17559de47b5578a893434324404a8b48bdf1dac6683c5091003e"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
@@ -124,7 +124,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_initial_settings.rs",
@@ -146,7 +146,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         }
       ]
     },
@@ -156,7 +156,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         }
       ]
     },
@@ -166,13 +166,31 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
+        }
+      ]
+    },
+    {
+      "id": "claim_c58bd50a168e478986fb1103f6abf2e9",
+      "statement": "The selected read-only views expose native memory in Agent preferences, exact replies and repair cycles in existing Collaboration, and retained Actual usage for Agents and Works under protocol3.1/schema59. They preserve unknown coverage and resolution limits without changing runtime, installed app, review cursor or schedule; attached forks, Guardian V3 and custom managed configuration remain undecided.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
+          "version": "repo-file-v1:sha256:4811499c4567df61c7c0098acda4935eb830c8b29d712908a98069f81fa45a02"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/lib.rs",
+          "version": "repo-file-v1:sha256:0fececdd43aca36dbb34b02cc91830ed7d2245f8eb74b34f61cebdc1ff9e48df"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T16:38:56.487Z"
+    "at": "2026-10-25T20:12:58.607Z"
   }
 }

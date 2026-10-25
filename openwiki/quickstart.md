@@ -12,6 +12,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
   - id: openwiki-source-6a1c55b61be8ac251a493046
     resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
+  - id: openwiki-source-5da2f5dd568514f1f464d177
+    resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-51a4755f3c4ddd78511e5c8e
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
   - id: openwiki-source-14193a66abfb7d3230f476bf
@@ -40,10 +42,10 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-25T16:38:56.487Z" }
+generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T16:38:56.487Z
+    at: 2026-10-25T20:12:58.607Z
 ---
 
 # OpenWiki quickstart
@@ -63,6 +65,14 @@ Schema 56 and protocol 3.0 provide the direct business migration. Schema 57 reta
 A separate control follow-up verifies actual Pause/Resume buttons and Full Access behavior across restart. It identifies the native owners of the old encrypted helpers, but leaves their unproved Work bindings unchanged. See `controls_followup` in the [retained evidence](../automations/upstream/retained-evidence.json).
 
 A later [installed development acceptance](testing/upstream-acceptance-boundaries.md#installed-development-acceptance) verifies the same business lifecycle locally and repairs independent-Agent composer, approval and input ownership. Its signed artifact, preserved data scope, 1025 passed UI tests, three unexplained complete-run cleanup markers and clean isolated controls are retained separately. Native Project membership and Decodex presentation passed; official desktop Project presentation remains unobserved. A [separate synthetic online voice qualification](testing/upstream-acceptance-boundaries.md#synthetic-online-voice-and-audible-playback) passed two tests for dictation, returned speech and explicit closure. The user heard separate playback and reported low volume. Installed-UI device-ADM and broad audio quality remain outside that sample. No public release occurred.
+
+## Memory, collaboration and usage views
+
+- **Agent preferences > Memory summary** reads and copies the loaded native summary on request. Native Codex selects the version; empty and unavailable states stay explicit. See [models and settings](workflows/models-and-settings.md#read-a-native-memory-summary).
+- The existing **Collaboration** panel retains exact local question replies, delivery outcomes and independent contribution/repair cycles. A reply or completed receiving turn does not imply resolution. See [coordination](architecture/chief-coordination.md).
+- **Actual usage** in Agent preferences and Work details shows known native token deltas and duration with source coverage. Shared or missing Work attribution stays explicit; this is not billing or complete Work elapsed time.
+
+These views use local protocol 3.1 and the existing schema59 store. Their exact regressions and qualification limits are in [the acceptance boundary](testing/upstream-acceptance-boundaries.md#selected-read-only-views) and `selected_read_views` in the [portable evidence index](../automations/upstream/retained-evidence.json). They do not change the selected runtime, source-review cursor, installed app or automation schedule. Attached-fork workflows, Guardian V3 and custom managed configuration remain undecided.
 
 ## Start by task
 

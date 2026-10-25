@@ -41,6 +41,28 @@ pub struct AgentExchangeDto {
 	pub outcome: Option<String>,
 	/// Source observation time, in Unix microseconds.
 	pub created_at_micros: i64,
+	/// Exact independent Work request, absent for managed-worker exchanges.
+	pub collaboration: Option<AgentPeerExchangeDto>,
+}
+
+/// A retained independent contribution cycle. A repair has a different instruction identity.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentPeerExchangeDto {
+	/// Business Work identity, distinct from the conversation owner.
+	pub work_id: String,
+	/// Stable scoped request.
+	pub request_id: String,
+	/// Immutable instruction for this cycle.
+	pub instruction_id: String,
+	/// Whether this is the request's current instruction.
+	pub current: bool,
+	/// Explicit business state, only for the current instruction.
+	pub state: Option<String>,
+	/// Explicit owner assessment, only for the current instruction.
+	pub outcome: Option<String>,
+	/// Bounded assessment text, only for the current instruction.
+	pub note: Option<String>,
 }
 
 /// The source of a managed collaboration record.
@@ -53,6 +75,10 @@ pub enum AgentExchangeKind {
 	Result,
 	/// Busy refused the continuation. Nothing was sent or queued.
 	NotSent,
+	/// A request to an existing independent Agent.
+	PeerInstruction,
+	/// A returned or declined independent contribution.
+	PeerResult,
 }
 
 /// An explicit disposition of one result. This does not close its parent goal.
@@ -85,6 +111,26 @@ pub struct AgentExchangeQuestionDto {
 	pub question: AgentAsyncQuestionDto,
 	/// True only while the existing native question projection considers it pending.
 	pub pending: bool,
+	/// Exact locally retained reply, absent when its body or identity is unavailable.
+	pub answer: Option<AgentQuestionAnswerDto>,
+}
+
+/// A reply receipt. It does not establish that the question or Work was resolved.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AgentQuestionAnswerDto {
+	/// Exact retained reply event.
+	pub event_id: i64,
+	/// Stable source identity of the reply receipt.
+	pub source_event_id: String,
+	/// Public reply excerpt.
+	pub text: String,
+	/// Full text remains in the original source.
+	pub truncated: bool,
+	/// Exact acknowledged native receiving turn; absent means delivery is unconfirmed.
+	pub delivered_turn_id: Option<String>,
+	/// Exact receiving turn's terminal status, when retained.
+	pub turn_outcome: Option<String>,
 }
 
 /// Bounded collaboration read. Failure is distinct from an empty result.

@@ -5,6 +5,7 @@
 #[path = "application_conversation_receipts.rs"] mod conversation_receipts;
 #[path = "application_deliveries.rs"] mod deliveries;
 #[path = "application_turn_outcomes.rs"] mod turn_outcomes;
+#[path = "application_usage_evidence.rs"] mod usage_evidence;
 
 use std::{
 	collections::HashMap,
@@ -95,10 +96,10 @@ use decodex_protocol::{
 	AgentContextSettingsResult, AgentDependencyDto, AgentDispatchStateDto,
 	AgentGuardianDetailResult, AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState,
 	AgentIntegrationsResult, AgentLiveMessageKind, AgentLiveReviewerState, AgentMediaRequest,
-	AgentMediaResult, AgentMisalignmentDto, AgentModelSelectionState, AgentModelSettingsResult,
-	AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall, AgentPendingEventDto,
-	AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult, AgentRequestText,
-	AgentResourcesResult, AgentSampleStatus, AgentSavedAppSettingsResult,
+	AgentMediaResult, AgentMemoryResult, AgentMisalignmentDto, AgentModelSelectionState,
+	AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall,
+	AgentPendingEventDto, AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult,
+	AgentRequestText, AgentResourcesResult, AgentSampleStatus, AgentSavedAppSettingsResult,
 	AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget, AgentSnapshotDto,
 	AgentSteerIdentity, AgentSteerReceiptResult, AgentTaskReferenceDto, AgentTimelineResult,
 	AgentTranscriptRequest, AgentTranscriptResult, AgentTurnUsageDto, AgentUsageDto,
@@ -271,6 +272,25 @@ pub(crate) struct ServiceApplication {
 	doctor: DoctorReport,
 }
 impl ServiceApplication {
+	async fn query_native_inspection(&self, payload: &QueryPayload) -> QueryResultPayload {
+		match payload {
+			QueryPayload::GetAgentMemory { work_id, thread_id, digest, offset } =>
+				self.query_memory(
+					work_id.as_str(),
+					thread_id.as_str(),
+					digest.as_ref().map(|d| d.as_str()),
+					*offset,
+				)
+				.await,
+			QueryPayload::GetUsageEvidence { scope } => self.query_usage_evidence(scope).await,
+			QueryPayload::GetAgentReadState { work_id, thread_id } =>
+				self.query_read_state(work_id.as_str(), thread_id.as_str()).await,
+			QueryPayload::GetAgentNativeGoal { work_id, thread_id } =>
+				self.query_native_goal(work_id.as_str(), thread_id.as_str()).await,
+			_ => unreachable!("native inspection route"),
+		}
+	}
+
 	async fn query_guardian(&self, query: &QueryPayload) -> QueryResultPayload {
 		match query {
 			QueryPayload::GetAgentGuardianReviews { work_id, before } =>
@@ -623,6 +643,19 @@ impl ServiceApplication {
 				}),
 			_ => unreachable!("native preference query routing"),
 		}
+	}
+
+	async fn query_memory(
+		&self,
+		work: &str,
+		thread: &str,
+		digest: Option<&str>,
+		offset: usize,
+	) -> QueryResultPayload {
+		QueryResultPayload::AgentMemory(match &self.agent {
+			Some(agent) => agent.memory_summary(work, thread, digest, offset).await,
+			None => AgentMemoryResult::Unavailable,
+		})
 	}
 
 	async fn query_usage_estimate(&self, work: &str) -> QueryResultPayload {
@@ -2779,10 +2812,6 @@ impl Application for ServiceApplication {
 				self.query_resources(work_id.as_str()).await,
 			QueryPayload::ExchangeMcpLogin { request } =>
 				QueryResultPayload::McpLogin(query_mcp_login(self.agent.as_ref(), request).await),
-			QueryPayload::GetAgentReadState { work_id, thread_id } =>
-				self.query_read_state(work_id.as_str(), thread_id.as_str()).await,
-			QueryPayload::GetAgentNativeGoal { work_id, thread_id } =>
-				self.query_native_goal(work_id.as_str(), thread_id.as_str()).await,
 			QueryPayload::GetAgentAppSettings { .. } =>
 				QueryResultPayload::AgentAppSettings(AgentAppSettingsResult::Unavailable),
 			QueryPayload::GetAgentSavedAppSettings { .. } =>
@@ -2816,6 +2845,10 @@ impl Application for ServiceApplication {
 			| QueryPayload::GetAgentContextSettings { .. }) => self.query_native_preferences(settings).await,
 			QueryPayload::GetAgentSkills { target, filter } =>
 				self.query_skills(query.query_id.as_str(), target, filter.as_str()).await,
+			QueryPayload::GetAgentMemory { .. }
+			| QueryPayload::GetUsageEvidence { .. }
+			| QueryPayload::GetAgentReadState { .. }
+			| QueryPayload::GetAgentNativeGoal { .. } => self.query_native_inspection(&query.payload).await,
 			QueryPayload::GetAgentUsageEstimate { work_id } =>
 				self.query_usage_estimate(work_id.as_str()).await,
 			QueryPayload::GetAgentInputReceipts { work_id, after } =>

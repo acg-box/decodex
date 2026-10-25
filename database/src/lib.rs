@@ -56,6 +56,7 @@ mod reset_cards;
 mod role_profiles;
 mod runtime_sessions;
 mod transfers;
+mod usage_evidence;
 mod works;
 
 pub use self::{
@@ -178,6 +179,7 @@ pub use self::{
 		LocalAccountTransfer, LocalAccountTransferBatch, LocalAccountTransferError,
 		LocalAccountTransferOutcome,
 	},
+	usage_evidence::{UsageEvidence, UsageEvidenceSource},
 };
 pub use agent_deliveries::{DeliveryPage, DeliveryRecord};
 pub use agent_slots::AgentSlot;

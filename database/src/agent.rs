@@ -190,7 +190,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			read_work(connection, &work_id)?;
 
-			connection.prepare("SELECT * FROM (SELECT * FROM agent_inbox_events WHERE work_item_id = ?1 AND event_kind NOT IN ('reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release') AND (?3 IS NULL OR id < ?3) ORDER BY id DESC LIMIT ?2) ORDER BY id")
+			connection.prepare("SELECT * FROM (SELECT * FROM agent_inbox_events WHERE work_item_id = ?1 AND event_kind NOT IN ('collaboration_delivery','reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release') AND (?3 IS NULL OR id < ?3) ORDER BY id DESC LIMIT ?2) ORDER BY id")
 				.map_err(error::sqlite_error)?.query_map(rusqlite::params![work_id, limit, before], event_row)
 				.map_err(error::sqlite_error)?.collect::<Result<Vec<_>, _>>().map_err(|error| error::sqlite_error(error).into())
 		}).await
@@ -232,7 +232,7 @@ impl SqliteStore {
 
             read_work(&tx,&id)?;
 
-            let events=tx.prepare("SELECT * FROM (SELECT e.* FROM agent_inbox_events e WHERE work_item_id=?1 AND event_kind NOT IN ('reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release') AND (event_kind<>'activity_started' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events c WHERE c.source_event_id=json_array('activity',e.work_item_id,json_extract(e.payload,'$.turn_id'),json_extract(e.payload,'$.item_id'),'completed'))) AND (event_kind<>'plan_updated' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events p WHERE p.work_item_id=e.work_item_id AND p.event_kind='plan_updated' AND p.delivered_turn_id=e.delivered_turn_id AND json_extract(p.payload,'$.threadId')=json_extract(e.payload,'$.threadId') AND p.id>e.id)) AND (event_kind<>'steer_pending' OR disposition IS NULL) AND (?3 IS NULL OR id<?3) ORDER BY id DESC LIMIT ?2) ORDER BY id").map_err(error::sqlite_error)?.query_map(rusqlite::params![id,limit,before],event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
+            let events=tx.prepare("SELECT * FROM (SELECT e.* FROM agent_inbox_events e WHERE work_item_id=?1 AND event_kind NOT IN ('collaboration_delivery','reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release') AND (event_kind<>'activity_started' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events c WHERE c.source_event_id=json_array('activity',e.work_item_id,json_extract(e.payload,'$.turn_id'),json_extract(e.payload,'$.item_id'),'completed'))) AND (event_kind<>'plan_updated' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events p WHERE p.work_item_id=e.work_item_id AND p.event_kind='plan_updated' AND p.delivered_turn_id=e.delivered_turn_id AND json_extract(p.payload,'$.threadId')=json_extract(e.payload,'$.threadId') AND p.id>e.id)) AND (event_kind<>'steer_pending' OR disposition IS NULL) AND (?3 IS NULL OR id<?3) ORDER BY id DESC LIMIT ?2) ORDER BY id").map_err(error::sqlite_error)?.query_map(rusqlite::params![id,limit,before],event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
             let live=if before.is_none() {agent_output::read_live(&tx,&id)?} else {vec![]};
 
             tx.commit().map_err(error::sqlite_error)?;
@@ -754,6 +754,9 @@ impl SqliteStore {
 
 			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'running', active_turn_id = ?2, updated_at_micros = max(updated_at_micros, ?3) WHERE id = ?1", rusqlite::params![id, turn_id, crate::unix_micros()?]).map_err(error::sqlite_error)?;
 			transaction.execute("UPDATE agent_usage SET turn_id=?2,baseline_input_tokens=json_extract(usage_json,'$.input_tokens'),baseline_output_tokens=json_extract(usage_json,'$.output_tokens'),turn_input_tokens=NULL,turn_output_tokens=NULL WHERE work_id=?1 AND thread_id=?3",rusqlite::params![id,turn_id,work.codex_thread_id]).map_err(error::sqlite_error)?;
+
+			collaboration::record_delivery(&transaction,&id,work.codex_thread_id.as_deref(),&turn_id)?;
+
 			transaction.execute("UPDATE agent_inbox_events SET delivered_turn_id = ?2 WHERE delivery_work_item_id = ?1 AND delivered_turn_id = '' AND disposition IS NULL", rusqlite::params![id, turn_id]).map_err(error::sqlite_error)?;
 			transaction.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Instruction accepted by the provider; completion is tracked separately.',disposed_at_micros=max(created_at_micros,?3) WHERE delivery_work_item_id=?1 AND delivered_turn_id=?2 AND event_kind='work_instruction' AND disposition IS NULL",rusqlite::params![id,turn_id,crate::unix_micros()?]).map_err(error::sqlite_error)?;
 			transaction.execute("UPDATE agent_capacity_retries SET state='submitted',retry_turn_id=?2 WHERE work_item_id=?1 AND state='claimed'",rusqlite::params![id,turn_id]).map_err(error::sqlite_error)?;
@@ -914,6 +917,9 @@ impl SqliteStore {
 			}
 
 			transaction.execute("UPDATE agent_work_items SET dispatch_state = 'running', active_turn_id = ?2, updated_at_micros = max(updated_at_micros, ?3) WHERE id = ?1", rusqlite::params![id, turn_id, crate::unix_micros()?]).map_err(error::sqlite_error)?;
+
+			collaboration::record_delivery(&transaction,&id,work.codex_thread_id.as_deref(),&turn_id)?;
+
 			transaction.execute("UPDATE agent_inbox_events SET delivered_turn_id = ?2 WHERE delivery_work_item_id = ?1 AND delivered_turn_id = '' AND disposition IS NULL", rusqlite::params![id, turn_id]).map_err(error::sqlite_error)?;
 			transaction.execute("UPDATE agent_capacity_retries SET state='submitted',retry_turn_id=?2 WHERE work_item_id=?1 AND state='claimed'",rusqlite::params![id,turn_id]).map_err(error::sqlite_error)?;
 
@@ -1763,6 +1769,7 @@ fn insert_event(
 #[cfg(test)]
 mod tests {
 	mod activity;
+	mod collaboration_history;
 	mod delegation;
 	mod dispatch_refusals;
 	mod inbox_carryover;

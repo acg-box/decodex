@@ -19,6 +19,7 @@ mod initialize;
 mod integrations;
 mod live_reviews;
 mod live_settings;
+mod memory;
 mod model_defaults;
 mod model_recovery;
 mod output_rate;
@@ -98,6 +99,7 @@ pub use self::{
 	usage::{ThreadUsageEstimate, ThreadUsageEstimateGroup},
 };
 pub use guardian_settings::is_thread_reviewer_selection;
+pub use memory::MAX_MEMORY_SUMMARY_BYTES;
 pub use projects::{
 	is_project_create, is_project_list, is_project_read, is_thread_name_selection,
 	is_thread_project_assignment,

@@ -18,6 +18,7 @@ mod agent_hooks;
 mod agent_integrations;
 mod agent_live_settings;
 mod agent_media;
+mod agent_memory;
 mod agent_model_settings;
 mod agent_models;
 mod agent_native_goal;
@@ -59,6 +60,7 @@ mod native_startup_config;
 mod program_cycle;
 mod reset_card_recovery;
 mod retained_session;
+mod usage_evidence;
 mod voice;
 mod weather;
 mod wire;
@@ -124,6 +126,7 @@ pub use self::{
 	agent_media::{
 		AGENT_MEDIA_CHUNK_BYTES, AgentMediaRequest, AgentMediaResult, MAX_AGENT_MEDIA_BYTES,
 	},
+	agent_memory::{AgentMemoryResult, MAX_MEMORY_BYTES, MEMORY_PAGE_BYTES},
 	agent_model_settings::AgentModelSettingsResult,
 	agent_models::{
 		AgentModelOutcome, AgentModelResponse, AgentModelSelectionReceipt, AgentModelSelectionState,
@@ -274,7 +277,7 @@ pub use self::{
 };
 pub use agent_collaboration::{
 	AgentExchangeAssessment, AgentExchangeDto, AgentExchangeKind, AgentExchangeQuestionDto,
-	AgentExchangesResult,
+	AgentExchangesResult, AgentPeerExchangeDto, AgentQuestionAnswerDto,
 };
 pub use agent_deliveries::{
 	AgentDeliveriesResult, AgentDeliveryArtifact, AgentDeliveryEntry, AgentDeliveryExtent,
@@ -291,12 +294,15 @@ pub use native_startup_config::{
 	NativeStartupConfigLocation, NativeStartupConfigStatus, NativeStartupConfiguration,
 	NativeStartupLoginMethod,
 };
+pub use usage_evidence::{
+	UsageEvidenceResult, UsageEvidenceScope, UsageEvidenceSource, UsageEvidenceTotals,
+};
 pub use work_portfolio::{MAX_WORK_DETAIL_BYTES, WORK_DETAIL_PAGE_BYTES, WorkDetailResult};
 
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 3, minor: 0 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 3, minor: 1 };
 
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]

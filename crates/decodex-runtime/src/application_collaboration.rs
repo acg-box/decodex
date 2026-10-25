@@ -2,11 +2,11 @@
 use serde_json::Value;
 
 use crate::application::{ProductStore, QueryResultPayload, ServiceApplication, deliveries};
-use decodex_database::{AgentCollaborationRecord, AgentDisposition};
+use decodex_database::{AgentCollaborationQuestion, AgentCollaborationRecord, AgentDisposition};
 use decodex_protocol::{
 	AgentAsyncQuestionDto, AgentExchangeAssessment, AgentExchangeDto, AgentExchangeKind,
-	AgentExchangeQuestionDto, AgentExchangesResult, AgentSnapshotDto, AgentSnapshotResult,
-	AgentWorkKindDto,
+	AgentExchangeQuestionDto, AgentExchangesResult, AgentPeerExchangeDto, AgentQuestionAnswerDto,
+	AgentSnapshotDto, AgentSnapshotResult, AgentWorkKindDto,
 };
 
 impl ServiceApplication {
@@ -66,27 +66,7 @@ impl ServiceApplication {
 
 		saved.truncate(100);
 
-		let projected = saved
-			.into_iter()
-			.filter_map(|row| {
-				let mut question: AgentAsyncQuestionDto =
-					serde_json::from_str(&row.question.question_json).ok()?;
-				let (title, truncated) = public_excerpt(&question.title);
-
-				question.title = if truncated { format!("{title}…") } else { title };
-
-				question.options.clear();
-
-				Some(AgentExchangeQuestionDto {
-					work_id: row.work,
-					thread_id: row.question.thread_id,
-					turn_id: row.question.turn_id,
-					item_id: row.question.item_id,
-					question,
-					pending: row.pending,
-				})
-			})
-			.collect::<Vec<_>>();
+		let projected = saved.into_iter().filter_map(project_question);
 		let mut questions = Vec::new();
 		let mut question_bytes = 0_usize;
 
@@ -114,10 +94,51 @@ impl ServiceApplication {
 	}
 }
 
+fn project_question(row: AgentCollaborationQuestion) -> Option<AgentExchangeQuestionDto> {
+	let mut question: AgentAsyncQuestionDto =
+		serde_json::from_str(&row.question.question_json).ok()?;
+	let (title, truncated) = public_excerpt(&question.title);
+
+	question.title = if truncated { format!("{title}…") } else { title };
+
+	question.options.clear();
+
+	Some(AgentExchangeQuestionDto {
+		work_id: row.work,
+		thread_id: row.question.thread_id,
+		turn_id: row.question.turn_id,
+		item_id: row.question.item_id,
+		question,
+		pending: row.pending,
+		answer: row.answer.and_then(|event| {
+			let value: Value = serde_json::from_str(&event.payload).ok()?;
+			let replies =
+				decodex_protocol::parse_agent_async_question_replies(value["text"].as_str()?)?;
+			let reply = replies
+				.into_iter()
+				.find(|reply| reply.question_item_id == row.question.question_id)?;
+			let (text, truncated) = public_excerpt(&reply.answer);
+
+			Some(AgentQuestionAnswerDto {
+				event_id: event.id,
+				source_event_id: event.source_event_id,
+				text,
+				truncated,
+				delivered_turn_id: event.delivered_turn_id.filter(|id| !id.is_empty()),
+				turn_outcome: row.answer_outcome,
+			})
+		}),
+	})
+}
+
 fn project(
 	record: AgentCollaborationRecord,
 	snapshot: &AgentSnapshotDto,
 ) -> Option<AgentExchangeDto> {
+	if record.peer.is_some() {
+		return project_peer(record);
+	}
+
 	let event = record.event;
 	let value: Value = serde_json::from_str(&event.payload).ok()?;
 	let (kind, text, other, thread, turn, item, outcome) = match event.event_kind.as_str() {
@@ -188,6 +209,65 @@ fn project(
 		assessment_note: assessment.and(event.disposition_note).map(|text| public_excerpt(&text).0),
 		outcome,
 		created_at_micros: event.created_at_micros,
+		collaboration: None,
+	})
+}
+
+fn project_peer(record: AgentCollaborationRecord) -> Option<AgentExchangeDto> {
+	let peer = record.peer?;
+	let event = record.event;
+	let value: Value = serde_json::from_str(&event.payload).ok()?;
+	let instruction = event.event_kind == "collaboration_request";
+	let result = value.get("result");
+	let native = result.and_then(|r| r.get("source")).filter(|r| r["kind"] == "native_item");
+	let text = if instruction {
+		value["text"].as_str()
+	} else {
+		result.and_then(|r| r["summary"].as_str()).or_else(|| value["note"].as_str())
+	}
+	.unwrap_or_default();
+	let (excerpt, truncated) = public_excerpt(text);
+	let source = |key: &str| native.and_then(|r| r[key].as_str()).map(str::to_owned);
+
+	Some(AgentExchangeDto {
+		event_id: event.id,
+		source_event_id: event.source_event_id,
+		work_id: if instruction {
+			peer.recipient_agent.clone()
+		} else {
+			peer.requesting_agent.clone()
+		},
+		other_work_id: Some(if instruction { peer.requesting_agent } else { peer.recipient_agent }),
+		target_dispatch_state: None,
+		thread_id: if instruction { peer.delivery_thread } else { source("thread_id") },
+		turn_id: if instruction {
+			event.delivered_turn_id.clone().filter(|id| !id.is_empty())
+		} else {
+			source("turn_id")
+		},
+		item_id: source("item_id"),
+		instruction_event_id: record.instruction_event_id,
+		excerpt,
+		truncated,
+		kind: if instruction {
+			AgentExchangeKind::PeerInstruction
+		} else {
+			AgentExchangeKind::PeerResult
+		},
+		delivered_turn_id: event.delivered_turn_id.filter(|id| !id.is_empty()),
+		assessment: None,
+		assessment_note: None,
+		outcome: value["outcome"].as_str().map(str::to_owned),
+		created_at_micros: event.created_at_micros,
+		collaboration: Some(AgentPeerExchangeDto {
+			work_id: peer.work_id,
+			request_id: peer.request_id,
+			instruction_id: peer.instruction_id,
+			current: peer.current,
+			state: peer.current.then_some(peer.state),
+			outcome: peer.current.then_some(peer.outcome).flatten(),
+			note: peer.current.then_some(peer.note).flatten().map(|text| public_excerpt(&text).0),
+		}),
 	})
 }
 
@@ -232,7 +312,7 @@ mod tests {
   ],"dependencies":[],"pending_events":[]})).unwrap()
 	}
 	fn record(kind: &str, disposition: Option<AgentDisposition>) -> AgentCollaborationRecord {
-		AgentCollaborationRecord{instruction_event_id:Some(10),recipient_work_id:None,event:AgentInboxEvent{id:20,source_event_id:"exact-source".into(),work_item_id:"worker".into(),event_kind:kind.into(),payload:serde_json::json!({"text":"Use Maple","terminal":{"threadId":"worker-thread","turn":{"id":"worker-turn","status":"completed"}},"threadReadback":{"assistantMessages":[{"phase":"final_answer","text":"The label uses Maple."}]}}).to_string(),created_at_micros:20,disposition,disposition_note:disposition.map(|_|"Checked the returned label".into()),disposed_at_micros:disposition.map(|_|21),delivered_turn_id:Some("review-turn".into())}}
+		AgentCollaborationRecord{instruction_event_id:Some(10),recipient_work_id:None,peer:None,event:AgentInboxEvent{id:20,source_event_id:"exact-source".into(),work_item_id:"worker".into(),event_kind:kind.into(),payload:serde_json::json!({"text":"Use Maple","terminal":{"threadId":"worker-thread","turn":{"id":"worker-turn","status":"completed"}},"threadReadback":{"assistantMessages":[{"phase":"final_answer","text":"The label uses Maple."}]}}).to_string(),created_at_micros:20,disposition,disposition_note:disposition.map(|_|"Checked the returned label".into()),disposed_at_micros:disposition.map(|_|21),delivered_turn_id:Some("review-turn".into())}}
 	}
 	#[test]
 	fn assessments_belong_to_exact_results_and_route_to_the_nearest_manager() {

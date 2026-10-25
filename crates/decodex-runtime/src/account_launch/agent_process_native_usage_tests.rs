@@ -109,20 +109,8 @@ async fn installed_native_usage_restores_agent_baseline_after_cold_resume() {
 		assert_eq!(usage["input_tokens"], 20, "restored baseline must exclude the first turn");
 		assert_eq!(usage["output_tokens"], 4);
 
-		let responses = store
-			.read_agent_response_usage(
-				"agent".into(),
-				thread.clone(),
-				vec![first.clone(), second.clone()],
-			)
-			.await
-			.unwrap();
+		assert_retained_turn_evidence(&store, &thread, &first, &second).await;
 
-		assert!(responses.iter().any(|row| row.turn_id == first));
-		assert!(
-			!responses.iter().any(|row| row.turn_id == second),
-			"missing response amounts must not be synthesized"
-		);
 		assert_eq!(requests.load(Ordering::Acquire), 2);
 	})
 	.await
@@ -132,6 +120,44 @@ async fn installed_native_usage_restores_agent_baseline_after_cold_resume() {
 	drop(session);
 
 	backend.abort();
+}
+
+async fn assert_retained_turn_evidence(
+	store: &SqliteStore,
+	thread: &str,
+	first: &str,
+	second: &str,
+) {
+	let total = store
+		.read_usage_evidence(true, "agent".into())
+		.await
+		.expect("read retained Agent usage")
+		.expect("retained Agent usage");
+
+	assert_eq!((total.turns, total.token_turns, total.duration_turns), (2, 2, 2));
+	assert_eq!(
+		(total.input_tokens, total.output_tokens),
+		(30, 6),
+		"sum whole-turn deltas once, never cumulative samples"
+	);
+	assert_eq!(total.unattributed_turns, 2);
+	assert!(total.sources.iter().any(|s| s.turn_id == first && s.event_id.is_some()));
+	assert!(total.sources.iter().any(|s| s.turn_id == second && s.event_id.is_some()));
+
+	let responses = store
+		.read_agent_response_usage(
+			"agent".into(),
+			thread.to_owned(),
+			vec![first.to_owned(), second.to_owned()],
+		)
+		.await
+		.expect("read native response usage");
+
+	assert!(responses.iter().any(|row| row.turn_id == first));
+	assert!(
+		!responses.iter().any(|row| row.turn_id == second),
+		"missing response amounts must not be synthesized"
+	);
 }
 
 async fn assert_usage(store: &SqliteStore, input: u64, output: u64) {

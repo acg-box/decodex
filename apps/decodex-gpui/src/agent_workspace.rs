@@ -329,7 +329,7 @@ impl AgentSurface {
 			self.reset_resources();
 			self.clear_usage_estimate();
 			self.reset_integrations();
-			self.resource_feedback.clear();
+			self.resource_form.feedback.clear();
 		}
 	}
 

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import importlib.util
+import re
 import subprocess
 import tempfile
 import tomllib
@@ -106,6 +107,18 @@ class GateContractTests(unittest.TestCase):
         self.assertEqual(self.database_gate.APPLICATION_ID, 0x4443_5831)
         self.assertIn("provider_attempts", self.database_gate.REQUIRED_TABLES)
         self.assertIn("account_credentials", self.database_gate.REQUIRED_TABLES)
+
+    def test_database_gate_migrations_match_the_rust_owner(self) -> None:
+        source = (REPO_ROOT / "database/src/migrations.rs").read_text()
+        entries = re.findall(
+            r'version:\s*(\d+),\s*name:\s*"([^"]+)",\s*'
+            r'sql:\s*include_str!\("\.\./migrations/([^"]+)"\)', source,
+        )
+        self.assertTrue(entries, "Read the canonical Rust migration inventory")
+        self.assertEqual(
+            [(version, name, path.name) for version, name, path in self.database_gate.MIGRATIONS],
+            [(int(version), name, path) for version, name, path in entries],
+        )
 
     def test_migration_digest_has_a_domain_separator(self) -> None:
         source = b"CREATE TABLE example(value INTEGER);\n"

@@ -1,13 +1,13 @@
 //! Join only exact source identities. Participant pairs do not identify an exchange.
-use std::cmp::Reverse;
-
-use ui_theme::{INFO, SUCCESS, TEXT_MUTED, WARNING};
+use std::{cmp::Reverse, collections::BTreeMap};
 
 use crate::shell::agent_surface::work_board::workbench::collaboration::{
-	AgentExchangeDto, AgentExchangeQuestionDto, BTreeMap, Edge, Exchange, Graph, Kind, Row,
-	ui_theme,
+	AgentExchangeDto, AgentExchangeQuestionDto, Edge, Exchange, Graph, Kind, Row,
+	ui_theme::{INFO, SUCCESS, TEXT_MUTED, WARNING},
 };
-use decodex_protocol::{AgentDispatchStateDto, AgentExchangeAssessment, AgentExchangeKind};
+use decodex_protocol::{
+	AgentDispatchStateDto, AgentExchangeAssessment, AgentExchangeKind, AgentPeerExchangeDto,
+};
 
 pub(super) fn exchanges(
 	graph: &Graph,
@@ -16,6 +16,8 @@ pub(super) fn exchanges(
 	questions: &[AgentExchangeQuestionDto],
 ) -> Vec<Exchange> {
 	let mut cases = managed(records, rows);
+
+	cases.extend(peers(records, rows));
 
 	for (order, edge) in graph.edges.iter().enumerate() {
 		if matches!(edge.kind, Kind::Assigned | Kind::Resource | Kind::Spawned)
@@ -189,6 +191,7 @@ fn managed_state(case: &mut Exchange, record: &AgentExchangeDto, work: &Row, oth
 			}
 		},
 		AgentExchangeKind::Result => managed_result(case, record),
+		AgentExchangeKind::PeerInstruction | AgentExchangeKind::PeerResult => {},
 	}
 }
 
@@ -259,6 +262,10 @@ fn managed(records: &[AgentExchangeDto], rows: &[Row]) -> Vec<Exchange> {
 	sorted.sort_by_key(|record| record.event_id);
 
 	for record in sorted {
+		if record.collaboration.is_some() {
+			continue;
+		}
+
 		let Some(work) = rows.iter().find(|row| !row.native && row.work == record.work_id) else {
 			continue;
 		};
@@ -357,6 +364,42 @@ fn append_questions(
 		}) else {
 			continue;
 		};
+		let mut steps = vec![("Question", question.question.title.clone())];
+
+		if let Some(answer) = &question.answer {
+			steps.push(("Answer", answer.text.clone()));
+			steps.push((
+				"Reply source",
+				format!("Event {} · {}", answer.event_id, answer.source_event_id),
+			));
+			steps.push((
+				"Delivery",
+				answer
+					.delivered_turn_id
+					.as_ref()
+					.map(|turn| format!("Acknowledged turn {turn}"))
+					.unwrap_or_else(|| "Delivery is unconfirmed.".into()),
+			));
+
+			if let Some(outcome) = &answer.turn_outcome {
+				steps.push((
+					"Continuation",
+					format!("Turn {outcome}. This does not resolve the question or Work."),
+				));
+			}
+
+			if answer.truncated {
+				steps.push((
+					"Source",
+					"Reply excerpt shortened. Read the original for full content.".into(),
+				));
+			}
+		} else if !question.pending {
+			steps.push(("History","Reply body or disposition is unavailable. A continuation or dismissal can also remove a question from pending.".into()));
+		}
+
+		let answered =
+			question.answer.as_ref().is_some_and(|answer| answer.delivered_turn_id.is_some());
 
 		cases.push(Exchange {
 			id: format!("question:{}:{}", question.work_id, question.question.id),
@@ -365,22 +408,26 @@ fn append_questions(
 			title: question.question.title.clone(),
 			summary: if question.pending {
 				"Native question · your response is needed"
+			} else if answered {
+				"Reply delivered · resolution is not inferred"
+			} else if question.answer.is_some() {
+				"Reply retained · delivery is unconfirmed"
 			} else {
 				"No longer pending · original source retained"
 			}
 			.into(),
-			state: if question.pending { "Question" } else { "Withdrawn" },
+			state: if question.pending {
+				"Question"
+			} else if answered {
+				"Answered"
+			} else if question.answer.is_some() {
+				"Reply saved"
+			} else {
+				"Withdrawn"
+			},
 			color: if question.pending { WARNING } else { TEXT_MUTED },
 			request: None,
-			steps: vec![(
-				"Question",
-				if question.pending {
-					"Open the original question to respond."
-				} else {
-					"A reply, continuation or dismissal removed this question from the pending list."
-				}
-				.into(),
-			)],
+			steps,
 			source: question.question.id.clone(),
 			source_text: question.question.title.clone(),
 			source_row: row.clone(),
@@ -394,6 +441,107 @@ fn append_questions(
 			order: 0,
 		});
 	}
+}
+
+fn peer_state(peer: &AgentPeerExchangeDto) -> (&'static str, &'static str, u32) {
+	if !peer.current {
+		("Earlier", "Earlier instruction · no current assessment borrowed", TEXT_MUTED)
+	} else if let Some(outcome) = &peer.outcome {
+		match outcome.as_str() {
+			"used" => ("Used", "The Work owner used this contribution", SUCCESS),
+			"not_used" => ("Not used", "The Work owner did not use this contribution", TEXT_MUTED),
+			"declined" => ("Declined", "The recipient declined this instruction", WARNING),
+			"cancelled" => ("Cancelled", "The Work owner cancelled this request", TEXT_MUTED),
+			_ => ("Failed", "The Work owner recorded a failed contribution", WARNING),
+		}
+	} else {
+		match peer.state.as_deref() {
+			Some("returned") =>
+				("To review", "Contribution returned · owner assessment pending", INFO),
+			Some("accepted") => ("Accepted", "Recipient accepted · result pending", SUCCESS),
+			_ => ("Requested", "Independent contribution · acceptance unconfirmed", WARNING),
+		}
+	}
+}
+
+fn peers(records: &[AgentExchangeDto], rows: &[Row]) -> Vec<Exchange> {
+	let mut cases = BTreeMap::<String, Exchange>::new();
+	let mut sorted: Vec<_> = records.iter().filter(|r| r.collaboration.is_some()).collect();
+
+	sorted.sort_by_key(|r| r.event_id);
+
+	for record in sorted {
+		let Some(peer) = &record.collaboration else { continue };
+		let Some(owner) = rows.iter().find(|row| !row.native && row.work == record.work_id) else {
+			continue;
+		};
+		let other =
+			rows.iter().find(|row| !row.native && Some(&row.work) == record.other_work_id.as_ref());
+		let instruction = record.kind == AgentExchangeKind::PeerInstruction;
+		let id = format!("peer:{}:{}", peer.request_id, peer.instruction_id);
+		let request = if instruction {
+			Some(record.excerpt.clone())
+		} else {
+			cases.get(&id).and_then(|c| c.request.clone())
+		};
+		let (from, to) = (other.unwrap_or(owner).clone(), Some(owner.clone()));
+		let mut steps = vec![
+			("Work", peer.work_id.clone()),
+			("Request", format!("{} · instruction {}", peer.request_id, peer.instruction_id)),
+		];
+
+		if !instruction {
+			steps.push(("Returned", record.excerpt.clone()));
+		}
+
+		steps.push((
+			"Delivery",
+			record
+				.delivered_turn_id
+				.as_ref()
+				.map(|t| format!("Acknowledged receiving turn {t}"))
+				.unwrap_or_else(|| "Delivery is unconfirmed.".into()),
+		));
+
+		if let Some(note) = &peer.note {
+			steps.push(("Assessment", note.clone()));
+		}
+
+		if record.truncated {
+			steps.push(("Source", "Excerpt shortened. Read the original for full content.".into()));
+		}
+
+		let (state, summary, color) = peer_state(peer);
+		let source_row = if instruction { owner.clone() } else { other.unwrap_or(owner).clone() };
+
+		cases.insert(
+			id.clone(),
+			Exchange {
+				id,
+				from,
+				to,
+				title: format!("Contribution · {}", peer.work_id),
+				summary: summary.into(),
+				state,
+				color,
+				request,
+				steps,
+				source: record.source_event_id.clone(),
+				source_text: record.excerpt.clone(),
+				source_row,
+				source_event: Some(record.event_id),
+				source_item: record.item_id.clone(),
+				source_turn: record.turn_id.clone(),
+				source_thread: record.thread_id.clone(),
+				edge: None,
+				earlier: !peer.current || peer.outcome.is_some(),
+				question: None,
+				order: record.event_id,
+			},
+		);
+	}
+
+	cases.into_values().collect()
 }
 
 fn native_state(edge: &Edge) -> (&'static str, u32, &'static str) {
