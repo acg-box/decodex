@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7547fd397df9671dd0be4bf61b111ffeac4aeaea0e454336c27ed95b189502f8",
+  "pageVersion": "sha256:e68dc3af98f085c361e92f94fc5e99cc62217655c1eed0052fca9a85e65ea5ae",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:c28cb3a289bd31e3aab3dd4c715f33354eb5d0874ea1fa16099c8fd5ebf50657"
+          "version": "repo-file-v1:sha256:8cd13ad6810756d5c248d76bc3af66f02433b47d0d048afbe11e41f64ad8ecc2"
         }
       ]
     },
@@ -67,7 +67,7 @@
           "version": "repo-file-v1:sha256:a9cb497d1fa84af093ba66bdf106fb009bf3179794de23eafdb34a24dc4a858b"
         },
         {
-          "resource": "repo://database/src/migrations.rs#L102-L160",
+          "resource": "repo://database/src/migrations.rs#L107-L165",
           "version": "repo-lines-v1:sha256:626487d7f9257edc8a7a0252542568a97b100eb908cc7b74ab73128eef19568c:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzYWNlOTQ5YjcyOWM4MjI2YzE0YWM1YzA2OGQ0ZjQ5NDQwMTJjMTg2ZGJjYzkyOWViOTlkNjBhODk1Njg4YTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhZGY0YTk2YTM1ZWFmNjBjZDMwNzIwMDZlZmEzMzUwODQ3NjMzNTc2MmY3MWJjN2NkY2U4NTUzMjllMTI1ZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyZjcxNWExMjAyMmNkOGNiODEzMmM2YmIyZDdlYmM0MGIwNjU2YTE1MzgzYWUwMWM5YjE3ZWFiZGE0YTVjMTYifQ"
         }
       ]
@@ -91,8 +91,8 @@
           "version": "repo-file-v1:sha256:ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699"
         },
         {
-          "resource": "repo://database/src/migrations.rs#L8-L63",
-          "version": "repo-lines-v1:sha256:631d563e7d9318cbf94c56d195f41254bd6a2077d3fc3b949ec371a874673288:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmOTFlNTk4NmU4OWZjNDI1OWRiY2VhMjU2MDRiNmI5YzMwMTc2NjdlOGRlMDZhOTIwYzY0NWNiMDcwYzVhYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiNGRhM2I1ZGMyYzkwZGI2NGEwMGE0MmNmZGNhZmViZGUzMDI2OTJjYWQ4MWFkNjI1YTgxNjNhZDVhNWMyYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkMjNjMWJiNjE2NjI5ZTVkYTUxNGJhMmI2Yjk4YWNkYzA1Y2M2ZTIwZTViNTEzYTM5MWY0MTBlYjk1ODQzZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyZGE5ZWM4MjY5ZTAwN2I3YmUzYTYyMTc1NDFjODJlZGUxZTQxMDgzZDQwNTA0MWVmYWZkN2ZkM2ZiYTUyYmQifQ"
+          "resource": "repo://database/src/migrations.rs#L8-L68",
+          "version": "repo-lines-v1:sha256:f34d149fde51ed90177414ce85548b6b1baa12136ca17d236b7aef2c89124940:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmOTFlNTk4NmU4OWZjNDI1OWRiY2VhMjU2MDRiNmI5YzMwMTc2NjdlOGRlMDZhOTIwYzY0NWNiMDcwYzVhYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiNGRhM2I1ZGMyYzkwZGI2NGEwMGE0MmNmZGNhZmViZGUzMDI2OTJjYWQ4MWFkNjI1YTgxNjNhZDVhNWMyYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkMjNjMWJiNjE2NjI5ZTVkYTUxNGJhMmI2Yjk4YWNkYzA1Y2M2ZTIwZTViNTEzYTM5MWY0MTBlYjk1ODQzZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyZGE5ZWM4MjY5ZTAwN2I3YmUzYTYyMTc1NDFjODJlZGUxZTQxMDgzZDQwNTA0MWVmYWZkN2ZkM2ZiYTUyYmQifQ"
         }
       ]
     },
@@ -102,7 +102,7 @@
       "evidence": [
         {
           "resource": "repo://database/src/works.rs",
-          "version": "repo-file-v1:sha256:9fae2b7e75b33ade985004e3613c7de156eb8065661b3d85e22a4421384c60ab"
+          "version": "repo-file-v1:sha256:8448f5642ed7e656dafb41c0546229d910e3c9fec02fe8458eb337ac676c8e72"
         },
         {
           "resource": "repo://database/src/works/commands.rs",
@@ -137,10 +137,46 @@
           "version": "repo-file-v1:sha256:55f3c9a78b8ba21e28125f3d4edb836ccfb6a155b603390e95c8fd5ca78e61b9"
         }
       ]
+    },
+    {
+      "id": "claim_720cb8f9892a455cbccf959a9df44908",
+      "statement": "The current ledger ends at schema 57 with native_work_deliveries, preserving one immutable exact native input receipt per contribution, unique child/turn/message identity and idempotent identical store-method retries; existing dispatches are preserved without invented delivery evidence.",
+      "evidence": [
+        {
+          "resource": "repo://database/migrations/0057_native_work_delivery.sql",
+          "version": "repo-file-v1:sha256:b631d6ab912b436339528f3de75cfae6fa26ed545262e7bdf6fcdaad7685c3f7"
+        },
+        {
+          "resource": "repo://database/src/migrations.rs",
+          "version": "repo-file-v1:sha256:8cd13ad6810756d5c248d76bc3af66f02433b47d0d048afbe11e41f64ad8ecc2"
+        },
+        {
+          "resource": "repo://database/src/project_work_migration_tests.rs",
+          "version": "repo-file-v1:sha256:8a34171cf21f6b83191045ee5d6a7ee1335acde1fbaec525cc7c931d5c2b001a"
+        },
+        {
+          "resource": "repo://database/src/works.rs",
+          "version": "repo-file-v1:sha256:8448f5642ed7e656dafb41c0546229d910e3c9fec02fe8458eb337ac676c8e72"
+        },
+        {
+          "resource": "repo://database/src/works/tests.rs",
+          "version": "repo-file-v1:sha256:2d66d5c291be85e5c72f4643d774f8712af12e942cdebb1b463e270feb5909d2"
+        }
+      ]
+    },
+    {
+      "id": "claim_d2da440d39b84b41820e06c00e14cb2e",
+      "statement": "The native input follow-up passes the schema57/90-table gate and 189 database tests in temporary roots, including receipt replay and reopen; it does not migrate the installed user database.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T21:19:56.719Z"
+    "at": "2026-10-25T03:47:07.956Z"
   }
 }

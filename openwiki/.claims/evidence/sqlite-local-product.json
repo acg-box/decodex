@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:89c397baeb84ccae55dd520121d7b81a7f54df9e37693de5dec8cf46ff42bc8b",
+  "pageVersion": "sha256:afd240629df737a9ea6994c2c7a79a8ad89b15a54b037c677b1f83d108a6eaae",
   "claims": [
     {
       "id": "claim_57467868d3114a4f8efa994a912c927d",
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:c28cb3a289bd31e3aab3dd4c715f33354eb5d0874ea1fa16099c8fd5ebf50657"
+          "version": "repo-file-v1:sha256:8cd13ad6810756d5c248d76bc3af66f02433b47d0d048afbe11e41f64ad8ecc2"
         },
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
@@ -43,6 +43,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T21:11:31.338Z"
+    "at": "2026-10-25T03:47:07.956Z"
   }
 }

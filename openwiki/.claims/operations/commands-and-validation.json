@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:00d6269bfd30065ebde1400cfb6919552a866ef8ed4d68311acdac28320c346e",
+  "pageVersion": "sha256:b1c117729567024548dbd1d4a908e084be73984d69bf87a663af4a24c4525170",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -122,7 +122,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
         }
       ]
     },
@@ -190,7 +190,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
         }
       ]
     },
@@ -210,17 +210,41 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/project_guardian.py",
           "version": "repo-file-v1:sha256:2c9429ce26a700a4fd27145fa9022df4d6bc426ade5b8b512f329131afb2ad42"
         }
       ]
+    },
+    {
+      "id": "claim_64b7b886856e451688946a9fe666d729",
+      "statement": "The native Project and nested Work follow-up executes seven selected native tests with zero unmatched selectors, 189 database tests, four runtime guards and a schema57/90-table gate; the final complete workspace run passes 2921 with 1157 skipped and no LEAK while retaining its separate first failed run.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
+        }
+      ]
+    },
+    {
+      "id": "claim_6d9dc7a674be45cd96d59f3f588deaa8",
+      "statement": "The two unchanged UI frame samples passed ten isolated executions of the same artifact and now reserve Nextest runner resources with assertions and default selection retained; the first follow-up resume-test LEAK remains unexplained.",
+      "evidence": [
+        {
+          "resource": "repo://.config/nextest.toml",
+          "version": "repo-file-v1:sha256:85f6a30b21a1a8e734b6d81aad00a781657dc39d7762cd9d02c0ffc9f8154698"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T02:09:34.237Z"
+    "at": "2026-10-25T03:47:07.956Z"
   }
 }

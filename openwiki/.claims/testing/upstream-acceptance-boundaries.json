@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2aa0236971621162f8790c88a5562401bc44585708389488c4ea3249d3c6ef6f",
+  "pageVersion": "sha256:0a6511652c6e416fee834258163784d273d936fb70ec0d8263ff478bf1ca199a",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -80,7 +80,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:21606f7d55eb010c9ebd76f0728c2be4c8b637d02d5f380ea470a3e9dc743ac9"
+          "version": "repo-file-v1:sha256:70af440dc101dc6713fdbdc5a109e06d9db8afd57dd6206a2cab17cabb4fab1b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/result_messages.rs",
@@ -101,7 +101,7 @@
       "statement": "External context is sent as function_call_output through thread/inject_items; the lost-injection and lost-follow-up response test confirms that recovery retains an unknown outcome without replaying either request.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1361-L1376",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1363-L1378",
           "version": "repo-lines-v1:sha256:bc50eb129bc3ec0c12b2018556e2ce03d02e3860b29f914e175d959ada8bf996:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZkY2FkYmNhM2U5OWE2NjVlYzI1Yzk2ZTRhNzEwNTFkYjIzZjA4M2U5MDc1ZjJmNTljMDFlZTQwMTRiNjM2ZmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmNjIzYTM0ZTk2OWRmODg3NzNmYzc2MzVlMmMyODYyZGRiMzVjNTljODkxMDRkZTM1ZTEyYmIxNzc1YzZhZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1NTA4YTBjYTIwNDQ5NzNjZDg1MDYyNDljZTFjMTlmZDlhMjdlMjM0YmEzYzA5MzIwYzFlMWNkYTkzN2I4NzMifQ"
         },
         {
@@ -225,7 +225,7 @@
       "statement": "The compatibility delegation regression distinguishes direct user input from tool-authority work_instruction outputs requesting retention, without selecting scheduled wakes or capacity retries.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1247-L1355",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1249-L1357",
           "version": "repo-lines-v1:sha256:e0ad341d1d141c699110b02b6523ea6ef5d2151f529f68b963753ce173ce1cfc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
@@ -254,7 +254,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
         }
       ]
     },
@@ -272,7 +272,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:21606f7d55eb010c9ebd76f0728c2be4c8b637d02d5f380ea470a3e9dc743ac9"
+          "version": "repo-file-v1:sha256:70af440dc101dc6713fdbdc5a109e06d9db8afd57dd6206a2cab17cabb4fab1b"
         }
       ]
     },
@@ -282,7 +282,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
         }
       ]
     },
@@ -344,25 +344,29 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
         }
       ]
     },
     {
       "id": "claim_1e1fe48fb67c4ab083f21d46a9a22fac",
-      "statement": "Native Project/global Guardian/private records and quiescent tool migration are exercised through the retained production bridge, while V1/V2 qualification uses native model selection and excludes nested Code Mode Work attribution.",
+      "statement": "Native Project/global Guardian/private records and quiescent tool migration are exercised through the retained production bridge; follow-up qualification adds retained Project membership and nested V1/V2 Work attribution under actual native model/configuration selection, preserving V2 direct-only defaults.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs",
+          "version": "repo-file-v1:sha256:ad776a946d9c78aa7d837a0de35f163ab9ea6856286cf83ccbd863734bc941a9"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs",
-          "version": "repo-file-v1:sha256:a7583373e3a464de6396fed52288aa8650b127438064acc4df3cfcadfd9eb4f5"
+          "version": "repo-file-v1:sha256:d7985f8d33248e769c1e05daa13803af9a9d28f0261e899e8f42002a2554689c"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
-          "version": "repo-file-v1:sha256:c7f9b1441a89892d12c549b5c15571496111ea4b911e9fa699af5f86e726db9d"
+          "version": "repo-file-v1:sha256:5af0ba367f8bbb0a454304baf4b846a1fa87e83dbfe4aaf84c863848a37feb2f"
         }
       ]
     },
@@ -394,13 +398,45 @@
         },
         {
           "resource": "repo://database/src/works/tests.rs",
-          "version": "repo-file-v1:sha256:7995d3e2ab0c9c1b2bcb8e67141fe4db3c9621326bbdda85b488e0b06c0f4b43"
+          "version": "repo-file-v1:sha256:2d66d5c291be85e5c72f4643d774f8712af12e942cdebb1b463e270feb5909d2"
+        }
+      ]
+    },
+    {
+      "id": "claim_a5260470e6834493adf1668690900c72",
+      "statement": "Nested V2 Work qualification uses real native input and parent history with a reconstructed store-reopen boundary and no replay; absent, encrypted, missed or ambiguous input stays Unknown, and official desktop sidebar, live-model quality and installed-app acceptance remain unmeasured.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
+          "version": "repo-file-v1:sha256:5af0ba367f8bbb0a454304baf4b846a1fa87e83dbfe4aaf84c863848a37feb2f"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/work_delivery.rs",
+          "version": "repo-file-v1:sha256:e9a6d3dedd804b8f7b55f795755ad529daadd172ae1549a3bcd9777f1592b30c"
+        }
+      ]
+    },
+    {
+      "id": "claim_d71bd600fdb34b3688c5fb61d5bd4c91",
+      "statement": "The follow-up separately records seven passed native tests, 189 database tests, schema57/90-table integrity and a final 2921-pass workspace run with 1157 skipped and no LEAK, preserving its first three failures and unexplained resume-test LEAK.",
+      "evidence": [
+        {
+          "resource": "repo://.config/nextest.toml",
+          "version": "repo-file-v1:sha256:85f6a30b21a1a8e734b6d81aad00a781657dc39d7762cd9d02c0ffc9f8154698"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T02:09:34.237Z"
+    "at": "2026-10-25T03:47:07.956Z"
   }
 }

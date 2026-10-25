@@ -33,10 +33,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
+generated: { by: "codex", at: "2026-10-25T03:52:15.285Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T02:09:34.237Z
+    at: 2026-10-25T03:52:15.285Z
 ---
 
 
@@ -121,4 +121,4 @@ The automation directory's `state.json` owns the current reviewed cursor, next u
 
 ## Project and Work delivery evidence
 
-The retained index has a separate `retained_project_agent_work` qualification for the direct schema56/protocol3 change and global Guardian. It records exact source, artifact/helper/schema identities, reusable tests, executed counts and unmeasured limits. It does not advance the upstream source-review cursor or certify the installed app. The accepted private Review Details decision is implemented; unrelated optional proposals keep their recorded decisions. Native automation state and its paused schedule remain separate authority. Reconcile this product delivery with current main and pending native receipts before an explicitly authorized maintenance resume.
+The retained index has a separate `retained_project_agent_work` qualification for the direct schema56/protocol3 change and global Guardian. It records exact source, artifact/helper/schema identities, reusable tests, executed counts and unmeasured limits. It does not advance the upstream source-review cursor or certify the installed app. The accepted private Review Details decision is implemented; unrelated optional proposals keep their recorded decisions. Native automation state and current supported host readback own the actual schedule status. A product receipt does not prove that the schedule is paused or authorize activation. Reconcile delivered changes with current main and pending native receipts; resuming a paused schedule still requires explicit user authorization.

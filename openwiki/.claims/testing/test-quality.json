@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:122157b52d77020107d96b51ce11171902ae291b1c1a9fef9f8eb8373b925fe8",
+  "pageVersion": "sha256:7c62ee7d5e49bf40fbd5c7eb87ad51b5e6067d4f6f790e1cbb0e12fb235e0fc7",
   "claims": [
     {
       "id": "claim_070657bf065541118dc7ae41cdeffc2c",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://.config/nextest.toml",
-          "version": "repo-file-v1:sha256:0628e8b2a1386725ffc17a1e8281faac94ad2f69f330f41e4b0d8271c64b44e2"
+          "version": "repo-file-v1:sha256:85f6a30b21a1a8e734b6d81aad00a781657dc39d7762cd9d02c0ffc9f8154698"
         }
       ]
     },
@@ -42,23 +42,33 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
         }
       ]
     },
     {
       "id": "claim_8881e69892df4702a8f16118a94c0403",
-      "statement": "Nextest serializes native-media exchanges and reserves global test threads for the selected native packet-flow and collaboration-disclosure timing fixtures; these scheduling rules do not establish display performance.",
+      "statement": "Nextest serializes native-media exchanges and reserves global test threads for selected packet-flow, collaboration-disclosure and two short-frame composer/progress fixtures with their assertions retained; these rules do not establish display performance.",
       "evidence": [
         {
           "resource": "repo://.config/nextest.toml",
-          "version": "repo-file-v1:sha256:0628e8b2a1386725ffc17a1e8281faac94ad2f69f330f41e4b0d8271c64b44e2"
+          "version": "repo-file-v1:sha256:85f6a30b21a1a8e734b6d81aad00a781657dc39d7762cd9d02c0ffc9f8154698"
+        }
+      ]
+    },
+    {
+      "id": "claim_7746d9f7d34c4337b44004e8f5e3048c",
+      "statement": "The native Project and nested Work follow-up retains its initial three full-suite failures and unexplained resume-test LEAK, ten isolated passes of the unchanged UI artifact, fixture correction and final 2921-pass workspace run as separate evidence rather than rewriting earlier failures.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T02:09:34.237Z"
+    "at": "2026-10-25T03:47:07.956Z"
   }
 }
