@@ -333,7 +333,11 @@ impl Cache {
 						bottom + CLEARANCE,
 					],
 				}];
-				if let Some([left, top, right, bottom]) = n.identity {
+				// A nameplate inside the character footprint is already protected.
+				// Duplicating it would block that character's own bottom port.
+				if let Some([left, top, right, bottom]) = n.identity.filter(|[x0, y0, x1, y1]| {
+					n.x + x0 < left || n.y + y0 < top || n.x + x1 > right || n.y + y1 > bottom
+				}) {
 					cards.push(Card {
 						key: format!("identity:{}", n.key),
 						port_y: n.y + (top + bottom) / 2.,

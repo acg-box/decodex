@@ -23,7 +23,6 @@ pub(super) const PORTRAIT_HEIGHT: f32 = 44.;
 pub(super) const COLUMN_GAP: f32 = 12.;
 const TEXT_SIZE: f32 = 10.5;
 const MIN_TEXT_SIZE: f32 = 10.;
-pub(super) const DETAILS_TOP: f32 = 4.;
 pub(super) const SELECTED: u32 = crate::ui_theme::BLUE;
 pub(super) const SECONDARY_TEXT: u32 = foreground::SECONDARY;
 pub(super) const MIN_ZOOM: f32 = 0.05;
@@ -118,6 +117,14 @@ impl Layout {
 	}
 
 	pub(super) fn details_width(self) -> f32 {
+		(self.width - 2. * self.spacing(INSET_X) - self.speech_left()).max(1.)
+	}
+
+	pub(super) fn speech_left(self) -> f32 {
+		self.portrait_spacing(PORTRAIT_WIDTH) * 0.75 + self.details_gap()
+	}
+
+	pub(super) fn caption_width(self) -> f32 {
 		(self.width
 			- 2. * self.spacing(INSET_X)
 			- self.portrait_spacing(PORTRAIT_WIDTH)
@@ -127,6 +134,28 @@ impl Layout {
 
 	pub(super) fn bubble_padding(self) -> f32 {
 		self.spacing(7.).max(5.)
+	}
+
+	pub(super) fn speech_overlap(self) -> f32 {
+		self.portrait_spacing(PORTRAIT_HEIGHT) * 0.32
+	}
+
+	pub(super) fn speech_offset(self, rows: f32) -> f32 {
+		if self.activity_visible() {
+			(rows * self.activity_line() - self.speech_overlap()).max(0.)
+		} else {
+			0.
+		}
+	}
+
+	/// The bubble points down to the upper-right side of its own character.
+	pub(super) fn speech_tip(self, height: f32) -> (f32, f32) {
+		(
+			-self.details_gap(),
+			self.speech_offset(height / self.activity_line())
+				+ self.portrait_spacing(PORTRAIT_HEIGHT) * 0.58
+				- height,
+		)
 	}
 
 	pub(super) fn full_detail(self) -> bool {
@@ -170,7 +199,7 @@ impl Layout {
 		let top = if self.overview() {
 			(OVERVIEW_HEIGHT - self.header_height(actions) / self.zoom) / 2.
 		} else {
-			INSET_Y
+			INSET_Y + self.speech_offset(actions) / self.zoom
 		};
 		let inset = if self.overview() { self.node_inset() } else { (0., 0.) };
 		(left - inset.0, top - inset.1)
@@ -179,6 +208,11 @@ impl Layout {
 	pub(super) fn identity_bounds(self, actions: f32) -> Option<[f32; 4]> {
 		self.labels().then(|| {
 			let (left, top) = self.header_origin(actions);
+			let top = top
+				+ (self.portrait_spacing(PORTRAIT_HEIGHT)
+					+ if self.overview() { 0. } else { self.gap() + self.metrics_height() }
+					+ self.metadata_gap())
+					/ self.zoom;
 			[
 				left,
 				top,
@@ -194,10 +228,10 @@ impl Layout {
 		let z = self.zoom;
 		let portrait = self.portrait_spacing(PORTRAIT_WIDTH) / z;
 		let height = (self.portrait_spacing(PORTRAIT_HEIGHT)
-			+ if self.overview() { 0. } else { self.gap() + self.metrics_height() })
+			+ if self.overview() { 0. } else { self.gap() + self.metrics_height() }
+			+ self.metadata_height())
 			/ z;
 		let (left, top) = self.header_origin(actions);
-		let top = top + self.metadata_height() / z;
 		let (width, node_height) = self.node_size(self.world_height(actions));
 		let center = (width / 2., node_height / 2.);
 		let r = self.point_size() / 2.;
@@ -272,12 +306,8 @@ impl Layout {
 	pub(super) fn header_height(self, actions: f32) -> f32 {
 		let portrait = self.portrait_spacing(PORTRAIT_HEIGHT)
 			+ if self.overview() { 0. } else { self.gap() + self.metrics_height() };
-		let details = if self.activity_visible() && actions > 0. {
-			self.spacing(DETAILS_TOP) + actions * self.activity_line()
-		} else {
-			0.
-		};
-		self.metadata_height() + portrait.max(details)
+		let details = if self.activity_visible() { actions * self.activity_line() } else { 0. };
+		self.metadata_height() + portrait + details
 	}
 
 	/// The avatar and current activity determine the footprint, without reserving

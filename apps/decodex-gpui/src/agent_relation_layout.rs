@@ -657,7 +657,7 @@ mod tests {
 					(
 						i.to_string(),
 						None,
-						super::super::card::Layout::new(1.).world_height(1.).to_bits(),
+						super::super::card::Layout::new(1.).world_height(0.).to_bits(),
 					)
 				})
 				.collect(),
@@ -676,8 +676,8 @@ mod tests {
 					assert!(
 						x + WIDTH <= bx
 							|| bx + WIDTH <= x
-							|| y + super::super::card::Layout::new(1.).world_height(1.) <= by
-							|| by + super::super::card::Layout::new(1.).world_height(1.) <= y
+							|| y + super::super::card::Layout::new(1.).world_height(0.) <= by
+							|| by + super::super::card::Layout::new(1.).world_height(0.) <= y
 					);
 				}
 			}

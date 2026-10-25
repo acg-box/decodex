@@ -42,7 +42,7 @@ pub(super) fn task_excerpt<'a>(
 	layout: card::Layout,
 	text_system: &std::sync::Arc<gpui::TextSystem>,
 ) -> Excerpt<'a> {
-	excerpt(text, layout, layout.details_width(), text_system)
+	excerpt(text, layout, layout.caption_width(), text_system)
 }
 
 pub(super) fn message_excerpt<'a>(
@@ -199,7 +199,7 @@ pub(super) fn goal(
 		.child(excerpt.text.to_owned())
 }
 
-/// One quiet foreground shape. The small tail points back to the character;
+/// One quiet foreground shape. Its lower tail points down to the character;
 /// it has no hover state, elevation, blur, or separate material.
 fn bubble_shape(layout: card::Layout) -> gpui::Div {
 	gpui::div().absolute().inset_0().child(
@@ -210,6 +210,7 @@ fn bubble_shape(layout: card::Layout) -> gpui::Div {
 				let h = f32::from(bounds.size.height);
 				let r = layout.spacing(7.).max(5.);
 				let k = r * 0.552_284_8;
+				let (tip_x, tip_y) = layout.speech_tip(h);
 				let p = |x, y| bounds.origin + gpui::point(gpui::px(x), gpui::px(y));
 				let mut path = gpui::PathBuilder::fill();
 				path.move_to(p(r, 0.));
@@ -217,11 +218,15 @@ fn bubble_shape(layout: card::Layout) -> gpui::Div {
 				path.cubic_bezier_to(p(w, r), p(w - r + k, 0.), p(w, r - k));
 				path.line_to(p(w, h - r));
 				path.cubic_bezier_to(p(w - r, h), p(w, h - r + k), p(w - r + k, h));
+				path.line_to(p(r + 8., h));
+				path.cubic_bezier_to(
+					p(tip_x, h + tip_y),
+					p(r + 5., h + 8.),
+					p(tip_x + 8., h + tip_y - 2.),
+				);
+				path.cubic_bezier_to(p(r, h), p(tip_x + 4., h + tip_y - 8.), p(r - 2., h + 3.));
 				path.line_to(p(r, h));
 				path.cubic_bezier_to(p(0., h - r), p(r - k, h), p(0., h - r + k));
-				path.line_to(p(0., r + 7.));
-				path.line_to(p(-4., r + 3.));
-				path.line_to(p(0., r + 1.));
 				path.line_to(p(0., r));
 				path.cubic_bezier_to(p(r, 0.), p(0., r - k), p(r - k, 0.));
 				path.close();
@@ -269,7 +274,7 @@ pub(super) fn team(key: &str, count: usize, layout: card::Layout) -> gpui::Div {
 		)
 }
 
-pub(super) fn parent(key: &str, parent: String, layout: card::Layout) -> gpui::Div {
+pub(super) fn parent(key: &str, parent: String, layout: card::Layout) -> gpui::Stateful<gpui::Div> {
 	let row = gpui::div()
 		.debug_selector({
 			let key = key.to_owned();
@@ -283,11 +288,10 @@ pub(super) fn parent(key: &str, parent: String, layout: card::Layout) -> gpui::D
 		.h(gpui::px(layout.title_line()))
 		.text_size(gpui::px(layout.title_size()))
 		.text_color(ui_theme::rgb(ui_theme::foreground::BODY));
-	if layout.zoom >= 0.9 {
-		row.child(format!("Reports to {parent}"))
-	} else {
-		row.child(workspace_symbols::icon_sized(Symbol::TeamParent, 11.)).child(parent)
-	}
+	row.id(gpui::SharedString::from(format!("relation-parent-{key}")))
+		.aria_label(format!("Reports to {parent}"))
+		.child(workspace_symbols::icon_sized(Symbol::TeamParent, layout.title_size()))
+		.child(parent)
 }
 
 #[cfg(test)]

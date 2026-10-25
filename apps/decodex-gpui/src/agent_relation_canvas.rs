@@ -3431,11 +3431,13 @@ mod fit_tests {
 			let metrics = visual.debug_bounds("relation-metrics-release").unwrap();
 			assert!(preview.left() >= card.left() && preview.right() <= card.right());
 			assert!(metrics.left() > card.left() && metrics.right() < card.right());
-			assert!(preview.left() >= metrics.right(), "zoom {scale}: {preview:?}, {metrics:?}");
+			assert!(preview.bottom() <= metrics.top(), "zoom {scale}: {preview:?}, {metrics:?}");
 			assert!(metrics.bottom() < card.bottom(), "zoom {scale}: {metrics:?}, {card:?}");
 			let message = visual.debug_bounds("relation-message-body-release").unwrap();
 			let assignment = visual.debug_bounds("relation-assignment-release").unwrap();
-			assert!(assignment.bottom() < preview.top(), "purpose and message stay separate");
+			assert!(metrics.bottom() < assignment.top(), "purpose stays below the character HUD");
+			let avatar = visual.debug_bounds("relation-avatar-release").unwrap();
+			assert!(preview.top() < avatar.top(), "speech floats above its speaker");
 			assert!(message.bottom() <= preview.bottom() && preview.bottom() < card.bottom());
 			let text = surface.read_with(visual, |s, _| {
 				s.relation_graph()
@@ -3524,20 +3526,33 @@ mod fit_tests {
 		let preview = visual.debug_bounds("relation-preview-release");
 		assert_eq!(preview.is_some(), layout.activity_visible());
 		if let Some(preview) = preview {
-			assert!(avatar.right() < preview.left(), "activity sits to the right of the portrait");
+			assert!(
+				avatar.center().x < preview.left(),
+				"speech floats to the upper right of the portrait"
+			);
 			assert!(
 				f32::from(preview.left() - avatar.right().max(metrics.right()))
 					<= layout.details_gap() + 0.5,
 				"activity stays close to the character"
 			);
-			assert_eq!(
-				visual.debug_bounds("relation-assignment-release").unwrap().left(),
-				preview.left(),
-				"purpose and activity share one text edge"
+			let (tip_x, tip_y) = layout.speech_tip(f32::from(preview.size.height));
+			let speech_tip = preview.bottom_left() + gpui::point(gpui::px(tip_x), gpui::px(tip_y));
+			assert!(avatar.contains(&speech_tip), "the speech tail points into its own portrait");
+			assert!(
+				speech_tip.y < avatar.top() + avatar.size.height * 0.75,
+				"speech points at the head, not the HUD"
 			);
 			assert!(
-				number.bottom() < preview.top(),
-				"identity stays above the character and activity"
+				visual.debug_bounds("relation-assignment-release").unwrap().left() > number.right(),
+				"the task title follows the compact agent number"
+			);
+			assert!(
+				number.top() > metrics.bottom(),
+				"identity stays with the nameplate below the character"
+			);
+			assert_eq!(
+				number.top(),
+				visual.debug_bounds("relation-assignment-release").unwrap().top()
 			);
 		}
 		assert!(
@@ -3545,8 +3560,8 @@ mod fit_tests {
 				== layout.activity_visible(),
 			"the current assignment stays distinct from recent activity"
 		);
-		assert!(number.bottom() < avatar.top() && avatar.bottom() < metrics.top());
-		assert_eq!(identity.center().x, avatar.center().x);
+		assert!(number.top() > metrics.bottom() && avatar.bottom() < metrics.top());
+		assert_eq!(identity.left(), avatar.left());
 		assert!(
 			f32::from(metrics.top() - avatar.bottom()) <= layout.gap() + 0.5,
 			"only the HUD sits immediately below the portrait"
@@ -3562,7 +3577,7 @@ mod fit_tests {
 		let status = visual.debug_bounds("relation-status-release").unwrap();
 		assert!(status.left() >= identity.left());
 		assert!(status.right() < number.left());
-		assert!(status.bottom() < avatar.top());
+		assert!(status.top() > metrics.bottom());
 		let selection = visual.debug_bounds("relation-selection-release").unwrap();
 		assert_eq!(selection, avatar, "selection belongs only to the portrait");
 		assert!(selection.bottom() < metrics.top());

@@ -1,4 +1,4 @@
-//! A numbered Cloudlet with source-bound activity alongside it.
+//! A character speaks above its head; its stable identity stays at its feet.
 use super::{mascot, stream};
 use crate::{
 	ui_motion::{self, SmoothControl as _},
@@ -30,21 +30,18 @@ impl Header {
 		layout: super::card::Layout,
 		window: &mut Window,
 		cx: &mut App,
-	) -> gpui::Div {
-		let portrait_width = layout.portrait_spacing(super::card::PORTRAIT_WIDTH);
+	) -> gpui::Stateful<gpui::Div> {
 		let identity_selector = format!("relation-identity-{}", self.key);
 		let status_selector = format!("relation-status-{}", self.key);
 		let number_selector = format!("relation-number-{}", self.key);
 		let identity = gpui::div()
 			.id(gpui::SharedString::from(format!("relation-identity-target-{}", self.key)))
 			.debug_selector(move || identity_selector.clone())
-			.w(gpui::px(portrait_width))
 			.h(gpui::px(layout.title_line()))
 			.flex_none()
 			.flex()
 			.items_center()
-			.justify_center()
-			.gap(gpui::px(4.))
+			.gap(gpui::px(3.))
 			.child(
 				gpui::div()
 					.debug_selector(move || status_selector.clone())
@@ -67,30 +64,43 @@ impl Header {
 						foreground::BODY
 					}))
 					.child(self.number.clone()),
-			);
-		gpui::div()
+			)
+			.when(self.picked, |row| {
+				row.when_some(self.parent.clone(), |row, parent| {
+					row.child(information_rows::parent(&self.key, parent, layout))
+				})
+			})
+			.when(!(self.picked && self.parent.is_some()), |row| {
+				row.when_some(self.team_members, |row, count| {
+					row.child(self.team_button(count, layout, window, cx))
+				})
+			});
+		let lines = if layout.activity_visible() {
+			information_rows::task_excerpt(&self.task, layout, cx.text_system()).lines.max(1)
+		} else {
+			1
+		};
+		let caption = gpui::div()
+			.id(gpui::SharedString::from(format!("relation-caption-target-{}", self.key)))
 			.w_full()
-			.h(gpui::px(layout.title_line()))
+			.h(gpui::px(lines as f32 * layout.title_line()))
 			.flex_none()
 			.flex()
-			.items_center()
-			.gap(gpui::px(layout.details_gap()))
-			.child(self.interaction.apply(identity, false))
-			.child(
-				gpui::div()
-					.flex_1()
-					.min_w_0()
-					.flex()
-					.items_center()
-					.when_some(self.team_members, |row, count| {
-						row.child(self.team_button(count, layout, window, cx))
-					})
-					.when(self.picked, |row| {
-						row.when_some(self.parent.clone(), |row, parent| {
-							row.child(information_rows::parent(&self.key, parent, layout))
-						})
-					}),
-			)
+			.items_start()
+			.gap(gpui::px(6.))
+			.child(identity)
+			.child(gpui::div().w(gpui::px(layout.caption_width())).flex_none().when(
+				layout.activity_visible() && !self.task.is_empty(),
+				|row| {
+					row.child(information_rows::goal(
+						&self.key,
+						&self.task,
+						layout,
+						cx.text_system(),
+					))
+				},
+			));
+		self.interaction.apply(caption, false)
 	}
 
 	fn team_button(
@@ -131,8 +141,8 @@ impl RenderOnce for Header {
 		let layout = self.layout.on_display(window.scale_factor());
 		let metadata = layout.labels().then(|| self.metadata(layout, window, cx));
 		let h = self;
-		let (task_lines, count) = content_rows(&h.task, &h.activity, layout, cx.text_system());
-		let gap = content_gap(task_lines, &h.activity, layout);
+		let (_, count) = content_rows(&h.task, &h.activity, layout, cx.text_system());
+		let speech_height = h.activity.height * layout.activity_line() / stream::LINE;
 		let portrait_width = layout.portrait_spacing(super::card::PORTRAIT_WIDTH);
 		let selection = selection_mark(&h.key, h.selected, layout, window, cx);
 		let avatar_selector = format!("relation-avatar-{}", h.key);
@@ -154,8 +164,9 @@ impl RenderOnce for Header {
 			.gap(gpui::px(layout.gap()))
 			.child(figure)
 			.when_some(h.metrics, |portrait, metrics| portrait.child(metrics));
-		let mut content = gpui::div()
+		let content = gpui::div()
 			.w_full()
+			.mt(gpui::px(layout.speech_offset(h.activity.height / stream::LINE)))
 			.flex()
 			.items_start()
 			.gap(gpui::px(layout.details_gap()))
@@ -163,6 +174,7 @@ impl RenderOnce for Header {
 		let mut body = gpui::div()
 			.w_full()
 			.h(gpui::px(layout.header_height(count)))
+			.relative()
 			.font_family(crate::ui_theme::FONT_FAMILY)
 			.font_weight(gpui::FontWeight::NORMAL)
 			.flex_none()
@@ -170,32 +182,18 @@ impl RenderOnce for Header {
 			.flex_col()
 			.gap(gpui::px(layout.metadata_gap()));
 		let Some(metadata) = metadata else { return body.child(content.justify_center()) };
-		body = body.child(metadata);
-		if layout.activity_visible() {
-			let mut details = gpui::div()
+		if layout.activity_visible() && speech_height > 0. {
+			let details = gpui::div()
 				.id(gpui::SharedString::from(format!("relation-details-target-{}", h.key)))
-				.flex_1()
-				.min_w_0()
-				.pt(gpui::px(layout.spacing(super::card::DETAILS_TOP)))
-				.flex()
-				.flex_col()
-				.gap(gpui::px(gap * layout.activity_line()));
-			if !h.task.is_empty() {
-				details = details.child(information_rows::goal(
-					&h.key,
-					&h.task,
-					layout,
-					cx.text_system(),
-				));
-			}
-			if h.activity.height > 0. {
-				details = details.child(information_rows::render(
-					&h.key, h.activity, layout, h.live, window, cx,
-				));
-			}
-			content = content.child(h.interaction.apply(details, false));
+				.absolute()
+				.top_0()
+				.left(gpui::px(layout.speech_left()))
+				.w(gpui::px(layout.details_width()))
+				.h(gpui::px(speech_height))
+				.child(information_rows::render(&h.key, h.activity, layout, h.live, window, cx));
+			body = body.child(h.interaction.apply(details, false));
 		}
-		body.child(content)
+		body.child(content).child(metadata)
 	}
 }
 
@@ -252,8 +250,9 @@ fn selection_mark(
 
 #[path = "agent_relation_rows.rs"] mod information_rows;
 
-fn content_gap(task_lines: usize, frame: &stream::Frame, layout: super::card::Layout) -> f32 {
-	if task_lines > 0 && frame.height > 0. { 4. / layout.activity_line() } else { 0. }
+fn content_gap(height: f32, layout: super::card::Layout) -> f32 {
+	-(height * layout.activity_line() / stream::LINE).min(layout.speech_overlap())
+		/ layout.activity_line()
 }
 
 /// The painted header and camera share the exact current text measurement.
@@ -267,7 +266,12 @@ pub(super) fn content_rows(
 		return (0, 0.);
 	}
 	let lines = information_rows::task_excerpt(task, layout, text_system).lines;
-	(lines, activity.height / stream::LINE + lines as f32 + content_gap(lines, activity, layout))
+	(
+		lines,
+		activity.height / stream::LINE
+			+ lines.saturating_sub(1) as f32
+			+ content_gap(activity.height, layout),
+	)
 }
 
 pub(super) fn detail_rows(
@@ -283,8 +287,11 @@ pub(super) fn detail_rows(
 		.max()
 		.unwrap_or(0);
 	activity.layout_height / stream::LINE
-		+ task_lines as f32
-		+ content_gap(task_lines, activity, layout)
+		+ task_lines.saturating_sub(1) as f32
+		+ [min, max]
+			.into_iter()
+			.map(|zoom| content_gap(activity.layout_height, layout.at_zoom(zoom)))
+			.fold(f32::NEG_INFINITY, f32::max)
 }
 
 pub(super) fn operation_height(
