@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:beb377ab23bba3c79b84e190e04a931cdbe0dc7db891ffd1a835fe5bb0dc3d6a",
+  "pageVersion": "sha256:44edceab159237e6e06c91bc9c1209d473ab3d4e0db76cba1226be137f402d0f",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -124,7 +124,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_initial_settings.rs",
@@ -146,13 +146,13 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T08:56:12.608Z"
+    "at": "2026-10-25T14:08:29.784Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ebe6cdb1fa1a921dec62415f600601666b0cc20975b8b522593779d19545fd61",
+  "pageVersion": "sha256:4159aede950342ea58d8b9a402e20cb27eb2b687ba8c25bee5eaefc28455bacc",
   "claims": [
     {
       "id": "claim_820ae47a5a5d49aab10b5f306ac24685",
@@ -134,7 +134,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
         }
       ]
     },
@@ -180,7 +180,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
         }
       ]
     },
@@ -204,7 +204,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json",
@@ -232,7 +232,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
         }
       ]
     },
@@ -242,7 +242,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs",
@@ -256,13 +256,13 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:ded1da1ab532ac07ea8147235397c4ba9492fb3c142058695f91f212cc006a4a"
+          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T08:56:12.608Z"
+    "at": "2026-10-25T14:08:29.784Z"
   }
 }
