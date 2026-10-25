@@ -1,5 +1,8 @@
 //! Inspect persisted native settings through the existing bounded metadata process owner.
-use std::{sync::Arc, time::Duration};
+use std::{
+	sync::{Arc, Mutex},
+	time::Duration,
+};
 
 use tokio::{runtime::Handle, sync::oneshot, task, time};
 
@@ -70,7 +73,7 @@ impl ConversationRuntime {
 		.ok()?
 		.ok()?;
 		let callback: Arc<dyn AccountRefreshCallback> = Arc::new(ConversationRefreshCallback {
-			last_projected: std::sync::Mutex::new(None),
+			last_projected: Mutex::new(None),
 			accounts: self.inner.accounts.clone(),
 			runtime: Handle::current(),
 			generation_id: ProcessGenerationId::new(conversation::derived_uuid(

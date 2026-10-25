@@ -197,6 +197,7 @@ async fn installed_native_discards_partial_compaction_output_after_restart() {
 
 	const ORIGINAL: &str = "ORIGINAL_ASSISTANT_EVIDENCE";
 	const PARTIAL: &str = "DISCARDED_PARTIAL_SUMMARY";
+
 	let home = tempfile::tempdir().unwrap();
 	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
 	let address = listener.local_addr().unwrap();
@@ -264,6 +265,7 @@ async fn installed_native_discards_partial_compaction_output_after_restart() {
 		let mut reopened = NativeSession::start(&binary, home.path());
 
 		reopened.client.thread_resume(serde_json::json!({"threadId":thread,"excludeTurns":true})).await.unwrap();
+
 		start_turn(&reopened.client, &thread, "Retry after restart.").await;
 		completed(&mut reopened, &thread).await;
 

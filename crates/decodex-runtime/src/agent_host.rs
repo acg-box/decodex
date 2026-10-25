@@ -30,7 +30,9 @@ use crate::{
 	agent_integrations, agent_live_settings, agent_model_settings, agent_models, agent_native_goal,
 	agent_permissions, agent_read_state,
 	agent_recap::Recaps,
-	agent_resources, agent_search_settings, agent_skills,
+	agent_resources,
+	agent_sample::Samples,
+	agent_search_settings, agent_skills, agent_slots,
 	agent_transcript::Transcripts,
 	agent_usage_estimate::{self, SourceKey},
 	agent_voice, agent_voice_settings,
@@ -38,11 +40,12 @@ use crate::{
 	dictation::DictationGateway,
 	mcp_login::{self, McpLoginGateway},
 	native_agents, native_config_warning, native_diagnostics,
+	startup_trace::Phase,
 };
 use decodex_codex::app_server_client::{
 	AppServerClient, ClientError, ServerEvent, ThreadArchiveState,
 };
-use decodex_core::AccountId;
+use decodex_core::{AccountId, work::WorkCommand};
 use decodex_database::{
 	AgentDispatchState, AgentMisalignment, AgentRecoveryKind, AgentWorkStatus, EnqueueAgentEvent,
 	SqliteStore, StoreError,
@@ -53,7 +56,7 @@ use decodex_protocol::{
 	AgentHookSettingsState, AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest,
 	AgentMediaResult, AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult,
 	AgentPermissionState, AgentReadStateResult, AgentRequestedDecision, AgentResourcesResult,
-	AgentSandboxDto, AgentSearchSettingsResult, AgentSkillsResult, AgentStartDto,
+	AgentSandboxDto, AgentSearchSettingsResult, AgentSkillsResult, AgentSnapshotDto, AgentStartDto,
 	AgentToolExposureSurface, AgentTranscriptRequest, AgentTranscriptResult,
 	AgentUsageEstimateResult, AgentVoicePhase, AgentVoiceRequest, AgentVoiceSettingsResult,
 	AgentVoiceStatus, DictationRequest, DictationStatus, HistoryText, McpLoginPhase,
@@ -95,7 +98,7 @@ pub(crate) struct AgentHost {
 	recovery_cursor: Arc<Mutex<Option<String>>>,
 	prompt_edits: Reviews,
 	recaps: Recaps,
-	samples: crate::agent_sample::Samples,
+	samples: Samples,
 	transcripts: Transcripts,
 	weather_cache: Arc<Mutex<Option<CachedWeather>>>,
 	archive_visibility: Arc<Mutex<crate::agent_visibility::ArchiveVisibility>>,
@@ -182,7 +185,6 @@ impl AgentHost {
 			*self.recovery_cursor.lock().await = Some(work.id.clone());
 
 			let thread = work.codex_thread_id.as_deref().expect("filtered native thread");
-
 			let result = time::timeout(
 				Duration::from_secs(12),
 				agent_models::recover_ordinary_model(
@@ -200,6 +202,7 @@ impl AgentHost {
 			.await
 			.map_err(|_| AgentError::Invalid("model recovery observation timed out".into()))
 			.and_then(std::convert::identity);
+
 			self.store
 				.record_agent_recovery(
 					work.id.clone(),
@@ -304,19 +307,19 @@ impl AgentHost {
 		}
 	}
 
-	pub(crate) async fn retain_active_work(
-		&self,
-		snapshot: &mut decodex_protocol::AgentSnapshotDto,
-	) {
+	pub(crate) async fn retain_active_work(&self, snapshot: &mut AgentSnapshotDto) {
 		let Some((generation, client)) = self.runtime.agent_catalog_client() else {
 			// No native connection is not evidence that retained threads are active.
 			self.archive_visibility.lock().await.project(snapshot);
+
 			return;
 		};
 		let Ok(slots) = self.store.agent_slots().await else {
 			snapshot.connection_initializing = true;
+
 			return;
 		};
+
 		crate::agent_visibility::ArchiveVisibility::refresh(
 			&self.archive_visibility,
 			generation.as_str(),
@@ -329,10 +332,13 @@ impl AgentHost {
 				.collect(),
 		)
 		.await;
+
 		let cache = self.archive_visibility.lock().await;
+
 		if self.runtime.agent_catalog_client().is_some_and(|(current, _)| current == generation) {
 			cache.project(snapshot);
-			if crate::agent_slots::synchronize(&self.store, snapshot, slots, &cache.archived)
+
+			if agent_slots::synchronize(&self.store, snapshot, slots, &cache.archived)
 				.await
 				.is_err()
 			{
@@ -435,9 +441,11 @@ impl AgentHost {
 		thread: &str,
 	) -> Option<crate::agent_usage_estimate::Source> {
 		let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
+
 		if owner.parent_goal_id.is_some() || owner.codex_thread_id.as_deref() != Some(thread) {
 			return None;
 		}
+
 		self.timeline_source(work, thread).await
 	}
 
@@ -846,10 +854,12 @@ impl AgentHost {
 						)
 					})
 					.collect();
+
 				if self.store.reconcile_agent_slots(active, vec![]).await.is_err() {
 					return decodex_protocol::NativeAgentsResult::Unavailable;
 				}
 			}
+
 			result
 		} else {
 			decodex_protocol::NativeAgentsResult::Unavailable
@@ -932,6 +942,7 @@ impl AgentHost {
 		// The stop receiver must remain polled while attach, recovery, and RPCs await.
 		let drive = async {
 			active = self.restore().await;
+
 			self.initializing.send_replace(false);
 
 			let mut recovery = RecoverySchedule::new();
@@ -946,7 +957,6 @@ impl AgentHost {
 					},
 					request = requests.recv() => {
 						let Some(request) = request else {break;};
-
 						let defer_dispatch = matches!(&request.action,AgentActionDto::PreparePromptEdit{..}|AgentActionDto::ConfirmPromptEdit{..}|AgentActionDto::ForkPromptEdit{..}|AgentActionDto::RecoverPromptFork{..}|AgentActionDto::RecoverPromptEdit{..}|AgentActionDto::AcknowledgePromptEditDraft{..}|AgentActionDto::UploadPromptInput{..}|AgentActionDto::CompletePromptInputUpload{..}|AgentActionDto::DiscardEmptyWork{..}|AgentActionDto::GenerateSample{..}|AgentActionDto::CancelSample{..});
 
 						if !defer_dispatch && !matches!(&request.action, AgentActionDto::SendPromptInput { .. }) { self.rotate_exhausted(&mut active).await; }
@@ -1068,6 +1078,7 @@ impl AgentHost {
 					ServerEvent::Closed(_) => "connection closed".into(),
 					ServerEvent::UnmatchedResponse { .. } => "unmatched response".into(),
 				};
+
 				if let Err(error) = agent.handle_event(event).await
 					&& event_failure_needs_attention(closed, &error)
 				{
@@ -1123,6 +1134,7 @@ impl AgentHost {
 					// Resume records the shared conversation lock. The composer renders it;
 					// do not add a second, misleading voice connection error.
 					self.voice.update(&id, AgentVoicePhase::Failed, None, None);
+
 					return;
 				},
 				AgentError::ThreadArchived =>
@@ -1437,17 +1449,16 @@ impl AgentHost {
 				revision,
 				review_token,
 				read,
-			} => {
-				agent_read_state::write(
-					|| async { self.read_state_source(work_id.as_str(), thread_id.as_str()).await },
+			} =>
+				self.set_thread_read_state(
+					work_id.as_str(),
 					thread_id.as_str(),
 					revision.as_str(),
 					review_token.as_str(),
 					read,
 				)
-				.await?;
-				Ok(work_id.as_str().into())
-			},
+				.await,
+
 			AgentActionDto::EditNativeGoal { work_id, thread_id, review_token, edit } => {
 				agent_native_goal::write(
 					&self.store,
@@ -1547,6 +1558,26 @@ impl AgentHost {
 		}
 	}
 
+	async fn set_thread_read_state(
+		&self,
+		work_id: &str,
+		thread_id: &str,
+		revision: &str,
+		review_token: &str,
+		read: bool,
+	) -> Result<String, AgentHostError> {
+		agent_read_state::write(
+			|| async { self.read_state_source(work_id, thread_id).await },
+			thread_id,
+			revision,
+			review_token,
+			read,
+		)
+		.await?;
+
+		Ok(work_id.into())
+	}
+
 	async fn handle_work_action(
 		&self,
 		key: String,
@@ -1559,6 +1590,7 @@ impl AgentHost {
 					.set_assistant(agent_id.as_str().into(), enabled)
 					.await
 					.map_err(|_| AgentHostError::Rejected("Choose an existing Agent"))?;
+
 				Ok(agent_id.as_str().into())
 			},
 			AgentActionDto::SetProjectLead { project_id, agent_id } => {
@@ -1568,6 +1600,7 @@ impl AgentHost {
 					.map_err(|_| {
 						AgentHostError::Rejected("Select an existing Project and Agent")
 					})?;
+
 				Ok(project_id.as_str().into())
 			},
 			AgentActionDto::SetGuardian {
@@ -1579,6 +1612,7 @@ impl AgentHost {
 				if settings_id.as_str() != "guardian-global" {
 					return Err("Invalid global settings identity".into());
 				}
+
 				self.store
 					.set_guardian_settings(expected_revision, reviewer, review_details)
 					.await
@@ -1587,6 +1621,7 @@ impl AgentHost {
 							"Global Guardian settings changed. Refresh before saving.",
 						)
 					})?;
+
 				if let Some((_, coordinator, _)) = active.as_ref() {
 					coordinator.sync_global_guardian().await.map_err(|_| {
 						AgentHostError::Unknown(
@@ -1594,16 +1629,18 @@ impl AgentHost {
 						)
 					})?;
 				}
+
 				Ok("guardian-global".into())
 			},
 			AgentActionDto::ManageWork { agent_id, command } => {
 				if matches!(
 					command,
-					decodex_core::work::WorkCommand::RecordResult { .. }
-						| decodex_core::work::WorkCommand::BindSubagent { .. }
-						| decodex_core::work::WorkCommand::Complete { .. }
+					WorkCommand::RecordResult { .. }
+						| WorkCommand::BindSubagent { .. }
+						| WorkCommand::Complete { .. }
 				) {
 					let (_, coordinator, _) = active.as_mut().ok_or("Agent is not connected")?;
+
 					coordinator.verify_work_command(agent_id.as_str(), &command).await.map_err(
 						|_| {
 							AgentHostError::Rejected(
@@ -1612,10 +1649,13 @@ impl AgentHost {
 						},
 					)?;
 				}
+
 				self.store.apply_work_command(agent_id.as_str().into(), key, command, true).await.map_err(|_| AgentHostError::Rejected("Work changed or the requested transition is invalid. Refresh its current requirements and evidence."))?;
+
 				if let Some((_, coordinator, _)) = active.as_mut() {
 					let _ = coordinator.wake_pending().await;
 				}
+
 				Ok(agent_id.as_str().into())
 			},
 			_ => Err("Unsupported Work action".into()),
@@ -1716,21 +1756,14 @@ impl AgentHost {
 
 				Ok(work_id.as_str().into())
 			},
-			AgentActionDto::AnswerQuestion { work_id, question_id, answer } => {
-				let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
+			AgentActionDto::AnswerQuestion { work_id, question_id, answer } =>
+				Self::answer_question(
+					(work_id.as_str(), question_id.as_str(), answer.as_str()),
+					&key,
+					active,
+				)
+				.await,
 
-				agent
-					.answer_async_question(
-						work_id.as_str(),
-						question_id.as_str(),
-						answer.as_str(),
-						&key,
-					)
-					.await
-					.map_err(question_input_error)?;
-
-				Ok(work_id.as_str().into())
-			},
 			AgentActionDto::SkipQuestion { work_id, thread_id, question_id } =>
 				Self::skip_question((&work_id, &thread_id, &question_id), active).await,
 			AgentActionDto::CancelCapacityRetry { work_id, event_id } =>
@@ -1743,20 +1776,44 @@ impl AgentHost {
 				self.start(draft, &key, input_options.as_ref(), active).await,
 			AgentActionDto::Send { root_id, text } =>
 				self.accept_message(&root_id, &text, &key, input_options.as_ref(), active).await,
-			AgentActionDto::Interrupt { work_id, turn_id } => {
-				let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
+			AgentActionDto::Interrupt { work_id, turn_id } =>
+				Self::interrupt_action(work_id.as_str(), turn_id.as_str(), active).await,
 
-				agent.interrupt_work(work_id.as_str(), turn_id.as_str()).await.map_err(|_| {
-					AgentHostError::Unknown(
-						"exact work turn interrupt could not be confirmed; refresh state",
-					)
-				})?;
-
-				Ok(work_id.as_str().into())
-			},
 			AgentActionDto::AutomationResult { work_id, source_event_id, payload } =>
 				self.accept_automation_result(work_id, source_event_id, payload, active).await,
 		}
+	}
+
+	async fn answer_question(
+		data: (&str, &str, &str),
+		key: &str,
+		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, AgentHostError> {
+		let (work_id, question_id, answer) = data;
+		let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
+
+		agent
+			.answer_async_question(work_id, question_id, answer, key)
+			.await
+			.map_err(question_input_error)?;
+
+		Ok(work_id.into())
+	}
+
+	async fn interrupt_action(
+		work_id: &str,
+		turn_id: &str,
+		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, AgentHostError> {
+		let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
+
+		agent.interrupt_work(work_id, turn_id).await.map_err(|_| {
+			AgentHostError::Unknown(
+				"exact work turn interrupt could not be confirmed; refresh state",
+			)
+		})?;
+
+		Ok(work_id.into())
 	}
 
 	async fn prepare_native_agent(
@@ -1766,12 +1823,15 @@ impl AgentHost {
 	) -> Result<String, AgentHostError> {
 		let (generation, client) =
 			self.runtime.agent_catalog_client().ok_or("Agent connection unavailable")?;
+
 		native_agents::prepare(&self.store, &client, work_id, thread_id)
 			.await
 			.map_err(AgentHostError::Rejected)?;
+
 		if self.runtime.agent_catalog_client().is_none_or(|(current, _)| current != generation) {
 			return Err("The connection changed. Try again.".into());
 		}
+
 		Ok(work_id.into())
 	}
 
@@ -1787,6 +1847,7 @@ impl AgentHost {
 					.discard_empty_agent_work(work_id.as_str().into())
 					.await
 					.map_err(|_| "The draft contains work and cannot be discarded")?;
+
 				Ok(work_id.as_str().into())
 			},
 
@@ -1811,7 +1872,9 @@ impl AgentHost {
 				task_references,
 			} => {
 				validate_attachments(&attachments)?;
+
 				let options = serde_json::json!({"execution":execution,"attachments":attachments,"taskReferences":task_references});
+
 				AgentCoordinator::create_conversation(
 					&self.store,
 					work_id.as_str(),
@@ -1820,9 +1883,11 @@ impl AgentHost {
 				)
 				.await
 				.map_err(|_| "Conversation could not be created")?;
+
 				if active.is_none() {
 					*active = self.restore().await;
 				}
+
 				Ok(work_id.as_str().into())
 			},
 			_ => unreachable!("workspace action dispatch"),
@@ -2082,6 +2147,7 @@ impl AgentHost {
 					"Native configuration observation could not be saved.".into(),
 				)
 				.await;
+
 			return;
 		}
 		if kind == "reconnection_needs_attention" {
@@ -2116,7 +2182,7 @@ impl AgentHost {
 		account_id: Option<AccountId>,
 	) -> Result<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>), &'static str> {
 		let skill_roots = self.skill_roots.as_ref().map_err(|error| *error)?;
-		let phase = crate::startup_trace::Phase::new("agent_process_connect");
+		let phase = Phase::new("agent_process_connect");
 		let connection = match self
 			.runtime
 			.open_agent_connection(StartAgentProcess {
@@ -2140,7 +2206,9 @@ impl AgentHost {
 				);
 			},
 		};
+
 		drop(phase);
+
 		let binding = match self.store.read_agent_process_binding(root).await {
 			Ok(binding) => binding,
 			Err(_) => {
@@ -2192,7 +2260,7 @@ impl AgentHost {
 	}
 
 	async fn restore(&self) -> Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)> {
-		let _phase = crate::startup_trace::Phase::new("agent_restore");
+		let _phase = Phase::new("agent_restore");
 		let root = self
 			.store
 			.list_agent_work_items()
@@ -2210,14 +2278,16 @@ impl AgentHost {
 
 			return None;
 		};
+
 		if let Some(observations) = &self.observations {
-			let _phase = crate::startup_trace::Phase::new("initial_account_observations");
+			let _phase = Phase::new("initial_account_observations");
+
 			observations.wait_for_initial_observation().await;
 		}
 
 		match self.connect(&root.id, format!("restore-{}", now()), config, account).await {
 			Ok(mut active) => {
-				let phase = crate::startup_trace::Phase::new("recover_persisted");
+				let phase = Phase::new("recover_persisted");
 				let recovery = active.1.recover_persisted().await;
 				let _ = self
 					.store
@@ -2227,12 +2297,15 @@ impl AgentHost {
 						recovery.as_ref().err().map(diagnostic),
 					)
 					.await;
+
 				if recovery.is_ok() {
 					let _ = self.store.resolve_agent_event_failure(root.id.clone()).await;
 				}
 
 				drop(phase);
-				let _phase = crate::startup_trace::Phase::new("wake_pending");
+
+				let _phase = Phase::new("wake_pending");
+
 				self.record_delivery(&root.id, active.1.wake_pending().await).await;
 
 				Some(active)
@@ -2494,6 +2567,14 @@ fn resource_error(error: AgentError) -> AgentHostError {
 	}
 }
 
+fn user_input(work: &str, key: &str, text: &str, options: Option<&Value>) -> EnqueueAgentEvent {
+	EnqueueAgentEvent {
+        source_event_id: serde_json::json!(["user_message",work,key]).to_string(),
+        work_item_id: work.into(), event_kind: "user_message".into(),
+        payload: serde_json::json!({"text":text,"source":"user","asyncQuestionReply":decodex_protocol::parse_agent_async_question_replies(text).is_some(),"options":options}).to_string(),
+    }
+}
+
 async fn await_acceptance(
 	result: oneshot::Receiver<Result<String, AgentHostError>>,
 	deadline: Duration,
@@ -2517,14 +2598,6 @@ async fn stopped(stop: &mut watch::Receiver<bool>) {
 			return;
 		}
 	}
-}
-
-fn user_input(work: &str, key: &str, text: &str, options: Option<&Value>) -> EnqueueAgentEvent {
-	EnqueueAgentEvent {
-        source_event_id: serde_json::json!(["user_message",work,key]).to_string(),
-        work_item_id: work.into(), event_kind: "user_message".into(),
-        payload: serde_json::json!({"text":text,"source":"user","asyncQuestionReply":decodex_protocol::parse_agent_async_question_replies(text).is_some(),"options":options}).to_string(),
-    }
 }
 
 async fn persist_input(
@@ -2568,92 +2641,6 @@ mod tests {
 	};
 	use decodex_codex::app_server_client::AppServerClient;
 	use decodex_core::DecodexRoot;
-
-	#[tokio::test]
-	async fn folders_do_not_create_agents_and_conversations_share_explicit_scope() {
-		let directory = tempfile::tempdir().unwrap();
-		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
-		let store = SqliteStore::open(&root.paths()).unwrap();
-		let path = directory.path().to_str().unwrap();
-		let workspace = AgentCoordinator::register_project(&store, "folder", path).await.unwrap();
-		assert_eq!(
-			AgentCoordinator::register_project(&store, "same-folder", path).await.unwrap(),
-			workspace
-		);
-		assert!(store.list_agent_work_items().await.unwrap().is_empty());
-		assert!(store.list_pending_agent_events(100).await.unwrap().is_empty());
-		AgentCoordinator::reserve_root(&store, "main", "Help").await.unwrap();
-		for id in ["one", "two"] {
-			AgentCoordinator::create_conversation(
-				&store,
-				id,
-				super::user_input(id, id, "Hello", None),
-				Some(workspace.clone()),
-			)
-			.await
-			.unwrap();
-			assert_eq!(
-				store.work_directory(id.into()).await.unwrap(),
-				Some(directory.path().canonicalize().unwrap().display().to_string())
-			);
-		}
-		AgentCoordinator::create_conversation(
-			&store,
-			"personal",
-			super::user_input("personal", "personal", "Hello", None),
-			None,
-		)
-		.await
-		.unwrap();
-		assert_eq!(store.work_directory("personal".into()).await.unwrap(), None);
-		assert!(
-			AgentCoordinator::create_conversation(
-				&store,
-				"invalid",
-				super::user_input("invalid", "invalid", "Hello", None),
-				Some("missing".into())
-			)
-			.await
-			.is_err()
-		);
-		assert!(store.get_agent_work_item("invalid".into()).await.is_err());
-		let folders = store.projects().await.unwrap();
-		assert_eq!(folders.len(), 1);
-		assert_eq!(folders[0].agent_ids, vec!["one", "two"]);
-	}
-
-	#[tokio::test]
-	async fn first_message_creates_conversation_and_survives_reopen() {
-		let directory = tempfile::tempdir().unwrap();
-		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
-		let store = SqliteStore::open(&root.paths()).unwrap();
-		AgentCoordinator::reserve_root(&store, "main", "Help the user").await.unwrap();
-		let work = AgentCoordinator::create_conversation(
-			&store,
-			"new-chat",
-			super::user_input("new-chat", "first-input", "Improve sidebar navigation", None),
-			None,
-		)
-		.await
-		.unwrap();
-		assert_eq!(work.parent_goal_id, None);
-		assert!(work.codex_thread_id.is_none());
-		assert_eq!(work.dispatch_state, super::AgentDispatchState::Idle);
-		assert!(store.projects().await.unwrap().is_empty());
-		assert!(store.read_agent_process_binding("main").await.unwrap().is_none());
-		super::persist_input(&store, "new-chat", "first-input", "Improve sidebar navigation", None)
-			.await
-			.unwrap();
-		super::persist_input(&store, "new-chat", "first-input", "Improve sidebar navigation", None)
-			.await
-			.unwrap();
-		drop(store);
-		let reopened = SqliteStore::open(&root.paths()).unwrap();
-		let saved = reopened.get_agent_work_item("new-chat".into()).await.unwrap();
-		assert_eq!(saved.title, "New Agent");
-		assert!(saved.codex_thread_id.is_none());
-		assert_eq!(reopened.list_agent_work_items().await.unwrap().len(), 2);
-	}
 
 	#[test]
 	fn directory_references_remain_paths_and_cannot_be_sent_as_images() {
@@ -2729,6 +2716,107 @@ mod tests {
 			true,
 			&AgentError::Invalid("bad evidence".into())
 		));
+	}
+
+	#[tokio::test]
+	async fn folders_do_not_create_agents_and_conversations_share_explicit_scope() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+		let path = directory.path().to_str().unwrap();
+		let workspace = AgentCoordinator::register_project(&store, "folder", path).await.unwrap();
+
+		assert_eq!(
+			AgentCoordinator::register_project(&store, "same-folder", path).await.unwrap(),
+			workspace
+		);
+		assert!(store.list_agent_work_items().await.unwrap().is_empty());
+		assert!(store.list_pending_agent_events(100).await.unwrap().is_empty());
+
+		AgentCoordinator::reserve_root(&store, "main", "Help").await.unwrap();
+
+		for id in ["one", "two"] {
+			AgentCoordinator::create_conversation(
+				&store,
+				id,
+				super::user_input(id, id, "Hello", None),
+				Some(workspace.clone()),
+			)
+			.await
+			.unwrap();
+
+			assert_eq!(
+				store.work_directory(id.into()).await.unwrap(),
+				Some(directory.path().canonicalize().unwrap().display().to_string())
+			);
+		}
+
+		AgentCoordinator::create_conversation(
+			&store,
+			"personal",
+			super::user_input("personal", "personal", "Hello", None),
+			None,
+		)
+		.await
+		.unwrap();
+
+		assert_eq!(store.work_directory("personal".into()).await.unwrap(), None);
+		assert!(
+			AgentCoordinator::create_conversation(
+				&store,
+				"invalid",
+				super::user_input("invalid", "invalid", "Hello", None),
+				Some("missing".into())
+			)
+			.await
+			.is_err()
+		);
+		assert!(store.get_agent_work_item("invalid".into()).await.is_err());
+
+		let folders = store.projects().await.unwrap();
+
+		assert_eq!(folders.len(), 1);
+		assert_eq!(folders[0].agent_ids, vec!["one", "two"]);
+	}
+
+	#[tokio::test]
+	async fn first_message_creates_conversation_and_survives_reopen() {
+		let directory = tempfile::tempdir().unwrap();
+		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+		let store = SqliteStore::open(&root.paths()).unwrap();
+
+		AgentCoordinator::reserve_root(&store, "main", "Help the user").await.unwrap();
+
+		let work = AgentCoordinator::create_conversation(
+			&store,
+			"new-chat",
+			super::user_input("new-chat", "first-input", "Improve sidebar navigation", None),
+			None,
+		)
+		.await
+		.unwrap();
+
+		assert_eq!(work.parent_goal_id, None);
+		assert!(work.codex_thread_id.is_none());
+		assert_eq!(work.dispatch_state, super::AgentDispatchState::Idle);
+		assert!(store.projects().await.unwrap().is_empty());
+		assert!(store.read_agent_process_binding("main").await.unwrap().is_none());
+
+		super::persist_input(&store, "new-chat", "first-input", "Improve sidebar navigation", None)
+			.await
+			.unwrap();
+		super::persist_input(&store, "new-chat", "first-input", "Improve sidebar navigation", None)
+			.await
+			.unwrap();
+
+		drop(store);
+
+		let reopened = SqliteStore::open(&root.paths()).unwrap();
+		let saved = reopened.get_agent_work_item("new-chat".into()).await.unwrap();
+
+		assert_eq!(saved.title, "New Agent");
+		assert!(saved.codex_thread_id.is_none());
+		assert_eq!(reopened.list_agent_work_items().await.unwrap().len(), 2);
 	}
 
 	#[tokio::test]

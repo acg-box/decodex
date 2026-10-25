@@ -1,5 +1,7 @@
+use std::iter;
+
 use crate::agent::tests::{
-	self, AgentError, ClientError, EnqueueAgentEvent, ServerEvent, SqliteStore,
+	self, AgentCoordinator, AgentError, ClientError, EnqueueAgentEvent, ServerEvent, SqliteStore,
 };
 use decodex_codex::app_server_client::RpcError;
 use decodex_core::DecodexRoot;
@@ -25,14 +27,16 @@ async fn archived_owners_and_their_old_writer_notices_do_not_block_new_conversat
 	for writer_notice in [false, true] {
 		let (mut agent, mut sent, _directory) = tests::fixture_with_history(serde_json::json!({
 			"_resume_failures": 1,
-			"_resume_error": {"code":-32600,"message":"session opaque thread/1 is archived. Run `codex unarchive opaque thread/1` to unarchive it first."}
+			"_resume_error": {"code":-32_600,"message":"session opaque thread/1 is archived. Run `codex unarchive opaque thread/1` to unarchive it first."}
 		})).await;
+
 		agent.start_agent("agent", "Initial").await.unwrap();
 		agent.handle_event(ServerEvent::Notification {
 			method: "turn/completed".into(),
 			params: serde_json::json!({"threadId":"opaque thread/1","turn":{"id":"opaque turn/1","status":"completed","items":[]}}),
 		}).await.unwrap();
 		agent.loaded_threads.clear();
+
 		let old_input = agent
 			.store
 			.enqueue_agent_event(EnqueueAgentEvent {
@@ -43,6 +47,7 @@ async fn archived_owners_and_their_old_writer_notices_do_not_block_new_conversat
 			})
 			.await
 			.unwrap();
+
 		if writer_notice {
 			agent
 				.store
@@ -50,7 +55,8 @@ async fn archived_owners_and_their_old_writer_notices_do_not_block_new_conversat
 				.await
 				.unwrap();
 		}
-		tests::AgentCoordinator::create_conversation(
+
+		AgentCoordinator::create_conversation(
 			&agent.store,
 			"new",
 			EnqueueAgentEvent {
@@ -63,19 +69,28 @@ async fn archived_owners_and_their_old_writer_notices_do_not_block_new_conversat
 		)
 		.await
 		.unwrap();
+
 		while sent.try_recv().is_ok() {}
 
 		agent.wake_pending().await.unwrap();
+
 		let new = agent.store.get_agent_work_item("new".into()).await.unwrap();
+
 		assert_eq!(new.codex_thread_id.as_deref(), Some("opaque thread/2"));
 		assert_eq!(new.dispatch_state, decodex_database::AgentDispatchState::Running);
+
 		let old = agent.store.get_agent_inbox_event(old_input.id).await.unwrap();
+
 		assert!(old.delivered_turn_id.is_none(), "archived input must never be replayed");
 		assert_eq!(old.payload, old_input.payload);
 		assert!(agent.store.list_agent_thread_in_use_events().await.unwrap().is_empty());
-		let requests = std::iter::from_fn(|| sent.try_recv().ok()).collect::<Vec<_>>();
+
+		let requests = iter::from_fn(|| sent.try_recv().ok()).collect::<Vec<_>>();
+
 		assert!(!requests.iter().any(|r| r["method"] == "thread/unarchive"));
+
 		let starts = requests.iter().filter(|r| r["method"] == "turn/start").collect::<Vec<_>>();
+
 		assert_eq!(starts.len(), 1);
 		assert_eq!(starts[0]["params"]["threadId"], "opaque thread/2");
 	}

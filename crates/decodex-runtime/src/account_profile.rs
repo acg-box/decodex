@@ -5,7 +5,10 @@ use std::{
 	time::{SystemTime, UNIX_EPOCH},
 };
 
-use crate::host_credentials::{HostCredentialStore, StoredCredential};
+use crate::{
+	account_service,
+	host_credentials::{HostCredentialStore, StoredCredential},
+};
 use decodex_codex::AccountApiProfile;
 use decodex_core::{AccountId, ProviderIdentity};
 use decodex_database::{
@@ -211,11 +214,13 @@ impl AccountProfileRuntime {
 				.and_then(|operation| recovery_profile_error(operation.recovery_code.as_deref()))
 				.or(Some(AccountProfileRuntimeError::ProviderUnavailable)),
 		};
+
 		if refresh_error == Some(AccountProfileRuntimeError::UnsupportedPlan) {
 			return self
 				.unavailable(account_id, include_email, AccountProfileRuntimeError::UnsupportedPlan)
 				.await;
 		}
+
 		let snapshot = match self.store.read_account_profile(account_id).await {
 			Ok(Some(snapshot)) => snapshot,
 			Ok(None) => {
@@ -278,7 +283,7 @@ impl AccountProfileRuntime {
 	) -> AccountProfileRuntimeResult {
 		let claims = self.current_claims(account_id, include_email, None, None).await;
 		let error = if claims.as_ref().is_some_and(|claims| {
-			crate::account_service::account_plan_is_workspace(claims.plan_type.as_deref()).is_none()
+			account_service::account_plan_is_workspace(claims.plan_type.as_deref()).is_none()
 		}) {
 			AccountProfileRuntimeError::UnsupportedPlan
 		} else {

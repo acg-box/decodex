@@ -12,7 +12,6 @@ use std::{
 
 use base64 as _;
 #[cfg(target_os = "macos")] use core_foundation as _;
-#[cfg(target_os = "macos")] use decodex_components as _;
 use futures_util as _;
 use pulldown_cmark as _;
 use reqwest as _;
@@ -29,6 +28,7 @@ use zeroize as _;
 
 use decodex_account_login as _;
 use decodex_codex as _;
+#[cfg(target_os = "macos")] use decodex_components as _;
 use decodex_core::RepositoryContentRevision;
 use decodex_database as _;
 use decodex_protocol as _;

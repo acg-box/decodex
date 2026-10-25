@@ -110,6 +110,19 @@ fn assert_preserved_native_settings(
 	assert_eq!(request_tier(&after["serviceTier"]), request_tier(&before["serviceTier"]));
 }
 
+fn start_recap_parent(work: &EntityId, directory: &Path, account: &AccountId) -> AgentActionDto {
+	AgentActionDto::Start(AgentStartDto {
+		root_id: work.clone(),
+		prompt: HistoryText::new("Test the fix. Do not install it.").expect("prompt"),
+		model: ConversationModel::new("cold-native-model").expect("model"),
+		effort: Some(ConversationReasoningEffort::new("provider-effort").expect("effort")),
+		cwd: ConversationWorkingDirectory::new(directory.to_str().expect("directory"))
+			.expect("directory"),
+		account_id: Some(EntityId::new(account.as_str()).expect("account")),
+		sandbox: AgentSandboxDto::ReadOnly,
+	})
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "run alone with isolated HOME, DECODEX_TEST_ACCOUNT_HOME and DECODEX_TEST_CODEX_BINARY"]
 async fn installed_recap_public_socket_preserves_parent_and_exact_request_identity() {
@@ -325,25 +338,12 @@ async fn check(
 	assert_eq!(client.recap(work.clone()).await.expect("cold query").phase, TaskRecapPhase::Idle);
 	assert_eq!(requests.load(Ordering::Acquire), 0, "queries must not infer");
 
-	accepted(
-		client,
-		AgentActionDto::Start(AgentStartDto {
-			root_id: work.clone(),
-			prompt: HistoryText::new("Test the fix. Do not install it.").expect("prompt"),
-			model: ConversationModel::new("cold-native-model").expect("model"),
-			effort: Some(ConversationReasoningEffort::new("provider-effort").expect("effort")),
-			cwd: ConversationWorkingDirectory::new(directory.to_str().expect("directory"))
-				.expect("directory"),
-			account_id: Some(EntityId::new(account.as_str()).expect("account")),
-			sandbox: AgentSandboxDto::ReadOnly,
-		}),
-		"recap-parent",
-	)
-	.await;
+	accepted(client, start_recap_parent(&work, &directory, account), "recap-parent").await;
 
 	let thread =
 		if sampling { sampling::parent(client, store).await } else { settled(client).await };
 	let native = runtime.agent_client().expect("active native client");
+
 	if sampling {
 		return sampling::check(client, &native, &work, &thread, requests).await;
 	}

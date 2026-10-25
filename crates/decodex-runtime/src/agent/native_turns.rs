@@ -1,5 +1,8 @@
 //! Recover the latest native-admitted turn without replaying local input.
-use crate::agent::{self, AgentCoordinator, AgentError, Value};
+use crate::{
+	agent::{self, AgentCoordinator, AgentError, Value},
+	startup_trace::Phase,
+};
 use decodex_codex::app_server_client::NativeThreadGoalStatus;
 use decodex_database::AgentDispatchState;
 
@@ -27,12 +30,15 @@ impl AgentCoordinator {
 				continue;
 			}
 
-			let phase = crate::startup_trace::Phase::new("recover_native_goal");
+			let phase = Phase::new("recover_native_goal");
+
 			self.resume_active_native_goal(&thread).await?;
+
 			drop(phase);
 
 			let revision = self.client.history_revision();
 			let Ok(Some(turn)) = self.client.thread_latest_turn_id(&thread).await else { continue };
+
 			// These exact terminal receipts already make observe_agent_native_turn reject
 			// replay. Avoid fetching the full turn only to reach that same decision.
 			if self

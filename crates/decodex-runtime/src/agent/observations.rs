@@ -10,7 +10,11 @@ use crate::agent::{
 	self, AgentCoordinator, AgentError, EnqueueAgentEvent, Value, async_projection::Projection,
 	misalignment, result_messages,
 };
-use decodex_codex::{ThreadTokenUsage, app_server_client, guardian};
+use decodex_codex::{
+	ThreadTokenUsage,
+	app_server_client::{self, AppServerClient},
+	guardian,
+};
 use decodex_database::AgentGuardianObservation;
 
 impl AgentCoordinator {
@@ -78,46 +82,35 @@ impl AgentCoordinator {
 			};
 			let latest = turns.last().and_then(|turn| turn["id"].as_str()).map(str::to_owned);
 			let superseded = self.superseded_misalignment(&work, &thread, &turns).await?;
-			let mut complete = true;
-
 			let client = self.client.clone();
+			let mut complete = true;
 			// The headers already identify each turn. Fetch only missing item pages,
 			// with bounded read-ahead and chronological application of observations.
-			let reads = stream::iter(turns.into_iter().map(|mut header| {
-				let client = client.clone();
-				let thread = thread.clone();
-				async move {
-					if !header["items"].is_array()
-						|| header.get("itemsView").is_some_and(|view| view != "full")
-					{
-						let turn = header["id"]
-							.as_str()
-							.ok_or(app_server_client::ClientError::InvalidFrame)?;
-						header["items"] = time::timeout_at(
-							deadline,
-							client.thread_read_turn_items(&thread, turn),
-						)
-						.await
-						.map_err(|_| app_server_client::ClientError::Io)??;
-					}
-					Ok::<_, app_server_client::ClientError>(header)
-				}
-			}))
-			.buffered(4);
+			let reads =
+				stream::iter(turns.into_iter().map(|header| {
+					read_turn_items(client.clone(), thread.clone(), header, deadline)
+				}))
+				.buffered(4);
+
 			tokio::pin!(reads);
+
 			while let Some(result) = reads.next().await {
 				let Ok(native_turn) = result else {
 					complete = false;
+
 					break;
 				};
 				let Some(turn) = native_turn["id"].as_str() else {
 					complete = false;
+
 					break;
 				};
 				let Some(items) = native_turn["items"].as_array() else {
 					complete = false;
+
 					break;
 				};
+
 				if latest.as_deref() == Some(turn)
 					&& native_turn["status"] == "failed"
 					&& native_turn["error"]["codexErrorInfo"] == "misalignmentPolicyViolation"
@@ -298,27 +291,32 @@ impl AgentCoordinator {
 		if method == "thread/reverted" {
 			return self.invalidate_reverted_requests(&agent::exact(params, "/threadId")?).await;
 		}
-
-		if let Some(review) = guardian::decode_review(method, params) {
-			let parent = review.thread_id.clone();
-			self.store
-				.record_agent_guardian_review(AgentGuardianObservation {
-					thread_id: review.thread_id,
-					turn_id: review.turn_id,
-					review_id: review.review_id,
-					connection_id: self.connection_id.clone(),
-					generation_id: self.native_generation.as_ref().map(|id| id.as_str().to_owned()),
-					event_json: review.event.to_string(),
-				})
-				.await?;
-			self.observe_guardian_details(method, &parent).await;
-
+		if self.observe_guardian_notification(method, params).await? {
 			return Ok(());
 		}
-
 		if method == "autoApprovalReview/strictReviewRequired" {
 			return self.observe_strict_review(params).await;
 		}
+
+		self.observe_terminal_notification(method, params).await?;
+
+		if method != "thread/tokenUsage/updated"
+			&& !(method == "item/completed"
+				&& (params["item"]["type"] == "contextCompaction"
+					|| (params["item"]["type"] == "agentMessage"
+						&& params["item"]["delivery"] == "async")))
+		{
+			return Ok(());
+		}
+
+		self.record_usage_or_completed_item(method, params).await
+	}
+
+	async fn observe_terminal_notification(
+		&mut self,
+		method: &str,
+		params: &Value,
+	) -> Result<(), AgentError> {
 		if method == "error"
 			&& params["willRetry"] == false
 			&& let (Some(thread), Some(turn)) =
@@ -333,15 +331,15 @@ impl AgentCoordinator {
 			self.recover_native_contribution(thread, turn, &params["item"]).await?;
 			self.observe_completed_input(thread, turn, &params["item"]).await?;
 		}
-		if method != "thread/tokenUsage/updated"
-			&& !(method == "item/completed"
-				&& (params["item"]["type"] == "contextCompaction"
-					|| (params["item"]["type"] == "agentMessage"
-						&& params["item"]["delivery"] == "async")))
-		{
-			return Ok(());
-		}
 
+		Ok(())
+	}
+
+	async fn record_usage_or_completed_item(
+		&mut self,
+		method: &str,
+		params: &Value,
+	) -> Result<(), AgentError> {
 		let thread = agent::exact(params, "/threadId")?;
 		let turn = agent::exact(params, "/turnId")?;
 		let work = self.store.list_agent_work_items().await?.into_iter().find(|work| {
@@ -354,9 +352,11 @@ impl AgentCoordinator {
 				// Native children keep their own counters under the verified managed owner.
 				// Recording an observation never grants a child manager authority.
 				let Ok(owner) = self.request_owner(&thread).await else { return Ok(()) };
+
 				if owner.codex_thread_id.as_deref() == Some(&thread) {
 					return Ok(());
 				}
+
 				owner
 			},
 			None => return Ok(()),
@@ -376,6 +376,7 @@ impl AgentCoordinator {
 				let identity =
 					serde_json::json!({"threadId":thread,"turnId":turn,"tokenUsage":usage});
 				let mut value = identity.clone();
+
 				if let Some(rate) = self.client.take_observed_output_rate(&thread, &turn, &usage) {
 					value["observedOutputRate"] = serde_json::to_value(rate)
 						.map_err(|_| AgentError::Invalid("invalid output rate".into()))?;
@@ -426,6 +427,31 @@ impl AgentCoordinator {
 			.await?;
 
 		Ok(())
+	}
+
+	async fn observe_guardian_notification(
+		&mut self,
+		method: &str,
+		params: &Value,
+	) -> Result<bool, AgentError> {
+		let Some(review) = guardian::decode_review(method, params) else {
+			return Ok(false);
+		};
+		let parent = review.thread_id.clone();
+
+		self.store
+			.record_agent_guardian_review(AgentGuardianObservation {
+				thread_id: review.thread_id,
+				turn_id: review.turn_id,
+				review_id: review.review_id,
+				connection_id: self.connection_id.clone(),
+				generation_id: self.native_generation.as_ref().map(|id| id.as_str().to_owned()),
+				event_json: review.event.to_string(),
+			})
+			.await?;
+		self.observe_guardian_details(method, &parent).await;
+
+		Ok(true)
 	}
 
 	pub(super) async fn observe_async_question_item(
@@ -563,4 +589,21 @@ pub(super) fn retires_async_questions(item: &Value) -> bool {
 	}
 
 	!parts.is_empty()
+}
+
+async fn read_turn_items(
+	client: AppServerClient,
+	thread: String,
+	mut header: Value,
+	deadline: Instant,
+) -> Result<Value, app_server_client::ClientError> {
+	if !header["items"].is_array() || header.get("itemsView").is_some_and(|view| view != "full") {
+		let turn = header["id"].as_str().ok_or(app_server_client::ClientError::InvalidFrame)?;
+
+		header["items"] = time::timeout_at(deadline, client.thread_read_turn_items(&thread, turn))
+			.await
+			.map_err(|_| app_server_client::ClientError::Io)??;
+	}
+
+	Ok::<_, app_server_client::ClientError>(header)
 }

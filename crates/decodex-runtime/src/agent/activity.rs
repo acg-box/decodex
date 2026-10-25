@@ -7,49 +7,7 @@ use decodex_protocol::AgentActivityDto;
 pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDto> {
 	let item = &params["item"];
 	let kind = item["type"].as_str()?;
-	let label = match kind {
-		"reasoning" => "Thinking",
-		"commandExecution" => match item["commandActions"]
-			.as_array()
-			.and_then(|a| a.first())
-			.and_then(|a| a["type"].as_str())
-		{
-			Some("read") if completed => "File read",
-			Some("listFiles") if completed => "File listing",
-			Some("search") if completed => "File search",
-			_ if completed => "Command",
-			Some("read") => "Reading files",
-			Some("listFiles") => "Listing files",
-			Some("search") => "Searching files",
-			_ => "Running command",
-		},
-		"fileChange" => "Editing files",
-		"mcpToolCall" if completed && authentication_required(item) => "Sign-in required",
-		"mcpToolCall" | "dynamicToolCall" => "Using tool",
-		"webSearch" => match item.pointer("/action/type").and_then(Value::as_str) {
-			Some("openPage") => "Opening web page",
-			Some("findInPage") => "Finding text on page",
-			_ => "Searching the web",
-		},
-		"collabAgentToolCall" => "Coordinating agents",
-		"subAgentActivity" => match item["kind"].as_str()? {
-			"started" => "Subagent started",
-			"interacted" => "Message sent to subagent",
-			"interrupted" => "Subagent interrupted",
-			"completed" => "Subagent completed a turn",
-			_ => return None,
-		},
-		"functionCallOutput" if item["namespace"] == "decodex" && item["name"] == "work_wake" =>
-			"Agent update",
-		"functionCallOutput" => "Tool result",
-		"contextCompaction" => "Compacting context",
-		"sleep" => "Wait",
-		"imageView" => "Viewing image",
-		"imageGeneration" if image_generation::is_quota_failure(item) =>
-			"Image generation limit reached",
-		"imageGeneration" => "Generating image",
-		_ => return None,
-	};
+	let label = activity_label(item, kind, completed)?;
 	let detail = match kind {
 		// Native 0e675021 records the requested duration, not elapsed time.
 		"sleep" => item["durationMs"].as_u64().map_or_else(String::new, |ms| {
@@ -156,6 +114,52 @@ fn search_exit_without_failure(item: &Value) -> bool {
 			.is_some_and(|actions| actions.iter().any(|action| action["type"] == "search"))
 }
 
+fn activity_label(item: &Value, kind: &str, completed: bool) -> Option<&'static str> {
+	Some(match kind {
+		"reasoning" => "Thinking",
+		"commandExecution" => match item["commandActions"]
+			.as_array()
+			.and_then(|a| a.first())
+			.and_then(|a| a["type"].as_str())
+		{
+			Some("read") if completed => "File read",
+			Some("listFiles") if completed => "File listing",
+			Some("search") if completed => "File search",
+			_ if completed => "Command",
+			Some("read") => "Reading files",
+			Some("listFiles") => "Listing files",
+			Some("search") => "Searching files",
+			_ => "Running command",
+		},
+		"fileChange" => "Editing files",
+		"mcpToolCall" if completed && authentication_required(item) => "Sign-in required",
+		"mcpToolCall" | "dynamicToolCall" => "Using tool",
+		"webSearch" => match item.pointer("/action/type").and_then(Value::as_str) {
+			Some("openPage") => "Opening web page",
+			Some("findInPage") => "Finding text on page",
+			_ => "Searching the web",
+		},
+		"collabAgentToolCall" => "Coordinating agents",
+		"subAgentActivity" => match item["kind"].as_str()? {
+			"started" => "Subagent started",
+			"interacted" => "Message sent to subagent",
+			"interrupted" => "Subagent interrupted",
+			"completed" => "Subagent completed a turn",
+			_ => return None,
+		},
+		"functionCallOutput" if item["namespace"] == "decodex" && item["name"] == "work_wake" =>
+			"Agent update",
+		"functionCallOutput" => "Tool result",
+		"contextCompaction" => "Compacting context",
+		"sleep" => "Wait",
+		"imageView" => "Viewing image",
+		"imageGeneration" if image_generation::is_quota_failure(item) =>
+			"Image generation limit reached",
+		"imageGeneration" => "Generating image",
+		_ => return None,
+	})
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -163,9 +167,11 @@ mod tests {
 
 	#[test]
 	fn sleep_duration_is_a_request_and_not_a_success_or_elapsed_time() {
-		let params = serde_json::json!({"turnId":"turn","item":{"id":"wait","type":"sleep","durationMs":60000}});
+		let params = serde_json::json!({"turnId":"turn","item":{"id":"wait","type":"sleep","durationMs":60_000}});
+
 		for (completed, status) in [(false, "waiting"), (true, "recorded")] {
 			let activity = activity::project(&params, completed).unwrap();
+
 			assert_eq!(activity.label, "Wait");
 			assert_eq!(activity.detail, "Up to 60s");
 			assert_eq!(activity.status, status);
@@ -310,6 +316,7 @@ mod tests {
 		assert_eq!(activity::project(&value, false).unwrap().label, "Running command");
 
 		value["item"]["exitCode"] = serde_json::json!(-1);
+
 		let unavailable = activity::project(&value, true).unwrap();
 
 		assert_eq!(unavailable.status, "failed");

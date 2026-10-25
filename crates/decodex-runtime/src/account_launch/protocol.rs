@@ -8,6 +8,7 @@ use std::{
 };
 
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 use zeroize::{Zeroize as _, Zeroizing};
 
 use decodex_codex::{
@@ -220,18 +221,19 @@ pub struct ProtocolThreadItem {
 #[derive(Deserialize)]
 pub struct JsonRpcError {
 	pub code: i64,
-	pub data: Option<serde_json::Value>,
+	pub data: Option<Value>,
 	#[serde(rename = "message")]
 	_message: SensitiveString,
-}
-impl std::fmt::Debug for JsonRpcError {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("JsonRpcError").field("code", &self.code).finish_non_exhaustive()
-	}
 }
 impl JsonRpcError {
 	pub(super) fn message(&self) -> &str {
 		self._message.as_str()
+	}
+}
+
+impl Debug for JsonRpcError {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("JsonRpcError").field("code", &self.code).finish_non_exhaustive()
 	}
 }
 

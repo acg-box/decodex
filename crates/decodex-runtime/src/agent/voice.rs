@@ -2,6 +2,7 @@
 use crate::{
 	agent::{self, AgentCoordinator, AgentError, ClientError, ServerEvent, Value},
 	agent_voice::{self, VoiceGateway},
+	agent_voice_settings,
 };
 use decodex_database::{AgentVoiceCall, SqliteStore};
 use decodex_protocol::{AgentVoiceOptions, AgentVoicePhase, AgentVoiceRequest, EntityId, VoiceSdp};
@@ -234,10 +235,10 @@ impl AgentCoordinator {
 			.codex_thread_id
 			.ok_or_else(|| AgentError::Invalid("Agent thread is not ready".into()))?;
 		let generation = self.selected_voice_generation(work_id.as_str(), &thread).await?;
-		if !crate::agent_voice_settings::voice_allowed(&self.client).await? {
+
+		if !agent_voice_settings::voice_allowed(&self.client).await? {
 			return Err(AgentError::Invalid("Voice is disabled by managed policy.".into()));
 		}
-
 		if !self.loaded_threads.contains(&thread) {
 			let mut params = Self::resume_params(&thread);
 
@@ -247,11 +248,13 @@ impl AgentCoordinator {
 				Ok(resumed) => resumed,
 				Err(error) => {
 					let error = agent::resume_error(error, &thread);
+
 					if matches!(error, AgentError::ThreadOwnedElsewhere { .. }) {
 						self.store
 							.record_agent_thread_in_use(work_id.as_str().into(), error.to_string())
 							.await?;
 					}
+
 					return Err(error);
 				},
 			};

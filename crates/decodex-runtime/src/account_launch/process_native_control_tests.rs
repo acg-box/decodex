@@ -1,6 +1,9 @@
 //! Isolated installed-native control launch with production executable attestation.
 
+use std::{env, fs, process::Stdio};
+
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use tokio::process::Command;
 
 #[cfg(target_os = "macos")] use crate::account_launch::process::AttestedCodeIdentity;
 #[cfg(test)] use crate::account_launch::process::RunnerCapacity;
@@ -11,6 +14,7 @@ use crate::account_launch::process::{
 	ProcessGenerationAccountBinding, ReadOnlyMethod,
 	serde_json::{self, Value},
 };
+use decodex_codex::app_server_client::AppServerClient;
 use decodex_core::{
 	AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
 	CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
@@ -121,17 +125,14 @@ async fn installed_native_qualified_defaults_preserve_multi_agent_selection() {
 	}
 }
 async fn qualify_defaults(selection: &str) {
-	use decodex_codex::app_server_client::AppServerClient;
-	use std::process::Stdio;
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
 	let home = tempfile::tempdir().expect("isolated home");
-	std::fs::write(
-		home.path().join("config.toml"),
-		format!("[features]\nmulti_agent_v2={selection}\n"),
-	)
-	.expect("native selection fixture");
+
+	fs::write(home.path().join("config.toml"), format!("[features]\nmulti_agent_v2={selection}\n"))
+		.expect("native selection fixture");
+
 	let profile = attested_profile(&binary, home.path());
-	let mut child = tokio::process::Command::new(&profile.command.program)
+	let mut child = Command::new(&profile.command.program)
 		.args(&profile.command.app_server_args)
 		.env_clear()
 		.env("HOME", home.path())
@@ -148,11 +149,14 @@ async fn qualify_defaults(selection: &str) {
 		child.stdin.take().expect("stdin"),
 	);
 	let drain = tokio::spawn(async move { while events.recv().await.is_some() {} });
+
 	client.initialize(serde_json::json!({"clientInfo":{"name":"decodex_description_order_fixture","version":"0.1"},"capabilities":{"experimentalApi":true}})).await.expect("initialize");
+
 	let config = client
 		.request("config/read", serde_json::json!({"includeLayers":false}))
 		.await
 		.expect("native config");
+
 	assert_eq!(config["config"]["features"]["code_mode_tool_description_first"], true);
 	assert_eq!(config["config"]["features"]["subagent_default_context_limits"], true);
 	assert_eq!(config["config"]["features"]["wake_on_agent_messages"], true);
@@ -161,6 +165,7 @@ async fn qualify_defaults(selection: &str) {
 		config["config"]["features"]["multi_agent_v2"]["enabled"],
 		selection.contains("true")
 	);
+
 	child.kill().await.expect("stop fixture");
 	child.wait().await.expect("reap fixture");
 	drain.abort();

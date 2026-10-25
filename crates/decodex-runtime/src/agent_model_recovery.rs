@@ -6,8 +6,8 @@ use tokio::sync::mpsc::Receiver;
 
 use crate::{AgentError, agent_capabilities, agent_usage_estimate::Source};
 use decodex_codex::app_server_client::{
-	ClientError, HistoryGuard, NativeRecoveryAuth, NativeTaskModelSettings, ServerEvent,
-	ThreadModelRecoveryUpdate,
+	AppServerClient, ClientError, HistoryGuard, NativeRecoveryAuth, NativeTaskModelSettings,
+	ServerEvent, ThreadModelRecoveryUpdate,
 };
 use decodex_database::{AgentModelAttempt, AgentModelRecoveryContext, SqliteStore};
 use decodex_protocol::{
@@ -131,17 +131,7 @@ where
 		return Ok(());
 	}
 
-	let state = match before.client.queue_thread_model_recovery(&update, guard).await {
-		Ok(_) => "queued",
-		Err(
-			ClientError::StaleHistory
-			| ClientError::RequestTooLarge
-			| ClientError::RequestQueueFull,
-		) => "rejected",
-		Err(ClientError::Remote(ref error)) if matches!(error.code, -32_602..=-32_600) =>
-			"rejected",
-		Err(_) => "unknown",
-	};
+	let state = queue_recovery(&before.client, &update, guard).await;
 
 	store.finish_agent_model_selection(event, attempt, state.into()).await?;
 
@@ -232,6 +222,24 @@ fn target_service_tier(current: &NativeTaskModelSettings, target: &AgentModelDto
 			.filter(|t| target.service_tiers.iter().any(|v| &v.id == *t))
 			.map(|t| t.as_str().to_owned())
 			.unwrap_or_else(|| "default".into()),
+	}
+}
+
+async fn queue_recovery(
+	client: &AppServerClient,
+	update: &ThreadModelRecoveryUpdate,
+	guard: HistoryGuard,
+) -> &'static str {
+	match client.queue_thread_model_recovery(update, guard).await {
+		Ok(_) => "queued",
+		Err(
+			ClientError::StaleHistory
+			| ClientError::RequestTooLarge
+			| ClientError::RequestQueueFull,
+		) => "rejected",
+		Err(ClientError::Remote(ref error)) if matches!(error.code, -32_602..=-32_600) =>
+			"rejected",
+		Err(_) => "unknown",
 	}
 }
 

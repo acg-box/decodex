@@ -1,14 +1,15 @@
 //! Native configuration roundtrip on an isolated home and production launch arguments.
-use std::{fs, process::Stdio};
+use std::{env, fs, process::Stdio};
 
+use tokio::process::Command;
+
+use crate::account_launch::process::native_control_tests;
 use decodex_codex::app_server_client::AppServerClient;
-
-use crate::account_launch::process::native_control_tests::attested_profile;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native configuration roundtrip"]
 async fn installed_native_context_preferences_share_config_and_preserve_thresholds() {
-	let binary = std::env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("native binary");
 	let home = tempfile::tempdir().unwrap();
 	let cwd = home.path().to_str().unwrap();
 	let file = home.path().join("config.toml");
@@ -21,8 +22,9 @@ async fn installed_native_context_preferences_share_config_and_preserve_threshol
 			),
 		)
 		.unwrap();
-		let profile = attested_profile(&binary, home.path());
-		let mut child = tokio::process::Command::new(&profile.command.program)
+
+		let profile = native_control_tests::attested_profile(&binary, home.path());
+		let mut child = Command::new(&profile.command.program)
 			.args(&profile.command.app_server_args)
 			.env_clear()
 			.env("HOME", home.path())
@@ -76,6 +78,7 @@ async fn installed_native_context_preferences_share_config_and_preserve_threshol
 		if async_value.contains("70") {
 			let config =
 				client.request("config/read", serde_json::json!({"cwd":cwd})).await.unwrap();
+
 			assert_eq!(
 				config["config"]["features"]["async_compaction"]["model_async_compact_threshold_percent"],
 				70

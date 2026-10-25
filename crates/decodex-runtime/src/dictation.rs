@@ -28,63 +28,7 @@ impl DictationGateway {
 		let mut slot = self.0.lock().await;
 
 		if let DictationRequest::Start { .. } = request {
-			if let Some(session) = slot.as_mut() {
-				if session.status.session_id == id {
-					session.seen = Instant::now();
-
-					return session.status.clone();
-				}
-				if session.transport.is_some() {
-					return failed(id, "Finish or cancel the current dictation first.");
-				}
-			}
-
-			let Some(client) = client else {
-				return failed(
-					id,
-					"The account is reconnecting. Try dictation when the Agent is ready.",
-				);
-			};
-			// Native authentication stays in this service and its same-process URLSession adapter.
-			// Release the session lock before the caller's five-second query deadline.
-			let Ok(Ok(mut auth)) = time::timeout(
-				Duration::from_secs(4),
-				client.request(
-					"getAuthStatus",
-					serde_json::json!({"includeToken":true,"refreshToken":false}),
-				),
-			)
-			.await
-			else {
-				return failed(id, "The native account connection could not authorize dictation.");
-			};
-
-			if !matches!(auth["authMethod"].as_str(), Some("chatgpt" | "chatgptAuthTokens")) {
-				return failed(id, "Dictation requires a ChatGPT subscription connection.");
-			}
-
-			let token = auth.get_mut("authToken").map(Value::take);
-			let Some(Value::String(token)) = token else {
-				return failed(id, "Sign in with a ChatGPT subscription to use dictation.");
-			};
-			let Ok(transport) = native::Stream::new(&token, start_message()) else {
-				return failed(id, "Dictation requires the current signed macOS application.");
-			};
-			let status = DictationStatus {
-				session_id: id,
-				phase: DictationPhase::Connecting,
-				text: DictationBuffer::new("").expect("empty draft"),
-				message: None,
-			};
-
-			*slot = Some(Session {
-				status: status.clone(),
-				transport: Some(transport),
-				seen: Instant::now(),
-				transcript: Default::default(),
-			});
-
-			return status;
+			return Self::start(&mut slot, id, client).await;
 		}
 
 		let Some(session) = slot.as_mut().filter(|s| s.status.session_id == id) else {
@@ -104,6 +48,7 @@ impl DictationGateway {
 				}) {
 					// A rejected write can leave the underlying error queued in the transport.
 					session.poll();
+
 					if session.status.phase != DictationPhase::Failed {
 						session.fail(
 							"Dictation lost its connection while sending audio. Start a new recording. Your received text remains in the draft.",
@@ -142,6 +87,70 @@ impl DictationGateway {
 		}
 
 		session.status.clone()
+	}
+
+	async fn start(
+		slot: &mut Option<Session>,
+		id: EntityId,
+		client: Option<AppServerClient>,
+	) -> DictationStatus {
+		if let Some(session) = slot.as_mut() {
+			if session.status.session_id == id {
+				session.seen = Instant::now();
+
+				return session.status.clone();
+			}
+			if session.transport.is_some() {
+				return failed(id, "Finish or cancel the current dictation first.");
+			}
+		}
+
+		let Some(client) = client else {
+			return failed(
+				id,
+				"The account is reconnecting. Try dictation when the Agent is ready.",
+			);
+		};
+		// Native authentication stays in this service and its same-process URLSession adapter.
+		// Release the session lock before the caller's five-second query deadline.
+		let Ok(Ok(mut auth)) = time::timeout(
+			Duration::from_secs(4),
+			client.request(
+				"getAuthStatus",
+				serde_json::json!({"includeToken":true,"refreshToken":false}),
+			),
+		)
+		.await
+		else {
+			return failed(id, "The native account connection could not authorize dictation.");
+		};
+
+		if !matches!(auth["authMethod"].as_str(), Some("chatgpt" | "chatgptAuthTokens")) {
+			return failed(id, "Dictation requires a ChatGPT subscription connection.");
+		}
+
+		let token = auth.get_mut("authToken").map(Value::take);
+		let Some(Value::String(token)) = token else {
+			return failed(id, "Sign in with a ChatGPT subscription to use dictation.");
+		};
+		let Ok(transport) = native::Stream::new(&token, start_message()) else {
+			return failed(id, "Dictation requires the current signed macOS application.");
+		};
+		let status = DictationStatus {
+			session_id: id,
+			phase: DictationPhase::Connecting,
+			text: DictationBuffer::new("").expect("empty draft"),
+			message: None,
+		};
+
+		*slot = Some(Session {
+			status: status.clone(),
+			transport: Some(transport),
+			seen: Instant::now(),
+			transcript: Default::default(),
+		});
+
+		status
 	}
 
 	pub(crate) async fn expire(&self) {
@@ -220,6 +229,7 @@ impl Session {
 			.as_str()
 			.filter(|text| !text.trim().is_empty())
 			.unwrap_or("The subscription dictation service could not finish this recording.");
+
 		self.fail(message);
 	}
 
@@ -228,8 +238,10 @@ impl Session {
 			self.fail(
 				"Dictation ended before you finished. Your received text remains in the draft.",
 			);
+
 			return;
 		}
+
 		self.status.phase = DictationPhase::Complete;
 		self.transport = None;
 	}
@@ -296,6 +308,7 @@ mod tests {
 		assert_eq!(session.status.text.as_str(), "Final draft.");
 
 		session.status.phase = DictationPhase::Finalizing;
+
 		session.receive(frame(
 			serde_json::json!({"type":"session.updated","session":{"status":"closed"}}),
 		));
@@ -304,9 +317,11 @@ mod tests {
 		assert_eq!(session.status.text.as_str(), "Final draft.");
 
 		session.status.phase = DictationPhase::Listening;
+
 		session.receive(frame(
 			serde_json::json!({"type":"session.updated","session":{"status":"closed"}}),
 		));
+
 		assert_eq!(session.status.phase, DictationPhase::Failed);
 		assert_eq!(session.status.text.as_str(), "Final draft.");
 		assert!(session.status.message.as_ref().unwrap().as_str().contains("before you finished"));
@@ -328,14 +343,20 @@ mod tests {
 				seen: std::time::Instant::now(),
 				transcript: Default::default(),
 			};
+
 			session.status.phase = DictationPhase::Listening;
 			session.status.message = None;
 			session.status.text = decodex_protocol::DictationBuffer::new("Earlier words.").unwrap();
+
 			let frame = |event: serde_json::Value| serde_json::json!({"kind":"message","message":event.to_string()});
+
 			session.receive(frame(serde_json::json!({"type":"session.error","fatal":false,"error":{"message":"Recoverable notice"}})));
+
 			assert_eq!(session.status.phase, DictationPhase::Listening);
 			assert!(session.status.message.is_none());
+
 			session.receive(frame(serde_json::json!({"type":kind,"fatal":true,"error":{"code":"provider_failed","message":"Transcription was interrupted."}})));
+
 			assert_eq!(session.status.phase, DictationPhase::Failed);
 			assert_eq!(session.status.text.as_str(), "Earlier words.");
 			assert_eq!(session.status.message.unwrap().as_str(), "Transcription was interrupted.");

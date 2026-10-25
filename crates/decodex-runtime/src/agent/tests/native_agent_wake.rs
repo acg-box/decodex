@@ -1,20 +1,31 @@
 //! A native child result resumes an idle root through the ordinary event bridge.
-use std::{env, fs, panic::AssertUnwindSafe, time::Duration};
+use std::{env, fs, iter, net::SocketAddr, panic::AssertUnwindSafe, path::Path, time::Duration};
 
 use futures_util::FutureExt as _;
-use tokio::{net::TcpListener, process::Command, sync::mpsc, time};
+use rusqlite::Connection;
+use tokio::{
+	net::TcpListener,
+	process::Command,
+	sync::{
+		mpsc,
+		mpsc::{Receiver, UnboundedSender},
+	},
+	time,
+};
 
-use crate::agent::{
-	tests,
-	tests::{
-		AgentConfig, AgentCoordinator, AppServerClient, AsyncWriteExt, ServerEvent, Value,
-		native_task_references,
+use crate::agent::tests::{
+	self, AgentConfig, AgentCoordinator, AppServerClient, AsyncWriteExt as _, ServerEvent, Value,
+	native_task_references,
+};
+use decodex_core::{
+	DecodexRoot,
+	work::{
+		NativeContribution, ResultSource, Work, WorkCommand, WorkRequirements, WorkResult,
+		WorkState,
 	},
 };
-use decodex_core::work::{
-	NativeContribution, ResultSource, Work, WorkCommand, WorkRequirements, WorkResult, WorkState,
-};
-use decodex_database::AgentDispatchState;
+use decodex_database::{AgentDispatchState, SqliteStore};
+
 const NATIVE_ASSIGNMENT: &str =
 	"[Work: held-work; Requirements: r1; Contribution: held-child]\nHELD_CHILD_RESULT";
 
@@ -44,10 +55,13 @@ fn response(body: &Value, serial: usize, v2: bool, nested: bool) -> Value {
 		} else {
 			serde_json::json!({"message":NATIVE_ASSIGNMENT})
 		};
+
 		if nested {
 			let namespace = if v2 { "collaboration" } else { "multi_agent_v1" };
+
 			return serde_json::json!({"type":"custom_tool_call","name":"exec","call_id":"spawn-cell","input":format!("text(await tools.{namespace}__spawn_agent({arguments}));")});
 		}
+
 		return serde_json::json!({"type":"function_call","id":"spawn-child","call_id":"spawn-child","namespace":if v2{"collaboration"}else{"multi_agent_v1"},"name":"spawn_agent","arguments":arguments.to_string()});
 	}
 
@@ -72,12 +86,67 @@ fn response(body: &Value, serial: usize, v2: bool, nested: bool) -> Value {
 	serde_json::json!({"type":"message","role":"assistant","phase":"final_answer","id":format!("message-{serial}"),"content":[{"type":"output_text","text":text}]})
 }
 
-async fn serve(
-	listener: TcpListener,
-	requests: mpsc::UnboundedSender<Value>,
+fn assert_requests(requests: &[Value], enabled: bool, v2: bool) {
+	let roots: Vec<_> = requests.iter().filter(|body| !is_child(body)).collect();
+	let discovery = usize::from(!v2);
+
+	assert_eq!(requests.len(), if enabled { 5 } else { 4 } + discovery);
+	assert_eq!(roots.len(), if enabled { 3 } else { 2 } + discovery);
+
+	if enabled {
+		let continuation = roots.last().unwrap();
+		let input = continuation["input"].as_array().unwrap();
+
+		assert_eq!(continuation["model"], "gpt-5.6-sol");
+		assert_eq!(continuation["reasoning"]["effort"], "medium");
+		assert_eq!(continuation["service_tier"], "priority");
+		assert_eq!(input.iter().filter(|item| item["type"] == "agent_message").count(), 1);
+		assert!(continuation.to_string().contains("CHILD_RESULT_READY"));
+		assert!(continuation.to_string().contains("ROOT_DONE"), "prior root history survives");
+	}
+}
+
+fn native_command(binary: &str, home: &Path, enabled: bool) -> Command {
+	let mut command = Command::new(binary);
+
+	command
+		.args([
+			"app-server",
+			if enabled { "--enable" } else { "--disable" },
+			"wake_on_agent_messages",
+		])
+		.current_dir(home)
+		.env_clear()
+		.env("HOME", home)
+		.env("CODEX_HOME", home)
+		.env("PATH", "/usr/bin:/bin");
+
+	command
+}
+
+fn configure_wake_fixture(
+	home: &Path,
+	address: SocketAddr,
 	v2: bool,
 	nested: bool,
-) {
+) -> &'static str {
+	// The native model catalog selects the backend. Disabling the V2 feature does
+	// not override a model that already selects V2.
+	let model = if v2 { "gpt-5.6-sol" } else { "gpt-5.6-luna" };
+	// Native V2 hides collaboration from Code Mode by default. Exercise nested
+	// execution only in the explicit native configuration that exposes it.
+	let v2_setting = if v2 && nested {
+		"{ enabled = true, non_code_mode_only = false }".to_owned()
+	} else {
+		v2.to_string()
+	};
+
+	fs::write(home.join("config.toml"),format!("model=\"{model}\"\nmodel_provider=\"fixture\"\nservice_tier=\"priority\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2={v2_setting}\ncode_mode={nested}\n[model_providers.fixture]\nname=\"Isolated root wake fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("fixture config");
+
+	model
+}
+
+async fn serve(listener: TcpListener, requests: UnboundedSender<Value>, v2: bool, nested: bool) {
 	let mut serial = 0;
 
 	while let Ok((mut socket, _)) = listener.accept().await {
@@ -141,19 +210,7 @@ async fn qualify(enabled: bool, v2: bool, nested: bool) {
 	let address = listener.local_addr().expect("fixture address");
 	let (requests_tx, mut requests_rx) = mpsc::unbounded_channel();
 	let backend = tokio::spawn(serve(listener, requests_tx, v2, nested));
-	// The native model catalog selects the backend. Disabling the V2 feature does
-	// not override a model that already selects V2.
-	let model = if v2 { "gpt-5.6-sol" } else { "gpt-5.6-luna" };
-
-	// Native V2 hides collaboration from Code Mode by default. Exercise nested
-	// execution only in the explicit native configuration that exposes it.
-	let v2_setting = if v2 && nested {
-		"{ enabled = true, non_code_mode_only = false }".to_owned()
-	} else {
-		v2.to_string()
-	};
-	fs::write(home.join("config.toml"),format!("model=\"{model}\"\nmodel_provider=\"fixture\"\nservice_tier=\"priority\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2={v2_setting}\ncode_mode={nested}\n[model_providers.fixture]\nname=\"Isolated root wake fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("fixture config");
-
+	let model = configure_wake_fixture(&home, address, v2, nested);
 	let (mut agent, _, store_home) = tests::fixture().await;
 	let mut command = native_command(&binary, &home, enabled);
 	let (client, mut events, mut process) =
@@ -164,16 +221,7 @@ async fn qualify(enabled: bool, v2: bool, nested: bool) {
 	agent.config.sandbox = "read-only".into();
 
 	let outcome = AssertUnwindSafe(time::timeout(Duration::from_secs(60), async {
-		agent.initialize().await.expect("initialize");
-		AgentCoordinator::reserve_root(&agent.store,"agent","ROOT_SPAWN").await.unwrap();
-		prepare_work(&agent).await;
-		agent.start_reserved_agent("agent", "ROOT_SPAWN").await.expect("start root");
-
-		let initial = agent.store.get_agent_work_item("agent".into()).await.unwrap();
-		let root = initial.codex_thread_id.unwrap();
-		let initial_turn = initial.active_turn_id.unwrap();
-
-
+		let (root, initial_turn) = start_wake_root(&mut agent).await;
 		let mut root_idle = false;
 		let mut pending_child = None;
 		let mut released_child = None;
@@ -191,18 +239,20 @@ async fn qualify(enabled: bool, v2: bool, nested: bool) {
 				{
 					assert_ne!(params["threadId"], root);
 
-					pending_child = Some((id.clone(), params["threadId"].as_str().unwrap().to_owned()));
+					pending_child =
+						Some((id.clone(), params["threadId"].as_str().unwrap().to_owned()));
 				},
-				ServerEvent::Notification { method, params } if method == "turn/started" && params["threadId"] == root => {
+				ServerEvent::Notification { method, params }
+					if method == "turn/started" && params["threadId"] == root =>
+				{
 					root_started = Some(params["turn"]["id"].as_str().unwrap().to_owned());
 				},
-				ServerEvent::Notification { method, params } if method == "turn/completed" => {
+				ServerEvent::Notification { method, params } if method == "turn/completed" =>
 					if params["threadId"] == root {
 						root_completed = Some(params["turn"]["id"].as_str().unwrap().to_owned());
 					} else if params["threadId"].as_str() == released_child.as_deref() {
 						child_completed = true;
-					}
-				},
+					},
 				_ => {},
 			}
 
@@ -218,28 +268,34 @@ async fn qualify(enabled: bool, v2: bool, nested: bool) {
 				assert_eq!(work.active_turn_id.as_deref(), Some(turn.as_str()));
 			}
 			if let Some(turn) = root_completed {
-				let work = agent.store.get_agent_work_item("agent".into()).await.unwrap();
+				assert_root_idle(&agent, &root, &turn).await;
 
-				assert_eq!(work.dispatch_state, AgentDispatchState::Idle);
-				assert!(work.active_turn_id.is_none());
-				assert!(agent.store.agent_native_terminal_recorded("agent".into(), root.clone(), turn.clone()).await.unwrap());
-				if turn != initial_turn { break; }
+				if turn != initial_turn {
+					break;
+				}
 
 				root_idle = true;
 			}
+
 			if root_idle && let Some((id, child)) = pending_child.take() {
 				let inbox = agent.pending_requests[&id];
 
 				// No command executes. The withheld approval is a deterministic child-result gate.
-				agent.respond_pending_event(inbox, serde_json::json!({"decision":"decline"})).await.unwrap();
+				agent
+					.respond_pending_event(inbox, serde_json::json!({"decision":"decline"}))
+					.await
+					.unwrap();
 
 				released_child = Some(child);
 			}
-			if !enabled && child_completed { break; }
+			if !enabled && child_completed {
+				break;
+			}
 		}
 
 		assert!(root_idle && released_child.is_some());
 		assert_eq!(wake_turn.is_some(), enabled);
+
 		if nested {
 			qualify_reopened_store(&agent, store_home.path(), v2).await;
 		} else {
@@ -250,58 +306,69 @@ async fn qualify(enabled: bool, v2: bool, nested: bool) {
 		agent.recover_native_turns().await.unwrap();
 		agent.wake_pending().await.unwrap();
 
-		let quiet = time::sleep(Duration::from_millis(350));
+		assert_no_duplicate_wake(&mut agent, &mut events, &root).await;
 
-		tokio::pin!(quiet);
-		loop {
-			tokio::select! {
-				() = &mut quiet => break,
-				event = events.recv() => {
-					let event = event.expect("native event stream");
-					assert!(!matches!(&event, ServerEvent::Notification{method,params} if method=="turn/started" && params["threadId"]==root), "no duplicate or disabled wake");
-					agent.handle_event(event).await.unwrap();
-				},
-			}
-		}
+		let requests: Vec<_> = iter::from_fn(|| requests_rx.try_recv().ok()).collect();
 
-		let requests: Vec<_> = std::iter::from_fn(|| requests_rx.try_recv().ok()).collect();
 		assert_requests(&requests, enabled, v2);
-	})).catch_unwind().await;
+	}))
+	.catch_unwind()
+	.await;
 
 	process.shutdown().await.expect("shutdown owned native process");
 	backend.abort();
 	outcome.expect("native wake qualification panicked").expect("native wake deadline");
 }
 
-fn assert_requests(requests: &[Value], enabled: bool, v2: bool) {
-	let roots: Vec<_> = requests.iter().filter(|body| !is_child(body)).collect();
-	let discovery = usize::from(!v2);
-	assert_eq!(requests.len(), if enabled { 5 } else { 4 } + discovery);
-	assert_eq!(roots.len(), if enabled { 3 } else { 2 } + discovery);
-	if enabled {
-		let continuation = roots.last().unwrap();
-		let input = continuation["input"].as_array().unwrap();
-		assert_eq!(continuation["model"], "gpt-5.6-sol");
-		assert_eq!(continuation["reasoning"]["effort"], "medium");
-		assert_eq!(continuation["service_tier"], "priority");
-		assert_eq!(input.iter().filter(|item| item["type"] == "agent_message").count(), 1);
-		assert!(continuation.to_string().contains("CHILD_RESULT_READY"));
-		assert!(continuation.to_string().contains("ROOT_DONE"), "prior root history survives");
-	}
+async fn start_wake_root(agent: &mut AgentCoordinator) -> (String, String) {
+	agent.initialize().await.expect("initialize");
+
+	AgentCoordinator::reserve_root(&agent.store, "agent", "ROOT_SPAWN")
+		.await
+		.expect("reserve root");
+
+	prepare_work(agent).await;
+
+	agent.start_reserved_agent("agent", "ROOT_SPAWN").await.expect("start root");
+
+	let initial = agent.store.get_agent_work_item("agent".into()).await.expect("root work");
+	let root = initial.codex_thread_id.expect("root thread");
+	let initial_turn = initial.active_turn_id.expect("initial turn");
+
+	(root, initial_turn)
 }
 
-async fn qualify_reopened_store(agent: &AgentCoordinator, home: &std::path::Path, v2: bool) {
-	let root = decodex_core::DecodexRoot::new(home.canonicalize().unwrap().join("root")).unwrap();
+async fn assert_root_idle(agent: &AgentCoordinator, root: &str, turn: &str) {
+	let work = agent.store.get_agent_work_item("agent".into()).await.expect("root work");
+
+	assert_eq!(work.dispatch_state, AgentDispatchState::Idle);
+	assert!(work.active_turn_id.is_none());
+	assert!(
+		agent
+			.store
+			.agent_native_terminal_recorded("agent".into(), root.into(), turn.into())
+			.await
+			.expect("recorded native terminal")
+	);
+}
+
+async fn qualify_reopened_store(agent: &AgentCoordinator, home: &Path, v2: bool) {
+	let root = DecodexRoot::new(home.canonicalize().unwrap().join("root")).unwrap();
+
 	if v2 {
 		assert!(agent.store.native_work_delivery("held-child".into()).await.unwrap().is_some());
+
 		// Reconstruct the durable crash point after input was observed, before its
 		// parent call and child binding were committed. The actual native history stays intact.
-		let c = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+		let c = Connection::open(root.paths().product_database_file()).unwrap();
+
 		c.execute_batch("BEGIN; DELETE FROM native_work_deliveries WHERE contribution_id='held-child'; DELETE FROM native_work_dispatches WHERE contribution_id='held-child'; DELETE FROM work_commands WHERE id='native-binding:held-child'; UPDATE native_work_contributions SET child_thread_id=NULL,parent_turn_id=NULL,parent_item_id=NULL WHERE id='held-child'; COMMIT;").unwrap();
 	}
-	let reopened = decodex_database::SqliteStore::open(&root.paths()).unwrap();
+
+	let reopened = SqliteStore::open(&root.paths()).unwrap();
 	let mut recovered =
 		AgentCoordinator::new(reopened, agent.client.clone(), agent.config.clone()).unwrap();
+
 	qualify_work_result(&mut recovered).await;
 }
 
@@ -323,6 +390,7 @@ async fn prepare_work(agent: &AgentCoordinator) {
 		user_hold: false,
 		assessment: None,
 	};
+
 	agent
 		.store
 		.apply_work_command(
@@ -372,6 +440,7 @@ async fn qualify_work_result(agent: &mut AgentCoordinator) {
 		},
 		limits: "Loopback fixture; no model quality claim".into(),
 	};
+
 	agent.verify_work_result("agent", &result).await.unwrap();
 	agent
 		.store
@@ -383,6 +452,7 @@ async fn qualify_work_result(agent: &mut AgentCoordinator) {
 		)
 		.await
 		.unwrap();
+
 	assert_eq!(
 		agent.store.work_portfolio(Some("held-work".into())).await.unwrap().works[0].state,
 		WorkState::Open,
@@ -390,20 +460,25 @@ async fn qualify_work_result(agent: &mut AgentCoordinator) {
 	);
 }
 
-fn native_command(binary: &str, home: &std::path::Path, enabled: bool) -> Command {
-	let mut command = Command::new(binary);
+async fn assert_no_duplicate_wake(
+	agent: &mut AgentCoordinator,
+	events: &mut Receiver<ServerEvent>,
+	root: &str,
+) {
+	let quiet = time::sleep(Duration::from_millis(350));
 
-	command
-		.args([
-			"app-server",
-			if enabled { "--enable" } else { "--disable" },
-			"wake_on_agent_messages",
-		])
-		.current_dir(home)
-		.env_clear()
-		.env("HOME", home)
-		.env("CODEX_HOME", home)
-		.env("PATH", "/usr/bin:/bin");
+	tokio::pin!(quiet);
 
-	command
+	loop {
+		tokio::select! {
+			() = &mut quiet => break,
+			event = events.recv() => {
+				let event = event.expect("native event stream");
+
+				assert!(!matches!(&event, ServerEvent::Notification{method,params} if method=="turn/started" && params["threadId"]==root), "no duplicate or disabled wake");
+
+				agent.handle_event(event).await.unwrap();
+			},
+		}
+	}
 }

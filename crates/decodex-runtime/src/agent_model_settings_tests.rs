@@ -327,6 +327,7 @@ async fn model_settings_read_other_conversations_hosted_by_the_same_process() {
 	let (r, w) = io::split(local);
 	let (client, _events) = AppServerClient::from_io(r, w);
 	let owner = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
+
 	owner
 		.store
 		.create_agent_manager(AgentWorkItem {
@@ -346,27 +347,35 @@ async fn model_settings_read_other_conversations_hosted_by_the_same_process() {
 		.await
 		.unwrap();
 	owner.store.bind_agent_thread("chat".into(), "chat-thread".into()).await.unwrap();
+
 	let mut key = owner.key.clone();
+
 	key.work = "chat".into();
 	key.thread = "chat-thread".into();
+
 	let (release, released) = oneshot::channel::<()>();
 	let server = tokio::spawn(async move {
 		let (r, mut w) = io::split(remote);
 		let mut lines = BufReader::new(r).lines();
 		let request: Value =
 			serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 		assert_eq!(request["method"], "thread/read");
 		assert_eq!(request["params"]["threadId"], "chat-thread");
+
 		let response = serde_json::json!({"id":request["id"],"result":{"thread":{
 			"id":"chat-thread","model":"configured-model","reasoningEffort":"medium",
 			"modelProvider":"openai"
 		}}});
+
 		w.write_all(format!("{response}\n").as_bytes()).await.unwrap();
+
 		let _ = released.await;
 	});
 	let result =
 		agent_model_settings::read(&owner.store, || async { Some(owner.source(&key)) }).await;
 	let _ = release.send(());
+
 	assert!(
 		matches!(result, AgentModelSettingsResult::Available { ref work_id, ref thread_id, model:Some(ref model), .. }
 			if work_id.as_str()=="chat" && thread_id.as_str()=="chat-thread" && model.as_str()=="configured-model"),
@@ -380,5 +389,6 @@ async fn model_settings_read_other_conversations_hosted_by_the_same_process() {
 			.unwrap(),
 		"reading another conversation must not grant agent execution authority"
 	);
+
 	server.await.unwrap();
 }

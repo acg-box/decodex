@@ -75,7 +75,9 @@ mod tests {
 		assert_eq!(apply("a", 4, "Corrected final.", true).as_str(), "Corrected final. 第二句话。");
 		assert_eq!(apply("a", 3, "stale final", true).as_str(), "Corrected final. 第二句话。");
 		assert_eq!(apply("a", 5, "late partial", false).as_str(), "Corrected final. 第二句话。");
+
 		apply("c", 8, "Third partial", false);
+
 		assert_eq!(
 			apply("c", 1, "Third final.", true).as_str(),
 			"Corrected final. 第二句话。 Third final."

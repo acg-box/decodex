@@ -1,14 +1,15 @@
 use crate::{
 	agent::{
 		tests,
-		tests::{AgentCoordinator, AgentDisposition, RequestId, ServerEvent, SqliteStore, Value},
+		tests::{AgentCoordinator, AgentDisposition, RequestId, ServerEvent, SqliteStore},
+		timeline::metrics,
 	},
 	native_agents,
 };
 use decodex_core::DecodexRoot;
-use decodex_protocol::NativeAgentsResult;
+use decodex_protocol::{AgentTimelinePage, NativeAgentsResult};
 
-fn child(thread: &str, parent: &str) -> Value {
+fn child(thread: &str, parent: &str) -> serde_json::Value {
 	serde_json::json!({"thread":{"id":thread,"parentThreadId":parent,"source":{"subAgent":{"thread_spawn":{"parent_thread_id":parent}}},"canAcceptDirectInput":false}})
 }
 
@@ -90,7 +91,7 @@ async fn nested_native_approval_keeps_child_identity_and_resolves_once() {
 
 	assert_eq!(event.work_item_id, "agent");
 
-	let payload: Value = serde_json::from_str(&event.payload).unwrap();
+	let payload: serde_json::Value = serde_json::from_str(&event.payload).unwrap();
 
 	assert_eq!(payload["params"], params);
 	assert_eq!(payload["ownerThreadId"], "opaque thread/1");
@@ -226,6 +227,7 @@ async fn native_agent_inspection_requires_exact_ancestry_and_never_starts_work()
 #[tokio::test]
 async fn native_prepare_resumes_only_owned_unknown_capability_without_sending_input() {
 	let mut history = serde_json::json!({});
+
 	for (id, capability) in [
 		("cold", serde_json::Value::Null),
 		("ready", true.into()),
@@ -233,23 +235,32 @@ async fn native_prepare_resumes_only_owned_unknown_capability_without_sending_in
 		("foreign", serde_json::Value::Null),
 	] {
 		let mut value = child(id, if id == "foreign" { "unrelated" } else { "opaque thread/1" });
+
 		value["thread"]["turns"] = serde_json::json!([]);
 		value["thread"]["canAcceptDirectInput"] = capability;
 		history[id] = value;
 	}
+
 	let (mut agent, mut sent, _directory) = tests::fixture_with_history(history).await;
+
 	agent.start_agent("agent", "Coordinate").await.unwrap();
+
 	while sent.try_recv().is_ok() {}
+
 	for id in ["cold", "ready", "managed"] {
 		native_agents::prepare(&agent.store, &agent.client, "agent", id).await.unwrap();
 	}
+
 	assert!(native_agents::prepare(&agent.store, &agent.client, "agent", "foreign").await.is_err());
+
 	let mut resumed = 0;
+
 	while let Ok(request) = sent.try_recv() {
 		match request["method"].as_str().unwrap() {
 			"thread/read" => {},
 			"thread/resume" => {
 				resumed += 1;
+
 				assert_eq!(
 					request["params"],
 					serde_json::json!({"threadId":"cold", "excludeTurns":true})
@@ -258,6 +269,7 @@ async fn native_prepare_resumes_only_owned_unknown_capability_without_sending_in
 			other => panic!("preparation must not start a turn or change settings: {other}"),
 		}
 	}
+
 	assert_eq!(resumed, 1);
 	assert_eq!(agent.store.list_agent_work_items().await.unwrap().len(), 1);
 }
@@ -269,24 +281,30 @@ async fn child_usage_is_live_durable_and_keeps_exact_thread_ownership() {
 		"foreign":child("foreign","unowned")
 	});
 	let (mut agent, _sent, _directory) = tests::fixture_with_history(history).await;
+
 	agent.start_agent("agent", "Coordinate").await.unwrap();
+
 	for (thread, turn, total) in
-		[("child", "first", 1234), ("child", "second", 2468), ("foreign", "other", 9999)]
+		[("child", "first", 1_234), ("child", "second", 2_468), ("foreign", "other", 9_999)]
 	{
 		let counts = serde_json::json!({"totalTokens":total,"inputTokens":total-34,"cachedInputTokens":0,"outputTokens":34,"reasoningOutputTokens":0});
+
 		agent.handle_event(ServerEvent::Notification {
 			method: "thread/tokenUsage/updated".into(),
-			params: serde_json::json!({"threadId":thread,"turnId":turn,"tokenUsage":{"total":counts,"last":counts,"modelContextWindow":128000}}),
+			params: serde_json::json!({"threadId":thread,"turnId":turn,"tokenUsage":{"total":counts,"last":counts,"modelContextWindow":128_000}}),
 		}).await.unwrap();
 	}
-	let mut page: decodex_protocol::AgentTimelinePage = serde_json::from_value(serde_json::json!({
+
+	let mut page: AgentTimelinePage = serde_json::from_value(serde_json::json!({
 		"thread_id":"child","entries":[],"next_cursor":null,"active_realtime_session_at_page_start":null
 	}))
 	.unwrap();
-	crate::agent::timeline::metrics::enrich(&agent.store, "agent", &mut page).await.unwrap();
+
+	metrics::enrich(&agent.store, "agent", &mut page).await.unwrap();
+
 	assert_eq!(
 		page.thread_token_total,
-		Some(2468),
+		Some(2_468),
 		"the latest native total is not a sum of samples"
 	);
 	assert!(
@@ -305,11 +323,14 @@ async fn child_usage_is_live_durable_and_keeps_exact_thread_ownership() {
 			.unwrap()
 			.is_none()
 	);
+
 	let restored =
 		AgentCoordinator::new(agent.store.clone(), agent.client.clone(), agent.config.clone())
 			.unwrap();
-	crate::agent::timeline::metrics::enrich(&restored.store, "agent", &mut page).await.unwrap();
-	assert_eq!(page.thread_token_total, Some(2468));
+
+	metrics::enrich(&restored.store, "agent", &mut page).await.unwrap();
+
+	assert_eq!(page.thread_token_total, Some(2_468));
 	assert_eq!(
 		agent.store.get_agent_work_item("agent".into()).await.unwrap().active_turn_id.as_deref(),
 		Some("opaque turn/1")

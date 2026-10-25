@@ -197,16 +197,18 @@ async fn managed_voice_denial_or_unreadable_policy_blocks_settings_and_writes() 
 		serde_json::json!({"result":{"requirements":{"featureRequirements":{"in_app_voice":false}}}}),
 		serde_json::json!({"result":{"requirements":{"featureRequirements":{"in_app_voice":"false"}}}}),
 		serde_json::json!({"result":{}}),
-		serde_json::json!({"error":{"code":-32603,"message":"unavailable"}}),
+		serde_json::json!({"error":{"code":-32_603,"message":"unavailable"}}),
 	] {
 		let (client, writes, task) = fixture_with_policy(false, policy);
 		let read_source = || future::ready(Some(source(client.clone(), 1)));
+
 		assert!(matches!(
 			agent_voice_settings::read(read_source).await,
 			AgentVoiceSettingsResult::Unavailable
 		));
 		assert!(agent_voice_settings::write(read_source, "untrusted", "juniper").await.is_err());
 		assert_eq!(writes.load(Ordering::SeqCst), 0);
+
 		task.abort();
 	}
 }

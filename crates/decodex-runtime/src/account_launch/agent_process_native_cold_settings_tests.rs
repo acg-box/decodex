@@ -490,7 +490,6 @@ async fn serve(
 			);
 
 			let serial = requests.fetch_add(1, Ordering::AcqRel);
-
 			let held = if env::var_os("DECODEX_TEST_ACTIVE_SERVICE_SHUTDOWN").is_some() {
 				Some("active")
 			} else if env::var_os("DECODEX_TEST_NATIVE_SAMPLE").is_some()
@@ -500,8 +499,10 @@ async fn serve(
 			} else {
 				None
 			};
+
 			if let Some(witness) = held {
 				hold_fixture_response(&mut socket, witness).await;
+
 				continue;
 			}
 

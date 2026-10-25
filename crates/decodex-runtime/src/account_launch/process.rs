@@ -1,8 +1,4 @@
 #[cfg(all(test, target_os = "macos"))]
-#[path = "../agent_context_settings_native_tests.rs"]
-mod context_preferences_native_tests;
-
-#[cfg(all(test, target_os = "macos"))]
 #[path = "process_native_control_tests.rs"]
 pub(crate) mod native_control_tests;
 
@@ -12,6 +8,9 @@ mod activation_policy_native_tests;
 #[cfg(target_os = "macos")]
 #[path = "process_bundle_snapshot.rs"]
 mod bundle_snapshot;
+#[cfg(all(test, target_os = "macos"))]
+#[path = "../agent_context_settings_native_tests.rs"]
+mod context_preferences_native_tests;
 #[path = "exact_history.rs"] mod exact_history;
 #[path = "executable_discovery.rs"] mod executable_discovery;
 #[cfg(target_os = "macos")]
@@ -20,11 +19,10 @@ mod managed_codex;
 #[cfg(target_os = "macos")]
 #[path = "provisioned_cli.rs"]
 mod provisioned_cli;
-
 #[path = "process_startup_config.rs"] mod startup_config;
-pub(crate) use startup_config::inspect_native_startup_configuration;
 
 pub(crate) use decodex_database::ConversationResumeRejection as ConversationRejectionReason;
+pub(crate) use startup_config::inspect_native_startup_configuration;
 
 #[cfg(target_os = "linux")] use std::os::fd::FromRawFd as _;
 #[cfg(test)] use std::sync::atomic::AtomicU32;
@@ -99,6 +97,7 @@ use crate::{
 	},
 	native_config_warning,
 	process_supervisor::{FencedProcess, ProcessGenerationControl, ProcessSupervisorError},
+	startup_trace::Phase,
 };
 #[cfg(test)] use decodex_codex::schema::SchemaMarker;
 use decodex_codex::{
@@ -128,6 +127,27 @@ use decodex_protocol::MAX_CONVERSATION_WORKING_DIRECTORY_BYTES;
 
 /// Hard mechanical bound for process groups awaiting confirmed cleanup.
 pub const MAX_PROCESS_QUARANTINE: usize = 64;
+
+// Native defaults qualified against the locked runtime. Keep transport selection
+// native-owned; shared gRPC Code Mode hosting has no measured local benefit yet.
+// The dotted feature option preserves the user's multi_agent_v2 enable/disable value.
+pub(crate) const APP_SERVER_ARGS: [&str; 12] = [
+	"app-server",
+	"--stdio",
+	// The live Responses endpoint rejects this pin's content_item_metadata field.
+	"--disable",
+	"content_item_kinds",
+	"--enable",
+	"code_mode_tool_description_first",
+	"--enable",
+	"subagent_default_context_limits",
+	// Native config ignores unknown optional features on an older preserved runtime.
+	// The --enable spelling rejects them before the app-server can initialize.
+	"-c",
+	"features.wake_on_agent_messages=true",
+	"-c",
+	"features.multi_agent_v2.preserve_fork_prefix=true",
+];
 
 const CHILD_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
 #[cfg(not(target_os = "macos"))]
@@ -375,12 +395,14 @@ impl AttestedAppServerProfile {
 
 		validated_working_directory(&command)?;
 
-		let phase = crate::startup_trace::Phase::new("schema_version_attestation");
+		let phase = Phase::new("schema_version_attestation");
 		let capability = ExactBuildLaunchCapability::attest_profile(&command)?;
+
 		#[cfg(target_os = "macos")]
 		if let Some((build, generated)) = managed_codex::evidence(&command)? {
 			return Ok(Self { command, build, generated, capability });
 		}
+
 		let home = env::var_os("HOME")
 			.filter(|home| !home.is_empty())
 			.ok_or(SupervisionError::InvalidBinding)?;
@@ -393,6 +415,7 @@ impl AttestedAppServerProfile {
 		}
 
 		drop(phase);
+
 		Ok(Self { command, build, generated, capability })
 	}
 
@@ -1394,27 +1417,6 @@ pub(super) struct AppServerCommand {
 	#[cfg(all(test, target_os = "macos"))]
 	test_spawn_path: Option<PathBuf>,
 }
-// Native defaults qualified against the locked runtime. Keep transport selection
-// native-owned; shared gRPC Code Mode hosting has no measured local benefit yet.
-// The dotted feature option preserves the user's multi_agent_v2 enable/disable value.
-pub(crate) const APP_SERVER_ARGS: [&str; 12] = [
-	"app-server",
-	"--stdio",
-	// The live Responses endpoint rejects this pin's content_item_metadata field.
-	"--disable",
-	"content_item_kinds",
-	"--enable",
-	"code_mode_tool_description_first",
-	"--enable",
-	"subagent_default_context_limits",
-	// Native config ignores unknown optional features on an older preserved runtime.
-	// The --enable spelling rejects them before the app-server can initialize.
-	"-c",
-	"features.wake_on_agent_messages=true",
-	"-c",
-	"features.multi_agent_v2.preserve_fork_prefix=true",
-];
-
 impl AppServerCommand {
 	/// Construct the only production command shape: Codex app-server plus read-only attestation.
 	///
@@ -1965,6 +1967,7 @@ impl SupervisedProcess {
 			if login_complete && let Some(response) = pending_response.take() {
 				return Ok(response);
 			}
+
 			let remaining = deadline.saturating_duration_since(Instant::now());
 
 			if remaining.is_zero() {
@@ -2014,51 +2017,29 @@ impl SupervisedProcess {
 
 				continue;
 			}
+
 			if method == ReadOnlyMethod::AccountLoginStart.as_str()
 				&& header.id.is_none()
 				&& header.method.as_deref() == Some("account/login/completed")
 			{
 				let completion: CredentialProjectionCompletion = serde_json::from_slice(&line)
 					.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
+
 				if !completion.params.success
 					|| completion.params.login_id.is_some()
 					|| completion.params.error.is_some()
 				{
 					return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
 				}
+
 				login_complete = true;
+
 				continue;
 			}
-
 			if header.id == Some(request_id) {
-				let response_digest = hex_digest(&Sha256::digest(&line));
-				let response: JsonRpcResponse<R> = serde_json::from_slice(&line)
-					.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
+				pending_response =
+					Some(Self::decode_rpc_response(&line, request_id, &request_digest)?);
 
-				if response.id != request_id {
-					return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
-				}
-				if !response.has_compatible_version() {
-					return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
-				}
-
-				pending_response = Some(match (response.result, response.error) {
-					(Some(result), None) => Ok(RpcSuccess {
-						value: result,
-						wire: RpcWireReceipt {
-							request_id: i64::try_from(request_id).map_err(|_| {
-								RpcError::Supervision(SupervisionError::ProtocolLimitExceeded)
-							})?,
-							request_digest: request_digest.clone(),
-							response_id: i64::try_from(response.id).map_err(|_| {
-								RpcError::Supervision(SupervisionError::ProtocolLimitExceeded)
-							})?,
-							response_digest,
-						},
-					}),
-					(None, Some(error)) => Err(RpcError::MethodRejected(error.code)),
-					_ => Err(RpcError::Supervision(SupervisionError::InvalidProtocol)),
-				}?);
 				continue;
 			}
 
@@ -2070,6 +2051,44 @@ impl SupervisedProcess {
 					return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
 				}
 			}
+		}
+	}
+
+	fn decode_rpc_response<R>(
+		line: &[u8],
+		request_id: u64,
+		request_digest: &str,
+	) -> Result<RpcSuccess<R>, RpcError>
+	where
+		R: DeserializeOwned,
+	{
+		let response_digest = hex_digest(&Sha256::digest(line));
+		let response: JsonRpcResponse<R> = serde_json::from_slice(line)
+			.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
+
+		if response.id != request_id {
+			return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
+		}
+		if !response.has_compatible_version() {
+			return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
+		}
+
+		match (response.result, response.error) {
+			(Some(result), None) => Ok(RpcSuccess {
+				value: result,
+				wire: RpcWireReceipt {
+					request_id: i64::try_from(request_id).map_err(|_| {
+						RpcError::Supervision(SupervisionError::ProtocolLimitExceeded)
+					})?,
+					request_digest: request_digest.to_owned(),
+					response_id: i64::try_from(response.id).map_err(|_| {
+						RpcError::Supervision(SupervisionError::ProtocolLimitExceeded)
+					})?,
+					response_digest,
+				},
+			}),
+			(None, Some(error)) => Err(RpcError::MethodRejected(error.code)),
+			_ => Err(RpcError::Supervision(SupervisionError::InvalidProtocol)),
 		}
 	}
 
@@ -2164,14 +2183,11 @@ impl SupervisedProcess {
 		let request_id_u64 =
 			u64::try_from(request_id).map_err(|_| ConversationProcessError::Incompatible)?;
 		let invalid_response = || {
-			if invalid_response_is_ambiguous {
-				ConversationProcessError::Ambiguous {
-					request_id,
-					request_sha256: request_sha256.clone(),
-				}
-			} else {
-				ConversationProcessError::Incompatible
-			}
+			Self::invalid_conversation_response(
+				invalid_response_is_ambiguous,
+				request_id,
+				&request_sha256,
+			)
 		};
 		let ambiguous = || ConversationProcessError::Ambiguous {
 			request_id,
@@ -2277,6 +2293,21 @@ impl SupervisedProcess {
 
 				return Err(invalid_response());
 			}
+		}
+	}
+
+	fn invalid_conversation_response(
+		ambiguous: bool,
+		request_id: i64,
+		request_sha256: &str,
+	) -> ConversationProcessError {
+		if ambiguous {
+			ConversationProcessError::Ambiguous {
+				request_id,
+				request_sha256: request_sha256.to_owned(),
+			}
+		} else {
+			ConversationProcessError::Incompatible
 		}
 	}
 
@@ -3057,19 +3088,6 @@ pub(super) struct CredentialProjectionResponse {
 }
 
 #[derive(Deserialize)]
-struct CredentialProjectionCompletion {
-	params: CredentialProjectionCompletionParams,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CredentialProjectionCompletionParams {
-	login_id: Option<IgnoredAny>,
-	success: bool,
-	error: Option<IgnoredAny>,
-}
-
-#[derive(Deserialize)]
 pub(super) struct InboundHeader {
 	id: Option<u64>,
 	method: Option<String>,
@@ -3124,59 +3142,6 @@ impl<'a> ProbeNegotiation<'a> {
 			Ok(_) => Ok(()),
 			Err(error @ ProbeError::Supervision(SupervisionError::AccountChanged)) => Err(error),
 			Err(error) => self.fail(Capability::AccountRead, error),
-		}
-	}
-}
-
-enum ProcessGuard {
-	Account(RunnerPermit),
-	Preflight {
-		// Keep the shared capacity owner alive until this cleanup finishes.
-		_capacity: Arc<RunnerCapacity>,
-		quarantine: Arc<ProcessQuarantine>,
-		slot: QuarantineSlotLease,
-	},
-}
-impl ProcessGuard {
-	fn prepare(guard: Option<RunnerPermit>) -> Result<Self, SupervisionError> {
-		if let Some(guard) = guard {
-			return Ok(Self::Account(guard));
-		}
-
-		let capacity =
-			RunnerCapacity::daemon().map_err(|_| SupervisionError::CleanupUnavailable)?;
-		let quarantine = Arc::clone(&capacity.inner.quarantine);
-		let slot = quarantine.reserve_slot().ok_or(SupervisionError::CleanupUnavailable)?;
-
-		Ok(Self::Preflight { _capacity: capacity, quarantine, slot })
-	}
-
-	fn into_runner_permit(self) -> Option<RunnerPermit> {
-		match self {
-			Self::Account(guard) => Some(guard),
-			Self::Preflight { .. } => None,
-		}
-	}
-
-	fn quarantine(&mut self) -> (Arc<ProcessQuarantine>, usize) {
-		match self {
-			Self::Account(guard) => guard.quarantine(),
-			Self::Preflight { quarantine, slot, .. } => {
-				slot.mark_installed();
-
-				(Arc::clone(quarantine), slot.index())
-			},
-		}
-	}
-
-	#[cfg(test)]
-	fn use_quarantine_for_test(&mut self, quarantine: &Arc<ProcessQuarantine>) {
-		match self {
-			Self::Account(guard) => guard.use_quarantine_for_test(quarantine),
-			Self::Preflight { quarantine: current, slot, .. } => {
-				*slot = quarantine.reserve_slot().expect("test quarantine has a free slot");
-				*current = Arc::clone(quarantine);
-			},
 		}
 	}
 }
@@ -3651,6 +3616,19 @@ impl Drop for ProcessQuarantine {
 			let _ = joined.recv_timeout(QUARANTINE_SHUTDOWN_WAIT);
 		}
 	}
+}
+
+#[derive(Deserialize)]
+struct CredentialProjectionCompletion {
+	params: CredentialProjectionCompletionParams,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CredentialProjectionCompletionParams {
+	login_id: Option<IgnoredAny>,
+	success: bool,
+	error: Option<IgnoredAny>,
 }
 
 struct PreparedConversationRequest {
@@ -4226,6 +4204,59 @@ impl ReadOnlyMethod {
 			Self::ConfigRequirementsRead => "configRequirements/read",
 			Self::ThreadList => "thread/list",
 			Self::ThreadRead => "thread/read",
+		}
+	}
+}
+
+enum ProcessGuard {
+	Account(RunnerPermit),
+	Preflight {
+		// Keep the shared capacity owner alive until this cleanup finishes.
+		_capacity: Arc<RunnerCapacity>,
+		quarantine: Arc<ProcessQuarantine>,
+		slot: QuarantineSlotLease,
+	},
+}
+impl ProcessGuard {
+	fn prepare(guard: Option<RunnerPermit>) -> Result<Self, SupervisionError> {
+		if let Some(guard) = guard {
+			return Ok(Self::Account(guard));
+		}
+
+		let capacity =
+			RunnerCapacity::daemon().map_err(|_| SupervisionError::CleanupUnavailable)?;
+		let quarantine = Arc::clone(&capacity.inner.quarantine);
+		let slot = quarantine.reserve_slot().ok_or(SupervisionError::CleanupUnavailable)?;
+
+		Ok(Self::Preflight { _capacity: capacity, quarantine, slot })
+	}
+
+	fn into_runner_permit(self) -> Option<RunnerPermit> {
+		match self {
+			Self::Account(guard) => Some(guard),
+			Self::Preflight { .. } => None,
+		}
+	}
+
+	fn quarantine(&mut self) -> (Arc<ProcessQuarantine>, usize) {
+		match self {
+			Self::Account(guard) => guard.quarantine(),
+			Self::Preflight { quarantine, slot, .. } => {
+				slot.mark_installed();
+
+				(Arc::clone(quarantine), slot.index())
+			},
+		}
+	}
+
+	#[cfg(test)]
+	fn use_quarantine_for_test(&mut self, quarantine: &Arc<ProcessQuarantine>) {
+		match self {
+			Self::Account(guard) => guard.use_quarantine_for_test(quarantine),
+			Self::Preflight { quarantine: current, slot, .. } => {
+				*slot = quarantine.reserve_slot().expect("test quarantine has a free slot");
+				*current = Arc::clone(quarantine);
+			},
 		}
 	}
 }
@@ -5119,10 +5150,13 @@ fn verify_executable(command: &AppServerCommand) -> Result<(), SupervisionError>
 		let snapshot = scope.spawn(|| command.executable.digest());
 		let canonical = verify_canonical_executable(command);
 		let snapshot = snapshot.join().map_err(|_| SupervisionError::ExecutableChanged)?;
+
 		canonical?;
+
 		if snapshot.map_err(|_| SupervisionError::ExecutableChanged)? != command.executable_digest {
 			return Err(SupervisionError::ExecutableChanged);
 		}
+
 		Ok(())
 	})
 }
@@ -5378,7 +5412,8 @@ fn initialize_probe(
 	capabilities: InitializeCapabilities,
 ) -> Result<AccountIdentity, ProbeError> {
 	if let Some(vault) = vault {
-		let _phase = crate::startup_trace::Phase::new("initialize_and_auth");
+		let _phase = Phase::new("initialize_and_auth");
+
 		initialize_probe_projection(process, vault, timeout, negotiation, capabilities)?;
 	} else {
 		initialize_probe_connection(process, timeout, negotiation, capabilities)?;
@@ -6438,7 +6473,9 @@ pub(crate) mod tests {
 				"features.multi_agent_v2.preserve_fork_prefix=true"
 			]
 		);
+
 		command.app_server_args.push("--listen=ws://127.0.0.1:9999".into());
+
 		assert!(super::ExactBuildLaunchCapability::attest_profile(&command).is_err());
 		assert_eq!(command.version_args, ["--version"]);
 		assert_eq!(
@@ -6680,6 +6717,7 @@ pub(crate) mod tests {
 
 			assert!(!temp.path().join("login-read-before-completion").exists(), "{mode}");
 			assert_eq!(result.is_ok(), succeeds, "{mode}");
+
 			if let Err(error) = result {
 				assert_eq!(
 					error,

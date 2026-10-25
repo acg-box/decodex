@@ -1,4 +1,6 @@
 //! Qualify restored native token counters through the real Agent and SQLite owners.
+#[path = "agent_process_native_output_rate_tests.rs"] mod output_rate;
+
 use std::{env, fs, sync::atomic::AtomicUsize};
 
 use tokio::{net::TcpListener, sync::mpsc::Receiver, time};
@@ -11,8 +13,6 @@ use crate::{
 };
 use decodex_core::DecodexRoot;
 use decodex_database::SqliteStore;
-
-#[path = "agent_process_native_output_rate_tests.rs"] mod output_rate;
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native usage qualification"]

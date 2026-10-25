@@ -1,9 +1,12 @@
 //! Work tools enforce user authority and exact artifact identity across Projects.
+use std::{fs, path::Path};
+
+use sha2::{Digest as _, Sha256};
+
 use crate::agent::tests::{self, AgentCoordinator, AgentError, Value};
 use decodex_core::work::{
 	ResultSource, Work, WorkAssessment, WorkCommand, WorkRequirements, WorkResult, WorkState,
 };
-use sha2::{Digest as _, Sha256};
 
 async fn manage(
 	agent: &mut AgentCoordinator,
@@ -15,22 +18,27 @@ async fn manage(
 		.get_agent_work_item("sage".into())
 		.await
 		.expect("Project and Work qualification fixture");
+
 	agent.tool(&caller,&serde_json::json!({"tool":"work_manage","arguments":{"commandId":command_id,"command":command}})).await
 }
 #[tokio::test]
 async fn four_works_in_two_projects_share_an_agent_without_sharing_results() {
 	let (mut agent, _sent, home) = tests::fixture().await;
+
 	agent.config.cwd = home
 		.path()
 		.canonicalize()
 		.expect("Project and Work qualification fixture")
 		.display()
 		.to_string();
+
 	agent
 		.start_agent("sage", "Plan the market and trip")
 		.await
 		.expect("Project and Work qualification fixture");
+
 	tests::complete(&mut agent, "sage").await;
+
 	agent
 		.enqueue_user_message(
 			"sage",
@@ -40,6 +48,7 @@ async fn four_works_in_two_projects_share_an_agent_without_sharing_results() {
 		.await
 		.expect("Project and Work qualification fixture");
 	agent.wake_pending().await.expect("Project and Work qualification fixture");
+
 	let decision = agent
 		.store
 		.list_agent_events_for_turn(
@@ -57,23 +66,29 @@ async fn four_works_in_two_projects_share_an_agent_without_sharing_results() {
 		.into_iter()
 		.find(|e| e.event_kind == "user_message")
 		.expect("Project and Work qualification fixture");
+
 	create_four_works(&mut agent, decision.id).await;
 	qualify_result_isolation(&mut agent, home.path()).await;
+
 	let state =
 		agent.store.work_portfolio(None).await.expect("Project and Work qualification fixture");
+
 	assert_eq!(state.works.len(), 4);
 	assert_eq!(state.works.iter().filter(|w| w.state == WorkState::Completed).count(), 1);
 	assert!(state.works.iter().all(|w| w.owner_agent_id == "sage"));
+
 	let caller = agent
 		.store
 		.get_agent_work_item("sage".into())
 		.await
 		.expect("Project and Work qualification fixture");
+
 	for retired in ["agent_create_work", "agent_create_manager", "agent_create_goal"] {
 		assert!(
 			agent.tool(&caller, &serde_json::json!({"tool":retired,"arguments":{}})).await.is_err()
 		);
 	}
+
 	assert!(
 		super::super::tools()
 			.as_array()
@@ -119,15 +134,18 @@ async fn create_four_works(agent: &mut AgentCoordinator, decision: i64) {
 			user_hold: false,
 			assessment: None,
 		};
+
 		manage(agent, &format!("create-{id}"), WorkCommand::Create { work })
 			.await
 			.expect("Project and Work qualification fixture");
 	}
 }
 
-async fn qualify_result_isolation(agent: &mut AgentCoordinator, home: &std::path::Path) {
+async fn qualify_result_isolation(agent: &mut AgentCoordinator, home: &Path) {
 	let path = home.join("venue.txt");
-	std::fs::write(&path, "Public venue evidence").expect("Project and Work qualification fixture");
+
+	fs::write(&path, "Public venue evidence").expect("Project and Work qualification fixture");
+
 	let digest = Sha256::digest(b"Public venue evidence")
 		.iter()
 		.map(|b| format!("{b:02x}"))
@@ -143,15 +161,21 @@ async fn qualify_result_isolation(agent: &mut AgentCoordinator, home: &std::path
 		source: ResultSource::Artifact { path: path.display().to_string(), sha256: digest },
 		limits: "Research only; no reservation".into(),
 	};
+
 	manage(agent, "record-result", WorkCommand::RecordResult { result: result.clone() })
 		.await
 		.expect("Project and Work qualification fixture");
-	std::fs::write(path, "Changed venue evidence").expect("Project and Work qualification fixture");
+
+	fs::write(path, "Changed venue evidence").expect("Project and Work qualification fixture");
+
 	manage(agent, "record-result", WorkCommand::RecordResult { result: result.clone() })
 		.await
 		.expect("an exact committed receipt survives a later artifact change");
+
 	let mut changed = result;
+
 	changed.id = "changed-result".into();
+
 	assert!(
 		manage(agent, "changed-result", WorkCommand::RecordResult { result: changed })
 			.await
@@ -175,8 +199,10 @@ async fn qualify_result_isolation(agent: &mut AgentCoordinator, home: &std::path
 		.await
 		.is_err()
 	);
-	std::fs::write(home.join("venue.txt"), "Public venue evidence")
+
+	fs::write(home.join("venue.txt"), "Public venue evidence")
 		.expect("Project and Work qualification fixture");
+
 	manage(
 		agent,
 		"complete-venue",

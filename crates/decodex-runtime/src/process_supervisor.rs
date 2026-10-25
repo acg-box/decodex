@@ -2181,6 +2181,7 @@ mod tests {
 			let generation =
 				ProcessGenerationId::new("42000000-0000-4000-8000-000000000001").unwrap();
 			let connection = Connection::open(root.paths().product_database_file()).unwrap();
+
 			connection
 				.execute_batch(include_str!("../tests/fixtures/opaque_resume_authority.sql"))
 				.unwrap();
@@ -2188,7 +2189,9 @@ mod tests {
 				"UPDATE process_generations SET intended_boot_id=?1, bound_boot_id=?1, process_id=?2, process_start_id=?3, process_group_id=?4, session_id=?5, runner_identity=?6, state=?7, authority_loss_reason=?8",
 				rusqlite::params![identity.boot_id.as_str(), identity.process_id, identity.process_start_id.as_str(), identity.process_group_id, identity.session_id, format!("sha256:{}", "a".repeat(64)), state, (state == "death_unknown").then_some("termination_unproved")],
 			).unwrap();
+
 			let mut supervision = control.reserve_supervision(&generation).unwrap();
+
 			control
 				.replace_owned(
 					generation.as_str().into(),
@@ -2202,6 +2205,7 @@ mod tests {
 				)
 				.unwrap();
 			supervision.retain();
+
 			drop(supervision);
 
 			assert_eq!(

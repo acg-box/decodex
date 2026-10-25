@@ -1,33 +1,4 @@
-use crate::agent::tests::{self, ClientError, Value, result_messages};
-
-#[tokio::test]
-async fn empty_native_final_text_is_valid_and_clears_partial_output() {
-	let (mut agent, mut sent, _directory) = tests::fixture().await;
-	agent.start_agent("agent", "Coordinate").await.unwrap();
-	while sent.try_recv().is_ok() {}
-	for kind in ["agentMessage", "plan"] {
-		agent.handle_event(tests::ServerEvent::Notification {
-			method: format!("item/{kind}/delta"),
-			params: serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":kind,"delta":"Partial"}),
-		}).await.unwrap();
-		for _ in 0..2 {
-			agent.handle_event(tests::ServerEvent::Notification {
-				method: "item/completed".into(),
-				params: serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{"type":kind,"id":kind,"text":"","phase":"final_answer"}}),
-			}).await.unwrap();
-		}
-	}
-	assert!(
-		agent
-			.store
-			.read_agent_output("agent".into())
-			.await
-			.unwrap()
-			.iter()
-			.all(|output| output.text.is_empty())
-	);
-	assert!(sent.try_recv().is_err(), "display updates cannot dispatch a turn");
-}
+use crate::agent::tests::{self, ClientError, ServerEvent, Value, result_messages};
 
 #[test]
 fn completion_summary_excludes_nonfinal_and_unscoped_items() {
@@ -47,6 +18,40 @@ fn completion_summary_excludes_nonfinal_and_unscoped_items() {
 
 		assert!(result_messages::completion_summary(&invalid).is_none());
 	}
+}
+
+#[tokio::test]
+async fn empty_native_final_text_is_valid_and_clears_partial_output() {
+	let (mut agent, mut sent, _directory) = tests::fixture().await;
+
+	agent.start_agent("agent", "Coordinate").await.unwrap();
+
+	while sent.try_recv().is_ok() {}
+
+	for kind in ["agentMessage", "plan"] {
+		agent.handle_event(ServerEvent::Notification {
+			method: format!("item/{kind}/delta"),
+			params: serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","itemId":kind,"delta":"Partial"}),
+		}).await.unwrap();
+
+		for _ in 0..2 {
+			agent.handle_event(ServerEvent::Notification {
+				method: "item/completed".into(),
+				params: serde_json::json!({"threadId":"opaque thread/1","turnId":"opaque turn/1","item":{"type":kind,"id":kind,"text":"","phase":"final_answer"}}),
+			}).await.unwrap();
+		}
+	}
+
+	assert!(
+		agent
+			.store
+			.read_agent_output("agent".into())
+			.await
+			.unwrap()
+			.iter()
+			.all(|output| output.text.is_empty())
+	);
+	assert!(sent.try_recv().is_err(), "display updates cannot dispatch a turn");
 }
 
 #[tokio::test]

@@ -330,6 +330,7 @@ fn validate_catalog_method(method: &Value, params: &Value) -> Option<Result<(), 
 		"thread/metadata/update" => app_server_client::is_thread_project_assignment(params),
 		_ => return None,
 	};
+
 	Some(if valid { Ok(()) } else { Err(ClientError::InvalidFrame) })
 }
 
@@ -350,7 +351,6 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 	if let Some(result) = validate_inherited_request(method, params) {
 		return result;
 	}
-
 	if let Some(method @ ("fs/createDirectory" | "fs/writeFile")) = method.as_str() {
 		return if app_server_client::is_goal_attachment_write(method, params) {
 			Ok(())
@@ -471,6 +471,7 @@ fn validate_fork_request(params: &Value) -> Result<(), ClientError> {
 	if app_server_client::is_prediction_fork(params) {
 		return Ok(());
 	}
+
 	let identity = |value: &Value| {
 		value.as_str().is_some_and(|id| {
 			!id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control)
@@ -521,7 +522,9 @@ mod tests {
 	fn project_assignment_does_not_admit_other_metadata_edits_or_membership_clear() {
 		let method = serde_json::json!("thread/metadata/update");
 		let exact = serde_json::json!({"threadId":"retained-thread","projectId":"native-project"});
+
 		assert!(agent_process::validate_outbound_method(&method, &exact).is_ok());
+
 		for invalid in [
 			serde_json::json!({"threadId":"retained-thread","projectId":""}),
 			serde_json::json!({"threadId":"retained-thread","projectId":"native-project","daybreakEnabled":true}),

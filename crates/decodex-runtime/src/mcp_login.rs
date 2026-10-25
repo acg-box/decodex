@@ -1,5 +1,6 @@
 //! One in-memory native OAuth intent. No authorization material enters SQLite.
 use std::{
+	mem,
 	sync::Arc,
 	time::{Duration, Instant},
 };
@@ -165,19 +166,21 @@ impl McpLoginGateway {
 						McpLoginPhase::Unknown,
 						"Native sign-in returned an invalid attempt identity. Refresh server status.",
 					);
+
 					return project(session, request);
 				};
-				let previous = std::mem::replace(
-					&mut session.attempt,
-					LoginAttempt::Accepted(login_id.clone()),
-				);
+				let previous =
+					mem::replace(&mut session.attempt, LoginAttempt::Accepted(login_id.clone()));
+
 				if let LoginAttempt::Starting(completions) = previous
 					&& let Some((_, success)) =
 						completions.into_iter().find(|(id, _)| *id == login_id)
 				{
 					session.complete(success);
+
 					return project(session, request);
 				}
+
 				let url = value["authorizationUrl"]
 					.as_str()
 					.and_then(|value| Url::parse(value).ok())
@@ -247,6 +250,7 @@ impl McpLoginGateway {
 			return;
 		};
 		let Ok(login_id) = login_id(params) else { return };
+
 		match &mut session.attempt {
 			LoginAttempt::Starting(completions) => {
 				// A superseded native attempt can finish before this start reply.
@@ -299,12 +303,6 @@ struct Session {
 	attempt: LoginAttempt,
 	started: Instant,
 }
-
-enum LoginAttempt {
-	Starting(Vec<(Option<String>, bool)>),
-	Accepted(Option<String>),
-}
-
 impl Session {
 	fn complete(&mut self, success: bool) {
 		self.pending = false;
@@ -320,14 +318,9 @@ impl Session {
 	}
 }
 
-fn login_id(value: &Value) -> Result<Option<String>, ()> {
-	match value.get("loginId") {
-		None | Some(Value::Null) => Ok(None),
-		Some(Value::String(id))
-			if !id.is_empty() && id.len() <= 256 && !id.chars().any(char::is_control) =>
-			Ok(Some(id.clone())),
-		_ => Err(()),
-	}
+enum LoginAttempt {
+	Starting(Vec<(Option<String>, bool)>),
+	Accepted(Option<String>),
 }
 
 pub(crate) fn status(
@@ -343,6 +336,16 @@ pub(crate) fn status(
 	}
 }
 
+fn login_id(value: &Value) -> Result<Option<String>, ()> {
+	match value.get("loginId") {
+		None | Some(Value::Null) => Ok(None),
+		Some(Value::String(id))
+			if !id.is_empty() && id.len() <= 256 && !id.chars().any(char::is_control) =>
+			Ok(Some(id.clone())),
+		_ => Err(()),
+	}
+}
+
 fn project(session: &Session, request: &McpLoginRequest) -> McpLoginStatus {
 	McpLoginStatus { session_id: request.session_id().clone(), ..session.status.clone() }
 }
@@ -351,6 +354,7 @@ fn project(session: &Session, request: &McpLoginRequest) -> McpLoginStatus {
 mod tests {
 	use tokio::{
 		io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
+		sync::oneshot,
 		time,
 	};
 
@@ -479,16 +483,18 @@ mod tests {
 			let (local, remote) = io::duplex(4_096);
 			let (reader, writer) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(reader, writer);
-			let (received, request_received) = tokio::sync::oneshot::channel();
-			let (release, released) = tokio::sync::oneshot::channel();
+			let (received, request_received) = oneshot::channel();
+			let (release, released) = oneshot::channel();
 			let server = tokio::spawn(async move {
 				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
 				let request: serde_json::Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				received.send(()).unwrap();
 				released.await.unwrap();
 				writer.write_all(format!("{}\n", serde_json::json!({"id":request["id"],"result":{"loginId":"current","authorizationUrl":"https://example.test/authorize"}})).as_bytes()).await.unwrap();
+
 				lines.next_line().await
 			});
 			let gateway = McpLoginGateway::default();
@@ -496,33 +502,45 @@ mod tests {
 			let native_source = source(&client);
 			let task =
 				tokio::spawn(async move { peer.exchange(&request(), Some(native_source)).await });
+
 			request_received.await.unwrap();
+
 			let completion = |id, success| ServerEvent::Notification {
 				method: "mcpServer/oauthLogin/completed".into(),
 				params: serde_json::json!({"threadId":"native-thread","name":"server","loginId":id,"success":success}),
 			};
+
 			gateway.observe(&generation(), &completion("previous", false)).await;
+
 			if early {
 				gateway.observe(&generation(), &completion("current", true)).await;
 			}
+
 			release.send(()).unwrap();
+
 			let result = task.await.unwrap();
+
 			if early {
 				assert_eq!(result.phase, McpLoginPhase::NativeCompleted);
 				assert!(result.authorization_url.is_none());
 			} else {
 				assert_eq!(result.phase, McpLoginPhase::AwaitingUser);
+
 				gateway.observe(&generation(), &completion("previous", true)).await;
+
 				assert_eq!(
 					gateway.exchange(&request(), Some(source(&client))).await.phase,
 					McpLoginPhase::AwaitingUser
 				);
+
 				gateway.observe(&generation(), &completion("current", true)).await;
+
 				assert_eq!(
 					gateway.exchange(&request(), Some(source(&client))).await.phase,
 					McpLoginPhase::NativeCompleted
 				);
 			}
+
 			client.shutdown().await.unwrap();
 			server.await.unwrap().unwrap();
 		}

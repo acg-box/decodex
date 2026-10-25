@@ -4,6 +4,7 @@ use serde_json::Value;
 /// A bounded public milestone from the native plan, separate from its transcript rendering.
 pub(super) fn progress(params: &Value) -> Option<Value> {
 	let steps = params["plan"].as_array()?;
+
 	if steps.is_empty()
 		|| steps
 			.iter()
@@ -11,6 +12,7 @@ pub(super) fn progress(params: &Value) -> Option<Value> {
 	{
 		return None;
 	}
+
 	let complete = steps.iter().all(|s| s["status"] == "completed");
 	let step = steps
 		.iter()
@@ -18,9 +20,11 @@ pub(super) fn progress(params: &Value) -> Option<Value> {
 		.or_else(|| steps.iter().find(|s| s["status"] == "pending"))
 		.or_else(|| steps.last())?;
 	let summary = step["step"].as_str()?;
+
 	if decodex_core::contains_credential_material(summary) {
 		return None;
 	}
+
 	Some(
 		serde_json::json!({"summary": summary.chars().take(240).collect::<String>(), "complete":complete}),
 	)
@@ -97,6 +101,7 @@ mod tests {
 	#[test]
 	fn delivery_milestone_uses_native_step_state_and_excludes_empty_plans() {
 		let plan = serde_json::json!({"plan":[{"step":"Inspect","status":"completed"},{"step":"Write the guide","status":"inProgress"}]});
+
 		assert_eq!(
 			checklist::progress(&plan),
 			Some(serde_json::json!({"summary":"Write the guide","complete":false}))

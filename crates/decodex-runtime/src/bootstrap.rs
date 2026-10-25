@@ -26,6 +26,7 @@ use crate::{
 		ProcessGenerationControl, ProcessGenerationReadiness, ProcessSupervisorError,
 	},
 	provider_attempt_service::{ProviderAttemptControl, ProviderAttemptReadiness},
+	startup_trace::Phase,
 };
 use decodex_core::{
 	Availability, BlobStore, ConfigError, DecodexConfig, DecodexPaths, DecodexRoot, PathError,
@@ -648,7 +649,7 @@ async fn bootstrap_with_authority(
 	config_status: DoctorStatus,
 	listener: LocalTransportListener,
 ) -> ServiceBootstrap {
-	let _phase = crate::startup_trace::Phase::new("bootstrap");
+	let _phase = Phase::new("bootstrap");
 	let identity = ServerIdentity::load_or_create(&paths);
 	let (server_id, identity_status) = server_identity(identity);
 	let blob_store = BlobStore::open(paths.clone());
@@ -793,11 +794,13 @@ async fn bootstrap_macos_account_runtime(
 	// Run the blocking filesystem/process work off the async executor while accounts recover.
 	let root = paths.root().as_path().to_owned();
 	let attestation = tokio::task::spawn_blocking(move || {
-		let _phase = crate::startup_trace::Phase::new("executable_attestation");
+		let _phase = Phase::new("executable_attestation");
+
 		AttestedAppServerProfile::attest(root, ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT).ok()
 	});
 	let reconcile = async {
-		let _phase = crate::startup_trace::Phase::new("account_reconcile");
+		let _phase = Phase::new("account_reconcile");
+
 		service.reconcile_startup().await
 	};
 	let (_, attestation) = tokio::join!(reconcile, attestation);

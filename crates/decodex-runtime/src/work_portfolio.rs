@@ -1,7 +1,8 @@
 //! Selected Work evidence is read independently from the small chat snapshot.
+use sha2::{Digest as _, Sha256};
+
 use decodex_database::SqliteStore;
 use decodex_protocol::{MAX_WORK_DETAIL_BYTES, WORK_DETAIL_PAGE_BYTES, WorkDetailResult};
-use sha2::{Digest as _, Sha256};
 
 pub(crate) async fn read(
 	store: &SqliteStore,
@@ -15,6 +16,7 @@ pub(crate) async fn read(
 	let Ok(text) = serde_json::to_string(&portfolio) else {
 		return WorkDetailResult::Unavailable;
 	};
+
 	if text.len() > MAX_WORK_DETAIL_BYTES
 		|| offset >= text.len()
 		|| !text.is_char_boundary(offset)
@@ -22,15 +24,20 @@ pub(crate) async fn read(
 	{
 		return WorkDetailResult::Unavailable;
 	}
+
 	let digest =
 		Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect::<String>();
+
 	if expected.is_some_and(|d| d != digest) {
 		return WorkDetailResult::Unavailable;
 	}
+
 	let mut end = (offset + WORK_DETAIL_PAGE_BYTES).min(text.len());
+
 	while !text.is_char_boundary(end) {
 		end -= 1;
 	}
+
 	WorkDetailResult::Page {
 		digest,
 		offset,
@@ -42,7 +49,7 @@ pub(crate) async fn read(
 
 #[cfg(test)]
 mod tests {
-	use super::{SqliteStore, WorkDetailResult, read};
+	use crate::work_portfolio::{self, SqliteStore, WorkDetailResult};
 	use decodex_core::{
 		DecodexRoot,
 		work::{Material, Work, WorkCommand, WorkRequirements, WorkState},
@@ -54,9 +61,11 @@ mod tests {
 		let root = DecodexRoot::new(directory.path().canonicalize().expect("Work fixture"))
 			.expect("Work fixture");
 		let store = SqliteStore::open(&root.paths()).expect("Work fixture");
+
 		crate::agent::AgentCoordinator::reserve_root(&store, "sage", "Assist the user")
 			.await
 			.expect("Work fixture");
+
 		let work = Work {
 			id: "venue".into(),
 			project_id: None,
@@ -64,7 +73,7 @@ mod tests {
 			title: "Venue".into(),
 			requirements: WorkRequirements {
 				id: "r1".into(),
-				goal: "界".repeat(3000),
+				goal: "界".repeat(3_000),
 				criteria: "Check capacity".into(),
 				source: "Synthetic user decision".into(),
 			},
@@ -74,24 +83,31 @@ mod tests {
 			user_hold: false,
 			assessment: None,
 		};
+
 		store
 			.apply_work_command("sage".into(), "create".into(), WorkCommand::Create { work }, true)
 			.await
 			.expect("Work fixture");
+
 		let WorkDetailResult::Page { digest, text, next_offset: Some(next), .. } =
-			read(&store, "venue", None, 0).await
+			work_portfolio::read(&store, "venue", None, 0).await
 		else {
 			panic!("first page")
 		};
 		let WorkDetailResult::Page { text: tail, next_offset: None, .. } =
-			read(&store, "venue", Some(&digest), next).await
+			work_portfolio::read(&store, "venue", Some(&digest), next).await
 		else {
 			panic!("last page")
 		};
 		let portfolio: decodex_core::work::WorkPortfolio =
 			serde_json::from_str(&(text + &tail)).expect("complete Work");
-		assert_eq!(portfolio.works[0].requirements.goal, "界".repeat(3000));
-		assert_eq!(read(&store, "venue", None, next).await, WorkDetailResult::Unavailable);
+
+		assert_eq!(portfolio.works[0].requirements.goal, "界".repeat(3_000));
+		assert_eq!(
+			work_portfolio::read(&store, "venue", None, next).await,
+			WorkDetailResult::Unavailable
+		);
+
 		store
 			.apply_work_command(
 				"sage".into(),
@@ -109,8 +125,14 @@ mod tests {
 			)
 			.await
 			.expect("Work fixture");
-		assert_eq!(read(&store, "venue", Some(&digest), next).await, WorkDetailResult::Unavailable);
+
+		assert_eq!(
+			work_portfolio::read(&store, "venue", Some(&digest), next).await,
+			WorkDetailResult::Unavailable
+		);
+
 		let overview = store.work_overview().await.expect("Work fixture");
+
 		assert!(overview.summary_only && overview.works[0].requirements.goal.is_empty());
 	}
 }

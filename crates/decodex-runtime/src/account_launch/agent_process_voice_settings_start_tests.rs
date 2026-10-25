@@ -14,10 +14,54 @@ use crate::{
 	},
 	agent::{AgentConfig, AgentCoordinator},
 	agent_voice::VoiceGateway,
+	agent_voice_settings,
 };
+use decodex_database::AgentDispatchState;
 use decodex_protocol::{
 	AgentVoiceOptions, AgentVoiceRequest, EntityId, HistoryText, VoiceSdp, WireText,
 };
+
+fn assert_voice_start(start: &Value, thread: &str, voice: &str) {
+	assert_eq!(start["params"]["threadId"], thread);
+	assert_eq!(start["params"]["version"], "v3");
+	assert_eq!(start["params"]["realtimeSessionId"], "voice");
+	assert_eq!(start["params"]["transport"]["type"], "webrtc");
+	assert_eq!(start["params"]["outputModality"], "audio");
+
+	if voice == "juniper" {
+		assert_eq!(start["params"]["model"], "realtime-fixture");
+		assert_eq!(start["params"]["realtimeStartInstructions"], "Start fixture");
+		assert_eq!(start["params"]["realtimeEndInstructions"], "");
+	} else {
+		for field in ["model", "realtimeStartInstructions", "realtimeEndInstructions"] {
+			assert!(start["params"].get(field).is_none());
+		}
+	}
+
+	assert_eq!(
+		start["params"]["voice"],
+		if voice == "future_voice" { Value::Null } else { serde_json::json!(voice) }
+	);
+}
+
+fn voice_options(voice: &str) -> AgentVoiceOptions {
+	if voice == "juniper" {
+		AgentVoiceOptions {
+			model: Some(
+				WireText::new("realtime-fixture").expect("Use the bounded fixture model name."),
+			),
+			start_instructions: Some(
+				HistoryText::new("Start fixture")
+					.expect("Use the bounded fixture start instruction."),
+			),
+			end_instructions: Some(
+				HistoryText::new("").expect("Use the empty fixture end instruction."),
+			),
+		}
+	} else {
+		Default::default()
+	}
+}
 
 #[tokio::test]
 async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_recording_call() {
@@ -71,23 +115,11 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 			}
 		});
 		let owned = OwnedReviewer::new(home.path(), &client, "voice-thread", "turn").await;
+
 		if hosted {
-			let mut conversation = owned.store.get_agent_work_item("root".into()).await.unwrap();
-			conversation.id = work.into();
-			conversation.parent_goal_id = Some("root".into());
-			conversation.codex_thread_id = None;
-			conversation.active_turn_id = None;
-			conversation.dispatch_state = decodex_database::AgentDispatchState::Idle;
-			owned.store.create_agent_manager(conversation).await.unwrap();
-			owned.store.bind_agent_thread(work.into(), thread.into()).await.unwrap();
-			assert!(
-				!owned
-					.store
-					.agent_thread_is_owned(work.into(), thread.into(), Some(GENERATION.into()))
-					.await
-					.unwrap()
-			);
+			bind_hosted_voice(&owned, work, thread).await;
 		}
+
 		let mut agent = AgentCoordinator::new(
 			owned.store.clone(),
 			client,
@@ -106,15 +138,7 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 				session_id: EntityId::new("voice").unwrap(),
 				work_id: EntityId::new(work).unwrap(),
 				offer: VoiceSdp::new("offer".into()).unwrap(),
-				options: if voice == "juniper" {
-					AgentVoiceOptions {
-						model: Some(WireText::new("realtime-fixture").unwrap()),
-						start_instructions: Some(HistoryText::new("Start fixture").unwrap()),
-						end_instructions: Some(HistoryText::new("").unwrap()),
-					}
-				} else {
-					Default::default()
-				},
+				options: voice_options(voice),
 			})
 			.await;
 
@@ -130,8 +154,11 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 
 		assert_eq!(starts.len(), usize::from(!fails));
 		assert_eq!(owned.store.open_agent_voice_calls().await.unwrap().len(), usize::from(!fails));
+
 		let blocked = owned.store.list_agent_thread_in_use_events().await.unwrap();
+
 		assert_eq!(blocked.len(), usize::from(occupied));
+
 		if occupied {
 			assert_eq!(blocked[0].work_item_id, work);
 		}
@@ -144,24 +171,24 @@ async fn voice_start_applies_effective_voice_and_rejects_failed_reads_before_rec
 	}
 }
 
-fn assert_voice_start(start: &Value, thread: &str, voice: &str) {
-	assert_eq!(start["params"]["threadId"], thread);
-	assert_eq!(start["params"]["version"], "v3");
-	assert_eq!(start["params"]["realtimeSessionId"], "voice");
-	assert_eq!(start["params"]["transport"]["type"], "webrtc");
-	assert_eq!(start["params"]["outputModality"], "audio");
-	if voice == "juniper" {
-		assert_eq!(start["params"]["model"], "realtime-fixture");
-		assert_eq!(start["params"]["realtimeStartInstructions"], "Start fixture");
-		assert_eq!(start["params"]["realtimeEndInstructions"], "");
-	} else {
-		for field in ["model", "realtimeStartInstructions", "realtimeEndInstructions"] {
-			assert!(start["params"].get(field).is_none());
-		}
-	}
-	assert_eq!(
-		start["params"]["voice"],
-		if voice == "future_voice" { Value::Null } else { serde_json::json!(voice) }
+async fn bind_hosted_voice(owned: &OwnedReviewer, work: &str, thread: &str) {
+	let mut conversation = owned.store.get_agent_work_item("root".into()).await.expect("root");
+
+	conversation.id = work.into();
+	conversation.parent_goal_id = Some("root".into());
+	conversation.codex_thread_id = None;
+	conversation.active_turn_id = None;
+	conversation.dispatch_state = AgentDispatchState::Idle;
+
+	owned.store.create_agent_manager(conversation).await.expect("hosted conversation");
+	owned.store.bind_agent_thread(work.into(), thread.into()).await.expect("voice thread");
+
+	assert!(
+		!owned
+			.store
+			.agent_thread_is_owned(work.into(), thread.into(), Some(GENERATION.into()))
+			.await
+			.expect("voice ownership")
 	);
 }
 
@@ -261,12 +288,16 @@ async fn installed_voice_preference_bridge_saves_absent_file_and_rejects_old_con
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; native requirements read without managed policy"]
 async fn installed_native_voice_policy_read_does_not_use_user_feature_flags() {
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
+
 	for enabled in [false, true] {
 		let home = tempfile::tempdir().unwrap();
 		let config = format!("[features]\nin_app_voice = {enabled}\n");
+
 		fs::write(home.path().join("config.toml"), &config).unwrap();
+
 		let session = NativeSession::start(&binary, home.path());
-		assert!(crate::agent_voice_settings::voice_allowed(&session.client).await.unwrap());
+
+		assert!(agent_voice_settings::voice_allowed(&session.client).await.unwrap());
 		assert_eq!(fs::read_to_string(home.path().join("config.toml")).unwrap(), config);
 	}
 }

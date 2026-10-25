@@ -71,6 +71,7 @@ use crate::{
 		ExecutionCoordinator, ExecutionFailureKind, PersistedDecisionProvenance,
 		PostProcessCommand, PostProcessOutcome, PreProcessOutcome,
 	},
+	startup_trace::Phase,
 };
 use decodex_codex::{
 	self, ArchiveReconciliationOutcome, ConversationThreadResumeRequest,
@@ -82,14 +83,15 @@ use decodex_codex::{
 use decodex_core::{
 	self, AccountId, AccountLifecycleReadiness, AccountOperationId, BlobStore, ContextPack,
 	ContextPackInput, ContextPackPolicy, ContextPackSource, ContextSourceKind,
-	ContinuationPlanKind, ContinuationRejection, ConversationId, ExecutionConsumer, HistoryItemId,
-	HistoryItemKind, HistoryMediaType, HistoryMetadata, ItemStatus, MAX_CONTEXT_PACK_BYTES,
-	MAX_CONTEXT_RECENT_ITEMS, MIN_CONTEXT_PACK_BYTES, PinnedContextSource, PossibleSideEffects,
-	ProcessExecutionAuthorization, ProcessGenerationAccountBinding, ProcessGenerationId,
-	ProviderAttemptConsumer, ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState,
-	ProviderDuplicateRisk, ProviderEvidenceId, ProviderEvidenceSource, ProviderPositiveEvidence,
-	ProviderRequestId, ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome,
-	RuntimeSessionId, RuntimeSessionState, TurnId, TurnRole,
+	ContinuationPlanKind, ContinuationRejection, ConversationId, CredentialBinding,
+	ExecutionConsumer, HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata,
+	ItemStatus, MAX_CONTEXT_PACK_BYTES, MAX_CONTEXT_RECENT_ITEMS, MIN_CONTEXT_PACK_BYTES,
+	PinnedContextSource, PossibleSideEffects, ProcessExecutionAuthorization,
+	ProcessGenerationAccountBinding, ProcessGenerationId, ProviderAttemptConsumer,
+	ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState, ProviderDuplicateRisk,
+	ProviderEvidenceId, ProviderEvidenceSource, ProviderPositiveEvidence, ProviderRequestId,
+	ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome, RuntimeSessionId,
+	RuntimeSessionState, TurnId, TurnRole,
 };
 use decodex_database::{
 	self, AdmitInitialConversationTurn, ArchiveConversationOutcome, ArchiveConversationRecord,
@@ -528,26 +530,17 @@ impl ConversationRuntime {
 		&self,
 		request: StartAgentProcess,
 	) -> Result<AgentConnection, AgentLaunchError> {
-		let phase = crate::startup_trace::Phase::new("agent_admission_locks");
+		let phase = Phase::new("agent_admission_locks");
 		let _launch = self.inner.agent_launch.lock().await;
 		let _catalog = self.inner.initial_catalog.lock().await;
+
 		drop(phase);
 
 		if self.is_shutting_down() {
 			return Err(AgentLaunchError::Unavailable);
 		}
 
-		let retry_retirement = {
-			let slot = self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner);
-
-			agent_retirement_retry(slot.as_ref(), &request.root_id)?
-		};
-
-		// A prior close can outlive its bounded wait. Recheck only the revoked
-		// owner's exact death authority; never replace a live or foreign owner.
-		if retry_retirement && !self.retire_agent_slot().await {
-			return Err(AgentLaunchError::Conflict);
-		}
+		self.recover_agent_retirement(&request.root_id).await?;
 
 		let prior = self
 			.inner
@@ -565,10 +558,12 @@ impl ConversationRuntime {
 			.map_err(|_| AgentLaunchError::Unavailable)?
 			.as_micros();
 		let now = i64::try_from(now).map_err(|_| AgentLaunchError::Unavailable)?;
-		let phase = crate::startup_trace::Phase::new("agent_select_account");
+		let phase = Phase::new("agent_select_account");
 		let selected = self.select_agent_account(account_id.as_ref(), now).await?;
+
 		drop(phase);
-		let phase = crate::startup_trace::Phase::new("agent_process_credential");
+
+		let phase = Phase::new("agent_process_credential");
 		let account_id = selected.account.account_id;
 		let credential = self
 			.inner
@@ -576,7 +571,9 @@ impl ConversationRuntime {
 			.process_credential(&account_id, selected.account.revision)
 			.await
 			.map_err(|error| AgentLaunchError::Process(account_recovery(error)))?;
+
 		drop(phase);
+
 		let generation_id = ProcessGenerationId::new(derived_uuid(
 			"agent-process-generation",
 			&[&request.root_id, &request.operation_key],
@@ -591,7 +588,7 @@ impl ConversationRuntime {
 				client: None,
 			});
 
-		let phase = crate::startup_trace::Phase::new("agent_launch_account");
+		let phase = Phase::new("agent_launch_account");
 		let process = match self
 			.launch_account_process(
 				&account_id,
@@ -612,7 +609,9 @@ impl ConversationRuntime {
 				return Err(AgentLaunchError::Process(error));
 			},
 		};
+
 		drop(phase);
+
 		let control = self.inner.process_generations.clone();
 		let attached = task::spawn_blocking(move || {
 			control.with_fenced_child(&process, AttestedProcessChild::retain_agent_connection)
@@ -634,22 +633,42 @@ impl ConversationRuntime {
 			return Err(AgentLaunchError::Unavailable);
 		}
 
-		{
-			let mut slot = self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner);
-			let Some(slot) = slot.as_mut() else {
-				client.close();
-
-				return Err(AgentLaunchError::Unavailable);
-			};
-
-			slot.client = Some(client.clone());
-
-			if self.is_shutting_down() {
-				client.close();
-			}
-		}
+		self.retain_agent_client(&client)?;
 
 		Ok(AgentConnection { client, events, account_id, process_generation_id: generation_id })
+	}
+
+	fn retain_agent_client(&self, client: &AppServerClient) -> Result<(), AgentLaunchError> {
+		let mut slot = self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner);
+		let Some(slot) = slot.as_mut() else {
+			client.close();
+
+			return Err(AgentLaunchError::Unavailable);
+		};
+
+		slot.client = Some(client.clone());
+
+		if self.is_shutting_down() {
+			client.close();
+		}
+
+		Ok(())
+	}
+
+	async fn recover_agent_retirement(&self, root_id: &str) -> Result<(), AgentLaunchError> {
+		let retry_retirement = {
+			let slot = self.inner.agent_process.lock().unwrap_or_else(PoisonError::into_inner);
+
+			agent_retirement_retry(slot.as_ref(), root_id)?
+		};
+
+		// A prior close can outlive its bounded wait. Recheck only the revoked
+		// owner's exact death authority; never replace a live or foreign owner.
+		if retry_retirement && !self.retire_agent_slot().await {
+			return Err(AgentLaunchError::Conflict);
+		}
+
+		Ok(())
 	}
 
 	/// Explicit host lifecycle close; completing an individual turn never calls this method.
@@ -6532,7 +6551,7 @@ struct ConversationRefreshCallback {
 	runtime: tokio::runtime::Handle,
 	generation_id: ProcessGenerationId,
 	// Launch evidence is immutable; this cursor tracks credentials supplied during its lifetime.
-	last_projected: std::sync::Mutex<Option<decodex_core::CredentialBinding>>,
+	last_projected: std::sync::Mutex<Option<CredentialBinding>>,
 }
 impl AccountRefreshCallback for ConversationRefreshCallback {
 	fn refresh(
@@ -6561,13 +6580,14 @@ impl AccountRefreshCallback for ConversationRefreshCallback {
 				observed,
 			))
 			.map_err(|_| CredentialVaultError::Unavailable)?;
-
 		let response = ChatgptRefreshProjection::new(
 			projection.access_token().to_owned(),
 			projection.provider_account_id().to_owned(),
 			projection.plan_type().map(str::to_owned),
 		)?;
+
 		*last_projected = Some(projection.binding().clone());
+
 		Ok(response)
 	}
 }

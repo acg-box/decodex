@@ -30,6 +30,19 @@ fn settings(model: &str) -> Value {
 	serde_json::json!({"model":model,"modelProvider":"fixture","effort":"low","serviceTier":"priority","cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandboxPolicy":{"type":"readOnly"}})
 }
 
+fn fallback_is_sent(mode: &str) -> bool {
+	matches!(
+		mode,
+		"queued"
+			| "unknown"
+			| "rejected"
+			| "preserve-tier"
+			| "ultrafast-allowed"
+			| "ultrafast-default"
+			| "ultrafast-denied"
+	)
+}
+
 #[tokio::test]
 async fn automatic_fallback_service_preserves_source_settings_and_no_replay() {
 	for mode in [
@@ -110,16 +123,7 @@ async fn scenario(mode: &'static str) {
 		.await
 		.expect("evaluate fallback");
 
-	let sent = matches!(
-		mode,
-		"queued"
-			| "unknown"
-			| "rejected"
-			| "preserve-tier"
-			| "ultrafast-allowed"
-			| "ultrafast-default"
-			| "ultrafast-denied"
-	);
+	let sent = fallback_is_sent(mode);
 
 	assert_eq!(writes.load(Ordering::Acquire), usize::from(sent), "{mode}");
 
@@ -133,14 +137,7 @@ async fn scenario(mode: &'static str) {
 	assert_eq!(receipt.is_some(), reserved, "{mode}");
 
 	if reserved {
-		let expected = if matches!(
-			mode,
-			"queued"
-				| "preserve-tier"
-				| "ultrafast-allowed"
-				| "ultrafast-default"
-				| "ultrafast-denied"
-		) {
+		let expected = if sent && !matches!(mode, "unknown" | "rejected") {
 			"queued"
 		} else if mode == "unknown" {
 			"unknown"
@@ -191,11 +188,13 @@ async fn serve(remote: DuplexStream, writes: Arc<AtomicUsize>, mode: &str) {
 	let tier = if mode.starts_with("ultrafast-") { "ultrafast" } else { "priority" };
 	let settings_for = |model| {
 		let mut value = settings(model);
+
 		value["serviceTier"] = if mode == "ultrafast-default" && model == "original" {
 			Value::Null
 		} else {
 			serde_json::json!(tier)
 		};
+
 		value
 	};
 	let mut lines = BufReader::new(r).lines();

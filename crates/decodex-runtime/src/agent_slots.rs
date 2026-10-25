@@ -1,6 +1,8 @@
 //! Project confirmed lifecycle changes into reusable display slots.
 use std::collections::HashSet;
 
+use serde_json::Value;
+
 use decodex_database::{AgentSlot, SqliteStore, StoreError};
 use decodex_protocol::AgentSnapshotDto;
 
@@ -13,6 +15,7 @@ pub(crate) async fn synchronize(
 	if snapshot.connection_initializing {
 		return Ok(());
 	}
+
 	let retained: HashSet<_> = snapshot.work_items.iter().map(|work| work.id.as_str()).collect();
 	let retired = previous
 		.iter()
@@ -27,6 +30,7 @@ pub(crate) async fn synchronize(
 		.iter()
 		.map(|work| (work.id.clone(), work.id.clone(), work.codex_thread_id.clone()))
 		.collect();
+
 	snapshot.agent_slots = store
 		.reconcile_agent_slots(active, retired)
 		.await?
@@ -34,12 +38,13 @@ pub(crate) async fn synchronize(
 		.filter(|slot| retained.contains(slot.work_id.as_str()))
 		.map(|slot| (slot.key, slot.number))
 		.collect();
+
 	Ok(())
 }
 
 pub(crate) async fn observe_native_close(
 	store: &SqliteStore,
-	item: &serde_json::Value,
+	item: &Value,
 ) -> Result<(), StoreError> {
 	if item["type"] == "collabAgentToolCall"
 		&& item["tool"] == "closeAgent"
@@ -51,7 +56,9 @@ pub(crate) async fn observe_native_close(
 			.flatten()
 			.filter_map(|value| value.as_str().map(str::to_owned))
 			.collect();
+
 		store.release_native_agent_slots(threads).await?;
 	}
+
 	Ok(())
 }

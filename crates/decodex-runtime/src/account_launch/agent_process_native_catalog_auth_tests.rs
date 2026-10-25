@@ -15,8 +15,7 @@ use tokio::{
 
 use crate::{
 	account_launch::agent_process::native_tests::{
-		AppServerClient, Arc, Duration, ServerEvent, Stdio, Value, catalog::base_instructions,
-		effort,
+		AppServerClient, Arc, Duration, ServerEvent, Stdio, Value, catalog, effort,
 	},
 	agent_capabilities,
 };
@@ -95,7 +94,7 @@ fn response(
 		("application/json", serde_json::json!({"models":[model]}).to_string())
 	} else if target == "/responses" {
 		calls.lock().expect("calls").push(
-			serde_json::json!({"kind":"inference","account":account,"instructions":base_instructions(&body)}),
+			serde_json::json!({"kind":"inference","account":account,"instructions":catalog::base_instructions(&body)}),
 		);
 
 		let frames = [

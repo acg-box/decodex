@@ -17,6 +17,7 @@ impl AgentCoordinator {
 			if !Self::hydrated_thread_matches(&response, thread) {
 				return Err(AgentError::Invalid("resumed thread settings are invalid".into()));
 			}
+
 			self.attach_native_thread_owner(thread).await?;
 
 			let last_turn = self.expect_usage_replay(thread, &response, revision).await;
@@ -35,6 +36,7 @@ impl AgentCoordinator {
 			item.codex_thread_id.as_deref() == Some(thread) && item.parent_goal_id.is_none()
 		});
 		let Some(item) = item else { return Ok(()) };
+
 		if !self
 			.store
 			.attach_independent_agent_process(item.id, thread.into(), generation.as_str().into())
@@ -44,6 +46,7 @@ impl AgentCoordinator {
 				"Native conversation process ownership was not confirmed".into(),
 			));
 		}
+
 		Ok(())
 	}
 
@@ -82,10 +85,12 @@ impl AgentCoordinator {
 		thread: &str,
 		summary: bool,
 	) -> Result<Value, AgentError> {
+		let details = self.store.guardian_settings().await?.review_details;
 		let mut params =
 			if summary { Self::resume_usage_params(thread) } else { Self::resume_params(thread) };
-		let details = self.store.guardian_settings().await?.review_details;
+
 		params["config"] = serde_json::json!({"features.guardian_recorded_items":details});
+
 		Ok(params)
 	}
 

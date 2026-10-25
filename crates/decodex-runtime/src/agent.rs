@@ -22,18 +22,17 @@ mod project;
 mod prompt_edit;
 mod reasoning;
 mod result_messages;
-mod tool_migration;
-mod work;
-mod work_delivery;
-pub(crate) use result_messages::usage as observed_usage;
 mod resume_recovery;
 mod task_history;
+mod tool_migration;
 mod turn_execution;
 mod voice;
+mod work;
+mod work_delivery;
+
+pub(crate) use self::{reasoning::voice_handoff, result_messages::usage as observed_usage};
 
 pub use prompt_edit::PromptEditReview;
-
-pub(crate) use reasoning::voice_handoff;
 
 use std::{
 	error::Error,
@@ -46,7 +45,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::agent_resources;
+use crate::{agent_resources, agent_slots, startup_trace::Phase};
 use decodex_codex::app_server_client::{
 	self, AppServerClient, ClientError, HistoryGuard, NativeDispatchRefusal, RequestId, ServerEvent,
 };
@@ -200,8 +199,10 @@ impl AgentCoordinator {
 	/// This hydrates native ownership and records evidence without local turn submission.
 	/// Native Codex can continue a persisted active goal when its thread is resumed.
 	pub async fn recover_persisted(&mut self) -> Result<(), AgentError> {
-		let phase = crate::startup_trace::Phase::new("recover_voice");
+		let phase = Phase::new("recover_voice");
+
 		self.recover_voice_calls().await?;
+
 		drop(phase);
 
 		if !self.async_recovery_queued {
@@ -210,8 +211,10 @@ impl AgentCoordinator {
 			self.async_recovery_queued = true;
 		}
 
-		let phase = crate::startup_trace::Phase::new("recover_async_questions");
+		let phase = Phase::new("recover_async_questions");
+
 		self.recover_async_questions().await?;
+
 		drop(phase);
 
 		let work = self.store.list_agent_work_items().await?;
@@ -231,7 +234,8 @@ impl AgentCoordinator {
 			self.recover_persisted_work(item, None, 0).await?;
 		}
 
-		let _phase = crate::startup_trace::Phase::new("recover_native_turns");
+		let _phase = Phase::new("recover_native_turns");
+
 		self.recover_native_turns().await?;
 
 		Ok(())
@@ -432,8 +436,10 @@ impl AgentCoordinator {
 	}
 
 	async fn work_thread_params(&self, item: &AgentWorkItem) -> Result<Value, AgentError> {
-		let mut params = self.thread_params(self.is_manager(&item.id).await?);
+		let manager = self.is_manager(&item.id).await?;
 		let guardian = self.store.guardian_state().await?.settings;
+		let mut params = self.thread_params(manager);
+
 		params["approvalsReviewer"] = serde_json::json!(guardian.reviewer.native());
 		params["config"]["features.guardian_recorded_items"] =
 			serde_json::json!(guardian.review_details);
@@ -445,10 +451,10 @@ impl AgentCoordinator {
 		}
 
 		params["experimentalRawEvents"] = serde_json::json!(true);
+
 		if let Some(project) = self.native_project(item).await? {
 			params["projectId"] = serde_json::json!(project);
 		}
-
 		// Upstream c1382380de69521303b416720a52f42d51af6248 verifies cwd in
 		// thread_start_respects_project_config_from_cwd (app-server thread_start tests).
 		// Only folder membership is local. Existing native threads keep their identity.
@@ -468,13 +474,16 @@ impl AgentCoordinator {
 		let path = Path::new(directory)
 			.canonicalize()
 			.map_err(|_| AgentError::Invalid("Workspace folder is unavailable".into()))?;
+
 		if !path.is_dir() {
 			return Err(AgentError::Invalid("Choose a folder for the workspace".into()));
 		}
+
 		let name = path
 			.file_name()
 			.map(|s| s.to_string_lossy().into_owned())
 			.unwrap_or_else(|| path.display().to_string());
+
 		Ok(store.register_project(id.into(), name, path.to_string_lossy().into_owned()).await?)
 	}
 
@@ -756,6 +765,7 @@ impl AgentCoordinator {
 		workspace: Option<String>,
 	) -> Result<AgentWorkItem, AgentError> {
 		let now = now_micros()?;
+
 		Ok(store
 			.create_agent_conversation(
 				AgentWorkItem {
@@ -850,6 +860,7 @@ impl AgentCoordinator {
 		}
 
 		let now = now_micros()?;
+
 		self.store
 			.create_agent_work_item(AgentWorkItem {
 				id: id.into(),
@@ -899,13 +910,14 @@ impl AgentCoordinator {
 		title: Option<&str>,
 	) -> Result<AgentWorkItem, AgentError> {
 		let title = title.map(str::trim);
+
 		if title.is_some_and(|title| {
 			title.is_empty() || title.chars().count() > 120 || title.contains(['\n', '\r'])
 		}) {
 			return Err(AgentError::Invalid("title must be a short, single-line name".into()));
 		}
-		let title = title.unwrap_or(id);
 
+		let title = title.unwrap_or(id);
 		let now = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
 			.map_err(|_| AgentError::Invalid("clock before epoch".into()))?
@@ -1356,9 +1368,11 @@ impl AgentCoordinator {
 		}
 
 		let context = self.store.agent_work_portfolio(item.id.clone(), None).await?;
+
 		if !question_answer && (!context.works.is_empty() || !context.collaborations.is_empty()) {
 			external.push(serde_json::json!({"kind":"current_work_context","authority":"application evidence; original decision sources retain their authority","portfolio":context}));
 		}
+
 		Ok((params, external))
 	}
 
@@ -1720,43 +1734,10 @@ impl AgentCoordinator {
 	pub async fn handle_event(&mut self, event: ServerEvent) -> Result<(), AgentError> {
 		self.voice_event(&event).await?;
 
-		if let ServerEvent::Notification { method, params } = &event {
-			if method == "rawResponseItem/completed" {
-				self.observe_native_work_dispatch(params).await?;
-			}
-			if method == "item/completed"
-				&& let (Some(thread), Some(turn)) =
-					(params["threadId"].as_str(), params["turnId"].as_str())
-			{
-				self.recover_native_contribution(thread, turn, &params["item"]).await?;
-			}
-			if self.global_guardian_notification(method, params).await? {
-				return Ok(());
-			}
-			self.pending_file_changes.observe(self.client.connection_identity(), method, params);
-			self.observe_reasoning_summary(method, params).await?;
-
-			if self.observe_settings_notification(method, params).await? {
-				return Ok(());
-			}
-
-			self.observe_question_state_notification(method, params).await?;
-
-			if method == "turn/plan/updated"
-				&& let Some(text) = checklist::text(params)
-			{
-				self.store
-					.record_agent_checklist(
-						exact(params, "/threadId")?,
-						exact(params, "/turnId")?,
-						text,
-						checklist::progress(params),
-					)
-					.await?;
-			}
-			if self.observe_live_text(method, params).await? {
-				return Ok(());
-			}
+		if let ServerEvent::Notification { method, params } = &event
+			&& self.observe_event_notification(method, params).await?
+		{
+			return Ok(());
 		}
 
 		match event {
@@ -1764,6 +1745,7 @@ impl AgentCoordinator {
 				if let Some(thread) = params["threadId"].as_str() {
 					self.store.resume_native_agent_slot(thread.into()).await?;
 				}
+
 				self.observe_native_turn(&params).await?;
 			},
 			ServerEvent::Notification { method, params } if method == "serverRequest/resolved" => {
@@ -1778,6 +1760,7 @@ impl AgentCoordinator {
 						.release_native_agent_slots(vec![exact(&params, "/threadId")?])
 						.await?;
 				}
+
 				self.observe_unloaded_thread(&method, &exact(&params, "/threadId")?);
 			},
 			ServerEvent::Notification { method, params }
@@ -1804,8 +1787,9 @@ impl AgentCoordinator {
 				if method == "item/started" || method == "item/completed" =>
 			{
 				if method == "item/completed" {
-					crate::agent_slots::observe_native_close(&self.store, &params["item"]).await?;
+					agent_slots::observe_native_close(&self.store, &params["item"]).await?;
 				}
+
 				if let Some(activity) = activity::project(&params, method == "item/completed") {
 					self.store
 						.record_agent_activity(
@@ -1843,6 +1827,52 @@ impl AgentCoordinator {
 		}
 
 		Ok(())
+	}
+
+	async fn observe_event_notification(
+		&mut self,
+		method: &str,
+		params: &Value,
+	) -> Result<bool, AgentError> {
+		if method == "rawResponseItem/completed" {
+			self.observe_native_work_dispatch(params).await?;
+		}
+		if method == "item/completed"
+			&& let (Some(thread), Some(turn)) =
+				(params["threadId"].as_str(), params["turnId"].as_str())
+		{
+			self.recover_native_contribution(thread, turn, &params["item"]).await?;
+		}
+		if self.global_guardian_notification(method, params).await? {
+			return Ok(true);
+		}
+
+		self.pending_file_changes.observe(self.client.connection_identity(), method, params);
+		self.observe_reasoning_summary(method, params).await?;
+
+		if self.observe_settings_notification(method, params).await? {
+			return Ok(true);
+		}
+
+		self.observe_question_state_notification(method, params).await?;
+
+		if method == "turn/plan/updated"
+			&& let Some(text) = checklist::text(params)
+		{
+			self.store
+				.record_agent_checklist(
+					exact(params, "/threadId")?,
+					exact(params, "/turnId")?,
+					text,
+					checklist::progress(params),
+				)
+				.await?;
+		}
+		if self.observe_live_text(method, params).await? {
+			return Ok(true);
+		}
+
+		Ok(false)
 	}
 
 	async fn resolve_provider_request(&mut self, params: &Value) -> Result<(), AgentError> {
@@ -1899,16 +1929,19 @@ impl AgentCoordinator {
 			} else {
 				self.tool(&item, &params).await
 			};
+
 			if matches!(&result, Err(AgentError::Busy)) && params["tool"] == "agent_continue_worker"
 			{
 				let target = exact(&params, "/arguments/id")?;
+
 				self.store.record_agent_observation(EnqueueAgentEvent {
 					source_event_id: serde_json::json!(["collaboration_refused", thread, params["turnId"], params.get("callId").unwrap_or(&serde_json::to_value(&id).expect("request identity"))]).to_string(),
 					work_item_id: item.id.clone(),
 					event_kind: "collaboration_refused".into(),
-					payload: serde_json::json!({"targetWorkId":target,"threadId":thread,"turnId":params["turnId"],"callId":params["callId"],"prompt":params["arguments"]["prompt"].as_str().unwrap_or_default().chars().take(4096).collect::<String>()}).to_string(),
+					payload: serde_json::json!({"targetWorkId":target,"threadId":thread,"turnId":params["turnId"],"callId":params["callId"],"prompt":params["arguments"]["prompt"].as_str().unwrap_or_default().chars().take(4_096).collect::<String>()}).to_string(),
 				}).await?;
 			}
+
 			let success = result.is_ok();
 			let text = match result {
 				Ok(value) => value.to_string(),
@@ -2093,6 +2126,7 @@ impl AgentCoordinator {
 				}
 
 				let title = args.get("title").map(|_| exact(args, "/title")).transpose()?;
+
 				Ok(serde_json::json!(
 					self.create(
 						&exact(args, "/id")?,
@@ -2130,9 +2164,11 @@ impl AgentCoordinator {
 					.iter()
 					.map(|item| {
 						let mut value = serde_json::json!(item);
+
 						if item.id == agent.id || managers.contains(&item.id) {
 							value["kind"] = serde_json::json!("agent");
 						}
+
 						value
 					})
 					.collect();
@@ -2172,9 +2208,11 @@ impl AgentCoordinator {
 		let managers = self.store.agent_manager_ids().await?;
 		let args = &params["arguments"];
 		let name = exact(params, "/tool")?;
+
 		if let Some(error) = work::retired_tool(&name) {
 			return Err(error);
 		}
+
 		if ["work_read", "work_manage"].contains(&name.as_str()) {
 			return self.work_tool(agent, &name, args).await;
 		}
@@ -2208,93 +2246,91 @@ impl AgentCoordinator {
 					serde_json::json!({"turnId":self.continue_worker(&id,&exact(args,"/prompt")?).await?}),
 				)
 			},
-			"agent_disposition" => {
-				let id = exact(args, "/id")?;
-				let work = self.store.get_agent_work_item(id.clone()).await?;
-
-				if work.id != agent.id
-					&& !belongs_to(
-						&work,
-						&agent.id,
-						&self.store.list_agent_work_items().await?,
-						&managers,
-					) {
-					return Err(AgentError::Invalid("work belongs to another Agent".into()));
-				}
-
-				let (disposition, next_check) = parse_disposition(args)?;
-				let ids: Vec<i64> = serde_json::from_value(args["eventIds"].clone())
-					.map_err(|_| AgentError::Invalid("exact eventIds required".into()))?;
-				let pending = self
-					.store
-					.list_agent_events_for_turn(
-						agent.active_turn_id.clone().ok_or_else(|| {
-							AgentError::Invalid("Agent has no active turn".into())
-						})?,
-						1_000,
-					)
-					.await?;
-
-				let eligible: Vec<_> = pending
-					.iter()
-					.filter(|event| event.work_item_id == work.id)
-					.map(|event| event.id)
-					.collect();
-				if ids.is_empty() {
-					return Err(AgentError::Invalid(format!(
-						"eventIds must contain pending receipts for '{}'. Read agent_list_work.inbox; current receipt IDs for this work: {eligible:?}. If none remain, do not acknowledge again.",
-						work.id
-					)));
-				}
-				for id in &ids {
-					let Some(event) = pending.iter().find(|event| event.id == *id) else {
-						return Err(AgentError::Invalid(format!(
-							"Receipt {id} is not pending in this turn; it may already be handled. Read agent_list_work.inbox; current receipt IDs for '{}': {eligible:?}. If none remain, do not acknowledge again.",
-							work.id
-						)));
-					};
-					if event.work_item_id != work.id {
-						return Err(AgentError::Invalid(format!(
-							"Receipt {id} belongs to '{}', not '{}'. Use that receipt's work_item_id as id when assessing its result. Read agent_list_work.inbox for current receipts.",
-							event.work_item_id, work.id
-						)));
-					}
-				}
-
-				if work.id == agent.id
-					&& pending.iter().any(|event| {
-						ids.contains(&event.id)
-							&& matches!(
-								event.event_kind.as_str(),
-								"user_message" | "async_question_answer"
-							)
-					}) {
-					return Err(AgentError::Invalid(
-						"User input is acknowledged automatically when you finish this turn. Answer it or continue the worker; do not change the Agent conversation's status to acknowledge it.".into(),
-					));
-				}
-
-				for event in pending.into_iter().filter(|event| ids.contains(&event.id)) {
-					self.store
-						.dispose_agent_event(
-							event.id,
-							disposition,
-							exact(args, "/summary")?,
-							next_check,
-						)
-						.await?;
-				}
-
-				let released = if disposition == AgentDisposition::Resolved {
-					self.release_ready_workers(&agent.id).await?
-				} else {
-					Vec::new()
-				};
-
-				Ok(serde_json::json!({"recorded":true,"releasedWorkIds":released}))
-			},
+			"agent_disposition" => self.dispose_work_events(agent, args, &managers).await,
 			_ => Err(AgentError::Invalid("unknown Agent tool".into())),
 		}
+	}
+
+	async fn dispose_work_events(
+		&mut self,
+		agent: &AgentWorkItem,
+		args: &Value,
+		managers: &[String],
+	) -> Result<Value, AgentError> {
+		let id = exact(args, "/id")?;
+		let work = self.store.get_agent_work_item(id.clone()).await?;
+
+		if work.id != agent.id
+			&& !belongs_to(&work, &agent.id, &self.store.list_agent_work_items().await?, managers)
+		{
+			return Err(AgentError::Invalid("work belongs to another Agent".into()));
+		}
+
+		let (disposition, next_check) = parse_disposition(args)?;
+		let ids: Vec<i64> = serde_json::from_value(args["eventIds"].clone())
+			.map_err(|_| AgentError::Invalid("exact eventIds required".into()))?;
+		let pending = self
+			.store
+			.list_agent_events_for_turn(
+				agent
+					.active_turn_id
+					.clone()
+					.ok_or_else(|| AgentError::Invalid("Agent has no active turn".into()))?,
+				1_000,
+			)
+			.await?;
+		let eligible: Vec<_> = pending
+			.iter()
+			.filter(|event| event.work_item_id == work.id)
+			.map(|event| event.id)
+			.collect();
+
+		if ids.is_empty() {
+			return Err(AgentError::Invalid(format!(
+				"eventIds must contain pending receipts for '{}'. Read agent_list_work.inbox; current receipt IDs for this work: {eligible:?}. If none remain, do not acknowledge again.",
+				work.id
+			)));
+		}
+
+		for id in &ids {
+			let Some(event) = pending.iter().find(|event| event.id == *id) else {
+				return Err(AgentError::Invalid(format!(
+					"Receipt {id} is not pending in this turn; it may already be handled. Read agent_list_work.inbox; current receipt IDs for '{}': {eligible:?}. If none remain, do not acknowledge again.",
+					work.id
+				)));
+			};
+
+			if event.work_item_id != work.id {
+				return Err(AgentError::Invalid(format!(
+					"Receipt {id} belongs to '{}', not '{}'. Use that receipt's work_item_id as id when assessing its result. Read agent_list_work.inbox for current receipts.",
+					event.work_item_id, work.id
+				)));
+			}
+		}
+
+		if work.id == agent.id
+			&& pending.iter().any(|event| {
+				ids.contains(&event.id)
+					&& matches!(event.event_kind.as_str(), "user_message" | "async_question_answer")
+			}) {
+			return Err(AgentError::Invalid(
+				"User input is acknowledged automatically when you finish this turn. Answer it or continue the worker; do not change the Agent conversation's status to acknowledge it.".into(),
+			));
+		}
+
+		for event in pending.into_iter().filter(|event| ids.contains(&event.id)) {
+			self.store
+				.dispose_agent_event(event.id, disposition, exact(args, "/summary")?, next_check)
+				.await?;
+		}
+
+		let released = if disposition == AgentDisposition::Resolved {
+			self.release_ready_workers(&agent.id).await?
+		} else {
+			Vec::new()
+		};
+
+		Ok(serde_json::json!({"recorded":true,"releasedWorkIds":released}))
 	}
 
 	async fn resolve_goal(
@@ -2304,6 +2340,7 @@ impl AgentCoordinator {
 	) -> Result<Value, AgentError> {
 		let id = exact(args, "/id")?;
 		let goal = self.store.get_agent_work_item(id.clone()).await?;
+
 		if goal.id == agent.id || self.is_manager(&goal.id).await? {
 			return Err(AgentError::Invalid(format!(
 				"'{id}' is an Agent conversation, not a child goal. Keep it open and finish your reply when the work is done. Use agent_disposition to accept worker results; resolve only a separate child goal from agent_list_work."
@@ -2321,6 +2358,7 @@ impl AgentCoordinator {
 				"Child goal '{id}' is already resolved or still running. Read agent_list_work before another completion call; an accepted goal needs no repeat acknowledgement."
 			)));
 		}
+
 		let turn = agent
 			.active_turn_id
 			.clone()
@@ -2443,50 +2481,10 @@ impl AgentCoordinator {
 		if self.dispatch_paused {
 			return Ok(());
 		}
+
 		self.sync_global_guardian().await?;
 
-		let notices = self.store.list_agent_thread_in_use_events().await?;
-		let mut blocked = std::collections::HashSet::new();
-
-		for notice in notices {
-			self.store.hold_agent_unsent_input(notice.work_item_id.clone()).await?;
-
-			let item = self.store.get_agent_work_item(notice.work_item_id.clone()).await?;
-
-			if let Some(thread) = &item.codex_thread_id {
-				let params = Self::resume_params(thread);
-				let resumed = match self
-					.client
-					.thread_resume(params)
-					.await
-					.map_err(|e| resume_error(e, thread))
-				{
-					Ok(value) => value,
-					Err(AgentError::ThreadArchived) => {
-						// Archiving ends the external-writer condition. Keep this owner's
-						// input parked without blocking unrelated conversations.
-						self.loaded_threads.remove(thread);
-						self.store.resolve_agent_thread_in_use(item.id.clone()).await?;
-						blocked.insert(item.id.clone());
-						continue;
-					},
-					Err(AgentError::ThreadOwnedElsewhere { .. }) => {
-						blocked.insert(item.id.clone());
-						continue;
-					},
-					Err(error) => return Err(error),
-				};
-
-				if resumed.pointer("/thread/id").and_then(Value::as_str) != Some(thread.as_str()) {
-					return Err(AgentError::Invalid(
-						"resumed conversation identity differs".into(),
-					));
-				}
-
-				self.store.resolve_agent_thread_in_use(item.id).await?;
-			}
-		}
-
+		let blocked = self.recover_thread_ownership().await?;
 		let voice_calls = self.store.open_agent_voice_calls().await?;
 		let work = self.store.list_agent_work_items().await?;
 		let managers = self.store.agent_manager_ids().await?;
@@ -2569,6 +2567,56 @@ impl AgentCoordinator {
 
 		Ok(())
 	}
+
+	async fn recover_thread_ownership(
+		&mut self,
+	) -> Result<std::collections::HashSet<String>, AgentError> {
+		let notices = self.store.list_agent_thread_in_use_events().await?;
+		let mut blocked = std::collections::HashSet::new();
+
+		for notice in notices {
+			self.store.hold_agent_unsent_input(notice.work_item_id.clone()).await?;
+
+			let item = self.store.get_agent_work_item(notice.work_item_id.clone()).await?;
+
+			if let Some(thread) = &item.codex_thread_id {
+				let params = Self::resume_params(thread);
+				let resumed = match self
+					.client
+					.thread_resume(params)
+					.await
+					.map_err(|e| resume_error(e, thread))
+				{
+					Ok(value) => value,
+					Err(AgentError::ThreadArchived) => {
+						// Archiving ends the external-writer condition. Keep this owner's
+						// input parked without blocking unrelated conversations.
+						self.loaded_threads.remove(thread);
+						self.store.resolve_agent_thread_in_use(item.id.clone()).await?;
+						blocked.insert(item.id.clone());
+
+						continue;
+					},
+					Err(AgentError::ThreadOwnedElsewhere { .. }) => {
+						blocked.insert(item.id.clone());
+
+						continue;
+					},
+					Err(error) => return Err(error),
+				};
+
+				if resumed.pointer("/thread/id").and_then(Value::as_str) != Some(thread.as_str()) {
+					return Err(AgentError::Invalid(
+						"resumed conversation identity differs".into(),
+					));
+				}
+
+				self.store.resolve_agent_thread_in_use(item.id).await?;
+			}
+		}
+
+		Ok(blocked)
+	}
 }
 
 pub(crate) struct AgentInputExtras<'a> {
@@ -2614,9 +2662,11 @@ impl Display for AgentError {
 		if let Self::ProjectPending(detail) = self {
 			return f.write_str(detail);
 		}
+
 		if matches!(self, Self::ThreadOwnedElsewhere { .. }) {
 			return f.write_str("This conversation is open in Codex or another application. Sending is unavailable here while it is in use. Your history remains readable.");
 		}
+
 		write!(f, "Agent: {self:?}")
 	}
 }
@@ -2826,6 +2876,7 @@ fn belongs_to(
 	if managers.iter().any(|id| id == &item.id) {
 		return false;
 	}
+
 	let mut parent = item.parent_goal_id.as_deref();
 
 	for _ in 0..work.len() {
@@ -2882,12 +2933,9 @@ fn legacy_tools() -> Value {
 	specs
 }
 
-#[cfg(test)]
-#[path = "agent/tests.rs"]
-mod tests;
-
 fn tools() -> Value {
 	let mut specs = legacy_tools();
+
 	specs.as_array_mut().expect("tool array").retain(|spec| {
 		!matches!(
 			spec["name"].as_str(),
@@ -2902,5 +2950,10 @@ fn tools() -> Value {
 		)
 	});
 	specs.as_array_mut().expect("tool array").extend(work::tools());
+
 	specs
 }
+
+#[cfg(test)]
+#[path = "agent/tests.rs"]
+mod tests;

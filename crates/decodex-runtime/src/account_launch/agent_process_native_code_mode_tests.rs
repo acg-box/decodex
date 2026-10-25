@@ -312,14 +312,18 @@ text(JSON.stringify({values, sort: true}));
 				serde_json::json!({"type":"message","role":"assistant","id":"done","content":[{"type":"output_text","text":"Done"}]}),
 		},
 	));
+
 	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\n[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[features]\ncode_mode=true\nenable_request_compression=false\n")).unwrap();
+
 	let mut session = NativeSession::start(&binary, home.path());
+
 	time::timeout(Duration::from_secs(30), async {
 		let start = session.client.thread_start(serde_json::json!({"cwd":home.path(),"approvalPolicy":"never","sandbox":"read-only","dynamicTools":[{"name":"lookup","description":"Return one isolated fixture value","inputSchema":{"type":"object","properties":{"key":{"type":"string"}},"required":["key"],"additionalProperties":false}}]})).await.unwrap();
 		let thread = start["thread"]["id"].as_str().unwrap();
 		let turn = session.client.turn_start(serde_json::json!({"threadId":thread,"input":[{"type":"text","text":"Run the isolated parallel tool fixture"}]})).await.unwrap();
 		let turn_id = turn["turn"]["id"].as_str().unwrap();
 		let mut pending = Vec::new();
+
 		while pending.len() < 2 {
 			match session.events.recv().await.unwrap() {
 				ServerEvent::Request { id, method, params } => {
@@ -327,28 +331,39 @@ text(JSON.stringify({values, sort: true}));
 					assert_eq!(params["threadId"], thread);
 					assert_eq!(params["turnId"], turn_id);
 					assert_eq!(params["tool"], "lookup");
+
 					pending.push((id, params["arguments"]["key"].as_str().unwrap().to_owned()));
 				}
+
 				ServerEvent::Notification { method, .. } => assert_ne!(method, "turn/completed", "both tool requests must arrive before either reply"),
 				_ => {}
 			}
 		}
+
 		assert_ne!(pending[0].0, pending[1].0);
+
 		let mut keys: Vec<_> = pending.iter().map(|(_, key)| key.as_str()).collect();
+
 		keys.sort_unstable();
+
 		assert_eq!(keys, ["A", "B"]);
+
 		for (id, key) in pending.into_iter().rev() {
 			session.client.respond(id, serde_json::json!({"success":true,"contentItems":[{"type":"inputText","text":format!("value-{key}")}]})).await.unwrap();
 		}
+
 		loop {
 			if let ServerEvent::Notification { method, params } = session.events.recv().await.unwrap()
 				&& method == "turn/completed" {
 				assert_eq!(params["turn"]["status"], "completed");
+
 				break;
 			}
 		}
 	}).await.expect("both pending dynamic calls must be independently delivered");
+
 	assert_eq!(calls.load(Ordering::Acquire), 2);
+
 	let captured = bodies.lock().unwrap();
 	let output = captured[1]["input"]
 		.as_array()
@@ -360,6 +375,7 @@ text(JSON.stringify({values, sort: true}));
 		.map(|item| item["output"].to_string())
 		.collect::<Vec<_>>()
 		.join("\n");
+
 	assert!(
 		output.contains("value-A") && output.contains("value-B"),
 		"both results must reach their program: {output}"
@@ -372,7 +388,9 @@ text(JSON.stringify({values, sort: true}));
 		output.contains("sort") && output.contains("true"),
 		"the exact bundled V8 helper must finish the mixed-kind sort fixture: {output}"
 	);
+
 	drop(captured);
 	drop(session);
+
 	backend.abort();
 }
