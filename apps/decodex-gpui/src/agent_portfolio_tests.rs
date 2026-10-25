@@ -147,6 +147,21 @@ fn snapshot() -> AgentSnapshotDto {
 }
 
 #[gpui::test]
+fn independent_agent_message_never_falls_back_to_another_agent(cx: &mut TestAppContext) {
+	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+	surface.update(visual, |s, cx| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		s.open_page("iris", cx);
+		assert_eq!(s.root_id().as_deref(), Some("sage"));
+		assert_eq!(s.composer_manager.as_deref(), Some("iris"));
+		assert!(matches!(
+			s.build_submission("Keep this message in Family Trip", cx).unwrap(),
+			AgentActionDto::Send { root_id, .. } if root_id.as_str() == "iris"
+		));
+	});
+}
+
+#[gpui::test]
 fn independent_agent_keeps_its_composer_and_can_answer_its_approval(cx: &mut TestAppContext) {
 	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 	surface.update(visual, |s, cx| {

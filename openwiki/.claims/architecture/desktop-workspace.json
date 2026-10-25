@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:05bd3c6df5c819569bb48efab283d692b84b5eaec7c90e768eee8cd531242d9a",
+  "pageVersion": "sha256:6ece263bc61a29a89e74171ca750f1a69169857e9c4ef4901e1c321609ab4cfb",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -20,7 +20,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:4144fe9d5d5b5efd1833abb7ac329b904cf28e859d714e0f968fd06b4172f92d"
+          "version": "repo-file-v1:sha256:0265a718a4c0241a5cdb0c1d4d36893a51558e258650d9c2898fa9a811c0da14"
         }
       ]
     },
@@ -144,7 +144,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:4144fe9d5d5b5efd1833abb7ac329b904cf28e859d714e0f968fd06b4172f92d"
+          "version": "repo-file-v1:sha256:0265a718a4c0241a5cdb0c1d4d36893a51558e258650d9c2898fa9a811c0da14"
         }
       ]
     },
@@ -179,10 +179,28 @@
           "version": "repo-file-v1:sha256:3bc77003902aa98bcfd2aafe6b31a3d42be0ee4115224938778c66753a1ea7af"
         }
       ]
+    },
+    {
+      "id": "claim_f634e2067c504c65bfaa505417e21758",
+      "statement": "Each independent Agent owns its displayed composer, and submitted input targets that Agent's saved conversation instead of the first root.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_portfolio_tests.rs#L148-L214",
+          "version": "repo-lines-v1:sha256:8418063b3fb4d4c96eafd4ef52a4a67ea86e354d5db0267495838edf864d7834:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdhNmUzYTE5ZmJjZWJiNzcyMjNjYTI3YjI1Y2M4NzExZjYyZmZjN2RlNTk0M2QyMDMxMDQ4NmEwZjBhMjMwYjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUwMWU3Yzk5NzgzMDU0NjI0YWQ0YzBjYTE5MWI1MDUyZjk2MDI5NWUwMDgxNDViMjU0ZjZjZjc3YWQ1NWUxMTkifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L866-L891",
+          "version": "repo-lines-v1:sha256:c29e0cbfde8d2e9f89c090ad79de9a3297d02792c7506db828838d5e41ea5d46:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2ZjNmMGNlODgwMzQ0NGQ0MmY4NWFiODIxMzEwM2NhMjY0MGJlMzQ5ZmE1ZWM0Mzg1NjRjN2NiNzZlMTMzYmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyODQzNjc1N2ViZWNmNjkzOGViMzlhMzU1ZTViZDc1NTYwYjhmNjQ2ZGQwZGU0MjM5YTQwNGVjNmMwNjJlMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2OTcwYWIwNTRiN2QyMmUyMDkxYTFiNjRiNGI3OThmZDk2YTg1YWFlZDI4Y2NkNzk2ZmY0YmJmNDRiMzc5Y2MifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1106-L1120",
+          "version": "repo-lines-v1:sha256:a1400dfbd123820d895fa56bd798d12c374904ebbf794cd73f958383917b3d34:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxZTU0NWVlN2UwYTdlMDc0MGZjMTAxMmFjMDZiNDY4MGQ2NzQ3ZjVhYWM2ZTY1MzE2NWI3ODdmNWRjNzdkMGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViYTY3MzYwZWU2Y2E2MmE1MGFjOWIwOTFiMzM3YTljODRkODdiMWVmZDBmOWQ4OTQxYTBjYmIzODczNTZhZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxODIyYTE1M2EwYzAxYTE3Mjg2YjYwMjJmMGU2M2FlNzE5ZGVmMDZlYWFiM2IxY2ZkZDc3NDI4YzYxOWJhZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlmNWZlMjY3YzZmN2E4NzAzYWY1NTc5MThlOThhMjFiMzRmNWJiM2YzYmNhZmQ5NjBmOWM2MTQwZTYzZDc3MTQifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T06:52:57.034Z"
+    "at": "2026-10-25T15:11:34.438Z"
   }
 }
