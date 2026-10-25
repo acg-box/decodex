@@ -2,6 +2,7 @@
 
 #[path = "application_collaboration.rs"] mod collaboration;
 #[path = "application_deliveries.rs"] mod deliveries;
+#[path = "application_usage_evidence.rs"] mod usage_evidence;
 
 #[path = "application_account_nudge.rs"] mod account_nudge;
 #[path = "application_conversation_receipts.rs"] mod conversation_receipts;
@@ -277,6 +278,7 @@ impl ServiceApplication {
 					*offset,
 				)
 				.await,
+			QueryPayload::GetUsageEvidence { scope } => self.query_usage_evidence(scope).await,
 			QueryPayload::GetAgentReadState { work_id, thread_id } =>
 				self.query_read_state(work_id.as_str(), thread_id.as_str()).await,
 			QueryPayload::GetAgentNativeGoal { work_id, thread_id } =>
@@ -2840,6 +2842,7 @@ impl Application for ServiceApplication {
 			QueryPayload::GetAgentSkills { target, filter } =>
 				self.query_skills(query.query_id.as_str(), target, filter.as_str()).await,
 			QueryPayload::GetAgentMemory { .. }
+			| QueryPayload::GetUsageEvidence { .. }
 			| QueryPayload::GetAgentReadState { .. }
 			| QueryPayload::GetAgentNativeGoal { .. } => self.query_native_inspection(&query.payload).await,
 			QueryPayload::GetAgentUsageEstimate { work_id } =>

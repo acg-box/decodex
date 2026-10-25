@@ -7,6 +7,27 @@ use crate::AgentMemoryResult;
 use std::time::Duration;
 
 impl AgentClient {
+	/// Read actual retained native counters and explicit product attribution.
+	pub async fn usage_evidence(
+		&self,
+		scope: crate::UsageEvidenceScope,
+	) -> Result<crate::UsageEvidenceResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = self
+			.transport
+			.query_inner("usage-evidence", QueryPayload::GetUsageEvidence { scope: scope.clone() })
+			.await?;
+		close_one_shot_socket(completed.socket).await;
+		let QueryResultPayload::UsageEvidence(result) = completed.value else {
+			return Err(ClientFailure::ProtocolMalformed);
+		};
+		if matches!(&result,crate::UsageEvidenceResult::Available{scope:actual,..} if actual!=&scope)
+		{
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		Ok(result)
+	}
+
 	/// Read one memory page for the exact expected conversation without starting a turn.
 	pub async fn memory_summary(
 		&self,

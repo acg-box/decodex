@@ -2140,6 +2140,11 @@ impl AccountObservationSignal {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
+	/// Read actual retained native usage for an explicit Agent or Work.
+	GetUsageEvidence {
+		/// Product scope, independent of the selected conversation.
+		scope: crate::UsageEvidenceScope,
+	},
 	/// Read the current native process directory for canonical local media.
 	GetAgentPromptInputDirectory {
 		/// Exact task owner.
@@ -3159,6 +3164,8 @@ impl ResultPayload {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
+	/// Actual retained counters, source identities and coverage limits.
+	UsageEvidence(crate::UsageEvidenceResult),
 	/// Durable data transfer status; not an inference receipt.
 	AgentPromptInputUpload(PromptInputUploadStatus),
 	/// Read-only canonical input acceptance.

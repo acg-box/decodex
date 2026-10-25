@@ -28,6 +28,10 @@ mod agent_hooks;
 mod agent_integrations;
 mod agent_live_settings;
 mod agent_media;
+mod usage_evidence;
+pub use usage_evidence::{
+	UsageEvidenceResult, UsageEvidenceScope, UsageEvidenceSource, UsageEvidenceTotals,
+};
 mod agent_memory;
 mod agent_model_settings;
 mod agent_models;
