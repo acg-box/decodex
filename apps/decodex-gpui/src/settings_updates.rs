@@ -1,11 +1,17 @@
 //! App updates use Sparkle; component preparation always uses this build's lock.
-use crate::{native_updater::NativeUpdater, settings_surface::SettingsSurface, ui_theme};
+use crate::{
+	native_updater::NativeUpdater,
+	settings_surface::SettingsSurface,
+	ui_feedback::{self, Feedback},
+	ui_theme,
+};
 use decodex_components::{ComponentStore, InstallProgress, RuntimeLock};
-use gpui::{AnyElement, Context, KeyDownEvent, Role, SharedString, prelude::*};
+use gpui::{AnyElement, Context, KeyDownEvent, prelude::*};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug, PartialEq)]
 enum ComponentState {
+	Unchecked,
 	Preparing(InstallProgress),
 	Ready,
 	Failed(String),
@@ -21,21 +27,19 @@ pub(super) struct Updates {
 	shared: Arc<Mutex<ComponentState>>,
 	shown: ComponentState,
 	native: NativeUpdater,
-	app_message: String,
+	app_feedback: Option<Feedback>,
 }
 
 impl Updates {
 	pub(super) fn new() -> Self {
-		let shown = ComponentState::Preparing(InstallProgress::Waiting);
-		let result = Self {
+		// The app lifecycle prepares the runtime. Settings checks it only on request.
+		let shown = ComponentState::Unchecked;
+		Self {
 			shared: Arc::new(Mutex::new(shown.clone())),
 			shown,
 			native: NativeUpdater::new(),
-			app_message: "Check for a new version of Decodex.".into(),
-		};
-		#[cfg(not(test))]
-		result.spawn_preparation();
-		result
+			app_feedback: None,
+		}
 	}
 
 	fn spawn_preparation(&self) {
@@ -95,10 +99,10 @@ impl SettingsSurface {
 	fn update_action(&mut self, action: Action, cx: &mut Context<Self>) {
 		match action {
 			Action::Check => {
-				self.updates.app_message =
-					self.updates.native.check().err().unwrap_or_else(|| {
-						"The update window will show available versions.".into()
-					});
+				self.updates.app_feedback = Some(match self.updates.native.check() {
+					Ok(()) => Feedback::info("The update window will show available versions."),
+					Err(error) => Feedback::error(error),
+				});
 			},
 			Action::Prepare => self.updates.prepare_runtime(),
 		}
@@ -113,93 +117,141 @@ impl SettingsSurface {
 		action: Action,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		gpui::div()
-			.id(id)
-			.debug_selector(move || id.into())
-			.role(Role::Button)
-			.aria_label(label)
-			.tab_index(0)
-			.px_3()
-			.py_2()
-			.rounded_md()
-			.border_1()
-			.border_color(crate::ui_theme::rgb(ui_theme::LINE_STRONG))
-			.cursor_pointer()
-			.hover(|s| s.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)))
-			.focus_visible(|s| s.border_color(crate::ui_theme::rgb(ui_theme::BLUE)))
+		ui_theme::settings_button(id, label)
 			.on_click(cx.listener(move |this, _, _, cx| this.update_action(action, cx)))
 			.on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
-				if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					this.update_action(action, cx);
 					cx.stop_propagation();
 				}
 			}))
-			.child(label)
 			.into_any_element()
 	}
 
-	pub(super) fn updates_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		let message = match &self.updates.shown {
-			ComponentState::Preparing(progress) => progress_text(progress),
-			ComponentState::Ready => "Ready".into(),
-			ComponentState::Failed(error) => error.clone(),
-		};
+	fn component_card(&self, cx: &mut Context<Self>) -> gpui::Div {
 		let version = RuntimeLock::embedded()
 			.map(|lock| {
 				if lock.source.is_some() {
-					format!("development ({})", &lock.upstream_commit[..12])
+					format!("Development · {}", &lock.upstream_commit[..12])
 				} else {
 					lock.version
 				}
 			})
-			.unwrap_or_default();
-		let mut component = gpui::div()
-			.flex()
-			.flex_col()
-			.gap_3()
-			.child(format!("Codex {version}"))
-			.child(SharedString::from(message));
+			.unwrap_or_else(|_| "Version unavailable".into());
+		let action = match self.updates.shown {
+			ComponentState::Preparing(_) => None,
+			ComponentState::Failed(_) => Some(("updates-retry-runtime", "Retry download")),
+			_ => Some(("updates-prepare-runtime", "Check component")),
+		};
+		let mut component = ui_theme::settings_card().p_4().gap_3()
+            .child(gpui::div().flex().items_center().justify_between().gap_4()
+                .child(gpui::div().flex_1().min_w_0().flex().flex_col().gap_1()
+                    .child(gpui::div().text_size(gpui::px(13.)).font_weight(gpui::FontWeight::SEMIBOLD).child("Codex"))
+                    .child(gpui::div().text_size(gpui::px(11.5)).text_color(ui_theme::rgb(ui_theme::TEXT_MUTED)).child(version)))
+                .when_some(action, |header, (id, label)| header.child(self.update_button(id, label, Action::Prepare, cx))))
+            .child(gpui::div().text_size(gpui::px(12.)).line_height(gpui::px(18.)).text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+                .child("The component that runs your conversations. Decodex prepares the required version automatically."));
 		match &self.updates.shown {
-			ComponentState::Failed(_) => {
-				component = component.child(self.update_button(
-					"updates-retry-runtime",
-					"Retry",
-					Action::Prepare,
-					cx,
-				));
-			},
+			ComponentState::Unchecked => {},
 			ComponentState::Ready => {
-				component = component.child(self.update_button(
-					"updates-prepare-runtime",
-					"Check component",
-					Action::Prepare,
-					cx,
+				component = component.children(ui_feedback::inline_feedback(
+					"updates-component-ready",
+					"Codex is ready",
+					&Feedback::success("The required component is available."),
 				));
 			},
-			ComponentState::Preparing(_) => {},
+			ComponentState::Failed(error) => {
+				component = component.children(ui_feedback::inline_feedback(
+					"updates-component-error",
+					"Could not prepare Codex",
+					&Feedback::error(error.clone()),
+				));
+			},
+			ComponentState::Preparing(progress) => {
+				component = component.children(ui_feedback::inline_feedback(
+					"updates-component-status",
+					"Preparing Codex",
+					&Feedback::info(progress_text(progress)),
+				));
+				if let InstallProgress::Downloading { received, total: Some(total) } = progress
+					&& *total > 0
+				{
+					component = component.child(
+						gpui::div()
+							.h(gpui::px(4.))
+							.rounded_full()
+							.bg(ui_theme::rgba(0xffffff0c))
+							.child(
+								gpui::div()
+									.h_full()
+									.w(gpui::relative(
+										(*received as f32 / *total as f32).clamp(0., 1.),
+									))
+									.rounded_full()
+									.bg(ui_theme::rgb(ui_theme::BLUE)),
+							),
+					);
+				}
+			},
 		}
+		component
+	}
+
+	pub(super) fn updates_content(&self, cx: &mut Context<Self>) -> AnyElement {
 		gpui::div()
 			.flex()
 			.flex_col()
-			.gap_6()
+			.gap_5()
 			.child(
-				gpui::div()
-					.flex()
-					.flex_col()
+				ui_theme::settings_card()
+					.p_4()
 					.gap_3()
-					.child(format!("Decodex {}", env!("CARGO_PKG_VERSION")))
-					.child(SharedString::from(self.updates.app_message.clone()))
-					.child(self.update_button(
-						"updates-check",
-						"Check for updates",
-						Action::Check,
-						cx,
-					)),
+					.child(
+						gpui::div()
+							.flex()
+							.items_center()
+							.justify_between()
+							.gap_4()
+							.child(
+								gpui::div()
+									.flex()
+									.flex_col()
+									.gap_1()
+									.child(
+										gpui::div()
+											.text_size(gpui::px(13.))
+											.font_weight(gpui::FontWeight::SEMIBOLD)
+											.child("Decodex"),
+									)
+									.child(
+										gpui::div()
+											.text_size(gpui::px(11.5))
+											.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+											.child(format!(
+												"Version {}",
+												env!("CARGO_PKG_VERSION")
+											)),
+									),
+							)
+							.child(self.update_button(
+								"updates-check",
+								"Check for updates",
+								Action::Check,
+								cx,
+							)),
+					)
+					.child(
+						gpui::div()
+							.text_size(gpui::px(12.))
+							.line_height(gpui::px(18.))
+							.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+							.child("Check for a new version of Decodex."),
+					)
+					.children(self.updates.app_feedback.as_ref().and_then(|feedback| {
+						ui_feedback::inline_feedback("updates-app-feedback", "App update", feedback)
+					})),
 			)
-			.child(component)
-			.child(gpui::div().text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED)).child(
-				"Release components download automatically. Sessions start when the pinned component is ready.",
-			))
+			.child(self.component_card(cx))
 			.into_any_element()
 	}
 }
@@ -212,11 +264,31 @@ mod tests {
 	fn repeated_clicks_do_not_queue_downloads_while_the_worker_is_busy() {
 		let mut updates = Updates::new();
 		updates.shown = ComponentState::Failed("Previous failure".into());
+		*updates.shared.lock().expect("state") =
+			ComponentState::Preparing(InstallProgress::Waiting);
 		updates.prepare_runtime();
 		assert_eq!(
 			*updates.shared.lock().expect("state"),
 			ComponentState::Preparing(InstallProgress::Waiting)
 		);
+	}
+
+	#[gpui::test]
+	fn opening_settings_does_not_start_another_component_check(cx: &mut gpui::TestAppContext) {
+		let (settings, visual) = cx.add_window_view(|_, cx| {
+			SettingsSurface::new(
+				crate::desktop_settings::DesktopSettingsController::production(),
+				cx,
+			)
+		});
+		settings.update(visual, |s, cx| {
+			s.category = crate::settings_surface::SettingsCategory::Updates;
+			s.refresh(cx);
+			assert_eq!(*s.updates.shared.lock().expect("state"), ComponentState::Unchecked);
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("updates-prepare-runtime").is_some());
+		assert!(visual.debug_bounds("updates-component-status").is_none());
 	}
 
 	#[gpui::test]

@@ -26,11 +26,12 @@ impl AgentSurface {
 		let width = f32::from(window.viewport_size().width);
 		let left = self.workspace_sidebar_width(window);
 
-		self.workspace.agent_panel_width.min((width - left - 440.0).max(0.0))
+		self.workspace
+			.agent_panel_width
+			.min((width - left - 440.0 - 3. * crate::ui_theme::WORKSPACE_GUTTER).max(0.0))
 	}
 
-	pub(super) fn agent_tree(&self, width: f32, cx: &mut Context<Self>) -> AnyElement {
-		self.deliveries.update(cx, |panel, cx| panel.set_width(width, cx));
+	pub(super) fn agent_tree(&self, cx: &mut Context<Self>) -> AnyElement {
 		gpui::div()
 			.id("agent-panel-focus")
 			.relative()
@@ -41,7 +42,6 @@ impl AgentSurface {
 				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Right)),
 			)
 			.child(self.render_agent_workbench(cx))
-			.child(self.sidebar_resize_handle(Panel::Right, cx))
 			.into_any_element()
 	}
 }

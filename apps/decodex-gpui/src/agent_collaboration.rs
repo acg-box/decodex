@@ -223,7 +223,7 @@ impl AgentSurface {
 					.unwrap_or_else(|| "Reported output".into()),
 				summary: super::super::activity::text(&output.text).chars().take(180).collect(),
 				state: "Reported",
-				color: ui_theme::BLUE,
+				color: ui_theme::INFO,
 				request: None,
 				steps: vec![("Review", "Acceptance and reply linkage are unknown.".into())],
 				source: "Native report".into(),
@@ -714,19 +714,21 @@ impl AgentSurface {
 			.min_w_0()
 			.flex_none()
 			.relative()
-			.py(gpui::px(12.))
-			.border_b_1()
-			.border_color(crate::ui_theme::rgba(0xffffff12))
+			.p(gpui::px(10.))
+			.rounded(gpui::px(12.))
+			.bg(crate::ui_theme::rgba(ui_theme::FIELD_MATERIAL))
+			.hover(|row| row.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)))
 			.when(related, |row| {
-				row.child(
+				row.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)).child(
 					gpui::div()
 						.debug_selector(|| "collaboration-selection-mark".into())
 						.absolute()
-						.left(gpui::px(-7.))
+						.left(gpui::px(3.))
 						.top(gpui::px(12.))
 						.bottom(gpui::px(12.))
-						.border_l_1()
-						.border_color(crate::ui_theme::rgb(ui_theme::BLUE)),
+						.w(gpui::px(2.))
+						.rounded_full()
+						.bg(crate::ui_theme::rgb(ui_theme::BLUE)),
 				)
 			})
 			.child(self.collaboration_exchange_header(case, cx))
@@ -750,6 +752,7 @@ impl AgentSurface {
 			.min_w_0()
 			.flex()
 			.flex_col()
+			.gap(gpui::px(8.))
 			.text_size(gpui::px(11.))
 			.line_height(gpui::px(17.))
 			.text_color(crate::ui_theme::rgb(foreground::SECONDARY));
@@ -830,9 +833,22 @@ impl AgentSurface {
 			.min_h_0()
 			.min_w_0()
 			.overflow_y_scroll()
-			.px(gpui::px(14.))
+			.p(gpui::px(8.))
 			.capture_any_mouse_down(
 				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Right)),
+			)
+			.child(
+				gpui::div()
+					.id("workbench-heading")
+					.role(gpui::Role::Heading)
+					.aria_level(2)
+					.aria_label("Across chats")
+					.px(gpui::px(4.))
+					.pt(gpui::px(3.))
+					.pb(gpui::px(9.))
+					.text_size(gpui::px(11.5))
+					.font_weight(gpui::FontWeight::MEDIUM)
+					.child("Across chats"),
 			)
 			.child(body)
 			.smooth_scroll("workbench-scroll")

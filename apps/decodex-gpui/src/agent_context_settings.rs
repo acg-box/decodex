@@ -1,4 +1,5 @@
 //! Choose native context defaults without changing loaded conversations.
+use crate::ui_feedback::{self, Feedback};
 use gpui::AnyElement;
 #[cfg(test)] use gpui::px;
 use tokio::runtime::Builder;
@@ -21,7 +22,7 @@ pub(super) struct Panel {
 	state: Option<AgentContextSettingsResult>,
 	task: Option<Task<()>>,
 	epoch: u64,
-	feedback: String,
+	feedback: Feedback,
 }
 
 impl AgentSurface {
@@ -57,7 +58,7 @@ impl AgentSurface {
 		}
 
 		let Some(profile) = self.profile.clone() else {
-			self.context_settings.feedback = "No service connection is available.".into();
+			self.context_settings.feedback = Feedback::error("No service connection is available.");
 
 			cx.notify();
 
@@ -96,8 +97,11 @@ impl AgentSurface {
 		let generation = self.generation;
 
 		self.context_settings.state = None;
-		self.context_settings.feedback =
-			if change.is_some() { "Saving context…" } else { "Reading context settings…" }.into();
+		self.context_settings.feedback = Feedback::loading(if change.is_some() {
+			"Saving context…"
+		} else {
+			"Reading context settings…"
+		});
 
 		let key =
 			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
@@ -128,7 +132,7 @@ impl AgentSurface {
 				let (outcome, state) =
 					result.unwrap_or((None, AgentContextSettingsResult::Unavailable));
 
-				s.context_settings.feedback = feedback(change, outcome.as_ref(), &state).into();
+				s.context_settings.feedback = feedback(change, outcome.as_ref(), &state);
 				s.context_settings.state = Some(state);
 
 				cx.notify();
@@ -166,7 +170,7 @@ impl AgentSurface {
 
 		panel = panel
 			.child("Uses the same native config.toml as manual edits. Applies to new conversations. Project or managed settings can override these defaults; loaded conversations keep their settings. These experimental features remain subject to native runtime eligibility and capacity limits.")
-			.child(self.context_settings.feedback.clone());
+			.children(ui_feedback::inline_feedback("context-settings-feedback", "Context settings", &self.context_settings.feedback));
 
 		if self.context_settings.task.is_some() {
 			return panel.into_any_element();
@@ -211,8 +215,6 @@ impl AgentSurface {
 					));
 				}
 			}
-		} else {
-			panel = panel.child("Context settings are unavailable. Refresh to try again.");
 		}
 
 		panel.into_any_element()
@@ -223,7 +225,7 @@ fn feedback(
 	change: Option<(AgentContextFeature, bool)>,
 	outcome: Option<&Result<AgentCommandResponse, ClientFailure>>,
 	state: &AgentContextSettingsResult,
-) -> &'static str {
+) -> Feedback {
 	if let Some((feature, enabled)) = change {
 		if matches!(outcome, Some(Ok(AgentCommandResponse::Accepted { .. })))
 			&& let AgentContextSettingsResult::Available { preferences, .. } = state
@@ -232,14 +234,22 @@ fn feedback(
 			&& *saved == enabled
 		{
 			return if *effective == enabled {
-				"Context default saved for new conversations."
+				Feedback::success("Context default saved for new conversations.")
 			} else {
-				"Saved. Higher-priority configuration selects a different default for this project."
+				Feedback::info(
+					"Saved. Higher-priority configuration selects a different default for this project.",
+				)
 			};
 		}
-		return "The save could not be confirmed. Review the refreshed settings before trying again.";
+		return Feedback::warning(
+			"The save could not be confirmed. Review the refreshed settings before trying again.",
+		);
 	}
-	"Choose a context default for new conversations."
+	if matches!(state, AgentContextSettingsResult::Available { .. }) {
+		Feedback::default()
+	} else {
+		Feedback::warning("Context settings are unavailable. Refresh to try again.")
+	}
 }
 
 fn on_off(enabled: bool) -> &'static str {

@@ -1847,11 +1847,8 @@ phase: None,
 			let transcript = visual.debug_bounds("workspace-transcript").unwrap();
 			let footer = visual.debug_bounds("floating-composer").unwrap();
 			assert!(
-				(transcript.bottom() + gpui::px(crate::ui_theme::WORKSPACE_INSET)
-					- footer.bottom())
-				.abs()
-					< gpui::px(1.),
-				"{text}: history must extend behind the floating input to the inset edge"
+				(transcript.bottom() - footer.bottom()).abs() < gpui::px(1.),
+				"{text}: history and the floating input must share the same bottom edge"
 			);
 			let clearance = surface.read_with(visual, |s, _| s.workspace.composer_overlay_height);
 			assert!(
@@ -1887,11 +1884,10 @@ phase: None,
 
 		assert!(scroll.max_offset().y >= gpui::px(100.), "fixture must allow the full wheel delta");
 		assert!(
-			(scroll.bounds().bottom() + gpui::px(crate::ui_theme::WORKSPACE_INSET)
-				- visual.debug_bounds("floating-composer").unwrap().bottom())
-			.abs()
+			(scroll.bounds().bottom() - visual.debug_bounds("floating-composer").unwrap().bottom())
+				.abs()
 				< gpui::px(1.),
-			"history must continue behind the composer to the inset edge"
+			"history must continue behind the composer to the same bottom edge"
 		);
 
 		let position = scroll.bounds().center();

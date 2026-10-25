@@ -489,7 +489,7 @@ pub(super) fn progress_state(
 	work: &AgentWorkItemDto,
 ) -> ProgressState {
 	use super::{AgentDispatchStateDto as Dispatch, AgentWorkStatusDto as Status};
-	use crate::ui_theme::{AMBER, BLUE};
+	use crate::ui_theme::{INFO, WARNING};
 	let request = snapshot.pending_events.iter().find(|e| {
 		e.work_item_id == work.id
 			&& ["permission_pending", "user_input_pending", "server_request_pending"]
@@ -504,7 +504,7 @@ pub(super) fn progress_state(
 				_ => "An unresolved request needs your response.",
 			}
 			.into(),
-			AMBER,
+			WARNING,
 			0,
 		)
 	} else if work.dispatch_state == Dispatch::Unknown {
@@ -515,21 +515,21 @@ pub(super) fn progress_state(
 			0,
 		)
 	} else if work.dispatch_state == Dispatch::Running {
-		("Running", "Execution is active. Open the conversation for live activity.".into(), BLUE, 1)
+		("Running", "Execution is active. Open the conversation for live activity.".into(), INFO, 1)
 	} else if work.dispatch_state == Dispatch::Dispatching {
-		("Starting", "The task is being submitted; execution is not yet confirmed.".into(), BLUE, 1)
+		("Starting", "The task is being submitted; execution is not yet confirmed.".into(), INFO, 1)
 	} else if work.status == Status::UserDecision {
 		(
 			"Needs you",
 			"The task is waiting for your decision. Open its conversation for the question.".into(),
-			AMBER,
+			WARNING,
 			0,
 		)
 	} else if work.status == Status::Resolved {
 		(
 			"Marked complete",
 			"Review the result and its verification in the source conversation.".into(),
-			crate::ui_theme::GREEN,
+			crate::ui_theme::SUCCESS,
 			3,
 		)
 	} else {
@@ -541,7 +541,7 @@ pub(super) fn progress_state(
 					"Waiting for: {}",
 					blockers.iter().map(|w| w.title.as_str()).collect::<Vec<_>>().join(", ")
 				),
-				AMBER,
+				WARNING,
 				2,
 			)
 		} else if snapshot.pending_events.iter().any(|e| e.work_item_id == work.id) {

@@ -71,6 +71,13 @@ impl Motion {
 pub(crate) struct ScrollArea {
 	id: ElementId,
 	content: Stateful<Div>,
+	scrollbar: Option<(&'static str, &'static str)>,
+}
+impl ScrollArea {
+	pub(crate) fn with_scrollbar(mut self, id: &'static str, label: &'static str) -> Self {
+		self.scrollbar = Some((id, label));
+		self
+	}
 }
 impl RenderOnce for ScrollArea {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -104,6 +111,13 @@ impl RenderOnce for ScrollArea {
 				if delta == gpui::px(0.) {
 					return;
 				}
+				let current = wheel_state.read(cx).scroll.offset().y;
+				let maximum = wheel_state.read(cx).scroll.max_offset().y.max(gpui::px(0.));
+				if (delta > gpui::px(0.) && current >= gpui::px(0.))
+					|| (delta < gpui::px(0.) && current <= -maximum)
+				{
+					return;
+				}
 
 				wheel_state.update(cx, |s, _| {
 					let current = f32::from(s.scroll.offset().y);
@@ -132,7 +146,16 @@ impl RenderOnce for ScrollArea {
 				cx.notify(owner);
 			},
 		);
-		content.into_any_element()
+		if let Some((id, label)) = self.scrollbar {
+			gpui::div()
+				.relative()
+				.size_full()
+				.child(content)
+				.child(Scrollbar::new(id, label, scroll))
+				.into_any_element()
+		} else {
+			content.into_any_element()
+		}
 	}
 }
 
@@ -144,7 +167,7 @@ struct AreaState {
 
 impl SmoothScrollArea for Stateful<Div> {
 	fn smooth_scroll(self, id: impl Into<ElementId>) -> ScrollArea {
-		ScrollArea { id: id.into(), content: self }
+		ScrollArea { id: id.into(), content: self, scrollbar: None }
 	}
 }
 

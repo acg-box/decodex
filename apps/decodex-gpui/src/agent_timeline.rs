@@ -35,6 +35,8 @@ use media::Preview;
 pub(super) use render::activity_label;
 use scroll::{ROW_GAP, Viewport};
 
+const SUMMARY_NOTICE: &str = "Showing up to 100 recent prompts and final replies. Intermediate messages and tool activity are unavailable.";
+
 impl AgentSurface {
 	#[cfg(feature = "visual-capture")]
 	pub(crate) fn visual_mermaid_scroll_page(&mut self, cx: &mut Context<Self>) {
@@ -767,8 +769,21 @@ impl AgentSurface {
 		self.load_native_timeline(work, thread, false, cx);
 	}
 
-	fn refresh_native_summary(&mut self, binding: Binding, items: Vec<AgentTimelineContent>) {
+	fn refresh_native_summary(
+		&mut self,
+		binding: Binding,
+		items: Vec<AgentTimelineContent>,
+	) -> bool {
 		let jump = self.timeline.native.viewport.take_latest_request();
+		if !jump
+			&& self.timeline.native.binding.as_ref() == Some(&binding)
+			&& self.timeline.native.summary == items
+			&& self.timeline.native.notice == Some(SUMMARY_NOTICE)
+		{
+			self.timeline.native.retry_at =
+				Some(std::time::Instant::now() + Duration::from_secs(30));
+			return false;
+		}
 		let work = binding.work.clone();
 
 		self.cancel_native_scroll_anchor();
@@ -777,6 +792,7 @@ impl AgentSurface {
 		if jump {
 			self.timeline.scroll.entry(work).or_default().scroll_to_bottom();
 		}
+		true
 	}
 
 	fn refresh_native_history(&mut self, binding: Binding, page: AgentTimelinePage) -> bool {
@@ -865,6 +881,11 @@ impl AgentSurface {
 		self.timeline.native.requested = Some((work.clone(), thread.clone()));
 		self.timeline.native.requested_turn =
 			self.conversation_work().and_then(|work| work.active_turn_id);
+		if !older {
+			// Native-only conversations return before the legacy history reader.
+			// They must still advance the shared background refresh timestamp.
+			self.timeline.read_at = Some(std::time::Instant::now());
+		}
 
 		let sent_cursor = cursor.clone();
 		let request = cx.background_executor().spawn(async move {
@@ -886,78 +907,104 @@ impl AgentSurface {
 					return;
 				}
 
-				if s.selected.as_deref() != Some(&work) || !s.conversation_matches(&work, &thread) {
-					return;
-				}
-				s.timeline.native.task = None;
-
-				if let Some(decodex_protocol::AgentTimelineResult::Summary {
-					work_id,
-					account_id,
-					thread_id,
-					items,
-				}) = &result
-					&& sent_cursor.is_none()
-					&& work_id.as_str() == work
-					&& thread_id == &thread
-				{
-					s.refresh_native_summary(
-						Binding {
-							work: work.clone(),
-							thread: thread.clone(),
-							account: account_id.as_str().into(),
-						},
-						items.clone(),
-					);
-					cx.notify();
-
-					return;
-				}
-				if let Some(decodex_protocol::AgentTimelineResult::Available {
-					account_id,
-					page,
-					..
-				}) = result
-				{
-					let binding = Binding { work, thread, account: account_id.as_str().into() };
-					let accepted = match sent_cursor {
-						Some(cursor) => {
-							let accepted = s.prepend_native_history(&binding, &cursor, page);
-							if accepted
-								&& fill_viewport
-								&& !s.timeline.follow_paused.contains(&binding.work)
-							{
-								s.cancel_native_scroll_anchor();
-								if let Some(scroll) = s.timeline.scroll.get(&binding.work) {
-									scroll.scroll_to_bottom();
-								}
-							}
-							accepted
-						},
-						None => s.refresh_native_history(binding, page),
-					};
-
-					if accepted {
-						s.retire_native_output();
-						s.timeline.native.recovered();
-					} else if s.timeline.native.pagination == Pagination::Loading {
-						s.timeline.native.failed(None, std::time::Instant::now());
-					} else {
-						s.timeline.native.safety_buffering_turn_id = None;
-						s.timeline.native.notice = Some(
-							"History changed or the display limit was reached. Refresh native history.",
-						);
-					}
-				} else {
-					s.timeline.native.failed(result, std::time::Instant::now());
-				}
-
-				s.refresh_native_input_receipts(cx);
-				cx.notify();
+				s.finish_native_timeline_read(
+					result,
+					(work, thread),
+					sent_cursor,
+					fill_viewport,
+					cx,
+				);
 			});
 		}));
 
-		cx.notify();
+		if older || self.conversation_work().is_some_and(|work| self.native_history_loading(&work))
+		{
+			cx.notify();
+		}
+	}
+
+	fn finish_native_timeline_read(
+		&mut self,
+		result: Option<decodex_protocol::AgentTimelineResult>,
+		target: (String, String),
+		sent_cursor: Option<String>,
+		fill_viewport: bool,
+		cx: &mut Context<Self>,
+	) {
+		let (work, thread) = target;
+		if self.selected.as_deref() != Some(&work) || !self.conversation_matches(&work, &thread) {
+			return;
+		}
+		self.timeline.native.task = None;
+
+		if let Some(decodex_protocol::AgentTimelineResult::Summary {
+			work_id,
+			account_id,
+			thread_id,
+			items,
+		}) = &result
+			&& sent_cursor.is_none()
+			&& work_id.as_str() == work
+			&& thread_id == &thread
+		{
+			let changed = self.refresh_native_summary(
+				Binding {
+					work: work.clone(),
+					thread: thread.clone(),
+					account: account_id.as_str().into(),
+				},
+				items.clone(),
+			);
+			if changed {
+				cx.notify();
+			}
+
+			return;
+		}
+		let mut changed = true;
+		if let Some(decodex_protocol::AgentTimelineResult::Available { account_id, page, .. }) =
+			result
+		{
+			let binding = Binding { work, thread, account: account_id.as_str().into() };
+			changed = sent_cursor.is_some() || !self.timeline.native.matches_page(&binding, &page);
+			let accepted = match sent_cursor {
+				Some(cursor) => {
+					let accepted = self.prepend_native_history(&binding, &cursor, page);
+					if accepted
+						&& fill_viewport
+						&& !self.timeline.follow_paused.contains(&binding.work)
+					{
+						self.cancel_native_scroll_anchor();
+						if let Some(scroll) = self.timeline.scroll.get(&binding.work) {
+							scroll.scroll_to_bottom();
+						}
+					}
+					accepted
+				},
+				None => self.refresh_native_history(binding, page),
+			};
+
+			if accepted {
+				changed |= self.retire_native_output();
+				self.timeline.native.recovered();
+			} else if self.timeline.native.pagination == Pagination::Loading {
+				changed = true;
+				self.timeline.native.failed(None, std::time::Instant::now());
+			} else {
+				changed = true;
+				self.timeline.native.safety_buffering_turn_id = None;
+				self.timeline.native.notice = Some(
+					"History changed or the display limit was reached. Refresh native history.",
+				);
+			}
+		} else {
+			self.timeline.native.failed(result, std::time::Instant::now());
+		}
+
+		self.refresh_native_input_receipts(cx);
+		if changed {
+			cx.notify();
+		}
 	}
 }
 
@@ -989,6 +1036,7 @@ pub(super) struct Timeline {
 	pub safety_buffering_turn_id: Option<String>,
 	pub weather: std::collections::BTreeMap<String, Vec<WeatherForecast>>,
 	summary: Vec<AgentTimelineContent>,
+	summary_focus: std::cell::RefCell<std::collections::BTreeMap<String, gpui::FocusHandle>>,
 	pub older_cursor: Option<String>,
 	pub prefetch_requested: bool,
 	pagination: Pagination,
@@ -1008,6 +1056,20 @@ pub(super) struct Timeline {
 	seen_cursors: BTreeSet<String>,
 }
 impl Timeline {
+	fn matches_page(&self, binding: &Binding, page: &AgentTimelinePage) -> bool {
+		self.binding.as_ref() == Some(binding)
+			&& page.thread_id == binding.thread
+			&& self.entries == page.entries
+			&& self.summary.is_empty()
+			&& self.weather == page.weather
+			&& self.safety_buffering_turn_id == page.safety_buffering_turn_id
+			&& self.older_cursor == page.next_cursor
+			&& self.opening_session == page.active_realtime_session_at_page_start
+			&& self.notice.is_none()
+			&& self.pagination == Pagination::Idle
+			&& !self.viewport.latest_requested()
+	}
+
 	pub(super) fn cancel_read(&mut self) {
 		self.task = None;
 		self.epoch = self.epoch.wrapping_add(1);
@@ -1101,12 +1163,11 @@ impl Timeline {
 		self.recovered();
 
 		self.retry_at = Some(std::time::Instant::now() + Duration::from_secs(30));
-		self.notice = Some(
-			"Showing up to 100 recent prompts and final replies. Intermediate messages and tool activity are unavailable.",
-		);
+		self.notice = Some(SUMMARY_NOTICE);
 	}
 
 	fn clear_page(&mut self) {
+		self.summary_focus.borrow_mut().clear();
 		self.revision = self.revision.wrapping_add(1);
 
 		self.preview.clear();
@@ -1351,7 +1412,8 @@ mod tests {
 			"brief reads do not flash a loader"
 		);
 		std::thread::sleep(std::time::Duration::from_millis(390));
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		// Deliver the requested animation frame, as the native window does.
+		visual.update(crate::ui_frame::draw_frame);
 		assert!(visual.debug_bounds("loading-feedback-Loading conversation").is_some());
 		assert!(visual.debug_bounds("saved-local-history").is_none());
 
@@ -1767,6 +1829,49 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn repeated_summary_preserves_layout_until_content_or_navigation_changes(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, _| {
+			let item = AgentTimelineContent::Item {
+				turn_id: "turn".into(),
+				item_id: "answer".into(),
+				kind: "agentMessage".into(),
+				text: "A quiet reading plan".into(),
+				phase: None,
+				app_ui: false,
+				truncated: false,
+				activity: None,
+				attachments: vec![],
+				collaboration: None,
+			};
+			let mut items = vec![item];
+			assert!(s.refresh_native_summary(binding(), items.clone()));
+			let revision = s.timeline.native.revision;
+			for _ in 0..4 {
+				assert!(!s.refresh_native_summary(binding(), items.clone()));
+			}
+			assert_eq!(
+				s.timeline.native.revision, revision,
+				"identical polls must not discard measured rows or scroll anchors"
+			);
+			if let AgentTimelineContent::Item { text, .. } = &mut items[0] {
+				text.push_str(" updated");
+			}
+			assert!(s.refresh_native_summary(binding(), items.clone()));
+			assert_ne!(s.timeline.native.revision, revision);
+			s.timeline.native.viewport.request_latest();
+			assert!(
+				s.refresh_native_summary(binding(), items.clone()),
+				"explicit navigation must still repaint"
+			);
+			s.timeline.native.notice = Some("Retrying native history");
+			assert!(s.refresh_native_summary(binding(), items), "recovery must still repaint");
+		});
+	}
+
+	#[gpui::test]
 	fn prompt_handback_replaces_old_history_only_with_fresh_bound_pages(
 		cx: &mut gpui::TestAppContext,
 	) {
@@ -1987,6 +2092,26 @@ mod tests {
 		assert_eq!(state.revision, revision);
 		assert!(state.replace(binding(), page(vec![boundary(1, true)], None, None)));
 		assert_ne!(state.revision, revision);
+	}
+
+	#[test]
+	fn identical_pages_stay_quiet_but_completion_buffering_and_recovery_repaint() {
+		let mut state = Timeline::default();
+		let mut current = page(vec![boundary(1, false)], None, None);
+		assert!(state.replace(binding(), current.clone()));
+		assert!(state.matches_page(&binding(), &current));
+		current.entries = vec![boundary(1, true)];
+		assert!(!state.matches_page(&binding(), &current));
+		assert!(state.refresh(binding(), current.clone()));
+		assert!(state.matches_page(&binding(), &current));
+		current.safety_buffering_turn_id = Some("turn".into());
+		assert!(!state.matches_page(&binding(), &current));
+		assert!(state.refresh(binding(), current.clone()));
+		state.notice = Some("Retrying native history");
+		assert!(!state.matches_page(&binding(), &current));
+		state.recovered();
+		state.viewport.request_latest();
+		assert!(!state.matches_page(&binding(), &current));
 	}
 
 	#[test]

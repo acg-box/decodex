@@ -557,6 +557,7 @@ mod probe {
 // This probe shares the application's package dependency set.
 #[cfg(any(test, target_os = "macos"))] use futures_util as _;
 
+use base64 as _;
 use libc as _;
 use ondine as _;
 use pulldown_cmark as _;

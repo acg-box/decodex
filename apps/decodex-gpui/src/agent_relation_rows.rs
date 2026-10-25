@@ -144,8 +144,8 @@ pub(super) fn render(
 		);
 	for line in frame.lines {
 		let (symbol, title, color) = match line.kind {
-			OperationKind::Question => (Symbol::BellAttention, "Needs you", ui_theme::AMBER),
-			OperationKind::Result => (Symbol::Confirm, "Result", ui_theme::GREEN),
+			OperationKind::Question => (Symbol::BellAttention, "Needs you", ui_theme::WARNING),
+			OperationKind::Result => (Symbol::Confirm, "Result", ui_theme::SUCCESS),
 			OperationKind::Message =>
 				(Symbol::Document, if live { "Update" } else { "Last message" }, ui_theme::BLUE),
 			OperationKind::Action =>

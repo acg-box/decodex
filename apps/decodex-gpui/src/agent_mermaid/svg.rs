@@ -2,11 +2,9 @@
 // Variable resolution follows Ondine's terminal adapter; see NOTICE.md and LICENSE-ONDINE.
 use std::{collections::HashMap, ops::Range};
 
-use crate::ui_theme::{
-	ACCENT, AMBER, BLUE, CANVAS, ERROR, GREEN, TEXT, TEXT_MUTED, appearance::Theme,
-};
+use crate::ui_theme::{ACCENT, AMBER, BLUE, CANVAS, ColorScheme, ERROR, GREEN, TEXT, TEXT_MUTED};
 
-pub(super) fn desktop(svg: &str, theme: Theme) -> Result<String, String> {
+pub(super) fn desktop(svg: &str, theme: ColorScheme) -> Result<String, String> {
 	let document = roxmltree::Document::parse(svg).map_err(|e| e.to_string())?;
 	let style = document.root_element().attribute("style").unwrap_or_default();
 	let mut variables = HashMap::new();

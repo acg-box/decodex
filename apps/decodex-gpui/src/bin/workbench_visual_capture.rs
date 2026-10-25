@@ -126,17 +126,7 @@ fn main() -> Result<()> {
 		return Ok(());
 	}
 
-	let output = env::var_os("DECODEX_VISUAL_OUTPUT")
-		.map(PathBuf::from)
-		.unwrap_or_else(|| PathBuf::from("target/visual-tests/codex-workbench.png"));
-
-	if let Some(parent) = output.parent() {
-		fs::create_dir_all(parent)?;
-	}
-
-	let mut cx = VisualTestAppContext::new(gpui_platform::current_platform(false));
-
-	cx.update(shell::bind_keys);
+	let (output, mut cx) = capture_context()?;
 
 	let destination = capture_destination();
 	let left_sidebar_visible = env::var("DECODEX_VISUAL_SIDEBAR").as_deref() != Ok("hidden");
@@ -227,18 +217,7 @@ fn main() -> Result<()> {
 
 		handle.into()
 	} else {
-		cx.open_offscreen_window(gpui::size(gpui::px(1_248.0), gpui::px(840.0)), |window, cx| {
-			cx.new(|cx| {
-				Shell::visual_destination(
-					destination,
-					left_sidebar_visible,
-					inspector_visible,
-					window,
-					cx,
-				)
-			})
-		})?
-		.into()
+		capture_shell(&mut cx, destination, left_sidebar_visible, inspector_visible)?
 	};
 
 	settle_capture_layout(&mut cx, window)?;
@@ -618,6 +597,21 @@ fn capture_interactions(cx: &mut VisualTestAppContext, window: AnyWindowHandle) 
 	#[cfg(target_os = "macos")]
 	verify_native_composer_focus(cx, window)?;
 	capture_status_dismissal(cx, window)?;
+	if let Ok(distance) = env::var("DECODEX_VISUAL_SCROLL_Y") {
+		let distance: f32 = distance.parse()?;
+		cx.simulate_event(
+			window,
+			gpui::ScrollEvent {
+				position: gpui::point(gpui::px(800.), gpui::px(420.)),
+				delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-distance))),
+				..Default::default()
+			},
+		);
+		cx.advance_clock(Duration::from_secs(1));
+		cx.run_until_parked();
+		thread::sleep(MOTION_PANEL + Duration::from_millis(80));
+		cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
+	}
 
 	let Ok(value) = env::var("DECODEX_VISUAL_HOVER") else {
 		return Ok(());
@@ -642,6 +636,75 @@ fn capture_interactions(cx: &mut VisualTestAppContext, window: AnyWindowHandle) 
 	})?;
 
 	Ok(())
+}
+
+fn capture_context() -> Result<(PathBuf, VisualTestAppContext)> {
+	let output = env::var_os("DECODEX_VISUAL_OUTPUT")
+		.map(PathBuf::from)
+		.unwrap_or_else(|| PathBuf::from("target/visual-tests/codex-workbench.png"));
+
+	if let Some(parent) = output.parent() {
+		fs::create_dir_all(parent)?;
+	}
+
+	let mut cx = VisualTestAppContext::new(gpui_platform::current_platform(false));
+	let appearance = match env::var("DECODEX_VISUAL_APPEARANCE").as_deref() {
+		Ok("system") => ui_theme::appearance::Appearance::System,
+		Ok("light") => ui_theme::appearance::Appearance::Light,
+		Ok("dark") | Err(_) => ui_theme::appearance::Appearance::Dark,
+		Ok(value) => return Err(Error::other(format!("Unknown appearance: {value}")).into()),
+	};
+	cx.update(|cx| appearance.apply(cx));
+	if let Ok(id) = env::var("DECODEX_VISUAL_THEME") {
+		let theme = ui_theme::ColorTheme::from_id(&id)
+			.ok_or_else(|| Error::other(format!("Unknown color theme: {id}")))?;
+		cx.update(|cx| theme.apply(cx));
+	}
+
+	cx.update(shell::bind_keys);
+
+	Ok((output, cx))
+}
+
+fn capture_shell(
+	cx: &mut VisualTestAppContext,
+	destination: Destination,
+	left_sidebar_visible: bool,
+	inspector_visible: bool,
+) -> Result<AnyWindowHandle> {
+	let size = capture_size()?;
+	Ok(if env::var_os("DECODEX_VISUAL_STANDALONE_SETTINGS").is_some() {
+		cx.open_offscreen_window(size, |window, cx| {
+			let owner =
+				cx.new(|cx| Shell::visual_destination(destination, true, false, window, cx));
+			cx.new(|cx| shell::SettingsWindow::new(owner, window, cx))
+		})?
+		.into()
+	} else {
+		cx.open_offscreen_window(size, |window, cx| {
+			cx.new(|cx| {
+				Shell::visual_destination(
+					destination,
+					left_sidebar_visible,
+					inspector_visible,
+					window,
+					cx,
+				)
+			})
+		})?
+		.into()
+	})
+}
+
+fn capture_size() -> Result<gpui::Size<gpui::Pixels>> {
+	Ok(if let Ok(size) = env::var("DECODEX_VISUAL_SIZE") {
+		let (width, height) = size
+			.split_once('x')
+			.ok_or_else(|| Error::other("Use WIDTHxHEIGHT for DECODEX_VISUAL_SIZE"))?;
+		gpui::size(gpui::px(width.parse()?), gpui::px(height.parse()?))
+	} else {
+		gpui::size(gpui::px(1248.), gpui::px(840.))
+	})
 }
 
 fn capture_destination() -> Destination {

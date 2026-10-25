@@ -1,7 +1,7 @@
 //! Ondine owns Mermaid syntax and layout; the desktop owns presentation and resource limits.
 #[path = "agent_mermaid/svg.rs"] mod svg;
 
-use crate::ui_theme::appearance::Theme;
+use crate::ui_theme::ColorScheme;
 use gpui::{RenderImage, SvgRenderer};
 use std::{
 	sync::Arc,
@@ -22,7 +22,7 @@ pub(super) struct Diagram {
 pub(super) fn prepare(
 	source: &str,
 	renderer: &SvgRenderer,
-	theme: Theme,
+	theme: ColorScheme,
 ) -> Result<Diagram, String> {
 	let rendered = compile(source, theme)?;
 	let svg = renderer.parse_svg(rendered.svg.as_bytes()).map_err(|e| e.to_string())?;
@@ -31,7 +31,7 @@ pub(super) fn prepare(
 	Ok(Diagram { image, width: rendered.width as f32, height: rendered.height as f32 })
 }
 
-fn compile(source: &str, theme: Theme) -> Result<ondine::Rendered, String> {
+fn compile(source: &str, theme: ColorScheme) -> Result<ondine::Rendered, String> {
 	let now = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?;
 	let mut rendered =
 		ondine::render(source, OPTIONS, now.as_secs_f64() * 1_000.).map_err(|e| e.message)?;

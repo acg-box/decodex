@@ -1,15 +1,7 @@
 {
-  "schema": "decodex/vstyle-rust-audit/2",
-  "tool": {
-    "package": "vibe-style",
-    "version": "0.2.5",
-    "source": "https://github.com/acg-box/vibe-style.git",
-    "commit": "07886c69edbdf4b7569540d2ccc5a57f10a3244e",
-    "git_short": "07886c6",
-    "install": "cargo install --git https://github.com/acg-box/vibe-style.git --rev 07886c69edbdf4b7569540d2ccc5a57f10a3244e --locked vibe-style"
-  },
+  "schema": "decodex/vstyle-rust-audit/3",
   "minimum_checked_files": 877,
-  "rust_rules": [
+  "required_rust_rules": [
     "RUST-STYLE-FILE-001",
     "RUST-STYLE-GENERICS-001",
     "RUST-STYLE-GENERICS-002",

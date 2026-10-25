@@ -43,11 +43,9 @@ use decodex_protocol::AgentAttachmentDto;
 pub(super) const MODEL_MENU_WIDTH: f32 = 232.;
 pub(super) const MODEL_MENU_SHADOW: f32 = 8.;
 
-fn composer_hover_fill(send: bool, dictation_action: bool, menu_active: bool) -> gpui::Rgba {
-	if send && dictation_action {
-		crate::ui_theme::rgba(0xffffff20)
-	} else if send {
-		crate::ui_theme::rgb(0x606064)
+fn composer_hover_fill(send: bool, menu_active: bool) -> gpui::Rgba {
+	if send {
+		ui_theme::rgb(ui_theme::PRIMARY_FILL).blend(gpui::rgb(0xffffff).opacity(0.08))
 	} else {
 		crate::ui_theme::rgba(if menu_active { SELECTED_HOVER_FILL } else { HOVER_FILL })
 	}
@@ -81,7 +79,7 @@ impl Render for ComposerTip {
 	}
 }
 
-fn composer_capsule(native: bool) -> Stateful<Div> {
+pub(super) fn composer_capsule(native: bool) -> Stateful<Div> {
 	gpui::div()
 		.id("agent-composer")
 		.debug_selector(|| "agent-composer".into())
@@ -93,7 +91,16 @@ fn composer_capsule(native: bool) -> Stateful<Div> {
 		.px(gpui::px(10.))
 		.py(gpui::px(7.))
 		.rounded(gpui::px(ui_theme::COMPOSER_RADIUS))
-		.when(!native, |d| d.bg(crate::ui_theme::rgb(0x27272b)))
+		.when(
+			!native
+				|| ui_theme::material::Surface::InputBar.material()
+					== ui_theme::material::Material::Thin,
+			|d| d.border_1().border_color(crate::ui_theme::rgb(ui_theme::LINE_STRONG).opacity(0.4)),
+		)
+		// Native materials can take on a desktop tint. Keep the editor's reading
+		// surface in the selected palette while AppKit retains the material edge.
+		.when(native, |d| d.bg(crate::ui_theme::rgba(ui_theme::COMPOSER_MATERIAL)))
+		.when(!native, |d| d.bg(crate::ui_theme::rgba(ui_theme::COMPOSER_MATERIAL)))
 		.when(!native, |d| {
 			d.shadow(vec![gpui::BoxShadow {
 				inset: false,
@@ -569,7 +576,7 @@ impl AgentSurface {
 				.debug_selector(|| "composer-blocked".into())
 				.opacity(opacity)
 				.w_full()
-				.min_h(gpui::px(51.))
+				.min_h(gpui::px(36.))
 				.px(gpui::px(8.))
 				.flex()
 				.flex_col()
@@ -993,7 +1000,7 @@ impl AgentSurface {
 			.justify_center()
 			.text_size(gpui::px(12.0))
 			.line_height(gpui::px(16.0))
-			.text_color(crate::ui_theme::rgb(if send { TEXT } else { TEXT_MUTED }))
+			.text_color(ui_theme::rgb(if send { ui_theme::ON_PRIMARY } else { TEXT_MUTED }))
 			.when(id == "model", |d| {
 				d.px(gpui::px(4.))
 					.text_size(gpui::px(ui_theme::BODY_SIZE))
@@ -1011,10 +1018,9 @@ impl AgentSurface {
 				d.w(gpui::px(28.))
 					.h(gpui::px(28.))
 					.rounded_full()
-					.bg(crate::ui_theme::rgb(0x515155))
+					.bg(ui_theme::rgb(ui_theme::PRIMARY_FILL))
 			})
 			.when(dictation_action, |d| d.w(gpui::px(26.)).h(gpui::px(26.)).px_0().rounded_full())
-			.when(dictation_action && send, |d| d.bg(crate::ui_theme::rgba(0xffffff12)))
 			.when(id == "audio-item", |d| d.aria_expanded(self.composer_menu == Some("microphone")))
 			.when(disabled, |d| d.opacity(0.35))
 			.when(!disabled, |d| d.cursor_pointer())
@@ -1022,9 +1028,9 @@ impl AgentSurface {
 				if disabled {
 					return d;
 				}
-				d.bg(composer_hover_fill(send, dictation_action, menu_active))
+				d.bg(composer_hover_fill(send, menu_active))
 			})
-			.focus(|d| d.bg(crate::ui_theme::rgba(SELECTED_HOVER_FILL)))
+			.focus(move |d| d.bg(composer_hover_fill(send, menu_active)))
 			.when(
 				![
 					"model",
@@ -1509,11 +1515,11 @@ fn save_clipboard_image(image: &Image) -> Result<std::path::PathBuf> {
 
 fn context_ring(fraction: f32) -> impl IntoElement {
 	let fill = crate::ui_theme::rgb(if fraction >= 0.9 {
-		0xed8585
+		ui_theme::ERROR
 	} else if fraction >= 0.7 {
-		ui_theme::AMBER
+		ui_theme::WARNING
 	} else {
-		0xa5a0ed
+		ui_theme::INFO
 	});
 	gpui::canvas(
 		|_, _, _| (),

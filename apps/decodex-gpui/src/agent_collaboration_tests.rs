@@ -210,11 +210,26 @@ fn source_reference_fits_one_line_and_copies_its_exact_value(cx: &mut gpui::Test
 	});
 	visual.simulate_resize(gpui::size(gpui::px(1536.), gpui::px(1024.)));
 	visual.update(crate::ui_frame::draw_frame);
+	// Hit-test the presented disclosure, independently of asynchronous image loads.
+	visual.update(crate::ui_frame::draw_frame);
+	std::thread::sleep(std::time::Duration::from_millis(240));
+	visual.update(crate::ui_frame::draw_frame);
 	let value = visual.debug_bounds("collaboration-reference-unsent:70-Thread").unwrap();
 	let panel = visual.debug_bounds("workbench-body").unwrap();
 	assert!(f32::from(value.size.height) <= 24.);
 	assert!(value.left() >= panel.left() && value.right() <= panel.right());
 	let copy = visual.debug_bounds("copy-collaboration-reference-unsent:70-Thread").unwrap();
+	let distance = (copy.bottom() - panel.bottom() + gpui::px(24.)).max(gpui::px(0.));
+	visual.simulate_event(gpui::ScrollEvent {
+		position: panel.center(),
+		delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), -distance)),
+		..Default::default()
+	});
+	visual.update(crate::ui_frame::draw_frame);
+	std::thread::sleep(std::time::Duration::from_millis(300));
+	visual.update(crate::ui_frame::draw_frame);
+	let copy = visual.debug_bounds("copy-collaboration-reference-unsent:70-Thread").unwrap();
+	assert!(panel.contains(&copy.center()), "the source action must be reachable by scrolling");
 	visual.simulate_click(copy.center(), Default::default());
 	visual.update(|_, cx| {
 		assert_eq!(cx.read_from_clipboard().and_then(|item| item.text()).as_deref(), Some(THREAD));

@@ -10,6 +10,7 @@ mod ui_preferences;
 mod ui_theme;
 #[path = "../src/agent_weather.rs"] mod weather_card;
 
+use base64 as _;
 use futures_util as _;
 use gpui::{
 	AppContext as _, Bounds, ClipboardItem, Context, Render, TitlebarOptions, Window,

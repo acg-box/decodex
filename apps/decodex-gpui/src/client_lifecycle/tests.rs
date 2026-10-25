@@ -1128,6 +1128,28 @@ async fn retry_progression_is_capped_and_uses_only_fake_time() {
 }
 
 #[tokio::test]
+async fn startup_sends_desktop_preferences_before_provider_queries() {
+	let temporary = TempDir::new().expect("temporary directory");
+	let root = cache_parent(&temporary);
+	let mut lifecycle = lifecycle(&root);
+	lifecycle.conversations().activate();
+	lifecycle.history_pager().open(entity("startup-history")).expect("pending provider history");
+	let mut io = FakeIo::new(
+		root,
+		vec![connected(
+			vec![
+				SessionAction::Snapshot(snapshot(1, "system", 1)),
+				SessionAction::CancelAfterQuery,
+			],
+			None,
+		)],
+	);
+	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::Stopped);
+	let queries = io.sent_queries.lock().expect("sent queries");
+	assert!(matches!(queries.first().map(|q| &q.payload), Some(QueryPayload::GetDesktopSettings)));
+}
+
+#[tokio::test]
 async fn run_with_io_dispatches_history_and_restarts_from_head_after_reconnect() {
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let root = cache_parent(&temporary);

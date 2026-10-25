@@ -13,9 +13,9 @@ use gpui::{
 use libc::{c_char, time_t, tm};
 
 use crate::{
-	shell::{WB_AMBER, WB_BLUE, WB_TEXT_FAINT},
+	shell::WB_TEXT_FAINT,
 	ui_motion,
-	ui_theme::{ERROR, FONT_FAMILY},
+	ui_theme::{ERROR, FONT_FAMILY, SUCCESS, WARNING},
 };
 use decodex_protocol::{AccountQuotaStateDto, AccountQuotaWindowDto, EntityRevision};
 
@@ -177,8 +177,8 @@ fn remaining(quota: AccountQuotaWindowDto) -> Option<f32> {
 fn quota_color(remaining: f32) -> u32 {
 	match quota_tone(remaining) {
 		"critical" => ERROR,
-		"warning" => WB_AMBER,
-		_ => WB_BLUE,
+		"warning" => WARNING,
+		_ => SUCCESS,
 	}
 }
 

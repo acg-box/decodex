@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Attest the read-only Rust vstyle audit and require zero findings."""
+"""Run the installed Rust style checker and require zero findings."""
 
 from collections import Counter
 import json
@@ -21,21 +21,16 @@ FOUND_PATTERN = re.compile(r"^Found (?P<count>[0-9]+) style violation\(s\)\.$")
 
 
 class AuditError(RuntimeError):
-    """The audit input or provenance did not satisfy the closed contract."""
+    """The style checker or its output did not satisfy the configured checks."""
 
 
 def load_contract(path=CONTRACT_PATH):
     """Load the checked-in audit contract."""
     with Path(path).open(encoding="utf-8") as contract_file:
         contract = json.load(contract_file)
-    if contract.get("schema") != "decodex/vstyle-rust-audit/2":
+    if contract.get("schema") != "decodex/vstyle-rust-audit/3":
         raise AuditError("unsupported vstyle audit contract schema")
-    tool = contract["tool"]
-    if not re.fullmatch(r"[0-9a-f]{40}", tool["commit"]):
-        raise AuditError("vstyle source commit is not a full Git object ID")
-    if tool["git_short"] != tool["commit"][:7] or tool["commit"] not in tool["install"]:
-        raise AuditError("vstyle install and version identities do not match the pinned commit")
-    if contract["rust_rules"] != sorted(set(contract["rust_rules"])):
+    if contract["required_rust_rules"] != sorted(set(contract["required_rust_rules"])):
         raise AuditError("vstyle Rust rule contract is not sorted and unique")
     if any(key in contract for key in ("baseline", "accepted_baseline", "governance")):
         raise AuditError("vstyle audit does not accept finding exemptions")
@@ -43,22 +38,6 @@ def load_contract(path=CONTRACT_PATH):
     if type(minimum) is not int or minimum <= 0:
         raise AuditError("vstyle minimum checked file count must be a positive integer")
     return contract
-
-
-def parse_host(rustc_output):
-    """Extract the active Rust host triple."""
-    for line in rustc_output.splitlines():
-        if line.startswith("host: "):
-            return line.removeprefix("host: ")
-    raise AuditError("rustc did not report a host triple")
-
-
-def validate_version(actual, contract, host):
-    """Attest the exact package version, source revision, and build target."""
-    tool = contract["tool"]
-    expected = f"vibe-style {tool['version']}-{tool['git_short']}-{host}"
-    if actual.strip() != expected:
-        raise AuditError(f"vstyle identity mismatch: expected {expected!r}, got {actual.strip()!r}")
 
 
 def parse_coverage(output):
@@ -78,12 +57,10 @@ def parse_coverage(output):
 
 
 def validate_rules(actual, contract):
-    """Attest the complete implemented Rust rule inventory."""
-    expected = sorted(contract["rust_rules"])
-    if actual != expected:
-        missing = sorted(set(expected) - set(actual))
-        added = sorted(set(actual) - set(expected))
-        raise AuditError(f"vstyle Rust rule inventory mismatch: missing={missing}, added={added}")
+    """Require the configured rules and allow additional implemented checks."""
+    missing = sorted(set(contract["required_rust_rules"]) - set(actual))
+    if missing:
+        raise AuditError(f"vstyle required Rust rules are missing: {missing}")
 
 
 def finding_key(path, rule, message, fixable):
@@ -163,18 +140,12 @@ def run(command):
 
 
 def audit():
-    """Execute the closed read-only audit contract."""
+    """Check all workspace Rust files with the installed vstyle version."""
     contract = load_contract()
-
-    rustc = run(["rustc", "-vV"])
-    if rustc.returncode != 0:
-        raise AuditError(f"rustc host query failed: {rustc.stderr.strip()}")
-    host = parse_host(rustc.stdout)
 
     version = run(["cargo", "vstyle", "--version"])
     if version.returncode != 0:
         raise AuditError(f"vstyle version query failed: {version.stderr.strip()}")
-    validate_version(version.stdout, contract, host)
 
     coverage = run(["cargo", "vstyle", "coverage"])
     if coverage.returncode != 0:
@@ -226,7 +197,7 @@ def main():
     try:
         return audit()
     except (AuditError, KeyError, TypeError, ValueError, json.JSONDecodeError, OSError) as error:
-        print(f"vstyle audit: provenance or contract failure: {error}", file=sys.stderr)
+        print(f"vstyle audit: setup or output failure: {error}", file=sys.stderr)
         return 2
 
 

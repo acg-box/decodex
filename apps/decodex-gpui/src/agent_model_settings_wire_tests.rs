@@ -71,6 +71,25 @@ fn snapshot() -> AgentSnapshotDto {
 	}
 }
 
+#[test]
+fn repeated_model_observations_only_invalidate_changed_values() {
+	let mut panel = model_settings::Panel::default();
+	let state = AgentModelSettingsResult::Available {
+		work_id: EntityId::new("root").unwrap(),
+		thread_id: EntityId::new("thread").unwrap(),
+		account_id: EntityId::new("account").unwrap(),
+		model_provider: None,
+		model: Some(WireText::new("model").unwrap()),
+		reasoning_effort: None,
+	};
+	assert!(panel.observe("root".into(), state.clone()));
+	assert!(!panel.observe("root".into(), state.clone()));
+	assert!(!panel.observe("root".into(), AgentModelSettingsResult::Unavailable));
+	assert_eq!(panel.observations.get("root"), Some(&state));
+	assert!(panel.observe("root".into(), AgentModelSettingsResult::NotReported));
+	assert!(!panel.observe("root".into(), AgentModelSettingsResult::NotReported));
+}
+
 #[gpui::test]
 fn model_settings_click_refreshes_idle_task_and_rejects_foreign_reply(cx: &mut TestAppContext) {
 	let (_dir, profile, server) = fixture();

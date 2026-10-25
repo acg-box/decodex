@@ -1,4 +1,5 @@
 //! Explicit current-turn settings, separate from future defaults and pending approvals.
+use crate::ui_feedback::{self, Feedback};
 use gpui::AnyElement;
 use tokio::runtime::Builder;
 
@@ -22,7 +23,7 @@ pub(super) struct Panel {
 	work: Option<String>,
 	task: Option<Task<()>>,
 	epoch: u64,
-	feedback: String,
+	feedback: Feedback,
 	reviewed: bool,
 	model_draft: Option<decodex_protocol::AgentLiveModelSelection>,
 	choosing_model: bool,
@@ -194,13 +195,13 @@ impl AgentSurface {
 				s.live_reviewer.reviewed = !saving;
 
 				s.live_reviewer.feedback=match outcome {
-					Some(Ok(AgentCommandResponse::Accepted {..}))=>"Published for subsequent steps of this turn. This does not confirm a later inference used the selection.",
-					Some(Ok(AgentCommandResponse::Rejected {..}))=>"The edit was not accepted. Refresh and review the current turn.",
-					Some(_)=>"Publication could not be confirmed. No automatic retry was made.",
-					None if saving=>"The change could not be confirmed. Check its status before editing again.",
-					None if matches!(state,AgentLiveReviewerState::Unavailable)=>"No editable active turn is available. Refresh the task.",
-					None=>"Changes apply to subsequent steps of this turn. Saved task defaults stay unchanged.",
-				}.into();
+					Some(Ok(AgentCommandResponse::Accepted {..}))=>Feedback::info("Published for subsequent steps of this turn. This does not confirm a later inference used the selection."),
+					Some(Ok(AgentCommandResponse::Rejected {..}))=>Feedback::error("The edit was not accepted. Refresh and review the current turn."),
+					Some(_)=>Feedback::warning("Publication could not be confirmed. No automatic retry was made."),
+					None if saving=>Feedback::warning("The change could not be confirmed. Check its status before editing again."),
+					None if matches!(state,AgentLiveReviewerState::Unavailable)=>Feedback::warning("No editable active turn is available. Refresh the task."),
+					None=>Feedback::neutral("Changes apply to subsequent steps of this turn. Saved task defaults stay unchanged."),
+				};
 				s.live_reviewer.state=Some(match state {AgentLiveReviewerState::Available {ref thread_id,ref turn_id,..} if thread_id.as_str()!=thread || turn_id.as_str()!=turn=>AgentLiveReviewerState::Unavailable,other=>other});
 				cx.notify();
 			});
@@ -237,7 +238,11 @@ impl AgentSurface {
 		);
 
 		if self.live_reviewer.work.as_ref() == Some(&work.id) {
-			panel = panel.child(self.live_reviewer.feedback.clone());
+			panel = panel.children(ui_feedback::inline_feedback(
+				"live-settings-feedback",
+				"Current-turn settings",
+				&self.live_reviewer.feedback,
+			));
 
 			if let Some(AgentLiveReviewerState::Available {
 				turn_id,
@@ -397,12 +402,11 @@ impl AgentSurface {
 		self.live_reviewer.work = Some(work.to_owned());
 		self.live_reviewer.state = None;
 		self.live_reviewer.reviewed = false;
-		self.live_reviewer.feedback = if saving {
+		self.live_reviewer.feedback = Feedback::loading(if saving {
 			"Updating current-turn settings…"
 		} else {
 			"Reading current-turn operation state…"
-		}
-		.into();
+		});
 
 		epoch
 	}

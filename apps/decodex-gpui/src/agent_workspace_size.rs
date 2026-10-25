@@ -14,7 +14,7 @@ use crate::{
 			StatefulInteractiveElement, Styled, Window, graph,
 		},
 	},
-	ui_motion,
+	ui_motion, ui_theme,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -201,8 +201,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_composer_clearance(&self) -> f32 {
-		// The editor anchors to the outer frame; scrolling content ends at its inset.
-		(self.workspace.composer_overlay_height - crate::ui_theme::WORKSPACE_INSET).max(0.)
+		self.workspace.composer_overlay_height.max(0.)
 	}
 
 	pub(super) fn workspace_graph_size(&self, window: &Window, _wide: bool) -> (f32, f32) {
@@ -215,15 +214,11 @@ impl AgentSurface {
 
 		let viewport = window.viewport_size();
 		let sidebar = self.workspace_sidebar_width(window);
+		let right = self.agent_tree_width(window);
+		let gutters = ui_theme::WORKSPACE_GUTTER * if right > 0.1 { 3. } else { 2. };
 		let available = (
-			(f32::from(viewport.width)
-				- sidebar
-				- self.agent_tree_width(window)
-				- 2. * crate::ui_theme::WORKSPACE_INSET)
-				.max(0.),
-			(f32::from(viewport.height)
-				- WINDOW_CONTROLS_CLEARANCE
-				- 2. * crate::ui_theme::WORKSPACE_INSET)
+			(f32::from(viewport.width) - sidebar - right - gutters).max(0.),
+			(f32::from(viewport.height) - WINDOW_CONTROLS_CLEARANCE - ui_theme::WORKSPACE_GUTTER)
 				.max(0.0),
 		);
 
@@ -232,7 +227,9 @@ impl AgentSurface {
 		}
 		// Question choices can make the composer taller than a normal draft.
 		// Retain a readable transcript and usable timeline above that overlay.
-		let chat_minimum = (self.workspace_composer_clearance() + 160.).max(240.);
+		let chat_minimum =
+			(self.workspace_composer_clearance() + ui_theme::CONVERSATION_HEADER_HEIGHT + 160.)
+				.max(240.);
 		let height = self
 			.workspace
 			.graph_panel_height
@@ -285,13 +282,19 @@ impl AgentSurface {
 			.debug_selector(|| "left-panel-slot".into())
 			.on_hover(cx.listener(|s, hovered: &bool, _, cx| s.sidebar_hover(*hovered, cx)))
 			.flex_none()
+			.relative()
 			.w(gpui::px(width))
 			.h_full()
 			.overflow_hidden()
 			.capture_any_mouse_down(
 				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Left)),
 			)
-			.child(self.workspace_sidebar(cx))
+			.when(width > 0.1, |panel| {
+				panel.child(crate::ui_layout::pane(self.sidebar_presentation.clone(), window))
+			})
+			.when(width > 0.1 && self.workspace.sidebar_visible, |panel| {
+				panel.child(self.sidebar_resize_handle(Panel::Left, cx))
+			})
 			.into_any_element()
 	}
 
@@ -301,6 +304,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let right = panel == Panel::Right;
+		let group = if right { "activity-resize-handle" } else { "sidebar-resize-handle" };
 		gpui::div()
 			.id(if right { "agent-right-sidebar-resize" } else { "agent-sidebar-resize" })
 			.debug_selector(move || {
@@ -311,16 +315,32 @@ impl AgentSurface {
 				}
 			})
 			.absolute()
+			.group(group)
 			.when(right, |handle| handle.left_0())
 			.when(!right, |handle| handle.right_0())
 			.top_0()
 			.bottom_0()
-			.w(gpui::px(6.0))
+			.w(gpui::px(8.0))
+			.flex()
+			.items_center()
+			.justify_center()
+			.when(right, |handle| handle.border_l_1())
+			.when(!right, |handle| handle.border_r_1())
+			.border_color(gpui::transparent_black())
 			.cursor_col_resize()
 			.tab_index(0)
 			.role(Role::Slider)
-			.aria_label("Sidebar width. Drag or use Left and Right. Double-click to reset.")
-			.hover(|s| s.bg(crate::ui_theme::rgba(0xffffff18)))
+			.aria_label(if right {
+				"Activity panel width. Drag or use Left and Right. Double-click to reset."
+			} else {
+				"Sidebar width. Drag or use Left and Right. Double-click to reset."
+			})
+			.hover(|s| s.border_color(ui_theme::rgb(ui_theme::ACCENT).opacity(0.65)))
+			.focus_visible(|s| s.border_color(ui_theme::rgb(ui_theme::ACCENT)))
+			.when(
+				self.workspace.panel_drag.is_some_and(|(dragged, _, _)| dragged == panel),
+				|handle| handle.border_color(ui_theme::rgb(ui_theme::ACCENT)),
+			)
 			.on_mouse_down(
 				MouseButton::Left,
 				cx.listener(move |s, event: &MouseDownEvent, window, cx| {
@@ -359,6 +379,7 @@ impl AgentSurface {
 					"right" => 16.0,
 					_ => return,
 				};
+				s.workspace.focused_panel = Some(panel);
 
 				if right {
 					s.workspace.agent_panel_width =
@@ -373,21 +394,41 @@ impl AgentSurface {
 				cx.stop_propagation();
 				cx.notify();
 			}))
+			.child(
+				gpui::div()
+					.w(gpui::px(2.))
+					.h(gpui::px(28.))
+					.rounded_full()
+					.bg(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
+					.group_hover(group, |mark| mark.bg(ui_theme::rgb(ui_theme::ACCENT))),
+			)
 	}
 
 	pub(super) fn dock_resize_handle(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		gpui::div()
 			.id("agent-dock-resize")
+			.group("dock-resize-handle")
 			.debug_selector(|| "agent-dock-resize".into())
 			.absolute()
 			.bottom_0()
 			.left_0()
 			.right_0()
-			.h(gpui::px(6.))
+			.h(gpui::px(8.))
+			.bg(ui_theme::workspace_palette().conversation)
+			.flex()
+			.items_center()
+			.justify_center()
+			.border_b_1()
+			.border_color(gpui::transparent_black())
 			.cursor_row_resize()
+			.tab_index(0)
 			.role(Role::Slider)
 			.aria_label("Dock height. Drag to resize. Double-click to reset. Control-Option minus or equals adjusts the selected panel.")
-			.hover(|s| s.bg(crate::ui_theme::rgba(0xffffff18)))
+			.hover(|s| s.border_color(ui_theme::rgb(ui_theme::ACCENT).opacity(0.65)))
+			.focus_visible(|s| s.border_color(ui_theme::rgb(ui_theme::ACCENT)))
+			.when(self.workspace.panel_drag.is_some_and(|(panel, _, _)| panel == Panel::Bottom), |handle| {
+				handle.border_color(ui_theme::rgb(ui_theme::ACCENT))
+			})
 			.on_mouse_down(
 				MouseButton::Left,
 				cx.listener(|s, event: &MouseDownEvent, window, cx| {
@@ -406,6 +447,19 @@ impl AgentSurface {
 					s.resize_panel(0., true, false, window, cx);
 				}
 			}))
+			.on_key_down(cx.listener(|s, event: &KeyDownEvent, window, cx| {
+				let delta = match event.keystroke.key.as_str() {
+					"up" => -16.,
+					"down" => 16.,
+					_ => return,
+				};
+				s.workspace.focused_panel = Some(Panel::Bottom);
+				s.resize_panel(delta, false, false, window, cx);
+				cx.stop_propagation();
+			}))
+			.child(gpui::div().w(gpui::px(32.)).h(gpui::px(2.)).rounded_full()
+				.bg(ui_theme::rgb(ui_theme::TEXT_MUTED).opacity(0.3))
+				.group_hover("dock-resize-handle", |mark| mark.bg(ui_theme::rgb(ui_theme::ACCENT))))
 	}
 
 	pub(super) fn workspace_resize_root(&self, cx: &mut Context<Self>) -> Stateful<Div> {
@@ -419,6 +473,7 @@ impl AgentSurface {
 
 				if event.pressed_button != Some(MouseButton::Left) {
 					s.workspace.panel_drag = None;
+					cx.notify();
 
 					return;
 				}
@@ -439,14 +494,18 @@ impl AgentSurface {
 			}))
 			.on_mouse_up(
 				MouseButton::Left,
-				cx.listener(|s, _, _, _| {
-					s.workspace.panel_drag = None;
+				cx.listener(|s, _, _, cx| {
+					if s.workspace.panel_drag.take().is_some() {
+						cx.notify();
+					}
 				}),
 			)
 			.on_mouse_up_out(
 				MouseButton::Left,
-				cx.listener(|s, _, _, _| {
-					s.workspace.panel_drag = None;
+				cx.listener(|s, _, _, cx| {
+					if s.workspace.panel_drag.take().is_some() {
+						cx.notify();
+					}
 				}),
 			)
 	}
@@ -576,18 +635,26 @@ mod tests {
 		let composer = visual.debug_bounds("floating-composer").unwrap();
 		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
 		let header = visual.debug_bounds("work-dock").unwrap();
+		let conversation_header = visual.debug_bounds("conversation-header").unwrap();
+		let resize = visual.debug_bounds("agent-dock-resize").unwrap();
 		let frame = visual.debug_bounds("workspace-center-frame").unwrap();
 		let plane = visual.debug_bounds("workspace-content-plane").unwrap();
-		let inset = gpui::px(crate::ui_theme::WORKSPACE_INSET);
-		assert_eq!(plane.origin.x, frame.origin.x + inset);
-		assert_eq!(plane.origin.y, frame.origin.y + inset);
-		assert_eq!(plane.size.width, frame.size.width - 2. * inset);
-		assert_eq!(plane.bottom(), frame.bottom() - inset);
+		let sidebar = visual.debug_bounds("left-panel-slot").unwrap();
+		let activity = visual.debug_bounds("workspace-activity-frame").unwrap();
+		assert_eq!(frame.left() - sidebar.right(), gpui::px(crate::ui_theme::WORKSPACE_GUTTER));
+		assert_eq!(activity.left() - frame.right(), gpui::px(crate::ui_theme::WORKSPACE_GUTTER));
+		visual.update(|window, cx| {
+			let (width, _) = surface.read(cx).workspace_graph_size(window, true);
+			assert_eq!(frame.size.width, gpui::px(width), "the camera uses the inset working area");
+		});
+		assert_eq!(plane, frame);
 		assert_eq!(composer.origin.x, frame.origin.x);
 		assert_eq!(composer.size.width, frame.size.width);
 		assert_eq!(composer.bottom(), frame.bottom());
 		assert_eq!(header.size.width, plane.size.width);
-		assert!(header.origin.y < transcript.origin.y);
+		assert_eq!(resize.bottom(), header.bottom());
+		assert_eq!(conversation_header.top(), header.bottom());
+		assert!(transcript.top() >= conversation_header.bottom());
 		assert!(visual.debug_bounds("dock-toggle").is_none());
 		assert!(header.bottom() <= transcript.origin.y);
 
@@ -624,7 +691,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn inset_workspace_preserves_editor_across_pane_modes(cx: &mut gpui::TestAppContext) {
+	fn unified_workspace_preserves_editor_across_pane_modes(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
@@ -660,10 +727,7 @@ mod tests {
 				visual.update(crate::ui_frame::draw_frame);
 				let frame = visual.debug_bounds("workspace-center-frame").unwrap();
 				let plane = visual.debug_bounds("workspace-content-plane").unwrap();
-				let inset = gpui::px(crate::ui_theme::WORKSPACE_INSET);
-				assert_eq!(plane.origin, frame.origin + gpui::point(inset, inset));
-				assert_eq!(plane.size.width, frame.size.width - 2. * inset);
-				assert_eq!(plane.bottom(), frame.bottom() - inset);
+				assert_eq!(plane, frame);
 				let composer = visual.debug_bounds("floating-composer");
 				let has_composer = !archived && !browsing;
 				assert_eq!(composer.is_some(), has_composer);
@@ -916,7 +980,7 @@ mod tests {
 
 				assert_eq!(
 					s.workspace_graph_size(window, true).1,
-					900. - super::WINDOW_CONTROLS_CLEARANCE - 2. * crate::ui_theme::WORKSPACE_INSET
+					900. - super::WINDOW_CONTROLS_CLEARANCE - crate::ui_theme::WORKSPACE_GUTTER
 				);
 
 				s.workspace.graph_visible = false;

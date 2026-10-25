@@ -11,7 +11,7 @@ use gpui::{
 use crate::{
 	shell::agent_surface::composer::{
 		AgentSurface, SmoothControl, model_settings,
-		ui_theme::{self, CANVAS, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED},
+		ui_theme::{self, HOVER_FILL, ON_PRIMARY, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED},
 	},
 	ui_loading, ui_motion,
 };
@@ -166,20 +166,15 @@ impl RenderOnce for StopMark {
 					.absolute()
 					.size(gpui::px(24.))
 					.rounded_full()
-					.bg(crate::ui_theme::rgba(0xf5c98500 | (strength * 48.) as u32)),
+					.bg(crate::ui_theme::rgb(crate::ui_theme::WARNING)
+						.opacity(strength * 48. / 255.)),
 			)
 			.child(
 				gpui::div()
 					.size(gpui::px(9.))
 					.rounded(gpui::px(2.))
-					.bg(crate::ui_theme::rgb(CANVAS))
-					.opacity(0.9 - pending * 0.35)
-					.child(
-						gpui::div()
-							.size_full()
-							.rounded(gpui::px(2.))
-							.bg(crate::ui_theme::rgba(0xf5c98500 | (strength * 255.) as u32)),
-					),
+					.bg(crate::ui_theme::rgb(ON_PRIMARY))
+					.opacity(0.9 - pending * 0.35),
 			)
 	}
 }
@@ -252,7 +247,7 @@ pub(super) fn live_mark() -> AnyElement {
 				.w(gpui::px(1.5))
 				.h(gpui::px(height))
 				.rounded_full()
-				.bg(crate::ui_theme::rgb(0xf4f2f7))
+				.bg(crate::ui_theme::rgb(ON_PRIMARY))
 		}))
 		.into_any_element()
 }
@@ -271,7 +266,7 @@ pub(super) fn launch_mark() -> impl IntoElement {
 			path.line_to(origin + gpui::point(gpui::px(13.), gpui::px(8.)));
 
 			if let Ok(path) = path.build() {
-				window.paint_path(path, crate::ui_theme::rgb(TEXT));
+				window.paint_path(path, crate::ui_theme::rgb(ON_PRIMARY));
 			}
 		},
 	)

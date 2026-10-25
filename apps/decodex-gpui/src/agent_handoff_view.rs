@@ -59,6 +59,7 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.overflow_hidden()
+			.when(!self.workspace.graph_expanded, |panel| panel.pb(gpui::px(8.)))
 			.when(self.workspace.panel_drag.is_none(), |panel| panel.occlude())
 			.capture_any_mouse_down(cx.listener(|s, _, _, _| {
 				s.workspace.focused_panel = Some(super::workspace_size::Panel::Bottom)

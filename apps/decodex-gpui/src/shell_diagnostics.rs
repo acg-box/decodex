@@ -12,12 +12,13 @@ use gpui::{
 
 use super::{
 	Destination, HEALTH_APP_SERVER_COMPONENTS, HEALTH_CORE_COMPONENTS, HEALTH_OPTIONAL_COMPONENTS,
-	HealthLoadState, HealthSnapshot, Shell, WB_TEXT, WB_TEXT_MUTED, health_component_section,
-	health_presentation, native_process_summary,
+	HealthLoadState, HealthSnapshot, Shell, health_component_section, health_presentation,
+	native_process_summary,
 };
 use crate::{
+	ui_feedback::{self, Feedback, Tone},
 	ui_motion::SmoothControl as _,
-	ui_theme::{BODY_SIZE, HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_WIDTH},
+	ui_theme::{self, BODY_SIZE, HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_WIDTH},
 };
 use decodex_protocol::{DoctorComponent, DoctorIssue, DoctorStatus};
 
@@ -68,7 +69,7 @@ fn issue_description(issue: DoctorIssue) -> (&'static str, &'static str) {
 			"Restart Decodex, then check again. Copy the report if the problem continues.",
 		),
 		DoctorIssue::ConfigurationVersion | DoctorIssue::ProtocolVersionMismatch =>
-			("App components do not match", "Check Updates & Components, then restart Decodex."),
+			("App components do not match", "Open Updates, then restart Decodex."),
 		DoctorIssue::DatabaseNotConfigured
 		| DoctorIssue::DatabaseMalformedConfig
 		| DoctorIssue::DatabaseUnreachable
@@ -100,6 +101,12 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 	let presentation = health_presentation(snapshot);
 	let expanded = shell.diagnostics.expanded;
 	let report = report_text(snapshot);
+	let tone = match snapshot.load {
+		HealthLoadState::Ready if issues(snapshot).is_empty() => Tone::Success,
+		HealthLoadState::NeverRequested | HealthLoadState::Loading => Tone::Info,
+		HealthLoadState::Refused => Tone::Error,
+		_ => Tone::Warning,
+	};
 	let mut content = gpui::div()
 		.w_full()
 		.max_w(gpui::px(SETTINGS_WIDTH))
@@ -109,53 +116,34 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 		.gap(gpui::px(SETTINGS_GROUP_GAP))
 		.text_size(gpui::px(BODY_SIZE))
 		.child(
-			gpui::div()
+			ui_theme::settings_card()
+				.p_4()
 				.id("health-query-status")
 				.debug_selector(|| "health-query-status".into())
-				.role(Role::Status)
-				.aria_label(format!("Diagnostics: {}", presentation.label))
-				.flex()
-				.items_start()
-				.gap_3()
-				.py_2()
-				.child(
-					gpui::div()
-						.mt(gpui::px(6.))
-						.size(gpui::px(7.))
-						.flex_none()
-						.rounded_full()
-						.bg(crate::ui_theme::rgb(presentation.color)),
-				)
-				.child(
-					gpui::div()
-						.min_w_0()
-						.flex_1()
-						.flex()
-						.flex_col()
-						.gap_2()
-						.child(
-							gpui::div().font_weight(FontWeight::SEMIBOLD).child(presentation.label),
-						)
-						.child(
-							gpui::div()
-								.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
-								.child(presentation.detail),
-						),
-				),
+				.child(ui_feedback::status_row(
+					"health-summary",
+					tone,
+					presentation.label,
+					presentation.detail,
+					tone.icon(),
+				)),
 		);
+
 	for (index, issue) in issues(snapshot).into_iter().enumerate() {
 		let (title, detail) = issue_description(issue);
 		content = content.child(
-			gpui::div()
+			ui_theme::settings_card()
+				.p_4()
 				.id(("health-issue", index))
 				.debug_selector(move || format!("health-issue-{index}"))
-				.flex()
-				.flex_col()
-				.gap_2()
-				.child(gpui::div().font_weight(FontWeight::MEDIUM).child(title))
-				.child(gpui::div().text_color(crate::ui_theme::rgb(WB_TEXT_MUTED)).child(detail)),
+				.children(ui_feedback::inline_feedback(
+					format!("health-issue-message-{index}"),
+					title,
+					&Feedback::warning(detail),
+				)),
 		);
 	}
+
 	content = content
 		.child(
 			gpui::div()
@@ -181,14 +169,16 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 								shell.diagnostics.copied = true;
 							},
 						)
-						.w(gpui::px(108.))
+						.min_w(gpui::px(84.))
 						.smooth(),
 					)
 				}),
 		)
 		.child(
 			gpui::div()
-				.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
+				.text_size(gpui::px(11.5))
+				.line_height(gpui::px(16.0))
+				.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
 				.child("Checks cover local services. Chat errors appear in the input bar."),
 		)
 		.child(details_toggle(shell, cx));
@@ -210,16 +200,19 @@ fn details_toggle(shell: &Shell, cx: &Context<Shell>) -> AnyElement {
 		.aria_label("Technical details")
 		.aria_expanded(expanded)
 		.w_full()
-		.py_3()
+		.px(gpui::px(14.0))
+		.py(gpui::px(10.0))
+		.rounded(gpui::px(10.))
 		.flex()
 		.items_center()
-		.gap_2()
-		.border_t_1()
-		.border_color(crate::ui_theme::rgba(0xffffff10))
+		.gap_3()
+		.border_1()
+		.border_color(ui_theme::rgba(0xffffff0c))
+		.bg(ui_theme::rgba(0xffffff03))
 		.cursor_pointer()
-		.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
-		.hover(|el| el.text_color(crate::ui_theme::rgb(WB_TEXT)))
-		.focus_visible(|el| el.bg(crate::ui_theme::rgba(HOVER_FILL)))
+		.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+		.hover(|el| el.text_color(ui_theme::rgb(ui_theme::TEXT)))
+		.focus_visible(|el| el.bg(ui_theme::rgba(HOVER_FILL)))
 		.on_click(cx.listener(|shell, _, _, cx| {
 			shell.diagnostics.expanded = !shell.diagnostics.expanded;
 			cx.notify();
@@ -231,7 +224,14 @@ fn details_toggle(shell: &Shell, cx: &Context<Shell>) -> AnyElement {
 				cx.stop_propagation();
 			}
 		}))
-		.child(if expanded { "⌄" } else { "›" })
+		.child(super::workspace_symbols::icon_sized(
+			if expanded {
+				super::workspace_symbols::Symbol::ChevronDown
+			} else {
+				super::workspace_symbols::Symbol::Forward
+			},
+			12.,
+		))
 		.child("Technical details")
 		.smooth()
 		.into_any_element()
@@ -250,7 +250,7 @@ fn technical_details(snapshot: &HealthSnapshot) -> AnyElement {
 				.flex_col()
 				.gap_2()
 				.child(gpui::div().font_weight(FontWeight::MEDIUM).child("Agent process"))
-				.child(gpui::div().text_color(crate::ui_theme::rgb(WB_TEXT_MUTED)).child(
+				.child(gpui::div().text_color(ui_theme::rgb(ui_theme::TEXT_MUTED)).child(
 					native_process_summary(
 						snapshot.report.as_ref().and_then(|report| report.native_process()),
 					),
@@ -323,27 +323,7 @@ fn control(
 ) -> gpui::Stateful<gpui::Div> {
 	let action = Rc::new(action);
 	let click = action.clone();
-	gpui::div()
-		.id(id)
-		.debug_selector(move || id.into())
-		.role(Role::Button)
-		.tab_index(0)
-		.aria_label(label)
-		.h(gpui::px(30.))
-		.px_3()
-		.rounded(gpui::px(7.))
-		.flex()
-		.items_center()
-		.justify_center()
-		.border_1()
-		.border_color(crate::ui_theme::rgba(0xffffff16))
-		.cursor_pointer()
-		.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
-		.hover(|el| {
-			el.bg(crate::ui_theme::rgba(HOVER_FILL)).text_color(crate::ui_theme::rgb(WB_TEXT))
-		})
-		.active(|el| el.opacity(0.7))
-		.focus_visible(|el| el.border_color(crate::ui_theme::rgb(crate::ui_theme::BLUE)))
+	ui_theme::settings_button(id, label)
 		.on_click(cx.listener(move |shell, _, _, cx| {
 			click(shell, cx);
 			cx.notify();
@@ -355,5 +335,4 @@ fn control(
 				cx.stop_propagation();
 			}
 		}))
-		.child(label)
 }

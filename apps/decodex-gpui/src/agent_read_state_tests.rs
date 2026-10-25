@@ -78,6 +78,20 @@ fn read_state_panel_hides_invalid_actions_and_discards_replaced_source(cx: &mut 
 			w.draw(cx).clear(cx);
 		});
 		assert_eq!(visual.debug_bounds("native-read-state-mark").is_some(), available);
+		surface.update(visual, |s, cx| {
+			s.read_state.task = Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(
+			visual.debug_bounds("native-read-state-refresh").is_some(),
+			"background reads keep the refresh action stable"
+		);
+		assert_eq!(
+			visual.debug_bounds("native-read-state-mark").is_some(),
+			available,
+			"background reads keep verified actions stable"
+		);
 	}
 	surface.update(visual, |s, cx| {
 		s.native_agents.selected = Some(("root".into(), "child".into()));

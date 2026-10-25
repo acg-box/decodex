@@ -1,13 +1,7 @@
 //! Host-owned macOS sleep policy. Never stores a competing application preference.
-use gpui::{AnyElement, KeyDownEvent, Task};
+use gpui::{AnyElement, Styled as _, Task, prelude::FluentBuilder as _};
 
-use crate::{
-	settings_surface::{
-		BLUE, Context, FluentBuilder, InteractiveElement, IntoElement, LINE, ParentElement, Role,
-		SettingsSurface, StatefulInteractiveElement, Styled, TEXT_MUTED, Toggled, ui_theme,
-	},
-	ui_motion,
-};
+use crate::settings_surface::{Context, IntoElement, ParentElement, SettingsSurface, ui_theme};
 
 #[derive(Default)]
 pub(super) struct PowerSettings {
@@ -76,75 +70,49 @@ impl SettingsSurface {
 		let enabled = self.power.enabled.unwrap_or(false);
 		let interactive = self.power.enabled.is_some() && !self.power.pending;
 
-		ui_theme::settings_row()
-			.px_0()
+		gpui::div()
+			.w_full()
+			.flex()
+			.flex_col()
 			.child(
-				gpui::div()
-					.flex_1()
-					.flex()
-					.flex_col()
-					.gap(gpui::px(3.))
-					.child("Prevent system sleep")
+				ui_theme::settings_row()
+					.child(ui_theme::settings_label(
+						"Prevent system sleep",
+						"Applies to this Mac on power and battery, even after quitting Decodex.",
+					))
 					.child(
-						gpui::div()
-							.text_size(gpui::px(11.))
-							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-							.child(
-								"Applies to this Mac on power and battery, even after quitting Decodex.",
-							),
+						super::switch::settings_switch(
+							"prevent-system-sleep",
+							"power-sleep-knob",
+							"Prevent system sleep",
+							enabled,
+							interactive,
+						)
+						.aria_description(if self.power.pending {
+							"Checking the system setting"
+						} else if self.power.enabled.is_none() {
+							"The system setting is unavailable"
+						} else {
+							"Changes the macOS sleep setting"
+						})
+						.on_change(cx.listener(
+							move |s, desired: &bool, _, cx| s.power_request(Some(*desired), cx),
+						)),
 					),
 			)
-			.child(
-				gpui::div()
-					.id("prevent-system-sleep")
-					.debug_selector(|| "prevent-system-sleep".into())
-					.role(Role::Switch)
-					.aria_label("Prevent system sleep")
-					.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
-					.tab_index(if interactive { 0 } else { -1 })
-					.w(gpui::px(36.))
-					.h(gpui::px(20.))
-					.p(gpui::px(2.))
-					.flex()
-					.items_center()
-					.rounded_full()
-					.border_1()
-					.border_color(crate::ui_theme::rgb(if enabled { BLUE } else { LINE }))
-					.bg(if enabled {
-						crate::ui_theme::rgba(0x8baaf730)
-					} else {
-						crate::ui_theme::rgba(0xffffff0c)
-					})
-					.opacity(if interactive { 1. } else { 0.58 })
-					.when(interactive, |toggle| {
-						toggle
-							.cursor_pointer()
-							.hover(move |d| {
-								d.border_color(crate::ui_theme::rgb(if enabled {
-									BLUE
-								} else {
-									TEXT_MUTED
-								}))
-							})
-							.on_click(
-								cx.listener(move |s, _, _, cx| s.power_request(Some(!enabled), cx)),
-							)
-							.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
-								if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-									s.power_request(Some(!enabled), cx);
-									cx.stop_propagation();
-								}
-							}))
-					})
-					.child(ui_motion::switch_knob(
-						"power-sleep-knob",
-						enabled,
-						gpui::div()
-							.size(gpui::px(14.))
-							.rounded_full()
-							.bg(crate::ui_theme::rgb(if enabled { BLUE } else { TEXT_MUTED })),
-					)),
-			)
+			.children(super::setting_notice(
+				"power-settings-feedback",
+				"System sleep setting unavailable",
+				self.power
+					.error
+					.as_ref()
+					.map(|message| crate::ui_feedback::Feedback::error(message.clone())),
+			))
+			.when(self.power.error.is_some(), |d| {
+				d.child(super::setting_action("power-settings-retry", "Retry", cx, |s, cx| {
+					s.power_request(None, cx)
+				}))
+			})
 			.into_any_element()
 	}
 }

@@ -64,6 +64,10 @@ impl Viewport {
 		mem::take(&mut self.0.borrow_mut().latest_requested)
 	}
 
+	pub(super) fn latest_requested(&self) -> bool {
+		self.0.borrow().latest_requested
+	}
+
 	pub(super) fn retain(&self, entries: &[AgentTimelineEntry]) {
 		let keys = entries.iter().map(row_key).collect::<BTreeSet<_>>();
 		let mut state = self.0.borrow_mut();

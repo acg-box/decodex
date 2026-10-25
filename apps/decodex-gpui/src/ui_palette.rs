@@ -1,62 +1,196 @@
 //! Paired app colors. The existing RGB values are stable color tokens, not
 //! content pixels. Resolve them here so charts, text, controls and materials
 //! share a palette. Keep media and authored diagram colors outside this path.
-use super::appearance::Theme;
+use super::{ColorTheme, appearance::Theme};
 
-pub(crate) fn rgb(token: u32) -> gpui::Rgba {
-	Theme::current().rgb(token)
+pub(crate) const MASCOT_FAMILIES: [&str; 12] = [
+	"mint",
+	"lilac",
+	"sky",
+	"peach",
+	"butter",
+	"cream",
+	"rose",
+	"periwinkle",
+	"ice",
+	"sage",
+	"coral",
+	"midnight",
+];
+
+/// Body, face and accessory ink belong to the same character palette.
+pub(crate) struct MascotColors {
+	pub base: u32,
+	pub shade: u32,
+	pub light: u32,
+	pub ink: u32,
 }
 
-pub(crate) fn rgba(token: u32) -> gpui::Rgba {
-	let mut color = rgb(token >> 8);
-	color.a = (token & 0xff) as f32 / 255.;
-	color
+impl MascotColors {
+	pub(crate) fn accessory(&self, authored: u32) -> u32 {
+		super::color_themes::mix(authored, self.base, 18)
+	}
 }
 
-impl Theme {
+/// Capture both choices before background work or a theme-keyed cache lookup.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub(crate) struct ColorScheme {
+	appearance: Theme,
+	colors: ColorTheme,
+}
+
+impl ColorScheme {
+	pub(crate) const fn new(appearance: Theme, colors: ColorTheme) -> Self {
+		Self { appearance, colors }
+	}
+
+	pub(crate) fn current() -> Self {
+		let appearance = Theme::current();
+		let colors =
+			if appearance == Theme::Light { ColorTheme::Decodex } else { ColorTheme::configured() };
+		Self::new(appearance, colors)
+	}
+
+	/// The palette actually displayed, which can differ from the saved dark preset.
+	pub(crate) fn color_theme(self) -> ColorTheme {
+		self.colors
+	}
+
+	pub(crate) fn mascot_colors(self, family: &str) -> MascotColors {
+		let index = MASCOT_FAMILIES
+			.iter()
+			.position(|name| *name == family)
+			.expect("catalog mascot family has a theme color");
+		let colors =
+			if self.appearance == Theme::Light { ColorTheme::Decodex } else { self.colors };
+		let base = colors.palette().mascot_bases[index];
+		let dark = self.hex(super::CANVAS);
+		let light = self.hex(super::TEXT);
+		let (dark, light) =
+			if self.appearance == Theme::Light { (light, 0xffffff) } else { (dark, light) };
+		let base = if self.appearance == Theme::Light {
+			super::color_themes::mix(base, dark, 40)
+		} else {
+			base
+		};
+		let luminance = |color: u32| -> f32 {
+			[16, 8, 0]
+				.into_iter()
+				.zip([0.2126, 0.7152, 0.0722])
+				.map(|(shift, weight)| {
+					let value = ((color >> shift) & 255) as f32 / 255.;
+					weight
+						* if value <= 0.04045 {
+							value / 12.92
+						} else {
+							((value + 0.055) / 1.055).powf(2.4)
+						}
+				})
+				.sum()
+		};
+		let brightness = luminance(base) + 0.05;
+		let ink = if brightness / (luminance(dark) + 0.05) >= (luminance(light) + 0.05) / brightness
+		{
+			dark
+		} else {
+			light
+		};
+		MascotColors {
+			base,
+			shade: super::color_themes::mix(base, dark, 22),
+			light: super::color_themes::mix(base, light, 38),
+			ink,
+		}
+	}
+
 	pub(crate) fn rgb(self, token: u32) -> gpui::Rgba {
-		gpui::rgb(match self {
-			Self::Dark => token,
-			Self::Light => light(token),
+		gpui::rgb(match self.appearance {
+			Theme::Dark => self.colors.palette().resolve(token),
+			Theme::Light => light(token),
 		})
 	}
 
 	pub(crate) fn hex(self, token: u32) -> u32 {
 		u32::from(self.rgb(token)) >> 8
 	}
+
+	pub(crate) fn rgba(self, token: u32) -> gpui::Rgba {
+		if self.appearance == Theme::Dark
+			&& let Some(material) = self.colors.palette().material(token)
+		{
+			return gpui::rgba(material);
+		}
+		let mut color = self.rgb(token >> 8);
+		color.a = (token & 0xff) as f32 / 255.;
+		color
+	}
+
+	/// Keep the reading planes stable while the window frame admits background light.
+	pub(crate) fn material(self, token: u32, material: super::material::Material) -> gpui::Rgba {
+		let color = self.rgba(token);
+		if self.appearance != Theme::Dark
+			|| self.colors != ColorTheme::Decodex
+			|| material != super::material::Material::LiquidGlass
+		{
+			return color;
+		}
+		let alpha = match token {
+			super::SHELL_MATERIAL => 0xc2,
+			super::SIDEBAR_MATERIAL | super::AGENT_SIDEBAR_MATERIAL => 0xc2,
+			super::TOPBAR_MATERIAL => 0xd9,
+			super::CONTENT_MATERIAL | super::AGENT_CHAT_OVERLAY => 0xf0,
+			super::COMPOSER_MATERIAL => 0xf5,
+			super::SURFACE_OVERLAY_MATERIAL => 0xf7,
+			_ => return color,
+		};
+		color.alpha(alpha as f32 / 255.)
+	}
+}
+
+impl From<Theme> for ColorScheme {
+	fn from(appearance: Theme) -> Self {
+		Self::new(appearance, ColorTheme::Decodex)
+	}
 }
 
 fn light(token: u32) -> u32 {
 	match token {
+		super::PRIMARY_FILL => 0x4766b8,
+		super::CONTROL_ACTIVE_FILL => 0x526ca6,
+		super::ON_PRIMARY => 0xffffff,
+		super::INFO => 0x2e63a8,
+		super::SUCCESS => 0x315f9d,
+		super::WARNING => 0x8d5549,
+		super::ERROR => 0xb43a46,
 		// Materials retain their original alpha and glass ownership.
-		0x0b0a0f => 0xf6f5f8,
-		0x101014 | 0x100e15 => 0xf4f3f6,
-		0x141419 | 0x141418 | 0x111113 => 0xf8f7fa,
-		0x15151b | 0x17171c | 0x17151e | 0x17171a => 0xf4f3f7,
-		0x222228 | 0x1d1a24 | 0x24242a | 0x242427 => 0xf7f6f9,
-		0x29292d | 0x29292e | 0x27272b | 0x252830 => 0xeae9ef,
-		0x302d39 | 0x30303a | 0x33333a | 0x35353c | 0x3a3a40 => 0xe6e4ec,
-		0x303030 | 0x373737 | 0x464646 => 0xe5e4e9,
-		0x141822 => 0xe7ecf7,
+		0x0b0a0f => 0xf5f6f9,
+		0x101014 | 0x100e15 => 0xeef1f6,
+		0x141419 | 0x141418 | 0x111113 => 0xfafbfc,
+		0x15151b | 0x17171c | 0x17151e | 0x17171a => 0xf0f2f6,
+		0x222228 | 0x1d1a24 | 0x24242a | 0x242427 => 0xffffff,
+		0x222c3a => 0xf0f2f7,
+		0x29292d | 0x29292e | 0x27272b | 0x252830 => 0xe8edf4,
+		0x302d39 | 0x30303a | 0x33333a | 0x35353c | 0x3a3a40 => 0xe0e6f0,
+		0x303030 | 0x373737 | 0x464646 => 0xe2e7ef,
+		0x141822 => 0xe8edf5,
 		// Foreground hierarchy and neutral feedback.
-		0xffffff | 0xf2f1f4 | 0xf4f2f7 | 0xeeeaf0 | 0xe7e7ea => 0x242329,
-		0xdfdee4 | 0xc5c6ce | 0xc4c4ce | 0xc0c0c5 => 0x3f3d47,
-		0xbbb8c4 | 0xaaa4af | 0xc2bbc9 | 0xd5d5da => 0x635f6e,
-		0xb5b2bd | 0x89909c | 0x817789 => 0x716c7d,
-		0x78818e => 0x686d77,
-		0x403b48 | 0x3c3744 | 0x515155 | 0x606064 => 0xb5b1bf,
+		0xffffff | 0xf2f1f4 | 0xf4f2f7 | 0xeeeaf0 | 0xe7e7ea => 0x252c39,
+		0xdfdee4 | 0xc5c6ce | 0xc4c4ce | 0xc0c0c5 => 0x45536a,
+		0xbbb8c4 | 0xaaa4af | 0xc2bbc9 | 0xd5d5da => 0x5f6e85,
+		0xb5b2bd | 0x89909c | 0x817789 => 0x657187,
+		0x78818e => 0x657187,
+		0x403b48 | 0x3c3744 | 0x515155 | 0x606064 => 0xb7c2d2,
 		// Accent and state colors need contrast on the light material too.
-		0x8baaf7 | 0x8aaaff | 0x7aa2ff | 0x6b9fff | 0x60a5fa => 0x3b60bb,
-		0x22c55e | 0x77c99a => 0x287847,
-		0xe0b56f | 0xf59e0b | 0xf5c985 | 0xd4b27c => 0x956018,
-		0xf97316 | 0xe49a70 | 0xffa45d | 0xff8a3d => 0xae552e,
-		0xed8585 | 0xdc2626 | 0xef4444 => 0xc83232,
-		0xa5a0ed | 0xaaa0c4 | 0xc4a7e7 | 0xb0a0d8 | 0xad9ae8 | 0xcac4f4 => 0x79529f,
-		0xd1c2f4 => 0x5d3583,
-		0x94a3b8 | 0x64748b => 0x657285,
-		0x9cbacb | 0x7dc4cf | 0xd5e3f1 | 0x9ec8d9 | 0xe8f3f8 | 0xf1fcff => 0x3b7187,
-		0x8b9fff | 0x788dff | 0xb0c6f3 | 0x9aafff | 0xdbe5ff | 0xc6cce0 => 0x5267b5,
-		0xd0c8d9 | 0xaaa6b8 => 0x77717f,
+		0x8baaf7 | 0x8aaaff | 0x7aa2ff | 0x6b9fff | 0x60a5fa => 0x2e63c2,
+		0x22c55e | 0x77c99a => 0x42765a,
+		0xe0b56f | 0xf59e0b | 0xf5c985 | 0xd4b27c => 0x996124,
+		0xf97316 | 0xe49a70 | 0xffa45d | 0xff8a3d | 0xa5a0ed | 0xaaa0c4 | 0xc4a7e7 | 0xb0a0d8
+		| 0xad9ae8 | 0xcac4f4 | 0xd1c2f4 => 0x2e63c2,
+		0xed8585 | 0xdc2626 => 0xb43a46,
+		0x94a3b8 | 0x64748b => 0x657187,
+		0x9cbacb | 0x7dc4cf | 0xd5e3f1 | 0x9ec8d9 | 0xe8f3f8 | 0xf1fcff | 0x8b9fff | 0x788dff
+		| 0xb0c6f3 | 0x9aafff | 0xdbe5ff | 0xc6cce0 => 0x2e63c2,
+		0xd0c8d9 | 0xaaa6b8 => 0x657187,
 		// Shadows, transparency and explicit content colors keep their values.
 		_ => token,
 	}
@@ -64,7 +198,50 @@ fn light(token: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use super::{
+		super::{AGENT_CHAT_OVERLAY, BLUE, CANVAS, SHELL_MATERIAL, TEXT, TEXT_MUTED, rgb, rgba},
+		*,
+	};
+
+	#[test]
+	fn presets_resolve_shared_roles_and_leave_light_appearance_readable() {
+		for colors in ColorTheme::ALL {
+			let palette = colors.palette();
+			let dark = ColorScheme::new(Theme::Dark, colors);
+			for (token, expected) in [
+				(CANVAS, palette.canvas),
+				(TEXT, palette.text),
+				(TEXT_MUTED, palette.text_muted),
+				(BLUE, palette.blue),
+			] {
+				assert_eq!(dark.hex(token), expected, "{colors:?}");
+			}
+			assert_eq!(dark.rgba(SHELL_MATERIAL), gpui::rgba(palette.shell_material));
+			assert_eq!(dark.rgba(AGENT_CHAT_OVERLAY), gpui::rgba(palette.agent_chat_overlay));
+			assert_eq!(dark.rgb(0x123456), gpui::rgb(0x123456));
+			assert_eq!(dark.rgba(0x12345678), gpui::rgba(0x12345678));
+
+			let light = ColorScheme::new(Theme::Light, colors);
+			assert_eq!(light.rgb(TEXT), gpui::rgb(0x252c39));
+			assert_eq!(light.rgb(CANVAS), gpui::rgb(0xf5f6f9));
+			assert_eq!(light.rgba(SHELL_MATERIAL).a, gpui::rgba(SHELL_MATERIAL).a);
+		}
+	}
+
+	#[gpui::test]
+	fn a_color_snapshot_keeps_its_palette_when_the_preference_changes(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let original = ColorTheme::configured();
+		super::super::appearance::with_theme(Theme::Dark, || {
+			cx.update(|cx| ColorTheme::TokyoNight.apply(cx));
+			let captured = ColorScheme::current();
+			cx.update(|cx| ColorTheme::Nord.apply(cx));
+			assert_ne!(captured, ColorScheme::current());
+			assert_eq!(captured.hex(TEXT), ColorTheme::TokyoNight.palette().text);
+		});
+		cx.update(|cx| original.apply(cx));
+	}
 
 	fn contrast(a: gpui::Rgba, b: gpui::Rgba) -> f32 {
 		let luminance = |c: gpui::Rgba| {
@@ -79,17 +256,189 @@ mod tests {
 	#[test]
 	fn reading_roles_have_contrast_in_both_themes() {
 		for theme in [Theme::Light, Theme::Dark] {
+			let colors = ColorScheme::from(theme);
+			assert_ne!(
+				colors.rgb(super::super::foreground::PRIMARY),
+				colors.rgb(super::super::foreground::BODY)
+			);
+			assert_ne!(
+				colors.rgb(super::super::foreground::BODY),
+				colors.rgb(super::super::foreground::SECONDARY)
+			);
 			for token in [
 				super::super::TEXT,
 				super::super::foreground::PRIMARY,
 				super::super::foreground::BODY,
 				super::super::foreground::SECONDARY,
 				super::super::TEXT_MUTED,
+				super::super::ACCENT,
 				super::super::BLUE,
+				super::super::GREEN,
+				super::super::AMBER,
+				super::super::ERROR,
 			] {
+				for background in [
+					super::super::CANVAS,
+					super::super::COMPOSER_MATERIAL >> 8,
+					super::super::MESSAGE_MATERIAL >> 8,
+				] {
+					assert!(
+						contrast(colors.rgb(token), colors.rgb(background)) >= 4.5,
+						"{theme:?} {token:06x} on {background:06x}"
+					);
+				}
+			}
+		}
+	}
+
+	#[test]
+	fn status_text_is_readable_on_content_and_overlay_surfaces() {
+		for appearance in [Theme::Dark, Theme::Light] {
+			for theme in ColorTheme::ALL {
+				let colors = ColorScheme::new(appearance, theme);
+				for token in [
+					super::super::INFO,
+					super::super::SUCCESS,
+					super::super::WARNING,
+					super::super::ERROR,
+				] {
+					for background in [
+						super::super::CANVAS,
+						super::super::COMPOSER_MATERIAL >> 8,
+						super::super::MESSAGE_MATERIAL >> 8,
+						super::super::SURFACE_OVERLAY_MATERIAL >> 8,
+					] {
+						assert!(
+							contrast(colors.rgb(token), colors.rgb(background)) >= 4.5,
+							"{appearance:?} {theme:?}: status {token:06x} on {background:06x}"
+						);
+					}
+				}
+			}
+		}
+		let colors = ColorScheme::new(Theme::Dark, ColorTheme::Decodex);
+		assert_ne!(colors.hex(super::super::SUCCESS), colors.hex(super::super::GREEN));
+		assert_ne!(colors.hex(super::super::WARNING), colors.hex(super::super::AMBER));
+		assert_ne!(colors.hex(super::super::ERROR), colors.hex(super::super::PRIMARY_FILL));
+	}
+
+	#[test]
+	fn character_families_keep_legible_faces_and_visible_silhouettes() {
+		for appearance in [Theme::Dark, Theme::Light] {
+			for theme in ColorTheme::ALL {
+				let colors = ColorScheme::new(appearance, theme);
+				for family in super::super::MASCOT_FAMILIES {
+					let character = colors.mascot_colors(family);
+					assert!(
+						contrast(gpui::rgb(character.ink), gpui::rgb(character.base)) >= 3.,
+						"{appearance:?} {theme:?} {family}: face"
+					);
+					assert_ne!(character.shade, character.base);
+					assert_ne!(character.light, character.base);
+					assert!(
+						contrast(gpui::rgb(character.base), colors.rgb(CANVAS)) >= 3.,
+						"{appearance:?} {theme:?} {family}: silhouette"
+					);
+				}
+			}
+		}
+	}
+
+	#[test]
+	fn selected_surfaces_keep_labels_readable() {
+		for appearance in [Theme::Dark, Theme::Light] {
+			for theme in ColorTheme::ALL {
+				let colors = ColorScheme::new(appearance, theme);
+				for token in [
+					super::super::SELECTED_FILL,
+					super::super::SELECTED_HOVER_FILL,
+					super::super::CONTROL_SELECTED_FILL,
+					super::super::CONTROL_SELECTED_HOVER,
+				] {
+					for background in
+						[super::super::CANVAS, super::super::SURFACE_OVERLAY_MATERIAL >> 8]
+					{
+						let fill = colors.rgb(background).blend(colors.rgba(token));
+						assert!(
+							contrast(colors.rgb(TEXT), fill) >= 4.5,
+							"{appearance:?} {theme:?}: label on selected surface {token:08x}"
+						);
+					}
+				}
+			}
+		}
+	}
+
+	#[test]
+	fn solid_primary_controls_keep_their_own_readable_foreground() {
+		for appearance in [Theme::Light, Theme::Dark] {
+			let colors = ColorScheme::new(appearance, ColorTheme::Decodex);
+			assert_ne!(
+				colors.rgb(super::super::PRIMARY_FILL),
+				colors.rgb(super::super::CONTROL_ACTIVE_FILL)
+			);
+			for token in [super::super::PRIMARY_FILL, super::super::CONTROL_ACTIVE_FILL] {
+				assert!(contrast(colors.rgb(super::super::ON_PRIMARY), colors.rgb(token)) >= 4.5);
+			}
+		}
+		for theme in ColorTheme::ALL {
+			let colors = ColorScheme::new(Theme::Dark, theme);
+			for token in [super::super::PRIMARY_FILL, super::super::CONTROL_ACTIVE_FILL] {
 				assert!(
-					contrast(theme.rgb(token), theme.rgb(super::super::CANVAS)) >= 4.5,
-					"{theme:?} {token:06x}"
+					contrast(colors.rgb(super::super::ON_PRIMARY), colors.rgb(token)) >= 3.,
+					"{theme:?} control icon"
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn glass_reading_surfaces_keep_contrast_over_light_dark_and_colored_backdrops() {
+		use super::super::{
+			AGENT_SIDEBAR_MATERIAL, COMPOSER_MATERIAL, CONTENT_MATERIAL, SIDEBAR_MATERIAL,
+			SURFACE_OVERLAY_MATERIAL, foreground, material::Material,
+		};
+		let colors = ColorScheme::new(Theme::Dark, ColorTheme::Decodex);
+		for backdrop in [0xffffff, 0x000000, 0xf5cc72, 0xe66d85, 0x709fcb] {
+			let shell =
+				gpui::rgb(backdrop).blend(colors.material(SHELL_MATERIAL, Material::LiquidGlass));
+			let surfaces = [
+				shell.blend(colors.rgb(CANVAS).opacity(0.8)),
+				shell.blend(colors.material(SIDEBAR_MATERIAL, Material::LiquidGlass)),
+				shell.blend(colors.material(AGENT_SIDEBAR_MATERIAL, Material::LiquidGlass)),
+				shell.blend(colors.material(CONTENT_MATERIAL, Material::LiquidGlass)),
+				gpui::rgb(backdrop)
+					.blend(colors.material(COMPOSER_MATERIAL, Material::LiquidGlass)),
+				gpui::rgb(backdrop)
+					.blend(colors.material(SURFACE_OVERLAY_MATERIAL, Material::LiquidGlass)),
+			];
+			for background in surfaces {
+				for token in [
+					TEXT,
+					foreground::BODY,
+					TEXT_MUTED,
+					super::super::INFO,
+					super::super::SUCCESS,
+					super::super::WARNING,
+					super::super::ERROR,
+				] {
+					assert!(
+						contrast(colors.rgb(token), background) >= 4.5,
+						"{token:06x} over {backdrop:06x}"
+					);
+				}
+			}
+		}
+		for theme in ColorTheme::ALL {
+			let colors = ColorScheme::new(Theme::Dark, theme);
+			assert_eq!(
+				colors.material(CONTENT_MATERIAL, Material::Thin),
+				colors.rgba(CONTENT_MATERIAL)
+			);
+			if theme != ColorTheme::Decodex {
+				assert_eq!(
+					colors.material(CONTENT_MATERIAL, Material::LiquidGlass),
+					colors.rgba(CONTENT_MATERIAL)
 				);
 			}
 		}
@@ -104,7 +453,7 @@ mod tests {
 			);
 			assert_eq!(rgba(0x00000024), gpui::rgba(0x00000024));
 			assert_eq!(rgb(0x123456), gpui::rgb(0x123456));
-			assert_eq!(rgb(super::super::TEXT), gpui::rgb(0x242329));
+			assert_eq!(rgb(super::super::TEXT), gpui::rgb(0x252c39));
 		});
 	}
 }

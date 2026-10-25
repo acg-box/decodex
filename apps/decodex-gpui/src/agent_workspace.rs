@@ -7,9 +7,8 @@ use gpui::{
 };
 use graph::{Layout, Node};
 use ui_theme::{
-	AGENT_SIDEBAR_MATERIAL, AMBER, BLUE, BODY_LINE_HEIGHT, BODY_SIZE, CHROME_CONTROL_SIZE,
-	CONTROL_MARGIN, FONT_FAMILY, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED,
-	TREE_ROW_HEIGHT,
+	AGENT_SIDEBAR_MATERIAL, BLUE, BODY_LINE_HEIGHT, BODY_SIZE, CHROME_CONTROL_SIZE, CONTROL_MARGIN,
+	FONT_FAMILY, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED, TREE_ROW_HEIGHT, WARNING,
 };
 
 // Pane controls can leave the dispatch tree after a layout change. Keep keyboard
@@ -89,11 +88,6 @@ fn connection_recovery_notice(
 	message: &'static str,
 	destination: crate::shell::Destination,
 ) -> AnyElement {
-	let (id, label) = if destination == crate::shell::Destination::Accounts {
-		("connection-open-accounts", "Open Accounts")
-	} else {
-		("connection-open-diagnostics", "Open Diagnostics")
-	};
 	gpui::div()
 		.id("conversation-unavailable")
 		.debug_selector(|| "conversation-unavailable".into())
@@ -115,24 +109,35 @@ fn connection_recovery_notice(
 				.text_color(crate::ui_theme::rgb(Tone::Error.color()))
 				.child(message),
 		)
-		.child(
-			gpui::div()
-				.id(id)
-				.debug_selector(move || id.into())
-				.role(Role::Button)
-				.aria_label(label)
-				.tab_index(0)
-				.cursor_pointer()
-				.text_color(crate::ui_theme::rgb(BLUE))
-				.child(label)
-				.on_click(move |_, window, cx| open_connection_settings(destination, window, cx))
-				.on_key_down(move |event: &KeyDownEvent, window, cx| {
-					if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-						open_connection_settings(destination, window, cx);
-						cx.stop_propagation();
-					}
-				}),
-		)
+		.child(connection_settings_action(destination))
+		.into_any_element()
+}
+
+fn connection_settings_action(destination: crate::shell::Destination) -> AnyElement {
+	let (id, label) = if destination == crate::shell::Destination::Accounts {
+		("connection-open-accounts", "Open Accounts")
+	} else {
+		("connection-open-diagnostics", "Open Diagnostics")
+	};
+	gpui::div()
+		.id(id)
+		.debug_selector(move || id.into())
+		.role(Role::Button)
+		.aria_label(label)
+		.tab_index(0)
+		.flex_none()
+		.px_2()
+		.py_1()
+		.cursor_pointer()
+		.text_color(crate::ui_theme::rgb(BLUE))
+		.child(label)
+		.on_click(move |_, window, cx| open_connection_settings(destination, window, cx))
+		.on_key_down(move |event: &KeyDownEvent, window, cx| {
+			if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				open_connection_settings(destination, window, cx);
+				cx.stop_propagation();
+			}
+		})
 		.into_any_element()
 }
 
@@ -511,7 +516,7 @@ impl AgentSurface {
 			.id(SharedString::from(id))
 			.role(if is_tab { Role::Tab } else { Role::Button })
 			.aria_selected(active)
-			.when(active && !is_tab, |row| row.bg(crate::ui_theme::rgba(0xffffff0d)))
+			.when(active && !is_tab, |row| row.bg(ui_theme::rgba(ui_theme::SELECTED_FILL)))
 			.tab_index(0)
 			.aria_label(accessible)
 			.when(show_tip, |button| {
@@ -524,7 +529,7 @@ impl AgentSurface {
 			.when(icon_only, |button| {
 				button.size(gpui::px(CHROME_CONTROL_SIZE)).p_0().justify_center()
 			})
-			.rounded(gpui::px(5.0))
+			.rounded(gpui::px(8.0))
 			.cursor_pointer()
 			.when(!is_tree && !is_tab, |button| {
 				button.hover(move |s| {
@@ -653,11 +658,7 @@ impl AgentSurface {
 				},
 				cx,
 			));
-		panel
-			.when(self.workspace.sidebar_visible, |panel| {
-				panel.child(self.sidebar_resize_handle(super::workspace_size::Panel::Left, cx))
-			})
-			.into_any_element()
+		panel.into_any_element()
 	}
 
 	pub(super) fn conversation_pages(&self) -> Vec<(String, String, bool)> {
@@ -754,11 +755,11 @@ impl AgentSurface {
 				.overflow_hidden()
 				.flex()
 				.items_center()
-				.rounded(gpui::px(7.))
+				.rounded(gpui::px(9.))
 				.cursor_pointer()
-				.bg(crate::ui_theme::rgba(if active { 0xffffff10 } else { 0xffffff00 }))
+				.bg(ui_theme::rgba(if active { ui_theme::SELECTED_FILL } else { 0xffffff00 }))
 				.hover(move |s| {
-					s.bg(crate::ui_theme::rgba(if active { 0xffffff18 } else { HOVER_FILL }))
+					s.bg(ui_theme::rgba(if active { SELECTED_HOVER_FILL } else { HOVER_FILL }))
 				})
 				.on_click(cx.listener(move |s, event: &gpui::ClickEvent, _, cx| {
 					if event.click_count() == 2
@@ -944,91 +945,109 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		if reason == PARENT_MANAGED_MESSAGE {
-			return Tone::Neutral
-				.composer_row(
-					"conversation-unavailable",
-					PARENT_MANAGED_MESSAGE,
-					workspace_symbols::icon_sized(workspace_symbols::Symbol::AccountRoute, 14.),
-				)
-				.child(self.workspace_action(
-					"native-open-parent".into(),
-					"Open parent conversation".into(),
-					|s, cx| s.open_native_parent(cx),
-					cx,
-				))
-				.into_any_element();
+			return ui_feedback::read_only_row(
+				"conversation-unavailable",
+				PARENT_MANAGED_MESSAGE,
+				"This agent receives messages through its parent conversation.",
+				workspace_symbols::icon_sized(workspace_symbols::Symbol::AccountRoute, 14.),
+			)
+			.debug_selector(|| "conversation-unavailable".into())
+			.child(self.workspace_action(
+				"native-open-parent".into(),
+				"Open parent conversation".into(),
+				|s, cx| s.open_native_parent(cx),
+				cx,
+			))
+			.into_any_element();
 		}
 		if reason == THREAD_LOCKED_MESSAGE {
-			return Tone::Warning
-				.composer_row(
-					"conversation-unavailable",
-					THREAD_LOCKED_MESSAGE,
-					workspace_symbols::icon_sized(workspace_symbols::Symbol::Lock, 14.),
-				)
-				.into_any_element();
+			return ui_feedback::read_only_row(
+				"conversation-unavailable",
+				THREAD_LOCKED_MESSAGE,
+				"Read-only until the other app releases this conversation. Your draft is kept.",
+				workspace_symbols::icon_sized(workspace_symbols::Symbol::Lock, 14.),
+			)
+			.debug_selector(|| "conversation-unavailable".into())
+			.into_any_element();
 		}
 
 		let detail = self.connection_failure_detail();
 		if !self.uncertain
 			&& let Some(message) = detail.and_then(account_connection_message)
 		{
-			return connection_recovery_notice(message, crate::shell::Destination::Accounts);
+			return ui_feedback::status_row(
+				"conversation-unavailable",
+				Tone::Error,
+				"Account needs attention",
+				message,
+				Tone::Error.icon(),
+			)
+			.debug_selector(|| "conversation-unavailable".into())
+			.child(connection_settings_action(crate::shell::Destination::Accounts))
+			.into_any_element();
 		}
 		let title = if self.uncertain {
-			"Delivery unconfirmed · Sending paused"
+			"Delivery unconfirmed"
 		} else {
 			match detail {
-				Some(text) if text.contains("ProcessUnavailable") =>
-					"Codex unavailable · Retrying automatically",
+				Some(text) if text.contains("ProcessUnavailable") => "Codex unavailable",
 				Some(text) if text.contains("RefreshQuota") || text.contains("usage limit") =>
-					"Account unavailable · Check Settings → Accounts",
+					"Account unavailable",
 				Some(text) if text.contains("SelectWorkingDirectory") =>
-					"Project folder unavailable · Restore folder access",
-				_ if reason.contains("retry automatically") =>
-					"Connection lost · Retrying automatically",
-				_ => "Connection unavailable · Sending paused",
+					"Project folder unavailable",
+				_ if reason.contains("retry automatically") => "Connection lost",
+				_ => "Sending paused",
 			}
 		};
 
-		Tone::Warning
-			.row("conversation-unavailable", title)
-			.debug_selector(|| "conversation-unavailable".into())
-			.flex_wrap()
-			.when(detail.is_some(), |d| {
-				d.child(
-					gpui::div().flex().items_center().child(
-						gpui::div()
-							.id("connection-details")
-							.role(Role::Button)
-							.aria_label("Technical details")
-							.aria_expanded(self.workspace.connection_details_expanded)
-							.tab_index(0)
-							.cursor_pointer()
-							.flex()
-							.items_center()
-							.gap(gpui::px(5.))
-							.h(gpui::px(20.))
-							.text_size(gpui::px(11.))
-							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-							.hover(|s| s.text_color(crate::ui_theme::rgb(TEXT)))
-							.child("Details")
-							.child(workspace_symbols::disclosure_chevron(
-								"connection-details-chevron",
-								self.workspace.connection_details_expanded,
-							))
-							.on_click(cx.listener(|s, _, _, cx| {
+		let row = ui_feedback::status_row(
+			"conversation-unavailable",
+			Tone::Warning,
+			title,
+			reason,
+			Tone::Warning.icon(),
+		)
+		.debug_selector(|| "conversation-unavailable".into())
+		.when(detail.is_some(), |d| {
+			d.child(
+				gpui::div().flex().items_center().child(
+					gpui::div()
+						.id("connection-details")
+						.role(Role::Button)
+						.aria_label("Technical details")
+						.aria_expanded(self.workspace.connection_details_expanded)
+						.tab_index(0)
+						.cursor_pointer()
+						.flex()
+						.items_center()
+						.gap(gpui::px(5.))
+						.h(gpui::px(20.))
+						.text_size(gpui::px(11.))
+						.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+						.hover(|s| s.text_color(crate::ui_theme::rgb(TEXT)))
+						.child("Details")
+						.child(workspace_symbols::disclosure_chevron(
+							"connection-details-chevron",
+							self.workspace.connection_details_expanded,
+						))
+						.on_click(cx.listener(|s, _, _, cx| {
+							s.toggle_connection_details(cx);
+						}))
+						.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
+							if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 								s.toggle_connection_details(cx);
-							}))
-							.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
-								if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-									s.toggle_connection_details(cx);
-									cx.stop_propagation();
-								}
-							}))
-							.smooth(),
-					),
-				)
-			})
+								cx.stop_propagation();
+							}
+						}))
+						.smooth(),
+				),
+			)
+		});
+		gpui::div()
+			.w_full()
+			.flex()
+			.flex_col()
+			.child(row)
 			.child(ui_motion::disclosure(
 				"connection-diagnostic",
 				self.workspace.connection_details_expanded && detail.is_some(),
@@ -1038,7 +1057,7 @@ impl AgentSurface {
 					.text_size(gpui::px(11.))
 					.line_height(gpui::px(17.))
 					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-					.child(format!("{reason}\n{}", detail.unwrap_or_default())),
+					.child(detail.unwrap_or_default().to_owned()),
 			))
 			.into_any_element()
 	}
@@ -1121,6 +1140,7 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		crate::frame_trace::surface_render("transcript");
 		self.prepare_transcript_history(window, cx);
 		let selected = self.conversation_work();
 		let is_agent = self.native_agents.selected.is_some() || self.selected_is_agent();
@@ -1332,15 +1352,27 @@ impl AgentSurface {
 			.overflow_hidden()
 			.flex()
 			.flex_col()
-			.bg(ui_theme::workspace_palette().conversation)
-			.rounded_b(gpui::px(ui_theme::WORKSPACE_RADIUS))
-			.when(self.workspace_graph_size(window, wide).1 <= 0.1, |chat| {
-				chat.rounded_t(gpui::px(ui_theme::WORKSPACE_RADIUS))
-			});
-
-		chat = chat.when(self.native_agents.selected.is_none(), |chat| {
-			chat.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)))
-		});
+			.child(
+				gpui::div()
+					.debug_selector(|| "conversation-header".into())
+					.h(gpui::px(ui_theme::CONVERSATION_HEADER_HEIGHT))
+					.flex_none()
+					.px(gpui::px(ui_theme::CONVERSATION_INSET))
+					.flex()
+					.items_center()
+					.justify_between()
+					.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+					.child(
+						gpui::div()
+							.id("conversation-heading")
+							.role(Role::Heading)
+							.aria_level(2)
+							.aria_label("Conversation")
+							.child("Conversation"),
+					)
+					.child(self.panel_controls(super::panel_controls::Panel::Conversation, cx)),
+			);
 
 		let floating_composer = is_agent
 			&& (selected.is_some() || self.is_new_conversation())
@@ -1354,8 +1386,7 @@ impl AgentSurface {
 				.min_h_0()
 				.flex()
 				.relative()
-				// Repaint the current transcript geometry. Whole-scene replay can
-				// retain old pixels during scrolling and native panel transitions.
+				// Keep current transcript pixels during scroll and native-panel changes.
 				// Markdown shaping and history preparation retain their own caches.
 				.child(self.transcript_presentation.clone())
 				.when(!self.is_new_conversation(), |row| {
@@ -1363,6 +1394,10 @@ impl AgentSurface {
 				})
 				.child(self.latest_button(window, cx)),
 		);
+		// Read-only state replaces the input at the bottom, never the history header.
+		chat = chat.when(self.native_agents.selected.is_none(), |chat| {
+			chat.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)))
+		});
 
 		if !is_agent && let Some(work) = selected.as_ref() {
 			chat = chat
@@ -1370,15 +1405,6 @@ impl AgentSurface {
 				.child(self.conversation_activity(cx))
 				.child(self.workspace_followup(work, cx));
 		}
-
-		chat = chat.child(
-			gpui::div()
-				.absolute()
-				.top(gpui::px(6.))
-				.right(gpui::px(8.))
-				.occlude()
-				.child(self.panel_controls(super::panel_controls::Panel::Conversation, cx)),
-		);
 
 		let chat = self.workspace_details_overlay(chat, selected.as_ref(), window, cx);
 		self.workspace_frame(chat.into_any_element(), wide, window, cx)
@@ -1423,8 +1449,11 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Div {
 		let palette = ui_theme::workspace_palette();
-		// One clipped work surface joins the map and transcript. The native editor
-		// remains on the outer frame so its width and bottom anchor do not change.
+		if height <= 0.1 {
+			self.stop_graph_actors();
+		}
+		// History and the editor share one reading surface and the same width.
+		// The editor floats over history without a second enclosing panel.
 		let plane = gpui::div()
 			.debug_selector(|| "workspace-content-plane".into())
 			.relative()
@@ -1438,16 +1467,19 @@ impl AgentSurface {
 			.child(
 				gpui::div()
 					.flex_none()
+					.relative()
 					.overflow_hidden()
 					.w_full()
 					.h(gpui::px(height))
-					.rounded_t(gpui::px(ui_theme::WORKSPACE_RADIUS))
-					.when(self.workspace.graph_expanded && !has_composer, |graph| {
-						graph.rounded_b(gpui::px(ui_theme::WORKSPACE_RADIUS))
-					})
 					.bg(palette.graph)
+					.rounded_tl(gpui::px(ui_theme::WORKSPACE_RADIUS))
+					.rounded_tr(gpui::px(ui_theme::WORKSPACE_RADIUS))
 					.opacity(self.workspace.arrival.progress(0.06))
-					.when(height > 0.1, |panel| panel.child(self.handoff_canvas(cx))),
+					.when(height > 0.1, |panel| {
+						panel
+							.child(crate::ui_layout::pane(self.graph_presentation.clone(), window))
+							.child(self.graph_layers())
+					}),
 			)
 			.when(!self.workspace.graph_expanded, |plane| {
 				plane.child(
@@ -1458,8 +1490,7 @@ impl AgentSurface {
 						.min_w_0()
 						.flex()
 						.flex_col()
-						.child(chat)
-						.when(height > 0.1, |reading| reading.child(ui_theme::workspace_seam())),
+						.child(chat),
 				)
 			})
 			.when(self.workspace.graph_expanded && has_composer, |plane| {
@@ -1468,9 +1499,7 @@ impl AgentSurface {
 						.debug_selector(|| "workspace-composer-backdrop".into())
 						.flex_1()
 						.min_h_0()
-						.w_full()
-						.rounded_b(gpui::px(ui_theme::WORKSPACE_RADIUS))
-						.bg(palette.conversation),
+						.w_full(),
 				)
 			});
 		gpui::div()
@@ -1479,7 +1508,9 @@ impl AgentSurface {
 			.flex_1()
 			.min_w_0()
 			.h_full()
-			.p(gpui::px(ui_theme::WORKSPACE_INSET))
+			.bg(palette.conversation)
+			.rounded(gpui::px(ui_theme::WORKSPACE_RADIUS))
+			.overflow_hidden()
 			.flex()
 			.flex_col()
 			.child(plane)
@@ -1522,21 +1553,44 @@ impl AgentSurface {
 			window,
 			cx,
 		);
-		let body = gpui::div().flex_1().min_h_0().flex().overflow_hidden().child(center).child(
-			gpui::div()
-				.flex_none()
-				.w(gpui::px(right_width))
-				.h_full()
-				.overflow_hidden()
-				.opacity(self.workspace.arrival.progress(0.08))
-				.when(right_width > 0.1, |panel| panel.child(self.agent_tree(right_width, cx))),
-		);
+		let body = gpui::div()
+			.flex_1()
+			.min_h_0()
+			.flex()
+			.overflow_hidden()
+			.when(right_width > 0.1, |body| body.gap(gpui::px(ui_theme::WORKSPACE_GUTTER)))
+			.child(center)
+			.child(
+				gpui::div()
+					.debug_selector(|| "workspace-activity-frame".into())
+					.flex_none()
+					.relative()
+					.w(gpui::px(right_width))
+					.h_full()
+					.rounded(gpui::px(ui_theme::WORKSPACE_RADIUS))
+					.bg(ui_theme::rgba(ui_theme::FIELD_MATERIAL))
+					.overflow_hidden()
+					.opacity(self.workspace.arrival.progress(0.08))
+					.when(right_width > 0.1, |panel| {
+						self.deliveries.update(cx, |panel, cx| panel.set_width(right_width, cx));
+						panel
+							.child(crate::ui_layout::pane(
+								self.activity_presentation.clone(),
+								window,
+							))
+							.child(
+								self.sidebar_resize_handle(super::workspace_size::Panel::Right, cx),
+							)
+					}),
+			);
 		// Sidebars share the native plane; Thin adds subtle graph and reading tints.
 		let main = gpui::div()
 			.flex_1()
 			.min_w_0()
 			.h_full()
 			.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
+			.px(gpui::px(ui_theme::WORKSPACE_GUTTER))
+			.pb(gpui::px(ui_theme::WORKSPACE_GUTTER))
 			.relative()
 			.flex()
 			.flex_col()
@@ -1827,7 +1881,7 @@ impl AgentSurface {
 				gpui::div()
 					.px_2()
 					.text_size(gpui::px(11.0))
-					.text_color(crate::ui_theme::rgb(AMBER))
+					.text_color(crate::ui_theme::rgb(WARNING))
 					.child("Dependency cycle · review work relations"),
 			);
 		}
@@ -1977,7 +2031,7 @@ impl AgentSurface {
 								window.paint_path(
 									path,
 									crate::ui_theme::rgb(if blocked {
-										AMBER
+										WARNING
 									} else if report {
 										BLUE
 									} else {
@@ -2588,7 +2642,8 @@ impl AgentSurface {
 	}
 
 	fn conversation_feedback(&self) -> Option<Feedback> {
-		if self.connection_initializing()
+		if self.selected_is_archived()
+			|| self.connection_initializing()
 			|| (self.composer_unavailable_reason().is_some()
 				&& self.draft_storage_notice().is_none())
 		{
@@ -3472,23 +3527,23 @@ mod tests {
 			s.visual_workspace_fixture(cx);
 			s.open_page("verify", cx);
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		surface.update(visual, |s, cx| s.close_page("verify", cx));
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		surface.update(visual, |s, cx| s.open_page("verify", cx));
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		surface.update(visual, |s, _| {
 			assert_eq!(s.workspace.pages, vec!["verify"]);
 			assert_eq!(s.selected.as_deref(), Some("verify"));
 			assert!(s.workspace.closing_pages.is_empty());
 		});
 		surface.update(visual, |s, cx| s.close_page("verify", cx));
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 
 		// Wait only for deferred removal; visual smoothness is not a unit-test claim.
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_frame);
 		visual.run_until_parked();
 		surface.update(visual, |s, _| {
 			assert!(s.workspace.pages.is_empty());

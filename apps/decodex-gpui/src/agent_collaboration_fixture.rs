@@ -88,6 +88,7 @@ impl AgentSurface {
 		show_inspector: bool,
 		cx: &mut Context<Self>,
 	) -> gpui::AnyElement {
+		self.prepare_graph_layers();
 		// The offscreen fixture supplies a deterministic compositor backdrop.
 		// Production keeps its existing native window and sidebar materials.
 		gpui::div()
@@ -97,7 +98,15 @@ impl AgentSurface {
 			.font_weight(gpui::FontWeight::NORMAL)
 			.text_color(crate::ui_theme::rgb(crate::ui_theme::TEXT))
 			.bg(crate::ui_theme::rgb(0x303030))
-			.child(gpui::div().flex_1().min_w_0().h_full().child(self.render_work_board(cx)))
+			.child(
+				gpui::div()
+					.relative()
+					.flex_1()
+					.min_w_0()
+					.h_full()
+					.child(self.render_work_board(cx))
+					.child(self.graph_layers()),
+			)
 			.when(show_inspector, |view| {
 				view.child(
 					gpui::div()
