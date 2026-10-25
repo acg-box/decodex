@@ -27,6 +27,8 @@ MIGRATIONS = (
     (55, "agent_slots", ROOT / "database/migrations/0055_agent_slots.sql"),
     (56, "project_agent_work", ROOT / "database/migrations/0056_project_agent_work.sql"),
     (57, "native_work_delivery", ROOT / "database/migrations/0057_native_work_delivery.sql"),
+    (58, "shared_agent_process", ROOT / "database/migrations/0058_shared_agent_process.sql"),
+    (59, "native_assignment_proof", ROOT / "database/migrations/0059_native_assignment_proof.sql"),
 )
 
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
