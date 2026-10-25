@@ -117,7 +117,7 @@ impl AgentSurface {
 			&& !self.workspace.browsing
 			&& self.snapshot.is_some()
 			&& !self.selected_is_archived()
-			&& (self.native_agents.selected.is_some() || self.selected_is_manager())
+			&& (self.native_agents.selected.is_some() || self.selected_is_agent())
 	}
 
 	/// Move keyboard and accessibility focus into the current message editor.

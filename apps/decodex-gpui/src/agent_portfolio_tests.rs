@@ -145,6 +145,58 @@ fn snapshot() -> AgentSnapshotDto {
 		pending_events: vec![],
 	}
 }
+
+#[gpui::test]
+fn independent_agent_keeps_its_composer_and_can_answer_its_approval(cx: &mut TestAppContext) {
+	let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+	surface.update(visual, |s, cx| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		s.open_page("iris", cx);
+		s.workspace.graph_visible = false;
+		assert_eq!(s.root_id().as_deref(), Some("sage"));
+		assert!(s.graph_has_composer(), "each independent Agent owns a conversation");
+		s.snapshot.as_mut().unwrap().pending_events =
+			vec![decodex_protocol::AgentPendingEventDto {
+				id: 904,
+				source_event_id: "iris-approval".into(),
+				work_item_id: "iris".into(),
+				event_kind: "permission_pending".into(),
+				created_at_micros: 1,
+				delivery_claimed: false,
+			}];
+		let request = decodex_protocol::AgentRequestResult::Available {
+			event_id: 904,
+			work_id: "iris".into(),
+			method: "item/commandExecution/requestApproval".into(),
+			request_json: decodex_protocol::AgentRequestText::new(
+				serde_json::json!({
+					"command":"printf approved > approval.txt",
+					"cwd":"/tmp/trip",
+					"availableDecisions":["accept","cancel"]
+				})
+				.to_string(),
+			)
+			.unwrap(),
+		};
+		s.prepare_question_inputs(&request, cx);
+		s.request = Some(request);
+		cx.notify();
+	});
+	visual.update(|window, cx| {
+		window.resize(gpui::size(gpui::px(1200.), gpui::px(1000.)));
+		window.draw(cx).clear(cx);
+	});
+	assert!(visual.debug_bounds("composer-editor-area").is_some());
+	assert!(visual.debug_bounds("discuss-with-agent").is_none());
+	let allow = visual.debug_bounds("request-accept").expect("the Agent's approval control");
+	visual.simulate_click(allow.center(), Default::default());
+	visual.run_until_parked();
+	surface.read_with(visual, |s, _| {
+		assert_eq!(s.selected.as_deref(), Some("iris"));
+		assert_eq!(s.feedback.message, "No service profile is configured.");
+	});
+}
+
 #[gpui::test]
 fn two_projects_four_works_open_scoped_collaboration_material_and_result(cx: &mut TestAppContext) {
 	let (_directory, profile, server) = super::super::wire_test_support::fixture(work_detail);
