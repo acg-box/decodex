@@ -1991,7 +1991,7 @@
           "decodex-gpui::bin/decodex-gpui shell::agent_surface::voice::transport::tests::native_call_exchanges_audio_captions_mutes_and_releases_buffers",
           "decodex-gpui::bin/decodex-gpui shell::agent_surface::voice::transport::tests::remote_channel_loss_reports_failure_and_releases_buffers"
         ],
-        "limit": "Both existing native-media tests timed out in ICE connection. Unchanged main reproduced the same timeout in remote_channel_loss with identical workspace flags; its package-only two-test run passed. The first test failure was not independently reproduced on main. No test was excluded or weakened; the common cause remains unknown."
+        "limit": "The original workspace run retains two native-media ICE timeouts. The native_media_followup records the later source comparison, firewall evidence and passing reruns. It does not change the original result or establish a locked-session or physical-device qualification."
       },
       "database": {
         "entrypoint": "decodex-database/all-features",
@@ -2041,7 +2041,7 @@
       "Old tool contracts migrate only after inspectable native quiescence. Active or paused Goals, live commands/descendants, unsupported settings and unknown creation/retirement stay parked without a reset.",
       "Earlier certified source-review ranges and historical artifact qualifications keep their recorded limits; this implementation does not advance the upstream cursor.",
       "The Work overview and each selected evidence category are bounded to 100 rows. has_more marks additional retained records; selected Work transport pages use 8 KiB UTF-8 slices and a 32 MiB assembled limit.",
-      "Both existing native-media tests timed out in ICE connection. Unchanged main reproduced the same timeout in remote_channel_loss with identical workspace flags; its package-only two-test run passed. The first test failure was not independently reproduced on main. No test was excluded or weakened; the common cause remains unknown."
+      "The original workspace run retains two native-media ICE timeouts. The native_media_followup records the later source comparison, firewall evidence and passing reruns. It does not change the original result or establish a locked-session or physical-device qualification."
     ],
     "validation": {
       "workspace_check": "passed",
@@ -2058,6 +2058,88 @@
       "source_review_cursor": "unchanged",
       "app_installation": "not_performed",
       "release": "not_performed"
+    },
+    "native_media_followup": {
+      "verified_at": "2026-10-25T01:54:56.613092+00:00",
+      "baseline_source": "c03244a8a39c5621eff17f99a04db8e2cb83bc5a",
+      "current_source": "995b3947100f523c7dd751f56498f508f8467e07",
+      "test_entrypoint": "decodex-gpui::bin/decodex-gpui",
+      "tests_read": [
+        "shell::agent_surface::voice::transport::tests::native_call_exchanges_audio_captions_mutes_and_releases_buffers",
+        "shell::agent_surface::voice::transport::tests::remote_channel_loss_reports_failure_and_releases_buffers"
+      ],
+      "shared_symbols": [
+        "Transport::start",
+        "gather_audio_offer",
+        "run_media",
+        "tests::call_lifecycle",
+        "tests::connect_fixture_peer",
+        "tests::event"
+      ],
+      "source_sha256": {
+        "apps/decodex-gpui/src/native_voice_transport.rs": "7755a053ce0cd9f4ccd3529f0760e3a4a9db2eb4dcbf85baceebe9342e879434",
+        "apps/decodex-gpui/src/native_live_audio.rs": "3043a84c1bf0a25748dbf6012b7c08c06d23a5682c261b46553fafef7c650c7d",
+        "apps/decodex-gpui/src/native_audio_owner.rs": "6277865d54ed83acd1ba986d876958bceba2428c052ed1b702faa7b702d39426",
+        "apps/decodex-gpui/src/native_voice_audio.rs": "74b0d5655015ca52e3804d2290aee7f28eecd8b362108bf8dd9d139db20168fe",
+        ".config/nextest.toml": "0628e8b2a1386725ffc17a1e8281faac94ad2f69f330f41e4b0d8271c64b44e2",
+        "Cargo.toml": "638aefebc71177c04272fe874077b8b791ef91057066918bdf189ba6c5ca905e",
+        "Cargo.lock": "3a64e1c930eee64023d38ad56fdfd4871774a635c6645d1d5b594963c699bd01",
+        "apps/decodex-gpui/Cargo.toml": "02dc8d83c528a1fba5e28b0063ac907c5b67f681f19f9ec51d8055f4710b7a47"
+      },
+      "artifact_sha256": {
+        "current_gpui_test": "4001375bc9c24d4618edbe1380fa1efa9843399c798907f873efd11b6dfb89d4",
+        "baseline_gpui_test": "0fe8ab828af5d4471d58d0c4e59427fdbd01d753cdc16f416dc76ee9414f6e8d",
+        "libwebrtc.a": "979b6310063a49a022bc11cb55397e3ccef887ef23b613fed43afdc4769ea75e"
+      },
+      "dependency": "libwebrtc 0.3.51; webrtc-sys 0.3.48",
+      "feature_graph_comparison": "The normalized reverse feature graphs match.",
+      "executed": {
+        "current_pair": {
+          "run": 2,
+          "passed": 2,
+          "skipped": 1019
+        },
+        "current_pair_stress": {
+          "iterations": 20,
+          "run": 40,
+          "passed": 40,
+          "retries": 0,
+          "skipped_per_iteration": 1019
+        },
+        "baseline_pair_stress": {
+          "iterations": 20,
+          "run": 40,
+          "passed": 40,
+          "retries": 0,
+          "skipped_per_iteration": 1017
+        },
+        "current_workspace": {
+          "run": 2918,
+          "passed": 2918,
+          "failed": 0,
+          "skipped": 1154,
+          "leaky": 0
+        }
+      },
+      "unmatched_selectors": [],
+      "diagnosis": {
+        "observed": "The macOS application firewall queued inbound flows for the workspace test binary during both architecture ICE failures. The trace had no verdict while these calls waited and default drops after process exit. A preceding package-only pass had a known allow verdict. The current test binary received a firewall prompt and then a known allow verdict. Its later repeated and workspace runs passed.",
+        "inference": "The evidence supports host firewall admission as the cause of the observed ICE stalls. The source, dependency and feature comparison does not identify an architecture-induced audio change. No controlled firewall-denial experiment was performed.",
+        "lock_screen": "No historical lock state was recovered. No sleep event was found in the failure window. A controlled locked-session test was not performed. Lock could leave a firewall prompt unanswered; this is an unverified trigger.",
+        "firewall_mutation": false
+      },
+      "qualification_limits": [
+        "The original failed run remains failed. Later passes do not rewrite its result.",
+        "Both tests use synthetic PCM and native WebRTC packet flow. They do not open the microphone or speaker.",
+        "These tests do not establish physical-device quality, provider behavior or installed-app acceptance.",
+        "No product source, test deadline, assertion, retry policy or test filter was changed.",
+        "Baseline workspace products were rebuilt in an independent target. Only third-party artifacts were copied with APFS copy-on-write."
+      ],
+      "commands": [
+        "cargo +stable nextest run --locked --workspace --all-targets --all-features -E 'binary_id(decodex-gpui::bin/decodex-gpui) and (test(native_call_exchanges_audio_captions_mutes_and_releases_buffers) or test(remote_channel_loss_reports_failure_and_releases_buffers))' --stress-count 20 --retries 0 --no-fail-fast",
+        "cargo +stable nextest run --locked --workspace --all-targets --all-features --no-fail-fast"
+      ],
+      "external_reference": "https://support.apple.com/guide/mac-help/block-connections-to-your-mac-with-a-firewall-mh34041/mac"
     }
   }
 }

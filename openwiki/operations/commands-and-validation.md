@@ -56,10 +56,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
+generated: { by: "codex", at: "2026-10-25T01:55:03.097Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T21:19:56.719Z
+    at: 2026-10-25T01:55:03.097Z
 ---
 
 
@@ -173,7 +173,7 @@ cargo +stable nextest run --locked --workspace --all-targets --all-features --no
 
 The change passed workspace checking, strict lint for 13 packages, formatting and the schema56/89-table local database gate. The database suite executed 188 tests successfully. The native selected matrix executed 13 successfully, excluding 985. The transport/receipt selection executed 28 successfully, excluding 970. Focused UI/runtime checks passed 6; Python checks passed 40; CLI diagnostics passed 2. Selected tests had zero unmatched identities. These cohorts overlap.
 
-The complete workspace run executed 2918 tests: 2916 passed, including one leaky pass, and two native audio ICE connection tests failed; 1154 were skipped. One identical timeout reproduced on untouched main under workspace feature unification. A package-only baseline run passed both, and the other current failure was not independently reproduced on main. The cause is unknown. Preserve both failures; do not turn a passing focused Work/Guardian cohort into a claim that the full suite passed.
+The original complete workspace run executed 2918 tests: 2916 passed, including one leaky pass, and two native audio ICE connection tests failed; 1154 were skipped. Preserve that failed receipt. The separate `native_media_followup` records a later current-main full run with 2918 passed, 1154 skipped and no leaky pass. Both media tests also passed 20 repetitions on current main and on the pre-change baseline, 40 executions per source with zero retries. Matching source and feature graphs plus historical firewall events support an external admission cause. The lock-screen trigger remains unverified. Use the [native media timeout procedure](../integrations/subscription-voice.md#diagnose-native-media-ice-timeouts) before changing audio code or test deadlines.
 
 These checks do not install or start the product, spend real account capacity or measure live model judgment. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) for native V1/V2, missing private action association, bounded evidence and installed-app limits.
 
