@@ -1698,7 +1698,8 @@ impl StdoutPump {
 	where
 		R: Read + AsRawFd + Send + 'static,
 	{
-		set_nonblocking(reader.as_raw_fd())?;
+		let descriptor = reader.as_raw_fd();
+		set_nonblocking(descriptor)?;
 
 		let cancelled = Arc::new(AtomicBool::new(false));
 		let pump_cancelled = Arc::clone(&cancelled);
@@ -1712,6 +1713,7 @@ impl StdoutPump {
 					protocol_limit_exceeded,
 					&pump_cancelled,
 					buffered.as_deref(),
+					|| wait_for_stdout(descriptor),
 				);
 
 				let _ = done_sender.try_send(());
@@ -5587,12 +5589,20 @@ fn set_nonblocking(descriptor: i32) -> Result<(), SupervisionError> {
 	Ok(())
 }
 
+fn wait_for_stdout(descriptor: i32) {
+	let mut readiness = libc::pollfd { fd: descriptor, events: libc::POLLIN, revents: 0 };
+	// SAFETY: the pump retains the reader that owns this descriptor. Poll only borrows it.
+	// Readable data and EOF wake immediately; the timeout bounds cancellation of an idle pipe.
+	unsafe { libc::poll(&mut readiness, 1, 10) };
+}
+
 fn pump_stdout(
 	mut reader: impl Read,
 	sender: SyncSender<InboundFrame>,
 	protocol_limit_exceeded: Arc<AtomicBool>,
 	cancelled: &AtomicBool,
 	buffered: Option<&AtomicBool>,
+	mut wait_for_data: impl FnMut(),
 ) {
 	let mut read_buffer = ZeroizingInboundBlock::new();
 	let mut frame = InboundFrame::new();
@@ -5614,7 +5624,7 @@ fn pump_stdout(
 			},
 			Ok(count) => count,
 			Err(error) if error.kind() == ErrorKind::WouldBlock => {
-				thread::park_timeout(Duration::from_millis(10));
+				wait_for_data();
 
 				continue;
 			},
@@ -7274,6 +7284,27 @@ pub(crate) mod tests {
 	}
 
 	#[test]
+	fn stdout_readiness_preserves_split_frames_and_stops_with_the_writer_open() {
+		let (mut writer, reader) = std::os::unix::net::UnixStream::pair().unwrap();
+		let (sender, receiver) = mpsc::sync_channel(2);
+		let exceeded = Arc::new(AtomicBool::new(false));
+		let mut pump = process::StdoutPump::start(reader, sender, Arc::clone(&exceeded)).unwrap();
+
+		writer.write_all(b"first\npart").unwrap();
+		let first = receiver.recv_timeout(Duration::from_secs(1)).unwrap().into_contiguous();
+
+		assert_eq!(&*first, b"first\n");
+		assert!(matches!(receiver.try_recv(), Err(mpsc::TryRecvError::Empty)));
+
+		writer.write_all(b"ial\n").unwrap();
+		let second = receiver.recv_timeout(Duration::from_secs(1)).unwrap().into_contiguous();
+
+		assert_eq!(&*second, b"partial\n");
+		assert!(pump.stop(Duration::from_secs(1)), "idle reads must not require writer EOF");
+		assert!(!exceeded.load(Ordering::Acquire));
+	}
+
+	#[test]
 	fn stdout_pump_preserves_large_native_media_and_the_following_peer_frame() {
 		let value = serde_json::json!({"id":17,"result":{"data":[{"turnId":"turn","item":{"id":"image","type":"dynamicToolCall","contentItems":[{"type":"inputImage","imageUrl":format!("data:image/png;base64,{}", "A".repeat(2*1_024*1_024))}]}}],"nextCursor":null}});
 		let mut input = serde_json::to_vec(&value).unwrap();
@@ -7290,6 +7321,7 @@ pub(crate) mod tests {
 			Arc::clone(&exceeded),
 			&AtomicBool::new(false),
 			None,
+			|| {},
 		);
 
 		assert!(
@@ -7341,6 +7373,7 @@ pub(crate) mod tests {
 			Arc::clone(&exceeded),
 			&AtomicBool::new(false),
 			None,
+			|| {},
 		);
 
 		drop(receiver);
@@ -7424,6 +7457,7 @@ pub(crate) mod tests {
 			Arc::new(AtomicBool::new(false)),
 			&AtomicBool::new(false),
 			None,
+			|| {},
 		);
 
 		let after_disconnect = process::ZEROIZED_INBOUND_BLOCKS.load(Ordering::Acquire);
@@ -7438,6 +7472,7 @@ pub(crate) mod tests {
 			Arc::new(AtomicBool::new(false)),
 			&AtomicBool::new(false),
 			None,
+			|| {},
 		);
 
 		drop(receiver);
@@ -7479,6 +7514,7 @@ pub(crate) mod tests {
 			Arc::new(AtomicBool::new(false)),
 			&AtomicBool::new(false),
 			None,
+			|| {},
 		);
 
 		let frame = receiver.recv().unwrap();
@@ -7501,6 +7537,7 @@ pub(crate) mod tests {
 			Arc::new(AtomicBool::new(false)),
 			&AtomicBool::new(false),
 			None,
+			|| {},
 		);
 
 		drop(receiver);

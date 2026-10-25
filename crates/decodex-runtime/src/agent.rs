@@ -2482,9 +2482,15 @@ impl AgentCoordinator {
 			return Ok(());
 		}
 
+		let phase = crate::startup_trace::Phase::new("wake_guardian");
 		self.sync_global_guardian().await?;
+		drop(phase);
 
+		let phase = crate::startup_trace::Phase::new("wake_thread_ownership");
 		let blocked = self.recover_thread_ownership().await?;
+		drop(phase);
+
+		let _phase = crate::startup_trace::Phase::new("wake_ready_work");
 		let voice_calls = self.store.open_agent_voice_calls().await?;
 		let work = self.store.list_agent_work_items().await?;
 		let managers = self.store.agent_manager_ids().await?;

@@ -70,6 +70,7 @@ impl AgentCoordinator {
 	/// An incomplete read leaves the durable recovery marker for the next connection.
 	pub(super) async fn recover_async_questions(&mut self) -> Result<(), AgentError> {
 		for (work, thread, required_item) in self.store.pending_agent_async_recovery().await? {
+			let _phase = crate::startup_trace::Phase::new("recover_async_thread");
 			let revision = self.client.question_revision();
 			let lifecycle = self.client.thread_settings_guard(&thread);
 			let deadline = Instant::now() + Duration::from_secs(30);
