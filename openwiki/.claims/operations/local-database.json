@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e68dc3af98f085c361e92f94fc5e99cc62217655c1eed0052fca9a85e65ea5ae",
+  "pageVersion": "sha256:947a761424f62b8ab91aaeeaa54cec950116bb80370f114bf7bbd1278e125268",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:8cd13ad6810756d5c248d76bc3af66f02433b47d0d048afbe11e41f64ad8ecc2"
+          "version": "repo-file-v1:sha256:176017c4383dba8f7c27b8311442a333e430a3b2a6ae92ce5731c1b6f73b24ca"
         }
       ]
     },
@@ -67,7 +67,7 @@
           "version": "repo-file-v1:sha256:a9cb497d1fa84af093ba66bdf106fb009bf3179794de23eafdb34a24dc4a858b"
         },
         {
-          "resource": "repo://database/src/migrations.rs#L107-L165",
+          "resource": "repo://database/src/migrations.rs#L117-L175",
           "version": "repo-lines-v1:sha256:626487d7f9257edc8a7a0252542568a97b100eb908cc7b74ab73128eef19568c:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzYWNlOTQ5YjcyOWM4MjI2YzE0YWM1YzA2OGQ0ZjQ5NDQwMTJjMTg2ZGJjYzkyOWViOTlkNjBhODk1Njg4YTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhZGY0YTk2YTM1ZWFmNjBjZDMwNzIwMDZlZmEzMzUwODQ3NjMzNTc2MmY3MWJjN2NkY2U4NTUzMjllMTI1ZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyZjcxNWExMjAyMmNkOGNiODEzMmM2YmIyZDdlYmM0MGIwNjU2YTE1MzgzYWUwMWM5YjE3ZWFiZGE0YTVjMTYifQ"
         }
       ]
@@ -91,8 +91,8 @@
           "version": "repo-file-v1:sha256:ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699"
         },
         {
-          "resource": "repo://database/src/migrations.rs#L8-L68",
-          "version": "repo-lines-v1:sha256:f34d149fde51ed90177414ce85548b6b1baa12136ca17d236b7aef2c89124940:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmOTFlNTk4NmU4OWZjNDI1OWRiY2VhMjU2MDRiNmI5YzMwMTc2NjdlOGRlMDZhOTIwYzY0NWNiMDcwYzVhYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiNGRhM2I1ZGMyYzkwZGI2NGEwMGE0MmNmZGNhZmViZGUzMDI2OTJjYWQ4MWFkNjI1YTgxNjNhZDVhNWMyYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkMjNjMWJiNjE2NjI5ZTVkYTUxNGJhMmI2Yjk4YWNkYzA1Y2M2ZTIwZTViNTEzYTM5MWY0MTBlYjk1ODQzZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyZGE5ZWM4MjY5ZTAwN2I3YmUzYTYyMTc1NDFjODJlZGUxZTQxMDgzZDQwNTA0MWVmYWZkN2ZkM2ZiYTUyYmQifQ"
+          "resource": "repo://database/src/migrations.rs#L8-L78",
+          "version": "repo-lines-v1:sha256:bb447825df7405cee695e77ef9d442b14b8383485061eb50a8e2a3b5206c35b2:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmOTFlNTk4NmU4OWZjNDI1OWRiY2VhMjU2MDRiNmI5YzMwMTc2NjdlOGRlMDZhOTIwYzY0NWNiMDcwYzVhYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiNGRhM2I1ZGMyYzkwZGI2NGEwMGE0MmNmZGNhZmViZGUzMDI2OTJjYWQ4MWFkNjI1YTgxNjNhZDVhNWMyYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkMjNjMWJiNjE2NjI5ZTVkYTUxNGJhMmI2Yjk4YWNkYzA1Y2M2ZTIwZTViNTEzYTM5MWY0MTBlYjk1ODQzZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyZGE5ZWM4MjY5ZTAwN2I3YmUzYTYyMTc1NDFjODJlZGUxZTQxMDgzZDQwNTA0MWVmYWZkN2ZkM2ZiYTUyYmQifQ"
         }
       ]
     },
@@ -102,7 +102,7 @@
       "evidence": [
         {
           "resource": "repo://database/src/works.rs",
-          "version": "repo-file-v1:sha256:8448f5642ed7e656dafb41c0546229d910e3c9fec02fe8458eb337ac676c8e72"
+          "version": "repo-file-v1:sha256:999ed15a136bb3358f0fba0c78d961a954a8d145c3583c121eba49b9a91795b2"
         },
         {
           "resource": "repo://database/src/works/commands.rs",
@@ -134,33 +134,25 @@
         },
         {
           "resource": "repo://database/src/guardian_settings.rs",
-          "version": "repo-file-v1:sha256:55f3c9a78b8ba21e28125f3d4edb836ccfb6a155b603390e95c8fd5ca78e61b9"
+          "version": "repo-file-v1:sha256:089792ed78bb1fb6d0d734b49bf2edc57bcfa96f233eb217d276f164872aeebb"
         }
       ]
     },
     {
       "id": "claim_720cb8f9892a455cbccf959a9df44908",
-      "statement": "The current ledger ends at schema 57 with native_work_deliveries, preserving one immutable exact native input receipt per contribution, unique child/turn/message identity and idempotent identical store-method retries; existing dispatches are preserved without invented delivery evidence.",
+      "statement": "The current ledger ends at schema59. Schema58 preserves existing Agent bindings while allowing separate bindings on a shared admitted process; schema59 adds explicit plaintext or native-task-name proof to received native input receipts without inventing absent deliveries.",
       "evidence": [
         {
-          "resource": "repo://database/migrations/0057_native_work_delivery.sql",
-          "version": "repo-file-v1:sha256:b631d6ab912b436339528f3de75cfae6fa26ed545262e7bdf6fcdaad7685c3f7"
+          "resource": "repo://database/migrations/0058_shared_agent_process.sql",
+          "version": "repo-file-v1:sha256:05e447b01812463e012054fcb355dda890d814243bab5b944849f943b4ef3c00"
+        },
+        {
+          "resource": "repo://database/migrations/0059_native_assignment_proof.sql",
+          "version": "repo-file-v1:sha256:c49bd47c9d4f22c1e43ff5c27def8ba36ff0725c355fc9327515408d4400a179"
         },
         {
           "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:8cd13ad6810756d5c248d76bc3af66f02433b47d0d048afbe11e41f64ad8ecc2"
-        },
-        {
-          "resource": "repo://database/src/project_work_migration_tests.rs",
-          "version": "repo-file-v1:sha256:8a34171cf21f6b83191045ee5d6a7ee1335acde1fbaec525cc7c931d5c2b001a"
-        },
-        {
-          "resource": "repo://database/src/works.rs",
-          "version": "repo-file-v1:sha256:8448f5642ed7e656dafb41c0546229d910e3c9fec02fe8458eb337ac676c8e72"
-        },
-        {
-          "resource": "repo://database/src/works/tests.rs",
-          "version": "repo-file-v1:sha256:2d66d5c291be85e5c72f4643d774f8712af12e942cdebb1b463e270feb5909d2"
+          "version": "repo-file-v1:sha256:176017c4383dba8f7c27b8311442a333e430a3b2a6ae92ce5731c1b6f73b24ca"
         }
       ]
     },
@@ -170,13 +162,37 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
+          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+        }
+      ]
+    },
+    {
+      "id": "claim_5383492fdd5c499c8dcfe93d7fb1ceaf",
+      "statement": "A new independent Agent process attachment requires its exact registered native thread and a ready admitted generation, and rejects a competing live generation without weakening account authority.",
+      "evidence": [
+        {
+          "resource": "repo://database/src/agent_process/attachments.rs",
+          "version": "repo-file-v1:sha256:2c3abdbc58fcdb0466a5f9a10c923f8eeeceb716683b0982e5b7ae470355386f"
+        },
+        {
+          "resource": "repo://database/src/agent_process/tests/attachments.rs",
+          "version": "repo-file-v1:sha256:e4cf35daee11cc89412b581f2779ca970145d613af82113268ba23aebe3d9c6c"
+        }
+      ]
+    },
+    {
+      "id": "claim_8204759d2d884ba68dbd13ea64b50f4f",
+      "statement": "The isolated lifecycle acceptance passed schema59 integrity and foreign-key checks and preserved Agent/native identity, Work state, Results and private observations across service restart without migrating installed data.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T03:47:07.956Z"
+    "at": "2026-10-25T06:52:57.034Z"
   }
 }

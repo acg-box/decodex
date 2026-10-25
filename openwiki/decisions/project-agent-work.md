@@ -3,6 +3,9 @@ type: Decision
 title: "Project, Agent and Work contract"
 description: "Accepted architecture, shared English vocabulary, minimum Work and Collaboration contracts, recovery, and global Guardian controls."
 tags: ["decodex", "architecture", "agents", "contracts", "guardian"]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-95772fa38252ded838ec3a2f
     resource: repo://.config/nextest.toml
@@ -18,6 +21,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
     resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
+  - id: openwiki-source-a7886792ad3e47b8e1afb7fa
+    resource: repo://crates/decodex-runtime/src/agent/guardian_details.rs
   - id: openwiki-source-cd44bbfa50ac15a596e824a2
     resource: repo://crates/decodex-runtime/src/agent/guardian.rs
   - id: openwiki-source-2fd274a65db230908814f7da
@@ -32,10 +37,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-b1dd4c8ab85f342314daa6f1
     resource: repo://crates/decodex-runtime/src/agent/work.rs
+  - id: openwiki-source-275dc903aab820a109a196b4
+    resource: repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json
   - id: openwiki-source-bdc10e06c0058b26a9bde83d
     resource: repo://database/migrations/0056_project_agent_work.sql
-  - id: openwiki-source-29c88fbcabe1ba5e93694ed1
-    resource: repo://database/migrations/0057_native_work_delivery.sql
+  - id: openwiki-source-f282017dc1610aa4fa0e6730
+    resource: repo://database/migrations/0058_shared_agent_process.sql
+  - id: openwiki-source-c6616f46cdcd37303054bf01
+    resource: repo://database/migrations/0059_native_assignment_proof.sql
   - id: openwiki-source-3030ced79067a3721a08b107
     resource: repo://database/src/agent_native_turns.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
@@ -46,10 +55,7 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T03:47:07.956Z
+generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
 ---
 
 # Project, Agent and Work contract
@@ -248,14 +254,14 @@ This example illustrates the contract. The places, amounts and outcomes are assu
 
 Schema 56 migrates directly to Project membership, persistent Agent responsibilities and separate Work. Protocol 3.0 rejects incompatible clients explicitly. There is no dual business-name API or gradual rollout. The migration preserves genuine legacy execution, instructions, native identities, inbox receipts and historical completion limits. A migrated historical outcome is not newly qualified Result evidence. No legacy executor is relabelled as a native Subagent.
 
-Schema 57 adds immutable native child-input receipts. Existing dispatch records retain their original limits; the migration does not invent a received message for them.
+Schema 57 adds immutable native child-input receipts. Existing dispatch records retain their original limits; the migration does not invent a received message for them. Schema 58 permits several independently owned native conversations on one admitted account process. Schema 59 records whether received assignment proof was plaintext or native task identity. Neither migration grants another Agent's private history or invents missing input.
 
 | Area | Implemented behavior |
 | --- | --- |
 | Agent identity | User-created independent Agent, one current native conversation. Assistant is optional; Project Lead selects an existing Agent. A legacy parent identifier does not confer business authority. |
 | Work | Current immutable requirements, one owner, explicit state and holds, scoped Materials, exact Results, reuse assessment and atomic completion checks. |
 | Collaboration | Stable request and instruction identities, durable busy queue, exact delivered-turn acceptance, targeted return, assessment, repair and scoped cancellation. |
-| Native execution | Intent before native call, exact direct-call attribution or verified native child-input delivery, native messages, waits and continuation. Saved input can join later parent activity after restart. Unbound or ambiguous evidence stays Unknown without a duplicate spawn. |
+| Native execution | Intent before native call, exact direct-call attribution, verified child input or native task identity, native messages, waits and continuation. Saved identity can join native parent activity after restart. Ambiguous evidence stays Unknown without a duplicate spawn. |
 | Project | Supported native Project create/read/list and exact idempotency. Retained unassigned conversations join their registered native Project before input; conflicts park only the affected Agent. Work and responsibilities stay local. Native catalog and membership do not prove official desktop saved-Project/sidebar presentation. |
 | Guardian | Global Ask Me or Automatic Review, separate desired and per-source effective receipts, no editable per-Agent reviewer override. Native permissions and Full Access remain separate. |
 | Review Details | Explicit global opt-in; verified private reviewer/parent identity; native assistant output and terminal metadata only. No raw reasoning frames, parent-history pollution, action replay or guessed action association. |
@@ -284,12 +290,14 @@ The selected model catalog and configuration determine the native multi-agent ba
 
 The native Project and Work follow-up separately reproduced and repaired missing Project membership on retained conversations and missing Work attribution for permitted V2 nesting. V1 nested attribution passed before the repair. V2 defaults to direct model collaboration; nested qualification explicitly uses the supported native `multi_agent_v2.non_code_mode_only=false` setting. Decodex keeps that default policy.
 
-For permitted V2 nesting, the actual plaintext native assignment must match the saved prompt, child ancestry and receiving turn. Decodex persists that input before requiring one unique parent activity. Later activity or `work_read` can finish the binding without another native call. Results are limited to that receiving turn. Missing, encrypted, missed or ambiguous native input stays Unknown. Reopen qualification reconstructs the durable point after input receipt and before binding; it is not a physical crash test.
+For permitted V2 nesting, visible plaintext can prove the saved prompt, child ancestry and receiving turn. A prepared native task name can instead prove the assignment route when input is encrypted. Recovery verifies native parent metadata, root turn and one unique parent activity; it never claims to decrypt the prompt. An exact `work_read` request can reconcile recent history without another spawn. Original unnamed encrypted or ambiguous assignments stay Unknown. Store-reopen qualification and service restart are not physical machine crash tests.
 
 The follow-up passed 7 exact-artifact native tests, 189 database tests, 4 focused runtime guards, workspace checking, strict lint for 13 packages, nightly formatting, 40 Python tests, 2 CLI diagnostic tests and the schema57/90-table gate. Its final complete suite passed 2921 tests with 1157 skipped and no LEAK. Its first full run had three failures: two unchanged short-frame UI samples and an old fixture without native `projectId`. The fixture now follows the native response. The same UI test executable passed ten isolated executions; existing Nextest resource reservation now covers those two samples with all assertions retained. The first run's passed resume test had a LEAK of unknown cause. The final pass does not replace that receipt. Exact selectors, commands, digests and limits are in `retained_project_agent_work.native_project_and_work_followup` in the retained index. Counts overlap.
 
-Global reviewer updates set the native thread preference for subsequent turns. Active turns, pending human approvals and already-created child captures retain native ownership. Private reviewer records lack exact action Review IDs in this runtime; the UI states the association is unavailable. It retains at most 128 records, at most 64 KiB each, previews the newest 32 and retrieves a selected exact record separately. Reconnect gaps remain explicit.
+Global reviewer updates set the native thread preference for subsequent turns. Active turns, pending human approvals and already-created child captures retain native ownership. Private reviewer records lack exact action Review IDs in this runtime; the UI states the association is unavailable. It retains at most 128 records, at most 64 KiB each, previews the newest 32 and retrieves a selected exact record separately. The selected protocol cannot subscribe to raw events on resume. Completed reviews therefore use bounded native history recovery: up to 32 private candidates in the same directory and five turns each, with parent identity checked before retention. Reconnect gaps remain explicit.
 
 Work evidence reads apply scope before a 100-record limit per category and expose `has_more`. Selected evidence uses digest-checked 8 KiB pages up to 32 MiB. Missing, changed or oversized evidence stays unavailable. These are bounded views, not proof that the whole history was read.
 
-Synthetic provider tests establish the measured native integration contracts. They do not establish live-account/model quality, installed-app visual or interaction acceptance, reservations, payments or other real external outcomes. Source inclusion and digest checks prove provenance, not semantic correctness. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
+Synthetic provider tests establish only the measured native integration contracts. A later isolated real-provider scenario used `gpt-6-astra` at Medium, two Projects and four Works. It completed native delegation, the same peer request with a repair instruction, current owner assessments, restart recovery and global Guardian checks. Its final workspace run passed 2924 tests with 1159 skipped and no LEAK; nine exact-artifact native tests and strict lint for 13 packages passed. The reusable scenario and exact counts are in `retained_project_agent_work.live_acceptance`.
+
+The real scenario does not establish general model quality, installed-app acceptance, reservations or payments. Official Codex Project presentation remains unobserved. Two original unnamed encrypted helpers remain unconfirmed; the named replacement assignment was recovered without another spawn. User hold persistence and explicit release passed through the user API, while the live Pause/Resume UI click itself is not certified. No live Full Access transition, controlled lock-screen test, installation or release was performed. Source inclusion and digest checks prove provenance, not semantic correctness. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).

@@ -2538,6 +2538,295 @@
         ],
         "limit": "The final rerun does not replace this receipt. The first capture LEAK cause is unknown."
       }
+    },
+    "live_acceptance": {
+      "baseline": "e985788d7fb1d2e9ee91d3fdf4cbd3b24017732e",
+      "code_revision": "3cd19db77a8c68d141a155e65e7860e6dd598e0f",
+      "delivery_reference": "https://github.com/acg-box/decodex/commit/3cd19db77a8c68d141a155e65e7860e6dd598e0f",
+      "delivery_state_source": "Read the associated public PR for merge state and exact-head CI. A code or test receipt is not installed-app acceptance.",
+      "contracts": [
+        "Initialize an independent conversation from its actual first pending user input without requiring an Assistant. Preserve explicit model selection and never reconstruct an already admitted or uncertain native effect.",
+        "Materialize native thread metadata before Project reconciliation. Associate each independent Agent with the exact native thread created or resumed on its admitted process; retain account and generation fences.",
+        "Use a stable native task name for prepared contributions. Verify native parent metadata, root turn and unique parent activity. Task identity does not verify encrypted prompt content, and recovery never resends or respawns.",
+        "After a completed Guardian review, recover only exposed assistant output from bounded native history and verify its parent. Native resume has no raw-event subscription. Never guess the action Review association or change an approval decision.",
+        "Keep current requirements, immutable evidence and owner assessment separate from native completion. A user hold requires an explicit user release."
+      ],
+      "source_symbols": {
+        "crates/decodex-runtime/src/agent_initial_settings.rs": [
+          "initial_agent_settings",
+          "pending_creation_input"
+        ],
+        "crates/decodex-runtime/src/agent/native_settings.rs": [
+          "attach_native_thread_owner",
+          "resume_observer_params"
+        ],
+        "crates/decodex-runtime/src/agent/work_delivery.rs": [
+          "named_native_dispatch",
+          "observe_native_work_delivery"
+        ],
+        "crates/decodex-runtime/src/agent/work.rs": [
+          "recover_native_contribution",
+          "native_contribution_outputs"
+        ],
+        "crates/decodex-runtime/src/agent/guardian_details.rs": [
+          "observe_guardian_details",
+          "recover_guardian_details"
+        ],
+        "database/src/agent_process/attachments.rs": [
+          "attach_independent_agent_process"
+        ],
+        "crates/decodex-core/src/work.rs": [
+          "NativeAssignmentProof",
+          "native_task_name"
+        ],
+        "apps/decodex-gpui/src/agent_portfolio.rs": [
+          "readable",
+          "work_contract_detail",
+          "render_global_guardian"
+        ]
+      },
+      "source_sha256": {
+        "crates/decodex-runtime/src/agent_initial_settings.rs": "4948d81459853a96d2cf80afb78884aa74e702679089639928cbb209ec2bfe51",
+        "crates/decodex-runtime/src/agent/native_settings.rs": "1ec989889aa8fa0a46653449feecd5bec92b4bc933f7841d7aa4bb16545d403a",
+        "crates/decodex-runtime/src/agent/work_delivery.rs": "735c681f9d34e6fe08eb485c9055cd46347f31f53d1df09f7f8b17831d655fc9",
+        "crates/decodex-runtime/src/agent/work.rs": "af6561b878a7ce5ce8e6fdd502c99c198f664e447c14959c888308f265b53dc7",
+        "crates/decodex-runtime/src/agent/guardian_details.rs": "b61d1abbc43be7bb9d2ea1a798cc81421be488a2f7707101c22d44fd161b8d4d",
+        "database/src/agent_process/attachments.rs": "2c3abdbc58fcdb0466a5f9a10c923f8eeeceb716683b0982e5b7ae470355386f",
+        "database/migrations/0058_shared_agent_process.sql": "05e447b01812463e012054fcb355dda890d814243bab5b944849f943b4ef3c00",
+        "database/migrations/0059_native_assignment_proof.sql": "c49bd47c9d4f22c1e43ff5c27def8ba36ff0725c355fc9327515408d4400a179",
+        "crates/decodex-core/src/work.rs": "d994b338e239716b86c6f772a5dc79d7d93d4a04530b66ae47d2bea4fa06431f",
+        "apps/decodex-gpui/src/agent_portfolio.rs": "ac882b62c5f858ed92b4749c4ff4945dba9e7da76d74fbd375122e2806d54d86",
+        "crates/decodex-runtime/tests/fixtures/project_work_acceptance.json": "4a47beb3af95e0d64e3882d9cc10a5c6999eb38328c59516d3029a8885d9b615"
+      },
+      "fixture": "crates/decodex-runtime/tests/fixtures/project_work_acceptance.json",
+      "artifact": {
+        "source": "970111f6cb62cc02fe36a82ea7d71b37a2889c97",
+        "binary_sha256": "cbaaabb9381ce36f13c8605def36cede35826fa11b404b8ad4d81a0f648826cd",
+        "code_mode_host_sha256": "58e9e6a203e5885f8046af453081d9da9521452c704a79ceac519a3704cac340",
+        "rg_sha256": "cdbd12cd8f86a0e2c0812500f10a90295a7e43923d823d87c98cddb15513742d",
+        "schema_sha256": "9a924f38f788323f6ac1070f8adc6a6813a247f2cc881bc244e4211da676c338",
+        "preparation": "cargo +stable make prepare-codex",
+        "actual_preparation": "Verified development package import through DECODEX_CODEX_DEVELOPMENT_RUNTIME; component and schema checks reached Ready.",
+        "reconstruction": "Use the explicit preparation command to rebuild or import the locked artifact, then rerun affected exact-artifact regressions. A rebuild is fresh evidence, not the deleted original."
+      },
+      "upstream_source_sections_read": [
+        "codex-rs/app-server-protocol/src/protocol/v2/thread.rs#ThreadStartParams,ThreadResumeParams,ThreadListParams",
+        "codex-rs/app-server/src/request_processors/thread_processor.rs#thread_resume_inner,resume_running_thread",
+        "codex-rs/app-server/src/bespoke_event_handling.rs#PrivateSessionEvent",
+        "codex-rs/core/src/guardian/review_session_setup.rs#bind_thread",
+        "codex-rs/core/src/session/mod.rs#deliver_event_raw"
+      ],
+      "upstream_tests_executed": 0,
+      "live_scenario": {
+        "model": "gpt-6-astra",
+        "reasoning_effort": "medium",
+        "ultra_required": false,
+        "projects": 2,
+        "independent_agents": 2,
+        "completed_works": 4,
+        "results": 14,
+        "artifact_results_hashed": 12,
+        "artifact_hashes_matched": 12,
+        "collaboration_requests": 1,
+        "collaboration_instructions": 2,
+        "requirements_change": "Community Market: 60 to 80 attendees, same two Works, r1 preserved and r2 assessed. Family Trip remains r1.",
+        "outcomes": {
+          "mandatory_market_r2": 1160,
+          "market_budget": 1200,
+          "optional_transport_r2": 160,
+          "combined_market_r2": 1320,
+          "trip_r1": 240
+        },
+        "fresh_named_native_child_recovered_without_spawn": true,
+        "original_unnamed_encrypted_children_unconfirmed": 2,
+        "human_approval_then_global_switch_preserved_pending_request": true,
+        "automatic_review_after_restart": true,
+        "private_records_after_history_recovery": 5,
+        "restart_preserved": [
+          "Agent/native identities",
+          "current Work requirements and states",
+          "native binding",
+          "Results",
+          "Guardian details"
+        ],
+        "ui": [
+          "four completed Work rows in two Project groups",
+          "current requirements and owner assessment",
+          "same Collaboration Request repair and used assessment",
+          "Material and Result file reveals",
+          "global reviewer and optional detail identities"
+        ],
+        "source_bundle_real_automatic_review": true
+      },
+      "local_schema": {
+        "version": 59,
+        "integrity": "ok",
+        "foreign_key_violations": 0,
+        "tables": 91,
+        "migration_digests": {
+          "58": "c148b28103e8791891116c815acf3dfc78ba9f37a4654d21073a36fdbb8105fa",
+          "59": "9d9208d833478b781967b26e811a034092f800d54e2ec5744d051ad27519597d"
+        }
+      },
+      "tests_read": [
+        {
+          "source": "crates/decodex-runtime/src/agent_initial_settings.rs",
+          "tests": [
+            "first_project_input_restores_without_an_assistant_or_native_replay"
+          ],
+          "sha256": "4948d81459853a96d2cf80afb78884aa74e702679089639928cbb209ec2bfe51"
+        },
+        {
+          "source": "database/src/agent_process/tests/attachments.rs",
+          "tests": [
+            "independent_native_attachment_requires_exact_thread_and_live_uncontested_process"
+          ],
+          "sha256": "e4cf35daee11cc89412b581f2779ca970145d613af82113268ba23aebe3d9c6c"
+        },
+        {
+          "source": "crates/decodex-runtime/src/agent/work_delivery.rs",
+          "tests": [
+            "encrypted_assignment_retains_only_native_routing_proof"
+          ],
+          "sha256": "735c681f9d34e6fe08eb485c9055cd46347f31f53d1df09f7f8b17831d655fc9"
+        },
+        {
+          "source": "crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs",
+          "tests": [
+            "native_new_project_conversations_materialize_before_first_input",
+            "native_project_reconciles_retained_conversation_and_survives_restart"
+          ],
+          "sha256": "d80e928d1b7dd22d2b098e1a60de789cfe8093ce6776683598faaf28651611a9"
+        },
+        {
+          "source": "crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs",
+          "tests": [
+            "native_guardian_details_survive_cold_resume_without_raw_subscription",
+            "native_project_global_review_and_private_records_cross_retained_bridge"
+          ],
+          "sha256": "6168a37c2b9b7d7e0a5dac6f0243f11321e14ed8dbfc25d6c54ff39cd2f832bc"
+        },
+        {
+          "source": "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
+          "tests": [
+            "native_nested_code_mode_work_attribution_survives_store_reopen",
+            "native_v1_nested_code_mode_keeps_exact_work_attribution"
+          ],
+          "sha256": "5c68cd2e38d9511bcfe08f8601cebd784c8cf027c08bd95fea6602d70afe63c8"
+        },
+        {
+          "source": "apps/decodex-gpui/src/agent_portfolio_tests.rs",
+          "tests": [
+            "two_projects_four_works_open_scoped_collaboration_material_and_result",
+            "guardian_click_sends_one_global_preference_without_claiming_application"
+          ],
+          "sha256": "72b2dcbc5731926b391ac6b9c47687df6cbead59c7ce8cc160e09141621224f7"
+        }
+      ],
+      "executed": {
+        "native": {
+          "entrypoint": "decodex-runtime/lib",
+          "selectors": [
+            "account_launch::agent_process::native_tests::project_sync::native_project_reconciles_retained_conversation_and_survives_restart",
+            "account_launch::agent_process::native_tests::project_work::native_legacy_tools_migrate_once_and_retire_the_old_context",
+            "account_launch::agent_process::native_tests::project_work::native_project_global_review_and_private_records_cross_retained_bridge",
+            "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
+            "agent::tests::native_agent_wake::native_nested_code_mode_work_attribution_survives_store_reopen",
+            "agent::tests::native_agent_wake::native_v1_nested_code_mode_keeps_exact_work_attribution",
+            "agent::tests::native_agent_wake::native_v1_work_attribution_uses_the_native_executor",
+            "account_launch::agent_process::native_tests::project_sync::native_new_project_conversations_materialize_before_first_input",
+            "account_launch::agent_process::native_tests::project_work::native_guardian_details_survive_cold_resume_without_raw_subscription"
+          ],
+          "run": 9,
+          "passed": 9,
+          "skipped": 998,
+          "unmatched_selectors": []
+        },
+        "strict_lint": {
+          "packages": 13,
+          "passed": 13
+        },
+        "earlier_complete_workspace": {
+          "run": 2924,
+          "passed": 2924,
+          "skipped": 1159,
+          "leaky": 2
+        },
+        "isolated_leak_controls": {
+          "run": 2,
+          "passed": 2,
+          "leaky": 0,
+          "selectors": [
+            "ui_performance::tests::work_statistics_fit_with_debug_and_with_more_than_ninety_agents",
+            "account_api::activation::tests::stream_is_bounded_and_malformed_completion_does_not_succeed"
+          ],
+          "unmatched_selectors": []
+        },
+        "workspace": {
+          "entrypoint": "workspace/all-targets/all-features",
+          "run": 2924,
+          "passed": 2924,
+          "skipped": 1159,
+          "leaky": 0,
+          "unmatched_selectors": []
+        },
+        "format": "cargo +nightly fmt --all -- --check passed",
+        "schema_gate": "Schema 59 integrity and migration ledger validation passed"
+      },
+      "commands": [
+        "cargo +stable make prepare-codex",
+        "DECODEX_APP_STAGE_DIR=<system-temporary-stage> sh scripts/macos/stage_decodex_app.sh",
+        "cargo +stable nextest run --locked --workspace --all-targets --all-features",
+        "python3 scripts/lint_rust_workspace.py",
+        "cargo +nightly fmt --all -- --check",
+        "DECODEX_TEST_CODEX_BINARY=<prepared-native-cli> DECODEX_NATIVE_BINARY=<same-cli> cargo +stable nextest run --locked -p decodex-runtime --run-ignored only --test-threads 1 -E <native selectors above>"
+      ],
+      "limits": [
+        "One controlled real-provider scenario with one model/effort; no general model-quality guarantee.",
+        "Two original unnamed encrypted helpers remain unconfirmed. New task-name recovery proves routing, not encrypted text.",
+        "Official Codex Project UI was not observed because the UI tool denied access. Native Project API identity and membership are separate proof.",
+        "User hold persistence and release passed through the user API and repository UI tests; the real-model Pause/Resume UI click itself is not certified.",
+        "Private observations have no exact action Review association. Recovery reads at most 32 same-directory private candidates and five turns each; omissions remain possible.",
+        "The earlier two LEAK passes were not reproduced in isolated controls; their cause is unknown.",
+        "No live Full Access transition, installation, release, lock-screen reproduction or audible acceptance."
+      ],
+      "counts_overlap": true,
+      "source_review_cursor_changed": false,
+      "installation": false,
+      "release": false,
+      "source_bundle": {
+        "source_tree": "3cd19db77a8c68d141a155e65e7860e6dd598e0f",
+        "components": {
+          "Contents/MacOS/decodex-gpui": "31067c6299abc3f7dabdba3e3f34328397980f33c287830482bd8086aef48aa8",
+          "Contents/Helpers/decodex": "d97671689191492ed4758fb8875159459c3f891fff301fbe5d6f92d23d268023",
+          "Contents/Frameworks/libdecodex_app_client_ffi.dylib": "1274c0273f2d395290f8bab696185d7f149d1fc888954fb51d5a72dde5516560",
+          "Contents/Frameworks/libDecodexMenuBar.dylib": "3c293720503718fc0fe785a89690ad98bf9530c9f88422d5d5b9960377c31519"
+        },
+        "embedded_service_build": {
+          "schema": "decodex/build-info/1",
+          "version": "0.2.0",
+          "commit": "3cd19db77a8c68d141a155e65e7860e6dd598e0f",
+          "dirty": false
+        },
+        "signatures_verified": true,
+        "installed": false
+      },
+      "raw_receipt_digests": {
+        "native-final-fixed.log": "4561f20580c6c9e90c4fe58bd6e4f1d694260b1a8416fb71d51f3fa88cf9b9bf",
+        "workspace-final-clean.log": "4571a4fb433ba05d97586b676a27728def5aedccab158f22626ef02781a307b0",
+        "workspace-final-lint-fixed.log": "c4888b97d5cf8d8493ec58b669a3163f155a3b72ca3e5745d671fd6de261f0b3",
+        "committed-source-bundle-proof.json": "5366c17c7de0b95ae204dd38b9ed1fbfa7ffaf79059a89a2937f06fdbfb7b096",
+        "result-digest-check.json": "76efb73d5201764cb427c55d6834a4b47e0bb06a0fbc74be6a83464407e617fb",
+        "final-persistence-proof.json": "afbdad4fbc0184887cf80faa4ebe97c44f9e4112eba91726908f4461d6a44eab",
+        "ui-acceptance.json": "5ca43dff70a41317abc913b91c552a47521957141627df17dbe175fab1eaa47a"
+      },
+      "upstream_source_sha256": {
+        "codex-rs/app-server-protocol/src/protocol/v2/thread.rs": "3532f87c9e55c9e539ed3c48c74701a14f4b9e401564b5cbafe624941302755c",
+        "codex-rs/app-server/src/request_processors/thread_processor.rs": "37ff0875e2b6d3def2fc727fd065574bd243cea2aa836021ebb218ac83b898e7",
+        "codex-rs/app-server/src/bespoke_event_handling.rs": "c02cdef8d166be171f6218cfaf0c5e3b714a6589487f62dce71b1f1e17903952",
+        "codex-rs/core/src/guardian/review_session_setup.rs": "f90e34fe07f4cee823d11d82c602586488cea688f4dceea21e2579e45959bfe0",
+        "codex-rs/core/src/session/mod.rs": "82e8b9ee3ba0144d2ac81eb62b4d7e8d2e5ee036e7751f24376602843e4cf092"
+      }
     }
   }
 }

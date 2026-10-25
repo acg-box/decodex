@@ -45,7 +45,7 @@ sources:
 generated: { by: "codex", at: "2026-10-25T02:09:34.237Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T03:47:07.956Z
+    at: 2026-10-25T06:52:57.034Z
 ---
 
 # Subscription dictation and live voice

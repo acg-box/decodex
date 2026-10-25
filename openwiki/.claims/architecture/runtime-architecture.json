@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d44625e3a609c3969a25ae39b808f9b12ecb7529b2ff716b3fd5f6269f890a6c",
+  "pageVersion": "sha256:acff0545a02f455a0a0200030ad6445ddd1f1c179234bb6492f4f35d166feb72",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -225,7 +225,7 @@
       "statement": "Compatibility delegation instructions can request native tool-output retention, while wakes, capacity retries and external evidence remain unselected; retention does not replace durable Work records.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1249-L1357",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1254-L1362",
           "version": "repo-lines-v1:sha256:e0ad341d1d141c699110b02b6523ea6ef5d2151f529f68b963753ce173ce1cfc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
@@ -276,7 +276,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
+          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
         }
       ]
     },
@@ -312,11 +312,11 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
-          "version": "repo-file-v1:sha256:ee926e742d6f556b90ad7dfd631f5acd5af854b9386e96024ce9e32a1cb329c4"
+          "version": "repo-file-v1:sha256:af6561b878a7ce5ce8e6fdd502c99c198f664e447c14959c888308f265b53dc7"
         },
         {
           "resource": "repo://database/src/works.rs",
-          "version": "repo-file-v1:sha256:8448f5642ed7e656dafb41c0546229d910e3c9fec02fe8458eb337ac676c8e72"
+          "version": "repo-file-v1:sha256:999ed15a136bb3358f0fba0c78d961a954a8d145c3583c121eba49b9a91795b2"
         }
       ]
     },
@@ -344,7 +344,7 @@
         },
         {
           "resource": "repo://database/src/works.rs",
-          "version": "repo-file-v1:sha256:8448f5642ed7e656dafb41c0546229d910e3c9fec02fe8458eb337ac676c8e72"
+          "version": "repo-file-v1:sha256:999ed15a136bb3358f0fba0c78d961a954a8d145c3583c121eba49b9a91795b2"
         }
       ]
     },
@@ -354,11 +354,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
-          "version": "repo-file-v1:sha256:ee926e742d6f556b90ad7dfd631f5acd5af854b9386e96024ce9e32a1cb329c4"
+          "version": "repo-file-v1:sha256:af6561b878a7ce5ce8e6fdd502c99c198f664e447c14959c888308f265b53dc7"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work_delivery.rs",
-          "version": "repo-file-v1:sha256:e9a6d3dedd804b8f7b55f795755ad529daadd172ae1549a3bcd9777f1592b30c"
+          "version": "repo-file-v1:sha256:735c681f9d34e6fe08eb485c9055cd46347f31f53d1df09f7f8b17831d655fc9"
         },
         {
           "resource": "repo://database/migrations/0057_native_work_delivery.sql",
@@ -372,17 +372,67 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:70af440dc101dc6713fdbdc5a109e06d9db8afd57dd6206a2cab17cabb4fab1b"
+          "version": "repo-file-v1:sha256:2e54c49aee3db22c4db73882576924c318de5d4abf35ff8261c42ba652797b59"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/project.rs",
           "version": "repo-file-v1:sha256:7fe6e89df741571dec2727e90fb6238d80439631fa3ff6a549654bf119006ec3"
         }
       ]
+    },
+    {
+      "id": "claim_be2314ed132745a98e87e2595475cc50",
+      "statement": "An independent Agent can bootstrap from a real pending first user input without an Assistant, and each native conversation attaches only to the admitted process that created or resumed it.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/native_settings.rs",
+          "version": "repo-file-v1:sha256:1ec989889aa8fa0a46653449feecd5bec92b4bc933f7841d7aa4bb16545d403a"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_initial_settings.rs",
+          "version": "repo-file-v1:sha256:4948d81459853a96d2cf80afb78884aa74e702679089639928cbb209ec2bfe51"
+        },
+        {
+          "resource": "repo://database/src/agent_process/attachments.rs",
+          "version": "repo-file-v1:sha256:2c3abdbc58fcdb0466a5f9a10c923f8eeeceb716683b0982e5b7ae470355386f"
+        }
+      ]
+    },
+    {
+      "id": "claim_d37c6b5ea9be4dd9b0fb45d32ac4d747",
+      "statement": "Schemas 58 and 59 preserve process ownership and distinguish plaintext assignment proof from native task-name proof; exact native metadata and activity can recover named encrypted assignments without replay or a claim that the prompt was decrypted.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/work_delivery.rs",
+          "version": "repo-file-v1:sha256:735c681f9d34e6fe08eb485c9055cd46347f31f53d1df09f7f8b17831d655fc9"
+        },
+        {
+          "resource": "repo://database/migrations/0058_shared_agent_process.sql",
+          "version": "repo-file-v1:sha256:05e447b01812463e012054fcb355dda890d814243bab5b944849f943b4ef3c00"
+        },
+        {
+          "resource": "repo://database/migrations/0059_native_assignment_proof.sql",
+          "version": "repo-file-v1:sha256:c49bd47c9d4f22c1e43ff5c27def8ba36ff0725c355fc9327515408d4400a179"
+        }
+      ]
+    },
+    {
+      "id": "claim_d954f808b1b2421c87dc90ba6c13dd42",
+      "statement": "Completed Guardian reviews can trigger bounded read-only history recovery after cold resume, preserving verified parent identity and explicit gaps without deciding or replaying an action.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/guardian_details.rs",
+          "version": "repo-file-v1:sha256:b61d1abbc43be7bb9d2ea1a798cc81421be488a2f7707101c22d44fd161b8d4d"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/observations.rs",
+          "version": "repo-file-v1:sha256:cc8e281996a559b59e2016782df1566ddd39d2117d372996a03e2b692e412029"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T03:47:07.956Z"
+    "at": "2026-10-25T06:52:57.034Z"
   }
 }

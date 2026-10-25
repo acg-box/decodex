@@ -3,6 +3,9 @@ type: Reference
 title: "OpenWiki quickstart"
 description: "Task entrypoints for current native conversations, account routing, product scope and evidence."
 tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
@@ -24,24 +27,23 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-ff8abff5a675874c627f1969
     resource: repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs
+  - id: openwiki-source-1477615a268800361379ce21
+    resource: repo://crates/decodex-runtime/src/agent_initial_settings.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
-  - id: openwiki-source-419a87794b421322302c7d9e
-    resource: repo://crates/decodex-runtime/src/agent/project.rs
-  - id: openwiki-source-4f59431f3f6264a65208bdcb
-    resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
   - id: openwiki-source-bdc10e06c0058b26a9bde83d
     resource: repo://database/migrations/0056_project_agent_work.sql
+  - id: openwiki-source-f282017dc1610aa4fa0e6730
+    resource: repo://database/migrations/0058_shared_agent_process.sql
+  - id: openwiki-source-c6616f46cdcd37303054bf01
+    resource: repo://database/migrations/0059_native_assignment_proof.sql
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T03:47:07.956Z
+generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
 ---
 
 # OpenWiki quickstart
@@ -56,7 +58,7 @@ Agents use native Subagents for bounded execution and scoped Collaboration Reque
 
 Work and Guardian fit the existing desktop. Expand Work to inspect Materials, Collaboration, Results and assessment. Guardian has global Ask Me or Automatic Review and optional bounded Review Details; Full Access stays a separate native permission choice. Review records with no exact action association stay explicitly unassociated.
 
-Schema 56 and protocol 3.0 provide the direct business migration; schema 57 retains exact native child-input receipts. Retained conversations reconcile native Project membership before input. Permitted nested Code Mode execution can retain Work attribution without another executor or replay. Native defaults and explicit Unknown states remain. The [acceptance record](testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian) separates the follow-up's 7 native and 2921 workspace passes from original failures and unmeasured official desktop Project presentation. No app installation, release or live-account acceptance is implied.
+Schema 56 and protocol 3.0 provide the direct business migration. Schema 57 retains native input receipts; schemas 58 and 59 preserve independent process ownership and distinguish plaintext from native task-name proof. Independent conversations can start without an Assistant. Native Project reconciliation, named assignment recovery and Guardian detail recovery preserve native execution ownership. The [acceptance record](testing/upstream-acceptance-boundaries.md#source-built-real-provider-acceptance) documents a source-built real-provider run with two Projects and four completed Works, nine passed native tests and 2924 passed workspace tests. Original failures, unknown old encrypted bindings and unobserved official Codex Project presentation remain explicit. No app installation or release was performed.
 
 ## Start by task
 

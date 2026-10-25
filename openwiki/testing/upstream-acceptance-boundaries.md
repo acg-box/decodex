@@ -3,6 +3,9 @@ type: Reference
 title: "Upstream integration acceptance boundaries"
 description: "Source, native fixture, signed desktop, installation and physical voice evidence boundaries."
 tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-95772fa38252ded838ec3a2f
     resource: repo://.config/nextest.toml
@@ -64,10 +67,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
   - id: openwiki-source-4f59431f3f6264a65208bdcb
     resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
+  - id: openwiki-source-b1dd4c8ab85f342314daa6f1
+    resource: repo://crates/decodex-runtime/src/agent/work.rs
   - id: openwiki-source-ec5c9f32d2135154f4297a49
     resource: repo://crates/decodex-runtime/src/conversation.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
     resource: repo://crates/decodex-runtime/src/work_portfolio.rs
+  - id: openwiki-source-275dc903aab820a109a196b4
+    resource: repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json
   - id: openwiki-source-07c9cc033899826079f8efb5
     resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
   - id: openwiki-source-c772fc057f500f765d09a3c7
@@ -90,10 +97,7 @@ sources:
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T03:47:07.956Z
+generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
 ---
 
 # Upstream integration acceptance boundaries
@@ -281,14 +285,34 @@ The nested V2 test uses native configuration that explicitly permits Code Mode c
 
 The first full follow-up run had three failures and a passed resume-test LEAK. The two UI source files matched main, and the same executable passed ten isolated runs. Existing Nextest resource reservation now covers those short-frame samples with their assertions and deadlines intact. The third failure was an old fixture missing native `projectId`, corrected to match the actual response. The first LEAK cause remains unknown. Its receipt stays distinct from the clean final run.
 
+### Source-built real-provider acceptance
+
+The `live_acceptance` entry under `retained_project_agent_work` records the later lifecycle repairs. Its source-built bundle identifies the clean committed source `3cd19db77a8c68d141a155e65e7860e6dd598e0f`. The native runtime remains `970111f6cb62cc02fe36a82ea7d71b37a2889c97`; its CLI, both helpers and freshly generated schema match the retained identities. This acceptance used `gpt-6-astra` at Medium, without Ultra, in isolated product and native data.
+
+| Executed check | Observed result |
+| --- | --- |
+| Two Projects and four Works | Two independent Agents each owned two Works. Discussion preceded assignment. All four completed under their current requirements. |
+| Change and peer repair | Market attendance changed from 60 to 80. The same request received a second instruction. Mandatory cost was 1160, optional transport 160, combined cost 1320 against a 1200 budget. The trip stayed at 240. |
+| Results and restart | Fourteen Results were retained; all twelve file-backed Result digests matched. Agent/native identities, current Work states, the recovered binding, Results and Guardian details survived service restart. |
+| Native helper recovery | The new prepared native task name recovered its existing child and parent activity without another spawn. Two original unnamed encrypted helpers remain unconfirmed as Work bindings. |
+| Global Guardian | A pending Ask Me approval survived a switch to Automatic Review and required its original human response. Automatic Review then executed authorized harmless probes. Five private output records were retained, including a probe on the clean committed source bundle after restart. |
+| Source-built interface | Work, requirements, same-request repair, Material and Result file reveals, global settings and selected private identities were opened. This was a source bundle, not the installed application. |
+| Final repository checks | 2924 workspace tests passed, 1159 skipped, no LEAK. Nine exact-artifact native tests passed with 998 skipped and zero unmatched selectors. Strict lint passed for 13 packages; format and schema59 integrity checks passed. |
+
+Counts overlap. An earlier complete run passed its assertions with two LEAK markers in unchanged tests; both passed isolated controls. The later clean run does not establish the cause of those earlier markers.
+
+The [reusable scenario](../../crates/decodex-runtime/tests/fixtures/project_work_acceptance.json) retains input tables, discussion and assignment prompts, the change request and expected arithmetic. Detailed receipts stay in the native automation directory. Rebuilds need their own component identity and qualification; they are not the original artifact.
+
+This was one controlled real-provider scenario, not general model-quality acceptance. Native Project API identity and membership passed separately; official Codex Project presentation was not observed because the available UI tool denied access. User hold persistence and explicit release passed through the user API and repository UI tests, while the live Pause/Resume UI click itself is not certified. No live Full Access transition, installation, release, controlled lock-screen test or audible acceptance was performed.
+
 ### Qualified native and presentation limits
 
 The native backend comes from model catalog metadata plus configuration. The matrix uses V2 `gpt-5.6-sol` and V1 `gpt-5.6-luna` at Medium. Disabling a V2 feature alone does not select V1. V2 native completion can wake an idle owner; V1 requires the native wait tool for required Results. These are synthetic provider decisions, not a measurement of live model autonomy or Ultra.
 
-Work attribution requires an exact direct native call or verified native input delivery joined with one unique parent activity. V2 canonical child history omits inbound Agent messages. The nested path therefore requires the actual plaintext message, exact saved prompt, child ancestry, receiving turn and root turn; Results must come from that receiving turn. Missing, encrypted, missed or ambiguous input stays Unknown without duplicate execution. Script text, output text or timing cannot replace input evidence. V2 remains direct-only by default; qualification explicitly sets native `multi_agent_v2.non_code_mode_only=false`. Decodex does not change that policy.
+Work attribution uses an exact direct native call, verified input delivery or prepared native task identity joined with one unique parent activity. V2 canonical child history omits inbound Agent messages. Visible input can prove the exact prompt and receiving turn. Native task-name recovery proves the route through parent metadata, root turn and activity, not encrypted prompt content. Unnamed, missing or ambiguous assignment evidence stays Unknown without duplicate execution. Script text, output text or timing cannot replace native identity. V2 remains direct-only by default; qualification explicitly sets native `multi_agent_v2.non_code_mode_only=false`. Decodex does not change that policy.
 
-Global Guardian preference changes apply to subsequent native turns. Active turns, already-pending human approvals and previously captured child policy keep native ownership. Reviewer selection never grants Full Access. Private details retain verified native assistant output and item-free terminal metadata only. They exclude raw reasoning frames and do not enter parent canonical history, complete Work or replay actions. Exact action Review association is unavailable in this runtime and remains explicit. Optional records are limited to 128 at 64 KiB each, with 32 short overview previews; reconnect gaps remain visible.
+Global Guardian preference changes apply to subsequent native turns. Active turns, already-pending human approvals and previously captured child policy keep native ownership. Reviewer selection never grants Full Access. Private details retain verified native assistant output and item-free terminal metadata only. They exclude raw reasoning frames and do not enter parent canonical history, complete Work or replay actions. Exact action Review association is unavailable in this runtime and remains explicit. Optional records are limited to 128 at 64 KiB each, with 32 short overview previews; reconnect gaps remain visible. After a completed review, history recovery examines up to 32 same-directory private candidates and five turns each, verifying the parent before retention. The selected runtime cannot subscribe to raw events on resume.
 
 Agent/Material scope precedes SQL page limits. Work/evidence views keep at most 100 records per category and expose additional retained data. Selected evidence uses digest-checked 8 KiB pages up to 32 MiB. Work association does not move the native conversation to another execution directory or create another sandbox. Pause does not roll back existing native actions.
 
-The change has no installed-app, live-account, real model-quality, audible-quality or public release acceptance. Native provenance and local guards do not prove semantic correctness. Keep these limits when reusing qualification after cache or run-directory cleanup.
+The synthetic cohorts do not establish installed-app, live-account, general model-quality, audible-quality or public release acceptance. The controlled real-provider acceptance above has only its stated scope. Native provenance and local guards do not prove semantic correctness. Keep these limits when reusing qualification after cache or run-directory cleanup.

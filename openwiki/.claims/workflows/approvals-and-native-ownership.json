@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9037393d9494f491125499b7ae310d80b5814c05b7245e60ffbf313e98efa38c",
+  "pageVersion": "sha256:1ac9928162c6d5884d87a8e179d7c7861a9199affb195ebd6226149a1fa1a55e",
   "claims": [
     {
       "id": "claim_180212e57d1d44369eb0d24fc94defa4",
@@ -42,10 +42,10 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
-          "version": "repo-file-v1:sha256:a32503172f93bd1e5dee1c1714d75236457b0df869ea9953fee9fc7f4da104e9"
+          "version": "repo-file-v1:sha256:27dceb0235bfd0ed93987e89f4522048704ed176a6cf364f352173b411d7f0ed"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1528-L1546",
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1529-L1547",
           "version": "repo-lines-v1:sha256:cfd232ec73dc3a45871fb3cf4318614d9f69ffee74f348a28a0257a1c68bf34c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5OWY2NWUyZDI2OTYwNGYxOTgyZjJmOTZkYmI2MjA2NTgwYWU5YzZkYTdiYmU0OTM0MWIzZWU0NDAwNGQ1YjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwNThlYWViNTQ5M2EyYzdlMzMyMTk5ZjVmNjgxNDkwOWMwNjhiZmMwZGNmMGRkNjdiZmVhODM4MDUzY2E3MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiNWU2ZDJjY2FlMTc5Yzk0YmI0Yzc0OWZhZmJmNzQzNjVhZGNiNjliMWE3MzY4MTE2YTM3NDBlMjRlMGQwYzkifQ"
         }
       ]
@@ -65,18 +65,36 @@
       "statement": "Private details are limited to 128 records of 64KiB, with 32 previews and separate exact-record readback; opt-out stops new observations without clearing approval history.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs#L245-L377",
+          "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs#L253-L385",
           "version": "repo-lines-v1:sha256:267053f01ff7890937fd2f38bb66407621fe9b10f9bfc266134557bf3927f1e3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkZjYxMzI3ZGFmZWRmNGFlZWI2MDY0NzdhNDVhYTQ5NjU2MGFiMTdmNGZlYzY2NzkzNTA0ZWIxNjFmZDBkYjRlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1YTkxYzJjMWVkNTZiNzNkMTE3NTIxZWM3MjllZTRlMmY0Yjc5ZDlmNzNkMWZlYTMxY2I5N2YwNDNjNGE0YjhlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5MzZiYTI1OGEwNjBkMmFjNWU5NTFmYTdjMmViZDVlZWQ4ZmMwNTg1Y2MyODNiMzRmMzdhOGY1NzU2ZGY3YTc0In0"
         },
         {
           "resource": "repo://database/src/guardian_settings.rs",
-          "version": "repo-file-v1:sha256:55f3c9a78b8ba21e28125f3d4edb836ccfb6a155b603390e95c8fd5ca78e61b9"
+          "version": "repo-file-v1:sha256:089792ed78bb1fb6d0d734b49bf2edc57bcfa96f233eb217d276f164872aeebb"
+        }
+      ]
+    },
+    {
+      "id": "claim_5bf209cb11354871ab38c6dfe83965f9",
+      "statement": "Raw-event configuration applies at native source load, while completed-review history recovery supports resumed sources through at most 32 same-directory private candidates and five turns each, with verified parent identity and explicit gaps.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/guardian_details.rs",
+          "version": "repo-file-v1:sha256:b61d1abbc43be7bb9d2ea1a798cc81421be488a2f7707101c22d44fd161b8d4d"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/native_settings.rs",
+          "version": "repo-file-v1:sha256:1ec989889aa8fa0a46653449feecd5bec92b4bc933f7841d7aa4bb16545d403a"
+        },
+        {
+          "resource": "repo://database/src/guardian_settings.rs",
+          "version": "repo-file-v1:sha256:089792ed78bb1fb6d0d734b49bf2edc57bcfa96f233eb217d276f164872aeebb"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T21:11:31.338Z"
+    "at": "2026-10-25T06:57:32.093Z"
   }
 }

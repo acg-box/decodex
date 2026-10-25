@@ -5,7 +5,7 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T03:47:07.956Z
+    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
@@ -21,18 +21,28 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
+  - id: openwiki-source-991553c8d747a54ecf5a9376
+    resource: repo://crates/decodex-core/src/work.rs
   - id: openwiki-source-1b314e86ab2f1adbc0ede4c8
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs
+  - id: openwiki-source-725813d500ec103482924456
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-1477615a268800361379ce21
+    resource: repo://crates/decodex-runtime/src/agent_initial_settings.rs
   - id: openwiki-source-f4bc7020783c49a911b7fb29
     resource: repo://crates/decodex-runtime/src/agent_visibility.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-a5bf72500fe69a895fca0dac
     resource: repo://crates/decodex-runtime/src/agent/coordination.md
+  - id: openwiki-source-a7886792ad3e47b8e1afb7fa
+    resource: repo://crates/decodex-runtime/src/agent/guardian_details.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
+  - id: openwiki-source-1bebc823fa8b6426acb4d5e2
+    resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
   - id: openwiki-source-52d3ef4824079f66e9063566
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
   - id: openwiki-source-419a87794b421322302c7d9e
@@ -51,21 +61,27 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/work.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
+  - id: openwiki-source-f282017dc1610aa4fa0e6730
+    resource: repo://database/migrations/0058_shared_agent_process.sql
   - id: openwiki-source-58c0167d31c3e40dc89591ab
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-51332b5dcd4b194b62fec905
     resource: repo://database/src/agent_guardian.rs
   - id: openwiki-source-e1fc2e0e81623c7dd7ff5417
     resource: repo://database/src/agent_process.rs
+  - id: openwiki-source-fc5ad70343bb20c4e9d12540
+    resource: repo://database/src/agent_process/attachments.rs
   - id: openwiki-source-0f0fc00c258a3ddad6935fcc
     resource: repo://database/src/agent_tool_migration.rs
+  - id: openwiki-source-d1279ad243eb550afec4d0e6
+    resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
   - id: openwiki-source-4e05748daab41d1c9c2f54dd
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
+generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
 ---
 
 # Project, Agent and Work coordination
@@ -78,6 +94,10 @@ The [accepted contract](../decisions/project-agent-work.md) defines the shared v
 
 The desktop sends typed commands to the service. SQLite owns Project membership, Agent responsibilities, Work requirements, holds, Results, assessments and Collaboration Requests. Codex owns native threads, turns, Subagents, messages, waits, context, Goals, permissions and enforcement. Work commands persist business decisions; they do not spawn or message native helpers.
 
+A new independent conversation can derive its initial settings from its actual first pending user input. An Assistant is not required. Explicit model and effort choices are retained. A bound conversation or uncertain native effect never uses this bootstrap path. After native creation, Decodex materializes the thread name before Project reconciliation.
+
+Several independent conversations can share one admitted native process. Each Agent attaches only after that process has created or resumed its exact native thread. The binding preserves the process account, generation and live-owner fences; Project membership alone grants no process authority.
+
 A Work has one accountable Agent, immutable requirements revisions and explicit completion criteria. The owner can perform it directly or use native helpers. `work_read` supplies current scoped evidence. `work_manage` uses a stable command ID and exact content for retries. The service verifies authority from the actual delivered user decision, then applies the command transactionally. A contributor's request is application evidence, not a new user instruction.
 
 The evidence chain is Work -> requirements -> issued instruction -> execution -> Result -> assessment. Native evidence keeps exact thread, turn and item identities. Mutable files keep their digest and execution-directory boundary. Identity checks establish provenance; the owner still judges whether the Result meets the requirements. Native completion, transport delivery, acceptance, a Guardian Review and a read receipt do not complete Work.
@@ -88,9 +108,11 @@ Before dispatch, Decodex resumes the exact retained native conversation and reco
 
 ## Native contributions and independent Collaboration
 
-The owner saves a contribution intent before native dispatch and uses the returned `nativePrompt`. Direct calls bind through the observed native call. When native configuration permits nested V2 Code Mode dispatch, Decodex also accepts the actual plaintext native delivery to the child. It verifies the exact prompt, sender, recipient, child ancestry and receiving turn, then saves an immutable input receipt before parent activity is required. One unique parent activity for that child and root turn completes the binding. The Result must belong to the recorded receiving turn. Script text or quoted messages do not establish dispatch.
+The owner saves a contribution intent before native dispatch. A new helper uses the returned `nativeTaskName` as its native task name and `nativePrompt` as its message. Direct native calls retain their existing attribution. Visible child input can prove the exact prompt, sender, recipient, ancestry and receiving turn; one unique parent activity then completes the binding.
 
-Recovery joins the saved input receipt with native parent history on later activity or an exact `work_read` request. It does not spawn, resend or poll. V1 nested execution already retains the native prompt and activity path. V2 canonical child history omits inbound Agent messages, so a missed, encrypted or ambiguous delivery cannot be reconstructed from that history alone. Those cases stay Unknown.
+Native V2 can encrypt the child input. In that case, Decodex can verify the prepared task name, native parent metadata, root turn and unique parent activity. It records this as task-identity proof, not plaintext verification. Source history can recover a named assignment after a missed input event. The legacy unnamed encrypted assignments remain Unknown; their prompts are not reconstructed.
+
+An exact `work_read` request can inspect up to five recent parent turns and use native child history to recover an existing binding. It does not spawn, resend or run a polling controller. Result evidence must match the recorded receiving turn or verified root-turn assignment. Script text, quoted messages and timing do not establish dispatch. V1 retains its native prompt and activity path.
 
 The selected native backend comes from native model metadata and configuration. A feature flag alone does not establish V1 or V2. Qualified V2 can wake its idle owner from native completion. V1 uses the native wait tool for required Results. Neither path needs Ultra or a local polling controller.
 
@@ -137,6 +159,8 @@ An unused local draft has no native archive state. Use the explicit service-owne
 Native child requests resolve through verified thread-spawn ancestry to the owning local work item, with cycle and depth bounds. A fork alone does not establish child authority. Child approvals retain the child's native identity; child ownership does not grant local manager-tool authority.
 
 Guardian observations are durable review evidence. They neither authorize execution nor wake work by themselves. Approval UI must answer the exact pending request and preserve uncertainty when acknowledgment is unavailable.
+
+Review Details can retain exposed native assistant output. The selected native protocol supports raw-event subscription at thread creation, but not on resume. After a completed review, bounded history recovery checks the newest 32 private candidates in the same directory and up to five turns per candidate. It verifies the native parent before retaining output. Raw reasoning is excluded. The protocol does not supply an exact action Review association; this remains explicit. Missing records remain possible, and these observations never authorize or replay an action.
 
 ## Explicit conversation branches
 
