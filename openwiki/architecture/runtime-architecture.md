@@ -54,8 +54,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
   - id: openwiki-source-52d3ef4824079f66e9063566
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
+  - id: openwiki-source-419a87794b421322302c7d9e
+    resource: repo://crates/decodex-runtime/src/agent/project.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
+  - id: openwiki-source-4f59431f3f6264a65208bdcb
+    resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-b1dd4c8ab85f342314daa6f1
     resource: repo://crates/decodex-runtime/src/agent/work.rs
   - id: openwiki-source-a958837c2596362a3517c745
@@ -66,6 +70,8 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
   - id: openwiki-source-88b81a215b1bac061dad80ec
     resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
+  - id: openwiki-source-29c88fbcabe1ba5e93694ed1
+    resource: repo://database/migrations/0057_native_work_delivery.sql
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
   - id: openwiki-source-87eeaebc39a3d2229938f9d2
@@ -78,10 +84,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
+generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T02:09:34.237Z
+    at: 2026-10-25T03:47:07.956Z
 ---
 
 # Runtime Architecture
@@ -126,6 +132,10 @@ Project and Work are durable business records. A persistent Agent owns one curre
 The overview contains Work headers. `work_portfolio` serves selected evidence in digest-checked 8 KiB pages with a 32 MiB ceiling. SQL applies Agent and granted Material scope before the per-category record limit. The global Guardian coordinator records desired reviewer preference and actual per-source application receipts. It does not own execution approval or business assessment. Optional private records exclude raw reasoning and preserve explicit missing action associations.
 
 Direct schema 56 migration preserves genuine legacy execution and history. New conversations advertise the canonical tool revision. Existing tool sets use a durable migration journal and exact native quiescence/readback. Unknown external effects remain parked. Previous thread history is read-only evidence, not input authority. See [coordination](chief-coordination.md) and [local database](../operations/local-database.md).
+
+Schema 57 adds immutable native child-input receipts. Direct-call attribution remains available. For nested V2 dispatch permitted by native configuration, the receipt joins exact child input with one parent activity and permits recovery without replay. Missing or ambiguous native evidence stays Unknown. V1 nested execution retains its existing native attribution path.
+
+Before sending input to a retained conversation, the runtime reconciles its registered native Project after exact hydration. It assigns only an unassigned conversation and checks the returned identities. Conflicts park the affected Agent while independent input can continue. This keeps the execution directory and permissions; it does not establish official desktop sidebar synchronization. See the [native acceptance boundary](../testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian).
 
 ## Native launch policy
 

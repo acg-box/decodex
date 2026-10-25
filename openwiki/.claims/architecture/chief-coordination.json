@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:60e00d37348fa63528e9ebd2a081a7c9c738d3f99cc8c345d3fd7c915fd0af4d",
+  "pageVersion": "sha256:2423bcdc54dec9fc3d585d50e38192d892008416a3f78b3d6960c9ffc04922eb",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -18,7 +18,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:21606f7d55eb010c9ebd76f0728c2be4c8b637d02d5f380ea470a3e9dc743ac9"
+          "version": "repo-file-v1:sha256:70af440dc101dc6713fdbdc5a109e06d9db8afd57dd6206a2cab17cabb4fab1b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:21606f7d55eb010c9ebd76f0728c2be4c8b637d02d5f380ea470a3e9dc743ac9"
+          "version": "repo-file-v1:sha256:70af440dc101dc6713fdbdc5a109e06d9db8afd57dd6206a2cab17cabb4fab1b"
         }
       ]
     },
@@ -153,7 +153,7 @@
       "statement": "Compatibility work_instruction outputs can request bounded native retention; wake and capacity retry evidence does not request it, and retained tool evidence does not replace durable Work ownership.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1247-L1355",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1249-L1357",
           "version": "repo-lines-v1:sha256:e0ad341d1d141c699110b02b6523ea6ef5d2151f529f68b963753ce173ce1cfc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
@@ -176,7 +176,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:21606f7d55eb010c9ebd76f0728c2be4c8b637d02d5f380ea470a3e9dc743ac9"
+          "version": "repo-file-v1:sha256:70af440dc101dc6713fdbdc5a109e06d9db8afd57dd6206a2cab17cabb4fab1b"
         }
       ]
     },
@@ -214,7 +214,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
-          "version": "repo-file-v1:sha256:dd9ef5ba2a31400ca4e973700dd4ca2418c96c818f0126d5b1d365f61569b7be"
+          "version": "repo-file-v1:sha256:ee926e742d6f556b90ad7dfd631f5acd5af854b9386e96024ce9e32a1cb329c4"
         },
         {
           "resource": "repo://database/src/works/commands.rs",
@@ -242,7 +242,7 @@
         },
         {
           "resource": "repo://database/src/works.rs",
-          "version": "repo-file-v1:sha256:9fae2b7e75b33ade985004e3613c7de156eb8065661b3d85e22a4421384c60ab"
+          "version": "repo-file-v1:sha256:8448f5642ed7e656dafb41c0546229d910e3c9fec02fe8458eb337ac676c8e72"
         }
       ]
     },
@@ -262,21 +262,57 @@
     },
     {
       "id": "claim_c9fb26caf353428699f28264db963d51",
-      "statement": "Native V2 continuation and V1 native waits retain native ownership; the qualified Work path excludes nested Code Mode attribution and does not depend on Ultra.",
+      "statement": "Native V2 continuation and V1 waits retain native ownership without Ultra; V1 nested Work attribution and V2 nesting explicitly permitted by native configuration are qualified while the V2 default remains direct-only.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
         },
         {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
+          "version": "repo-file-v1:sha256:5af0ba367f8bbb0a454304baf4b846a1fa87e83dbfe4aaf84c863848a37feb2f"
+        }
+      ]
+    },
+    {
+      "id": "claim_6790d8c02bca4f009fb19e71224350f5",
+      "statement": "Retained conversations reconcile unassigned native Project membership after exact hydration and before input, preserve conflicting membership and native settings, and park the affected Agent without blocking independent queued Agents.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs",
+          "version": "repo-file-v1:sha256:ad776a946d9c78aa7d837a0de35f163ab9ea6856286cf83ccbd863734bc941a9"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:70af440dc101dc6713fdbdc5a109e06d9db8afd57dd6206a2cab17cabb4fab1b"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/project.rs",
+          "version": "repo-file-v1:sha256:7fe6e89df741571dec2727e90fb6238d80439631fa3ff6a549654bf119006ec3"
+        }
+      ]
+    },
+    {
+      "id": "claim_976e95c9293b4bf3bab453a802037c20",
+      "statement": "Permitted nested V2 Work attribution persists the exact native child input receipt before parent activity, then joins a unique parent activity and restricts Results to the receiving turn; work_read can recover a saved receipt without replay, while missing or ambiguous native input remains Unknown.",
+      "evidence": [
+        {
           "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
-          "version": "repo-file-v1:sha256:dd9ef5ba2a31400ca4e973700dd4ca2418c96c818f0126d5b1d365f61569b7be"
+          "version": "repo-file-v1:sha256:ee926e742d6f556b90ad7dfd631f5acd5af854b9386e96024ce9e32a1cb329c4"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/work_delivery.rs",
+          "version": "repo-file-v1:sha256:e9a6d3dedd804b8f7b55f795755ad529daadd172ae1549a3bcd9777f1592b30c"
+        },
+        {
+          "resource": "repo://database/src/works.rs",
+          "version": "repo-file-v1:sha256:8448f5642ed7e656dafb41c0546229d910e3c9fec02fe8458eb337ac676c8e72"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T02:09:34.237Z"
+    "at": "2026-10-25T03:47:07.956Z"
   }
 }

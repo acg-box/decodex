@@ -327,6 +327,7 @@ fn validate_catalog_method(method: &Value, params: &Value) -> Option<Result<(), 
 		"project/read" => app_server_client::is_project_read(params),
 		"project/list" => app_server_client::is_project_list(params),
 		"thread/name/set" => app_server_client::is_thread_name_selection(params),
+		"thread/metadata/update" => app_server_client::is_thread_project_assignment(params),
 		_ => return None,
 	};
 	Some(if valid { Ok(()) } else { Err(ClientError::InvalidFrame) })
@@ -515,6 +516,20 @@ mod tests {
 		self, AccountBinding, AgentProcessBridge, Arc, AtomicBool, ClientError, Duration, HashSet,
 		InboundFrame, Ordering, RequestId, RevocableWriter, Value, Write, mpsc,
 	};
+
+	#[test]
+	fn project_assignment_does_not_admit_other_metadata_edits_or_membership_clear() {
+		let method = serde_json::json!("thread/metadata/update");
+		let exact = serde_json::json!({"threadId":"retained-thread","projectId":"native-project"});
+		assert!(agent_process::validate_outbound_method(&method, &exact).is_ok());
+		for invalid in [
+			serde_json::json!({"threadId":"retained-thread","projectId":""}),
+			serde_json::json!({"threadId":"retained-thread","projectId":"native-project","daybreakEnabled":true}),
+			serde_json::json!({"threadId":"retained-thread","gitInfo":{}}),
+		] {
+			assert!(agent_process::validate_outbound_method(&method, &invalid).is_err());
+		}
+	}
 
 	#[test]
 	fn fork_bridge_preserves_explicit_boundary_and_deferred_goal() {

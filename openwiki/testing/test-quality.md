@@ -14,10 +14,10 @@ sources:
     resource: repo://crates/decodex-account-login/src/lib.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
-generated: { by: "codex", at: "2026-10-25T02:09:34.237Z" }
+generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T02:09:34.237Z
+    at: 2026-10-25T03:47:07.956Z
 ---
 
 # Test quality and coverage
@@ -43,7 +43,7 @@ The default nextest filter excludes shared application tests from the workbench 
 
 Process fixtures have a separate serialized test group. CLI shutdown fixtures reserve the available test threads so unrelated heavy work does not consume their bounded startup window. These scheduling rules protect test reliability; they are not performance acceptance.
 
-The native-media group also runs one exchange at a time. Its packet-flow tests and the wall-clock collaboration-disclosure fixture reserve the runner's test threads while they check timing-sensitive behavior. This reservation does not establish frame rate or production latency.
+The native-media group also runs one exchange at a time. Its packet-flow tests and the wall-clock collaboration-disclosure fixture reserve the runner's test threads while they check timing-sensitive behavior. The same reservation covers `parent_managed_composer_shares_lock_geometry_and_keeps_both_drafts` and `compaction_status_remains_visible_while_sending`, which click a moving control or sample a short exit frame. Keep their assertions, deadlines and default selection intact. This reservation does not establish frame rate or production latency.
 
 ## Share setup only when it helps
 
@@ -62,3 +62,5 @@ Earlier cleanup reports remain in Git history. They do not establish exhaustive 
 ## Project and Work qualification
 
 The separate retained Project/Work qualification records actual native and local test cohorts. Its original complete workspace run has 2918 executed, 2916 passed, two native audio ICE timeout failures and 1154 skipped. A passed appearance-fade test has a LEAK marker with unknown cause. Keep that original failed output. The separate media follow-up records a fresh current-main full run with all 2918 passed and no LEAK, plus 40 media executions on each of current main and the pre-change baseline, all passed without retries. The source and feature comparison and macOS firewall events support an external admission cause for the ICE stalls. Lock state was recovered retrospectively. The already-allowed package-only baseline passed while locked; after unlock, the workspace binary received a prompt and allow verdict. No new controlled lock or firewall-denial comparison was run. These later passes do not explain the earlier LEAK or replace its receipt. Use the retained index for exact identities, qualification limits and overlapping counts; use the [native media procedure](../integrations/subscription-voice.md#diagnose-native-media-ice-timeouts) for another ICE timeout.
+
+The later native Project and nested Work follow-up retains a separate initial full run with 2918 passed, three failures and one passed-test LEAK. Two failures were the unchanged frame samples named above; the same test executable passed each sample five times in isolation. The other failure was an old native fixture missing `projectId`, now corrected to match the real response. The final full run passed 2921 tests with 1157 skipped and no LEAK. The first follow-up LEAK was in the native resume test and has no established cause. These later passes do not replace its receipt or prove a general scheduler defect. The index retains the original identities, the artifact digest, source comparisons and the ten isolated executions.

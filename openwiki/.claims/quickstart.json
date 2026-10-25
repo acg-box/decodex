@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8f07226efd416949f5b74ebf839640fa09da0a8aef0a983e707efbb153b73e40",
+  "pageVersion": "sha256:bdeab431d974647be1efa21c759b465d4370f9d23b322f762febc4ebd6162e57",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -54,7 +54,7 @@
         },
         {
           "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:c28cb3a289bd31e3aab3dd4c715f33354eb5d0874ea1fa16099c8fd5ebf50657"
+          "version": "repo-file-v1:sha256:8cd13ad6810756d5c248d76bc3af66f02433b47d0d048afbe11e41f64ad8ecc2"
         }
       ]
     },
@@ -117,10 +117,32 @@
           "version": "repo-file-v1:sha256:ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699"
         }
       ]
+    },
+    {
+      "id": "claim_699d2ee236f442c986d264d32af88649",
+      "statement": "The retained integration follow-up reconciles native Project membership and adds schema57 native input receipts for permitted nested Work attribution without replay; seven native and 2921 workspace tests pass while original failures, official desktop Project presentation and installed-app limits remain separate.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/project.rs",
+          "version": "repo-file-v1:sha256:7fe6e89df741571dec2727e90fb6238d80439631fa3ff6a549654bf119006ec3"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/work_delivery.rs",
+          "version": "repo-file-v1:sha256:e9a6d3dedd804b8f7b55f795755ad529daadd172ae1549a3bcd9777f1592b30c"
+        },
+        {
+          "resource": "repo://database/src/migrations.rs",
+          "version": "repo-file-v1:sha256:8cd13ad6810756d5c248d76bc3af66f02433b47d0d048afbe11e41f64ad8ecc2"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T21:19:56.719Z"
+    "at": "2026-10-25T03:47:07.956Z"
   }
 }

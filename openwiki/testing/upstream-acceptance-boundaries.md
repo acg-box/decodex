@@ -4,6 +4,8 @@ title: "Upstream integration acceptance boundaries"
 description: "Source, native fixture, signed desktop, installation and physical voice evidence boundaries."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-95772fa38252ded838ec3a2f
+    resource: repo://.config/nextest.toml
   - id: openwiki-source-0a61b25348131fe1bb6e1d12
     resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
@@ -24,6 +26,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-32afc8038b2c3b7df030c573
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_prediction_tests.rs
+  - id: openwiki-source-1b314e86ab2f1adbc0ede4c8
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs
   - id: openwiki-source-725813d500ec103482924456
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_work_tests.rs
   - id: openwiki-source-21c0991a686dae637a3616cd
@@ -58,6 +62,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline.rs
   - id: openwiki-source-74145d84eb83d80ec3062595
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
+  - id: openwiki-source-4f59431f3f6264a65208bdcb
+    resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-ec5c9f32d2135154f4297a49
     resource: repo://crates/decodex-runtime/src/conversation.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
@@ -84,10 +90,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-25T02:09:34.237Z" }
+generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T02:09:34.237Z
+    at: 2026-10-25T03:47:07.956Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -235,6 +241,8 @@ The `retained_project_agent_work` entry in the [portable index](../../automation
 
 The selected official source is `970111f6cb62cc02fe36a82ea7d71b37a2889c97`. The package passed explicit `cargo +stable make prepare-codex` component, helper and schema verification. It did not replace the installed application or advance the upstream source-review cursor.
 
+The following table preserves the original architecture qualification and its separate media follow-up.
+
 | Executed check | Recorded outcome |
 | --- | --- |
 | Workspace check, strict lint, format | Passed; lint covered 13 packages. |
@@ -253,11 +261,31 @@ The native matrix covers production-bridge Project idempotency, reviewer routing
 
 Local regressions cover one Agent across four Works in two Projects, wrong-Work Result refusal, current-requirement guards, requirement changes, scoped Collaboration/repair/cancellation, exact command retry, lost delivery, source/digest verification, paused Work, restart and selected evidence paging. The SQL scope defect was reproduced before repair: unrelated earlier records hid the Agent's own Work. The repaired test also verifies that only granted Materials enter a bounded peer read.
 
+### Native Project and nested Work follow-up
+
+The portable `native_project_and_work_followup` entry binds the repairs to the same source, CLI, helpers and generated schema. Before-repair tests reproduced unassigned retained Project membership and missing Work attribution for permitted V2 nesting. V1 nested attribution passed unchanged.
+
+| Executed check | Follow-up result |
+| --- | --- |
+| Exact-artifact native cohort | 7 passed, 996 excluded, zero unmatched selectors. |
+| Database suite and gate | 189 passed; schema 57, 90 tables and integrity checks passed. |
+| Focused Work/identity guards | 4 passed, 999 excluded. |
+| Workspace check, strict lint, format | Passed; lint covered 13 packages; Nextest TOML format also passed. |
+| Python and CLI diagnostics | 40 and 2 passed. |
+| Same UI artifact in isolation | Five passes per affected sample, ten executions in total. |
+| Final complete workspace | 2921 passed, 1157 skipped, no LEAK. |
+
+Counts overlap. The native Project test reuses the catalog, attaches a retained unassigned conversation, restarts the actual app-server and verifies unchanged conversation, directory and permissions. It preserves an externally conflicting Project and proves an independent queued Agent still runs. This qualifies native data and membership; official desktop saved-Project/sidebar presentation remains unmeasured.
+
+The nested V2 test uses native configuration that explicitly permits Code Mode collaboration. It saves real native child input before binding, reconstructs the durable point before parent attribution and reopens the store. `work_read` recovers from retained input and actual history without extra model or spawn requests. This is a store-reopen reconstruction, not a physical machine crash. V1 nested and existing direct paths are separate native cases.
+
+The first full follow-up run had three failures and a passed resume-test LEAK. The two UI source files matched main, and the same executable passed ten isolated runs. Existing Nextest resource reservation now covers those short-frame samples with their assertions and deadlines intact. The third failure was an old fixture missing native `projectId`, corrected to match the actual response. The first LEAK cause remains unknown. Its receipt stays distinct from the clean final run.
+
 ### Qualified native and presentation limits
 
 The native backend comes from model catalog metadata plus configuration. The matrix uses V2 `gpt-5.6-sol` and V1 `gpt-5.6-luna` at Medium. Disabling a V2 feature alone does not select V1. V2 native completion can wake an idle owner; V1 requires the native wait tool for required Results. These are synthetic provider decisions, not a measurement of live model autonomy or Ultra.
 
-Work attribution requires an exact direct native call. V2 canonical child history omits inbound Agent messages; the integration retains matched call and root-turn evidence. Missing, ambiguous and nested Code Mode attribution stays Unknown and does not authorize duplicate execution. Native Project catalog behavior is qualified; synchronization with desktop saved Projects is not.
+Work attribution requires an exact direct native call or verified native input delivery joined with one unique parent activity. V2 canonical child history omits inbound Agent messages. The nested path therefore requires the actual plaintext message, exact saved prompt, child ancestry, receiving turn and root turn; Results must come from that receiving turn. Missing, encrypted, missed or ambiguous input stays Unknown without duplicate execution. Script text, output text or timing cannot replace input evidence. V2 remains direct-only by default; qualification explicitly sets native `multi_agent_v2.non_code_mode_only=false`. Decodex does not change that policy.
 
 Global Guardian preference changes apply to subsequent native turns. Active turns, already-pending human approvals and previously captured child policy keep native ownership. Reviewer selection never grants Full Access. Private details retain verified native assistant output and item-free terminal metadata only. They exclude raw reasoning frames and do not enter parent canonical history, complete Work or replay actions. Exact action Review association is unavailable in this runtime and remains explicit. Optional records are limited to 128 at 64 KiB each, with 32 short overview previews; reconnect gaps remain visible.
 

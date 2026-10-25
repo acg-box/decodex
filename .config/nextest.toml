@@ -33,3 +33,9 @@ threads-required = 'num-test-threads'
 [[profile.default.overrides]]
 filter           = 'test(exchange_disclosure_animates_in_both_directions_without_changing_the_draft)'
 threads-required = 'num-test-threads'
+
+# These checks click a moving composer control or sample a short exit frame.
+# Reserve the runner so concurrent rendering cannot consume the sampled interval.
+[[profile.default.overrides]]
+filter           = 'test(parent_managed_composer_shares_lock_geometry_and_keeps_both_drafts) or test(compaction_status_remains_visible_while_sending)'
+threads-required = 'num-test-threads'

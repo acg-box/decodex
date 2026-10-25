@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8c812adbfed94a3b213a249577c471dd61467f5bc352be36cfec6771b52e08c2",
+  "pageVersion": "sha256:b449cbcac998607b1363e3700e49197b9b49fc3d57457f50f2ed34342e16780e",
   "claims": [
     {
       "id": "claim_820ae47a5a5d49aab10b5f306ac24685",
       "statement": "User conversation creation persists an independent Agent with no required parent, while direct schema56 migration retains legacy identities and Project membership.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L750-L781",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L751-L782",
           "version": "repo-lines-v1:sha256:95965309b130e386dd39df3352cd29cb2707f20cc7baf7e30a7bb6f50cf8e981:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxZmNiNjNiYzM2YWUzOGM0N2Y3MDcyMjhhYmI0YjEzZjA3NTkxNTQxYTU1ODJkNTkxNTY3Y2FlZDg4NjNlZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkNDU4NGMyM2VmNGZlMTlkNDEyMTAyNTY2YzViYmI5MTAzNzFjOWQzN2JkOGEwODNjY2VlNjBmN2RhZDgyYjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwMzA3YTk0M2EzYmRmMmM1ZWYxMjhjYzAxY2M5YzVjYTY2OTE2YjZiODhlODkzMmQ1M2IxNTlmN2JkNWJhOGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkZWI1MTc4YTdlOTA1OGY1ZjczNTQ4YTVlNGFhNTc5OGUwNDBhZTM1NmQzODUwZjAyMDk3MDU3ZGI0NDdhMWQifQ"
         },
         {
@@ -21,7 +21,7 @@
       "statement": "Delegation, Collaboration and current Work context retain application-evidence authority instead of becoming user authorization; authoritative Work changes require the actual delivered user decision.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1247-L1355",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1249-L1357",
           "version": "repo-lines-v1:sha256:e0ad341d1d141c699110b02b6523ea6ef5d2151f529f68b963753ce173ce1cfc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
@@ -50,11 +50,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-core/src/work.rs",
-          "version": "repo-file-v1:sha256:e1045f29d21d012c893bf4f9f0668c745c1a0752e27f500a47454cfe1aed7f47"
+          "version": "repo-file-v1:sha256:83eed55cb3f81d3e0df691d2fb6d1c0ae1ad70cec8b0e54eb4630520f78243ec"
         },
         {
           "resource": "repo://database/src/works.rs",
-          "version": "repo-file-v1:sha256:9fae2b7e75b33ade985004e3613c7de156eb8065661b3d85e22a4421384c60ab"
+          "version": "repo-file-v1:sha256:8448f5642ed7e656dafb41c0546229d910e3c9fec02fe8458eb337ac676c8e72"
         },
         {
           "resource": "repo://database/src/works/commands.rs",
@@ -95,7 +95,7 @@
           "version": "repo-file-v1:sha256:907ed4275de6ac66f931df9b580be60b4158fb2cd2a8dd1faa3c32367aeb4bf6"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/work.rs#L453-L479",
+          "resource": "repo://crates/decodex-runtime/src/agent/work.rs#L479-L505",
           "version": "repo-lines-v1:sha256:1df0dbffb9b471f614814e8c74cc95be40dcb6d4fdf791b3eda4be8960b5b7d8:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiOTY5YmE5MjYxNTk5ZGNmNTRlMGRmY2Y0NzgwY2Q5ZDY0MWE3ZjE3NTFmNzg2NDdhNGE2NmM4NWQwZGQ3ODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkMDhjYzkxNjRkM2UzMWI3OTI3OTBiODlkMDVhN2Y3NTgyMjk2YzljOTIwYzI4ZWU0NzIwOWUzZDBlYTIyNzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAifQ"
         }
       ]
@@ -134,13 +134,63 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
+        }
+      ]
+    },
+    {
+      "id": "claim_0625e9d0d5354d6c8f41b2213b624c76",
+      "statement": "Retained native conversations now reconcile unassigned Project membership before input, preserve conflicting membership and native settings, and allow independent queued Agents to continue; official desktop saved-Project/sidebar presentation remains unmeasured.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs",
+          "version": "repo-file-v1:sha256:ad776a946d9c78aa7d837a0de35f163ab9ea6856286cf83ccbd863734bc941a9"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/project.rs",
+          "version": "repo-file-v1:sha256:7fe6e89df741571dec2727e90fb6238d80439631fa3ff6a549654bf119006ec3"
+        }
+      ]
+    },
+    {
+      "id": "claim_df6325aa92ab495ab2be6b57ef1cdf83",
+      "statement": "Schema 57 retains actual native input receipts for permitted V2 nested Work attribution and recovery without replay, restricts Results to the observed receiving turn, preserves existing dispatches without invented input and keeps missing or ambiguous evidence Unknown; V1 nested attribution already passed and V2 defaults remain direct-only.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
+          "version": "repo-file-v1:sha256:5af0ba367f8bbb0a454304baf4b846a1fa87e83dbfe4aaf84c863848a37feb2f"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/work_delivery.rs",
+          "version": "repo-file-v1:sha256:e9a6d3dedd804b8f7b55f795755ad529daadd172ae1549a3bcd9777f1592b30c"
+        },
+        {
+          "resource": "repo://database/migrations/0057_native_work_delivery.sql",
+          "version": "repo-file-v1:sha256:b631d6ab912b436339528f3de75cfae6fa26ed545262e7bdf6fcdaad7685c3f7"
+        }
+      ]
+    },
+    {
+      "id": "claim_e5bc0eac681b49be9aff1a52028215f8",
+      "statement": "The native Project and Work follow-up separately records seven passed native tests, 189 database tests, a schema57/90-table gate and a final 2921-pass workspace run; its original three failures and unexplained passed-test LEAK remain distinct evidence.",
+      "evidence": [
+        {
+          "resource": "repo://.config/nextest.toml",
+          "version": "repo-file-v1:sha256:85f6a30b21a1a8e734b6d81aad00a781657dc39d7762cd9d02c0ffc9f8154698"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T02:09:34.237Z"
+    "at": "2026-10-25T03:47:07.956Z"
   }
 }

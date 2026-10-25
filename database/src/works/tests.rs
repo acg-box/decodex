@@ -470,11 +470,40 @@ async fn native_binding_and_completion_intents_stay_separate_after_restart() {
 		},
 	)
 	.await;
+	store
+		.record_native_work_dispatch(
+			"native-routes".into(),
+			"sage".into(),
+			"parent-turn".into(),
+			"spawn".into(),
+		)
+		.await
+		.unwrap();
 	drop(store);
 	let store = SqliteStore::open_test(&path).unwrap();
 	let p = store.work_portfolio(None).await.unwrap();
 	assert!(p.native_contributions[0].child_thread_id.is_none());
 	assert_eq!(p.works[0].state, WorkState::Open);
+	assert!(store.native_work_delivery("native-routes".into()).await.unwrap().is_none());
+	let delivery = NativeWorkDelivery {
+		parent_thread_id: "sage".into(),
+		parent_turn_id: "parent-turn".into(),
+		child_thread_id: "child".into(),
+		child_turn_id: "child-turn".into(),
+		message_id: "native-message".into(),
+	};
+	for _ in 0..2 {
+		store.record_native_work_delivery("native-routes".into(), delivery.clone()).await.unwrap();
+	}
+	let mut changed = delivery.clone();
+	changed.child_turn_id = "another-turn".into();
+	assert!(store.record_native_work_delivery("native-routes".into(), changed).await.is_err());
+	drop(store);
+	let store = SqliteStore::open_test(&path).unwrap();
+	assert_eq!(store.native_work_delivery("native-routes".into()).await.unwrap(), Some(delivery));
+	assert!(
+		store.native_contribution("native-routes".into()).await.unwrap().child_thread_id.is_none()
+	);
 	apply(
 		&store,
 		"sage",

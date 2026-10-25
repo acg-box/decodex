@@ -2034,7 +2034,7 @@
       "Synthetic temporary homes and loopback provider. No real-account, live-provider reasoning-quality or installed-app acceptance. No installation or release.",
       "Native model metadata and configuration select the backend. Medium gpt-5.6-sol exercises V2; Medium gpt-5.6-luna exercises V1. Disabling the V2 feature alone does not override a model-selected V2 backend.",
       "Idle-owner message wake is qualified for V2. V1 needs native wait for required Results; no local duplicate wake engine is added.",
-      "Direct native calls are qualified. Nested Code Mode Work attribution is unqualified and remains Unknown when exact evidence is absent.",
+      "The original qualification covered direct native calls. The native_project_and_work_followup qualifies retained Project reconciliation and supported nested Work attribution within its recorded limits.",
       "Native Project catalog and thread association are qualified; desktop saved-Project synchronization is not established.",
       "Guardian thread preference applies to subsequent turns. Existing active turns, pending approvals and already-spawned child captures retain native ownership.",
       "Review Details have no exact action-level Review ID in this protocol. Retain at most 128 records of 64 KiB; show 32 short previews. No complete private reasoning transcript or gap-free reconnect claim.",
@@ -2156,6 +2156,388 @@
         "cargo +stable nextest run --locked --workspace --all-targets --all-features --no-fail-fast"
       ],
       "external_reference": "https://support.apple.com/guide/mac-help/block-connections-to-your-mac-with-a-firewall-mh34041/mac"
+    },
+    "native_project_and_work_followup": {
+      "delivery_reference": "https://github.com/acg-box/decodex/commit/edde1d34eb54ab4c3f521b31241003ca38c163a7",
+      "delivery_state_source": "Use the associated public PR for merge and exact-head CI state. Local qualification does not establish installed-app acceptance.",
+      "baseline": "5fdaa80974b3109fca1e14f8ec220222d3ddf19e",
+      "code_revision": "edde1d34eb54ab4c3f521b31241003ca38c163a7",
+      "upstream_source": "970111f6cb62cc02fe36a82ea7d71b37a2889c97",
+      "contracts": [
+        "Reconcile retained conversations with their registered native Project after exact native resume. Reuse the native catalog and verify metadata assignment; preserve conversation identity, execution directory and permissions.",
+        "Preserve conflicting native Project membership. A Project-specific conflict parks that owner while independent queued Agents can continue.",
+        "Keep native V2 direct-only collaboration by default. If native configuration allows nested Code Mode collaboration, match the actual plaintext receiving message, native child source, root turn and one unique parent activity. Never interpret JavaScript text as dispatch proof.",
+        "Persist delivery identity before parent activity is available. Reconcile parent dispatch and child binding from native history on later activity or Work read, including store reopen. No instruction or spawn is replayed.",
+        "Restrict received contribution Results to the exact observed child turn. Preserve V1 nested attribution and the existing direct V1/V2 paths.",
+        "Migration 57 adds immutable native input receipts. It preserves schema56 dispatches without inventing received input.",
+        "Reserve the runner for two existing UI frame samples; retain their assertions and execute the complete default test selection."
+      ],
+      "source_symbols": [
+        "crates/decodex-runtime/src/agent/project.rs#sync_native_project",
+        "crates/decodex-codex/src/app_server_client/projects.rs#assign_thread_project",
+        "crates/decodex-runtime/src/agent/work_delivery.rs#observe_native_work_delivery,#native_delivery_activity",
+        "crates/decodex-runtime/src/agent/work.rs#recover_native_contribution,#native_contribution_outputs,#verify_work_result",
+        "database/src/works.rs#record_native_work_delivery,#native_work_delivery",
+        "crates/decodex-core/src/work.rs#NativeWorkDelivery"
+      ],
+      "source_sha256": {
+        "crates/decodex-codex/src/app_server_client/projects.rs": "2748cbf6212aeb467371055b0a008a41d851431060f55931c6c6675ad8d14d83",
+        "crates/decodex-core/src/work.rs": "83eed55cb3f81d3e0df691d2fb6d1c0ae1ad70cec8b0e54eb4630520f78243ec",
+        "crates/decodex-runtime/src/agent.rs": "70af440dc101dc6713fdbdc5a109e06d9db8afd57dd6206a2cab17cabb4fab1b",
+        "crates/decodex-runtime/src/agent/project.rs": "7fe6e89df741571dec2727e90fb6238d80439631fa3ff6a549654bf119006ec3",
+        "crates/decodex-runtime/src/agent/work.rs": "ee926e742d6f556b90ad7dfd631f5acd5af854b9386e96024ce9e32a1cb329c4",
+        "crates/decodex-runtime/src/agent/work_delivery.rs": "e9a6d3dedd804b8f7b55f795755ad529daadd172ae1549a3bcd9777f1592b30c",
+        "crates/decodex-runtime/src/account_launch/agent_process.rs": "f727009b6d81d086eda0dc623cadc68cf0535c92cc6343c6581459a614758686",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs": "ad776a946d9c78aa7d837a0de35f163ab9ea6856286cf83ccbd863734bc941a9",
+        "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs": "5af0ba367f8bbb0a454304baf4b846a1fa87e83dbfe4aaf84c863848a37feb2f",
+        "database/migrations/0057_native_work_delivery.sql": "b631d6ab912b436339528f3de75cfae6fa26ed545262e7bdf6fcdaad7685c3f7",
+        "database/src/works.rs": "8448f5642ed7e656dafb41c0546229d910e3c9fec02fe8458eb337ac676c8e72",
+        "database/src/works/tests.rs": "2d66d5c291be85e5c72f4643d774f8712af12e942cdebb1b463e270feb5909d2",
+        "database/src/project_work_migration_tests.rs": "8a34171cf21f6b83191045ee5d6a7ee1335acde1fbaec525cc7c931d5c2b001a",
+        ".config/nextest.toml": "85f6a30b21a1a8e734b6d81aad00a781657dc39d7762cd9d02c0ffc9f8154698"
+      },
+      "upstream_tests_read": [
+        {
+          "source": "codex-rs/app-server/tests/suite/v2/projects.rs",
+          "test": "projects_persist_and_assign_threads"
+        },
+        {
+          "source": "codex-rs/core/tests/suite/code_mode_agent_message_tests.rs",
+          "test": "code_mode_spawn_delivers_plaintext"
+        }
+      ],
+      "upstream_tests_executed": 0,
+      "tests_read": [
+        {
+          "source": "crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs",
+          "tests": [
+            "native_project_reconciles_retained_conversation_and_survives_restart"
+          ],
+          "sha256": "ad776a946d9c78aa7d837a0de35f163ab9ea6856286cf83ccbd863734bc941a9"
+        },
+        {
+          "source": "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
+          "tests": [
+            "native_nested_code_mode_work_attribution_survives_store_reopen",
+            "native_v1_nested_code_mode_keeps_exact_work_attribution",
+            "native_child_completion_wakes_idle_root_once",
+            "native_v1_work_attribution_uses_the_native_executor"
+          ],
+          "sha256": "5af0ba367f8bbb0a454304baf4b846a1fa87e83dbfe4aaf84c863848a37feb2f"
+        },
+        {
+          "source": "crates/decodex-runtime/src/agent/work_delivery.rs",
+          "tests": [
+            "native_assignment_requires_exact_input_identity_and_one_activity"
+          ],
+          "sha256": "e9a6d3dedd804b8f7b55f795755ad529daadd172ae1549a3bcd9777f1592b30c"
+        },
+        {
+          "source": "crates/decodex-runtime/src/account_launch/agent_process.rs",
+          "tests": [
+            "project_assignment_does_not_admit_other_metadata_edits_or_membership_clear"
+          ],
+          "sha256": "f727009b6d81d086eda0dc623cadc68cf0535c92cc6343c6581459a614758686"
+        },
+        {
+          "source": "database/src/project_work_migration_tests.rs",
+          "tests": [
+            "delivery_migration_preserves_existing_dispatch_without_inventing_received_input"
+          ],
+          "sha256": "8a34171cf21f6b83191045ee5d6a7ee1335acde1fbaec525cc7c931d5c2b001a"
+        },
+        {
+          "source": "database/src/works/tests.rs",
+          "tests": [
+            "native_binding_and_completion_intents_stay_separate_after_restart"
+          ],
+          "sha256": "2d66d5c291be85e5c72f4643d774f8712af12e942cdebb1b463e270feb5909d2"
+        }
+      ],
+      "upstream_source_sha256": {
+        "codex-rs/app-server/src/request_processors/projects.rs": "29cfcb96d150a0799c596c886e6b3ba28a5bdf58d331744c76874a79a6f688ff",
+        "codex-rs/app-server-protocol/src/protocol/v2/project.rs": "ae6a4e421a71db946f851ffd44c07dc1889cb4a307e28f18c7df955a4b20d9cf",
+        "codex-rs/app-server/tests/suite/v2/projects.rs": "73015428eb63e387938d455a8174c4b40ef8a1a2975237b84a2af71c94cc6656",
+        "codex-rs/thread-store/src/local/projects.rs": "29c7b4f0cfc265a90bab9ab1d417dfcd05266b30468e1e33d4982da0c0780833",
+        "codex-rs/core/src/tools/handlers/multi_agents_v2/spawn.rs": "440d1558ccd53dcf49ae08979a35cb44db5e8c55a7068b5cb00ac5add20a4504",
+        "codex-rs/core/src/tools/code_mode/delegate.rs": "515961dca924cc2772611e8c6c30eed9011ab3a3c4f61af2a61907677b5b5f49",
+        "codex-rs/core/src/tools/code_mode/mod.rs": "652e1cf0d6f010d202dc762cb13f8b53eabebeeebb330aaf736acea8aeb466b7",
+        "codex-rs/core/src/agent/control/delivery.rs": "e5e93d5eb3ca6deb7cf1b1b4914644c0d844324cc30197e5c51c6a5582295a16",
+        "codex-rs/core/src/context/inter_agent_message.rs": "ce3256f4ea8421c8761e93fcc70f27feb186b3503410670edfff939ee1ddde2a",
+        "codex-rs/core/tests/suite/code_mode_agent_message_tests.rs": "fa21223c09c8991e7df4405c0ee12ac3995b9026374665b86125e76ec14f194a",
+        "codex-rs/core/src/thread_spawn.rs": "05af9b27acef71577a3c9a26765a37123d84d8346884b6fcb16dbbad7054e321",
+        "codex-rs/core/src/agent/control.rs": "70b813a62fe2e6b8dc08f0b9380a8fa223114194945a54cba2b73b35c7a76e23",
+        "codex-rs/core/src/tools/handlers/multi_agents_v2.rs": "ae414817a043502f54d313c03b1144d5c57fbbe6e69082c2295d99a636489b8a"
+      },
+      "artifact": {
+        "components": [
+          {
+            "component": "CodexCLI.app/Contents/MacOS/codex",
+            "sha256": "cbaaabb9381ce36f13c8605def36cede35826fa11b404b8ad4d81a0f648826cd"
+          },
+          {
+            "component": "bin/codex-code-mode-host",
+            "sha256": "58e9e6a203e5885f8046af453081d9da9521452c704a79ceac519a3704cac340"
+          },
+          {
+            "component": "codex-path/rg",
+            "sha256": "cdbd12cd8f86a0e2c0812500f10a90295a7e43923d823d87c98cddb15513742d"
+          }
+        ],
+        "schema_sha256": "9a924f38f788323f6ac1070f8adc6a6813a247f2cc881bc244e4211da676c338",
+        "strict_signatures_verified": true,
+        "preparation": "cargo +stable make prepare-codex",
+        "selected_runtime_changed": false
+      },
+      "local_schema": {
+        "version": 57,
+        "tables": 90,
+        "migration_digest": "b1e2566bf85c819fa4f3704885871b307846dc3f3953fa04c8b857555a111140"
+      },
+      "pre_repair": {
+        "project": {
+          "run": 1,
+          "passed": 0,
+          "failed": 1,
+          "symptom": "retained native Project membership remained null"
+        },
+        "nested_code_mode": {
+          "run": 2,
+          "passed": 1,
+          "failed": 1,
+          "v1": "passed unchanged",
+          "v2": "assigned child output was unavailable through Work attribution"
+        }
+      },
+      "qualification": {
+        "native-final": {
+          "entrypoint": "decodex-runtime/lib",
+          "run": 7,
+          "passed": 7,
+          "skipped": 996,
+          "failed": 0,
+          "leaky": 0,
+          "unmatched_selectors": []
+        },
+        "database-tests": {
+          "entrypoint": "decodex-database/all-features",
+          "run": 189,
+          "passed": 189,
+          "skipped": 0,
+          "failed": 0,
+          "leaky": 0,
+          "unmatched_selectors": []
+        },
+        "runtime-work": {
+          "entrypoint": "decodex-runtime/lib",
+          "run": 4,
+          "passed": 4,
+          "skipped": 999,
+          "failed": 0,
+          "leaky": 0,
+          "unmatched_selectors": []
+        },
+        "workspace": {
+          "entrypoint": "workspace/all-targets/all-features",
+          "run": 2921,
+          "passed": 2921,
+          "skipped": 1157,
+          "failed": 0,
+          "leaky": 0,
+          "unmatched_selectors": []
+        }
+      },
+      "native_tests_executed": [
+        "account_launch::agent_process::native_tests::project_sync::native_project_reconciles_retained_conversation_and_survives_restart",
+        "account_launch::agent_process::native_tests::project_work::native_legacy_tools_migrate_once_and_retire_the_old_context",
+        "account_launch::agent_process::native_tests::project_work::native_project_global_review_and_private_records_cross_retained_bridge",
+        "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
+        "agent::tests::native_agent_wake::native_nested_code_mode_work_attribution_survives_store_reopen",
+        "agent::tests::native_agent_wake::native_v1_nested_code_mode_keeps_exact_work_attribution",
+        "agent::tests::native_agent_wake::native_v1_work_attribution_uses_the_native_executor"
+      ],
+      "other_checks": {
+        "workspace_check": "passed",
+        "strict_lint_packages": 13,
+        "nightly_format": "passed",
+        "nextest_toml_format": "passed",
+        "python": {
+          "run": 40,
+          "passed": 40
+        },
+        "cli_diagnostics": {
+          "run": 2,
+          "passed": 2
+        }
+      },
+      "ui_isolated_control": {
+        "entrypoint": "decodex-gpui::bin/decodex-gpui",
+        "binary_sha256": "4d6c226f8a03498d435d6fc182593a9600ae925ed8b593ed4780f409efaab781",
+        "tests": [
+          "shell::agent_surface::native_agents::tests::parent_managed_composer_shares_lock_geometry_and_keeps_both_drafts",
+          "shell::agent_surface::progress::tests::compaction_status_remains_visible_while_sending"
+        ],
+        "run": 10,
+        "passed": 10,
+        "repetitions_per_test": 5,
+        "same_full_workspace_artifact": true
+      },
+      "ui_source_identity": [
+        {
+          "source": "apps/decodex-gpui/src/agent_native_agents.rs",
+          "sha256": "802f9e29f7f79bd22ef993c049f430c387441f68462a68b8671e178a222f7edf",
+          "matches_main": true
+        },
+        {
+          "source": "apps/decodex-gpui/src/agent_progress.rs",
+          "sha256": "4fdbba990a4320a5570e0b415f7a445c6fdfbf47f08e4bd8de28e1a4a110a0a2",
+          "matches_main": true
+        },
+        {
+          "source": "apps/decodex-gpui/src/agent_workspace.rs",
+          "sha256": "4144fe9d5d5b5efd1833abb7ac329b904cf28e859d714e0f968fd06b4172f92d",
+          "matches_main": true
+        }
+      ],
+      "commands": [
+        [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "-p",
+          "decodex-runtime",
+          "--all-features",
+          "--run-ignored",
+          "only",
+          "-E",
+          "test(native_project_reconciles_retained_conversation_and_survives_restart) or test(native_nested_code_mode_work_attribution_survives_store_reopen) or test(native_v1_nested_code_mode_keeps_exact_work_attribution) or test(native_child_completion_wakes_idle_root_once) or test(native_v1_work_attribution_uses_the_native_executor) or test(project_work::)",
+          "--test-threads",
+          "1",
+          "--no-fail-fast"
+        ],
+        [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "-p",
+          "decodex-database",
+          "--all-features",
+          "--no-fail-fast"
+        ],
+        [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "-p",
+          "decodex-runtime",
+          "--all-features",
+          "-E",
+          "test(work_contract::) or test(work_delivery::) or test(project_assignment_does_not_admit_other_metadata_edits_or_membership_clear) or test(work_portfolio::)",
+          "--no-fail-fast"
+        ],
+        [
+          "cargo",
+          "+stable",
+          "make",
+          "check-rust"
+        ],
+        [
+          "cargo",
+          "+stable",
+          "make",
+          "lint-rust"
+        ],
+        [
+          "cargo",
+          "+nightly",
+          "fmt",
+          "--all",
+          "--",
+          "--check"
+        ],
+        [
+          "cargo",
+          "+stable",
+          "make",
+          "test-local-database"
+        ],
+        [
+          "python3",
+          "-m",
+          "unittest",
+          "automations.decodex.scripts.config.tests.test_portfolio",
+          "tests/scripts/test_audit_node_lock.py",
+          "tests/scripts/test_cli_diagnostics_runner.py",
+          "tests/scripts/test_gate_contract.py",
+          "tests/scripts/test_vstyle_audit.py",
+          "tests/scripts/test_account_login_architecture.py",
+          "tests/scripts/test_vnext_architecture.py"
+        ],
+        [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "--workspace",
+          "--all-targets",
+          "--all-features",
+          "--no-fail-fast"
+        ],
+        [
+          "taplo",
+          "fmt",
+          "--check",
+          ".config/nextest.toml"
+        ],
+        [
+          "cargo",
+          "+stable",
+          "make",
+          "test-vnext-cli-diagnostics"
+        ]
+      ],
+      "command_environment": {
+        "native-final": [
+          "DECODEX_TEST_CODEX_BINARY=<exact prepared CLI>",
+          "DECODEX_NATIVE_BINARY=<same exact prepared CLI>"
+        ]
+      },
+      "limits": [
+        "V2 keeps native direct-only collaboration by default. The nested test uses explicit supported native exposure.",
+        "Incoming plaintext assignment, native child ownership, root turn and one unique parent activity are required. Encrypted, missed or ambiguous observations remain Unknown without another spawn.",
+        "The store-reopen case reconstructs the durable crash point after input observation and before parent binding, while retaining actual native history. It is not a physical machine crash.",
+        "Native Project catalog reuse and membership survive actual app-server restart. Official desktop saved-Project/sidebar display and installed Decodex remain unmeasured.",
+        "Multiple candidate activities for the same child and parent turn remain ambiguous. Missing or encrypted input is not reconstructed from output text, script text or timing.",
+        "The first full run had two unchanged UI failures, one old fixture that omitted native projectId, and a leaky passed resume test. The same UI artifact passed 10 isolated executions. The final suite is a separate receipt; the first capture LEAK cause remains unknown.",
+        "All native provider work uses temporary homes and loopback synthetic responses. No real account, live reasoning quality, installation or release acceptance."
+      ],
+      "counts_overlap": true,
+      "source_review_cursor_changed": false,
+      "installation": "not_performed",
+      "release": "not_performed",
+      "initial_workspace": {
+        "run": 2921,
+        "passed": 2918,
+        "failed": 3,
+        "skipped": 1157,
+        "leaky": 1,
+        "failed_tests": [
+          "decodex-gpui::bin/decodex-gpui shell::agent_surface::native_agents::tests::parent_managed_composer_shares_lock_geometry_and_keeps_both_drafts",
+          "decodex-gpui::bin/decodex-gpui shell::agent_surface::progress::tests::compaction_status_remains_visible_while_sending",
+          "decodex-runtime/lib agent::tests::nested_managers_own_their_inbox_tools_and_workspace_directory"
+        ],
+        "leaky_passes": [
+          "decodex-codex/lib app_server_client::resume::tests::pending_resume_allows_peer_metadata_and_does_not_retry_removed_thread"
+        ],
+        "limit": "The final rerun does not replace this receipt. The first capture LEAK cause is unknown."
+      }
     }
   }
 }

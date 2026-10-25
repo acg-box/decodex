@@ -26,6 +26,7 @@ MIGRATIONS = (
     (54, "agent_delegations", ROOT / "database/migrations/0054_agent_delegations.sql"),
     (55, "agent_slots", ROOT / "database/migrations/0055_agent_slots.sql"),
     (56, "project_agent_work", ROOT / "database/migrations/0056_project_agent_work.sql"),
+    (57, "native_work_delivery", ROOT / "database/migrations/0057_native_work_delivery.sql"),
 )
 
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
@@ -106,6 +107,7 @@ REQUIRED_TABLES = frozenset(
         "collaboration_instructions",
         "native_work_contributions",
         "native_work_dispatches",
+        "native_work_deliveries",
         "agent_tool_migrations",
         "guardian_settings",
         "guardian_sources",

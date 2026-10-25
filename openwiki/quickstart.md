@@ -16,6 +16,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
@@ -24,6 +26,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
+  - id: openwiki-source-419a87794b421322302c7d9e
+    resource: repo://crates/decodex-runtime/src/agent/project.rs
+  - id: openwiki-source-4f59431f3f6264a65208bdcb
+    resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
   - id: openwiki-source-bdc10e06c0058b26a9bde83d
@@ -32,10 +38,10 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-24T21:19:56.719Z" }
+generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T21:19:56.719Z
+    at: 2026-10-25T03:47:07.956Z
 ---
 
 # OpenWiki quickstart
@@ -50,7 +56,7 @@ Agents use native Subagents for bounded execution and scoped Collaboration Reque
 
 Work and Guardian fit the existing desktop. Expand Work to inspect Materials, Collaboration, Results and assessment. Guardian has global Ask Me or Automatic Review and optional bounded Review Details; Full Access stays a separate native permission choice. Review records with no exact action association stay explicitly unassociated.
 
-Schema 56 and protocol 3.0 provide the direct migration while retaining genuine historical execution and uncertainty. The [acceptance record](testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian) distinguishes passing native/local cohorts from the complete suite's two audio timeouts. No app installation, release or live-account acceptance is implied.
+Schema 56 and protocol 3.0 provide the direct business migration; schema 57 retains exact native child-input receipts. Retained conversations reconcile native Project membership before input. Permitted nested Code Mode execution can retain Work attribution without another executor or replay. Native defaults and explicit Unknown states remain. The [acceptance record](testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian) separates the follow-up's 7 native and 2921 workspace passes from original failures and unmeasured official desktop Project presentation. No app installation, release or live-account acceptance is implied.
 
 ## Start by task
 

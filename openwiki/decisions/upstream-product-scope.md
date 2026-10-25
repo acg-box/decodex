@@ -52,20 +52,24 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
     resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
+  - id: openwiki-source-419a87794b421322302c7d9e
+    resource: repo://crates/decodex-runtime/src/agent/project.rs
   - id: openwiki-source-e32adebfd6d3bf27dc186bad
     resource: repo://crates/decodex-runtime/src/agent/tests/auth_recovery.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
+  - id: openwiki-source-4f59431f3f6264a65208bdcb
+    resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-b1dd4c8ab85f342314daa6f1
     resource: repo://crates/decodex-runtime/src/agent/work.rs
   - id: openwiki-source-2da6601c3f30e806c504e991
     resource: repo://crates/decodex-runtime/src/host_credentials.rs
   - id: openwiki-source-bdc10e06c0058b26a9bde83d
     resource: repo://database/migrations/0056_project_agent_work.sql
-generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
+generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T02:09:34.237Z
+    at: 2026-10-25T03:47:07.956Z
 ---
 
 # Product scope and native ownership
@@ -83,6 +87,8 @@ The default coordination surface uses `work_read` and `work_manage`. Only users 
 Global Guardian changes the thread preference for subsequent turns and reports per-source receipts. Existing active captures and pending human approvals retain native ownership. Optional private details retain bounded assistant output and terminal metadata without raw reasoning. Exact action associations are unavailable in the selected runtime and remain explicit. This does not select the separate native Guardian V3 experiment or add a per-Agent override.
 
 Schema 56 and protocol 3.0 implement the direct business migration. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
+
+The retained-conversation repair reconciles unassigned native Project membership before input and preserves conflicts for inspection. Schema 57 retains actual native child-input receipts for Work attribution when native configuration permits nested V2 Code Mode. Recovery joins exact evidence without replay. V1 nesting remains supported; V2 keeps its direct-only default. These are repairs to retained integration contracts. Official desktop saved-Project/sidebar presentation and installed-app acceptance remain unmeasured. See the [canonical contract](project-agent-work.md#qualification-and-evidence-limits).
 
 ## Current integration boundary
 

@@ -23,7 +23,7 @@ fn output(serial: usize) -> Value {
 			serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Synthetic result"}]}),
 	}
 }
-async fn setup(
+pub(super) async fn setup(
 	response: impl Fn(usize) -> Value + Send + Sync + 'static,
 ) -> (tempfile::TempDir, NativeSession, SqliteStore, AgentCoordinator, tokio::task::JoinHandle<()>)
 {
@@ -56,7 +56,7 @@ async fn setup(
 		.expect("Project and Work qualification fixture");
 	(home, session, store, coordinator, backend)
 }
-async fn finish(session: &mut NativeSession, agent: &mut AgentCoordinator, root: &str) {
+pub(super) async fn finish(session: &mut NativeSession, agent: &mut AgentCoordinator, root: &str) {
 	loop {
 		let event = time::timeout(Duration::from_secs(30), session.events.recv())
 			.await

@@ -164,6 +164,7 @@ impl AgentCoordinator {
 					}
 					let history = self.client.thread_read_turn(thread_id, turn_id).await?;
 					let dispatch = self.store.native_work_dispatch(id.clone()).await?;
+					let delivery = self.store.native_work_delivery(id.clone()).await?;
 					if !history["thread"]["turns"].as_array().is_some_and(|turns| {
 						turns.iter().any(|t| {
 							t["id"] == *turn_id
@@ -171,6 +172,7 @@ impl AgentCoordinator {
 									|| dispatch
 										.as_ref()
 										.is_some_and(|(_, parent, _)| t["rootTurnId"] == *parent))
+								&& delivery.as_ref().is_none_or(|d| &d.child_turn_id == turn_id)
 						})
 					}) {
 						return Err(AgentError::Rejected(
@@ -279,22 +281,29 @@ impl AgentCoordinator {
 				continue;
 			}
 			let dispatch = self.store.native_work_dispatch(c.id.clone()).await?;
-			if item["prompt"] == c.native_prompt()
+			let call = if item["prompt"] == c.native_prompt()
 				|| dispatch.as_ref().is_some_and(|(root, parent_turn, call)| {
 					root == thread && parent_turn == turn && item["id"] == *call
 				}) {
-				matches.push(c);
+				Some(super::exact(item, "/id")?)
+			} else {
+				self.native_delivery_activity(&c.id, thread, turn, child)
+					.await?
+					.and_then(|activity| activity["id"].as_str().map(str::to_owned))
+			};
+			if let Some(call) = call {
+				matches.push((c, call));
 			}
 		}
 
 		if matches.len() != 1 {
 			return Ok(());
 		}
-		let contribution = matches[0];
+		let (contribution, call) = &matches[0];
 		let command = WorkCommand::BindSubagent {
 			contribution_id: contribution.id.clone(),
 			parent_turn_id: turn.into(),
-			parent_item_id: super::exact(item, "/id")?,
+			parent_item_id: call.clone(),
 			child_thread_id: child.into(),
 		};
 		if self.verify_work_command(&owner.id, &command).await.is_ok() {
@@ -400,7 +409,7 @@ impl AgentCoordinator {
 		id: &str,
 		cursor: Option<&str>,
 	) -> Result<Value, AgentError> {
-		let binding = self.store.native_contribution(id.into()).await?;
+		let mut binding = self.store.native_contribution(id.into()).await?;
 		let portfolio = self
 			.store
 			.agent_work_portfolio(agent.id.clone(), Some(binding.work_id.clone()))
@@ -410,10 +419,26 @@ impl AgentCoordinator {
 				"Native contribution belongs to another Agent".into(),
 			));
 		}
+		let delivery = self.store.native_work_delivery(binding.id.clone()).await?;
+		if binding.child_thread_id.is_none()
+			&& let Some(d) = &delivery
+			&& let Some(activity) = self
+				.native_delivery_activity(
+					&binding.id,
+					&d.parent_thread_id,
+					&d.parent_turn_id,
+					&d.child_thread_id,
+				)
+				.await?
+		{
+			self.recover_native_contribution(&d.parent_thread_id, &d.parent_turn_id, &activity)
+				.await?;
+			binding = self.store.native_contribution(id.into()).await?;
+		}
 		let dispatch = self.store.native_work_dispatch(binding.id.clone()).await?;
 		let Some(child) = binding.child_thread_id.as_ref() else {
 			return Ok(
-				serde_json::json!({"contribution":binding,"dispatch":dispatch,"outputs":[],"limits":"Child binding is unconfirmed. Reconcile exact native activity before another spawn."}),
+				serde_json::json!({"contribution":binding,"dispatch":dispatch,"delivery":delivery,"outputs":[],"limits":"Child binding is unconfirmed. Reconcile exact native activity before another spawn."}),
 			);
 		};
 
@@ -425,8 +450,9 @@ impl AgentCoordinator {
 		let page = self.client.thread_history_page(child, cursor, 5).await?;
 		let mut outputs = Vec::new();
 		for turn in page["turns"].as_array().into_iter().flatten().filter(|t| {
-			assignment_turn(t, &binding.native_prompt())
-				|| dispatch.as_ref().is_some_and(|(_, parent, _)| t["rootTurnId"] == *parent)
+			delivery.as_ref().is_none_or(|d| t["id"] == d.child_turn_id)
+				&& (assignment_turn(t, &binding.native_prompt())
+					|| dispatch.as_ref().is_some_and(|(_, parent, _)| t["rootTurnId"] == *parent))
 		}) {
 			for item in turn["items"].as_array().into_iter().flatten().filter(|i| {
 				matches!(
@@ -486,6 +512,9 @@ impl AgentCoordinator {
 		params: &Value,
 	) -> Result<(), AgentError> {
 		let item = &params["item"];
+		if item["type"] == "agent_message" {
+			return self.observe_native_work_delivery(params).await;
+		}
 		if item["type"] != "function_call"
 			|| !matches!(
 				item["name"].as_str(),

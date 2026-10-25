@@ -5,7 +5,7 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T02:09:34.237Z
+    at: 2026-10-25T03:47:07.956Z
 sources:
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
@@ -21,6 +21,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
+  - id: openwiki-source-1b314e86ab2f1adbc0ede4c8
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-f4bc7020783c49a911b7fb29
@@ -33,12 +35,18 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-52d3ef4824079f66e9063566
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
+  - id: openwiki-source-419a87794b421322302c7d9e
+    resource: repo://crates/decodex-runtime/src/agent/project.rs
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
+  - id: openwiki-source-a7b97dd347fbe2f630692d12
+    resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
   - id: openwiki-source-d511cef2848dd5f6968572ae
     resource: repo://crates/decodex-runtime/src/agent/tool_migration.rs
+  - id: openwiki-source-4f59431f3f6264a65208bdcb
+    resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-b1dd4c8ab85f342314daa6f1
     resource: repo://crates/decodex-runtime/src/agent/work.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
@@ -57,7 +65,7 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-24T21:19:56.719Z" }
+generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
 ---
 
 # Project, Agent and Work coordination
@@ -76,11 +84,17 @@ The evidence chain is Work -> requirements -> issued instruction -> execution ->
 
 Project membership does not grant private conversation access. Agent and granted Material scope is applied in SQL before bounded reads. A native conversation still has its actual execution directory and Project. Associating Work with another Project does not switch that directory, change permissions or create a sandbox. Use a separate execution context when hard isolation is required.
 
+Before dispatch, Decodex resumes the exact retained native conversation and reconciles its registered Project. An unassigned conversation can join that native Project through `thread/metadata/update`. Existing matching membership is reused. Conflicting or unavailable membership and changed roots park that Agent's input for inspection; other queued Agents can continue. The operation keeps the conversation, execution directory and native permissions. Native catalog and membership readback do not establish the official desktop's saved-Project or sidebar presentation.
+
 ## Native contributions and independent Collaboration
 
-The owner saves a contribution intent before native dispatch, uses the returned `nativePrompt`, then binds the observed direct native call. Recovery requires exact parent turn/call and child evidence. V1 uses its native tools and Result history. V2 uses matched delegation identities and root-turn evidence; canonical child history does not contain inbound Agent messages. Missing or ambiguous evidence stays Unknown. Nested Code Mode attribution is not qualified and does not justify a duplicate spawn.
+The owner saves a contribution intent before native dispatch and uses the returned `nativePrompt`. Direct calls bind through the observed native call. When native configuration permits nested V2 Code Mode dispatch, Decodex also accepts the actual plaintext native delivery to the child. It verifies the exact prompt, sender, recipient, child ancestry and receiving turn, then saves an immutable input receipt before parent activity is required. One unique parent activity for that child and root turn completes the binding. The Result must belong to the recorded receiving turn. Script text or quoted messages do not establish dispatch.
+
+Recovery joins the saved input receipt with native parent history on later activity or an exact `work_read` request. It does not spawn, resend or poll. V1 nested execution already retains the native prompt and activity path. V2 canonical child history omits inbound Agent messages, so a missed, encrypted or ambiguous delivery cannot be reconstructed from that history alone. Those cases stay Unknown.
 
 The selected native backend comes from native model metadata and configuration. A feature flag alone does not establish V1 or V2. Qualified V2 can wake its idle owner from native completion. V1 uses the native wait tool for required Results. Neither path needs Ultra or a local polling controller.
+
+V2 exposes collaboration directly to the model by default. Nested V2 qualification uses the supported native `multi_agent_v2.non_code_mode_only=false` setting. Decodex does not change that default or add a second executor. The retained exact-artifact tests distinguish V1, permitted V2 nesting and default direct-only behavior.
 
 Independent Agents cooperate through scoped Collaboration Requests in the existing durable inbox. Sending can queue while the recipient is busy. Delivery is distinct from acceptance; acceptance requires the exact delivered turn. A returned contribution remains pending until the owner accepts it or requests repair. Repair keeps the same request and adds a new immutable instruction. Required requests must be handled before Work completion. Cancellation affects that request; late evidence remains history.
 

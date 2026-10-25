@@ -22,7 +22,7 @@ fn is_child(body: &Value) -> bool {
 	body["client_metadata"]["x-openai-subagent"].as_str().is_some_and(|role| role != "guardian")
 }
 
-fn response(body: &Value, serial: usize, v2: bool) -> Value {
+fn response(body: &Value, serial: usize, v2: bool, nested: bool) -> Value {
 	if !v2 && serial == 1 {
 		return serde_json::json!({"type":"tool_search_call","call_id":"discover-native-spawn","execution":"client","arguments":{"query":"spawn agent","limit":1}});
 	}
@@ -32,6 +32,10 @@ fn response(body: &Value, serial: usize, v2: bool) -> Value {
 		} else {
 			serde_json::json!({"message":NATIVE_ASSIGNMENT})
 		};
+		if nested {
+			let namespace = if v2 { "collaboration" } else { "multi_agent_v1" };
+			return serde_json::json!({"type":"custom_tool_call","name":"exec","call_id":"spawn-cell","input":format!("text(await tools.{namespace}__spawn_agent({arguments}));")});
+		}
 		return serde_json::json!({"type":"function_call","id":"spawn-child","call_id":"spawn-child","namespace":if v2{"collaboration"}else{"multi_agent_v1"},"name":"spawn_agent","arguments":arguments.to_string()});
 	}
 
@@ -56,14 +60,19 @@ fn response(body: &Value, serial: usize, v2: bool) -> Value {
 	serde_json::json!({"type":"message","role":"assistant","phase":"final_answer","id":format!("message-{serial}"),"content":[{"type":"output_text","text":text}]})
 }
 
-async fn serve(listener: TcpListener, requests: mpsc::UnboundedSender<Value>, v2: bool) {
+async fn serve(
+	listener: TcpListener,
+	requests: mpsc::UnboundedSender<Value>,
+	v2: bool,
+	nested: bool,
+) {
 	let mut serial = 0;
 
 	while let Ok((mut socket, _)) = listener.accept().await {
 		serial += 1;
 
 		let body = native_task_references::read_http_body(&mut socket).await;
-		let item = response(&body, serial, v2);
+		let item = response(&body, serial, v2, nested);
 
 		requests.send(body).expect("request observation");
 
@@ -90,31 +99,50 @@ async fn serve(listener: TcpListener, requests: mpsc::UnboundedSender<Value>, v2
 #[ignore = "requires DECODEX_NATIVE_BINARY and its packaged helpers; isolated loopback provider"]
 async fn native_child_completion_wakes_idle_root_once() {
 	for enabled in [false, true] {
-		qualify(enabled, true).await;
+		qualify(enabled, true, false).await;
 	}
 }
 
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY and packaged helpers; isolated native V1 Work attribution"]
 async fn native_v1_work_attribution_uses_the_native_executor() {
-	qualify(false, false).await;
+	qualify(false, false, false).await;
 }
 
-async fn qualify(enabled: bool, v2: bool) {
+#[tokio::test]
+#[ignore = "requires DECODEX_NATIVE_BINARY and helpers; isolated nested native V2 Work attribution"]
+async fn native_nested_code_mode_work_attribution_survives_store_reopen() {
+	qualify(false, true, true).await;
+}
+
+#[tokio::test]
+#[ignore = "requires DECODEX_NATIVE_BINARY and helpers; isolated nested native V1 Work attribution"]
+async fn native_v1_nested_code_mode_keeps_exact_work_attribution() {
+	qualify(false, false, true).await;
+}
+
+async fn qualify(enabled: bool, v2: bool, nested: bool) {
 	let binary = env::var("DECODEX_NATIVE_BINARY").expect("exact native binary");
 	let directory = tempfile::tempdir().expect("fixture home");
 	let home = directory.path().canonicalize().expect("canonical home");
 	let listener = TcpListener::bind("127.0.0.1:0").await.expect("fixture listener");
 	let address = listener.local_addr().expect("fixture address");
 	let (requests_tx, mut requests_rx) = mpsc::unbounded_channel();
-	let backend = tokio::spawn(serve(listener, requests_tx, v2));
+	let backend = tokio::spawn(serve(listener, requests_tx, v2, nested));
 	// The native model catalog selects the backend. Disabling the V2 feature does
 	// not override a model that already selects V2.
 	let model = if v2 { "gpt-5.6-sol" } else { "gpt-5.6-luna" };
 
-	fs::write(home.join("config.toml"),format!("model=\"{model}\"\nmodel_provider=\"fixture\"\nservice_tier=\"priority\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2={v2}\n[model_providers.fixture]\nname=\"Isolated root wake fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("fixture config");
+	// Native V2 hides collaboration from Code Mode by default. Exercise nested
+	// execution only in the explicit native configuration that exposes it.
+	let v2_setting = if v2 && nested {
+		"{ enabled = true, non_code_mode_only = false }".to_owned()
+	} else {
+		v2.to_string()
+	};
+	fs::write(home.join("config.toml"),format!("model=\"{model}\"\nmodel_provider=\"fixture\"\nservice_tier=\"priority\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2={v2_setting}\ncode_mode={nested}\n[model_providers.fixture]\nname=\"Isolated root wake fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).expect("fixture config");
 
-	let (mut agent, _, _store_home) = tests::fixture().await;
+	let (mut agent, _, store_home) = tests::fixture().await;
 	let mut command = native_command(&binary, &home, enabled);
 	let (client, mut events, mut process) =
 		AppServerClient::spawn(&mut command).expect("native process");
@@ -200,7 +228,11 @@ async fn qualify(enabled: bool, v2: bool) {
 
 		assert!(root_idle && released_child.is_some());
 		assert_eq!(wake_turn.is_some(), enabled);
-		qualify_work_result(&mut agent).await;
+		if nested {
+			qualify_reopened_store(&agent, store_home.path(), v2).await;
+		} else {
+			qualify_work_result(&mut agent).await;
+		}
 
 		// Recovery and the local due-work tick must not replay either completed root turn.
 		agent.recover_native_turns().await.unwrap();
@@ -221,27 +253,44 @@ async fn qualify(enabled: bool, v2: bool) {
 		}
 
 		let requests: Vec<_> = std::iter::from_fn(|| requests_rx.try_recv().ok()).collect();
-		let roots: Vec<_> = requests.iter().filter(|body| !is_child(body)).collect();
-
-		let discovery = usize::from(!v2);
-		assert_eq!(requests.len(), if enabled { 5 } else { 4 } + discovery);
-		assert_eq!(roots.len(), if enabled { 3 } else { 2 } + discovery);
-		if enabled {
-			let continuation = roots.last().unwrap();
-			let input = continuation["input"].as_array().unwrap();
-
-			assert_eq!(continuation["model"], "gpt-5.6-sol");
-			assert_eq!(continuation["reasoning"]["effort"], "medium");
-			assert_eq!(continuation["service_tier"], "priority");
-			assert_eq!(input.iter().filter(|item| item["type"] == "agent_message").count(), 1);
-			assert!(continuation.to_string().contains("CHILD_RESULT_READY"));
-			assert!(continuation.to_string().contains("ROOT_DONE"), "prior root history survives");
-		}
+		assert_requests(&requests, enabled, v2);
 	})).catch_unwind().await;
 
 	process.shutdown().await.expect("shutdown owned native process");
 	backend.abort();
 	outcome.expect("native wake qualification panicked").expect("native wake deadline");
+}
+
+fn assert_requests(requests: &[Value], enabled: bool, v2: bool) {
+	let roots: Vec<_> = requests.iter().filter(|body| !is_child(body)).collect();
+	let discovery = usize::from(!v2);
+	assert_eq!(requests.len(), if enabled { 5 } else { 4 } + discovery);
+	assert_eq!(roots.len(), if enabled { 3 } else { 2 } + discovery);
+	if enabled {
+		let continuation = roots.last().unwrap();
+		let input = continuation["input"].as_array().unwrap();
+		assert_eq!(continuation["model"], "gpt-5.6-sol");
+		assert_eq!(continuation["reasoning"]["effort"], "medium");
+		assert_eq!(continuation["service_tier"], "priority");
+		assert_eq!(input.iter().filter(|item| item["type"] == "agent_message").count(), 1);
+		assert!(continuation.to_string().contains("CHILD_RESULT_READY"));
+		assert!(continuation.to_string().contains("ROOT_DONE"), "prior root history survives");
+	}
+}
+
+async fn qualify_reopened_store(agent: &AgentCoordinator, home: &std::path::Path, v2: bool) {
+	let root = decodex_core::DecodexRoot::new(home.canonicalize().unwrap().join("root")).unwrap();
+	if v2 {
+		assert!(agent.store.native_work_delivery("held-child".into()).await.unwrap().is_some());
+		// Reconstruct the durable crash point after input was observed, before its
+		// parent call and child binding were committed. The actual native history stays intact.
+		let c = rusqlite::Connection::open(root.paths().product_database_file()).unwrap();
+		c.execute_batch("BEGIN; DELETE FROM native_work_dispatches WHERE contribution_id='held-child'; DELETE FROM work_commands WHERE id='native-binding:held-child'; UPDATE native_work_contributions SET child_thread_id=NULL,parent_turn_id=NULL,parent_item_id=NULL WHERE id='held-child'; COMMIT;").unwrap();
+	}
+	let reopened = decodex_database::SqliteStore::open(&root.paths()).unwrap();
+	let mut recovered =
+		AgentCoordinator::new(reopened, agent.client.clone(), agent.config.clone()).unwrap();
+	qualify_work_result(&mut recovered).await;
 }
 
 async fn prepare_work(agent: &AgentCoordinator) {

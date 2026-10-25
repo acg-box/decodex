@@ -4,10 +4,14 @@ title: "Project, Agent and Work contract"
 description: "Accepted architecture, shared English vocabulary, minimum Work and Collaboration contracts, recovery, and global Guardian controls."
 tags: ["decodex", "architecture", "agents", "contracts", "guardian"]
 sources:
+  - id: openwiki-source-95772fa38252ded838ec3a2f
+    resource: repo://.config/nextest.toml
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-991553c8d747a54ecf5a9376
     resource: repo://crates/decodex-core/src/work.rs
+  - id: openwiki-source-1b314e86ab2f1adbc0ede4c8
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
@@ -18,12 +22,20 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/guardian.rs
   - id: openwiki-source-2fd274a65db230908814f7da
     resource: repo://crates/decodex-runtime/src/agent/native_turns.rs
+  - id: openwiki-source-419a87794b421322302c7d9e
+    resource: repo://crates/decodex-runtime/src/agent/project.rs
+  - id: openwiki-source-a7b97dd347fbe2f630692d12
+    resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
   - id: openwiki-source-d511cef2848dd5f6968572ae
     resource: repo://crates/decodex-runtime/src/agent/tool_migration.rs
+  - id: openwiki-source-4f59431f3f6264a65208bdcb
+    resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-b1dd4c8ab85f342314daa6f1
     resource: repo://crates/decodex-runtime/src/agent/work.rs
   - id: openwiki-source-bdc10e06c0058b26a9bde83d
     resource: repo://database/migrations/0056_project_agent_work.sql
+  - id: openwiki-source-29c88fbcabe1ba5e93694ed1
+    resource: repo://database/migrations/0057_native_work_delivery.sql
   - id: openwiki-source-3030ced79067a3721a08b107
     resource: repo://database/src/agent_native_turns.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
@@ -34,10 +46,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-25T02:09:34.237Z" }
+generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T02:09:34.237Z
+    at: 2026-10-25T03:47:07.956Z
 ---
 
 # Project, Agent and Work contract
@@ -236,13 +248,15 @@ This example illustrates the contract. The places, amounts and outcomes are assu
 
 Schema 56 migrates directly to Project membership, persistent Agent responsibilities and separate Work. Protocol 3.0 rejects incompatible clients explicitly. There is no dual business-name API or gradual rollout. The migration preserves genuine legacy execution, instructions, native identities, inbox receipts and historical completion limits. A migrated historical outcome is not newly qualified Result evidence. No legacy executor is relabelled as a native Subagent.
 
+Schema 57 adds immutable native child-input receipts. Existing dispatch records retain their original limits; the migration does not invent a received message for them.
+
 | Area | Implemented behavior |
 | --- | --- |
 | Agent identity | User-created independent Agent, one current native conversation. Assistant is optional; Project Lead selects an existing Agent. A legacy parent identifier does not confer business authority. |
 | Work | Current immutable requirements, one owner, explicit state and holds, scoped Materials, exact Results, reuse assessment and atomic completion checks. |
 | Collaboration | Stable request and instruction identities, durable busy queue, exact delivered-turn acceptance, targeted return, assessment, repair and scoped cancellation. |
-| Native execution | Intent before native call, exact direct-call attribution, native messages, waits and continuation. Unbound or ambiguous evidence stays Unknown without a duplicate spawn. |
-| Project | Supported native Project create/read/list and exact idempotency, with Decodex Work and responsibilities retained locally. Native Project catalog does not prove desktop saved-Project synchronization. |
+| Native execution | Intent before native call, exact direct-call attribution or verified native child-input delivery, native messages, waits and continuation. Saved input can join later parent activity after restart. Unbound or ambiguous evidence stays Unknown without a duplicate spawn. |
+| Project | Supported native Project create/read/list and exact idempotency. Retained unassigned conversations join their registered native Project before input; conflicts park only the affected Agent. Work and responsibilities stay local. Native catalog and membership do not prove official desktop saved-Project/sidebar presentation. |
 | Guardian | Global Ask Me or Automatic Review, separate desired and per-source effective receipts, no editable per-Agent reviewer override. Native permissions and Full Access remain separate. |
 | Review Details | Explicit global opt-in; verified private reviewer/parent identity; native assistant output and terminal metadata only. No raw reasoning frames, parent-history pollution, action replay or guessed action association. |
 | Presentation | Existing desktop Work and Guardian entries, Project grouping, existing-Agent responsibility selectors, clickable Materials, Results and Collaboration evidence. |
@@ -258,7 +272,7 @@ A Project association is business scope. A native conversation still has one act
 
 The selected development source is official Codex `970111f6cb62cc02fe36a82ea7d71b37a2889c97`. Explicit `cargo +stable make prepare-codex` verifies the actual package, CLI, Code Mode helper, search helper, provenance and generated schema. This change keeps the selected runtime baseline; it does not advance the upstream review cursor or identify the installed application. Component hashes, retained regression identities, entrypoints and reproducible commands are in [retained evidence](../../automations/upstream/retained-evidence.json), under `retained_project_agent_work`.
 
-Executed validation for this change:
+Original architecture qualification, retained as historical evidence:
 
 - Workspace all-target/all-feature check, strict lint for 13 packages and nightly format check passed.
 - Database suite: 188 passed. The scope regression first reproduced the old failure with unrelated records ahead of the Agent's own Work and authorized Material, then passed after scope moved before the SQL limit.
@@ -266,7 +280,13 @@ Executed validation for this change:
 - Transport and receipt suite: 28 passed, 970 excluded by selector. Focused UI/runtime checks: 6 passed. Python checks: 40 passed. CLI diagnostics: 2 passed. Local database gate passed with schema 56 and 89 tables. Counts overlap; do not add them as distinct tests.
 - Original complete workspace suite: 2918 executed, 2916 passed including one leaky pass, 2 failed, 1154 skipped. Both failures timed out during native audio ICE connection. The later `native_media_followup` retains this failed result separately from fresh proof: current main passed 2918/2918, and the two media tests passed 20 repetitions on both current main and the pre-change baseline, 40 executions per source with no retries. The audio source, dependency versions and enabled WebRTC features match across those sources. Historical macOS firewall logs show queued inbound connections without a verdict during the two failures; later runs had known allow verdicts. This supports an external firewall admission cause. Recovered session events place both failures within a locked interval. The already-allowed package-only baseline passed while locked. After unlock, the workspace binary received a prompt and allow verdict. No new controlled lock or firewall-denial experiment was performed. No product source, audio assertion, deadline or runner policy changed.
 
-The selected model catalog and configuration determine the native multi-agent backend. The synthetic matrix uses V2 with `gpt-5.6-sol` and V1 with `gpt-5.6-luna`, both at Medium. A false V2 feature flag alone does not establish V1. Qualified V2 supplies idle-owner completion wakeups; V1 requires native wait for required Results. Nested Code Mode delegation attribution remains unqualified and Unknown.
+The selected model catalog and configuration determine the native multi-agent backend. The synthetic matrix uses V2 with `gpt-5.6-sol` and V1 with `gpt-5.6-luna`, both at Medium. A false V2 feature flag alone does not establish V1. Qualified V2 supplies idle-owner completion wakeups; V1 requires native wait for required Results. Neither path requires Ultra.
+
+The native Project and Work follow-up separately reproduced and repaired missing Project membership on retained conversations and missing Work attribution for permitted V2 nesting. V1 nested attribution passed before the repair. V2 defaults to direct model collaboration; nested qualification explicitly uses the supported native `multi_agent_v2.non_code_mode_only=false` setting. Decodex keeps that default policy.
+
+For permitted V2 nesting, the actual plaintext native assignment must match the saved prompt, child ancestry and receiving turn. Decodex persists that input before requiring one unique parent activity. Later activity or `work_read` can finish the binding without another native call. Results are limited to that receiving turn. Missing, encrypted, missed or ambiguous native input stays Unknown. Reopen qualification reconstructs the durable point after input receipt and before binding; it is not a physical crash test.
+
+The follow-up passed 7 exact-artifact native tests, 189 database tests, 4 focused runtime guards, workspace checking, strict lint for 13 packages, nightly formatting, 40 Python tests, 2 CLI diagnostic tests and the schema57/90-table gate. Its final complete suite passed 2921 tests with 1157 skipped and no LEAK. Its first full run had three failures: two unchanged short-frame UI samples and an old fixture without native `projectId`. The fixture now follows the native response. The same UI test executable passed ten isolated executions; existing Nextest resource reservation now covers those two samples with all assertions retained. The first run's passed resume test had a LEAK of unknown cause. The final pass does not replace that receipt. Exact selectors, commands, digests and limits are in `retained_project_agent_work.native_project_and_work_followup` in the retained index. Counts overlap.
 
 Global reviewer updates set the native thread preference for subsequent turns. Active turns, pending human approvals and already-created child captures retain native ownership. Private reviewer records lack exact action Review IDs in this runtime; the UI states the association is unavailable. It retains at most 128 records, at most 64 KiB each, previews the newest 32 and retrieves a selected exact record separately. Reconnect gaps remain explicit.
 

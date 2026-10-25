@@ -275,7 +275,7 @@ fn fixture_thread_read(
 		|| serde_json::json!({"thread":{"id":id,"turns":[],"status":{"type":"idle"}}}),
 	);
 
-	for field in ["model", "reasoningEffort", "modelProvider"] {
+	for field in ["model", "reasoningEffort", "modelProvider", "projectId"] {
 		if result["thread"].get(field).is_none() {
 			result["thread"][field] = configured[field].clone();
 		}
@@ -881,6 +881,11 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 			},
 			Some("project/read") =>
 				serde_json::json!({"project":projects.get(request["params"]["projectId"].as_str().unwrap())}),
+			Some("thread/metadata/update") => {
+				let id = request["params"]["threadId"].as_str().unwrap();
+				settings.get_mut(id).unwrap()["projectId"] = request["params"]["projectId"].clone();
+				fixture_thread_read(&request, &history, &settings, turns)
+			},
 			Some("thread/list") =>
 				serde_json::json!({"data":if request["params"]["archived"]==faults.archived {vec![serde_json::json!({"id":"opaque thread/1"})]} else {vec![]},"nextCursor":null}),
 			Some("thread/unarchive") => {
@@ -924,7 +929,7 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 				threads += 1;
 
 				let id = format!("opaque thread/{threads}");
-				let configured = serde_json::json!({"model":request["params"]["model"],"reasoningEffort":request["params"]["config"]["model_reasoning_effort"],"modelProvider":"openai"});
+				let configured = serde_json::json!({"model":request["params"]["model"],"reasoningEffort":request["params"]["config"]["model_reasoning_effort"],"modelProvider":"openai","projectId":request["params"]["projectId"]});
 
 				settings.insert(id.clone(), configured.clone());
 

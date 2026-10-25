@@ -4,6 +4,8 @@ title: "Commands and validation"
 description: "Repository command authority and source, native and desktop acceptance boundaries."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-95772fa38252ded838ec3a2f
+    resource: repo://.config/nextest.toml
   - id: openwiki-source-586227b5591e5f24cdfe6427
     resource: repo://apps/decodex-cli/src/agent.rs
   - id: openwiki-source-2e9ba9281afc8bacff8a0775
@@ -56,10 +58,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-25T02:09:34.237Z" }
+generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T02:09:34.237Z
+    at: 2026-10-25T03:47:07.956Z
 ---
 
 
@@ -171,11 +173,28 @@ cargo +stable nextest run --locked -p decodex-database --all-features --no-fail-
 cargo +stable nextest run --locked --workspace --all-targets --all-features --no-fail-fast
 ```
 
-The change passed workspace checking, strict lint for 13 packages, formatting and the schema56/89-table local database gate. The database suite executed 188 tests successfully. The native selected matrix executed 13 successfully, excluding 985. The transport/receipt selection executed 28 successfully, excluding 970. Focused UI/runtime checks passed 6; Python checks passed 40; CLI diagnostics passed 2. Selected tests had zero unmatched identities. These cohorts overlap.
+The original architecture qualification passed workspace checking, strict lint for 13 packages, formatting and the schema56/89-table local database gate. The database suite executed 188 tests successfully. The native selected matrix executed 13 successfully, excluding 985. The transport/receipt selection executed 28 successfully, excluding 970. Focused UI/runtime checks passed 6; Python checks passed 40; CLI diagnostics passed 2. Selected tests had zero unmatched identities. These cohorts overlap.
 
 The original complete workspace run executed 2918 tests: 2916 passed, including one leaky pass, and two native audio ICE connection tests failed; 1154 were skipped. Preserve that failed receipt. The separate `native_media_followup` records a later current-main full run with 2918 passed, 1154 skipped and no leaky pass. Both media tests also passed 20 repetitions on current main and on the pre-change baseline, 40 executions per source with zero retries. Matching source and feature graphs plus historical firewall events support an external admission cause. Recovered lock and firewall history places the failures during locking; the known-allow package-only baseline passed in that interval. A new controlled lock or firewall-denial experiment was not run. Use the [native media timeout procedure](../integrations/subscription-voice.md#diagnose-native-media-ice-timeouts) before changing audio code or test deadlines.
 
-These checks do not install or start the product, spend real account capacity or measure live model judgment. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) for native V1/V2, missing private action association, bounded evidence and installed-app limits.
+### Native Project and nested Work follow-up
+
+The `native_project_and_work_followup` entry records the next qualification against the same selected CLI and helpers. With both native binary variables set as described above, run its exact seven-test selection:
+
+```sh
+cargo +stable nextest run --locked -p decodex-runtime --all-features \
+  --run-ignored only \
+  -E 'test(native_project_reconciles_retained_conversation_and_survives_restart) or test(native_nested_code_mode_work_attribution_survives_store_reopen) or test(native_v1_nested_code_mode_keeps_exact_work_attribution) or test(native_child_completion_wakes_idle_root_once) or test(native_v1_work_attribution_uses_the_native_executor) or test(project_work::)' \
+  --test-threads 1 --no-fail-fast
+```
+
+All seven executed and passed; 996 were excluded and no selector was unmatched. The tests cover retained native Project membership and real app-server restart, membership conflict isolation, direct/native V1 execution, permitted nested V1/V2 attribution, durable input recovery and V2 wake. V2 nesting uses explicit native configuration; the default direct-only policy remains unchanged. The recovery case reopens the store at a reconstructed durable boundary, not after a physical crash.
+
+The follow-up also passed 189 database tests, 4 focused runtime guards, the schema57/90-table gate, workspace checking, strict lint for 13 packages, nightly formatting, Nextest TOML formatting, 40 Python tests and 2 CLI diagnostic tests. The final workspace/all-targets/all-features run passed 2921 tests, skipped 1157 and had no LEAK. Counts overlap. Commands, exact identities and selected source/component/schema digests remain in the portable index.
+
+Its initial full run had three failures: two unchanged short-frame UI checks and an old fixture missing native `projectId`. The fixture now follows the real response. The same UI executable passed five isolated runs of each test. `.config/nextest.toml` extends existing runner reservation to those two selectors, with all assertions and default test selection retained. The initial passed resume test had a LEAK with unknown cause; the clean final run does not explain or replace it.
+
+These checks do not install or start the product, spend real account capacity or measure live model judgment. Native Project data and membership do not establish official desktop saved-Project/sidebar presentation. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) for native V1/V2, missing private action association, bounded evidence and installed-app limits.
 
 ## Prepare Codex components
 
