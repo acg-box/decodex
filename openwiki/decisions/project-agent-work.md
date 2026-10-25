@@ -34,10 +34,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-25T01:55:03.097Z" }
+generated: { by: "codex", at: "2026-10-25T02:09:34.237Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T01:55:03.097Z
+    at: 2026-10-25T02:09:34.237Z
 ---
 
 # Project, Agent and Work contract
@@ -264,7 +264,7 @@ Executed validation for this change:
 - Database suite: 188 passed. The scope regression first reproduced the old failure with unrelated records ahead of the Agent's own Work and authorized Material, then passed after scope moved before the SQL limit.
 - Exact-artifact native matrix: 13 passed, 985 excluded by its selector, zero unmatched selected tests. It covers native V1/V2 contributions, V2 idle wake, tool migration, Project/global reviewer/private records, child approvals and retained context/permission behavior.
 - Transport and receipt suite: 28 passed, 970 excluded by selector. Focused UI/runtime checks: 6 passed. Python checks: 40 passed. CLI diagnostics: 2 passed. Local database gate passed with schema 56 and 89 tables. Counts overlap; do not add them as distinct tests.
-- Original complete workspace suite: 2918 executed, 2916 passed including one leaky pass, 2 failed, 1154 skipped. Both failures timed out during native audio ICE connection. The later `native_media_followup` retains this failed result separately from fresh proof: current main passed 2918/2918, and the two media tests passed 20 repetitions on both current main and the pre-change baseline, 40 executions per source with no retries. The audio source, dependency versions and enabled WebRTC features match across those sources. Historical macOS firewall logs show queued inbound connections without a verdict during the two failures; later runs had known allow verdicts. This supports an external firewall admission cause. A locked-session trigger was not directly tested. No product source, audio assertion, deadline or runner policy changed.
+- Original complete workspace suite: 2918 executed, 2916 passed including one leaky pass, 2 failed, 1154 skipped. Both failures timed out during native audio ICE connection. The later `native_media_followup` retains this failed result separately from fresh proof: current main passed 2918/2918, and the two media tests passed 20 repetitions on both current main and the pre-change baseline, 40 executions per source with no retries. The audio source, dependency versions and enabled WebRTC features match across those sources. Historical macOS firewall logs show queued inbound connections without a verdict during the two failures; later runs had known allow verdicts. This supports an external firewall admission cause. Recovered session events place both failures within a locked interval. The already-allowed package-only baseline passed while locked. After unlock, the workspace binary received a prompt and allow verdict. No new controlled lock or firewall-denial experiment was performed. No product source, audio assertion, deadline or runner policy changed.
 
 The selected model catalog and configuration determine the native multi-agent backend. The synthetic matrix uses V2 with `gpt-5.6-sol` and V1 with `gpt-5.6-luna`, both at Medium. A false V2 feature flag alone does not establish V1. Qualified V2 supplies idle-owner completion wakeups; V1 requires native wait for required Results. Nested Code Mode delegation attribution remains unqualified and Unknown.
 

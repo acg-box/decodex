@@ -65,7 +65,7 @@ sources:
 generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T01:55:03.097Z
+    at: 2026-10-25T02:09:34.237Z
 ---
 
 # Product scope and native ownership

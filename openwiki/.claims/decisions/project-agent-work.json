@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e7c9f695ecb91e388e1dac1b07bed233e3068d88991e79b87a3514a92e6d84e9",
+  "pageVersion": "sha256:8c812adbfed94a3b213a249577c471dd61467f5bc352be36cfec6771b52e08c2",
   "claims": [
     {
       "id": "claim_820ae47a5a5d49aab10b5f306ac24685",
@@ -130,17 +130,17 @@
     },
     {
       "id": "claim_34feace5f90e48a6aa0933ff5407a043",
-      "statement": "Qualification preserves the original ICE failures and separately records passing current-main and baseline media reruns, with host firewall evidence and explicit lock-screen, physical-audio, live-account and installed-app limits.",
+      "statement": "Qualification preserves the original ICE failures and separately records passing current-main and baseline media reruns, recovered lock and firewall history, and explicit controlled-experiment, physical-audio, live-account and installed-app limits.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:79dfe6f2f85da3df4b7afe6a7d6718037b314a0b61afa4b516a817b35bc029d3"
+          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T01:55:03.097Z"
+    "at": "2026-10-25T02:09:34.237Z"
   }
 }

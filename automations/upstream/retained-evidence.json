@@ -1991,7 +1991,7 @@
           "decodex-gpui::bin/decodex-gpui shell::agent_surface::voice::transport::tests::native_call_exchanges_audio_captions_mutes_and_releases_buffers",
           "decodex-gpui::bin/decodex-gpui shell::agent_surface::voice::transport::tests::remote_channel_loss_reports_failure_and_releases_buffers"
         ],
-        "limit": "The original workspace run retains two native-media ICE timeouts. The native_media_followup records the later source comparison, firewall evidence and passing reruns. It does not change the original result or establish a locked-session or physical-device qualification."
+        "limit": "The original workspace run retains two native-media ICE timeouts. The native_media_followup records the later source comparison, firewall evidence and passing reruns. It does not change the original result or establish a controlled locked-session or physical-device qualification."
       },
       "database": {
         "entrypoint": "decodex-database/all-features",
@@ -2041,7 +2041,7 @@
       "Old tool contracts migrate only after inspectable native quiescence. Active or paused Goals, live commands/descendants, unsupported settings and unknown creation/retirement stay parked without a reset.",
       "Earlier certified source-review ranges and historical artifact qualifications keep their recorded limits; this implementation does not advance the upstream cursor.",
       "The Work overview and each selected evidence category are bounded to 100 rows. has_more marks additional retained records; selected Work transport pages use 8 KiB UTF-8 slices and a 32 MiB assembled limit.",
-      "The original workspace run retains two native-media ICE timeouts. The native_media_followup records the later source comparison, firewall evidence and passing reruns. It does not change the original result or establish a locked-session or physical-device qualification."
+      "The original workspace run retains two native-media ICE timeouts. The native_media_followup records the later source comparison, firewall evidence and passing reruns. It does not change the original result or establish a controlled locked-session or physical-device qualification."
     ],
     "validation": {
       "workspace_check": "passed",
@@ -2060,7 +2060,7 @@
       "release": "not_performed"
     },
     "native_media_followup": {
-      "verified_at": "2026-10-25T01:54:56.613092+00:00",
+      "verified_at": "2026-10-25T02:09:31.695654+00:00",
       "baseline_source": "c03244a8a39c5621eff17f99a04db8e2cb83bc5a",
       "current_source": "995b3947100f523c7dd751f56498f508f8467e07",
       "test_entrypoint": "decodex-gpui::bin/decodex-gpui",
@@ -2123,10 +2123,26 @@
       },
       "unmatched_selectors": [],
       "diagnosis": {
-        "observed": "The macOS application firewall queued inbound flows for the workspace test binary during both architecture ICE failures. The trace had no verdict while these calls waited and default drops after process exit. A preceding package-only pass had a known allow verdict. The current test binary received a firewall prompt and then a known allow verdict. Its later repeated and workspace runs passed.",
-        "inference": "The evidence supports host firewall admission as the cause of the observed ICE stalls. The source, dependency and feature comparison does not identify an architecture-induced audio change. No controlled firewall-denial experiment was performed.",
-        "lock_screen": "No historical lock state was recovered. No sleep event was found in the failure window. A controlled locked-session test was not performed. Lock could leave a firewall prompt unanswered; this is an unverified trigger.",
-        "firewall_mutation": false
+        "observed": "The macOS application firewall queued inbound flows without a verdict during both architecture ICE failures. Later process exits produced default drops. Recovered loginwindow info/debug events place both failures inside the locked interval. The package-only baseline binary had a known allow verdict and passed while locked. After unlock, the workspace test binary received a firewall prompt and then a known allow verdict. Its repeated and workspace reruns passed.",
+        "inference": "The evidence supports firewall admission waiting as the cause of the ICE stalls. Locking can leave the admission request unattended; it did not prevent the already-allowed package-only binary from connecting. The source, dependency and feature comparison identifies no architecture-induced audio change. This is retrospective correlation, not a controlled firewall-denial experiment.",
+        "lock_screen": "Recovered loginwindow events set screen lock before the failures and clear it shortly before the current passing runs. No intervening unlock state appears in the retrieved interval. No sleep event was found in the failure window. A new controlled locked-session experiment was not performed.",
+        "firewall_mutation": false,
+        "lock_timeline": {
+          "locked_at": "2026-10-24T20:09:25.761714Z",
+          "unlocked_at": "2026-10-25T01:42:41.344462Z",
+          "firewall_prompt_at": "2026-10-25T01:42:44.902279Z",
+          "known_allow_at": "2026-10-25T01:42:45.974717Z",
+          "locked_package_control": {
+            "source": "c03244a8a39c5621eff17f99a04db8e2cb83bc5a",
+            "entrypoint": "decodex-gpui::bin/decodex-gpui; package-only features",
+            "window_start": "2026-10-24T20:34:00Z",
+            "window_end": "2026-10-24T20:34:06Z",
+            "run": 2,
+            "passed": 2,
+            "firewall_verdict": "known_allow"
+          },
+          "limit": "Retrospective host events and original test receipts establish this interval. They do not establish all lock transitions, ICE candidate-pair states or future build permissions."
+        }
       },
       "qualification_limits": [
         "The original failed run remains failed. Later passes do not rewrite its result.",

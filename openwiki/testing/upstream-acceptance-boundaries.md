@@ -84,10 +84,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-25T01:55:03.097Z" }
+generated: { by: "codex", at: "2026-10-25T02:09:34.237Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T01:55:03.097Z
+    at: 2026-10-25T02:09:34.237Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -247,7 +247,7 @@ The selected official source is `970111f6cb62cc02fe36a82ea7d71b37a2889c97`. The 
 | Later current-main complete workspace | 2918 executed and passed, 1154 skipped, no LEAK. |
 | Later repeated native media pair | 40 executions passed per source on current main and the pre-change baseline; zero retries and unmatched selectors. |
 
-Counts overlap. The original two full-suite failures are `native_call_exchanges_audio_captions_mutes_and_releases_buffers` and `remote_channel_loss_reports_failure_and_releases_buffers`, both native ICE connection timeouts. Their failed receipt remains intact. The later `native_media_followup` compares identical audio source, dependency and WebRTC feature identities across current main and the pre-change baseline. Historical macOS firewall traces queued inbound flows without a verdict during both architecture failures; later passing runs had known allow verdicts. This supports an external firewall admission cause, with no identified architecture-induced audio change. A historical lock state and a controlled locked-session comparison remain unavailable. See the [native media diagnosis](../integrations/subscription-voice.md#diagnose-native-media-ice-timeouts). The original leaky pass was `ui_working::tests::appearance_and_disappearance_share_one_continuous_fade`; its cause remains unknown. No product source, test assertion, deadline or runner policy changed.
+Counts overlap. The original two full-suite failures are `native_call_exchanges_audio_captions_mutes_and_releases_buffers` and `remote_channel_loss_reports_failure_and_releases_buffers`, both native ICE connection timeouts. Their failed receipt remains intact. The later `native_media_followup` compares identical audio source, dependency and WebRTC feature identities across current main and the pre-change baseline. Historical macOS firewall traces queued inbound flows without a verdict during both architecture failures; later passing runs had known allow verdicts. This supports an external firewall admission cause, with no identified architecture-induced audio change. Recovered session events place both failures within the locked interval. The already-allowed package-only baseline passed in that same interval. The workspace binary received its prompt and known allow verdict after unlock. A new controlled lock or firewall-denial comparison was not run. See the [native media diagnosis](../integrations/subscription-voice.md#diagnose-native-media-ice-timeouts). The original leaky pass was `ui_working::tests::appearance_and_disappearance_share_one_continuous_fade`; its cause remains unknown. No product source, test assertion, deadline or runner policy changed.
 
 The native matrix covers production-bridge Project idempotency, reviewer routing and private observations; immutable tool migration and positive old-context retirement; V1 helper attribution; V2 idle-owner wake with both feature settings; child approval and MCP identity/policy; saved/live native permissions; failed compaction and restart; large Guardian actions; Code Mode yields and parallel dynamic-tool order. The reusable Python `project_guardian.py` adds a synthetic exact-CLI Project/private-review probe. It uses `QUALIFIED_CODEX_BINARY` and `DECODEX_QUALIFICATION_OUTPUT` as described in the [command guide](../operations/commands-and-validation.md#qualify-retained-native-behavior).
 

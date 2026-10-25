@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:fefd42271f082674896436d4beeb2cf49cf59bde683cd4082781622957111128",
+  "pageVersion": "sha256:122157b52d77020107d96b51ce11171902ae291b1c1a9fef9f8eb8373b925fe8",
   "claims": [
     {
       "id": "claim_070657bf065541118dc7ae41cdeffc2c",
@@ -34,7 +34,7 @@
     },
     {
       "id": "claim_cdec182fee104c07abe30713fd28a444",
-      "statement": "The earlier component LEAK and original Project Work appearance-fade LEAK retain their limits; the separate native media follow-up records passing full-suite and repeated media checks with firewall evidence, without proving a lock-screen trigger or explaining the earlier LEAK.",
+      "statement": "The earlier component LEAK and original Project Work appearance-fade LEAK retain their limits; the separate native media follow-up records passing full-suite and repeated checks with recovered lock and firewall history, without a new controlled lock comparison or an explanation of the earlier LEAK.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
@@ -42,7 +42,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:79dfe6f2f85da3df4b7afe6a7d6718037b314a0b61afa4b516a817b35bc029d3"
+          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
         }
       ]
     },
@@ -59,6 +59,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T01:55:03.097Z"
+    "at": "2026-10-25T02:09:34.237Z"
   }
 }
