@@ -3067,6 +3067,161 @@
       "schedule_changed": false,
       "installation": false,
       "release": false
+    },
+    "installed_acceptance": {
+      "scope": "Current local installed development qualification. Earlier source and native receipts retain their stated limits.",
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2500",
+      "delivery_state_source": "Read this PR for its current exact-head CI and merge state. The installed artifact has the code revision below; later evidence-only commits do not change its identity.",
+      "application": {
+        "code_revision": "f84ba26f415d589a7b7c8cb6c7aedb4563635162",
+        "channel": "development",
+        "dirty": false,
+        "strict_deep_signature_verified": true,
+        "ui_sha256": "480fdf36cfbc63239784624467a81da59bc883c8a1390be5926b42da52b49d2c",
+        "service_sha256": "5fd0c7bfe922fe71e16783609a9fed1daedd92ee3e3a3bed033a9c9bcbb4ddf8",
+        "runtime_lock_sha256": "54a46fcc88c494723e218f88707fd138e11d5c06b5ceddf817c1344788a9fb68"
+      },
+      "native_artifact_reference": "retained_project_agent_work.artifact",
+      "source_symbols": {
+        "apps/decodex-gpui/src/agent_workspace.rs": [
+          "AgentSurface::selected_is_agent",
+          "AgentSurface::workspace_transcript"
+        ],
+        "apps/decodex-gpui/src/agent_surface.rs": [
+          "AgentSurface::build_submission"
+        ],
+        "apps/decodex-gpui/src/agent_composer.rs": [
+          "AgentSurface::native_composer_requested"
+        ],
+        "apps/decodex-gpui/src/agent_workbench.rs": [
+          "AgentSurface::graph_has_composer"
+        ],
+        "apps/decodex-gpui/src/agent_portfolio_tests.rs": [
+          "independent_agent_keeps_its_composer_and_can_answer_its_approval",
+          "independent_agent_message_never_falls_back_to_another_agent"
+        ]
+      },
+      "source_sha256": {
+        "apps/decodex-gpui/src/agent_workspace.rs": "0265a718a4c0241a5cdb0c1d4d36893a51558e258650d9c2898fa9a811c0da14",
+        "apps/decodex-gpui/src/agent_surface.rs": "f68d8bf866333c5acde3acb9938b8835579a45ccb0c1ff910a16e5bd74d4eec4",
+        "apps/decodex-gpui/src/agent_composer.rs": "c562fb55f885d35c50d7ca30541e5be85b03c683bbaad2cdcd6d80638835b01a",
+        "apps/decodex-gpui/src/agent_workbench.rs": "4d13dccf00cde233cb1519d91ba934e3946a9ce9b30bdc2634772d0ff57c70c5",
+        "apps/decodex-gpui/src/agent_portfolio_tests.rs": "a651c3be281efbf88a413bd49438aaa23936f3b1dd83fd9564005b5ddafb90fc"
+      },
+      "contracts": [
+        "Each independent Agent has its own composer and receives submitted input even when another Agent is the first root. Native approvals retain their exact Agent and event.",
+        "Two Projects and four Works can use bounded native Subagents and the same independent-Agent request with a revised instruction. Current owner assessments gate completion.",
+        "User Pause survives restart and rejects new contributions and completion with valid evidence. Explicit Resume releases the hold.",
+        "Global Guardian routing preserves already-pending human approvals. Native Full Access remains a separate permission profile.",
+        "Installed replacement and restart preserve saved identities, Work and Result records, held input dispositions, draft bytes and configuration within the observed data set."
+      ],
+      "fixture": {
+        "path": "crates/decodex-runtime/tests/fixtures/project_work_acceptance.json",
+        "sha256": "3cbef7954bd56baca4a913af067c020dbc894fe81fe1804745d7a35e5e58af5a",
+        "model": "gpt-6-astra",
+        "effort": "medium",
+        "ultra": false
+      },
+      "observed": {
+        "business": "Two Projects, two independent Agents, four completed Works, six Materials and eight Results. All r1 Results remained after r2; three prepared native contributions retained verified native identities.",
+        "change_and_rework": "Attendance changed from 60 to 80. River Room replaced Oak Hall. Mandatory cost 1160; optional transport 160; combined 1320 exceeds 1200 by 120. The same request has two instructions. Trip total stayed at 240.",
+        "ui": "Final installed UI showed both Project choices and four completed Works. Scoped Material reveal, Result/source limits, Collaboration and Guardian records were opened across this qualification. Final typed input and approval both targeted the second Agent.",
+        "pause": "Actual Pause/Resume buttons, installed-app restart, held helper preparation refusal, and completion refusal with valid Results passed.",
+        "guardian": "A pending Ask Me request stayed pending after a global switch to Automatic Review. The automatic harmless command executed and one bounded private output survived restart. Final installed Ask Me input and Allow once click produced the exact test file.",
+        "permissions": "Workspace denied the Project-external marker write. Full Access accepted it, including after installed-app restart without an override. Restored Workspace denied replacement and retained exact marker bytes.",
+        "native_projects": "Read-only native project/list, project/read and thread/read confirmed exactly two Project identities and their Agent membership without starting inference.",
+        "original_data": "Consistent-copy validation, normal replacement, restarts and final default-root readback kept core rows, user-held inputs, draft files and configuration unchanged. Default global Ask Me and Review Details Off remained selected.",
+        "cleanup": "Exact-owned test processes ended normally. Temporary data, authentication copy, staged bundles and Materials were removed after private business/history evidence and digests were durable. Recoverable app/data backups remain private."
+      },
+      "tests_read": [
+        "apps/decodex-gpui/src/agent_portfolio_tests.rs#independent_agent_keeps_its_composer_and_can_answer_its_approval",
+        "apps/decodex-gpui/src/agent_portfolio_tests.rs#independent_agent_message_never_falls_back_to_another_agent",
+        "apps/decodex-gpui/src/agent_native_goal_tests.rs#native_goal_panel_reads_refreshes_and_switches_exact_child",
+        "apps/decodex-gpui/src/agent_relation_canvas.rs#explicit_child_selection_reveals_its_recorded_parent_without_changing_the_chat",
+        "apps/decodex-gpui/src/agent_workbench_tests.rs#async_questions_enter_the_desk_without_a_pending_server_event",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs#native_new_project_conversations_materialize_before_first_input,#native_project_reconciles_retained_conversation_and_survives_restart"
+      ],
+      "executed": {
+        "before_repair": "Each new regression failed individually on its original symptom before its repair; those failed receipts remain separate.",
+        "gpui_package": {
+          "entrypoint": "cargo +stable nextest run --locked -p decodex-gpui --all-targets --all-features",
+          "passed": 1025,
+          "skipped": 1031,
+          "unmatched": 0,
+          "cleanup_markers": {
+            "first_complete_run": [
+              "shell::agent_surface::native_goal::tests::native_goal_panel_reads_refreshes_and_switches_exact_child",
+              "shell::agent_surface::work_board::relations::fit_tests::explicit_child_selection_reveals_its_recorded_parent_without_changing_the_chat"
+            ],
+            "later_complete_run": [
+              "shell::agent_surface::work_board::workbench::tests::async_questions_enter_the_desk_without_a_pending_server_event"
+            ]
+          }
+        },
+        "cleanup_controls": {
+          "selectors": [
+            "shell::agent_surface::native_goal::tests::native_goal_panel_reads_refreshes_and_switches_exact_child",
+            "shell::agent_surface::work_board::relations::fit_tests::explicit_child_selection_reveals_its_recorded_parent_without_changing_the_chat",
+            "shell::agent_surface::work_board::workbench::tests::async_questions_enter_the_desk_without_a_pending_server_event"
+          ],
+          "passed": 3,
+          "skipped_by_cohort": [
+            1021,
+            1022
+          ],
+          "unmatched": 0,
+          "leak_markers": 0,
+          "limit": "Individual passes do not establish the cause of the complete-run cleanup markers."
+        },
+        "native_regressions": {
+          "package": "decodex-runtime",
+          "application_baseline": "560f9c7491a775795a5c250b5844ec96cacb9912",
+          "selectors": [
+            "account_launch::agent_process::native_tests::project_sync::native_project_reconciles_retained_conversation_and_survives_restart",
+            "account_launch::agent_process::native_tests::project_work::native_legacy_tools_migrate_once_and_retire_the_old_context",
+            "account_launch::agent_process::native_tests::project_work::native_project_global_review_and_private_records_cross_retained_bridge",
+            "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once",
+            "agent::tests::native_agent_wake::native_nested_code_mode_work_attribution_survives_store_reopen",
+            "agent::tests::native_agent_wake::native_v1_nested_code_mode_keeps_exact_work_attribution",
+            "agent::tests::native_agent_wake::native_v1_work_attribution_uses_the_native_executor",
+            "account_launch::agent_process::native_tests::project_sync::native_new_project_conversations_materialize_before_first_input",
+            "account_launch::agent_process::native_tests::project_work::native_guardian_details_survive_cold_resume_without_raw_subscription",
+            "account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart",
+            "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
+            "agent::tests::native_permissions::native_agent_resume_preserves_selected_profile_policy_and_cwd"
+          ],
+          "passed": 12,
+          "skipped": 995,
+          "unmatched": 0,
+          "limit": "Exact same native artifact and unchanged runtime consumers; these synthetic regressions are separate from real-provider and installed UI checks."
+        },
+        "strict_lint": {
+          "packages_passed": 13
+        },
+        "format": "passed",
+        "full_workspace": "Not rerun for these UI-only repairs. The prior 2924-test receipt remains separate."
+      },
+      "commands": [
+        "cargo +stable make prepare-codex",
+        "DECODEX_BUILD_CHANNEL=development DECODEX_APP_STAGE_DIR=\"$SYSTEM_TEMP_STAGE\" sh scripts/macos/stage_decodex_app.sh",
+        "cargo +stable nextest run --locked -p decodex-gpui --all-targets --all-features",
+        "cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui --all-features -E \"test(independent_agent_keeps_its_composer_and_can_answer_its_approval) or test(independent_agent_message_never_falls_back_to_another_agent)\"",
+        "Set DECODEX_TEST_CODEX_BINARY and DECODEX_NATIVE_BINARY to the same verified prepared CLI.",
+        "cargo +stable nextest run --locked -p decodex-runtime --run-ignored only --test-threads 1 -E \"test(account_launch::agent_process::native_tests::project_sync::native_project_reconciles_retained_conversation_and_survives_restart) or test(account_launch::agent_process::native_tests::project_work::native_legacy_tools_migrate_once_and_retire_the_old_context) or test(account_launch::agent_process::native_tests::project_work::native_project_global_review_and_private_records_cross_retained_bridge) or test(agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once) or test(agent::tests::native_agent_wake::native_nested_code_mode_work_attribution_survives_store_reopen) or test(agent::tests::native_agent_wake::native_v1_nested_code_mode_keeps_exact_work_attribution) or test(agent::tests::native_agent_wake::native_v1_work_attribution_uses_the_native_executor) or test(account_launch::agent_process::native_tests::project_sync::native_new_project_conversations_materialize_before_first_input) or test(account_launch::agent_process::native_tests::project_work::native_guardian_details_survive_cold_resume_without_raw_subscription) or test(account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart) or test(account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart) or test(agent::tests::native_permissions::native_agent_resume_preserves_selected_profile_policy_and_cwd)\"",
+        "python3 scripts/lint_rust_workspace.py",
+        "cargo +nightly fmt --all -- --check"
+      ],
+      "limits": [
+        "This is one bounded synthetic-data real-provider scenario, not general reasoning-quality acceptance or an official release.",
+        "Complete UI suites passed all assertions but reported test-process cleanup markers in three unchanged cases across two runs. All three isolated controls passed without a marker. Cause remains unknown; assertions, deadlines and runner policy were not weakened.",
+        "Native Project data and Decodex presentation passed. Official Codex desktop Project presentation remains unobserved; the user declined another login.",
+        "The user removed controlled lock-screen testing. No real microphone audio was uploaded. Physical-speaker audibility, live provider voice and entitlement remain unmeasured; earlier local hardware receipts retain their source and behavior limits.",
+        "Default-data readback does not certify every UI preference or window position. Historical encrypted prepared-plaintext and strong Work-binding gaps stay unknown."
+      ],
+      "source_review_cursor_changed": false,
+      "schedule_changed": false,
+      "installation": true,
+      "release": false
     }
   }
 }

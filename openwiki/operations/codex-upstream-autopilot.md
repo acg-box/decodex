@@ -33,10 +33,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-25T03:52:15.285Z" }
+generated: { by: "codex", at: "2026-10-25T15:35:33.616Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T14:08:29.784Z
+    at: 2026-10-25T15:35:33.616Z
 ---
 
 
@@ -121,4 +121,4 @@ The automation directory's `state.json` owns the current reviewed cursor, next u
 
 ## Project and Work delivery evidence
 
-The retained index has a separate `retained_project_agent_work` qualification for the direct schema56/protocol3 change and global Guardian. It records exact source, artifact/helper/schema identities, reusable tests, executed counts and unmeasured limits. It does not advance the upstream source-review cursor or certify the installed app. The accepted private Review Details decision is implemented; unrelated optional proposals keep their recorded decisions. Native automation state and current supported host readback own the actual schedule status. A product receipt does not prove that the schedule is paused or authorize activation. Reconcile delivered changes with current main and pending native receipts; resuming a paused schedule still requires explicit user authorization.
+The retained index has a separate `retained_project_agent_work` qualification for the direct schema56/protocol3 change and global Guardian. It records exact source, artifact/helper/schema identities, reusable tests, executed counts and unmeasured limits. It does not advance the upstream source-review cursor. Its original source and synthetic qualification does not certify an installed app. The separate `installed_acceptance` entry binds later authorized local development acceptance to its own signed application identity and measured limits; it does not authorize release or a runtime-baseline change. The accepted private Review Details decision is implemented; unrelated optional proposals keep their recorded decisions. Native automation state and current supported host readback own the actual schedule status. A product receipt does not prove that the schedule is paused or authorize activation. Reconcile delivered changes with current main and pending native receipts; resuming a paused schedule still requires explicit user authorization.

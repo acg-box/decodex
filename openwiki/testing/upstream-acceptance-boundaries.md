@@ -8,6 +8,8 @@ sources:
     resource: repo://.config/nextest.toml
   - id: openwiki-source-0a61b25348131fe1bb6e1d12
     resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
+  - id: openwiki-source-1b7747f8ae67c32e5670817d
+    resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
   - id: openwiki-source-032278b78f4f6cac0e654ef0
     resource: repo://apps/decodex-gpui/src/native_audio_owner_tests.rs
   - id: openwiki-source-d1f06f7b22d0c2eec328d95f
@@ -100,10 +102,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-25T14:08:29.784Z" }
+generated: { by: "codex", at: "2026-10-25T15:35:33.616Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T14:08:29.784Z
+    at: 2026-10-25T15:35:33.616Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -329,6 +331,22 @@ The later `media_hardware_followup` record uses the unchanged product source at 
 No microphone audio was saved or uploaded, and no system route was changed. The output route was virtual, so physical-speaker output, speech intelligibility and audible quality remain unmeasured. No controlled lock-screen or firewall-denial test was performed. Provider entitlement, a live provider voice session and installed-app behavior remain separate. See [local hardware commands](../integrations/subscription-voice.md#authorized-local-hardware-checks).
 
 The temporary acceptance directory, test application copies, authentication copies and exact-owned helper processes were removed after the accepted database, native source history and file digests were preserved in private receipts. The user's installed applications and unrelated processes were not changed. No product or test code changed for this follow-up; no installation or release occurred.
+
+### Installed development acceptance
+
+The separate `installed_acceptance` entry qualifies the signed development application built from clean source `f84ba26f415d589a7b7c8cb6c7aedb4563635162`. It records application and service digests separately from the unchanged selected Codex CLI, helpers and schema. Later evidence-only commits do not change that artifact identity. This local installation was authorized separately; it was not a public release.
+
+| Contract | Observed result |
+| --- | --- |
+| Business lifecycle | Two independent Agents completed four Works across two Projects, with six Materials, eight Results and three prepared native contributions. Earlier Results survived changed requirements, same-request repair and current owner assessment. |
+| Conversation ownership | Two original UI defects were reproduced and repaired. Independent Agents retain composer and approval controls; input targets the selected Agent. Final typed input received the second Agent's reply, and its actual Allow once click produced the exact test file. |
+| Controls and restart | Actual Pause/Resume, held preparation and valid-evidence completion refusal, installed-app restart, global Guardian and the Workspace/Full Access write sequence passed. |
+| Project presentation | Decodex displayed both Projects and four completed Works. Read-only native Project and thread calls verified identities and membership without inference. Official Codex desktop Project presentation remains unobserved. |
+| Saved user data and cleanup | Normal replacement and restarts preserved the measured core rows, held input dispositions, draft bytes and configuration. Test processes ended normally; temporary data, authentication copies, stages and Materials were removed after private evidence was saved. Recoverable app and data backups remain private. |
+
+The final UI package passed 1025 tests with 1031 skipped and no unmatched selector. Its complete runs also reported cleanup markers in three unchanged tests; all three isolated controls passed without a marker. Their cause remains unknown. Twelve selected exact-artifact native regressions passed with 995 skipped and zero unmatched selectors on the recorded runtime-consumer baseline. Strict lint for 13 packages and formatting passed. The earlier 2924-test workspace receipt remains separate. No assertion, deadline or runner policy was weakened.
+
+This is one bounded real-provider scenario, not general model-quality acceptance. Data readback does not certify every preference or window position. The user removed controlled lock-screen testing and declined another official login. No microphone audio was uploaded. Physical-speaker audibility, live provider voice, entitlement and the old encrypted prepared-plaintext/Work-binding gaps remain unmeasured. Exact test identities, reusable fixture, source digests and reproducible commands remain available in the retained index after temporary products are removed.
 
 ### Qualified native and presentation limits
 

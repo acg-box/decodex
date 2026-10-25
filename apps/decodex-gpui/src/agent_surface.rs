@@ -876,7 +876,7 @@ impl AgentSurface {
 				.iter()
 				.find(|work| {
 					Some(&work.id) == self.composer_manager.as_ref().or(self.selected.as_ref())
-						&& work.kind == AgentWorkKindDto::Manager
+						&& (work.parent_goal_id.is_none() || work.kind == AgentWorkKindDto::Manager)
 				})
 				.or_else(|| snapshot.work_items.iter().find(|work| work.parent_goal_id.is_none()))
 		}) {

@@ -70,10 +70,10 @@ sources:
     resource: repo://database/migrations/0056_project_agent_work.sql
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
+generated: { by: "codex", at: "2026-10-25T15:35:33.616Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T14:08:29.784Z
+    at: 2026-10-25T15:35:33.616Z
 ---
 
 # Product scope and native ownership
@@ -84,7 +84,7 @@ Decodex supplies a local workspace, account policy, work relationships and reada
 
 The [Project, Agent and Work contract](project-agent-work.md) is the accepted and implemented contract for general-purpose collaboration. It defines shared English names for code and UI, an optional Assistant, existing Agents acting as Project Leads, one owner per Work, native Subagents, and scoped Collaboration Requests between independent Agents. It does not use fixed L0/L1/L2 business levels. The current implementation and its compatibility names remain documented below.
 
-Global Guardian controls and native private Review Details are now selected product scope. They are no longer awaiting a decision on whether to implement them. The target has no per-Agent Guardian override; actual native requirements and per-source effective settings remain authoritative. Review Details are diagnostic observation, not permission or Work acceptance. Implementation, exact-artifact qualification and an isolated real-provider Project/Work scenario are recorded in the retained evidence index. Installed-app acceptance and official desktop Project presentation remain unmeasured. A controlled scenario does not establish general model quality. This decision does not enable a native flag, broaden Full Access, or select unrelated historical optional proposals.
+Global Guardian controls and native private Review Details are now selected product scope. They are no longer awaiting a decision on whether to implement them. The target has no per-Agent Guardian override; actual native requirements and per-source effective settings remain authoritative. Review Details are diagnostic observation, not permission or Work acceptance. Implementation, exact-artifact qualification and a separate local installed development acceptance are recorded in the retained evidence index. The installed scenario qualifies two Projects and four Works, independent-Agent input and approval ownership, Pause/Resume, restart recovery, global Guardian and the Workspace/Full Access sequence. Official Codex desktop Project presentation remains unobserved. A controlled scenario does not establish general model quality. This decision does not enable a native flag, broaden Full Access, or select unrelated historical optional proposals.
 
 The default coordination surface uses `work_read` and `work_manage`. Only users create persistent Agents. Native Subagents own temporary execution. Managed-worker/manager creation and old goal/dependency tools are retired from new conversations and refused in legacy schemas. Real legacy execution and history stay readable; quiescent tool-set migration does not relabel them as native children.
 
@@ -92,9 +92,9 @@ Global Guardian changes the thread preference for subsequent turns and reports p
 
 Schema 56 and protocol 3.0 implement the direct business migration. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
 
-The retained-conversation repair reconciles unassigned native Project membership before input and preserves conflicts for inspection. Schema 57 retains actual native child-input receipts for Work attribution when native configuration permits nested V2 Code Mode. Recovery joins exact evidence without replay. V1 nesting remains supported; V2 keeps its direct-only default. These are repairs to retained integration contracts. Official desktop saved-Project/sidebar presentation and installed-app acceptance remain unmeasured. See the [canonical contract](project-agent-work.md#qualification-and-evidence-limits).
+The retained-conversation repair reconciles unassigned native Project membership before input and preserves conflicts for inspection. Schema 57 retains actual native child-input receipts for Work attribution when native configuration permits nested V2 Code Mode. Recovery joins exact evidence without replay. V1 nesting remains supported; V2 keeps its direct-only default. These are repairs to retained integration contracts. Native Project identity and membership and Decodex Project presentation passed in the separate installed qualification. Official desktop saved-Project/sidebar presentation remains unobserved. See the [canonical contract](project-agent-work.md#qualification-and-evidence-limits).
 
-The lifecycle follow-up preserves this scope. Schema 58 records independent Agent ownership on a shared admitted native process. Schema 59 distinguishes visible input from native task-name proof for encrypted assignments. Guardian history recovery uses supported native reads after restart and preserves missing action associations. These changes repair retained behavior; they add no new reviewer or helper executor.
+The lifecycle follow-up preserves this scope. Schema 58 records independent Agent ownership on a shared admitted native process. Schema 59 distinguishes visible input from native task-name proof for encrypted assignments. Guardian history recovery uses supported native reads after restart and preserves missing action associations. These changes repair retained behavior; they add no new reviewer or helper executor. The later installed qualification also repaired independent Agents that lacked conversation controls or sent input to the first Agent. It records the exact development artifact, preserved data scope and three unexplained complete-suite cleanup markers separately from the earlier full-workspace pass. Isolated controls passed; they do not establish the cleanup cause.
 
 ## Current integration boundary
 

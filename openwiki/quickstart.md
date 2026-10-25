@@ -40,10 +40,10 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-25T08:56:12.608Z" }
+generated: { by: "codex", at: "2026-10-25T15:35:33.616Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T14:08:29.784Z
+    at: 2026-10-25T15:35:33.616Z
 ---
 
 # OpenWiki quickstart
@@ -61,6 +61,8 @@ Work and Guardian fit the existing desktop. Expand Work to inspect Materials, Co
 Schema 56 and protocol 3.0 provide the direct business migration. Schema 57 retains native input receipts; schemas 58 and 59 preserve independent process ownership and distinguish plaintext from native task-name proof. Independent conversations can start without an Assistant. Native Project reconciliation, named assignment recovery and Guardian detail recovery preserve native execution ownership. The [acceptance record](testing/upstream-acceptance-boundaries.md#source-built-real-provider-acceptance) documents a source-built real-provider run with two Projects and four completed Works, nine passed native tests and 2924 passed workspace tests. Original failures, unknown old encrypted bindings and unobserved official Codex Project presentation remain explicit. No app installation or release was performed.
 
 A separate control follow-up verifies actual Pause/Resume buttons and Full Access behavior across restart. It identifies the native owners of the old encrypted helpers, but leaves their unproved Work bindings unchanged. See `controls_followup` in the [retained evidence](../automations/upstream/retained-evidence.json).
+
+A later [installed development acceptance](testing/upstream-acceptance-boundaries.md#installed-development-acceptance) verifies the same business lifecycle locally and repairs independent-Agent composer, approval and input ownership. Its signed artifact, preserved data scope, 1025 passed UI tests, three unexplained complete-run cleanup markers and clean isolated controls are retained separately. Native Project membership and Decodex presentation passed; official desktop Project presentation and live provider voice remain unmeasured. No public release occurred.
 
 ## Start by task
 

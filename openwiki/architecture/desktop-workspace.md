@@ -26,8 +26,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_markdown.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
+  - id: openwiki-source-1b7747f8ae67c32e5670817d
+    resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
   - id: openwiki-source-6a1c55b61be8ac251a493046
     resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
+  - id: openwiki-source-5da2f5dd568514f1f464d177
+    resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-15ee466228bdb01892c9678b
     resource: repo://apps/decodex-gpui/src/agent_text_selection.rs
   - id: openwiki-source-51a4755f3c4ddd78511e5c8e
@@ -44,10 +48,10 @@ sources:
     resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
+generated: { by: "codex", at: "2026-10-25T15:11:34.438Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T06:52:57.034Z
+    at: 2026-10-25T15:11:34.438Z
 ---
 
 # Desktop workspace and native glass
@@ -55,6 +59,8 @@ verified:
 ## Information hierarchy
 
 The Agent conversation is the primary workspace. The left sidebar selects the overview and projects. The right Collaboration panel keeps recorded exchanges and pending response requests visible across chats. The bottom Dock presents Agent relationships through its graph or list. A historical Program/Factory graph is not the current desktop surface.
+
+Each independent Agent owns its conversation and composer. Messages go to that conversation, including when another Agent appears first in the overview. Assistant and Project Lead responsibilities do not redirect the input. Native approval controls stay in the selected conversation and retain the exact pending request.
 
 Collaboration groups source-backed exchanges by participant pair and expands their recorded text without switching the active chat or draft. A participant control locates that Agent in the graph. Tool completion alone is not delivery, and a context reference is not a message. Missing reply text remains explicit. Pending user requests retain their existing native controls; this panel does not answer them automatically or create a second question store.
 

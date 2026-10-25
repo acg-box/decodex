@@ -1103,15 +1103,16 @@ impl AgentSurface {
 		)
 	}
 
-	pub(super) fn selected_is_manager(&self) -> bool {
+	pub(super) fn selected_is_agent(&self) -> bool {
 		self.is_new_conversation()
 			|| self.selected.is_none()
 			|| self.selected == self.root_id()
 			|| self.snapshot.as_ref().is_some_and(|snapshot| {
-				snapshot.work_items.iter().any(|work| {
-					Some(&work.id) == self.selected.as_ref()
-						&& work.kind == AgentWorkKindDto::Manager
-				})
+				snapshot.agents.iter().any(|agent| Some(&agent.id) == self.selected.as_ref())
+					|| snapshot.work_items.iter().any(|work| {
+						Some(&work.id) == self.selected.as_ref()
+							&& work.kind == AgentWorkKindDto::Manager
+					})
 			})
 	}
 
@@ -1122,7 +1123,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		self.prepare_transcript_history(window, cx);
 		let selected = self.conversation_work();
-		let is_agent = self.native_agents.selected.is_some() || self.selected_is_manager();
+		let is_agent = self.native_agents.selected.is_some() || self.selected_is_agent();
 		self.workspace_transcript(selected.as_ref(), is_agent, window, cx)
 	}
 
@@ -1313,7 +1314,7 @@ impl AgentSurface {
 		self.observe_visible_output(cx);
 		self.prepare_workspace_history(window, cx);
 
-		let is_agent = self.native_agents.selected.is_some() || self.selected_is_manager();
+		let is_agent = self.native_agents.selected.is_some() || self.selected_is_agent();
 		let selected = self.conversation_work();
 		let wide = f32::from(window.viewport_size().width) > 1_000.0;
 		if self.workspace.browsing {

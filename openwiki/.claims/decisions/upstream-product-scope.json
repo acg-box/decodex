@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:671e1cf5048ad912bbae611727d7bdd144e033dba0a2fa69cafd3ec29a91ebf9",
+  "pageVersion": "sha256:2128be4e865949321e46a0e286d1b38fb39c910a89515038507171c285648f05",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -216,7 +216,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
+          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
@@ -226,11 +226,11 @@
     },
     {
       "id": "claim_d6d7d688f6a645a09c7356f11d70cf29",
-      "statement": "Retained integration repairs reconcile unassigned native Project membership and retain schema57 native input receipts for permitted V2 nested Work attribution without changing native V2 defaults or adding another executor; official desktop sidebar and installed-app acceptance remain unmeasured.",
+      "statement": "Retained integration repairs reconcile unassigned native Project membership and retain schema57 native input receipts for permitted V2 nested Work attribution without changing native V2 defaults or adding another executor; native identity, membership and Decodex presentation passed separate installed qualification, while official desktop Project presentation remains unobserved.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
+          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/project.rs",
@@ -244,11 +244,11 @@
     },
     {
       "id": "claim_ee36238462cf49ce90658f57782085a6",
-      "statement": "The lifecycle follow-up qualifies an isolated real-provider Project/Work scenario and repairs independent native ownership, encrypted assignment attribution and Guardian history recovery without adding another executor or reviewer; installed-app and official Project UI acceptance remain unmeasured.",
+      "statement": "The lifecycle follow-up repairs independent native ownership, encrypted assignment attribution and Guardian history recovery without another executor or reviewer; later installed development qualification repairs independent-Agent conversation controls and input routing and retains distinct artifact, data-preservation and test-cleanup limits.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:d7963a45fa87774085bc232a6c7e3056e5c21aabff8e2a08fdbc5cf789dfface"
+          "version": "repo-file-v1:sha256:4d4c520616d528c1a40beaf3194aec95c10c90ab59f6bfaeaa35b0c423c80892"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/guardian_details.rs",
@@ -267,6 +267,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T14:08:29.784Z"
+    "at": "2026-10-25T15:35:33.616Z"
   }
 }
