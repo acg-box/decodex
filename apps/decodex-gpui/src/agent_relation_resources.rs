@@ -44,6 +44,7 @@ impl AgentSurface {
 						size: (WIDTH, 48.),
 						attachment: None,
 						identity: None,
+						speech: None,
 						base_height: 48.,
 						layout_height: 48.,
 						x: 0.,

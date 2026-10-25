@@ -64,7 +64,7 @@ pub(super) fn message_height(lines: usize, layout: card::Layout) -> f32 {
 		/ layout.activity_line()
 }
 
-fn bubble_width(
+pub(super) fn bubble_width(
 	excerpt: &Excerpt<'_>,
 	layout: card::Layout,
 	system: &gpui::WindowTextSystem,

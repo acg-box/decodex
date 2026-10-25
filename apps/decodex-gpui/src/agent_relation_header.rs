@@ -250,6 +250,25 @@ fn selection_mark(
 
 #[path = "agent_relation_rows.rs"] mod information_rows;
 
+pub(super) fn speech_width(
+	activity: &stream::Frame,
+	layout: super::card::Layout,
+	system: &std::sync::Arc<gpui::TextSystem>,
+	shaper: &gpui::WindowTextSystem,
+) -> Option<f32> {
+	activity
+		.lines
+		.iter()
+		.map(|line| {
+			information_rows::bubble_width(
+				&information_rows::message_excerpt(&line.text, layout, system),
+				layout,
+				shaper,
+			)
+		})
+		.reduce(f32::max)
+}
+
 fn content_gap(height: f32, layout: super::card::Layout) -> f32 {
 	// The sprite has transparent headroom. Let the short tail enter that space.
 	if height > 0. { -layout.spacing(2.) / layout.activity_line() } else { 0. }

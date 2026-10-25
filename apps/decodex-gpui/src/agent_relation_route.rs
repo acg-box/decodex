@@ -1,9 +1,10 @@
-//! Cache smooth connections and route obstructed edges through free card gutters.
+//! Cache smooth connections and route around visible characters, labels and speech.
 use super::{BTreeMap, Edge, Kind, Node};
 use std::{cmp::Ordering, collections::BinaryHeap, rc::Rc};
 
 type Point = (f32, f32);
 pub(super) const CLEARANCE: f32 = 12.;
+const TURN_COST: f32 = 24.;
 
 #[derive(Clone, PartialEq)]
 pub(super) struct Curve {
@@ -73,6 +74,10 @@ pub(super) struct Route {
 impl Route {
 	pub(super) fn is_visible(&self) -> bool {
 		self.length > 0.001
+	}
+
+	fn measured_length(&self) -> f32 {
+		self.samples.last().expect("curve samples").1
 	}
 
 	pub(super) fn curve(start: Point, first: Point, second: Point, end: Point) -> Self {
@@ -338,8 +343,21 @@ impl Cache {
 				if let Some([left, top, right, bottom]) = n.identity.filter(|[x0, y0, x1, y1]| {
 					n.x + x0 < left || n.y + y0 < top || n.x + x1 > right || n.y + y1 > bottom
 				}) {
+					// A narrow label margin preserves the character's own lower exit.
 					cards.push(Card {
 						key: format!("identity:{}", n.key),
+						port_y: n.y + (top + bottom) / 2.,
+						bounds: [
+							n.x + left - 2.,
+							n.y + top - 2.,
+							n.x + right + 2.,
+							n.y + bottom + 2.,
+						],
+					});
+				}
+				if let Some([left, top, right, bottom]) = n.speech {
+					cards.push(Card {
+						key: format!("activity:{}", n.key),
 						port_y: n.y + (top + bottom) / 2.,
 						bounds: [
 							n.x + left - CLEARANCE,
@@ -347,15 +365,6 @@ impl Cache {
 							n.x + right + CLEARANCE,
 							n.y + bottom + CLEARANCE,
 						],
-					});
-				}
-				// Keep the source and target's own activity text out of the route too.
-				// A right port inside this column is not exposed; use another side.
-				if n.attachment.is_some() && right + 3. < n.x + n.width() {
-					cards.push(Card {
-						key: format!("activity:{}", n.key),
-						port_y: n.port_y(),
-						bounds: [right + 3., n.y, n.x + n.width(), n.y + n.height()],
 					});
 				}
 				cards
@@ -449,7 +458,7 @@ fn avoid_cards_from(
 		};
 		cost(a, b).total_cmp(&cost(c, d))
 	});
-	// An activity column can cover a facing port without blocking the free space
+	// Speech can cover a facing port without blocking the free space
 	// between characters. Try exposed tangents before adding gutter corners.
 	if a.attachment.is_some() || b.attachment.is_some() {
 		for (start, end) in &pairs {
@@ -465,18 +474,55 @@ fn avoid_cards_from(
 			}
 		}
 	}
+	let arc = vertical_arc(&pairs, a, b, cards);
 	for (start, end) in pairs {
 		if let Some(mut points) =
 			Grid::new(cards, start.outer, end.outer).path(start.outer, end.outer)
 		{
 			points.insert(0, start.anchor);
 			points.push(end.anchor);
-			return rounded_path(points, CLEARANCE);
+			let routed = rounded_path(points, CLEARANCE);
+			let cost = routed.measured_length() + (routed.curves.len() / 2) as f32 * TURN_COST;
+			return arc.filter(|arc| arc.measured_length() < cost).unwrap_or(routed);
 		}
+	}
+	if let Some(arc) = arc {
+		return arc;
 	}
 	// A fully covered card has no exposed port. Do not draw a false shortcut
 	// through other cards while it is hidden beneath them during a drag.
 	Route::curve(curve.start, curve.start, curve.start, curve.start)
+}
+
+/// Use the router's turn cost when comparing a smooth arc with a rectangular detour.
+fn vertical_arc(pairs: &[(&Port, &Port)], a: &Node, b: &Node, cards: &[Card]) -> Option<Route> {
+	let (ac, bc) = (a.connection_center(), b.connection_center());
+	if (bc.1 - ac.1).abs() <= (bc.0 - ac.0).abs() {
+		return None;
+	}
+	let mut best: Option<Route> = None;
+	for &(start, end) in pairs {
+		let ax = start.outer.0 - start.anchor.0;
+		let bx = end.outer.0 - end.anchor.0;
+		if ax * bx <= 0. {
+			continue;
+		}
+		let base = (distance(start.anchor, end.anchor) * 0.35).clamp(24., 72.);
+		for factor in [2., 3., 4.] {
+			let path = Route::curve(
+				start.anchor,
+				toward(start.anchor, start.outer, base * factor),
+				toward(end.anchor, end.outer, base * factor),
+				end.anchor,
+			);
+			if clears_cards(&path, a, b, cards)
+				&& best.as_ref().is_none_or(|best| path.measured_length() < best.measured_length())
+			{
+				best = Some(path);
+			}
+		}
+	}
+	best
 }
 
 fn clears_cards(path: &Route, a: &Node, b: &Node, cards: &[Card]) -> bool {
@@ -619,7 +665,8 @@ impl<'a> Grid<'a> {
 				if self.cards.iter().any(|card| card.crosses(a, b)) {
 					continue;
 				}
-				let next_cost = cost + distance(a, b) + if axis == state % 2 { 0. } else { 24. };
+				let next_cost =
+					cost + distance(a, b) + if axis == state % 2 { 0. } else { TURN_COST };
 				if next_cost < costs[next] {
 					costs[next] = next_cost;
 					previous[next] = state;
@@ -640,16 +687,17 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn character_connections_keep_the_source_and_targets_own_activity_columns_clear() {
+	fn character_connections_avoid_the_visible_speech_above_each_character() {
 		let mut a = node("parent", 0., 0.);
-		a.attachment = Some([6., 6., 80., 42.]);
-		for (x, y) in [(400., 0.), (400., 100.), (400., -100.), (0., 180.)] {
+		a.attachment = Some([80., 80., 140., 140.]);
+		a.speech = Some([30., 10., 190., 62.]);
+		a.size = (224., 160.);
+		for (x, y) in [(400., 0.), (400., 180.), (400., -180.), (0., 320.)] {
 			let b = Node { key: "child".into(), x, y, ..a.clone() };
 			let nodes = vec![a.clone(), b];
 			let paths = Cache::default().paths(&nodes, &[edge("parent", "child")]);
 			let path = &paths["parent-child"];
 			assert!(path.is_visible(), "an exposed character must remain connected");
-			assert_eq!(path.curves.len(), 1, "free character space needs no gutter elbows");
 			for i in 0..=1000 {
 				let (x, y) = path.at(i as f32 / 1000.);
 				for node in &nodes {
@@ -661,16 +709,47 @@ mod tests {
 							&& y < bottom - 0.01),
 						"connection entered the character or HUD"
 					);
+					let [left, top, right, bottom] = node.speech.unwrap();
 					assert!(
-						!(x > node.x + 83.
-							&& x < node.x + node.width()
-							&& y > node.y
-							&& y < node.y + node.height()),
+						!(x > node.x + left
+							&& x < node.x + right
+							&& y > node.y + top
+							&& y < node.y + bottom),
 						"connection crossed {} activity at ({x}, {y})",
 						node.key
 					);
 				}
 			}
+		}
+	}
+
+	#[test]
+	fn hidden_activity_does_not_force_a_branch_around_empty_space() {
+		let mut a = node("parent", 0., 0.);
+		a.attachment = Some([6., 6., 80., 42.]);
+		a.size = (224., 112.);
+		let b = Node { key: "child".into(), x: 130., y: 120., ..a.clone() };
+		let paths = Cache::default().paths(&[a, b], &[edge("parent", "child")]);
+		let route = &paths["parent-child"];
+		assert_eq!(route.curves.len(), 1, "hidden text must not create a detour");
+		assert!(route.samples.windows(2).all(|pair| pair[0].0.1 <= pair[1].0.1));
+	}
+
+	#[test]
+	fn opposite_vertical_branches_use_one_arc_around_speech_and_labels() {
+		let mut parent = node("parent", 0., 0.);
+		parent.size = (224., 160.);
+		parent.attachment = Some([80., 80., 140., 140.]);
+		parent.speech = Some([30., 10., 190., 62.]);
+		parent.identity = Some([0., 144., 224., 157.]);
+		let up = Node { key: "up".into(), y: -320., ..parent.clone() };
+		let down = Node { key: "down".into(), y: 320., ..parent.clone() };
+		let paths = Cache::default()
+			.paths(&[parent, up, down], &[edge("parent", "up"), edge("parent", "down")]);
+		for (id, direction) in [("parent-up", -1.), ("parent-down", 1.)] {
+			let path = &paths[id];
+			assert_eq!(path.curves.len(), 1, "avoid a box-shaped detour for {id}");
+			assert!(path.samples.windows(2).all(|p| (p[1].0.1 - p[0].0.1) * direction >= 0.));
 		}
 	}
 
@@ -734,6 +813,7 @@ mod tests {
 			size: (224., 48.),
 			attachment: None,
 			identity: None,
+			speech: None,
 			base_height: 48.,
 			layout_height: 48.,
 			x,

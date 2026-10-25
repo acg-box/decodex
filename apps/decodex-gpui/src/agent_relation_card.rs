@@ -187,7 +187,7 @@ impl Layout {
 		(left - inset.0, top - inset.1)
 	}
 
-	pub(super) fn identity_bounds(self, actions: f32) -> Option<[f32; 4]> {
+	pub(super) fn identity_bounds(self, actions: f32, title_lines: usize) -> Option<[f32; 4]> {
 		self.labels().then(|| {
 			let (left, top) = self.header_origin(actions);
 			let top = top
@@ -195,16 +195,38 @@ impl Layout {
 					+ if self.overview() { 0. } else { self.gap() + self.metrics_height() }
 					+ self.metadata_gap())
 					/ self.zoom;
+			if self.activity_visible() && title_lines > 0 {
+				[
+					INSET_X,
+					top,
+					self.world_width - INSET_X,
+					top + title_lines as f32 * self.title_line() / self.zoom,
+				]
+			} else {
+				[
+					left,
+					top,
+					left + self.portrait_spacing(PORTRAIT_WIDTH) / self.zoom,
+					top + self.title_line() / self.zoom,
+				]
+			}
+		})
+	}
+
+	pub(super) fn speech_bounds(self, rows: f32) -> Option<[f32; 4]> {
+		(self.activity_visible() && rows > 0.).then(|| {
+			let width = self.details_width() / self.zoom;
+			let left = (self.world_width - width) / 2.;
 			[
 				left,
-				top,
-				left + self.portrait_spacing(PORTRAIT_WIDTH) / self.zoom,
-				top + self.title_line() / self.zoom,
+				INSET_Y,
+				left + width,
+				INSET_Y + (rows * self.activity_line() + self.speech_tip(0.).1) / self.zoom,
 			]
 		})
 	}
 
-	/// Route around the character and its HUD, independently of the activity column.
+	/// Route around the character and its HUD, independently of its speech.
 	/// During the point morph the same attachment contracts into the visible dot.
 	pub(super) fn character_bounds(self, actions: f32) -> [f32; 4] {
 		let z = self.zoom;

@@ -85,6 +85,10 @@ struct SceneMotion {
 	progress: crate::ui_motion::Tween,
 	started: std::time::Instant,
 }
+struct TextWidths {
+	nameplate: f32,
+	speech: Option<f32>,
+}
 struct Drag {
 	key: Option<String>,
 	start: gpui::Point<gpui::Pixels>,
@@ -162,6 +166,8 @@ pub(super) struct Node {
 	attachment: Option<[f32; 4]>,
 	// Visible identity is a routing obstacle, never a connection attachment.
 	identity: Option<[f32; 4]>,
+	// Only visible speech is an obstacle; empty camera space never blocks a link.
+	speech: Option<[f32; 4]>,
 	base_height: f32,
 	// Available detail controls placement; inspection changes only the visible footprint.
 	layout_height: f32,
@@ -452,7 +458,16 @@ impl AgentSurface {
 				&self.work_board.text_system,
 			));
 			let attachment = Some(text_layout.character_bounds(activity.height / stream::LINE));
-			let identity_bounds = text_layout.identity_bounds(activity.height / stream::LINE);
+			let title_lines = header::content_rows(
+				&assignment,
+				&activity,
+				text_layout,
+				&self.work_board.text_system,
+			)
+			.0;
+			let identity_bounds =
+				text_layout.identity_bounds(activity.height / stream::LINE, title_lines);
+			let speech = text_layout.speech_bounds(activity.height / stream::LINE);
 			graph.nodes.push(Node {
 				key: row.key.clone(),
 				title: identity,
@@ -471,6 +486,7 @@ impl AgentSurface {
 				navigation: (0., 0.),
 				attachment,
 				identity: identity_bounds,
+				speech,
 				x: 0.,
 				y: 0.,
 			});
@@ -1098,6 +1114,7 @@ impl AgentSurface {
 					size: (224., 48.),
 					attachment: None,
 					identity: None,
+					speech: None,
 					base_height: 48.,
 					layout_height: 48.,
 					navigation: (0., 0.),
@@ -1240,6 +1257,7 @@ impl AgentSurface {
 			self.work_board.view.presentation,
 		);
 		resources::place_resources(graph);
+		let text_widths = self.relation_text_widths(graph, layout);
 		for node in &mut graph.nodes {
 			if layout.overview() && node.row.is_some() {
 				let inset = layout.node_inset();
@@ -1250,7 +1268,28 @@ impl AgentSurface {
 			}
 			if node.row.is_some() {
 				let native = layout.on_display(self.work_board.view.display_scale);
-				node.identity = native.identity_bounds(node.activity.height / stream::LINE);
+				let title_lines = header::content_rows(
+					&node.assignment,
+					&node.activity,
+					native,
+					&self.work_board.text_system,
+				)
+				.0;
+				node.identity =
+					native.identity_bounds(node.activity.height / stream::LINE, title_lines);
+				if let Some(bounds) = node.identity.as_mut()
+					&& let Some(widths) = text_widths.get(&node.key)
+				{
+					bounds[0] = (native.world_width() - widths.nameplate) / 2.;
+					bounds[2] = bounds[0] + widths.nameplate;
+				}
+				node.speech = native.speech_bounds(node.activity.height / stream::LINE);
+				if let Some(bounds) = node.speech.as_mut()
+					&& let Some(width) = text_widths.get(&node.key).and_then(|widths| widths.speech)
+				{
+					bounds[0] = (native.world_width() - width) / 2.;
+					bounds[2] = bounds[0] + width;
+				}
 				node.attachment =
 					Some(native.character_bounds(node.activity.height / stream::LINE));
 			}
@@ -1272,6 +1311,89 @@ impl AgentSurface {
 				}
 			}
 		}
+	}
+
+	fn relation_node_relatives(
+		&self,
+		node: &Node,
+		graph: &Graph,
+	) -> (Option<String>, Option<usize>) {
+		let children = graph.edges.iter().any(|e| e.kind.hierarchy() && e.from == node.key);
+		let coordinator = self
+			.snapshot
+			.iter()
+			.flat_map(|s| s.agents.iter())
+			.any(|a| a.id == node.key && a.assistant);
+		let team = (children && !coordinator).then(|| groups::descendants(graph, &node.key).len());
+		let parent = graph
+			.edges
+			.iter()
+			.find(|e| e.kind.hierarchy() && e.to == node.key)
+			.and_then(|e| graph.nodes.iter().find(|n| n.key == e.from))
+			.and_then(|n| n.row.as_ref())
+			.map(|row| self.relation_agent_number(row));
+		(parent, team)
+	}
+
+	fn relation_text_widths(
+		&self,
+		graph: &Graph,
+		layout: card::Layout,
+	) -> BTreeMap<String, TextWidths> {
+		if !layout.activity_visible() {
+			return BTreeMap::new();
+		}
+		let native = layout.on_display(self.work_board.view.display_scale);
+		let text = gpui::WindowTextSystem::new(self.work_board.text_system.clone());
+		let measure = |value: &str, numeric: bool| {
+			let mut font = gpui::font(crate::ui_theme::FONT_FAMILY);
+			if numeric {
+				font.features = card::number_features();
+			}
+			f32::from(
+				text.shape_line(
+					value.to_owned().into(),
+					gpui::px(native.title_size()),
+					&[gpui::TextRun { len: value.len(), font, ..Default::default() }],
+					None,
+				)
+				.width,
+			)
+		};
+		graph
+			.nodes
+			.iter()
+			.filter_map(|node| {
+				let row = node.row.as_ref()?;
+				let (parent, team) = self.relation_node_relatives(node, graph);
+				let mut width = 7. + measure(&self.relation_agent_number(row), true);
+				if self.work_board.view.picked_agent.as_deref() == Some(&node.key)
+					&& parent.is_some()
+				{
+					width += 10.
+						+ native.title_size()
+						+ measure(parent.as_deref().unwrap_or_default(), false);
+				} else if let Some(team) = team {
+					width += 12. + native.title_size() + measure(&team.to_string(), true);
+				}
+				if !node.assignment.is_empty() {
+					width += 6. + measure(&node.assignment, false).min(native.caption_width());
+				}
+				Some((
+					node.key.clone(),
+					TextWidths {
+						nameplate: (width + 1.) / native.zoom,
+						speech: header::speech_width(
+							&node.activity,
+							native,
+							&self.work_board.text_system,
+							&text,
+						)
+						.map(|width| width / native.zoom),
+					},
+				))
+			})
+			.collect()
 	}
 
 	fn relation_scope_layer(
@@ -1463,22 +1585,7 @@ impl AgentSurface {
 			let (emphasized, faded) = self.relation_node_emphasis(node, graph, &neighborhood);
 			let faded =
 				faded && self.work_board.view.presentation != layout::Presentation::Together;
-			let children =
-				graph.edges.iter().filter(|e| e.kind.hierarchy() && e.from == node.key).count();
-			let coordinator = self
-				.snapshot
-				.iter()
-				.flat_map(|s| s.agents.iter())
-				.any(|a| a.id == node.key && a.assistant);
-			let team_members =
-				(children > 0 && !coordinator).then(|| groups::descendants(graph, &node.key).len());
-			let parent = graph
-				.edges
-				.iter()
-				.find(|e| e.kind.hierarchy() && e.to == node.key)
-				.and_then(|edge| graph.nodes.iter().find(|n| n.key == edge.from))
-				.and_then(|n| n.row.as_ref())
-				.map(|row| self.relation_agent_number(row));
+			let (parent, team_members) = self.relation_node_relatives(node, graph);
 
 			let interaction = self.relation_node_interaction(node, graph, cx);
 			let view = interaction.keyboard(
@@ -4413,6 +4520,7 @@ mod fit_tests {
 			size: (224., 48.),
 			attachment: None,
 			identity: None,
+			speech: None,
 			base_height: 48.,
 			layout_height: 48.,
 			navigation: (120., 80.),
@@ -4445,6 +4553,7 @@ mod fit_tests {
 			size: (224., 48.),
 			attachment: None,
 			identity: None,
+			speech: None,
 			base_height: 48.,
 			layout_height: 48.,
 			navigation: (80., 64.),
