@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:733c659f19abc56c0a07da4e6ecfca1c1423ca731bb278f54bcef654d0c8a10c",
+  "pageVersion": "sha256:1566857b57f35fec5966c64b0430434a30091a74b982392af89f2f0690ac4b22",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -221,10 +221,34 @@
           "version": "repo-file-v1:sha256:b47dda6ebedaa7ad291a42422a8beb960d07acc43e953f9ffeb2ad571c3ee061"
         }
       ]
+    },
+    {
+      "id": "claim_c9174ef67d1149899a024ffdd3f420de",
+      "statement": "The two native media regressions share the ICE connection fixture, use synthetic PCM with device I/O disabled, and reserve the Nextest runner for packet-flow and mute assertions.",
+      "evidence": [
+        {
+          "resource": "repo://.config/nextest.toml#L25-L31",
+          "version": "repo-lines-v1:sha256:7ed67ab14439eac9e0d0b806cdf59026d9e78b0195f93ddbebf756f6cf697045:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2U0ZjIxNDE3OGEwZmJiZTI4ZjQ0MTgxMmUwY2UxZTYxNTAyZDM5NTI4YjhmY2ZkOTlkYWI4Nzg3NDllNjExMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGNlY2U3ZWNhOTQ0NjNhYzZlOGY1MjZkNzQ0MmMwYzUxNTdjMTJiMjJiOGFhYTkxZmY1MTgyNmVjYTI0YjMzMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjUwNTJhMDQ2NmU2ZDMwMjE5NDMwMTNiNGM0ZDJhNjVhMWQ0N2JhMDUyZTExY2FkN2E1ZDRlYzUxYTk1NTZmOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTc3NmFiNDE0OTJiODEwOTZhNzU2MGM4ZmQ3YmJiZjUyYmU0YWRmYTVkZTY0ZDBiOTUwNjJkMWE4NWQyNGRlYyJ9"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs#L619-L864",
+          "version": "repo-lines-v1:sha256:0961e731570180cf9997c7b0d1ecb28d01eb75f3754005132605ec6b86239706:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQ2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5ZWEzNTcwYTMwMWE5MmFjYjQ3MTBlMDc2YWEwNzUzZTk4MGU2MTRmNGJkMmMyMTlhY2QwN2Y4MWE4YWJiZDZmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMWRmMTFkN2IwYTBhN2YxOWQ3ZWExMmU4Y2YzN2QwMzFjNzUxODU5NzI3ZWE3OTgyNTQ0MzcyYWYzNzZmOWE5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_bf93fea921df4268baf08b0760de5c7e",
+      "statement": "The media follow-up retains original failures and passing reruns with recovered lock and firewall history: an already-allowed package-only baseline passed while locked, and the workspace binary received its prompt and allow verdict after unlock; a new controlled lock experiment and physical or installed-app acceptance remain unqualified.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json#L2062-L2161",
+          "version": "repo-lines-v1:sha256:bbe5cb8042ce1625bf6a68305d3eb19b21aad4c621291abb2f0d0248fa5b89c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3MjU4MWI4NGIzMWJkNTE5OTgxYjA5N2MwOTM5MDk1YjQ4OTJhODI1NmM3MzdkMzJkY2QyNDhkOWYzODVhZWNlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIxOGU3MDJkYjE4NDM1Y2RlYjQ3NThlNzdjYjljZmY4YzUzODNjMDhhOTZmMjhiNjc1OWQ0NTg2MzgzMTZkZDc1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T21:11:31.338Z"
+    "at": "2026-10-25T02:09:34.237Z"
   }
 }

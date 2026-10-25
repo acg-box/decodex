@@ -4,6 +4,8 @@ title: "Subscription dictation and live voice"
 description: "Native subscription audio ownership, per-call voice settings and on-demand WebRTC media hosting."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-95772fa38252ded838ec3a2f
+    resource: repo://.config/nextest.toml
   - id: openwiki-source-759ed0025679548e066b427b
     resource: repo://apps/decodex-gpui/build.rs
   - id: openwiki-source-2e244c19d3ad0a0d54117218
@@ -24,6 +26,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/native_live_audio.rs
   - id: openwiki-source-d1f06f7b22d0c2eec328d95f
     resource: repo://apps/decodex-gpui/src/native_voice_transport.rs
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-c990afbb3dfa828de42edbc3
     resource: repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs
   - id: openwiki-source-91dfc90839432583cfb2a467
@@ -38,10 +42,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/dictation.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-21T09:01:22.045Z" }
+generated: { by: "codex", at: "2026-10-25T02:09:34.237Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T21:11:31.338Z
+    at: 2026-10-25T02:09:34.237Z
 ---
 
 # Subscription dictation and live voice
@@ -86,6 +90,24 @@ The native media ABI is version 4. The static libwebrtc archive needs the Object
 The normal composer receives dictation text. Live voice uses its own waveform/voice state in that area. The selected input device applies to capture, not to a model-selector control.
 
 Focused tests live in the Rust dictation/voice modules and Swift `VoiceMediaHostTests`. Rust capture tests cover PCM conversion and terminal delivery, while composer tests cover early audio buffering, continued capture feedback during a pending network request, and draining audio before Finish. Rust `dictation_transcript.rs` tests cover segment order, stale revisions, final corrections and transcript limits. The native transport loopback test covers offer/answer, bidirectional audio, captions, mute before negotiation, subsequent mute changes and buffer release. Opt-in tests in `native_audio_owner_tests.rs` exercise hardware capture, playback, mode changes, preparation and route changes. These test definitions do not establish audible quality, echo cancellation quality or provider entitlement. Live acceptance separately requires microphone permission, selected-device capture, partial text, final correction, and both live transcript roles. Unit tests do not establish provider entitlement or network latency.
+
+### Diagnose native media ICE timeouts
+
+`native_call_exchanges_audio_captions_mutes_and_releases_buffers` and `remote_channel_loss_reports_failure_and_releases_buffers` share the same native ICE connection fixture. Both use synthetic PCM, with device capture and playback disabled. Nextest reserves the runner for each media exchange. A timeout waiting for `connected` occurs before the audio, caption, mute and release assertions.
+
+Run the exact workspace feature combination:
+
+```sh
+cargo +stable nextest run --locked --workspace --all-targets --all-features \
+  -E 'binary_id(decodex-gpui::bin/decodex-gpui) and (test(native_call_exchanges_audio_captions_mutes_and_releases_buffers) or test(remote_channel_loss_reports_failure_and_releases_buffers))' \
+  --stress-count 20 --retries 0 --no-fail-fast
+```
+
+These tests need incoming network access for the actual compiled test executable. A package-only build and a workspace feature build can have different executable identities and firewall decisions. On macOS, inspect the application firewall decision for that executable and its `socketfilterfw` events at the failure time. A saved allow rule alone does not show that a particular flow received an allow verdict. [Apple documents](https://support.apple.com/guide/mac-help/block-connections-to-your-mac-with-a-firewall-mh34041/mac) that connections remain denied while an access alert awaits a response. Do not disable the firewall, add retries, remove candidates or extend deadlines to conceal this prerequisite.
+
+The `retained_project_agent_work.native_media_followup` section in [retained evidence](../../automations/upstream/retained-evidence.json) preserves the original two failed results and the separate passing reruns. The audio sources, dependencies and WebRTC features match across the pre-change baseline and current main. Each source passed 40 repeated media executions without retries; current main also passed all 2918 workspace tests. Historical firewall events support an external admission cause. Recovered `loginwindow` info/debug events place both failed workspace tests within the locked interval. The already-allowed package-only baseline also passed both tests while locked. After unlock, the workspace test binary received a firewall prompt, then a known allow verdict. This supports an admission request left unattended during locking; it does not show that locking alone broke audio. The evidence is retrospective, with no new controlled lock or firewall-denial experiment. Physical audio, provider behavior and installed-app acceptance remain separate.
+
+For a lock correlation, include the preceding lock and subsequent unlock in the log time window. Read the info/debug state transitions as well as the firewall verdicts. A short window around the timeout can omit the state transition and cannot establish that the session stayed unlocked.
 
 See [Agent coordination](../architecture/chief-coordination.md) and [Desktop workspace](../architecture/desktop-workspace.md).
 

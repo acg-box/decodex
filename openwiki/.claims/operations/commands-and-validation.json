@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3f514ca1286069e58cb4c149ec153f4ae8cc5d232096c3b6d3974b3ec35cadcb",
+  "pageVersion": "sha256:00d6269bfd30065ebde1400cfb6919552a866ef8ed4d68311acdac28320c346e",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -122,7 +122,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
+          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
         }
       ]
     },
@@ -190,7 +190,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
+          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
         }
       ]
     },
@@ -206,11 +206,11 @@
     },
     {
       "id": "claim_4030c1c3494548aa8534215ace264c45",
-      "statement": "Reproducible Project Work qualification commands distinguish preparation, exact-artifact native tests and overlapping local cohorts, with explicit audio failures and no installed-app or live-account acceptance claim.",
+      "statement": "Reproducible Project Work qualification commands distinguish preparation, exact-artifact native tests and overlapping local cohorts; historical audio failures and later passing media and workspace reruns stay separate from installed-app or live-account acceptance.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
+          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/project_guardian.py",
@@ -221,6 +221,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T21:19:56.719Z"
+    "at": "2026-10-25T02:09:34.237Z"
   }
 }

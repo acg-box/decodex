@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c9ebfc041372b0e009ed2d70f9ab2f6b8230c34b85bf5adc60d79077f0facee3",
+  "pageVersion": "sha256:122157b52d77020107d96b51ce11171902ae291b1c1a9fef9f8eb8373b925fe8",
   "claims": [
     {
       "id": "claim_070657bf065541118dc7ae41cdeffc2c",
@@ -34,7 +34,7 @@
     },
     {
       "id": "claim_cdec182fee104c07abe30713fd28a444",
-      "statement": "The earlier component qualification retains its passed LEAK test and clean isolated rerun; the separate Project Work full suite records an appearance-fade LEAK of unknown cause and two unresolved audio timeouts.",
+      "statement": "The earlier component LEAK and original Project Work appearance-fade LEAK retain their limits; the separate native media follow-up records passing full-suite and repeated checks with recovered lock and firewall history, without a new controlled lock comparison or an explanation of the earlier LEAK.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
@@ -42,7 +42,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:3517c7bb3dda89230329e344e9b2af92b1d64f63d94ae8eb79fb6f4180afbbe2"
+          "version": "repo-file-v1:sha256:b7170ca7e97a19eede277c0de461f1eecee350f5c46848d004a60cf4a7504845"
         }
       ]
     },
@@ -59,6 +59,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T21:19:56.719Z"
+    "at": "2026-10-25T02:09:34.237Z"
   }
 }
