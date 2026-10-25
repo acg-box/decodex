@@ -2314,6 +2314,9 @@ impl AgentHost {
 
 				drop(phase);
 
+				// Native identity and persisted recovery are ready. Routine wake dispatch may
+				// still inspect external writers; it must not hold the workspace reveal.
+				self.initializing.send_replace(false);
 				let _phase = Phase::new("wake_pending");
 
 				self.record_delivery(&root.id, active.1.wake_pending().await).await;
