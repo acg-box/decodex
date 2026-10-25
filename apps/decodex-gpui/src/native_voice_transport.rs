@@ -37,6 +37,10 @@ use crate::shell::agent_surface::voice::audio::{
 };
 
 #[cfg(test)]
+#[path = "native_voice_online_tests.rs"]
+mod online_tests;
+
+#[cfg(test)]
 type OfferPause = (oneshot::Sender<()>, oneshot::Receiver<()>);
 
 pub(super) enum Command {
