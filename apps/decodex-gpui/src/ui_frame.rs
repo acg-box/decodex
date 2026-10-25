@@ -1,19 +1,31 @@
 //! Application-wide animation cadence, independent of keyboard focus.
-use gpui::{AnyElement, App, AppContext as _, Context, Entity, IntoElement as _, Render, Window};
+use std::sync::atomic::AtomicU8;
+
+use gpui::{
+	AnyElement, App, AppContext as _, Context, Entity, IntoElement, Render, Subscription,
+	WeakEntity, Window,
+};
 #[cfg(all(target_os = "macos", not(test)))]
 use objc2::{
 	rc::Retained,
 	runtime::{AnyClass, AnyObject},
 };
-use std::sync::atomic::AtomicU8;
+
+use crate::ui_preferences;
 
 /// A model publishes state changes; its presentation owns animation frames.
-pub(crate) struct Presentation<T: 'static> {
-	owner: gpui::WeakEntity<T>,
+pub(crate) struct Presentation<T>
+where
+	T: 'static,
+{
+	owner: WeakEntity<T>,
 	render: fn(&mut T, &mut Window, &mut Context<T>) -> AnyElement,
-	_observation: gpui::Subscription,
+	_observation: Subscription,
 }
-impl<T: 'static> Presentation<T> {
+impl<T> Presentation<T>
+where
+	T: 'static,
+{
 	pub(crate) fn new(
 		owner: &Entity<T>,
 		render: fn(&mut T, &mut Window, &mut Context<T>) -> AnyElement,
@@ -26,8 +38,11 @@ impl<T: 'static> Presentation<T> {
 		})
 	}
 }
-impl<T: 'static> Render for Presentation<T> {
-	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
+impl<T> Render for Presentation<T>
+where
+	T: 'static,
+{
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.owner
 			.update(cx, |owner, cx| (self.render)(owner, window, cx))
 			.unwrap_or_else(|_| gpui::div().into_any_element())
@@ -39,7 +54,10 @@ pub(crate) fn window_options() -> gpui::WindowOptions {
 	gpui::WindowOptions { inactive_frame_interval: None, ..Default::default() }
 }
 
-pub(crate) fn observe_activation<T: 'static>(window: &mut Window, cx: &mut gpui::Context<T>) {
+pub(crate) fn observe_activation<T>(window: &mut Window, cx: &mut Context<T>)
+where
+	T: 'static,
+{
 	// Re-evaluate the rendering policy on departure and resume all surfaces on return.
 	// A sibling composer becoming key does not deactivate the application.
 	cx.observe_window_activation(window, |_, _, cx| {
@@ -53,15 +71,18 @@ pub(crate) fn application_active() -> bool {
 	unsafe {
 		let app: Retained<AnyObject> =
 			objc2::msg_send![AnyClass::get(c"NSApplication").expect("AppKit"), sharedApplication];
+
 		objc2::msg_send![&*app, isActive]
 	}
+
 	#[cfg(any(not(target_os = "macos"), test))]
 	true
 }
 
 pub(crate) fn background_rendering(value: Option<bool>) -> bool {
 	static CACHE: AtomicU8 = AtomicU8::new(u8::MAX);
-	crate::ui_preferences::boolean("fullBackgroundRendering", &CACHE, value, false)
+
+	ui_preferences::boolean("fullBackgroundRendering", &CACHE, value, false)
 }
 
 /// Rendering policy is separate from keyboard focus and application activation.
@@ -82,13 +103,20 @@ pub(crate) fn request_frame(window: &Window, _: &mut App) {
 pub(crate) fn draw_frame(window: &mut Window, cx: &mut App) {
 	// A cached subtree advances when the display delivers its frame request.
 	window.simulate_next_frame(cx);
+
+	draw_current_frame(window, cx);
+}
+
+#[cfg(test)]
+pub(crate) fn draw_current_frame(window: &mut Window, cx: &mut App) {
 	window.draw(cx).clear(cx);
 }
 
 #[cfg(test)]
 mod tests {
-	use gpui::{AppContext as _, Entity, IntoElement, Render};
 	use std::{cell::Cell, rc::Rc};
+
+	use gpui::{AppContext as _, Entity, IntoElement, Render};
 
 	struct Motion(Entity<()>);
 	impl Render for Motion {
@@ -98,7 +126,9 @@ mod tests {
 			cx: &mut gpui::Context<Self>,
 		) -> impl IntoElement {
 			self.0.read(cx);
+
 			super::request_frame(window, cx);
+
 			gpui::div()
 		}
 	}
@@ -108,13 +138,18 @@ mod tests {
 		let model = cx.new(|_| ());
 		let (_, visual) = cx.add_window_view(|_, _| Motion(model.clone()));
 		let notifications = Rc::new(Cell::new(0));
+
 		visual.update(|window, cx| {
 			let notifications = notifications.clone();
+
 			cx.observe(&model, move |_, _| notifications.set(notifications.get() + 1)).detach();
 			window.draw(cx).clear(cx);
+
 			assert!(window.simulate_next_frame(cx) > 0);
 		});
+
 		cx.run_until_parked();
+
 		assert_eq!(notifications.get(), 0);
 	}
 }

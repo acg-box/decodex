@@ -1,41 +1,78 @@
-use super::*;
+use std::{thread, time::Duration};
+
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::{
+	AppContext as _, Entity, Render, ScrollDelta, ScrollEvent, TestAppContext, VisualTestContext,
+	Window,
+};
+use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::{
+	wire_test_support::{self, SERVER},
+	work_board::{
+		activity::Output,
+		workbench::collaboration::{
+			AgentExchangeDto, AgentExchangeQuestionDto, AgentExchangesResult, AgentSurface,
+			Context, EntityId, IntoElement, Kind, cases,
+		},
+	},
+};
+use decodex_protocol::{
+	AgentAsyncQuestionDto, AgentExchangeAssessment, CURRENT_VERSION, ClientMessage, QueryPayload,
+	QueryResultEnvelope, QueryResultPayload, ServerId, ServerMessage,
+};
+
+struct WireView(Entity<AgentSurface>);
+impl Render for WireView {
+	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.0.update(cx, |s, cx| s.render_agent_workbench(cx))
+	}
+}
 
 #[gpui::test]
-fn collaboration_stays_global_and_expands_without_switching_chat_or_draft(
-	cx: &mut gpui::TestAppContext,
-) {
+fn collaboration_stays_global_and_expands_without_switching_chat_or_draft(cx: &mut TestAppContext) {
 	let (surface, visual) = cx.add_window_view(|_, cx| {
 		let mut surface = AgentSurface::new(cx);
+
 		surface.visual_workspace_fixture(cx);
 		surface.visual_workbench_page("workbench", cx);
+
 		surface
 	});
-	visual.simulate_resize(gpui::size(gpui::px(1536.), gpui::px(1024.)));
+
+	visual.simulate_resize(gpui::size(gpui::px(1_536.), gpui::px(1_024.)));
 	surface.update(visual, |s, cx| {
 		s.composer.update(cx, |input, cx| input.set_content("Keep the current draft", cx));
 	});
 	visual.update(crate::ui_frame::draw_frame);
+
 	let header = visual
 		.debug_bounds("collaboration-call:ref-sage:request-sage-iris:ref-iris")
 		.expect("recorded exchange is visible without selecting its owner");
+
 	visual.simulate_click(header.center(), Default::default());
 	visual.update(crate::ui_frame::draw_frame);
+
 	surface.read_with(visual, |s, cx| {
 		assert_eq!(s.selected.as_deref(), Some("agent"));
 		assert_eq!(s.composer.read(cx).content(), "Keep the current draft");
 		assert!(s.work_board.collaboration_expanded.is_some());
-		let before: Vec<_> = exchanges(&s.relation_graph(), &s.factory_rows(), &[], &[])
+
+		let before: Vec<_> = cases::exchanges(&s.relation_graph(), &s.factory_rows(), &[], &[])
 			.into_iter()
 			.map(|case| case.id)
 			.collect();
+
 		assert!(before.contains(&"call:ref-mira:request-mira-nora:ref-nora".into()));
 		assert!(before.contains(&"call:ref-sage:request-sage-iris:ref-iris".into()));
 	});
+
 	let participant = visual
 		.debug_bounds(
 			"collaboration-participant-call:ref-sage:request-sage-iris:ref-iris-native:sage:ref-iris",
 		)
 		.unwrap();
+
 	visual.simulate_click(participant.center(), Default::default());
 	visual.update(crate::ui_frame::draw_frame);
 	surface.read_with(visual, |s, cx| {
@@ -46,6 +83,7 @@ fn collaboration_stays_global_and_expands_without_switching_chat_or_draft(
 	});
 	surface.update(visual, |s, cx| s.select_workbench_agent("ravi", cx));
 	visual.update(crate::ui_frame::draw_frame);
+
 	assert!(
 		visual.debug_bounds("collaboration-call:ref-mira:request-mira-nora:ref-nora").is_some()
 	);
@@ -54,113 +92,154 @@ fn collaboration_stays_global_and_expands_without_switching_chat_or_draft(
 }
 
 #[gpui::test]
-fn native_calls_keep_exact_sources_and_never_join_unrelated_snapshots(
-	cx: &mut gpui::TestAppContext,
-) {
+fn native_calls_keep_exact_sources_and_never_join_unrelated_snapshots(cx: &mut TestAppContext) {
 	let surface = cx.new(|cx| {
 		let mut s = AgentSurface::new(cx);
+
 		s.visual_workspace_fixture(cx);
 		s.visual_workbench_page("workbench", cx);
+
 		s
 	});
+
 	surface.read_with(cx, |s, _| {
 		let mut graph = s.relation_graph();
 		let rows = s.factory_rows();
-		let original = exchanges(&graph, &rows, &[], &[])
+		let original = cases::exchanges(&graph, &rows, &[], &[])
 			.into_iter()
 			.find(|case| {
 				case.from.key == "mira"
 					&& case.to.as_ref().and_then(|row| row.thread.as_deref()) == Some("ref-nora")
 			})
 			.unwrap();
+
 		assert_eq!(original.state, "Recorded");
 		assert_eq!(original.request.as_deref(), Some("Check reconnect preserves the full reply."));
+
 		let mut snapshot = original.edge.clone().unwrap();
+
 		snapshot.id = "unlinked-snapshot".into();
 		snapshot.from = original.to.as_ref().unwrap().key.clone();
 		snapshot.to = original.from.key.clone();
 		snapshot.kind = Kind::Returned;
 		snapshot.excerpt = Some("Previous result".into());
+
 		let mut opaque = original.edge.clone().unwrap();
+
 		opaque.id = "opaque-interaction".into();
 		opaque.excerpt = None;
+
 		graph.edges.push(opaque);
 		graph.edges.push(snapshot.clone());
-		let cases = exchanges(&graph, &rows, &[], &[]);
+
+		let cases = cases::exchanges(&graph, &rows, &[], &[]);
+
 		assert!(cases.iter().find(|case| case.id == "opaque-interaction").unwrap().earlier);
 		assert_eq!(cases.iter().find(|case| case.id == original.id).unwrap().state, "Recorded");
 		assert_eq!(
 			cases.iter().find(|case| case.id == "unlinked-snapshot").unwrap().state,
 			"Reported"
 		);
+
 		snapshot.kind = Kind::Context;
 		snapshot.source = None;
 		graph.edges = vec![snapshot];
-		assert!(exchanges(&graph, &rows, &[], &[]).is_empty());
+
+		assert!(cases::exchanges(&graph, &rows, &[], &[]).is_empty());
 	});
 }
 
 #[gpui::test]
 fn exchange_disclosure_animates_in_both_directions_without_changing_the_draft(
-	cx: &mut gpui::TestAppContext,
+	cx: &mut TestAppContext,
 ) {
 	let (surface, visual) = cx.add_window_view(|_, cx| {
 		let mut s = AgentSurface::new(cx);
+
 		s.visual_workspace_fixture(cx);
 		s.visual_workbench_page("workbench", cx);
+
 		s.work_board.collaboration_expanded = None;
 		s.workspace.agent_panel_width = 240.;
+
 		s.composer.update(cx, |input, cx| input.set_content("Preserve this draft", cx));
+
 		s
 	});
-	visual.simulate_resize(gpui::size(gpui::px(1536.), gpui::px(1024.)));
+
+	visual.simulate_resize(gpui::size(gpui::px(1_536.), gpui::px(1_024.)));
 	visual.update(crate::ui_frame::draw_frame);
 	visual.update(crate::ui_frame::draw_frame);
-	std::thread::sleep(std::time::Duration::from_millis(240));
+
+	thread::sleep(Duration::from_millis(240));
+
 	visual.update(crate::ui_frame::draw_frame);
+
 	let row_id = "collaboration-row-call:ref-sage:request-sage-iris:ref-iris";
 	let control_id = "collaboration-call:ref-sage:request-sage-iris:ref-iris";
-	let height = |visual: &mut gpui::VisualTestContext| {
+	let height = |visual: &mut VisualTestContext| {
 		f32::from(visual.debug_bounds(row_id).unwrap().size.height)
 	};
 	let closed = height(visual);
 	let header = visual.debug_bounds(control_id).unwrap();
+
 	visual.simulate_click(header.center(), Default::default());
+
 	// Inspect every presented frame. A later sample can miss the middle when
 	// native layout takes longer; the contract is visible interpolation.
 	let mut opening = Vec::new();
+
 	for _ in 0..2 {
 		visual.update(crate::ui_frame::draw_frame);
 		opening.push(height(visual));
 	}
-	std::thread::sleep(std::time::Duration::from_millis(55));
+
+	thread::sleep(Duration::from_millis(55));
+
 	visual.update(crate::ui_frame::draw_frame);
 	opening.push(height(visual));
-	std::thread::sleep(std::time::Duration::from_millis(240));
+
+	thread::sleep(Duration::from_millis(240));
+
 	visual.update(crate::ui_frame::draw_frame);
+
 	let open = height(visual);
+
 	assert!(open > closed + 5., "recorded exchange must open: {closed}, {open}");
 	assert!(
 		opening.iter().any(|height| *height > closed && *height < open),
 		"opening must interpolate: {opening:?}"
 	);
+
 	let row = visual.debug_bounds(row_id).unwrap();
 	let panel = visual.debug_bounds("workbench-body").unwrap();
+
 	assert!(row.left() >= panel.left() && row.right() <= panel.right());
+
 	let header = visual.debug_bounds(control_id).unwrap();
+
 	visual.simulate_click(header.center(), Default::default());
 	visual.update(crate::ui_frame::draw_frame);
+
 	let first_closing = height(visual);
-	std::thread::sleep(std::time::Duration::from_millis(55));
+
+	thread::sleep(Duration::from_millis(55));
+
 	visual.update(crate::ui_frame::draw_frame);
+
 	let closing = [first_closing, height(visual)];
+
 	assert!(
 		closing.iter().any(|height| *height > closed && *height < open),
 		"closing must interpolate: {closing:?}"
 	);
-	std::thread::sleep(std::time::Duration::from_millis(240));
+
+	thread::sleep(Duration::from_millis(240));
+
 	visual.update(crate::ui_frame::draw_frame);
+
 	assert!((height(visual) - closed).abs() <= 1.);
+
 	surface.read_with(visual, |s, cx| {
 		assert_eq!(s.selected.as_deref(), Some("agent"));
 		assert_eq!(s.composer.read(cx).content(), "Preserve this draft");
@@ -191,45 +270,66 @@ fn receipt(id: i64, kind: decodex_protocol::AgentExchangeKind) -> AgentExchangeD
 }
 
 #[gpui::test]
-fn source_reference_fits_one_line_and_copies_its_exact_value(cx: &mut gpui::TestAppContext) {
+fn source_reference_fits_one_line_and_copies_its_exact_value(cx: &mut TestAppContext) {
 	const THREAD: &str = "01a15360-31f5-7523-be26-3f961aa42d19";
+
 	let (surface, visual) = cx.add_window_view(|_, cx| {
 		let mut s = AgentSurface::new(cx);
+
 		s.visual_workspace_fixture(cx);
 		s.visual_workbench_page("workbench", cx);
+
 		s.workspace.agent_panel_width = 240.;
+
 		let mut record = receipt(70, decodex_protocol::AgentExchangeKind::NotSent);
+
 		record.thread_id = Some(THREAD.into());
 		s.work_board.collaboration.source =
 			s.snapshot.as_ref().and_then(|snapshot| snapshot.runtime_source.clone());
+
 		s.work_board.collaboration.entries.insert(70, record);
+
 		s.work_board.collaboration_expanded = Some("unsent:70".into());
 		s.work_board.collaboration.source_open = Some("unsent:70".into());
+
 		s.composer.update(cx, |input, cx| input.set_content("Preserve this draft", cx));
+
 		s
 	});
-	visual.simulate_resize(gpui::size(gpui::px(1536.), gpui::px(1024.)));
+
+	visual.simulate_resize(gpui::size(gpui::px(1_536.), gpui::px(1_024.)));
 	visual.update(crate::ui_frame::draw_frame);
 	// Hit-test the presented disclosure, independently of asynchronous image loads.
 	visual.update(crate::ui_frame::draw_frame);
-	std::thread::sleep(std::time::Duration::from_millis(240));
+
+	thread::sleep(Duration::from_millis(240));
+
 	visual.update(crate::ui_frame::draw_frame);
+
 	let value = visual.debug_bounds("collaboration-reference-unsent:70-Thread").unwrap();
 	let panel = visual.debug_bounds("workbench-body").unwrap();
+
 	assert!(f32::from(value.size.height) <= 24.);
 	assert!(value.left() >= panel.left() && value.right() <= panel.right());
+
 	let copy = visual.debug_bounds("copy-collaboration-reference-unsent:70-Thread").unwrap();
 	let distance = (copy.bottom() - panel.bottom() + gpui::px(24.)).max(gpui::px(0.));
-	visual.simulate_event(gpui::ScrollEvent {
+
+	visual.simulate_event(ScrollEvent {
 		position: panel.center(),
-		delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), -distance)),
+		delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.), -distance)),
 		..Default::default()
 	});
 	visual.update(crate::ui_frame::draw_frame);
-	std::thread::sleep(std::time::Duration::from_millis(300));
+
+	thread::sleep(Duration::from_millis(300));
+
 	visual.update(crate::ui_frame::draw_frame);
+
 	let copy = visual.debug_bounds("copy-collaboration-reference-unsent:70-Thread").unwrap();
+
 	assert!(panel.contains(&copy.center()), "the source action must be reachable by scrolling");
+
 	visual.simulate_click(copy.center(), Default::default());
 	visual.update(|_, cx| {
 		assert_eq!(cx.read_from_clipboard().and_then(|item| item.text()).as_deref(), Some(THREAD));
@@ -242,24 +342,31 @@ fn source_reference_fits_one_line_and_copies_its_exact_value(cx: &mut gpui::Test
 }
 
 #[gpui::test]
-fn managed_receipts_keep_busy_delivery_and_assessment_separate(cx: &mut gpui::TestAppContext) {
-	use decodex_protocol::{AgentExchangeAssessment as A, AgentExchangeKind as K};
+fn managed_receipts_keep_busy_delivery_and_assessment_separate(cx: &mut TestAppContext) {
 	let surface = cx.new(|cx| {
 		let mut s = AgentSurface::new(cx);
+
 		s.visual_workspace_fixture(cx);
 		s.visual_workbench_page("workbench", cx);
+
 		s
 	});
+
 	surface.read_with(cx, |s, _| {
 		let mut graph = s.relation_graph();
+
 		graph.edges.clear();
+
 		let rows = s.factory_rows();
-		let mut busy = receipt(10, K::NotSent);
+		let mut busy = receipt(10, decodex_protocol::AgentExchangeKind::NotSent);
+
 		busy.work_id = "agent".into();
 		busy.thread_id = Some("ref-agent".into());
 		busy.other_work_id = Some("sage".into());
-		let mut instruction = receipt(11, K::Instruction);
-		let cases = exchanges(&graph, &rows, &[busy.clone(), instruction.clone()], &[]);
+
+		let mut instruction = receipt(11, decodex_protocol::AgentExchangeKind::Instruction);
+		let cases = cases::exchanges(&graph, &rows, &[busy.clone(), instruction.clone()], &[]);
+
 		assert_eq!(
 			cases.iter().find(|case| case.state == "Not sent").unwrap().summary,
 			"Busy · instruction not sent or queued"
@@ -268,33 +375,46 @@ fn managed_receipts_keep_busy_delivery_and_assessment_separate(cx: &mut gpui::Te
 			cases.iter().find(|case| case.id == "managed:sage:11").unwrap().state,
 			"Unconfirmed"
 		);
+
 		instruction.delivered_turn_id = Some("next-turn".into());
-		let cases = exchanges(&graph, &rows, &[instruction.clone()], &[]);
+
+		let cases = cases::exchanges(&graph, &rows, &[instruction.clone()], &[]);
+
 		assert_eq!(cases[0].state, "Continuing");
-		let mut result = receipt(12, K::Result);
+
+		let mut result = receipt(12, decodex_protocol::AgentExchangeKind::Result);
+
 		result.instruction_event_id = Some(11);
 		result.outcome = Some("completed".into());
 		result.delivered_turn_id = Some("manager-review".into());
-		let cases = exchanges(&graph, &rows, &[instruction.clone(), result.clone()], &[]);
+
+		let cases = cases::exchanges(&graph, &rows, &[instruction.clone(), result.clone()], &[]);
+
 		assert_eq!(cases.len(), 1);
 		assert_eq!(cases[0].id, "managed:sage:11");
 		assert_eq!(cases[0].state, "To review");
 		assert!(!cases[0].earlier);
+
 		for (assessment, state, earlier) in [
-			(A::FollowUp, "Changes asked", false),
-			(A::Wait, "Waiting", false),
-			(A::UserDecision, "Decision", false),
-			(A::Accepted, "Accepted", true),
+			(AgentExchangeAssessment::FollowUp, "Changes asked", false),
+			(AgentExchangeAssessment::Wait, "Waiting", false),
+			(AgentExchangeAssessment::UserDecision, "Decision", false),
+			(AgentExchangeAssessment::Accepted, "Accepted", true),
 		] {
 			result.assessment = Some(assessment);
-			let cases = exchanges(&graph, &rows, &[instruction.clone(), result.clone()], &[]);
+
+			let cases =
+				cases::exchanges(&graph, &rows, &[instruction.clone(), result.clone()], &[]);
+
 			assert_eq!(cases[0].state, state);
 			assert_eq!(cases[0].earlier, earlier);
 		}
+
 		result.assessment = None;
 		result.instruction_event_id = None;
+
 		assert_eq!(
-			exchanges(&graph, &rows, &[instruction, result], &[]).len(),
+			cases::exchanges(&graph, &rows, &[instruction, result], &[]).len(),
 			2,
 			"missing linkage must not be guessed from participants or text"
 		);
@@ -302,25 +422,28 @@ fn managed_receipts_keep_busy_delivery_and_assessment_separate(cx: &mut gpui::Te
 }
 
 #[gpui::test]
-fn question_retirement_keeps_later_questions_and_rejects_rebound_sources(
-	cx: &mut gpui::TestAppContext,
-) {
+fn question_retirement_keeps_later_questions_and_rejects_rebound_sources(cx: &mut TestAppContext) {
 	let surface = cx.new(|cx| {
 		let mut s = AgentSurface::new(cx);
+
 		s.visual_workspace_fixture(cx);
 		s.visual_workbench_page("workbench", cx);
+
 		s
 	});
+
 	surface.read_with(cx, |s, _| {
 		let mut graph = s.relation_graph();
+
 		graph.edges.clear();
+
 		let rows = s.factory_rows();
 		let question = |item: &str, pending| AgentExchangeQuestionDto {
 			work_id: "sage".into(),
 			thread_id: "ref-sage".into(),
 			turn_id: "turn".into(),
 			item_id: item.into(),
-			question: decodex_protocol::AgentAsyncQuestionDto {
+			question: AgentAsyncQuestionDto {
 				arrived_live: false,
 				id: decodex_protocol::agent_async_question_id(item, 0),
 				title: "Which name?".into(),
@@ -330,33 +453,20 @@ fn question_retirement_keeps_later_questions_and_rejects_rebound_sources(
 		};
 		let mut old = question("old", false);
 		let later = question("later", true);
-		let cases = exchanges(&graph, &rows, &[], &[old.clone(), later]);
+		let cases = cases::exchanges(&graph, &rows, &[], &[old.clone(), later]);
+
 		assert_eq!(cases.iter().filter(|case| case.state == "Question").count(), 1);
 		assert_eq!(cases.iter().filter(|case| case.earlier).count(), 1);
 		assert_ne!(cases[0].id, cases[1].id);
+
 		old.thread_id = "another-native-thread".into();
-		assert!(exchanges(&graph, &rows, &[], &[old]).is_empty());
+
+		assert!(cases::exchanges(&graph, &rows, &[], &[old]).is_empty());
 	});
 }
 
-struct WireView(gpui::Entity<AgentSurface>);
-impl gpui::Render for WireView {
-	fn render(&mut self, _: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.0.update(cx, |s, cx| s.render_agent_workbench(cx))
-	}
-}
-
 #[gpui::test]
-fn source_receipts_cross_the_local_wire_without_switching_the_active_chat(
-	cx: &mut gpui::TestAppContext,
-) {
-	use crate::shell::agent_surface::wire_test_support;
-	use decodex_protocol::{
-		AgentExchangeKind, CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope,
-		QueryResultPayload, ServerId, ServerMessage,
-	};
-	use futures_util::{SinkExt as _, StreamExt as _};
-	use tokio_tungstenite::tungstenite::Message;
+fn source_receipts_cross_the_local_wire_without_switching_the_active_chat(cx: &mut TestAppContext) {
 	let (_root, profile, server) = wire_test_support::fixture(|listener| async move {
 		let mut socket = wire_test_support::accept(&listener).await;
 		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
@@ -365,14 +475,18 @@ fn source_receipts_cross_the_local_wire_without_switching_the_active_chat(
 		let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
 			panic!("read-only query")
 		};
+
 		assert!(matches!(query.payload, QueryPayload::GetAgentExchanges { before: None }));
-		let mut entry = receipt(70, AgentExchangeKind::NotSent);
+
+		let mut entry = receipt(70, decodex_protocol::AgentExchangeKind::NotSent);
+
 		entry.work_id = "agent".into();
 		entry.thread_id = Some("ref-agent".into());
 		entry.other_work_id = Some("sage".into());
+
 		let result = ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,
-			server_id: ServerId::new(wire_test_support::SERVER).unwrap(),
+			server_id: ServerId::new(SERVER).unwrap(),
 			query_id: query.query_id,
 			payload: QueryResultPayload::AgentExchanges(AgentExchangesResult::Available {
 				source: EntityId::new("collaboration-binding").unwrap(),
@@ -382,23 +496,32 @@ fn source_receipts_cross_the_local_wire_without_switching_the_active_chat(
 				next_before: None,
 			}),
 		});
+
 		socket.send(Message::Text(serde_json::to_string(&result).unwrap().into())).await.unwrap();
 	});
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(|cx| {
 			let mut s = AgentSurface::new(cx);
+
 			s.visual_workspace_fixture(cx);
 			s.visual_workbench_page("workbench", cx);
+
 			s.snapshot.as_mut().unwrap().runtime_source =
 				Some(EntityId::new("collaboration-binding").unwrap());
+
 			s.composer.update(cx, |input, cx| input.set_content("Keep the Main draft", cx));
+
 			s.profile = Some(profile);
+
 			s
 		});
+
 		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+
 		WireView(surface)
 	});
 	let surface = view.read_with(visual, |view, _| view.0.clone());
+
 	surface.update(visual, |s, cx| s.read_collaboration(None, true, cx));
 	visual.run_until_parked();
 	server.join().unwrap();
@@ -413,21 +536,24 @@ fn source_receipts_cross_the_local_wire_without_switching_the_active_chat(
 			"Not sent"
 		);
 	});
+
 	assert!(visual.debug_bounds("collaboration-unsent:70").is_some());
 }
 
 #[gpui::test]
-fn native_final_reports_keep_their_own_turn_and_do_not_invent_acceptance(
-	cx: &mut gpui::TestAppContext,
-) {
+fn native_final_reports_keep_their_own_turn_and_do_not_invent_acceptance(cx: &mut TestAppContext) {
 	let surface = cx.new(|cx| {
 		let mut s = AgentSurface::new(cx);
+
 		s.visual_workspace_fixture(cx);
 		s.visual_workbench_page("workbench", cx);
+
 		s
 	});
+
 	surface.update(cx, |s, _| {
 		let key = "native:sage:ref-iris";
+
 		s.native_agents
 			.lists
 			.get_mut("sage")
@@ -436,21 +562,25 @@ fn native_final_reports_keep_their_own_turn_and_do_not_invent_acceptance(
 			.find(|agent| agent.thread_id == "ref-iris")
 			.unwrap()
 			.status = "idle".into();
+
 		let row = s.factory_rows().into_iter().find(|row| row.key == key).unwrap();
 		let stamp = s.brief_stamp(&row);
 		let brief = s.work_board.briefs.get_mut(key).unwrap();
+
 		brief.stamp = stamp;
 		brief.outcome = Some(("report-turn".into(), "completed".into()));
 		brief.preview.as_mut().unwrap().turn = "report-turn".into();
 		brief.preview.as_mut().unwrap().task = "Check compact spacing".into();
-		brief.output = Some(super::super::super::activity::Output {
+		brief.output = Some(Output {
 			turn: "report-turn".into(),
 			text: "The compact layout fits 24 agents.".into(),
 			truncated: false,
 		});
+
 		let cases = s.collaboration_cases(&s.relation_graph(), &s.factory_rows());
 		let report =
 			cases.iter().find(|case| case.id == "native-report:ref-iris:report-turn").unwrap();
+
 		assert_eq!(report.state, "Reported");
 		assert_eq!(report.title, "Check compact spacing");
 		assert_eq!(report.to.as_ref().unwrap().work, "sage");
@@ -458,8 +588,10 @@ fn native_final_reports_keep_their_own_turn_and_do_not_invent_acceptance(
 		assert_eq!(report.source_turn.as_deref(), Some("report-turn"));
 		assert!(!report.earlier);
 		assert!(report.summary.contains("24 agents"));
+
 		s.work_board.briefs.get_mut(key).unwrap().output.as_mut().unwrap().turn =
 			"unrelated-turn".into();
+
 		assert!(
 			!s.collaboration_cases(&s.relation_graph(), &s.factory_rows())
 				.iter()

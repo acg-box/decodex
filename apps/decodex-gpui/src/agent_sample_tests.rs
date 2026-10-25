@@ -1,8 +1,21 @@
 //! Separate answer controls must not submit or replace the ordinary conversation draft.
-use gpui::{Focusable as _, Render, TestAppContext, Window};
 
-use super::*;
-use decodex_protocol::{AgentActionDto, AgentSampleAnswer};
+use futures_util::{SinkExt as _, StreamExt as _};
+use gpui::{AppContext as _, Focusable as _, Render, TestAppContext, Window};
+use tokio::runtime::Builder;
+use tokio_tungstenite::tungstenite::Message;
+
+use crate::shell::agent_surface::{
+	sample::{
+		AgentSamplePhase, AgentSampleStatus, AgentSurface, Context, Entity, EntityId, IntoElement,
+		WireText, request, request::Operation, watch,
+	},
+	wire_test_support::{self, SERVER},
+};
+use decodex_protocol::{
+	AgentActionDto, AgentSampleAnswer, CURRENT_VERSION, ClientMessage, CommandPayload,
+	QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId, ServerMessage,
+};
 
 struct SamplePanel(Entity<AgentSurface>);
 impl Render for SamplePanel {
@@ -15,13 +28,17 @@ impl Render for SamplePanel {
 fn separate_answer_preserves_the_composer_and_hides_a_replaced_source(cx: &mut TestAppContext) {
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let work = s.selected.clone().unwrap();
 			let item =
 				s.snapshot.as_mut().unwrap().work_items.iter_mut().find(|w| w.id == work).unwrap();
+
 			item.parent_goal_id = None;
 			item.codex_thread_id = Some("parent".into());
+
 			s.composer.update(cx, |input, cx| {
 				input.set_content("Keep this main conversation draft.", cx)
 			});
@@ -31,6 +48,7 @@ fn separate_answer_preserves_the_composer_and_hides_a_replaced_source(cx: &mut T
 				.as_ref()
 				.unwrap()
 				.update(cx, |input, cx| input.set_content("Another approach?", cx));
+
 			s.sample.state = Some(AgentSampleStatus {
 				work_id: EntityId::new(work).unwrap(),
 				thread_id: Some(WireText::new("parent").unwrap()),
@@ -47,57 +65,78 @@ fn separate_answer_preserves_the_composer_and_hides_a_replaced_source(cx: &mut T
 				}),
 			});
 		});
+
 		SamplePanel(surface)
 	});
+
 	visual.update(|window, cx| {
 		window.resize(gpui::size(gpui::px(650.), gpui::px(700.)));
 		window.draw(cx).clear(cx);
 	});
+
 	assert!(visual.debug_bounds("sample-panel").is_some());
 	assert!(visual.debug_bounds("sample-close").is_some());
+
 	let surface = view.read_with(visual, |view, _| view.0.clone());
+
 	surface.update(visual, |s, cx| {
 		assert_eq!(s.composer.read(cx).content(), "Keep this main conversation draft.");
 		assert_eq!(s.sample.input.as_ref().unwrap().read(cx).content(), "Another approach?");
+
 		let mut next = s.snapshot.clone().unwrap();
+
 		next.runtime_source = Some(EntityId::new("replacement").unwrap());
+
 		s.invalidate_sample(&next);
+
 		assert!(s.sample.state.is_none());
 		assert!(s.sample.work.is_none());
 		assert_eq!(s.composer.read(cx).content(), "Keep this main conversation draft.");
 	});
-	visual.update(|window, cx| {
-		window.draw(cx).clear(cx);
-	});
+
+	visual.update(crate::ui_frame::draw_current_frame);
+
 	assert!(visual.debug_bounds("sample-panel").is_none());
 }
 
 #[gpui::test]
 fn enter_in_a_separate_question_does_not_reach_the_main_send_action(cx: &mut TestAppContext) {
 	cx.update(crate::composer_input::bind_keys);
+
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let work = s.selected.clone().unwrap();
 			let item =
 				s.snapshot.as_mut().unwrap().work_items.iter_mut().find(|w| w.id == work).unwrap();
+
 			item.parent_goal_id = None;
 			item.codex_thread_id = Some("parent".into());
+
 			s.composer.update(cx, |input, cx| input.set_content("Do not submit this draft.", cx));
 			s.open_sample(cx);
 		});
+
 		SamplePanel(surface)
 	});
 	let surface = view.read_with(visual, |view, _| view.0.clone());
+
 	visual.update(|window, cx| {
 		window.resize(gpui::size(gpui::px(650.), gpui::px(700.)));
+
 		let input = surface.read(cx).sample.input.as_ref().unwrap().clone();
+
 		window.focus(&input.focus_handle(cx), cx);
 		window.draw(cx).clear(cx);
 	});
+
 	assert!(visual.debug_bounds("sample-question").is_some());
+
 	let feedback = surface.read_with(visual, |s, _| s.feedback.message.clone());
+
 	visual.simulate_keystrokes("cmd-enter");
 	visual.simulate_keystrokes("enter");
 	surface.update(visual, |s, cx| {
@@ -113,13 +152,6 @@ fn enter_in_a_separate_question_does_not_reach_the_main_send_action(cx: &mut Tes
 
 #[test]
 fn a_lost_sample_acknowledgement_is_read_back_without_another_model_command() {
-	use crate::shell::agent_surface::wire_test_support;
-	use decodex_protocol::{
-		CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
-		QueryResultPayload, ServerId, ServerMessage,
-	};
-	use futures_util::{SinkExt as _, StreamExt as _};
-	use tokio_tungstenite::tungstenite::Message;
 	let (_root, profile, server) = wire_test_support::fixture(|listener| async move {
 		let mut socket = wire_test_support::accept(&listener).await;
 		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
@@ -130,13 +162,14 @@ fn a_lost_sample_acknowledgement_is_read_back_without_another_model_command() {
 			panic!("one explicit command")
 		};
 		let CommandPayload::Agent { action } = command.payload else { panic!("sample command") };
-		let decodex_protocol::AgentActionDto::GenerateSample { work_id, thread_id, prompt } =
-			*action
-		else {
+		let AgentActionDto::GenerateSample { work_id, thread_id, prompt } = *action else {
 			panic!("sample action")
 		};
+
 		assert_eq!(prompt.as_str(), "Another approach?");
+
 		socket.close(None).await.unwrap();
+
 		for phase in
 			[AgentSamplePhase::Pending, AgentSamplePhase::Ready, AgentSamplePhase::Obsolete]
 		{
@@ -148,7 +181,9 @@ fn a_lost_sample_acknowledgement_is_read_back_without_another_model_command() {
 			else {
 				panic!("generation must not replay")
 			};
+
 			assert!(matches!(query.payload, QueryPayload::GetAgentSample { .. }));
+
 			let status = AgentSampleStatus {
 				work_id: work_id.clone(),
 				thread_id: Some(thread_id.clone()),
@@ -166,10 +201,11 @@ fn a_lost_sample_acknowledgement_is_read_back_without_another_model_command() {
 			};
 			let result = ServerMessage::QueryResult(QueryResultEnvelope {
 				version: CURRENT_VERSION,
-				server_id: ServerId::new(wire_test_support::SERVER).unwrap(),
+				server_id: ServerId::new(SERVER).unwrap(),
 				query_id: query.query_id,
 				payload: QueryResultPayload::AgentSample(status),
 			});
+
 			socket
 				.send(Message::Text(serde_json::to_string(&result).unwrap().into()))
 				.await
@@ -177,21 +213,25 @@ fn a_lost_sample_acknowledgement_is_read_back_without_another_model_command() {
 			socket.close(None).await.unwrap();
 		}
 	});
-	let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+	let runtime = Builder::new_current_thread().enable_all().build().unwrap();
+
 	runtime.block_on(async {
 		let (_closed, closure) = watch::channel(false);
 		let (updates, results) = watch::channel(None);
+
 		request::run(
 			profile,
 			EntityId::new("root").unwrap(),
 			WireText::new("parent").unwrap(),
-			request::Operation::Generate(WireText::new("Another approach?").unwrap()),
+			Operation::Generate(WireText::new("Another approach?").unwrap()),
 			closure,
 			updates,
 		)
 		.await;
+
 		let result = results.borrow();
 		let status = result.as_ref().unwrap().0.as_ref().unwrap();
+
 		assert_eq!(
 			status.phase,
 			AgentSamplePhase::Obsolete,
@@ -199,6 +239,7 @@ fn a_lost_sample_acknowledgement_is_read_back_without_another_model_command() {
 		);
 		assert!(status.answer.is_none());
 	});
+
 	server.join().unwrap();
 }
 
@@ -208,12 +249,17 @@ fn cancellation_controls_wait_for_native_completion_and_preserve_the_draft(
 ) {
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let work = s.selected.clone().unwrap();
+
 			s.sample.work = Some(work.clone());
 			s.sample.thread = Some("parent".into());
+
 			s.composer.update(cx, |input, cx| input.set_content("Keep this draft.", cx));
+
 			s.sample.state = Some(AgentSampleStatus {
 				work_id: EntityId::new(work).unwrap(),
 				thread_id: Some(WireText::new("parent").unwrap()),
@@ -223,17 +269,21 @@ fn cancellation_controls_wait_for_native_completion_and_preserve_the_draft(
 				answer: None,
 			});
 		});
+
 		SamplePanel(surface)
 	});
 	let surface = view.read_with(visual, |view, _| view.0.clone());
+
 	for phase in
 		[AgentSamplePhase::Pending, AgentSamplePhase::Cancelling, AgentSamplePhase::Cancelled]
 	{
 		surface.update(visual, |s, _| s.sample.state.as_mut().unwrap().phase = phase);
+
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(650.), gpui::px(700.)));
 			window.draw(cx).clear(cx);
 		});
+
 		assert_eq!(
 			visual.debug_bounds("sample-cancel").is_some(),
 			phase == AgentSamplePhase::Pending
@@ -244,7 +294,9 @@ fn cancellation_controls_wait_for_native_completion_and_preserve_the_draft(
 			"Keep this draft."
 		);
 	}
+
 	surface.update(visual, |s, _| s.reset_sample());
+
 	assert_eq!(
 		surface.read_with(visual, |s, cx| s.composer.read(cx).content().to_owned()),
 		"Keep this draft."
@@ -253,13 +305,6 @@ fn cancellation_controls_wait_for_native_completion_and_preserve_the_draft(
 
 #[test]
 fn a_lost_cancellation_acknowledgement_reads_back_the_exact_sample_without_replay() {
-	use crate::shell::agent_surface::wire_test_support;
-	use decodex_protocol::{
-		CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
-		QueryResultPayload, ServerId, ServerMessage,
-	};
-	use futures_util::{SinkExt as _, StreamExt as _};
-	use tokio_tungstenite::tungstenite::Message;
 	let (_root, profile, server) = wire_test_support::fixture(|listener| async move {
 		let mut socket = wire_test_support::accept(&listener).await;
 		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
@@ -273,8 +318,11 @@ fn a_lost_cancellation_acknowledgement_reads_back_the_exact_sample_without_repla
 		let AgentActionDto::CancelSample { work_id, request_id } = *action else {
 			panic!("cancellation only")
 		};
+
 		assert_eq!(request_id.as_str(), "original-generation");
+
 		socket.close(None).await.unwrap();
+
 		for phase in [AgentSamplePhase::Cancelling, AgentSamplePhase::Cancelled] {
 			let mut socket = wire_test_support::accept(&listener).await;
 			let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
@@ -284,7 +332,9 @@ fn a_lost_cancellation_acknowledgement_reads_back_the_exact_sample_without_repla
 			else {
 				panic!("never repeat a sample command")
 			};
+
 			assert!(matches!(query.payload, QueryPayload::GetAgentSample { .. }));
+
 			let state = AgentSampleStatus {
 				work_id: work_id.clone(),
 				thread_id: Some(WireText::new("parent").unwrap()),
@@ -295,10 +345,11 @@ fn a_lost_cancellation_acknowledgement_reads_back_the_exact_sample_without_repla
 			};
 			let result = ServerMessage::QueryResult(QueryResultEnvelope {
 				version: CURRENT_VERSION,
-				server_id: ServerId::new(wire_test_support::SERVER).unwrap(),
+				server_id: ServerId::new(SERVER).unwrap(),
 				query_id: query.query_id,
 				payload: QueryResultPayload::AgentSample(state),
 			});
+
 			socket
 				.send(Message::Text(serde_json::to_string(&result).unwrap().into()))
 				.await
@@ -306,23 +357,27 @@ fn a_lost_cancellation_acknowledgement_reads_back_the_exact_sample_without_repla
 			socket.close(None).await.unwrap();
 		}
 	});
-	let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+	let runtime = Builder::new_current_thread().enable_all().build().unwrap();
+
 	runtime.block_on(async {
 		let (_closed, closure) = watch::channel(false);
 		let (updates, results) = watch::channel(None);
+
 		request::run(
 			profile,
 			EntityId::new("root").unwrap(),
 			WireText::new("parent").unwrap(),
-			request::Operation::Cancel(WireText::new("original-generation").unwrap()),
+			Operation::Cancel(WireText::new("original-generation").unwrap()),
 			closure,
 			updates,
 		)
 		.await;
+
 		assert_eq!(
 			results.borrow().as_ref().unwrap().0.as_ref().unwrap().phase,
 			AgentSamplePhase::Cancelled
 		);
 	});
+
 	server.join().unwrap();
 }

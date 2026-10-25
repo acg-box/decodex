@@ -1,9 +1,14 @@
 //! Right-panel placement, sharing the existing workspace resize behavior.
-use crate::shell::agent_surface::{AgentSurface, Context, Window, workspace_size::Panel};
 use gpui::{
 	AnyElement,
-	prelude::{InteractiveElement, IntoElement, ParentElement, Styled},
+	prelude::{InteractiveElement as _, IntoElement as _, ParentElement as _, Styled as _},
 };
+
+use crate::{
+	shell::agent_surface::{AgentSurface, Context, Window, workspace_size::Panel},
+	ui_theme::WORKSPACE_GUTTER,
+};
+
 impl AgentSurface {
 	pub(crate) fn toggle_agent_tree(&mut self, cx: &mut Context<Self>) {
 		if self.workspace_connecting() {
@@ -28,7 +33,7 @@ impl AgentSurface {
 
 		self.workspace
 			.agent_panel_width
-			.min((width - left - 440.0 - 3. * crate::ui_theme::WORKSPACE_GUTTER).max(0.0))
+			.min((width - left - 440.0 - 3. * WORKSPACE_GUTTER).max(0.0))
 	}
 
 	pub(super) fn agent_tree(&self, cx: &mut Context<Self>) -> AnyElement {

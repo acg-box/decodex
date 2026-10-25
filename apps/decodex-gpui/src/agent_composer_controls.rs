@@ -11,9 +11,13 @@ use gpui::{
 use crate::{
 	shell::agent_surface::composer::{
 		AgentSurface, SmoothControl, model_settings,
-		ui_theme::{self, HOVER_FILL, ON_PRIMARY, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED},
+		ui_theme::{
+			self, BODY_SIZE, CONTROL_SIZE, HOVER_FILL, ON_PRIMARY, SELECTED_HOVER_FILL, TEXT,
+			TEXT_MUTED,
+		},
 	},
 	ui_loading, ui_motion,
+	ui_theme::WARNING,
 };
 use decodex_protocol::AgentCapabilitiesResult;
 
@@ -80,7 +84,7 @@ impl AgentSurface {
 						.aria_label(format!("Select {full}"))
 						.flex_1()
 						.min_w_0()
-						.h(gpui::px(ui_theme::CONTROL_SIZE))
+						.h(gpui::px(CONTROL_SIZE))
 						.px(gpui::px(7.))
 						.rounded(gpui::px(6.))
 						.bg(if selected {
@@ -118,7 +122,7 @@ impl AgentSurface {
 								.gap(gpui::px(2.))
 								.child(
 									gpui::div()
-										.text_size(gpui::px(ui_theme::BODY_SIZE))
+										.text_size(gpui::px(BODY_SIZE))
 										.whitespace_nowrap()
 										.text_ellipsis()
 										.child(full.clone()),
@@ -166,8 +170,7 @@ impl RenderOnce for StopMark {
 					.absolute()
 					.size(gpui::px(24.))
 					.rounded_full()
-					.bg(crate::ui_theme::rgb(crate::ui_theme::WARNING)
-						.opacity(strength * 48. / 255.)),
+					.bg(crate::ui_theme::rgb(WARNING).opacity(strength * 48. / 255.)),
 			)
 			.child(
 				gpui::div()

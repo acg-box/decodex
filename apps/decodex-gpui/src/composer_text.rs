@@ -2,13 +2,17 @@
 use core::panic::Location;
 use std::mem;
 
-use gpui::{AvailableSpace, TextAlign};
+use gpui::{AvailableSpace, TextAlign, TextStyle};
 use ui_theme::{BODY_LINE_HEIGHT, BODY_SIZE};
 
-use crate::composer_input::{
-	self, App, Bounds, ComposerAppearance, ComposerInput, Element, ElementId, ElementInputHandler,
-	Entity, GlobalElementId, InspectorElementId, IntoElement, LayoutId, Pixels, Point,
-	SharedString, Style, TextRun, UnderlineStyle, Window, WrappedLine, cursor, ui_theme,
+use crate::{
+	composer_input::{
+		self, App, Bounds, ComposerAppearance, ComposerInput, Element, ElementId,
+		ElementInputHandler, Entity, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
+		Pixels, Point, SharedString, Style, TextRun, UnderlineStyle, Window, WrappedLine, cursor,
+		ui_theme,
+	},
+	ui_motion,
 };
 
 pub(super) struct ComposerTextElement {
@@ -110,7 +114,7 @@ impl Element for ComposerTextElement {
 		let selections = [input.selected_range.clone()];
 		let draw_cursor = cursor::eligible(
 			focus.is_focused(window),
-			window.is_window_active() && crate::ui_motion::application_active(),
+			window.is_window_active() && ui_motion::application_active(),
 			input.selected_range.is_empty(),
 		);
 		let next = composer_input::next_boundary(&input.content, input.cursor_offset());
@@ -185,6 +189,7 @@ impl Element for ComposerTextElement {
 			} else {
 				gpui::px(BODY_SIZE * 0.6)
 			};
+
 			self.input.update(cx, |input, cx| {
 				input.cursor.paint(
 					selections[0].end,
@@ -262,6 +267,7 @@ fn height(lines: &[WrappedLine]) -> Pixels {
 
 fn shape(input: &ComposerInput, width: Pixels, window: &Window) -> Vec<WrappedLine> {
 	let style = window.text_style();
+
 	shape_with_style(input, width, window, &style)
 }
 
@@ -269,7 +275,7 @@ fn shape_with_style(
 	input: &ComposerInput,
 	width: Pixels,
 	window: &Window,
-	style: &gpui::TextStyle,
+	style: &TextStyle,
 ) -> Vec<WrappedLine> {
 	let empty = input.content.is_empty();
 	let text: SharedString = if empty {

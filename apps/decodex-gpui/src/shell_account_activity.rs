@@ -8,7 +8,11 @@ use gpui::{
 
 #[cfg(any(test, feature = "visual-capture"))]
 use crate::account_profile::AccountProfileLoadState;
-use crate::shell::{ControlTooltip, Shell, WB_BLUE, WB_TEXT_FAINT, WB_TEXT_MUTED, agent_surface};
+use crate::{
+	shell::{ControlTooltip, Shell, WB_BLUE, WB_TEXT_FAINT, WB_TEXT_MUTED, agent_surface},
+	ui_feedback::{self, Feedback},
+	ui_theme,
+};
 use decodex_protocol::{AccountDto, AccountProfileDto, AccountProfileResult};
 #[cfg(any(test, feature = "visual-capture"))]
 use decodex_protocol::{AccountProfileDailyUsageDto, AccountProfileEmailDto, WireText};
@@ -71,7 +75,7 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 		.flex_col()
 		.gap(gpui::px(6.))
 		.text_size(gpui::px(11.))
-		.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED));
+		.text_color(ui_theme::rgb(WB_TEXT_MUTED));
 	let profile = match snapshot.and_then(|s| s.result.as_ref()) {
 		Some(
 			AccountProfileResult::Current(profile) | AccountProfileResult::Cached { profile, .. },
@@ -79,10 +83,10 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 		_ => {
 			return if snapshot.is_none() {
 				content
-					.children(crate::ui_feedback::inline_feedback(
+					.children(ui_feedback::inline_feedback(
 						format!("account-activity-loading-{}", account.as_str()),
 						"Account activity",
-						&crate::ui_feedback::Feedback::info("Loading activity…"),
+						&Feedback::info("Loading activity…"),
 					))
 					.into_any_element()
 			} else {
@@ -112,7 +116,7 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 				.items_end()
 				.gap(gpui::px(1.5))
 				.border_b_1()
-				.border_color(crate::ui_theme::rgba(0xffffff16))
+				.border_color(ui_theme::rgba(0xffffff16))
 				.children(profile.daily_usage.iter().enumerate().map(|(index, day)| {
 					let tip = format!("{}: {} tokens", day.start_date.as_str(), day.tokens);
 
@@ -125,11 +129,7 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 							(20. * (day.tokens as f32 / peak as f32).sqrt()).max(2.)
 						}))
 						.rounded(gpui::px(1.5))
-						.bg(crate::ui_theme::rgb(if day.tokens == 0 {
-							WB_TEXT_FAINT
-						} else {
-							WB_BLUE
-						}))
+						.bg(ui_theme::rgb(if day.tokens == 0 { WB_TEXT_FAINT } else { WB_BLUE }))
 						.tooltip(move |_, cx| cx.new(|_| ControlTooltip(tip.clone())).into())
 				})),
 		);
@@ -208,9 +208,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(
 			visual.debug_bounds("account-activity-chart").is_none(),
@@ -225,9 +223,7 @@ mod tests {
 			s.seed_account_activity();
 			cx.notify();
 		});
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(
 			visual.debug_bounds("account-activity-chart").is_some(),

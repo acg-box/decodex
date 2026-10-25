@@ -34,6 +34,18 @@ mod probe {
 	#[cfg(not(test))]
 	use crate::ui_theme::{native_material_panel::MaterialPanel, window_material};
 
+	use std::{
+		cell::{Cell, RefCell},
+		rc::Rc,
+		time::Duration,
+	};
+
+	use objc2::MainThreadMarker;
+
+	use objc2_app_kit::NSApplication;
+
+	use objc2::runtime::AnyObject;
+
 	struct Backdrop {
 		child: Option<WindowHandle<Composer>>,
 		submitted: String,
@@ -257,15 +269,6 @@ mod probe {
 
 	/// Exercise the real GPUI delegate without the daemon or user settings.
 	pub fn run_window_reopen() {
-		use std::{
-			cell::{Cell, RefCell},
-			rc::Rc,
-			time::Duration,
-		};
-
-		use objc2::MainThreadMarker;
-		use objc2_app_kit::NSApplication;
-
 		let app = gpui_platform::application();
 		let retained = Rc::new(RefCell::new(None::<WindowHandle<Backdrop>>));
 		let reopens = Rc::new(Cell::new(0));
@@ -280,16 +283,22 @@ mod probe {
 				.update(cx, |_, window, _| window.activate_window())
 				.expect("restore retained window");
 		});
+
 		app.run(move |cx| {
 			assert!(crate::native_quit::install());
+
 			crate::native_quit::set_request_handler(|| crate::native_quit::reply(true));
+
 			cx.on_app_quit(|_| async {
 				eprintln!("reopen-probe: original GPUI shutdown preserved");
 			})
 			.detach();
+
 			let main = initialize_probe_window(cx);
 			let auxiliary = initialize_probe_window(cx);
+
 			retained.replace(Some(main));
+
 			let native_main =
 				main.update(cx, |_, window, _| native_window(window)).expect("main window");
 			let native_auxiliary = auxiliary
@@ -300,60 +309,57 @@ mod probe {
 				let application =
 					NSApplication::sharedApplication(MainThreadMarker::new().expect("main thread"));
 				let delegate = application.delegate().expect("GPUI delegate");
+
 				cx.background_executor().timer(Duration::from_millis(100)).await;
 				native_main.orderOut(None);
+
 				assert!(native_auxiliary.isVisible());
+
 				send_reopen_event();
+
 				cx.background_executor().timer(Duration::from_millis(100)).await;
+
 				assert_eq!(reopens.get(), 0, "unpatched GPUI suppresses workspace reopen");
 				assert!(!native_main.isVisible());
 				eprintln!(
 					"reopen-probe: reproduced hidden workspace with visible auxiliary window"
 				);
+				assert!(crate::native_reopen::install());
+				assert!(crate::native_reopen::install());
 
-				assert!(crate::native_reopen::install());
-				assert!(crate::native_reopen::install());
 				let current_delegate = application.delegate().expect("preserved delegate");
+
 				assert!(std::ptr::eq::<objc2::runtime::AnyObject>(
 					(*delegate).as_ref(),
 					(*current_delegate).as_ref(),
 				));
+
 				for visible_auxiliary in [true, true, false] {
 					native_main.orderOut(None);
+
 					if !visible_auxiliary {
 						native_auxiliary.orderOut(None);
 					}
+
 					let before = reopens.get();
 
 					send_reopen_event();
+
 					cx.background_executor().timer(Duration::from_millis(100)).await;
+
 					assert_eq!(reopens.get(), before + 1);
 					assert!(
 						native_main.isVisible(),
 						"explicit reopen restores the retained workspace"
 					);
 				}
+
 				eprintln!("reopen-probe: retained workspace restored on all three reopen events");
+
 				crate::native_quit::request();
 			})
 			.detach();
 		});
-	}
-
-	fn send_reopen_event() {
-		use objc2::runtime::AnyObject;
-
-		// Send the same Core Apple event as Finder to this isolated probe process.
-		// No user application, account, daemon, or preference is addressed.
-		unsafe {
-			let class = AnyClass::get(c"NSAppleEventDescriptor").expect("Foundation descriptor");
-			let target: Retained<AnyObject> = msg_send![class, descriptorWithProcessIdentifier: std::process::id() as libc::pid_t];
-			let event: Retained<AnyObject> = msg_send![class, appleEventWithEventClass: u32::from_be_bytes(*b"aevt"), eventID: u32::from_be_bytes(*b"rapp"), targetDescriptor: &*target, returnID: -1_i16, transactionID: 0_i32];
-			let mut error: *mut AnyObject = std::ptr::null_mut();
-			let _: *mut AnyObject = msg_send![&*event, sendEventWithOptions: 1_usize, timeout: 2.0_f64, error: &mut error];
-
-			assert!(error.is_null(), "send reopen Apple event to the probe itself");
-		}
 	}
 
 	pub fn run() {
@@ -468,6 +474,33 @@ mod probe {
 		});
 	}
 
+	pub(super) fn native_view(window: &Window) -> Retained<NSView> {
+		let handle = HasWindowHandle::window_handle(window).expect("native window handle");
+		let RawWindowHandle::AppKit(handle) = handle.as_raw() else { unreachable!() };
+
+		unsafe {
+			Retained::retain(handle.ns_view.as_ptr().cast::<NSView>()).expect("retain native view")
+		}
+	}
+
+	pub(super) fn native_window(window: &Window) -> Retained<NSWindow> {
+		native_view(window).window().expect("attached native window")
+	}
+
+	fn send_reopen_event() {
+		// Send the same Core Apple event as Finder to this isolated probe process.
+		// No user application, account, daemon, or preference is addressed.
+		unsafe {
+			let class = AnyClass::get(c"NSAppleEventDescriptor").expect("Foundation descriptor");
+			let target: Retained<AnyObject> = msg_send![class, descriptorWithProcessIdentifier: std::process::id() as libc::pid_t];
+			let event: Retained<AnyObject> = msg_send![class, appleEventWithEventClass: u32::from_be_bytes(*b"aevt"), eventID: u32::from_be_bytes(*b"rapp"), targetDescriptor: &*target, returnID: -1_i16, transactionID: 0_i32];
+			let mut error: *mut AnyObject = std::ptr::null_mut();
+			let _: *mut AnyObject = msg_send![&*event, sendEventWithOptions: 1_usize, timeout: 2.0_f64, error: &mut error];
+
+			assert!(error.is_null(), "send reopen Apple event to the probe itself");
+		}
+	}
+
 	fn initialize_probe_window(cx: &mut App) -> WindowHandle<Backdrop> {
 		cx.set_menus(vec![gpui::Menu {
 			name: "Native Glass Probe".into(),
@@ -496,19 +529,6 @@ mod probe {
 			|_, cx| cx.new(|_| Backdrop { child: None, submitted: String::new() }),
 		)
 		.expect("open probe window")
-	}
-
-	pub(super) fn native_view(window: &Window) -> Retained<NSView> {
-		let handle = HasWindowHandle::window_handle(window).expect("native window handle");
-		let RawWindowHandle::AppKit(handle) = handle.as_raw() else { unreachable!() };
-
-		unsafe {
-			Retained::retain(handle.ns_view.as_ptr().cast::<NSView>()).expect("retain native view")
-		}
-	}
-
-	pub(super) fn native_window(window: &Window) -> Retained<NSWindow> {
-		native_view(window).window().expect("attached native window")
 	}
 
 	fn install_glass(window: &mut Window) {
@@ -555,9 +575,8 @@ mod probe {
 }
 
 // This probe shares the application's package dependency set.
-#[cfg(any(test, target_os = "macos"))] use futures_util as _;
-
 use base64 as _;
+#[cfg(any(test, target_os = "macos"))] use futures_util as _;
 use libc as _;
 use ondine as _;
 use pulldown_cmark as _;
@@ -587,6 +606,7 @@ fn main() {
 fn main() {
 	if std::env::args().any(|arg| arg == "--window-reopen") {
 		probe::run_window_reopen();
+
 		return;
 	}
 	if std::env::current_exe()
@@ -594,6 +614,7 @@ fn main() {
 		.is_some_and(|p| p.file_name().is_some_and(|n| n == "decodex-graph-glass-probe"))
 	{
 		graph_probe::run();
+
 		return;
 	}
 	#[cfg(not(test))]

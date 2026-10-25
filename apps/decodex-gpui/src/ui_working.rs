@@ -7,10 +7,17 @@ use std::{
 
 use gpui::{
 	App, Background, Bounds, Image, ImageFormat, IntoElement, PathBuilder, Pixels, RenderOnce,
-	Role, SharedString, Window, prelude::*,
+	Role, SharedString, Window,
+	prelude::{
+		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
+		StatefulInteractiveElement as _, Styled as _,
+	},
 };
 
-use crate::{ui_motion, ui_theme::TEXT_MUTED};
+use crate::{
+	ui_motion,
+	ui_theme::{self, TEXT_MUTED},
+};
 
 // Keep the approved logo silhouette, including its lightning and cursor cutouts.
 static CLOUD: LazyLock<Arc<Image>> = LazyLock::new(|| {
@@ -34,6 +41,7 @@ impl RenderOnce for Working {
 		let (opacity, moving, elapsed) = state.update(cx, |s, _| s.sample(active, now));
 		let reduced = ui_motion::reduced();
 		let time = elapsed;
+
 		if moving || (active && !reduced) {
 			ui_motion::request_frame(window, cx);
 		}
@@ -63,7 +71,7 @@ impl RenderOnce for Working {
 						.opacity(opacity)
 						.text_size(gpui::px(12.))
 						.line_height(gpui::px(18.))
-						.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+						.text_color(ui_theme::rgb(TEXT_MUTED))
 						.child(
 							gpui::div()
 								.relative()
@@ -87,7 +95,6 @@ impl RenderOnce for Working {
 													if reduced { 1.4 } else { time },
 													index,
 												);
-
 												let b = Bounds::new(
 													bounds.origin
 														+ gpui::point(gpui::px(x), gpui::px(y)),
@@ -100,12 +107,12 @@ impl RenderOnce for Working {
 													gpui::linear_gradient(
 														155.,
 														gpui::linear_color_stop(
-															crate::ui_theme::rgba(0xe8f3f8ff)
+															ui_theme::rgba(0xe8f3f8ff)
 																.opacity(alpha),
 															0.,
 														),
 														gpui::linear_color_stop(
-															crate::ui_theme::rgba(0x9ec8d9ff)
+															ui_theme::rgba(0x9ec8d9ff)
 																.opacity(alpha * 0.7),
 															1.,
 														),
@@ -120,7 +127,7 @@ impl RenderOnce for Working {
 												paint_particle(
 													window,
 													rim,
-													crate::ui_theme::rgba(0xf1fcffff)
+													ui_theme::rgba(0xf1fcffff)
 														.opacity(alpha * 0.55)
 														.into(),
 												);
@@ -151,8 +158,11 @@ impl Motion {
 		if active && !self.active {
 			self.started = now;
 		}
+
 		self.active = active;
+
 		self.opacity.target(if active { 1. } else { 0. }, now);
+
 		(
 			self.opacity.sample(now),
 			self.opacity.moving(now),
@@ -200,21 +210,9 @@ fn paint_particle(window: &mut Window, bounds: Bounds<Pixels>, color: Background
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use std::time::Duration;
+	use std::{thread, time::Duration};
 
-	#[test]
-	fn appearance_and_disappearance_share_one_continuous_fade() {
-		let now = Instant::now();
-		let mut motion = Motion::new(now);
-		assert_eq!(motion.sample(false, now).0, 0.);
-		assert_eq!(motion.sample(true, now).0, 0.);
-		let half = now + Duration::from_millis(100);
-		let opacity = motion.sample(true, half).0;
-		assert!(opacity > 0. && opacity < 1.);
-		assert_eq!(motion.sample(false, half).0, opacity, "an interrupted entrance must not jump");
-		assert_eq!(motion.sample(false, now + Duration::from_millis(300)).0, 0.);
-	}
+	use crate::ui_working::{Instant, IntoElement, Motion, Window, Working};
 
 	struct Signal(bool);
 	impl gpui::Render for Signal {
@@ -223,17 +221,39 @@ mod tests {
 		}
 	}
 
+	#[test]
+	fn appearance_and_disappearance_share_one_continuous_fade() {
+		let now = Instant::now();
+		let mut motion = Motion::new(now);
+
+		assert_eq!(motion.sample(false, now).0, 0.);
+		assert_eq!(motion.sample(true, now).0, 0.);
+
+		let half = now + Duration::from_millis(100);
+		let opacity = motion.sample(true, half).0;
+
+		assert!(opacity > 0. && opacity < 1.);
+		assert_eq!(motion.sample(false, half).0, opacity, "an interrupted entrance must not jump");
+		assert_eq!(motion.sample(false, now + Duration::from_millis(300)).0, 0.);
+	}
+
 	#[gpui::test]
 	fn finished_work_releases_its_slot(cx: &mut gpui::TestAppContext) {
 		let (signal, visual) = cx.add_window_view(|_, _| Signal(false));
+
 		for (active, height) in [(false, 0.), (true, 32.), (false, 0.)] {
 			signal.update(visual, |s, cx| {
 				s.0 = active;
+
 				cx.notify();
 			});
-			visual.update(|window, cx| window.draw(cx).clear(cx));
-			std::thread::sleep(Duration::from_millis(220));
-			visual.update(|window, cx| window.draw(cx).clear(cx));
+
+			visual.update(crate::ui_frame::draw_current_frame);
+
+			thread::sleep(Duration::from_millis(220));
+
+			visual.update(crate::ui_frame::draw_current_frame);
+
 			assert_eq!(
 				visual.debug_bounds("work-status-slot").unwrap().size.height,
 				gpui::px(height)

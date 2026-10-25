@@ -1,11 +1,23 @@
 //! Sliding layout segments. Direct manipulation shares the graph's existing layout transition.
-use super::{
-	AgentSurface, AnyElement, Context, FluentBuilder as _, InteractiveElement as _, IntoElement,
-	MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Role, SharedString,
-	SmoothControl as _, StatefulInteractiveElement as _, Styled as _, TEXT, TEXT_MUTED, layout,
-	restore_shell_focus,
+use gpui::{
+	App, Bounds, ClickEvent, DispatchPhase, KeyDownEvent, MouseUpEvent, Pixels, RenderOnce,
+	WeakEntity, Window,
 };
-use crate::{ui_motion, ui_theme};
+
+use crate::{
+	shell::agent_surface::{
+		work_board::relations::{
+			AgentSurface, AnyElement, Context, FluentBuilder as _, InteractiveElement as _,
+			IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Role,
+			SharedString, SmoothControl as _, StatefulInteractiveElement as _, Styled as _, TEXT,
+			TEXT_MUTED,
+			layout::{self, Presentation},
+		},
+		workspace,
+	},
+	ui_motion,
+	ui_theme::{self, BLUE, CONTROL_GROUP_HEIGHT, CONTROL_SELECTED_FILL},
+};
 
 const SEGMENT: f32 = 60.;
 const INSET: f32 = 2.;
@@ -20,6 +32,7 @@ pub(super) struct Drag {
 impl Drag {
 	fn new(x: f32, left: f32) -> Self {
 		let index = ((x - left - INSET) / SEGMENT).floor().clamp(0., 2.);
+
 		Self {
 			start: x,
 			origin: index,
@@ -31,7 +44,9 @@ impl Drag {
 
 	fn move_to(&mut self, x: f32) {
 		let delta = x - self.start;
+
 		self.moved |= delta.abs() >= 3.;
+
 		if self.moved {
 			self.value = (self.origin + delta / SEGMENT).clamp(0., 2.);
 		}
@@ -39,6 +54,57 @@ impl Drag {
 
 	fn mode(&self) -> layout::Mode {
 		if self.moved { layout::Mode::ALL[self.value.round() as usize] } else { self.clicked }
+	}
+}
+
+#[derive(gpui::IntoElement)]
+struct Thumb {
+	value: f32,
+	dragging: bool,
+}
+impl RenderOnce for Thumb {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let value =
+			ui_motion::direct_value("graph-layout-thumb", self.value, self.dragging, window, cx);
+
+		gpui::div()
+			.id("relations-layout-thumb")
+			.debug_selector(|| "relations-layout-thumb".into())
+			.absolute()
+			.left(gpui::px(INSET + value * SEGMENT))
+			.top(gpui::px(INSET))
+			.w(gpui::px(SEGMENT))
+			.h(gpui::px(CONTROL_GROUP_HEIGHT - (INSET + 1.) * 2.))
+			.rounded(gpui::px(8.))
+			.border_1()
+			.border_color(gpui::transparent_black())
+			.bg(ui_theme::rgba(CONTROL_SELECTED_FILL))
+	}
+}
+
+#[derive(gpui::IntoElement)]
+struct PresentationThumb {
+	together: bool,
+}
+impl RenderOnce for PresentationThumb {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let value = ui_motion::value(
+			"graph-presentation-thumb",
+			if self.together { 1. } else { 0. },
+			window,
+			cx,
+		);
+
+		gpui::div()
+			.absolute()
+			.left(gpui::px(INSET + value * SEGMENT))
+			.top(gpui::px(INSET))
+			.w(gpui::px(SEGMENT))
+			.h(gpui::px(CONTROL_GROUP_HEIGHT - (INSET + 1.) * 2.))
+			.rounded(gpui::px(8.))
+			.border_1()
+			.border_color(gpui::transparent_black())
+			.bg(ui_theme::rgba(CONTROL_SELECTED_FILL))
 	}
 }
 
@@ -54,10 +120,11 @@ impl AgentSurface {
 			.w(gpui::px(SEGMENT * 2. + (INSET + 1.) * 2.))
 			.p(gpui::px(INSET))
 			.gap_0()
-			.child(PresentationThumb { together: current == layout::Presentation::Together });
+			.child(PresentationThumb { together: current == Presentation::Together });
+
 		for (mode, label, id) in [
-			(layout::Presentation::Links, "Links", "relations-mode-links"),
-			(layout::Presentation::Together, "Together", "relations-mode-together"),
+			(Presentation::Links, "Links", "relations-mode-links"),
+			(Presentation::Together, "Together", "relations-mode-together"),
 		] {
 			picker = picker.child(
 				gpui::div()
@@ -79,27 +146,32 @@ impl AgentSurface {
 					.border_color(gpui::transparent_black())
 					.text_color(ui_theme::rgb(if current == mode { TEXT } else { TEXT_MUTED }))
 					.hover(|d| d.text_color(ui_theme::rgb(TEXT)))
-					.focus_visible(|d| d.border_color(ui_theme::rgb(ui_theme::BLUE)))
+					.focus_visible(|d| d.border_color(ui_theme::rgb(BLUE)))
 					.cursor_pointer()
 					.child(label)
 					.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 					.on_click(cx.listener(move |s, _, window, cx| {
 						s.switch_relation_presentation(mode, cx);
-						restore_shell_focus(window, cx);
+
+						workspace::restore_shell_focus(window, cx);
 					}))
-					.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, window, cx| {
+					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, window, cx| {
 						let mode = match e.keystroke.key.as_str() {
-							"left" | "home" => layout::Presentation::Links,
-							"right" | "end" => layout::Presentation::Together,
+							"left" | "home" => Presentation::Links,
+							"right" | "end" => Presentation::Together,
 							"space" | "enter" if !e.is_held => mode,
 							_ => return,
 						};
+
 						s.switch_relation_presentation(mode, cx);
-						restore_shell_focus(window, cx);
+
+						workspace::restore_shell_focus(window, cx);
+
 						cx.stop_propagation();
 					})),
 			);
 		}
+
 		picker.smooth().into_any_element()
 	}
 
@@ -108,7 +180,7 @@ impl AgentSurface {
 		let index = layout::Mode::ALL.iter().position(|m| *m == mode).unwrap_or(0);
 		let held = self.work_board.view.layout_drag.is_some();
 		let dragging = self.work_board.view.layout_drag.as_ref().filter(|drag| drag.moved);
-		let bounds = std::rc::Rc::new(std::cell::Cell::new(None::<gpui::Bounds<gpui::Pixels>>));
+		let bounds = std::rc::Rc::new(std::cell::Cell::new(None::<Bounds<Pixels>>));
 		let measured = bounds.clone();
 		let mut picker = ui_theme::canvas_control_group()
 			.id("relations-layout-picker")
@@ -128,6 +200,7 @@ impl AgentSurface {
 							Some(Drag::new(event.position.x.into(), bounds.left().into()));
 						s.work_board.view.drag = None;
 						s.work_board.view.map_drag = None;
+
 						cx.stop_propagation();
 						cx.notify();
 					}
@@ -138,9 +211,11 @@ impl AgentSurface {
 				value: dragging.map_or(index as f32, |d| d.value),
 				dragging: dragging.is_some(),
 			});
+
 		for mode in layout::Mode::ALL {
 			let active = self.work_board.view.layout_mode == mode;
 			let id = format!("relations-layout-{}", mode.label().to_lowercase());
+
 			picker = picker.child(
 				gpui::div()
 					.id(SharedString::from(id.clone()))
@@ -159,19 +234,20 @@ impl AgentSurface {
 					.rounded(gpui::px(8.))
 					.border_1()
 					.border_color(gpui::transparent_black())
-					.text_color(crate::ui_theme::rgb(if active { TEXT } else { TEXT_MUTED }))
+					.text_color(ui_theme::rgb(if active { TEXT } else { TEXT_MUTED }))
 					.cursor_pointer()
-					.when(!held, |d| d.hover(|d| d.text_color(crate::ui_theme::rgb(TEXT))))
-					.focus_visible(|d| d.border_color(crate::ui_theme::rgb(ui_theme::BLUE)))
-					.on_click(cx.listener(move |s, event: &gpui::ClickEvent, window, cx| {
+					.when(!held, |d| d.hover(|d| d.text_color(ui_theme::rgb(TEXT))))
+					.focus_visible(|d| d.border_color(ui_theme::rgb(BLUE)))
+					.on_click(cx.listener(move |s, event: &ClickEvent, window, cx| {
 						// Pointer clicks are committed by the captured release, including outside
 						// the track.
 						if event.mouse_position().is_none() {
 							s.switch_relation_layout(mode, cx);
-							restore_shell_focus(window, cx);
+
+							workspace::restore_shell_focus(window, cx);
 						}
 					}))
-					.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, window, cx| {
+					.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 						let current = layout::Mode::ALL
 							.iter()
 							.position(|m| *m == s.work_board.view.layout_mode)
@@ -183,60 +259,75 @@ impl AgentSurface {
 							"end" => 2,
 							"enter" | "space" if !event.is_held => {
 								s.switch_relation_layout(mode, cx);
-								restore_shell_focus(window, cx);
+
+								workspace::restore_shell_focus(window, cx);
+
 								cx.stop_propagation();
+
 								return;
 							},
 							_ => return,
 						};
+
 						s.switch_relation_layout(layout::Mode::ALL[next], cx);
 						cx.stop_propagation();
 					}))
 					.child(mode.label()),
 			);
 		}
+
 		picker.smooth().into_any_element()
 	}
 
-	fn finish_layout_drag(&mut self, window: &mut gpui::Window, cx: &mut Context<Self>) {
+	fn finish_layout_drag(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		if let Some(drag) = self.work_board.view.layout_drag.take() {
 			self.switch_relation_layout(drag.mode(), cx);
-			restore_shell_focus(window, cx);
+
+			workspace::restore_shell_focus(window, cx);
+
 			cx.notify();
 		}
 	}
 }
 
 fn picker_events(
-	measured: std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
-	events: gpui::WeakEntity<AgentSurface>,
+	measured: std::rc::Rc<std::cell::Cell<Option<Bounds<Pixels>>>>,
+	events: WeakEntity<AgentSurface>,
 ) -> impl IntoElement {
 	gpui::canvas(
 		move |bounds, _, _| measured.set(Some(bounds)),
 		move |_, _, window, _| {
 			let movement = events.clone();
+
 			window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
-				if phase != gpui::DispatchPhase::Capture {
+				if phase != DispatchPhase::Capture {
 					return;
 				}
+
 				let _ = movement.update(cx, |s, cx| {
 					let Some(drag) = &mut s.work_board.view.layout_drag else { return };
+
 					if event.pressed_button == Some(MouseButton::Left) {
 						drag.move_to(event.position.x.into());
+
 						if drag.moved {
 							let mode = drag.mode();
+
 							s.switch_relation_layout(mode, cx);
 							cx.notify();
 						}
 					} else {
 						s.finish_layout_drag(window, cx);
 					}
+
 					cx.stop_propagation();
 				});
 			});
+
 			let release = events.clone();
-			window.on_mouse_event(move |event: &gpui::MouseUpEvent, phase, window, cx| {
-				if phase == gpui::DispatchPhase::Capture && event.button == MouseButton::Left {
+
+			window.on_mouse_event(move |event: &MouseUpEvent, phase, window, cx| {
+				if phase == DispatchPhase::Capture && event.button == MouseButton::Left {
 					let _ = release.update(cx, |s, cx| {
 						if s.work_board.view.layout_drag.is_some() {
 							s.finish_layout_drag(window, cx);
@@ -250,67 +341,27 @@ fn picker_events(
 	.inset_0()
 }
 
-#[derive(gpui::IntoElement)]
-struct Thumb {
-	value: f32,
-	dragging: bool,
-}
-
-#[derive(gpui::IntoElement)]
-struct PresentationThumb {
-	together: bool,
-}
-impl gpui::RenderOnce for PresentationThumb {
-	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
-		let value = ui_motion::value(
-			"graph-presentation-thumb",
-			if self.together { 1. } else { 0. },
-			window,
-			cx,
-		);
-		gpui::div()
-			.absolute()
-			.left(gpui::px(INSET + value * SEGMENT))
-			.top(gpui::px(INSET))
-			.w(gpui::px(SEGMENT))
-			.h(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT - (INSET + 1.) * 2.))
-			.rounded(gpui::px(8.))
-			.border_1()
-			.border_color(gpui::transparent_black())
-			.bg(ui_theme::rgba(ui_theme::CONTROL_SELECTED_FILL))
-	}
-}
-impl gpui::RenderOnce for Thumb {
-	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
-		let value =
-			ui_motion::direct_value("graph-layout-thumb", self.value, self.dragging, window, cx);
-		gpui::div()
-			.id("relations-layout-thumb")
-			.debug_selector(|| "relations-layout-thumb".into())
-			.absolute()
-			.left(gpui::px(INSET + value * SEGMENT))
-			.top(gpui::px(INSET))
-			.w(gpui::px(SEGMENT))
-			.h(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT - (INSET + 1.) * 2.))
-			.rounded(gpui::px(8.))
-			.border_1()
-			.border_color(gpui::transparent_black())
-			.bg(ui_theme::rgba(ui_theme::CONTROL_SELECTED_FILL))
-	}
-}
-
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::thread;
+
+	use crate::shell::agent_surface::work_board::{
+		relations::picker::{AgentSurface, Context, MouseButton, layout},
+		tests,
+	};
 
 	fn fixture(cx: &mut Context<AgentSurface>) -> AgentSurface {
-		let mut s = super::super::super::tests::fixture(cx);
+		let mut s = tests::fixture(cx);
+
 		s.visual_workspace_page("workbench", cx);
+
 		s.workspace.graph_expanded = true;
 		s.work_board.view.camera_fixed = true;
 		s.work_board.view.zoom = Some(0.7);
 		s.work_board.view.picked_agent = Some("release".into());
+
 		s.composer.update(cx, |input, cx| input.set_content("Preserve the Main draft", cx));
+
 		s
 	}
 
@@ -319,13 +370,18 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| fixture(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1800.), gpui::px(1000.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_800.), gpui::px(1_000.)));
+
 		let (main, facts, anchor) = surface.update(visual, |s, _| {
 			s.work_board.view.picked_agent = Some("mira".into());
+
 			s.work_board.view.positions.insert("mira".into(), (176., 96.));
+
 			let graph = s.relation_graph();
 			let node = graph.nodes.iter().find(|n| n.key == "mira").unwrap();
 			let point = node.connection_center();
+
 			(
 				(s.selected.clone(), s.native_agents.selected.clone()),
 				graph.edges.iter().map(|e| (e.id.clone(), e.kind)).collect::<Vec<_>>(),
@@ -335,30 +391,42 @@ mod tests {
 				),
 			)
 		});
+
 		visual.update(crate::ui_frame::draw_frame);
 		visual.run_until_parked();
+
 		let button = visual.debug_bounds("relations-mode-together").unwrap();
+
 		visual.simulate_click(button.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
+
 		surface.read_with(visual, |s, cx| {
 			assert_eq!(s.work_board.view.presentation, layout::Presentation::Together);
 			assert_eq!(s.work_board.view.layout_mode, layout::Mode::Tree);
 			assert_eq!(s.work_board.view.zoom, Some(0.7));
 			assert_eq!((s.selected.clone(), s.native_agents.selected.clone()), main);
 			assert_eq!(s.composer.read(cx).content(), "Preserve the Main draft");
+
 			let graph = s.relation_graph();
+
 			assert_eq!(
 				graph.edges.iter().map(|e| (e.id.clone(), e.kind)).collect::<Vec<_>>(),
 				facts
 			);
+
 			let point = graph.nodes.iter().find(|n| n.key == "mira").unwrap().connection_center();
+
 			assert!((point.0 * s.relation_scale() + s.work_board.view.pan.0 - anchor.0).abs() < 1.);
 			assert!((point.1 * s.relation_scale() + s.work_board.view.pan.1 - anchor.1).abs() < 1.);
 		});
-		std::thread::sleep(std::time::Duration::from_millis(600));
+
+		thread::sleep(std::time::Duration::from_millis(600));
+
 		visual.update(crate::ui_frame::draw_frame);
+
 		assert!(visual.debug_bounds("relation-owner-hint-mira").is_some());
 		assert!(visual.debug_bounds("relation-metrics-mira").is_some());
+
 		surface.read_with(visual, |s, _| {
 			assert_eq!(s.relation_wire_presence(std::time::Instant::now()), 0.);
 			assert!(
@@ -371,7 +439,9 @@ mod tests {
 					.moving(std::time::Instant::now())
 			);
 		});
+
 		let button = visual.debug_bounds("relations-mode-links").unwrap();
+
 		visual.simulate_click(button.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
 		surface.read_with(visual, |s, _| {
@@ -379,6 +449,7 @@ mod tests {
 			assert_eq!(s.work_board.view.positions["mira"], (176., 96.));
 			assert_eq!((s.selected.clone(), s.native_agents.selected.clone()), main);
 		});
+
 		assert!(visual.debug_bounds("relation-owner-hint-mira").is_some());
 	}
 
@@ -387,18 +458,22 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| fixture(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
 		visual.update(crate::ui_frame::draw_frame);
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_frame);
+
 		let main = surface
 			.read_with(visual, |s, _| (s.selected.clone(), s.native_agents.selected.clone()));
+
 		for (mode, selector) in [
 			(layout::Mode::Radial, "relations-layout-radial"),
 			(layout::Mode::Grouped, "relations-layout-grouped"),
 			(layout::Mode::Tree, "relations-layout-tree"),
 		] {
 			let button = visual.debug_bounds(selector).unwrap();
+
 			visual.simulate_click(button.center(), Default::default());
 			visual.update(crate::ui_frame::draw_frame);
 			surface.read_with(visual, |s, cx| {
@@ -409,8 +484,11 @@ mod tests {
 				assert_eq!((s.selected.clone(), s.native_agents.selected.clone()), main);
 				assert_eq!(s.composer.read(cx).content(), "Preserve the Main draft");
 			});
-			std::thread::sleep(std::time::Duration::from_millis(230));
+
+			thread::sleep(std::time::Duration::from_millis(230));
+
 			visual.update(crate::ui_frame::draw_frame);
+
 			assert_eq!(visual.debug_bounds("relations-layout-thumb").unwrap(), button);
 		}
 	}
@@ -420,13 +498,17 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| fixture(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(900.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
 		visual.update(crate::ui_frame::draw_frame);
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_frame);
+
 		let tree = visual.debug_bounds("relations-layout-tree").unwrap();
 		let start = tree.center() + gpui::point(gpui::px(12.), gpui::px(0.));
+
 		visual.simulate_mouse_down(start, MouseButton::Left, Default::default());
+
 		for (delta, mode) in [
 			(24., layout::Mode::Tree),
 			(72., layout::Mode::Radial),
@@ -445,20 +527,27 @@ mod tests {
 				assert!(s.work_board.view.drag.is_none(), "picker drags cannot pan the canvas");
 				assert!(s.work_board.view.map_drag.is_none());
 			});
+
 			let thumb = visual.debug_bounds("relations-layout-thumb").unwrap();
+
 			assert!((f32::from(thumb.left() - tree.left()) - delta.clamp(0., 120.)).abs() < 0.1);
 		}
+
 		let canvas = visual.debug_bounds("relations-canvas").unwrap();
 		let outside = gpui::point(start.x + gpui::px(60.), canvas.bottom() - gpui::px(10.));
+
 		visual.simulate_mouse_up(outside, MouseButton::Left, Default::default());
 		visual.update(crate::ui_frame::draw_frame);
+
 		let pan = surface.read_with(visual, |s, _| {
 			assert!(s.work_board.view.layout_drag.is_none());
 			assert_eq!(s.work_board.view.layout_mode, layout::Mode::Radial);
 			assert_eq!(s.work_board.view.picked_agent.as_deref(), Some("release"));
 			assert_eq!(s.work_board.view.zoom, Some(0.7));
+
 			s.work_board.view.pan
 		});
+
 		visual.simulate_mouse_move(tree.center(), None, Default::default());
 		surface.read_with(visual, |s, _| {
 			assert_eq!(s.work_board.view.layout_mode, layout::Mode::Radial);
@@ -469,14 +558,20 @@ mod tests {
 	#[gpui::test]
 	fn layout_picker_supports_keyboard_selection(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| fixture(cx));
+
 		visual.update(crate::ui_frame::draw_frame);
 		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_frame);
+
 		let tree = visual.debug_bounds("relations-layout-tree").unwrap();
+
 		visual.simulate_mouse_down(tree.center(), MouseButton::Left, Default::default());
+
 		let focus = visual.update(|window, cx| window.focused(cx).unwrap());
+
 		visual.simulate_mouse_up(tree.center(), MouseButton::Left, Default::default());
 		visual.update(|window, cx| window.focus(&focus, cx));
+
 		for (key, mode) in [
 			("right", layout::Mode::Radial),
 			("end", layout::Mode::Grouped),

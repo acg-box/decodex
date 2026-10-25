@@ -125,15 +125,11 @@ fn rendered_detail_continuation_reads_exact_cursor_without_accumulating_pages(
 			w.draw(cx).clear(cx);
 		});
 		// Disclosure uses wall-clock animation: measure, begin expansion, then settle.
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		thread::sleep(Duration::from_millis(250));
 
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let before = view
 			.read_with(visual, |v, cx| v.surface.read_with(cx, |s, _| s.activity_detail.revision));

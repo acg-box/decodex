@@ -24,6 +24,7 @@ fn install_on_class(class: &AnyClass) -> bool {
 	if class.instance_method(original_selector).is_some() {
 		return true;
 	}
+
 	let Some(method) = class.instance_method(selector) else { return false };
 
 	// The pinned GPUI delegate uses a void return and suppresses its callback if
@@ -71,7 +72,7 @@ mod tests {
 	};
 	use objc2_foundation::NSObject;
 
-	use super::install_on_class;
+	use crate::native_reopen;
 
 	thread_local! {
 		static REOPENS: Cell<usize> = const { Cell::new(0) };
@@ -107,18 +108,24 @@ mod tests {
 				.as_bool()
 			);
 		}
+
 		let instance: objc2::rc::Retained<NSObject> = unsafe { objc2::msg_send![class, new] };
 		let send = |visible: bool| unsafe {
 			let _: () = objc2::msg_send![&*instance, applicationShouldHandleReopen: ptr::null::<AnyObject>(), hasVisibleWindows: visible];
 		};
 
 		send(true);
+
 		REOPENS.with(|count| assert_eq!(count.get(), 0));
-		assert!(install_on_class(class));
-		assert!(install_on_class(class), "installation must not wrap itself twice");
+
+		assert!(native_reopen::install_on_class(class));
+		assert!(native_reopen::install_on_class(class), "installation must not wrap itself twice");
+
 		send(true);
 		send(false);
+
 		REOPENS.with(|count| assert_eq!(count.get(), 2));
+
 		assert!(ptr::fn_addr_eq(
 			description,
 			class.instance_method(objc2::sel!(description)).unwrap().implementation()

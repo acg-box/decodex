@@ -9,11 +9,14 @@ pub(super) struct Source {
 impl Source {
 	pub fn copy(&self, displayed: &str, selected: Range<usize>) -> String {
 		let Some(original) = &self.original else { return displayed[selected].into() };
+
 		if selected == (0..displayed.len()) {
 			return original.to_string();
 		}
+
 		let mut start = self.boundary(original, displayed, selected.start, false);
 		let mut end = self.boundary(original, displayed, selected.end, true);
+
 		for (visible, source) in &self.spans {
 			if visible.is_empty() {
 				continue;
@@ -25,6 +28,7 @@ impl Source {
 				end = end.max(self.end(original, displayed, visible, source));
 			}
 		}
+
 		original[start..end].into()
 	}
 
@@ -58,6 +62,7 @@ impl Source {
 			return if end { original.len() } else { 0 };
 		};
 		let rendered = &displayed[visible.clone()];
+
 		if let Some(offset) = original[source.clone()].find(rendered) {
 			source.start + offset + index - visible.start
 		} else if end {

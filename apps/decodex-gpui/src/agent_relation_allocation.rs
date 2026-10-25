@@ -1,6 +1,13 @@
 //! Recorded allocation changes use the existing interruptible motion clock.
-use crate::ui_motion;
-use gpui::{App, Div, IntoElement, RenderOnce, SharedString, Stateful, Window, prelude::*};
+use gpui::{
+	App, Div, IntoElement, RenderOnce, Rgba, SharedString, Stateful, Window,
+	prelude::{InteractiveElement, ParentElement, Styled},
+};
+
+use crate::{
+	ui_motion,
+	ui_theme::{self, ACCENT, BLUE, TEXT},
+};
 
 pub(super) struct Segment {
 	pub share: f32,
@@ -13,7 +20,6 @@ pub(super) struct Strip {
 	pub width: f32,
 	pub gap: f32,
 }
-
 impl RenderOnce for Strip {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		// Animate ranked shares, then lay out one continuous partition. Independent
@@ -29,6 +35,7 @@ impl RenderOnce for Strip {
 					window,
 					cx,
 				);
+
 				(segment.child, share)
 			})
 			.collect();
@@ -38,8 +45,10 @@ impl RenderOnce for Strip {
 		let snap = |value: f32| (value * density).round() / density;
 		let mut offset = 0.;
 		let mut strip = gpui::div().flex_1().min_w_0().h_full().relative();
+
 		for (child, share) in segments {
 			let width = if total > 0. { available * share / total } else { 0. };
+
 			strip = strip.child(
 				gpui::div()
 					.absolute()
@@ -51,6 +60,7 @@ impl RenderOnce for Strip {
 			);
 			offset += width + self.gap;
 		}
+
 		strip
 	}
 }
@@ -61,7 +71,6 @@ pub(super) struct Mark {
 	pub selected: bool,
 	pub hovered: bool,
 }
-
 impl RenderOnce for Mark {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let selected = ui_motion::value(
@@ -76,23 +85,24 @@ impl RenderOnce for Mark {
 			window,
 			cx,
 		);
-		let base = crate::ui_theme::rgb(crate::ui_theme::BLUE);
-		let bright = crate::ui_theme::rgb(crate::ui_theme::TEXT);
-		let from = gpui::Rgba {
+		let base = ui_theme::rgb(BLUE);
+		let bright = ui_theme::rgb(TEXT);
+		let from = Rgba {
 			r: base.r + (bright.r - base.r) * hovered,
 			g: base.g + (bright.g - base.g) * hovered,
 			b: base.b + (bright.b - base.b) * hovered,
 			a: 1.,
 		};
-		let to = crate::ui_theme::rgb(crate::ui_theme::ACCENT);
+		let to = ui_theme::rgb(ACCENT);
 		let selector = format!("graph-allocation-mark-{}", self.key);
+
 		gpui::div()
 			.debug_selector(move || selector.clone())
 			.w_full()
 			.h(gpui::px(2.))
 			.flex_none()
 			.rounded_full()
-			.bg(gpui::Rgba {
+			.bg(Rgba {
 				r: from.r + (to.r - from.r) * selected,
 				g: from.g + (to.g - from.g) * selected,
 				b: from.b + (to.b - from.b) * selected,
@@ -103,7 +113,12 @@ impl RenderOnce for Mark {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::thread;
+
+	use crate::shell::agent_surface::work_board::relations::allocation::{
+		InteractiveElement, IntoElement, ParentElement, Segment, SharedString, Strip, Styled,
+		Window,
+	};
 
 	struct Fixture(f32);
 	impl gpui::Render for Fixture {
@@ -114,13 +129,16 @@ mod tests {
 					.id(SharedString::from(key.to_owned()))
 					.debug_selector({
 						let key = key.to_owned();
+
 						move || key.clone()
 					})
 					.min_w_0()
 					.h_full(),
 			};
 			let mut segments = vec![portion("first", self.0), portion("second", 1. - self.0)];
+
 			segments.sort_by(|a, b| b.share.total_cmp(&a.share));
+
 			gpui::div().w(gpui::px(200.)).h(gpui::px(16.)).flex().child(Strip {
 				segments,
 				width: 200.,
@@ -136,9 +154,13 @@ mod tests {
 		let (view, visual) = cx.add_window_view(|_, _| Fixture(0.6));
 		let draw =
 			|visual: &mut gpui::VisualTestContext| visual.update(crate::ui_frame::draw_frame);
+
 		draw(visual);
-		std::thread::sleep(std::time::Duration::from_millis(230));
+
+		thread::sleep(std::time::Duration::from_millis(230));
+
 		draw(visual);
+
 		let width = |visual: &mut gpui::VisualTestContext, selector: &'static str| {
 			f32::from(visual.debug_bounds(selector).unwrap().size.width)
 		};
@@ -148,49 +170,77 @@ mod tests {
 		let partition = |visual: &mut gpui::VisualTestContext| {
 			let a = visual.debug_bounds("first").unwrap();
 			let b = visual.debug_bounds("second").unwrap();
+
 			assert!(
 				a.right() <= b.left() || b.right() <= a.left(),
 				"segments overlap: {a:?}, {b:?}"
 			);
 			assert!((f32::from(a.size.width + b.size.width) - 200.).abs() < 1.);
 		};
+
 		assert!((width(visual, "first") - 120.).abs() < 1.);
 		assert_eq!(left(visual, "first"), 0.);
+
 		view.update(visual, |s, cx| {
 			s.0 = 0.9;
+
 			cx.notify();
 		});
+
 		draw(visual);
+
 		assert!(width(visual, "first") < 140.);
-		std::thread::sleep(std::time::Duration::from_millis(60));
+
+		thread::sleep(std::time::Duration::from_millis(60));
+
 		draw(visual);
+
 		let segment = width(visual, "first");
+
 		assert!(segment > 120. && segment < 180., "strip must interpolate: {segment}");
+
 		partition(visual);
+
 		view.update(visual, |s, cx| {
 			s.0 = 0.7;
+
 			cx.notify();
 		});
+
 		draw(visual);
+
 		assert!((width(visual, "first") - segment).abs() < 15.);
+
 		partition(visual);
-		std::thread::sleep(std::time::Duration::from_millis(230));
+
+		thread::sleep(std::time::Duration::from_millis(230));
+
 		draw(visual);
+
 		assert!((width(visual, "first") - 140.).abs() < 1.);
 		assert!((width(visual, "second") - 60.).abs() < 1.);
+
 		view.update(visual, |s, cx| {
 			s.0 = 0.2;
+
 			cx.notify();
 		});
+
 		draw(visual);
 		partition(visual);
+
 		assert_eq!(left(visual, "second"), 0., "rank changes never cross other segments");
-		std::thread::sleep(std::time::Duration::from_millis(60));
+
+		thread::sleep(std::time::Duration::from_millis(60));
+
 		draw(visual);
 		partition(visual);
-		std::thread::sleep(std::time::Duration::from_millis(230));
+
+		thread::sleep(std::time::Duration::from_millis(230));
+
 		draw(visual);
 		partition(visual);
+
 		assert!((width(visual, "first") - 40.).abs() < 1.);
 		assert_eq!(left(visual, "first"), 160.);
 	}

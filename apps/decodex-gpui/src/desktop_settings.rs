@@ -823,7 +823,6 @@ mod tests {
 					)),
 				},
 			);
-
 			controller.set_auto_activate_quota(enabled).expect("queue activation preference");
 
 			let dispatch = controller.next_dispatch(7, &server).await;

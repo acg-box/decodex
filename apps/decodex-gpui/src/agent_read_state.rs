@@ -1,12 +1,14 @@
 //! Native receipt presentation; Dock handoff acknowledgement keeps its own meaning.
+use std::time::Instant;
+
+use gpui::AnyElement;
+use tokio::runtime::Builder;
+
 use crate::shell::agent_surface::{
-	AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface, Context,
-	EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task, unique_command,
+	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+	Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task,
 };
 use decodex_protocol::{AgentReadStateResult, AgentUnreadPosition};
-use gpui::AnyElement;
-use std::time::Instant;
-use tokio::runtime::Builder;
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -26,6 +28,7 @@ impl AgentSurface {
 	fn read_state_target(&self) -> Option<(String, String)> {
 		let target = self.native_goal_target()?;
 		let owner = self.snapshot.as_ref()?.work_items.iter().find(|w| w.id == target.0)?;
+
 		(owner.codex_thread_id.as_deref() == Some(target.1.as_str())).then_some(target)
 	}
 
@@ -55,6 +58,7 @@ impl AgentSurface {
 		if self.read_state.task.is_some() || !self.command_connection_ready() {
 			return;
 		}
+
 		let (Some(target), Some(profile), Some(source)) = (
 			self.read_state_target(),
 			self.profile.clone(),
@@ -73,9 +77,11 @@ impl AgentSurface {
 			else {
 				return;
 			};
+
 			if self.read_state.target.as_ref() != Some(&target) {
 				return;
 			}
+
 			Some(AgentActionDto::SetThreadReadState {
 				work_id: work_id.clone(),
 				thread_id: thread_id.clone(),
@@ -86,44 +92,57 @@ impl AgentSurface {
 		} else {
 			None
 		};
+
 		self.read_state.target = Some(target.clone());
 		self.read_state.epoch = self.read_state.epoch.wrapping_add(1);
+
 		let epoch = self.read_state.epoch;
 		let request = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let applied = action.map(|action| {
 				runtime
-					.block_on(client.execute(
-						action,
-						IdempotencyKey::new(unique_command()).expect("command identity"),
-					))
+					.block_on(
+						client.execute(
+							action,
+							IdempotencyKey::new(agent_surface::unique_command())
+								.expect("command identity"),
+						),
+					)
 					.is_ok_and(|v| matches!(v, AgentCommandResponse::Accepted { .. }))
 			});
 			let read = runtime
 				.block_on(client.read_state(work_id, thread_id))
 				.unwrap_or(AgentReadStateResult::Unavailable);
+
 			Some((applied, read))
 		});
+
 		self.read_state.task = Some(cx.spawn(async move |surface, cx| {
 			let result = request.await;
 			let _ = surface.update(cx, |s, cx| {
 				if s.read_state.epoch != epoch {
 					return;
 				}
+
 				s.read_state.task = None;
+
 				if s.read_state_target() != Some(target)
 					|| s.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref()) != Some(&source)
 				{
 					s.reset_read_state();
 					cx.notify();
+
 					return;
 				}
+
 				let (applied, read) =
 					result.unwrap_or((mark.map(|_| false), AgentReadStateResult::Unavailable));
 				let changed = read_text(s.read_state.result.as_ref()) != read_text(Some(&read));
+
 				s.read_state.result = Some(read);
 				s.read_state.read_at = Some(Instant::now());
+
 				if let Some(applied) = applied {
 					s.read_state.feedback = if applied {
 						"Native read status saved."
@@ -132,11 +151,13 @@ impl AgentSurface {
 					}
 					.into();
 				}
+
 				if changed || applied.is_some() {
 					cx.notify();
 				}
 			});
 		}));
+
 		if self.read_state.result.is_none() {
 			cx.notify();
 		}
@@ -146,10 +167,12 @@ impl AgentSurface {
 		if !self.command_connection_ready() || self.read_state_target().is_none() {
 			return gpui::div().into_any_element();
 		}
+
 		let current = (self.read_state.target == self.read_state_target())
 			.then_some(self.read_state.result.as_ref())
 			.flatten();
 		let mut panel = gpui::div().flex().flex_col().gap_2().child(read_text(current));
+
 		// Background reads do not remove actions or replace verified status.
 		// The request owner coalesces clicks while a read is in progress.
 		panel = panel.child(self.workspace_action(
@@ -158,8 +181,10 @@ impl AgentSurface {
 			|s, cx| s.load_read_state(None, cx),
 			cx,
 		));
+
 		if let Some(AgentReadStateResult::Available { first_unread, .. }) = current {
 			let read = first_unread.is_some();
+
 			panel = panel.child(self.workspace_action(
 				"native-read-state-mark".into(),
 				if read { "Mark as read" } else { "Mark as unread" }.into(),
@@ -167,6 +192,7 @@ impl AgentSurface {
 				cx,
 			));
 		}
+
 		panel.child(self.read_state.feedback.clone()).into_any_element()
 	}
 }

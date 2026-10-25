@@ -384,18 +384,24 @@ impl ClientLifecycle {
 		self.run_with_io(&mut TokioIo { session: None }).await
 	}
 
-	async fn wait_for_components<I: LifecycleIo>(&mut self, io: &mut I) -> bool {
+	async fn wait_for_components<I>(&mut self, io: &mut I) -> bool
+	where
+		I: LifecycleIo,
+	{
 		while self.app_owned_daemon.as_ref().is_some_and(|owner| owner.preparing_components()) {
 			if let Some(owner) = &self.app_owned_daemon {
 				owner.recover_transport();
+
 				if !owner.preparing_components() {
 					break;
 				}
 			}
+
 			if io.backoff(Duration::from_millis(250), &self.cancellation).await.is_err() {
 				return false;
 			}
 		}
+
 		true
 	}
 
@@ -514,6 +520,7 @@ impl ClientLifecycle {
 		{
 			return SessionStep::DesktopSettings(dispatch);
 		}
+
 		let accounts = self.accounts.clone();
 		let account_profile = self.account_profile.clone();
 		let desktop_settings = self.desktop_settings.clone();

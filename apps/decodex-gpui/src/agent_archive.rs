@@ -1,22 +1,31 @@
 //! Explicit restoration of a native archived task, using fresh desired-state readback.
 use std::{rc::Rc, time::Duration};
 
-use gpui::{AnyElement, KeyDownEvent};
+use gpui::{AnyElement, BoxShadow, KeyDownEvent};
 use tokio::runtime::Builder;
-use ui_theme::BLUE;
 
 #[cfg(test)] use crate::shell::agent_surface::AgentDispatchStateDto;
 #[cfg(test)] use crate::shell::agent_surface::AgentSnapshotDto;
 #[cfg(test)] use crate::shell::agent_surface::AgentSnapshotResult;
 #[cfg(test)] use crate::shell::agent_surface::AgentWorkStatusDto;
 use crate::{
-	shell::agent_surface::{
-		self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, AgentWorkItemDto,
-		Context, EntityId, FluentBuilder, IdempotencyKey, InteractiveElement, IntoElement,
-		ParentElement, Role, StatefulInteractiveElement, Styled, Task, WireText, ui_theme,
+	shell::{
+		agent_surface::{
+			self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface,
+			AgentWorkItemDto, Context, EntityId, FluentBuilder, IdempotencyKey, InteractiveElement,
+			IntoElement, ParentElement, Role, StatefulInteractiveElement, Styled, Task, WireText,
+			composer,
+			ui_theme::{
+				BLUE, COMPOSER_BOTTOM_GAP, COMPOSER_TOP_GAP, CONTROL_SIZE, CONVERSATION_INSET,
+				FIELD_MATERIAL, HOVER_FILL, LINE_STRONG,
+			},
+		},
+		workspace_symbols,
+		workspace_symbols::Symbol,
 	},
 	ui_feedback::{self, Tone},
 	ui_motion::SmoothControl as _,
+	ui_theme,
 };
 use decodex_protocol::AgentArchiveResult;
 
@@ -52,6 +61,7 @@ impl Panel {
 
 			self.result = Some(result);
 		}
+
 		self.result != previous || self.feedback != feedback
 	}
 }
@@ -72,6 +82,7 @@ impl AgentSurface {
 		if self.connection_initializing() {
 			return;
 		}
+
 		let Some(work) = self.selected.clone() else {
 			return;
 		};
@@ -166,10 +177,12 @@ impl AgentSurface {
 		) else {
 			return;
 		};
+
 		// An explicit restore supersedes a background check. Cancel its UI task
 		// and reject any late reply before starting the desired-state readback.
 		self.archive.epoch = self.archive.epoch.wrapping_add(1);
 		self.archive.request = None;
+
 		let epoch = self.archive.epoch;
 		let work = work.to_owned();
 		let key = agent_surface::unique_command();
@@ -277,10 +290,7 @@ impl AgentSurface {
 		} else {
 			"This conversation is read-only. Unarchive to send messages."
 		};
-		let icon = crate::shell::workspace_symbols::icon_sized(
-			crate::shell::workspace_symbols::Symbol::Lock,
-			16.,
-		);
+		let icon = workspace_symbols::icon_sized(Symbol::Lock, 16.);
 		let row = if !restoring && feedback.is_empty() {
 			ui_feedback::read_only_row("archive-status", "Archived", detail, icon)
 		} else {
@@ -307,21 +317,21 @@ impl AgentSurface {
 			.debug_selector(|| "archive-banner".into())
 			.w_full()
 			.flex_none()
-			.px(gpui::px(ui_theme::CONVERSATION_INSET))
-			.pt(gpui::px(ui_theme::COMPOSER_TOP_GAP))
-			.pb(gpui::px(ui_theme::COMPOSER_BOTTOM_GAP))
+			.px(gpui::px(CONVERSATION_INSET))
+			.pt(gpui::px(COMPOSER_TOP_GAP))
+			.pb(gpui::px(COMPOSER_BOTTOM_GAP))
 			.flex()
 			.items_center()
 			.justify_center()
 			.child(
-				super::composer::composer_capsule(false)
+				composer::composer_capsule(false)
 					.id("archive-read-only")
 					.debug_selector(|| "archive-surface".into())
 					.rounded(gpui::px(10.))
 					.py(gpui::px(4.))
-					.border_color(crate::ui_theme::rgb(ui_theme::LINE_STRONG).opacity(0.22))
-					.bg(crate::ui_theme::rgba(ui_theme::FIELD_MATERIAL))
-					.shadow(Vec::<gpui::BoxShadow>::new())
+					.border_color(ui_theme::rgb(LINE_STRONG).opacity(0.22))
+					.bg(ui_theme::rgba(FIELD_MATERIAL))
+					.shadow(Vec::<BoxShadow>::new())
 					.child(row),
 			)
 			.into_any_element()
@@ -353,15 +363,15 @@ fn button(
 		.tab_index(0)
 		.aria_label(label)
 		.cursor_pointer()
-		.text_color(crate::ui_theme::rgb(BLUE))
-		.h(gpui::px(ui_theme::CONTROL_SIZE))
+		.text_color(ui_theme::rgb(BLUE))
+		.h(gpui::px(CONTROL_SIZE))
 		.px_2()
 		.flex_none()
 		.flex()
 		.items_center()
 		.justify_center()
 		.rounded(gpui::px(5.))
-		.hover(|button| button.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)))
+		.hover(|button| button.bg(ui_theme::rgba(HOVER_FILL)))
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
 		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
@@ -377,17 +387,24 @@ fn button(
 
 #[cfg(test)]
 mod tests {
-	use gpui::AppContext as _;
 	use std::{future, thread, time::Duration};
 
+	use gpui::AppContext as _;
+
+	#[cfg(test)]
 	use crate::shell::agent_surface::archive::{
-		self, AgentArchiveResult, AgentSurface, AgentWorkItemDto, Panel,
+		AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
+	};
+	use crate::shell::agent_surface::{
+		archive::{self, AgentArchiveResult, AgentSurface, AgentWorkItemDto, Panel},
+		drafts::tests,
 	};
 
 	#[test]
 	fn unchanged_archive_state_stays_quiet_and_restore_feedback_still_updates() {
-		let mut panel = Panel::default();
 		let state = AgentArchiveResult::Archived { thread_id: "thread".into() };
+		let mut panel = Panel::default();
+
 		assert!(panel.apply_read(state.clone(), false));
 		assert!(!panel.apply_read(state.clone(), false));
 		assert!(!panel.apply_read(AgentArchiveResult::Unavailable, false));
@@ -396,40 +413,50 @@ mod tests {
 		assert!(!panel.apply_read(state, false));
 		assert!(panel.apply_read(AgentArchiveResult::Active { thread_id: "thread".into() }, false));
 	}
-	#[cfg(test)]
-	use crate::shell::agent_surface::archive::{
-		AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
-	};
 
 	#[gpui::test]
 	fn background_archive_check_keeps_restore_control_in_place(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.selected = Some("agent".into());
 			s.archive = Panel {
 				owner: s.selected.clone(),
 				result: Some(AgentArchiveResult::Archived { thread_id: "thread".into() }),
 				..Default::default()
 			};
+
 			cx.notify();
 		});
-		visual.simulate_resize(gpui::size(gpui::px(1180.), gpui::px(1200.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_180.), gpui::px(1_200.)));
 		visual.update(crate::ui_frame::draw_frame);
+
 		thread::sleep(Duration::from_millis(240));
+
 		visual.update(crate::ui_frame::draw_frame);
+
 		let bounds = visual.debug_bounds("archive-restore").expect("restore action");
 		let status = visual.debug_bounds("archive-banner").expect("read-only footer");
 		let frame = visual.debug_bounds("workspace-center-frame").expect("conversation frame");
+
 		assert_eq!(status.bottom(), frame.bottom(), "read-only state replaces the bottom input");
 		assert!(visual.debug_bounds("composer-editor-area").is_none());
+
 		let epoch = surface.update(visual, |s, cx| {
 			s.archive.request = Some(cx.spawn(async |_, _| future::pending::<()>().await));
+
 			cx.notify();
+
 			s.archive.epoch
 		});
+
 		visual.update(crate::ui_frame::draw_frame);
+
 		assert_eq!(visual.debug_bounds("archive-restore"), Some(bounds));
+
 		visual.simulate_click(bounds.center(), Default::default());
 		surface.update(visual, |s, _| {
 			assert_eq!(s.archive.feedback, "No service profile is configured.");
@@ -441,13 +468,15 @@ mod tests {
 			));
 		});
 		visual.update(crate::ui_frame::draw_frame);
+
 		assert_eq!(visual.debug_bounds("archive-restore"), Some(bounds));
 	}
 
 	#[gpui::test]
 	fn explicit_restore_supersedes_an_old_background_read(cx: &mut gpui::TestAppContext) {
-		let (_root, profile, _) = super::super::drafts::tests::profiles();
+		let (_root, profile, _) = tests::profiles();
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.profile = Some(profile);
 			s.selected = Some("agent".into());
@@ -457,11 +486,16 @@ mod tests {
 				..Default::default()
 			};
 			s.archive.request = Some(cx.spawn(async |_, _| future::pending::<()>().await));
+
 			let old_epoch = s.archive.epoch;
+
 			s.restore_archive("agent", "thread", cx);
+
 			assert!(s.archive.request.is_none());
 			assert!(s.archive.mutation.is_some());
+
 			let key = s.archive.mutation_key.clone();
+
 			assert!(key.is_some());
 			assert!(!s.complete_archive_read(
 				"agent",
@@ -470,7 +504,9 @@ mod tests {
 				false
 			));
 			assert!(s.archive.result.is_none());
+
 			s.restore_archive("agent", "thread", cx);
+
 			assert_eq!(s.archive.mutation_key, key, "one explicit restoration at a time");
 		});
 	}
@@ -611,10 +647,11 @@ mod tests {
 		// Read hit-test bounds after the workspace panels finish their 200 ms transition.
 		thread::sleep(Duration::from_millis(240));
 
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let bounds = visual.debug_bounds("archive-restore").expect("explicit restore control");
 		let fullscreen = visual.debug_bounds("chat-expand").expect("conversation fullscreen");
+
 		assert!(
 			bounds.top() >= fullscreen.bottom() + gpui::px(8.),
 			"archive recovery stays below the transcript controls"
@@ -625,7 +662,7 @@ mod tests {
 			gpui::MouseButton::Left,
 			gpui::Modifiers::default(),
 		);
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert_eq!(visual.debug_bounds("archive-restore"), Some(bounds));
 
@@ -656,9 +693,7 @@ mod tests {
 
 			cx.notify();
 		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("archive-restore").is_none());
 	}
@@ -697,20 +732,22 @@ mod background_read_tests {
 		assert!(panel.feedback.is_empty());
 	}
 }
-
 #[cfg(test)]
 mod visibility_tests {
-	use crate::shell::agent_surface::{
-		AgentSnapshotResult, AgentSurface, Context, drafts::tests::profiles,
-	};
+	use std::slice;
+
+	use crate::shell::agent_surface::{AgentSnapshotResult, AgentSurface, Context, drafts::tests};
 	use decodex_protocol::{AgentAttachmentDto, AgentTaskReferenceDto, AgentWorkKindDto};
 
 	fn fixture(s: &mut AgentSurface, cx: &mut Context<AgentSurface>) {
 		s.visual_workspace_fixture(cx);
+
 		let snapshot = s.snapshot.as_mut().unwrap();
+
 		snapshot.work_items.retain(|w| matches!(w.id.as_str(), "agent" | "release"));
 		snapshot.dependencies.clear();
 		snapshot.pending_events.clear();
+
 		for work in &mut snapshot.work_items {
 			work.codex_thread_id = Some(format!("thread-{}", work.id));
 			work.kind = AgentWorkKindDto::Manager;
@@ -721,15 +758,19 @@ mod visibility_tests {
 	fn archived_selection_parks_exact_draft_and_restores_it_on_unarchive(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let (_service, profile, _) = profiles();
+		let (_service, profile, _) = tests::profiles();
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.bind_drafts(Some(&profile), cx);
+
 			fixture(s, cx);
+
 			s.open_page("agent", cx);
 			s.composer.update(cx, |input, cx| input.set_content("Main draft", cx));
 			s.open_page("release", cx);
 			s.composer.update(cx, |input, cx| input.set_content("Release draft", cx));
+
 			let file = AgentAttachmentDto {
 				path: decodex_protocol::ConversationWorkingDirectory::new("/tmp/kept.png").unwrap(),
 				image: true,
@@ -740,8 +781,10 @@ mod visibility_tests {
 				thread_id: decodex_protocol::WireText::new("thread-agent").unwrap(),
 				title: decodex_protocol::WireText::new("Main").unwrap(),
 			};
+
 			s.attachments = vec![file.clone()];
 			s.task_references = vec![reference.clone()];
+
 			let original = s.snapshot.clone().unwrap();
 			let scope = original
 				.work_items
@@ -750,15 +793,19 @@ mod visibility_tests {
 				.unwrap()
 				.parent_goal_id
 				.clone();
+
 			assert!(
 				crate::shell::agent_surface::graph::Layout::new(&original, scope.as_deref())
 					.nodes
 					.iter()
 					.any(|node| node.id == "release")
 			);
+
 			let mut active = original.clone();
+
 			active.work_items.retain(|w| w.id != "release");
 			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(active)), cx);
+
 			assert!(
 				!crate::shell::agent_surface::graph::Layout::new(
 					s.snapshot.as_ref().unwrap(),
@@ -773,13 +820,12 @@ mod visibility_tests {
 			assert_eq!(s.composer.read(cx).content(), "Main draft");
 			assert!(s.attachments.is_empty() && s.task_references.is_empty());
 			assert_eq!(s.draft_profiles.texts["release"], "Release draft");
-			assert_eq!(s.draft_profiles.files["release"].as_slice(), std::slice::from_ref(&file));
-			assert_eq!(
-				s.draft_profiles.tasks["release"].as_slice(),
-				std::slice::from_ref(&reference)
-			);
+			assert_eq!(s.draft_profiles.files["release"].as_slice(), slice::from_ref(&file));
+			assert_eq!(s.draft_profiles.tasks["release"].as_slice(), slice::from_ref(&reference));
 			assert!(!s.conversation_pages().iter().any(|(id, _, _)| id == "release"));
+
 			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(original)), cx);
+
 			assert!(
 				crate::shell::agent_surface::graph::Layout::new(
 					s.snapshot.as_ref().unwrap(),
@@ -789,7 +835,9 @@ mod visibility_tests {
 				.iter()
 				.any(|node| node.id == "release")
 			);
+
 			s.open_page("release", cx);
+
 			assert_eq!(s.composer.read(cx).content(), "Release draft");
 			assert_eq!(s.attachments, [file]);
 			assert_eq!(s.task_references, [reference]);
@@ -800,14 +848,22 @@ mod visibility_tests {
 	#[gpui::test]
 	fn archived_root_cannot_retarget_an_initial_editor(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			fixture(s, cx);
+
 			s.composer_manager = None;
+
 			s.composer.update(cx, |input, cx| input.set_content("Root draft", cx));
+
 			let mut active = s.snapshot.clone().unwrap();
+
 			active.work_items.retain(|w| w.id == "release");
+
 			active.work_items[0].parent_goal_id = None;
+
 			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(active)), cx);
+
 			assert_eq!(s.selected.as_deref(), Some("release"));
 			assert_eq!(s.composer_manager.as_deref(), Some("release"));
 			assert!(s.composer.read(cx).content().is_empty());
@@ -820,20 +876,30 @@ mod visibility_tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			fixture(s, cx);
+
 			s.open_page("agent", cx);
 			s.composer.update(cx, |input, cx| input.set_content("Keep the archived draft", cx));
+
 			let original = s.snapshot.clone().unwrap();
 			let mut empty = original.clone();
+
 			empty.work_items.clear();
 			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(empty)), cx);
+
 			assert!(s.selected.is_none());
 			assert_eq!(s.composer_manager.as_deref(), Some("agent"));
+
 			let mut fresh = original;
+
 			fresh.work_items.retain(|w| w.id == "release");
+
 			fresh.work_items[0].parent_goal_id = None;
+
 			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(fresh)), cx);
+
 			assert_eq!(s.selected.as_deref(), Some("release"));
 			assert_eq!(s.composer_manager.as_deref(), Some("release"));
 			assert!(s.composer.read(cx).content().is_empty());
@@ -847,23 +913,34 @@ mod visibility_tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			fixture(s, cx);
+
 			s.composer_manager = None;
+
 			s.composer.update(cx, |input, cx| input.set_content("Keep root draft", cx));
+
 			let original = s.snapshot.clone().unwrap();
+
 			s.apply_refreshed_snapshot(Err(()), cx);
+
 			assert_eq!(s.selected.as_deref(), Some("agent"));
 			assert_eq!(s.composer.read(cx).content(), "Keep root draft");
+
 			let mut active = original.clone();
+
 			active.work_items.clear();
 			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(active)), cx);
+
 			assert!(s.selected.is_none());
 			assert_eq!(s.composer_manager.as_deref(), Some("agent"));
 			assert_eq!(s.composer.read(cx).content(), "Keep root draft");
 			assert!(s.composer_unavailable_reason().is_some());
 			assert!(s.build_submission("Keep root draft", cx).is_err());
+
 			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(original)), cx);
+
 			assert_eq!(s.selected.as_deref(), Some("agent"));
 			assert_eq!(s.composer.read(cx).content(), "Keep root draft");
 			assert!(s.draft_owner_available());

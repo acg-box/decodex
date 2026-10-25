@@ -222,7 +222,9 @@ fn confirmation_view(
 		s.draft_profiles.storage = Storage::open(Ok(store.clone()));
 
 		s.bind_drafts(Some(&profile), cx);
+
 		s.profile = Some(profile.clone());
+
 		s.visual_workspace_fixture(cx);
 
 		s.state = LoadState::Ready;

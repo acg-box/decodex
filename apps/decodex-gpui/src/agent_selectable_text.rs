@@ -1,17 +1,25 @@
 //! Read-only rich text with native hit testing and clipboard selection.
-use std::{cell::OnceCell, ops::Range, path::Path, rc::Rc};
-
 #[path = "agent_text_selection.rs"] mod selection;
+
 pub(super) use selection::Document;
 
-use gpui::{App, Element, HighlightStyle, IntoElement, MouseButton, RenderOnce, StyledText};
+use std::{cell::OnceCell, ops::Range, panic::Location, path::Path, rc::Rc};
+
+use gpui::{
+	App, Bounds, Element, ElementId, GlobalElementId, HighlightStyle, InspectorElementId,
+	IntoElement, LayoutId, MouseButton, Pixels, RenderOnce, StyledText,
+};
 use unicode_segmentation::UnicodeSegmentation as _;
 
-use crate::shell::agent_surface::{
-	ClipboardItem, FocusHandle, InteractiveElement, ParentElement, Role, SharedString,
-	StatefulInteractiveElement, Styled, Window, markdown,
-};
 #[cfg(test)] use crate::shell::agent_surface::{Context, FontWeight};
+use crate::{
+	shell::agent_surface::{
+		ClipboardItem, FocusHandle, InteractiveElement, ParentElement, Role, SharedString,
+		StatefulInteractiveElement, Styled, Window, markdown,
+	},
+	ui_theme,
+};
+use selection::Scope;
 
 #[derive(IntoElement)]
 pub(super) struct SelectableText {
@@ -25,11 +33,13 @@ impl SelectableText {
 		Self { key, text, highlights: Vec::new(), links: Vec::new() }
 	}
 }
+
 impl RenderOnce for SelectableText {
 	fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
 		let key = self.key.clone();
 		let mut document = Document::default();
 		let child = document.push(self);
+
 		document.finish(&key, gpui::div().child(child))
 	}
 }
@@ -38,7 +48,7 @@ impl RenderOnce for SelectableText {
 struct TextBlock {
 	text: SelectableText,
 	range: Range<usize>,
-	scope: Rc<OnceCell<selection::Scope>>,
+	scope: Rc<OnceCell<Scope>>,
 }
 impl RenderOnce for TextBlock {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -63,6 +73,7 @@ impl RenderOnce for TextBlock {
 		let end = self.range.end;
 		let text = self.text.text;
 		let selector = self.text.key.clone();
+
 		gpui::div()
 			.id(SharedString::from(self.text.key))
 			.debug_selector(move || selector.clone())
@@ -75,9 +86,11 @@ impl RenderOnce for TextBlock {
 					.index_for_position(event.position)
 					.unwrap_or_else(|ix| ix)
 					.min(right_text.len());
+
 				if !scope.state.read(cx).range(&scope.text).contains(&(start + ix)) {
 					scope.state.update(cx, |s, cx| {
 						s.focus.focus(window, cx);
+
 						if let Some((offset, word)) = right_text
 							.split_word_bound_indices()
 							.find(|(offset, word)| *offset <= ix && ix < offset + word.len())
@@ -85,9 +98,11 @@ impl RenderOnce for TextBlock {
 							s.anchor = start + offset;
 							s.head = s.anchor + word.len();
 						}
+
 						cx.notify();
 					});
 				}
+
 				scope.context_menu(window, cx);
 				cx.stop_propagation();
 			})
@@ -96,13 +111,17 @@ impl RenderOnce for TextBlock {
 					.index_for_position(event.position)
 					.unwrap_or_else(|ix| ix)
 					.min(text.len());
+
 				down_state.update(cx, |s, cx| {
 					s.focus.focus(window, cx);
+
 					if !event.modifiers.shift {
 						s.anchor = start + ix;
 					}
+
 					s.head = start + ix;
 					s.dragging = true;
+
 					if event.click_count >= 3 {
 						s.anchor = start;
 						s.head = end;
@@ -114,12 +133,15 @@ impl RenderOnce for TextBlock {
 						s.anchor = start + offset;
 						s.head = start + offset + word.len();
 					}
+
 					cx.notify();
 				});
+
 				cx.stop_propagation();
 			})
 			.on_mouse_up(MouseButton::Left, move |event, _, cx| {
 				let s = up_state.read(cx);
+
 				if s.dragging
 					&& s.anchor == s.head
 					&& let Ok(ix) = layout.index_for_position(event.position)
@@ -141,7 +163,7 @@ struct TextLayer {
 	styled: StyledText,
 	batch: bool,
 	range: Range<usize>,
-	scope: Rc<OnceCell<selection::Scope>>,
+	scope: Rc<OnceCell<Scope>>,
 }
 impl IntoElement for TextLayer {
 	type Element = Self;
@@ -150,33 +172,34 @@ impl IntoElement for TextLayer {
 		self
 	}
 }
+
 impl Element for TextLayer {
 	type PrepaintState = ();
 	type RequestLayoutState = ();
 
-	fn id(&self) -> Option<gpui::ElementId> {
+	fn id(&self) -> Option<ElementId> {
 		None
 	}
 
-	fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+	fn source_location(&self) -> Option<&'static Location<'static>> {
 		None
 	}
 
 	fn request_layout(
 		&mut self,
-		id: Option<&gpui::GlobalElementId>,
-		inspector: Option<&gpui::InspectorElementId>,
+		id: Option<&GlobalElementId>,
+		inspector: Option<&InspectorElementId>,
 		window: &mut Window,
 		cx: &mut App,
-	) -> (gpui::LayoutId, ()) {
+	) -> (LayoutId, ()) {
 		self.styled.request_layout(id, inspector, window, cx)
 	}
 
 	fn prepaint(
 		&mut self,
-		id: Option<&gpui::GlobalElementId>,
-		inspector: Option<&gpui::InspectorElementId>,
-		bounds: gpui::Bounds<gpui::Pixels>,
+		id: Option<&GlobalElementId>,
+		inspector: Option<&InspectorElementId>,
+		bounds: Bounds<Pixels>,
 		state: &mut (),
 		window: &mut Window,
 		cx: &mut App,
@@ -192,9 +215,9 @@ impl Element for TextLayer {
 
 	fn paint(
 		&mut self,
-		_: Option<&gpui::GlobalElementId>,
-		_: Option<&gpui::InspectorElementId>,
-		bounds: gpui::Bounds<gpui::Pixels>,
+		_: Option<&GlobalElementId>,
+		_: Option<&InspectorElementId>,
+		bounds: Bounds<Pixels>,
 		_: &mut (),
 		_: &mut (),
 		window: &mut Window,
@@ -257,7 +280,7 @@ fn selection_highlights(
 				.unwrap_or_default();
 
 			if selection.contains(&range.start) {
-				style.background_color = Some(crate::ui_theme::rgba(0x788dff66).into());
+				style.background_color = Some(ui_theme::rgba(0x788dff66).into());
 			}
 
 			(range, style)
@@ -308,10 +331,13 @@ mod tests {
 	#[gpui::test]
 	fn dragging_past_the_text_keeps_extending_the_selection(cx: &mut gpui::TestAppContext) {
 		let (_, visual) = cx.add_window_view(|_, _| Preview { text: "A calm reading day.".into() });
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		let bounds = visual.debug_bounds("changing-selection").expect("text");
 		let start = gpui::point(bounds.left() + gpui::px(1.), bounds.top() + gpui::px(8.));
 		let end = gpui::point(bounds.right() + gpui::px(24.), bounds.bottom() + gpui::px(24.));
+
 		visual.simulate_mouse_down(start, gpui::MouseButton::Left, Default::default());
 		visual.simulate_mouse_move(end, gpui::MouseButton::Left, Default::default());
 		visual.simulate_mouse_up(end, gpui::MouseButton::Left, Default::default());
@@ -328,9 +354,7 @@ mod tests {
 	fn copy_uses_the_visible_selection_after_unicode_text_changes(cx: &mut gpui::TestAppContext) {
 		let (preview, visual) = cx.add_window_view(|_, _| Preview { text: "abcd".into() });
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let bounds = visual.debug_bounds("changing-selection").expect("text");
 

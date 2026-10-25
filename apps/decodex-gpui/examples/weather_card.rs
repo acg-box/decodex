@@ -104,6 +104,7 @@ fn main() {
 			|window, cx| {
 				cx.new(|cx| {
 					ui_frame::observe_activation(window, cx);
+
 					Preview {
 						forecast: WeatherForecast::parse(include_str!(
 							"fixtures/singapore-weather.txt"

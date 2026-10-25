@@ -1,8 +1,9 @@
 //! Native composition boundary for the existing Agent composer.
 use gpui::{
 	self, Action, AnyElement, AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity,
-	Focusable, MouseButton, Pixels, Render, Role, StatefulInteractiveElement as _, Subscription,
-	Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind, WindowOptions,
+	FocusHandle, Focusable, KeyDownEvent, MouseButton, Pixels, Render, Role,
+	StatefulInteractiveElement as _, Subscription, Window, WindowBackgroundAppearance,
+	WindowBounds, WindowHandle, WindowKind, WindowOptions,
 	prelude::{InteractiveElement as _, IntoElement, ParentElement as _, Styled as _},
 };
 
@@ -11,11 +12,13 @@ use crate::{
 		ActivateAgent, ActivateHealth, ActivateSettings, DismissStatus, GrowPanel, GrowPanels,
 		NavigateBack, NavigateForward, ResetPanel, ResetPanels, ShrinkPanel, ShrinkPanels,
 		ToggleContentFullscreen, ToggleGraph, ToggleInspector, ToggleSidebar,
-		agent_surface::AgentSurface,
+		agent_surface::{AgentSurface, voice::Media},
 	},
 	ui_motion,
 	ui_theme::{
-		BODY_SIZE, FONT_FAMILY, TEXT,
+		self, BODY_SIZE, COMPOSER_BOTTOM_GAP, COMPOSER_RADIUS, COMPOSER_TOP_GAP,
+		CONVERSATION_INSET, CONVERSATION_WIDTH, FONT_FAMILY, TEXT, appearance,
+		material::Surface,
 		native_material_panel::{self, MaterialPanel},
 	},
 };
@@ -41,27 +44,26 @@ impl Default for NativeComposer {
 		}
 	}
 }
+
 struct ComposerPanel {
 	owner: Entity<AgentSurface>,
 	parent: AnyWindowHandle,
 	surface: Option<MaterialPanel>,
 	_observation: Subscription,
-	input_focus: Option<gpui::FocusHandle>,
+	input_focus: Option<FocusHandle>,
 }
-
-pub(super) fn parent_window(window: &Window, cx: &App) -> Option<AnyWindowHandle> {
-	window.root::<ComposerPanel>().flatten().map(|panel| panel.read(cx).parent)
-}
-
 impl Render for ComposerPanel {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		if let Some(surface) = self.surface.as_mut() {
 			surface.refresh_material();
 		}
+
 		let owner = self.owner.downgrade();
 		let capsule = self.owner.update(cx, |s, cx| {
 			s.sync_question_editor(cx);
+
 			let focus = s.conversation_composer().focus_handle(cx);
+
 			if s.composer_unavailable_reason().is_none()
 				&& self
 					.input_focus
@@ -70,7 +72,9 @@ impl Render for ComposerPanel {
 			{
 				window.focus(&focus, cx);
 			}
+
 			self.input_focus = Some(focus);
+
 			s.render_composer_capsule(true, window, cx)
 		});
 		let parent = self.parent;
@@ -83,22 +87,25 @@ impl Render for ComposerPanel {
 				forward(parent, &DismissStatus, cx);
 			})
 			.text_size(gpui::px(BODY_SIZE))
-			.text_color(crate::ui_theme::rgb(TEXT))
+			.text_color(ui_theme::rgb(TEXT))
 			.on_children_prepainted(move |bounds, _, cx| {
 				if let Some(bounds) = bounds.first() {
 					let height = f32::from(bounds.size.height).max(42.);
 					let _ = owner.update(cx, |s, cx| {
-						if (s.native_composer.height - height).abs() > 0.5 {
+						if (s.native_controls.composer.height - height).abs() > 0.5 {
 							// Reserve the same new height in the transcript before its next
 							// layout. Waiting for the parent's footer measurement adds a
 							// second scroll correction to every question animation frame.
-							if s.native_composer.enabled && s.native_composer.bounds.is_some() {
+							if s.native_controls.composer.enabled
+								&& s.native_controls.composer.bounds.is_some()
+							{
 								s.workspace.composer_overlay_height =
 									(s.workspace.composer_overlay_height + height
-										- s.native_composer.height)
+										- s.native_controls.composer.height)
 										.max(0.);
 							}
-							s.native_composer.height = height;
+
+							s.native_controls.composer.height = height;
 
 							cx.notify();
 						}
@@ -109,6 +116,7 @@ impl Render for ComposerPanel {
 			.capture_any_mouse_down(move |event, _, cx| {
 				focus_owner.update(cx, |s, cx| {
 					s.workspace.focused_panel = None;
+
 					if s.composer_menu == Some("model")
 						&& !s
 							.menu_trigger_bounds
@@ -142,30 +150,38 @@ impl AgentSurface {
 	pub(super) fn retry_native_composer(&mut self) {
 		// An explicit reload can recover a failed initial native-window creation.
 		// Keep an existing panel and its focus intact.
-		self.native_composer.failed = false;
+		self.native_controls.composer.failed = false;
 	}
 
 	pub(super) fn focus_native_message(&self, cx: &mut Context<Self>) -> bool {
 		if self.composer_unavailable_reason().is_some() {
 			return false;
 		}
-		let Some(child) = self.native_composer.child.filter(|_| self.native_composer.enabled)
+
+		let Some(child) =
+			self.native_controls.composer.child.filter(|_| self.native_controls.composer.enabled)
 		else {
 			return false;
 		};
+
 		cx.defer(move |cx| {
 			let _ = child.update(cx, |panel, window, cx| {
 				// This is an explicit focus action. Making a child key alone does
 				// not activate a hidden or background application on macOS.
 				cx.activate(true);
+
 				let focus = panel.owner.read(cx).conversation_composer().focus_handle(cx);
+
 				window.focus(&focus, cx);
+
 				if let Some(surface) = &panel.surface {
 					surface.focus_text();
 				}
+
 				window.activate_window();
 			});
 		});
+
 		true
 	}
 
@@ -180,14 +196,14 @@ impl AgentSurface {
 		// never replace the composer's material, even after Details closes.
 		let enabled = self.native_composer_requested(
 			allowed,
-			native_material_panel::available(crate::ui_theme::material::Surface::InputBar),
-		) && !self.native_composer.failed;
+			native_material_panel::available(Surface::InputBar),
+		) && !self.native_controls.composer.failed;
 
 		if enabled
-			&& !self.native_composer.enabled
+			&& !self.native_controls.composer.enabled
 			&& self.composer_unavailable_reason().is_none()
 			&& self.conversation_composer().focus_handle(cx).is_focused(window)
-			&& let Some(child) = self.native_composer.child
+			&& let Some(child) = self.native_controls.composer.child
 		{
 			cx.defer(move |cx| {
 				let _ = child.update(cx, |panel, window, cx| {
@@ -203,8 +219,8 @@ impl AgentSurface {
 				});
 			});
 		}
-		if self.native_composer.enabled != enabled {
-			self.native_composer.enabled = enabled;
+		if self.native_controls.composer.enabled != enabled {
+			self.native_controls.composer.enabled = enabled;
 
 			// Shell owns the decision, but Agent owns the cached composer layout.
 			cx.notify();
@@ -215,11 +231,11 @@ impl AgentSurface {
 		if !enabled {
 			return;
 		}
-		if self.native_composer.child.is_some() || self.native_composer.creating {
+		if self.native_controls.composer.child.is_some() || self.native_controls.composer.creating {
 			return;
 		}
 
-		self.native_composer.creating = true;
+		self.native_controls.composer.creating = true;
 
 		let owner = cx.entity();
 		let parent = window.window_handle();
@@ -230,11 +246,12 @@ impl AgentSurface {
 				.update(cx, |_, parent_window, cx| create_panel(owner.clone(), parent_window, cx));
 
 			owner.update(cx, |s, cx| {
-				s.native_composer.creating = false;
-				s.native_composer.child = result.ok().flatten();
-				s.native_composer.enabled = s.native_composer.child.is_some();
-				s.native_composer.failed = s.native_composer.child.is_none();
-				if s.native_composer.failed {
+				s.native_controls.composer.creating = false;
+				s.native_controls.composer.child = result.ok().flatten();
+				s.native_controls.composer.enabled = s.native_controls.composer.child.is_some();
+				s.native_controls.composer.failed = s.native_controls.composer.child.is_none();
+
+				if s.native_controls.composer.failed {
 					eprintln!(
 						"Decodex composer: native input bar material could not be created; Reload Workspace will retry."
 					);
@@ -253,9 +270,9 @@ impl AgentSurface {
 		cx.defer(move |cx| {
 			let Ok((child, bounds, enabled, opacity)) = owner.read_with(cx, |s, _| {
 				(
-					s.native_composer.child,
-					s.native_composer.bounds,
-					s.native_composer.enabled,
+					s.native_controls.composer.child,
+					s.native_controls.composer.bounds,
+					s.native_controls.composer.enabled,
 					s.workspace.arrival.progress(0.12),
 				)
 			}) else {
@@ -292,7 +309,7 @@ impl AgentSurface {
 		let anchor = gpui::canvas(
 			move |bounds, _, cx| {
 				let _ = owner.update(cx, |s, cx| {
-					s.native_composer.bounds = Some(bounds);
+					s.native_controls.composer.bounds = Some(bounds);
 
 					s.sync_native_composer(cx);
 				});
@@ -302,9 +319,9 @@ impl AgentSurface {
 
 		gpui::div()
 			.w_full()
-			.px(gpui::px(crate::ui_theme::CONVERSATION_INSET))
-			.pt(gpui::px(crate::ui_theme::COMPOSER_TOP_GAP))
-			.pb(gpui::px(crate::ui_theme::COMPOSER_BOTTOM_GAP))
+			.px(gpui::px(CONVERSATION_INSET))
+			.pt(gpui::px(COMPOSER_TOP_GAP))
+			.pb(gpui::px(COMPOSER_BOTTOM_GAP))
 			.flex()
 			.flex_col()
 			.items_center()
@@ -325,25 +342,30 @@ impl AgentSurface {
 							s.focus_message(window, cx);
 						}
 					}))
-					.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, window, cx| {
+					.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 							if parent_managed {
 								s.open_native_parent(cx);
 							} else {
 								s.focus_message(window, cx);
 							}
+
 							cx.stop_propagation();
 						}
 					}))
 					.relative()
 					.w_full()
-					.max_w(gpui::px(crate::ui_theme::CONVERSATION_WIDTH))
-					.h(gpui::px(self.native_composer.height))
+					.max_w(gpui::px(CONVERSATION_WIDTH))
+					.h(gpui::px(self.native_controls.composer.height))
 					.child(anchor.absolute().size_full())
 					.child(self.render_composer_popover(cx)),
 			)
 			.into_any_element()
 	}
+}
+
+pub(super) fn parent_window(window: &Window, cx: &App) -> Option<AnyWindowHandle> {
+	window.root::<ComposerPanel>().flatten().map(|panel| panel.read(cx).parent)
 }
 
 fn forward(parent: AnyWindowHandle, action: &dyn Action, cx: &mut App) {
@@ -379,7 +401,8 @@ fn create_panel(
 			move |window, cx| {
 				cx.new(|cx| {
 					ui_motion::observe_activation(window, cx);
-					crate::ui_theme::appearance::observe(window, cx);
+					appearance::observe(window, cx);
+
 					cx.observe_window_activation(
 						window,
 						|panel: &mut ComposerPanel, window, cx| {
@@ -393,6 +416,7 @@ fn create_panel(
 						},
 					)
 					.detach();
+
 					let observation = cx.observe(&owner, |_, _, cx| cx.notify());
 
 					ComposerPanel {
@@ -408,11 +432,8 @@ fn create_panel(
 		.ok()?;
 	let installed = child
 		.update(cx, |s, window, _| {
-			s.surface = MaterialPanel::install_input_bar(
-				parent_window,
-				window,
-				f64::from(crate::ui_theme::COMPOSER_RADIUS),
-			);
+			s.surface =
+				MaterialPanel::install_input_bar(parent_window, window, f64::from(COMPOSER_RADIUS));
 
 			s.surface.is_some()
 		})
@@ -424,7 +445,7 @@ fn create_panel(
 		return None;
 	}
 
-	super::voice::Media::prepare_input(parent_window, "");
+	Media::prepare_input(parent_window, "");
 
 	cx.on_window_closed(move |cx, id| {
 		if id == parent.window_id() {

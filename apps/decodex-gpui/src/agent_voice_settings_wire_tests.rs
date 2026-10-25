@@ -55,9 +55,7 @@ fn voice_picker_sends_once_then_reads_effective_override_after_lost_reply(cx: &m
 
 	visual.simulate_click(button.center(), Default::default());
 	visual.run_until_parked();
-	visual.update(|w, cx| {
-		w.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	let button = visual.debug_bounds("voice-choice-0").unwrap();
 
@@ -170,6 +168,95 @@ fn changing_pages_retires_pending_voice_settings(cx: &mut TestAppContext) {
 	});
 }
 
+#[gpui::test]
+fn managed_voice_preflight_tracks_the_service_and_thread_without_rejecting_snapshot_refreshes(
+	cx: &mut TestAppContext,
+) {
+	for (changed_source, refresh) in [(false, false), (true, false), (false, true)] {
+		let (_directory, profile, server) =
+			wire_test_support::fixture(move |listener| async move {
+				let mut socket = wire_test_support::accept(&listener).await;
+				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+					panic!("request")
+				};
+				let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
+					panic!("query")
+				};
+				let QueryPayload::GetAgentVoiceSettings { work_id } = query.payload else {
+					panic!("voice settings")
+				};
+				let state = if changed_source {
+					AgentVoiceSettingsResult::Available {
+						work_id,
+						review_token: WireText::new("a".repeat(64)).unwrap(),
+						voices: vec![WireText::new("juniper").unwrap()],
+						effective: None,
+						preference: None,
+					}
+				} else {
+					AgentVoiceSettingsResult::Unavailable
+				};
+				let response = ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::AgentVoiceSettings(state),
+				});
+
+				socket
+					.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
+					.await
+					.unwrap();
+			});
+		let (view, visual) = cx.add_window_view(|window, cx| {
+			let surface = cx.new(AgentSurface::new);
+
+			surface.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+
+				s.profile = Some(profile);
+				s.snapshot.as_mut().unwrap().work_items[0].codex_thread_id =
+					Some("voice-thread".into());
+
+				s.start_voice(window, cx);
+
+				assert!(s.voice.is_none());
+				assert!(s.voice_task.is_some());
+
+				if changed_source {
+					s.snapshot.as_mut().unwrap().runtime_source =
+						Some(EntityId::new("replacement-runtime").unwrap());
+				}
+				if refresh {
+					// Ordinary snapshot reads increment this counter without changing the call
+					// target.
+					s.generation += 1;
+				}
+			});
+
+			VoicePanel(surface)
+		});
+
+		visual.run_until_parked();
+		server.join().unwrap();
+
+		view.read_with(visual, |view, cx| {
+			let s = view.0.read(cx);
+
+			assert!(s.voice.is_none());
+			assert!(s.voice_task.is_none());
+			assert_eq!(
+				s.feedback.message,
+				if changed_source {
+					"Voice start canceled because the conversation changed."
+				} else {
+					"Voice is unavailable or disabled by managed policy."
+				}
+			);
+		});
+	}
+}
+
 async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 	let mut actions = Vec::new();
 
@@ -224,83 +311,4 @@ async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 	}
 
 	actions
-}
-
-#[gpui::test]
-fn managed_voice_preflight_tracks_the_service_and_thread_without_rejecting_snapshot_refreshes(
-	cx: &mut TestAppContext,
-) {
-	for (changed_source, refresh) in [(false, false), (true, false), (false, true)] {
-		let (_directory, profile, server) =
-			wire_test_support::fixture(move |listener| async move {
-				let mut socket = wire_test_support::accept(&listener).await;
-				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-					panic!("request")
-				};
-				let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
-					panic!("query")
-				};
-				let QueryPayload::GetAgentVoiceSettings { work_id } = query.payload else {
-					panic!("voice settings")
-				};
-				let state = if changed_source {
-					AgentVoiceSettingsResult::Available {
-						work_id,
-						review_token: WireText::new("a".repeat(64)).unwrap(),
-						voices: vec![WireText::new("juniper").unwrap()],
-						effective: None,
-						preference: None,
-					}
-				} else {
-					AgentVoiceSettingsResult::Unavailable
-				};
-				let response = ServerMessage::QueryResult(QueryResultEnvelope {
-					version: CURRENT_VERSION,
-					server_id: ServerId::new(SERVER).unwrap(),
-					query_id: query.query_id,
-					payload: QueryResultPayload::AgentVoiceSettings(state),
-				});
-				socket
-					.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
-					.await
-					.unwrap();
-			});
-		let (view, visual) = cx.add_window_view(|window, cx| {
-			let surface = cx.new(AgentSurface::new);
-			surface.update(cx, |s, cx| {
-				s.visual_workspace_fixture(cx);
-				s.profile = Some(profile);
-				s.snapshot.as_mut().unwrap().work_items[0].codex_thread_id =
-					Some("voice-thread".into());
-				s.start_voice(window, cx);
-				assert!(s.voice.is_none());
-				assert!(s.voice_task.is_some());
-				if changed_source {
-					s.snapshot.as_mut().unwrap().runtime_source =
-						Some(EntityId::new("replacement-runtime").unwrap());
-				}
-				if refresh {
-					// Ordinary snapshot reads increment this counter without changing the call
-					// target.
-					s.generation += 1;
-				}
-			});
-			VoicePanel(surface)
-		});
-		visual.run_until_parked();
-		server.join().unwrap();
-		view.read_with(visual, |view, cx| {
-			let s = view.0.read(cx);
-			assert!(s.voice.is_none());
-			assert!(s.voice_task.is_none());
-			assert_eq!(
-				s.feedback.message,
-				if changed_source {
-					"Voice start canceled because the conversation changed."
-				} else {
-					"Voice is unavailable or disabled by managed policy."
-				}
-			);
-		});
-	}
 }

@@ -120,9 +120,7 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 
 	visual.simulate_click(button.center(), Default::default());
 	visual.run_until_parked();
-	visual.update(|w, cx| {
-		w.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	assert!(
 		visual.debug_bounds("permission-profile-1").is_none(),
@@ -148,9 +146,7 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 			Some(AgentPermissionState::Pending { state: AgentPermissionOutcome::Unknown, .. })
 		));
 	});
-	visual.update(|w, cx| {
-		w.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	assert!(visual.debug_bounds("permission-profile-0").is_none());
 

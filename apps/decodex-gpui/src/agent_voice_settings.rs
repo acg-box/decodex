@@ -1,14 +1,16 @@
 //! Select the next call's voice without changing a live audio session.
-use crate::ui_feedback::{self, Feedback};
 use gpui::{AnyElement, AppContext as _};
 use tokio::runtime::Builder;
 
-use crate::shell::agent_surface::{
-	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
-	ComposerInput, Context, Entity, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled,
-	Task, WireText, mcp_forms,
-};
 #[cfg(test)] use crate::shell::agent_surface::{ClientProfile, Render, Window};
+use crate::{
+	shell::agent_surface::{
+		self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+		ComposerInput, Context, Entity, EntityId, IdempotencyKey, IntoElement, ParentElement,
+		Styled, Task, WireText, mcp_forms,
+	},
+	ui_feedback::{self, Feedback},
+};
 use decodex_protocol::{AgentVoiceSettingsResult, ClientFailure, HistoryText};
 
 #[derive(Default)]

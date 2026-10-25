@@ -1,5 +1,4 @@
 //! One explicit native image preview, bounded and tied to the selected source.
-#[cfg(feature = "visual-capture")] use crate::ui_feedback::Feedback;
 use std::{sync::Arc, time::Duration};
 
 use gpui::{AnyElement, ImageFormat, ObjectFit};
@@ -12,6 +11,7 @@ use crate::shell::agent_surface::native_timeline::AgentHistoryResult;
 use crate::shell::agent_surface::native_timeline::{
 	AgentSnapshotResult, AgentTimelineContent, AgentTimelineEntry,
 };
+#[cfg(feature = "visual-capture")] use crate::ui_feedback::Feedback;
 use crate::{
 	shell::{
 		agent_surface,
@@ -452,9 +452,7 @@ mod tests {
 			(binding, page, 8)
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("native-media-preview").is_some());
 
@@ -473,9 +471,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("native-media-preview").is_none());
 	}

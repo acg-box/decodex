@@ -1,5 +1,4 @@
 //! Resolve only an exact positive receipt; pending-list absence is not evidence.
-#[cfg(feature = "visual-capture")] use crate::ui_feedback::Feedback;
 use tokio::runtime::Builder;
 
 #[cfg(feature = "visual-capture")] use crate::shell::agent_surface::ClientProfile;
@@ -9,6 +8,7 @@ use crate::shell::agent_surface::{AgentClient, AgentCommandResponse, AgentSurfac
 use crate::shell::agent_surface::{
 	ConversationWorkingDirectory, EntityId, IdempotencyKey, WireText,
 };
+#[cfg(feature = "visual-capture")] use crate::ui_feedback::Feedback;
 #[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::AgentSteerIdentity;
 use decodex_protocol::AgentSteerReceiptResult;
 

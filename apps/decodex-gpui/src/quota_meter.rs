@@ -15,7 +15,7 @@ use libc::{c_char, time_t, tm};
 use crate::{
 	shell::WB_TEXT_FAINT,
 	ui_motion,
-	ui_theme::{ERROR, FONT_FAMILY, SUCCESS, WARNING},
+	ui_theme::{self, ERROR, FONT_FAMILY, SUCCESS, WARNING},
 };
 use decodex_protocol::{AccountQuotaStateDto, AccountQuotaWindowDto, EntityRevision};
 
@@ -70,7 +70,7 @@ impl RenderOnce for QuotaMeter {
 				.as_ref()
 				.is_some_and(|fill| now.saturating_duration_since(fill.started) < FILL_DURATION)
 		{
-			crate::ui_motion::request_frame(window, cx);
+			ui_motion::request_frame(window, cx);
 		}
 
 		let color = if observed.is_some() { quota_color(value) } else { WB_TEXT_FAINT };
@@ -83,7 +83,7 @@ impl RenderOnce for QuotaMeter {
 			.gap(gpui::px(4.))
 			.font_family(FONT_FAMILY)
 			.text_size(gpui::px(10.))
-			.text_color(crate::ui_theme::rgb(WB_TEXT_FAINT))
+			.text_color(ui_theme::rgb(WB_TEXT_FAINT))
 			.child(gpui::div().w(gpui::px(15.)).flex_none().child(self.label))
 			.child(
 				gpui::div()
@@ -91,14 +91,14 @@ impl RenderOnce for QuotaMeter {
 					.flex_1()
 					.min_w_0()
 					.rounded_full()
-					.bg(crate::ui_theme::rgba(0xffffff0c))
+					.bg(ui_theme::rgba(0xffffff0c))
 					.opacity(if observed.is_some() { 1. } else { 0. })
 					.child(
 						gpui::div()
 							.h_full()
 							.w(gpui::relative(value / 100.))
 							.rounded_full()
-							.bg(crate::ui_theme::rgb(color)),
+							.bg(ui_theme::rgb(color)),
 					),
 			)
 			.child(
@@ -106,7 +106,7 @@ impl RenderOnce for QuotaMeter {
 					.w(gpui::px(28.))
 					.flex_none()
 					.text_right()
-					.text_color(crate::ui_theme::rgb(color))
+					.text_color(ui_theme::rgb(color))
 					.child(observed.map(|_| format!("{value:.0}%")).unwrap_or_else(|| "—".into())),
 			)
 			.child(

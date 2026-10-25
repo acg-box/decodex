@@ -1,9 +1,12 @@
 //! Cache smooth connections and route around visible characters, labels and speech.
-use super::{BTreeMap, Edge, Kind, Node};
 use std::{cmp::Ordering, collections::BinaryHeap, rc::Rc};
 
+use crate::shell::agent_surface::work_board::relations::{BTreeMap, Edge, Kind, Node};
+
 type Point = (f32, f32);
+
 pub(super) const CLEARANCE: f32 = 12.;
+
 const TURN_COST: f32 = 24.;
 
 #[derive(Clone, PartialEq)]
@@ -13,10 +16,10 @@ pub(super) struct Curve {
 	pub first: Point,
 	pub second: Point,
 }
-
 impl Curve {
 	fn line(start: Point, end: Point) -> Self {
 		let length = distance(start, end);
+
 		Self {
 			start,
 			first: toward(start, end, length / 3.),
@@ -33,6 +36,7 @@ impl Curve {
 		let u = 1. - t;
 		let axis =
 			|a, b, c, d| u * u * u * a + 3. * u * u * t * b + 3. * u * t * t * c + t * t * t * d;
+
 		(
 			axis(self.start.0, self.first.0, self.second.0, self.end.0),
 			axis(self.start.1, self.first.1, self.second.1, self.end.1),
@@ -53,6 +57,7 @@ impl Curve {
 		let d = middle(a, b);
 		let e = middle(b, c);
 		let center = middle(d, e);
+
 		[
 			Self { start: self.start, first: a, second: d, end: center },
 			Self { start: center, first: e, second: c, end: self.end },
@@ -70,7 +75,6 @@ pub(super) struct Route {
 	spans: Vec<f32>,
 	length: f32,
 }
-
 impl Route {
 	pub(super) fn is_visible(&self) -> bool {
 		self.length > 0.001
@@ -89,11 +93,14 @@ impl Route {
 		// No rectangular spine, short elbows, or overlapping fork decorations.
 		let (first, second) = if horizontal {
 			let x = (start.0 + end.0) / 2.;
+
 			((x, start.1), (x, end.1))
 		} else {
 			let y = (start.1 + end.1) / 2.;
+
 			((start.0, y), (end.0, y))
 		};
+
 		Self::curve(start, first, second, end)
 	}
 
@@ -101,14 +108,18 @@ impl Route {
 		let spans: Vec<_> = curves.iter().map(Curve::span).collect();
 		let length = spans.iter().sum();
 		let mut samples = vec![(curves[0].start, 0.)];
+
 		for (curve, span) in curves.iter().zip(&spans) {
 			let steps = (span / 16.).ceil().clamp(2., 64.) as usize;
+
 			for i in 1..=steps {
 				let point = curve.at(i as f32 / steps as f32);
 				let &(previous, length) = samples.last().expect("curve start");
+
 				samples.push((point, length + distance(previous, point)));
 			}
 		}
+
 		let mut route = Self {
 			ink: curves.clone(),
 			ink_arrow: true,
@@ -118,24 +129,31 @@ impl Route {
 			samples,
 			label: (0., 0.),
 		};
+
 		route.label = route.at(0.5);
+
 		route
 	}
 
 	pub(super) fn at(&self, t: f32) -> Point {
 		let mut remaining = t * self.length;
+
 		for (curve, &span) in self.curves.iter().zip(&self.spans) {
 			if remaining <= span && span > 0. {
 				return curve.at(remaining / span);
 			}
+
 			remaining -= span;
 		}
+
 		self.curves.last().expect("connection curve").end
 	}
 
 	pub(super) fn reversed(&self) -> Self {
 		let mut route = Self::from_curves(self.curves.iter().rev().map(Curve::reversed).collect());
+
 		route.label = self.label;
+
 		route
 	}
 
@@ -143,44 +161,33 @@ impl Route {
 		let mut curves = Vec::new();
 		let mut start = points[0];
 		let mut longest = (0_f32, start);
+
 		for triple in points.windows(3) {
 			let [before, corner, after] = [triple[0], triple[1], triple[2]];
 			let radius =
 				rounding.min(distance(before, corner) / 2.).min(distance(corner, after) / 2.);
 			let enter = toward(corner, before, radius);
 			let leave = toward(corner, after, radius);
+
 			append_line(&mut curves, start, enter, &mut longest);
+
 			curves.push(Curve {
 				start: enter,
 				first: toward(enter, corner, radius * 2. / 3.),
 				second: toward(leave, corner, radius * 2. / 3.),
 				end: leave,
 			});
+
 			start = leave;
 		}
+
 		append_line(&mut curves, start, *points.last().expect("route endpoint"), &mut longest);
+
 		let mut route = Self::from_curves(curves);
+
 		route.label = longest.1;
+
 		route
-	}
-}
-
-fn distance(a: Point, b: Point) -> f32 {
-	(b.0 - a.0).hypot(b.1 - a.1)
-}
-
-fn toward(a: Point, b: Point, amount: f32) -> Point {
-	let scale = amount / distance(a, b).max(f32::EPSILON);
-	(a.0 + (b.0 - a.0) * scale, a.1 + (b.1 - a.1) * scale)
-}
-
-fn append_line(curves: &mut Vec<Curve>, start: Point, end: Point, longest: &mut (f32, Point)) {
-	let length = distance(start, end);
-	if length > 0.001 {
-		curves.push(Curve::line(start, end));
-		if length > longest.0 {
-			*longest = (length, ((start.0 + end.0) / 2., (start.1 + end.1) / 2.));
-		}
 	}
 }
 
@@ -191,7 +198,6 @@ pub(super) struct Ink {
 	curves: Vec<Curve>,
 	arrows: Vec<(Point, Point)>,
 }
-
 impl Ink {
 	fn take(&mut self, curve: &Curve) -> Vec<Curve> {
 		let points = [curve.start, curve.first, curve.second, curve.end];
@@ -203,7 +209,9 @@ impl Ink {
 			if self.curves.iter().any(|old| old == curve || *old == curve.reversed()) {
 				return Vec::new();
 			}
+
 			self.curves.push(curve.clone());
+
 			return vec![curve.clone()];
 		};
 		let (start, end, at) = if axis == 0 {
@@ -212,6 +220,7 @@ impl Ink {
 			(curve.start.1.min(curve.end.1), curve.start.1.max(curve.end.1), curve.start.0)
 		};
 		let mut remaining = vec![(start, end)];
+
 		for &(_, _, left, right) in self.lines.iter().filter(|&&(direction, position, _, _)| {
 			direction == axis && (position - at).abs() < 0.001
 		}) {
@@ -222,9 +231,11 @@ impl Ink {
 				})
 				.collect();
 		}
+
 		if !remaining.is_empty() {
 			self.lines.push((axis, at, start, end));
 		}
+
 		remaining
 			.into_iter()
 			.map(|(a, b)| {
@@ -239,79 +250,15 @@ impl Ink {
 
 	pub(super) fn retain(&mut self, route: &mut Route) {
 		route.ink = route.curves.iter().flat_map(|curve| self.take(curve)).collect();
+
 		let tip = route.curves.last().expect("connection curve");
 		let length = distance(tip.second, tip.end).max(0.001);
 		let arrow =
 			(tip.end, ((tip.end.0 - tip.second.0) / length, (tip.end.1 - tip.second.1) / length));
+
 		route.ink_arrow = !self.arrows.contains(&arrow);
+
 		self.arrows.push(arrow);
-	}
-}
-
-pub(super) fn route(a: &Node, b: &Node) -> Route {
-	let (a_bounds, b_bounds) = (a.connection_bounds(), b.connection_bounds());
-	let dx = b.connection_center().0 - a.connection_center().0;
-	let dy = b.port_y() - a.port_y();
-	let gap_x = if dx >= 0. { b_bounds[0] - a_bounds[2] } else { a_bounds[0] - b_bounds[2] };
-	let gap_y = dy.abs() - (a_bounds[3] - a_bounds[1] + b_bounds[3] - b_bounds[1]) / 2.;
-	// Relation type never changes geometry or creates a hook in a shared edge.
-	if gap_x >= 0. && gap_x >= gap_y {
-		let forward = dx >= 0.;
-		let start = (a_bounds[if forward { 2 } else { 0 }], a.port_y());
-		let end = (b_bounds[if forward { 0 } else { 2 }], b.port_y());
-		let bend = (end.0 - start.0) / 2.;
-		Route::curve(start, (start.0 + bend, start.1), (end.0 - bend, end.1), end)
-	} else {
-		let forward = dy >= 0.;
-		let start = (a.connection_center().0, a_bounds[if forward { 3 } else { 1 }]);
-		let end = (b.connection_center().0, b_bounds[if forward { 1 } else { 3 }]);
-		let bend = (end.1 - start.1) / 2.;
-		Route::curve(start, (start.0, start.1 + bend), (end.0, end.1 - bend), end)
-	}
-}
-
-#[derive(Clone, PartialEq)]
-struct Card {
-	key: String,
-	bounds: [f32; 4],
-	port_y: f32,
-}
-
-impl Card {
-	fn blocks_curve(&self, curve: &Curve) -> bool {
-		fn intersects(curve: &Curve, bounds: [f32; 4], depth: u8) -> bool {
-			let [left, top, right, bottom] = bounds;
-			let points = [curve.start, curve.first, curve.second, curve.end];
-			let min_x = points.iter().map(|p| p.0).fold(f32::INFINITY, f32::min);
-			let max_x = points.iter().map(|p| p.0).fold(f32::NEG_INFINITY, f32::max);
-			let min_y = points.iter().map(|p| p.1).fold(f32::INFINITY, f32::min);
-			let max_y = points.iter().map(|p| p.1).fold(f32::NEG_INFINITY, f32::max);
-			if max_x <= left || min_x >= right || max_y <= top || min_y >= bottom {
-				return false;
-			}
-			if depth == 0 || min_x == max_x || min_y == max_y {
-				return true;
-			}
-			curve.halves().iter().any(|half| intersects(half, bounds, depth - 1))
-		}
-		// Subdivision keeps the conservative hull guarantee without routing around
-		// cards that lie inside the full control hull but nowhere near the curve.
-		intersects(curve, self.bounds, 8)
-	}
-
-	fn crosses(&self, a: Point, b: Point) -> bool {
-		let [left, top, right, bottom] = self.bounds;
-		if (a.0 - b.0).abs() < 0.001 {
-			a.0 > left + 0.001
-				&& a.0 < right - 0.001
-				&& a.1.min(b.1) < bottom - 0.001
-				&& a.1.max(b.1) > top + 0.001
-		} else {
-			a.1 > top + 0.001
-				&& a.1 < bottom - 0.001
-				&& a.0.min(b.0) < right - 0.001
-				&& a.0.max(b.0) > left + 0.001
-		}
 	}
 }
 
@@ -321,7 +268,6 @@ pub(super) struct Cache {
 	edges: Vec<(String, String, Kind, u32)>,
 	paths: Vec<Rc<Route>>,
 }
-
 impl Cache {
 	pub(super) fn paths(&mut self, nodes: &[Node], edges: &[Edge]) -> BTreeMap<String, Rc<Route>> {
 		let cards: Vec<_> = nodes
@@ -338,6 +284,7 @@ impl Cache {
 						bottom + CLEARANCE,
 					],
 				}];
+
 				// A nameplate inside the character footprint is already protected.
 				// Duplicating it would block that character's own bottom port.
 				if let Some([left, top, right, bottom]) = n.identity.filter(|[x0, y0, x1, y1]| {
@@ -367,17 +314,20 @@ impl Cache {
 						],
 					});
 				}
+
 				cards
 			})
 			.collect();
 		let pairs: Vec<_> =
 			edges.iter().map(|e| (e.from.clone(), e.to.clone(), e.kind, e.color)).collect();
+
 		if self.cards != cards || self.edges != pairs {
 			let mut paths: Vec<_> = edges
 				.iter()
 				.map(|edge| {
 					let a = nodes.iter().find(|n| n.key == edge.from).expect("edge source");
 					let b = nodes.iter().find(|n| n.key == edge.to).expect("edge target");
+
 					edge.kind
 						.hierarchy()
 						.then(|| tree_route(a, b, nodes, edges, &cards))
@@ -386,151 +336,68 @@ impl Cache {
 				})
 				.collect();
 			let mut ink = BTreeMap::<u32, Ink>::new();
+
 			for (edge, path) in edges.iter().zip(&mut paths) {
 				if edge.kind.pattern().is_none() {
 					ink.entry(edge.color).or_default().retain(path);
 				}
 			}
+
 			self.paths = paths.into_iter().map(Rc::new).collect();
 			self.cards = cards;
 			self.edges = pairs;
 		}
+
 		edges.iter().zip(&self.paths).map(|(edge, path)| (edge.id.clone(), path.clone())).collect()
 	}
 }
 
-// Ownership uses clean curves between facing ports in each tree rank.
-// Obstructed or dragged branches use the same obstacle router as every other edge.
-fn tree_route(a: &Node, b: &Node, nodes: &[Node], edges: &[Edge], cards: &[Card]) -> Option<Route> {
-	let children: Vec<_> = edges
-		.iter()
-		.filter(|edge| edge.kind.hierarchy() && edge.from == a.key)
-		.filter_map(|edge| nodes.iter().find(|node| node.key == edge.to))
-		.collect();
-	let mut branches = Vec::new();
-	let (aa, bb) = (a.connection_bounds(), b.connection_bounds());
-	if children.iter().all(|node| node.connection_bounds()[0] >= aa[2] + CLEARANCE) {
-		let start = (aa[2], a.port_y());
-		branches.push(Route::branch(start, (bb[0], b.port_y()), true));
-	}
-	if children.iter().all(|node| node.connection_bounds()[1] >= aa[3] + CLEARANCE) {
-		let start = (a.connection_center().0, aa[3]);
-		branches.push(Route::branch(start, (b.connection_center().0, bb[1]), false));
-	}
-	branches.into_iter().find_map(|direct| {
-		if clears_cards(&direct, a, b, cards) {
-			return Some(direct);
-		}
-		let start = direct.curves[0].start;
-		if !ports(a, start, cards).iter().any(|port| port.anchor == start) {
-			return None;
-		}
-		// Siblings share an exposed origin even when their number blocks a top port.
-		let path = avoid_cards_from(direct, a, b, cards, Some(start));
-		path.is_visible().then_some(path)
-	})
+#[derive(Clone, PartialEq)]
+struct Card {
+	key: String,
+	bounds: [f32; 4],
+	port_y: f32,
 }
+impl Card {
+	fn blocks_curve(&self, curve: &Curve) -> bool {
+		fn intersects(curve: &Curve, bounds: [f32; 4], depth: u8) -> bool {
+			let [left, top, right, bottom] = bounds;
+			let points = [curve.start, curve.first, curve.second, curve.end];
+			let min_x = points.iter().map(|p| p.0).fold(f32::INFINITY, f32::min);
+			let max_x = points.iter().map(|p| p.0).fold(f32::NEG_INFINITY, f32::max);
+			let min_y = points.iter().map(|p| p.1).fold(f32::INFINITY, f32::min);
+			let max_y = points.iter().map(|p| p.1).fold(f32::NEG_INFINITY, f32::max);
 
-fn avoid_cards(direct: Route, a: &Node, b: &Node, cards: &[Card]) -> Route {
-	avoid_cards_from(direct, a, b, cards, None)
-}
-
-fn avoid_cards_from(
-	direct: Route,
-	a: &Node,
-	b: &Node,
-	cards: &[Card],
-	origin: Option<Point>,
-) -> Route {
-	if clears_cards(&direct, a, b, cards) {
-		return direct;
-	}
-	let curve = &direct.curves[0];
-	let mut starts = ports(a, curve.start, cards);
-	starts.retain(|port| origin.is_none_or(|origin| port.anchor == origin));
-	let ends = ports(b, curve.end, cards);
-	let mut pairs: Vec<_> = starts.iter().flat_map(|a| ends.iter().map(move |b| (a, b))).collect();
-	pairs.sort_by(|(a, b), (c, d)| {
-		let cost = |a: &Port, b: &Port| {
-			distance(a.outer, b.outer)
-				+ distance(a.anchor, curve.start)
-				+ distance(b.anchor, curve.end)
-		};
-		cost(a, b).total_cmp(&cost(c, d))
-	});
-	// Speech can cover a facing port without blocking the free space
-	// between characters. Try exposed tangents before adding gutter corners.
-	if a.attachment.is_some() || b.attachment.is_some() {
-		for (start, end) in &pairs {
-			let reach = (distance(start.anchor, end.anchor) * 0.35).clamp(24., 72.);
-			let path = Route::curve(
-				start.anchor,
-				toward(start.anchor, start.outer, reach),
-				toward(end.anchor, end.outer, reach),
-				end.anchor,
-			);
-			if clears_cards(&path, a, b, cards) {
-				return path;
+			if max_x <= left || min_x >= right || max_y <= top || min_y >= bottom {
+				return false;
 			}
-		}
-	}
-	let arc = vertical_arc(&pairs, a, b, cards);
-	for (start, end) in pairs {
-		if let Some(mut points) =
-			Grid::new(cards, start.outer, end.outer).path(start.outer, end.outer)
-		{
-			points.insert(0, start.anchor);
-			points.push(end.anchor);
-			let routed = rounded_path(points, CLEARANCE);
-			let cost = routed.measured_length() + (routed.curves.len() / 2) as f32 * TURN_COST;
-			return arc.filter(|arc| arc.measured_length() < cost).unwrap_or(routed);
-		}
-	}
-	if let Some(arc) = arc {
-		return arc;
-	}
-	// A fully covered card has no exposed port. Do not draw a false shortcut
-	// through other cards while it is hidden beneath them during a drag.
-	Route::curve(curve.start, curve.start, curve.start, curve.start)
-}
-
-/// Use the router's turn cost when comparing a smooth arc with a rectangular detour.
-fn vertical_arc(pairs: &[(&Port, &Port)], a: &Node, b: &Node, cards: &[Card]) -> Option<Route> {
-	let (ac, bc) = (a.connection_center(), b.connection_center());
-	if (bc.1 - ac.1).abs() <= (bc.0 - ac.0).abs() {
-		return None;
-	}
-	let mut best: Option<Route> = None;
-	for &(start, end) in pairs {
-		let ax = start.outer.0 - start.anchor.0;
-		let bx = end.outer.0 - end.anchor.0;
-		if ax * bx <= 0. {
-			continue;
-		}
-		let base = (distance(start.anchor, end.anchor) * 0.35).clamp(24., 72.);
-		for factor in [2., 3., 4.] {
-			let path = Route::curve(
-				start.anchor,
-				toward(start.anchor, start.outer, base * factor),
-				toward(end.anchor, end.outer, base * factor),
-				end.anchor,
-			);
-			if clears_cards(&path, a, b, cards)
-				&& best.as_ref().is_none_or(|best| path.measured_length() < best.measured_length())
-			{
-				best = Some(path);
+			if depth == 0 || min_x == max_x || min_y == max_y {
+				return true;
 			}
+
+			curve.halves().iter().any(|half| intersects(half, bounds, depth - 1))
+		}
+
+		// Subdivision keeps the conservative hull guarantee without routing around
+		// cards that lie inside the full control hull but nowhere near the curve.
+		intersects(curve, self.bounds, 8)
+	}
+
+	fn crosses(&self, a: Point, b: Point) -> bool {
+		let [left, top, right, bottom] = self.bounds;
+
+		if (a.0 - b.0).abs() < 0.001 {
+			a.0 > left + 0.001
+				&& a.0 < right - 0.001
+				&& a.1.min(b.1) < bottom - 0.001
+				&& a.1.max(b.1) > top + 0.001
+		} else {
+			a.1 > top + 0.001
+				&& a.1 < bottom - 0.001
+				&& a.0.min(b.0) < right - 0.001
+				&& a.0.max(b.0) > left + 0.001
 		}
 	}
-	best
-}
-
-fn clears_cards(path: &Route, a: &Node, b: &Node, cards: &[Card]) -> bool {
-	!cards.iter().any(|card| {
-		card.key != a.key
-			&& card.key != b.key
-			&& path.curves.iter().any(|curve| card.blocks_curve(curve))
-	})
 }
 
 struct Port {
@@ -538,81 +405,32 @@ struct Port {
 	outer: Point,
 }
 
-fn ports(node: &Node, preferred: Point, cards: &[Card]) -> Vec<Port> {
-	let center = node.connection_center();
-	let [left, top, right, bottom] = node.connection_bounds();
-	let mut ports: Vec<_> = [
-		((left, node.port_y()), (-CLEARANCE, 0.)),
-		((right, node.port_y()), (CLEARANCE, 0.)),
-		((center.0, top), (0., -CLEARANCE)),
-		((center.0, bottom), (0., CLEARANCE)),
-	]
-	.into_iter()
-	.map(|(anchor, offset)| Port { anchor, outer: (anchor.0 + offset.0, anchor.1 + offset.1) })
-	.filter(|port| !cards.iter().any(|c| c.key != node.key && c.crosses(port.anchor, port.outer)))
-	.collect();
-	ports.sort_by(|a, b| distance(a.anchor, preferred).total_cmp(&distance(b.anchor, preferred)));
-	ports
-}
-
-fn rounded_path(points: Vec<Point>, rounding: f32) -> Route {
-	let mut corners: Vec<Point> = Vec::new();
-	for point in points {
-		while corners.len() >= 2 {
-			let a = corners[corners.len() - 2];
-			let b = corners[corners.len() - 1];
-			if (a.0 == b.0 && b.0 == point.0) || (a.1 == b.1 && b.1 == point.1) {
-				corners.pop();
-			} else {
-				break;
-			}
-		}
-		corners.push(point);
-	}
-	Route::polyline(&corners, rounding)
-}
-
 struct Grid<'a> {
 	x: Vec<f32>,
 	y: Vec<f32>,
 	cards: &'a [Card],
 }
-
-#[derive(PartialEq)]
-struct Visit {
-	priority: f32,
-	cost: f32,
-	state: usize,
-}
-impl Eq for Visit {}
-impl PartialOrd for Visit {
-	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		Some(self.cmp(other))
-	}
-}
-impl Ord for Visit {
-	fn cmp(&self, other: &Self) -> Ordering {
-		other.priority.total_cmp(&self.priority).then_with(|| other.state.cmp(&self.state))
-	}
-}
-
 impl<'a> Grid<'a> {
 	fn new(cards: &'a [Card], start: Point, end: Point) -> Self {
 		let mut x = vec![start.0, end.0];
 		let mut y = vec![start.1, end.1];
+
 		for card in cards {
 			x.extend([card.bounds[0], card.bounds[2]]);
 			y.extend([card.bounds[1], card.bounds[3]]);
 		}
+
 		x.sort_by(f32::total_cmp);
 		x.dedup();
 		y.sort_by(f32::total_cmp);
 		y.dedup();
+
 		Self { x, y, cards }
 	}
 
 	fn point(&self, state: usize) -> Point {
 		let cell = state / 2;
+
 		(self.x[cell % self.x.len()], self.y[cell / self.x.len()])
 	}
 
@@ -620,6 +438,7 @@ impl<'a> Grid<'a> {
 		let cell = state / 2;
 		let x = cell % self.x.len();
 		let y = cell / self.x.len();
+
 		[
 			(x.checked_sub(1).map(|x| y * self.x.len() + x), 0),
 			((x + 1 < self.x.len()).then_some(cell + 1), 0),
@@ -640,11 +459,15 @@ impl<'a> Grid<'a> {
 		let mut costs = vec![f32::INFINITY; count];
 		let mut previous = vec![usize::MAX; count];
 		let mut pending = BinaryHeap::new();
+
 		for axis in 0..2 {
 			let state = index(start) * 2 + axis;
+
 			costs[state] = 0.;
+
 			pending.push(Visit { priority: 0., cost: 0., state });
 		}
+
 		while let Some(Visit { cost, state, .. }) = pending.pop() {
 			if cost > costs[state] {
 				continue;
@@ -652,24 +475,34 @@ impl<'a> Grid<'a> {
 			if state / 2 == target {
 				let mut points = vec![self.point(state)];
 				let mut cursor = state;
+
 				while previous[cursor] != usize::MAX {
 					cursor = previous[cursor];
+
 					points.push(self.point(cursor));
 				}
+
 				points.reverse();
+
 				return Some(points);
 			}
+
 			let a = self.point(state);
+
 			for (next, axis) in self.neighbors(state) {
 				let b = self.point(next);
+
 				if self.cards.iter().any(|card| card.crosses(a, b)) {
 					continue;
 				}
+
 				let next_cost =
 					cost + distance(a, b) + if axis == state % 2 { 0. } else { TURN_COST };
+
 				if next_cost < costs[next] {
 					costs[next] = next_cost;
 					previous[next] = state;
+
 					pending.push(Visit {
 						priority: next_cost + (end.0 - b.0).abs() + (end.1 - b.1).abs(),
 						cost: next_cost,
@@ -678,30 +511,309 @@ impl<'a> Grid<'a> {
 				}
 			}
 		}
+
 		None
 	}
 }
 
+#[derive(PartialEq)]
+struct Visit {
+	priority: f32,
+	cost: f32,
+	state: usize,
+}
+impl Eq for Visit {}
+
+impl PartialOrd for Visit {
+	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
+	}
+}
+
+impl Ord for Visit {
+	fn cmp(&self, other: &Self) -> Ordering {
+		other.priority.total_cmp(&self.priority).then_with(|| other.state.cmp(&self.state))
+	}
+}
+
+pub(super) fn route(a: &Node, b: &Node) -> Route {
+	let (a_bounds, b_bounds) = (a.connection_bounds(), b.connection_bounds());
+	let dx = b.connection_center().0 - a.connection_center().0;
+	let dy = b.port_y() - a.port_y();
+	let gap_x = if dx >= 0. { b_bounds[0] - a_bounds[2] } else { a_bounds[0] - b_bounds[2] };
+	let gap_y = dy.abs() - (a_bounds[3] - a_bounds[1] + b_bounds[3] - b_bounds[1]) / 2.;
+
+	// Relation type never changes geometry or creates a hook in a shared edge.
+	if gap_x >= 0. && gap_x >= gap_y {
+		let forward = dx >= 0.;
+		let start = (a_bounds[if forward { 2 } else { 0 }], a.port_y());
+		let end = (b_bounds[if forward { 0 } else { 2 }], b.port_y());
+		let bend = (end.0 - start.0) / 2.;
+
+		Route::curve(start, (start.0 + bend, start.1), (end.0 - bend, end.1), end)
+	} else {
+		let forward = dy >= 0.;
+		let start = (a.connection_center().0, a_bounds[if forward { 3 } else { 1 }]);
+		let end = (b.connection_center().0, b_bounds[if forward { 1 } else { 3 }]);
+		let bend = (end.1 - start.1) / 2.;
+
+		Route::curve(start, (start.0, start.1 + bend), (end.0, end.1 - bend), end)
+	}
+}
+
+fn distance(a: Point, b: Point) -> f32 {
+	(b.0 - a.0).hypot(b.1 - a.1)
+}
+
+fn toward(a: Point, b: Point, amount: f32) -> Point {
+	let scale = amount / distance(a, b).max(f32::EPSILON);
+
+	(a.0 + (b.0 - a.0) * scale, a.1 + (b.1 - a.1) * scale)
+}
+
+fn append_line(curves: &mut Vec<Curve>, start: Point, end: Point, longest: &mut (f32, Point)) {
+	let length = distance(start, end);
+
+	if length > 0.001 {
+		curves.push(Curve::line(start, end));
+
+		if length > longest.0 {
+			*longest = (length, ((start.0 + end.0) / 2., (start.1 + end.1) / 2.));
+		}
+	}
+}
+
+// Ownership uses clean curves between facing ports in each tree rank.
+// Obstructed or dragged branches use the same obstacle router as every other edge.
+fn tree_route(a: &Node, b: &Node, nodes: &[Node], edges: &[Edge], cards: &[Card]) -> Option<Route> {
+	let children: Vec<_> = edges
+		.iter()
+		.filter(|edge| edge.kind.hierarchy() && edge.from == a.key)
+		.filter_map(|edge| nodes.iter().find(|node| node.key == edge.to))
+		.collect();
+	let (aa, bb) = (a.connection_bounds(), b.connection_bounds());
+	let mut branches = Vec::new();
+
+	if children.iter().all(|node| node.connection_bounds()[0] >= aa[2] + CLEARANCE) {
+		let start = (aa[2], a.port_y());
+
+		branches.push(Route::branch(start, (bb[0], b.port_y()), true));
+	}
+	if children.iter().all(|node| node.connection_bounds()[1] >= aa[3] + CLEARANCE) {
+		let start = (a.connection_center().0, aa[3]);
+
+		branches.push(Route::branch(start, (b.connection_center().0, bb[1]), false));
+	}
+
+	branches.into_iter().find_map(|direct| {
+		if clears_cards(&direct, a, b, cards) {
+			return Some(direct);
+		}
+
+		let start = direct.curves[0].start;
+
+		if !ports(a, start, cards).iter().any(|port| port.anchor == start) {
+			return None;
+		}
+
+		// Siblings share an exposed origin even when their number blocks a top port.
+		let path = avoid_cards_from(direct, a, b, cards, Some(start));
+
+		path.is_visible().then_some(path)
+	})
+}
+
+fn avoid_cards(direct: Route, a: &Node, b: &Node, cards: &[Card]) -> Route {
+	avoid_cards_from(direct, a, b, cards, None)
+}
+
+fn avoid_cards_from(
+	direct: Route,
+	a: &Node,
+	b: &Node,
+	cards: &[Card],
+	origin: Option<Point>,
+) -> Route {
+	if clears_cards(&direct, a, b, cards) {
+		return direct;
+	}
+
+	let curve = &direct.curves[0];
+	let mut starts = ports(a, curve.start, cards);
+
+	starts.retain(|port| origin.is_none_or(|origin| port.anchor == origin));
+
+	let ends = ports(b, curve.end, cards);
+	let mut pairs: Vec<_> = starts.iter().flat_map(|a| ends.iter().map(move |b| (a, b))).collect();
+
+	pairs.sort_by(|(a, b), (c, d)| {
+		let cost = |a: &Port, b: &Port| {
+			distance(a.outer, b.outer)
+				+ distance(a.anchor, curve.start)
+				+ distance(b.anchor, curve.end)
+		};
+
+		cost(a, b).total_cmp(&cost(c, d))
+	});
+
+	// Speech can cover a facing port without blocking the free space
+	// between characters. Try exposed tangents before adding gutter corners.
+	if a.attachment.is_some() || b.attachment.is_some() {
+		for (start, end) in &pairs {
+			let reach = (distance(start.anchor, end.anchor) * 0.35).clamp(24., 72.);
+			let path = Route::curve(
+				start.anchor,
+				toward(start.anchor, start.outer, reach),
+				toward(end.anchor, end.outer, reach),
+				end.anchor,
+			);
+
+			if clears_cards(&path, a, b, cards) {
+				return path;
+			}
+		}
+	}
+
+	let arc = vertical_arc(&pairs, a, b, cards);
+
+	for (start, end) in pairs {
+		if let Some(mut points) =
+			Grid::new(cards, start.outer, end.outer).path(start.outer, end.outer)
+		{
+			points.insert(0, start.anchor);
+			points.push(end.anchor);
+
+			let routed = rounded_path(points, CLEARANCE);
+			let cost = routed.measured_length() + (routed.curves.len() / 2) as f32 * TURN_COST;
+
+			return arc.filter(|arc| arc.measured_length() < cost).unwrap_or(routed);
+		}
+	}
+
+	if let Some(arc) = arc {
+		return arc;
+	}
+
+	// A fully covered card has no exposed port. Do not draw a false shortcut
+	// through other cards while it is hidden beneath them during a drag.
+	Route::curve(curve.start, curve.start, curve.start, curve.start)
+}
+
+/// Use the router's turn cost when comparing a smooth arc with a rectangular detour.
+fn vertical_arc(pairs: &[(&Port, &Port)], a: &Node, b: &Node, cards: &[Card]) -> Option<Route> {
+	let (ac, bc) = (a.connection_center(), b.connection_center());
+
+	if (bc.1 - ac.1).abs() <= (bc.0 - ac.0).abs() {
+		return None;
+	}
+
+	let mut best: Option<Route> = None;
+
+	for &(start, end) in pairs {
+		let ax = start.outer.0 - start.anchor.0;
+		let bx = end.outer.0 - end.anchor.0;
+
+		if ax * bx <= 0. {
+			continue;
+		}
+
+		let base = (distance(start.anchor, end.anchor) * 0.35).clamp(24., 72.);
+
+		for factor in [2., 3., 4.] {
+			let path = Route::curve(
+				start.anchor,
+				toward(start.anchor, start.outer, base * factor),
+				toward(end.anchor, end.outer, base * factor),
+				end.anchor,
+			);
+
+			if clears_cards(&path, a, b, cards)
+				&& best.as_ref().is_none_or(|best| path.measured_length() < best.measured_length())
+			{
+				best = Some(path);
+			}
+		}
+	}
+
+	best
+}
+
+fn clears_cards(path: &Route, a: &Node, b: &Node, cards: &[Card]) -> bool {
+	!cards.iter().any(|card| {
+		card.key != a.key
+			&& card.key != b.key
+			&& path.curves.iter().any(|curve| card.blocks_curve(curve))
+	})
+}
+
+fn ports(node: &Node, preferred: Point, cards: &[Card]) -> Vec<Port> {
+	let center = node.connection_center();
+	let [left, top, right, bottom] = node.connection_bounds();
+	let mut ports: Vec<_> = [
+		((left, node.port_y()), (-CLEARANCE, 0.)),
+		((right, node.port_y()), (CLEARANCE, 0.)),
+		((center.0, top), (0., -CLEARANCE)),
+		((center.0, bottom), (0., CLEARANCE)),
+	]
+	.into_iter()
+	.map(|(anchor, offset)| Port { anchor, outer: (anchor.0 + offset.0, anchor.1 + offset.1) })
+	.filter(|port| !cards.iter().any(|c| c.key != node.key && c.crosses(port.anchor, port.outer)))
+	.collect();
+
+	ports.sort_by(|a, b| distance(a.anchor, preferred).total_cmp(&distance(b.anchor, preferred)));
+
+	ports
+}
+
+fn rounded_path(points: Vec<Point>, rounding: f32) -> Route {
+	let mut corners: Vec<Point> = Vec::new();
+
+	for point in points {
+		while corners.len() >= 2 {
+			let a = corners[corners.len() - 2];
+			let b = corners[corners.len() - 1];
+
+			if (a.0 == b.0 && b.0 == point.0) || (a.1 == b.1 && b.1 == point.1) {
+				corners.pop();
+			} else {
+				break;
+			}
+		}
+
+		corners.push(point);
+	}
+
+	Route::polyline(&corners, rounding)
+}
+
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::work_board::relations::routing::{
+		self, CLEARANCE, Cache, Card, Curve, Edge, Ink, Kind, Node, Rc, Route,
+	};
 
 	#[test]
 	fn character_connections_avoid_the_visible_speech_above_each_character() {
 		let mut a = node("parent", 0., 0.);
+
 		a.attachment = Some([80., 80., 140., 140.]);
 		a.speech = Some([30., 10., 190., 62.]);
 		a.size = (224., 160.);
+
 		for (x, y) in [(400., 0.), (400., 180.), (400., -180.), (0., 320.)] {
 			let b = Node { key: "child".into(), x, y, ..a.clone() };
 			let nodes = vec![a.clone(), b];
 			let paths = Cache::default().paths(&nodes, &[edge("parent", "child")]);
 			let path = &paths["parent-child"];
+
 			assert!(path.is_visible(), "an exposed character must remain connected");
-			for i in 0..=1000 {
-				let (x, y) = path.at(i as f32 / 1000.);
+
+			for i in 0..=1_000 {
+				let (x, y) = path.at(i as f32 / 1_000.);
+
 				for node in &nodes {
 					let [left, top, right, bottom] = node.connection_bounds();
+
 					assert!(
 						!(x > left + 0.01
 							&& x < right - 0.01
@@ -709,7 +821,9 @@ mod tests {
 							&& y < bottom - 0.01),
 						"connection entered the character or HUD"
 					);
+
 					let [left, top, right, bottom] = node.speech.unwrap();
+
 					assert!(
 						!(x > node.x + left
 							&& x < node.x + right
@@ -726,11 +840,14 @@ mod tests {
 	#[test]
 	fn hidden_activity_does_not_force_a_branch_around_empty_space() {
 		let mut a = node("parent", 0., 0.);
+
 		a.attachment = Some([6., 6., 80., 42.]);
 		a.size = (224., 112.);
+
 		let b = Node { key: "child".into(), x: 130., y: 120., ..a.clone() };
 		let paths = Cache::default().paths(&[a, b], &[edge("parent", "child")]);
 		let route = &paths["parent-child"];
+
 		assert_eq!(route.curves.len(), 1, "hidden text must not create a detour");
 		assert!(route.samples.windows(2).all(|pair| pair[0].0.1 <= pair[1].0.1));
 	}
@@ -738,16 +855,20 @@ mod tests {
 	#[test]
 	fn opposite_vertical_branches_use_one_arc_around_speech_and_labels() {
 		let mut parent = node("parent", 0., 0.);
+
 		parent.size = (224., 160.);
 		parent.attachment = Some([80., 80., 140., 140.]);
 		parent.speech = Some([30., 10., 190., 62.]);
 		parent.identity = Some([0., 144., 224., 157.]);
+
 		let up = Node { key: "up".into(), y: -320., ..parent.clone() };
 		let down = Node { key: "down".into(), y: 320., ..parent.clone() };
 		let paths = Cache::default()
 			.paths(&[parent, up, down], &[edge("parent", "up"), edge("parent", "down")]);
+
 		for (id, direction) in [("parent-up", -1.), ("parent-down", 1.)] {
 			let path = &paths[id];
+
 			assert_eq!(path.curves.len(), 1, "avoid a box-shaped detour for {id}");
 			assert!(path.samples.windows(2).all(|p| (p[1].0.1 - p[0].0.1) * direction >= 0.));
 		}
@@ -757,11 +878,13 @@ mod tests {
 	fn resource_ports_follow_the_card_edges_at_every_camera_scale() {
 		for scale in [1., 0.85, 0.7] {
 			let a = node("parent", 0., 0.);
+
 			for (x, y) in [(a.width() + 80. / scale, 0.), (0., a.height() + 80. / scale)] {
 				let b = Node { key: "child".into(), x, y, ..a.clone() };
-				let path = route(&a, &b);
+				let path = routing::route(&a, &b);
 				let start = path.curves.first().unwrap().start;
 				let end = path.curves.last().unwrap().end;
+
 				if x > 0. {
 					assert_eq!(start, (a.width(), a.height() / 2.));
 					assert_eq!(end, (b.x, b.height() / 2.));
@@ -772,6 +895,7 @@ mod tests {
 			}
 		}
 	}
+
 	#[test]
 	fn resource_branches_keep_facing_ports_and_smooth_tangents_at_every_scale() {
 		for scale in [1., 0.85, 0.7] {
@@ -784,16 +908,22 @@ mod tests {
 			};
 			let paths = Cache::default().paths(&[a.clone(), b.clone()], &[edge("parent", "child")]);
 			let route = &paths["parent-child"];
+
 			assert_eq!(route.curves.len(), 1, "one continuous curve without small elbows");
 			assert_eq!(route.curves[0].start, (a.width(), a.height() / 2.));
 			assert_eq!(route.curves.last().unwrap().end, (b.x, b.port_y()));
+
 			let curve = &route.curves[0];
+
 			assert_eq!(curve.start.1, curve.first.1);
 			assert_eq!(curve.second.1, curve.end.1);
+
 			for pair in route.curves.windows(2) {
 				assert_eq!(pair[0].end, pair[1].start);
+
 				let before = (pair[0].end.0 - pair[0].second.0, pair[0].end.1 - pair[0].second.1);
 				let after = (pair[1].first.0 - pair[1].start.0, pair[1].first.1 - pair[1].start.1);
+
 				assert!((before.0 * after.1 - before.1 * after.0).abs() < 0.001);
 				assert!(before.0 * after.0 + before.1 * after.1 > 0.);
 			}
@@ -847,18 +977,24 @@ mod tests {
 		];
 		let edges = vec![edge("main", "a"), edge("main", "b"), edge("main", "c")];
 		let paths = Cache::default().paths(&nodes, &edges);
+
 		for (child, y) in [("a", 64.), ("b", 184.), ("c", 304.)] {
 			let route = &paths[&format!("main-{child}")];
+
 			assert_eq!(route.curves.len(), 1);
+
 			let curve = &route.curves[0];
+
 			assert_eq!(curve.start, (264., 184.));
 			assert_eq!(curve.end, (400., y));
 			assert_eq!(curve.start.1, curve.first.1);
 			assert_eq!(curve.second.1, curve.end.1);
+
 			for pair in route.samples.windows(2) {
 				assert!(pair[0].0.0 < pair[1].0.0, "branches never double back");
 			}
 		}
+
 		assert!(paths.values().all(|path| path.ink_arrow));
 	}
 
@@ -873,14 +1009,19 @@ mod tests {
 		];
 		let edges: Vec<_> = ["a", "b", "c", "d"].iter().map(|child| edge("main", child)).collect();
 		let paths = Cache::default().paths(&nodes, &edges);
+
 		for route in paths.values() {
 			assert_eq!(route.curves.len(), 1);
+
 			let curve = &route.curves[0];
+
 			assert_eq!(curve.start, (512., 88.));
 			assert_eq!(curve.start.0, curve.first.0);
 			assert_eq!(curve.second.0, curve.end.0, "land perpendicular to the card");
-			for i in 1..1000 {
-				let point = route.at(i as f32 / 1000.);
+
+			for i in 1..1_000 {
+				let point = route.at(i as f32 / 1_000.);
+
 				for node in &nodes {
 					assert!(
 						!(point.0 > node.x
@@ -899,6 +1040,7 @@ mod tests {
 			Curve { start: (0., 0.), first: (150., 0.), second: (150., 100.), end: (300., 100.) };
 		let beside = Card { key: "beside".into(), bounds: [250., 0., 280., 25.], port_y: 12.5 };
 		let across = Card { key: "across".into(), bounds: [140., 40., 160., 60.], port_y: 50. };
+
 		assert!(!beside.blocks_curve(&curve));
 		assert!(across.blocks_curve(&curve));
 	}
@@ -913,15 +1055,21 @@ mod tests {
 		];
 		let edges = vec![edge("main", "end"), edge("main", "lower")];
 		let paths = Cache::default().paths(&nodes, &edges);
+
 		assert!(paths["main-end"].curves.len() > 1, "the intervening card requires a detour");
+
 		for path in paths.values() {
 			assert!(path.is_visible());
+
 			let reverse = path.reversed();
-			for i in 0..=1000 {
-				let t = i as f32 / 1000.;
+
+			for i in 0..=1_000 {
+				let t = i as f32 / 1_000.;
 				let point = path.at(t);
 				let reflected = reverse.at(1. - t);
-				assert!(distance(point, reflected) < 0.01);
+
+				assert!(routing::distance(point, reflected) < 0.01);
+
 				for node in &nodes {
 					assert!(
 						!(point.0 > node.x + 0.01
@@ -942,11 +1090,14 @@ mod tests {
 			vec![node("main", 0., 0.), node("middle", 320., 160.), node("child", 440., 180.)];
 		let paths = Cache::default().paths(&nodes, &[edge("main", "child")]);
 		let path = &paths["main-child"];
+
 		assert!(path.is_visible());
 		assert!(path.curves.len() > 1);
-		for i in 0..=1000 {
-			let point = path.at(i as f32 / 1000.);
+
+		for i in 0..=1_000 {
+			let point = path.at(i as f32 / 1_000.);
 			let blocker = &nodes[1];
+
 			assert!(
 				!(point.0 > blocker.x
 					&& point.0 < blocker.x + 224.
@@ -959,12 +1110,15 @@ mod tests {
 
 	#[test]
 	fn a_fully_covered_card_never_draws_a_shortcut_through_other_cards() {
+		let edges = [edge("main", "child")];
 		let mut nodes =
 			vec![node("main", 0., 0.), node("cover", 640., 0.), node("child", 640., 0.)];
-		let edges = [edge("main", "child")];
 		let mut cache = Cache::default();
+
 		assert!(!cache.paths(&nodes, &edges)["main-child"].is_visible());
+
 		nodes[2].y += 160.;
+
 		assert!(cache.paths(&nodes, &edges)["main-child"].is_visible());
 	}
 
@@ -974,11 +1128,17 @@ mod tests {
 		let edges = vec![edge("main", "child")];
 		let mut cache = Cache::default();
 		let first = cache.paths(&nodes, &edges);
+
 		nodes[0].status = "Running".into();
+
 		let unchanged = cache.paths(&nodes, &edges);
+
 		assert!(Rc::ptr_eq(&first["main-child"], &unchanged["main-child"]));
+
 		nodes[1].y += 160.;
+
 		let moved = cache.paths(&nodes, &edges);
+
 		assert!(!Rc::ptr_eq(&first["main-child"], &moved["main-child"]));
 		assert_eq!(moved["main-child"].curves.last().expect("endpoint").end.1, 184.);
 	}
@@ -986,10 +1146,14 @@ mod tests {
 	#[test]
 	fn flow_samples_include_short_corners_between_long_segments() {
 		let route =
-			Route::polyline(&[(0., 0.), (1000., 0.), (1000., 48.), (2000., 48.)], CLEARANCE);
+			Route::polyline(&[(0., 0.), (1_000., 0.), (1_000., 48.), (2_000., 48.)], CLEARANCE);
+
 		for curve in &route.curves {
-			assert!(route.samples.iter().any(|(point, _)| distance(*point, curve.end) < 0.001));
+			assert!(
+				route.samples.iter().any(|(point, _)| routing::distance(*point, curve.end) < 0.001)
+			);
 		}
+
 		assert!(route.samples.windows(2).all(|pair| pair[0].1 <= pair[1].1));
 	}
 
@@ -1000,21 +1164,27 @@ mod tests {
 		let original = b.samples.clone();
 		let annotation = b.label;
 		let mut ink = Ink::default();
+
 		ink.retain(&mut a);
 		ink.retain(&mut b);
+
 		let crosses = |curve: &Curve| {
 			curve.start.0 == 100.
 				&& curve.end.0 == 100.
 				&& curve.start.1.min(curve.end.1) < 150.
 				&& curve.start.1.max(curve.end.1) > 150.
 		};
+
 		assert_eq!(a.curves.iter().chain(&b.curves).filter(|c| crosses(c)).count(), 2);
 		assert_eq!(a.ink.iter().chain(&b.ink).filter(|c| crosses(c)).count(), 1);
 		assert_eq!(b.samples, original);
 		assert_eq!(b.reversed().curves.first().expect("start").start, (200., 300.));
 		assert_eq!(b.label, annotation, "ink batching must not move annotations");
+
 		let mut duplicate = a.clone();
+
 		ink.retain(&mut duplicate);
+
 		assert!(duplicate.ink.is_empty());
 		assert!(!duplicate.ink_arrow);
 	}
@@ -1022,8 +1192,11 @@ mod tests {
 	#[test]
 	fn shared_strokes_preserve_gaps_and_handle_reverse_direction() {
 		let mut ink = Ink::default();
+
 		assert_eq!(ink.take(&Curve::line((60., 0.), (40., 0.))).len(), 1);
+
 		let fragments = ink.take(&Curve::line((0., 0.), (100., 0.)));
+
 		assert_eq!(fragments.len(), 2);
 		assert_eq!((fragments[0].start, fragments[0].end), ((0., 0.), (40., 0.)));
 		assert_eq!((fragments[1].start, fragments[1].end), ((60., 0.), (100., 0.)));
@@ -1037,11 +1210,17 @@ mod tests {
 		let mut edges = vec![edge("main", "child")];
 		let mut cache = Cache::default();
 		let first = cache.paths(&nodes, &edges);
+
 		edges[0].color = 0x123456;
+
 		let colored = cache.paths(&nodes, &edges);
+
 		assert!(!Rc::ptr_eq(&first["main-child"], &colored["main-child"]));
+
 		edges[0].kind = Kind::Context;
+
 		let dashed = cache.paths(&nodes, &edges);
+
 		assert!(!Rc::ptr_eq(&colored["main-child"], &dashed["main-child"]));
 		assert_eq!(dashed["main-child"].ink.len(), dashed["main-child"].curves.len());
 	}

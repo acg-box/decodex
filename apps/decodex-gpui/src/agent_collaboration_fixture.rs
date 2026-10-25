@@ -1,13 +1,24 @@
 //! A disposable native view of the approved graph, without any service connection.
-use super::{
-	super::{Brief, activity},
-	AgentSurface, Context,
+use std::time::Instant;
+
+use gpui::{
+	AnyElement, FontWeight,
+	prelude::{FluentBuilder as _, IntoElement as _, ParentElement as _, Styled as _},
+};
+
+use crate::{
+	shell::agent_surface::work_board::{
+		Brief, activity,
+		activity::{Operation, OperationKind, wording},
+		workbench::{AgentSurface, Context},
+	},
+	ui_theme::{self, FONT_FAMILY, TEXT},
+	ui_work_metrics::Sample,
 };
 use decodex_protocol::{
-	AgentCollaborationDto, AgentDispatchStateDto, AgentWorkKindDto, AgentWorkStatusDto,
-	NativeAgentDto,
+	AgentCollaborationDto, AgentDispatchStateDto, AgentOutputRate, AgentThreadMetrics,
+	AgentWorkKindDto, AgentWorkStatusDto, NativeAgentDto,
 };
-use gpui::prelude::*;
 
 impl AgentSurface {
 	#[cfg(any(test, feature = "visual-capture"))]
@@ -27,6 +38,7 @@ impl AgentSurface {
 			.and_then(|snapshot| snapshot.work_items.iter().find(|work| work.id == "agent"))
 			.and_then(|work| work.active_turn_id.clone())
 			.unwrap_or_else(|| "speech-sizing".into());
+
 		if let Some(brief) = self.work_board.briefs.get_mut("agent") {
 			brief.output = None;
 			brief.outcome = None;
@@ -46,6 +58,7 @@ impl AgentSurface {
 				}],
 			});
 		}
+
 		cx.notify();
 	}
 
@@ -63,22 +76,20 @@ impl AgentSurface {
 				"Run · Verify the complete answer after reconnecting the browser.",
 				"The complete answer survived the reconnect, including the final code block. The full evidence is attached to the conversation.",
 			];
+
 			preview.recent = actions
 				.iter()
 				.enumerate()
 				.take(step)
 				.skip(step.saturating_sub(3))
-				.map(|(index, text)| activity::Operation {
+				.map(|(index, text)| Operation {
 					id: format!("motion:{index}"),
-					text: activity::wording::message(text),
-					kind: if index == 3 {
-						activity::OperationKind::Result
-					} else {
-						activity::OperationKind::Action
-					},
+					text: wording::message(text),
+					kind: if index == 3 { OperationKind::Result } else { OperationKind::Action },
 				})
 				.collect();
 		}
+
 		cx.notify();
 	}
 
@@ -87,17 +98,18 @@ impl AgentSurface {
 		&self,
 		show_inspector: bool,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		self.prepare_graph_layers();
+
 		// The offscreen fixture supplies a deterministic compositor backdrop.
 		// Production keeps its existing native window and sidebar materials.
 		gpui::div()
 			.size_full()
 			.flex()
-			.font_family(crate::ui_theme::FONT_FAMILY)
-			.font_weight(gpui::FontWeight::NORMAL)
-			.text_color(crate::ui_theme::rgb(crate::ui_theme::TEXT))
-			.bg(crate::ui_theme::rgb(0x303030))
+			.font_family(FONT_FAMILY)
+			.font_weight(FontWeight::NORMAL)
+			.text_color(ui_theme::rgb(TEXT))
+			.bg(ui_theme::rgb(0x303030))
 			.child(
 				gpui::div()
 					.relative()
@@ -113,9 +125,9 @@ impl AgentSurface {
 						.w(gpui::px(394.))
 						.flex_none()
 						.h_full()
-						.bg(crate::ui_theme::rgb(0x373737))
+						.bg(ui_theme::rgb(0x373737))
 						.border_l_1()
-						.border_color(crate::ui_theme::rgba(0xffffff16))
+						.border_color(ui_theme::rgba(0xffffff16))
 						.child(self.render_agent_workbench(cx)),
 				)
 			})
@@ -125,6 +137,7 @@ impl AgentSurface {
 	pub(super) fn visual_collaboration_fixture(&mut self, cx: &mut Context<Self>) {
 		let Some(snapshot) = &mut self.snapshot else { return };
 		let template = snapshot.work_items[0].clone();
+
 		snapshot.work_items = [
 			("agent", None, "Main"),
 			("mira", Some("agent"), "Mira"),
@@ -134,6 +147,7 @@ impl AgentSurface {
 		.into_iter()
 		.map(|(id, parent, title)| {
 			let mut work = template.clone();
+
 			work.id = id.into();
 			work.parent_goal_id = parent.map(str::to_owned);
 			work.title = if id == "agent" { title } else { reference_text(id).0 }.into();
@@ -142,15 +156,18 @@ impl AgentSurface {
 			work.active_turn_id = Some("reference".into());
 			work.dispatch_state = AgentDispatchStateDto::Running;
 			work.status = AgentWorkStatusDto::Open;
+
 			work
 		})
 		.collect();
+
 		snapshot.pending_events.clear();
 		snapshot.dependencies.clear();
 		snapshot.context_references.clear();
 		snapshot.projects.clear();
 		snapshot.archived_work_ids.clear();
 		self.native_agents.lists.clear();
+
 		for (owner, id, parent, name, task, state) in [
 			("mira", "nora", "mira", "Nora", "Profile recovery", "waitingOnUserInput"),
 			("mira", "lin", "mira", "Lin", "Long-context probe", "running"),
@@ -168,12 +185,35 @@ impl AgentSurface {
 				status: state.into(),
 			});
 		}
+
+		self.reference_briefs();
+		self.visual_reference_usage();
+		self.reference_collaboration();
+
+		self.selected = Some("agent".into());
+		self.native_agents.selected = None;
+		self.workspace.sidebar_visible = false;
+		self.workspace.agent_panel_width = 320.;
+		self.workspace.graph_visible = true;
+		self.workspace.graph_expanded = true;
+		self.work_board.view.picked_agent = Some("native:mira:ref-nora".into());
+		self.work_board.collaboration_expanded =
+			Some("call:ref-mira:request-mira-nora:ref-nora".into());
+
+		self.publish_usage();
+		cx.notify();
+	}
+
+	fn reference_briefs(&mut self) {
 		self.work_board.briefs.clear();
+
 		let rows = self.factory_rows();
+
 		for (index, row) in rows.into_iter().enumerate() {
 			let id =
 				row.thread.as_deref().unwrap_or_default().strip_prefix("ref-").unwrap_or_default();
 			let (task, action) = reference_text(id);
+
 			self.work_board.briefs.insert(
 				row.key.clone(),
 				Brief {
@@ -181,7 +221,7 @@ impl AgentSurface {
 					output: None,
 					assignments: Default::default(),
 					outcome: None,
-					preview: Some(activity::Preview {
+					preview: Some(crate::shell::agent_surface::work_board::activity::Preview {
 						turn: "reference".into(),
 						task: task.into(),
 						text: action.into(),
@@ -199,13 +239,13 @@ impl AgentSurface {
 					question: None,
 					resources: None,
 					relations: vec![],
-					metrics: crate::ui_work_metrics::Sample {
+					metrics: Sample {
 						tokens: Some(37_000 + index as u64 * 7_000),
-						stats: Some(decodex_protocol::AgentThreadMetrics {
+						stats: Some(AgentThreadMetrics {
 							completed_ms: Some(480_000 + index as u64 * 17_000),
 							active_ms: None,
 							generating: false,
-							rate: Some(decodex_protocol::AgentOutputRate {
+							rate: Some(AgentOutputRate {
 								estimated: true,
 								active: false,
 								output_tokens: 520,
@@ -217,33 +257,22 @@ impl AgentSurface {
 						read_at: None,
 					},
 					stamp: self.brief_stamp(&row),
-					read_at: std::time::Instant::now(),
+					read_at: Instant::now(),
 				},
 			);
 		}
-		self.visual_reference_usage();
-		self.reference_collaboration();
-		self.selected = Some("agent".into());
-		self.native_agents.selected = None;
-		self.workspace.sidebar_visible = false;
-		self.workspace.agent_panel_width = 320.;
-		self.workspace.graph_visible = true;
-		self.workspace.graph_expanded = true;
-		self.work_board.view.picked_agent = Some("native:mira:ref-nora".into());
-		self.work_board.collaboration_expanded =
-			Some("call:ref-mira:request-mira-nora:ref-nora".into());
-		self.publish_usage();
-		cx.notify();
 	}
 
 	fn visual_reference_usage(&mut self) {
 		let rows = self.factory_rows();
+
 		self.snapshot.as_mut().expect("visual snapshot").agent_slots =
 			rows.iter().enumerate().map(|(index, row)| (row.key.clone(), index as u32)).collect();
 		self.work_board.usage = Some(
 			rows.into_iter()
 				.map(|row| {
 					let sample = self.work_board.briefs[&row.key].metrics;
+
 					(row.key, (row.thread, sample))
 				})
 				.collect(),
@@ -256,9 +285,11 @@ impl AgentSurface {
 		let snapshot = self.snapshot.as_mut().expect("visual snapshot");
 		let template = snapshot.work_items[0].clone();
 		let key = |index| if index == 0 { "agent".into() } else { format!("density-{index:03}") };
+
 		snapshot.work_items = (0..count)
 			.map(|index| {
 				let mut work = template.clone();
+
 				work.id = key(index);
 				work.title = format!("Research assignment {index}");
 				work.parent_goal_id = (index > 0).then(|| key((index - 1) / 5));
@@ -269,9 +300,11 @@ impl AgentSurface {
 				} else {
 					AgentDispatchStateDto::Running
 				};
+
 				work
 			})
 			.collect();
+
 		snapshot.agent_slots.clear();
 		snapshot.pending_events.clear();
 		snapshot.dependencies.clear();
@@ -279,10 +312,14 @@ impl AgentSurface {
 		snapshot.projects.clear();
 		snapshot.archived_work_ids.clear();
 		self.native_agents.lists.clear();
+
 		self.native_agents.selected = None;
+
 		self.work_board.briefs.clear();
+
 		self.work_board.view = Default::default();
 		self.work_board.collaboration_expanded = None;
+
 		self.visual_workbench_metrics();
 		self.publish_usage();
 		cx.notify();
@@ -345,6 +382,7 @@ impl AgentSurface {
 			} else {
 				format!("native:{owner}:ref-{sender}")
 			};
+
 			if let Some(brief) = self.work_board.briefs.get_mut(&key) {
 				brief.relations.push((
 					format!("request-{sender}-{receiver}"),

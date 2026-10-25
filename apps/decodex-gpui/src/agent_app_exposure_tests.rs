@@ -93,9 +93,7 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut TestA
 		assert_eq!(s.app_exposure.draft, Some(vec![AgentToolExposureSurface::Deferred]));
 		assert!(s.app_exposure.task.is_none(), "editing does not send a write");
 	});
-	visual.update(|w, cx| {
-		w.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	assert!(visual.debug_bounds("app-exposure-save").is_some());
 
@@ -103,17 +101,13 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut TestA
 
 	visual.simulate_click(clear.center(), Default::default());
 	surface.read_with(visual, |s, _| assert_eq!(s.app_exposure.draft, Some(vec![])));
-	visual.update(|w, cx| {
-		w.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	let inherit = visual.debug_bounds("app-exposure-inherit").unwrap();
 
 	visual.simulate_click(inherit.center(), Default::default());
 	surface.read_with(visual, |s, _| assert_eq!(s.app_exposure.draft, None));
-	visual.update(|w, cx| {
-		w.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	assert!(visual.debug_bounds("app-exposure-save").is_none());
 
@@ -124,9 +118,7 @@ fn exposure_edits_preserve_inheritance_and_reset_on_source_change(cx: &mut TestA
 		}
 	});
 
-	visual.update(|w, cx| {
-		w.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	assert!(visual.debug_bounds("app-exposure-surface-0").is_none());
 	assert!(visual.debug_bounds("app-exposure-clear").is_none());

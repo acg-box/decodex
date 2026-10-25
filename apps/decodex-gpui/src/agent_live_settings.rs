@@ -1,17 +1,19 @@
 //! Explicit current-turn settings, separate from future defaults and pending approvals.
-use crate::ui_feedback::{self, Feedback};
 use gpui::AnyElement;
 use tokio::runtime::Builder;
 
-use crate::shell::agent_surface::{
-	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
-	AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, EntityId, IdempotencyKey,
-	InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled, Task,
-	WireText, mcp_forms, model_settings,
-};
 #[cfg(test)]
 use crate::shell::agent_surface::{
 	AgentSnapshotResult, AgentWorkStatusDto, ClientProfile, Entity, Render, Window,
+};
+use crate::{
+	shell::agent_surface::{
+		self, AgentActionDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
+		AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, EntityId, IdempotencyKey,
+		InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled, Task,
+		WireText, mcp_forms, model_settings,
+	},
+	ui_feedback::{self, Feedback},
 };
 use decodex_protocol::{
 	AgentLiveReviewerOutcome, AgentLiveReviewerState, AgentModelDto, AgentReviewer,
@@ -202,6 +204,7 @@ impl AgentSurface {
 					None if matches!(state,AgentLiveReviewerState::Unavailable)=>Feedback::warning("No editable active turn is available. Refresh the task."),
 					None=>Feedback::neutral("Changes apply to subsequent steps of this turn. Saved task defaults stay unchanged."),
 				};
+
 				s.live_reviewer.state=Some(match state {AgentLiveReviewerState::Available {ref thread_id,ref turn_id,..} if thread_id.as_str()!=thread || turn_id.as_str()!=turn=>AgentLiveReviewerState::Unavailable,other=>other});
 				cx.notify();
 			});
@@ -280,6 +283,7 @@ impl AgentSurface {
 				{
 					panel = panel.child(self.live_model_controls(work, models, cx));
 				}
+
 				panel = panel
 					.child("Guardian review routing is controlled from global Guardian settings.");
 			}

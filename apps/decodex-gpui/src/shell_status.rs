@@ -3,13 +3,15 @@ use std::{cell::Cell, collections::HashSet, rc::Rc, sync::atomic::AtomicU8};
 
 use gpui::{
 	self, AnyElement, Bounds, Context, InteractiveElement as _, IntoElement as _, KeyDownEvent,
-	MouseDownEvent, ParentElement as _, Pixels, Role, SharedString,
+	MouseButton, MouseDownEvent, ParentElement as _, Pixels, Role, SharedString,
 	StatefulInteractiveElement as _, Styled as _, prelude::FluentBuilder as _,
 };
 
 use crate::{
 	account_profile::{self, AccountProfileLoadState},
 	accounts::AccountsLoadState,
+	client_lifecycle::ConnectionView,
+	settings_surface::SettingsCategory,
 	shell::{
 		self, ConnectionPresentation, Destination, Shell, WB_BLUE, WB_TEXT, WB_TEXT_MUTED,
 		workspace_symbols::{self, Symbol},
@@ -18,7 +20,8 @@ use crate::{
 	ui_motion::{self, SmoothControl},
 	ui_preferences,
 	ui_theme::{
-		CHROME_CONTROL_SIZE, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, ERROR, HOVER_FILL, WARNING,
+		self, CHROME_CONTROL_SIZE, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, ERROR, HOVER_FILL,
+		LINE_STRONG, WARNING,
 	},
 };
 use decodex_protocol::AccountProfileResult;
@@ -158,7 +161,9 @@ impl Shell {
 						Recovery::General
 					},
 				);
+
 				notice.tone = feedback.tone;
+
 				notice
 			})
 			.collect::<Vec<_>>();
@@ -178,6 +183,7 @@ impl Shell {
 
 		notices.extend(agent.operation_notices().into_iter().map(|(title, detail)| {
 			let notice = Notice::new(title, detail, Recovery::None);
+
 			if matches!(title, "Experimental Codex features" | "Token statistics unavailable") {
 				notice.info()
 			} else {
@@ -188,14 +194,16 @@ impl Shell {
 		if connection.label != "Online" {
 			let mut notice =
 				Notice::new(connection.label, connection.detail.to_string(), Recovery::None);
+
 			notice.tone = match self.connection {
-				crate::client_lifecycle::ConnectionView::Connecting { .. } => Tone::Info,
-				crate::client_lifecycle::ConnectionView::Incompatible(_)
-				| crate::client_lifecycle::ConnectionView::Quarantined { .. }
-				| crate::client_lifecycle::ConnectionView::Stopped => Tone::Error,
-				crate::client_lifecycle::ConnectionView::ShuttingDown => Tone::Neutral,
+				ConnectionView::Connecting { .. } => Tone::Info,
+				ConnectionView::Incompatible(_)
+				| ConnectionView::Quarantined { .. }
+				| ConnectionView::Stopped => Tone::Error,
+				ConnectionView::ShuttingDown => Tone::Neutral,
 				_ => Tone::Warning,
 			};
+
 			notices.push(notice);
 		}
 
@@ -207,10 +215,11 @@ impl Shell {
 		let mut dismissed = self.dismissed_notifications.borrow_mut();
 
 		dismissed.retain(|key| current.contains(key));
+
 		let general_visible = self.settings_feedback_visible(Destination::Settings)
-			&& self.settings.read(cx).category
-				== crate::settings_surface::SettingsCategory::General;
+			&& self.settings.read(cx).category == SettingsCategory::General;
 		let accounts_visible = self.settings_feedback_visible(Destination::Accounts);
+
 		// Suppress only the duplicate presentation, after retaining source identities.
 		// Opening a settings page must not reset the user's dismissal of an active issue.
 		notices.retain(|notice| {
@@ -243,10 +252,11 @@ impl Shell {
 				Notice::new(format!("Switched to {alias}."), "", Recovery::Accounts).success(),
 			);
 		}
-
 		if let Some(feedback) = shell::account_operation_feedback(self) {
 			let mut notice = Notice::new("Accounts", feedback.message, Recovery::Accounts);
+
 			notice.tone = feedback.tone;
+
 			notices.push(notice);
 		}
 
@@ -259,18 +269,20 @@ impl Shell {
 		) && let Some(feedback) = shell::account_list_feedback(snapshot)
 		{
 			let mut notice = Notice::new("Accounts", feedback.message, Recovery::Accounts);
+
 			notice.tone = feedback.tone;
+
 			notices.push(notice);
 		}
-
 		if self.account_login_task.is_none()
 			&& let Some(feedback) = shell::account_login_feedback(self)
 		{
 			let mut notice = Notice::new("Account sign-in", feedback.message, Recovery::Accounts);
+
 			notice.tone = feedback.tone;
+
 			notices.push(notice);
 		}
-
 		if matches!(
 			self.account_profile.load,
 			AccountProfileLoadState::Offline | AccountProfileLoadState::Refused
@@ -340,6 +352,7 @@ impl Shell {
 			format!("Notifications · {}", notices.len())
 		};
 		let open = self.status_open;
+
 		gpui::div()
 			.id("status-toggle")
 			.debug_selector(|| "status-toggle".into())
@@ -354,24 +367,27 @@ impl Shell {
 			.items_center()
 			.justify_center()
 			.text_size(gpui::px(11.))
-			.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
+			.text_color(ui_theme::rgb(WB_TEXT_MUTED))
 			.cursor_pointer()
-			.hover(|s| s.bg(crate::ui_theme::rgba(HOVER_FILL)))
+			.hover(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
 			.occlude()
 			.on_mouse_down(
-				gpui::MouseButton::Left,
+				MouseButton::Left,
 				cx.listener(move |s, _, window, cx| {
 					window.prevent_default();
 					cx.stop_propagation();
+
 					// Outside dismissal also runs on mouse down. Use the state shown when
 					// the press began, and do not toggle again after an intervening frame.
 					s.status_open = !open;
+
 					cx.notify();
 				}),
 			)
 			.on_click(cx.listener(|s, event, _, cx| {
 				if !matches!(event, gpui::ClickEvent::Mouse(_)) {
 					s.status_open = !s.status_open;
+
 					cx.notify();
 					cx.stop_propagation();
 				}
@@ -396,8 +412,8 @@ impl Shell {
 						.h(gpui::px(14.))
 						.px(gpui::px(3.))
 						.rounded_full()
-						.bg(crate::ui_theme::rgb(color))
-						.text_color(crate::ui_theme::rgb(0x17171a))
+						.bg(ui_theme::rgb(color))
+						.text_color(ui_theme::rgb(0x17171a))
 						.text_size(gpui::px(9.))
 						.flex()
 						.items_center()
@@ -428,7 +444,7 @@ impl Shell {
 					.child(
 						gpui::div()
 							.text_size(gpui::px(12.))
-							.text_color(crate::ui_theme::rgb(WB_TEXT))
+							.text_color(ui_theme::rgb(WB_TEXT))
 							.child("Notifications"),
 					)
 					.when(!notices.is_empty(), |d| {
@@ -439,9 +455,9 @@ impl Shell {
 								.aria_label("Clear all notifications")
 								.tab_index(0)
 								.text_size(gpui::px(11.))
-								.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
+								.text_color(ui_theme::rgb(WB_TEXT_MUTED))
 								.cursor_pointer()
-								.hover(|d| d.text_color(crate::ui_theme::rgb(WB_TEXT)))
+								.hover(|d| d.text_color(ui_theme::rgb(WB_TEXT)))
 								.on_click(cx.listener(|s, _, _, cx| {
 									let notices = s.notifications(
 										&shell::connection_presentation(s.connection),
@@ -462,7 +478,7 @@ impl Shell {
 			panel = panel.child(
 				gpui::div()
 					.text_size(gpui::px(11.))
-					.text_color(crate::ui_theme::rgb(WB_TEXT_MUTED))
+					.text_color(ui_theme::rgb(WB_TEXT_MUTED))
 					.child("No notifications."),
 			);
 		}
@@ -483,9 +499,7 @@ impl Shell {
 							.w_full()
 							.pb_2()
 							.border_b_1()
-							.border_color(
-								crate::ui_theme::rgb(crate::ui_theme::LINE_STRONG).opacity(0.35),
-							)
+							.border_color(ui_theme::rgb(LINE_STRONG).opacity(0.35))
 							.flex()
 							.flex_col()
 							.gap_1()
@@ -511,7 +525,7 @@ impl Shell {
 										.justify_center()
 										.rounded(gpui::px(5.))
 										.cursor_pointer()
-										.hover(|d| d.bg(crate::ui_theme::rgba(HOVER_FILL)))
+										.hover(|d| d.bg(ui_theme::rgba(HOVER_FILL)))
 										.on_click(cx.listener(move |s, _, _, cx| {
 											s.dismissed_notifications
 												.borrow_mut()
@@ -559,9 +573,9 @@ impl Shell {
 			.flex()
 			.items_center()
 			.text_size(gpui::px(11.))
-			.text_color(crate::ui_theme::rgb(WB_BLUE))
+			.text_color(ui_theme::rgb(WB_BLUE))
 			.cursor_pointer()
-			.hover(|d| d.bg(crate::ui_theme::rgba(HOVER_FILL)))
+			.hover(|d| d.bg(ui_theme::rgba(HOVER_FILL)))
 			.on_click(cx.listener(move |s, event, window, cx| {
 				s.status_open = false;
 
@@ -698,18 +712,23 @@ mod tests {
 	fn notification_toggle_closes_across_mouse_down_and_mouse_up_frames(cx: &mut TestAppContext) {
 		let (shell, visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
-		visual.simulate_resize(gpui::size(gpui::px(1248.), gpui::px(840.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_248.), gpui::px(840.)));
+
 		for expected in [true, false, true, false] {
-			visual.update(|window, cx| window.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_current_frame);
+
 			let toggle = visual.debug_bounds("status-toggle").expect("notification toggle");
+
 			visual.simulate_mouse_down(
 				toggle.center(),
 				gpui::MouseButton::Left,
 				Default::default(),
 			);
-			visual.update(|window, cx| window.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_current_frame);
 			visual.simulate_mouse_up(toggle.center(), gpui::MouseButton::Left, Default::default());
-			visual.update(|window, cx| window.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_current_frame);
+
 			assert_eq!(shell.read_with(visual, |s, _| s.status_open), expected);
 		}
 	}
@@ -790,9 +809,13 @@ mod tests {
 			s.dismissed_notifications.borrow_mut().insert(key);
 
 			assert!(!s.notifications(&connection, cx).iter().any(|n| n.title == "Accounts"));
+
 			s.selected = shell::Destination::Accounts;
+
 			s.notifications(&connection, cx);
+
 			s.selected = shell::Destination::Agent;
+
 			assert!(
 				!s.notifications(&connection, cx).iter().any(|n| n.detail == "Failed"),
 				"visiting local feedback must not clear dismissal"

@@ -1,8 +1,22 @@
 //! Inline time range. Dragging previews the range; releasing applies one query.
-use super::{Panel, TimeRange};
-use crate::{ui_motion, ui_theme};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use gpui::{
+	AnyElement, App, Bounds, Context, CursorStyle, DispatchPhase, IntoElement, KeyDownEvent,
+	KeyUpEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, RenderOnce,
+	Role, Window,
+	prelude::{
+		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
+		StatefulInteractiveElement as _, Styled as _,
+	},
+};
+
+use crate::{
+	shell::agent_surface::deliveries::filters::{Panel, TimeRange},
+	ui_motion,
+	ui_theme::{self, BLUE, TEXT_MUTED},
+};
 use decodex_protocol::AgentDeliveryExtent;
-use gpui::{Context, IntoElement, KeyDownEvent, MouseButton, prelude::*};
 
 const MINUTE: i64 = 60_000_000;
 const MINIMUM_SPAN: i64 = 14 * 24 * 60;
@@ -34,15 +48,13 @@ pub(super) struct Slider {
 	drag: Option<usize>,
 	grab: f32,
 	pointer: Option<f32>,
-	bounds: Option<gpui::Bounds<gpui::Pixels>>,
+	bounds: Option<Bounds<Pixels>>,
 }
 impl Slider {
 	pub fn new(extent: Option<AgentDeliveryExtent>, range: TimeRange, period: Period) -> Self {
-		let now = std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.unwrap_or_default()
-			.as_secs() as i64
-			/ 60;
+		let now =
+			SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64 / 60;
+
 		Self::in_period(extent, range, now, period)
 	}
 
@@ -71,6 +83,7 @@ impl Slider {
 			range.before.map_or(last, |v| (v - 1).div_euclid(MINUTE)),
 		];
 		let domain = [first.min(selected[0]), last.max(selected[1])];
+
 		Self {
 			domain,
 			selected,
@@ -96,6 +109,7 @@ impl Slider {
 		if self.domain[0] == self.domain[1] {
 			return end as f32;
 		}
+
 		(self.selected[end] - self.domain[0]) as f32 / (self.domain[1] - self.domain[0]) as f32
 	}
 
@@ -115,8 +129,10 @@ impl Slider {
 			"All time".into()
 		} else {
 			let minutes = self.selected[1] - self.selected[0] + 1;
+
 			if minutes >= 24 * 60 {
 				let hours = minutes % (24 * 60) / 60;
+
 				if hours == 0 {
 					format!("{}d", minutes / (24 * 60))
 				} else {
@@ -140,6 +156,7 @@ impl Slider {
 		} else {
 			(self.selected[0], self.domain[1])
 		};
+
 		self.selected[end] = value.clamp(first, last);
 		self.unbounded[end] =
 			self.selected[end] == self.domain[end] && (end == 1 || self.open_start);
@@ -151,8 +168,10 @@ impl Slider {
 		let end =
 			usize::from((fraction - self.fraction(1)).abs() < (fraction - self.fraction(0)).abs());
 		let offset = (fraction - self.fraction(end)) * f32::from(bounds.size.width);
+
 		self.drag = Some(end);
 		self.grab = if offset.abs() <= 8. { offset } else { 0. };
+
 		if offset.abs() > 8. {
 			self.move_to(x);
 		}
@@ -165,12 +184,16 @@ impl Slider {
 		.clamp(0., 1.);
 		let value =
 			self.domain[0] as f64 + fraction as f64 * (self.domain[1] - self.domain[0]) as f64;
+
 		if self.selected[0] == self.selected[1] {
 			end = usize::from(value > self.selected[0] as f64);
 			self.drag = Some(end);
 		}
+
 		self.set(end, value.round() as i64);
+
 		let other = self.fraction(1 - end);
+
 		self.pointer = Some(if end == 0 { fraction.min(other) } else { fraction.max(other) });
 	}
 
@@ -188,25 +211,27 @@ impl Slider {
 			"end" => self.domain[1],
 			_ => return false,
 		};
+
 		self.set(end, next);
+
 		true
 	}
 }
 
 impl Panel {
-	pub(super) fn time_slider(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn time_slider(&self, cx: &mut Context<Self>) -> AnyElement {
 		let p = self.filter.slider.as_ref();
 		let mut track = gpui::div()
 			.id("delivery-time-track")
 			.debug_selector(|| "delivery-time-track".into())
-			.role(gpui::Role::Group)
+			.role(Role::Group)
 			.aria_label("Time range slider")
 			.h(gpui::px(22.))
 			.relative()
 			.when(p.is_some(), |d| d.cursor_pointer())
 			.on_mouse_down(
 				MouseButton::Left,
-				cx.listener(|s, e: &gpui::MouseDownEvent, window, cx| {
+				cx.listener(|s, e: &MouseDownEvent, window, cx| {
 					if let Some(p) = &mut s.filter.slider {
 						p.begin(f32::from(e.position.x));
 						window.focus(
@@ -225,11 +250,13 @@ impl Panel {
 				dragging: p.is_some_and(Slider::dragging),
 				enabled: p.is_some(),
 			});
+
 		if let Some(p) = p {
 			for end in 0..2 {
 				track = track.child(self.time_thumb(end, p, cx));
 			}
 		}
+
 		gpui::div()
 			.flex()
 			.flex_col()
@@ -242,14 +269,14 @@ impl Panel {
 					.justify_between()
 					.text_size(gpui::px(10.))
 					.line_height(gpui::px(13.))
-					.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
+					.text_color(ui_theme::rgb(TEXT_MUTED))
 					.children((0..2).map(|end| {
 						gpui::div()
 							.flex()
 							.flex_col()
 							.when(end == 1, |d| d.items_end())
 							.when(p.is_some_and(|p| p.drag == Some(end)), |d| {
-								d.text_color(crate::ui_theme::rgb(ui_theme::BLUE))
+								d.text_color(ui_theme::rgb(BLUE))
 							})
 							.child(p.map_or_else(
 								|| "—".into(),
@@ -266,9 +293,10 @@ impl Panel {
 			.into_any_element()
 	}
 
-	fn time_drag_events(&self, cx: &Context<Self>) -> gpui::AnyElement {
+	fn time_drag_events(&self, cx: &Context<Self>) -> AnyElement {
 		let owner = cx.entity().downgrade();
 		let events = owner.clone();
+
 		gpui::canvas(
 			move |bounds, _, cx| {
 				let _ = owner.update(cx, |s, _| {
@@ -279,10 +307,12 @@ impl Panel {
 			},
 			move |_, _, window, _| {
 				let movement = events.clone();
-				window.on_mouse_event(move |e: &gpui::MouseMoveEvent, phase, _, cx| {
-					if phase != gpui::DispatchPhase::Capture {
+
+				window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
+					if phase != DispatchPhase::Capture {
 						return;
 					}
+
 					let _ = movement.update(cx, |s, cx| {
 						if let Some(p) = &mut s.filter.slider
 							&& p.dragging()
@@ -293,13 +323,16 @@ impl Panel {
 							} else {
 								s.commit_time(cx);
 							}
+
 							cx.stop_propagation();
 						}
 					});
 				});
+
 				let release = events.clone();
-				window.on_mouse_event(move |_: &gpui::MouseUpEvent, phase, _, cx| {
-					if phase == gpui::DispatchPhase::Capture {
+
+				window.on_mouse_event(move |_: &MouseUpEvent, phase, _, cx| {
+					if phase == DispatchPhase::Capture {
 						let _ = release.update(cx, |s, cx| {
 							if s.filter.slider.as_ref().is_some_and(Slider::dragging) {
 								s.commit_time(cx);
@@ -317,15 +350,16 @@ impl Panel {
 		.into_any_element()
 	}
 
-	fn time_thumb(&self, end: usize, p: &Slider, cx: &mut Context<Self>) -> gpui::AnyElement {
+	fn time_thumb(&self, end: usize, p: &Slider, cx: &mut Context<Self>) -> AnyElement {
 		let focus = self.filter.time_focus.as_ref().expect("time focus")[end].clone();
 		let clicked_focus = focus.clone();
+
 		gpui::div()
 			.id(if end == 0 { "delivery-from" } else { "delivery-until" })
 			.debug_selector(
 				move || if end == 0 { "delivery-from".into() } else { "delivery-until".into() },
 			)
-			.role(gpui::Role::Slider)
+			.role(Role::Slider)
 			.aria_label(if end == 0 { "Start time" } else { "End time" })
 			.aria_value(stamp(p.selected[end], true))
 			.track_focus(&focus)
@@ -335,7 +369,7 @@ impl Panel {
 			.ml(gpui::px(-2. - 12. * p.fraction(end)))
 			.w(gpui::px(16.))
 			.h_full()
-			.cursor(gpui::CursorStyle::ResizeLeftRight)
+			.cursor(CursorStyle::ResizeLeftRight)
 			.on_click(cx.listener(move |_, _, window, cx| {
 				window.focus(&clicked_focus, cx);
 			}))
@@ -347,7 +381,7 @@ impl Panel {
 					cx.notify();
 				}
 			}))
-			.on_key_up(cx.listener(|s, e: &gpui::KeyUpEvent, _, cx| {
+			.on_key_up(cx.listener(|s, e: &KeyUpEvent, _, cx| {
 				if ["left", "right", "up", "down", "home", "end"]
 					.contains(&e.keystroke.key.as_str())
 				{
@@ -360,25 +394,29 @@ impl Panel {
 
 	fn commit_time(&mut self, cx: &mut Context<Self>) {
 		let Some(p) = &mut self.filter.slider else { return };
+
 		p.release();
+
 		let range = p.range();
+
 		if range != self.filter.range {
 			self.filter.range = range;
+
 			self.reload(cx);
 		} else {
 			cx.notify();
 		}
 	}
 }
-#[derive(gpui::IntoElement)]
+#[derive(IntoElement)]
 struct Track {
 	from: f32,
 	until: f32,
 	dragging: bool,
 	enabled: bool,
 }
-impl gpui::RenderOnce for Track {
-	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
+impl RenderOnce for Track {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let from =
 			ui_motion::direct_value("delivery-range-from", self.from, self.dragging, window, cx);
 		let until =
@@ -397,7 +435,7 @@ impl gpui::RenderOnce for Track {
 					.h(gpui::px(3.))
 					.w_full()
 					.rounded_full()
-					.bg(crate::ui_theme::rgba(0xffffff20)),
+					.bg(ui_theme::rgba(0xffffff20)),
 			)
 			.child(
 				gpui::div()
@@ -407,8 +445,9 @@ impl gpui::RenderOnce for Track {
 					.left(gpui::relative(from))
 					.w(gpui::relative((until - from).max(0.)))
 					.rounded_full()
-					.bg(crate::ui_theme::rgb(ui_theme::BLUE)),
+					.bg(ui_theme::rgb(BLUE)),
 			);
+
 		for fraction in [from, until] {
 			d = d.child(
 				gpui::div()
@@ -419,7 +458,7 @@ impl gpui::RenderOnce for Track {
 					.w(gpui::px(10.))
 					.h(gpui::px(16.))
 					.rounded(gpui::px(4.))
-					.bg(crate::ui_theme::rgb(0xc6cce0))
+					.bg(ui_theme::rgb(0xc6cce0))
 					.flex()
 					.items_center()
 					.justify_center()
@@ -428,116 +467,158 @@ impl gpui::RenderOnce for Track {
 							.w(gpui::px(1.))
 							.h(gpui::px(6.))
 							.rounded_full()
-							.bg(crate::ui_theme::rgba(0x17171c70)),
+							.bg(ui_theme::rgba(0x17171c70)),
 					),
 			);
 		}
+
 		d
 	}
 }
 fn stamp(minute: i64, with_time: bool) -> String {
 	let d = super::super::local(minute * MINUTE);
-	let date = format!("{:04}-{:02}-{:02}", d.tm_year + 1900, d.tm_mon + 1, d.tm_mday);
+	let date = format!("{:04}-{:02}-{:02}", d.tm_year + 1_900, d.tm_mon + 1, d.tm_mday);
+
 	if with_time { format!("{date} {:02}:{:02}", d.tm_hour, d.tm_min) } else { date }
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::deliveries::filters::slider::{
+		AgentDeliveryExtent, MINIMUM_SPAN, MINUTE, MouseButton, Panel, Period, Slider, TimeRange,
+	};
 	fn extent() -> AgentDeliveryExtent {
 		AgentDeliveryExtent { first: 0, last: 120 * MINUTE }
 	}
 	#[test]
 	fn range_clamps_and_covers_the_whole_last_minute() {
 		let range = TimeRange { after: Some(30 * MINUTE), before: Some(41 * MINUTE) };
+
 		assert_eq!(Slider::at(Some(extent()), range, 120).range(), range);
+
 		let mut p = Slider::at(Some(extent()), TimeRange::default(), 120);
+
 		p.set(0, 30);
 		p.set(1, 40);
+
 		assert_eq!(p.range(), range);
 		assert_eq!(p.clock_label(), "11m");
+
 		p.set(0, 200);
+
 		assert_eq!(p.selected, [40, 40]);
+
 		p.set(0, p.domain[0]);
 		p.set(1, 200);
+
 		assert_eq!(p.range(), TimeRange::default());
+
 		p.set(0, 40);
 		p.set(1, 40);
+
 		p.bounds = Some(gpui::Bounds::new(
 			gpui::point(gpui::px(0.), gpui::px(0.)),
 			gpui::size(gpui::px(MINIMUM_SPAN as f32), gpui::px(22.)),
 		));
+
 		let x = |minute: i64| (minute - (120 - MINIMUM_SPAN)) as f32;
+
 		p.begin(x(40));
 		p.move_to(x(42));
+
 		assert_eq!(p.selected, [40, 42]);
+
 		p.release();
 		p.set(1, 40);
 		p.begin(x(40));
 		p.move_to(x(38));
+
 		assert_eq!(p.selected, [38, 40]);
+
 		p.release();
 		p.set(0, 30);
 		p.begin(x(32));
+
 		assert_eq!(p.selected[0], 30);
+
 		p.move_to(x(33));
+
 		assert_eq!(p.selected[0], 31);
 	}
 	#[test]
 	fn sparse_and_empty_history_keep_a_fortnight_and_preserve_older_history() {
 		let now = 100_000;
+
 		for extent in [
 			None,
 			Some(AgentDeliveryExtent { first: (now - 2) * MINUTE, last: (now - 1) * MINUTE }),
 		] {
 			let p = Slider::at(extent, TimeRange::default(), now);
+
 			assert_eq!(p.domain, [now - 14 * 24 * 60, now]);
 			assert_eq!(p.selected, p.domain);
 			assert_eq!(p.range(), TimeRange::default());
 		}
+
 		let p = Slider::at(
 			Some(AgentDeliveryExtent { first: (now - 60 * 24 * 60) * MINUTE, last: now * MINUTE }),
 			TimeRange::default(),
 			now,
 		);
+
 		assert_eq!(p.domain[0], now - 60 * 24 * 60);
 	}
 	#[test]
 	fn time_presets_zoom_the_track_and_keep_the_start_bounded() {
 		let now = 30_000_600;
+
 		for (period, minutes) in [(Period::Week, 7 * 24 * 60), (Period::Fortnight, MINIMUM_SPAN)] {
 			let p = Slider::in_period(Some(extent()), TimeRange::default(), now, period);
+
 			assert_eq!(p.domain, [now - minutes, now]);
 			assert_eq!(p.range().after, Some((now - minutes) * MINUTE));
 			assert!(p.range().before.is_none());
 		}
+
 		let mut p = Slider::in_period(Some(extent()), TimeRange::default(), now, Period::Today);
+
 		assert!((0..24 * 60).contains(&(p.domain[1] - p.domain[0])));
 		assert!(p.covers_domain());
+
 		p.set(0, p.domain[0] + 1);
 		p.set(0, p.domain[0]);
+
 		assert_eq!(p.range().after, Some(p.domain[0] * MINUTE));
 		assert!(p.covers_domain());
 	}
 	#[gpui::test]
 	fn inline_slider_applies_only_on_release_and_keeps_its_space(cx: &mut gpui::TestAppContext) {
 		let (panel, visual) = cx.add_window_view(|_, _| Panel::default());
+
 		panel.update(visual, |p, cx| p.set_width(160., cx));
 		visual.simulate_resize(gpui::size(gpui::px(160.), gpui::px(700.)));
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		let empty = visual.debug_bounds("delivery-time-track").unwrap();
+
 		panel.update(visual, |p, cx| {
 			p.filter.receive_extent(Some(extent()));
+
 			p.filter.slider = Some(Slider::at(Some(extent()), TimeRange::default(), 120));
+
 			p.feed.receive(vec![], false);
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert_eq!(visual.debug_bounds("delivery-time-track").unwrap(), empty);
+
 		let bounds =
 			panel.read_with(visual, |p, _| p.filter.slider.as_ref().unwrap().bounds.unwrap());
 		let start = gpui::point(bounds.left(), bounds.center().y);
 		let end = gpui::point(bounds.left() + bounds.size.width * 0.25, bounds.center().y);
+
 		visual.simulate_mouse_down(start, MouseButton::Left, Default::default());
 		visual.simulate_mouse_move(end, MouseButton::Left, Default::default());
 		panel.read_with(visual, |p, _| {
@@ -549,7 +630,7 @@ mod tests {
 			assert_eq!(p.filter.range.after, Some((120 - MINIMUM_SPAN * 3 / 4) * MINUTE));
 			assert!(p.feed.loaded);
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 		visual.simulate_keystrokes("right");
 		panel.read_with(visual, |p, _| {
 			assert_eq!(p.filter.range.after, Some((120 - MINIMUM_SPAN * 3 / 4) * MINUTE))
@@ -560,32 +641,46 @@ mod tests {
 		panel.read_with(visual, |p, _| {
 			assert_eq!(p.filter.range.after, Some((121 - MINIMUM_SPAN * 3 / 4) * MINUTE))
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		let start = gpui::point(bounds.right() + gpui::px(3.), bounds.center().y);
 		let end = gpui::point(bounds.left() + bounds.size.width * 0.75, bounds.center().y);
+
 		visual.simulate_mouse_down(start, MouseButton::Left, Default::default());
 		visual.simulate_mouse_move(end, MouseButton::Left, Default::default());
 		visual.simulate_mouse_up(end, MouseButton::Left, Default::default());
 		panel.read_with(visual, |p, _| assert!(p.filter.range.before.is_some()));
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		let reset = visual.debug_bounds("delivery-time-reset").unwrap().center();
+
 		visual.simulate_click(reset, Default::default());
 		panel.read_with(visual, |p, _| assert_eq!(p.filter.range, TimeRange::default()));
 		visual.update(crate::ui_frame::draw_frame);
+
 		let point = visual.debug_bounds("delivery-time-filter").unwrap().center();
+
 		visual.simulate_click(point, Default::default());
 		visual.update(crate::ui_frame::draw_frame);
+
 		let point = visual.debug_bounds("delivery-period-Today").unwrap().center();
+
 		visual.simulate_click(point, Default::default());
+
 		panel.read_with(visual, |p, _| {
 			assert_eq!(p.filter.period, Period::Today);
 			assert!(p.filter.range.after.is_some());
 			assert!(!p.filter.time_menu);
+
 			let s = p.filter.slider.as_ref().unwrap();
+
 			assert!(s.domain[1] - s.domain[0] < 24 * 60);
 		});
+
 		visual.update(crate::ui_frame::draw_frame);
+
 		let point = visual.debug_bounds("delivery-time-reset").unwrap().center();
+
 		visual.simulate_click(point, Default::default());
 		panel.read_with(visual, |p, _| {
 			assert_eq!(p.filter.range, TimeRange::default());

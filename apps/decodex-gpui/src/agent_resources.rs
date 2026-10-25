@@ -19,7 +19,7 @@ use crate::{
 			Role, SharedString, StatefulInteractiveElement, Styled, SubmitComposer, WireText,
 		},
 	},
-	ui_loading,
+	ui_loading, ui_theme,
 };
 use decodex_protocol::AgentResourcesResult;
 
@@ -117,7 +117,7 @@ impl AgentSurface {
 							gpui::div()
 								.p_2()
 								.rounded(gpui::px(6.))
-								.bg(crate::ui_theme::rgba(0xffffff06))
+								.bg(ui_theme::rgba(0xffffff06))
 								.child(title)
 								.child(if resource.payload_omitted {
 									"Resource details are unavailable for display.".into()
@@ -539,9 +539,7 @@ mod tests {
 		for _ in 0..2 {
 			thread::sleep(std::time::Duration::from_millis(200));
 
-			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 		}
 
 		let bounds = visual.debug_bounds("agent-resources-toggle").expect("task resource control");

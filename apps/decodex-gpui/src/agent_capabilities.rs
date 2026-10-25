@@ -12,7 +12,7 @@ use tokio::runtime::Builder;
 
 use crate::{
 	shell::agent_surface::{AgentClient, AgentSurface, Context},
-	ui_theme::{HOVER_FILL, SELECTED_HOVER_FILL},
+	ui_theme::{self, HOVER_FILL, SELECTED_HOVER_FILL},
 };
 use decodex_protocol::{
 	AgentCapabilitiesResult, AgentModelDto, ConversationReasoningEffort,
@@ -63,13 +63,9 @@ impl AgentSurface {
 					.child(format!("{}{}", if chosen { "✓ " } else { "" }, label))
 					.text_size(gpui::px(11.))
 					.rounded(gpui::px(8.))
-					.bg(crate::ui_theme::rgba(if chosen { 0xffffff16 } else { 0x00000000 }))
+					.bg(ui_theme::rgba(if chosen { 0xffffff16 } else { 0x00000000 }))
 					.hover(move |s| {
-						s.bg(crate::ui_theme::rgba(if chosen {
-							SELECTED_HOVER_FILL
-						} else {
-							HOVER_FILL
-						}))
+						s.bg(ui_theme::rgba(if chosen { SELECTED_HOVER_FILL } else { HOVER_FILL }))
 					})
 					.on_click(cx.listener(move |s, _, _, cx| {
 						if available {
@@ -524,9 +520,7 @@ mod tests {
 		// The popover uses a real-time entrance translation; click its settled bounds.
 		thread::sleep(std::time::Duration::from_millis(220));
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("tier-inherited").is_none());
 		assert!(visual.debug_bounds("tier-default").is_some());

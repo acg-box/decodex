@@ -3,23 +3,31 @@ use std::{
 	cell::RefCell,
 	collections::{BTreeMap, BTreeSet},
 	mem,
+	panic::Location,
 	rc::Rc,
 	time::Duration,
 };
 
-use gpui::{AnyElement, InteractiveElement, IntoElement, ParentElement, Styled, Window};
+use gpui::{
+	AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId,
+	InteractiveElement, IntoElement, LayoutId, ParentElement, Pixels, ScrollHandle, Styled, Window,
+};
 
-use crate::shell::agent_surface::{
-	activity::HistoryKey,
-	native_timeline::{
-		self, AgentSurface, AgentTimelineEntry, AgentTimelinePage, AgentWorkItemDto, Binding,
-		Context,
+use crate::{
+	frame_trace,
+	shell::agent_surface::{
+		activity::HistoryKey,
+		native_timeline::{
+			self, AgentSurface, AgentTimelineEntry, AgentTimelinePage, AgentWorkItemDto, Binding,
+			Context, groups::Group,
+		},
 	},
+	ui_theme::MESSAGE_GAP,
 };
 
 type RowKey = (u64, u8, String);
 
-pub(super) const ROW_GAP: f32 = crate::ui_theme::MESSAGE_GAP;
+pub(super) const ROW_GAP: f32 = MESSAGE_GAP;
 
 #[derive(Default)]
 pub(super) struct Viewport(Rc<RefCell<Geometry>>);
@@ -103,8 +111,8 @@ impl Viewport {
 struct Geometry {
 	#[cfg(test)]
 	painted_rows: BTreeMap<RowKey, Vec<f32>>,
-	pending_layout: Option<gpui::LayoutId>,
-	content_layout: Option<gpui::LayoutId>,
+	pending_layout: Option<LayoutId>,
+	content_layout: Option<LayoutId>,
 	rows: BTreeMap<RowKey, (f32, f32)>,
 	folded: BTreeSet<RowKey>,
 	layout: Option<Layout>,
@@ -176,7 +184,7 @@ enum LayoutRole {
 struct PaginationLayout {
 	child: AnyElement,
 	geometry: Rc<RefCell<Geometry>>,
-	scroll: gpui::ScrollHandle,
+	scroll: ScrollHandle,
 	role: LayoutRole,
 }
 impl IntoElement for PaginationLayout {
@@ -186,32 +194,35 @@ impl IntoElement for PaginationLayout {
 		self
 	}
 }
-impl gpui::Element for PaginationLayout {
+impl Element for PaginationLayout {
 	type PrepaintState = ();
 	type RequestLayoutState = ();
 
-	fn id(&self) -> Option<gpui::ElementId> {
+	fn id(&self) -> Option<ElementId> {
 		None
 	}
 
-	fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+	fn source_location(&self) -> Option<&'static Location<'static>> {
 		None
 	}
 
 	fn request_layout(
 		&mut self,
-		_: Option<&gpui::GlobalElementId>,
-		_: Option<&gpui::InspectorElementId>,
+		_: Option<&GlobalElementId>,
+		_: Option<&InspectorElementId>,
 		window: &mut Window,
-		cx: &mut gpui::App,
-	) -> (gpui::LayoutId, ()) {
+		cx: &mut App,
+	) -> (LayoutId, ()) {
 		if matches!(self.role, LayoutRole::Viewport { .. }) {
 			let mut geometry = self.geometry.borrow_mut();
+
 			geometry.pending_layout = None;
 			geometry.content_layout = None;
 		}
+
 		let layout = self.child.request_layout(window, cx);
 		let mut geometry = self.geometry.borrow_mut();
+
 		match &self.role {
 			LayoutRole::Content => geometry.content_layout = Some(layout),
 			LayoutRole::Row(key)
@@ -219,36 +230,41 @@ impl gpui::Element for PaginationLayout {
 				geometry.pending_layout = Some(layout),
 			_ => {},
 		}
+
 		(layout, ())
 	}
 
 	fn prepaint(
 		&mut self,
-		_: Option<&gpui::GlobalElementId>,
-		_: Option<&gpui::InspectorElementId>,
-		bounds: gpui::Bounds<gpui::Pixels>,
+		_: Option<&GlobalElementId>,
+		_: Option<&InspectorElementId>,
+		bounds: Bounds<Pixels>,
 		_: &mut (),
 		window: &mut Window,
-		cx: &mut gpui::App,
+		cx: &mut App,
 	) {
 		if let LayoutRole::Viewport { bottom_gap } = self.role {
 			let mut geometry = self.geometry.borrow_mut();
+
 			if geometry.process_motion_until.is_none()
 				&& let Some(layout) = geometry.pending_layout.take()
 				&& let Some(anchor) = geometry.pending.take()
 			{
 				let top = f32::from(window.layout_bounds(layout).origin.y - bounds.origin.y);
+
 				// The scroll container clamps against its new content size in its own prepaint.
 				self.scroll.set_offset(gpui::point(
 					self.scroll.offset().x,
 					gpui::px(anchor.viewport_top - top),
 				));
 			}
+
 			if let Some(gap) = bottom_gap
 				&& let Some(layout) = geometry.content_layout
 			{
 				let height = window.layout_bounds(layout).size.height;
 				let maximum = (height - bounds.size.height).max(gpui::px(0.));
+
 				// Ease only the reader's distance from the bottom. Content growth,
 				// including a disclosure, follows this frame's layout without lag.
 				self.scroll.set_offset(gpui::point(
@@ -257,9 +273,11 @@ impl gpui::Element for PaginationLayout {
 				));
 			}
 		}
+
 		self.child.prepaint(window, cx);
+
 		if matches!(self.role, LayoutRole::Viewport { .. }) {
-			crate::frame_trace::transcript_layout(
+			frame_trace::transcript_layout(
 				self.scroll.max_offset().y.into(),
 				self.scroll.offset().y.into(),
 			);
@@ -268,13 +286,13 @@ impl gpui::Element for PaginationLayout {
 
 	fn paint(
 		&mut self,
-		_: Option<&gpui::GlobalElementId>,
-		_: Option<&gpui::InspectorElementId>,
-		_: gpui::Bounds<gpui::Pixels>,
+		_: Option<&GlobalElementId>,
+		_: Option<&InspectorElementId>,
+		_: Bounds<Pixels>,
 		_: &mut (),
 		_: &mut (),
 		window: &mut Window,
-		cx: &mut gpui::App,
+		cx: &mut App,
 	) {
 		self.child.paint(window, cx);
 	}
@@ -284,7 +302,7 @@ impl AgentSurface {
 	pub(in super::super) fn anchored_native_viewport(
 		&self,
 		child: AnyElement,
-		scroll: gpui::ScrollHandle,
+		scroll: ScrollHandle,
 	) -> AnyElement {
 		PaginationLayout {
 			child,
@@ -358,12 +376,9 @@ impl AgentSurface {
 		self.timeline.wheel_scroll = None;
 	}
 
-	pub(super) fn prepare_process_folds(
-		&self,
-		groups: &[native_timeline::groups::Group],
-		hidden: &BTreeSet<usize>,
-	) {
+	pub(super) fn prepare_process_folds(&self, groups: &[Group], hidden: &BTreeSet<usize>) {
 		self.timeline.native.completions.prepare(&self.timeline.native.entries, groups);
+
 		let folded = hidden
 			.iter()
 			.copied()
@@ -376,6 +391,7 @@ impl AgentSurface {
 			// Earlier rows keep their measured size and position. Only the
 			// changed header and following rows can move when a turn folds.
 			state.rows.retain(|key, _| key.0 < first);
+
 			state.folded = folded;
 		}
 	}
@@ -489,7 +505,6 @@ impl AgentSurface {
 		let selection = geometry.clone();
 		let selected_key = key.clone();
 		let arrival = self.timeline.native.arrivals.active(entry).then_some(entry.position);
-
 		let row = PaginationLayout {
 			child: row,
 			geometry: geometry.clone(),
@@ -510,13 +525,15 @@ impl AgentSurface {
 				let Some(bounds) = bounds.first() else {
 					return;
 				};
+
 				if let Some(position) = arrival {
-					crate::frame_trace::row_layout(
+					frame_trace::row_layout(
 						position,
 						bounds.size.height.into(),
 						scroll.offset().y.into(),
 					);
 				}
+
 				#[cfg(test)]
 				geometry
 					.borrow_mut()
@@ -524,6 +541,7 @@ impl AgentSurface {
 					.entry(key.clone())
 					.or_default()
 					.push(f32::from(bounds.origin.y - scroll.bounds().origin.y));
+
 				let top = f32::from(bounds.origin.y - scroll.bounds().origin.y - scroll.offset().y);
 				let Some(revision) =
 					geometry.borrow_mut().measure(key.clone(), top, bounds.size.height.into())
@@ -566,9 +584,15 @@ fn row_key(entry: &AgentTimelineEntry) -> RowKey {
 mod tests {
 	use std::{future, thread};
 
-	use crate::shell::agent_surface::native_timeline::scroll::{
-		self, AgentSurface, AgentTimelineEntry, AgentTimelinePage, Anchor, Binding, Geometry,
-		Layout, Viewport,
+	use crate::{
+		shell::agent_surface::native_timeline::{
+			Pagination,
+			scroll::{
+				self, AgentSurface, AgentTimelineEntry, AgentTimelinePage, Anchor, Binding,
+				Geometry, Layout, Viewport,
+			},
+		},
+		ui_frame,
 	};
 
 	#[test]
@@ -637,9 +661,12 @@ mod tests {
 	#[gpui::test]
 	fn a_new_process_fold_keeps_older_history_virtualized(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, _| {
 			let entries = vec![row(1), row(10), row(11), row(12)];
+
 			s.timeline.native.entries = entries.clone();
+
 			let group = super::super::groups::Group {
 				turn: "turn".into(),
 				turns: ["turn".into()].into(),
@@ -649,6 +676,7 @@ mod tests {
 				final_index: 1,
 				count: 1,
 			};
+
 			// The final reply can precede its last process item. Its header is
 			// therefore the first affected row, not the first hidden item.
 			for entry in &entries {
@@ -658,22 +686,30 @@ mod tests {
 					700.,
 				);
 			}
+
 			s.prepare_process_folds(&[group], &[2].into());
+
 			let viewport = &s.timeline.native.viewport;
+
 			assert_eq!(
 				viewport.offscreen_height(&entries[0], 0., 900.),
 				Some(700.),
 				"a new fold must not remount previously measured older replies"
 			);
+
 			for entry in &entries[1..] {
 				assert_eq!(viewport.offscreen_height(entry, 0., 900.), None);
+
 				viewport.0.borrow_mut().measure(scroll::row_key(entry), 5_000., 700.);
 			}
+
 			s.prepare_process_folds(&[], &Default::default());
+
 			assert_eq!(
 				s.timeline.native.viewport.offscreen_height(&entries[0], 0., 900.),
 				Some(700.)
 			);
+
 			for entry in &entries[1..] {
 				assert_eq!(s.timeline.native.viewport.offscreen_height(entry, 0., 900.), None);
 			}
@@ -768,17 +804,20 @@ mod tests {
 
 			let binding = surface.update(visual, initialize_latest_history);
 
-			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 
 			surface.update(visual, |s, cx| {
 				s.workspace.details_visible = true;
+
 				cx.notify();
 			});
-			visual.update(|window, cx| window.draw(cx).clear(cx));
-			std::thread::sleep(std::time::Duration::from_millis(250));
-			visual.update(|window, cx| window.draw(cx).clear(cx));
+
+			visual.update(crate::ui_frame::draw_current_frame);
+
+			thread::sleep(std::time::Duration::from_millis(250));
+
+			visual.update(crate::ui_frame::draw_current_frame);
+
 			let button = visual.debug_bounds("native-latest-action").unwrap();
 
 			visual.simulate_click(button.center(), Default::default());
@@ -829,9 +868,7 @@ mod tests {
 
 				cx.notify();
 			});
-			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 
 			let scroll = surface.read_with(visual, |s, _| s.timeline.scroll[&binding.work].clone());
 
@@ -849,8 +886,6 @@ mod tests {
 
 	#[gpui::test]
 	fn history_feedback_keeps_height_and_reading_position(cx: &mut gpui::TestAppContext) {
-		use crate::shell::agent_surface::native_timeline::Pagination;
-
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(700.)));
@@ -895,7 +930,7 @@ mod tests {
 		});
 
 		visual.update(|window, cx| {
-			crate::ui_frame::draw_frame(window, cx);
+			ui_frame::draw_frame(window, cx);
 		});
 
 		// The fixture closes the initially reserved dock. Measure refreshes only
@@ -903,14 +938,14 @@ mod tests {
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(|window, cx| {
-			crate::ui_frame::draw_frame(window, cx);
+			ui_frame::draw_frame(window, cx);
 		});
 
 		let scroll = surface.read_with(visual, |s, _| s.timeline.scroll[&work].clone());
 
 		scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(-300.)));
 		visual.update(|window, cx| {
-			crate::ui_frame::draw_frame(window, cx);
+			ui_frame::draw_frame(window, cx);
 		});
 
 		let maximum = scroll.max_offset();
@@ -925,7 +960,7 @@ mod tests {
 			});
 
 			visual.update(|window, cx| {
-				crate::ui_frame::draw_frame(window, cx);
+				ui_frame::draw_frame(window, cx);
 			});
 
 			assert!(visual.debug_bounds("loading-feedback-Loading earlier history").is_none());
@@ -941,22 +976,27 @@ mod tests {
 				"background refresh must preserve reading position"
 			);
 		}
-
 		for pagination in [Pagination::Loading, Pagination::Failed, Pagination::Idle] {
 			surface.update(visual, |s, cx| {
 				s.timeline.native.pagination = pagination;
 				s.timeline.native.task = (pagination == Pagination::Loading)
 					.then(|| cx.spawn(async |_, _| future::pending::<()>().await));
+
 				cx.notify();
 			});
+
 			visual.update(crate::ui_frame::draw_frame);
+
 			if pagination == Pagination::Loading {
 				for delay in [300, 16] {
 					thread::sleep(std::time::Duration::from_millis(delay));
+
 					visual.update(crate::ui_frame::draw_frame);
 				}
+
 				assert!(visual.debug_bounds("loading-feedback-Loading earlier history").is_some());
 			}
+
 			assert_eq!(
 				visual.debug_bounds("native-timeline-retry").is_some(),
 				pagination == Pagination::Failed
@@ -1032,16 +1072,7 @@ mod tests {
 
 			assert!(s.timeline.native.replace(
 				binding.clone(),
-				AgentTimelinePage {
-					thread_id: "thread".into(),
-					entries: (10..1_010).map(short).collect(),
-					next_cursor: Some("older".into()),
-					weather: Default::default(),
-					thread_token_total: None,
-					thread_metrics: None,
-					safety_buffering_turn_id: None,
-					active_realtime_session_at_page_start: None,
-				}
+				scroll_page((10..1_010).map(short).collect(), Some("older"))
 			));
 
 			cx.notify();
@@ -1049,9 +1080,7 @@ mod tests {
 			binding
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let key = scroll::row_key(&row(11));
 
@@ -1063,28 +1092,18 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let before = surface.update(visual, |s, cx| {
 			let before = s.timeline.native.viewport.0.borrow().rows[&key].0
 				+ f32::from(s.timeline.scroll[&binding.work].offset().y);
 
 			s.timeline.native.viewport.0.borrow_mut().painted_rows.clear();
+
 			assert!(s.prepend_native_history(
 				&binding,
 				"older",
-				AgentTimelinePage {
-					thread_id: "thread".into(),
-					entries: (1..4).map(short).collect(),
-					next_cursor: None,
-					weather: Default::default(),
-					thread_token_total: None,
-					thread_metrics: None,
-					safety_buffering_turn_id: None,
-					active_realtime_session_at_page_start: None,
-				}
+				scroll_page((1..4).map(short).collect(), None)
 			));
 			assert!(s.timeline.native.browsing_window);
 
@@ -1096,6 +1115,7 @@ mod tests {
 		for frame in 0..3 {
 			visual.update(|window, cx| {
 				window.draw(cx).clear(cx);
+
 				let s = surface.read(cx);
 				let geometry = s.timeline.native.viewport.0.borrow();
 				let painted = geometry.painted_rows[&key]
@@ -1103,11 +1123,13 @@ mod tests {
 					.copied()
 					.find(|p| (*p - before).abs() >= 1.)
 					.unwrap_or(before);
+
 				assert!(
 					(painted - before).abs() < 1.,
 					"frame {frame} moved visible history from {before} to {painted}"
 				);
 			});
+
 			visual.run_until_parked();
 		}
 
@@ -1131,50 +1153,40 @@ mod tests {
 
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(500.)));
 
-		let binding = surface.update(visual, |s, cx| {
-			s.visual_workspace_fixture(cx);
+		let binding =
+			surface.update(visual, |s, cx| {
+				s.visual_workspace_fixture(cx);
 
-			s.workspace.graph_visible = false;
+				s.workspace.graph_visible = false;
 
-			let work = s
-				.snapshot
-				.as_mut()
-				.unwrap()
-				.work_items
-				.iter_mut()
-				.find(|work| Some(&work.id) == s.selected.as_ref())
-				.unwrap();
+				let work = s
+					.snapshot
+					.as_mut()
+					.unwrap()
+					.work_items
+					.iter_mut()
+					.find(|work| Some(&work.id) == s.selected.as_ref())
+					.unwrap();
 
-			work.codex_thread_id = Some("thread".into());
+				work.codex_thread_id = Some("thread".into());
 
-			let binding = Binding {
-				work: work.id.clone(),
-				thread: "thread".into(),
-				account: "account".into(),
-			};
+				let binding = Binding {
+					work: work.id.clone(),
+					thread: "thread".into(),
+					account: "account".into(),
+				};
 
-			assert!(s.timeline.native.replace(
-				binding.clone(),
-				AgentTimelinePage {
-					thread_id: "thread".into(),
-					entries: (10..13).map(row).collect(),
-					next_cursor: Some("older".into()),
-					weather: Default::default(),
-					thread_token_total: None,
-					thread_metrics: None,
-					safety_buffering_turn_id: None,
-					active_realtime_session_at_page_start: None,
-				}
-			));
+				assert!(s.timeline.native.replace(
+					binding.clone(),
+					scroll_page((10..13).map(row).collect(), Some("older"))
+				));
 
-			cx.notify();
+				cx.notify();
 
-			binding
-		});
+				binding
+			});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let key = scroll::row_key(&row(11));
 
@@ -1188,28 +1200,18 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let before = surface.update(visual, |s, cx| {
 			let before = s.timeline.native.viewport.0.borrow().rows[&key].0
 				+ f32::from(s.timeline.scroll[&binding.work].offset().y);
 
 			s.timeline.native.viewport.0.borrow_mut().painted_rows.clear();
+
 			assert!(s.prepend_native_history(
 				&binding,
 				"older",
-				AgentTimelinePage {
-					thread_id: "thread".into(),
-					entries: (1..4).map(row).collect(),
-					next_cursor: None,
-					weather: Default::default(),
-					thread_token_total: None,
-					thread_metrics: None,
-					safety_buffering_turn_id: None,
-					active_realtime_session_at_page_start: None,
-				}
+				scroll_page((1..4).map(row).collect(), None)
 			));
 
 			cx.notify();
@@ -1220,6 +1222,7 @@ mod tests {
 		for frame in 0..3 {
 			visual.update(|window, cx| {
 				window.draw(cx).clear(cx);
+
 				let s = surface.read(cx);
 				let geometry = s.timeline.native.viewport.0.borrow();
 				let painted = geometry.painted_rows[&key]
@@ -1227,11 +1230,13 @@ mod tests {
 					.copied()
 					.find(|p| (*p - before).abs() >= 1.)
 					.unwrap_or(before);
+
 				assert!(
 					(painted - before).abs() < 1.,
 					"frame {frame} moved visible history from {before} to {painted}"
 				);
 			});
+
 			visual.run_until_parked();
 		}
 
@@ -1249,5 +1254,21 @@ mod tests {
 			);
 			assert!(geometry.pending.is_none());
 		});
+	}
+
+	fn scroll_page(
+		entries: Vec<decodex_protocol::AgentTimelineEntry>,
+		next_cursor: Option<&str>,
+	) -> AgentTimelinePage {
+		AgentTimelinePage {
+			thread_id: "thread".into(),
+			entries,
+			next_cursor: next_cursor.map(str::to_owned),
+			weather: Default::default(),
+			thread_token_total: None,
+			thread_metrics: None,
+			safety_buffering_turn_id: None,
+			active_realtime_session_at_page_start: None,
+		}
 	}
 }

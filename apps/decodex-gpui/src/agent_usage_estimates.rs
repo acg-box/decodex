@@ -265,9 +265,7 @@ mod tests {
 
 		thread::sleep(std::time::Duration::from_millis(220));
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let bounds = visual.debug_bounds("task-usage-toggle").expect("usage toggle");
 

@@ -1,19 +1,35 @@
 //! One compact work item, with source-backed changes revealed in place.
-use super::{DATE_HEIGHT, ENTRANCE, Kind, OpenDelivery, Panel, clock, day_label};
-use crate::{
-	shell::workspace_symbols::{self, Symbol},
-	ui_motion::{self, SmoothControl},
-	ui_theme,
+use std::collections::BTreeMap;
+
+use gpui::{
+	AnyElement, Context, Div, FontWeight, IntoElement, KeyDownEvent, Role, SharedString, Window,
+	prelude::{
+		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
+		StatefulInteractiveElement as _, Styled as _,
+	},
 };
-use decodex_protocol::{AgentDeliveryEntry, AgentDeliveryUpdate, AgentDeliveryUpdateKind};
-use gpui::{Context, IntoElement, Window, prelude::*};
+
+use crate::{
+	shell::{
+		agent_surface::deliveries::{
+			self, AgentDeliveryKind, DATE_HEIGHT, ENTRANCE, OpenDelivery, Panel,
+		},
+		workspace_symbols::{self, Symbol},
+	},
+	ui_motion::{self, SmoothControl},
+	ui_theme::{self, CAPTION_SIZE, ERROR, INFO, SUCCESS, TEXT_MUTED, WARNING},
+};
+use decodex_protocol::{
+	AgentDeliveryArtifact, AgentDeliveryEntry, AgentDeliveryUpdate, AgentDeliveryUpdateKind,
+};
 
 pub(super) const RAIL_WIDTH: f32 = 12.;
 pub(super) const CONTENT_GAP: f32 = 8.;
+pub(super) const MARKER_Y: f32 = ROW_TOP + META_HEIGHT / 2.;
+
 const ROW_TOP: f32 = 8.;
 const ROW_BOTTOM: f32 = 14.;
 const META_HEIGHT: f32 = 24.;
-pub(super) const MARKER_Y: f32 = ROW_TOP + META_HEIGHT / 2.;
 
 pub(super) struct Placement {
 	pub date: bool,
@@ -28,7 +44,7 @@ pub(super) struct CachedLayout {
 }
 impl CachedLayout {
 	pub fn get(
-		cache: &mut std::collections::BTreeMap<i64, Self>,
+		cache: &mut BTreeMap<i64, Self>,
 		entry: &AgentDeliveryEntry,
 		width: f32,
 		expanded: bool,
@@ -37,6 +53,7 @@ impl CachedLayout {
 		let stale = cache.get(&entry.id).is_none_or(|old| {
 			old.entry != *entry || old.width != width || old.expanded != expanded
 		});
+
 		if stale {
 			cache.insert(
 				entry.id,
@@ -48,6 +65,7 @@ impl CachedLayout {
 				},
 			);
 		}
+
 		cache.get(&entry.id).expect("measured row").layout.clone()
 	}
 }
@@ -67,19 +85,11 @@ impl RowLayout {
 	fn new(entry: &AgentDeliveryEntry, width: f32, expanded: bool, window: &Window) -> Self {
 		let title = entry.title.trim().to_owned();
 		let full_title =
-			super::text_height(&title, 12.5, 17., gpui::FontWeight::MEDIUM, width, None, window);
+			super::text_height(&title, 12.5, 17., FontWeight::MEDIUM, width, None, window);
 		let full_summary = if entry.summary.is_empty() {
 			0.
 		} else {
-			super::text_height(
-				&entry.summary,
-				11.5,
-				16.,
-				gpui::FontWeight::NORMAL,
-				width,
-				None,
-				window,
-			)
+			super::text_height(&entry.summary, 11.5, 16., FontWeight::NORMAL, width, None, window)
 		};
 		let title_height = if expanded { full_title } else { full_title.min(34.) };
 		let summary_height = if expanded { full_summary } else { full_summary.min(32.) };
@@ -97,15 +107,18 @@ impl RowLayout {
 					&update.summary,
 					11.5,
 					16.,
-					gpui::FontWeight::NORMAL,
+					FontWeight::NORMAL,
 					width,
 					Some(2),
 					window,
 				);
+
 				(update.clone(), h)
 			})
 			.collect();
+
 		updates.reverse();
+
 		let artifacts = entry.artifacts.len().min(3);
 		let details_height = updates.iter().map(|(_, h)| 10. + 14. + 3. + h).sum::<f32>()
 			+ artifacts.saturating_sub(1) as f32 * 25.;
@@ -118,6 +131,7 @@ impl RowLayout {
 			+ artifacts.min(1) as f32 * 25.
 			+ if expanded { details_height } else { 0. }
 			+ ROW_BOTTOM;
+
 		Self {
 			height,
 			title,
@@ -138,22 +152,22 @@ impl Panel {
 		layout: &RowLayout,
 		window: &mut Window,
 		cx: &mut Context<Self>,
-	) -> gpui::Div {
+	) -> Div {
 		let expanded = self.expanded == Some(entry.id);
 		let title_height = ui_motion::value(
-			gpui::SharedString::from(format!("delivery-title-height-{}", entry.id)),
+			SharedString::from(format!("delivery-title-height-{}", entry.id)),
 			layout.title_height,
 			window,
 			cx,
 		);
 		let summary_height = ui_motion::value(
-			gpui::SharedString::from(format!("delivery-summary-height-{}", entry.id)),
+			SharedString::from(format!("delivery-summary-height-{}", entry.id)),
 			layout.summary_height,
 			window,
 			cx,
 		);
 		let progress = ui_motion::value(
-			gpui::SharedString::from(format!("delivery-details-{}", entry.id)),
+			SharedString::from(format!("delivery-details-{}", entry.id)),
 			if expanded { 1. } else { 0. },
 			window,
 			cx,
@@ -171,30 +185,7 @@ impl Panel {
 			.to_uppercase()
 			.to_string();
 		let identity = entry.slot.map_or(initial.clone(), |slot| format!("{initial} A{slot}"));
-		let header = gpui::div()
-			.debug_selector({
-				let id = entry.id;
-				move || format!("delivery-meta-{id}")
-			})
-			.mb(gpui::px(5.))
-			.h(gpui::px(META_HEIGHT))
-			.flex_none()
-			.flex()
-			.items_center()
-			.gap(gpui::px(6.))
-			.whitespace_nowrap()
-			.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-			.line_height(gpui::px(META_HEIGHT))
-			.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
-			.child(gpui::div().flex_none().font_weight(gpui::FontWeight::MEDIUM).child(identity))
-			.child(gpui::div().flex_1())
-			.when(self.width >= 220., |row| {
-				row.child(gpui::div().flex_none().child(clock(entry.updated_at_micros)))
-			})
-			.when(layout.expandable, |row| row.child(self.expand_control(entry, cx)))
-			.when(self.active_work.contains(&entry.work_id), |row| {
-				row.child(Self::source_arrow(entry, cx))
-			});
+		let header = self.delivery_row_header(entry, layout, identity, cx);
 		let mut body = gpui::div()
 			.min_w_0()
 			.flex_1()
@@ -203,9 +194,10 @@ impl Panel {
 			.child(header)
 			.child(
 				gpui::div()
-					.id(gpui::SharedString::from(format!("delivery-request-{}", entry.id)))
+					.id(SharedString::from(format!("delivery-request-{}", entry.id)))
 					.debug_selector({
 						let id = entry.id;
+
 						move || format!("delivery-request-{id}")
 					})
 					.h(gpui::px(title_height))
@@ -214,15 +206,16 @@ impl Panel {
 					.whitespace_normal()
 					.text_size(gpui::px(12.5))
 					.line_height(gpui::px(17.))
-					.font_weight(gpui::FontWeight::MEDIUM)
+					.font_weight(FontWeight::MEDIUM)
 					.child(layout.title.clone()),
 			)
 			.when(summary_height > 0., |body| {
 				body.child(
 					gpui::div()
-						.id(gpui::SharedString::from(format!("delivery-response-{}", entry.id)))
+						.id(SharedString::from(format!("delivery-response-{}", entry.id)))
 						.debug_selector({
 							let id = entry.id;
+
 							move || format!("delivery-response-{id}")
 						})
 						.mt(gpui::px(4.))
@@ -232,16 +225,19 @@ impl Panel {
 						.whitespace_normal()
 						.text_size(gpui::px(11.5))
 						.line_height(gpui::px(16.))
-						.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
+						.text_color(ui_theme::rgb(TEXT_MUTED))
 						.child(entry.summary.clone()),
 				)
 			});
+
 		if let Some(artifact) = entry.artifacts.first() {
 			body = body.child(Self::artifact(entry.id, 0, artifact, cx));
 		}
+
 		if progress <= 0.001 {
 			return body;
 		}
+
 		let details = self.row_details(entry, layout, cx);
 
 		body.child(
@@ -254,19 +250,55 @@ impl Panel {
 		)
 	}
 
+	fn delivery_row_header(
+		&self,
+		entry: &AgentDeliveryEntry,
+		layout: &RowLayout,
+		identity: String,
+		cx: &mut Context<Self>,
+	) -> Div {
+		gpui::div()
+			.debug_selector({
+				let id = entry.id;
+
+				move || format!("delivery-meta-{id}")
+			})
+			.mb(gpui::px(5.))
+			.h(gpui::px(META_HEIGHT))
+			.flex_none()
+			.flex()
+			.items_center()
+			.gap(gpui::px(6.))
+			.whitespace_nowrap()
+			.text_size(gpui::px(CAPTION_SIZE))
+			.line_height(gpui::px(META_HEIGHT))
+			.text_color(ui_theme::rgb(TEXT_MUTED))
+			.child(gpui::div().flex_none().font_weight(FontWeight::MEDIUM).child(identity))
+			.child(gpui::div().flex_1())
+			.when(self.width >= 220., |row| {
+				row.child(gpui::div().flex_none().child(deliveries::clock(entry.updated_at_micros)))
+			})
+			.when(layout.expandable, |row| row.child(self.expand_control(entry, cx)))
+			.when(self.active_work.contains(&entry.work_id), |row| {
+				row.child(Self::source_arrow(entry, cx))
+			})
+	}
+
 	fn row_details(
 		&self,
 		entry: &AgentDeliveryEntry,
 		layout: &RowLayout,
 		cx: &mut Context<Self>,
-	) -> gpui::Div {
+	) -> Div {
 		let mut details = gpui::div().w_full().flex_none().flex().flex_col();
+
 		for (update, height) in &layout.updates {
 			let (label, color) = match update.kind {
-				AgentDeliveryUpdateKind::Progress => ("Progress", ui_theme::TEXT_MUTED),
-				AgentDeliveryUpdateKind::Decision => ("Your choice", ui_theme::INFO),
-				AgentDeliveryUpdateKind::Result => ("Earlier result", ui_theme::TEXT_MUTED),
+				AgentDeliveryUpdateKind::Progress => ("Progress", TEXT_MUTED),
+				AgentDeliveryUpdateKind::Decision => ("Your choice", INFO),
+				AgentDeliveryUpdateKind::Result => ("Earlier result", TEXT_MUTED),
 			};
+
 			details = details.child(
 				gpui::div()
 					.mt(gpui::px(10.))
@@ -279,12 +311,12 @@ impl Panel {
 							.flex()
 							.items_center()
 							.gap(gpui::px(6.))
-							.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+							.text_size(gpui::px(CAPTION_SIZE))
 							.line_height(gpui::px(14.))
-							.text_color(crate::ui_theme::rgb(color))
+							.text_color(ui_theme::rgb(color))
 							.child(label)
 							.child(gpui::div().flex_1())
-							.child(clock(update.created_at_micros)),
+							.child(deliveries::clock(update.created_at_micros)),
 					)
 					.child(
 						gpui::div()
@@ -294,7 +326,7 @@ impl Panel {
 							.whitespace_normal()
 							.text_size(gpui::px(11.5))
 							.line_height(gpui::px(16.))
-							.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
+							.text_color(ui_theme::rgb(TEXT_MUTED))
 							.child(update.summary.clone()),
 					),
 			);
@@ -306,11 +338,7 @@ impl Panel {
 		details
 	}
 
-	fn expand_control(
-		&self,
-		entry: &AgentDeliveryEntry,
-		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	fn expand_control(&self, entry: &AgentDeliveryEntry, cx: &mut Context<Self>) -> AnyElement {
 		let id = entry.id;
 		let expanded = self.expanded == Some(id);
 		let action = if expanded { "Collapse" } else { "Expand" };
@@ -318,10 +346,11 @@ impl Panel {
 			|| format!("{action} conversation content"),
 			|slot| format!("{action} A{slot} content"),
 		);
+
 		gpui::div()
 			.id(("delivery-expand", id as u64))
 			.debug_selector(move || format!("delivery-expand-{id}"))
-			.role(gpui::Role::Button)
+			.role(Role::Button)
 			.tab_index(0)
 			.aria_expanded(expanded)
 			.aria_label(aria)
@@ -332,11 +361,11 @@ impl Panel {
 			.justify_center()
 			.cursor_pointer()
 			.child(workspace_symbols::process_chevron(
-				gpui::SharedString::from(format!("delivery-chevron-{id}")),
+				SharedString::from(format!("delivery-chevron-{id}")),
 				expanded,
 			))
 			.on_click(cx.listener(move |s, _, _, cx| s.toggle_entry(id, cx)))
-			.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 				if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 					s.toggle_entry(id, cx);
 					cx.stop_propagation();
@@ -346,7 +375,7 @@ impl Panel {
 			.into_any_element()
 	}
 
-	fn source_arrow(entry: &AgentDeliveryEntry, cx: &mut Context<Self>) -> gpui::AnyElement {
+	fn source_arrow(entry: &AgentDeliveryEntry, cx: &mut Context<Self>) -> AnyElement {
 		let id = entry.id;
 		let work = entry.work_id.clone();
 		let keyboard_work = work.clone();
@@ -354,10 +383,11 @@ impl Panel {
 			|| "Open conversation".to_owned(),
 			|slot| format!("Open A{slot} conversation"),
 		);
+
 		gpui::div()
 			.id(("delivery-open", id as u64))
 			.debug_selector(move || format!("delivery-open-{id}"))
-			.role(gpui::Role::Button)
+			.role(Role::Button)
 			.tab_index(0)
 			.aria_label(aria)
 			.size(gpui::px(META_HEIGHT))
@@ -366,13 +396,13 @@ impl Panel {
 			.items_center()
 			.justify_center()
 			.cursor_pointer()
-			.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
+			.text_color(ui_theme::rgb(TEXT_MUTED))
 			.child(workspace_symbols::icon_sized(Symbol::Forward, 13.))
 			.on_click(cx.listener(move |_, _, _, cx| {
 				cx.stop_propagation();
 				cx.emit(OpenDelivery(work.clone()));
 			}))
-			.on_key_down(cx.listener(move |_, e: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(move |_, e: &KeyDownEvent, _, cx| {
 				if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 					cx.stop_propagation();
 					cx.emit(OpenDelivery(keyboard_work.clone()));
@@ -385,14 +415,15 @@ impl Panel {
 	fn artifact(
 		id: i64,
 		index: usize,
-		artifact: &decodex_protocol::AgentDeliveryArtifact,
+		artifact: &AgentDeliveryArtifact,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let target = artifact.target.clone();
 		let keyboard_target = target.clone();
+
 		gpui::div()
-			.id(gpui::SharedString::from(format!("delivery-artifact-{id}-{index}")))
-			.role(gpui::Role::Button)
+			.id(SharedString::from(format!("delivery-artifact-{id}-{index}")))
+			.role(Role::Button)
 			.tab_index(0)
 			.cursor_pointer()
 			.aria_label(format!("Open {}", artifact.title))
@@ -404,7 +435,7 @@ impl Panel {
 			.gap(gpui::px(5.))
 			.text_size(gpui::px(11.5))
 			.line_height(gpui::px(16.))
-			.text_color(crate::ui_theme::rgb(ui_theme::INFO))
+			.text_color(ui_theme::rgb(INFO))
 			.child(workspace_symbols::icon_sized(
 				if target.starts_with("file:") { Symbol::Document } else { Symbol::Link },
 				12.,
@@ -422,7 +453,7 @@ impl Panel {
 				cx.stop_propagation();
 				cx.open_url(&target);
 			}))
-			.on_key_down(cx.listener(move |_, e: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(move |_, e: &KeyDownEvent, _, cx| {
 				if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 					cx.stop_propagation();
 					cx.open_url(&keyboard_target);
@@ -439,18 +470,18 @@ impl Panel {
 		placement: Placement,
 		window: &mut Window,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let Placement { date, height } = placement;
 		let (label, color) = match entry.kind {
-			Kind::Requested => ("Planned", ui_theme::TEXT_MUTED),
-			Kind::Working => ("In progress", ui_theme::INFO),
-			Kind::Waiting => ("Waiting", ui_theme::TEXT_MUTED),
-			Kind::Unconfirmed => ("Check outcome", ui_theme::WARNING),
-			Kind::Result => ("Ready", ui_theme::SUCCESS),
-			Kind::Accepted => ("Done", ui_theme::SUCCESS),
-			Kind::NeedsInput => ("Needs you", ui_theme::WARNING),
-			Kind::Failed => ("Failed", ui_theme::ERROR),
-			Kind::Stopped => ("Stopped", ui_theme::TEXT_MUTED),
+			AgentDeliveryKind::Requested => ("Planned", TEXT_MUTED),
+			AgentDeliveryKind::Working => ("In progress", INFO),
+			AgentDeliveryKind::Waiting => ("Waiting", TEXT_MUTED),
+			AgentDeliveryKind::Unconfirmed => ("Check outcome", WARNING),
+			AgentDeliveryKind::Result => ("Ready", SUCCESS),
+			AgentDeliveryKind::Accepted => ("Done", SUCCESS),
+			AgentDeliveryKind::NeedsInput => ("Needs you", WARNING),
+			AgentDeliveryKind::Failed => ("Failed", ERROR),
+			AgentDeliveryKind::Stopped => ("Stopped", TEXT_MUTED),
 		};
 		let progress = self
 			.feed
@@ -459,14 +490,16 @@ impl Panel {
 			.filter(|_| ui_motion::animations_active())
 			.map_or(1., |at| (at.elapsed().as_secs_f32() / ENTRANCE.as_secs_f32()).min(1.));
 		let progress = 1. - (1. - progress).powi(3);
+
 		if progress < 1. {
 			ui_motion::request_frame(window, cx);
 		}
+
 		let id = entry.id;
 		let row = gpui::div()
 			.id(("delivery", id as u64))
 			.debug_selector(move || format!("delivery-{id}"))
-			.role(gpui::Role::Group)
+			.role(Role::Group)
 			.aria_label(format!("{}: {}", entry.title, label))
 			.h(gpui::px(height))
 			.w_full()
@@ -477,14 +510,14 @@ impl Panel {
 			.child(
 				gpui::div().relative().w(gpui::px(RAIL_WIDTH)).h_full().flex_none().child(
 					gpui::div()
-						.id(gpui::SharedString::from(format!("delivery-marker-{id}")))
+						.id(SharedString::from(format!("delivery-marker-{id}")))
 						.debug_selector(move || format!("delivery-marker-{id}"))
 						.absolute()
 						.top(gpui::px(MARKER_Y - ROW_TOP - 3.5))
 						.left(gpui::px((RAIL_WIDTH - 7.) / 2.))
 						.size(gpui::px(7.))
 						.rounded_full()
-						.bg(crate::ui_theme::rgb(color)),
+						.bg(ui_theme::rgb(color)),
 				),
 			)
 			.child(self.row_body(entry, layout, window, cx));
@@ -500,12 +533,13 @@ impl Panel {
 						.flex()
 						.items_center()
 						.text_size(gpui::px(11.))
-						.font_weight(gpui::FontWeight::MEDIUM)
-						.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
-						.child(day_label(entry.updated_at_micros)),
+						.font_weight(FontWeight::MEDIUM)
+						.text_color(ui_theme::rgb(TEXT_MUTED))
+						.child(deliveries::day_label(entry.updated_at_micros)),
 				)
 			})
 			.child(row);
+
 		gpui::div()
 			.h(gpui::px((height + if date { DATE_HEIGHT } else { 0. }) * progress))
 			.flex_none()

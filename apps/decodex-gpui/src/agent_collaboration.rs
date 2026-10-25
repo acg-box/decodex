@@ -1,31 +1,40 @@
 //! Source-backed collaboration across chats, with the existing conversation owners.
-use super::{
-	super::{
-		super::workspace::restore_shell_focus,
-		relations::{Edge, Graph, Kind},
+#[path = "agent_collaboration_cases.rs"] mod cases;
+
+use std::{collections::BTreeMap, rc::Rc, time::Instant};
+
+use gpui::{
+	AnyElement, Div, FontWeight, KeyDownEvent, Role, SharedString, Task,
+	prelude::{
+		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+		Styled,
 	},
-	AgentSurface, Context, Row, ui_theme,
 };
+use tokio::runtime::Builder;
+
 use crate::{
-	shell::{agent_surface::workspace_size::Panel, workspace_symbols},
+	shell::{
+		agent_surface::{
+			AgentClient, AgentSurface, Context, markdown,
+			work_board::{
+				Row, activity,
+				relations::{Edge, Graph, Kind},
+			},
+			workspace,
+			workspace_size::Panel,
+		},
+		workspace_symbols,
+	},
 	ui_motion::{self, SmoothControl},
 	ui_scroll::SmoothScrollArea,
+	ui_theme::{
+		self, BLUE, BODY_LINE_HEIGHT, FIELD_MATERIAL, HOVER_FILL, INFO,
+		foreground::{BODY, CAPTION_SIZE, METRIC_SIZE, PRIMARY, SECONDARY},
+	},
 };
 use decodex_protocol::{
 	AgentExchangeDto, AgentExchangeQuestionDto, AgentExchangesResult, EntityId,
 };
-use gpui::{AnyElement, SharedString, prelude::*};
-use std::{collections::BTreeMap, time::Instant};
-use ui_theme::foreground;
-#[path = "agent_collaboration_cases.rs"] mod cases;
-use cases::exchanges;
-#[cfg(test)]
-#[path = "agent_collaboration_tests.rs"]
-mod tests;
-
-fn same_excerpt(a: &str, b: &str) -> bool {
-	a.split_whitespace().eq(b.split_whitespace())
-}
 
 #[derive(Default)]
 pub(in super::super) struct State {
@@ -35,12 +44,13 @@ pub(in super::super) struct State {
 	next_before: Option<i64>,
 	page: Option<i64>,
 	questions_truncated: bool,
-	task: Option<gpui::Task<()>>,
+	task: Option<Task<()>>,
 	read_at: Option<Instant>,
 	earlier: bool,
 	source_open: Option<String>,
 	failed: bool,
 }
+
 struct Exchange {
 	id: String,
 	from: Row,
@@ -73,6 +83,7 @@ impl AgentSurface {
 		if !self.command_connection_ready() {
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else {
 			return;
 		};
@@ -81,30 +92,33 @@ impl AgentSurface {
 		else {
 			return;
 		};
+
 		if self.work_board.collaboration.source.as_ref() != Some(&source) {
 			self.work_board.collaboration =
 				State { source: Some(source.clone()), ..Default::default() };
 		}
+
 		let state = &mut self.work_board.collaboration;
+
 		if state.task.is_some()
 			|| (!explicit && state.read_at.is_some_and(|at| at.elapsed().as_secs() < 2))
 		{
 			return;
 		}
+
 		state.read_at = Some(Instant::now());
+
 		if explicit {
 			state.page = before;
 		}
+
 		let epoch = self.command_epoch;
 		let read = cx.background_executor().spawn(async move {
-			let runtime = tokio::runtime::Builder::new_current_thread()
-				.enable_all()
-				.build()
-				.map_err(|_| ())?;
-			runtime
-				.block_on(super::super::super::AgentClient::new(profile).exchanges(before))
-				.map_err(|_| ())
+			let runtime = Builder::new_current_thread().enable_all().build().map_err(|_| ())?;
+
+			runtime.block_on(AgentClient::new(profile).exchanges(before)).map_err(|_| ())
 		});
+
 		self.work_board.collaboration.task = Some(cx.spawn(async move |surface, cx| {
 			let result = read.await;
 			let _ = surface.update(cx, |s, cx| {
@@ -114,8 +128,11 @@ impl AgentSurface {
 				{
 					return;
 				}
+
 				let state = &mut s.work_board.collaboration;
+
 				state.task = None;
+
 				let changed = match result {
 					Ok(AgentExchangesResult::Available {
 						source: observed,
@@ -132,6 +149,7 @@ impl AgentSurface {
 							|| state.questions_truncated != questions_truncated
 							|| state.next_before != next_before
 							|| explicit;
+
 						state.failed = false;
 						// Refresh the selected page; an old assessment must not stay cached as
 						// current.
@@ -139,14 +157,18 @@ impl AgentSurface {
 						state.questions = questions;
 						state.questions_truncated = questions_truncated;
 						state.next_before = next_before;
+
 						changed
 					},
 					_ => {
 						let changed = !state.failed;
+
 						state.failed = true;
+
 						changed
 					},
 				};
+
 				if changed {
 					cx.notify();
 				}
@@ -164,7 +186,8 @@ impl AgentSurface {
 		let records: Vec<_> =
 			if rebound { vec![] } else { state.entries.values().cloned().collect() };
 		let questions = if rebound { &[][..] } else { state.questions.as_slice() };
-		let mut cases = exchanges(graph, rows, &records, questions);
+		let mut cases = cases::exchanges(graph, rows, &records, questions);
+
 		for row in rows.iter().filter(|row| row.native && row.group != 1) {
 			let Some(brief) = self.work_board.briefs.get(&row.key).filter(|brief| {
 				brief.source_thread == row.thread && brief.stamp == self.brief_stamp(row)
@@ -174,12 +197,14 @@ impl AgentSurface {
 			let (Some(output), Some((turn, status))) = (&brief.output, &brief.outcome) else {
 				continue;
 			};
+
 			if output.turn != *turn
 				|| status != "completed"
 				|| brief.metrics.stats.is_some_and(|stats| stats.active_ms.is_some())
 			{
 				continue;
 			}
+
 			let Some(thread) = row.thread.as_ref() else {
 				continue;
 			};
@@ -195,6 +220,7 @@ impl AgentSurface {
 			else {
 				continue;
 			};
+
 			// This is the child's reported output, not a reconstructed reply to a parent call.
 			// Compact parent notifications remain separate source records in Earlier.
 			for case in &mut cases {
@@ -206,10 +232,13 @@ impl AgentSurface {
 					case.earlier = true;
 				}
 			}
+
 			let mut source_text: String = output.text.chars().take(640).collect();
+
 			if output.truncated || output.text.chars().count() > 640 {
 				source_text.push('…');
 			}
+
 			cases.push(Exchange {
 				id: format!("native-report:{thread}:{turn}"),
 				from: row.clone(),
@@ -221,9 +250,9 @@ impl AgentSurface {
 					.map(|preview| preview.task.clone())
 					.or_else(|| self.native_assignment(row))
 					.unwrap_or_else(|| "Reported output".into()),
-				summary: super::super::activity::text(&output.text).chars().take(180).collect(),
+				summary: activity::text(&output.text).chars().take(180).collect(),
 				state: "Reported",
-				color: ui_theme::INFO,
+				color: INFO,
 				request: None,
 				steps: vec![("Review", "Acceptance and reply linkage are unknown.".into())],
 				source: "Native report".into(),
@@ -239,6 +268,7 @@ impl AgentSurface {
 				order: 0,
 			});
 		}
+
 		cases
 	}
 
@@ -249,32 +279,36 @@ impl AgentSurface {
 		action: impl Fn(&mut Self, &mut Context<Self>) + 'static,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let action = std::rc::Rc::new(action);
+		let action = Rc::new(action);
 		let keyboard = action.clone();
+
 		gpui::div()
 			.id(SharedString::from(id.clone()))
 			.debug_selector(move || id.clone())
-			.role(gpui::Role::Button)
+			.role(Role::Button)
 			.aria_label(label.clone())
 			.tab_index(0)
 			.min_w_0()
 			.min_h(gpui::px(22.))
 			.flex()
 			.items_center()
-			.text_size(gpui::px(foreground::METRIC_SIZE))
+			.text_size(gpui::px(METRIC_SIZE))
 			.line_height(gpui::px(18.))
-			.font_weight(gpui::FontWeight::MEDIUM)
-			.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
+			.font_weight(FontWeight::MEDIUM)
+			.text_color(ui_theme::rgb(SECONDARY))
 			.cursor_pointer()
-			.hover(|style| style.text_color(crate::ui_theme::rgb(ui_theme::BLUE)))
+			.hover(|style| style.text_color(ui_theme::rgb(BLUE)))
 			.on_click(cx.listener(move |s, _, window, cx| {
 				action(s, cx);
-				restore_shell_focus(window, cx);
+
+				workspace::restore_shell_focus(window, cx);
 			}))
-			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, window, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					keyboard(s, cx);
-					restore_shell_focus(window, cx);
+
+					workspace::restore_shell_focus(window, cx);
+
 					cx.stop_propagation();
 				}
 			}))
@@ -294,10 +328,11 @@ impl AgentSurface {
 		let key = row.key.clone();
 		let keyboard = key.clone();
 		let id = format!("collaboration-participant-{case}-{}", row.key);
+
 		gpui::div()
 			.id(SharedString::from(id.clone()))
 			.debug_selector(move || id.clone())
-			.role(gpui::Role::Button)
+			.role(Role::Button)
 			.aria_label(format!("Locate {label} in Graph"))
 			.tab_index(0)
 			.min_w_0()
@@ -306,15 +341,18 @@ impl AgentSurface {
 			.text_ellipsis()
 			.overflow_hidden()
 			.cursor_pointer()
-			.hover(|link| link.text_color(crate::ui_theme::rgb(ui_theme::BLUE)))
+			.hover(|link| link.text_color(ui_theme::rgb(BLUE)))
 			.on_click(cx.listener(move |s, _, window, cx| {
 				s.locate_relation_agent(&key, cx);
-				restore_shell_focus(window, cx);
+
+				workspace::restore_shell_focus(window, cx);
 			}))
-			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, window, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					s.locate_relation_agent(&keyboard, cx);
-					restore_shell_focus(window, cx);
+
+					workspace::restore_shell_focus(window, cx);
+
 					cx.stop_propagation();
 				}
 			}))
@@ -330,6 +368,7 @@ impl AgentSurface {
 		value: &str,
 	) -> AnyElement {
 		let key = format!("collaboration-reference-{}-{label}", case.id);
+
 		gpui::div()
 			.w_full()
 			.min_w_0()
@@ -341,6 +380,7 @@ impl AgentSurface {
 				gpui::div()
 					.debug_selector({
 						let key = key.clone();
+
 						move || key.clone()
 					})
 					.flex_1()
@@ -350,7 +390,7 @@ impl AgentSurface {
 					.overflow_hidden()
 					.child(value.to_owned()),
 			)
-			.child(crate::shell::agent_surface::markdown::copy_button(
+			.child(markdown::copy_button(
 				&format!("copy-{key}"),
 				match label {
 					"Thread" => "Copy thread ID",
@@ -371,8 +411,10 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) {
 		let close = self.work_board.collaboration_expanded.as_deref() == Some(key);
+
 		self.work_board.collaboration_expanded = (!close).then(|| key.to_owned());
 		self.work_board.view.edge = if close { None } else { edge.cloned() };
+
 		self.work_board.view.keep_camera();
 		cx.notify();
 	}
@@ -386,51 +428,11 @@ impl AgentSurface {
 		let keyboard_key = key.clone();
 		let keyboard_edge = edge.clone();
 		let selector = format!("collaboration-{}", case.id);
-		let mut route = gpui::div()
-			.w_full()
-			.min_w_0()
-			.flex()
-			.items_center()
-			.gap(gpui::px(5.))
-			.text_size(gpui::px(foreground::CAPTION_SIZE))
-			.line_height(gpui::px(19.))
-			.font_weight(gpui::FontWeight::MEDIUM)
-			.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
-			.child(
-				gpui::div()
-					.flex_none()
-					.size(gpui::px(4.))
-					.rounded_full()
-					.bg(crate::ui_theme::rgb(case.color)),
-			)
-			.child(self.collaboration_participant(&case.from, &case.id, cx))
-			.child(
-				gpui::div()
-					.flex_none()
-					.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
-					.child("→"),
-			);
-		route = if let Some(to) = &case.to {
-			route.child(self.collaboration_participant(to, &case.id, cx))
-		} else {
-			route.child(if case.question.is_some() { "You" } else { "Unknown" })
-		};
-		route = route.child(gpui::div().flex_1()).child(
-			gpui::div()
-				.flex_none()
-				.text_color(crate::ui_theme::rgb(
-					if matches!(case.state, "Reported" | "Recorded") {
-						foreground::SECONDARY
-					} else {
-						case.color
-					},
-				))
-				.child(case.state),
-		);
+		let route = self.collaboration_route(case, cx);
 		let title = gpui::div()
 			.id(SharedString::from(selector.clone()))
 			.debug_selector(move || selector.clone())
-			.role(gpui::Role::Button)
+			.role(Role::Button)
 			.aria_expanded(expanded)
 			.aria_label(format!("{} {}", if expanded { "Collapse" } else { "Expand" }, case.title))
 			.tab_index(0)
@@ -451,8 +453,8 @@ impl AgentSurface {
 							.min_w_0()
 							.text_size(gpui::px(12.))
 							.line_height(gpui::px(19.))
-							.font_weight(gpui::FontWeight::NORMAL)
-							.text_color(crate::ui_theme::rgb(foreground::PRIMARY))
+							.font_weight(FontWeight::NORMAL)
+							.text_color(ui_theme::rgb(PRIMARY))
 							.line_clamp(if expanded { 2 } else { 1 })
 							.text_ellipsis()
 							.child(case.title.clone()),
@@ -466,8 +468,8 @@ impl AgentSurface {
 				header.child(
 					gpui::div()
 						.text_size(gpui::px(11.5))
-						.line_height(gpui::px(ui_theme::BODY_LINE_HEIGHT))
-						.text_color(crate::ui_theme::rgb(foreground::BODY))
+						.line_height(gpui::px(BODY_LINE_HEIGHT))
+						.text_color(ui_theme::rgb(BODY))
 						.line_clamp(
 							if expanded
 								|| !matches!(
@@ -485,22 +487,77 @@ impl AgentSurface {
 			})
 			.on_click(cx.listener(move |s, _, window, cx| {
 				s.toggle_collaboration_exchange(&key, edge.as_ref(), cx);
-				restore_shell_focus(window, cx);
+
+				workspace::restore_shell_focus(window, cx);
 			}))
-			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, window, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					s.toggle_collaboration_exchange(&keyboard_key, keyboard_edge.as_ref(), cx);
-					restore_shell_focus(window, cx);
+
+					workspace::restore_shell_focus(window, cx);
+
 					cx.stop_propagation();
 				}
 			}))
 			.smooth();
+
 		gpui::div().w_full().min_w_0().child(route).child(title).into_any_element()
 	}
 
-	fn collaboration_exchange_actions(&self, case: &Exchange, cx: &mut Context<Self>) -> gpui::Div {
+	fn collaboration_route(&self, case: &Exchange, cx: &mut Context<Self>) -> Div {
+		let mut route = gpui::div()
+			.w_full()
+			.min_w_0()
+			.flex()
+			.items_center()
+			.gap(gpui::px(5.))
+			.text_size(gpui::px(CAPTION_SIZE))
+			.line_height(gpui::px(19.))
+			.font_weight(FontWeight::MEDIUM)
+			.text_color(ui_theme::rgb(SECONDARY))
+			.child(
+				gpui::div()
+					.flex_none()
+					.size(gpui::px(4.))
+					.rounded_full()
+					.bg(ui_theme::rgb(case.color)),
+			)
+			.child(self.collaboration_participant(&case.from, &case.id, cx))
+			.child(gpui::div().flex_none().text_color(ui_theme::rgb(SECONDARY)).child("→"));
+
+		route = if let Some(to) = &case.to {
+			route.child(self.collaboration_participant(to, &case.id, cx))
+		} else {
+			route.child(if case.question.is_some() { "You" } else { "Unknown" })
+		};
+		route = route.child(gpui::div().flex_1()).child(
+			gpui::div()
+				.flex_none()
+				.text_color(ui_theme::rgb(if matches!(case.state, "Reported" | "Recorded") {
+					SECONDARY
+				} else {
+					case.color
+				}))
+				.child(case.state),
+		);
+
+		route
+	}
+
+	fn collaboration_exchange_actions(&self, case: &Exchange, cx: &mut Context<Self>) -> Div {
 		let key = case.id.clone();
 		let source_key = key.clone();
+		let recipient = if case.state == "Not sent" {
+			Some(&case.from)
+		} else if case.state == "To review"
+			|| case.state == "Check result"
+			|| case.state == "Decision"
+			|| case.state == "Changes asked"
+		{
+			case.to.as_ref()
+		} else {
+			Some(&case.source_row)
+		};
 		let mut actions = gpui::div()
 			.w_full()
 			.flex()
@@ -513,26 +570,18 @@ impl AgentSurface {
 				"Source".into(),
 				move |s, cx| {
 					let state = &mut s.work_board.collaboration;
+
 					state.source_open = if state.source_open.as_ref() == Some(&source_key) {
 						None
 					} else {
 						Some(source_key.clone())
 					};
+
 					cx.notify();
 				},
 				cx,
 			));
-		let recipient = if case.state == "Not sent" {
-			Some(&case.from)
-		} else if case.state == "To review"
-			|| case.state == "Check result"
-			|| case.state == "Decision"
-			|| case.state == "Changes asked"
-		{
-			case.to.as_ref()
-		} else {
-			Some(&case.source_row)
-		};
+
 		if let Some(row) = recipient {
 			let row = row.clone();
 			let label = if case.question.as_ref().is_some_and(|question| question.pending) {
@@ -540,6 +589,7 @@ impl AgentSurface {
 			} else {
 				format!("Open {}", self.relation_agent_number(&row))
 			};
+
 			actions = actions.child(self.collaboration_action(
 				format!("collaboration-open-{key}"),
 				label,
@@ -549,6 +599,7 @@ impl AgentSurface {
 				cx,
 			));
 		}
+
 		actions
 	}
 
@@ -557,22 +608,24 @@ impl AgentSurface {
 		case: &Exchange,
 		source_notes: Vec<AnyElement>,
 		cx: &mut Context<Self>,
-	) -> gpui::Div {
+	) -> Div {
 		let mut source = gpui::div()
 			.w_full()
 			.min_w_0()
 			.flex()
 			.flex_col()
 			.gap(gpui::px(4.))
-			.text_size(gpui::px(foreground::CAPTION_SIZE))
+			.text_size(gpui::px(CAPTION_SIZE))
 			.line_height(gpui::px(17.))
-			.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
+			.text_color(ui_theme::rgb(SECONDARY))
 			.children(source_notes);
+
 		source = if matches!(case.source.as_str(), "Native report" | "Native question") {
 			source.child(gpui::div().child(case.source.clone()))
 		} else {
 			source.child(self.collaboration_source_field(case, "Source", &case.source))
 		};
+
 		if let Some(event) = case.source_event {
 			source =
 				source.child(self.collaboration_source_field(case, "Event", &event.to_string()));
@@ -586,13 +639,13 @@ impl AgentSurface {
 		if let Some(item) = &case.source_item {
 			source = source.child(self.collaboration_source_field(case, "Item", item));
 		}
-		source = source.child(
-			gpui::div()
-				.text_color(crate::ui_theme::rgb(foreground::BODY))
-				.child(case.source_text.clone()),
-		);
+
+		source = source
+			.child(gpui::div().text_color(ui_theme::rgb(BODY)).child(case.source_text.clone()));
+
 		if case.source_thread.is_some() && case.source_thread == case.source_row.thread {
 			let row = case.source_row.clone();
+
 			source = source.child(self.collaboration_action(
 				format!("collaboration-original-{}", case.id),
 				"Open original conversation".into(),
@@ -600,6 +653,7 @@ impl AgentSurface {
 				cx,
 			));
 		}
+
 		source
 	}
 
@@ -607,9 +661,10 @@ impl AgentSurface {
 		&self,
 		case: &Exchange,
 		source_open: bool,
-	) -> (gpui::Div, Vec<AnyElement>) {
+	) -> (Div, Vec<AnyElement>) {
 		let mut context =
 			gpui::div().w_full().min_w_0().flex().flex_col().gap(gpui::px(7.)).pt(gpui::px(4.));
+
 		if let Some(request) = case.request.as_ref().filter(|request| {
 			!same_excerpt(request, &case.summary)
 				&& !(source_open && same_excerpt(request, &case.source_text))
@@ -619,21 +674,21 @@ impl AgentSurface {
 					.w_full()
 					.min_w_0()
 					.border_l_1()
-					.border_color(crate::ui_theme::rgba(0xaaa0c450))
+					.border_color(ui_theme::rgba(0xaaa0c450))
 					.pl(gpui::px(8.))
 					.child(
 						gpui::div()
-							.text_size(gpui::px(foreground::CAPTION_SIZE))
+							.text_size(gpui::px(CAPTION_SIZE))
 							.line_height(gpui::px(15.))
-							.font_weight(gpui::FontWeight::MEDIUM)
-							.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
+							.font_weight(FontWeight::MEDIUM)
+							.text_color(ui_theme::rgb(SECONDARY))
 							.child("Request"),
 					)
 					.child(
 						gpui::div()
 							.text_size(gpui::px(11.5))
 							.line_height(gpui::px(17.))
-							.text_color(crate::ui_theme::rgb(foreground::BODY))
+							.text_color(ui_theme::rgb(BODY))
 							.line_clamp(3)
 							.text_ellipsis()
 							.child(request.clone()),
@@ -648,12 +703,14 @@ impl AgentSurface {
 					.text_size(gpui::px(11.5))
 					.line_height(gpui::px(17.))
 					.border_l_1()
-					.border_color(crate::ui_theme::rgba(0xd4b27c60))
+					.border_color(ui_theme::rgba(0xd4b27c60))
 					.pl(gpui::px(8.))
 					.child(question.question.title.clone()),
 			));
 		}
+
 		let mut source_notes = Vec::new();
+
 		for (label, fact) in &case.steps {
 			let note = gpui::div()
 				.w_full()
@@ -665,10 +722,10 @@ impl AgentSurface {
 					gpui::div()
 						.w(gpui::px(46.))
 						.flex_none()
-						.text_size(gpui::px(foreground::CAPTION_SIZE))
+						.text_size(gpui::px(CAPTION_SIZE))
 						.line_height(gpui::px(18.))
-						.font_weight(gpui::FontWeight::MEDIUM)
-						.text_color(crate::ui_theme::rgb(foreground::SECONDARY))
+						.font_weight(FontWeight::MEDIUM)
+						.text_color(ui_theme::rgb(SECONDARY))
 						.child(*label),
 				)
 				.child(
@@ -677,17 +734,19 @@ impl AgentSurface {
 						.min_w_0()
 						.text_size(gpui::px(11.5))
 						.line_height(gpui::px(18.))
-						.text_color(crate::ui_theme::rgb(foreground::BODY))
+						.text_color(ui_theme::rgb(BODY))
 						.line_clamp(3)
 						.text_ellipsis()
 						.child(fact.clone()),
 				);
+
 			if matches!(case.state, "Reported" | "Recorded" | "Shared") {
 				source_notes.push(note.into_any_element());
 			} else {
 				context = context.child(note);
 			}
 		}
+
 		(context, source_notes)
 	}
 
@@ -699,14 +758,19 @@ impl AgentSurface {
 		});
 		let (mut context, source_notes) = self.collaboration_exchange_context(case, source_open);
 		let actions = self.collaboration_exchange_actions(case, cx);
+
 		context = context.child(actions);
+
 		let source = self.collaboration_exchange_source(case, source_notes, cx);
+
 		context = context.child(ui_motion::disclosure(
 			SharedString::from(format!("collaboration-source-reveal-{}", case.id)),
 			source_open,
 			source,
 		));
+
 		let selector = format!("collaboration-row-{}", case.id);
+
 		gpui::div()
 			.id(SharedString::from(selector.clone()))
 			.debug_selector(move || selector.clone())
@@ -716,10 +780,10 @@ impl AgentSurface {
 			.relative()
 			.p(gpui::px(10.))
 			.rounded(gpui::px(12.))
-			.bg(crate::ui_theme::rgba(ui_theme::FIELD_MATERIAL))
-			.hover(|row| row.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)))
+			.bg(ui_theme::rgba(FIELD_MATERIAL))
+			.hover(|row| row.bg(ui_theme::rgba(HOVER_FILL)))
 			.when(related, |row| {
-				row.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)).child(
+				row.bg(ui_theme::rgba(HOVER_FILL)).child(
 					gpui::div()
 						.debug_selector(|| "collaboration-selection-mark".into())
 						.absolute()
@@ -728,7 +792,7 @@ impl AgentSurface {
 						.bottom(gpui::px(12.))
 						.w(gpui::px(2.))
 						.rounded_full()
-						.bg(crate::ui_theme::rgb(ui_theme::BLUE)),
+						.bg(ui_theme::rgb(BLUE)),
 				)
 			})
 			.child(self.collaboration_exchange_header(case, cx))
@@ -747,6 +811,7 @@ impl AgentSurface {
 		let graph = self.relation_graph();
 		let rows = self.factory_rows();
 		let cases = self.collaboration_cases(&graph, &rows);
+		let entries = self.workbench_entries();
 		let mut body = gpui::div()
 			.w_full()
 			.min_w_0()
@@ -755,8 +820,8 @@ impl AgentSurface {
 			.gap(gpui::px(8.))
 			.text_size(gpui::px(11.))
 			.line_height(gpui::px(17.))
-			.text_color(crate::ui_theme::rgb(foreground::SECONDARY));
-		let entries = self.workbench_entries();
+			.text_color(ui_theme::rgb(SECONDARY));
+
 		for entry in entries.iter().filter(|entry| {
 			!entry.result
 				&& (entry.request.is_some()
@@ -773,29 +838,9 @@ impl AgentSurface {
 		}) {
 			body = body.child(self.collaboration_exchange(case, cx));
 		}
-		let earlier: Vec<_> = cases
-			.iter()
-			.filter(|case| {
-				case.earlier && self.work_board.collaboration_expanded.as_ref() != Some(&case.id)
-			})
-			.collect();
-		if !earlier.is_empty() {
-			let open = self.work_board.collaboration.earlier;
-			body = body.child(self.collaboration_action(
-				"collaboration-earlier".into(),
-				format!("Earlier · {}", earlier.len()),
-				|s, cx| {
-					s.work_board.collaboration.earlier = !s.work_board.collaboration.earlier;
-					cx.notify();
-				},
-				cx,
-			));
-			let mut history = gpui::div().w_full().min_w_0().flex().flex_col();
-			for case in earlier {
-				history = history.child(self.collaboration_exchange(case, cx));
-			}
-			body = body.child(ui_motion::disclosure("collaboration-earlier-reveal", open, history));
-		}
+
+		body = self.collaboration_earlier(body, &cases, cx);
+
 		if self.work_board.collaboration.page.is_some() {
 			body = body.child(self.collaboration_action(
 				"collaboration-latest".into(),
@@ -804,6 +849,7 @@ impl AgentSurface {
 				cx,
 			));
 		}
+
 		if let Some(before) = self.work_board.collaboration.next_before {
 			body = body.child(self.collaboration_action(
 				"collaboration-older".into(),
@@ -812,6 +858,7 @@ impl AgentSurface {
 				cx,
 			));
 		}
+
 		if self.work_board.collaboration.questions_truncated {
 			body = body
 				.child(super::note("Older questions remain in their source conversations.").mt_2());
@@ -823,13 +870,14 @@ impl AgentSurface {
 		} else if cases.is_empty() && entries.iter().all(|entry| entry.result) {
 			body = body.child(super::note("No exchanges recorded.").mt_2());
 		}
+
 		gpui::div()
 			.id("workbench-body")
 			.debug_selector(|| "workbench-body".into())
-			.role(gpui::Role::Group)
+			.role(Role::Group)
 			.aria_label("Collaboration across chats")
 			.size_full()
-			.font_weight(gpui::FontWeight::NORMAL)
+			.font_weight(FontWeight::NORMAL)
 			.min_h_0()
 			.min_w_0()
 			.overflow_y_scroll()
@@ -840,18 +888,65 @@ impl AgentSurface {
 			.child(
 				gpui::div()
 					.id("workbench-heading")
-					.role(gpui::Role::Heading)
+					.role(Role::Heading)
 					.aria_level(2)
 					.aria_label("Across chats")
 					.px(gpui::px(4.))
 					.pt(gpui::px(3.))
 					.pb(gpui::px(9.))
 					.text_size(gpui::px(11.5))
-					.font_weight(gpui::FontWeight::MEDIUM)
+					.font_weight(FontWeight::MEDIUM)
 					.child("Across chats"),
 			)
 			.child(body)
 			.smooth_scroll("workbench-scroll")
 			.into_any_element()
 	}
+
+	fn collaboration_earlier(
+		&self,
+		mut body: Div,
+		cases: &[Exchange],
+		cx: &mut Context<Self>,
+	) -> Div {
+		let earlier: Vec<_> = cases
+			.iter()
+			.filter(|case| {
+				case.earlier && self.work_board.collaboration_expanded.as_ref() != Some(&case.id)
+			})
+			.collect();
+
+		if !earlier.is_empty() {
+			let open = self.work_board.collaboration.earlier;
+
+			body = body.child(self.collaboration_action(
+				"collaboration-earlier".into(),
+				format!("Earlier · {}", earlier.len()),
+				|s, cx| {
+					s.work_board.collaboration.earlier = !s.work_board.collaboration.earlier;
+
+					cx.notify();
+				},
+				cx,
+			));
+
+			let mut history = gpui::div().w_full().min_w_0().flex().flex_col();
+
+			for case in earlier {
+				history = history.child(self.collaboration_exchange(case, cx));
+			}
+
+			body = body.child(ui_motion::disclosure("collaboration-earlier-reveal", open, history));
+		}
+
+		body
+	}
 }
+
+fn same_excerpt(a: &str, b: &str) -> bool {
+	a.split_whitespace().eq(b.split_whitespace())
+}
+
+#[cfg(test)]
+#[path = "agent_collaboration_tests.rs"]
+mod tests;

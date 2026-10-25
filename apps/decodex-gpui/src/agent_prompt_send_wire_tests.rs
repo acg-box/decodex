@@ -1,4 +1,5 @@
 //! Lost send replies are reconciled through read-only receipts, with one submission.
+
 use std::{
 	fs::{self, Permissions},
 	os::unix::fs::PermissionsExt as _,
@@ -9,7 +10,7 @@ use std::{
 
 use futures_util::{SinkExt as _, StreamExt as _};
 #[cfg(test)] use gpui::AppContext as _;
-use gpui::TestAppContext;
+use gpui::{ParentElement as _, TestAppContext};
 use tokio::{net::UnixStream, runtime::Builder, time};
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 
@@ -39,7 +40,6 @@ struct View {
 impl Render for View {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.surface.update(cx, |s, cx| {
-			use gpui::ParentElement as _;
 			gpui::div()
 				.child(s.saved_prompt_edits_panel(&self.work, cx))
 				.child(s.prompt_edit_panel(&self.work, cx))
@@ -104,9 +104,7 @@ fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut TestAppContext) 
 			break;
 		}
 		if check_receipt {
-			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 
 			if let Some(bounds) = visual.debug_bounds("prompt-send") {
 				visual.simulate_click(bounds.center(), Default::default());
@@ -135,8 +133,8 @@ fn send_view(store: &ClientDraftStore, profile: &ClientProfile, cx: &mut Context
 		s.draft_profiles.storage = Storage::open(Ok(store.clone()));
 
 		s.bind_drafts(Some(profile), cx);
-		s.profile = Some(profile.clone());
 
+		s.profile = Some(profile.clone());
 		s.poll_task = None;
 
 		s.visual_workspace_fixture(cx);

@@ -1,18 +1,29 @@
 //! Compact agent selection and explicit local-time bounds for the task timeline.
-use super::{Panel, ui_theme};
-use crate::{
-	shell::workspace_symbols::{self, Symbol},
-	ui_motion::{self, SmoothControl},
-};
+#[path = "agent_delivery_slider.rs"] mod slider;
+
+use std::{cell::Cell, iter, rc::Rc};
+
 use gpui::{
-	Context, IntoElement, KeyDownEvent, ScrollHandle,
+	AnyElement, Bounds, Context, Div, FocusHandle, FontWeight, IntoElement, KeyDownEvent,
+	MouseDownEvent, Pixels, Role, ScrollHandle, SharedString,
 	prelude::{
 		FluentBuilder, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled,
 	},
 };
-use std::{cell::Cell, rc::Rc};
 
-#[path = "agent_delivery_slider.rs"] mod slider;
+use crate::{
+	shell::{
+		agent_surface::deliveries::{
+			Panel,
+			ui_theme::{BLUE, TEXT_MUTED},
+		},
+		workspace_symbols::{self, Symbol},
+	},
+	ui_motion::{self, SmoothControl},
+	ui_scroll::Scrollbar,
+	ui_theme,
+};
+use decodex_protocol::AgentDeliveryExtent;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct AgentChoice {
@@ -34,25 +45,24 @@ pub(super) struct State {
 	pub range: TimeRange,
 	pub menu: bool,
 	pub time_menu: bool,
-	pub extent: Option<decodex_protocol::AgentDeliveryExtent>,
+	pub extent: Option<AgentDeliveryExtent>,
 	period: slider::Period,
 	slider: Option<slider::Slider>,
-	time_focus: Option<[gpui::FocusHandle; 2]>,
+	time_focus: Option<[FocusHandle; 2]>,
 	agent_scroll: ScrollHandle,
-	controls: Rc<Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
+	controls: Rc<Cell<Option<Bounds<Pixels>>>>,
 }
-
 impl State {
-	pub(super) fn receive_extent(
-		&mut self,
-		extent: Option<decodex_protocol::AgentDeliveryExtent>,
-	) -> bool {
+	pub(super) fn receive_extent(&mut self, extent: Option<AgentDeliveryExtent>) -> bool {
 		let changed = self.extent != extent;
+
 		if self.slider.as_ref().is_none_or(|s| !s.dragging()) && (changed || self.slider.is_none())
 		{
 			self.slider = Some(slider::Slider::new(extent, self.range, self.period));
 		}
+
 		self.extent = extent;
+
 		changed
 	}
 }
@@ -61,23 +71,28 @@ impl Panel {
 	pub(super) fn toggle_filter(&mut self, cx: &mut Context<Self>) {
 		self.filter.menu = !self.filter.menu;
 		self.filter.time_menu = false;
+
 		cx.notify();
 	}
 
 	fn toggle_time_filter(&mut self, cx: &mut Context<Self>) {
 		self.filter.time_menu = !self.filter.time_menu;
 		self.filter.menu = false;
+
 		cx.notify();
 	}
 
-	pub(super) fn header(&mut self, cx: &mut Context<Self>) -> gpui::Div {
+	pub(super) fn header(&mut self, cx: &mut Context<Self>) -> Div {
 		let controls = self.filter.controls.clone();
+
 		self.filter.time_focus.get_or_insert_with(|| [cx.focus_handle(), cx.focus_handle()]);
+
 		let agent = self
 			.filter
 			.agent
 			.as_ref()
 			.and_then(|id| self.filter.agents.iter().find(|a| &a.id == id));
+
 		gpui::div()
 			.flex_none()
 			.px(gpui::px(12.))
@@ -121,7 +136,7 @@ impl Panel {
 			.child(self.time_slider(cx))
 	}
 
-	fn time_filter_summary(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	fn time_filter_summary(&self, cx: &mut Context<Self>) -> AnyElement {
 		let active = self.filter.range != TimeRange::default();
 		let label = self.filter.slider.as_ref().map_or_else(
 			|| self.filter.period.label().to_owned(),
@@ -129,6 +144,7 @@ impl Panel {
 				if s.covers_domain() { self.filter.period.label().into() } else { s.clock_label() }
 			},
 		);
+
 		gpui::div()
 			.flex_none()
 			.flex()
@@ -137,7 +153,7 @@ impl Panel {
 				gpui::div()
 					.id("delivery-time-filter")
 					.debug_selector(|| "delivery-time-filter".into())
-					.role(gpui::Role::Button)
+					.role(Role::Button)
 					.tab_index(0)
 					.aria_label("Choose time range")
 					.aria_expanded(self.filter.time_menu)
@@ -149,11 +165,7 @@ impl Panel {
 					.rounded(gpui::px(6.))
 					.cursor_pointer()
 					.text_size(gpui::px(11.5))
-					.text_color(crate::ui_theme::rgb(if active {
-						ui_theme::BLUE
-					} else {
-						ui_theme::TEXT_MUTED
-					}))
+					.text_color(ui_theme::rgb(if active { BLUE } else { TEXT_MUTED }))
 					.child(label)
 					.child(workspace_symbols::icon_sized(Symbol::ChevronDown, 9.))
 					.on_click(cx.listener(|s, _, _, cx| s.toggle_time_filter(cx)))
@@ -170,7 +182,7 @@ impl Panel {
 					gpui::div()
 						.id("delivery-time-reset")
 						.debug_selector(|| "delivery-time-reset".into())
-						.role(gpui::Role::Button)
+						.role(Role::Button)
 						.tab_index(0)
 						.aria_label("Reset time filter")
 						.size(gpui::px(20.))
@@ -178,7 +190,7 @@ impl Panel {
 						.items_center()
 						.justify_center()
 						.cursor_pointer()
-						.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
+						.text_color(ui_theme::rgb(TEXT_MUTED))
 						.child(workspace_symbols::icon_sized(Symbol::Restore, 12.))
 						.on_click(cx.listener(|s, _, _, cx| s.reset_time(cx)))
 						.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
@@ -196,9 +208,11 @@ impl Panel {
 
 	fn choose_period(&mut self, period: slider::Period, cx: &mut Context<Self>) {
 		let slider = slider::Slider::new(self.filter.extent, TimeRange::default(), period);
+
 		self.filter.period = period;
 		self.filter.range = slider.range();
 		self.filter.slider = Some(slider);
+
 		self.reload(cx);
 	}
 
@@ -206,24 +220,22 @@ impl Panel {
 		if self.filter.range == TimeRange::default() {
 			return;
 		}
+
 		self.filter.range = TimeRange::default();
 		self.filter.period = slider::Period::All;
 		self.filter.slider = None;
+
 		self.filter.receive_extent(self.filter.extent);
 		self.reload(cx);
 	}
 
-	fn filter_button(
-		&self,
-		label: String,
-		active: bool,
-		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	fn filter_button(&self, label: String, active: bool, cx: &mut Context<Self>) -> AnyElement {
 		let (id, aria) = ("delivery-agent-filter", "Filter deliveries by agent");
+
 		gpui::div()
 			.id(id)
 			.debug_selector(move || id.into())
-			.role(gpui::Role::Button)
+			.role(Role::Button)
 			.aria_label(aria)
 			.aria_expanded(self.filter.menu)
 			.tab_index(0)
@@ -235,7 +247,7 @@ impl Panel {
 			.items_center()
 			.gap(gpui::px(5.))
 			.rounded(gpui::px(6.))
-			.bg(crate::ui_theme::rgba(if active { 0x8aaaff20 } else { 0x00000000 }))
+			.bg(ui_theme::rgba(if active { 0x8aaaff20 } else { 0x00000000 }))
 			.text_size(gpui::px(11.5))
 			.overflow_hidden()
 			.cursor_pointer()
@@ -255,7 +267,7 @@ impl Panel {
 			.into_any_element()
 	}
 
-	pub(super) fn filter_menu(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	pub(super) fn filter_menu(&self, cx: &mut Context<Self>) -> AnyElement {
 		let content = if self.filter.menu {
 			self.agent_menu(cx)
 		} else if self.filter.time_menu {
@@ -263,6 +275,7 @@ impl Panel {
 		} else {
 			gpui::div().into_any_element()
 		};
+
 		gpui::div()
 			.absolute()
 			.top(gpui::px(31.))
@@ -279,11 +292,12 @@ impl Panel {
 						if event.keystroke.key == "escape" {
 							s.filter.menu = false;
 							s.filter.time_menu = false;
+
 							cx.stop_propagation();
 							cx.notify();
 						}
 					}))
-					.on_mouse_down_out(cx.listener(|s, event: &gpui::MouseDownEvent, _, cx| {
+					.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, _, cx| {
 						if !s
 							.filter
 							.controls
@@ -292,6 +306,7 @@ impl Panel {
 						{
 							s.filter.menu = false;
 							s.filter.time_menu = false;
+
 							cx.notify();
 						}
 					}))
@@ -300,8 +315,9 @@ impl Panel {
 			.into_any_element()
 	}
 
-	fn time_menu(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+	fn time_menu(&self, cx: &mut Context<Self>) -> AnyElement {
 		let mut list = gpui::div().flex().flex_col().gap(gpui::px(2.));
+
 		for period in [
 			slider::Period::Today,
 			slider::Period::Week,
@@ -309,11 +325,12 @@ impl Panel {
 			slider::Period::All,
 		] {
 			let label = period.label();
+
 			list = list.child(
 				gpui::div()
-					.id(gpui::SharedString::from(format!("delivery-period-{label}")))
+					.id(SharedString::from(format!("delivery-period-{label}")))
 					.debug_selector(move || format!("delivery-period-{label}"))
-					.role(gpui::Role::Button)
+					.role(Role::Button)
 					.aria_label(format!("Time range: {label}"))
 					.tab_index(0)
 					.h(gpui::px(28.))
@@ -324,7 +341,7 @@ impl Panel {
 					.rounded(gpui::px(6.))
 					.cursor_pointer()
 					.text_size(gpui::px(11.5))
-					.bg(crate::ui_theme::rgba(if self.filter.period == period {
+					.bg(ui_theme::rgba(if self.filter.period == period {
 						0x8aaaff1c
 					} else {
 						0x00000000
@@ -343,11 +360,12 @@ impl Panel {
 					.smooth(),
 			);
 		}
+
 		list.into_any_element()
 	}
 
-	fn agent_menu(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
-		let choices = std::iter::once((None, "All agents".to_owned(), None)).chain(
+	fn agent_menu(&self, cx: &mut Context<Self>) -> AnyElement {
+		let choices = iter::once((None, "All agents".to_owned(), None)).chain(
 			self.filter.agents.iter().map(|a| (Some(a.id.clone()), a.label.clone(), Some(a.slot))),
 		);
 		let mut list = gpui::div()
@@ -358,15 +376,17 @@ impl Panel {
 			.flex()
 			.flex_col()
 			.gap(gpui::px(2.));
+
 		for (index, (id, label, slot)) in choices.enumerate() {
 			let selected = id == self.filter.agent;
 			let choice = id.clone();
 			let key_choice = id.clone();
+
 			list = list.child(
 				gpui::div()
 					.id(("delivery-agent-option", index))
 					.debug_selector(move || format!("delivery-agent-option-{index}"))
-					.role(gpui::Role::Button)
+					.role(Role::Button)
 					.aria_label(format!("Filter agent: {label}"))
 					.tab_index(0)
 					.min_h(gpui::px(34.))
@@ -377,15 +397,15 @@ impl Panel {
 					.gap(gpui::px(7.))
 					.rounded(gpui::px(6.))
 					.cursor_pointer()
-					.bg(crate::ui_theme::rgba(if selected { 0x8aaaff1c } else { 0x00000000 }))
-					.hover(|s| s.bg(crate::ui_theme::rgba(0xffffff0a)))
+					.bg(ui_theme::rgba(if selected { 0x8aaaff1c } else { 0x00000000 }))
+					.hover(|s| s.bg(ui_theme::rgba(0xffffff0a)))
 					.child(
 						gpui::div()
 							.w(gpui::px(18.))
 							.flex_none()
 							.text_size(gpui::px(12.5))
-							.font_weight(gpui::FontWeight::SEMIBOLD)
-							.text_color(crate::ui_theme::rgb(ui_theme::BLUE))
+							.font_weight(FontWeight::SEMIBOLD)
+							.text_color(ui_theme::rgb(BLUE))
 							.child(slot.map_or_else(
 								|| "·".into(),
 								|_| {
@@ -414,7 +434,7 @@ impl Panel {
 							gpui::div()
 								.flex_none()
 								.text_size(gpui::px(10.))
-								.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
+								.text_color(ui_theme::rgb(TEXT_MUTED))
 								.child(format!("A{n}")),
 						)
 					})
@@ -425,6 +445,7 @@ impl Panel {
 						s.filter.agent = choice.clone();
 						s.filter.extent = None;
 						s.filter.slider = None;
+
 						s.reload(cx);
 					}))
 					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
@@ -432,6 +453,7 @@ impl Panel {
 							s.filter.agent = key_choice.clone();
 							s.filter.extent = None;
 							s.filter.slider = None;
+
 							s.reload(cx);
 							cx.stop_propagation();
 						}
@@ -439,10 +461,11 @@ impl Panel {
 					.smooth(),
 			);
 		}
+
 		gpui::div()
 			.relative()
 			.child(list)
-			.child(crate::ui_scroll::Scrollbar::new(
+			.child(Scrollbar::new(
 				"delivery-agent-scrollbar",
 				"Scroll agents",
 				self.filter.agent_scroll.clone(),

@@ -2,24 +2,42 @@
 #[path = "agent_relation_activity.rs"] mod activity;
 #[path = "agent_relation_canvas.rs"] mod relations;
 #[path = "agent_workbench.rs"] mod workbench;
-use super::{
-	AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, Styled,
-	ui_theme::{SUCCESS, TEXT_MUTED, WARNING},
+
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	sync::Arc,
 };
-use gpui::{AnyElement, prelude::FluentBuilder};
-use std::collections::{BTreeMap, BTreeSet};
+
+use gpui::{AnyElement, Task, TextSystem, prelude::FluentBuilder};
+use tokio::runtime::Builder;
+
+use crate::{
+	shell::agent_surface::{
+		AgentClient, AgentHistoryResult, AgentSurface, ClientProfile, Context, EntityId,
+		InteractiveElement, IntoElement, ParentElement, Styled, dock,
+		ui_theme::{SUCCESS, TEXT_MUTED, WARNING},
+	},
+	ui_theme::{ERROR, INFO},
+};
+use activity::{OperationKind, OutputRef, Preview, wording};
+use decodex_protocol::{
+	AgentCollaborationDto, AgentResourceDto, AgentResourcesResult, AgentTimelineContent,
+	AgentTimelineEntry, AgentTimelineResult,
+};
+use relations::View;
+use workbench::Collaboration;
 
 pub(super) struct Board {
-	text_system: std::sync::Arc<gpui::TextSystem>,
+	text_system: Arc<TextSystem>,
 	pub(super) graph: bool,
 	collaboration_expanded: Option<String>,
-	collaboration: workbench::Collaboration,
+	collaboration: Collaboration,
 	focus: Option<String>,
-	view: relations::View,
+	view: View,
 	pub(super) briefs: BTreeMap<String, Brief>,
-	usage: Option<BTreeMap<String, (Option<String>, relations::metrics::Metrics)>>,
+	usage: Option<BTreeMap<String, (Option<String>, crate::ui_work_metrics::Sample)>>,
 	token_gaps: usize,
-	pub(super) brief_task: Option<gpui::Task<()>>,
+	pub(super) brief_task: Option<Task<()>>,
 	reload_pending: BTreeSet<String>,
 }
 impl Board {
@@ -51,6 +69,7 @@ impl Board {
 		*self = Self::new(cx);
 	}
 }
+
 #[derive(Clone)]
 pub(super) struct Row {
 	key: String,
@@ -66,15 +85,55 @@ pub(super) struct Row {
 	review: bool,
 }
 
+pub(super) struct Brief {
+	source_thread: Option<String>,
+	output: Option<activity::Output>,
+	assignments: BTreeMap<String, String>,
+	outcome: Option<(String, String)>,
+	preview: Option<Preview>,
+	question: Option<String>,
+	resources: Option<Vec<AgentResourceDto>>,
+	relations: Vec<(String, AgentCollaborationDto)>,
+	metrics: crate::ui_work_metrics::Sample,
+	stamp: String,
+	read_at: std::time::Instant,
+}
+impl Brief {
+	fn retain_relations(&mut self, previous: &Self) {
+		if self.source_thread != previous.source_thread {
+			return;
+		}
+
+		let mut records = previous.relations.clone();
+
+		for (item, call) in &self.relations {
+			if let Some((_, observed)) = records.iter_mut().find(|(id, _)| id == item) {
+				*observed = call.clone();
+			} else {
+				records.push((item.clone(), call.clone()));
+			}
+		}
+
+		if records.len() > 64 {
+			records.drain(..records.len() - 64);
+		}
+
+		self.relations = records;
+	}
+}
+
 impl AgentSurface {
 	pub(crate) fn work_statistics(&self) -> Option<crate::ui_work_metrics::Summary> {
 		if self.workspace_connecting() {
 			return None;
 		}
+
 		let rows = self.factory_rows();
+
 		if rows.is_empty() {
 			return None;
 		}
+
 		let samples = rows
 			.iter()
 			.map(|row| {
@@ -88,9 +147,11 @@ impl AgentSurface {
 			})
 			.collect();
 		let mut live: Vec<_> = rows.iter().filter_map(|row| self.live_work_activity(row)).collect();
+
 		live.sort_by_key(|row| {
 			self.snapshot.as_ref().and_then(|s| s.agent_slots.get(&row.key)).copied()
 		});
+
 		Some(crate::ui_work_metrics::Summary {
 			working: rows.iter().filter(|row| row.group == 1).count(),
 			samples,
@@ -102,13 +163,16 @@ impl AgentSurface {
 		if row.group != 1 || self.graph_question(row).is_some() {
 			return None;
 		}
+
 		let brief = self
 			.work_board
 			.briefs
 			.get(&row.key)
 			.filter(|brief| brief.source_thread == row.thread)?;
 		let sample = brief.metrics;
+
 		sample.active_time()?;
+
 		let turn = self
 			.snapshot
 			.as_ref()?
@@ -116,11 +180,13 @@ impl AgentSurface {
 			.iter()
 			.find(|work| work.id == row.work && work.codex_thread_id == row.thread)
 			.and_then(|work| work.active_turn_id.as_deref());
+
 		if turn
 			.is_some_and(|turn| brief.preview.as_ref().is_none_or(|preview| preview.turn != turn))
 		{
 			return None;
 		}
+
 		let action = if sample.stats?.generating {
 			"Generating".into()
 		} else {
@@ -133,6 +199,7 @@ impl AgentSurface {
 					binding.work == row.work && row.thread.as_ref() == Some(&binding.thread)
 				})
 				.and_then(|_| activity::latest(&self.timeline.native.entries, turn));
+
 			current
 				.as_ref()
 				.or(brief.preview.as_ref())
@@ -141,6 +208,7 @@ impl AgentSurface {
 				.unwrap_or_else(|| row.status.clone())
 		};
 		let slot = self.snapshot.as_ref()?.agent_slots.get(&row.key)?;
+
 		Some(crate::ui_work_metrics::Live {
 			key: row.key.clone(),
 			agent: format!("A{slot}"),
@@ -168,15 +236,16 @@ impl AgentSurface {
 				.find(|w| w.agent_ids.iter().any(|work| work == id))
 				.map(|w| w.id.clone())
 		};
+		let handoffs = self.handoff_items();
 		let mut rows = Vec::new();
 		let mut threads = BTreeSet::new();
-		let handoffs = self.handoff_items();
+
 		for work in &snapshot.work_items {
 			if let Some(thread) = &work.codex_thread_id {
 				threads.insert(thread.clone());
 			}
-			let state = super::dock::progress_state(snapshot, work);
 
+			let state = dock::progress_state(snapshot, work);
 			let owner = work
 				.parent_goal_id
 				.as_ref()
@@ -187,6 +256,7 @@ impl AgentSurface {
 			} else {
 				(state.label, state.group, state.color)
 			};
+
 			rows.push(Row {
 				key: work.id.clone(),
 				work: work.id.clone(),
@@ -206,12 +276,15 @@ impl AgentSurface {
 			if !snapshot.work_items.iter().any(|w| &w.id == owner) {
 				continue;
 			}
+
 			for agent in agents {
 				if !threads.insert(agent.thread_id.clone()) {
 					continue;
 				}
+
 				let (status, group, color) = native_state(&agent.status);
 				let task = agent.task.split_whitespace().collect::<Vec<_>>().join(" ");
+
 				rows.push(Row {
 					key: format!("native:{owner}:{}", agent.thread_id),
 					work: owner.clone(),
@@ -239,90 +312,10 @@ impl AgentSurface {
 				apply_outcome(row, outcome);
 			}
 		}
+
 		rows.sort_by(|a, b| a.key.cmp(&b.key));
+
 		rows
-	}
-}
-fn latest_outcome(entries: &[decodex_protocol::AgentTimelineEntry]) -> Option<(String, String)> {
-	entries.iter().rev().find_map(|e| match &e.content {
-		decodex_protocol::AgentTimelineContent::TurnBoundary {
-			turn_id, completed, status, ..
-		} => Some((
-			turn_id.clone(),
-			if *completed { status.clone().unwrap_or_default() } else { "inProgress".into() },
-		)),
-		_ => None,
-	})
-}
-
-fn apply_outcome(row: &mut Row, outcome: &str) {
-	// Current execution, requests, uncertainty and dependencies outrank a previous result.
-	if ![
-		"Not running",
-		"Idle",
-		"Marked complete",
-		"Follow-up pending",
-		"Update pending",
-		"Scheduled check",
-	]
-	.contains(&row.status.as_str())
-	{
-		return;
-	}
-	let (label, color) = match outcome {
-		"failed" => ("Failed", crate::ui_theme::ERROR),
-		"interrupted" => ("Interrupted", TEXT_MUTED),
-		_ => return,
-	};
-	row.status = label.into();
-	row.color = color;
-	row.group = 2;
-	row.review = false;
-}
-
-fn native_state(status: &str) -> (&'static str, u8, u32) {
-	match status {
-		"active" | "running" => ("Running", 1, crate::ui_theme::INFO),
-		"waitingOnApproval" => ("Approval", 0, WARNING),
-		"waitingOnUserInput" => ("Input needed", 0, WARNING),
-		"systemError" => ("Error", 0, crate::ui_theme::ERROR),
-		"idle" => ("Idle", 2, TEXT_MUTED),
-		"notLoaded" => ("Not running", 2, TEXT_MUTED),
-		_ => ("Unknown", 0, TEXT_MUTED),
-	}
-}
-
-pub(super) struct Brief {
-	source_thread: Option<String>,
-	output: Option<activity::Output>,
-	assignments: BTreeMap<String, String>,
-	outcome: Option<(String, String)>,
-	preview: Option<activity::Preview>,
-	question: Option<String>,
-	resources: Option<Vec<decodex_protocol::AgentResourceDto>>,
-	relations: Vec<(String, decodex_protocol::AgentCollaborationDto)>,
-	metrics: relations::metrics::Metrics,
-	stamp: String,
-	read_at: std::time::Instant,
-}
-
-impl Brief {
-	fn retain_relations(&mut self, previous: &Self) {
-		if self.source_thread != previous.source_thread {
-			return;
-		}
-		let mut records = previous.relations.clone();
-		for (item, call) in &self.relations {
-			if let Some((_, observed)) = records.iter_mut().find(|(id, _)| id == item) {
-				*observed = call.clone();
-			} else {
-				records.push((item.clone(), call.clone()));
-			}
-		}
-		if records.len() > 64 {
-			records.drain(..records.len() - 64);
-		}
-		self.relations = records;
 	}
 }
 
@@ -333,12 +326,12 @@ impl AgentSurface {
 		}
 		if !row.native
 			&& self.conversation_matches(&row.work, row.thread.as_deref().unwrap_or_default())
-			&& let Some((owner, super::AgentHistoryResult::Available { questions, .. })) =
-				&self.history
+			&& let Some((owner, AgentHistoryResult::Available { questions, .. })) = &self.history
 			&& owner == &row.work
 		{
 			return questions.last().map(|question| question.title.as_str());
 		}
+
 		self.work_board
 			.briefs
 			.get(&row.key)
@@ -350,7 +343,7 @@ impl AgentSurface {
 			.and_then(|brief| brief.question.as_deref())
 	}
 
-	fn work_output(&self, row: &Row) -> Option<activity::OutputRef<'_>> {
+	fn work_output(&self, row: &Row) -> Option<OutputRef<'_>> {
 		let brief =
 			self.work_board.briefs.get(&row.key).filter(|brief| brief.source_thread == row.thread);
 		let turn = self
@@ -372,6 +365,7 @@ impl AgentSurface {
 				binding.work == row.work && row.thread.as_ref() == Some(&binding.thread)
 			})
 			.and_then(|_| activity::latest_output(&self.timeline.native.entries));
+
 		current
 			.or_else(|| {
 				brief.and_then(|brief| brief.output.as_ref()).map(activity::Output::borrowed)
@@ -383,13 +377,16 @@ impl AgentSurface {
 		if let Some(question) = self.graph_question(row) {
 			return ("Needs your answer".into(), question.into());
 		}
+
 		if row.group == 1
 			&& let Some(live) = self.live_work_activity(row)
 		{
 			return ("Now".into(), live.action);
 		}
+
 		if let Some(output) = self.work_output(row) {
 			let complete = self.work_output_complete(row, output.turn);
+
 			if row.group != 1 || !complete {
 				return (
 					if complete { "Latest result" } else { "Latest update" }.into(),
@@ -397,13 +394,16 @@ impl AgentSurface {
 				);
 			}
 		}
+
 		let (_, operation) = self.graph_preview(row);
+
 		if !operation.is_empty()
 			&& operation != row.status
 			&& operation != "Exit status unavailable"
 		{
 			return (if row.group == 1 { "Now" } else { "Last activity" }.into(), operation);
 		}
+
 		(row.status.clone(), String::new())
 	}
 
@@ -420,6 +420,7 @@ impl AgentSurface {
 		if self.work_is_archived(&row.key) {
 			return (row.title.clone(), "Archived conversation".into());
 		}
+
 		let work =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == row.work));
 		let turn = work
@@ -464,6 +465,7 @@ impl AgentSurface {
 			.map(str::to_owned)
 			.or_else(|| preview.map(|preview| preview.text.clone()))
 			.unwrap_or_default();
+
 		(task, operation)
 	}
 
@@ -480,6 +482,7 @@ impl AgentSurface {
 			.briefs
 			.values()
 			.find(|brief| brief.source_thread.as_ref() == Some(&agent.parent_thread_id))?;
+
 		brief.assignments.get(thread).cloned()
 	}
 
@@ -489,8 +492,7 @@ impl AgentSurface {
 			self.native_assignment(row).unwrap_or(input)
 		} else if self.root_id().as_ref() == Some(&row.work)
 			|| (row.title.chars().count() == 64
-				&& !activity::wording::message(&row.title)
-					.ends_with(['.', '?', '!', '。', '？', '！'])
+				&& !wording::message(&row.title).ends_with(['.', '?', '!', '。', '？', '！'])
 				&& !input.is_empty())
 		{
 			// Older saved conversations used a 64-character prompt prefix.
@@ -499,7 +501,8 @@ impl AgentSurface {
 		} else {
 			row.title.clone()
 		};
-		let purpose = activity::wording::purpose(&source);
+		let purpose = wording::purpose(&source);
+
 		if purpose == self.relation_agent_number(row) || purpose == self.relation_agent_name(row) {
 			String::new()
 		} else {
@@ -543,6 +546,7 @@ impl AgentSurface {
 			turn.or_else(|| preview.map(|preview| preview.turn.as_str())).unwrap_or_default()
 		);
 		let question = self.graph_question(row);
+
 		if let Some(question) = question {
 			return (
 				scope,
@@ -553,32 +557,36 @@ impl AgentSurface {
 				}],
 			);
 		}
+
 		let mut operations = preview.map(|preview| preview.recent.clone()).unwrap_or_default();
+
 		if operations.is_empty()
 			&& self.live_work_activity(row).is_none()
 			&& let Some(output) = self.work_output(row)
 		{
 			operations.push(activity::Operation {
 				id: format!("{}:output", output.turn),
-				text: activity::wording::message(output.text),
+				text: wording::message(output.text),
 				kind: if self.work_output_complete(row, output.turn) {
-					activity::OperationKind::Result
+					OperationKind::Result
 				} else {
-					activity::OperationKind::Message
+					OperationKind::Message
 				},
 			});
 		}
 		// Retain native messages, but do not invent an operation for a quiet thread.
 		if operations.is_empty() && row.group != 2 {
 			let text = self.work_activity_summary(row).1;
+
 			if !text.is_empty() {
 				operations.push(activity::Operation {
 					id: "latest".into(),
 					text,
-					kind: activity::OperationKind::Action,
+					kind: OperationKind::Action,
 				});
 			}
 		}
+
 		(scope, operations)
 	}
 
@@ -589,6 +597,7 @@ impl AgentSurface {
 	fn brief_stamp(&self, row: &Row) -> String {
 		let work =
 			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == row.work));
+
 		if row.native {
 			// Parent progress and sibling events must not invalidate a child's preview.
 			return serde_json::json!([
@@ -605,6 +614,7 @@ impl AgentSurface {
 			])
 			.to_string();
 		}
+
 		serde_json::json!([
 			work.map(|w| self.dock_evidence_key(w)),
 			row.thread,
@@ -624,12 +634,16 @@ impl AgentSurface {
 		if self.native_agent_discovery_pending() {
 			return false;
 		}
+
 		let rows = self.factory_rows();
+
 		if rows.iter().any(|row| self.work_board.reload_pending.contains(&row.key)) {
 			return false;
 		}
+
 		let mut usage = BTreeMap::new();
 		let mut token_gaps = 0;
+
 		for row in rows.iter().filter(|row| row.thread.is_some()) {
 			let Some(brief) = self
 				.work_board
@@ -639,6 +653,7 @@ impl AgentSurface {
 			else {
 				return false;
 			};
+
 			if brief.metrics.tokens.is_none()
 				&& brief
 					.metrics
@@ -648,32 +663,37 @@ impl AgentSurface {
 			{
 				token_gaps += 1;
 			}
+
 			usage.insert(row.key.clone(), (row.thread.clone(), brief.metrics));
 		}
+
 		let changed = self.work_board.usage.as_ref() != Some(&usage)
 			|| self.work_board.token_gaps != token_gaps;
+
 		self.work_board.usage = Some(usage);
 		self.work_board.token_gaps = token_gaps;
+
 		changed
 	}
 
 	fn read_factory_briefs(
-		profile: super::ClientProfile,
+		profile: ClientProfile,
 		requests: Vec<(Row, String)>,
 		cx: &Context<Self>,
-	) -> gpui::Task<Vec<(String, Brief)>> {
+	) -> Task<Vec<(String, Brief)>> {
 		cx.background_executor().spawn(async move {
-			let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build()
-			else {
+			let Ok(runtime) = Builder::new_current_thread().enable_all().build() else {
 				return Vec::new();
 			};
+
 			runtime.block_on(async move {
-				let client = super::AgentClient::new(profile);
+				let client = AgentClient::new(profile);
 				let mut results = Vec::new();
+
 				for (row, stamp) in requests {
 					let (Ok(owner), Some(thread)) = (
-						super::EntityId::new(&row.work),
-						row.thread.as_deref().and_then(|t| super::EntityId::new(t).ok()),
+						EntityId::new(&row.work),
+						row.thread.as_deref().and_then(|t| EntityId::new(t).ok()),
 					) else {
 						continue;
 					};
@@ -682,19 +702,16 @@ impl AgentSurface {
 					let mut preview = None;
 					let mut output = None;
 					let mut assignments = BTreeMap::new();
-					let mut metrics = relations::metrics::Metrics::default();
+					let mut metrics = crate::ui_work_metrics::Sample::default();
 					let mut available = false;
+
 					if let Ok(result) = client.timeline(owner.clone(), thread.clone(), None).await
-						&& let decodex_protocol::AgentTimelineResult::Available {
-							work_id,
-							page,
-							..
-						} = &result
+						&& let AgentTimelineResult::Available { work_id, page, .. } = &result
 						&& work_id.as_str() == owner.as_str()
 						&& page.thread_id == thread.as_str()
 					{
 						available = true;
-						metrics = relations::metrics::Metrics::from_page(page);
+						metrics = crate::ui_work_metrics::Sample::from_page(page);
 						outcome = latest_outcome(&page.entries);
 						preview = activity::latest(&page.entries, None);
 						output = activity::output(&page.entries);
@@ -703,7 +720,7 @@ impl AgentSurface {
 							.entries
 							.iter()
 							.filter_map(|entry| match &entry.content {
-								decodex_protocol::AgentTimelineContent::Item {
+								AgentTimelineContent::Item {
 									item_id,
 									collaboration: Some(call),
 									..
@@ -712,6 +729,7 @@ impl AgentSurface {
 							})
 							.collect();
 					}
+
 					if !available {
 						// A transient read failure must not erase the last visible content or
 						// counters.
@@ -722,7 +740,7 @@ impl AgentSurface {
 						None
 					} else {
 						match client.history(owner.clone()).await {
-							Ok(super::AgentHistoryResult::Available { questions, .. }) =>
+							Ok(AgentHistoryResult::Available { questions, .. }) =>
 								questions.last().map(|question| question.title.clone()),
 							_ => None,
 						}
@@ -731,11 +749,11 @@ impl AgentSurface {
 						None
 					} else {
 						match client.resources(owner).await {
-							Ok(decodex_protocol::AgentResourcesResult::Available { resources }) =>
-								Some(resources),
+							Ok(AgentResourcesResult::Available { resources }) => Some(resources),
 							_ => None,
 						}
 					};
+
 					results.push((
 						row.key,
 						Brief {
@@ -753,6 +771,7 @@ impl AgentSurface {
 						},
 					));
 				}
+
 				results
 			})
 		})
@@ -760,13 +779,17 @@ impl AgentSurface {
 
 	pub(super) fn refresh_factory_briefs(&mut self, cx: &mut Context<Self>) {
 		self.refresh_collaboration(cx);
+
 		if self.work_board.brief_task.is_some() || !self.command_connection_ready() {
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else { return };
 		let mut rows = self.factory_rows();
+
 		rows.retain(|r| r.thread.is_some());
 		rows.sort_by_key(|r| (r.group != 1, self.work_board.briefs.get(&r.key).map(|b| b.read_at)));
+
 		let requests: Vec<_> = rows
 			.into_iter()
 			.filter(|r| {
@@ -781,22 +804,29 @@ impl AgentSurface {
 			.take(4)
 			.map(|row| {
 				let stamp = self.brief_stamp(&row);
+
 				(row, stamp)
 			})
 			.collect();
+
 		if requests.is_empty() {
 			if self.publish_usage() {
 				cx.notify();
 			}
+
 			return;
 		}
+
 		let read = Self::read_factory_briefs(profile, requests, cx);
+
 		self.work_board.brief_task = Some(cx.spawn(async move |surface, cx| {
 			let results = read.await;
 			let _ =
 				surface.update(cx, |s, cx| {
 					let rows = s.board_rows();
+
 					s.work_board.briefs.retain(|key, _| rows.iter().any(|r| &r.key == key));
+
 					for (key, mut brief) in results {
 						if rows.iter().any(|r| r.key == key && s.brief_stamp(r) == brief.stamp) {
 							if let Some(previous) =
@@ -804,6 +834,7 @@ impl AgentSurface {
 									previous.source_thread == brief.source_thread
 								}) {
 								brief.retain_relations(previous);
+
 								// Keep an observed role when its source scrolls out of the native
 								// page. Retain only threads still represented by visible agents.
 								for (thread, task) in &previous.assignments {
@@ -815,6 +846,7 @@ impl AgentSurface {
 									}
 								}
 							}
+
 							if brief.preview.is_none() {
 								brief.preview = s
 									.work_board
@@ -826,15 +858,67 @@ impl AgentSurface {
 									})
 									.and_then(|old| old.preview.clone());
 							}
+
 							s.work_board.reload_pending.remove(&key);
 							s.work_board.briefs.insert(key, brief);
 						}
 					}
+
 					s.work_board.brief_task = None;
+
 					s.publish_usage();
 					cx.notify();
 				});
 		}));
+	}
+}
+
+fn latest_outcome(entries: &[AgentTimelineEntry]) -> Option<(String, String)> {
+	entries.iter().rev().find_map(|e| match &e.content {
+		AgentTimelineContent::TurnBoundary { turn_id, completed, status, .. } => Some((
+			turn_id.clone(),
+			if *completed { status.clone().unwrap_or_default() } else { "inProgress".into() },
+		)),
+		_ => None,
+	})
+}
+
+fn apply_outcome(row: &mut Row, outcome: &str) {
+	// Current execution, requests, uncertainty and dependencies outrank a previous result.
+	if ![
+		"Not running",
+		"Idle",
+		"Marked complete",
+		"Follow-up pending",
+		"Update pending",
+		"Scheduled check",
+	]
+	.contains(&row.status.as_str())
+	{
+		return;
+	}
+
+	let (label, color) = match outcome {
+		"failed" => ("Failed", ERROR),
+		"interrupted" => ("Interrupted", TEXT_MUTED),
+		_ => return,
+	};
+
+	row.status = label.into();
+	row.color = color;
+	row.group = 2;
+	row.review = false;
+}
+
+fn native_state(status: &str) -> (&'static str, u8, u32) {
+	match status {
+		"active" | "running" => ("Running", 1, INFO),
+		"waitingOnApproval" => ("Approval", 0, WARNING),
+		"waitingOnUserInput" => ("Input needed", 0, WARNING),
+		"systemError" => ("Error", 0, ERROR),
+		"idle" => ("Idle", 2, TEXT_MUTED),
+		"notLoaded" => ("Not running", 2, TEXT_MUTED),
+		_ => ("Unknown", 0, TEXT_MUTED),
 	}
 }
 

@@ -1,9 +1,9 @@
 //! Global human handoffs derived from work facts, with host-local read receipts.
-use std::collections::BTreeMap;
+use std::{cmp::Reverse, collections::BTreeMap};
 
+use crate::ui_preferences;
 use decodex_protocol::{
-	AgentDispatchStateDto as Dispatch, AgentSnapshotDto, AgentWorkItemDto,
-	AgentWorkStatusDto as Status,
+	AgentDispatchStateDto, AgentSnapshotDto, AgentWorkItemDto, AgentWorkStatusDto,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -23,52 +23,15 @@ pub(super) struct Handoffs {
 	pub focus: Option<String>,
 	pub read_on_open: Option<(String, String)>,
 }
-
-fn receipt(work: &AgentWorkItemDto) -> String {
-	serde_json::json!([work.codex_thread_id, work.updated_at_micros]).to_string()
-}
-
-fn direct_work(snapshot: &AgentSnapshotDto, work: &AgentWorkItemDto) -> bool {
-	work.parent_goal_id.as_ref().is_none_or(|parent| {
-		snapshot.work_items.iter().any(|w| &w.id == parent && w.parent_goal_id.is_none())
-	})
-}
-
-fn completed(work: &AgentWorkItemDto) -> bool {
-	work.status == Status::Resolved && work.dispatch_state == Dispatch::Idle
-}
-
-fn running_owners(snapshot: &AgentSnapshotDto) -> std::collections::BTreeSet<String> {
-	let mut owners = std::collections::BTreeSet::new();
-	for work in snapshot
-		.work_items
-		.iter()
-		.filter(|w| matches!(w.dispatch_state, Dispatch::Running | Dispatch::Dispatching))
-	{
-		let mut owner = work;
-		for _ in 0..snapshot.work_items.len() {
-			if direct_work(snapshot, owner) {
-				owners.insert(owner.id.clone());
-				break;
-			}
-			let Some(parent) =
-				snapshot.work_items.iter().find(|w| Some(&w.id) == owner.parent_goal_id.as_ref())
-			else {
-				break;
-			};
-			owner = parent;
-		}
-	}
-	owners
-}
-
 impl Handoffs {
 	pub fn observe(&mut self, scope: String, snapshot: &AgentSnapshotDto) {
 		if snapshot.connection_initializing || self.scope.as_ref() == Some(&scope) {
 			return;
 		}
-		let stored = crate::ui_preferences::string(&format!("DecodexHandoffs-{scope}"), None)
+
+		let stored = ui_preferences::string(&format!("DecodexHandoffs-{scope}"), None)
 			.and_then(|text| serde_json::from_str::<BTreeMap<String, String>>(&text).ok());
+
 		// First use seeds historical completions; it never turns the archive into an inbox.
 		self.seen = stored.unwrap_or_else(|| {
 			snapshot
@@ -81,13 +44,15 @@ impl Handoffs {
 		self.scope = Some(scope);
 		self.focus = None;
 		self.read_on_open = None;
+
 		self.save();
 	}
 
 	fn save(&self) {
 		if let Some(scope) = &self.scope {
 			let text = serde_json::to_string(&self.seen).expect("read receipt strings");
-			crate::ui_preferences::string(&format!("DecodexHandoffs-{scope}"), Some(&text));
+
+			ui_preferences::string(&format!("DecodexHandoffs-{scope}"), Some(&text));
 		}
 	}
 
@@ -103,8 +68,11 @@ impl Handoffs {
 		if self.scope.is_none() || snapshot.connection_initializing {
 			return Vec::new();
 		}
+
 		let mut work: Vec<_> = snapshot.work_items.iter().collect();
+
 		work.sort_by_key(|w| (w.created_at_micros, w.id.as_str()));
+
 		work.into_iter().filter_map(|work| self.item_for(snapshot, work)).collect()
 	}
 
@@ -125,6 +93,7 @@ impl Handoffs {
 		});
 		let (key, label, reason, result) = if let Some(event) = request {
 			let permission = event.event_kind == "permission_pending";
+
 			(
 				format!("request:{}", event.id),
 				if permission { "Permission needed" } else { "Answer needed" },
@@ -135,14 +104,18 @@ impl Handoffs {
 				},
 				false,
 			)
-		} else if work.status == Status::UserDecision && work.dispatch_state == Dispatch::Idle {
+		} else if work.status == AgentWorkStatusDto::UserDecision
+			&& work.dispatch_state == AgentDispatchStateDto::Idle
+		{
 			(
 				receipt(work),
 				"Decision needed",
 				"This task explicitly asks for your decision.",
 				false,
 			)
-		} else if direct_work(snapshot, work) && work.dispatch_state == Dispatch::Unknown {
+		} else if direct_work(snapshot, work)
+			&& work.dispatch_state == AgentDispatchStateDto::Unknown
+		{
 			(
 				receipt(work),
 				"Check execution",
@@ -162,6 +135,7 @@ impl Handoffs {
 		} else {
 			return None;
 		};
+
 		Some(Handoff { work: work.id.clone(), key, label, reason, result, attention: true })
 	}
 
@@ -169,15 +143,20 @@ impl Handoffs {
 		if snapshot.connection_initializing {
 			return Vec::new();
 		}
+
 		let mut items = self.items(snapshot);
+
 		items.sort_by_key(|item| item.result);
+
 		let running = running_owners(snapshot);
 		let mut recent: Vec<_> = snapshot
 			.work_items
 			.iter()
 			.filter(|work| direct_work(snapshot, work) && completed(work))
 			.collect();
-		recent.sort_by_key(|work| (std::cmp::Reverse(work.updated_at_micros), &work.id));
+
+		recent.sort_by_key(|work| (Reverse(work.updated_at_micros), &work.id));
+
 		for work in snapshot.work_items.iter().filter(|w| running.contains(&w.id)) {
 			if !items.iter().any(|item| item.work == work.id) {
 				items.push(Handoff {
@@ -202,50 +181,116 @@ impl Handoffs {
 				});
 			}
 		}
+
 		items
 	}
 
 	#[cfg(any(test, feature = "visual-capture"))]
 	pub fn fixture(&mut self) {
 		self.scope = Some("visual-fixture".into());
+
 		self.seen.clear();
 	}
 }
 
+fn receipt(work: &AgentWorkItemDto) -> String {
+	serde_json::json!([work.codex_thread_id, work.updated_at_micros]).to_string()
+}
+
+fn direct_work(snapshot: &AgentSnapshotDto, work: &AgentWorkItemDto) -> bool {
+	work.parent_goal_id.as_ref().is_none_or(|parent| {
+		snapshot.work_items.iter().any(|w| &w.id == parent && w.parent_goal_id.is_none())
+	})
+}
+
+fn completed(work: &AgentWorkItemDto) -> bool {
+	work.status == AgentWorkStatusDto::Resolved
+		&& work.dispatch_state == AgentDispatchStateDto::Idle
+}
+
+fn running_owners(snapshot: &AgentSnapshotDto) -> std::collections::BTreeSet<String> {
+	let mut owners = std::collections::BTreeSet::new();
+
+	for work in snapshot.work_items.iter().filter(|w| {
+		matches!(
+			w.dispatch_state,
+			AgentDispatchStateDto::Running | AgentDispatchStateDto::Dispatching
+		)
+	}) {
+		let mut owner = work;
+
+		for _ in 0..snapshot.work_items.len() {
+			if direct_work(snapshot, owner) {
+				owners.insert(owner.id.clone());
+
+				break;
+			}
+
+			let Some(parent) =
+				snapshot.work_items.iter().find(|w| Some(&w.id) == owner.parent_goal_id.as_ref())
+			else {
+				break;
+			};
+
+			owner = parent;
+		}
+	}
+
+	owners
+}
+
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::shell::agent_surface::AgentSurface;
 	use gpui::AppContext;
+
+	use crate::shell::agent_surface::{
+		AgentSurface,
+		handoffs::{AgentWorkStatusDto, Handoffs},
+	};
 
 	#[gpui::test]
 	fn dock_keeps_read_results_and_groups_running_children(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.visual_dock_page("dock-result", cx);
+
 			let mut snapshot = s.snapshot.clone().unwrap();
 			let mut handoffs = Handoffs::default();
+
 			handoffs.observe("dock-test".into(), &snapshot);
+
 			let items = handoffs.dock_items(&snapshot);
 			let saved = items.iter().find(|h| h.work == "website").unwrap();
+
 			assert!(saved.result && !saved.attention);
 			assert!(!items.iter().any(|h| h.work == "flow"));
+
 			let release = snapshot.work_items.iter_mut().find(|w| w.id == "release").unwrap();
-			release.status = Status::Open;
+
+			release.status = AgentWorkStatusDto::Open;
+
 			let items = handoffs.dock_items(&snapshot);
+
 			assert_eq!(items.iter().filter(|h| h.work == "release").count(), 1);
 			assert_eq!(items[0].label, "Running · Preview");
 			assert!(!items.iter().any(|h| h.work == "verify"));
+
 			for n in 0..5 {
 				let mut work =
 					snapshot.work_items.iter().find(|w| w.id == "website").unwrap().clone();
+
 				work.id = format!("recent-{n}");
 				work.updated_at_micros += n + 1;
+
 				snapshot.work_items.push(work);
 			}
+
 			handoffs.observe("dock-more".into(), &snapshot);
+
 			let items = handoffs.dock_items(&snapshot);
+
 			assert_eq!(items.iter().filter(|h| h.result).count(), 3);
 			assert_eq!(items.iter().find(|h| h.result).unwrap().work, "recent-4");
 		});
@@ -256,22 +301,33 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let mut snapshot = s.snapshot.clone().unwrap();
 			let mut handoffs = Handoffs::default();
+
 			handoffs.observe("fixture-test".into(), &snapshot);
+
 			assert_eq!(
 				handoffs.items(&snapshot).iter().map(|h| h.work.as_str()).collect::<Vec<_>>(),
 				vec!["release"]
 			);
+
 			let release = snapshot.work_items.iter_mut().find(|w| w.id == "release").unwrap();
-			release.status = Status::Resolved;
+
+			release.status = AgentWorkStatusDto::Resolved;
 			release.updated_at_micros += 1;
+
 			let result = handoffs.items(&snapshot).pop().unwrap();
+
 			assert!(result.result);
+
 			handoffs.acknowledge(&result.work, &result.key, &snapshot);
+
 			assert!(handoffs.items(&snapshot).is_empty());
+
 			snapshot.pending_events.push(decodex_protocol::AgentPendingEventDto {
 				id: 99,
 				source_event_id: "request".into(),
@@ -280,12 +336,19 @@ mod tests {
 				created_at_micros: 99,
 				delivery_claimed: true,
 			});
+
 			assert_eq!(handoffs.items(&snapshot)[0].work, "verify");
+
 			snapshot.pending_events.clear();
+
 			assert!(handoffs.items(&snapshot).is_empty());
+
 			let release = snapshot.work_items.iter_mut().find(|w| w.id == "release").unwrap();
+
 			release.updated_at_micros += 1;
+
 			handoffs.acknowledge(&result.work, &result.key, &snapshot);
+
 			assert_eq!(
 				handoffs.items(&snapshot).len(),
 				1,

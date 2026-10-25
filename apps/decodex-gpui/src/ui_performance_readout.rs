@@ -1,71 +1,44 @@
 //! Content owns its measured footprint; the activity host owns allocation and motion.
-use super::{PerformanceIsland, bytes, chart, timing};
+use std::sync::{Arc, OnceLock};
+
+use gpui::{
+	AnyElement, App, Div, Font, FontFeatures, FontWeight, IntoElement, Role, SharedString,
+	Stateful, TextRun, UniformListScrollHandle, Window,
+	prelude::{
+		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
+		StatefulInteractiveElement as _, Styled as _,
+	},
+};
+
 use crate::{
 	ui_live_activity::{CAPSULE_HEIGHT, Sizing},
 	ui_motion,
-	ui_theme::{BLUE, TEXT_MUTED, WARNING},
+	ui_performance::{self, PerformanceIsland, chart},
+	ui_theme::{self, BLUE, TEXT_MUTED, WARNING},
+	ui_work_metrics::{self, Icon, Live, Summary},
 };
-use gpui::{AnyElement, FontFeatures, FontWeight, IntoElement, prelude::*};
-use std::sync::{Arc, OnceLock};
+
 pub(super) const TEXT_SIZE: f32 = 11.;
+
 const INSET: f32 = 12.;
 const FRAME: f32 = 2. * INSET + 2.;
-pub(super) fn figures() -> FontFeatures {
-	static FEATURES: OnceLock<FontFeatures> = OnceLock::new();
-	FEATURES.get_or_init(|| FontFeatures(Arc::new(vec![("tnum".into(), 1)]))).clone()
-}
-struct Measured {
-	text: String,
-	font: gpui::Font,
-	size: f32,
-	width: f32,
-}
-// One entry per field, not a growing cache of sampled numbers. Chart frames do
-// not shape the same text again. Measure with the font and figures we render.
-fn measure(
-	id: &'static str,
-	text: &str,
-	size: f32,
-	weight: FontWeight,
-	window: &mut gpui::Window,
-	cx: &mut gpui::App,
-) -> f32 {
-	let mut font = window.text_style().font();
-	font.weight = weight;
-	font.features = figures();
-	let state = window.use_keyed_state(id, cx, |_, _| None::<Measured>);
-	if let Some(last) = state.read(cx)
-		&& last.text == text
-		&& last.font == font
-		&& last.size == size
-	{
-		return last.width;
-	}
-	let width = f32::from(
-		window
-			.text_system()
-			.shape_line(
-				text.to_owned().into(),
-				gpui::px(size),
-				&[gpui::TextRun { len: text.len(), font: font.clone(), ..Default::default() }],
-				None,
-			)
-			.width,
-	)
-	.ceil();
-	state.update(cx, |state, _| *state = Some(Measured { text: text.into(), font, size, width }));
-	width
-}
+
 pub(super) struct Work {
 	label: String,
 	total: String,
 	live: bool,
 	estimated: bool,
 	rate: String,
-	rows: Arc<[crate::ui_work_metrics::Live]>,
+	rows: Arc<[Live]>,
 	columns: [f32; 2],
 	sizing: Sizing,
 }
+impl Work {
+	fn unit(&self) -> &'static str {
+		if self.live || self.estimated || self.rate == "—" { "tok/s" } else { "avg tok/s" }
+	}
+}
+
 pub(super) struct Debug {
 	label: String,
 	fps: String,
@@ -77,16 +50,26 @@ pub(super) struct Debug {
 	columns: [f32; 3],
 	sizing: Sizing,
 }
+
+struct Measured {
+	text: String,
+	font: Font,
+	size: f32,
+	width: f32,
+}
+
+struct ActionSwap {
+	current: String,
+	previous: Option<String>,
+	started: std::time::Instant,
+}
+
 pub(super) enum Content {
 	Work(Work),
 	Debug(Debug),
 }
 impl Content {
-	pub(super) fn work(
-		work: &crate::ui_work_metrics::Summary,
-		window: &mut gpui::Window,
-		cx: &mut gpui::App,
-	) -> Self {
+	pub(super) fn work(work: &Summary, window: &mut Window, cx: &mut App) -> Self {
 		let rate = work.display_rate_text();
 		let total = work
 			.total_tokens()
@@ -113,9 +96,10 @@ impl Content {
 			+ 4.
 			+ width("activity-width-rate-unit", data.unit(), TEXT_SIZE, FontWeight::NORMAL)
 			+ FRAME;
-		let longest = |get: fn(&crate::ui_work_metrics::Live) -> String| {
+		let longest = |get: fn(&Live) -> String| {
 			data.rows.iter().map(get).max_by_key(String::len).unwrap_or_default()
 		};
+
 		data.columns = [
 			width(
 				"activity-width-agent",
@@ -125,7 +109,7 @@ impl Content {
 			),
 			width(
 				"activity-width-elapsed",
-				&longest(|row| crate::ui_work_metrics::time_label(row.sample.active_time())),
+				&longest(|row| ui_work_metrics::time_label(row.sample.active_time())),
 				TEXT_SIZE,
 				FontWeight::NORMAL,
 			)
@@ -136,6 +120,7 @@ impl Content {
 				FontWeight::NORMAL,
 			)),
 		];
+
 		let action = width(
 			"activity-width-action",
 			&longest(|row| row.action.clone()),
@@ -153,19 +138,17 @@ impl Content {
 				+ width("activity-width-total-value", &data.total, TEXT_SIZE, FontWeight::MEDIUM)
 				+ 28.
 				+ FRAME;
+
 		data.sizing = Sizing {
 			minimal,
 			compact: compact.max(minimal),
 			expanded: details.max(compact).max(minimal).max(total_width),
 		};
+
 		Self::Work(data)
 	}
 
-	pub(super) fn debug(
-		island: &PerformanceIsland,
-		window: &mut gpui::Window,
-		cx: &mut gpui::App,
-	) -> Self {
+	pub(super) fn debug(island: &PerformanceIsland, window: &mut Window, cx: &mut App) -> Self {
 		let fps = if island.metrics.draw_frames == 0 {
 			"—".into()
 		} else {
@@ -176,9 +159,9 @@ impl Content {
 			fps,
 			gpu: island.host.gpu_percent.map_or_else(|| "—".into(), |v| format!("{v:.0}%")),
 			cpu: island.cpu_percent.map_or_else(|| "—".into(), |v| format!("{v:.0}%")),
-			memory: bytes(island.host.peak_memory_bytes),
-			latency: timing(island.metrics.submit_ms, island.metrics.ready_samples),
-			draw: timing(island.metrics.draw_ms, island.metrics.draw_frames),
+			memory: ui_performance::bytes(island.host.peak_memory_bytes),
+			latency: ui_performance::timing(island.metrics.submit_ms, island.metrics.ready_samples),
+			draw: ui_performance::timing(island.metrics.draw_ms, island.metrics.draw_frames),
 			columns: [0.; 3],
 			sizing: Sizing { minimal: 0., compact: 0., expanded: 0. },
 		};
@@ -196,6 +179,7 @@ impl Content {
 			+ 4.
 			+ width("activity-width-gpu", &data.gpu, TEXT_SIZE, FontWeight::MEDIUM)
 			+ FRAME;
+
 		data.columns = [
 			width("activity-width-cpu-label", "CPU", TEXT_SIZE, FontWeight::NORMAL)
 				.max(width("activity-width-cpu", &data.cpu, TEXT_SIZE, FontWeight::MEDIUM))
@@ -206,12 +190,15 @@ impl Content {
 			width("activity-width-latency-label", "Latency p95", TEXT_SIZE, FontWeight::NORMAL)
 				.max(width("activity-width-latency", &data.latency, TEXT_SIZE, FontWeight::MEDIUM)),
 		];
+
 		let details = data.columns.iter().sum::<f32>() + 24. + FRAME;
+
 		data.sizing = Sizing {
 			minimal,
 			compact: compact.max(minimal),
 			expanded: details.max(compact).max(minimal),
 		};
+
 		Self::Debug(data)
 	}
 
@@ -250,8 +237,8 @@ impl Content {
 	pub(super) fn details(
 		&self,
 		island: &PerformanceIsland,
-		window: &mut gpui::Window,
-		cx: &mut gpui::App,
+		window: &mut Window,
+		cx: &mut App,
 	) -> AnyElement {
 		match self {
 			Self::Work(v) => work_details(v, window, cx),
@@ -259,12 +246,57 @@ impl Content {
 		}
 	}
 }
-impl Work {
-	fn unit(&self) -> &'static str {
-		if self.live || self.estimated || self.rate == "—" { "tok/s" } else { "avg tok/s" }
-	}
+
+pub(super) fn figures() -> FontFeatures {
+	static FEATURES: OnceLock<FontFeatures> = OnceLock::new();
+
+	FEATURES.get_or_init(|| FontFeatures(Arc::new(vec![("tnum".into(), 1)]))).clone()
 }
-fn number(id: &'static str, value: String) -> gpui::Div {
+
+// One entry per field, not a growing cache of sampled numbers. Chart frames do
+// not shape the same text again. Measure with the font and figures we render.
+fn measure(
+	id: &'static str,
+	text: &str,
+	size: f32,
+	weight: FontWeight,
+	window: &mut Window,
+	cx: &mut App,
+) -> f32 {
+	let mut font = window.text_style().font();
+
+	font.weight = weight;
+	font.features = figures();
+
+	let state = window.use_keyed_state(id, cx, |_, _| None::<Measured>);
+
+	if let Some(last) = state.read(cx)
+		&& last.text == text
+		&& last.font == font
+		&& last.size == size
+	{
+		return last.width;
+	}
+
+	let width = f32::from(
+		window
+			.text_system()
+			.shape_line(
+				text.to_owned().into(),
+				gpui::px(size),
+				&[TextRun { len: text.len(), font: font.clone(), ..Default::default() }],
+				None,
+			)
+			.width,
+	)
+	.ceil();
+
+	state.update(cx, |state, _| *state = Some(Measured { text: text.into(), font, size, width }));
+
+	width
+}
+
+fn number(id: &'static str, value: String) -> Div {
 	gpui::div()
 		.debug_selector(move || format!("performance-{id}"))
 		.flex_none()
@@ -273,6 +305,7 @@ fn number(id: &'static str, value: String) -> gpui::Div {
 		.font_weight(FontWeight::MEDIUM)
 		.child(value)
 }
+
 fn debug_header(data: &Debug) -> AnyElement {
 	let field = |id, label, value| {
 		gpui::div()
@@ -282,11 +315,12 @@ fn debug_header(data: &Debug) -> AnyElement {
 			.child(
 				gpui::div()
 					.debug_selector(move || format!("performance-{id}-label"))
-					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+					.text_color(ui_theme::rgb(TEXT_MUTED))
 					.child(label),
 			)
 			.child(number(id, value))
 	};
+
 	gpui::div()
 		.w_full()
 		.px(gpui::px(INSET))
@@ -297,6 +331,7 @@ fn debug_header(data: &Debug) -> AnyElement {
 		.child(field("gpu", "GPU", data.gpu.clone()))
 		.into_any_element()
 }
+
 fn work_header(data: &Work) -> AnyElement {
 	gpui::div()
 		.w_full()
@@ -305,16 +340,15 @@ fn work_header(data: &Work) -> AnyElement {
 		.items_baseline()
 		.justify_center()
 		.gap_1()
-		.child(
-			number("work-rate", data.rate.clone()).text_color(crate::ui_theme::rgb(if data.live {
-				BLUE
-			} else {
-				TEXT_MUTED
-			})),
-		)
-		.child(gpui::div().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child(data.unit()))
+		.child(number("work-rate", data.rate.clone()).text_color(ui_theme::rgb(if data.live {
+			BLUE
+		} else {
+			TEXT_MUTED
+		})))
+		.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(data.unit()))
 		.into_any_element()
 }
+
 fn work_minimal(data: &Work) -> AnyElement {
 	gpui::div()
 		.debug_selector(|| "activity-live-rate".into())
@@ -322,16 +356,17 @@ fn work_minimal(data: &Work) -> AnyElement {
 		.items_baseline()
 		.gap(gpui::px(3.))
 		.whitespace_nowrap()
-		.text_color(crate::ui_theme::rgb(if data.live { BLUE } else { TEXT_MUTED }))
+		.text_color(ui_theme::rgb(if data.live { BLUE } else { TEXT_MUTED }))
 		.child(number("live-rate", data.rate.clone()))
 		.child(
 			gpui::div()
 				.text_size(gpui::px(TEXT_SIZE))
-				.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+				.text_color(ui_theme::rgb(TEXT_MUTED))
 				.child(data.unit()),
 		)
 		.into_any_element()
 }
+
 fn debug_minimal(data: &Debug) -> AnyElement {
 	gpui::div()
 		.flex()
@@ -342,11 +377,12 @@ fn debug_minimal(data: &Debug) -> AnyElement {
 		.child(
 			gpui::div()
 				.text_size(gpui::px(TEXT_SIZE))
-				.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+				.text_color(ui_theme::rgb(TEXT_MUTED))
 				.child("FPS"),
 		)
 		.into_any_element()
 }
+
 fn presentations(minimal: AnyElement, compact: AnyElement, fraction: f32) -> AnyElement {
 	gpui::div()
 		.relative()
@@ -378,19 +414,10 @@ fn presentations(minimal: AnyElement, compact: AnyElement, fraction: f32) -> Any
 		})
 		.into_any_element()
 }
-struct ActionSwap {
-	current: String,
-	previous: Option<String>,
-	started: std::time::Instant,
-}
-fn live_row(
-	row: &crate::ui_work_metrics::Live,
-	columns: [f32; 2],
-	window: &mut gpui::Window,
-	cx: &mut gpui::App,
-) -> gpui::Stateful<gpui::Div> {
+
+fn live_row(row: &Live, columns: [f32; 2], window: &mut Window, cx: &mut App) -> Stateful<Div> {
 	let state = window.use_keyed_state(
-		gpui::SharedString::from(format!("activity-action-{}", row.key)),
+		SharedString::from(format!("activity-action-{}", row.key)),
 		cx,
 		|_, _| ActionSwap {
 			current: row.action.clone(),
@@ -405,16 +432,21 @@ fn live_row(
 			state.current = row.action.clone();
 			state.started = std::time::Instant::now();
 		}
+
 		let progress =
 			if reduced { 1. } else { (state.started.elapsed().as_secs_f32() / 0.18).min(1.) };
+
 		if progress >= 1. {
 			state.previous = None;
 		}
+
 		(state.current.clone(), state.previous.clone(), progress)
 	});
+
 	if previous.is_some() {
 		ui_motion::request_frame(window, cx);
 	}
+
 	let action = |text: String, opacity| {
 		gpui::div()
 			.absolute()
@@ -427,11 +459,12 @@ fn live_row(
 	};
 	let changing = previous.is_some();
 	let key = row.key.clone();
-	let elapsed = crate::ui_work_metrics::time_label(row.sample.active_time());
+	let elapsed = ui_work_metrics::time_label(row.sample.active_time());
+
 	gpui::div()
-		.id(gpui::SharedString::from(format!("activity-live-{}", row.key)))
+		.id(SharedString::from(format!("activity-live-{}", row.key)))
 		.debug_selector(move || format!("activity-live-{key}"))
-		.role(gpui::Role::Group)
+		.role(Role::Group)
 		.aria_label(format!("{}: {}. Turn elapsed {}.", row.agent, row.action, elapsed))
 		.w_full()
 		.h(gpui::px(22.))
@@ -444,7 +477,7 @@ fn live_row(
 				.w(gpui::px(columns[0]))
 				.flex_none()
 				.font_weight(FontWeight::MEDIUM)
-				.text_color(crate::ui_theme::rgb(BLUE))
+				.text_color(ui_theme::rgb(BLUE))
 				.child(row.agent.clone()),
 		)
 		.child(
@@ -462,13 +495,14 @@ fn live_row(
 				.w(gpui::px(columns[1]))
 				.flex_none()
 				.text_right()
-				.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+				.text_color(ui_theme::rgb(TEXT_MUTED))
 				.child(elapsed),
 		)
 }
-fn work_details(data: &Work, window: &mut gpui::Window, cx: &mut gpui::App) -> AnyElement {
-	let scroll = window
-		.use_keyed_state("activity-live-scroll", cx, |_, _| gpui::UniformListScrollHandle::new());
+
+fn work_details(data: &Work, window: &mut Window, cx: &mut App) -> AnyElement {
+	let scroll =
+		window.use_keyed_state("activity-live-scroll", cx, |_, _| UniformListScrollHandle::new());
 	let rows = data.rows.clone();
 	let columns = data.columns;
 	let list = gpui::uniform_list("activity-live-rows", rows.len(), move |range, window, cx| {
@@ -478,6 +512,7 @@ fn work_details(data: &Work, window: &mut gpui::Window, cx: &mut gpui::App) -> A
 	.track_scroll(scroll.read(cx))
 	.w_full()
 	.h(gpui::px(data.rows.len().min(4) as f32 * 22.));
+
 	gpui::div()
 		.w_full()
 		.px(gpui::px(INSET))
@@ -495,7 +530,7 @@ fn work_details(data: &Work, window: &mut gpui::Window, cx: &mut gpui::App) -> A
 						.flex()
 						.items_center()
 						.gap_1()
-						.child(crate::ui_work_metrics::Icon::Tokens.element(11., TEXT_MUTED))
+						.child(Icon::Tokens.element(11., TEXT_MUTED))
 						.child("Recorded tokens"),
 				)
 				.child(number("activity-total-value", data.total.clone())),
@@ -507,8 +542,8 @@ fn work_details(data: &Work, window: &mut gpui::Window, cx: &mut gpui::App) -> A
 fn debug_details(
 	data: &Debug,
 	island: &PerformanceIsland,
-	window: &mut gpui::Window,
-	cx: &mut gpui::App,
+	window: &mut Window,
+	cx: &mut App,
 ) -> AnyElement {
 	let columns = ["activity-column-cpu", "activity-column-memory", "activity-column-latency"]
 		.into_iter()
@@ -520,6 +555,7 @@ fn debug_details(
 		("memory", "Peak RAM", data.memory.clone()),
 		("latency", "Latency p95", data.latency.clone()),
 	];
+
 	gpui::div()
 		.debug_selector(|| "performance-island-details".into())
 		.w_full()
@@ -545,14 +581,15 @@ fn debug_details(
 				.items_center()
 				.gap_2()
 				.child(metric("draw", "Draw p95", data.draw.clone()).w(gpui::px(columns[0])).when(
-					island.display_hz.is_some_and(|hz| island.metrics.draw_ms > 1000. / hz),
-					|d| d.text_color(crate::ui_theme::rgb(WARNING)),
+					island.display_hz.is_some_and(|hz| island.metrics.draw_ms > 1_000. / hz),
+					|d| d.text_color(ui_theme::rgb(WARNING)),
 				))
 				.child(chart::render(&island.history, window, cx)),
 		)
 		.into_any_element()
 }
-fn metric(id: &'static str, label: &'static str, value: String) -> gpui::Div {
+
+fn metric(id: &'static str, label: &'static str, value: String) -> Div {
 	gpui::div()
 		.debug_selector(move || format!("performance-{id}-row"))
 		.min_w_0()
@@ -566,7 +603,7 @@ fn metric(id: &'static str, label: &'static str, value: String) -> gpui::Div {
 				.debug_selector(move || format!("performance-{id}-label"))
 				.text_size(gpui::px(TEXT_SIZE))
 				.line_height(gpui::px(12.))
-				.text_color(crate::ui_theme::rgb(if id == "draw" { BLUE } else { TEXT_MUTED }))
+				.text_color(ui_theme::rgb(if id == "draw" { BLUE } else { TEXT_MUTED }))
 				.child(label),
 		)
 		.child(number(id, value).w_full().text_left())

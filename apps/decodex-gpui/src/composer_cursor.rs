@@ -7,14 +7,22 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use gpui::{App, Bounds, Context, Pixels, Point, Subscription, Task, Window, WindowId};
+use gpui::{
+	App, Bounds, Context, Corners, Hsla, PathBuilder, Pixels, Point, Subscription, Task, Window,
+	WindowId,
+};
 #[cfg(all(target_os = "macos", not(test)))]
 use objc2::{
 	rc::Retained,
 	runtime::{AnyClass, AnyObject},
 };
 
-use crate::{composer_input::ComposerInput, ui_motion, ui_theme};
+use crate::{
+	composer_input::ComposerInput,
+	ui_motion,
+	ui_theme::{self, BODY_LINE_HEIGHT, BODY_SIZE, TEXT},
+};
+use motion::{Motion, Viewport};
 
 static PREFERENCE: AtomicU8 = AtomicU8::new(u8::MAX);
 
@@ -83,7 +91,7 @@ pub(super) struct Cursor {
 	active: bool,
 	animated: bool,
 	fade_at: Option<Instant>,
-	motion: motion::Motion,
+	motion: Motion,
 	selection: Range<usize>,
 	length: usize,
 	timer: Option<Task<()>>,
@@ -105,6 +113,7 @@ impl Cursor {
 		let progress =
 			self.fade_at.map_or(1., |at| (now.duration_since(at).as_secs_f32() / 0.1).min(1.));
 		let eased = progress * progress * (3. - 2. * progress);
+
 		(if self.visible { eased } else { 1. - eased }, progress < 1.)
 	}
 
@@ -121,15 +130,12 @@ impl Cursor {
 		let shape = Preference::configured().shape;
 		let (offset, size) = match shape {
 			Shape::Bar => (
-				gpui::point(
-					gpui::px(0.),
-					gpui::px((ui_theme::BODY_LINE_HEIGHT - ui_theme::BODY_SIZE) / 2.),
-				),
-				gpui::size(gpui::px(2.), gpui::px(ui_theme::BODY_SIZE)),
+				gpui::point(gpui::px(0.), gpui::px((BODY_LINE_HEIGHT - BODY_SIZE) / 2.)),
+				gpui::size(gpui::px(2.), gpui::px(BODY_SIZE)),
 			),
 			Shape::Block => (Point::default(), cell.size),
 			Shape::Underline => (
-				gpui::point(gpui::px(0.), gpui::px(ui_theme::BODY_LINE_HEIGHT - 2.)),
+				gpui::point(gpui::px(0.), gpui::px(BODY_LINE_HEIGHT - 2.)),
 				gpui::size(cell.size.width, gpui::px(2.)),
 			),
 		};
@@ -138,30 +144,39 @@ impl Cursor {
 			self.motion.sample(
 				logical,
 				target,
-				motion::Viewport { bounds, scroll, scale: window.scale_factor(), shape },
+				Viewport { bounds, scroll, scale: window.scale_factor(), shape },
 				now,
 			)
 		} else {
 			self.motion.reset();
+
 			None
 		};
 		let (opacity, fading) = self.opacity(now);
+
 		if fading || corners.is_some() {
 			ui_motion::request_frame(window, cx);
 		}
-		let mut color: gpui::Hsla = crate::ui_theme::rgb(ui_theme::TEXT).into();
+
+		let mut color: Hsla = ui_theme::rgb(TEXT).into();
+
 		color.a = opacity * if shape == Shape::Block { 0.32 } else { 1. };
+
 		if let Some(corners) = corners {
-			let mut path = gpui::PathBuilder::fill();
+			let mut path = PathBuilder::fill();
+
 			path.add_polygon(&corners, true);
+
 			if let Ok(path) = path.build() {
 				window.paint_path(path, color);
 			}
 		} else {
 			let mut quad = gpui::fill(target, color);
+
 			if shape == Shape::Bar {
-				quad.corner_radii = gpui::Corners::all(gpui::px(1.));
+				quad.corner_radii = Corners::all(gpui::px(1.));
 			}
+
 			window.paint_quad(quad);
 		}
 	}
@@ -171,6 +186,7 @@ impl ComposerInput {
 	pub(super) fn update_cursor(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		if self.cursor.window != Some(window.window_handle().window_id()) {
 			self.cursor.reset_motion();
+
 			self.cursor.window = Some(window.window_handle().window_id());
 			self.cursor.subscriptions = vec![
 				cx.observe_window_activation(window, |_, _, cx| cx.notify()),
@@ -182,8 +198,8 @@ impl ComposerInput {
 					s.cursor.timer = None;
 					s.cursor.visible = false;
 					s.cursor.fade_at = None;
-					s.cursor.reset_motion();
 
+					s.cursor.reset_motion();
 					cx.notify();
 				}),
 			];
@@ -196,11 +212,12 @@ impl ComposerInput {
 		);
 		let preference = Preference::configured();
 		let reduced = ui_motion::reduced();
+
 		self.cursor.animated = preference.animated && !reduced;
+
 		if active != self.cursor.active {
 			self.cursor.reset_motion();
 		}
-
 		if active != self.cursor.active
 			|| self.selected_range != self.cursor.selection
 			|| self.content.len() != self.cursor.length
@@ -216,6 +233,7 @@ impl ComposerInput {
 			self.cursor.timer = None;
 			self.cursor.visible = active;
 			self.cursor.fade_at = None;
+
 			if !active {
 				self.cursor.reset_motion();
 			}
@@ -230,6 +248,7 @@ impl ComposerInput {
 					s.cursor.timer = None;
 					s.cursor.visible = !s.cursor.visible;
 					s.cursor.fade_at = Some(Instant::now());
+
 					// A blink changes pixels, not the draft or its observers.
 					window.refresh();
 				});
@@ -281,13 +300,15 @@ fn saved() -> Option<u8> {
 fn save(_: u8) {}
 #[cfg(test)]
 mod tests {
-	use crate::composer_input::cursor::{self, Preference, Shape};
-	use gpui::Focusable as _;
 	use std::{
 		cell::Cell,
 		rc::Rc,
 		time::{Duration, Instant},
 	};
+
+	use gpui::Focusable as _;
+
+	use crate::composer_input::cursor::{self, Preference, Shape};
 
 	#[test]
 	fn saved_cursor_choices_round_trip() {
@@ -295,10 +316,12 @@ mod tests {
 			for blinking in [false, true] {
 				for animated in [false, true] {
 					let value = Preference { shape, blinking, animated };
+
 					assert_eq!(Preference::decode(value.encode()), value);
 				}
 			}
 		}
+
 		assert_eq!(
 			Preference::decode(4),
 			Preference { shape: Shape::Bar, blinking: true, animated: true }
@@ -317,16 +340,20 @@ mod tests {
 	fn blink_fades_but_typing_shows_the_cursor_immediately() {
 		let now = Instant::now();
 		let mut cursor = super::Cursor { fade_at: Some(now), ..Default::default() };
+
 		assert_eq!(cursor.opacity(now), (1., true));
 		assert_eq!(cursor.opacity(now + Duration::from_millis(50)), (0.5, true));
 		assert_eq!(cursor.opacity(now + Duration::from_millis(100)), (0., false));
+
 		cursor.reset();
+
 		assert_eq!(cursor.opacity(now), (1., false));
 	}
 
 	#[gpui::test]
 	fn blink_and_motion_frames_do_not_notify_draft_observers(cx: &mut gpui::TestAppContext) {
 		let (input, visual) = cx.add_window_view(|_, cx| super::ComposerInput::new(0, cx));
+
 		visual.simulate_resize(gpui::size(gpui::px(600.), gpui::px(160.)));
 		input.update(visual, |input, cx| input.set_content("A quiet reading corner.", cx));
 		visual.update(|window, cx| {
@@ -335,26 +362,36 @@ mod tests {
 			window.draw(cx).clear(cx);
 		});
 		visual.run_until_parked();
+
 		let notifications = Rc::new(Cell::new(0));
+
 		visual.update(|window, cx| {
 			let notifications = notifications.clone();
+
 			cx.observe(&input, move |_, _| notifications.set(notifications.get() + 1)).detach();
 			window.draw(cx).clear(cx);
 		});
+
 		assert!(input.read_with(visual, |input, _| input.cursor.visible && input.cursor.active));
+
 		visual.executor().advance_clock(Duration::from_millis(530));
 		visual.run_until_parked();
+
 		assert!(!input.read_with(visual, |input, _| input.cursor.visible));
 		assert_eq!(notifications.get(), 0, "idle blinking must not trigger draft observers");
+
 		input.update(visual, |input, cx| input.move_to(0, cx));
 		visual.run_until_parked();
 		notifications.set(0);
 		visual.update(|window, cx| {
 			window.draw(cx).clear(cx);
+
 			assert!(window.simulate_next_frame(cx) > 0);
+
 			window.draw(cx).clear(cx);
 		});
 		visual.run_until_parked();
+
 		assert_eq!(notifications.get(), 0, "cursor interpolation must only refresh pixels");
 	}
 }

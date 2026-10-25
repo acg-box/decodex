@@ -3,8 +3,11 @@
 #[cfg(all(target_os = "macos", not(test)))]
 mod platform {
 	use std::ffi::{CStr, CString, c_void};
+
 	type Create = unsafe extern "C" fn() -> *mut c_void;
+
 	type Check = unsafe extern "C" fn(*mut c_void) -> bool;
+
 	type Destroy = unsafe extern "C" fn(*mut c_void);
 
 	pub(super) struct Bridge {
@@ -27,9 +30,11 @@ mod platform {
 			.map_err(|e| e.to_string())?;
 			// SAFETY: the library belongs to the running signed app. It remains loaded.
 			let image = unsafe { libc::dlopen(path.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) };
+
 			if image.is_null() {
 				return Err("The native update framework is unavailable.".into());
 			}
+
 			// SAFETY: the checked non-null symbols have these exact C ABIs in UpdateHost.swift.
 			let (create, check, destroy): (Create, Check, Destroy) = unsafe {
 				(
@@ -49,9 +54,11 @@ mod platform {
 			};
 			// SAFETY: creation occurs on the GPUI main thread.
 			let host = unsafe { create() };
+
 			if host.is_null() {
 				return Err("App updates are not configured for this build. Codex components can still be prepared and repaired.".into());
 			}
+
 			Ok(Self { _image: image, host, check, destroy })
 		}
 
@@ -64,19 +71,22 @@ mod platform {
 			}
 		}
 	}
-	unsafe fn symbol(image: *mut c_void, name: &CStr) -> Result<*mut c_void, String> {
-		// SAFETY: image is a retained dlopen handle; the symbol name is nul-terminated.
-		let address = unsafe { libc::dlsym(image, name.as_ptr()) };
-		if address.is_null() {
-			Err("The native update framework has an incompatible interface.".into())
-		} else {
-			Ok(address)
-		}
-	}
+
 	impl Drop for Bridge {
 		fn drop(&mut self) {
 			// SAFETY: exactly one main-thread owner releases the retained Swift object.
 			unsafe { (self.destroy)(self.host) };
+		}
+	}
+
+	unsafe fn symbol(image: *mut c_void, name: &CStr) -> Result<*mut c_void, String> {
+		// SAFETY: image is a retained dlopen handle; the symbol name is nul-terminated.
+		let address = unsafe { libc::dlsym(image, name.as_ptr()) };
+
+		if address.is_null() {
+			Err("The native update framework has an incompatible interface.".into())
+		} else {
+			Ok(address)
 		}
 	}
 }
@@ -99,8 +109,10 @@ impl NativeUpdater {
 			if self.bridge.is_none() {
 				self.bridge = Some(platform::Bridge::load()?);
 			}
+
 			self.bridge.as_mut().ok_or("The native updater is unavailable.")?.check()
 		}
+
 		#[cfg(any(not(target_os = "macos"), test))]
 		{
 			Err("Application installation is available from Decodex.app on macOS.".into())

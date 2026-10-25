@@ -16,7 +16,7 @@ use crate::{
 			ui_theme::BLUE,
 		},
 	},
-	ui_loading,
+	ui_loading, ui_theme,
 };
 use decodex_protocol::{
 	AgentGuardianDetailResult, AgentGuardianReviewDto, AgentGuardianReviewsResult,
@@ -727,7 +727,7 @@ fn button(
 		.tab_index(0)
 		.aria_label(label.clone())
 		.cursor_pointer()
-		.text_color(crate::ui_theme::rgb(BLUE))
+		.text_color(ui_theme::rgb(BLUE))
 		.py_1()
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
 		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
@@ -751,13 +751,16 @@ mod tests {
 	use crate::shell::agent_surface::guardian::{
 		AgentDispatchStateDto, AgentSnapshotResult, AgentWorkStatusDto,
 	};
-	use crate::shell::agent_surface::{
-		guardian::{
-			AgentActionDto, AgentCommandResponse, AgentGuardianDetailResult,
-			AgentGuardianReviewsResult, AgentGuardianStatus, AgentGuardianSubmission,
-			AgentSnapshotDto, AgentSurface, AgentWorkItemDto, DetailReader, EntityId, Panel,
+	use crate::{
+		shell::agent_surface::{
+			guardian::{
+				AgentActionDto, AgentCommandResponse, AgentGuardianDetailResult,
+				AgentGuardianReviewsResult, AgentGuardianStatus, AgentGuardianSubmission,
+				AgentSnapshotDto, AgentSurface, AgentWorkItemDto, DetailReader, EntityId, Panel,
+			},
+			wire_test_support,
 		},
-		wire_test_support,
+		ui_frame,
 	};
 	use decodex_protocol::{
 		CURRENT_VERSION, ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope,
@@ -824,9 +827,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("guardian-approve-1").is_some());
 
@@ -850,9 +851,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("guardian-approve-1").is_none());
 	}
@@ -982,7 +981,8 @@ mod tests {
 		surface.update(visual, |s, _| seed(s));
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			crate::ui_frame::draw_frame(window, cx);
+
+			ui_frame::draw_frame(window, cx);
 		});
 
 		assert!(visual.debug_bounds("guardian-approve-1").is_none());
@@ -995,7 +995,7 @@ mod tests {
 			assert!(s.guardian.pending.is_empty());
 		});
 		visual.update(|window, cx| {
-			crate::ui_frame::draw_frame(window, cx);
+			ui_frame::draw_frame(window, cx);
 		});
 
 		let bounds = visual.debug_bounds("guardian-approve-1").expect("explicit approval");
@@ -1030,11 +1030,12 @@ mod tests {
 			s.approve_guardian("root", 1, "changed", cx);
 
 			assert!(s.guardian.feedback.is_empty());
+
 			cx.notify();
 		});
 
 		visual.update(|window, cx| {
-			crate::ui_frame::draw_frame(window, cx);
+			ui_frame::draw_frame(window, cx);
 		});
 
 		assert!(visual.debug_bounds("guardian-approve-1").is_none());

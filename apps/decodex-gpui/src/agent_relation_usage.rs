@@ -1,7 +1,33 @@
 //! A thin allocation line uses recorded per-agent counters, never per-turn estimates.
-use super::{super::super::workspace::restore_shell_focus, AgentSurface, Context, Row};
-use crate::{ui_motion::SmoothControl, ui_theme, ui_work_metrics::Sample};
-use gpui::{AnyElement, Role, SharedString, prelude::*};
+use std::{cell::Cell, mem, rc::Rc, time::Instant};
+
+use gpui::{
+	AnyElement, Bounds, FontWeight, KeyDownEvent, MouseDownEvent, Pixels, Role, SharedString,
+	prelude::{
+		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+		Styled,
+	},
+};
+
+use crate::{
+	shell::{
+		agent_surface::{
+			work_board::relations::{
+				AgentSurface, Context, Row,
+				allocation::{Mark, Strip},
+				card::SECONDARY_TEXT,
+			},
+			workspace,
+		},
+		workspace_symbols::{self, Symbol},
+	},
+	ui_motion::{self, SmoothControl},
+	ui_theme::{
+		self, CAPTION_LINE_HEIGHT, CAPTION_SIZE, CONTROL_SIZE, HOVER_FILL, TEXT,
+		foreground::{METRIC_SIZE, PRIMARY},
+	},
+	ui_work_metrics::{self, Sample},
+};
 
 #[derive(Clone, Copy, Default, Eq, PartialEq)]
 pub(super) enum Metric {
@@ -9,7 +35,6 @@ pub(super) enum Metric {
 	Tokens,
 	Time,
 }
-
 impl Metric {
 	fn label(self) -> &'static str {
 		match self {
@@ -31,7 +56,7 @@ impl Metric {
 			(Self::Tokens, Some(tokens)) =>
 				format!("{tokens} recorded tokens, including cached input"),
 			(Self::Time, Some(ms)) =>
-				format!("{} agent time", crate::ui_work_metrics::time_label(Some(ms))),
+				format!("{} agent time", ui_work_metrics::time_label(Some(ms))),
 		}
 	}
 }
@@ -58,22 +83,24 @@ impl AgentSurface {
 					.unwrap_or_default();
 				let slot =
 					self.snapshot.as_ref().and_then(|s| s.agent_slots.get(&row.key)).copied();
+
 				Entry { slot, value: self.work_board.view.usage_metric.value(sample), row }
 			})
 			.collect();
+
 		entries.sort_by(|a, b| {
 			b.value.cmp(&a.value).then_with(|| {
 				(a.slot.unwrap_or(u32::MAX), &a.row.key)
 					.cmp(&(b.slot.unwrap_or(u32::MAX), &b.row.key))
 			})
 		});
+
 		entries
 	}
 
 	pub(super) fn relation_usage_options(&self, cx: &mut Context<Self>) -> AnyElement {
 		let open = self.work_board.view.usage_menu;
-		let trigger_bounds =
-			std::rc::Rc::new(std::cell::Cell::new(None::<gpui::Bounds<gpui::Pixels>>));
+		let trigger_bounds = Rc::new(Cell::new(None::<Bounds<Pixels>>));
 		let measured = trigger_bounds.clone();
 		let mut anchor = gpui::div()
 			.relative()
@@ -84,17 +111,16 @@ impl AgentSurface {
 			)
 			.child(self.graph_control(
 				"usage",
-				crate::shell::workspace_symbols::icon_sized(
-					crate::shell::workspace_symbols::Symbol::AllWork,
-					14.,
-				),
+				workspace_symbols::icon_sized(Symbol::AllWork, 14.),
 				"Usage distribution",
 				|s, cx| {
 					s.work_board.view.usage_menu = !s.work_board.view.usage_menu;
+
 					cx.notify();
 				},
 				cx,
 			));
+
 		if open {
 			let menu = gpui::div()
 				.id("graph-usage-menu")
@@ -105,44 +131,39 @@ impl AgentSurface {
 				.p_1()
 				.flex()
 				.flex_col()
-				.on_mouse_down_out(cx.listener(
-					move |s, event: &gpui::MouseDownEvent, window, cx| {
-						if !trigger_bounds
-							.get()
-							.is_some_and(|bounds| bounds.contains(&event.position))
-						{
-							s.work_board.view.usage_menu = false;
-							restore_shell_focus(window, cx);
-							cx.notify();
-						}
-					},
-				))
+				.on_mouse_down_out(cx.listener(move |s, event: &MouseDownEvent, window, cx| {
+					if !trigger_bounds.get().is_some_and(|bounds| bounds.contains(&event.position))
+					{
+						s.work_board.view.usage_menu = false;
+
+						workspace::restore_shell_focus(window, cx);
+
+						cx.notify();
+					}
+				}))
 				.child(self.relation_usage_control(Metric::Tokens, cx))
 				.child(self.relation_usage_control(Metric::Time, cx))
 				.child(
-					gpui::div()
-						.mt_1()
-						.border_t_1()
-						.border_color(crate::ui_theme::rgba(0xffffff12))
-						.child(
-							self.workspace_action(
-								"graph-usage-visibility".into(),
-								if self.work_board.view.usage_hidden {
-									"Show distribution"
-								} else {
-									"Hide distribution"
-								}
-								.into(),
-								|s, cx| {
-									s.work_board.view.usage_hidden =
-										!s.work_board.view.usage_hidden;
-									s.work_board.view.usage_menu = false;
-									cx.notify();
-								},
-								cx,
-							),
+					gpui::div().mt_1().border_t_1().border_color(ui_theme::rgba(0xffffff12)).child(
+						self.workspace_action(
+							"graph-usage-visibility".into(),
+							if self.work_board.view.usage_hidden {
+								"Show distribution"
+							} else {
+								"Hide distribution"
+							}
+							.into(),
+							|s, cx| {
+								s.work_board.view.usage_hidden = !s.work_board.view.usage_hidden;
+								s.work_board.view.usage_menu = false;
+
+								cx.notify();
+							},
+							cx,
 						),
+					),
 				);
+
 			anchor = anchor.child(
 				gpui::deferred(
 					gpui::div()
@@ -150,11 +171,12 @@ impl AgentSurface {
 						.top(gpui::px(26.))
 						.right(gpui::px(-8.))
 						.w(gpui::px(168.))
-						.child(crate::ui_motion::popover("graph-usage-menu-motion", true, menu)),
+						.child(ui_motion::popover("graph-usage-menu-motion", true, menu)),
 				)
 				.priority(3),
 			);
 		}
+
 		anchor.into_any_element()
 	}
 
@@ -162,10 +184,12 @@ impl AgentSurface {
 		&mut self,
 		cx: &mut Context<Self>,
 	) -> bool {
-		if !std::mem::take(&mut self.work_board.view.usage_menu) {
+		if !mem::take(&mut self.work_board.view.usage_menu) {
 			return false;
 		}
+
 		cx.notify();
+
 		true
 	}
 
@@ -175,6 +199,7 @@ impl AgentSurface {
 			Metric::Tokens => "graph-usage-tokens",
 			Metric::Time => "graph-usage-time",
 		};
+
 		gpui::div()
 			.id(name)
 			.debug_selector(move || name.into())
@@ -184,28 +209,27 @@ impl AgentSurface {
 			.aria_label(format!("Compare agent {}", metric.label().to_lowercase()))
 			.tab_index(0)
 			.w_full()
-			.h(gpui::px(ui_theme::CONTROL_SIZE))
+			.h(gpui::px(CONTROL_SIZE))
 			.px_2()
 			.flex()
 			.items_center()
 			.rounded(gpui::px(5.))
-			.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-			.text_color(crate::ui_theme::rgb(if active {
-				ui_theme::TEXT
-			} else {
-				super::card::SECONDARY_TEXT
-			}))
-			.when(active, |button| button.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)))
+			.text_size(gpui::px(CAPTION_SIZE))
+			.text_color(ui_theme::rgb(if active { TEXT } else { SECONDARY_TEXT }))
+			.when(active, |button| button.bg(ui_theme::rgba(HOVER_FILL)))
 			.cursor_pointer()
-			.hover(|button| button.bg(crate::ui_theme::rgba(ui_theme::HOVER_FILL)))
+			.hover(|button| button.bg(ui_theme::rgba(HOVER_FILL)))
 			.on_click(cx.listener(move |s, _, window, cx| {
 				s.set_relation_usage_metric(metric, cx);
-				restore_shell_focus(window, cx);
+
+				workspace::restore_shell_focus(window, cx);
 			}))
-			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, window, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					s.set_relation_usage_metric(metric, cx);
-					restore_shell_focus(window, cx);
+
+					workspace::restore_shell_focus(window, cx);
+
 					cx.stop_propagation();
 				}
 			}))
@@ -218,15 +242,18 @@ impl AgentSurface {
 		self.work_board.view.usage_metric = metric;
 		self.work_board.view.usage_hidden = false;
 		self.work_board.view.usage_menu = false;
+
 		cx.stop_propagation();
 		cx.notify();
 	}
 
 	pub(super) fn relation_usage(&self, cx: &mut Context<Self>) -> AnyElement {
 		let entries = self.relation_usage_entries();
+
 		if entries.is_empty() {
 			return gpui::div().into_any_element();
 		}
+
 		let metric = self.work_board.view.usage_metric;
 		let total = entries.iter().filter_map(|entry| entry.value).map(u128::from).sum::<u128>();
 		let known = entries.iter().any(|entry| entry.value.is_some());
@@ -240,14 +267,16 @@ impl AgentSurface {
 			.map(|entry| {
 				let share = entry.value.unwrap_or(0) as f64 / total as f64;
 				let width = available * share as f32;
+
 				self.relation_usage_segment(entry, metric, share, width, cx)
 			})
 			.collect();
-		let allocation = super::allocation::Strip { segments, width, gap };
+		let allocation = Strip { segments, width, gap };
+
 		gpui::div()
 			.id("graph-usage-footer")
 			.debug_selector(|| "graph-usage-footer".into())
-			.font_weight(gpui::FontWeight::NORMAL)
+			.font_weight(FontWeight::NORMAL)
 			.role(Role::Group)
 			.aria_label(format!("Agent {} allocation", metric.label().to_lowercase()))
 			.w_full()
@@ -261,8 +290,8 @@ impl AgentSurface {
 			.when(total == 0, |footer| {
 				footer.child(
 					gpui::div()
-						.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-						.text_color(crate::ui_theme::rgb(super::card::SECONDARY_TEXT))
+						.text_size(gpui::px(CAPTION_SIZE))
+						.text_color(ui_theme::rgb(SECONDARY_TEXT))
 						.child(if known { "No recorded usage" } else { "Usage unavailable" }),
 				)
 			})
@@ -279,8 +308,8 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> super::allocation::Segment {
 		let selected = self.work_board.view.picked_agent.as_ref() == Some(&entry.row.key);
-		let hovered = self.work_board.view.hover.current(std::time::Instant::now())
-			== Some(entry.row.key.as_str());
+		let hovered =
+			self.work_board.view.hover.current(Instant::now()) == Some(entry.row.key.as_str());
 		let number = self.relation_agent_number(&entry.row);
 		let percent = if share < 0.01 { "<1%".into() } else { format!("{:.0}%", share * 100.) };
 		let description = format!(
@@ -310,16 +339,12 @@ impl AgentSurface {
 			.gap(gpui::px(4.))
 			.cursor_pointer()
 			.on_hover(cx.listener(move |s, inside: &bool, _, cx| {
-				if s.work_board.view.hover.allocation(
-					&hover_key,
-					*inside,
-					std::time::Instant::now(),
-				) {
+				if s.work_board.view.hover.allocation(&hover_key, *inside, Instant::now()) {
 					cx.notify();
 				}
 			}))
 			.on_click(cx.listener(move |s, _, _, cx| s.select_workbench_agent(&key, cx)))
-			.on_key_down(cx.listener(move |s, event: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					s.select_workbench_agent(&keyboard_key, cx);
 					cx.stop_propagation();
@@ -328,7 +353,7 @@ impl AgentSurface {
 			.child(
 				gpui::div()
 					.w_full()
-					.h(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
+					.h(gpui::px(CAPTION_LINE_HEIGHT))
 					.min_w_0()
 					.flex()
 					.items_baseline()
@@ -336,24 +361,21 @@ impl AgentSurface {
 					.pr(gpui::px(8.))
 					.overflow_hidden()
 					.whitespace_nowrap()
-					.text_size(gpui::px(ui_theme::foreground::METRIC_SIZE))
-					.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
-					.font_weight(gpui::FontWeight::MEDIUM)
-					.text_color(crate::ui_theme::rgb(if selected || hovered {
-						ui_theme::TEXT
+					.text_size(gpui::px(METRIC_SIZE))
+					.line_height(gpui::px(CAPTION_LINE_HEIGHT))
+					.font_weight(FontWeight::MEDIUM)
+					.text_color(ui_theme::rgb(if selected || hovered {
+						TEXT
 					} else {
-						super::card::SECONDARY_TEXT
+						SECONDARY_TEXT
 					}))
 					.when(width >= 22., |label| label.child(number))
 					.when(width >= 48., |label| {
-						label.child(
-							gpui::div()
-								.text_color(crate::ui_theme::rgb(ui_theme::foreground::PRIMARY))
-								.child(percent),
-						)
+						label.child(gpui::div().text_color(ui_theme::rgb(PRIMARY)).child(percent))
 					}),
 			)
-			.child(super::allocation::Mark { key: motion_key, selected, hovered });
+			.child(Mark { key: motion_key, selected, hovered });
+
 		super::allocation::Segment { share: share as f32, child }
 	}
 }

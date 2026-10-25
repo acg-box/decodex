@@ -1,5 +1,4 @@
 //! Explicit user-selected export of a bounded recovery record.
-use crate::ui_feedback::Feedback;
 use std::{
 	env,
 	fs::{File, OpenOptions},
@@ -8,7 +7,10 @@ use std::{
 	path::{Path, PathBuf},
 };
 
-use crate::shell::agent_surface::drafts::storage::{AgentSurface, Context};
+use crate::{
+	shell::agent_surface::drafts::storage::{AgentSurface, Context},
+	ui_feedback::Feedback,
+};
 use decodex_protocol::{DesktopDraftDocument, DesktopRecoveredDraft};
 
 impl AgentSurface {

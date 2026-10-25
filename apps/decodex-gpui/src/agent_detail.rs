@@ -24,23 +24,6 @@ use decodex_protocol::{
 	AgentTimelineContent,
 };
 
-pub(super) fn supports_activity_detail(kind: &str) -> bool {
-	matches!(
-		kind,
-		"commandExecution"
-			| "sleep"
-			| "fileChange"
-			| "mcpToolCall"
-			| "dynamicToolCall"
-			| "webSearch"
-			| "functionCallOutput"
-			| "imageView"
-			| "imageGeneration"
-			| "subAgentActivity"
-			| "collabAgentToolCall"
-	)
-}
-
 #[derive(Default)]
 pub(super) struct ActivityDetailState {
 	pub value: Option<(String, Option<AgentActivityDetailResult>)>,
@@ -226,6 +209,7 @@ impl AgentSurface {
 						|| "Open agent".to_owned(),
 						|agent| format!("Open {}", agent.title),
 					);
+
 				self.workspace_action(
 					format!("detail-agent-{thread}"),
 					label,
@@ -386,6 +370,23 @@ impl AgentSurface {
 
 		cx.notify();
 	}
+}
+
+pub(super) fn supports_activity_detail(kind: &str) -> bool {
+	matches!(
+		kind,
+		"commandExecution"
+			| "sleep"
+			| "fileChange"
+			| "mcpToolCall"
+			| "dynamicToolCall"
+			| "webSearch"
+			| "functionCallOutput"
+			| "imageView"
+			| "imageGeneration"
+			| "subAgentActivity"
+			| "collabAgentToolCall"
+	)
 }
 
 #[cfg(test)]
@@ -588,17 +589,22 @@ mod tests {
 		// Completed turns use the folded-history path, not the standalone tool row.
 		surface.update(visual, complete_tool_history);
 		visual.update(crate::ui_frame::draw_frame);
+
 		// The completion header becomes clickable after its entrance transition.
 		for _ in 0..32 {
 			if visual.debug_bounds("turn-process-finishing").is_none() {
 				break;
 			}
+
 			thread::sleep(std::time::Duration::from_millis(16));
+
 			visual.update(crate::ui_frame::draw_frame);
 		}
+
 		assert!(visual.debug_bounds("turn-process-finishing").is_none());
 
 		visual.update(crate::ui_frame::draw_frame);
+
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
 
 		visual.simulate_click(toggle.center(), Default::default());
@@ -606,6 +612,7 @@ mod tests {
 
 		for _ in 0..20 {
 			thread::sleep(std::time::Duration::from_millis(16));
+
 			visual.update(crate::ui_frame::draw_frame);
 		}
 
@@ -615,6 +622,7 @@ mod tests {
 			visual.debug_bounds("workspace-transcript"),
 			visual.debug_bounds("turn-process-block")
 		);
+
 		let arrow = visual.debug_bounds("tool-chevron-bounds").expect("expanded tool arrow");
 
 		assert!(
@@ -628,11 +636,14 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		visual.simulate_resize(gpui::size(gpui::px(900.), gpui::px(1_000.)));
 		surface.update(visual, prepare_tool_history);
+
 		for kind in ["subAgentActivity", "collabAgentToolCall", "unknownActivity"] {
 			surface.update(visual, |s, cx| {
 				s.clear_activity_detail();
+
 				let decodex_protocol::AgentTimelineContent::Item {
 					kind: item_kind,
 					activity: Some(activity),
@@ -642,6 +653,7 @@ mod tests {
 				else {
 					panic!("fixture")
 				};
+
 				*item_kind = kind.into();
 				activity.kind = kind.into();
 				activity.label = "Subagent completed a turn".into();
@@ -653,26 +665,37 @@ mod tests {
 					prompt: String::new(),
 					results: vec![],
 				});
+
 				cx.notify();
 			});
+
 			visual.update(crate::ui_frame::draw_frame);
+
 			thread::sleep(std::time::Duration::from_millis(240));
+
 			visual.update(crate::ui_frame::draw_frame);
+
 			if kind == "unknownActivity" {
 				assert!(visual.debug_bounds("tool-chevron-bounds").is_none());
+
 				continue;
 			}
+
 			let row = visual.debug_bounds("tool-detail-row").unwrap();
+
 			visual.simulate_click(row.center(), Default::default());
+
 			surface.update(visual, |s, cx| {
 				let key = s
 					.activity_detail_key(&("agent".into(), "turn".into(), "search".into()))
 					.unwrap();
+
 				assert_eq!(
 					s.activity_detail.value.as_ref().map(|(id, _)| id),
 					Some(&key),
 					"{kind}"
 				);
+
 				s.activity_detail.task = None;
 				s.activity_detail.value = Some((
 					key,
@@ -683,11 +706,16 @@ mod tests {
 						next: None,
 					}),
 				));
+
 				cx.notify();
 			});
+
 			visual.update(crate::ui_frame::draw_frame);
+
 			thread::sleep(std::time::Duration::from_millis(300));
+
 			visual.update(crate::ui_frame::draw_frame);
+
 			assert!(visual.debug_bounds("tool-detail-row").unwrap().size.height > row.size.height);
 		}
 	}

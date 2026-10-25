@@ -17,16 +17,20 @@ use gpui::{
 use time::OffsetDateTime;
 use tokio::runtime::Builder;
 
-use crate::shell::{
-	self, ControlTooltip, Destination, Shell, WB_TEXT_MUTED, WB_WARNING,
-	quota_meter::{self, ResetFill},
-	workspace_symbols::{self, Symbol},
+use crate::{
+	shell::{
+		self, ControlTooltip, Destination, Shell, WB_TEXT_MUTED, WB_WARNING,
+		quota_meter::{self, ResetFill},
+		workspace_symbols::{self, Symbol},
+	},
+	ui_feedback::{self, Feedback},
+	ui_theme,
 };
 #[cfg(any(test, feature = "visual-capture"))] use decodex_protocol::ResetCardObservationDto;
 use decodex_protocol::{
-	AccountDto, AccountResetCardOperationResult, ClientProfile, EntityId, EntityRevision,
-	IdempotencyKey, ResetCardClient, ResetCardConsumeResponse, ResetCardDescriptorDto,
-	ResetCardInventoryResult, ResetCardOperationResult, ResetCardOutcome,
+	AccountDto, AccountLifecycleReadinessDto, AccountResetCardOperationResult, ClientProfile,
+	EntityId, EntityRevision, IdempotencyKey, ResetCardClient, ResetCardConsumeResponse,
+	ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult, ResetCardOutcome,
 };
 
 const CONFIRMATION_WINDOW: Duration = Duration::from_secs(5);
@@ -399,7 +403,7 @@ impl Shell {
 						&& self.expanded_accounts.contains(&account.account_id)
 						&& !shell::account_needs_login(account)
 						&& account.lifecycle_readiness
-							!= decodex_protocol::AccountLifecycleReadinessDto::UnsupportedPlan))
+							!= AccountLifecycleReadinessDto::UnsupportedPlan))
 					&& row.is_none_or(|row| {
 						row.checked.is_none_or(|at| {
 							at.elapsed() >= Duration::from_secs(if row.blocked { 5 } else { 30 })
@@ -430,20 +434,19 @@ pub(super) fn row(
 	account: &AccountDto,
 	cx: &mut Context<Shell>,
 ) -> Option<AnyElement> {
-	if account.lifecycle_readiness
-		== decodex_protocol::AccountLifecycleReadinessDto::UnsupportedPlan
-	{
+	if account.lifecycle_readiness == AccountLifecycleReadinessDto::UnsupportedPlan {
 		return None;
 	}
+
 	let state = shell.reset_cards.rows.get(&account.account_id)?;
 	let notice = || {
-		crate::ui_feedback::inline_feedback(
+		ui_feedback::inline_feedback(
 			format!("reset-card-feedback-{}", account.account_id.as_str()),
 			"Reset cards",
 			&if state.blocked {
-				crate::ui_feedback::Feedback::warning(state.message.clone())
+				Feedback::warning(state.message.clone())
 			} else {
-				crate::ui_feedback::Feedback::default()
+				Feedback::default()
 			},
 		)
 	};
@@ -519,18 +522,14 @@ pub(super) fn row(
 		strip = strip.child(
 			shell::account_row_action("reset-card", index, "Use reset card", "", enabled)
 				.border_1()
-				.border_color(crate::ui_theme::rgba(0xffffff26))
+				.border_color(ui_theme::rgba(0xffffff26))
 				.id(SharedString::from(format!("reset-card-{}-{index}", account_id.as_str())))
 				.debug_selector({
 					let id = account_id.clone();
 
 					move || format!("reset-card-{}-{index}", id.as_str())
 				})
-				.text_color(crate::ui_theme::rgb(if armed.is_some() {
-					WB_WARNING
-				} else {
-					WB_TEXT_MUTED
-				}))
+				.text_color(ui_theme::rgb(if armed.is_some() { WB_WARNING } else { WB_TEXT_MUTED }))
 				.tooltip(move |_, cx| cx.new(|_| ControlTooltip(tip.clone())).into())
 				.child(title)
 				.on_click(cx.listener(move |shell, _, _, cx| {
@@ -814,9 +813,7 @@ mod render_tests {
 				cx.notify();
 			});
 
-			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 
 			let next_five = visual.debug_bounds("quota-reset-5h").unwrap();
 			let next_seven = visual.debug_bounds("quota-reset-7d").unwrap();
@@ -870,15 +867,11 @@ mod render_tests {
 			shell.read_with(visual, |s, _| {
 				assert_eq!(s.expanded_accounts.contains(&last), expanded)
 			});
-			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 
 			thread::sleep(Duration::from_millis(250));
 
-			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 		}
 
 		let handle = visual.debug_bounds("account-reorder-2").unwrap().center();
@@ -926,9 +919,7 @@ mod render_tests {
 
 		thread::sleep(Duration::from_millis(250));
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		for selector in [
 			"account-activity-70000000-0000-4000-8000-000000000001",
@@ -952,15 +943,11 @@ mod render_tests {
 			);
 		});
 		shell.update(visual, |s, cx| s.toggle_account_activity(first.clone(), cx));
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		thread::sleep(Duration::from_millis(250));
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("reset-card-70000000-0000-4000-8000-000000000001-0").is_none());
 		assert!(visual.debug_bounds("reset-card-70000000-0000-4000-8000-000000000002-0").is_some());
@@ -972,9 +959,7 @@ mod render_tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let blocked =
 			visual.debug_bounds("reset-card-70000000-0000-4000-8000-000000000002-0").unwrap();

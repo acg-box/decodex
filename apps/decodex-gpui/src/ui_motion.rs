@@ -1,27 +1,37 @@
 //! Interruptible motion shared by native controls and workspace panels.
-#[path = "ui_overflow_label.rs"] mod overflow_label;
-pub(crate) use overflow_label::OverflowLabel;
-#[path = "ui_text_reveal.rs"] mod text_reveal;
-pub(crate) use text_reveal::TextReveal;
 
-use std::time::{Duration, Instant};
+#[path = "ui_overflow_label.rs"] mod overflow_label;
+#[path = "ui_text_reveal.rs"] mod text_reveal;
 
 pub(crate) use crate::ui_frame::{
 	animations_active, application_active, observe_activation, request_frame, window_options,
 };
+pub(crate) use overflow_label::OverflowLabel;
+pub(crate) use text_reveal::TextReveal;
+
+use std::{
+	f32::consts::TAU,
+	time::{Duration, Instant},
+};
 
 use gpui::{
-	AnyElement, App, Div, Element, ElementId, IntoElement, MouseButton, RenderOnce, Stateful,
-	Window,
+	AnyElement, App, Div, Element, ElementId, FontWeight, IntoElement, MouseButton, RenderOnce,
+	Rgba, Role, SharedString, Stateful, TextRun, Window,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
-		StatefulInteractiveElement as _, Styled as _,
+		StatefulInteractiveElement as _, Styled,
 	},
 };
 #[cfg(all(target_os = "macos", not(test)))]
 use objc2::{
 	rc::Retained,
 	runtime::{AnyClass, AnyObject},
+};
+use unicode_segmentation::UnicodeSegmentation as _;
+
+use crate::ui_theme::{
+	self, CONVERSATION_TAB_GAP, CONVERSATION_TAB_SIZE, ColorScheme, ERROR, INFO, SUCCESS,
+	SURFACE_OVERLAY_MATERIAL, TEXT, WARNING,
 };
 
 pub(crate) trait SmoothControl {
@@ -42,21 +52,20 @@ impl RenderOnce for TabReveal {
 		let now = Instant::now();
 		let (height, moving) = state.update(cx, |s, _| {
 			s.target(
-				if self.visible {
-					crate::ui_theme::CONVERSATION_TAB_SIZE + crate::ui_theme::CONVERSATION_TAB_GAP
-				} else {
-					0.
-				},
+				if self.visible { CONVERSATION_TAB_SIZE + CONVERSATION_TAB_GAP } else { 0. },
 				now,
 			);
+
 			(s.sample(now), s.moving(now))
 		});
+
 		if moving {
 			request_frame(window, cx);
 		}
 		if !self.visible && !moving {
 			cx.defer(self.closed);
 		}
+
 		gpui::div().w_full().h(gpui::px(height)).flex_none().overflow_hidden().child(self.child)
 	}
 }
@@ -287,9 +296,11 @@ pub(crate) struct Popover {
 impl Popover {
 	pub(crate) fn unframed(mut self, unframed: bool) -> Self {
 		self.unframed = unframed;
+
 		self
 	}
 }
+
 impl RenderOnce for Popover {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(self.id, cx, |_, _| Tween::new(0.));
@@ -300,8 +311,10 @@ impl RenderOnce for Popover {
 			} else {
 				s.target(1., now);
 			}
+
 			(s.sample(now), s.moving(now))
 		});
+
 		if moving {
 			request_frame(window, cx);
 		}
@@ -321,35 +334,6 @@ impl RenderOnce for Popover {
 	}
 }
 
-/// Hover text must remain readable over arbitrary conversation content.
-pub(crate) fn tooltip_surface(surface: gpui::Div) -> gpui::Div {
-	surface
-		.rounded(gpui::px(8.))
-		.border_1()
-		.border_color(crate::ui_theme::rgba(0xffffff24))
-		.bg(crate::ui_theme::rgb(0x24242a))
-		.text_color(crate::ui_theme::rgb(crate::ui_theme::TEXT))
-		.text_size(gpui::px(11.))
-		.line_height(gpui::px(16.))
-		.max_w(gpui::px(360.))
-}
-
-/// Shared matte menu surface with a quiet outline and compact elevation.
-pub(crate) fn menu_surface<T: gpui::Styled>(surface: T) -> T {
-	surface
-		.rounded(gpui::px(10.))
-		.border_1()
-		.border_color(crate::ui_theme::rgba(0xffffff14))
-		.bg(crate::ui_theme::rgb(crate::ui_theme::SURFACE_OVERLAY_MATERIAL >> 8))
-		.shadow(vec![gpui::BoxShadow {
-			inset: false,
-			color: crate::ui_theme::rgba(0x00000028).into(),
-			offset: gpui::point(gpui::px(0.), gpui::px(3.)),
-			blur_radius: gpui::px(8.),
-			spread_radius: gpui::px(-2.),
-		}])
-}
-
 #[derive(Clone)]
 pub(crate) struct Tween {
 	from: f32,
@@ -360,6 +344,7 @@ pub(crate) struct Tween {
 impl Tween {
 	pub(crate) fn duration(mut self, duration: Duration) -> Self {
 		self.duration = duration;
+
 		self
 	}
 
@@ -376,6 +361,7 @@ impl Tween {
 		if self.from == self.to || now.duration_since(self.started) >= self.duration {
 			return self.to;
 		}
+
 		self.sample_with_motion(now, reduced())
 	}
 
@@ -398,6 +384,7 @@ impl Tween {
 			// A completed transition is static. Do not query AppKit again for
 			// every unrelated frame until the target actually changes.
 			self.from = value;
+
 			return;
 		}
 		if (self.from != self.to || self.to != value) && reduced() {
@@ -413,6 +400,111 @@ impl Tween {
 
 	pub(crate) fn moving(&self, now: Instant) -> bool {
 		self.from != self.to && now.duration_since(self.started) < self.duration && !reduced()
+	}
+}
+
+/// The title's first grapheme carries state without adding a badge or changing layout.
+#[derive(IntoElement)]
+pub(crate) struct AgentRailStatus {
+	pub id: String,
+	pub state: String,
+	pub label: String,
+}
+impl RenderOnce for AgentRailStatus {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let (color, busy) = match self.state.as_str() {
+			"Running" | "Starting" | "running" | "working" | "active" => (INFO, true),
+			"Needs you" | "Needs attention" | "Blocked" => (WARNING, false),
+			"failed" | "systemError" | "Failed" => (ERROR, false),
+			"Completed" | "completed" | "Resolved" => (SUCCESS, false),
+			_ => (TEXT, false),
+		};
+		let color = ColorScheme::current().hex(color);
+		let mut channels = [0.; 3];
+
+		for (index, channel) in channels.iter_mut().enumerate() {
+			*channel = value(
+				SharedString::from(format!("rail-color-{}-{index}", self.id)),
+				((color >> (16 - index * 8)) & 255) as f32 / 255.,
+				window,
+				cx,
+			);
+		}
+
+		// No completion percentage exists for a model turn. A quiet change in
+		// the letter's ink indicates activity without implying measured progress.
+		let clock = window.use_keyed_state(
+			SharedString::from(format!("rail-activity-{}", self.id)),
+			cx,
+			|_, _| Instant::now(),
+		);
+		let intensity = if busy && !reduced() {
+			request_frame(window, cx);
+
+			0.82 + 0.18 * (clock.read(cx).elapsed().as_secs_f32() * TAU / 2.4).cos()
+		} else {
+			1.
+		};
+		let ink = Rgba {
+			r: channels[0] * intensity,
+			g: channels[1] * intensity,
+			b: channels[2] * intensity,
+			a: 1.,
+		};
+		let label = self.label.replace(['\n', '\r'], " ");
+		let initial = label.graphemes(true).next().unwrap_or("·").to_owned();
+		let rest = label.get(initial.len()..).unwrap_or("").to_owned();
+		let mut font = window.text_style().font();
+
+		font.weight = FontWeight::SEMIBOLD;
+
+		let run = TextRun {
+			len: initial.len(),
+			font,
+			color: ink.into(),
+			background_color: None,
+			underline: None,
+			strikethrough: None,
+		};
+		let initial_width = f32::from(
+			window
+				.text_system()
+				.shape_line(initial.clone().into(), gpui::px(12.5), &[run], None)
+				.width,
+		);
+		let inset = ((CONVERSATION_TAB_SIZE - initial_width) * 0.5).max(0.);
+		let title_id = SharedString::from(format!("left-title-{}", self.id));
+
+		gpui::div()
+			.debug_selector(|| "conversation-name".into())
+			.min_w(gpui::px(CONVERSATION_TAB_SIZE))
+			.h_full()
+			.flex_1()
+			.relative()
+			.flex()
+			.items_center()
+			.pl(gpui::px(inset))
+			.pr(gpui::px(inset))
+			.text_size(gpui::px(12.5))
+			.child(
+				gpui::div()
+					.id(SharedString::from(format!("conversation-mark-{}", self.id)))
+					.debug_selector(move || format!("conversation-mark-{}", self.id))
+					.role(Role::Status)
+					.aria_label(self.state)
+					.w(gpui::px(initial_width))
+					.flex_none()
+					.font_weight(FontWeight::SEMIBOLD)
+					.text_color(ink)
+					.child(initial),
+			)
+			.child(
+				gpui::div()
+					.flex_1()
+					.min_w_0()
+					.overflow_hidden()
+					.child(OverflowLabel { id: title_id.into(), text: rest.into() }),
+			)
 	}
 }
 
@@ -448,11 +540,44 @@ impl SmoothControl for Stateful<Div> {
 	}
 }
 
+/// Hover text must remain readable over arbitrary conversation content.
+pub(crate) fn tooltip_surface(surface: Div) -> Div {
+	surface
+		.rounded(gpui::px(8.))
+		.border_1()
+		.border_color(ui_theme::rgba(0xffffff24))
+		.bg(ui_theme::rgb(0x24242a))
+		.text_color(ui_theme::rgb(TEXT))
+		.text_size(gpui::px(11.))
+		.line_height(gpui::px(16.))
+		.max_w(gpui::px(360.))
+}
+
+/// Shared matte menu surface with a quiet outline and compact elevation.
+pub(crate) fn menu_surface<T>(surface: T) -> T
+where
+	T: Styled,
+{
+	surface
+		.rounded(gpui::px(10.))
+		.border_1()
+		.border_color(ui_theme::rgba(0xffffff14))
+		.bg(ui_theme::rgb(SURFACE_OVERLAY_MATERIAL >> 8))
+		.shadow(vec![gpui::BoxShadow {
+			inset: false,
+			color: ui_theme::rgba(0x00000028).into(),
+			offset: gpui::point(gpui::px(0.), gpui::px(3.)),
+			blur_radius: gpui::px(8.),
+			spread_radius: gpui::px(-2.),
+		}])
+}
+
 /// Respect system accessibility preferences and the application rendering policy.
 pub(crate) fn reduced() -> bool {
 	if !animations_active() {
 		return true;
 	}
+
 	#[cfg(all(target_os = "macos", not(test)))]
 	{
 		// AppKit owns this process-wide preference; called from UI rendering.
@@ -608,122 +733,28 @@ mod tests {
 
 	#[test]
 	fn completed_targets_settle_and_retarget_without_a_position_jump() {
-		let mut tween = Tween::new(0.);
 		let start = Instant::now();
+		let mut tween = Tween::new(0.);
+
 		tween.target(1., start);
+
 		let end = start + Duration::from_millis(220);
+
 		tween.target(1., end);
+
 		assert_eq!(tween.from, tween.to);
 		assert!(!tween.moving(end));
+
 		tween.target(0., end);
+
 		assert_eq!(tween.sample(end), 1.);
+
 		let middle = end + Duration::from_millis(60);
 		let position = tween.sample(middle);
+
 		tween.target(1., middle);
+
 		assert_eq!(tween.sample(middle), position);
 		assert!(tween.moving(middle));
-	}
-}
-
-/// The title's first grapheme carries state without adding a badge or changing layout.
-#[derive(IntoElement)]
-pub(crate) struct AgentRailStatus {
-	pub id: String,
-	pub state: String,
-	pub label: String,
-}
-impl RenderOnce for AgentRailStatus {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let (color, busy) = match self.state.as_str() {
-			"Running" | "Starting" | "running" | "working" | "active" =>
-				(crate::ui_theme::INFO, true),
-			"Needs you" | "Needs attention" | "Blocked" => (crate::ui_theme::WARNING, false),
-			"failed" | "systemError" | "Failed" => (crate::ui_theme::ERROR, false),
-			"Completed" | "completed" | "Resolved" => (crate::ui_theme::SUCCESS, false),
-			_ => (crate::ui_theme::TEXT, false),
-		};
-		let color = crate::ui_theme::ColorScheme::current().hex(color);
-		let mut channels = [0.; 3];
-		for (index, channel) in channels.iter_mut().enumerate() {
-			*channel = value(
-				gpui::SharedString::from(format!("rail-color-{}-{index}", self.id)),
-				((color >> (16 - index * 8)) & 255) as f32 / 255.,
-				window,
-				cx,
-			);
-		}
-		// No completion percentage exists for a model turn. A quiet change in
-		// the letter's ink indicates activity without implying measured progress.
-		let clock = window.use_keyed_state(
-			gpui::SharedString::from(format!("rail-activity-{}", self.id)),
-			cx,
-			|_, _| Instant::now(),
-		);
-		let intensity = if busy && !reduced() {
-			request_frame(window, cx);
-			0.82 + 0.18
-				* (clock.read(cx).elapsed().as_secs_f32() * std::f32::consts::TAU / 2.4).cos()
-		} else {
-			1.
-		};
-		let ink = gpui::Rgba {
-			r: channels[0] * intensity,
-			g: channels[1] * intensity,
-			b: channels[2] * intensity,
-			a: 1.,
-		};
-
-		use unicode_segmentation::UnicodeSegmentation as _;
-		let label = self.label.replace(['\n', '\r'], " ");
-		let initial = label.graphemes(true).next().unwrap_or("·").to_owned();
-		let rest = label.get(initial.len()..).unwrap_or("").to_owned();
-		let mut font = window.text_style().font();
-		font.weight = gpui::FontWeight::SEMIBOLD;
-		let run = gpui::TextRun {
-			len: initial.len(),
-			font,
-			color: ink.into(),
-			background_color: None,
-			underline: None,
-			strikethrough: None,
-		};
-		let initial_width = f32::from(
-			window
-				.text_system()
-				.shape_line(initial.clone().into(), gpui::px(12.5), &[run], None)
-				.width,
-		);
-		let inset = ((crate::ui_theme::CONVERSATION_TAB_SIZE - initial_width) * 0.5).max(0.);
-		let title_id = gpui::SharedString::from(format!("left-title-{}", self.id));
-		gpui::div()
-			.debug_selector(|| "conversation-name".into())
-			.min_w(gpui::px(crate::ui_theme::CONVERSATION_TAB_SIZE))
-			.h_full()
-			.flex_1()
-			.relative()
-			.flex()
-			.items_center()
-			.pl(gpui::px(inset))
-			.pr(gpui::px(inset))
-			.text_size(gpui::px(12.5))
-			.child(
-				gpui::div()
-					.id(gpui::SharedString::from(format!("conversation-mark-{}", self.id)))
-					.debug_selector(move || format!("conversation-mark-{}", self.id))
-					.role(gpui::Role::Status)
-					.aria_label(self.state)
-					.w(gpui::px(initial_width))
-					.flex_none()
-					.font_weight(gpui::FontWeight::SEMIBOLD)
-					.text_color(ink)
-					.child(initial),
-			)
-			.child(
-				gpui::div()
-					.flex_1()
-					.min_w_0()
-					.overflow_hidden()
-					.child(OverflowLabel { id: title_id.into(), text: rest.into() }),
-			)
 	}
 }

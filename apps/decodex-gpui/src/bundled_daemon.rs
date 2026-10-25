@@ -378,17 +378,19 @@ impl BundledDaemonSupervisor {
 	/// Return whether this supervisor retains authority for a later bounded attempt.
 	pub(crate) fn recover_transport(&self) -> bool {
 		let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
+
 		#[cfg(target_os = "macos")]
 		if state.preparing_runtime {
 			if !required_runtime_is_installed() {
 				return true;
 			}
+
 			state.preparing_runtime = false;
 			state.guard =
 				BundledDaemonGuard::launch_macos(&self.daemon, self.environment.as_ref()).ok();
+
 			return true;
 		}
-
 		if state.restarts >= MAX_RECOVERY_RESTARTS {
 			return false;
 		}
@@ -573,13 +575,6 @@ struct SupervisorState {
 	preparing_runtime: bool,
 }
 
-#[cfg(target_os = "macos")]
-fn required_runtime_is_installed() -> bool {
-	decodex_components::RuntimeLock::embedded()
-		.and_then(|lock| decodex_components::ComponentStore::for_user()?.installed(&lock))
-		.is_ok_and(|runtime| runtime.is_some())
-}
-
 struct BundledDaemonOwner {
 	supervisor: Arc<BundledDaemonSupervisor>,
 	_quit: Option<Subscription>,
@@ -612,6 +607,13 @@ pub(crate) fn retain(supervisor: Arc<BundledDaemonSupervisor>, cx: &mut App) {
 	let owner = cx.new(|cx| BundledDaemonOwner::new(supervisor, cx));
 
 	cx.set_global(BundledDaemonGlobal { _owner: owner });
+}
+
+#[cfg(target_os = "macos")]
+fn required_runtime_is_installed() -> bool {
+	decodex_components::RuntimeLock::embedded()
+		.and_then(|lock| decodex_components::ComponentStore::for_user()?.installed(&lock))
+		.is_ok_and(|runtime| runtime.is_some())
 }
 
 #[cfg(target_os = "macos")]

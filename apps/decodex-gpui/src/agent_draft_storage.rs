@@ -1,5 +1,4 @@
 //! Local cold recovery and background publication of unsent desktop inputs.
-use crate::ui_feedback::Feedback;
 #[path = "agent_ordinary_storage.rs"] mod ordinary;
 #[path = "agent_draft_recovery.rs"] mod recovery;
 
@@ -15,9 +14,12 @@ use crate::shell::agent_surface::drafts::{
 	ConversationWorkingDirectory, Entity, IdempotencyKey, IntoElement, LoadState, Render, Window,
 	px,
 };
-use crate::shell::agent_surface::drafts::{
-	AgentSurface, BTreeMap, ClientProfile, Context, Drafts, EntityId, PendingCommand, Task,
-	WireText, execution_intent::Intents,
+use crate::{
+	shell::agent_surface::drafts::{
+		AgentSurface, BTreeMap, ClientProfile, Context, Drafts, EntityId, PendingCommand, Task,
+		WireText, execution_intent::Intents,
+	},
+	ui_feedback::Feedback,
 };
 use decodex_protocol::{
 	AgentSteerIdentity, ClientDraftStore, DesktopComposerDraft, DesktopDraftDocument,
@@ -176,7 +178,6 @@ impl AgentSurface {
 
 		if accepted {
 			profile.prompt_edits.remove(key);
-
 			next.encode()?;
 
 			self.draft_profiles.storage.document = next;
@@ -919,28 +920,6 @@ mod prompt_handback_tests;
 mod prompt_send_tests;
 #[cfg(test)]
 mod tests {
-	#[gpui::test]
-	fn new_conversation_draft_restores_without_creating_work(cx: &mut gpui::TestAppContext) {
-		let surface = cx.new(AgentSurface::new);
-		surface.update(cx, |s, cx| {
-			s.visual_workspace_fixture(cx);
-			s.new_work_conversation(cx);
-			s.workspace.new_conversation_workspace = Some("folder".into());
-			s.composer.update(cx, |input, cx| input.set_content("Unsent idea", cx));
-			let saved = s.capture_draft_document(cx).unwrap();
-			let restored = Drafts::from_document(saved, s.command_epoch);
-			s.workspace.new_conversation = None;
-			s.workspace.new_conversation_workspace = None;
-			s.selected = s.root_id();
-			s.apply_drafts(restored, cx);
-			assert!(s.is_new_conversation());
-			assert_eq!(s.workspace.new_conversation_workspace.as_deref(), Some("folder"));
-			assert_eq!(s.composer.read(cx).content(), "Unsent idea");
-			assert!(s.conversation_work().is_none());
-			assert!(s.submission.waiting.is_none());
-		});
-	}
-
 	use std::os::unix::fs::OpenOptionsExt as _;
 
 	#[cfg(test)] use gpui::AppContext as _;
@@ -957,6 +936,35 @@ mod tests {
 		},
 		tests,
 	};
+
+	#[gpui::test]
+	fn new_conversation_draft_restores_without_creating_work(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.new_work_conversation(cx);
+
+			s.workspace.new_conversation_workspace = Some("folder".into());
+
+			s.composer.update(cx, |input, cx| input.set_content("Unsent idea", cx));
+
+			let saved = s.capture_draft_document(cx).unwrap();
+			let restored = Drafts::from_document(saved, s.command_epoch);
+
+			s.workspace.new_conversation = None;
+			s.workspace.new_conversation_workspace = None;
+			s.selected = s.root_id();
+
+			s.apply_drafts(restored, cx);
+
+			assert!(s.is_new_conversation());
+			assert_eq!(s.workspace.new_conversation_workspace.as_deref(), Some("folder"));
+			assert_eq!(s.composer.read(cx).content(), "Unsent idea");
+			assert!(s.conversation_work().is_none());
+			assert!(s.submission.waiting.is_none());
+		});
+	}
 
 	#[test]
 	fn unconfirmed_publication_requires_a_successful_save_before_acknowledgement() {
@@ -1086,7 +1094,6 @@ mod tests {
 		assert!(!saved.prompt_edits.contains_key(pending.review_token.as_str()));
 		assert!(saved.prompt_edits.contains_key(&"b".repeat(64)));
 		assert_eq!(saved.composer.text, "Unrelated main input");
-
 		assert!(document.recovered.is_empty(), "accepted edits are not a draft archive");
 	}
 

@@ -6,12 +6,6 @@
 #[path = "agent_math.rs"] mod math;
 #[path = "agent_mermaid.rs"] mod mermaid;
 #[path = "agent_mermaid_view.rs"] mod mermaid_view;
-#[cfg(test)]
-#[path = "agent_markdown_selection_tests.rs"]
-mod selection_tests;
-#[cfg(test)]
-#[path = "agent_markdown_task_lists_tests.rs"]
-mod task_lists_tests;
 
 use std::{
 	cell::{OnceCell, RefCell},
@@ -29,14 +23,15 @@ use gpui::{
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag};
 use ui_theme::{
 	BLUE, TEXT_MUTED,
-	foreground::{READING_LINE_HEIGHT as BODY_LINE_HEIGHT, READING_SIZE as BODY_SIZE},
+	foreground::{PRIMARY, READING_LINE_HEIGHT, READING_SIZE},
 };
 
 #[cfg(test)] use crate::shell::agent_surface::{ClipboardItem, Context};
 use crate::{
 	shell::agent_surface::{
 		FluentBuilder, FontWeight, InteractiveElement, IntoElement, ParentElement, Role,
-		SharedString, StatefulInteractiveElement, Styled, Window, selectable_text, ui_theme,
+		SharedString, StatefulInteractiveElement, Styled, Window, selectable_text,
+		selectable_text::SelectableText, ui_theme,
 	},
 	ui_motion::{self, SmoothControl as _},
 	ui_theme::HOVER_FILL,
@@ -69,12 +64,6 @@ struct Node {
 	content: NodeContent,
 	source: Option<Range<usize>>,
 }
-#[derive(Clone, Debug)]
-enum NodeContent {
-	Text(String),
-	Block(Kind, Vec<Node>),
-	Rule,
-}
 impl Node {
 	fn text(text: String) -> Self {
 		Self { content: NodeContent::Text(text), source: None }
@@ -86,10 +75,17 @@ impl Node {
 
 	fn located(mut self, source: Range<usize>) -> Self {
 		self.source = Some(source);
+
 		self
 	}
 }
 
+#[derive(Clone, Debug)]
+enum NodeContent {
+	Text(String),
+	Block(Kind, Vec<Node>),
+	Rule,
+}
 #[derive(Default)]
 struct Inline {
 	text: String,
@@ -262,7 +258,6 @@ pub(super) fn response_text(text: &str) -> String {
 pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
 	let document = cache::document(text);
 	let mut selection = selectable_text::Document::markdown(document.source.clone());
-
 	let content = gpui::div()
 		.w_full()
 		.min_w_0()
@@ -293,7 +288,9 @@ pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
 
 							let start = selection.checkpoint();
 							let element = selectable(out, &key, &mut selection);
+
 							selection.mark(start, node.source.clone());
+
 							element
 						})
 						.into_any_element()
@@ -302,21 +299,21 @@ pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
 				}
 			},
 		));
+
 	selection.finish(key, content).into_any_element()
 }
 
 pub(super) fn render(text: &str, key: &str) -> AnyElement {
 	let document = cache::document(text);
 	let mut selection = selectable_text::Document::markdown(document.source.clone());
-
 	let content = gpui::div()
 		.flex()
 		.flex_col()
 		.gap_2()
-		.text_size(gpui::px(BODY_SIZE))
+		.text_size(gpui::px(READING_SIZE))
 		.font_weight(FontWeight::NORMAL)
-		.line_height(gpui::px(BODY_LINE_HEIGHT))
-		.text_color(crate::ui_theme::rgb(ui_theme::foreground::PRIMARY))
+		.line_height(gpui::px(READING_LINE_HEIGHT))
+		.text_color(crate::ui_theme::rgb(PRIMARY))
 		.children(
 			document
 				.nodes
@@ -325,6 +322,7 @@ pub(super) fn render(text: &str, key: &str) -> AnyElement {
 				.enumerate()
 				.map(|(i, node)| render_node(node, &format!("{key}-{i}"), &mut selection)),
 		);
+
 	selection.finish(key, content).into_any_element()
 }
 
@@ -362,10 +360,10 @@ fn parse(text: &str) -> Vec<Node> {
 	let options =
 		Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
 	let math = MathMarkdown::new(text, options, None);
+	let events = math.events(Parser::new_ext(&math.markdown, options).into_offset_iter());
 	let mut stack = vec![(Kind::Group, Vec::new(), 0..text.len())];
 	let mut flattened = 0;
 
-	let events = math.events(Parser::new_ext(&math.markdown, options).into_offset_iter());
 	for (event, range) in events {
 		match event {
 			Event::Start(tag) =>
@@ -453,6 +451,7 @@ fn parse(text: &str) -> Vec<Node> {
 fn append_inline(nodes: &[Node], style: HighlightStyle, link: Option<&str>, out: &mut Inline) {
 	for node in nodes {
 		let start = out.text.len();
+
 		match &node.content {
 			NodeContent::Text(text) => {
 				let start = out.text.len();
@@ -488,6 +487,7 @@ fn append_inline(nodes: &[Node], style: HighlightStyle, link: Option<&str>, out:
 			},
 			NodeContent::Rule => {},
 		}
+
 		if let Some(source) = &node.source {
 			out.sources.push((start..out.text.len(), source.clone()));
 		}
@@ -505,7 +505,7 @@ fn inline(nodes: &[Node], key: &str, selection: &mut selectable_text::Document) 
 fn selectable(out: Inline, key: &str, selection: &mut selectable_text::Document) -> AnyElement {
 	selection
 		.push_mapped(
-			super::selectable_text::SelectableText {
+			SelectableText {
 				key: key.into(),
 				text: out.text,
 				highlights: out.highlights,
@@ -550,7 +550,9 @@ fn render_math_paragraph(
 fn render_node(node: &Node, key: &str, selection: &mut selectable_text::Document) -> AnyElement {
 	let start = selection.checkpoint();
 	let result = render_node_content(node, key, selection);
+
 	selection.mark(start, node.source.clone());
+
 	result
 }
 
@@ -577,6 +579,7 @@ fn render_node_content(
 		}) {
 		return render_math_paragraph(children, key, selection);
 	}
+
 	if let Kind::Mermaid { geometry, .. } = kind {
 		return mermaid_view::render(children, key, geometry.clone(), selection);
 	}
@@ -606,8 +609,9 @@ fn render_node_content(
 				let size = match kind {
 					Kind::Heading(1) => 14.,
 					Kind::Heading(2) => 13.,
-					_ => BODY_SIZE,
+					_ => READING_SIZE,
 				};
+
 				d.font_weight(FontWeight::MEDIUM).mt_2().text_size(gpui::px(size))
 			})
 			.child(inline(children, key, selection))
@@ -628,6 +632,7 @@ fn render_node_content(
 				if i > 0 {
 					selection.separate("\t");
 				}
+
 				render_node(n, &format!("{key}-{i}"), selection)
 			}))
 			.into_any_element(),
@@ -653,6 +658,7 @@ fn render_node_content(
 				if matches!(kind, Kind::Table) && i > 0 {
 					selection.separate("\n");
 				}
+
 				render_node(n, &format!("{key}-{i}"), selection)
 			}))
 			.into_any_element(),
@@ -669,8 +675,10 @@ fn render_list(
 	// when the list crosses a digit boundary; bullets need no number gutter.
 	let marker_width = start.map_or(8., |start| {
 		let last = start + children.len().saturating_sub(1) as u64;
-		last.to_string().len() as f32 * BODY_SIZE * 0.65 + 4.
+
+		last.to_string().len() as f32 * READING_SIZE * 0.65 + 4.
 	});
+
 	gpui::div()
 		.w_full()
 		.min_w_0()
@@ -681,6 +689,7 @@ fn render_list(
 			if index > 0 {
 				selection.separate("\n");
 			}
+
 			gpui::div()
 				.w_full()
 				.flex()
@@ -689,6 +698,7 @@ fn render_list(
 					gpui::div()
 						.debug_selector({
 							let key = format!("markdown-list-marker-{key}-{index}");
+
 							move || key.clone()
 						})
 						.w(gpui::px(marker_width))
@@ -704,6 +714,7 @@ fn render_list(
 					gpui::div()
 						.debug_selector({
 							let key = format!("markdown-list-content-{key}-{index}");
+
 							move || key.clone()
 						})
 						.flex_1()
@@ -1067,3 +1078,9 @@ mod tests {
 #[cfg(test)]
 #[path = "agent_math_tests.rs"]
 mod math_tests;
+#[cfg(test)]
+#[path = "agent_markdown_selection_tests.rs"]
+mod selection_tests;
+#[cfg(test)]
+#[path = "agent_markdown_task_lists_tests.rs"]
+mod task_lists_tests;

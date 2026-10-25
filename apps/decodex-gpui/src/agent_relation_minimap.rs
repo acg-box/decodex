@@ -1,15 +1,29 @@
 //! A bounded overview of the real graph. Navigation never opens or sends to a chat.
-use super::{
-	AgentSurface, AnyElement, BTreeMap, BTreeSet, Context, Graph, InteractiveElement as _,
-	IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, Node, ParentElement as _,
-	PathBuilder, Role, SharedString, SmoothControl as _, StatefulInteractiveElement as _,
-	Styled as _, TEXT, card, layout,
+use std::time::Instant;
+
+use gpui::{Div, KeyDownEvent, Pixels, Point, Stateful};
+
+use crate::{
+	shell::agent_surface::work_board::relations::{
+		AgentSurface, AnyElement, BTreeMap, BTreeSet, Context, Graph, InteractiveElement as _,
+		IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, Node, ParentElement as _,
+		PathBuilder, Role, SharedString, SmoothControl as _, StatefulInteractiveElement as _,
+		Styled as _, TEXT, card,
+		layout::{Mode, Presentation},
+	},
+	ui_theme::{self, BLUE},
 };
 
 const WIDTH: f32 = 184.;
 const HEIGHT: f32 = 132.;
 const INSET: f32 = 12.;
 const MIN_AGENTS: usize = 24;
+
+pub(super) struct Drag {
+	start: Point<Pixels>,
+	offset: (f32, f32),
+	projection: Projection,
+}
 
 #[derive(Clone, Copy)]
 struct Projection {
@@ -20,6 +34,7 @@ struct Projection {
 impl Projection {
 	fn new(bounds: [f32; 4], agents: usize, zoom: f32, viewport: (f32, f32)) -> Option<Self> {
 		let (width, height) = (bounds[2] - bounds[0], bounds[3] - bounds[1]);
+
 		if agents < MIN_AGENTS
 			|| viewport.0 <= 0.
 			|| viewport.1 <= 0.
@@ -27,7 +42,9 @@ impl Projection {
 		{
 			return None;
 		}
+
 		let scale = ((WIDTH - 28.) / width.max(1.)).min((HEIGHT - 28.) / height.max(1.));
+
 		Some(Self {
 			bounds,
 			scale,
@@ -50,19 +67,6 @@ impl Projection {
 	}
 }
 
-pub(super) struct Drag {
-	start: gpui::Point<gpui::Pixels>,
-	offset: (f32, f32),
-	projection: Projection,
-}
-
-fn overlaps(a: &card::Rect, b: &card::Rect) -> bool {
-	a.x < b.x + b.width + 2.
-		&& b.x < a.x + a.width + 2.
-		&& a.y < b.y + b.height + 2.
-		&& b.y < a.y + a.height + 2.
-}
-
 impl AgentSurface {
 	pub(super) fn relation_minimap(
 		&self,
@@ -70,14 +74,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Option<AnyElement> {
 		let agents: Vec<_> = graph.nodes.iter().filter(|node| node.row.is_some()).collect();
-		let mut bounds = [f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
-		for node in &agents {
-			let (x, y) = node.navigation;
-			bounds[0] = bounds[0].min(x);
-			bounds[1] = bounds[1].min(y);
-			bounds[2] = bounds[2].max(x + node.width());
-			bounds[3] = bounds[3].max(y + node.layout_height);
-		}
+		let bounds = Self::minimap_bounds(&agents);
 		let zoom = self.relation_scale();
 		let view = &self.work_board.view;
 		let projection = Projection::new(bounds, agents.len(), zoom, view.viewport)?;
@@ -96,9 +93,7 @@ impl AgentSurface {
 		let links: Vec<_> = graph
 			.edges
 			.iter()
-			.filter(|edge| {
-				edge.kind.hierarchy() && view.presentation == layout::Presentation::Links
-			})
+			.filter(|edge| edge.kind.hierarchy() && view.presentation == Presentation::Links)
 			.filter_map(|edge| Some((*points.get(&edge.from)?, *points.get(&edge.to)?)))
 			.collect();
 		let (left, top) = projection.point((-view.pan.0 / zoom, -view.pan.1 / zoom));
@@ -113,8 +108,8 @@ impl AgentSurface {
 			.h(gpui::px(HEIGHT))
 			.rounded(gpui::px(7.))
 			.border_1()
-			.border_color(crate::ui_theme::rgba(0xffffff24))
-			.bg(crate::ui_theme::rgb(0x464646))
+			.border_color(ui_theme::rgba(0xffffff24))
+			.bg(ui_theme::rgb(0x464646))
 			.overflow_hidden()
 			.occlude()
 			.on_scroll(|_, _, cx| cx.stop_propagation())
@@ -133,9 +128,11 @@ impl AgentSurface {
 					);
 					let inside = (point.0 - center.0).abs() < view.viewport.0 / zoom / 2.
 						&& (point.1 - center.1).abs() < view.viewport.1 / zoom / 2.;
+
 					if !inside {
 						s.navigate_relation_center(point, cx);
 					}
+
 					s.work_board.view.map_drag = Some(Drag {
 						start: e.position,
 						offset: if inside {
@@ -145,6 +142,7 @@ impl AgentSurface {
 						},
 						projection,
 					});
+
 					cx.stop_propagation();
 				}),
 			)
@@ -156,6 +154,7 @@ impl AgentSurface {
 				MouseButton::Left,
 				cx.listener(|s, _, _, cx| {
 					s.work_board.view.map_drag = None;
+
 					cx.stop_propagation();
 				}),
 			)
@@ -169,11 +168,13 @@ impl AgentSurface {
 					.h(gpui::px(view.viewport.1 / zoom * projection.scale))
 					.rounded(gpui::px(3.))
 					.border_1()
-					.border_color(crate::ui_theme::rgba(0xb0c6f3b0))
-					.bg(crate::ui_theme::rgba(0x8baaf70a)),
+					.border_color(ui_theme::rgba(0xb0c6f3b0))
+					.bg(ui_theme::rgba(0x8baaf70a)),
 			);
+
 		for node in &agents {
 			let point = points[&node.key];
+
 			map = map.child(
 				gpui::div()
 					.absolute()
@@ -181,15 +182,31 @@ impl AgentSurface {
 					.top(gpui::px(point.1 - 1.75))
 					.size(gpui::px(3.5))
 					.rounded_full()
-					.bg(crate::ui_theme::rgb(node.color)),
+					.bg(ui_theme::rgb(node.color)),
 			);
 		}
+
 		Some(self.relation_map_labels(map, graph, &points, cx))
+	}
+
+	fn minimap_bounds(agents: &[&Node]) -> [f32; 4] {
+		let mut bounds = [f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
+
+		for node in agents {
+			let (x, y) = node.navigation;
+
+			bounds[0] = bounds[0].min(x);
+			bounds[1] = bounds[1].min(y);
+			bounds[2] = bounds[2].max(x + node.width());
+			bounds[3] = bounds[3].max(y + node.layout_height);
+		}
+
+		bounds
 	}
 
 	fn relation_map_labels(
 		&self,
-		mut map: gpui::Stateful<gpui::Div>,
+		mut map: Stateful<Div>,
 		graph: &Graph,
 		points: &BTreeMap<String, (f32, f32)>,
 		cx: &mut Context<Self>,
@@ -221,6 +238,7 @@ impl AgentSurface {
 			.map(|edge| edge.to.as_str())
 			.collect();
 		let mut labels = Vec::new();
+
 		for node in graph.nodes.iter().filter(|node| node.row.is_some()).filter(|node| {
 			roots.contains(node.key.as_str())
 				|| (first_layer.contains(node.key.as_str()) && parents.contains(node.key.as_str()))
@@ -232,12 +250,12 @@ impl AgentSurface {
 			let root = roots.contains(node.key.as_str());
 			let width = (label.len() as f32 * 6. + 8.).max(24.);
 			let mut bounds = card::Rect {
-				x: if root && view.layout_mode != layout::Mode::Tree {
+				x: if root && view.layout_mode != Mode::Tree {
 					point.0 - width - 12.
 				} else {
 					point.0 - width / 2.
 				},
-				y: if root && view.layout_mode == layout::Mode::Tree {
+				y: if root && view.layout_mode == Mode::Tree {
 					point.1 - 25.
 				} else if root {
 					point.1 - 8.
@@ -247,14 +265,19 @@ impl AgentSurface {
 				width,
 				height: 16.,
 			};
+
 			bounds.x = bounds.x.clamp(4., WIDTH - bounds.width - 4.);
 			bounds.y = bounds.y.clamp(4., HEIGHT - bounds.height - 4.);
+
 			if labels.iter().any(|other| overlaps(&bounds, other)) {
 				continue;
 			}
+
 			labels.push(bounds);
+
 			map = map.child(self.relation_map_label(node, bounds, label, cx));
 		}
+
 		map.into_any_element()
 	}
 
@@ -282,22 +305,22 @@ impl AgentSurface {
 			.justify_center()
 			.font_family("Menlo")
 			.text_size(gpui::px(9.))
-			.text_color(crate::ui_theme::rgb(
+			.text_color(ui_theme::rgb(
 				if self.work_board.view.picked_agent.as_ref() == Some(&node.key) {
-					crate::ui_theme::BLUE
+					BLUE
 				} else {
 					TEXT
 				},
 			))
 			.rounded(gpui::px(3.))
 			.cursor_pointer()
-			.hover(|d| d.bg(crate::ui_theme::rgba(0xffffff12)))
+			.hover(|d| d.bg(ui_theme::rgba(0xffffff12)))
 			.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.navigate_relation_agent(&key, cx);
 				cx.stop_propagation();
 			}))
-			.on_key_down(cx.listener(move |s, e: &gpui::KeyDownEvent, _, cx| {
+			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 				if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 					s.navigate_relation_agent(&keyboard, cx);
 					cx.stop_propagation();
@@ -305,6 +328,7 @@ impl AgentSurface {
 			}))
 			.child(label)
 			.smooth();
+
 		// Feedback uses relative positioning. Keep the map coordinates on its
 		// outer footprint so labels cannot enter flow or cover another shortcut.
 		gpui::div()
@@ -319,30 +343,43 @@ impl AgentSurface {
 	pub(super) fn move_relation_minimap(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
 		if event.pressed_button != Some(MouseButton::Left) {
 			self.work_board.view.map_drag = None;
+
 			return;
 		}
+
 		let zoom = self.relation_scale();
 		let view = &mut self.work_board.view;
 		let Some(drag) = &view.map_drag else {
 			return;
 		};
 		let delta = event.position - drag.start;
+
 		if f32::from(delta.x).powi(2) + f32::from(delta.y).powi(2) < 9. {
 			return;
 		}
+
 		let point = drag.projection.world((
 			f32::from(event.position.x) - view.origin.0 - INSET,
 			f32::from(event.position.y) - view.origin.1 - INSET,
 		));
+
 		view.pan = (
 			view.viewport.0 / 2. - (point.0 + drag.offset.0) * zoom,
 			view.viewport.1 / 2. - (point.1 + drag.offset.1) * zoom,
 		);
 		view.motion = None;
 		view.camera_fixed = true;
-		view.hover.update(None, std::time::Instant::now());
+
+		view.hover.update(None, Instant::now());
 		cx.notify();
 	}
+}
+
+fn overlaps(a: &card::Rect, b: &card::Rect) -> bool {
+	a.x < b.x + b.width + 2.
+		&& b.x < a.x + a.width + 2.
+		&& a.y < b.y + b.height + 2.
+		&& b.y < a.y + a.height + 2.
 }
 
 fn map_connections(links: Vec<((f32, f32), (f32, f32))>) -> impl IntoElement {
@@ -350,12 +387,14 @@ fn map_connections(links: Vec<((f32, f32), (f32, f32))>) -> impl IntoElement {
 		|_, _, _| (),
 		move |bounds, _, window, _| {
 			let mut path = PathBuilder::stroke(gpui::px(0.7));
+
 			for (from, to) in &links {
 				path.move_to(bounds.origin + gpui::point(gpui::px(from.0), gpui::px(from.1)));
 				path.line_to(bounds.origin + gpui::point(gpui::px(to.0), gpui::px(to.1)));
 			}
+
 			if let Ok(path) = path.build() {
-				window.paint_path(path, crate::ui_theme::rgba(0xd0c8d94a));
+				window.paint_path(path, ui_theme::rgba(0xd0c8d94a));
 			}
 		},
 	)
@@ -365,21 +404,26 @@ fn map_connections(links: Vec<((f32, f32), (f32, f32))>) -> impl IntoElement {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::work_board::relations::minimap::Projection;
+
 	#[test]
 	fn overview_requires_many_agents_and_content_larger_than_the_view() {
-		let bounds = [0., 0., 3000., 1600.];
-		assert!(Projection::new(bounds, 23, 1., (1000., 700.)).is_none());
-		assert!(Projection::new(bounds, 24, 1., (1000., 700.)).is_some());
-		assert!(Projection::new(bounds, 103, 0.25, (1000., 700.)).is_none());
+		let bounds = [0., 0., 3_000., 1_600.];
+
+		assert!(Projection::new(bounds, 23, 1., (1_000., 700.)).is_none());
+		assert!(Projection::new(bounds, 24, 1., (1_000., 700.)).is_some());
+		assert!(Projection::new(bounds, 103, 0.25, (1_000., 700.)).is_none());
 		assert!(Projection::new(bounds, 103, 1., (0., 0.)).is_none());
 	}
+
 	#[test]
 	fn overview_round_trip_preserves_world_positions_in_any_layout() {
-		for bounds in [[-2000., -1200., 2000., 1200.], [32., 48., 800., 5000.]] {
+		for bounds in [[-2_000., -1_200., 2_000., 1_200.], [32., 48., 800., 5_000.]] {
 			let projection = Projection::new(bounds, 103, 1., (815., 683.)).unwrap();
+
 			for point in [(bounds[0], bounds[1]), (0., 0.), (bounds[2], bounds[3])] {
 				let recovered = projection.world(projection.point(point));
+
 				assert!((recovered.0 - point.0).abs() < 0.001);
 				assert!((recovered.1 - point.1).abs() < 0.001);
 			}

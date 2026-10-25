@@ -75,6 +75,7 @@ impl AgentSurface {
 							Some((work, thread, boundary, snapshot)) => {
                                 if boundary == PromptForkBoundary::AfterTurn
                                     && let Err(message) = s.discard_prompt_editor(&retained, cx) { s.prompt_edit.feedback = message.into(); cx.notify(); return }
+
 								s.apply_result(Ok(snapshot));
 								s.open_page(work.as_str(), cx);
 

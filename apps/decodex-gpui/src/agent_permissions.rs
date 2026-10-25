@@ -1,7 +1,6 @@
 //! Saved task permission profiles; current-turn reviewer controls remain separate.
-use crate::ui_feedback::{self, Feedback};
-use gpui::AnyElement;
 #[cfg(test)] use gpui::px;
+use gpui::{AnyElement, Div};
 use tokio::runtime::Builder;
 
 #[cfg(test)] use crate::shell::agent_surface::AgentDispatchStateDto;
@@ -11,10 +10,13 @@ use tokio::runtime::Builder;
 #[cfg(test)] use crate::shell::agent_surface::Entity;
 #[cfg(test)] use crate::shell::agent_surface::Render;
 #[cfg(test)] use crate::shell::agent_surface::Window;
-use crate::shell::agent_surface::{
-	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
-	AgentWorkItemDto, Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task,
-	WireText, mcp_forms,
+use crate::{
+	shell::agent_surface::{
+		self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+		AgentWorkItemDto, Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled,
+		Task, WireText, mcp_forms,
+	},
+	ui_feedback::{self, Feedback},
 };
 use decodex_protocol::{AgentPermissionOutcome, AgentPermissionState};
 
@@ -127,20 +129,7 @@ impl AgentSurface {
 			None
 		};
 		let saving = action.is_some();
-
-		self.permission_profiles.epoch = self.permission_profiles.epoch.wrapping_add(1);
-
-		let epoch = self.permission_profiles.epoch;
-
-		self.permission_profiles.work = Some(work.clone());
-		self.permission_profiles.state = None;
-		self.permission_profiles.reviewed = false;
-		self.permission_profiles.feedback = Feedback::loading(if saving {
-			"Submitting permission selection…"
-		} else {
-			"Reading native permission profiles…"
-		});
-
+		let epoch = self.begin_permission_read(&work, saving);
 		let key =
 			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
 		let future = cx.background_executor().spawn(async move {
@@ -211,6 +200,23 @@ impl AgentSurface {
 		cx.notify();
 	}
 
+	fn begin_permission_read(&mut self, work: &str, saving: bool) -> u64 {
+		self.permission_profiles.epoch = self.permission_profiles.epoch.wrapping_add(1);
+
+		let epoch = self.permission_profiles.epoch;
+
+		self.permission_profiles.work = Some(work.to_owned());
+		self.permission_profiles.state = None;
+		self.permission_profiles.reviewed = false;
+		self.permission_profiles.feedback = Feedback::loading(if saving {
+			"Submitting permission selection…"
+		} else {
+			"Reading native permission profiles…"
+		});
+
+		epoch
+	}
+
 	pub(super) fn permission_profiles_panel(
 		&self,
 		work: &AgentWorkItemDto,
@@ -224,15 +230,7 @@ impl AgentSurface {
 		}
 
 		let owner = work.id.clone();
-		let mut panel = gpui::div().flex().flex_col().gap_2().child("Task permissions").child(
-			mcp_forms::mcp_button(
-				"permission-profiles-read".into(),
-				"Review / refresh permissions".into(),
-				false,
-				cx,
-				move |s, cx| s.update_permission_profiles(owner.clone(), None, cx),
-			),
-		);
+		let mut panel = self.permission_profiles_header(owner, cx);
 
 		if self.permission_profiles.work.as_ref() != Some(&work.id) {
 			return panel.into_any_element();
@@ -337,6 +335,18 @@ impl AgentSurface {
 		}
 
 		panel.into_any_element()
+	}
+
+	fn permission_profiles_header(&self, owner: String, cx: &mut Context<Self>) -> Div {
+		gpui::div().flex().flex_col().gap_2().child("Task permissions").child(
+			mcp_forms::mcp_button(
+				"permission-profiles-read".into(),
+				"Review / refresh permissions".into(),
+				false,
+				cx,
+				move |s, cx| s.update_permission_profiles(owner.clone(), None, cx),
+			),
+		)
 	}
 }
 fn label(state: AgentPermissionOutcome) -> &'static str {

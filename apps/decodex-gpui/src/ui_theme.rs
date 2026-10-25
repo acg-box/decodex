@@ -7,45 +7,39 @@
 //! Page owners keep their domain-specific layout. This module owns only the
 //! material, color, and motion values that must remain stable across pages.
 
+#[path = "ui_appearance.rs"] pub(crate) mod appearance;
 #[path = "ui_material.rs"] pub(crate) mod material;
 #[cfg(all(target_os = "macos", not(test)))]
 #[path = "native_material_panel.rs"]
 pub(crate) mod native_material_panel;
 #[path = "window_material.rs"] pub(crate) mod window_material;
+pub(crate) mod foreground {
+	//! Reading roles for the workspace. Materials and composer tokens stay separate.
+	pub(crate) const PRIMARY: u32 = 0xf2f1f4;
+	pub(crate) const BODY: u32 = 0xdfdee4;
+	pub(crate) const SECONDARY: u32 = 0xbbb8c4;
+	pub(crate) const CAPTION_SIZE: f32 = super::CAPTION_SIZE;
+	pub(crate) const METRIC_SIZE: f32 = 11.;
+	pub(crate) const READING_SIZE: f32 = super::BODY_SIZE;
+	pub(crate) const READING_LINE_HEIGHT: f32 = 20.;
+}
 
-#[path = "ui_appearance.rs"] pub(crate) mod appearance;
-#[path = "ui_palette.rs"] mod palette;
-pub(crate) use palette::ColorScheme;
-#[cfg(test)] pub(crate) use palette::MASCOT_FAMILIES;
 #[path = "ui_color_theme.rs"] mod color_themes;
-pub(crate) use color_themes::ColorTheme;
+#[path = "ui_palette.rs"] mod palette;
+
+pub(crate) use self::{color_themes::ColorTheme, palette::ColorScheme};
+#[cfg(test)] pub(crate) use palette::MASCOT_FAMILIES;
 
 use std::time::Duration;
 
 use gpui::{
-	self, Div, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Role,
-	StatefulInteractiveElement as _, Styled as _,
+	self, AnyElement, Div, ElementId, FontWeight, InteractiveElement as _, IntoElement,
+	ParentElement as _, Rgba, Role, Stateful, StatefulInteractiveElement as _, Styled as _,
+	accesskit::Toggled, prelude::FluentBuilder as _,
 };
 
-pub(crate) fn rgb(token: u32) -> gpui::Rgba {
-	ColorScheme::current().rgb(token)
-}
-
-pub(crate) fn rgba(token: u32) -> gpui::Rgba {
-	let colors = ColorScheme::current();
-	let surface = match token {
-		COMPOSER_MATERIAL => material::Surface::InputBar,
-		SHELL_MATERIAL
-		| SIDEBAR_MATERIAL
-		| AGENT_SIDEBAR_MATERIAL
-		| TOPBAR_MATERIAL
-		| CONTENT_MATERIAL
-		| AGENT_CHAT_OVERLAY
-		| SURFACE_OVERLAY_MATERIAL => material::Surface::Window,
-		_ => return colors.rgba(token),
-	};
-	colors.material(token, surface.material())
-}
+use appearance::Theme;
+use material::{Material, Surface};
 
 pub(crate) const FONT_FAMILY: &str = ".SystemUIFont";
 pub(crate) const BODY_SIZE: f32 = 12.5;
@@ -130,19 +124,41 @@ pub(crate) const SUCCESS: u32 = 0x2e8b57;
 pub(crate) const WARNING: u32 = 0xdaa520;
 pub(crate) const ERROR: u32 = 0xef4444;
 pub(crate) const MOTION_PANEL: Duration = Duration::from_millis(240);
+/// Stable gutter shared by conversation history and composer alignment.
+pub(crate) const HISTORY_RAIL_WIDTH: f32 = CONVERSATION_INSET;
 
 /// The reading plane keeps its tone when the outer frame becomes translucent.
 pub(crate) struct WorkspacePalette {
-	pub(crate) graph: gpui::Rgba,
-	pub(crate) conversation: gpui::Rgba,
+	pub(crate) graph: Rgba,
+	pub(crate) conversation: Rgba,
+}
+
+pub(crate) fn rgb(token: u32) -> Rgba {
+	ColorScheme::current().rgb(token)
+}
+
+pub(crate) fn rgba(token: u32) -> Rgba {
+	let colors = ColorScheme::current();
+	let surface = match token {
+		COMPOSER_MATERIAL => Surface::InputBar,
+		SHELL_MATERIAL
+		| SIDEBAR_MATERIAL
+		| AGENT_SIDEBAR_MATERIAL
+		| TOPBAR_MATERIAL
+		| CONTENT_MATERIAL
+		| AGENT_CHAT_OVERLAY
+		| SURFACE_OVERLAY_MATERIAL => Surface::Window,
+		_ => return colors.rgba(token),
+	};
+
+	colors.material(token, surface.material())
 }
 
 pub(crate) fn workspace_palette() -> WorkspacePalette {
 	let colors = ColorScheme::current();
-	let glass = material::Surface::Window.material() == material::Material::LiquidGlass;
-	if appearance::Theme::current() == appearance::Theme::Dark
-		&& colors.color_theme() == ColorTheme::Decodex
-	{
+	let glass = Surface::Window.material() == Material::LiquidGlass;
+
+	if Theme::current() == Theme::Dark && colors.color_theme() == ColorTheme::Decodex {
 		return WorkspacePalette {
 			graph: colors.rgb(CANVAS).opacity(if glass { 0.8 } else { 0.86 }),
 			conversation: rgba(if glass { AGENT_CHAT_OVERLAY } else { CONTENT_MATERIAL }),
@@ -151,24 +167,15 @@ pub(crate) fn workspace_palette() -> WorkspacePalette {
 	if glass {
 		return WorkspacePalette { graph: gpui::rgba(0), conversation: rgba(AGENT_CHAT_OVERLAY) };
 	}
+
 	// Neutral tints leave the native matte material underneath. Only the reading
 	// plane is lighter; sidebars stay on the shared window surface.
-	let (graph, conversation) = match appearance::Theme::current() {
-		appearance::Theme::Dark => (0x00000028, 0xffffff06),
-		appearance::Theme::Light => (0x00000008, 0xffffffb0),
+	let (graph, conversation) = match Theme::current() {
+		Theme::Dark => (0x00000028, 0xffffff06),
+		Theme::Light => (0x00000008, 0xffffffb0),
 	};
-	WorkspacePalette { graph: gpui::rgba(graph), conversation: gpui::rgba(conversation) }
-}
 
-/// Reading roles for the workspace. Materials and composer tokens stay separate.
-pub(crate) mod foreground {
-	pub(crate) const PRIMARY: u32 = 0xf2f1f4;
-	pub(crate) const BODY: u32 = 0xdfdee4;
-	pub(crate) const SECONDARY: u32 = 0xbbb8c4;
-	pub(crate) const CAPTION_SIZE: f32 = super::CAPTION_SIZE;
-	pub(crate) const METRIC_SIZE: f32 = 11.;
-	pub(crate) const READING_SIZE: f32 = super::BODY_SIZE;
-	pub(crate) const READING_LINE_HEIGHT: f32 = 20.;
+	WorkspacePalette { graph: gpui::rgba(graph), conversation: gpui::rgba(conversation) }
 }
 
 pub(crate) fn floating_group() -> Div {
@@ -237,7 +244,7 @@ pub(crate) fn settings_label(
 	description: impl Into<gpui::SharedString>,
 ) -> Div {
 	let description = description.into();
-	use gpui::prelude::FluentBuilder as _;
+
 	gpui::div()
 		.flex_1()
 		.min_w_0()
@@ -268,8 +275,7 @@ pub(crate) fn settings_card() -> Div {
 		.bg(rgba(SURFACE_RAISED_MATERIAL))
 }
 
-pub(crate) fn settings_group(title: &'static str, rows: Vec<gpui::AnyElement>) -> Div {
-	use gpui::prelude::FluentBuilder as _;
+pub(crate) fn settings_group(title: &'static str, rows: Vec<AnyElement>) -> Div {
 	gpui::div()
 		.w_full()
 		.flex()
@@ -305,7 +311,7 @@ pub(crate) fn settings_group(title: &'static str, rows: Vec<gpui::AnyElement>) -
 pub(crate) fn settings_button(
 	id: impl Into<gpui::SharedString>,
 	label: &'static str,
-) -> gpui::Stateful<Div> {
+) -> Stateful<Div> {
 	settings_button_base(id, label)
 		.cursor_pointer()
 		.hover(|s| s.bg(rgba(0xffffff0e)))
@@ -316,8 +322,9 @@ pub(crate) fn settings_button(
 pub(crate) fn settings_button_base(
 	id: impl Into<gpui::SharedString>,
 	label: &'static str,
-) -> gpui::Stateful<Div> {
+) -> Stateful<Div> {
 	let id = id.into();
+
 	gpui::div()
 		.id(id.clone())
 		.debug_selector(move || id.to_string())
@@ -340,8 +347,9 @@ pub(crate) fn settings_button_base(
 		.child(label)
 }
 
-pub(crate) fn settings_segments(label: &'static str) -> gpui::Stateful<Div> {
-	let light = appearance::Theme::current() == appearance::Theme::Light;
+pub(crate) fn settings_segments(label: &'static str) -> Stateful<Div> {
+	let light = Theme::current() == Theme::Light;
+
 	gpui::div()
 		.id(gpui::SharedString::from(format!("settings-segments-{label}")))
 		.role(Role::RadioGroup)
@@ -355,24 +363,20 @@ pub(crate) fn settings_segments(label: &'static str) -> gpui::Stateful<Div> {
 }
 
 pub(crate) fn settings_segment(
-	id: impl Into<gpui::ElementId>,
+	id: impl Into<ElementId>,
 	label: &'static str,
 	selected: bool,
-) -> gpui::Stateful<Div> {
-	use gpui::prelude::FluentBuilder as _;
-	let light = appearance::Theme::current() == appearance::Theme::Light;
+) -> Stateful<Div> {
+	let light = Theme::current() == Theme::Light;
 	let selected_fill = if light { gpui::rgba(0xfffffff0) } else { rgba(CONTROL_SELECTED_FILL) };
 	let selected_hover = if light { gpui::rgba(0xffffffff) } else { rgba(CONTROL_SELECTED_HOVER) };
+
 	gpui::div()
 		.id(id)
 		.role(Role::RadioButton)
 		.aria_label(label)
 		.aria_selected(selected)
-		.aria_toggled(if selected {
-			gpui::accesskit::Toggled::True
-		} else {
-			gpui::accesskit::Toggled::False
-		})
+		.aria_toggled(if selected { Toggled::True } else { Toggled::False })
 		.tab_index(0)
 		.h(gpui::px(22.))
 		.px(gpui::px(8.0))
@@ -391,6 +395,3 @@ pub(crate) fn settings_segment(
 		.focus_visible(|s| s.border_color(rgb(ACCENT)))
 		.child(label)
 }
-
-/// Stable gutter shared by conversation history and composer alignment.
-pub(crate) const HISTORY_RAIL_WIDTH: f32 = CONVERSATION_INSET;
