@@ -85,7 +85,6 @@ impl AgentCoordinator {
 		let mut params =
 			if summary { Self::resume_usage_params(thread) } else { Self::resume_params(thread) };
 		let details = self.store.guardian_settings().await?.review_details;
-		params["experimentalRawEvents"] = serde_json::json!(true);
 		params["config"] = serde_json::json!({"features.guardian_recorded_items":details});
 		Ok(params)
 	}
@@ -100,7 +99,7 @@ impl AgentCoordinator {
 	}
 
 	pub(super) fn resume_params(thread: &str) -> Value {
-		serde_json::json!({"threadId":thread,"excludeTurns":true,"experimentalRawEvents":true})
+		serde_json::json!({"threadId":thread,"excludeTurns":true})
 	}
 
 	pub(super) fn hydrated_thread_matches(response: &Value, thread: &str) -> bool {

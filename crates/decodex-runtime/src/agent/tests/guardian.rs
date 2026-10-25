@@ -455,7 +455,7 @@ async fn guardian_unloaded_approval_preserves_native_settings_without_starting_a
 	assert_eq!(resumes.len(), 1);
 	assert_eq!(
 		resumes[0]["params"],
-		serde_json::json!({"threadId":"opaque thread/1","excludeTurns":true,"experimentalRawEvents":true,"config":{"features.guardian_recorded_items":false}})
+		serde_json::json!({"threadId":"opaque thread/1","excludeTurns":true,"config":{"features.guardian_recorded_items":false}})
 	);
 
 	let approvals: Vec<_> =

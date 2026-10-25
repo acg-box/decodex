@@ -15,6 +15,7 @@ mod checklist;
 mod file_changes;
 mod global_guardian;
 mod guardian;
+mod guardian_details;
 mod native_settings;
 mod native_turns;
 mod project;

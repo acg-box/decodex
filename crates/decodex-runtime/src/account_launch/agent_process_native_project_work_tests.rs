@@ -69,6 +69,54 @@ pub(super) async fn finish(session: &mut NativeSession, agent: &mut AgentCoordin
 		}
 	}
 }
+
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; private review recovery after cold resume"]
+async fn native_guardian_details_survive_cold_resume_without_raw_subscription() {
+	let (home, mut session, store, mut agent, backend) = setup(|serial| match serial % 3 {
+		0 => serde_json::json!({"type":"function_call","name":"exec_command","call_id":format!("approval-{serial}"),"arguments":"{\"cmd\":\"exit 0\",\"sandbox_permissions\":\"require_escalated\",\"justification\":\"Isolated review recovery\"}"}),
+		1 => serde_json::json!({"type":"message","role":"assistant","id":format!("review-{serial}"),"content":[{"type":"output_text","text":"{\"outcome\":\"allow\"}"}]}),
+		_ => serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Completed"}]}),
+	}).await;
+	let outcome = time::timeout(Duration::from_secs(90), async {
+		store.set_guardian_settings(1, ReviewPreference::AutomaticReview, true).await.unwrap();
+		agent.start_agent("sage", "Review recovery").await.unwrap();
+		let thread =
+			store.get_agent_work_item("sage".into()).await.unwrap().codex_thread_id.unwrap();
+		finish(&mut session, &mut agent, &thread).await;
+		let before = store.guardian_state().await.unwrap().details;
+		assert!(!before.is_empty(), "fresh source has private events");
+		drop(agent);
+		drop(session);
+		let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").unwrap();
+		let mut session = NativeSession::with_capabilities(
+			&binary,
+			home.path(),
+			InitializeCapabilities::for_agent(),
+		);
+		let mut config = AgentConfig::new(
+			"gpt-5.6-sol".into(),
+			"medium".into(),
+			home.path().display().to_string(),
+		);
+		config.sandbox = "read-only".into();
+		let mut agent =
+			AgentCoordinator::new(store.clone(), session.client.clone(), config).unwrap();
+		agent
+			.continue_worker("sage", "Repeat the authorized harmless check after restart")
+			.await
+			.unwrap();
+		finish(&mut session, &mut agent, &thread).await;
+		let after = store.guardian_state().await.unwrap().details;
+		assert!(after.len() > before.len(), "cold resume must retain the new private output");
+		assert!(after.iter().all(|record| record.parent_thread_id.as_deref() == Some(&thread)
+			&& record.review_id.is_none()));
+	})
+	.await;
+	backend.abort();
+	outcome.unwrap();
+}
+
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native global review and Project qualification"]
 async fn native_project_global_review_and_private_records_cross_retained_bridge() {

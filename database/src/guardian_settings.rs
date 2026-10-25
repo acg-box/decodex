@@ -13,7 +13,7 @@ impl SqliteStore {
 			let mut details=tx.prepare("SELECT reviewer_thread_id,reviewer_turn_id,item_id,review_id,record_json,parent_thread_id FROM guardian_review_details ORDER BY id DESC LIMIT 32").map_err(sqlite_error)?.query_map([],|r|Ok(ReviewDetails{parent_thread_id:r.get(5)?,truncated:false,reviewer_thread_id:r.get(0)?,reviewer_turn_id:r.get(1)?,item_id:r.get(2)?,review_id:r.get(3)?,record:r.get(4)?})).map_err(sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(sqlite_error)?;
 			for record in &mut details { if record.record.len()>256 { let end=record.record.char_indices().map(|(i,_)|i).take_while(|i|*i<=256).last().unwrap_or(0); record.record.truncate(end); record.truncated=true; } }
 			tx.commit().map_err(sqlite_error)?;
-			Ok(GuardianState{settings,sources,details,observation_limit:"Optional native assistant output and interruption records only. Retain up to 128 records of 64 KiB each; show the newest 32 previews. Exact action-to-private-review association is unavailable. New observation settings require a native source load. Reconnection can leave gaps; these records never complete Work.".into()})
+			Ok(GuardianState{settings,sources,details,observation_limit:"Optional native assistant output and interruption records only. Retain up to 128 records of 64 KiB each; show the newest 32 previews. After a completed review, history recovery checks the newest 32 private sources in the same directory and five turns per source, then verifies the native parent. Exact action-to-private-review association is unavailable. Native resume cannot subscribe to raw details; bounded recovery can leave gaps. These records never complete Work.".into()})
 		}).await
 	}
 
