@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3d085bfbb5099a86f30d586534b88a93f759e1b2c1b8f912016b36b0f5fd4472",
+  "pageVersion": "sha256:75c131daa71fa1092ea471783000d11d00fa055373cb5a63ef898701697d412a",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -137,8 +137,8 @@
       "statement": "Context defaults in task preferences and manual config.toml edits share the native user configuration; versioned boolean writes preserve async threshold tables, expose project overrides and do not reload loaded conversations.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs#L141-L173",
-          "version": "repo-lines-v1:sha256:8ca25a5ee7b94b2ca3a5369dba40d8ebaf7ecd943f297c00a0cd7d0cb01432f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5YTVkN2IxMDNmYzM1MWY5NTc1ZmE2ODgwZjlhYTdlYTE4NzY0YjQzNWM2MmRjY2FhNTIxYTRlZjcwZjA1MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3OGMyMjE2ZDJhNTYxYzc0NWNlMTYxZWYwODMzNTUxM2JkNjE5OTJiMmVmOGFkOTk0ZjJlZDgyNGJiNmQzZGYifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs#L145-L177",
+          "version": "repo-lines-v1:sha256:40dccf78fbf70a5215c048badeedd442f3e61e45799cef482cf9c9f556779c3c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5YTVkN2IxMDNmYzM1MWY5NTc1ZmE2ODgwZjlhYTdlYTE4NzY0YjQzNWM2MmRjY2FhNTIxYTRlZjcwZjA1MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3OGMyMjE2ZDJhNTYxYzc0NWNlMTYxZWYwODMzNTUxM2JkNjE5OTJiMmVmOGFkOTk0ZjJlZDgyNGJiNmQzZGYifQ"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs#L11-L140",
@@ -156,7 +156,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         }
       ]
     },
@@ -194,13 +194,13 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:749b98aa171e645f1c0caa337c92d7bd1f81b4c34971f264349fb99317c4fe4c"
+          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T16:38:56.487Z"
+    "at": "2026-10-25T20:12:58.607Z"
   }
 }

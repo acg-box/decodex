@@ -44,10 +44,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
+generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T16:38:56.487Z
+    at: 2026-10-25T20:12:58.607Z
 ---
 
 # Local database operations
@@ -68,11 +68,11 @@ Schema 59 adds `assignment_proof` to native input receipts. Existing receipts re
 
 The runtime can save actual native input before parent activity arrives, then join the receipt with exact native history after restart or during `work_read`. It does not replay an instruction or spawn. Missing or ambiguous binding remains Unknown. Peer requests use the existing inbox and exact delivered-turn receipts; restart does not imply acceptance.
 
-Tool migration uses `reserved`, `created`, `retiring`, `unknown` and `applied` outcomes. It preserves exact old/new identities and requested settings. Positive native retirement is required before the local binding switches. The previous context remains read-only history. Uncertain creation/retirement parks the migration; database retry does not recreate a native thread.
+Ordinary input preserves its original native context. A newer local tool revision does not create a replacement. Recovery of an existing tool-migration journal uses `reserved`, `created`, `retiring`, `unknown` and `applied` outcomes. It preserves exact old/new identities and requested settings. Positive native retirement is required before the local binding switches. The previous context remains read-only history. Uncertain creation/retirement parks the migration; database retry does not recreate a native thread.
 
 Global Guardian stores desired reviewer preference and Review Details opt-in separately from source-specific effective receipts. Private records are deduplicated by reviewer thread, turn and item. Records are bounded to 64 KiB and the newest 128; small snapshot previews and exact selected reads stay separate. These records do not grant execution authority or complete Work.
 
-Protocol 3.0 is the direct public-contract change. Old clients fail exact negotiation. The original qualification passed schema56/89-table integrity and 188 database tests. The native input follow-up passed schema57/90-table integrity and 189 database tests, including upgrade preservation, immutable receipt replay and store reopen. The later lifecycle acceptance verified schema59 integrity, foreign keys, and persistence of Agent/native identities, Work states, Results and private observations across service restart. The migration and runtime tests use temporary roots; they do not migrate the user's installed database. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
+Protocol 3.0 introduced the direct public-contract change. Current protocol 3.1 adds the selected read-only view DTOs; clients and service must agree on the exact version. Old clients fail exact negotiation. The original qualification passed schema56/89-table integrity and 188 database tests. The native input follow-up passed schema57/90-table integrity and 189 database tests, including upgrade preservation, immutable receipt replay and store reopen. The later lifecycle acceptance verified schema59 integrity, foreign keys, and persistence of Agent/native identities, Work states, Results and private observations across service restart. The migration and runtime tests use temporary roots; they do not migrate the user's installed database. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
 
 ## Authority and paths
 

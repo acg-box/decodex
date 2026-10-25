@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6ece263bc61a29a89e74171ca750f1a69169857e9c4ef4901e1c321609ab4cfb",
+  "pageVersion": "sha256:c128ebde81b6f29112e3e40e4e1a46106cb81b1c88dacd4ea29794ddff7b173e",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -8,19 +8,19 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
-          "version": "repo-file-v1:sha256:12397d9963f7616af8768f21407f3aeae1041ec981861284d742ee555b2255cb"
+          "version": "repo-file-v1:sha256:e86225db05876938fd27baa3d1b5c4331fcc8286a939760f4f5bc306923ddae2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
-          "version": "repo-file-v1:sha256:17de3c2bb07b65019de3937223264df20da4c8c8e692853973de9047bf252bc3"
+          "version": "repo-file-v1:sha256:5041a912c573d7376fe474b77b340990b1b69d55991d5aac351d5378a47b7199"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:2385efed543e4b17d01d59fc612756f0f9b77c8555c0a32a46cc93717dd22319"
+          "version": "repo-file-v1:sha256:a8f5c805ec9e3bcc5a27ac1249bbc89efebda3686f0067702c8a8da5dfe8f07f"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:0265a718a4c0241a5cdb0c1d4d36893a51558e258650d9c2898fa9a811c0da14"
+          "version": "repo-file-v1:sha256:dd0503647f930907f3517c18882255c3f02cd0c0a6b95dcbcc02d125899411e2"
         }
       ]
     },
@@ -43,8 +43,8 @@
       "statement": "Background archive-read failures preserve the last confirmed state; explicit failed checks show local feedback.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_archive.rs#L33-L54",
-          "version": "repo-lines-v1:sha256:216e94869ff8bbf603cdcfc50d384860174475c8d826d0ae9f5c93a1c19203b4:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjOTYxMjE0NDUzMzgxMGJkYjBkYWY3Y2EwYTliZGNmMDhmZmUzZTMzZWM0NGYyMjQ1OTUwYmJlYjU2YjI3MjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1MDliMzk2MDhlMzI4MDZlMmIzN2RkZmE1ZTQ3MTljMjUzNjg4YmRhYmRlNmU1ZjAxZGNlMDk1OGQ3ZGIxNzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5YjZlZjA5YTViODNhYTQ2NGUwMzEyNGU1ZmY1ZDJhODJmMzY0ZjdhMDQxOWJiMWY1ZDNmM2MwODU0ZWRjZTYifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_archive.rs#L34-L58",
+          "version": "repo-lines-v1:sha256:00df4d057d93fb975a0cd8eed7e73538f37858b989591a664ce89d329ffc790a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjOTYxMjE0NDUzMzgxMGJkYjBkYWY3Y2EwYTliZGNmMDhmZmUzZTMzZWM0NGYyMjQ1OTUwYmJlYjU2YjI3MjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg1MDliMzk2MDhlMzI4MDZlMmIzN2RkZmE1ZTQ3MTljMjUzNjg4YmRhYmRlNmU1ZjAxZGNlMDk1OGQ3ZGIxNzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5YjZlZjA5YTViODNhYTQ2NGUwMzEyNGU1ZmY1ZDJhODJmMzY0ZjdhMDQxOWJiMWY1ZDNmM2MwODU0ZWRjZTYifQ"
         }
       ]
     },
@@ -100,37 +100,33 @@
     },
     {
       "id": "claim_ea2b8cdc441c4175b2e40d83860f6ea3",
-      "statement": "GPUI status notifications select error, warning, and information colors by priority and render each notice title and detail in its notice color; native account feedback uses one severity color for its icon and popover text.",
+      "statement": "GPUI notifications prioritize errors, warnings and information for the bell and badge. Shared status rows color the severity icon while retaining readable theme text colors; the native menu-bar feedback icon and popover retain their severity color.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L3-L34",
-          "version": "repo-lines-v1:sha256:7adf4cf5a37a5cf98aa1edc83975910661797b0b009455947435b521ffc4f03c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YmZiY2I2OWM3MTIxZmE4Y2UxOTI1ZjM1YzU0ZTc2ODkxNGZkYTY0NDI0YzdmODQxNzE4N2MxZGM4YmY3MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1OTY1ZmU4Zjg5ZDU0OWU2YTkxY2Y5YjIxMGRjNTcwOGEwZDg1OTE5MWI5OTQyNmY5YTBjMzBkYzVkNmU5ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM5M2NjZTJlMTY0ZWE0ZmFkMTRkMzYzYzdhYzQ4OTc5MDYzMDdkOWZmNTk4YWExMDdmNDYyZTkxMTg1NWJiYzkifQ"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift",
+          "version": "repo-file-v1:sha256:f3a26b5c8269dc0691fa1f227e5db787d985a79213ae594d0c449299fc5aa815"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell_status.rs#L450-L516",
-          "version": "repo-lines-v1:sha256:d95d03c0047739fb72e977cc436c1d5ac413953f94a23c9bb53f65d66431f272:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVjZjQ2NDBmOTlmZDY4Y2Y1YmMzY2M1Y2YwZjAwZjgyZDhlMjJkZTYyMTk2ZDQzMDAyNDI2N2JhNzJkMjViYTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5NzE1OWM4Yjg5NzM3YjFiMjE0NjE2ZmRiMjhlOWM0OGZjMTExYmExYjRjMWE0NWNkZTM0OTcwNjBjMDNkYWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4ODQ5NmU5NDQ4NGZmMjBjNTM0ZTE4MjcxZTFmNGJiMTVmMzU1ODBjYWU1NTBlNTZkMWNhZjI1N2QwMmFmYmQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2ZTVlNGI0YmM0ZTU2MWMxMGFjNjIzYWY1N2ViNzFiNjc3YjIyZjI5ODJkMWQwMjZlNGYwZDcwYzcyMWEzMjEifQ"
+          "resource": "repo://apps/decodex-gpui/src/shell_status.rs",
+          "version": "repo-file-v1:sha256:dce28f2f63f960d61097efaddc49fca1f02f6fc924922a14f2cfb99ed8ee01ca"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell_status.rs#L583-L591",
-          "version": "repo-lines-v1:sha256:37db9c22f235a45ae278abb55608a4afbbedf9d6768032400b438bd35ba94d40:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGQxOWEwYzA1ZmNmMjRlYTJlZTBhNDBiMTQ3OWVhYTUxYzc0MTM0NjFhYTVlZmE3MmM2OGFlYWUxNWM4Y2NmOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQ1ZjU4OTliZDVhMDU4MWYwMDBhMmFjODlhYzljOWZlMDQ1NTZlMGM4OTI5YjAxYWFjMzAxMTE2NTNjYWE1YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTE5N2JhOGQ1NGUzMDExZGVlOWMwYTUyMzUwNGQ2YjEwMzE1ODZkODc1YTdkNjVlOTBlMTQ2NzBmMzlhZWQ5YiJ9"
+          "resource": "repo://apps/decodex-gpui/src/ui_feedback.rs",
+          "version": "repo-file-v1:sha256:df1d25dbfdceb49fb5b90597c8e91d508141a5d9c5576f1da5990e0c1ad09c78"
         }
       ]
     },
     {
       "id": "claim_ebea126bd0b54fb5917cde8a8fdfeaf4",
-      "statement": "Native and GPUI account warnings use clickable severity-colored icons with explanatory popovers instead of inline activity-warning labels; popovers have no Dismiss button and closing them preserves the warning source.",
+      "statement": "GPUI account problems use shared inline feedback beside the affected account without requiring a popup. Native menu-bar account feedback retains its compact icon and explanatory popover, whose closure does not clear the source.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountProfileViews.swift#L31-L61",
-          "version": "repo-lines-v1:sha256:dafafc701b468f41564bb2593b99f83942f9637ae63e6986d94e4cc7089f848e:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIyNzM4MzExZDljZDBmYjM0N2I5YWI0NGExMDk2ZTc4MGY1MzIyZjE3MTEwZTRjODQ0ZjkxOGM1ODk5NDcyZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjYmQxOWE3NTU1NjI5NWZhMjIyYjE1MGFmMGJjMTVjMzY3YWU2ZWIzMDcxNjAwYTk5ZDIwYzM3NGRmZmFkZGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE2YTI5YTllZTg4NDBmMDMzOGIxZWE2OTYxYWUzYTYxOGNjMjJlMGI2ZWNmYjMzY2Q2MzAxZTM2MzBlYWY2ZDMifQ"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#L3-L34",
-          "version": "repo-lines-v1:sha256:7adf4cf5a37a5cf98aa1edc83975910661797b0b009455947435b521ffc4f03c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YmZiY2I2OWM3MTIxZmE4Y2UxOTI1ZjM1YzU0ZTc2ODkxNGZkYTY0NDI0YzdmODQxNzE4N2MxZGM4YmY3MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1OTY1ZmU4Zjg5ZDU0OWU2YTkxY2Y5YjIxMGRjNTcwOGEwZDg1OTE5MWI5OTQyNmY5YTBjMzBkYzVkNmU5ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkZjQ2Yjk5OGQzYWY0ZmZkOWEzMmY4MTA5YjI5Njk1NDM2Nzg1MDczMDYxMDE0ZmI0ZmU1ZjlkOTkwNjcxNGIifQ"
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift",
+          "version": "repo-file-v1:sha256:f3a26b5c8269dc0691fa1f227e5db787d985a79213ae594d0c449299fc5aa815"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/account_feedback.rs",
-          "version": "repo-file-v1:sha256:90e4c74226e88ad47ed8c09d47fbbdd7680816bc2a94de254f0efa3b96e933cc"
+          "version": "repo-file-v1:sha256:8ec5292f5757076d2ed025c5a977f487cac25e835e4e5fad29cfebc72c023dc3"
         }
       ]
     },
@@ -140,11 +136,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:ac882b62c5f858ed92b4749c4ff4945dba9e7da76d74fbd375122e2806d54d86"
+          "version": "repo-file-v1:sha256:359100795a1b17559de47b5578a893434324404a8b48bdf1dac6683c5091003e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:0265a718a4c0241a5cdb0c1d4d36893a51558e258650d9c2898fa9a811c0da14"
+          "version": "repo-file-v1:sha256:dd0503647f930907f3517c18882255c3f02cd0c0a6b95dcbcc02d125899411e2"
         }
       ]
     },
@@ -154,7 +150,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:ac882b62c5f858ed92b4749c4ff4945dba9e7da76d74fbd375122e2806d54d86"
+          "version": "repo-file-v1:sha256:359100795a1b17559de47b5578a893434324404a8b48bdf1dac6683c5091003e"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/work_portfolio.rs",
@@ -172,7 +168,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:ac882b62c5f858ed92b4749c4ff4945dba9e7da76d74fbd375122e2806d54d86"
+          "version": "repo-file-v1:sha256:359100795a1b17559de47b5578a893434324404a8b48bdf1dac6683c5091003e"
         },
         {
           "resource": "repo://database/src/works/commands.rs",
@@ -189,18 +185,40 @@
           "version": "repo-lines-v1:sha256:8418063b3fb4d4c96eafd4ef52a4a67ea86e354d5db0267495838edf864d7834:eyJzZWxlY3RlZExpbmVDb3VudCI6NjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdhNmUzYTE5ZmJjZWJiNzcyMjNjYTI3YjI1Y2M4NzExZjYyZmZjN2RlNTk0M2QyMDMxMDQ4NmEwZjBhMjMwYjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUwMWU3Yzk5NzgzMDU0NjI0YWQ0YzBjYTE5MWI1MDUyZjk2MDI5NWUwMDgxNDViMjU0ZjZjZjc3YWQ1NWUxMTkifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L866-L891",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L914-L939",
           "version": "repo-lines-v1:sha256:c29e0cbfde8d2e9f89c090ad79de9a3297d02792c7506db828838d5e41ea5d46:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2ZjNmMGNlODgwMzQ0NGQ0MmY4NWFiODIxMzEwM2NhMjY0MGJlMzQ5ZmE1ZWM0Mzg1NjRjN2NiNzZlMTMzYmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyODQzNjc1N2ViZWNmNjkzOGViMzlhMzU1ZTViZDc1NTYwYjhmNjQ2ZGQwZGU0MjM5YTQwNGVjNmMwNjJlMmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2OTcwYWIwNTRiN2QyMmUyMDkxYTFiNjRiNGI3OThmZDk2YTg1YWFlZDI4Y2NkNzk2ZmY0YmJmNDRiMzc5Y2MifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1106-L1120",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1125-L1139",
           "version": "repo-lines-v1:sha256:a1400dfbd123820d895fa56bd798d12c374904ebbf794cd73f958383917b3d34:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxZTU0NWVlN2UwYTdlMDc0MGZjMTAxMmFjMDZiNDY4MGQ2NzQ3ZjVhYWM2ZTY1MzE2NWI3ODdmNWRjNzdkMGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViYTY3MzYwZWU2Y2E2MmE1MGFjOWIwOTFiMzM3YTljODRkODdiMWVmZDBmOWQ4OTQxYTBjYmIzODczNTZhZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIxODIyYTE1M2EwYzAxYTE3Mjg2YjYwMjJmMGU2M2FlNzE5ZGVmMDZlYWFiM2IxY2ZkZDc3NDI4YzYxOWJhZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlmNWZlMjY3YzZmN2E4NzAzYWY1NTc5MThlOThhMjFiMzRmNWJiM2YzYmNhZmQ5NjBmOWM2MTQwZTYzZDc3MTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2cf569828cb144e9944eb5bd1a27232a",
+      "statement": "The existing desktop exposes explicit read-only Memory summary and Actual usage views in Agent preferences, and Actual usage in selected Work details. Source changes discard old views; copying is explicit. Unknown and shared usage and delivery versus assessment remain separate facts.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_collaboration_cases.rs",
+          "version": "repo-file-v1:sha256:f4c6235157d6116721c3c32e321e1e0c4b6f30deb7917bc1e4156828ce9e47ef"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_memory.rs",
+          "version": "repo-file-v1:sha256:833eb3197234bc9a6ff668b788ab0627914a4d287cc0940b7b0e1ac3395f01fa"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
+          "version": "repo-file-v1:sha256:359100795a1b17559de47b5578a893434324404a8b48bdf1dac6683c5091003e"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_usage_evidence.rs",
+          "version": "repo-file-v1:sha256:37c521d6f449fbd49a22247b359bb78b0987e89c6fae1b5a7f4b78b83a57ce31"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T15:11:34.438Z"
+    "at": "2026-10-25T20:12:58.607Z"
   }
 }

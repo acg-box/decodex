@@ -6,18 +6,26 @@ tags: ["decodex", "architecture"]
 sources:
   - id: openwiki-source-ef01be458d459d884afe8624
     resource: repo://apps/decodex-gpui/src/agent_live_settings.rs
+  - id: openwiki-source-9c68c30b2ff24ddf9a764d74
+    resource: repo://apps/decodex-gpui/src/agent_memory.rs
+  - id: openwiki-source-0d053d4de2f668168f982629
+    resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-f2483b817a8847254a871b51
     resource: repo://crates/decodex-codex/src/app_server_client/goals.rs
+  - id: openwiki-source-9819ced71ede01a1ddc5af56
+    resource: repo://crates/decodex-codex/src/app_server_client/memory.rs
   - id: openwiki-source-3515e2ff1d1ef96caaa97617
     resource: repo://crates/decodex-codex/src/app_server_client/search_preferences.rs
   - id: openwiki-source-5186d5aa506036d23eae1396
     resource: repo://crates/decodex-codex/src/app_server_client/thread_model_selection.rs
   - id: openwiki-source-7a438b090d3a7042aebaf269
     resource: repo://crates/decodex-codex/src/conversation.rs
+  - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs
   - id: openwiki-source-f5d073da07bcb17ee416f3b5
     resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
@@ -26,6 +34,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_capabilities.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-dc51b38db429ec5fe466c5f2
+    resource: repo://crates/decodex-runtime/src/agent_memory.rs
   - id: openwiki-source-a2c2a5ced9dfa1aee02eedc2
     resource: repo://crates/decodex-runtime/src/agent_model_settings.rs
   - id: openwiki-source-f251e17a7693193da84b2f7a
@@ -40,10 +50,12 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
   - id: openwiki-source-b30d382781a313611ecd221f
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
-generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
+  - id: openwiki-source-8c78df4b382026886ac50894
+    resource: repo://database/src/usage_evidence.rs
+generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T16:38:56.487Z
+    at: 2026-10-25T20:12:58.607Z
 ---
 
 # Model selection and settings ownership
@@ -93,6 +105,16 @@ The reviewed source, thread and Goal identity must still match before a write. L
 The search control shows the saved user preference separately from the effective project default. Supported native modes include disabled, cached, indexed and live, subject to current native requirements. Saving writes only `web_search` against the reviewed native file version, with no user-config reload. It does not restart, resume or fork an existing conversation to force the new default into its loaded settings.
 
 Memory availability comes from the native feature observation. A capability flag is not a separate Decodex memory database or a retention policy. Periodic distillation and automatic thread cleanup require their own product decision.
+
+## Read a native memory summary
+
+Open **Agent preferences > Memory summary** for the selected Agent conversation. The first open and **Refresh summary** explicitly read native `thread/memory/read`. Native Codex selects its configured memory version; Decodex does not choose a fallback file or merge versions. Disabled, missing, null or blank memory produces an empty state. An unsupported method, unloaded context or changed source remains unavailable. Open the conversation normally before trying again; inspection does not resume it implicitly.
+
+The view preserves the returned summary text. **Copy summary** copies it only after a click, without changing the composer draft or treating summary text as instructions. Closing the panel clears the view. A replaced Agent/thread/runtime binding discards the old summary. The service bounds the read to 1 MiB and transfers digest-bound 8 KiB UTF-8 pages tied to the exact account, process, native connection and history revision.
+
+Only the native read method is admitted through the retained bridge. This view does not write memory, generate a summary, change feature configuration or add distillation, retention or cleanup policy. The exact-artifact fixture checks native versions and empty states, including an unstarted thread, with zero model requests. The UI regression checks original copy text, draft preservation and source invalidation. See [Selected read-only views](../testing/upstream-acceptance-boundaries.md#selected-read-only-views) for the exact artifact and unmeasured installed-app limits.
+
+**Actual usage** in Agent preferences and Work details reads retained native turn receipts. It reports known token deltas and native duration with source coverage. Work totals include only exactly linked, unshared turns; missing child/history evidence remains unknown. These totals do not establish billing, complete Work cost or elapsed time. The view adds no execution or automatic allocation policy.
 
 ## Native launch defaults
 

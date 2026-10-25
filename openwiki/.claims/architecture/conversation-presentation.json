@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:731b9fde47bdec8695b76730e50044dc3b1152217c6c808e41d96bd4c4f1067b",
+  "pageVersion": "sha256:a3d2ff882d629065789f8b8632e8a7b28265a7c0567a5e80533c5c89e5bdc765",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -41,7 +41,7 @@
           "version": "repo-lines-v1:sha256:f8ed1f4b7f5aef6f3a71dbf9319d7b854f7e3daa96deec3f426d60a756547558:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1Zjg3YTE2YzVlMDBkZDYyNDY2Y2IzMDNjM2M4YzNhM2NjMzZjMzBmOTExZDhmMTE1NDBjNDE0OWUzMDIxNzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI3ZTlhMTk2YTAzOGFmNmQwNzZiYWU2NGUzODEzYzU1MGYzZGZmYjk4YmM3YWVkNzZlYTk1NjE4ZWVhYzUzZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc0OGYyNjU5MThmMmE5YjFlODE1MTM3ZjZkYzZkZWMwYjVhNDA3ODYyMDU3Yzc4ZTZiZDMxNzQ0ZjFhYzkzNGYifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L320-L349",
+          "resource": "repo://apps/decodex-gpui/src/ui_motion.rs#L295-L324",
           "version": "repo-lines-v1:sha256:e98126be641745cbc7dbb417053ee7accd0c21eb7730e5a74e406a7b6508162d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3NDE3YmNlNDk1MzViODVmMDAxYWMxNmM5ZjM0OGU4YTE5M2M0OTFlODlkYjdkYzllMWJkYzgwYmZmNjI2ZjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3ZTY3YWYzMmMzN2EyNDhjY2U0NGYxOTE0NjliYjNjYTQ3NDI4N2U0NWU2MWM5NDY3OGYxNzQ1NTljMjc0YTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU3YTVjMDA1MTg5YzVhYWM1NjMzN2Y3OGZlOWUwNjViOGM0ZDdkYzI2MmQwZGQ0OWEyZTdhYTBjNDY3MDIwNDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyMjc2MTAwZGJhMzNiOTU0ODlhMzk4YmRjN2M1YjNhMTg0MjZmMTU2OWZkY2ZlNTY5MWYwOWE3NDRjNmI0NzMifQ"
         }
       ]
@@ -56,11 +56,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid.rs",
-          "version": "repo-file-v1:sha256:67ecb3e927e415242b4cf5880e1d7a13d82114199b136d6abefb1162fba6b532"
+          "version": "repo-file-v1:sha256:9a25c4e5f230a633fa9b1d2541137774d3d557b8b9ec565f355d5b37fbacc21c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid/tests.rs",
-          "version": "repo-file-v1:sha256:bd3de40b00110a0395503206aa795c25f3ef62124be10b9898551805ec13c659"
+          "version": "repo-file-v1:sha256:436b2f9352c79480cc8fad870ddbf20d04aad46cbabc43c0db1c10fc438cc7f8"
         }
       ]
     },
@@ -74,7 +74,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:0265a718a4c0241a5cdb0c1d4d36893a51558e258650d9c2898fa9a811c0da14"
+          "version": "repo-file-v1:sha256:dd0503647f930907f3517c18882255c3f02cd0c0a6b95dcbcc02d125899411e2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_text.rs",
@@ -82,7 +82,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:967445b2c6008c56218a442478e8a2e301afad51dd7b253bb0be996297a7dcc9"
+          "version": "repo-file-v1:sha256:08b96c9e2aef732d925db5480f3690a0865ba0ff59b7717701a373686206944d"
         }
       ]
     },
@@ -91,7 +91,7 @@
       "statement": "Voice history groups utterances by call occurrence, merges overlapping tails, hides normally ended empty calls, and anchors completed groups to their closing boundary across older pages.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs#L634-L678",
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs#L636-L680",
           "version": "repo-lines-v1:sha256:daebdb42ef040f6d5e4a8c745f7448f248773b0b724483192d805dba7bb6bf48:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2NzVkZTRlZmY3MWQ5ODhiMTk5ODczYWMyOWQxODMyYmY0NzhlMTZjMDcwMTk5ZTI0OTYyNTg1MjVlMTE0MmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyMzI2MmFhNTJmNDg3YjQ4ZTM4YjMzMmZiZDMyODM3Yzc1YmE5YTBkZWIwODIwNzczNzdhOGZmMjEzYWE4YTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyN2RhZjc3NjFkZGQ1ZjFmYWJlZDI4ZjliOTExYjVlYjQ3ZDNmNTRiMjQ5MTQ2YzU4ODBlMjkyOGI3NWEyMTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA1MzIwMWM4ZmI0MmUxMmM2NGM2OWVmYmI1ZDhlYTk0NTMzYzE1ODRlOThhZWE5MTQ1MmU3NjRkMDk1NmRmZjIifQ"
         },
         {
@@ -105,7 +105,7 @@
       "statement": "Earlier native pages request at most 15 records and retry smaller dense pages; automatic prefetch waits for anchor restoration and can fill an underfilled viewport before requiring upward-scroll intent.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs#L173-L225",
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs#L175-L227",
           "version": "repo-lines-v1:sha256:3bdf33da1dfef904abda8e23496823f0d002b3dd7e1c9624792271b4f2e35ee6:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3ZDk0MDYwOGI2NzEzN2IxODVlZmJiODUzYTk1YmY4NzAyYTZlOTMzNWRjODVmMDE4ZmFiMGI5N2ZiOTRmYzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZhNjFiNWZkODNmNTg5MDExYmM3NDI3NzVkZGY1Y2FlZmE2ZDBkY2JmODQ2MWI0Y2MwNmE5ODQxNWQzNTI3ZmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRjOWUwNjljYzA5MzI1YjBlOGY2YjVjMWE4ZTI0MmY2MTIwZjMwMDFhY2RiNmYyN2IzMmRlYmM4ZDUzZjIwMTgifQ"
         },
         {
@@ -142,7 +142,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:f68d8bf866333c5acde3acb9938b8835579a45ccb0c1ff910a16e5bd74d4eec4"
+          "version": "repo-file-v1:sha256:4811499c4567df61c7c0098acda4935eb830c8b29d712908a98069f81fa45a02"
         }
       ]
     },
@@ -152,11 +152,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_read_state.rs",
-          "version": "repo-file-v1:sha256:3a888afd5334ef76e377710aff030b6f718a89cf171389a9864817ccffa27d58"
+          "version": "repo-file-v1:sha256:7037191d04e5eb38102d3ce3a4f546f7727ba553936bfe3e0694f23c00723567"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:f68d8bf866333c5acde3acb9938b8835579a45ccb0c1ff910a16e5bd74d4eec4"
+          "version": "repo-file-v1:sha256:4811499c4567df61c7c0098acda4935eb830c8b29d712908a98069f81fa45a02"
         }
       ]
     },
@@ -166,7 +166,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:e46680600cb98655e02c76fc0b4574c91cbb9c71ba538077dddd9bc145ea3cbd"
+          "version": "repo-file-v1:sha256:1836ff7c4b66d9ba8f22083439e3a34deb8e7219ce770ccf80e9b660cd40f318"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs",
@@ -212,11 +212,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid.rs",
-          "version": "repo-file-v1:sha256:67ecb3e927e415242b4cf5880e1d7a13d82114199b136d6abefb1162fba6b532"
+          "version": "repo-file-v1:sha256:9a25c4e5f230a633fa9b1d2541137774d3d557b8b9ec565f355d5b37fbacc21c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid/tests.rs",
-          "version": "repo-file-v1:sha256:bd3de40b00110a0395503206aa795c25f3ef62124be10b9898551805ec13c659"
+          "version": "repo-file-v1:sha256:436b2f9352c79480cc8fad870ddbf20d04aad46cbabc43c0db1c10fc438cc7f8"
         }
       ]
     },
@@ -226,11 +226,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid_tests.rs",
-          "version": "repo-file-v1:sha256:761677673740cc6602c8c3d146a87d8b62ef0fc771c350c15a07de9d19611996"
+          "version": "repo-file-v1:sha256:d69d6dad12df4ff29ed09d30e801873483e49185f7a65e2b73cf20625c9c4e93"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid_view.rs",
-          "version": "repo-file-v1:sha256:a7a59bf66486a31c14615ff582e1f97c3799101c8b70d98d543d0a379bd1f1f9"
+          "version": "repo-file-v1:sha256:2eada5b5d2de4872cc77a1c0fd29a729b72de607ecc89bda78b7ebf2e38d35f0"
         }
       ]
     },
@@ -240,31 +240,31 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid.rs",
-          "version": "repo-file-v1:sha256:67ecb3e927e415242b4cf5880e1d7a13d82114199b136d6abefb1162fba6b532"
+          "version": "repo-file-v1:sha256:9a25c4e5f230a633fa9b1d2541137774d3d557b8b9ec565f355d5b37fbacc21c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid/tests.rs",
-          "version": "repo-file-v1:sha256:bd3de40b00110a0395503206aa795c25f3ef62124be10b9898551805ec13c659"
+          "version": "repo-file-v1:sha256:436b2f9352c79480cc8fad870ddbf20d04aad46cbabc43c0db1c10fc438cc7f8"
         }
       ]
     },
     {
       "id": "claim_6f1fceaf48de41b5b8299e9643a0b5bb",
-      "statement": "Mermaid images are prepared in the background and retained by source in an application cache bounded to 64 entries and 64 MiB; retained geometry prevents an evicted image from shrinking a returning transcript row during restoration.",
+      "statement": "Mermaid images are prepared in the background and cached by source and selected color scheme, bounded to 64 entries and 64 MiB. Retained geometry prevents an evicted image from shrinking a returning transcript row during restoration.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_mermaid_tests.rs#L53-L173",
-          "version": "repo-lines-v1:sha256:b3026ec0a692054f0c8191dad5ca745f85807379a549af9d136b37e9ac141128:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlYzc5Y2RiMjkwZjNjMzRhNGMyODQ4NGYzMWIyNjQ2M2E0MDk0YjMzMGQxMTA1MmYzMmViZDEwMDU3NWQ5ZGM3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5MGI5YWU2ZjBjYzcyNWJjOTUwOTg2MGQ0MWNlYmM0ZWFiMmQ4NTBkZTg1MjM0NTg3YjBjNzExNGRhNTlmZWVhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3OTI5NGFlMzdhYjNjMWEzNjEzNDg0N2ZmMzYxODMzNmUyNTRhYmM5NzM1ZWJlNTdiZjkzNmM4MWI3Njg4NTcwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhNDc4YWUzNGU0ZGMwYmEyYzIzNzAzYTI4NzU3M2E5ZjJkN2Y4MTQ5M2M2MDI3YTZjZjQyZTUwMGQ0MWIxNjgyIn0"
+          "resource": "repo://apps/decodex-gpui/src/agent_mermaid_tests.rs",
+          "version": "repo-file-v1:sha256:d69d6dad12df4ff29ed09d30e801873483e49185f7a65e2b73cf20625c9c4e93"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid_view.rs",
-          "version": "repo-file-v1:sha256:a7a59bf66486a31c14615ff582e1f97c3799101c8b70d98d543d0a379bd1f1f9"
+          "version": "repo-file-v1:sha256:2eada5b5d2de4872cc77a1c0fd29a729b72de607ecc89bda78b7ebf2e38d35f0"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T15:11:34.438Z"
+    "at": "2026-10-25T20:12:58.607Z"
   }
 }

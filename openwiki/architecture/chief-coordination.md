@@ -5,14 +5,18 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T16:38:56.487Z
+    at: 2026-10-25T20:12:58.607Z
 sources:
+  - id: openwiki-source-d9c9b48c73ee4a2adc90f01c
+    resource: repo://apps/decodex-gpui/src/agent_collaboration_cases.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-1e0b3343cd024646618a1f95
     resource: repo://apps/decodex-gpui/src/agent_native_agents.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
+  - id: openwiki-source-0d053d4de2f668168f982629
+    resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-d0b9aaf952250307abc4342e
@@ -59,6 +63,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-b1dd4c8ab85f342314daa6f1
     resource: repo://crates/decodex-runtime/src/agent/work.rs
+  - id: openwiki-source-3c62f617dc1d15daed2c93e4
+    resource: repo://crates/decodex-runtime/src/application_collaboration.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-f282017dc1610aa4fa0e6730
@@ -73,15 +79,21 @@ sources:
     resource: repo://database/src/agent_process/attachments.rs
   - id: openwiki-source-0f0fc00c258a3ddad6935fcc
     resource: repo://database/src/agent_tool_migration.rs
+  - id: openwiki-source-7c1fe4a0f054521cb1d94e08
+    resource: repo://database/src/agent/collaboration.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
+  - id: openwiki-source-2b705b409434252a7417e708
+    resource: repo://database/src/usage_evidence_tests.rs
+  - id: openwiki-source-8c78df4b382026886ac50894
+    resource: repo://database/src/usage_evidence.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
   - id: openwiki-source-4e05748daab41d1c9c2f54dd
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-25T08:56:12.608Z" }
+generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
 ---
 
 # Project, Agent and Work coordination
@@ -124,13 +136,23 @@ Independent Agents cooperate through scoped Collaboration Requests in the existi
 
 Questions first stay within the assignment and existing authority. A Subagent uses native messages and waits. An independent Agent uses the scoped request. The owner escalates only missing decisions or authority to the user. Ask Me approvals remain human-owned. Agent conversations stay available after individual Work completes.
 
+## Read-only collaboration evidence and usage
+
+The existing collaboration history shows locally retained answers beside their exact native question. The join uses the Agent, native thread and question ID. A reply receipt can prove saved text, acknowledged delivery and the receiving turn's terminal outcome. None of these facts resolves the question or completes Work. A reply made through another client can lack a retained body; a question tombstone then remains an unknown disposition rather than an invented answer.
+
+Independent contribution history uses the request and immutable instruction identities. A repair creates another cycle. Earlier cycles keep their own sources and do not borrow the current cycle's acceptance or owner assessment. Native admission observations append evidence in the existing inbox without rewriting the original request or waking an Agent. The display adds no automatic escalation or acceptance policy.
+
+**Actual usage** in Agent preferences and Work details reads retained native turn receipts. Agent totals count each Agent/thread/turn identity once across retained bindings. Work includes exact Result, native delivery and peer admission references across retained requirements. Several recorded Work references make a turn shared; that turn is excluded from linked-turn totals. A linked turn can also contain other activity. Missing receipts and unobserved native-child usage remain unknown.
+
+The reader sums known whole-turn input and output deltas, and separately sums recorded native duration. It does not sum cumulative thread counters or convert provider amounts into a bill. Recorded durations can overlap and are not Work elapsed time. Bounded source examples identify the underlying turns; the aggregate still covers all retained matching receipts. See the [qualification limits](../testing/upstream-acceptance-boundaries.md#selected-read-only-views).
+
 ## Persistence and recovery
 
 Work, instructions, inbox delivery, requirements, Results, assessments and command receipts survive restart. A retry with the same command ID and exact content returns its committed receipt before mutable external evidence is checked again. Unknown native effects are reconciled from exact history. No missing acknowledgment authorizes replay, a second spawn or optimistic completion.
 
 Changes preserve earlier instructions and Results. An old Result cannot complete a newer requirements revision. A hold blocks new Decodex contributions and completion. It does not roll back or automatically stop an already-running native action, Goal or child. Native interruption remains native-owned.
 
-A tool-surface change uses the durable migration journal only after the source and descendants are quiescent and native inspection is available. It saves a positively known replacement before retiring the old source, verifies settings after resume and requires a positive archive receipt before switching. Uncertain creation or retirement stays parked. Previous thread history remains available read-only; its old parent identifiers grant no input authority.
+Ordinary input resumes the retained native conversation. A newer local tool revision does not authorize a replacement. Recovery acts only on an existing durable migration journal. It preserves an unknown creation outcome, verifies the saved replacement settings and checks that the original source and descendants are quiescent before retirement. A positive native archive observation is required before switching. Previous history stays readable; its old parent identifiers grant no input authority.
 
 Known external ownership rejects input before enqueueing it. A race can leave accepted but unsent input; that input remains a user-decision record and needs a fresh explicit send when ownership returns. One Agent's external writer does not block unrelated Agents. Prior-boot process death still requires positive kernel evidence; optional metadata failures do not close the shared transport.
 

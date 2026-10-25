@@ -18,7 +18,8 @@
     "https://github.com/acg-box/decodex/pull/2471",
     "https://github.com/acg-box/decodex/pull/2484",
     "https://github.com/acg-box/decodex/pull/2489",
-    "https://github.com/acg-box/decodex/pull/2490"
+    "https://github.com/acg-box/decodex/pull/2490",
+    "https://github.com/acg-box/decodex/pull/2508"
   ],
   "retained_native_consumers": {
     "execution": "Use the repository native-test entrypoints with the exact candidate CLI and both packaged helpers; verify each actual matched identity.",
@@ -3319,6 +3320,223 @@
       "schedule_changed": false,
       "installation": false,
       "release": false
+    }
+  },
+  "selected_read_views": {
+    "contracts": [
+      {
+        "id": "native-memory-summary-viewer",
+        "entrypoint": "Agent preferences > Memory summary",
+        "contract": "Read the loaded native thread through thread/memory/read only. Preserve native version selection, null and unsupported results. Bind 8 KiB UTF-8 pages to the exact source and summary digest, with a 1 MiB limit. Copy only after an explicit action. A replaced native binding discards the view. No resume, memory write, generation or new memory policy.",
+        "symbols": [
+          "AppServerClient::memory_summary",
+          "agent_process::validate_outbound_method",
+          "agent_memory::read",
+          "agent_memory::page",
+          "AgentSurface::memory_summary_panel"
+        ]
+      },
+      {
+        "id": "collaboration-question-resolution-history",
+        "entrypoint": "Existing collaboration history",
+        "contract": "Join replies by exact Agent, native thread and question ID. Keep answer delivery and receiving-turn outcome separate from resolution. External reply bodies without retained proof remain unknown. Join independent peer records by request and immutable instruction; repairs retain earlier cycles without borrowing current assessments. Append admission observations without rewriting original request bodies or waking work.",
+        "symbols": [
+          "SqliteStore::read_agent_collaboration_questions",
+          "collaboration::record_delivery",
+          "application_collaboration::project_question",
+          "application_collaboration::project_peer",
+          "agent_collaboration_cases::peers"
+        ]
+      },
+      {
+        "id": "work-agent-usage-attribution",
+        "entrypoint": "Agent preferences / Work details > Actual usage",
+        "contract": "Count distinct retained Agent/thread/turn identities. Sum known whole-turn token deltas and recorded native duration, never cumulative observations or provider monetary amounts. Work uses exact Result, native delivery and peer admission references across retained requirements and bindings. Exclude turns with several recorded Work references from linked-turn totals. Missing and unobserved child usage stay unknown. Linked turns can contain other activity; summed parallel duration is not Work elapsed time.",
+        "symbols": [
+          "SqliteStore::read_usage_evidence",
+          "application_usage_evidence::query_usage_evidence",
+          "AgentSurface::usage_evidence_panel",
+          "usage_evidence::totals_text"
+        ]
+      }
+    ],
+    "delivery": [
+      "https://github.com/acg-box/decodex/pull/2508"
+    ],
+    "qualification": {
+      "implementation_commit": "1beae0c0415c28ef45d8afaa1bd8117832c62c25",
+      "decodex_main_baseline": "bce376a3d5",
+      "native_source": "970111f6cb62cc02fe36a82ea7d71b37a2889c97",
+      "local_protocol": "3.1",
+      "components_sha256": {
+        "CodexCLI.app/Contents/MacOS/codex": "cbaaabb9381ce36f13c8605def36cede35826fa11b404b8ad4d81a0f648826cd",
+        "bin/codex-code-mode-host": "58e9e6a203e5885f8046af453081d9da9521452c704a79ceac519a3704cac340",
+        "codex-path/rg": "cdbd12cd8f86a0e2c0812500f10a90295a7e43923d823d87c98cddb15513742d"
+      },
+      "schema_sha256": "1ff625ee5aa1017d67ea08b51b520e5fc941f4b79c66489e992c47128c461471",
+      "schema_digest_method": "SHA-256 of compact sorted JSON mapping each generated JSON schema relative path to its SHA-256. Generated with app-server generate-json-schema --experimental.",
+      "selected_schema_sha256": {
+        "v2/ThreadMemoryReadParams.json": "3ef64145af8fa5d06b2e0bc8985cf05fcb9d48e8719c90407bc6dd0a57752b62",
+        "v2/ThreadMemoryReadResponse.json": "3b81fbac2392e994623b8c1349e79749829317b934c8f77986e0ef06a903a32f",
+        "v2/ThreadReadResponse.json": "7295305720a6d19e2aea99afb876e686bbffe96f7ae352656c625ded65adcffc",
+        "v2/ThreadTokenUsageUpdatedNotification.json": "aba4f6c7e4a19b2b842c08ee793b57000c07dafd57b922ad0d8e7c76609108c2"
+      },
+      "preparation_executed": "DECODEX_CODEX_DEVELOPMENT_RUNTIME=<qualified-runtime-directory> cargo make prepare-codex",
+      "preparation_rebuild": "cargo make prepare-codex",
+      "native_test_command": "DECODEX_TEST_CODEX_BINARY=<prepared-cli> cargo +stable nextest run --locked -p decodex-runtime --lib --all-features --run-ignored only -E 'test(installed_native_memory_view_selects_versions_without_model_calls_or_fallback) | test(installed_native_usage_restores_agent_baseline_after_cold_resume)' --test-threads 1 --no-fail-fast",
+      "workspace_test_command": "cargo +stable nextest run --locked --workspace --all-targets --all-features --test-threads 4 --no-fail-fast",
+      "ui_test_command": "cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui --all-features -E 'test(memory_view_copies) | test(answered_question) | test(independent_repair_cycles) | test(usage_labels)' --test-threads 1 --no-fail-fast",
+      "executed": {
+        "workspace": {
+          "passed": 2998,
+          "skipped": 1222
+        },
+        "exact_artifact_native": {
+          "passed": 2,
+          "unmatched_selectors": []
+        },
+        "selected_ui": {
+          "passed": 4,
+          "unmatched_selectors": []
+        },
+        "python": {
+          "passed": 28,
+          "command": "python3 -m unittest tests/scripts/test_vnext_architecture.py tests/scripts/test_account_login_architecture.py tests/scripts/test_gate_contract.py tests/scripts/test_vstyle_audit.py"
+        },
+        "database_gate": {
+          "outcome": "passed",
+          "schema": 59,
+          "command": "python3 scripts/vnext/local_database_gate.py"
+        },
+        "rustfmt": {
+          "outcome": "passed",
+          "command": "cargo make fmt-rust-check"
+        },
+        "clippy": {
+          "outcome": "passed",
+          "packages": [
+            "decodex-runtime",
+            "decodex-protocol",
+            "decodex-database",
+            "decodex-codex",
+            "decodex-gpui"
+          ],
+          "arguments": "--all-features --all-targets --keep-going -- --no-deps -D clippy::all -D clippy::too_many_lines -D clippy::unwrap_used -D clippy::use_self -D clippy::wildcard_imports -D missing-docs -D unused-crate-dependencies -D warnings"
+        },
+        "vstyle": {
+          "outcome": "failed",
+          "findings": 16517,
+          "command": "python3 scripts/vstyle_audit.py",
+          "scope": "Full workspace at implementation_commit. No exemption or zero-finding claim."
+        }
+      },
+      "tests_read": {
+        "upstream_only": [
+          "https://github.com/openai/codex/blob/970111f6cb62cc02fe36a82ea7d71b37a2889c97/codex-rs/app-server/tests/suite/v2/memory_read.rs#L24"
+        ],
+        "upstream_tests_executed": 0,
+        "local_bodies": "The regression bodies below were read and executed; native fixtures execute the exact prepared CLI."
+      },
+      "regressions": [
+        {
+          "package": "decodex-runtime",
+          "source": "crates/decodex-runtime/src/agent_memory_tests.rs",
+          "tests": [
+            "agent_memory::tests::native_memory_reads_only_once_and_discards_a_changed_owner",
+            "agent_memory::tests::memory_pages_keep_unicode_and_reject_content_or_source_changes"
+          ]
+        },
+        {
+          "package": "decodex-database",
+          "source": "database/src/agent/tests/collaboration_history.rs",
+          "tests": [
+            "agent::tests::collaboration_history::question_history_keeps_exact_answers_and_unknown_external_dispositions_after_reopen"
+          ]
+        },
+        {
+          "package": "decodex-database",
+          "source": "database/src/works/tests.rs",
+          "tests": [
+            "works::tests::collaboration_history_keeps_repair_cycles_and_exact_native_delivery_sources"
+          ]
+        },
+        {
+          "package": "decodex-database",
+          "source": "database/src/usage_evidence_tests.rs",
+          "tests": [
+            "usage_evidence::tests::usage_totals_deduplicate_shared_turns_and_preserve_missing_proof_after_reopen",
+            "usage_evidence::tests::usage_preview_limit_does_not_limit_totals_or_turn_identity"
+          ]
+        },
+        {
+          "package": "decodex-gpui",
+          "binary": "decodex-gpui",
+          "source": "apps/decodex-gpui/src/agent_memory.rs",
+          "tests": [
+            "shell::agent_surface::memory::tests::memory_view_copies_original_text_preserves_the_draft_and_discards_a_rebound_source"
+          ]
+        },
+        {
+          "package": "decodex-gpui",
+          "binary": "decodex-gpui",
+          "source": "apps/decodex-gpui/src/agent_collaboration_tests.rs",
+          "tests": [
+            "shell::agent_surface::work_board::workbench::collaboration::tests::answered_question_retains_reply_sources_without_claiming_resolution",
+            "shell::agent_surface::work_board::workbench::collaboration::tests::independent_repair_cycles_never_borrow_the_current_assessment"
+          ]
+        },
+        {
+          "package": "decodex-gpui",
+          "binary": "decodex-gpui",
+          "source": "apps/decodex-gpui/src/agent_usage_evidence.rs",
+          "tests": [
+            "shell::agent_surface::usage_evidence::tests::usage_labels_keep_unknown_coverage_shared_work_and_parallel_duration_distinct"
+          ]
+        },
+        {
+          "package": "decodex-runtime",
+          "source": "crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs",
+          "native": true,
+          "tests": [
+            "account_launch::agent_process::native_tests::memory::installed_native_memory_view_selects_versions_without_model_calls_or_fallback"
+          ]
+        },
+        {
+          "package": "decodex-runtime",
+          "source": "crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs",
+          "native": true,
+          "tests": [
+            "account_launch::agent_process::native_tests::usage::installed_native_usage_restores_agent_baseline_after_cold_resume"
+          ]
+        }
+      ],
+      "limits": [
+        "The workspace run preceded the added memory copy/display test. The four selected UI tests then passed; implementation code did not change.",
+        "Native fixtures use temporary homes and a local Responses server. Memory inspection made zero model requests; the usage test used two controlled model responses across native process restart.",
+        "Shared Work references and missing native-child receipts remain visible without invented allocation. Results link turns; they do not prove that all activity in those turns belongs to one Work.",
+        "Recorded input includes cached input; output includes reasoning. Summed native duration can overlap. No billing, complete historical cost, installed-app interaction or real-provider acceptance is claimed.",
+        "The exact existing qualified development artifact and helpers were reused. A rebuild needs fresh artifact/schema digests and affected regressions; it is not the deleted original.",
+        "No native source cursor, runtime baseline, app installation, release or automation schedule change. Attached forks, Guardian V3 and custom managed configuration remain undecided."
+      ]
+    },
+    "source_sha256": {
+      "crates/decodex-codex/src/app_server_client/memory.rs": "985de213ed02f43974da167023d3f9212cdfbb2ff830d3cbe8a4ccee93b60cb2",
+      "crates/decodex-runtime/src/account_launch/agent_process.rs": "cf2bf974541e4823dcdcd6d46aae79ff9f64ce16e9c5fdd9414e7bd630a801bc",
+      "crates/decodex-runtime/src/agent_memory.rs": "61cd2e3c38df6930abbb129f54c9d8541c029e3df2a27410f3116a472e56b86f",
+      "crates/decodex-runtime/src/agent_memory_tests.rs": "516235a1675a65ed6aba5b414eb99fc454f81ab639547d75c22dfc93e1851549",
+      "crates/decodex-runtime/src/application_collaboration.rs": "3a8e89e70769c97b867f88388a0d098ed2a8df5ea2ddde3b7c9549e1242a085b",
+      "database/src/agent/collaboration.rs": "d1f74bb00482ed06f03880aebf0fa26269fae11a1fc5fca2b9d82591917dace2",
+      "database/src/agent/tests/collaboration_history.rs": "036d3094f7141a5cff830dd22898165ef9e1e9b926ce25d7cd8c9712bfc0e040",
+      "database/src/usage_evidence.rs": "2d0fa576e5cec98c0ce4b008c1654e05503f7d3d6c3d44b1bdf03a3ea3774242",
+      "database/src/usage_evidence_tests.rs": "c7789c149e0f8cd36576b2faad4e75a5369567e9b8ea89ad39803c6973a1a95c",
+      "apps/decodex-gpui/src/agent_memory.rs": "833eb3197234bc9a6ff668b788ab0627914a4d287cc0940b7b0e1ac3395f01fa",
+      "apps/decodex-gpui/src/agent_collaboration_cases.rs": "f4c6235157d6116721c3c32e321e1e0c4b6f30deb7917bc1e4156828ce9e47ef",
+      "apps/decodex-gpui/src/agent_collaboration_tests.rs": "5041a912c573d7376fe474b77b340990b1b69d55991d5aac351d5378a47b7199",
+      "apps/decodex-gpui/src/agent_usage_evidence.rs": "37c521d6f449fbd49a22247b359bb78b0987e89c6fae1b5a7f4b78b83a57ce31",
+      "crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs": "0b9c399018d483c8368743bfa474ee94dc50bf2e0684fb327433eb46165bf68f",
+      "crates/decodex-runtime/src/account_launch/agent_process_native_usage_tests.rs": "6ac785e80205742c5f2e5e0674cad080725e1a4738d80435eecdfd6ae13325f6",
+      "scripts/vnext/local_database_gate.py": "cb2bccfd92f82cee117427c12b2cb48b0c399f9e0ae8c1c679a95211df6ec3c9",
+      "tests/scripts/test_gate_contract.py": "096fd7bf66b5ac6d064a9fc31517bc5901fdcbf61484591abfba14c70e52d35b"
     }
   }
 }

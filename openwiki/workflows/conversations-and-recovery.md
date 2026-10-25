@@ -64,10 +64,10 @@ sources:
     resource: repo://database/src/agent_tool_migration.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
+generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T15:11:34.438Z
+    at: 2026-10-25T20:12:58.607Z
 ---
 
 # Conversation input, history and recovery
@@ -82,7 +82,7 @@ The Agent composer and the separate ordinary History workbench share recovery me
 
 Each user-created Agent has one current native conversation. It can own several Works and act as Project Lead without creating a permanent component manager. The Assistant is optional. Current Work requirements and authorized Materials are read before assignment, recovery and assessment; a compacted summary alone is not the authority. Different Work records do not create independent native directories or sandboxes within that conversation.
 
-The canonical tool revision uses Work business commands and native Subagents. Existing immutable tool sets use a durable context-migration journal. Migration waits for the source and descendants to be idle, with no active or paused native Goal or running background command. If native inspection is unavailable, it parks. It preserves actual model/provider/effort, explicit service tier and permission profile, and keeps an unset tier unset.
+The canonical tool revision uses Work business commands and native Subagents. Ordinary input retains the original native conversation and its immutable tool set. A new local tool revision does not create a replacement. Recovery applies only to a previously saved context-migration journal. That recovery waits for the source and descendants to be idle, with no active or paused native Goal or running background command. If native inspection is unavailable, it parks. It preserves actual model/provider/effort, explicit service tier and permission profile, and keeps an unset tier unset.
 
 The service saves the acknowledged replacement identity before metadata/readback, materializes an empty native context through supported naming, and verifies the resumed native settings. Only a positive retirement observation for the exact old context permits the atomic binding change. Unknown creation or retirement is not replayed. The old context remains read-only history and requires exact identity when read. Old parent identifiers never grant another persistent Agent input or private-history authority. No reset, unarchive or host-process termination is part of recovery.
 

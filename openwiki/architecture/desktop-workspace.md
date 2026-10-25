@@ -4,8 +4,6 @@ title: "Desktop workspace and native glass"
 description: "Workspace ownership, native menu focus, compositor motion, and consistent status presentation."
 tags: [decodex, architecture, desktop, presentation]
 sources:
-  - id: openwiki-source-75aea95b5b7fd328b3b6a396
-    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountProfileViews.swift
   - id: openwiki-source-b469e348e65d4cdbb569fb27
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountRows.swift
   - id: openwiki-source-51c6a903a86b67bbf46fe288
@@ -18,12 +16,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/account_feedback.rs
   - id: openwiki-source-6512b631b67649d924c16ba3
     resource: repo://apps/decodex-gpui/src/agent_archive.rs
+  - id: openwiki-source-d9c9b48c73ee4a2adc90f01c
+    resource: repo://apps/decodex-gpui/src/agent_collaboration_cases.rs
   - id: openwiki-source-3708e6cf9324a8ff1f6c39ae
     resource: repo://apps/decodex-gpui/src/agent_collaboration_tests.rs
   - id: openwiki-source-2a6989c7fa25b9681df71f95
     resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
   - id: openwiki-source-2ee1164d01a09b38a208f1ac
     resource: repo://apps/decodex-gpui/src/agent_markdown.rs
+  - id: openwiki-source-9c68c30b2ff24ddf9a764d74
+    resource: repo://apps/decodex-gpui/src/agent_memory.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
   - id: openwiki-source-1b7747f8ae67c32e5670817d
@@ -36,22 +38,26 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_text_selection.rs
   - id: openwiki-source-51a4755f3c4ddd78511e5c8e
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
+  - id: openwiki-source-0d053d4de2f668168f982629
+    resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-fca3688e96d92c09b7ba015f
     resource: repo://apps/decodex-gpui/src/native_material_panel.rs
   - id: openwiki-source-2986b39185cca5c00a29ad1d
     resource: repo://apps/decodex-gpui/src/shell_status.rs
+  - id: openwiki-source-2f256c95c226c1326d164ad3
+    resource: repo://apps/decodex-gpui/src/ui_feedback.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
     resource: repo://crates/decodex-runtime/src/work_portfolio.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-25T15:11:34.438Z" }
+generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T15:11:34.438Z
+    at: 2026-10-25T20:12:58.607Z
 ---
 
 # Desktop workspace and native glass
@@ -79,6 +85,14 @@ Pause Work prevents new Decodex contributions and completion. It cannot roll bac
 Guardian settings are global: Ask Me or Automatic Review. Full Access remains a separate native permission choice. Desired reviewer settings and actual per-source receipts are visible separately. Review Details is an optional bounded observation: the selected runtime does not provide exact action Review IDs for private reviewer records, so the UI displays Action association unavailable. It does not infer a link to the latest action. Turning details off stops new records; it does not erase retained history.
 
 Only native assistant output and item-free terminal metadata enter retained private records. Raw reasoning frames are excluded. The store retains at most 128 records of 64 KiB each; the snapshot previews the newest 32 and loads the exact selected record on demand. This is not a complete reviewer transcript or proof of a live approval decision.
+
+## Read-only evidence views
+
+Agent preferences includes **Memory summary** for the current native root conversation. It reads the selected native summary without starting or resuming a conversation. Refresh and Copy summary are explicit actions. Empty native memory can mean disabled, missing, unreadable or blank memory. A source or binding change removes the old view. The desktop does not edit, regenerate or interpret the summary as instructions.
+
+**Actual usage** is available in Agent preferences and expanded Work details. The panel shows known whole-turn tokens, recorded duration, coverage counts and bounded exact source examples. Unknown counters stay unknown. Work uses saved turn references across retained requirements; linked turns can contain other activity, and known shared turns are excluded from linked-turn totals. Recorded durations can overlap. Copy usage evidence exports this observed view after an explicit action.
+
+The existing Collaboration panel includes retained question answers and independent contribution cycles. Exact reply delivery and receiving-turn outcome remain distinct from question resolution or Work assessment. Repair cycles preserve their own sources. See [Agent coordination](chief-coordination.md#read-only-collaboration-evidence-and-usage) for the joins and [acceptance boundaries](../testing/upstream-acceptance-boundaries.md#selected-read-only-views) for verification limits.
 
 ## Material and focus ownership
 
@@ -110,9 +124,9 @@ Ordinary operation feedback goes to the notification center. A conversation that
 
 ## Consistent status presentation
 
-Use the same severity color for a status icon and its message. Account login failures use red; recoverable warnings use amber/orange. GPUI informational notices use blue. `PanelPalette` owns the native semantic colors; GPUI uses `ui_theme::ERROR`, `AMBER`, and `BLUE`. Regenerate the corresponding SF Symbol assets with `scripts/macos/generate_workspace_symbols.swift` when those tints change. Status tooltips and native account feedback popovers retain the message color. Ordinary action labels and contrast text inside a colored badge keep their control colors.
+GPUI uses the shared `ui_feedback` presentation for account problems and operation notices. Severity selects the icon color; primary and secondary text retain their readable theme colors. Account problems appear beside the affected account without requiring a popup. The native menu-bar feedback control keeps its compact icon and explanatory popover.
 
-The GPUI notification center gives red errors priority over amber warnings and blue information when it selects the bell and badge color. A notice title and its detail use the same notice color. Account warnings use an exclamation icon. Clicking the icon opens the explanation; clicking outside closes it. There is no Dismiss button, and closing the explanation does not clear the warning source. Both native and GPUI account details omit repeated warning text below the activity graph.
+The GPUI notification center orders errors before warnings and information when it selects the bell and badge color. Its status rows use the same feedback component. A notification can be dismissed or cleared from that presentation; this does not remove its underlying source condition. Native feedback popovers close without clearing their source. These are separate interactions.
 
 ## UI wording and punctuation
 
@@ -126,7 +140,7 @@ Use GPUI tests in `shell.rs`, `agent_workspace.rs`, `agent_activity.rs`, `agent_
 
 The Work portfolio fixtures check Project grouping, scoped evidence, source-bound detail loading, global reviewer controls and explicit limits. The collaboration fixtures check cross-chat visibility, expansion without draft changes, participant location and the distinction between recorded messages, tool completion and context references. These checks do not replace signed-app interaction acceptance.
 
-`StatusPanelLifecycleTests` checks first-open and repeated menu focus, foreground application identity, hidden workspace visibility, and fixed-top resizing. `AccountPanelPresentationTests` checks synchronized row movement, clipping, interruption and reduced motion. The GPUI `account_feedback` test checks first-click opening, outside-click closing, unchanged row height, and retention of the warning source. Its opt-in `DECODEX_MEASURE_ACCOUNT_MOTION=1` presentation sampling separates initial response delay from animation cadence; it does not prove sustained display FPS. `DECODEX_CAPTURE_ACCOUNT_MOTION` selects a screenshot directory for visual review.
+`StatusPanelLifecycleTests` checks first-open and repeated menu focus, foreground application identity, hidden workspace visibility, and fixed-top resizing. `AccountPanelPresentationTests` checks synchronized row movement, clipping, interruption and reduced motion. The GPUI `account_feedback` tests check visible explanations beside the affected account, source revision matching and retention of account state. Its opt-in `DECODEX_MEASURE_ACCOUNT_MOTION=1` presentation sampling separates initial response delay from animation cadence; it does not prove sustained display FPS. `DECODEX_CAPTURE_ACCOUNT_MOTION` selects a screenshot directory for visual review.
 
 See [Conversation presentation and motion](conversation-presentation.md), [Agent coordination](chief-coordination.md) and [Commands and validation](../operations/commands-and-validation.md).
 

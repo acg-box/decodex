@@ -62,10 +62,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-25T16:38:56.487Z" }
+generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T16:38:56.487Z
+    at: 2026-10-25T20:12:58.607Z
 ---
 
 # Project, Agent and Work contract
@@ -262,7 +262,7 @@ This example illustrates the contract. The places, amounts and outcomes are assu
 
 ## Current implementation and migration
 
-Schema 56 migrates directly to Project membership, persistent Agent responsibilities and separate Work. Protocol 3.0 rejects incompatible clients explicitly. There is no dual business-name API or gradual rollout. The migration preserves genuine legacy execution, instructions, native identities, inbox receipts and historical completion limits. A migrated historical outcome is not newly qualified Result evidence. No legacy executor is relabelled as a native Subagent.
+Schema 56 migrates directly to Project membership, persistent Agent responsibilities and separate Work. Protocol 3.1 rejects incompatible clients explicitly. There is no dual business-name API or gradual rollout. The migration preserves genuine legacy execution, instructions, native identities, inbox receipts and historical completion limits. A migrated historical outcome is not newly qualified Result evidence. No legacy executor is relabelled as a native Subagent.
 
 Schema 57 adds immutable native child-input receipts. Existing dispatch records retain their original limits; the migration does not invent a received message for them. Schema 58 permits several independently owned native conversations on one admitted account process. Schema 59 records whether received assignment proof was plaintext or native task identity. Neither migration grants another Agent's private history or invents missing input.
 
@@ -280,7 +280,7 @@ Schema 57 adds immutable native child-input receipts. Existing dispatch records 
 
 The default tool revision advertises `work_read` and `work_manage`. Managed temporary-worker creation/continuation, subordinate-manager creation and old goal/dependency tools are retired from that surface and rejected if an old schema still advertises them. Existing automation and native recovery remain; no duplicate Work controller, native mailbox or permanent review department is introduced.
 
-An existing native tool set migrates only when its source and descendants are quiescent and inspectable. The durable journal saves replacement identity before retirement, preserves model/provider/effort/tier/permissions and history, verifies actual resumed settings and requires positive archive acknowledgment before the binding switches. Unknown creation or retirement stays parked. The old context remains read-only history; the service never resets it or blindly creates a replacement.
+Ordinary input retains its native context and tool set. A newer local tool revision does not start a replacement. Recovery continues only an existing migration journal with a known replacement identity. It preserves saved model/provider/effort/tier/permissions and history, verifies actual resumed settings and requires quiescence and positive archive observation before switching. Unknown creation or retirement stays parked. The old context remains read-only history.
 
 A Project association is business scope. A native conversation still has one actual execution directory, Project and permission boundary. Work association does not switch them. Work Pause blocks new Decodex contributions and completion; already-running native actions, Goals and children require native control. These limits are visible in the UI.
 

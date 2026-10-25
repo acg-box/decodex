@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7f2f318dd9eaca9fa54541f2a8d9e9ccb04688003c9b2f06620b77e78d727a7e",
+  "pageVersion": "sha256:854a86c0eeda7989008e382f8f087e58f2dce654bc547faf315a7d9858e05c96",
   "claims": [
     {
       "id": "claim_738021d152cc4128af3d3b4b217fe92c",
@@ -98,33 +98,29 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/quota_meter.rs",
-          "version": "repo-file-v1:sha256:ffddc9ed6600cdef201c45d64474b43136d5cac8bb0f78b6fc55ce6c03ce833b"
+          "version": "repo-file-v1:sha256:ed3afc1ac5630d6a7823cb453007082d492fcc8392cc48f7b9a49d6440414268"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L3952-L4005",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L4081-L4134",
           "version": "repo-lines-v1:sha256:2110a988e032dcb99b6db8181597e2e8ea173910134a01f24dddd38a8e30c214:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4MTNlOGEyNTVkZmUwZWI5NjNiOTFlZWI1NGZlZWVjMTNjOThmNzJjMmVkNzhmYzA3MTQ4YTUxMGU1Y2M0Y2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4NzM0MTFmMDcyZDZiYjMxZGY4YjdiYWY5NWJlNTAxODFhODMxM2FkZjNhZTI0MGM5NjAxZmRlYWNhYjA0YjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzMDcyM2RhMmVhNmUxNDlkNGI1MGY4ZGQwZDRmMTNmYTRmYTk0OGVhNGQ3MTY4Nzg3N2E1NzhiYTk0ODQwYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhOTc4M2VlODY1Yjk3NDc5NGMwOGE1ODNhMzA0ZjYxMjc0ZWU1YTgxOThjOTdhYzNkY2RmZWYxNjFhNWI2ZDgifQ"
         }
       ]
     },
     {
       "id": "claim_559db2ef2de6489c93aaf058e48fb634",
-      "statement": "Swift and GPUI account warnings use red or amber exclamation icons with click-open explanations and outside-click closure without a Dismiss button; activity warnings no longer occupy a footer row, and account-switch rejection explanations retain their underlying source state.",
+      "statement": "GPUI account warnings use shared inline feedback beside the affected account, while native menu-bar feedback retains a severity icon and explanatory popover. Closing a native explanation does not clear the source; activity metrics avoid repeated warning footers and account-switch rejections retain their source state.",
       "evidence": [
-        {
-          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/AccountProfileViews.swift",
-          "version": "repo-file-v1:sha256:a6073264a4d1c5c273350efd6474a3ec6310373ace2ef6f59f33b917a092d544"
-        },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift",
           "version": "repo-file-v1:sha256:f3a26b5c8269dc0691fa1f227e5db787d985a79213ae594d0c449299fc5aa815"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/account_feedback.rs",
-          "version": "repo-file-v1:sha256:90e4c74226e88ad47ed8c09d47fbbdd7680816bc2a94de254f0efa3b96e933cc"
+          "version": "repo-file-v1:sha256:8ec5292f5757076d2ed025c5a977f487cac25e835e4e5fad29cfebc72c023dc3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:29b776bc52be42a57567df9feeb052de4afd0a28203528fdbfb4dea03a3a0562"
+          "version": "repo-file-v1:sha256:e9f06130bd27fd23ad039e0d831be2137d8420626a6be1d95ed42a353543d743"
         }
       ]
     },
@@ -163,6 +159,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T21:19:56.719Z"
+    "at": "2026-10-25T20:12:58.607Z"
   }
 }
