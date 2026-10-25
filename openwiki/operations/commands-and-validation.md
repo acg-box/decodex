@@ -3,6 +3,9 @@ type: Reference
 title: "Commands and validation"
 description: "Repository command authority and source, native and desktop acceptance boundaries."
 tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-95772fa38252ded838ec3a2f
     resource: repo://.config/nextest.toml
@@ -30,6 +33,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-275dc903aab820a109a196b4
+    resource: repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json
   - id: openwiki-source-ba12412e93bca80301ac28a3
     resource: repo://crates/decodex-runtime/tests/native_qualification/apps_recovery.py
   - id: openwiki-source-e7a53f398340c29957bd81d3
@@ -58,10 +63,7 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T03:47:07.956Z
+generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
 ---
 
 
@@ -195,6 +197,20 @@ The follow-up also passed 189 database tests, 4 focused runtime guards, the sche
 Its initial full run had three failures: two unchanged short-frame UI checks and an old fixture missing native `projectId`. The fixture now follows the real response. The same UI executable passed five isolated runs of each test. `.config/nextest.toml` extends existing runner reservation to those two selectors, with all assertions and default test selection retained. The initial passed resume test had a LEAK with unknown cause; the clean final run does not explain or replace it.
 
 These checks do not install or start the product, spend real account capacity or measure live model judgment. Native Project data and membership do not establish official desktop saved-Project/sidebar presentation. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) for native V1/V2, missing private action association, bounded evidence and installed-app limits.
+
+### Source-built Project and Guardian acceptance
+
+`retained_project_agent_work.live_acceptance` records the later lifecycle repairs and their exact selectors. The final complete workspace run passed 2924 tests with 1159 skipped and no LEAK. Nine exact-artifact native tests, strict lint for 13 packages, formatting and the schema59 integrity checks passed. The two earlier leaky passes were unchanged tests; both passed in isolation. Their original marker cause remains unknown.
+
+Use `crates/decodex-runtime/tests/fixtures/project_work_acceptance.json` for the reusable live scenario. It supplies material data, discussion and assignment prompts, the requirement change and expected arithmetic. Use an isolated app data root, a model returned by the selected runtime's catalog, and caller-owned permitted material directories. Keep authentication and detailed receipts outside Git. The source-built scenario used two Projects, two Agents and four Works, including same-request repair, restart and global Guardian.
+
+Build the source app with the repository staging command. This creates a signed test bundle; it does not install or publish the app:
+
+```sh
+DECODEX_APP_STAGE_DIR="$(mktemp -d)/stage" sh scripts/macos/stage_decodex_app.sh
+```
+
+Record the bundle's actual service build identity and component digests separately from the selected native CLI and helpers. Check the native Project catalog and membership separately from official desktop presentation. The latter was not observed in this acceptance. Record encrypted task-name attribution as routing proof, not plaintext verification. User hold persistence and explicit release passed through the user API; the live Pause/Resume UI click itself remains uncertified.
 
 ## Prepare Codex components
 

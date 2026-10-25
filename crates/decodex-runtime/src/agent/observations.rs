@@ -300,6 +300,7 @@ impl AgentCoordinator {
 		}
 
 		if let Some(review) = guardian::decode_review(method, params) {
+			let parent = review.thread_id.clone();
 			self.store
 				.record_agent_guardian_review(AgentGuardianObservation {
 					thread_id: review.thread_id,
@@ -310,6 +311,7 @@ impl AgentCoordinator {
 					event_json: review.event.to_string(),
 				})
 				.await?;
+			self.observe_guardian_details(method, &parent).await;
 
 			return Ok(());
 		}

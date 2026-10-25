@@ -3,6 +3,9 @@ type: Reference
 title: "Runtime architecture"
 description: "Service ownership, fixed Codex components, shared acquisition and app updates."
 tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
@@ -48,12 +51,20 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs
   - id: openwiki-source-f2860995fd89f9170b5406cb
     resource: repo://crates/decodex-runtime/src/agent_context_settings.rs
+  - id: openwiki-source-1477615a268800361379ce21
+    resource: repo://crates/decodex-runtime/src/agent_initial_settings.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
     resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
+  - id: openwiki-source-a7886792ad3e47b8e1afb7fa
+    resource: repo://crates/decodex-runtime/src/agent/guardian_details.rs
+  - id: openwiki-source-1bebc823fa8b6426acb4d5e2
+    resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
   - id: openwiki-source-52d3ef4824079f66e9063566
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
+  - id: openwiki-source-c128f93c524a45d623373bc4
+    resource: repo://crates/decodex-runtime/src/agent/observations.rs
   - id: openwiki-source-419a87794b421322302c7d9e
     resource: repo://crates/decodex-runtime/src/agent/project.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
@@ -72,6 +83,12 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
   - id: openwiki-source-29c88fbcabe1ba5e93694ed1
     resource: repo://database/migrations/0057_native_work_delivery.sql
+  - id: openwiki-source-f282017dc1610aa4fa0e6730
+    resource: repo://database/migrations/0058_shared_agent_process.sql
+  - id: openwiki-source-c6616f46cdcd37303054bf01
+    resource: repo://database/migrations/0059_native_assignment_proof.sql
+  - id: openwiki-source-fc5ad70343bb20c4e9d12540
+    resource: repo://database/src/agent_process/attachments.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
   - id: openwiki-source-87eeaebc39a3d2229938f9d2
@@ -84,10 +101,7 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T03:47:07.956Z
+generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
 ---
 
 # Runtime Architecture
@@ -129,13 +143,19 @@ Retired repository/GitHub effect orchestration does not return through a wiki up
 
 Project and Work are durable business records. A persistent Agent owns one current native conversation and can own several Works. Assistant and Project Lead select responsibilities of existing Agents. `work_read` and `work_manage` expose scoped evidence and atomic decisions. They do not create an execution engine. Native helpers use native spawn, messages, waits and continuation; independent Agents exchange scoped Collaboration Requests through the existing inbox.
 
+The first actual user input can initialize an independent Agent without an Assistant. Native thread metadata is materialized before Project reconciliation. Every independent conversation must attach to the exact process that created or resumed its native thread; a shared account process does not make one Agent the parent of another.
+
 The overview contains Work headers. `work_portfolio` serves selected evidence in digest-checked 8 KiB pages with a 32 MiB ceiling. SQL applies Agent and granted Material scope before the per-category record limit. The global Guardian coordinator records desired reviewer preference and actual per-source application receipts. It does not own execution approval or business assessment. Optional private records exclude raw reasoning and preserve explicit missing action associations.
 
 Direct schema 56 migration preserves genuine legacy execution and history. New conversations advertise the canonical tool revision. Existing tool sets use a durable migration journal and exact native quiescence/readback. Unknown external effects remain parked. Previous thread history is read-only evidence, not input authority. See [coordination](chief-coordination.md) and [local database](../operations/local-database.md).
 
 Schema 57 adds immutable native child-input receipts. Direct-call attribution remains available. For nested V2 dispatch permitted by native configuration, the receipt joins exact child input with one parent activity and permits recovery without replay. Missing or ambiguous native evidence stays Unknown. V1 nested execution retains its existing native attribution path.
 
+Schema 58 permits multiple immutable Agent bindings on one admitted native process while preserving account and generation fences. Schema 59 distinguishes plaintext assignment proof from native task-name proof. Prepared task names let the runtime recover encrypted assignments through exact native parent metadata, root turns and unique activity. They do not prove the private prompt text or authorize another spawn.
+
 Before sending input to a retained conversation, the runtime reconciles its registered native Project after exact hydration. It assigns only an unassigned conversation and checks the returned identities. Conflicts park the affected Agent while independent input can continue. This keeps the execution directory and permissions; it does not establish official desktop sidebar synchronization. See the [native acceptance boundary](../testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian).
+
+After a completed Guardian review, optional history recovery can read up to 32 same-directory private candidates and five turns per candidate. It verifies the native parent before retaining exposed assistant output. This supports cold resume, where the selected native protocol has no raw-event subscription. Missing records and missing action Review associations remain explicit.
 
 ## Native launch policy
 

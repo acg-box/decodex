@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:35f7ceb61ad1f3121b68d72343d7da15528fc9c638b4b72972c584becff6f745",
+  "pageVersion": "sha256:ef506b77f86b9a3552f257038c7ced53e111cba926d3d0d001f9878e86498fa7",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -137,7 +137,7 @@
       "statement": "The compatibility path requests retention only for work_instruction outputs; wakes, capacity retries and injected evidence remain unselected and retain application authority.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1249-L1357",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1254-L1362",
           "version": "repo-lines-v1:sha256:e0ad341d1d141c699110b02b6523ea6ef5d2151f529f68b963753ce173ce1cfc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
@@ -202,7 +202,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
-          "version": "repo-file-v1:sha256:ee926e742d6f556b90ad7dfd631f5acd5af854b9386e96024ce9e32a1cb329c4"
+          "version": "repo-file-v1:sha256:af6561b878a7ce5ce8e6fdd502c99c198f664e447c14959c888308f265b53dc7"
         },
         {
           "resource": "repo://database/migrations/0056_project_agent_work.sql",
@@ -216,7 +216,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
+          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
@@ -230,7 +230,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
+          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/project.rs",
@@ -238,13 +238,35 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work_delivery.rs",
-          "version": "repo-file-v1:sha256:e9a6d3dedd804b8f7b55f795755ad529daadd172ae1549a3bcd9777f1592b30c"
+          "version": "repo-file-v1:sha256:735c681f9d34e6fe08eb485c9055cd46347f31f53d1df09f7f8b17831d655fc9"
+        }
+      ]
+    },
+    {
+      "id": "claim_ee36238462cf49ce90658f57782085a6",
+      "statement": "The lifecycle follow-up qualifies an isolated real-provider Project/Work scenario and repairs independent native ownership, encrypted assignment attribution and Guardian history recovery without adding another executor or reviewer; installed-app and official Project UI acceptance remain unmeasured.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/guardian_details.rs",
+          "version": "repo-file-v1:sha256:b61d1abbc43be7bb9d2ea1a798cc81421be488a2f7707101c22d44fd161b8d4d"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/work_delivery.rs",
+          "version": "repo-file-v1:sha256:735c681f9d34e6fe08eb485c9055cd46347f31f53d1df09f7f8b17831d655fc9"
+        },
+        {
+          "resource": "repo://database/src/agent_process/attachments.rs",
+          "version": "repo-file-v1:sha256:2c3abdbc58fcdb0466a5f9a10c923f8eeeceb716683b0982e5b7ae470355386f"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T03:47:07.956Z"
+    "at": "2026-10-25T06:52:57.034Z"
   }
 }

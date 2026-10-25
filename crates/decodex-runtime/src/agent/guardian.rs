@@ -62,6 +62,7 @@ impl AgentCoordinator {
 				return Err(stale());
 			}
 
+			self.attach_native_thread_owner(&review.thread_id).await?;
 			self.loaded_threads.insert(review.thread_id.clone());
 		}
 

@@ -35,7 +35,7 @@ async fn cold_resume_preserves_task_selection_and_partial_user_changes() {
 
 	assert_eq!(
 		resume["params"],
-		serde_json::json!({"threadId":"opaque thread/1","excludeTurns":true,"experimentalRawEvents":true,"config":{"features.guardian_recorded_items":false},"initialTurnsPage":{"limit":1,"sortDirection":"desc","itemsView":"summary"}})
+		serde_json::json!({"threadId":"opaque thread/1","excludeTurns":true,"config":{"features.guardian_recorded_items":false},"initialTurnsPage":{"limit":1,"sortDirection":"desc","itemsView":"summary"}})
 	);
 
 	let turn = requests.iter().find(|r| r["method"] == "turn/start").unwrap();

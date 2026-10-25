@@ -3,6 +3,9 @@ type: Guide
 title: Test quality and coverage
 description: Behavior-first test ownership, useful architecture checks, and the limits of cleanup and visual evidence.
 tags: [testing, maintenance]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-95772fa38252ded838ec3a2f
     resource: repo://.config/nextest.toml
@@ -14,10 +17,7 @@ sources:
     resource: repo://crates/decodex-account-login/src/lib.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
-generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T03:47:07.956Z
+generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
 ---
 
 # Test quality and coverage
@@ -64,3 +64,5 @@ Earlier cleanup reports remain in Git history. They do not establish exhaustive 
 The separate retained Project/Work qualification records actual native and local test cohorts. Its original complete workspace run has 2918 executed, 2916 passed, two native audio ICE timeout failures and 1154 skipped. A passed appearance-fade test has a LEAK marker with unknown cause. Keep that original failed output. The separate media follow-up records a fresh current-main full run with all 2918 passed and no LEAK, plus 40 media executions on each of current main and the pre-change baseline, all passed without retries. The source and feature comparison and macOS firewall events support an external admission cause for the ICE stalls. Lock state was recovered retrospectively. The already-allowed package-only baseline passed while locked; after unlock, the workspace binary received a prompt and allow verdict. No new controlled lock or firewall-denial comparison was run. These later passes do not explain the earlier LEAK or replace its receipt. Use the retained index for exact identities, qualification limits and overlapping counts; use the [native media procedure](../integrations/subscription-voice.md#diagnose-native-media-ice-timeouts) for another ICE timeout.
 
 The later native Project and nested Work follow-up retains a separate initial full run with 2918 passed, three failures and one passed-test LEAK. Two failures were the unchanged frame samples named above; the same test executable passed each sample five times in isolation. The other failure was an old native fixture missing `projectId`, now corrected to match the real response. The final full run passed 2921 tests with 1157 skipped and no LEAK. The first follow-up LEAK was in the native resume test and has no established cause. These later passes do not replace its receipt or prove a general scheduler defect. The index retains the original identities, the artifact digest, source comparisons and the ten isolated executions.
+
+The later source-built lifecycle acceptance records another distinct result: its final full run passed 2924 tests with 1159 skipped and no LEAK. An earlier run passed all assertions but marked two tests as leaky; both unchanged tests passed in isolation. That clean result does not explain the earlier markers. The current source, native artifact, selectors and limits are under `retained_project_agent_work.live_acceptance` in the [portable index](../../automations/upstream/retained-evidence.json).

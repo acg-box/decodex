@@ -80,6 +80,7 @@ impl AgentCoordinator {
 					continue;
 				}
 
+				self.attach_native_thread_owner(&thread).await?;
 				self.persist_task_settings(&thread).await?;
 			}
 			if self.client.thread_latest_turn_id(&thread).await.ok().flatten().as_deref()
@@ -134,6 +135,7 @@ impl AgentCoordinator {
 			self.client.thread_resume(self.resume_observer_params(thread, false).await?).await
 			&& resumed["thread"]["id"].as_str() == Some(thread)
 		{
+			self.attach_native_thread_owner(thread).await?;
 			self.persist_task_settings(thread).await?;
 			self.loaded_threads.insert(thread.into());
 		}

@@ -1,0 +1,46 @@
+{
+  "purpose": "Isolated real-provider acceptance of two Projects, four Works and global Guardian. All costs are fictional credits.",
+  "preconditions": [
+    "Use a source-built application, a separate data root and an explicitly prepared native runtime.",
+    "Use a model and effort returned by that runtime's model catalog. Ultra is not required.",
+    "Use fresh IDs. Keep authentication and raw receipts outside the repository.",
+    "Create material directories under a caller-owned allowed directory. Remove only this fixture after acceptance."
+  ],
+  "projects": [
+    {
+      "name": "Community Market",
+      "agent": "sage",
+      "files": {
+        "venues.csv": "name,capacity,accessible,indoor,cost\nOak Hall,75,yes,yes,300\nRiver Room,100,yes,yes,420\nGarden Lawn,100,yes,no,180\n",
+        "budget.csv": "item,unit_cost\nmeal,8\ninsurance,80\nprinting,20\n"
+      },
+      "discussion": "Read the supplied files. Discuss an accessible indoor event for 60 people with a mandatory budget of 1200. Do not create Work or delegate yet.",
+      "assignment": "Create market_venue and market_budget at requirements r1. Own both Works, attach the supplied Materials, and save exact Results. Prepare a bounded native venue check and pass its returned nativeTaskName and nativePrompt to native spawn. Send existing Agent iris the required market_transport request with instruction market_transport_r1: calculate optional one-way accessible shuttle for 60 people at 20 seats and 40 credits per vehicle. Keep optional transport separate. Leave the Works open for the user's inspection. Do not set or release user_hold. Do not book, purchase, install or publish."
+    },
+    {
+      "name": "Family Trip",
+      "agent": "iris",
+      "files": {
+        "travel.csv": "item,capacity,accessible,cost\nMuseum,80,yes,10\nPark,200,yes,0\nShuttle,20,yes,40\nHotel Pine,4,yes,120\nHotel Elm,4,no,90\n"
+      },
+      "discussion": "Read the supplied file. Discuss a two-day accessible trip for four people with a budget of 700. Do not create Work or delegate yet.",
+      "assignment": "Create trip_itinerary and trip_lodging at requirements r1. Attach travel.csv and save exact Results. Costs are Museum 10 per person, two one-way Shuttle trips at 40 each, and one Hotel Pine room for one night at 120. Prepare a bounded native lodging check and use the returned nativeTaskName and nativePrompt. Respond to Sage's scoped transport request without taking ownership of Sage's Work. Leave both trip Works open for inspection. Do not set or release user_hold. Do not book, purchase, install or publish."
+    }
+  ],
+  "change": "Tell Sage that attendance is now 80. Keep the mandatory budget at 1200, indoors and accessible. Revise the same market_venue and market_budget to r2 and preserve r1 evidence. Reopen the same market_transport request with instruction market_transport_r2. Use a new prepared native check for the changed venue requirement. Assess current Results, handle the required request and complete the two market Works when evidence meets r2. Tell Iris separately to assess and complete the two trip Works under their unchanged r1 requirements.",
+  "expected_results": {
+    "market_r1": { "venue": "Oak Hall", "mandatory": 880, "remaining": 320, "optional_transport": 120 },
+    "market_r2": { "venue": "River Room", "mandatory": 1160, "remaining": 40, "optional_transport": 160, "combined": 1320, "over_budget": 120 },
+    "trip_r1": { "museum": 40, "shuttle": 80, "lodging": 120, "total": 240, "remaining": 460 }
+  },
+  "checks": [
+    "Discussion creates no Work or helper. Assignment creates exactly four Works owned by two independent Agents.",
+    "Use the user Pause action on an open Work. Restart the isolated service. Verify the hold, native thread IDs, Materials, Results and inbox receipts; release the hold through the user action. Do not replay the original input.",
+    "Verify the recipient actually receives, accepts and returns the same scoped request. Busy delivery may queue. Repair adds an instruction to the same request.",
+    "Verify the native helper's exact task identity, parent activity and output. Encrypted task identity does not prove plaintext instruction content. Unconfirmed old deliveries stay unconfirmed.",
+    "Set global Ask Me, request a harmless explicit native escalation and observe the pending human approval. Switching to Automatic Review must not answer that pending approval. Answer it through the user UI.",
+    "Under Automatic Review, perform another harmless explicit escalation, inspect the native review, and verify the output file. Repeat after restart with Review Details enabled. Full Access is a separate native permission setting.",
+    "Check both native Project identities and membership through native API readback. Record official desktop Project presentation separately; API readback is not visual acceptance.",
+    "Open Work, Collaboration, Material and Result details in the source-built UI. Record accessibility inspection separately from screenshot or installed-app acceptance."
+  ]
+}

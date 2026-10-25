@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:70465c59df938070aec759b23acf3e84add508bc3b7bf12b7b203329b0da67cc",
+  "pageVersion": "sha256:05bd3c6df5c819569bb48efab283d692b84b5eaec7c90e768eee8cd531242d9a",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -140,7 +140,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:4ab55056b0f4205cd0fc351e7557065f41519869b8248c1049fda8781d964d00"
+          "version": "repo-file-v1:sha256:ac882b62c5f858ed92b4749c4ff4945dba9e7da76d74fbd375122e2806d54d86"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
@@ -154,7 +154,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:4ab55056b0f4205cd0fc351e7557065f41519869b8248c1049fda8781d964d00"
+          "version": "repo-file-v1:sha256:ac882b62c5f858ed92b4749c4ff4945dba9e7da76d74fbd375122e2806d54d86"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/work_portfolio.rs",
@@ -162,7 +162,7 @@
         },
         {
           "resource": "repo://database/src/guardian_settings.rs",
-          "version": "repo-file-v1:sha256:55f3c9a78b8ba21e28125f3d4edb836ccfb6a155b603390e95c8fd5ca78e61b9"
+          "version": "repo-file-v1:sha256:089792ed78bb1fb6d0d734b49bf2edc57bcfa96f233eb217d276f164872aeebb"
         }
       ]
     },
@@ -172,7 +172,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:4ab55056b0f4205cd0fc351e7557065f41519869b8248c1049fda8781d964d00"
+          "version": "repo-file-v1:sha256:ac882b62c5f858ed92b4749c4ff4945dba9e7da76d74fbd375122e2806d54d86"
         },
         {
           "resource": "repo://database/src/works/commands.rs",
@@ -183,6 +183,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T21:11:31.338Z"
+    "at": "2026-10-25T06:52:57.034Z"
   }
 }

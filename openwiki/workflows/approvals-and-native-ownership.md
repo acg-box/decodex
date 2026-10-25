@@ -3,6 +3,9 @@ type: Reference
 tags: [decodex, architecture]
 title: "Approvals and native request ownership"
 description: "Complete request evidence, native child ownership, Guardian observations and explicit decisions."
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T06:57:32.093Z
 sources:
   - id: openwiki-source-6a1c55b61be8ac251a493046
     resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
@@ -12,18 +15,19 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
     resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
+  - id: openwiki-source-a7886792ad3e47b8e1afb7fa
+    resource: repo://crates/decodex-runtime/src/agent/guardian_details.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
+  - id: openwiki-source-1bebc823fa8b6426acb4d5e2
+    resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
   - id: openwiki-source-52d3ef4824079f66e9063566
     resource: repo://crates/decodex-runtime/src/agent/native_subagents.rs
   - id: openwiki-source-51332b5dcd4b194b62fec905
     resource: repo://database/src/agent_guardian.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
-generated: { by: "codex", at: "2026-10-24T21:11:31.338Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-24T21:11:31.338Z
+generated: { by: "codex", at: "2026-10-25T06:57:32.093Z" }
 ---
 
 
@@ -59,12 +63,12 @@ The selected runtime exposes private reviewer records without adding them to par
 
 The runtime does not expose an exact action Review ID for those private records. The UI states Action association unavailable and never associates the latest action by timing. A record does not grant permission, complete Work, clear the parent's active turn, start a turn or replay an action. A private interruption remains private lifecycle evidence.
 
-Retention is bounded to 128 records at 64 KiB each. The snapshot includes the newest 32 short previews; the exact selected record is read separately. New observation settings require a native source load, and reconnect gaps remain explicit. Turning observation off stops new records without deleting saved review history or deciding approvals. Review Details is diagnostic output, not a complete private reasoning transcript.
+Retention is bounded to 128 records at 64 KiB each. The snapshot includes the newest 32 short previews; the exact selected record is read separately. Raw-event configuration takes effect when a native source loads. The selected protocol cannot enable a raw subscription through resume. After a completed review, the service can instead recover exposed output from native history: it checks up to 32 same-directory private candidates and five turns each, verifies the parent, and retains no raw reasoning. Reconnect gaps remain explicit. Turning observation off stops new records without deleting saved review history or deciding approvals. Review Details is diagnostic output, not a complete private reasoning transcript.
 
 ## Boundaries and tests
 
 The [global Guardian contract](../decisions/project-agent-work.md#global-guardian-decision) is implemented and qualified with the exact selected CLI and helpers in synthetic fixtures. Tests cover Project idempotency, Ask Me approval preservation during a global switch, native effective readback, unchanged sandbox and approval policy, private reviewer identity, parent-history isolation and opt-out. Local tests cover bounds, stale receipts, protocol and UI controls. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian) for actual counts and limits.
 
-Child browser-auth and user-input handoff still need their own exact native interaction evidence; ancestry and permission tests do not establish all interactions. This change does not establish real-account, installed-app or complete model judgment acceptance.
+Child browser-auth and user-input handoff still need their own exact native interaction evidence; ancestry and permission tests do not establish all interactions. The later [source-built acceptance](../testing/upstream-acceptance-boundaries.md#source-built-real-provider-acceptance) exercises a real provider in one controlled scenario. It does not establish installed-app behavior or general model judgment.
 
 Start with `agent/native_subagents.rs`, `agent/guardian.rs`, `agent/global_guardian.rs`, the large-request payload owner and their native tests. See [tools and integrations](../integrations/tools-plugins-and-apps.md).

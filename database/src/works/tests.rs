@@ -491,6 +491,7 @@ async fn native_binding_and_completion_intents_stay_separate_after_restart() {
 		child_thread_id: "child".into(),
 		child_turn_id: "child-turn".into(),
 		message_id: "native-message".into(),
+		assignment_proof: Default::default(),
 	};
 	for _ in 0..2 {
 		store.record_native_work_delivery("native-routes".into(), delivery.clone()).await.unwrap();

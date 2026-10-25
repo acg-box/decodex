@@ -30,6 +30,10 @@ impl AgentCoordinator {
 			WorkCommand::PrepareSubagent { contribution } => Some(contribution.native_prompt()),
 			_ => None,
 		};
+		let native_task_name = match &command {
+			WorkCommand::PrepareSubagent { contribution } => Some(contribution.native_task_name()),
+			_ => None,
+		};
 		let command_id = exact(args, "/commandId")?;
 		if !self
 			.store
@@ -40,7 +44,7 @@ impl AgentCoordinator {
 			self.store.apply_work_command(agent.id.clone(), command_id, command, false).await?;
 		}
 		Ok(
-			serde_json::json!({"recorded":true,"nativePrompt":native_prompt,"completion":"Only a current owner assessment completes Work. Native delivery, acceptance and returned evidence remain separate."}),
+			serde_json::json!({"recorded":true,"nativePrompt":native_prompt,"nativeTaskName":native_task_name,"nativeSpawnInstructions":"For a new native helper, use nativeTaskName as task_name and nativePrompt as message. Reuse the existing child for a follow-up; never respawn for missing binding.","completion":"Only a current owner assessment completes Work. Native delivery, acceptance and returned evidence remain separate."}),
 		)
 	}
 
@@ -287,9 +291,14 @@ impl AgentCoordinator {
 				}) {
 				Some(super::exact(item, "/id")?)
 			} else {
-				self.native_delivery_activity(&c.id, thread, turn, child)
+				let witnessed = self
+					.native_delivery_activity(&c.id, thread, turn, child)
 					.await?
-					.and_then(|activity| activity["id"].as_str().map(str::to_owned))
+					.and_then(|activity| activity["id"].as_str().map(str::to_owned));
+				match witnessed {
+					Some(call) => Some(call),
+					None => self.named_native_dispatch(c, thread, turn, child).await?,
+				}
 			};
 			if let Some(call) = call {
 				matches.push((c, call));
@@ -419,6 +428,25 @@ impl AgentCoordinator {
 				"Native contribution belongs to another Agent".into(),
 			));
 		}
+		if binding.child_thread_id.is_none()
+			&& let Some(parent) = &agent.codex_thread_id
+		{
+			let page = self.client.thread_history_page(parent, None, 5).await?;
+			for turn in page["turns"].as_array().into_iter().flatten() {
+				let Some(turn_id) = turn["id"].as_str() else {
+					continue;
+				};
+				for item in turn["items"]
+					.as_array()
+					.into_iter()
+					.flatten()
+					.filter(|i| i["type"] == "subAgentActivity")
+				{
+					self.recover_native_contribution(parent, turn_id, item).await?;
+				}
+			}
+			binding = self.store.native_contribution(id.into()).await?;
+		}
 		let delivery = self.store.native_work_delivery(binding.id.clone()).await?;
 		if binding.child_thread_id.is_none()
 			&& let Some(d) = &delivery
@@ -438,7 +466,7 @@ impl AgentCoordinator {
 		let dispatch = self.store.native_work_dispatch(binding.id.clone()).await?;
 		let Some(child) = binding.child_thread_id.as_ref() else {
 			return Ok(
-				serde_json::json!({"contribution":binding,"dispatch":dispatch,"delivery":delivery,"outputs":[],"limits":"Child binding is unconfirmed. Reconcile exact native activity before another spawn."}),
+				serde_json::json!({"nativeTaskName":binding.native_task_name(),"contribution":binding,"dispatch":dispatch,"delivery":delivery,"outputs":[],"limits":"Child binding is unconfirmed. Reconcile exact native activity before another spawn."}),
 			);
 		};
 
@@ -471,7 +499,7 @@ impl AgentCoordinator {
 			}
 		}
 		Ok(
-			serde_json::json!({"contribution":binding,"outputs":outputs,"nextCursor":page["nextCursor"],"limits":"Exact native instruction-turn attribution only. Output text is a display preview; read the exact native item or artifact before assessment. A native completed turn does not complete Work."}),
+			serde_json::json!({"nativeTaskName":binding.native_task_name(),"contribution":binding,"delivery":delivery,"outputs":outputs,"nextCursor":page["nextCursor"],"limits":"Exact native receiving-turn attribution. Native task-name proof does not verify encrypted instruction text. Output text is a preview; read the exact native item or artifact before assessment. A native completed turn does not complete Work."}),
 		)
 	}
 }

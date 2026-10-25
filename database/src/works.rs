@@ -4,8 +4,8 @@ mod commands;
 #[cfg(test)] mod tests;
 
 use decodex_core::work::{
-	CollaborationRequest, CollaborationState, NativeWorkDelivery, Work, WorkCommand, WorkPortfolio,
-	WorkRequirements, WorkState,
+	CollaborationRequest, CollaborationState, NativeAssignmentProof, NativeWorkDelivery, Work,
+	WorkCommand, WorkPortfolio, WorkRequirements, WorkState,
 };
 use rusqlite::{Connection, OptionalExtension as _, params};
 use serde::{Serialize, de::DeserializeOwned};
@@ -433,8 +433,8 @@ impl SqliteStore {
 		}
 		self.run(move |c| {
 			let n = c.execute(
-				"INSERT INTO native_work_deliveries VALUES(?1,?2,?3,?4,?5,?6) ON CONFLICT(contribution_id) DO UPDATE SET message_id=excluded.message_id WHERE parent_thread_id=excluded.parent_thread_id AND parent_turn_id=excluded.parent_turn_id AND child_thread_id=excluded.child_thread_id AND child_turn_id=excluded.child_turn_id AND message_id=excluded.message_id",
-				params![id, delivery.parent_thread_id, delivery.parent_turn_id, delivery.child_thread_id, delivery.child_turn_id, delivery.message_id],
+				"INSERT INTO native_work_deliveries VALUES(?1,?2,?3,?4,?5,?6,?7) ON CONFLICT(contribution_id) DO UPDATE SET message_id=excluded.message_id WHERE parent_thread_id=excluded.parent_thread_id AND parent_turn_id=excluded.parent_turn_id AND child_thread_id=excluded.child_thread_id AND child_turn_id=excluded.child_turn_id AND message_id=excluded.message_id AND assignment_proof=excluded.assignment_proof",
+				params![id, delivery.parent_thread_id, delivery.parent_turn_id, delivery.child_thread_id, delivery.child_turn_id, delivery.message_id, delivery.assignment_proof.as_str()],
 			).map_err(sqlite_error)?;
 			if n != 1 { return Err(conflict()); }
 			Ok(())
@@ -448,8 +448,8 @@ impl SqliteStore {
 	) -> Result<Option<NativeWorkDelivery>, StoreError> {
 		self.run(move |c| {
 			c.query_row(
-				"SELECT parent_thread_id,parent_turn_id,child_thread_id,child_turn_id,message_id FROM native_work_deliveries WHERE contribution_id=?1",
-				[id], |r| Ok(NativeWorkDelivery { parent_thread_id:r.get(0)?, parent_turn_id:r.get(1)?, child_thread_id:r.get(2)?, child_turn_id:r.get(3)?, message_id:r.get(4)? }),
+				"SELECT parent_thread_id,parent_turn_id,child_thread_id,child_turn_id,message_id,assignment_proof FROM native_work_deliveries WHERE contribution_id=?1",
+				[id], |r| Ok(NativeWorkDelivery { parent_thread_id:r.get(0)?, parent_turn_id:r.get(1)?, child_thread_id:r.get(2)?, child_turn_id:r.get(3)?, message_id:r.get(4)?, assignment_proof: if r.get::<_,String>(5)? == "native_task_name" {NativeAssignmentProof::NativeTaskName} else {NativeAssignmentProof::Plaintext} }),
 			).optional().map_err(|e| sqlite_error(e).into())
 		}).await
 	}

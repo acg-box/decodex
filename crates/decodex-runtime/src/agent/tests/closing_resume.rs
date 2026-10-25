@@ -208,7 +208,7 @@ async fn recovery_retries_closing_thread_and_reconciles_without_replaying_input(
 		assert_eq!(resumes[0]["excludeTurns"], true);
 		assert_eq!(
 			resumes[0],
-			serde_json::json!({"threadId":"opaque thread/1","excludeTurns":true,"experimentalRawEvents":true,"config":{"features.guardian_recorded_items":false},"initialTurnsPage":{"limit":1,"sortDirection":"desc","itemsView":"summary"}})
+			serde_json::json!({"threadId":"opaque thread/1","excludeTurns":true,"config":{"features.guardian_recorded_items":false},"initialTurnsPage":{"limit":1,"sortDirection":"desc","itemsView":"summary"}})
 		);
 	}
 }

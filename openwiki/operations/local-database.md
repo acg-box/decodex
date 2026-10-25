@@ -3,6 +3,9 @@ type: Reference
 title: "Local database operations"
 description: "Service-owned SQLite upgrades, account routing and durable credential and branch records."
 tags: ["decodex", "architecture"]
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-25T06:52:57.034Z
 sources:
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
@@ -22,37 +25,36 @@ sources:
     resource: repo://database/migrations/0052_personal_access_token_credentials.sql
   - id: openwiki-source-bdc10e06c0058b26a9bde83d
     resource: repo://database/migrations/0056_project_agent_work.sql
-  - id: openwiki-source-29c88fbcabe1ba5e93694ed1
-    resource: repo://database/migrations/0057_native_work_delivery.sql
+  - id: openwiki-source-f282017dc1610aa4fa0e6730
+    resource: repo://database/migrations/0058_shared_agent_process.sql
+  - id: openwiki-source-c6616f46cdcd37303054bf01
+    resource: repo://database/migrations/0059_native_assignment_proof.sql
   - id: openwiki-source-58c0167d31c3e40dc89591ab
     resource: repo://database/src/agent_fork.rs
+  - id: openwiki-source-fc5ad70343bb20c4e9d12540
+    resource: repo://database/src/agent_process/attachments.rs
+  - id: openwiki-source-d31590aa1b62ee057094fb38
+    resource: repo://database/src/agent_process/tests/attachments.rs
   - id: openwiki-source-0f0fc00c258a3ddad6935fcc
     resource: repo://database/src/agent_tool_migration.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
     resource: repo://database/src/migrations.rs
-  - id: openwiki-source-3e7c54ce0bf85c6d277db409
-    resource: repo://database/src/project_work_migration_tests.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-  - id: openwiki-source-d09dfdea9b65815f3a76b46c
-    resource: repo://database/src/works/tests.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-10-25T03:47:07.956Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T03:47:07.956Z
+generated: { by: "codex", at: "2026-10-25T06:52:57.034Z" }
 ---
 
 # Local database operations
 
 ## Project, Agent and Work migration
 
-The current ledger ends at schema 57, `0057_native_work_delivery.sql`. Schema 56 applies the direct business migration under the existing digest-checked migration owner. It renames Workspace directory and membership data to Projects and Project Agents. It adds persistent Agent responsibilities, separate Work, immutable requirements, scoped Materials, Results and explicit reuse, Collaboration Requests and issued instructions, stable command receipts, global Guardian settings/source receipts, private observations and native tool-migration journals.
+The current ledger ends at schema 59, `0059_native_assignment_proof.sql`. Schema 56 applies the direct business migration under the existing digest-checked migration owner. It renames Workspace directory and membership data to Projects and Project Agents. It adds persistent Agent responsibilities, separate Work, immutable requirements, scoped Materials, Results and explicit reuse, Collaboration Requests and issued instructions, stable command receipts, global Guardian settings/source receipts, private observations and native tool-migration journals.
 
 Existing conversation, inbox, native binding and genuine old execution records survive. Passive historical outcomes acquire Work owners and explicit legacy requirements. A migrated completed outcome retains a historical assessment with a no-new-qualification limit. No old executor becomes a native Subagent by renaming a row. The application does not require a reset, a second database or a dual-write migration.
 
@@ -60,13 +62,17 @@ Work commands validate the current owner, expected requirements, holds and relat
 
 Native contribution intent and exact direct-call identities are attribution records, not another executor or mailbox. Schema 57 adds `native_work_deliveries`: one immutable receipt per contribution with exact parent thread/turn, child thread/receiving turn and message identity. A foreign key requires the contribution, and native child/turn/message identity is unique. An identical store-method retry is idempotent; changed identities conflict. The upgrade keeps existing dispatches and leaves their new delivery receipts absent. It does not invent historical input evidence.
 
+Schema 58 rebuilds `agent_process_bindings` so one admitted native process can hold separate immutable Agent bindings. Existing rows and their rowids are preserved. Each new attachment requires the exact registered Agent/native thread and a ready admitted generation, and rejects a competing live generation. Account and native process authority checks remain in place.
+
+Schema 59 adds `assignment_proof` to native input receipts. Existing receipts retain `plaintext`; an observed encrypted assignment can use `native_task_name`. A binding recovered from native task metadata and parent activity can exist without a received-input receipt. That absence stays explicit and does not become plaintext proof.
+
 The runtime can save actual native input before parent activity arrives, then join the receipt with exact native history after restart or during `work_read`. It does not replay an instruction or spawn. Missing or ambiguous binding remains Unknown. Peer requests use the existing inbox and exact delivered-turn receipts; restart does not imply acceptance.
 
 Tool migration uses `reserved`, `created`, `retiring`, `unknown` and `applied` outcomes. It preserves exact old/new identities and requested settings. Positive native retirement is required before the local binding switches. The previous context remains read-only history. Uncertain creation/retirement parks the migration; database retry does not recreate a native thread.
 
 Global Guardian stores desired reviewer preference and Review Details opt-in separately from source-specific effective receipts. Private records are deduplicated by reviewer thread, turn and item. Records are bounded to 64 KiB and the newest 128; small snapshot previews and exact selected reads stay separate. These records do not grant execution authority or complete Work.
 
-Protocol 3.0 is the direct public-contract change. Old clients fail exact negotiation. The original qualification passed schema56/89-table integrity and 188 database tests. The native input follow-up passed schema57/90-table integrity and 189 database tests, including upgrade preservation, immutable receipt replay and store reopen. The migration and runtime tests use temporary roots; they do not migrate the user's installed database. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
+Protocol 3.0 is the direct public-contract change. Old clients fail exact negotiation. The original qualification passed schema56/89-table integrity and 188 database tests. The native input follow-up passed schema57/90-table integrity and 189 database tests, including upgrade preservation, immutable receipt replay and store reopen. The later lifecycle acceptance verified schema59 integrity, foreign keys, and persistence of Agent/native identities, Work states, Results and private observations across service restart. The migration and runtime tests use temporary roots; they do not migrate the user's installed database. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
 
 ## Authority and paths
 

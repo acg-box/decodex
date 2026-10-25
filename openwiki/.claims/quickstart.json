@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:bdeab431d974647be1efa21c759b465d4370f9d23b322f762febc4ebd6162e57",
+  "pageVersion": "sha256:27a717b2ede0228391f2dca7f56b7b4851284dac64df7a8f64748cd79f3cb3bb",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -54,7 +54,7 @@
         },
         {
           "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:8cd13ad6810756d5c248d76bc3af66f02433b47d0d048afbe11e41f64ad8ecc2"
+          "version": "repo-file-v1:sha256:176017c4383dba8f7c27b8311442a333e430a3b2a6ae92ce5731c1b6f73b24ca"
         }
       ]
     },
@@ -106,11 +106,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:4ab55056b0f4205cd0fc351e7557065f41519869b8248c1049fda8781d964d00"
+          "version": "repo-file-v1:sha256:ac882b62c5f858ed92b4749c4ff4945dba9e7da76d74fbd375122e2806d54d86"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
-          "version": "repo-file-v1:sha256:a32503172f93bd1e5dee1c1714d75236457b0df869ea9953fee9fc7f4da104e9"
+          "version": "repo-file-v1:sha256:27dceb0235bfd0ed93987e89f4522048704ed176a6cf364f352173b411d7f0ed"
         },
         {
           "resource": "repo://database/migrations/0056_project_agent_work.sql",
@@ -120,29 +120,29 @@
     },
     {
       "id": "claim_699d2ee236f442c986d264d32af88649",
-      "statement": "The retained integration follow-up reconciles native Project membership and adds schema57 native input receipts for permitted nested Work attribution without replay; seven native and 2921 workspace tests pass while original failures, official desktop Project presentation and installed-app limits remain separate.",
+      "statement": "The lifecycle follow-up preserves independent native process ownership and explicit plaintext/task-name proof in schemas58/59; a source-built real-provider two-Project/four-Work run, nine native tests and 2924 workspace tests passed with no installation or release, while old encrypted binding and official desktop Project UI limits remain explicit.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:c2e551df4e227a71227bb78cf01a2e4d54175459d4baef6a3ac1489d72bc4b7c"
+          "version": "repo-file-v1:sha256:65b3f43c37ed282bf8f39e190ca89ba0032df544d1cb84f693d1bd765ae8e355"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/project.rs",
-          "version": "repo-file-v1:sha256:7fe6e89df741571dec2727e90fb6238d80439631fa3ff6a549654bf119006ec3"
+          "resource": "repo://crates/decodex-runtime/src/agent_initial_settings.rs",
+          "version": "repo-file-v1:sha256:4948d81459853a96d2cf80afb78884aa74e702679089639928cbb209ec2bfe51"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/work_delivery.rs",
-          "version": "repo-file-v1:sha256:e9a6d3dedd804b8f7b55f795755ad529daadd172ae1549a3bcd9777f1592b30c"
+          "resource": "repo://database/migrations/0058_shared_agent_process.sql",
+          "version": "repo-file-v1:sha256:05e447b01812463e012054fcb355dda890d814243bab5b944849f943b4ef3c00"
         },
         {
-          "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:8cd13ad6810756d5c248d76bc3af66f02433b47d0d048afbe11e41f64ad8ecc2"
+          "resource": "repo://database/migrations/0059_native_assignment_proof.sql",
+          "version": "repo-file-v1:sha256:c49bd47c9d4f22c1e43ff5c27def8ba36ff0725c355fc9327515408d4400a179"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T03:47:07.956Z"
+    "at": "2026-10-25T06:52:57.034Z"
   }
 }
