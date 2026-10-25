@@ -24,23 +24,24 @@ use crate::{
 	AgentExchangesResult, AgentGuardianDetailResult, AgentGuardianReviewsResult,
 	AgentHistoryResult, AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState,
 	AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult,
-	AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult,
-	AgentPendingAppUiCall, AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult,
-	AgentRequestResult, AgentResourcesResult, AgentSampleStatus, AgentSavedAppSettingsResult,
-	AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget, AgentSnapshotResult,
-	AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult, AgentTranscriptRequest,
-	AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
-	AgentVoiceStatus, CURRENT_VERSION, ConversationCreationReceiptRequest,
-	ConversationCreationReceiptResult, ConversationExecutionOverrides,
-	ConversationExecutionSettings, ConversationListCursor, ConversationListResult,
-	ConversationListSize, ConversationModelReviewResult, ConversationModelSettingsResult,
-	ConversationRecoveryAction, ConversationResult, ConversationSummary, ConversationTurnOutcome,
-	ConversationTurnOutcomeRequest, ConversationTurnOutcomeResult, ConversationUnavailableReason,
-	ConversationWorkingDirectory, DictationRequest, DictationStatus, DoctorReport,
-	InitialModelCatalogRequest, InitialModelCatalogResult, InitialModelSource, McpLoginRequest,
-	McpLoginStatus, ModelCatalogPurpose, NativeAgentsResult, NativeStartupConfiguration,
-	PromptEditStatus, PromptForkResult, PromptInputSendIdentity, PromptInputSendStatus,
-	PromptInputUpload, PromptInputUploadStatus, ProtocolVersion, TaskRecapStatus,
+	AgentMemoryResult, AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult,
+	AgentOutputResult, AgentPendingAppUiCall, AgentPermissionState, AgentPluginSelectionState,
+	AgentReadStateResult, AgentRequestResult, AgentResourcesResult, AgentSampleStatus,
+	AgentSavedAppSettingsResult, AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget,
+	AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult,
+	AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest,
+	AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION,
+	ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
+	ConversationExecutionOverrides, ConversationExecutionSettings, ConversationListCursor,
+	ConversationListResult, ConversationListSize, ConversationModelReviewResult,
+	ConversationModelSettingsResult, ConversationRecoveryAction, ConversationResult,
+	ConversationSummary, ConversationTurnOutcome, ConversationTurnOutcomeRequest,
+	ConversationTurnOutcomeResult, ConversationUnavailableReason, ConversationWorkingDirectory,
+	DictationRequest, DictationStatus, DoctorReport, InitialModelCatalogRequest,
+	InitialModelCatalogResult, InitialModelSource, McpLoginRequest, McpLoginStatus,
+	ModelCatalogPurpose, NativeAgentsResult, NativeStartupConfiguration, PromptEditStatus,
+	PromptForkResult, PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload,
+	PromptInputUploadStatus, ProtocolVersion, TaskRecapStatus,
 	program_cycle::{ProgramCycleResult, ProgramListResult},
 };
 
@@ -2213,6 +2214,18 @@ pub enum QueryPayload {
 		work_id: EntityId,
 	},
 
+	/// Read the native memory summary of an already-loaded conversation.
+	GetAgentMemory {
+		/// Exact local Agent.
+		work_id: EntityId,
+		/// Expected native conversation; a stale UI cannot select a replacement.
+		thread_id: WireText,
+		/// Complete source and summary digest from the first page.
+		digest: Option<WireText>,
+		/// Exact UTF-8 byte offset.
+		offset: usize,
+	},
+
 	/// Read connector exposure for an owned task.
 	GetAgentAppExposure {
 		/// Task identity.
@@ -3175,6 +3188,8 @@ pub enum QueryResultPayload {
 	AgentSearchSettings(AgentSearchSettingsResult),
 	/// Native context defaults and user preferences.
 	AgentContextSettings(AgentContextSettingsResult),
+	/// Read-only native memory observation.
+	AgentMemory(AgentMemoryResult),
 	/// Enabled native skills for the exact requested source.
 	AgentSkills(AgentSkillsResult),
 	/// Native connector exposure configuration.
