@@ -27,6 +27,7 @@
 #[path = "agent_process_native_ordinary_effort_tests.rs"] mod ordinary_effort;
 #[path = "agent_process_native_permission_tests.rs"] mod permissions;
 #[path = "agent_process_native_prediction_tests.rs"] mod prediction;
+#[path = "agent_process_native_project_sync_tests.rs"] mod project_sync;
 #[path = "agent_process_native_project_work_tests.rs"] mod project_work;
 #[path = "agent_process_native_read_state_tests.rs"] mod read_state;
 #[path = "agent_process_native_realtime_tests.rs"] mod realtime;

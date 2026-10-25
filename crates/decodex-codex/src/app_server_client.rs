@@ -25,7 +25,10 @@ mod output_rate;
 mod permission_observations;
 mod projects;
 pub use guardian_settings::is_thread_reviewer_selection;
-pub use projects::{is_project_create, is_project_list, is_project_read, is_thread_name_selection};
+pub use projects::{
+	is_project_create, is_project_list, is_project_read, is_thread_name_selection,
+	is_thread_project_assignment,
+};
 mod permissions;
 mod prediction;
 mod prompt_edit;

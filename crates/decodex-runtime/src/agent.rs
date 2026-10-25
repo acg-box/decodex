@@ -1052,6 +1052,7 @@ impl AgentCoordinator {
 
 		// Resume is idempotent hydration of the exact thread, never a turn retry.
 		self.hydrate_dispatch_thread(thread).await?;
+		self.sync_native_project(&item).await?;
 
 		let (mut params, external) =
 			self.dispatch_input(&item, prompt, &events, retry.is_some()).await?;
@@ -2545,7 +2546,11 @@ impl AgentCoordinator {
 				Ok(_) => {},
 				// A queued archived owner waits for explicit restoration. Its retained
 				// input must not stop later owners in this wake batch.
-				Err(AgentError::ThreadArchived | AgentError::MigrationPending(_)) => {},
+				Err(
+					AgentError::ThreadArchived
+					| AgentError::MigrationPending(_)
+					| AgentError::ProjectPending(_),
+				) => {},
 				Err(error @ AgentError::ThreadOwnedElsewhere { .. }) => {
 					self.store.hold_agent_unsent_input(agent.id.clone()).await?;
 					self.store
@@ -2589,6 +2594,8 @@ pub enum AgentError {
 	UnknownDispatch,
 	/// Native tool replacement is parked without discarding the original execution.
 	MigrationPending(String),
+	/// Native Project membership requires inspection; unrelated Agents can continue.
+	ProjectPending(String),
 	/// New task settings superseded an automatic capacity continuation.
 	CapacityRetrySuperseded,
 	/// Input was refused before dispatch and its durable claim has been released.
@@ -2598,6 +2605,9 @@ pub enum AgentError {
 }
 impl Display for AgentError {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		if let Self::ProjectPending(detail) = self {
+			return f.write_str(detail);
+		}
 		if matches!(self, Self::ThreadOwnedElsewhere { .. }) {
 			return f.write_str("This conversation is open in Codex or another application. Sending is unavailable here while it is in use. Your history remains readable.");
 		}

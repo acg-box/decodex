@@ -100,6 +100,24 @@ impl AppServerClient {
 		.await
 		.map_err(|_| ClientError::Io)?
 	}
+
+	/// Assign an existing conversation through native metadata without changing execution.
+	pub async fn assign_thread_project(
+		&self,
+		thread: &str,
+		project: &str,
+	) -> Result<Value, ClientError> {
+		let params = serde_json::json!({"threadId":thread,"projectId":project});
+		if !is_thread_project_assignment(&params) {
+			return Err(ClientError::InvalidFrame);
+		}
+		tokio::time::timeout(
+			std::time::Duration::from_secs(8),
+			self.request("thread/metadata/update", params),
+		)
+		.await
+		.map_err(|_| ClientError::Io)?
+	}
 }
 /// Validate only the native create contract used by the directory registration owner.
 pub fn is_project_create(params: &Value) -> bool {
@@ -136,4 +154,11 @@ pub fn is_thread_name_selection(params: &Value) -> bool {
 	params.as_object().is_some_and(|m| m.len() == 2)
 		&& valid(&params["threadId"], 512)
 		&& valid(&params["name"], 1024)
+}
+
+/// Validate only an exact Project assignment, without clearing or other metadata edits.
+pub fn is_thread_project_assignment(params: &Value) -> bool {
+	params.as_object().is_some_and(|m| m.len() == 2)
+		&& valid(&params["threadId"], 512)
+		&& valid(&params["projectId"], 512)
 }
