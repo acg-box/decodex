@@ -64,7 +64,6 @@ impl AgentSurface {
 		self.uncertain =
 			self.submission.unconfirmed.iter().any(|key| Some(key) != pending.key.as_ref());
 
-		self.resolve_steer_draft_copies(&identity);
 		self.finish_command(
 			pending,
 			Ok(AgentCommandResponse::Accepted { work_id: identity.work_id }),
@@ -89,7 +88,6 @@ impl AgentSurface {
 		self.feedback =
 			Feedback::warning("Acceptance unknown. Waiting for the exact native receipt.");
 		self.submission.pending = Some(PendingCommand {
-			recovery: None,
 			key: Some(identity.submission_id.clone()),
 			owner: Some(identity.work_id.as_str().into()),
 			steer: Some(identity),
@@ -156,7 +154,6 @@ mod tests {
 				s.uncertain = true;
 				s.feedback = crate::ui_feedback::Feedback::warning("Acceptance unknown");
 				s.submission.pending = Some(PendingCommand {
-					recovery: None,
 					key: Some(identity.submission_id.clone()),
 					steer: Some(identity.clone()),
 					epoch: s.command_epoch,

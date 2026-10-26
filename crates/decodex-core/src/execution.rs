@@ -1,10 +1,10 @@
 //! Closed execution-consumer lineage shared by routing, continuation, and provider attempts.
 //!
-//! These values identify one ordinary Conversation turn or one ManagedRun execution. They carry
+//! These values identify one ordinary Conversation turn. They carry
 //! no account list, credential, process, RuntimeSession creation, dispatch, retry, or lifecycle
 //! authority.
 
-use crate::{ConversationId, ManagedExecutionId, ManagedRunId, RuntimeSessionId, TurnId};
+use crate::{ConversationId, RuntimeSessionId, TurnId};
 
 /// One exact consumer intent that Routing Decision and Continuation Plan preserve without changing
 /// its domain owner.
@@ -23,22 +23,12 @@ pub enum ExecutionConsumer {
 		/// Prospective ordinary Turn identity. Only the Conversation owner can materialize it.
 		turn_id: TurnId,
 	},
-	/// One execution-scoped intent within a ManagedRun.
-	ManagedRunExecution {
-		/// Owning ManagedRun.
-		managed_run_id: ManagedRunId,
-		/// Positive immutable ManagedRun revision accepted before routing.
-		managed_run_revision: i64,
-		/// Distinct execution intent within the ManagedRun.
-		execution_id: ManagedExecutionId,
-	},
 }
 impl ExecutionConsumer {
 	/// Return the canonical durable-store consumer label.
 	pub const fn as_sql(&self) -> &'static str {
 		match self {
 			Self::ConversationTurn { .. } => "conversation_turn",
-			Self::ManagedRunExecution { .. } => "managed_run_execution",
 		}
 	}
 
@@ -46,7 +36,6 @@ impl ExecutionConsumer {
 	pub const fn domain_revision(&self) -> i64 {
 		match self {
 			Self::ConversationTurn { conversation_revision, .. } => *conversation_revision,
-			Self::ManagedRunExecution { managed_run_revision, .. } => *managed_run_revision,
 		}
 	}
 }

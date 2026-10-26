@@ -13,7 +13,7 @@ use crate::{
 };
 use decodex_protocol::{
 	CommandPayload, ConversationReasoningEffort, ConversationTurnOutcomeState,
-	DesktopCreationIntent, DesktopRecoveredDraft, EntityId,
+	DesktopCreationIntent, EntityId,
 };
 
 #[gpui::test]
@@ -25,7 +25,7 @@ fn acknowledged_turn_stays_removed_after_store_reopen(cx: &mut TestAppContext) {
 		(ConversationTurnOutcomeState::Failed, "Original message", "Original message", false),
 		(ConversationTurnOutcomeState::NotSubmitted, "Original message", "Original message", false),
 	] {
-		let (_service, profile, other) = super::super::tests::profiles();
+		let (_service, profile, _other) = super::super::tests::profiles();
 		let scope = profile.draft_scope_key();
 		let directory = tempfile::tempdir().unwrap();
 		let root = directory.path().canonicalize().unwrap().join("desktop");
@@ -49,15 +49,6 @@ fn acknowledged_turn_stays_removed_after_store_reopen(cx: &mut TestAppContext) {
 		let mut document = DesktopDraftDocument::default();
 
 		document.profiles.insert(scope.clone(), saved_profile.clone());
-		document.recovered.push(DesktopRecoveredDraft {
-			scope: Some(scope.clone()),
-			draft: saved_profile.clone(),
-		});
-
-		let foreign_copy =
-			DesktopRecoveredDraft { scope: Some(other.draft_scope_key()), draft: saved_profile };
-
-		document.recovered.push(foreign_copy.clone());
 		store.save(0, &document.encode().unwrap()).unwrap();
 
 		let (shell, visual) =
@@ -102,14 +93,6 @@ fn acknowledged_turn_stays_removed_after_store_reopen(cx: &mut TestAppContext) {
 		assert_eq!(active.composer.text, expected);
 		assert_eq!(active.composer.conversation_id, draft.composer.conversation_id);
 		assert_eq!(active.parked, draft.parked);
-		assert!(
-			saved
-				.recovered
-				.iter()
-				.filter(|copy| copy.scope.as_ref() == Some(&scope))
-				.all(|copy| copy.draft.ordinary["/tmp"].unconfirmed.is_empty())
-		);
-		assert!(saved.recovered.contains(&foreign_copy));
 
 		let (cold, cold_visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
@@ -235,7 +218,7 @@ fn acknowledged_archive_stays_removed_after_store_reopen(cx: &mut TestAppContext
 	let expected = text;
 
 	{
-		let (_service, profile, other) = super::super::tests::profiles();
+		let (_service, profile, _other) = super::super::tests::profiles();
 		let scope = profile.draft_scope_key();
 		let directory = tempfile::tempdir().unwrap();
 		let root = directory.path().canonicalize().unwrap().join("desktop");
@@ -249,15 +232,6 @@ fn acknowledged_archive_stays_removed_after_store_reopen(cx: &mut TestAppContext
 		let mut document = DesktopDraftDocument::default();
 
 		document.profiles.insert(scope.clone(), saved_profile.clone());
-		document.recovered.push(DesktopRecoveredDraft {
-			scope: Some(scope.clone()),
-			draft: saved_profile.clone(),
-		});
-
-		let foreign_copy =
-			DesktopRecoveredDraft { scope: Some(other.draft_scope_key()), draft: saved_profile };
-
-		document.recovered.push(foreign_copy.clone());
 		store.save(0, &document.encode().unwrap()).unwrap();
 
 		let (shell, visual) =
@@ -314,14 +288,6 @@ fn acknowledged_archive_stays_removed_after_store_reopen(cx: &mut TestAppContext
 		assert_eq!(active.composer.text, expected);
 		assert_eq!(active.composer.conversation_id, draft.composer.conversation_id);
 		assert_eq!(active.parked, draft.parked);
-		assert!(
-			saved
-				.recovered
-				.iter()
-				.filter(|copy| copy.scope.as_ref() == Some(&scope))
-				.all(|copy| copy.draft.ordinary["/tmp"].unconfirmed.is_empty())
-		);
-		assert!(saved.recovered.contains(&foreign_copy));
 
 		let (cold, cold_visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
@@ -349,7 +315,7 @@ fn acknowledged_routing_control_preserves_other_records_after_restart(cx: &mut T
 	let expected = text;
 
 	for kind in 0..3 {
-		let (_service, profile, other) = super::super::tests::profiles();
+		let (_service, profile, _other) = super::super::tests::profiles();
 		let scope = profile.draft_scope_key();
 		let directory = tempfile::tempdir().unwrap();
 		let root = directory.path().canonicalize().unwrap().join("desktop");
@@ -368,15 +334,6 @@ fn acknowledged_routing_control_preserves_other_records_after_restart(cx: &mut T
 		let mut document = DesktopDraftDocument::default();
 
 		document.profiles.insert(scope.clone(), saved_profile.clone());
-		document.recovered.push(DesktopRecoveredDraft {
-			scope: Some(scope.clone()),
-			draft: saved_profile.clone(),
-		});
-
-		let foreign_copy =
-			DesktopRecoveredDraft { scope: Some(other.draft_scope_key()), draft: saved_profile };
-
-		document.recovered.push(foreign_copy.clone());
 		store.save(0, &document.encode().unwrap()).unwrap();
 
 		let (shell, visual) =
@@ -433,14 +390,6 @@ fn acknowledged_routing_control_preserves_other_records_after_restart(cx: &mut T
 		assert_eq!(active.composer.text, expected);
 		assert_eq!(active.composer.conversation_id, draft.composer.conversation_id);
 		assert_eq!(active.parked, draft.parked);
-		assert!(
-			saved
-				.recovered
-				.iter()
-				.filter(|copy| copy.scope.as_ref() == Some(&scope))
-				.all(|copy| copy.draft.ordinary["/tmp"].unconfirmed == vec![unrelated.clone()])
-		);
-		assert!(saved.recovered.contains(&foreign_copy));
 
 		let (cold, cold_visual) =
 			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));

@@ -135,11 +135,6 @@ impl DecodexPaths {
 		self.join("server/identity")
 	}
 
-	/// Fixed retired credential-vault path used only by the one-shot transfer tool.
-	pub fn credential_vault_file(&self) -> PathBuf {
-		self.join("server/credentials.redb")
-	}
-
 	/// Daemon-owned local product database.
 	pub fn product_database_file(&self) -> PathBuf {
 		self.join("server/decodex.sqlite3")

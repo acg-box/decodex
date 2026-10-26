@@ -55,7 +55,7 @@ pub enum LocalDatabaseError {
 	UnsafeHostPath,
 	/// The database cannot be opened or used.
 	Unavailable,
-	/// The schema, migration ledger, or stored bytes are incompatible.
+	/// The current schema or stored bytes are incompatible.
 	Incompatible,
 }
 impl Debug for LocalDatabaseError {

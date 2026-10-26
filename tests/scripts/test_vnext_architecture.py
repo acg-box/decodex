@@ -19,24 +19,22 @@ def toml(path: str) -> dict[str, object]:
 
 
 class LocalSqliteArchitectureTests(unittest.TestCase):
-    """Protect one owner, one normal store, and one bounded transfer path."""
+    """Protect the SQLite authority and protocol-only desktop client."""
 
     def test_database_is_one_discoverable_workspace_owner(self) -> None:
         workspace = toml("Cargo.toml")["workspace"]
         members = set(workspace["members"])
         dependencies = workspace["dependencies"]
         self.assertIn("database", members)
-        self.assertIn("database/transfer", members)
+        self.assertNotIn("database/transfer", members)
         self.assertIn("bundled", dependencies["rusqlite"]["features"])
 
-    def test_normal_runtime_has_no_transfer_store_dependency(self) -> None:
+    def test_current_store_has_no_retired_storage_dependency(self) -> None:
         runtime = toml("crates/decodex-runtime/Cargo.toml")
         dependencies = runtime["dependencies"]
         self.assertIn("decodex-database", dependencies)
         self.assertNotIn("redb", dependencies)
-        transfer = toml("database/transfer/Cargo.toml")["dependencies"]
-        self.assertIn("redb", transfer)
-        self.assertIn("decodex-database", transfer)
+        self.assertNotIn("redb", toml("Cargo.toml")["workspace"]["dependencies"])
 
     def test_clients_remain_protocol_only(self) -> None:
         for manifest_path in ("apps/decodex-gpui/Cargo.toml",):

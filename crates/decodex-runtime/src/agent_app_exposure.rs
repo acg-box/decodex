@@ -229,18 +229,6 @@ async fn inspect(store: &SqliteStore, source: &Source, connector: &str) -> Optio
 
 	let prior = store.agent_app_settings_receipt(scope.clone()).await.ok()?;
 	let last = store.agent_config_receipt(scope.clone()).await.ok()?;
-	let legacy = if last.is_none() {
-		store
-			.legacy_agent_app_exposure_outcome(
-				key.work.clone(),
-				key.thread.clone(),
-				connector.into(),
-			)
-			.await
-			.ok()?
-	} else {
-		None
-	};
 	let work = store.get_agent_work_item(key.work.clone()).await.ok()?;
 
 	if work.codex_thread_id.as_deref() != Some(&key.thread) || !guard.is_live() {
@@ -258,7 +246,6 @@ async fn inspect(store: &SqliteStore, source: &Source, connector: &str) -> Optio
 		settings.fingerprint(),
 		prior.as_ref().map(|r| (r.id, &r.state)),
 		last.as_ref().map(crate::agent_config_settings::project),
-		legacy
 	]);
 	let token: String = Sha256::digest(identity.to_string().as_bytes())
 		.iter()
@@ -273,10 +260,7 @@ async fn inspect(store: &SqliteStore, source: &Source, connector: &str) -> Optio
 		effective: settings.effective.clone(),
 		preference: settings.preference.clone(),
 		can_update,
-		last_outcome: last
-			.as_ref()
-			.map(|p| agent_config_settings::project(p).outcome)
-			.or_else(|| legacy.map(|(_, state)| state)),
+		last_outcome: last.as_ref().map(|p| agent_config_settings::project(p).outcome),
 	};
 
 	if serde_json::to_vec(&state).ok()?.len() > 32 * 1_024 {

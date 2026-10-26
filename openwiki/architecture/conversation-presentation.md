@@ -32,6 +32,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_text_reveal.rs
   - id: openwiki-source-b76859cf2790cc53340f082d
     resource: repo://apps/decodex-gpui/src/agent_timeline_groups.rs
+  - id: openwiki-source-d57edbe5de23ebee985fc88b
+    resource: repo://apps/decodex-gpui/src/agent_timeline_inputs.rs
   - id: openwiki-source-691432bb61082c358b6f9c24
     resource: repo://apps/decodex-gpui/src/agent_timeline.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
@@ -54,6 +56,8 @@ sources:
     resource: repo://Cargo.toml
   - id: openwiki-source-2b08587e9b26e203156110c8
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
+  - id: openwiki-source-c01ab8da738707861c64c143
+    resource: repo://crates/decodex-protocol/src/desktop_message_delivery.rs
   - id: openwiki-source-64d7588c1af50398568a792e
     resource: repo://crates/decodex-runtime/src/agent/timeline.rs
   - id: openwiki-source-6b78c4fcf18e4d7a81d69679
@@ -62,10 +66,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/media_tests.rs
   - id: openwiki-source-8d3e8e016f038e821f68dd0c
     resource: repo://crates/decodex-runtime/src/agent/timeline/media.rs
-generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
+generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T14:39:55.302Z
 ---
 
 
@@ -98,6 +102,8 @@ A voice call has one expandable group with speaker-labelled transcript text. Cal
 Completed calls with no transcript and no failure are hidden from history and its navigation rail. Failed or pending empty calls retain a compact status. A completed call uses its closing boundary for both the disclosure identity and the outer history anchor. Loading earlier records therefore preserves an already-expanded call.
 
 The first native page requests up to 30 records. Earlier pages request up to 15 and can retry smaller sizes when a page is too dense. Records are not conversation rounds: grouping and hidden items affect how many rows appear. Automatic prefetch waits for anchor restoration. It can fill an underfilled viewport; once content fills the viewport, further prefetch requires upward-scroll intent.
+
+Submitted input has message delivery state separate from the current editor. A positively unsent message offers Retry. An unconfirmed message offers a status read, not another send. Retrying keeps the original operation and does not replace later text in the input bar. No saved-copy counter or profile-snapshot manager appears in the conversation.
 
 Saved edit recovery and history refresh/source controls live in Details. The normal transcript contains the active editor or a compact notice for an unresolved operation, rather than a permanent list of saved drafts. See [conversation recovery](../workflows/conversations-and-recovery.md) for edit and Fork ownership.
 

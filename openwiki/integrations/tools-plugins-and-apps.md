@@ -8,6 +8,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_hooks.rs
   - id: openwiki-source-01379a7fb49ab2d638863891
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
+  - id: openwiki-source-eccf08613126ff810078b520
+    resource: repo://crates/decodex-protocol/src/agent.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
@@ -18,10 +20,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_skill_roots.rs
   - id: openwiki-source-8b32cad13ab2428dd54bd986
     resource: repo://crates/decodex-runtime/src/agent_skills.rs
-generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T15:20:45.937Z
 ---
 
 # Native tools and connection ownership
@@ -34,7 +36,7 @@ Codex owns native tool discovery, filtering, plugin activation and execution. De
 
 ## Plugin configuration belongs to Codex
 
-The desktop shows tool status and source ownership. Install and configure plugins and connections in Codex for the selected account. Local task-plugin selection, plugin installation, sync and authentication-management controls are retired. Existing native settings observations and historical operation receipts remain readable; their presence does not imply a current management action.
+The desktop shows tool status and source ownership. Install and configure plugins and connections in Codex for the selected account. Local task-plugin selection, plugin installation, sync and authentication-management controls are retired. Native settings observations remain available. The retired local selection journals, query types and mutation commands are removed.
 
 ## Native settings boundaries
 
@@ -43,7 +45,7 @@ The desktop shows tool status and source ownership. Install and configure plugin
 | Shared Hooks | Review current content, trust its hash, enable or disable | Trust and enablement are separate; other tasks using the same file can be affected |
 | Connector tool exposure | Edit native `omit_tools_from` preferences for supported surfaces | Inherit, explicit empty and exclusions differ; server restrictions still apply |
 
-Local connector approval/reviewer management is also retired. Pending native approvals and their exact request identities remain supported. Configure account-specific connection policy in Codex.
+The local API has no connector approval/reviewer configuration commands. Pending native approvals and their exact request identities remain supported. Configure account-specific connection policy in Codex.
 
 These retained writes use the native configuration owner and the shared receipt journal. Save once and read back. Unknown outcomes stay unknown until matching evidence resolves them. These controls do not provide a generic Hook script editor or a new connector authentication engine.
 

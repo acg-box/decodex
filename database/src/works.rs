@@ -200,8 +200,7 @@ impl SqliteStore {
 		Ok(portfolio)
 	}
 
-	/// Existing persistent collaborators. Native Subagents and legacy managed executors are
-	/// excluded.
+	/// Existing persistent collaborators. Native Subagents have separate execution ownership.
 	pub async fn persistent_agents(&self) -> Result<Vec<(String, String)>, StoreError> {
 		self.run(|c| {
 			c.prepare(

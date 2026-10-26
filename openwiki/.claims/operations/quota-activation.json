@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:90f462da39f9cf10a079a5f79865cb4344df7a7914975e5ede324bb4ca4b0c43",
+  "pageVersion": "sha256:eec7a9b9816bc8a999f9de6453756541fc6d95172aff54e074e40eeeb01ecbe4",
   "claims": [
     {
       "id": "claim_0cb251fa04a54e8d8923b6e334a500f9",
@@ -18,7 +18,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_api/activation.rs",
-          "version": "repo-file-v1:sha256:c02335fac04ca8f4ae0bbc68a30cd87b5442c06cf63e04192b41d3ba76a77912"
+          "version": "repo-file-v1:sha256:55984d8e75bc44f78d97d8b24d18d900701a590fe5cf5a27946242e35ca4d868"
         }
       ]
     },
@@ -27,18 +27,32 @@
       "statement": "Quota activation reads native policy through a short-lived account-bound app-server process and shuts it down before the direct Responses request.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_api/activation.rs#L88-L103",
+          "resource": "repo://crates/decodex-runtime/src/account_api/activation.rs#L91-L106",
           "version": "repo-lines-v1:sha256:b557c37ae40f17652f7df0d597e6ee8f2e5d36ea7c7f481a5cd0f08592367167:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2YjcyMzY1MWIyZTdkNDllNzFiZDc0Yjk5MzczMzNlNzIwNmIyNmQ4Mjg2NjUxNTc3NTkzYjBhM2IwMTNjM2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk1ODFlN2NmYzRmMGExYWM5OWEzMjI4YTM0ZjJlYmZhNGU0NjhkOGE4MmUzN2QxNDBkMGU2NmM1MTY0ODBhMGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBjZTM0MzUzMjg4M2RlMjBiYWQzNmE0MDQzNjRmYWQ2MjdkYjRmYmNlMzQ1ZDUyNDI3Yzg1ZGUwOWVjMjg1ZmIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5NDhiZjQxMzc3MWFkNTcxYTAzNThlNTU2MGRmNjI3NTEzMGRmZDliM2Q1NzU3ZmYwNjlmNjRkMTBiYzkyMGYifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/activation_policy.rs#L133-L165",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/activation_policy.rs#L137-L169",
           "version": "repo-lines-v1:sha256:088f4f78c07ffc9a0adfbacea5cc2aa3a90055258ca8c851019c0b941cd3d9b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmMGY0MjFiNGE5MzkzNjIwMTkxMWE0ODIzZTYwZjNlZDJjNGI4OTc3ZjljMmM1OTQ5OGE5MGMxNWFlODNkZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1ZWZlM2QzZWFhOTZlYTViZjU2YTdmMzhiNjdiZDE1YmUwNTY2ODE1OGRiY2Y0YzAyYmE3M2UwOWM2ZTE2YjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2ZTc3YWYwZTcyZGJkZjI3OTQyNDdiZDIzYTA4MzU2NTk5ZTllNjc3NGU5ZmNkYTViODllZTBhNTJkNjllOGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b9924b9130db4af29c050d89cd7719a4",
+      "statement": "The current SQLite schema defines quota activation state and startup verifies that exact schema without an upgrade ledger.",
+      "evidence": [
+        {
+          "resource": "repo://database/schema.sql",
+          "version": "repo-file-v1:sha256:ad3410025cf2a32514b1d7c020ca972bdc4f253e8d2e9198f8aa1ed908e190a2"
+        },
+        {
+          "resource": "repo://database/src/schema.rs",
+          "version": "repo-file-v1:sha256:b3a3c373f7c156e6ba3eb579b1bbd08164a0eda69bd51ba24802741234c95359"
         }
       ]
     }
   ],
   "verification": {
-    "by": "openwiki/0.7.0",
-    "at": "2026-10-03T17:31:35.485Z"
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-26T15:20:45.937Z"
   }
 }

@@ -8,14 +8,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
   - id: openwiki-source-f05abb1636e0c1ff279607a6
     resource: repo://crates/decodex-codex/src/app_server_client/guardian_settings.rs
-  - id: openwiki-source-c75093d19a3bc72db5836102
-    resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-eccf08613126ff810078b520
+    resource: repo://crates/decodex-protocol/src/agent.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
     resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
   - id: openwiki-source-a7886792ad3e47b8e1afb7fa
     resource: repo://crates/decodex-runtime/src/agent/guardian_details.rs
-  - id: openwiki-source-acd129fd3a88516b785fc929
-    resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-1bebc823fa8b6426acb4d5e2
     resource: repo://crates/decodex-runtime/src/agent/native_settings.rs
   - id: openwiki-source-52d3ef4824079f66e9063566
@@ -24,10 +22,10 @@ sources:
     resource: repo://database/src/agent_guardian.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
-generated: { by: "codex", at: "2026-10-25T06:57:32.093Z" }
+generated: { by: "codex", at: "2026-10-26T15:20:45.937Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T15:20:45.937Z
 ---
 
 
@@ -47,7 +45,7 @@ Guardian evidence is durable and can contain conflicts. It does not wake work or
 
 ## Global Guardian
 
-Guardian has one global Review preference: Ask Me or Automatic Review. It also has one optional global Review Details setting. The desktop has no editable per-Agent reviewer override. A retained legacy per-Agent write request is rejected explicitly. Native filesystem, network, tool, profile and managed policy remain separate authority.
+Guardian has one global Review preference: Ask Me or Automatic Review. It also has one optional global Review Details setting. The desktop has no editable per-Agent reviewer override. The local protocol exposes no per-Agent reviewer write command. Native filesystem, network, tool, profile and managed policy remain separate authority.
 
 Ask Me sends eligible native approval requests to the human. An Agent cannot impersonate the answer. Automatic Review routes eligible requests to the native reviewer, which can allow or deny the action. Full Access remains a distinct native permission choice; setting `approval_policy=never` alone does not broaden permissions. Independent Collaboration does not transfer the other Agent's execution authority.
 

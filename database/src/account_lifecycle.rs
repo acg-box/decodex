@@ -511,18 +511,6 @@ impl SqliteStore {
 		self.run(move |connection| read_operation_sync(connection, &operation_id)).await
 	}
 
-	pub async fn is_legacy_tombstone_enrollment_collision(
-		&self,
-		operation: &AccountOperation,
-	) -> Result<bool, StoreError> {
-		let operation = operation.clone();
-
-		self.run(move |connection| {
-			is_legacy_tombstone_enrollment_collision_sync(connection, &operation)
-		})
-		.await
-	}
-
 	pub async fn set_account_enabled(
 		&self,
 		account_id: &AccountId,
@@ -1179,20 +1167,6 @@ fn reserve_command_sync(
 	let transaction =
 		connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
 	let now = crate::unix_micros().map_err(StoreError::from)?;
-
-	if kind == AccountCommandKind::Route
-		&& transaction
-			.query_row(
-				"SELECT 1 FROM legacy_account_route_interruptions WHERE idempotency_key = ?1",
-				rusqlite::params![command.key],
-				|row| row.get::<_, i64>(0),
-			)
-			.optional()
-			.map_err(sql_error)?
-			.is_some()
-	{
-		return Err(StoreError::IdempotencyConflict);
-	}
 
 	let existing = read_command_receipt(&transaction, &command.key)?;
 	let receipt_exists = existing.is_some();
@@ -2152,78 +2126,6 @@ fn resolve_account_enrollment_sync(
 		account_revision: account.revision,
 		previous_credential,
 	})
-}
-
-fn is_legacy_tombstone_enrollment_collision_sync(
-	connection: &Connection,
-	operation: &AccountOperation,
-) -> Result<bool, StoreError> {
-	const RECOVERY_CODE: &str = "tombstone_enrollment_collision";
-
-	if !matches!(operation.kind, AccountOperationKind::Enroll | AccountOperationKind::Import)
-		|| !matches!(
-			operation.phase,
-			AccountOperationPhase::StoreApplied | AccountOperationPhase::RecoveryRequired
-		)
-		|| (operation.phase == AccountOperationPhase::RecoveryRequired
-			&& operation.recovery_code.as_deref() != Some(RECOVERY_CODE))
-		|| operation.expected_account_revision.is_some()
-		|| operation.expected.is_some()
-		|| operation.requested_display_label.is_none()
-		|| operation.requested_enabled.is_none()
-	{
-		return Ok(false);
-	}
-
-	let Some(target) = operation.target.as_ref() else { return Ok(false) };
-
-	if target.version.get() != 1 || account_base_sync(connection, &operation.account_id)?.is_some()
-	{
-		return Ok(false);
-	}
-	if credential_binding_sync(connection, &operation.account_id)?
-		.as_ref()
-		.is_some_and(|binding| binding != target)
-	{
-		return Ok(false);
-	}
-
-	let tombstone = connection
-		.query_row(
-			"SELECT account_id, revision FROM accounts
-			 WHERE provider = ?1 AND provider_account_id = ?2
-			   AND tombstoned_at_micros IS NOT NULL",
-			rusqlite::params![
-				provider_text(target.provider.provider()),
-				target.provider.account_id(),
-			],
-			|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
-		)
-		.optional()
-		.map_err(sql_error)?;
-	let Some((tombstone_id, tombstone_revision)) = tombstone else { return Ok(false) };
-	let tombstone_id =
-		AccountId::new(tombstone_id).map_err(|_| incompatible("account identity"))?;
-	let _ = tombstone_predecessor_credential_sync(
-		connection,
-		&tombstone_id,
-		tombstone_revision,
-		&target.provider,
-	)?;
-	let referenced: bool = connection
-		.query_row(
-			"SELECT EXISTS (
-			   SELECT 1 FROM account_routing_order WHERE account_id = ?1
-			   UNION ALL SELECT 1 FROM account_quota_facts WHERE account_id = ?1
-			   UNION ALL SELECT 1 FROM account_profile_snapshots WHERE account_id = ?1
-			   UNION ALL SELECT 1 FROM account_routing_control WHERE fixed_account_id = ?1
-			 )",
-			rusqlite::params![operation.account_id.as_str()],
-			|row| row.get(0),
-		)
-		.map_err(sql_error)?;
-
-	Ok(!referenced)
 }
 
 fn tombstone_predecessor_credential_sync(

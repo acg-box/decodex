@@ -32,8 +32,6 @@ pub(super) struct Panel {
 }
 
 enum Edit {
-	#[cfg(test)]
-	AgentReviewer(AgentReviewer),
 	Model(decodex_protocol::AgentLiveModelSelection),
 }
 impl Edit {
@@ -45,13 +43,6 @@ impl Edit {
 		models: Option<&[AgentModelDto]>,
 	) -> Option<AgentActionDto> {
 		Some(match self {
-			#[cfg(test)]
-			Self::AgentReviewer(reviewer) => AgentActionDto::SetLiveReviewer {
-				work_id: work.clone(),
-				turn_id: turn.clone(),
-				review_token: review.clone(),
-				reviewer,
-			},
 			Self::Model(selection) => {
 				if !models.is_some_and(|models| {
 					models.iter().any(|m| {

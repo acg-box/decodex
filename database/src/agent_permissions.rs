@@ -4,9 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
-use crate::{
-	SqliteStore, StoreError, agent_models, agent_plugins, agent_process, agent_prompt_edit, error,
-};
+use crate::{SqliteStore, StoreError, agent_models, agent_process, agent_prompt_edit, error};
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentPermissionAttempt {
@@ -67,7 +65,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 
-			if !agent_process::owns_work(&tx,&attempt.work,attempt.generation.as_deref())? || agent_prompt_edit::pending(&tx,&attempt.work)? || pending(&tx,&attempt.work)? || agent_models::pending(&tx,&attempt.work)? || agent_plugins::pending(&tx,&attempt.work)? { return Ok(None); }
+			if !agent_process::owns_work(&tx,&attempt.work,attempt.generation.as_deref())? || agent_prompt_edit::pending(&tx,&attempt.work)? || pending(&tx,&attempt.work)? || agent_models::pending(&tx,&attempt.work)? { return Ok(None); }
 
 			let valid: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items w JOIN agent_inbox_events e ON e.work_item_id=w.id WHERE w.id=?1 AND w.codex_thread_id=?2 AND ((w.dispatch_state='idle' AND w.active_turn_id IS NULL) OR (w.dispatch_state='running' AND w.active_turn_id IS NOT NULL)) AND w.status<>'resolved' AND e.id=?4 AND e.event_kind='native_task_permissions' AND json_extract(e.payload,'$.threadId')=?2 AND json_extract(e.payload,'$.generationId') IS ?3 AND json_type(e.payload,'$.settings')='object' AND json_extract(e.payload,'$.settings.profileId') IS NOT ?5 AND e.id=(SELECT max(n.id) FROM agent_inbox_events n WHERE n.work_item_id=w.id AND n.event_kind='native_task_permissions' AND json_extract(n.payload,'$.threadId')=?2 AND json_extract(n.payload,'$.generationId') IS ?3))",rusqlite::params![attempt.work,attempt.thread,attempt.generation,attempt.settings_event,attempt.profile],|r|r.get(0)).map_err(error::sqlite_error)?;
 

@@ -361,7 +361,7 @@ mod tests {
 
 	#[test]
 	fn selected_native_effort_reaches_turn_start_without_fallback() {
-		for value in ["none", "minimal", "persistent", "provider-defined-effort", "x_high"] {
+		for value in ["none", "minimal", "persistent", "provider-defined-effort", "xhigh"] {
 			let effort: decodex_protocol::ConversationReasoningEffort =
 				serde_json::from_value(serde_json::json!(value)).expect("protocol effort");
 			let request = decodex_codex::ConversationTurnStartRequest::new(
@@ -374,7 +374,7 @@ mod tests {
 			.expect("native turn request");
 			let encoded = serde_json::to_value(request).expect("native wire");
 
-			assert_eq!(encoded["effort"], if value == "x_high" { "xhigh" } else { value });
+			assert_eq!(encoded["effort"], value);
 		}
 	}
 

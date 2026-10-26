@@ -30,26 +30,20 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-ff8abff5a675874c627f1969
     resource: repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs
-  - id: openwiki-source-1477615a268800361379ce21
-    resource: repo://crates/decodex-runtime/src/agent_initial_settings.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
-  - id: openwiki-source-bdc10e06c0058b26a9bde83d
-    resource: repo://database/migrations/0056_project_agent_work.sql
-  - id: openwiki-source-f282017dc1610aa4fa0e6730
-    resource: repo://database/migrations/0058_shared_agent_process.sql
-  - id: openwiki-source-c6616f46cdcd37303054bf01
-    resource: repo://database/migrations/0059_native_assignment_proof.sql
-  - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
-    resource: repo://database/src/migrations.rs
+  - id: openwiki-source-003f00974f49a9f106bbcbea
+    resource: repo://database/schema.sql
+  - id: openwiki-source-dc8958560b1230967470835f
+    resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
+generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T15:20:45.937Z
 ---
 
 # OpenWiki quickstart
@@ -64,11 +58,7 @@ Agents use native Subagents for bounded execution and scoped Collaboration Reque
 
 Work and Guardian fit the existing desktop. Expand Work to inspect Materials, Collaboration, Results and assessment. Guardian has global Ask Me or Automatic Review and optional bounded Review Details; Full Access stays a separate native permission choice. Review records with no exact action association stay explicitly unassociated.
 
-Schema 56 and protocol 3.0 provide the direct business migration. Schema 57 retains native input receipts; schemas 58 and 59 preserve independent process ownership and distinguish plaintext from native task-name proof. Independent conversations can start without an Assistant. Native Project reconciliation, named assignment recovery and Guardian detail recovery preserve native execution ownership. The [acceptance record](testing/upstream-acceptance-boundaries.md#source-built-real-provider-acceptance) documents a source-built real-provider run with two Projects and four completed Works, nine passed native tests and 2924 passed workspace tests. Original failures, unknown old encrypted bindings and unobserved official Codex Project presentation remain explicit. No app installation or release was performed.
-
-A separate control follow-up verifies actual Pause/Resume buttons and Full Access behavior across restart. It identifies the native owners of the old encrypted helpers, but leaves their unproved Work bindings unchanged. See `controls_followup` in the [retained evidence](../automations/upstream/retained-evidence.json).
-
-A later [installed development acceptance](testing/upstream-acceptance-boundaries.md#installed-development-acceptance) verifies the same business lifecycle locally and repairs independent-Agent composer, approval and input ownership. Its signed artifact, preserved data scope, 1025 passed UI tests, three unexplained complete-run cleanup markers and clean isolated controls are retained separately. Native Project membership and Decodex presentation passed; official desktop Project presentation remains unobserved. A [separate synthetic online voice qualification](testing/upstream-acceptance-boundaries.md#synthetic-online-voice-and-audible-playback) passed two tests for dictation, returned speech and explicit closure. The user heard separate playback and reported low volume. Installed-UI device-ADM and broad audio quality remain outside that sample. No public release occurred.
+The current SQLite schema preserves native input receipts, independent process ownership and exact assignment evidence. Conversations can start without an Assistant. Native Project reconciliation, assignment recovery and Guardian detail recovery keep native execution in Codex. See the [acceptance boundaries](testing/upstream-acceptance-boundaries.md) for historical source-built, installed-app and online voice qualifications. Those records do not qualify a later artifact.
 
 ## Memory, collaboration and usage views
 
@@ -76,13 +66,11 @@ A later [installed development acceptance](testing/upstream-acceptance-boundarie
 - The existing **Collaboration** panel retains exact local question replies, delivery outcomes and independent contribution/repair cycles. A reply or completed receiving turn does not imply resolution. See [coordination](architecture/chief-coordination.md).
 - **Actual usage** in Agent preferences and Work details shows known native token deltas and duration with source coverage. Shared or missing Work attribution stays explicit; this is not billing or complete Work elapsed time.
 
-These views first shipped with local protocol 3.1 and remain in current protocol 3.2 with the existing schema59 store. Their exact regressions and qualification limits are in [the acceptance boundary](testing/upstream-acceptance-boundaries.md#selected-read-only-views) and `selected_read_views` in the [portable evidence index](../automations/upstream/retained-evidence.json). They do not change the selected runtime, source-review cursor, installed app or automation schedule.
+These views preserve unknown coverage and resolution limits. Their retained qualification is in [the acceptance boundary](testing/upstream-acceptance-boundaries.md#selected-read-only-views). Runtime selection, source-review state, installed artifacts and schedules remain separate.
 
 ## Persistent attached branches
 
 When reviewing an earlier message, choose **Attached branch after this turn** to create a persistent native branch from its completed-turn prefix. The source history, draft and Goal remain unchanged. Creation sends no input and copies no native Goal. Reopen a verified branch through **Agent preferences > Attached branches > Open branch**. See [conversation recovery](workflows/conversations-and-recovery.md#edit-or-branch-at-an-earlier-input) and the [exact-artifact qualification](testing/upstream-acceptance-boundaries.md#persistent-attached-branches).
-
-The user selected this as item 4. Items 1–3 are delivered above. Item 5, Guardian V3, waits for upstream maturity. Item 6, custom managed configuration, is deferred. No new decision remains in this list; installation, release and schedule activation require their own authority.
 
 ## Start by task
 
@@ -108,7 +96,7 @@ The user selected this as item 4. Items 1–3 are delivered above. Item 5, Guard
 ## Current boundaries
 
 - `decodex serve` is the service and SQLite product-state owner. GPUI and CLI use typed local clients. The bundled helper is `decodex`, not `decodexd`.
-- The protocol crate’s `CURRENT_VERSION` and the embedded migration ledger define compatibility. Read these owners instead of copying version numbers into operational instructions.
+- The protocol crate’s `CURRENT_VERSION`, `database/schema.sql` and `database/src/schema.rs` define the exact current local format. New stores start with that schema; startup does not run a historical migration chain.
 - The Agent graph presents work relationships; the right Collaboration panel keeps recorded exchanges and pending response requests visible across chats. Expanding an exchange preserves the active chat and draft. Historical Factory diagrams do not define the current desktop.
 - Account admission accepts native `plus`, `pro`, `prolite`, `promax` and `team` plans. OAuth and PAT use the same plan scope; native identity, quota and entitlement remain authoritative. See [Accounts](operations/accounts-and-routing.md).
 - Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.

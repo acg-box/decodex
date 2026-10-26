@@ -5,11 +5,10 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	AgentAppSettingEdit, AgentAppUiCall, AgentAsyncQuestionDto, AgentContextFeature,
-	AgentExecutionOverrides, AgentGoalEdit, AgentHookChange, AgentRequestedDecision, AgentReviewer,
-	AgentToolExposureSurface, ConversationModel, ConversationReasoningEffort,
-	ConversationWorkingDirectory, EntityId, HistoryText, PromptForkBoundary, PromptInputUpload,
-	Sha256Digest, WeatherForecast, WireText,
+	AgentAppUiCall, AgentAsyncQuestionDto, AgentContextFeature, AgentExecutionOverrides,
+	AgentGoalEdit, AgentHookChange, AgentRequestedDecision, AgentToolExposureSurface,
+	ConversationModel, ConversationReasoningEffort, ConversationWorkingDirectory, EntityId,
+	HistoryText, PromptForkBoundary, PromptInputUpload, Sha256Digest, WeatherForecast, WireText,
 };
 use decodex_core::{
 	MAX_APPROVAL_ENVELOPE_BYTES, ServiceTier,
@@ -649,32 +648,6 @@ pub enum AgentActionDto {
 		/// None restores inheritance; an empty list clears connector omissions.
 		omit: Option<Vec<AgentToolExposureSurface>>,
 	},
-	/// Change an existing saved app connection override from current native configuration.
-	SetSavedAppSetting {
-		/// Originating task.
-		work_id: EntityId,
-		/// Current native thread.
-		thread_id: EntityId,
-		/// Exact native app key.
-		connector_id: WireText,
-		/// Exact native connection key.
-		link_id: WireText,
-		/// Consumed once for this reviewed configuration.
-		review_token: WireText,
-		/// Explicit change to the saved override.
-		edit: AgentAppSettingEdit,
-	},
-	/// Change one connection override without answering its pending native request.
-	SetAppSetting {
-		/// Originating task.
-		work_id: EntityId,
-		/// Exact native request event.
-		event_id: i64,
-		/// Consumed native config review.
-		review_token: WireText,
-		/// Explicit connection override.
-		edit: AgentAppSettingEdit,
-	},
 	/// Apply one explicitly reviewed shared hook change.
 	SetHookSetting {
 		/// Exact originating work.
@@ -701,20 +674,6 @@ pub enum AgentActionDto {
 		/// Explicit advertised effort; omission preserves configured effort.
 		effort: Option<ConversationReasoningEffort>,
 	},
-	/// Change one task plugin exclusion.
-	SetTaskPlugin {
-		/// Exact local work.
-		work_id: EntityId,
-		/// Exact native thread.
-		thread_id: EntityId,
-		/// Reviewed source and selection identity.
-		review_token: WireText,
-		/// Canonical plugin identity.
-		plugin_id: WireText,
-		/// Remove the exclusion when true; shared enablement still applies.
-		enabled: bool,
-	},
-
 	/// Select a reviewed native permission profile for the exact task.
 	SelectPermissions {
 		/// Owning task.
@@ -726,18 +685,6 @@ pub enum AgentActionDto {
 		/// Explicit native profile ID.
 		profile_id: WireText,
 	},
-	/// Publish a reviewer for subsequent steps of one reviewed live turn.
-	SetLiveReviewer {
-		/// Exact owning task.
-		work_id: EntityId,
-		/// Exact active turn from the review query.
-		turn_id: EntityId,
-		/// Source and receipt identity from the review query.
-		review_token: WireText,
-		/// Explicit reviewer; does not approve existing requests or change future defaults.
-		reviewer: AgentReviewer,
-	},
-
 	/// Publish a model and effort for subsequent captures in one reviewed running turn.
 	SetLiveModel {
 		/// Exact owning task.
@@ -770,26 +717,12 @@ pub enum AgentActionDto {
 		/// Expected running turn; None requires an idle native agent.
 		expected_turn: Option<WireText>,
 	},
-	/// Install the exact plugin whose current catalog details the user reviewed.
-	InstallSuggestedPlugin {
-		/// Owning task identity.
-		work_id: EntityId,
-		/// Exact live native suggestion event.
-		event_id: i64,
-		/// Review identity returned by installation inspection.
-		review_token: WireText,
-	},
 	/// Explicitly restore the exact archived native thread selected by the user.
 	RestoreArchivedThread {
 		/// Current local work identity.
 		work_id: EntityId,
 		/// Native thread identity shown by archive inspection.
 		thread_id: WireText,
-	},
-	/// Explicitly synchronize shared installed plugins and reload loaded native MCP runtimes.
-	RefreshIntegrations {
-		/// Task from which the user requested the shared refresh.
-		work_id: EntityId,
 	},
 	/// Associate a user-selected HTTP(S) link with the current native task thread.
 	AddResourceLink {
@@ -919,6 +852,15 @@ pub enum AgentActionDto {
 		root_id: EntityId,
 		/// User input, preserved until processed.
 		text: HistoryText,
+	},
+	/// Retry one exact input positively recorded as not sent, through its existing queue.
+	RetryInput {
+		/// Conversation that owns the saved input.
+		work_id: EntityId,
+		/// Native conversation displayed when the user chose Retry.
+		thread_id: WireText,
+		/// Exact saved input; its full content and attachments remain service-owned.
+		event_id: i64,
 	},
 	/// Stop the exact currently acknowledged work turn.
 	Interrupt {
@@ -1076,8 +1018,7 @@ pub struct AgentContextReferenceDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentSnapshotDto {
-	/// User-created persistent collaborators. Legacy execution rows are separate compatibility
-	/// facts.
+	/// User-created persistent collaborators. Native Subagents have separate execution ownership.
 	#[serde(default)]
 	pub agents: Box<Vec<Agent>>,
 	/// Global desired review preference and actual source readback.

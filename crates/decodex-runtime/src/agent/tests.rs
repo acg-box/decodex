@@ -2251,7 +2251,6 @@ async fn legacy_conversation_continues_its_original_context_after_store_reopen()
 		}
 
 		assert_eq!(agent.store.agent_tool_version("agent".into()).await.unwrap(), version);
-		assert!(agent.store.agent_tool_migration("agent".into()).await.unwrap().is_none());
 		assert_eq!(
 			agent.store.get_agent_work_item("agent".into()).await.unwrap().codex_thread_id,
 			original.codex_thread_id
@@ -2271,62 +2270,6 @@ async fn legacy_conversation_continues_its_original_context_after_store_reopen()
 				.is_err()
 		);
 	}
-}
-
-#[tokio::test]
-async fn unresolved_legacy_replacement_is_not_replayed_by_continuation() {
-	let (mut coordinator, mut sent, directory) = fixture().await;
-	let original = coordinator.start_agent("agent", "Original request").await.unwrap();
-
-	complete(&mut coordinator, "agent").await;
-
-	coordinator
-		.store
-		.enqueue_agent_event(EnqueueAgentEvent {
-			source_event_id: "old-user".into(),
-			work_item_id: "agent".into(),
-			event_kind: "user_message".into(),
-			payload: serde_json::json!({"text":"Remember the existing project"}).to_string(),
-		})
-		.await
-		.unwrap();
-
-	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
-	let db = Connection::open(root.paths().product_database_file()).unwrap();
-
-	db.execute("DELETE FROM agent_tool_versions WHERE work_id='agent'", []).unwrap();
-	coordinator
-		.store
-		.reserve_agent_tool_migration(
-			"agent".into(),
-			original.codex_thread_id.clone().unwrap(),
-			"{}".into(),
-		)
-		.await
-		.unwrap();
-
-	while sent.try_recv().is_ok() {}
-
-	assert!(matches!(
-		coordinator.continue_worker("agent", "One new request").await,
-		Err(AgentError::MigrationPending(_))
-	));
-
-	let upgraded = coordinator.store.get_agent_work_item("agent".into()).await.unwrap();
-
-	assert_eq!(original.codex_thread_id, upgraded.codex_thread_id);
-	assert_eq!(coordinator.store.agent_tool_version("agent".into()).await.unwrap(), 1);
-
-	let messages: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
-
-	assert_eq!(messages.iter().filter(|message| message["method"] == "thread/start").count(), 0);
-	assert_eq!(messages.iter().filter(|message| message["method"] == "turn/start").count(), 0);
-	assert!(!messages.iter().any(|message| message["method"] == "thread/inject_items"));
-	assert_eq!(
-		db.query_row("SELECT count(*) FROM agent_thread_revisions", [], |row| row.get::<_, i64>(0))
-			.unwrap(),
-		0
-	);
 }
 
 #[tokio::test]

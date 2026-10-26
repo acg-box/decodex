@@ -1,4 +1,5 @@
 //! Lost send replies are reconciled through read-only receipts, with one submission.
+use decodex_protocol::AgentActionDto;
 
 use std::{
 	fs::{self, Permissions},
@@ -16,7 +17,7 @@ use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 
 #[cfg(test)]
 use crate::shell::agent_surface::drafts::storage::{
-	self, AgentActionDto, Entity, IntoElement, LoadState, Render, Window,
+	self, Entity, IntoElement, LoadState, Render, Window,
 };
 use crate::shell::agent_surface::drafts::{
 	storage::{
@@ -121,7 +122,7 @@ fn prompt_send_lost_reply_uses_readback_without_replay(cx: &mut TestAppContext) 
 
 	assert!(!disk.profiles[&scope].prompt_edits.contains_key(&"a".repeat(64)));
 	assert_eq!(disk.profiles[&scope].composer.text, "Unrelated main input");
-	assert!(disk.recovered.is_empty(), "accepted input no longer needs a recovery copy");
+	assert!(disk.profiles.values().all(|profile| profile.messages.is_empty()));
 }
 
 fn send_view(store: &ClientDraftStore, profile: &ClientProfile, cx: &mut Context<View>) -> View {

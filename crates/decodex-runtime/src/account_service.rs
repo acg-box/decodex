@@ -59,7 +59,6 @@ const MAX_UNSETTLED_ACCOUNT_OPERATION_READ: u16 = 1_024;
 const ROUTE_MINIMUM_ACCESS_TOKEN_VALIDITY: Duration = Duration::from_secs(20);
 const MAX_USAGE_OBSERVATION_AGE_MICROS: i64 = 300_000_000;
 const PROVIDER_REFRESH_OUTCOME_UNKNOWN: &str = "provider_refresh_outcome_unknown";
-const TOMBSTONE_ENROLLMENT_COLLISION: &str = "tombstone_enrollment_collision";
 const CODEX_AUTH_PROJECTION_DOMAIN: &[u8] = b"decodex/codex-auth-projection/v1\0";
 const SHARED_AUTH_IMPORT_OPERATION_DOMAIN: &[u8] = b"decodex/shared-auth-import-operation/v1\0";
 
@@ -4961,12 +4960,6 @@ impl AccountService {
 		&self,
 		operation: &AccountOperation,
 	) -> Result<Option<ReconciliationDisposition>, AccountLifecycleError> {
-		if let Some(disposition) =
-			self.reconcile_legacy_tombstone_enrollment_collision(operation).await?
-		{
-			return Ok(Some(disposition));
-		}
-
 		match operation.phase {
 			AccountOperationPhase::Committed => Ok(Some(ReconciliationDisposition::Committed)),
 			AccountOperationPhase::Cancelled => Ok(Some(ReconciliationDisposition::Cancelled)),
@@ -4979,80 +4972,6 @@ impl AccountService {
 			AccountOperationPhase::Prepared | AccountOperationPhase::ProviderEffectPending =>
 				Ok(None),
 		}
-	}
-
-	async fn reconcile_legacy_tombstone_enrollment_collision(
-		&self,
-		operation: &AccountOperation,
-	) -> Result<Option<ReconciliationDisposition>, AccountLifecycleError> {
-		if !self.store.is_legacy_tombstone_enrollment_collision(operation).await? {
-			return Ok(None);
-		}
-
-		let target = operation.target.as_ref().ok_or(AccountLifecycleError::InvalidOperation)?;
-
-		match self.credentials.read_exact(&operation.account_id, target) {
-			Ok(_) =>
-				if self.credentials.delete(&operation.account_id, target).is_err() {
-					if operation.phase == AccountOperationPhase::StoreApplied {
-						accepted_phase(
-							self.store
-								.advance_account_operation(
-									&operation.operation_id,
-									AccountOperationPhase::StoreApplied,
-									AccountOperationPhase::RecoveryRequired,
-									Some(TOMBSTONE_ENROLLMENT_COLLISION),
-								)
-								.await?,
-						)?;
-					}
-
-					return Ok(Some(ReconciliationDisposition::Manual));
-				},
-			Err(CredentialStoreError::NotFound) => {},
-			Err(_) => {
-				if operation.phase == AccountOperationPhase::StoreApplied {
-					accepted_phase(
-						self.store
-							.advance_account_operation(
-								&operation.operation_id,
-								AccountOperationPhase::StoreApplied,
-								AccountOperationPhase::RecoveryRequired,
-								Some(TOMBSTONE_ENROLLMENT_COLLISION),
-							)
-							.await?,
-					)?;
-				}
-
-				return Ok(Some(ReconciliationDisposition::Manual));
-			},
-		}
-
-		if operation.phase == AccountOperationPhase::StoreApplied {
-			accepted_phase(
-				self.store
-					.advance_account_operation(
-						&operation.operation_id,
-						AccountOperationPhase::StoreApplied,
-						AccountOperationPhase::RecoveryRequired,
-						Some(TOMBSTONE_ENROLLMENT_COLLISION),
-					)
-					.await?,
-			)?;
-		}
-
-		accepted_phase(
-			self.store
-				.advance_account_operation(
-					&operation.operation_id,
-					AccountOperationPhase::RecoveryRequired,
-					AccountOperationPhase::Cancelled,
-					None,
-				)
-				.await?,
-		)?;
-
-		Ok(Some(ReconciliationDisposition::Cancelled))
 	}
 
 	async fn reconcile_import_operation(
@@ -9452,9 +9371,6 @@ mod tests {
 		let _initial_source =
 			prepare_logged_out_provider(&store, &service, &provider, &original_account).await;
 
-		reconcile_legacy_enrollment_collision(&store, credentials.as_ref(), &service, &provider)
-			.await;
-
 		let requested_account =
 			AccountId::new("21000000-0000-4000-8000-000000000023").expect("requested account");
 		let restore_operation = AccountOperationId::new("22000000-0000-4000-8000-000000000023")
@@ -9656,76 +9572,6 @@ mod tests {
 		assert!(service.list().await.expect("list after logout").is_empty());
 
 		_initial_source
-	}
-
-	async fn reconcile_legacy_enrollment_collision(
-		store: &SqliteStore,
-		credentials: &dyn HostCredentialStore,
-		service: &AccountService,
-		provider: &ProviderIdentity,
-	) {
-		let legacy_account =
-			AccountId::new("21000000-0000-4000-8000-000000000022").expect("legacy account");
-		let legacy_operation = AccountOperationId::new("22000000-0000-4000-8000-000000000022")
-			.expect("legacy operation");
-		let legacy_bundle = shared_bundle(provider.account_id(), "legacy-access", 3_000_000);
-		let legacy_target = legacy_bundle
-			.binding_for(
-				&legacy_account,
-				&legacy_operation,
-				CredentialVersion::new(1).expect("legacy version"),
-				provider,
-			)
-			.expect("legacy target");
-
-		assert!(matches!(
-			store
-				.prepare_account_operation(&AccountOperationPreparation {
-					operation_id: legacy_operation.clone(),
-					account_id: legacy_account.clone(),
-					kind: AccountOperationKind::Enroll,
-					display_label: Some(account_service::stable_account_alias(provider)),
-					enabled: Some(true),
-					expected_account_revision: None,
-					expected: None,
-					target: Some(legacy_target.clone()),
-					provider: provider.clone(),
-				})
-				.await
-				.expect("prepare legacy collision"),
-			AccountLifecycleMutationOutcome::Applied(_)
-		));
-
-		credentials
-			.create(&legacy_account, &legacy_target, legacy_bundle)
-			.expect("write legacy credential");
-		store
-			.advance_account_operation(
-				&legacy_operation,
-				AccountOperationPhase::Prepared,
-				AccountOperationPhase::StoreApplied,
-				None,
-			)
-			.await
-			.expect("record legacy store effect");
-
-		let startup = service.reconcile_startup().await.expect("reconcile legacy collision");
-
-		assert_eq!(startup.cancelled, 1);
-		assert_eq!(startup.committed, 0);
-		assert!(startup.manual_recovery.is_empty());
-		assert!(matches!(
-			credentials.read_exact(&legacy_account, &legacy_target),
-			Err(CredentialStoreError::NotFound)
-		));
-
-		let legacy = store
-			.read_account_operation(&legacy_operation)
-			.await
-			.expect("read legacy collision")
-			.expect("legacy collision is retained");
-
-		assert_eq!(legacy.phase, AccountOperationPhase::Cancelled);
 	}
 
 	async fn assert_restored_account_reopens(

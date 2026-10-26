@@ -18,9 +18,9 @@ use serde_json::Value;
 
 use crate::{
 	AgentLiveOutput, AgentTurnExecution, DatabaseError, Project, SqliteStore, StoreError,
-	agent_models, agent_output, agent_permissions, agent_plugins, agent_prompt_edit,
-	agent_prompt_inputs, agent_questions, agent_request_payload, agent_task_references,
-	agent_turn_execution, error, projects,
+	agent_models, agent_output, agent_permissions, agent_prompt_edit, agent_prompt_inputs,
+	agent_questions, agent_request_payload, agent_task_references, agent_turn_execution, error,
+	projects,
 };
 
 /// Recovery checks have separate lifecycles; model refresh does not block chat input.
@@ -232,7 +232,7 @@ impl SqliteStore {
 
             read_work(&tx,&id)?;
 
-            let events=tx.prepare("SELECT * FROM (SELECT e.* FROM agent_inbox_events e WHERE work_item_id=?1 AND event_kind NOT IN ('collaboration_delivery','reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release') AND (event_kind<>'activity_started' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events c WHERE c.source_event_id=json_array('activity',e.work_item_id,json_extract(e.payload,'$.turn_id'),json_extract(e.payload,'$.item_id'),'completed'))) AND (event_kind<>'plan_updated' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events p WHERE p.work_item_id=e.work_item_id AND p.event_kind='plan_updated' AND p.delivered_turn_id=e.delivered_turn_id AND json_extract(p.payload,'$.threadId')=json_extract(e.payload,'$.threadId') AND p.id>e.id)) AND (event_kind<>'steer_pending' OR disposition IS NULL) AND (?3 IS NULL OR id<?3) ORDER BY id DESC LIMIT ?2) ORDER BY id").map_err(error::sqlite_error)?.query_map(rusqlite::params![id,limit,before],event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
+            let events=tx.prepare("SELECT * FROM (SELECT e.* FROM agent_inbox_events e WHERE work_item_id=?1 AND event_kind NOT IN ('collaboration_delivery','reasoning_voice_handoff','turn_execution','native_task_settings','model_recovery','model_recovery_result','model_recovery_observation','model_selection_reconciled','token_usage','response_usage','live_reviewer_attempt','live_reviewer_result','native_task_permissions','permission_selection','permission_selection_result','permission_selection_observation','native_task_models','model_selection','model_selection_result','model_selection_observation','native_task_plugins','plugin_selection','plugin_selection_result','plugin_selection_observation','hook_setting_attempt','hook_setting_result','hook_setting_observation','app_setting_attempt','app_setting_result','app_setting_observation','prompt_edit_attempt','prompt_edit_observation','prompt_edit_release') AND (event_kind<>'activity_started' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events c WHERE c.source_event_id=json_array('activity',e.work_item_id,json_extract(e.payload,'$.turn_id'),json_extract(e.payload,'$.item_id'),'completed'))) AND (event_kind<>'plan_updated' OR NOT EXISTS(SELECT 1 FROM agent_inbox_events p WHERE p.work_item_id=e.work_item_id AND p.event_kind='plan_updated' AND p.delivered_turn_id=e.delivered_turn_id AND json_extract(p.payload,'$.threadId')=json_extract(e.payload,'$.threadId') AND p.id>e.id)) AND (event_kind<>'steer_pending' OR disposition IS NULL) AND NOT (e.event_kind='user_message' AND e.disposition='user_decision' AND e.delivered_turn_id IS NULL AND EXISTS(SELECT 1 FROM agent_inbox_events retry WHERE retry.source_event_id=json_array('user_message_retry',e.work_item_id,e.id))) AND (?3 IS NULL OR id<?3) ORDER BY id DESC LIMIT ?2) ORDER BY id").map_err(error::sqlite_error)?.query_map(rusqlite::params![id,limit,before],event_row).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
             let live=if before.is_none() {agent_output::read_live(&tx,&id)?} else {vec![]};
 
             tx.commit().map_err(error::sqlite_error)?;
@@ -607,7 +607,7 @@ impl SqliteStore {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let work = read_work(&transaction, &id)?;
 
-			if work.dispatch_state != AgentDispatchState::Idle || work.codex_thread_id.is_none() || (agent_permissions::pending(&transaction, &id)? || agent_plugins::pending(&transaction, &id)? || agent_models::pending(&transaction, &id)? || agent_prompt_edit::pending(&transaction, &id)?) {
+			if work.dispatch_state != AgentDispatchState::Idle || work.codex_thread_id.is_none() || (agent_permissions::pending(&transaction, &id)? || agent_models::pending(&transaction, &id)? || agent_prompt_edit::pending(&transaction, &id)?) {
 				return Err(DatabaseError::Conflict.into());
 			}
 
@@ -1187,6 +1187,65 @@ impl SqliteStore {
 
             Ok(())
         }).await
+	}
+
+	/// Check an exact input receipt without dispatching or changing delivery state.
+	pub async fn agent_message_received(
+		&self,
+		work: String,
+		key: String,
+	) -> Result<bool, StoreError> {
+		self.run(move |connection| {
+			connection.query_row(
+				"SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE source_event_id=json_array('user_message',?1,?2) AND work_item_id=?1 AND event_kind='user_message')",
+				rusqlite::params![work,key], |row|row.get(0),
+			).map_err(|error|error::sqlite_error(error).into())
+		}).await
+	}
+
+	/// Queue one stable retry of a positively unsent input. Preserve the original receipt.
+	pub async fn retry_agent_input(
+		&self,
+		work: String,
+		thread: String,
+		event_id: i64,
+	) -> Result<(), StoreError> {
+		self.run(move |connection| {
+			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)
+				.map_err(error::sqlite_error)?;
+			let owner = read_work(&tx, &work)?;
+			let event = read_event(&tx, event_id)?;
+			let manager: bool = tx.query_row(
+				"SELECT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=?1)",
+				[&work], |row| row.get(0),
+			).map_err(error::sqlite_error)?;
+			if !manager || owner.codex_thread_id.as_deref() != Some(thread.as_str())
+				|| event.work_item_id != work || event.event_kind != "user_message"
+				|| event.disposition != Some(AgentDisposition::UserDecision)
+				|| event.delivered_turn_id.is_some()
+			{
+				return Err(DatabaseError::Conflict.into());
+			}
+			let source = serde_json::json!(["user_message_retry",work,event_id]).to_string();
+			let exists: bool = tx.query_row(
+				"SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE source_event_id=?1)",
+				[&source], |row| row.get(0),
+			).map_err(error::sqlite_error)?;
+			if exists { return Ok(()); }
+			if owner.dispatch_state != AgentDispatchState::Idle {
+				return Err(DatabaseError::Conflict.into());
+			}
+			insert_event(&tx, EnqueueAgentEvent {
+				source_event_id: source, work_item_id: work.clone(),
+				event_kind: "user_message".into(), payload: event.payload,
+			}, false)?;
+			tx.execute(
+				"UPDATE agent_work_items SET status='open',next_check_at_micros=NULL,updated_at_micros=max(updated_at_micros,?2) WHERE id=?1 AND status='user_decision'",
+				rusqlite::params![work,crate::unix_micros()?],
+			).map_err(error::sqlite_error)?;
+			tx.commit().map_err(error::sqlite_error)?;
+			Ok(())
+		}).await
 	}
 
 	/// Successful delivery processing clears only delivery diagnostics, never work events.
@@ -1773,6 +1832,7 @@ mod tests {
 	mod delegation;
 	mod dispatch_refusals;
 	mod inbox_carryover;
+	mod input_retry;
 	mod native_turns;
 	mod partial_output;
 	mod reasoning_summary;

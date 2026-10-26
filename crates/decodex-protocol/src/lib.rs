@@ -5,11 +5,11 @@ mod account_login;
 mod account_recovery;
 mod agent;
 mod agent_app_exposure;
-mod agent_app_settings;
 mod agent_app_ui;
 mod agent_app_ui_call;
 mod agent_archive;
 mod agent_collaboration;
+mod agent_config_receipt;
 mod agent_context_settings;
 mod agent_deliveries;
 mod agent_execution;
@@ -23,7 +23,6 @@ mod agent_model_settings;
 mod agent_models;
 mod agent_native_goal;
 mod agent_permissions;
-mod agent_plugins;
 mod agent_prompt_draft;
 mod agent_prompt_edit;
 mod agent_prompt_send;
@@ -49,7 +48,6 @@ mod desktop_drafts;
 mod desktop_ordinary_drafts;
 mod dictation;
 mod doctor;
-mod domain_pack;
 mod local_transport;
 mod mcp_elicitation;
 mod mcp_install;
@@ -57,7 +55,6 @@ mod mcp_login;
 mod model_catalog;
 mod native_agents;
 mod native_startup_config;
-mod program_cycle;
 mod reset_card_recovery;
 mod retained_session;
 mod usage_evidence;
@@ -93,10 +90,6 @@ pub use self::{
 		MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS, ProjectDto,
 	},
 	agent_app_exposure::{AgentAppExposureResult, AgentToolExposureSurface},
-	agent_app_settings::{
-		AgentAppApprovalMode, AgentAppReviewer, AgentAppSettingEdit, AgentAppSettingsResult,
-		AgentConfigEditReceipt, AgentSavedAppConnection, AgentSavedAppSettingsResult,
-	},
 	agent_app_ui::{
 		AGENT_APP_UI_CHUNK_BYTES, AgentAppUiRequest, AgentAppUiResult, MAX_AGENT_APP_UI_BYTES,
 	},
@@ -106,6 +99,7 @@ pub use self::{
 		MAX_AGENT_APP_UI_CALL_BYTES, MAX_AGENT_APP_UI_RECEIPT_BYTES,
 	},
 	agent_archive::AgentArchiveResult,
+	agent_config_receipt::AgentConfigEditReceipt,
 	agent_context_settings::{
 		AgentContextFeature, AgentContextPreference, AgentContextSettingsResult,
 	},
@@ -136,7 +130,6 @@ pub use self::{
 		AgentNativeGoalStatus,
 	},
 	agent_permissions::{AgentPermissionOutcome, AgentPermissionProfile, AgentPermissionState},
-	agent_plugins::{AgentPluginOutcome, AgentPluginSelectionState},
 	agent_prompt_draft::{DesktopPromptEditDraft, PromptDraft},
 	agent_prompt_edit::{
 		AttachedBranchesResult, PromptEditEvidence, PromptEditPhase, PromptEditStatus,
@@ -180,13 +173,12 @@ pub use self::{
 	conversation::{
 		ConversationContractError, ConversationExecutionOverrides, ConversationExecutionSettings,
 		ConversationListCursor, ConversationListPage, ConversationListResult, ConversationListSize,
-		ConversationModel, ConversationModelSettingsResult, ConversationProgramContext,
-		ConversationReadError, ConversationReasoningEffort, ConversationRecoveryAction,
-		ConversationResult, ConversationState, ConversationSummary, ConversationTitle,
-		ConversationTurnOutcome, ConversationUnavailableReason, ConversationWorkingDirectory,
-		CustomReasoningEffort, MAX_CONVERSATION_LIST_SIZE, MAX_CONVERSATION_MODEL_BYTES,
-		MAX_CONVERSATION_TITLE_BYTES, MAX_CONVERSATION_WORKING_DIRECTORY_BYTES,
-		MAX_PROVIDER_THREAD_ID_BYTES, ProviderThreadId,
+		ConversationModel, ConversationModelSettingsResult, ConversationReadError,
+		ConversationReasoningEffort, ConversationRecoveryAction, ConversationResult,
+		ConversationState, ConversationSummary, ConversationTitle, ConversationTurnOutcome,
+		ConversationUnavailableReason, ConversationWorkingDirectory, CustomReasoningEffort,
+		MAX_CONVERSATION_LIST_SIZE, MAX_CONVERSATION_MODEL_BYTES, MAX_CONVERSATION_TITLE_BYTES,
+		MAX_CONVERSATION_WORKING_DIRECTORY_BYTES, MAX_PROVIDER_THREAD_ID_BYTES, ProviderThreadId,
 	},
 	conversation_native_settings::ConversationNativeSettings,
 	conversation_receipts::{
@@ -197,7 +189,8 @@ pub use self::{
 	},
 	desktop_drafts::{
 		DesktopComposerDraft, DesktopCreationIntent, DesktopCreationSetup, DesktopDraftDocument,
-		DesktopPendingDraft, DesktopProfileDraft, DesktopQuestionDraft, DesktopRecoveredDraft,
+		DesktopMessage, DesktopMessageState, DesktopPendingDraft, DesktopProfileDraft,
+		DesktopQuestionDraft,
 	},
 	desktop_ordinary_drafts::{DesktopOrdinaryComposerDraft, DesktopOrdinaryDraft},
 	dictation::{
@@ -208,13 +201,6 @@ pub use self::{
 	doctor::{
 		AppServerCapability, DoctorCheck, DoctorComponent, DoctorContractError, DoctorIssue,
 		DoctorReport, DoctorStatus, MAX_DOCTOR_CHECKS, NativeProcessDiagnostics,
-	},
-	domain_pack::{
-		DEVELOPMENT_DOMAIN_PACK_ID, DomainEntityDto, DomainEntityFieldDto, DomainPackCapabilityDto,
-		DomainPackCapabilityStatus, DomainPackContractError, DomainPackDescriptorDto,
-		DomainPackProjectionDto, DomainPackViewKind, DomainRelationDto,
-		MAX_DOMAIN_PACK_CAPABILITIES, MAX_DOMAIN_PACK_ENTITIES, MAX_DOMAIN_PACK_RELATIONS,
-		PAPER_INVESTMENT_DOMAIN_PACK_ID,
 	},
 	local_transport::{
 		LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal,
@@ -232,12 +218,6 @@ pub use self::{
 		InitialModelSource, ModelCatalogPurpose,
 	},
 	native_agents::{NativeAgentDto, NativeAgentsResult},
-	program_cycle::{
-		MAX_PROGRAM_EDGES, MAX_PROGRAM_LIST_ITEMS, MAX_PROGRAM_LIST_VALUES, MAX_PROGRAM_NODES,
-		ProgramCycleContractError, ProgramCycleDto, ProgramCycleResult, ProgramEdgeDto,
-		ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto, ProgramNodeKind,
-		ProgramRelationKind, ProgramReviewClassification, ProgramState, ProgramSummaryDto,
-	},
 	reset_card_recovery::{AccountResetCardOperationResult, ResetCardOperationView},
 	retained_session::{
 		ApplicationConfirmation, RetainedSession, RetainedSessionConfig, RetainedSessionFailure,
@@ -302,7 +282,7 @@ pub use work_portfolio::{MAX_WORK_DETAIL_BYTES, WORK_DETAIL_PAGE_BYTES, WorkDeta
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 3, minor: 2 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 4, minor: 0 };
 
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]

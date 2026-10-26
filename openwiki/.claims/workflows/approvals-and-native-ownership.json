@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:68021acbd0cc00178d0204721ae14fc95301acab62027b9e9897205ca1f3a9b8",
+  "pageVersion": "sha256:09ecb66b422c53200f48f8f69b0ca4d393abf8134533760218f4b96bbe74d924",
   "claims": [
     {
       "id": "claim_180212e57d1d44369eb0d24fc94defa4",
@@ -38,15 +38,15 @@
     },
     {
       "id": "claim_61a41353d7d945658e87540d4c4b6ac7",
-      "statement": "Per-Agent reviewer writes are retired and rejected; Ask Me approvals remain human-owned and native Full Access stays separate.",
+      "statement": "The local protocol exposes no per-Agent reviewer write command. Ask Me approvals remain human-owned and native Full Access stays separate.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
-          "version": "repo-file-v1:sha256:27dceb0235bfd0ed93987e89f4522048704ed176a6cf364f352173b411d7f0ed"
+          "resource": "repo://crates/decodex-protocol/src/agent.rs",
+          "version": "repo-file-v1:sha256:65f0c3159e9ab49793db2c3f93603a27671a609e3249f485d0e5c39a06ab3ab8"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1550-L1568",
-          "version": "repo-lines-v1:sha256:cfd232ec73dc3a45871fb3cf4318614d9f69ffee74f348a28a0257a1c68bf34c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5OWY2NWUyZDI2OTYwNGYxOTgyZjJmOTZkYmI2MjA2NTgwYWU5YzZkYTdiYmU0OTM0MWIzZWU0NDAwNGQ1YjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwNThlYWViNTQ5M2EyYzdlMzMyMTk5ZjVmNjgxNDkwOWMwNjhiZmMwZGNmMGRkNjdiZmVhODM4MDUzY2E3MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiNWU2ZDJjY2FlMTc5Yzk0YmI0Yzc0OWZhZmJmNzQzNjVhZGNiNjliMWE3MzY4MTE2YTM3NDBlMjRlMGQwYzkifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
+          "version": "repo-file-v1:sha256:7d716b1f0d463043d3844fbcb0e0826390ca08e8984ce15d0bb01fa1e0f8a04b"
         }
       ]
     },
@@ -95,6 +95,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T07:09:00.728Z"
+    "at": "2026-10-26T15:20:45.937Z"
   }
 }

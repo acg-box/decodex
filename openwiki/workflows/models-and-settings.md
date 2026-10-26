@@ -26,6 +26,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/thread_model_selection.rs
   - id: openwiki-source-7a438b090d3a7042aebaf269
     resource: repo://crates/decodex-codex/src/conversation.rs
+  - id: openwiki-source-eccf08613126ff810078b520
+    resource: repo://crates/decodex-protocol/src/agent.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
@@ -36,8 +38,6 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-ba9677fef0b3a23f71d07771
     resource: repo://crates/decodex-runtime/src/agent_capabilities.rs
-  - id: openwiki-source-c75093d19a3bc72db5836102
-    resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-dc51b38db429ec5fe466c5f2
     resource: repo://crates/decodex-runtime/src/agent_memory.rs
   - id: openwiki-source-a2c2a5ced9dfa1aee02eedc2
@@ -56,10 +56,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
+generated: { by: "codex", at: "2026-10-26T15:20:45.937Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T15:20:45.937Z
 ---
 
 # Model selection and settings ownership
@@ -92,7 +92,7 @@ Plugin installation and selection are configured in Codex. Maintenance of the cu
 
 ## Guardian and helper settings
 
-Global Guardian stores desired reviewer intent and reports actual native per-source readback. Its thread preference affects subsequent turns. Active-turn policy, already-pending human approvals and previously spawned child captures retain native ownership. The old per-Agent reviewer control is read-only evidence, and old per-Agent write commands are rejected. Live model/reasoning controls remain source-bound supported native edits.
+Global Guardian stores desired reviewer intent and reports actual native per-source readback. Its thread preference affects subsequent turns. Active-turn policy, already-pending human approvals and previously spawned child captures retain native ownership. Retained per-turn reviewer receipts are read-only evidence; the local protocol exposes no per-Agent reviewer write command. Live model/reasoning controls remain source-bound supported native edits.
 
 Full Access is a native permission choice, not a Guardian mode. Turning optional Review Details off stops new observation; it does not approve pending actions or remove native enforcement. See [approvals](approvals-and-native-ownership.md).
 

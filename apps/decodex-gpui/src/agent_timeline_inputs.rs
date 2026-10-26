@@ -18,7 +18,10 @@ use crate::{
 	ui_feedback::Tone,
 	ui_loading,
 };
-use decodex_protocol::{AgentDispatchStateDto, AgentHistoryEntryDto, AgentInputReceiptsResult};
+use decodex_protocol::{
+	AgentActionDto, AgentCommandResponse, AgentDispatchStateDto, AgentHistoryEntryDto,
+	AgentInputReceiptsResult, DesktopMessage, DesktopMessageState, IdempotencyKey, WireText,
+};
 
 #[derive(Default)]
 pub(super) struct InputReceipts {
@@ -34,6 +37,196 @@ impl InputReceipts {
 }
 
 impl AgentSurface {
+	pub(in super::super) fn local_message_cards(
+		&self,
+		cx: &mut Context<Self>,
+	) -> Vec<gpui::AnyElement> {
+		let work = self.conversation_work();
+		let owner = work
+			.as_ref()
+			.map(|work| work.id.clone())
+			.or_else(|| self.conversation_page())
+			.or_else(|| self.workspace.new_conversation.clone());
+		self.retained_messages()
+			.into_iter()
+			.filter(|(_, message)| {
+				message.owner.as_ref().map(|owner| owner.as_str()) == owner.as_deref()
+					&& match &message.action {
+						AgentActionDto::NativeAgentInput { thread_id, .. } => self
+							.native_agents
+							.selected
+							.as_ref()
+							.is_some_and(|(_, thread)| thread == thread_id.as_str()),
+						_ => self.native_agents.selected.is_none(),
+					}
+					&& !(self.sending && message.state == DesktopMessageState::Sending)
+			})
+			.map(|(key, message)| {
+				let failed = message.state == DesktopMessageState::Failed;
+				let tone = if failed { Tone::Error } else { Tone::Warning };
+				let title = if failed { "Message not sent" } else { "Delivery unconfirmed" };
+				let id = format!("local-message-{}", key.as_str());
+				let target = key.clone();
+				let original = message.clone();
+				let can_retry = failed
+					&& self.local_message_target_matches(&message)
+					&& self.command_connection_ready()
+					&& !self.sending
+					&& !self.uncertain
+					&& !self.selected_is_archived()
+					&& self.composer_unavailable_reason().is_none();
+				let mut actions = gpui::div().flex().items_center().gap_2();
+				if can_retry {
+					actions = actions.child(self.workspace_action(
+						format!("{id}-retry"),
+						"Retry".into(),
+						move |s, cx| s.retry_local_message(&target, &original, cx),
+						cx,
+					));
+				} else if !failed && self.read_connection_ready() {
+					actions = actions.child(self.workspace_action(
+						format!("{id}-check"),
+						"Check status".into(),
+						move |s, cx| s.check_local_message(&target, &original, cx),
+						cx,
+					));
+				}
+				actions = actions.child(markdown::copy_button(
+					&format!("{id}-copy"),
+					"Copy message",
+					message.text.clone(),
+				));
+				if failed {
+					let discarded = key.clone();
+					actions = actions.child(self.workspace_action(
+						format!("{id}-discard"),
+						"Dismiss".into(),
+						move |s, cx| s.dismiss_failed_message(&discarded, cx),
+						cx,
+					));
+				}
+				let content = gpui::div()
+					.id(format!("{id}-content"))
+					.max_h(gpui::px(144.))
+					.overflow_y_scroll()
+					.child(SelectableText::plain(format!("{id}-text"), message.text));
+				let detail = message.error;
+				tone.banner(
+					gpui::div()
+						.flex()
+						.flex_col()
+						.gap_2()
+						.child(
+							gpui::div()
+								.flex()
+								.items_center()
+								.justify_between()
+								.child(tone.row(id, title))
+								.child(actions),
+						)
+						.child(content)
+						.children(detail),
+				)
+				.into_any_element()
+			})
+			.collect()
+	}
+
+	fn local_message_target_matches(&self, message: &DesktopMessage) -> bool {
+		let owner = self.conversation_work();
+		let local_owner = owner
+			.as_ref()
+			.map(|owner| owner.id.clone())
+			.or_else(|| self.conversation_page())
+			.or_else(|| self.workspace.new_conversation.clone());
+		if message.owner.as_ref().map(|owner| owner.as_str()) != local_owner.as_deref() {
+			return false;
+		}
+		let thread = match &message.action {
+			AgentActionDto::NativeAgentInput { .. } =>
+				self.native_agents.selected.as_ref().map(|(_, thread)| thread.as_str()),
+			_ if self.native_agents.selected.is_none() =>
+				owner.as_ref().and_then(|owner| owner.codex_thread_id.as_deref()),
+			_ => return false,
+		};
+		message.thread_id.as_ref().map(WireText::as_str) == thread
+	}
+
+	fn retry_local_message(
+		&mut self,
+		key: &IdempotencyKey,
+		message: &DesktopMessage,
+		cx: &mut Context<Self>,
+	) {
+		if message.state != DesktopMessageState::Failed
+			|| !self.local_message_target_matches(message)
+			|| !self.command_connection_ready()
+			|| self.sending
+			|| self.uncertain
+			|| self.selected_is_archived()
+			|| self.composer_unavailable_reason().is_some()
+			|| !self
+				.retained_messages()
+				.iter()
+				.any(|(saved, original)| saved == key && original == message)
+		{
+			return;
+		}
+		self.submit_command(message.action.clone(), None, Some((key.clone(), message.clone())), cx);
+	}
+
+	fn check_local_message(
+		&mut self,
+		key: &IdempotencyKey,
+		message: &DesktopMessage,
+		cx: &mut Context<Self>,
+	) {
+		if self.sending || self.submission.receipt_task.is_some() {
+			return;
+		}
+		if matches!(&message.action, AgentActionDto::Steer { .. }) {
+			self.refresh_steer_receipt(cx);
+			return;
+		}
+		let (Some(profile), Some(owner)) = (self.profile.clone(), message.owner.clone()) else {
+			return;
+		};
+		let key = key.clone();
+		let requested = key.clone();
+		let epoch = self.command_epoch;
+		let request = cx.background_executor().spawn(async move {
+			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
+			runtime.block_on(AgentClient::new(profile).message_received(owner, requested)).ok()
+		});
+		self.submission.receipt_task = Some(cx.spawn(async move |surface, cx| {
+			let received = request.await;
+			let _ = surface.update(cx, |s, cx| {
+				if s.command_epoch != epoch {
+					return;
+				}
+				s.submission.receipt_task = None;
+				if received == Some(true)
+					&& let Some(owner) = s
+						.retained_messages()
+						.into_iter()
+						.find(|(saved, _)| saved == &key)
+						.and_then(|(_, message)| message.owner)
+				{
+					s.settle_message(
+						Some(&key),
+						&Ok(AgentCommandResponse::Accepted { work_id: owner }),
+					);
+					s.submission.unconfirmed.retain(|saved| saved != &key);
+					s.uncertain = !s.submission.unconfirmed.is_empty();
+					s.feedback = crate::ui_feedback::Feedback::neutral("Delivery confirmed.");
+					s.save_draft_document(cx);
+					s.refresh(cx);
+				}
+				cx.notify();
+			});
+		}));
+	}
+
 	pub(super) fn saved_input_card(
 		&self,
 		work: &str,
@@ -45,7 +238,42 @@ impl AgentSurface {
 		let title =
 			if entry.kind == "unsent_input" { "Message not sent" } else { "Delivery unconfirmed" };
 		let tone = if entry.kind == "unsent_input" { Tone::Error } else { Tone::Warning };
+		let retry = self.can_retry_saved_input(work, entry);
+		let target = work.to_owned();
+		let saved = entry.clone();
+		let refresh = entry.kind != "unsent_input" && self.read_connection_ready();
+		let mut actions = gpui::div().flex().items_center().gap_2();
+		if retry {
+			actions = actions.child(self.workspace_action(
+				format!("{key}-retry"),
+				"Retry".into(),
+				move |surface, cx| surface.retry_saved_input(&target, &saved, cx),
+				cx,
+			));
+		} else if refresh {
+			actions = actions.child(self.workspace_action(
+				format!("{key}-refresh"),
+				"Check status".into(),
+				|surface, cx| {
+					surface.refresh_steer_receipt(cx);
+					surface.refresh_native_input_receipts(cx);
+					surface.refresh(cx);
+				},
+				cx,
+			));
+		}
+		actions = actions.child(markdown::copy_button(
+			&format!("{key}-copy"),
+			"Copy saved message",
+			entry.text.clone(),
+		));
+		let content = gpui::div()
+			.id(format!("{key}-content"))
+			.max_h(gpui::px(144.))
+			.overflow_y_scroll()
+			.child(SelectableText::plain(format!("{key}-message"), entry.text.clone()));
 		let entry = entry.clone();
+		let header_debug = format!("{key}-header");
 
 		gpui::div()
 			.w_full()
@@ -56,16 +284,26 @@ impl AgentSurface {
 					expanded,
 					gpui::div()
 						.flex()
-						.w_full()
-						.items_center()
-						.gap(gpui::px(7.))
-						.justify_between()
-						.child(self.saved_input_toggle(key.clone(), title, tone, expanded, cx))
-						.child(markdown::copy_button(
-							&format!("{key}-copy"),
-							"Copy saved message",
-							entry.text.clone(),
-						)),
+						.flex_col()
+						.gap_2()
+						.child(
+							gpui::div()
+								.debug_selector(move || header_debug.clone())
+								.flex()
+								.w_full()
+								.items_center()
+								.gap(gpui::px(7.))
+								.justify_between()
+								.child(self.saved_input_toggle(
+									key.clone(),
+									title,
+									tone,
+									expanded,
+									cx,
+								))
+								.child(actions),
+						)
+						.child(content),
 					move |_| {
 						gpui::div()
 							.debug_selector(move || format!("saved-input-body-{}", entry.id))
@@ -73,12 +311,63 @@ impl AgentSurface {
 							.flex()
 							.flex_col()
 							.gap_2()
-							.child(SelectableText::plain(format!("{key}-text"), entry.text))
+							.child(
+								entry
+									.receipt
+									.and_then(|receipt| receipt.unsent_reason)
+									.unwrap_or_else(|| {
+										if entry.kind == "unsent_input" {
+											"This message was not sent.".into()
+										} else {
+											"Checking whether this message was received.".into()
+										}
+									}),
+							)
 							.into_any_element()
 					},
 				),
 			)
 			.debug_selector(|| "saved-input-banner".into())
+	}
+
+	fn can_retry_saved_input(&self, work: &str, entry: &AgentHistoryEntryDto) -> bool {
+		entry.kind == "unsent_input"
+			&& entry.receipt.as_ref().is_some_and(|receipt| receipt.event_kind == "user_message")
+			&& self.conversation_work().is_some_and(|owner| {
+				owner.id == work
+					&& owner.codex_thread_id.is_some()
+					&& owner.dispatch_state == AgentDispatchStateDto::Idle
+			})
+			&& self.native_agents.selected.is_none()
+			&& self.command_connection_ready()
+			&& !self.sending
+			&& !self.uncertain
+			&& self.composer_unavailable_reason().is_none()
+	}
+
+	fn retry_saved_input(
+		&mut self,
+		work: &str,
+		entry: &AgentHistoryEntryDto,
+		cx: &mut Context<Self>,
+	) {
+		if !self.can_retry_saved_input(work, entry) {
+			return;
+		}
+		let Some(owner) = self.conversation_work() else {
+			return;
+		};
+		let (Ok(work_id), Some(thread)) = (EntityId::new(work), owner.codex_thread_id) else {
+			return;
+		};
+		let Ok(thread_id) = WireText::new(thread) else {
+			return;
+		};
+		self.execute(
+			AgentActionDto::RetryInput { work_id, thread_id, event_id: entry.id },
+			None,
+			cx,
+		);
 	}
 
 	fn saved_input_toggle(
@@ -299,6 +588,7 @@ pub(super) fn submission_pending(
 
 #[cfg(test)]
 mod tests {
+	use gpui::AppContext as _;
 	use std::thread;
 
 	#[cfg(test)] use crate::shell::agent_surface::native_timeline::inputs::Binding;
@@ -306,6 +596,84 @@ mod tests {
 		AgentInputReceiptsResult, AgentSurface, EntityId,
 	};
 	use decodex_protocol::{AgentHistoryEntryDto, AgentHistoryReceiptDto, AgentTimelinePage};
+
+	#[gpui::test]
+	fn local_message_retry_preserves_original_action_and_the_later_editor(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use decodex_protocol::{
+			AgentActionDto, DesktopMessage, DesktopMessageState, HistoryText, IdempotencyKey,
+		};
+		let (_root, profile, _) = crate::shell::agent_surface::drafts::tests::profiles();
+		for state in [DesktopMessageState::Failed, DesktopMessageState::Unconfirmed] {
+			let surface = cx.new(AgentSurface::new);
+			surface.update(cx, |s, cx| {
+				s.bind_profile(Some(profile.clone()), cx);
+				long_response(s, cx);
+				s.composer.update(cx, |input, cx| input.set_content("Later input stays here", cx));
+				let key = IdempotencyKey::new("original").unwrap();
+				let message = DesktopMessage {
+					action: AgentActionDto::Send {
+						root_id: EntityId::new("agent").unwrap(),
+						text: HistoryText::new("Original input").unwrap(),
+					},
+					owner: Some(EntityId::new("agent").unwrap()),
+					thread_id: Some(decodex_protocol::WireText::new("native-thread").unwrap()),
+					text: "Original input".into(),
+					state,
+					error: None,
+				};
+				s.stage_message(&key, message.clone(), None, cx).unwrap();
+				s.retry_local_message(&key, &message, cx);
+				let saved = s.retained_messages();
+				assert_eq!(saved.len(), 1);
+				assert_eq!(saved[0].1.action, message.action);
+				assert_eq!(s.composer.read(cx).content(), "Later input stays here");
+				if state == DesktopMessageState::Failed {
+					assert_ne!(saved[0].0, key);
+					assert_eq!(saved[0].1.state, DesktopMessageState::Sending);
+					assert!(s.sending && s.submission.command.is_some());
+				} else {
+					assert_eq!(saved[0].0, key);
+					assert!(s.submission.command.is_none() && s.submission.waiting.is_none());
+				}
+			});
+		}
+	}
+
+	#[gpui::test]
+	fn input_retry_preserves_the_new_editor_and_never_resends_an_unconfirmed_message(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_root, profile, _) = crate::shell::agent_surface::drafts::tests::profiles();
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			long_response(s, cx);
+			s.profile = Some(profile);
+			s.composer.update(cx, |input, cx| input.set_content("Later input stays here", cx));
+			let AgentInputReceiptsResult::Available { mut entries, .. } =
+				page("agent", Some(7), None)
+			else {
+				panic!("saved input fixture")
+			};
+			let entry = &mut entries[0];
+			assert!(!s.can_retry_saved_input("agent", entry));
+			s.retry_saved_input("agent", entry, cx);
+			assert!(s.submission.waiting.is_none());
+			entry.kind = "unsent_input".into();
+			entry.receipt.as_mut().unwrap().disposed = true;
+			assert!(s.can_retry_saved_input("agent", entry));
+			s.retry_saved_input("agent", entry, cx);
+			assert!(s.sending && s.submission.command.is_some());
+			assert_eq!(s.submission.unconfirmed.len(), 1);
+			assert_eq!(s.composer.read(cx).content(), "Later input stays here");
+			assert!(s.retained_messages().is_empty());
+			s.submission.waiting = None;
+			s.sending = false;
+			s.snapshot.as_mut().unwrap().archived_work_ids.insert("agent".into());
+			assert!(!s.can_retry_saved_input("agent", entry));
+		});
+	}
 
 	#[gpui::test]
 	fn returning_to_a_conversation_releases_receipt_reads_and_keeps_loaded_records(
@@ -688,11 +1056,13 @@ mod tests {
 		let banner = visual.debug_bounds("saved-input-banner").unwrap();
 		let card = visual.debug_bounds("expandable-notice-card").unwrap();
 
-		assert_eq!(
-			card.size.height,
-			gpui::px(38.),
-			"the copy control must fit inside the receipt header"
+		let header = visual.debug_bounds("saved-input-agent-7-header").unwrap();
+		let copy = visual.debug_bounds("saved-input-agent-7-copy").unwrap();
+		assert!(
+			copy.top() >= header.top() && copy.bottom() <= header.bottom(),
+			"copy action must fit inside the receipt header"
 		);
+
 		assert!((card.center().x - banner.center().x).abs() < gpui::px(1.));
 		assert_eq!(card.left(), banner.left(), "receipt follows its message column");
 		assert_eq!(card.size.width, banner.size.width);

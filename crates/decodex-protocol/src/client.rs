@@ -34,19 +34,18 @@ use crate::{
 	AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult,
 	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentModelSelectionState,
 	AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall,
-	AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult, AgentRequestResult,
-	AgentResourcesResult, AgentSampleStatus, AgentSearchSettingsResult, AgentSkillsResult,
-	AgentSkillsTarget, AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult,
-	AgentTimelineResult, AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult,
-	AgentVoiceRequest, AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION,
-	ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult, CommandEnvelope,
-	CommandError, CommandOutcome, CommandPayload, CommandResultEnvelope,
-	ConversationWorkingDirectory, CorrelationId, DictationRequest, DictationStatus, DoctorReport,
-	EntityId, EntityRevision, IdempotencyKey, InitialModelCatalogRequest,
-	InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES, MAX_AGENT_APP_UI_RECEIPT_BYTES,
-	MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest, McpLoginStatus,
-	NativeAgentsResult, NativeStartupConfiguration, PrivateReviewDetailsResult, PromptDraft,
-	PromptEditStatus, PromptForkBoundary, PromptForkResult, PromptInputSendIdentity,
+	AgentPermissionState, AgentReadStateResult, AgentRequestResult, AgentResourcesResult,
+	AgentSampleStatus, AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget,
+	AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult,
+	AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest,
+	AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION, ClientCommandId, ClientHello,
+	ClientMessage, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandOutcome,
+	CommandPayload, CommandResultEnvelope, ConversationWorkingDirectory, CorrelationId,
+	DictationRequest, DictationStatus, DoctorReport, EntityId, EntityRevision, IdempotencyKey,
+	InitialModelCatalogRequest, InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES,
+	MAX_AGENT_APP_UI_RECEIPT_BYTES, MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest,
+	McpLoginStatus, NativeAgentsResult, NativeStartupConfiguration, PrivateReviewDetailsResult,
+	PromptDraft, PromptEditStatus, PromptForkBoundary, PromptForkResult, PromptInputSendIdentity,
 	PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus, ProtocolVersion,
 	QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal,
 	RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult,
@@ -1077,35 +1076,6 @@ impl AgentClient {
 		}
 	}
 
-	/// Inspect saved task exclusions and shared plugin discovery.
-	pub async fn plugin_selection(
-		&self,
-		work_id: EntityId,
-	) -> Result<AgentPluginSelectionState, ClientFailure> {
-		self.transport.require_local_profile()?;
-
-		let transport = ResetCardClient {
-			profile: self.transport.profile.clone(),
-			timeout: Duration::from_secs(45),
-		};
-		let completed = time::timeout(
-			Duration::from_secs(45),
-			transport.query_inner(
-				"agent-plugin-selection",
-				QueryPayload::GetAgentPluginSelection { work_id },
-			),
-		)
-		.await
-		.map_err(|_| ClientFailure::ProtocolTimeout)??;
-
-		close_one_shot_socket(completed.socket).await;
-
-		match completed.value {
-			QueryResultPayload::AgentPluginSelection(result) => Ok(result),
-			_ => Err(ClientFailure::ProtocolMalformed),
-		}
-	}
-
 	/// Inspect native model settings and advertised choices.
 	pub async fn model_selection(
 		&self,
@@ -1789,6 +1759,29 @@ impl AgentClient {
 		}
 	}
 
+	/// Check exact queue acceptance. False remains unknown and does not permit replay.
+	pub async fn message_received(
+		&self,
+		work_id: EntityId,
+		key: IdempotencyKey,
+	) -> Result<bool, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"agent-message-receipt",
+				QueryPayload::GetAgentMessageReceipt { work_id, key },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::AgentMessageReceived(received) => Ok(received),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read a current page of unconfirmed input for one exact local task.
 	pub async fn input_receipts(
 		&self,
@@ -2337,15 +2330,12 @@ impl AgentClient {
 		let attempted = AtomicBool::new(false);
 		let extended_timeout = match &action {
 			AgentActionDto::ConfirmAppUiTool { .. } => Some(Duration::from_secs(100)),
-			AgentActionDto::RefreshIntegrations { .. }
-			| AgentActionDto::InstallSuggestedPlugin { .. }
-			| AgentActionDto::SetAppToolExposure { .. }
+			AgentActionDto::SetAppToolExposure { .. }
 			| AgentActionDto::SetThreadReadState { .. }
 			| AgentActionDto::EditNativeGoal { .. }
 			| AgentActionDto::SetVoicePreference { .. }
 			| AgentActionDto::SetSearchPreference { .. }
-			| AgentActionDto::SetContextPreference { .. }
-			| AgentActionDto::SetTaskPlugin { .. } => Some(Duration::from_secs(65)),
+			| AgentActionDto::SetContextPreference { .. } => Some(Duration::from_secs(65)),
 			AgentActionDto::RestoreArchivedThread { .. } => Some(RESET_CARD_CLIENT_TIMEOUT),
 			_ => None,
 		};
@@ -3841,10 +3831,8 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		AgentActionDto::UploadPromptInput { upload, .. }
 		| AgentActionDto::CompletePromptInputUpload { upload } => &upload.work_id,
 		AgentActionDto::SendPromptInput { work_id, .. }
-		| AgentActionDto::SetLiveReviewer { work_id, .. }
 		| AgentActionDto::SetLiveModel { work_id, .. } => work_id,
 		AgentActionDto::SelectPermissions { work_id, .. } => work_id,
-		AgentActionDto::SetTaskPlugin { work_id, .. } => work_id,
 		AgentActionDto::SetTaskModel { work_id, .. } => work_id,
 		AgentActionDto::SetHookSetting { work_id, .. }
 		| AgentActionDto::SetAppToolExposure { work_id, .. }
@@ -3861,14 +3849,13 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		| AgentActionDto::EditNativeGoal { work_id, .. }
 		| AgentActionDto::SetVoicePreference { work_id, .. }
 		| AgentActionDto::SetSearchPreference { work_id, .. }
-		| AgentActionDto::SetContextPreference { work_id, .. }
-		| AgentActionDto::SetAppSetting { work_id, .. }
-		| AgentActionDto::SetSavedAppSetting { work_id, .. } => work_id,
+		| AgentActionDto::SetContextPreference { work_id, .. } => work_id,
 		AgentActionDto::Start(start) | AgentActionDto::StartConfigured { start, .. } =>
 			&start.root_id,
 		AgentActionDto::Send { root_id, .. } | AgentActionDto::SendConfigured { root_id, .. } =>
 			root_id,
 		AgentActionDto::CancelCapacityRetry { work_id, .. }
+		| AgentActionDto::RetryInput { work_id, .. }
 		| AgentActionDto::NativeAgentInput { work_id, .. }
 		| AgentActionDto::PrepareNativeAgent { work_id, .. }
 		| AgentActionDto::Interrupt { work_id, .. }
@@ -3881,10 +3868,8 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		| AgentActionDto::ContinueMisalignment { work_id, .. }
 		| AgentActionDto::ApproveGuardianDenial { work_id, .. }
 		| AgentActionDto::RestoreArchivedThread { work_id, .. }
-		| AgentActionDto::InstallSuggestedPlugin { work_id, .. }
 		| AgentActionDto::AddResourceLink { work_id, .. }
-		| AgentActionDto::RemoveResource { work_id, .. }
-		| AgentActionDto::RefreshIntegrations { work_id } => work_id,
+		| AgentActionDto::RemoveResource { work_id, .. } => work_id,
 	}
 }
 
@@ -4119,7 +4104,6 @@ async fn close_one_shot_socket(mut socket: OneShotSocket) {
 mod tests {
 	mod account_login;
 	mod native_goal;
-	mod plugin_selection;
 	mod prompt_edit;
 	mod timeline;
 	#[cfg(unix)] use std::os::unix::fs::PermissionsExt;

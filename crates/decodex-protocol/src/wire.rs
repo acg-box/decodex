@@ -17,17 +17,16 @@ use crate::{
 	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, AccountRecoveryAction,
 	AccountRecoveryNudgeResult, AccountRecoveryNudgeStatus, AccountRecoveryPreparation,
 	AccountRecoveryResult, AccountRecoveryState, AccountResetCardOperationResult, AgentActionDto,
-	AgentActivityDetailCursor, AgentActivityDetailResult, AgentAppExposureResult,
-	AgentAppSettingsResult, AgentAppUiCall, AgentAppUiCallReview, AgentAppUiReceiptRequest,
-	AgentAppUiReceiptResult, AgentAppUiRequest, AgentAppUiResult, AgentArchiveResult,
-	AgentCapabilitiesResult, AgentContextSettingsResult, AgentDeliveriesResult, AgentDeliveryQuery,
-	AgentExchangesResult, AgentGuardianDetailResult, AgentGuardianReviewsResult,
-	AgentHistoryResult, AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState,
-	AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult,
-	AgentMemoryResult, AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult,
-	AgentOutputResult, AgentPendingAppUiCall, AgentPermissionState, AgentPluginSelectionState,
-	AgentReadStateResult, AgentRequestResult, AgentResourcesResult, AgentSampleStatus,
-	AgentSavedAppSettingsResult, AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget,
+	AgentActivityDetailCursor, AgentActivityDetailResult, AgentAppExposureResult, AgentAppUiCall,
+	AgentAppUiCallReview, AgentAppUiReceiptRequest, AgentAppUiReceiptResult, AgentAppUiRequest,
+	AgentAppUiResult, AgentArchiveResult, AgentCapabilitiesResult, AgentContextSettingsResult,
+	AgentDeliveriesResult, AgentDeliveryQuery, AgentExchangesResult, AgentGuardianDetailResult,
+	AgentGuardianReviewsResult, AgentHistoryResult, AgentHookSettingsState,
+	AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult, AgentLiveReviewerState,
+	AgentMediaRequest, AgentMediaResult, AgentMemoryResult, AgentModelSelectionState,
+	AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall,
+	AgentPermissionState, AgentReadStateResult, AgentRequestResult, AgentResourcesResult,
+	AgentSampleStatus, AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget,
 	AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult,
 	AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest,
 	AgentVoiceSettingsResult, AgentVoiceStatus, AttachedBranchesResult, CURRENT_VERSION,
@@ -43,7 +42,6 @@ use crate::{
 	PrivateReviewDetailsResult, PromptEditStatus, PromptForkResult, PromptInputSendIdentity,
 	PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus, ProtocolVersion,
 	TaskRecapStatus, UsageEvidenceResult, UsageEvidenceScope, WorkDetailResult,
-	program_cycle::{ProgramCycleResult, ProgramListResult},
 };
 
 /// Maximum UTF-8 size of any human-readable text carried by the wire protocol.
@@ -275,7 +273,7 @@ impl<'de> Deserialize<'de> for QueryId {
 }
 
 /// Stable key used to deduplicate a logical command.
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct IdempotencyKey(String);
 impl IdempotencyKey {
@@ -2244,18 +2242,6 @@ pub enum QueryPayload {
 		/// Native connector identity.
 		connector_id: WireText,
 	},
-	/// Inspect existing native app connection overrides.
-	GetAgentSavedAppSettings {
-		/// Originating local task.
-		work_id: EntityId,
-	},
-	/// Inspect configuration and receipts for an app request.
-	GetAgentAppSettings {
-		/// Originating task.
-		work_id: EntityId,
-		/// Request event, which can be resolved when reading saved state.
-		event_id: i64,
-	},
 	/// Review shared native hooks and durable configuration results.
 	GetAgentHookSettings {
 		/// Originating local task.
@@ -2263,11 +2249,6 @@ pub enum QueryPayload {
 	},
 	/// Review model settings and native choices for one task.
 	GetAgentModelSelection {
-		/// Owning task.
-		work_id: EntityId,
-	},
-	/// Read task plugin exclusions.
-	GetAgentPluginSelection {
 		/// Owning task.
 		work_id: EntityId,
 	},
@@ -2370,6 +2351,13 @@ pub enum QueryPayload {
 		work_id: EntityId,
 		/// Read current inputs strictly after this persistent event identity.
 		after: Option<i64>,
+	},
+	/// Read positive queue acceptance for an exact input without resubmitting it.
+	GetAgentMessageReceipt {
+		/// Original local conversation.
+		work_id: EntityId,
+		/// Original command identity.
+		key: IdempotencyKey,
 	},
 	/// Read positive evidence for one exact steering submission.
 	GetAgentSteerReceipt {
@@ -2531,13 +2519,6 @@ pub enum QueryPayload {
 	},
 	/// Read the complete daemon-owned desktop settings projection.
 	GetDesktopSettings,
-	/// List bounded current Programs for the Factory selector.
-	ListPrograms,
-	/// Read one complete current Program causal projection.
-	GetProgramCycle {
-		/// Stable Program identity.
-		program_id: EntityId,
-	},
 	/// List one bounded deterministic page of ordinary Task conversations.
 	ListConversations {
 		/// Last fully applied most-recent-first keyset position.
@@ -3213,16 +3194,10 @@ pub enum QueryResultPayload {
 	AgentLiveReviewer(AgentLiveReviewerState),
 	/// Native permission review or pending selection.
 	AgentPermissionProfiles(AgentPermissionState),
-	/// Task plugin selections and operation receipts.
-	AgentPluginSelection(AgentPluginSelectionState),
 	/// Native model selection and operation receipt.
 	AgentModelSelection(AgentModelSelectionState),
 	/// Current shared hook review.
 	AgentHookSettings(AgentHookSettingsState),
-	/// App connection settings and shared receipts.
-	AgentAppSettings(AgentAppSettingsResult),
-	/// Saved app overrides and their shared receipt.
-	AgentSavedAppSettings(AgentSavedAppSettingsResult),
 	/// Ephemeral voice signaling readback.
 	AgentVoice(AgentVoiceStatus),
 	/// Latest ephemeral dictation draft.
@@ -3283,6 +3258,8 @@ pub enum QueryResultPayload {
 	AgentSteerReceipt(AgentSteerReceiptResult),
 	/// Independent unconfirmed input page.
 	AgentInputReceipts(AgentInputReceiptsResult),
+	/// True only when the exact input is in the service-owned queue.
+	AgentMessageReceived(bool),
 	/// Native goal observation.
 	AgentNativeGoal(AgentNativeGoalResult),
 	/// Source-bound native read receipt.
@@ -3301,10 +3278,6 @@ pub enum QueryResultPayload {
 	AgentExchanges(AgentExchangesResult),
 	/// Complete daemon-owned desktop settings projection.
 	DesktopSettings(DesktopSettingsResult),
-	/// Bounded current Program selector projection.
-	Programs(ProgramListResult),
-	/// One exact complete Program causal projection.
-	ProgramCycle(ProgramCycleResult),
 	/// Bounded current Conversation destination projection.
 	Conversations(ConversationListResult),
 	/// One exact ordinary Conversation readback.
@@ -3743,9 +3716,6 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 						&& request.account_id.is_some()) =>
 				Err("initial model catalog account does not match its routing policy"),
 			QueryPayload::GetDesktopSettings => Ok(()),
-			QueryPayload::GetProgramCycle { program_id }
-				if !is_canonical_uuid(program_id.as_str()) =>
-				Err("Program query identity is not canonical"),
 			QueryPayload::ListConversations { after, .. }
 				if after.as_ref().is_some_and(|cursor| {
 					!is_canonical_uuid(cursor.conversation_id().as_str())
@@ -4664,7 +4634,7 @@ mod tests {
 	}
 
 	#[test]
-	fn retired_program_mutations_fail_decode_but_historical_queries_remain() {
+	fn retired_program_commands_and_queries_fail_decode() {
 		for name in [
 			"create_program_cycle",
 			"bind_program_domain_pack",
@@ -4692,21 +4662,12 @@ mod tests {
 			.is_err()
 		);
 
-		for payload in [
-			QueryPayload::ListPrograms,
-			QueryPayload::GetProgramCycle {
-				program_id: EntityId::new("01234567-89ab-4def-8123-456789abcdef").unwrap(),
-			},
-		] {
-			let query = ClientMessage::Query(QueryEnvelope {
-				version: CURRENT_VERSION,
-				query_id: QueryId::new("historical-program-query").unwrap(),
-				payload,
-			});
-
-			assert_eq!(
-				wire::decode_client_message(&serde_json::to_string(&query).unwrap()).unwrap(),
-				query
+		for name in ["list_programs", "get_program_cycle"] {
+			assert!(
+				serde_json::from_value::<QueryPayload>(
+					serde_json::json!({"name":name,"arguments":{}})
+				)
+				.is_err()
 			);
 		}
 	}
@@ -4872,7 +4833,6 @@ mod tests {
 		let successor_summary = ConversationSummary::new(
 			successor.clone(),
 			crate::ConversationTitle::new("Route conversation").unwrap(),
-			None,
 			None,
 			EntityRevision(1),
 			1,

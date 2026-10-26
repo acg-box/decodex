@@ -111,7 +111,7 @@ pub enum Command {
 	/// Initialize or upgrade the bundled SQLite product database.
 	#[command(hide = true)]
 	InitializeLocalDatabase,
-	/// Verify the bundled SQLite database and migration ledger.
+	/// Verify the bundled SQLite database and current schema.
 	#[command(hide = true)]
 	ValidateLocalDatabase,
 	/// Summarize service readiness while retaining every typed check.

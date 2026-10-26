@@ -19,10 +19,7 @@ pub(crate) fn finalize(
 		return Ok(());
 	}
 
-	let ProviderAttemptConsumer::ConversationTurn { conversation_id, turn_id } = &attempt.consumer
-	else {
-		return Ok(());
-	};
+	let ProviderAttemptConsumer::ConversationTurn { conversation_id, turn_id } = &attempt.consumer;
 	let Some(thread) = &evidence.provider_thread_id else {
 		return Ok(());
 	};

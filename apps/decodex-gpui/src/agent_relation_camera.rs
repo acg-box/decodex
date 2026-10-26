@@ -517,7 +517,10 @@ mod tests {
 				.map(|selector| visual.debug_bounds(selector).unwrap());
 
 				surface.read_with(visual, |s, _| {
-					let graph = s.relation_graph();
+					// Density changes settle during prepaint. Check paths from the same
+					// rendered frame as the native bounds, not a newly computed next frame.
+					let painted = s.work_board.view.layers.graph.borrow();
+					let graph = painted.as_ref().expect("rendered graph snapshot");
 
 					for path in graph.paths.values() {
 						for sample in 0..=128 {

@@ -461,12 +461,6 @@ impl ProviderAttemptService {
 				} if attempt_conversation_id == conversation_id && attempt_turn_id == turn_id
 			) =>
 				(Some(*conversation_revision), Some(1)),
-			ExecutionConsumer::ManagedRunExecution { .. }
-				if matches!(
-					&preparation.consumer,
-					ProviderAttemptConsumer::ManagedRunExecution { .. }
-				) =>
-				(None, None),
 			_ => return Err(ProviderAttemptServiceError::AuthorityConflict),
 		};
 		let (process_execution_epoch_id, binding_receipt) = match authority {

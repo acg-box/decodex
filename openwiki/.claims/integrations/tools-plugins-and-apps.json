@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f1a419b98e20e60063e842b3bd2f0e211f7d46babb0edd27889c8ed4ff812cb3",
+  "pageVersion": "sha256:c278587ebe24ecacdca4d5833440bb9a1d212e1d5dc88019ab2ec31ec5e3d59b",
   "claims": [
     {
       "id": "claim_3f139c853db04d169600a9ee50a8d9b8",
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:24cf7ca4d7181f96c24940defcb22c630587f674f1e3571bc25a08295304b19e"
+          "version": "repo-file-v1:sha256:3f039490ad9c9323a970ba3ac756f9891f597885136de139fd06190f5c7274ec"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_skill_roots.rs",
@@ -62,25 +62,25 @@
     },
     {
       "id": "claim_79ee436d55614f12bdaee0d9e8ef4186",
-      "statement": "Local saved and effective connector approval/reviewer management commands are retired, while native integration observations and pending approval handling remain separate capabilities.",
+      "statement": "The local API does not expose connector approval/reviewer configuration commands; native integration observations and pending approval handling remain separate supported capabilities.",
       "evidence": [
+        {
+          "resource": "repo://crates/decodex-protocol/src/agent.rs",
+          "version": "repo-file-v1:sha256:65f0c3159e9ab49793db2c3f93603a27671a609e3249f485d0e5c39a06ab3ab8"
+        },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L1058-L1073",
           "version": "repo-lines-v1:sha256:359c5cd359abedd93f41e57246f7b935447c103dc4033da7c4a923e5c732a998:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZlMDc3OGEzNjg0ZWY2ZjFkOWUwOTRhNTM4NTAxNTMyYWViZDM2ODFmZTM4OWQ5MjI2YmUzNzFmMDIzYTlhMDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ0NTRiMDRkMGZmMTM5NGU5Y2RkNTRmMGE1ZjZhYzY0ZDA5MzNmMTRhNzk0MTNkMTNjYThhYTBiMTNkODFjYzYifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1446-L1458",
-          "version": "repo-lines-v1:sha256:4e928b32a699ea432c5486c3fcc6666b7110d33c764f2a5c2aea537ef4f30143:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxMTU0ZGViZTBlNjlhNThlYThjZGFkNzhmZmMxZjhiM2I1NmViMDliNGYyNWI3OGU1ZjU1YjYxNTcwZmQxMjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2MTYxMjM2MTMyZjZmYTI1OGI1YWYzODdkMGUyYmI4M2E4OTk1NjlkNDlkN2M3ZDAyYWNjZjFjNGVmNjVhNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5NzhkNzlkZjYyMGEyYzI5YjhhNzVhYTRhMjg1MTYwMWI0MjFkY2JiM2YxYjlmMTQ1Y2VhMjg5ZWMzYTEzNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhMjgxNjI5YjJhOTQwZTRmMTc2MzQ4N2U1YTY0ZTM1ZmIxYmE1MDI4NjM4MjEzZDRmOWMxMjMxMDc0NDE4NmUifQ"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/agent_integrations.rs#L87-L120",
-          "version": "repo-lines-v1:sha256:354ca1614d4c92092782d2ed11747714de9ef9088b7719702c5ffaeca90cd2a4:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViNjIxYmFhYTI2MjM1ODgwMDI0MzEwNTBlMjIzZDQ2OTg2NTBmNzM3ODJlM2RkZWNhOTExZTg0MDkyMTc4MmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzMjAyMDJjYzY0OGNhZGNhMTZmODVkMDY1ZTQzMTFjYTNhMzMwOWFmNWNiZDM2MTBkMTZhNmQzMjFmN2FmODkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlYTI0MGMzMmYzMmMxZTNmN2NkMjJjOTgyZTViNmM4YjBhNTNhZmQxZWEwMzZiM2QxYTVhOTM5Yjg0YjVkMTcifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent_integrations.rs#L84-L120",
+          "version": "repo-lines-v1:sha256:fdab87d7dfa58ec733435205803eec25a7b7c33cc46556f16922b1814111744a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhMjcyYzE4ODBhMjZmMWJkNzM4ZGIyZjFjZTVjNzJlZmMyOTQwNzQzMGIyNjJkMWVhYTcyNDllNmI4OGY1Y2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2ZWFiN2E0NWUwOWFlNDU0MWRlOWI4YjY0NjFhYTU0NTEzYzVhMGI4MmM3NWI2NWY1ZTMzNWUwZTkzYzA2NjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlYTI0MGMzMmYzMmMxZTNmN2NkMjJjOTgyZTViNmM4YjBhNTNhZmQxZWEwMzZiM2QxYTVhOTM5Yjg0YjVkMTcifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T07:09:00.728Z"
+    "at": "2026-10-26T15:20:45.937Z"
   }
 }

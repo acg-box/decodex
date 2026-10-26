@@ -340,7 +340,7 @@ mod tests {
 	};
 
 	#[gpui::test]
-	fn unsent_input_is_compact_recoverable_and_separate_from_native_diagnostics(
+	fn unsent_input_shows_its_message_and_stays_separate_from_native_diagnostics(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -420,7 +420,7 @@ mod tests {
 		assert!(visual.debug_bounds("local-receipt-91").is_none());
 		assert!(visual.debug_bounds("local-receipt-92").is_none());
 		assert!(visual.debug_bounds("local-receipt-93").is_some());
-		assert!(visual.debug_bounds("local-receipt-93").unwrap().size.height <= gpui::px(44.));
+		assert!(visual.debug_bounds("local-receipt-93").unwrap().size.height <= gpui::px(96.));
 		assert!(visual.debug_bounds("saved-input-body-93").is_none());
 		assert!(visual.debug_bounds("local-records-toggle").is_some());
 

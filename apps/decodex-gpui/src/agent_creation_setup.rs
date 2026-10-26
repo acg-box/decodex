@@ -67,19 +67,6 @@ impl AgentSurface {
 	}
 }
 
-pub(super) fn summary(setup: &DesktopCreationSetup) -> String {
-	format!(
-		"New task · {}{} · {}",
-		setup.model.chars().take(80).collect::<String>(),
-		if setup.inherit_effort {
-			String::new()
-		} else {
-			format!(" · {}", setup.reasoning_effort.as_str())
-		},
-		setup.working_directory.chars().take(120).collect::<String>()
-	)
-}
-
 fn empty_setup() -> DesktopCreationSetup {
 	DesktopCreationSetup {
 		defaults_applied: false,

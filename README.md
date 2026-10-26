@@ -171,7 +171,6 @@ the unversioned nightly channel through the repository formatting tasks.
 python3 scripts/vnext/local_database_gate.py
 python3 -m unittest tests/scripts/test_vnext_architecture.py
 cargo test -p decodex-database --all-targets
-cargo test -p decodex-database-transfer
 cargo test -p decodex-cli --all-targets
 DECODEX_APP_SIGN_IDENTITY="4EBCADF6B4D513E45CE33EC6934C08DBB0F03D7F" \
 DECODEX_APP_SIGN_TEAM_IDENTIFIER="4N949UKQ55" \
@@ -229,16 +228,14 @@ Generated pages can lag this refactor; current source, tests and
   SQLite. Closing the main window hides Decodex and retains the protocol session, native
   menu bar, and app-owned service. **Quit Decodex** stops the app and only its owned service.
 
-Normal startup does not require a separate database server, redb, or Keychain. A one-shot tool
-can import the existing account pool from the retired redb vault during upgrade. It opens
-the source read only and leaves all rollback sources intact.
+Normal startup uses the bundled SQLite database.
 
-### Persistence compatibility
+### Current persistence format
 
-Migration 0013 adds Agent work, inbox, process bindings and saved settings. Migration
-0014 preserves quota facts while adding explicit optional-window absence. Prior
-account-route upgrade history remains unchanged. Accounts, credentials, routing
-data, conversations and historical Program Pack bindings remain readable.
+`database/schema.sql` defines the complete current product schema. New databases
+use this schema directly. The application accepts only the current schema and
+local protocol version; it does not retain historical migration or import paths.
+
 The local protocol accepts one exact version; build commit and package version remain diagnostics,
 not a second compatibility scheme.
 The compatibility allowlist is limited to persisted/internal bytes that existing databases or

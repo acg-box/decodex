@@ -283,12 +283,10 @@ mod tests {
 	mod guardian_notices;
 	mod hooks;
 	mod model_fallback;
-	mod model_legacy;
 	mod models;
 	mod native_turns;
 	mod native_warnings;
 	mod permissions;
-	mod plugins;
 	mod prompt_edit;
 	mod response_usage;
 	mod restoration;

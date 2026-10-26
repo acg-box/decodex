@@ -85,7 +85,6 @@ impl AgentSurface {
 
 			if mode == "preview" {
 				self.capture_send_preview(&PendingCommand {
-					recovery: None,
 					key: Some(IdempotencyKey::new("review-preview").unwrap()),
 					steer: None,
 					execution_intent: None,

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b9cc4972f00a79d5457cf7f418f185c7c69a04d63d8ed8bdfbb7973d25f62e18",
+  "pageVersion": "sha256:8282b0de98b78b01f0ccbb777e074dfcbb3889e657cf1f5365d1ee34799660b2",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -55,7 +55,7 @@
       "statement": "The fixed attested app-server launch enables description-first Code Mode, native child context limits, Agent message wakeups and dotted fork-prefix preservation while leaving multi-agent enablement and transport selection native-owned.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L130-L150",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L131-L151",
           "version": "repo-lines-v1:sha256:a6b2eef1867776015de103e94d4bd067aedc8577c70159c8c792ab426e27b791:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2YjU1MTM4Y2EyM2U2ZGFkMjJiNjQ4ZjgyOWNlZGM4MWQyMDNiMTlmMTc2MzRkZjZiZTc2MGY1M2JlNGVmOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNmU0ZjMxZGM3MTM2OTU2NmI1MWNjMWExOTVkNDUwY2RmODU3NWU2ZDdhNzYxYzU2NDJiYTMwMjVkYzM0NzMifQ"
         },
         {
@@ -98,19 +98,19 @@
     },
     {
       "id": "claim_b54318a17f6940828a6846a105e9dae7",
-      "statement": "Global Guardian controls reviewer intent and reports source-bound effective thread preference for future turns; per-Agent reviewer writes are rejected while native permissions and live model edits retain their own owners.",
+      "statement": "Global Guardian controls reviewer intent and reports source-bound effective thread preference for future turns. Per-turn reviewer receipts are read-only evidence; the local protocol has no per-Agent reviewer write command. Native permissions and live model edits retain their own owners.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_live_settings.rs",
-          "version": "repo-file-v1:sha256:2c7dabe9c8f48ccc5e8b9c320e06dfe09e03b1f8ba38d57d300b4f87ed838bca"
+          "version": "repo-file-v1:sha256:de7d13abbc94853b4c39046cd516916fc2647b0342dfad088dc0d40f6da2220e"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs#L1-L103",
-          "version": "repo-lines-v1:sha256:e111dbf2f4d4aa117f76345f57907e9d47f124256fe78ec0dd6368d99e5d50d6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2ZmRmZjlhYTNiYTY5YTEwODVhMjY3NjljNDRiMWNjMjRlMDZkZGQ5YWIzNDlkZDY4NDM5OGYyMTQzY2M5MzZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyOWFmM2JiMDRhYjAzOTQwYTQwOGM1MDcyYTVjY2RlMWY4YzUxZTc5YTIyYjE1ZTk5NDNlOTFlY2EyYWMyODFhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwMDc2NDQ5YTA3N2YwNWUwMWUwN2M0NzE5OGVhYWEwNjY5NGNjZWFhZTIxYmEwODFmNTZmMDFjNTI4NzdmZWY3In0"
+          "resource": "repo://crates/decodex-protocol/src/agent.rs",
+          "version": "repo-file-v1:sha256:65f0c3159e9ab49793db2c3f93603a27671a609e3249f485d0e5c39a06ab3ab8"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1550-L1568",
-          "version": "repo-lines-v1:sha256:cfd232ec73dc3a45871fb3cf4318614d9f69ffee74f348a28a0257a1c68bf34c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5OWY2NWUyZDI2OTYwNGYxOTgyZjJmOTZkYmI2MjA2NTgwYWU5YzZkYTdiYmU0OTM0MWIzZWU0NDAwNGQ1YjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwNThlYWViNTQ5M2EyYzdlMzMyMTk5ZjVmNjgxNDkwOWMwNjhiZmMwZGNmMGRkNjdiZmVhODM4MDUzY2E3MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiNWU2ZDJjY2FlMTc5Yzk0YmI0Yzc0OWZhZmJmNzQzNjVhZGNiNjliMWE3MzY4MTE2YTM3NDBlMjRlMGQwYzkifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
+          "version": "repo-file-v1:sha256:7d716b1f0d463043d3844fbcb0e0826390ca08e8984ce15d0bb01fa1e0f8a04b"
         }
       ]
     },
@@ -120,7 +120,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
+          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
@@ -170,7 +170,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
+          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -185,6 +185,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T07:09:00.728Z"
+    "at": "2026-10-26T15:20:45.937Z"
   }
 }

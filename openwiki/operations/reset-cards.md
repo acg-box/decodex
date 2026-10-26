@@ -37,10 +37,10 @@ sources:
     resource: repo://database/src/reset_cards.rs
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
+generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T15:20:45.937Z
 ---
 
 > Current scope: Reset Card redemption is available in Accounts and the explicit CLI, with durable account-scoped recovery. The embedded schema owns the redemption ledger and separate weekly activation records. The source/release comparison below is a version-bound implementation receipt, not a statement of the currently installed Codex version. Quota refill animation displays confirmed results; it does not redeem a card. See [Weekly activation](quota-activation.md).
@@ -91,9 +91,9 @@ The Rust protocol client validates the selected account, descriptor, revision, r
 
 The journal preserves `reset-card-pending-v1.json` and schema `decodex/reset-card-pending/2`. Rust owns validation, duplicate detection, recovery of valid entries, the 64-attempt limit, process and file locks, and synchronized atomic replacement. Unknown schemas or conflicting records block mutation without deleting the file. A native dispatch lease holds the same file lock across the async request. The `decodex_reset_card_journal_v2` API accepts an observed state, not a removal flag. Rust permits retirement only for completed, failed-before-effect or rejected observations; prepared, ambiguous, missing, unavailable and unconfirmed results retain the exact saved attempt. Swift receives the native retained, removed or removal-failed result. A retained or failed result does not create a new key or send another request. Service recovery cannot replace this journal because a request can lose acknowledgment before the service has a readable operation.
 
-Run `scripts/macos/test_native_app.sh --filter 'ResetCardPendingAttemptStoreTests|ResetCardStoreRecoveryTests'` to exercise the actual Rust journal through Swift. Rust tests also check the legacy document and exclusion of another process while a dispatch lease is held.
+Run `scripts/macos/test_native_app.sh --filter 'ResetCardPendingAttemptStoreTests|ResetCardStoreRecoveryTests'` to exercise the actual Rust journal through Swift. Rust tests also check the current journal document and exclusion of another process while a dispatch lease is held.
 
-Use the current embedded migration ledger for upgrade compatibility. Preserve pending operations and database backups; never clear evidence to force another attempt.
+The current schema owns pending operations and redemption evidence. Preserve that evidence; never clear it to force another attempt. A retired upgrade chain is not needed for current operation recovery.
 
 ## Provider contract and validation boundary
 
@@ -106,6 +106,6 @@ explicit account-pool operation does not depend on starting a Codex process.
 
 Tests use fabricated credits, a provider with no HTTP client, and temporary SQLite
 roots. They exercise exact selection, duplicate requests, response loss, restart,
-receipt recovery, schema upgrade, and UI refusal states. They must not redeem real
+receipt recovery, current schema validation, and UI refusal states. They must not redeem real
 credits or open the user's product database. Mock validation does not claim live
 redemption acceptance.

@@ -119,8 +119,8 @@ use decodex_protocol::{
 	AgentTaskReferenceDto, AgentUsageEstimateResult, AgentWorkItemDto, AgentWorkKindDto,
 	AgentWorkStatusDto, ClientProfile, CommandError, ConversationModel,
 	ConversationReasoningEffort, ConversationWorkingDirectory, DesktopCreationIntent,
-	DesktopQuestionDraft, DesktopRecoveredDraft, EntityId, HistoryText, IdempotencyKey,
-	InitialModelCatalogResult, MAX_HISTORY_INLINE_BYTES, ServiceTier, WireText,
+	DesktopMessage, DesktopMessageState, DesktopQuestionDraft, EntityId, HistoryText,
+	IdempotencyKey, InitialModelCatalogResult, MAX_HISTORY_INLINE_BYTES, ServiceTier, WireText,
 	work::WorkPortfolio,
 };
 use deliveries::OpenDelivery;
@@ -1040,9 +1040,20 @@ impl AgentSurface {
 	}
 
 	fn execute(&mut self, action: AgentActionDto, draft: Option<String>, cx: &mut Context<Self>) {
+		self.submit_command(action, draft, None, cx);
+	}
+
+	fn submit_command(
+		&mut self,
+		action: AgentActionDto,
+		draft: Option<String>,
+		retry: Option<(IdempotencyKey, DesktopMessage)>,
+		cx: &mut Context<Self>,
+	) {
 		if matches!(
 			&action,
 			AgentActionDto::Send { .. }
+				| AgentActionDto::RetryInput { .. }
 				| AgentActionDto::SendConfigured { .. }
 				| AgentActionDto::Steer { .. }
 				| AgentActionDto::NativeAgentInput { .. }
@@ -1085,22 +1096,7 @@ impl AgentSurface {
 		}
 
 		let key = IdempotencyKey::new(unique_command()).expect("bounded command identity");
-		let recovery = if draft.is_some() {
-			match self.command_draft_copy(cx) {
-				Ok(copy) => Some(copy),
-				Err(message) => {
-					self.feedback = Feedback::error(message);
-
-					cx.notify();
-
-					return;
-				},
-			}
-		} else {
-			None
-		};
-		let mut pending = PendingCommand {
-			recovery,
+		let pending = PendingCommand {
 			key: Some(key.clone()),
 			steer: self.steer_identity(&action, &key),
 			execution_intent: self.draft_profiles.execution.capture(&action),
@@ -1111,7 +1107,32 @@ impl AgentSurface {
 			draft,
 		};
 
-		self.fence_command_draft(&mut pending);
+		let message = retry.as_ref().map(|(_, message)| message.clone()).or_else(|| {
+			draft_for_message(&action, pending.draft.as_deref(), pending.owner.as_deref())
+		});
+		if let Some(mut message) = message {
+			if retry.is_none() {
+				message.thread_id = match &action {
+					AgentActionDto::NativeAgentInput { thread_id, .. } => Some(thread_id.clone()),
+					AgentActionDto::NewConversation { .. }
+					| AgentActionDto::Start(_)
+					| AgentActionDto::StartConfigured { .. } => None,
+					_ => self
+						.conversation_work()
+						.and_then(|work| work.codex_thread_id)
+						.and_then(|thread| WireText::new(thread).ok()),
+				};
+			}
+			message.state = DesktopMessageState::Sending;
+			message.error = None;
+			if let Err(error) =
+				self.stage_message(&key, message, retry.as_ref().map(|(key, _)| key), cx)
+			{
+				self.feedback = Feedback::error(error);
+				cx.notify();
+				return;
+			}
+		}
 		self.capture_send_preview(&pending);
 
 		if pending.draft.is_some() {
@@ -1199,15 +1220,7 @@ impl AgentSurface {
 			&pending,
 			matches!(&result, Ok(AgentCommandResponse::Accepted { .. })),
 		);
-		self.remove_command_draft_fence(&pending);
-
-		if !matches!(&result, Ok(AgentCommandResponse::Accepted { .. })) {
-			self.retain_failed_command_draft(
-				&pending,
-				matches!(&result, Ok(AgentCommandResponse::PotentiallyDispatched { .. })),
-				cx,
-			);
-		}
+		self.settle_message(pending.key.as_ref(), &result);
 		if !matches!(&result, Ok(AgentCommandResponse::PotentiallyDispatched { .. })) {
 			self.submission.unconfirmed.retain(|key| Some(key) != pending.key.as_ref());
 		}
@@ -1297,11 +1310,13 @@ impl AgentSurface {
 		}
 	}
 
-	fn cancel_queued_command(&mut self, cx: &Context<Self>) {
+	fn cancel_queued_command(&mut self, _cx: &Context<Self>) {
 		if let Some(queued) = self.submission.waiting.take() {
 			self.restore_question_submission(Some(&queued.key));
-			self.remove_command_draft_fence(&queued.pending);
-			self.retain_failed_command_draft(&queued.pending, false, cx);
+			self.settle_message(
+				queued.pending.key.as_ref(),
+				&Err("Not sent: the connection changed before dispatch.".into()),
+			);
 			self.submission.unconfirmed.retain(|key| key != &queued.key);
 
 			if queued.pending.steer.is_some() {
@@ -1309,6 +1324,7 @@ impl AgentSurface {
 			}
 
 			self.sending = false;
+			self.feedback = Feedback::error("Nothing sent. Input kept.");
 		}
 	}
 
@@ -2744,7 +2760,6 @@ struct QueuedCommand {
 
 #[derive(Clone)]
 struct PendingCommand {
-	recovery: Option<DesktopRecoveredDraft>,
 	key: Option<IdempotencyKey>,
 	steer: Option<decodex_protocol::AgentSteerIdentity>,
 	epoch: u64,
@@ -2786,6 +2801,44 @@ fn should_poll_snapshot(has_profile: bool, state: &LoadState) -> bool {
 fn startup_feature_warning(entry: &AgentHistoryEntryDto) -> bool {
 	entry.kind == "execution_notice"
 		&& entry.text.starts_with("Codex warning: Under-development features enabled:")
+}
+
+fn draft_for_message(
+	action: &AgentActionDto,
+	text: Option<&str>,
+	owner: Option<&str>,
+) -> Option<DesktopMessage> {
+	if !matches!(
+		action,
+		AgentActionDto::Start(_)
+			| AgentActionDto::StartConfigured { .. }
+			| AgentActionDto::NewConversation { .. }
+			| AgentActionDto::Send { .. }
+			| AgentActionDto::SendConfigured { .. }
+			| AgentActionDto::Steer { .. }
+			| AgentActionDto::NativeAgentInput { .. }
+	) {
+		return None;
+	}
+	let text = text?;
+	let owner = match action {
+		AgentActionDto::NewConversation { work_id, .. } => Some(work_id.clone()),
+		AgentActionDto::Start(start) | AgentActionDto::StartConfigured { start, .. } =>
+			Some(start.root_id.clone()),
+		AgentActionDto::Send { root_id, .. } | AgentActionDto::SendConfigured { root_id, .. } =>
+			Some(root_id.clone()),
+		AgentActionDto::Steer { work_id, .. }
+		| AgentActionDto::NativeAgentInput { work_id, .. } => Some(work_id.clone()),
+		_ => owner.and_then(|owner| EntityId::new(owner).ok()),
+	};
+	Some(DesktopMessage {
+		action: action.clone(),
+		owner,
+		thread_id: None,
+		text: text.into(),
+		state: DesktopMessageState::Sending,
+		error: None,
+	})
 }
 
 fn unique_command() -> String {
@@ -3954,7 +4007,6 @@ mod tests {
 				skill_name: None,
 			};
 			let pending = PendingCommand {
-				recovery: None,
 				key: None,
 				steer: None,
 				execution_intent: None,

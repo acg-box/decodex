@@ -8,7 +8,6 @@ use std::{
 	time::Duration,
 };
 
-use rusqlite::Connection;
 use serde_json::{self, Value};
 use tokio::{
 	io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, DuplexStream},
@@ -321,101 +320,6 @@ async fn reject_restored_settings(owned: &OwnedReviewer, old: WireText) -> WireT
 	assert_ne!(review_token, old);
 
 	review_token
-}
-
-#[tokio::test]
-async fn legacy_model_request_blocks_current_service_mutations_without_native_writes() {
-	let home = tempfile::tempdir().expect("fixture home");
-	let (local, remote) = io::duplex(32_768);
-	let (r, w) = io::split(local);
-	let (client, _events) = AppServerClient::from_io(r, w);
-	let writes = Arc::new(AtomicUsize::new(0));
-	let backend = tokio::spawn(serve(remote, writes.clone(), "queued"));
-
-	client.thread_resume(serde_json::json!({"threadId":"thread"})).await.expect("hydrate");
-
-	let owned = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
-	let connection = Connection::open(owned.root.paths().product_database_file()).unwrap();
-	let attempt = serde_json::json!({"work":"root","thread":"thread","generation":owned.key.generation.as_str(),"account":owned.key.account.as_str(),"account_revision":owned.key.revision,"settings_event":1,"banner_digest":"b".repeat(64),"from_model":"original","model":"scoped","effort":"high","service_tier":"priority"});
-
-	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service','root','model_recovery',?1,1,'resolved','Legacy fixture',1)",[serde_json::json!({"attempt":attempt,"state":"claimed"}).to_string()]).unwrap();
-
-	let reservation = connection.last_insert_rowid();
-
-	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service:result','root','model_recovery_result',?1,2,'resolved','Legacy response',2)",[serde_json::json!({"reservation":reservation,"state":"uncertain"}).to_string()]).unwrap();
-
-	drop(connection);
-
-	let source = || async { Some(owned.source(&owned.key)) };
-	let state = agent_models::read(&owned.store, source).await;
-
-	assert!(
-		matches!(state,AgentModelSelectionState::Pending{model,state:decodex_protocol::AgentModelOutcome::Unknown,last_receipt:Some(decodex_protocol::AgentModelSelectionReceipt{manual:false,response:decodex_protocol::AgentModelResponse::Unknown,target_observed:false,reconciled:false,..}),..} if model.as_str()=="scoped")
-	);
-	assert!(write(&owned.store, source, "thread", "old-review", "scoped", "retry").await.is_err());
-	assert!(matches!(
-		agent_permissions::read(&owned.store, source).await,
-		AgentPermissionState::Available { can_update: false, .. }
-	));
-	assert_eq!(writes.load(Ordering::Acquire), 0);
-
-	let reopened = SqliteStore::open(&owned.root.paths()).unwrap();
-
-	assert_eq!(
-		reopened
-			.pending_agent_legacy_model_change(
-				"root".into(),
-				"thread".into(),
-				owned.key.generation.as_str().into()
-			)
-			.await
-			.unwrap()
-			.unwrap()
-			.state,
-		"unknown"
-	);
-
-	// Historical confirmation must stay visible even after native settings change again.
-	let connection = Connection::open(owned.root.paths().product_database_file()).unwrap();
-
-	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service:observation','root','model_recovery_observation',?1,3,'resolved','Historical fixture',3)",[serde_json::json!({"reservation":reservation,"settingsEvent":1,"state":"target_observed"}).to_string()]).unwrap();
-
-	drop(connection);
-
-	let state = agent_models::read(&reopened, source).await;
-	let AgentModelSelectionState::Available { ref review_token, .. } = state else {
-		panic!("historical receipt with current settings")
-	};
-	let previous_review = review_token.clone();
-
-	assert!(matches!(state, AgentModelSelectionState::Available {
-		model, last_receipt: Some(decodex_protocol::AgentModelSelectionReceipt {
-			model: requested, manual: false, response: decodex_protocol::AgentModelResponse::Unknown,
-			target_observed: true, reconciled: false, ..
-		}), ..
-	} if model.as_str() == "original" && requested.as_str() == "scoped"));
-
-	let connection = Connection::open(owned.root.paths().product_database_file()).unwrap();
-
-	connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy-service:reconciliation','root','model_selection_reconciled',?1,4,'resolved','Historical reconciliation',4)",[serde_json::json!({"reservation":reservation,"settingsEvent":1,"generationId":owned.key.generation.as_str()}).to_string()]).unwrap();
-
-	drop(connection);
-
-	let state = agent_models::read(&reopened, source).await;
-
-	assert!(matches!(state, AgentModelSelectionState::Available {
-		review_token, last_receipt: Some(decodex_protocol::AgentModelSelectionReceipt {
-			response: decodex_protocol::AgentModelResponse::Unknown, reconciled: true, ..
-		}), ..
-	} if review_token != previous_review));
-	assert!(
-		write(&reopened, source, "thread", previous_review.as_str(), "scoped", "stale-history")
-			.await
-			.is_err()
-	);
-	assert_eq!(writes.load(Ordering::Acquire), 0, "history reads never replay the old request");
-
-	backend.abort();
 }
 
 async fn reject_invalid_model_requests(owned: &OwnedReviewer, review_token: &WireText) {

@@ -82,20 +82,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/application_collaboration.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
-  - id: openwiki-source-a958837c2596362a3517c745
-    resource: repo://crates/decodex-runtime/src/websocket.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
     resource: repo://crates/decodex-runtime/src/work_portfolio.rs
   - id: openwiki-source-07c9cc033899826079f8efb5
     resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
   - id: openwiki-source-88b81a215b1bac061dad80ec
     resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
-  - id: openwiki-source-29c88fbcabe1ba5e93694ed1
-    resource: repo://database/migrations/0057_native_work_delivery.sql
-  - id: openwiki-source-f282017dc1610aa4fa0e6730
-    resource: repo://database/migrations/0058_shared_agent_process.sql
-  - id: openwiki-source-c6616f46cdcd37303054bf01
-    resource: repo://database/migrations/0059_native_assignment_proof.sql
+  - id: openwiki-source-003f00974f49a9f106bbcbea
+    resource: repo://database/schema.sql
   - id: openwiki-source-58c0167d31c3e40dc89591ab
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
@@ -114,10 +108,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
+generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T15:20:45.937Z
 ---
 
 # Runtime Architecture
@@ -149,7 +143,7 @@ The GUI installer links the user CLI to the bundled helper. The standalone servi
 
 ## Native runtime and coordination
 
-Codex app-server owns provider threads and execution. Decodex adds durable work relationships and protocol projections. Agent shares a retained account-bound process across its related work; ordinary conversation sessions keep their own runtime/account bindings. Historical Program aggregates are a read-only compatibility surface, not a restored execution lane. Native child approvals resolve through verified ancestry. Account routing, subscription usage, Reset Card redemption, and weekly activation stay service-owned.
+Codex app-server owns provider threads and execution. Decodex adds durable work relationships and protocol projections. Agent shares a retained account-bound process across its related work; ordinary conversation sessions keep their own runtime/account bindings. Native child approvals resolve through verified ancestry. Account routing, subscription usage, Reset Card redemption, and weekly activation stay service-owned.
 
 Decodex resolves child requests through the verified native parent chain. The integration does not maintain a second child-admission lifecycle.
 
@@ -163,11 +157,11 @@ The first actual user input can initialize an independent Agent without an Assis
 
 The overview contains Work headers. `work_portfolio` serves selected evidence in digest-checked 8 KiB pages with a 32 MiB ceiling. SQL applies Agent and granted Material scope before the per-category record limit. The global Guardian coordinator records desired reviewer preference and actual per-source application receipts. It does not own execution approval or business assessment. Optional private records exclude raw reasoning and preserve explicit missing action associations.
 
-Direct schema 56 migration preserves genuine legacy execution and history. New conversations advertise the canonical tool revision. Ordinary input keeps the retained native context. Only an existing tool-replacement journal uses exact native quiescence and readback during recovery. Unknown external effects remain parked. Previous thread history is read-only evidence, not input authority. See [coordination](chief-coordination.md) and [local database](../operations/local-database.md).
+The service initializes the current schema directly. New conversations advertise the canonical tool revision. Ordinary input resumes its retained native context without a context-upgrade journal. Unknown external effects require authoritative readback. Previous history supplies evidence, not input authority. See [coordination](chief-coordination.md) and [local database](../operations/local-database.md).
 
-Schema 57 adds immutable native child-input receipts. Direct-call attribution remains available. For nested V2 dispatch permitted by native configuration, the receipt joins exact child input with one parent activity and permits recovery without replay. Missing or ambiguous native evidence stays Unknown. V1 nested execution retains its existing native attribution path.
+The current schema retains immutable native child-input receipts. Direct-call attribution remains available. For nested V2 dispatch permitted by native configuration, the receipt joins exact child input with one parent activity and permits recovery without replay. Missing or ambiguous native evidence stays Unknown. V1 nested execution retains its existing native attribution path.
 
-Schema 58 permits multiple immutable Agent bindings on one admitted native process while preserving account and generation fences. Schema 59 distinguishes plaintext assignment proof from native task-name proof. Prepared task names let the runtime recover encrypted assignments through exact native parent metadata, root turns and unique activity. They do not prove the private prompt text or authorize another spawn.
+Multiple immutable Agent bindings can share one admitted native process while preserving account and generation fences. Assignment receipts distinguish plaintext proof from native task-name proof. Prepared task names let the runtime recover encrypted assignments through exact native parent metadata, root turns and unique activity. They do not prove the private prompt text or authorize another spawn.
 
 Before sending input to a retained conversation, the runtime reconciles its registered native Project after exact hydration. It assigns only an unassigned conversation and checks the returned identities. Conflicts park the affected Agent while independent input can continue. This keeps the execution directory and permissions; it does not establish official desktop sidebar synchronization. See the [native acceptance boundary](../testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian).
 
@@ -239,9 +233,9 @@ Production staging selects a separate official Release requirement. Release pinn
 
 ## Protocol and safety
 
-Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 3.2 adds the retained attached-branch query to Project, Agent, Work and global Guardian. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
+Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.0 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
 
-Native shutdown admission errors use code `-32600` and the structured `serverShuttingDown` reason. The older exact-message fallback applies only when error data is absent. A classified refusal alone never authorizes replay: callers must establish exact request identity and no prior effects.
+Native shutdown admission errors use code `-32600` and the structured `serverShuttingDown` reason. An exact-message classification applies only when error data is absent. A classified refusal alone never authorizes replay: callers must establish exact request identity and no prior effects.
 
 The Settings menu-bar preference is durable SQLite state. macOS launch-at-login registration is a distinct platform preference. Window material, focus, animation and local panel visibility remain presentation responsibilities.
 

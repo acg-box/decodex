@@ -5,7 +5,7 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T15:20:45.937Z
 sources:
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
@@ -59,8 +59,6 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
   - id: openwiki-source-a7b97dd347fbe2f630692d12
     resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
-  - id: openwiki-source-d511cef2848dd5f6968572ae
-    resource: repo://crates/decodex-runtime/src/agent/tool_migration.rs
   - id: openwiki-source-4f59431f3f6264a65208bdcb
     resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-b1dd4c8ab85f342314daa6f1
@@ -69,8 +67,6 @@ sources:
     resource: repo://crates/decodex-runtime/src/application_collaboration.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
-  - id: openwiki-source-f282017dc1610aa4fa0e6730
-    resource: repo://database/migrations/0058_shared_agent_process.sql
   - id: openwiki-source-58c0167d31c3e40dc89591ab
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-51332b5dcd4b194b62fec905
@@ -79,8 +75,6 @@ sources:
     resource: repo://database/src/agent_process.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-  - id: openwiki-source-0f0fc00c258a3ddad6935fcc
-    resource: repo://database/src/agent_tool_migration.rs
   - id: openwiki-source-7c1fe4a0f054521cb1d94e08
     resource: repo://database/src/agent/collaboration.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
@@ -95,14 +89,14 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
+generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 ---
 
 # Project, Agent and Work coordination
 
 Project, Agent and Work are separate durable objects. An Agent has one current native conversation. Assistant and Project Lead are responsibilities of an existing Agent. The user can work directly with the Project Lead from discussion through delivery. One Agent can own Work in several Projects. There is no fixed L0/L1/L2 hierarchy or mandatory personal router.
 
-The [accepted contract](../decisions/project-agent-work.md) defines the shared vocabulary and minimum state rules. The default model tools are `work_read` and `work_manage`. Only the user creates persistent Agents. Native Codex supplies bounded Subagents; Decodex does not create a second temporary executor. The former managed-worker creation, continuation and goal tools are retired from the default tool surface and refused if an older conversation still advertises them. Compatibility storage preserves genuine old execution and history.
+The [accepted contract](../decisions/project-agent-work.md) defines the shared vocabulary and minimum state rules. The default model tools are `work_read` and `work_manage`. Only the user creates persistent Agents. Native Codex supplies bounded Subagents; Decodex does not create a second temporary executor. The former managed-worker creation, continuation and goal tools are retired from the default tool surface and refused if an older conversation still advertises them. Durable conversation records preserve native history.
 
 ## Owners and flow
 
@@ -154,7 +148,7 @@ Work, instructions, inbox delivery, requirements, Results, assessments and comma
 
 Changes preserve earlier instructions and Results. An old Result cannot complete a newer requirements revision. A hold blocks new Decodex contributions and completion. It does not roll back or automatically stop an already-running native action, Goal or child. Native interruption remains native-owned.
 
-Ordinary input resumes the retained native conversation. A newer local tool revision does not authorize a replacement. Recovery acts only on an existing durable migration journal. It preserves an unknown creation outcome, verifies the saved replacement settings and checks that the original source and descendants are quiescent before retirement. A positive native archive observation is required before switching. Previous history stays readable; its old parent identifiers grant no input authority.
+Ordinary input resumes the retained native conversation. A newer local tool revision does not create or replace a thread. Native history and the thread's recorded tool capabilities remain bound to that context. No context-upgrade journal is maintained.
 
 Known external ownership rejects input before enqueueing it. A race can leave accepted but unsent input; that input remains a user-decision record and needs a fresh explicit send when ownership returns. One Agent's external writer does not block unrelated Agents. Prior-boot process death still requires positive kernel evidence; optional metadata failures do not close the shared transport.
 

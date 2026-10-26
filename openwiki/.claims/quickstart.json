@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d8c7758360273d8c73bdfa8d7279e18dd1ca76f2b6ed4aae7e26de9e9db10dd6",
+  "pageVersion": "sha256:f255f179fe0ea244767914622bb0e769a31c9e502e37701c8c7184c945865144",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -26,7 +26,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:99e61da4fc9c53f7cf60224d66a3665a9fd00e8654d407e3a720e4c356256e14"
+          "version": "repo-file-v1:sha256:3c5a76a4b22355e4b41356f952367830208b66ed6b1444098ebe15680d76ac39"
         }
       ]
     },
@@ -36,7 +36,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:99e61da4fc9c53f7cf60224d66a3665a9fd00e8654d407e3a720e4c356256e14"
+          "version": "repo-file-v1:sha256:3c5a76a4b22355e4b41356f952367830208b66ed6b1444098ebe15680d76ac39"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -46,15 +46,19 @@
     },
     {
       "id": "claim_325a3cf92d084aaa90d48550b257bb5a",
-      "statement": "The protocol crate CURRENT_VERSION and the embedded SQLite migration ledger define current local compatibility.",
+      "statement": "The current protocol version and embedded SQLite schema define the exact supported local format; new stores initialize directly and startup does not run historical migrations.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L293-L320",
-          "version": "repo-lines-v1:sha256:2f0d1eac4cd40b4ac25bd4d90b1928faf1a55c9102c8fd4c115048170115338b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1NmZiNGFkYzkwOTcyNzA2YTc2YjI0M2UwNTIwNzhjODBiNjk5NGFkMGI2OTI2ZDY3MmFiMGMwMDkwYTEyMDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZDA5NzgzZTA2YzlkMGI3MDhhMTFiNTU3N2M2MWNlMjBhZGRjNjZjYmVmMGJkZjc5ODQ2ZWZiN2M5OWM3YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjZkOWNlOGNkNmRlNjQ0YTM4Y2QwYjA0NTRmYjkzYjBjMWEzNTFlNzAyYjc1ODI0NmE2ZTZkZWI3N2Y1MzkifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs",
+          "version": "repo-file-v1:sha256:37cd9b6acba0428fdf30e01c1904d1d238e9b6c61b0aa0362f1b0f667c5a11cd"
         },
         {
-          "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:f0efbf6c98677363a985a7c9e8da5f70fa6d72f97f08d8870a9b0e4c5ebcd271"
+          "resource": "repo://database/schema.sql",
+          "version": "repo-file-v1:sha256:ad3410025cf2a32514b1d7c020ca972bdc4f253e8d2e9198f8aa1ed908e190a2"
+        },
+        {
+          "resource": "repo://database/src/schema.rs",
+          "version": "repo-file-v1:sha256:b3a3c373f7c156e6ba3eb579b1bbd08164a0eda69bd51ba24802741234c95359"
         }
       ]
     },
@@ -91,7 +95,7 @@
       "statement": "Account admission accepts only native plus, pro, prolite, promax and team plans for OAuth and PAT credentials.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5528-L5638",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5466-L5576",
           "version": "repo-lines-v1:sha256:29e335940f8b7368c86807515d156b757198ad8a020b42bab05ae733447b5504:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjMGM4NTk1ZWRjNDNlZjI5Mzc4NTI1NDVmMzUyMGRkMzQ4MjA0ZmVhNjdiOTQyZjE0ZDM2ZTcxM2UzNDUxZmQwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkZDNhMDJkMWRmNTQ5N2U1YzI2NmRlYzhkNDM0ZmI5NThhMDg2YWE5NjQzZjczODYyZTY1YTU5ZTc4NGVkOGU2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4YTZkNjQyY2IwZDE5NmQ4MWMxOTY2ZjRiOTQ3Y2U2ODQyODkyNGM5ZmZiMWIyOWY5MjUzM2U2MmM3OWZjZDliIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4NjE1OTY2MmUwMDhhMDBkNmVkNDRkZDk0YWRhMzMyMWI0YzAxZTBkNjAxZDZiN2E3NDMxMzMxOWUyYjZjNzExIn0"
         },
         {
@@ -113,78 +117,22 @@
           "version": "repo-file-v1:sha256:27dceb0235bfd0ed93987e89f4522048704ed176a6cf364f352173b411d7f0ed"
         },
         {
-          "resource": "repo://database/migrations/0056_project_agent_work.sql",
-          "version": "repo-file-v1:sha256:ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699"
-        }
-      ]
-    },
-    {
-      "id": "claim_699d2ee236f442c986d264d32af88649",
-      "statement": "The lifecycle follow-up preserves independent native process ownership and explicit plaintext/task-name proof in schemas58/59; a source-built real-provider two-Project/four-Work run, nine native tests and 2924 workspace tests passed with no installation or release, while old encrypted binding and official desktop Project UI limits remain explicit.",
-      "evidence": [
-        {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/agent_initial_settings.rs",
-          "version": "repo-file-v1:sha256:d9e79dd537c9b4a9c6201c25a86f3c1c4a4e7d4f30b55c9ddda1211509598524"
-        },
-        {
-          "resource": "repo://database/migrations/0058_shared_agent_process.sql",
-          "version": "repo-file-v1:sha256:05e447b01812463e012054fcb355dda890d814243bab5b944849f943b4ef3c00"
-        },
-        {
-          "resource": "repo://database/migrations/0059_native_assignment_proof.sql",
-          "version": "repo-file-v1:sha256:c49bd47c9d4f22c1e43ff5c27def8ba36ff0725c355fc9327515408d4400a179"
-        }
-      ]
-    },
-    {
-      "id": "claim_e860f6de17fe421c9f0322f6267a1fa5",
-      "statement": "A separate control follow-up verifies real Pause/Resume controls and Full Access across restart, recovers old helper native ownership and leaves unproved Work bindings unchanged.",
-      "evidence": [
-        {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
-        }
-      ]
-    },
-    {
-      "id": "claim_dada01fa3b3c447b9fe6120fae9cfc10",
-      "statement": "A separate local installed development acceptance verifies the Project/Work lifecycle and repairs independent-Agent conversation and input ownership, preserving its artifact identity, data scope and unresolved full-suite cleanup markers separately from official desktop Project and live voice limits.",
-      "evidence": [
-        {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
-        }
-      ]
-    },
-    {
-      "id": "claim_c966cbfe829c41aaa3b3221a7a0fa90d",
-      "statement": "Separate synthetic online voice qualification passes dictation, returned speech and explicit closure, with user-observed audible but quiet playback; official desktop Project presentation, installed-UI device-ADM and general audio quality retain distinct limits.",
-      "evidence": [
-        {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
+          "resource": "repo://database/schema.sql",
+          "version": "repo-file-v1:sha256:ad3410025cf2a32514b1d7c020ca972bdc4f253e8d2e9198f8aa1ed908e190a2"
         }
       ]
     },
     {
       "id": "claim_c58bd50a168e478986fb1103f6abf2e9",
-      "statement": "The selected read-only views expose native memory, exact collaboration replies and repair cycles, and retained Actual usage through existing surfaces. First delivered under protocol3.1/schema59 and retained in protocol3.2, they preserve unknown coverage and resolution limits. The user selected attached branches as item 4, waits for upstream maturity on Guardian V3 and defers custom managed configuration. Runtime, installed app, source-review cursor and native schedule identities remain separate.",
+      "statement": "The selected read-only views expose native memory, exact collaboration replies and repair cycles, and retained Actual usage through existing surfaces while preserving unknown coverage and resolution limits. Runtime selection, installed artifacts, source-review state and schedules remain separate.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:0e50d076cc5c6abd8a315b8f8eccb3f5456f4d9502a97d92dd18f4695af00852"
+          "version": "repo-file-v1:sha256:b38e57ff3f211efd03fa20d4595e5172956a81b2200f4a70d1ab17f02a7036d0"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
-        },
-        {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:f91fc60e30e0ab180639ebb00b3634de55195ec2c4693c9c751f488ee40481a8"
+          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
         }
       ]
     },
@@ -198,7 +146,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
+          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
@@ -209,6 +157,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T07:09:00.728Z"
+    "at": "2026-10-26T15:20:45.937Z"
   }
 }

@@ -47,7 +47,6 @@ mod auth_projection;
 mod bootstrap;
 mod conversation;
 mod dictation;
-mod domain_packs;
 mod host_credentials;
 mod mcp_login;
 mod native_agents;
@@ -109,7 +108,7 @@ impl ServiceComposition {
 		bootstrap::initialize_local_database(root).await
 	}
 
-	/// Verify the fixed bundled SQLite database and migration ledger.
+	/// Verify the current bundled SQLite database.
 	pub async fn validate_local_database(root: DecodexRoot) -> Result<(), LocalDatabaseError> {
 		bootstrap::validate_local_database(root).await
 	}
