@@ -27,9 +27,8 @@ use crate::{
 			activity::HistoryScrollAnchor,
 			dock, graph, prompts, ui_theme,
 			ui_theme::{
-				CAPTION_SIZE, COMPOSER_TOP_GAP, CONVERSATION_HEADER_HEIGHT, CONVERSATION_INSET,
-				CONVERSATION_TAB_GAP, CONVERSATION_TAB_SIZE, CONVERSATION_WIDTH, MESSAGE_GAP,
-				SELECTED_FILL, WORKSPACE_RADIUS,
+				CAPTION_SIZE, CONVERSATION_HEADER_HEIGHT, CONVERSATION_INSET, CONVERSATION_TAB_GAP,
+				CONVERSATION_TAB_SIZE, CONVERSATION_WIDTH, SELECTED_FILL, WORKSPACE_RADIUS,
 			},
 		},
 		workspace_symbols,
@@ -1004,49 +1003,13 @@ impl AgentSurface {
 				.child(self.render_composer(window, cx));
 		}
 
-		let saved_inputs = self
-			.conversation_work()
-			.filter(|work| self.saved_inputs_in_composer(work))
-			.map(|work| self.saved_input_rows(&work, cx))
-			.unwrap_or_default();
-		let has_saved_inputs = !saved_inputs.is_empty();
-
 		// The parent overlays this transparent footer above the scrolling conversation.
 		gpui::div().debug_selector(|| "composer-footer".into()).flex_none().w_full().child(
-			gpui::div()
-				.w_full()
-				.flex()
-				.flex_col()
-				.child(self.conversation_activity(cx))
-				.children(self.local_message_cards(cx))
-				.when(has_saved_inputs, |footer| {
-					footer.child(
-						gpui::div()
-							.debug_selector(|| "composer-saved-inputs".into())
-							.w_full()
-							.px(gpui::px(CONVERSATION_INSET))
-							.pb(gpui::px(MESSAGE_GAP - COMPOSER_TOP_GAP))
-							.flex()
-							.justify_center()
-							.child(
-								gpui::div()
-									.id("composer-saved-inputs-scroll")
-									.w_full()
-									.max_w(gpui::px(CONVERSATION_WIDTH))
-									.max_h(window.viewport_size().height * 0.35)
-									.overflow_y_scroll()
-									.flex()
-									.flex_col()
-									.gap_2()
-									.children(saved_inputs),
-							),
-					)
-				})
-				.child(
-					gpui::div()
-						.debug_selector(|| "composer-input-region".into())
-						.child(self.render_composer(window, cx)),
-				),
+			gpui::div().w_full().flex().flex_col().child(self.conversation_activity(cx)).child(
+				gpui::div()
+					.debug_selector(|| "composer-input-region".into())
+					.child(self.render_composer(window, cx)),
+			),
 		)
 	}
 
@@ -1309,10 +1272,8 @@ impl AgentSurface {
 		);
 
 		if !is_agent && let Some(work) = selected.as_ref() {
-			chat = chat
-				.children(self.local_message_cards(cx))
-				.child(self.conversation_activity(cx))
-				.child(self.workspace_followup(work, cx));
+			chat =
+				chat.child(self.conversation_activity(cx)).child(self.workspace_followup(work, cx));
 		}
 
 		let chat = self.workspace_details_overlay(chat, selected.as_ref(), window, cx);

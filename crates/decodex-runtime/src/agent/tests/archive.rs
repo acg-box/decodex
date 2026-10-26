@@ -79,10 +79,10 @@ async fn archived_owners_and_their_old_writer_notices_do_not_block_new_conversat
 		assert_eq!(new.codex_thread_id.as_deref(), Some("opaque thread/2"));
 		assert_eq!(new.dispatch_state, decodex_database::AgentDispatchState::Running);
 
-		let old = agent.store.get_agent_inbox_event(old_input.id).await.unwrap();
-
-		assert!(old.delivered_turn_id.is_none(), "archived input must never be replayed");
-		assert_eq!(old.payload, old_input.payload);
+		assert!(
+			agent.store.get_agent_inbox_event(old_input.id).await.is_err(),
+			"archiving discards input that was never dispatched"
+		);
 		assert!(agent.store.list_agent_thread_in_use_events().await.unwrap().is_empty());
 
 		let requests = iter::from_fn(|| sent.try_recv().ok()).collect::<Vec<_>>();
@@ -97,7 +97,7 @@ async fn archived_owners_and_their_old_writer_notices_do_not_block_new_conversat
 }
 
 #[tokio::test]
-async fn restore_preserves_identity_and_pending_input_without_creating_a_turn() {
+async fn restore_preserves_history_identity_without_reviving_pending_input_or_creating_a_turn() {
 	let (mut agent, mut sent, _directory) =
 		tests::fixture_with_history(serde_json::json!({"_archived":true})).await;
 
@@ -145,11 +145,7 @@ async fn restore_preserves_identity_and_pending_input_without_creating_a_turn() 
 
 	let pending = agent.store.list_agent_wake_events("agent".into(), 32).await.unwrap();
 
-	assert!(
-		pending
-			.iter()
-			.any(|event| event.source_event_id == "queued" && event.disposition.is_none())
-	);
+	assert!(!pending.iter().any(|event| event.source_event_id == "queued"));
 }
 
 #[tokio::test]

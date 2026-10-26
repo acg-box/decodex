@@ -16,6 +16,7 @@ pub(crate) struct ArchiveVisibility {
 	pub generation: Option<String>,
 	pub checked_at: Option<Instant>,
 	pub archived: HashSet<String>,
+	pub retired: HashSet<String>,
 	refreshing: bool,
 	threads: HashSet<String>,
 	initial_pending: Option<HashSet<String>>,
@@ -69,6 +70,7 @@ impl ArchiveVisibility {
 				match state {
 					ThreadArchiveState::Active => {
 						self.archived.remove(&id);
+						self.retired.remove(&id);
 					},
 					ThreadArchiveState::Archived => {
 						self.archived.insert(id);

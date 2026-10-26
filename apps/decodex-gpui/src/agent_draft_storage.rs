@@ -123,27 +123,54 @@ impl Default for Storage {
 }
 
 impl AgentSurface {
-	pub(in super::super) fn dismiss_failed_message(
+	pub(in super::super) fn retire_archived_messages(
 		&mut self,
-		key: &IdempotencyKey,
+		snapshot: &decodex_protocol::AgentSnapshotDto,
 		cx: &mut Context<Self>,
 	) {
-		let state = &mut self.draft_profiles.storage;
-		let Some(profile) = self
-			.profile
-			.as_ref()
-			.and_then(|profile| state.document.profiles.get_mut(&profile.draft_scope_key()))
-		else {
+		let mut closed: BTreeMap<_, _> = snapshot
+			.work_items
+			.iter()
+			.filter(|work| snapshot.archived_work_ids.contains(&work.id))
+			.filter_map(|work| {
+				work.codex_thread_id.as_ref().map(|thread| (work.id.clone(), thread.clone()))
+			})
+			.collect();
+		if !snapshot.connection_initializing
+			&& let Some(previous) =
+				self.snapshot.as_ref().filter(|old| old.runtime_source == snapshot.runtime_source)
+		{
+			closed.extend(
+				previous
+					.work_items
+					.iter()
+					.filter(|work| !snapshot.work_items.iter().any(|current| current.id == work.id))
+					.filter_map(|work| {
+						work.codex_thread_id
+							.as_ref()
+							.map(|thread| (work.id.clone(), thread.clone()))
+					}),
+			);
+		}
+		let Some(profile) = self.profile.as_ref().and_then(|profile| {
+			self.draft_profiles.storage.document.profiles.get_mut(&profile.draft_scope_key())
+		}) else {
 			return;
 		};
-		if profile
-			.messages
-			.get(key)
-			.is_some_and(|message| message.state == DesktopMessageState::Failed)
-		{
-			profile.messages.remove(key);
+		let before = profile.messages.len();
+		profile.messages.retain(|_, message| {
+			message.state != DesktopMessageState::Failed
+				|| !message.owner.as_ref().is_some_and(|owner| {
+					closed.get(owner.as_str()).is_some_and(|thread| {
+						message
+							.thread_id
+							.as_ref()
+							.is_some_and(|original| original.as_str() == thread)
+					})
+				})
+		});
+		if before != profile.messages.len() {
 			self.save_draft_document(cx);
-			cx.notify();
 		}
 	}
 
@@ -1974,6 +2001,55 @@ mod message_tests {
 		DesktopMessageState, EntityId, HistoryText, IdempotencyKey,
 	};
 	use gpui::AppContext as _;
+
+	#[gpui::test]
+	fn archive_retires_failed_messages_without_touching_other_editors_or_unknown_delivery(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_root, profile, _) = crate::shell::agent_surface::drafts::tests::profiles();
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.bind_profile(Some(profile), cx);
+			s.visual_workspace_fixture(cx);
+			s.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| work.id == "agent")
+				.unwrap()
+				.codex_thread_id = Some("native-thread".into());
+			for (key, owner, state) in [
+				("failed", "agent", DesktopMessageState::Failed),
+				("unknown", "agent", DesktopMessageState::Unconfirmed),
+				("other", "release", DesktopMessageState::Failed),
+			] {
+				let message = DesktopMessage {
+					action: AgentActionDto::Send {
+						root_id: EntityId::new(owner).unwrap(),
+						text: HistoryText::new("Original input").unwrap(),
+					},
+					owner: Some(EntityId::new(owner).unwrap()),
+					thread_id: Some(decodex_protocol::WireText::new("native-thread").unwrap()),
+					text: "Original input".into(),
+					state,
+					error: None,
+				};
+				s.stage_message(&IdempotencyKey::new(key).unwrap(), message, None, cx).unwrap();
+			}
+			s.composer.update(cx, |input, cx| input.set_content("Keep the current editor", cx));
+			let mut archived = s.snapshot.clone().unwrap();
+			archived.archived_work_ids.insert("agent".into());
+			s.retire_archived_messages(&archived, cx);
+			let keys = s
+				.retained_messages()
+				.into_iter()
+				.map(|(key, _)| key.as_str().to_owned())
+				.collect::<Vec<_>>();
+			assert_eq!(keys, vec!["other", "unknown"]);
+			assert_eq!(s.composer.read(cx).content(), "Keep the current editor");
+		});
+	}
 
 	#[gpui::test]
 	fn submitted_message_and_later_editor_survive_reopen_with_separate_delivery_state(

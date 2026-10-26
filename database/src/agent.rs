@@ -1,5 +1,6 @@
 //! Durable Agent work and inbox facts. The caller owns planning and judgment.
 
+mod archive;
 mod capacity;
 mod collaboration;
 mod delegation;

@@ -1618,6 +1618,12 @@ impl AgentSurface {
 	) {
 		let owner = self.composer_manager.clone().or_else(|| self.root_id());
 		let previous_selection = self.selected.clone();
+		if matches!(&result, Ok(AgentSnapshotResult::Available(snapshot))
+			if [self.selected.as_ref(), owner.as_ref()].into_iter().flatten()
+				.any(|id| snapshot.archived_work_ids.contains(id)))
+		{
+			self.stop_voice(cx);
+		}
 		let removed = matches!(&result, Ok(AgentSnapshotResult::Available(snapshot))
 			if !self.is_new_conversation()
 				&& [self.selected.as_ref(), owner.as_ref()].into_iter().flatten()
@@ -1635,6 +1641,9 @@ impl AgentSurface {
 		}
 
 		self.remember_native_draft(cx);
+		if let Ok(AgentSnapshotResult::Available(snapshot)) = &result {
+			self.retire_archived_messages(snapshot, cx);
+		}
 		self.apply_result(result);
 
 		let recovered_selection = previous_selection.is_none()
@@ -2088,10 +2097,8 @@ impl AgentSurface {
 		let panel = self.saved_history_panel(work, cx);
 
 		if self.native_history_active(work) {
-			// Receipts belong to the preceding response. Its footer already
-			// reserves space around the icons, so use the compact related-content gap.
 			return self.history_activity(
-				panel.gap_3().child(self.native_receipts_panel(work, false, cx)),
+				panel.child(self.native_receipts_panel(work, false, cx)),
 				work,
 				cx,
 			);
@@ -2205,7 +2212,12 @@ impl AgentSurface {
 			.children(self.native_timeline_panel(work, cx))
 	}
 
-	fn history_activity(&self, mut panel: Div, work: &AgentWorkItemDto, cx: &Context<Self>) -> Div {
+	fn history_activity(
+		&self,
+		mut panel: Div,
+		work: &AgentWorkItemDto,
+		cx: &mut Context<Self>,
+	) -> Div {
 		let active = self.response_in_progress(work)
 			|| (self.native_agents.selected.is_none()
 				&& self.selected.as_ref() == Some(&work.id)
@@ -2214,6 +2226,8 @@ impl AgentSurface {
 		if self.native_agents.selected.is_none() && !self.native_history_active(work) {
 			panel = panel.children(self.send_previews(&work.id));
 		}
+
+		panel = panel.children(self.local_message_cards(cx));
 
 		// The composer supplies part of the shared reading gap. Keep the total
 		// spacing the same as between messages, including after a saved input.

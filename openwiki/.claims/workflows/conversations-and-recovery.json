@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:27c2a32e1e3b667e679667704af82ab310f5993702f15f8a7bd4bce11c110755",
+  "pageVersion": "sha256:762cd649073a0f6dc03eaa068be542e8826272965dec55b2c7344f52c4409b59",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -69,11 +69,11 @@
       "statement": "Cancellation discards only the exact unconfirmed edit draft; accepted edited-input sends remove that draft without creating an archive copy, while uncertain operations retain their recovery identity.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L180-L215",
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L207-L242",
           "version": "repo-lines-v1:sha256:16e922503782a753e20008bc40b0fbce11ecd6df0b48743ce6cbe6c9bb9bf62f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhYTRhMzcwNmVjMjhlNmUxMGEwNjA3ZTM0MWQ1MGExMWQ4NDNjNDljMDk1ZDczODNkZWQzMjJmNTc0MmU2YmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwOTViMGQwNDc3OGY4MGVlMTYyOTE3MDkxZmQ3OTE1YjFhY2M2ZDYzODg3NWFmNWM4M2YwY2I0MWM3ZDFmYzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4ZDYyYmE2ZTBkMDZmNmI0ZjEyNjIzYzkzMjA4NmIzOTA3NGViNDc1NGYzNGQxZWU4NjE1NmY4YTM3ODM1NDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5NjJhMDU5MWE0NjM4NDZkMzJlODQ4MTUyZjA1OGU4N2M4MmI5ZGI4YTUyMmRjYzRjODAxNWUxOWRmMGUzYmMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L308-L347",
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L335-L374",
           "version": "repo-lines-v1:sha256:202256d254ac450e5e97f9283764171c13e8ca0ea9063d7e492d94230348c500:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5NGQ2ZTZjMzBlYmM4OWMwYzBiMTkyNzY2YWI5ODhhOWVmMGRlZDI5NDJhZGUwOTlmNzI4ZWMyOWZkYjdkZGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzODk2NTJjMzE1M2VmMWIzNTVhZmM5Mzk3MGVkNjc1YzJhMjM1N2YyY2I4NWFkYjE4YzUzZjVmM2MwZTc3NjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NzdlNTE3ZjY3NmRlNTEwZWZmMjMxM2RkOTExZGI1YTFhM2VmNTNiZjM4MjIyZmY0Njc0YTA2OGI0YmM1OTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3MDAzNzgwZmFlYzA0Nzk5NWRmYTE0ZWJkZTA2OGM5NjVhOTczNzU5OTI3MzI3N2RlODUwYTY1ZmY0Yjk1MDIifQ"
         },
         {
@@ -105,7 +105,7 @@
           "version": "repo-file-v1:sha256:cdf330e8db97cb474822c98ae2576da9c72d64e996820957197087833b1cadfb"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2416-L2437",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2430-L2451",
           "version": "repo-lines-v1:sha256:4ac7cbb8588c6dfee8d4d6bde9e579163322892b8129ff0bdc622be14429f1f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2NmI1YjkzMDg2NDc5ZmJiMjgzOTZiN2NlZjkzOGY3OWNiMzkyOWE3OGE4M2U2NGUwNjUyYzFkZWY3MmU4MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlNDM4OTRkNmQ1Y2Q5YTQxZmI2MDFmNWI3NjgxMmVhMjNlYTRjODdjNjY1OWY2MTE2MWNkYWE0MzQ1YjBkNDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjZTdkM2E5ZjcwYWZkY2JkOGNmMmZjZTM4NWZhMWZlODJjYWIxNjM1Y2IyYTM2MmVkMzcyYzc0NzYxOWU0YWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4ZjZjZjBiYmNlNzE4MjIxMTBlMDZjNDU3ZWE5YmY1YTM5MzEyNjU1YTMwZDRhOGYyMTg3MzBiYWNmYzBhOGMifQ"
         },
         {
@@ -144,15 +144,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs",
-          "version": "repo-file-v1:sha256:89f68e192bd97551f5e72686bcb69357dee89e4e4639ba395b13ea2cb48bbf27"
+          "version": "repo-file-v1:sha256:1ef2673e5a541f306d09dd075f529e14b8cd15edbba1ae8b4a355a8fd8fc65b2"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:b38e57ff3f211efd03fa20d4595e5172956a81b2200f4a70d1ab17f02a7036d0"
+          "version": "repo-file-v1:sha256:6ee72a85bd26f6db4667dd9f4dc483e342f34f8721955dbd169c993d4cc59f78"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:7c38baca78038c57bec820de6bd32772651a21d83a583e616da8a72c41d177e9"
+          "version": "repo-file-v1:sha256:5b4c9344397ecbe424d7ec81f89ab2218e80edc894fed015d21615864431693e"
         }
       ]
     },
@@ -170,7 +170,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs",
-          "version": "repo-file-v1:sha256:4aeb243ce060cbf2878a677c1eea370987cd4e62ed13c802645db91f9136c9be"
+          "version": "repo-file-v1:sha256:2569ff38d95ae72c31eaa876483b49f7d11767310ac64a3fc699e4fc5a340c5a"
         }
       ]
     },
@@ -180,7 +180,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs",
-          "version": "repo-file-v1:sha256:4aeb243ce060cbf2878a677c1eea370987cd4e62ed13c802645db91f9136c9be"
+          "version": "repo-file-v1:sha256:2569ff38d95ae72c31eaa876483b49f7d11767310ac64a3fc699e4fc5a340c5a"
         }
       ]
     },
@@ -240,7 +240,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:ccd95f1c036685f8877b38a384f72da324fd3ff17cf81f681ecb3d6a6dba90dd"
+          "version": "repo-file-v1:sha256:ff517fbfd2c38854e612a5e3756a13689b72b51d020b2fcad8c8a849e58be8aa"
         }
       ]
     },
@@ -304,7 +304,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs",
-          "version": "repo-file-v1:sha256:a3213b7657ff29b292364bce184da77d56f6f4415b401e2f70c9bb333619877c"
+          "version": "repo-file-v1:sha256:30eec1f125c161cdcff52dc1d194d2ba24ff85a82e2ea09baf8d5a78bd216f2b"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/desktop_drafts.rs",
@@ -319,10 +319,54 @@
           "version": "repo-file-v1:sha256:f623605937c1b7199826fabb337b1d99c81a05da902ef2492b4fcb2c8adc95a2"
         }
       ]
+    },
+    {
+      "id": "claim_59bbfe1a082c4ca795792c52a34c3b39",
+      "statement": "A failed message uses a normal user bubble at the end of the scrolling transcript and an aligned Not sent and Resend row. The reason is a tooltip, with no disclosure panel or pinning above the input bar. Archived conversations do not offer retry accessories.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2215-L2240",
+          "version": "repo-lines-v1:sha256:0700c41a71eb286f144bf1195dfdff5c068d7d5803e7fbb56fcbd8218a62b632:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMWE4OGNlMDQ3OWM1ZmE3NTI5MmNiOGE1ZWYxOTBhYTg4NDhlMTMyNzg0MDk1ZTI0ZDI1YzM3NDMwOWU5NDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkODIyN2RmMGJmYjc4OWFiOWQ4YjE3ZDQyODhhZDEzMmM5M2U5Y2YwOTlhMTcwNzg3NDViMzk0YzMyZmM4N2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNTViODhjYjRkNTVjN2VmMjE2NDliZWE5MTRiYTEwYTEyNDE0ZDMyOGVkZDhmNTNlMDg1MWRmNDc5MTBhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3MWM5OTI0YjcyZDgyY2IwMjZmMjNlNWU2NjAwYzczMWIxYmVhNmU4OWVlMDVkZDhhNmYzOGMxNThjMzVkMWIifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs#L220-L317",
+          "version": "repo-lines-v1:sha256:8d3f65f45a6a650485500b3e0c4f3f93fca39f6d37830645869167c58ae650e8:eyJzZWxlY3RlZExpbmVDb3VudCI6OTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiNzI3Njk0MzQ2OGMxNjQ5ZWNiNjIyZWM3YjMyZTA2NWY4MTNhZWUzMGQ3Mzk0MDRmM2M4MTI5YzEzYzY5ZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwYTg3NTZhOThiOTVlZTU3NWJlZWU0NjAwNDhjN2ZjOTdhNjdhZDRkZDE1NWFjMWE4NTk3ZWM2NWM0ZmEyODAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwODU3YWFmOWUwZTFiZDY5ZGVkZTYxY2Y3ZmI5NWU0OWQ3M2ZmYzkzZjczNGZmM2IwMDA3ZjcxMTcxNmY1NTEifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs#L51-L58",
+          "version": "repo-lines-v1:sha256:78417ed395248670940fa8e6f807e9a7d9d42a3f3201941698119174b67045d2:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzE2NTQxNGRhOWU5MDI0MTg2ZDVmMWJlYzY4ZGRlYjNkOGY1ODNlY2E3MjY1ZWIxZmQ1YjBhZDVjZTJhMDc2ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDExYzEyNTRkODE1YTQ2MjdkODRhOTQ1Nzk2MjYyMmQ3ZjE5YTE0ZGI1MjBlZmMzN2JhMjg5ZjI0YjMxN2I4NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQ5ZTBlNGMzMGRlNmI0NjA1YmNjMjFiNmZmYjVhZDcwN2Q4MDNkZjlmZmY1NmQwMjdkZDYzZmQ1NTI0ODYxMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjM3ZDhjOGVlZWY2ZGQ4NjkyMjgwZWE4M2MzNzk4ODVjNDJjZDQyYTMxMWFmMjQ3ZjZmMzQzYzFmZDIxYjY4OCJ9"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_receipts.rs#L34-L43",
+          "version": "repo-lines-v1:sha256:d860b234271199ba95839d649bcc40f765ed87ec1174416cdadfea780424c180:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3OTQ2ZmQzYWEwNjliZmNmMjBiYzBjMDkwOWE5MDVlMWVhODI4OWU0YWRmNTUzOGE0NjE0NmY2MzRlZmFmZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3OGM0NjczYjU4Yzc1ZWQ3NjBiZjM1YTlkY2M0NTAwY2Y2MTEwNTg5YTI0YTdmNDdiMzJmODlhNGNjY2Y0OGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1OGVhNTM3YjY1YzcwMWY0MDk3YWNkNTQ1ZDI5MjY0NWMwNDUyYTYwODJkYTFjZGFjMTc5MDg1YWY5OTU5NWMifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1002-L1017",
+          "version": "repo-lines-v1:sha256:b16feaf46a6b7eec52f3bc48fe7bb123877f77bc1b5652c77c0994e6e4498254:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExYTY5MDYzZmFmOWU3ZmFjY2I1MGY0ZDM1ZThmMzI4OTA2NGNkMWUxYmI3ZGNkM2VhYjJhZWE1NmY2MWE5YmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwYTE4YzQ5YzEwODFlZmMyOGJkM2YzYzdmZWI0YjdiOGE2NWVkMmE2NzE2MGQ1MzRjNWQyNzQwNmIwZTJlZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1YjE4ZDZjNGIzYjYzNThmMzhmODZkNDUxNjQwYzI4M2VjOTRiOTAzMmY5ZTA0Nzk4Zjg2OGFmYzFhNzA0ZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxZGMzNGQzZDY5OTdkNTAxZmM5MGM5NzhkMmRkM2NmN2E0OWRkMTQzYTk1ZjFkODlhZWM2Mzc5ZDIwZGVmYjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b1ba0f213e3847bcbe6b0dc153e287c5",
+      "statement": "Confirmed archive discards never-dispatched user input and failed desktop retry records, retires pending questions and attention, and cancels pending capacity retries and scheduled checks while retaining sent history, claimed receipts, Work and the current editor; restoring the conversation does not revive the discarded input.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L126-L178",
+          "version": "repo-lines-v1:sha256:e6929c914df8a818831aab70395f5a9c2d2e38e3d99720a65f332a67e7073cb6:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjZWViNTVmNjY5YmM2MjQxNzg5MDRmYjE3NTVkYTU4ZmUzMGMzMGEyZDI5NjYyOWUwOWI2MWJlYWMwNjc5NjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViYTY3MzYwZWU2Y2E2MmE1MGFjOWIwOTFiMzM3YTljODRkODdiMWVmZDBmOWQ4OTQxYTBjYmIzODczNTZhZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyZGJkM2QxNmEyNDJhMTRiODFmM2FkY2IwZjMwYTdkMGZmYmFkNzM2OGI3MjAwN2RmOTVlNWFhNWZkZTFmZjcifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/archive.rs#L76-L155",
+          "version": "repo-lines-v1:sha256:f0e37ac55eaf136e6eff583025473f88f243a350867dff17bba76b8d1163885d:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMjcyMjAyYjEyZTY1NTQ5YjZjZTc2YzgwMmZlMTU3YmZmMDJmOTAwZDViMDA4YTE5MzcyMmM0ZTM0OTM3N2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3ZDFkYTM0ZDc2MDUxMjRjN2I0N2JjY2FhZDliZDg0YjI3NDlmYWVkOGU2ODcyMjAyMWRmZjVjODAzODNkOGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1OTlhMTIxODlhZDhhYjdkMjQwZGZiMTMxZWExMTI0ZTJjNzE4YmRmMTM2OTlkNzU1YWU0ZjAyZTRhMWMyMDAifQ"
+        },
+        {
+          "resource": "repo://database/src/agent/archive.rs#L6-L47",
+          "version": "repo-lines-v1:sha256:c72771a9e242e4d21f696c18ff85f18f454ded8aac1bb3a6d8f2f5210c87439c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhY2QzNjZhNTc1MDVhMWM0M2Y5NmNmZThmODk2ZTdhNzBjMWFmZjdiOTI3YjhkMDU2ZDZhZTc4ZTg0NGM3NzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5MDFlMDgzMjcyN2Y0M2RhZjE1NjI2NDMyNmMzMGZkNzNmNTAwYmUzOTg1NTgwOWJhNTAxNmY2OWMzNmYxMTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4MjRjMzE2ZmQ5ZGE0OGMxOGNmZDg3MDE4NjZmMzVkOGE5NjhlNGJmNzM5YTg2ZDA1NDA3MjZkZjRhNTY5M2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhiZWRlNTlmMTllZGU2Mzg5ZjUxZjE0OWM2NDhkMWY3OGZkZDg3YjE5NWM4YjUwZTYxYzU1NmZlYjkxYWM5OTkifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T15:20:45.937Z"
+    "at": "2026-10-26T17:25:11.378Z"
   }
 }

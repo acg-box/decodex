@@ -106,22 +106,6 @@ impl Tone {
 		notice_rail(self.surface().w_full().child(content)).py(gpui::px(METADATA_GAP))
 	}
 
-	pub(crate) fn disclosure(
-		self,
-		id: impl Into<SharedString>,
-		expanded: bool,
-		header: impl IntoElement,
-		detail: impl FnOnce(&mut App) -> AnyElement + 'static,
-	) -> ExpandableNotice {
-		ExpandableNotice {
-			id: id.into(),
-			tone: self,
-			expanded,
-			header: header.into_any_element(),
-			detail: Box::new(detail),
-		}
-	}
-
 	pub(crate) fn row_with_icon(
 		self,
 		id: impl Into<ElementId>,
@@ -147,81 +131,6 @@ impl Tone {
 					.child(icon),
 			)
 			.child(gpui::div().min_w_0().child(message.to_owned()))
-	}
-}
-
-#[derive(IntoElement)]
-/// Expand a receipt in place without moving its leading edge or reflowing its text.
-pub(crate) struct ExpandableNotice {
-	id: SharedString,
-	tone: Tone,
-	expanded: bool,
-	header: AnyElement,
-	detail: Box<dyn FnOnce(&mut App) -> AnyElement>,
-}
-impl RenderOnce for ExpandableNotice {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let geometry = window.use_keyed_state(
-			SharedString::from(format!("notice-geometry-{}", self.id)),
-			cx,
-			|_, _| 0_f32,
-		);
-		let progress = ui_motion::value(
-			SharedString::from(format!("notice-disclosure-{}", self.id)),
-			if self.expanded { 1. } else { 0. },
-			window,
-			cx,
-		);
-		let height = *geometry.read(cx) * progress;
-		let detail_geometry = geometry.clone();
-
-		self.tone
-			.surface()
-			.w_full()
-			.min_w_0()
-			.overflow_hidden()
-			.debug_selector(|| "expandable-notice-card".into())
-			.child(
-				gpui::div().w_full().flex().child(
-					gpui::div()
-						.w_full()
-						.min_w_0()
-						.min_h(gpui::px(NOTICE_LINE_HEIGHT))
-						.flex()
-						.items_center()
-						.child(self.header),
-				),
-			)
-			.child(
-				gpui::div()
-					.w_full()
-					.h(gpui::px(height))
-					.overflow_hidden()
-					.flex()
-					.opacity(((progress - 0.25) / 0.75).clamp(0., 1.))
-					.when(self.expanded || progress > 0., |d| {
-						d.child(
-							gpui::div()
-								.w_full()
-								.min_w_0()
-								.debug_selector(|| "expandable-notice-detail".into())
-								.on_children_prepainted(move |bounds, _, cx| {
-									if let Some(bounds) = bounds.first() {
-										let height = f32::from(bounds.size.height);
-
-										detail_geometry.update(cx, |s, cx| {
-											if (*s - height).abs() > 0.5 {
-												*s = height;
-
-												cx.notify();
-											}
-										});
-									}
-								})
-								.child((self.detail)(cx)),
-						)
-					}),
-			)
 	}
 }
 
@@ -631,8 +540,7 @@ mod tests {
 	use gpui::{ParentElement as _, Render, Styled as _};
 
 	use crate::ui_feedback::{
-		self, CONVERSATION_INSET, Duration, Feedback, Instant, IntoElement, Presence, Tone, Window,
-		gpui,
+		self, Duration, Feedback, Instant, IntoElement, Presence, Window, gpui,
 	};
 
 	const SETTLE: Duration = Duration::from_millis(220);
@@ -644,18 +552,6 @@ mod tests {
 				"notice",
 				"chat",
 				self.0.clone(),
-			))
-		}
-	}
-
-	struct DisclosureView(bool);
-	impl Render for DisclosureView {
-		fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
-			gpui::div().w(gpui::px(500.)).px(gpui::px(CONVERSATION_INSET)).child(Tone::Warning.disclosure(
-				"saved-input",
-				self.0,
-				gpui::div().flex_none().child(Tone::Warning.row("header", "Message not sent")),
-				|_| gpui::div().child("A saved message with enough text to wrap across several lines at the final reading width. ".repeat(8)).into_any_element(),
 			))
 		}
 	}
@@ -750,103 +646,6 @@ mod tests {
 
 		assert!(state.displayed.is_none());
 		assert!(!state.moving(now + SETTLE, Duration::ZERO));
-	}
-
-	#[gpui::test]
-	fn disclosure_keeps_its_leading_edge_and_text_width_while_height_changes(
-		cx: &mut gpui::TestAppContext,
-	) {
-		let (view, visual) = cx.add_window_view(|_, _| DisclosureView(false));
-
-		for _ in 0..4 {
-			visual.update(crate::ui_frame::draw_frame);
-		}
-
-		let compact = visual.debug_bounds("expandable-notice-card").unwrap();
-
-		assert_eq!(compact.size.height, gpui::px(32.));
-		assert_eq!(compact.size.width, gpui::px(468.));
-
-		view.update(visual, |s, cx| {
-			s.0 = true;
-
-			cx.notify();
-		});
-
-		visual.update(crate::ui_frame::draw_frame);
-
-		let first_opening = visual.debug_bounds("expandable-notice-card").unwrap();
-
-		assert_eq!(first_opening.size.width, compact.size.width);
-		assert_eq!(first_opening.left(), compact.left());
-
-		thread::sleep(Duration::from_millis(70));
-
-		visual.update(crate::ui_frame::draw_frame);
-
-		let opening = visual.debug_bounds("expandable-notice-card").unwrap();
-		let detail = visual.debug_bounds("expandable-notice-detail").unwrap();
-
-		assert_eq!(opening.size.width, compact.size.width);
-
-		thread::sleep(SETTLE);
-
-		visual.update(crate::ui_frame::draw_frame);
-
-		let open = visual.debug_bounds("expandable-notice-card").unwrap();
-
-		assert_eq!(open.size.width, gpui::px(468.));
-		assert_eq!(
-			detail.size.width,
-			visual.debug_bounds("expandable-notice-detail").unwrap().size.width
-		);
-		assert_eq!(compact.center().x, open.center().x);
-
-		view.update(visual, |s, cx| {
-			s.0 = false;
-
-			cx.notify();
-		});
-
-		visual.update(crate::ui_frame::draw_frame);
-
-		assert_eq!(
-			visual.debug_bounds("expandable-notice-card").unwrap().size.width,
-			open.size.width
-		);
-
-		thread::sleep(Duration::from_millis(70));
-
-		visual.update(crate::ui_frame::draw_frame);
-
-		let closing = visual.debug_bounds("expandable-notice-card").unwrap();
-
-		assert_eq!(closing.size.width, open.size.width);
-		assert!(
-			closing.size.height > compact.size.height && closing.size.height < open.size.height
-		);
-
-		view.update(visual, |s, cx| {
-			s.0 = true;
-
-			cx.notify();
-		});
-
-		visual.update(crate::ui_frame::draw_frame);
-
-		assert_eq!(
-			visual.debug_bounds("expandable-notice-card").unwrap().size.width,
-			closing.size.width
-		);
-
-		thread::sleep(SETTLE);
-
-		visual.update(crate::ui_frame::draw_frame);
-
-		assert_eq!(
-			visual.debug_bounds("expandable-notice-card").unwrap().size.width,
-			open.size.width
-		);
 	}
 
 	#[gpui::test]

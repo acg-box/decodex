@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f255f179fe0ea244767914622bb0e769a31c9e502e37701c8c7184c945865144",
+  "pageVersion": "sha256:443d590ea9dc39736a8e2f9c684308a9232489b4ba08dc5a2f0db9135a9fea36",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -128,7 +128,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:b38e57ff3f211efd03fa20d4595e5172956a81b2200f4a70d1ab17f02a7036d0"
+          "version": "repo-file-v1:sha256:6ee72a85bd26f6db4667dd9f4dc483e342f34f8721955dbd169c993d4cc59f78"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
@@ -157,6 +157,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T15:20:45.937Z"
+    "at": "2026-10-26T17:25:11.378Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c278587ebe24ecacdca4d5833440bb9a1d212e1d5dc88019ab2ec31ec5e3d59b",
+  "pageVersion": "sha256:b235bc1cbba40ab3d34fe532892de1ed0d422314422ad1c0f1001782bfd6f963",
   "claims": [
     {
       "id": "claim_3f139c853db04d169600a9ee50a8d9b8",
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:3f039490ad9c9323a970ba3ac756f9891f597885136de139fd06190f5c7274ec"
+          "version": "repo-file-v1:sha256:fc7bcbc0d27124b3592b28ce80d9ea7bf0ed31e61cb37dfc4c31600959aa8aaf"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_skill_roots.rs",
@@ -81,6 +81,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T15:20:45.937Z"
+    "at": "2026-10-26T17:08:35.248Z"
   }
 }

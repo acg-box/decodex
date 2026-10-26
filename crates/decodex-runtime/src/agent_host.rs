@@ -333,9 +333,15 @@ impl AgentHost {
 		)
 		.await;
 
-		let cache = self.archive_visibility.lock().await;
+		let mut cache = self.archive_visibility.lock().await;
 
 		if self.runtime.agent_catalog_client().is_some_and(|(current, _)| current == generation) {
+			let archived: Vec<_> = cache.archived.difference(&cache.retired).cloned().collect();
+			if self.store.retire_archived_agent_threads(archived.clone()).await.is_ok() {
+				cache.retired.extend(archived);
+			} else {
+				snapshot.connection_initializing = true;
+			}
 			cache.project(snapshot);
 
 			if agent_slots::synchronize(&self.store, snapshot, slots, &cache.archived)

@@ -174,7 +174,7 @@ fn retry_row(row: &Row<'_>) -> rusqlite::Result<AgentCapacityRetry> {
 	})
 }
 
-fn cancel_pending_with_note(
+pub(super) fn cancel_pending_with_note(
 	connection: &Connection,
 	work: &str,
 	note: &str,
