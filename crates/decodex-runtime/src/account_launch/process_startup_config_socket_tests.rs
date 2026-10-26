@@ -52,11 +52,11 @@ pub(super) async fn check(home: &Path, directory: &Path) -> NativeStartupConfigu
 	let authority =
 		LocalTransportAuthority::new(root.paths(), LocalTrustPolicy::SameUid, Some(uid))
 			.expect("same-UID authority");
-	let mut server = ProtocolServer::new(server_id, app, ServerConfig::default())
+	let client = DoctorClient::new(profile);
+	let server = ProtocolServer::new(server_id, app, ServerConfig::default())
 		.bind(authority)
 		.await
 		.expect("local service");
-	let client = DoctorClient::new(profile);
 	let before = client.query().await.expect("initial service health");
 	let result = client
 		.startup_configuration(
@@ -65,6 +65,7 @@ pub(super) async fn check(home: &Path, directory: &Path) -> NativeStartupConfigu
 		)
 		.await;
 	let after = client.query().await.expect("service health after inspection");
+	let mut server = server;
 
 	assert!(server.shutdown().await.expect("owned service shutdown").is_success());
 	assert_eq!(before, after, "configuration success cannot promote service health");
