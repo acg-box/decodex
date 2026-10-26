@@ -37,6 +37,7 @@ fn collaboration_stays_global_and_expands_without_switching_chat_or_draft(cx: &m
 
 		surface.visual_workspace_fixture(cx);
 		surface.visual_workbench_page("workbench", cx);
+		surface.workspace.graph_expanded = false;
 
 		surface
 	});
@@ -161,6 +162,7 @@ fn exchange_disclosure_animates_in_both_directions_without_changing_the_draft(
 		s.visual_workbench_page("workbench", cx);
 
 		s.work_board.collaboration_expanded = None;
+		s.workspace.graph_expanded = false;
 		s.workspace.agent_panel_width = 240.;
 
 		s.composer.update(cx, |input, cx| input.set_content("Preserve this draft", cx));
@@ -281,6 +283,7 @@ fn source_reference_fits_one_line_and_copies_its_exact_value(cx: &mut TestAppCon
 		s.visual_workspace_fixture(cx);
 		s.visual_workbench_page("workbench", cx);
 
+		s.workspace.graph_expanded = false;
 		s.workspace.agent_panel_width = 240.;
 
 		let mut record = receipt(70, decodex_protocol::AgentExchangeKind::NotSent);

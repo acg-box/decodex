@@ -12,7 +12,11 @@ use crate::{
 		ActivateAgent, ActivateHealth, ActivateSettings, DismissStatus, GrowPanel, GrowPanels,
 		NavigateBack, NavigateForward, ResetPanel, ResetPanels, ShrinkPanel, ShrinkPanels,
 		ToggleContentFullscreen, ToggleGraph, ToggleInspector, ToggleSidebar,
-		agent_surface::{AgentSurface, voice::Media, workspace::ARCHIVED_DETAIL},
+		agent_surface::{
+			AgentSurface,
+			voice::Media,
+			workspace::{self, ARCHIVED_DETAIL},
+		},
 	},
 	ui_motion,
 	ui_theme::{
@@ -398,7 +402,9 @@ fn forward(parent: AnyWindowHandle, action: &dyn Action, cx: &mut App) {
 	let action = action.boxed_clone();
 
 	cx.defer(move |cx| {
-		let _ = parent.update(cx, |_, window, cx| window.dispatch_action(action, cx));
+		let _ = parent.update(cx, |_, window, cx| {
+			workspace::dispatch_shell_action(window, action.as_ref(), cx);
+		});
 	});
 
 	cx.stop_propagation();

@@ -21,7 +21,6 @@ use crate::{
 				relations::{Edge, Graph, Kind},
 			},
 			workspace,
-			workspace_size::Panel,
 		},
 		workspace_symbols,
 	},
@@ -897,9 +896,6 @@ impl AgentSurface {
 			.min_w_0()
 			.overflow_y_scroll()
 			.p(gpui::px(8.))
-			.capture_any_mouse_down(
-				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Right)),
-			)
 			.child(
 				gpui::div()
 					.id("workbench-heading")

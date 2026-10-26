@@ -1284,8 +1284,8 @@ impl AgentSurface {
 	fn conversation_panel(&self, cx: &mut Context<Self>) -> Stateful<Div> {
 		gpui::div()
 			.id("conversation-panel-focus")
-			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.workspace.focused_panel = None))
 			.relative()
+			.child(self.workspace_focus_region(None, cx))
 			.opacity(self.workspace.arrival.progress(0.12))
 			.flex_1()
 			.min_w_0()
@@ -1350,6 +1350,33 @@ impl AgentSurface {
 			)
 	}
 
+	fn workspace_focus_region(
+		&self,
+		panel: Option<super::workspace_size::Panel>,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let owner = cx.entity().downgrade();
+
+		// Graph controls and selectable history can occlude their parent hitboxes.
+		// Track the pane bounds in capture, without intercepting its interactions.
+		gpui::canvas(
+			|_, _, _| (),
+			move |bounds, _, window, _| {
+				window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
+					if phase == gpui::DispatchPhase::Capture && bounds.contains(&event.position) {
+						let _ = owner.update(cx, |s, cx| {
+							s.workspace.focused_panel = panel;
+							restore_shell_focus(window, cx);
+						});
+					}
+				});
+			},
+		)
+		.absolute()
+		.inset_0()
+		.into_any_element()
+	}
+
 	fn workspace_center(
 		&self,
 		chat: AnyElement,
@@ -1389,6 +1416,10 @@ impl AgentSurface {
 					.opacity(self.workspace.arrival.progress(0.06))
 					.when(height > 0.1, |panel| {
 						panel
+							.child(self.workspace_focus_region(
+								Some(super::workspace_size::Panel::Bottom),
+								cx,
+							))
 							.child(ui_layout::pane(self.presentations.graph.clone(), window))
 							.child(self.graph_layers())
 					}),
@@ -1482,6 +1513,10 @@ impl AgentSurface {
 						self.deliveries.update(cx, |panel, cx| panel.set_width(right_width, cx));
 
 						panel
+							.child(self.workspace_focus_region(
+								Some(super::workspace_size::Panel::Right),
+								cx,
+							))
 							.child(ui_layout::pane(self.presentations.activity.clone(), window))
 							.child(
 								self.sidebar_resize_handle(super::workspace_size::Panel::Right, cx),
@@ -2552,6 +2587,17 @@ pub(super) fn restore_shell_focus(window: &mut Window, cx: &mut App) {
 	}
 }
 
+#[cfg(any(target_os = "macos", test))]
+pub(super) fn dispatch_shell_action(window: &mut Window, action: &dyn gpui::Action, cx: &mut App) {
+	if let Some(shell) = window.root::<Shell>().flatten() {
+		// A native child owns the editor focus. The parent's last focused node
+		// can be absent, so target the shell rather than that stale node.
+		let focus = shell.read(cx).root_focus.clone();
+
+		focus.dispatch_action(action, window, cx);
+	}
+}
+
 pub(super) fn clock_label(micros: i64) -> String {
 	let seconds = micros / 1_000_000;
 
@@ -2743,6 +2789,120 @@ mod tests {
 					cx,
 				)
 			})
+		}
+	}
+
+	#[gpui::test]
+	fn forwarded_fullscreen_actions_reach_shell_with_detached_parent_focus(
+		cx: &mut gpui::TestAppContext,
+	) {
+		cx.update(crate::shell::bind_keys);
+
+		let (shell, visual) = cx.add_window_view(|window, cx| {
+			crate::shell::Shell::new(window, cx, crate::shell::ConnectionView::Stopped)
+		});
+		let agent = shell.read_with(visual, |s, _| s.agent.clone());
+
+		agent.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_workspace_page("workbench-split", cx);
+			s.composer.update(cx, |input, cx| input.set_content("Preserve this input", cx));
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
+		visual.update(crate::ui_frame::draw_frame);
+
+		for graph in [false, true] {
+			agent.update(visual, |s, _| {
+				s.workspace.focused_panel =
+					graph.then_some(super::super::workspace_size::Panel::Bottom);
+			});
+			visual.update(|window, cx| {
+				// The native editor renders in a child window. The parent can still
+				// hold its focus handle after that node leaves the parent's tree.
+				let detached = cx.focus_handle();
+
+				window.focus(&detached, cx);
+				super::dispatch_shell_action(window, &crate::shell::ToggleContentFullscreen, cx);
+			});
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+			agent.read_with(visual, |s, cx| {
+				assert_eq!(
+					(s.workspace.graph_expanded, s.workspace.chat_expanded),
+					(graph, !graph)
+				);
+				assert_eq!(s.composer.read(cx).content(), "Preserve this input");
+			});
+
+			visual.simulate_keystrokes("shift-escape");
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+			agent.read_with(visual, |s, _| {
+				assert!(!s.workspace.graph_expanded && !s.workspace.chat_expanded);
+			});
+		}
+	}
+
+	#[gpui::test]
+	fn fullscreen_shortcut_targets_the_clicked_pane_across_graph_layers(
+		cx: &mut gpui::TestAppContext,
+	) {
+		cx.update(crate::shell::bind_keys);
+
+		let (shell, visual) = cx.add_window_view(|window, cx| {
+			crate::shell::Shell::new(window, cx, crate::shell::ConnectionView::Stopped)
+		});
+		let agent = shell.read_with(visual, |s, _| s.agent.clone());
+
+		agent.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_workspace_page("workbench-split", cx);
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
+		visual.update(crate::ui_frame::draw_frame);
+
+		for (selector, graph) in [
+			("relations-fit", true),
+			("relations-canvas", true),
+			("workspace-transcript", false),
+			("workbench-body", false),
+		] {
+			thread::sleep(std::time::Duration::from_millis(260));
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+
+			let bounds = visual.debug_bounds(selector).expect(selector);
+			let point = if selector == "relations-canvas" {
+				bounds.origin + gpui::point(gpui::px(3.), gpui::px(60.))
+			} else {
+				bounds.center()
+			};
+
+			visual.update(|window, cx| {
+				let detached = cx.focus_handle();
+
+				window.focus(&detached, cx);
+			});
+			visual.simulate_click(point, Default::default());
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+			visual.simulate_keystrokes("shift-escape");
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+			agent.read_with(visual, |s, _| {
+				assert_eq!(
+					(s.workspace.graph_expanded, s.workspace.chat_expanded),
+					(graph, !graph),
+					"{selector} selects its pane for the shortcut"
+				);
+			});
+
+			visual.simulate_keystrokes("shift-escape");
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+			agent.read_with(visual, |s, _| {
+				assert!(!s.workspace.graph_expanded && !s.workspace.chat_expanded);
+			});
 		}
 	}
 
