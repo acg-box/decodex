@@ -368,8 +368,7 @@ impl AgentSurface {
 				self.feedback = Feedback::loading("Sending read-aloud request…");
 			},
 			Err(_) =>
-				self.feedback =
-					Feedback::warning("This reply is too long to read aloud in one request."),
+				self.feedback = Feedback::warning("Reply too long to read aloud in one request."),
 		}
 
 		cx.notify();
@@ -421,7 +420,7 @@ impl AgentSurface {
 			.or_else(|| self.root_id())
 			.and_then(|id| EntityId::new(id).ok())
 		else {
-			self.feedback = Feedback::warning("Send a message before starting voice chat.");
+			self.feedback = Feedback::warning("Send a message before starting voice.");
 
 			cx.notify();
 
@@ -446,7 +445,7 @@ impl AgentSurface {
                     s.voice_task = None;
 
                     if s.profile.as_ref() != Some(&source) || s.voice_option_target(work.as_str()).as_ref() != Some(&target) {
-                        s.feedback = Feedback::neutral("Voice start canceled because the conversation changed.");
+                        s.feedback = Feedback::neutral("Conversation changed. Voice start cancelled.");
 
                         cx.notify();
 
@@ -455,7 +454,7 @@ impl AgentSurface {
                     if matches!(result, Some(AgentVoiceSettingsResult::Available { ref work_id, .. }) if work_id == &work) {
                         s.start_allowed_voice(work, window, cx);
                     } else {
-                        s.feedback = Feedback::warning("Voice is unavailable or disabled by managed policy.");
+                        s.feedback = Feedback::warning("Voice unavailable or disabled by policy.");
 
                         cx.notify();
                     }
@@ -491,8 +490,7 @@ impl AgentSurface {
 		let mut media = match Media::new(window) {
 			Ok(media) => media,
 			Err(()) => {
-				self.feedback =
-					Feedback::error("Voice chat requires the latest signed Decodex app.");
+				self.feedback = Feedback::error("Voice requires the current signed Decodex app.");
 
 				cx.notify();
 
@@ -645,9 +643,10 @@ impl AgentSurface {
 		} else {
 			// Signaling can disconnect while WebRTC still sends microphone audio.
 			// Dropping media stops local capture; the loop then stops this exact session.
-			self.feedback = Feedback::error(self.retire_voice_media().unwrap_or_else(|| {
-				"Voice stopped because the service connection was lost.".into()
-			}));
+			self.feedback = Feedback::error(
+				self.retire_voice_media()
+					.unwrap_or_else(|| "Connection lost. Voice stopped.".into()),
+			);
 
 			cx.notify();
 		}
@@ -812,7 +811,7 @@ impl AgentSurface {
 					.w_full()
 					.min_w_0()
 					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-					.aria_label("Connecting voice. Microphone off until connected")
+					.aria_label("Connecting voice · Microphone off")
 					.child(ui_loading::loading(""))
 					.into_any_element(),
 			);
@@ -944,11 +943,10 @@ impl AgentSurface {
 								{
 									voice.muted = muted;
 								} else {
-									s.feedback = Feedback::error(
-										s.retire_voice_media().unwrap_or_else(|| {
-											"Voice stopped because the microphone control could not be updated.".into()
-										}),
-									);
+									s.feedback =
+										Feedback::error(s.retire_voice_media().unwrap_or_else(
+											|| "Microphone control failed. Voice stopped.".into(),
+										));
 								}
 							}
 
@@ -960,7 +958,7 @@ impl AgentSurface {
 				.child(self.composer_control(
 					"voice-end",
 					if voice.connected { "End" } else { "Cancel" }.into(),
-					"End voice call · Existing work continues",
+					"End voice call · Work continues",
 					|s, cx| {
 						let _ = s.retire_voice_media();
 
@@ -2299,7 +2297,7 @@ mod tests {
 				let s = view.0.read(cx);
 
 				assert!(s.voice.is_none(), "A rejected microphone command must stop local media");
-				assert!(s.feedback.contains("microphone"));
+				assert!(s.feedback.contains("Microphone control failed"));
 				assert_eq!(s.composer.read(cx).content(), "Draft remains");
 				assert_eq!(s.retired_voice_captions.len(), 1);
 
@@ -2621,7 +2619,7 @@ mod tests {
 				s.live_chat_caption("agent", cx).is_none(),
 				"Pagination cannot resurrect accepted captions"
 			);
-			assert!(s.feedback.contains("service connection was lost"));
+			assert!(s.feedback.contains("Connection lost"));
 			assert!(s.poll_voice_media(cx).is_none(), "The loop must enter exact-session cleanup");
 		});
 	}

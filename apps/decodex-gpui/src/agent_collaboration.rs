@@ -861,12 +861,10 @@ impl AgentSurface {
 
 		if self.work_board.collaboration.questions_truncated {
 			body = body
-				.child(super::note("Older questions remain in their source conversations.").mt_2());
+				.child(super::note("Older questions are in their original conversations.").mt_2());
 		}
 		if self.work_board.collaboration.failed {
-			body = body.child(
-				super::note("Could not refresh collaboration. Last observations retained.").mt_2(),
-			);
+			body = body.child(super::note("Could not refresh. Showing saved exchanges.").mt_2());
 		} else if cases.is_empty() && entries.iter().all(|entry| entry.result) {
 			body = body.child(super::note("No exchanges recorded.").mt_2());
 		}

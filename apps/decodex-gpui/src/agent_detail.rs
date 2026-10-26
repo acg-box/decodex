@@ -272,7 +272,7 @@ impl AgentSurface {
 					})
 			},
 			Some(AgentActivityDetailResult::Unavailable) =>
-				gpui::div().child("Source details are unavailable. Collapse and reopen to retry."),
+				gpui::div().child("Details unavailable. Reopen to retry."),
 			None => gpui::div().child(ui_loading::loading("Loading details")),
 		}
 	}

@@ -71,7 +71,7 @@ fn search_picker_sends_once_then_reads_effective_override_after_lost_reply(
 
 	surface.read_with(visual,|s,_| {
         assert!(s.search_settings.task.is_none());
-        assert!(s.search_settings.feedback.contains("could not be confirmed"));
+        assert!(s.search_settings.feedback.contains("unconfirmed"));
         assert!(matches!(&s.search_settings.state,Some(AgentSearchSettingsResult::Available {effective:Some(e),preference:Some(p),..}) if e.as_str()=="live"&&p.as_str()=="indexed"));
 
     });

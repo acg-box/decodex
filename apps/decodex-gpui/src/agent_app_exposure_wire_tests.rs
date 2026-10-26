@@ -79,7 +79,7 @@ fn app_exposure_click_sends_once_and_reads_after_lost_reply(cx: &mut TestAppCont
 	assert_eq!(server.join().unwrap().len(), 1);
 
 	surface.read_with(visual,|s,_|{
- assert!(s.app_exposure.feedback.contains("not retried"));
+ assert!(s.app_exposure.feedback.contains("unconfirmed"));
  assert!(s.app_exposure.task.is_none());
  assert!(matches!(&s.app_exposure.state,Some(AgentAppExposureResult::Available{preference:Some(values),..}) if values==&["direct"]));
  });
@@ -154,7 +154,7 @@ fn ordinary_refresh_keeps_app_exposure_read_and_write_readback(cx: &mut TestAppC
 			assert!(matches!(s.app_exposure.state, Some(AgentAppExposureResult::Available { .. })));
 
 			if save {
-				assert!(s.app_exposure.feedback.contains("not retried"));
+				assert!(s.app_exposure.feedback.contains("unconfirmed"));
 				assert_eq!(s.app_exposure.draft, Some(vec![AgentToolExposureSurface::Direct]));
 				assert!(matches!(&s.app_exposure.state, Some(AgentAppExposureResult::Available {
 					last_outcome: Some(outcome), ..

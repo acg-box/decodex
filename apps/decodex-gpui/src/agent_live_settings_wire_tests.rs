@@ -236,7 +236,7 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 
 	surface.read_with(visual, |s, _| {
 		assert!(s.live_reviewer.task.is_none());
-		assert!(s.live_reviewer.feedback.contains("could not be confirmed"));
+		assert!(s.live_reviewer.feedback.contains("unconfirmed"));
 
 		if model {
 			assert!(matches!(
@@ -411,7 +411,7 @@ fn ordinary_refresh_keeps_live_settings_read_and_publication_receipt(cx: &mut Te
 				assert_eq!(s.live_reviewer.reviewed, !saving);
 
 				if saving {
-					assert!(s.live_reviewer.feedback.contains("could not be confirmed"));
+					assert!(s.live_reviewer.feedback.contains("unconfirmed"));
 					assert!(matches!(
 						s.live_reviewer.state,
 						Some(AgentLiveReviewerState::Available {

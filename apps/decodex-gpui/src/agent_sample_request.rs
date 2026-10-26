@@ -21,22 +21,19 @@ pub(super) enum Operation {
 
 pub(super) const fn phase_message(phase: AgentSamplePhase) -> &'static str {
 	match phase {
-		AgentSamplePhase::Idle => "Ask for another perspective on this conversation.",
-		AgentSamplePhase::Pending =>
-			"Asking separately… Closing this panel leaves the request running.",
-		AgentSamplePhase::Cancelling =>
-			"Cancelling the separate answer… Waiting for native cleanup.",
+		AgentSamplePhase::Idle => "Ask for another perspective.",
+		AgentSamplePhase::Pending => "Asking separately… Continues if you close this panel.",
+		AgentSamplePhase::Cancelling => "Cancelling the answer…",
 		AgentSamplePhase::Cancelled => "The separate answer was cancelled.",
 		AgentSamplePhase::Ready => "Separate answer",
 		AgentSamplePhase::NoText =>
-			"The model returned no text, possibly because it attempted a tool call. No tools were executed.",
+			"No text returned. The model may have requested a tool; no tools ran.",
 		AgentSamplePhase::Failed =>
-			"Could not obtain an answer. Use an idle conversation with a finished turn, then refresh and try again.",
+			"Answer unavailable. Wait for the current turn to finish, then retry.",
 		AgentSamplePhase::Unconfirmed =>
-			"The answer could not be confirmed and may still use quota. Refresh status before choosing a new request.",
-		AgentSamplePhase::Obsolete =>
-			"The conversation or its connection changed. This answer is no longer current.",
-		AgentSamplePhase::Unsupported => "This Codex runtime does not support separate answers.",
+			"Answer unconfirmed; may still use quota. Refresh status before asking again.",
+		AgentSamplePhase::Obsolete => "Conversation changed. This answer is outdated.",
+		AgentSamplePhase::Unsupported => "Separate answers unsupported by this Codex version.",
 	}
 }
 
@@ -87,8 +84,7 @@ pub(super) async fn run(
 	{
 		let message = match error {
 			CommandError::ApplicationUnavailable { message } => message.as_str().to_owned(),
-			_ => "This sample action was not accepted. Refresh its status before trying again."
-				.into(),
+			_ => "Request rejected. Refresh status before retrying.".into(),
 		};
 		let _ = updates.send(Some((None, message)));
 
@@ -126,15 +122,16 @@ pub(super) async fn run(
 				}
 			},
 			Ok(_) => {
-				let _ = updates.send(Some((None, "The sample request could not be confirmed. Refresh its status; generation will not be repeated.".into())));
+				let _ = updates.send(Some((
+					None,
+					"Request unconfirmed. Refresh status; generation will not repeat.".into(),
+				)));
 
 				return;
 			},
 			Err(_) => {
-				let _ = updates.send(Some((
-					None,
-					"Checking sample status. The model request will not be repeated.".into(),
-				)));
+				let _ = updates
+					.send(Some((None, "Checking status. The request will not repeat.".into())));
 			},
 		}
 

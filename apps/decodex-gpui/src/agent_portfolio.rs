@@ -6,8 +6,8 @@ use tokio::runtime::Builder;
 
 use crate::{
 	shell::agent_surface::{
-		AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-		Styled, mcp_forms,
+		AgentSnapshotDto, AgentSurface, Context, InteractiveElement, IntoElement, ParentElement,
+		SharedString, Styled, mcp_forms,
 	},
 	ui_theme::{self, TEXT_MUTED},
 };
@@ -81,12 +81,10 @@ impl AgentSurface {
 		}
 
 		if count == 0 {
-			list=list.child(label("Discuss an outcome with an Agent. It can create Work when the requirements and authority are clear."));
+			list = list.child(label("Discuss your goal with an Agent to create Work."));
 		}
 		if snapshot.portfolio.has_more {
-			list = list.child(label(
-				"This view is bounded. Additional Work and evidence remain in the store.",
-			));
+			list = list.child(label("More Work and evidence are available in storage."));
 		}
 
 		list.into_any_element()
@@ -140,9 +138,10 @@ impl AgentSurface {
 				.child(label(format!(
 					"Subagent {} · {} · requirements {}",
 					native.id,
-					native.child_thread_id.as_deref().unwrap_or(
-						"Binding unconfirmed; reconcile native history before another spawn"
-					),
+					native
+						.child_thread_id
+						.as_deref()
+						.unwrap_or("Binding unconfirmed. Check history before spawning again"),
 					native.requirements_id
 				)))
 				.child(readable(native.instruction.clone()));
@@ -172,7 +171,9 @@ impl AgentSurface {
 		}
 
 		if portfolio.has_more {
-			panel=panel.child(label("Additional historical records remain in the store. Ask the owner to inspect the exact evidence before assessment."));
+			panel = panel.child(label(
+				"More records are available. Ask the owner to review them before assessment.",
+			));
 		}
 
 		if let Some(assessment) = &work.assessment {
@@ -197,43 +198,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
 		if matches!(work.state, WorkState::Open | WorkState::Blocked) {
-			panel=panel.child(label("Pause blocks new Work contributions and completion. It cannot roll back actions already running."));
-
-			let work = work.clone();
-			let paused = work.user_hold;
-
-			panel = panel.child(mcp_forms::mcp_button(
-				format!("work-hold-{}", work.id),
-				if paused { "Resume Work" } else { "Pause Work" }.into(),
-				false,
-				cx,
-				move |s, cx| {
-					s.execute(
-						AgentActionDto::ManageWork {
-							agent_id: EntityId::new(work.owner_agent_id.clone())
-								.expect("saved owner"),
-							command: WorkCommand::SetState {
-								work_id: work.id.clone(),
-								expected_requirements: work.requirements.id.clone(),
-								state: if paused { WorkState::Open } else { WorkState::Blocked },
-								reason: if paused {
-									None
-								} else {
-									Some("User paused this Work".into())
-								},
-								resume_condition: if paused {
-									None
-								} else {
-									Some("Explicit user release".into())
-								},
-								user_hold: !paused,
-							},
-						},
-						None,
-						cx,
-					);
-				},
-			));
+			panel = panel.child(self.work_hold_control(work, cx));
 		}
 
 		panel
@@ -241,51 +206,71 @@ impl AgentSurface {
 }
 
 impl AgentSurface {
+	fn work_hold_control(&self, work: &Work, cx: &mut Context<Self>) -> impl IntoElement {
+		let panel = gpui::div().flex().flex_col().gap_2().child(label(
+			"Pause blocks new contributions and completion. Running actions continue.",
+		));
+		let work = work.clone();
+		let paused = work.user_hold;
+
+		panel.child(mcp_forms::mcp_button(
+			format!("work-hold-{}", work.id),
+			if paused { "Resume Work" } else { "Pause Work" }.into(),
+			false,
+			cx,
+			move |s, cx| {
+				s.execute(
+					AgentActionDto::ManageWork {
+						agent_id: EntityId::new(work.owner_agent_id.clone()).expect("saved owner"),
+						command: WorkCommand::SetState {
+							work_id: work.id.clone(),
+							expected_requirements: work.requirements.id.clone(),
+							state: if paused { WorkState::Open } else { WorkState::Blocked },
+							reason: if paused {
+								None
+							} else {
+								Some("User paused this Work".into())
+							},
+							resume_condition: if paused {
+								None
+							} else {
+								Some("Explicit user release".into())
+							},
+							user_hold: !paused,
+						},
+					},
+					None,
+					cx,
+				);
+			},
+		))
+	}
+}
+
+impl AgentSurface {
 	pub(super) fn render_global_guardian(&self, cx: &mut Context<Self>) -> AnyElement {
-		let mut panel=gpui::div().id("global-guardian-settings").flex_1().min_h_0().overflow_y_scroll().flex().flex_col().gap_3().p_4().child(gpui::div().text_lg().child("Guardian")).child(label("Global settings for all Agents and Projects. Execution permissions and Full Access are separate."));
+		let mut panel = gpui::div()
+			.id("global-guardian-settings")
+			.flex_1()
+			.min_h_0()
+			.overflow_y_scroll()
+			.flex()
+			.flex_col()
+			.gap_3()
+			.p_4()
+			.child(gpui::div().text_lg().child("Guardian"))
+			.child(label(
+				"Shared across Agents and Projects. Execution permissions are managed separately.",
+			));
 		let Some(snapshot) = &self.snapshot else {
 			return panel.child("Connect to read global settings.").into_any_element();
 		};
 
 		panel = panel.child(self.guardian_controls(cx));
-
-		panel=panel.child(label("A saved preference is not proof of application. Review Details activate as native sources load with the supported observer setting. Turning observation off stops new Decodex records. Pending human approvals retain their owner."));
-
-		panel = panel.child(label("Native source readback"));
-
-		if snapshot.guardian.sources.is_empty() {
-			panel =
-				panel.child(label("No loaded source has published an application receipt yet."));
-		}
-
-		for source in &snapshot.guardian.sources {
-			let name = snapshot
-				.work_items
-				.iter()
-				.find(|a| a.id == source.agent_id)
-				.map(|a| a.title.as_str())
-				.unwrap_or(&source.agent_id);
-
-			panel = panel.child(
-				gpui::div()
-					.id(SharedString::from(format!(
-						"guardian-source-{}-{}",
-						source.source_id, source.agent_id
-					)))
-					.flex()
-					.flex_col()
-					.gap_1()
-					.child(format!(
-						"{name} · {} · effective {} · preference revision {}",
-						source.outcome,
-						source.effective_reviewer.as_deref().unwrap_or("Unknown"),
-						source.revision
-					))
-					.child(label(source.detail.clone())),
-			);
-		}
-
-		panel = panel.child(label(snapshot.guardian.observation_limit.clone()));
+		panel = panel.child(label(
+			"Turning off Review details stops new records. Pending approvals keep their owner.",
+		));
+		panel = panel.child(self.guardian_source_readback(snapshot, cx));
 
 		for details in &snapshot.guardian.details {
 			let key = format!(
@@ -298,7 +283,7 @@ impl AgentSurface {
 			panel = panel.child(mcp_forms::mcp_button(
 				key.clone(),
 				format!(
-					"Review Details · {} · {}",
+					"Review details · {} · {}",
 					details.reviewer_turn_id,
 					details.review_id.as_deref().unwrap_or("Action association unavailable")
 				),
@@ -315,7 +300,7 @@ impl AgentSurface {
 			if self.workspace.contribution_detail.as_ref() == Some(&key) {
 				panel = panel
 					.child(label(format!(
-						"Reviewer Thread {} · Turn {} · Item {} · Parent {}",
+						"Reviewer thread {} · Turn {} · Item {} · Parent {}",
 						details.reviewer_thread_id,
 						details.reviewer_turn_id,
 						details.item_id,
@@ -331,9 +316,93 @@ impl AgentSurface {
 					);
 
 				if details.truncated {
-					panel=panel.child(label("Display shortened. This is a bounded native observation, not a complete reviewer transcript."));
+					panel = panel
+						.child(label("Partial review observation; full transcript not included."));
 				}
 			}
+		}
+
+		panel.into_any_element()
+	}
+}
+
+impl AgentSurface {
+	fn guardian_source_readback(
+		&self,
+		snapshot: &AgentSnapshotDto,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let expanded =
+			self.workspace.contribution_detail.as_deref() == Some("guardian-settings-details");
+		let mut panel = gpui::div().flex().flex_col().gap_2().child(label("Effective settings"));
+
+		if snapshot.guardian.sources.is_empty() {
+			panel = panel.child(label("No settings application confirmed yet."));
+		}
+
+		for source in &snapshot.guardian.sources {
+			let name = snapshot
+				.work_items
+				.iter()
+				.find(|a| a.id == source.agent_id)
+				.map(|a| a.title.as_str())
+				.unwrap_or(&source.agent_id);
+			let outcome = match source.outcome.as_str() {
+				"applied" => "Applied",
+				"pending" => "Pending",
+				"unknown" => "Unconfirmed",
+				"unsupported" => "Unavailable",
+				"rejected" => "Rejected",
+				"overridden" => "Overridden",
+				_ => "Unknown",
+			};
+			let reviewer = match source.effective_reviewer.as_deref() {
+				Some("user") => "Ask me",
+				Some("auto_review") => "Automatic review",
+				_ => "Reviewer unknown",
+			};
+			let mut row = gpui::div()
+				.id(SharedString::from(format!(
+					"guardian-source-{}-{}",
+					source.source_id, source.agent_id
+				)))
+				.flex()
+				.flex_col()
+				.gap_1()
+				.child(format!("{name} · {outcome} · {reviewer}"));
+
+			if expanded {
+				row = row
+					.child(label(format!(
+						"Source {} · Revision {}",
+						source.source_id, source.revision
+					)))
+					.child(label(source.detail.clone()));
+			}
+
+			panel = panel.child(row);
+		}
+
+		panel = panel.child(mcp_forms::mcp_button(
+			"guardian-settings-details-toggle".into(),
+			"Technical details".into(),
+			expanded,
+			cx,
+			|s, cx| {
+				s.workspace.contribution_detail = if s.workspace.contribution_detail.as_deref()
+					== Some("guardian-settings-details")
+				{
+					None
+				} else {
+					Some("guardian-settings-details".into())
+				};
+
+				cx.notify();
+			},
+		));
+
+		if expanded {
+			panel = panel.child(label(snapshot.guardian.observation_limit.clone()));
 		}
 
 		panel.into_any_element()
@@ -350,8 +419,7 @@ impl AgentSurface {
 		let Some(profile) = self.profile.clone() else { return };
 		let captured = profile.clone();
 
-		self.workspace.private_detail_text =
-			Some((key.clone(), "Reading the exact retained record…".into()));
+		self.workspace.private_detail_text = Some((key.clone(), "Reading saved record…".into()));
 
 		let request = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread()
@@ -377,7 +445,7 @@ impl AgentSurface {
 							offset,
 						)
 						.await
-						.map_err(|_| "Record readback is unavailable")?;
+						.map_err(|_| "Saved record unavailable")?;
 					let PrivateReviewDetailsResult::Available {
 						offset: actual,
 						total_bytes,
@@ -385,7 +453,7 @@ impl AgentSurface {
 						next_offset,
 					} = result
 					else {
-						return Err("Record is unavailable or outside retention");
+						return Err("Record unavailable or no longer retained");
 					};
 
 					if actual != offset
@@ -393,7 +461,7 @@ impl AgentSurface {
 						|| expected.is_some_and(|total| total != total_bytes)
 						|| text.is_empty()
 					{
-						return Err("Record paging changed; refresh the observation");
+						return Err("Records changed. Refresh to retry");
 					}
 
 					expected = Some(total_bytes);
@@ -401,7 +469,7 @@ impl AgentSurface {
 					complete.push_str(&text);
 
 					if complete.len() > total_bytes {
-						return Err("Record paging exceeded its declared length");
+						return Err("Invalid record page length");
 					}
 
 					if let Some(next) = next_offset {
@@ -412,7 +480,7 @@ impl AgentSurface {
 						offset = next;
 					} else {
 						if complete.len() != total_bytes {
-							return Err("Record readback is incomplete");
+							return Err("Record incomplete");
 						}
 
 						return Ok(complete);
@@ -457,7 +525,7 @@ impl AgentSurface {
 				AgentClient::new(profile)
 					.work_detail(EntityId::new(id).map_err(|_| "Invalid Work identity")?)
 					.await
-					.map_err(|_| "Work changed or could not be read. Refresh to retry.")
+					.map_err(|_| "Work changed or unavailable. Refresh to retry.")
 			})
 		});
 
@@ -591,7 +659,7 @@ impl AgentSurface {
 
 		group = group.child(mcp_forms::mcp_button(
 			format!("project-lead-{}", project.id),
-			format!("Project Lead: {}", lead.map(|a| a.name.as_str()).unwrap_or("Choose Agent")),
+			format!("Project lead: {}", lead.map(|a| a.name.as_str()).unwrap_or("Choose Agent")),
 			false,
 			cx,
 			move |s, cx| {
@@ -648,7 +716,7 @@ impl AgentSurface {
 				owner,
 				state(work),
 				if snapshot.portfolio.awaiting_assessment.contains(&work.id) {
-					" · Awaiting Assessment"
+					" · Awaiting assessment"
 				} else {
 					""
 				}
@@ -691,9 +759,7 @@ impl AgentSurface {
 			{
 				if selected.requirements.id != work.requirements.id || selected.state != work.state
 				{
-					group = group.child(label(
-						"Work changed. Refresh these saved details before an assessment.",
-					));
+					group = group.child(label("Work changed. Refresh before assessment."));
 				}
 
 				group = group.child(self.work_contract_detail(selected, cx));
@@ -818,8 +884,8 @@ impl AgentSurface {
 		let mut panel = gpui::div().flex().flex_col().gap_2();
 
 		for (id, title, reviewer) in [
-			("guardian-ask-me", "Ask Me", ReviewPreference::AskMe),
-			("guardian-automatic", "Automatic Review", ReviewPreference::AutomaticReview),
+			("guardian-ask-me", "Ask me", ReviewPreference::AskMe),
+			("guardian-automatic", "Automatic review", ReviewPreference::AutomaticReview),
 		] {
 			let (revision, details) = (settings.revision, settings.review_details);
 
@@ -849,7 +915,7 @@ impl AgentSurface {
 
 		panel = panel.child(mcp_forms::mcp_button(
 			"guardian-review-details".into(),
-			format!("Review Details: {}", if enabled { "On" } else { "Off" }),
+			format!("Review details: {}", if enabled { "On" } else { "Off" }),
 			self.sending,
 			cx,
 			move |s, cx| {

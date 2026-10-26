@@ -56,17 +56,17 @@ impl Panel {
 		self.mutation_key = None;
 		self.feedback = match result {
 			Ok(AgentCommandResponse::Accepted { .. }) =>
-				"Approval submitted to Codex. This does not rerun the action.",
+				"Approval submitted. The action will not rerun.",
 			Ok(AgentCommandResponse::Rejected { .. }) => {
 				self.pending.remove(&row);
-				"Approval was not accepted. Refresh and review the current details."
+				"Approval rejected. Refresh to review current details."
 			},
 			Err(()) => {
 				self.pending.remove(&row);
-				"No approval was sent. Check the service connection before trying again."
+				"Approval not sent. Check the connection."
 			},
 			Ok(AgentCommandResponse::PotentiallyDispatched { .. }) =>
-				"Approval submission is unconfirmed. It will not be sent again automatically.",
+				"Approval unconfirmed. No automatic retry.",
 		}
 		.into();
 
@@ -448,7 +448,7 @@ impl AgentSurface {
 		};
 		let AgentGuardianReviewsResult::Available { reviews, next_before } = result else {
 			return gpui::div()
-				.child("Saved action reviews are unavailable.")
+				.child("Saved reviews unavailable.")
 				.child(button("guardian-refresh".into(), "Refresh reviews".into(), cx, |s, cx| {
 					s.guardian_page(None, cx)
 				}))
@@ -467,7 +467,7 @@ impl AgentSurface {
 			})
 			.count();
 		let title = if denied > 0 {
-			format!("Action reviews · {denied} denied on this page")
+			format!("Action reviews · {denied} denied")
 		} else {
 			"Action reviews".into()
 		};
@@ -486,9 +486,7 @@ impl AgentSurface {
 			return panel.into_any_element();
 		}
 		if self.guardian.stale {
-			panel = panel.child(
-				"Showing saved review details. Reconnecting before another approval can be submitted.",
-			);
+			panel = panel.child("Showing saved reviews. Reconnecting before further approvals.");
 		}
 
 		let mut body = gpui::div().flex().flex_col().gap_3().min_w_0();
@@ -579,20 +577,18 @@ impl AgentSurface {
 				panel = panel.child(agent_surface::muted("All detail pages opened."));
 			}
 		} else if self.guardian.detail_request.is_none() {
-			panel = panel.child("Open the complete action and findings before approving.").child(
-				button(
-					"guardian-detail-reload".into(),
-					"Read complete details".into(),
-					cx,
-					move |s, cx| s.load_guardian_detail(row, digest.clone(), 0, cx),
-				),
-			);
+			panel = panel.child("Read all action details before approving.").child(button(
+				"guardian-detail-reload".into(),
+				"Read complete details".into(),
+				cx,
+				move |s, cx| s.load_guardian_detail(row, digest.clone(), 0, cx),
+			));
 
 			if matches!(
 				reader.and_then(|d| d.page.as_ref()),
 				Some(AgentGuardianDetailResult::Unavailable)
 			) {
-				panel = panel.child("Details are unavailable or changed. Refresh the review list.");
+				panel = panel.child("Details changed or unavailable. Refresh reviews.");
 			}
 		}
 
@@ -630,24 +626,21 @@ impl AgentSurface {
 			.child(format!("{} · {state}", review.action_label));
 
 		if review.status == AgentGuardianStatus::InProgress && !review.current_process {
-			card = card.child(agent_surface::muted(
-				"Saved from an earlier or disconnected process; the result is unknown.",
-			));
+			card = card.child(agent_surface::muted("Saved review · Current outcome unknown."));
 		}
 
 		if let Some(risk) = &review.risk_level {
 			card = card.child(format!("Risk: {risk}"));
 		}
 		if let Some(level) = &review.user_authorization {
-			card = card.child(format!("User authorization assessed by Codex: {level}"));
+			card = card.child(format!("Authorization assessed by Codex: {level}"));
 		}
 		if let Some(submission) = review.submission {
 			card = card.child(match submission {
-				AgentGuardianSubmission::Pending =>
-					"Approval submission unconfirmed. No automatic retry.",
+				AgentGuardianSubmission::Pending => "Approval unconfirmed. No automatic retry.",
 				AgentGuardianSubmission::Submitted =>
-					"Approval submitted. The action has not been confirmed as complete.",
-				AgentGuardianSubmission::Rejected => "The approval submission was rejected.",
+					"Approval submitted. Action completion unconfirmed.",
+				AgentGuardianSubmission::Rejected => "Approval rejected.",
 			});
 		}
 
@@ -695,9 +688,7 @@ impl AgentSurface {
 				let digest = review.digest.clone();
 
 				card = card
-					.child(agent_surface::muted(
-						"Send your approval to Codex. This does not rerun the action.",
-					))
+					.child(agent_surface::muted("Submit approval. The action will not rerun."))
 					.child(button(
 						format!("guardian-approve-{row}"),
 						"Approve this action".into(),
@@ -970,7 +961,7 @@ mod tests {
 
 		assert!(panel.finish_submission(1, "new", Err(())));
 		assert!(!panel.pending.contains_key(&1));
-		assert!(panel.feedback.contains("No approval was sent"));
+		assert!(panel.feedback.contains("Approval not sent"));
 	}
 	#[gpui::test]
 	fn review_is_separate_from_approval_and_stale_or_disconnected_details_cannot_submit(

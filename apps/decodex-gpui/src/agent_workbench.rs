@@ -171,8 +171,9 @@ impl AgentSurface {
 	}
 
 	pub(in super::super) fn graph_has_composer(&self) -> bool {
-		(self.native_agents.selected.is_some() || self.selected_is_agent())
-			&& !self.selected_is_archived()
+		(self.native_agents.selected.is_some()
+			|| self.selected_is_agent()
+			|| self.selected_is_archived())
 			&& (self.conversation_work().is_some() || self.is_new_conversation())
 	}
 
@@ -222,7 +223,7 @@ impl AgentSurface {
 						"Answer needed"
 					}
 					.into(),
-					reason: "This agent needs your response.".into(),
+					reason: "Respond in the conversation.".into(),
 					result: false,
 					request: Some(event.id),
 				})

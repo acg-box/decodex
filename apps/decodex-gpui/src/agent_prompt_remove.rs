@@ -53,8 +53,7 @@ impl AgentSurface {
 			|| self.prompt_edit.editors.iter().any(|(index, editor)| {
 				editor.read(cx).native_part() != removal.before.input.parts().get(*index)
 			}) {
-			self.prompt_edit.feedback =
-				"The draft changed. Select the input to remove again.".into();
+			self.prompt_edit.feedback = "Draft changed. Select the item again.".into();
 
 			cx.notify();
 
@@ -96,7 +95,7 @@ impl AgentSurface {
 		});
 
 		self.prompt_edit.feedback = match result {
-			Ok(()) => "Input removed from this draft. History is unchanged.".into(),
+			Ok(()) => "Removed from draft. History unchanged.".into(),
 			Err(error) => error.into(),
 		};
 
@@ -118,15 +117,15 @@ impl AgentSurface {
 				"Remove {} from this draft?",
 				label(&removal.before.input, removal.part)
 			))
-			.child(
-				"Also select any references to remove from the message. Unselected text is kept.",
-			);
+			.child("Select related references to remove. Other text stays.");
 
 		if matches!(
 			removal.before.input.parts()[removal.part]["type"].as_str(),
 			Some("image" | "localImage")
 		) {
-			panel = panel.child("Remaining images will be numbered in their new order. Review any image numbers in your message.");
+			panel = panel.child(
+				"Remaining images will be renumbered. Check image references in your message.",
+			);
 		}
 
 		for (part_index, part) in removal.before.input.parts().iter().enumerate() {

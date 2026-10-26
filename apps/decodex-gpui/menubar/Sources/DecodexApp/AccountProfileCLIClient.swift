@@ -18,17 +18,17 @@ enum AccountProfileObservationError: String, Decodable, Equatable, Sendable {
 	var presentation: String {
 		switch self {
 		case .invalidRequest:
-			return "We couldn’t load this account."
+			return "Could not load account."
 		case .accountUnavailable:
-			return "This account is unavailable."
+			return "Account unavailable."
 		case .unsupportedPlan:
-			return "This plan is not supported in Decodex. After you upgrade, sign in again."
+			return AccountControlRejection.unsupportedPlan.presentation
 		case .productStateUnavailable:
-			return "Account information is temporarily unavailable."
+			return "Account information unavailable."
 		case .credentialUnavailable:
-			return "We couldn’t access your sign-in information. Try again."
+			return "Sign-in unavailable. Try again."
 		case .credentialBusy:
-			return "This account is being updated. Try again shortly."
+			return "Account updating. Try shortly."
 		case .refreshRejected:
 			return "Sign in again to update this account."
 		case .refreshAmbiguous:
@@ -38,11 +38,11 @@ enum AccountProfileObservationError: String, Decodable, Equatable, Sendable {
 		case .unauthorized:
 			return "Sign in again to update this account."
 		case .providerUnavailable:
-			return "The service is unavailable. Try again later."
+			return "Service unavailable. Try later."
 		case .protocolUnavailable:
-			return "We couldn’t read the account information. Try again later."
+			return "Account information unavailable. Try later."
 		case .accountChanged:
-			return "The account changed while loading. Try again."
+			return "Account changed. Try again."
 		}
 	}
 }

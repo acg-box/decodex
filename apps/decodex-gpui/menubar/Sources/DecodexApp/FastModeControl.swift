@@ -14,9 +14,9 @@ enum FastModeClientError: Error, LocalizedError {
 		case .timedOut:
 			return "Fast mode did not respond."
 		case .invalidResponse:
-			return "Fast mode returned an invalid response."
+			return "Invalid fast mode response."
 		case .rejected:
-			return "Fast mode could not be changed safely."
+			return "Fast mode change unconfirmed. Refresh before retrying."
 		}
 	}
 }

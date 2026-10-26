@@ -67,7 +67,7 @@ fn voice_picker_sends_once_then_reads_effective_override_after_lost_reply(cx: &m
 
 	surface.read_with(visual,|s,_| {
         assert!(s.voice_settings.task.is_none());
-        assert!(s.voice_settings.feedback.contains("could not be confirmed"));
+        assert!(s.voice_settings.feedback.contains("unconfirmed"));
         assert!(matches!(&s.voice_settings.state,Some(AgentVoiceSettingsResult::Available {effective:Some(e),preference:Some(p),..}) if e.as_str()=="maple"&&p.as_str()=="juniper"));
         assert!(s.voice.is_none());
     });
@@ -248,9 +248,9 @@ fn managed_voice_preflight_tracks_the_service_and_thread_without_rejecting_snaps
 			assert_eq!(
 				s.feedback.message,
 				if changed_source {
-					"Voice start canceled because the conversation changed."
+					"Conversation changed. Voice start cancelled."
 				} else {
-					"Voice is unavailable or disabled by managed policy."
+					"Voice unavailable or disabled by policy."
 				}
 			);
 		});

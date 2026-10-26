@@ -165,8 +165,14 @@ impl AgentSurface {
 		}
 
 		panel = panel
-			.child("Shared across accounts in Codex user settings. Applies to new conversations. Project settings can override this default; loaded conversations keep their current mode.")
-			.children(ui_feedback::inline_feedback("search-settings-feedback", "Search settings", &self.search_settings.feedback));
+			.child(
+				"Defaults for new conversations, shared across accounts. Project settings can override them.",
+			)
+			.children(ui_feedback::inline_feedback(
+				"search-settings-feedback",
+				"Search settings",
+				&self.search_settings.feedback,
+			));
 
 		if self.search_settings.task.is_some() {
 			return panel.into_any_element();
@@ -186,14 +192,12 @@ impl AgentSurface {
 			&self.search_settings.state
 		{
 			panel = panel.child(format!(
-				"Project default for new conversations: {}",
+				"Effective new conversation default: {}",
 				effective.as_ref().map_or("Native default", |mode| mode_label(mode.as_str()))
 			));
 
 			if modes.is_empty() {
-				panel = panel.child(
-					"No selectable modes are available under the current Codex requirements.",
-				);
+				panel = panel.child("No search modes available under Codex policy.");
 			}
 			if preference != effective {
 				panel = panel.child(format!(
@@ -243,19 +247,15 @@ fn feedback(
 			AgentSearchSettingsResult::Available { effective, preference, .. },
 		) if preference.as_ref() == Some(mode) =>
 			if effective.as_ref() == Some(mode) {
-				Feedback::success("Search default saved for new conversations.")
+				Feedback::success("Saved for new conversations.")
 			} else {
-				Feedback::info(
-					"Search saved. This project's settings select a different search mode.",
-				)
+				Feedback::info("Saved. Project settings select a different search mode.")
 			},
 		(Some(_), Some(Ok(AgentCommandResponse::Rejected { .. })), _) =>
-			Feedback::error("The change was not accepted. Review the refreshed settings."),
-		(Some(_), _, _) => Feedback::warning(
-			"The save could not be confirmed. Review the refreshed settings before trying again.",
-		),
+			Feedback::error("Change rejected. Refresh before retrying."),
+		(Some(_), _, _) => Feedback::warning("Save unconfirmed. Refresh before retrying."),
 		(None, _, AgentSearchSettingsResult::Available { .. }) => Feedback::default(),
-		(None, _, _) => Feedback::warning("Search settings are unavailable. Refresh to try again."),
+		(None, _, _) => Feedback::warning("Search settings unavailable. Refresh to retry."),
 	}
 }
 

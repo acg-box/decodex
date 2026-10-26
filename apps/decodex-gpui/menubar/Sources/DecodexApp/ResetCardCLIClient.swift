@@ -24,25 +24,25 @@ enum ResetCardServiceError: String, Decodable, Equatable, Sendable {
 		case .accountNotFound:
 			return "The account no longer exists."
 		case .accountStateRejected:
-			return "The account cannot use a reset card in its current state."
+			return "Account cannot use a reset card now."
 		case .vaultUnavailable:
-			return "The daemon credential vault is unavailable."
+			return "Credential store unavailable."
 		case .schemaUnsupported:
-			return "The stored reset-card result is incompatible with the current provider API."
+			return "Saved reset result incompatible with this provider version."
 		case .providerUnavailable:
-			return "The reset-card provider is unavailable."
+			return "Reset provider unavailable."
 		case .inventoryIncomplete:
-			return "Reset cards could not be fully loaded."
+			return "Reset card list incomplete."
 		case .inventoryChanged:
-			return "The reset cards changed. Refresh and select the card again."
+			return "Reset cards changed. Refresh and select again."
 		case .requestTimedOut:
-			return "The reset-card provider did not respond in time."
+			return "Reset provider timed out."
 		case .resourceExhausted:
-			return "The reset service is busy. Try again later."
+			return "Reset service busy. Try later."
 		case .productStateUnavailable:
 			return "The reset status is unavailable."
 		case .effectAmbiguous:
-			return "The reset result is not confirmed yet. Check account status before trying again."
+			return "Reset unconfirmed. Check account status before retrying."
 		}
 	}
 }
@@ -60,9 +60,9 @@ enum ResetCardUseOutcome: String, Decodable, Equatable, Sendable {
 		case .nothingToReset:
 			return "The account had nothing to reset."
 		case .noCredit:
-			return "No eligible reset card was available."
+			return "No eligible reset card available."
 		case .alreadyRedeemed:
-			return "The selected reset card was already used."
+			return "Selected reset card already used."
 		}
 	}
 }
@@ -82,13 +82,13 @@ enum ResetCardOperationState: Equatable, Sendable {
 		case .prepared:
 			return "Reset-card use was accepted."
 		case .effectAmbiguous:
-			return "Reset-card use is reconciling authoritative state."
+			return "Checking reset status."
 		case .completed(let outcome):
 			return outcome.presentation
 		case .failedBeforeEffect(let error):
 			return error.presentation
 		case .unavailable(let error):
-			return "The reset status is unavailable. \(error.presentation)"
+			return "Reset status unavailable. \(error.presentation)"
 		}
 	}
 }
@@ -289,7 +289,7 @@ struct ResetCardAccountRecord: Identifiable, Equatable, Sendable {
 			// callback capability. Route actions keep their own admission check.
 			break
 		case .tombstoned:
-			return "Logged out"
+			return "Signed out"
 		case .ready:
 			break
 		}
@@ -301,11 +301,11 @@ struct ResetCardAccountRecord: Identifiable, Equatable, Sendable {
 		case .available:
 			return "Available"
 		case .depleted:
-			return "Depleted"
+			return "No quota remaining"
 		case .authFailed:
 			return "Auth failed"
 		case .pluginUnready:
-			return "Plugin unready"
+			return "Provider not ready"
 		}
 	}
 }
@@ -368,15 +368,15 @@ enum ResetCardClientError: Error, Equatable, LocalizedError, Sendable, CustomDeb
 		case .transportBackpressured:
 			return "The Decodex service is busy."
 		case .outputTooLarge:
-			return "The Decodex service returned too much data."
+			return "Response too large."
 		case .commandRejected:
-			return "The reset-card request was rejected. Refresh and try again."
+			return "Reset rejected. Refresh and retry."
 		case .useDefinitelyNotDispatched:
-			return "The reset-card request was not dispatched."
+			return "Reset request not sent."
 		case .usePotentiallyDispatched:
-			return "The reset-card request may have been dispatched."
+			return "Reset delivery unconfirmed. Check status before retrying."
 		case .invalidResponse:
-			return "The Decodex service returned an invalid reset-card response."
+			return "Invalid reset response."
 		case .service(let error):
 			return error.presentation
 		}

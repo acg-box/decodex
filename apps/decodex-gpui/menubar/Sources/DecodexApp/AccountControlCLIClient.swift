@@ -105,51 +105,51 @@ enum AccountControlRejection: String, Decodable, Equatable, Sendable {
 		case .accountNotFound:
 			return "The account no longer exists."
 		case .staleAccount:
-			return "The account changed. Refresh and try again."
+			return "Account changed. Refresh and retry."
 		case .staleRoutingControl:
-			return "Account routing changed. Refresh and try again."
+			return "Routing changed. Refresh and retry."
 		case .accountInUse:
-			return "The account is in use and cannot be logged out."
+			return "Account in use. Cannot sign out."
 		case .operationUnsettled:
-			return "Another account operation is still pending."
+			return "Another account operation is pending."
 		case .operationNotFound:
-			return "The account operation no longer exists."
+			return "Account operation no longer available."
 		case .credentialAbsent:
 			return "The account has no credentials."
 		case .credentialStoreUnavailable:
 			return "The credential store is unavailable."
 		case .providerAlreadyEnrolled:
-			return "This Codex login is already added. Choose a different account on the login page, then try again."
+			return "Account already added. Choose another account on the sign-in page."
 		case .providerMismatch:
 			return "The provider account does not match."
 		case .lifecycleUnready:
-			return "The account is not ready for this action."
+			return "Account not ready for this action."
 		case .codexIsRunning:
-			return "Quit ChatGPT or Codex, then try switching again."
+			return "Quit ChatGPT or Codex, then switch again."
 		case .accountDisabled:
-			return "Enable this account before switching to it."
+			return "Enable this account before switching."
 		case .credentialMissing:
-			return "This account has no saved credential. Sign in again."
+			return "No saved sign-in. Sign in again."
 		case .credentialNeedsLogin:
-			return "This account needs you to sign in again."
+			return "Sign in again."
 		case .credentialRefreshRejected:
-			return "ChatGPT rejected the credential refresh. Sign in again."
+			return "Sign-in refresh rejected. Sign in again."
 		case .credentialRefreshUnavailable:
-			return "Credential refresh is unavailable. Try again later."
+			return "Sign-in refresh unavailable. Try later."
 		case .authSourceAccountUnknown:
-			return "The current Codex login is not in Accounts. Add that account before switching."
+			return "Add the current Codex account before switching."
 		case .authCredentialConflict:
-			return "The current Codex login and saved account could not be synchronized. Sign in again to reconnect the account."
+			return "Codex sign-in mismatch. Sign in again."
 		case .authFileUnreadable:
-			return "The Codex authentication file could not be read."
+			return "Could not read Codex sign-in."
 		case .authFileChanged:
-			return "The Codex authentication file changed. Try switching again."
+			return "Codex sign-in changed. Switch again."
 		case .authWriteFailed:
-			return "The selected account could not be written to the Codex authentication file."
+			return "Could not save Codex sign-in."
 		case .authReadbackMismatch:
-			return "The Codex authentication file did not match after switching."
+			return "Codex sign-in mismatch after switching."
 		case .routingOrderInvalid:
-			return "The account routing order is invalid."
+			return "Invalid routing order."
 		case .manualRecoveryRequired:
 			return "The account needs manual recovery."
 		}
@@ -171,9 +171,9 @@ enum AccountControlError: Error, Equatable, LocalizedError, Sendable {
 	var errorDescription: String? {
 		switch self {
 		case .invalidInput:
-			return "The account action contains invalid input."
+			return "Invalid account request."
 		case .invalidResponse:
-			return "The Decodex service returned an invalid account response."
+			return "Invalid account response. Refresh to retry."
 		case .client(let error):
 			switch error {
 			case .nativeClientUnavailable, .timedOut, .transportDisconnected:
@@ -181,22 +181,22 @@ enum AccountControlError: Error, Equatable, LocalizedError, Sendable {
 			case .transportBackpressured:
 				return "The Decodex account service is busy."
 			case .outputTooLarge:
-				return "The Decodex service returned too much account data."
+				return "Account data is too large to load."
 			case .commandRejected, .useDefinitelyNotDispatched,
 				.usePotentiallyDispatched, .invalidResponse,
 				.service:
-				return "The Decodex account service is unavailable."
+				return "Account service unavailable."
 			}
 		case .expectedRevisionMismatch:
-			return "The account changed. Refresh and try again."
+			return "Account changed. Refresh and retry."
 		case .idempotencyConflict:
-			return "The account action key conflicts with another request."
+			return "Request conflicts with another account operation."
 		case .idempotencyCapacityExceeded:
-			return "The account service cannot accept another action yet."
+			return "Account service busy. Try later."
 		case .applicationUnavailable:
 			return "The account service is unavailable."
 		case .acceptanceUnknown, .potentiallyDispatched:
-			return "The account change may have succeeded. Refresh account status before trying again."
+			return "Account change unconfirmed. Refresh before retrying."
 		case .rejected(let rejection, _):
 			return rejection.presentation
 		}
@@ -241,29 +241,29 @@ enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
 		case .loginTimedOut:
 			return "The login timed out. Try again."
 		case .deviceAuthorizationRejected:
-			return "Device-code approval failed. Check ChatGPT Security, then try again."
+			return "Device sign-in rejected. Try another sign-in method."
 		case .accountMismatch:
-			return "This login belongs to a different account."
+			return "Sign-in belongs to another account."
 		case .accountChanged:
-			return "The account changed. Close this login and try again."
+			return "Account changed. Close sign-in and retry."
 		case .accountUnavailable:
-			return "This account is not available for login."
+			return "Account unavailable for sign-in."
 		case .unsupportedPlan:
 			return "Use a Plus, Pro, Pro (More), Pro (Max), or Team account."
 		case .recoveryChanged:
-			return "This login recovery changed. Refresh the account and try again."
+			return "Sign-in recovery changed. Refresh and retry."
 		case .providerAlreadyEnrolled:
-			return "This Codex login is already added. Choose a different account on the login page, then try again."
+			return "Account already added. Choose another account on the sign-in page."
 		case .credentialStoreUnavailable:
 			return "The credential store is unavailable."
 		case .serviceUnavailable:
-			return "The Decodex account service is unavailable."
+			return "Account service unavailable."
 		case .outcomeUnknown:
-			return "The login may have completed. Refresh the account before trying again."
+			return "Sign-in unconfirmed. Refresh before retrying."
 		case .sessionNotFound:
-			return "This login session is no longer available."
+			return "Sign-in session expired or unavailable."
 		case .busy:
-			return "Another account login is already in progress."
+			return "Another sign-in is in progress."
 		}
 	}
 }

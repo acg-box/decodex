@@ -64,7 +64,10 @@ impl Storage {
 	pub(super) fn seed_conflict(&mut self) {
 		self.reconcilable = true;
 		self.seeded = true;
-		self.error = Some("A saved draft and new input both exist. Current input remains in memory; the saved draft is unchanged.".into());
+		self.error = Some(
+			"Two draft versions found. Current edits are unsaved; the saved copy is unchanged."
+				.into(),
+		);
 	}
 
 	fn empty() -> Self {
@@ -104,8 +107,9 @@ impl Storage {
 		})();
 
 		if result.is_err() {
-			state.error =
-				Some("Saved drafts could not be read. Current edits remain in memory.".into());
+			state.error = Some(
+				"Saved drafts unavailable. Keep this window open to retain current edits.".into(),
+			);
 		}
 
 		state
@@ -228,7 +232,7 @@ impl AgentSurface {
 		if self.selected.as_deref() != Some(previous.work_id.as_str())
 			|| !self.saved_prompt_editors(previous.work_id.as_str()).contains(previous)
 		{
-			return Err("Draft changed while history was being reviewed");
+			return Err("Draft changed during review");
 		}
 
 		let renewed = previous.refresh_review(fresh)?;
@@ -245,7 +249,7 @@ impl AgentSurface {
 			.get(renewed.review_token.as_str())
 			.is_some_and(|other| other != previous && other != &renewed)
 		{
-			return Err("Another draft already uses this review");
+			return Err("Another draft uses this review");
 		}
 
 		editors.remove(previous.review_token.as_str());
@@ -300,7 +304,7 @@ impl AgentSurface {
 			|| draft.fork.is_some()
 			|| draft.pending_send.is_some()
 		{
-			return Err("Recover the history edit before discarding its draft");
+			return Err("Recover the history edit before discarding this draft");
 		}
 
 		let scope =
@@ -440,7 +444,8 @@ impl AgentSurface {
 		let Some(profile) = self.draft_profiles.active.as_ref() else {
 			if self.composer_manager.is_some() {
 				self.draft_profiles.storage.error = Some(
-					"Draft service identity is unavailable. Current edits remain in memory.".into(),
+					"Draft storage unavailable. Keep this window open to retain current edits."
+						.into(),
 				);
 
 				return;
@@ -472,8 +477,10 @@ impl AgentSurface {
 				self.draft_profiles.storage.document.profiles.insert(scope, draft);
 			},
 			None =>
-				self.draft_profiles.storage.error =
-					Some("Draft identity is unavailable. Current edits remain in memory.".into()),
+				self.draft_profiles.storage.error = Some(
+					"Draft storage unavailable. Keep this window open to retain current edits."
+						.into(),
+				),
 		}
 	}
 
@@ -485,7 +492,7 @@ impl AgentSurface {
 			.draft_profiles
 			.active
 			.as_ref()
-			.ok_or("Draft service identity is unavailable.")?
+			.ok_or("Draft storage unavailable.")?
 			.draft_scope_key();
 		let mut draft = self.capture_draft_document(cx).ok_or("Draft identity is unavailable.")?;
 
@@ -501,9 +508,9 @@ impl AgentSurface {
 			prospective.recovered.push(copy.clone());
 		}
 
-		prospective.encode().map_err(
-			|_| "Free space in saved draft copies before sending. Current input is retained.",
-		)?;
+		prospective
+			.encode()
+			.map_err(|_| "Saved draft limit reached. Export or remove a copy before sending.")?;
 
 		Ok(copy)
 	}
@@ -722,7 +729,7 @@ impl AgentSurface {
 				.is_some_and(|queued| self.draft_profiles.active.as_ref() != Some(&queued.profile))
 		{
 			self.draft_profiles.storage.error =
-				Some("Draft service identity is unavailable. Nothing was sent.".into());
+				Some("Draft storage unavailable. Nothing sent.".into());
 		}
 
 		let state = &mut self.draft_profiles.storage;
@@ -734,7 +741,7 @@ impl AgentSurface {
 			if let Some(queued) = self.submission.waiting.take() {
 				self.finish_command(
 					queued.pending,
-					Err("Draft could not be saved. Nothing was sent.".into()),
+					Err("Draft not saved. Nothing sent.".into()),
 					cx,
 				);
 			}
@@ -787,15 +794,16 @@ impl AgentSurface {
 					Err(SaveFailure::Conflict) => {
 						state.reconcilable = true;
 						state.error = Some(
-							"Another window saved different drafts. Keep both copies to continue."
+							"Drafts changed in another window. Choose Keep both to continue."
 								.into(),
 						);
 					},
 					Err(SaveFailure::Invalid(reason)) => state.error = Some(reason.into()),
-					Err(SaveFailure::Failed) => state.error = Some(
-						"Drafts could not be saved. Keep this window open to retain current edits."
-							.into(),
-					),
+					Err(SaveFailure::Failed) =>
+						state.error = Some(
+							"Drafts not saved. Keep this window open to retain current edits."
+								.into(),
+						),
 				}
 
 				surface.save_draft_document(cx);
@@ -853,9 +861,8 @@ impl Drafts {
 		});
 
 		if result.uncertain {
-			result.feedback = Feedback::warning(
-				"Previous submission acceptance is unknown. Inspect the conversation before sending again.",
-			);
+			result.feedback =
+				Feedback::warning("Delivery unconfirmed. Check the conversation before resending.");
 		}
 
 		result
@@ -1756,7 +1763,7 @@ mod tests {
 			assert!(s.submission.waiting.is_none());
 			assert!(s.submission.unconfirmed.is_empty());
 			assert!(!s.sending && !s.uncertain);
-			assert!(s.feedback.contains("Nothing was sent"));
+			assert!(s.feedback.contains("Nothing sent"));
 		});
 
 		assert_eq!(store.load().unwrap().revision, 1);

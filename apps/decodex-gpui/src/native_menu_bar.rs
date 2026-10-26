@@ -53,12 +53,12 @@ pub(crate) enum NativeMenuBarFailure {
 impl NativeMenuBarFailure {
 	pub(crate) const fn detail(self) -> &'static str {
 		match self {
-			Self::NotBundled => "The native menu bar is available from staged Decodex.app builds.",
+			Self::NotBundled => "Menu bar requires a packaged Decodex.app.",
 			Self::LibraryUnavailable | Self::Incompatible | Self::HostUnavailable =>
 				"Restart Decodex.",
-			Self::ApplyFailed => "The native Swift menu bar refused the requested visibility.",
-			Self::LoginItemFailed => "macOS refused the requested login-item operation.",
-			Self::UnsupportedPlatform => "The menu-bar surface is available only on macOS.",
+			Self::ApplyFailed => "Could not change menu bar visibility.",
+			Self::LoginItemFailed => "macOS could not change the login item.",
+			Self::UnsupportedPlatform => "Menu bar is available on macOS only.",
 		}
 	}
 }

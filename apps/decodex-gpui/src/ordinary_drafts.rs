@@ -175,14 +175,14 @@ pub(super) fn creation_receipt_controls(shell: &Shell, cx: &mut Context<Shell>) 
 		let recorded = matches!(&result, Some(ConversationCreationReceiptResult::Recorded { .. }));
 		let status = match result {
 			Some(ConversationCreationReceiptResult::Recorded { .. }) =>
-				"Conversation created locally; model outcome not confirmed.",
+				"Conversation created. Model outcome unconfirmed.",
 			Some(ConversationCreationReceiptResult::NotRecorded) =>
-				"No creation record found. Original input is retained.",
+				"Creation record missing. Draft kept.",
 			Some(ConversationCreationReceiptResult::Conflict) =>
 				"Saved request does not match the service record.",
 			Some(ConversationCreationReceiptResult::Unavailable) =>
-				"Creation record is unavailable. Try again.",
-			None => "Creation outcome has not been checked.",
+				"Creation record unavailable. Try again.",
+			None => "Creation outcome not checked.",
 		};
 		let check_command = command.clone();
 
@@ -196,7 +196,8 @@ pub(super) fn creation_receipt_controls(shell: &Shell, cx: &mut Context<Shell>) 
 					.on_click(cx.listener(move |shell, _, _, cx| {
 						if !shell.conversations.check_ordinary_creation(&check_command) {
 							shell.input_status = Some(
-								"Wait for the current query or reconnect, then check again.".into(),
+								"Wait for the current request or reconnect, then check again."
+									.into(),
 							);
 						}
 
@@ -212,7 +213,7 @@ pub(super) fn creation_receipt_controls(shell: &Shell, cx: &mut Context<Shell>) 
 					.id(format!("ordinary-creation-open-{index}"))
 					.debug_selector(move || format!("ordinary-creation-open-{index}"))
 					.cursor_pointer()
-					.child("Open created conversation")
+					.child("Open conversation")
 					.on_click(cx.listener(move |shell, _, _, cx| {
 						shell.open_recorded_creation(&command, cx);
 						cx.notify();
@@ -254,26 +255,26 @@ fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			Some(ConversationTurnOutcomeResult::Observed {
 				outcome: ConversationTurnOutcomeState::Failed,
 				..
-			}) => "Provider confirmed failure. Input is retained.",
+			}) => "Model request failed. Draft kept.",
 			Some(ConversationTurnOutcomeResult::Observed {
 				outcome: ConversationTurnOutcomeState::NotSubmitted,
 				..
-			}) => "Message was not submitted. Input is retained.",
+			}) => "Message not sent. Draft kept.",
 			Some(ConversationTurnOutcomeResult::Observed {
 				outcome: ConversationTurnOutcomeState::Pending,
 				..
-			}) => "Message has no terminal outcome yet.",
+			}) => "No final outcome yet.",
 			Some(ConversationTurnOutcomeResult::Observed {
 				outcome: ConversationTurnOutcomeState::Unknown,
 				..
-			}) => "Provider outcome remains unknown. Do not resend yet.",
+			}) => "Model outcome unknown. Check status before resending.",
 			Some(ConversationTurnOutcomeResult::NotRecorded) =>
-				"No provider record found. This does not confirm non-submission.",
+				"No model record. Delivery remains unconfirmed.",
 			Some(ConversationTurnOutcomeResult::Conflict) =>
 				"Saved message does not match the service record.",
 			Some(ConversationTurnOutcomeResult::Unavailable) =>
-				"Provider evidence is unavailable. Try again.",
-			None => "Saved message outcome has not been checked.",
+				"Model record unavailable. Try again.",
+			None => "Message outcome not checked.",
 		};
 		let check = command.clone();
 
@@ -286,7 +287,8 @@ fn turn_outcome_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 					.on_click(cx.listener(move |shell, _, _, cx| {
 						if !shell.conversations.check_ordinary_turn(&check) {
 							shell.input_status = Some(
-								"Wait for the current query or reconnect, then check again.".into(),
+								"Wait for the current request or reconnect, then check again."
+									.into(),
 							);
 						}
 
@@ -352,9 +354,9 @@ fn control_state_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 			CommandPayload::ResumeConversationRouting { conversation_id } =>
 				("Resume routing", conversation_id),
 			CommandPayload::ResumeConversationEstablishment { conversation_id } =>
-				("Resume establishment", conversation_id),
+				("Resume connection", conversation_id),
 			CommandPayload::CreateConversationRoutingSuccessor { conversation_id } =>
-				("Routing successor", conversation_id),
+				("Start with a new account", conversation_id),
 			_ => continue,
 		};
 		let title = shell
@@ -363,8 +365,7 @@ fn control_state_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 			.iter()
 			.find(|task| &task.conversation_id == target)
 			.map_or(target.as_str(), |task| task.title.as_str());
-		let status = observation
-			.map_or("Saved control request has not been checked.", |value| value.message());
+		let status = observation.map_or("Saved request not checked.", |value| value.message());
 		let check = command.clone();
 
 		rows = rows.child(
@@ -377,7 +378,8 @@ fn control_state_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 					.on_click(cx.listener(move |shell, _, _, cx| {
 						if !shell.conversations.check_ordinary_control(&check) {
 							shell.input_status = Some(
-								"Wait for the current query or reconnect, then check again.".into(),
+								"Wait for the current request or reconnect, then check again."
+									.into(),
 							);
 						}
 

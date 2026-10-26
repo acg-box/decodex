@@ -20,10 +20,12 @@ impl AgentSurface {
 		_value: &Value,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let mut panel =
-			gpui::div().id("installation-suggestion").flex().flex_col().gap_2().child(
-				"Configure this integration in Codex for this account, then retry the task.",
-			);
+		let mut panel = gpui::div()
+			.id("installation-suggestion")
+			.flex()
+			.flex_col()
+			.gap_2()
+			.child("Set up this integration in Codex for this account, then retry.");
 
 		for (action, label) in [("decline", "Decline"), ("cancel", "Cancel")] {
 			panel = panel.child(mcp_forms::mcp_button(

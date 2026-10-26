@@ -107,8 +107,7 @@ impl AgentSurface {
 		self.install_prompt_editors(draft.clone(), cx).expect("install fixture prompt editors");
 
 		self.prompt_edit.feedback =
-			"Review the earlier message. Later turns will be removed only after confirmation."
-				.into();
+			"Review the message. Removing later turns requires confirmation.".into();
 
 		if remove {
 			self.begin_prompt_removal(1, &draft, cx);
@@ -154,13 +153,28 @@ impl AgentSurface {
 
 					runtime.block_on(async {
 						let client = AgentClient::new(profile);
-						let input = client.resolve_prompt_media(draft.work_id.clone(), draft.thread_id.clone(), &draft.input).await
-							.map_err(|_| "Local media locations could not be resolved from the current native process. History is unchanged.")?;
+						let input = client
+							.resolve_prompt_media(
+								draft.work_id.clone(),
+								draft.thread_id.clone(),
+								&draft.input,
+							)
+							.await
+							.map_err(|_| "Could not resolve media paths. History unchanged.")?;
 
 						confirmation::readable_local_media(&input)?;
 
-						client.preflight_prompt_input(draft.work_id, draft.thread_id, &input, &execution).await
-							.map_err(|_| "The message or conversation settings could not be checked. History is unchanged.")?;
+						client
+							.preflight_prompt_input(
+								draft.work_id,
+								draft.thread_id,
+								&input,
+								&execution,
+							)
+							.await
+							.map_err(
+								|_| "Could not check the message or settings. History unchanged.",
+							)?;
 
 						Ok(input)
 					})
@@ -176,7 +190,7 @@ impl AgentSurface {
 			return;
 		}
 
-		self.prompt_edit.feedback = "Checking your edit and conversation settings…".into();
+		self.prompt_edit.feedback = "Checking the edit and settings…".into();
 		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
 			let result = receive.await.unwrap_or(Err("Input check stopped"));
 			let _ = surface.update(cx, |s, cx| {
@@ -189,7 +203,7 @@ impl AgentSurface {
 					|| s.draft_profiles.execution.choice(expected.work_id.as_str())
 						!= expected_execution
 				{
-					"Draft or execution settings changed during the check. Check the current input again."
+					"Draft or settings changed. Check the edit again."
 				} else {
 					match result {
 						Ok(input) => {
@@ -198,8 +212,7 @@ impl AgentSurface {
 							resolved.input = input;
 
 							match s.install_prompt_editors(resolved, cx) {
-								Ok(()) =>
-									"Input checked and local media locations saved. History is unchanged.",
+								Ok(()) => "Input checked. Media paths saved. History unchanged.",
 								Err(message) => message,
 							}
 						},
@@ -282,29 +295,37 @@ impl AgentSurface {
 		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
 			let result = receive.await.unwrap_or(Err("History recovery stopped"));
 			let _ = surface.update(cx, |s, cx| {
-				if s.prompt_edit.key != key || !s.prompt_editor_source_current() { return; }
+				if s.prompt_edit.key != key || !s.prompt_editor_source_current() {
+					return;
+				}
 
 				s.prompt_edit.task = None;
 
 				if s.prompt_edit.draft.as_ref() != Some(&expected) {
-					s.prompt_edit.feedback = "The draft changed during recovery. Check edit status again.".into();
+					s.prompt_edit.feedback = "Draft changed. Check edit status again.".into();
 				} else {
 					match result {
-						Ok((recovered, phase)) => match s.stage_prompt_editor(recovered.clone(), cx) {
-							Ok(()) => {
-								s.prompt_edit.draft = Some(recovered);
-								s.prompt_edit.feedback = match phase {
-									PromptEditPhase::Unchanged => "History is unchanged. Edited input retained; recheck original history before confirming again.",
-								PromptEditPhase::Restored => "Edit status recovered. Your edited draft is kept; nothing was sent.",
-									PromptEditPhase::Applied => "History updated. Restoring your edited draft…",
-									_ => "History edit remains uncertain. Retain this draft and recover again; do not repeat confirmation.",
-								}.into();
-								s.history_requested_for = None;
+						Ok((recovered, phase)) =>
+							match s.stage_prompt_editor(recovered.clone(), cx) {
+								Ok(()) => {
+									s.prompt_edit.draft = Some(recovered);
+									s.prompt_edit.feedback = match phase {
+										PromptEditPhase::Unchanged =>
+											"History unchanged. Review it again before confirming.",
+										PromptEditPhase::Restored =>
+											"Edit status recovered. Draft kept; nothing sent.",
+										PromptEditPhase::Applied =>
+											"History updated. Restoring your draft…",
+										_ =>
+											"Edit unconfirmed. Keep this draft and check status; do not confirm again.",
+									}
+									.into();
+									s.history_requested_for = None;
 
-								s.load_history(cx);
+									s.load_history(cx);
+								},
+								Err(message) => s.prompt_edit.feedback = message.into(),
 							},
-							Err(message) => s.prompt_edit.feedback = message.into(),
-						},
 						Err(message) => s.prompt_edit.feedback = message.into(),
 					}
 				}
@@ -368,11 +389,9 @@ impl AgentSurface {
 			..Default::default()
 		};
 		self.prompt_edit.feedback = match self.install_prompt_editors(draft, cx) {
-			Ok(()) if sending => "Draft reopened. Check delivery before sending again.".into(),
-			Ok(()) if pending =>
-				"Draft reopened. Read the history edit status before continuing.".into(),
-			Ok(()) =>
-				"Draft reopened. History must be reviewed again before an edit is confirmed.".into(),
+			Ok(()) if sending => "Draft reopened. Check delivery before resending.".into(),
+			Ok(()) if pending => "Draft reopened. Check edit status before continuing.".into(),
+			Ok(()) => "Draft reopened. Review history before confirming.".into(),
 			Err(error) => error.into(),
 		};
 
@@ -420,7 +439,7 @@ impl AgentSurface {
 			profile: Some(profile.clone()),
 			work: work.into(),
 			thread: thread.into(),
-			feedback: "Reading the original input…".into(),
+			feedback: "Reading original message…".into(),
 			..Default::default()
 		};
 
@@ -479,13 +498,13 @@ impl AgentSurface {
 							.await
 							.map_err(|_| "Original input could not be read")?;
 						let evidence =
-							status.evidence.ok_or("This input is not available for editing")?;
+							status.evidence.ok_or("This message cannot be edited")?;
 
 						if status.phase != PromptEditPhase::Review
 							|| evidence.before_turn_id != turn_id
 							|| evidence.item_id != item_id
 						{
-							return Err("This input is not available for editing");
+							return Err("This message cannot be edited");
 						}
 
 						let input = PromptDraft::new(content.ok_or("Original input is missing")?)?;
@@ -523,19 +542,21 @@ impl AgentSurface {
 		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
 			let result = receive.await.unwrap_or(Err("Prompt review stopped"));
 			let _ = surface.update(cx, |s, cx| {
-				if s.prompt_edit.key != key || !s.prompt_editor_source_current() { return; }
+				if s.prompt_edit.key != key || !s.prompt_editor_source_current() {
+					return;
+				}
 
 				s.prompt_edit.task = None;
 
 				match result {
 					Ok((draft, turns)) => {
-						let reviewed = match previous.as_ref() { Some(previous) => s.renew_prompt_editor(previous, &draft, cx), None => Ok(draft) };
-
-						if let Err(message) = reviewed.and_then(|draft| s.install_prompt_editors(draft, cx)) {
-							s.prompt_edit.feedback = message.into();
-						} else {
-							s.prompt_edit.feedback = format!("Editing this input would remove {turns} turns, including this one. Workspace file changes would remain. History is unchanged.");
-						}
+						s.prompt_edit.feedback =
+							match s.apply_prompt_review(previous.as_ref(), draft, cx) {
+								Ok(()) => format!(
+									"Removes {turns} turns, including this one. File changes remain. Confirmation required."
+								),
+								Err(message) => message.into(),
+							};
 					},
 					Err(message) => s.prompt_edit.feedback = message.into(),
 				}
@@ -545,6 +566,20 @@ impl AgentSurface {
 		}));
 
 		cx.notify();
+	}
+
+	fn apply_prompt_review(
+		&mut self,
+		previous: Option<&DesktopPromptEditDraft>,
+		draft: DesktopPromptEditDraft,
+		cx: &mut Context<Self>,
+	) -> Result<(), &'static str> {
+		let reviewed = match previous {
+			Some(previous) => self.renew_prompt_editor(previous, &draft, cx)?,
+			None => draft,
+		};
+
+		self.install_prompt_editors(reviewed, cx)
 	}
 
 	fn prompt_editor_source_current(&self) -> bool {
@@ -713,7 +748,7 @@ impl AgentSurface {
 			return self
 				.workspace_action(
 					"prompt-recovery-notice".into(),
-					"An unfinished edit needs attention · Review".into(),
+					"Unfinished edit · Review".into(),
 					|s, cx| {
 						s.workspace.details_visible = true;
 
@@ -832,7 +867,7 @@ impl AgentSurface {
 		panel = panel.child(if self.prompt_editor_saved(draft) {
 			"Edited draft saved locally."
 		} else {
-			"Edited draft is not yet confirmed saved locally."
+			"Edited draft save unconfirmed."
 		});
 
 		let expected = draft.clone();
@@ -890,7 +925,7 @@ impl AgentSurface {
 			let branch = expected.clone();
 			let after = expected.clone();
 
-			panel = panel.child("Choose where to continue. A new branch keeps the original conversation unchanged. Editing the original removes the selected turn and all later turns; workspace file changes remain. Nothing is sent automatically.");
+			panel = panel.child("A new branch preserves the original. Editing the original removes this turn and all later turns; file changes remain. Sending is a separate step.");
 
 			if expected.confirmation_key.is_none() {
 				panel = panel

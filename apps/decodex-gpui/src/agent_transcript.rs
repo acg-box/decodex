@@ -54,7 +54,7 @@ impl AgentSurface {
 
 	fn loaded_transcript(&self, target: &(String, String)) -> Option<String> {
 		let mut text = String::from(
-			"# Loaded conversation excerpt\n\nThis is the currently loaded display text. Earlier history or shortened content can be missing.\n\n",
+			"# Loaded conversation excerpt\n\nPartial history; earlier or shortened content may be missing.\n\n",
 		);
 		let start = text.len();
 
@@ -167,9 +167,8 @@ impl AgentSurface {
 							!= Some(&source)
 					{
 						s.timeline.transcript_busy = false;
-						s.feedback = Feedback::warning(
-							"Conversation source changed. Export again from the selected conversation.",
-						);
+						s.feedback =
+							Feedback::warning("Conversation changed. Select it and export again.");
 
 						cx.notify();
 
@@ -188,9 +187,8 @@ impl AgentSurface {
 				let _ = surface.update(cx, |s, cx| {
 					s.timeline.transcript_busy = false;
 					s.timeline.transcript_failed = true;
-					s.feedback = Feedback::error(
-						"Complete history could not be exported. Retry, or explicitly export the loaded excerpt.",
-					);
+					s.feedback =
+						Feedback::error("Full export failed. Retry or export the loaded excerpt.");
 
 					cx.notify();
 				});
@@ -219,7 +217,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> bool {
 		if loaded && excerpt.is_none() {
-			self.feedback = Feedback::warning("No loaded conversation text is available.");
+			self.feedback = Feedback::warning("No conversation text loaded.");
 
 			cx.notify();
 
@@ -255,11 +253,11 @@ fn write_transcript(path: &Path, text: &str) -> Result<(), &'static str> {
 		.create_new(true)
 		.mode(0o600)
 		.open(path)
-		.map_err(|_| "Cannot create export. Choose a new filename.")?;
+		.map_err(|_| "Could not create file. Choose another name.")?;
 
 	file.write_all(text.as_bytes())
 		.and_then(|_| file.sync_all())
-		.map_err(|_| "The file could not be saved completely.")
+		.map_err(|_| "File not fully saved.")
 }
 
 #[cfg(test)]

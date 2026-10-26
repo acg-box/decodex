@@ -136,7 +136,7 @@ fn hook_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppCo
 			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
 			assert!(s.hook_settings.task.is_none());
 			assert!(!s.hook_settings.reviewed);
-			assert!(s.hook_settings.feedback.contains("could not be confirmed"));
+			assert!(s.hook_settings.feedback.contains("unconfirmed"));
 			assert!(matches!(
 				s.hook_settings.state,
 				Some(AgentHookSettingsState::Available { can_update: false, .. })
@@ -342,7 +342,7 @@ fn ordinary_refresh_keeps_hook_read_and_write_readback(cx: &mut TestAppContext) 
 			assert_eq!(s.hook_settings.reviewed, !saving);
 
 			if saving {
-				assert!(s.hook_settings.feedback.contains("could not be confirmed"));
+				assert!(s.hook_settings.feedback.contains("unconfirmed"));
 			}
 		});
 	}

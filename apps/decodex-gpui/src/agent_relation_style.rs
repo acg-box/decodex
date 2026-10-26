@@ -172,7 +172,7 @@ impl AgentSurface {
 			.child(lights)
 			.child("Bars: tokens · time · speed")
 			.child("Rulers: 2M tokens · 30 min · 100 tok/s")
-			.child("Fixed display scales, not limits or completion")
+			.child("Display scales · No limits or completion implied")
 			.into_any_element()
 	}
 }

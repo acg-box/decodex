@@ -58,7 +58,7 @@ impl AgentSurface {
 		self.reset_memory_summary();
 
 		self.memory_summary.owner = Some((work.into(), thread.clone()));
-		self.memory_summary.feedback = "Reading native memory…".into();
+		self.memory_summary.feedback = "Reading memory…".into();
 
 		let epoch = self.memory_summary.epoch;
 		let generation = self.generation;
@@ -88,11 +88,11 @@ impl AgentSurface {
 				match result {
 					Ok(Some(text)) => {
 						s.memory_summary.text = Some(text);
-						s.memory_summary.feedback = "Native memory summary · Read-only".into();
+						s.memory_summary.feedback = "Memory summary · Read-only".into();
 					},
-					Ok(None) => s.memory_summary.feedback =
-						"No summary is available. Native memory may be disabled, missing or empty."
-							.into(),
+					Ok(None) =>
+						s.memory_summary.feedback =
+							"No memory summary. Memory may be off, missing or empty.".into(),
 					Err(error) => s.memory_summary.feedback = error.into(),
 				}
 
@@ -182,7 +182,7 @@ async fn read(
 		let page = client
 			.memory_summary(work.clone(), thread.clone(), digest.clone(), complete.len())
 			.await
-			.map_err(|_| "Memory read failed. Refresh to try again.")?;
+			.map_err(|_| "Could not read memory. Refresh to retry.")?;
 
 		match page {
 			AgentMemoryResult::Empty { .. } if complete.is_empty() => return Ok(None),
@@ -201,7 +201,7 @@ async fn read(
 					|| total.is_some_and(|n| n != total_bytes)
 					|| digest.as_ref().is_some_and(|d| d.as_str() != actual)
 				{
-					return Err("Memory changed during reading. Refresh the summary.");
+					return Err("Memory changed. Refresh the summary.");
 				}
 
 				digest =
@@ -211,12 +211,12 @@ async fn read(
 				complete.push_str(&text);
 
 				if complete.len() > total_bytes {
-					return Err("Memory page exceeds its declared length.");
+					return Err("Memory page length is invalid.");
 				}
 
 				if let Some(next) = next_offset {
 					if next != complete.len() || next <= offset {
-						return Err("Memory pages did not advance.");
+						return Err("Memory paging stalled.");
 					}
 				} else {
 					return if complete.len() == total_bytes {
@@ -226,8 +226,7 @@ async fn read(
 					};
 				}
 			},
-			_ =>
-				return Err("Memory is unavailable. Open the conversation normally, then refresh."),
+			_ => return Err("Memory unavailable. Open the conversation, then refresh."),
 		}
 	}
 }

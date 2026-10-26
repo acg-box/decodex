@@ -227,7 +227,7 @@ struct AccountReauthenticationView: View {
 		.contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
 		.help("Copy the code and open the sign-in page")
 		.accessibilityLabel("One-time sign-in code \(prompt.userCode)")
-		.accessibilityHint("Activation copies the code and opens the sign-in page")
+		.accessibilityHint("Copies the code and opens sign-in")
 		.accessibilityAction(named: Text("Copy code and open sign-in page")) {
 			activate(prompt)
 		}

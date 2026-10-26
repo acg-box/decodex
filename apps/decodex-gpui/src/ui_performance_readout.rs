@@ -76,7 +76,7 @@ impl Content {
 			.map_or_else(|| "—".into(), crate::shell::agent_surface::compact_tokens);
 		let mut data = Work {
 			label: format!(
-				"Live activity: {total} recorded tokens, including cached input. Output rate {} tok/s. Retains the most recent measured rate when generation stops. Tool and user waits do not count as generation.",
+				"{total} recorded tokens, including cached input. Output: {} tok/s. Last measured rate is kept while idle; tool and user waits excluded.",
 				rate
 			),
 			total,

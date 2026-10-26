@@ -118,46 +118,14 @@ impl AgentSurface {
 		let Some(source) = self.snapshot.as_ref().and_then(|s| s.runtime_source.clone()) else {
 			return;
 		};
-		let Some(thread) = self
-			.snapshot
-			.as_ref()
-			.and_then(|s| {
-				s.work_items.iter().find(|w| {
-					w.id == work
-						&& w.active_turn_id.as_deref() == Some(&turn)
-						&& w.dispatch_state == AgentDispatchStateDto::Running
-				})
-			})
-			.and_then(|w| w.codex_thread_id.clone())
-		else {
+		let Some(thread) = self.live_reviewer_thread(&work, &turn) else {
 			return;
 		};
 		let Ok(work_id) = EntityId::new(work.clone()) else {
 			return;
 		};
 		let action = if let Some(edit) = edit {
-			let Some(AgentLiveReviewerState::Available {
-				thread_id,
-				turn_id,
-				review_token,
-				can_update: true,
-				model_choices,
-				..
-			}) = &self.live_reviewer.state
-			else {
-				return;
-			};
-
-			if self.live_reviewer.work.as_ref() != Some(&work)
-				|| turn_id.as_str() != turn
-				|| thread_id.as_str() != thread
-			{
-				return;
-			}
-
-			let Some(action) =
-				edit.action(&work_id, turn_id, review_token, model_choices.as_deref())
-			else {
+			let Some(action) = self.live_reviewer_edit(&work_id, &thread, &turn, edit) else {
 				return;
 			};
 
@@ -180,32 +148,58 @@ impl AgentSurface {
 			Some((outcome, state))
 		});
 
-		self.live_reviewer.task=Some(cx.spawn(async move |surface,cx| {
-			let result=future.await;
-			let _=surface.update(cx,|s,cx| {
-				if s.live_reviewer.epoch!=epoch {return;}
+		self.live_reviewer.task = Some(cx.spawn(async move |surface, cx| {
+			let result = future.await;
+			let _ = surface.update(cx, |s, cx| {
+				if s.live_reviewer.epoch != epoch {
+					return;
+				}
 
-				s.live_reviewer.task=None;
+				s.live_reviewer.task = None;
 
-				let current=s.snapshot.as_ref().is_some_and(|snapshot| snapshot.runtime_source.as_ref()==Some(&source)
-					&& snapshot.work_items.iter().any(|w| w.id==work && w.codex_thread_id.as_deref()==Some(&thread) && w.active_turn_id.as_deref()==Some(&turn) && w.dispatch_state==AgentDispatchStateDto::Running));
+				let current = s.snapshot.as_ref().is_some_and(|snapshot| {
+					snapshot.runtime_source.as_ref() == Some(&source)
+						&& snapshot.work_items.iter().any(|w| {
+							w.id == work
+								&& w.codex_thread_id.as_deref() == Some(&thread)
+								&& w.active_turn_id.as_deref() == Some(&turn)
+								&& w.dispatch_state == AgentDispatchStateDto::Running
+						})
+				});
 
-				if !current||s.selected.as_ref()!=Some(&work) {s.reset_live_reviewer();cx.notify();return;}
+				if !current || s.selected.as_ref() != Some(&work) {
+					s.reset_live_reviewer();
+					cx.notify();
 
-				let (outcome,state)=result.unwrap_or((None,AgentLiveReviewerState::Unavailable));
+					return;
+				}
+
+				let (outcome, state) =
+					result.unwrap_or((None, AgentLiveReviewerState::Unavailable));
 
 				s.live_reviewer.reviewed = !saving;
-
-				s.live_reviewer.feedback=match outcome {
-					Some(Ok(AgentCommandResponse::Accepted {..}))=>Feedback::info("Published for subsequent steps of this turn. This does not confirm a later inference used the selection."),
-					Some(Ok(AgentCommandResponse::Rejected {..}))=>Feedback::error("The edit was not accepted. Refresh and review the current turn."),
-					Some(_)=>Feedback::warning("Publication could not be confirmed. No automatic retry was made."),
-					None if saving=>Feedback::warning("The change could not be confirmed. Check its status before editing again."),
-					None if matches!(state,AgentLiveReviewerState::Unavailable)=>Feedback::warning("No editable active turn is available. Refresh the task."),
-					None=>Feedback::neutral("Changes apply to subsequent steps of this turn. Saved task defaults stay unchanged."),
+				s.live_reviewer.feedback = match outcome {
+					Some(Ok(AgentCommandResponse::Accepted { .. })) => Feedback::info(
+						"Selection published for upcoming steps. Its use is not yet confirmed.",
+					),
+					Some(Ok(AgentCommandResponse::Rejected { .. })) =>
+						Feedback::error("Change rejected. Refresh this turn."),
+					Some(_) => Feedback::warning("Change unconfirmed. No automatic retry."),
+					None if saving =>
+						Feedback::warning("Change unconfirmed. Refresh before editing again."),
+					None if matches!(state, AgentLiveReviewerState::Unavailable) =>
+						Feedback::warning("No editable active turn. Refresh the conversation."),
+					None => Feedback::neutral(
+						"Applies to upcoming steps in this turn. Conversation defaults stay unchanged.",
+					),
 				};
+				s.live_reviewer.state = Some(match state {
+					AgentLiveReviewerState::Available { ref thread_id, ref turn_id, .. }
+						if thread_id.as_str() != thread || turn_id.as_str() != turn =>
+						AgentLiveReviewerState::Unavailable,
+					other => other,
+				});
 
-				s.live_reviewer.state=Some(match state {AgentLiveReviewerState::Available {ref thread_id,ref turn_id,..} if thread_id.as_str()!=thread || turn_id.as_str()!=turn=>AgentLiveReviewerState::Unavailable,other=>other});
 				cx.notify();
 			});
 		}));
@@ -284,8 +278,7 @@ impl AgentSurface {
 					panel = panel.child(self.live_model_controls(work, models, cx));
 				}
 
-				panel = panel
-					.child("Guardian review routing is controlled from global Guardian settings.");
+				panel = panel.child("Review routing follows global Guardian settings.");
 			}
 		}
 
@@ -398,6 +391,48 @@ impl AgentSurface {
 }
 
 impl AgentSurface {
+	fn live_reviewer_edit(
+		&self,
+		work_id: &EntityId,
+		thread: &str,
+		turn: &str,
+		edit: Edit,
+	) -> Option<AgentActionDto> {
+		let Some(AgentLiveReviewerState::Available {
+			thread_id,
+			turn_id,
+			review_token,
+			can_update: true,
+			model_choices,
+			..
+		}) = &self.live_reviewer.state
+		else {
+			return None;
+		};
+
+		if self.live_reviewer.work.as_deref() != Some(work_id.as_str())
+			|| turn_id.as_str() != turn
+			|| thread_id.as_str() != thread
+		{
+			return None;
+		}
+
+		edit.action(work_id, turn_id, review_token, model_choices.as_deref())
+	}
+
+	fn live_reviewer_thread(&self, work: &str, turn: &str) -> Option<String> {
+		self.snapshot
+			.as_ref()
+			.and_then(|snapshot| {
+				snapshot.work_items.iter().find(|item| {
+					item.id == work
+						&& item.active_turn_id.as_deref() == Some(turn)
+						&& item.dispatch_state == AgentDispatchStateDto::Running
+				})
+			})
+			.and_then(|item| item.codex_thread_id.clone())
+	}
+
 	fn begin_live_settings_review(&mut self, work: &str, saving: bool) -> u64 {
 		self.live_reviewer.epoch = self.live_reviewer.epoch.wrapping_add(1);
 
@@ -409,7 +444,7 @@ impl AgentSurface {
 		self.live_reviewer.feedback = Feedback::loading(if saving {
 			"Updating current-turn settings…"
 		} else {
-			"Reading current-turn operation state…"
+			"Checking this turn’s settings…"
 		});
 
 		epoch

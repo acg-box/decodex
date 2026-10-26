@@ -23,7 +23,7 @@ mod platform {
 				.parent()
 				.and_then(std::path::Path::parent)
 				.filter(|p| p.file_name().is_some_and(|n| n == "Contents"))
-				.ok_or("Application installation is available from Decodex.app.")?;
+				.ok_or("App installation requires Decodex.app.")?;
 			let path = CString::new(
 				contents.join("Frameworks/libDecodexMenuBar.dylib").to_string_lossy().as_bytes(),
 			)
@@ -32,7 +32,7 @@ mod platform {
 			let image = unsafe { libc::dlopen(path.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) };
 
 			if image.is_null() {
-				return Err("The native update framework is unavailable.".into());
+				return Err("Updater unavailable.".into());
 			}
 
 			// SAFETY: the checked non-null symbols have these exact C ABIs in UpdateHost.swift.
@@ -56,7 +56,7 @@ mod platform {
 			let host = unsafe { create() };
 
 			if host.is_null() {
-				return Err("App updates are not configured for this build. Codex components can still be prepared and repaired.".into());
+				return Err("App updates unavailable in this build. Codex component controls remain available.".into());
 			}
 
 			Ok(Self { _image: image, host, check, destroy })
@@ -67,7 +67,7 @@ mod platform {
 			if unsafe { (self.check)(self.host) } {
 				Ok(())
 			} else {
-				Err("An update check is already in progress.".into())
+				Err("Update check in progress.".into())
 			}
 		}
 	}
@@ -83,11 +83,7 @@ mod platform {
 		// SAFETY: image is a retained dlopen handle; the symbol name is nul-terminated.
 		let address = unsafe { libc::dlsym(image, name.as_ptr()) };
 
-		if address.is_null() {
-			Err("The native update framework has an incompatible interface.".into())
-		} else {
-			Ok(address)
-		}
+		if address.is_null() { Err("Updater version incompatible.".into()) } else { Ok(address) }
 	}
 }
 
@@ -115,7 +111,7 @@ impl NativeUpdater {
 
 		#[cfg(any(not(target_os = "macos"), test))]
 		{
-			Err("Application installation is available from Decodex.app on macOS.".into())
+			Err("App installation requires Decodex.app on macOS.".into())
 		}
 	}
 }

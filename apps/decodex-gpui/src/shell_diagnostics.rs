@@ -106,10 +106,10 @@ pub(super) fn content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) 
 fn issue_description(issue: DoctorIssue) -> (&'static str, &'static str) {
 	match issue {
 		DoctorIssue::Authentication =>
-			("Account access needs attention", "Open Accounts to check sign-in and availability."),
+			("Account access needs attention", "Check sign-in and availability in Accounts."),
 		DoctorIssue::ConfigurationMissing | DoctorIssue::ConfigurationMalformed => (
 			"App settings could not be read",
-			"Restart Decodex, then check again. Copy the report if the problem continues.",
+			"Restart and check again. Copy the report if the problem continues.",
 		),
 		DoctorIssue::ConfigurationVersion | DoctorIssue::ProtocolVersionMismatch =>
 			("App components do not match", "Open Updates, then restart Decodex."),
@@ -119,17 +119,15 @@ fn issue_description(issue: DoctorIssue) -> (&'static str, &'static str) {
 		| DoctorIssue::DatabaseIncompatible
 		| DoctorIssue::UnsafeDatabaseAuthority
 		| DoctorIssue::Integrity =>
-			("Saved data could not be checked", "Copy the report for help with local storage."),
+			("Saved data could not be checked", "Copy the report for storage troubleshooting."),
 		DoctorIssue::ProtocolDisconnected
 		| DoctorIssue::ServerIdentityMismatch
 		| DoctorIssue::ServerIdentityUnavailable =>
-			("Local connection needs attention", "Restart Decodex to reconnect, then check again."),
+			("Local connection needs attention", "Restart to reconnect, then check again."),
 		DoctorIssue::UnsafeHostPath =>
-			("A required folder is unavailable", "Copy the report for help with local file access."),
-		DoctorIssue::Plugin => (
-			"A required plugin is unavailable",
-			"Copy the report for help with the configured plugins.",
-		),
+			("A required folder is unavailable", "Copy the report for file access troubleshooting."),
+		DoctorIssue::Plugin =>
+			("A required plugin is unavailable", "Copy the report for plugin troubleshooting."),
 		DoctorIssue::NotProbed | DoctorIssue::Disabled => ("Check incomplete", "Check again."),
 	}
 }
@@ -217,13 +215,6 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 						.smooth(),
 					)
 				}),
-		)
-		.child(
-			gpui::div()
-				.text_size(gpui::px(11.5))
-				.line_height(gpui::px(16.0))
-				.text_color(ui_theme::rgb(TEXT_MUTED))
-				.child("Checks cover local services. Chat errors appear in the input bar."),
 		)
 		.child(details_toggle(shell, cx));
 

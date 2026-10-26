@@ -260,9 +260,9 @@ async fn load(
 		} = result
 		else {
 			return Err(match result {
-				AgentMediaResult::Unsupported => "Preview is not available for this image source.",
-				AgentMediaResult::CapacityExceeded => "Image exceeds the preview size limit.",
-				_ => "Image changed or is no longer available. Select Preview to retry.",
+				AgentMediaResult::Unsupported => "Preview unavailable for this source.",
+				AgentMediaResult::CapacityExceeded => "Image too large to preview.",
+				_ => "Image changed or unavailable. Select Preview to retry.",
 			});
 		};
 
@@ -282,7 +282,7 @@ async fn load(
 				"image/jpeg" => ImageFormat::Jpeg,
 				"image/webp" => ImageFormat::Webp,
 				"image/gif" => ImageFormat::Gif,
-				_ => return Err("This content is not a supported image."),
+				_ => return Err("Unsupported image format."),
 			};
 
 			return Ok(Arc::new(gpui::Image::from_bytes(format, all)));

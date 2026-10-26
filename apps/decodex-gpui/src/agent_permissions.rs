@@ -173,17 +173,13 @@ impl AgentSurface {
 
 				s.permission_profiles.reviewed = !saving;
 				s.permission_profiles.feedback = match outcome {
-					Some(Ok(AgentCommandResponse::Accepted { .. })) => Feedback::info(
-						"Selection queued. The native state below determines whether it took effect.",
-					),
-					Some(Ok(AgentCommandResponse::Rejected { .. })) => Feedback::error(
-						"Selection was not accepted. Refresh the permissions before choosing again.",
-					),
-					Some(_) =>
-						Feedback::warning("Selection could not be confirmed. It was not retried."),
-					None if saving => Feedback::warning(
-						"Selection could not be confirmed. Refresh its saved state.",
-					),
+					Some(Ok(AgentCommandResponse::Accepted { .. })) =>
+						Feedback::info("Selection queued. Check current permissions below."),
+					Some(Ok(AgentCommandResponse::Rejected { .. })) =>
+						Feedback::error("Selection rejected. Refresh before retrying."),
+					Some(_) => Feedback::warning("Selection unconfirmed. No automatic retry."),
+					None if saving =>
+						Feedback::warning("Selection unconfirmed. Refresh before retrying."),
 					None => Feedback::default(),
 				};
 				s.permission_profiles.state = Some(match state {
@@ -209,9 +205,9 @@ impl AgentSurface {
 		self.permission_profiles.state = None;
 		self.permission_profiles.reviewed = false;
 		self.permission_profiles.feedback = Feedback::loading(if saving {
-			"Submitting permission selection…"
+			"Updating permissions…"
 		} else {
-			"Reading native permission profiles…"
+			"Reading permissions…"
 		});
 
 		epoch
@@ -254,10 +250,10 @@ impl AgentSurface {
 				panel = panel
 					.child(format!(
 						"Configured profile: {}",
-						profile_id.as_ref().map_or("Unnamed native policy", |id| id.as_str())
+						profile_id.as_ref().map_or("Unnamed policy", |id| id.as_str())
 					))
 					.child(format!("Directory: {}", cwd.as_str()))
-					.child("An active step may still use the permissions it started with.");
+					.child("An active step keeps its existing permissions.");
 
 				if let Some(state) = last_outcome {
 					panel = panel.child(format!("Last selection: {}", label(*state)));
@@ -268,7 +264,7 @@ impl AgentSurface {
 						"permission-settings-read-only",
 						"Read-only",
 						&Feedback::neutral(
-							"Permissions cannot change while the task is changing state.",
+							"Wait for the task to settle before changing permissions.",
 						),
 					));
 				}
@@ -311,13 +307,13 @@ impl AgentSurface {
 			Some(AgentPermissionState::Pending { profile_id, state }) => {
 				panel = panel
 					.child(format!("{}: {}", profile_id.as_str(), label(*state)))
-					.child("Refresh to check the native state. The selection will not be resent.");
+					.child("Refresh to check. The selection will not be resent.");
 			},
 			Some(AgentPermissionState::Unsupported) => {
 				panel = panel.children(ui_feedback::inline_feedback(
 					"permission-settings-unsupported",
 					"Not available",
-					&Feedback::info("This Codex version does not provide permission profiles."),
+					&Feedback::info("Permission profiles unsupported by this Codex version."),
 				));
 			},
 			Some(AgentPermissionState::Unavailable)
@@ -326,9 +322,7 @@ impl AgentSurface {
 				panel = panel.children(ui_feedback::inline_feedback(
 					"permission-settings-unavailable",
 					"Permissions unavailable",
-					&Feedback::warning(
-						"Current native permissions are unavailable. Refresh after the task reconnects.",
-					),
+					&Feedback::warning("Permissions unavailable. Reconnect and refresh."),
 				));
 			},
 			Some(AgentPermissionState::Unavailable) | None => {},
@@ -341,7 +335,7 @@ impl AgentSurface {
 		gpui::div().flex().flex_col().gap_2().child("Task permissions").child(
 			mcp_forms::mcp_button(
 				"permission-profiles-read".into(),
-				"Review / refresh permissions".into(),
+				"Refresh permissions".into(),
 				false,
 				cx,
 				move |s, cx| s.update_permission_profiles(owner.clone(), None, cx),
@@ -352,11 +346,11 @@ impl AgentSurface {
 fn label(state: AgentPermissionOutcome) -> &'static str {
 	match state {
 		AgentPermissionOutcome::Reserved => "Awaiting confirmation",
-		AgentPermissionOutcome::Queued => "Queued; awaiting native state",
+		AgentPermissionOutcome::Queued => "Queued · Awaiting confirmation",
 		AgentPermissionOutcome::Unknown => "Unconfirmed",
 		AgentPermissionOutcome::Rejected => "Rejected",
-		AgentPermissionOutcome::TargetObserved => "Target profile observed",
-		AgentPermissionOutcome::Superseded => "Replaced by current native permissions",
+		AgentPermissionOutcome::TargetObserved => "Current profile matches",
+		AgentPermissionOutcome::Superseded => "Replaced by current permissions",
 	}
 }
 

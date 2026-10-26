@@ -250,7 +250,7 @@ impl AgentSurface {
 				.observations
 				.get(&work.id)
 				.map(settings_text)
-				.unwrap_or_else(|| "Reading native settings…".into());
+				.unwrap_or_else(|| "Reading settings…".into());
 			let feedback = match state {
 				Some(AgentModelSettingsResult::Available { .. }) => None,
 				Some(AgentModelSettingsResult::Unavailable) =>
@@ -272,7 +272,7 @@ impl AgentSurface {
 						})),
 				)
 				.child(agent_surface::muted(
-					"Last read of task settings. Individual turns may use different settings.",
+					"Last known conversation settings. Individual turns can differ.",
 				));
 		}
 
@@ -399,9 +399,8 @@ fn settings_text(state: &AgentModelSettingsResult) -> String {
 			reasoning_effort.as_ref().map_or("Unset or not reported", |v| v.as_str())
 		),
 		AgentModelSettingsResult::NotReported =>
-			"This native server does not report thread model settings.".into(),
-		AgentModelSettingsResult::Unavailable =>
-			"Task settings are unavailable. Refresh to try again.".into(),
+			"Conversation settings unsupported by this Codex version.".into(),
+		AgentModelSettingsResult::Unavailable => "Settings unavailable. Refresh to retry.".into(),
 	}
 }
 

@@ -209,7 +209,7 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppC
 			assert_eq!(s.composer_effort_value(cx).as_deref(), None);
 			assert!(s.task_models.task.is_none());
 			assert!(!s.task_models.reviewed);
-			assert!(s.task_models.feedback.contains("Response was not confirmed"));
+			assert!(s.task_models.feedback.contains("Change unconfirmed"));
 
 			if confirmed {
 				assert!(matches!(
@@ -426,7 +426,7 @@ fn model_history_renders_automatic_reconciliation_without_claiming_delivery(
 
 			assert!(text.contains("automatic fallback"));
 			assert!(text.contains("delivery unconfirmed"));
-			assert!(text.contains("current settings reviewed after restart"));
+			assert!(text.contains("settings checked after restart"));
 			assert!(!text.contains("matching native settings observed"));
 
 			if let AgentModelSelectionState::Available { last_receipt, .. } = &mut state {
@@ -498,7 +498,7 @@ fn ordinary_refresh_keeps_task_model_read_and_selection_receipt(cx: &mut TestApp
 				assert_eq!(s.task_models.reviewed, !saving);
 
 				if saving {
-					assert!(s.task_models.feedback.contains("Response was not confirmed"));
+					assert!(s.task_models.feedback.contains("Change unconfirmed"));
 					assert_eq!(
 						s.composer_model_value(cx),
 						None,

@@ -50,8 +50,7 @@ impl AgentSurface {
 
 		let Some(profile) = self.profile.clone() else { return };
 		let Ok(mut media) = Media::new(window) else {
-			self.feedback =
-				Feedback::error("Dictation requires the current signed macOS application.");
+			self.feedback = Feedback::error("Dictation requires the current signed macOS app.");
 
 			cx.notify();
 
@@ -59,7 +58,7 @@ impl AgentSurface {
 		};
 
 		if !media.command(serde_json::json!({"operation":"dictate","input":self.audio_input})) {
-			self.feedback = Feedback::error("The microphone could not start.");
+			self.feedback = Feedback::error("Could not start microphone.");
 
 			cx.notify();
 
@@ -83,7 +82,7 @@ impl AgentSurface {
 			finishing: false,
 			send_after_finish: false,
 			finish_sent: false,
-			status: "Opening microphone…".into(),
+			status: "Starting microphone…".into(),
 			levels: VecDeque::from(vec![0.; 40]),
 			started: Instant::now(),
 		});
@@ -104,7 +103,7 @@ impl AgentSurface {
 					} else if s.dictation.is_some() {
 						s.dictation = None;
 						s.feedback = Feedback::error(
-							"Dictation connection was lost. Your received text remains in the draft.",
+							"Dictation disconnected. Received text is in your draft.",
 						);
 
 						cx.notify();
@@ -172,7 +171,7 @@ impl AgentSurface {
 
 		if self.composer.read(cx).content() != dictation.expected {
 			self.dictation = None;
-			self.feedback = Feedback::warning("Dictation stopped to preserve your edit.");
+			self.feedback = Feedback::warning("Dictation stopped to keep your edit.");
 
 			cx.notify();
 
@@ -193,9 +192,8 @@ impl AgentSurface {
 					{
 						dictation.audio.push_back(audio);
 					} else {
-						self.feedback = Feedback::error(
-							"Microphone returned invalid audio. Try recording again.",
-						);
+						self.feedback =
+							Feedback::error("Invalid microphone audio. Try recording again.");
 						self.dictation = None;
 
 						cx.notify();
@@ -211,7 +209,7 @@ impl AgentSurface {
 					{
 						self.dictation = None;
 						self.feedback = Feedback::error(
-							"Dictation stopped because audio delivery fell behind. Your received text remains in the draft.",
+							"Audio delivery fell behind. Received text is in your draft.",
 						);
 
 						cx.notify();
@@ -221,7 +219,7 @@ impl AgentSurface {
 				},
 				Some("status") =>
 					dictation.status =
-						event["message"].as_str().unwrap_or("Opening microphone…").into(),
+						event["message"].as_str().unwrap_or("Starting microphone…").into(),
 				Some("dictation_ready") => {
 					eprintln!(
 						"DecodexAudio dictation_click_first_pcm_ms={:.3}",

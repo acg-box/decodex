@@ -71,7 +71,7 @@ fn context_picker_sends_once_then_reads_effective_override_after_lost_reply(
 
 	surface.read_with(visual,|s,_| {
         assert!(s.context_settings.task.is_none());
-        assert!(s.context_settings.feedback.contains("could not be confirmed"));
+        assert!(s.context_settings.feedback.contains("unconfirmed"));
         assert!(matches!(&s.context_settings.state,Some(AgentContextSettingsResult::Available {preferences,..}) if preferences[0].effective && preferences[0].preference == Some(false)));
 
     });

@@ -145,7 +145,7 @@ impl AgentSurface {
 
 		let mut panel = gpui::div().flex().flex_col().gap_2().child(self.workspace_action(
 			"native-goal-read".into(),
-			"Read native goal".into(),
+			"Refresh goal".into(),
 			|s, cx| s.load_native_goal(cx),
 			cx,
 		));
@@ -156,7 +156,7 @@ impl AgentSurface {
 					.result
 					.as_ref()
 					.map(goal_text)
-					.unwrap_or_else(|| "Reading native goal…".into()),
+					.unwrap_or_else(|| "Reading goal…".into()),
 			);
 		}
 
@@ -169,38 +169,35 @@ impl AgentSurface {
 
 fn goal_text(result: &AgentNativeGoalResult) -> String {
 	match result {
-		AgentNativeGoalResult::Available { goal: None, .. } =>
-			"This conversation has no native goal.".into(),
+		AgentNativeGoalResult::Available { goal: None, .. } => "No goal set.".into(),
 		AgentNativeGoalResult::Available { goal: Some(goal), observed_at_micros, .. } => {
 			let status = match goal.status {
 				AgentNativeGoalStatus::Active => "Active",
 				AgentNativeGoalStatus::Paused => "Paused",
 				AgentNativeGoalStatus::Blocked => "Blocked",
-				AgentNativeGoalStatus::UsageLimited => "Usage limited",
-				AgentNativeGoalStatus::BudgetLimited => "Budget limited",
+				AgentNativeGoalStatus::UsageLimited => "Usage limit reached",
+				AgentNativeGoalStatus::BudgetLimited => "Token budget reached",
 				AgentNativeGoalStatus::Complete => "Complete",
 			};
-			let budget = goal
-				.token_budget
-				.map_or_else(|| "No token budget".into(), |v| format!("Token budget: {v}"));
+			let budget = goal.token_budget.map_or_else(
+				|| "No explicit token budget".into(),
+				|v| format!("Token budget: {v}"),
+			);
 			let observed = OffsetDateTime::from_unix_timestamp(*observed_at_micros / 1_000_000)
 				.map(|v| format!("{:02}:{:02}:{:02} UTC", v.hour(), v.minute(), v.second()))
 				.unwrap_or_else(|_| "unknown time".into());
 
 			format!(
-				"Native goal · {status}\n{}{}\n{budget}\nGoal tokens used: {}\nGoal elapsed: {} seconds\nRead at {observed}. Refreshes while this task is selected.",
+				"Goal · {status}\n{}{}\n{budget}\nTokens used: {}\nElapsed: {} seconds\nLast checked: {observed}",
 				goal.objective,
 				if goal.objective_truncated { "\nSome objective content was omitted." } else { "" },
 				goal.tokens_used,
 				goal.time_used_seconds,
 			)
 		},
-		AgentNativeGoalResult::Disabled =>
-			"Native goals are disabled for this account process.".into(),
-		AgentNativeGoalResult::Unsupported =>
-			"This Codex version does not expose native goals.".into(),
-		AgentNativeGoalResult::Unavailable =>
-			"The native goal could not be read. Refresh to try again.".into(),
+		AgentNativeGoalResult::Disabled => "Goals disabled for this account.".into(),
+		AgentNativeGoalResult::Unsupported => "Goals unsupported by this Codex version.".into(),
+		AgentNativeGoalResult::Unavailable => "Goal unavailable. Refresh to retry.".into(),
 	}
 }
 

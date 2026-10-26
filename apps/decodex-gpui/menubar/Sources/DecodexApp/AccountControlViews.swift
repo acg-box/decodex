@@ -123,7 +123,7 @@ struct AccountUtilityActionsView: View {
 			Text("Sign out of this account?")
 				.font(PanelFont.transientTitle)
 
-			Text("This account and its saved sign-in will be removed from Decodex.")
+			Text("Removes this account and its saved sign-in from Decodex.")
 				.font(PanelFont.transientBody)
 				.foregroundStyle(.secondary)
 				.fixedSize(horizontal: false, vertical: true)
@@ -174,8 +174,8 @@ struct AccountRefreshLoginButton: View {
 				activity: .loginRefresh
 			),
 			help: state.loginRefreshRecoveryOperationID == nil
-				? "Sign in to this account with a one-time code."
-				: "Sign in again to reconnect this account."
+				? "Sign in with a one-time code."
+				: "Sign in again to reconnect."
 		) {
 			store.beginAccountReauthentication(for: state.account.accountID)
 		}

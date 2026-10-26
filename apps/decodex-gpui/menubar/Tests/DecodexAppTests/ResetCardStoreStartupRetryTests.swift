@@ -188,7 +188,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 			store.message,
 			ResetCardStoreMessage(
 				tone: .error,
-				text: "The stored reset-card result is incompatible with the current provider API."
+				text: "Saved reset result incompatible with this provider version."
 			)
 		)
 	}

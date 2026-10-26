@@ -73,9 +73,9 @@ impl AgentSurface {
 
 		if let Some(editor) = &self.native_goal.editor {
 			panel = panel
-				.child("Objective (leave unchanged to keep the current objective)")
+				.child("Objective")
 				.child(editor.objective.clone())
-				.child("Token budget (blank uses native policy)")
+				.child("Token budget (blank uses Codex policy)")
 				.child(editor.budget.clone())
 				.child(self.workspace_action(
 					"goal-import".into(),
@@ -178,8 +178,7 @@ impl AgentSurface {
 						s.native_goal.feedback.clear();
 					},
 					Err(()) =>
-						s.native_goal.feedback =
-							"Choose a UTF-8 text file no larger than 64 KiB.".into(),
+						s.native_goal.feedback = "Choose a UTF-8 text file up to 64 KiB.".into(),
 				};
 
 				cx.notify();
@@ -196,7 +195,7 @@ impl AgentSurface {
 
 		if objective.as_ref().is_some_and(|text| text.trim().is_empty() || text.len() > 64 * 1_024)
 		{
-			self.native_goal.feedback = "Enter an objective no larger than 64 KiB.".into();
+			self.native_goal.feedback = "Enter an objective up to 64 KiB.".into();
 
 			cx.notify();
 
@@ -284,7 +283,7 @@ impl AgentSurface {
 		let key = IdempotencyKey::new(native_goal::unique_command()).expect("command identity");
 		let epoch = self.native_goal.epoch;
 
-		self.native_goal.feedback = "Saving native goal…".into();
+		self.native_goal.feedback = "Saving goal…".into();
 
 		let task = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
@@ -320,15 +319,14 @@ impl AgentSurface {
 					}
 
 					s.native_goal.feedback = if applied {
-						"Native goal saved."
+						"Goal saved."
 					} else {
-						"The edit was rejected or could not be confirmed. Read the native goal before retrying."
+						"Save rejected or unconfirmed. Refresh the goal before retrying."
 					}
 					.into();
 				} else {
 					s.native_goal.feedback =
-						"The edit could not be confirmed. Read the native goal before retrying."
-							.into();
+						"Save unconfirmed. Refresh the goal before retrying.".into();
 				}
 
 				cx.notify();

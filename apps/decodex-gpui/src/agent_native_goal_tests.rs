@@ -141,9 +141,9 @@ fn native_goal_panel_reads_refreshes_and_switches_exact_child(cx: &mut TestAppCo
 	surface.update(visual, |s, cx| {
 		let result = s.native_goal.result.as_ref().unwrap();
 
-		assert!(native_goal::goal_text(result).contains("Budget limited"));
-		assert!(native_goal::goal_text(result).contains("Goal tokens used: 12"));
-		assert!(native_goal::goal_text(result).contains("Goal elapsed: 7 seconds"));
+		assert!(native_goal::goal_text(result).contains("Token budget reached"));
+		assert!(native_goal::goal_text(result).contains("Tokens used: 12"));
+		assert!(native_goal::goal_text(result).contains("Elapsed: 7 seconds"));
 
 		s.native_goal.read_at = None;
 

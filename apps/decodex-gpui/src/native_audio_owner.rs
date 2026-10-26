@@ -52,10 +52,10 @@ pub(in crate::shell::agent_surface::voice) enum AudioError {
 impl AudioError {
 	pub(in crate::shell::agent_surface::voice) fn message(self) -> &'static str {
 		match self {
-			Self::Busy => "The microphone is in use by another conversation.",
-			Self::Worker => "The audio worker is unavailable. Restart Decodex.",
-			Self::Prepare => "The selected microphone could not be configured.",
-			Self::Start => "The microphone could not start recording.",
+			Self::Busy => "Microphone in use by another conversation.",
+			Self::Worker => "Audio unavailable. Restart Decodex.",
+			Self::Prepare => "Could not configure microphone.",
+			Self::Start => "Could not start microphone.",
 			Self::Cancelled => "Recording was cancelled.",
 			Self::Capture => "Microphone audio conversion failed.",
 		}

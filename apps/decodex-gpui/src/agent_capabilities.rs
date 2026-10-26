@@ -302,7 +302,7 @@ impl AgentSurface {
 
 	pub(super) fn composer_capability_error(&self, cx: &Context<Self>) -> Option<&'static str> {
 		if self.creation_defaults_need_refresh(cx) {
-			return Some("Refresh account defaults for this directory before sending.");
+			return Some("Refresh account defaults before sending.");
 		}
 
 		let owner = self.composer_manager.clone().or_else(|| self.root_id());
@@ -318,27 +318,25 @@ impl AgentSurface {
 			return tier
 				.as_ref()
 				.is_some_and(|tier| !matches!(tier.as_str(), "default" | "flex"))
-				.then_some("Refresh model capabilities before selecting a service tier.");
+				.then_some("Refresh models before selecting a service tier.");
 		};
 
 		if tier.as_ref().is_some_and(|selected| {
 			!matches!(selected.as_str(), "default" | "flex")
 				&& !model.service_tiers.iter().any(|tier| &tier.id == selected)
 		}) {
-			return Some("This service tier is unavailable for the selected model.");
+			return Some("This service tier is unavailable for this model.");
 		}
 		if !model.efforts.is_empty()
 			&& effort.is_some_and(|effort| !model.efforts.contains(&effort))
 		{
-			return Some("This model's reasoning levels are not supported by this version.");
+			return Some("This Decodex version does not support these reasoning levels.");
 		}
 		if tier.as_ref().is_some_and(|tier| tier.as_str() == "priority") && !model.supports_fast {
-			return Some("Fast mode is not available for this model.");
+			return Some("Fast mode is unavailable for this model.");
 		}
 		if !model.supports_images && self.attachments.iter().any(|file| file.image) {
-			return Some(
-				"This model does not accept images. Choose another model or remove the image.",
-			);
+			return Some("This model cannot use images. Change models or remove the image.");
 		}
 
 		None

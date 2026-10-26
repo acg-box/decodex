@@ -88,7 +88,7 @@ impl AgentSurface {
 
 		let Some(profile) = self.profile.clone() else {
 			self.recap.work = Some(work.into());
-			self.recap.feedback = "Connect to the service to load this recap.".into();
+			self.recap.feedback = "Reconnect to load this recap.".into();
 
 			cx.notify();
 
@@ -97,8 +97,7 @@ impl AgentSurface {
 
 		if !self.command_connection_ready() {
 			self.recap.work = Some(work.into());
-			self.recap.feedback =
-				"Wait for the service connection before loading or generating a recap.".into();
+			self.recap.feedback = "Reconnect to load or generate a recap.".into();
 
 			cx.notify();
 
@@ -114,8 +113,7 @@ impl AgentSurface {
 			item.codex_thread_id.as_ref().and_then(|s| WireText::new(s.clone()).ok())
 		else {
 			self.recap.work = Some(work.into());
-			self.recap.feedback =
-				"A recap is available after this agent starts a conversation.".into();
+			self.recap.feedback = "Start a conversation to generate a recap.".into();
 
 			cx.notify();
 
@@ -127,7 +125,7 @@ impl AgentSurface {
 
 		self.recap.work = Some(work.into());
 		self.recap.automatic = automatic;
-		self.recap.feedback = if generate { "Generating recap…" } else { "Reading recap…" }.into();
+		self.recap.feedback = if generate { "Generating recap…" } else { "Loading recap…" }.into();
 
 		let epoch = self.recap.epoch;
 		let (cancel, cancellation) = watch::channel(false);
@@ -154,7 +152,7 @@ impl AgentSurface {
 			.is_err()
 		{
 			self.recap.cancel = None;
-			self.recap.feedback = "Recap worker could not start. Refresh to try again.".into();
+			self.recap.feedback = "Could not start recap. Refresh to retry.".into();
 
 			cx.notify();
 

@@ -105,9 +105,9 @@ impl Sample {
 			self.rate_text(),
 			self.rate_caption(),
 			if self.rate_estimated() {
-				"Native response output over observed generation time; excludes tool and user waits. Reasoning is included only when its start is observed."
+				"Output tokens per generation second; excludes tool and user waits. Reasoning counts only when its start is observed."
 			} else {
-				"Whole-turn average includes reasoning and tool waits."
+				"Turn average; includes reasoning and tool waits."
 			}
 		)
 	}

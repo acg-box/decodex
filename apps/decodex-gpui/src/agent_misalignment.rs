@@ -55,9 +55,18 @@ impl AgentSurface {
 		}
 
 		let identity = (work.id.clone(), review.review_id.clone());
-		let mut panel=gpui::div().p_3().rounded(gpui::px(8.0)).border_1().border_color(ui_theme::rgba(0xffffff30)).flex().flex_col().gap_3()
-            .child("Conversation paused as a precaution")
-            .child(agent_surface::muted("Codex could not confirm that the agent was following your instructions. Review the findings before continuing."));
+		let mut panel = gpui::div()
+			.p_3()
+			.rounded(gpui::px(8.0))
+			.border_1()
+			.border_color(ui_theme::rgba(0xffffff30))
+			.flex()
+			.flex_col()
+			.gap_3()
+			.child("Conversation paused")
+			.child(agent_surface::muted(
+				"Codex could not verify that your instructions were followed. Review before continuing.",
+			));
 
 		if self.misalignment_reviewed.as_ref() != Some(&identity) {
 			let keyboard_identity = identity.clone();
@@ -94,9 +103,12 @@ impl AgentSurface {
 			panel = panel.child("Continuation request (quoted)").child(format!("{message:?}"));
 		}
 
-		panel = panel.child(review.explanation.clone().unwrap_or_else(|| {
-			"Detailed findings are unavailable. Start or resume another conversation.".into()
-		}));
+		panel = panel.child(
+			review
+				.explanation
+				.clone()
+				.unwrap_or_else(|| "Findings unavailable. Open another conversation.".into()),
+		);
 
 		if review.explanation.is_some() && review.continuation.is_some() {
 			let owner = work.id.clone();

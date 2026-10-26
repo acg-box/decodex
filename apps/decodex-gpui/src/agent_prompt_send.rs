@@ -72,15 +72,10 @@ impl AgentSurface {
 			return;
 		}
 
-		self.prompt_edit.feedback = if checking {
-			"Checking delivery…"
-		} else {
-			"Preparing the complete edited input…"
-		}
-		.into();
+		self.prompt_edit.feedback =
+			if checking { "Checking delivery…" } else { "Preparing edited message…" }.into();
 		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
-			let result =
-				stage.await.unwrap_or(Err("Input preparation stopped. Nothing was submitted."));
+			let result = stage.await.unwrap_or(Err("Preparation stopped. Nothing sent."));
 			let pending = surface
 				.update(cx, |s, cx| {
 					if s.prompt_edit.key != panel_key || !s.prompt_editor_source_current() {
@@ -161,7 +156,7 @@ impl AgentSurface {
 					&& self.draft_profiles.execution.choice(expected.work_id.as_str())
 						!= *expected_execution)
 			{
-				return Err("Draft or settings changed. Nothing was submitted.");
+				return Err("Draft or settings changed. Nothing sent.");
 			}
 
 			self.stage_prompt_editor(pending.clone(), cx)?;
@@ -177,7 +172,7 @@ impl AgentSurface {
 
 		match result {
 			Ok(pending) => {
-				self.prompt_edit.feedback = "Saving the exact send record…".into();
+				self.prompt_edit.feedback = "Saving message…".into();
 
 				cx.notify();
 
@@ -252,8 +247,7 @@ impl AgentSurface {
 		}
 		if matches!(outcome, Outcome::Unknown) {
 			self.prompt_edit.feedback =
-				"Delivery is unconfirmed. Your draft is kept. Check delivery before sending again."
-					.into();
+				"Delivery unconfirmed. Check delivery before resending.".into();
 
 			cx.notify();
 
@@ -271,7 +265,7 @@ impl AgentSurface {
 			},
 			Ok(Some(draft)) => {
 				self.prompt_edit.draft = Some(draft);
-				self.prompt_edit.feedback = "Input was not submitted. Draft retained.".into();
+				self.prompt_edit.feedback = "Input not submitted.".into();
 			},
 			Err(message) => self.prompt_edit.feedback = message.into(),
 		}
@@ -304,7 +298,7 @@ async fn send_worker(
 				&execution,
 			)
 			.await
-			.map_err(|_| "Your edited message could not be checked. Nothing was sent.")?;
+			.map_err(|_| "Could not check the edit. Nothing sent.")?;
 
 		let receipt = worker_draft.receipt_id.ok_or("Edit status is missing")?;
 		let hash = worker_draft.input.fingerprint()?;
@@ -322,7 +316,7 @@ async fn send_worker(
 		let input_id = client
 			.stage_prompt_input(upload, &worker_draft.input)
 			.await
-			.map_err(|_| "Input upload stopped. Draft retained; no model input was submitted.")?;
+			.map_err(|_| "Upload stopped. Draft kept; nothing sent to the model.")?;
 
 		worker_draft.begin_send(input_id, command_key, execution)
 	}

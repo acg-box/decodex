@@ -24,7 +24,7 @@ impl AgentSurface {
 	) -> Option<DesktopPromptEditDraft> {
 		let result = result.and_then(|(draft, history, timeline)| {
 			if self.prompt_edit.draft.as_ref() != Some(expected) {
-				return Err("Draft changed during restoration. Try again with the current edit.");
+				return Err("Draft changed during restoration. Retry with the current edit.");
 			}
 
 			self.stage_prompt_editor(draft.clone(), cx)?;
@@ -44,8 +44,7 @@ impl AgentSurface {
 
 		match result {
 			Ok(draft) => {
-				self.prompt_edit.feedback =
-					"History refreshed. Waiting for the edited draft to be saved…".into();
+				self.prompt_edit.feedback = "History refreshed. Saving the draft…".into();
 
 				cx.notify();
 
@@ -111,7 +110,7 @@ impl AgentSurface {
 			return;
 		}
 
-		self.prompt_edit.feedback = "Refreshing history before restoring the draft…".into();
+		self.prompt_edit.feedback = "Refreshing history…".into();
 		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
 			let result = load.await.unwrap_or(Err("Draft restoration stopped"));
 			let pending = surface
@@ -155,9 +154,8 @@ impl AgentSurface {
 				return;
 			}
 
-			let result = completion
-				.await
-				.unwrap_or(Err("Draft restoration could not be confirmed. Check edit status."));
+			let result =
+				completion.await.unwrap_or(Err("Restoration unconfirmed. Check edit status."));
 			let _ = surface.update(cx, |s, cx| {
 				if s.prompt_edit.key != panel_key || !s.prompt_editor_source_current() {
 					return;
@@ -184,8 +182,7 @@ impl AgentSurface {
 			|| Instant::now() >= deadline
 		{
 			self.prompt_edit.task = None;
-			self.prompt_edit.feedback =
-				"The edited draft was not restored. Try restoring it again.".into();
+			self.prompt_edit.feedback = "Draft not restored. Try again.".into();
 
 			cx.notify();
 
@@ -214,7 +211,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> String {
 		if self.prompt_edit.draft.as_ref() != Some(pending) {
-			"The draft changed. Check edit status before sending.".into()
+			"Draft changed. Check edit status before sending.".into()
 		} else {
 			match result.and_then(|draft| {
 				self.stage_prompt_editor(draft.clone(), cx)?;
@@ -223,7 +220,7 @@ impl AgentSurface {
 
 				Ok(())
 			}) {
-				Ok(()) => "Edited draft restored. Nothing was sent.".into(),
+				Ok(()) => "Draft restored. Nothing sent.".into(),
 				Err(message) => message.into(),
 			}
 		}
@@ -243,16 +240,16 @@ async fn acknowledge_prompt_handback(
 				review_token: original.review_token.clone(),
 			},
 			IdempotencyKey::new(agent_surface::unique_command())
-				.map_err(|_| "The draft restoration request is invalid")?,
+				.map_err(|_| "Invalid draft restoration request")?,
 		)
 		.await;
 	let (status, content) = client
 		.prompt_edit(original.work_id.clone(), original.thread_id.clone())
 		.await
-		.map_err(|_| "Draft restoration could not be confirmed. Check edit status.")?;
+		.map_err(|_| "Restoration unconfirmed. Check edit status.")?;
 
 	if status.phase != PromptEditPhase::Restored {
-		return Err("Draft restoration is unconfirmed. Keep the draft and check edit status.");
+		return Err("Restoration unconfirmed. Keep the draft and check edit status.");
 	}
 
 	original.recover_receipt(
@@ -281,7 +278,7 @@ async fn load_restored_history(
 		.map_err(|_| "Edit status is unavailable")?;
 
 	if !matches!(status.phase, PromptEditPhase::Applied | PromptEditPhase::Restored) {
-		return Err("The edit is not confirmed yet. Keep the draft and check edit status.");
+		return Err("Edit unconfirmed. Keep the draft and check edit status.");
 	}
 
 	let recovered = original.recover_receipt(

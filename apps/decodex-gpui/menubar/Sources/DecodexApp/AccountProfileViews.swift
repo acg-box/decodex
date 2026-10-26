@@ -125,19 +125,19 @@ private struct AccountProfileMetric: Identifiable {
 	) -> [Self] {
 		[
 			lifetimeTokens.map {
-				Self(id: "tokens", label: "total", value: formatCompactCount($0))
+				Self(id: "tokens", label: "Total tokens", value: formatCompactCount($0))
 			},
 			peakDailyTokens.map {
-				Self(id: "peak", label: "peak", value: formatCompactCount($0))
+				Self(id: "peak", label: "Daily peak", value: formatCompactCount($0))
 			},
 			streak(
 				current: currentStreakDays,
 				longest: longestStreakDays
 			).map {
-				Self(id: "streak", label: "streak", value: $0)
+				Self(id: "streak", label: "Streak", value: $0)
 			},
 			longestTaskSeconds.map {
-				Self(id: "task", label: "task", value: formatActivityDuration($0))
+				Self(id: "task", label: "Longest task", value: formatActivityDuration($0))
 			},
 		]
 		.compactMap { $0 }
@@ -153,22 +153,22 @@ private struct AccountProfileMetric: Identifiable {
 		[
 			Self(
 				id: "tokens",
-				label: "total",
+				label: "Total tokens",
 				value: lifetimeTokens.map(formatCompactCount) ?? "—"
 			),
 			Self(
 				id: "peak",
-				label: "peak",
+				label: "Daily peak",
 				value: peakDailyTokens.map(formatCompactCount) ?? "—"
 			),
 			Self(
 				id: "streak",
-				label: "streak",
+				label: "Streak",
 				value: streak(current: currentStreakDays, longest: longestStreakDays) ?? "—"
 			),
 			Self(
 				id: "task",
-				label: "task",
+				label: "Longest task",
 				value: longestTaskSeconds.map(formatActivityDuration) ?? "—"
 			),
 		]
@@ -177,11 +177,11 @@ private struct AccountProfileMetric: Identifiable {
 	private static func streak(current: UInt32?, longest: UInt32?) -> String? {
 		switch (current, longest) {
 		case (.some(let current), .some(let longest)):
-			return "\(current)/\(longest)d"
+			return "now \(current)d · best \(longest)d"
 		case (.some(let current), nil):
-			return "\(current)d"
+			return "now \(current)d"
 		case (nil, .some(let longest)):
-			return "\(longest)d"
+			return "best \(longest)d"
 		case (nil, nil):
 			return nil
 		}
@@ -194,9 +194,16 @@ private struct AccountProfileMetricsView: View {
 
 	var body: some View {
 		if metrics.isEmpty == false {
-			HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
+			LazyVGrid(
+				columns: [
+					GridItem(.flexible(), alignment: .leading),
+					GridItem(.flexible(), alignment: .leading),
+				],
+				alignment: .leading,
+				spacing: PanelSpacing.compact
+			) {
 				ForEach(metrics) { metric in
-					HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
+					VStack(alignment: .leading, spacing: PanelSpacing.micro) {
 						Text(metric.label)
 							.font(PanelFont.usageLabel)
 							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
@@ -205,10 +212,6 @@ private struct AccountProfileMetricsView: View {
 							.font(PanelFont.usageValue)
 							.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.9))
 							.monospacedDigit()
-					}
-
-					if metric.id != metrics.last?.id {
-						Spacer(minLength: 1)
 					}
 				}
 			}

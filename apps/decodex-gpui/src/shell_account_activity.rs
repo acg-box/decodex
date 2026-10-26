@@ -85,7 +85,7 @@ pub(super) fn panel(shell: &Shell, account: &AccountDto) -> AnyElement {
 				content
 					.children(ui_feedback::inline_feedback(
 						format!("account-activity-loading-{}", account.as_str()),
-						"Account activity",
+						"",
 						&Feedback::info("Loading activity…"),
 					))
 					.into_any_element()
@@ -142,18 +142,17 @@ fn metrics(profile: &AccountProfileDto) -> Vec<String> {
 	let mut metrics = Vec::new();
 
 	if let Some(value) = profile.lifetime_tokens {
-		metrics.push(format!("total {}", agent_surface::compact_tokens(value)));
+		metrics.push(format!("Total tokens {}", agent_surface::compact_tokens(value)));
 	}
 	if let Some(value) = profile.peak_daily_tokens {
-		metrics.push(format!("peak {}", agent_surface::compact_tokens(value)));
+		metrics.push(format!("Peak daily tokens {}", agent_surface::compact_tokens(value)));
 	}
-
-	match (profile.current_streak_days, profile.longest_streak_days) {
-		(Some(current), Some(longest)) => metrics.push(format!("streak {current}/{longest}d")),
-		(Some(days), None) | (None, Some(days)) => metrics.push(format!("streak {days}d")),
-		_ => {},
+	if let Some(days) = profile.current_streak_days {
+		metrics.push(format!("Current streak {days}d"));
 	}
-
+	if let Some(days) = profile.longest_streak_days {
+		metrics.push(format!("Longest streak {days}d"));
+	}
 	if let Some(seconds) = profile.longest_task_seconds {
 		let (hours, minutes, remainder) = (seconds / 3_600, (seconds % 3_600) / 60, seconds % 60);
 		let value = if hours > 0 {
@@ -164,7 +163,7 @@ fn metrics(profile: &AccountProfileDto) -> Vec<String> {
 			format!("{seconds}s")
 		};
 
-		metrics.push(format!("task {value}"));
+		metrics.push(format!("Longest task {value}"));
 	}
 
 	metrics

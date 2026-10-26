@@ -51,7 +51,7 @@ impl AgentSurface {
 			_ if self.capability_task.is_some() =>
 				return palette
 					.min_h(gpui::px(64.))
-					.child(ui_loading::loading("Loading models"))
+					.child(ui_loading::loading("Loading models…"))
 					.into_any_element(),
 			_ =>
 				return palette
@@ -59,7 +59,7 @@ impl AgentSurface {
 						gpui::div()
 							.text_size(gpui::px(11.))
 							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-							.child("Model options are unavailable. Reopen to retry."),
+							.child("Models unavailable. Reopen to retry."),
 					)
 					.into_any_element(),
 		};

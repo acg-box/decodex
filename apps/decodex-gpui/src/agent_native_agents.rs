@@ -207,7 +207,7 @@ impl AgentSurface {
 			self.native_agents.uncertain.insert(target);
 
 			self.native_agents.feedback = Feedback::warning(
-				"Delivery was not confirmed. Inspect the previous conversation before sending again.",
+				"Delivery unconfirmed. Check the previous conversation before resending.",
 			);
 		}
 	}
@@ -561,9 +561,7 @@ impl AgentSurface {
 
 		self.native_agents.detail = None;
 		self.native_agents.feedback = if self.native_agents.uncertain.contains(&target) {
-			Feedback::warning(
-				"A previous message has an unconfirmed outcome. Inspect its history before continuing.",
-			)
+			Feedback::warning("Earlier delivery unconfirmed. Check history before continuing.")
 		} else {
 			Feedback::default()
 		};
@@ -651,7 +649,7 @@ impl AgentSurface {
                     },
                     NativeAgentsResult::Conversation { can_input: None, .. } => {
                         if matches!(s.native_agents.connection, NativeConnection::Checking { resumed: true, .. }) {
-                            s.native_agents.connection = NativeConnection::Failed("Could not confirm that this conversation is ready.".into());
+                            s.native_agents.connection = NativeConnection::Failed("Conversation readiness unconfirmed.".into());
                         } else {
                             s.prepare_native_connection(target, cx);
                         }
@@ -715,13 +713,12 @@ impl AgentSurface {
 					Some(AgentCommandResponse::Rejected {
 						error: CommandError::ApplicationUnavailable { message },
 					}) => {
-						s.native_agents.connection = if message.as_str()
-							== "Open the parent agent to reconnect this conversation."
-						{
-							NativeConnection::ParentManaged
-						} else {
-							NativeConnection::Failed(message.as_str().into())
-						};
+						s.native_agents.connection =
+							if message.as_str() == "Open the parent conversation to reconnect." {
+								NativeConnection::ParentManaged
+							} else {
+								NativeConnection::Failed(message.as_str().into())
+							};
 					},
 					_ =>
 						s.native_agents.connection = NativeConnection::Failed(
@@ -883,15 +880,12 @@ impl AgentSurface {
 				Feedback::success("Sent")
 			},
 			// AgentClient reports every failure after its send boundary as a response.
-			None | Some(AgentCommandResponse::Rejected { .. }) => Feedback::error(
-				"Message was not sent. Refresh the conversation and check its availability.",
-			),
+			None | Some(AgentCommandResponse::Rejected { .. }) =>
+				Feedback::error("Not sent. Refresh the conversation."),
 			_ => {
 				self.native_agents.uncertain.insert(target.clone());
 
-				Feedback::warning(
-					"Delivery was not confirmed. Inspect the conversation before sending again.",
-				)
+				Feedback::warning("Delivery unconfirmed. Check the conversation before resending.")
 			},
 		};
 
@@ -1637,7 +1631,7 @@ mod tests {
 		surface.read_with(cx, |s, cx| {
 			assert!(s.native_agents.pending.is_none());
 			assert!(s.native_agents.uncertain.is_empty());
-			assert!(s.native_agents.feedback.contains("was not sent"));
+			assert!(s.native_agents.feedback.contains("Not sent"));
 			assert_eq!(
 				s.native_agents.input.as_ref().unwrap().read(cx).content(),
 				"Not dispatched"
