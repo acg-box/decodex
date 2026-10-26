@@ -100,6 +100,9 @@ impl AccountObservationService {
 
 	/// Wait for the bound account, or all candidates when admission must select one.
 	pub(crate) async fn wait_for_initial_observation(&self, account: Option<&AccountId>) {
+		if self.initial_observation_pending.borrow().is_none() {
+			self.request_refresh();
+		}
 		let _ = self
 			.initial_observation_pending
 			.subscribe()
@@ -109,6 +112,16 @@ impl AccountObservationService {
 				})
 			})
 			.await;
+	}
+
+	/// Keep startup off the network when the bound account has a current persisted fact.
+	pub(crate) async fn can_reuse_initial_observation(&self, account: Option<&AccountId>) -> bool {
+		if self.initial_observation_pending.borrow().is_some() {
+			return false;
+		}
+		let (Some(account), Some(now)) = (account, current_unix_micros()) else { return false };
+		// Leave room for the existing bounded native preflight before process admission.
+		self.accounts.reusable_agent_observation(account, now, Duration::from_secs(30)).await
 	}
 
 	/// Request one coalesced background refresh without making a client wait for provider work.
@@ -195,11 +208,14 @@ impl AccountObservationService {
 		Some(profiles.read_cached(account_id, include_email, status).await)
 	}
 
-	/// Run immediate startup observation and all later coalesced daemon refreshes.
+	/// Run requested startup checks and later coalesced daemon refreshes.
 	pub(crate) async fn daemon_service(self, mut stop: Receiver<bool>) {
 		let reset_card_wakeup =
 			self.reset_cards.as_ref().map(ApiResetCardRuntime::observation_wakeup);
-		let mut interval = time::interval(OBSERVATION_REFRESH_INTERVAL);
+		let mut interval = time::interval_at(
+			time::Instant::now() + OBSERVATION_REFRESH_INTERVAL,
+			OBSERVATION_REFRESH_INTERVAL,
+		);
 
 		interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 

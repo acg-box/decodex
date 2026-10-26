@@ -2294,7 +2294,7 @@ impl AgentHost {
 		// Seed the durable question fence before publishing any native client. A
 		// readable workspace must not expose stale questions during later recovery.
 		self.store.queue_agent_async_reconnection().await.ok()?;
-		if let Some(observations) = &self.observations {
+		let reused_observation = if let Some(observations) = &self.observations {
 			let _phase = Phase::new("initial_account_observations");
 			let bound_account = self
 				.store
@@ -2302,12 +2302,25 @@ impl AgentHost {
 				.await
 				.ok()?
 				.map(|binding| binding.account_id);
-			observations
-				.wait_for_initial_observation(bound_account.as_ref().or(account.as_ref()))
-				.await;
+			let selected = bound_account.as_ref().or(account.as_ref());
+			if observations.can_reuse_initial_observation(selected).await {
+				let _phase = Phase::new("cached_account_observation");
+				true
+			} else {
+				observations.wait_for_initial_observation(selected).await;
+				false
+			}
+		} else {
+			false
+		};
+
+		let connected = self.connect(&root.id, format!("restore-{}", now()), config, account).await;
+		if reused_observation && let Some(observations) = &self.observations {
+			// Refresh alongside history recovery, after releasing the startup credential lock.
+			observations.request_refresh();
 		}
 
-		match self.connect(&root.id, format!("restore-{}", now()), config, account).await {
+		match connected {
 			Ok(mut active) => {
 				let phase = Phase::new("recover_persisted");
 				let recovery = active.1.recover_persisted().await;
