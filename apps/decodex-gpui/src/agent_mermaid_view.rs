@@ -1,172 +1,33 @@
 //! Prepare diagrams in the background and reuse bounded images across virtualized rows.
 use std::{
 	collections::VecDeque,
+	env,
 	ops::Range,
 	sync::{Arc, OnceLock},
+	time::Instant,
 };
 
 use gpui::{
-	AnyElement, App, Context, InteractiveElement, IntoElement, ParentElement, RenderOnce,
+	AnyElement, App, Context, Global, InteractiveElement, IntoElement, ParentElement, RenderOnce,
 	SharedString, StatefulInteractiveElement, Styled, Task, Window,
 };
 
 use crate::{
+	frame_trace,
 	shell::agent_surface::{
-		markdown::{self, Node, mermaid, mermaid::Diagram},
+		markdown::{self, Node, code, mermaid, mermaid::Diagram},
 		selectable_text::Document,
 	},
-	ui_theme::ColorScheme,
+	ui_theme::{self, ColorScheme, TEXT_MUTED},
 };
 
-// Adapted from the upstream closing-fence check; see agent_mermaid/NOTICE.md.
-pub(super) fn has_closing_fence(input: &str, range: Range<usize>, content_end: usize) -> bool {
-	let Some(block) = input.get(range.clone()) else { return false };
-	let Some(marker @ (b'`' | b'~')) = block.as_bytes().first().copied() else { return false };
-	let opening_len = block.bytes().take_while(|byte| *byte == marker).count();
-	let Some(suffix) = input.get(content_end..range.end) else { return false };
-
-	suffix
-		.trim_end_matches([' ', '\t', '\r', '\n'])
-		.bytes()
-		.rev()
-		.take_while(|byte| *byte == marker)
-		.count()
-		>= opening_len
-}
-
-pub(super) fn render(
-	children: &[Node],
-	key: &str,
-	geometry: Arc<OnceLock<(f32, f32)>>,
-	selection: &mut Document,
-) -> AnyElement {
-	// Register the source in message selection before the async view switches to its image.
-	let fallback = markdown::code::render(children, Some("mermaid"), key, selection);
-	Mermaid { source: markdown::code_text(children).into(), key: key.into(), geometry, fallback }
-		.into_any_element()
-}
-
-#[derive(gpui::IntoElement)]
+#[derive(IntoElement)]
 struct Mermaid {
 	source: Arc<str>,
 	key: String,
 	geometry: Arc<OnceLock<(f32, f32)>>,
 	fallback: AnyElement,
 }
-
-struct State {
-	result: Option<Result<Arc<Diagram>, String>>,
-	_task: Task<()>,
-}
-
-// Timeline rows are culled outside the viewport. Keep a bounded set of prepared images in the
-// application so returning rows retain both their image and geometry on their first frame.
-#[derive(Default)]
-struct Images {
-	entries: VecDeque<(Arc<str>, ColorScheme, Arc<Diagram>)>,
-	bytes: usize,
-}
-impl gpui::Global for Images {}
-impl Images {
-	fn get(&mut self, source: &str, theme: ColorScheme) -> Option<Arc<Diagram>> {
-		let index = self
-			.entries
-			.iter()
-			.position(|(key, appearance, _)| &**key == source && *appearance == theme)?;
-		let entry = self.entries.remove(index)?;
-		let diagram = entry.2.clone();
-		self.entries.push_back(entry);
-		Some(diagram)
-	}
-
-	fn insert(
-		&mut self,
-		source: Arc<str>,
-		theme: ColorScheme,
-		diagram: Arc<Diagram>,
-	) -> Vec<Arc<Diagram>> {
-		let limit = if cfg!(feature = "visual-capture")
-			&& std::env::var("DECODEX_VISUAL_SCROLL_CACHE").as_deref() == Ok("off")
-		{
-			0
-		} else {
-			64 * 1_024 * 1_024
-		};
-		self.bytes += image_bytes(&source, &diagram);
-		self.entries.push_back((source, theme, diagram));
-		let mut evicted = Vec::new();
-		while self.bytes > limit || self.entries.len() > 64 {
-			let (source, _, diagram) = self.entries.pop_front().expect("cache exceeds its limit");
-			self.bytes -= image_bytes(&source, &diagram);
-			evicted.push(diagram);
-		}
-		evicted
-	}
-}
-
-fn image_bytes(source: &str, diagram: &Diagram) -> usize {
-	source.len() + diagram.image.as_bytes(0).map_or(0, <[u8]>::len)
-}
-
-fn release_image(diagram: &Arc<Diagram>, cx: &mut App) {
-	// An evicted image can still be visible in another row or window. Its last owner releases
-	// the atlas entry; cached images retain it until eviction.
-	if Arc::strong_count(diagram) == 1 {
-		cx.drop_image(diagram.image.clone(), None);
-	}
-}
-
-impl State {
-	fn new(source: Arc<str>, theme: ColorScheme, cx: &mut Context<Self>) -> Self {
-		let cached = cx.default_global::<Images>().get(&source, theme);
-		let task =
-			if cached.is_some() { Task::ready(()) } else { Self::prepare(source, theme, cx) };
-		cx.on_release(|state, cx| {
-			if let Some(Ok(diagram)) = &state.result {
-				release_image(diagram, cx);
-			}
-		})
-		.detach();
-
-		Self { result: cached.map(Ok), _task: task }
-	}
-
-	fn prepare(source: Arc<str>, theme: ColorScheme, cx: &mut Context<Self>) -> Task<()> {
-		let renderer = cx.svg_renderer();
-		let input = source.clone();
-		let future = cx.background_executor().spawn(async move {
-			let started = std::time::Instant::now();
-			let result = mermaid::prepare(&input, &renderer, theme);
-			if let Ok(diagram) = &result {
-				crate::frame_trace::mermaid_prepared(
-					started.elapsed(),
-					diagram.width,
-					diagram.height,
-				);
-			}
-			result.map(Arc::new)
-		});
-		cx.spawn(async move |state, cx| {
-			let result = future.await;
-			let _ = state.update(cx, |state, cx| {
-				let result = result.map(|diagram| {
-					if let Some(cached) = cx.default_global::<Images>().get(&source, theme) {
-						return cached;
-					}
-					for evicted in
-						cx.default_global::<Images>().insert(source, theme, diagram.clone())
-					{
-						release_image(&evicted, cx);
-					}
-					diagram
-				});
-				state.result = Some(result);
-				cx.notify();
-			});
-		})
-	}
-}
-
 impl RenderOnce for Mermaid {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		// Reply text can keep streaming after a closed diagram. Its source, rather than the whole
@@ -184,6 +45,7 @@ impl RenderOnce for Mermaid {
 		let diagram = match &state.read(cx).result {
 			Some(Ok(diagram)) => {
 				let _ = self.geometry.set((diagram.width, diagram.height));
+
 				Some(diagram)
 			},
 			Some(Err(_)) => return self.fallback,
@@ -213,11 +75,167 @@ impl RenderOnce for Mermaid {
 				.flex()
 				.items_center()
 				.justify_center()
-				.text_color(crate::ui_theme::rgb(crate::ui_theme::TEXT_MUTED))
+				.text_color(ui_theme::rgb(TEXT_MUTED))
 				.child("Rendering diagram…")
 				.into_any_element()
 		};
+
 		frame(&self.key, self.source, selector, width, image)
+	}
+}
+
+struct State {
+	result: Option<Result<Arc<Diagram>, String>>,
+	_task: Task<()>,
+}
+impl State {
+	fn new(source: Arc<str>, theme: ColorScheme, cx: &mut Context<Self>) -> Self {
+		let cached = cx.default_global::<Images>().get(&source, theme);
+		let task =
+			if cached.is_some() { Task::ready(()) } else { Self::prepare(source, theme, cx) };
+
+		cx.on_release(|state, cx| {
+			if let Some(Ok(diagram)) = &state.result {
+				release_image(diagram, cx);
+			}
+		})
+		.detach();
+
+		Self { result: cached.map(Ok), _task: task }
+	}
+
+	fn prepare(source: Arc<str>, theme: ColorScheme, cx: &mut Context<Self>) -> Task<()> {
+		let renderer = cx.svg_renderer();
+		let input = source.clone();
+		let future = cx.background_executor().spawn(async move {
+			let started = Instant::now();
+			let result = mermaid::prepare(&input, &renderer, theme);
+
+			if let Ok(diagram) = &result {
+				frame_trace::mermaid_prepared(started.elapsed(), diagram.width, diagram.height);
+			}
+
+			result.map(Arc::new)
+		});
+
+		cx.spawn(async move |state, cx| {
+			let result = future.await;
+			let _ = state.update(cx, |state, cx| {
+				let result = result.map(|diagram| {
+					if let Some(cached) = cx.default_global::<Images>().get(&source, theme) {
+						return cached;
+					}
+
+					for evicted in
+						cx.default_global::<Images>().insert(source, theme, diagram.clone())
+					{
+						release_image(&evicted, cx);
+					}
+
+					diagram
+				});
+
+				state.result = Some(result);
+
+				cx.notify();
+			});
+		})
+	}
+}
+
+// Timeline rows are culled outside the viewport. Keep a bounded set of prepared images in the
+// application so returning rows retain both their image and geometry on their first frame.
+#[derive(Default)]
+struct Images {
+	entries: VecDeque<(Arc<str>, ColorScheme, Arc<Diagram>)>,
+	bytes: usize,
+}
+impl Images {
+	fn get(&mut self, source: &str, theme: ColorScheme) -> Option<Arc<Diagram>> {
+		let index = self
+			.entries
+			.iter()
+			.position(|(key, appearance, _)| &**key == source && *appearance == theme)?;
+		let entry = self.entries.remove(index)?;
+		let diagram = entry.2.clone();
+
+		self.entries.push_back(entry);
+
+		Some(diagram)
+	}
+
+	fn insert(
+		&mut self,
+		source: Arc<str>,
+		theme: ColorScheme,
+		diagram: Arc<Diagram>,
+	) -> Vec<Arc<Diagram>> {
+		let limit = if cfg!(feature = "visual-capture")
+			&& env::var("DECODEX_VISUAL_SCROLL_CACHE").as_deref() == Ok("off")
+		{
+			0
+		} else {
+			64 * 1_024 * 1_024
+		};
+
+		self.bytes += image_bytes(&source, &diagram);
+
+		self.entries.push_back((source, theme, diagram));
+
+		let mut evicted = Vec::new();
+
+		while self.bytes > limit || self.entries.len() > 64 {
+			let (source, _, diagram) = self.entries.pop_front().expect("cache exceeds its limit");
+
+			self.bytes -= image_bytes(&source, &diagram);
+
+			evicted.push(diagram);
+		}
+
+		evicted
+	}
+}
+
+impl Global for Images {}
+
+// Adapted from the upstream closing-fence check; see agent_mermaid/NOTICE.md.
+pub(super) fn has_closing_fence(input: &str, range: Range<usize>, content_end: usize) -> bool {
+	let Some(block) = input.get(range.clone()) else { return false };
+	let Some(marker @ (b'`' | b'~')) = block.as_bytes().first().copied() else { return false };
+	let opening_len = block.bytes().take_while(|byte| *byte == marker).count();
+	let Some(suffix) = input.get(content_end..range.end) else { return false };
+
+	suffix
+		.trim_end_matches([' ', '\t', '\r', '\n'])
+		.bytes()
+		.rev()
+		.take_while(|byte| *byte == marker)
+		.count()
+		>= opening_len
+}
+
+pub(super) fn render(
+	children: &[Node],
+	key: &str,
+	geometry: Arc<OnceLock<(f32, f32)>>,
+	selection: &mut Document,
+) -> AnyElement {
+	// Register the source in message selection before the async view switches to its image.
+	let fallback = code::render(children, Some("mermaid"), key, selection);
+
+	Mermaid { source: markdown::code_text(children).into(), key: key.into(), geometry, fallback }
+		.into_any_element()
+}
+
+fn image_bytes(source: &str, diagram: &Diagram) -> usize {
+	source.len() + diagram.image.as_bytes(0).map_or(0, <[u8]>::len)
+}
+
+fn release_image(diagram: &Arc<Diagram>, cx: &mut App) {
+	// An evicted image can still be visible in another row or window. Its last owner releases
+	// the atlas entry; cached images retain it until eviction.
+	if Arc::strong_count(diagram) == 1 {
+		cx.drop_image(diagram.image.clone(), None);
 	}
 }
 
@@ -237,8 +255,8 @@ fn frame(
 		.p_3()
 		.rounded(gpui::px(10.))
 		.border_1()
-		.border_color(crate::ui_theme::rgba(0xffffff0c))
-		.bg(crate::ui_theme::rgba(0xffffff03))
+		.border_color(ui_theme::rgba(0xffffff0c))
+		.bg(ui_theme::rgba(0xffffff03))
 		.child(gpui::div().flex().w_full().justify_end().child(markdown::copy_button(
 			&format!("mermaid-copy-{key}"),
 			"Copy Mermaid source",

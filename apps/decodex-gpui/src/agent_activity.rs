@@ -4,9 +4,13 @@ use std::{
 	collections::{BTreeMap, BTreeSet},
 	fmt::{Display, Formatter},
 	rc::Rc,
+	time::Duration,
 };
 
-use gpui::{AnyElement, AppContext as _, KeyDownEvent, Pixels, Role, ScrollEvent, ScrollHandle};
+use gpui::{
+	AnyElement, AppContext as _, Div, FontWeight, KeyDownEvent, Pixels, Role, ScrollEvent,
+	ScrollHandle, Stateful,
+};
 use ui_theme::{BLUE, BODY_LINE_HEIGHT, SURFACE_OVERLAY_MATERIAL, TEXT, TEXT_MUTED};
 
 use crate::{
@@ -15,12 +19,14 @@ use crate::{
 			self, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context, FluentBuilder,
 			InteractiveElement, IntoElement, ParentElement, Render, SharedString,
 			StatefulInteractiveElement, Styled, Window, markdown, native_timeline, ui_theme,
+			voice::{history, history::VoiceBlock},
 			workspace,
 		},
 		workspace_symbols,
 		workspace_symbols::Symbol,
 	},
 	ui_motion, ui_scroll,
+	ui_theme::HISTORY_RAIL_WIDTH,
 };
 use decodex_protocol::{AgentHistoryEntryDto, AgentTimelineContent, AgentTimelineEntry};
 
@@ -96,20 +102,25 @@ impl AgentSurface {
 			.retain(|id, _| matches!(id, HistoryKey::Local(id) if saved.contains_key(id)));
 
 		let saved_entries = saved.values().copied().collect::<Vec<_>>();
-		let voice_groups = super::voice::history::saved_groups(&saved_entries);
+		let voice_groups = history::saved_groups(&saved_entries);
 		let voice_hidden: BTreeSet<_> = voice_groups
 			.iter()
 			.flat_map(|(indices, _)| indices.iter().skip(1).map(|index| saved_entries[*index].id))
 			.collect();
+
 		self.timeline
 			.marks
 			.retain(|key, _| !matches!(key, HistoryKey::Local(id) if voice_hidden.contains(id)));
+
 		let mut current = None;
+
 		for (index, entry) in saved_entries.iter().enumerate() {
 			if voice_hidden.contains(&entry.id) {
 				continue;
 			}
+
 			let voice = voice_groups.iter().find(|(indices, _)| indices[0] == index);
+
 			if voice.is_some() || entry.kind == "user" || entry.kind == "instruction" {
 				let mark =
 					self.timeline.marks.entry(HistoryKey::Local(entry.id)).or_insert_with(|| {
@@ -154,7 +165,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		self.anchor_history_row(
 			&HistoryKey::Local(entry.id),
-			super::voice::history::VoiceBlock {
+			VoiceBlock {
 				key: format!("saved-{work}-{}", entry.id),
 				title: "Voice conversation".into(),
 				text,
@@ -171,9 +182,9 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let mut body = if entry.kind == "user"
-			&& let Some(text) = super::voice::history::handoff(&entry.text)
+			&& let Some(text) = history::handoff(&entry.text)
 		{
-			super::voice::history::VoiceBlock {
+			VoiceBlock {
 				key: format!("saved-{work}-{}", entry.id),
 				title: "Voice conversation".into(),
 				text,
@@ -208,20 +219,21 @@ impl AgentSurface {
 
 		self.timeline.scroll.entry(binding.work.clone()).or_default();
 
-		let mut retained = BTreeSet::new();
-		let mut current = None;
-
-		let voice_groups = super::voice::history::groups(&self.timeline.native.entries);
-		let voice_headers: std::collections::BTreeMap<_, _> =
+		let voice_groups = history::groups(&self.timeline.native.entries);
+		let voice_headers: BTreeMap<_, _> =
 			voice_groups.iter().map(|g| (g.indices[0], g)).collect();
 		let voice_hidden: BTreeSet<_> =
 			voice_groups.iter().flat_map(|g| g.indices.iter().skip(1).copied()).collect();
+		let mut retained = BTreeSet::new();
+		let mut current = None;
+
 		for (index, entry) in self.timeline.native.entries.iter().enumerate() {
 			if voice_hidden.contains(&index)
 				|| voice_headers.get(&index).is_some_and(|g| g.hidden())
 			{
 				continue;
 			}
+
 			let entry = voice_headers.get(&index).map_or(entry, |g| {
 				&self.timeline.native.entries[g.anchor_index(&self.timeline.native.entries)]
 			});
@@ -363,6 +375,7 @@ impl AgentSurface {
 		if delta.y == gpui::px(0.) {
 			return;
 		}
+
 		self.clear_voice_reading_space();
 
 		self.timeline.latest_follow_work = None;
@@ -409,6 +422,7 @@ impl AgentSurface {
 
 			if delta.y > gpui::px(0.) {
 				self.timeline.native.prefetch_requested = true;
+
 				self.prefetch_older_history(cx);
 			}
 
@@ -523,6 +537,7 @@ impl AgentSurface {
 
 	pub(super) fn history_navigation_bottom_gap(&self) -> Option<f32> {
 		let navigation = self.timeline.navigation.as_ref()?;
+
 		(navigation.id.is_none() && self.selected.as_ref() == Some(&navigation.work)).then(|| {
 			(navigation.from - navigation.to).max(0.) * (1. - navigation.progress()).powi(3)
 		})
@@ -554,9 +569,11 @@ impl AgentSurface {
 	pub(super) fn follow_latest_after_send(&mut self, cx: &mut Context<Self>) {
 		self.timeline.latest_follow_work = None;
 		self.timeline.older_scroll_anchor = None;
+
 		if let Some(work) = &self.selected {
 			self.timeline.scroll.entry(work.clone()).or_default();
 		}
+
 		// Sending is a short navigation transition. Once it settles, streaming
 		// follows the current layout exactly instead of easing after every token.
 		self.jump_to_latest(cx);
@@ -564,6 +581,7 @@ impl AgentSurface {
 
 	pub(super) fn jump_to_latest(&mut self, cx: &mut Context<Self>) {
 		self.clear_voice_reading_space();
+
 		let Some(work) = self.selected.clone() else {
 			return;
 		};
@@ -681,13 +699,14 @@ impl AgentSurface {
 		if self.timeline.marks.len() < 2 {
 			return gpui::div().into_any_element();
 		}
+
 		// Overlay the existing text inset so navigation never changes line wrapping.
 		gpui::div()
 			.absolute()
 			.top_0()
 			.right_0()
 			.bottom_0()
-			.w(gpui::px(crate::ui_theme::HISTORY_RAIL_WIDTH))
+			.w(gpui::px(HISTORY_RAIL_WIDTH))
 			.flex_none()
 			.overflow_hidden()
 			.child(
@@ -703,6 +722,7 @@ impl AgentSurface {
 	pub(super) fn preserve_history_selection(&mut self) {
 		let scroll = self.timeline.scroll_for(self.selected.as_deref());
 		let index = self.active_history_index(&scroll);
+
 		// Disclosure changes layout, not the reader's navigation target. Wheel
 		// scrolling and explicit navigation release or replace this selection.
 		self.timeline.selected = self.timeline.marks.keys().nth(index).cloned();
@@ -752,20 +772,7 @@ impl AgentSurface {
 			window,
 			cx,
 		);
-		let mut rail = gpui::div()
-			.id("conversation-history-rail")
-			.debug_selector(|| "conversation-history-rail".into())
-			.on_scroll(cx.listener(|s, event, _, cx| s.scroll_history(event, cx)))
-			.w_full()
-			.flex_none()
-			.h_full()
-			// Keep the first tick below the conversation's expand control.
-			.pt(gpui::px(36.))
-			.pb_4()
-			.flex()
-			.flex_col()
-			.justify_center()
-			.overflow_hidden();
+		let mut rail = self.history_rail_surface(cx);
 
 		for (index, (id, mark)) in self.timeline.marks.iter().enumerate() {
 			let influence = ui_motion::value(
@@ -806,7 +813,7 @@ impl AgentSurface {
 					}))
 					// Navigation previews already have their text; do not use the
 					// generic tooltip's 500 ms discovery delay.
-					.tooltip_show_delay(std::time::Duration::ZERO)
+					.tooltip_show_delay(Duration::ZERO)
 					.tooltip(move |_, cx| cx.new(|_| HistoryPreview { mark: tip.clone() }).into())
 					.on_click(cx.listener(move |s, _, _, cx| {
 						s.jump_to_history(id.clone(), cx);
@@ -853,6 +860,23 @@ impl AgentSurface {
 
 		rail.into_any_element()
 	}
+
+	fn history_rail_surface(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+		gpui::div()
+			.id("conversation-history-rail")
+			.debug_selector(|| "conversation-history-rail".into())
+			.on_scroll(cx.listener(|s, event, _, cx| s.scroll_history(event, cx)))
+			.w_full()
+			.flex_none()
+			.h_full()
+			// Keep the first tick below the conversation's expand control.
+			.pt(gpui::px(36.))
+			.pb_4()
+			.flex()
+			.flex_col()
+			.justify_center()
+			.overflow_hidden()
+	}
 }
 
 #[derive(Clone)]
@@ -879,7 +903,6 @@ pub(super) struct HistoryNavigation {
 	to: f32,
 	started: std::time::Instant,
 }
-
 impl HistoryNavigation {
 	fn progress(&self) -> f32 {
 		(self.started.elapsed().as_secs_f32() / 0.28).min(1.)
@@ -896,7 +919,7 @@ struct HistoryPreview {
 }
 impl Render for HistoryPreview {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		crate::ui_motion::tooltip_surface(gpui::div())
+		ui_motion::tooltip_surface(gpui::div())
 			.debug_selector(|| "history-hover-preview".into())
 			.w(gpui::px(320.0))
 			.p_3()
@@ -913,7 +936,7 @@ impl Render for HistoryPreview {
 			)
 			.child(
 				gpui::div()
-					.font_weight(gpui::FontWeight::MEDIUM)
+					.font_weight(FontWeight::MEDIUM)
 					.text_color(crate::ui_theme::rgb(TEXT))
 					.child(self.mark.question.clone()),
 			)
@@ -939,8 +962,7 @@ fn dock_influence(index: usize, hover: Option<usize>) -> f32 {
 }
 
 fn preview(text: &str) -> String {
-	let voice =
-		super::voice::history::handoff(text).map(|text| format!("Voice conversation · {text}"));
+	let voice = history::handoff(text).map(|text| format!("Voice conversation · {text}"));
 	let text = markdown::plain_text(voice.as_deref().unwrap_or(text));
 	let mut chars = text.chars();
 	let mut text: String = chars.by_ref().take(180).collect();
@@ -973,29 +995,44 @@ mod tests {
 	#[gpui::test]
 	fn disclosure_layout_keeps_rail_selection_until_reader_scrolls(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(300.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(300.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.workspace.graph_visible = false;
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		surface.update(visual, |s, cx| {
 			let scroll = s.timeline.scroll["agent"].clone();
+
 			s.timeline.latest_follow_work = None;
 			s.timeline.selected = None;
+
 			scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(0.)));
+
 			assert_eq!(s.timeline.marks.len(), 2);
+
 			for (index, mark) in s.timeline.marks.values().enumerate() {
 				mark.position.set(index as f32 * 500.);
 			}
+
 			assert_eq!(s.active_history_index(&scroll), 0);
+
 			s.preserve_history_selection();
+
 			let selected = s.timeline.selected.clone();
+
 			for position in [20., 800., 20.] {
 				s.timeline.marks.values().nth(1).unwrap().position.set(position);
+
 				assert_eq!(s.active_history_index(&scroll), 0);
 				assert_eq!(s.timeline.selected, selected);
 			}
+
 			s.scroll_history(
 				&gpui::ScrollEvent {
 					delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-1.))),
@@ -1003,6 +1040,7 @@ mod tests {
 				},
 				cx,
 			);
+
 			assert!(s.timeline.selected.is_none());
 			assert_eq!(s.active_history_index(&scroll), 1);
 		});
@@ -1011,33 +1049,40 @@ mod tests {
 	#[gpui::test]
 	fn history_hover_shows_without_dwell_and_clears_on_exit(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
 		surface.update(visual, |s, cx| s.visual_workspace_fixture(cx));
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		let bounds = surface.read_with(visual, |s, _| {
 			s.timeline.marks.values().next().unwrap().hit_bounds.get().unwrap()
 		});
 		let rail = visual.debug_bounds("conversation-history-rail").unwrap();
 		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
 		let content = visual.debug_bounds("conversation-content").unwrap();
+
 		assert!(
 			rail.left() >= content.right() - gpui::px(crate::ui_theme::CONVERSATION_INSET),
 			"navigation must stay outside the message text"
 		);
 		assert_eq!(rail.right(), transcript.right());
 		assert_eq!(rail.size.width, gpui::px(crate::ui_theme::CONVERSATION_INSET));
+
 		visual.simulate_mouse_move(bounds.center(), gpui::MouseButton::Left, Default::default());
 		// No clock advance: cached content must appear before the default tooltip dwell.
 		visual.run_until_parked();
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("history-hover-preview").is_some());
+
 		visual.simulate_mouse_move(
 			gpui::point(gpui::px(1.), gpui::px(1.)),
 			gpui::MouseButton::Left,
 			Default::default(),
 		);
 		visual.run_until_parked();
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("history-hover-preview").is_none());
 	}
 
@@ -1053,11 +1098,11 @@ mod tests {
 			(s.selected.clone(), s.history.clone())
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let original = visual.debug_bounds("workspace-transcript").unwrap();
 
@@ -1072,7 +1117,7 @@ mod tests {
 			for delay in [0, 100, 140] {
 				thread::sleep(std::time::Duration::from_millis(delay));
 
-				visual.update(|w, cx| w.draw(cx).clear(cx));
+				visual.update(crate::ui_frame::draw_current_frame);
 
 				let bounds = visual.debug_bounds("workspace-transcript").unwrap();
 
@@ -1097,9 +1142,7 @@ mod tests {
 			s.workspace.graph_visible = false;
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		surface.update(visual, |s, cx| {
 			s.jump_to_history(HistoryKey::Local(1), cx);
@@ -1120,9 +1163,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 		surface.read_with(visual, |s, _| {
 			assert!(s.timeline.navigation.is_none());
 			assert_eq!(s.timeline.selected, Some(HistoryKey::Local(3)));
@@ -1133,21 +1174,6 @@ mod tests {
 	fn native_jump_finishes_against_layout_after_an_older_page_arrives(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let row = |position, user| AgentTimelineEntry {
-			position,
-			content: decodex_protocol::AgentTimelineContent::Item {
-				collaboration: None,
-				phase: None,
-				app_ui: false,
-				turn_id: "turn".into(),
-				item_id: format!("item-{position}"),
-				kind: if user { "userMessage" } else { "agentMessage" }.into(),
-				text: "Content for the scrolling test.\n\n".repeat(20),
-				truncated: false,
-				activity: None,
-				attachments: vec![],
-			},
-		};
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(400.)));
@@ -1178,7 +1204,12 @@ mod tests {
 				binding.clone(),
 				AgentTimelinePage {
 					thread_id: "thread".into(),
-					entries: vec![row(10, true), row(11, false), row(20, true), row(21, false)],
+					entries: vec![
+						navigation_row(10, true),
+						navigation_row(11, false),
+						navigation_row(20, true),
+						navigation_row(21, false)
+					],
 					next_cursor: Some("older".into()),
 					weather: Default::default(),
 					thread_token_total: None,
@@ -1193,17 +1224,13 @@ mod tests {
 			binding
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
-		let target = HistoryKey::native("thread", &row(20, true));
+		let target = HistoryKey::native("thread", &navigation_row(20, true));
 		let bounds =
 			surface.read_with(visual, |s, _| s.timeline.marks[&target].hit_bounds.get().unwrap());
 
@@ -1219,7 +1246,7 @@ mod tests {
 				"older",
 				AgentTimelinePage {
 					thread_id: "thread".into(),
-					entries: vec![row(1, false)],
+					entries: vec![navigation_row(1, false)],
 					next_cursor: None,
 					weather: Default::default(),
 					thread_token_total: None,
@@ -1233,9 +1260,7 @@ mod tests {
 		});
 
 		for _ in 0..3 {
-			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 			visual.run_until_parked();
 		}
 
@@ -1254,6 +1279,24 @@ mod tests {
 			assert!(s.timeline.navigation.is_none());
 			assert_eq!(s.timeline.selected.as_ref(), Some(&target));
 		});
+	}
+
+	fn navigation_row(position: u64, user: bool) -> AgentTimelineEntry {
+		AgentTimelineEntry {
+			position,
+			content: decodex_protocol::AgentTimelineContent::Item {
+				collaboration: None,
+				phase: None,
+				app_ui: false,
+				turn_id: "turn".into(),
+				item_id: format!("item-{position}"),
+				kind: if user { "userMessage" } else { "agentMessage" }.into(),
+				text: "Content for the scrolling test.\n\n".repeat(20),
+				truncated: false,
+				activity: None,
+				attachments: vec![],
+			},
+		}
 	}
 
 	#[gpui::test]
@@ -1336,15 +1379,11 @@ mod tests {
 			keys
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let bounds = surface.read_with(visual, |s, _| {
 			assert_eq!(s.timeline.marks.len(), 2);
@@ -1370,9 +1409,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 		surface.read_with(visual, |s, _| {
 			assert!(s.timeline.navigation.is_none() && s.timeline.selected.is_none());
 			assert!(!s.timeline.marks.contains_key(&keys[0]));
@@ -1422,7 +1459,7 @@ phase: None,
 			cx.notify();
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let anchors = surface.read_with(visual, |s, _| {
 			s.timeline
@@ -1446,7 +1483,7 @@ phase: None,
 
 			let start = std::time::Instant::now();
 
-			visual.update(|w, cx| w.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_current_frame);
 
 			if frame >= 10 {
 				samples.push(start.elapsed().as_secs_f64() * 1_000.);
@@ -1494,18 +1531,24 @@ phase: None,
 	#[gpui::test]
 	fn dock_resize_keeps_rail_targets_and_history_geometry_in_sync(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
 				panic!("fixture history");
 			};
+
 			*entries = (0..36)
 				.map(|id| {
 					let mut entry = entries[0].clone();
+
 					entry.id = id;
 					entry.text =
 						format!("Reading note {id}: keep this message at its original size.");
+
 					entry
 				})
 				.collect();
@@ -1513,22 +1556,30 @@ phase: None,
 			s.workspace.graph_visible = true;
 			s.workspace.graph_panel_height = 120.;
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		thread::sleep(std::time::Duration::from_millis(400));
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		let positions = surface.read_with(visual, |s, _| {
 			s.timeline.marks.values().map(|mark| mark.position.get()).collect::<Vec<_>>()
 		});
+
 		for height in [560., 240., 480., 120.] {
 			surface.update(visual, |s, cx| {
 				s.workspace.panel_drag =
 					Some((super::super::workspace_size::Panel::Bottom, 0., 0.));
 				s.workspace.graph_panel_height = height;
+
 				cx.notify();
 			});
+
 			// Check the first frame at the new size, before any follow-up notification.
-			visual.update(|w, cx| w.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_current_frame);
+
 			let rail = visual.debug_bounds("conversation-history-rail").unwrap();
 			let targets = surface.read_with(visual, |s, _| {
 				s.timeline
@@ -1537,14 +1588,18 @@ phase: None,
 					.enumerate()
 					.map(|(index, (id, mark))| {
 						assert!((mark.position.get() - positions[index]).abs() < 0.5);
+
 						let bounds = mark.hit_bounds.get().unwrap();
+
 						assert!(bounds.origin.y >= rail.origin.y + gpui::px(35.5));
 						assert!(bounds.bottom() <= rail.bottom() - gpui::px(15.5));
 						assert!(bounds.size.height > gpui::px(0.));
+
 						(id.clone(), bounds)
 					})
 					.collect::<Vec<_>>()
 			});
+
 			for (id, bounds) in targets.iter().step_by(7) {
 				visual.simulate_click(bounds.center(), Default::default());
 				surface
@@ -1565,15 +1620,11 @@ phase: None,
 			s.workspace.graph_visible = false;
 		});
 
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let ids =
 			surface.read_with(visual, |s, _| s.timeline.marks.keys().cloned().collect::<Vec<_>>());
@@ -1599,9 +1650,7 @@ phase: None,
 				cx.notify();
 			});
 
-			visual.update(|w, cx| {
-				w.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 			surface.update(visual, |s, _| assert_eq!(s.timeline.selected, Some(id.clone())));
 		}
 	}
@@ -1618,9 +1667,7 @@ phase: None,
 			s.workspace.graph_visible = false;
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		visual.update(|_, cx| {
 			surface.update(cx, |s, cx| {
@@ -1640,9 +1687,7 @@ phase: None,
 		});
 
 		visual.run_until_parked();
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 		surface.update(visual, |s, _| {
 			assert!(s.timeline.scroll["agent"].offset().y < gpui::px(0.0));
 			assert!(
@@ -1664,9 +1709,7 @@ phase: None,
 			s.workspace.graph_visible = false;
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		surface.update(visual, |s, cx| {
 			let scroll = s.timeline.scroll["agent"].clone();
@@ -1752,9 +1795,7 @@ phase: None,
 			s.workspace.graph_visible = false;
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		surface.update(visual, |s, cx| {
 			let scroll = s.timeline.scroll["agent"].clone();
@@ -1801,18 +1842,24 @@ phase: None,
 	#[gpui::test]
 	fn conversation_and_composer_share_bounded_width(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.workspace.graph_visible = false;
 			s.workspace.sidebar_visible = false;
 			s.workspace.agent_tree_visible = false;
 		});
-		for width in [1600., 700.] {
+
+		for width in [1_600., 700.] {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(800.)));
+
 			{
-				visual.update(|w, cx| w.draw(cx).clear(cx));
+				visual.update(crate::ui_frame::draw_current_frame);
+
 				let footer = visual.debug_bounds("floating-composer").unwrap();
 				let composer = visual.debug_bounds("agent-composer").unwrap();
+
 				assert!(
 					(composer.center().x - footer.center().x).abs() < gpui::px(1.),
 					"composer must center on the full panel, including the timeline gutter"
@@ -1826,11 +1873,15 @@ phase: None,
 	#[gpui::test]
 	fn composer_growth_keeps_history_behind_the_overlay(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1000.), gpui::px(700.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_000.), gpui::px(700.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.workspace.graph_visible = false;
 		});
+
 		for text in [
 			"Short draft".to_owned(),
 			"Line one\nLine two\nLine three\nLine four".into(),
@@ -1841,16 +1892,21 @@ phase: None,
 				s.composer.update(cx, |input, cx| input.set_content(&text, cx));
 				cx.notify();
 			});
+
 			for _ in 0..8 {
-				visual.update(|w, cx| w.draw(cx).clear(cx));
+				visual.update(crate::ui_frame::draw_current_frame);
 			}
+
 			let transcript = visual.debug_bounds("workspace-transcript").unwrap();
 			let footer = visual.debug_bounds("floating-composer").unwrap();
+
 			assert!(
 				(transcript.bottom() - footer.bottom()).abs() < gpui::px(1.),
 				"{text}: history and the floating input must share the same bottom edge"
 			);
+
 			let clearance = surface.read_with(visual, |s, _| s.workspace.composer_overlay_height);
+
 			assert!(
 				(clearance - f32::from(footer.size.height)).abs() < 1.,
 				"tail clearance follows the growing composer"
@@ -1871,14 +1927,12 @@ phase: None,
 			s.workspace.graph_visible = false;
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		// Panel animation uses wall time, including in optimized test builds.
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let scroll = surface.read_with(visual, |s, _| s.timeline.scroll["agent"].clone());
 
@@ -1897,9 +1951,7 @@ phase: None,
 			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.0), gpui::px(-100.0))),
 			..Default::default()
 		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert_eq!(
 			scroll.offset().y,
@@ -1916,9 +1968,7 @@ phase: None,
 			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.0), gpui::px(60.0))),
 			..Default::default()
 		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(scroll.offset().y > previous);
 
@@ -1953,10 +2003,10 @@ phase: None,
 			}
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		for _ in 0..40 {
-			visual.update(|window, cx| window.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_current_frame);
 			visual.run_until_parked();
 		}
 
@@ -1994,7 +2044,7 @@ phase: None,
 		});
 
 		for _ in 0..4 {
-			visual.update(|window, cx| window.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_current_frame);
 			visual.run_until_parked();
 		}
 
@@ -2017,27 +2067,38 @@ phase: None,
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1000.), gpui::px(500.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_000.), gpui::px(500.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.workspace.graph_visible = false;
+
 			if let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history {
 				entries[1].text = "A line of streamed output.\n\n".repeat(40);
 			}
+
 			s.timeline.latest_follow_work = Some("agent".into());
 		});
+
 		for _ in 0..8 {
-			visual.update(|window, cx| window.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_current_frame);
 		}
+
 		let scroll = surface.read_with(visual, |s, _| s.timeline.scroll["agent"].clone());
+
 		for lines in [42, 43, 48, 50, 45] {
 			surface.update(visual, |s, cx| {
 				if let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history {
 					entries[1].text = "A line of streamed output.\n\n".repeat(lines);
 				}
+
 				cx.notify();
 			});
-			visual.update(|window, cx| window.draw(cx).clear(cx));
+
+			visual.update(crate::ui_frame::draw_current_frame);
+
 			assert!(
 				(scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(1.),
 				"new content must be anchored before its first paint: offset {:?}, max {:?}",
@@ -2067,9 +2128,9 @@ phase: None,
 			cx.notify();
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 		visual.run_until_parked();
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let button = visual.debug_bounds("jump-to-latest").expect("button while reading history");
 
@@ -2089,7 +2150,7 @@ phase: None,
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		for _ in 0..40 {
-			visual.update(|window, cx| window.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_current_frame);
 		}
 
 		surface.read_with(visual, |s, _| {
@@ -2162,7 +2223,7 @@ phase: None,
 			s.workspace.graph_visible = false;
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		surface.update(visual, |s, cx| {
 			let scroll = s.timeline.scroll["agent"].clone();
@@ -2185,7 +2246,7 @@ phase: None,
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		for _ in 0..40 {
-			visual.update(|w, cx| w.draw(cx).clear(cx));
+			visual.update(crate::ui_frame::draw_current_frame);
 		}
 
 		surface.update(visual, |s, cx| {

@@ -61,6 +61,7 @@ mod shared_auth_coordinator;
 mod startup_trace;
 mod supervised_validation;
 mod websocket;
+mod work_portfolio;
 
 pub use account_service::{
 	AccountInspection, AccountLifecycleError, AccountSelectionFailure, AccountSelectionResult,
@@ -125,5 +126,3 @@ impl ServiceComposition {
 		bootstrap::bootstrap(root).await
 	}
 }
-
-mod work_portfolio;

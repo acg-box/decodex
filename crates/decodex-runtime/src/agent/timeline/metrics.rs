@@ -1,4 +1,6 @@
 //! Exact saved usage supplements native timeline boundaries; it is not native timeline data.
+use serde_json::Value;
+
 use crate::agent::observations;
 use decodex_codex::ThreadTokenUsage;
 use decodex_database::{AgentResponseUsageSummary, AgentTurnMetrics, SqliteStore, StoreError};
@@ -12,7 +14,7 @@ pub(crate) async fn enrich(
 	page.thread_token_total = store
 		.read_agent_thread_usage_observation(work.into(), page.thread_id.clone())
 		.await?
-		.and_then(|event| serde_json::from_str::<serde_json::Value>(&event.payload).ok())
+		.and_then(|event| serde_json::from_str::<Value>(&event.payload).ok())
 		.and_then(|value| {
 			serde_json::from_value::<ThreadTokenUsage>(value["tokenUsage"].clone()).ok()
 		})
@@ -190,7 +192,7 @@ fn summary(saved: &AgentTurnMetrics) -> Option<String> {
 #[cfg(test)]
 mod tests {
 	use std::{
-		future,
+		fs, future,
 		sync::atomic::{AtomicUsize, Ordering},
 	};
 
@@ -301,11 +303,13 @@ mod tests {
 	#[tokio::test]
 	async fn native_page_reads_enrich_exact_turns_and_recheck_source_after_saved_usage() {
 		let directory = tempfile::tempdir().unwrap();
-		std::fs::set_permissions(
+
+		fs::set_permissions(
 			directory.path(),
 			<std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
 		)
 		.unwrap();
+
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 

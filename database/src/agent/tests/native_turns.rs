@@ -38,6 +38,7 @@ async fn newer_native_turn_cancels_pending_capacity_retry_without_claiming_input
 			.await
 			.unwrap()
 	);
+
 	for (work, thread, turn) in
 		[("other", "thread", "old"), ("agent", "other", "old"), ("agent", "thread", "new")]
 	{

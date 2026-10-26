@@ -93,9 +93,7 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut TestAppContext)
 
 	for width in [600., 120.] {
 		visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(300.)));
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let bounds = visual.debug_bounds("math-math-preview-0-formula-0").expect("formula");
 
@@ -115,9 +113,7 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut TestAppContext)
 				delta: ScrollDelta::Pixels(gpui::point(gpui::px(-60.), gpui::px(0.))),
 				..Default::default()
 			});
-			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 
 			let moved =
 				visual.debug_bounds("math-text-math-preview-0-formula-0").expect("scrolled text");
@@ -132,9 +128,7 @@ fn display_math_keeps_geometry_on_resize_and_copies_tex(cx: &mut TestAppContext)
 				delta: ScrollDelta::Pixels(gpui::point(gpui::px(60.), gpui::px(0.))),
 				..Default::default()
 			});
-			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 		}
 
 		let copy = visual.debug_bounds("math-copy-math-preview-0-formula-0").expect("copy");

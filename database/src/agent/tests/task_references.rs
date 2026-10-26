@@ -38,7 +38,9 @@ async fn grant_requires_delivery_and_survives_reopen_without_following_new_threa
 		.unwrap();
 
 	assert!(!allowed(&store, "recipient", "target-thread").await);
+
 	let references = store.agent_context_references().await.unwrap();
+
 	assert_eq!(references.len(), 1);
 	assert!(references[0].delivery_turn_id.is_none());
 
@@ -49,7 +51,9 @@ async fn grant_requires_delivery_and_survives_reopen_without_following_new_threa
 	store.acknowledge_agent_dispatch("recipient".into(), "turn".into()).await.unwrap();
 
 	assert!(allowed(&store, "recipient", "target-thread").await);
+
 	let references = store.agent_context_references().await.unwrap();
+
 	assert_eq!(references[0].delivery_turn_id.as_deref(), Some("turn"));
 	assert_eq!(references[0].source_thread_id, "target-thread");
 	assert!(!allowed(&store, "target", "target-thread").await);

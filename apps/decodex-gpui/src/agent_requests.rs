@@ -1,5 +1,5 @@
 //! Provider request forms bound to the exact persisted request event.
-use crate::ui_feedback::Feedback;
+use std::cell::Cell;
 
 use gpui::{AnyElement, AppContext as _, Div, KeyDownEvent, prelude::FluentBuilder as _};
 use serde_json::{Map, Value};
@@ -18,7 +18,8 @@ use crate::{
 			SubmitComposer, ui_theme::BLUE,
 		},
 	},
-	ui_theme::HOVER_FILL,
+	ui_feedback::Feedback,
+	ui_theme::{self, HOVER_FILL},
 };
 use decodex_protocol::MAX_HISTORY_INLINE_BYTES;
 
@@ -50,7 +51,7 @@ impl RequestReader {
 pub(super) struct QuestionTimer {
 	started: std::time::Instant,
 	disabled: bool,
-	caption: std::cell::Cell<Option<u64>>,
+	caption: Cell<Option<u64>>,
 }
 impl QuestionTimer {
 	fn new(value: &Value, now: std::time::Instant) -> Self {
@@ -63,9 +64,11 @@ impl QuestionTimer {
 
 	fn caption(&self, now: std::time::Instant) -> Option<(u64, bool)> {
 		let remaining = self.remaining(now);
+
 		if remaining.is_some() {
 			self.caption.set(remaining);
 		}
+
 		self.caption.get().map(|seconds| (seconds, remaining.is_some()))
 	}
 
@@ -185,7 +188,7 @@ impl AgentSurface {
 			.p_3()
 			.rounded(gpui::px(8.0))
 			.border_1()
-			.border_color(crate::ui_theme::rgba(0xffffff18))
+			.border_color(ui_theme::rgba(0xffffff18))
 			.flex()
 			.flex_col()
 			.gap_2();
@@ -205,7 +208,7 @@ impl AgentSurface {
 					.tab_index(0)
 					.aria_label("Send answers")
 					.cursor_pointer()
-					.text_color(crate::ui_theme::rgb(BLUE))
+					.text_color(ui_theme::rgb(BLUE))
 					.on_click(cx.listener(|s, _, _, cx| s.submit_answers(cx)))
 					.child("Send answers")
 					.smooth(),
@@ -580,7 +583,7 @@ impl AgentSurface {
 					.aria_label(label.clone())
 					.p_2()
 					.rounded(gpui::px(6.0))
-					.bg(crate::ui_theme::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
+					.bg(ui_theme::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
 					.cursor_pointer()
 					.on_click(cx.listener(move |_, _, _, cx| {
 						input.update(cx, |input, cx| input.set_content(&answer, cx));
@@ -625,8 +628,8 @@ impl AgentSurface {
 			.items_center()
 			.rounded(gpui::px(5.0))
 			.cursor_pointer()
-			.hover(|s| s.bg(crate::ui_theme::rgba(HOVER_FILL)))
-			.text_color(crate::ui_theme::rgb(BLUE))
+			.hover(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
+			.text_color(ui_theme::rgb(BLUE))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				if s.generation == generation && s.request_reader.revision == revision
 					&& matches!(&s.request, Some(AgentRequestResult::Available { event_id, .. }) if *event_id == event) {
@@ -658,8 +661,9 @@ mod timing_tests {
 	#[cfg(not(test))]
 	use gpui::px;
 
-	use crate::shell::agent_surface::requests::{
-		self, AgentRequestResult, AgentSurface, QuestionTimer,
+	use crate::{
+		shell::agent_surface::requests::{self, AgentRequestResult, AgentSurface, QuestionTimer},
+		ui_frame,
 	};
 
 	#[test]
@@ -724,16 +728,12 @@ mod timing_tests {
 		// scroll offset and clicking the request pagination control.
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 		surface.update(visual, |s, cx| {
 			s.timeline.scroll.get(s.selected.as_ref().unwrap()).unwrap().scroll_to_bottom();
 			cx.notify();
 		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let next = visual.debug_bounds("large-request-next").expect("next section");
 
@@ -742,9 +742,7 @@ mod timing_tests {
 			assert!(s.request_reader.offset > 0);
 			assert!(s.submission.command.is_none());
 		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let first_offset = surface.read_with(visual, |s, _| s.request_reader.offset);
 
@@ -755,9 +753,7 @@ mod timing_tests {
 				"Space advances the focused section control"
 			)
 		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let previous = visual.debug_bounds("large-request-previous").expect("previous section");
 
@@ -828,18 +824,14 @@ mod timing_tests {
 				s.timeline.scroll.get(s.selected.as_ref().unwrap()).unwrap().scroll_to_bottom();
 				cx.notify();
 			});
-			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 
 			if visual.debug_bounds("request-allow").is_some() {
 				surface.update(visual, |s, cx| {
 					s.timeline.scroll.get(s.selected.as_ref().unwrap()).unwrap().scroll_to_bottom();
 					cx.notify();
 				});
-				visual.update(|window, cx| {
-					window.draw(cx).clear(cx);
-				});
+				visual.update(crate::ui_frame::draw_current_frame);
 
 				let allow = visual.debug_bounds("request-allow").unwrap();
 
@@ -900,13 +892,16 @@ connection_initializing: false,
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			crate::ui_frame::draw_frame(window, cx);
+
+			ui_frame::draw_frame(window, cx);
 		});
 
 		for _ in 0..20 {
-			std::thread::sleep(std::time::Duration::from_millis(16));
+			thread::sleep(std::time::Duration::from_millis(16));
+
 			visual.update(crate::ui_frame::draw_frame);
 		}
+
 		let bounds = visual.debug_bounds("question-format-0").expect("visible option");
 
 		surface.read_with(visual, |s, cx| {
@@ -915,7 +910,9 @@ connection_initializing: false,
 		});
 		visual.simulate_mouse_down(bounds.center(), gpui::MouseButton::Left, Default::default());
 		visual.update(crate::ui_frame::draw_frame);
+
 		assert_eq!(visual.debug_bounds("question-format-0"), Some(bounds));
+
 		visual.simulate_mouse_up(bounds.center(), gpui::MouseButton::Left, Default::default());
 
 		surface.update(visual, |s, cx| {

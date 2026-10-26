@@ -6,12 +6,12 @@
 #[path = "composer_shortcuts.rs"] mod shortcuts;
 #[path = "composer_text.rs"] mod text;
 
-use std::ops::Range;
+use std::{ops::Range, time::Instant};
 
 use gpui::{
-	AccessibleAction, App, Bounds, ClipboardItem, Context, CursorStyle, Element, ElementId,
-	ElementInputHandler, Entity, EntityInputHandler, EventEmitter, FocusHandle, Focusable,
-	GlobalElementId, InspectorElementId, IntoElement, KeyBinding, LayoutId, MouseButton,
+	AccessibleAction, AnyElement, App, Bounds, ClipboardItem, Context, CursorStyle, Element,
+	ElementId, ElementInputHandler, Entity, EntityInputHandler, EventEmitter, FocusHandle,
+	Focusable, GlobalElementId, InspectorElementId, IntoElement, KeyBinding, LayoutId, MouseButton,
 	MouseDownEvent, MouseMoveEvent, MouseUpEvent, NoAction, Pixels, Point, Render, Role,
 	ScrollEvent, SharedString, Style, TextRun, UTF16Selection, UnderlineStyle, Window, WrappedLine,
 	actions, fill,
@@ -24,7 +24,10 @@ use gpui::{
 #[cfg(target_os = "macos")] use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use unicode_segmentation::UnicodeSegmentation as _;
 
-use crate::ui_theme::{self, BODY_LINE_HEIGHT, BODY_SIZE, FIELD_MATERIAL};
+use crate::{
+	ui_motion,
+	ui_theme::{self, BODY_LINE_HEIGHT, BODY_SIZE, FIELD_MATERIAL},
+};
 use cursor::Cursor;
 use decodex_protocol::PromptDraft;
 use edit::Snapshot;
@@ -132,6 +135,7 @@ impl ComposerInput {
 	) -> Self {
 		let owner = cx.entity();
 		let presentation = crate::ui_frame::Presentation::new(&owner, Self::render_input, cx);
+
 		Self {
 			presentation,
 			cursor: Default::default(),
@@ -167,8 +171,10 @@ impl ComposerInput {
 		cx: &mut Context<Self>,
 	) {
 		let text = text.into();
+
 		if self.placeholder != text {
 			self.placeholder = text;
+
 			cx.notify();
 		}
 	}
@@ -212,8 +218,8 @@ impl ComposerInput {
 		}
 
 		self.native_part = None;
-		self.cursor.reset_motion();
 
+		self.cursor.reset_motion();
 		self.replace_bytes(0..self.content.len(), value, false, None, cx);
 		self.undo.clear();
 		self.redo.clear();
@@ -223,10 +229,13 @@ impl ComposerInput {
 		if self.content == value {
 			return;
 		}
+
 		let reveal = self.text_reveal.take().unwrap_or_else(|| {
-			crate::ui_motion::TextReveal::settled(&self.content, std::time::Instant::now())
+			crate::ui_motion::TextReveal::settled(&self.content, Instant::now())
 		});
+
 		self.set_content(value, cx);
+
 		self.text_reveal = Some(reveal);
 	}
 
@@ -553,6 +562,108 @@ impl ComposerInput {
 	}
 }
 
+impl ComposerInput {
+	fn render_input(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+		if let Some(reveal) = &mut self.text_reveal {
+			let (end, moving) = reveal.sample(&self.content, Instant::now());
+
+			self.visible_end = moving.then_some(end);
+
+			if moving {
+				ui_motion::request_frame(window, cx);
+			} else {
+				self.text_reveal = None;
+			}
+		}
+
+		self.update_cursor(window, cx);
+
+		let entity = cx.entity();
+		let focus_handle = self.focus_handle.clone();
+		let workbench = self.appearance == ComposerAppearance::Workbench;
+
+		gpui::div()
+			.id("conversation-composer-input")
+			.key_context("ComposerInput")
+			.role(Role::TextInput)
+			.aria_label(self.aria_label.clone())
+			.aria_placeholder(self.placeholder.clone())
+			.aria_value(if self.secret {
+				"*".repeat(self.content.len())
+			} else {
+				self.content.clone()
+			})
+			.track_focus(&focus_handle)
+			.on_a11y_action(AccessibleAction::SetValue, {
+				let entity = entity.clone();
+
+				move |data, _, cx| {
+					entity.update(cx, |input, cx| input.set_accessible_value(data, cx));
+				}
+			})
+			.on_action(cx.listener(Self::undo))
+			.map(|input| shortcuts::bind_actions(input, cx))
+			.on_action(cx.listener(Self::redo))
+			.on_action(cx.listener(Self::backspace))
+			.on_action(cx.listener(Self::delete))
+			.on_action(cx.listener(Self::left))
+			.on_action(cx.listener(Self::right))
+			.on_action(cx.listener(Self::up))
+			.on_action(cx.listener(Self::down))
+			.on_action(cx.listener(Self::select_left))
+			.on_action(cx.listener(Self::select_right))
+			.on_action(cx.listener(Self::select_all))
+			.on_action(cx.listener(Self::home))
+			.on_action(cx.listener(Self::end))
+			.on_action(cx.listener(Self::insert_newline))
+			.on_action(cx.listener(Self::show_character_palette))
+			.on_action(cx.listener(Self::paste))
+			.on_action(cx.listener(Self::cut))
+			.on_action(cx.listener(Self::copy))
+			.on_key_down(cx.listener(|s, _, _, cx| {
+				s.cursor.reset();
+				cx.notify();
+			}))
+			.on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
+			.on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
+			.on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
+			.on_mouse_move(cx.listener(Self::on_mouse_move))
+			.on_scroll(cx.listener(|s, e: &ScrollEvent, _, cx| {
+				if s.appearance == ComposerAppearance::Workbench {
+					s.text_offset = (s.text_offset
+						- e.delta.pixel_delta(gpui::px(BODY_LINE_HEIGHT)).y)
+						.max(gpui::px(0.0));
+					s.scroll_manually = true;
+
+					cx.stop_propagation();
+					cx.notify();
+				}
+			}))
+			.cursor(CursorStyle::IBeam)
+			.w_full()
+			.when(!workbench, |d| d.h_full())
+			.px_2()
+			.py(gpui::px(if workbench { 4.0 } else { 3.5 }))
+			.flex()
+			.items_start()
+			.overflow_hidden()
+			.rounded(gpui::px(if workbench { 8.0 } else { 6.0 }))
+			.border_1()
+			.border_color(if workbench {
+				ui_theme::rgba(0x00000000)
+			} else if focus_handle.is_focused(window) {
+				ui_theme::rgb(0x817789)
+			} else {
+				ui_theme::rgb(0x3c3744)
+			})
+			.bg(if workbench { ui_theme::rgba(0x00000000) } else { ui_theme::rgba(FIELD_MATERIAL) })
+			.text_size(gpui::px(BODY_SIZE))
+			.text_color(ui_theme::rgb(0xeeeaf0))
+			.child(ComposerTextElement { input: entity })
+			.into_any_element()
+	}
+}
+
 impl EventEmitter<ComposerEvent> for ComposerInput {}
 
 impl Focusable for ComposerInput {
@@ -673,109 +784,6 @@ impl EntityInputHandler for ComposerInput {
 impl Render for ComposerInput {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
 		self.presentation.clone()
-	}
-}
-
-impl ComposerInput {
-	fn render_input(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
-		if let Some(reveal) = &mut self.text_reveal {
-			let (end, moving) = reveal.sample(&self.content, std::time::Instant::now());
-			self.visible_end = moving.then_some(end);
-			if moving {
-				crate::ui_motion::request_frame(window, cx);
-			} else {
-				self.text_reveal = None;
-			}
-		}
-		self.update_cursor(window, cx);
-
-		let entity = cx.entity();
-		let focus_handle = self.focus_handle.clone();
-		let workbench = self.appearance == ComposerAppearance::Workbench;
-
-		gpui::div()
-			.id("conversation-composer-input")
-			.key_context("ComposerInput")
-			.role(Role::TextInput)
-			.aria_label(self.aria_label.clone())
-			.aria_placeholder(self.placeholder.clone())
-			.aria_value(if self.secret {
-				"*".repeat(self.content.len())
-			} else {
-				self.content.clone()
-			})
-			.track_focus(&focus_handle)
-			.on_a11y_action(AccessibleAction::SetValue, {
-				let entity = entity.clone();
-
-				move |data, _, cx| {
-					entity.update(cx, |input, cx| input.set_accessible_value(data, cx));
-				}
-			})
-			.on_action(cx.listener(Self::undo))
-			.map(|input| shortcuts::bind_actions(input, cx))
-			.on_action(cx.listener(Self::redo))
-			.on_action(cx.listener(Self::backspace))
-			.on_action(cx.listener(Self::delete))
-			.on_action(cx.listener(Self::left))
-			.on_action(cx.listener(Self::right))
-			.on_action(cx.listener(Self::up))
-			.on_action(cx.listener(Self::down))
-			.on_action(cx.listener(Self::select_left))
-			.on_action(cx.listener(Self::select_right))
-			.on_action(cx.listener(Self::select_all))
-			.on_action(cx.listener(Self::home))
-			.on_action(cx.listener(Self::end))
-			.on_action(cx.listener(Self::insert_newline))
-			.on_action(cx.listener(Self::show_character_palette))
-			.on_action(cx.listener(Self::paste))
-			.on_action(cx.listener(Self::cut))
-			.on_action(cx.listener(Self::copy))
-			.on_key_down(cx.listener(|s, _, _, cx| {
-				s.cursor.reset();
-				cx.notify();
-			}))
-			.on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
-			.on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
-			.on_mouse_up_out(MouseButton::Left, cx.listener(Self::on_mouse_up))
-			.on_mouse_move(cx.listener(Self::on_mouse_move))
-			.on_scroll(cx.listener(|s, e: &ScrollEvent, _, cx| {
-				if s.appearance == ComposerAppearance::Workbench {
-					s.text_offset = (s.text_offset
-						- e.delta.pixel_delta(gpui::px(BODY_LINE_HEIGHT)).y)
-						.max(gpui::px(0.0));
-					s.scroll_manually = true;
-
-					cx.stop_propagation();
-					cx.notify();
-				}
-			}))
-			.cursor(CursorStyle::IBeam)
-			.w_full()
-			.when(!workbench, |d| d.h_full())
-			.px_2()
-			.py(gpui::px(if workbench { 4.0 } else { 3.5 }))
-			.flex()
-			.items_start()
-			.overflow_hidden()
-			.rounded(gpui::px(if workbench { 8.0 } else { 6.0 }))
-			.border_1()
-			.border_color(if workbench {
-				crate::ui_theme::rgba(0x00000000)
-			} else if focus_handle.is_focused(window) {
-				crate::ui_theme::rgb(0x817789)
-			} else {
-				crate::ui_theme::rgb(0x3c3744)
-			})
-			.bg(if workbench {
-				crate::ui_theme::rgba(0x00000000)
-			} else {
-				crate::ui_theme::rgba(FIELD_MATERIAL)
-			})
-			.text_size(gpui::px(BODY_SIZE))
-			.text_color(crate::ui_theme::rgb(0xeeeaf0))
-			.child(ComposerTextElement { input: entity })
-			.into_any_element()
 	}
 }
 
@@ -981,10 +989,9 @@ mod multiline_tests {
 	) {
 		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
 		let text = "你好👨‍👩‍👧‍👦".repeat(60);
+
 		input.update(visual, |input, cx| input.set_streaming_content(&text, cx));
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 		input.update(visual, |input, cx| {
 			assert_eq!(
 				input.content(),
@@ -992,7 +999,9 @@ mod multiline_tests {
 				"saving and submitting never use the animated prefix"
 			);
 			assert!(input.visible_content().len() < text.len());
+
 			input.replace_bytes(0..0, "Edit: ", false, None, cx);
+
 			assert!(input.text_reveal.is_none());
 			assert_eq!(input.visible_content(), input.content());
 			assert_eq!(input.content(), format!("Edit: {text}"));
@@ -1002,17 +1011,18 @@ mod multiline_tests {
 	#[gpui::test]
 	fn measured_height_matches_painted_wrapping(cx: &mut gpui::TestAppContext) {
 		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+
 		input.update(visual, |input, cx| {
 			input.set_content(
 				"Wait, wait, wait, you are a  Wait, wait, 一二三四五六你好，你好能听到吗？你好",
 				cx,
 			)
 		});
+
 		for width in [460., 500., 600., 740.] {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(300.)));
-			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
+
 			input.read_with(visual, |input, _| {
 				let painted: gpui::Pixels = input
 					.last_layout
@@ -1021,6 +1031,7 @@ mod multiline_tests {
 					.iter()
 					.map(|line| line.size(gpui::px(ui_theme::BODY_LINE_HEIGHT)).height)
 					.sum();
+
 				assert_eq!(
 					input.last_bounds.unwrap().size.height,
 					painted,
@@ -1043,9 +1054,7 @@ mod multiline_tests {
 			window.draw(cx).clear(cx);
 		});
 		visual.simulate_keystrokes("shift-enter");
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		input.update(visual, |input, cx| {
 			assert_eq!(input.content(), "第一行\n");
@@ -1061,9 +1070,7 @@ mod multiline_tests {
 			input.set_content(&"宽度有限，长段落必须自动换行。".repeat(40), cx);
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		input.update(visual, |input, _| {
 			let lines = input.last_layout.as_ref().unwrap();
@@ -1089,9 +1096,7 @@ mod multiline_tests {
 			input.set_content("你abc", cx);
 			input.obscure();
 		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let position = input.read_with(visual, |input, _| {
 			input.last_bounds.unwrap().origin
@@ -1112,8 +1117,6 @@ mod multiline_tests {
 			assert!(input.content.is_char_boundary(input.selected_range.end));
 			assert_eq!(input.content(), "你abc");
 		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 	}
 }

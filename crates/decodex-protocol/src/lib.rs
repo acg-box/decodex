@@ -1,18 +1,6 @@
 //! Typed vNext wire contracts and same-UID local transport shared by clients and
 //! `decodex serve`.
 
-pub use decodex_core::{guardian, work};
-mod agent_collaboration;
-pub use agent_collaboration::{
-	AgentExchangeAssessment, AgentExchangeDto, AgentExchangeKind, AgentExchangeQuestionDto,
-	AgentExchangesResult, AgentPeerExchangeDto, AgentQuestionAnswerDto,
-};
-mod agent_deliveries;
-pub use agent_deliveries::{
-	AgentDeliveriesResult, AgentDeliveryArtifact, AgentDeliveryEntry, AgentDeliveryExtent,
-	AgentDeliveryKind, AgentDeliveryQuery, AgentDeliveryUpdate, AgentDeliveryUpdateKind,
-};
-
 mod account_login;
 mod account_recovery;
 mod agent;
@@ -21,17 +9,15 @@ mod agent_app_settings;
 mod agent_app_ui;
 mod agent_app_ui_call;
 mod agent_archive;
+mod agent_collaboration;
 mod agent_context_settings;
+mod agent_deliveries;
 mod agent_execution;
 mod agent_guardian;
 mod agent_hooks;
 mod agent_integrations;
 mod agent_live_settings;
 mod agent_media;
-mod usage_evidence;
-pub use usage_evidence::{
-	UsageEvidenceResult, UsageEvidenceScope, UsageEvidenceSource, UsageEvidenceTotals,
-};
 mod agent_memory;
 mod agent_model_settings;
 mod agent_models;
@@ -74,17 +60,11 @@ mod native_startup_config;
 mod program_cycle;
 mod reset_card_recovery;
 mod retained_session;
+mod usage_evidence;
 mod voice;
 mod weather;
 mod wire;
 mod work_portfolio;
-
-pub use agent_memory::{AgentMemoryResult, MAX_MEMORY_BYTES, MEMORY_PAGE_BYTES};
-
-pub use native_startup_config::{
-	NativeStartupConfigLocation, NativeStartupConfigStatus, NativeStartupConfiguration,
-	NativeStartupLoginMethod,
-};
 
 pub use self::{
 	account_login::{
@@ -146,6 +126,7 @@ pub use self::{
 	agent_media::{
 		AGENT_MEDIA_CHUNK_BYTES, AgentMediaRequest, AgentMediaResult, MAX_AGENT_MEDIA_BYTES,
 	},
+	agent_memory::{AgentMemoryResult, MAX_MEMORY_BYTES, MEMORY_PAGE_BYTES},
 	agent_model_settings::AgentModelSettingsResult,
 	agent_models::{
 		AgentModelOutcome, AgentModelResponse, AgentModelSelectionReceipt, AgentModelSelectionState,
@@ -294,18 +275,35 @@ pub use self::{
 		decode_client_message, encode_server_message,
 	},
 };
+pub use agent_collaboration::{
+	AgentExchangeAssessment, AgentExchangeDto, AgentExchangeKind, AgentExchangeQuestionDto,
+	AgentExchangesResult, AgentPeerExchangeDto, AgentQuestionAnswerDto,
+};
+pub use agent_deliveries::{
+	AgentDeliveriesResult, AgentDeliveryArtifact, AgentDeliveryEntry, AgentDeliveryExtent,
+	AgentDeliveryKind, AgentDeliveryQuery, AgentDeliveryUpdate, AgentDeliveryUpdateKind,
+};
 /// Exact service-tier identity shared with the provider and persistence boundaries.
 pub use decodex_core::ServiceTier;
 pub use decodex_core::{
-	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES,
+	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES, guardian, work,
 };
 /// Shared global client settings; these do not change thread execution settings.
 pub use decodex_core::{FastModeFailure, global_fast_mode_enabled, set_global_fast_mode_enabled};
+pub use native_startup_config::{
+	NativeStartupConfigLocation, NativeStartupConfigStatus, NativeStartupConfiguration,
+	NativeStartupLoginMethod,
+};
+pub use usage_evidence::{
+	UsageEvidenceResult, UsageEvidenceScope, UsageEvidenceSource, UsageEvidenceTotals,
+};
+pub use work_portfolio::{MAX_WORK_DETAIL_BYTES, WORK_DETAIL_PAGE_BYTES, WorkDetailResult};
 
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
 pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 3, minor: 1 };
+
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ProtocolVersion {
@@ -324,8 +322,6 @@ impl ProtocolVersion {
 		Ok(self)
 	}
 }
-
-pub use work_portfolio::{MAX_WORK_DETAIL_BYTES, WORK_DETAIL_PAGE_BYTES, WorkDetailResult};
 
 #[cfg(test)]
 mod tests {

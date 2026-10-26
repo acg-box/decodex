@@ -1,5 +1,10 @@
 //! Prewarm an input-only Audio Queue without configuring a playback graph.
-use super::{Ports, capture_audio, route::Route};
+use std::{
+	ffi::c_void,
+	ptr::{self, NonNull},
+	sync::atomic::{AtomicBool, Ordering},
+};
+
 #[cfg(test)] use objc2_audio_toolbox::kAudioQueueProperty_StreamDescription;
 use objc2_audio_toolbox::{
 	AudioQueueAllocateBuffer, AudioQueueBufferRef, AudioQueueDispose, AudioQueueEnqueueBuffer,
@@ -11,17 +16,10 @@ use objc2_core_audio_types::{
 	AudioBuffer, AudioBufferList, AudioStreamBasicDescription, AudioStreamPacketDescription,
 	AudioTimeStamp, kAudioFormatFlagsNativeFloatPacked, kAudioFormatLinearPCM,
 };
-use std::{
-	ffi::c_void,
-	ptr::NonNull,
-	sync::atomic::{AtomicBool, Ordering},
-};
+use objc2_core_foundation::CFString;
 
-struct Callback {
-	ports: Ports,
-	recording: AtomicBool,
-	failed: AtomicBool,
-}
+use crate::shell::agent_surface::voice::audio::{self, Ports, route::Route};
+
 pub(super) struct Input {
 	queue: AudioQueueRef,
 	callback: Box<Callback>,
@@ -45,7 +43,8 @@ impl Input {
 			recording: AtomicBool::new(false),
 			failed: AtomicBool::new(false),
 		});
-		let mut queue = std::ptr::null_mut();
+		let mut queue = ptr::null_mut();
+
 		// Audio Queue owns format conversion and an input-only hardware connection.
 		// A null run loop requests its internal callback thread. The boxed state stays
 		// valid until synchronous disposal has finished all callbacks.
@@ -59,10 +58,13 @@ impl Input {
 				0,
 				NonNull::from(&mut queue),
 			))?;
-			let mut input = Self { queue, callback, buffers: [std::ptr::null_mut(); 3] };
+
+			let mut input = Self { queue, callback, buffers: [ptr::null_mut(); 3] };
+
 			if route.requested() != 0 {
 				let uid = route.input_uid()?;
-				let mut value = uid.as_ref() as *const objc2_core_foundation::CFString;
+				let mut value = uid.as_ref() as *const CFString;
+
 				check(AudioQueueSetProperty(
 					queue,
 					kAudioQueueProperty_CurrentDevice,
@@ -70,6 +72,7 @@ impl Input {
 					size_of_val(&value) as u32,
 				))?;
 			}
+
 			// Ten milliseconds per callback; memory is allocated before the user clicks.
 			for buffer in &mut input.buffers {
 				check(AudioQueueAllocateBuffer(
@@ -78,6 +81,7 @@ impl Input {
 					NonNull::from(buffer),
 				))?;
 			}
+
 			Ok(input)
 		}
 	}
@@ -86,26 +90,34 @@ impl Input {
 		unsafe {
 			// Complete a previous graceful stop before reusing its prepared buffers.
 			self.callback.recording.store(false, Ordering::Release);
+
 			if self.running()? {
 				check(AudioQueueStop(self.queue, true))?;
 			}
+
 			check(AudioQueueReset(self.queue))?;
+
 			self.callback.failed.store(false, Ordering::Release);
 		}
+
 		Ok(())
 	}
 
 	pub(super) fn start(&self) -> Result<(), ()> {
 		unsafe {
 			for buffer in self.buffers {
-				check(AudioQueueEnqueueBuffer(self.queue, buffer, 0, std::ptr::null()))?;
+				check(AudioQueueEnqueueBuffer(self.queue, buffer, 0, ptr::null()))?;
 			}
+
 			self.callback.recording.store(true, Ordering::Release);
-			if let Err(error) = check(AudioQueueStart(self.queue, std::ptr::null())) {
+
+			if let Err(error) = check(AudioQueueStart(self.queue, ptr::null())) {
 				self.callback.recording.store(false, Ordering::Release);
+
 				return Err(error);
 			}
 		}
+
 		Ok(())
 	}
 
@@ -119,6 +131,7 @@ impl Input {
 
 	pub(super) fn cancel(&self) {
 		let recording = self.callback.recording.swap(false, Ordering::AcqRel);
+
 		if recording || self.running().unwrap_or(false) {
 			let _ = check(unsafe { AudioQueueStop(self.queue, true) });
 		}
@@ -128,12 +141,14 @@ impl Input {
 		if self.callback.failed.load(Ordering::Acquire) {
 			return Err(());
 		}
+
 		self.running().map(|running| !running)
 	}
 
 	pub(super) fn running(&self) -> Result<bool, ()> {
 		let mut value = 0_u32;
 		let mut size = size_of_val(&value) as u32;
+
 		check(unsafe {
 			AudioQueueGetProperty(
 				self.queue,
@@ -142,6 +157,7 @@ impl Input {
 				NonNull::from(&mut size),
 			)
 		})?;
+
 		Ok(value != 0)
 	}
 
@@ -150,6 +166,7 @@ impl Input {
 		// All fields are numeric; zero is a valid initial value for the out parameter.
 		let mut format: AudioStreamBasicDescription = unsafe { std::mem::zeroed() };
 		let mut size = size_of_val(&format) as u32;
+
 		check(unsafe {
 			AudioQueueGetProperty(
 				self.queue,
@@ -159,6 +176,7 @@ impl Input {
 			)
 		})
 		.ok()?;
+
 		Some(format.mChannelsPerFrame)
 	}
 }
@@ -166,18 +184,28 @@ impl Input {
 impl Drop for Input {
 	fn drop(&mut self) {
 		self.callback.recording.store(false, Ordering::Release);
+
 		// Synchronous disposal stops capture and releases buffers before callback state.
 		let _ = check(unsafe { AudioQueueDispose(self.queue, true) });
 	}
 }
+
+struct Callback {
+	ports: Ports,
+	recording: AtomicBool,
+	failed: AtomicBool,
+}
+
 fn check(status: i32) -> Result<(), ()> {
 	if status == 0 {
 		Ok(())
 	} else {
 		eprintln!("DecodexAudio input_queue_error={status}");
+
 		Err(())
 	}
 }
+
 unsafe extern "C-unwind" fn receive(
 	context: *mut c_void,
 	queue: AudioQueueRef,
@@ -198,18 +226,19 @@ unsafe extern "C-unwind" fn receive(
 		}],
 	};
 	let status = unsafe {
-		capture_audio(
+		audio::capture_audio(
 			audio.mAudioDataByteSize / 4,
 			NonNull::from(&mut list),
 			&state.ports.captured,
 			&state.ports.level,
 		)
 	};
+
 	if status != 0 {
 		state.failed.store(true, Ordering::Release);
 	}
 	if state.recording.load(Ordering::Acquire)
-		&& unsafe { AudioQueueEnqueueBuffer(queue, buffer, 0, std::ptr::null()) } != 0
+		&& unsafe { AudioQueueEnqueueBuffer(queue, buffer, 0, ptr::null()) } != 0
 	{
 		state.failed.store(true, Ordering::Release);
 	}
@@ -217,9 +246,17 @@ unsafe extern "C-unwind" fn receive(
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use std::{
+		ptr,
+		sync::{Arc, Mutex, atomic::AtomicU32},
+	};
+
 	use rtrb::RingBuffer;
-	use std::sync::{Arc, Mutex, atomic::AtomicU32};
+
+	use crate::shell::agent_surface::voice::audio::input::{
+		self, AtomicBool, Callback, NonNull, Ordering, Ports,
+	};
+
 	#[test]
 	fn stopping_copies_the_final_buffer_without_requeueing() {
 		let (captured, mut received) = RingBuffer::new(8);
@@ -238,25 +275,28 @@ mod tests {
 			mAudioDataBytesCapacity: size_of_val(&samples) as u32,
 			mAudioData: NonNull::from(&mut samples).cast(),
 			mAudioDataByteSize: size_of_val(&samples) as u32,
-			mUserData: std::ptr::null_mut(),
+			mUserData: ptr::null_mut(),
 			mPacketDescriptionCapacity: 0,
-			mPacketDescriptions: std::ptr::null(),
+			mPacketDescriptions: ptr::null(),
 			mPacketDescriptionCount: 0,
 		};
+
 		// No queue call occurs after stopping. The callback does not read the timestamp.
 		unsafe {
-			receive(
+			input::receive(
 				(&raw mut state).cast(),
-				std::ptr::null_mut(),
+				ptr::null_mut(),
 				&raw mut buffer,
 				NonNull::dangling(),
 				0,
-				std::ptr::null(),
+				ptr::null(),
 			);
 		}
+
 		for sample in samples {
 			assert_eq!(received.pop(), Ok(sample));
 		}
+
 		assert!(received.is_empty());
 		assert!(!state.failed.load(Ordering::Acquire));
 	}

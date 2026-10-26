@@ -48,6 +48,8 @@ use security_framework::os::macos::code_signing::{
 use tempfile::{Builder, TempDir};
 use zeroize::Zeroizing;
 
+use crate::startup_trace::Phase;
+
 pub(super) const PRIVATE_STDIO_STARTUP_ENV: &str =
 	"CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED";
 pub(super) const PRIVATE_STDIO_STARTUP_VALUE: &str = "1";
@@ -212,8 +214,8 @@ impl SuspendedAttestedSpawn {
 		}
 
 		let pid = self.child.as_ref().expect("a suspended spawn owns its child").pid;
+		let phase = Phase::new("dynamic_process_identity");
 
-		let phase = crate::startup_trace::Phase::new("dynamic_process_identity");
 		verify_dynamic_identity(pid, identity)?;
 		drop(phase);
 		verify_session_and_process_group(pid)?;

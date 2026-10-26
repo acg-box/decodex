@@ -1,11 +1,14 @@
 //! Frame-paced presentation of received text. Never delays transport or stores output.
 use std::{cell::Cell, rc::Rc, time::Instant};
 
-use gpui::{App, RenderOnce, prelude::*};
+use gpui::{
+	App, RenderOnce,
+	prelude::{FluentBuilder as _, ParentElement as _, Styled as _},
+};
 
 use crate::{
 	shell::agent_surface::{IntoElement, SharedString, Window, markdown},
-	ui_motion,
+	ui_motion::{self, TextReveal},
 };
 
 #[derive(gpui::IntoElement)]
@@ -27,6 +30,7 @@ impl StreamingText {
 
 	pub(super) fn settled(mut self, signal: Rc<Cell<bool>>) -> Self {
 		self.settled = Some(signal);
+
 		self
 	}
 }
@@ -34,17 +38,19 @@ impl RenderOnce for StreamingText {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(SharedString::from(self.key.clone()), cx, |_, _| {
 			if self.output {
-				ui_motion::TextReveal::output(&self.text, self.complete, Instant::now())
+				TextReveal::output(&self.text, self.complete, Instant::now())
 			} else {
-				ui_motion::TextReveal::new(Instant::now())
+				TextReveal::new(Instant::now())
 			}
 		});
 		let (end, moving) = state.update(cx, |state, _| {
 			let now = Instant::now();
 			let sample = state.sample(&self.text, now);
+
 			if self.complete {
 				state.finish(now);
 			}
+
 			sample
 		});
 
@@ -58,19 +64,25 @@ impl RenderOnce for StreamingText {
 			cx,
 			|_, _| Flow::new(self.output && !self.complete),
 		);
+
 		if !flow.read(cx).enabled {
 			if let Some(signal) = self.settled {
 				signal.set(!moving && end == self.text.len());
 			}
+
 			return content;
 		}
+
 		let (height, growing) = flow.read(cx).sample(Instant::now());
+
 		if let Some(signal) = &self.settled {
 			signal.set(!moving && !growing && end == self.text.len());
 		}
+
 		if growing {
 			ui_motion::request_frame(window, cx);
 		}
+
 		// The row owns its displayed height. Bottom-follow uses this same layout,
 		// so a line wrap cannot jump the scroll position by a full line at once.
 		gpui::div()
@@ -92,12 +104,15 @@ impl RenderOnce for StreamingText {
 								bounds.size.height.into(),
 								Instant::now(),
 							);
+
 							s.sample(Instant::now()).1
 						});
+
 						if moving {
 							if let Some(signal) = &self.settled {
 								signal.set(false);
 							}
+
 							ui_motion::request_frame(window, cx);
 						}
 					})
@@ -137,26 +152,38 @@ impl Flow {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
 	use std::time::Duration;
+
+	use crate::shell::agent_surface::text_reveal::{Flow, Instant};
+
 	#[test]
 	fn streamed_lines_grow_monotonically_and_resizing_uses_natural_height() {
 		for frame in [6, 16] {
 			let now = Instant::now();
 			let mut flow = Flow::new(true);
+
 			flow.measure(400., 24., now);
+
 			let mut previous = 24.;
+
 			for ms in (0..600).step_by(frame) {
 				let at = now + Duration::from_millis(ms as u64);
 				let target = if ms < 80 { 48. } else { 72. };
+
 				flow.measure(400., target, at);
+
 				let value = flow.sample(at).0.unwrap();
+
 				assert!(value >= previous && value <= target);
 				assert!(value - previous < 12., "a new line must not jump the viewport");
+
 				previous = value;
 			}
+
 			assert_eq!(previous, 72.);
+
 			flow.measure(200., 144., now + Duration::from_secs(1));
+
 			assert_eq!(flow.sample(now + Duration::from_secs(1)), (Some(144.), false));
 		}
 	}

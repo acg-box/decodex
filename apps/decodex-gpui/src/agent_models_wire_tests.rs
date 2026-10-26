@@ -168,17 +168,13 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppC
 			assert_eq!(s.composer_model_value(cx).as_deref(), Some("previous-model"));
 			assert_eq!(s.composer_effort_value(cx).as_deref(), Some("high"));
 		});
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let button = visual.debug_bounds("task-models-read").unwrap();
 
 		visual.simulate_click(button.center(), Default::default());
 		visual.run_until_parked();
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(
 			visual.debug_bounds("task-model-effort-0").is_none(),
@@ -190,9 +186,7 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppC
 
 		visual.simulate_click(button.center(), Default::default());
 		visual.run_until_parked();
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		if preserve {
 			assert!(visual.debug_bounds("task-model-effort-0").is_none());
@@ -235,9 +229,7 @@ fn model_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppC
 				));
 			}
 		});
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("task-model-0").is_none());
 		assert!(
@@ -371,9 +363,7 @@ fn running_task_model_controls_follow_current_service_eligibility(cx: &mut TestA
 		cx.notify();
 	});
 
-	visual.update(|w, cx| {
-		w.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	assert!(visual.debug_bounds("task-model-0").is_none());
 }

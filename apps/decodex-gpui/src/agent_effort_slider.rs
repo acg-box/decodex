@@ -12,7 +12,7 @@ use crate::{
 			StatefulInteractiveElement, Styled, ui_theme::TEXT,
 		},
 	},
-	ui_motion,
+	ui_motion, ui_theme,
 };
 
 impl AgentSurface {
@@ -37,7 +37,7 @@ impl AgentSurface {
 			.id("reasoning-configured")
 			.debug_selector(|| "reasoning-configured".into())
 			.text_size(gpui::px(12.))
-			.text_color(crate::ui_theme::rgb(TEXT))
+			.text_color(ui_theme::rgb(TEXT))
 			.child(
 				self.composer_effort_value(cx)
 					.as_deref()
@@ -104,7 +104,7 @@ impl AgentSurface {
 					.flex_none()
 					.text_size(gpui::px(12.))
 					.whitespace_nowrap()
-					.text_color(crate::ui_theme::rgb(TEXT))
+					.text_color(ui_theme::rgb(TEXT))
 					.child(label.clone()),
 			)
 			.child(
@@ -227,7 +227,7 @@ impl RenderOnce for SliderTrack {
 					.top(gpui::px(10. - feedback * 0.5))
 					.h(gpui::px(4. + feedback))
 					.rounded_full()
-					.bg(crate::ui_theme::rgba(0xffffff18)),
+					.bg(ui_theme::rgba(0xffffff18)),
 			)
 			.child(
 				gpui::div()
@@ -237,7 +237,7 @@ impl RenderOnce for SliderTrack {
 					.w(gpui::relative(fraction))
 					.h(gpui::px(4. + feedback))
 					.rounded_full()
-					.bg(crate::ui_theme::rgb(if active { 0xe7e7ea } else { 0xc0c0c5 })),
+					.bg(ui_theme::rgb(if active { 0xe7e7ea } else { 0xc0c0c5 })),
 			)
 			.children((0..self.count).map(|i| {
 				gpui::div()
@@ -248,7 +248,7 @@ impl RenderOnce for SliderTrack {
 					.w(gpui::px(2.))
 					.h(gpui::px(3.))
 					.rounded_full()
-					.bg(crate::ui_theme::rgba(0xd5d5da85))
+					.bg(ui_theme::rgba(0xd5d5da85))
 			}))
 			.child(
 				gpui::div()
@@ -259,7 +259,7 @@ impl RenderOnce for SliderTrack {
 					.w(gpui::px(thumb))
 					.h(gpui::px(thumb))
 					.rounded_full()
-					.bg(crate::ui_theme::rgb(0xe7e7ea)),
+					.bg(ui_theme::rgb(0xe7e7ea)),
 			)
 	}
 }
@@ -319,16 +319,12 @@ mod tests {
 			s.composer_menu_content = Some("model");
 		});
 
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		for _ in 0..2 {
 			thread::sleep(std::time::Duration::from_millis(200));
 
-			visual.update(|w, cx| {
-				w.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 		}
 
 		let bounds = surface.update(visual, |s, _| s.effort_track_bounds.unwrap());
@@ -374,24 +370,18 @@ mod tests {
 		surface.update(visual, |s, _| {
 			assert_eq!(s.effort, crate::shell::agent_surface::ConversationReasoningEffort::High)
 		});
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let model = surface.update(visual, |s, _| s.menu_trigger_bounds["model"].center());
 
 		visual.simulate_mouse_down(model, MouseButton::Left, Default::default());
 		visual.simulate_mouse_up(model, MouseButton::Left, Default::default());
 		surface.update(visual, |s, _| assert!(s.composer_menu.is_none()));
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 		visual.simulate_mouse_down(model, MouseButton::Left, Default::default());
 		visual.simulate_mouse_up(model, MouseButton::Left, Default::default());
 		surface.update(visual, |s, _| assert_eq!(s.composer_menu, Some("model")));
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 		visual.simulate_mouse_down(
 			gpui::point(gpui::px(400.), gpui::px(200.)),
 			MouseButton::Left,

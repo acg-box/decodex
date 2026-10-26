@@ -22,6 +22,7 @@ use libwebrtc::{
 		ContinualGatheringPolicy, PeerConnectionFactory, RtcConfiguration,
 		native::PeerConnectionFactoryExt as _,
 	},
+	rtp_sender::RtpSender,
 	session_description::{SdpType, SessionDescription},
 	stats::RtcStats,
 };
@@ -37,10 +38,6 @@ use crate::shell::agent_surface::voice::audio::{
 };
 
 #[cfg(test)]
-#[path = "native_voice_online_tests.rs"]
-mod online_tests;
-
-#[cfg(test)]
 type OfferPause = (oneshot::Sender<()>, oneshot::Receiver<()>);
 
 pub(super) enum Command {
@@ -52,6 +49,55 @@ enum Input {
 	Device(u32),
 	#[cfg(test)]
 	Pcm(Pcm),
+}
+
+enum Audio {
+	Device(Session),
+	#[cfg(test)]
+	Pcm(Pcm),
+}
+impl Audio {
+	fn activate(&mut self) -> Result<(), AudioError> {
+		match self {
+			Self::Device(session) => session.resume()?,
+			#[cfg(test)]
+			Self::Pcm(pcm) => while pcm.captured.pop().is_ok() {},
+		}
+
+		Ok(())
+	}
+
+	fn state(&mut self) -> Option<Arc<State>> {
+		match self {
+			Self::Device(session) => Some(session.parts().0),
+			#[cfg(test)]
+			Self::Pcm(_) => None,
+		}
+	}
+
+	fn pcm(&mut self) -> &mut Pcm {
+		match self {
+			Self::Device(session) => session.parts().1,
+			#[cfg(test)]
+			Self::Pcm(pcm) => pcm,
+		}
+	}
+
+	fn factory(&self) -> PeerConnectionFactory {
+		match self {
+			Self::Device(session) => session.live_factory(),
+			#[cfg(test)]
+			Self::Pcm(_) => PeerConnectionFactory::default(),
+		}
+	}
+
+	fn manual(&self) -> bool {
+		match self {
+			Self::Device(_) => false,
+			#[cfg(test)]
+			Self::Pcm(_) => true,
+		}
+	}
 }
 
 pub(super) struct Transport {
@@ -105,6 +151,7 @@ impl Transport {
 			offer_pause,
 		};
 		let stopped = cancelled.clone();
+
 		std::thread::Builder::new()
 			.name("native-voice".into())
 			.spawn(move || match input {
@@ -119,6 +166,7 @@ impl Transport {
 				Input::Pcm(pcm) => call.run(Audio::Pcm(pcm)),
 			})
 			.map_err(|_| AudioError::Worker)?;
+
 		Ok(Self { commands, events, overflow, level, stop: Some(stop), cancelled })
 	}
 
@@ -138,62 +186,17 @@ impl Transport {
 		})
 	}
 }
+
 impl Drop for Transport {
 	fn drop(&mut self) {
 		self.cancelled.store(true, Ordering::Release);
+
 		if let Some(stop) = self.stop.take() {
 			let _ = stop.send(());
 		}
 	}
 }
 
-enum Audio {
-	Device(Session),
-	#[cfg(test)]
-	Pcm(Pcm),
-}
-impl Audio {
-	fn activate(&mut self) -> Result<(), AudioError> {
-		match self {
-			Self::Device(session) => session.resume()?,
-			#[cfg(test)]
-			Self::Pcm(pcm) => while pcm.captured.pop().is_ok() {},
-		}
-		Ok(())
-	}
-
-	fn state(&mut self) -> Option<Arc<State>> {
-		match self {
-			Self::Device(session) => Some(session.parts().0),
-			#[cfg(test)]
-			Self::Pcm(_) => None,
-		}
-	}
-
-	fn pcm(&mut self) -> &mut Pcm {
-		match self {
-			Self::Device(session) => session.parts().1,
-			#[cfg(test)]
-			Self::Pcm(pcm) => pcm,
-		}
-	}
-
-	fn factory(&self) -> PeerConnectionFactory {
-		match self {
-			Self::Device(session) => session.live_factory(),
-			#[cfg(test)]
-			Self::Pcm(_) => PeerConnectionFactory::default(),
-		}
-	}
-
-	fn manual(&self) -> bool {
-		match self {
-			Self::Device(_) => false,
-			#[cfg(test)]
-			Self::Pcm(_) => true,
-		}
-	}
-}
 struct Call {
 	requests: sync::mpsc::Receiver<Command>,
 	output: Events,
@@ -209,11 +212,14 @@ impl Call {
 			self.output.send(
 				serde_json::json!({"type":"error","message":"The native audio runtime could not start."}),
 			);
+
 			return;
 		};
+
 		if !matches!(self.ended.try_recv(), Err(oneshot::error::TryRecvError::Empty)) {
 			return;
 		}
+
 		runtime.block_on(async {
 			tokio::select! {
 				_ = self.ended => {},
@@ -235,11 +241,41 @@ impl Events {
 		}
 	}
 }
+
 struct Peer(PeerConnection);
 impl Drop for Peer {
 	fn drop(&mut self) {
 		self.0.close();
 	}
+}
+
+fn audio_event_channel(peer: &Peer, captions: Events) -> Result<DataChannel, &'static str> {
+	peer.0.on_data_channel(Some(Box::new(|channel| channel.close())));
+
+	let channel = peer
+		.0
+		.create_data_channel("oai-events", DataChannelInit::default())
+		.map_err(|_| "The audio event channel could not start.")?;
+
+	channel.on_message(Some(Box::new(move |buffer| {
+		if !buffer.binary
+			&& buffer.data.len() <= 65_536
+			&& let Ok(value) = serde_json::from_slice::<Value>(buffer.data)
+			&& matches!(
+				value["type"].as_str(),
+				Some(
+					"input_transcript.added"
+						| "output_transcript.added"
+						| "turn.created"
+						| "turn.done"
+						| "turn.delta"
+				)
+			) {
+			captions.send(serde_json::json!({"type":"caption","event":value}));
+		}
+	})));
+
+	Ok(channel)
 }
 
 async fn run(
@@ -338,12 +374,10 @@ async fn run_media(
 		Some(source) => factory.create_audio_track("microphone", source.clone()),
 		None => factory.create_device_audio_track("microphone"),
 	};
-
 	let sender = peer
 		.0
 		.add_track(track.clone().into(), &["microphone"])
 		.map_err(|_| "The microphone track could not start.")?;
-
 	let (tracks, mut incoming) = sync::mpsc::channel(1);
 
 	if source.is_some() {
@@ -355,7 +389,6 @@ async fn run_media(
 	}
 
 	let data = audio_event_channel(peer, events.clone())?;
-
 	let offer = time::timeout(
 		Duration::from_secs(10),
 		gather_audio_offer(
@@ -369,6 +402,7 @@ async fn run_media(
 	.map_err(|_| "The audio offer could not be created.")?;
 
 	eprintln!("DecodexVoice offer_ready_ms={}", started.elapsed().as_millis());
+
 	events.send(serde_json::json!({"type":"offer","sdp":offer}));
 
 	let deadline = Instant::now() + Duration::from_secs(30);
@@ -387,6 +421,7 @@ async fn run_media(
 			command = commands.recv() => match command {
 				Some(Command::Answer(sdp)) => {
 					eprintln!("DecodexVoice answer_received_ms={}", started.elapsed().as_millis());
+
 					let answer = SessionDescription::parse(&sdp, SdpType::Answer).map_err(|_| "The audio answer was invalid.")?;
 
 					peer.0.set_remote_description(answer).await.map_err(|_| "The audio answer could not be applied.")?;
@@ -412,10 +447,14 @@ async fn run_media(
 
 				if !announced && connected {
 					let audio_start = Instant::now();
+
 					audio.activate().map_err(AudioError::message)?;
+
 					eprintln!("DecodexVoice ready_ms={} audio_start_ms={}", started.elapsed().as_millis(), audio_start.elapsed().as_millis());
+
 					announced = true;
 					awaiting_capture = Some(audio_start);
+
 					events.send(serde_json::json!({"type":"connected"}));
 				}
 				if matches!(peer.0.connection_state(), PeerConnectionState::Failed | PeerConnectionState::Disconnected | PeerConnectionState::Closed)
@@ -424,69 +463,73 @@ async fn run_media(
 				}
 				if !announced && Instant::now() >= deadline { return Err("The audio connection timed out."); }
 				if !announced { continue; }
+
 				if let Some(device) = audio.state()
 					&& !device.running() { return Err("The audio device stopped. Select a device and start a new call."); }
 				if let Some(source) = &source {
-					let pcm = audio.pcm();
-					if pcm.captured.slots() >= LIVE_FRAME_SAMPLES as usize {
-					for sample in frame.data.to_mut() {
-						let value = pcm.captured.pop().unwrap_or(0.0);
-
-						*sample = (value * if value < 0.0 { 32_768.0 } else { 32_767.0 }) as i16;
-					}
-
-					source.capture_frame(&frame).await.map_err(|_| "Microphone audio could not be delivered.")?;
-					}
+					capture_audio_frame(source, audio.pcm(), &mut frame).await?;
 				} else if Instant::now() >= next_meter {
 					// Native WebRTC owns PCM and AEC timing. Read its source meter at
 					// 20 Hz; the composer interpolates visual feedback independently.
 					next_meter = Instant::now() + Duration::from_millis(50);
-					if let Ok(stats) = sender.get_stats().await {
-						for stat in stats {
-							if let RtcStats::MediaSource(source) = stat
-								&& source.source.kind == "audio" {
-								level.store((source.audio.audio_level as f32).to_bits(), Ordering::Relaxed);
-								if source.audio.total_samples_duration > 0.
-									&& let Some(since) = awaiting_capture.take() {
-									eprintln!("DecodexVoice capture_observed_after_start_ms={}", since.elapsed().as_millis());
-								}
-							}
-						}
-					}
+
+					observe_audio_source(&sender, &level, &mut awaiting_capture).await;
 				}
 			},
 		}
 	}
 }
 
-fn audio_event_channel(peer: &Peer, captions: Events) -> Result<DataChannel, &'static str> {
-	peer.0.on_data_channel(Some(Box::new(|channel| channel.close())));
-	let channel = peer
-		.0
-		.create_data_channel("oai-events", DataChannelInit::default())
-		.map_err(|_| "The audio event channel could not start.")?;
-	channel.on_message(Some(Box::new(move |buffer| {
-		if !buffer.binary
-			&& buffer.data.len() <= 65_536
-			&& let Ok(value) = serde_json::from_slice::<Value>(buffer.data)
-			&& matches!(
-				value["type"].as_str(),
-				Some(
-					"input_transcript.added"
-						| "output_transcript.added"
-						| "turn.created"
-						| "turn.done"
-						| "turn.delta"
-				)
-			) {
-			captions.send(serde_json::json!({"type":"caption","event":value}));
+async fn observe_audio_source(
+	sender: &RtpSender,
+	level: &AtomicU32,
+	awaiting_capture: &mut Option<Instant>,
+) {
+	if let Ok(stats) = sender.get_stats().await {
+		for stat in stats {
+			if let RtcStats::MediaSource(source) = stat
+				&& source.source.kind == "audio"
+			{
+				level.store((source.audio.audio_level as f32).to_bits(), Ordering::Relaxed);
+
+				if source.audio.total_samples_duration > 0.
+					&& let Some(since) = awaiting_capture.take()
+				{
+					eprintln!(
+						"DecodexVoice capture_observed_after_start_ms={}",
+						since.elapsed().as_millis()
+					);
+				}
+			}
 		}
-	})));
-	Ok(channel)
+	}
+}
+
+async fn capture_audio_frame(
+	source: &NativeAudioSource,
+	pcm: &mut Pcm,
+	frame: &mut AudioFrame<'_>,
+) -> Result<(), &'static str> {
+	if pcm.captured.slots() >= LIVE_FRAME_SAMPLES as usize {
+		for sample in frame.data.to_mut() {
+			let value = pcm.captured.pop().unwrap_or(0.0);
+
+			*sample = (value * if value < 0.0 { 32_768.0 } else { 32_767.0 }) as i16;
+		}
+
+		source
+			.capture_frame(frame)
+			.await
+			.map_err(|_| "Microphone audio could not be delivered.")?;
+	}
+
+	Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+	use std::sync::{Arc, atomic::AtomicBool};
+
 	use futures_util::StreamExt as _;
 	use libwebrtc::{
 		peer_connection::AnswerOptions,
@@ -497,61 +540,78 @@ mod tests {
 		time::{self, Instant},
 	};
 
-	use crate::shell::agent_surface::voice::transport::{
-		AudioFrame, AudioSourceOptions, Command, ContinualGatheringPolicy, Duration,
-		IceGatheringState, MediaStreamTrack, NativeAudioSource, NativeAudioStream, Pcm, Peer,
-		PeerConnectionFactory, RtcConfiguration, SdpType, SessionDescription, Transport, Value,
-		oneshot,
+	use crate::shell::agent_surface::voice::{
+		audio::owner::{self, Mode, Session},
+		transport::{
+			AudioFrame, AudioSourceOptions, Command, ContinualGatheringPolicy, Duration,
+			IceGatheringState, MediaStreamTrack, NativeAudioSource, NativeAudioStream, Pcm, Peer,
+			PeerConnectionFactory, RtcConfiguration, SdpType, SessionDescription, Transport, Value,
+			oneshot,
+		},
 	};
 
 	#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 	#[ignore = "Requires authorized microphone; sends native microphone audio only to a loopback peer"]
 	async fn native_device_calls_use_prewarmed_dsp_across_dictation() {
-		use crate::shell::agent_surface::voice::audio::owner::{self, Mode, Session};
-		use std::sync::{Arc, atomic::AtomicBool};
 		time::timeout(Duration::from_secs(45), async {
 			owner::warm(0);
+
 			for attempt in 0..3 {
 				let transport = Transport::start_device(0).unwrap();
 				let factory = PeerConnectionFactory::default();
+
 				factory.set_adm_recording_enabled(false);
 				factory.set_adm_playout_enabled(false);
+
 				let mut config = RtcConfiguration::default();
+
 				config.continual_gathering_policy = ContinualGatheringPolicy::GatherOnce;
+
 				let peer = Peer(factory.create_peer_connection(config).unwrap());
 				let source = NativeAudioSource::new(AudioSourceOptions::default(), 48_000, 1, 40);
+
 				peer.0
 					.add_track(
 						factory.create_audio_track("remote", source.clone()).into(),
 						&["remote"],
 					)
 					.unwrap();
+
 				let (tracks, mut received) = mpsc::channel(1);
+
 				peer.0.on_track(Some(Box::new(move |event| {
 					if let MediaStreamTrack::Audio(track) = event.track {
 						let _ = tracks.try_send(track);
 					}
 				})));
+
 				// The fixture accepts the caption channel without sending provider data.
 				peer.0.on_data_channel(Some(Box::new(|_| {})));
+
 				connect_fixture_peer(&peer, &transport).await;
+
 				let connected = Instant::now();
 				let mut stream = NativeAudioStream::new(received.recv().await.unwrap(), 48_000, 1);
 				let silent = tokio::spawn(async move {
 					let frame = AudioFrame::new(48_000, 1, 480);
+
 					loop {
 						source.capture_frame(&frame).await.unwrap();
+
 						time::sleep(Duration::from_millis(10)).await;
 					}
 				});
 				let first =
 					time::timeout(Duration::from_secs(2), stream.next()).await.unwrap().unwrap();
+
 				eprintln!(
 					"native_live_first_remote_pcm_ms={:.3} attempt={attempt}",
-					connected.elapsed().as_secs_f64() * 1000.
+					connected.elapsed().as_secs_f64() * 1_000.
 				);
-				let mut samples = first.data.len();
+
 				let until = Instant::now() + Duration::from_secs(1);
+				let mut samples = first.data.len();
+
 				while Instant::now() < until {
 					samples += time::timeout(Duration::from_secs(1), stream.next())
 						.await
@@ -560,15 +620,22 @@ mod tests {
 						.data
 						.len();
 				}
+
 				assert!(samples >= 24_000, "native capture must reach the remote peer");
 				assert!(transport.command(Command::Mute(true)));
+
 				time::sleep(Duration::from_millis(100)).await;
+
 				assert!(transport.command(Command::Mute(false)));
+
 				drop(transport);
+
 				silent.abort();
+
 				let _ = silent.await;
-				let mut dictation = None;
 				let until = Instant::now() + Duration::from_secs(2);
+				let mut dictation = None;
+
 				while dictation.is_none() && Instant::now() < until {
 					match Session::start(0, Mode::Dictation, Arc::new(AtomicBool::new(false))) {
 						Ok(session) => dictation = Some(session),
@@ -577,16 +644,21 @@ mod tests {
 						Err(error) => panic!("dictation failed: {error:?}"),
 					}
 				}
+
 				let mut dictation =
 					dictation.expect("Live must release capture before peer teardown");
 				let (state, pcm) = dictation.parts();
 				let until = Instant::now() + Duration::from_secs(1);
+
 				while pcm.captured.pop().is_err() {
 					assert!(state.running());
 					assert!(Instant::now() < until);
+
 					time::sleep(Duration::from_millis(2)).await;
 				}
+
 				drop(dictation);
+
 				time::sleep(Duration::from_millis(200)).await;
 			}
 		})
@@ -707,6 +779,7 @@ mod tests {
 	async fn connect_fixture_peer(peer: &Peer, transport: &Transport) {
 		let offer = event(transport, "offer").await;
 		let sdp = offer["sdp"].as_str().unwrap();
+
 		// Exercise the same native ICE selection as a call. Candidate order does
 		// not establish reachability, especially with virtual network adapters.
 		peer.0
@@ -866,3 +939,6 @@ mod tests {
 		.expect("native call lifecycle");
 	}
 }
+#[cfg(test)]
+#[path = "native_voice_online_tests.rs"]
+mod online_tests;

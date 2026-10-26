@@ -2,9 +2,9 @@
 use serde::{Deserialize, Serialize};
 
 /// Maximum retained selected Work response assembled by the client.
-pub const MAX_WORK_DETAIL_BYTES: usize = 32 * 1024 * 1024;
+pub const MAX_WORK_DETAIL_BYTES: usize = 32 * 1_024 * 1_024;
 /// One bounded transport page, before JSON escaping.
-pub const WORK_DETAIL_PAGE_BYTES: usize = 8 * 1024;
+pub const WORK_DETAIL_PAGE_BYTES: usize = 8 * 1_024;
 
 /// A selected immutable view; callers must restart the read if its digest changes.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -33,6 +33,7 @@ impl WorkDetailResult {
 			Self::Unavailable => true,
 			Self::Page { digest, offset, total_bytes, text, next_offset } => {
 				let Some(end) = offset.checked_add(text.len()) else { return false };
+
 				digest.len() == 64
 					&& digest.bytes().all(|b| b.is_ascii_hexdigit())
 					&& expected.is_none_or(|d| d == digest)

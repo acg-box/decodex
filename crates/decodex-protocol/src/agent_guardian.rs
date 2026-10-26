@@ -131,6 +131,25 @@ impl AgentGuardianDetailResult {
 	}
 }
 
+/// One exact retained private observation page. No latest-Review inference is permitted.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PrivateReviewDetailsResult {
+	/// Exact selected UTF-8 content from the retained optional observation.
+	Available {
+		/// Requested record byte offset.
+		offset: usize,
+		/// Complete retained record length, not total reviewer history.
+		total_bytes: usize,
+		/// Bounded exact native observation text.
+		text: String,
+		/// Next byte position, absent at the end.
+		next_offset: Option<usize>,
+	},
+	/// Absent, invalid, omitted or no longer retained. No authority is inferred.
+	Unavailable,
+}
+
 #[cfg(test)]
 mod tests {
 	use crate::AgentGuardianDetailResult;
@@ -161,23 +180,4 @@ mod tests {
 			assert!(!bad.matches_request(4, "exact", 3));
 		}
 	}
-}
-
-/// One exact retained private observation page. No latest-Review inference is permitted.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
-pub enum PrivateReviewDetailsResult {
-	/// Exact selected UTF-8 content from the retained optional observation.
-	Available {
-		/// Requested record byte offset.
-		offset: usize,
-		/// Complete retained record length, not total reviewer history.
-		total_bytes: usize,
-		/// Bounded exact native observation text.
-		text: String,
-		/// Next byte position, absent at the end.
-		next_offset: Option<usize>,
-	},
-	/// Absent, invalid, omitted or no longer retained. No authority is inferred.
-	Unavailable,
 }

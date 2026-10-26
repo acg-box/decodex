@@ -54,6 +54,11 @@ const INSTANCE: &str = "publication-a";
 struct BoundedRecoveryProbe {
 	attempts: AtomicUsize,
 }
+impl AppOwnedDaemonRecovery for BoundedRecoveryProbe {
+	fn recover_transport(&self) -> bool {
+		self.attempts.fetch_add(1, Ordering::SeqCst) < 2
+	}
+}
 
 struct PreparingRecoveryProbe {
 	polls: AtomicUsize,
@@ -65,41 +70,8 @@ impl AppOwnedDaemonRecovery for PreparingRecoveryProbe {
 
 	fn recover_transport(&self) -> bool {
 		self.polls.fetch_add(1, Ordering::SeqCst);
+
 		true
-	}
-}
-
-#[tokio::test]
-async fn component_preparation_keeps_all_connection_attempts_available() {
-	let temporary = TempDir::new().expect("temporary directory");
-	let root = cache_parent(&temporary);
-	let mut lifecycle = lifecycle(&root);
-	let owner = Arc::new(PreparingRecoveryProbe { polls: AtomicUsize::new(0) });
-	lifecycle.supervise_app_owned_daemon(owner);
-	let failures =
-		(0..5).map(|_| ConnectAction::Fail(RetainedSessionFailure::Disconnected)).collect();
-	let mut io = FakeIo::new(root, failures);
-	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::RetryExhausted);
-	assert_eq!(io.attempts, 5);
-	assert_eq!(io.delays.len(), 7 + 4);
-}
-
-#[tokio::test]
-async fn component_preparation_remains_cancellable_before_any_connection() {
-	let temporary = TempDir::new().expect("temporary directory");
-	let root = cache_parent(&temporary);
-	let mut lifecycle = lifecycle(&root);
-	lifecycle.supervise_app_owned_daemon(Arc::new(PreparingRecoveryProbe {
-		polls: AtomicUsize::new(0),
-	}));
-	let mut io = FakeIo::new(root, vec![]);
-	io.cancel_backoff = true;
-	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::Stopped);
-	assert_eq!(io.attempts, 0);
-}
-impl AppOwnedDaemonRecovery for BoundedRecoveryProbe {
-	fn recover_transport(&self) -> bool {
-		self.attempts.fetch_add(1, Ordering::SeqCst) < 2
 	}
 }
 
@@ -1070,6 +1042,42 @@ fn inject_history_cache_failure(
 }
 
 #[tokio::test]
+async fn component_preparation_keeps_all_connection_attempts_available() {
+	let temporary = TempDir::new().expect("temporary directory");
+	let root = cache_parent(&temporary);
+	let owner = Arc::new(PreparingRecoveryProbe { polls: AtomicUsize::new(0) });
+	let mut lifecycle = lifecycle(&root);
+
+	lifecycle.supervise_app_owned_daemon(owner);
+
+	let failures =
+		(0..5).map(|_| ConnectAction::Fail(RetainedSessionFailure::Disconnected)).collect();
+	let mut io = FakeIo::new(root, failures);
+
+	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::RetryExhausted);
+	assert_eq!(io.attempts, 5);
+	assert_eq!(io.delays.len(), 7 + 4);
+}
+
+#[tokio::test]
+async fn component_preparation_remains_cancellable_before_any_connection() {
+	let temporary = TempDir::new().expect("temporary directory");
+	let root = cache_parent(&temporary);
+	let mut lifecycle = lifecycle(&root);
+
+	lifecycle.supervise_app_owned_daemon(Arc::new(PreparingRecoveryProbe {
+		polls: AtomicUsize::new(0),
+	}));
+
+	let mut io = FakeIo::new(root, vec![]);
+
+	io.cancel_backoff = true;
+
+	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::Stopped);
+	assert_eq!(io.attempts, 0);
+}
+
+#[tokio::test]
 async fn fake_session_await_cancellation_survives_a_dropped_receive() {
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let root = cache_parent(&temporary);
@@ -1132,8 +1140,10 @@ async fn startup_sends_desktop_preferences_before_provider_queries() {
 	let temporary = TempDir::new().expect("temporary directory");
 	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
+
 	lifecycle.conversations().activate();
 	lifecycle.history_pager().open(entity("startup-history")).expect("pending provider history");
+
 	let mut io = FakeIo::new(
 		root,
 		vec![connected(
@@ -1144,8 +1154,11 @@ async fn startup_sends_desktop_preferences_before_provider_queries() {
 			None,
 		)],
 	);
+
 	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::Stopped);
+
 	let queries = io.sent_queries.lock().expect("sent queries");
+
 	assert!(matches!(queries.first().map(|q| &q.payload), Some(QueryPayload::GetDesktopSettings)));
 }
 

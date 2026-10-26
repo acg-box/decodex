@@ -100,17 +100,13 @@ fn preview_click_reads_real_local_chunks_and_rejects_changed_account(cx: &mut Te
 
 		let work = surface.update(visual, |surface, cx| prepare(surface, profile, cx));
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let action = visual.debug_bounds("native-media-action").unwrap();
 
 		visual.simulate_click(action.center(), Default::default());
 		visual.run_until_parked();
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let requests = server.join().unwrap();
 

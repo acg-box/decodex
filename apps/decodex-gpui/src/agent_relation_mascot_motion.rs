@@ -1,6 +1,8 @@
 //! Pixel-step poses ported from the approved Cloudlets motion.css.
+use std::f32::consts::{PI, TAU};
+
 type Steps = &'static [(f32, f32)];
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum State {
 	Idle,
 	Hopping,
@@ -21,10 +23,61 @@ impl State {
 	}
 
 	pub(super) fn pose(self, seconds: f32, held_right: bool) -> Pose {
-		let mut pose = Pose::default();
 		let blink = seconds.rem_euclid(5.8);
-		pose.blink = (2.05..2.20).contains(&blink) || (2.33..2.42).contains(&blink);
-		let (period, actor, hands): (f32, Steps, Steps) = match self {
+		let mut pose = Pose {
+			blink: (2.05..2.20).contains(&blink) || (2.33..2.42).contains(&blink),
+			..Default::default()
+		};
+		let Some((period, actor, hands)) = self.cycle(seconds, held_right, &mut pose) else {
+			return pose;
+		};
+		let t = (seconds / period).fract();
+		let y = step(t, actor);
+
+		pose.cloud[1] = y;
+
+		let hand_y = step(t, hands);
+		let spread = match self {
+			Self::Hopping => (0.38..0.64).contains(&t),
+			Self::Done => (0.12..0.62).contains(&t),
+			_ => false,
+		};
+
+		pose.left = [if spread { -1. } else { 0. }, y + hand_y];
+		pose.right = [if spread { 1. } else { 0. }, y + hand_y];
+
+		if self == Self::Attention {
+			let hand = if held_right { &mut pose.left } else { &mut pose.right };
+
+			hand[1] += step(
+				t,
+				&[
+					(0., 0.),
+					(0.12, -1.),
+					(0.18, -2.),
+					(0.24, -3.),
+					(0.3, -2.),
+					(0.36, -3.),
+					(0.42, -2.),
+					(0.48, -1.),
+					(0.58, 0.),
+				],
+			);
+			hand[0] = if (0.18..0.24).contains(&t)
+				|| (0.3..0.36).contains(&t)
+				|| (0.42..0.48).contains(&t)
+			{
+				if held_right { -1. } else { 1. }
+			} else {
+				0.
+			};
+		}
+
+		pose
+	}
+
+	fn cycle(self, seconds: f32, held_right: bool, pose: &mut Pose) -> Option<(f32, Steps, Steps)> {
+		Some(match self {
 			Self::Hopping => (
 				0.9,
 				&[(0., 0.), (0.24, -1.), (0.36, -2.), (0.56, -1.), (0.7, 0.)],
@@ -52,10 +105,13 @@ impl State {
 			Self::Attention => (2.4, &[(0., 0.), (0.14, -1.), (0.56, 0.)], &[]),
 			Self::Working => {
 				let cloud_t = ((seconds + if held_right { 0.21 } else { 0. }) / 0.92).fract();
+
 				pose.cloud[1] =
 					step(cloud_t, &[(0., 0.), (0.18, -0.8), (0.36, 0.), (0.68, -0.5), (0.86, 0.)]);
+
 				for (right, hand) in [(false, &mut pose.left), (true, &mut pose.right)] {
 					let t = ((seconds + if right { 0.24 } else { 0. }) / 0.48).fract();
+
 					hand[0] =
 						if (0.42..0.86).contains(&t) { if right { 1. } else { -1. } } else { 0. };
 					hand[1] = step(
@@ -69,64 +125,34 @@ impl State {
 						],
 					);
 				}
-				return pose;
+
+				return None;
 			},
 			Self::Idle => {
-				let breath = (seconds * std::f32::consts::TAU / 3.8).sin();
+				let breath = (seconds * TAU / 3.8).sin();
+
 				pose.cloud = [0.16 * (seconds * 0.8).sin(), -0.30 * breath];
 				pose.left = [0., -0.40 * (seconds * 1.1).sin()];
 				pose.right = [0., -0.40 * (seconds * 1.1 + 0.65).sin()];
+
 				// One small stretch per long cycle; seeds offset each actor.
 				let stretch = seconds.rem_euclid(9.4);
+
 				if (5.5..6.2).contains(&stretch) {
-					let amount = ((stretch - 5.5) / 0.7 * std::f32::consts::PI).sin();
+					let amount = ((stretch - 5.5) / 0.7 * PI).sin();
+
 					pose.cloud[1] -= 0.65 * amount;
+
 					if held_right {
 						pose.left[1] -= 1.2 * amount;
 					} else {
 						pose.right[1] -= 1.2 * amount;
 					}
 				}
-				return pose;
+
+				return None;
 			},
-		};
-		let t = (seconds / period).fract();
-		let y = step(t, actor);
-		pose.cloud[1] = y;
-		let hand_y = step(t, hands);
-		let spread = match self {
-			Self::Hopping => (0.38..0.64).contains(&t),
-			Self::Done => (0.12..0.62).contains(&t),
-			_ => false,
-		};
-		pose.left = [if spread { -1. } else { 0. }, y + hand_y];
-		pose.right = [if spread { 1. } else { 0. }, y + hand_y];
-		if self == Self::Attention {
-			let hand = if held_right { &mut pose.left } else { &mut pose.right };
-			hand[1] += step(
-				t,
-				&[
-					(0., 0.),
-					(0.12, -1.),
-					(0.18, -2.),
-					(0.24, -3.),
-					(0.3, -2.),
-					(0.36, -3.),
-					(0.42, -2.),
-					(0.48, -1.),
-					(0.58, 0.),
-				],
-			);
-			hand[0] = if (0.18..0.24).contains(&t)
-				|| (0.3..0.36).contains(&t)
-				|| (0.42..0.48).contains(&t)
-			{
-				if held_right { -1. } else { 1. }
-			} else {
-				0.
-			};
-		}
-		pose
+		})
 	}
 }
 
@@ -137,20 +163,18 @@ pub(super) struct Pose {
 	pub left: [f32; 2],
 	pub right: [f32; 2],
 }
-pub(super) struct Particle {
-	pub offset: [f32; 2],
-	pub size: f32,
-	pub opacity: f32,
-}
 impl Pose {
 	pub(super) fn particle(&self, state: State, seconds: f32, index: usize) -> Particle {
 		let moving = matches!(state, State::Working | State::Hopping | State::Done);
+
 		if !moving {
 			return Particle { offset: [0., 0.], size: 1., opacity: 0.65 };
 		}
+
 		let period = if state == State::Done { 2.2 } else { 2.8 };
 		let t = (seconds / period + index as f32 / 4.).fract();
 		let drift = step(t, &[(0., 0.), (0.25, 1.), (0.4, 2.), (0.55, 3.), (0.7, 4.), (0.85, 5.)]);
+
 		Particle {
 			offset: [
 				if index == 3 { -6. } else { 0. } + drift,
@@ -170,6 +194,12 @@ impl Pose {
 		}
 	}
 }
+
+pub(super) struct Particle {
+	pub offset: [f32; 2],
+	pub size: f32,
+	pub opacity: f32,
+}
 fn step(t: f32, keys: &[(f32, f32)]) -> f32 {
 	keys.iter().rev().find(|(at, _)| t >= *at).map_or(0., |(_, value)| *value)
 }
@@ -178,22 +208,26 @@ fn linear(t: f32, keys: &[(f32, f32)]) -> f32 {
 		.windows(2)
 		.find(|pair| t <= pair[1].0)
 		.expect("particle opacity keyframes cover the complete phase");
+
 	pair[0].1 + (pair[1].1 - pair[0].1) * ((t - pair[0].0) / (pair[1].0 - pair[0].0))
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::work_board::relations::mascot::motion::State;
+
 	#[test]
 	fn attention_keeps_the_held_hand_with_the_body_and_waves_the_free_hand() {
 		for held_right in [false, true] {
 			let pose = State::Attention.pose(2.4 * 0.25, held_right);
 			let (held, free) =
 				if held_right { (pose.right, pose.left) } else { (pose.left, pose.right) };
+
 			assert_eq!(held, pose.cloud);
 			assert!(free[1] < held[1]);
 		}
 	}
+
 	#[test]
 	fn state_motion_stays_bounded_and_particles_fade() {
 		for state in [
@@ -207,9 +241,12 @@ mod tests {
 			for frame in 0..280 {
 				let seconds = frame as f32 / 50.;
 				let pose = state.pose(seconds, true);
+
 				assert!(pose.cloud[1].abs() <= 4.);
+
 				for index in 0..4 {
 					let pixel = pose.particle(state, seconds, index);
+
 					assert!((0.0..=1.0).contains(&pixel.opacity));
 				}
 			}

@@ -1,5 +1,4 @@
 //! Choose native context defaults without changing loaded conversations.
-use crate::ui_feedback::{self, Feedback};
 use gpui::AnyElement;
 #[cfg(test)] use gpui::px;
 use tokio::runtime::Builder;
@@ -8,9 +7,12 @@ use tokio::runtime::Builder;
 #[cfg(test)] use crate::shell::agent_surface::Entity;
 #[cfg(test)] use crate::shell::agent_surface::Render;
 #[cfg(test)] use crate::shell::agent_surface::Window;
-use crate::shell::agent_surface::{
-	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
-	Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task, mcp_forms,
+use crate::{
+	shell::agent_surface::{
+		self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+		Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task, mcp_forms,
+	},
+	ui_feedback::{self, Feedback},
 };
 use decodex_protocol::{
 	AgentContextFeature, AgentContextPreference, AgentContextSettingsResult, ClientFailure,
@@ -198,10 +200,12 @@ impl AgentSurface {
 						on_off(preference.effective),
 						preference.preference.map_or("Native default (off)", on_off)
 					));
+
 				for enabled in [false, true] {
 					let owner = work.to_owned();
 					let feature = preference.feature;
 					let epoch = self.context_settings.epoch;
+
 					panel = panel.child(mcp_forms::mcp_button(
 						format!("context-choice-{}-{enabled}", feature_key(feature)),
 						on_off(enabled).into(),
@@ -241,10 +245,12 @@ fn feedback(
 				)
 			};
 		}
+
 		return Feedback::warning(
 			"The save could not be confirmed. Review the refreshed settings before trying again.",
 		);
 	}
+
 	if matches!(state, AgentContextSettingsResult::Available { .. }) {
 		Feedback::default()
 	} else {

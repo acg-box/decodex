@@ -1,30 +1,37 @@
 //! Explicit read-only inspection of current Agent evidence.
-use super::{
-	AgentClient, ClientFailure, EntityId, QueryPayload, QueryResultPayload, ResetCardClient,
-	WireText, close_one_shot_socket,
-};
-use crate::AgentMemoryResult;
 use std::time::Duration;
+
+use crate::{
+	AgentMemoryResult, UsageEvidenceResult, UsageEvidenceScope,
+	client::{
+		self, AgentClient, ClientFailure, EntityId, QueryPayload, QueryResultPayload,
+		ResetCardClient, WireText,
+	},
+};
 
 impl AgentClient {
 	/// Read actual retained native counters and explicit product attribution.
 	pub async fn usage_evidence(
 		&self,
-		scope: crate::UsageEvidenceScope,
-	) -> Result<crate::UsageEvidenceResult, ClientFailure> {
+		scope: UsageEvidenceScope,
+	) -> Result<UsageEvidenceResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = self
 			.transport
 			.query_inner("usage-evidence", QueryPayload::GetUsageEvidence { scope: scope.clone() })
 			.await?;
-		close_one_shot_socket(completed.socket).await;
+
+		client::close_one_shot_socket(completed.socket).await;
+
 		let QueryResultPayload::UsageEvidence(result) = completed.value else {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
-		if matches!(&result,crate::UsageEvidenceResult::Available{scope:actual,..} if actual!=&scope)
-		{
+
+		if matches!(&result,UsageEvidenceResult::Available{scope:actual,..} if actual!=&scope) {
 			return Err(ClientFailure::ProtocolMalformed);
 		}
+
 		Ok(result)
 	}
 
@@ -37,6 +44,7 @@ impl AgentClient {
 		offset: usize,
 	) -> Result<AgentMemoryResult, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let transport = ResetCardClient {
 			profile: self.transport.profile.clone(),
 			timeout: Duration::from_secs(35),
@@ -52,10 +60,13 @@ impl AgentClient {
 				},
 			)
 			.await?;
-		close_one_shot_socket(completed.socket).await;
+
+		client::close_one_shot_socket(completed.socket).await;
+
 		let QueryResultPayload::AgentMemory(result) = completed.value else {
 			return Err(ClientFailure::ProtocolMalformed);
 		};
+
 		match &result {
 			AgentMemoryResult::Page {
 				work_id: actual,

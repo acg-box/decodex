@@ -1,5 +1,4 @@
 //! Subscription dictation edits a draft; only the ordinary Send action starts work.
-use crate::ui_feedback::Feedback;
 use std::{
 	collections::VecDeque,
 	future::{self, Future as _},
@@ -9,14 +8,20 @@ use std::{
 
 use gpui::{AnyElement, AsyncApp, Task, WeakEntity, prelude::FluentBuilder as _};
 use tokio::runtime::Builder;
-use ui_theme::TEXT_MUTED;
 
-use crate::shell::agent_surface::{
-	self, AgentClient, AgentSurface, Context, EntityId, InteractiveElement, IntoElement,
-	ParentElement, Role, StatefulInteractiveElement, Styled, Window, ui_theme, voice::Media,
+use crate::{
+	shell::agent_surface::{
+		self, AgentClient, AgentSurface, Context, EntityId, InteractiveElement, IntoElement,
+		ParentElement, Role, StatefulInteractiveElement, Styled, Window, ui_theme::TEXT_MUTED,
+		voice::Media,
+	},
+	ui_feedback::Feedback,
+	ui_loading, ui_theme,
 };
 #[cfg(test)] use decodex_protocol::DictationBuffer;
-use decodex_protocol::{DictationAudio, DictationPhase, DictationRequest, DictationStatus};
+use decodex_protocol::{
+	DictationAudio, DictationPhase, DictationRequest, DictationStatus, MAX_DICTATION_BACKLOG_BYTES,
+};
 
 pub(super) struct DictationUi {
 	media: Media,
@@ -63,6 +68,7 @@ impl AgentSurface {
 
 		let id = EntityId::new(agent_surface::unique_command()).expect("dictation identity");
 		let original = self.composer.read(cx).content().to_owned();
+
 		self.feedback.clear();
 
 		self.dictation = Some(DictationUi {
@@ -155,7 +161,9 @@ impl AgentSurface {
 
 	pub(super) fn send_dictation(&mut self, cx: &mut Context<Self>) {
 		let Some(dictation) = self.dictation.as_mut().filter(|d| !d.finishing) else { return };
+
 		dictation.send_after_finish = true;
+
 		self.finish_dictation(cx);
 	}
 
@@ -189,7 +197,9 @@ impl AgentSurface {
 							"Microphone returned invalid audio. Try recording again.",
 						);
 						self.dictation = None;
+
 						cx.notify();
+
 						return None;
 					}
 
@@ -197,7 +207,7 @@ impl AgentSurface {
 					dictation.levels.push_back(event["level"].as_f64().unwrap_or_default().clamp(0., 1.) as f32);
 
 					if dictation.audio.iter().map(|audio| audio.pcm().len()).sum::<usize>()
-						> decodex_protocol::MAX_DICTATION_BACKLOG_BYTES
+						> MAX_DICTATION_BACKLOG_BYTES
 					{
 						self.dictation = None;
 						self.feedback = Feedback::error(
@@ -215,8 +225,9 @@ impl AgentSurface {
 				Some("dictation_ready") => {
 					eprintln!(
 						"DecodexAudio dictation_click_first_pcm_ms={:.3}",
-						dictation.started.elapsed().as_secs_f64() * 1000.
+						dictation.started.elapsed().as_secs_f64() * 1_000.
 					);
+
 					dictation.status = "Listening".into();
 					dictation.started = Instant::now();
 				},
@@ -290,7 +301,9 @@ impl AgentSurface {
 			DictationPhase::Finalizing => dictation.status = "Final correction…".into(),
 			DictationPhase::Complete => {
 				let send = dictation.send_after_finish;
+
 				self.dictation = None;
+
 				if send {
 					self.submit(cx);
 				}
@@ -313,6 +326,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Option<AnyElement> {
 		let d = self.dictation.as_ref()?;
+
 		Some(Self::microphone_waveform(
 			"dictation-waveform",
 			"Dictation microphone waveform",
@@ -330,6 +344,7 @@ impl AgentSurface {
 	) -> Option<AnyElement> {
 		let d = self.dictation.as_ref()?;
 		let finishing = d.finishing || d.capture_ended || d.status == "Final correction…";
+
 		Some(
 			gpui::div()
 				.id("dictation-controls")
@@ -340,7 +355,7 @@ impl AgentSurface {
 				.items_center()
 				.gap(gpui::px(8.))
 				.text_size(gpui::px(11.))
-				.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+				.text_color(ui_theme::rgb(TEXT_MUTED))
 				.child(
 					gpui::div().flex_1().min_w_0().flex().justify_center().child(
 						gpui::div()
@@ -381,7 +396,7 @@ impl AgentSurface {
 			.gap_0()
 			.p(gpui::px(1.))
 			.rounded_full()
-			.bg(crate::ui_theme::rgba(0xffffff06))
+			.bg(ui_theme::rgba(0xffffff06))
 			.child(self.composer_control(
 				"dictation-cancel",
 				"".into(),
@@ -410,7 +425,7 @@ impl AgentSurface {
 							.w(gpui::px(26.))
 							.flex()
 							.justify_center()
-							.child(crate::ui_loading::loading("")),
+							.child(ui_loading::loading("")),
 					)
 					.into_any_element()
 			} else {
@@ -483,8 +498,10 @@ async fn await_response(
 
 #[cfg(test)]
 mod tests {
+
 	use std::future;
 
+	use futures_util::FutureExt as _;
 	#[cfg(test)] use gpui::{AppContext as _, EntityInputHandler as _};
 
 	use crate::shell::agent_surface::dictation::{
@@ -492,6 +509,17 @@ mod tests {
 		DictationRequest, DictationStatus, DictationUi, Duration, EntityId, Instant, Media,
 		VecDeque,
 	};
+
+	struct DictationComposerView(gpui::Entity<AgentSurface>);
+	impl gpui::Render for DictationComposerView {
+		fn render(
+			&mut self,
+			window: &mut gpui::Window,
+			cx: &mut gpui::Context<Self>,
+		) -> impl gpui::IntoElement {
+			self.0.update(cx, |s, cx| s.render_composer_capsule(false, window, cx))
+		}
+	}
 
 	#[test]
 	fn provisional_revisions_replace_only_the_dictated_suffix() {
@@ -501,6 +529,7 @@ mod tests {
 		assert_eq!(dictation::merge_draft(original, "Final."), "Keep this draft\nFinal.");
 		assert_eq!(dictation::merge_draft(original, ""), original);
 	}
+
 	fn recording(original: &str) -> DictationUi {
 		DictationUi {
 			media: Media,
@@ -520,55 +549,59 @@ mod tests {
 		}
 	}
 
-	struct DictationComposerView(gpui::Entity<AgentSurface>);
-	impl gpui::Render for DictationComposerView {
-		fn render(
-			&mut self,
-			window: &mut gpui::Window,
-			cx: &mut gpui::Context<Self>,
-		) -> impl gpui::IntoElement {
-			self.0.update(cx, |s, cx| s.render_composer_capsule(false, window, cx))
-		}
-	}
-
 	#[gpui::test]
 	fn dictation_waveform_keeps_draft_visible_and_fits_narrow_composer(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (view, visual) = cx.add_window_view(|_, cx| {
 			let surface = cx.new(AgentSurface::new);
+
 			surface.update(cx, |s, cx| {
 				s.composer.update(cx, |input, cx| input.set_content("Draft", cx));
+
 				s.dictation = Some(recording("Draft"));
 			});
+
 			DictationComposerView(surface)
 		});
 		let surface = view.read_with(visual, |v, _| v.0.clone());
+
 		for width in [320., 800.] {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(400.)));
+
 			visual.update(|window, cx| {
 				window.draw(cx).clear(cx);
+
 				let input = surface.read(cx).composer.clone();
+
 				input.update(cx, |input, cx| {
 					assert_eq!(input.content(), "Draft");
 					assert!(input.bounds_for_range(0..5, Default::default(), window, cx).is_some());
 				});
 			});
+
 			let wave = visual.debug_bounds("dictation-waveform").expect("toolbar waveform");
+
 			assert_eq!(wave.size.height, gpui::px(crate::ui_theme::BODY_LINE_HEIGHT + 10.));
+
 			let toolbar = visual.debug_bounds("composer-action-row").expect("bottom controls");
 			let actions = visual.debug_bounds("dictation-actions").unwrap();
+
 			assert!((actions.left() - wave.right() - gpui::px(8.)).abs() < gpui::px(1.));
 			assert!(actions.size.width <= gpui::px(82.));
+
 			let cancel = visual.debug_bounds("composer-dictation-cancel").unwrap();
 			let done = visual.debug_bounds("composer-dictation-finish").unwrap();
 			let send = visual.debug_bounds("composer-send").unwrap();
+
 			assert!(done.origin.x - cancel.origin.x <= gpui::px(26.));
 			assert!(send.origin.x - done.origin.x <= gpui::px(26.));
 			assert!(visual.debug_bounds("composer-attach").is_none());
+
 			if width == 800. {
 				assert!(wave.size.width > gpui::px(160.));
 			}
+
 			assert!(
 				wave.origin.y >= toolbar.origin.y
 					&& wave.origin.y + wave.size.height <= toolbar.origin.y + toolbar.size.height,
@@ -578,20 +611,26 @@ mod tests {
 				wave.origin.x >= gpui::px(0.) && wave.origin.x + wave.size.width <= gpui::px(width)
 			);
 		}
+
 		surface.update(visual, |s, cx| s.finish_dictation(cx));
 		view.update(visual, |_, cx| cx.notify());
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("dictation-finishing").is_some());
 		assert!(visual.debug_bounds("dictation-waveform").is_none());
 		assert!(visual.debug_bounds("composer-dictation-finish").is_none());
 		assert!(visual.debug_bounds("composer-send").is_none());
 		assert!(visual.debug_bounds("composer-dictation-cancel").is_some());
+
 		surface.update(visual, |s, cx| {
 			s.dictation = None;
+
 			cx.notify();
 		});
+
 		view.update(visual, |_, cx| cx.notify());
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("dictation-waveform").is_none());
 	}
 
@@ -667,7 +706,6 @@ mod tests {
 			assert_eq!(s.composer.read(cx).content(), "Manual edit");
 		});
 
-		use futures_util::FutureExt as _;
 		assert!(
 			matches!(waiting.now_or_never(), Some(None)),
 			"Cancellation must release a pending subscription request"
@@ -721,34 +759,48 @@ mod tests {
 			assert_eq!(s.composer.read(cx).content(), "My manual edit");
 		});
 	}
+
 	#[gpui::test]
 	fn dictation_send_waits_for_final_text_and_uses_ordinary_submission(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.profile = None; // Prove ordinary send admission without issuing a network request.
+
 			s.composer.update(cx, |input, cx| input.set_content("Draft", cx));
+
 			s.dictation = Some(recording("Draft"));
+
 			let response = |phase, text| DictationStatus {
 				session_id: EntityId::new("dictation-test").unwrap(),
 				phase,
 				text: DictationBuffer::new(text).unwrap(),
 				message: None,
 			};
+
 			s.submit(cx);
+
 			assert!(s.dictation.as_ref().unwrap().send_after_finish);
 			assert!(!s.sending);
+
 			s.apply_dictation(response(DictationPhase::Finalizing, "partial"), cx);
+
 			assert!(s.dictation.is_some());
 			assert_ne!(s.feedback.message, "No service profile is configured.");
+
 			s.apply_dictation(response(DictationPhase::Complete, "Final correction."), cx);
+
 			assert!(s.dictation.is_none());
 			assert_eq!(s.composer.read(cx).content(), "Draft Final correction.");
 			assert_eq!(s.feedback.message, "No service profile is configured.");
+
 			s.feedback.clear();
 			s.apply_dictation(response(DictationPhase::Complete, "duplicate"), cx);
+
 			assert!(s.feedback.is_empty());
 			assert_eq!(s.composer.read(cx).content(), "Draft Final correction.");
 		});
@@ -759,13 +811,18 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.profile = None;
+
 			for outcome in ["failure", "cancel", "edit", "done"] {
 				s.feedback.clear();
 				s.composer.update(cx, |input, cx| input.set_content("Draft", cx));
+
 				s.dictation = Some(recording("Draft"));
+
 				if outcome == "done" {
 					s.finish_dictation(cx);
 				} else {
@@ -777,6 +834,7 @@ mod tests {
 				if outcome == "edit" {
 					s.composer.update(cx, |input, cx| input.set_content("Manual", cx));
 				}
+
 				s.apply_dictation(
 					DictationStatus {
 						session_id: EntityId::new("dictation-test").unwrap(),
@@ -790,6 +848,7 @@ mod tests {
 					},
 					cx,
 				);
+
 				assert!(!s.sending);
 				assert_ne!(s.feedback.message, "No service profile is configured.");
 				assert_eq!(

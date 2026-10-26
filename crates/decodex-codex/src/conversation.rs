@@ -2717,7 +2717,6 @@ mod tests {
 			assert_eq!(decoded.turn_id().as_str(), "turn-1");
 			assert_eq!(decoded.status(), ConversationTurnStatus::InProgress);
 		}
-
 		for (field, value) in [
 			("rootTurnId", serde_json::json!(42)),
 			("unexpectedAuthority", serde_json::json!("causal-root")),

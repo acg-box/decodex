@@ -12,7 +12,7 @@ use crate::{
 	agent::{image_generation, timeline::tool_output},
 	agent_usage_estimate::Source,
 };
-use decodex_codex::app_server_client::AppServerClient;
+use decodex_codex::app_server_client::{AppServerClient, ClientError};
 use decodex_core::MAX_NATIVE_MESSAGE_BYTES;
 use decodex_protocol::{AgentActivityDetailCursor, AgentActivityDetailResult, WireText};
 
@@ -45,6 +45,7 @@ pub(crate) async fn read(
 	let Ok(Ok(Some(text))) = result else {
 		return AgentActivityDetailResult::Unavailable;
 	};
+
 	page(&text, "test", None).unwrap_or(AgentActivityDetailResult::Unavailable)
 }
 
@@ -117,39 +118,6 @@ pub(crate) async fn read_file_changes(
 	project(&history, thread, turn, item).unwrap_or(AgentActivityDetailResult::Unavailable)
 }
 
-async fn read_item_history(
-	client: &AppServerClient,
-	thread: &str,
-	turn: &str,
-	item: &str,
-) -> Result<Value, decodex_codex::app_server_client::ClientError> {
-	let item = client.thread_read_item(thread, turn, item).await?;
-	Ok(
-		serde_json::json!({"thread":{"id":thread,"turns":[{"id":turn,"items":item.into_iter().collect::<Vec<_>>()}]}}),
-	)
-}
-
-async fn read_text(
-	client: &AppServerClient,
-	thread: &str,
-	turn: &str,
-	item: &str,
-) -> Result<Option<String>, decodex_codex::app_server_client::ClientError> {
-	let history = read_item_history(client, thread, turn, item).await?;
-	let Some(mut text) = project_text(&history, thread, turn, item) else { return Ok(None) };
-	if let Some(item) = history_item(&history, thread, turn, item)
-		&& item["type"] == "subAgentActivity"
-		&& let Ok(Ok(Some(reply))) = time::timeout(
-			Duration::from_secs(4),
-			collaboration_detail::latest_reply(client, thread, item),
-		)
-		.await
-	{
-		text = format!("**Latest reply**\n\n{}", public_part(reply));
-	}
-	Ok(Some(text))
-}
-
 fn history_item<'a>(history: &'a Value, thread: &str, turn: &str, item: &str) -> Option<&'a Value> {
 	if history.pointer("/thread/id")?.as_str()? != thread {
 		return None;
@@ -157,6 +125,7 @@ fn history_item<'a>(history: &'a Value, thread: &str, turn: &str, item: &str) ->
 
 	let turn =
 		history.pointer("/thread/turns")?.as_array()?.iter().find(|entry| entry["id"] == turn)?;
+
 	turn["items"].as_array()?.iter().find(|entry| entry["id"] == item)
 }
 
@@ -344,6 +313,42 @@ fn page(
 	})
 }
 
+async fn read_item_history(
+	client: &AppServerClient,
+	thread: &str,
+	turn: &str,
+	item: &str,
+) -> Result<Value, ClientError> {
+	let item = client.thread_read_item(thread, turn, item).await?;
+
+	Ok(
+		serde_json::json!({"thread":{"id":thread,"turns":[{"id":turn,"items":item.into_iter().collect::<Vec<_>>()}]}}),
+	)
+}
+
+async fn read_text(
+	client: &AppServerClient,
+	thread: &str,
+	turn: &str,
+	item: &str,
+) -> Result<Option<String>, ClientError> {
+	let history = read_item_history(client, thread, turn, item).await?;
+	let Some(mut text) = project_text(&history, thread, turn, item) else { return Ok(None) };
+
+	if let Some(item) = history_item(&history, thread, turn, item)
+		&& item["type"] == "subAgentActivity"
+		&& let Ok(Ok(Some(reply))) = time::timeout(
+			Duration::from_secs(4),
+			collaboration_detail::latest_reply(client, thread, item),
+		)
+		.await
+	{
+		text = format!("**Latest reply**\n\n{}", public_part(reply));
+	}
+
+	Ok(Some(text))
+}
+
 #[cfg(test)]
 #[path = "agent_tool_detail_tests.rs"]
 mod tool_tests;
@@ -397,7 +402,9 @@ mod tests {
 		assert!(agent_detail::project(&history, "thread", "turn", "private").is_none());
 
 		history["thread"]["turns"][0]["items"][0]["exitCode"] = serde_json::json!(-1);
+
 		let text = agent_detail::project_text(&history, "thread", "turn", "item").unwrap();
+
 		assert!(text.contains("Passed"));
 		assert!(text.contains("no process exit status"));
 		assert!(text.contains("includes waiting"));
@@ -405,8 +412,9 @@ mod tests {
 
 	#[test]
 	fn sleep_detail_preserves_the_request_without_inventing_an_outcome() {
-		let history = serde_json::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{"id":"wait","type":"sleep","durationMs":60000}]}]}});
+		let history = serde_json::json!({"thread":{"id":"thread","turns":[{"id":"turn","items":[{"id":"wait","type":"sleep","durationMs":60_000}]}]}});
 		let text = agent_detail::project_text(&history, "thread", "turn", "wait").unwrap();
+
 		assert!(text.contains("Requested wait: 60000 ms"));
 		assert!(text.contains("can end early"));
 		assert!(text.contains("outcome are not included"));
@@ -510,6 +518,7 @@ mod tests {
 			let server = tokio::spawn(async move {
 				let (reader, mut writer) = io::split(remote);
 				let mut lines = BufReader::new(reader).lines();
+
 				for (method, result) in [
 					(
 						"thread/items/read",
@@ -526,11 +535,13 @@ mod tests {
 				] {
 					let request: Value =
 						serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 					assert_eq!(request["method"], method);
 					assert_eq!(
 						request["params"]["threadId"],
 						if method == "thread/items/read" { "thread" } else { "child" }
 					);
+
 					writer
 						.write_all(
 							format!(
@@ -548,7 +559,9 @@ mod tests {
 			else {
 				panic!("native event details")
 			};
+
 			server.await.unwrap();
+
 			assert_eq!(text.contains("/root/reviewer"), parent != "thread");
 			assert_eq!(text.contains("**Latest reply**\n\nUse Markdown."), parent == "thread");
 			assert!(!text.contains("private"));

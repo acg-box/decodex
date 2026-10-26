@@ -1,10 +1,12 @@
 //! Explicit native memory inspection; it never resumes a conversation or edits memory.
+use gpui::{AnyElement, ClipboardItem, InteractiveElement as _, StatefulInteractiveElement as _};
+use tokio::runtime::Builder;
+
 use crate::shell::agent_surface::{
 	AgentClient, AgentSnapshotDto, AgentSurface, Context, EntityId, IntoElement, ParentElement,
 	Styled, Task, WireText, mcp_forms,
 };
 use decodex_protocol::{AgentMemoryResult, MAX_MEMORY_BYTES, MEMORY_PAGE_BYTES};
-use gpui::{AnyElement, ClipboardItem, InteractiveElement as _, StatefulInteractiveElement as _};
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -23,6 +25,7 @@ impl AgentSurface {
 
 	pub(super) fn invalidate_memory_summary(&mut self, next: &AgentSnapshotDto) {
 		let Some((work, thread)) = &self.memory_summary.owner else { return };
+
 		if self.snapshot.as_ref().is_none_or(|s| s.runtime_source != next.runtime_source)
 			|| !next
 				.work_items
@@ -41,6 +44,7 @@ impl AgentSurface {
 		{
 			return;
 		}
+
 		let Some(profile) = self.profile.clone() else { return };
 		let Some(thread) = self
 			.snapshot
@@ -50,20 +54,25 @@ impl AgentSurface {
 		else {
 			return;
 		};
+
 		self.reset_memory_summary();
+
 		self.memory_summary.owner = Some((work.into(), thread.clone()));
 		self.memory_summary.feedback = "Reading native memory…".into();
+
 		let epoch = self.memory_summary.epoch;
 		let generation = self.generation;
 		let owner = work.to_owned();
 		let captured = (owner.clone(), thread.clone());
 		let future = cx.background_executor().spawn(async move {
-			let runtime = tokio::runtime::Builder::new_current_thread()
+			let runtime = Builder::new_current_thread()
 				.enable_all()
 				.build()
 				.map_err(|_| "Memory read is unavailable.")?;
+
 			runtime.block_on(read(&AgentClient::new(profile), &owner, &thread))
 		});
+
 		self.memory_summary.task = Some(cx.spawn(async move |surface, cx| {
 			let result = future.await;
 			let _ = surface.update(cx, |s, cx| {
@@ -73,7 +82,9 @@ impl AgentSurface {
 				{
 					return;
 				}
+
 				s.memory_summary.task = None;
+
 				match result {
 					Ok(Some(text)) => {
 						s.memory_summary.text = Some(text);
@@ -84,9 +95,11 @@ impl AgentSurface {
 							.into(),
 					Err(error) => s.memory_summary.feedback = error.into(),
 				}
+
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 
@@ -94,6 +107,7 @@ impl AgentSurface {
 		if self.native_agents.selected.is_some() {
 			return gpui::div().into_any_element();
 		}
+
 		let owner = work.to_owned();
 		let opened = self.memory_summary.owner.as_ref().is_some_and(|(id, _)| id == work);
 		let mut panel = gpui::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
@@ -110,12 +124,16 @@ impl AgentSurface {
 				}
 			},
 		));
+
 		if !opened {
 			return panel.into_any_element();
 		}
+
 		panel = panel.child(self.memory_summary.feedback.clone());
+
 		if let Some(text) = &self.memory_summary.text {
 			let content = text.clone();
+
 			panel = panel
 				.child(
 					gpui::div()
@@ -132,8 +150,10 @@ impl AgentSurface {
 					move |_, cx| cx.write_to_clipboard(ClipboardItem::new_string(content.clone())),
 				));
 		}
+
 		if self.memory_summary.task.is_none() {
 			let owner = work.to_owned();
+
 			panel = panel.child(mcp_forms::mcp_button(
 				"memory-summary-refresh".into(),
 				"Refresh summary".into(),
@@ -142,6 +162,7 @@ impl AgentSurface {
 				move |s, cx| s.load_memory_summary(&owner, cx),
 			));
 		}
+
 		panel.into_any_element()
 	}
 }
@@ -156,11 +177,13 @@ async fn read(
 	let mut complete = String::new();
 	let mut digest: Option<WireText> = None;
 	let mut total = None;
+
 	loop {
 		let page = client
 			.memory_summary(work.clone(), thread.clone(), digest.clone(), complete.len())
 			.await
 			.map_err(|_| "Memory read failed. Refresh to try again.")?;
+
 		match page {
 			AgentMemoryResult::Empty { .. } if complete.is_empty() => return Ok(None),
 			AgentMemoryResult::Page {
@@ -180,13 +203,17 @@ async fn read(
 				{
 					return Err("Memory changed during reading. Refresh the summary.");
 				}
+
 				digest =
 					Some(WireText::new(actual).map_err(|_| "Memory identity is unavailable.")?);
 				total = Some(total_bytes);
+
 				complete.push_str(&text);
+
 				if complete.len() > total_bytes {
 					return Err("Memory page exceeds its declared length.");
 				}
+
 				if let Some(next) = next_offset {
 					if next != complete.len() || next <= offset {
 						return Err("Memory pages did not advance.");
@@ -207,8 +234,9 @@ async fn read(
 
 #[cfg(test)]
 mod tests {
-	use crate::shell::agent_surface::AgentSurface;
 	use gpui::{AppContext as _, Context, Entity, IntoElement, Render, TestAppContext, Window};
+
+	use crate::shell::agent_surface::AgentSurface;
 
 	struct MemoryView {
 		surface: Entity<AgentSurface>,
@@ -224,13 +252,18 @@ mod tests {
 		cx: &mut TestAppContext,
 	) {
 		const TEXT: &str = "v1\n<instruction>This is memory text, not an action.</instruction> 界";
+
 		let (view, visual) = cx.add_window_view(|_, cx| {
 			let surface = cx.new(AgentSurface::new);
+
 			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+
 			surface.update(cx, |s, cx| {
 				s.visual_workspace_fixture(cx);
 				s.visual_workbench_page("workbench", cx);
+
 				s.selected = Some("agent".into());
+
 				let thread = s
 					.snapshot
 					.as_ref()
@@ -242,31 +275,46 @@ mod tests {
 					.codex_thread_id
 					.clone()
 					.unwrap();
+
 				s.memory_summary.owner = Some(("agent".into(), thread));
 				s.memory_summary.text = Some(TEXT.into());
+
 				s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
 			});
+
 			MemoryView { surface }
 		});
+
 		visual.simulate_resize(gpui::size(gpui::px(600.), gpui::px(500.)));
 		visual.update(crate::ui_frame::draw_frame);
+
 		let copy = visual.debug_bounds("memory-summary-copy").expect("explicit copy action");
+
 		visual.simulate_click(copy.center(), Default::default());
 		visual.update(|_, cx| {
 			assert_eq!(cx.read_from_clipboard().and_then(|item| item.text()).as_deref(), Some(TEXT))
 		});
+
 		let surface = view.read_with(visual, |v, _| v.surface.clone());
+
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.selected.as_deref(), Some("agent"));
 			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+
 			let mut next = s.snapshot.clone().unwrap();
+
 			next.work_items.iter_mut().find(|w| w.id == "agent").unwrap().codex_thread_id =
 				Some("replacement-thread".into());
+
 			s.invalidate_memory_summary(&next);
+
 			assert!(s.memory_summary.text.is_none());
+
 			cx.notify();
 		});
+
 		visual.update(crate::ui_frame::draw_frame);
+
 		assert!(visual.debug_bounds("memory-summary-copy").is_none());
 	}
 }

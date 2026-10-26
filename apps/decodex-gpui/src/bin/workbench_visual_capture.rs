@@ -80,8 +80,8 @@ use std::{
 };
 
 use gpui::{
-	self, AnyWindowHandle, AppContext as _, Result, ScrollDelta, ScrollEvent, VisualTestAppContext,
-	WindowHandle,
+	self, AnyWindowHandle, AppContext as _, Context, Entity, IntoElement, Pixels, Render, Result,
+	ScrollDelta, ScrollEvent, Size, VisualTestAppContext, Window, WindowHandle,
 };
 #[allow(dead_code)]
 #[cfg(target_os = "macos")]
@@ -97,7 +97,8 @@ use decodex_protocol::{
 	AgentClient, AgentMediaRequest, AgentSnapshotResult, AgentSteerIdentity, ClientFailure,
 	EntityId,
 };
-use ui_theme::MOTION_PANEL;
+use shell::SettingsWindow;
+use ui_theme::{ColorTheme, MOTION_PANEL, appearance::Appearance};
 
 type ServiceProjection = (
 	AgentSnapshotResult,
@@ -108,13 +109,9 @@ type ServiceProjection = (
 	decodex_protocol::ClientProfile,
 );
 
-struct CollaborationComponent(gpui::Entity<AgentSurface>, bool);
-impl gpui::Render for CollaborationComponent {
-	fn render(
-		&mut self,
-		_: &mut gpui::Window,
-		cx: &mut gpui::Context<Self>,
-	) -> impl gpui::IntoElement {
+struct CollaborationComponent(Entity<AgentSurface>, bool);
+impl Render for CollaborationComponent {
+	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.0.update(cx, |surface, cx| surface.render_collaboration_component(self.1, cx))
 	}
 }
@@ -123,11 +120,11 @@ fn main() -> Result<()> {
 	#[cfg(target_os = "macos")]
 	if env::var_os("DECODEX_VISUAL_NATIVE_SCROLL").is_some() {
 		native_scroll::run();
+
 		return Ok(());
 	}
 
 	let (output, mut cx) = capture_context()?;
-
 	let destination = capture_destination();
 	let left_sidebar_visible = env::var("DECODEX_VISUAL_SIDEBAR").as_deref() != Ok("hidden");
 	let inspector_visible = env::var("DECODEX_VISUAL_CONTEXT").as_deref() != Ok("hidden");
@@ -154,24 +151,7 @@ fn main() -> Result<()> {
 	let window: AnyWindowHandle = if env::var("DECODEX_VISUAL_COMPONENT").as_deref()
 		== Ok("collaboration")
 	{
-		let speech = env::var("DECODEX_VISUAL_COMPONENT_MOTION").as_deref() == Ok("speech");
-		let size = if speech { (520., 420.) } else { (1536., 1024.) };
-		cx.open_offscreen_window(gpui::size(gpui::px(size.0), gpui::px(size.1)), |_, cx| {
-			cx.new(|cx| {
-				let surface = cx.new(|cx| {
-					let mut surface = AgentSurface::new(cx);
-					surface.visual_workspace_fixture(cx);
-					surface.visual_workspace_page("workbench", cx);
-					if let Ok(count) = env::var("DECODEX_VISUAL_GRAPH_AGENTS") {
-						surface.visual_relation_density(count.parse().expect("agent count"), cx);
-					}
-					surface
-				});
-				cx.observe(&surface, |_, _, cx| cx.notify()).detach();
-				CollaborationComponent(surface, !speech)
-			})
-		})?
-		.into()
+		capture_collaboration(&mut cx)?
 	} else if integrations {
 		cx.open_offscreen_window(gpui::size(gpui::px(1_180.0), gpui::px(1_400.0)), |_, cx| {
 			cx.new(|cx| {
@@ -244,6 +224,34 @@ fn main() -> Result<()> {
 	Ok(())
 }
 
+fn capture_collaboration(cx: &mut VisualTestAppContext) -> Result<AnyWindowHandle> {
+	let speech = env::var("DECODEX_VISUAL_COMPONENT_MOTION").as_deref() == Ok("speech");
+	let size = if speech { (520., 420.) } else { (1_536., 1_024.) };
+
+	Ok(cx
+		.open_offscreen_window(gpui::size(gpui::px(size.0), gpui::px(size.1)), |_, cx| {
+			cx.new(|cx| {
+				let surface = cx.new(|cx| {
+					let mut surface = AgentSurface::new(cx);
+
+					surface.visual_workspace_fixture(cx);
+					surface.visual_workspace_page("workbench", cx);
+
+					if let Ok(count) = env::var("DECODEX_VISUAL_GRAPH_AGENTS") {
+						surface.visual_relation_density(count.parse().expect("agent count"), cx);
+					}
+
+					surface
+				});
+
+				cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+
+				CollaborationComponent(surface, !speech)
+			})
+		})?
+		.into())
+}
+
 fn capture_frame_cost(
 	cx: &mut VisualTestAppContext,
 	window: AnyWindowHandle,
@@ -252,17 +260,23 @@ fn capture_frame_cost(
 	if env::var_os("DECODEX_VISUAL_FRAME_COST").is_none() {
 		return Ok(());
 	}
+
 	let mut samples = Vec::with_capacity(120);
+
 	for _ in 0..120 {
 		let start = Instant::now();
+
 		cx.update_window(window, |_, window, cx| {
 			window.refresh();
 			window.draw(cx).clear(cx);
 		})?;
 		samples.push(start.elapsed().as_secs_f64() * 1_000.);
 	}
+
 	let mean = samples.iter().sum::<f64>() / samples.len() as f64;
+
 	samples.sort_by(f64::total_cmp);
+
 	fs::write(
 		output.with_extension("frames.json"),
 		serde_json::to_vec_pretty(&serde_json::json!({
@@ -273,6 +287,7 @@ fn capture_frame_cost(
 			"max_ms": samples[samples.len() - 1]
 		}))?,
 	)?;
+
 	Ok(())
 }
 
@@ -298,19 +313,24 @@ fn capture_graph_zoom(cx: &mut VisualTestAppContext, window: AnyWindowHandle) ->
 			.0
 			.clone()
 	})?;
+
 	surface.update(cx, |surface, cx| {
 		if let Ok(view) = env::var("DECODEX_VISUAL_GRAPH_VIEW") {
 			assert!(["links", "together"].contains(&view.as_str()), "known agent view");
+
 			surface.visual_relation_presentation(view == "together", cx);
 		}
 		if let Ok(layout) = env::var("DECODEX_VISUAL_GRAPH_LAYOUT") {
 			surface.visual_relation_layout(&layout, cx);
 		}
+
 		surface.visual_relation_zoom(scale, cx);
+
 		if let Ok(key) = env::var("DECODEX_VISUAL_GRAPH_TEAM") {
 			surface.visual_relation_team(&key, cx);
 		}
 	});
+
 	settle_capture_layout(cx, window)
 }
 
@@ -326,16 +346,20 @@ fn capture_collaboration_actions(
 			.0
 			.clone()
 	})?;
+
 	for (step, delay, name) in
-		[(3, 300, "three"), (4, 80, "moving"), (4, 300, "settled"), (4, 6500, "one")]
+		[(3, 300, "three"), (4, 80, "moving"), (4, 300, "settled"), (4, 6_500, "one")]
 	{
 		surface.update(cx, |surface, cx| surface.visual_collaboration_actions(step, cx));
 		cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
+
 		thread::sleep(Duration::from_millis(delay));
+
 		cx.advance_clock(Duration::from_millis(delay));
 		cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
 		cx.capture_screenshot(window)?.save(output.with_extension(format!("{name}.png")))?;
 	}
+
 	Ok(())
 }
 
@@ -352,22 +376,32 @@ fn capture_speech_sequence(
 			.clone()
 	})?;
 	let frames = output.with_extension("frames");
+
 	fs::create_dir_all(&frames)?;
+
 	let start = Instant::now();
 	let mut samples = Vec::new();
+
 	for frame in 0..75 {
 		if frame % 15 == 0 {
 			surface.update(cx, |surface, cx| surface.visual_speech_sample(frame / 15, cx));
 		}
+
 		cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
+
 		// Uncompressed capture keeps PNG encoding out of the animation clock.
 		let file = frames.join(format!("{frame:04}.bmp"));
+
 		cx.capture_screenshot(window)?.save(&file)?;
 		samples.push(serde_json::json!({"frame":frame,"elapsed":start.elapsed().as_secs_f64()}));
+
 		thread::sleep(Duration::from_millis(16));
+
 		cx.advance_clock(Duration::from_millis(16));
 	}
+
 	fs::write(output.with_extension("frames.json"), serde_json::to_vec_pretty(&samples)?)?;
+
 	Ok(())
 }
 
@@ -597,19 +631,23 @@ fn capture_interactions(cx: &mut VisualTestAppContext, window: AnyWindowHandle) 
 	#[cfg(target_os = "macos")]
 	verify_native_composer_focus(cx, window)?;
 	capture_status_dismissal(cx, window)?;
+
 	if let Ok(distance) = env::var("DECODEX_VISUAL_SCROLL_Y") {
 		let distance: f32 = distance.parse()?;
+
 		cx.simulate_event(
 			window,
-			gpui::ScrollEvent {
+			ScrollEvent {
 				position: gpui::point(gpui::px(800.), gpui::px(420.)),
-				delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-distance))),
+				delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-distance))),
 				..Default::default()
 			},
 		);
 		cx.advance_clock(Duration::from_secs(1));
 		cx.run_until_parked();
+
 		thread::sleep(MOTION_PANEL + Duration::from_millis(80));
+
 		cx.update_window(window, |_, window, cx| window.draw(cx).clear(cx))?;
 	}
 
@@ -647,17 +685,20 @@ fn capture_context() -> Result<(PathBuf, VisualTestAppContext)> {
 		fs::create_dir_all(parent)?;
 	}
 
-	let mut cx = VisualTestAppContext::new(gpui_platform::current_platform(false));
 	let appearance = match env::var("DECODEX_VISUAL_APPEARANCE").as_deref() {
-		Ok("system") => ui_theme::appearance::Appearance::System,
-		Ok("light") => ui_theme::appearance::Appearance::Light,
-		Ok("dark") | Err(_) => ui_theme::appearance::Appearance::Dark,
+		Ok("system") => Appearance::System,
+		Ok("light") => Appearance::Light,
+		Ok("dark") | Err(_) => Appearance::Dark,
 		Ok(value) => return Err(Error::other(format!("Unknown appearance: {value}")).into()),
 	};
+	let mut cx = VisualTestAppContext::new(gpui_platform::current_platform(false));
+
 	cx.update(|cx| appearance.apply(cx));
+
 	if let Ok(id) = env::var("DECODEX_VISUAL_THEME") {
-		let theme = ui_theme::ColorTheme::from_id(&id)
+		let theme = ColorTheme::from_id(&id)
 			.ok_or_else(|| Error::other(format!("Unknown color theme: {id}")))?;
+
 		cx.update(|cx| theme.apply(cx));
 	}
 
@@ -673,11 +714,13 @@ fn capture_shell(
 	inspector_visible: bool,
 ) -> Result<AnyWindowHandle> {
 	let size = capture_size()?;
+
 	Ok(if env::var_os("DECODEX_VISUAL_STANDALONE_SETTINGS").is_some() {
 		cx.open_offscreen_window(size, |window, cx| {
 			let owner =
 				cx.new(|cx| Shell::visual_destination(destination, true, false, window, cx));
-			cx.new(|cx| shell::SettingsWindow::new(owner, window, cx))
+
+			cx.new(|cx| SettingsWindow::new(owner, window, cx))
 		})?
 		.into()
 	} else {
@@ -696,14 +739,15 @@ fn capture_shell(
 	})
 }
 
-fn capture_size() -> Result<gpui::Size<gpui::Pixels>> {
+fn capture_size() -> Result<Size<Pixels>> {
 	Ok(if let Ok(size) = env::var("DECODEX_VISUAL_SIZE") {
 		let (width, height) = size
 			.split_once('x')
 			.ok_or_else(|| Error::other("Use WIDTHxHEIGHT for DECODEX_VISUAL_SIZE"))?;
+
 		gpui::size(gpui::px(width.parse()?), gpui::px(height.parse()?))
 	} else {
-		gpui::size(gpui::px(1248.), gpui::px(840.))
+		gpui::size(gpui::px(1_248.), gpui::px(840.))
 	})
 }
 

@@ -7,9 +7,15 @@ use std::{
 	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use gpui::profiler::{self, FrameEvent, FrameTimingCollector};
+use gpui::{
+	App,
+	profiler::{self, FrameEvent, FrameTimingCollector},
+};
+use serde_json::Value;
 
-static ROWS: OnceLock<(Instant, Mutex<Vec<serde_json::Value>>)> = OnceLock::new();
+use crate::ui_frame;
+
+static ROWS: OnceLock<(Instant, Mutex<Vec<Value>>)> = OnceLock::new();
 
 /// Count region rebuilds without recording conversation content or identifiers.
 pub(crate) fn surface_render(surface: &'static str) {
@@ -40,18 +46,6 @@ pub(crate) fn transcript_layout(maximum: f32, offset: f32) {
 	record_row(None, "viewport", None, maximum, Some(offset));
 }
 
-fn record_row(
-	position: Option<u64>,
-	phase: &str,
-	progress: Option<f32>,
-	height: f32,
-	scroll_offset: Option<f32>,
-) {
-	record(
-		|at_ms| serde_json::json!({"at_ms": at_ms, "position": position, "phase": phase, "progress": progress, "height": height, "scroll_offset": scroll_offset}),
-	);
-}
-
 /// Record only Graph geometry and reveal state, with no task identifiers or text.
 pub(crate) fn graph_paint(zoom: f32, pan: (f32, f32), size: (f32, f32), reveal: f32) {
 	record(
@@ -59,18 +53,7 @@ pub(crate) fn graph_paint(zoom: f32, pan: (f32, f32), size: (f32, f32), reveal: 
 	);
 }
 
-fn record(row: impl FnOnce(f64) -> serde_json::Value) {
-	if !profiler::trace_enabled() {
-		return;
-	}
-	let Some((start, rows)) = ROWS.get() else { return };
-	let mut rows = rows.lock().expect("row frame measurements");
-	if rows.len() < 16_384 {
-		rows.push(row(start.elapsed().as_secs_f64() * 1_000.));
-	}
-}
-
-pub(crate) fn start(cx: &mut gpui::App) {
+pub(crate) fn start(cx: &mut App) {
 	let Some(path) = env::var_os("DECODEX_FRAME_TRACE") else { return };
 	let start = Instant::now();
 	let _ = ROWS.set((start, Mutex::new(Vec::new())));
@@ -78,9 +61,10 @@ pub(crate) fn start(cx: &mut gpui::App) {
 
 	profiler::set_trace_enabled(true);
 
-	let mut collector = FrameTimingCollector::new();
 	let activity = Arc::new(Mutex::new(Vec::new()));
 	let observations = activity.clone();
+	let mut collector = FrameTimingCollector::new();
+
 	cx.spawn(async move |cx| {
 		while start.elapsed() < Duration::from_secs(60) {
 			let sample = cx.update(|cx| {
@@ -97,17 +81,19 @@ pub(crate) fn start(cx: &mut gpui::App) {
 						#[cfg(any(not(target_os = "macos"), test))]
 						let material = None::<&str>;
 						#[cfg(any(not(target_os = "macos"), test))]
-						let rendering = None::<serde_json::Value>;
+						let rendering = None::<Value>;
+
 						serde_json::json!({"window": format!("{:?}", handle.window_id()), "key": window.is_window_active(), "visible": window.is_visible(), "accessibility_active": window.is_a11y_active(), "glass_style": glass, "material": material, "rendering": rendering})
 					}).ok()
 				}).collect();
-				serde_json::json!({"at_ms": start.elapsed().as_secs_f64() * 1_000., "application_active": crate::ui_frame::application_active(), "full_background_rendering": crate::ui_frame::background_rendering(None), "windows": windows})
+
+				serde_json::json!({"at_ms": start.elapsed().as_secs_f64() * 1_000., "application_active": ui_frame::application_active(), "full_background_rendering": ui_frame::background_rendering(None), "windows": windows})
 			});
+
 			observations.lock().expect("frame activity").push(sample);
 			cx.background_executor().timer(Duration::from_millis(100)).await;
 		}
 	}).detach();
-
 	thread::spawn(move || {
 		// Collect for one minute, then stop completely. The GPUI ring is bounded.
 		thread::sleep(Duration::from_secs(60));
@@ -120,6 +106,7 @@ pub(crate) fn start(cx: &mut gpui::App) {
 			.iter()
 			.filter_map(|event| {
 				let FrameEvent::Present(f) = event else { return None };
+
 				Some(serde_json::json!({
 					"window": format!("{:?}", f.window_id),
 					"start_ms": f.present_start.duration_since(start).as_secs_f64() * 1_000.,
@@ -158,4 +145,29 @@ pub(crate) fn start(cx: &mut gpui::App) {
 			eprintln!("Could not write frame measurements: {error}");
 		}
 	});
+}
+
+fn record_row(
+	position: Option<u64>,
+	phase: &str,
+	progress: Option<f32>,
+	height: f32,
+	scroll_offset: Option<f32>,
+) {
+	record(
+		|at_ms| serde_json::json!({"at_ms": at_ms, "position": position, "phase": phase, "progress": progress, "height": height, "scroll_offset": scroll_offset}),
+	);
+}
+
+fn record(row: impl FnOnce(f64) -> Value) {
+	if !profiler::trace_enabled() {
+		return;
+	}
+
+	let Some((start, rows)) = ROWS.get() else { return };
+	let mut rows = rows.lock().expect("row frame measurements");
+
+	if rows.len() < 16_384 {
+		rows.push(row(start.elapsed().as_secs_f64() * 1_000.));
+	}
 }

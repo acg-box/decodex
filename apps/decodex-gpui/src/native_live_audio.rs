@@ -1,8 +1,9 @@
 //! WebRTC prepares software DSP without creating Apple's duplex aggregate device.
+use std::cell::Cell;
+
 use libwebrtc::peer_connection_factory::{
 	PeerConnectionFactory, native::PeerConnectionFactoryExt as _,
 };
-use std::cell::Cell;
 
 pub(super) struct Live {
 	factory: PeerConnectionFactory,
@@ -12,15 +13,20 @@ pub(super) struct Live {
 impl Live {
 	pub(super) fn new(device: u32) -> Result<Self, ()> {
 		let factory = PeerConnectionFactory::default();
+
 		factory.set_adm_recording_enabled(false);
 		factory.set_adm_playout_enabled(false);
+
 		if !factory.acquire_platform_adm() {
 			return Err(());
 		}
+
 		// Factory construction initializes WebRTC's software AEC, NS and AGC.
 		// Acquiring the platform device enumerates CoreAudio; it does not start I/O.
 		let live = Self { factory, device, running: Cell::new(false) };
+
 		live.select()?;
+
 		Ok(live)
 	}
 
@@ -35,15 +41,18 @@ impl Live {
 			0
 		} else {
 			let id = self.device.to_string();
+
 			(0..self.factory.recording_devices().max(0) as u16)
 				.find(|&index| self.factory.recording_device_guid(index) == id)
 				.ok_or(())?
 		};
+
 		if !self.factory.set_recording_device(input) {
 			eprintln!(
 				"DecodexAudio live_select_input_failed initialized={}",
 				self.factory.recording_is_initialized()
 			);
+
 			return Err(());
 		}
 		if !self.factory.set_playout_device(0) {
@@ -51,14 +60,17 @@ impl Live {
 				"DecodexAudio live_select_output_failed initialized={}",
 				self.factory.playout_is_initialized()
 			);
+
 			return Err(());
 		}
+
 		Ok(())
 	}
 
 	pub(super) fn start(&self) -> Result<(), ()> {
 		self.factory.set_adm_recording_enabled(true);
 		self.factory.set_adm_playout_enabled(true);
+
 		for (stage, action) in [
 			(
 				"initialize_output",
@@ -70,11 +82,15 @@ impl Live {
 		] {
 			if !action(&self.factory) {
 				eprintln!("DecodexAudio live_start_failed stage={stage}");
+
 				self.stop();
+
 				return Err(());
 			}
 		}
+
 		self.running.set(true);
+
 		Ok(())
 	}
 

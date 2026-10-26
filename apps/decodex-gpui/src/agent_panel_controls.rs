@@ -7,11 +7,14 @@ use gpui::{
 	},
 };
 
-use super::{AgentSurface, Context, Role};
 use crate::{
-	shell::{ControlTooltip, workspace_symbols},
+	shell::{
+		ControlTooltip,
+		agent_surface::{AgentSurface, Context, Role, workspace},
+		workspace_symbols::{self, Symbol},
+	},
 	ui_motion::SmoothControl as _,
-	ui_theme::{BLUE, CHROME_CONTROL_SIZE, CONTROL_GROUP_HEIGHT, HOVER_FILL},
+	ui_theme::{self, BLUE, CHROME_CONTROL_SIZE, CONTROL_GROUP_HEIGHT, HOVER_FILL},
 };
 
 #[derive(Clone, Copy)]
@@ -41,9 +44,11 @@ impl AgentSurface {
 			.items_center()
 			.gap_1()
 			.child(self.panel_action(Action::Toggle(panel), cx));
+
 		if matches!(panel, Panel::Dock) {
 			group = group.child(self.panel_action(Action::CloseDock, cx));
 		}
+
 		group.into_any_element()
 	}
 
@@ -64,6 +69,7 @@ impl AgentSurface {
 						"Expand Dock · Shift-Esc",
 					),
 				};
+
 				(
 					id,
 					if expanded { "Restore layout · Shift-Esc" } else { label },
@@ -71,13 +77,10 @@ impl AgentSurface {
 					workspace_symbols::panel_expansion(key, expanded).into_any_element(),
 				)
 			},
-			Action::CloseDock => (
-				"graph-close",
-				"Close Dock",
-				None,
-				workspace_symbols::icon(workspace_symbols::Symbol::Close),
-			),
+			Action::CloseDock =>
+				("graph-close", "Close Dock", None, workspace_symbols::icon(Symbol::Close)),
 		};
+
 		gpui::div()
 			.id(id)
 			.debug_selector(move || id.into())
@@ -95,17 +98,21 @@ impl AgentSurface {
 			.border_1()
 			.border_color(gpui::transparent_black())
 			.cursor_pointer()
-			.hover(|button| button.bg(crate::ui_theme::rgba(HOVER_FILL)))
-			.focus_visible(|button| button.border_color(crate::ui_theme::rgb(BLUE)))
+			.hover(|button| button.bg(ui_theme::rgba(HOVER_FILL)))
+			.focus_visible(|button| button.border_color(ui_theme::rgb(BLUE)))
 			.on_click(cx.listener(move |s, _, window, cx| {
 				s.perform_panel_action(action, cx);
-				super::workspace::restore_shell_focus(window, cx);
+
+				workspace::restore_shell_focus(window, cx);
+
 				cx.stop_propagation();
 			}))
 			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					s.perform_panel_action(action, cx);
-					super::workspace::restore_shell_focus(window, cx);
+
+					workspace::restore_shell_focus(window, cx);
+
 					cx.stop_propagation();
 				}
 			}))
@@ -122,8 +129,10 @@ impl AgentSurface {
 				if self.workspace.graph_expanded {
 					self.reveal_relations_after_resize();
 				}
+
 				self.workspace.graph_visible = false;
 				self.workspace.graph_expanded = false;
+
 				cx.notify();
 			},
 		}

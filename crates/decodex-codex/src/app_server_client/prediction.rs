@@ -1,10 +1,14 @@
 //! Explicit ephemeral prediction forks. These inherit native tools and permissions.
-use super::{AppServerClient, ClientError, HistoryGuard, ServerEvent, TemporaryStructuredThread};
-use serde_json::Value;
 use std::time::Duration;
+
+use serde_json::Value;
 use tokio::{
 	sync::{mpsc, watch},
 	time,
+};
+
+use crate::app_server_client::{
+	AppServerClient, ClientError, HistoryGuard, ServerEvent, TemporaryStructuredThread,
 };
 
 /// A context-preserving temporary branch. It is not a tool-free recap thread.
@@ -35,16 +39,7 @@ impl NativePredictionThread {
 		self.0.run(prompt, output_schema, None, events, cancellation).await
 	}
 }
-/// Admit only ephemeral whole-context prediction forks with no configuration overrides.
-pub fn is_prediction_fork(params: &Value) -> bool {
-	params.as_object().is_some_and(|p| p.len() == 4)
-		&& params["threadId"].as_str().is_some_and(|id| {
-			!id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control)
-		})
-		&& params["experimentalPredictionMode"] == true
-		&& params["ephemeral"] == true
-		&& params["excludeTurns"] == true
-}
+
 impl AppServerClient {
 	/// Fork a loaded, persisted parent once. The native server inherits its model, tools,
 	/// provider, environment, and permissions. No background prediction is scheduled.
@@ -55,9 +50,11 @@ impl AppServerClient {
 		guard: HistoryGuard,
 	) -> Result<NativePredictionThread, ClientError> {
 		let params = serde_json::json!({"threadId":source,"experimentalPredictionMode":true,"ephemeral":true,"excludeTurns":true});
+
 		if !is_prediction_fork(&params) {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		let guard =
 			self.with_thread_settings_guard(source, guard).ok_or(ClientError::StaleHistory)?;
 		let result = time::timeout(
@@ -75,22 +72,38 @@ impl AppServerClient {
 					&& !id.chars().any(char::is_control)
 			})
 			.ok_or(ClientError::InvalidFrame)?;
+
 		if result["thread"]["forkedFromId"] != source || !result["thread"]["path"].is_null() {
 			return Err(ClientError::InvalidFrame);
 		}
+
 		Ok(NativePredictionThread(TemporaryStructuredThread::from_ephemeral(
 			self.clone(),
 			id.to_owned(),
 		)))
 	}
 }
+
+/// Admit only ephemeral whole-context prediction forks with no configuration overrides.
+pub fn is_prediction_fork(params: &Value) -> bool {
+	params.as_object().is_some_and(|p| p.len() == 4)
+		&& params["threadId"].as_str().is_some_and(|id| {
+			!id.is_empty() && id.len() <= 512 && !id.chars().any(char::is_control)
+		})
+		&& params["experimentalPredictionMode"] == true
+		&& params["ephemeral"] == true
+		&& params["excludeTurns"] == true
+}
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::app_server_client::prediction::{self, Value};
+
 	#[test]
 	fn prediction_forks_reject_persistence_cutoffs_and_all_overrides() {
 		let params = serde_json::json!({"threadId":"parent","experimentalPredictionMode":true,"ephemeral":true,"excludeTurns":true});
-		assert!(is_prediction_fork(&params));
+
+		assert!(prediction::is_prediction_fork(&params));
+
 		for key in [
 			"model",
 			"modelProvider",
@@ -102,13 +115,17 @@ mod tests {
 			"deferGoalContinuation",
 		] {
 			let mut invalid = params.clone();
+
 			invalid[key] = Value::Null;
-			assert!(!is_prediction_fork(&invalid));
+
+			assert!(!prediction::is_prediction_fork(&invalid));
 		}
 		for key in ["ephemeral", "excludeTurns", "experimentalPredictionMode"] {
 			let mut invalid = params.clone();
+
 			invalid[key] = Value::Bool(false);
-			assert!(!is_prediction_fork(&invalid));
+
+			assert!(!prediction::is_prediction_fork(&invalid));
 		}
 	}
 }

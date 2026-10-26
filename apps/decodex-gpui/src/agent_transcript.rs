@@ -1,5 +1,4 @@
 //! User-requested Markdown export; loaded excerpts are explicit alternatives.
-use crate::ui_feedback::Feedback;
 use std::{
 	env,
 	fs::OpenOptions,
@@ -11,9 +10,12 @@ use std::{
 use gpui::{AnyElement, ClipboardItem};
 use tokio::runtime::Builder;
 
-use crate::shell::agent_surface::{
-	AgentClient, AgentHistoryResult, AgentSurface, Context, EntityId, IntoElement, ParentElement,
-	Styled,
+use crate::{
+	shell::agent_surface::{
+		AgentClient, AgentHistoryResult, AgentSurface, Context, EntityId, IntoElement,
+		ParentElement, Styled,
+	},
+	ui_feedback::Feedback,
 };
 use decodex_protocol::AgentTimelineContent;
 
@@ -111,11 +113,7 @@ impl AgentSurface {
 		};
 		let excerpt = loaded.then(|| self.loaded_transcript(&target)).flatten();
 
-		if loaded && excerpt.is_none() {
-			self.feedback = Feedback::warning("No loaded conversation text is available.");
-
-			cx.notify();
-
+		if !self.loaded_excerpt_ready(loaded, excerpt.as_deref(), cx) {
 			return;
 		}
 
@@ -138,8 +136,10 @@ impl AgentSurface {
 					_ => {
 						let _ = surface.update(cx, |s, cx| {
 							s.timeline.transcript_busy = false;
+
 							cx.notify();
 						});
+
 						return;
 					},
 				},
@@ -170,7 +170,9 @@ impl AgentSurface {
 						s.feedback = Feedback::warning(
 							"Conversation source changed. Export again from the selected conversation.",
 						);
+
 						cx.notify();
+
 						return false;
 					}
 
@@ -189,8 +191,10 @@ impl AgentSurface {
 					s.feedback = Feedback::error(
 						"Complete history could not be exported. Retry, or explicitly export the loaded excerpt.",
 					);
+
 					cx.notify();
 				});
+
 				return;
 			};
 			let saved = if let Some(path) = path {
@@ -198,25 +202,51 @@ impl AgentSurface {
 			} else {
 				let _ = surface
 					.update(cx, |_, cx| cx.write_to_clipboard(ClipboardItem::new_string(text)));
+
 				Ok(())
 			};
 			let _ = surface.update(cx, |s, cx| {
-				s.timeline.transcript_busy = false;
-
-				s.timeline.transcript_failed = false;
-
-				s.feedback = match saved {
-					Ok(()) => Feedback::success(if loaded {
-						"Loaded excerpt exported."
-					} else {
-						"Conversation exported as Markdown."
-					}),
-					Err(reason) => Feedback::error(reason),
-				};
-				cx.notify();
+				s.complete_transcript_export(saved, loaded, cx);
 			});
 		})
 		.detach();
+	}
+
+	fn loaded_excerpt_ready(
+		&mut self,
+		loaded: bool,
+		excerpt: Option<&str>,
+		cx: &mut Context<Self>,
+	) -> bool {
+		if loaded && excerpt.is_none() {
+			self.feedback = Feedback::warning("No loaded conversation text is available.");
+
+			cx.notify();
+
+			return false;
+		}
+
+		true
+	}
+
+	fn complete_transcript_export(
+		&mut self,
+		saved: Result<(), &'static str>,
+		loaded: bool,
+		cx: &mut Context<Self>,
+	) {
+		self.timeline.transcript_busy = false;
+		self.timeline.transcript_failed = false;
+		self.feedback = match saved {
+			Ok(()) => Feedback::success(if loaded {
+				"Loaded excerpt exported."
+			} else {
+				"Conversation exported as Markdown."
+			}),
+			Err(reason) => Feedback::error(reason),
+		};
+
+		cx.notify();
 	}
 }
 fn write_transcript(path: &Path, text: &str) -> Result<(), &'static str> {

@@ -92,25 +92,7 @@ async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_ma
 			.unwrap()
 	);
 
-	// User-initiated Live follows conversation hosting, not agent execution ownership.
-	for (work, thread) in [
-		("unrelated-manager", "unrelated-native"),
-		("root", "native-source"),
-		("branch", "native-fork"),
-	] {
-		let result = store
-			.begin_agent_voice_call(AgentVoiceCall {
-				session_id: format!("voice-{work}"),
-				work_id: work.into(),
-				thread_id: thread.into(),
-				generation_id: tests::generation_id(1).as_str().into(),
-				baseline_turn_id: None,
-			})
-			.await;
-
-		assert!(result.is_ok(), "voice admission for {work}: {result:?}");
-		store.close_agent_voice_call(format!("voice-{work}")).await.unwrap();
-	}
+	assert_fork_voice_admission(&store).await;
 
 	assert!(
 		!store
@@ -128,4 +110,27 @@ async fn acknowledged_fork_keeps_the_live_source_owner_without_adopting_other_ma
 			.await
 			.unwrap()
 	);
+}
+
+async fn assert_fork_voice_admission(store: &SqliteStore) {
+	// User-initiated Live follows conversation hosting, not agent execution ownership.
+	for (work, thread) in [
+		("unrelated-manager", "unrelated-native"),
+		("root", "native-source"),
+		("branch", "native-fork"),
+	] {
+		let result = store
+			.begin_agent_voice_call(AgentVoiceCall {
+				session_id: format!("voice-{work}"),
+				work_id: work.into(),
+				thread_id: thread.into(),
+				generation_id: tests::generation_id(1).as_str().into(),
+				baseline_turn_id: None,
+			})
+			.await;
+
+		assert!(result.is_ok(), "voice admission for {work}: {result:?}");
+
+		store.close_agent_voice_call(format!("voice-{work}")).await.unwrap();
+	}
 }

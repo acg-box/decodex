@@ -1,33 +1,8 @@
 //! Aggregate exact retained turn receipts and explicit Work references. No execution writes.
-use rusqlite::{OptionalExtension as _, params};
+use rusqlite::OptionalExtension as _;
 use serde_json::Value;
 
 use crate::{SqliteStore, StoreError, error::sqlite_error};
-
-#[derive(Default)]
-pub struct UsageEvidence {
-	pub turns: u64,
-	pub token_turns: u64,
-	pub duration_turns: u64,
-	pub shared_turns: u64,
-	pub unattributed_turns: u64,
-	pub input_tokens: u64,
-	pub output_tokens: u64,
-	pub duration_ms: u64,
-	pub sources: Vec<UsageEvidenceSource>,
-}
-
-pub struct UsageEvidenceSource {
-	pub event_id: Option<i64>,
-	pub agent_id: String,
-	pub thread_id: String,
-	pub turn_id: String,
-	pub work_ids: Vec<String>,
-	pub work_count: u64,
-	pub input_tokens: Option<u64>,
-	pub output_tokens: Option<u64>,
-	pub duration_ms: Option<u64>,
-}
 
 // Results, native delivery proofs and acknowledged peer instructions identify exact turns.
 // Current Agent selection, latest output, titles and cumulative token samples do not.
@@ -63,11 +38,29 @@ FROM identities k LEFT JOIN receipts r ON r.agent_id=k.agent_id AND r.thread_id=
 WHERE (?1 AND k.agent_id=?2) OR (NOT ?1 AND EXISTS(SELECT 1 FROM links l WHERE l.agent_id=k.agent_id AND l.thread_id=k.thread_id AND l.turn_id=k.turn_id AND l.work_id=?2))
 ORDER BY r.id DESC,k.agent_id,k.thread_id,k.turn_id";
 
-fn add(sum: &mut u64, value: u64) -> Result<(), StoreError> {
-	*sum = sum
-		.checked_add(value)
-		.ok_or(StoreError::InvalidInput("usage total exceeds supported range"))?;
-	Ok(())
+#[derive(Default)]
+pub struct UsageEvidence {
+	pub turns: u64,
+	pub token_turns: u64,
+	pub duration_turns: u64,
+	pub shared_turns: u64,
+	pub unattributed_turns: u64,
+	pub input_tokens: u64,
+	pub output_tokens: u64,
+	pub duration_ms: u64,
+	pub sources: Vec<UsageEvidenceSource>,
+}
+
+pub struct UsageEvidenceSource {
+	pub event_id: Option<i64>,
+	pub agent_id: String,
+	pub thread_id: String,
+	pub turn_id: String,
+	pub work_ids: Vec<String>,
+	pub work_count: u64,
+	pub input_tokens: Option<u64>,
+	pub output_tokens: Option<u64>,
+	pub duration_ms: Option<u64>,
 }
 
 impl SqliteStore {
@@ -81,6 +74,7 @@ impl SqliteStore {
 		self.run(move |c| {
 			let tx = c.transaction().map_err(sqlite_error)?;
 			let table = if agent_scope { "agents" } else { "works" };
+
 			if tx
 				.query_row(&format!("SELECT id FROM {table} WHERE id=?1"), [&id], |r| {
 					r.get::<_, String>(0)
@@ -91,10 +85,14 @@ impl SqliteStore {
 			{
 				return Ok(None);
 			}
+
 			let mut total = UsageEvidence::default();
+
 			{
 				let mut statement = tx.prepare(SOURCES).map_err(sqlite_error)?;
-				let mut rows = statement.query(params![agent_scope, id]).map_err(sqlite_error)?;
+				let mut rows =
+					statement.query(rusqlite::params![agent_scope, id]).map_err(sqlite_error)?;
+
 				while let Some(row) = rows.next().map_err(sqlite_error)? {
 					let usage: Option<String> = row.get(4).map_err(sqlite_error)?;
 					let value = usage.and_then(|s| serde_json::from_str::<Value>(&s).ok());
@@ -105,22 +103,27 @@ impl SqliteStore {
 					let duration = duration.and_then(|v| u64::try_from(v).ok());
 					let work_count = u64::try_from(row.get::<_, i64>(6).map_err(sqlite_error)?)
 						.map_err(|_| StoreError::InvalidInput("invalid attribution count"))?;
+
 					total.turns += 1;
 					total.shared_turns += u64::from(work_count > 1);
 					total.unattributed_turns += u64::from(work_count == 0);
+
 					if agent_scope || work_count == 1 {
 						if let Some((input, output)) = tokens {
 							add(&mut total.input_tokens, input)?;
 							add(&mut total.output_tokens, output)?;
+
 							total.token_turns += 1;
 						}
 						if let Some(ms) = duration {
 							add(&mut total.duration_ms, ms)?;
+
 							total.duration_turns += 1;
 						}
 					}
 					if total.sources.len() < 32 {
 						let work_json: String = row.get(7).map_err(sqlite_error)?;
+
 						total.sources.push(UsageEvidenceSource {
 							event_id: row.get(0).map_err(sqlite_error)?,
 							agent_id: row.get(1).map_err(sqlite_error)?,
@@ -137,11 +140,21 @@ impl SqliteStore {
 					}
 				}
 			}
+
 			tx.commit().map_err(sqlite_error)?;
+
 			Ok(Some(total))
 		})
 		.await
 	}
+}
+
+fn add(sum: &mut u64, value: u64) -> Result<(), StoreError> {
+	*sum = sum
+		.checked_add(value)
+		.ok_or(StoreError::InvalidInput("usage total exceeds supported range"))?;
+
+	Ok(())
 }
 
 #[cfg(test)]

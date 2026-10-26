@@ -52,6 +52,7 @@ impl AppServerClient {
 				},
 				Value::String(voice) => {
 					let (voices, _) = self.realtime_voice_catalog().await?;
+
 					Ok(voices.contains(voice).then(|| voice.clone()))
 				},
 				_ => Err(ClientError::InvalidFrame),

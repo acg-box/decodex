@@ -1,5 +1,8 @@
 //! Bounded, deterministic projection of Agent dependency facts into canvas space.
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	mem,
+};
 
 use crate::shell::agent_surface::ui_theme::{self, INFO, TEXT_MUTED};
 use decodex_protocol::{
@@ -30,19 +33,24 @@ impl Layout {
 			.filter(|(_, node)| keep(&node.id))
 			.map(|(index, _)| index)
 			.collect();
+
 		loop {
 			let count = visible.len();
+
 			for (from, to) in &self.edges {
 				if visible.contains(to) {
 					visible.insert(*from);
 				}
 			}
+
 			if visible.len() == count {
 				break;
 			}
 		}
+
 		let indices: BTreeMap<_, _> =
 			visible.iter().enumerate().map(|(new, old)| (*old, new)).collect();
+
 		self.edges = self
 			.edges
 			.iter()
@@ -53,11 +61,12 @@ impl Layout {
 			.iter()
 			.filter_map(|(a, b)| Some((*indices.get(a)?, *indices.get(b)?)))
 			.collect();
-		self.nodes = std::mem::take(&mut self.nodes)
+		self.nodes = mem::take(&mut self.nodes)
 			.into_iter()
 			.enumerate()
 			.filter_map(|(i, node)| visible.contains(&i).then_some(node))
 			.collect();
+
 		before - self.nodes.len()
 	}
 

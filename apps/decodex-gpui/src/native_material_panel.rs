@@ -2,152 +2,23 @@
 //! UI state and event handlers remain in GPUI; AppKit owns only composition.
 use std::{cell::Cell, env, ptr};
 
-use super::material::{GlassStyle, Material, Surface};
-use gpui::{Bounds, Pixels, Window, WindowBackgroundAppearance};
+use gpui::{AnyWindowHandle, Bounds, Pixels, Window, WindowBackgroundAppearance};
 use objc2::{
 	self,
-	rc::Retained,
+	rc::{Allocated, Retained},
 	runtime::{AnyClass, AnyObject, ClassBuilder, Sel},
 };
-use objc2_app_kit::{NSView, NSWindow, NSWindowCollectionBehavior};
+use objc2_app_kit::{NSResponder, NSView, NSWindow, NSWindowCollectionBehavior};
 use objc2_core_foundation::CGAffineTransform;
-use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
+use objc2_foundation::{NSArray, NSPoint, NSRect, NSSize, NSString};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use serde_json::Value;
 
-struct Attachment {
-	handle: gpui::AnyWindowHandle,
-	surface: Option<Surface>,
-}
+use crate::ui_theme::material::{GlassStyle, Material, Surface};
 
 thread_local! {
 	// Non-owning handles; each MaterialPanel registers and removes its entry.
 	static ATTACHED_WINDOWS: std::cell::RefCell<std::collections::HashMap<usize, Attachment>> = Default::default();
-}
-
-pub(crate) fn material_class(material: Material) -> Option<&'static AnyClass> {
-	match material {
-		Material::Thin => AnyClass::get(c"DecodexThinMaterialView"),
-		Material::LiquidGlass
-			if env::var_os("DECODEX_DISABLE_LIQUID_GLASS").is_none() && !reduced_transparency() =>
-			AnyClass::get(c"NSGlassEffectView"),
-		Material::LiquidGlass => None,
-	}
-}
-
-pub(crate) fn create_surface(material: Material, radius: f64) -> Option<Retained<NSView>> {
-	let class = material_class(material)?;
-	unsafe {
-		let allocated: objc2::rc::Allocated<NSView> = objc2::msg_send![class, alloc];
-		let surface: Retained<NSView> = objc2::msg_send![allocated, initWithFrame: NSRect::new(NSPoint::new(0., 0.), NSSize::new(0., 0.))];
-		let _: () = objc2::msg_send![&*surface, setCornerRadius: radius];
-		let _: () = objc2::msg_send![&*surface, setAutoresizingMask: 18_usize];
-		Some(surface)
-	}
-}
-
-pub(crate) fn observed_material(window: &Window) -> Option<&'static str> {
-	let content = native(window)?.contentView()?;
-	for view in content.subviews().iter() {
-		for (name, label) in
-			[(c"DecodexThinMaterialView", "thin"), (c"NSGlassEffectView", "liquid-glass")]
-		{
-			if let Some(class) = AnyClass::get(name) {
-				let matches: bool = unsafe { objc2::msg_send![&*view, isKindOfClass: class] };
-				if matches {
-					return Some(label);
-				}
-			}
-		}
-	}
-	None
-}
-
-/// Read the native material for opt-in frame diagnostics.
-pub(crate) fn observed_style(window: &Window) -> Option<isize> {
-	let content = native(window)?.contentView()?;
-	let class = AnyClass::get(c"NSGlassEffectView")?;
-	content.subviews().iter().find_map(|view| unsafe {
-		let glass: bool = objc2::msg_send![&*view, isKindOfClass: class];
-		glass.then(|| objc2::msg_send![&*view, style])
-	})
-}
-
-/// Inspect this window's render backing only while the user enables frame diagnostics.
-pub(crate) fn observed_rendering(window: &Window) -> Option<serde_json::Value> {
-	let gpu = view(window)?;
-	let native = gpu.window()?;
-	let viewport = window.viewport_size();
-	let bounds = gpu.bounds();
-	let backing = gpu.convertRectToBacking(bounds);
-	unsafe {
-		let layer: Option<Retained<AnyObject>> = objc2::msg_send![&*gpu, layer];
-		let layer = layer?;
-		let contents_scale: f64 = objc2::msg_send![&*layer, contentsScale];
-		let rasterization_scale: f64 = objc2::msg_send![&*layer, rasterizationScale];
-		let rasterized: bool = objc2::msg_send![&*layer, shouldRasterize];
-		let mut ancestry = Vec::new();
-		let mut ancestor = Some(gpu.clone());
-		while let Some(view) = ancestor {
-			let view_layer: Option<Retained<AnyObject>> = objc2::msg_send![&*view, layer];
-			let composition = view_layer.map(|layer| {
-				let frame: NSRect = objc2::msg_send![&*layer, frame];
-				let bounds: NSRect = objc2::msg_send![&*layer, bounds];
-				let affine: CGAffineTransform = objc2::msg_send![&*layer, affineTransform];
-				let opacity: f32 = objc2::msg_send![&*layer, opacity];
-				let rasterized: bool = objc2::msg_send![&*layer, shouldRasterize];
-				let filters: Option<Retained<objc2_foundation::NSArray<AnyObject>>> = objc2::msg_send![&*layer, filters];
-				serde_json::json!({
-					"class": layer.class().name().to_string_lossy(),
-					"frame": [frame.origin.x, frame.origin.y, frame.size.width, frame.size.height],
-					"bounds": [bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height],
-					"affine": [affine.a, affine.b, affine.c, affine.d, affine.tx, affine.ty],
-					"opacity": opacity,
-					"rasterized": rasterized,
-					"filters": filters.map(|filters| filters.iter().map(|filter| filter.class().name().to_string_lossy().into_owned()).collect::<Vec<_>>()).unwrap_or_default(),
-				})
-			});
-			let frame = view.frame();
-			let bounds = view.bounds();
-			ancestry.push(serde_json::json!({
-				"class": view.class().name().to_string_lossy(),
-				"frame": [frame.origin.x, frame.origin.y, frame.size.width, frame.size.height],
-				"bounds": [bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height],
-				"alpha": view.alphaValue(),
-				"layer": composition,
-			}));
-			ancestor = view.superview();
-		}
-		let siblings = gpu
-			.superview()
-			.map(|parent| {
-				parent
-					.subviews()
-					.iter()
-					.map(|view| view.class().name().to_string_lossy().into_owned())
-					.collect::<Vec<_>>()
-			})
-			.unwrap_or_default();
-		let drawable = AnyClass::get(c"CAMetalLayer").and_then(|class| {
-			let metal: bool = objc2::msg_send![&*layer, isKindOfClass: class];
-			metal.then(|| {
-				let size: NSSize = objc2::msg_send![&*layer, drawableSize];
-				[size.width, size.height]
-			})
-		});
-		Some(serde_json::json!({
-			"gpui_scale": window.scale_factor(),
-			"gpui_viewport": [f32::from(viewport.width), f32::from(viewport.height)],
-			"window_backing_scale": native.backingScaleFactor(),
-			"view_bounds": [bounds.size.width, bounds.size.height],
-			"view_backing_size": [backing.size.width, backing.size.height],
-			"layer_contents_scale": contents_scale,
-			"layer_rasterization_scale": rasterization_scale,
-			"layer_rasterized": rasterized,
-			"metal_drawable_size": drawable,
-			"foreground_ancestry": ancestry,
-			"sibling_paint_order": siblings,
-		}))
-	}
 }
 
 /// Owns composition separately from the editor and its window lifecycle.
@@ -186,7 +57,6 @@ impl MaterialPanel {
 		let surface = configuration.map(|(surface, _)| surface);
 		let radius = configuration.map_or(0., |(_, radius)| radius);
 		let material = surface.map(Surface::material);
-
 		let parent = native(parent)?;
 		let native = native(window)?;
 		let gpu = view(window)?;
@@ -202,7 +72,6 @@ impl MaterialPanel {
 		} else {
 			"Decodex Status"
 		}));
-
 		window.set_background_appearance(WindowBackgroundAppearance::Transparent);
 
 		unsafe {
@@ -217,6 +86,7 @@ impl MaterialPanel {
 			let _: () = objc2::msg_send![&*material_view, setAutoresizingMask: 18_usize];
 
 			gpu.removeFromSuperview();
+
 			// GPUI owns Metal drawable sizing. Keep AppKit autoresizing off this
 			// view; otherwise a parent resize can scale it a second time.
 			let _: () = objc2::msg_send![&*gpu, setAutoresizingMask: 0_usize];
@@ -230,11 +100,14 @@ impl MaterialPanel {
 				userInfo: ptr::null::<AnyObject>()
 			];
 			let _: () = objc2::msg_send![&*gpu, addTrackingArea: &*tracking];
-
 			let host: Retained<NSView> = objc2::msg_send![AnyClass::get(c"NSView")?, new];
+
 			host.setFrame(content.bounds());
+
 			let _: () = objc2::msg_send![&*host, setAutoresizingMask: 18_usize];
+
 			host.addSubview(&gpu);
+
 			if surface.is_some() {
 				// Glass may lay out its content view itself. Give it a plain host,
 				// so its layout never changes the Metal view behind GPUI's back.
@@ -256,6 +129,7 @@ impl MaterialPanel {
 			let _: () = objc2::msg_send![&*native, setAlphaValue: 0.0_f64];
 			let _: () = objc2::msg_send![&*parent, addChildWindow: &*native, ordered: 1_isize];
 			let window_observer = observe_panel_window(&native)?;
+
 			ATTACHED_WINDOWS.with(|windows| {
 				windows.borrow_mut().insert(
 					&*native as *const NSWindow as usize,
@@ -266,6 +140,7 @@ impl MaterialPanel {
 			if material == Some(Material::LiquidGlass) {
 				apply_glass_style(&material_view, Surface::InputBar, native.isKeyWindow());
 			}
+
 			Some(Self {
 				surface,
 				material,
@@ -287,26 +162,34 @@ impl MaterialPanel {
 	pub(crate) fn refresh_material(&mut self) {
 		let Some(surface) = self.surface else { return };
 		let material = surface.material();
+
 		if self.material == Some(material) {
 			return;
 		}
+
 		let Some(replacement) = create_surface(material, self.radius) else { return };
 		let Some(content) = self.native.contentView() else { return };
+
 		replacement.setFrame(content.bounds());
+
 		let had_focus = self.native.firstResponder().is_some_and(|first| {
-			std::ptr::eq(
-				(&*first as *const objc2_app_kit::NSResponder).cast::<AnyObject>(),
+			ptr::eq(
+				(&*first as *const NSResponder).cast::<AnyObject>(),
 				(&*self.foreground as *const NSView).cast::<AnyObject>(),
 			)
 		});
+
 		unsafe {
 			let _: () = objc2::msg_send![&*self.material_view, setContentView: None::<&NSView>];
 			let _: () = objc2::msg_send![&*replacement, setContentView: &*self.host];
 		}
+
 		content.addSubview(&replacement);
 		self.material_view.removeFromSuperview();
+
 		self.material_view = replacement;
 		self.material = Some(material);
+
 		if had_focus {
 			self.focus_text();
 		}
@@ -335,6 +218,7 @@ impl MaterialPanel {
 			// same screen position again or resize Metal during a parent drag.
 			let place = self.native.frame() != frame;
 			let resize = self.frame.is_none_or(|previous| previous.size != frame.size);
+
 			if place {
 				self.native.setFrame_display(frame, false);
 			}
@@ -368,6 +252,7 @@ impl MaterialPanel {
 		if self.opacity.replace(opacity) == opacity {
 			return;
 		}
+
 		unsafe {
 			let _: () = objc2::msg_send![&*self.native, setAlphaValue: f64::from(opacity)];
 		}
@@ -424,6 +309,153 @@ impl Drop for MaterialPanel {
 	}
 }
 
+struct Attachment {
+	handle: AnyWindowHandle,
+	surface: Option<Surface>,
+}
+
+pub(crate) fn material_class(material: Material) -> Option<&'static AnyClass> {
+	match material {
+		Material::Thin => AnyClass::get(c"DecodexThinMaterialView"),
+		Material::LiquidGlass
+			if env::var_os("DECODEX_DISABLE_LIQUID_GLASS").is_none() && !reduced_transparency() =>
+			AnyClass::get(c"NSGlassEffectView"),
+		Material::LiquidGlass => None,
+	}
+}
+
+pub(crate) fn create_surface(material: Material, radius: f64) -> Option<Retained<NSView>> {
+	let class = material_class(material)?;
+
+	unsafe {
+		let allocated: Allocated<NSView> = objc2::msg_send![class, alloc];
+		let surface: Retained<NSView> = objc2::msg_send![allocated, initWithFrame: NSRect::new(NSPoint::new(0., 0.), NSSize::new(0., 0.))];
+		let _: () = objc2::msg_send![&*surface, setCornerRadius: radius];
+		let _: () = objc2::msg_send![&*surface, setAutoresizingMask: 18_usize];
+
+		Some(surface)
+	}
+}
+
+pub(crate) fn observed_material(window: &Window) -> Option<&'static str> {
+	let content = native(window)?.contentView()?;
+
+	for view in content.subviews().iter() {
+		for (name, label) in
+			[(c"DecodexThinMaterialView", "thin"), (c"NSGlassEffectView", "liquid-glass")]
+		{
+			if let Some(class) = AnyClass::get(name) {
+				let matches: bool = unsafe { objc2::msg_send![&*view, isKindOfClass: class] };
+
+				if matches {
+					return Some(label);
+				}
+			}
+		}
+	}
+
+	None
+}
+
+/// Read the native material for opt-in frame diagnostics.
+pub(crate) fn observed_style(window: &Window) -> Option<isize> {
+	let content = native(window)?.contentView()?;
+	let class = AnyClass::get(c"NSGlassEffectView")?;
+
+	content.subviews().iter().find_map(|view| unsafe {
+		let glass: bool = objc2::msg_send![&*view, isKindOfClass: class];
+
+		glass.then(|| objc2::msg_send![&*view, style])
+	})
+}
+
+/// Inspect this window's render backing only while the user enables frame diagnostics.
+pub(crate) fn observed_rendering(window: &Window) -> Option<Value> {
+	let gpu = view(window)?;
+	let native = gpu.window()?;
+	let viewport = window.viewport_size();
+	let bounds = gpu.bounds();
+	let backing = gpu.convertRectToBacking(bounds);
+
+	unsafe {
+		let layer: Option<Retained<AnyObject>> = objc2::msg_send![&*gpu, layer];
+		let layer = layer?;
+		let contents_scale: f64 = objc2::msg_send![&*layer, contentsScale];
+		let rasterization_scale: f64 = objc2::msg_send![&*layer, rasterizationScale];
+		let rasterized: bool = objc2::msg_send![&*layer, shouldRasterize];
+		let mut ancestry = Vec::new();
+		let mut ancestor = Some(gpu.clone());
+
+		while let Some(view) = ancestor {
+			let view_layer: Option<Retained<AnyObject>> = objc2::msg_send![&*view, layer];
+			let composition = view_layer.map(|layer| {
+				let frame: NSRect = objc2::msg_send![&*layer, frame];
+				let bounds: NSRect = objc2::msg_send![&*layer, bounds];
+				let affine: CGAffineTransform = objc2::msg_send![&*layer, affineTransform];
+				let opacity: f32 = objc2::msg_send![&*layer, opacity];
+				let rasterized: bool = objc2::msg_send![&*layer, shouldRasterize];
+				let filters: Option<Retained<NSArray<AnyObject>>> = objc2::msg_send![&*layer, filters];
+
+				serde_json::json!({
+					"class": layer.class().name().to_string_lossy(),
+					"frame": [frame.origin.x, frame.origin.y, frame.size.width, frame.size.height],
+					"bounds": [bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height],
+					"affine": [affine.a, affine.b, affine.c, affine.d, affine.tx, affine.ty],
+					"opacity": opacity,
+					"rasterized": rasterized,
+					"filters": filters.map(|filters| filters.iter().map(|filter| filter.class().name().to_string_lossy().into_owned()).collect::<Vec<_>>()).unwrap_or_default(),
+				})
+			});
+			let frame = view.frame();
+			let bounds = view.bounds();
+
+			ancestry.push(serde_json::json!({
+				"class": view.class().name().to_string_lossy(),
+				"frame": [frame.origin.x, frame.origin.y, frame.size.width, frame.size.height],
+				"bounds": [bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height],
+				"alpha": view.alphaValue(),
+				"layer": composition,
+			}));
+
+			ancestor = view.superview();
+		}
+
+		let siblings = gpu
+			.superview()
+			.map(|parent| {
+				parent
+					.subviews()
+					.iter()
+					.map(|view| view.class().name().to_string_lossy().into_owned())
+					.collect::<Vec<_>>()
+			})
+			.unwrap_or_default();
+		let drawable = AnyClass::get(c"CAMetalLayer").and_then(|class| {
+			let metal: bool = objc2::msg_send![&*layer, isKindOfClass: class];
+
+			metal.then(|| {
+				let size: NSSize = objc2::msg_send![&*layer, drawableSize];
+
+				[size.width, size.height]
+			})
+		});
+
+		Some(serde_json::json!({
+			"gpui_scale": window.scale_factor(),
+			"gpui_viewport": [f32::from(viewport.width), f32::from(viewport.height)],
+			"window_backing_scale": native.backingScaleFactor(),
+			"view_bounds": [bounds.size.width, bounds.size.height],
+			"view_backing_size": [backing.size.width, backing.size.height],
+			"layer_contents_scale": contents_scale,
+			"layer_rasterization_scale": rasterization_scale,
+			"layer_rasterized": rasterized,
+			"metal_drawable_size": drawable,
+			"foreground_ancestry": ancestry,
+			"sibling_paint_order": siblings,
+		}))
+	}
+}
+
 /// Attached panels own their material independently of window backdrops.
 pub(crate) fn owns_material(window: &Window) -> bool {
 	ATTACHED_WINDOWS.with(|windows| {
@@ -433,6 +465,27 @@ pub(crate) fn owns_material(window: &Window) -> bool {
 
 pub(crate) fn available(surface: Surface) -> bool {
 	material_class(surface.material()).is_some()
+}
+
+pub(crate) fn apply_glass_style(glass: &NSView, surface: Surface, key: bool) {
+	let clear = match surface {
+		Surface::Window => GlassStyle::configured() == GlassStyle::Clear,
+		Surface::InputBar => key,
+	};
+
+	unsafe {
+		let style: isize = objc2::msg_send![glass, style];
+
+		if style == isize::from(clear) {
+			return;
+		}
+
+		let _: () = objc2::msg_send![glass, setStyle: isize::from(clear)];
+		let tint: Option<Retained<AnyObject>> = (clear && surface == Surface::InputBar).then(|| {
+			objc2::msg_send![AnyClass::get(c"NSColor").expect("AppKit"), colorWithSRGBRed: 0.10_f64, green: 0.11_f64, blue: 0.13_f64, alpha: 0.18_f64]
+		});
+		let _: () = objc2::msg_send![glass, setTintColor: tint.as_deref()];
+	}
 }
 
 fn reduced_transparency() -> bool {
@@ -475,36 +528,19 @@ fn update_focus_material(window: &NSWindow) {
 	else {
 		return;
 	};
-	apply_glass_style(&glass, surface, window.isKeyWindow());
-}
 
-pub(crate) fn apply_glass_style(glass: &NSView, surface: Surface, key: bool) {
-	let clear = match surface {
-		Surface::Window => GlassStyle::configured() == GlassStyle::Clear,
-		Surface::InputBar => key,
-	};
-	unsafe {
-		let style: isize = objc2::msg_send![glass, style];
-		if style == isize::from(clear) {
-			return;
-		}
-		let _: () = objc2::msg_send![glass, setStyle: isize::from(clear)];
-		let tint: Option<Retained<AnyObject>> = (clear && surface == Surface::InputBar).then(|| {
-			objc2::msg_send![AnyClass::get(c"NSColor").expect("AppKit"), colorWithSRGBRed: 0.10_f64, green: 0.11_f64, blue: 0.13_f64, alpha: 0.18_f64]
-		});
-		let _: () = objc2::msg_send![glass, setTintColor: tint.as_deref()];
-	}
+	apply_glass_style(&glass, surface, window.isKeyWindow());
 }
 
 /// Keep native focus, material, and the workspace's main-window status in sync.
 fn observe_panel_window(window: &NSWindow) -> Option<Retained<AnyObject>> {
 	unsafe extern "C-unwind" fn focus_changed(_: &AnyObject, _: Sel, notification: &AnyObject) {
 		let child: Option<Retained<NSWindow>> = unsafe { objc2::msg_send![notification, object] };
+
 		if let Some(child) = child {
 			update_focus_material(&child);
 		}
 	}
-
 	unsafe extern "C-unwind" fn restore_main(_: &AnyObject, _: Sel, notification: &AnyObject) {
 		unsafe {
 			let child: Option<Retained<NSWindow>> = objc2::msg_send![notification, object];
@@ -543,6 +579,7 @@ fn observe_panel_window(window: &NSWindow) -> Option<Retained<AnyObject>> {
 			objc2::msg_send![AnyClass::get(c"NSNotificationCenter")?, defaultCenter];
 		let name = NSString::from_str("NSWindowDidBecomeMainNotification");
 		let _: () = objc2::msg_send![&*center, addObserver: &*observer, selector: objc2::sel!(restoreMain:), name: &*name, object: window];
+
 		for name in ["NSWindowDidBecomeKeyNotification", "NSWindowDidResignKeyNotification"] {
 			let name = NSString::from_str(name);
 			let _: () = objc2::msg_send![&*center, addObserver: &*observer, selector: objc2::sel!(focusChanged:), name: &*name, object: window];

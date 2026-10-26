@@ -1,20 +1,23 @@
 //! Explicit typed replies to live MCP elicitation requests.
-use crate::ui_feedback::Feedback;
 use std::rc::Rc;
 
 use gpui::{AnyElement, AppContext as _, Div, KeyDownEvent, Stateful};
 use reqwest::Url;
 use serde_json::Value;
 
-use crate::shell::agent_surface::{
-	self, AgentRequestResult, AgentSurface, ComposerInput, Context, InteractiveElement,
-	IntoElement, ParentElement, Role, SharedString, StatefulInteractiveElement, Styled,
-	SubmitComposer,
-};
 #[cfg(test)]
 use crate::shell::agent_surface::{
 	AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkItemDto,
 	AgentWorkStatusDto,
+};
+use crate::{
+	shell::agent_surface::{
+		self, AgentRequestResult, AgentSurface, ComposerInput, Context, InteractiveElement,
+		IntoElement, ParentElement, Role, SharedString, StatefulInteractiveElement, Styled,
+		SubmitComposer,
+	},
+	ui_feedback::Feedback,
+	ui_theme,
 };
 use decodex_protocol::McpFormField;
 
@@ -94,7 +97,9 @@ impl AgentSurface {
 			Ok(fields) => fields,
 			Err(message) => {
 				self.feedback = Feedback::error(message);
+
 				cx.notify();
+
 				return;
 			},
 		};
@@ -404,7 +409,7 @@ pub(super) fn mcp_button(
 		.aria_label(label.clone())
 		.p_2()
 		.rounded(gpui::px(5.0))
-		.bg(crate::ui_theme::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
+		.bg(ui_theme::rgba(if selected { 0xffffff18 } else { 0xffffff06 }))
 		.cursor_pointer()
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
 		.on_key_down(cx.listener(move |s, key: &KeyDownEvent, _, cx| {
@@ -569,9 +574,7 @@ connection_initializing: false,
 				cx.notify();
 			});
 
-			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 
 			assert!(visual.debug_bounds("mcp-submit").is_none());
 			assert!(visual.debug_bounds("mcp-decline").is_some());
@@ -626,9 +629,7 @@ connection_initializing: false,
 			assert!(s.submission.command.is_none());
 			assert!(s.feedback.is_empty());
 		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let bounds =
 			visual.debug_bounds("mcp-confirm-url").expect("explicit confirmation after open");
@@ -658,9 +659,7 @@ connection_initializing: false,
 			cx.notify();
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("mcp-open-url").is_none());
 		assert!(visual.debug_bounds("mcp-confirm-url").is_none());
@@ -689,6 +688,7 @@ connection_initializing: false,
 
             s.submit_mcp_form(6,cx);assert!(s.submission.command.is_none());
             s.submit_mcp_form(7,cx);assert_eq!(s.feedback.message,"No service profile is configured.");
+
             assert_eq!(s.feedback.tone, crate::ui_feedback::Tone::Error);
         });
 		}

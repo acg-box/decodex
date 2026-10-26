@@ -1,9 +1,14 @@
 //! A global Dock that expands into one bounded work canvas.
-use super::{
-	AgentSurface, Context, InteractiveElement, IntoElement, ParentElement,
-	StatefulInteractiveElement, Styled, handoffs::Handoff, ui_theme::TEXT_MUTED,
+use gpui::{AnyElement, Div, KeyDownEvent, Stateful, prelude::FluentBuilder as _};
+
+use crate::{
+	shell::agent_surface::{
+		AgentSurface, AgentWorkItemDto, Context, InteractiveElement, IntoElement, ParentElement,
+		Role, SharedString, StatefulInteractiveElement, Styled, dock, graph::Node,
+		handoffs::Handoff, ui_theme::TEXT_MUTED,
+	},
+	ui_theme,
 };
-use gpui::{AnyElement, KeyDownEvent, prelude::FluentBuilder};
 
 impl AgentSurface {
 	pub(super) fn handoff_items(&self) -> Vec<Handoff> {
@@ -19,15 +24,18 @@ impl AgentSurface {
 			&& let Some(snapshot) = &self.snapshot
 		{
 			self.handoffs.acknowledge(&id, &key, snapshot);
+
 			self.handoffs.read_on_open = None;
 		}
 	}
 
 	pub(super) fn activate_graph_node(&mut self, id: &str, cx: &mut Context<Self>) {
 		self.handoffs.focus = Some(id.into());
+
 		if !self.work_board.graph {
 			self.work_board.focus_work(id);
 		}
+
 		self.load_dock_evidence(id, cx);
 		cx.notify();
 	}
@@ -50,7 +58,6 @@ impl AgentSurface {
 				gpui::div().flex_1().into_any_element()
 			})
 			.child(self.panel_controls(super::panel_controls::Panel::Dock, cx));
-
 		let mut panel = gpui::div()
 			.id("work-dock")
 			.relative()
@@ -64,6 +71,7 @@ impl AgentSurface {
 			.capture_any_mouse_down(cx.listener(|s, _, _, _| {
 				s.workspace.focused_panel = Some(super::workspace_size::Panel::Bottom)
 			}));
+
 		if floating {
 			return panel
 				.child(gpui::div().flex_1().min_h_0().child(self.render_work_board(cx)))
@@ -72,7 +80,9 @@ impl AgentSurface {
 				})
 				.into_any_element();
 		}
+
 		panel = panel.child(header);
+
 		if !self.work_board.graph {
 			panel = panel.child(gpui::div().flex_1().min_h_0().child(self.render_work_board(cx)));
 		} else {
@@ -81,11 +91,12 @@ impl AgentSurface {
 					gpui::div()
 						.px_3()
 						.text_size(gpui::px(11.))
-						.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+						.text_color(ui_theme::rgb(TEXT_MUTED))
 						.child(self.graph_context()),
 				)
 				.child(gpui::div().flex_1().min_h_0().child(self.workspace_dependency_graph(cx)));
 		}
+
 		panel
 			.when(!self.workspace.graph_expanded, |panel| panel.child(self.dock_resize_handle(cx)))
 			.into_any_element()
@@ -93,17 +104,18 @@ impl AgentSurface {
 
 	pub(super) fn expanded_graph_node(
 		&self,
-		node: &super::graph::Node,
-		work: &super::AgentWorkItemDto,
+		node: &Node,
+		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let zoom = self.workspace.graph_display_zoom;
 		let (width, height) = self.graph_node_size(&node.id);
 		let key = format!("graph-node-{}", node.id);
+
 		gpui::div()
-			.id(super::SharedString::from(key.clone()))
+			.id(SharedString::from(key.clone()))
 			.debug_selector(move || key.clone())
-			.role(super::Role::Group)
+			.role(Role::Group)
 			.aria_label(format!("{}: task details", self.work_label(work)))
 			.tab_index(0)
 			.absolute()
@@ -118,8 +130,8 @@ impl AgentSurface {
 			.overflow_hidden()
 			.rounded(gpui::px(9.))
 			.border_1()
-			.border_color(crate::ui_theme::rgba(0xffffff24))
-			.bg(crate::ui_theme::rgba(0x242427f8))
+			.border_color(ui_theme::rgba(0xffffff24))
+			.bg(ui_theme::rgba(0x242427f8))
 			.children(self.handoff_details(cx))
 			.into_any_element()
 	}
@@ -140,6 +152,7 @@ impl AgentSurface {
 						.and_then(|snapshot| {
 							let scope =
 								self.workspace.dock_record.clone().or_else(|| self.dock_scope());
+
 							snapshot.work_items.iter().find(|work| Some(&work.id) == scope.as_ref())
 						})
 						.map(|work| self.work_label(work))
@@ -150,12 +163,10 @@ impl AgentSurface {
 		if let Some(item) = items.iter().find(|item| item.attention && !item.result) {
 			let id = item.work.clone();
 			let label = "Respond";
+
 			row = row.child(
-				gpui::div()
-					.flex_none()
-					.rounded(gpui::px(5.))
-					.bg(crate::ui_theme::rgba(0x6b9fff20))
-					.child(self.workspace_action(
+				gpui::div().flex_none().rounded(gpui::px(5.)).bg(ui_theme::rgba(0x6b9fff20)).child(
+					self.workspace_action(
 						"dock-next-action".into(),
 						format!(
 							"{label}: {}",
@@ -168,6 +179,7 @@ impl AgentSurface {
 						move |s, cx| {
 							let scope = s.snapshot.as_ref().and_then(|snapshot| {
 								let work = snapshot.work_items.iter().find(|w| w.id == id)?;
+
 								if snapshot
 									.work_items
 									.iter()
@@ -178,17 +190,22 @@ impl AgentSurface {
 									work.parent_goal_id.clone()
 								}
 							});
+
 							s.workspace.dock_record = scope;
+
 							s.activate_graph_node(&id, cx);
 						},
 						cx,
-					)),
+					),
+				),
 			);
 		}
+
 		row.into_any_element()
 	}
 
-	fn handoff_header(&self, work: &super::AgentWorkItemDto, cx: &mut Context<Self>) -> gpui::Div {
+	fn handoff_header(&self, work: &AgentWorkItemDto, cx: &mut Context<Self>) -> Div {
+		let id = work.id.clone();
 		let mut header = gpui::div().flex().items_center().gap_2().child(
 			gpui::div()
 				.flex_1()
@@ -199,37 +216,40 @@ impl AgentSurface {
 				.child(self.work_label(work)),
 		);
 
-		let id = work.id.clone();
 		header = header.child(self.workspace_action(
 			"dock-open-source".into(),
 			"Open conversation".into(),
 			move |s, cx| {
 				s.workspace.graph_expanded = false;
+
 				s.open_page(&id, cx);
 			},
 			cx,
 		));
-
 		header = header.child(self.workspace_action(
 			"handoff-close".into(),
 			"×".into(),
 			|s, cx| {
 				s.handoffs.focus = None;
+
 				cx.notify();
 			},
 			cx,
 		));
+
 		if self.workspace.dock_record.clone().or_else(|| self.dock_scope()).as_deref()
 			!= Some(&work.id)
 			&& self.snapshot.as_ref().is_some_and(|snapshot| {
 				snapshot.work_items.iter().any(|w| w.parent_goal_id.as_deref() == Some(&work.id))
 			}) {
 			let id = work.id.clone();
+
 			header = header.child(self.workspace_action(
 				"dock-subtasks".into(),
 				"Show subtasks".into(),
 				move |s, cx| {
 					s.toggle_dock_record(&id, cx);
+
 					s.handoffs.focus = None;
 				},
 				cx,
@@ -243,26 +263,30 @@ impl AgentSurface {
 		if !self.dock_open() {
 			return None;
 		}
+
 		let snapshot = self.snapshot.as_ref()?;
 		let id = self.handoffs.focus.as_ref().or(self.workspace.dock_record.as_ref())?;
 		let work = snapshot.work_items.iter().find(|w| &w.id == id).or_else(|| {
 			snapshot.work_items.iter().find(|w| Some(&w.id) == self.workspace.dock_record.as_ref())
 		})?;
-		let state = super::dock::progress_state(snapshot, work);
+		let state = dock::progress_state(snapshot, work);
 		let item = self.dock_items().into_iter().find(|h| &h.work == id);
 		let attention = item.as_ref().is_some_and(|h| h.attention);
 		let result = item.as_ref().is_some_and(|h| h.result);
+		let mut header = if self.work_board.graph {
+			self.handoff_header(work, cx)
+		} else {
+			gpui::div()
+				.flex()
+				.flex_col()
+				.gap_2()
+				.child(self.work_label(work))
+				.child(gpui::div().text_color(ui_theme::rgb(state.color)).child(state.label))
+		};
 
-		let mut header =
-			if self.work_board.graph {
-				self.handoff_header(work, cx)
-			} else {
-				gpui::div().flex().flex_col().gap_2().child(self.work_label(work)).child(
-					gpui::div().text_color(crate::ui_theme::rgb(state.color)).child(state.label),
-				)
-			};
 		if result && attention {
 			let item = item.clone().expect("unread result");
+
 			header = header.child(gpui::div().flex().child(self.workspace_action(
 				"handoff-viewed".into(),
 				"Mark viewed".into(),
@@ -272,13 +296,73 @@ impl AgentSurface {
 					}
 
 					s.handoffs.focus = None;
+
 					s.work_board.clear_focus();
 					cx.notify();
 				},
 				cx,
 			)));
 		}
-		let mut body = gpui::div()
+
+		let mut body = self.handoff_preview(header, cx);
+
+		{
+			let question =
+				self.handoff_request_excerpt(work).or_else(|| self.handoff_decision_excerpt(work));
+
+			if state.group != 3
+				&& state.group != 1
+				&& state.label != "Waiting on work"
+				&& question.is_none()
+			{
+				body = body.child(state.reason);
+			}
+
+			body = body.child(self.dock_dependencies(work, cx));
+
+			if result || !attention {
+				body = body.child(
+					self.execution_details(work, cx)
+						.unwrap_or_else(|| self.overview_evidence(work, cx)),
+				);
+			} else {
+				if let Some(text) = question {
+					body = body.child(text);
+				}
+
+				let id = work.id.clone();
+
+				body = body.child(
+					gpui::div().flex().child(
+						self.workspace_action(
+							"handoff-open-request".into(),
+							if state.label == "Status unavailable" {
+								"Open conversation"
+							} else {
+								"Open task to respond"
+							}
+							.into(),
+							move |s, cx| {
+								s.open_page(&id, cx);
+								s.sync_request(cx);
+
+								s.workspace.dock_record = None;
+								s.handoffs.focus = None;
+
+								cx.notify();
+							},
+							cx,
+						),
+					),
+				);
+			}
+		}
+
+		Some(body.into_any_element())
+	}
+
+	fn handoff_preview(&self, header: Div, cx: &mut Context<Self>) -> Stateful<Div> {
+		gpui::div()
 			.id("handoff-preview")
 			.occlude()
 			.debug_selector(|| "handoff-preview".into())
@@ -297,56 +381,12 @@ impl AgentSurface {
 			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
 				if e.keystroke.key == "escape" {
 					s.handoffs.focus = None;
+
 					s.work_board.clear_focus();
 					cx.stop_propagation();
 					cx.notify();
 				}
 			}))
-			.child(header);
-		{
-			let question =
-				self.handoff_request_excerpt(work).or_else(|| self.handoff_decision_excerpt(work));
-			if state.group != 3
-				&& state.group != 1
-				&& state.label != "Waiting on work"
-				&& question.is_none()
-			{
-				body = body.child(state.reason);
-			}
-			body = body.child(self.dock_dependencies(work, cx));
-			if result || !attention {
-				body = body.child(
-					self.execution_details(work, cx)
-						.unwrap_or_else(|| self.overview_evidence(work, cx)),
-				);
-			} else {
-				if let Some(text) = question {
-					body = body.child(text);
-				}
-				let id = work.id.clone();
-				body = body.child(
-					gpui::div().flex().child(
-						self.workspace_action(
-							"handoff-open-request".into(),
-							if state.label == "Status unavailable" {
-								"Open conversation"
-							} else {
-								"Open task to respond"
-							}
-							.into(),
-							move |s, cx| {
-								s.open_page(&id, cx);
-								s.sync_request(cx);
-								s.workspace.dock_record = None;
-								s.handoffs.focus = None;
-								cx.notify();
-							},
-							cx,
-						),
-					),
-				);
-			}
-		}
-		Some(body.into_any_element())
+			.child(header)
 	}
 }

@@ -4,27 +4,17 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use tokio::sync::oneshot;
+use tokio::sync::oneshot::{self, Receiver, Sender};
 
+use crate::{agent_recap, agent_usage_estimate::Source};
 use decodex_codex::app_server_client::{ClientError, HistoryGuard};
 use decodex_database::AgentVoiceHistoryRevision;
 use decodex_protocol::{
 	AgentSampleAnswer, AgentSamplePhase, AgentSampleStatus, EntityId, WireText,
 };
 
-use crate::{agent_recap::same_owner, agent_usage_estimate::Source};
-
 #[derive(Clone, Default)]
 pub(crate) struct Samples(Arc<Mutex<BTreeMap<String, Record>>>);
-
-struct Record {
-	source: Source,
-	guard: HistoryGuard,
-	voice: AgentVoiceHistoryRevision,
-	status: AgentSampleStatus,
-	cancel: Option<oneshot::Sender<()>>,
-}
-
 impl Samples {
 	pub(crate) fn start(
 		&self,
@@ -32,13 +22,14 @@ impl Samples {
 		key: &str,
 		prompt: &str,
 		voice: AgentVoiceHistoryRevision,
-	) -> Result<oneshot::Receiver<()>, &'static str> {
+	) -> Result<Receiver<()>, &'static str> {
 		let guard = source
 			.client
 			.history_guard(source.key.history_revision)
 			.and_then(|guard| source.client.with_thread_settings_guard(&source.key.thread, guard))
 			.ok_or("The conversation changed. Refresh before sampling.")?;
 		let mut state = self.0.lock().map_err(|_| "Sampling is unavailable")?;
+
 		if state.get(&source.key.work).is_some_and(|r| {
 			matches!(r.status.phase, AgentSamplePhase::Pending | AgentSamplePhase::Cancelling)
 		}) {
@@ -55,8 +46,10 @@ impl Samples {
 				})
 				.map(|(k, _)| k.clone())
 				.ok_or("Sampling capacity is full")?;
+
 			state.remove(&oldest);
 		}
+
 		let status = AgentSampleStatus {
 			work_id: EntityId::new(source.key.work.clone()).map_err(|_| "Invalid task")?,
 			thread_id: Some(
@@ -68,10 +61,12 @@ impl Samples {
 			answer: None,
 		};
 		let (cancel, cancellation) = oneshot::channel();
+
 		state.insert(
 			source.key.work.clone(),
 			Record { source, guard, voice, status, cancel: Some(cancel) },
 		);
+
 		Ok(cancellation)
 	}
 
@@ -81,12 +76,15 @@ impl Samples {
 			.get_mut(work)
 			.filter(|r| r.status.request_id.as_ref().is_some_and(|id| id.as_str() == key))
 			.ok_or("The separate answer changed. Refresh its status.")?;
+
 		if record.status.phase == AgentSamplePhase::Pending {
 			record.status.phase = AgentSamplePhase::Cancelling;
+
 			if let Some(cancel) = record.cancel.take() {
 				let _ = cancel.send(());
 			}
 		}
+
 		Ok(())
 	}
 
@@ -99,13 +97,15 @@ impl Samples {
 		let Ok(state) = self.0.lock() else { return AgentSampleStatus::idle(work) };
 		let Some(record) = state.get(work.as_str()) else { return AgentSampleStatus::idle(work) };
 		let mut status = record.status.clone();
+
 		if voice != Some(&record.voice)
 			|| !record.guard.is_live()
-			|| source.is_none_or(|source| !same_owner(&record.source, source))
+			|| source.is_none_or(|source| !agent_recap::same_owner(&record.source, source))
 		{
 			status.phase = AgentSamplePhase::Obsolete;
 			status.answer = None;
 		}
+
 		status
 	}
 
@@ -117,10 +117,13 @@ impl Samples {
 	) {
 		let Ok(mut state) = self.0.lock() else { return };
 		let Some(record) = state.get_mut(&source.key.work) else { return };
+
 		if record.status.request_id.as_ref().is_none_or(|id| id.as_str() != key) {
 			return;
 		}
+
 		record.cancel = None;
+
 		if !record.guard.is_live() {
 			record.status.phase = AgentSamplePhase::Obsolete;
 		} else {
@@ -145,6 +148,14 @@ impl Samples {
 			}
 		}
 	}
+}
+
+struct Record {
+	source: Source,
+	guard: HistoryGuard,
+	voice: AgentVoiceHistoryRevision,
+	status: AgentSampleStatus,
+	cancel: Option<Sender<()>>,
 }
 
 #[cfg(test)]

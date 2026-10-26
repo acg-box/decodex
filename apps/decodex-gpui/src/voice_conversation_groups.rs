@@ -1,5 +1,8 @@
 //! Group native speech by call occurrence; never change the stored timeline.
-use decodex_protocol::{AgentTimelineContent as Content, AgentTimelineEntry};
+use std::collections::BTreeSet;
+
+use crate::shell::agent_surface::native_timeline;
+use decodex_protocol::{AgentHistoryEntryDto, AgentTimelineContent, AgentTimelineEntry};
 
 pub(crate) struct Conversation {
 	pub indices: Vec<usize>,
@@ -8,19 +11,18 @@ pub(crate) struct Conversation {
 	pub ended: bool,
 	pub failed: bool,
 }
-
 impl Conversation {
 	pub fn anchor_index(&self, entries: &[AgentTimelineEntry]) -> usize {
 		// Keep the outer history anchor and disclosure state on the same stable boundary.
 		self.indices.iter().rev().copied().find(|i| {
-            matches!(&entries[*i].content, Content::VoiceBoundary { kind, .. } if kind == "realtimeSessionClosed")
+            matches!(&entries[*i].content, AgentTimelineContent::VoiceBoundary { kind, .. } if kind == "realtimeSessionClosed")
         }).unwrap_or(self.indices[0])
 	}
 
 	pub fn identity(&self, entries: &[AgentTimelineEntry]) -> String {
 		serde_json::json!([
 			self.session,
-			crate::shell::agent_surface::native_timeline::key(&entries[self.anchor_index(entries)])
+			native_timeline::key(&entries[self.anchor_index(entries)])
 		])
 		.to_string()
 	}
@@ -41,22 +43,25 @@ impl Conversation {
 pub(crate) fn groups(entries: &[AgentTimelineEntry]) -> Vec<Conversation> {
 	let mut result: Vec<Conversation> = Vec::new();
 	let mut latest: Option<usize> = None;
+
 	for (index, entry) in entries.iter().enumerate() {
 		let (session, start) = match &entry.content {
-			Content::VoiceBoundary { session_id, kind, .. } =>
+			AgentTimelineContent::VoiceBoundary { session_id, kind, .. } =>
 				(session_id, kind == "realtimeSessionStarted"),
-			Content::Speech { session_id, .. } => (session_id, false),
-			Content::Item { kind, text, attachments, .. } if kind == "userMessage" => {
+			AgentTimelineContent::Speech { session_id, .. } => (session_id, false),
+			AgentTimelineContent::Item { kind, text, attachments, .. } if kind == "userMessage" => {
 				if attachments.is_empty()
 					&& text.contains("<source>transcript_tail_flush</source>")
 					&& let Some(tail) = super::handoff(text)
 					&& let Some(group) = latest.map(|i| &mut result[i])
 				{
 					merge_tail(&mut group.text, &tail);
+
 					group.indices.push(index);
 				} else {
 					latest = None;
 				}
+
 				continue;
 			},
 			_ => continue,
@@ -74,41 +79,50 @@ pub(crate) fn groups(entries: &[AgentTimelineEntry]) -> Vec<Conversation> {
 				ended: false,
 				failed: false,
 			});
+
 			result.len() - 1
 		});
+
 		latest = Some(group);
+
 		let group = &mut result[group];
+
 		group.indices.push(index);
+
 		match &entry.content {
-			Content::Speech { role, text, truncated, .. } => {
+			AgentTimelineContent::Speech { role, text, truncated, .. } => {
 				if text.trim().is_empty() && !truncated {
 					continue;
 				}
 				if !group.text.is_empty() {
 					group.text.push('\n');
 				}
+
 				group.text.push_str(&format!("{role}: {text}"));
+
 				if *truncated {
 					group.text.push_str(" [Transcript shortened]");
 				}
 			},
-			Content::VoiceBoundary { kind, outcome, .. } if kind != "realtimeSessionStarted" => {
+			AgentTimelineContent::VoiceBoundary { kind, outcome, .. }
+				if kind != "realtimeSessionStarted" =>
+			{
 				group.ended = true;
 				group.failed = outcome.as_deref() == Some("failed");
 			},
 			_ => {},
 		}
 	}
+
 	result
 }
 
 /// Group the saved fallback with the same call boundary as native history.
 /// System notices do not split a call; ordinary messages always do.
-pub(crate) fn saved_groups(
-	entries: &[&decodex_protocol::AgentHistoryEntryDto],
-) -> Vec<(Vec<usize>, String)> {
+pub(crate) fn saved_groups(entries: &[&AgentHistoryEntryDto]) -> Vec<(Vec<usize>, String)> {
 	let mut groups: Vec<(Vec<usize>, String)> = Vec::new();
 	let mut session: Option<&str> = None;
+
 	for (index, entry) in entries.iter().enumerate() {
 		let voice = entry.receipt.as_ref().filter(|receipt| {
 			matches!(
@@ -116,29 +130,36 @@ pub(crate) fn saved_groups(
 				("voice_user", "user") | ("voice_assistant", "assistant")
 			)
 		});
+
 		if let Some(id) = voice.and_then(|receipt| receipt.voice_session_id.as_deref()) {
 			if session != Some(id) {
 				groups.push((Vec::new(), String::new()));
+
 				session = Some(id);
 			}
+
 			let (indices, text) = groups.last_mut().expect("call group");
+
 			indices.push(index);
+
 			if !text.is_empty() {
 				text.push('\n');
 			}
+
 			text.push_str(&format!("{}: {}", entry.kind, entry.text));
 		} else if entry.kind != "system" {
 			session = None;
 		}
 	}
+
 	groups
 }
 
-pub(crate) fn tail_flush_turns(entries: &[AgentTimelineEntry]) -> std::collections::BTreeSet<&str> {
+pub(crate) fn tail_flush_turns(entries: &[AgentTimelineEntry]) -> BTreeSet<&str> {
 	entries
 		.iter()
 		.filter_map(|entry| match &entry.content {
-			Content::Item { turn_id, kind, text, attachments, .. }
+			AgentTimelineContent::Item { turn_id, kind, text, attachments, .. }
 				if kind == "userMessage"
 					&& attachments.is_empty()
 					&& text.contains("<source>transcript_tail_flush</source>")
@@ -156,10 +177,12 @@ fn normalized(text: &str) -> String {
 fn merge_tail(text: &mut String, tail: &str) {
 	let existing: Vec<_> = text.lines().collect();
 	let incoming: Vec<_> = tail.lines().collect();
+
 	// A bounded upstream tail may contain only a suffix of the committed transcript.
 	if !tail.is_empty() && normalized(text).ends_with(&normalized(tail)) {
 		return;
 	}
+
 	let overlap = (0..=existing.len().min(incoming.len()))
 		.rev()
 		.find(|&n| {
@@ -170,20 +193,27 @@ fn merge_tail(text: &mut String, tail: &str) {
 		})
 		.unwrap_or(0);
 	let remainder = incoming[overlap..].join("\n");
+
 	if !text.is_empty() && !remainder.is_empty() {
 		text.push('\n');
 	}
+
 	text.push_str(&remainder);
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	fn entry(content: Content) -> AgentTimelineEntry {
+	use crate::shell::agent_surface::{
+		AgentSurface,
+		native_timeline::{Binding, Timeline},
+		voice::history::conversations::{self, AgentTimelineContent, AgentTimelineEntry},
+	};
+
+	fn entry(content: AgentTimelineContent) -> AgentTimelineEntry {
 		AgentTimelineEntry { position: 0, content }
 	}
 	fn boundary(id: &str, start: bool) -> AgentTimelineEntry {
-		entry(Content::VoiceBoundary {
+		entry(AgentTimelineContent::VoiceBoundary {
 			item_id: id.into(),
 			session_id: "call".into(),
 			kind: if start { "realtimeSessionStarted" } else { "realtimeSessionClosed" }.into(),
@@ -191,7 +221,7 @@ mod tests {
 		})
 	}
 	fn speech(role: &str, text: &str) -> AgentTimelineEntry {
-		entry(Content::Speech {
+		entry(AgentTimelineContent::Speech {
 			item_id: text.into(),
 			session_id: "call".into(),
 			role: role.into(),
@@ -200,7 +230,7 @@ mod tests {
 		})
 	}
 	fn message(text: &str) -> AgentTimelineEntry {
-		entry(Content::Item {
+		entry(AgentTimelineContent::Item {
 			collaboration: None,
 			turn_id: "turn".into(),
 			item_id: text.into(),
@@ -242,7 +272,8 @@ mod tests {
 			make(5, "user", Some("b")),
 			make(6, "assistant", Some("b")),
 		];
-		let groups = saved_groups(&entries.iter().collect::<Vec<_>>());
+		let groups = conversations::saved_groups(&entries.iter().collect::<Vec<_>>());
+
 		assert_eq!(
 			groups,
 			vec![
@@ -254,21 +285,21 @@ mod tests {
 
 	#[gpui::test]
 	fn expanded_call_stays_open_when_its_first_page_is_prepended(cx: &mut gpui::TestAppContext) {
-		use crate::shell::agent_surface::{
-			AgentSurface,
-			native_timeline::{Binding, Timeline},
-		};
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1000.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
+
 		let mut entries = [
 			boundary("start", true),
 			speech("user", "Hi"),
 			speech("assistant", "Hello"),
 			boundary("end", false),
 		];
+
 		for (i, e) in entries.iter_mut().enumerate() {
 			e.position = i as u64;
 		}
+
 		let page = |entries, cursor| decodex_protocol::AgentTimelinePage {
 			thread_id: "thread".into(),
 			entries,
@@ -281,7 +312,9 @@ mod tests {
 		};
 		let binding = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.workspace.graph_visible = false;
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -290,31 +323,43 @@ mod tests {
 				.iter_mut()
 				.find(|w| Some(&w.id) == s.selected.as_ref())
 				.unwrap();
+
 			work.codex_thread_id = Some("thread".into());
+
 			let binding = Binding {
 				work: work.id.clone(),
 				thread: "thread".into(),
 				account: "account".into(),
 			};
 			let mut timeline = Timeline::default();
+
 			assert!(
 				timeline
 					.replace(binding.clone(), page(entries[2..].to_vec(), Some("older".into())))
 			);
+
 			s.timeline.native = timeline;
+
 			cx.notify();
+
 			binding
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		let marks = surface.read_with(visual, |s, _| {
 			assert_eq!(s.timeline.marks.len(), 1, "one call has one rail node");
+
 			s.timeline.marks.keys().cloned().collect::<Vec<_>>()
 		});
 		let button = visual.debug_bounds("voice-history-block").unwrap();
+
 		visual.simulate_click(button.center(), Default::default());
 		visual.run_until_parked();
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("voice-history-transcript").is_some());
+
 		surface.read_with(visual, |s, _| {
 			assert_eq!(s.timeline.marks.keys().cloned().collect::<Vec<_>>(), marks);
 			assert_eq!(s.timeline.selected.as_ref(), marks.first());
@@ -324,9 +369,11 @@ mod tests {
 		});
 		surface.update(visual, |s, cx| {
 			assert!(s.prepend_native_history(&binding, "older", page(entries[..2].to_vec(), None)));
+
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(
 			visual.debug_bounds("voice-history-transcript").is_some(),
 			"pagination collapsed the existing transcript"
@@ -342,31 +389,52 @@ mod tests {
 			boundary("end", false),
 		];
 		let initial = &entries[2..];
-		assert_eq!(groups(initial)[0].identity(initial), groups(&entries)[0].identity(&entries));
+
+		assert_eq!(
+			conversations::groups(initial)[0].identity(initial),
+			conversations::groups(&entries)[0].identity(&entries)
+		);
+
 		let later = vec![
 			boundary("start-again", true),
 			speech("user", "Again"),
 			boundary("end-again", false),
 		];
-		assert_ne!(groups(&entries)[0].identity(&entries), groups(&later)[0].identity(&later));
+
+		assert_ne!(
+			conversations::groups(&entries)[0].identity(&entries),
+			conversations::groups(&later)[0].identity(&later)
+		);
 	}
 
 	#[test]
 	fn empty_calls_hide_only_after_successful_end() {
-		let empty =
-			groups(&[boundary("start", true), speech("user", "   "), boundary("end", false)]);
+		let empty = conversations::groups(&[
+			boundary("start", true),
+			speech("user", "   "),
+			boundary("end", false),
+		]);
+
 		assert!(empty[0].hidden());
-		let pending = groups(&[boundary("start", true)]);
+
+		let pending = conversations::groups(&[boundary("start", true)]);
+
 		assert!(!pending[0].hidden());
 		assert_eq!(pending[0].empty_status(), "Voice conversation · Awaiting transcript");
+
 		let mut failure = boundary("failure", false);
-		if let Content::VoiceBoundary { outcome, .. } = &mut failure.content {
+
+		if let AgentTimelineContent::VoiceBoundary { outcome, .. } = &mut failure.content {
 			*outcome = Some("failed".into());
 		}
-		let failed = groups(&[boundary("start", true), failure]);
+
+		let failed = conversations::groups(&[boundary("start", true), failure]);
+
 		assert!(!failed[0].hidden());
 		assert_eq!(failed[0].empty_status(), "Voice conversation failed");
-		let spoken = groups(&[speech("user", "Hello"), boundary("end", false)]);
+
+		let spoken = conversations::groups(&[speech("user", "Hello"), boundary("end", false)]);
+
 		assert!(!spoken[0].hidden());
 	}
 
@@ -381,7 +449,8 @@ mod tests {
 			boundary("second", true),
 			speech("user", "Again"),
 		];
-		let groups = groups(&entries);
+		let groups = conversations::groups(&entries);
+
 		assert_eq!(groups.len(), 2);
 		assert_eq!(groups[0].indices, vec![0, 1, 3, 4]);
 		assert_eq!(groups[0].text, "user: Hi\nassistant: Hello");
@@ -398,22 +467,27 @@ mod tests {
 			boundary("end", false),
 			message(tail),
 		];
-		let groups = groups(&entries);
+		let groups = conversations::groups(&entries);
+
 		assert_eq!(groups.len(), 1);
 		assert_eq!(groups[0].indices, vec![0, 1, 2, 3, 4]);
 		assert_eq!(groups[0].text, "user: Hi\nassistant: Hello");
+
 		let mut text = "user: Hi".into();
-		merge_tail(&mut text, "user: Hi\nassistant: Hello");
+
+		conversations::merge_tail(&mut text, "user: Hi\nassistant: Hello");
+
 		assert_eq!(text, "user: Hi\nassistant: Hello");
 	}
 	#[test]
 	fn partial_pages_and_reused_session_ids_remain_separate() {
-		let groups = groups(&[
+		let groups = conversations::groups(&[
 			speech("user", "Earlier page"),
 			boundary("end", false),
 			boundary("new", true),
 			speech("user", "New call"),
 		]);
+
 		assert_eq!(groups.len(), 2);
 		assert_eq!(groups[0].text, "user: Earlier page");
 		assert_eq!(groups[1].text, "user: New call");

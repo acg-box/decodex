@@ -121,9 +121,7 @@ fn hook_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppCo
 
 		visual.simulate_click(button.center(), Default::default());
 		visual.run_until_parked();
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let button = visual.debug_bounds("hook-setting-0-0").unwrap();
 
@@ -144,9 +142,7 @@ fn hook_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut TestAppCo
 				Some(AgentHookSettingsState::Available { can_update: false, .. })
 			));
 		});
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("hook-setting-0-0").is_none());
 
@@ -270,9 +266,7 @@ fn running_hook_setting_controls_follow_current_service_eligibility(cx: &mut Tes
 		cx.notify();
 	});
 
-	visual.update(|w, cx| {
-		w.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	assert!(visual.debug_bounds("hook-setting-0-0").is_none());
 }

@@ -1,4 +1,5 @@
 //! Handback requires saved input and refreshed presentation before acknowledgement.
+
 use std::{
 	fs::{self, Permissions},
 	os::unix::fs::PermissionsExt as _,
@@ -12,7 +13,7 @@ use std::{
 
 use futures_util::{SinkExt as _, StreamExt as _};
 #[cfg(test)] use gpui::AppContext as _;
-use gpui::TestAppContext;
+use gpui::{ParentElement as _, TestAppContext};
 use tokio::{runtime::Builder, time};
 use tokio_tungstenite::tungstenite::Message;
 
@@ -42,7 +43,6 @@ struct View {
 impl Render for View {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.surface.update(cx, |s, cx| {
-			use gpui::ParentElement as _;
 			gpui::div()
 				.child(s.saved_prompt_edits_panel(&self.work, cx))
 				.child(s.prompt_edit_panel(&self.work, cx))
@@ -154,8 +154,8 @@ fn handback_view(
 		s.draft_profiles.storage = Storage::open(Ok(store.clone()));
 
 		s.bind_drafts(Some(profile), cx);
-		s.profile = Some(profile.clone());
 
+		s.profile = Some(profile.clone());
 		s.poll_task = None;
 
 		s.visual_workspace_fixture(cx);

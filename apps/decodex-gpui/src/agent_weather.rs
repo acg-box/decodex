@@ -7,6 +7,7 @@ use gpui::{
 	},
 };
 
+use crate::{ui_frame, ui_theme};
 use decodex_protocol::WeatherForecast;
 
 #[derive(IntoElement)]
@@ -27,14 +28,15 @@ impl RenderOnce for WeatherCard {
 		let page = state.read(cx).target.min(pages - 1);
 		let position = state.read(cx).position().clamp(0., (pages - 1) as f32);
 
-		if (position - page as f32).abs() > 0.001 && crate::ui_frame::animations_active() {
+		if (position - page as f32).abs() > 0.001 && ui_frame::animations_active() {
 			let state = state.clone();
 
 			window.on_next_frame(move |window, cx| {
 				state.update(cx, |_, cx| cx.notify());
 				window.refresh();
 			});
-			crate::ui_frame::request_frame(window, cx);
+
+			ui_frame::request_frame(window, cx);
 		}
 
 		let selector = format!("weather-card-{key}");
@@ -47,12 +49,12 @@ impl RenderOnce for WeatherCard {
 			.max_w_full()
 			.flex_none()
 			.rounded(gpui::px(14.))
-			.bg(crate::ui_theme::rgba(0xffffff08))
+			.bg(ui_theme::rgba(0xffffff08))
 			.border_1()
-			.border_color(crate::ui_theme::rgba(0xffffff10))
+			.border_color(ui_theme::rgba(0xffffff10))
 			.shadow(vec![BoxShadow {
 				inset: false,
-				color: crate::ui_theme::rgba(0x0000000d).into(),
+				color: ui_theme::rgba(0x0000000d).into(),
 				offset: gpui::point(gpui::px(0.), gpui::px(3.)),
 				blur_radius: gpui::px(10.),
 				spread_radius: gpui::px(-3.),
@@ -105,7 +107,7 @@ impl RenderOnce for WeatherCard {
 						.justify_center()
 						.cursor_pointer()
 						.rounded(gpui::px(8.))
-						.hover(|s| s.bg(crate::ui_theme::rgba(0xffffff0a)))
+						.hover(|s| s.bg(ui_theme::rgba(0xffffff0a)))
 						.on_click(move |_, window, cx| {
 							state.update(cx, |s, cx| {
 								s.select(index);
@@ -113,13 +115,9 @@ impl RenderOnce for WeatherCard {
 							});
 							window.refresh();
 						})
-						.child(gpui::div().size(gpui::px(5.)).rounded_full().bg(
-							crate::ui_theme::rgba(if page == index {
-								0xffffffb0
-							} else {
-								0xffffff30
-							}),
-						))
+						.child(gpui::div().size(gpui::px(5.)).rounded_full().bg(ui_theme::rgba(
+							if page == index { 0xffffffb0 } else { 0xffffff30 },
+						)))
 				})))
 			})
 			.into_any_element()
@@ -186,13 +184,13 @@ fn weather_hour(key: &str, i: usize, hour: &str, condition: &str, t: i32) -> Any
 		.child(
 			gpui::div()
 				.text_size(gpui::px(9.))
-				.text_color(crate::ui_theme::rgb(0xaaa4af))
+				.text_color(ui_theme::rgb(0xaaa4af))
 				.child(hour_label(hour)),
 		)
 		.child(
 			gpui::div()
 				.text_size(gpui::px(13.))
-				.text_color(crate::ui_theme::rgb(0xd5e3f1))
+				.text_color(ui_theme::rgb(0xd5e3f1))
 				.child(symbol(condition)),
 		)
 		.child(gpui::div().text_size(gpui::px(11.)).child(format!("{t}°")))
@@ -221,7 +219,7 @@ fn weather_header(weather: &WeatherForecast) -> AnyElement {
 				.child(
 					gpui::div()
 						.text_size(gpui::px(10.))
-						.text_color(crate::ui_theme::rgb(0xaaa4af))
+						.text_color(ui_theme::rgb(0xaaa4af))
 						.child(weather.condition.clone()),
 				),
 		)
@@ -233,7 +231,7 @@ fn weather_header(weather: &WeatherForecast) -> AnyElement {
 				.child(
 					gpui::div()
 						.text_size(gpui::px(16.))
-						.text_color(crate::ui_theme::rgb(0xd5e3f1))
+						.text_color(ui_theme::rgb(0xd5e3f1))
 						.child(symbol(&weather.condition)),
 				)
 				.child(
@@ -309,9 +307,7 @@ mod tests {
 			delta: ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-60.))),
 			..Default::default()
 		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert_eq!(visual.debug_bounds("weather-hour-0").unwrap().origin.x, start);
 
@@ -326,9 +322,7 @@ mod tests {
 				delta: ScrollDelta::Pixels(delta),
 				..Default::default()
 			});
-			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 		}
 
 		assert_eq!(bubbled.get(), 5);
@@ -336,17 +330,13 @@ mod tests {
 		let dot = visual.debug_bounds("weather-page-test-1").unwrap();
 
 		visual.simulate_click(dot.center(), Modifiers::default());
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let first_frame = visual.debug_bounds("weather-hour-0").unwrap().origin.x;
 
 		thread::sleep(std::time::Duration::from_millis(100));
 
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let middle = visual.debug_bounds("weather-hour-0").unwrap().origin.x;
 
@@ -354,9 +344,7 @@ mod tests {
 
 		thread::sleep(std::time::Duration::from_millis(180));
 
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("weather-hour-6").unwrap().left() < bounds.right());
 		assert!(visual.debug_bounds("weather-hour-6").is_some());
@@ -365,17 +353,13 @@ mod tests {
 		let dot = visual.debug_bounds("weather-page-test-0").unwrap();
 
 		visual.simulate_click(dot.center(), Modifiers::default());
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("weather-hour-0").is_some());
 
 		thread::sleep(std::time::Duration::from_millis(280));
 
-		visual.update(|w, cx| {
-			w.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(
 			(visual.debug_bounds("weather-hour-0").unwrap().origin.x - start).abs() < gpui::px(1.)

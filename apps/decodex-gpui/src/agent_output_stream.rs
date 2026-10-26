@@ -1,5 +1,8 @@
 //! One cancellable observation connection for the visible managed conversation.
-use std::time::{Duration, Instant};
+use std::{
+	collections::BTreeSet,
+	time::{Duration, Instant},
+};
 
 use tokio::sync::watch;
 
@@ -26,8 +29,8 @@ impl AgentSurface {
 
 			return;
 		};
-
 		let thread = self.conversation_work().and_then(|work| work.codex_thread_id);
+
 		if self.output_stream.owner.as_ref() != Some(&owner) || self.output_stream.thread != thread
 		{
 			self.output_stream =
@@ -79,7 +82,6 @@ impl AgentSurface {
 					{
 						return;
 					}
-
 					// The stream closes before the native page reaches this window.
 					// Keep its last paint until that page acknowledges the same turn.
 					if messages.is_empty()
@@ -89,6 +91,7 @@ impl AgentSurface {
 						s.retire_native_output();
 						s.refresh_open_native_history(cx);
 						cx.notify();
+
 						return;
 					}
 
@@ -148,12 +151,14 @@ impl AgentSurface {
 
 	pub(super) fn retire_native_output(&mut self) -> bool {
 		let Some(binding) = &self.timeline.native.binding else { return false };
+
 		if self.output_stream.owner.as_ref() != Some(&binding.work)
 			|| self.output_stream.thread.as_ref() != Some(&binding.thread)
 		{
 			return false;
 		}
-		let completed: std::collections::BTreeSet<_> = self
+
+		let completed: BTreeSet<_> = self
 			.timeline
 			.native
 			.entries
@@ -165,7 +170,9 @@ impl AgentSurface {
 			})
 			.collect();
 		let before = self.output_stream.messages.len();
+
 		self.output_stream.messages.retain(|m| !completed.contains(&m.turn_id));
+
 		before != self.output_stream.messages.len()
 	}
 }
@@ -177,13 +184,15 @@ mod tests {
 	use crate::shell::agent_surface::output_stream::{
 		AgentLiveMessageDto, AgentSurface, OutputStream,
 	};
+	use decodex_protocol::{AgentHistoryResult, AgentTimelineContent, AgentTimelineEntry};
 
 	#[gpui::test]
 	fn live_output_has_one_row_until_its_exact_saved_item_arrives(cx: &mut gpui::TestAppContext) {
-		use decodex_protocol::{AgentHistoryResult, AgentTimelineContent, AgentTimelineEntry};
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let mut work = s
 				.snapshot
 				.as_ref()
@@ -193,6 +202,7 @@ mod tests {
 				.find(|w| w.id == "agent")
 				.unwrap()
 				.clone();
+
 			work.active_turn_id = Some("current".into());
 			work.codex_thread_id = Some("thread".into());
 			s.timeline.native.binding = Some(super::super::native_timeline::Binding {
@@ -200,6 +210,7 @@ mod tests {
 				thread: "thread".into(),
 				account: "account".into(),
 			});
+
 			let message = AgentLiveMessageDto {
 				kind: Default::default(),
 				turn_id: "current".into(),
@@ -207,9 +218,11 @@ mod tests {
 				text: "A single live answer.".into(),
 				truncated: false,
 			};
+
 			if let Some((_, AgentHistoryResult::Available { live, .. })) = &mut s.history {
 				live.push(message.clone());
 			}
+
 			s.output_stream = OutputStream {
 				owner: Some(work.id.clone()),
 				thread: work.codex_thread_id.clone(),
@@ -217,50 +230,48 @@ mod tests {
 				messages: vec![message],
 				..Default::default()
 			};
+
 			assert_eq!(
 				s.native_live_rows(&work).len(),
 				1,
 				"history and the output stream share one live row"
 			);
-			let saved = |turn: &str, item: &str| AgentTimelineEntry {
-				position: 0,
-				content: AgentTimelineContent::Item {
-					turn_id: turn.into(),
-					item_id: item.into(),
-					kind: "agentMessage".into(),
-					text: "A single live answer.".into(),
-					truncated: false,
-					phase: None,
-					app_ui: false,
-					activity: None,
-					attachments: vec![],
-					collaboration: None,
-				},
-			};
-			s.timeline.native.entries.push(saved("older", "answer"));
-			s.timeline.native.entries.push(saved("current", "commentary"));
+
+			s.timeline.native.entries.push(saved_output("older", "answer"));
+			s.timeline.native.entries.push(saved_output("current", "commentary"));
+
 			assert_eq!(s.native_live_rows(&work).len(), 1, "other items do not hide this answer");
+
 			work.active_turn_id = None;
+
 			if let Some((_, AgentHistoryResult::Available { live, .. })) = &mut s.history {
 				live.clear();
 			}
+
 			s.retire_native_output();
+
 			assert_eq!(
 				s.native_live_rows(&work).len(),
 				1,
 				"idle work must retain the displayed answer until native history takes over"
 			);
-			s.timeline.native.entries.push(saved("current", "answer"));
+
+			s.timeline.native.entries.push(saved_output("current", "answer"));
+
 			assert!(
 				s.native_live_rows(&work).is_empty(),
 				"saved item takes over without a second copy"
 			);
+
 			let mut other = work.clone();
+
 			other.codex_thread_id = Some("other-thread".into());
+
 			assert!(
 				s.streamed_output(&other).is_none(),
 				"a new source cannot reuse the pending handoff"
 			);
+
 			s.timeline.native.entries.push(AgentTimelineEntry {
 				position: 4,
 				content: AgentTimelineContent::TurnBoundary {
@@ -274,11 +285,30 @@ mod tests {
 				},
 			});
 			s.retire_native_output();
+
 			assert!(
 				s.output_stream.messages.is_empty(),
 				"saved completion retires the stream instead of retaining a second history"
 			);
 		});
+	}
+
+	fn saved_output(turn: &str, item: &str) -> AgentTimelineEntry {
+		AgentTimelineEntry {
+			position: 0,
+			content: AgentTimelineContent::Item {
+				turn_id: turn.into(),
+				item_id: item.into(),
+				kind: "agentMessage".into(),
+				text: "A single live answer.".into(),
+				truncated: false,
+				phase: None,
+				app_ui: false,
+				activity: None,
+				attachments: vec![],
+				collaboration: None,
+			},
+		}
 	}
 
 	#[gpui::test]

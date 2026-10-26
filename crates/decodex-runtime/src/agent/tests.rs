@@ -52,9 +52,10 @@ use tokio::{
 use crate::{
 	agent::{
 		self, AgentConfig, AgentCoordinator, AgentDisposition, AgentError, AgentInboxEvent,
-		AgentInputExtras, AgentWorkItem, AgentWorkStatus, AppServerClient, ClientError,
-		EnqueueAgentEvent, MAX_WAKE_BATCH_BYTES, RequestId, ServerEvent, SqliteStore, Value,
-		async_projection::Projection, misalignment, result_messages, timeline, timeline::metrics,
+		AgentInputExtras, AgentWorkItem, AgentWorkStatus, AppServerClient, COORDINATION,
+		ClientError, EnqueueAgentEvent, INSTRUCTIONS, MAX_WAKE_BATCH_BYTES, RequestId, ServerEvent,
+		SqliteStore, Value, async_projection::Projection, misalignment, result_messages, timeline,
+		timeline::metrics,
 	},
 	application,
 };
@@ -81,15 +82,15 @@ impl FixtureFaults {
 				.write_all(
 					format!(
 						"{}\n",
-						serde_json::json!({"id":request["id"],"error":{"code":-32601,"message":"legacy fixture"}})
+						serde_json::json!({"id":request["id"],"error":{"code":-32_601,"message":"legacy fixture"}})
 					)
 					.as_bytes(),
 				)
 				.await
 				.unwrap();
+
 			return Some(true);
 		}
-
 		if request["method"] == "turn/start"
 			&& (history["_turn_draining"] == true
 				|| (history["_capacity_draining"] == true
@@ -178,6 +179,15 @@ impl FixtureFaults {
 
 			return Some(true);
 		}
+
+		Self::respond_continuation(request, history, writer).await
+	}
+
+	async fn respond_continuation(
+		request: &Value,
+		history: &Value,
+		writer: &mut WriteHalf<DuplexStream>,
+	) -> Option<bool> {
 		if request["method"] == "turn/start"
 			&& request["params"]["responsesapiClientMetadata"]["misalignment_override"].is_string()
 		{
@@ -369,6 +379,22 @@ fn fixture_items_page(request: &Value, history: &Value) -> Value {
 		.collect();
 
 	serde_json::json!({"data":entries,"nextCursor":null})
+}
+
+fn fixture_turns_page(request: &Value, history: &Value) -> Value {
+	let id = request["params"]["threadId"].as_str().unwrap();
+	let mut turns = history[id]["thread"]["turns"].clone();
+
+	for turn in turns.as_array_mut().unwrap() {
+		if request["params"]["itemsView"] == "full" {
+			turn["itemsView"] = serde_json::json!("full");
+		} else {
+			turn["items"] = serde_json::json!([]);
+			turn["itemsView"] = serde_json::json!("notLoaded");
+		}
+	}
+
+	serde_json::json!({"data":turns,"nextCursor":null})
 }
 
 #[tokio::test]
@@ -876,14 +902,18 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 			Some("project/create") => {
 				let id = format!("project-{}", projects.len() + 1);
 				let project = serde_json::json!({"id":id,"name":request["params"]["name"],"roots":request["params"]["roots"]});
+
 				projects.insert(id, project.clone());
+
 				serde_json::json!({"project":project})
 			},
 			Some("project/read") =>
 				serde_json::json!({"project":projects.get(request["params"]["projectId"].as_str().unwrap())}),
 			Some("thread/metadata/update") => {
 				let id = request["params"]["threadId"].as_str().unwrap();
+
 				settings.get_mut(id).unwrap()["projectId"] = request["params"]["projectId"].clone();
+
 				fixture_thread_read(&request, &history, &settings, turns)
 			},
 			Some("thread/list") =>
@@ -901,21 +931,7 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 			Some("thread/searchOccurrences") => history["_occurrences"].clone(),
 			Some("thread/goal/get") => serde_json::json!({"goal":history["_goal"]}),
 			Some("thread/read") => fixture_thread_read(&request, &history, &settings, turns),
-			Some("thread/turns/list") => {
-				let id = request["params"]["threadId"].as_str().unwrap();
-				let mut turns = history[id]["thread"]["turns"].clone();
-
-				for turn in turns.as_array_mut().unwrap() {
-					if request["params"]["itemsView"] == "full" {
-						turn["itemsView"] = serde_json::json!("full");
-					} else {
-						turn["items"] = serde_json::json!([]);
-						turn["itemsView"] = serde_json::json!("notLoaded");
-					}
-				}
-
-				serde_json::json!({"data":turns,"nextCursor":null})
-			},
+			Some("thread/turns/list") => fixture_turns_page(&request, &history),
 			Some("thread/items/list") => fixture_items_page(&request, &history),
 			Some("thread/resume") => {
 				let id = request["params"]["threadId"].as_str().unwrap();
@@ -1164,7 +1180,9 @@ async fn failed_dependency_write_cannot_leave_dispatchable_work() {
 #[tokio::test]
 async fn task_titles_survive_dispatch_without_changing_identity_or_legacy_names() {
 	let (mut coordinator, _sent, _directory) = fixture().await;
+
 	coordinator.start_agent("agent", "Coordinate").await.unwrap();
+
 	let work = coordinator
 		.create(
 			"inspect-ui",
@@ -1175,13 +1193,18 @@ async fn task_titles_survive_dispatch_without_changing_identity_or_legacy_names(
 		)
 		.await
 		.unwrap();
+
 	assert_eq!(work.id, "inspect-ui");
 	assert_eq!(work.title, "Review interface");
 	assert!(work.codex_thread_id.is_some());
+
 	let saved = coordinator.store.get_agent_work_item(work.id).await.unwrap();
+
 	assert_eq!(saved.title, "Review interface");
 	assert_eq!(saved.instructions, "Inspect the interface");
+
 	let legacy = coordinator.create_worker("agent", "legacy-task", "Inspect").await.unwrap();
+
 	assert_eq!(legacy.title, "legacy-task");
 }
 
@@ -2101,6 +2124,7 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 	)
 	.await
 	.unwrap();
+
 	let manager =
 		coordinator.create_manager("folder-chat", "project", "Manage project").await.unwrap();
 
@@ -2156,15 +2180,14 @@ async fn nested_managers_own_their_inbox_tools_and_workspace_directory() {
 	);
 	assert!(starts[2]["params"]["dynamicTools"].is_array());
 	assert!(starts[3]["params"].get("dynamicTools").is_none());
+
 	for start in &starts {
-		let instructions = if start["params"]["dynamicTools"].is_array() {
-			agent::INSTRUCTIONS
-		} else {
-			agent::COORDINATION
-		};
+		let instructions =
+			if start["params"]["dynamicTools"].is_array() { INSTRUCTIONS } else { COORDINATION };
 
 		assert_eq!(start["params"]["developerInstructions"], instructions);
 	}
+
 	assert_eq!(
 		starts[3]["params"]["cwd"],
 		serde_json::json!(directory.path().canonicalize().unwrap())
@@ -2176,42 +2199,57 @@ async fn legacy_conversation_continues_its_original_context_after_store_reopen()
 	for version in [1, 3] {
 		let (mut agent, mut sent, directory) = fixture().await;
 		let original = agent.start_agent("agent", "Original request").await.unwrap();
+
 		complete(&mut agent, "agent").await;
+
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
 		let db = Connection::open(root.paths().product_database_file()).unwrap();
+
 		db.execute("UPDATE agent_tool_versions SET version=?1 WHERE work_id='agent'", [version])
 			.unwrap();
+
 		while sent.try_recv().is_ok() {}
+
 		for (key, input) in
 			[("restore", "Continue the existing plan"), ("followup", "Keep that plan")]
 		{
 			agent.store = SqliteStore::open(&root.paths()).unwrap();
+
 			agent.loaded_threads.clear();
 			agent.enqueue_user_message("agent", key, input).await.unwrap();
 			agent.wake_pending().await.unwrap();
 			agent.wake_pending().await.unwrap();
+
 			let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
+
 			assert!(requests.iter().all(|r| !matches!(
 				r["method"].as_str(),
 				Some("thread/start" | "thread/fork" | "thread/archive" | "thread/inject_items")
 			)));
+
 			let resumes: Vec<_> =
 				requests.iter().filter(|r| r["method"] == "thread/resume").collect();
+
 			assert_eq!(resumes.len(), 1);
+
 			for parameter in
 				["permissions", "sandbox", "approvalPolicy", "model", "serviceTier", "dynamicTools"]
 			{
 				assert!(resumes[0]["params"].get(parameter).is_none());
 			}
+
 			let turns: Vec<_> = requests.iter().filter(|r| r["method"] == "turn/start").collect();
+
 			assert_eq!(turns.len(), 1, "a queued input is dispatched once");
 			assert_eq!(
 				turns[0]["params"]["threadId"].as_str(),
 				original.codex_thread_id.as_deref()
 			);
 			assert!(turns[0]["params"]["input"].to_string().contains(input));
+
 			complete(&mut agent, "agent").await;
 		}
+
 		assert_eq!(agent.store.agent_tool_version("agent".into()).await.unwrap(), version);
 		assert!(agent.store.agent_tool_migration("agent".into()).await.unwrap().is_none());
 		assert_eq!(
@@ -2223,7 +2261,9 @@ async fn legacy_conversation_continues_its_original_context_after_store_reopen()
 				.unwrap(),
 			0
 		);
+
 		let caller = agent.store.get_agent_work_item("agent".into()).await.unwrap();
+
 		assert!(
 			agent
 				.tool(&caller, &serde_json::json!({"tool":"agent_create_work","arguments":{}}))
@@ -2282,7 +2322,6 @@ async fn unresolved_legacy_replacement_is_not_replayed_by_continuation() {
 	assert_eq!(messages.iter().filter(|message| message["method"] == "thread/start").count(), 0);
 	assert_eq!(messages.iter().filter(|message| message["method"] == "turn/start").count(), 0);
 	assert!(!messages.iter().any(|message| message["method"] == "thread/inject_items"));
-
 	assert_eq!(
 		db.query_row("SELECT count(*) FROM agent_thread_revisions", [], |row| row.get::<_, i64>(0))
 			.unwrap(),
@@ -2406,6 +2445,7 @@ async fn external_writer_release_requires_a_new_send() {
 	while sent.try_recv().is_ok() {}
 
 	coordinator.enqueue_user_message("agent", "one-input", "Continue").await.unwrap();
+
 	let input =
 		coordinator.store.list_agent_wake_events("agent".into(), 10).await.unwrap().pop().unwrap();
 
@@ -2418,7 +2458,9 @@ async fn external_writer_release_requires_a_new_send() {
 	let pending = coordinator.store.list_agent_wake_events("agent".into(), 10).await.unwrap();
 
 	assert!(pending.is_empty());
+
 	let held = coordinator.store.get_agent_inbox_event(input.id).await.unwrap();
+
 	assert_eq!(held.disposition, Some(AgentDisposition::UserDecision));
 	assert!(held.delivered_turn_id.is_none());
 
@@ -2440,15 +2482,20 @@ async fn external_writer_release_requires_a_new_send() {
 		.record_agent_thread_in_use("agent".into(), "Open elsewhere".into())
 		.await
 		.unwrap();
+
 	let notice = coordinator.store.list_agent_thread_in_use_events().await.unwrap().remove(0);
+
 	coordinator.check_due_followups(1).await.unwrap();
 	coordinator.store.resolve_agent_delivery_failure("agent".into()).await.unwrap();
+
 	let blocked = coordinator.store.list_agent_thread_in_use_events().await.unwrap();
+
 	assert_eq!(blocked.len(), 1);
 	assert_eq!(blocked[0].id, notice.id);
-	coordinator.wake_pending().await.unwrap();
-	assert!(coordinator.store.list_agent_thread_in_use_events().await.unwrap().is_empty());
 
+	coordinator.wake_pending().await.unwrap();
+
+	assert!(coordinator.store.list_agent_thread_in_use_events().await.unwrap().is_empty());
 	assert!(coordinator.store.list_agent_wake_events("agent".into(), 10).await.unwrap().is_empty());
 
 	let mut starts = 0;
@@ -2478,7 +2525,9 @@ async fn a_locked_conversation_does_not_stop_independent_input() {
 	let (mut coordinator, mut sent, _directory) =
 		fixture_with_history(serde_json::json!({"_resume_failures":2})).await;
 	let root = coordinator.start_agent("agent", "Coordinate").await.unwrap();
+
 	complete(&mut coordinator, "agent").await;
+
 	AgentCoordinator::create_conversation(
 		&coordinator.store,
 		"reading",
@@ -2492,11 +2541,17 @@ async fn a_locked_conversation_does_not_stop_independent_input() {
 	)
 	.await
 	.unwrap();
+
 	coordinator.wake_pending().await.unwrap();
+
 	complete(&mut coordinator, "reading").await;
+
 	let reading = coordinator.store.get_agent_work_item("reading".into()).await.unwrap();
+
 	coordinator.loaded_threads.remove(reading.codex_thread_id.as_ref().unwrap());
+
 	while sent.try_recv().is_ok() {}
+
 	let input = coordinator
 		.store
 		.enqueue_agent_event(EnqueueAgentEvent {
@@ -2507,20 +2562,28 @@ async fn a_locked_conversation_does_not_stop_independent_input() {
 		})
 		.await
 		.unwrap();
+
 	coordinator.wake_pending().await.unwrap();
+
 	let blocked = coordinator.store.list_agent_thread_in_use_events().await.unwrap();
+
 	assert_eq!(blocked.len(), 1);
 	assert_eq!(blocked[0].work_item_id, "reading");
+
 	let held = coordinator.store.get_agent_inbox_event(input.id).await.unwrap();
+
 	assert_eq!(held.disposition, Some(AgentDisposition::UserDecision));
 	assert!(held.delivered_turn_id.is_none());
+
 	coordinator
 		.enqueue_user_message("agent", "unrelated-input", "Help me choose a book")
 		.await
 		.unwrap();
 	coordinator.wake_pending().await.unwrap();
+
 	let requests: Vec<_> = iter::from_fn(|| sent.try_recv().ok()).collect();
 	let starts: Vec<_> = requests.iter().filter(|r| r["method"] == "turn/start").collect();
+
 	assert_eq!(starts.len(), 1);
 	assert_eq!(starts[0]["params"]["threadId"].as_str(), root.codex_thread_id.as_deref());
 	assert!(
@@ -4383,6 +4446,7 @@ async fn missed_native_active_turn_recovery_rejects_reverted_readback() {
 				for field in ["cwd", "model", "sandbox", "approvalPolicy"] {
 					assert!(request["params"].get(field).is_none());
 				}
+
 				assert_eq!(
 					request["params"]["config"],
 					serde_json::json!({"features.guardian_recorded_items":false})
@@ -4457,9 +4521,13 @@ async fn live_plan_finality_and_kind_survive_restart() {
 #[tokio::test]
 async fn first_message_creates_conversation_and_starts_exactly_once() {
 	let (mut coordinator, mut sent, _directory) = fixture().await;
+
 	AgentCoordinator::reserve_root(&coordinator.store, "main", "Help the user").await.unwrap();
+
 	coordinator.wake_pending().await.unwrap();
+
 	assert!(sent.try_recv().is_err());
+
 	AgentCoordinator::create_conversation(
 		&coordinator.store,
 		"new-chat",
@@ -4474,10 +4542,13 @@ async fn first_message_creates_conversation_and_starts_exactly_once() {
 	)
 	.await
 	.unwrap();
+
 	coordinator.wake_pending().await.unwrap();
 	coordinator.wake_pending().await.unwrap();
+
 	let starts: Vec<_> =
 		iter::from_fn(|| sent.try_recv().ok()).filter(|r| r["method"] == "turn/start").collect();
+
 	assert_eq!(starts.len(), 1);
 	assert_eq!(starts[0]["params"]["input"][0]["text"], "Improve sidebar navigation");
 }

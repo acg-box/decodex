@@ -21,6 +21,20 @@ use decodex_codex::app_server_client::{NativeTaskPermissions, ThreadPermissionSe
 use decodex_core::{DecodexRoot, guardian::ReviewPreference};
 use decodex_database::AgentPermissionAttempt;
 
+fn permission_command(binary: &str, home: &Path) -> Command {
+	let mut command = Command::new(binary);
+
+	command
+		.arg("app-server")
+		.current_dir(home)
+		.env_clear()
+		.env("HOME", home)
+		.env("CODEX_HOME", home)
+		.env("PATH", "/usr/bin:/bin");
+
+	command
+}
+
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY; isolated native permission restoration"]
 async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
@@ -60,22 +74,14 @@ async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
 			agent.store = SqliteStore::open(&root.paths()).unwrap();
 		}
 
-		let mut command = Command::new(&binary);
-
-		command
-			.arg("app-server")
-			.current_dir(&home)
-			.env_clear()
-			.env("HOME", &home)
-			.env("CODEX_HOME", &home)
-			.env("PATH", "/usr/bin:/bin");
-
+		let mut command = permission_command(&binary, &home);
 		let (client, mut events, mut process) = AppServerClient::spawn(&mut command).unwrap();
 
 		agent = AgentCoordinator::new(agent.store.clone(), client, agent.config.clone()).unwrap();
 
 		let result = AssertUnwindSafe(time::timeout(Duration::from_secs(40), async {
 			agent.initialize().await.unwrap();
+
 			assert_eq!(
 				agent.store.guardian_settings().await.unwrap().reviewer,
 				ReviewPreference::AutomaticReview,

@@ -7,7 +7,6 @@ use std::{collections::HashSet, env, error::Error, path::Path, time::Duration};
 
 use base64 as _;
 #[cfg(target_os = "macos")] use core_foundation as _;
-#[cfg(target_os = "macos")] use decodex_components as _;
 use futures_util as _;
 use libc as _;
 use pulldown_cmark as _;
@@ -23,6 +22,7 @@ use zeroize as _;
 
 use decodex_account_login as _;
 use decodex_codex::app_server_client::{AppServerClient, ServerEvent};
+#[cfg(target_os = "macos")] use decodex_components as _;
 use decodex_core::DecodexRoot;
 use decodex_database::{AgentDispatchState, AgentDisposition, AgentWorkStatus, SqliteStore};
 use decodex_protocol as _;

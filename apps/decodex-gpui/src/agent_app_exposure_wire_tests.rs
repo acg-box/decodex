@@ -69,9 +69,7 @@ fn app_exposure_click_sends_once_and_reads_after_lost_reply(cx: &mut TestAppCont
 	let toggle = visual.debug_bounds("app-exposure-surface-0").unwrap();
 
 	visual.simulate_click(toggle.center(), Default::default());
-	visual.update(|w, cx| {
-		w.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	let save = visual.debug_bounds("app-exposure-save").unwrap();
 

@@ -1,12 +1,15 @@
 //! Ondine owns Mermaid syntax and layout; the desktop owns presentation and resource limits.
 #[path = "agent_mermaid/svg.rs"] mod svg;
 
-use crate::ui_theme::ColorScheme;
-use gpui::{RenderImage, SvgRenderer};
 use std::{
 	sync::Arc,
 	time::{SystemTime, UNIX_EPOCH},
 };
+
+use gpui::{RenderImage, SvgRenderer};
+use ondine::Rendered;
+
+use crate::ui_theme::ColorScheme;
 
 // Bound decoded images as well as SVG text. A small SVG can describe a very large canvas.
 const MAX_PIXELS: f64 = 8. * 1_024. * 1_024.;
@@ -31,7 +34,7 @@ pub(super) fn prepare(
 	Ok(Diagram { image, width: rendered.width as f32, height: rendered.height as f32 })
 }
 
-fn compile(source: &str, theme: ColorScheme) -> Result<ondine::Rendered, String> {
+fn compile(source: &str, theme: ColorScheme) -> Result<Rendered, String> {
 	let now = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?;
 	let mut rendered =
 		ondine::render(source, OPTIONS, now.as_secs_f64() * 1_000.).map_err(|e| e.message)?;

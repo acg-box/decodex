@@ -1,9 +1,11 @@
 //! Explicit conflict reconciliation; copies retain exact service ownership.
-use crate::ui_feedback::Feedback;
 #[path = "agent_draft_export.rs"] mod export;
 
-use crate::shell::agent_surface::drafts::storage::{
-	self, AgentSurface, Context, DesktopDraftDocument, Drafts, SaveFailure,
+use crate::{
+	shell::agent_surface::drafts::storage::{
+		self, AgentSurface, Context, DesktopDraftDocument, Drafts, SaveFailure,
+	},
+	ui_feedback::Feedback,
 };
 use decodex_protocol::{ClientProfile, DesktopRecoveredDraft};
 
@@ -377,41 +379,22 @@ mod tests {
 		// Recovery controls belong to a loaded empty workspace, not the cold
 		// startup screen before the first snapshot is known.
 		surface.update(visual, |s, cx| {
-			s.snapshot = Some(decodex_protocol::AgentSnapshotDto {
-				agents: Default::default(),
-				guardian: Default::default(),
-				portfolio: Default::default(),
-				archived_work_ids: Default::default(),
-				agent_slots: Default::default(),
-				context_references: vec![],
-				connection_initializing: false,
-				runtime_source: None,
-				projects: vec![],
-				work_items: vec![],
-				dependencies: vec![],
-				pending_events: vec![],
-			});
+			s.snapshot = Some(empty_recovery_snapshot());
 
 			cx.notify();
 		});
 
 		visual.simulate_resize(gpui::size(gpui::px(1_200.0), gpui::px(1_000.0)));
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let remove = visual.debug_bounds("draft-copy-remove-0").unwrap();
 
 		visual.simulate_click(remove.center(), gpui::Modifiers::default());
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert_eq!(store.load().unwrap().revision, 2);
 
@@ -440,6 +423,23 @@ mod tests {
 		assert!(
 			saved.recovered.iter().any(|copy| copy.draft.composer.text == "unsaved current input")
 		);
+	}
+
+	fn empty_recovery_snapshot() -> decodex_protocol::AgentSnapshotDto {
+		decodex_protocol::AgentSnapshotDto {
+			agents: Default::default(),
+			guardian: Default::default(),
+			portfolio: Default::default(),
+			archived_work_ids: Default::default(),
+			agent_slots: Default::default(),
+			context_references: vec![],
+			connection_initializing: false,
+			runtime_source: None,
+			projects: vec![],
+			work_items: vec![],
+			dependencies: vec![],
+			pending_events: vec![],
+		}
 	}
 
 	#[gpui::test]
@@ -495,22 +495,16 @@ mod tests {
 		});
 
 		visual.simulate_resize(gpui::size(gpui::px(1_100.0), gpui::px(800.0)));
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let toggle = visual.debug_bounds("draft-copies-toggle").unwrap();
 
 		visual.simulate_click(toggle.center(), gpui::Modifiers::default());
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let restore = visual.debug_bounds("draft-copy-restore-0").unwrap();
 
@@ -688,15 +682,11 @@ mod tests {
 		});
 
 		visual.simulate_resize(gpui::size(gpui::px(1_000.0), gpui::px(700.0)));
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let button = visual
 			.debug_bounds("draft-keep-both")

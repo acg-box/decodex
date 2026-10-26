@@ -24,14 +24,9 @@ mod model_defaults;
 mod model_recovery;
 mod output_rate;
 mod permission_observations;
-mod projects;
-pub use guardian_settings::is_thread_reviewer_selection;
-pub use projects::{
-	is_project_create, is_project_list, is_project_read, is_thread_name_selection,
-	is_thread_project_assignment,
-};
 mod permissions;
 mod prediction;
+mod projects;
 mod prompt_edit;
 mod provider_wait;
 mod read_state;
@@ -52,8 +47,6 @@ mod thread_plugins;
 mod timeline;
 mod transcript;
 mod usage;
-
-pub use memory::MAX_MEMORY_SUMMARY_BYTES;
 
 pub use self::{
 	account_nudge::{AccountNudgeCreditType, AccountNudgeOutcome},
@@ -104,6 +97,12 @@ pub use self::{
 	thread_model_settings::NativeThreadModelSettings,
 	thread_plugins::NativeTaskPlugins,
 	usage::{ThreadUsageEstimate, ThreadUsageEstimateGroup},
+};
+pub use guardian_settings::is_thread_reviewer_selection;
+pub use memory::MAX_MEMORY_SUMMARY_BYTES;
+pub use projects::{
+	is_project_create, is_project_list, is_project_read, is_thread_name_selection,
+	is_thread_project_assignment,
 };
 
 use std::{
@@ -1028,6 +1027,7 @@ async fn run_frames(
 						// Timed-out callers must not consume admission slots indefinitely.
 						// This releases bookkeeping only; it does not cancel or replay native work.
 						pending.retain(|_, request| !request.reply.is_closed());
+
 						if pending.len() >= MAX_PENDING_REQUESTS {
 							let _ = reply.send(Err(ClientError::RequestQueueFull));
 
@@ -1061,6 +1061,7 @@ async fn run_frames(
 						pending.insert(id.clone(), PendingReply{reply,permissions});
 
 						if let Err(error) = result { break error; }
+
 						if let Some(written) = written { let _ = written.send(id); }
 					},
 				}
@@ -1741,6 +1742,7 @@ mod tests {
 
 			canceled_ids.push(request["id"].clone());
 			task.abort();
+
 			assert!(task.await.unwrap_err().is_cancelled());
 		}
 
@@ -1755,14 +1757,18 @@ mod tests {
 			.send(Ok(serde_json::json!({"id":canceled_ids[0],"result":{"late":true}})))
 			.await
 			.unwrap();
+
 		assert!(matches!(events.recv().await, Some(ServerEvent::UnmatchedResponse { .. })));
 		assert!(!task.is_finished());
+
 		incoming
 			.send(Ok(serde_json::json!({"id":request["id"],"result":{"current":true}})))
 			.await
 			.unwrap();
+
 		assert_eq!(task.await.unwrap().unwrap()["current"], true);
 		assert!(requests.try_recv().is_err());
+
 		client.shutdown().await.unwrap();
 	}
 

@@ -46,13 +46,17 @@ impl AgentSurface {
 			Ok(draft) => {
 				self.prompt_edit.feedback =
 					"History refreshed. Waiting for the edited draft to be saved…".into();
+
 				cx.notify();
+
 				Some(draft)
 			},
 			Err(message) => {
 				self.prompt_edit.task = None;
 				self.prompt_edit.feedback = message.into();
+
 				cx.notify();
+
 				None
 			},
 		}
@@ -63,13 +67,7 @@ impl AgentSurface {
 		expected: DesktopPromptEditDraft,
 		cx: &mut Context<Self>,
 	) {
-		if self.prompt_edit.task.is_some()
-			|| !self.prompt_editor_source_current()
-			|| self.prompt_edit.draft.as_ref() != Some(&expected)
-			|| expected.receipt_id.is_none()
-			|| !expected.handback_pending
-			|| !self.command_connection_ready()
-		{
+		if !self.can_handback_prompt(&expected) {
 			return;
 		}
 
@@ -137,21 +135,8 @@ impl AgentSurface {
 						if s.prompt_edit.key != panel_key || !s.prompt_editor_source_current() {
 							return Some(false);
 						}
-						if s.prompt_edit.draft.as_ref() != Some(&pending)
-							|| !s.command_connection_ready()
-							|| Instant::now() >= deadline
-						{
-							s.prompt_edit.task = None;
-							s.prompt_edit.feedback =
-								"The edited draft was not restored. Try restoring it again.".into();
-							cx.notify();
-							return Some(false);
-						}
-						if s.prompt_editor_saved(&pending) {
-							return Some(true);
-						}
 
-						None
+						s.handback_saved_status(&pending, deadline, cx)
 					})
 					.unwrap_or(Some(false));
 
@@ -159,6 +144,7 @@ impl AgentSurface {
 					if !ready {
 						return;
 					}
+
 					break;
 				}
 
@@ -178,24 +164,69 @@ impl AgentSurface {
 				}
 
 				s.prompt_edit.task = None;
-				s.prompt_edit.feedback = if s.prompt_edit.draft.as_ref() != Some(&pending) {
-					"The draft changed. Check edit status before sending.".into()
-				} else {
-					match result.and_then(|draft| {
-						s.stage_prompt_editor(draft.clone(), cx)?;
-						s.prompt_edit.draft = Some(draft);
-						Ok(())
-					}) {
-						Ok(()) => "Edited draft restored. Nothing was sent.".into(),
-						Err(message) => message.into(),
-					}
-				};
+				s.prompt_edit.feedback = s.handback_feedback(&pending, result, cx);
 
 				cx.notify();
 			});
 		}));
 
 		cx.notify();
+	}
+
+	fn handback_saved_status(
+		&mut self,
+		pending: &DesktopPromptEditDraft,
+		deadline: Instant,
+		cx: &mut Context<Self>,
+	) -> Option<bool> {
+		if self.prompt_edit.draft.as_ref() != Some(pending)
+			|| !self.command_connection_ready()
+			|| Instant::now() >= deadline
+		{
+			self.prompt_edit.task = None;
+			self.prompt_edit.feedback =
+				"The edited draft was not restored. Try restoring it again.".into();
+
+			cx.notify();
+
+			return Some(false);
+		}
+		if self.prompt_editor_saved(pending) {
+			return Some(true);
+		}
+
+		None
+	}
+
+	fn can_handback_prompt(&self, expected: &DesktopPromptEditDraft) -> bool {
+		!(self.prompt_edit.task.is_some()
+			|| !self.prompt_editor_source_current()
+			|| self.prompt_edit.draft.as_ref() != Some(expected)
+			|| expected.receipt_id.is_none()
+			|| !expected.handback_pending
+			|| !self.command_connection_ready())
+	}
+
+	fn handback_feedback(
+		&mut self,
+		pending: &DesktopPromptEditDraft,
+		result: Result<DesktopPromptEditDraft, &'static str>,
+		cx: &mut Context<Self>,
+	) -> String {
+		if self.prompt_edit.draft.as_ref() != Some(pending) {
+			"The draft changed. Check edit status before sending.".into()
+		} else {
+			match result.and_then(|draft| {
+				self.stage_prompt_editor(draft.clone(), cx)?;
+
+				self.prompt_edit.draft = Some(draft);
+
+				Ok(())
+			}) {
+				Ok(()) => "Edited draft restored. Nothing was sent.".into(),
+				Err(message) => message.into(),
+			}
+		}
 	}
 }
 

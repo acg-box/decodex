@@ -528,7 +528,7 @@ impl SqliteStore {
 		thread: String,
 		turn: String,
 		text: String,
-		progress: Option<serde_json::Value>,
+		progress: Option<Value>,
 	) -> Result<(), StoreError> {
 		if thread.is_empty()
 			|| thread.len() > 512

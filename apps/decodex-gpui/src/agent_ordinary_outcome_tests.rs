@@ -297,9 +297,7 @@ fn acknowledged_archive_stays_removed_after_store_reopen(cx: &mut TestAppContext
 
 		shell.update(visual, |s, cx| s.synchronize_conversations(cx));
 		visual.run_until_parked();
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let button = visual.debug_bounds("ordinary-control-acknowledge-0").unwrap();
 
@@ -418,9 +416,7 @@ fn acknowledged_routing_control_preserves_other_records_after_restart(cx: &mut T
 
 		shell.update(visual, |s, cx| s.synchronize_conversations(cx));
 		visual.run_until_parked();
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let button = visual.debug_bounds("ordinary-control-acknowledge-0").unwrap();
 

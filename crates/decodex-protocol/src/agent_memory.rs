@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use crate::{EntityId, WireText};
 
 /// Maximum UTF-8 bytes in a memory summary page.
-pub const MEMORY_PAGE_BYTES: usize = 8 * 1024;
+pub const MEMORY_PAGE_BYTES: usize = 8 * 1_024;
 /// Maximum native summary assembled by the desktop viewer.
-pub const MAX_MEMORY_BYTES: usize = 1024 * 1024;
+pub const MAX_MEMORY_BYTES: usize = 1_024 * 1_024;
 
 /// Native memory observation. Empty does not distinguish disabled from missing memory.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

@@ -106,12 +106,14 @@ impl AgentSampleStatus {
 			&& self.prompt.as_ref().is_some_and(|v| {
 				!v.as_str().trim().is_empty() && v.as_str().len() <= MAX_AGENT_SAMPLE_PROMPT_BYTES
 			});
+
 		if self.phase == AgentSamplePhase::Idle {
 			return self.thread_id.is_none()
 				&& self.request_id.is_none()
 				&& self.prompt.is_none()
 				&& self.answer.is_none();
 		}
+
 		bound
 			&& match (&self.phase, &self.answer) {
 				(AgentSamplePhase::Ready, Some(answer)) =>

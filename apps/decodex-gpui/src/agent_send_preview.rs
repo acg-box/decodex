@@ -152,6 +152,7 @@ impl AgentSurface {
 					turn_id: None,
 					weather: vec![],
 				};
+
 				gpui::div()
 					.debug_selector(|| "sending-message-preview".into())
 					.child(agent_surface::history_entry_with_key(
@@ -215,11 +216,11 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let preview = visual.debug_bounds("sending-message-preview").unwrap();
 
@@ -241,7 +242,7 @@ mod tests {
 			});
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("sending-message-preview").is_none());
 		assert_eq!(visual.debug_bounds("native-promotion-content").unwrap(), preview);

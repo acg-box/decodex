@@ -65,6 +65,7 @@ impl ActivationPolicy {
 			None
 		} else {
 			let requirements = requirements.as_object().ok_or(())?;
+
 			check_application_destination(requirements.get("application"), &responses_url)?;
 
 			match requirements.get("chatgptBaseUrl") {
@@ -99,29 +100,6 @@ impl ActivationPolicy {
 
 		request
 	}
-}
-
-// The native process supplies normalized, effective requirements. This is a send-time
-// snapshot; it does not supply the native transport's live revocation permit.
-fn check_application_destination(application: Option<&Value>, destination: &Url) -> Result<(), ()> {
-	let application = match application {
-		None | Some(Value::Null) => return Ok(()),
-		Some(value) => value.as_object().ok_or(())?,
-	};
-	let network = match application.get("network") {
-		None | Some(Value::Null) => return Ok(()),
-		Some(value) => value.as_object().ok_or(())?,
-	};
-
-	if !network.get("enabled").and_then(Value::as_bool).ok_or(())? {
-		return Ok(());
-	}
-
-	let host = destination.host_str().ok_or(())?;
-	let host = host.strip_suffix('.').unwrap_or(host);
-	let domains = network.get("domains").and_then(Value::as_object).ok_or(())?;
-
-	(domains.get(host).and_then(Value::as_str) == Some("allow")).then_some(()).ok_or(())
 }
 
 struct ActivationVault<'a> {
@@ -187,6 +165,29 @@ pub(crate) async fn read_activation_policy(
 	})
 	.await
 	.map_err(|_| ())?
+}
+
+// The native process supplies normalized, effective requirements. This is a send-time
+// snapshot; it does not supply the native transport's live revocation permit.
+fn check_application_destination(application: Option<&Value>, destination: &Url) -> Result<(), ()> {
+	let application = match application {
+		None | Some(Value::Null) => return Ok(()),
+		Some(value) => value.as_object().ok_or(())?,
+	};
+	let network = match application.get("network") {
+		None | Some(Value::Null) => return Ok(()),
+		Some(value) => value.as_object().ok_or(())?,
+	};
+
+	if !network.get("enabled").and_then(Value::as_bool).ok_or(())? {
+		return Ok(());
+	}
+
+	let host = destination.host_str().ok_or(())?;
+	let host = host.strip_suffix('.').unwrap_or(host);
+	let domains = network.get("domains").and_then(Value::as_object).ok_or(())?;
+
+	(domains.get(host).and_then(Value::as_str) == Some("allow")).then_some(()).ok_or(())
 }
 
 fn https_url(value: &str) -> Result<Url, ()> {

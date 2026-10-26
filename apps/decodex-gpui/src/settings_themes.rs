@@ -1,20 +1,29 @@
 //! Inline theme previews retain comparison space without growing the settings page.
 use gpui::{
-	Context, IntoElement, KeyDownEvent, Role, SharedString, accesskit::Toggled, prelude::*,
+	Bounds, Context, Corners, Div, FontWeight, IntoElement, KeyDownEvent, Role, SharedString,
+	Stateful,
+	accesskit::Toggled,
+	prelude::{
+		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
+		StatefulInteractiveElement as _, Styled as _,
+	},
 };
 
 use crate::{
 	settings_surface::SettingsSurface,
 	ui_scroll::SmoothScrollArea,
-	ui_theme::{self, ColorTheme},
+	ui_theme::{
+		self, ACCENT, CANVAS, COMPOSER_MATERIAL, CONTENT_MATERIAL, ColorScheme, ColorTheme,
+		HOVER_FILL, MESSAGE_MATERIAL, PRESSED_FILL, PRIMARY_FILL, SELECTED_BORDER, SELECTED_FILL,
+		SIDEBAR_MATERIAL, TEXT, TEXT_MUTED, appearance::Theme,
+	},
 };
 
 impl SettingsSurface {
 	pub(super) fn theme_description(&self) -> String {
 		let saved = ColorTheme::configured();
-		if ui_theme::appearance::Theme::current() == ui_theme::appearance::Theme::Light
-			&& saved != ColorTheme::Decodex
-		{
+
+		if Theme::current() == Theme::Light && saved != ColorTheme::Decodex {
 			format!("Light appearance uses Decodex. Switch to dark to restore {}.", saved.name())
 		} else {
 			"Decodex supports light and dark. Other presets use dark appearance.".into()
@@ -43,9 +52,10 @@ impl SettingsSurface {
 		)
 	}
 
-	fn theme_option(&self, theme: ColorTheme, cx: &mut Context<Self>) -> gpui::Stateful<gpui::Div> {
-		let selected = theme == ui_theme::ColorScheme::current().color_theme();
+	fn theme_option(&self, theme: ColorTheme, cx: &mut Context<Self>) -> Stateful<Div> {
+		let selected = theme == ColorScheme::current().color_theme();
 		let id = format!("color-theme-{}", theme.id());
+
 		gpui::div()
 			.id(SharedString::from(id.clone()))
 			.debug_selector(move || id.clone())
@@ -67,11 +77,11 @@ impl SettingsSurface {
 			.border_color(gpui::transparent_black())
 			.text_size(gpui::px(11.5))
 			.line_height(gpui::px(17.))
-			.text_color(ui_theme::rgb(ui_theme::TEXT))
+			.text_color(ui_theme::rgb(TEXT))
 			.cursor_pointer()
-			.hover(|row| row.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
-			.active(|row| row.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
-			.focus_visible(|row| row.border_color(ui_theme::rgb(ui_theme::ACCENT)))
+			.hover(|row| row.bg(ui_theme::rgba(HOVER_FILL)))
+			.active(|row| row.bg(ui_theme::rgba(PRESSED_FILL)))
+			.focus_visible(|row| row.border_color(ui_theme::rgb(ACCENT)))
 			.child(
 				gpui::div()
 					.relative()
@@ -82,7 +92,7 @@ impl SettingsSurface {
 					.overflow_hidden()
 					.border_1()
 					.border_color(ui_theme::rgba(if selected {
-						ui_theme::SELECTED_BORDER
+						SELECTED_BORDER
 					} else {
 						0xffffff20
 					}))
@@ -103,7 +113,7 @@ impl SettingsSurface {
 					.w_full()
 					.min_w_0()
 					.px(gpui::px(3.))
-					.font_weight(gpui::FontWeight::MEDIUM)
+					.font_weight(FontWeight::MEDIUM)
 					.truncate()
 					.child(theme.name()),
 			)
@@ -118,68 +128,67 @@ impl SettingsSurface {
 }
 
 fn preview(theme: ColorTheme) -> impl IntoElement {
-	let appearance = if theme == ColorTheme::Decodex {
-		ui_theme::appearance::Theme::current()
-	} else {
-		ui_theme::appearance::Theme::Dark
-	};
-	let colors = ui_theme::ColorScheme::new(appearance, theme);
+	let appearance = if theme == ColorTheme::Decodex { Theme::current() } else { Theme::Dark };
+	let colors = ColorScheme::new(appearance, theme);
+
 	gpui::canvas(
 		|_, _, _| (),
 		move |bounds, _, window, _| {
 			let width = f32::from(bounds.size.width);
 			let height = f32::from(bounds.size.height);
 			let rect = |x, y, w, h| {
-				gpui::Bounds::new(
+				Bounds::new(
 					bounds.origin
 						+ gpui::point(gpui::px(x * width / 160.), gpui::px(y * height / 80.)),
 					gpui::size(gpui::px(w * width / 160.), gpui::px(h * height / 80.)),
 				)
 			};
+
+			window.paint_quad(gpui::fill(bounds, colors.rgb(CANVAS)).corner_radii(gpui::px(5.)));
 			window.paint_quad(
-				gpui::fill(bounds, colors.rgb(ui_theme::CANVAS)).corner_radii(gpui::px(5.)),
-			);
-			window.paint_quad(
-				gpui::fill(rect(0., 0., 34., 80.), colors.rgb(ui_theme::SIDEBAR_MATERIAL >> 8))
-					.corner_radii(gpui::Corners {
+				gpui::fill(rect(0., 0., 34., 80.), colors.rgb(SIDEBAR_MATERIAL >> 8)).corner_radii(
+					Corners {
 						top_left: gpui::px(5.),
 						bottom_left: gpui::px(5.),
 						..Default::default()
-					}),
+					},
+				),
 			);
 			window.paint_quad(
-				gpui::fill(rect(34., 0., 126., 80.), colors.rgba(ui_theme::CONTENT_MATERIAL))
-					.corner_radii(gpui::Corners {
+				gpui::fill(rect(34., 0., 126., 80.), colors.rgba(CONTENT_MATERIAL)).corner_radii(
+					Corners {
 						top_right: gpui::px(5.),
 						bottom_right: gpui::px(5.),
 						..Default::default()
-					}),
+					},
+				),
 			);
 			window.paint_quad(
-				gpui::fill(rect(5., 23., 24., 10.), colors.rgba(ui_theme::SELECTED_FILL))
+				gpui::fill(rect(5., 23., 24., 10.), colors.rgba(SELECTED_FILL))
 					.corner_radii(gpui::px(2.)),
 			);
 			window.paint_quad(
-				gpui::fill(rect(98., 20., 51., 13.), colors.rgba(ui_theme::MESSAGE_MATERIAL))
+				gpui::fill(rect(98., 20., 51., 13.), colors.rgba(MESSAGE_MATERIAL))
 					.corner_radii(gpui::px(3.)),
 			);
 			window.paint_quad(
-				gpui::fill(rect(43., 60., 107., 15.), colors.rgb(ui_theme::COMPOSER_MATERIAL >> 8))
+				gpui::fill(rect(43., 60., 107., 15.), colors.rgb(COMPOSER_MATERIAL >> 8))
 					.corner_radii(gpui::px(4.)),
 			);
 			window.paint_quad(
-				gpui::fill(rect(135., 64., 8., 8.), colors.rgb(ui_theme::PRIMARY_FILL))
+				gpui::fill(rect(135., 64., 8., 8.), colors.rgb(PRIMARY_FILL))
 					.corner_radii(gpui::px(3.)),
 			);
+
 			for (x, y, width, height, token) in [
-				(9., 10., 18., 2., ui_theme::TEXT_MUTED),
-				(9., 27., 16., 2., ui_theme::TEXT),
-				(9., 40., 14., 2., ui_theme::TEXT_MUTED),
-				(44., 9., 43., 2., ui_theme::TEXT),
-				(104., 26., 34., 2., ui_theme::TEXT),
-				(44., 40., 92., 2., ui_theme::TEXT),
-				(44., 47., 66., 2., ui_theme::TEXT_MUTED),
-				(48., 66., 47., 2., ui_theme::TEXT_MUTED),
+				(9., 10., 18., 2., TEXT_MUTED),
+				(9., 27., 16., 2., TEXT),
+				(9., 40., 14., 2., TEXT_MUTED),
+				(44., 9., 43., 2., TEXT),
+				(104., 26., 34., 2., TEXT),
+				(44., 40., 92., 2., TEXT),
+				(44., 47., 66., 2., TEXT_MUTED),
+				(48., 66., 47., 2., TEXT_MUTED),
 			] {
 				window.paint_quad(
 					gpui::fill(rect(x, y, width, height), colors.rgb(token))

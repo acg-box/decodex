@@ -148,18 +148,23 @@ fn reviewed_live_turn_is_invalidated_even_if_the_old_identity_returns(cx: &mut T
 fn per_agent_reviewer_controls_are_absent(cx: &mut TestAppContext) {
 	let (_, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(running_snapshot())));
+
 			s.live_reviewer.work = Some("root".into());
 			s.live_reviewer.state = Some(live_state(0, false));
 			s.live_reviewer.reviewed = true;
 		});
+
 		ReviewerView { surface }
 	});
+
 	visual.update(|w, cx| {
 		w.resize(gpui::size(gpui::px(900.), gpui::px(600.)));
 		w.draw(cx).clear(cx);
 	});
+
 	assert!(visual.debug_bounds("live-reviewer-user").is_none());
 	assert!(visual.debug_bounds("live-reviewer-auto").is_none());
 }
@@ -207,9 +212,7 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 
 	visual.simulate_click(button.center(), Default::default());
 	visual.run_until_parked();
-	visual.update(|w, cx| {
-		w.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	if model {
 		for selector in ["live-model-open", "live-model-choice-0", "live-model-effort-1"] {
@@ -217,9 +220,7 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 
 			visual.simulate_click(button.center(), Default::default());
 			visual.run_until_parked();
-			visual.update(|w, cx| {
-				w.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 		}
 	}
 
@@ -272,9 +273,7 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 
 		assert!(s.live_reviewer.task.is_none(), "a repeated click cannot publish again");
 	});
-	visual.update(|window, cx| {
-		window.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	assert!(visual.debug_bounds("live-reviewer-user").is_none());
 	assert!(visual.debug_bounds("live-model-apply").is_none());
@@ -342,9 +341,7 @@ fn child_navigation_and_disconnect_cannot_edit_the_parent_reviewer(cx: &mut Test
 		s.apply_result(Ok(AgentSnapshotResult::Unavailable));
 		cx.notify();
 	});
-	visual.update(|window, cx| {
-		window.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	assert!(visual.debug_bounds("live-reviewer-read").is_none());
 }

@@ -1,11 +1,14 @@
 //! Select an official release without dropping the reviewed development baseline.
 
+use std::{collections::BTreeMap, process::Command};
+
+use semver::Version;
+use serde_json::Value;
+
 use crate::{
 	InstallProgress, Result, RuntimeLock, RuntimeTarget,
-	install::{Archive, prepare_package},
+	install::{self, Archive},
 };
-use serde_json::Value;
-use std::{collections::BTreeMap, process::Command};
 
 /// Resolve and verify one explicit upstream release. Never select a floating version.
 pub fn pin_release(
@@ -13,27 +16,39 @@ pub fn pin_release(
 	baseline: &RuntimeLock,
 	mut progress: impl FnMut(InstallProgress),
 ) -> Result<RuntimeLock> {
-	semver::Version::parse(version).map_err(|e| e.to_string())?;
+	Version::parse(version).map_err(|e| e.to_string())?;
+
 	baseline.validate()?;
+
 	if !cfg!(target_os = "macos") {
 		return Err("Pin a signed Codex macOS release on macOS.".into());
 	}
+
 	let tag = format!("rust-v{version}");
 	let release = github(&format!("releases/tags/{tag}"))?;
+
 	if release["draft"] != false || release["tag_name"] != tag {
 		return Err("Expected a published official Codex release.".into());
 	}
+
 	let mut reference = github(&format!("git/ref/tags/{tag}"))?["object"].clone();
+
 	while reference["type"] == "tag" {
 		let sha = reference["sha"].as_str().ok_or("Missing release tag identity.")?;
+
 		reference = github(&format!("git/tags/{sha}"))?["object"].clone();
 	}
+
 	let commit = reference["sha"].as_str().ok_or("Missing release commit.")?;
+
 	if reference["type"] != "commit" || !crate::hex(commit, 40) {
 		return Err("The official release commit is unresolved.".into());
 	}
+
 	let comparison = github(&format!("compare/{}...{commit}", baseline.upstream_commit))?;
+
 	require_coverage(&comparison)?;
+
 	let platform = crate::platform();
 	let name = format!("codex-provisioned-package-{platform}.tar.gz");
 	let url = format!("https://github.com/openai/codex/releases/download/{tag}/{name}");
@@ -46,9 +61,11 @@ pub fn pin_release(
 		.and_then(|digest| digest.strip_prefix("sha256:"))
 		.filter(|digest| crate::hex(digest, 64))
 		.ok_or("The official release has no SHA-256 digest.")?;
+
 	if asset["browser_download_url"] != url {
 		return Err("The release asset URL is not canonical.".into());
 	}
+
 	let mut lock = RuntimeLock {
 		version: version.into(),
 		tag: Some(tag),
@@ -66,12 +83,20 @@ pub fn pin_release(
 		)]),
 	};
 	let stage = tempfile::tempdir().map_err(|e| e.to_string())?;
-	let (executable_sha256, schema_sha256) =
-		prepare_package(&lock, &Archive::Remote(url), sha256, stage.path(), &mut progress)?;
+	let (executable_sha256, schema_sha256) = install::prepare_package(
+		&lock,
+		&Archive::Remote(url),
+		sha256,
+		stage.path(),
+		&mut progress,
+	)?;
 	let target = lock.targets.get_mut(platform).ok_or("Missing release platform.")?;
+
 	target.executable_sha256 = executable_sha256;
 	target.schema_sha256 = schema_sha256;
+
 	lock.validate()?;
+
 	Ok(lock)
 }
 
@@ -80,12 +105,14 @@ fn github(path: &str) -> Result<Value> {
 		.args(["api", &format!("repos/openai/codex/{path}")])
 		.output()
 		.map_err(|e| e.to_string())?;
+
 	if !output.status.success() {
 		return Err(format!(
 			"Cannot read the official Codex release: {}",
 			String::from_utf8_lossy(&output.stderr)
 		));
 	}
+
 	serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())
 }
 
@@ -93,20 +120,21 @@ fn require_coverage(comparison: &Value) -> Result<()> {
 	if !matches!(comparison["status"].as_str(), Some("ahead" | "identical")) {
 		return Err("This official release does not include the current development baseline. Keep the development pin; do not discard merged fixes.".into());
 	}
+
 	Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::pin;
 
 	#[test]
 	fn older_or_diverged_releases_cannot_replace_merged_fixes() {
 		for status in ["behind", "diverged", "unknown"] {
-			assert!(require_coverage(&serde_json::json!({"status": status})).is_err());
+			assert!(pin::require_coverage(&serde_json::json!({"status": status})).is_err());
 		}
 		for status in ["ahead", "identical"] {
-			assert!(require_coverage(&serde_json::json!({"status": status})).is_ok());
+			assert!(pin::require_coverage(&serde_json::json!({"status": status})).is_ok());
 		}
 	}
 }

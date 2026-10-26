@@ -1,5 +1,7 @@
 //! Compact response statistics with hover details, independent of transcript layout.
 
+use std::{cell::Cell, rc::Rc, time::Instant};
+
 use gpui::{
 	self, Anchor, AnyElement, App, Bounds, BoxShadow, Div, FontWeight, IntoElement, Pixels,
 	RenderOnce, SharedString, Window,
@@ -9,18 +11,22 @@ use gpui::{
 	},
 };
 
-use crate::shell::agent_surface::{
-	self,
-	ui_theme::{CAPTION_SIZE, TEXT, TEXT_MUTED},
+use crate::{
+	shell::agent_surface::{
+		self, markdown,
+		ui_theme::{CAPTION_SIZE, TEXT, TEXT_MUTED},
+	},
+	ui_motion::{self, Tween},
+	ui_theme::{self, METADATA_GAP},
 };
-use decodex_protocol::AgentTurnUsageDto;
+use decodex_protocol::{AgentHistoryEntryDto, AgentTurnUsageDto};
 
 const METRICS_HEIGHT: f32 = 24.;
 
 #[derive(IntoElement)]
 pub(super) struct FinishedFooter {
 	pub visible: bool,
-	pub ready: Option<std::rc::Rc<std::cell::Cell<bool>>>,
+	pub ready: Option<Rc<Cell<bool>>>,
 	pub child: Option<AnyElement>,
 }
 impl RenderOnce for FinishedFooter {
@@ -28,57 +34,27 @@ impl RenderOnce for FinishedFooter {
 		let target =
 			if self.visible && self.ready.is_none_or(|ready| ready.get()) { 1. } else { 0. };
 		// Keep this slot mounted while streaming. Saved replies start at their final size.
-		let state = window.use_keyed_state("response-footer-motion", cx, |_, _| {
-			crate::ui_motion::Tween::new(target)
-		});
-		let now = std::time::Instant::now();
+		let state = window.use_keyed_state("response-footer-motion", cx, |_, _| Tween::new(target));
+		let now = Instant::now();
 		let (progress, moving) = state.update(cx, |motion, _| {
 			motion.target(target, now);
+
 			(motion.sample(now), motion.moving(now))
 		});
+
 		if moving {
-			crate::ui_motion::request_frame(window, cx);
+			ui_motion::request_frame(window, cx);
 		}
+
 		gpui::div()
 			.debug_selector(|| "response-footer".into())
 			.w_full()
 			.flex_none()
-			.h(gpui::px((METRICS_HEIGHT + crate::ui_theme::METADATA_GAP) * progress))
+			.h(gpui::px((METRICS_HEIGHT + METADATA_GAP) * progress))
 			.when(progress < 1., |row| row.overflow_hidden())
 			.opacity(progress)
 			.children(self.child)
 	}
-}
-
-pub(super) fn footer(
-	entry: &decodex_protocol::AgentHistoryEntryDto,
-	identity: &str,
-	metrics: Option<AnyElement>,
-) -> AnyElement {
-	let text = agent_surface::markdown::response_text(&entry.text);
-	let text = if entry.weather.is_empty() {
-		text
-	} else {
-		format!(
-			"{}\n\n{}",
-			text,
-			entry.weather.iter().map(|f| f.markdown()).collect::<Vec<_>>().join("\n\n")
-		)
-	};
-	gpui::div()
-		.mt(gpui::px(crate::ui_theme::METADATA_GAP))
-		.flex()
-		.items_center()
-		.gap(gpui::px(2.))
-		.child(metrics.unwrap_or_else(|| agent_surface::reply_metrics(entry).into_any_element()))
-		.when(entry.kind == "assistant", |row| {
-			row.child(agent_surface::markdown::response_copy_button(
-				&format!("copy-response-{identity}"),
-				"Copy response",
-				text,
-			))
-		})
-		.into_any_element()
 }
 
 #[derive(IntoElement)]
@@ -121,7 +97,7 @@ impl RenderOnce for ResponseMetrics {
 			.items_center()
 			.gap(gpui::px(6.))
 			.text_size(gpui::px(CAPTION_SIZE))
-			.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+			.text_color(ui_theme::rgb(TEXT_MUTED))
 			.when(!label.is_empty(), |d| {
 				d.child(
 					gpui::div()
@@ -143,7 +119,7 @@ impl RenderOnce for ResponseMetrics {
 				)
 			})
 			.when(has_details, |d| {
-				d.hover(|d| d.text_color(crate::ui_theme::rgb(TEXT)))
+				d.hover(|d| d.text_color(ui_theme::rgb(TEXT)))
 					.on_hover(move |hovered, _, cx| {
 						hover_state.update(cx, |state, cx| {
 							state.0 = *hovered;
@@ -178,14 +154,46 @@ impl RenderOnce for ResponseMetrics {
 	}
 }
 
+pub(super) fn footer(
+	entry: &AgentHistoryEntryDto,
+	identity: &str,
+	metrics: Option<AnyElement>,
+) -> AnyElement {
+	let text = markdown::response_text(&entry.text);
+	let text = if entry.weather.is_empty() {
+		text
+	} else {
+		format!(
+			"{}\n\n{}",
+			text,
+			entry.weather.iter().map(|f| f.markdown()).collect::<Vec<_>>().join("\n\n")
+		)
+	};
+
+	gpui::div()
+		.mt(gpui::px(METADATA_GAP))
+		.flex()
+		.items_center()
+		.gap(gpui::px(2.))
+		.child(metrics.unwrap_or_else(|| agent_surface::reply_metrics(entry).into_any_element()))
+		.when(entry.kind == "assistant", |row| {
+			row.child(markdown::response_copy_button(
+				&format!("copy-response-{identity}"),
+				"Copy response",
+				text,
+			))
+		})
+		.into_any_element()
+}
+
 fn row(label: &'static str, value: impl Into<SharedString>) -> Div {
 	gpui::div()
 		.flex()
 		.items_center()
 		.justify_between()
 		.gap(gpui::px(16.))
-		.child(gpui::div().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child(label))
-		.child(gpui::div().text_color(crate::ui_theme::rgb(TEXT)).child(value.into()))
+		.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(label))
+		.child(gpui::div().text_color(ui_theme::rgb(TEXT)).child(value.into()))
 }
 
 fn usage_row(label: &'static str, input: Option<u64>, output: Option<u64>) -> Div {
@@ -193,7 +201,7 @@ fn usage_row(label: &'static str, input: Option<u64>, output: Option<u64>) -> Di
 		.flex()
 		.items_center()
 		.h(gpui::px(22.))
-		.child(gpui::div().flex_1().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child(label))
+		.child(gpui::div().flex_1().text_color(ui_theme::rgb(TEXT_MUTED)).child(label))
 		.children([input, output].into_iter().map(|value| {
 			gpui::div().w(gpui::px(58.)).text_right().child(
 				value
@@ -220,7 +228,7 @@ fn duration_label(ms: u64) -> String {
 fn duration_icon() -> impl IntoElement {
 	gpui::svg()
 		.data(br#"<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11"><g fill="none" stroke="white" stroke-width="1"><circle cx="5.5" cy="5.5" r="4.25"/><path d="M5.5 2.5V5.5L7.5 6.5"/></g></svg>"#)
-		.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+		.text_color(ui_theme::rgb(TEXT_MUTED))
 		.size(gpui::px(11.))
 		.flex_none()
 }
@@ -240,7 +248,7 @@ fn details_panel(
 		.whitespace_normal()
 		.p(gpui::px(14.))
 		.rounded(gpui::px(12.))
-		.bg(crate::ui_theme::rgb(0x29292d))
+		.bg(ui_theme::rgb(0x29292d))
 		.text_size(gpui::px(12.))
 		.line_height(gpui::px(15.))
 		.flex()
@@ -248,7 +256,7 @@ fn details_panel(
 		.gap(gpui::px(2.))
 		.shadow(vec![BoxShadow {
 			inset: false,
-			color: crate::ui_theme::rgba(0x00000024).into(),
+			color: ui_theme::rgba(0x00000024).into(),
 			offset: gpui::point(gpui::px(0.), gpui::px(4.)),
 			blur_radius: gpui::px(12.),
 			spread_radius: gpui::px(-3.),
@@ -267,7 +275,7 @@ fn details_panel(
 			)
 			.child(
 				gpui::div()
-					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+					.text_color(ui_theme::rgb(TEXT_MUTED))
 					.child(duration.unwrap_or_default()),
 			),
 	);
@@ -278,7 +286,7 @@ fn details_panel(
 				gpui::div()
 					.flex()
 					.justify_end()
-					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+					.text_color(ui_theme::rgb(TEXT_MUTED))
 					.child(gpui::div().w(gpui::px(58.)).text_right().child("Input"))
 					.child(gpui::div().w(gpui::px(58.)).text_right().child("Output")),
 			)

@@ -3,22 +3,29 @@
 //! Protocol reference: openai/codex c2f7fe89d87ce853900d0b5cb1f5dc4863e44d73,
 //! login/src/auth/manager.rs and login/tests/suite/auth_refresh.rs. Account locks,
 //! durable effects and native process ownership remain in AccountService.
-#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
-use super::process_acceptance_fixture_endpoint;
-use super::{CredentialRefreshError, CredentialRefreshPort, CredentialRefreshResult};
-use crate::{account_import, host_credentials::CredentialSecretBundle};
-use reqwest::blocking::Response;
-use serde::Deserialize;
-use serde_json::Value;
 use std::{
 	io::Read as _,
 	mem,
 	time::{SystemTime, UNIX_EPOCH},
 };
+
+use reqwest::blocking::Response;
+use serde::Deserialize;
+use serde_json::Value;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
+
+#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
+use crate::account_service;
+use crate::{
+	account_import,
+	account_service::{CredentialRefreshError, CredentialRefreshPort, CredentialRefreshResult},
+	host_credentials::CredentialSecretBundle,
+};
+
 #[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
 pub(super) const REFRESH_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
 pub(super) const MAX_REFRESH_ERROR_BODY_BYTES: u64 = 4_096;
+
 /// Exact OpenAI OAuth refresh adapter used by the Mac daemon.
 pub(crate) struct OpenAiCredentialRefresher {
 	transport: decodex_account_login::RefreshTransport,
@@ -28,16 +35,8 @@ impl OpenAiCredentialRefresher {
 	pub(crate) fn new() -> Result<Self, CredentialRefreshError> {
 		let transport =
 			decodex_account_login::RefreshTransport::new().map_err(map_transport_error)?;
-		Ok(Self { transport })
-	}
-}
 
-impl CredentialRefreshPort for OpenAiCredentialRefresher {
-	fn refresh(
-		&self,
-		current: &CredentialSecretBundle,
-	) -> Result<CredentialRefreshResult, CredentialRefreshError> {
-		self.exchange(current, &refresh_endpoint()?)
+		Ok(Self { transport })
 	}
 }
 
@@ -68,14 +67,13 @@ impl OpenAiCredentialRefresher {
 		credential_refresh_result(current, refreshed, observed_at_micros)
 	}
 }
-fn map_transport_error(
-	error: decodex_account_login::RefreshTransportError,
-) -> CredentialRefreshError {
-	match error {
-		decodex_account_login::RefreshTransportError::Unavailable =>
-			CredentialRefreshError::Unavailable,
-		decodex_account_login::RefreshTransportError::Ambiguous =>
-			CredentialRefreshError::Ambiguous,
+
+impl CredentialRefreshPort for OpenAiCredentialRefresher {
+	fn refresh(
+		&self,
+		current: &CredentialSecretBundle,
+	) -> Result<CredentialRefreshResult, CredentialRefreshError> {
+		self.exchange(current, &refresh_endpoint()?)
 	}
 }
 
@@ -134,7 +132,8 @@ pub(super) fn classify_refresh_http_failure(
 pub(super) fn refresh_endpoint() -> Result<String, CredentialRefreshError> {
 	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
 	{
-		process_acceptance_fixture_endpoint().ok_or(CredentialRefreshError::Unavailable)
+		account_service::process_acceptance_fixture_endpoint()
+			.ok_or(CredentialRefreshError::Unavailable)
 	}
 	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
 	{
@@ -188,7 +187,6 @@ pub(super) fn credential_refresh_result(
 	// Omission preserves previously validated metadata; an explicitly malformed
 	// replacement is still rejected. JWT expiry is the service's validity authority.
 	let token_type = refreshed.token_type.take().unwrap_or_else(|| current.token_type().to_owned());
-
 	let expires_at_micros = account_import::decode_expiry_micros(&access_token)
 		.map_err(|_| CredentialRefreshError::Ambiguous)?;
 
@@ -210,16 +208,31 @@ pub(super) fn credential_refresh_result(
 	Ok(CredentialRefreshResult { returned_provider: identity.provider, bundle })
 }
 
+fn map_transport_error(
+	error: decodex_account_login::RefreshTransportError,
+) -> CredentialRefreshError {
+	match error {
+		decodex_account_login::RefreshTransportError::Unavailable =>
+			CredentialRefreshError::Unavailable,
+		decodex_account_login::RefreshTransportError::Ambiguous =>
+			CredentialRefreshError::Ambiguous,
+	}
+}
+
 #[cfg(test)]
 mod tests {
-	use super::{CredentialRefreshError, CredentialSecretBundle, OpenAiCredentialRefresher};
-	use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-	use serde_json::Value;
 	use std::{
 		io::{BufRead as _, BufReader, Read as _, Write as _},
 		net::TcpListener,
 		thread,
 		time::Duration,
+	};
+
+	use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+	use serde_json::Value;
+
+	use crate::account_service::oauth::{
+		CredentialRefreshError, CredentialSecretBundle, OpenAiCredentialRefresher,
 	};
 
 	fn jwt(claims: Value) -> String {
@@ -244,7 +257,9 @@ mod tests {
 		)
 		.unwrap();
 		let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+
 		listener.set_nonblocking(true).unwrap();
+
 		let endpoint = format!("http://{}/oauth/token", listener.local_addr().unwrap());
 		let success =
 			serde_json::json!({"access_token":access,"refresh_token":"fixture-new-refresh"})
@@ -264,32 +279,47 @@ mod tests {
 								std::time::Instant::now() < deadline,
 								"refresh request did not arrive"
 							);
+
 							thread::sleep(Duration::from_millis(5));
 						},
 						Err(error) => panic!("fixture accept: {error}"),
 					}
 				};
+
 				stream.set_nonblocking(false).unwrap();
 				stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+
 				let mut socket = BufReader::new(stream);
 				let mut first = String::new();
+
 				socket.read_line(&mut first).unwrap();
+
 				assert_eq!(first, "POST /oauth/token HTTP/1.1\r\n");
+
 				let mut length = 0;
+
 				loop {
 					let mut line = String::new();
+
 					assert!(socket.read_line(&mut line).unwrap() > 0);
+
 					if line == "\r\n" {
 						break;
 					}
+
 					if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
 						length = value.trim().parse::<usize>().unwrap();
 					}
 				}
-				assert!(length < 4096);
+
+				assert!(length < 4_096);
+
 				let mut body_bytes = vec![0; length];
+
 				socket.read_exact(&mut body_bytes).unwrap();
+
 				let grant: Value = serde_json::from_slice(&body_bytes).unwrap();
+
 				assert_eq!(grant["grant_type"], "refresh_token");
 				assert_eq!(grant["refresh_token"], "fixture-old-refresh");
 				write!(
@@ -302,6 +332,7 @@ mod tests {
 		});
 		let adapter = OpenAiCredentialRefresher::new().unwrap();
 		let refreshed = adapter.exchange(&current, &endpoint).unwrap();
+
 		assert_eq!(refreshed.returned_provider.account_id(), "fixture-account");
 		assert_eq!(refreshed.bundle.id_token(), current.id_token());
 		assert_eq!(refreshed.bundle.refresh_token(), Some("fixture-new-refresh"));
@@ -313,6 +344,7 @@ mod tests {
 			adapter.exchange(&current, &endpoint),
 			Err(CredentialRefreshError::Rejected)
 		));
+
 		server.join().unwrap();
 	}
 }

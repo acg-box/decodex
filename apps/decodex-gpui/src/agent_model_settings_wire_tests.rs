@@ -1,5 +1,5 @@
 //! Rendered model reads cross the public socket without sending mutations.
-use std::thread::JoinHandle;
+use std::{thread::JoinHandle, time::Instant};
 
 use futures_util::{SinkExt as _, StreamExt as _};
 #[cfg(test)] use gpui::AppContext as _;
@@ -11,7 +11,7 @@ use tokio_tungstenite::tungstenite::Message;
 #[cfg(test)]
 use crate::shell::agent_surface::model_settings::{
 	AgentDispatchStateDto, AgentSnapshotResult, AgentWorkStatusDto, ClientProfile,
-	ConversationModel, ConversationReasoningEffort, Entity, Render, Window, WireText,
+	ConversationModel, ConversationReasoningEffort, Entity, Panel, Render, Window, WireText,
 };
 use crate::shell::agent_surface::{
 	model_settings::{
@@ -21,8 +21,8 @@ use crate::shell::agent_surface::{
 	wire_test_support::{self, SERVER},
 };
 use decodex_protocol::{
-	AgentCapabilitiesResult, AgentModelDto, AgentWorkKindDto, CURRENT_VERSION, ClientMessage,
-	QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId, ServerMessage,
+	AgentActionDto, AgentCapabilitiesResult, AgentModelDto, AgentWorkKindDto, CURRENT_VERSION,
+	ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId, ServerMessage,
 };
 
 struct SettingsView {
@@ -73,7 +73,6 @@ fn snapshot() -> AgentSnapshotDto {
 
 #[test]
 fn repeated_model_observations_only_invalidate_changed_values() {
-	let mut panel = model_settings::Panel::default();
 	let state = AgentModelSettingsResult::Available {
 		work_id: EntityId::new("root").unwrap(),
 		thread_id: EntityId::new("thread").unwrap(),
@@ -82,6 +81,8 @@ fn repeated_model_observations_only_invalidate_changed_values() {
 		model: Some(WireText::new("model").unwrap()),
 		reasoning_effort: None,
 	};
+	let mut panel = Panel::default();
+
 	assert!(panel.observe("root".into(), state.clone()));
 	assert!(!panel.observe("root".into(), state.clone()));
 	assert!(!panel.observe("root".into(), AgentModelSettingsResult::Unavailable));
@@ -190,15 +191,19 @@ fn main_and_other_chats_keep_their_models_across_navigation_and_turn_changes(
 	cx: &mut TestAppContext,
 ) {
 	let surface = cx.new(AgentSurface::new);
+
 	surface.update(cx, |s, cx| {
 		let mut state = snapshot();
 		let mut other = work();
+
 		other.id = "other".into();
 		other.kind = AgentWorkKindDto::Manager;
 		other.parent_goal_id = Some("root".into());
 		other.codex_thread_id = Some("other-thread".into());
+
 		state.work_items.push(other);
 		s.apply_result(Ok(AgentSnapshotResult::Available(state.clone())));
+
 		for (owner, thread, model, effort) in [
 			("root", "thread", "main-model", "high"),
 			("other", "other-thread", "other-model", "low"),
@@ -214,10 +219,11 @@ fn main_and_other_chats_keep_their_models_across_navigation_and_turn_changes(
 					reasoning_effort: Some(WireText::new(effort).unwrap()),
 				},
 			);
-			s.model_settings.read_at.insert(owner.into(), std::time::Instant::now());
+			s.model_settings.read_at.insert(owner.into(), Instant::now());
 		}
 		for owner in ["other", "root", "other", "root"] {
 			s.open_page(owner, cx);
+
 			assert_eq!(
 				s.composer_model_label(cx),
 				if owner == "root" { "main-model" } else { "other-model" }
@@ -227,30 +233,44 @@ fn main_and_other_chats_keep_their_models_across_navigation_and_turn_changes(
 				Some(if owner == "root" { "high" } else { "low" })
 			);
 		}
+
 		s.new_work_conversation(cx);
+
 		assert_eq!(s.composer_model_label(cx), "main-model");
 		assert_eq!(s.composer_effort_value(cx).as_deref(), Some("high"));
+
 		let action = s.build_submission("Start this conversation", cx).unwrap();
-		let decodex_protocol::AgentActionDto::NewConversation { execution, .. } = &action else {
+		let AgentActionDto::NewConversation { execution, .. } = &action else {
 			panic!("new conversation")
 		};
+
 		assert_eq!(execution.model.as_ref().unwrap().as_str(), "main-model");
 		assert_eq!(execution.reasoning_effort, Some(ConversationReasoningEffort::High));
+
 		let captured = s.draft_profiles.execution.capture(&action).unwrap();
+
 		s.open_page("other", cx);
 		s.new_work_conversation(cx);
+
 		assert_eq!(
 			s.composer_model_label(cx),
 			"main-model",
 			"reopening the draft must retain its chosen model"
 		);
+
 		s.draft_profiles.execution.accepted(Some(&captured));
+
 		assert!(s.draft_profiles.execution.choice(&captured.0).is_empty());
+
 		s.open_page("root", cx);
+
 		state.work_items[0].active_turn_id = Some("new-turn".into());
 		state.work_items[0].dispatch_state = AgentDispatchStateDto::Running;
+
 		let epoch = s.model_settings.epoch;
+
 		s.apply_result(Ok(AgentSnapshotResult::Available(state)));
+
 		assert_ne!(s.model_settings.epoch, epoch);
 		assert!(
 			s.model_settings.read_at.is_empty(),
@@ -270,8 +290,10 @@ fn main_and_other_chats_keep_their_models_across_navigation_and_turn_changes(
 #[gpui::test]
 fn failed_refresh_keeps_the_same_threads_last_native_model(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
+
 	surface.update(cx, |s, cx| {
 		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+
 		let observation = AgentModelSettingsResult::Available {
 			work_id: EntityId::new("root").unwrap(),
 			thread_id: EntityId::new("thread").unwrap(),
@@ -280,30 +302,43 @@ fn failed_refresh_keeps_the_same_threads_last_native_model(cx: &mut TestAppConte
 			model: Some(WireText::new("native-model").unwrap()),
 			reasoning_effort: Some(WireText::new("high").unwrap()),
 		};
+
 		s.model_settings.observe("root".into(), observation.clone());
 
 		let mut running = snapshot();
+
 		running.work_items[0].active_turn_id = Some("next-turn".into());
 		running.work_items[0].dispatch_state = AgentDispatchStateDto::Running;
+
 		s.apply_result(Ok(AgentSnapshotResult::Available(running)));
+
 		for _ in 0..2 {
 			s.model_settings.observe("root".into(), AgentModelSettingsResult::Unavailable);
+
 			assert_eq!(s.composer_model_label(cx), "native-model");
 			assert_eq!(s.composer_effort_value(cx).as_deref(), Some("high"));
 		}
 
 		let mut changed = observation;
+
 		if let AgentModelSettingsResult::Available { model, .. } = &mut changed {
 			*model = Some(WireText::new("updated-model").unwrap());
 		}
+
 		s.model_settings.observe("root".into(), changed);
+
 		assert_eq!(s.composer_model_label(cx), "updated-model");
 
 		let mut rebound = snapshot();
+
 		rebound.work_items[0].codex_thread_id = Some("other-thread".into());
+
 		s.apply_result(Ok(AgentSnapshotResult::Available(rebound)));
+
 		assert_eq!(s.composer_model_value(cx), None, "never retain another thread's model");
+
 		s.model_settings.observe("root".into(), AgentModelSettingsResult::Unavailable);
+
 		assert_eq!(s.composer_model_label(cx), "Model unavailable");
 	});
 }
@@ -311,8 +346,10 @@ fn failed_refresh_keeps_the_same_threads_last_native_model(cx: &mut TestAppConte
 #[gpui::test]
 fn model_default_reasoning_has_the_same_value_in_new_and_existing_chats(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
+
 	surface.update(cx, |s, cx| {
 		s.model.update(cx, |input, cx| input.set_content("native-model", cx));
+
 		s.creation_inherit_effort = true;
 		s.capabilities = Some(AgentCapabilitiesResult::Available {
 			memory_enabled: None,
@@ -331,8 +368,10 @@ fn model_default_reasoning_has_the_same_value_in_new_and_existing_chats(cx: &mut
 				upgrade: None,
 			}],
 		});
+
 		assert_eq!(s.composer_model_label(cx), "Native model");
 		assert_eq!(s.composer_effort_value(cx).as_deref(), Some("medium"));
+
 		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
 		s.model_settings.observations.insert(
 			"root".into(),
@@ -345,17 +384,24 @@ fn model_default_reasoning_has_the_same_value_in_new_and_existing_chats(cx: &mut
 				reasoning_effort: None,
 			},
 		);
+
 		assert_eq!(s.composer_model_label(cx), "Native model");
 		assert_eq!(s.composer_effort_value(cx).as_deref(), Some("medium"));
+
 		s.effort = ConversationReasoningEffort::High;
+
 		s.select_composer_option("model", "native-model", cx);
+
 		assert_eq!(
 			s.draft_profiles.execution.choice("root").reasoning_effort,
 			Some(ConversationReasoningEffort::Medium),
 			"selecting a model must preserve the visible effort, not another editor's value"
 		);
+
 		s.draft_profiles.execution = Default::default();
+
 		s.model_settings.observations.insert("root".into(), AgentModelSettingsResult::Unavailable);
+
 		assert_eq!(s.composer_model_value(cx), None);
 		assert_eq!(s.composer_model_label(cx), "Model unavailable");
 		assert_eq!(s.composer_effort_value(cx), None, "never reuse an unrelated editor value");

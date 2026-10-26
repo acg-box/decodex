@@ -19,12 +19,12 @@ pub fn classify_dispatch_refusal(
 	if code != -32_600 {
 		return None;
 	}
-
 	if data.and_then(|value| value.get("reason")).and_then(serde_json::Value::as_str)
 		== Some("serverShuttingDown")
 	{
 		return Some(NativeDispatchRefusal::ServerDraining);
 	}
+
 	match message {
 		"Server is draining; retry after reconnecting" if data.is_none() =>
 			Some(NativeDispatchRefusal::ServerDraining),
@@ -66,9 +66,11 @@ mod tests {
 			);
 		}
 	}
+
 	#[test]
 	fn structured_shutdown_never_falls_back_over_present_data() {
 		let reason = serde_json::json!({"reason":"serverShuttingDown"});
+
 		assert_eq!(
 			dispatch_refusal::classify_dispatch_refusal(
 				-32_600,
@@ -85,6 +87,7 @@ mod tests {
 			),
 			None
 		);
+
 		for data in [
 			serde_json::json!({}),
 			serde_json::json!({"reason":"anotherReason"}),

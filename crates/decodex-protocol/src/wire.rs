@@ -39,9 +39,10 @@ use crate::{
 	ConversationTurnOutcomeResult, ConversationUnavailableReason, ConversationWorkingDirectory,
 	DictationRequest, DictationStatus, DoctorReport, InitialModelCatalogRequest,
 	InitialModelCatalogResult, InitialModelSource, McpLoginRequest, McpLoginStatus,
-	ModelCatalogPurpose, NativeAgentsResult, NativeStartupConfiguration, PromptEditStatus,
-	PromptForkResult, PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload,
-	PromptInputUploadStatus, ProtocolVersion, TaskRecapStatus,
+	ModelCatalogPurpose, NativeAgentsResult, NativeStartupConfiguration,
+	PrivateReviewDetailsResult, PromptEditStatus, PromptForkResult, PromptInputSendIdentity,
+	PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus, ProtocolVersion,
+	TaskRecapStatus, UsageEvidenceResult, UsageEvidenceScope, WorkDetailResult,
 	program_cycle::{ProgramCycleResult, ProgramListResult},
 };
 
@@ -2143,7 +2144,7 @@ pub enum QueryPayload {
 	/// Read actual retained native usage for an explicit Agent or Work.
 	GetUsageEvidence {
 		/// Product scope, independent of the selected conversation.
-		scope: crate::UsageEvidenceScope,
+		scope: UsageEvidenceScope,
 	},
 	/// Read the current native process directory for canonical local media.
 	GetAgentPromptInputDirectory {
@@ -3165,7 +3166,7 @@ impl ResultPayload {
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
 	/// Actual retained counters, source identities and coverage limits.
-	UsageEvidence(crate::UsageEvidenceResult),
+	UsageEvidence(UsageEvidenceResult),
 	/// Durable data transfer status; not an inference receipt.
 	AgentPromptInputUpload(PromptInputUploadStatus),
 	/// Read-only canonical input acceptance.
@@ -3242,9 +3243,9 @@ pub enum QueryResultPayload {
 	/// Native resource associations for an exact work thread.
 	AgentResources(AgentResourcesResult),
 	/// Saved Guardian assessments and explicit user approval receipts.
-	PrivateReviewDetails(crate::PrivateReviewDetailsResult),
+	PrivateReviewDetails(PrivateReviewDetailsResult),
 	/// One exact selected Work view page.
-	WorkDetail(crate::WorkDetailResult),
+	WorkDetail(WorkDetailResult),
 	/// Saved native action-review evidence.
 	AgentGuardianReviews(AgentGuardianReviewsResult),
 	/// Exact saved action detail page.

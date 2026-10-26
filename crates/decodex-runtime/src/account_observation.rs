@@ -31,7 +31,7 @@ use crate::{
 		AccountProfileRefreshStatus, AccountProfileRuntime, AccountProfileRuntimeError,
 		AccountProfileRuntimeResult,
 	},
-	account_service::AccountService,
+	account_service::{self, AccountService},
 };
 use decodex_codex::AccountApiQuotaWindow;
 use decodex_core::{
@@ -214,6 +214,7 @@ impl AccountObservationService {
 					if result.is_err() || *stop.borrow_and_update() {
 						break;
 					}
+
 					continue;
 				},
 				() = self.refresh_requested.notified() => {
@@ -257,10 +258,13 @@ impl AccountObservationService {
 					).await;
 				},
 			}
+
 			if !*self.initial_observation_complete.borrow() {
 				let initial = initial_tasks
 					.get_or_insert_with(|| task_accounts.keys().copied().collect::<HashSet<_>>());
+
 				initial.retain(|task| task_accounts.contains_key(task));
+
 				if initial.is_empty() {
 					// Both successful and failed checks complete startup. A queued refresh
 					// has a new task ID and must not keep the initial round open.
@@ -893,7 +897,7 @@ fn account_observation_is_schedulable(account: &AccountRecord) -> bool {
 	!account.tombstoned
 		&& account.credential.is_some()
 		&& (account.unsettled_operation.is_none()
-			|| crate::account_service::rejected_refresh_recovery(account).is_some())
+			|| account_service::rejected_refresh_recovery(account).is_some())
 }
 
 fn plan_observation_round<T>(
@@ -1263,8 +1267,10 @@ mod tests {
 		};
 
 		assert!(account_observation::account_observation_is_schedulable(&record));
+
 		record.unsettled_operation.as_mut().unwrap().recovery_code =
 			Some("provider_refresh_ambiguous".to_owned());
+
 		assert!(!account_observation::account_observation_is_schedulable(&record));
 
 		record.unsettled_operation = None;

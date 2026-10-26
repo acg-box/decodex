@@ -6,7 +6,10 @@ use std::{env, fs, panic::AssertUnwindSafe, time::Duration};
 use futures_util::FutureExt as _;
 use tokio::{
 	process::Command,
-	sync::{mpsc, mpsc::UnboundedSender},
+	sync::{
+		mpsc,
+		mpsc::{UnboundedReceiver, UnboundedSender},
+	},
 	time,
 };
 
@@ -46,6 +49,58 @@ fn is_child(body: &Value) -> bool {
 			.unwrap()
 			.iter()
 			.any(|v| v["type"] == "function_call" && v["call_id"] == "spawn")
+}
+
+fn assert_child_requests(requests_rx: &mut UnboundedReceiver<Value>) {
+	let mut request_count = 0;
+	let mut initial_child = false;
+	let mut continued_child = false;
+
+	while let Ok(body) = requests_rx.try_recv() {
+		if request_count == 0 {
+			assert_eq!(body["service_tier"], "priority");
+		}
+		if is_child(&body) {
+			assert!(
+				body["input"].as_array().unwrap().iter().any(|item| {
+					item["role"] == "developer"
+						&& item["content"].as_array().is_some_and(|content| {
+							content.iter().any(|part| {
+								part["text"]
+									.as_str()
+									.is_some_and(|text| text.contains(crate::agent::COORDINATION))
+							})
+						})
+				}),
+				"native child receives the shared coordination instructions"
+			);
+			assert_eq!(body["model"], "gpt-5.6-sol", "child keeps the invoking model");
+			assert_eq!(body["reasoning"]["effort"], "medium", "child keeps the invoking effort");
+
+			let resumed =
+				body["input"].as_array().unwrap().iter().any(|v| {
+					v["type"] == "function_call_output" && v["call_id"] == "child-command"
+				});
+
+			if resumed {
+				assert!(
+					body["service_tier"].is_null(),
+					"existing child must follow the cleared root tier"
+				);
+
+				continued_child = true;
+			} else {
+				assert_eq!(body["service_tier"], "priority", "new child must inherit root tier");
+
+				initial_child = true;
+			}
+		}
+
+		request_count += 1;
+	}
+
+	assert!(request_count >= 3, "root spawn and child approval continuation reached the backend");
+	assert!(initial_child && continued_child);
 }
 
 #[tokio::test]
@@ -132,39 +187,8 @@ async fn native_child_approval_round_trip() {
 
 		assert!(saved.disposition.is_some());
 
-		let mut request_count = 0;
-		let mut initial_child = false;
-		let mut continued_child = false;
+		assert_child_requests(&mut requests_rx);
 
-		while let Ok(body) = requests_rx.try_recv() {
-			if request_count == 0 { assert_eq!(body["service_tier"], "priority"); }
-			if is_child(&body) {
-                assert!(body["input"].as_array().unwrap().iter().any(|item| {
-                    item["role"] == "developer" && item["content"].as_array().is_some_and(|content| {
-                        content.iter().any(|part| part["text"].as_str().is_some_and(|text| text.contains(crate::agent::COORDINATION)))
-                    })
-                }), "native child receives the shared coordination instructions");
-                assert_eq!(body["model"], "gpt-5.6-sol", "child keeps the invoking model");
-                assert_eq!(body["reasoning"]["effort"], "medium", "child keeps the invoking effort");
-
-				let resumed = body["input"].as_array().unwrap().iter().any(|v| v["type"] == "function_call_output" && v["call_id"] == "child-command");
-
-				if resumed {
-					assert!(body["service_tier"].is_null(), "existing child must follow the cleared root tier");
-
-					continued_child = true;
-				} else {
-					assert_eq!(body["service_tier"], "priority", "new child must inherit root tier");
-
-					initial_child = true;
-				}
-			}
-
-			request_count += 1;
-		}
-
-		assert!(request_count >= 3, "root spawn and child approval continuation reached the backend");
-		assert!(initial_child && continued_child);
 		assert_eq!(agent.store.get_agent_work_item("agent".into()).await.unwrap().codex_thread_id.as_deref(),Some(root.as_str()));
 	})).catch_unwind().await;
 

@@ -332,9 +332,12 @@ impl AgentSurface {
 			&& let Err(message) = self.discard_prompt_editor(&draft, cx)
 		{
 			self.prompt_edit.feedback = message.into();
+
 			cx.notify();
+
 			return;
 		}
+
 		self.reset_prompt_edit();
 		self.save_draft_document(cx);
 		cx.notify();
@@ -662,6 +665,7 @@ impl AgentSurface {
 				},
 				move |s, cx| {
 					s.workspace.details_visible = false;
+
 					s.reopen_prompt_editor(&owner, &review, cx);
 				},
 				cx,
@@ -712,12 +716,14 @@ impl AgentSurface {
 					"An unfinished edit needs attention · Review".into(),
 					|s, cx| {
 						s.workspace.details_visible = true;
+
 						cx.notify();
 					},
 					cx,
 				)
 				.into_any_element();
 		}
+
 		let mut panel = gpui::div()
 			.w_full()
 			.min_w_0()
@@ -954,25 +960,35 @@ mod tests {
 	use gpui::AppContext as _;
 	use tokio::sync::oneshot;
 
-	use crate::shell::agent_surface::prompt_edit::{
-		AgentSurface, ClientProfile, ComposerInput, DesktopPromptEditDraft, Entity, EntityId,
-		IdempotencyKey, Panel, PromptDraft, WireText,
+	use crate::shell::agent_surface::{
+		drafts::tests,
+		prompt_edit::{
+			AgentSurface, ClientProfile, ComposerInput, DesktopPromptEditDraft, Entity, EntityId,
+			IdempotencyKey, Panel, PromptDraft, WireText,
+		},
 	};
 
 	#[gpui::test]
 	fn cancel_edit_removes_only_unsubmitted_draft(cx: &mut gpui::TestAppContext) {
-		let (_directory, profile, _) = crate::shell::agent_surface::drafts::tests::profiles();
+		let (_directory, profile, _) = tests::profiles();
 		let surface = cx.new(AgentSurface::new);
+
 		install_fixture_editor(&surface, profile.clone(), cx);
+
 		surface.update(cx, |s, cx| {
 			let work = s.selected.clone().unwrap();
+
 			assert_eq!(s.saved_prompt_editors(&work).len(), 1);
+
 			s.close_prompt_editor(cx);
+
 			assert!(s.saved_prompt_editors(&work).is_empty());
 			assert!(s.prompt_edit.draft.is_none());
 			assert_eq!(s.composer.read(cx).content(), "Unrelated unsent input");
 		});
+
 		install_fixture_editor(&surface, profile, cx);
+
 		surface.update(cx, |s, cx| {
 			let work = s.selected.clone().unwrap();
 			let pending = s
@@ -982,9 +998,13 @@ mod tests {
 				.unwrap()
 				.begin_confirmation(IdempotencyKey::new("pending-edit").unwrap())
 				.unwrap();
+
 			s.stage_prompt_editor(pending.clone(), cx).unwrap();
+
 			s.prompt_edit.draft = Some(pending.clone());
+
 			s.close_prompt_editor(cx);
+
 			assert_eq!(s.saved_prompt_editors(&work), vec![pending]);
 			assert!(s.prompt_edit.draft.is_none());
 		});
@@ -1005,7 +1025,9 @@ mod tests {
 	) -> Entity<ComposerInput> {
 		surface.update(cx, |s, cx| {
 			s.bind_drafts(Some(&profile), cx);
+
 			s.profile = Some(profile.clone());
+
 			s.visual_workspace_fixture(cx);
 
 			let work = s.selected.clone().unwrap();

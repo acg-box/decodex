@@ -1,9 +1,13 @@
+use std::future;
+
+use gpui::{AppContext as _, Entity, Render, TestAppContext, Window};
+
 use crate::shell::agent_surface::{
 	AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentSurface, AgentWorkItemDto,
 	AgentWorkStatusDto, Context, EntityId, IntoElement,
 };
 use decodex_protocol::{AgentReadStateResult, AgentUnreadPosition, AgentWorkKindDto, WireText};
-use gpui::{AppContext as _, Entity, Render, TestAppContext, Window};
+
 struct ReceiptView {
 	surface: Entity<AgentSurface>,
 }
@@ -49,14 +53,19 @@ fn snapshot() -> AgentSnapshotDto {
 fn read_state_panel_hides_invalid_actions_and_discards_replaced_source(cx: &mut TestAppContext) {
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
+
 		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+
 		surface.update(cx, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+
 			s.selected = Some("root".into());
 		});
+
 		ReceiptView { surface }
 	});
 	let surface = view.read_with(visual, |v, _| v.surface.clone());
+
 	for available in [false, true] {
 		surface.update(visual, |s, cx| {
 			s.read_state.target = Some(("root".into(), "thread".into()));
@@ -71,18 +80,25 @@ fn read_state_panel_hides_invalid_actions_and_discards_replaced_source(cx: &mut 
 			} else {
 				AgentReadStateResult::Unavailable
 			});
+
 			cx.notify();
 		});
+
 		visual.update(|w, cx| {
 			w.resize(gpui::size(gpui::px(500.), gpui::px(200.)));
 			w.draw(cx).clear(cx);
 		});
+
 		assert_eq!(visual.debug_bounds("native-read-state-mark").is_some(), available);
+
 		surface.update(visual, |s, cx| {
-			s.read_state.task = Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+			s.read_state.task = Some(cx.spawn(async |_, _| future::pending::<()>().await));
+
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(
 			visual.debug_bounds("native-read-state-refresh").is_some(),
 			"background reads keep the refresh action stable"
@@ -93,18 +109,27 @@ fn read_state_panel_hides_invalid_actions_and_discards_replaced_source(cx: &mut 
 			"background reads keep verified actions stable"
 		);
 	}
+
 	surface.update(visual, |s, cx| {
 		s.native_agents.selected = Some(("root".into(), "child".into()));
+
 		assert!(s.read_state_target().is_none());
+
 		s.refresh_read_state(cx);
+
 		assert!(s.read_state.result.is_none());
+
 		s.native_agents.selected = None;
 		s.read_state.target = Some(("root".into(), "thread".into()));
 		s.read_state.result = Some(AgentReadStateResult::Unavailable);
+
 		let mut next = snapshot();
+
 		next.runtime_source = Some(EntityId::new("replacement").unwrap());
+
 		s.apply_result(Ok(AgentSnapshotResult::Available(next)));
 		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+
 		assert!(s.read_state.result.is_none());
 	});
 }

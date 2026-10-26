@@ -1,5 +1,5 @@
 //! Compact Agent composer. Controls apply to the next submitted message.
-use crate::ui_feedback::Feedback;
+
 #[path = "agent_composer_controls.rs"] mod controls;
 #[path = "agent_task_references.rs"] mod task_references;
 
@@ -13,12 +13,15 @@ use std::{
 };
 
 use gpui::{
-	AnyElement, AppContext as _, ClipboardEntry, Div, ExternalPaths, FontWeight, Image,
-	ImageFormat, KeyDownEvent, MouseButton, MouseDownEvent, PathBuilder, PathPromptOptions,
-	Stateful,
+	Anchor, AnyElement, AppContext as _, ClipboardEntry, Div, ExternalPaths, Focusable as _,
+	FontWeight, Image, ImageFormat, KeyDownEvent, MouseButton, MouseDownEvent, PathBuilder,
+	PathPromptOptions, Rgba, Stateful,
 };
 use tokio::{runtime::Builder, time};
-use ui_theme::{BLUE, CONTROL_SIZE, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED};
+use ui_theme::{
+	BLUE, CONTROL_SIZE, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED,
+	material::{Material, Surface},
+};
 
 #[cfg(test)] use crate::shell::agent_surface::ConversationModel;
 #[cfg(not(test))] use crate::shell::agent_surface::prompts;
@@ -30,12 +33,21 @@ use crate::{
 			Context, ConversationReasoningEffort, ConversationWorkingDirectory, Entity, EntityId,
 			FluentBuilder, HistoryText, IdempotencyKey, InteractiveElement, IntoElement,
 			ParentElement, Render, Role, SharedString, SmoothControl, StatefulInteractiveElement,
-			Styled, SubmitComposer, Window, model_settings, ui_theme,
+			Styled, SubmitComposer, Window, model_settings,
+			native_agents::NativeConnection,
+			selectable_text::SelectableText,
+			ui_theme,
+			ui_theme::{
+				BODY_SIZE, COMPOSER_MATERIAL, COMPOSER_RADIUS, CONVERSATION_WIDTH, ERROR, INFO,
+				LINE_STRONG, ON_PRIMARY, PRIMARY_FILL, WARNING,
+			},
 		},
 		workspace_symbols,
 		workspace_symbols::Symbol,
 	},
-	ui_motion,
+	ui_feedback::{self, Feedback, Tone},
+	ui_loading, ui_motion,
+	ui_theme::{COMPOSER_BOTTOM_GAP, COMPOSER_TOP_GAP, CONVERSATION_INSET},
 };
 use controls::{PrimaryMark, PrimaryMode};
 use decodex_protocol::AgentAttachmentDto;
@@ -43,76 +55,16 @@ use decodex_protocol::AgentAttachmentDto;
 pub(super) const MODEL_MENU_WIDTH: f32 = 232.;
 pub(super) const MODEL_MENU_SHADOW: f32 = 8.;
 
-fn composer_hover_fill(send: bool, menu_active: bool) -> gpui::Rgba {
-	if send {
-		ui_theme::rgb(ui_theme::PRIMARY_FILL).blend(gpui::rgb(0xffffff).opacity(0.08))
-	} else {
-		crate::ui_theme::rgba(if menu_active { SELECTED_HOVER_FILL } else { HOVER_FILL })
-	}
-}
-
-#[cfg(any(test, target_os = "macos"))]
-pub(super) fn model_menu_bounds(
-	anchor: gpui::Bounds<gpui::Pixels>,
-	height: f32,
-	viewport: gpui::Size<gpui::Pixels>,
-) -> gpui::Bounds<gpui::Pixels> {
-	let width = MODEL_MENU_WIDTH + 2. * MODEL_MENU_SHADOW;
-	let x = (f32::from(anchor.left()) - MODEL_MENU_SHADOW)
-		.clamp(8., (f32::from(viewport.width) - width - 8.).max(8.));
-	let y = (f32::from(anchor.top()) - height).max(8.);
-	gpui::Bounds::new(
-		gpui::point(gpui::px(x), gpui::px(y)),
-		gpui::size(gpui::px(width), gpui::px(height)),
-	)
-}
-
 pub(super) struct ComposerTip(pub(super) String);
 impl Render for ComposerTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		crate::ui_motion::tooltip_surface(gpui::div())
+		ui_motion::tooltip_surface(gpui::div())
 			.px_3()
 			.py_2()
 			.text_size(gpui::px(11.0))
 			.text_color(crate::ui_theme::rgb(TEXT))
 			.child(self.0.clone())
 	}
-}
-
-pub(super) fn composer_capsule(native: bool) -> Stateful<Div> {
-	gpui::div()
-		.id("agent-composer")
-		.debug_selector(|| "agent-composer".into())
-		.occlude()
-		.relative()
-		.w_full()
-		.max_w(gpui::px(ui_theme::CONVERSATION_WIDTH))
-		.min_w_0()
-		.px(gpui::px(10.))
-		.py(gpui::px(7.))
-		.rounded(gpui::px(ui_theme::COMPOSER_RADIUS))
-		.when(
-			!native
-				|| ui_theme::material::Surface::InputBar.material()
-					== ui_theme::material::Material::Thin,
-			|d| d.border_1().border_color(crate::ui_theme::rgb(ui_theme::LINE_STRONG).opacity(0.4)),
-		)
-		// Native materials can take on a desktop tint. Keep the editor's reading
-		// surface in the selected palette while AppKit retains the material edge.
-		.when(native, |d| d.bg(crate::ui_theme::rgba(ui_theme::COMPOSER_MATERIAL)))
-		.when(!native, |d| d.bg(crate::ui_theme::rgba(ui_theme::COMPOSER_MATERIAL)))
-		.when(!native, |d| {
-			d.shadow(vec![gpui::BoxShadow {
-				inset: false,
-				color: crate::ui_theme::rgba(0x0000001a).into(),
-				offset: gpui::point(gpui::px(0.), gpui::px(4.)),
-				blur_radius: gpui::px(16.),
-				spread_radius: gpui::px(-5.),
-			}])
-		})
-		.flex()
-		.flex_col()
-		.gap(gpui::px(4.))
 }
 
 impl AgentSurface {
@@ -129,7 +81,6 @@ impl AgentSurface {
 
 	/// Move keyboard and accessibility focus into the current message editor.
 	pub(crate) fn focus_message(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-		use gpui::Focusable as _;
 		if self.composer_unavailable_reason().is_some() {
 			return;
 		}
@@ -137,6 +88,7 @@ impl AgentSurface {
 		if self.focus_native_message(cx) {
 			return;
 		}
+
 		window.focus(&self.conversation_composer().focus_handle(cx), cx);
 	}
 
@@ -149,6 +101,7 @@ impl AgentSurface {
 		}) {
 			return None;
 		}
+
 		let snapshot = self.snapshot.as_ref()?;
 		let selected = self.selected.as_ref()?;
 		let work = snapshot.work_items.iter().find(|work| &work.id == selected)?;
@@ -235,6 +188,7 @@ impl AgentSurface {
 		}
 		if self.dismiss_relation_usage_options(cx) {
 			self.escape_stop = None;
+
 			return;
 		}
 		if self.composer_menu.take().is_some() || self.dictation.is_some() {
@@ -390,6 +344,7 @@ impl AgentSurface {
 	pub(super) fn refresh_prompt(cx: &mut Context<Self>) {
 		#[cfg(not(test))]
 		cx.background_executor().spawn(async { prompts::refresh_cache() }).detach();
+
 		#[cfg(test)]
 		let _ = cx;
 	}
@@ -400,15 +355,15 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		#[cfg(all(target_os = "macos", not(test)))]
-		if self.native_composer.enabled {
+		if self.native_controls.composer.enabled {
 			return self.render_native_composer_anchor(cx);
 		}
 
 		gpui::div()
 			.w_full()
-			.px(gpui::px(crate::ui_theme::CONVERSATION_INSET))
-			.pt(gpui::px(crate::ui_theme::COMPOSER_TOP_GAP))
-			.pb(gpui::px(crate::ui_theme::COMPOSER_BOTTOM_GAP))
+			.px(gpui::px(CONVERSATION_INSET))
+			.pt(gpui::px(COMPOSER_TOP_GAP))
+			.pb(gpui::px(COMPOSER_BOTTOM_GAP))
 			.flex()
 			.flex_col()
 			.items_center()
@@ -426,51 +381,26 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
 		let capsule = composer_capsule(native);
-		let (blocked, opacity) = crate::ui_feedback::composer_block(
+		let (blocked, opacity) = ui_feedback::composer_block(
 			self.feedback_scope(),
 			self.composer_unavailable_reason(),
 			window,
 			cx,
 		);
-		let ready = crate::ui_motion::value(
+		let ready = ui_motion::value(
 			"composer-ready-opacity",
 			if blocked.is_none() { 1. } else { 0. },
 			window,
 			cx,
 		);
+
 		if let Some(reason) = blocked {
 			return self.render_blocked_composer(capsule, reason, opacity, window, cx);
 		}
-		self.update_question_placeholder(cx);
-		let editor = gpui::div()
-			.id("composer-editor-area")
-			.debug_selector(|| "composer-editor-area".into())
-			.flex()
-			.flex_col()
-			.flex_1()
-			.when(self.voice.is_none(), |d| d.flex_none().w_full())
-			.min_w_0()
-			.when(native, |d| {
-				d.on_mouse_down(
-					MouseButton::Left,
-					cx.listener(|s, _, _, cx| {
-						s.composer_menu = None;
 
-						cx.notify();
-					}),
-				)
-			})
-			.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
-				s.submit(cx);
-				cx.stop_propagation();
-			}))
-			.map(|editor| {
-				if let Some(waveform) = self.voice_controls(window, cx) {
-					editor.child(waveform)
-				} else {
-					editor.child(self.conversation_composer().clone())
-				}
-			});
+		self.update_question_placeholder(cx);
+
+		let editor = self.composer_editor(native, window, cx);
 
 		capsule
 			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
@@ -529,6 +459,7 @@ impl AgentSurface {
 									))
 								},
 							);
+
 						if self.voice.is_some() {
 							capsule.child(
 								controls.child(editor).child(self.composer_toolbar(window, cx)),
@@ -542,6 +473,43 @@ impl AgentSurface {
 			)
 	}
 
+	fn composer_editor(
+		&self,
+		native: bool,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Stateful<Div> {
+		gpui::div()
+			.id("composer-editor-area")
+			.debug_selector(|| "composer-editor-area".into())
+			.flex()
+			.flex_col()
+			.flex_1()
+			.when(self.voice.is_none(), |d| d.flex_none().w_full())
+			.min_w_0()
+			.when(native, |d| {
+				d.on_mouse_down(
+					MouseButton::Left,
+					cx.listener(|s, _, _, cx| {
+						s.composer_menu = None;
+
+						cx.notify();
+					}),
+				)
+			})
+			.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
+				s.submit(cx);
+				cx.stop_propagation();
+			}))
+			.map(|editor| {
+				if let Some(waveform) = self.voice_controls(window, cx) {
+					editor.child(waveform)
+				} else {
+					editor.child(self.conversation_composer().clone())
+				}
+			})
+	}
+
 	fn render_blocked_composer(
 		&self,
 		capsule: Stateful<Div>,
@@ -550,26 +518,30 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
-		use gpui::Focusable as _;
 		let input = self.conversation_composer();
+
 		if input.focus_handle(cx).is_focused(window) {
 			window.blur(cx);
 		}
 		if self.composer_menu.is_some() {
 			let owner = cx.entity().downgrade();
+
 			cx.defer(move |cx| {
 				let _ = owner.update(cx, |s, cx| {
 					s.composer_menu_content = None;
+
 					s.dismiss_composer_menu(cx);
 				});
 			});
 		}
+
 		let draft = input.read(cx).content().to_owned();
 		let draft_key = format!(
 			"composer-saved-draft-{:?}-{}",
 			input.entity_id(),
 			self.selected.as_deref().unwrap_or("new")
 		);
+
 		capsule.child(
 			gpui::div()
 				.id("composer-blocked")
@@ -592,9 +564,7 @@ impl AgentSurface {
 							.pb(gpui::px(4.))
 							.overflow_y_scroll()
 							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-							.child(agent_surface::selectable_text::SelectableText::plain(
-								draft_key, draft,
-							)),
+							.child(SelectableText::plain(draft_key, draft)),
 					)
 				})
 				.when(self.voice.is_some() || self.dictation.is_some(), |d| {
@@ -612,9 +582,14 @@ impl AgentSurface {
 		if self.workspace_connecting() || self.composer_unavailable_reason().is_some() {
 			return gpui::div();
 		}
+
 		let menu = self.composer_menu.or(self.composer_menu_content);
+
 		#[cfg(all(target_os = "macos", not(test)))]
-		if menu == Some("model") && self.native_composer.enabled && !self.native_model_menu.failed {
+		if menu == Some("model")
+			&& self.native_controls.composer.enabled
+			&& !self.native_controls.model_menu.failed
+		{
 			// The menu has its own overlay above the native composer. Keep only
 			// the main window's outside-click dismissal here.
 			return gpui::div().absolute().inset_0().on_mouse_down_out(cx.listener(
@@ -625,16 +600,19 @@ impl AgentSurface {
 				},
 			));
 		}
+
 		#[cfg(all(target_os = "macos", not(test)))]
-		let inline = !self.native_composer.enabled;
+		let inline = !self.native_controls.composer.enabled;
 		#[cfg(not(all(target_os = "macos", not(test))))]
 		let inline = true;
+
 		if menu == Some("model") && inline {
 			let Some(anchor) = self.menu_trigger_bounds.get("model") else { return gpui::div() };
+
 			return gpui::div().absolute().inset_0().child(
 				gpui::deferred(
 					gpui::anchored()
-						.anchor(gpui::Anchor::BottomLeft)
+						.anchor(Anchor::BottomLeft)
 						.snap_to_window()
 						.position(gpui::point(
 							anchor.left() - gpui::px(MODEL_MENU_SHADOW),
@@ -657,6 +635,7 @@ impl AgentSurface {
 				.priority(2),
 			);
 		}
+
 		let left = matches!(
 			menu,
 			Some("attachments" | "microphone" | "tasks" | "skills" | "agent-settings")
@@ -726,6 +705,7 @@ impl AgentSurface {
 					"Ask separately",
 					|s, cx| {
 						s.composer_menu = None;
+
 						s.open_sample(cx);
 					},
 					cx,
@@ -800,7 +780,6 @@ impl AgentSurface {
 
 	fn composer_toolbar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_agents.selected.is_some() {
-			use super::native_agents::NativeConnection;
 			let mut row = gpui::div()
 				.flex_1()
 				.min_w_0()
@@ -808,16 +787,14 @@ impl AgentSurface {
 				.flex()
 				.items_center()
 				.gap(gpui::px(8.));
+
 			match &self.native_agents.connection {
 				// Presented by the same blocked-composer surface as writer locks.
 				NativeConnection::ParentManaged => {},
 				NativeConnection::Failed(reason) => {
 					row = row
 						.child(
-							crate::ui_feedback::Tone::Error
-								.row("native-connection-error", reason)
-								.flex_1()
-								.min_w_0(),
+							Tone::Error.row("native-connection-error", reason).flex_1().min_w_0(),
 						)
 						.child(self.workspace_action(
 							"native-connect-retry".into(),
@@ -827,7 +804,7 @@ impl AgentSurface {
 						));
 				},
 				NativeConnection::Checking { .. } => {
-					row = row.justify_end().child(crate::ui_loading::loading(""));
+					row = row.justify_end().child(ui_loading::loading(""));
 				},
 				NativeConnection::Ready => {
 					row = row.justify_end().child(
@@ -855,6 +832,7 @@ impl AgentSurface {
 					);
 				},
 			}
+
 			return row.into_any_element();
 		}
 
@@ -917,6 +895,7 @@ impl AgentSurface {
 				|s, window, cx| {
 					if s.async_question_composer().is_some() {
 						s.submit(cx);
+
 						return;
 					}
 					if s.awaiting_start(cx) || s.interrupting.is_some() {
@@ -1000,10 +979,10 @@ impl AgentSurface {
 			.justify_center()
 			.text_size(gpui::px(12.0))
 			.line_height(gpui::px(16.0))
-			.text_color(ui_theme::rgb(if send { ui_theme::ON_PRIMARY } else { TEXT_MUTED }))
+			.text_color(ui_theme::rgb(if send { ON_PRIMARY } else { TEXT_MUTED }))
 			.when(id == "model", |d| {
 				d.px(gpui::px(4.))
-					.text_size(gpui::px(ui_theme::BODY_SIZE))
+					.text_size(gpui::px(BODY_SIZE))
 					.font_weight(FontWeight::NORMAL)
 					.flex_shrink(1.)
 					.min_w_0()
@@ -1015,10 +994,7 @@ impl AgentSurface {
 			})
 			.when(self.composer_menu == Some(id), |d| d.bg(crate::ui_theme::rgba(0xffffff12)))
 			.when(send, |d| {
-				d.w(gpui::px(28.))
-					.h(gpui::px(28.))
-					.rounded_full()
-					.bg(ui_theme::rgb(ui_theme::PRIMARY_FILL))
+				d.w(gpui::px(28.)).h(gpui::px(28.)).rounded_full().bg(ui_theme::rgb(PRIMARY_FILL))
 			})
 			.when(dictation_action, |d| d.w(gpui::px(26.)).h(gpui::px(26.)).px_0().rounded_full())
 			.when(id == "audio-item", |d| d.aria_expanded(self.composer_menu == Some("microphone")))
@@ -1028,6 +1004,7 @@ impl AgentSurface {
 				if disabled {
 					return d;
 				}
+
 				d.bg(composer_hover_fill(send, menu_active))
 			})
 			.focus(move |d| d.bg(composer_hover_fill(send, menu_active)))
@@ -1185,6 +1162,7 @@ impl AgentSurface {
 		self.composer_menu = None;
 		self.effort_drag = None;
 		self.effort_pointer = None;
+
 		cx.notify();
 	}
 
@@ -1193,8 +1171,11 @@ impl AgentSurface {
 		let menu = self.composer_menu.or(self.composer_menu_content)?;
 		let anchor = self.menu_trigger_bounds.get("attach").copied();
 		#[cfg(all(target_os = "macos", not(test)))]
-		let anchor =
-			if self.native_composer.enabled { self.native_composer.bounds } else { anchor };
+		let anchor = if self.native_controls.composer.enabled {
+			self.native_controls.composer.bounds
+		} else {
+			anchor
+		};
 		// The native composer is a child window. Its parent-space anchor, rather than
 		// the child control bounds, gives the space available above the popover.
 		let settings_height =
@@ -1213,7 +1194,7 @@ impl AgentSurface {
 				.on_mouse_down_out(cx.listener(|s, event: &MouseDownEvent, _, cx| {
 					let trigger_hit = {
 						#[cfg(all(target_os = "macos", not(test)))]
-						let same_window = !s.native_composer.enabled;
+						let same_window = !s.native_controls.composer.enabled;
 						#[cfg(not(all(target_os = "macos", not(test))))]
 						let same_window = true;
 
@@ -1292,6 +1273,7 @@ impl AgentSurface {
 			{
 				self.effort = effort;
 			}
+
 			self.model.update(cx, |input, cx| input.set_content(value, cx));
 			self.mark_model_intent(cx);
 			self.reconcile_selected_model_effort(cx);
@@ -1321,6 +1303,7 @@ impl AgentSurface {
 
 		let capacity = usage.context_window.filter(|size| *size > 0)?;
 		let percent = usage.context_tokens as f64 / capacity as f64 * 100.0;
+
 		Some(
 			gpui::div()
 				.id("composer-context-detail")
@@ -1488,6 +1471,64 @@ impl AgentSurface {
 	}
 }
 
+#[cfg(any(test, target_os = "macos"))]
+pub(super) fn model_menu_bounds(
+	anchor: gpui::Bounds<gpui::Pixels>,
+	height: f32,
+	viewport: gpui::Size<gpui::Pixels>,
+) -> gpui::Bounds<gpui::Pixels> {
+	let width = MODEL_MENU_WIDTH + 2. * MODEL_MENU_SHADOW;
+	let x = (f32::from(anchor.left()) - MODEL_MENU_SHADOW)
+		.clamp(8., (f32::from(viewport.width) - width - 8.).max(8.));
+	let y = (f32::from(anchor.top()) - height).max(8.);
+
+	gpui::Bounds::new(
+		gpui::point(gpui::px(x), gpui::px(y)),
+		gpui::size(gpui::px(width), gpui::px(height)),
+	)
+}
+
+pub(super) fn composer_capsule(native: bool) -> Stateful<Div> {
+	gpui::div()
+		.id("agent-composer")
+		.debug_selector(|| "agent-composer".into())
+		.occlude()
+		.relative()
+		.w_full()
+		.max_w(gpui::px(CONVERSATION_WIDTH))
+		.min_w_0()
+		.px(gpui::px(10.))
+		.py(gpui::px(7.))
+		.rounded(gpui::px(COMPOSER_RADIUS))
+		.when(!native || Surface::InputBar.material() == Material::Thin, |d| {
+			d.border_1().border_color(crate::ui_theme::rgb(LINE_STRONG).opacity(0.4))
+		})
+		// Native materials can take on a desktop tint. Keep the editor's reading
+		// surface in the selected palette while AppKit retains the material edge.
+		.when(native, |d| d.bg(crate::ui_theme::rgba(COMPOSER_MATERIAL)))
+		.when(!native, |d| d.bg(crate::ui_theme::rgba(COMPOSER_MATERIAL)))
+		.when(!native, |d| {
+			d.shadow(vec![gpui::BoxShadow {
+				inset: false,
+				color: crate::ui_theme::rgba(0x0000001a).into(),
+				offset: gpui::point(gpui::px(0.), gpui::px(4.)),
+				blur_radius: gpui::px(16.),
+				spread_radius: gpui::px(-5.),
+			}])
+		})
+		.flex()
+		.flex_col()
+		.gap(gpui::px(4.))
+}
+
+fn composer_hover_fill(send: bool, menu_active: bool) -> Rgba {
+	if send {
+		ui_theme::rgb(PRIMARY_FILL).blend(gpui::rgb(0xffffff).opacity(0.08))
+	} else {
+		crate::ui_theme::rgba(if menu_active { SELECTED_HOVER_FILL } else { HOVER_FILL })
+	}
+}
+
 fn save_clipboard_image(image: &Image) -> Result<std::path::PathBuf> {
 	let home = env::var_os("HOME").ok_or_else(|| Error::other("Home directory unavailable"))?;
 	let dir = std::path::PathBuf::from(home).join(".decodex/attachments");
@@ -1515,12 +1556,13 @@ fn save_clipboard_image(image: &Image) -> Result<std::path::PathBuf> {
 
 fn context_ring(fraction: f32) -> impl IntoElement {
 	let fill = crate::ui_theme::rgb(if fraction >= 0.9 {
-		ui_theme::ERROR
+		ERROR
 	} else if fraction >= 0.7 {
-		ui_theme::WARNING
+		WARNING
 	} else {
-		ui_theme::INFO
+		INFO
 	});
+
 	gpui::canvas(
 		|_, _, _| (),
 		move |bounds, _, window, _| {
@@ -1559,40 +1601,58 @@ mod tests {
 
 	use gpui::AppContext as _;
 
-	use crate::shell::agent_surface::composer::{
-		AgentActionDto, AgentDispatchStateDto, AgentSnapshotResult, AgentSurface,
-		ConversationModel, ConversationReasoningEffort, EntityId, HistoryText,
+	use crate::shell::agent_surface::{
+		composer::{
+			AgentActionDto, AgentDispatchStateDto, AgentSnapshotResult, AgentSurface,
+			ConversationModel, ConversationReasoningEffort, EntityId, HistoryText,
+		},
+		native_timeline::Binding,
 	};
+	use decodex_protocol::{AgentTimelineContent, AgentTimelineEntry};
 
 	#[gpui::test]
 	fn graph_and_inspector_keep_native_glass_and_the_current_draft(cx: &mut gpui::TestAppContext) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+
 			assert!(s.native_composer_requested(true, true));
+
 			s.resources = Some((
 				s.selected.clone().unwrap(),
 				Some(decodex_protocol::AgentResourcesResult::Unavailable),
 			));
 			s.workspace.details_visible = true;
+
 			assert!(s.native_composer_requested(true, true));
+
 			s.workspace.details_visible = false;
+
 			assert!(s.native_composer_requested(true, true));
+
 			s.workspace.graph_visible = true;
 			s.workspace.graph_expanded = true;
+
 			assert!(s.graph_has_composer());
 			assert!(s.native_composer_requested(true, true));
+
 			s.workspace.details_visible = true;
+
 			assert!(s.native_composer_requested(true, true));
 			assert!(!s.native_composer_requested(false, true));
 			assert!(!s.native_composer_requested(true, false));
+
 			crate::ui_theme::material::Surface::InputBar
 				.select(crate::ui_theme::material::Material::Thin, cx);
+
 			assert!(s.native_composer_requested(true, true));
 			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+
 			crate::ui_theme::material::Surface::InputBar
 				.select(crate::ui_theme::material::Material::LiquidGlass, cx);
+
 			assert!(s.native_composer_requested(true, true));
 		});
 	}
@@ -1600,12 +1660,14 @@ mod tests {
 	#[test]
 	fn native_model_menu_fits_above_the_trigger_without_covering_it() {
 		let viewport = gpui::size(gpui::px(900.), gpui::px(720.));
+
 		for x in [100., 850.] {
 			let trigger = gpui::Bounds::new(
 				gpui::point(gpui::px(x), gpui::px(650.)),
 				gpui::size(gpui::px(120.), gpui::px(28.)),
 			);
 			let menu = super::model_menu_bounds(trigger, 240., viewport);
+
 			assert_eq!(menu.bottom(), trigger.top());
 			assert!(menu.left() >= gpui::px(8.));
 			assert!(menu.right() <= viewport.width - gpui::px(8.));
@@ -1615,21 +1677,28 @@ mod tests {
 	#[gpui::test]
 	fn model_menu_stays_near_its_button_in_a_tall_composer(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1000.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.composer.update(cx, |input, cx| input.set_content(&"Draft line\n".repeat(6), cx));
+
 			s.composer_menu = Some("model");
 			s.composer_menu_content = Some("model");
+
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
 		visual.update(|w, _| w.refresh());
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		let trigger = visual.debug_bounds("composer-model").unwrap();
 		let menu = visual.debug_bounds("model-options").unwrap();
 		let composer = visual.debug_bounds("agent-composer").unwrap();
 		let gap = f32::from(trigger.top() - menu.bottom());
+
 		assert!((4. ..=16.).contains(&gap), "menu gap: {gap}");
 		assert!(menu.bottom() > composer.top() + gpui::px(50.));
 	}
@@ -1637,27 +1706,30 @@ mod tests {
 	#[gpui::test]
 	fn native_and_main_composers_keep_the_same_geometry(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1200.)));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_200.)));
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			cx.notify();
 		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		let main = visual.debug_bounds("agent-composer").unwrap();
 		let main_send = visual.debug_bounds("composer-send").unwrap();
+
 		surface.update(visual, |s, cx| {
 			s.native_agents.selected = Some(("agent".into(), "child".into()));
 			s.native_agents.connection =
 				crate::shell::agent_surface::native_agents::NativeConnection::Ready;
+
 			cx.notify();
 		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		let native = visual.debug_bounds("agent-composer").unwrap();
 		let native_send = visual.debug_bounds("composer-send").unwrap();
+
 		assert_eq!(main.size, native.size);
 		assert_eq!(main.right() - main_send.right(), native.right() - native_send.right());
 		assert_eq!(main.bottom() - main_send.bottom(), native.bottom() - native_send.bottom());
@@ -1755,13 +1827,12 @@ mod tests {
 	fn native_completion_stops_response_ui_before_the_snapshot_catches_up(
 		cx: &mut gpui::TestAppContext,
 	) {
-		use crate::shell::agent_surface::native_timeline::Binding;
-		use decodex_protocol::{AgentTimelineContent, AgentTimelineEntry};
-
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.composer.update(cx, |input, cx| input.clear(cx));
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -1770,15 +1841,19 @@ mod tests {
 				.iter_mut()
 				.find(|w| w.id == "agent")
 				.unwrap();
+
 			work.codex_thread_id = Some("thread".into());
 			work.active_turn_id = Some("turn".into());
 			work.dispatch_state = AgentDispatchStateDto::Running;
+
 			let work = work.clone();
+
 			s.timeline.native.binding = Some(Binding {
 				work: work.id.clone(),
 				thread: "thread".into(),
 				account: "account".into(),
 			});
+
 			assert!(s.response_in_progress(&work));
 			assert!(s.stop_button(cx));
 
@@ -1795,15 +1870,20 @@ mod tests {
 						error: None,
 					},
 				}];
+
 				assert!(!s.response_in_progress(&work));
 				assert!(s.running_turn().is_none());
 				assert!(!s.stop_button(cx));
 			}
 
 			let mut newer = work.clone();
+
 			newer.active_turn_id = Some("next-turn".into());
+
 			assert!(s.response_in_progress(&newer), "an old completion must not stop new work");
+
 			s.timeline.native.binding.as_mut().unwrap().thread = "other-thread".into();
+
 			assert!(s.response_in_progress(&work), "completion belongs to its exact conversation");
 		});
 	}

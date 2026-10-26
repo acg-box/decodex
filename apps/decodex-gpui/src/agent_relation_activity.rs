@@ -1,9 +1,14 @@
 //! Source-bound assignments and operations. Replies belong to the conversation and timeline.
-use decodex_protocol::{AgentTimelineContent, AgentTimelineEntry};
-use pulldown_cmark::{Event, Options, Parser, TagEnd};
-use std::collections::BTreeMap;
-
 #[path = "agent_relation_wording.rs"] pub(super) mod wording;
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use pulldown_cmark::{Event, Options, Parser, TagEnd};
+
+use crate::shell::agent_surface::native_timeline;
+use decodex_protocol::{AgentTimelineContent, AgentTimelineEntry};
+
+pub(super) const MAX_RECENT: usize = 5;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Preview {
@@ -21,87 +26,16 @@ pub(super) struct Operation {
 	pub kind: OperationKind,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) enum OperationKind {
-	#[default]
-	Action,
-	Message,
-	Result,
-	Question,
-}
-
-pub(super) const MAX_RECENT: usize = 5;
-
-fn recent(entries: &[AgentTimelineEntry], turn: &str) -> Vec<Operation> {
-	let mut seen = std::collections::BTreeSet::new();
-	let mut operations = Vec::new();
-	let completed = entries.iter().any(|entry| {
-		matches!(
-			&entry.content,
-			AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } if turn_id == turn
-		)
-	});
-	for entry in entries.iter().rev() {
-		let AgentTimelineContent::Item {
-			turn_id,
-			item_id,
-			activity,
-			collaboration,
-			kind,
-			phase,
-			text: message,
-			..
-		} = &entry.content
-		else {
-			continue;
-		};
-		if turn_id != turn || !seen.insert(item_id) {
-			continue;
-		}
-		let source = if let Some(activity) = activity {
-			let label = super::super::native_timeline::activity_label(
-				activity,
-				collaboration.as_ref(),
-				&[],
-			);
-			if !activity.detail.trim().is_empty()
-				&& collaboration.is_none()
-				&& label != activity.detail
-			{
-				format!("{label} · {}", activity.detail)
-			} else {
-				label
-			}
-		} else if kind == "agentMessage" {
-			message.clone()
-		} else {
-			continue;
-		};
-		let label = if activity.is_some() { plain(&source) } else { wording::message(&source) };
-		if label.is_empty() {
-			continue;
-		}
-		let kind = if activity.is_some() {
-			OperationKind::Action
-		} else if phase.as_deref() == Some("final_answer") || (completed && phase.is_none()) {
-			OperationKind::Result
-		} else {
-			OperationKind::Message
-		};
-		operations.push(Operation { id: format!("{turn}:{item_id}"), text: label, kind });
-		if operations.len() == MAX_RECENT {
-			break;
-		}
-	}
-	operations.reverse();
-	operations
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Output {
 	pub turn: String,
 	pub text: String,
 	pub truncated: bool,
+}
+impl Output {
+	pub fn borrowed(&self) -> OutputRef<'_> {
+		OutputRef { turn: &self.turn, text: &self.text, truncated: self.truncated }
+	}
 }
 
 pub(super) struct OutputRef<'a> {
@@ -110,10 +44,13 @@ pub(super) struct OutputRef<'a> {
 	pub truncated: bool,
 }
 
-impl Output {
-	pub fn borrowed(&self) -> OutputRef<'_> {
-		OutputRef { turn: &self.turn, text: &self.text, truncated: self.truncated }
-	}
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum OperationKind {
+	#[default]
+	Action,
+	Message,
+	Result,
+	Question,
 }
 
 /// Retain the returned answer for in-place reading; cards derive their own excerpt.
@@ -133,6 +70,7 @@ pub(super) fn output(entries: &[AgentTimelineEntry]) -> Option<Output> {
 			_ => None,
 		})
 	};
+
 	message(Some("final_answer")).or_else(|| message(None)).map(|output| Output {
 		turn: output.turn.into(),
 		text: output.text.into(),
@@ -146,6 +84,7 @@ pub(super) fn latest_output(entries: &[AgentTimelineEntry]) -> Option<OutputRef<
 		| AgentTimelineContent::TurnBoundary { turn_id, .. } => Some(turn_id.as_str()),
 		_ => None,
 	})?;
+
 	entries.iter().rev().find_map(|entry| match &entry.content {
 		AgentTimelineContent::Item { turn_id, kind, text: source, truncated, .. }
 			if turn_id == turn && kind == "agentMessage" && !source.trim().is_empty() =>
@@ -159,14 +98,17 @@ pub(super) fn assignments(
 	sender: &str,
 ) -> BTreeMap<String, String> {
 	let mut names = BTreeMap::new();
+
 	for entry in entries {
 		let AgentTimelineContent::Item { activity, collaboration: Some(call), .. } = &entry.content
 		else {
 			continue;
 		};
+
 		if call.sender_thread_id != sender {
 			continue;
 		}
+
 		let explicit = matches!(
 			call.tool.as_str(),
 			"spawnAgent" | "sendInput" | "sendMessage" | "followupTask"
@@ -178,13 +120,16 @@ pub(super) fn assignments(
 		{
 			// Current native events expose a task path, not the encrypted input body.
 			let Some((_, name)) = activity.detail.rsplit_once('/') else { continue };
+
 			text(&name.replace('_', " "))
 		} else {
 			continue;
 		};
+
 		if label.is_empty() {
 			continue;
 		}
+
 		for receiver in &call.receiver_thread_ids {
 			if explicit {
 				names.insert(receiver.clone(), label.clone());
@@ -193,6 +138,7 @@ pub(super) fn assignments(
 			}
 		}
 	}
+
 	names
 }
 
@@ -200,10 +146,13 @@ pub(super) fn text(source: &str) -> String {
 	let compact = plain(source);
 	let mut chars = compact.chars();
 	let mut preview: String = chars.by_ref().take(180).collect();
+
 	if chars.next().is_some() {
 		preview = preview.trim_end().to_owned();
+
 		preview.push('…');
 	}
+
 	preview
 }
 
@@ -225,6 +174,7 @@ pub(super) fn plain(source: &str) -> String {
 			_ => None,
 		})
 		.collect();
+
 	plain.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
@@ -259,15 +209,12 @@ pub(super) fn latest(entries: &[AgentTimelineEntry], turn: Option<&str>) -> Opti
 				turn_id, activity: Some(activity), collaboration, ..
 			} if turn_id == turn && activity.kind != "subAgentActivity" => {
 				let source = if activity.detail.trim().is_empty() {
-					super::super::native_timeline::activity_label(
-						activity,
-						collaboration.as_ref(),
-						&[],
-					)
+					native_timeline::activity_label(activity, collaboration.as_ref(), &[])
 				} else {
 					activity.detail.clone()
 				};
 				let text = text(&source);
+
 				(!text.is_empty()).then_some(text)
 			},
 			_ => None,
@@ -292,7 +239,7 @@ pub(super) fn latest(entries: &[AgentTimelineEntry], turn: Option<&str>) -> Opti
 				} if turn_id == turn
 					&& matches!(activity.status.as_str(), "running" | "inProgress") =>
 					Some(if collaboration.is_some() || activity.detail.trim().is_empty() {
-						text(&super::super::native_timeline::activity_label(
+						text(&native_timeline::activity_label(
 							activity,
 							collaboration.as_ref(),
 							&[],
@@ -305,13 +252,87 @@ pub(super) fn latest(entries: &[AgentTimelineEntry], turn: Option<&str>) -> Opti
 		})
 		.flatten();
 	let recent = recent(entries, turn);
+
 	(!task.is_empty() || !preview_text.is_empty() || running.is_some() || !recent.is_empty())
 		.then(|| Preview { turn: turn.into(), task, text: preview_text, running, recent })
 }
 
+fn recent(entries: &[AgentTimelineEntry], turn: &str) -> Vec<Operation> {
+	let completed = entries.iter().any(|entry| {
+		matches!(
+			&entry.content,
+			AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } if turn_id == turn
+		)
+	});
+	let mut seen = BTreeSet::new();
+	let mut operations = Vec::new();
+
+	for entry in entries.iter().rev() {
+		let AgentTimelineContent::Item {
+			turn_id,
+			item_id,
+			activity,
+			collaboration,
+			kind,
+			phase,
+			text: message,
+			..
+		} = &entry.content
+		else {
+			continue;
+		};
+
+		if turn_id != turn || !seen.insert(item_id) {
+			continue;
+		}
+
+		let source = if let Some(activity) = activity {
+			let label = native_timeline::activity_label(activity, collaboration.as_ref(), &[]);
+
+			if !activity.detail.trim().is_empty()
+				&& collaboration.is_none()
+				&& label != activity.detail
+			{
+				format!("{label} · {}", activity.detail)
+			} else {
+				label
+			}
+		} else if kind == "agentMessage" {
+			message.clone()
+		} else {
+			continue;
+		};
+		let label = if activity.is_some() { plain(&source) } else { wording::message(&source) };
+
+		if label.is_empty() {
+			continue;
+		}
+
+		let kind = if activity.is_some() {
+			OperationKind::Action
+		} else if phase.as_deref() == Some("final_answer") || (completed && phase.is_none()) {
+			OperationKind::Result
+		} else {
+			OperationKind::Message
+		};
+
+		operations.push(Operation { id: format!("{turn}:{item_id}"), text: label, kind });
+
+		if operations.len() == MAX_RECENT {
+			break;
+		}
+	}
+
+	operations.reverse();
+
+	operations
+}
+
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::work_board::activity::{
+		self, AgentTimelineContent, AgentTimelineEntry, BTreeMap, Operation, OperationKind, Output,
+	};
 
 	fn item(turn: &str, kind: &str, text: &str) -> AgentTimelineEntry {
 		AgentTimelineEntry {
@@ -334,26 +355,34 @@ mod tests {
 	#[test]
 	fn terminal_briefs_prefer_the_complete_final_answer_over_commentary() {
 		let mut final_answer = item("turn", "agentMessage", "Complete result.\n\nFinal paragraph.");
+
 		if let AgentTimelineContent::Item { phase, .. } = &mut final_answer.content {
 			*phase = Some("final_answer".into());
 		}
+
 		let mut commentary = item("turn", "agentMessage", "Finishing the check");
+
 		if let AgentTimelineContent::Item { phase, .. } = &mut commentary.content {
 			*phase = Some("commentary".into());
 		}
+
 		let entries = vec![final_answer, commentary.clone()];
-		assert_eq!(output(&entries).unwrap().text, "Complete result.\n\nFinal paragraph.");
+
 		assert_eq!(
-			latest_output(&entries).unwrap().text,
+			activity::output(&entries).unwrap().text,
+			"Complete result.\n\nFinal paragraph."
+		);
+		assert_eq!(
+			activity::latest_output(&entries).unwrap().text,
 			"Finishing the check",
 			"live preview keeps its existing behavior"
 		);
 		assert!(
-			output(&[commentary]).is_none(),
+			activity::output(&[commentary]).is_none(),
 			"an explicit commentary phase is not a returned result"
 		);
 		assert_eq!(
-			output(&[item("legacy", "agentMessage", "Legacy result")]).unwrap().text,
+			activity::output(&[item("legacy", "agentMessage", "Legacy result")]).unwrap().text,
 			"Legacy result"
 		);
 	}
@@ -361,30 +390,42 @@ mod tests {
 	#[test]
 	fn output_retains_the_returned_answer_and_excludes_other_turns_and_reasoning() {
 		let mut entries = vec![item("old", "agentMessage", "Previous result")];
-		assert_eq!(output(&entries).unwrap().text, "Previous result");
+
+		assert_eq!(activity::output(&entries).unwrap().text, "Previous result");
+
 		entries.push(item("next", "userMessage", "Run the new check"));
-		assert!(output(&entries).is_none());
+
+		assert!(activity::output(&entries).is_none());
+
 		entries.push(item("next", "reasoning", "Private reasoning"));
-		assert!(output(&entries).is_none());
+
+		assert!(activity::output(&entries).is_none());
+
 		entries.push(item("next", "agentMessage", "**Compatibility checks passed.**"));
+
 		assert_eq!(
-			output(&entries),
+			activity::output(&entries),
 			Some(Output {
 				turn: "next".into(),
 				text: "**Compatibility checks passed.**".into(),
 				truncated: false
 			})
 		);
-		entries.push(item("next", "agentMessage", &"result ".repeat(1000)));
-		let answer = output(&entries).unwrap();
-		assert_eq!(answer.text, "result ".repeat(1000));
-		assert!(text(&answer.text).chars().count() <= 181);
+
+		entries.push(item("next", "agentMessage", &"result ".repeat(1_000)));
+
+		let answer = activity::output(&entries).unwrap();
+
+		assert_eq!(answer.text, "result ".repeat(1_000));
+		assert!(activity::text(&answer.text).chars().count() <= 181);
+
 		if let AgentTimelineContent::Item { truncated, .. } =
 			&mut entries.last_mut().unwrap().content
 		{
 			*truncated = true;
 		}
-		assert!(output(&entries).unwrap().truncated);
+
+		assert!(activity::output(&entries).unwrap().truncated);
 	}
 
 	#[test]
@@ -394,6 +435,7 @@ mod tests {
 			item("now", "agentMessage", "Checking the change"),
 		];
 		let mut command = item("now", "commandExecution", "");
+
 		if let AgentTimelineContent::Item { activity, .. } = &mut command.content {
 			*activity = Some(decodex_protocol::AgentActivityDto {
 				turn_id: "now".into(),
@@ -408,19 +450,28 @@ mod tests {
 				duration_ms: None,
 			});
 		}
+
 		entries.push(command);
-		assert_eq!(latest(&entries, Some("now")).unwrap().text, "cargo test");
-		assert_eq!(latest(&entries, Some("now")).unwrap().running.as_deref(), Some("cargo test"));
+
+		assert_eq!(activity::latest(&entries, Some("now")).unwrap().text, "cargo test");
+		assert_eq!(
+			activity::latest(&entries, Some("now")).unwrap().running.as_deref(),
+			Some("cargo test")
+		);
+
 		if let AgentTimelineContent::Item { activity: Some(activity), .. } = &mut entries[2].content
 		{
 			activity.status = "completed".into();
 		}
-		assert!(latest(&entries, Some("now")).unwrap().running.is_none());
+
+		assert!(activity::latest(&entries, Some("now")).unwrap().running.is_none());
+
 		entries.push(item("now", "agentMessage", "**All checks passed.**"));
 		entries.push(item("now", "reasoning", "The reply is ready."));
-		assert_eq!(latest(&entries, None).unwrap().text, "cargo test");
+
+		assert_eq!(activity::latest(&entries, None).unwrap().text, "cargo test");
 		assert!(
-			latest(&entries, Some("next")).is_none(),
+			activity::latest(&entries, Some("next")).is_none(),
 			"a new turn cannot show the previous reply as current activity"
 		);
 	}
@@ -431,10 +482,14 @@ mod tests {
 			item("old", "agentMessage", "Old output"),
 			item("next", "userMessage", "Review the scroll behavior"),
 		];
-		let preview = latest(&entries, None).unwrap();
+		let preview = activity::latest(&entries, None).unwrap();
+
 		assert_eq!(preview.task, "Review the scroll behavior");
 		assert!(preview.text.is_empty());
-		let reply = latest(&[item("next", "agentMessage", "Only a reply")], None).unwrap();
+
+		let reply =
+			activity::latest(&[item("next", "agentMessage", "Only a reply")], None).unwrap();
+
 		assert!(reply.task.is_empty() && reply.text.is_empty() && reply.running.is_none());
 		assert_eq!(
 			reply.recent[0].text, "Only a reply",
@@ -446,9 +501,11 @@ mod tests {
 	fn recent_output_keeps_native_ids_and_rejects_other_turns_and_user_messages() {
 		let message = |turn: &str, id: &str, body: &str| {
 			let mut entry = item(turn, "agentMessage", body);
+
 			if let AgentTimelineContent::Item { item_id, .. } = &mut entry.content {
 				*item_id = id.into();
 			}
+
 			entry
 		};
 		let entries = vec![
@@ -462,8 +519,9 @@ mod tests {
 			message("now", "5", "Review complete"),
 			message("now", "6", "Handed off"),
 		];
+
 		assert_eq!(
-			recent(&entries, "now"),
+			activity::recent(&entries, "now"),
 			vec![
 				Operation {
 					id: "now:2".into(),
@@ -497,9 +555,11 @@ mod tests {
 	#[test]
 	fn returned_answers_are_not_live_operations_and_errors_keep_their_assignment() {
 		let mut answer = item("turn", "agentMessage", "Created the reading guide.");
+
 		if let AgentTimelineContent::Item { phase, .. } = &mut answer.content {
 			*phase = Some("final_answer".into());
 		}
+
 		let completed = AgentTimelineEntry {
 			position: 1,
 			content: AgentTimelineContent::TurnBoundary {
@@ -515,21 +575,25 @@ mod tests {
 		let receipt = item("turn", "reasoning", "Late saved activity");
 		let assignment = item("turn", "agentInput", "Check the reading time");
 		let mut entries = vec![assignment, answer, completed, receipt];
-		let preview = latest(&entries, None).unwrap();
+		let preview = activity::latest(&entries, None).unwrap();
+
 		assert_eq!(preview.task, "Check the reading time");
 		assert!(preview.text.is_empty());
+
 		if let AgentTimelineContent::TurnBoundary { error, .. } = &mut entries[2].content {
 			*error = Some(decodex_protocol::AgentTimelineError {
 				message: "Permission denied".into(),
 				truncated: false,
 			});
 		}
-		assert_eq!(latest(&entries, None).unwrap().text, "Permission denied");
+
+		assert_eq!(activity::latest(&entries, None).unwrap().text, "Permission denied");
 	}
 
 	#[test]
 	fn native_task_paths_identify_the_exact_recipient_without_inventing_a_prompt() {
 		let mut event = item("turn", "subAgentActivity", "");
+
 		if let AgentTimelineContent::Item { activity, collaboration, .. } = &mut event.content {
 			*activity = Some(decodex_protocol::AgentActivityDto {
 				turn_id: "turn".into(),
@@ -552,19 +616,23 @@ mod tests {
 				results: vec![],
 			});
 		}
+
 		assert_eq!(
-			assignments(&[event.clone()], "parent"),
+			activity::assignments(&[event.clone()], "parent"),
 			BTreeMap::from([("child".into(), "soup idea".into())])
 		);
-		assert!(assignments(&[event.clone()], "other-parent").is_empty());
+		assert!(activity::assignments(&[event.clone()], "other-parent").is_empty());
+
 		let mut explicit = event.clone();
+
 		if let AgentTimelineContent::Item { collaboration: Some(call), .. } = &mut explicit.content
 		{
 			call.tool = "sendInput".into();
 			call.prompt = "Review the soup ingredients".into();
 		}
+
 		assert_eq!(
-			assignments(&[explicit, event], "parent")["child"],
+			activity::assignments(&[explicit, event], "parent")["child"],
 			"Review the soup ingredients"
 		);
 	}
@@ -572,6 +640,7 @@ mod tests {
 	#[test]
 	fn recent_operations_keep_five_distinct_native_items_and_latest_revision() {
 		let mut entries = Vec::new();
+
 		for (id, label) in [
 			("a", "Read Cargo.toml"),
 			("b", "Run cargo check"),
@@ -582,6 +651,7 @@ mod tests {
 			("f", "Findings delivered"),
 		] {
 			let mut entry = item("now", "commandExecution", "");
+
 			if let AgentTimelineContent::Item { item_id, activity, .. } = &mut entry.content {
 				*item_id = id.into();
 				*activity = Some(decodex_protocol::AgentActivityDto {
@@ -597,26 +667,31 @@ mod tests {
 					duration_ms: None,
 				});
 			}
+
 			entries.push(entry);
 		}
-		let preview = latest(&entries, Some("now")).unwrap();
+
+		let preview = activity::latest(&entries, Some("now")).unwrap();
+
 		assert_eq!(
 			preview.recent.iter().map(|op| op.id.as_str()).collect::<Vec<_>>(),
 			["now:b", "now:c", "now:d", "now:e", "now:f"]
 		);
 		assert_eq!(preview.recent[2].text, "Command · Tests passed");
-		assert!(latest(&entries, Some("next")).is_none());
+		assert!(activity::latest(&entries, Some("next")).is_none());
 	}
 
 	#[test]
 	fn preview_is_plain_bounded_text_without_losing_unicode() {
 		assert_eq!(
-			text("## Result\n\nUse **Markdown** with [links](https://example.com)."),
+			activity::text("## Result\n\nUse **Markdown** with [links](https://example.com)."),
 			"Result Use Markdown with links."
 		);
-		let preview = text(&"图".repeat(1000));
+
+		let preview = activity::text(&"图".repeat(1_000));
+
 		assert_eq!(preview.chars().count(), 181);
 		assert!(preview.ends_with('…'));
-		assert_eq!(plain(&"图".repeat(1000)).chars().count(), 640);
+		assert_eq!(activity::plain(&"图".repeat(1_000)).chars().count(), 640);
 	}
 }

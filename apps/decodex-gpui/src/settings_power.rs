@@ -1,7 +1,10 @@
 //! Host-owned macOS sleep policy. Never stores a competing application preference.
 use gpui::{AnyElement, Styled as _, Task, prelude::FluentBuilder as _};
 
-use crate::settings_surface::{Context, IntoElement, ParentElement, SettingsSurface, ui_theme};
+use crate::{
+	settings_surface::{Context, IntoElement, ParentElement, SettingsSurface, switch, ui_theme},
+	ui_feedback::Feedback,
+};
 
 #[derive(Default)]
 pub(super) struct PowerSettings {
@@ -81,7 +84,7 @@ impl SettingsSurface {
 						"Applies to this Mac on power and battery, even after quitting Decodex.",
 					))
 					.child(
-						super::switch::settings_switch(
+						switch::settings_switch(
 							"prevent-system-sleep",
 							"power-sleep-knob",
 							"Prevent system sleep",
@@ -103,10 +106,7 @@ impl SettingsSurface {
 			.children(super::setting_notice(
 				"power-settings-feedback",
 				"System sleep setting unavailable",
-				self.power
-					.error
-					.as_ref()
-					.map(|message| crate::ui_feedback::Feedback::error(message.clone())),
+				self.power.error.as_ref().map(|message| Feedback::error(message.clone())),
 			))
 			.when(self.power.error.is_some(), |d| {
 				d.child(super::setting_action("power-settings-retry", "Retry", cx, |s, cx| {

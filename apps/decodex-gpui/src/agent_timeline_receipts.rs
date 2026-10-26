@@ -8,7 +8,7 @@ use crate::{
 		agent_surface,
 		agent_surface::native_timeline::{
 			self, AgentHistoryResult, AgentSurface, AgentTimelineContent, AgentWorkItemDto,
-			Context, FluentBuilder, IntoElement, ParentElement, Styled, markdown,
+			Context, FluentBuilder, IntoElement, ParentElement, Styled, inputs, markdown,
 		},
 	},
 	ui_loading,
@@ -25,6 +25,7 @@ impl AgentSurface {
 
 	fn saved_delivery_entries(&self, work: &str) -> BTreeMap<i64, &AgentHistoryEntryDto> {
 		let mut saved = BTreeMap::new();
+
 		if let Some((older, _)) = self.timeline.older_history.get(work) {
 			saved.extend(older.iter().map(|entry| (entry.id, entry)));
 		}
@@ -33,6 +34,7 @@ impl AgentSurface {
 		{
 			saved.extend(entries.iter().map(|entry| (entry.id, entry)));
 		}
+
 		saved
 	}
 
@@ -42,12 +44,14 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Vec<AnyElement> {
 		let mut rows = self.native_input_receipts_panel(work, cx);
+
 		for entry in self.saved_delivery_entries(&work.id).values() {
 			let Some(label) = receipt_label(entry) else { continue };
+
 			if entry.kind != "unsent_input" && label != "Local input · Delivery not confirmed" {
 				continue;
 			}
-			if super::inputs::submission_pending(&work.dispatch_state, entry) {
+			if inputs::submission_pending(&work.dispatch_state, entry) {
 				continue;
 			}
 			if label == "Local input · Delivery not confirmed"
@@ -56,8 +60,10 @@ impl AgentSurface {
 			{
 				continue;
 			}
+
 			rows.push(self.local_receipt_row(entry, label, work, cx).into_any_element());
 		}
+
 		rows
 	}
 
@@ -125,7 +131,7 @@ impl AgentSurface {
 			{
 				continue;
 			}
-			if super::inputs::submission_pending(&work.dispatch_state, entry) {
+			if inputs::submission_pending(&work.dispatch_state, entry) {
 				continue;
 			}
 			if entry.kind == "auth_recovery" {
@@ -155,6 +161,7 @@ impl AgentSurface {
 				}) {
 				continue;
 			}
+
 			let Some(label) = receipt_label(entry) else {
 				continue;
 			};
@@ -176,6 +183,7 @@ impl AgentSurface {
 		}
 
 		let empty = rows.is_empty();
+
 		gpui::div()
 			.flex()
 			.flex_col()
@@ -194,10 +202,12 @@ impl AgentSurface {
 	) -> Div {
 		if entry.kind == "unsent_input" || label == "Local input · Delivery not confirmed" {
 			let id = entry.id;
+
 			return gpui::div()
 				.debug_selector(move || format!("local-receipt-{id}"))
 				.child(self.saved_input_card(&work.id, entry, cx));
 		}
+
 		let mut row = gpui::div()
 			.debug_selector({
 				let id = entry.id;
@@ -298,6 +308,7 @@ fn receipt_label(entry: &AgentHistoryEntryDto) -> Option<&'static str> {
 		}) {
 			return Some("Local execution record");
 		}
+
 		return Some("Execution notice");
 	}
 	if entry.kind == "automation" {
@@ -322,19 +333,26 @@ fn receipt_label(entry: &AgentHistoryEntryDto) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
+	use std::thread;
+
 	use crate::shell::agent_surface::native_timeline::receipts::{
 		self, AgentHistoryEntryDto, AgentHistoryResult, AgentSurface, AgentTimelineContent,
 	};
+
 	#[gpui::test]
 	fn unsent_input_is_compact_recoverable_and_separate_from_native_diagnostics(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.workspace.graph_visible = false;
 			s.workspace.details_visible = true;
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -343,14 +361,19 @@ mod tests {
 				.iter_mut()
 				.find(|work| Some(&work.id) == s.selected.as_ref())
 				.unwrap();
+
 			work.codex_thread_id = Some("native-thread".into());
+
 			let Some((_, AgentHistoryResult::Available { entries, next_before, .. })) =
 				&mut s.history
 			else {
 				panic!("fixture history")
 			};
+
 			entries.clear();
+
 			*next_before = None;
+
 			let record = |id, kind: &str, event: &str| AgentHistoryEntryDto {
 				id,
 				kind: kind.into(),
@@ -370,6 +393,7 @@ mod tests {
 					disposed: false,
 				}),
 			};
+
 			entries.push(record(93, "unsent_input", "user_message"));
 			s.timeline.older_history.insert(
 				work.id.clone(),
@@ -381,21 +405,27 @@ mod tests {
 					None,
 				),
 			);
+
 			s.timeline.native.binding = Some(super::super::Binding {
 				work: work.id.clone(),
 				thread: "native-thread".into(),
 				account: "account".into(),
 			});
+
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("local-receipt-91").is_none());
 		assert!(visual.debug_bounds("local-receipt-92").is_none());
 		assert!(visual.debug_bounds("local-receipt-93").is_some());
 		assert!(visual.debug_bounds("local-receipt-93").unwrap().size.height <= gpui::px(44.));
 		assert!(visual.debug_bounds("saved-input-body-93").is_none());
 		assert!(visual.debug_bounds("local-records-toggle").is_some());
+
 		let copy = visual.debug_bounds("saved-input-agent-93-copy").unwrap();
+
 		visual.simulate_click(copy.center(), Default::default());
 		visual.update(|_, cx| {
 			assert_eq!(
@@ -403,20 +433,29 @@ mod tests {
 				Some("Saved **local** record".into())
 			);
 		});
+
 		let toggle = visual.debug_bounds("saved-input-toggle").unwrap();
+
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
-		std::thread::sleep(std::time::Duration::from_millis(240));
+
+		thread::sleep(std::time::Duration::from_millis(240));
+
 		visual.update(crate::ui_frame::draw_frame);
+
 		assert!(visual.debug_bounds("saved-input-body-93").is_some());
+
 		surface.update(visual, |s, cx| {
 			s.workspace.details_visible = true;
+
 			s.timeline
 				.expanded_records
 				.insert(format!("local-records-{}", s.selected.as_ref().unwrap()));
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("local-receipt-91").is_some());
 		assert!(visual.debug_bounds("local-receipt-92").is_some());
 		assert!(visual.debug_bounds("local-receipt-93").is_some());
@@ -458,9 +497,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		for id in [91, 92] {
 			assert!(
@@ -498,9 +535,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		for id in [91, 92] {
 			assert!(
@@ -543,9 +578,7 @@ mod tests {
             cx.notify();
         });
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("checklist-receipt-92").is_none());
 		assert!(visual.debug_bounds("checklist-receipt-91").is_none());
@@ -570,9 +603,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("checklist-receipt-92").is_none());
 		assert!(visual.debug_bounds("checklist-receipt-91").is_none());
@@ -602,9 +633,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let bounds = visual
 			.debug_bounds("auth-recovery-receipt-91")
@@ -622,9 +651,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(
 			visual
@@ -695,6 +722,7 @@ mod tests {
 			delivered_turn_id: None,
 			disposed: false,
 		});
+
 		for kind in [
 			"native_warning",
 			"config_warning",
@@ -703,9 +731,11 @@ mod tests {
 			"strict_review_notice",
 		] {
 			entry.receipt.as_mut().unwrap().event_kind = kind.into();
+
 			assert_eq!(receipts::receipt_label(&entry), Some("Local execution record"));
 		}
 	}
+
 	#[test]
 	fn partial_replacement_requires_complete_exact_native_content() {
 		let source = decodex_protocol::AgentHistorySourceDto {

@@ -1,7 +1,9 @@
 //! Shared presentation sizes. Content owners keep their data, interaction and animation state.
 
+use crate::ui_theme::CONTROL_GROUP_HEIGHT;
+
 pub(crate) const MIN_CAPSULE_WIDTH: f32 = 72.;
-pub(crate) const CAPSULE_HEIGHT: f32 = crate::ui_theme::CONTROL_GROUP_HEIGHT;
+pub(crate) const CAPSULE_HEIGHT: f32 = CONTROL_GROUP_HEIGHT;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Presentation {
@@ -57,6 +59,7 @@ pub(crate) fn arrange(
 		.iter()
 		.map(|_| Allocation { presentation: Presentation::Minimal, width: resting * ratio })
 		.collect();
+
 	if let Some(index) = selected.filter(|&index| index < sizes.len()) {
 		let others: f32 = allocations
 			.iter()
@@ -71,31 +74,39 @@ pub(crate) fn arrange(
 			expanded: sizes[index].expanded.max(resting),
 		};
 		let presentation = size.presentation(room);
+
 		// A compact presentation needs only its own content width, not the unused
 		// remainder of a budget that cannot fit the expanded presentation.
 		allocations[index] = Allocation { presentation, width: size.width(presentation).min(room) };
 	}
+
 	allocations
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::ui_live_activity::{self, Presentation, Sizing};
+
 	#[test]
 	fn activities_release_space_and_only_one_expands() {
 		let sizes = [
 			Sizing { minimal: 64., compact: 256., expanded: 288. },
 			Sizing { minimal: 58., compact: 148., expanded: 272. },
 		];
-		let resting = arrange(400., 6., &sizes, None);
+		let resting = ui_live_activity::arrange(400., 6., &sizes, None);
+
 		assert!(resting.iter().all(|item| item.presentation == Presentation::Minimal));
 		assert_eq!(resting.iter().map(|item| item.width).sum::<f32>(), 144.);
 		assert_eq!(resting[0].width, resting[1].width);
-		let focus = arrange(350., 6., &sizes, Some(1));
+
+		let focus = ui_live_activity::arrange(350., 6., &sizes, Some(1));
+
 		assert_eq!(focus[0].presentation, Presentation::Minimal);
 		assert_eq!(focus[1].presentation, Presentation::Expanded);
 		assert_eq!(focus[0].width + focus[1].width + 6., 350.);
-		let narrow = arrange(240., 6., &sizes, Some(1));
+
+		let narrow = ui_live_activity::arrange(240., 6., &sizes, Some(1));
+
 		assert_eq!(narrow[1].presentation, Presentation::Compact);
 		assert_eq!(narrow[1].width, 148., "unused room is not padding for a compact activity");
 		assert!(narrow.iter().map(|item| item.width).sum::<f32>() + 6. <= 240.);

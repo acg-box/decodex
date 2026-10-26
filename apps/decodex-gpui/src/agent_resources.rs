@@ -19,7 +19,7 @@ use crate::{
 			Role, SharedString, StatefulInteractiveElement, Styled, SubmitComposer, WireText,
 		},
 	},
-	ui_loading,
+	ui_loading, ui_theme,
 };
 use decodex_protocol::AgentResourcesResult;
 
@@ -30,9 +30,9 @@ impl AgentSurface {
 		self.resources_task = None;
 
 		if self.resource_mutation_task.take().is_some() {
-			self.resource_feedback = "The resource change is unconfirmed. Reopen task resources to inspect the current state; it was not retried.".into();
+			self.resource_form.feedback = "The resource change is unconfirmed. Reopen task resources to inspect the current state; it was not retried.".into();
 		} else if opened {
-			self.resource_feedback.clear();
+			self.resource_form.feedback.clear();
 		}
 	}
 
@@ -117,7 +117,7 @@ impl AgentSurface {
 							gpui::div()
 								.p_2()
 								.rounded(gpui::px(6.))
-								.bg(crate::ui_theme::rgba(0xffffff06))
+								.bg(ui_theme::rgba(0xffffff06))
 								.child(title)
 								.child(if resource.payload_omitted {
 									"Resource details are unavailable for display.".into()
@@ -200,8 +200,8 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap_2()
-			.child(gpui::div().h(gpui::px(40.)).child(self.resource_title.clone()))
-			.child(gpui::div().h(gpui::px(40.)).child(self.resource_url.clone()))
+			.child(gpui::div().h(gpui::px(40.)).child(self.resource_form.title.clone()))
+			.child(gpui::div().h(gpui::px(40.)).child(self.resource_form.url.clone()))
 			.child(resource_button(
 				"resource-add-link".into(),
 				"Add link".into(),
@@ -213,10 +213,10 @@ impl AgentSurface {
 	fn add_resource_link(&mut self, work: &str, cx: &mut Context<Self>) {
 		let (Ok(work_id), Ok(title), Ok(url)) = (
 			EntityId::new(work.to_owned()),
-			WireText::new(self.resource_title.read(cx).content().to_owned()),
-			WireText::new(self.resource_url.read(cx).content().to_owned()),
+			WireText::new(self.resource_form.title.read(cx).content().to_owned()),
+			WireText::new(self.resource_form.url.read(cx).content().to_owned()),
 		) else {
-			self.resource_feedback = "Enter a title and a link within the text limit.".into();
+			self.resource_form.feedback = "Enter a title and a link within the text limit.".into();
 
 			cx.notify();
 
@@ -232,7 +232,7 @@ impl AgentSurface {
 		}
 
 		let Some(profile) = self.profile.clone() else {
-			self.resource_feedback = "No service profile is configured.".into();
+			self.resource_form.feedback = "No service profile is configured.".into();
 
 			cx.notify();
 
@@ -244,7 +244,7 @@ impl AgentSurface {
 		let work = work.to_owned();
 		let key = IdempotencyKey::new(agent_surface::unique_command()).expect("bounded identity");
 
-		self.resource_feedback = "Waiting for resource confirmation…".into();
+		self.resource_form.feedback = "Waiting for resource confirmation…".into();
 
 		let read_work = work.clone();
 		let expected = action.clone();
@@ -265,7 +265,7 @@ impl AgentSurface {
 
                 s.resource_mutation_task=None;
 
-                s.resource_feedback=if observed {
+                s.resource_form.feedback=if observed {
                     "The current resource list confirms the requested state."
                 } else {match result {
                     Some(AgentCommandResponse::Accepted {..}) => "Saved, but the refreshed list does not yet confirm the state. Check it before making another change.",
@@ -539,9 +539,7 @@ mod tests {
 		for _ in 0..2 {
 			thread::sleep(std::time::Duration::from_millis(200));
 
-			visual.update(|window, cx| {
-				window.draw(cx).clear(cx);
-			});
+			visual.update(crate::ui_frame::draw_current_frame);
 		}
 
 		let bounds = visual.debug_bounds("agent-resources-toggle").expect("task resource control");
@@ -651,7 +649,7 @@ mod tests {
 					s.resource_mutation_task.is_none(),
 					"refresh must not strand a completed mutation"
 				);
-				assert!(s.resource_feedback.contains(if remove {
+				assert!(s.resource_form.feedback.contains(if remove {
 					"confirms the requested state"
 				} else {
 					"not confirmed"
@@ -680,7 +678,7 @@ mod tests {
 						)
 					});
 
-					s.resource_feedback.clear();
+					s.resource_form.feedback.clear();
 
 					if pending {
 						s.resource_mutation_task =
@@ -715,7 +713,7 @@ mod tests {
 
 					if pending {
 						assert!(
-							s.resource_feedback.contains("unconfirmed"),
+							s.resource_form.feedback.contains("unconfirmed"),
 							"cancellation is not proof of non-delivery"
 						);
 					}

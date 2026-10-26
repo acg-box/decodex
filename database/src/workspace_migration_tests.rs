@@ -1,21 +1,26 @@
+use rusqlite::Connection;
+
 use crate::migrations::{self, APPLICATION_ID, MIGRATIONS};
-use rusqlite::{Connection, params};
 
 #[test]
 fn workspace_migration_preserves_history_and_closest_directory_without_agent_ownership() {
 	let folder = tempfile::tempdir().unwrap();
 	let mut c = Connection::open(folder.path().join("upgrade.sqlite3")).unwrap();
+
 	migrations::configure(&c).unwrap();
+
 	for m in MIGRATIONS.iter().filter(|m| m.version < 53) {
 		c.execute_batch(m.sql).unwrap();
 		c.execute(
 			"INSERT INTO schema_migrations VALUES(?1,?2,?3,1)",
-			params![m.version, m.name, migrations::migration_digest(m.sql)],
+			rusqlite::params![m.version, m.name, migrations::migration_digest(m.sql)],
 		)
 		.unwrap();
 	}
+
 	c.pragma_update(None, "application_id", APPLICATION_ID).unwrap();
 	c.pragma_update(None, "user_version", 52).unwrap();
+
 	for (id, parent) in [
 		("main", None),
 		("outer", Some("main")),
@@ -23,11 +28,14 @@ fn workspace_migration_preserves_history_and_closest_directory_without_agent_own
 		("child", Some("inner")),
 		("duplicate", Some("main")),
 	] {
-		c.execute("INSERT INTO agent_work_items(id,parent_goal_id,kind,title,instructions,status,created_at_micros,updated_at_micros) VALUES(?1,?2,'goal',?1,'Retain instructions','open',1,1)",params![id,parent]).unwrap();
+		c.execute("INSERT INTO agent_work_items(id,parent_goal_id,kind,title,instructions,status,created_at_micros,updated_at_micros) VALUES(?1,?2,'goal',?1,'Retain instructions','open',1,1)",rusqlite::params![id,parent]).unwrap();
 		c.execute("INSERT INTO agent_managers VALUES(?1)", [id]).unwrap();
 	}
+
 	c.execute_batch("INSERT INTO agent_workspaces VALUES('outer','Outer','/outer'),('inner','Inner','/inner'),('duplicate','Duplicate','/outer'); INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros) VALUES('input','child','user_message','original input',1);").unwrap();
+
 	migrations::migrate(&mut c).unwrap();
+
 	let scopes: Vec<(String, String)> = c
 		.prepare(
 			"SELECT agent_id,directory FROM project_agents JOIN projects ON project_id=id ORDER BY agent_id",
@@ -37,6 +45,7 @@ fn workspace_migration_preserves_history_and_closest_directory_without_agent_own
 		.unwrap()
 		.collect::<Result<_, _>>()
 		.unwrap();
+
 	assert_eq!(
 		scopes,
 		vec![
@@ -72,13 +81,17 @@ fn workspace_migration_preserves_history_and_closest_directory_without_agent_own
 		.unwrap(),
 		0
 	);
+
 	c.execute("INSERT INTO projects(id,name,directory) VALUES('empty','Empty','/empty')", [])
 		.unwrap();
+
 	assert_eq!(
 		c.query_row("SELECT count(*) FROM agent_work_items", [], |r| r.get::<_, i64>(0)).unwrap(),
 		5
 	);
+
 	migrations::migrate(&mut c).unwrap();
+
 	assert_eq!(
 		c.query_row("SELECT count(*) FROM projects", [], |r| r.get::<_, i64>(0)).unwrap(),
 		3

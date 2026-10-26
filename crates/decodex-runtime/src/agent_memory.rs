@@ -1,10 +1,11 @@
 //! Read the exact loaded source's native memory without changing execution or memory policy.
 use std::{future::Future, time::Duration};
 
-use decodex_protocol::{AgentMemoryResult, EntityId, MEMORY_PAGE_BYTES, WireText};
 use sha2::{Digest as _, Sha256};
+use tokio::time;
 
 use crate::agent_usage_estimate::Source;
+use decodex_protocol::{AgentMemoryResult, EntityId, MEMORY_PAGE_BYTES, WireText};
 
 pub(crate) async fn read<F, Fut>(
 	source: F,
@@ -16,17 +17,17 @@ where
 	Fut: Future<Output = Option<Source>>,
 {
 	let Some(before) = source().await else { return AgentMemoryResult::Unavailable };
-	let result = tokio::time::timeout(
-		Duration::from_secs(25),
-		before.client.memory_summary(&before.key.thread),
-	)
-	.await;
+	let result =
+		time::timeout(Duration::from_secs(25), before.client.memory_summary(&before.key.thread))
+			.await;
 	let Some(after) = source().await else { return AgentMemoryResult::Unavailable };
+
 	if before.key != after.key
 		|| before.client.connection_identity() != after.client.connection_identity()
 	{
 		return AgentMemoryResult::Unavailable;
 	}
+
 	let (Ok(work_id), Ok(thread_id)) =
 		(EntityId::new(before.key.work.clone()), WireText::new(before.key.thread.clone()))
 	else {
@@ -40,6 +41,7 @@ where
 			AgentMemoryResult::Unavailable
 		};
 	};
+
 	page(&before, work_id, thread_id, &text, digest, offset)
 		.unwrap_or(AgentMemoryResult::Unavailable)
 }
@@ -56,6 +58,7 @@ fn page(
 	{
 		return None;
 	}
+
 	let identity = serde_json::json!([
 		source.key.work,
 		source.key.thread,
@@ -70,13 +73,17 @@ fn page(
 		.iter()
 		.map(|b| format!("{b:02x}"))
 		.collect::<String>();
+
 	if expected.is_some_and(|d| d != digest) {
 		return None;
 	}
+
 	let mut end = (offset + MEMORY_PAGE_BYTES).min(text.len());
+
 	while !text.is_char_boundary(end) {
 		end -= 1;
 	}
+
 	Some(AgentMemoryResult::Page {
 		work_id,
 		thread_id,

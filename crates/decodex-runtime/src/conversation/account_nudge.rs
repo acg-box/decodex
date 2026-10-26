@@ -1,5 +1,8 @@
 //! Short-lived, selected-account native notification using existing attested control ownership.
-use std::{sync::Arc, time::Duration};
+use std::{
+	sync::{Arc, Mutex},
+	time::Duration,
+};
 
 use tokio::{runtime::Handle, task};
 
@@ -55,7 +58,7 @@ impl ConversationRuntime {
 		};
 		let runtime = Handle::current();
 		let callback: Arc<dyn AccountRefreshCallback> = Arc::new(ConversationRefreshCallback {
-			last_projected: std::sync::Mutex::new(None),
+			last_projected: Mutex::new(None),
 			accounts: self.inner.accounts.clone(),
 			runtime: runtime.clone(),
 			generation_id,

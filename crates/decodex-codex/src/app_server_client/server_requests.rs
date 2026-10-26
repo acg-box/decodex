@@ -10,13 +10,16 @@ use std::{
 use serde_json::{self, Value};
 use sha2::{Digest as _, Sha256};
 
-use crate::app_server_client::{
-	ClientError, RequestId, ServerEvent,
-	live_reviews::{LiveReviewGuard, LiveReviews},
-	output_rate::{ObservedOutputRate, OutputRates},
-	permission_observations::SettingsObservations,
-	provider_wait::ProviderWait,
-	settings_guard::SettingsRevisions,
+use crate::{
+	ThreadTokenUsage,
+	app_server_client::{
+		ClientError, RequestId, ServerEvent,
+		live_reviews::{LiveReviewGuard, LiveReviews},
+		output_rate::{ObservedOutputRate, OutputRates},
+		permission_observations::SettingsObservations,
+		provider_wait::ProviderWait,
+		settings_guard::SettingsRevisions,
+	},
 };
 
 #[derive(Clone, Default)]
@@ -41,7 +44,7 @@ impl ServerRequests {
 		&self,
 		thread: &str,
 		turn: &str,
-		usage: &crate::ThreadTokenUsage,
+		usage: &ThreadTokenUsage,
 	) -> Option<ObservedOutputRate> {
 		self.9.take(thread, turn, usage)
 	}

@@ -1,5 +1,5 @@
 //! A native copy menu, presented outside GPUI's application borrow.
-use std::ffi::c_void;
+use std::{ffi::c_void, ptr};
 
 use gpui::{App, AsyncApp, ClipboardItem, Window};
 use objc2::{
@@ -35,6 +35,7 @@ pub(super) fn show(window: &Window, cx: &App, markdown: String, text: String) {
 		},
 	);
 	let request = Request { view, position, markdown, text, app: cx.to_async() };
+
 	// AppKit tracks a menu in a nested event loop. Do not enter it inside a GPUI callback.
 	unsafe {
 		dispatch_async_f(
@@ -48,15 +49,18 @@ pub(super) fn show(window: &Window, cx: &App, markdown: String, text: String) {
 extern "C" fn present(context: *mut c_void) {
 	// The main queue exclusively owns this snapshot and all AppKit calls stay on main.
 	let request = unsafe { Box::from_raw(context.cast::<Request>()) };
+
 	if request.view.window().is_none() {
 		return;
 	}
+
 	let chosen = unsafe { menu(&request) };
 	let text = match chosen {
 		1 => request.markdown,
 		2 => request.text,
 		_ => return,
 	};
+
 	request.app.update(|cx| cx.write_to_clipboard(ClipboardItem::new_string(text)));
 }
 
@@ -67,6 +71,7 @@ unsafe fn menu(request: &Request) -> isize {
 		let menu: Retained<AnyObject> = objc2::msg_send![menu_class, new];
 		let target: Retained<AnyObject> = objc2::msg_send![target_class(), new];
 		let _: () = objc2::msg_send![&*menu, setAutoenablesItems: false];
+
 		for (tag, label, key) in [(1_isize, "Copy Markdown", "c"), (2, "Copy Text", "")] {
 			let item: Retained<AnyObject> =
 				objc2::msg_send![AnyClass::get(c"NSMenuItem").expect("AppKit menu item"), new];
@@ -77,7 +82,9 @@ unsafe fn menu(request: &Request) -> isize {
 			let _: () = objc2::msg_send![&*item, setTag: tag];
 			let _: () = objc2::msg_send![&*menu, addItem: &*item];
 		}
-		let _: bool = objc2::msg_send![&*menu, popUpMenuPositioningItem: std::ptr::null::<AnyObject>(), atLocation: request.position, inView: &*request.view];
+
+		let _: bool = objc2::msg_send![&*menu, popUpMenuPositioningItem: ptr::null::<AnyObject>(), atLocation: request.position, inView: &*request.view];
+
 		objc2::msg_send![&*target, tag]
 	}
 }
@@ -86,15 +93,18 @@ fn target_class() -> &'static AnyClass {
 	if let Some(class) = AnyClass::get(c"DecodexSelectionMenuTarget") {
 		return class;
 	}
+
 	let mut class = ClassBuilder::new(
 		c"DecodexSelectionMenuTarget",
 		AnyClass::get(c"NSMenuItem").expect("AppKit menu item"),
 	)
 	.expect("unique menu target");
+
 	// A menu-local tag records the choice. App state is updated after tracking ends.
 	unsafe {
 		class.add_method(objc2::sel!(choose:), choose as extern "C-unwind" fn(_, _, _));
 	}
+
 	class.register()
 }
 

@@ -1,15 +1,19 @@
 //! Persistent collaboration across chats, using native requests and evidence.
-use super::{AgentSurface, Context, Row};
-use crate::shell::agent_surface::ui_theme;
 #[path = "agent_collaboration.rs"] mod collaboration;
-pub(super) use collaboration::State as Collaboration;
 #[cfg(any(test, feature = "visual-capture"))]
 #[path = "agent_collaboration_fixture.rs"]
 mod reference_fixture;
 
+pub(super) use collaboration::State as Collaboration;
+
 use gpui::{
-	AnyElement, IntoElement,
+	AnyElement, Div, IntoElement, SharedString,
 	prelude::{ParentElement, Styled},
+};
+
+use crate::shell::agent_surface::{
+	ui_theme::{self, FIELD_MATERIAL, TEXT_MUTED, WARNING},
+	work_board::{AgentSurface, Context, Row},
 };
 
 struct Entry {
@@ -18,22 +22,6 @@ struct Entry {
 	reason: String,
 	result: bool,
 	request: Option<i64>,
-}
-
-#[cfg(test)]
-#[path = "agent_workbench_tests.rs"]
-mod tests;
-
-#[cfg(test)]
-#[path = "agent_workbench_wire_tests.rs"]
-mod wire_tests;
-
-fn note(text: impl Into<gpui::SharedString>) -> gpui::Div {
-	gpui::div()
-		.text_size(gpui::px(12.))
-		.line_height(gpui::px(18.))
-		.text_color(crate::ui_theme::rgb(ui_theme::TEXT_MUTED))
-		.child(text.into())
 }
 
 impl AgentSurface {
@@ -48,13 +36,16 @@ impl AgentSurface {
 				work.kind = super::super::AgentWorkKindDto::Manager;
 			}
 		}
+
 		self.work_board.graph = false;
 		self.workspace.graph_expanded = page != "workbench-split";
 		self.workspace.agent_tree_visible = true;
 		self.workspace.agent_panel_width = 320.;
+
 		self.handoffs.fixture();
 		self.visual_relation_evidence();
 		self.visual_workbench_metrics();
+
 		if page == "workbench" {
 			self.visual_collaboration_fixture(cx);
 		}
@@ -64,20 +55,22 @@ impl AgentSurface {
 		if page == "workbench-history" {
 			self.work_board.collaboration_expanded = None;
 		}
+
 		cx.notify();
 	}
 
 	#[cfg(any(test, feature = "visual-capture"))]
 	fn visual_workbench_metrics(&mut self) {
-		use decodex_protocol::{AgentOutputRate, AgentThreadMetrics};
 		let rows = self.factory_rows();
 		let mut usage = std::collections::BTreeMap::new();
+
 		for (index, row) in rows.into_iter().enumerate() {
 			self.snapshot
 				.as_mut()
 				.expect("visual snapshot")
 				.agent_slots
 				.insert(row.key.clone(), index as u32);
+
 			let generating = row.group == 1 && index % 2 == 0;
 			let preview = Some(super::activity::Preview {
 				turn: "fixture-operation".into(),
@@ -99,11 +92,11 @@ impl AgentSurface {
 			});
 			let sample = crate::ui_work_metrics::Sample {
 				tokens: Some(18_400 + index as u64 * 7_230),
-				stats: Some(AgentThreadMetrics {
+				stats: Some(decodex_protocol::AgentThreadMetrics {
 					completed_ms: Some(312_000 + index as u64 * 21_000),
 					active_ms: (row.group == 1).then_some(8_000),
 					generating,
-					rate: Some(AgentOutputRate {
+					rate: Some(decodex_protocol::AgentOutputRate {
 						estimated: true,
 						active: generating,
 						output_tokens: 220 + index as u64 * 4,
@@ -126,6 +119,7 @@ impl AgentSurface {
 				}
 				.into(),
 			});
+
 			if let Some(brief) = self.work_board.briefs.get_mut(&row.key) {
 				brief.metrics = sample;
 				brief.preview = preview;
@@ -148,14 +142,17 @@ impl AgentSurface {
 					},
 				);
 			}
+
 			usage.insert(row.key, (row.thread, sample));
 		}
+
 		self.work_board.usage = Some(usage);
 	}
 
 	#[cfg(test)]
 	fn workbench_row(&self) -> Option<Row> {
 		let key = self.work_board.view.picked_agent.as_ref()?;
+
 		self.board_rows().into_iter().find(|row| &row.key == key)
 	}
 
@@ -183,7 +180,9 @@ impl AgentSurface {
 		if !self.board_rows().iter().any(|row| row.key == key) {
 			return;
 		}
+
 		self.work_board.view.keep_camera();
+
 		// Inspection alone is not a read receipt. Open conversation owns that transition.
 		self.handoffs.read_on_open = None;
 		self.workspace.agent_tree_visible = true;
@@ -191,6 +190,7 @@ impl AgentSurface {
 		self.work_board.view.edge = None;
 		self.work_board.focus = Some(key.into());
 		self.handoffs.focus = None;
+
 		cx.notify();
 	}
 
@@ -199,6 +199,7 @@ impl AgentSurface {
 		self.work_board.view.picked_agent = None;
 		self.work_board.focus = None;
 		self.handoffs.focus = None;
+
 		cx.notify();
 	}
 
@@ -212,6 +213,7 @@ impl AgentSurface {
 			})
 			.filter_map(|event| {
 				let row = rows.iter().find(|row| !row.native && row.work == event.work_item_id)?;
+
 				Some(Entry {
 					row: row.clone(),
 					label: if event.event_kind == "permission_pending" {
@@ -231,10 +233,12 @@ impl AgentSurface {
 	fn workbench_entries(&self) -> Vec<Entry> {
 		let rows = self.board_rows();
 		let mut entries = self.workbench_requests(&rows);
+
 		for item in self.handoff_items() {
 			if entries.iter().any(|entry| entry.row.work == item.work && entry.request.is_some()) {
 				continue;
 			}
+
 			if let Some(row) = rows.iter().find(|row| !row.native && row.work == item.work) {
 				entries.push(Entry {
 					row: row.clone(),
@@ -249,13 +253,16 @@ impl AgentSurface {
 			if entries.iter().any(|entry| entry.row.key == row.key && entry.request.is_some()) {
 				continue;
 			}
+
 			if let Some(question) = self.graph_question(row) {
 				if let Some(entry) = entries.iter_mut().find(|entry| entry.row.key == row.key) {
 					entry.label = "Answer needed".into();
 					entry.reason = question.into();
 					entry.result = false;
+
 					continue;
 				}
+
 				entries.push(Entry {
 					row: row.clone(),
 					label: "Answer needed".into(),
@@ -265,6 +272,7 @@ impl AgentSurface {
 				});
 			}
 		}
+
 		entries
 	}
 
@@ -277,13 +285,14 @@ impl AgentSurface {
 		);
 		let number = self.relation_agent_number(&entry.row);
 		let identity = self.relation_agent_name(&entry.row);
+
 		gpui::div()
 			.flex_none()
 			.w_full()
 			.min_w_0()
 			.p(gpui::px(10.))
 			.rounded(gpui::px(12.))
-			.bg(crate::ui_theme::rgba(ui_theme::FIELD_MATERIAL))
+			.bg(ui_theme::rgba(FIELD_MATERIAL))
 			.child(
 				gpui::div()
 					.flex()
@@ -296,7 +305,7 @@ impl AgentSurface {
 							.flex_none()
 							.size(gpui::px(4.))
 							.rounded_full()
-							.bg(crate::ui_theme::rgb(ui_theme::WARNING)),
+							.bg(ui_theme::rgb(WARNING)),
 					)
 					.child(format!("{number} · {identity}")),
 			)
@@ -324,6 +333,7 @@ impl AgentSurface {
 						else {
 							return;
 						};
+
 						if let Some(event) = request {
 							if !s.snapshot.as_ref().is_some_and(|snapshot| {
 								snapshot.pending_events.iter().any(|pending| {
@@ -332,10 +342,14 @@ impl AgentSurface {
 							}) {
 								return;
 							}
+
 							s.workspace.graph_expanded = false;
+
 							s.open_page(&row.work, cx);
+
 							s.request = None;
 							s.request_task = None;
+
 							s.load_request(event, cx);
 						} else {
 							s.open_graph_agent(&row, cx);
@@ -347,3 +361,18 @@ impl AgentSurface {
 			.into_any_element()
 	}
 }
+
+fn note(text: impl Into<SharedString>) -> Div {
+	gpui::div()
+		.text_size(gpui::px(12.))
+		.line_height(gpui::px(18.))
+		.text_color(ui_theme::rgb(TEXT_MUTED))
+		.child(text.into())
+}
+
+#[cfg(test)]
+#[path = "agent_workbench_tests.rs"]
+mod tests;
+#[cfg(test)]
+#[path = "agent_workbench_wire_tests.rs"]
+mod wire_tests;

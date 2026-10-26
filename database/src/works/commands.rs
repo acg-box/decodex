@@ -1,13 +1,14 @@
-use super::{
-	active, authority, collaboration, conflict, encode, invalid, owner, read_work, requirements,
-	state_name, text,
+use rusqlite::Connection;
+
+use crate::{
+	StoreError,
+	error::sqlite_error,
+	works::{self, collaboration},
 };
-use crate::{StoreError, error::sqlite_error};
 use decodex_core::work::{
 	Material, NativeContribution, Work, WorkAssessment, WorkCommand, WorkRequirements, WorkResult,
 	WorkState,
 };
-use rusqlite::{Connection, params};
 
 pub(super) fn apply(
 	c: &Connection,
@@ -45,14 +46,17 @@ pub(super) fn apply(
 }
 
 fn prepare_subagent(c: &Connection, actor: &str, b: NativeContribution) -> Result<(), StoreError> {
-	let w = owner(c, &b.work_id, actor, &b.requirements_id)?;
-	active(&w)?;
-	text(&b.id, 512)?;
-	text(&b.instruction, 16384)?;
+	let w = works::owner(c, &b.work_id, actor, &b.requirements_id)?;
+
+	works::active(&w)?;
+	works::text(&b.id, 512)?;
+	works::text(&b.instruction, 16_384)?;
+
 	if b.child_thread_id.is_some() || b.parent_turn_id.is_some() || b.parent_item_id.is_some() {
-		return Err(invalid("new native contribution must be unbound"));
+		return Err(works::invalid("new native contribution must be unbound"));
 	}
-	c.execute("INSERT INTO native_work_contributions(id,work_id,requirements_id,instruction) VALUES(?1,?2,?3,?4)",params![b.id,b.work_id,b.requirements_id,b.instruction]).map_err(sqlite_error)?;
+
+	c.execute("INSERT INTO native_work_contributions(id,work_id,requirements_id,instruction) VALUES(?1,?2,?3,?4)",rusqlite::params![b.id,b.work_id,b.requirements_id,b.instruction]).map_err(sqlite_error)?;
 
 	Ok(())
 }
@@ -72,18 +76,22 @@ fn bind_subagent(
 			|r| Ok((r.get(0)?, r.get(1)?)),
 		)
 		.map_err(sqlite_error)?;
-	owner(c, &work, actor, &revision)?;
-	let n=c.execute("UPDATE native_work_contributions SET child_thread_id=?2,parent_turn_id=?3,parent_item_id=?4 WHERE id=?1 AND child_thread_id IS NULL",params![contribution_id,child_thread_id,parent_turn_id,parent_item_id]).map_err(sqlite_error)?;
+
+	works::owner(c, &work, actor, &revision)?;
+
+	let n=c.execute("UPDATE native_work_contributions SET child_thread_id=?2,parent_turn_id=?3,parent_item_id=?4 WHERE id=?1 AND child_thread_id IS NULL",rusqlite::params![contribution_id,child_thread_id,parent_turn_id,parent_item_id]).map_err(sqlite_error)?;
+
 	if n != 1 {
-		return Err(conflict());
+		return Err(works::conflict());
 	}
 
 	Ok(())
 }
 
 fn create(c: &Connection, actor: &str, work: Work, user: bool) -> Result<(), StoreError> {
-	text(&work.id, 512)?;
-	text(&work.title, 120)?;
+	works::text(&work.id, 512)?;
+	works::text(&work.title, 120)?;
+
 	if work.owner_agent_id != actor
 		|| work.state != WorkState::Open
 		|| work.assessment.is_some()
@@ -91,11 +99,14 @@ fn create(c: &Connection, actor: &str, work: Work, user: bool) -> Result<(), Sto
 		|| work.reason.is_some()
 		|| work.resume_condition.is_some()
 	{
-		return Err(invalid("new Work must be open and owned by its creating Agent"));
+		return Err(works::invalid("new Work must be open and owned by its creating Agent"));
 	}
-	authority(c, actor, &work.requirements.source, user)?;
-	c.execute("INSERT INTO works(id,project_id,owner_agent_id,title,requirements_id,state) VALUES(?1,?2,?3,?4,?5,'open')",params![work.id,work.project_id,actor,work.title,work.requirements.id]).map_err(sqlite_error)?;
-	requirements(c, &work.id, &work.requirements)?;
+
+	works::authority(c, actor, &work.requirements.source, user)?;
+
+	c.execute("INSERT INTO works(id,project_id,owner_agent_id,title,requirements_id,state) VALUES(?1,?2,?3,?4,?5,'open')",rusqlite::params![work.id,work.project_id,actor,work.title,work.requirements.id]).map_err(sqlite_error)?;
+
+	works::requirements(c, &work.id, &work.requirements)?;
 
 	Ok(())
 }
@@ -108,14 +119,17 @@ fn revise(
 	r: WorkRequirements,
 	user: bool,
 ) -> Result<(), StoreError> {
-	let w = owner(c, &work_id, actor, &expected_requirements)?;
+	let w = works::owner(c, &work_id, actor, &expected_requirements)?;
+
 	if w.state == WorkState::Cancelled {
-		return Err(invalid("cancelled Work needs a new authorized assignment"));
+		return Err(works::invalid("cancelled Work needs a new authorized assignment"));
 	}
-	authority(c, actor, &r.source, user)?;
-	requirements(c, &work_id, &r)?;
-	c.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Requirements changed before admission; owner must issue a current instruction',disposed_at_micros=max(created_at_micros,?2) WHERE disposition IS NULL AND delivered_turn_id IS NULL AND id IN(SELECT i.event_id FROM collaboration_instructions i JOIN collaboration_requests q ON q.id=i.request_id WHERE q.work_id=?1)",params![work_id,crate::unix_micros()?]).map_err(sqlite_error)?;
-	c.execute("UPDATE works SET requirements_id=?2,state=CASE WHEN user_hold=1 THEN 'blocked' ELSE 'open' END,assessment_json=NULL WHERE id=?1",params![work_id,r.id]).map_err(sqlite_error)?;
+
+	works::authority(c, actor, &r.source, user)?;
+	works::requirements(c, &work_id, &r)?;
+
+	c.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Requirements changed before admission; owner must issue a current instruction',disposed_at_micros=max(created_at_micros,?2) WHERE disposition IS NULL AND delivered_turn_id IS NULL AND id IN(SELECT i.event_id FROM collaboration_instructions i JOIN collaboration_requests q ON q.id=i.request_id WHERE q.work_id=?1)",rusqlite::params![work_id,crate::unix_micros()?]).map_err(sqlite_error)?;
+	c.execute("UPDATE works SET requirements_id=?2,state=CASE WHEN user_hold=1 THEN 'blocked' ELSE 'open' END,assessment_json=NULL WHERE id=?1",rusqlite::params![work_id,r.id]).map_err(sqlite_error)?;
 
 	Ok(())
 }
@@ -135,31 +149,33 @@ fn set_state(
 		user_hold,
 	} = command
 	else {
-		return Err(invalid("expected state change"));
+		return Err(works::invalid("expected state change"));
 	};
-	let w = owner(c, &work_id, actor, &expected_requirements)?;
+	let w = works::owner(c, &work_id, actor, &expected_requirements)?;
+
 	if state == WorkState::Completed
 		|| w.state == WorkState::Completed
 		|| w.state == WorkState::Cancelled
 	{
-		return Err(invalid(
+		return Err(works::invalid(
 			"completion needs an assessment; reopening needs authorized requirements",
 		));
 	}
 	if (w.user_hold && !user) || (user_hold && !user) {
-		return Err(invalid("a user hold requires explicit user release"));
+		return Err(works::invalid("a user hold requires explicit user release"));
 	}
 	if state == WorkState::Blocked {
-		text(reason.as_deref().unwrap_or_default(), 4096)?;
-		text(resume_condition.as_deref().unwrap_or_default(), 4096)?;
+		works::text(reason.as_deref().unwrap_or_default(), 4_096)?;
+		works::text(resume_condition.as_deref().unwrap_or_default(), 4_096)?;
 	}
 	if state == WorkState::Cancelled {
-		text(reason.as_deref().unwrap_or_default(), 4096)?;
+		works::text(reason.as_deref().unwrap_or_default(), 4_096)?;
 		collaboration::cancel_work(c, &work_id)?;
 	}
+
 	c.execute(
 		"UPDATE works SET state=?2,reason=?3,resume_condition=?4,user_hold=?5 WHERE id=?1",
-		params![work_id, state_name(state), reason, resume_condition, user_hold],
+		rusqlite::params![work_id, works::state_name(state), reason, resume_condition, user_hold],
 	)
 	.map_err(sqlite_error)?;
 
@@ -167,15 +183,17 @@ fn set_state(
 }
 
 fn add_material(c: &Connection, actor: &str, material: Material) -> Result<(), StoreError> {
-	let w = read_work(c, &material.work_id)?;
-	owner(c, &w.id, actor, &w.requirements.id)?;
-	active(&w)?;
-	text(&material.id, 512)?;
-	text(&material.title, 1024)?;
-	text(&material.reference, 4096)?;
+	let w = works::read_work(c, &material.work_id)?;
+
+	works::owner(c, &w.id, actor, &w.requirements.id)?;
+	works::active(&w)?;
+	works::text(&material.id, 512)?;
+	works::text(&material.title, 1_024)?;
+	works::text(&material.reference, 4_096)?;
+
 	c.execute(
 		"INSERT INTO work_materials VALUES(?1,?2,?3)",
-		params![material.id, material.work_id, encode(&material)?],
+		rusqlite::params![material.id, material.work_id, works::encode(&material)?],
 	)
 	.map_err(sqlite_error)?;
 
@@ -183,34 +201,40 @@ fn add_material(c: &Connection, actor: &str, material: Material) -> Result<(), S
 }
 
 fn record_result(c: &Connection, actor: &str, result: WorkResult) -> Result<(), StoreError> {
-	text(&result.id, 512)?;
-	text(&result.summary, 16384)?;
+	works::text(&result.id, 512)?;
+	works::text(&result.summary, 16_384)?;
+
 	if let Some(binding) = &result.native_contribution_id {
-		let valid=c.query_row("SELECT EXISTS(SELECT 1 FROM native_work_contributions WHERE id=?1 AND work_id=?2 AND requirements_id=?3 AND child_thread_id IS NOT NULL)",params![binding,result.work_id,result.requirements_id],|r|r.get::<_,bool>(0)).map_err(sqlite_error)?;
+		let valid=c.query_row("SELECT EXISTS(SELECT 1 FROM native_work_contributions WHERE id=?1 AND work_id=?2 AND requirements_id=?3 AND child_thread_id IS NOT NULL)",rusqlite::params![binding,result.work_id,result.requirements_id],|r|r.get::<_,bool>(0)).map_err(sqlite_error)?;
+
 		if !valid {
-			return Err(invalid("native Result requires its exact bound contribution"));
+			return Err(works::invalid("native Result requires its exact bound contribution"));
 		}
 	}
+
 	if result.agent_id != actor {
-		return Err(invalid("a Result belongs to its actual contributing Agent"));
+		return Err(works::invalid("a Result belongs to its actual contributing Agent"));
 	}
-	let w = read_work(c, &result.work_id)?;
+
+	let w = works::read_work(c, &result.work_id)?;
+
 	// Old and cancelled contributions are history. They cannot change current business
 	// state.
 	if let Some(instruction) = &result.instruction_id {
 		collaboration::returned(c, actor, &w, &result, instruction)?;
 	} else if w.owner_agent_id != actor {
-		return Err(invalid("foreign Work requires an exact Collaboration instruction"));
+		return Err(works::invalid("foreign Work requires an exact Collaboration instruction"));
 	}
+
 	c.execute(
 		"INSERT INTO work_results VALUES(?1,?2,?3,?4,?5,?6)",
-		params![
+		rusqlite::params![
 			result.id,
 			result.work_id,
 			result.requirements_id,
 			result.instruction_id,
 			actor,
-			encode(&result)?
+			works::encode(&result)?
 		],
 	)
 	.map_err(sqlite_error)?;
@@ -226,22 +250,26 @@ fn reuse_result(
 	result_id: String,
 	assessment: String,
 ) -> Result<(), StoreError> {
-	let w = owner(c, &work_id, actor, &expected_requirements)?;
-	active(&w)?;
-	text(&assessment, 16384)?;
+	let w = works::owner(c, &work_id, actor, &expected_requirements)?;
+
+	works::active(&w)?;
+	works::text(&assessment, 16_384)?;
+
 	let belongs = c
 		.query_row(
 			"SELECT EXISTS(SELECT 1 FROM work_results WHERE id=?1 AND work_id=?2)",
-			params![result_id, work_id],
+			rusqlite::params![result_id, work_id],
 			|r| r.get::<_, bool>(0),
 		)
 		.map_err(sqlite_error)?;
+
 	if !belongs {
-		return Err(conflict());
+		return Err(works::conflict());
 	}
+
 	c.execute(
 		"INSERT INTO work_result_reuse VALUES(?1,?2,?3,?4)",
-		params![work_id, expected_requirements, result_id, assessment],
+		rusqlite::params![work_id, expected_requirements, result_id, assessment],
 	)
 	.map_err(sqlite_error)?;
 
@@ -255,28 +283,36 @@ fn complete(
 	expected_requirements: String,
 	assessment: WorkAssessment,
 ) -> Result<(), StoreError> {
-	let w = owner(c, &work_id, actor, &expected_requirements)?;
-	active(&w)?;
+	let w = works::owner(c, &work_id, actor, &expected_requirements)?;
+
+	works::active(&w)?;
+
 	if assessment.requirements_id != expected_requirements
 		|| assessment.result_ids.is_empty()
 		|| assessment.result_ids.len() > 100
 	{
-		return Err(conflict());
+		return Err(works::conflict());
 	}
-	text(&assessment.summary, 16384)?;
+
+	works::text(&assessment.summary, 16_384)?;
+
 	for id in &assessment.result_ids {
-		let valid=c.query_row("SELECT EXISTS(SELECT 1 FROM work_results r WHERE r.id=?1 AND r.work_id=?2 AND (r.requirements_id=?3 OR EXISTS(SELECT 1 FROM work_result_reuse v WHERE v.result_id=r.id AND v.work_id=r.work_id AND v.requirements_id=?3)))",params![id,work_id,expected_requirements],|r|r.get::<_,bool>(0)).map_err(sqlite_error)?;
+		let valid=c.query_row("SELECT EXISTS(SELECT 1 FROM work_results r WHERE r.id=?1 AND r.work_id=?2 AND (r.requirements_id=?3 OR EXISTS(SELECT 1 FROM work_result_reuse v WHERE v.result_id=r.id AND v.work_id=r.work_id AND v.requirements_id=?3)))",rusqlite::params![id,work_id,expected_requirements],|r|r.get::<_,bool>(0)).map_err(sqlite_error)?;
+
 		if !valid {
-			return Err(invalid(
+			return Err(works::invalid(
 				"completion needs related Results checked against current requirements",
 			));
 		}
 	}
+
 	let waiting=c.query_row("SELECT EXISTS(SELECT 1 FROM collaboration_requests WHERE work_id=?1 AND required=1 AND state<>'closed')",[&work_id],|r|r.get::<_,bool>(0)).map_err(sqlite_error)?;
+
 	if waiting {
-		return Err(invalid("assess or cancel required contributions before completion"));
+		return Err(works::invalid("assess or cancel required contributions before completion"));
 	}
-	c.execute("UPDATE works SET state='completed',reason=NULL,resume_condition=NULL,assessment_json=?2 WHERE id=?1",params![work_id,encode(&assessment)?]).map_err(sqlite_error)?;
+
+	c.execute("UPDATE works SET state='completed',reason=NULL,resume_condition=NULL,assessment_json=?2 WHERE id=?1",rusqlite::params![work_id,works::encode(&assessment)?]).map_err(sqlite_error)?;
 
 	Ok(())
 }

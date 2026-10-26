@@ -1,6 +1,7 @@
 //! Actual retained native counters. These values are not billing estimates.
-use crate::EntityId;
 use serde::{Deserialize, Serialize};
+
+use crate::EntityId;
 
 /// Explicit product scope; selection does not assign a conversation turn to Work.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

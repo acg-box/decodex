@@ -1,5 +1,6 @@
 //! Project Work and Collaboration contracts. Native execution has a separate lifecycle.
 use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
 
 /// A user-created persistent collaborator with one current native conversation.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -220,6 +221,27 @@ pub struct NativeContribution {
 	/// Exact native parent activity, matched through received input or native task identity.
 	pub parent_item_id: Option<String>,
 }
+impl NativeContribution {
+	/// A native-compatible name retained across retries of this assignment.
+	pub fn native_task_name(&self) -> String {
+		let digest: String = Sha256::digest(self.id.as_bytes())
+			.iter()
+			.take(16)
+			.map(|byte| format!("{byte:02x}"))
+			.collect();
+
+		format!("work_{digest}")
+	}
+
+	/// Exact prompt to pass to the native helper. A missing binding never authorizes duplicate
+	/// spawn.
+	pub fn native_prompt(&self) -> String {
+		format!(
+			"[Work: {}; Requirements: {}; Contribution: {}]\n{}",
+			self.work_id, self.requirements_id, self.id, self.instruction
+		)
+	}
+}
 
 /// Exact native input observed before its parent activity is necessarily available.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -249,7 +271,6 @@ pub enum NativeAssignmentProof {
 	/// The exact native task name matched; the provider encrypted the prompt.
 	NativeTaskName,
 }
-
 impl NativeAssignmentProof {
 	/// Stable storage spelling for the observed proof.
 	pub fn as_str(self) -> &'static str {
@@ -259,28 +280,6 @@ impl NativeAssignmentProof {
 		}
 	}
 }
-impl NativeContribution {
-	/// A native-compatible name retained across retries of this assignment.
-	pub fn native_task_name(&self) -> String {
-		use sha2::{Digest as _, Sha256};
-		let digest: String = Sha256::digest(self.id.as_bytes())
-			.iter()
-			.take(16)
-			.map(|byte| format!("{byte:02x}"))
-			.collect();
-		format!("work_{digest}")
-	}
-
-	/// Exact prompt to pass to the native helper. A missing binding never authorizes duplicate
-	/// spawn.
-	pub fn native_prompt(&self) -> String {
-		format!(
-			"[Work: {}; Requirements: {}; Contribution: {}]\n{}",
-			self.work_id, self.requirements_id, self.id, self.instruction
-		)
-	}
-}
-
 /// A bounded detail view. Older evidence is retained in SQLite and can be queried per Work.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

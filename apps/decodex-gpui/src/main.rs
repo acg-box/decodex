@@ -43,7 +43,7 @@ mod ui_working;
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use gpui::{
-	self, App, AppContext as _, Bounds, Global, KeyBinding, Menu, MenuItem, SystemMenuType,
+	self, App, AppContext as _, Bounds, Global, KeyBinding, Menu, MenuItem, Pixels, SystemMenuType,
 	TitlebarOptions, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowOptions,
 };
 #[cfg(target_os = "macos")] use objc2 as _;
@@ -68,7 +68,7 @@ use crate::{
 use composer_input::{Copy, Cut, Paste, SelectAll};
 use decodex_protocol::{ClientFailure, ClientProfile};
 use shell::{CloseWindow, ReloadWorkspace};
-use ui_theme::window_material;
+use ui_theme::{appearance, window_material};
 
 gpui::actions!(
 	decodex_application,
@@ -103,11 +103,13 @@ fn main() {
 	});
 	application.run(move |cx: &mut App| {
 		frame_trace::start(cx);
-		ui_theme::appearance::initialize(cx);
+		appearance::initialize(cx);
 		shell::bind_keys(cx);
+
 		install_application_menu(cx);
 		#[cfg(target_os = "macos")]
 		install_native_quit_preflight(cx);
+
 		#[cfg(target_os = "macos")]
 		assert!(native_reopen::install(), "Cannot attach workspace reopen to GPUI");
 
@@ -125,35 +127,18 @@ fn main() {
 			compose_lifecycle(profile, bundled_daemon);
 		let bounds = Bounds::centered(None, gpui::size(gpui::px(1_248.0), gpui::px(840.0)), cx);
 		let window = cx
-			.open_window(
-				WindowOptions {
-					titlebar: Some(TitlebarOptions {
-						title: Some("Decodex".into()),
-						appears_transparent: true,
-						traffic_light_position: Some(gpui::point(gpui::px(14.0), gpui::px(14.0))),
-					}),
-					window_background: WindowBackgroundAppearance::Blurred,
-					// AppKit owns blank titlebar drags. Native control hit targets keep
-					// GPUI buttons interactive without a client-initiated drag session.
-					app_owns_titlebar_drag: false,
-					window_bounds: Some(WindowBounds::Windowed(bounds)),
-					window_min_size: Some(gpui::size(gpui::px(1_180.0), gpui::px(720.0))),
-					focus: false,
-					show: false,
-					..ui_motion::window_options()
-				},
-				move |window, cx| {
-					let account_login = account_login.clone();
+			.open_window(main_window_options(bounds), move |window, cx| {
+				let account_login = account_login.clone();
 
-					cx.new(|cx| {
-						ui_motion::observe_activation(window, cx);
-						crate::ui_theme::appearance::observe(window, cx);
-						Shell::new(window, cx, initial_connection)
-							.with_account_login(account_login)
-							.with_agent_profile(agent_profile, cx)
-					})
-				},
-			)
+				cx.new(|cx| {
+					ui_motion::observe_activation(window, cx);
+					crate::ui_theme::appearance::observe(window, cx);
+
+					Shell::new(window, cx, initial_connection)
+						.with_account_login(account_login)
+						.with_agent_profile(agent_profile, cx)
+				})
+			})
 			.expect("open the Decodex production window");
 
 		window
@@ -211,6 +196,25 @@ fn main() {
 			activate_main_window(&window, cx);
 		}
 	});
+}
+
+fn main_window_options(bounds: Bounds<Pixels>) -> WindowOptions {
+	WindowOptions {
+		titlebar: Some(TitlebarOptions {
+			title: Some("Decodex".into()),
+			appears_transparent: true,
+			traffic_light_position: Some(gpui::point(gpui::px(14.0), gpui::px(14.0))),
+		}),
+		window_background: WindowBackgroundAppearance::Blurred,
+		// AppKit owns blank titlebar drags. Native control hit targets keep
+		// GPUI buttons interactive without a client-initiated drag session.
+		app_owns_titlebar_drag: false,
+		window_bounds: Some(WindowBounds::Windowed(bounds)),
+		window_min_size: Some(gpui::size(gpui::px(1_180.0), gpui::px(720.0))),
+		focus: false,
+		show: false,
+		..ui_motion::window_options()
+	}
 }
 
 fn activate_main_window(window: &WindowHandle<Shell>, cx: &mut App) {
@@ -292,6 +296,7 @@ fn schedule_window_control_alignment(window: &gpui::Window) {
 				let center_y = ui_theme::CONTROL_MARGIN + ui_theme::CONTROL_GROUP_HEIGHT / 2.0;
 				let frame = button.frame();
 				let y = f64::from(center_y) - frame.size.height / 2.0;
+
 				// A move also publishes a bounds change. Keep the native titlebar
 				// geometry stable while WindowServer owns the drag.
 				if frame.origin.x != 16.0 || frame.origin.y != y {

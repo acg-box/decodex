@@ -1,5 +1,5 @@
 //! Preserve native task markers, literal paragraph text, escapes, and code blocks.
-use super::{HighlightStyle, Inline, append_inline, parse};
+use crate::shell::agent_surface::markdown::{self, HighlightStyle, Inline};
 
 #[test]
 fn task_markers_survive_block_content_without_duplicates() {
@@ -14,7 +14,14 @@ fn task_markers_survive_block_content_without_duplicates() {
 		("-     [x] code, not a task\n", "[x] code, not a task\n"),
 	] {
 		let mut rendered = Inline::default();
-		append_inline(&parse(source), HighlightStyle::default(), None, &mut rendered);
+
+		markdown::append_inline(
+			&markdown::parse(source),
+			HighlightStyle::default(),
+			None,
+			&mut rendered,
+		);
+
 		assert_eq!(rendered.text, expected, "{source:?}");
 	}
 }

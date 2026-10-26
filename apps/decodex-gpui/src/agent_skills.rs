@@ -1,14 +1,17 @@
 //! Select native skill references for the existing composer and draft owner.
-use crate::ui_feedback::Feedback;
 use gpui::{AnyElement, AppContext as _};
 use tokio::runtime::Builder;
 
 #[cfg(test)] use crate::shell::agent_surface::Render;
 #[cfg(test)] use crate::shell::agent_surface::Window;
-use crate::shell::agent_surface::{
-	self, AgentClient, AgentSurface, ComposerInput, Context, ConversationWorkingDirectory, Entity,
-	EntityId, InteractiveElement, IntoElement, LoadState, ParentElement,
-	StatefulInteractiveElement, Styled, SubmitComposer, Task, WireText, ui_theme::TEXT_MUTED,
+use crate::{
+	shell::agent_surface::{
+		self, AgentClient, AgentSurface, ComposerInput, Context, ConversationWorkingDirectory,
+		Entity, EntityId, InteractiveElement, IntoElement, LoadState, ParentElement,
+		StatefulInteractiveElement, Styled, SubmitComposer, Task, WireText, ui_theme::TEXT_MUTED,
+	},
+	ui_feedback::Feedback,
+	ui_theme,
 };
 use decodex_protocol::{
 	AgentAttachmentDto, AgentSkillDto, AgentSkillsResult, AgentSkillsTarget, AgentWorkKindDto,
@@ -260,14 +263,14 @@ impl AgentSurface {
 						gpui::div()
 							.px_2()
 							.text_size(gpui::px(10.))
-							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+							.text_color(ui_theme::rgb(TEXT_MUTED))
 							.child(skill.description.as_str().to_owned()),
 					)
 					.child(
 						gpui::div()
 							.px_2()
 							.text_size(gpui::px(9.))
-							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+							.text_color(ui_theme::rgb(TEXT_MUTED))
 							.child(skill.path.as_str().to_owned()),
 					),
 			);

@@ -1,13 +1,17 @@
 //! Review provider findings before an explicit, source-bound continuation.
 use gpui::{AnyElement, KeyDownEvent};
 
-use crate::shell::agent_surface::{
-	self, AgentActionDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context, EntityId,
-	InteractiveElement, IntoElement, ParentElement, Role, StatefulInteractiveElement, Styled,
-};
 #[cfg(test)]
 use crate::shell::agent_surface::{
 	AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
+};
+use crate::{
+	shell::agent_surface::{
+		self, AgentActionDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context,
+		EntityId, InteractiveElement, IntoElement, ParentElement, Role, StatefulInteractiveElement,
+		Styled,
+	},
+	ui_theme,
 };
 use decodex_protocol::WireText;
 
@@ -51,7 +55,7 @@ impl AgentSurface {
 		}
 
 		let identity = (work.id.clone(), review.review_id.clone());
-		let mut panel=gpui::div().p_3().rounded(gpui::px(8.0)).border_1().border_color(crate::ui_theme::rgba(0xffffff30)).flex().flex_col().gap_3()
+		let mut panel=gpui::div().p_3().rounded(gpui::px(8.0)).border_1().border_color(ui_theme::rgba(0xffffff30)).flex().flex_col().gap_3()
             .child("Conversation paused as a precaution")
             .child(agent_surface::muted("Codex could not confirm that the agent was following your instructions. Review the findings before continuing."));
 
@@ -133,8 +137,9 @@ mod tests {
 	use crate::shell::agent_surface::misalignment::{
 		AgentDispatchStateDto, AgentSnapshotDto, AgentSnapshotResult, AgentWorkStatusDto,
 	};
-	use crate::shell::agent_surface::misalignment::{
-		AgentHistoryResult, AgentSurface, AgentWorkItemDto,
+	use crate::{
+		shell::agent_surface::misalignment::{AgentHistoryResult, AgentSurface, AgentWorkItemDto},
+		ui_frame,
 	};
 
 	#[gpui::test]
@@ -144,32 +149,7 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		surface.update(visual, |s, _| {
-			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
-				agents: Default::default(),
-				guardian: Default::default(),
-				portfolio: Default::default(),
-				archived_work_ids: Default::default(),
-				agent_slots: Default::default(),
-				context_references: vec![],
-				connection_initializing: false,
-				runtime_source: None,
-				projects: vec![],
-				dependencies: vec![],
-				pending_events: vec![],
-				work_items: vec![AgentWorkItemDto {
-					id: "root".into(),
-					parent_goal_id: None,
-					kind: decodex_protocol::AgentWorkKindDto::Goal,
-					title: "Agent".into(),
-					codex_thread_id: Some("thread".into()),
-					active_turn_id: None,
-					dispatch_state: AgentDispatchStateDto::Idle,
-					status: AgentWorkStatusDto::Open,
-					next_check_at_micros: None,
-					created_at_micros: 1,
-					updated_at_micros: 1,
-				}],
-			})));
+			s.apply_result(Ok(AgentSnapshotResult::Available(misalignment_snapshot())));
 
 			s.history = Some((
 				"root".into(),
@@ -195,7 +175,8 @@ mod tests {
 
 		visual.update(|window, cx| {
 			window.resize(gpui::size(gpui::px(1_180.0), gpui::px(1_200.0)));
-			crate::ui_frame::draw_frame(window, cx);
+
+			ui_frame::draw_frame(window, cx);
 		});
 
 		assert!(visual.debug_bounds("misalignment-continue").is_none());
@@ -208,7 +189,7 @@ mod tests {
 			assert!(s.submission.command.is_none());
 		});
 		visual.update(|window, cx| {
-			crate::ui_frame::draw_frame(window, cx);
+			ui_frame::draw_frame(window, cx);
 		});
 
 		let bounds = visual.debug_bounds("misalignment-continue").expect("explicit continuation");
@@ -229,11 +210,12 @@ mod tests {
 			s.acknowledge_misalignment("root", "review-one", cx);
 
 			assert!(s.feedback.is_empty());
+
 			cx.notify();
 		});
 
 		visual.update(|window, cx| {
-			crate::ui_frame::draw_frame(window, cx);
+			ui_frame::draw_frame(window, cx);
 		});
 
 		assert!(visual.debug_bounds("misalignment-continue").is_none());
@@ -248,14 +230,44 @@ mod tests {
 			s.acknowledge_misalignment("root", "review-one", cx);
 
 			assert!(s.feedback.is_empty());
+
 			cx.notify();
 		});
 
 		visual.update(|window, cx| {
-			crate::ui_frame::draw_frame(window, cx);
+			ui_frame::draw_frame(window, cx);
 		});
 
 		assert!(visual.debug_bounds("misalignment-continue").is_none());
 		assert!(visual.debug_bounds("misalignment-review").is_some());
+	}
+
+	fn misalignment_snapshot() -> AgentSnapshotDto {
+		AgentSnapshotDto {
+			agents: Default::default(),
+			guardian: Default::default(),
+			portfolio: Default::default(),
+			archived_work_ids: Default::default(),
+			agent_slots: Default::default(),
+			context_references: vec![],
+			connection_initializing: false,
+			runtime_source: None,
+			projects: vec![],
+			dependencies: vec![],
+			pending_events: vec![],
+			work_items: vec![AgentWorkItemDto {
+				id: "root".into(),
+				parent_goal_id: None,
+				kind: decodex_protocol::AgentWorkKindDto::Goal,
+				title: "Agent".into(),
+				codex_thread_id: Some("thread".into()),
+				active_turn_id: None,
+				dispatch_state: AgentDispatchStateDto::Idle,
+				status: AgentWorkStatusDto::Open,
+				next_check_at_micros: None,
+				created_at_micros: 1,
+				updated_at_micros: 1,
+			}],
+		}
 	}
 }

@@ -2,8 +2,8 @@
 use std::{mem, rc::Rc};
 
 use gpui::{
-	AnyElement, AppContext as _, Div, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
-	PathBuilder, ScrollEvent, Stateful,
+	AnyElement, AnyView, App, AppContext as _, Bounds, ClickEvent, Div, KeyDownEvent, MouseButton,
+	MouseDownEvent, MouseMoveEvent, PathBuilder, Pixels, Point, ScrollEvent, Stateful,
 };
 use graph::{Layout, Node};
 use ui_theme::{
@@ -11,50 +11,32 @@ use ui_theme::{
 	FONT_FAMILY, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED, TREE_ROW_HEIGHT, WARNING,
 };
 
-// Pane controls can leave the dispatch tree after a layout change. Keep keyboard
-// actions on the persistent shell instead of a detached control focus node.
-pub(super) fn restore_shell_focus(window: &mut Window, cx: &mut gpui::App) {
-	if let Some(shell) = window.root::<crate::shell::Shell>().flatten() {
-		let focus = shell.read(cx).root_focus.clone();
-		window.focus(&focus, cx);
-	}
-}
-
-fn action_accessible_label(id: &str, label: &str) -> String {
-	if id.starts_with("attention-") {
-		format!("{label} pending decisions · open next")
-	} else {
-		match id {
-			"new-project" => "New project",
-			"graph-up" => "Parent work scope",
-			"handoff-close" => "Collapse task details",
-			"zoom-in" => "Zoom in",
-			"zoom-out" => "Zoom out",
-			_ => label,
-		}
-		.to_owned()
-	}
-}
-
 #[cfg(test)] use crate::shell::agent_surface::ConversationWorkingDirectory;
 #[cfg(any(test, feature = "visual-capture"))]
 use crate::shell::agent_surface::{
 	AgentRequestResult, AgentSnapshotDto, AgentSnapshotResult, ConversationReasoningEffort,
 };
 use crate::{
+	frame_trace,
 	shell::{
-		WINDOW_CONTROLS_CLEARANCE,
+		ControlTooltip, Shell, WINDOW_CONTROLS_CLEARANCE,
 		agent_surface::{
 			AgentDispatchStateDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context,
 			FluentBuilder, InteractiveElement, IntoElement, LoadState, ParentElement, Render, Role,
 			SharedString, StatefulInteractiveElement, Styled, SubmitComposer, Window,
-			activity::HistoryScrollAnchor, creation_setup, graph, prompts, ui_theme,
+			activity::HistoryScrollAnchor,
+			creation_setup, dock, graph, prompts, ui_theme,
+			ui_theme::{
+				CAPTION_SIZE, COMPOSER_TOP_GAP, CONVERSATION_HEADER_HEIGHT, CONVERSATION_INSET,
+				CONVERSATION_TAB_GAP, CONVERSATION_TAB_SIZE, CONVERSATION_WIDTH, FIELD_MATERIAL,
+				MESSAGE_GAP, SELECTED_FILL, WORKSPACE_GUTTER, WORKSPACE_RADIUS,
+			},
 		},
 		workspace_symbols,
 	},
 	ui_feedback::{self, Feedback, Tone},
-	ui_loading,
-	ui_motion::{self, SmoothControl, TabReveal},
+	ui_layout, ui_loading,
+	ui_motion::{self, AgentRailStatus, OverflowLabel, SmoothControl, TabReveal},
 };
 #[cfg(any(test, feature = "visual-capture"))]
 use decodex_protocol::{
@@ -67,98 +49,6 @@ use decodex_protocol::{AgentWorkKindDto, DesktopRecoveredDraft};
 const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
 const PARENT_MANAGED_MESSAGE: &str = "Continue in parent chat";
 
-fn open_connection_settings(
-	destination: crate::shell::Destination,
-	window: &mut Window,
-	cx: &mut gpui::App,
-) {
-	if let Some(shell) = window.root::<crate::shell::Shell>().flatten() {
-		shell.update(cx, |shell, cx| shell.open_settings_window(destination, cx));
-	}
-	#[cfg(all(target_os = "macos", not(test)))]
-	if let Some(parent) = super::native_composer::parent_window(window, cx) {
-		cx.defer(move |cx| {
-			let _ = parent
-				.update(cx, |_, window, cx| open_connection_settings(destination, window, cx));
-		});
-	}
-}
-
-fn connection_recovery_notice(
-	message: &'static str,
-	destination: crate::shell::Destination,
-) -> AnyElement {
-	gpui::div()
-		.id("conversation-unavailable")
-		.debug_selector(|| "conversation-unavailable".into())
-		.role(Role::Status)
-		.aria_label(format!("Error: {message}"))
-		.w_full()
-		.min_w_0()
-		.flex()
-		.flex_col()
-		.items_center()
-		.gap(gpui::px(12.))
-		.text_size(gpui::px(12.))
-		.line_height(gpui::px(18.))
-		.child(Tone::Error.icon())
-		.child(
-			gpui::div()
-				.w_full()
-				.text_center()
-				.text_color(crate::ui_theme::rgb(Tone::Error.color()))
-				.child(message),
-		)
-		.child(connection_settings_action(destination))
-		.into_any_element()
-}
-
-fn connection_settings_action(destination: crate::shell::Destination) -> AnyElement {
-	let (id, label) = if destination == crate::shell::Destination::Accounts {
-		("connection-open-accounts", "Open Accounts")
-	} else {
-		("connection-open-diagnostics", "Open Diagnostics")
-	};
-	gpui::div()
-		.id(id)
-		.debug_selector(move || id.into())
-		.role(Role::Button)
-		.aria_label(label)
-		.tab_index(0)
-		.flex_none()
-		.px_2()
-		.py_1()
-		.cursor_pointer()
-		.text_color(crate::ui_theme::rgb(BLUE))
-		.child(label)
-		.on_click(move |_, window, cx| open_connection_settings(destination, window, cx))
-		.on_key_down(move |event: &KeyDownEvent, window, cx| {
-			if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-				open_connection_settings(destination, window, cx);
-				cx.stop_propagation();
-			}
-		})
-		.into_any_element()
-}
-
-fn account_connection_message(detail: &str) -> Option<&'static str> {
-	let recovery = detail.strip_prefix("Agent account requires recovery: ");
-	Some(match recovery {
-		Some("RefreshQuota") =>
-			"Account availability could not be confirmed. Check usage in Accounts. Your draft is saved.",
-		Some("ConfigureFixedAccount") => "Select an account to continue. Your draft is saved.",
-		Some("EnableAccount") => "Enable the selected account to continue. Your draft is saved.",
-		Some("EnrollCredentials" | "RestoreProviderAgreement") =>
-			"Sign in again in Accounts to continue. Your draft is saved.",
-		Some("ResolveCredentialOperation" | "RepairCredentialStore") =>
-			"Account setup needs attention. Open Accounts to continue. Your draft is saved.",
-		Some("UpgradeCodex") => "This account requires a newer Codex runtime. Your draft is saved.",
-		_ if detail.contains("account has reached its usage limit") =>
-			"This account has reached its usage limit. Check Accounts for the reset time. Your draft is saved.",
-		_ => return None,
-	})
-}
-
 #[derive(Clone)]
 pub(super) struct PageView {
 	scope: Option<String>,
@@ -170,7 +60,7 @@ pub(super) struct PageView {
 struct PanelTip(String);
 impl Render for PanelTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		crate::ui_motion::tooltip_surface(gpui::div())
+		ui_motion::tooltip_surface(gpui::div())
 			.px_2()
 			.py_1()
 			.text_color(crate::ui_theme::rgb(TEXT))
@@ -187,6 +77,7 @@ impl AgentSurface {
 	pub(crate) fn can_restore_work(&self, work: Option<&str>) -> bool {
 		work.is_none_or(|id| {
 			let id = self.native_agents.pages.get(id).map_or(id, |(owner, _)| owner.as_str());
+
 			self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id))
 		})
 	}
@@ -206,6 +97,7 @@ impl AgentSurface {
 		if self.workspace_connecting() {
 			return [(false, false); 3];
 		}
+
 		[
 			(self.workspace.sidebar_visible, true),
 			(
@@ -232,7 +124,6 @@ impl AgentSurface {
 		if self.workspace_connecting() {
 			return;
 		}
-
 		if self.workspace.graph_expanded {
 			self.toggle_graph_fullscreen(cx);
 		} else if self.workspace.chat_expanded {
@@ -248,8 +139,10 @@ impl AgentSurface {
 
 	pub(super) fn toggle_graph_fullscreen(&mut self, cx: &mut Context<Self>) {
 		self.reveal_relations_after_resize();
+
 		self.workspace.graph_expanded = !self.workspace.graph_expanded;
 		self.workspace.chat_expanded = false;
+
 		cx.notify();
 	}
 
@@ -257,9 +150,11 @@ impl AgentSurface {
 		if self.workspace.graph_expanded {
 			self.reveal_relations_after_resize();
 		}
+
 		self.workspace.focused_panel = None;
 		self.workspace.chat_expanded = !self.workspace.chat_expanded;
 		self.workspace.graph_expanded = false;
+
 		cx.notify();
 	}
 
@@ -267,10 +162,10 @@ impl AgentSurface {
 		if self.workspace_connecting() {
 			return;
 		}
-
 		if self.workspace.graph_expanded {
 			self.reveal_relations_after_resize();
 		}
+
 		self.workspace.graph_visible = !self.workspace.graph_visible;
 		self.workspace.graph_expanded = false;
 
@@ -284,17 +179,21 @@ impl AgentSurface {
 
 	pub(super) fn root_id(&self) -> Option<String> {
 		let snapshot = self.snapshot.as_ref()?;
+
 		if let Some(agent) = snapshot.agents.iter().find(|a| a.assistant) {
 			return Some(agent.id.clone());
 		}
+
 		snapshot.work_items.iter().find(|w| w.parent_goal_id.is_none()).map(|w| w.id.clone())
 	}
 
 	pub(super) fn open_page(&mut self, id: &str, cx: &mut Context<Self>) {
 		if let Some((owner, thread)) = self.native_agents.pages.get(id).cloned() {
 			self.open_native_agent(&owner, &thread, cx);
+
 			return;
 		}
+
 		self.open_work_conversation(id, None, cx);
 	}
 
@@ -315,36 +214,34 @@ impl AgentSurface {
 		let editor_ready = thread.is_some()
 			|| work.parent_goal_id.is_some() && work.kind != AgentWorkKindDto::Manager
 			|| self.composer_manager.as_deref() == Some(id);
+
 		// Explicit conversation navigation releases a previous graph inspection.
 		// Keep the camera; the newly opened conversation supplies the card highlight.
 		self.clear_relation_selection();
 		self.keep_edited_preview(cx);
+
 		self.workspace.browsing = false;
+
 		self.workspace.closing_pages.remove(id);
+
 		if self.selected.as_deref() == Some(id)
 			&& self.native_agents.selected.as_ref().map(|(_, thread)| thread) == thread.as_ref()
 			&& editor_ready
 		{
 			cx.notify();
+
 			return;
 		}
+
 		self.close_native_agent(cx);
-		if self.selected.as_deref() != Some(id) {
-			// Cancel against the outgoing editor before parking or replacing its draft.
-			self.stop_voice(cx);
-			self.reset_automatic_recap();
-			self.reset_voice_settings();
-			self.reset_resources();
-			self.clear_usage_estimate();
-			self.reset_integrations();
-			self.resource_feedback.clear();
-		}
+		self.release_previous_conversation(id, cx);
 
 		self.handoffs.read_on_open = self
 			.handoff_items()
 			.into_iter()
 			.find(|h| h.work == id && h.result)
 			.map(|h| (h.work, h.key));
+
 		self.restore_manager_composer(id, cx);
 
 		if let Some((old, history)) = &self.history {
@@ -390,6 +287,7 @@ impl AgentSurface {
 				self.workspace.graph_pan = saved.pan;
 				self.workspace.graph_zoom = saved.zoom;
 			}
+
 			// Dock visibility is global; conversation navigation only restores graph inspection.
 			self.workspace.graph_expanded = false;
 		}
@@ -418,7 +316,21 @@ impl AgentSurface {
 			self.load_history(cx);
 			self.sync_request(cx);
 		}
+
 		cx.notify();
+	}
+
+	fn release_previous_conversation(&mut self, id: &str, cx: &mut Context<Self>) {
+		if self.selected.as_deref() != Some(id) {
+			// Cancel against the outgoing editor before parking or replacing its draft.
+			self.stop_voice(cx);
+			self.reset_automatic_recap();
+			self.reset_voice_settings();
+			self.reset_resources();
+			self.clear_usage_estimate();
+			self.reset_integrations();
+			self.resource_form.feedback.clear();
+		}
 	}
 
 	pub(super) fn restore_manager_composer(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -466,6 +378,7 @@ impl AgentSurface {
 		if self.workspace.preview_page.as_deref() == Some(id) {
 			self.workspace.preview_page = None;
 		}
+
 		self.workspace.closing_pages.insert(id.to_owned());
 
 		if self.conversation_page().as_deref() == Some(id)
@@ -473,8 +386,8 @@ impl AgentSurface {
 		{
 			self.open_page(&root, cx);
 		}
-		self.timeline.native_cache.retain(|(work, _), _| work != id);
 
+		self.timeline.native_cache.retain(|(work, _), _| work != id);
 		cx.notify();
 	}
 
@@ -516,7 +429,7 @@ impl AgentSurface {
 			.id(SharedString::from(id))
 			.role(if is_tab { Role::Tab } else { Role::Button })
 			.aria_selected(active)
-			.when(active && !is_tab, |row| row.bg(ui_theme::rgba(ui_theme::SELECTED_FILL)))
+			.when(active && !is_tab, |row| row.bg(ui_theme::rgba(SELECTED_FILL)))
 			.tab_index(0)
 			.aria_label(accessible)
 			.when(show_tip, |button| {
@@ -545,7 +458,9 @@ impl AgentSurface {
 				if is_tree || is_tab {
 					cx.stop_propagation();
 				}
+
 				action(s, cx);
+
 				if restores_focus {
 					restore_shell_focus(window, cx);
 				}
@@ -553,6 +468,7 @@ impl AgentSurface {
 			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
 					keyboard(s, cx);
+
 					if restores_focus {
 						restore_shell_focus(window, cx);
 					}
@@ -579,11 +495,8 @@ impl AgentSurface {
 			.child(if let Some(icon) = icon {
 				icon
 			} else if is_tree {
-				crate::ui_motion::OverflowLabel {
-					id: SharedString::from(label_id).into(),
-					text: label.into(),
-				}
-				.into_any_element()
+				OverflowLabel { id: SharedString::from(label_id).into(), text: label.into() }
+					.into_any_element()
 			} else {
 				gpui::div()
 					.min_w_0()
@@ -627,9 +540,11 @@ impl AgentSurface {
 				workspace_symbols::Symbol::AllWork,
 				|s, cx| {
 					s.stop_voice(cx);
+
 					s.workspace.portfolio_mode = true;
 					s.workspace.guardian_open = false;
 					s.workspace.browsing = true;
+
 					cx.notify();
 				},
 				cx,
@@ -641,6 +556,7 @@ impl AgentSurface {
 				|s, cx| {
 					s.workspace.guardian_open = true;
 					s.workspace.browsing = true;
+
 					cx.notify();
 				},
 				cx,
@@ -651,17 +567,21 @@ impl AgentSurface {
 				workspace_symbols::Symbol::AllWork,
 				|s, cx| {
 					s.stop_voice(cx);
+
 					s.workspace.portfolio_mode = false;
 					s.workspace.guardian_open = false;
 					s.workspace.browsing = true;
+
 					cx.notify();
 				},
 				cx,
 			));
+
 		panel.into_any_element()
 	}
 
 	pub(super) fn conversation_pages(&self) -> Vec<(String, String, bool)> {
+		let open = &self.workspace.pages;
 		let mut pages = self
 			.root_id()
 			.map(|id| {
@@ -671,10 +591,11 @@ impl AgentSurface {
 					.and_then(|s| s.work_items.iter().find(|w| w.id == id))
 					.map(|w| self.work_label(w))
 					.unwrap_or_else(|| "Agent".into());
+
 				vec![(id, name, false)]
 			})
 			.unwrap_or_default();
-		let open = &self.workspace.pages;
+
 		if let Some(snapshot) = &self.snapshot {
 			pages.extend(open.iter().filter(|id| Some(*id) != self.root_id().as_ref()).filter_map(
 				|id| {
@@ -690,6 +611,7 @@ impl AgentSurface {
 				},
 			));
 		}
+
 		pages
 	}
 
@@ -705,6 +627,7 @@ impl AgentSurface {
 				.map(|a| a.status.clone())
 				.unwrap_or_default();
 		}
+
 		self.snapshot
 			.as_ref()
 			.and_then(|snapshot| {
@@ -718,16 +641,8 @@ impl AgentSurface {
 	}
 
 	pub(super) fn workspace_tabs(&self, cx: &mut Context<Self>) -> AnyElement {
-		let mut list = gpui::div()
-			.id("agent-pages")
-			.role(Role::TabList)
-			.aria_label("Open conversations")
-			.w_full()
-			.min_w_0()
-			.max_h(gpui::px(360.))
-			.overflow_y_scroll()
-			.flex()
-			.flex_col();
+		let mut list = Self::conversation_tab_list();
+
 		for (id, label, closable) in self.conversation_pages() {
 			let active = self.conversation_page().as_ref() == Some(&id)
 				|| (!closable && self.selected.is_none());
@@ -739,6 +654,7 @@ impl AgentSurface {
 				.group(group.clone())
 				.debug_selector({
 					let id = id.clone();
+
 					move || format!("page-{id}")
 				})
 				.role(Role::Tab)
@@ -750,23 +666,24 @@ impl AgentSurface {
 				.tab_index(0)
 				.w_full()
 				.min_w_0()
-				.h(gpui::px(ui_theme::CONVERSATION_TAB_SIZE))
+				.h(gpui::px(CONVERSATION_TAB_SIZE))
 				.flex_none()
 				.overflow_hidden()
 				.flex()
 				.items_center()
 				.rounded(gpui::px(9.))
 				.cursor_pointer()
-				.bg(ui_theme::rgba(if active { ui_theme::SELECTED_FILL } else { 0xffffff00 }))
+				.bg(ui_theme::rgba(if active { SELECTED_FILL } else { 0xffffff00 }))
 				.hover(move |s| {
 					s.bg(ui_theme::rgba(if active { SELECTED_HOVER_FILL } else { HOVER_FILL }))
 				})
-				.on_click(cx.listener(move |s, event: &gpui::ClickEvent, _, cx| {
+				.on_click(cx.listener(move |s, event: &ClickEvent, _, cx| {
 					if event.click_count() == 2
 						&& s.workspace.preview_page.as_deref() == Some(&row_select)
 					{
 						s.workspace.preview_page = None;
 					}
+
 					s.open_page(&row_select, cx);
 				}))
 				.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
@@ -776,14 +693,16 @@ impl AgentSurface {
 						cx.stop_propagation();
 					}
 				}))
-				.child(crate::ui_motion::AgentRailStatus {
+				.child(AgentRailStatus {
 					id: id.clone(),
 					state: self.conversation_status(&id),
 					label: label.clone(),
 				});
+
 			if closable {
 				let close = id.clone();
 				let keyboard = id.clone();
+
 				tab = tab.child(
 					gpui::div()
 						.id(SharedString::from(format!("close-{id}")))
@@ -817,8 +736,10 @@ impl AgentSurface {
 							}
 						})),
 				);
+
 				let visible = !self.workspace.closing_pages.contains(&id);
 				let surface = cx.entity().downgrade();
+
 				list = list.child(TabReveal {
 					id: SharedString::from(format!("tab-reveal-{id}")).into(),
 					visible,
@@ -833,10 +754,24 @@ impl AgentSurface {
 					}),
 				});
 			} else {
-				list = list.child(tab.mb(gpui::px(ui_theme::CONVERSATION_TAB_GAP)));
+				list = list.child(tab.mb(gpui::px(CONVERSATION_TAB_GAP)));
 			}
 		}
+
 		list.into_any_element()
+	}
+
+	fn conversation_tab_list() -> Stateful<Div> {
+		gpui::div()
+			.id("agent-pages")
+			.role(Role::TabList)
+			.aria_label("Open conversations")
+			.w_full()
+			.min_w_0()
+			.max_h(gpui::px(360.))
+			.overflow_y_scroll()
+			.flex()
+			.flex_col()
 	}
 
 	pub(crate) fn workspace_connecting(&self) -> bool {
@@ -862,7 +797,6 @@ impl AgentSurface {
 			)
 			.then_some(PARENT_MANAGED_MESSAGE);
 		}
-
 		if self.uncertain {
 			return Some(
 				"Delivery is unconfirmed. Your draft is kept; sending is paused to avoid duplicates.",
@@ -871,7 +805,6 @@ impl AgentSurface {
 		if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
 			return Some("The service connection is unavailable. Your history and draft are kept.");
 		}
-
 		if self.connection_initializing() {
 			return Some("Connecting to Codex…");
 		}
@@ -972,6 +905,7 @@ impl AgentSurface {
 		}
 
 		let detail = self.connection_failure_detail();
+
 		if !self.uncertain
 			&& let Some(message) = detail.and_then(account_connection_message)
 		{
@@ -986,6 +920,7 @@ impl AgentSurface {
 			.child(connection_settings_action(crate::shell::Destination::Accounts))
 			.into_any_element();
 		}
+
 		let title = if self.uncertain {
 			"Delivery unconfirmed"
 		} else {
@@ -999,7 +934,6 @@ impl AgentSurface {
 				_ => "Sending paused",
 			}
 		};
-
 		let row = ui_feedback::status_row(
 			"conversation-unavailable",
 			Tone::Warning,
@@ -1043,6 +977,7 @@ impl AgentSurface {
 				),
 			)
 		});
+
 		gpui::div()
 			.w_full()
 			.flex()
@@ -1065,6 +1000,7 @@ impl AgentSurface {
 	pub(super) fn composer_footer(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
 		if self.native_agents.selected.is_some() {
 			let feedback = self.native_feedback();
+
 			return gpui::div()
 				.flex_none()
 				.w_full()
@@ -1083,6 +1019,7 @@ impl AgentSurface {
 			.map(|work| self.saved_input_rows(&work, cx))
 			.unwrap_or_default();
 		let has_saved_inputs = !saved_inputs.is_empty();
+
 		// The parent overlays this transparent footer above the scrolling conversation.
 		gpui::div().debug_selector(|| "composer-footer".into()).flex_none().w_full().child(
 			gpui::div()
@@ -1096,15 +1033,15 @@ impl AgentSurface {
 						gpui::div()
 							.debug_selector(|| "composer-saved-inputs".into())
 							.w_full()
-							.px(gpui::px(ui_theme::CONVERSATION_INSET))
-							.pb(gpui::px(ui_theme::MESSAGE_GAP - ui_theme::COMPOSER_TOP_GAP))
+							.px(gpui::px(CONVERSATION_INSET))
+							.pb(gpui::px(MESSAGE_GAP - COMPOSER_TOP_GAP))
 							.flex()
 							.justify_center()
 							.child(
 								gpui::div()
 									.id("composer-saved-inputs-scroll")
 									.w_full()
-									.max_w(gpui::px(ui_theme::CONVERSATION_WIDTH))
+									.max_w(gpui::px(CONVERSATION_WIDTH))
 									.max_h(window.viewport_size().height * 0.35)
 									.overflow_y_scroll()
 									.flex()
@@ -1140,10 +1077,13 @@ impl AgentSurface {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		crate::frame_trace::surface_render("transcript");
+		frame_trace::surface_render("transcript");
+
 		self.prepare_transcript_history(window, cx);
+
 		let selected = self.conversation_work();
 		let is_agent = self.native_agents.selected.is_some() || self.selected_is_agent();
+
 		self.workspace_transcript(selected.as_ref(), is_agent, window, cx)
 	}
 
@@ -1167,18 +1107,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		if self.is_new_conversation() {
-			return gpui::div()
-				.flex_1()
-				.h_full()
-				.flex()
-				.flex_col()
-				.items_center()
-				.justify_center()
-				.pb(gpui::px(self.workspace_composer_clearance()))
-				.gap_2()
-				.child(gpui::div().text_size(gpui::px(20.)).child("What would you like to do?"))
-				.child(self.workspace_choices(true, cx))
-				.into_any_element();
+			return self.new_conversation_prompt(cx);
 		}
 
 		let scroll = self
@@ -1212,11 +1141,9 @@ impl AgentSurface {
 						.min_h(gpui::px(voice_min_height))
 						.pt(gpui::px(16.))
 						.pb(gpui::px(self.workspace_composer_clearance()))
-						.px(gpui::px(ui_theme::CONVERSATION_INSET))
+						.px(gpui::px(CONVERSATION_INSET))
 						.w_full()
-						.max_w(gpui::px(
-							ui_theme::CONVERSATION_WIDTH + 2. * ui_theme::CONVERSATION_INSET,
-						))
+						.max_w(gpui::px(CONVERSATION_WIDTH + 2. * CONVERSATION_INSET))
 						.min_w_0()
 						.mx_auto()
 						.line_height(gpui::px(BODY_LINE_HEIGHT))
@@ -1259,27 +1186,30 @@ impl AgentSurface {
 		let fill_owner = cx.entity().downgrade();
 		let fill_key = self.selected.clone();
 		// Measure after layout, including folded process rows and the composer inset.
-		let fill_viewport =
-			move |_: Vec<gpui::Bounds<gpui::Pixels>>, _: &mut Window, cx: &mut gpui::App| {
-				let Some(entity) = fill_owner.upgrade() else {
-					return;
-				};
-				let state = entity.read(cx);
-				if state.selected != fill_key || !state.history_viewport_fill_ready() {
-					return;
-				}
-				let owner = fill_owner.clone();
-				let key = fill_key.clone();
-				cx.defer(move |cx| {
-					let _ = owner.update(cx, |s, cx| {
-						if s.selected == key
-							&& key.as_ref().is_some_and(|key| s.history_viewport_underfilled(key))
-						{
-							s.prefetch_older_history(cx);
-						}
-					});
-				});
+		let fill_viewport = move |_: Vec<Bounds<Pixels>>, _: &mut Window, cx: &mut App| {
+			let Some(entity) = fill_owner.upgrade() else {
+				return;
 			};
+			let state = entity.read(cx);
+
+			if state.selected != fill_key || !state.history_viewport_fill_ready() {
+				return;
+			}
+
+			let owner = fill_owner.clone();
+			let key = fill_key.clone();
+
+			cx.defer(move |cx| {
+				let _ = owner.update(cx, |s, cx| {
+					if s.selected == key
+						&& key.as_ref().is_some_and(|key| s.history_viewport_underfilled(key))
+					{
+						s.prefetch_older_history(cx);
+					}
+				});
+			});
+		};
+
 		gpui::div()
 			.on_children_prepainted(fill_viewport)
 			.size_full()
@@ -1293,20 +1223,39 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	fn new_conversation_prompt(&self, cx: &mut Context<Self>) -> AnyElement {
+		gpui::div()
+			.flex_1()
+			.h_full()
+			.flex()
+			.flex_col()
+			.items_center()
+			.justify_center()
+			.pb(gpui::px(self.workspace_composer_clearance()))
+			.gap_2()
+			.child(gpui::div().text_size(gpui::px(20.)).child("What would you like to do?"))
+			.child(self.workspace_choices(true, cx))
+			.into_any_element()
+	}
+
 	pub(super) fn render_workspace(
 		&mut self,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		self.poll_native_agents(cx);
+
 		let connecting = self.workspace_connecting();
+
 		self.workspace.arrival.observe(!connecting);
+
 		if self.workspace.arrival.progress(0.12) < 1. && !connecting {
 			ui_motion::request_frame(window, cx);
 		}
 		if connecting {
 			let unavailable =
 				matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale);
+
 			return gpui::div()
 				.debug_selector(|| "workspace-connecting".into())
 				.size_full()
@@ -1320,66 +1269,40 @@ impl AgentSurface {
 						.w_full()
 						.min_w_0()
 						.max_w(gpui::px(440.))
-						.px(gpui::px(ui_theme::CONVERSATION_INSET))
+						.px(gpui::px(CONVERSATION_INSET))
 						.child(connection_recovery_notice(
 							"Could not connect to Codex. Your history and drafts are saved.",
 							crate::shell::Destination::Health,
 						))
 						.into_any_element()
 				} else {
-					crate::ui_loading::workspace().into_any_element()
+					ui_loading::workspace().into_any_element()
 				})
 				.into_any_element();
 		}
+
 		self.observe_visible_output(cx);
 		self.prepare_workspace_history(window, cx);
 
 		let is_agent = self.native_agents.selected.is_some() || self.selected_is_agent();
 		let selected = self.conversation_work();
 		let wide = f32::from(window.viewport_size().width) > 1_000.0;
+
 		if self.workspace.browsing {
 			let browser = self.render_work_browser(cx);
+
 			return self.workspace_frame(browser, wide, window, cx);
 		}
-		let mut chat = gpui::div()
-			.id("conversation-panel-focus")
-			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.workspace.focused_panel = None))
-			.relative()
-			.opacity(self.workspace.arrival.progress(0.12))
-			.flex_1()
-			.min_w_0()
-			.min_h_0()
-			.overflow_hidden()
-			.flex()
-			.flex_col()
-			.child(
-				gpui::div()
-					.debug_selector(|| "conversation-header".into())
-					.h(gpui::px(ui_theme::CONVERSATION_HEADER_HEIGHT))
-					.flex_none()
-					.px(gpui::px(ui_theme::CONVERSATION_INSET))
-					.flex()
-					.items_center()
-					.justify_between()
-					.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-					.child(
-						gpui::div()
-							.id("conversation-heading")
-							.role(Role::Heading)
-							.aria_level(2)
-							.aria_label("Conversation")
-							.child("Conversation"),
-					)
-					.child(self.panel_controls(super::panel_controls::Panel::Conversation, cx)),
-			);
 
 		let floating_composer = is_agent
 			&& (selected.is_some() || self.is_new_conversation())
 			&& !self.selected_is_archived();
+		let mut chat = self.conversation_panel(cx);
+
 		if !floating_composer {
 			self.workspace.composer_overlay_height = 0.;
 		}
+
 		chat = chat.child(
 			gpui::div()
 				.flex_1()
@@ -1388,7 +1311,7 @@ impl AgentSurface {
 				.relative()
 				// Keep current transcript pixels during scroll and native-panel changes.
 				// Markdown shaping and history preparation retain their own caches.
-				.child(self.transcript_presentation.clone())
+				.child(self.presentations.transcript.clone())
 				.when(!self.is_new_conversation(), |row| {
 					row.child(self.history_rail_slot(window, cx))
 				})
@@ -1407,11 +1330,48 @@ impl AgentSurface {
 		}
 
 		let chat = self.workspace_details_overlay(chat, selected.as_ref(), window, cx);
+
 		self.workspace_frame(chat.into_any_element(), wide, window, cx)
+	}
+
+	fn conversation_panel(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+		gpui::div()
+			.id("conversation-panel-focus")
+			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.workspace.focused_panel = None))
+			.relative()
+			.opacity(self.workspace.arrival.progress(0.12))
+			.flex_1()
+			.min_w_0()
+			.min_h_0()
+			.overflow_hidden()
+			.flex()
+			.flex_col()
+			.child(
+				gpui::div()
+					.debug_selector(|| "conversation-header".into())
+					.h(gpui::px(CONVERSATION_HEADER_HEIGHT))
+					.flex_none()
+					.px(gpui::px(CONVERSATION_INSET))
+					.flex()
+					.items_center()
+					.justify_between()
+					.text_size(gpui::px(CAPTION_SIZE))
+					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+					.child(
+						gpui::div()
+							.id("conversation-heading")
+							.role(Role::Heading)
+							.aria_level(2)
+							.aria_label("Conversation")
+							.child("Conversation"),
+					)
+					.child(self.panel_controls(super::panel_controls::Panel::Conversation, cx)),
+			)
 	}
 
 	fn floating_composer(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let owner = cx.entity();
+
 		gpui::div()
 			.debug_selector(|| "floating-composer".into())
 			.absolute()
@@ -1423,11 +1383,14 @@ impl AgentSurface {
 				gpui::canvas(
 					move |bounds, _, cx| {
 						let height = f32::from(bounds.size.height);
+
 						if (owner.read(cx).workspace.composer_overlay_height - height).abs() > 0.5 {
 							let owner = owner.clone();
+
 							cx.defer(move |cx| {
 								owner.update(cx, |s, cx| {
 									s.workspace.composer_overlay_height = height;
+
 									cx.notify();
 								})
 							});
@@ -1449,9 +1412,11 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Div {
 		let palette = ui_theme::workspace_palette();
+
 		if height <= 0.1 {
 			self.stop_graph_actors();
 		}
+
 		// History and the editor share one reading surface and the same width.
 		// The editor floats over history without a second enclosing panel.
 		let plane = gpui::div()
@@ -1472,12 +1437,12 @@ impl AgentSurface {
 					.w_full()
 					.h(gpui::px(height))
 					.bg(palette.graph)
-					.rounded_tl(gpui::px(ui_theme::WORKSPACE_RADIUS))
-					.rounded_tr(gpui::px(ui_theme::WORKSPACE_RADIUS))
+					.rounded_tl(gpui::px(WORKSPACE_RADIUS))
+					.rounded_tr(gpui::px(WORKSPACE_RADIUS))
 					.opacity(self.workspace.arrival.progress(0.06))
 					.when(height > 0.1, |panel| {
 						panel
-							.child(crate::ui_layout::pane(self.graph_presentation.clone(), window))
+							.child(ui_layout::pane(self.presentations.graph.clone(), window))
 							.child(self.graph_layers())
 					}),
 			)
@@ -1502,6 +1467,7 @@ impl AgentSurface {
 						.w_full(),
 				)
 			});
+
 		gpui::div()
 			.debug_selector(|| "workspace-center-frame".into())
 			.relative()
@@ -1509,7 +1475,7 @@ impl AgentSurface {
 			.min_w_0()
 			.h_full()
 			.bg(palette.conversation)
-			.rounded(gpui::px(ui_theme::WORKSPACE_RADIUS))
+			.rounded(gpui::px(WORKSPACE_RADIUS))
 			.overflow_hidden()
 			.flex()
 			.flex_col()
@@ -1533,6 +1499,7 @@ impl AgentSurface {
 		};
 
 		self.update_graph_inset(graph_width - 24., (graph_height - 54.).max(0.));
+
 		let displayed_height = ui_motion::direct_value(
 			"execution-surface-height",
 			graph_height,
@@ -1543,7 +1510,6 @@ impl AgentSurface {
 			cx,
 		);
 		let center = self.workspace_center(chat, displayed_height, has_composer, window, cx);
-
 		let right_width = ui_motion::direct_value(
 			"agent-tree-panel",
 			self.agent_tree_width(window),
@@ -1558,7 +1524,7 @@ impl AgentSurface {
 			.min_h_0()
 			.flex()
 			.overflow_hidden()
-			.when(right_width > 0.1, |body| body.gap(gpui::px(ui_theme::WORKSPACE_GUTTER)))
+			.when(right_width > 0.1, |body| body.gap(gpui::px(WORKSPACE_GUTTER)))
 			.child(center)
 			.child(
 				gpui::div()
@@ -1567,17 +1533,15 @@ impl AgentSurface {
 					.relative()
 					.w(gpui::px(right_width))
 					.h_full()
-					.rounded(gpui::px(ui_theme::WORKSPACE_RADIUS))
-					.bg(ui_theme::rgba(ui_theme::FIELD_MATERIAL))
+					.rounded(gpui::px(WORKSPACE_RADIUS))
+					.bg(ui_theme::rgba(FIELD_MATERIAL))
 					.overflow_hidden()
 					.opacity(self.workspace.arrival.progress(0.08))
 					.when(right_width > 0.1, |panel| {
 						self.deliveries.update(cx, |panel, cx| panel.set_width(right_width, cx));
+
 						panel
-							.child(crate::ui_layout::pane(
-								self.activity_presentation.clone(),
-								window,
-							))
+							.child(ui_layout::pane(self.presentations.activity.clone(), window))
 							.child(
 								self.sidebar_resize_handle(super::workspace_size::Panel::Right, cx),
 							)
@@ -1589,8 +1553,8 @@ impl AgentSurface {
 			.min_w_0()
 			.h_full()
 			.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
-			.px(gpui::px(ui_theme::WORKSPACE_GUTTER))
-			.pb(gpui::px(ui_theme::WORKSPACE_GUTTER))
+			.px(gpui::px(WORKSPACE_GUTTER))
+			.pb(gpui::px(WORKSPACE_GUTTER))
 			.relative()
 			.flex()
 			.flex_col()
@@ -1618,7 +1582,7 @@ impl AgentSurface {
 						.flex()
 						.items_center()
 						.justify_center()
-						.child(crate::ui_loading::loading("")),
+						.child(ui_loading::loading("")),
 				)
 			})
 			.into_any_element()
@@ -1665,6 +1629,7 @@ impl AgentSurface {
 		{
 			self.workspace.opening_work = None;
 			self.workspace.new_conversation = None;
+
 			self.open_page(&id, cx);
 		}
 		if let Some(current) = self.conversation_page()
@@ -1816,7 +1781,6 @@ impl AgentSurface {
 		{
 			return "Assistant".into();
 		}
-
 		if work.title == work.id && work.kind == AgentWorkKindDto::Task {
 			// Older records used readable work slugs as titles. Preserve their meaning
 			// instead of replacing it with a position-dependent Agent 1/2 label.
@@ -1825,6 +1789,7 @@ impl AgentSurface {
 				.as_ref()
 				.and_then(|parent| work.title.strip_prefix(&format!("{parent}-")))
 				.unwrap_or(&work.title);
+
 			return title
 				.split(['-', '_'])
 				.filter(|word| !word.is_empty())
@@ -1835,6 +1800,7 @@ impl AgentSurface {
 					"chief" => "Agent".into(),
 					_ if index == 0 => {
 						let mut chars = word.chars();
+
 						chars
 							.next()
 							.map(|c| c.to_uppercase().collect::<String>() + chars.as_str())
@@ -1856,6 +1822,7 @@ impl AgentSurface {
 		};
 		let layout = self.workspace_graph_layout();
 		let mut area = self.graph_canvas(&layout, cx);
+
 		if layout.nodes.is_empty() {
 			area = area.child(
 				gpui::div()
@@ -1942,7 +1909,6 @@ impl AgentSurface {
 			.map(|((a, b), report)| {
 				let a = &layout.nodes[*a];
 				let b = &layout.nodes[*b];
-
 				let blocked = self.snapshot.as_ref().is_some_and(|snapshot| {
 					snapshot.work_items.iter().find(|w| w.id == b.id).is_some_and(|work| {
 						graph::blockers(snapshot, work).iter().any(|w| w.id == a.id)
@@ -1950,6 +1916,7 @@ impl AgentSurface {
 				});
 				let (width, height) = self.graph_node_size(&a.id);
 				let (_, target_height) = self.graph_node_size(&b.id);
+
 				((a.x + width, a.y + height / 2.), (b.x, b.y + target_height / 2.), report, blocked)
 			})
 			.collect();
@@ -2024,7 +1991,6 @@ impl AgentSurface {
 									gpui::px(b.0 * zoom + pan.0),
 									gpui::px(b.1 * zoom + pan.1),
 								);
-
 							let path = graph_edge_path(start, end, report, blocked);
 
 							if let Ok(path) = path.build() {
@@ -2080,12 +2046,10 @@ impl AgentSurface {
 		);
 		let id = work.id.clone();
 		let key = id.clone();
-		let state =
-			super::dock::progress_state(self.snapshot.as_ref().expect("graph snapshot"), work);
+		let state = dock::progress_state(self.snapshot.as_ref().expect("graph snapshot"), work);
 		let status = self.graph_node_caption(work);
 		let color = state.color;
 		let tip = format!("{} · {}\n{}", self.work_label(work), status, state.reason);
-
 		let element = gpui::div()
 			.id(SharedString::from(format!("graph-node-{id}")))
 			.role(Role::Button)
@@ -2093,6 +2057,7 @@ impl AgentSurface {
 			.aria_label(format!("{}: {status}. Show task details.", self.work_label(work)))
 			.debug_selector({
 				let key = work.id.clone();
+
 				move || format!("graph-node-{key}")
 			})
 			.tooltip(move |_, cx| cx.new(|_| PanelTip(tip.clone())).into())
@@ -2155,32 +2120,12 @@ impl AgentSurface {
 	}
 }
 
-fn graph_edge_path(
-	start: gpui::Point<gpui::Pixels>,
-	end: gpui::Point<gpui::Pixels>,
-	report: bool,
-	blocked: bool,
-) -> PathBuilder {
-	let mut path = PathBuilder::stroke(gpui::px(if blocked { 2. } else { 1. }));
-	path.move_to(start);
-	path.cubic_bezier_to(
-		end,
-		gpui::point((start.x + end.x) * 0.5, start.y),
-		gpui::point((start.x + end.x) * 0.5, end.y),
-	);
-	if !report {
-		path.move_to(end + gpui::point(gpui::px(-5.), gpui::px(-3.)));
-		path.line_to(end);
-		path.line_to(end + gpui::point(gpui::px(-5.), gpui::px(3.)));
-	}
-	path
-}
-
 #[cfg(any(test, feature = "visual-capture"))]
 impl AgentSurface {
 	pub(crate) fn visual_workspace_page(&mut self, page: &str, cx: &mut Context<Self>) {
 		if page == "deliveries" {
 			self.visual_delivery_fixture(cx);
+
 			return;
 		}
 		if matches!(page, "attachments" | "microphone") {
@@ -2215,8 +2160,10 @@ impl AgentSurface {
 			"factory" | "relations" | "relations-resource" => {
 				self.work_board.graph = false;
 				self.workspace.graph_expanded = true;
+
 				if page.starts_with("relations") {
 					self.visual_relation_evidence();
+
 					if page == "relations-resource" {
 						self.visual_relation_resource_focus();
 					}
@@ -2235,20 +2182,7 @@ impl AgentSurface {
 					});
 				}
 
-				self.snapshot = Some(AgentSnapshotDto {
-					agents: Default::default(),
-					guardian: Default::default(),
-					portfolio: Default::default(),
-					archived_work_ids: Default::default(),
-					agent_slots: Default::default(),
-					context_references: vec![],
-					connection_initializing: false,
-					runtime_source: None,
-					projects: vec![],
-					work_items: vec![],
-					dependencies: vec![],
-					pending_events: vec![],
-				});
+				self.snapshot = Some(Self::empty_workspace_snapshot());
 				self.selected = None;
 				self.history = None;
 
@@ -2265,16 +2199,11 @@ impl AgentSurface {
 			"in-use" => {
 				self.workspace.graph_visible = false;
 
-				self.snapshot.as_mut().expect("fixture").pending_events.push(
-					decodex_protocol::AgentPendingEventDto {
-						id: 999,
-						source_event_id: "fixture-in-use".into(),
-						work_item_id: "agent".into(),
-						event_kind: "thread_in_use_needs_attention".into(),
-						created_at_micros: 1,
-						delivery_claimed: false,
-					},
-				);
+				self.snapshot
+					.as_mut()
+					.expect("fixture")
+					.pending_events
+					.push(Self::in_use_fixture_event());
 			},
 			"compact-graph" => {
 				self.workspace.graph_scope = Some("agent".into());
@@ -2313,11 +2242,41 @@ impl AgentSurface {
 		cx.notify();
 	}
 
+	fn in_use_fixture_event() -> decodex_protocol::AgentPendingEventDto {
+		decodex_protocol::AgentPendingEventDto {
+			id: 999,
+			source_event_id: "fixture-in-use".into(),
+			work_item_id: "agent".into(),
+			event_kind: "thread_in_use_needs_attention".into(),
+			created_at_micros: 1,
+			delivery_claimed: false,
+		}
+	}
+
+	fn empty_workspace_snapshot() -> AgentSnapshotDto {
+		AgentSnapshotDto {
+			agents: Default::default(),
+			guardian: Default::default(),
+			portfolio: Default::default(),
+			archived_work_ids: Default::default(),
+			agent_slots: Default::default(),
+			context_references: vec![],
+			connection_initializing: false,
+			runtime_source: None,
+			projects: vec![],
+			work_items: vec![],
+			dependencies: vec![],
+			pending_events: vec![],
+		}
+	}
+
 	fn visual_mermaid_page(&mut self, cx: &mut Context<Self>) {
 		self.visual_workspace_page("markdown", cx);
+
 		let source = std::env::var("DECODEX_VISUAL_MERMAID").unwrap_or_else(|_| {
 			"flowchart LR\nA([Request]) --> B{Valid?}\nB -->|Yes| C[(Database)]\nB -->|No| D[Retry]\nD --> A".into()
 		});
+
 		if let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut self.history {
 			for entry in entries.iter_mut().filter(|entry| entry.kind == "assistant") {
 				entry.text = format!(
@@ -2367,7 +2326,9 @@ impl AgentSurface {
 	/// Explicit capture fixture. Never installed by the normal application path.
 	pub(crate) fn visual_workspace_fixture(&mut self, cx: &mut Context<Self>) {
 		self.work_board.graph = true;
+
 		self.handoffs.fixture();
+
 		self.workspace.sidebar_visible = true;
 
 		let make =
@@ -2649,6 +2610,7 @@ impl AgentSurface {
 		{
 			return None;
 		}
+
 		let selected = self.snapshot.as_ref().and_then(|snapshot| {
 			snapshot.work_items.iter().find(|work| Some(&work.id) == self.selected.as_ref())
 		});
@@ -2776,10 +2738,155 @@ impl AgentSurface {
 	}
 }
 
+// Pane controls can leave the dispatch tree after a layout change. Keep keyboard
+// actions on the persistent shell instead of a detached control focus node.
+pub(super) fn restore_shell_focus(window: &mut Window, cx: &mut App) {
+	if let Some(shell) = window.root::<Shell>().flatten() {
+		let focus = shell.read(cx).root_focus.clone();
+
+		window.focus(&focus, cx);
+	}
+}
+
 pub(super) fn clock_label(micros: i64) -> String {
 	let seconds = micros / 1_000_000;
 
 	format!("{:02}:{:02}:{:02}", (seconds / 3_600) % 24, (seconds / 60) % 60, seconds % 60)
+}
+
+fn action_accessible_label(id: &str, label: &str) -> String {
+	if id.starts_with("attention-") {
+		format!("{label} pending decisions · open next")
+	} else {
+		match id {
+			"new-project" => "New project",
+			"graph-up" => "Parent work scope",
+			"handoff-close" => "Collapse task details",
+			"zoom-in" => "Zoom in",
+			"zoom-out" => "Zoom out",
+			_ => label,
+		}
+		.to_owned()
+	}
+}
+
+fn open_connection_settings(
+	destination: crate::shell::Destination,
+	window: &mut Window,
+	cx: &mut App,
+) {
+	if let Some(shell) = window.root::<Shell>().flatten() {
+		shell.update(cx, |shell, cx| shell.open_settings_window(destination, cx));
+	}
+	#[cfg(all(target_os = "macos", not(test)))]
+	if let Some(parent) = super::native_composer::parent_window(window, cx) {
+		cx.defer(move |cx| {
+			let _ = parent
+				.update(cx, |_, window, cx| open_connection_settings(destination, window, cx));
+		});
+	}
+}
+
+fn connection_recovery_notice(
+	message: &'static str,
+	destination: crate::shell::Destination,
+) -> AnyElement {
+	gpui::div()
+		.id("conversation-unavailable")
+		.debug_selector(|| "conversation-unavailable".into())
+		.role(Role::Status)
+		.aria_label(format!("Error: {message}"))
+		.w_full()
+		.min_w_0()
+		.flex()
+		.flex_col()
+		.items_center()
+		.gap(gpui::px(12.))
+		.text_size(gpui::px(12.))
+		.line_height(gpui::px(18.))
+		.child(Tone::Error.icon())
+		.child(
+			gpui::div()
+				.w_full()
+				.text_center()
+				.text_color(crate::ui_theme::rgb(Tone::Error.color()))
+				.child(message),
+		)
+		.child(connection_settings_action(destination))
+		.into_any_element()
+}
+
+fn connection_settings_action(destination: crate::shell::Destination) -> AnyElement {
+	let (id, label) = if destination == crate::shell::Destination::Accounts {
+		("connection-open-accounts", "Open Accounts")
+	} else {
+		("connection-open-diagnostics", "Open Diagnostics")
+	};
+
+	gpui::div()
+		.id(id)
+		.debug_selector(move || id.into())
+		.role(Role::Button)
+		.aria_label(label)
+		.tab_index(0)
+		.flex_none()
+		.px_2()
+		.py_1()
+		.cursor_pointer()
+		.text_color(crate::ui_theme::rgb(BLUE))
+		.child(label)
+		.on_click(move |_, window, cx| open_connection_settings(destination, window, cx))
+		.on_key_down(move |event: &KeyDownEvent, window, cx| {
+			if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				open_connection_settings(destination, window, cx);
+
+				cx.stop_propagation();
+			}
+		})
+		.into_any_element()
+}
+
+fn account_connection_message(detail: &str) -> Option<&'static str> {
+	let recovery = detail.strip_prefix("Agent account requires recovery: ");
+
+	Some(match recovery {
+		Some("RefreshQuota") =>
+			"Account availability could not be confirmed. Check usage in Accounts. Your draft is saved.",
+		Some("ConfigureFixedAccount") => "Select an account to continue. Your draft is saved.",
+		Some("EnableAccount") => "Enable the selected account to continue. Your draft is saved.",
+		Some("EnrollCredentials" | "RestoreProviderAgreement") =>
+			"Sign in again in Accounts to continue. Your draft is saved.",
+		Some("ResolveCredentialOperation" | "RepairCredentialStore") =>
+			"Account setup needs attention. Open Accounts to continue. Your draft is saved.",
+		Some("UpgradeCodex") => "This account requires a newer Codex runtime. Your draft is saved.",
+		_ if detail.contains("account has reached its usage limit") =>
+			"This account has reached its usage limit. Check Accounts for the reset time. Your draft is saved.",
+		_ => return None,
+	})
+}
+
+fn graph_edge_path(
+	start: Point<Pixels>,
+	end: Point<Pixels>,
+	report: bool,
+	blocked: bool,
+) -> PathBuilder {
+	let mut path = PathBuilder::stroke(gpui::px(if blocked { 2. } else { 1. }));
+
+	path.move_to(start);
+	path.cubic_bezier_to(
+		end,
+		gpui::point((start.x + end.x) * 0.5, start.y),
+		gpui::point((start.x + end.x) * 0.5, end.y),
+	);
+
+	if !report {
+		path.move_to(end + gpui::point(gpui::px(-5.), gpui::px(-3.)));
+		path.line_to(end);
+		path.line_to(end + gpui::point(gpui::px(-5.), gpui::px(3.)));
+	}
+
+	path
 }
 
 fn action_icon(id: &str) -> Option<AnyElement> {
@@ -2804,107 +2911,24 @@ fn action_icon(id: &str) -> Option<AnyElement> {
 	Some(workspace_symbols::icon(symbol))
 }
 
-fn preview_tip(_: &mut Window, cx: &mut gpui::App) -> gpui::AnyView {
-	cx.new(|_| crate::shell::ControlTooltip("Preview · Double-click to keep open")).into()
+fn preview_tip(_: &mut Window, cx: &mut App) -> AnyView {
+	cx.new(|_| ControlTooltip("Preview · Double-click to keep open")).into()
 }
 
 #[cfg(test)]
 mod tests {
-	#[gpui::test]
-	fn fullscreen_controls_keep_shift_escape_working_after_clicks(cx: &mut gpui::TestAppContext) {
-		cx.update(crate::shell::bind_keys);
-		let (shell, visual) = cx.add_window_view(|window, cx| {
-			crate::shell::Shell::new(window, cx, crate::shell::ConnectionView::Stopped)
-		});
-		shell.update(visual, |s, cx| {
-			s.agent.update(cx, |agent, cx| {
-				agent.visual_workspace_fixture(cx);
-				agent.visual_workspace_page("workbench-split", cx);
-			})
-		});
-		visual.simulate_resize(gpui::size(gpui::px(1400.), gpui::px(1000.)));
-		visual.update(crate::ui_frame::draw_frame);
-		std::thread::sleep(std::time::Duration::from_millis(260));
-		visual.run_until_parked();
-		visual.update(crate::ui_frame::draw_frame);
-		let dock = visual.debug_bounds("graph-expand").expect("Dock panel control");
-		let chat = visual.debug_bounds("chat-expand").expect("conversation panel control");
-		assert_eq!(dock.size, chat.size, "pane controls share the same click target");
-		let group = visual.debug_bounds("relations-pane-controls").unwrap();
-		let close = visual.debug_bounds("graph-close").unwrap();
-		assert!(dock.right() < close.left(), "pane actions have separate click targets");
-		assert_eq!(group.right(), close.right(), "no extra outer frame gutter");
-		for control in ["graph-expand", "chat-expand"] {
-			let button = visual.debug_bounds(control).expect("fullscreen control");
-			let agent = shell.read_with(visual, |s, _| s.agent.clone());
-			visual.simulate_mouse_move(button.center(), None, Default::default());
-			visual.simulate_click(button.center(), Default::default());
-			std::thread::sleep(std::time::Duration::from_millis(260));
-			visual.run_until_parked();
-			visual.update(crate::ui_frame::draw_frame);
-			assert_eq!(
-				agent.read_with(visual, |a, _| (
-					a.workspace.graph_expanded,
-					a.workspace.chat_expanded
-				)),
-				(control == "graph-expand", control == "chat-expand"),
-				"{control} expands the selected pane"
-			);
-			if control == "graph-expand" {
-				for selector in ["relations-usage", "graph-usage-time", "relations-out"] {
-					let bounds = visual.debug_bounds(selector).expect(selector);
-					visual.simulate_mouse_move(bounds.center(), None, Default::default());
-					visual.simulate_click(bounds.center(), Default::default());
-					visual.run_until_parked();
-					visual.update(crate::ui_frame::draw_frame);
-				}
-				assert!(visual.debug_bounds("graph-usage-time").is_none(), "menu closed");
-				assert!(
-					visual.update(|window, cx| shell.read(cx).root_focus.is_focused(window)),
-					"canvas controls retain persistent keyboard focus"
-				);
-			}
-			visual.simulate_keystrokes("shift-escape");
-			std::thread::sleep(std::time::Duration::from_millis(260));
-			visual.run_until_parked();
-			visual.update(crate::ui_frame::draw_frame);
-			assert_eq!(
-				agent.read_with(visual, |a, _| (
-					a.workspace.graph_expanded,
-					a.workspace.chat_expanded
-				)),
-				(false, false),
-				"{control} shortcut restores layout"
-			);
-			assert!(visual.debug_bounds("chat-expand").is_some(), "{control} restores chat");
-		}
-	}
-
 	use std::thread;
 
 	use gpui::{AppContext as _, Focusable as _};
 
-	use crate::shell::agent_surface::workspace::{
-		AgentHistoryResult, AgentSurface, Context, ConversationWorkingDirectory, IntoElement,
-		LoadState, Render, Window, graph,
+	use crate::{
+		shell::agent_surface::workspace::{
+			AgentHistoryResult, AgentSurface, Context, ConversationWorkingDirectory, IntoElement,
+			LoadState, Render, Window, graph,
+		},
+		ui_frame,
 	};
 	use decodex_protocol::AgentWorkKindDto;
-
-	#[gpui::test]
-	fn workspace_animation_does_not_publish_navigation_or_draft_changes(
-		cx: &mut gpui::TestAppContext,
-	) {
-		let (model, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		let notifications = std::rc::Rc::new(std::cell::Cell::new(0));
-		visual.update(|window, cx| {
-			let notifications = notifications.clone();
-			cx.observe(&model, move |_, _| notifications.set(notifications.get() + 1)).detach();
-			window.draw(cx).clear(cx);
-			assert!(window.simulate_next_frame(cx) > 0);
-		});
-		cx.run_until_parked();
-		assert_eq!(notifications.get(), 0);
-	}
 
 	struct ActionView(gpui::Entity<AgentSurface>);
 	impl Render for ActionView {
@@ -2920,17 +2944,131 @@ mod tests {
 		}
 	}
 
+	#[gpui::test]
+	fn fullscreen_controls_keep_shift_escape_working_after_clicks(cx: &mut gpui::TestAppContext) {
+		cx.update(crate::shell::bind_keys);
+
+		let (shell, visual) = cx.add_window_view(|window, cx| {
+			crate::shell::Shell::new(window, cx, crate::shell::ConnectionView::Stopped)
+		});
+
+		shell.update(visual, |s, cx| {
+			s.agent.update(cx, |agent, cx| {
+				agent.visual_workspace_fixture(cx);
+				agent.visual_workspace_page("workbench-split", cx);
+			})
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
+		visual.update(crate::ui_frame::draw_frame);
+
+		thread::sleep(std::time::Duration::from_millis(260));
+
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_frame);
+
+		let dock = visual.debug_bounds("graph-expand").expect("Dock panel control");
+		let chat = visual.debug_bounds("chat-expand").expect("conversation panel control");
+
+		assert_eq!(dock.size, chat.size, "pane controls share the same click target");
+
+		let group = visual.debug_bounds("relations-pane-controls").unwrap();
+		let close = visual.debug_bounds("graph-close").unwrap();
+
+		assert!(dock.right() < close.left(), "pane actions have separate click targets");
+		assert_eq!(group.right(), close.right(), "no extra outer frame gutter");
+
+		for control in ["graph-expand", "chat-expand"] {
+			let button = visual.debug_bounds(control).expect("fullscreen control");
+			let agent = shell.read_with(visual, |s, _| s.agent.clone());
+
+			visual.simulate_mouse_move(button.center(), None, Default::default());
+			visual.simulate_click(button.center(), Default::default());
+
+			thread::sleep(std::time::Duration::from_millis(260));
+
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+
+			assert_eq!(
+				agent.read_with(visual, |a, _| (
+					a.workspace.graph_expanded,
+					a.workspace.chat_expanded
+				)),
+				(control == "graph-expand", control == "chat-expand"),
+				"{control} expands the selected pane"
+			);
+
+			if control == "graph-expand" {
+				for selector in ["relations-usage", "graph-usage-time", "relations-out"] {
+					let bounds = visual.debug_bounds(selector).expect(selector);
+
+					visual.simulate_mouse_move(bounds.center(), None, Default::default());
+					visual.simulate_click(bounds.center(), Default::default());
+					visual.run_until_parked();
+					visual.update(crate::ui_frame::draw_frame);
+				}
+
+				assert!(visual.debug_bounds("graph-usage-time").is_none(), "menu closed");
+				assert!(
+					visual.update(|window, cx| shell.read(cx).root_focus.is_focused(window)),
+					"canvas controls retain persistent keyboard focus"
+				);
+			}
+
+			visual.simulate_keystrokes("shift-escape");
+
+			thread::sleep(std::time::Duration::from_millis(260));
+
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+
+			assert_eq!(
+				agent.read_with(visual, |a, _| (
+					a.workspace.graph_expanded,
+					a.workspace.chat_expanded
+				)),
+				(false, false),
+				"{control} shortcut restores layout"
+			);
+			assert!(visual.debug_bounds("chat-expand").is_some(), "{control} restores chat");
+		}
+	}
+
+	#[gpui::test]
+	fn workspace_animation_does_not_publish_navigation_or_draft_changes(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (model, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		let notifications = std::rc::Rc::new(std::cell::Cell::new(0));
+
+		visual.update(|window, cx| {
+			let notifications = notifications.clone();
+
+			cx.observe(&model, move |_, _| notifications.set(notifications.get() + 1)).detach();
+			window.draw(cx).clear(cx);
+
+			assert!(window.simulate_next_frame(cx) > 0);
+		});
+
+		cx.run_until_parked();
+
+		assert_eq!(notifications.get(), 0);
+	}
+
 	#[test]
 	fn account_connection_notice_does_not_confuse_unknown_usage_with_exhaustion() {
 		let pending =
 			super::account_connection_message("Agent account requires recovery: RefreshQuota")
 				.unwrap();
+
 		assert!(pending.contains("could not be confirmed"));
 		assert!(!pending.contains("RefreshQuota"));
 		assert!(!pending.contains("retry"));
+
 		let exhausted =
 			super::account_connection_message("This Agent's account has reached its usage limit.")
 				.unwrap();
+
 		assert!(exhausted.contains("reset time"));
 		assert!(
 			super::account_connection_message(
@@ -2945,18 +3083,23 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			for work in &mut s.snapshot.as_mut().unwrap().work_items {
 				work.codex_thread_id = None;
 			}
+
 			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
 				panic!("fixture")
 			};
 			let base = entries[0].clone();
+
 			*entries = (1..=4)
 				.map(|id| {
 					let mut entry = base.clone();
+
 					entry.id = id;
 					entry.kind = if id % 2 == 1 { "user" } else { "assistant" }.into();
 					entry.text = "Saved speech".into();
@@ -2967,12 +3110,16 @@ mod tests {
 						delivered_turn_id: None,
 						disposed: true,
 					});
+
 					entry
 				})
 				.collect();
+
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		for (header, body) in [
 			("voice-history-block-saved-agent-1", "voice-history-transcript-saved-agent-1"),
 			("voice-history-block-saved-agent-3", "voice-history-transcript-saved-agent-3"),
@@ -3015,24 +3162,32 @@ mod tests {
 			s.snapshot.as_mut().unwrap().pending_events[0].id = 100;
 
 			assert!(s.connection_failure_detail().is_none(), "never reuse an obsolete error");
+
 			s.snapshot.as_mut().unwrap().pending_events[0].id = 99;
+
 			let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history else {
 				unreachable!()
 			};
+
 			entries.last_mut().unwrap().text =
 				"Agent account requires recovery: RefreshQuota".into();
 			s.workspace.connection_details_expanded = true;
+
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("connection-open-accounts").is_some());
 	}
 
 	#[gpui::test]
 	fn startup_rechecks_saved_failures_before_showing_one_blocker(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.snapshot.as_mut().unwrap().connection_initializing = true;
 			s.snapshot.as_mut().unwrap().pending_events =
 				vec![decodex_protocol::AgentPendingEventDto {
@@ -3043,28 +3198,38 @@ mod tests {
 					created_at_micros: 1,
 					delivery_claimed: false,
 				}];
+
 			s.composer.update(cx, |input, cx| input.set_content("Keep my draft", cx));
 			s.submit(cx);
+
 			assert!(!s.sending);
 			assert!(s.submission.command.is_none());
 			assert!(s.status_notice().is_none());
+
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		let workspace = visual.debug_bounds("workspace-connecting").unwrap();
 		let loading = visual.debug_bounds("loading-feedback-Opening workspace").unwrap();
+
 		assert!((workspace.center().x - loading.center().x).abs() < gpui::px(1.));
 		assert!((workspace.center().y - loading.center().y).abs() < gpui::px(1.));
+
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.workspace_panels(), [(false, false); 3]);
+
 			let panels = (
 				s.workspace.sidebar_visible,
 				s.workspace.graph_visible,
 				s.workspace.agent_tree_visible,
 			);
+
 			s.toggle_workspace_sidebar(cx);
 			s.toggle_workspace_graph(cx);
 			s.toggle_agent_tree(cx);
+
 			assert_eq!(
 				panels,
 				(
@@ -3074,29 +3239,40 @@ mod tests {
 				)
 			);
 		});
+
 		assert!(visual.debug_bounds("composer-send").is_none());
 		assert!(visual.debug_bounds("composer-editor-area").is_none());
-
 		assert!(visual.debug_bounds("agent-composer").is_none());
 		assert!(visual.debug_bounds("conversation-unavailable").is_none());
 		assert!(visual.debug_bounds("conversation-activity-status").is_none());
+
 		surface.update(visual, |s, cx| {
 			s.snapshot.as_mut().unwrap().connection_initializing = false;
+
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("conversation-unavailable").is_some());
 		assert!(visual.debug_bounds("conversation-activity-status").is_none());
+
 		surface.update(visual, |s, cx| {
 			s.snapshot.as_mut().unwrap().pending_events.clear();
+
 			assert_eq!(s.composer.read(cx).content(), "Keep my draft");
+
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("agent-composer").is_some());
 		assert!(visual.debug_bounds("workspace-connecting").is_none());
+
 		thread::sleep(std::time::Duration::from_millis(220));
+
 		visual.update(crate::ui_frame::draw_frame);
+
 		assert!(visual.debug_bounds("conversation-unavailable").is_none());
 	}
 
@@ -3105,36 +3281,52 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.snapshot.as_mut().unwrap().connection_initializing = true;
+
 			s.composer.update(cx, |input, cx| input.set_content("Keep my draft", cx));
 			s.apply_result(Ok(decodex_protocol::AgentSnapshotResult::Unavailable));
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("connection-open-diagnostics").is_some());
 		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_none());
 		assert!(visual.debug_bounds("work-dock").is_none());
 		assert!(visual.debug_bounds("workspace-transcript").is_none());
 		assert!(visual.debug_bounds("agent-composer").is_none());
+
 		surface.update(visual, |s, cx| {
 			// A background retry must retain actionable feedback until a new result arrives.
 			s.status_before_refresh = Some(s.state.clone());
 			s.state = LoadState::Loading;
+
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("connection-open-diagnostics").is_some());
+
 		surface.update(visual, |s, cx| {
 			let mut ready = s.snapshot.clone().unwrap();
+
 			ready.connection_initializing = false;
+
 			ready.pending_events.clear();
 			s.apply_result(Ok(decodex_protocol::AgentSnapshotResult::Available(ready)));
+
 			assert_eq!(s.composer.read(cx).content(), "Keep my draft");
+
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("workspace-connecting").is_none());
 		assert!(visual.debug_bounds("connection-open-diagnostics").is_none());
 		assert!(visual.debug_bounds("agent-composer").is_some());
@@ -3143,8 +3335,10 @@ mod tests {
 	#[gpui::test]
 	fn a_main_writer_lock_does_not_disable_another_conversation(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.snapshot.as_mut().unwrap().pending_events =
 				vec![decodex_protocol::AgentPendingEventDto {
 					id: 99,
@@ -3154,12 +3348,17 @@ mod tests {
 					created_at_micros: 1,
 					delivery_claimed: false,
 				}];
+
 			assert_eq!(s.composer_unavailable_reason(), Some(super::THREAD_LOCKED_MESSAGE));
+
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("composer-blocked").is_some());
 		assert!(visual.debug_bounds("composer-editor-area").is_none());
+
 		surface.update(visual, |s, cx| {
 			s.snapshot
 				.as_mut()
@@ -3169,18 +3368,27 @@ mod tests {
 				.find(|w| w.id == "release")
 				.unwrap()
 				.kind = decodex_protocol::AgentWorkKindDto::Manager;
+
 			s.open_page("release", cx);
+
 			assert!(s.composer_unavailable_reason().is_none());
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("composer-blocked").is_none());
 		assert!(visual.debug_bounds("composer-editor-area").is_some());
+
 		surface.update(visual, |s, cx| {
 			s.snapshot.as_mut().unwrap().pending_events[0].work_item_id = "release".into();
+
 			assert_eq!(s.composer_unavailable_reason(), Some(super::THREAD_LOCKED_MESSAGE));
+
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("composer-blocked").is_some());
 		assert!(visual.debug_bounds("composer-editor-area").is_none());
 	}
@@ -3234,7 +3442,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let reserved = visual.update(|window, cx| {
 			let s = surface.read(cx);
@@ -3252,7 +3460,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("loading-feedback-Opening workspace").is_none());
 		assert!(visual.debug_bounds("connection-open-diagnostics").is_some());
@@ -3270,7 +3478,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("loading-feedback-Loading workspace").is_none());
 
@@ -3281,12 +3489,14 @@ mod tests {
 		});
 
 		assert_eq!(reserved, loaded, "the first snapshot fills existing panel slots");
+
 		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
+
 		surface.update(visual, |s, cx| {
 			s.workspace.pages.push("release".into());
 			cx.notify();
 		});
-		visual.update(|w, cx| w.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert_eq!(
 			transcript,
@@ -3300,7 +3510,7 @@ mod tests {
 		let (view, visual) = cx.add_window_view(|_, cx| ActionView(cx.new(AgentSurface::new)));
 		let surface = view.read_with(visual, |v, _| v.0.clone());
 
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		let bounds = visual.debug_bounds("test-action").expect("workspace action");
 
@@ -3366,7 +3576,7 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(visual.debug_bounds("worker-stop").is_none(), "disconnected worker cannot stop");
 	}
@@ -3380,7 +3590,6 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		let input = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
-
 			s.snapshot.as_mut().unwrap().pending_events.clear();
 			s.composer.update(cx, |input, cx| input.set_content("Saved", cx));
 
@@ -3398,17 +3607,22 @@ mod tests {
 			window.focus(&input.focus_handle(cx), cx);
 			window.draw(cx).clear(cx);
 		});
+
 		surface.update(visual, |s, cx| {
 			s.state = LoadState::Stale;
 			s.composer_menu = Some("attachments");
+
 			cx.notify();
 		});
-		visual.update(|window, cx| window.draw(cx).clear(cx));
+
+		visual.update(crate::ui_frame::draw_current_frame);
 		visual.run_until_parked();
 
 		assert!(visual.debug_bounds("agent-composer").is_some());
+
 		let composer = visual.debug_bounds("agent-composer").unwrap();
 		let notice = visual.debug_bounds("conversation-unavailable").unwrap();
+
 		assert!(notice.top() >= composer.top() && notice.bottom() <= composer.bottom());
 		assert!(visual.debug_bounds("composer-retained-draft").is_some());
 		assert!(visual.debug_bounds("composer-editor-area").is_none());
@@ -3435,19 +3649,25 @@ mod tests {
 
 			assert_eq!(s.composer.read(cx).content(), "Saved");
 			assert!(s.submission.command.is_none(), "reconnection cannot submit retained edits");
+
 			cx.notify();
 		});
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+
+		visual.update(crate::ui_frame::draw_current_frame);
+
 		assert!(visual.debug_bounds("composer-blocked").is_some(), "retain the lock during exit");
+
 		thread::sleep(std::time::Duration::from_millis(220));
+
 		visual.update(|window, cx| {
-			crate::ui_frame::draw_frame(window, cx);
+			ui_frame::draw_frame(window, cx);
+
 			window.focus(&input.focus_handle(cx), cx);
 		});
+
 		assert!(visual.debug_bounds("composer-blocked").is_none());
 		assert!(visual.debug_bounds("composer-editor-area").is_some());
+
 		visual.simulate_keystrokes("cmd-end space e d i t e d");
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.composer.read(cx).content(), "Saved edited");
@@ -3516,13 +3736,13 @@ mod tests {
 			assert_eq!(s.selected.as_deref(), Some("agent"));
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 	}
+
 	#[gpui::test]
 	fn reopening_a_closing_tab_keeps_it_and_close_returns_to_main(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
 			s.open_page("verify", cx);

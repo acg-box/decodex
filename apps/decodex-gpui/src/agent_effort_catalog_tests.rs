@@ -95,8 +95,8 @@ fn catalog_refresh_preserves_explicit_effort_until_user_selects_model(cx: &mut T
 fn profile() -> (TempDir, ClientProfile, JoinHandle<AgentActionDto>) {
 	let root = tempfile::tempdir_in("/tmp").unwrap();
 	let path = root.path().canonicalize().unwrap();
-	fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
 
+	fs::set_permissions(&path, Permissions::from_mode(0o700)).unwrap();
 	fs::create_dir(path.join("server")).unwrap();
 	fs::set_permissions(path.join("server"), Permissions::from_mode(0o700)).unwrap();
 
@@ -178,8 +178,8 @@ fn cold_creation_keeps_configured_effort_when_catalog_has_no_choices(cx: &mut Te
 	surface.update(cx, |s, cx| {
 		// Install only the command profile; the fixture supplies its own catalog.
 		s.bind_drafts(Some(&profile), cx);
-		s.profile = Some(profile);
 
+		s.profile = Some(profile);
 		s.state = LoadState::Ready;
 
 		s.model.update(cx, |input, cx| input.set_content("configured-model", cx));
@@ -230,9 +230,7 @@ fn empty_effort_catalog_renders_configured_value_without_slider(cx: &mut TestApp
 		EffortView { surface }
 	});
 
-	visual.update(|window, cx| {
-		window.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	assert!(visual.debug_bounds("reasoning-configured").is_some());
 	assert!(visual.debug_bounds("reasoning-slider").is_none());
@@ -246,8 +244,8 @@ fn new_chat_uses_the_same_reasoning_slider_and_sends_the_selected_value(cx: &mut
 	surface.update(cx, |s, cx| {
 		// Install only the command profile; the fixture supplies its own catalog.
 		s.bind_drafts(Some(&profile), cx);
-		s.profile = Some(profile);
 
+		s.profile = Some(profile);
 		s.state = LoadState::Ready;
 
 		s.model.update(cx, |input, cx| input.set_content("configured-model", cx));
@@ -270,9 +268,7 @@ fn new_chat_uses_the_same_reasoning_slider_and_sends_the_selected_value(cx: &mut
 	let visible = surface.clone();
 	let (_view, visual) = cx.add_window_view(|_, _| EffortView { surface: visible });
 
-	visual.update(|window, cx| {
-		window.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	let slider = visual.debug_bounds("reasoning-slider").unwrap();
 
@@ -307,8 +303,8 @@ fn configured_defaults_reach_both_creation_fields_without_freezing_inherited_eff
 	surface.update(cx, |s, cx| {
 		// Install only the command profile; the fixture supplies its own catalog.
 		s.bind_drafts(Some(&profile), cx);
-		s.profile = Some(profile);
 
+		s.profile = Some(profile);
 		s.state = LoadState::Ready;
 
 		s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));

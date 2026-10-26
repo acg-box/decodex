@@ -2,23 +2,28 @@
 #[path = "ui_performance_chart.rs"] mod chart;
 #[path = "performance_host.rs"] mod host;
 #[path = "ui_performance_readout.rs"] mod readout;
-#[cfg(test)]
-#[path = "ui_performance_tests.rs"]
-mod tests;
-use crate::{ui_live_activity::CAPSULE_HEIGHT, ui_motion, ui_theme::TEXT};
-use gpui::{
-	Context, FontWeight, IntoElement, KeyDownEvent, Render, Role, Task, Window, prelude::*,
-	profiler::FrameDurationSnapshot,
-};
+
 use std::{
 	sync::atomic::AtomicU8,
 	time::{Duration, Instant},
 };
 
-pub(crate) fn preference(value: Option<bool>) -> bool {
-	static CACHE: AtomicU8 = AtomicU8::new(u8::MAX);
-	crate::ui_preferences::boolean("debugMode", &CACHE, value, false)
-}
+use gpui::{
+	AnyElement, Context, FontWeight, IntoElement, KeyDownEvent, Render, Role, Task, Window,
+	prelude::{
+		FluentBuilder, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled,
+	},
+	profiler::FrameDurationSnapshot,
+};
+
+use crate::{
+	shell::Titlebar,
+	ui_live_activity::{self, Allocation, CAPSULE_HEIGHT, Presentation},
+	ui_motion, ui_preferences,
+	ui_theme::{self, TEXT},
+	ui_work_metrics::Summary,
+};
+use readout::TEXT_SIZE;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 enum Expansion {
@@ -26,6 +31,15 @@ enum Expansion {
 	Closed,
 	Hover,
 	Clicked,
+}
+impl Expansion {
+	fn is_open(self) -> bool {
+		self != Self::Closed
+	}
+
+	fn clicked(self) -> Self {
+		if self == Self::Clicked { Self::Closed } else { Self::Clicked }
+	}
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -61,51 +75,11 @@ impl Activity {
 		}
 	}
 }
-impl Expansion {
-	fn is_open(self) -> bool {
-		self != Self::Closed
-	}
-
-	fn clicked(self) -> Self {
-		if self == Self::Clicked { Self::Closed } else { Self::Clicked }
-	}
-}
-
-#[derive(Default)]
-struct Metrics {
-	fps: f64,
-	draw_ms: f64,
-	submit_ms: f64,
-	draw_frames: u64,
-	ready_samples: u64,
-}
-impl Metrics {
-	fn collect(
-		mut current: FrameDurationSnapshot,
-		previous: &FrameDurationSnapshot,
-		seconds: f64,
-	) -> Option<Self> {
-		current.draw_duration_histogram.subtract(&previous.draw_duration_histogram).ok()?;
-		current.dirty_to_present_histogram.subtract(&previous.dirty_to_present_histogram).ok()?;
-		let draws = &current.draw_duration_histogram;
-		Some(Self {
-			fps: draws.len() as f64 / seconds.max(0.001),
-			draw_ms: draws.value_at_quantile(0.95) as f64 / 1_000_000.,
-			submit_ms: current.dirty_to_present_histogram.value_at_quantile(0.95) as f64
-				/ 1_000_000.,
-			draw_frames: draws.len(),
-			ready_samples: current.dirty_to_present_histogram.len(),
-		})
-	}
-}
-fn bytes(value: Option<f64>) -> String {
-	value.map_or_else(|| "—".into(), |v| format!("{:.1} GB", v / 1_000_000_000.))
-}
 
 pub(crate) struct PerformanceIsland {
 	expansion: Expansion,
 	activity: Activity,
-	titlebar: Option<crate::shell::Titlebar>,
+	titlebar: Option<Titlebar>,
 	task: Option<Task<()>>,
 	live_clock: Option<Task<()>>,
 	metrics: Metrics,
@@ -113,7 +87,7 @@ pub(crate) struct PerformanceIsland {
 	cpu_percent: Option<f64>,
 	display_hz: Option<f64>,
 	history: chart::History,
-	work: Option<crate::ui_work_metrics::Summary>,
+	work: Option<Summary>,
 	available_width: Option<f32>,
 }
 impl PerformanceIsland {
@@ -134,18 +108,16 @@ impl PerformanceIsland {
 		}
 	}
 
-	pub(crate) fn with_titlebar(mut self, titlebar: crate::shell::Titlebar) -> Self {
+	pub(crate) fn with_titlebar(mut self, titlebar: Titlebar) -> Self {
 		self.titlebar = Some(titlebar);
+
 		self
 	}
 
-	pub(crate) fn set_work(
-		&mut self,
-		work: Option<crate::ui_work_metrics::Summary>,
-		cx: &mut Context<Self>,
-	) {
+	pub(crate) fn set_work(&mut self, work: Option<Summary>, cx: &mut Context<Self>) {
 		if self.work != work {
 			self.work = work;
+
 			cx.notify();
 		}
 	}
@@ -153,6 +125,7 @@ impl PerformanceIsland {
 	pub(crate) fn set_available_width(&mut self, width: f32, cx: &mut Context<Self>) {
 		if self.available_width.is_none_or(|old| (old - width).abs() > 0.5) {
 			self.available_width = Some(width);
+
 			cx.notify();
 		}
 	}
@@ -160,36 +133,49 @@ impl PerformanceIsland {
 	fn reconcile(&mut self, enabled: bool, window: &Window, cx: &mut Context<Self>) {
 		if !enabled {
 			self.task = None;
+
 			if self.work.is_none() || self.activity == Activity::Debug {
 				self.expansion = Expansion::Closed;
 			}
+
 			self.activity = Activity::Work;
 			self.metrics = Metrics::default();
 			self.host = host::HostSample::default();
 			self.cpu_percent = None;
+
 			self.history.clear();
+
 			return;
 		}
+
 		self.display_hz = host::display_hz(window);
+
 		if self.task.is_some() {
 			return;
 		}
+
 		let target = window.window_handle();
 		// Per-window histograms already exist in GPUI. Do not enable global
 		// task traces or retain raw frame events for a long-running HUD.
 		let mut previous_frames = window.frame_duration_snapshot();
+
 		self.task = Some(cx.spawn(async move |island, cx| {
 			let mut previous = Instant::now();
+
 			loop {
 				cx.background_executor().timer(Duration::from_millis(500)).await;
+
 				let host = cx.background_executor().spawn(async { host::HostSample::read() }).await;
 				let now = Instant::now();
 				let seconds = now.duration_since(previous).as_secs_f64();
+
 				previous = now;
+
 				let Ok(frames) = target.update(cx, |_, window, _| window.frame_duration_snapshot())
 				else {
 					break;
 				};
+
 				if island
 					.update(cx, |s, cx| {
 						s.cpu_percent = host
@@ -197,8 +183,10 @@ impl PerformanceIsland {
 							.zip(s.host.cpu_seconds)
 							.map(|(next, last)| ((next - last) / seconds * 100.).max(0.));
 						s.host = host;
+
 						let metrics = Metrics::collect(frames.clone(), &previous_frames, seconds)
 							.unwrap_or_default();
+
 						s.record(metrics);
 						cx.notify();
 					})
@@ -206,6 +194,7 @@ impl PerformanceIsland {
 				{
 					break;
 				}
+
 				previous_frames = frames;
 			}
 		}));
@@ -217,6 +206,7 @@ impl PerformanceIsland {
 		if metrics.draw_frames > 0 {
 			chart::record(&mut self.history, Instant::now(), metrics.draw_ms);
 		}
+
 		self.metrics = metrics;
 	}
 
@@ -229,6 +219,7 @@ impl PerformanceIsland {
 	fn reconcile_live_clock(&mut self, cx: &mut Context<Self>) {
 		let enabled = self.expanded(Activity::Work)
 			&& self.work.as_ref().is_some_and(|work| !work.live.is_empty());
+
 		if !enabled {
 			self.live_clock = None;
 		} else if self.live_clock.is_none() {
@@ -237,6 +228,7 @@ impl PerformanceIsland {
 			self.live_clock = Some(cx.spawn(async move |island, cx| {
 				loop {
 					cx.background_executor().timer(Duration::from_secs(1)).await;
+
 					if island
 						.update(cx, |_, cx| {
 							if ui_motion::animations_active() {
@@ -252,6 +244,7 @@ impl PerformanceIsland {
 		}
 	}
 }
+
 impl PerformanceIsland {
 	fn expanded(&self, activity: Activity) -> bool {
 		self.activity == activity && self.expansion.is_open()
@@ -273,6 +266,7 @@ impl PerformanceIsland {
 		if !expandable || self.expansion == Expansion::Clicked {
 			return;
 		}
+
 		let next = if hovered {
 			Expansion::Hover
 		} else if self.activity == activity {
@@ -280,11 +274,14 @@ impl PerformanceIsland {
 		} else {
 			self.expansion
 		};
+
 		if hovered || self.expansion != next {
 			if hovered {
 				self.activity = activity;
 			}
+
 			self.expansion = next;
+
 			cx.notify();
 		}
 	}
@@ -292,16 +289,16 @@ impl PerformanceIsland {
 	fn pill(
 		&self,
 		activity: Activity,
-		allocation: crate::ui_live_activity::Allocation,
+		allocation: Allocation,
 		content: &readout::Content,
 		window: &mut Window,
 		cx: &mut Context<Self>,
-	) -> gpui::AnyElement {
+	) -> AnyElement {
 		let (control, surface, toggle, width_key, height_key) = activity.ids();
 		let expandable = content.expandable();
 		let expanded = expandable
 			&& self.expanded(activity)
-			&& allocation.presentation == crate::ui_live_activity::Presentation::Expanded;
+			&& allocation.presentation == Presentation::Expanded;
 		let open_height = content.height();
 		let width = ui_motion::value(width_key, allocation.width, window, cx);
 		let height = ui_motion::value(
@@ -316,22 +313,10 @@ impl PerformanceIsland {
 		let details_opacity = ((fraction - 0.65) / 0.35)
 			.clamp(0., 1.)
 			.min(((width - (content.sizing().expanded - 24.)) / 24.).clamp(0., 1.));
-		let header_key = activity.header_key();
-		let header_progress = ui_motion::value(
-			header_key,
-			if allocation.presentation == crate::ui_live_activity::Presentation::Minimal {
-				0.
-			} else {
-				1.
-			},
-			window,
-			cx,
-		);
-		let header = content.header(
-			header_progress.min(((width - (content.sizing().compact - 24.)) / 24.).clamp(0., 1.)),
-		);
+		let header = Self::pill_header(activity, allocation, content, width, window, cx);
 		let body =
 			(expandable && details_opacity > 0.001).then(|| content.details(self, window, cx));
+
 		gpui::div()
 			.debug_selector(move || control.into())
 			.relative()
@@ -351,14 +336,14 @@ impl PerformanceIsland {
 						.items_center()
 						.overflow_hidden()
 						.rounded(gpui::px(14. + fraction * 6.))
-						.bg(crate::ui_theme::rgb(0x141418))
+						.bg(ui_theme::rgb(0x141418))
 						.border_1()
-						.border_color(crate::ui_theme::rgba(0xffffff18))
-						.text_size(gpui::px(readout::TEXT_SIZE))
+						.border_color(ui_theme::rgba(0xffffff18))
+						.text_size(gpui::px(TEXT_SIZE))
 						.font_weight(FontWeight::NORMAL)
 						.line_height(gpui::px(16.))
 						.whitespace_nowrap()
-						.text_color(crate::ui_theme::rgb(TEXT))
+						.text_color(ui_theme::rgb(TEXT))
 						.font_features(readout::figures())
 						.on_hover(cx.listener(move |s, hovered, _, cx| {
 							s.hover_pill(activity, expandable, *hovered, cx)
@@ -367,6 +352,7 @@ impl PerformanceIsland {
 							d.on_mouse_down_out(cx.listener(move |s, _, _, cx| {
 								if s.activity == activity {
 									s.expansion = Expansion::Closed;
+
 									cx.notify();
 								}
 							}))
@@ -402,6 +388,7 @@ impl PerformanceIsland {
 												} else {
 													return;
 												}
+
 												cx.notify();
 												cx.stop_propagation();
 											},
@@ -418,13 +405,38 @@ impl PerformanceIsland {
 			.when_some(self.titlebar.as_ref(), |d, titlebar| d.child(titlebar.control()))
 			.into_any_element()
 	}
+
+	fn pill_header(
+		activity: Activity,
+		allocation: Allocation,
+		content: &readout::Content,
+		width: f32,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let header_key = activity.header_key();
+		let header_progress = ui_motion::value(
+			header_key,
+			if allocation.presentation == Presentation::Minimal { 0. } else { 1. },
+			window,
+			cx,
+		);
+
+		content.header(
+			header_progress.min(((width - (content.sizing().compact - 24.)) / 24.).clamp(0., 1.)),
+		)
+	}
 }
+
 impl Render for PerformanceIsland {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let debug = preference(None);
+
 		self.reconcile(debug, window, cx);
 		self.reconcile_live_clock(cx);
+
 		let work = self.work.clone();
+
 		if work.is_none() {
 			ui_motion::value("activity-work-width", 0., window, cx);
 		}
@@ -434,33 +446,83 @@ impl Render for PerformanceIsland {
 		if work.is_none() {
 			self.activity = Activity::Debug;
 		}
+
 		let mut activities = Vec::new();
+
 		if let Some(work) = &work {
 			activities.push((Activity::Work, readout::Content::work(work, window, cx)));
 		}
+
 		if debug {
 			activities.push((Activity::Debug, readout::Content::debug(self, window, cx)));
 		}
+
 		let selected = self
 			.expansion
 			.is_open()
 			.then(|| activities.iter().position(|(activity, _)| *activity == self.activity))
 			.flatten();
 		let sizes: Vec<_> = activities.iter().map(|(_, content)| content.sizing()).collect();
-		let allocations = crate::ui_live_activity::arrange(
+		let allocations = ui_live_activity::arrange(
 			self.available_width.unwrap_or(f32::from(window.viewport_size().width) / 2.),
 			6.,
 			&sizes,
 			selected,
 		);
 		let mut islands = gpui::div().flex().items_start().gap(gpui::px(6.));
+
 		for ((activity, content), allocation) in activities.iter().zip(allocations) {
 			islands = islands.child(self.pill(*activity, allocation, content, window, cx));
 		}
+
 		islands.into_any_element()
 	}
+}
+
+#[derive(Default)]
+struct Metrics {
+	fps: f64,
+	draw_ms: f64,
+	submit_ms: f64,
+	draw_frames: u64,
+	ready_samples: u64,
+}
+impl Metrics {
+	fn collect(
+		mut current: FrameDurationSnapshot,
+		previous: &FrameDurationSnapshot,
+		seconds: f64,
+	) -> Option<Self> {
+		current.draw_duration_histogram.subtract(&previous.draw_duration_histogram).ok()?;
+		current.dirty_to_present_histogram.subtract(&previous.dirty_to_present_histogram).ok()?;
+
+		let draws = &current.draw_duration_histogram;
+
+		Some(Self {
+			fps: draws.len() as f64 / seconds.max(0.001),
+			draw_ms: draws.value_at_quantile(0.95) as f64 / 1_000_000.,
+			submit_ms: current.dirty_to_present_histogram.value_at_quantile(0.95) as f64
+				/ 1_000_000.,
+			draw_frames: draws.len(),
+			ready_samples: current.dirty_to_present_histogram.len(),
+		})
+	}
+}
+
+pub(crate) fn preference(value: Option<bool>) -> bool {
+	static CACHE: AtomicU8 = AtomicU8::new(u8::MAX);
+
+	ui_preferences::boolean("debugMode", &CACHE, value, false)
+}
+
+fn bytes(value: Option<f64>) -> String {
+	value.map_or_else(|| "—".into(), |v| format!("{:.1} GB", v / 1_000_000_000.))
 }
 
 fn timing(ms: f64, samples: u64) -> String {
 	if samples == 0 { "—".into() } else { format!("{ms:.1} ms") }
 }
+
+#[cfg(test)]
+#[path = "ui_performance_tests.rs"]
+mod tests;

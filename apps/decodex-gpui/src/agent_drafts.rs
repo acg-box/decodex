@@ -3,22 +3,25 @@
 
 use std::{collections::BTreeMap, mem};
 
-#[cfg(test)] use crate::shell::agent_surface::Entity;
 #[cfg(test)] use gpui::px;
 
 #[cfg(test)] use crate::shell::agent_surface::AgentActionDto;
 #[cfg(test)] use crate::shell::agent_surface::AgentCommandResponse;
 #[cfg(test)] use crate::shell::agent_surface::ConversationReasoningEffort;
 #[cfg(test)] use crate::shell::agent_surface::ConversationWorkingDirectory;
+#[cfg(test)] use crate::shell::agent_surface::Entity;
 #[cfg(test)] use crate::shell::agent_surface::IntoElement;
 #[cfg(test)] use crate::shell::agent_surface::LoadState;
 #[cfg(test)] use crate::shell::agent_surface::Render;
 #[cfg(test)] use crate::shell::agent_surface::Window;
-use crate::shell::agent_surface::{
-	AgentSurface, ClientProfile, Context, EntityId, IdempotencyKey, PendingCommand, QueuedCommand,
-	Task, WireText,
-	execution_intent::{self, Intents},
-	send_preview::Preview,
+use crate::{
+	shell::agent_surface::{
+		AgentSurface, ClientProfile, Context, EntityId, IdempotencyKey, PendingCommand,
+		QueuedCommand, Task, WireText,
+		execution_intent::{self, Intents},
+		send_preview::Preview,
+	},
+	ui_feedback::Feedback,
 };
 use decodex_protocol::{
 	AgentAttachmentDto, AgentTaskReferenceDto, AgentWorkKindDto, DesktopCreationSetup,
@@ -66,7 +69,7 @@ struct Drafts {
 	tasks: BTreeMap<String, Vec<AgentTaskReferenceDto>>,
 	uncertain: bool,
 	steer_pending: Option<PendingCommand>,
-	feedback: crate::ui_feedback::Feedback,
+	feedback: Feedback,
 }
 
 impl AgentSurface {
@@ -167,6 +170,7 @@ impl AgentSurface {
 
 	fn apply_drafts(&mut self, restored: Drafts, cx: &mut Context<Self>) {
 		self.async_question_editor = None;
+
 		self.composer.update(cx, |input, cx| input.set_content(&restored.text, cx));
 
 		self.draft_profiles.threads = restored.threads;
@@ -174,12 +178,12 @@ impl AgentSurface {
 		self.workspace.new_conversation = restored.new_conversation;
 		self.workspace.new_conversation_workspace = restored.new_conversation_workspace;
 		self.composer_manager = restored.manager;
+
 		if self.workspace.new_conversation.is_some()
 			&& self.workspace.new_conversation == self.composer_manager
 		{
 			self.selected = self.composer_manager.clone();
 		}
-
 		if self.composer_manager.is_none() {
 			self.restore_creation_setup(restored.creation.as_ref(), cx);
 		}
@@ -217,8 +221,8 @@ pub(super) mod tests {
 	pub(in super::super) fn profiles() -> (tempfile::TempDir, ClientProfile, ClientProfile) {
 		let root = tempfile::tempdir_in("/tmp").unwrap();
 		let path = root.path().canonicalize().unwrap();
-		fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
 
+		fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
 		fs::create_dir(path.join("server")).unwrap();
 		fs::set_permissions(path.join("server"), std::fs::Permissions::from_mode(0o700)).unwrap();
 
@@ -356,6 +360,7 @@ pub(super) mod tests {
 	fn legacy_answers_survive_disconnect_and_profile_round_trip(cx: &mut gpui::TestAppContext) {
 		let (_root, first, second) = profiles();
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.bind_profile(Some(first.clone()), cx);
 			s.restored_question_drafts.push(DesktopQuestionDraft {
@@ -368,12 +373,19 @@ pub(super) mod tests {
 				collapsed: true,
 			});
 			s.bind_profile(None, cx);
+
 			assert_eq!(s.restored_question_drafts[0].text, "Unsent answer");
+
 			s.bind_profile(Some(first.clone()), cx);
+
 			assert_eq!(s.restored_question_drafts[0].text, "Unsent answer");
+
 			s.bind_profile(Some(second), cx);
+
 			assert!(s.restored_question_drafts.is_empty());
+
 			s.bind_profile(Some(first), cx);
+
 			assert_eq!(s.restored_question_drafts[0].text, "Unsent answer");
 			assert!(s.composer.read(cx).content().is_empty());
 			assert!(!s.sending);

@@ -1,9 +1,8 @@
 //! Source-checked native observations with explicit next-message choices kept separate.
-use gpui::prelude::FluentBuilder as _;
 use std::collections::BTreeMap;
 
-use gpui::AnyElement;
 #[cfg(test)] use gpui::px;
+use gpui::{AnyElement, prelude::FluentBuilder as _};
 use tokio::runtime::Builder;
 
 #[cfg(test)] use crate::shell::agent_surface::AgentDispatchStateDto;
@@ -16,9 +15,12 @@ use tokio::runtime::Builder;
 #[cfg(test)] use crate::shell::agent_surface::Render;
 #[cfg(test)] use crate::shell::agent_surface::Window;
 #[cfg(test)] use crate::shell::agent_surface::WireText;
-use crate::shell::agent_surface::{
-	self, AgentClient, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, EntityId,
-	InteractiveElement, IntoElement, ParentElement, Styled, Task, mcp_forms,
+use crate::{
+	shell::agent_surface::{
+		self, AgentClient, AgentSnapshotDto, AgentSurface, AgentWorkItemDto, Context, EntityId,
+		InteractiveElement, IntoElement, ParentElement, Styled, Task, mcp_forms,
+	},
+	ui_feedback::{self, Feedback},
 };
 use decodex_protocol::{AgentCapabilitiesResult, AgentModelDto, AgentModelSettingsResult};
 
@@ -30,7 +32,6 @@ pub(super) struct Panel {
 	read_at: BTreeMap<String, std::time::Instant>,
 	epoch: u64,
 }
-
 impl Panel {
 	fn observe(&mut self, work: String, state: AgentModelSettingsResult) -> bool {
 		// A failed read contains no new model observation. Keep the last native
@@ -45,7 +46,9 @@ impl Panel {
 		if self.observations.get(&work) == Some(&state) {
 			return false;
 		}
+
 		self.observations.insert(work, state);
+
 		true
 	}
 }
@@ -66,6 +69,7 @@ impl AgentSurface {
 	pub(super) fn composer_model_label(&self, cx: &Context<Self>) -> String {
 		let Some(model) = self.composer_model_value(cx) else {
 			let owner = self.composer_manager.clone().or_else(|| self.root_id());
+
 			return if owner
 				.as_ref()
 				.is_some_and(|owner| self.model_settings.observations.contains_key(owner))
@@ -99,6 +103,7 @@ impl AgentSurface {
 				),
 				_ => (None, None),
 			};
+
 			(
 				choice.model.map(|value| value.as_str().to_owned()).or(model),
 				choice.reasoning_effort.map(|value| value.as_str().to_owned()).or(effort),
@@ -115,6 +120,7 @@ impl AgentSurface {
 			else {
 				return None;
 			};
+
 			models
 				.iter()
 				.find(|entry| Some(entry.model.as_str()) == model.as_deref())?
@@ -167,11 +173,13 @@ impl AgentSurface {
 
 	pub(super) fn cancel_model_settings_read(&mut self) {
 		self.model_settings.epoch = self.model_settings.epoch.wrapping_add(1);
+
 		if self.model_settings.task.is_some()
 			&& let Some(work) = &self.model_settings.work
 		{
 			self.model_settings.read_at.remove(work);
 		}
+
 		self.model_settings.task = None;
 		self.model_settings.work = None;
 	}
@@ -200,14 +208,17 @@ impl AgentSurface {
 
 		if rebound {
 			self.reset_model_settings();
+
 			return;
 		}
 
 		let lifecycle_changed = self.model_settings.read_at.keys().any(|work| {
 			let before = self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| &w.id == work));
 			let after = next.work_items.iter().find(|w| &w.id == work);
+
 			!matches!((before, after), (Some(a), Some(b)) if a.active_turn_id == b.active_turn_id && a.dispatch_state == b.dispatch_state)
 		});
+
 		if lifecycle_changed {
 			// The same thread keeps its last observation while a fresh read completes.
 			self.cancel_model_settings_read();
@@ -243,8 +254,8 @@ impl AgentSurface {
 			let feedback = match state {
 				Some(AgentModelSettingsResult::Available { .. }) => None,
 				Some(AgentModelSettingsResult::Unavailable) =>
-					Some(crate::ui_feedback::Feedback::warning(text.clone())),
-				_ => Some(crate::ui_feedback::Feedback::info(text.clone())),
+					Some(Feedback::warning(text.clone())),
+				_ => Some(Feedback::info(text.clone())),
 			};
 
 			panel = panel
@@ -253,7 +264,7 @@ impl AgentSurface {
 						.debug_selector(|| "native-model-settings-observation".into())
 						.when(feedback.is_none(), |d| d.child(text))
 						.children(feedback.as_ref().and_then(|feedback| {
-							crate::ui_feedback::inline_feedback(
+							ui_feedback::inline_feedback(
 								"model-settings-feedback",
 								"Model settings",
 								feedback,
@@ -277,6 +288,7 @@ impl AgentSurface {
 		}
 
 		let initial = !self.model_settings.observations.contains_key(work);
+
 		self.model_settings.work = Some(work.into());
 
 		let binding = self.snapshot.as_ref().and_then(|snapshot| {
@@ -292,9 +304,11 @@ impl AgentSurface {
 				.model_settings
 				.observations
 				.insert(work.into(), AgentModelSettingsResult::Unavailable);
+
 			if previous != Some(AgentModelSettingsResult::Unavailable) {
 				cx.notify();
 			}
+
 			return;
 		};
 		let selection = self.selected.clone();
@@ -340,9 +354,10 @@ impl AgentSurface {
 				}
 
 				let state = if matches!(&state,AgentModelSettingsResult::Available{thread_id,work_id,..} if thread_id.as_str()!=thread || work_id.as_str()!=work) {AgentModelSettingsResult::Unavailable} else {state};
-
 				let effort = s.effort.clone();
+
 				s.adopt_composer_observation(&work, &state, intent_revision, &input_at_read, cx);
+
 				let changed = s.model_settings.observe(work, state);
 
 				s.model_settings.task = None;

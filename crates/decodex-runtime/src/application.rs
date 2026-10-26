@@ -1,16 +1,16 @@
 //! Application-service seam used by the transport without exposing infrastructure.
 
-#[path = "application_collaboration.rs"] mod collaboration;
-#[path = "application_deliveries.rs"] mod deliveries;
-#[path = "application_usage_evidence.rs"] mod usage_evidence;
-
 #[path = "application_account_nudge.rs"] mod account_nudge;
+#[path = "application_collaboration.rs"] mod collaboration;
 #[path = "application_conversation_receipts.rs"] mod conversation_receipts;
+#[path = "application_deliveries.rs"] mod deliveries;
 #[path = "application_turn_outcomes.rs"] mod turn_outcomes;
+#[path = "application_usage_evidence.rs"] mod usage_evidence;
 
 use std::{
 	collections::HashMap,
 	future::{self, Future},
+	path::PathBuf,
 	pin::Pin,
 	sync::{
 		Arc,
@@ -24,13 +24,14 @@ use sha2::{Digest as _, Sha256};
 use tokio::{
 	runtime::Handle,
 	sync::watch::{self, Receiver, Sender},
+	task,
 };
 
 use crate::{
 	CredentialRefreshError, CredentialStoreError, ProcessGenerationControl, ProviderAttemptControl,
 	account_launch::{
 		ApiResetCardRuntime, ResetCardFailureCode, ResetCardInventoryObservation,
-		ResetCardOperationStatus, ResetCardServiceError,
+		ResetCardOperationStatus, ResetCardServiceError, process,
 	},
 	account_login::{self, AccountLoginManager},
 	account_observation::AccountObservationService,
@@ -43,7 +44,7 @@ use crate::{
 		AccountRouteCommit, AccountRouteFailure, AccountRouteResult, AccountService,
 		CodexAuthProjectionInspection,
 	},
-	agent_app_ui_receipt, agent_detail, agent_guardian,
+	agent, agent_app_ui_receipt, agent_detail, agent_guardian,
 	agent_host::AgentHostError,
 	agent_recap::Recaps,
 	agent_voice,
@@ -55,6 +56,7 @@ use crate::{
 	},
 	dictation, domain_packs, mcp_login,
 	routing_orchestration::{ExecutionCoordinator, RoutingSuccessorExecutionCommand},
+	work_portfolio,
 };
 use decodex_codex::ThreadTokenUsage;
 use decodex_core::{
@@ -75,7 +77,7 @@ use decodex_database::{
 	InitialModelReviewOutcome, OrdinaryTaskConversationCursor, OrdinaryTaskConversationProjection,
 	OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, ProgramClaimRecord,
 	ProgramCycleRecord, ProgramEvidenceRecord, ProgramObjectiveRecord, ProgramProposalRecord,
-	ProgramReviewRecord, ProgramSignalRecord, ProgramSummaryRecord, ProgramWorkItemRecord,
+	ProgramReviewRecord, ProgramSignalRecord, ProgramSummaryRecord, ProgramWorkItemRecord, Project,
 	ReviewInitialModelSettings, RoutingControlOutcome, SqliteStore, StoreError,
 };
 use decodex_protocol::{
@@ -94,17 +96,18 @@ use decodex_protocol::{
 	AgentContextSettingsResult, AgentDependencyDto, AgentDispatchStateDto,
 	AgentGuardianDetailResult, AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState,
 	AgentIntegrationsResult, AgentLiveMessageKind, AgentLiveReviewerState, AgentMediaRequest,
-	AgentMediaResult, AgentMisalignmentDto, AgentModelSelectionState, AgentModelSettingsResult,
-	AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall, AgentPendingEventDto,
-	AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult, AgentRequestText,
-	AgentResourcesResult, AgentSavedAppSettingsResult, AgentSearchSettingsResult,
-	AgentSkillsResult, AgentSkillsTarget, AgentSnapshotDto, AgentSteerIdentity,
-	AgentSteerReceiptResult, AgentTaskReferenceDto, AgentTimelineResult, AgentTranscriptResult,
-	AgentTurnUsageDto, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
-	AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, CausationId, Channel,
-	CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
-	ConversationHistoryPage, ConversationHistoryResult, ConversationListCursor,
-	ConversationListPage, ConversationListResult, ConversationModel, ConversationModelReviewResult,
+	AgentMediaResult, AgentMemoryResult, AgentMisalignmentDto, AgentModelSelectionState,
+	AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall,
+	AgentPendingEventDto, AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult,
+	AgentRequestText, AgentResourcesResult, AgentSampleStatus, AgentSavedAppSettingsResult,
+	AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget, AgentSnapshotDto,
+	AgentSteerIdentity, AgentSteerReceiptResult, AgentTaskReferenceDto, AgentTimelineResult,
+	AgentTranscriptRequest, AgentTranscriptResult, AgentTurnUsageDto, AgentUsageDto,
+	AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult, AgentWorkItemDto,
+	AgentWorkKindDto, AgentWorkStatusDto, CausationId, Channel, CodexAuthProjectionResult,
+	CommandEnvelope, CommandError, CommandPayload, ConversationHistoryPage,
+	ConversationHistoryResult, ConversationListCursor, ConversationListPage,
+	ConversationListResult, ConversationModel, ConversationModelReviewResult,
 	ConversationModelSettingsResult, ConversationProgramContext, ConversationReadError,
 	ConversationReasoningEffort, ConversationRecoveryAction, ConversationResult, ConversationState,
 	ConversationSummary, ConversationTitle, ConversationTurnOutcome, ConversationWorkingDirectory,
@@ -118,13 +121,14 @@ use decodex_protocol::{
 	MAX_AGENT_PENDING_EVENTS, MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS,
 	MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_PAGE_SIZE, McpLoginPhase, McpLoginRequest,
 	McpLoginStatus, ModelCatalogPurpose, NativeAgentsResult, NativeProcessDiagnostics,
-	ProgramCycleDto, ProgramCycleResult, ProgramEdgeDto, ProgramListResult, ProgramNodeDto,
-	ProgramNodeFieldDto, ProgramNodeKind, ProgramRelationKind, ProgramSummaryDto, ProjectDto,
-	PromptEditPhase, PromptEditStatus, PromptForkResult, PromptInputSendStatus,
-	PromptInputUploadStatus, ProviderThreadId, QueryEnvelope, QueryPayload, QueryResultPayload,
-	ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult, ResetCardObservationDto,
-	ResetCardOperationResult, ResetCardOperationView, ResetCardOutcome, ResultPayload,
-	Sha256Digest, SnapshotItem, WireText,
+	NativeStartupConfiguration, PrivateReviewDetailsResult, ProgramCycleDto, ProgramCycleResult,
+	ProgramEdgeDto, ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto, ProgramNodeKind,
+	ProgramRelationKind, ProgramSummaryDto, ProjectDto, PromptEditPhase, PromptEditStatus,
+	PromptForkResult, PromptInputSendStatus, PromptInputUploadStatus, ProviderThreadId,
+	QueryEnvelope, QueryPayload, QueryResultPayload, ResetCardDescriptorDto, ResetCardError,
+	ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
+	ResetCardOperationView, ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem, WireText,
+	WorkDetailResult,
 };
 
 const ACCOUNT_COMMAND_RECEIPT_SCHEMA: &str = "decodex/account-command-result/1";
@@ -482,14 +486,14 @@ impl ServiceApplication {
 	async fn query_product_state(&self, payload: &QueryPayload) -> QueryResultPayload {
 		match payload {
 			QueryPayload::GetNativeStartupConfiguration { directory } => {
-				let path = std::path::PathBuf::from(directory.as_str());
-				let fallback =
-					decodex_protocol::NativeStartupConfiguration::unavailable(directory.as_str());
-				let report = tokio::task::spawn_blocking(move || {
-					crate::account_launch::process::inspect_native_startup_configuration(&path)
+				let path = PathBuf::from(directory.as_str());
+				let fallback = NativeStartupConfiguration::unavailable(directory.as_str());
+				let report = task::spawn_blocking(move || {
+					process::inspect_native_startup_configuration(&path)
 				})
 				.await
 				.unwrap_or(fallback);
+
 				QueryResultPayload::NativeStartupConfiguration(report)
 			},
 			QueryPayload::GetDesktopSettings =>
@@ -559,12 +563,15 @@ impl ServiceApplication {
 						decodex_protocol::AgentSnapshotResult::Unavailable,
 					);
 				}
+
 				agent.retain_active_work(snapshot).await;
 			}
+
 			let after = match &self.agent {
 				Some(agent) => agent.runtime_source().await,
 				None => None,
 			};
+
 			snapshot.runtime_source = if before == after { after } else { None };
 			snapshot.connection_initializing |= initializing
 				|| self.agent.as_ref().is_some_and(|agent| agent.connection_initializing());
@@ -606,7 +613,7 @@ impl ServiceApplication {
 	async fn query_sample(&self, work: &decodex_protocol::EntityId) -> QueryResultPayload {
 		QueryResultPayload::AgentSample(match &self.agent {
 			Some(agent) => agent.sample_status(work.clone()).await,
-			None => decodex_protocol::AgentSampleStatus::idle(work.clone()),
+			None => AgentSampleStatus::idle(work.clone()),
 		})
 	}
 
@@ -647,7 +654,7 @@ impl ServiceApplication {
 	) -> QueryResultPayload {
 		QueryResultPayload::AgentMemory(match &self.agent {
 			Some(agent) => agent.memory_summary(work, thread, digest, offset).await,
-			None => decodex_protocol::AgentMemoryResult::Unavailable,
+			None => AgentMemoryResult::Unavailable,
 		})
 	}
 
@@ -686,10 +693,7 @@ impl ServiceApplication {
 		})
 	}
 
-	async fn query_transcript(
-		&self,
-		request: &decodex_protocol::AgentTranscriptRequest,
-	) -> QueryResultPayload {
+	async fn query_transcript(&self, request: &AgentTranscriptRequest) -> QueryResultPayload {
 		QueryResultPayload::AgentTranscript(match &self.agent {
 			Some(agent) => agent.transcript(request).await,
 			None => AgentTranscriptResult::Unavailable,
@@ -2884,7 +2888,6 @@ impl Application for ServiceApplication {
 			| QueryPayload::GetAgentInstallState { .. } => self.query_native_lifecycle(&query.payload).await,
 			QueryPayload::GetWorkDetail { .. } | QueryPayload::GetPrivateReviewDetails { .. } =>
 				query_work_evidence(&self.store, &query.payload).await,
-
 			QueryPayload::GetAgentGuardianReviews { .. }
 			| QueryPayload::GetAgentGuardianDetail { .. } => self.query_guardian(&query.payload).await,
 			QueryPayload::GetAgentSnapshot => self.query_agent_snapshot().await,
@@ -5782,6 +5785,17 @@ fn runtime_initial_model_source(
 		.transpose()
 }
 
+fn project_dto(w: Project) -> ProjectDto {
+	ProjectDto {
+		native_project_id: w.native_project_id,
+		lead_agent_id: w.lead_agent_id,
+		id: w.id,
+		name: w.name,
+		directory: w.directory,
+		agent_ids: w.agent_ids,
+	}
+}
+
 async fn query_agent_request_with_details(
 	store: &ProductStore,
 	event_id: i64,
@@ -6191,10 +6205,7 @@ async fn query_agent_history_page(
 }
 
 // Retained observations are presentation facts, not a valid per-turn billing baseline.
-async fn query_agent_usage(
-	store: &SqliteStore,
-	id: &str,
-) -> Option<decodex_protocol::AgentUsageDto> {
+async fn query_agent_usage(store: &SqliteStore, id: &str) -> Option<AgentUsageDto> {
 	if let Some(json) = store.read_agent_usage(id.into()).await.ok().flatten()
 		&& let Ok(usage) = serde_json::from_str(&json)
 	{
@@ -6203,7 +6214,7 @@ async fn query_agent_usage(
 
 	let observation = store.read_agent_context_observation(id.into()).await.ok().flatten()?;
 	let params = serde_json::from_str(&observation.payload).ok()?;
-	let usage = crate::agent::observed_usage(&params)?;
+	let usage = agent::observed_usage(&params)?;
 
 	serde_json::from_value(usage).ok()
 }
@@ -6213,15 +6224,16 @@ async fn query_work_evidence(store: &ProductStore, query: &QueryPayload) -> Quer
 		QueryPayload::GetWorkDetail { work_id, digest, offset } => {
 			let result = match store {
 				ProductStore::Available(store) =>
-					crate::work_portfolio::read(
+					work_portfolio::read(
 						store,
 						work_id.as_str(),
 						digest.as_ref().map(|d| d.as_str()),
 						*offset,
 					)
 					.await,
-				ProductStore::Unavailable(_) => decodex_protocol::WorkDetailResult::Unavailable,
+				ProductStore::Unavailable(_) => WorkDetailResult::Unavailable,
 			};
+
 			QueryResultPayload::WorkDetail(result)
 		},
 		QueryPayload::GetPrivateReviewDetails {
@@ -6232,7 +6244,7 @@ async fn query_work_evidence(store: &ProductStore, query: &QueryPayload) -> Quer
 		} => {
 			let result = match store {
 				ProductStore::Available(store) =>
-					crate::agent_guardian::private_detail(
+					agent_guardian::private_detail(
 						store,
 						reviewer_thread_id.as_str(),
 						reviewer_turn_id.as_str(),
@@ -6240,23 +6252,12 @@ async fn query_work_evidence(store: &ProductStore, query: &QueryPayload) -> Quer
 						*offset,
 					)
 					.await,
-				ProductStore::Unavailable(_) =>
-					decodex_protocol::PrivateReviewDetailsResult::Unavailable,
+				ProductStore::Unavailable(_) => PrivateReviewDetailsResult::Unavailable,
 			};
+
 			QueryResultPayload::PrivateReviewDetails(result)
 		},
-		_ => QueryResultPayload::WorkDetail(decodex_protocol::WorkDetailResult::Unavailable),
-	}
-}
-
-fn project_dto(w: decodex_database::Project) -> ProjectDto {
-	ProjectDto {
-		native_project_id: w.native_project_id,
-		lead_agent_id: w.lead_agent_id,
-		id: w.id,
-		name: w.name,
-		directory: w.directory,
-		agent_ids: w.agent_ids,
+		_ => QueryResultPayload::WorkDetail(WorkDetailResult::Unavailable),
 	}
 }
 
@@ -6290,7 +6291,6 @@ async fn query_agent_snapshot(store: &ProductStore) -> decodex_protocol::AgentSn
 	let Some(context_references) = query_agent_context_references(store).await else {
 		return decodex_protocol::AgentSnapshotResult::Unavailable;
 	};
-
 	let (Ok(agents), Ok(guardian), Ok(portfolio)) =
 		(store.agents().await, store.guardian_state().await, store.work_overview().await)
 	else {
@@ -6601,7 +6601,7 @@ mod history_receipt_tests {
 }
 #[cfg(test)]
 mod tests {
-	use std::collections::HashMap;
+	use std::{collections::HashMap, fs};
 
 	use crate::{
 		account_launch::{ResetCardFailureCode, ResetCardOperationStatus},
@@ -6671,12 +6671,14 @@ mod tests {
 	#[test]
 	fn exact_successful_empty_turn_is_a_record_not_an_execution_warning() {
 		let mut value = serde_json::json!({"terminal":{"turn":{"status":"completed"}},"threadReadback":{"assistantMessages":[],"exactTurnReadback":true,"truncated":false}});
+
 		for messages in [
 			serde_json::json!([]),
 			serde_json::json!([{"text":""}]),
 			serde_json::json!([{"text":"  "},{"text":""}]),
 		] {
 			value["threadReadback"]["assistantMessages"] = messages;
+
 			assert_eq!(
 				super::agent_assistant_history(&value, &mut false),
 				("system", "Completed without a text response.".into())
@@ -6688,11 +6690,16 @@ mod tests {
 			("/threadReadback/truncated", serde_json::json!(true)),
 		] {
 			let old = value.pointer_mut(pointer).unwrap().take();
+
 			*value.pointer_mut(pointer).unwrap() = replacement;
+
 			assert_eq!(super::agent_assistant_history(&value, &mut false).0, "execution_notice");
+
 			*value.pointer_mut(pointer).unwrap() = old;
 		}
+
 		value["terminal"]["turn"]["error"] = serde_json::json!({"message":"Provider failure"});
+
 		assert_eq!(super::agent_assistant_history(&value, &mut false).0, "execution_notice");
 	}
 
@@ -7582,21 +7589,28 @@ mod tests {
 		let directory = tempfile::tempdir().unwrap();
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
+
 		agent_query_work(&store, "chosen").await;
+
 		store.bind_agent_thread("chosen".into(), "thread".into()).await.unwrap();
+
 		for (source, thread, kind) in
 			[("usage", "thread", "token_usage"), ("other-thread", "unrelated", "token_usage")]
 		{
-			let tokens = if thread == "thread" { 1200 } else { 9999 };
+			let tokens = if thread == "thread" { 1_200 } else { 9_999 };
 			let counts =
-				serde_json::json!({"totalTokens":tokens,"inputTokens":1000,"outputTokens":200});
+				serde_json::json!({"totalTokens":tokens,"inputTokens":1_000,"outputTokens":200});
+
 			store.record_agent_observation(decodex_database::EnqueueAgentEvent {
 				source_event_id: source.into(), work_item_id: "chosen".into(), event_kind: kind.into(),
-				payload: serde_json::json!({"threadId":thread,"turnId":"model-turn","tokenUsage":{"total":counts,"last":counts,"modelContextWindow":128000}}).to_string(),
+				payload: serde_json::json!({"threadId":thread,"turnId":"model-turn","tokenUsage":{"total":counts,"last":counts,"modelContextWindow":128_000}}).to_string(),
 			}).await.unwrap();
 		}
+
 		store.validate_agent_usage_resume("thread".into(), None).await.unwrap();
+
 		drop(store);
+
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());
 		let decodex_protocol::AgentHistoryResult::Available { usage: Some(usage), .. } =
@@ -7604,8 +7618,9 @@ mod tests {
 		else {
 			panic!("retained context")
 		};
-		assert_eq!(usage.context_tokens, 1200);
-		assert_eq!(usage.context_window, Some(128000));
+
+		assert_eq!(usage.context_tokens, 1_200);
+		assert_eq!(usage.context_window, Some(128_000));
 		assert!(store.read_agent_usage("chosen".into()).await.unwrap().is_none());
 		assert!(
 			store
@@ -7615,6 +7630,7 @@ mod tests {
 				.is_none()
 		);
 		assert!(store.list_pending_agent_events(10).await.unwrap().is_empty());
+
 		store
 			.record_agent_observation(decodex_database::EnqueueAgentEvent {
 				source_event_id: "compaction".into(),
@@ -7624,8 +7640,11 @@ mod tests {
 			})
 			.await
 			.unwrap();
+
 		assert!(super::query_agent_usage(&store, "chosen").await.is_none());
+
 		agent_query_work(&store, "empty").await;
+
 		assert!(super::query_agent_usage(&store, "empty").await.is_none());
 	}
 
@@ -7706,11 +7725,13 @@ mod tests {
 	#[tokio::test]
 	async fn saved_misalignment_history_omits_continuation_without_live_native_evidence() {
 		let directory = tempfile::tempdir().unwrap();
-		std::fs::set_permissions(
+
+		fs::set_permissions(
 			directory.path(),
 			<std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
 		)
 		.unwrap();
+
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 
@@ -8578,11 +8599,13 @@ mod tests {
 	#[tokio::test]
 	async fn approval_request_projection_preserves_the_native_executor() {
 		let directory = tempfile::tempdir().unwrap();
-		std::fs::set_permissions(
+
+		fs::set_permissions(
 			directory.path(),
 			<std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
 		)
 		.unwrap();
+
 		let root = DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
 		let store = SqliteStore::open(&root.paths()).unwrap();
 		let owner = ProductStore::Available(store.clone());

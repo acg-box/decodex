@@ -3,7 +3,7 @@ use reqwest::Url;
 
 use crate::{
 	account_observation::{AccountId, AccountObservationService},
-	account_service::account_plan_is_workspace,
+	account_service,
 };
 use decodex_codex::AccountApiRecoveryContext;
 use decodex_protocol::{
@@ -71,7 +71,7 @@ fn destination(
 			None => return Some(AccountRecoveryDestination::RequestUsageIncrease),
 		},
 		AccountRecoveryAction::AddCredits =>
-			if account_plan_is_workspace(context.plan_type.as_deref())? {
+			if account_service::account_plan_is_workspace(context.plan_type.as_deref())? {
 				"https://chatgpt.com/admin/billing?codex_credit_action=add_credits".into()
 			} else {
 				format!("{usage}?credits_modal=true")
@@ -85,7 +85,7 @@ fn destination(
 		AccountRecoveryAction::Pricing => {
 			let plan = context.plan_type.as_deref()?.to_ascii_lowercase();
 
-			account_plan_is_workspace(Some(&plan))?;
+			account_service::account_plan_is_workspace(Some(&plan))?;
 
 			let target = if matches!(plan.as_str(), "plus" | "prolite") { "pro" } else { "plus" };
 			let mut url = Url::parse("https://chatgpt.com/").ok()?;
@@ -172,13 +172,15 @@ mod tests {
 	}
 	#[test]
 	fn workspace_routes_encode_provider_identity_and_unknown_plans_do_not_guess() {
+		let banner = banner();
 		let mut context = AccountApiRecoveryContext {
 			provider_account_id: "workspace &other=x".into(),
 			plan_type: Some("team".into()),
 		};
-		let banner = banner();
+
 		for plan in ["team", "TEAM"] {
 			context.plan_type = Some(plan.into());
+
 			let target = url(&context, &banner, AccountRecoveryAction::AddCredits);
 
 			assert_eq!(target.path(), "/admin/billing");

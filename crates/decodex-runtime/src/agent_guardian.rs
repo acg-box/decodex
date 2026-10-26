@@ -7,6 +7,7 @@ use decodex_database::{AgentGuardianReview, SqliteStore};
 use decodex_protocol::{
 	AgentGuardianDetailResult, AgentGuardianReviewDto, AgentGuardianReviewsResult,
 	AgentGuardianStatus, AgentGuardianSubmission, GUARDIAN_DETAIL_PAGE_BYTES,
+	PrivateReviewDetailsResult,
 };
 
 /// Read complete details from the existing saved observation. No native request is sent.
@@ -134,6 +135,40 @@ pub(crate) async fn read(
 	AgentGuardianReviewsResult::Available { reviews, next_before }
 }
 
+pub(crate) async fn private_detail(
+	store: &SqliteStore,
+	thread: &str,
+	turn: &str,
+	item: &str,
+	offset: usize,
+) -> PrivateReviewDetailsResult {
+	let Ok(Some(text)) = store.private_review_record(thread.into(), turn.into(), item.into()).await
+	else {
+		return PrivateReviewDetailsResult::Unavailable;
+	};
+
+	if text.len() > 65_536
+		|| offset >= text.len()
+		|| !text.is_char_boundary(offset)
+		|| decodex_core::contains_credential_material(&text)
+	{
+		return PrivateReviewDetailsResult::Unavailable;
+	}
+
+	let mut end = (offset + GUARDIAN_DETAIL_PAGE_BYTES).min(text.len());
+
+	while !text.is_char_boundary(end) {
+		end -= 1;
+	}
+
+	PrivateReviewDetailsResult::Available {
+		offset,
+		total_bytes: text.len(),
+		text: text[offset..end].into(),
+		next_offset: (end < text.len()).then_some(end),
+	}
+}
+
 fn project(row: &AgentGuardianReview, generation: Option<&str>) -> Option<AgentGuardianReviewDto> {
 	let event = serde_json::from_str(&row.event_json).ok()?;
 	let observed = guardian::decode_review(
@@ -219,37 +254,6 @@ fn project(row: &AgentGuardianReview, generation: Option<&str>) -> Option<AgentG
 	}
 
 	Some(result)
-}
-
-pub(crate) async fn private_detail(
-	store: &SqliteStore,
-	thread: &str,
-	turn: &str,
-	item: &str,
-	offset: usize,
-) -> decodex_protocol::PrivateReviewDetailsResult {
-	use decodex_protocol::PrivateReviewDetailsResult;
-	let Ok(Some(text)) = store.private_review_record(thread.into(), turn.into(), item.into()).await
-	else {
-		return PrivateReviewDetailsResult::Unavailable;
-	};
-	if text.len() > 65536
-		|| offset >= text.len()
-		|| !text.is_char_boundary(offset)
-		|| decodex_core::contains_credential_material(&text)
-	{
-		return PrivateReviewDetailsResult::Unavailable;
-	}
-	let mut end = (offset + GUARDIAN_DETAIL_PAGE_BYTES).min(text.len());
-	while !text.is_char_boundary(end) {
-		end -= 1;
-	}
-	PrivateReviewDetailsResult::Available {
-		offset,
-		total_bytes: text.len(),
-		text: text[offset..end].into(),
-		next_offset: (end < text.len()).then_some(end),
-	}
 }
 
 #[cfg(test)]

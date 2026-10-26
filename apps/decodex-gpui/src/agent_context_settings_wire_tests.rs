@@ -59,9 +59,7 @@ fn context_picker_sends_once_then_reads_effective_override_after_lost_reply(
 
 	visual.simulate_click(button.center(), Default::default());
 	visual.run_until_parked();
-	visual.update(|w, cx| {
-		w.draw(cx).clear(cx);
-	});
+	visual.update(crate::ui_frame::draw_current_frame);
 
 	let button = visual.debug_bounds("context-choice-async-false").unwrap();
 

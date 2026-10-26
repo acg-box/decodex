@@ -1,20 +1,24 @@
-use super::*;
+use crate::app_server_client::context_preferences;
 
 #[test]
 fn threshold_only_configuration_does_not_enable_async_compaction() {
 	assert_eq!(
-		enabled(&serde_json::json!({"model_async_compact_threshold_percent":70}), 0).unwrap(),
+		context_preferences::enabled(
+			&serde_json::json!({"model_async_compact_threshold_percent":70}),
+			0
+		)
+		.unwrap(),
 		None
 	);
 	assert_eq!(
-		enabled(
+		context_preferences::enabled(
 			&serde_json::json!({"enabled":false,"model_async_compact_threshold_percent":70}),
 			0
 		)
 		.unwrap(),
 		Some(false)
 	);
-	assert!(enabled(&serde_json::json!({"enabled":true}), 1).is_err());
+	assert!(context_preferences::enabled(&serde_json::json!({"enabled":true}), 1).is_err());
 }
 
 #[test]
@@ -27,8 +31,10 @@ fn context_write_admits_only_a_versioned_boolean_preference() {
 		"features.retain_client_tool_outputs",
 	] {
 		let mut edit = valid.clone();
+
 		edit["edits"][0]["keyPath"] = serde_json::json!(key);
-		assert!(is_context_preference_write(&edit));
+
+		assert!(context_preferences::is_context_preference_write(&edit));
 	}
 	for (field, value) in [
 		("keyPath", serde_json::json!("features.multi_agent_v2.disable_native_tools")),
@@ -36,15 +42,22 @@ fn context_write_admits_only_a_versioned_boolean_preference() {
 		("mergeStrategy", serde_json::json!("upsert")),
 	] {
 		let mut edit = valid.clone();
+
 		edit["edits"][0][field] = value;
-		assert!(!is_context_preference_write(&edit));
+
+		assert!(!context_preferences::is_context_preference_write(&edit));
 	}
 	for field in ["expectedVersion", "reloadUserConfig"] {
 		let mut edit = valid.clone();
+
 		edit.as_object_mut().unwrap().remove(field);
-		assert!(!is_context_preference_write(&edit));
+
+		assert!(!context_preferences::is_context_preference_write(&edit));
 	}
+
 	let mut edit = valid;
+
 	edit["reloadUserConfig"] = serde_json::json!(true);
-	assert!(!is_context_preference_write(&edit));
+
+	assert!(!context_preferences::is_context_preference_write(&edit));
 }

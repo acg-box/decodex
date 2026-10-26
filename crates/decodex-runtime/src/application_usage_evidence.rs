@@ -1,5 +1,5 @@
 //! Aggregate existing native receipts without assigning work by selection or latest output.
-use super::{ProductStore, ServiceApplication};
+use crate::application::{ProductStore, ServiceApplication};
 use decodex_protocol::{
 	QueryResultPayload, UsageEvidenceResult, UsageEvidenceScope, UsageEvidenceSource,
 	UsageEvidenceTotals,
@@ -24,9 +24,11 @@ impl ServiceApplication {
 		else {
 			return unavailable();
 		};
+
 		if agent.runtime_source().await.as_ref() != Some(&source) {
 			return unavailable();
 		}
+
 		let totals = UsageEvidenceTotals {
 			turns: saved.turns,
 			token_turns: saved.token_turns,
@@ -38,7 +40,8 @@ impl ServiceApplication {
 			duration_ms: saved.duration_ms,
 		};
 		let mut sources = Vec::new();
-		let mut bytes = 0usize;
+		let mut bytes = 0_usize;
+
 		for row in saved.sources {
 			let row = UsageEvidenceSource {
 				event_id: row.event_id,
@@ -52,12 +55,16 @@ impl ServiceApplication {
 				duration_ms: row.duration_ms,
 			};
 			let size = serde_json::to_vec(&row).map_or(usize::MAX, |v| v.len() + 1);
-			if bytes.saturating_add(size) > 40 * 1024 {
+
+			if bytes.saturating_add(size) > 40 * 1_024 {
 				break;
 			}
+
 			bytes += size;
+
 			sources.push(row);
 		}
+
 		QueryResultPayload::UsageEvidence(UsageEvidenceResult::Available {
 			source,
 			scope: scope.clone(),

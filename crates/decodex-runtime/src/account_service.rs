@@ -2,19 +2,12 @@
 
 mod oauth;
 mod personal_access_token;
+
 pub(crate) use oauth::OpenAiCredentialRefresher;
-#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
-use oauth::process_test_refresh_endpoint_is_safe;
-#[cfg(test)]
-use oauth::{
-	MAX_REFRESH_ERROR_BODY_BYTES, RefreshResponse, classify_refresh_http_failure,
-	classify_refresh_http_response, credential_refresh_result,
-};
-#[cfg(all(test, not(all(feature = "process-acceptance-fixture", debug_assertions))))]
-use oauth::{REFRESH_ENDPOINT, refresh_endpoint};
 
 use std::{
 	collections::HashMap,
+	error::Error,
 	fmt::{Debug, Display, Formatter, Write as _},
 	sync::{
 		Arc,
@@ -50,6 +43,13 @@ use decodex_database::{
 	AccountStoreObservation, CodexAccountCapabilityAttestation, RoutingControlOutcome, SqliteStore,
 	StoreError,
 };
+#[cfg(test)]
+use oauth::{
+	MAX_REFRESH_ERROR_BODY_BYTES, RefreshResponse, classify_refresh_http_failure,
+	classify_refresh_http_response, credential_refresh_result,
+};
+#[cfg(all(test, not(all(feature = "process-acceptance-fixture", debug_assertions))))]
+use oauth::{REFRESH_ENDPOINT, refresh_endpoint};
 
 #[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
 pub(crate) const PROCESS_TEST_REFRESH_ENDPOINT_ENV: &str = "DECODEX_PROCESS_TEST_REFRESH_ENDPOINT";
@@ -101,6 +101,12 @@ pub(crate) struct AccountApiCredential {
 	/// Per-account lifecycle lock retained across the bounded provider request.
 	pub(crate) _launch_guard: OwnedMutexGuard<()>,
 }
+impl AccountApiCredential {
+	pub(crate) fn is_recovery_probe(&self) -> bool {
+		self.recovery_probe.is_some()
+	}
+}
+
 impl Debug for AccountApiCredential {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter
@@ -109,11 +115,6 @@ impl Debug for AccountApiCredential {
 			.field("binding", &self.binding)
 			.field("account_revision", &self.account_revision)
 			.finish()
-	}
-}
-impl AccountApiCredential {
-	pub(crate) fn is_recovery_probe(&self) -> bool {
-		self.recovery_probe.is_some()
 	}
 }
 
@@ -1834,6 +1835,7 @@ impl AccountService {
 				current,
 			)? {
 			let stored = self.read_exact_for_bound_callback(&account).await?;
+
 			if !access_token_needs_refresh(
 				stored.bundle().access_token_expires_at_unix_micros(),
 				current_unix_micros()?,
@@ -2342,7 +2344,9 @@ impl AccountService {
 			account_import::read_explicit_shared_codex_credential_file(source_descriptor),
 		)
 		.await?;
+
 		require_supported_plan(&imported.bundle)?;
+
 		let target = reauthentication_target(&current, account_id, operation_id, &imported)?;
 
 		self.credentials.read_exact(account_id, &current)?;
@@ -3214,6 +3218,7 @@ impl AccountService {
 				.prepare_account_recovery_takeover(preparation, &recovery.operation_id)
 				.await?);
 		}
+
 		Ok(self.store.prepare_account_operation(preparation).await?)
 	}
 
@@ -4424,6 +4429,7 @@ impl AccountService {
 			let (account, stored) = self
 				.refresh_observation_credential(account_id, minimum_validity, account, stored)
 				.await?;
+
 			return Ok((account, stored, None));
 		};
 		let operation = self
@@ -4432,6 +4438,7 @@ impl AccountService {
 			.await?
 			.ok_or(AccountLifecycleError::InvalidOperation)?;
 		let binding = account.credential.as_ref().ok_or(AccountLifecycleError::CredentialAbsent)?;
+
 		// A rejected renewal has no replacement to reconcile. Uncertain writes and
 		// superseded operations must keep their existing recovery authority.
 		if operation.expected.as_ref() != Some(binding)
@@ -4443,8 +4450,10 @@ impl AccountService {
 				AccountLifecycleReadiness::OperationUnsettled,
 			));
 		}
+
 		let stored = self.read_and_observe_exact_credential(&account, binding).await?;
 		let now = current_unix_micros()?;
+
 		if let Some(winner) = matching_shared_refresh(
 			binding,
 			stored.bundle(),
@@ -4466,10 +4475,13 @@ impl AccountService {
 				RefreshPlan { supplied_refresh: Some(winner), ..RefreshPlan::OBSERVATION },
 			)
 			.await?;
+
 			let account = self.load_account(account_id).await?;
 			let stored = self.read_exact_for_api(&account).await?;
+
 			return Ok((account, stored, None));
 		}
+
 		if access_token_needs_refresh(
 			stored.bundle().access_token_expires_at_unix_micros(),
 			now,
@@ -4479,7 +4491,9 @@ impl AccountService {
 				AccountLifecycleReadiness::OperationUnsettled,
 			));
 		}
+
 		let recovery = recovery.clone();
+
 		Ok((account, stored, Some(recovery)))
 	}
 
@@ -4497,6 +4511,7 @@ impl AccountService {
 				)
 				.await?,
 		)?;
+
 		Ok(())
 	}
 
@@ -4511,8 +4526,10 @@ impl AccountService {
 				current_unix_micros()?,
 				Duration::ZERO,
 			)?;
+
 			self.cancel_rejected_observation_refresh(recovery).await?;
 		}
+
 		Ok(())
 	}
 
@@ -5303,7 +5320,7 @@ pub enum CredentialRefreshError {
 	/// The provider effect outcome cannot be proved.
 	Ambiguous,
 }
-impl std::error::Error for CredentialRefreshError {}
+impl Error for CredentialRefreshError {}
 
 impl Display for CredentialRefreshError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
@@ -5382,7 +5399,7 @@ pub enum AccountLifecycleError {
 	/// Exact shared auth readback did not match.
 	AuthReadbackMismatch,
 }
-impl std::error::Error for AccountLifecycleError {}
+impl Error for AccountLifecycleError {}
 
 impl Display for AccountLifecycleError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
@@ -5485,7 +5502,36 @@ pub(crate) fn stable_account_alias(provider: &ProviderIdentity) -> String {
 pub(crate) fn process_acceptance_fixture_endpoint() -> Option<String> {
 	std::env::var_os(PROCESS_TEST_REFRESH_ENDPOINT_ENV)
 		.and_then(|value| value.into_string().ok())
-		.filter(|endpoint| process_test_refresh_endpoint_is_safe(endpoint))
+		.filter(|endpoint| oauth::process_test_refresh_endpoint_is_safe(endpoint))
+}
+
+pub(crate) fn rejected_refresh_recovery(account: &AccountRecord) -> Option<&AccountOperationId> {
+	if account.tombstoned {
+		return None;
+	}
+
+	account
+		.unsettled_operation
+		.as_ref()
+		.filter(|operation| {
+			operation.kind == AccountOperationKind::Refresh
+				&& operation.phase == AccountOperationPhase::RecoveryRequired
+				&& matches!(
+					operation.recovery_code.as_deref(),
+					Some("provider_refresh_rejected" | "provider_access_rejected_after_refresh")
+				)
+		})
+		.map(|operation| &operation.operation_id)
+}
+
+/// Classify only the native plans admitted by the current Decodex product scope.
+/// Native plan names are case-insensitive; absent and unknown names stay unsupported.
+pub(crate) fn account_plan_is_workspace(plan: Option<&str>) -> Option<bool> {
+	match plan?.to_ascii_lowercase().as_str() {
+		"team" => Some(true),
+		"plus" | "pro" | "prolite" | "promax" => Some(false),
+		_ => None,
+	}
 }
 
 fn codex_auth_projection_digest(account: &AccountRecord, binding: &CredentialBinding) -> String {
@@ -5581,34 +5627,6 @@ fn operation_id_from_digest(digest: &[u8]) -> Result<AccountOperationId, Account
 		bytes[15],
 	))
 	.map_err(|_| AccountLifecycleError::InvalidOperation)
-}
-
-pub(crate) fn rejected_refresh_recovery(account: &AccountRecord) -> Option<&AccountOperationId> {
-	if account.tombstoned {
-		return None;
-	}
-	account
-		.unsettled_operation
-		.as_ref()
-		.filter(|operation| {
-			operation.kind == AccountOperationKind::Refresh
-				&& operation.phase == AccountOperationPhase::RecoveryRequired
-				&& matches!(
-					operation.recovery_code.as_deref(),
-					Some("provider_refresh_rejected" | "provider_access_rejected_after_refresh")
-				)
-		})
-		.map(|operation| &operation.operation_id)
-}
-
-/// Classify only the native plans admitted by the current Decodex product scope.
-/// Native plan names are case-insensitive; absent and unknown names stay unsupported.
-pub(crate) fn account_plan_is_workspace(plan: Option<&str>) -> Option<bool> {
-	match plan?.to_ascii_lowercase().as_str() {
-		"team" => Some(true),
-		"plus" | "pro" | "prolite" | "promax" => Some(false),
-		_ => None,
-	}
 }
 
 fn require_supported_plan(bundle: &CredentialSecretBundle) -> Result<(), AccountLifecycleError> {
@@ -5736,6 +5754,7 @@ fn callback_uses_current_successor(
 	{
 		return Err(AccountLifecycleError::StaleAccount);
 	}
+
 	Ok(current != last_projected)
 }
 
@@ -6061,7 +6080,7 @@ mod tests {
 	use reqwest::blocking::{self, Response};
 	use serde_json::Value;
 	use tempfile::TempDir;
-	use tokio::time;
+	use tokio::{sync::watch, time};
 	use zeroize::Zeroizing;
 
 	#[cfg(not(all(feature = "process-acceptance-fixture", debug_assertions)))]
@@ -6091,16 +6110,22 @@ mod tests {
 		AccountQuotaObservationError, AccountQuotaWindow, AccountQuotaWindowObservation,
 		AccountRecord, AccountSelectionRecovery, AccountState, AccountUsageObservation,
 		CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion,
-		DecodexRoot, ProcessGenerationAccountBinding, ProviderIdentity,
+		DecodexRoot, ProcessBootIdentity, ProcessControlKind, ProcessExecutionAuthorization,
+		ProcessExecutionEpochId, ProcessGenerationAccountBinding, ProcessGenerationId,
+		ProcessGenerationIntent, ProcessIsolationKind, ProcessRunnerIdentity, ProviderIdentity,
 	};
 	use decodex_database::{
 		AccountCommandKind, AccountCommandReceiptClaim, AccountLifecycleMutationOutcome,
-		AccountOperationPreparation, CommandIdentity, SqliteStore,
+		AccountOperationPreparation, AgentDispatchState, AgentWorkItem, AgentWorkKind,
+		AgentWorkStatus, CommandIdentity, SqliteStore,
 	};
 	use decodex_protocol::{
 		AccountRecoveryAction, AccountRecoveryDestination, AccountRecoveryPreparation, EntityId,
 		EntityRevision,
 	};
+
+	type ObservationFixture =
+		(tempfile::TempDir, SqliteStore, AccountService, AccountId, Arc<RefreshRaceSharedAuthFile>);
 
 	const OBSERVED_AT_MICROS: i64 = 1_000_000;
 
@@ -6726,6 +6751,7 @@ mod tests {
 			ProcessGenerationAccountBinding::new(1, initial.clone(), "a".repeat(64)).unwrap();
 		let second = binding("process-account", 2);
 		let third = binding("process-account", 3);
+
 		assert!(
 			account_service::callback_uses_current_successor(2, &process, &initial, &second)
 				.unwrap()
@@ -6883,7 +6909,7 @@ mod tests {
 	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
 	#[test]
 	fn process_acceptance_refresh_endpoint_accepts_only_exact_loopback_http() {
-		assert!(account_service::process_test_refresh_endpoint_is_safe(
+		assert!(account_service::oauth::process_test_refresh_endpoint_is_safe(
 			"http://127.0.0.1:49152/oauth/token"
 		));
 
@@ -6896,7 +6922,9 @@ mod tests {
 			"http://user@127.0.0.1:49152/oauth/token",
 			"https://auth.openai.com/oauth/token",
 		] {
-			assert!(!account_service::process_test_refresh_endpoint_is_safe(unsafe_endpoint));
+			assert!(!account_service::oauth::process_test_refresh_endpoint_is_safe(
+				unsafe_endpoint
+			));
 		}
 	}
 
@@ -7221,7 +7249,9 @@ mod tests {
 			Ok(imported("expected-provider-account", "new", 3_000_000)),
 		)
 		.unwrap();
+
 		assert_eq!(recovered.bundle.access_token(), "new");
+
 		for shared in [
 			Err(CredentialImportError::Unavailable),
 			Ok(imported("other-account", "new", 3_000_000)),
@@ -7393,11 +7423,14 @@ mod tests {
 	fn refresh_accepts_omitted_identity_and_metadata_without_losing_the_account() {
 		let current = current_bundle();
 		let mut reply = response(None);
+
 		reply.token_type = None;
 		reply.refresh_token = Some("rotated-refresh".to_owned());
+
 		let refreshed =
 			account_service::credential_refresh_result(&current, reply, OBSERVED_AT_MICROS)
 				.expect("upstream-compatible refresh response");
+
 		assert_eq!(refreshed.returned_provider.account_id(), "old-provider-account");
 		assert_eq!(refreshed.bundle.id_token(), current.id_token());
 		assert_eq!(refreshed.bundle.refresh_token(), Some("rotated-refresh"));
@@ -7764,9 +7797,6 @@ mod tests {
 		}
 	}
 
-	type ObservationFixture =
-		(tempfile::TempDir, SqliteStore, AccountService, AccountId, Arc<RefreshRaceSharedAuthFile>);
-
 	async fn independently_owned_observation_service(
 		refresh: Result<CredentialRefreshResult, CredentialRefreshError>,
 	) -> ObservationFixture {
@@ -7865,7 +7895,9 @@ mod tests {
 	async fn unavailable_agent_route_preserves_credential_recovery_reason() {
 		let (_directory, store, service, account_id, _shared) =
 			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
+
 		service.set_callback_capability("fixture".into(), true);
+
 		let revision = service.inspect(&account_id).await.unwrap().account.revision;
 		let identity =
 			CommandIdentity::new("disable-route-test", b"disable fixture account").unwrap();
@@ -7881,14 +7913,17 @@ mod tests {
 		else {
 			panic!("disable owner")
 		};
+
 		service
 			.set_account_enabled_command(lease, &account_id, revision, false, |_, _| {
 				Ok(serde_json::json!({"disabled":true}))
 			})
 			.await
 			.unwrap();
+
 		let failure =
 			service.select_agent_route(Some(&account_id), OBSERVED_AT_MICROS).await.unwrap_err();
+
 		assert_eq!(failure.recovery, decodex_core::AccountSelectionRecovery::EnableAccount);
 		assert_eq!(failure.account_id.as_ref(), Some(&account_id));
 	}
@@ -7911,19 +7946,28 @@ mod tests {
 			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
 		let observations = AccountObservationService::new(Arc::new(service), None, None, None);
 		let initial = observations.wait_for_initial_observation();
+
 		tokio::pin!(initial);
+
 		assert!(futures_util::poll!(initial.as_mut()).is_pending());
 
-		let (stop, stopped) = tokio::sync::watch::channel(false);
+		let (stop, stopped) = watch::channel(false);
 		let daemon = tokio::spawn(observations.clone().daemon_service(stopped));
-		tokio::time::timeout(std::time::Duration::from_secs(1), initial)
+
+		time::timeout(std::time::Duration::from_secs(1), initial)
 			.await
 			.expect("failed provider checks must finish startup, not leave a loading screen");
+
 		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
+
 		observations.request_refresh();
+
 		let refreshed = observations.wait_for_initial_observation();
+
 		tokio::pin!(refreshed);
+
 		assert!(futures_util::poll!(refreshed.as_mut()).is_ready());
+
 		stop.send_replace(true);
 		daemon.await.unwrap();
 	}
@@ -7939,14 +7983,16 @@ mod tests {
 			Arc::new(UnusedCredentialRefresher),
 		);
 		let observations = AccountObservationService::new(Arc::new(service), None, None, None);
-		let (stop, stopped) = tokio::sync::watch::channel(false);
+		let (stop, stopped) = watch::channel(false);
 		let daemon = tokio::spawn(observations.clone().daemon_service(stopped));
-		tokio::time::timeout(
+
+		time::timeout(
 			std::time::Duration::from_secs(1),
 			observations.wait_for_initial_observation(),
 		)
 		.await
 		.expect("an empty registry needs no provider wait");
+
 		stop.send_replace(true);
 		daemon.await.unwrap();
 	}
@@ -8072,13 +8118,8 @@ mod tests {
 		store: &SqliteStore,
 		account: &AccountRecord,
 	) -> (decodex_core::ProcessGenerationId, ProcessGenerationAccountBinding) {
-		use decodex_core::{
-			ProcessBootIdentity, ProcessControlKind, ProcessExecutionAuthorization,
-			ProcessExecutionEpochId, ProcessGenerationId, ProcessGenerationIntent,
-			ProcessIsolationKind, ProcessRunnerIdentity,
-		};
-		use decodex_database::{AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus};
 		let profile = "a".repeat(64);
+
 		store
 			.attest_codex_account_capability(&super::CodexAccountCapabilityAttestation {
 				build_identity: "refresh-fixture".into(),
@@ -8107,6 +8148,7 @@ mod tests {
 			})
 			.await
 			.unwrap();
+
 		let generation = ProcessGenerationId::new("81000000-0000-4000-8000-000000000001").unwrap();
 		let initial = ProcessGenerationAccountBinding::new(
 			account.revision,
@@ -8127,6 +8169,7 @@ mod tests {
 			)
 			.unwrap(),
 		};
+
 		assert!(matches!(
 			store
 				.prepare_agent_bound_process_generation(
@@ -8139,18 +8182,21 @@ mod tests {
 				.unwrap(),
 			decodex_database::PrepareProcessGenerationOutcome::Fresh(_)
 		));
+
 		(generation, initial)
 	}
 
 	#[tokio::test]
 	async fn live_process_rotates_twice_and_other_consumers_reuse_the_committed_successor() {
 		struct Rotating(std::sync::atomic::AtomicUsize);
+
 		impl CredentialRefreshPort for Rotating {
 			fn refresh(
 				&self,
 				_: &CredentialSecretBundle,
 			) -> Result<CredentialRefreshResult, CredentialRefreshError> {
 				let n = self.0.fetch_add(1, Ordering::SeqCst) + 1;
+
 				Ok(CredentialRefreshResult {
 					returned_provider: ProviderIdentity::new(
 						AccountProvider::Chatgpt,
@@ -8161,14 +8207,17 @@ mod tests {
 				})
 			}
 		}
+
 		let (_directory, store, mut service, account_id, _) =
 			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
 		let rotating = Arc::new(Rotating(std::sync::atomic::AtomicUsize::new(0)));
+
 		service.refresher = rotating.clone();
 		service = service.with_shared_auth_coordinator(test_coordinator(
 			Arc::new(UnmanagedSharedAuthFile),
 			CodexLiveness::Quiescent,
 		));
+
 		let account = service.inspect(&account_id).await.unwrap().account;
 		let (generation, initial) = prepare_refresh_process(&store, &account).await;
 		let first = service
@@ -8191,9 +8240,11 @@ mod tests {
 			)
 			.await
 			.unwrap();
+
 		assert_eq!(second.binding().version.get(), 3);
 		assert_eq!(second.access_token(), "rotated-2");
 		assert_eq!(rotating.0.load(Ordering::SeqCst), 2);
+
 		let (a, b) = tokio::join!(
 			service.refresh_for_process(
 				AccountOperationId::generate().unwrap(),
@@ -8210,6 +8261,7 @@ mod tests {
 				first.binding()
 			),
 		);
+
 		assert_eq!(a.unwrap().binding(), second.binding());
 		assert_eq!(b.unwrap().binding(), second.binding());
 		assert_eq!(rotating.0.load(Ordering::SeqCst), 2);
@@ -8225,8 +8277,10 @@ mod tests {
 				.await,
 			Err(AccountLifecycleError::ProviderMismatch)
 		));
+
 		let persisted =
 			store.read_bound_process_generations(Some(&account_id), false, 1).await.unwrap();
+
 		assert_eq!(
 			persisted[0].account_binding.as_ref(),
 			Some(&initial),
@@ -8339,6 +8393,7 @@ mod tests {
 			observation_service_with_expiry(Err(CredentialRefreshError::Rejected), i64::MAX).await;
 		let before = service.inspect(&account_id).await.unwrap().account;
 		let operation_id = AccountOperationId::generate().unwrap();
+
 		assert!(matches!(
 			service
 				.refresh_for_observation(operation_id.clone(), &account_id, before.revision)
@@ -8348,16 +8403,20 @@ mod tests {
 
 		let credential =
 			service.api_credential_for_observation(&account_id, Duration::ZERO).await.unwrap();
+
 		assert!(credential.is_recovery_probe());
 		assert_eq!(Some(&credential.binding), before.credential.as_ref());
 		assert_eq!(
 			store.read_account_operation(&operation_id).await.unwrap().unwrap().phase,
 			AccountOperationPhase::RecoveryRequired
 		);
+
 		service.accept_observation_recovery(&credential).await.unwrap();
+
 		drop(credential);
 
 		let after = service.inspect(&account_id).await.unwrap().account;
+
 		assert_eq!(after.revision, before.revision);
 		assert_eq!(after.credential, before.credential);
 		assert!(after.unsettled_operation.is_none());
@@ -8373,6 +8432,7 @@ mod tests {
 			Arc::new(SqliteCredentialStore::new(store)),
 			Arc::new(UnusedCredentialRefresher),
 		);
+
 		assert!(restarted.reconcile_startup().await.unwrap().manual_recovery.is_empty());
 		assert!(
 			restarted.inspect(&account_id).await.unwrap().account.unsettled_operation.is_none()
@@ -8384,19 +8444,25 @@ mod tests {
 		let (_directory, store, service, account_id, shared) =
 			observation_service_with_expiry(Err(CredentialRefreshError::Rejected), i64::MAX).await;
 		let operation_id = AccountOperationId::generate().unwrap();
+
 		assert!(
 			service.refresh_for_observation(operation_id.clone(), &account_id, 1).await.is_err()
 		);
+
 		for _ in 0..2 {
 			let credential =
 				service.api_credential_for_observation(&account_id, Duration::ZERO).await.unwrap();
+
 			assert!(credential.is_recovery_probe());
+
 			drop(credential);
+
 			assert_eq!(
 				store.read_account_operation(&operation_id).await.unwrap().unwrap().phase,
 				AccountOperationPhase::RecoveryRequired
 			);
 		}
+
 		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
 	}
 
@@ -8405,9 +8471,11 @@ mod tests {
 		let (_directory, store, service, account_id, original_shared) =
 			independently_owned_observation_service(Err(CredentialRefreshError::Rejected)).await;
 		let operation_id = AccountOperationId::generate().unwrap();
+
 		assert!(
 			service.refresh_for_observation(operation_id.clone(), &account_id, 1).await.is_err()
 		);
+
 		let native = Arc::new(RefreshRaceSharedAuthFile::new(
 			"observed-account",
 			shared_bundle("observed-account", "native-successor", i64::MAX),
@@ -8416,13 +8484,15 @@ mod tests {
 			native.clone(),
 			CodexLiveness::MayBeRunning,
 		));
-
 		let credential =
 			service.api_credential_for_observation(&account_id, Duration::ZERO).await.unwrap();
+
 		assert!(!credential.is_recovery_probe());
 		assert_eq!(credential.stored.bundle().access_token(), "native-successor");
 		assert_eq!(credential.binding.version.get(), 2);
+
 		drop(credential);
+
 		assert!(service.inspect(&account_id).await.unwrap().account.unsettled_operation.is_none());
 		assert_eq!(
 			store.read_account_operation(&operation_id).await.unwrap().unwrap().phase,
@@ -8441,12 +8511,14 @@ mod tests {
 				observation_service_with_expiry(Err(CredentialRefreshError::Rejected), i64::MAX)
 					.await;
 			let operation_id = AccountOperationId::generate().unwrap();
+
 			assert!(
 				service
 					.refresh_for_observation(operation_id.clone(), &account_id, 1)
 					.await
 					.is_err()
 			);
+
 			let native = Arc::new(RefreshRaceSharedAuthFile::new(
 				provider,
 				shared_bundle(provider, "unrelated-access", expiry),
@@ -8457,10 +8529,13 @@ mod tests {
 			));
 			let credential =
 				service.api_credential_for_observation(&account_id, Duration::ZERO).await.unwrap();
+
 			assert!(credential.is_recovery_probe());
 			assert_eq!(credential.stored.bundle().access_token(), "expired-access");
 			assert_eq!(credential.binding.version.get(), 1);
+
 			drop(credential);
+
 			assert_eq!(
 				store.read_account_operation(&operation_id).await.unwrap().unwrap().phase,
 				AccountOperationPhase::RecoveryRequired
@@ -8473,12 +8548,14 @@ mod tests {
 	async fn ambiguous_refresh_stays_fenced_with_valid_access_and_a_native_successor() {
 		let (_directory, _store, service, account_id, _shared) =
 			observation_service_with_expiry(Err(CredentialRefreshError::Ambiguous), i64::MAX).await;
+
 		assert!(
 			service
 				.refresh_for_observation(AccountOperationId::generate().unwrap(), &account_id, 1)
 				.await
 				.is_err()
 		);
+
 		let native = Arc::new(RefreshRaceSharedAuthFile::new(
 			"observed-account",
 			shared_bundle("observed-account", "native-successor", i64::MAX),
@@ -8487,6 +8564,7 @@ mod tests {
 			native.clone(),
 			CodexLiveness::MayBeRunning,
 		));
+
 		assert!(matches!(
 			service.api_credential_for_observation(&account_id, Duration::ZERO).await,
 			Err(AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled))
@@ -8502,11 +8580,14 @@ mod tests {
 					.await;
 			let recovery_id = AccountOperationId::new("22000000-0000-4000-8000-000000000043")
 				.expect("refresh identity");
+
 			assert!(
 				service.refresh_for_observation(recovery_id.clone(), &account_id, 1).await.is_err()
 			);
+
 			let logout_id = AccountOperationId::new("22000000-0000-4000-8000-000000000044")
 				.expect("logout identity");
+
 			if use_command {
 				let command =
 					CommandIdentity::new("logout-after-rejection", b"remove exact account")
@@ -8526,13 +8607,16 @@ mod tests {
 				let response = service
 					.logout_command(lease, logout_id.clone(), &account_id, 1, |result| {
 						let account = result.expect("logout must succeed after rejected refresh");
+
 						Ok(
 							serde_json::json!({"revision":account.revision, "tombstoned":account.tombstoned}),
 						)
 					})
 					.await
 					.expect("complete logout command");
+
 				assert_eq!(response, serde_json::json!({"revision":2,"tombstoned":true}));
+
 				let AccountCommandReceiptClaim::Replayed(replayed) = store
 					.reserve_account_command(
 						&command,
@@ -8545,25 +8629,32 @@ mod tests {
 				else {
 					panic!("terminal logout receipt")
 				};
+
 				assert_eq!(response, replayed);
 			} else {
 				let account = service
 					.logout(logout_id.clone(), &account_id, 1)
 					.await
 					.expect("logout after rejected refresh");
+
 				assert!(account.tombstoned);
 			}
+
 			assert!(service.list().await.expect("remaining accounts").is_empty());
+
 			let recovery = store.read_account_operation(&recovery_id).await.unwrap().unwrap();
+
 			assert_eq!(recovery.recovery_code.as_deref(), Some("provider_refresh_rejected"));
 			assert_eq!(recovery.superseded_by_operation_id, Some(logout_id));
 			assert_eq!(shared.current_tokens().0, "shared-access");
 			assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
+
 			let restarted = AccountService::new(
 				store.clone(),
 				Arc::new(SqliteCredentialStore::new(store)),
 				Arc::new(UnusedCredentialRefresher),
 			);
+
 			assert!(restarted.reconcile_startup().await.unwrap().manual_recovery.is_empty());
 			assert!(restarted.list().await.unwrap().is_empty());
 		}
@@ -8575,12 +8666,15 @@ mod tests {
 			independently_owned_observation_service(Err(CredentialRefreshError::Ambiguous)).await;
 		let recovery_id = AccountOperationId::new("22000000-0000-4000-8000-000000000043")
 			.expect("refresh identity");
+
 		assert!(
 			service.refresh_for_observation(recovery_id.clone(), &account_id, 1).await.is_err()
 		);
+
 		let before = service.load_account(&account_id).await.unwrap();
 		let logout_id = AccountOperationId::new("22000000-0000-4000-8000-000000000044")
 			.expect("logout identity");
+
 		assert!(matches!(
 			service.logout(logout_id.clone(), &account_id, 1).await,
 			Err(AccountLifecycleError::OperationRejected(
@@ -8762,8 +8856,10 @@ mod tests {
 		let startup = restarted.reconcile_startup().await.expect("restart reconciliation");
 
 		assert_eq!(startup.manual_recovery, vec![(account_id.clone(), recovery_id.clone())]);
+
 		let credential =
 			restarted.api_credential_for_observation(&account_id, Duration::ZERO).await.unwrap();
+
 		assert!(credential.is_recovery_probe());
 		assert_eq!(
 			restarted
@@ -8776,8 +8872,11 @@ mod tests {
 				.operation_id,
 			recovery_id
 		);
+
 		restarted.accept_observation_recovery(&credential).await.unwrap();
+
 		drop(credential);
+
 		assert!(
 			restarted.inspect(&account_id).await.unwrap().account.unsettled_operation.is_none()
 		);
@@ -10187,6 +10286,7 @@ mod tests {
 			let (account_id, _) =
 				plan_scope::legacy_account(&store, &service, number, Some("pro"), false).await;
 			let mut account = service.inspect(&account_id).await.unwrap().account;
+
 			account.five_hour_quota.disposition = AccountQuotaDisposition::NotApplicable;
 			account.five_hour_quota.observed_at_unix_micros = Some(900);
 			account.lifecycle_readiness = AccountLifecycleReadiness::Ready;

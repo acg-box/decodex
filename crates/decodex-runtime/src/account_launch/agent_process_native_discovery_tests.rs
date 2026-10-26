@@ -60,6 +60,7 @@ async fn installed_native_mcp_capabilities_survive_tool_discovery_failure() {
 					}) {
 					break rows;
 				}
+
 				time::sleep(Duration::from_millis(10)).await;
 			};
 

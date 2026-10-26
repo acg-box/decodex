@@ -43,13 +43,6 @@ pub(super) fn session_quote() -> String {
 	SESSION_TEXT.clone()
 }
 
-fn choose_quote() -> String {
-	let entropy = RandomState::new().hash_one(super::unique_command()) as usize;
-	let quotes = QUOTES.lock().unwrap_or_else(|error| error.into_inner());
-	let choices = if quotes.is_empty() { CURATED.as_slice() } else { quotes.as_slice() };
-	choices[entropy % choices.len()].display()
-}
-
 /// Refresh outside the UI thread. Updated quotes are used on the next app launch.
 pub(super) fn refresh_cache() -> bool {
 	static LAST_ATTEMPT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -71,6 +64,14 @@ pub(super) fn refresh_cache() -> bool {
 	REFRESHING.store(false, Ordering::Relaxed);
 
 	success
+}
+
+fn choose_quote() -> String {
+	let entropy = RandomState::new().hash_one(super::unique_command()) as usize;
+	let quotes = QUOTES.lock().unwrap_or_else(|error| error.into_inner());
+	let choices = if quotes.is_empty() { CURATED.as_slice() } else { quotes.as_slice() };
+
+	choices[entropy % choices.len()].display()
 }
 
 fn cache_path() -> Option<std::path::PathBuf> {

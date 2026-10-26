@@ -1,5 +1,10 @@
 //! Native associations establish shared references, not authorship or verification.
-use super::{AgentSurface, BTreeSet, Edge, Graph, Kind, Node, Row};
+use reqwest::Url;
+use serde_json::Value;
+
+use crate::shell::agent_surface::work_board::relations::{
+	AgentSurface, BTreeSet, Edge, Graph, Kind, Node, Row,
+};
 
 pub(super) const WIDTH: f32 = 184.;
 
@@ -17,6 +22,7 @@ impl AgentSurface {
 				continue;
 			};
 			let Some(resources) = &brief.resources else { continue };
+
 			for resource in resources {
 				// Exact kind + identity matches the existing native association owner.
 				let key = format!(
@@ -24,13 +30,14 @@ impl AgentSurface {
 					serde_json::to_string(&(&resource.attachment_type, &resource.identity_key))
 						.expect("string pair")
 				);
-				let payload: serde_json::Value =
+				let payload: Value =
 					serde_json::from_str(&resource.payload_json).unwrap_or_default();
 				let title = payload["title"]
 					.as_str()
 					.or_else(|| payload["name"].as_str())
 					.unwrap_or(&resource.identity_key)
 					.to_owned();
+
 				if !graph.nodes.iter().any(|n| n.key == key) {
 					graph.nodes.push(Node {
 						navigation: (0., 0.),
@@ -51,15 +58,17 @@ impl AgentSurface {
 						y: 0.,
 					});
 				}
+
 				let link = payload["url"]
 					.as_str()
-					.and_then(|value| reqwest::Url::parse(value).ok())
+					.and_then(|value| Url::parse(value).ok())
 					.filter(|url| {
 						matches!(url.scheme(), "http" | "https")
 							&& url.username().is_empty()
 							&& url.password().is_none()
 					})
 					.map(|url| url.to_string());
+
 				graph.edges.push(Edge { in_progress: false,
                     id: format!("attachment:{}:{}", row.key, resource.id), from: row.key.clone(), to: key, kind: Kind::Resource, excerpt: None, color: Kind::Resource.color(), label: "Attached".into(),
                     detail: format!("Native resource association\n\nType: {}\nIdentity: {}\nAssociation: {}\nRecorded at: {} (Unix seconds)\n\nAn attachment does not establish who created, read, or verified this resource.{}", resource.attachment_type, resource.identity_key, resource.id, resource.created_at, if resource.payload_omitted { "\nSome metadata is unavailable." } else { "" }),
@@ -78,13 +87,14 @@ pub(super) fn place_resources(graph: &mut Graph) {
 		.map(|n| n.x + n.width())
 		.fold(24., f32::max)
 		+ 256.;
-	let mut cursor = 24_f32;
 	let keys: Vec<_> = graph
 		.nodes
 		.iter()
 		.filter(|n| n.key.starts_with("resource:"))
 		.map(|n| n.key.clone())
 		.collect();
+	let mut cursor = 24_f32;
+
 	for key in keys {
 		let owners: Vec<_> = graph
 			.edges
@@ -97,11 +107,14 @@ pub(super) fn place_resources(graph: &mut Graph) {
 			if count > 0 { owners.iter().map(|n| n.y).sum::<f32>() / count as f32 } else { cursor };
 		let y = y.max(cursor);
 		let node = graph.nodes.iter_mut().find(|n| n.key == key).expect("resource key");
+
 		node.x = x;
 		node.y = y;
+
 		if count > 1 {
 			node.status = format!("{} · {} agents", node.status, count);
 		}
+
 		cursor = y + node.height() + 76.;
 	}
 }

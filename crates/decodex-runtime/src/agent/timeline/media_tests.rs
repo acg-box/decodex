@@ -186,6 +186,28 @@ fn executor_image_path_cannot_read_a_same_named_host_file() {
 	assert!(!serde_json::to_string(&descriptors).unwrap().contains(path.to_str().unwrap()));
 }
 
+#[test]
+fn generated_file_reference_preserves_attachment_without_using_stale_inline_bytes() {
+	for result in [None, Some(""), Some("AQID")] {
+		let mut item = serde_json::json!({
+			"type":"imageGeneration", "fileId":"stored-image-private", "savedPath":null
+		});
+
+		if let Some(result) = result {
+			item["result"] = serde_json::json!(result);
+		}
+
+		let (parts, omitted) = attachments::project(&item);
+
+		assert!(!omitted);
+		assert_eq!(parts.len(), 1);
+		assert_eq!(parts[0].source, decodex_protocol::AgentTimelineAttachmentSource::Stored);
+		assert_eq!(parts[0].label, "Generated image");
+		assert!(!serde_json::to_string(&parts).unwrap().contains("stored-image-private"));
+		assert!(matches!(media::locate(&item, 0), Err(AgentMediaResult::Unsupported)));
+	}
+}
+
 async fn server(remote: DuplexStream, path: Option<String>) {
 	let content = if let Some(path) = path {
 		serde_json::json!({"type":"localImage","path":path})
@@ -402,28 +424,6 @@ async fn generated_image_uses_native_bytes_even_when_saved_path_exists() {
 	item["result"] = serde_json::json!("");
 
 	assert!(matches!(media::locate(&item, 0), Err(AgentMediaResult::Unsupported)));
-}
-
-#[test]
-fn generated_file_reference_preserves_attachment_without_using_stale_inline_bytes() {
-	for result in [None, Some(""), Some("AQID")] {
-		let mut item = serde_json::json!({
-			"type":"imageGeneration", "fileId":"stored-image-private", "savedPath":null
-		});
-
-		if let Some(result) = result {
-			item["result"] = serde_json::json!(result);
-		}
-
-		let (parts, omitted) = attachments::project(&item);
-
-		assert!(!omitted);
-		assert_eq!(parts.len(), 1);
-		assert_eq!(parts[0].source, decodex_protocol::AgentTimelineAttachmentSource::Stored);
-		assert_eq!(parts[0].label, "Generated image");
-		assert!(!serde_json::to_string(&parts).unwrap().contains("stored-image-private"));
-		assert!(matches!(media::locate(&item, 0), Err(AgentMediaResult::Unsupported)));
-	}
 }
 
 #[tokio::test]

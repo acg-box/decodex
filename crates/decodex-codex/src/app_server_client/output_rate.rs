@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	ThreadTokenUsage, TokenUsageBreakdown,
-	app_server_client::{AppServerClient, ServerEvent},
+	app_server_client::{AppServerClient, MAX_BUFFERED_EVENTS, ServerEvent},
 };
 
 /// An observed generation interval, paired with exact native response output counters.
@@ -24,55 +24,6 @@ pub struct ObservedOutputRate {
 	pub started_at_ms: u64,
 	/// Local end time derived from the monotonic interval.
 	pub completed_at_ms: u64,
-}
-
-struct Window {
-	turn: String,
-	start: Instant,
-	start_ms: u64,
-	end: Option<Instant>,
-	reasoning: bool,
-	sealed: bool,
-	tool: bool,
-	generating: bool,
-	raw_usage: Option<TokenUsageBreakdown>,
-}
-impl Window {
-	fn finish(&self, usage: &TokenUsageBreakdown) -> Option<ObservedOutputRate> {
-		// Cold resumes can omit rawResponse/completed. Tool starts can be delayed by
-		// approvals or other tools, so require that boundary for tool-bearing responses.
-		if (self.tool && !self.sealed) || self.raw_usage.as_ref().is_some_and(|raw| raw != usage) {
-			return None;
-		}
-		let duration_ms = u64::try_from(self.end?.duration_since(self.start).as_millis()).ok()?;
-		// Batched/replayed markers are not a useful speed measurement.
-		if duration_ms < 100 {
-			return None;
-		}
-		let output_tokens = if self.reasoning {
-			usage.output_tokens
-		} else {
-			usage.output_tokens.checked_sub(usage.reasoning_output_tokens)?
-		};
-		(output_tokens > 0).then_some(ObservedOutputRate {
-			output_tokens,
-			duration_ms,
-			started_at_ms: self.start_ms,
-			completed_at_ms: self.start_ms.saturating_add(duration_ms),
-		})
-	}
-}
-
-struct Receipt {
-	thread: String,
-	turn: String,
-	usage: ThreadTokenUsage,
-	rate: Option<ObservedOutputRate>,
-}
-#[derive(Default)]
-struct State {
-	windows: HashMap<String, Window>,
-	receipts: VecDeque<Receipt>,
 }
 
 #[derive(Clone, Default)]
@@ -99,6 +50,7 @@ impl OutputRates {
 			.receipts
 			.iter()
 			.position(|r| r.thread == thread && r.turn == turn && &r.usage == usage)?;
+
 		state.receipts.remove(index)?.rate
 	}
 
@@ -111,9 +63,12 @@ impl OutputRates {
 				window.tool = true;
 				window.generating = false;
 			}
+
 			return;
 		}
+
 		let ServerEvent::Notification { method, .. } = event else { return };
+
 		if !matches!(
 			method.as_str(),
 			"item/started"
@@ -129,10 +84,12 @@ impl OutputRates {
 		) {
 			return;
 		}
+
 		let wall = SystemTime::now()
 			.duration_since(UNIX_EPOCH)
 			.ok()
 			.and_then(|d| u64::try_from(d.as_millis()).ok());
+
 		if let Some(wall) = wall {
 			self.observe_at(event, Instant::now(), wall);
 		}
@@ -142,6 +99,7 @@ impl OutputRates {
 		let ServerEvent::Notification { method, params } = event else { return };
 		let Some(thread) = params["threadId"].as_str() else { return };
 		let Ok(mut state) = self.0.lock() else { return };
+
 		if matches!(
 			method.as_str(),
 			"thread/closed"
@@ -159,39 +117,32 @@ impl OutputRates {
 			{
 				state.windows.remove(thread);
 			}
+
 			return;
 		}
+
 		let Some(turn) = params["turnId"].as_str() else { return };
+
 		if method == "thread/tokenUsage/updated" {
 			let Ok(usage) =
 				serde_json::from_value::<ThreadTokenUsage>(params["tokenUsage"].clone())
 			else {
 				return;
 			};
+
 			if !usage.is_valid() {
 				return;
 			}
-			let rate = if state.windows.get(thread).is_some_and(|w| w.turn == turn) {
-				state.windows.remove(thread).and_then(|w| w.finish(&usage.last))
-			} else {
-				None
-			};
-			// At most one receipt per queued native event. Exact counters prevent a slow owner
-			// from associating an earlier response with a later measurement on the same turn.
-			if state.receipts.len() == super::MAX_BUFFERED_EVENTS {
-				state.receipts.pop_front();
-			}
-			state.receipts.push_back(Receipt {
-				thread: thread.into(),
-				turn: turn.into(),
-				usage,
-				rate,
-			});
+
+			state.record_usage(thread, turn, usage);
+
 			return;
 		}
+
 		let model =
 			matches!(params["item"]["type"].as_str(), Some("reasoning" | "agentMessage" | "plan"))
 				&& params["item"]["delivery"] != "async";
+
 		if method == "item/started" && model {
 			if state.windows.get(thread).is_none_or(|w| w.turn != turn) {
 				state.windows.insert(
@@ -209,6 +160,7 @@ impl OutputRates {
 					},
 				);
 			}
+
 			if let Some(window) = state.windows.get_mut(thread).filter(|w| !w.sealed) {
 				window.reasoning |= params["item"]["type"] == "reasoning";
 				window.generating = true;
@@ -220,6 +172,7 @@ impl OutputRates {
 				window.end = Some(now);
 				window.generating = false;
 			}
+
 			// Tool lifecycles can include approvals and waits; they do not time generation.
 			let tool = matches!(
 				params["item"]["type"].as_str(),
@@ -235,7 +188,9 @@ impl OutputRates {
 						| "sleep"
 				)
 			);
+
 			window.tool |= method == "item/started" && tool;
+
 			if method == "item/started" && tool {
 				window.generating = false;
 			}
@@ -249,6 +204,77 @@ impl OutputRates {
 						.filter(TokenUsageBreakdown::is_valid);
 			}
 		}
+	}
+}
+
+struct Window {
+	turn: String,
+	start: Instant,
+	start_ms: u64,
+	end: Option<Instant>,
+	reasoning: bool,
+	sealed: bool,
+	tool: bool,
+	generating: bool,
+	raw_usage: Option<TokenUsageBreakdown>,
+}
+impl Window {
+	fn finish(&self, usage: &TokenUsageBreakdown) -> Option<ObservedOutputRate> {
+		// Cold resumes can omit rawResponse/completed. Tool starts can be delayed by
+		// approvals or other tools, so require that boundary for tool-bearing responses.
+		if (self.tool && !self.sealed) || self.raw_usage.as_ref().is_some_and(|raw| raw != usage) {
+			return None;
+		}
+
+		let duration_ms = u64::try_from(self.end?.duration_since(self.start).as_millis()).ok()?;
+
+		// Batched/replayed markers are not a useful speed measurement.
+		if duration_ms < 100 {
+			return None;
+		}
+
+		let output_tokens = if self.reasoning {
+			usage.output_tokens
+		} else {
+			usage.output_tokens.checked_sub(usage.reasoning_output_tokens)?
+		};
+
+		(output_tokens > 0).then_some(ObservedOutputRate {
+			output_tokens,
+			duration_ms,
+			started_at_ms: self.start_ms,
+			completed_at_ms: self.start_ms.saturating_add(duration_ms),
+		})
+	}
+}
+
+struct Receipt {
+	thread: String,
+	turn: String,
+	usage: ThreadTokenUsage,
+	rate: Option<ObservedOutputRate>,
+}
+
+#[derive(Default)]
+struct State {
+	windows: HashMap<String, Window>,
+	receipts: VecDeque<Receipt>,
+}
+impl State {
+	fn record_usage(&mut self, thread: &str, turn: &str, usage: ThreadTokenUsage) {
+		let rate = if self.windows.get(thread).is_some_and(|w| w.turn == turn) {
+			self.windows.remove(thread).and_then(|w| w.finish(&usage.last))
+		} else {
+			None
+		};
+
+		// At most one receipt per queued native event. Exact counters prevent a slow owner
+		// from associating an earlier response with a later measurement on the same turn.
+		if self.receipts.len() == MAX_BUFFERED_EVENTS {
+			self.receipts.pop_front();
+		}
+
+		self.receipts.push_back(Receipt { thread: thread.into(), turn: turn.into(), usage, rate });
 	}
 }
 
@@ -272,11 +298,13 @@ impl AppServerClient {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use serde_json::json;
 	use std::time::Duration;
+
+	use crate::app_server_client::output_rate::{
+		Instant, OutputRates, ServerEvent, ThreadTokenUsage, Window,
+	};
 	fn counts(output: u64, reasoning: u64) -> serde_json::Value {
-		json!({"totalTokens":1000+output,"inputTokens":1000,"cachedInputTokens":0,"outputTokens":output,"reasoningOutputTokens":reasoning})
+		serde_json::json!({"totalTokens":1_000+output,"inputTokens":1_000,"cachedInputTokens":0,"outputTokens":output,"reasoningOutputTokens":reasoning})
 	}
 	#[test]
 	fn delayed_usage_excludes_tools_and_questions_and_pairs_queued_responses_exactly() {
@@ -286,77 +314,98 @@ mod tests {
 			rates.observe_at(
 				&ServerEvent::Notification {
 					method: method.into(),
-					params: json!({"threadId":"child","turnId":"turn","item":item}),
+					params: serde_json::json!({"threadId":"child","turnId":"turn","item":item}),
 				},
 				clock + Duration::from_millis(ms),
 				100_000 + ms,
 			)
 		};
-		emit(0, "item/started", json!({"type":"reasoning"}));
+
+		emit(0, "item/started", serde_json::json!({"type":"reasoning"}));
+
 		assert!(rates.generating("child"));
-		emit(1800, "item/completed", json!({"type":"reasoning"}));
+
+		emit(1_800, "item/completed", serde_json::json!({"type":"reasoning"}));
+
 		assert!(!rates.generating("child"));
-		emit(2000, "item/started", json!({"type":"dynamicToolCall"}));
-		emit(3000, "item/started", json!({"type":"commandExecution"}));
-		emit(3500, "rawResponse/completed", serde_json::Value::Null);
-		emit(120000, "item/completed", json!({"type":"dynamicToolCall"}));
+
+		emit(2_000, "item/started", serde_json::json!({"type":"dynamicToolCall"}));
+		emit(3_000, "item/started", serde_json::json!({"type":"commandExecution"}));
+		emit(3_500, "rawResponse/completed", serde_json::Value::Null);
+		emit(120_000, "item/completed", serde_json::json!({"type":"dynamicToolCall"}));
+
 		assert!(!rates.generating("child"), "a running turn can be waiting without generating");
+
 		let usage = |total, last, reasoning| {
-			serde_json::from_value::<ThreadTokenUsage>(json!({"total":counts(total, reasoning),"last":counts(last, reasoning),"modelContextWindow":null})).unwrap()
+			serde_json::from_value::<ThreadTokenUsage>(serde_json::json!({"total":counts(total, reasoning),"last":counts(last, reasoning),"modelContextWindow":null})).unwrap()
 		};
 		let first = usage(200, 200, 150);
 		let receipt = |ms, usage: &ThreadTokenUsage| {
 			rates.observe_at(
 				&ServerEvent::Notification {
 					method: "thread/tokenUsage/updated".into(),
-					params: json!({"threadId":"child","turnId":"turn","tokenUsage":usage}),
+					params: serde_json::json!({"threadId":"child","turnId":"turn","tokenUsage":usage}),
 				},
 				clock + Duration::from_millis(ms),
 				100_000 + ms,
 			)
 		};
-		receipt(120001, &first);
-		emit(125000, "item/started", json!({"type":"agentMessage"}));
+
+		receipt(120_001, &first);
+		emit(125_000, "item/started", serde_json::json!({"type":"agentMessage"}));
+
 		assert!(rates.generating("child"));
-		emit(126000, "item/completed", json!({"type":"agentMessage"}));
+
+		emit(126_000, "item/completed", serde_json::json!({"type":"agentMessage"}));
+
 		let second = usage(300, 100, 60);
-		receipt(127000, &second);
+
+		receipt(127_000, &second);
+
 		let a = rates.take("child", "turn", &first).unwrap();
+
 		assert_eq!(
 			(a.output_tokens, a.duration_ms),
-			(200, 3500),
+			(200, 3_500),
 			"include generation of parallel tool arguments, exclude their execution"
 		);
+
 		let b = rates.take("child", "turn", &second).unwrap();
-		assert_eq!((b.output_tokens, b.duration_ms), (40, 1000), "do not count unseen reasoning");
+
+		assert_eq!((b.output_tokens, b.duration_ms), (40, 1_000), "do not count unseen reasoning");
 		assert!(rates.take("child", "turn", &second).is_none());
 	}
 	#[test]
 	fn raw_response_finishes_before_tool_wait_and_batched_markers_do_not_invent_speed() {
 		let rates = OutputRates::default();
 		let clock = Instant::now();
+
 		for (ms, method, params) in [
-			(0, "item/started", json!({"item":{"type":"agentMessage"}})),
-			(900, "item/completed", json!({"item":{"type":"agentMessage"}})),
-			(1000, "rawResponse/completed", json!({"responseId":"r"})),
-			(9000, "item/started", json!({"item":{"type":"commandExecution"}})),
+			(0, "item/started", serde_json::json!({"item":{"type":"agentMessage"}})),
+			(900, "item/completed", serde_json::json!({"item":{"type":"agentMessage"}})),
+			(1_000, "rawResponse/completed", serde_json::json!({"responseId":"r"})),
+			(9_000, "item/started", serde_json::json!({"item":{"type":"commandExecution"}})),
 		] {
 			let mut params = params;
-			params["threadId"] = json!("t");
-			params["turnId"] = json!("one");
+
+			params["threadId"] = serde_json::json!("t");
+			params["turnId"] = serde_json::json!("one");
+
 			rates.observe_at(
 				&ServerEvent::Notification { method: method.into(), params },
 				clock + Duration::from_millis(ms),
 				ms,
 			);
 		}
+
 		assert_eq!(
 			rates.0.lock().unwrap().windows["t"]
 				.finish(&serde_json::from_value(counts(100, 0)).unwrap())
 				.unwrap()
 				.duration_ms,
-			1000
+			1_000
 		);
+
 		let w = Window {
 			turn: "one".into(),
 			start: clock,
@@ -368,20 +417,25 @@ mod tests {
 			generating: false,
 			raw_usage: None,
 		};
+
 		assert!(w.finish(&serde_json::from_value(counts(100, 0)).unwrap()).is_none());
+
 		let unknown = Window { end: Some(clock + Duration::from_secs(120)), tool: true, ..w };
+
 		assert!(
 			unknown.finish(&serde_json::from_value(counts(100, 0)).unwrap()).is_none(),
 			"approval/tool time is not a generation estimate without the native boundary"
 		);
+
 		rates.observe_at(
 			&ServerEvent::Notification {
 				method: "thread/reverted".into(),
-				params: json!({"threadId":"t"}),
+				params: serde_json::json!({"threadId":"t"}),
 			},
 			clock,
 			0,
 		);
+
 		assert!(rates.0.lock().unwrap().windows.is_empty());
 	}
 }

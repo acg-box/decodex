@@ -3,8 +3,11 @@ use tokio::{
 	sync::{mpsc, watch},
 };
 
-use crate::app_server_client::temporary_structured::{
-	self, AppServerClient, MAX_RESPONSE, ServerEvent, TemporaryStructuredOptions, Value,
+use crate::app_server_client::{
+	RequestId,
+	temporary_structured::{
+		self, AppServerClient, MAX_RESPONSE, ServerEvent, TemporaryStructuredOptions, Value,
+	},
 };
 
 fn options() -> TemporaryStructuredOptions {
@@ -275,13 +278,15 @@ async fn temporary_collector_rejects_tool_approval_and_user_input_requests() {
 		"item/tool/requestUserInput",
 	] {
 		let (tx, mut rx) = mpsc::channel(1);
+
 		tx.send(ServerEvent::Request {
-			id: crate::app_server_client::RequestId::Number(91),
+			id: RequestId::Number(91),
 			method: method.into(),
 			params: serde_json::json!({"threadId":"temporary","turnId":"turn"}),
 		})
 		.await
 		.unwrap();
+
 		assert!(matches!(
 			temporary_structured::collect(&mut rx, "temporary", "turn").await,
 			Err(crate::app_server_client::ClientError::InvalidFrame)

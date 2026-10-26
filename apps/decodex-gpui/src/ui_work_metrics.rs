@@ -1,8 +1,13 @@
 //! One source for graph counters and the global activity island.
+
+use std::time::Instant;
+
+use gpui::{IntoElement, Styled as _};
+
+use crate::ui_theme;
 use decodex_protocol::{
 	AgentThreadMetrics, AgentTimelineContent, AgentTimelineEntry, AgentTimelinePage,
 };
-use std::time::Instant;
 
 /// Fixed metric symbols, shared by the graph's header and counters. The atlas
 /// caches their outlines; changing a value or tint does not rebuild a path.
@@ -17,13 +22,12 @@ impl Icon {
 		}
 	}
 
-	pub(crate) fn element(self, size: f32, color: u32) -> impl gpui::IntoElement {
-		use gpui::Styled as _;
+	pub(crate) fn element(self, size: f32, color: u32) -> impl IntoElement {
 		gpui::svg()
 			.data(self.source().1)
 			.size(gpui::px(size))
 			.flex_none()
-			.text_color(crate::ui_theme::rgb(color))
+			.text_color(ui_theme::rgb(color))
 	}
 }
 
@@ -33,18 +37,14 @@ pub(crate) struct Sample {
 	pub stats: Option<AgentThreadMetrics>,
 	pub read_at: Option<Instant>,
 }
-impl PartialEq for Sample {
-	fn eq(&self, other: &Self) -> bool {
-		// A new receipt clock alone does not change idle counters or invalidate the island.
-		self.tokens == other.tokens && self.stats == other.stats
-	}
-}
 impl Sample {
 	pub(crate) fn from_page(page: &AgentTimelinePage) -> Self {
 		let mut sample = Self::from_entries(&page.entries);
+
 		sample.tokens = page.thread_token_total.or(sample.tokens);
 		sample.stats = page.thread_metrics;
 		sample.read_at = Some(Instant::now());
+
 		sample
 	}
 
@@ -54,6 +54,7 @@ impl Sample {
 				usage.details.as_ref().and_then(|details| details.thread_total),
 			_ => None,
 		});
+
 		Self { tokens, ..Default::default() }
 	}
 
@@ -63,6 +64,7 @@ impl Sample {
 
 	pub(crate) fn time(self) -> Option<u64> {
 		let stats = self.stats?;
+
 		Some(stats.completed_ms?.saturating_add(
 			stats.active_ms.map_or(0, |active| active.saturating_add(self.since_read())),
 		))
@@ -79,7 +81,8 @@ impl Sample {
 		} else {
 			0
 		});
-		(ms > 0).then(|| (rate.output_tokens as f64 * 1000. / ms as f64, rate.active))
+
+		(ms > 0).then(|| (rate.output_tokens as f64 * 1_000. / ms as f64, rate.active))
 	}
 
 	pub(crate) fn rate_estimated(self) -> bool {
@@ -110,6 +113,13 @@ impl Sample {
 	}
 }
 
+impl PartialEq for Sample {
+	fn eq(&self, other: &Self) -> bool {
+		// A new receipt clock alone does not change idle counters or invalidate the island.
+		self.tokens == other.tokens && self.stats == other.stats
+	}
+}
+
 #[derive(Clone, PartialEq)]
 pub(crate) struct Live {
 	pub key: String,
@@ -129,6 +139,7 @@ impl Summary {
 		if self.samples.is_empty() {
 			return None;
 		}
+
 		self.samples.iter().try_fold(0_u64, |total, sample| total.checked_add(sample.tokens?))
 	}
 
@@ -140,20 +151,24 @@ impl Summary {
 			.iter()
 			.filter_map(|s| {
 				let rate = s.stats?.rate?;
+
 				if rate.estimated != estimated {
 					return None;
 				}
+
 				let (value, live) = s.rate()?;
 				let end = rate.completed_at_ms.unwrap_or_else(|| {
 					rate.started_at_ms
 						.saturating_add(rate.duration_ms)
 						.saturating_add(s.since_read())
 				});
+
 				Some((rate.started_at_ms, end, value, live))
 			})
 			.collect();
 		let latest = intervals.iter().max_by_key(|(_, end, _, _)| *end)?;
 		let mut start = latest.0;
+
 		loop {
 			let next = intervals
 				.iter()
@@ -161,13 +176,17 @@ impl Summary {
 				.map(|(begin, ..)| *begin)
 				.min()
 				.unwrap_or(start);
+
 			if next == start {
 				break;
 			}
+
 			start = next;
 		}
+
 		let group =
 			intervals.iter().filter(|(begin, end, _, _)| *begin <= latest.1 && *end >= start);
+
 		Some(
 			group.fold((0., false), |(sum, active), (_, _, value, live)| {
 				(sum + value, active || *live)
@@ -196,8 +215,10 @@ impl Summary {
 				.filter(|s| s.stats.is_some_and(|v| v.generating))
 				.try_fold(0., |sum, sample| {
 					let (value, _) = sample.rate()?;
+
 					sample.rate_estimated().then_some(sum + value)
 				});
+
 			rate_label(rate)
 		}
 	}
@@ -210,8 +231,8 @@ impl Summary {
 pub(crate) fn time_label(ms: Option<u64>) -> String {
 	match ms {
 		Some(ms) if ms >= 3_600_000 => format!("{}h {}m", ms / 3_600_000, ms / 60_000 % 60),
-		Some(ms) if ms >= 60_000 => format!("{}m {}s", ms / 60_000, ms / 1000 % 60),
-		Some(ms) => format!("{}s", ms / 1000),
+		Some(ms) if ms >= 60_000 => format!("{}m {}s", ms / 60_000, ms / 1_000 % 60),
+		Some(ms) => format!("{}s", ms / 1_000),
 		None => "—".into(),
 	}
 }
@@ -220,24 +241,31 @@ pub(crate) fn rate_label(value: Option<f64>) -> String {
 	value.map_or_else(
 		|| "—".into(),
 		|value| {
-			if value >= 1000. { format!("{:.1}K", value / 1000.) } else { format!("{value:.1}") }
+			if value >= 1_000. { format!("{:.1}K", value / 1_000.) } else { format!("{value:.1}") }
 		},
 	)
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::ui_work_metrics::{AgentThreadMetrics, Instant, Sample, Summary};
 	use decodex_protocol::AgentOutputRate;
 	#[test]
 	fn recorded_total_preserves_missing_zero_and_cumulative_values() {
 		let mut summary = Summary::default();
+
 		assert_eq!(summary.total_tokens(), None);
+
 		summary.samples = vec![Sample { tokens: Some(0), ..Default::default() }];
+
 		assert_eq!(summary.total_tokens(), Some(0));
-		summary.samples.push(Sample { tokens: Some(1250), ..Default::default() });
-		assert_eq!(summary.total_tokens(), Some(1250));
+
+		summary.samples.push(Sample { tokens: Some(1_250), ..Default::default() });
+
+		assert_eq!(summary.total_tokens(), Some(1_250));
+
 		summary.samples.push(Sample::default());
+
 		assert_eq!(summary.total_tokens(), None);
 	}
 
@@ -245,64 +273,85 @@ mod tests {
 	fn measured_rate_stays_fixed_during_tool_wait_and_global_does_not_mix_turn_averages() {
 		let sample = Sample {
 			stats: Some(AgentThreadMetrics {
-				completed_ms: Some(1000),
-				active_ms: Some(60000),
+				completed_ms: Some(1_000),
+				active_ms: Some(60_000),
 				generating: true,
 				rate: Some(AgentOutputRate {
 					estimated: true,
 					active: true,
 					output_tokens: 100,
-					duration_ms: 1000,
-					started_at_ms: 2000,
-					completed_at_ms: Some(3000),
+					duration_ms: 1_000,
+					started_at_ms: 2_000,
+					completed_at_ms: Some(3_000),
 				}),
 			}),
 			read_at: Instant::now().checked_sub(std::time::Duration::from_secs(60)),
 			..Default::default()
 		};
+
 		assert_eq!(sample.rate(), Some((100., true)));
 		assert_eq!(sample.rate_text(), "100.0");
+
 		let mut old = sample;
+
 		old.stats.as_mut().unwrap().generating = false;
+
 		let rate = old.stats.as_mut().unwrap().rate.as_mut().unwrap();
+
 		rate.estimated = false;
 		rate.active = false;
-		rate.started_at_ms = 1000;
-		rate.completed_at_ms = Some(9000);
+		rate.started_at_ms = 1_000;
+		rate.completed_at_ms = Some(9_000);
+
 		let summary = Summary { samples: vec![old, sample], working: 1, live: vec![] };
+
 		assert_eq!(summary.rate(), Some((100., true)));
 		assert!(summary.rate_estimated());
 		assert_eq!(summary.display_rate_text(), "100.0");
+
 		let mut next_turn = summary.clone();
+
 		next_turn.samples[1].stats.as_mut().unwrap().rate.as_mut().unwrap().active = false;
+
 		assert_eq!(
 			next_turn.display_rate_text(),
 			"100.0",
 			"a new stream uses its last measured interval until the next native counter arrives"
 		);
+
 		let mut parallel = summary.clone();
 		let stats = parallel.samples[0].stats.as_mut().unwrap();
+
 		stats.generating = true;
+
 		let rate = stats.rate.as_mut().unwrap();
+
 		rate.active = true;
 		rate.estimated = true;
+
 		assert_eq!(
 			parallel.display_rate_text(),
 			"200.0",
 			"current streams sum across separate prior response intervals"
 		);
+
 		parallel.samples[0].stats.as_mut().unwrap().rate = None;
+
 		assert_eq!(
 			parallel.display_rate_text(),
 			"—",
 			"missing live measurements must not look like a complete total"
 		);
+
 		let mut idle = summary;
+
 		for sample in &mut idle.samples {
 			let stats = sample.stats.as_mut().unwrap();
+
 			stats.generating = false;
 			stats.rate.as_mut().unwrap().active = false;
 		}
+
 		assert_eq!(idle.display_rate_text(), "100.0");
 		assert_eq!(idle.rate_text(), "100.0", "idle retains the most recent measured throughput");
 	}
@@ -325,12 +374,19 @@ mod tests {
 			..Default::default()
 		};
 		let mut summary = Summary {
-			samples: vec![sample(0, 1000, 9999), sample(2000, 5000, 30), sample(3000, 4000, 20)],
+			samples: vec![
+				sample(0, 1_000, 9_999),
+				sample(2_000, 5_000, 30),
+				sample(3_000, 4_000, 20),
+			],
 			working: 0,
 			live: vec![],
 		};
+
 		assert_eq!(summary.rate(), Some((30., false)));
+
 		summary.samples.extend((0..100).map(|_| sample(10_000, 11_000, 10)));
-		assert_eq!(summary.rate(), Some((1000., false)));
+
+		assert_eq!(summary.rate(), Some((1_000., false)));
 	}
 }

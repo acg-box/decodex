@@ -1,5 +1,6 @@
 //! Workspace membership is visible on the canvas, without hiding cross-workspace edges.
-use super::{GRID, Graph};
+use crate::shell::agent_surface::work_board::relations::{GRID, Graph};
+use decodex_protocol::ProjectDto;
 
 pub(super) struct Scope {
 	pub id: Option<String>,
@@ -9,10 +10,11 @@ pub(super) struct Scope {
 }
 
 impl Graph {
-	pub(super) fn scope_bounds(&mut self, projects: &[decodex_protocol::ProjectDto]) {
+	pub(super) fn scope_bounds(&mut self, projects: &[ProjectDto]) {
 		if !self.nodes.iter().any(|n| n.row.as_ref().is_some_and(|r| r.workspace.is_some())) {
 			return;
 		}
+
 		// A root that coordinates across projects belongs above those groups.
 		// Including it in "No Project" would stretch that frame across all branches.
 		let coordinator = self
@@ -31,10 +33,12 @@ impl Graph {
 					})
 			})
 			.map(|node| node.key.as_str());
+
 		for node in &self.nodes {
 			if coordinator == Some(node.key.as_str()) {
 				continue;
 			}
+
 			let Some(row) = &node.row else { continue };
 			let bounds = [
 				((node.x - GRID) / GRID).floor() * GRID,
@@ -42,6 +46,7 @@ impl Graph {
 				((node.x + node.width() + GRID) / GRID).ceil() * GRID,
 				((node.y + node.height() + GRID) / GRID).ceil() * GRID,
 			];
+
 			if let Some(scope) = self.scopes.iter_mut().find(|g| g.id == row.workspace) {
 				scope.bounds[0] = scope.bounds[0].min(bounds[0]);
 				scope.bounds[1] = scope.bounds[1].min(bounds[1]);
@@ -55,6 +60,7 @@ impl Graph {
 					.and_then(|id| projects.iter().find(|w| &w.id == id))
 					.map(|w| w.name.clone())
 					.unwrap_or_else(|| "No Project".into());
+
 				self.scopes.push(Scope { id: row.workspace.clone(), title, count: 1, bounds });
 			}
 		}

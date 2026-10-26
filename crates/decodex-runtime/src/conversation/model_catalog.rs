@@ -1,6 +1,6 @@
 //! One bounded account-bound metadata process, with the same owner as thread controls.
 use std::{
-	sync::Arc,
+	sync::{Arc, Mutex},
 	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -118,7 +118,7 @@ impl ConversationRuntime {
 
 		let runtime = self.clone();
 		let callback: Arc<dyn AccountRefreshCallback> = Arc::new(ConversationRefreshCallback {
-			last_projected: std::sync::Mutex::new(None),
+			last_projected: Mutex::new(None),
 			accounts: self.inner.accounts.clone(),
 			runtime: Handle::current(),
 			generation_id: ProcessGenerationId::new(conversation::derived_uuid(

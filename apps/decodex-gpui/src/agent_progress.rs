@@ -1,13 +1,16 @@
 //! Compact, expandable native execution receipts in the continuous conversation.
+use std::collections::BTreeSet;
+
 use gpui::{AnyElement, KeyDownEvent};
 
 use crate::{
 	shell::agent_surface::{
 		self, AgentDispatchStateDto, AgentHistoryResult, AgentSurface, AgentWorkItemDto, Context,
 		FluentBuilder, InteractiveElement, IntoElement, ParentElement, Role, SharedString,
-		SmoothControl, StatefulInteractiveElement, Styled, ui_theme::TEXT_MUTED,
+		SmoothControl, StatefulInteractiveElement, Styled, native_timeline, ui_theme::TEXT_MUTED,
+		voice::history,
 	},
-	ui_motion,
+	ui_feedback, ui_motion, ui_theme,
 };
 use decodex_protocol::{AgentActivityDto, AgentHistoryEntryDto};
 
@@ -48,24 +51,28 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> Vec<AnyElement> {
+		let voice_groups = history::saved_groups(&entries);
+		let voice_hidden: BTreeSet<_> =
+			voice_groups.iter().flat_map(|(indices, _)| indices.iter().skip(1).copied()).collect();
 		let mut result = Vec::new();
 		let mut pending: Vec<&AgentActivityDto> = Vec::new();
 
-		let voice_groups = super::voice::history::saved_groups(&entries);
-		let voice_hidden: std::collections::BTreeSet<_> =
-			voice_groups.iter().flat_map(|(indices, _)| indices.iter().skip(1).copied()).collect();
 		for (index, entry) in entries.iter().enumerate() {
 			if voice_hidden.contains(&index) {
 				continue;
 			}
+
 			if let Some((_, text)) = voice_groups.iter().find(|(indices, _)| indices[0] == index) {
 				if !pending.is_empty() {
 					result.push(self.progress_group(&pending, work, cx));
 					pending.clear();
 				}
+
 				result.push(self.saved_voice_history_entry(entry, &work.id, text.clone(), cx));
+
 				continue;
 			}
+
 			if super::startup_feature_warning(entry) || entry.kind == "checklist" {
 				continue;
 			}
@@ -163,7 +170,7 @@ impl AgentSurface {
 			.pl(gpui::px(12.))
 			.mt(gpui::px(6.))
 			.border_l_1()
-			.border_color(crate::ui_theme::rgba(0xffffff18));
+			.border_color(ui_theme::rgba(0xffffff18));
 
 		for item in items {
 			let status = if item.status == "running"
@@ -187,7 +194,7 @@ impl AgentSurface {
 						.items_center()
 						.gap(gpui::px(8.))
 						.min_h(gpui::px(22.))
-						.child(crate::ui_feedback::execution_icon(
+						.child(ui_feedback::execution_icon(
 							format!(
 								"execution-status-{}",
 								progress_key(&work.id, &item.turn_id, &item.item_id)
@@ -212,7 +219,7 @@ impl AgentSurface {
 			.w_full()
 			.max_w(gpui::px(560.))
 			.text_size(gpui::px(11.))
-			.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+			.text_color(ui_theme::rgb(TEXT_MUTED))
 			.child(
 				gpui::div()
 					.id("progress-toggle")
@@ -235,7 +242,7 @@ impl AgentSurface {
 						}
 					}))
 					.child(if expanded { "−" } else { "+" })
-					.child(crate::ui_feedback::execution_icon("progress-status", status))
+					.child(ui_feedback::execution_icon("progress-status", status))
 					.child(label)
 					.smooth(),
 			)
@@ -321,7 +328,7 @@ impl AgentSurface {
 }
 
 fn activity_title(item: &AgentActivityDto) -> String {
-	super::native_timeline::activity_label(item, None, &[])
+	native_timeline::activity_label(item, None, &[])
 }
 
 fn progress_key(work: &str, turn: &str, item: &str) -> String {
@@ -330,6 +337,8 @@ fn progress_key(work: &str, turn: &str, item: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+
+	use std::thread;
 
 	#[cfg(test)] use crate::shell::agent_surface::progress::AgentDispatchStateDto;
 	use crate::shell::agent_surface::progress::{AgentHistoryResult, AgentSurface};
@@ -367,10 +376,15 @@ mod tests {
 		});
 
 		assert!(visual.debug_bounds("conversation-activity-status").is_none());
-		std::thread::sleep(std::time::Duration::from_millis(270));
+
+		thread::sleep(std::time::Duration::from_millis(270));
+
 		visual.update(crate::ui_frame::draw_frame);
-		std::thread::sleep(std::time::Duration::from_millis(220));
+
+		thread::sleep(std::time::Duration::from_millis(220));
+
 		visual.update(crate::ui_frame::draw_frame);
+
 		assert!(visual.debug_bounds("conversation-activity-status").is_some());
 
 		surface.update(visual, |s, cx| {
@@ -383,16 +397,17 @@ mod tests {
 			cx.notify();
 		});
 
-		visual.update(|window, cx| {
-			window.draw(cx).clear(cx);
-		});
+		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(
 			visual.debug_bounds("conversation-activity-status").is_some(),
 			"retain the notice during exit"
 		);
-		std::thread::sleep(std::time::Duration::from_millis(220));
+
+		thread::sleep(std::time::Duration::from_millis(220));
+
 		visual.update(crate::ui_frame::draw_frame);
+
 		assert!(visual.debug_bounds("conversation-activity-status").is_none());
 	}
 	#[gpui::test]

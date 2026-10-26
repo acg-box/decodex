@@ -1,5 +1,7 @@
 //! Compact ownership trees: complete branches share space and keep their source relationships.
-use super::{BTreeMap, FRAME_INSET, Graph};
+use std::f32::consts::{FRAC_PI_2, TAU};
+
+use crate::shell::agent_surface::work_board::relations::{BTreeMap, FRAME_INSET, Graph};
 
 const WIDTH: f32 = super::card::WIDTH;
 const SIBLING_GAP: f32 = 24.;
@@ -8,7 +10,7 @@ const ROW_GAP: f32 = 24.;
 // Keep project boundaries clear without adding a full empty hierarchy rank.
 const WORKSPACE_GAP: f32 = 88.;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) enum Presentation {
 	#[default]
 	Links,
@@ -20,7 +22,7 @@ impl Presentation {
 	}
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) enum Mode {
 	#[default]
 	Tree,
@@ -44,49 +46,6 @@ pub(super) struct Cache {
 	input: Input,
 	positions: Vec<(usize, f32, f32)>,
 }
-
-#[derive(PartialEq)]
-struct Input {
-	mode: Mode,
-	presentation: Presentation,
-	base_heights: Vec<u32>,
-	anchors: Vec<u32>,
-	nodes: Vec<(String, Option<String>, u32)>,
-	edges: Vec<(usize, usize)>,
-	viewport: (f32, f32),
-	width: f32,
-	column_gap: f32,
-	zoom: u32,
-}
-impl Default for Input {
-	fn default() -> Self {
-		Self {
-			mode: Mode::default(),
-			presentation: Presentation::default(),
-			base_heights: vec![],
-			anchors: vec![],
-			nodes: vec![],
-			edges: vec![],
-			viewport: (0., 0.),
-			width: WIDTH,
-			column_gap: COLUMN_GAP,
-			zoom: 1_f32.to_bits(),
-		}
-	}
-}
-
-struct Tree {
-	index: usize,
-	children: Vec<Self>,
-}
-
-#[derive(Clone, Default)]
-struct Block {
-	width: f32,
-	height: f32,
-	positions: Vec<(usize, f32, f32)>,
-}
-
 impl Cache {
 	pub(super) fn place(
 		&mut self,
@@ -136,6 +95,7 @@ impl Cache {
 			column_gap: presentation.gap(COLUMN_GAP.max(label_gap), 24.),
 			zoom: graph.layout.zoom.to_bits(),
 		};
+
 		if !self.input.same_arrangement(&input) {
 			self.positions = input.arrange();
 		} else if graph.layout.activity_visible()
@@ -149,6 +109,7 @@ impl Cache {
 					- f32::from_bits(input.anchors[*index]);
 			}
 		}
+
 		self.input = input;
 
 		for &(index, x, y) in &self.positions {
@@ -158,6 +119,19 @@ impl Cache {
 	}
 }
 
+#[derive(PartialEq)]
+struct Input {
+	mode: Mode,
+	presentation: Presentation,
+	base_heights: Vec<u32>,
+	anchors: Vec<u32>,
+	nodes: Vec<(String, Option<String>, u32)>,
+	edges: Vec<(usize, usize)>,
+	viewport: (f32, f32),
+	width: f32,
+	column_gap: f32,
+	zoom: u32,
+}
 impl Input {
 	fn same_arrangement(&self, next: &Self) -> bool {
 		self.mode == next.mode
@@ -174,16 +148,20 @@ impl Input {
 
 	fn forest(&self) -> Vec<Vec<Tree>> {
 		let mut groups: BTreeMap<_, Vec<usize>> = BTreeMap::new();
+
 		for (i, (key, scope, _)) in self.nodes.iter().enumerate() {
 			if !key.starts_with("resource:") {
 				groups.entry(scope).or_default().push(i);
 			}
 		}
+
 		let mut children = vec![Vec::new(); self.nodes.len()];
 		let mut incoming = vec![false; self.nodes.len()];
+
 		for &(from, to) in &self.edges {
 			if from != to && self.nodes[from].1 == self.nodes[to].1 {
 				children[from].push(to);
+
 				incoming[to] = true;
 			}
 		}
@@ -191,11 +169,14 @@ impl Input {
 			children.sort_unstable();
 			children.dedup();
 		}
+
 		let mut visited = vec![false; self.nodes.len()];
+
 		groups
 			.values()
 			.map(|members| {
 				let mut trees = Vec::new();
+
 				// Visit roots first, then retain each isolated cycle once.
 				for roots in [true, false] {
 					for &index in members {
@@ -204,6 +185,7 @@ impl Input {
 						}
 					}
 				}
+
 				trees
 			})
 			.collect()
@@ -213,8 +195,10 @@ impl Input {
 		if forest.len() < 2 {
 			return None;
 		}
+
 		forest.iter().enumerate().find_map(|(index, trees)| {
 			let root = trees.first()?;
+
 			(trees.len() == 1
 				&& self.nodes[root.index].1.is_none()
 				&& forest
@@ -231,7 +215,9 @@ impl Input {
 		let mut forest = self.forest();
 		let trees = if let Some(group) = self.coordinator(&forest) {
 			let mut root = forest[group].remove(0);
+
 			root.children.extend(forest.into_iter().flatten());
+
 			vec![root]
 		} else {
 			forest.into_iter().flatten().collect()
@@ -248,6 +234,7 @@ impl Input {
 			),
 			Mode::Radial => self.radial(&trees),
 		};
+
 		block.positions
 	}
 
@@ -258,17 +245,20 @@ impl Input {
 		} else {
 			(None, trees)
 		};
+
 		if branches.is_empty() {
 			return Block::default();
 		}
+
 		let mut blocks = Vec::new();
 		let mut directions = Vec::new();
+
 		for (index, tree) in branches.iter().enumerate() {
-			let angle = -std::f32::consts::FRAC_PI_2
-				+ index as f32 * std::f32::consts::TAU / branches.len() as f32;
+			let angle = -FRAC_PI_2 + index as f32 * TAU / branches.len() as f32;
 			let (x, y) = (angle.cos(), angle.sin());
 			let horizontal = x.abs() > y.abs();
 			let mut block = tree.layout(self, horizontal);
+
 			if horizontal && x < 0. {
 				for &mut (_, ref mut px, _) in &mut block.positions {
 					*px = block.width - *px - self.width;
@@ -278,24 +268,29 @@ impl Input {
 					*py = block.height - *py - f32::from_bits(self.nodes[node].2);
 				}
 			}
+
 			blocks.push(block);
 			directions.push((x, y));
 		}
+
 		let root_height = root.map_or(0., |index| f32::from_bits(self.nodes[index].2));
 		let rx =
 			blocks.iter().map(|b| b.width).fold(self.width, f32::max) / 2. + self.width / 2. + gap;
 		let ry = blocks.iter().map(|b| b.height).fold(root_height, f32::max) / 2.
 			+ root_height / 2.
 			+ gap;
-		let mut factor = 1_f32;
 		let separation = |dx: f32, dy: f32, width: f32, height: f32| {
 			let along = |extent: f32, delta: f32| {
 				if delta.abs() < 0.001 { f32::INFINITY } else { extent / delta.abs() }
 			};
+
 			along(width, dx).min(along(height, dy))
 		};
+		let mut factor = 1_f32;
+
 		for (i, block) in blocks.iter().enumerate() {
 			let (x, y) = directions[i];
+
 			if root.is_some() {
 				factor = factor.max(separation(
 					x * rx,
@@ -304,6 +299,7 @@ impl Input {
 					(block.height + root_height) / 2. + gap,
 				));
 			}
+
 			for (j, other) in blocks.iter().enumerate().take(i) {
 				factor = factor.max(separation(
 					(x - directions[j].0) * rx,
@@ -313,36 +309,67 @@ impl Input {
 				));
 			}
 		}
+
 		let mut result = Block::default();
+
 		if let Some(index) = root {
 			result.positions.push((index, -self.width / 2., -root_height / 2.));
 		}
+
 		for (mut block, (x, y)) in blocks.into_iter().zip(directions) {
 			block.offset(x * rx * factor - block.width / 2., y * ry * factor - block.height / 2.);
 			result.positions.extend(block.positions);
 		}
+
 		let left = result.positions.iter().map(|p| p.1).fold(0., f32::min);
 		let top = result.positions.iter().map(|p| p.2).fold(0., f32::min);
+
 		result.offset(-left, -top);
+
 		result.width = result.positions.iter().map(|p| p.1 + self.width).fold(0., f32::max);
 		result.height = result
 			.positions
 			.iter()
 			.map(|p| p.2 + f32::from_bits(self.nodes[p.0].2))
 			.fold(0., f32::max);
+
 		result
 	}
 }
 
+impl Default for Input {
+	fn default() -> Self {
+		Self {
+			mode: Mode::default(),
+			presentation: Presentation::default(),
+			base_heights: vec![],
+			anchors: vec![],
+			nodes: vec![],
+			edges: vec![],
+			viewport: (0., 0.),
+			width: WIDTH,
+			column_gap: COLUMN_GAP,
+			zoom: 1_f32.to_bits(),
+		}
+	}
+}
+
+struct Tree {
+	index: usize,
+	children: Vec<Self>,
+}
 impl Tree {
 	fn visit(index: usize, children: &[Vec<usize>], visited: &mut [bool]) -> Self {
 		visited[index] = true;
+
 		let mut tree = Self { index, children: Vec::new() };
+
 		for &child in &children[index] {
 			if !visited[child] {
 				tree.children.push(Self::visit(child, children, visited));
 			}
 		}
+
 		tree
 	}
 
@@ -373,8 +400,10 @@ impl Tree {
 							(block.width + if horizontal { step } else { 0. }).max(input.width);
 						let height =
 							(block.height + if horizontal { 0. } else { step }).max(height);
+
 						-((width / height) / (4. / 3.)).ln().abs()
 					};
+
 					score(a).total_cmp(&score(b))
 				})
 				.unwrap_or_default()
@@ -383,10 +412,12 @@ impl Tree {
 		} else {
 			Block::siblings(children, horizontal, gap)
 		};
+
 		if !block.positions.is_empty() {
 			// New activity first uses the existing connector clearance. It must
 			// not move every sibling when the first operation appears.
 			block.offset(if horizontal { step } else { 0. }, if horizontal { 0. } else { step });
+
 			if horizontal {
 				block.width += step;
 			} else {
@@ -396,34 +427,49 @@ impl Tree {
 		if horizontal {
 			block.height = block.height.max(height);
 			block.width = block.width.max(input.width);
+
 			block.positions.push((self.index, 0., (block.height - height) / 2.));
 		} else {
 			block.width = block.width.max(input.width);
 			block.height = block.height.max(height);
+
 			block.positions.push((self.index, (block.width - input.width) / 2., 0.));
 		}
+
 		block
 	}
 }
 
+#[derive(Clone, Default)]
+struct Block {
+	width: f32,
+	height: f32,
+	positions: Vec<(usize, f32, f32)>,
+}
 impl Block {
 	fn grid(blocks: Vec<Self>, columns: usize, gap: f32) -> Self {
 		let mut result = Self::default();
 		let mut y = 0.;
+
 		for row in blocks.chunks(columns) {
-			let mut x = 0.;
 			let height = row.iter().map(|b| b.height).fold(0., f32::max);
+			let mut x = 0.;
+
 			for block in row {
-				let mut block = block.clone();
 				let width = block.width;
+				let mut block = block.clone();
+
 				block.offset(x, y);
 				result.positions.extend(block.positions);
+
 				result.width = result.width.max(x + width);
 				x += width + gap;
 			}
+
 			result.height = y + height;
 			y += height + ROW_GAP;
 		}
+
 		result
 	}
 
@@ -431,6 +477,7 @@ impl Block {
 	// no graph or bin-packing runtime is needed for these small cached forests.
 	fn pack(blocks: Vec<Self>, gap: f32, available: (f32, f32)) -> Self {
 		let mut best: Option<(f32, f32, Self)> = None;
+
 		for horizontal in [false, true] {
 			let ordered = blocks.clone();
 			let lengths: Vec<_> = ordered
@@ -439,6 +486,7 @@ impl Block {
 				.collect();
 			let minimum = lengths.iter().copied().fold(0_f32, f32::max);
 			let total = lengths.iter().sum::<f32>() + gap * lengths.len().saturating_sub(1) as f32;
+
 			for lanes in 1..=ordered.len() {
 				let packed = Self::shelf(
 					ordered.clone(),
@@ -452,6 +500,7 @@ impl Block {
 					.min(available.1 / packed.height.max(1.))
 					.min(1.);
 				let area = packed.width * packed.height;
+
 				if best.as_ref().is_none_or(|(old_score, old_area, _)| {
 					score.total_cmp(old_score).then_with(|| old_area.total_cmp(&area)).is_gt()
 				}) {
@@ -459,6 +508,7 @@ impl Block {
 				}
 			}
 		}
+
 		best.map(|(_, _, packed)| packed).unwrap_or_default()
 	}
 
@@ -470,43 +520,55 @@ impl Block {
 		reference_gap: f32,
 		limit: f32,
 	) -> Self {
-		let mut result = Self::default();
 		let (mut primary, mut secondary, mut extent) = (0., 0., 0_f32);
+		let mut result = Self::default();
 		let mut reference_primary = 0.;
+
 		for (mut block, reference_size) in blocks.into_iter().zip(reference) {
 			let size = if horizontal { block.height } else { block.width };
+
 			if reference_primary > 0. && reference_primary + reference_size > limit {
 				secondary += extent + gap;
 				primary = 0.;
 				reference_primary = 0.;
 				extent = 0.;
 			}
+
 			let (x, y) = if horizontal { (secondary, primary) } else { (primary, secondary) };
+
 			block.offset(x, y);
+
 			result.width = result.width.max(x + block.width);
 			result.height = result.height.max(y + block.height);
 			extent = extent.max(if horizontal { block.width } else { block.height });
 			primary += size + gap;
 			reference_primary += reference_size + reference_gap;
+
 			result.positions.extend(block.positions);
 		}
+
 		result
 	}
 
 	fn siblings(blocks: Vec<Self>, horizontal: bool, gap: f32) -> Self {
 		let mut result = Self::default();
 		let mut offset = 0.;
+
 		for mut block in blocks {
 			if !result.positions.is_empty() {
 				offset += gap;
 			}
+
 			block
 				.offset(if horizontal { 0. } else { offset }, if horizontal { offset } else { 0. });
+
 			result.width = result.width.max(block.width + if horizontal { 0. } else { offset });
 			result.height = result.height.max(block.height + if horizontal { offset } else { 0. });
 			offset += if horizontal { block.height } else { block.width };
+
 			result.positions.extend(block.positions);
 		}
+
 		result
 	}
 
@@ -520,11 +582,15 @@ impl Block {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use crate::shell::agent_surface::work_board::relations::layout::{
+		COLUMN_GAP, Input, Mode, Presentation, ROW_GAP, WIDTH,
+	};
 
 	fn input(viewport: (f32, f32)) -> Input {
 		let mut nodes = vec![("main".into(), None, 64_f32.to_bits())];
+
 		nodes.extend((1..=18).map(|i| (format!("agent-{i}"), None, 80_f32.to_bits())));
+
 		Input { nodes, edges: (1..=18).map(|i| (0, i)).collect(), viewport, ..Default::default() }
 	}
 
@@ -537,15 +603,19 @@ mod tests {
 	#[test]
 	fn explicit_tree_layout_retains_its_direction_in_wide_and_tall_canvases() {
 		let mut extents = Vec::new();
-		for viewport in [(1400., 420.), (520., 1100.)] {
+
+		for viewport in [(1_400., 420.), (520., 1_100.)] {
 			let input = input(viewport);
 			let positions = input.arrange();
+
 			assert_eq!(positions.len(), input.nodes.len());
+
 			for &(i, x, y) in &positions {
 				for &(j, other_x, other_y) in &positions {
 					if i == j {
 						continue;
 					}
+
 					assert!(
 						x + WIDTH <= other_x
 							|| other_x + WIDTH <= x
@@ -554,9 +624,12 @@ mod tests {
 					);
 				}
 			}
+
 			extents.push(bounds(&positions, &input));
+
 			assert_eq!(positions, input.arrange());
 		}
+
 		assert!(extents[0].0 > extents[0].1, "the compact tree retains its horizontal extent");
 		assert_eq!(
 			extents[0], extents[1],
@@ -566,30 +639,42 @@ mod tests {
 
 	#[test]
 	fn ownership_cycles_and_cross_workspace_links_do_not_drop_or_duplicate_nodes() {
-		let mut input = input((1200., 600.));
+		let mut input = input((1_200., 600.));
+
 		input.nodes[1].1 = Some("other".into());
 		input.nodes[2].1 = Some("other".into());
+
 		input.edges.extend([(1, 2), (2, 1), (3, 0), (0, 1)]);
+
 		let positions = input.arrange();
 		let mut indices: Vec<_> = positions.iter().map(|p| p.0).collect();
+
 		indices.sort_unstable();
+
 		assert_eq!(indices, (0..input.nodes.len()).collect::<Vec<_>>());
 	}
 
 	#[test]
 	fn together_keeps_all_hierarchy_members_in_compact_non_overlapping_formations() {
 		for mode in Mode::ALL {
-			let mut source = input((1400., 900.));
+			let mut source = input((1_400., 900.));
+
 			source.mode = mode;
+
 			let original = source.arrange();
 			let original_area = {
 				let (w, h) = bounds(&original, &source);
+
 				w * h
 			};
+
 			source.presentation = Presentation::Together;
 			source.column_gap = 24.;
+
 			let positions = source.arrange();
+
 			assert_eq!(positions.len(), source.nodes.len());
+
 			for &(i, x, y) in &positions {
 				for &(j, bx, by) in &positions {
 					if i != j {
@@ -602,9 +687,11 @@ mod tests {
 					}
 				}
 			}
+
 			let (w, h) = positions.iter().fold((0_f32, 0_f32), |(w, h), &(i, x, y)| {
 				(w.max(x + source.width), h.max(y + f32::from_bits(source.nodes[i].2)))
 			});
+
 			assert!(w * h < original_area, "{mode:?} should gather its teams");
 			assert_eq!(positions, source.arrange(), "ongoing work does not make teams wander");
 		}
@@ -626,9 +713,10 @@ mod tests {
 			})
 			.collect();
 		let edges = (1..13).map(|i| (if i == 3 { 2 } else { 0 }, i)).collect();
-		let input = Input { nodes, edges, viewport: (2300., 1000.), ..Default::default() };
+		let input = Input { nodes, edges, viewport: (2_300., 1_000.), ..Default::default() };
 		let positions = input.arrange();
 		let &(_, x, y) = positions.iter().find(|p| p.0 == 0).unwrap();
+
 		assert!(
 			positions.iter().filter(|p| p.0 != 0).all(|p| p.1 >= x + WIDTH)
 				|| positions.iter().filter(|p| p.0 != 0).all(|p| p.2 >= y + 64.)
@@ -664,16 +752,19 @@ mod tests {
 				)
 			})
 			.collect();
-		let input = Input { nodes, edges, viewport: (2080., 264.), ..Default::default() };
+		let input = Input { nodes, edges, viewport: (2_080., 264.), ..Default::default() };
 		let positions = input.arrange();
 		let at = |i| positions.iter().find(|p| p.0 == i).unwrap();
+
 		for &(parent, child) in &input.edges {
 			assert!(
 				at(child).1 >= at(parent).1 + WIDTH + COLUMN_GAP
 					|| at(child).2 >= at(parent).2 + 64. + ROW_GAP
 			);
 		}
+
 		assert_eq!(positions.len(), input.nodes.len());
+
 		for &(a, x, y) in &positions {
 			for &(b, bx, by) in &positions {
 				if a != b {
@@ -699,10 +790,14 @@ mod tests {
 			..Default::default()
 		};
 		let positions = input.arrange();
+
 		assert_eq!(positions.len(), 8);
+
 		let (width, height) = bounds(&positions, &input);
 		let readable_scale = (888. / width).min(648. / height);
+
 		assert!(readable_scale >= 0.85, "fan-out uses the available pane: {width} x {height}");
+
 		for &(a, x, y) in &positions {
 			for &(b, bx, by) in &positions {
 				if a != b {
@@ -733,17 +828,23 @@ mod tests {
 				})
 				.collect();
 			let edges = (1..103).map(|i| (if i <= 6 { 0 } else { 1 + (i - 7) / 16 }, i)).collect();
-			let mut input = Input { nodes, edges, viewport: (1030., 1000.), ..Default::default() };
+			let mut input =
+				Input { nodes, edges, viewport: (1_030., 1_000.), ..Default::default() };
 			let mut shapes = Vec::new();
+
 			for mode in Mode::ALL {
 				input.mode = mode;
+
 				let positions = input.arrange();
 				let ids: std::collections::BTreeSet<_> = positions.iter().map(|p| p.0).collect();
+
 				assert_eq!(ids.len(), 103, "{mode:?} at {zoom}");
 				assert_eq!(positions.len(), ids.len());
 				assert_eq!(positions, input.arrange());
+
 				for &(a, x, y) in &positions {
 					assert!(x.is_finite() && y.is_finite());
+
 					for &(b, bx, by) in &positions {
 						if a != b {
 							assert!(
@@ -756,8 +857,10 @@ mod tests {
 						}
 					}
 				}
+
 				shapes.push(positions);
 			}
+
 			assert!(shapes.windows(2).all(|pair| pair[0] != pair[1]));
 		}
 	}

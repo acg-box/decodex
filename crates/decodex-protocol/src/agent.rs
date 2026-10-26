@@ -1,6 +1,6 @@
 //! Read-only Agent work projection. This does not report runtime readiness.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +11,11 @@ use crate::{
 	ConversationWorkingDirectory, EntityId, HistoryText, PromptForkBoundary, PromptInputUpload,
 	Sha256Digest, WeatherForecast, WireText,
 };
-use decodex_core::{MAX_APPROVAL_ENVELOPE_BYTES, ServiceTier};
+use decodex_core::{
+	MAX_APPROVAL_ENVELOPE_BYTES, ServiceTier,
+	guardian::{GuardianState, ReviewPreference},
+	work::{Agent, WorkCommand, WorkPortfolio},
+};
 
 /// Maximum work records in one complete snapshot.
 pub const MAX_AGENT_WORK_ITEMS: usize = 100;
@@ -404,7 +408,7 @@ pub enum AgentActionDto {
 		/// Last displayed desired-state revision.
 		expected_revision: u64,
 		/// Native review routing, separate from Full Access.
-		reviewer: decodex_core::guardian::ReviewPreference,
+		reviewer: ReviewPreference,
 		/// Optional native private reviewer observation.
 		review_details: bool,
 	},
@@ -413,7 +417,7 @@ pub enum AgentActionDto {
 		/// Accountable Agent selected by the user.
 		agent_id: EntityId,
 		/// Current-requirement-fenced business mutation.
-		command: decodex_core::work::WorkCommand,
+		command: WorkCommand,
 	},
 	/// Discard an exact unused local draft. Bound threads and retained work are rejected.
 	DiscardEmptyWork {
@@ -1075,19 +1079,19 @@ pub struct AgentSnapshotDto {
 	/// User-created persistent collaborators. Legacy execution rows are separate compatibility
 	/// facts.
 	#[serde(default)]
-	pub agents: Box<Vec<decodex_core::work::Agent>>,
+	pub agents: Box<Vec<Agent>>,
 	/// Global desired review preference and actual source readback.
 	#[serde(default)]
-	pub guardian: Box<decodex_core::guardian::GuardianState>,
+	pub guardian: Box<GuardianState>,
 	/// Business outcomes and exact contribution evidence, separate from native conversations.
 	#[serde(default)]
-	pub portfolio: Box<decodex_core::work::WorkPortfolio>,
+	pub portfolio: Box<WorkPortfolio>,
 	/// Confirmed native archives retained only as structural coordinator entries.
 	#[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
-	pub archived_work_ids: std::collections::BTreeSet<String>,
+	pub archived_work_ids: BTreeSet<String>,
 	/// Runtime-owned reusable display slots. Never use these numbers for message routing.
 	#[serde(default)]
-	pub agent_slots: std::collections::BTreeMap<String, u32>,
+	pub agent_slots: BTreeMap<String, u32>,
 	/// Explicit selected context references, not inferred from prose.
 	#[serde(default)]
 	pub context_references: Vec<AgentContextReferenceDto>,
@@ -1378,6 +1382,7 @@ mod tests {
 			"unsent_reason":"Conversation is in use elsewhere."
 		});
 		let receipt: AgentHistoryReceiptDto = serde_json::from_value(value.clone()).unwrap();
+
 		assert_eq!(receipt.unsent_reason.as_deref(), Some("Conversation is in use elsewhere."));
 		assert_eq!(serde_json::to_value(receipt).unwrap(), value);
 	}

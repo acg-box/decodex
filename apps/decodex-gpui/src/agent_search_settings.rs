@@ -1,5 +1,4 @@
 //! Choose native search defaults without changing loaded conversations.
-use crate::ui_feedback::{self, Feedback};
 use gpui::AnyElement;
 #[cfg(test)] use gpui::px;
 use tokio::runtime::Builder;
@@ -8,10 +7,13 @@ use tokio::runtime::Builder;
 #[cfg(test)] use crate::shell::agent_surface::Entity;
 #[cfg(test)] use crate::shell::agent_surface::Render;
 #[cfg(test)] use crate::shell::agent_surface::Window;
-use crate::shell::agent_surface::{
-	self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
-	Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task, WireText,
-	mcp_forms,
+use crate::{
+	shell::agent_surface::{
+		self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
+		Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task, WireText,
+		mcp_forms,
+	},
+	ui_feedback::{self, Feedback},
 };
 use decodex_protocol::{AgentSearchSettingsResult, ClientFailure};
 

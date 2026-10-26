@@ -143,6 +143,7 @@ fn locate(item: &Value, index: usize) -> std::result::Result<Media<'_>, AgentMed
 			if item["fileId"].is_string() {
 				return Err(AgentMediaResult::Unsupported);
 			}
+
 			// savedPath can belong to a remote executor. The native result bytes
 			// retain exact item ownership without interpreting that path locally.
 			let data = item["result"]

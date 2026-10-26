@@ -94,6 +94,7 @@ mod tests {
 				let provider = changed.then_some("source-provider");
 
 				write.write_all(format!("{}\n", serde_json::json!({"id":request["id"],"result":{"thread":{"id":"source","model":"model","reasoningEffort":null,"modelProvider":provider}}})).as_bytes()).await.unwrap();
+
 				assert!(lines.next_line().await.unwrap().is_none(), "must not submit a fork");
 			});
 			let result = client
@@ -105,6 +106,7 @@ mod tests {
 				.await;
 
 			assert!(matches!(result, Err(ClientError::StaleHistory)));
+
 			client.close();
 			server.await.unwrap();
 		}
@@ -127,6 +129,7 @@ mod tests {
 					read["params"],
 					serde_json::json!({"threadId":"source","includeTurns":false})
 				);
+
 				write.write_all(format!("{}\n", serde_json::json!({"id":read["id"],"result":{"thread":{"id":"source","model":"model","reasoningEffort":null,"modelProvider":"source-provider"}}})).as_bytes()).await.unwrap();
 
 				let request: Value =

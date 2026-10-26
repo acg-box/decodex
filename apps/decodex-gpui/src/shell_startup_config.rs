@@ -1,23 +1,20 @@
 //! On-demand native configuration checks in the existing diagnostic details.
-use crate::ui_feedback::{self, Feedback};
-use std::path::PathBuf;
+use std::{env, path::PathBuf};
 
 use gpui::{
-	AnyElement, Context, InteractiveElement as _, IntoElement as _, ParentElement as _,
-	Styled as _, Task,
+	AnyElement, App, ClipboardItem, Context, InteractiveElement as _, IntoElement as _,
+	ParentElement as _, Styled as _, Task,
 };
+use tokio::runtime::Builder;
 
-use super::{Shell, control};
+use crate::{
+	shell::diagnostics::{self, Shell},
+	ui_feedback::{self, Feedback},
+};
 use decodex_protocol::{
 	ClientProfile, ConversationWorkingDirectory, DoctorClient, NativeStartupConfiguration,
 	ProfileKind,
 };
-
-#[derive(Clone, Eq, PartialEq)]
-struct Source {
-	directory: PathBuf,
-	profile: ClientProfile,
-}
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -33,67 +30,10 @@ impl Panel {
 	}
 }
 
-fn source(shell: &Shell, cx: &gpui::App) -> Option<Source> {
-	let profile = shell.reset_cards.profile.clone()?;
-	if profile.kind() != ProfileKind::Local {
-		return None;
-	}
-	let directory = shell
-		.agent
-		.read(cx)
-		.native_configuration_directory()
-		.or_else(|| std::env::var_os("HOME").map(PathBuf::from))?;
-	let valid = ConversationWorkingDirectory::new(directory.to_str()?).ok()?;
-	Some(Source { directory: PathBuf::from(valid.as_str()), profile })
-}
-
-fn start(shell: &mut Shell, cx: &mut Context<Shell>) {
-	if shell.diagnostics.startup.task.is_some() {
-		return;
-	}
-	let Some(owner) = source(shell, cx) else {
-		return;
-	};
-	let panel = &mut shell.diagnostics.startup;
-	panel.epoch = panel.epoch.wrapping_add(1);
-	let epoch = panel.epoch;
-	panel.source = Some(owner.clone());
-	panel.result = None;
-	panel.feedback = Feedback::info("Checking the selected native component and configuration…");
-	let directory =
-		ConversationWorkingDirectory::new(owner.directory.to_string_lossy().into_owned())
-			.expect("source directory was validated");
-	let profile = owner.profile.clone();
-	let check = cx.background_executor().spawn(async move {
-		let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().ok()?;
-		runtime.block_on(DoctorClient::new(profile).startup_configuration(directory)).ok()
-	});
-	panel.task = Some(cx.spawn(async move |view, cx| {
-		let result = check.await;
-		let _ = view.update(cx, |shell, cx| {
-			if shell.diagnostics.startup.epoch != epoch {
-				return;
-			}
-			let current = source(shell, cx) == Some(owner);
-			let panel = &mut shell.diagnostics.startup;
-			panel.task = None;
-			if current {
-				panel.feedback.clear();
-				panel.result = result;
-				if panel.result.is_none() {
-					panel.feedback = Feedback::warning(
-						"The local service could not complete this check. Reconnect and check again.",
-					);
-				}
-			} else {
-				panel.result = None;
-				panel.feedback =
-					Feedback::warning("The selected folder or connection changed. Check again.");
-			}
-			cx.notify();
-		});
-	}));
-	cx.notify();
+#[derive(Clone, Eq, PartialEq)]
+struct Source {
+	directory: PathBuf,
+	profile: ClientProfile,
 }
 
 pub(super) fn content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
@@ -104,13 +44,16 @@ pub(super) fn content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.w_full().min_w_0().flex().flex_col().gap_2()
 		.child("Local Codex startup configuration")
 		.child("Check configuration with the shared Codex sign-in. Account overrides for a task are not checked.");
+
 	if let Some(current) = &current {
-		group = group.child(format!("Folder: {}", current.directory.display())).child(control(
-			"native-startup-check",
-			if panel.task.is_some() { "Checking…" } else { "Check Codex configuration" },
-			cx,
-			start,
-		));
+		group = group.child(format!("Folder: {}", current.directory.display())).child(
+			diagnostics::control(
+				"native-startup-check",
+				if panel.task.is_some() { "Checking…" } else { "Check Codex configuration" },
+				cx,
+				start,
+			),
+		);
 	} else {
 		group = group.children(ui_feedback::inline_feedback(
 			"native-startup-unavailable",
@@ -120,6 +63,7 @@ pub(super) fn content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			),
 		));
 	}
+
 	if !panel.feedback.is_empty() {
 		group = group.children(ui_feedback::inline_feedback(
 			"native-startup-feedback",
@@ -127,8 +71,10 @@ pub(super) fn content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 			&panel.feedback,
 		));
 	}
+
 	if let Some(result) = result {
 		let text = result.report_text();
+
 		group = group
 			.child(
 				gpui::div()
@@ -137,14 +83,95 @@ pub(super) fn content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 					.text_size(gpui::px(11.))
 					.child(text.clone()),
 			)
-			.child(control(
+			.child(diagnostics::control(
 				"native-startup-copy",
 				"Copy configuration result",
 				cx,
-				move |_, cx| cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.clone())),
+				move |_, cx| cx.write_to_clipboard(ClipboardItem::new_string(text.clone())),
 			));
 	}
+
 	group.into_any_element()
+}
+
+fn source(shell: &Shell, cx: &App) -> Option<Source> {
+	let profile = shell.reset_cards.profile.clone()?;
+
+	if profile.kind() != ProfileKind::Local {
+		return None;
+	}
+
+	let directory = shell
+		.agent
+		.read(cx)
+		.native_configuration_directory()
+		.or_else(|| env::var_os("HOME").map(PathBuf::from))?;
+	let valid = ConversationWorkingDirectory::new(directory.to_str()?).ok()?;
+
+	Some(Source { directory: PathBuf::from(valid.as_str()), profile })
+}
+
+fn start(shell: &mut Shell, cx: &mut Context<Shell>) {
+	if shell.diagnostics.startup.task.is_some() {
+		return;
+	}
+
+	let Some(owner) = source(shell, cx) else {
+		return;
+	};
+	let panel = &mut shell.diagnostics.startup;
+
+	panel.epoch = panel.epoch.wrapping_add(1);
+
+	let epoch = panel.epoch;
+
+	panel.source = Some(owner.clone());
+	panel.result = None;
+	panel.feedback = Feedback::info("Checking the selected native component and configuration…");
+
+	let directory =
+		ConversationWorkingDirectory::new(owner.directory.to_string_lossy().into_owned())
+			.expect("source directory was validated");
+	let profile = owner.profile.clone();
+	let check = cx.background_executor().spawn(async move {
+		let runtime = Builder::new_current_thread().enable_all().build().ok()?;
+
+		runtime.block_on(DoctorClient::new(profile).startup_configuration(directory)).ok()
+	});
+
+	panel.task = Some(cx.spawn(async move |view, cx| {
+		let result = check.await;
+		let _ = view.update(cx, |shell, cx| {
+			if shell.diagnostics.startup.epoch != epoch {
+				return;
+			}
+
+			let current = source(shell, cx) == Some(owner);
+			let panel = &mut shell.diagnostics.startup;
+
+			panel.task = None;
+
+			if current {
+				panel.feedback.clear();
+
+				panel.result = result;
+
+				if panel.result.is_none() {
+					panel.feedback = Feedback::warning(
+						"The local service could not complete this check. Reconnect and check again.",
+					);
+				}
+			} else {
+				panel.result = None;
+				panel.feedback =
+					Feedback::warning("The selected folder or connection changed. Check again.");
+			}
+
+			cx.notify();
+		});
+	}));
+
+	cx.notify();
 }
 
 #[cfg(test)]

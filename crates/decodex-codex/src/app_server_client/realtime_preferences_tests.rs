@@ -171,7 +171,7 @@ async fn lost_voice_write_reply_does_not_repeat_the_native_edit() {
 #[tokio::test]
 async fn catalog_failure_rejects_settings_and_save_readback_without_retry() {
 	for catalog in [
-		serde_json::json!({"error":{"code":-32603,"message":"catalog unavailable"}}),
+		serde_json::json!({"error":{"code":-32_603,"message":"catalog unavailable"}}),
 		serde_json::json!({"result":{"voices":{"v1":[],"defaultV1":"cove"}}}),
 		serde_json::json!({"result":{"voices":{"v1":["juniper"],"defaultV1":"cove"}}}),
 	] {
@@ -190,6 +190,7 @@ async fn catalog_failure_rejects_settings_and_save_readback_without_retry() {
 		let server = tokio::spawn(async move {
 			let (read, mut write) = io::split(remote);
 			let mut lines = BufReader::new(read).lines();
+
 			for method in [
 				"config/read",
 				"thread/realtime/listVoices",
@@ -199,7 +200,9 @@ async fn catalog_failure_rejects_settings_and_save_readback_without_retry() {
 			] {
 				let request: Value =
 					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+
 				assert_eq!(request["method"], method);
+
 				let mut response = match method {
 					"config/read" =>
 						serde_json::json!({"result":{"config":{},"layers":[{"name":{"type":"user","file":"/home/config.toml"},"version":"v1","config":{}}]}}),
@@ -207,12 +210,16 @@ async fn catalog_failure_rejects_settings_and_save_readback_without_retry() {
 						serde_json::json!({"result":{"status":"ok","filePath":"/home/config.toml","version":"v2"}}),
 					_ => catalog.clone(),
 				};
+
 				response["id"] = request["id"].clone();
+
 				write.write_all(format!("{response}\n").as_bytes()).await.unwrap();
 			}
 		});
+
 		assert!(client.realtime_voice_settings("/project").await.is_err());
 		assert!(client.write_realtime_voice(&observed, "juniper").await.is_err());
+
 		server.await.unwrap();
 	}
 }

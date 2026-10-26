@@ -15,6 +15,72 @@ use crate::account_launch::agent_process::native_tests::{
 };
 use decodex_codex::app_server_client::TemporaryStructuredOptions;
 
+// Responses Lite carries the model catalog in input, not the top-level tools field.
+// The bundled model forces Code Mode even when the feature overrides are false.
+fn assert_isolated_tool_catalog(body: &Value) {
+	assert!(body["tools"].as_array().is_none_or(Vec::is_empty));
+
+	let catalogs: Vec<_> = body["input"]
+		.as_array()
+		.expect("Responses Lite input")
+		.iter()
+		.filter(|item| item["type"] == "additional_tools")
+		.collect();
+
+	assert_eq!(catalogs.len(), 1);
+
+	let namespaces = catalogs[0]["tools"].as_array().expect("native tool namespaces");
+
+	assert_eq!(namespaces.len(), 1);
+	assert_eq!(namespaces[0]["name"], "functions");
+
+	let tools = namespaces[0]["tools"].as_array().expect("Code Mode tools");
+
+	assert_eq!(
+		tools.iter().map(|tool| tool["name"].as_str().expect("tool name")).collect::<Vec<_>>(),
+		["exec", "wait"]
+	);
+
+	let nested: Vec<_> = tools[0]["description"]
+		.as_str()
+		.expect("Code Mode catalog")
+		.lines()
+		.filter_map(|line| line.strip_prefix("### `").and_then(|name| name.strip_suffix('`')))
+		.collect();
+
+	// The model-required patch tool and native resource helpers remain registered.
+	// Empty environments must reject the patch before filesystem access, as tested above.
+	// No shell, app, dynamic, or MCP server tool may enter the catalog.
+	assert_eq!(
+		nested,
+		["apply_patch", "list_mcp_resource_templates", "list_mcp_resources", "read_mcp_resource"]
+	);
+}
+
+fn assert_isolated_responses(bodies: &[Value]) {
+	for (index, body) in bodies.iter().enumerate() {
+		assert_isolated_tool_catalog(body);
+
+		assert_eq!(body["text"]["format"]["type"], "json_schema");
+
+		if index % 2 == 1 {
+			let output = body["input"]
+				.as_array()
+				.expect("native temporary tool result")
+				.iter()
+				.find(|item| item["type"] == "custom_tool_call_output")
+				.expect("native patch rejection");
+
+			assert!(
+				output["output"]
+					.to_string()
+					.contains("No usable execution environment is available"),
+				"native environment isolation must reject the patch: {output}"
+			);
+		}
+	}
+}
+
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated temporary structured request"]
 async fn installed_temporary_requests_isolate_environment_and_preserve_custom_permissions() {
@@ -67,6 +133,7 @@ async fn qualify() {
 		let id = thread.id().to_owned();
 		let (permissions, _) =
 			session.client.configured_task_permissions(&id).expect("native temporary permissions");
+
 		assert_eq!(permissions.approval_policy, serde_json::json!("on-request"));
 
 		let (_cancel, watch) = watch::channel(false);
@@ -124,26 +191,7 @@ async fn qualify() {
 	assert_eq!(calls.load(Ordering::Acquire), 4);
 	assert!(!home.path().join("recap-write-probe.txt").exists());
 
-	for (index, body) in bodies.lock().expect("native temporary fixture").iter().enumerate() {
-		assert_isolated_tool_catalog(body);
-		assert_eq!(body["text"]["format"]["type"], "json_schema");
-
-		if index % 2 == 1 {
-			let output = body["input"]
-				.as_array()
-				.expect("native temporary tool result")
-				.iter()
-				.find(|item| item["type"] == "custom_tool_call_output")
-				.expect("native patch rejection");
-
-			assert!(
-				output["output"]
-					.to_string()
-					.contains("No usable execution environment is available"),
-				"native environment isolation must reject the patch: {output}"
-			);
-		}
-	}
+	assert_isolated_responses(&bodies.lock().expect("native temporary fixture"));
 
 	assert_eq!(
 		fs::read_to_string(home.path().join("config.toml")).expect("native temporary fixture"),
@@ -151,39 +199,4 @@ async fn qualify() {
 	);
 
 	backend.abort();
-}
-
-// Responses Lite carries the model catalog in input, not the top-level tools field.
-// The bundled model forces Code Mode even when the feature overrides are false.
-fn assert_isolated_tool_catalog(body: &Value) {
-	assert!(body["tools"].as_array().is_none_or(Vec::is_empty));
-
-	let catalogs: Vec<_> = body["input"]
-		.as_array()
-		.expect("Responses Lite input")
-		.iter()
-		.filter(|item| item["type"] == "additional_tools")
-		.collect();
-	assert_eq!(catalogs.len(), 1);
-	let namespaces = catalogs[0]["tools"].as_array().expect("native tool namespaces");
-	assert_eq!(namespaces.len(), 1);
-	assert_eq!(namespaces[0]["name"], "functions");
-	let tools = namespaces[0]["tools"].as_array().expect("Code Mode tools");
-	assert_eq!(
-		tools.iter().map(|tool| tool["name"].as_str().expect("tool name")).collect::<Vec<_>>(),
-		["exec", "wait"]
-	);
-	let nested: Vec<_> = tools[0]["description"]
-		.as_str()
-		.expect("Code Mode catalog")
-		.lines()
-		.filter_map(|line| line.strip_prefix("### `").and_then(|name| name.strip_suffix('`')))
-		.collect();
-	// The model-required patch tool and native resource helpers remain registered.
-	// Empty environments must reject the patch before filesystem access, as tested above.
-	// No shell, app, dynamic, or MCP server tool may enter the catalog.
-	assert_eq!(
-		nested,
-		["apply_patch", "list_mcp_resource_templates", "list_mcp_resources", "read_mcp_resource"]
-	);
 }

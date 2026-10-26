@@ -1,15 +1,17 @@
 //! Explicit canonical send. Unknown results are reconciled by reads, never replayed.
-use crate::ui_feedback::Feedback;
 use std::time::Duration;
 
 use tokio::sync::oneshot::{self, Receiver, Sender};
 
-use crate::shell::{
-	agent_surface,
-	agent_surface::prompt_edit::{
-		AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, ClientProfile, Context,
-		DesktopPromptEditDraft, IdempotencyKey, confirmation,
+use crate::{
+	shell::{
+		agent_surface,
+		agent_surface::prompt_edit::{
+			AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface, ClientProfile,
+			Context, DesktopPromptEditDraft, IdempotencyKey, confirmation,
+		},
 	},
+	ui_feedback::Feedback,
 };
 use decodex_protocol::{AgentExecutionOverrides, PromptInputUpload};
 

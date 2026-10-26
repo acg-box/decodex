@@ -16,7 +16,7 @@ use crate::{
 		},
 		workspace_symbols,
 	},
-	ui_theme::{TEXT, TEXT_MUTED},
+	ui_theme::{self, TEXT, TEXT_MUTED},
 };
 
 pub(super) struct Group {
@@ -60,8 +60,8 @@ impl AgentSurface {
 			.text_size(gpui::px(13.))
 			.font_weight(FontWeight::NORMAL)
 			.line_height(gpui::px(18.))
-			.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-			.hover(|s| s.text_color(crate::ui_theme::rgb(TEXT)))
+			.text_color(ui_theme::rgb(TEXT_MUTED))
+			.hover(|s| s.text_color(ui_theme::rgb(TEXT)))
 			.child(process_label(group.count))
 			.child(workspace_symbols::process_chevron(
 				SharedString::from(format!("turn-chevron-{identity}")),
@@ -69,7 +69,6 @@ impl AgentSurface {
 			))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.anchor_process_toggle(&work_id, &entry);
-
 				s.timeline.native.expanded_turns.retain(|id| !turns.contains(id));
 
 				if !expanded {
@@ -81,7 +80,6 @@ impl AgentSurface {
 			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 				if ["enter", "space"].contains(&event.keystroke.key.as_str()) && !event.is_held {
 					s.anchor_process_toggle(&keyboard.0, &keyboard.1);
-
 					s.timeline.native.expanded_turns.retain(|id| !keyboard.3.contains(id));
 
 					if !expanded {
@@ -149,6 +147,7 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 		})
 		.collect();
 	let mut starts = vec![0];
+
 	for (index, entry) in entries.iter().enumerate().skip(1) {
 		if matches!(&entry.content, AgentTimelineContent::Item { kind, .. }
 			if matches!(kind.as_str(), "userMessage" | "agentInput"))
@@ -161,8 +160,11 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 			starts.push(index);
 		}
 	}
+
 	starts.push(entries.len());
+
 	let mut result = Vec::new();
+
 	for range in starts.windows(2) {
 		let range = range[0]..range[1];
 		let final_index = range.clone().rev().find(|index| {
@@ -174,10 +176,12 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 		let Some(final_index) = final_index else { continue };
 		let mut indices = Vec::new();
 		let mut turns = BTreeSet::new();
+
 		for index in range {
 			if empty.contains(&index) || index == final_index {
 				continue;
 			}
+
 			if let AgentTimelineContent::Item {
 				turn_id,
 				kind,
@@ -198,10 +202,12 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 				turns.insert(turn_id.clone());
 			}
 		}
+
 		if let Some(&first_index) = indices.first() {
 			let AgentTimelineContent::Item { turn_id, .. } = &entries[first_index].content else {
 				unreachable!("process contains items");
 			};
+
 			result.push(Group {
 				turn: turn_id.clone(),
 				expanded: !expanded.is_disjoint(&turns),
@@ -213,6 +219,7 @@ pub(super) fn groups(entries: &[AgentTimelineEntry], expanded: &BTreeSet<String>
 			});
 		}
 	}
+
 	result
 }
 
@@ -222,8 +229,9 @@ fn process_label(count: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-	use gpui::AppContext as _;
 	use std::thread;
+
+	use gpui::AppContext as _;
 
 	use crate::shell::agent_surface::native_timeline::{
 		Binding, Timeline,
@@ -303,21 +311,29 @@ mod tests {
 			message(5, "userMessage", None),
 			message(6, "agentMessage", Some("final_answer")),
 		];
+
 		for entry in &mut entries[2..5] {
 			if let AgentTimelineContent::Item { text, .. } = &mut entry.content {
 				text.clear();
 			}
 		}
+
 		assert!(groups::hidden_items(&entries).is_empty());
+
 		entries.push(completed("completed"));
+
 		assert!(groups::hidden_items(&entries).is_empty());
+
 		let groups = groups::groups(&entries, &BTreeSet::new());
+
 		assert_eq!(groups.len(), 1);
 		assert_eq!(groups[0].indices, [2, 3, 4]);
 		assert_eq!(groups[0].final_index, 1);
+
 		if let AgentTimelineContent::Item { text, .. } = &mut entries[2].content {
 			*text = "Could not wait for input".into();
 		}
+
 		assert!(groups::hidden_items(&entries).is_empty());
 	}
 
@@ -402,15 +418,18 @@ mod tests {
 			| AgentTimelineContent::TurnBoundary { turn_id, .. } => *turn_id = turn.into(),
 			_ => unreachable!(),
 		}
+
 		entry
 	}
 
 	#[test]
 	fn worker_wakes_and_superseded_finals_share_one_response_process() {
 		let mut silent = in_turn(message(6, "agentMessage", Some("final_answer")), "wake");
+
 		if let AgentTimelineContent::Item { text, .. } = &mut silent.content {
 			text.clear();
 		}
+
 		let entries = vec![
 			message(0, "userMessage", None),
 			message(1, "agentMessage", Some("commentary")),
@@ -424,6 +443,7 @@ mod tests {
 			in_turn(completed("completed"), "result"),
 		];
 		let groups = groups::groups(&entries, &BTreeSet::new());
+
 		assert_eq!(groups.len(), 1);
 		assert_eq!(groups[0].indices, vec![1, 2, 4, 7]);
 		assert_eq!(groups[0].first_index, 1);
@@ -442,6 +462,7 @@ mod tests {
 			in_turn(completed("completed"), "wake"),
 		];
 		let groups = groups::groups(&entries, &BTreeSet::new());
+
 		assert_eq!(groups[0].first_index, 1);
 		assert_eq!(groups[0].indices, vec![3]);
 	}
@@ -456,6 +477,7 @@ mod tests {
 			in_turn(message(4, "agentMessage", Some("final_answer")), "wake"),
 			in_turn(completed("failed"), "wake"),
 		];
+
 		assert!(groups::groups(&entries, &BTreeSet::new()).is_empty());
 		assert!(groups::groups(&entries[..5], &BTreeSet::new()).is_empty());
 	}
@@ -465,6 +487,7 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(AgentSurface::new);
+
 		surface.update(cx, |s, _| {
 			let entries = vec![
 				message(1, "reasoning", None),
@@ -473,21 +496,30 @@ mod tests {
 			];
 			let groups = groups::groups(&entries, &BTreeSet::new());
 			let state = &mut s.timeline.native.completions;
+
 			state.present_live("1");
 			state.replace_history(true);
 			state.prepare(&entries, &groups);
+
 			let motion = state.get(&groups[0]).unwrap();
+
 			assert_eq!(motion.outgoing, BTreeSet::from([1]));
+
 			state.replace_history(true);
 			state.prepare(&entries, &groups);
+
 			assert!(std::rc::Rc::ptr_eq(&motion, &state.get(&groups[0]).unwrap()));
+
 			state.present_live("1");
 			state.replace_history(false);
 			state.prepare(&entries, &groups);
+
 			assert!(state.get(&groups[0]).is_none(), "a different source is static history");
+
 			state.prepare(&entries[..2], &[]);
 			state.replace_history(true);
 			state.prepare(&entries, &groups);
+
 			assert!(
 				state.get(&groups[0]).is_some(),
 				"a native page replacement must retain displayed rows too"
@@ -500,7 +532,9 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_400.)));
+
 		let entries = vec![
 			message(0, "userMessage", None),
 			message(1, "agentMessage", Some("commentary")),
@@ -509,7 +543,9 @@ mod tests {
 		];
 		let (binding, mut page) = surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			s.workspace.graph_visible = false;
+
 			let work = s
 				.snapshot
 				.as_mut()
@@ -518,7 +554,9 @@ mod tests {
 				.iter_mut()
 				.find(|w| Some(&w.id) == s.selected.as_ref())
 				.unwrap();
+
 			work.codex_thread_id = Some("thread".into());
+
 			let binding = Binding {
 				work: work.id.clone(),
 				thread: "thread".into(),
@@ -534,38 +572,59 @@ mod tests {
 				safety_buffering_turn_id: None,
 				active_realtime_session_at_page_start: None,
 			};
+
 			assert!(s.timeline.native.replace(binding.clone(), page.clone()));
+
 			cx.notify();
+
 			(binding, page)
 		});
+
 		visual.update(crate::ui_frame::draw_frame);
+
 		assert!(visual.debug_bounds("turn-process-toggle").is_none());
 		assert!(visual.debug_bounds("archived-process-content").is_none());
 		assert!(visual.debug_bounds("native-reasoning-summary").is_some());
+
 		page.entries.push(completed("completed"));
 		surface.update(visual, |s, cx| {
 			assert!(s.timeline.native.refresh(binding, page));
+
 			cx.notify();
 		});
 		visual.update(crate::ui_frame::draw_frame);
+
 		let initial = visual.debug_bounds("turn-process-finishing").unwrap().size.height;
+
 		assert!(initial > gpui::px(0.));
 		assert!(visual.debug_bounds("archived-process-content").is_none());
+
 		visual.update(crate::ui_frame::draw_frame);
+
 		thread::sleep(std::time::Duration::from_millis(90));
+
 		visual.update(crate::ui_frame::draw_frame);
+
 		let middle = visual.debug_bounds("turn-process-finishing").unwrap().size.height;
+
 		assert!(middle > gpui::px(0.) && middle < initial, "{initial:?} -> {middle:?}");
 		assert!(visual.debug_bounds("archived-process-content").is_none());
+
 		thread::sleep(std::time::Duration::from_millis(300));
+
 		visual.update(crate::ui_frame::draw_frame);
+
 		assert!(visual.debug_bounds("turn-process-finishing").is_none());
 		assert!(visual.debug_bounds("native-reasoning-summary").is_none());
 		assert!(visual.debug_bounds("native-promotion-content").is_some());
+
 		visual.update(crate::ui_frame::draw_frame);
+
 		let toggle = visual.debug_bounds("turn-process-toggle").unwrap();
+
 		visual.simulate_click(toggle.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
+
 		assert!(surface.update(visual, |s, _| s.timeline.native.expanded_turns.contains("turn")));
 		assert!(visual.debug_bounds("archived-process-content").is_some());
 		assert!(visual.debug_bounds("native-reasoning-summary").is_some());
