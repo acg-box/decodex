@@ -708,7 +708,7 @@
     "evidence": "automations/upstream/qualification.json",
     "source_archive_sha256": "d2356cea559f77d768f97af9ca70c8aec625b20a4b05ce66023aa63f02ca07ca",
     "schema_sha256": "50c4da5e674696a1504e97729bf69b42f867ebe88ab11428ed1de296df79e7dc",
-    "evidence_sha256": "c50b78d03e2063dfbdc7fa8ec7c4b3ebd0a3eee2acfa22024d4d32f2d213fd79",
+    "evidence_sha256": "deb30e1b0c062940ae71a89d98a5fbbcc3c2cd6528c17c31b420903a0eb18c9f",
     "limits": [
       "Source review, tests, artifact qualification, merge and installed acceptance are separate.",
       "Only macOS arm64 private stdio and named native consumers/helpers are qualified. Linux, Windows, remote production execution, live accounts/providers, physical audio and installation/release remain unmeasured.",
@@ -865,7 +865,7 @@
     "source_tests_executed_count": 732,
     "source_tests_passed_count": 732,
     "source_tests_failed_count_after_fixture_repair": 0,
-    "source_test_attempts": 741
+    "source_test_attempts": 742
   },
   "retained_native_coordination": {
     "idle_root_agent_message_wake": {

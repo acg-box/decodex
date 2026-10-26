@@ -786,7 +786,7 @@
     "rust_executed_count": 732,
     "rust_passed_count": 732,
     "rust_failed_count_after_fixture_repair": 0,
-    "rust_test_executions_across_attempts": 741,
+    "rust_test_executions_across_attempts": 742,
     "initial_failed_executions": 9,
     "groups": {
       "lib": {
@@ -2072,6 +2072,23 @@
       },
       "exact-code-mode-helper": {
         "command": [
+          "<fixed-source dev-small grpc_tcp test binary>",
+          "--exact",
+          "tcp_listener_opens_a_grpc_session",
+          "--nocapture"
+        ],
+        "executed_count": 1,
+        "passed_count": 1,
+        "test_binaries": [
+          {
+            "package": "codex-code-mode-host",
+            "binary_id": "codex-code-mode-host::grpc_tcp",
+            "tests": [
+              "tcp_listener_opens_a_grpc_session"
+            ]
+          }
+        ],
+        "prior_source_test_command": [
           "cargo",
           "+stable",
           "nextest",
@@ -2090,17 +2107,28 @@
           "--status-level",
           "all"
         ],
-        "executed_count": 1,
-        "passed_count": 1,
-        "test_binaries": [
-          {
-            "package": "codex-code-mode-host",
-            "binary_id": "codex-code-mode-host::grpc_tcp",
-            "tests": [
-              "tcp_listener_opens_a_grpc_session"
-            ]
-          }
-        ]
+        "test_binary_sha256": "af7f063054b062d2f43afb8c5894c8e2f9fd3a1d89056fa7c63a5b7cc3ff2d87",
+        "exact_helper_sha256": "7063d8f84762326c469b0bda178d21fda241edabaa3ca06fe8e5628b6b05f382",
+        "environment": {
+          "CARGO_BIN_EXE_codex-code-mode-host": "Exact signed candidate helper",
+          "CARGO_BIN_EXE_codex_code_mode_host": "Same exact signed candidate helper"
+        },
+        "preparation_command": [
+          "cargo",
+          "+stable",
+          "test",
+          "--locked",
+          "--profile",
+          "dev-small",
+          "-p",
+          "codex-code-mode-host",
+          "--test",
+          "grpc_tcp",
+          "--no-run",
+          "--message-format",
+          "json"
+        ],
+        "execution_boundary": "Invoke the produced compiler-artifact executable directly so Nextest cannot override the selected helper path. Both identity and Zstd session responses passed against the exact signed helper."
       }
     },
     "unmatched_selectors": [
