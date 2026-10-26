@@ -1967,6 +1967,10 @@ impl SupervisedProcess {
 		// External login acknowledges credentials before native cache invalidation finishes.
 		// Keep both messages inside this request's deadline, in either arrival order.
 		let mut login_complete = method != ReadOnlyMethod::AccountLoginStart.as_str();
+		let mut login_response_phase =
+			(!login_complete).then(|| crate::startup_trace::Phase::new("native_login_response"));
+		let mut login_completion_phase =
+			(!login_complete).then(|| crate::startup_trace::Phase::new("native_login_completion"));
 		let mut pending_response = None;
 
 		loop {
@@ -2039,10 +2043,11 @@ impl SupervisedProcess {
 				}
 
 				login_complete = true;
-
+				drop(login_completion_phase.take());
 				continue;
 			}
 			if header.id == Some(request_id) {
+				drop(login_response_phase.take());
 				pending_response =
 					Some(Self::decode_rpc_response(&line, request_id, &request_digest)?);
 
@@ -2489,6 +2494,7 @@ impl SupervisedProcess {
 	}
 
 	fn read_account_identity(&mut self, timeout: Duration) -> Result<AccountIdentity, ProbeError> {
+		let _phase = crate::startup_trace::Phase::new("native_account_identity");
 		let account = self.request::<_, AccountReadResponse>(
 			ReadOnlyMethod::AccountRead,
 			&serde_json::json!({}),

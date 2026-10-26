@@ -275,6 +275,7 @@ impl AccountApiRuntime {
 		&self,
 		account_id: &AccountId,
 	) -> PendingAccountApiObservation {
+		let phase = crate::startup_trace::Phase::new("account_observation_credential");
 		let credential = match self
 			.accounts
 			.api_credential_for_observation(account_id, MINIMUM_ACCESS_TOKEN_VALIDITY)
@@ -287,6 +288,7 @@ impl AccountApiRuntime {
 				return PendingAccountApiObservation::credential_error(error);
 			},
 		};
+		drop(phase);
 
 		if credential.binding.provider.provider() != AccountProvider::Chatgpt {
 			return PendingAccountApiObservation::failed(
@@ -461,6 +463,12 @@ impl AccountApiRuntime {
 		credential: &AccountApiCredential,
 		json: Option<&Value>,
 	) -> Result<Vec<u8>, AccountApiRequestError> {
+		let _phase = crate::startup_trace::Phase::new(match path {
+			USAGE_PATH => "account_api_usage",
+			PROFILE_PATH => "account_api_profile",
+			RESET_CREDITS_PATH => "account_api_reset_details",
+			_ => "account_api_request",
+		});
 		let mut request = self
 			.client
 			.request(method, format!("{BACKEND_API_BASE}{path}"))
