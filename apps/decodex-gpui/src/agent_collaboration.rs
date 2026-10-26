@@ -4,7 +4,7 @@
 use std::{collections::BTreeMap, rc::Rc, time::Instant};
 
 use gpui::{
-	AnyElement, Div, FontWeight, KeyDownEvent, Role, SharedString, Task,
+	AnyElement, Div, FontWeight, KeyDownEvent, Role, SharedString, Stateful, Task,
 	prelude::{
 		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
 		Styled,
@@ -28,7 +28,8 @@ use crate::{
 	ui_motion::{self, SmoothControl},
 	ui_scroll::SmoothScrollArea,
 	ui_theme::{
-		self, BLUE, BODY_LINE_HEIGHT, FIELD_MATERIAL, HOVER_FILL, INFO,
+		self, BLUE, BODY_LINE_HEIGHT, CONTROL_SELECTED_FILL, FIELD_MATERIAL, HOVER_FILL, INFO,
+		PRESSED_FILL,
 		foreground::{BODY, CAPTION_SIZE, METRIC_SIZE, PRIMARY, SECONDARY},
 	},
 };
@@ -278,7 +279,7 @@ impl AgentSurface {
 		label: String,
 		action: impl Fn(&mut Self, &mut Context<Self>) + 'static,
 		cx: &mut Context<Self>,
-	) -> AnyElement {
+	) -> Stateful<Div> {
 		let action = Rc::new(action);
 		let keyboard = action.clone();
 
@@ -289,15 +290,25 @@ impl AgentSurface {
 			.aria_label(label.clone())
 			.tab_index(0)
 			.min_w_0()
-			.min_h(gpui::px(22.))
+			.min_h(gpui::px(26.))
+			.flex_none()
+			.px(gpui::px(8.))
 			.flex()
 			.items_center()
+			.justify_center()
+			.gap(gpui::px(6.))
+			.rounded(gpui::px(6.))
+			.bg(ui_theme::rgba(HOVER_FILL))
 			.text_size(gpui::px(METRIC_SIZE))
 			.line_height(gpui::px(18.))
 			.font_weight(FontWeight::MEDIUM)
-			.text_color(ui_theme::rgb(SECONDARY))
+			.text_color(ui_theme::rgb(PRIMARY))
 			.cursor_pointer()
-			.hover(|style| style.text_color(ui_theme::rgb(BLUE)))
+			.hover(|style| style.bg(ui_theme::rgba(PRESSED_FILL)))
+			.active(|style| style.bg(ui_theme::rgba(CONTROL_SELECTED_FILL)))
+			.focus_visible(|style| {
+				style.bg(ui_theme::rgba(CONTROL_SELECTED_FILL)).text_color(ui_theme::rgb(BLUE))
+			})
 			.on_click(cx.listener(move |s, _, window, cx| {
 				action(s, cx);
 
@@ -313,8 +324,6 @@ impl AgentSurface {
 				}
 			}))
 			.child(label)
-			.smooth()
-			.into_any_element()
 	}
 
 	fn collaboration_participant(
@@ -547,6 +556,7 @@ impl AgentSurface {
 	fn collaboration_exchange_actions(&self, case: &Exchange, cx: &mut Context<Self>) -> Div {
 		let key = case.id.clone();
 		let source_key = key.clone();
+		let source_open = self.work_board.collaboration.source_open.as_ref() == Some(&case.id);
 		let recipient = if case.state == "Not sent" {
 			Some(&case.from)
 		} else if case.state == "To review"
@@ -558,29 +568,32 @@ impl AgentSurface {
 		} else {
 			Some(&case.source_row)
 		};
-		let mut actions = gpui::div()
-			.w_full()
-			.flex()
-			.flex_wrap()
-			.items_center()
-			.justify_between()
-			.gap(gpui::px(8.))
-			.child(self.collaboration_action(
-				format!("collaboration-source-{key}"),
-				"Source".into(),
-				move |s, cx| {
-					let state = &mut s.work_board.collaboration;
+		let mut actions =
+			gpui::div().w_full().flex().flex_wrap().items_center().gap(gpui::px(8.)).child(
+				self.collaboration_action(
+					format!("collaboration-source-{key}"),
+					"Source".into(),
+					move |s, cx| {
+						let state = &mut s.work_board.collaboration;
 
-					state.source_open = if state.source_open.as_ref() == Some(&source_key) {
-						None
-					} else {
-						Some(source_key.clone())
-					};
+						state.source_open = if state.source_open.as_ref() == Some(&source_key) {
+							None
+						} else {
+							Some(source_key.clone())
+						};
 
-					cx.notify();
-				},
-				cx,
-			));
+						cx.notify();
+					},
+					cx,
+				)
+				.aria_expanded(source_open)
+				.when(source_open, |button| button.bg(ui_theme::rgba(CONTROL_SELECTED_FILL)))
+				.child(workspace_symbols::disclosure_chevron(
+					SharedString::from(format!("collaboration-source-chevron-{key}")),
+					source_open,
+				))
+				.smooth(),
+			);
 
 		if let Some(row) = recipient {
 			let row = row.clone();
@@ -590,14 +603,18 @@ impl AgentSurface {
 				format!("Open {}", self.relation_agent_number(&row))
 			};
 
-			actions = actions.child(self.collaboration_action(
-				format!("collaboration-open-{key}"),
-				label,
-				move |s, cx| {
-					s.open_graph_agent(&row, cx);
-				},
-				cx,
-			));
+			actions = actions.child(
+				self.collaboration_action(
+					format!("collaboration-open-{key}"),
+					label,
+					move |s, cx| {
+						s.open_graph_agent(&row, cx);
+					},
+					cx,
+				)
+				.child(workspace_symbols::icon_sized(workspace_symbols::Symbol::Forward, 12.))
+				.smooth(),
+			);
 		}
 
 		actions
@@ -646,12 +663,16 @@ impl AgentSurface {
 		if case.source_thread.is_some() && case.source_thread == case.source_row.thread {
 			let row = case.source_row.clone();
 
-			source = source.child(self.collaboration_action(
-				format!("collaboration-original-{}", case.id),
-				"Open original conversation".into(),
-				move |s, cx| s.open_graph_agent(&row, cx),
-				cx,
-			));
+			source = source.child(
+				self.collaboration_action(
+					format!("collaboration-original-{}", case.id),
+					"Open original conversation".into(),
+					move |s, cx| s.open_graph_agent(&row, cx),
+					cx,
+				)
+				.child(workspace_symbols::icon_sized(workspace_symbols::Symbol::Forward, 12.))
+				.smooth(),
+			);
 		}
 
 		source
@@ -782,19 +803,7 @@ impl AgentSurface {
 			.rounded(gpui::px(12.))
 			.bg(ui_theme::rgba(FIELD_MATERIAL))
 			.hover(|row| row.bg(ui_theme::rgba(HOVER_FILL)))
-			.when(related, |row| {
-				row.bg(ui_theme::rgba(HOVER_FILL)).child(
-					gpui::div()
-						.debug_selector(|| "collaboration-selection-mark".into())
-						.absolute()
-						.left(gpui::px(3.))
-						.top(gpui::px(12.))
-						.bottom(gpui::px(12.))
-						.w(gpui::px(2.))
-						.rounded_full()
-						.bg(ui_theme::rgb(BLUE)),
-				)
-			})
+			.when(related, |row| row.bg(ui_theme::rgba(HOVER_FILL)))
 			.child(self.collaboration_exchange_header(case, cx))
 			.child(ui_motion::disclosure(
 				SharedString::from(format!("collaboration-context-reveal-{}", case.id)),
@@ -842,21 +851,29 @@ impl AgentSurface {
 		body = self.collaboration_earlier(body, &cases, cx);
 
 		if self.work_board.collaboration.page.is_some() {
-			body = body.child(self.collaboration_action(
-				"collaboration-latest".into(),
-				"Back to latest".into(),
-				|s, cx| s.read_collaboration(None, true, cx),
-				cx,
-			));
+			body = body.child(
+				self.collaboration_action(
+					"collaboration-latest".into(),
+					"Back to latest".into(),
+					|s, cx| s.read_collaboration(None, true, cx),
+					cx,
+				)
+				.child(workspace_symbols::icon_sized(workspace_symbols::Symbol::Back, 12.))
+				.smooth(),
+			);
 		}
 
 		if let Some(before) = self.work_board.collaboration.next_before {
-			body = body.child(self.collaboration_action(
-				"collaboration-older".into(),
-				"Earlier sources".into(),
-				move |s, cx| s.read_collaboration(Some(before), true, cx),
-				cx,
-			));
+			body = body.child(
+				self.collaboration_action(
+					"collaboration-older".into(),
+					"Earlier sources".into(),
+					move |s, cx| s.read_collaboration(Some(before), true, cx),
+					cx,
+				)
+				.child(workspace_symbols::icon_sized(workspace_symbols::Symbol::Back, 12.))
+				.smooth(),
+			);
 		}
 
 		if self.work_board.collaboration.questions_truncated {
@@ -917,18 +934,26 @@ impl AgentSurface {
 		if !earlier.is_empty() {
 			let open = self.work_board.collaboration.earlier;
 
-			body = body.child(self.collaboration_action(
-				"collaboration-earlier".into(),
-				format!("Earlier · {}", earlier.len()),
-				|s, cx| {
-					s.work_board.collaboration.earlier = !s.work_board.collaboration.earlier;
+			body = body.child(
+				self.collaboration_action(
+					"collaboration-earlier".into(),
+					format!("Earlier · {}", earlier.len()),
+					|s, cx| {
+						s.work_board.collaboration.earlier = !s.work_board.collaboration.earlier;
 
-					cx.notify();
-				},
-				cx,
-			));
+						cx.notify();
+					},
+					cx,
+				)
+				.aria_expanded(open)
+				.justify_start()
+				.px(gpui::px(4.))
+				.bg(gpui::transparent_black())
+				.child(workspace_symbols::disclosure_chevron("collaboration-earlier-chevron", open))
+				.smooth(),
+			);
 
-			let mut history = gpui::div().w_full().min_w_0().flex().flex_col();
+			let mut history = gpui::div().w_full().min_w_0().flex().flex_col().gap(gpui::px(8.));
 
 			for case in earlier {
 				history = history.child(self.collaboration_exchange(case, cx));
