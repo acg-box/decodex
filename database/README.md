@@ -1,21 +1,12 @@
-# Decodex database
+# Product database
 
-This directory is the sole schema and schema-evolution owner for the local Decodex
-product database.
+SQLite owns local Decodex product state. The service is the only writer.
 
-The first product mode has one daemon and one bundled SQLite database at
-`~/.decodex/server/decodex.sqlite3`. Clients use the daemon protocol. They do not open
-this database. The database is not a generic storage abstraction and is not supported
-on a network file system.
+- `schema.sql` defines the current schema and initial settings.
+- `src/schema.rs` initializes an empty database and verifies its exact structure.
+- `src/` contains the domain storage owners.
 
-## Ownership
-
-- `migrations/` contains immutable, ordered SQL migrations.
-- `src/migrations.rs` applies and attests the embedded migration sequence.
-- Domain modules own bounded typed reads and transactions.
-- Large content stays in the content-addressed blob store.
-- Credential values stay in `account_credentials`. General account reads do not select
-  this table or return its payload.
-
-Never edit a shipped migration. Add the next numbered migration and a focused upgrade
-test. A migration must be transactional and safe to retry after process termination.
+The app and service use the same current schema. Older schemas are not upgraded at
+startup. Change the schema directly during private development and convert the
+single local development database before installing the matching app and service.
+See [local database operations](../openwiki/operations/local-database.md).

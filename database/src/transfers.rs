@@ -467,7 +467,7 @@ const fn quota_error_text(error: AccountQuotaObservationError) -> &'static str {
 #[cfg(test)]
 mod optional_quota_tests {
 	use crate::{
-		migrations,
+		schema,
 		transfers::{self, AccountQuotaDisposition, AccountQuotaWindowObservation},
 	};
 
@@ -477,8 +477,8 @@ mod optional_quota_tests {
 		let mut connection =
 			rusqlite::Connection::open(directory.path().join("transfer.sqlite3")).expect("open");
 
-		migrations::configure(&connection).expect("configure");
-		migrations::migrate(&mut connection).expect("migrate");
+		schema::configure(&connection).expect("configure");
+		schema::initialize(&mut connection).expect("migrate");
 
 		let id = "10000000-0000-4000-8000-000000000001";
 

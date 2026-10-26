@@ -108,23 +108,14 @@ class GateContractTests(unittest.TestCase):
         self.assertIn("provider_attempts", self.database_gate.REQUIRED_TABLES)
         self.assertIn("account_credentials", self.database_gate.REQUIRED_TABLES)
 
-    def test_database_gate_migrations_match_the_rust_owner(self) -> None:
-        source = (REPO_ROOT / "database/src/migrations.rs").read_text()
-        entries = re.findall(
-            r'version:\s*(\d+),\s*name:\s*"([^"]+)",\s*'
-            r'sql:\s*include_str!\("\.\./migrations/([^"]+)"\)', source,
-        )
-        self.assertTrue(entries, "Read the canonical Rust migration inventory")
-        self.assertEqual(
-            [(version, name, path.name) for version, name, path in self.database_gate.MIGRATIONS],
-            [(int(version), name, path) for version, name, path in entries],
-        )
-
-    def test_migration_digest_has_a_domain_separator(self) -> None:
-        source = b"CREATE TABLE example(value INTEGER);\n"
-        digest = self.database_gate.migration_digest(source)
-        self.assertEqual(len(digest), 64)
-        self.assertNotEqual(digest, __import__("hashlib").sha256(source).hexdigest())
+    def test_database_gate_uses_the_current_schema_owner(self) -> None:
+        source = (REPO_ROOT / "database/src/schema.rs").read_text()
+        version = re.search(r"CURRENT_SCHEMA_VERSION: i64 = (\d+)", source)
+        self.assertIsNotNone(version)
+        self.assertEqual(self.database_gate.SCHEMA_VERSION, int(version[1]))
+        self.assertIn('include_str!("../schema.sql")', source)
+        self.assertEqual(self.database_gate.SCHEMA_PATH, REPO_ROOT / "database/schema.sql")
+        self.assertFalse((REPO_ROOT / "database/migrations").exists())
 
 
 if __name__ == "__main__":

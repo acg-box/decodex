@@ -46,7 +46,6 @@ mod credentials;
 mod desktop_settings;
 mod error;
 mod guardian_settings;
-mod migrations;
 mod process_generations;
 mod program_cycles;
 mod projects;
@@ -55,6 +54,7 @@ mod quota_activation;
 mod reset_cards;
 mod role_profiles;
 mod runtime_sessions;
+mod schema;
 mod transfers;
 mod usage_evidence;
 mod works;
@@ -243,8 +243,8 @@ impl SqliteStore {
 
 		let mut connection = connection;
 
-		migrations::configure(&connection)?;
-		migrations::migrate(&mut connection)?;
+		schema::configure(&connection)?;
+		schema::initialize(&mut connection)?;
 
 		Ok(Self {
 			inner: Arc::new(StoreInner {
@@ -261,8 +261,8 @@ impl SqliteStore {
 	fn open_path(path: PathBuf) -> Result<Self, DatabaseError> {
 		let mut connection = open_connection(&path)?;
 
-		migrations::configure(&connection)?;
-		migrations::migrate(&mut connection)?;
+		schema::configure(&connection)?;
+		schema::initialize(&mut connection)?;
 
 		Ok(Self {
 			inner: Arc::new(StoreInner {
@@ -278,11 +278,9 @@ impl SqliteStore {
 	pub async fn revalidate(&self) -> Result<(), DatabaseError> {
 		let store = self.clone();
 
-		task::spawn_blocking(move || {
-			store.with_connection(|connection| migrations::verify(connection))
-		})
-		.await
-		.map_err(|_| DatabaseError::Unavailable)?
+		task::spawn_blocking(move || store.with_connection(|connection| schema::verify(connection)))
+			.await
+			.map_err(|_| DatabaseError::Unavailable)?
 	}
 
 	/// Close this store and every clone to new operations.
@@ -413,7 +411,7 @@ mod tests {
 		AccountOperationPreparation, AgentDispatchState, AgentWorkItem, AgentWorkKind,
 		AgentWorkStatus, CodexAccountCapabilityAttestation, CommandIdentity, CredentialKey,
 		CredentialRecord, DatabaseError, RoutingControlOutcome, SqliteStore, StoreError, error,
-		migrations,
+		schema,
 	};
 	use decodex_core::{
 		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
@@ -510,60 +508,48 @@ mod tests {
 	}
 
 	#[test]
-	fn initializes_and_reopens_exact_versioned_schema() {
+	fn initializes_and_reopens_the_current_schema_without_a_migration_ledger() {
 		let directory = tempfile::tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
-		let migrations: Vec<(i64, String)> = store
+		store
 			.with_connection(|connection| {
-				let mut statement = connection
-					.prepare("SELECT version, sha256 FROM schema_migrations ORDER BY version")
+				let version: i64 = connection
+					.query_row("PRAGMA user_version", [], |row| row.get(0))
 					.map_err(error::sqlite_error)?;
-
-				statement
-					.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-					.map_err(error::sqlite_error)?
-					.collect::<Result<Vec<_>, _>>()
-					.map_err(error::sqlite_error)
+				assert_eq!(version, schema::CURRENT_SCHEMA_VERSION);
+				let ledgers: i64 = connection
+					.query_row(
+						"SELECT count(*) FROM sqlite_schema WHERE name='schema_migrations'",
+						[],
+						|row| row.get(0),
+					)
+					.map_err(error::sqlite_error)?;
+				assert_eq!(ledgers, 0);
+				Ok(())
 			})
-			.expect("read migration ledger");
-
-		assert_eq!(
-			migrations,
-			migrations::expected_migration_digests()
-				.into_iter()
-				.enumerate()
-				.map(|(index, digest)| (48 + index as i64, digest))
-				.collect::<Vec<_>>()
-		);
-
+			.expect("current schema");
 		drop(store);
-
-		SqliteStore::open_test(&path).expect("reopen exact schema");
+		SqliteStore::open_test(&path).expect("reopen current schema");
 	}
 
 	#[test]
-	fn rejects_a_forged_migration_digest() {
+	fn rejects_an_older_schema_version_without_altering_it() {
 		let directory = tempfile::tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
-
 		store
 			.with_connection(|connection| {
-				connection
-					.execute(
-						"UPDATE schema_migrations SET sha256 = ?1 WHERE version = 48",
-						rusqlite::params![DIGEST_ONE],
-					)
-					.map_err(error::sqlite_error)?;
-
-				Ok(())
+				connection.pragma_update(None, "user_version", 59).map_err(error::sqlite_error)
 			})
-			.expect("forge digest");
-
+			.expect("older version");
 		drop(store);
-
 		assert_eq!(SqliteStore::open_test(&path).err(), Some(DatabaseError::Incompatible));
+		let connection = rusqlite::Connection::open(&path).expect("read refused schema");
+		assert_eq!(
+			connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0)).unwrap(),
+			59
+		);
 	}
 
 	#[test]

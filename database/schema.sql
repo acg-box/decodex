@@ -1,7 +1,8 @@
--- Canonical Agent baseline after the explicit one-time installation migration.
-CREATE TABLE account_credentials (
+-- Current Decodex product schema. Initialize an empty database; do not upgrade older layouts.
+
+CREATE TABLE "account_credentials" (
   account_id TEXT PRIMARY KEY REFERENCES account_identities(account_id),
-  schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+  schema_version INTEGER NOT NULL CHECK (schema_version IN (1, 2)),
   credential_version INTEGER NOT NULL CHECK (credential_version > 0),
   fingerprint TEXT NOT NULL CHECK (
     length(fingerprint) = 64 AND
@@ -16,6 +17,7 @@ CREATE TABLE account_credentials (
   payload BLOB NOT NULL CHECK (length(payload) BETWEEN 1 AND 1048576),
   updated_at_micros INTEGER NOT NULL CHECK (updated_at_micros > 0)
 ) STRICT;
+
 CREATE TABLE account_identities (
   account_id TEXT PRIMARY KEY CHECK (
     length(account_id) = 36 AND
@@ -24,6 +26,7 @@ CREATE TABLE account_identities (
   ),
   created_at_micros INTEGER NOT NULL CHECK (created_at_micros > 0)
 ) STRICT;
+
 CREATE TABLE account_operations (
   operation_id TEXT PRIMARY KEY CHECK (length(operation_id) = 36),
   account_id TEXT NOT NULL REFERENCES account_identities(account_id),
@@ -74,6 +77,7 @@ CREATE TABLE account_operations (
     (phase NOT IN ('committed', 'cancelled') AND completed_at_micros IS NULL)
   )
 ) STRICT;
+
 CREATE TABLE account_profile_daily_usage (
   account_id TEXT NOT NULL REFERENCES account_profile_snapshots(account_id) ON DELETE CASCADE,
   start_date TEXT NOT NULL CHECK (
@@ -83,6 +87,7 @@ CREATE TABLE account_profile_daily_usage (
   observed_at_micros INTEGER NOT NULL CHECK (observed_at_micros > 0),
   PRIMARY KEY (account_id, start_date)
 ) STRICT;
+
 CREATE TABLE account_profile_snapshots (
   account_id TEXT PRIMARY KEY REFERENCES account_identities(account_id),
   account_revision INTEGER NOT NULL CHECK (account_revision > 0),
@@ -104,6 +109,7 @@ CREATE TABLE account_profile_snapshots (
     current_streak_days IS NOT NULL OR longest_streak_days IS NOT NULL
   )
 ) STRICT;
+
 CREATE TABLE account_quota_activation (
   account_id TEXT PRIMARY KEY REFERENCES account_identities(account_id),
   observed_reset_at_micros INTEGER NOT NULL CHECK (observed_reset_at_micros > 0),
@@ -112,6 +118,7 @@ CREATE TABLE account_quota_activation (
   outcome TEXT NOT NULL CHECK (outcome IN ('idle', 'unknown', 'completed', 'rejected'))
 , observed_at_micros INTEGER
   CHECK (observed_at_micros > 0)) STRICT;
+
 CREATE TABLE "account_quota_facts" (
   account_id TEXT NOT NULL REFERENCES account_identities(account_id),
   duration_minutes INTEGER NOT NULL CHECK (duration_minutes IN (300, 10080)),
@@ -132,6 +139,7 @@ CREATE TABLE "account_quota_facts" (
       AND error_code IS NULL AND used_percent IS NULL AND resets_at_micros IS NULL)
   )
 ) STRICT;
+
 CREATE TABLE account_routing_control (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   mode TEXT NOT NULL CHECK (mode IN ('fixed', 'balanced')),
@@ -140,18 +148,20 @@ CREATE TABLE account_routing_control (
   updated_at_micros INTEGER NOT NULL CHECK (updated_at_micros > 0),
   CHECK ((mode = 'fixed') = (fixed_account_id IS NOT NULL))
 ) STRICT;
-INSERT INTO "account_routing_control" VALUES(1,'balanced',NULL,1,1);
+
 CREATE TABLE account_routing_order (
   account_id TEXT PRIMARY KEY REFERENCES account_identities(account_id),
   position INTEGER NOT NULL UNIQUE CHECK (position >= 0),
   updated_at_micros INTEGER NOT NULL CHECK (updated_at_micros > 0)
 ) STRICT;
+
 CREATE TABLE account_usage_observations (
   account_id TEXT PRIMARY KEY REFERENCES account_identities(account_id),
   account_revision INTEGER NOT NULL CHECK (account_revision > 0),
   observed_at_micros INTEGER NOT NULL CHECK (observed_at_micros > 0),
   ordinary_usage_allowed INTEGER CHECK (ordinary_usage_allowed IN (0, 1))
 , has_credits INTEGER CHECK (has_credits IN (0,1)), unlimited_credits INTEGER CHECK (unlimited_credits IN (0,1)), spend_control_reached INTEGER CHECK (spend_control_reached IN (0,1)), rate_limit_reached INTEGER CHECK (rate_limit_reached IN (0,1))) STRICT;
+
 CREATE TABLE accounts (
   account_id TEXT PRIMARY KEY REFERENCES account_identities(account_id),
   display_label TEXT NOT NULL CHECK (
@@ -175,6 +185,7 @@ CREATE TABLE accounts (
   updated_at_micros INTEGER NOT NULL CHECK (updated_at_micros >= created_at_micros),
   tombstoned_at_micros INTEGER CHECK (tombstoned_at_micros >= created_at_micros)
 ) STRICT;
+
 CREATE TABLE "agent_async_answers" (
     work_id TEXT NOT NULL REFERENCES "agent_work_items"(id) ON DELETE CASCADE,
     thread_id TEXT NOT NULL,
@@ -182,6 +193,7 @@ CREATE TABLE "agent_async_answers" (
     created_at_micros INTEGER NOT NULL,
     PRIMARY KEY(work_id, thread_id, question_id)
 ) STRICT;
+
 CREATE TABLE "agent_async_questions" (
     work_id TEXT NOT NULL REFERENCES "agent_work_items"(id) ON DELETE CASCADE,
     thread_id TEXT NOT NULL,
@@ -192,12 +204,14 @@ CREATE TABLE "agent_async_questions" (
     created_at_micros INTEGER NOT NULL, arrived_live INTEGER NOT NULL DEFAULT 0 CHECK(arrived_live IN (0, 1)),
     PRIMARY KEY(work_id, thread_id, question_id)
 ) STRICT;
+
 CREATE TABLE "agent_async_recovery" (
     required_item_id TEXT,
     work_id TEXT NOT NULL REFERENCES "agent_work_items"(id) ON DELETE CASCADE,
     thread_id TEXT NOT NULL,
     PRIMARY KEY(work_id, thread_id)
 ) STRICT;
+
 CREATE TABLE "agent_async_skips" (
     work_id TEXT NOT NULL,
     thread_id TEXT NOT NULL,
@@ -207,6 +221,7 @@ CREATE TABLE "agent_async_skips" (
     FOREIGN KEY(work_id, thread_id, question_id)
       REFERENCES "agent_async_questions"(work_id, thread_id, question_id) ON DELETE CASCADE
 ) STRICT;
+
 CREATE TABLE "agent_capacity_retries" (
     event_id INTEGER PRIMARY KEY REFERENCES "agent_inbox_events"(id),
     work_item_id TEXT NOT NULL REFERENCES "agent_work_items"(id),
@@ -221,12 +236,23 @@ CREATE TABLE "agent_capacity_retries" (
     CHECK ((state = 'submitted' AND retry_turn_id IS NOT NULL)
         OR (state != 'submitted' AND retry_turn_id IS NULL))
 ) STRICT;
+
+CREATE TABLE agent_closed_native_threads (
+    thread_id TEXT PRIMARY KEY
+) STRICT;
+
+CREATE TABLE agent_delegations (
+    work_id TEXT PRIMARY KEY REFERENCES agent_work_items(id) ON DELETE CASCADE,
+    instruction_event_id INTEGER NOT NULL REFERENCES agent_inbox_events(id)
+) STRICT;
+
 CREATE TABLE "agent_dependencies" (
 	work_item_id TEXT NOT NULL REFERENCES "agent_work_items"(id),
 	depends_on_id TEXT NOT NULL REFERENCES "agent_work_items"(id),
 	PRIMARY KEY (work_item_id, depends_on_id),
 	CHECK (work_item_id <> depends_on_id)
 ) STRICT;
+
 CREATE TABLE "agent_guardian_approvals" (
     id INTEGER PRIMARY KEY,
     review_row_id INTEGER NOT NULL REFERENCES "agent_guardian_reviews"(id) ON DELETE CASCADE,
@@ -238,6 +264,7 @@ CREATE TABLE "agent_guardian_approvals" (
     created_at_micros INTEGER NOT NULL,
     finished_at_micros INTEGER
 ) STRICT;
+
 CREATE TABLE "agent_guardian_reviews" (
     id INTEGER PRIMARY KEY,
     work_id TEXT NOT NULL REFERENCES "agent_work_items"(id) ON DELETE CASCADE,
@@ -253,6 +280,7 @@ CREATE TABLE "agent_guardian_reviews" (
     updated_at_micros INTEGER NOT NULL,
     UNIQUE(work_id,thread_id,turn_id,review_id)
 ) STRICT;
+
 CREATE TABLE "agent_inbox_events" (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	source_event_id TEXT NOT NULL UNIQUE CHECK (length(source_event_id) BETWEEN 1 AND 2048),
@@ -270,6 +298,7 @@ CREATE TABLE "agent_inbox_events" (
 	CHECK ((disposition IS NULL AND disposition_note IS NULL AND disposed_at_micros IS NULL)
 		OR (disposition IS NOT NULL AND disposition_note IS NOT NULL AND disposed_at_micros IS NOT NULL))
 ) STRICT;
+
 CREATE TABLE "agent_live_output" (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  work_id TEXT NOT NULL REFERENCES "agent_work_items"(id),
@@ -284,24 +313,29 @@ CREATE TABLE "agent_live_output" (
  CHECK(length(CAST(text AS BLOB)) <= 65536),
  CHECK(summary_parts IS NULL OR (kind='reasoningSummary' AND length(CAST(summary_parts AS BLOB)) <= 524288))
 ) STRICT;
+
 CREATE TABLE "agent_managers" (
  work_id TEXT PRIMARY KEY REFERENCES "agent_work_items"(id)
 ) STRICT;
+
 CREATE TABLE "agent_misalignment" (
     work_id TEXT PRIMARY KEY REFERENCES "agent_work_items"(id) ON DELETE CASCADE,
     thread_id TEXT NOT NULL,
     turn_id TEXT NOT NULL,
     details_json TEXT CHECK(details_json IS NULL OR json_valid(details_json)),
     created_at_micros INTEGER NOT NULL
-) STRICT;
+, retired_voice INTEGER NOT NULL DEFAULT 0 CHECK(retired_voice IN (0,1))) STRICT;
+
 CREATE TABLE "agent_process_bindings" (
-	operation_key TEXT PRIMARY KEY CHECK (length(CAST(operation_key AS BLOB)) BETWEEN 1 AND 256),
-	root_id TEXT NOT NULL REFERENCES "agent_work_items"(id),
-	account_id TEXT NOT NULL REFERENCES accounts(account_id),
-	generation_id TEXT NOT NULL UNIQUE REFERENCES process_generations(generation_id),
-	request_sha256 TEXT NOT NULL CHECK (length(request_sha256) = 64),
-	created_at_micros INTEGER NOT NULL CHECK (created_at_micros > 0)
+ operation_key TEXT PRIMARY KEY CHECK(length(CAST(operation_key AS BLOB)) BETWEEN 1 AND 256),
+ root_id TEXT NOT NULL REFERENCES agent_work_items(id),
+ account_id TEXT NOT NULL REFERENCES accounts(account_id),
+ generation_id TEXT NOT NULL REFERENCES process_generations(generation_id),
+ request_sha256 TEXT NOT NULL CHECK(length(request_sha256)=64),
+ created_at_micros INTEGER NOT NULL CHECK(created_at_micros>0),
+ UNIQUE(root_id,generation_id)
 ) STRICT;
+
 CREATE TABLE "agent_prompt_input_chunks" (
     upload_id TEXT NOT NULL CHECK (length(upload_id) BETWEEN 1 AND 128),
     byte_offset INTEGER NOT NULL CHECK (byte_offset >= 0),
@@ -313,6 +347,7 @@ CREATE TABLE "agent_prompt_input_chunks" (
     fragment TEXT NOT NULL CHECK (length(CAST(fragment AS BLOB)) BETWEEN 1 AND 65536),
     PRIMARY KEY (upload_id, byte_offset)
 ) STRICT;
+
 CREATE TABLE "agent_prompt_inputs" (
     id INTEGER PRIMARY KEY,
     work_item_id TEXT NOT NULL REFERENCES "agent_work_items"(id) ON DELETE CASCADE,
@@ -327,15 +362,25 @@ CREATE TABLE "agent_prompt_inputs" (
     created_at_micros INTEGER NOT NULL,
     UNIQUE (edit_receipt_id, sha256)
 ) STRICT;
+
 CREATE TABLE "agent_request_payloads" (
     event_id INTEGER PRIMARY KEY REFERENCES "agent_inbox_events"(id) ON DELETE CASCADE,
     payload TEXT NOT NULL CHECK (json_valid(payload) AND length(CAST(payload AS BLOB)) <= 16842752)
 ) STRICT;
+
 CREATE TABLE "agent_root_settings" (
 	root_id TEXT PRIMARY KEY REFERENCES "agent_work_items"(id),
 	config_json TEXT NOT NULL CHECK (length(CAST(config_json AS BLOB)) BETWEEN 2 AND 16384),
 	created_at_micros INTEGER NOT NULL CHECK (created_at_micros > 0)
 ) STRICT;
+
+CREATE TABLE agent_slots (
+    agent_key TEXT PRIMARY KEY,
+    work_id TEXT NOT NULL REFERENCES agent_work_items(id) ON DELETE CASCADE,
+    thread_id TEXT,
+    slot INTEGER NOT NULL UNIQUE CHECK(slot >= 0)
+) STRICT;
+
 CREATE TABLE "agent_thread_revisions" (
  work_id TEXT NOT NULL REFERENCES "agent_work_items"(id),
  old_thread_id TEXT NOT NULL,
@@ -343,16 +388,28 @@ CREATE TABLE "agent_thread_revisions" (
  created_at_micros INTEGER NOT NULL,
  PRIMARY KEY(work_id,old_thread_id)
 ) STRICT;
+
+CREATE TABLE agent_tool_migrations (
+ agent_id TEXT PRIMARY KEY REFERENCES agents(id),
+ old_thread_id TEXT NOT NULL,
+ new_thread_id TEXT,
+ parameters_json TEXT NOT NULL CHECK(json_valid(parameters_json)),
+ outcome TEXT NOT NULL CHECK(outcome IN('reserved','created','retiring','unknown','applied')),
+ CHECK(outcome NOT IN('created','retiring','applied') OR new_thread_id IS NOT NULL)
+) STRICT;
+
 CREATE TABLE "agent_tool_versions" (
  work_id TEXT PRIMARY KEY REFERENCES "agent_work_items"(id),
  version INTEGER NOT NULL CHECK(version > 0)
 ) STRICT;
+
 CREATE TABLE "agent_usage" (
     thread_id TEXT PRIMARY KEY,
     work_id TEXT NOT NULL REFERENCES "agent_work_items"(id),
     turn_id TEXT NOT NULL,
     usage_json TEXT NOT NULL CHECK(length(usage_json) <= 1024)
 , baseline_input_tokens INTEGER CHECK (baseline_input_tokens >= 0), baseline_output_tokens INTEGER CHECK (baseline_output_tokens >= 0), turn_input_tokens INTEGER CHECK (turn_input_tokens >= 0), turn_output_tokens INTEGER CHECK (turn_output_tokens >= 0)) STRICT;
+
 CREATE TABLE "agent_voice_calls" (
     session_id TEXT PRIMARY KEY NOT NULL CHECK(length(session_id) BETWEEN 1 AND 512),
     work_id TEXT NOT NULL REFERENCES "agent_work_items"(id),
@@ -363,12 +420,14 @@ CREATE TABLE "agent_voice_calls" (
     closed_at_micros INTEGER,
     CHECK(closed_at_micros IS NULL OR closed_at_micros >= created_at_micros)
 ) STRICT;
+
 CREATE TABLE "agent_voice_observed_turns" (
     generation_id TEXT NOT NULL REFERENCES process_generations(generation_id),
     thread_id TEXT NOT NULL,
     turn_id TEXT NOT NULL,
     PRIMARY KEY(generation_id,thread_id,turn_id)
 ) STRICT;
+
 CREATE TABLE "agent_work_items" (
 	id TEXT PRIMARY KEY CHECK (length(id) BETWEEN 1 AND 512),
 	parent_goal_id TEXT REFERENCES "agent_work_items"(id),
@@ -387,11 +446,12 @@ CREATE TABLE "agent_work_items" (
 		OR dispatch_state = 'unknown'
 		OR (dispatch_state IN ('idle', 'dispatching') AND active_turn_id IS NULL))
 ) STRICT;
-CREATE TABLE "agent_workspaces" (
- agent_id TEXT PRIMARY KEY REFERENCES "agent_managers"(work_id),
- name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 256),
- directory TEXT NOT NULL CHECK(length(directory) BETWEEN 1 AND 4096)
+
+CREATE TABLE agents (
+ id TEXT PRIMARY KEY REFERENCES agent_work_items(id),
+ assistant INTEGER NOT NULL DEFAULT 0 CHECK(assistant IN(0,1))
 ) STRICT;
+
 CREATE TABLE codex_account_capability (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   build_identity TEXT NOT NULL CHECK (
@@ -404,6 +464,30 @@ CREATE TABLE codex_account_capability (
   refresh_callback INTEGER NOT NULL CHECK (refresh_callback IN (0, 1)),
   observed_at_micros INTEGER NOT NULL CHECK (observed_at_micros > 0)
 ) STRICT;
+
+CREATE TABLE collaboration_instructions (
+ request_id TEXT NOT NULL REFERENCES collaboration_requests(id),
+ id TEXT NOT NULL UNIQUE,
+ requirements_id TEXT NOT NULL,
+ text TEXT NOT NULL,
+ material_ids_json TEXT NOT NULL CHECK(json_valid(material_ids_json)),
+ event_id INTEGER NOT NULL UNIQUE REFERENCES agent_inbox_events(id),
+ PRIMARY KEY(request_id,id)
+) STRICT;
+
+CREATE TABLE collaboration_requests (
+ id TEXT PRIMARY KEY,
+ work_id TEXT NOT NULL REFERENCES works(id),
+ recipient_agent_id TEXT NOT NULL REFERENCES agents(id),
+ instruction_id TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN('pending','accepted','returned','closed')),
+ required INTEGER NOT NULL CHECK(required IN(0,1)),
+ outcome TEXT CHECK(outcome IN('used','not_used','declined','cancelled','failed')),
+ note TEXT,
+ CHECK((state='closed')=(outcome IS NOT NULL)),
+ FOREIGN KEY(id,instruction_id) REFERENCES collaboration_instructions(request_id,id) DEFERRABLE INITIALLY DEFERRED
+) STRICT;
+
 CREATE TABLE command_receipts (
   protocol TEXT NOT NULL CHECK (length(CAST(protocol AS BLOB)) BETWEEN 1 AND 128),
   idempotency_key TEXT NOT NULL CHECK (
@@ -427,6 +511,7 @@ CREATE TABLE command_receipts (
     (state <> 'reserved' AND claim_token IS NULL AND claim_expires_at_micros IS NULL)
   )
 ) STRICT;
+
 CREATE TABLE context_packs (
   context_pack_id TEXT PRIMARY KEY CHECK (length(context_pack_id) = 36),
   conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
@@ -446,6 +531,7 @@ CREATE TABLE context_packs (
   omitted_source_count INTEGER NOT NULL CHECK (omitted_source_count BETWEEN 0 AND 512),
   created_at_micros INTEGER NOT NULL CHECK (created_at_micros > 0)
 ) STRICT;
+
 CREATE TABLE continuation_plans (
   continuation_plan_id TEXT PRIMARY KEY CHECK (length(continuation_plan_id) = 36),
   operation_id TEXT NOT NULL UNIQUE CHECK (length(operation_id) = 36),
@@ -481,6 +567,20 @@ CREATE TABLE continuation_plans (
       same_thread_attempt_id IS NULL AND same_thread_evidence_id IS NULL)
   )
 ) STRICT;
+
+CREATE TABLE conversation_native_settings (
+  runtime_session_id TEXT PRIMARY KEY REFERENCES runtime_sessions(runtime_session_id),
+  codex_thread_id TEXT NOT NULL CHECK (length(CAST(codex_thread_id AS BLOB)) BETWEEN 1 AND 512),
+  process_generation_id TEXT NOT NULL REFERENCES process_generations(generation_id),
+  process_generation_revision INTEGER NOT NULL CHECK (process_generation_revision > 0),
+  account_id TEXT NOT NULL REFERENCES accounts(account_id),
+  account_revision INTEGER NOT NULL CHECK (account_revision > 0),
+  response_id INTEGER NOT NULL CHECK (response_id > 0),
+  response_sha256 TEXT NOT NULL CHECK (length(response_sha256) = 64),
+  settings_json TEXT NOT NULL CHECK (json_valid(settings_json) AND length(CAST(settings_json AS BLOB)) <= 32768),
+  observed_at_micros INTEGER NOT NULL CHECK (observed_at_micros > 0)
+) STRICT;
+
 CREATE TABLE conversation_routing_successors (
   source_conversation_id TEXT PRIMARY KEY REFERENCES conversations(conversation_id),
   successor_conversation_id TEXT NOT NULL UNIQUE REFERENCES conversations(conversation_id),
@@ -491,6 +591,7 @@ CREATE TABLE conversation_routing_successors (
   request_sha256 TEXT NOT NULL CHECK (length(request_sha256) = 64),
   created_at_micros INTEGER NOT NULL CHECK (created_at_micros > 0)
 ) STRICT;
+
 CREATE TABLE conversations (
   conversation_id TEXT PRIMARY KEY CHECK (length(conversation_id) = 36),
   kind TEXT NOT NULL CHECK (kind = 'ordinary_task'),
@@ -500,13 +601,42 @@ CREATE TABLE conversations (
   created_at_micros INTEGER NOT NULL CHECK (created_at_micros > 0),
   updated_at_micros INTEGER NOT NULL CHECK (updated_at_micros >= created_at_micros)
 ) STRICT;
+
 CREATE TABLE desktop_settings (
 	singleton        INTEGER PRIMARY KEY CHECK (singleton = 1),
 	show_in_menu_bar INTEGER NOT NULL CHECK (show_in_menu_bar IN (0, 1)),
 	revision         INTEGER NOT NULL CHECK (revision > 0)
 , auto_activate_quota INTEGER NOT NULL DEFAULT 1
   CHECK (auto_activate_quota IN (0, 1)), auto_recap INTEGER NOT NULL DEFAULT 0 CHECK (auto_recap IN (0, 1))) STRICT;
-INSERT INTO "desktop_settings" VALUES(1,1,1,1,0);
+
+CREATE TABLE guardian_review_details (
+ id INTEGER PRIMARY KEY,
+ parent_thread_id TEXT NOT NULL,
+ reviewer_thread_id TEXT NOT NULL,
+ reviewer_turn_id TEXT NOT NULL,
+ item_id TEXT NOT NULL,
+ review_id TEXT,
+ record_json TEXT NOT NULL CHECK(length(record_json)<=65536 AND json_valid(record_json)),
+ UNIQUE(reviewer_thread_id,reviewer_turn_id,item_id)
+) STRICT;
+
+CREATE TABLE guardian_settings (
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ reviewer TEXT NOT NULL CHECK(reviewer IN('user','auto_review')),
+ review_details INTEGER NOT NULL CHECK(review_details IN(0,1)),
+ revision INTEGER NOT NULL CHECK(revision>0)
+) STRICT;
+
+CREATE TABLE guardian_sources (
+ source_id TEXT NOT NULL,
+ agent_id TEXT PRIMARY KEY REFERENCES agent_work_items(id),
+ thread_id TEXT NOT NULL,
+ revision INTEGER NOT NULL,
+ outcome TEXT NOT NULL CHECK(outcome IN('pending','applied','overridden','unsupported','rejected','unknown')),
+ effective_reviewer TEXT,
+ detail TEXT NOT NULL
+) STRICT;
+
 CREATE TABLE history_items (
   history_item_id TEXT PRIMARY KEY CHECK (length(history_item_id) = 36),
   conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
@@ -527,6 +657,7 @@ CREATE TABLE history_items (
   CHECK ((inline_text IS NULL) <> (blob_sha256 IS NULL)),
   UNIQUE (conversation_id, sequence)
 ) STRICT;
+
 CREATE TABLE legacy_account_route_interruptions (
   idempotency_key TEXT PRIMARY KEY CHECK (
     length(CAST(idempotency_key AS BLOB)) BETWEEN 1 AND 256
@@ -535,6 +666,7 @@ CREATE TABLE legacy_account_route_interruptions (
   terminal_reason TEXT NOT NULL CHECK (terminal_reason = 'interrupted_by_upgrade'),
   interrupted_at_micros INTEGER NOT NULL CHECK (interrupted_at_micros > 0)
 ) STRICT;
+
 CREATE TABLE local_account_transfers (
   singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
   source_sha256 TEXT NOT NULL CHECK (
@@ -545,11 +677,46 @@ CREATE TABLE local_account_transfers (
   account_count INTEGER NOT NULL CHECK (account_count BETWEEN 1 AND 512),
   imported_at_micros INTEGER NOT NULL CHECK (imported_at_micros > 0)
 ) STRICT;
+
+CREATE TABLE native_work_contributions (
+ id TEXT PRIMARY KEY,
+ work_id TEXT NOT NULL,
+ requirements_id TEXT NOT NULL,
+ instruction TEXT NOT NULL,
+ child_thread_id TEXT,
+ parent_turn_id TEXT,
+ parent_item_id TEXT,
+ FOREIGN KEY(work_id,requirements_id) REFERENCES work_requirements(work_id,id),
+ CHECK((child_thread_id IS NULL)=(parent_turn_id IS NULL)),
+ CHECK((child_thread_id IS NULL)=(parent_item_id IS NULL)),
+ UNIQUE(parent_turn_id,parent_item_id)
+) STRICT;
+
+CREATE TABLE native_work_deliveries (
+ contribution_id TEXT PRIMARY KEY REFERENCES native_work_contributions(id),
+ parent_thread_id TEXT NOT NULL,
+ parent_turn_id TEXT NOT NULL,
+ child_thread_id TEXT NOT NULL,
+ child_turn_id TEXT NOT NULL,
+ message_id TEXT NOT NULL, assignment_proof TEXT NOT NULL
+ DEFAULT 'plaintext' CHECK(assignment_proof IN('plaintext','native_task_name')),
+ UNIQUE(child_thread_id,child_turn_id,message_id)
+) STRICT;
+
+CREATE TABLE native_work_dispatches (
+ contribution_id TEXT PRIMARY KEY REFERENCES native_work_contributions(id),
+ thread_id TEXT NOT NULL,
+ turn_id TEXT NOT NULL,
+ call_id TEXT NOT NULL,
+ UNIQUE(thread_id,turn_id,call_id)
+) STRICT;
+
 CREATE TABLE process_execution_epochs (
   execution_epoch_id TEXT PRIMARY KEY CHECK (length(execution_epoch_id) = 36),
   authorization_sha256 TEXT NOT NULL CHECK (length(authorization_sha256) = 64),
   created_at_micros INTEGER NOT NULL CHECK (created_at_micros > 0)
 ) STRICT;
+
 CREATE TABLE "process_generation_death_evidence" (
   evidence_id TEXT PRIMARY KEY CHECK (length(evidence_id) = 36),
   generation_id TEXT NOT NULL UNIQUE REFERENCES process_generations(generation_id),
@@ -581,7 +748,8 @@ CREATE TABLE "process_generation_death_evidence" (
       process_group_id = process_id AND session_id = process_id)
   )
 ) STRICT;
-CREATE TABLE process_generations (
+
+CREATE TABLE "process_generations" (
   generation_id TEXT PRIMARY KEY CHECK (length(generation_id) = 36),
   account_id TEXT NOT NULL REFERENCES accounts(account_id),
   runtime_session_id TEXT REFERENCES runtime_sessions(runtime_session_id),
@@ -602,7 +770,7 @@ CREATE TABLE process_generations (
   process_group_id INTEGER CHECK (process_group_id > 0),
   session_id INTEGER CHECK (session_id > 0),
   account_revision INTEGER NOT NULL CHECK (account_revision > 0),
-  credential_schema_version INTEGER NOT NULL CHECK (credential_schema_version = 1),
+  credential_schema_version INTEGER NOT NULL CHECK (credential_schema_version IN (1, 2)),
   credential_version INTEGER NOT NULL CHECK (credential_version > 0),
   credential_fingerprint TEXT NOT NULL CHECK (length(credential_fingerprint) = 64),
   credential_writer_operation_id TEXT NOT NULL CHECK (
@@ -636,6 +804,7 @@ CREATE TABLE process_generations (
   CHECK ((state = 'death_unknown') = (authority_loss_reason IS NOT NULL)),
   CHECK ((state = 'dead') = (death_evidence_id IS NOT NULL))
 ) STRICT;
+
 CREATE TABLE program_claims (
   claim_id TEXT PRIMARY KEY CHECK (length(claim_id) = 36),
   program_id TEXT NOT NULL REFERENCES programs(program_id),
@@ -646,6 +815,7 @@ CREATE TABLE program_claims (
   updated_at_micros INTEGER NOT NULL CHECK (updated_at_micros >= created_at_micros),
   UNIQUE (program_id, signal_id)
 ) STRICT;
+
 CREATE TABLE program_domain_pack_bindings (
   program_id TEXT PRIMARY KEY REFERENCES programs(program_id),
   pack_id TEXT NOT NULL CHECK (
@@ -663,6 +833,7 @@ CREATE TABLE program_domain_pack_bindings (
   ),
   bound_at_micros INTEGER NOT NULL CHECK (bound_at_micros > 0)
 ) STRICT;
+
 CREATE TABLE program_entities (
   entity_id TEXT PRIMARY KEY CHECK (length(entity_id) = 36),
   program_id TEXT NOT NULL REFERENCES programs(program_id),
@@ -671,6 +842,7 @@ CREATE TABLE program_entities (
   ),
   UNIQUE (program_id, entity_id, kind)
 ) STRICT;
+
 CREATE TABLE program_evidence (
   evidence_id TEXT PRIMARY KEY CHECK (length(evidence_id) = 36),
   program_id TEXT NOT NULL REFERENCES programs(program_id),
@@ -682,6 +854,7 @@ CREATE TABLE program_evidence (
   created_at_micros INTEGER NOT NULL CHECK (created_at_micros >= observed_at_micros),
   UNIQUE (work_item_id, kind)
 ) STRICT;
+
 CREATE TABLE program_objectives (
   objective_id TEXT PRIMARY KEY CHECK (length(objective_id) = 36),
   program_id TEXT NOT NULL REFERENCES programs(program_id),
@@ -703,6 +876,7 @@ CREATE TABLE program_objectives (
   updated_at_micros INTEGER NOT NULL CHECK (updated_at_micros >= created_at_micros),
   UNIQUE (program_id, proposal_id)
 ) STRICT;
+
 CREATE TABLE program_proposals (
   proposal_id TEXT PRIMARY KEY CHECK (length(proposal_id) = 36),
   program_id TEXT NOT NULL REFERENCES programs(program_id),
@@ -721,6 +895,7 @@ CREATE TABLE program_proposals (
   updated_at_micros INTEGER NOT NULL CHECK (updated_at_micros >= created_at_micros),
   UNIQUE (program_id, claim_id)
 ) STRICT;
+
 CREATE TABLE program_reviews (
   review_id TEXT PRIMARY KEY CHECK (length(review_id) = 36),
   program_id TEXT NOT NULL REFERENCES programs(program_id),
@@ -741,6 +916,7 @@ CREATE TABLE program_reviews (
   created_at_micros INTEGER NOT NULL CHECK (created_at_micros > 0),
   CHECK (deterministic_evidence_id <> external_evidence_id)
 ) STRICT;
+
 CREATE TABLE program_signals (
   signal_id TEXT PRIMARY KEY CHECK (length(signal_id) = 36),
   program_id TEXT NOT NULL REFERENCES programs(program_id),
@@ -749,11 +925,13 @@ CREATE TABLE program_signals (
   observed_at_micros INTEGER NOT NULL CHECK (observed_at_micros > 0),
   created_at_micros INTEGER NOT NULL CHECK (created_at_micros >= observed_at_micros)
 , predecessor_review_id TEXT REFERENCES program_reviews(review_id)) STRICT;
+
 CREATE TABLE program_work_item_executions (
   work_item_id TEXT PRIMARY KEY REFERENCES program_work_items(work_item_id),
   conversation_id TEXT NOT NULL UNIQUE REFERENCES conversations(conversation_id),
   bound_at_micros INTEGER NOT NULL CHECK (bound_at_micros > 0)
 ) STRICT;
+
 CREATE TABLE program_work_items (
   work_item_id TEXT PRIMARY KEY CHECK (length(work_item_id) = 36),
   program_id TEXT NOT NULL REFERENCES programs(program_id),
@@ -769,6 +947,7 @@ CREATE TABLE program_work_items (
   updated_at_micros INTEGER NOT NULL CHECK (updated_at_micros >= created_at_micros),
   UNIQUE (program_id, objective_id)
 ) STRICT;
+
 CREATE TABLE programs (
   program_id TEXT PRIMARY KEY CHECK (length(program_id) = 36),
   name TEXT NOT NULL CHECK (length(CAST(name AS BLOB)) BETWEEN 1 AND 256),
@@ -785,6 +964,18 @@ CREATE TABLE programs (
   created_at_micros INTEGER NOT NULL CHECK (created_at_micros > 0),
   updated_at_micros INTEGER NOT NULL CHECK (updated_at_micros >= created_at_micros)
 ) STRICT;
+
+CREATE TABLE "project_agents" (
+ agent_id TEXT PRIMARY KEY REFERENCES agent_work_items(id) ON DELETE CASCADE,
+ project_id TEXT NOT NULL REFERENCES "projects"(id)
+) STRICT;
+
+CREATE TABLE "projects" (
+ id TEXT PRIMARY KEY,
+ name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 256),
+ directory TEXT NOT NULL UNIQUE CHECK(length(directory) BETWEEN 1 AND 4096)
+, native_project_id TEXT, lead_agent_id TEXT REFERENCES agent_work_items(id)) STRICT;
+
 CREATE TABLE provider_attempt_positive_evidence (
   evidence_id TEXT PRIMARY KEY CHECK (length(evidence_id) = 36),
   attempt_id TEXT NOT NULL UNIQUE REFERENCES provider_attempts(attempt_id),
@@ -808,6 +999,7 @@ CREATE TABLE provider_attempt_positive_evidence (
   witness_sha256 TEXT NOT NULL CHECK (length(witness_sha256) = 64),
   observed_at_micros INTEGER NOT NULL CHECK (observed_at_micros > 0)
 ) STRICT;
+
 CREATE TABLE provider_attempts (
   attempt_id TEXT PRIMARY KEY CHECK (length(attempt_id) = 36),
   conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
@@ -851,6 +1043,7 @@ CREATE TABLE provider_attempts (
     (terminal_evidence_id IS NOT NULL)
   )
 ) STRICT;
+
 CREATE TABLE "quick_task_requests" (
   conversation_id TEXT PRIMARY KEY REFERENCES conversations(conversation_id),
   operation_key TEXT NOT NULL UNIQUE CHECK (length(CAST(operation_key AS BLOB)) BETWEEN 1 AND 256),
@@ -867,13 +1060,20 @@ CREATE TABLE "quick_task_requests" (
     length(CAST(service_tier AS BLOB)) BETWEEN 1 AND 64
     AND service_tier NOT GLOB '*[^a-zA-Z0-9_.-]*'
   ))
-) STRICT;
-CREATE TABLE reset_card_operations (
+, model_source_account_id TEXT, model_source_account_revision INTEGER
+CHECK (
+  (model_source_account_id IS NULL AND model_source_account_revision IS NULL)
+  OR (model_source_account_id IS NOT NULL AND model_source_account_revision IS NOT NULL
+      AND model_source_account_revision > 0)
+), model_source_review_required INTEGER NOT NULL DEFAULT 0
+CHECK (model_source_review_required IN (0, 1))) STRICT;
+
+CREATE TABLE "reset_card_operations" (
     idempotency_key TEXT PRIMARY KEY NOT NULL,
     account_id TEXT NOT NULL,
     account_revision INTEGER NOT NULL CHECK (account_revision > 0),
     granted_at INTEGER NOT NULL CHECK (granted_at >= 0),
-    expires_at INTEGER NOT NULL CHECK (expires_at > granted_at),
+    expires_at INTEGER CHECK (expires_at > granted_at),
     exact_credit_id TEXT,
     state TEXT NOT NULL CHECK (state IN ('prepared', 'sending', 'completed', 'failed')),
     outcome TEXT CHECK (outcome IN ('reset', 'nothing_to_reset', 'no_credit', 'already_redeemed')),
@@ -884,6 +1084,7 @@ CREATE TABLE reset_card_operations (
         OR (state = 'completed' AND exact_credit_id IS NULL AND outcome IS NOT NULL AND failure IS NULL)
         OR (state = 'failed' AND exact_credit_id IS NULL AND outcome IS NULL AND failure IS NOT NULL))
 ) STRICT;
+
 CREATE TABLE role_profiles (
   role TEXT PRIMARY KEY CHECK (role = 'task'),
   revision INTEGER NOT NULL CHECK (revision > 0),
@@ -899,7 +1100,7 @@ CREATE TABLE role_profiles (
   ),
   updated_at_micros INTEGER NOT NULL CHECK (updated_at_micros > 0)
 ) STRICT;
-INSERT INTO "role_profiles" VALUES('task',2,'gpt-5.4','high','default','Follow the user request for this task.',2);
+
 CREATE TABLE routing_decisions (
   routing_decision_id TEXT PRIMARY KEY CHECK (length(routing_decision_id) = 36),
   operation_id TEXT NOT NULL UNIQUE CHECK (length(operation_id) = 36),
@@ -944,6 +1145,7 @@ CREATE TABLE routing_decisions (
       snapshot_id IS NULL AND snapshot_json IS NULL AND decision_kind = 'selected')
   )
 ) STRICT;
+
 CREATE TABLE runtime_command_receipts (
   idempotency_key TEXT PRIMARY KEY CHECK (
     length(CAST(idempotency_key AS BLOB)) BETWEEN 1 AND 256
@@ -954,6 +1156,7 @@ CREATE TABLE runtime_command_receipts (
   response_json TEXT NOT NULL,
   completed_at_micros INTEGER NOT NULL CHECK (completed_at_micros > 0)
 ) STRICT;
+
 CREATE TABLE runtime_sessions (
   runtime_session_id TEXT PRIMARY KEY CHECK (length(runtime_session_id) = 36),
   conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
@@ -1025,16 +1228,7 @@ CREATE TABLE runtime_sessions (
       thread_start_execution_epoch_id IS NOT NULL)
   )
 ) STRICT;
-CREATE TABLE schema_migrations (
-  version INTEGER PRIMARY KEY CHECK (version > 0),
-  name TEXT NOT NULL UNIQUE CHECK (length(CAST(name AS BLOB)) BETWEEN 1 AND 128),
-  sha256 TEXT NOT NULL CHECK (
-    length(sha256) = 64 AND
-    sha256 = lower(sha256) AND
-    sha256 NOT GLOB '*[^0-9a-f]*'
-  ),
-  applied_at_micros INTEGER NOT NULL CHECK (applied_at_micros > 0)
-) STRICT;
+
 CREATE TABLE turns (
   turn_id TEXT PRIMARY KEY CHECK (length(turn_id) = 36),
   conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
@@ -1051,152 +1245,178 @@ CREATE TABLE turns (
   completed_at_micros INTEGER CHECK (completed_at_micros >= created_at_micros),
   UNIQUE (conversation_id, sequence)
 ) STRICT;
+
+CREATE TABLE work_commands (
+ id TEXT PRIMARY KEY,
+ agent_id TEXT NOT NULL REFERENCES agents(id),
+ command_json TEXT NOT NULL CHECK(json_valid(command_json))
+) STRICT;
+
+CREATE TABLE work_materials (
+ id TEXT NOT NULL,
+ work_id TEXT NOT NULL REFERENCES works(id),
+ record_json TEXT NOT NULL CHECK(json_valid(record_json)),
+ PRIMARY KEY(work_id,id)
+) STRICT;
+
+CREATE TABLE work_requirements (
+ work_id TEXT NOT NULL REFERENCES works(id),
+ id TEXT NOT NULL,
+ goal TEXT NOT NULL,
+ criteria TEXT NOT NULL,
+ source TEXT NOT NULL,
+ PRIMARY KEY(work_id,id)
+) STRICT;
+
+CREATE TABLE work_result_reuse (
+ work_id TEXT NOT NULL,
+ requirements_id TEXT NOT NULL,
+ result_id TEXT NOT NULL REFERENCES work_results(id),
+ assessment TEXT NOT NULL,
+ PRIMARY KEY(work_id,requirements_id,result_id),
+ FOREIGN KEY(work_id,requirements_id) REFERENCES work_requirements(work_id,id)
+) STRICT;
+
+CREATE TABLE work_results (
+ id TEXT PRIMARY KEY,
+ work_id TEXT NOT NULL,
+ requirements_id TEXT NOT NULL,
+ instruction_id TEXT REFERENCES collaboration_instructions(id),
+ agent_id TEXT NOT NULL REFERENCES agents(id),
+ record_json TEXT NOT NULL CHECK(json_valid(record_json)),
+ FOREIGN KEY(work_id,requirements_id) REFERENCES work_requirements(work_id,id)
+) STRICT;
+
+CREATE TABLE works (
+ id TEXT PRIMARY KEY CHECK(length(id) BETWEEN 1 AND 512),
+ project_id TEXT REFERENCES projects(id),
+ owner_agent_id TEXT NOT NULL REFERENCES agents(id),
+ title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 120),
+ requirements_id TEXT NOT NULL,
+ state TEXT NOT NULL CHECK(state IN('open','blocked','completed','cancelled')),
+ reason TEXT,
+ resume_condition TEXT,
+ user_hold INTEGER NOT NULL DEFAULT 0 CHECK(user_hold IN(0,1)),
+ assessment_json TEXT CHECK(assessment_json IS NULL OR json_valid(assessment_json)),
+ CHECK(state<>'blocked' OR (length(reason)>0 AND length(resume_condition)>0)),
+ CHECK(state<>'completed' OR assessment_json IS NOT NULL),
+ FOREIGN KEY(id,requirements_id) REFERENCES work_requirements(work_id,id) DEFERRABLE INITIALLY DEFERRED
+) STRICT;
+
+CREATE INDEX account_quota_by_account ON account_quota_facts(account_id, duration_minutes);
+
+CREATE INDEX account_registry_order ON account_routing_order(position, account_id);
+
+CREATE INDEX agent_capacity_due ON agent_capacity_retries(due_at_micros)
+WHERE state = 'pending';
+
+CREATE UNIQUE INDEX agent_capacity_pending_work ON agent_capacity_retries(work_item_id)
+WHERE state = 'pending';
+
+CREATE UNIQUE INDEX agent_guardian_one_submission
+ON agent_guardian_approvals(review_row_id) WHERE state IN ('pending','submitted');
+
+CREATE INDEX agent_inbox_pending ON agent_inbox_events(id) WHERE disposition IS NULL;
+
+CREATE INDEX agent_inbox_work_history ON agent_inbox_events(work_item_id, id);
+
+CREATE INDEX agent_inbox_work_kind ON agent_inbox_events(work_item_id, event_kind, id);
+
+CREATE INDEX agent_process_generation ON agent_process_bindings(generation_id);
+
+CREATE INDEX agent_process_root ON agent_process_bindings(root_id,created_at_micros);
+
+CREATE UNIQUE INDEX agent_voice_one_open_call ON agent_voice_calls((1)) WHERE closed_at_micros IS NULL;
+
+CREATE INDEX agent_voice_thread_generation ON agent_voice_calls(thread_id,generation_id);
+
+CREATE INDEX agent_work_due ON agent_work_items(next_check_at_micros)
+WHERE next_check_at_micros IS NOT NULL;
+
+CREATE INDEX collaboration_recipient ON collaboration_requests(recipient_agent_id,state);
+
+CREATE INDEX context_pack_by_conversation
+  ON context_packs(conversation_id, created_at_micros, context_pack_id);
+
+CREATE INDEX conversation_recent ON conversations(updated_at_micros DESC, conversation_id);
+
+CREATE INDEX history_by_conversation ON history_items(conversation_id, sequence);
+
+CREATE UNIQUE INDEX one_account_operation_supersession
+  ON account_operations(superseded_by_operation_id)
+  WHERE superseded_by_operation_id IS NOT NULL;
+
+CREATE UNIQUE INDEX one_active_account_reauthentication_takeover
+  ON account_operations(recovery_operation_id)
+  WHERE recovery_operation_id IS NOT NULL
+    AND phase NOT IN ('committed', 'cancelled');
+
+CREATE UNIQUE INDEX one_assistant ON agents(assistant) WHERE assistant=1;
+
 CREATE UNIQUE INDEX one_initial_routing_decision_per_conversation
   ON routing_decisions(conversation_id)
   WHERE authority_shape = 'conversation_account_registry';
+
 CREATE UNIQUE INDEX one_live_runtime_session_per_conversation
   ON runtime_sessions(conversation_id)
   WHERE state IN ('starting', 'active');
-CREATE UNIQUE INDEX one_quarantining_process_generation_per_account
-  ON process_generations(account_id)
-  WHERE state <> 'dead';
+
 CREATE UNIQUE INDEX one_nonterminal_provider_attempt_per_turn
   ON provider_attempts(turn_id)
   WHERE state IN ('prepared', 'dispatch_authorized', 'unknown');
-CREATE INDEX account_registry_order ON account_routing_order(position, account_id);
-CREATE INDEX conversation_recent ON conversations(updated_at_micros DESC, conversation_id);
-CREATE INDEX history_by_conversation ON history_items(conversation_id, sequence);
-CREATE INDEX process_generation_by_session ON process_generations(runtime_session_id);
-CREATE INDEX provider_attempt_by_session ON provider_attempts(runtime_session_id, created_at_micros);
-CREATE INDEX context_pack_by_conversation
-  ON context_packs(conversation_id, created_at_micros, context_pack_id);
-CREATE INDEX programs_recent ON programs(updated_at_micros DESC, program_id);
-CREATE INDEX program_entities_by_program ON program_entities(program_id, kind, entity_id);
-CREATE INDEX program_signals_by_program ON program_signals(program_id, created_at_micros, signal_id);
-CREATE INDEX program_claims_by_program ON program_claims(program_id, created_at_micros, claim_id);
-CREATE INDEX program_proposals_by_program ON program_proposals(program_id, created_at_micros, proposal_id);
-CREATE INDEX program_objectives_by_program ON program_objectives(program_id, created_at_micros, objective_id);
-CREATE INDEX program_work_items_by_program ON program_work_items(program_id, created_at_micros, work_item_id);
-CREATE INDEX program_evidence_by_program ON program_evidence(program_id, created_at_micros, evidence_id);
-CREATE INDEX program_reviews_by_program ON program_reviews(program_id, created_at_micros, review_id);
-CREATE UNIQUE INDEX program_signals_one_root_per_program
-ON program_signals(program_id)
-WHERE predecessor_review_id IS NULL;
-CREATE UNIQUE INDEX program_signals_one_continuation_per_review
-ON program_signals(predecessor_review_id)
-WHERE predecessor_review_id IS NOT NULL;
-CREATE TRIGGER program_signal_predecessor_same_program_insert
-BEFORE INSERT ON program_signals
-WHEN NEW.predecessor_review_id IS NOT NULL
-  AND NOT EXISTS (
-    SELECT 1
-    FROM program_reviews
-    WHERE review_id = NEW.predecessor_review_id
-      AND program_id = NEW.program_id
-  )
-BEGIN
-  SELECT RAISE(ABORT, 'program Signal predecessor must be a Review in the same Program');
-END;
-CREATE TRIGGER program_signal_predecessor_same_program_update
-BEFORE UPDATE OF program_id, predecessor_review_id ON program_signals
-WHEN NEW.predecessor_review_id IS NOT NULL
-  AND NOT EXISTS (
-    SELECT 1
-    FROM program_reviews
-    WHERE review_id = NEW.predecessor_review_id
-      AND program_id = NEW.program_id
-  )
-BEGIN
-  SELECT RAISE(ABORT, 'program Signal predecessor must be a Review in the same Program');
-END;
-CREATE TRIGGER program_domain_pack_binding_is_immutable_update
-BEFORE UPDATE ON program_domain_pack_bindings
-BEGIN
-  SELECT RAISE(ABORT, 'Program Domain Pack binding is immutable');
-END;
-CREATE TRIGGER program_domain_pack_binding_is_immutable_delete
-BEFORE DELETE ON program_domain_pack_bindings
-BEGIN
-  SELECT RAISE(ABORT, 'Program Domain Pack binding is immutable');
-END;
+
+CREATE UNIQUE INDEX one_quarantining_process_generation_per_account
+  ON process_generations(account_id) WHERE state <> 'dead';
+
 CREATE UNIQUE INDEX one_unsettled_account_operation
   ON account_operations(account_id)
   WHERE phase NOT IN ('committed', 'cancelled')
     AND recovery_operation_id IS NULL
     AND superseded_by_operation_id IS NULL;
-CREATE UNIQUE INDEX one_active_account_reauthentication_takeover
-  ON account_operations(recovery_operation_id)
-  WHERE recovery_operation_id IS NOT NULL
-    AND phase NOT IN ('committed', 'cancelled');
-CREATE UNIQUE INDEX one_account_operation_supersession
-  ON account_operations(superseded_by_operation_id)
-  WHERE superseded_by_operation_id IS NOT NULL;
-CREATE INDEX account_quota_by_account ON account_quota_facts(account_id, duration_minutes);
+
+CREATE INDEX process_generation_by_session ON process_generations(runtime_session_id);
+
+CREATE INDEX program_claims_by_program ON program_claims(program_id, created_at_micros, claim_id);
+
+CREATE INDEX program_entities_by_program ON program_entities(program_id, kind, entity_id);
+
+CREATE INDEX program_evidence_by_program ON program_evidence(program_id, created_at_micros, evidence_id);
+
+CREATE INDEX program_objectives_by_program ON program_objectives(program_id, created_at_micros, objective_id);
+
+CREATE INDEX program_proposals_by_program ON program_proposals(program_id, created_at_micros, proposal_id);
+
+CREATE INDEX program_reviews_by_program ON program_reviews(program_id, created_at_micros, review_id);
+
+CREATE INDEX program_signals_by_program ON program_signals(program_id, created_at_micros, signal_id);
+
+CREATE UNIQUE INDEX program_signals_one_continuation_per_review
+ON program_signals(predecessor_review_id)
+WHERE predecessor_review_id IS NOT NULL;
+
+CREATE UNIQUE INDEX program_signals_one_root_per_program
+ON program_signals(program_id)
+WHERE predecessor_review_id IS NULL;
+
+CREATE INDEX program_work_items_by_program ON program_work_items(program_id, created_at_micros, work_item_id);
+
+CREATE INDEX programs_recent ON programs(updated_at_micros DESC, program_id);
+
+CREATE UNIQUE INDEX project_native_identity ON projects(native_project_id) WHERE native_project_id IS NOT NULL;
+
+CREATE INDEX provider_attempt_by_session ON provider_attempts(runtime_session_id, created_at_micros);
+
 CREATE UNIQUE INDEX reset_card_active_account ON reset_card_operations(account_id)
-    WHERE state IN ('prepared', 'sending');
-CREATE INDEX agent_work_due ON agent_work_items(next_check_at_micros)
-WHERE next_check_at_micros IS NOT NULL;
-CREATE TRIGGER agent_parent_goal BEFORE INSERT ON agent_work_items
-WHEN NEW.parent_goal_id IS NOT NULL
-BEGIN
-	SELECT RAISE(ABORT, 'parent must be a goal')
-	WHERE NOT EXISTS (SELECT 1 FROM agent_work_items WHERE id = NEW.parent_goal_id AND kind = 'goal');
-END;
-CREATE TRIGGER agent_work_identity_immutable
-BEFORE UPDATE OF id, parent_goal_id, kind ON agent_work_items
-BEGIN
-	SELECT RAISE(ABORT, 'work identity is immutable');
-END;
-CREATE TRIGGER agent_dependency_acyclic BEFORE INSERT ON agent_dependencies
-BEGIN
-	SELECT RAISE(ABORT, 'dependency cycle') WHERE EXISTS (
-		WITH RECURSIVE ancestors(id) AS (
-			SELECT NEW.depends_on_id
-			UNION
-			SELECT depends_on_id FROM agent_dependencies JOIN ancestors ON work_item_id = ancestors.id
-		)
-		SELECT 1 FROM ancestors WHERE id = NEW.work_item_id
-	);
-END;
-CREATE TRIGGER agent_dependency_immutable BEFORE UPDATE ON agent_dependencies
-BEGIN
-	SELECT RAISE(ABORT, 'dependency is immutable');
-END;
-CREATE INDEX agent_inbox_pending ON agent_inbox_events(id) WHERE disposition IS NULL;
-CREATE TRIGGER agent_inbox_source_immutable
-BEFORE UPDATE OF source_event_id, work_item_id, event_kind, payload, created_at_micros ON agent_inbox_events
-BEGIN
-	SELECT RAISE(ABORT, 'event source is immutable');
-END;
-CREATE TRIGGER agent_inbox_disposition_once BEFORE UPDATE ON agent_inbox_events
-WHEN OLD.disposition IS NOT NULL
-BEGIN
-	SELECT RAISE(ABORT, 'event already disposed');
-END;
-CREATE INDEX agent_process_root ON agent_process_bindings(root_id, created_at_micros);
-CREATE TRIGGER agent_root_settings_authority BEFORE INSERT ON agent_root_settings
-BEGIN
-	SELECT RAISE(ABORT, 'Agent settings require a root goal') WHERE NOT EXISTS (
-		SELECT 1 FROM agent_work_items WHERE id = NEW.root_id AND kind = 'goal' AND parent_goal_id IS NULL
-	);
-END;
-CREATE TRIGGER agent_root_settings_immutable BEFORE UPDATE ON agent_root_settings
-BEGIN
-	SELECT RAISE(ABORT, 'Agent root settings are immutable');
-END;
-CREATE TRIGGER agent_process_binding_immutable BEFORE UPDATE ON agent_process_bindings
-BEGIN
-	SELECT RAISE(ABORT, 'Agent process admission is immutable');
-END;
-CREATE INDEX agent_inbox_work_history ON agent_inbox_events(work_item_id, id);
-CREATE INDEX agent_inbox_work_kind ON agent_inbox_events(work_item_id, event_kind, id);
-CREATE UNIQUE INDEX agent_capacity_pending_work ON agent_capacity_retries(work_item_id)
-WHERE state = 'pending';
-CREATE TRIGGER agent_capacity_identity_immutable
-BEFORE UPDATE OF event_id, work_item_id, failed_turn_id, attempt, due_at_micros ON agent_capacity_retries
-BEGIN
-    SELECT RAISE(ABORT, 'capacity retry identity is immutable');
-END;
+WHERE state IN ('prepared', 'sending');
+
+CREATE INDEX result_work ON work_results(work_id);
+
+CREATE INDEX work_owner ON works(owner_agent_id,state);
+
+CREATE INDEX work_project ON works(project_id,state);
+
+CREATE INDEX work_workspace_scope ON "project_agents"(project_id);
+
 CREATE TRIGGER agent_capacity_disposition_cancel
 AFTER UPDATE OF disposition ON agent_inbox_events
 WHEN NEW.disposition IS NOT NULL
@@ -1204,51 +1424,13 @@ BEGIN
     UPDATE agent_capacity_retries SET state = 'cancelled'
     WHERE event_id = NEW.id AND state = 'pending';
 END;
-CREATE TRIGGER agent_capacity_work_judgment_cancel
-AFTER UPDATE OF status ON agent_work_items
-WHEN NEW.status != 'open'
+
+CREATE TRIGGER agent_capacity_identity_immutable
+BEFORE UPDATE OF event_id, work_item_id, failed_turn_id, attempt, due_at_micros ON agent_capacity_retries
 BEGIN
-    UPDATE agent_inbox_events SET disposition = 'resolved',
-        disposition_note = 'Capacity retry cancelled because the work decision changed.',
-        disposed_at_micros = max(created_at_micros, NEW.updated_at_micros)
-    WHERE disposition IS NULL AND id IN (
-        SELECT event_id FROM agent_capacity_retries
-        WHERE work_item_id = NEW.id AND state = 'pending'
-    );
+    SELECT RAISE(ABORT, 'capacity retry identity is immutable');
 END;
-CREATE INDEX agent_capacity_due ON agent_capacity_retries(due_at_micros)
-WHERE state = 'pending';
-CREATE TRIGGER agent_manager_goal BEFORE INSERT ON agent_managers BEGIN
- SELECT RAISE(ABORT,'manager must be a goal') WHERE NOT EXISTS(SELECT 1 FROM agent_work_items WHERE id=NEW.work_id AND kind='goal');
-END;
-CREATE TRIGGER agent_process_binding_authority BEFORE INSERT ON agent_process_bindings
-BEGIN
-	SELECT RAISE(ABORT, 'Agent root must be a root goal') WHERE NOT EXISTS (
-		SELECT 1 FROM agent_work_items WHERE id = NEW.root_id AND kind = 'goal' AND parent_goal_id IS NULL
-	);
-	SELECT RAISE(ABORT, 'Previous Agent process must be dead before account rotation') WHERE EXISTS (
-        SELECT 1 FROM agent_process_bindings b JOIN process_generations g ON g.generation_id = b.generation_id
-        WHERE b.root_id = NEW.root_id AND b.account_id <> NEW.account_id AND g.state <> 'dead'
-    );
-    SELECT RAISE(ABORT, 'Agent work must be idle before account rotation') WHERE
-        coalesce((SELECT account_id <> NEW.account_id FROM agent_process_bindings
-            WHERE root_id = NEW.root_id ORDER BY created_at_micros DESC, rowid DESC LIMIT 1), 0)
-        AND EXISTS (
-            WITH RECURSIVE family(id) AS (
-                SELECT NEW.root_id
-                UNION SELECT w.id FROM agent_work_items w JOIN family f ON w.parent_goal_id = f.id
-            )
-            SELECT 1 FROM agent_work_items WHERE id IN (SELECT id FROM family) AND dispatch_state <> 'idle'
-        );
-	SELECT RAISE(ABORT, 'Agent generation ownership differs') WHERE NOT EXISTS (
-		SELECT 1 FROM process_generations WHERE generation_id = NEW.generation_id
-			AND account_id = NEW.account_id AND runtime_session_id IS NULL AND quick_task_admission_key IS NULL
-	);
-END;
-CREATE UNIQUE INDEX agent_voice_one_open_call ON agent_voice_calls((1)) WHERE closed_at_micros IS NULL;
-CREATE INDEX agent_voice_thread_generation ON agent_voice_calls(thread_id,generation_id);
-CREATE UNIQUE INDEX agent_guardian_one_submission
-ON agent_guardian_approvals(review_row_id) WHERE state IN ('pending','submitted');
+
 CREATE TRIGGER agent_capacity_transition
 BEFORE UPDATE ON agent_capacity_retries
 WHEN NOT (
@@ -1269,20 +1451,166 @@ WHEN NOT (
 BEGIN
     SELECT RAISE(ABORT, 'capacity retry cannot be replayed');
 END;
-CREATE TRIGGER agent_request_payload_immutable
-BEFORE UPDATE ON agent_request_payloads
+
+CREATE TRIGGER agent_capacity_work_judgment_cancel
+AFTER UPDATE OF status ON agent_work_items
+WHEN NEW.status != 'open'
 BEGIN
-    SELECT RAISE(ABORT, 'request source is immutable');
+    UPDATE agent_inbox_events SET disposition = 'resolved',
+        disposition_note = 'Capacity retry cancelled because the work decision changed.',
+        disposed_at_micros = max(created_at_micros, NEW.updated_at_micros)
+    WHERE disposition IS NULL AND id IN (
+        SELECT event_id FROM agent_capacity_retries
+        WHERE work_item_id = NEW.id AND state = 'pending'
+    );
 END;
-CREATE TRIGGER agent_prompt_input_immutable
-BEFORE UPDATE ON agent_prompt_inputs
+
+CREATE TRIGGER agent_dependency_acyclic BEFORE INSERT ON agent_dependencies
 BEGIN
-    SELECT RAISE(ABORT, 'prompt input is immutable');
+	SELECT RAISE(ABORT, 'dependency cycle') WHERE EXISTS (
+		WITH RECURSIVE ancestors(id) AS (
+			SELECT NEW.depends_on_id
+			UNION
+			SELECT depends_on_id FROM agent_dependencies JOIN ancestors ON work_item_id = ancestors.id
+		)
+		SELECT 1 FROM ancestors WHERE id = NEW.work_item_id
+	);
 END;
+
+CREATE TRIGGER agent_dependency_immutable BEFORE UPDATE ON agent_dependencies
+BEGIN
+	SELECT RAISE(ABORT, 'dependency is immutable');
+END;
+
+CREATE TRIGGER agent_inbox_disposition_once BEFORE UPDATE ON agent_inbox_events
+WHEN OLD.disposition IS NOT NULL
+BEGIN
+	SELECT RAISE(ABORT, 'event already disposed');
+END;
+
+CREATE TRIGGER agent_inbox_source_immutable
+BEFORE UPDATE OF source_event_id, work_item_id, event_kind, payload, created_at_micros ON agent_inbox_events
+BEGIN
+	SELECT RAISE(ABORT, 'event source is immutable');
+END;
+
+CREATE TRIGGER agent_manager_goal BEFORE INSERT ON agent_managers BEGIN
+ SELECT RAISE(ABORT,'manager must be a goal') WHERE NOT EXISTS(SELECT 1 FROM agent_work_items WHERE id=NEW.work_id AND kind='goal');
+END;
+
+CREATE TRIGGER agent_parent_goal BEFORE INSERT ON agent_work_items
+WHEN NEW.parent_goal_id IS NOT NULL
+BEGIN
+	SELECT RAISE(ABORT, 'parent must be a goal')
+	WHERE NOT EXISTS (SELECT 1 FROM agent_work_items WHERE id = NEW.parent_goal_id AND kind = 'goal');
+END;
+
+CREATE TRIGGER agent_process_binding_authority BEFORE INSERT ON agent_process_bindings
+BEGIN
+ SELECT RAISE(ABORT,'Agent root must be a root goal') WHERE NOT EXISTS(
+  SELECT 1 FROM agent_work_items WHERE id=NEW.root_id AND kind='goal' AND parent_goal_id IS NULL
+ );
+ SELECT RAISE(ABORT,'Previous Agent process must be dead before account rotation') WHERE EXISTS(
+  SELECT 1 FROM agent_process_bindings b JOIN process_generations g ON g.generation_id=b.generation_id
+  WHERE b.root_id=NEW.root_id AND b.account_id<>NEW.account_id AND g.state<>'dead'
+ );
+ SELECT RAISE(ABORT,'Agent work must be idle before account rotation') WHERE
+  coalesce((SELECT account_id<>NEW.account_id FROM agent_process_bindings WHERE root_id=NEW.root_id ORDER BY created_at_micros DESC,rowid DESC LIMIT 1),0)
+  AND EXISTS(
+   WITH RECURSIVE family(id) AS (
+    SELECT NEW.root_id UNION SELECT w.id FROM agent_work_items w JOIN family f ON w.parent_goal_id=f.id
+   )
+   SELECT 1 FROM agent_work_items WHERE id IN(SELECT id FROM family) AND dispatch_state<>'idle'
+  );
+ SELECT RAISE(ABORT,'Agent generation ownership differs') WHERE NOT EXISTS(
+  SELECT 1 FROM process_generations WHERE generation_id=NEW.generation_id
+   AND account_id=NEW.account_id AND runtime_session_id IS NULL AND quick_task_admission_key IS NULL
+ );
+END;
+
+CREATE TRIGGER agent_process_binding_immutable BEFORE UPDATE ON agent_process_bindings
+BEGIN
+ SELECT RAISE(ABORT,'Agent process admission is immutable');
+END;
+
 CREATE TRIGGER agent_prompt_chunk_immutable
 BEFORE UPDATE ON agent_prompt_input_chunks
 BEGIN
     SELECT RAISE(ABORT, 'prompt input chunk is immutable');
 END;
-DELETE FROM "sqlite_sequence";
-INSERT INTO "sqlite_sequence" VALUES('agent_live_output',0);
+
+CREATE TRIGGER agent_prompt_input_immutable
+BEFORE UPDATE ON agent_prompt_inputs
+BEGIN
+    SELECT RAISE(ABORT, 'prompt input is immutable');
+END;
+
+CREATE TRIGGER agent_request_payload_immutable
+BEFORE UPDATE ON agent_request_payloads
+BEGIN
+    SELECT RAISE(ABORT, 'request source is immutable');
+END;
+
+CREATE TRIGGER agent_root_settings_authority BEFORE INSERT ON agent_root_settings
+BEGIN
+	SELECT RAISE(ABORT, 'Agent settings require a root goal') WHERE NOT EXISTS (
+		SELECT 1 FROM agent_work_items WHERE id = NEW.root_id AND kind = 'goal' AND parent_goal_id IS NULL
+	);
+END;
+
+CREATE TRIGGER agent_root_settings_immutable BEFORE UPDATE ON agent_root_settings
+BEGIN
+	SELECT RAISE(ABORT, 'Agent root settings are immutable');
+END;
+
+CREATE TRIGGER agent_work_identity_immutable
+BEFORE UPDATE OF id, parent_goal_id, kind ON agent_work_items
+BEGIN
+	SELECT RAISE(ABORT, 'work identity is immutable');
+END;
+
+CREATE TRIGGER program_domain_pack_binding_is_immutable_delete
+BEFORE DELETE ON program_domain_pack_bindings
+BEGIN
+  SELECT RAISE(ABORT, 'Program Domain Pack binding is immutable');
+END;
+
+CREATE TRIGGER program_domain_pack_binding_is_immutable_update
+BEFORE UPDATE ON program_domain_pack_bindings
+BEGIN
+  SELECT RAISE(ABORT, 'Program Domain Pack binding is immutable');
+END;
+
+CREATE TRIGGER program_signal_predecessor_same_program_insert
+BEFORE INSERT ON program_signals
+WHEN NEW.predecessor_review_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM program_reviews
+    WHERE review_id = NEW.predecessor_review_id
+      AND program_id = NEW.program_id
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'program Signal predecessor must be a Review in the same Program');
+END;
+
+CREATE TRIGGER program_signal_predecessor_same_program_update
+BEFORE UPDATE OF program_id, predecessor_review_id ON program_signals
+WHEN NEW.predecessor_review_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1
+    FROM program_reviews
+    WHERE review_id = NEW.predecessor_review_id
+      AND program_id = NEW.program_id
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'program Signal predecessor must be a Review in the same Program');
+END;
+
+INSERT INTO "account_routing_control" ("singleton", "mode", "fixed_account_id", "revision", "updated_at_micros") VALUES (1, 'balanced', NULL, 1, 1);
+
+INSERT INTO "desktop_settings" ("singleton", "show_in_menu_bar", "revision", "auto_activate_quota", "auto_recap") VALUES (1, 1, 1, 1, 0);
+
+INSERT INTO "guardian_settings" ("singleton", "reviewer", "review_details", "revision") VALUES (1, 'user', 0, 1);
+
+INSERT INTO "role_profiles" ("role", "revision", "model", "reasoning_effort", "service_tier", "instructions", "updated_at_micros") VALUES ('task', 2, 'gpt-5.4', 'high', 'default', 'Follow the user request for this task.', 2);

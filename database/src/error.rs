@@ -3,7 +3,7 @@
 pub enum DatabaseError {
 	/// The database could not be opened or one bounded operation failed.
 	Unavailable,
-	/// The database schema, migration ledger, or SQLite configuration is incompatible.
+	/// The database schema or SQLite configuration is incompatible.
 	Incompatible,
 	/// The fixed database path failed the owner-private path policy.
 	UnsafePath,

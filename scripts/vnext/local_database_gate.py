@@ -16,24 +16,11 @@ import tomllib
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MIGRATIONS = (
-    (48, "agent_baseline", ROOT / "database/migrations/0048_agent_baseline.sql"),
-    (49, "native_settings_and_model_source", ROOT / "database/migrations/0049_native_settings_and_model_source.sql"),
-    (50, "unique_account_names", ROOT / "database/migrations/0050_unique_account_names.sql"),
-    (51, "nullable_reset_credit_expiry", ROOT / "database/migrations/0051_nullable_reset_credit_expiry.sql"),
-    (52, "personal_access_token_credentials", ROOT / "database/migrations/0052_personal_access_token_credentials.sql"),
-    (53, "independent_workspaces", ROOT / "database/migrations/0053_independent_workspaces.sql"),
-    (54, "agent_delegations", ROOT / "database/migrations/0054_agent_delegations.sql"),
-    (55, "agent_slots", ROOT / "database/migrations/0055_agent_slots.sql"),
-    (56, "project_agent_work", ROOT / "database/migrations/0056_project_agent_work.sql"),
-    (57, "native_work_delivery", ROOT / "database/migrations/0057_native_work_delivery.sql"),
-    (58, "shared_agent_process", ROOT / "database/migrations/0058_shared_agent_process.sql"),
-    (59, "native_assignment_proof", ROOT / "database/migrations/0059_native_assignment_proof.sql"),
-)
+SCHEMA_PATH = ROOT / "database/schema.sql"
+SCHEMA_VERSION = 60
 
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
-MIGRATION_DIGEST_DOMAIN = b"decodex-sqlite-migration-v1\0"
 COMMAND_TIMEOUT_SECONDS = 10 * 60
 OUTPUT_LIMIT_BYTES = 64 * 1024
 REQUIRED_TABLES = frozenset(
@@ -43,7 +30,6 @@ REQUIRED_TABLES = frozenset(
         "agent_prompt_input_chunks",
         "agent_prompt_inputs",
         "agent_request_payloads",
-        "schema_migrations",
         "reset_card_operations",
         "account_identities",
         "account_operations",
@@ -136,14 +122,6 @@ class GateFailure(RuntimeError):
     """One bounded, secret-negative local database gate failure."""
 
 
-def migration_digest(source: bytes) -> str:
-    """Return the digest format stored by the Rust migration owner."""
-    digest = hashlib.sha256()
-    digest.update(MIGRATION_DIGEST_DOMAIN)
-    digest.update(source)
-    return digest.hexdigest()
-
-
 def read_toml(path: Path) -> dict[str, object]:
     with path.open("rb") as source:
         return tomllib.load(source)
@@ -205,10 +183,6 @@ def inspect_database(path: Path) -> dict[str, object]:
     """Read only credential-negative schema and integrity facts."""
     if not path.is_file() or stat.S_IMODE(path.stat().st_mode) != 0o600:
         raise GateFailure("SQLite database is missing or not owner-private")
-    expected_migrations = [
-        (version, name, migration_digest(path.read_bytes()))
-        for version, name, path in MIGRATIONS
-    ]
     try:
         connection = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
         application_id = connection.execute("PRAGMA application_id").fetchone()[0]
@@ -216,9 +190,6 @@ def inspect_database(path: Path) -> dict[str, object]:
         journal_mode = connection.execute("PRAGMA journal_mode").fetchone()[0]
         quick_check = connection.execute("PRAGMA quick_check(1)").fetchone()[0]
         foreign_key_violations = connection.execute("PRAGMA foreign_key_check").fetchall()
-        migrations = connection.execute(
-            "SELECT version, name, sha256 FROM schema_migrations ORDER BY version"
-        ).fetchall()
         task_profile = connection.execute(
             "SELECT revision, instructions FROM role_profiles WHERE role = 'task'"
         ).fetchone()
@@ -249,12 +220,10 @@ def inspect_database(path: Path) -> dict[str, object]:
         if "connection" in locals():
             connection.close()
 
-    if application_id != APPLICATION_ID or user_version != MIGRATIONS[-1][0]:
+    if application_id != APPLICATION_ID or user_version != SCHEMA_VERSION:
         raise GateFailure("SQLite application or schema version differs")
     if str(journal_mode).lower() != "wal" or quick_check != "ok" or foreign_key_violations:
         raise GateFailure("SQLite integrity or journal configuration differs")
-    if migrations != expected_migrations:
-        raise GateFailure("SQLite migration ledger differs")
     if task_profile is None or task_profile[0] != 2 or not task_profile[1]:
         raise GateFailure("Task RoleProfile does not satisfy the executable contract")
     for column in ("model", "reasoning_effort", "fast"):
@@ -270,7 +239,7 @@ def inspect_database(path: Path) -> dict[str, object]:
     return {
         "application_id": application_id,
         "journal_mode": str(journal_mode).lower(),
-        "migration_sha256": [migration[2] for migration in expected_migrations],
+        "schema_sha256": hashlib.sha256(SCHEMA_PATH.read_bytes()).hexdigest(),
         "schema_version": user_version,
         "table_count": len(tables),
         "conversation_execution_columns": sorted(
