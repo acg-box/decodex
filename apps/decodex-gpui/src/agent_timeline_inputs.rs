@@ -134,12 +134,12 @@ impl AgentSurface {
 
 	fn local_message_target_matches(&self, message: &DesktopMessage) -> bool {
 		let owner = self.conversation_work();
-		let local_owner = owner.as_ref().map(|owner| owner.id.clone())
+		let local_owner = owner
+			.as_ref()
+			.map(|owner| owner.id.clone())
 			.or_else(|| self.conversation_page())
 			.or_else(|| self.workspace.new_conversation.clone());
-		if message.owner.as_ref().map(|owner| owner.as_str())
-			!= local_owner.as_deref()
-		{
+		if message.owner.as_ref().map(|owner| owner.as_str()) != local_owner.as_deref() {
 			return false;
 		}
 		let thread = match &message.action {
@@ -205,23 +205,22 @@ impl AgentSurface {
 					return;
 				}
 				s.submission.receipt_task = None;
-				if received == Some(true) {
-					if let Some(owner) = s
+				if received == Some(true)
+					&& let Some(owner) = s
 						.retained_messages()
 						.into_iter()
 						.find(|(saved, _)| saved == &key)
 						.and_then(|(_, message)| message.owner)
-					{
-						s.settle_message(
-							Some(&key),
-							&Ok(AgentCommandResponse::Accepted { work_id: owner }),
-						);
-						s.submission.unconfirmed.retain(|saved| saved != &key);
-						s.uncertain = !s.submission.unconfirmed.is_empty();
-						s.feedback = crate::ui_feedback::Feedback::neutral("Delivery confirmed.");
-						s.save_draft_document(cx);
-						s.refresh(cx);
-					}
+				{
+					s.settle_message(
+						Some(&key),
+						&Ok(AgentCommandResponse::Accepted { work_id: owner }),
+					);
+					s.submission.unconfirmed.retain(|saved| saved != &key);
+					s.uncertain = !s.submission.unconfirmed.is_empty();
+					s.feedback = crate::ui_feedback::Feedback::neutral("Delivery confirmed.");
+					s.save_draft_document(cx);
+					s.refresh(cx);
 				}
 				cx.notify();
 			});

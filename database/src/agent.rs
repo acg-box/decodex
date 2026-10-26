@@ -18,9 +18,9 @@ use serde_json::Value;
 
 use crate::{
 	AgentLiveOutput, AgentTurnExecution, DatabaseError, Project, SqliteStore, StoreError,
-	agent_models, agent_output, agent_permissions, agent_prompt_edit,
-	agent_prompt_inputs, agent_questions, agent_request_payload, agent_task_references,
-	agent_turn_execution, error, projects,
+	agent_models, agent_output, agent_permissions, agent_prompt_edit, agent_prompt_inputs,
+	agent_questions, agent_request_payload, agent_task_references, agent_turn_execution, error,
+	projects,
 };
 
 /// Recovery checks have separate lifecycles; model refresh does not block chat input.

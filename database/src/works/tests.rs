@@ -1,4 +1,3 @@
-use rusqlite::Connection;
 use serde_json::Value;
 use tempfile::TempDir;
 
@@ -675,75 +674,6 @@ async fn global_guardian_unknown_writes_and_observation_opt_out_survive_restart(
 	store.record_review_details(Some("sage".into()), other).await.unwrap();
 
 	assert_eq!(store.guardian_state().await.unwrap().details.len(), 1);
-}
-
-#[tokio::test]
-async fn native_tool_replacement_keeps_creation_and_retirement_separate_after_restart() {
-	let (home, store) = persistent_store();
-
-	agents(&store).await;
-
-	let path = home.path().join("work.db");
-	let connection = Connection::open(&path).unwrap();
-
-	connection
-		.execute("UPDATE agent_tool_versions SET version=3 WHERE work_id IN('sage','iris')", [])
-		.unwrap();
-
-	drop(connection);
-
-	assert!(
-		store
-			.reserve_agent_tool_migration("sage".into(), "sage".into(), "{}".into())
-			.await
-			.unwrap()
-	);
-
-	store.record_agent_tool_context("sage".into(), Some("replacement".into())).await.unwrap();
-
-	assert!(
-		store
-			.finish_agent_tool_migration("sage".into(), "sage".into(), Some("replacement".into()))
-			.await
-			.is_err()
-	);
-	assert!(
-		store
-			.reserve_agent_tool_migration("iris".into(), "iris".into(), "{}".into())
-			.await
-			.unwrap()
-	);
-
-	store.record_agent_tool_context("iris".into(), None).await.unwrap();
-
-	drop(store);
-
-	let store = SqliteStore::open_test(&path).unwrap();
-
-	assert_eq!(
-		store.get_agent_work_item("sage".into()).await.unwrap().codex_thread_id.as_deref(),
-		Some("sage")
-	);
-	assert_eq!(
-		store.agent_tool_migration("sage".into()).await.unwrap().unwrap().1.as_deref(),
-		Some("replacement")
-	);
-	assert!(
-		!store
-			.reserve_agent_tool_migration("iris".into(), "iris".into(), "{}".into())
-			.await
-			.unwrap(),
-		"A missing creation receipt never permits another context"
-	);
-
-	store.retire_agent_tool_context("sage".into()).await.unwrap();
-	store
-		.finish_agent_tool_migration("sage".into(), "sage".into(), Some("replacement".into()))
-		.await
-		.unwrap();
-
-	assert_eq!(store.agent_previous_threads("sage".into()).await.unwrap(), vec!["sage".to_owned()]);
-	assert_eq!(store.agent_tool_version("sage".into()).await.unwrap(), 4);
 }
 
 async fn assert_unadmitted_response_fails(store: &SqliteStore) {

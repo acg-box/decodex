@@ -17,17 +17,16 @@ use crate::{
 	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, AccountRecoveryAction,
 	AccountRecoveryNudgeResult, AccountRecoveryNudgeStatus, AccountRecoveryPreparation,
 	AccountRecoveryResult, AccountRecoveryState, AccountResetCardOperationResult, AgentActionDto,
-	AgentActivityDetailCursor, AgentActivityDetailResult, AgentAppExposureResult,
-	AgentAppSettingsResult, AgentAppUiCall, AgentAppUiCallReview, AgentAppUiReceiptRequest,
-	AgentAppUiReceiptResult, AgentAppUiRequest, AgentAppUiResult, AgentArchiveResult,
-	AgentCapabilitiesResult, AgentContextSettingsResult, AgentDeliveriesResult, AgentDeliveryQuery,
-	AgentExchangesResult, AgentGuardianDetailResult, AgentGuardianReviewsResult,
-	AgentHistoryResult, AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState,
-	AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult,
-	AgentMemoryResult, AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult,
-	AgentOutputResult, AgentPendingAppUiCall, AgentPermissionState,
-	AgentReadStateResult, AgentRequestResult, AgentResourcesResult, AgentSampleStatus,
-	AgentSavedAppSettingsResult, AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget,
+	AgentActivityDetailCursor, AgentActivityDetailResult, AgentAppExposureResult, AgentAppUiCall,
+	AgentAppUiCallReview, AgentAppUiReceiptRequest, AgentAppUiReceiptResult, AgentAppUiRequest,
+	AgentAppUiResult, AgentArchiveResult, AgentCapabilitiesResult, AgentContextSettingsResult,
+	AgentDeliveriesResult, AgentDeliveryQuery, AgentExchangesResult, AgentGuardianDetailResult,
+	AgentGuardianReviewsResult, AgentHistoryResult, AgentHookSettingsState,
+	AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult, AgentLiveReviewerState,
+	AgentMediaRequest, AgentMediaResult, AgentMemoryResult, AgentModelSelectionState,
+	AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall,
+	AgentPermissionState, AgentReadStateResult, AgentRequestResult, AgentResourcesResult,
+	AgentSampleStatus, AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget,
 	AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult,
 	AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest,
 	AgentVoiceSettingsResult, AgentVoiceStatus, AttachedBranchesResult, CURRENT_VERSION,
@@ -2243,18 +2242,6 @@ pub enum QueryPayload {
 		/// Native connector identity.
 		connector_id: WireText,
 	},
-	/// Inspect existing native app connection overrides.
-	GetAgentSavedAppSettings {
-		/// Originating local task.
-		work_id: EntityId,
-	},
-	/// Inspect configuration and receipts for an app request.
-	GetAgentAppSettings {
-		/// Originating task.
-		work_id: EntityId,
-		/// Request event, which can be resolved when reading saved state.
-		event_id: i64,
-	},
 	/// Review shared native hooks and durable configuration results.
 	GetAgentHookSettings {
 		/// Originating local task.
@@ -3211,10 +3198,6 @@ pub enum QueryResultPayload {
 	AgentModelSelection(AgentModelSelectionState),
 	/// Current shared hook review.
 	AgentHookSettings(AgentHookSettingsState),
-	/// App connection settings and shared receipts.
-	AgentAppSettings(AgentAppSettingsResult),
-	/// Saved app overrides and their shared receipt.
-	AgentSavedAppSettings(AgentSavedAppSettingsResult),
 	/// Ephemeral voice signaling readback.
 	AgentVoice(AgentVoiceStatus),
 	/// Latest ephemeral dictation draft.

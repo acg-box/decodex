@@ -34,19 +34,18 @@ use crate::{
 	AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult,
 	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentModelSelectionState,
 	AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall,
-	AgentPermissionState, AgentReadStateResult, AgentRequestResult,
-	AgentResourcesResult, AgentSampleStatus, AgentSearchSettingsResult, AgentSkillsResult,
-	AgentSkillsTarget, AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult,
-	AgentTimelineResult, AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult,
-	AgentVoiceRequest, AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION,
-	ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult, CommandEnvelope,
-	CommandError, CommandOutcome, CommandPayload, CommandResultEnvelope,
-	ConversationWorkingDirectory, CorrelationId, DictationRequest, DictationStatus, DoctorReport,
-	EntityId, EntityRevision, IdempotencyKey, InitialModelCatalogRequest,
-	InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES, MAX_AGENT_APP_UI_RECEIPT_BYTES,
-	MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest, McpLoginStatus,
-	NativeAgentsResult, NativeStartupConfiguration, PrivateReviewDetailsResult, PromptDraft,
-	PromptEditStatus, PromptForkBoundary, PromptForkResult, PromptInputSendIdentity,
+	AgentPermissionState, AgentReadStateResult, AgentRequestResult, AgentResourcesResult,
+	AgentSampleStatus, AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget,
+	AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult,
+	AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest,
+	AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION, ClientCommandId, ClientHello,
+	ClientMessage, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandOutcome,
+	CommandPayload, CommandResultEnvelope, ConversationWorkingDirectory, CorrelationId,
+	DictationRequest, DictationStatus, DoctorReport, EntityId, EntityRevision, IdempotencyKey,
+	InitialModelCatalogRequest, InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES,
+	MAX_AGENT_APP_UI_RECEIPT_BYTES, MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest,
+	McpLoginStatus, NativeAgentsResult, NativeStartupConfiguration, PrivateReviewDetailsResult,
+	PromptDraft, PromptEditStatus, PromptForkBoundary, PromptForkResult, PromptInputSendIdentity,
 	PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus, ProtocolVersion,
 	QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal,
 	RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult,
@@ -1076,7 +1075,6 @@ impl AgentClient {
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
-
 
 	/// Inspect native model settings and advertised choices.
 	pub async fn model_selection(
@@ -3854,9 +3852,7 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		| AgentActionDto::EditNativeGoal { work_id, .. }
 		| AgentActionDto::SetVoicePreference { work_id, .. }
 		| AgentActionDto::SetSearchPreference { work_id, .. }
-		| AgentActionDto::SetContextPreference { work_id, .. }
-		| AgentActionDto::SetAppSetting { work_id, .. }
-		| AgentActionDto::SetSavedAppSetting { work_id, .. } => work_id,
+		| AgentActionDto::SetContextPreference { work_id, .. } => work_id,
 		AgentActionDto::Start(start) | AgentActionDto::StartConfigured { start, .. } =>
 			&start.root_id,
 		AgentActionDto::Send { root_id, .. } | AgentActionDto::SendConfigured { root_id, .. } =>

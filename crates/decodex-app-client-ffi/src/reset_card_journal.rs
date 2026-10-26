@@ -1,5 +1,5 @@
 //! Durable native-client intent before the service acknowledges a Reset Card request.
-//! The legacy path, JSON schema and fcntl lock are retained for existing installations.
+//! The native client owns this file and its fcntl lock.
 use std::{
 	collections::{HashMap, HashSet},
 	fs::{self, DirBuilder, File, Metadata, OpenOptions, Permissions},
@@ -534,7 +534,7 @@ mod tests {
 	}
 
 	#[test]
-	fn legacy_document_preserves_identity_and_conflicting_entries_block_writes() {
+	fn saved_intent_preserves_identity_and_conflicting_entries_block_writes() {
 		let fixture = Fixture::new();
 		let path = fixture.path();
 		let original = attempt();

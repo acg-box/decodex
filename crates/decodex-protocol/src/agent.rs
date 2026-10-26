@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	AgentAppSettingEdit, AgentAppUiCall, AgentAsyncQuestionDto, AgentContextFeature,
-	AgentExecutionOverrides, AgentGoalEdit, AgentHookChange, AgentRequestedDecision, AgentReviewer,
+	AgentAppUiCall, AgentAsyncQuestionDto, AgentContextFeature, AgentExecutionOverrides,
+	AgentGoalEdit, AgentHookChange, AgentRequestedDecision, AgentReviewer,
 	AgentToolExposureSurface, ConversationModel, ConversationReasoningEffort,
 	ConversationWorkingDirectory, EntityId, HistoryText, PromptForkBoundary, PromptInputUpload,
 	Sha256Digest, WeatherForecast, WireText,
@@ -648,32 +648,6 @@ pub enum AgentActionDto {
 		review_token: WireText,
 		/// None restores inheritance; an empty list clears connector omissions.
 		omit: Option<Vec<AgentToolExposureSurface>>,
-	},
-	/// Change an existing saved app connection override from current native configuration.
-	SetSavedAppSetting {
-		/// Originating task.
-		work_id: EntityId,
-		/// Current native thread.
-		thread_id: EntityId,
-		/// Exact native app key.
-		connector_id: WireText,
-		/// Exact native connection key.
-		link_id: WireText,
-		/// Consumed once for this reviewed configuration.
-		review_token: WireText,
-		/// Explicit change to the saved override.
-		edit: AgentAppSettingEdit,
-	},
-	/// Change one connection override without answering its pending native request.
-	SetAppSetting {
-		/// Originating task.
-		work_id: EntityId,
-		/// Exact native request event.
-		event_id: i64,
-		/// Consumed native config review.
-		review_token: WireText,
-		/// Explicit connection override.
-		edit: AgentAppSettingEdit,
 	},
 	/// Apply one explicitly reviewed shared hook change.
 	SetHookSetting {

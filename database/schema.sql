@@ -1123,15 +1123,6 @@ CREATE TABLE works (
  FOREIGN KEY(id,requirements_id) REFERENCES work_requirements(work_id,id) DEFERRABLE INITIALLY DEFERRED
 ) STRICT;
 
-CREATE TABLE agent_tool_migrations (
- agent_id TEXT PRIMARY KEY REFERENCES agents(id),
- old_thread_id TEXT NOT NULL,
- new_thread_id TEXT,
- parameters_json TEXT NOT NULL CHECK(json_valid(parameters_json)),
- outcome TEXT NOT NULL CHECK(outcome IN('reserved','created','retiring','unknown','applied')),
- CHECK(outcome NOT IN('created','retiring','applied') OR new_thread_id IS NOT NULL)
-) STRICT;
-
 CREATE INDEX account_quota_by_account ON account_quota_facts(account_id, duration_minutes);
 
 CREATE INDEX account_registry_order ON account_routing_order(position, account_id);

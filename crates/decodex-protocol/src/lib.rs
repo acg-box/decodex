@@ -5,11 +5,11 @@ mod account_login;
 mod account_recovery;
 mod agent;
 mod agent_app_exposure;
-mod agent_app_settings;
 mod agent_app_ui;
 mod agent_app_ui_call;
 mod agent_archive;
 mod agent_collaboration;
+mod agent_config_receipt;
 mod agent_context_settings;
 mod agent_deliveries;
 mod agent_execution;
@@ -90,10 +90,6 @@ pub use self::{
 		MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS, ProjectDto,
 	},
 	agent_app_exposure::{AgentAppExposureResult, AgentToolExposureSurface},
-	agent_app_settings::{
-		AgentAppApprovalMode, AgentAppReviewer, AgentAppSettingEdit, AgentAppSettingsResult,
-		AgentConfigEditReceipt, AgentSavedAppConnection, AgentSavedAppSettingsResult,
-	},
 	agent_app_ui::{
 		AGENT_APP_UI_CHUNK_BYTES, AgentAppUiRequest, AgentAppUiResult, MAX_AGENT_APP_UI_BYTES,
 	},
@@ -103,6 +99,7 @@ pub use self::{
 		MAX_AGENT_APP_UI_CALL_BYTES, MAX_AGENT_APP_UI_RECEIPT_BYTES,
 	},
 	agent_archive::AgentArchiveResult,
+	agent_config_receipt::AgentConfigEditReceipt,
 	agent_context_settings::{
 		AgentContextFeature, AgentContextPreference, AgentContextSettingsResult,
 	},

@@ -4,9 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
-use crate::{
-	SqliteStore, StoreError, agent_models, agent_process, agent_prompt_edit, error,
-};
+use crate::{SqliteStore, StoreError, agent_models, agent_process, agent_prompt_edit, error};
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentPermissionAttempt {

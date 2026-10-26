@@ -7,10 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
-use crate::{
-	SqliteStore, StoreError, agent_permissions, agent_process, agent_prompt_edit,
-	error,
-};
+use crate::{SqliteStore, StoreError, agent_permissions, agent_process, agent_prompt_edit, error};
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentModelAttempt {
@@ -341,7 +338,8 @@ mod tests {
 	use serde_json::Value;
 
 	use crate::{
-		AgentModelAttempt, AgentModelReceipt, AgentPermissionAttempt, EnqueueAgentEvent, SqliteStore, tests,
+		AgentModelAttempt, AgentModelReceipt, AgentPermissionAttempt, EnqueueAgentEvent,
+		SqliteStore, tests,
 	};
 
 	fn settings(model: &str) -> Value {
@@ -378,7 +376,6 @@ mod tests {
 	async fn receipt(store: &SqliteStore) -> AgentModelReceipt {
 		store.agent_model_receipt("work".into(), "thread".into()).await.unwrap().unwrap()
 	}
-
 
 	#[tokio::test]
 	async fn model_reservation_survives_crash_and_blocks_dispatch_until_native_confirmation() {

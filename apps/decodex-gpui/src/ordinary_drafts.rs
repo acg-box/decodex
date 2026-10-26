@@ -83,14 +83,13 @@ impl Shell {
 
 		if stored != self.ordinary_last
 			&& let Some(stored) = stored.as_ref()
+			&& self.conversations.restore_ordinary_draft(stored)
 		{
-			if self.conversations.restore_ordinary_draft(stored) {
-				self.composer.update(cx, |input, cx| input.set_content(&stored.composer.text, cx));
+			self.composer.update(cx, |input, cx| input.set_content(&stored.composer.text, cx));
 
-				self.ordinary_owner = stored.composer.conversation_id.clone();
-				self.ordinary_last = Some(stored.clone());
-				self.pending_submission = None;
-			}
+			self.ordinary_owner = stored.composer.conversation_id.clone();
+			self.ordinary_last = Some(stored.clone());
+			self.pending_submission = None;
 		}
 
 		self.quick = self.conversations.snapshot();

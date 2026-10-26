@@ -9,21 +9,21 @@ use tempfile::TempDir;
 use zeroize::Zeroizing;
 
 use decodex_core::{
-	self, AccountId, AccountOperationId, AccountProvider,
-	AccountSelectionMode, BlobStore, ContextPackInput, ContextPackPolicy,
-	ContinuationCommandOutcome, ContinuationPlanKind, ConversationId, CredentialBinding,
-	CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion, DecodexPaths,
-	DecodexRoot, HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata, ItemStatus,
-	MAX_PROVIDER_THREAD_ID_BYTES, PinnedContextSource, PossibleSideEffects, ProcessBootIdentity,
-	ProcessControlKind, ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
-	ProcessExecutionAuthorization, ProcessExecutionEpochId, ProcessGenerationAccountBinding,
-	ProcessGenerationId, ProcessGenerationIntent, ProcessGenerationState, ProcessIdentity,
-	ProcessIsolationKind, ProcessRunnerIdentity, ProcessStartIdentity, ProviderAttemptConsumer,
-	ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState, ProviderDuplicateRisk,
-	ProviderEvidenceId, ProviderEvidenceSource, ProviderIdentity, ProviderPositiveEvidence,
-	ProviderRequestId, ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome,
-	RoutingCommandOutcome, RuntimeSessionId, RuntimeSessionState, SameThreadContinuationEvidence,
-	ServiceTier, TurnId, TurnRole,
+	self, AccountId, AccountOperationId, AccountProvider, AccountSelectionMode, BlobStore,
+	ContextPackInput, ContextPackPolicy, ContinuationCommandOutcome, ContinuationPlanKind,
+	ConversationId, CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion,
+	CredentialVersion, DecodexPaths, DecodexRoot, HistoryItemId, HistoryItemKind, HistoryMediaType,
+	HistoryMetadata, ItemStatus, MAX_PROVIDER_THREAD_ID_BYTES, PinnedContextSource,
+	PossibleSideEffects, ProcessBootIdentity, ProcessControlKind, ProcessDeathEvidence,
+	ProcessDeathEvidenceId, ProcessDeathEvidenceKind, ProcessExecutionAuthorization,
+	ProcessExecutionEpochId, ProcessGenerationAccountBinding, ProcessGenerationId,
+	ProcessGenerationIntent, ProcessGenerationState, ProcessIdentity, ProcessIsolationKind,
+	ProcessRunnerIdentity, ProcessStartIdentity, ProviderAttemptConsumer, ProviderAttemptId,
+	ProviderAttemptPreparation, ProviderAttemptState, ProviderDuplicateRisk, ProviderEvidenceId,
+	ProviderEvidenceSource, ProviderIdentity, ProviderPositiveEvidence, ProviderRequestId,
+	ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome, RoutingCommandOutcome,
+	RuntimeSessionId, RuntimeSessionState, SameThreadContinuationEvidence, ServiceTier, TurnId,
+	TurnRole,
 };
 use decodex_database::{
 	self, AccountAdministrationOutcome, AdmitInitialConversationTurn,
@@ -129,23 +129,50 @@ async fn enroll_fixture_account(
 		provider,
 		writer_operation_id: typed_operation_id,
 	};
-	store.prepare_account_operation(&decodex_database::AccountOperationPreparation {
-        operation_id: credential.writer_operation_id.clone(), account_id: typed_account_id.clone(),
-        kind: decodex_core::AccountOperationKind::Enroll, display_label: Some(label.into()),
-        enabled: Some(true), expected_account_revision: None, expected: None,
-        target: Some(credential.clone()), provider: credential.provider.clone(),
-    }).await.expect("prepare fixture enrollment");
-    store.create_credential(CredentialRecord {
-        key: CredentialKey {account_id:account_id.into(),schema_version:1,credential_version:1,
-            fingerprint:fingerprint.into(),writer_operation_id:operation_id.into(),
-            provider:"chatgpt".into(),provider_account_id:provider_account_id.into()},
-        payload: Zeroizing::new(payload.to_vec()),
-    }).expect("save fixture credential");
-    for (from,to) in [(decodex_core::AccountOperationPhase::Prepared,decodex_core::AccountOperationPhase::StoreApplied),
-        (decodex_core::AccountOperationPhase::StoreApplied,decodex_core::AccountOperationPhase::Committed)] {
-        store.advance_account_operation(&credential.writer_operation_id,from,to,None).await.expect("commit fixture enrollment");
-    }
-    (typed_account_id,credential)
+	store
+		.prepare_account_operation(&decodex_database::AccountOperationPreparation {
+			operation_id: credential.writer_operation_id.clone(),
+			account_id: typed_account_id.clone(),
+			kind: decodex_core::AccountOperationKind::Enroll,
+			display_label: Some(label.into()),
+			enabled: Some(true),
+			expected_account_revision: None,
+			expected: None,
+			target: Some(credential.clone()),
+			provider: credential.provider.clone(),
+		})
+		.await
+		.expect("prepare fixture enrollment");
+	store
+		.create_credential(CredentialRecord {
+			key: CredentialKey {
+				account_id: account_id.into(),
+				schema_version: 1,
+				credential_version: 1,
+				fingerprint: fingerprint.into(),
+				writer_operation_id: operation_id.into(),
+				provider: "chatgpt".into(),
+				provider_account_id: provider_account_id.into(),
+			},
+			payload: Zeroizing::new(payload.to_vec()),
+		})
+		.expect("save fixture credential");
+	for (from, to) in [
+		(
+			decodex_core::AccountOperationPhase::Prepared,
+			decodex_core::AccountOperationPhase::StoreApplied,
+		),
+		(
+			decodex_core::AccountOperationPhase::StoreApplied,
+			decodex_core::AccountOperationPhase::Committed,
+		),
+	] {
+		store
+			.advance_account_operation(&credential.writer_operation_id, from, to, None)
+			.await
+			.expect("commit fixture enrollment");
+	}
+	(typed_account_id, credential)
 }
 
 fn history_item(
@@ -1233,7 +1260,8 @@ async fn import_ready_accounts(store: &SqliteStore) -> (AccountId, CredentialBin
 		DIGEST_A,
 		"Primary fixture account",
 		b"opaque-primary-fixture-credential",
-	).await;
+	)
+	.await;
 	let (alternate_account_id, _) = enroll_fixture_account(
 		store,
 		ALTERNATE_ACCOUNT_ID,
@@ -1242,10 +1270,17 @@ async fn import_ready_accounts(store: &SqliteStore) -> (AccountId, CredentialBin
 		DIGEST_B,
 		"Alternate fixture account",
 		b"opaque-alternate-fixture-credential",
-	).await;
+	)
+	.await;
 
-    let routing=store.read_account_routing_control().await.expect("current fixture routing");
-    assert!(matches!(store.set_fixed_account_selection(routing.revision,&account_id,1).await.expect("fixture account selection"),RoutingControlOutcome::Updated{..}));
+	let routing = store.read_account_routing_control().await.expect("current fixture routing");
+	assert!(matches!(
+		store
+			.set_fixed_account_selection(routing.revision, &account_id, 1)
+			.await
+			.expect("fixture account selection"),
+		RoutingControlOutcome::Updated { .. }
+	));
 	assert!(
 		store
 			.attest_codex_account_capability(&CodexAccountCapabilityAttestation {

@@ -87,21 +87,20 @@ use decodex_protocol::{
 	AccountRecoveryPreparation, AccountRecoveryState, AccountResetCardOperationResult,
 	AccountRoutingControlDto, AccountSelectionModeDto, AccountSelectionRecoveryDto,
 	AccountUnsettledOperationDto, AccountsResult, AgentActivityDetailCursor,
-	AgentAppExposureResult, AgentAppSettingsResult, AgentAppUiCallReview, AgentAppUiReceiptResult,
-	AgentAppUiResult, AgentArchiveResult, AgentAsyncQuestionDto, AgentCapabilitiesResult,
-	AgentContextSettingsResult, AgentDependencyDto, AgentDispatchStateDto,
-	AgentGuardianDetailResult, AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState,
-	AgentIntegrationsResult, AgentLiveMessageKind, AgentLiveReviewerState, AgentMediaRequest,
-	AgentMediaResult, AgentMemoryResult, AgentMisalignmentDto, AgentModelSelectionState,
-	AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall,
-	AgentPendingEventDto, AgentPermissionState, AgentReadStateResult,
-	AgentRequestText, AgentResourcesResult, AgentSampleStatus, AgentSavedAppSettingsResult,
-	AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget, AgentSnapshotDto,
-	AgentSteerIdentity, AgentSteerReceiptResult, AgentTaskReferenceDto, AgentTimelineResult,
-	AgentTranscriptRequest, AgentTranscriptResult, AgentTurnUsageDto, AgentUsageDto,
-	AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult, AgentWorkItemDto,
-	AgentWorkKindDto, AgentWorkStatusDto, AttachedBranchesResult, CausationId, Channel,
-	CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
+	AgentAppExposureResult, AgentAppUiCallReview, AgentAppUiReceiptResult, AgentAppUiResult,
+	AgentArchiveResult, AgentAsyncQuestionDto, AgentCapabilitiesResult, AgentContextSettingsResult,
+	AgentDependencyDto, AgentDispatchStateDto, AgentGuardianDetailResult, AgentHookSettingsState,
+	AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult, AgentLiveMessageKind,
+	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentMemoryResult,
+	AgentMisalignmentDto, AgentModelSelectionState, AgentModelSettingsResult,
+	AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall, AgentPendingEventDto,
+	AgentPermissionState, AgentReadStateResult, AgentRequestText, AgentResourcesResult,
+	AgentSampleStatus, AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget,
+	AgentSnapshotDto, AgentSteerIdentity, AgentSteerReceiptResult, AgentTaskReferenceDto,
+	AgentTimelineResult, AgentTranscriptRequest, AgentTranscriptResult, AgentTurnUsageDto,
+	AgentUsageDto, AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult,
+	AgentWorkItemDto, AgentWorkKindDto, AgentWorkStatusDto, AttachedBranchesResult, CausationId,
+	Channel, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
 	ConversationHistoryPage, ConversationHistoryResult, ConversationListCursor,
 	ConversationListPage, ConversationListResult, ConversationModel, ConversationModelReviewResult,
 	ConversationModelSettingsResult, ConversationReadError, ConversationReasoningEffort,
@@ -359,7 +358,6 @@ impl ServiceApplication {
 			None => AgentHookSettingsState::Unavailable,
 		})
 	}
-
 
 	async fn query_model_selection(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentModelSelection(match &self.agent {
@@ -2757,10 +2755,6 @@ impl Application for ServiceApplication {
 				self.query_resources(work_id.as_str()).await,
 			QueryPayload::ExchangeMcpLogin { request } =>
 				QueryResultPayload::McpLogin(query_mcp_login(self.agent.as_ref(), request).await),
-			QueryPayload::GetAgentAppSettings { .. } =>
-				QueryResultPayload::AgentAppSettings(AgentAppSettingsResult::Unavailable),
-			QueryPayload::GetAgentSavedAppSettings { .. } =>
-				QueryResultPayload::AgentSavedAppSettings(AgentSavedAppSettingsResult::Unavailable),
 			QueryPayload::GetAgentHookSettings { work_id } =>
 				self.query_hook_settings(work_id.as_str()).await,
 			QueryPayload::GetAgentModelSelection { work_id } =>

@@ -24,7 +24,6 @@ mod reasoning;
 mod result_messages;
 mod resume_recovery;
 mod task_history;
-mod tool_migration;
 mod turn_execution;
 mod voice;
 mod work;
@@ -960,9 +959,8 @@ impl AgentCoordinator {
 
 	async fn ensure_thread(&mut self, item: &AgentWorkItem) -> Result<AgentWorkItem, AgentError> {
 		if item.codex_thread_id.is_some() {
-			// Continue the exact native context. Only an existing replacement receipt
-			// can require tool-migration recovery; a version difference cannot start one.
-			return self.recover_tool_migration(item).await;
+			// Continue the exact native context without changing its history or tool declarations.
+			return Ok(item.clone());
 		}
 
 		self.store.begin_agent_thread_creation(item.id.clone()).await?;
@@ -2556,11 +2554,7 @@ impl AgentCoordinator {
 				Ok(_) => {},
 				// A queued archived owner waits for explicit restoration. Its retained
 				// input must not stop later owners in this wake batch.
-				Err(
-					AgentError::ThreadArchived
-					| AgentError::MigrationPending(_)
-					| AgentError::ProjectPending(_),
-				) => {},
+				Err(AgentError::ThreadArchived | AgentError::ProjectPending(_)) => {},
 				Err(error @ AgentError::ThreadOwnedElsewhere { .. }) => {
 					self.store.hold_agent_unsent_input(agent.id.clone()).await?;
 					self.store
@@ -2652,8 +2646,6 @@ pub enum AgentError {
 	Busy,
 	/// A prior dispatch has no conclusive acknowledgment.
 	UnknownDispatch,
-	/// Native tool replacement is parked without discarding the original execution.
-	MigrationPending(String),
 	/// Native Project membership requires inspection; unrelated Agents can continue.
 	ProjectPending(String),
 	/// New task settings superseded an automatic capacity continuation.

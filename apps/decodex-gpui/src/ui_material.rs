@@ -71,13 +71,7 @@ impl Surface {
 
 		let saved = ui_preferences::string(self.key(), None);
 
-		// Migrate the old input-bar switch only when no per-surface choice exists.
-		static LEGACY: AtomicU8 = AtomicU8::new(u8::MAX);
-
-		let legacy_glass = self != Self::InputBar
-			|| ui_preferences::boolean("composerLiquidGlass", &LEGACY, None, true);
-		let material = initial_material(self, saved.as_deref(), legacy_glass);
-
+		let material = initial_material(saved.as_deref());
 		MATERIALS[self as usize].store(material as u8, Ordering::Relaxed);
 
 		material
@@ -124,14 +118,8 @@ impl GlassStyle {
 	}
 }
 
-fn initial_material(surface: Surface, saved: Option<&str>, legacy_input_glass: bool) -> Material {
-	saved.and_then(Material::from_preference).unwrap_or_else(|| {
-		if surface == Surface::InputBar && !legacy_input_glass {
-			Material::Thin
-		} else {
-			Material::LiquidGlass
-		}
-	})
+fn initial_material(saved: Option<&str>) -> Material {
+	saved.and_then(Material::from_preference).unwrap_or(Material::LiquidGlass)
 }
 
 fn refresh(surface: Surface, cx: &mut App) {
@@ -150,7 +138,7 @@ fn refresh(surface: Surface, cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
-	use crate::ui_theme::material::{self, Material, Surface};
+	use crate::ui_theme::material::{Material, Surface};
 
 	#[test]
 	fn material_names_round_trip_and_match_the_native_panel() {
@@ -159,24 +147,6 @@ mod tests {
 		}
 
 		assert_eq!(Material::from_preference("plain"), None);
-	}
-
-	#[test]
-	fn saved_material_overrides_the_legacy_input_switch() {
-		assert_eq!(material::initial_material(Surface::InputBar, None, false), Material::Thin);
-		assert_eq!(
-			material::initial_material(Surface::InputBar, None, true),
-			Material::LiquidGlass
-		);
-		assert_eq!(material::initial_material(Surface::Window, None, false), Material::LiquidGlass);
-		assert_eq!(
-			material::initial_material(Surface::InputBar, Some("liquid-glass"), false),
-			Material::LiquidGlass
-		);
-		assert_eq!(
-			material::initial_material(Surface::InputBar, Some("thin"), true),
-			Material::Thin
-		);
 	}
 
 	#[gpui::test]

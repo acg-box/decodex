@@ -73,7 +73,9 @@ fn retain_receipts(
 	for (review, draft) in &other.prompt_edits {
 		if draft.pending_send.is_some() || draft.fork.is_some() {
 			if selected.prompt_edits.get(review).is_some_and(|local| local != draft) {
-				return Err("A history edit is still being sent in another window. Keep this editor open until its status is resolved.");
+				return Err(
+					"A history edit is still being sent in another window. Keep this editor open until its status is resolved.",
+				);
 			}
 			selected.prompt_edits.insert(review.clone(), draft.clone());
 
@@ -182,7 +184,8 @@ mod tests {
 		use crate::{DesktopPromptEditDraft, PromptDraft, WireText};
 		let scope = "a".repeat(64);
 		let review = "b".repeat(64);
-		let input = PromptDraft::new(vec![serde_json::json!({"type":"text","text":"Original"})]).unwrap();
+		let input =
+			PromptDraft::new(vec![serde_json::json!({"type":"text","text":"Original"})]).unwrap();
 		let draft = DesktopPromptEditDraft {
 			work_id: EntityId::new("work").unwrap(),
 			thread_id: WireText::new("thread").unwrap(),
@@ -190,16 +193,40 @@ mod tests {
 			item_id: WireText::new("item").unwrap(),
 			original_hash: input.fingerprint().unwrap(),
 			review_token: WireText::new(&review).unwrap(),
-			receipt_id: Some(42), confirmation_key: None, fork: None,
-			pending_send: None, handback_pending: false, input,
+			receipt_id: Some(42),
+			confirmation_key: None,
+			fork: None,
+			pending_send: None,
+			handback_pending: false,
+			input,
 		};
 		let mut baseline = DesktopDraftDocument::default();
-		baseline.profiles.entry(scope.clone()).or_default().prompt_edits.insert(review.clone(), draft.clone());
+		baseline
+			.profiles
+			.entry(scope.clone())
+			.or_default()
+			.prompt_edits
+			.insert(review.clone(), draft.clone());
 		let mut local = baseline.clone();
-		local.profiles.get_mut(&scope).unwrap().prompt_edits.get_mut(&review).unwrap().input.replace_text(0, 0..8, "Current edit").unwrap();
+		local
+			.profiles
+			.get_mut(&scope)
+			.unwrap()
+			.prompt_edits
+			.get_mut(&review)
+			.unwrap()
+			.input
+			.replace_text(0, 0..8, "Current edit")
+			.unwrap();
 		let mut remote = baseline.clone();
-		remote.profiles.get_mut(&scope).unwrap().prompt_edits.insert(review.clone(), draft.begin_send(7, IdempotencyKey::new("send").unwrap(), Default::default()).unwrap());
+		remote.profiles.get_mut(&scope).unwrap().prompt_edits.insert(
+			review.clone(),
+			draft.begin_send(7, IdempotencyKey::new("send").unwrap(), Default::default()).unwrap(),
+		);
 		assert!(local.merge_edits(&baseline, &remote).is_err());
-		assert_eq!(local.profiles[&scope].prompt_edits[&review].input.parts()[0]["text"], "Current edit");
+		assert_eq!(
+			local.profiles[&scope].prompt_edits[&review].input.parts()[0]["text"],
+			"Current edit"
+		);
 	}
 }

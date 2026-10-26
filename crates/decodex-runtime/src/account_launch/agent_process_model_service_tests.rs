@@ -322,7 +322,6 @@ async fn reject_restored_settings(owned: &OwnedReviewer, old: WireText) -> WireT
 	review_token
 }
 
-
 async fn reject_invalid_model_requests(owned: &OwnedReviewer, review_token: &WireText) {
 	let source = || async { Some(owned.source(&owned.key)) };
 

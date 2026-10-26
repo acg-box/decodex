@@ -108,7 +108,7 @@ impl ServiceComposition {
 		bootstrap::initialize_local_database(root).await
 	}
 
-	/// Verify the fixed bundled SQLite database and migration ledger.
+	/// Verify the current bundled SQLite database.
 	pub async fn validate_local_database(root: DecodexRoot) -> Result<(), LocalDatabaseError> {
 		bootstrap::validate_local_database(root).await
 	}

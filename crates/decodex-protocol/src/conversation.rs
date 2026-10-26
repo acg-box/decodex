@@ -241,7 +241,7 @@ pub enum ConversationReasoningEffort {
 	Custom(CustomReasoningEffort),
 }
 impl ConversationReasoningEffort {
-	/// Retain a bounded native value; normalize the legacy Decodex x_high alias.
+	/// Retain an exact bounded native value.
 	pub fn new(value: impl Into<String>) -> Result<Self, ConversationContractError> {
 		let value = value.into();
 
@@ -255,7 +255,7 @@ impl ConversationReasoningEffort {
 			"low" => Self::Low,
 			"medium" => Self::Medium,
 			"high" => Self::High,
-			"xhigh" | "x_high" => Self::XHigh,
+			"xhigh" => Self::XHigh,
 			"max" => Self::Max,
 			"ultra" => Self::Ultra,
 			"persistent" => Self::Persistent,
@@ -284,8 +284,7 @@ impl Serialize for ConversationReasoningEffort {
 	where
 		S: Serializer,
 	{
-		// Preserve Decodex's historical wire spelling; native dispatch uses as_str().
-		serializer.serialize_str(if *self == Self::XHigh { "x_high" } else { self.as_str() })
+		serializer.serialize_str(self.as_str())
 	}
 }
 impl<'de> Deserialize<'de> for ConversationReasoningEffort {
@@ -924,7 +923,7 @@ mod native_effort_tests {
 	use crate::ConversationReasoningEffort;
 
 	#[test]
-	fn native_effort_preserves_custom_values_and_known_wire_compatibility() {
+	fn native_effort_preserves_custom_values_and_uses_one_wire_spelling() {
 		for value in ["none", "minimal", "persistent", "provider-defined-effort", "custom effort"] {
 			let effort = ConversationReasoningEffort::new(value).expect("bounded effort");
 			let encoded = serde_json::to_string(&effort).expect("serialize effort");
@@ -938,17 +937,15 @@ mod native_effort_tests {
 		}
 
 		assert_eq!(
-			serde_json::to_value(ConversationReasoningEffort::XHigh).expect("legacy wire"),
-			"x_high"
+			serde_json::to_value(ConversationReasoningEffort::XHigh).expect("native wire"),
+			"xhigh"
 		);
 
-		for alias in ["xhigh", "x_high"] {
-			assert_eq!(
-				serde_json::from_value::<ConversationReasoningEffort>(serde_json::json!(alias))
-					.expect("known alias"),
-				ConversationReasoningEffort::XHigh
-			);
-		}
+		assert_eq!(
+			serde_json::from_value::<ConversationReasoningEffort>(serde_json::json!("xhigh"))
+				.expect("native effort"),
+			ConversationReasoningEffort::XHigh
+		);
 		for invalid in [
 			String::new(),
 			"x".repeat(129),

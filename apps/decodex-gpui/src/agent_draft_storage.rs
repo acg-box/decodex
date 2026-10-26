@@ -123,12 +123,24 @@ impl Default for Storage {
 }
 
 impl AgentSurface {
-	pub(in super::super) fn dismiss_failed_message(&mut self, key: &IdempotencyKey, cx: &mut Context<Self>) {
+	pub(in super::super) fn dismiss_failed_message(
+		&mut self,
+		key: &IdempotencyKey,
+		cx: &mut Context<Self>,
+	) {
 		let state = &mut self.draft_profiles.storage;
-		let Some(profile) = self.profile.as_ref().and_then(|profile| {
-			state.document.profiles.get_mut(&profile.draft_scope_key())
-		}) else { return };
-		if profile.messages.get(key).is_some_and(|message| message.state == DesktopMessageState::Failed) {
+		let Some(profile) = self
+			.profile
+			.as_ref()
+			.and_then(|profile| state.document.profiles.get_mut(&profile.draft_scope_key()))
+		else {
+			return;
+		};
+		if profile
+			.messages
+			.get(key)
+			.is_some_and(|message| message.state == DesktopMessageState::Failed)
+		{
 			profile.messages.remove(key);
 			self.save_draft_document(cx);
 			cx.notify();
@@ -646,16 +658,11 @@ impl AgentSurface {
 			})
 			.transpose_option()?;
 
+		let saved = self.draft_profiles.active.as_ref().and_then(|profile| {
+			self.draft_profiles.storage.document.profiles.get(&profile.draft_scope_key())
+		});
 		Some(DesktopProfileDraft {
-			messages: self
-				.draft_profiles
-				.active
-				.as_ref()
-				.and_then(|profile| {
-					self.draft_profiles.storage.document.profiles.get(&profile.draft_scope_key())
-				})
-				.map(|profile| profile.messages.clone())
-				.unwrap_or_default(),
+			messages: saved.map(|profile| profile.messages.clone()).unwrap_or_default(),
 			new_conversation_workspace: self
 				.workspace
 				.new_conversation_workspace
@@ -670,24 +677,8 @@ impl AgentSurface {
 				.map(EntityId::new)
 				.transpose()
 				.ok()?,
-			prompt_edits: self
-				.draft_profiles
-				.active
-				.as_ref()
-				.and_then(|profile| {
-					self.draft_profiles.storage.document.profiles.get(&profile.draft_scope_key())
-				})
-				.map(|draft| draft.prompt_edits.clone())
-				.unwrap_or_default(),
-			ordinary: self
-				.draft_profiles
-				.active
-				.as_ref()
-				.and_then(|profile| {
-					self.draft_profiles.storage.document.profiles.get(&profile.draft_scope_key())
-				})
-				.map(|draft| draft.ordinary.clone())
-				.unwrap_or_default(),
+			prompt_edits: saved.map(|profile| profile.prompt_edits.clone()).unwrap_or_default(),
+			ordinary: saved.map(|profile| profile.ordinary.clone()).unwrap_or_default(),
 			unconfirmed_commands: self.submission.unconfirmed.clone(),
 			composer: composer(
 				self.composer_manager.as_deref(),

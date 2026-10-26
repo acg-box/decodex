@@ -1452,10 +1452,6 @@ impl AgentHost {
 		action: AgentActionDto,
 	) -> Result<String, AgentHostError> {
 		match action {
-			AgentActionDto::SetSavedAppSetting { .. } | AgentActionDto::SetAppSetting { .. } =>
-				Err(AgentHostError::Rejected(
-					"Configure connector approvals in Codex for this account.",
-				)),
 			AgentActionDto::SetThreadReadState {
 				work_id,
 				thread_id,
@@ -1716,8 +1712,6 @@ impl AgentHost {
 			| AgentActionDto::SetAppToolExposure { .. }
 			| AgentActionDto::ConfirmAppUiTool { .. }
 			| AgentActionDto::AcknowledgeAppUiCall { .. }
-			| AgentActionDto::SetSavedAppSetting { .. }
-			| AgentActionDto::SetAppSetting { .. }
 			| AgentActionDto::SetHookSetting { .. }
 			| AgentActionDto::SetTaskModel { .. }
 			| AgentActionDto::SelectPermissions { .. }

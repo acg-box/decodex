@@ -95,7 +95,6 @@ REQUIRED_TABLES = frozenset(
         "native_work_contributions",
         "native_work_dispatches",
         "native_work_deliveries",
-        "agent_tool_migrations",
         "guardian_settings",
         "guardian_sources",
         "guardian_review_details",

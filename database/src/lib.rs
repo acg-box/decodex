@@ -21,8 +21,6 @@ mod agent_models;
 mod agent_native_turns;
 mod agent_output;
 mod agent_permissions;
-#[cfg(test)]
-mod agent_settings_observation_tests;
 mod agent_process;
 mod agent_prompt_edit;
 mod agent_prompt_inputs;
@@ -32,10 +30,10 @@ mod agent_questions;
 mod agent_reasoning_summary;
 mod agent_request_payload;
 mod agent_response_usage;
+#[cfg(test)] mod agent_settings_observation_tests;
 mod agent_settings_observations;
 mod agent_slots;
 mod agent_task_references;
-mod agent_tool_migration;
 mod agent_turn_execution;
 mod agent_voice;
 mod agent_voice_history;
@@ -92,8 +90,8 @@ pub use self::{
 	},
 	agent_misalignment::AgentMisalignment,
 	agent_models::{
-		AgentManualModelSource, AgentModelAttempt, AgentModelHistory,
-		AgentModelReceipt, AgentModelRecoveryContext,
+		AgentManualModelSource, AgentModelAttempt, AgentModelHistory, AgentModelReceipt,
+		AgentModelRecoveryContext,
 	},
 	agent_output::{AgentLiveOutput, AgentOutputUpdate},
 	agent_permissions::{AgentPermissionAttempt, AgentPermissionReceipt},
