@@ -1321,7 +1321,10 @@ mod tests {
 			s.state = LoadState::Ready;
 
 			s.execute(
-				AgentActionDto::RefreshIntegrations { work_id: EntityId::new("work").unwrap() },
+				AgentActionDto::PrepareNativeAgent {
+					work_id: EntityId::new("work").unwrap(),
+					thread_id: WireText::new("thread").unwrap(),
+				},
 				None,
 				cx,
 			);
@@ -1379,7 +1382,10 @@ mod tests {
 			s.state = LoadState::Ready;
 
 			s.execute(
-				AgentActionDto::RefreshIntegrations { work_id: EntityId::new("work").unwrap() },
+				AgentActionDto::PrepareNativeAgent {
+					work_id: EntityId::new("work").unwrap(),
+					thread_id: WireText::new("thread").unwrap(),
+				},
 				None,
 				cx,
 			);
@@ -1430,7 +1436,10 @@ mod tests {
 			s.state = LoadState::Ready;
 
 			s.execute(
-				AgentActionDto::RefreshIntegrations { work_id: EntityId::new("work").unwrap() },
+				AgentActionDto::PrepareNativeAgent {
+					work_id: EntityId::new("work").unwrap(),
+					thread_id: WireText::new("thread").unwrap(),
+				},
 				None,
 				cx,
 			);
@@ -1473,7 +1482,10 @@ mod tests {
 
 			store.save(0, &DesktopDraftDocument::default().encode().unwrap()).unwrap();
 			s.execute(
-				AgentActionDto::RefreshIntegrations { work_id: EntityId::new("work").unwrap() },
+				AgentActionDto::PrepareNativeAgent {
+					work_id: EntityId::new("work").unwrap(),
+					thread_id: WireText::new("thread").unwrap(),
+				},
 				None,
 				cx,
 			);

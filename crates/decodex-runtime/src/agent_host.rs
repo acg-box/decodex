@@ -1551,9 +1551,6 @@ impl AgentHost {
 					key,
 				)
 				.await,
-			AgentActionDto::SetLiveReviewer { .. } => Err(AgentHostError::Rejected(
-				"Guardian is controlled from global settings. Per-Agent reviewer overrides are retired.",
-			)),
 			AgentActionDto::SetLiveModel { work_id, turn_id, review_token, model, effort } =>
 				self.set_live_settings(
 					(&work_id, &turn_id, &review_token),
@@ -1715,7 +1712,6 @@ impl AgentHost {
 			| AgentActionDto::SetHookSetting { .. }
 			| AgentActionDto::SetTaskModel { .. }
 			| AgentActionDto::SelectPermissions { .. }
-			| AgentActionDto::SetLiveReviewer { .. }
 			| AgentActionDto::SetLiveModel { .. }) => self.handle_settings(key.as_str(), action).await,
 			AgentActionDto::PrepareNativeAgent { work_id, thread_id } =>
 				self.prepare_native_agent(work_id.as_str(), thread_id.as_str()).await,
@@ -1726,8 +1722,6 @@ impl AgentHost {
 					expected_turn.as_ref().map(|turn| turn.as_str()),
 				)
 				.await,
-			AgentActionDto::InstallSuggestedPlugin { .. } =>
-				Err(AgentHostError::Rejected("Install plugins in Codex for this account.")),
 			AgentActionDto::RestoreArchivedThread { work_id, thread_id } => {
 				let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
 
@@ -1738,8 +1732,6 @@ impl AgentHost {
 
 				Ok(work_id.as_str().into())
 			},
-			AgentActionDto::RefreshIntegrations { .. } =>
-				Err(AgentHostError::Rejected("Update plugins and connections in Codex.")),
 			action @ (AgentActionDto::AddResourceLink { .. }
 			| AgentActionDto::RemoveResource { .. }) => Self::handle_resource_change(action, active).await,
 

@@ -1847,7 +1847,6 @@
       "Direct native delegation binds saved intent to native assignment and output. Unknown or ambiguous evidence never authorizes another spawn. No duplicate helper executor or Work polling controller.",
       "Global Guardian separates saved preference, queued publication and exact source readback. Pending human approvals keep their owner. Full Access remains separate native policy.",
       "Review Details retain supported private assistant output and terminal metadata, with exact private identities, bounded storage and explicit association/reconnection limits.",
-      "Schema 56 preserves native identities and historical evidence. Protocol generation 3 rejects incompatible old clients. Immutable tool migration preserves original history and settings and requires positive native retirement.",
       "Apply Agent and Material scope before page limits; prefer open and blocked Work over completed history. Unrelated records cannot consume the Agent evidence page."
     ],
     "source_symbols": [
@@ -1855,7 +1854,6 @@
       "database/src/works/commands.rs#complete,#revise",
       "database/src/works/collaboration.rs#instruction,#returned,#apply",
       "crates/decodex-runtime/src/agent/work.rs#verify_work_command,#verify_work_result,#recover_native_contribution,#observe_native_work_dispatch",
-      "crates/decodex-runtime/src/agent/tool_migration.rs#migrate_tools,#migration_quiescent",
       "crates/decodex-runtime/src/agent/global_guardian.rs#sync_global_guardian,#global_guardian_notification",
       "crates/decodex-runtime/src/work_portfolio.rs#read",
       "apps/decodex-gpui/src/agent_portfolio.rs#render_work_portfolio,#render_global_guardian",
@@ -1891,17 +1889,9 @@
           "busy_request_and_lost_ack_survive_restart_without_false_acceptance",
           "user_holds_and_scoped_materials_do_not_grant_private_history",
           "native_binding_and_completion_intents_stay_separate_after_restart",
-          "global_guardian_unknown_writes_and_observation_opt_out_survive_restart",
-          "native_tool_replacement_keeps_creation_and_retirement_separate_after_restart"
+          "global_guardian_unknown_writes_and_observation_opt_out_survive_restart"
         ],
         "sha256": "7995d3e2ab0c9c1b2bcb8e67141fe4db3c9621326bbdda85b488e0b06c0f4b43"
-      },
-      {
-        "source": "database/src/project_work_migration_tests.rs",
-        "tests": [
-          "direct_migration_preserves_native_identity_directory_holds_and_completed_history"
-        ],
-        "sha256": "94f26398cc8b9d2036654f7c2d7df4ac541a65e67b0e8a0a0ee8e03e1563789f"
       },
       {
         "source": "crates/decodex-runtime/src/agent/tests/work_contract.rs",
@@ -3331,7 +3321,8 @@
       "schedule_changed": false,
       "installation": false,
       "release": false
-    }
+    },
+    "current_scope": "The historical delivery hashes and counts below refer to PR 2494. The current schema is database/schema.sql. Historical SQL migrations and native tool-context replacement are retired; they are not reusable requirements."
   },
   "selected_read_views": {
     "contracts": [

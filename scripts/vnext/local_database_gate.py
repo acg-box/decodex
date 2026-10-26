@@ -42,7 +42,6 @@ REQUIRED_TABLES = frozenset(
         "account_profile_daily_usage",
         "codex_account_capability",
         "command_receipts",
-        "legacy_account_route_interruptions",
         "role_profiles",
         "conversations",
         "quick_task_requests",

@@ -2330,9 +2330,7 @@ impl AgentClient {
 		let attempted = AtomicBool::new(false);
 		let extended_timeout = match &action {
 			AgentActionDto::ConfirmAppUiTool { .. } => Some(Duration::from_secs(100)),
-			AgentActionDto::RefreshIntegrations { .. }
-			| AgentActionDto::InstallSuggestedPlugin { .. }
-			| AgentActionDto::SetAppToolExposure { .. }
+			AgentActionDto::SetAppToolExposure { .. }
 			| AgentActionDto::SetThreadReadState { .. }
 			| AgentActionDto::EditNativeGoal { .. }
 			| AgentActionDto::SetVoicePreference { .. }
@@ -3833,7 +3831,6 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		AgentActionDto::UploadPromptInput { upload, .. }
 		| AgentActionDto::CompletePromptInputUpload { upload } => &upload.work_id,
 		AgentActionDto::SendPromptInput { work_id, .. }
-		| AgentActionDto::SetLiveReviewer { work_id, .. }
 		| AgentActionDto::SetLiveModel { work_id, .. } => work_id,
 		AgentActionDto::SelectPermissions { work_id, .. } => work_id,
 		AgentActionDto::SetTaskModel { work_id, .. } => work_id,
@@ -3871,10 +3868,8 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		| AgentActionDto::ContinueMisalignment { work_id, .. }
 		| AgentActionDto::ApproveGuardianDenial { work_id, .. }
 		| AgentActionDto::RestoreArchivedThread { work_id, .. }
-		| AgentActionDto::InstallSuggestedPlugin { work_id, .. }
 		| AgentActionDto::AddResourceLink { work_id, .. }
-		| AgentActionDto::RemoveResource { work_id, .. }
-		| AgentActionDto::RefreshIntegrations { work_id } => work_id,
+		| AgentActionDto::RemoveResource { work_id, .. } => work_id,
 	}
 }
 

@@ -1,4 +1,4 @@
-//! Rendered current-turn reviewer changes cross the public same-UID socket.
+//! Rendered current-turn model changes cross the public same-UID socket.
 use std::thread::JoinHandle;
 
 use futures_util::{SinkExt as _, StreamExt as _};
@@ -9,9 +9,9 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::shell::agent_surface::{
 	live_settings::{
-		AgentActionDto, AgentDispatchStateDto, AgentLiveReviewerState, AgentReviewer,
-		AgentSnapshotDto, AgentSnapshotResult, AgentSurface, AgentWorkItemDto, AgentWorkStatusDto,
-		ClientProfile, Context, Edit, Entity, EntityId, IntoElement, Render, Window, WireText,
+		AgentActionDto, AgentDispatchStateDto, AgentLiveReviewerState, AgentSnapshotDto,
+		AgentSnapshotResult, AgentSurface, AgentWorkItemDto, AgentWorkStatusDto, ClientProfile,
+		Context, Edit, Entity, EntityId, IntoElement, Render, Window, WireText,
 	},
 	wire_test_support::{self, SERVER},
 };
@@ -30,22 +30,22 @@ impl Render for ReviewerView {
 	}
 }
 
-fn fixture(model: bool) -> (TempDir, ClientProfile, JoinHandle<Vec<AgentActionDto>>) {
-	wire_test_support::fixture(move |listener| serve(listener, model))
+fn fixture() -> (TempDir, ClientProfile, JoinHandle<Vec<AgentActionDto>>) {
+	wire_test_support::fixture(serve)
 }
 
-fn live_state(index: usize, model: bool) -> AgentLiveReviewerState {
+fn live_state(index: usize) -> AgentLiveReviewerState {
 	AgentLiveReviewerState::Available {
 		thread_id: EntityId::new("thread").unwrap(),
 		turn_id: EntityId::new("turn").unwrap(),
 		review_token: WireText::new(if index == 0 { "a" } else { "b" }.repeat(64)).unwrap(),
 		can_update: true,
-		last_reviewer: (index != 0 && !model).then_some(AgentReviewer::User),
-		last_model: (model && index != 0).then(|| AgentLiveModelSelection {
+		last_reviewer: None,
+		last_model: (index != 0).then(|| AgentLiveModelSelection {
 			model: ConversationModel::new("selected").unwrap(),
 			effort: ConversationReasoningEffort::High,
 		}),
-		model_choices: model.then(|| vec![model_choice()]),
+		model_choices: Some(vec![model_choice()]),
 		last_outcome: (index != 0).then_some(AgentLiveReviewerOutcome::Unknown),
 	}
 }
@@ -153,7 +153,7 @@ fn per_agent_reviewer_controls_are_absent(cx: &mut TestAppContext) {
 			s.apply_result(Ok(AgentSnapshotResult::Available(running_snapshot())));
 
 			s.live_reviewer.work = Some("root".into());
-			s.live_reviewer.state = Some(live_state(0, false));
+			s.live_reviewer.state = Some(live_state(0));
 			s.live_reviewer.reviewed = true;
 		});
 
@@ -171,11 +171,11 @@ fn per_agent_reviewer_controls_are_absent(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn model_click_sends_exact_turn_once_and_reads_unknown_receipt(cx: &mut TestAppContext) {
-	exercise_live_settings(cx, true);
+	exercise_live_settings(cx);
 }
 
-fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
-	let (_dir, profile, server) = fixture(model);
+fn exercise_live_settings(cx: &mut TestAppContext) {
+	let (_dir, profile, server) = fixture();
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
 
@@ -214,18 +214,15 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 	visual.run_until_parked();
 	visual.update(crate::ui_frame::draw_current_frame);
 
-	if model {
-		for selector in ["live-model-open", "live-model-choice-0", "live-model-effort-1"] {
-			let button = visual.debug_bounds(selector).unwrap();
+	for selector in ["live-model-open", "live-model-choice-0", "live-model-effort-1"] {
+		let button = visual.debug_bounds(selector).unwrap();
 
-			visual.simulate_click(button.center(), Default::default());
-			visual.run_until_parked();
-			visual.update(crate::ui_frame::draw_current_frame);
-		}
+		visual.simulate_click(button.center(), Default::default());
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_current_frame);
 	}
 
-	let button =
-		visual.debug_bounds(if model { "live-model-apply" } else { "live-reviewer-user" }).unwrap();
+	let button = visual.debug_bounds("live-model-apply").unwrap();
 
 	visual.simulate_click(button.center(), Default::default());
 	visual.run_until_parked();
@@ -238,13 +235,11 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 		assert!(s.live_reviewer.task.is_none());
 		assert!(s.live_reviewer.feedback.contains("unconfirmed"));
 
-		if model {
-			assert!(matches!(
-				&s.live_reviewer.state,
-				Some(AgentLiveReviewerState::Available { last_model: Some(selection), .. })
-					if selection.model.as_str() == "selected" && selection.effort.as_str() == "high"
-			));
-		}
+		assert!(matches!(
+			&s.live_reviewer.state,
+			Some(AgentLiveReviewerState::Available { last_model: Some(selection), .. })
+				if selection.model.as_str() == "selected" && selection.effort.as_str() == "high"
+		));
 
 		assert!(matches!(
 			s.live_reviewer.state,
@@ -260,14 +255,10 @@ fn exercise_live_settings(cx: &mut TestAppContext, model: bool) {
 		s.update_live_settings(
 			"root".into(),
 			"turn".into(),
-			Some(if model {
-				Edit::Model(AgentLiveModelSelection {
-					model: ConversationModel::new("selected").unwrap(),
-					effort: ConversationReasoningEffort::High,
-				})
-			} else {
-				Edit::AgentReviewer(AgentReviewer::User)
-			}),
+			Some(Edit::Model(AgentLiveModelSelection {
+				model: ConversationModel::new("selected").unwrap(),
+				effort: ConversationReasoningEffort::High,
+			})),
 			cx,
 		);
 
@@ -365,66 +356,60 @@ fn running_snapshot() -> AgentSnapshotDto {
 
 #[gpui::test]
 fn ordinary_refresh_keeps_live_settings_read_and_publication_receipt(cx: &mut TestAppContext) {
-	for model in [false, true] {
-		let (_dir, profile, server) = fixture(model);
-		let surface = cx.new(AgentSurface::new);
+	let (_dir, profile, server) = fixture();
+	let surface = cx.new(AgentSurface::new);
 
-		surface.update(cx, |s, _| {
+	surface.update(cx, |s, _| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(running_snapshot())));
+
+		s.profile = Some(profile);
+	});
+
+	let edit = Edit::Model(AgentLiveModelSelection {
+		model: ConversationModel::new("selected").unwrap(),
+		effort: ConversationReasoningEffort::High,
+	});
+
+	for selection in [None, Some(edit)] {
+		let saving = selection.is_some();
+
+		surface.update(cx, |s, cx| {
+			s.update_live_settings("root".into(), "turn".into(), selection, cx);
+
+			assert!(s.live_reviewer.task.is_some());
+
+			// Advance the snapshot generation before this operation can complete.
+			s.generation += 1;
+
 			s.apply_result(Ok(AgentSnapshotResult::Available(running_snapshot())));
-
-			s.profile = Some(profile);
 		});
 
-		let edit = if model {
-			Edit::Model(AgentLiveModelSelection {
-				model: ConversationModel::new("selected").unwrap(),
-				effort: ConversationReasoningEffort::High,
-			})
-		} else {
-			Edit::AgentReviewer(AgentReviewer::User)
-		};
+		cx.run_until_parked();
+		surface.read_with(cx, |s, _| {
+			assert!(
+				s.live_reviewer.task.is_none(),
+				"refresh must not strand a completed operation"
+			);
+			assert!(matches!(
+				s.live_reviewer.state,
+				Some(AgentLiveReviewerState::Available { .. })
+			));
+			assert_eq!(s.live_reviewer.reviewed, !saving);
 
-		for selection in [None, Some(edit)] {
-			let saving = selection.is_some();
-
-			surface.update(cx, |s, cx| {
-				s.update_live_settings("root".into(), "turn".into(), selection, cx);
-
-				assert!(s.live_reviewer.task.is_some());
-
-				// Advance the snapshot generation before this operation can complete.
-				s.generation += 1;
-
-				s.apply_result(Ok(AgentSnapshotResult::Available(running_snapshot())));
-			});
-
-			cx.run_until_parked();
-			surface.read_with(cx, |s, _| {
-				assert!(
-					s.live_reviewer.task.is_none(),
-					"refresh must not strand a completed operation"
-				);
+			if saving {
+				assert!(s.live_reviewer.feedback.contains("unconfirmed"));
 				assert!(matches!(
 					s.live_reviewer.state,
-					Some(AgentLiveReviewerState::Available { .. })
+					Some(AgentLiveReviewerState::Available {
+						last_outcome: Some(decodex_protocol::AgentLiveReviewerOutcome::Unknown),
+						..
+					})
 				));
-				assert_eq!(s.live_reviewer.reviewed, !saving);
-
-				if saving {
-					assert!(s.live_reviewer.feedback.contains("unconfirmed"));
-					assert!(matches!(
-						s.live_reviewer.state,
-						Some(AgentLiveReviewerState::Available {
-							last_outcome: Some(decodex_protocol::AgentLiveReviewerOutcome::Unknown),
-							..
-						})
-					));
-				}
-			});
-		}
-
-		assert_eq!(server.join().unwrap().len(), 1, "an uncertain publication must not be retried");
+			}
+		});
 	}
+
+	assert_eq!(server.join().unwrap().len(), 1, "an uncertain publication must not be retried");
 }
 
 #[gpui::test]
@@ -435,7 +420,7 @@ fn disconnect_invalidates_live_review_before_same_turn_reconnect(cx: &mut TestAp
 		s.apply_result(Ok(AgentSnapshotResult::Available(running_snapshot())));
 
 		s.live_reviewer.work = Some("root".into());
-		s.live_reviewer.state = Some(live_state(0, true));
+		s.live_reviewer.state = Some(live_state(0));
 		s.live_reviewer.reviewed = true;
 
 		let epoch = s.live_reviewer.epoch;
@@ -451,7 +436,7 @@ fn disconnect_invalidates_live_review_before_same_turn_reconnect(cx: &mut TestAp
 	});
 }
 
-async fn serve(listener: UnixListener, model: bool) -> Vec<AgentActionDto> {
+async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 	let mut actions = Vec::new();
 
 	for index in 0..3 {
@@ -465,20 +450,13 @@ async fn serve(listener: UnixListener, model: bool) -> Vec<AgentActionDto> {
 			let ClientMessage::Command(command) = request else { panic!("setting command") };
 			let CommandPayload::Agent { action } = command.payload else { panic!("Agent command") };
 			let (work_id, turn_id, review_token) = match &*action {
-				AgentActionDto::SetLiveReviewer { work_id, turn_id, review_token, reviewer }
-					if !model =>
-				{
-					assert_eq!(*reviewer, AgentReviewer::User);
-
-					(work_id, turn_id, review_token)
-				},
 				AgentActionDto::SetLiveModel {
 					work_id,
 					turn_id,
 					review_token,
 					model: selected,
 					effort,
-				} if model => {
+				} => {
 					assert_eq!(selected.as_str(), "selected");
 					assert_eq!(effort.as_str(), "high");
 
@@ -506,7 +484,7 @@ async fn serve(listener: UnixListener, model: bool) -> Vec<AgentActionDto> {
 
 		assert_eq!(work_id.as_str(), "root");
 
-		let state = live_state(index, model);
+		let state = live_state(index);
 		let result = ServerMessage::QueryResult(QueryResultEnvelope {
 			version: CURRENT_VERSION,
 			server_id: ServerId::new(SERVER).unwrap(),

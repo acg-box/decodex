@@ -1168,20 +1168,6 @@ fn reserve_command_sync(
 		connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
 	let now = crate::unix_micros().map_err(StoreError::from)?;
 
-	if kind == AccountCommandKind::Route
-		&& transaction
-			.query_row(
-				"SELECT 1 FROM legacy_account_route_interruptions WHERE idempotency_key = ?1",
-				rusqlite::params![command.key],
-				|row| row.get::<_, i64>(0),
-			)
-			.optional()
-			.map_err(sql_error)?
-			.is_some()
-	{
-		return Err(StoreError::IdempotencyConflict);
-	}
-
 	let existing = read_command_receipt(&transaction, &command.key)?;
 	let receipt_exists = existing.is_some();
 

@@ -649,15 +649,6 @@ CREATE TABLE history_items (
   UNIQUE (conversation_id, sequence)
 ) STRICT;
 
-CREATE TABLE legacy_account_route_interruptions (
-  idempotency_key TEXT PRIMARY KEY CHECK (
-    length(CAST(idempotency_key AS BLOB)) BETWEEN 1 AND 256
-  ),
-  request_sha256 TEXT NOT NULL CHECK (length(request_sha256) = 64),
-  terminal_reason TEXT NOT NULL CHECK (terminal_reason = 'interrupted_by_upgrade'),
-  interrupted_at_micros INTEGER NOT NULL CHECK (interrupted_at_micros > 0)
-) STRICT;
-
 CREATE TABLE native_work_contributions (
  id TEXT PRIMARY KEY,
  work_id TEXT NOT NULL,

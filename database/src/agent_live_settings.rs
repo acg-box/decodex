@@ -1,5 +1,5 @@
 //! Non-waking live-turn setting receipts. A reservation is never replay authority.
-//! Persisted live_reviewer event names remain stable so old attempts share the same sequence.
+//! Live model publications share an exact source-bound receipt sequence.
 use rusqlite::{Connection, Error, OptionalExtension as _, TransactionBehavior, types::Type};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -128,19 +128,18 @@ fn latest(
 	turn: &str,
 ) -> Result<Option<AgentLiveSettingsReceipt>, StoreError> {
 	Ok(connection.query_row(
-		"SELECT a.id,COALESCE(json_extract(a.payload,'$.edit'),json_object('kind','reviewer','reviewer',json_extract(a.payload,'$.reviewer'))),COALESCE(r.disposition_note,'reserved'),json_extract(a.payload,'$.generationId') FROM agent_inbox_events a LEFT JOIN agent_inbox_events r ON r.source_event_id='live-reviewer-result:'||a.id AND r.work_item_id=a.work_item_id AND r.event_kind='live_reviewer_result' WHERE a.work_item_id=?1 AND a.event_kind='live_reviewer_attempt' AND json_extract(a.payload,'$.threadId')=?2 AND json_extract(a.payload,'$.turnId')=?3 ORDER BY a.id DESC LIMIT 1",
+		"SELECT a.id,json_extract(a.payload,'$.edit'),COALESCE(r.disposition_note,'reserved'),json_extract(a.payload,'$.generationId') FROM agent_inbox_events a LEFT JOIN agent_inbox_events r ON r.source_event_id='live-reviewer-result:'||a.id AND r.work_item_id=a.work_item_id AND r.event_kind='live_reviewer_result' WHERE a.work_item_id=?1 AND a.event_kind='live_reviewer_attempt' AND json_extract(a.payload,'$.threadId')=?2 AND json_extract(a.payload,'$.turnId')=?3 ORDER BY a.id DESC LIMIT 1",
 		rusqlite::params![work,thread,turn], |row| Ok(AgentLiveSettingsReceipt {id:row.get(0)?,edit:serde_json::from_str(&row.get::<_,String>(1)?).map_err(|e|Error::FromSqlConversionFailure(1,Type::Text,Box::new(e)))?,outcome:row.get(2)?,generation_id:row.get(3)?})
 	).optional().map_err(error::sqlite_error)?)
 }
 
 #[cfg(test)]
 mod tests {
-	use rusqlite::Connection;
 	use serde_json::Value;
 
 	use crate::{
 		AgentDispatchState, AgentLiveSettingsAttempt, AgentLiveSettingsEdit, AgentWorkItem,
-		AgentWorkKind, AgentWorkStatus, EnqueueAgentEvent, SqliteStore, agent_live_settings,
+		AgentWorkKind, AgentWorkStatus, EnqueueAgentEvent, SqliteStore,
 	};
 
 	fn attempt(token: char, previous_id: Option<i64>) -> AgentLiveSettingsAttempt {
@@ -154,30 +153,6 @@ mod tests {
 			attempt_id: format!("attempt-{token}"),
 			previous_id,
 		}
-	}
-
-	#[test]
-	fn legacy_reviewer_payload_remains_readable() {
-		let connection = Connection::open_in_memory().unwrap();
-
-		connection.execute_batch("CREATE TABLE agent_inbox_events (id INTEGER,source_event_id TEXT,work_item_id TEXT,event_kind TEXT,payload TEXT,disposition_note TEXT);").unwrap();
-		connection
-			.execute(
-				"INSERT INTO agent_inbox_events VALUES (1,'legacy','work','live_reviewer_attempt',?1,NULL)",
-				[
-					r#"{"threadId":"thread","turnId":"turn","reviewer":"auto_review","generationId":null}"#,
-				],
-			)
-			.unwrap();
-
-		let receipt =
-			agent_live_settings::latest(&connection, "work", "thread", "turn").unwrap().unwrap();
-
-		assert_eq!(
-			receipt.edit,
-			AgentLiveSettingsEdit::Reviewer { reviewer: "auto_review".into() }
-		);
-		assert_eq!(receipt.outcome, "reserved");
 	}
 
 	async fn prepare_bound_work(store: &SqliteStore) {

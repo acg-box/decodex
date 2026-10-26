@@ -260,7 +260,7 @@ impl SqliteStore {
 		})
 	}
 
-	/// Revalidate SQLite integrity, configuration, and the exact migration-owned schema.
+	/// Revalidate SQLite integrity, configuration, and the exact current schema.
 	pub async fn revalidate(&self) -> Result<(), DatabaseError> {
 		let store = self.clone();
 
