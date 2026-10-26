@@ -488,6 +488,7 @@ fn validate_fork_request(params: &Value) -> Result<(), ClientError> {
 						| "beforeTurnId"
 						| "lastTurnId"
 						| "deferGoalContinuation"
+						| "attachToSource"
 						| "excludeTurns"
 						| "modelProvider"
 				)
@@ -495,7 +496,10 @@ fn validate_fork_request(params: &Value) -> Result<(), ClientError> {
 	}) && identity(&params["threadId"])
 		&& identity(&params["modelProvider"])
 		&& (identity(&params["beforeTurnId"]) ^ identity(&params["lastTurnId"]))
-		&& params["deferGoalContinuation"] == true
+		&& ((params["deferGoalContinuation"] == true && params.get("attachToSource").is_none())
+			|| (params["attachToSource"] == true
+				&& params.get("deferGoalContinuation").is_none()
+				&& identity(&params["lastTurnId"])))
 		&& params["excludeTurns"] == true
 	{
 		Ok(())
@@ -572,6 +576,34 @@ mod tests {
 				);
 			}
 		}
+	}
+
+	#[test]
+	fn attached_fork_bridge_admits_only_the_explicit_completed_boundary() {
+		let exact = serde_json::json!({"threadId":"source","lastTurnId":"selected","attachToSource":true,"excludeTurns":true,"modelProvider":"source-provider"});
+
+		assert!(agent_process::validate_fork_request(&exact).is_ok());
+
+		for (key, value) in [
+			("deferGoalContinuation", serde_json::json!(true)),
+			("ephemeral", serde_json::json!(true)),
+			("attachToSource", serde_json::json!(false)),
+			("path", serde_json::json!("/other")),
+		] {
+			let mut invalid = exact.clone();
+
+			invalid[key] = value;
+
+			assert!(agent_process::validate_fork_request(&invalid).is_err());
+		}
+
+		let mut before = exact;
+
+		before.as_object_mut().unwrap().remove("lastTurnId");
+
+		before["beforeTurnId"] = serde_json::json!("selected");
+
+		assert!(agent_process::validate_fork_request(&before).is_err());
 	}
 
 	#[test]

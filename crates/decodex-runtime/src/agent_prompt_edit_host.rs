@@ -11,7 +11,7 @@ use crate::{
 	PromptEditReview,
 	agent_host::{AgentCoordinator, AgentHost, AgentHostError},
 };
-use decodex_database::{AgentForkBoundary, AgentPromptEditAttempt};
+use decodex_database::{AgentForkBoundary, AgentForkReceipt, AgentPromptEditAttempt};
 use decodex_protocol::{
 	EntityId, PromptEditEvidence, PromptEditPhase, PromptEditStatus, PromptForkBoundary,
 	PromptForkPhase, PromptForkResult, WireText,
@@ -70,6 +70,7 @@ impl AgentHost {
 				let boundary = match boundary {
 					PromptForkBoundary::BeforeInput => AgentForkBoundary::BeforeInput,
 					PromptForkBoundary::AfterTurn => AgentForkBoundary::AfterTurn,
+					PromptForkBoundary::AttachedAfterTurn => AgentForkBoundary::AttachedAfterTurn,
 				};
 
 				if let Some(receipt) = self
@@ -327,6 +328,22 @@ impl AgentHost {
 
 /// Read saved branch state without requiring a live native process.
 impl AgentHost {
+	pub(crate) async fn attached_branches(
+		&self,
+		work: &EntityId,
+	) -> decodex_protocol::AttachedBranchesResult {
+		let Ok((saved, truncated)) = self.store.agent_attached_forks(work.as_str().into()).await
+		else {
+			return decodex_protocol::AttachedBranchesResult::Unavailable;
+		};
+
+		match saved.into_iter().map(fork_status).collect::<Option<Vec<_>>>() {
+			Some(branches) =>
+				decodex_protocol::AttachedBranchesResult::Available { branches, truncated },
+			None => decodex_protocol::AttachedBranchesResult::Unavailable,
+		}
+	}
+
 	pub(crate) async fn prompt_fork_status(
 		&self,
 		work: &EntityId,
@@ -339,29 +356,8 @@ impl AgentHost {
 				Ok(None) => return PromptForkResult::Available(None),
 				Err(_) => return PromptForkResult::Unavailable,
 			};
-		let convert = || -> Option<decodex_protocol::PromptForkStatus> {
-			Some(decodex_protocol::PromptForkStatus {
-				work_id: work.clone(),
-				thread_id: WireText::new(saved.attempt.source.thread).ok()?,
-				review_token: review.clone(),
-				target_work_id: EntityId::new(saved.attempt.target_work).ok()?,
-				target_thread_id: saved.target_thread.map(WireText::new).transpose().ok()?,
-				boundary: match saved.attempt.boundary {
-					AgentForkBoundary::BeforeInput => PromptForkBoundary::BeforeInput,
-					AgentForkBoundary::AfterTurn => PromptForkBoundary::AfterTurn,
-				},
-				phase: match saved.state.as_str() {
-					"reserved" => PromptForkPhase::Uncertain,
-					"acknowledged" => PromptForkPhase::Acknowledged,
-					"forked" => PromptForkPhase::Forked,
-					"rejected" => PromptForkPhase::Rejected,
-					_ => return None,
-				},
-				edit_receipt_id: saved.edit_receipt_id,
-			})
-		};
 
-		match convert() {
+		match fork_status(saved) {
 			Some(status) => PromptForkResult::Available(Some(status)),
 			None => PromptForkResult::Unavailable,
 		}
@@ -398,6 +394,29 @@ fn fragment(
 		content_bytes: text.len() as u64,
 		offset,
 		fragment: text[start..end].into(),
+	})
+}
+
+fn fork_status(saved: AgentForkReceipt) -> Option<decodex_protocol::PromptForkStatus> {
+	Some(decodex_protocol::PromptForkStatus {
+		work_id: EntityId::new(saved.attempt.source.work).ok()?,
+		thread_id: WireText::new(saved.attempt.source.thread).ok()?,
+		review_token: WireText::new(saved.attempt.source.review_token).ok()?,
+		target_work_id: EntityId::new(saved.attempt.target_work).ok()?,
+		target_thread_id: saved.target_thread.map(WireText::new).transpose().ok()?,
+		boundary: match saved.attempt.boundary {
+			AgentForkBoundary::BeforeInput => PromptForkBoundary::BeforeInput,
+			AgentForkBoundary::AfterTurn => PromptForkBoundary::AfterTurn,
+			AgentForkBoundary::AttachedAfterTurn => PromptForkBoundary::AttachedAfterTurn,
+		},
+		phase: match saved.state.as_str() {
+			"reserved" => PromptForkPhase::Uncertain,
+			"acknowledged" => PromptForkPhase::Acknowledged,
+			"forked" => PromptForkPhase::Forked,
+			"rejected" => PromptForkPhase::Rejected,
+			_ => return None,
+		},
+		edit_receipt_id: saved.edit_receipt_id,
 	})
 }
 

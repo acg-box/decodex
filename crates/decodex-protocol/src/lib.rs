@@ -139,8 +139,8 @@ pub use self::{
 	agent_plugins::{AgentPluginOutcome, AgentPluginSelectionState},
 	agent_prompt_draft::{DesktopPromptEditDraft, PromptDraft},
 	agent_prompt_edit::{
-		PromptEditEvidence, PromptEditPhase, PromptEditStatus, PromptForkBoundary,
-		PromptForkIntent, PromptForkPhase, PromptForkResult, PromptForkStatus,
+		AttachedBranchesResult, PromptEditEvidence, PromptEditPhase, PromptEditStatus,
+		PromptForkBoundary, PromptForkIntent, PromptForkPhase, PromptForkResult, PromptForkStatus,
 	},
 	agent_prompt_send::{PromptInputSend, PromptInputSendIdentity, PromptInputSendStatus},
 	agent_prompt_upload::{PromptInputUpload, PromptInputUploadStatus},
@@ -302,7 +302,7 @@ pub use work_portfolio::{MAX_WORK_DETAIL_BYTES, WORK_DETAIL_PAGE_BYTES, WorkDeta
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 3, minor: 1 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 3, minor: 2 };
 
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]

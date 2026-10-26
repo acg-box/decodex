@@ -10,6 +10,8 @@ pub enum ThreadForkBoundary<'a> {
 	BeforeInput(&'a str),
 	/// Include the selected completed turn.
 	AfterTurn(&'a str),
+	/// Keep the reviewed completed prefix attached to its native source.
+	AttachedAfterTurn(&'a str),
 }
 
 impl AppServerClient {
@@ -21,9 +23,10 @@ impl AppServerClient {
 		boundary: ThreadForkBoundary<'_>,
 		guard: HistoryGuard,
 	) -> Result<Value, ClientError> {
-		let (field, turn) = match boundary {
-			ThreadForkBoundary::BeforeInput(turn) => ("beforeTurnId", turn),
-			ThreadForkBoundary::AfterTurn(turn) => ("lastTurnId", turn),
+		let (field, turn, attached) = match boundary {
+			ThreadForkBoundary::BeforeInput(turn) => ("beforeTurnId", turn, false),
+			ThreadForkBoundary::AfterTurn(turn) => ("lastTurnId", turn, false),
+			ThreadForkBoundary::AttachedAfterTurn(turn) => ("lastTurnId", turn, true),
 		};
 
 		if [source, turn]
@@ -33,9 +36,11 @@ impl AppServerClient {
 			return Err(ClientError::InvalidFrame);
 		}
 
-		let mut params =
-			serde_json::json!({"threadId":source,"deferGoalContinuation":true,"excludeTurns":true});
+		let mut params = serde_json::json!({"threadId":source,"excludeTurns":true});
 
+		// Native attached forks neither inherit the Goal snapshot nor admit deferred continuation.
+		params[if attached { "attachToSource" } else { "deferGoalContinuation" }] =
+			Value::Bool(true);
 		params[field] = serde_json::json!(turn);
 
 		let guard =
@@ -114,7 +119,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn fork_selects_one_boundary_and_never_sends_a_turn_or_revert() {
-		for before in [true, false] {
+		for mode in 0..3 {
+			let before = mode == 0;
 			let (local, remote) = io::duplex(65_536);
 			let (read, write) = io::split(local);
 			let (client, _events) = AppServerClient::from_io(read, write);
@@ -140,8 +146,10 @@ mod tests {
 					request["params"],
 					if before {
 						serde_json::json!({"threadId":"source","beforeTurnId":"first","deferGoalContinuation":true,"excludeTurns":true,"modelProvider":"source-provider"})
-					} else {
+					} else if mode == 1 {
 						serde_json::json!({"threadId":"source","lastTurnId":"first","deferGoalContinuation":true,"excludeTurns":true,"modelProvider":"source-provider"})
+					} else {
+						serde_json::json!({"threadId":"source","lastTurnId":"first","attachToSource":true,"excludeTurns":true,"modelProvider":"source-provider"})
 					}
 				);
 
@@ -161,8 +169,10 @@ mod tests {
 			let guard = client.thread_settings_guard("source").unwrap();
 			let boundary = if before {
 				ThreadForkBoundary::BeforeInput("first")
-			} else {
+			} else if mode == 1 {
 				ThreadForkBoundary::AfterTurn("first")
+			} else {
+				ThreadForkBoundary::AttachedAfterTurn("first")
 			};
 
 			assert_eq!(

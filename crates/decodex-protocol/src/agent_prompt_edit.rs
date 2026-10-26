@@ -97,6 +97,8 @@ pub enum PromptForkBoundary {
 	BeforeInput,
 	/// Copy the reviewed completed turn and all earlier turns.
 	AfterTurn,
+	/// Copy the completed prefix into a persistent branch attached to this source.
+	AttachedAfterTurn,
 }
 
 /// Durable branch progress. Reading it never creates another branch.
@@ -142,6 +144,21 @@ pub enum PromptForkResult {
 	/// Read completed; no receipt means this exact review has not been reserved.
 	Available(Option<PromptForkStatus>),
 	/// Read failed; do not infer that no branch exists.
+	Unavailable,
+}
+
+/// Retained branches of one local source, including unresolved creation receipts.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum AttachedBranchesResult {
+	/// At most 100 receipts, newest first. Reading never creates or resumes a thread.
+	Available {
+		/// Exact original creation and native identity evidence.
+		branches: Vec<PromptForkStatus>,
+		/// More retained receipts exist beyond this bounded view.
+		truncated: bool,
+	},
+	/// Source or retained receipts could not be read.
 	Unavailable,
 }
 

@@ -63,6 +63,8 @@ impl AgentCoordinator {
 				ThreadForkBoundary::BeforeInput(&attempt.source.before_turn_id),
 			AgentForkBoundary::AfterTurn =>
 				ThreadForkBoundary::AfterTurn(&attempt.source.before_turn_id),
+			AgentForkBoundary::AttachedAfterTurn =>
+				ThreadForkBoundary::AttachedAfterTurn(&attempt.source.before_turn_id),
 		};
 		let response = time::timeout(
 			Duration::from_secs(60),
@@ -143,6 +145,16 @@ impl AgentCoordinator {
 		if metadata["thread"]["id"] != thread.as_str()
 			|| metadata["thread"]["forkedFromId"] != saved.attempt.source.thread
 		{
+			return Err(rejected());
+		}
+		if saved.attempt.boundary == AgentForkBoundary::AttachedAfterTurn
+			&& !matches!(
+				self.client
+					.attached_thread_archive_state(thread, &saved.attempt.source.thread)
+					.await?,
+				decodex_codex::app_server_client::ThreadArchiveState::Active
+					| decodex_codex::app_server_client::ThreadArchiveState::Archived
+			) {
 			return Err(rejected());
 		}
 

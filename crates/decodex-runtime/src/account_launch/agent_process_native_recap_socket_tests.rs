@@ -123,6 +123,14 @@ fn start_recap_parent(work: &EntityId, directory: &Path, account: &AccountId) ->
 	})
 }
 
+fn fixture_working_directory(home: &Path, sampling: bool) -> PathBuf {
+	if sampling || env::var_os("DECODEX_TEST_NATIVE_FORK").is_some() {
+		env::current_dir().expect("owned test checkout")
+	} else {
+		home.to_owned()
+	}
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "run alone with isolated HOME, DECODEX_TEST_ACCOUNT_HOME and DECODEX_TEST_CODEX_BINARY"]
 async fn installed_recap_public_socket_preserves_parent_and_exact_request_identity() {
@@ -331,8 +339,7 @@ async fn check(
 	let sampling = env::var_os("DECODEX_TEST_NATIVE_SAMPLE").is_some();
 	// Account/config fixtures stay temporary. Production cwd authority follows the OS account,
 	// not an overridden HOME, so sampling uses the test runner's owned checkout.
-	let directory =
-		if sampling { env::current_dir().expect("owned test checkout") } else { home.to_owned() };
+	let directory = fixture_working_directory(home, sampling);
 	let work = EntityId::new("recap-root").expect("work");
 
 	assert_eq!(client.recap(work.clone()).await.expect("cold query").phase, TaskRecapPhase::Idle);
@@ -340,8 +347,13 @@ async fn check(
 
 	accepted(client, start_recap_parent(&work, &directory, account), "recap-parent").await;
 
-	let thread =
-		if sampling { sampling::parent(client, store).await } else { settled(client).await };
+	let thread = if sampling {
+		sampling::parent(client, store).await
+	} else if env::var_os("DECODEX_TEST_NATIVE_FORK").is_some() {
+		fork::settled_parent(client).await
+	} else {
+		settled(client).await
+	};
 	let native = runtime.agent_client().expect("active native client");
 
 	if sampling {
