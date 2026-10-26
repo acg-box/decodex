@@ -6,6 +6,8 @@ tags: ["decodex", "architecture"]
 sources:
   - id: openwiki-source-6512b631b67649d924c16ba3
     resource: repo://apps/decodex-gpui/src/agent_archive.rs
+  - id: openwiki-source-bf03f317e64cfefd11f6ea83
+    resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
   - id: openwiki-source-5eddd1d872eed61f8ba7e703
     resource: repo://apps/decodex-gpui/src/agent_draft_storage.rs
   - id: openwiki-source-d701c906e7fcc9ab2d0917bc
@@ -36,10 +38,14 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/prediction.rs
   - id: openwiki-source-dc292a3cdb3064363ab29907
     resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs
+  - id: openwiki-source-787f8ad27b8519fbed2bd039
+    resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-95a7168e447de14b4b758f16
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs
   - id: openwiki-source-9e21e877b2d7ad96b0a4d637
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs
+  - id: openwiki-source-4a57fba4bea69171318c6323
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-720a745d503e0e60ebcad0c5
     resource: repo://crates/decodex-runtime/src/agent_detail.rs
   - id: openwiki-source-3d25cb6558fde84d70520ac2
@@ -60,14 +66,16 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
   - id: openwiki-source-c6bea677adcde563202b65b9
     resource: repo://crates/decodex-runtime/tests/native_qualification/response_identity.py
+  - id: openwiki-source-58c0167d31c3e40dc89591ab
+    resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-0f0fc00c258a3ddad6935fcc
     resource: repo://database/src/agent_tool_migration.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
+generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T20:12:58.607Z
+    at: 2026-10-26T07:09:00.728Z
 ---
 
 # Conversation input, history and recovery
@@ -104,17 +112,22 @@ After Codex restores the original thread, a positive active-list observation res
 
 ## Edit or branch at an earlier input
 
-Review the exact native item and complete input, including image, skill and mention identity. The confirmation panel offers three explicit choices:
+Review the exact native item and complete input, including image, skill and mention identity. The confirmation panel offers four explicit choices:
 
 | Choice | Native history | Draft |
 | --- | --- | --- |
 | **Edit in new branch** | Create a fork before the selected input; keep the original conversation unchanged | Restore the edited canonical input on the new branch |
 | **Branch after this turn** | Copy the selected completed turn and all earlier turns; keep the original unchanged | Open the branch without prefilling that input |
+| **Attached branch after this turn** | Attach a persistent native branch containing the completed-turn prefix to the exact source conversation | Open the branch without prefilling or sending input |
 | **Remove turns from original and keep draft** | Revert the original before the selected input, removing it and all later turns | Keep the edited draft on the original thread |
 
-A branch before the first input is an empty-prefix native fork, not an unrelated replacement conversation. Fork creation defers copied Goal continuation. Opening a branch does not send input or start a model turn. Neither a fork nor a same-thread revert undoes workspace file changes.
+A branch before the first input is an empty-prefix native fork, not an unrelated replacement conversation. Ordinary branches defer copied Goal continuation. An attached branch starts without a copied native Goal; the source Goal remains unchanged. Opening any branch does not send input or start a model turn. Neither a fork nor a same-thread revert undoes workspace file changes.
 
 The desktop saves the exact choice, destination and edited draft before dispatch. The service reserves the operation before one native write. It saves a returned fork ID before a separate prefix read. If creation acceptance is unknown, retain the draft and read its receipt; do not create another branch. Known fork recovery only reads native identity and history. The source keeps its normal history and has no branch-draft input fence.
+
+An attached branch retains the exact source Agent as its local parent and keeps its Project, role, provider and tool revision. In the source Agent's preferences, open **Attached branches**, then **Open branch** to continue a verified active branch. Navigation preserves the source draft. The list reads the newest 100 saved Decodex attached-branch receipts and discloses truncation; it does not adopt branches created outside Decodex. Refresh is explicit.
+
+An uncertain creation stays unconfirmed. Keep the saved choice and recover it instead of creating another branch. An acknowledged identity can require saved-choice recovery before history is ready. If a branch is archived, restore it in Codex and refresh the list. Native archive and parent-deletion rules remain authoritative. This workflow adds no automatic follow-up, scheduling, result merge or deletion control. The [attached-branch acceptance record](../testing/upstream-acceptance-boundaries.md#persistent-attached-branches) separates executed fixtures from installed-app acceptance.
 
 For a before-input branch or same-thread edit, projection refresh and durable draft handback must finish before that destination can accept normal input. Images and skill references stay in the canonical input path. **Send edited input** remains a separate explicit action. Ordinary composer drafts remain independent. Resuming a saved confirmation retains its original choice rather than asking for a new destination.
 

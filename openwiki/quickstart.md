@@ -6,6 +6,8 @@ tags: ["decodex", "architecture"]
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
+  - id: openwiki-source-bf03f317e64cfefd11f6ea83
+    resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
   - id: openwiki-source-3708e6cf9324a8ff1f6c39ae
     resource: repo://apps/decodex-gpui/src/agent_collaboration_tests.rs
   - id: openwiki-source-2a6989c7fa25b9681df71f95
@@ -22,6 +24,8 @@ sources:
     resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
+  - id: openwiki-source-4a57fba4bea69171318c6323
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-ff8abff5a675874c627f1969
@@ -42,10 +46,10 @@ sources:
     resource: repo://database/src/migrations.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
+generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T20:12:58.607Z
+    at: 2026-10-26T07:09:00.728Z
 ---
 
 # OpenWiki quickstart
@@ -72,7 +76,13 @@ A later [installed development acceptance](testing/upstream-acceptance-boundarie
 - The existing **Collaboration** panel retains exact local question replies, delivery outcomes and independent contribution/repair cycles. A reply or completed receiving turn does not imply resolution. See [coordination](architecture/chief-coordination.md).
 - **Actual usage** in Agent preferences and Work details shows known native token deltas and duration with source coverage. Shared or missing Work attribution stays explicit; this is not billing or complete Work elapsed time.
 
-These views use local protocol 3.1 and the existing schema59 store. Their exact regressions and qualification limits are in [the acceptance boundary](testing/upstream-acceptance-boundaries.md#selected-read-only-views) and `selected_read_views` in the [portable evidence index](../automations/upstream/retained-evidence.json). They do not change the selected runtime, source-review cursor, installed app or automation schedule. Attached-fork workflows, Guardian V3 and custom managed configuration remain undecided.
+These views first shipped with local protocol 3.1 and remain in current protocol 3.2 with the existing schema59 store. Their exact regressions and qualification limits are in [the acceptance boundary](testing/upstream-acceptance-boundaries.md#selected-read-only-views) and `selected_read_views` in the [portable evidence index](../automations/upstream/retained-evidence.json). They do not change the selected runtime, source-review cursor, installed app or automation schedule.
+
+## Persistent attached branches
+
+When reviewing an earlier message, choose **Attached branch after this turn** to create a persistent native branch from its completed-turn prefix. The source history, draft and Goal remain unchanged. Creation sends no input and copies no native Goal. Reopen a verified branch through **Agent preferences > Attached branches > Open branch**. See [conversation recovery](workflows/conversations-and-recovery.md#edit-or-branch-at-an-earlier-input) and the [exact-artifact qualification](testing/upstream-acceptance-boundaries.md#persistent-attached-branches).
+
+The user selected this as item 4. Items 1–3 are delivered above. Item 5, Guardian V3, waits for upstream maturity. Item 6, custom managed configuration, is deferred. No new decision remains in this list; installation, release and schedule activation require their own authority.
 
 ## Start by task
 

@@ -4,6 +4,8 @@ title: "Retained upstream product capabilities"
 description: "Current native integration, account and conversation scope, with excluded duplicate surfaces."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-bf03f317e64cfefd11f6ea83
+    resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
   - id: openwiki-source-d9c9b48c73ee4a2adc90f01c
     resource: repo://apps/decodex-gpui/src/agent_collaboration_cases.rs
   - id: openwiki-source-c76550e85b25876b339f9255
@@ -30,8 +32,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/history_item.rs
   - id: openwiki-source-830a575f82404942511da59b
     resource: repo://crates/decodex-codex/src/app_server_client/prediction.rs
-  - id: openwiki-source-dc292a3cdb3064363ab29907
-    resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs
+  - id: openwiki-source-787f8ad27b8519fbed2bd039
+    resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
@@ -42,8 +44,6 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-e2f4e298ab0a4c683b92158d
     resource: repo://crates/decodex-runtime/src/account_service/personal_access_token.rs
-  - id: openwiki-source-ff8abff5a675874c627f1969
-    resource: repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs
   - id: openwiki-source-4e8482c0f2dbe370858a1b11
     resource: repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs
   - id: openwiki-source-720a745d503e0e60ebcad0c5
@@ -76,10 +76,10 @@ sources:
     resource: repo://database/migrations/0056_project_agent_work.sql
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
+generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T20:12:58.607Z
+    at: 2026-10-26T07:09:00.728Z
 ---
 
 # Product scope and native ownership
@@ -110,9 +110,13 @@ The selected scope includes three views in the existing desktop:
 - **Collaboration history:** Retain exact local question replies, their delivery and receiving-turn outcome, plus independent contribution cycles and explicit owner assessments. A reply or returned contribution does not establish resolution or complete Work. Missing external reply bodies remain unknown.
 - **Actual usage:** Read known whole-turn token deltas and recorded duration for a persistent Agent or retained Work references. Shared Work references, missing counters and unobserved child usage remain explicit. Linked turns can contain other activity; recorded duration is not Work elapsed time and these values are not a bill.
 
-These views use local protocol 3.1 and existing source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [retained evidence index](../../automations/upstream/retained-evidence.json). Installed-app acceptance remains separate.
+These views first shipped with local protocol 3.1 and remain available in 3.2 through the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [retained evidence index](../../automations/upstream/retained-evidence.json). Installed-app acceptance remains separate.
 
-The persistent attached-fork product workflow, native Guardian V3 experiment and custom managed configuration server remain undecided. Existing explicit user branches, global Guardian and native managed requirements keep their current scope.
+## Current optional decisions
+
+Items 1–3 are delivered through the selected read-only views above. The user selected **item 4, persistent attached branches**. An explicit completed-turn branch uses native attachment, retains the exact source relationship and can be reopened from Agent preferences. Creation sends no input and copies no native Goal. It adds no automatic follow-up, scheduling, result merge or deletion policy. The retained `retained_attached_forks` evidence identifies its regressions and qualification limits.
+
+**Item 5, the native Guardian V3 experiment, waits for upstream maturity. Item 6, a custom managed configuration server, is deferred by the user.** Neither is selected for implementation. Existing global Guardian and native managed requirements keep their current scope. There is no outstanding new decision in this six-item list.
 
 ## Current integration boundary
 

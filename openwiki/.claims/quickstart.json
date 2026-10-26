@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:602b22c656485174e3760fe67f4a7525f5a711bc6ac1e2bbe36764cfee4be67d",
+  "pageVersion": "sha256:d8c7758360273d8c73bdfa8d7279e18dd1ca76f2b6ed4aae7e26de9e9db10dd6",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -8,15 +8,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
-          "version": "repo-file-v1:sha256:e86225db05876938fd27baa3d1b5c4331fcc8286a939760f4f5bc306923ddae2"
+          "version": "repo-file-v1:sha256:e09488115e203277500953b13ca68fce7b16502ce9233eb0181b5d912da8a060"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
-          "version": "repo-file-v1:sha256:5041a912c573d7376fe474b77b340990b1b69d55991d5aac351d5378a47b7199"
+          "version": "repo-file-v1:sha256:e582cfa574dd5384185c449535f678a948c567f205d49dd152706910c11c8065"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
-          "version": "repo-file-v1:sha256:a8f5c805ec9e3bcc5a27ac1249bbc89efebda3686f0067702c8a8da5dfe8f07f"
+          "version": "repo-file-v1:sha256:bccddb45c0b4cce0be377e4b5ea280d7902d9c224c516585803dfd4bb4b24bd2"
         }
       ]
     },
@@ -26,7 +26,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:473d11971830b92e711c50344c2f31625414543cf4bf96e657ac4cf8df5c2bd5"
+          "version": "repo-file-v1:sha256:99e61da4fc9c53f7cf60224d66a3665a9fd00e8654d407e3a720e4c356256e14"
         }
       ]
     },
@@ -36,7 +36,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:473d11971830b92e711c50344c2f31625414543cf4bf96e657ac4cf8df5c2bd5"
+          "version": "repo-file-v1:sha256:99e61da4fc9c53f7cf60224d66a3665a9fd00e8654d407e3a720e4c356256e14"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -49,12 +49,12 @@
       "statement": "The protocol crate CURRENT_VERSION and the embedded SQLite migration ledger define current local compatibility.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L304-L322",
-          "version": "repo-lines-v1:sha256:4d53fe20e951753eeb9be022aeb913bda192636a5013335db0277475f165542c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZDA5NzgzZTA2YzlkMGI3MDhhMTFiNTU3N2M2MWNlMjBhZGRjNjZjYmVmMGJkZjc5ODQ2ZWZiN2M5OWM3YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjZkOWNlOGNkNmRlNjQ0YTM4Y2QwYjA0NTRmYjkzYjBjMWEzNTFlNzAyYjc1ODI0NmE2ZTZkZWI3N2Y1MzkifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L293-L320",
+          "version": "repo-lines-v1:sha256:2f0d1eac4cd40b4ac25bd4d90b1928faf1a55c9102c8fd4c115048170115338b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1NmZiNGFkYzkwOTcyNzA2YTc2YjI0M2UwNTIwNzhjODBiNjk5NGFkMGI2OTI2ZDY3MmFiMGMwMDkwYTEyMDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZDA5NzgzZTA2YzlkMGI3MDhhMTFiNTU3N2M2MWNlMjBhZGRjNjZjYmVmMGJkZjc5ODQ2ZWZiN2M5OWM3YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjZkOWNlOGNkNmRlNjQ0YTM4Y2QwYjA0NTRmYjkzYjBjMWEzNTFlNzAyYjc1ODI0NmE2ZTZkZWI3N2Y1MzkifQ"
         },
         {
           "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:176017c4383dba8f7c27b8311442a333e430a3b2a6ae92ce5731c1b6f73b24ca"
+          "version": "repo-file-v1:sha256:f0efbf6c98677363a985a7c9e8da5f70fa6d72f97f08d8870a9b0e4c5ebcd271"
         }
       ]
     },
@@ -91,12 +91,12 @@
       "statement": "Account admission accepts only native plus, pro, prolite, promax and team plans for OAuth and PAT credentials.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5605-L5620",
-          "version": "repo-lines-v1:sha256:f2aad157ac011c19ef73d7df134cbff86acd5ea9f0abf61851e27450f4f6c470:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMwYzg1OTVlZGM0M2VmMjkzNzg1MjU0NWYzNTIwZGQzNDgyMDRmZWE2N2I5NDJmMTRkMzZlNzEzZTM0NTFmZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRkM2EwMmQxZGY1NDk3ZTVjMjY2ZGVjOGQ0MzRmYjk1OGEwODZhYTk2NDNmNzM4NjJlNjVhNTllNzg0ZWQ4ZTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhhNmQ2NDJjYjBkMTk2ZDgxYzE5NjZmNGI5NDdjZTY4NDI4OTI0YzlmZmIxYjI5ZjkyNTMzZTYyYzc5ZmNkOWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg2MTU5NjYyZTAwOGEwMGQ2ZWQ0NGRkOTRhZGEzMzIxYjRjMDFlMGQ2MDFkNmI3YTc0MzEzMzE5ZTJiNmM3MTEifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5528-L5638",
+          "version": "repo-lines-v1:sha256:29e335940f8b7368c86807515d156b757198ad8a020b42bab05ae733447b5504:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjMGM4NTk1ZWRjNDNlZjI5Mzc4NTI1NDVmMzUyMGRkMzQ4MjA0ZmVhNjdiOTQyZjE0ZDM2ZTcxM2UzNDUxZmQwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkZDNhMDJkMWRmNTQ5N2U1YzI2NmRlYzhkNDM0ZmI5NThhMDg2YWE5NjQzZjczODYyZTY1YTU5ZTc4NGVkOGU2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4YTZkNjQyY2IwZDE5NmQ4MWMxOTY2ZjRiOTQ3Y2U2ODQyODkyNGM5ZmZiMWIyOWY5MjUzM2U2MmM3OWZjZDliIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4NjE1OTY2MmUwMDhhMDBkNmVkNDRkZDk0YWRhMzMyMWI0YzAxZTBkNjAxZDZiN2E3NDMxMzMxOWUyYjZjNzExIn0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs",
-          "version": "repo-file-v1:sha256:a699da5c8e090fe7bd07682cee3fc3f9d1908a38d6ea557e618b1e86e2efe9b1"
+          "version": "repo-file-v1:sha256:34dffa05f6867119994719955f23998288890c04ef99a313fd32ed31b8e871fa"
         }
       ]
     },
@@ -106,7 +106,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:359100795a1b17559de47b5578a893434324404a8b48bdf1dac6683c5091003e"
+          "version": "repo-file-v1:sha256:922c1f03d6fa985fafe13a52155dee905122864de4447d110f8a4596e0ae0fef"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
@@ -124,11 +124,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
+          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_initial_settings.rs",
-          "version": "repo-file-v1:sha256:4948d81459853a96d2cf80afb78884aa74e702679089639928cbb209ec2bfe51"
+          "version": "repo-file-v1:sha256:d9e79dd537c9b4a9c6201c25a86f3c1c4a4e7d4f30b55c9ddda1211509598524"
         },
         {
           "resource": "repo://database/migrations/0058_shared_agent_process.sql",
@@ -146,7 +146,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
+          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
         }
       ]
     },
@@ -156,7 +156,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
+          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
         }
       ]
     },
@@ -166,31 +166,49 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
+          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
         }
       ]
     },
     {
       "id": "claim_c58bd50a168e478986fb1103f6abf2e9",
-      "statement": "The selected read-only views expose native memory in Agent preferences, exact replies and repair cycles in existing Collaboration, and retained Actual usage for Agents and Works under protocol3.1/schema59. They preserve unknown coverage and resolution limits without changing runtime, installed app, review cursor or schedule; attached forks, Guardian V3 and custom managed configuration remain undecided.",
+      "statement": "The selected read-only views expose native memory, exact collaboration replies and repair cycles, and retained Actual usage through existing surfaces. First delivered under protocol3.1/schema59 and retained in protocol3.2, they preserve unknown coverage and resolution limits. The user selected attached branches as item 4, waits for upstream maturity on Guardian V3 and defers custom managed configuration. Runtime, installed app, source-review cursor and native schedule identities remain separate.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:4811499c4567df61c7c0098acda4935eb830c8b29d712908a98069f81fa45a02"
+          "version": "repo-file-v1:sha256:0e50d076cc5c6abd8a315b8f8eccb3f5456f4d9502a97d92dd18f4695af00852"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
+          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:0fececdd43aca36dbb34b02cc91830ed7d2245f8eb74b34f61cebdc1ff9e48df"
+          "version": "repo-file-v1:sha256:f91fc60e30e0ab180639ebb00b3634de55195ec2c4693c9c751f488ee40481a8"
+        }
+      ]
+    },
+    {
+      "id": "claim_ae5ca53da8764b778c143a44bb446bfe",
+      "statement": "The explicit persistent attached-branch workflow preserves source history, draft and Goal, sends no creation input and copies no native Goal. Agent preferences can reopen verified retained branches through the normal navigation owner; qualification remains separate from installed desktop acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_attached_branches.rs",
+          "version": "repo-file-v1:sha256:a213f1868fb081da579d367d94baf1401943aa7cdd1d2e6b7264d47bd04408eb"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
+          "version": "repo-file-v1:sha256:cb31feead81d6c702b0e393f11eeb67d962fceeded432b9c32014b77349d4dc7"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T20:12:58.607Z"
+    "at": "2026-10-26T07:09:00.728Z"
   }
 }

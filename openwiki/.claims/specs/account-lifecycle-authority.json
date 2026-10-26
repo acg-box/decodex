@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:863de658eb2c2ea3aac63eae09967c20c562a9bc6eef9a3013e0bae338996ac5",
+  "pageVersion": "sha256:14aad69dfd632fb7ce909b98099789656f8102cde3b0d4e41131b6d1eb7d1dea",
   "claims": [
     {
       "id": "claim_d7063028d6a742dfa815d671fa660272",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:473d11971830b92e711c50344c2f31625414543cf4bf96e657ac4cf8df5c2bd5"
+          "version": "repo-file-v1:sha256:99e61da4fc9c53f7cf60224d66a3665a9fd00e8654d407e3a720e4c356256e14"
         }
       ]
     },
@@ -17,7 +17,7 @@
       "statement": "Passive shared-auth observation requires a stable two-poll source and one known account with the exact stored bundle; a different bundle is unmanaged and is not imported by this observation.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L363-L435",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L364-L436",
           "version": "repo-lines-v1:sha256:dc4c05d0c74f1615394f673a6cf59bbb6b3c6157e036cca261b6b49aeedca06e:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3YjBjZDgzODg0NDA4NDhhODc4ZTRiNTcyOWE5YTEzOTU0YzM3Y2Y2ZGYyMWFmOTU0NDk5ZjZmOGU5OGI2MTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlZTAxNWFhNWFjNmU2NTNiZWZkNzVjYjA4ZGQ4ZmRjM2E1MmE0ZmVhYzM2NDdiMjNiNDViNjY5ZjdkNTJmNTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdiMmQ5ODQyMTBiOTFlYzI0NjNjZjJlYTdjODViOGI3MzI2YmQ0ZDE1MTY0YmI1MTM4MGNkMWFiMjRlZDczZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQzMGM5ZDMzMjIwY2ZhNmRjMzNhOThmOGE2NmQ5NzhiNGJlMzgyZjNhZTJjZmZmM2JhODY0NzEyMTkyMzU0MDcifQ"
         },
         {
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:473d11971830b92e711c50344c2f31625414543cf4bf96e657ac4cf8df5c2bd5"
+          "version": "repo-file-v1:sha256:99e61da4fc9c53f7cf60224d66a3665a9fd00e8654d407e3a720e4c356256e14"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -46,7 +46,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:473d11971830b92e711c50344c2f31625414543cf4bf96e657ac4cf8df5c2bd5"
+          "version": "repo-file-v1:sha256:99e61da4fc9c53f7cf60224d66a3665a9fd00e8654d407e3a720e4c356256e14"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -69,8 +69,8 @@
       "statement": "Explicit logout reuses the exact recovery-operation link for known rejected refreshes and records supersession only at commit; pending and ambiguous refreshes remain blocked.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L3037-L3223",
-          "version": "repo-lines-v1:sha256:aefd9f6f9e4c8b9f61fb8c3838dbf8641e2fca437ee33683938319c17e2220f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTg3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4ZTA4MGJmNGE3NDU0MTdlMDIxNWE2ZjFlZDJjNTM2ZGJiZmQ0OTg2ZTU0YWNkOTc3M2FiOTI4OTU1MDk1N2JmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJlNTA0YjRiMjBiZjJmMjg4MGRjY2RlNGQzYTEwNmExMzRiYmEzOTExMDM5MGE3ZDQxMDA1MGM5ZWFkNWVmZmI1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhOWVmZjAyMDk3MDIwMDgzYmRhZDlkNzQ5NDZhNjk2ODQ1ZmY5ZTVlMTcwMGI1YzBhNWMyOTFjNTAyMTE2ZWNkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkODBhNjQzNWIzMTM5YmFkNWM3NDFmNGZiYWQ3OTIyMzQ5MDc2ZDE4M2U2NTM1ZWM2OTMxMGMyN2YwMzQ0ODgzIn0"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L3041-L3228",
+          "version": "repo-lines-v1:sha256:61e101c541dd6849fbe1e29b0e770ae4ca860ab09c2e31cbef3e0f958a8c0a39:eyJzZWxlY3RlZExpbmVDb3VudCI6MTg4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4ZTA4MGJmNGE3NDU0MTdlMDIxNWE2ZjFlZDJjNTM2ZGJiZmQ0OTg2ZTU0YWNkOTc3M2FiOTI4OTU1MDk1N2JmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJlNTA0YjRiMjBiZjJmMjg4MGRjY2RlNGQzYTEwNmExMzRiYmEzOTExMDM5MGE3ZDQxMDA1MGM5ZWFkNWVmZmI1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhOWVmZjAyMDk3MDIwMDgzYmRhZDlkNzQ5NDZhNjk2ODQ1ZmY5ZTVlMTcwMGI1YzBhNWMyOTFjNTAyMTE2ZWNkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkODBhNjQzNWIzMTM5YmFkNWM3NDFmNGZiYWQ3OTIyMzQ5MDc2ZDE4M2U2NTM1ZWM2OTMxMGMyN2YwMzQ0ODgzIn0"
         },
         {
           "resource": "repo://database/src/account_lifecycle.rs#L1486-L1560",
@@ -85,6 +85,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-24T21:11:31.338Z"
+    "at": "2026-10-26T07:09:00.728Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:97645b8eb2f8f1c1a81a49cb7e5e6b0dc4c74b18ccdd98721583fa95c9afc619",
+  "pageVersion": "sha256:f1a419b98e20e60063e842b3bd2f0e211f7d46babb0edd27889c8ed4ff812cb3",
   "claims": [
     {
       "id": "claim_3f139c853db04d169600a9ee50a8d9b8",
@@ -17,8 +17,8 @@
       "statement": "Shared Hook trust applies to reviewed content, while enablement is separate and affects other tasks using the same configuration file.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_hooks.rs#L216-L334",
-          "version": "repo-lines-v1:sha256:4e1d98b074ad961f6f4b4d3eb9c25f43a93ed0757e3449295cf98860b943e9ba:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhZDNjYzdiYTZlMGZhZmM5ODMyZjg5ODYzYmI4MjNkYWIyYTg0M2Q2ZjBmZDFmNzJkZmI5NGE2MTMwZjM0ZDI0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1NGUxOTVlZmZkNDk4MjZhYzA3MjQ2NDA1NzIwZWU5Y2FjYTBhNDI3ZGIxZTk2M2QzZjc2NTRjNGUyN2U2OTA3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzNDY3NWNmMmI2NDRmOTQxMDEyZjM3NTQ5YTRhMTBhN2QwZDNmZTIzNjAxNjg4MGE1YTcyMzZkNTBkYWI4MGQzIn0"
+          "resource": "repo://apps/decodex-gpui/src/agent_hooks.rs",
+          "version": "repo-file-v1:sha256:ee488851d5c5453a58a1a57ee5af08832d5d5dedef49a6ebd22ce452771e6e6a"
         }
       ]
     },
@@ -27,7 +27,7 @@
       "statement": "The account-owned bridge rejects local plugin management and retired widget resource/tool-call methods while retaining native integration observations.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L750-L793",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L822-L865",
           "version": "repo-lines-v1:sha256:c6d3d32d87a2b9459e0ee8c261b88bd9386392bb456ff9dd93eed96d99ba76ba:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0ZDAyMDk0NDNhMGVhMDQxNTNlYjM3YzdhNGYzMTU4OGE0MDBmNGE0ZTNkYTE0NDc3ZmVjYTRhYmQ4M2YzYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1YmZmMDY0M2Y4MTMwOWI5OTYzNjY3ODkyZTMzYWNhYzU2NzBiMzQ2YWZjMDc5MDk2Mjc0ZTA5Y2QzNTk0MjUifQ"
         }
       ]
@@ -37,7 +37,7 @@
       "statement": "The composer offers only enabled native skills for the selected source and inserts the exact name and absolute path as an input attachment without installing or enabling plugins.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_skills.rs#L166-L194",
+          "resource": "repo://apps/decodex-gpui/src/agent_skills.rs#L169-L197",
           "version": "repo-lines-v1:sha256:23027d77dad3b1152f8828f4dfae0421fd87c3bf4e8a325b039d2962aebdd22c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3ZGU5OWU0OTQ5ODExZmFkNDNiNTZhOTY0NTJjYzc4NmRiODgxZDE3ZjIzN2FiYWFlODk0YTU5Zjg4NmUyNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwNzcwYjYwZDU1ZmQ3YjE5NWI0Zjk2NzJhZjkzYjFkY2EyMjA0OTk2MWZhOGMxMWQ2ZGMwZGRhOGQ3YmFiZDQifQ"
         },
         {
@@ -51,12 +51,12 @@
       "statement": "DECODEX_SKILL_ROOTS is captured at service startup as an optional absolute path list and applied through native skills/extraRoots/set on fresh retained Agent processes; native discovery remains unchanged when the variable is absent.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L2034-L2089",
-          "version": "repo-lines-v1:sha256:aa3f2ea38c791996308791502e0e922f953c2f37d89d6157fc95d2ce15ffe781:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4MGE3NmVlZTVjZjNiYWViN2VkZDA1MzQ1M2Q4OGE2ZDQ4ZTA1NDE1Y2JkOGZjNjI4ZjA2OWMxNzU1NGYxNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiZDYyMjhiZjUwNjZjMTkxOWJiMGU2YzAxZDU3NTBiOGYxYWY5NWQxNzQ1NjEyOGQyN2E0YTFmMWExOTg2OWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyOGJkYjkwYTFkYTM4ZjJkZTVlMzQ4Mjk2OGUwNzUwMWJhNDJlMDljNjU2ZmQ3MTI0OWRhYmQxYmVhYWMyOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhODFhMzNlNjdjNGNiNDNlZTJlMWUzODdkMTg1YjIwMWY5MzZjNjZjNWIyNzkzNzU2OWE1ZjViMjFlN2YyZTgifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
+          "version": "repo-file-v1:sha256:24cf7ca4d7181f96c24940defcb22c630587f674f1e3571bc25a08295304b19e"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_skill_roots.rs#L1-L63",
-          "version": "repo-lines-v1:sha256:b58e8f134d2981ef41b57e54f76eb36763794ecbc01ef7312d76cec57514888c:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkwYTQwMDJmNjk4ODM3NmFkZGU2MjM5MGFiNDBhMjA2MzM4Y2QwMmViMmMxOWZiMDQ4MzgxYTQ0ZDQ4MWY3ZDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlMGFmM2ZkNGE0YzNhMWQ0N2M3ZjQ3MGVkMGQ4NmQ5MGQ5ZGUyMTBhNWViMTQ1NWZiZDk0NDgyYTQ3NjViNzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRhYjhlZDcxMjZlMjE5YTQ5YzI0YTQyM2U0ZDA2NDcxNjc2NWNmMDA0YjBlN2U2MTAwMDQzYWRjNjMzNTJjZTcifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent_skill_roots.rs",
+          "version": "repo-file-v1:sha256:98a8a34aa56447678d2aa7c71c74d0261589b85e185dc9ec9d80eb8366c9f9c6"
         }
       ]
     },
@@ -65,11 +65,11 @@
       "statement": "Local saved and effective connector approval/reviewer management commands are retired, while native integration observations and pending approval handling remain separate capabilities.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L986-L1001",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L1058-L1073",
           "version": "repo-lines-v1:sha256:359c5cd359abedd93f41e57246f7b935447c103dc4033da7c4a923e5c732a998:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZlMDc3OGEzNjg0ZWY2ZjFkOWUwOTRhNTM4NTAxNTMyYWViZDM2ODFmZTM4OWQ5MjI2YmUzNzFmMDIzYTlhMDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ0NTRiMDRkMGZmMTM5NGU5Y2RkNTRmMGE1ZjZhYzY0ZDA5MzNmMTRhNzk0MTNkMTNjYThhYTBiMTNkODFjYzYifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1423-L1435",
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1446-L1458",
           "version": "repo-lines-v1:sha256:4e928b32a699ea432c5486c3fcc6666b7110d33c764f2a5c2aea537ef4f30143:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxMTU0ZGViZTBlNjlhNThlYThjZGFkNzhmZmMxZjhiM2I1NmViMDliNGYyNWI3OGU1ZjU1YjYxNTcwZmQxMjgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg2MTYxMjM2MTMyZjZmYTI1OGI1YWYzODdkMGUyYmI4M2E4OTk1NjlkNDlkN2M3ZDAyYWNjZjFjNGVmNjVhNzAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5NzhkNzlkZjYyMGEyYzI5YjhhNzVhYTRhMjg1MTYwMWI0MjFkY2JiM2YxYjlmMTQ1Y2VhMjg5ZWMzYTEzNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhMjgxNjI5YjJhOTQwZTRmMTc2MzQ4N2U1YTY0ZTM1ZmIxYmE1MDI4NjM4MjEzZDRmOWMxMjMxMDc0NDE4NmUifQ"
         },
         {
@@ -81,6 +81,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-21T14:39:50.043Z"
+    "at": "2026-10-26T07:09:00.728Z"
   }
 }

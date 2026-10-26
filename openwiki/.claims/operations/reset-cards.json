@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:eae1258655ce6ebcc090b4822c303e1c245f12a30bc59899628888b6487f937a",
+  "pageVersion": "sha256:7340a08f73b68b7369ad2d5bc01341ca06172af19b788bfa5b952266a71545a6",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -36,11 +36,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardCLIClient.swift",
-          "version": "repo-file-v1:sha256:fccc57bbcc4adfaaf9be7085ce32d54aa77e82bef2ba3d09bafd0bc167a0d601"
+          "version": "repo-file-v1:sha256:f902770d8d23b12a4a15ca0a786abefa976edabb7e48c9b22da694127b5aef0c"
         },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift",
-          "version": "repo-file-v1:sha256:3ac5949d2cd7117c47245766e9e7ea7131c037ef169c2cd78673a378db99cab9"
+          "version": "repo-file-v1:sha256:27d56628e3299dc0e705e6fe421d9591d051fe77e8df96afb5db7adf2f0b7469"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/lib.rs",
@@ -48,7 +48,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/client.rs",
-          "version": "repo-file-v1:sha256:668b86d700145dfe2c573b070e64b8201a99775fc668f19992e3be2f6b9e1cb2"
+          "version": "repo-file-v1:sha256:e019fef5e0eeaf1b2fdec88d27c053abc854eb290d86a26cbbb60f92e4b6917c"
         }
       ]
     },
@@ -62,7 +62,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/ResetCardStoreRecoveryTests.swift",
-          "version": "repo-file-v1:sha256:4a124cdbb47beb356f4752d4c738d023db65b493ad391dc6729ed1f3e311bd0e"
+          "version": "repo-file-v1:sha256:016ef140b9fa6565c3d4e12ca4ff9155e2052401dfbdb7ca4d44d3bcd2cb1be2"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
@@ -98,15 +98,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift",
-          "version": "repo-file-v1:sha256:f3a26b5c8269dc0691fa1f227e5db787d985a79213ae594d0c449299fc5aa815"
+          "version": "repo-file-v1:sha256:f4958e6b767af4ad205e6948cadffc25de28414bbea8e0a2fe6576ac5cf5a879"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:e9f06130bd27fd23ad039e0d831be2137d8420626a6be1d95ed42a353543d743"
+          "version": "repo-file-v1:sha256:1f7832b3a91b1ad3feeed9f3c6c9eef294c302276f74118c3fc7dca7e4ef47ed"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
-          "version": "repo-file-v1:sha256:370fd1642b51719e6812807a40b9c97945681d6db0f3428afca7992d0c761d35"
+          "version": "repo-file-v1:sha256:3f27f920f887567734574e0e3de79582ea451ff49bdc430513377a83f4f0ee8e"
         }
       ]
     },
@@ -116,7 +116,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardStore.swift",
-          "version": "repo-file-v1:sha256:3ac5949d2cd7117c47245766e9e7ea7131c037ef169c2cd78673a378db99cab9"
+          "version": "repo-file-v1:sha256:27d56628e3299dc0e705e6fe421d9591d051fe77e8df96afb5db7adf2f0b7469"
         },
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardUse.swift",
@@ -124,7 +124,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
-          "version": "repo-file-v1:sha256:370fd1642b51719e6812807a40b9c97945681d6db0f3428afca7992d0c761d35"
+          "version": "repo-file-v1:sha256:3f27f920f887567734574e0e3de79582ea451ff49bdc430513377a83f4f0ee8e"
         }
       ]
     },
@@ -134,17 +134,17 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift",
-          "version": "repo-file-v1:sha256:f3a26b5c8269dc0691fa1f227e5db787d985a79213ae594d0c449299fc5aa815"
+          "version": "repo-file-v1:sha256:f4958e6b767af4ad205e6948cadffc25de28414bbea8e0a2fe6576ac5cf5a879"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/account_feedback.rs",
-          "version": "repo-file-v1:sha256:8ec5292f5757076d2ed025c5a977f487cac25e835e4e5fad29cfebc72c023dc3"
+          "version": "repo-file-v1:sha256:51f922837ec3bbf727e06d5c2719a021ef12ec064f79c0bfe82b87a4d31268e3"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T20:12:58.607Z"
+    "at": "2026-10-26T07:09:00.728Z"
   }
 }

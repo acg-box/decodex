@@ -24,10 +24,14 @@ sources:
     resource: repo://Cargo.toml
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
     resource: repo://codex-runtime.lock.json
+  - id: openwiki-source-d0b9aaf952250307abc4342e
+    resource: repo://crates/decodex-codex/src/app_server_client/archive.rs
   - id: openwiki-source-2b08587e9b26e203156110c8
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-94c4593cb5944bf1f2ecf050
     resource: repo://crates/decodex-codex/src/app_server_client/dispatch_refusal.rs
+  - id: openwiki-source-787f8ad27b8519fbed2bd039
+    resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
     resource: repo://crates/decodex-components/src/install.rs
   - id: openwiki-source-2d990e4e2bc233a95b4894b9
@@ -66,6 +70,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/observations.rs
   - id: openwiki-source-419a87794b421322302c7d9e
     resource: repo://crates/decodex-runtime/src/agent/project.rs
+  - id: openwiki-source-2a0e86d8a9789b05a13deccc
+    resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
   - id: openwiki-source-4f59431f3f6264a65208bdcb
@@ -74,6 +80,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/work.rs
   - id: openwiki-source-3c62f617dc1d15daed2c93e4
     resource: repo://crates/decodex-runtime/src/application_collaboration.rs
+  - id: openwiki-source-a09c082db4ad1473c4d1e557
+    resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-a958837c2596362a3517c745
     resource: repo://crates/decodex-runtime/src/websocket.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
@@ -88,6 +96,8 @@ sources:
     resource: repo://database/migrations/0058_shared_agent_process.sql
   - id: openwiki-source-c6616f46cdcd37303054bf01
     resource: repo://database/migrations/0059_native_assignment_proof.sql
+  - id: openwiki-source-58c0167d31c3e40dc89591ab
+    resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
   - id: openwiki-source-8c78df4b382026886ac50894
@@ -104,10 +114,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
+generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T20:12:58.607Z
+    at: 2026-10-26T07:09:00.728Z
 ---
 
 # Runtime Architecture
@@ -164,6 +174,10 @@ Before sending input to a retained conversation, the runtime reconciles its regi
 After a completed Guardian review, optional history recovery can read up to 32 same-directory private candidates and five turns per candidate. It verifies the native parent before retaining exposed assistant output. This supports cold resume, where the selected native protocol has no raw-event subscription. Missing records and missing action Review associations remain explicit.
 
 Native memory inspection and retained usage use read-only local queries. The memory adapter reads the already-loaded native thread and preserves native version selection. Collaboration history and usage derive from existing exact source records; they add no executor, acceptance policy or monetary estimate. See [read-only evidence](chief-coordination.md#read-only-collaboration-evidence-and-usage).
+
+Attached branches use the existing prompt-fork journal and persistent Agent records. Native `thread/fork` attaches a completed-turn prefix to the exact source. Decodex retains that source Agent as the local parent and preserves Project, role and provider identity. It does not copy the native Goal or send input during creation. Unknown creation outcomes retain the original receipt for recovery without replay.
+
+The read-only `GetAttachedBranches` query returns the newest 100 retained Decodex receipts for one exact source. It does not adopt external native branches. Native archive observation checks hidden attached conversations through `attachedToThreadId` and verifies the source binding before reporting membership. Incomplete metadata or catalog reads remain unknown. [Retained attached-fork evidence](../../automations/upstream/retained-evidence.json) records the exact artifact and executed regressions separately from historical acceptance.
 
 ## Native launch policy
 
@@ -225,7 +239,7 @@ Production staging selects a separate official Release requirement. Release pinn
 
 ## Protocol and safety
 
-Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 3.1 carries Project, Agent, Work and global Guardian. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
+Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 3.2 adds the retained attached-branch query to Project, Agent, Work and global Guardian. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
 
 Native shutdown admission errors use code `-32600` and the structured `serverShuttingDown` reason. The older exact-message fallback applies only when error data is absent. A classified refusal alone never authorizes replay: callers must establish exact request identity and no prior effects.
 

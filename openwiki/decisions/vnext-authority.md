@@ -9,7 +9,7 @@ sources:
 generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T06:52:57.034Z
+    at: 2026-10-26T07:09:00.728Z
 ---
 
 # Current authority supersedes this design

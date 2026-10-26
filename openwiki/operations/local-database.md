@@ -44,10 +44,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
+generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T20:12:58.607Z
+    at: 2026-10-26T07:09:00.728Z
 ---
 
 # Local database operations
@@ -72,7 +72,7 @@ Ordinary input preserves its original native context. A newer local tool revisio
 
 Global Guardian stores desired reviewer preference and Review Details opt-in separately from source-specific effective receipts. Private records are deduplicated by reviewer thread, turn and item. Records are bounded to 64 KiB and the newest 128; small snapshot previews and exact selected reads stay separate. These records do not grant execution authority or complete Work.
 
-Protocol 3.0 introduced the direct public-contract change. Current protocol 3.1 adds the selected read-only view DTOs; clients and service must agree on the exact version. Old clients fail exact negotiation. The original qualification passed schema56/89-table integrity and 188 database tests. The native input follow-up passed schema57/90-table integrity and 189 database tests, including upgrade preservation, immutable receipt replay and store reopen. The later lifecycle acceptance verified schema59 integrity, foreign keys, and persistence of Agent/native identities, Work states, Results and private observations across service restart. The migration and runtime tests use temporary roots; they do not migrate the user's installed database. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
+Protocol 3.0 introduced the direct public-contract change. Protocol 3.1 added the selected read-only view DTOs; current protocol 3.2 adds the retained attached-branch query. Clients and service must agree on the exact version. Old clients fail exact negotiation. The original qualification passed schema56/89-table integrity and 188 database tests. The native input follow-up passed schema57/90-table integrity and 189 database tests, including upgrade preservation, immutable receipt replay and store reopen. The later lifecycle acceptance verified schema59 integrity, foreign keys, and persistence of Agent/native identities, Work states, Results and private observations across service restart. The migration and runtime tests use temporary roots; they do not migrate the user's installed database. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
 
 ## Authority and paths
 
@@ -121,4 +121,4 @@ The embedded migration ledger defines the baseline and ordered upgrades. The ver
 
 OAuth credentials retain their version-1 payload and fingerprint representation. PAT credentials use version 2 and retain verified user identity without fabricated OAuth refresh or expiry values. Migration 52 rebuilds the credential and process-generation schema checks to accept both versions. The migration copies existing values, recreates the Agent process authority trigger, checks foreign keys before commit and restores foreign-key enforcement on both success and failure. Use the migration owner; do not edit these tables manually.
 
-Explicit conversation branches reuse durable inbox event records for their intent, native acknowledgement and observed prefix. The target work and native thread are independent from the source. Before-input branches then reuse the existing canonical prompt-edit draft and upload records. Unknown creation does not authorize a second request. See [conversation recovery](../workflows/conversations-and-recovery.md).
+Explicit conversation branches reuse durable inbox event records for their intent, native acknowledgement and observed prefix. Each target has its own work and native thread identity. Attached branches retain the exact source Agent as parent and keep its Project, role and tool revision. The read-only list selects the newest 100 saved attached receipts for that exact source; it adds no schema migration. Before-input branches reuse the existing canonical prompt-edit draft and upload records. Unknown creation does not authorize a second request. See [conversation recovery](../workflows/conversations-and-recovery.md).

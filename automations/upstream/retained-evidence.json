@@ -19,7 +19,8 @@
     "https://github.com/acg-box/decodex/pull/2484",
     "https://github.com/acg-box/decodex/pull/2489",
     "https://github.com/acg-box/decodex/pull/2490",
-    "https://github.com/acg-box/decodex/pull/2508"
+    "https://github.com/acg-box/decodex/pull/2508",
+    "https://github.com/acg-box/decodex/pull/2511"
   ],
   "retained_native_consumers": {
     "execution": "Use the repository native-test entrypoints with the exact candidate CLI and both packaged helpers; verify each actual matched identity.",
@@ -805,27 +806,37 @@
     {
       "id": "native-attached-fork-workflow",
       "evidence_commit": "30587d78850abf2bfc484ffb0ab0f71497cc9c05",
-      "status": "awaiting_user_decision",
-      "value": "Keep a persistent attached child branch with its parent without exposing it in ordinary task discovery.",
+      "status": "approved_implemented",
+      "value": "Keep the exact native source relationship for explicitly created persistent branches, with retained local navigation.",
       "maintenance_cost": "Attachment lifecycle, deletion/recovery ownership, discoverability and existing branch/prediction UI semantics need new contracts and tests.",
-      "recommendation": "Defer a new product workflow; retain existing explicit branches and bounded prediction/sampling forks."
+      "recommendation": "Implement explicit creation and retained branch navigation through native execution and existing input owners.",
+      "delivery": "https://github.com/acg-box/decodex/pull/2511"
     },
     {
       "id": "native-memory-summary-viewer",
       "evidence_commit": "b559e6a3988489b636e1e79672eff330bf0679dc",
-      "status": "awaiting_user_decision",
+      "status": "approved_implemented",
       "value": "Show the native version-resolved summary of a loaded conversation to explain its retained context.",
       "maintenance_cost": "Add a read surface with loaded-only availability, resolved-version identity and stale/empty-state behavior.",
-      "recommendation": "Defer a new viewer until requested; do not infer a new automatic memory policy."
+      "recommendation": "Retain the explicit read-only view and its recorded limits.",
+      "delivery": "https://github.com/acg-box/decodex/pull/2508"
     },
     {
       "id": "native-guardian-v3-experiment",
       "evidence_commit": "f71c6afc30031011fe0b4d757b981fd0301b2536",
       "related_commit": "bca6cff1e140c1791975f0f6c47cb3add4f31710",
-      "status": "awaiting_user_decision",
+      "status": "deferred_until_upstream_mature",
       "value": "Explore the upstream disabled-by-default Guardian V3 configuration and isolated board foundation.",
       "maintenance_cost": "The foundation does not provide a qualified end-user workflow; enabling it needs separate enforcement, lifecycle and real behavior qualification.",
       "recommendation": "Keep disabled; do not add a product control for this experimental foundation."
+    },
+    {
+      "id": "native-custom-managed-config-source",
+      "evidence_commit": "f3a90545aed3188ee1e5c119ec89a742de399cdc",
+      "status": "deferred_by_user",
+      "value": "Connect native managed policy to an organization-owned configuration server with endpoint- and grant-bound OAuth.",
+      "maintenance_cost": "New organization setup and sign-in UI, trusted bootstrap routes, identity-bound cache/recovery behavior and live service qualification.",
+      "recommendation": "Defer a new product control; retain the native default ChatGPT loader unless trusted native requirements already select a config_server."
     }
   ],
   "retained_presentation": {
@@ -1574,10 +1585,10 @@
   },
   "current_delivery": {
     "status": "public_pull_request_reference",
-    "code_commit": "1d2e6aa1e0e988bf8f8d51f7d80ac12fd5441c23",
-    "scope": "Qualify the fixed official development runtime, preserve terminal model errors without retries and accept large explicit model catalogs. Preserve existing runtime/helper, sampling, MCP, parent coordination and account boundaries. No installation or release.",
-    "pull_request": "https://github.com/acg-box/decodex/pull/2490",
-    "state_source": "Read the linked public PR for current merge state and exact-head checks. Source/artifact qualification alone does not establish delivery."
+    "code_commit": "e840bc5b613a9c0b3495eb450bb2d9edc26ba152",
+    "scope": "Create and reopen explicit persistent native attached branches through existing input, receipt and navigation owners. Preserve source history, provider, Goal and native lifecycle boundaries.",
+    "pull_request": "https://github.com/acg-box/decodex/pull/2511",
+    "state_source": "Read the linked public PR for merge state and exact-head checks. Qualification does not establish installed-app acceptance."
   },
   "retained_account_scope": {
     "provider": "ChatGPT-backed identity; recognized plan labels are not separate provider implementations.",
@@ -3538,5 +3549,299 @@
       "scripts/vnext/local_database_gate.py": "cb2bccfd92f82cee117427c12b2cb48b0c399f9e0ae8c1c679a95211df6ec3c9",
       "tests/scripts/test_gate_contract.py": "096fd7bf66b5ac6d064a9fc31517bc5901fdcbf61484591abfba14c70e52d35b"
     }
+  },
+  "current_optional_decision_menu": {
+    "scope": "The current six-item selection supersedes historical optional inventories without selecting their other capabilities.",
+    "items": [
+      {
+        "number": 1,
+        "id": "native-memory-summary-viewer",
+        "status": "implemented_and_merged",
+        "pr": 2508,
+        "merge_commit": "eb69695be18aed46a93ad7f8cc1c00c235c1bf32"
+      },
+      {
+        "number": 2,
+        "id": "collaboration-question-resolution-history",
+        "status": "implemented_and_merged",
+        "pr": 2508,
+        "merge_commit": "eb69695be18aed46a93ad7f8cc1c00c235c1bf32"
+      },
+      {
+        "number": 3,
+        "id": "work-agent-usage-attribution",
+        "status": "implemented_and_merged",
+        "pr": 2508,
+        "merge_commit": "eb69695be18aed46a93ad7f8cc1c00c235c1bf32"
+      },
+      {
+        "number": 4,
+        "id": "native-attached-fork-workflow",
+        "status": "approved_implemented",
+        "pr": 2511
+      },
+      {
+        "number": 5,
+        "id": "native-guardian-v3-experiment",
+        "status": "deferred_until_upstream_mature"
+      },
+      {
+        "number": 6,
+        "id": "native-custom-managed-config-source",
+        "status": "deferred_by_user"
+      }
+    ],
+    "remaining_user_decision_count": 0
+  },
+  "retained_attached_forks": {
+    "entrypoints": [
+      "Completed input > Review > Choose edit or branch > Attached branch after this turn",
+      "Agent preferences > Attached branches > Open branch"
+    ],
+    "contracts": [
+      "Create one persistent native attachToSource fork from the reviewed completed prefix. Reuse history/settings guards, durable intent and acknowledgement. Preserve the source provider, submit no model turn and leave source history unchanged.",
+      "Retain the exact source Agent as the local parent. Reuse the existing persistent Agent, project membership, normal input, drafts and navigation owners. The branch is not a native Subagent.",
+      "Attached forks start without the source Goal snapshot. The original retains its Goal. Do not combine attachToSource with deferGoalContinuation or ephemeral mode.",
+      "Native ordinary thread/list omits attached forks. Use exact attachedToThreadId membership for archive observation and acknowledgement recovery, including empty forks. Failed metadata/filter reads remain unknown.",
+      "List the 100 newest retained Decodex creation receipts for the source work, including uncertain, acknowledged and rejected states. Opening requires the current runtime and exact target binding. Preserve the source composer draft and never replay uncertain creation.",
+      "Closing a tab preserves the branch. Codex owns archive, restore and parent-deletion safeguards. A branch outside the active view must be restored in Codex before it can be reopened here."
+    ],
+    "symbols": [
+      "AppServerClient::fork_thread_at_boundary",
+      "AppServerClient::attached_thread_archive_state",
+      "AppServerClient::observe_thread_archives",
+      "SqliteStore::reserve_agent_fork",
+      "SqliteStore::agent_attached_forks",
+      "AgentCoordinator::recover_prompt_fork",
+      "agent_process::validate_fork_request",
+      "AgentHost::attached_branches",
+      "AgentClient::attached_branches",
+      "AgentSurface::prompt_confirmation_actions",
+      "AgentSurface::attached_branches_panel"
+    ],
+    "upstream_source_review": {
+      "revision": "970111f6cb62cc02fe36a82ea7d71b37a2889c97",
+      "source_sha256": {
+        "codex-rs/app-server-protocol/src/protocol/v2/thread.rs": "3532f87c9e55c9e539ed3c48c74701a14f4b9e401564b5cbafe624941302755c",
+        "codex-rs/app-server/src/request_processors/thread_processor.rs": "37ff0875e2b6d3def2fc727fd065574bd243cea2aa836021ebb218ac83b898e7",
+        "codex-rs/app-server/tests/suite/v2/attached_thread_tests.rs": "e05997e36b242475093399a6c382824af04e81c95f76158da9fc14a7cdddc9dc"
+      },
+      "tests_read": {
+        "entrypoint": "codex-rs/app-server/tests/suite/v2/attached_thread_tests.rs",
+        "functions": [
+          "saved_attached_thread_upgrade_restart_and_delete",
+          "saved_attached_thread_rejects_conflicting_fork_and_discovery_filters"
+        ],
+        "function_count": 2,
+        "case_count": 5,
+        "parameterized_cases": [
+          "legacy restart",
+          "paginated restart",
+          "legacy missing database",
+          "paginated corrupt database"
+        ]
+      },
+      "implementation_read": "ThreadForkParams, ThreadListParams and thread_processor fork/list bodies, including attachment persistence, hidden discovery, Goal-copy exclusion and parent lifecycle.",
+      "upstream_tests_executed": 0,
+      "limit": "This selected product workflow does not advance the certified source-review cursor."
+    },
+    "qualification": {
+      "implementation_commit": "e840bc5b613a9c0b3495eb450bb2d9edc26ba152",
+      "main_baseline": "d96f6be996b714b6a8298c3cf5b2f7524ba1ed42",
+      "native_source": "970111f6cb62cc02fe36a82ea7d71b37a2889c97",
+      "local_protocol": "3.2",
+      "database_schema": 59,
+      "source_archive_sha256": "a2f261cf958b24fc87cf7257674134146d0c02a5f2badeaed9964e162f03f28c",
+      "components_sha256": {
+        "CodexCLI.app/Contents/MacOS/codex": "cbaaabb9381ce36f13c8605def36cede35826fa11b404b8ad4d81a0f648826cd",
+        "bin/codex-code-mode-host": "58e9e6a203e5885f8046af453081d9da9521452c704a79ceac519a3704cac340",
+        "codex-path/rg": "cdbd12cd8f86a0e2c0812500f10a90295a7e43923d823d87c98cddb15513742d"
+      },
+      "schema_sha256": "1ff625ee5aa1017d67ea08b51b520e5fc941f4b79c66489e992c47128c461471",
+      "selected_schema_sha256": {
+        "v2/ThreadForkParams.json": "3c3cad70dccf96797b09582a3e356385b3398779396b79c09a0a7ac5b26c86e9",
+        "v2/ThreadListParams.json": "1781b1778cb08619f0bf12528b128e55648b86569114196b1b5ec565b9b7935d"
+      },
+      "schema_digest_method": "SHA-256 of compact sorted JSON mapping every generated schema relative path to its SHA-256. Generate with app-server generate-json-schema --experimental.",
+      "preparation_command": "DECODEX_CODEX_DEVELOPMENT_RUNTIME=<qualified-runtime-directory> cargo make prepare-codex",
+      "rebuild_command": "cargo make prepare-codex",
+      "native_command": "DECODEX_TEST_NATIVE_FORK=1 python3 scripts/vnext/run_native_regression.py --runtime <qualified-runtime-directory> --filter 'test(installed_fork_preserves_source_provider_after_default_changes) | test(installed_recap_public_socket_preserves_parent_and_exact_request_identity) | test(installed_native_archive_roundtrip) | test(installed_native_parallel_dynamic_tools_preserve_ids_and_result_order)'",
+      "startup_control_command": "python3 scripts/vnext/run_native_regression.py --runtime <qualified-runtime-directory> --filter 'test(installed_native_startup_configuration_preserves_auth_config_and_locked_history)'",
+      "native_tests_executed": [
+        {
+          "target": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::archive::installed_native_archive_roundtrip_refreshes_without_restarting_either_process"
+        },
+        {
+          "target": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order"
+        },
+        {
+          "target": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes"
+        },
+        {
+          "target": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity"
+        },
+        {
+          "target": "decodex-runtime",
+          "test": "account_launch::process::startup_config::tests::installed_native_startup_configuration_preserves_auth_config_and_locked_history"
+        }
+      ],
+      "native_result": {
+        "passed": 5,
+        "failed": 0,
+        "unmatched_selectors": [],
+        "provider_history_cases": [
+          "legacy",
+          "paginated"
+        ]
+      },
+      "native_entrypoints": [
+        "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs",
+        "crates/decodex-runtime/src/account_launch/process_startup_config_tests.rs",
+        "scripts/vnext/run_native_regression.py"
+      ],
+      "backend_command": "cargo +stable nextest run --locked -p decodex-codex -p decodex-database -p decodex-protocol -p decodex-runtime --lib --all-features -E 'test(fork) | test(archive)' --test-threads 4",
+      "backend_result": {
+        "passed": 57,
+        "failed": 0,
+        "skipped": 1525,
+        "unmatched_selectors": []
+      },
+      "backend_entrypoints": [
+        "crates/decodex-codex/src/app_server_client/archive.rs",
+        "crates/decodex-codex/src/app_server_client/thread_fork.rs",
+        "database/src/agent_fork/tests.rs",
+        "crates/decodex-runtime/src/agent/tests/prompt_edit.rs",
+        "crates/decodex-runtime/src/account_launch/agent_process.rs"
+      ],
+      "ui_command": "cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui --all-features -E 'test(attached_branch) | test(fork_recovery) | test(branch_after_turn) | test(streamed_draft_keeps_complete_text_and_manual_edits_end_reveal)' --test-threads 1 --no-fail-fast",
+      "ui_tests_executed": [
+        {
+          "target": "decodex-gpui::bin/decodex-gpui",
+          "test": "composer_input::multiline_tests::streamed_draft_keeps_complete_text_and_manual_edits_end_reveal"
+        },
+        {
+          "target": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::attached_branches::tests::attached_branch_navigation_keeps_the_source_draft_and_requires_current_identity"
+        },
+        {
+          "target": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::attached_branch_confirmation_is_saved_and_skips_unsent_input_preflight"
+        },
+        {
+          "target": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::branch_after_turn_needs_no_input_preflight"
+        },
+        {
+          "target": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::prompt_edit::fork::tests::fork_recovery_opens_verified_target_and_keeps_edited_input"
+        },
+        {
+          "target": "decodex-gpui::bin/decodex-gpui",
+          "test": "shell::agent_surface::prompt_edit::fork::tests::fork_recovery_retains_uncertainty_and_releases_only_matching_rejection"
+        }
+      ],
+      "ui_result": {
+        "passed": 6,
+        "failed": 0,
+        "skipped": 1079,
+        "unmatched_selectors": [],
+        "leaky": 0
+      },
+      "ui_entrypoints": [
+        "apps/decodex-gpui/src/agent_attached_branches.rs",
+        "apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
+        "apps/decodex-gpui/src/agent_prompt_fork_wire_tests.rs"
+      ],
+      "workspace_command": "cargo +stable nextest run --locked --workspace --all-targets --all-features --test-threads 4 --no-fail-fast",
+      "workspace_result": {
+        "passed": 3006,
+        "failed": 0,
+        "skipped": 1227,
+        "leaky": 1
+      },
+      "checks": {
+        "clippy": {
+          "result": "passed",
+          "packages": [
+            "decodex-codex",
+            "decodex-database",
+            "decodex-protocol",
+            "decodex-runtime",
+            "decodex-gpui"
+          ],
+          "entrypoint": "scripts/lint_rust_workspace.py#clippy_command",
+          "mode": "Run the repository strict command for each affected package with stable and --locked."
+        },
+        "rustfmt": {
+          "result": "passed",
+          "command": "cargo make fmt-rust-check"
+        },
+        "style": {
+          "result": "passed",
+          "command": "python3 scripts/vstyle_audit.py",
+          "tool": "vibe-style 0.2.8-582e658-aarch64-apple-darwin",
+          "files": 1076,
+          "findings": 0
+        },
+        "database": {
+          "result": "passed",
+          "command": "python3 scripts/vnext/local_database_gate.py",
+          "schema": 59
+        },
+        "python": {
+          "result": "passed",
+          "count": 28,
+          "command": "python3 -m unittest tests/scripts/test_vnext_architecture.py tests/scripts/test_account_login_architecture.py tests/scripts/test_gate_contract.py tests/scripts/test_vstyle_audit.py"
+        }
+      },
+      "limits": [
+        "Canonical system-temporary homes and synthetic local HTTP Responses providers. The reusable fixture runner prepares the exact component store separately from the native account home; service input uses the owned checkout required by the existing cwd contract.",
+        "The workspace run preceded final test-only native fixture diagnostics, the reusable runner and formatting. Affected backend, UI, native and strict checks then passed. One workspace composer cleanup leak did not recur in its isolated repeat; no universal cleanup claim follows.",
+        "Actual artifact tests cover creation, provider/Goal boundaries, legacy and paginated history, restart, archive/restore, parent deletion refusal, public service continuation and packaged Code Mode helper execution. The rg component was verified but not invoked in this follow-up.",
+        "Lost replies and failed history reads use runtime transport fixtures; the real artifact run does not inject packet loss. The 100-entry bound was source-reviewed; no 101-entry stress fixture was executed.",
+        "No external native branch adoption, automatic scheduling, result merge or deletion workflow. Archived branch restoration remains with the existing native owner.",
+        "No new upstream range certification, runtime migration, installed desktop interaction, real-account/provider acceptance, installation, release or schedule activation."
+      ]
+    },
+    "source_sha256": {
+      "apps/decodex-gpui/src/agent_attached_branches.rs": "a213f1868fb081da579d367d94baf1401943aa7cdd1d2e6b7264d47bd04408eb",
+      "apps/decodex-gpui/src/agent_prompt_confirm.rs": "6f4f50a6dfac561aae0d2f377ff9f1554f665b5dfce0e62e9cd8e97178cd749d",
+      "apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs": "5571ade70833db13ad67bbbd3219a34cde46005dd661f9060278b3d505fb82da",
+      "apps/decodex-gpui/src/agent_prompt_edit.rs": "3152f0f7ee2fb9ada541b68df8956133ecd7bae3587ad25305aa18db8f48ac71",
+      "apps/decodex-gpui/src/agent_prompt_fork.rs": "8f1ced823225b7d0762db400f14c508f51ab68e15764d85fadb2f3928845061f",
+      "apps/decodex-gpui/src/agent_prompt_fork_wire_tests.rs": "92f3a66b8b291cc77aacdb8e4f9629d2f0a1f5025d39d4fe6051e77b8fff7b35",
+      "apps/decodex-gpui/src/agent_surface.rs": "0e50d076cc5c6abd8a315b8f8eccb3f5456f4d9502a97d92dd18f4695af00852",
+      "apps/decodex-gpui/src/native_voice_online_tests.rs": "e690a3df678f8287d60b096ee063256b10d653bbb8ead78b2ff5bd90eae2d306",
+      "crates/decodex-codex/src/app_server_client/archive.rs": "837cab2a2f32dc33ad618380df4fdc97ccd011491fc0eaa6a8b9a9dffe8d6586",
+      "crates/decodex-codex/src/app_server_client/thread_fork.rs": "eb622f54077106962241838083ffe1a07b73c2309ac7c509eadf80470b285cf9",
+      "crates/decodex-protocol/src/agent_prompt_edit.rs": "bbd79c27c08c181dd2f02453630c3a408b60bfb8d65526e1201c2cbb4a95b8d9",
+      "crates/decodex-protocol/src/client.rs": "e019fef5e0eeaf1b2fdec88d27c053abc854eb290d86a26cbbb60f92e4b6917c",
+      "crates/decodex-protocol/src/desktop_draft_recovery.rs": "8ed3c1e3503ee1f312c9854ef60bd4c3f16bd4f3fbb4beec797a3ff19ea86100",
+      "crates/decodex-protocol/src/lib.rs": "f91fc60e30e0ab180639ebb00b3634de55195ec2c4693c9c751f488ee40481a8",
+      "crates/decodex-protocol/src/wire.rs": "0572ca39601a253cc46cfd1607bf3a6d640e7e12ac084d4ed6ffed75d6d419d5",
+      "crates/decodex-runtime/src/account_launch/agent_process.rs": "a5996d525723473ef0d1b2106fda335bef99ac65e3ca3193a501daaa4a61ed50",
+      "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs": "9ee4e9dd6b4867a2c57c4f775549f397352303f478a118d98d55841ba8afd539",
+      "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs": "cb31feead81d6c702b0e393f11eeb67d962fceeded432b9c32014b77349d4dc7",
+      "crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs": "3b78e03fab2d6f4370956cccc722290dbd1740984e394c37f687b7258c49368b",
+      "crates/decodex-runtime/src/account_launch/process_startup_config_socket_tests.rs": "48fea3db882ccc8acb05ca859e170859ad90853d2e0aa7d5bbf3a341348db857",
+      "crates/decodex-runtime/src/agent/prompt_edit.rs": "fd9ada4b99eb4d118f0ccae5189c4e8f120e20099812952aeb2de10cd2e7a6d2",
+      "crates/decodex-runtime/src/agent/tests/prompt_edit.rs": "a1cb314823becc49b6c907bd51860010624f8c2b496bea315a59b345eef44460",
+      "crates/decodex-runtime/src/agent_prompt_edit_host.rs": "297d469edd736a9ab4c457089e0bc7793ad289aca92d38dde7a5425f00c5353c",
+      "crates/decodex-runtime/src/application.rs": "af496ee5bdfef0aca8e7cf1b4f2f87286e6311b6749fd10c48fb2748928d9605",
+      "database/src/agent_fork.rs": "3592e024d32622ffdd6dd61a7ce8fbb141eed5298c310062f7db89cf2d056e42",
+      "database/src/agent_fork/tests.rs": "7d5c4e3cafa0482f7a02055ffd100fb051269b48d2170c9e5b63c69ec3c72b5b",
+      "scripts/vnext/run_native_regression.py": "5399e5ab4f636e04d754c3c2f80632e052f62679fe380e50958d6bb24e9b0bec"
+    },
+    "delivery_references": [
+      "https://github.com/acg-box/decodex/pull/2511"
+    ],
+    "delivery_state_source": "Read the linked public PR for merge state and exact-head checks; review, native qualification and delivery remain separate."
   }
 }
