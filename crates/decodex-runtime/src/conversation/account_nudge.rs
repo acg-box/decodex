@@ -28,6 +28,9 @@ impl ConversationRuntime {
 		key: String,
 		observations: AccountObservationService,
 	) -> decodex_protocol::AccountRecoveryNudgeStatus {
+		let Some(profile) = self.inner.launch_profile.profile().await else {
+			return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable;
+		};
 		let Ok(account) = AccountId::new(source.account_id.as_str()) else {
 			return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable;
 		};
@@ -66,13 +69,13 @@ impl ConversationRuntime {
 		let owner = self.clone();
 
 		task::spawn_blocking(move || {
-			let directory = owner.inner.launch_profile.control_working_directory();
+			let directory = profile.control_working_directory();
 			let Some(directory_text) = directory.to_str() else { return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable; };
 			let Ok(selected) = SelectedWorkingDirectory::acquire(directory_text) else { return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable; };
 			let Ok(binding) = AccountBinding::shared_home_bound(account.clone(), credential.binding, callback).and_then(|binding| binding.with_credential(&credential.stored)) else { return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable; };
 			let vault = ConversationCredentialVault { account_id: account.clone(), stored: credential.stored };
 			let Ok(permit) = owner.inner.capacity.reserve(account.clone(), revision) else { return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable; };
-			let Ok(launch) = AttestedAppServerLaunch::bind_selected_control_working_directory(owner.inner.launch_profile.clone(), directory, binding, Duration::from_secs(8), permit, Arc::new(selected)) else { return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable; };
+			let Ok(launch) = AttestedAppServerLaunch::bind_selected_control_working_directory(profile, directory, binding, Duration::from_secs(8), permit, Arc::new(selected)) else { return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable; };
 			let Ok(mut child) = launch.spawn() else { return decodex_protocol::AccountRecoveryNudgeStatus::Unavailable; };
 			let initialized = child.initialize_ordinary_turns(&vault);
 

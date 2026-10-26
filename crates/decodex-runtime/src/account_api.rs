@@ -13,10 +13,10 @@ use zeroize::Zeroizing;
 
 use crate::{
 	account_import,
-	account_launch::AttestedAppServerProfile,
 	account_service::{
 		AccountApiCredential, AccountLifecycleError, AccountService, CredentialRefreshError,
 	},
+	native_preparation::NativePreparation,
 };
 use decodex_codex::{
 	self, AccountApiBannerState, AccountApiConsumeOutcome, AccountApiProfile,
@@ -154,14 +154,14 @@ pub(crate) struct AccountApiRuntime {
 	accounts: Arc<AccountService>,
 	store: SqliteStore,
 	client: reqwest::Client,
-	activation_profile: Option<AttestedAppServerProfile>,
+	activation_profile: Option<NativePreparation>,
 }
 impl AccountApiRuntime {
 	/// Build the account client; only model activation needs the optional native policy profile.
 	pub(crate) fn new(
 		accounts: Arc<AccountService>,
 		store: SqliteStore,
-		activation_profile: Option<AttestedAppServerProfile>,
+		activation_profile: Option<NativePreparation>,
 	) -> Result<Self, AccountApiRuntimeError> {
 		let client = account_http_client()?;
 

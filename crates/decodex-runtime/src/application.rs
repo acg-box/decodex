@@ -266,6 +266,7 @@ pub(crate) struct ServiceApplication {
 	accounts: Option<Arc<AccountService>>,
 	publication_stop: Sender<bool>,
 	reset_cards: Option<ApiResetCardRuntime>,
+	native_preparation: Option<crate::native_preparation::NativePreparation>,
 	account_observations: Option<AccountObservationService>,
 	account_login: Option<Arc<AccountLoginManager>>,
 	conversations: ConversationCapability,
@@ -747,6 +748,7 @@ impl ServiceApplication {
 			accounts: None,
 			publication_stop,
 			reset_cards: None,
+			native_preparation: None,
 			account_observations: None,
 			account_login: None,
 			conversations,
@@ -763,6 +765,14 @@ impl ServiceApplication {
 	pub(crate) fn with_reset_cards(mut self, reset_cards: Option<ApiResetCardRuntime>) -> Self {
 		self.reset_cards = reset_cards;
 
+		self
+	}
+
+	pub(crate) fn with_native_preparation(
+		mut self,
+		preparation: Option<crate::native_preparation::NativePreparation>,
+	) -> Self {
+		self.native_preparation = preparation;
 		self
 	}
 
@@ -817,6 +827,11 @@ impl ServiceApplication {
 			.map(|check| {
 				if check.component == DoctorComponent::ProductStore {
 					DoctorCheck::new(DoctorComponent::ProductStore, database)
+				} else if check.component == DoctorComponent::Conversation {
+					DoctorCheck::new(
+						DoctorComponent::Conversation,
+						crate::bootstrap::conversation_doctor(&self.conversations),
+					)
 				} else {
 					*check
 				}
@@ -2647,6 +2662,9 @@ impl Application for ServiceApplication {
 	) -> Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
 		let mut tasks: Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> = Vec::new();
 
+		if let Some(preparation) = &self.native_preparation {
+			tasks.push(Box::pin(preparation.clone().daemon_service(stop.clone())));
+		}
 		if let Some(agent) = &self.agent {
 			tasks.push(Box::pin(agent.clone().serve(stop.clone())));
 		}

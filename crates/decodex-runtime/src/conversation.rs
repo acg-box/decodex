@@ -50,11 +50,10 @@ use crate::{
 		CapacityExhausted, RunnerCapacity,
 		process::{
 			self, AccountBinding, AccountIdentity, AccountRefreshCallback, AttestedAppServerLaunch,
-			AttestedAppServerProfile, AttestedProcessChild, ChatgptRefreshProjection,
-			ConversationPreSpawnCheck, ConversationProcessError, ConversationProcessEvent,
-			ConversationRejectionReason, CredentialProjection, CredentialVault,
-			CredentialVaultError, EstablishedOrdinaryThread, PreparedThreadStart,
-			PreparedTurnStart, ResumedOrdinaryThread, StartedOrdinaryTurn,
+			AttestedProcessChild, ChatgptRefreshProjection, ConversationPreSpawnCheck,
+			ConversationProcessError, ConversationProcessEvent, ConversationRejectionReason,
+			CredentialProjection, CredentialVault, CredentialVaultError, EstablishedOrdinaryThread,
+			PreparedThreadStart, PreparedTurnStart, ResumedOrdinaryThread, StartedOrdinaryTurn,
 		},
 	},
 	account_service::{
@@ -250,7 +249,7 @@ impl ConversationRuntime {
 		process_generations: ProcessGenerationControl,
 		provider_attempts: ProviderAttemptControl,
 		execution_authorization: ProcessExecutionAuthorization,
-		launch_profile: AttestedAppServerProfile,
+		launch_profile: impl Into<crate::native_preparation::NativePreparation>,
 		capacity: Arc<RunnerCapacity>,
 	) -> Self {
 		let (events, event_receiver) = tokio::sync::mpsc::channel(EVENT_QUEUE_CAPACITY);
@@ -264,7 +263,7 @@ impl ConversationRuntime {
 				process_generations,
 				provider_attempts,
 				execution_authorization,
-				launch_profile,
+				launch_profile: launch_profile.into(),
 				capacity,
 				local: std::sync::Mutex::new(BTreeMap::new()),
 				events,
@@ -530,6 +529,7 @@ impl ConversationRuntime {
 		&self,
 		request: StartAgentProcess,
 	) -> Result<AgentConnection, AgentLaunchError> {
+		self.inner.launch_profile.profile().await.ok_or(AgentLaunchError::Unavailable)?;
 		let phase = Phase::new("agent_admission_locks");
 		let _launch = self.inner.agent_launch.lock().await;
 		let _catalog = self.inner.initial_catalog.lock().await;
@@ -715,7 +715,7 @@ impl ConversationRuntime {
 	}
 
 	pub(crate) async fn create(&self, command: CreateConversation) -> ConversationOutcome {
-		if self.is_shutting_down() {
+		if self.is_shutting_down() || self.inner.launch_profile.profile().await.is_none() {
 			return ConversationOutcome::Unavailable;
 		}
 
@@ -757,7 +757,10 @@ impl ConversationRuntime {
 		command: RecoverConversation,
 		routing: PreProcessOutcome,
 	) {
-		if self.is_shutting_down() || command.expected_conversation_revision <= 0 {
+		if self.is_shutting_down()
+			|| command.expected_conversation_revision <= 0
+			|| self.inner.launch_profile.profile().await.is_none()
+		{
 			return;
 		}
 
@@ -797,7 +800,10 @@ impl ConversationRuntime {
 		command: RecoverConversation,
 		action: InitialRouteAction,
 	) -> ConversationOutcome {
-		if self.is_shutting_down() || command.expected_conversation_revision <= 0 {
+		if self.is_shutting_down()
+			|| command.expected_conversation_revision <= 0
+			|| self.inner.launch_profile.profile().await.is_none()
+		{
 			return ConversationOutcome::Unavailable;
 		}
 
@@ -2721,7 +2727,7 @@ impl ConversationRuntime {
 	}
 
 	pub(crate) async fn submit_turn(&self, command: SubmitConversationTurn) -> ConversationOutcome {
-		if self.is_shutting_down() {
+		if self.is_shutting_down() || self.inner.launch_profile.profile().await.is_none() {
 			return ConversationOutcome::Unavailable;
 		}
 
@@ -4657,7 +4663,12 @@ impl ConversationRuntime {
 			.process_credential(account_id, account_revision)
 			.await
 			.map_err(|_| ConversationControlOutcome::Unavailable)?;
-		let profile = self.inner.launch_profile.clone();
+		let profile = self
+			.inner
+			.launch_profile
+			.profile()
+			.await
+			.ok_or(ConversationControlOutcome::Unavailable)?;
 		let capacity = Arc::clone(&self.inner.capacity);
 		let accounts = Arc::clone(&self.inner.accounts);
 		let runtime = tokio::runtime::Handle::current();
@@ -5051,7 +5062,12 @@ impl ConversationRuntime {
 			generation_id: generation_id.clone(),
 			last_projected: std::sync::Mutex::new(None),
 		});
-		let profile = self.inner.launch_profile.clone();
+		let profile = self
+			.inner
+			.launch_profile
+			.profile()
+			.await
+			.ok_or(ConversationManualRecovery::ProcessUnavailable)?;
 		let capacity = Arc::clone(&self.inner.capacity);
 		let working_directory = working_directory.to_owned();
 		let account_id_for_launch = account_id.clone();
@@ -6357,7 +6373,7 @@ struct ConversationRuntimeInner {
 	process_generations: ProcessGenerationControl,
 	provider_attempts: ProviderAttemptControl,
 	execution_authorization: ProcessExecutionAuthorization,
-	launch_profile: AttestedAppServerProfile,
+	launch_profile: crate::native_preparation::NativePreparation,
 	capacity: Arc<RunnerCapacity>,
 	local: std::sync::Mutex<BTreeMap<String, LocalTask>>,
 	events: tokio::sync::mpsc::Sender<ConversationOutcome>,
@@ -6705,9 +6721,18 @@ pub(crate) enum ConversationCapability {
 	Unavailable(ConversationUnavailableReason),
 }
 impl ConversationCapability {
-	pub(crate) const fn readiness(&self) -> ConversationReadiness {
+	pub(crate) fn readiness(&self) -> ConversationReadiness {
 		match self {
-			Self::Ready(_) => ConversationReadiness::Ready,
+			Self::Ready(runtime) => match runtime.inner.launch_profile.state() {
+				crate::native_preparation::PreparationState::Pending =>
+					ConversationReadiness::Preparing,
+				crate::native_preparation::PreparationState::Ready(_) =>
+					ConversationReadiness::Ready,
+				crate::native_preparation::PreparationState::Unavailable =>
+					ConversationReadiness::Unavailable(
+						ConversationUnavailableReason::AppServerProfile,
+					),
+			},
 			Self::Unavailable(reason) => ConversationReadiness::Unavailable(*reason),
 		}
 	}
@@ -6750,6 +6775,8 @@ impl Error for AgentLaunchError {}
 /// Typed Conversation readiness projected by daemon bootstrap and Doctor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConversationReadiness {
+	/// Native evidence is being prepared by its daemon-owned background task.
+	Preparing,
 	/// Every fallible dependency owner returned one validated dependency.
 	Ready,
 	/// Conversation is closed for one redacted startup reason.
