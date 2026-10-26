@@ -47,10 +47,11 @@ use decodex_protocol::{
 };
 
 pub(super) const ARCHIVED_MESSAGE: &str = "Archived";
-pub(super) const ARCHIVED_DETAIL: &str = "Read-only until unarchived.";
 
 const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
 const PARENT_MANAGED_MESSAGE: &str = "Continue in parent chat";
+const NATIVE_CONNECTION_FAILED_MESSAGE: &str = "Could not connect to this conversation.";
+const NATIVE_CONNECTING_MESSAGE: &str = "Connecting to this conversation…";
 
 #[derive(Clone)]
 pub(super) struct PageView {
@@ -795,11 +796,15 @@ impl AgentSurface {
 
 	pub(super) fn composer_unavailable_reason(&self) -> Option<&'static str> {
 		if self.native_agents.selected.is_some() {
-			return matches!(
-				self.native_agents.connection,
-				super::native_agents::NativeConnection::ParentManaged
-			)
-			.then_some(PARENT_MANAGED_MESSAGE);
+			return match self.native_agents.connection {
+				super::native_agents::NativeConnection::ParentManaged =>
+					Some(PARENT_MANAGED_MESSAGE),
+				super::native_agents::NativeConnection::Failed(_) =>
+					Some(NATIVE_CONNECTION_FAILED_MESSAGE),
+				super::native_agents::NativeConnection::Checking { .. } =>
+					Some(NATIVE_CONNECTING_MESSAGE),
+				super::native_agents::NativeConnection::Ready => None,
+			};
 		}
 		if self.selected_is_archived() {
 			return Some(ARCHIVED_MESSAGE);
@@ -870,21 +875,47 @@ impl AgentSurface {
 			.map(|entry| entry.text.as_str())
 	}
 
-	pub(super) fn connection_notice(
-		&self,
-		reason: &'static str,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		if reason == ARCHIVED_MESSAGE
-			&& let Some(work) = self.conversation_work()
-		{
-			return self.archive_notice(&work, cx);
+	fn native_connection_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+		use super::native_agents::NativeConnection;
+
+		self.native_agents.selected.as_ref()?;
+
+		let feedback = match &self.native_agents.connection {
+			NativeConnection::Failed(message) => Feedback::error(message),
+			NativeConnection::Checking { .. } => Feedback::loading(NATIVE_CONNECTING_MESSAGE),
+			_ => return None,
+		};
+
+		Some(
+			ui_feedback::status_row(
+				"conversation-unavailable",
+				feedback.tone,
+				"",
+				&feedback.message,
+				feedback.icon(),
+			)
+			.debug_selector(|| "conversation-unavailable".into())
+			.when(matches!(self.native_agents.connection, NativeConnection::Failed(_)), |row| {
+				row.child(self.workspace_action(
+					"native-connect-retry".into(),
+					"Retry".into(),
+					|s, cx| s.retry_native_connection(cx),
+					cx,
+				))
+			})
+			.into_any_element(),
+		)
+	}
+
+	fn connection_notice(&self, reason: &'static str, cx: &mut Context<Self>) -> AnyElement {
+		if let Some(notice) = self.native_connection_notice(cx) {
+			return notice;
 		}
 		if reason == PARENT_MANAGED_MESSAGE {
 			return ui_feedback::read_only_row(
 				"conversation-unavailable",
 				PARENT_MANAGED_MESSAGE,
-				"",
+				"This chat is read-only.",
 				workspace_symbols::icon_sized(workspace_symbols::Symbol::AccountRoute, 14.),
 			)
 			.debug_selector(|| "conversation-unavailable".into())
@@ -900,7 +931,7 @@ impl AgentSurface {
 			return ui_feedback::read_only_row(
 				"conversation-unavailable",
 				THREAD_LOCKED_MESSAGE,
-				"",
+				"Sending is disabled here.",
 				workspace_symbols::icon_sized(workspace_symbols::Symbol::Lock, 14.),
 			)
 			.debug_selector(|| "conversation-unavailable".into())
@@ -988,21 +1019,6 @@ impl AgentSurface {
 	}
 
 	pub(super) fn composer_footer(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
-		if self.native_agents.selected.is_some() {
-			let feedback = self.native_feedback();
-
-			return gpui::div()
-				.flex_none()
-				.w_full()
-				.child(ui_feedback::notice(
-					"conversation-feedback",
-					self.feedback_scope(),
-					(!matches!(feedback.message.as_str(), "Sent" | "Sending…"))
-						.then(|| feedback.clone()),
-				))
-				.child(self.render_composer(window, cx));
-		}
-
 		// The parent overlays this transparent footer above the scrolling conversation.
 		gpui::div().debug_selector(|| "composer-footer".into()).flex_none().w_full().child(
 			gpui::div().w_full().flex().flex_col().child(self.conversation_activity(cx)).child(
@@ -2425,20 +2441,46 @@ impl AgentSurface {
 	}
 
 	fn conversation_activity(&self, cx: &mut Context<Self>) -> AnyElement {
-		ui_feedback::notice(
-			"conversation-feedback",
-			self.feedback_scope(),
-			self.conversation_feedback(),
-		)
-		.action(self.can_retry_input_save().then(|| {
+		let reason = self.composer_unavailable_reason();
+		let feedback = reason.is_none().then(|| self.visible_conversation_feedback()).flatten();
+		let action = (reason.is_none() && self.can_retry_input_save()).then(|| {
 			self.workspace_action(
 				"retry-input-save".into(),
 				"Retry saving".into(),
 				|s, cx| s.retry_input_save(cx),
 				cx,
 			)
-		}))
-		.into_any_element()
+		});
+
+		gpui::div()
+			.debug_selector(|| "conversation-status-band".into())
+			.w_full()
+			.flex_none()
+			.occlude()
+			.when_some(reason.filter(|reason| *reason != ARCHIVED_MESSAGE), |band, reason| {
+				band.child(ui_feedback::notice_rail(self.connection_notice(reason, cx)))
+			})
+			.child(
+				ui_feedback::notice(
+					"conversation-activity",
+					format!("{}:{reason:?}", self.feedback_scope()),
+					feedback,
+				)
+				.action(action),
+			)
+			.into_any_element()
+	}
+
+	pub(super) fn visible_conversation_feedback(&self) -> Option<Feedback> {
+		if self.native_agents.selected.is_some() {
+			let feedback = self.native_feedback();
+
+			return (!feedback.is_empty()
+				&& !matches!(feedback.message.as_str(), "Sent" | "Sending…"))
+			.then(|| feedback.clone());
+		}
+
+		self.conversation_feedback()
 	}
 
 	fn conversation_feedback(&self) -> Option<Feedback> {
@@ -3586,7 +3628,7 @@ mod tests {
 		let composer = visual.debug_bounds("agent-composer").unwrap();
 		let notice = visual.debug_bounds("conversation-unavailable").unwrap();
 
-		assert!(notice.top() >= composer.top() && notice.bottom() <= composer.bottom());
+		assert!(notice.bottom() <= composer.top(), "status stays above the input bar");
 		assert!(visual.debug_bounds("composer-retained-draft").is_some());
 		assert!(visual.debug_bounds("composer-editor-area").is_none());
 		assert!(visual.debug_bounds("composer-action-row").is_none());

@@ -7,7 +7,7 @@ use tokio::time;
 use crate::agent::native_subagents;
 use decodex_codex::app_server_client::{AppServerClient, ClientError};
 use decodex_database::SqliteStore;
-use decodex_protocol::{NativeAgentDto, NativeAgentsResult};
+use decodex_protocol::{NATIVE_PARENT_RECONNECT_MESSAGE, NativeAgentDto, NativeAgentsResult};
 
 pub(crate) async fn read(
 	store: &SqliteStore,
@@ -71,7 +71,7 @@ pub(crate) async fn prepare(
 					"This conversation is archived. Restore it in Codex before continuing.",
 				ClientError::Remote(ref error)
 					if error.message.contains("resume the parent first") =>
-					"Open the parent agent to reconnect this conversation.",
+					NATIVE_PARENT_RECONNECT_MESSAGE,
 				ClientError::Remote(ref error)
 					if error.message.contains("in use") || error.message.contains("locked") =>
 					"This conversation is in use by another app.",

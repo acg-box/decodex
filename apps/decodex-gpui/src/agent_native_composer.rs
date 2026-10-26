@@ -4,7 +4,9 @@ use gpui::{
 	FocusHandle, Focusable, KeyDownEvent, MouseButton, Pixels, Render, Role,
 	StatefulInteractiveElement as _, Subscription, Window, WindowBackgroundAppearance,
 	WindowBounds, WindowHandle, WindowKind, WindowOptions,
-	prelude::{InteractiveElement as _, IntoElement, ParentElement as _, Styled as _},
+	prelude::{
+		FluentBuilder as _, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _,
+	},
 };
 
 use crate::{
@@ -12,11 +14,7 @@ use crate::{
 		ActivateAgent, ActivateHealth, ActivateSettings, DismissStatus, GrowPanel, GrowPanels,
 		NavigateBack, NavigateForward, ResetPanel, ResetPanels, ShrinkPanel, ShrinkPanels,
 		ToggleContentFullscreen, ToggleGraph, ToggleInspector, ToggleSidebar,
-		agent_surface::{
-			AgentSurface,
-			voice::Media,
-			workspace::{self, ARCHIVED_DETAIL},
-		},
+		agent_surface::{AgentSurface, voice::Media, workspace},
 	},
 	ui_motion,
 	ui_theme::{
@@ -303,13 +301,8 @@ impl AgentSurface {
 
 	pub(super) fn render_native_composer_anchor(&self, cx: &mut Context<Self>) -> AnyElement {
 		let blocked = self.composer_unavailable_reason();
-		let archived = self.selected_is_archived();
-		let parent_managed = self.native_agents.selected.is_some()
-			&& matches!(
-				self.native_agents.connection,
-				super::native_agents::NativeConnection::ParentManaged
-			);
-		let read_only = blocked.is_some() && !parent_managed && !archived;
+		let archived = blocked == Some(workspace::ARCHIVED_MESSAGE);
+		let read_only = blocked.is_some() && !archived;
 		let owner = cx.entity().downgrade();
 		let anchor = gpui::canvas(
 			move |bounds, _, cx| {
@@ -336,35 +329,35 @@ impl AgentSurface {
 					.role(if read_only { Role::Status } else { Role::Button })
 					.aria_label(if archived {
 						"Archived conversation options"
-					} else if parent_managed {
-						"Open parent conversation"
+					} else if read_only {
+						"Message input unavailable"
 					} else {
-						blocked.unwrap_or("Focus message editor")
+						"Focus message editor"
 					})
-					.aria_description(if archived { ARCHIVED_DETAIL } else { "" })
+					.aria_description(blocked.unwrap_or_default())
 					.tab_index(if read_only { -1 } else { 0 })
-					.on_click(cx.listener(move |s, _, window, cx| {
-						if archived {
-							s.focus_native_composer_actions(cx);
-						} else if parent_managed {
-							s.open_native_parent(cx);
-						} else {
-							s.focus_message(window, cx);
-						}
-					}))
-					.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
-						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-							if archived {
-								s.focus_native_composer_actions(cx);
-							} else if parent_managed {
-								s.open_native_parent(cx);
-							} else {
-								s.focus_message(window, cx);
-							}
-
-							cx.stop_propagation();
-						}
-					}))
+					.when(!read_only, |entry| {
+						entry
+							.on_click(cx.listener(move |s, _, window, cx| {
+								if archived {
+									s.focus_native_archive_action(cx);
+								} else {
+									s.focus_message(window, cx);
+								}
+							}))
+							.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
+								if !event.is_held
+									&& ["enter", "space"].contains(&event.keystroke.key.as_str())
+								{
+									if archived {
+										s.focus_native_archive_action(cx);
+									} else {
+										s.focus_message(window, cx);
+									}
+									cx.stop_propagation();
+								}
+							}))
+					})
 					.relative()
 					.w_full()
 					.max_w(gpui::px(CONVERSATION_WIDTH))
@@ -375,7 +368,7 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
-	fn focus_native_composer_actions(&self, cx: &mut Context<Self>) {
+	fn focus_native_archive_action(&self, cx: &mut Context<Self>) {
 		let Some(child) =
 			self.native_controls.composer.child.filter(|_| self.native_controls.composer.enabled)
 		else {

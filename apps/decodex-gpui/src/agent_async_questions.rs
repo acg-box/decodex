@@ -13,7 +13,6 @@ use crate::{
 		Context, Entity, EntityId, InteractiveElement, IntoElement, ParentElement, Role,
 		SharedString, StatefulInteractiveElement, Styled, Window,
 		composer::ComposerTip,
-		prompts,
 		selectable_text::SelectableText,
 		workspace_symbols::{self, Symbol},
 	},
@@ -461,10 +460,6 @@ impl AgentSurface {
 			.enabled(!self.sending && !self.uncertain);
 
 		gpui::div().w_full().flex().child(send).into_any_element()
-	}
-
-	pub(super) fn update_question_placeholder(&self, cx: &mut Context<Self>) {
-		self.composer.update(cx, |input, cx| input.set_placeholder(prompts::session_quote(), cx));
 	}
 
 	pub(super) fn composer_question_panel(&self, cx: &mut Context<Self>) -> AnyElement {

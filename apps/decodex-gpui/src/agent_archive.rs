@@ -14,7 +14,6 @@ use crate::{
 			self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface,
 			AgentWorkItemDto, Context, EntityId, FluentBuilder, IdempotencyKey, InteractiveElement,
 			IntoElement, ParentElement, StatefulInteractiveElement, Styled, Task, WireText,
-			workspace::ARCHIVED_DETAIL,
 		},
 		workspace_symbols::{self, Symbol},
 	},
@@ -299,7 +298,7 @@ impl AgentSurface {
 		let detail = if restoring {
 			""
 		} else if feedback.is_empty() {
-			ARCHIVED_DETAIL
+			"Unarchive to send messages."
 		} else {
 			feedback
 		};
@@ -423,6 +422,12 @@ mod tests {
 			"action {bounds:?}, input bar {composer:?}, status {status:?}"
 		);
 		assert!((status.center().y - composer.center().y).abs() <= gpui::px(0.5));
+		assert!(visual.debug_bounds("conversation-unavailable").is_none());
+		assert!(visual.debug_bounds("composer-blocked-placeholder").is_none());
+		assert!(
+			visual.debug_bounds("conversation-status-band").unwrap().size.height <= gpui::px(0.5),
+			"archive state does not create a second notice above the input"
+		);
 		assert!(visual.debug_bounds("composer-retained-draft").is_none());
 		assert_eq!(
 			visual.debug_bounds("floating-composer").unwrap().bottom(),

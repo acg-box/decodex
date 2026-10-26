@@ -24,7 +24,6 @@ use ui_theme::{
 };
 
 #[cfg(test)] use crate::shell::agent_surface::ConversationModel;
-#[cfg(not(test))] use crate::shell::agent_surface::prompts;
 use crate::{
 	shell::{
 		agent_surface::{
@@ -33,8 +32,7 @@ use crate::{
 			Context, ConversationReasoningEffort, ConversationWorkingDirectory, Entity, EntityId,
 			FluentBuilder, HistoryText, IdempotencyKey, InteractiveElement, IntoElement,
 			ParentElement, Render, Role, SharedString, SmoothControl, StatefulInteractiveElement,
-			Styled, SubmitComposer, Window, model_settings,
-			native_agents::NativeConnection,
+			Styled, SubmitComposer, Window, model_settings, prompts,
 			selectable_text::SelectableText,
 			ui_theme,
 			ui_theme::{
@@ -47,7 +45,7 @@ use crate::{
 		workspace_symbols::Symbol,
 	},
 	ui_feedback::{self, Feedback, Tone},
-	ui_loading, ui_motion,
+	ui_motion,
 	ui_theme::{COMPOSER_BOTTOM_GAP, COMPOSER_TOP_GAP, CONVERSATION_INSET},
 };
 use controls::{PrimaryMark, PrimaryMode};
@@ -373,6 +371,24 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	fn update_message_placeholder(&self, cx: &mut Context<Self>) {
+		let placeholder = if self
+			.visible_conversation_feedback()
+			.is_some_and(|feedback| matches!(feedback.tone, Tone::Error | Tone::Warning))
+		{
+			"Message".to_owned()
+		} else {
+			prompts::session_quote()
+		};
+		let input = if self.native_agents.selected.is_some() {
+			self.conversation_composer()
+		} else {
+			&self.composer
+		};
+
+		input.update(cx, |input, cx| input.set_placeholder(placeholder, cx));
+	}
+
 	pub(super) fn render_composer_capsule(
 		&self,
 		native: bool,
@@ -397,7 +413,7 @@ impl AgentSurface {
 			return self.render_blocked_composer(capsule, reason, opacity, window, cx);
 		}
 
-		self.update_question_placeholder(cx);
+		self.update_message_placeholder(cx);
 
 		let editor = self.composer_editor(native, window, cx);
 
@@ -553,7 +569,17 @@ impl AgentSurface {
 				.flex()
 				.flex_col()
 				.justify_center()
-				.child(self.connection_notice(reason, cx))
+				.when(archived, |d| {
+					d.children(self.conversation_work().map(|work| self.archive_notice(&work, cx)))
+				})
+				.when(!archived && draft.is_empty(), |d| {
+					d.child(
+						gpui::div()
+							.debug_selector(|| "composer-blocked-placeholder".into())
+							.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+							.child("Message"),
+					)
+				})
 				.when(!archived && !draft.is_empty(), |d| {
 					d.child(
 						gpui::div()
@@ -780,60 +806,38 @@ impl AgentSurface {
 
 	fn composer_toolbar(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
 		if self.native_agents.selected.is_some() {
-			let mut row = gpui::div()
+			return gpui::div()
 				.flex_1()
 				.min_w_0()
 				.h(gpui::px(CONTROL_SIZE))
 				.flex()
 				.items_center()
-				.gap(gpui::px(8.));
-
-			match &self.native_agents.connection {
-				// Presented by the same blocked-composer surface as writer locks.
-				NativeConnection::ParentManaged => {},
-				NativeConnection::Failed(reason) => {
-					row = row
-						.child(
-							Tone::Error.row("native-connection-error", reason).flex_1().min_w_0(),
-						)
-						.child(self.workspace_action(
-							"native-connect-retry".into(),
-							"Retry".into(),
-							|s, cx| s.retry_native_connection(cx),
+				.gap(gpui::px(8.))
+				.justify_end()
+				.child(
+					if self.running_turn().is_some()
+						&& self.conversation_composer().read(cx).content().trim().is_empty()
+					{
+						self.composer_control(
+							"stop",
+							"".into(),
+							"Stop",
+							|s, cx| s.interrupt_current(cx),
 							cx,
-						));
-				},
-				NativeConnection::Checking { .. } => {
-					row = row.justify_end().child(ui_loading::loading(""));
-				},
-				NativeConnection::Ready => {
-					row = row.justify_end().child(
-						if self.running_turn().is_some()
-							&& self.conversation_composer().read(cx).content().trim().is_empty()
-						{
-							self.composer_control(
-								"stop",
-								"".into(),
-								"Stop",
-								|s, cx| s.interrupt_current(cx),
-								cx,
-							)
-							.into_any_element()
-						} else {
-							self.composer_control(
-								"send",
-								"".into(),
-								"Send · Enter",
-								|s, cx| s.send_native_agent(cx),
-								cx,
-							)
-							.into_any_element()
-						},
-					);
-				},
-			}
-
-			return row.into_any_element();
+						)
+						.into_any_element()
+					} else {
+						self.composer_control(
+							"send",
+							"".into(),
+							"Send · Enter",
+							|s, cx| s.send_native_agent(cx),
+							cx,
+						)
+						.into_any_element()
+					},
+				)
+				.into_any_element();
 		}
 
 		if let Some(controls) = self.dictation_controls(window, cx) {
