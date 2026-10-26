@@ -3348,5 +3348,6 @@
     "codex-rs/tui/src/transcript_view/select_mode_tests.rs": "ba1127d83beb8a0cf479ca487589f235359c2a4cc510d6ea0c59794e9ac17482",
     "codex-rs/tui/src/transcript_view/select_mode.rs": "a568ab3c01e997617983ac2eec3097b4c7b1064abdaa2c01fb3abda9c59f85c9"
   },
-  "delivery_reference": "Read the current public delivery reference in retained-evidence.json."
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2514",
+  "delivery_status": "Public PR reference; inspect linked PR for exact-head checks and merge state."
 }

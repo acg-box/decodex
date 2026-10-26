@@ -3446,7 +3446,7 @@
     "next_action": "A documentation owner must reconcile the unrelated stale Claim queue before the selected runtime/acceptance pages can be assigned. Resume through OpenWiki, preserve valid unaffected content and do not hand-edit generated state.",
     "limits": "No selected page was assigned or hand-edited. Do not report the lifecycle as complete; runtime/source delivery can proceed independently under the maintenance prompt."
   },
-  "delivery_reference": "Read retained-evidence.json for the public delivery PR and exact-head checks.",
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2514",
   "schema_identity": {
     "generator": "Exact candidate codex app-server generate-json-schema --experimental --out <directory>",
     "observed_cli_version": "codex-cli 0.0.0",
@@ -3480,5 +3480,6 @@
     ],
     "environment": "Empty system-temporary HOME/CODEX_HOME; removed after observation.",
     "scope": "Actual selected artifact exposes these features disabled. Current Decodex source does not write them."
-  }
+  },
+  "delivery_status": "Public PR reference; inspect linked PR for exact-head checks and merge state."
 }

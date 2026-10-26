@@ -20,7 +20,8 @@
     "https://github.com/acg-box/decodex/pull/2489",
     "https://github.com/acg-box/decodex/pull/2490",
     "https://github.com/acg-box/decodex/pull/2508",
-    "https://github.com/acg-box/decodex/pull/2511"
+    "https://github.com/acg-box/decodex/pull/2511",
+    "https://github.com/acg-box/decodex/pull/2514"
   ],
   "retained_native_consumers": {
     "tests": [
@@ -707,7 +708,7 @@
     "evidence": "automations/upstream/qualification.json",
     "source_archive_sha256": "d2356cea559f77d768f97af9ca70c8aec625b20a4b05ce66023aa63f02ca07ca",
     "schema_sha256": "50c4da5e674696a1504e97729bf69b42f867ebe88ab11428ed1de296df79e7dc",
-    "evidence_sha256": "5c52f6655d2b627b481ea25eda41babea0c819dc518fdbe9c0dbc10b8482f372",
+    "evidence_sha256": "c50b78d03e2063dfbdc7fa8ec7c4b3ebd0a3eee2acfa22024d4d32f2d213fd79",
     "limits": [
       "Source review, tests, artifact qualification, merge and installed acceptance are separate.",
       "Only macOS arm64 private stdio and named native consumers/helpers are qualified. Linux, Windows, remote production execution, live accounts/providers, physical audio and installation/release remain unmeasured.",
@@ -857,7 +858,7 @@
       "optional_decision": 3
     },
     "source_review_evidence": "automations/upstream/current-review.json",
-    "source_review_evidence_sha256": "1df4985c2c3081804175e27110ef498a13333a7a08ec90949df341acfb4bc306",
+    "source_review_evidence_sha256": "411a0b5dbff918d7331bace8337763fd55a340290b2f8403cc556d02478ff782",
     "selected_runtime_source": "abf4bb91ec49fbf443ccec0069f9cab5dd1462d8",
     "runtime_disposition": "Qualified fixed development artifact; public delivery and merge readback remain separate.",
     "tests_read_unique_function_count": 101,
@@ -1486,9 +1487,11 @@
     }
   },
   "current_delivery": {
-    "status": "qualified_delivery_prepared",
+    "status": "public_pull_request_reference",
     "scope": "Advance fixed development runtime to abf4bb91, repair native command-hook cwd and output retention, and qualify retained capabilities. No product feature flag enabled.",
-    "state_source": "Read the public PR for merge state and exact-head checks."
+    "state_source": "Read the linked public PR for merge state and exact-head checks. Qualification does not establish installed-app acceptance.",
+    "code_commit": "a2f9c8766814f5173bd3e4a4615874fa3202d02e",
+    "pull_request": "https://github.com/acg-box/decodex/pull/2514"
   },
   "retained_account_scope": {
     "provider": "ChatGPT-backed identity; recognized plan labels are not separate provider implementations.",
