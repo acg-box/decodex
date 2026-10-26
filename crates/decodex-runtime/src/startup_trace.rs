@@ -41,7 +41,8 @@ pub(crate) fn archive_pending(count: usize) {
 fn write(line: &str) {
 	if let Some(path) = OUTPUT.as_ref() {
 		if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
-			let _ = writeln!(file, "{line}");
+			// Keep the delimiter in the same append as its concurrent phase record.
+			let _ = file.write_all(format!("{line}\n").as_bytes());
 		}
 	} else {
 		eprintln!("{line}");

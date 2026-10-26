@@ -75,6 +75,7 @@ use {
 	libc::UF_IMMUTABLE,
 	std::ffi::CString,
 	std::fs::{OpenOptions, Permissions},
+	std::os::macos::fs::MetadataExt as _,
 	std::os::unix::fs::OpenOptionsExt as _,
 };
 
@@ -1428,7 +1429,9 @@ impl AppServerCommand {
 	/// let _ = AppServerCommand::new("python3", ".");
 	/// ```
 	pub fn new(working_directory: impl Into<PathBuf>) -> Result<Self, SupervisionError> {
+		let phase = crate::startup_trace::Phase::new("executable_snapshot");
 		let (program, executable, executable_digest) = resolve_executable(OsStr::new("codex"))?;
+		drop(phase);
 		let mut command = Self::production_from_resolved(
 			program,
 			executable,
@@ -1438,6 +1441,7 @@ impl AppServerCommand {
 
 		#[cfg(target_os = "macos")]
 		{
+			let _phase = crate::startup_trace::Phase::new("static_code_identity");
 			command.attested_code_identity = Some(
 				AttestedCodeIdentity::capture(
 					&command.executable.execution_path(),
@@ -1698,7 +1702,8 @@ impl StdoutPump {
 	where
 		R: Read + AsRawFd + Send + 'static,
 	{
-		set_nonblocking(reader.as_raw_fd())?;
+		let descriptor = reader.as_raw_fd();
+		set_nonblocking(descriptor)?;
 
 		let cancelled = Arc::new(AtomicBool::new(false));
 		let pump_cancelled = Arc::clone(&cancelled);
@@ -1712,6 +1717,7 @@ impl StdoutPump {
 					protocol_limit_exceeded,
 					&pump_cancelled,
 					buffered.as_deref(),
+					|| wait_for_stdout(descriptor),
 				);
 
 				let _ = done_sender.try_send(());
@@ -1809,7 +1815,6 @@ impl SupervisedProcess {
 		capability: ExactBuildLaunchCapability,
 		pre_spawn_check: Option<&dyn ConversationPreSpawnCheck>,
 	) -> Result<Self, SupervisionError> {
-		verify_canonical_executable_identity(&command)?;
 		run_before_spawn_test(&command);
 		verify_canonical_executable_identity(&command)?;
 		run_after_verification_test(&command);
@@ -1961,6 +1966,10 @@ impl SupervisedProcess {
 		// External login acknowledges credentials before native cache invalidation finishes.
 		// Keep both messages inside this request's deadline, in either arrival order.
 		let mut login_complete = method != ReadOnlyMethod::AccountLoginStart.as_str();
+		let mut login_response_phase =
+			(!login_complete).then(|| crate::startup_trace::Phase::new("native_login_response"));
+		let mut login_completion_phase =
+			(!login_complete).then(|| crate::startup_trace::Phase::new("native_login_completion"));
 		let mut pending_response = None;
 
 		loop {
@@ -2033,10 +2042,11 @@ impl SupervisedProcess {
 				}
 
 				login_complete = true;
-
+				drop(login_completion_phase.take());
 				continue;
 			}
 			if header.id == Some(request_id) {
+				drop(login_response_phase.take());
 				pending_response =
 					Some(Self::decode_rpc_response(&line, request_id, &request_digest)?);
 
@@ -2483,6 +2493,7 @@ impl SupervisedProcess {
 	}
 
 	fn read_account_identity(&mut self, timeout: Duration) -> Result<AccountIdentity, ProbeError> {
+		let _phase = crate::startup_trace::Phase::new("native_account_identity");
 		let account = self.request::<_, AccountReadResponse>(
 			ReadOnlyMethod::AccountRead,
 			&serde_json::json!({}),
@@ -4864,6 +4875,9 @@ fn capture_platform_executable_snapshot(
 ) -> Result<(ExecutableSnapshot, [u8; 32]), SupervisionError> {
 	let directory = TempDir::new().map_err(|_| SupervisionError::ExecutableUnavailable)?;
 	let snapshot_path = bundle_snapshot::path(_source_path, directory.path())?;
+	if clone_executable_snapshot(source, &snapshot_path)? {
+		return finalize_executable_snapshot(directory, snapshot_path, metadata);
+	}
 	let mut snapshot_writer = OpenOptions::new()
 		.create_new(true)
 		.write(true)
@@ -4896,10 +4910,26 @@ fn capture_platform_executable_snapshot(
 
 	drop(snapshot_writer);
 
-	fs::set_permissions(&snapshot_path, Permissions::from_mode(0o500))
-		.map_err(|_| SupervisionError::ExecutableUnavailable)?;
-
 	finalize_executable_snapshot(directory, snapshot_path, metadata)
+}
+
+#[cfg(target_os = "macos")]
+fn clone_executable_snapshot(source: &File, target: &Path) -> Result<bool, SupervisionError> {
+	let target = CString::new(target.as_os_str().as_bytes())
+		.map_err(|_| SupervisionError::ExecutableUnavailable)?;
+	// SDK sys/clonefile.h: do not inherit ownership from a system-owned source.
+	const CLONE_NOOWNERCOPY: u32 = 0x0002;
+	// SAFETY: the source descriptor is retained, and target is NUL-terminated for the call.
+	let result = unsafe {
+		libc::fclonefileat(source.as_raw_fd(), libc::AT_FDCWD, target.as_ptr(), CLONE_NOOWNERCOPY)
+	};
+	if result == 0 {
+		return Ok(true);
+	}
+	match std::io::Error::last_os_error().raw_os_error() {
+		Some(libc::EXDEV | libc::ENOTSUP) => Ok(false),
+		_ => Err(SupervisionError::ExecutableUnavailable),
+	}
 }
 
 #[cfg(target_os = "macos")]
@@ -4915,6 +4945,11 @@ fn finalize_executable_snapshot(
 		source_inode: metadata.ino(),
 	};
 
+	// A clone can inherit immutability. Retain cleanup ownership before changing
+	// its flags or permissions, then seal and hash the independent image as before.
+	set_snapshot_immutable(&snapshot.path, false)?;
+	fs::set_permissions(&snapshot.path, Permissions::from_mode(0o500))
+		.map_err(|_| SupervisionError::ExecutableUnavailable)?;
 	set_snapshot_immutable(&snapshot.path, true)?;
 
 	let digest = snapshot.digest()?;
@@ -5057,9 +5092,13 @@ const fn is_supported_native_executable_magic(magic: [u8; 4]) -> bool {
 
 #[cfg(target_os = "macos")]
 fn set_snapshot_immutable(path: &Path, immutable: bool) -> Result<(), SupervisionError> {
+	let flags =
+		fs::symlink_metadata(path).map_err(|_| SupervisionError::ExecutableUnavailable)?.st_flags();
 	let path = CString::new(path.as_os_str().as_bytes())
 		.map_err(|_| SupervisionError::ExecutableUnavailable)?;
-	let flags = if immutable { UF_IMMUTABLE } else { 0 };
+	// Clones can retain transparent compression. Changing immutability must not
+	// clear unrelated flags and make the retained executable bytes unreadable.
+	let flags = if immutable { flags | UF_IMMUTABLE } else { flags & !UF_IMMUTABLE };
 	// SAFETY: the C string is NUL-terminated and remains alive for the call.
 	let result = unsafe { libc::chflags(path.as_ptr(), flags) };
 
@@ -5436,8 +5475,11 @@ fn initialize_probe_projection(
 	negotiation: &mut ProbeNegotiation<'_>,
 	capabilities: InitializeCapabilities,
 ) -> Result<(), ProbeError> {
+	let phase = crate::startup_trace::Phase::new("native_initialize");
 	initialize_probe_connection(process, timeout, negotiation, capabilities)?;
+	drop(phase);
 
+	let _phase = crate::startup_trace::Phase::new("native_account_login");
 	let account_id = process.binding.account_id().clone();
 	let mut projection = CredentialProjection { process, timeout, used: false };
 	let expected =
@@ -5587,12 +5629,20 @@ fn set_nonblocking(descriptor: i32) -> Result<(), SupervisionError> {
 	Ok(())
 }
 
+fn wait_for_stdout(descriptor: i32) {
+	let mut readiness = libc::pollfd { fd: descriptor, events: libc::POLLIN, revents: 0 };
+	// SAFETY: the pump retains the reader that owns this descriptor. Poll only borrows it.
+	// Readable data and EOF wake immediately; the timeout bounds cancellation of an idle pipe.
+	unsafe { libc::poll(&mut readiness, 1, 10) };
+}
+
 fn pump_stdout(
 	mut reader: impl Read,
 	sender: SyncSender<InboundFrame>,
 	protocol_limit_exceeded: Arc<AtomicBool>,
 	cancelled: &AtomicBool,
 	buffered: Option<&AtomicBool>,
+	mut wait_for_data: impl FnMut(),
 ) {
 	let mut read_buffer = ZeroizingInboundBlock::new();
 	let mut frame = InboundFrame::new();
@@ -5614,7 +5664,7 @@ fn pump_stdout(
 			},
 			Ok(count) => count,
 			Err(error) if error.kind() == ErrorKind::WouldBlock => {
-				thread::park_timeout(Duration::from_millis(10));
+				wait_for_data();
 
 				continue;
 			},
@@ -7274,6 +7324,27 @@ pub(crate) mod tests {
 	}
 
 	#[test]
+	fn stdout_readiness_preserves_split_frames_and_stops_with_the_writer_open() {
+		let (mut writer, reader) = std::os::unix::net::UnixStream::pair().unwrap();
+		let (sender, receiver) = mpsc::sync_channel(2);
+		let exceeded = Arc::new(AtomicBool::new(false));
+		let mut pump = process::StdoutPump::start(reader, sender, Arc::clone(&exceeded)).unwrap();
+
+		writer.write_all(b"first\npart").unwrap();
+		let first = receiver.recv_timeout(Duration::from_secs(1)).unwrap().into_contiguous();
+
+		assert_eq!(&*first, b"first\n");
+		assert!(matches!(receiver.try_recv(), Err(mpsc::TryRecvError::Empty)));
+
+		writer.write_all(b"ial\n").unwrap();
+		let second = receiver.recv_timeout(Duration::from_secs(1)).unwrap().into_contiguous();
+
+		assert_eq!(&*second, b"partial\n");
+		assert!(pump.stop(Duration::from_secs(1)), "idle reads must not require writer EOF");
+		assert!(!exceeded.load(Ordering::Acquire));
+	}
+
+	#[test]
 	fn stdout_pump_preserves_large_native_media_and_the_following_peer_frame() {
 		let value = serde_json::json!({"id":17,"result":{"data":[{"turnId":"turn","item":{"id":"image","type":"dynamicToolCall","contentItems":[{"type":"inputImage","imageUrl":format!("data:image/png;base64,{}", "A".repeat(2*1_024*1_024))}]}}],"nextCursor":null}});
 		let mut input = serde_json::to_vec(&value).unwrap();
@@ -7290,6 +7361,7 @@ pub(crate) mod tests {
 			Arc::clone(&exceeded),
 			&AtomicBool::new(false),
 			None,
+			|| {},
 		);
 
 		assert!(
@@ -7341,6 +7413,7 @@ pub(crate) mod tests {
 			Arc::clone(&exceeded),
 			&AtomicBool::new(false),
 			None,
+			|| {},
 		);
 
 		drop(receiver);
@@ -7424,6 +7497,7 @@ pub(crate) mod tests {
 			Arc::new(AtomicBool::new(false)),
 			&AtomicBool::new(false),
 			None,
+			|| {},
 		);
 
 		let after_disconnect = process::ZEROIZED_INBOUND_BLOCKS.load(Ordering::Acquire);
@@ -7438,6 +7512,7 @@ pub(crate) mod tests {
 			Arc::new(AtomicBool::new(false)),
 			&AtomicBool::new(false),
 			None,
+			|| {},
 		);
 
 		drop(receiver);
@@ -7479,6 +7554,7 @@ pub(crate) mod tests {
 			Arc::new(AtomicBool::new(false)),
 			&AtomicBool::new(false),
 			None,
+			|| {},
 		);
 
 		let frame = receiver.recv().unwrap();
@@ -7501,6 +7577,7 @@ pub(crate) mod tests {
 			Arc::new(AtomicBool::new(false)),
 			&AtomicBool::new(false),
 			None,
+			|| {},
 		);
 
 		drop(receiver);
@@ -7746,6 +7823,52 @@ pub(crate) mod tests {
 			assert_eq!(spawn_count.load(Ordering::Acquire), trigger_spawn);
 			assert!(!attacker_marker.exists());
 		}
+	}
+
+	#[cfg(target_os = "macos")]
+	#[test]
+	fn executable_snapshot_keeps_independent_bytes_and_rejects_existing_clone_targets() {
+		let parent = TempDir::new().unwrap();
+		let source = parent.path().join("source");
+		fs::copy("/bin/cat", &source).unwrap();
+		let original = fs::read(&source).unwrap();
+		let file = fs::File::open(&source).unwrap();
+		let occupied = parent.path().join("occupied");
+		fs::write(&occupied, b"retained target").unwrap();
+		assert!(process::clone_executable_snapshot(&file, &occupied).is_err());
+		assert_eq!(fs::read(&occupied).unwrap(), b"retained target");
+
+		let (snapshot, digest) = process::capture_executable_snapshot(&source).unwrap();
+		let image = snapshot.path.clone();
+		let directory = snapshot._directory.path().to_owned();
+		assert_ne!(image.metadata().unwrap().ino(), source.metadata().unwrap().ino());
+		assert_eq!(image.metadata().unwrap().mode() & 0o777, 0o500);
+		fs::write(&source, b"source changed after capture").unwrap();
+		assert_eq!(fs::read(&image).unwrap(), original);
+		assert_eq!(snapshot.digest().unwrap(), digest);
+		assert!(fs::write(&image, b"cannot change immutable snapshot").is_err());
+		drop(snapshot);
+		assert!(!image.exists());
+		assert!(!directory.exists());
+	}
+
+	#[cfg(target_os = "macos")]
+	#[test]
+	fn snapshot_capture_preserves_an_immutable_source_and_cleans_its_clone() {
+		let parent = TempDir::new().unwrap();
+		let source = parent.path().join("immutable-source");
+		fs::copy("/bin/cat", &source).unwrap();
+		process::set_snapshot_immutable(&source, true).unwrap();
+		let result = process::capture_executable_snapshot(&source);
+		let source_still_immutable = fs::write(&source, b"unchanged source").is_err();
+		// Restore the fixture even if capture fails, so a failed check cannot leak it.
+		process::set_snapshot_immutable(&source, false).unwrap();
+		assert!(source_still_immutable);
+		let (snapshot, digest) = result.unwrap();
+		let image = snapshot.path.clone();
+		assert_eq!(snapshot.digest().unwrap(), digest);
+		drop(snapshot);
+		assert!(!image.exists());
 	}
 
 	#[cfg(target_os = "macos")]

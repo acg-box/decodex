@@ -402,6 +402,9 @@ impl AgentHost {
 
 	pub(crate) async fn runtime_source(&self) -> Option<decodex_protocol::EntityId> {
 		let (generation, account, revision, client) = self.runtime.agent_usage_source().await?;
+		if !self.archive_visibility.lock().await.ready_for(generation.as_str()) {
+			return None;
+		}
 		let value = serde_json::to_vec(&(
 			generation.as_str(),
 			account.as_str(),
@@ -2288,14 +2291,36 @@ impl AgentHost {
 
 			return None;
 		};
-
-		if let Some(observations) = &self.observations {
+		// Seed the durable question fence before publishing any native client. A
+		// readable workspace must not expose stale questions during later recovery.
+		self.store.queue_agent_async_reconnection().await.ok()?;
+		let reused_observation = if let Some(observations) = &self.observations {
 			let _phase = Phase::new("initial_account_observations");
+			let bound_account = self
+				.store
+				.read_agent_process_binding(&root.id)
+				.await
+				.ok()?
+				.map(|binding| binding.account_id);
+			let selected = bound_account.as_ref().or(account.as_ref());
+			if observations.can_reuse_initial_observation(selected).await {
+				let _phase = Phase::new("cached_account_observation");
+				true
+			} else {
+				observations.wait_for_initial_observation(selected).await;
+				false
+			}
+		} else {
+			false
+		};
 
-			observations.wait_for_initial_observation().await;
+		let connected = self.connect(&root.id, format!("restore-{}", now()), config, account).await;
+		if reused_observation && let Some(observations) = &self.observations {
+			// Refresh alongside history recovery, after releasing the startup credential lock.
+			observations.request_refresh();
 		}
 
-		match self.connect(&root.id, format!("restore-{}", now()), config, account).await {
+		match connected {
 			Ok(mut active) => {
 				let phase = Phase::new("recover_persisted");
 				let recovery = active.1.recover_persisted().await;
@@ -2314,6 +2339,9 @@ impl AgentHost {
 
 				drop(phase);
 
+				// Native identity and persisted recovery are ready. Routine wake dispatch may
+				// still inspect external writers; it must not hold the workspace reveal.
+				self.initializing.send_replace(false);
 				let _phase = Phase::new("wake_pending");
 
 				self.record_delivery(&root.id, active.1.wake_pending().await).await;

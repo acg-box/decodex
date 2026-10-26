@@ -523,7 +523,7 @@ impl AgentSurface {
 			return;
 		}
 		if self.native_agents.selected.is_none()
-			&& self.command_connection_ready()
+			&& self.read_connection_ready()
 			&& let Some(work) =
 				self.conversation_work().filter(|w| w.kind == AgentWorkKindDto::Task)
 			&& let Some(thread) = work.codex_thread_id
@@ -539,7 +539,6 @@ impl AgentSurface {
 		}
 
 		self.refresh_open_native_history(cx);
-		self.refresh_native_input_receipts(cx);
 		self.load_guardian_reviews(cx);
 		self.load_archive_state(false, cx);
 
@@ -1009,7 +1008,11 @@ impl AgentSurface {
 	}
 
 	fn command_connection_ready(&self) -> bool {
-		if self.connection_initializing() {
+		!self.connection_initializing() && self.read_connection_ready()
+	}
+
+	fn read_connection_ready(&self) -> bool {
+		if self.workspace_connecting() {
 			return false;
 		}
 
@@ -1564,7 +1567,11 @@ impl AgentSurface {
 		};
 
 		self.apply_refreshed_snapshot(result, cx);
-
+		if self.read_connection_ready()
+			&& (changed || self.timeline.read_at.is_none_or(|at| at.elapsed().as_secs() >= 2))
+		{
+			self.load_history(cx);
+		}
 		if !self.connection_initializing() {
 			self.refresh_native_goal(cx);
 			self.refresh_read_state(cx);
@@ -1577,10 +1584,6 @@ impl AgentSurface {
 			{
 				self.load_capabilities(cx);
 			}
-			if changed || self.timeline.read_at.is_none_or(|at| at.elapsed().as_secs() >= 2) {
-				self.load_history(cx);
-			}
-
 			self.sync_request(cx);
 			self.refresh_composer_model_settings(cx);
 			self.tick_question_timeout(cx);

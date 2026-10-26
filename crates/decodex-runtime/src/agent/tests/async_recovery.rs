@@ -248,6 +248,130 @@ async fn complete_legacy_question_recovery_reads_history_once_for_many_turns() {
 }
 
 #[tokio::test]
+async fn incomplete_question_projection_keeps_positive_steer_receipts_without_replay() {
+	let question = serde_json::json!({"id":"duplicate-question","type":"agentMessage","delivery":"async","questions":[{"title":"Continue?"}]});
+	let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","historyMode":"legacy","turns":[{"id":"opaque turn/1","status":"inProgress","items":[
+		{"id":"native-receipt","type":"userMessage","clientId":"exact-submission","content":[]},
+		question.clone(), question
+	]}]}}});
+	let (mut agent, mut sent, _directory) = tests::fixture_with_history(history).await;
+	agent.start_agent("agent", "Coordinate").await.unwrap();
+	let pending = agent
+		.store
+		.begin_agent_steer(
+			"agent".into(),
+			"opaque turn/1".into(),
+			"exact-submission".into(),
+			serde_json::json!({"text":"Saved input","source":"user"}).to_string(),
+		)
+		.await
+		.unwrap();
+	agent.store.queue_agent_async_reconnection().await.unwrap();
+	while sent.try_recv().is_ok() {}
+	agent.recover_async_questions().await.unwrap();
+	assert!(agent.store.get_agent_inbox_event(pending).await.unwrap().disposition.is_some());
+	assert!(agent.store.agent_async_questions_recovering("agent".into()).await.unwrap());
+	while let Ok(request) = sent.try_recv() {
+		assert_eq!(request["method"], "thread/read", "recovery must not resubmit input");
+	}
+}
+
+#[tokio::test]
+async fn complete_question_reads_overlap_across_threads_without_unordered_writes() {
+	let (mut agent, _sent, _directory) = tests::fixture().await;
+	agent.start_agent("agent", "Coordinate").await.unwrap();
+	for index in 1..4 {
+		agent.create_worker("agent", &format!("worker-{index}"), "Research").await.unwrap();
+	}
+	agent.store.queue_agent_async_reconnection().await.unwrap();
+	let (incoming, frames) = mpsc::channel(32);
+	let (outgoing, mut writes) = mpsc::channel(32);
+	let (client, _events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+	agent.client = client;
+	let (release, finished) = oneshot::channel();
+	let server = tokio::spawn(async move {
+		let mut items = Vec::new();
+		while items.len() < 4 {
+			let request = writes.recv().await.unwrap();
+			let result = match request["method"].as_str().unwrap() {
+				"thread/read" =>
+					serde_json::json!({"thread":{"id":request["params"]["threadId"],"historyMode":"paginated","turns":[]}}),
+				"thread/turns/list" =>
+					serde_json::json!({"data":[{"id":"turn","status":"completed","itemsView":"notLoaded","items":[]}],"nextCursor":null}),
+				"thread/items/list" => {
+					items.push(request);
+					continue;
+				},
+				other => panic!("unexpected recovery method: {other}"),
+			};
+			incoming
+				.send(Ok(serde_json::json!({"id":request["id"],"result":result})))
+				.await
+				.unwrap();
+		}
+		// Hold the first item's response until every thread has requested its full
+		// item page. Header-only read-ahead deadlocks here and cannot pass this test.
+		for request in items.into_iter().rev() {
+			let item = serde_json::json!({"id":"question","type":"agentMessage","delivery":"async","questions":[{"title":"Continue?"}]});
+			incoming.send(Ok(serde_json::json!({"id":request["id"],"result":{"data":[{"turnId":"turn","item":item}],"nextCursor":null}}))).await.unwrap();
+		}
+		let _ = finished.await;
+		assert!(writes.try_recv().is_err(), "recovery cannot submit native input");
+	});
+	time::timeout(Duration::from_secs(3), agent.recover_async_questions()).await.unwrap().unwrap();
+	assert!(agent.store.pending_agent_async_recovery().await.unwrap().is_empty());
+	for work in agent.store.list_agent_work_items().await.unwrap() {
+		assert_eq!(agent.store.read_agent_async_questions(work.id).await.unwrap().len(), 1);
+	}
+	let _ = release.send(());
+	server.await.unwrap();
+}
+
+#[tokio::test]
+async fn independent_question_headers_are_prefetched_without_submitting_turns() {
+	let (mut agent, _sent, _directory) = tests::fixture().await;
+	agent.start_agent("agent", "Coordinate").await.unwrap();
+	for index in 1..4 {
+		agent.create_worker("agent", &format!("worker-{index}"), "Research").await.unwrap();
+	}
+	agent.store.queue_agent_async_reconnection().await.unwrap();
+	let (incoming, frames) = mpsc::channel(16);
+	let (outgoing, mut writes) = mpsc::channel(16);
+	let (client, _events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+	agent.client = client;
+	let (release, finished) = oneshot::channel();
+	let server = tokio::spawn(async move {
+		let mut requests = Vec::new();
+		for _ in 0..4 {
+			let request = writes.recv().await.unwrap();
+			assert_eq!(request["method"], "thread/read");
+			requests.push(request);
+		}
+		// No first response is available until all four independent reads arrive.
+		for request in requests.into_iter().rev() {
+			let thread = request["params"]["threadId"].clone();
+			incoming.send(Ok(serde_json::json!({"id":request["id"],"result":{"thread":{"id":thread,"historyMode":"paginated","turns":[]}}}))).await.unwrap();
+		}
+		for _ in 0..4 {
+			let request = writes.recv().await.unwrap();
+			assert_eq!(request["method"], "thread/turns/list");
+			incoming
+				.send(Ok(
+					serde_json::json!({"id":request["id"],"result":{"data":[],"nextCursor":null}}),
+				))
+				.await
+				.unwrap();
+		}
+		let _ = finished.await;
+		assert!(writes.try_recv().is_err(), "recovery cannot submit native input");
+	});
+	time::timeout(Duration::from_secs(3), agent.recover_async_questions()).await.unwrap().unwrap();
+	assert!(agent.store.pending_agent_async_recovery().await.unwrap().is_empty());
+	let _ = release.send(());
+	server.await.unwrap();
+}
+
+#[tokio::test]
 async fn paginated_question_recovery_reads_items_concurrently_in_turn_order() {
 	let (mut agent, _sent, _directory) = tests::fixture().await;
 

@@ -12,7 +12,7 @@ impl AgentCoordinator {
 		&self,
 		work: &str,
 		thread: &str,
-		turns: &[Value],
+		turns: &[String],
 	) -> Result<Option<AgentMisalignment>, AgentError> {
 		let expected = self.store.agent_misalignment(work.into()).await?;
 
@@ -20,7 +20,7 @@ impl AgentCoordinator {
 			review.thread_id == thread
 				&& turns
 					.iter()
-					.position(|turn| turn["id"].as_str() == Some(&review.turn_id))
+					.position(|turn| turn == &review.turn_id)
 					.is_some_and(|index| index + 1 < turns.len())
 		}))
 	}

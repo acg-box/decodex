@@ -50,7 +50,10 @@ impl AccountApiRuntime {
 		}
 
 		// The optional native profile supplies model routing policy; account health is independent.
-		let Some(profile) = self.activation_profile.clone() else {
+		let Some(preparation) = &self.activation_profile else {
+			return observation;
+		};
+		let Some(profile) = preparation.profile().await else {
 			return observation;
 		};
 		// Retain the account lock across read-only native discovery and the direct request.

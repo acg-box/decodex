@@ -420,21 +420,32 @@ fn verify_signed_package(lock: &RuntimeLock, root: &Path) -> Result<()> {
 	if root.join("codex-resources/zsh/bin/zsh").exists() {
 		signed_paths.push("codex-resources/zsh/bin/zsh");
 	}
-
-	for relative in signed_paths {
-		run(Command::new("/usr/bin/codesign")
-			.args(["--verify", "--strict", "--deep"])
-			.arg(root.join(relative)))?;
-	}
-
+	// These exact package members are independent. Retain every check under this
+	// scope and join all workers before executing the pinned version command.
+	thread::scope(|scope| {
+		let checks: Vec<_> = signed_paths
+			.into_iter()
+			.map(|relative| {
+				scope.spawn(move || {
+					run(Command::new("/usr/bin/codesign")
+						.args(["--verify", "--strict", "--deep"])
+						.arg(root.join(relative)))
+				})
+			})
+			.collect();
+		for check in checks {
+			check
+				.join()
+				.map_err(|_| "The component signature check did not complete.".to_owned())??;
+		}
+		Ok::<_, String>(())
+	})?;
 	if lock.source.is_some() {
+		let commit = lock.upstream_commit.as_bytes();
 		for binary in [&native, &root.join("bin/codex-code-mode-host")] {
 			let bytes = fs::read(binary).map_err(|e| e.to_string())?;
 
-			if !bytes
-				.windows(lock.upstream_commit.len())
-				.any(|part| part == lock.upstream_commit.as_bytes())
-			{
+			if !bytes.windows(commit.len()).any(|part| part[0] == commit[0] && part == commit) {
 				return Err(
 					"The development executable was not built from the pinned commit.".into()
 				);

@@ -232,7 +232,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn refresh_open_native_history(&mut self, cx: &mut Context<Self>) {
-		if self.connection_initializing() {
+		if !self.read_connection_ready() {
 			return;
 		}
 
@@ -245,6 +245,8 @@ impl AgentSurface {
 		};
 
 		self.activate_native_timeline(&work, &thread);
+		// Local delivery evidence does not depend on native history or its account binding.
+		self.refresh_native_input_receipts(cx);
 
 		let selected = self.conversation_work();
 		let turn = selected.as_ref().and_then(|work| work.active_turn_id.as_deref());
@@ -1081,8 +1083,6 @@ impl AgentSurface {
 			self.timeline.native.failed(result, std::time::Instant::now());
 		}
 
-		self.refresh_native_input_receipts(cx);
-
 		if changed {
 			cx.notify();
 		}
@@ -1145,6 +1145,7 @@ impl Timeline {
 
 	pub(super) fn cancel_read(&mut self) {
 		self.task = None;
+		self.input_receipts.cancel_read();
 		self.epoch = self.epoch.wrapping_add(1);
 
 		if self.pagination == Pagination::Loading {
@@ -1472,6 +1473,45 @@ mod tests {
 		AgentTimelineResult, CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope,
 		QueryResultPayload, ServerId, ServerMessage,
 	};
+
+	#[gpui::test]
+	fn confirmed_native_history_is_readable_while_execution_recovery_is_pending(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let snapshot = s.snapshot.as_mut().unwrap();
+			snapshot.connection_initializing = true;
+			snapshot.runtime_source = None;
+			let work = snapshot
+				.work_items
+				.iter_mut()
+				.find(|work| Some(&work.id) == s.selected.as_ref())
+				.unwrap();
+			work.codex_thread_id = Some("selected-native-history".into());
+			let work = work.id.clone();
+			s.composer.update(cx, |input, cx| input.set_content("Keep my draft", cx));
+			s.load_history(cx);
+			assert!(s.workspace_connecting());
+			assert!(s.timeline.native.requested.is_none());
+			s.snapshot.as_mut().unwrap().runtime_source =
+				Some(EntityId::new("confirmed-source").unwrap());
+			s.load_history(cx);
+			assert!(!s.workspace_connecting());
+			assert!(s.read_connection_ready());
+			assert_eq!(s.timeline.native.requested, Some((work, "selected-native-history".into())));
+			assert!(!s.command_connection_ready());
+			s.submit(cx);
+			assert!(!s.sending);
+			assert!(s.submission.command.is_none());
+			assert_eq!(s.composer.read(cx).content(), "Keep my draft");
+			cx.notify();
+		});
+		visual.update(|window, cx| window.draw(cx).clear(cx));
+		assert!(visual.debug_bounds("workspace-connecting").is_none());
+		assert!(visual.debug_bounds("workspace-transcript").is_some());
+	}
 
 	#[gpui::test]
 	fn pending_native_read_does_not_flash_local_records(cx: &mut gpui::TestAppContext) {

@@ -91,6 +91,7 @@ impl ConversationRuntime {
 	where
 		T: Send + 'static,
 	{
+		self.inner.launch_profile.profile().await?;
 		let preferred =
 			request.account_id.as_ref().map(|id| AccountId::new(id.as_str())).transpose().ok()?;
 		let now =
@@ -173,6 +174,11 @@ impl ConversationRuntime {
 		callback: Arc<dyn AccountRefreshCallback>,
 		read: impl FnOnce(&mut AttestedProcessChild) -> Option<T>,
 	) -> Option<T> {
+		let crate::native_preparation::PreparationState::Ready(profile) =
+			self.inner.launch_profile.state()
+		else {
+			return None;
+		};
 		let selected = Arc::new(SelectedWorkingDirectory::acquire(directory).ok()?);
 		let binding =
 			AccountBinding::shared_home_bound(account.clone(), credential.binding, callback)
@@ -187,7 +193,7 @@ impl ConversationRuntime {
 		}
 
 		let launch = AttestedAppServerLaunch::bind_selected_control_working_directory(
-			self.inner.launch_profile.clone(),
+			profile.as_ref().clone(),
 			directory.into(),
 			binding,
 			Duration::from_secs(8),

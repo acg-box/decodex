@@ -162,6 +162,27 @@ max_entry_bytes = 65536
 	}
 
 	#[test]
+	fn runtime_presence_probe_does_not_execute_the_unverified_component() {
+		let temporary = TempDir::new().expect("component presence fixture");
+		let root = temporary.path();
+		let runtime = decodex_components::InstalledRuntime {
+			root: root.into(),
+			executable: root.join("codex"),
+			schemas: root.join("schemas"),
+		};
+		assert!(!bundled_daemon::runtime_files_are_present(&runtime));
+		let marker = root.join("executed");
+		fs::write(&runtime.executable, format!("#!/bin/sh\ntouch '{}'\n", marker.display()))
+			.expect("unverified executable");
+		fs::set_permissions(&runtime.executable, fs::Permissions::from_mode(0o700))
+			.expect("fixture permissions");
+		assert!(!bundled_daemon::runtime_files_are_present(&runtime));
+		fs::create_dir(&runtime.schemas).expect("schema directory");
+		assert!(bundled_daemon::runtime_files_are_present(&runtime));
+		assert!(!marker.exists(), "presence is advisory and must never run Codex");
+	}
+
+	#[test]
 	fn lifetime_child_fd_is_inherited_but_parent_fd_is_not() {
 		let (parent, child) = bundled_daemon::lifetime_channel().expect("create lifetime channel");
 		// SAFETY: `fcntl` only reads descriptor flags.
@@ -354,7 +375,7 @@ impl BundledDaemonSupervisor {
 			let executable =
 				std::env::current_exe().map_err(|_| BundledDaemonFailure::NotBundled)?;
 			let daemon = bundled_daemon_path(&executable)?;
-			let preparing_runtime = !required_runtime_is_installed();
+			let preparing_runtime = !required_runtime_is_present();
 			let guard = if preparing_runtime {
 				None
 			} else {
@@ -381,7 +402,7 @@ impl BundledDaemonSupervisor {
 
 		#[cfg(target_os = "macos")]
 		if state.preparing_runtime {
-			if !required_runtime_is_installed() {
+			if !required_runtime_is_present() {
 				return true;
 			}
 
@@ -575,6 +596,20 @@ struct SupervisorState {
 	preparing_runtime: bool,
 }
 
+#[cfg(target_os = "macos")]
+fn required_runtime_is_present() -> bool {
+	decodex_components::RuntimeLock::embedded()
+		.and_then(|lock| decodex_components::ComponentStore::for_user()?.paths(&lock))
+		.is_ok_and(|runtime| runtime_files_are_present(&runtime))
+}
+
+#[cfg(target_os = "macos")]
+fn runtime_files_are_present(runtime: &decodex_components::InstalledRuntime) -> bool {
+	// This only schedules the bundled service. Its native launch preflight owns full
+	// component attestation; do not hash or execute Codex on the GUI thread as well.
+	runtime.executable.is_file() && runtime.schemas.is_dir()
+}
+
 struct BundledDaemonOwner {
 	supervisor: Arc<BundledDaemonSupervisor>,
 	_quit: Option<Subscription>,
@@ -607,13 +642,6 @@ pub(crate) fn retain(supervisor: Arc<BundledDaemonSupervisor>, cx: &mut App) {
 	let owner = cx.new(|cx| BundledDaemonOwner::new(supervisor, cx));
 
 	cx.set_global(BundledDaemonGlobal { _owner: owner });
-}
-
-#[cfg(target_os = "macos")]
-fn required_runtime_is_installed() -> bool {
-	decodex_components::RuntimeLock::embedded()
-		.and_then(|lock| decodex_components::ComponentStore::for_user()?.installed(&lock))
-		.is_ok_and(|runtime| runtime.is_some())
 }
 
 #[cfg(target_os = "macos")]

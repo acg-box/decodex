@@ -1098,7 +1098,8 @@ pub struct AgentSnapshotDto {
 	/// The service is still checking its persisted connection after startup.
 	#[serde(default)]
 	pub connection_initializing: bool,
-	/// Opaque current account revision and process identity; absent while unavailable.
+	/// Opaque native source identity; absent until the initial archive view is confirmed.
+	/// A present source permits reads during recovery, not command execution.
 	pub runtime_source: Option<EntityId>,
 	/// Saved folders with explicit conversation membership.
 	pub projects: Vec<ProjectDto>,

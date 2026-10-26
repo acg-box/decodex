@@ -54,7 +54,7 @@ pub(crate) struct AccountObservationService {
 	state: Arc<RwLock<AccountObservationState>>,
 	refresh_requested: Arc<Notify>,
 	observation_generation: Sender<u64>,
-	initial_observation_complete: Sender<bool>,
+	initial_observation_pending: Sender<Option<HashSet<AccountId>>>,
 }
 impl AccountObservationService {
 	#[cfg(test)]
@@ -94,13 +94,34 @@ impl AccountObservationService {
 			state: Arc::new(RwLock::new(AccountObservationState::default())),
 			refresh_requested: Arc::new(Notify::new()),
 			observation_generation,
-			initial_observation_complete: watch::channel(false).0,
+			initial_observation_pending: watch::channel(None).0,
 		}
 	}
 
-	/// Finish the first provider checks before process admission uses their quota facts.
-	pub(crate) async fn wait_for_initial_observation(&self) {
-		let _ = self.initial_observation_complete.subscribe().wait_for(|complete| *complete).await;
+	/// Wait for the bound account, or all candidates when admission must select one.
+	pub(crate) async fn wait_for_initial_observation(&self, account: Option<&AccountId>) {
+		if self.initial_observation_pending.borrow().is_none() {
+			self.request_refresh();
+		}
+		let _ = self
+			.initial_observation_pending
+			.subscribe()
+			.wait_for(|pending| {
+				pending.as_ref().is_some_and(|pending| {
+					account.map_or_else(|| pending.is_empty(), |id| !pending.contains(id))
+				})
+			})
+			.await;
+	}
+
+	/// Keep startup off the network when the bound account has a current persisted fact.
+	pub(crate) async fn can_reuse_initial_observation(&self, account: Option<&AccountId>) -> bool {
+		if self.initial_observation_pending.borrow().is_some() {
+			return false;
+		}
+		let (Some(account), Some(now)) = (account, current_unix_micros()) else { return false };
+		// Leave room for the existing bounded native preflight before process admission.
+		self.accounts.reusable_agent_observation(account, now, Duration::from_secs(30)).await
 	}
 
 	/// Request one coalesced background refresh without making a client wait for provider work.
@@ -187,11 +208,14 @@ impl AccountObservationService {
 		Some(profiles.read_cached(account_id, include_email, status).await)
 	}
 
-	/// Run immediate startup observation and all later coalesced daemon refreshes.
+	/// Run requested startup checks and later coalesced daemon refreshes.
 	pub(crate) async fn daemon_service(self, mut stop: Receiver<bool>) {
 		let reset_card_wakeup =
 			self.reset_cards.as_ref().map(ApiResetCardRuntime::observation_wakeup);
-		let mut interval = time::interval(OBSERVATION_REFRESH_INTERVAL);
+		let mut interval = time::interval_at(
+			time::Instant::now() + OBSERVATION_REFRESH_INTERVAL,
+			OBSERVATION_REFRESH_INTERVAL,
+		);
 
 		interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
@@ -258,18 +282,16 @@ impl AccountObservationService {
 					).await;
 				},
 			}
-
-			if !*self.initial_observation_complete.borrow() {
+			if !self.initial_observation_pending.borrow().as_ref().is_some_and(HashSet::is_empty) {
 				let initial = initial_tasks
 					.get_or_insert_with(|| task_accounts.keys().copied().collect::<HashSet<_>>());
 
 				initial.retain(|task| task_accounts.contains_key(task));
-
-				if initial.is_empty() {
-					// Both successful and failed checks complete startup. A queued refresh
-					// has a new task ID and must not keep the initial round open.
-					self.initial_observation_complete.send_replace(true);
-				}
+				// Both successful and failed checks finish their initial task. A queued
+				// refresh has a new task ID and cannot keep initial admission waiting.
+				self.initial_observation_pending.send_replace(Some(
+					initial.iter().filter_map(|task| task_accounts.get(task).cloned()).collect(),
+				));
 			}
 		}
 
@@ -1176,6 +1198,51 @@ mod tests {
 		ResetCardTimestamp,
 	};
 	use decodex_database::AccountProfileSnapshot;
+
+	#[tokio::test]
+	async fn bound_account_admission_does_not_wait_for_an_unrelated_provider() {
+		use crate::{
+			account_service::{
+				AccountService, CredentialRefreshError, CredentialRefreshPort,
+				CredentialRefreshResult,
+			},
+			host_credentials::{CredentialSecretBundle, SqliteCredentialStore},
+		};
+		struct NoRefresh;
+		impl CredentialRefreshPort for NoRefresh {
+			fn refresh(
+				&self,
+				_: &CredentialSecretBundle,
+			) -> Result<CredentialRefreshResult, CredentialRefreshError> {
+				panic!("waiting cannot refresh credentials")
+			}
+		}
+		let directory = tempfile::tempdir().unwrap();
+		let root =
+			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = decodex_database::SqliteStore::open(&root.paths()).unwrap();
+		let accounts = Arc::new(AccountService::new(
+			store.clone(),
+			Arc::new(SqliteCredentialStore::new(store)),
+			Arc::new(NoRefresh),
+		));
+		let observations = super::AccountObservationService::new(accounts, None, None, None);
+		let bound = account(1);
+		let unrelated = account(2);
+		let explicit = observations.wait_for_initial_observation(Some(&bound));
+		let automatic = observations.wait_for_initial_observation(None);
+		tokio::pin!(explicit, automatic);
+		assert!(futures_util::poll!(explicit.as_mut()).is_pending());
+		observations
+			.initial_observation_pending
+			.send_replace(Some(HashSet::from([bound.clone(), unrelated.clone()])));
+		assert!(futures_util::poll!(explicit.as_mut()).is_pending());
+		observations.initial_observation_pending.send_replace(Some(HashSet::from([unrelated])));
+		assert!(futures_util::poll!(explicit.as_mut()).is_ready());
+		assert!(futures_util::poll!(automatic.as_mut()).is_pending());
+		observations.initial_observation_pending.send_replace(Some(HashSet::new()));
+		assert!(futures_util::poll!(automatic.as_mut()).is_ready());
+	}
 
 	#[test]
 	fn optional_absence_requires_successful_five_slot_and_current_weekly_fact() {

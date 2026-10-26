@@ -8,14 +8,13 @@ use std::{
 	io::ErrorKind,
 	path::{Path, PathBuf},
 	sync::Arc,
-	time::Duration,
 };
 
 #[cfg(target_os = "macos")] use crate::host_credentials::SqliteCredentialStore;
 use crate::{
 	BoundServer, ProtocolServer, ServerConfig, ServerError,
 	account_api::AccountApiRuntime,
-	account_launch::{ApiResetCardRuntime, AttestedAppServerProfile, RunnerCapacity},
+	account_launch::{ApiResetCardRuntime, RunnerCapacity},
 	account_login::AccountLoginManager,
 	account_observation::AccountObservationService,
 	account_profile::AccountProfileRuntime,
@@ -45,11 +44,9 @@ type MacosAccountRuntimeBootstrap = (
 	Option<AccountProfileRuntime>,
 	Option<Arc<AccountApiRuntime>>,
 	Option<ApiResetCardRuntime>,
-	Option<AttestedAppServerProfile>,
+	Option<crate::native_preparation::NativePreparation>,
 	DoctorStatus,
 );
-
-const ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Value-free failure from explicit local-database initialization or validation.
 #[derive(Clone, Eq, PartialEq)]
@@ -102,6 +99,7 @@ pub struct ServiceBootstrap {
 	account_profiles: Option<AccountProfileRuntime>,
 	account_api: Option<Arc<AccountApiRuntime>>,
 	reset_cards: Option<ApiResetCardRuntime>,
+	native_preparation: Option<crate::native_preparation::NativePreparation>,
 	login_system_proxy_fallback: bool,
 	conversations: ConversationCapability,
 	doctor: DoctorReport,
@@ -126,7 +124,7 @@ impl ServiceBootstrap {
 	}
 
 	/// Return the independent immutable Conversation startup projection.
-	pub const fn conversation_readiness(&self) -> ConversationReadiness {
+	pub fn conversation_readiness(&self) -> ConversationReadiness {
 		self.conversations.readiness()
 	}
 
@@ -164,6 +162,7 @@ impl ServiceBootstrap {
 			account_profiles,
 			account_api,
 			reset_cards,
+			native_preparation,
 			login_system_proxy_fallback,
 			conversations,
 			doctor,
@@ -201,6 +200,7 @@ impl ServiceBootstrap {
 				conversations,
 				doctor,
 			)
+			.with_native_preparation(native_preparation)
 			.with_accounts(accounts)
 			.with_reset_cards(reset_cards)
 			.with_account_observations(account_observations)
@@ -230,7 +230,7 @@ struct ConversationComposition {
 	process_generations: Option<ProcessGenerationControl>,
 	provider_attempts: Option<ProviderAttemptControl>,
 	execution_authorization: Option<ProcessExecutionAuthorization>,
-	launch_profile: Option<AttestedAppServerProfile>,
+	launch_profile: Option<crate::native_preparation::NativePreparation>,
 }
 
 #[cfg(target_os = "macos")]
@@ -413,6 +413,7 @@ fn bootstrap_without_authority(
 		account_profiles: None,
 		account_api: None,
 		reset_cards: None,
+		native_preparation: None,
 		login_system_proxy_fallback: false,
 		conversations,
 		doctor,
@@ -449,6 +450,7 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 		account_profiles: None,
 		account_api: None,
 		reset_cards: None,
+		native_preparation: None,
 		login_system_proxy_fallback: false,
 		conversations,
 		doctor,
@@ -456,9 +458,10 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 	}
 }
 
-fn conversation_doctor(capability: &ConversationCapability) -> DoctorStatus {
+pub(crate) fn conversation_doctor(capability: &ConversationCapability) -> DoctorStatus {
 	match capability.readiness() {
 		ConversationReadiness::Ready => DoctorStatus::Ready,
+		ConversationReadiness::Preparing => DoctorStatus::Unknown(DoctorIssue::NotProbed),
 		ConversationReadiness::Unavailable(ConversationUnavailableReason::ProductState) =>
 			DoctorStatus::Unavailable(DoctorIssue::DatabaseNotConfigured),
 		ConversationReadiness::Unavailable(
@@ -719,7 +722,7 @@ async fn bootstrap_with_authority(
 		process_generations: process_generations.clone(),
 		provider_attempts: provider_attempts.clone(),
 		execution_authorization: process_execution_authorization,
-		launch_profile: conversation_launch_profile,
+		launch_profile: conversation_launch_profile.clone(),
 	});
 	#[cfg(not(target_os = "macos"))]
 	let conversations =
@@ -750,6 +753,10 @@ async fn bootstrap_with_authority(
 		account_profiles,
 		account_api,
 		reset_cards,
+		#[cfg(target_os = "macos")]
+		native_preparation: conversation_launch_profile,
+		#[cfg(not(target_os = "macos"))]
+		native_preparation: None,
 		login_system_proxy_fallback: _loaded
 			.as_ref()
 			.is_ok_and(DecodexConfig::login_system_proxy_fallback),
@@ -790,25 +797,14 @@ async fn bootstrap_macos_account_runtime(
 			Ok(composition) => composition,
 			Err(issue) => return unavailable_macos_account_runtime(None, None, issue),
 		};
-	// Account reconciliation and executable/schema attestation have independent owners.
-	// Run the blocking filesystem/process work off the async executor while accounts recover.
-	let root = paths.root().as_path().to_owned();
-	let attestation = tokio::task::spawn_blocking(move || {
-		let _phase = Phase::new("executable_attestation");
-
-		AttestedAppServerProfile::attest(root, ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT).ok()
-	});
-	let reconcile = async {
+	{
 		let _phase = Phase::new("account_reconcile");
-
-		service.reconcile_startup().await
-	};
-	let (_, attestation) = tokio::join!(reconcile, attestation);
-	let conversation_launch_profile = attestation.ok().flatten();
-
-	if let Some(profile) = &conversation_launch_profile {
-		let _ = service.attest_callback_capability(profile.account_callback_attestation()).await;
+		let _ = service.reconcile_startup().await;
 	}
+	let conversation_launch_profile = Some(crate::native_preparation::NativePreparation::pending(
+		paths.root().as_path().to_owned(),
+		Arc::clone(&service),
+	));
 
 	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
 	let api = if crate::account_service::process_acceptance_fixture_endpoint().is_some() {

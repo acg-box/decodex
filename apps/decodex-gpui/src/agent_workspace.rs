@@ -786,7 +786,8 @@ impl AgentSurface {
 				self.displayed_load_state(),
 				LoadState::Idle | LoadState::Loading | LoadState::Unavailable
 			))
-			|| self.connection_initializing()
+			|| (self.connection_initializing()
+				&& self.snapshot.as_ref().is_none_or(|snapshot| snapshot.runtime_source.is_none()))
 	}
 
 	pub(super) fn connection_initializing(&self) -> bool {

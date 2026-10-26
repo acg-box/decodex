@@ -57,6 +57,7 @@ pub(crate) const PROCESS_TEST_REFRESH_ENDPOINT_ENV: &str = "DECODEX_PROCESS_TEST
 const MAX_ACCOUNT_READ: u16 = 512;
 const MAX_UNSETTLED_ACCOUNT_OPERATION_READ: u16 = 1_024;
 const ROUTE_MINIMUM_ACCESS_TOKEN_VALIDITY: Duration = Duration::from_secs(20);
+const MAX_USAGE_OBSERVATION_AGE_MICROS: i64 = 300_000_000;
 const PROVIDER_REFRESH_OUTCOME_UNKNOWN: &str = "provider_refresh_outcome_unknown";
 const TOMBSTONE_ENROLLMENT_COLLISION: &str = "tombstone_enrollment_collision";
 const CODEX_AUTH_PROJECTION_DOMAIN: &[u8] = b"decodex/codex-auth-projection/v1\0";
@@ -3663,6 +3664,24 @@ impl AccountService {
 			.await?)
 	}
 
+	/// Reuse a persisted observation only while the exact account remains eligible.
+	pub(crate) async fn reusable_agent_observation(
+		&self,
+		account_id: &AccountId,
+		now: i64,
+		minimum_validity: Duration,
+	) -> bool {
+		let Ok(account) = self.load_account(account_id).await else { return false };
+		let Ok(minimum) = i64::try_from(minimum_validity.as_micros()) else { return false };
+		account
+			.usage_observation
+			.and_then(|observation| {
+				observation.observed_at_unix_micros.checked_add(MAX_USAGE_OBSERVATION_AGE_MICROS)
+			})
+			.is_some_and(|expires| expires >= now.saturating_add(minimum))
+			&& self.selection_candidate(&account, now).is_ok()
+	}
+
 	/// Keep a usable Agent account; otherwise choose the least utilized eligible account.
 	/// This selects process admission only. It does not project shared desktop credentials.
 	pub(crate) async fn select_agent_route(
@@ -5643,7 +5662,8 @@ fn quota_selection_score(
 		if observation.account_revision != account.revision
 			|| observation.observed_at_unix_micros <= 0
 			|| observation.observed_at_unix_micros > now
-			|| now.saturating_sub(observation.observed_at_unix_micros) > 300_000_000
+			|| now.saturating_sub(observation.observed_at_unix_micros)
+				> MAX_USAGE_OBSERVATION_AGE_MICROS
 		{
 			return Err(AccountSelectionRecovery::RefreshQuota);
 		}
@@ -6060,6 +6080,7 @@ const fn store_error_observation(
 #[cfg(test)]
 mod tests {
 	mod plan_scope;
+	mod startup_cache;
 
 	use std::{
 		collections::HashMap,
@@ -7945,8 +7966,7 @@ mod tests {
 		let (_directory, _store, service, _account, shared) =
 			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
 		let observations = AccountObservationService::new(Arc::new(service), None, None, None);
-		let initial = observations.wait_for_initial_observation();
-
+		let initial = observations.wait_for_initial_observation(None);
 		tokio::pin!(initial);
 
 		assert!(futures_util::poll!(initial.as_mut()).is_pending());
@@ -7961,9 +7981,7 @@ mod tests {
 		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
 
 		observations.request_refresh();
-
-		let refreshed = observations.wait_for_initial_observation();
-
+		let refreshed = observations.wait_for_initial_observation(None);
 		tokio::pin!(refreshed);
 
 		assert!(futures_util::poll!(refreshed.as_mut()).is_ready());
@@ -7988,7 +8006,7 @@ mod tests {
 
 		time::timeout(
 			std::time::Duration::from_secs(1),
-			observations.wait_for_initial_observation(),
+			observations.wait_for_initial_observation(None),
 		)
 		.await
 		.expect("an empty registry needs no provider wait");

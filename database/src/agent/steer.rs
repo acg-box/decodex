@@ -34,26 +34,56 @@ impl SqliteStore {
 		client_id: String,
 		generation: Option<String>,
 	) -> Result<(), StoreError> {
-		for id in [&thread, &turn, &client_id] {
-			agent::bounded(id, 512)?;
+		self.observe_agent_steer_receipts(thread, vec![(turn, client_id)], generation).await
+	}
+
+	/// Apply native (turn, client submission ID) receipts for one thread in order.
+	/// Every receipt retains the same exact work, turn, and generation checks.
+	pub async fn observe_agent_steer_receipts(
+		&self,
+		thread: String,
+		receipts: Vec<(String, String)>,
+		generation: Option<String>,
+	) -> Result<(), StoreError> {
+		agent::bounded(&thread, 512)?;
+		for (turn, client_id) in &receipts {
+			agent::bounded(turn, 512)?;
+			agent::bounded(client_id, 512)?;
+		}
+		if receipts.is_empty() {
+			return Ok(());
 		}
 
 		self.run(move |connection| {
-            let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
-            let candidate: Option<(i64, String)> = tx.query_row(
-                "SELECT e.id,w.id FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id WHERE w.codex_thread_id=?1 AND e.event_kind='steer_pending' AND e.disposition IS NULL AND e.delivery_work_item_id=w.id AND e.delivered_turn_id=?2 AND json_extract(e.payload,'$.threadId')=?1 AND e.source_event_id=json_array('user_steer',w.id,?3)",
-                rusqlite::params![thread, turn, client_id], |row| Ok((row.get(0)?,row.get(1)?)),
-            ).optional().map_err(error::sqlite_error)?;
-
-            if let Some((event, work)) = candidate
-                && agent_process::owns_work(&tx, &work, generation.as_deref())? {
-                finish(&tx, event, true)?;
-            }
-
-            tx.commit().map_err(error::sqlite_error)?;
-
-            Ok(())
-        }).await
+			let tx = connection
+				.transaction_with_behavior(TransactionBehavior::Immediate)
+				.map_err(error::sqlite_error)?;
+			for (turn, client_id) in receipts {
+				let candidate: Option<(i64, String)> = tx
+					.prepare_cached(
+						"SELECT e.id,w.id FROM agent_inbox_events e
+					 JOIN agent_work_items w ON w.id=e.work_item_id
+					 WHERE w.codex_thread_id=?1 AND e.event_kind='steer_pending'
+					 AND e.disposition IS NULL AND e.delivery_work_item_id=w.id
+					 AND e.delivered_turn_id=?2 AND json_extract(e.payload,'$.threadId')=?1
+					 AND e.source_event_id=json_array('user_steer',w.id,?3)",
+					)
+					.map_err(error::sqlite_error)?
+					.query_row(rusqlite::params![thread, turn, client_id], |row| {
+						Ok((row.get(0)?, row.get(1)?))
+					})
+					.optional()
+					.map_err(error::sqlite_error)?;
+				if let Some((event, work)) = candidate
+					&& agent_process::owns_work(&tx, &work, generation.as_deref())?
+				{
+					finish(&tx, event, true)?;
+				}
+			}
+			tx.commit().map_err(error::sqlite_error)?;
+			Ok(())
+		})
+		.await
 	}
 }
 
