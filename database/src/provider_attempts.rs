@@ -696,13 +696,9 @@ fn preparation_turn_fence(
 	preparation: &ProviderAttemptPreparation,
 	expected_conversation_turn_revisions: (Option<i64>, Option<i64>),
 ) -> Result<ConversationTurnFence, StoreError> {
-	let (conversation_id, turn_id) = match &preparation.consumer {
-		ProviderAttemptConsumer::ConversationTurn { conversation_id, turn_id } =>
-			(conversation_id.clone(), turn_id.clone()),
-		ProviderAttemptConsumer::ManagedRunExecution { .. } => {
-			return Err(StoreError::InvalidInput("ManagedRun ProviderAttempt is deferred"));
-		},
-	};
+	let ProviderAttemptConsumer::ConversationTurn { conversation_id, turn_id } =
+		&preparation.consumer;
+	let (conversation_id, turn_id) = (conversation_id.clone(), turn_id.clone());
 	let (conversation_revision, turn_revision) = expected_conversation_turn_revisions;
 	let conversation_revision = conversation_revision.ok_or(StoreError::InvalidInput(
 		"Conversation ProviderAttempt requires a Conversation revision",

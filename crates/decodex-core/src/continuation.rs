@@ -23,7 +23,7 @@ pub enum ContinuationPlanKind {
 /// Construction of this mechanism-neutral value alone does not prove persisted provenance.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SameThreadContinuationEvidence {
-	/// Positive V15 causal experiment evidence retained for a ManagedRun.
+	/// Positive V15 causal experiment evidence retained for a conversation.
 	CausalExperiment {
 		/// Identity of the persisted positive compatibility evidence selected for this plan.
 		routing_evidence_id: String,
@@ -99,7 +99,7 @@ pub enum ContinuationRejection {
 	MissingDecision,
 	/// The persisted decision is not a selected-account decision and cannot be continued.
 	DecisionNotSelected,
-	/// The Conversation or ManagedRun revision-bound lineage is stale or incompatible.
+	/// The conversation revision-bound lineage is stale or incompatible.
 	StaleConsumerRevision,
 	/// The decision was already consumed by a different exact command or plan identity.
 	DecisionAlreadyConsumed,

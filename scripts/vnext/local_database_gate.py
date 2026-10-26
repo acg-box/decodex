@@ -61,17 +61,17 @@ REQUIRED_TABLES = frozenset(
         "provider_attempts",
         "provider_attempt_positive_evidence",
         "context_packs",
-        "programs",
-        "program_entities",
-        "program_signals",
-        "program_claims",
-        "program_proposals",
-        "program_objectives",
-        "program_work_items",
-        "program_work_item_executions",
-        "program_evidence",
-        "program_reviews",
-        "program_domain_pack_bindings",
+
+
+
+
+
+
+
+
+
+
+
         "desktop_settings",
         "account_quota_activation",
         "agent_work_items",
@@ -197,16 +197,6 @@ def inspect_database(path: Path) -> dict[str, object]:
             row[1]: (row[2], row[3], row[4])
             for row in connection.execute("PRAGMA table_info(quick_task_requests)")
         }
-        program_signal_columns = {
-            row[1]: (row[2], row[3], row[4])
-            for row in connection.execute("PRAGMA table_info(program_signals)")
-        }
-        program_pack_binding_columns = {
-            row[1]: (row[2], row[3], row[4])
-            for row in connection.execute(
-                "PRAGMA table_info(program_domain_pack_bindings)"
-            )
-        }
         tables = frozenset(
             row[0]
             for row in connection.execute(
@@ -229,11 +219,6 @@ def inspect_database(path: Path) -> dict[str, object]:
     for column in ("model", "reasoning_effort", "fast"):
         if column not in conversation_request_columns:
             raise GateFailure("Conversation execution settings are missing")
-    if "predecessor_review_id" not in program_signal_columns:
-        raise GateFailure("Program continuation lineage is missing")
-    for column in ("program_id", "pack_id", "pack_version", "pack_digest"):
-        if column not in program_pack_binding_columns:
-            raise GateFailure("Program Domain Pack binding is incomplete")
     if tables != REQUIRED_TABLES:
         raise GateFailure("SQLite table inventory differs")
     return {
@@ -247,8 +232,6 @@ def inspect_database(path: Path) -> dict[str, object]:
             for column in ("model", "reasoning_effort", "fast")
             if column in conversation_request_columns
         ),
-        "program_continuation_lineage": "predecessor_review_id",
-        "program_domain_pack_binding": "immutable",
     }
 
 

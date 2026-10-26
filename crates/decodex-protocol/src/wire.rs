@@ -43,7 +43,6 @@ use crate::{
 	PrivateReviewDetailsResult, PromptEditStatus, PromptForkResult, PromptInputSendIdentity,
 	PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus, ProtocolVersion,
 	TaskRecapStatus, UsageEvidenceResult, UsageEvidenceScope, WorkDetailResult,
-	program_cycle::{ProgramCycleResult, ProgramListResult},
 };
 
 /// Maximum UTF-8 size of any human-readable text carried by the wire protocol.
@@ -2531,13 +2530,6 @@ pub enum QueryPayload {
 	},
 	/// Read the complete daemon-owned desktop settings projection.
 	GetDesktopSettings,
-	/// List bounded current Programs for the Factory selector.
-	ListPrograms,
-	/// Read one complete current Program causal projection.
-	GetProgramCycle {
-		/// Stable Program identity.
-		program_id: EntityId,
-	},
 	/// List one bounded deterministic page of ordinary Task conversations.
 	ListConversations {
 		/// Last fully applied most-recent-first keyset position.
@@ -3301,10 +3293,6 @@ pub enum QueryResultPayload {
 	AgentExchanges(AgentExchangesResult),
 	/// Complete daemon-owned desktop settings projection.
 	DesktopSettings(DesktopSettingsResult),
-	/// Bounded current Program selector projection.
-	Programs(ProgramListResult),
-	/// One exact complete Program causal projection.
-	ProgramCycle(ProgramCycleResult),
 	/// Bounded current Conversation destination projection.
 	Conversations(ConversationListResult),
 	/// One exact ordinary Conversation readback.
@@ -3743,9 +3731,6 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 						&& request.account_id.is_some()) =>
 				Err("initial model catalog account does not match its routing policy"),
 			QueryPayload::GetDesktopSettings => Ok(()),
-			QueryPayload::GetProgramCycle { program_id }
-				if !is_canonical_uuid(program_id.as_str()) =>
-				Err("Program query identity is not canonical"),
 			QueryPayload::ListConversations { after, .. }
 				if after.as_ref().is_some_and(|cursor| {
 					!is_canonical_uuid(cursor.conversation_id().as_str())
@@ -4664,7 +4649,7 @@ mod tests {
 	}
 
 	#[test]
-	fn retired_program_mutations_fail_decode_but_historical_queries_remain() {
+	fn retired_program_commands_and_queries_fail_decode() {
 		for name in [
 			"create_program_cycle",
 			"bind_program_domain_pack",
@@ -4692,21 +4677,12 @@ mod tests {
 			.is_err()
 		);
 
-		for payload in [
-			QueryPayload::ListPrograms,
-			QueryPayload::GetProgramCycle {
-				program_id: EntityId::new("01234567-89ab-4def-8123-456789abcdef").unwrap(),
-			},
-		] {
-			let query = ClientMessage::Query(QueryEnvelope {
-				version: CURRENT_VERSION,
-				query_id: QueryId::new("historical-program-query").unwrap(),
-				payload,
-			});
-
-			assert_eq!(
-				wire::decode_client_message(&serde_json::to_string(&query).unwrap()).unwrap(),
-				query
+		for name in ["list_programs", "get_program_cycle"] {
+			assert!(
+				serde_json::from_value::<QueryPayload>(
+					serde_json::json!({"name":name,"arguments":{}})
+				)
+				.is_err()
 			);
 		}
 	}
@@ -4872,7 +4848,6 @@ mod tests {
 		let successor_summary = ConversationSummary::new(
 			successor.clone(),
 			crate::ConversationTitle::new("Route conversation").unwrap(),
-			None,
 			None,
 			EntityRevision(1),
 			1,

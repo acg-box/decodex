@@ -49,7 +49,6 @@ mod desktop_drafts;
 mod desktop_ordinary_drafts;
 mod dictation;
 mod doctor;
-mod domain_pack;
 mod local_transport;
 mod mcp_elicitation;
 mod mcp_install;
@@ -57,7 +56,6 @@ mod mcp_login;
 mod model_catalog;
 mod native_agents;
 mod native_startup_config;
-mod program_cycle;
 mod reset_card_recovery;
 mod retained_session;
 mod usage_evidence;
@@ -180,13 +178,12 @@ pub use self::{
 	conversation::{
 		ConversationContractError, ConversationExecutionOverrides, ConversationExecutionSettings,
 		ConversationListCursor, ConversationListPage, ConversationListResult, ConversationListSize,
-		ConversationModel, ConversationModelSettingsResult, ConversationProgramContext,
-		ConversationReadError, ConversationReasoningEffort, ConversationRecoveryAction,
-		ConversationResult, ConversationState, ConversationSummary, ConversationTitle,
-		ConversationTurnOutcome, ConversationUnavailableReason, ConversationWorkingDirectory,
-		CustomReasoningEffort, MAX_CONVERSATION_LIST_SIZE, MAX_CONVERSATION_MODEL_BYTES,
-		MAX_CONVERSATION_TITLE_BYTES, MAX_CONVERSATION_WORKING_DIRECTORY_BYTES,
-		MAX_PROVIDER_THREAD_ID_BYTES, ProviderThreadId,
+		ConversationModel, ConversationModelSettingsResult, ConversationReadError,
+		ConversationReasoningEffort, ConversationRecoveryAction, ConversationResult,
+		ConversationState, ConversationSummary, ConversationTitle, ConversationTurnOutcome,
+		ConversationUnavailableReason, ConversationWorkingDirectory, CustomReasoningEffort,
+		MAX_CONVERSATION_LIST_SIZE, MAX_CONVERSATION_MODEL_BYTES, MAX_CONVERSATION_TITLE_BYTES,
+		MAX_CONVERSATION_WORKING_DIRECTORY_BYTES, MAX_PROVIDER_THREAD_ID_BYTES, ProviderThreadId,
 	},
 	conversation_native_settings::ConversationNativeSettings,
 	conversation_receipts::{
@@ -209,13 +206,6 @@ pub use self::{
 		AppServerCapability, DoctorCheck, DoctorComponent, DoctorContractError, DoctorIssue,
 		DoctorReport, DoctorStatus, MAX_DOCTOR_CHECKS, NativeProcessDiagnostics,
 	},
-	domain_pack::{
-		DEVELOPMENT_DOMAIN_PACK_ID, DomainEntityDto, DomainEntityFieldDto, DomainPackCapabilityDto,
-		DomainPackCapabilityStatus, DomainPackContractError, DomainPackDescriptorDto,
-		DomainPackProjectionDto, DomainPackViewKind, DomainRelationDto,
-		MAX_DOMAIN_PACK_CAPABILITIES, MAX_DOMAIN_PACK_ENTITIES, MAX_DOMAIN_PACK_RELATIONS,
-		PAPER_INVESTMENT_DOMAIN_PACK_ID,
-	},
 	local_transport::{
 		LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal,
 		LocalTransportStream,
@@ -232,12 +222,6 @@ pub use self::{
 		InitialModelSource, ModelCatalogPurpose,
 	},
 	native_agents::{NativeAgentDto, NativeAgentsResult},
-	program_cycle::{
-		MAX_PROGRAM_EDGES, MAX_PROGRAM_LIST_ITEMS, MAX_PROGRAM_LIST_VALUES, MAX_PROGRAM_NODES,
-		ProgramCycleContractError, ProgramCycleDto, ProgramCycleResult, ProgramEdgeDto,
-		ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto, ProgramNodeKind,
-		ProgramRelationKind, ProgramReviewClassification, ProgramState, ProgramSummaryDto,
-	},
 	reset_card_recovery::{AccountResetCardOperationResult, ResetCardOperationView},
 	retained_session::{
 		ApplicationConfirmation, RetainedSession, RetainedSessionConfig, RetainedSessionFailure,
@@ -302,7 +286,7 @@ pub use work_portfolio::{MAX_WORK_DETAIL_BYTES, WORK_DETAIL_PAGE_BYTES, WorkDeta
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 3, minor: 2 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 4, minor: 0 };
 
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]

@@ -3322,7 +3322,6 @@ pub(crate) mod tests {
 			decodex_protocol::ConversationTitle::new("Test conversation")
 				.expect("test title is valid"),
 			None,
-			None,
 			conversation_revision,
 			projection_updated_at_micros,
 			runtime_session_id,

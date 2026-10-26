@@ -131,7 +131,7 @@ pub enum RoutingBlocker {
 	ExternalBlocked,
 	/// Usage state is unavailable without complete current positive quota depletion evidence.
 	UsageUnproven,
-	/// ManagedRun reconciliation lacks an exact unresolved ProcessGeneration or ProviderAttempt.
+	/// Execution reconciliation lacks an exact unresolved ProcessGeneration or ProviderAttempt.
 	ReconciliationUnproven,
 	/// No execution-scoped independent Reviewer is available.
 	ReviewerUnavailable,

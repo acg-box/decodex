@@ -10,8 +10,7 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
 use url::Url;
 
-use crate::{EntityId, EntityRevision, WireText};
-use decodex_core::WorkItemState;
+use crate::{EntityId, EntityRevision};
 
 /// Maximum ordinary Task conversations returned by one list observation.
 pub const MAX_CONVERSATION_LIST_SIZE: u16 = 64;
@@ -179,75 +178,6 @@ impl<'de> Deserialize<'de> for ProviderThreadId {
 		D: Deserializer<'de>,
 	{
 		Self::new(String::deserialize(deserializer)?).map_err(D::Error::custom)
-	}
-}
-
-/// Exact persisted Program WorkItem context for one bound Conversation.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct ConversationProgramContext {
-	/// Owning persisted Program identity.
-	pub program_id: EntityId,
-	/// Bound persisted Program WorkItem identity.
-	pub work_item_id: EntityId,
-	/// Authoritative display title shared with the Conversation.
-	pub title: ConversationTitle,
-	/// Exact persisted WorkItem instructions.
-	pub instructions: WireText,
-	/// Current persisted WorkItem lifecycle state.
-	pub state: WorkItemState,
-	/// Exact persisted WorkItem revision.
-	pub revision: EntityRevision,
-}
-impl ConversationProgramContext {
-	/// Validate one exact persisted Program WorkItem projection.
-	pub fn new(
-		program_id: EntityId,
-		work_item_id: EntityId,
-		title: ConversationTitle,
-		instructions: WireText,
-		state: WorkItemState,
-		revision: EntityRevision,
-	) -> Result<Self, ConversationContractError> {
-		if !is_canonical_uuid_v4(program_id.as_str())
-			|| !is_canonical_uuid_v4(work_item_id.as_str())
-			|| instructions.as_str().is_empty()
-			|| instructions.as_str().chars().any(char::is_control)
-			|| revision.0 == 0
-		{
-			return Err(ConversationContractError::InvalidProjection);
-		}
-
-		Ok(Self { program_id, work_item_id, title, instructions, state, revision })
-	}
-}
-impl<'de> Deserialize<'de> for ConversationProgramContext {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		#[derive(Deserialize)]
-		#[serde(deny_unknown_fields)]
-		struct Raw {
-			program_id: EntityId,
-			work_item_id: EntityId,
-			title: ConversationTitle,
-			instructions: WireText,
-			state: WorkItemState,
-			revision: EntityRevision,
-		}
-
-		let raw = Raw::deserialize(deserializer)?;
-
-		Self::new(
-			raw.program_id,
-			raw.work_item_id,
-			raw.title,
-			raw.instructions,
-			raw.state,
-			raw.revision,
-		)
-		.map_err(D::Error::custom)
 	}
 }
 
@@ -639,10 +569,6 @@ pub struct ConversationSummary {
 	/// Exact provider thread identity, absent until authoritative app-server binding readback.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub codex_thread_id: Option<ProviderThreadId>,
-	/// Exact Program WorkItem binding when this Conversation executes Program work.
-	#[serde(skip_serializing_if = "Option::is_none")]
-	/// Retained Program charter summary.
-	pub program: Option<ConversationProgramContext>,
 	/// Exact ordinary Conversation revision represented by this projection.
 	pub conversation_revision: EntityRevision,
 	/// Product-store monotonic order of the durable facts represented by this projection.
@@ -671,7 +597,7 @@ impl ConversationSummary {
 		conversation_id: EntityId,
 		title: ConversationTitle,
 		codex_thread_id: Option<ProviderThreadId>,
-		program: Option<ConversationProgramContext>,
+
 		conversation_revision: EntityRevision,
 		projection_updated_at_micros: i64,
 		runtime_session_id: Option<EntityId>,
@@ -721,7 +647,6 @@ impl ConversationSummary {
 			|| has_session == pre_session
 			|| runtime_session_id.is_some() != runtime_session_revision.is_some()
 			|| codex_thread_id.is_some() && runtime_session_id.is_none()
-			|| program.as_ref().is_some_and(|context| context.title != title)
 			|| !state_shape
 		{
 			return Err(ConversationContractError::InvalidProjection);
@@ -733,7 +658,7 @@ impl ConversationSummary {
 			conversation_id,
 			title,
 			codex_thread_id,
-			program,
+
 			conversation_revision,
 			projection_updated_at_micros,
 			runtime_session_id,
@@ -774,7 +699,7 @@ impl<'de> Deserialize<'de> for ConversationSummary {
 			conversation_id: EntityId,
 			title: ConversationTitle,
 			codex_thread_id: Option<ProviderThreadId>,
-			program: Option<ConversationProgramContext>,
+
 			conversation_revision: EntityRevision,
 			projection_updated_at_micros: i64,
 			runtime_session_id: Option<EntityId>,
@@ -790,7 +715,6 @@ impl<'de> Deserialize<'de> for ConversationSummary {
 			raw.conversation_id,
 			raw.title,
 			raw.codex_thread_id,
-			raw.program,
 			raw.conversation_revision,
 			raw.projection_updated_at_micros,
 			raw.runtime_session_id,

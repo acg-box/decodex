@@ -549,31 +549,12 @@ fn routing_uuid(scope: &str, parts: &[&str]) -> String {
 }
 
 fn same_consumer(execution: &ExecutionConsumer, attempt: &ProviderAttemptConsumer) -> bool {
-	match (execution, attempt) {
-		(
-			ExecutionConsumer::ConversationTurn { conversation_id, turn_id, .. },
-			ProviderAttemptConsumer::ConversationTurn {
-				conversation_id: attempt_conversation_id,
-				turn_id: attempt_turn_id,
-			},
-		) => conversation_id == attempt_conversation_id && turn_id == attempt_turn_id,
-		(
-			ExecutionConsumer::ManagedRunExecution {
-				managed_run_id,
-				managed_run_revision,
-				execution_id,
-			},
-			ProviderAttemptConsumer::ManagedRunExecution {
-				managed_run_id: attempt_managed_run_id,
-				managed_run_revision: attempt_managed_run_revision,
-				execution_id: attempt_execution_id,
-			},
-		) =>
-			managed_run_id == attempt_managed_run_id
-				&& managed_run_revision == attempt_managed_run_revision
-				&& execution_id == attempt_execution_id,
-		_ => false,
-	}
+	let ExecutionConsumer::ConversationTurn { conversation_id, turn_id, .. } = execution;
+	let ProviderAttemptConsumer::ConversationTurn {
+		conversation_id: attempt_conversation,
+		turn_id: attempt_turn,
+	} = attempt;
+	conversation_id == attempt_conversation && turn_id == attempt_turn
 }
 
 fn valid_plan_shape(effect: &ContinuationPlanEffect) -> bool {

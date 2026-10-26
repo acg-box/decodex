@@ -430,7 +430,6 @@ fn conversation_fixture(
 			.expect("conversation observer fixture"),
 		ConversationTitle::new("Observer fixture").expect("conversation observer fixture"),
 		None,
-		None,
 		EntityRevision(1),
 		1,
 		has_session.then(|| {

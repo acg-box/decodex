@@ -10,8 +10,8 @@ use std::{
 };
 
 use crate::{
-	AccountId, ConversationId, ManagedRunId, ProcessExecutionEpochId, ProcessGenerationId,
-	RuntimeSessionId, TurnId,
+	AccountId, ConversationId, ProcessExecutionEpochId, ProcessGenerationId, RuntimeSessionId,
+	TurnId,
 };
 
 macro_rules! provider_uuid_v4 {
@@ -49,8 +49,6 @@ provider_uuid_v4!(ProviderAttemptId, "ProviderAttempt", InvalidAttemptId);
 provider_uuid_v4!(ProviderEvidenceId, "provider evidence", InvalidEvidenceId);
 
 provider_uuid_v4!(ProviderRequestId, "provider request", InvalidRequestId);
-
-provider_uuid_v4!(ManagedExecutionId, "ManagedRun execution", InvalidManagedExecutionId);
 
 /// Maximum UTF-8 bytes in one opaque provider idempotency or correlation key.
 pub const MAX_PROVIDER_REQUEST_KEY_BYTES: usize = 512;
@@ -181,15 +179,6 @@ impl ProviderAttemptPreparation {
 		}
 		if !is_sha256(&self.request_digest) {
 			return Err(ProviderAttemptError::InvalidRequestDigest);
-		}
-		if matches!(
-			&self.consumer,
-			ProviderAttemptConsumer::ManagedRunExecution {
-				managed_run_revision,
-				..
-			} if *managed_run_revision <= 0
-		) {
-			return Err(ProviderAttemptError::InvalidManagedRunRevision);
 		}
 		if matches!(
 			&self.duplicate_risk,
@@ -358,22 +347,12 @@ pub enum ProviderAttemptConsumer {
 		/// Exact reserved Turn intent, whether or not the Conversation owner has materialized it.
 		turn_id: TurnId,
 	},
-	/// One execution-scoped ManagedRun intent.
-	ManagedRunExecution {
-		/// Owning ManagedRun.
-		managed_run_id: ManagedRunId,
-		/// Exact immutable revision accepted by V16 and V17.
-		managed_run_revision: i64,
-		/// Distinct execution intent within the ManagedRun.
-		execution_id: ManagedExecutionId,
-	},
 }
 impl ProviderAttemptConsumer {
 	/// Return the canonical durable-store consumer label.
 	pub const fn as_sql(&self) -> &'static str {
 		match self {
 			Self::ConversationTurn { .. } => "conversation_turn",
-			Self::ManagedRunExecution { .. } => "managed_run_execution",
 		}
 	}
 }
@@ -520,12 +499,10 @@ pub enum ProviderAttemptError {
 	InvalidEvidenceId,
 	/// Provider request identity was not canonical UUID-v4 text.
 	InvalidRequestId,
-	/// ManagedRun execution identity was not canonical UUID-v4 text.
-	InvalidManagedExecutionId,
+
 	/// V17 continuation-plan identity was not canonical UUID text.
 	InvalidContinuationPlanId,
-	/// ManagedRun revision was not positive.
-	InvalidManagedRunRevision,
+
 	/// Canonical request digest was malformed.
 	InvalidRequestDigest,
 	/// No idempotency or correlation key was supplied.

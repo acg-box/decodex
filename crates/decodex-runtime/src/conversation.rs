@@ -2568,13 +2568,8 @@ impl ConversationRuntime {
 	{
 		let ExistingSessionPlanningInput { operation_key, consumer, message_bytes, expected } =
 			input;
-		let (conversation_id, turn_id) = match &consumer {
-			ExecutionConsumer::ConversationTurn { conversation_id, turn_id, .. } =>
-				(conversation_id.clone(), turn_id.clone()),
-			ExecutionConsumer::ManagedRunExecution { .. } => {
-				return Err(ExistingSessionPlanningRefusal::Conflict);
-			},
-		};
+		let ExecutionConsumer::ConversationTurn { conversation_id, turn_id, .. } = &consumer;
+		let (conversation_id, turn_id) = (conversation_id.clone(), turn_id.clone());
 		let fallback_context_pack = self
 			.compile_fallback_context_pack(
 				&conversation_id,

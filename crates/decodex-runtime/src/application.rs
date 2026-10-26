@@ -8,7 +8,6 @@
 #[path = "application_usage_evidence.rs"] mod usage_evidence;
 
 use std::{
-	collections::HashMap,
 	future::{self, Future},
 	path::PathBuf,
 	pin::Pin,
@@ -54,7 +53,7 @@ use crate::{
 		ConversationProjection, ConversationReadback, ConversationRuntime,
 		ConversationTerminalState, CreateConversation, RecoverConversation, SubmitConversationTurn,
 	},
-	dictation, domain_packs, mcp_login,
+	dictation, mcp_login,
 	routing_orchestration::{ExecutionCoordinator, RoutingSuccessorExecutionCommand},
 	work_portfolio,
 };
@@ -64,9 +63,8 @@ use decodex_core::{
 	AccountOperationPhase, AccountQuotaDisposition, AccountQuotaObservationError,
 	AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl, AccountSelectionMode,
 	AccountSelectionRecovery, AccountState, Availability, BlobStore, ConversationId,
-	HistoryItemKind, ItemStatus, PossibleSideEffects, ProductState, ProgramEvidenceKind, ProgramId,
-	ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp, RuntimeSessionState, TurnId,
-	TurnRole,
+	HistoryItemKind, ItemStatus, PossibleSideEffects, ProductState, ResetCardConsumeOutcome,
+	ResetCardDescriptor, ResetCardTimestamp, RuntimeSessionState, TurnId, TurnRole,
 };
 use decodex_database::{
 	AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
@@ -75,9 +73,7 @@ use decodex_database::{
 	AgentWorkKind, AgentWorkStatus, CommandIdentity, ConversationNativeSettingsObservation,
 	ConversationRequest, DatabaseError, DesktopSettings, HistoryCursor, HistoryEntry,
 	InitialModelReviewOutcome, OrdinaryTaskConversationCursor, OrdinaryTaskConversationProjection,
-	OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, ProgramClaimRecord,
-	ProgramCycleRecord, ProgramEvidenceRecord, ProgramObjectiveRecord, ProgramProposalRecord,
-	ProgramReviewRecord, ProgramSignalRecord, ProgramSummaryRecord, ProgramWorkItemRecord, Project,
+	OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, Project,
 	ReviewInitialModelSettings, RoutingControlOutcome, SqliteStore, StoreError,
 };
 use decodex_protocol::{
@@ -108,25 +104,23 @@ use decodex_protocol::{
 	CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
 	ConversationHistoryPage, ConversationHistoryResult, ConversationListCursor,
 	ConversationListPage, ConversationListResult, ConversationModel, ConversationModelReviewResult,
-	ConversationModelSettingsResult, ConversationProgramContext, ConversationReadError,
-	ConversationReasoningEffort, ConversationRecoveryAction, ConversationResult, ConversationState,
-	ConversationSummary, ConversationTitle, ConversationTurnOutcome, ConversationWorkingDirectory,
-	CorrelationId, DESKTOP_SETTINGS_ENTITY_ID, DesktopSettingsDto, DesktopSettingsResult,
-	DictationRequest, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus,
-	EntityRevision, EventPayload, HistoryArtifactId, HistoryArtifactReference,
-	HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference, HistoryCursorToken,
-	HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryQueryError,
+	ConversationModelSettingsResult, ConversationReadError, ConversationReasoningEffort,
+	ConversationRecoveryAction, ConversationResult, ConversationState, ConversationSummary,
+	ConversationTitle, ConversationTurnOutcome, ConversationWorkingDirectory, CorrelationId,
+	DESKTOP_SETTINGS_ENTITY_ID, DesktopSettingsDto, DesktopSettingsResult, DictationRequest,
+	DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityRevision,
+	EventPayload, HistoryArtifactId, HistoryArtifactReference, HistoryArtifactRevision,
+	HistoryBlobLength, HistoryBlobReference, HistoryCursorToken, HistoryItemDto,
+	HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryQueryError,
 	HistorySideEffectState, HistoryText, HistoryTurnRole, IdempotencyKey,
 	InitialModelCatalogRequest, InitialModelCatalogResult, MAX_AGENT_DEPENDENCIES,
 	MAX_AGENT_PENDING_EVENTS, MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS,
 	MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_PAGE_SIZE, McpLoginPhase, McpLoginRequest,
 	McpLoginStatus, ModelCatalogPurpose, NativeAgentsResult, NativeProcessDiagnostics,
-	NativeStartupConfiguration, PrivateReviewDetailsResult, ProgramCycleDto, ProgramCycleResult,
-	ProgramEdgeDto, ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto, ProgramNodeKind,
-	ProgramRelationKind, ProgramSummaryDto, ProjectDto, PromptEditPhase, PromptEditStatus,
-	PromptForkResult, PromptInputSendStatus, PromptInputUploadStatus, ProviderThreadId,
-	QueryEnvelope, QueryPayload, QueryResultPayload, ResetCardDescriptorDto, ResetCardError,
-	ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
+	NativeStartupConfiguration, PrivateReviewDetailsResult, ProjectDto, PromptEditPhase,
+	PromptEditStatus, PromptForkResult, PromptInputSendStatus, PromptInputUploadStatus,
+	ProviderThreadId, QueryEnvelope, QueryPayload, QueryResultPayload, ResetCardDescriptorDto,
+	ResetCardError, ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
 	ResetCardOperationView, ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem, WireText,
 	WorkDetailResult,
 };
@@ -509,9 +503,6 @@ impl ServiceApplication {
 			},
 			QueryPayload::GetDesktopSettings =>
 				QueryResultPayload::DesktopSettings(self.desktop_settings().await),
-			QueryPayload::ListPrograms => QueryResultPayload::Programs(self.program_list().await),
-			QueryPayload::GetProgramCycle { program_id } =>
-				QueryResultPayload::ProgramCycle(self.program_cycle(program_id).await),
 			QueryPayload::ListConversations { after, page_size } =>
 				QueryResultPayload::Conversations(
 					self.conversation_list(after.as_ref(), page_size.get()).await,
@@ -1485,77 +1476,6 @@ impl ServiceApplication {
 			Err(_) => ConversationHistoryResult::Unavailable {
 				error: HistoryQueryError::ProductStateUnavailable,
 			},
-		}
-	}
-
-	async fn program_list(&self) -> ProgramListResult {
-		let ProductStore::Available(store) = &self.store else {
-			return ProgramListResult::Unavailable;
-		};
-
-		match store.list_programs(64).await {
-			Ok(programs) => programs
-				.into_iter()
-				.map(program_summary_dto)
-				.collect::<Result<Vec<_>, _>>()
-				.map_or(ProgramListResult::Unavailable, ProgramListResult::Available),
-			Err(_) => ProgramListResult::Unavailable,
-		}
-	}
-
-	async fn program_cycle(&self, program_id: &decodex_protocol::EntityId) -> ProgramCycleResult {
-		let ProductStore::Available(store) = &self.store else {
-			return ProgramCycleResult::Unavailable;
-		};
-		let Ok(program_id) = ProgramId::new(program_id.as_str()) else {
-			return ProgramCycleResult::Unavailable;
-		};
-
-		match store.program_cycle(&program_id).await {
-			Ok(Some(record)) => self
-				.program_cycle_dto(record)
-				.await
-				.map_or(ProgramCycleResult::Unavailable, |cycle| {
-					ProgramCycleResult::Available(Box::new(cycle))
-				}),
-			Ok(None) => ProgramCycleResult::NotFound,
-			Err(_) => ProgramCycleResult::Unavailable,
-		}
-	}
-
-	async fn program_cycle_dto(&self, record: ProgramCycleRecord) -> Result<ProgramCycleDto, ()> {
-		let mut run_states = Vec::new();
-		let mut provider_threads = HashMap::new();
-
-		for work_item in &record.work_items {
-			let Some(conversation_id) = work_item.conversation_id.as_ref() else {
-				continue;
-			};
-			let entity_id =
-				decodex_protocol::EntityId::new(conversation_id.as_str()).map_err(|_| ())?;
-			let state = match self.conversation_get(&entity_id).await {
-				ConversationResult::Available(summary) => {
-					if let Some(thread_id) = summary.codex_thread_id {
-						provider_threads.insert(conversation_id.clone(), thread_id);
-					}
-
-					conversation_state_text(summary.state)
-				},
-				ConversationResult::RoutingSuccessorRedirect { .. } => "routing_successor",
-				ConversationResult::Archived { .. } => "archived",
-				ConversationResult::NotFound => "not_found",
-				ConversationResult::Unavailable { .. } => "unavailable",
-			};
-
-			run_states.push((conversation_id.clone(), state));
-		}
-
-		let domain_pack = domain_packs::projection(&record, &provider_threads).map_err(|_| ())?;
-		let cycle = program_cycle_dto(record, &run_states, &provider_threads)?;
-
-		match domain_pack {
-			Some(domain_pack) => cycle.with_domain_pack(domain_pack).map_err(|_| ()),
-			None => Ok(cycle),
 		}
 	}
 
@@ -2919,8 +2839,6 @@ impl Application for ServiceApplication {
 			QueryPayload::GetAgentExchanges { before } => self.query_exchanges(*before).await,
 			QueryPayload::GetAgentDeliveries { query } => self.query_deliveries(query).await,
 			QueryPayload::GetDesktopSettings
-			| QueryPayload::ListPrograms
-			| QueryPayload::GetProgramCycle { .. }
 			| QueryPayload::ListConversations { .. }
 			| QueryPayload::GetConversation { .. }
 			| QueryPayload::GetNativeStartupConfiguration { .. }
@@ -3293,7 +3211,7 @@ fn conversation_summary_without_original_directory(
 	projection: Option<ConversationProjection>,
 ) -> Result<ConversationSummary, ()> {
 	let projection_updated_at_micros = row.updated_at_micros;
-	let (title, codex_thread_id, program) = conversation_presentation(&row)?;
+	let (title, codex_thread_id) = conversation_presentation(&row)?;
 
 	if let Some(projection) = projection {
 		let readback = &projection.readback;
@@ -3313,7 +3231,6 @@ fn conversation_summary_without_original_directory(
 			projection_updated_at_micros,
 			title,
 			codex_thread_id,
-			program,
 		);
 	}
 	if let Some(pre_session_state) = row.pre_session_state {
@@ -3324,7 +3241,6 @@ fn conversation_summary_without_original_directory(
 				.map_err(|_| ())?,
 			title,
 			codex_thread_id,
-			program,
 			EntityRevision(u64::try_from(row.conversation_revision).map_err(|_| ())?),
 			projection_updated_at_micros,
 			None,
@@ -3390,7 +3306,6 @@ fn conversation_summary_without_original_directory(
 		decodex_protocol::EntityId::new(row.conversation_id.as_str().to_owned()).map_err(|_| ())?,
 		title,
 		codex_thread_id,
-		program,
 		EntityRevision(u64::try_from(row.conversation_revision).map_err(|_| ())?),
 		projection_updated_at_micros,
 		Some(
@@ -3414,7 +3329,6 @@ fn conversation_summary_from_readback(
 	projection_updated_at_micros: i64,
 	title: ConversationTitle,
 	codex_thread_id: Option<ProviderThreadId>,
-	program: Option<ConversationProgramContext>,
 ) -> Result<ConversationSummary, ()> {
 	let conversation_revision = readback.conversation_revision.ok_or(())?;
 	let runtime_session_id = readback
@@ -3446,7 +3360,6 @@ fn conversation_summary_from_readback(
 			.map_err(|_| ())?,
 		title,
 		codex_thread_id,
-		program,
 		EntityRevision(u64::try_from(conversation_revision).map_err(|_| ())?),
 		projection_updated_at_micros,
 		runtime_session_id,
@@ -3473,40 +3386,11 @@ fn conversation_summary_from_readback(
 
 fn conversation_presentation(
 	row: &OrdinaryTaskConversationReadback,
-) -> Result<(ConversationTitle, Option<ProviderThreadId>, Option<ConversationProgramContext>), ()> {
-	let title = ConversationTitle::new(row.title.clone()).map_err(|_| ())?;
-	let codex_thread_id =
-		row.codex_thread_id.clone().map(ProviderThreadId::new).transpose().map_err(|_| ())?;
-	let program = row
-		.program_work_item
-		.as_ref()
-		.map(|context| {
-			ConversationProgramContext::new(
-				decodex_protocol::EntityId::new(context.program_id.as_str().to_owned())
-					.map_err(|_| ())?,
-				decodex_protocol::EntityId::new(context.work_item_id.as_str().to_owned())
-					.map_err(|_| ())?,
-				title.clone(),
-				WireText::new(context.instructions.clone()).map_err(|_| ())?,
-				context.state,
-				EntityRevision(context.revision),
-			)
-			.map_err(|_| ())
-		})
-		.transpose()?;
-
-	Ok((title, codex_thread_id, program))
-}
-
-const fn account_manual_recovery_action(
-	action: &AccountManualRecoveryActionDto,
-) -> AccountManualRecoveryAction {
-	match action {
-		AccountManualRecoveryActionDto::ReconcileExactStoreState =>
-			AccountManualRecoveryAction::ReconcileExactStoreState,
-		AccountManualRecoveryActionDto::CancelBeforeEffect =>
-			AccountManualRecoveryAction::CancelBeforeEffect,
-	}
+) -> Result<(ConversationTitle, Option<ProviderThreadId>), ()> {
+	Ok((
+		ConversationTitle::new(row.title.clone()).map_err(|_| ())?,
+		row.codex_thread_id.clone().map(ProviderThreadId::new).transpose().map_err(|_| ())?,
+	))
 }
 
 const fn conversation_recovery_action(
@@ -3548,6 +3432,17 @@ const fn conversation_recovery_action(
 		| ConversationManualRecovery::MissingThread
 		| ConversationManualRecovery::IncompatibleThread =>
 			ConversationRecoveryAction::StartNewConversation,
+	}
+}
+
+const fn account_manual_recovery_action(
+	action: &AccountManualRecoveryActionDto,
+) -> AccountManualRecoveryAction {
+	match action {
+		AccountManualRecoveryActionDto::ReconcileExactStoreState =>
+			AccountManualRecoveryAction::ReconcileExactStoreState,
+		AccountManualRecoveryActionDto::CancelBeforeEffect =>
+			AccountManualRecoveryAction::CancelBeforeEffect,
 	}
 }
 
@@ -3621,464 +3516,6 @@ fn runtime_execution_settings(
 			.map(|effort| effort.as_str().to_owned()),
 		fast: settings.fast,
 		service_tier: settings.effective_service_tier(),
-	}
-}
-
-fn program_summary_dto(record: ProgramSummaryRecord) -> Result<ProgramSummaryDto, ()> {
-	Ok(ProgramSummaryDto {
-		program_id: entity(record.program_id.as_str())?,
-		name: wire(record.name)?,
-		purpose: wire(record.purpose)?,
-		state: record.state,
-		revision: EntityRevision(record.revision),
-		updated_at_micros: record.updated_at_micros,
-	})
-}
-
-fn program_cycle_dto(
-	record: ProgramCycleRecord,
-	run_states: &[(ConversationId, &'static str)],
-	provider_threads: &HashMap<ConversationId, ProviderThreadId>,
-) -> Result<ProgramCycleDto, ()> {
-	let node_order = program_node_order(&record)?;
-	let program = ProgramSummaryDto {
-		program_id: entity(record.program.program_id.as_str())?,
-		name: wire(record.program.name)?,
-		purpose: wire(record.program.purpose)?,
-		state: record.program.state,
-		revision: EntityRevision(record.program.revision),
-		updated_at_micros: record.program.updated_at_micros,
-	};
-	let non_goals =
-		record.program.non_goals.into_iter().map(wire).collect::<Result<Vec<_>, _>>()?;
-	let review_policy = wire(record.program.review_policy)?;
-	let mut nodes = Vec::new();
-	let mut edges = Vec::new();
-
-	append_historical_semantics(
-		record.signals,
-		record.claims,
-		record.proposals,
-		record.objectives,
-		&program.program_id,
-		&mut nodes,
-		&mut edges,
-	)?;
-	append_historical_executions(
-		record.work_items,
-		run_states,
-		provider_threads,
-		&mut nodes,
-		&mut edges,
-	)?;
-	append_historical_evidence(
-		record.evidence,
-		record.reviews,
-		&program.program_id,
-		&mut nodes,
-		&mut edges,
-	)?;
-
-	let positions = node_order
-		.iter()
-		.enumerate()
-		.map(|(index, id)| (id.as_str(), index))
-		.collect::<HashMap<_, _>>();
-
-	if positions.len() != nodes.len()
-		|| nodes.iter().any(|node| !positions.contains_key(node.id.as_str()))
-	{
-		return Err(());
-	}
-
-	nodes.sort_by_key(|node| positions[node.id.as_str()]);
-
-	ProgramCycleDto::new(program, non_goals, review_policy, nodes, edges).map_err(|_| ())
-}
-
-fn append_historical_semantics(
-	signals: Vec<ProgramSignalRecord>,
-	claims: Vec<ProgramClaimRecord>,
-	proposals: Vec<ProgramProposalRecord>,
-	objectives: Vec<ProgramObjectiveRecord>,
-	program_id: &decodex_protocol::EntityId,
-	nodes: &mut Vec<ProgramNodeDto>,
-	edges: &mut Vec<ProgramEdgeDto>,
-) -> Result<(), ()> {
-	for signal in signals {
-		let signal_id = entity(signal.signal_id.as_str())?;
-		let (from, kind) = match signal.predecessor_review_id {
-			Some(review_id) => (entity(review_id.as_str())?, ProgramRelationKind::Continues),
-			None => (program_id.clone(), ProgramRelationKind::Observes),
-		};
-
-		edges.push(ProgramEdgeDto { from, to: signal_id.clone(), kind });
-		nodes.push(ProgramNodeDto {
-			id: signal_id,
-			kind: ProgramNodeKind::Signal,
-			title: wire("Signal")?,
-			summary: wire(signal.summary)?,
-			state: wire("observed")?,
-			source: Some(wire(signal.source)?),
-			observed_at_micros: Some(signal.observed_at_micros),
-			conversation_id: None,
-			fields: Vec::new(),
-		});
-	}
-	for claim in claims {
-		let claim_id = entity(claim.claim_id.as_str())?;
-
-		edges.push(ProgramEdgeDto {
-			from: entity(claim.signal_id.as_str())?,
-			to: claim_id.clone(),
-			kind: ProgramRelationKind::Supports,
-		});
-		nodes.push(ProgramNodeDto {
-			id: claim_id,
-			kind: ProgramNodeKind::Claim,
-			title: wire("Claim")?,
-			summary: wire(claim.statement)?,
-			state: wire("current")?,
-			source: None,
-			observed_at_micros: Some(claim.updated_at_micros),
-			conversation_id: None,
-			fields: Vec::new(),
-		});
-	}
-	for proposal in proposals {
-		let proposal_id = entity(proposal.proposal_id.as_str())?;
-
-		edges.push(ProgramEdgeDto {
-			from: entity(proposal.claim_id.as_str())?,
-			to: proposal_id.clone(),
-			kind: ProgramRelationKind::Justifies,
-		});
-		nodes.push(ProgramNodeDto {
-			id: proposal_id,
-			kind: ProgramNodeKind::Proposal,
-			title: wire("Proposal")?,
-			summary: wire(proposal.summary)?,
-			state: wire("non_executable")?,
-			source: None,
-			observed_at_micros: Some(proposal.updated_at_micros),
-			conversation_id: None,
-			fields: vec![
-				field("Expected effect", proposal.expected_effect)?,
-				field("Risk", proposal.risk)?,
-				field("Evidence need", proposal.evidence_need)?,
-			],
-		});
-	}
-	for objective in objectives {
-		let objective_id = entity(objective.objective_id.as_str())?;
-
-		edges.push(ProgramEdgeDto {
-			from: entity(objective.proposal_id.as_str())?,
-			to: objective_id.clone(),
-			kind: ProgramRelationKind::Proposes,
-		});
-		nodes.push(ProgramNodeDto {
-			id: objective_id,
-			kind: ProgramNodeKind::Objective,
-			title: wire("Objective")?,
-			summary: wire(objective.outcome)?,
-			state: wire(objective.state.as_str())?,
-			source: None,
-			observed_at_micros: Some(objective.updated_at_micros),
-			conversation_id: None,
-			fields: vec![
-				field("Acceptance criteria", objective.acceptance_criteria.join(" · "))?,
-				field("Validation criteria", objective.validation_criteria.join(" · "))?,
-			],
-		});
-	}
-
-	Ok(())
-}
-
-fn append_historical_executions(
-	work_items: Vec<ProgramWorkItemRecord>,
-	run_states: &[(ConversationId, &'static str)],
-	provider_threads: &HashMap<ConversationId, ProviderThreadId>,
-	nodes: &mut Vec<ProgramNodeDto>,
-	edges: &mut Vec<ProgramEdgeDto>,
-) -> Result<(), ()> {
-	for work_item in work_items {
-		let work_item_id = entity(work_item.work_item_id.as_str())?;
-
-		edges.push(ProgramEdgeDto {
-			from: entity(work_item.objective_id.as_str())?,
-			to: work_item_id.clone(),
-			kind: ProgramRelationKind::DecomposesTo,
-		});
-		nodes.push(ProgramNodeDto {
-			id: work_item_id.clone(),
-			kind: ProgramNodeKind::WorkItem,
-			title: wire(work_item.title)?,
-			summary: wire(work_item.instructions)?,
-			state: wire(work_item.state.as_str())?,
-			source: None,
-			observed_at_micros: Some(work_item.updated_at_micros),
-			conversation_id: work_item
-				.conversation_id
-				.as_ref()
-				.map(|id| entity(id.as_str()))
-				.transpose()?,
-			fields: vec![field("Working directory", work_item.working_directory)?],
-		});
-
-		if let Some(conversation_id) = work_item.conversation_id {
-			let run_id = entity(conversation_id.as_str())?;
-			let state = run_states
-				.iter()
-				.find(|(id, _)| id == &conversation_id)
-				.map_or("unavailable", |(_, state)| *state);
-
-			edges.push(ProgramEdgeDto {
-				from: work_item_id,
-				to: run_id.clone(),
-				kind: ProgramRelationKind::Executes,
-			});
-			nodes.push(ProgramNodeDto {
-				id: run_id.clone(),
-				kind: ProgramNodeKind::Run,
-				title: wire("Codex Conversation")?,
-				summary: wire("Execution through the existing Codex app-server worker path")?,
-				state: wire(state)?,
-				source: provider_threads
-					.get(&conversation_id)
-					.map(|thread_id| {
-						thread_id.codex_url().map_err(|_| ()).and_then(|url| wire(url.to_string()))
-					})
-					.transpose()?,
-				observed_at_micros: None,
-				conversation_id: Some(run_id),
-				fields: Vec::new(),
-			});
-		}
-	}
-
-	Ok(())
-}
-
-fn append_historical_evidence(
-	evidence: Vec<ProgramEvidenceRecord>,
-	reviews: Vec<ProgramReviewRecord>,
-	program_id: &decodex_protocol::EntityId,
-	nodes: &mut Vec<ProgramNodeDto>,
-	edges: &mut Vec<ProgramEdgeDto>,
-) -> Result<(), ()> {
-	for evidence in evidence {
-		let evidence_id = entity(evidence.evidence_id.as_str())?;
-
-		edges.push(ProgramEdgeDto {
-			from: entity(evidence.work_item_id.as_str())?,
-			to: evidence_id.clone(),
-			kind: ProgramRelationKind::Produces,
-		});
-		nodes.push(ProgramNodeDto {
-			id: evidence_id,
-			kind: ProgramNodeKind::Evidence,
-			title: wire(match evidence.kind {
-				ProgramEvidenceKind::DeterministicValidation => "Deterministic validation",
-				ProgramEvidenceKind::External => "External evidence",
-			})?,
-			summary: wire(evidence.summary)?,
-			state: wire(evidence.kind.as_str())?,
-			source: Some(wire(evidence.source)?),
-			observed_at_micros: Some(evidence.observed_at_micros),
-			conversation_id: None,
-			fields: Vec::new(),
-		});
-	}
-	for review in reviews {
-		let review_id = entity(review.review_id.as_str())?;
-
-		for evidence_id in [&review.deterministic_evidence_id, &review.external_evidence_id] {
-			edges.push(ProgramEdgeDto {
-				from: entity(evidence_id.as_str())?,
-				to: review_id.clone(),
-				kind: ProgramRelationKind::Supports,
-			});
-		}
-
-		edges.push(ProgramEdgeDto {
-			from: review_id.clone(),
-			to: program_id.clone(),
-			kind: ProgramRelationKind::Validates,
-		});
-		nodes.push(ProgramNodeDto {
-			id: review_id,
-			kind: ProgramNodeKind::Review,
-			title: wire("Program Review")?,
-			summary: wire(review.rationale)?,
-			state: wire(review.classification.as_str())?,
-			source: None,
-			observed_at_micros: Some(review.created_at_micros),
-			conversation_id: None,
-			fields: Vec::new(),
-		});
-	}
-
-	Ok(())
-}
-
-fn unique_program_records<T>(
-	records: &[T],
-	key: impl Fn(&T) -> &str,
-) -> Result<HashMap<&str, &T>, ()> {
-	let mut indexed = HashMap::new();
-
-	for record in records {
-		if indexed.insert(key(record), record).is_some() {
-			return Err(());
-		}
-	}
-
-	Ok(indexed)
-}
-
-fn program_node_order(record: &ProgramCycleRecord) -> Result<Vec<String>, ()> {
-	let roots = record
-		.signals
-		.iter()
-		.filter(|signal| signal.predecessor_review_id.is_none())
-		.collect::<Vec<_>>();
-
-	if roots.len() != 1 {
-		return Err(());
-	}
-
-	let mut successors = HashMap::new();
-
-	for signal in &record.signals {
-		if let Some(predecessor) = &signal.predecessor_review_id
-			&& successors.insert(predecessor.as_str(), signal).is_some()
-		{
-			return Err(());
-		}
-	}
-
-	let claims = unique_program_records(&record.claims, |claim| claim.signal_id.as_str())?;
-	let proposals =
-		unique_program_records(&record.proposals, |proposal| proposal.claim_id.as_str())?;
-	let objectives =
-		unique_program_records(&record.objectives, |objective| objective.proposal_id.as_str())?;
-	let work_items =
-		unique_program_records(&record.work_items, |work_item| work_item.objective_id.as_str())?;
-	let reviews = unique_program_records(&record.reviews, |review| review.work_item_id.as_str())?;
-	let mut evidence = HashMap::<&str, Vec<_>>::new();
-
-	for item in &record.evidence {
-		evidence.entry(item.work_item_id.as_str()).or_default().push(item);
-	}
-
-	let mut order = Vec::new();
-	let mut visited_signals = std::collections::HashSet::new();
-	let mut signal = roots[0];
-
-	loop {
-		if !visited_signals.insert(signal.signal_id.as_str()) {
-			return Err(());
-		}
-
-		order.push(signal.signal_id.as_str().to_owned());
-
-		let claim = claims.get(signal.signal_id.as_str()).ok_or(())?;
-
-		order.push(claim.claim_id.as_str().to_owned());
-
-		let proposal = proposals.get(claim.claim_id.as_str()).ok_or(())?;
-
-		order.push(proposal.proposal_id.as_str().to_owned());
-
-		let objective = objectives.get(proposal.proposal_id.as_str()).ok_or(())?;
-
-		order.push(objective.objective_id.as_str().to_owned());
-
-		let work_item = work_items.get(objective.objective_id.as_str()).ok_or(())?;
-
-		order.push(work_item.work_item_id.as_str().to_owned());
-
-		if let Some(conversation_id) = &work_item.conversation_id {
-			order.push(conversation_id.as_str().to_owned());
-		}
-
-		let item_evidence =
-			evidence.get(work_item.work_item_id.as_str()).map_or(&[][..], Vec::as_slice);
-		let Some(review) = reviews.get(work_item.work_item_id.as_str()).copied() else {
-			if !item_evidence.is_empty() {
-				return Err(());
-			}
-
-			break;
-		};
-		let evidence_ids = item_evidence
-			.iter()
-			.map(|item| item.evidence_id.as_str())
-			.collect::<std::collections::HashSet<_>>();
-
-		if item_evidence.len() != 2
-			|| !evidence_ids.contains(review.deterministic_evidence_id.as_str())
-			|| !evidence_ids.contains(review.external_evidence_id.as_str())
-		{
-			return Err(());
-		}
-
-		order.push(review.deterministic_evidence_id.as_str().to_owned());
-		order.push(review.external_evidence_id.as_str().to_owned());
-		order.push(review.review_id.as_str().to_owned());
-
-		let Some(next) = successors.get(review.review_id.as_str()).copied() else {
-			break;
-		};
-
-		signal = next;
-	}
-
-	let expected = record.signals.len()
-		+ record.claims.len()
-		+ record.proposals.len()
-		+ record.objectives.len()
-		+ record.work_items.len()
-		+ record.work_items.iter().filter(|item| item.conversation_id.is_some()).count()
-		+ record.evidence.len()
-		+ record.reviews.len();
-
-	if order.len() != expected
-		|| order.iter().map(String::as_str).collect::<std::collections::HashSet<_>>().len()
-			!= expected
-	{
-		return Err(());
-	}
-
-	Ok(order)
-}
-
-fn field(label: &str, value: impl Into<String>) -> Result<ProgramNodeFieldDto, ()> {
-	Ok(ProgramNodeFieldDto { label: wire(label)?, value: wire(value)? })
-}
-
-fn entity(value: &str) -> Result<decodex_protocol::EntityId, ()> {
-	decodex_protocol::EntityId::new(value.to_owned()).map_err(|_| ())
-}
-
-fn wire(value: impl Into<String>) -> Result<WireText, ()> {
-	WireText::new(value).map_err(|_| ())
-}
-
-const fn conversation_state_text(state: ConversationState) -> &'static str {
-	match state {
-		ConversationState::ModelSettingsReviewRequired => "model_settings_review_required",
-		ConversationState::RoutingPending => "routing_pending",
-		ConversationState::EstablishmentPending => "establishment_pending",
-		ConversationState::QuotaExhausted => "quota_exhausted",
-		ConversationState::NoRoute => "no_route",
-		ConversationState::Establishing => "establishing",
-		ConversationState::Ready => "ready",
-		ConversationState::Running => "running",
-		ConversationState::ManualRecovery => "manual_recovery",
-		ConversationState::OutcomeUnknown => "outcome_unknown",
 	}
 }
 
@@ -6626,7 +6063,7 @@ mod history_receipt_tests {
 }
 #[cfg(test)]
 mod tests {
-	use std::{collections::HashMap, fs};
+	use std::fs;
 
 	use crate::{
 		account_launch::{ResetCardFailureCode, ResetCardOperationStatus},
@@ -6640,19 +6077,17 @@ mod tests {
 		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
 		AccountOperationPhase, AccountOperationStatus, AccountProvider, AccountQuotaDisposition,
 		AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord, AccountState,
-		ConversationId, DecodexRoot, ProgramObservationId, ProgramReviewId, ProviderIdentity,
-		RuntimeSessionState,
+		ConversationId, DecodexRoot, ProviderIdentity, RuntimeSessionState,
 	};
 	use decodex_database::{
 		AccountLifecycleRejection, AccountProfileDailyUsage, AccountProfileSnapshot,
 		AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus, EnqueueAgentEvent,
-		OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, ProgramCycleRecord,
-		SqliteStore,
+		OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, SqliteStore,
 	};
 	use decodex_protocol::{
 		AccountCommandRejectionDto, AccountProfileEmailDto, AccountQuotaStateDto,
 		AgentActivityDetailResult, CommandError, ConversationRecoveryAction, ConversationState,
-		ProgramNodeKind, ProgramRelationKind, ResetCardError, ResetCardOperationResult,
+		ResetCardError, ResetCardOperationResult,
 	};
 
 	#[test]
@@ -6808,43 +6243,6 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn repeatable_program_projection_follows_review_lineage() {
-		let review_1 = ProgramReviewId::new("38000000-0000-4000-8000-000000000001")
-			.expect("fixture review identity");
-		let signal_2 = ProgramObservationId::new("41000000-0000-4000-8000-000000000001")
-			.expect("fixture signal identity");
-		let record: ProgramCycleRecord =
-			serde_json::from_str(include_str!("../tests/fixtures/historical_program_cycle.json"))
-				.expect("historical two-cycle fixture");
-		let projection = application::program_cycle_dto(record, &[], &HashMap::new())
-			.expect("two-cycle projection");
-
-		assert_eq!(
-			projection.nodes.iter().map(|node| node.kind).collect::<Vec<_>>(),
-			vec![
-				ProgramNodeKind::Signal,
-				ProgramNodeKind::Claim,
-				ProgramNodeKind::Proposal,
-				ProgramNodeKind::Objective,
-				ProgramNodeKind::WorkItem,
-				ProgramNodeKind::Evidence,
-				ProgramNodeKind::Evidence,
-				ProgramNodeKind::Review,
-				ProgramNodeKind::Signal,
-				ProgramNodeKind::Claim,
-				ProgramNodeKind::Proposal,
-				ProgramNodeKind::Objective,
-				ProgramNodeKind::WorkItem,
-			]
-		);
-		assert!(projection.edges.iter().any(|edge| {
-			edge.from.as_str() == review_1.as_str()
-				&& edge.to.as_str() == signal_2.as_str()
-				&& edge.kind == ProgramRelationKind::Continues
-		}));
-	}
-
 	fn pre_session_conversation(
 		state: OrdinaryTaskPreSessionState,
 		decision_id: Option<&str>,
@@ -6859,7 +6257,6 @@ mod tests {
 			runtime_session_revision: None,
 			runtime_session_state: None,
 			codex_thread_id: None,
-			program_work_item: None,
 			has_acknowledged_turn: false,
 			active_turn_id: None,
 			active_turn_revision: None,
@@ -6992,7 +6389,6 @@ mod tests {
 			runtime_session_revision: Some(4),
 			runtime_session_state: Some(RuntimeSessionState::Ended),
 			codex_thread_id: None,
-			program_work_item: None,
 			has_acknowledged_turn: true,
 			active_turn_id: None,
 			active_turn_revision: None,

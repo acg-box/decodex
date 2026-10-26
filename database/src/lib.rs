@@ -47,7 +47,6 @@ mod desktop_settings;
 mod error;
 mod guardian_settings;
 mod process_generations;
-mod program_cycles;
 mod projects;
 mod provider_attempts;
 mod quota_activation;
@@ -134,13 +133,13 @@ pub use self::{
 		InitialConversationTurnAdmissionRejection, InitialModelReviewOutcome, InitialModelSource,
 		OrdinaryTaskConversationCursor, OrdinaryTaskConversationProjection,
 		OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState,
-		PendingConversationTerminalizationReadback, ProgramWorkItemContextReadback,
-		ReconcileStrandedConversationTurn, ReconcileStrandedConversationTurnOutcome,
-		RecordConversationNativeSettings, RecordConversationResumeRejection, RecordHistoryItem,
-		RecoverUnknownConversationTurn, RecoverUnknownConversationTurnOutcome,
-		RecoveredUnknownConversationTurn, ReviewInitialModelSettings, StoredConversation,
-		TerminalizeConversationTurn, TurnReservationOutcome, TurnReservationReadback,
-		UnknownConversationAttemptReadback, bounded_conversation_title,
+		PendingConversationTerminalizationReadback, ReconcileStrandedConversationTurn,
+		ReconcileStrandedConversationTurnOutcome, RecordConversationNativeSettings,
+		RecordConversationResumeRejection, RecordHistoryItem, RecoverUnknownConversationTurn,
+		RecoverUnknownConversationTurnOutcome, RecoveredUnknownConversationTurn,
+		ReviewInitialModelSettings, StoredConversation, TerminalizeConversationTurn,
+		TurnReservationOutcome, TurnReservationReadback, UnknownConversationAttemptReadback,
+		bounded_conversation_title,
 	},
 	credentials::{CredentialKey, CredentialRecord},
 	desktop_settings::DesktopSettings,
@@ -148,12 +147,6 @@ pub use self::{
 	process_generations::{
 		FreshProcessGenerationFence, PrepareProcessGenerationOutcome, ProcessGenerationMutation,
 		ProcessGenerationMutationOutcome, ProcessGenerationRejection,
-	},
-	program_cycles::{
-		DomainPackIdentity, ProgramCharterRecord, ProgramClaimRecord, ProgramCycleRecord,
-		ProgramDomainPackBinding, ProgramEvidenceRecord, ProgramObjectiveRecord,
-		ProgramProposalRecord, ProgramReviewRecord, ProgramSignalRecord, ProgramSummaryRecord,
-		ProgramWorkItemRecord,
 	},
 	provider_attempts::{
 		AuthorizeProviderDispatchOutcome, FreshPreparedProviderAttempt, FreshProviderDispatchFence,

@@ -456,7 +456,6 @@ impl Shell {
 					ProviderThreadId::new(format!("thread-{revision}"))
 						.expect("visual thread is valid"),
 				),
-				None,
 				EntityRevision(revision),
 				1_786_000_000_000_000 + i64::try_from(revision).unwrap_or_default(),
 				Some(EntityId::new(runtime_id).expect("visual runtime identity is bounded")),
@@ -4837,23 +4836,6 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 	content =
 		content.child(conversation_native_settings_inspector(task.native_settings.as_deref()));
 
-	if let Some(program) = task.program.as_ref() {
-		content = content
-			.child(inspector_metadata_row("Program", compact_identity(program.program_id.as_str())))
-			.child(inspector_metadata_row(
-				"Work item",
-				compact_identity(program.work_item_id.as_str()),
-			))
-			.child(inspector_metadata_row("State", program.state.as_str().to_owned()))
-			.child(
-				gpui::div()
-					.text_size(gpui::px(11.0))
-					.line_height(gpui::px(14.0))
-					.text_color(ui_theme::rgb(WB_TEXT_MUTED))
-					.whitespace_normal()
-					.child(program.instructions.as_str().to_owned()),
-			);
-	}
 	if let Some(url) =
 		task.codex_thread_id.as_ref().and_then(|thread_id| thread_id.codex_url().ok())
 	{
@@ -7505,7 +7487,6 @@ mod tests {
 				.expect("test conversation identity is canonical"),
 			decodex_protocol::ConversationTitle::new("Outcome unknown")
 				.expect("test title is valid"),
-			None,
 			None,
 			decodex_protocol::EntityRevision(3),
 			1_786_000_000_000_000,

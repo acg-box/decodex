@@ -47,7 +47,6 @@ mod auth_projection;
 mod bootstrap;
 mod conversation;
 mod dictation;
-mod domain_packs;
 mod host_credentials;
 mod mcp_login;
 mod native_agents;

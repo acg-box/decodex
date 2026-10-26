@@ -25,14 +25,14 @@ use rusqlite::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
-use crate::{CommandIdentity, SqliteStore, StoreError, account_lifecycle, program_cycles};
+use crate::{CommandIdentity, SqliteStore, StoreError, account_lifecycle};
 use decodex_core::{
 	AccountId, ArtifactId, BlobHash, BlobStore, ConversationId, HistoryItemId, HistoryItemKind,
 	HistoryMediaType, HistoryMetadata, ItemStatus, MAX_BLOB_BYTES, MAX_CONTEXT_RECENT_ITEMS,
 	MAX_INLINE_HISTORY_BYTES, MAX_PROVIDER_THREAD_ID_BYTES, PossibleSideEffects,
-	ProcessGenerationId, ProgramId, ProviderAttemptId, ProviderEvidenceId, ProviderRequestId,
+	ProcessGenerationId, ProviderAttemptId, ProviderEvidenceId, ProviderRequestId,
 	ProviderRequestKey, ProviderTerminalOutcome, RuntimeSessionId, RuntimeSessionState,
-	ServiceTier, TurnId, TurnRole, TurnStatus, WorkItemId, WorkItemState,
+	ServiceTier, TurnId, TurnRole, TurnStatus,
 };
 
 const MAX_PAGE_SIZE: u16 = 100;
@@ -338,7 +338,6 @@ pub struct OrdinaryTaskConversationReadback {
 	pub runtime_session_revision: Option<i64>,
 	pub runtime_session_state: Option<RuntimeSessionState>,
 	pub codex_thread_id: Option<String>,
-	pub program_work_item: Option<ProgramWorkItemContextReadback>,
 	pub has_acknowledged_turn: bool,
 	pub active_turn_id: Option<TurnId>,
 	pub active_turn_revision: Option<i64>,
@@ -348,17 +347,6 @@ pub struct OrdinaryTaskConversationReadback {
 	pub pre_session_state: Option<OrdinaryTaskPreSessionState>,
 	pub routing_decision_id: Option<String>,
 	pub updated_at_micros: i64,
-}
-
-/// Exact Program WorkItem context bound to one ordinary Conversation.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProgramWorkItemContextReadback {
-	pub program_id: ProgramId,
-	pub work_item_id: WorkItemId,
-	pub title: String,
-	pub instructions: String,
-	pub state: WorkItemState,
-	pub revision: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2885,71 +2873,12 @@ fn archived_conversation_projection(
 fn read_conversation_presentation(
 	connection: &Connection,
 	conversation_id: &ConversationId,
-) -> Result<(String, Option<ProgramWorkItemContextReadback>, String), StoreError> {
-	let presentation = connection
-		.query_row(
-			"SELECT c.title, q.message, item.program_id, item.work_item_id, item.title,
-			 item.instructions, item.state, item.revision, q.working_directory
-			 FROM conversations AS c
-			 JOIN quick_task_requests AS q USING (conversation_id)
-			 LEFT JOIN program_work_item_executions AS execution USING (conversation_id)
-			 LEFT JOIN program_work_items AS item USING (work_item_id)
-			 WHERE c.conversation_id = ?1",
-			rusqlite::params![conversation_id.as_str()],
-			|row| {
-				Ok((
-					row.get::<_, String>(0)?,
-					row.get::<_, String>(1)?,
-					row.get::<_, Option<String>>(2)?,
-					row.get::<_, Option<String>>(3)?,
-					row.get::<_, Option<String>>(4)?,
-					row.get::<_, Option<String>>(5)?,
-					row.get::<_, Option<String>>(6)?,
-					row.get::<_, Option<i64>>(7)?,
-					row.get::<_, String>(8)?,
-				))
-			},
-		)
-		.map_err(account_lifecycle::sql_error)?;
-	let program_work_item = match (
-		presentation.2,
-		presentation.3,
-		presentation.4,
-		presentation.5,
-		presentation.6,
-		presentation.7,
-	) {
-		(None, None, None, None, None, None) => None,
-		(
-			Some(program_id),
-			Some(work_item_id),
-			Some(title),
-			Some(instructions),
-			Some(state),
-			Some(revision),
-		) => Some(ProgramWorkItemContextReadback {
-			program_id: ProgramId::new(program_id)
-				.map_err(|_| incompatible("Program binding identity"))?,
-			work_item_id: WorkItemId::new(work_item_id)
-				.map_err(|_| incompatible("Program WorkItem binding identity"))?,
-			title,
-			instructions,
-			state: program_cycles::parse_work_item_state_sql(&state)
-				.map_err(account_lifecycle::sql_error)?,
-			revision: u64::try_from(revision)
-				.ok()
-				.filter(|revision| *revision > 0)
-				.ok_or_else(|| incompatible("Program WorkItem binding revision"))?,
-		}),
-		_ => return Err(incompatible("Program WorkItem binding projection")),
-	};
-	let fallback_title = bounded_conversation_title(&presentation.1);
-	let title = program_work_item.as_ref().map_or_else(
-		|| conversation_display_title(&presentation.0, &presentation.1),
-		|work_item| safe_display_title(&work_item.title, &fallback_title),
-	);
-
-	Ok((title, program_work_item, presentation.8))
+) -> Result<(String, String), StoreError> {
+	let (title,message,directory): (String,String,String) = connection.query_row(
+        "SELECT c.title,q.message,q.working_directory FROM conversations c JOIN quick_task_requests q USING(conversation_id) WHERE c.conversation_id=?1",
+        [conversation_id.as_str()],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?)),
+    ).map_err(account_lifecycle::sql_error)?;
+	Ok((conversation_display_title(&title, &message), directory))
 }
 
 fn read_conversation_activity(
@@ -3014,7 +2943,7 @@ fn conversation_projection(
 		return Err(incompatible("ordinary Task Conversation lifecycle"));
 	}
 
-	let (title, program_work_item, original_working_directory) =
+	let (title, original_working_directory) =
 		read_conversation_presentation(connection, &conversation_id)?;
 	let session = connection
 		.query_row(
@@ -3102,7 +3031,6 @@ fn conversation_projection(
 		runtime_session_revision,
 		runtime_session_state,
 		codex_thread_id,
-		program_work_item,
 		has_acknowledged_turn,
 		active_turn_id: active_turn
 			.as_ref()

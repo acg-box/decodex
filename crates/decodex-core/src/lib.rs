@@ -14,11 +14,9 @@ mod conversation;
 mod execution;
 mod fast_mode;
 mod identity;
-mod managed_run;
 #[cfg(unix)] mod path_unix;
 mod paths;
 mod process_generation;
-mod program;
 mod provider_attempt;
 mod quota;
 mod repository_revision;
@@ -26,7 +24,6 @@ mod reset_card;
 mod routing;
 mod service_tier;
 mod storage;
-mod work_item;
 
 pub use self::{
 	account::{
@@ -62,7 +59,6 @@ pub use self::{
 	},
 	execution::ExecutionConsumer,
 	identity::ServerIdentity,
-	managed_run::{ManagedRunError, ManagedRunId},
 	paths::{DecodexPaths, DecodexRoot, PathError},
 	process_generation::{
 		BoundProcessGeneration, MAX_PROCESS_IDENTITY_BYTES, MAX_PROCESS_RUNNER_IDENTITY_BYTES,
@@ -73,14 +69,9 @@ pub use self::{
 		ProcessGenerationIntent, ProcessGenerationState, ProcessIdentity, ProcessIsolationKind,
 		ProcessRunnerIdentity, ProcessStartIdentity,
 	},
-	program::{
-		MAX_PROGRAM_PROJECTION_NODES, ObjectiveId, ObjectiveState, ProgramClaimId, ProgramError,
-		ProgramEvidenceId, ProgramEvidenceKind, ProgramId, ProgramObservationId, ProgramProposalId,
-		ProgramReviewClassification, ProgramReviewId, ProgramState,
-	},
 	provider_attempt::{
-		MAX_PROVIDER_EVIDENCE_IDENTITY_BYTES, MAX_PROVIDER_REQUEST_KEY_BYTES, ManagedExecutionId,
-		ProviderAttempt, ProviderAttemptConsumer, ProviderAttemptError, ProviderAttemptId,
+		MAX_PROVIDER_EVIDENCE_IDENTITY_BYTES, MAX_PROVIDER_REQUEST_KEY_BYTES, ProviderAttempt,
+		ProviderAttemptConsumer, ProviderAttemptError, ProviderAttemptId,
 		ProviderAttemptPreparation, ProviderAttemptState, ProviderAttemptUnknownReason,
 		ProviderDuplicateRisk, ProviderEvidenceId, ProviderEvidenceSource,
 		ProviderPositiveEvidence, ProviderRequestId, ProviderRequestKey, ProviderRequestKeys,
@@ -102,7 +93,6 @@ pub use self::{
 		RoutingDecisionCause, RoutingRejection, decide_account_registry_routing,
 	},
 	storage::StorageError,
-	work_item::{WorkItemError, WorkItemId, WorkItemState},
 };
 pub use account_alias::account_alias_candidate;
 pub use client_drafts::{
