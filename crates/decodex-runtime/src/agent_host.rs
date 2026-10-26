@@ -2291,8 +2291,15 @@ impl AgentHost {
 
 		if let Some(observations) = &self.observations {
 			let _phase = Phase::new("initial_account_observations");
-
-			observations.wait_for_initial_observation().await;
+			let bound_account = self
+				.store
+				.read_agent_process_binding(&root.id)
+				.await
+				.ok()?
+				.map(|binding| binding.account_id);
+			observations
+				.wait_for_initial_observation(bound_account.as_ref().or(account.as_ref()))
+				.await;
 		}
 
 		match self.connect(&root.id, format!("restore-{}", now()), config, account).await {

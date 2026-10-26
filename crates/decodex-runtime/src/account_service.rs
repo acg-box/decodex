@@ -7945,8 +7945,7 @@ mod tests {
 		let (_directory, _store, service, _account, shared) =
 			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
 		let observations = AccountObservationService::new(Arc::new(service), None, None, None);
-		let initial = observations.wait_for_initial_observation();
-
+		let initial = observations.wait_for_initial_observation(None);
 		tokio::pin!(initial);
 
 		assert!(futures_util::poll!(initial.as_mut()).is_pending());
@@ -7961,9 +7960,7 @@ mod tests {
 		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
 
 		observations.request_refresh();
-
-		let refreshed = observations.wait_for_initial_observation();
-
+		let refreshed = observations.wait_for_initial_observation(None);
 		tokio::pin!(refreshed);
 
 		assert!(futures_util::poll!(refreshed.as_mut()).is_ready());
@@ -7988,7 +7985,7 @@ mod tests {
 
 		time::timeout(
 			std::time::Duration::from_secs(1),
-			observations.wait_for_initial_observation(),
+			observations.wait_for_initial_observation(None),
 		)
 		.await
 		.expect("an empty registry needs no provider wait");

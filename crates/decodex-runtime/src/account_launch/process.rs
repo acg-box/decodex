@@ -5438,8 +5438,11 @@ fn initialize_probe_projection(
 	negotiation: &mut ProbeNegotiation<'_>,
 	capabilities: InitializeCapabilities,
 ) -> Result<(), ProbeError> {
+	let phase = crate::startup_trace::Phase::new("native_initialize");
 	initialize_probe_connection(process, timeout, negotiation, capabilities)?;
+	drop(phase);
 
+	let _phase = crate::startup_trace::Phase::new("native_account_login");
 	let account_id = process.binding.account_id().clone();
 	let mut projection = CredentialProjection { process, timeout, used: false };
 	let expected =
