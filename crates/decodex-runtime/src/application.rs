@@ -2798,6 +2798,16 @@ impl Application for ServiceApplication {
 				self.query_usage_estimate(work_id.as_str()).await,
 			QueryPayload::GetAgentInputReceipts { work_id, after } =>
 				self.query_input_receipts(work_id.as_str(), *after).await,
+			QueryPayload::GetAgentMessageReceipt { work_id, key } => {
+				let received = match &self.store {
+					ProductStore::Available(store) => store
+						.agent_message_received(work_id.as_str().into(), key.as_str().into())
+						.await
+						.unwrap_or(false),
+					_ => false,
+				};
+				QueryResultPayload::AgentMessageReceived(received)
+			},
 			QueryPayload::GetAgentSteerReceipt { identity } =>
 				self.query_steer_receipt(identity).await,
 			QueryPayload::GetAgentPendingAppUiCall { .. }

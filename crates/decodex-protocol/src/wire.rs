@@ -274,7 +274,7 @@ impl<'de> Deserialize<'de> for QueryId {
 }
 
 /// Stable key used to deduplicate a logical command.
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
 pub struct IdempotencyKey(String);
 impl IdempotencyKey {
@@ -2370,6 +2370,13 @@ pub enum QueryPayload {
 		/// Read current inputs strictly after this persistent event identity.
 		after: Option<i64>,
 	},
+	/// Read positive queue acceptance for an exact input without resubmitting it.
+	GetAgentMessageReceipt {
+		/// Original local conversation.
+		work_id: EntityId,
+		/// Original command identity.
+		key: IdempotencyKey,
+	},
 	/// Read positive evidence for one exact steering submission.
 	GetAgentSteerReceipt {
 		/// Identity captured before dispatch.
@@ -3275,6 +3282,8 @@ pub enum QueryResultPayload {
 	AgentSteerReceipt(AgentSteerReceiptResult),
 	/// Independent unconfirmed input page.
 	AgentInputReceipts(AgentInputReceiptsResult),
+	/// True only when the exact input is in the service-owned queue.
+	AgentMessageReceived(bool),
 	/// Native goal observation.
 	AgentNativeGoal(AgentNativeGoalResult),
 	/// Source-bound native read receipt.

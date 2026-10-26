@@ -1,4 +1,5 @@
 //! Handback requires saved input and refreshed presentation before acknowledgement.
+use decodex_protocol::AgentActionDto;
 
 use std::{
 	fs::{self, Permissions},
@@ -19,7 +20,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 #[cfg(test)]
 use crate::shell::agent_surface::drafts::storage::{
-	self, AgentActionDto, Entity, IntoElement, LoadState, Render, Window,
+	self, Entity, IntoElement, LoadState, Render, Window,
 };
 use crate::shell::agent_surface::drafts::{
 	storage::{

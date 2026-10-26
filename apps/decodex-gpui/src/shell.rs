@@ -5480,21 +5480,7 @@ fn ordinary_draft_recovery_notice(
 	cx: &mut Context<Shell>,
 ) -> Stateful<Div> {
 	if let Some(notice) = shell.agent.read(cx).ordinary_draft_notice() {
-		row = row
-			.child(gpui::div().id("ordinary-draft-storage-notice").child(notice.to_owned()))
-			.child(
-				gpui::div()
-					.id("ordinary-draft-recovery")
-					.cursor_pointer()
-					.child("Review saved drafts")
-					.on_click(cx.listener(|shell, _, _, cx| {
-						shell.agent.update(cx, |agent, cx| agent.show_ordinary_draft_recovery(cx));
-
-						shell.selected = Destination::Agent;
-
-						cx.notify();
-					})),
-			);
+		row = row.child(gpui::div().id("ordinary-draft-storage-notice").child(notice.to_owned()));
 	}
 
 	row

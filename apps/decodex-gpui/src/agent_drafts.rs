@@ -5,8 +5,6 @@ use std::{collections::BTreeMap, mem};
 
 #[cfg(test)] use gpui::px;
 
-#[cfg(test)] use crate::shell::agent_surface::AgentActionDto;
-#[cfg(test)] use crate::shell::agent_surface::AgentCommandResponse;
 #[cfg(test)] use crate::shell::agent_surface::ConversationReasoningEffort;
 #[cfg(test)] use crate::shell::agent_surface::ConversationWorkingDirectory;
 #[cfg(test)] use crate::shell::agent_surface::Entity;
@@ -290,7 +288,6 @@ pub(super) mod tests {
 			assert!(s.uncertain);
 
 			s.submission.pending = Some(PendingCommand {
-				recovery: None,
 				key: Some(IdempotencyKey::new("first-service-steer").unwrap()),
 				steer: Some(decodex_protocol::AgentSteerIdentity {
 					work_id: EntityId::new("root").unwrap(),

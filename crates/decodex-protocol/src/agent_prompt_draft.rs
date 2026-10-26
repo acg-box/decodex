@@ -999,10 +999,10 @@ mod tests {
 			.replace_text(0, 0..8, "Remote")
 			.unwrap();
 
-		let merged = local.reconcile_keep_both(&baseline, &remote).unwrap();
+		let merged = local.merge_edits(&baseline, &remote).unwrap();
 		let encoded = merged.encode().unwrap();
 
-		assert!(encoded.len() > 12 * 1_024 * 1_024);
+		assert_eq!(merged.profiles[&scope].prompt_edits, local.profiles[&scope].prompt_edits);
 
 		let directory = tempfile::tempdir().unwrap();
 		let root = directory.path().canonicalize().unwrap().join("desktop");
@@ -1017,7 +1017,6 @@ mod tests {
 
 		assert!(restored == merged);
 		assert_eq!(restored.profiles[&scope].composer.text, "Other unsent input");
-		assert_eq!(restored.recovered.len(), 1);
 	}
 
 	#[test]
@@ -1087,28 +1086,16 @@ mod tests {
 			.replace_text(0, 0..3, "remote")
 			.unwrap();
 
-		let merged = local.reconcile_keep_both(&restored, &remote).unwrap();
+		let merged = local.merge_edits(&restored, &remote).unwrap();
 
 		assert_eq!(merged.profiles[&scope].composer.text, "Existing unsent input");
 		assert_eq!(merged.profiles[&scope].prompt_edits, local.profiles[&scope].prompt_edits);
-		assert_eq!(merged.recovered[0].draft.prompt_edits, remote.profiles[&scope].prompt_edits);
-		assert!(merged.remove_recovered_copy(&merged.recovered[0]).is_err());
-
-		let selected = merged.restore_recovered_copy(&merged.recovered[0]).unwrap();
-
-		assert_eq!(selected.profiles[&scope].prompt_edits, remote.profiles[&scope].prompt_edits);
-
 		let mut removed = restored.clone();
-
 		removed.profiles.get_mut(&scope).unwrap().prompt_edits.clear();
-
-		let reconciled = removed.reconcile_keep_both(&restored, &remote).unwrap();
+		let reconciled = removed.merge_edits(&restored, &remote).unwrap();
 
 		assert_eq!(reconciled.profiles[&scope].prompt_edits, remote.profiles[&scope].prompt_edits);
 
-		let old = DesktopDraftDocument::decode(br#"{"version":7,"profiles":{}}"#).unwrap();
-
-		assert_eq!(old.version, 10);
-		assert!(old.profiles.is_empty());
+		assert!(DesktopDraftDocument::decode(br#"{"version":7,"profiles":{}}"#).is_err());
 	}
 }

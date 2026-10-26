@@ -25,7 +25,7 @@ use crate::{
 			FluentBuilder, InteractiveElement, IntoElement, LoadState, ParentElement, Render, Role,
 			SharedString, StatefulInteractiveElement, Styled, SubmitComposer, Window,
 			activity::HistoryScrollAnchor,
-			creation_setup, dock, graph, prompts, ui_theme,
+			dock, graph, prompts, ui_theme,
 			ui_theme::{
 				CAPTION_SIZE, COMPOSER_TOP_GAP, CONVERSATION_HEADER_HEIGHT, CONVERSATION_INSET,
 				CONVERSATION_TAB_GAP, CONVERSATION_TAB_SIZE, CONVERSATION_WIDTH, MESSAGE_GAP,
@@ -39,13 +39,13 @@ use crate::{
 	ui_motion::{self, AgentRailStatus, OverflowLabel, SmoothControl, TabReveal},
 	ui_theme::WORKSPACE_GUTTER,
 };
+use decodex_protocol::AgentWorkKindDto;
 #[cfg(any(test, feature = "visual-capture"))]
 use decodex_protocol::{
 	AgentDependencyDto,
 	AgentDispatchStateDto::{Idle, Running},
 	AgentWorkStatusDto::{Open, Resolved, UserDecision},
 };
-use decodex_protocol::{AgentWorkKindDto, DesktopRecoveredDraft};
 
 pub(super) const ARCHIVED_MESSAGE: &str = "Archived";
 pub(super) const ARCHIVED_DETAIL: &str = "Read-only until unarchived.";
@@ -1018,7 +1018,7 @@ impl AgentSurface {
 				.flex()
 				.flex_col()
 				.child(self.conversation_activity(cx))
-				.child(self.recovered_draft_panel(cx))
+				.children(self.local_message_cards(cx))
 				.when(has_saved_inputs, |footer| {
 					footer.child(
 						gpui::div()
@@ -1310,7 +1310,7 @@ impl AgentSurface {
 
 		if !is_agent && let Some(work) = selected.as_ref() {
 			chat = chat
-				.child(self.recovered_draft_panel(cx))
+				.children(self.local_message_cards(cx))
 				.child(self.conversation_activity(cx))
 				.child(self.workspace_followup(work, cx));
 		}
@@ -1707,7 +1707,7 @@ impl AgentSurface {
 			.items_center()
 			.pb(gpui::px(90.0))
 			.child(self.conversation_activity(cx))
-			.child(self.recovered_draft_panel(cx))
+			.children(self.local_message_cards(cx))
 			.child(gpui::div().w_full().child(self.render_composer(window, cx)))
 			.into_any_element()
 	}
@@ -2420,149 +2420,6 @@ impl AgentSurface {
 }
 
 impl AgentSurface {
-	fn draft_copy_controls(
-		&self,
-		index: usize,
-		copy: DesktopRecoveredDraft,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		let export = copy.clone();
-		let mut row = gpui::div().flex().flex_wrap().gap_2();
-
-		row = row.child(self.workspace_action(
-			format!("draft-copy-export-{index}"),
-			"Export full draft".into(),
-			move |s, cx| s.export_draft_copy(export.clone(), cx),
-			cx,
-		));
-
-		if self.draft_copy_matches_service(&copy) {
-			let restore = copy.clone();
-
-			row = row.child(self.workspace_action(
-				format!("draft-copy-restore-{index}"),
-				"Restore this copy".into(),
-				move |s, cx| s.restore_draft_copy(restore.clone(), cx),
-				cx,
-			));
-		} else {
-			row = row.child("Unassigned draft · Export to keep all data");
-		}
-		if copy.draft.has_unconfirmed_delivery() {
-			row = row.child("Check delivery before removing this copy");
-		} else if self.removing_draft_copy(&copy) {
-			row = row
-				.child("Remove saved copy? Current input stays.")
-				.child(self.workspace_action(
-					format!("draft-copy-remove-confirm-{index}"),
-					"Confirm removal".into(),
-					move |s, cx| s.confirm_draft_copy_removal(copy.clone(), cx),
-					cx,
-				))
-				.child(self.workspace_action(
-					format!("draft-copy-remove-cancel-{index}"),
-					"Cancel".into(),
-					|s, cx| s.cancel_draft_copy_removal(cx),
-					cx,
-				));
-		} else {
-			row = row.child(self.workspace_action(
-				format!("draft-copy-remove-{index}"),
-				"Remove copy…".into(),
-				move |s, cx| s.request_draft_copy_removal(copy.clone(), cx),
-				cx,
-			));
-		}
-
-		row.into_any_element()
-	}
-
-	fn recovered_draft_panel(&self, cx: &mut Context<Self>) -> AnyElement {
-		let count = self.recovered_draft_count();
-
-		if count == 0 {
-			return gpui::div().into_any_element();
-		}
-
-		let mut panel = gpui::div().w_full().flex().flex_col().gap_2().px_4().py_2();
-
-		panel = panel.child(self.workspace_action(
-			"draft-copies-toggle".into(),
-			format!("Saved draft copies ({count})"),
-			|s, cx| s.toggle_recovered_drafts(cx),
-			cx,
-		));
-
-		if self.show_recovered_drafts() {
-			let copies = self.recovered_drafts();
-			let mut list = gpui::div()
-				.id("draft-copy-list")
-				.max_h(gpui::px(220.0))
-				.overflow_y_scroll()
-				.flex()
-				.flex_col()
-				.gap_2();
-
-			for (index, copy) in copies.into_iter().enumerate() {
-				let preview: String = copy.draft.composer.text.chars().take(180).collect();
-				let ordinary_preview = copy.draft.ordinary.values().next().map(|draft| {
-					format!(
-						"Ordinary draft · {} · {}",
-						draft.working_directory.as_str(),
-						draft.composer.text.chars().take(180).collect::<String>()
-					)
-				});
-				let summary = format!(
-					"Copy {} · {} files · {} task links · {} answers · {} folders",
-					index + 1,
-					copy.draft.composer.attachments.len(),
-					copy.draft.composer.references.len(),
-					copy.draft.questions.len(),
-					copy.draft.ordinary.len()
-				);
-
-				list = list.child(
-					gpui::div()
-						.flex()
-						.flex_col()
-						.gap(gpui::px(2.))
-						.child(summary)
-						.child(format!("Preview: {preview}"))
-						.when_some(ordinary_preview, |element, preview| element.child(preview))
-						.when_some(copy.draft.composer.creation.as_ref(), |element, setup| {
-							element.child(creation_setup::summary(setup))
-						})
-						.child(self.draft_copy_controls(index, copy, cx)),
-				);
-			}
-
-			panel = panel.child(list);
-		}
-
-		panel.into_any_element()
-	}
-
-	fn keep_both_draft_button(&self, cx: &mut Context<Self>) -> AnyElement {
-		gpui::div()
-			.id("draft-keep-both")
-			.debug_selector(|| "draft-keep-both".into())
-			.role(Role::Button)
-			.tab_index(0)
-			.aria_label("Keep both draft copies")
-			.px_2()
-			.py(gpui::px(3.))
-			.cursor_pointer()
-			.on_click(cx.listener(|s, _, _, cx| s.keep_both_drafts(cx)))
-			.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
-				if !event.is_held && matches!(event.keystroke.key.as_str(), "enter" | "space") {
-					cx.stop_propagation();
-					s.keep_both_drafts(cx);
-				}
-			}))
-			.child("Keep both drafts")
-			.into_any_element()
-	}
-
 	pub(super) fn feedback_scope(&self) -> SharedString {
 		format!(
 			"{:?}:{:?}:{:?}",
@@ -2577,7 +2434,14 @@ impl AgentSurface {
 			self.feedback_scope(),
 			self.conversation_feedback(),
 		)
-		.action(self.can_keep_both_drafts().then(|| self.keep_both_draft_button(cx)))
+		.action(self.can_retry_input_save().then(|| {
+			self.workspace_action(
+				"retry-input-save".into(),
+				"Retry saving".into(),
+				|s, cx| s.retry_input_save(cx),
+				cx,
+			)
+		}))
 		.into_any_element()
 	}
 

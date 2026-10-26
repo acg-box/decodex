@@ -680,7 +680,6 @@ mod tests {
 
 	fn pending_reply(s: &AgentSurface, key: &IdempotencyKey) -> PendingCommand {
 		PendingCommand {
-			recovery: None,
 			key: Some(key.clone()),
 			steer: None,
 			execution_intent: None,
@@ -962,7 +961,6 @@ mod tests {
 			});
 			s.finish_command(
 				PendingCommand {
-					recovery: None,
 					key: None,
 					steer: None,
 					execution_intent: None,

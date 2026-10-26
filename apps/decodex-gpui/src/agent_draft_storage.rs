@@ -1,6 +1,6 @@
 //! Local cold recovery and background publication of unsent desktop inputs.
+#[path = "agent_draft_merge.rs"] mod merge;
 #[path = "agent_ordinary_storage.rs"] mod ordinary;
-#[path = "agent_draft_recovery.rs"] mod recovery;
 
 use std::{
 	collections::BTreeSet,
@@ -10,9 +10,8 @@ use std::{
 
 #[cfg(test)]
 use crate::shell::agent_surface::drafts::{
-	AgentActionDto, AgentCommandResponse, ConversationReasoningEffort,
-	ConversationWorkingDirectory, Entity, IdempotencyKey, IntoElement, LoadState, Render, Window,
-	px,
+	ConversationReasoningEffort, ConversationWorkingDirectory, Entity, IntoElement, LoadState,
+	Render, Window, px,
 };
 use crate::{
 	shell::agent_surface::drafts::{
@@ -22,8 +21,9 @@ use crate::{
 	ui_feedback::Feedback,
 };
 use decodex_protocol::{
-	AgentSteerIdentity, ClientDraftStore, DesktopComposerDraft, DesktopDraftDocument,
-	DesktopPendingDraft, DesktopProfileDraft, DesktopPromptEditDraft,
+	AgentCommandResponse, ClientDraftStore, DesktopComposerDraft, DesktopDraftDocument,
+	DesktopMessage, DesktopMessageState, DesktopPendingDraft, DesktopProfileDraft,
+	DesktopPromptEditDraft, IdempotencyKey,
 };
 
 // Preserve absence separately from a failed bounded conversion.
@@ -47,10 +47,8 @@ pub(super) struct Storage {
 	error: Option<String>,
 	busy: bool,
 	quitting: bool,
-	reconcilable: bool,
+	conflicted: bool,
 	seeded: bool,
-	show_recovered: bool,
-	remove_candidate: Option<decodex_protocol::DesktopRecoveredDraft>,
 }
 impl Storage {
 	pub(super) fn clear_unbound(&mut self) {
@@ -62,12 +60,9 @@ impl Storage {
 	}
 
 	pub(super) fn seed_conflict(&mut self) {
-		self.reconcilable = true;
+		self.conflicted = true;
 		self.seeded = true;
-		self.error = Some(
-			"Two draft versions found. Current edits are unsaved; the saved copy is unchanged."
-				.into(),
-		);
+		self.error = None;
 	}
 
 	fn empty() -> Self {
@@ -80,10 +75,8 @@ impl Storage {
 			error: None,
 			busy: false,
 			quitting: false,
-			reconcilable: false,
+			conflicted: false,
 			seeded: false,
-			show_recovered: false,
-			remove_candidate: None,
 		}
 	}
 
@@ -130,6 +123,18 @@ impl Default for Storage {
 }
 
 impl AgentSurface {
+	pub(in super::super) fn dismiss_failed_message(&mut self, key: &IdempotencyKey, cx: &mut Context<Self>) {
+		let state = &mut self.draft_profiles.storage;
+		let Some(profile) = self.profile.as_ref().and_then(|profile| {
+			state.document.profiles.get_mut(&profile.draft_scope_key())
+		}) else { return };
+		if profile.messages.get(key).is_some_and(|message| message.state == DesktopMessageState::Failed) {
+			profile.messages.remove(key);
+			self.save_draft_document(cx);
+			cx.notify();
+		}
+	}
+
 	pub(in super::super) fn clear_prepared_prompt_record(
 		&mut self,
 		profile: &ClientProfile,
@@ -431,6 +436,22 @@ impl AgentSurface {
 		})
 	}
 
+	pub(in super::super) fn can_retry_input_save(&self) -> bool {
+		self.draft_profiles.storage.store.is_some()
+			&& self.draft_profiles.storage.error.is_some()
+			&& self.draft_profiles.storage.task.is_none()
+			&& !self.sending
+	}
+
+	pub(in super::super) fn retry_input_save(&mut self, cx: &mut Context<Self>) {
+		if !self.can_retry_input_save() {
+			return;
+		}
+		self.draft_profiles.storage.error = None;
+		self.save_draft_document(cx);
+		cx.notify();
+	}
+
 	pub(in super::super) fn draft_storage_notice(&self) -> Option<&str> {
 		self.draft_profiles.storage.error.as_deref().or_else(|| {
 			self.draft_profiles
@@ -484,119 +505,75 @@ impl AgentSurface {
 		}
 	}
 
-	pub(in super::super) fn command_draft_copy(
-		&self,
+	pub(in super::super) fn retained_messages(&self) -> Vec<(IdempotencyKey, DesktopMessage)> {
+		self.draft_profiles
+			.active
+			.as_ref()
+			.and_then(|profile| {
+				self.draft_profiles.storage.document.profiles.get(&profile.draft_scope_key())
+			})
+			.map(|profile| {
+				profile
+					.messages
+					.iter()
+					.map(|(key, message)| (key.clone(), message.clone()))
+					.collect()
+			})
+			.unwrap_or_default()
+	}
+
+	pub(in super::super) fn stage_message(
+		&mut self,
+		key: &IdempotencyKey,
+		message: DesktopMessage,
+		replaces: Option<&IdempotencyKey>,
 		cx: &Context<Self>,
-	) -> Result<decodex_protocol::DesktopRecoveredDraft, &'static str> {
+	) -> Result<(), &'static str> {
+		self.remember_draft_document(cx);
 		let scope = self
 			.draft_profiles
 			.active
 			.as_ref()
-			.ok_or("Draft storage unavailable.")?
+			.ok_or("Input storage is unavailable.")?
 			.draft_scope_key();
-		let mut draft = self.capture_draft_document(cx).ok_or("Draft identity is unavailable.")?;
-
-		// Capture the original source and choices before asynchronous dispatch.
-		// Other editors remain in the current document, not in this alternative.
-		draft.parked.clear();
-		draft.questions.clear();
-
-		let copy = decodex_protocol::DesktopRecoveredDraft { scope: Some(scope), draft };
-		let mut prospective = self.draft_profiles.storage.document.clone();
-
-		if !prospective.recovered.contains(&copy) {
-			prospective.recovered.push(copy.clone());
+		let mut document = self.draft_profiles.storage.document.clone();
+		let messages = &mut document.profiles.entry(scope).or_default().messages;
+		if let Some(previous) = replaces {
+			messages.remove(previous);
 		}
-
-		prospective
-			.encode()
-			.map_err(|_| "Saved draft limit reached. Export or remove a copy before sending.")?;
-
-		Ok(copy)
+		messages.insert(key.clone(), message);
+		document.encode().map_err(|_| "Input could not be saved. Nothing sent.")?;
+		self.draft_profiles.storage.document = document;
+		Ok(())
 	}
 
-	pub(in super::super) fn fence_command_draft(&mut self, pending: &mut PendingCommand) {
-		let Some(copy) = pending.recovery.as_mut() else { return };
-
-		copy.draft.uncertain = true;
-
-		if let Some(key) = &pending.key {
-			copy.draft.unconfirmed_commands.push(key.clone());
-		}
-
-		self.draft_profiles.storage.document.recovered.push(copy.clone());
-	}
-
-	pub(in super::super) fn resolve_steer_draft_copies(&mut self, identity: &AgentSteerIdentity) {
-		let scope = self.draft_profiles.active.as_ref().map(ClientProfile::draft_scope_key);
-
-		for copy in &mut self.draft_profiles.storage.document.recovered {
-			if copy.scope != scope
-				|| copy.draft.composer.work_id.as_ref() != Some(&identity.work_id)
-				|| copy.draft.composer.thread_id.as_ref() != Some(&identity.thread_id)
-				|| !copy.draft.unconfirmed_commands.contains(&identity.submission_id)
-			{
-				continue;
-			}
-
-			copy.draft.unconfirmed_commands.retain(|key| key != &identity.submission_id);
-
-			if copy.draft.pending.as_ref().and_then(|pending| pending.steer.as_ref())
-				== Some(identity)
-			{
-				copy.draft.pending = None;
-			}
-
-			copy.draft.uncertain =
-				!copy.draft.unconfirmed_commands.is_empty() || copy.draft.pending.is_some();
-		}
-	}
-
-	pub(in super::super) fn remove_command_draft_fence(&mut self, pending: &PendingCommand) {
-		if let Some(copy) = &pending.recovery {
-			self.draft_profiles.storage.document.recovered.retain(|saved| saved != copy);
-		}
-	}
-
-	pub(in super::super) fn retain_failed_command_draft(
+	pub(in super::super) fn settle_message(
 		&mut self,
-		pending: &PendingCommand,
-		uncertain: bool,
-		cx: &Context<Self>,
+		key: Option<&IdempotencyKey>,
+		result: &Result<AgentCommandResponse, String>,
 	) {
-		let Some(mut copy) = pending.recovery.clone() else { return };
-		let current = self.capture_draft_document(cx);
-		let same_editor = current.as_ref().and_then(|draft| {
-			if draft.composer.work_id == copy.draft.composer.work_id {
-				Some(&draft.composer)
-			} else {
-				copy.draft.composer.work_id.as_ref().and_then(|id| draft.parked.get(id.as_str()))
-			}
-		}) == Some(&copy.draft.composer);
-
-		if same_editor
-			&& current.as_ref().is_some_and(|draft| draft.execution == copy.draft.execution)
-		{
+		let Some(key) = key else { return };
+		let Some(profile) = self.draft_profiles.active.as_ref().and_then(|profile| {
+			self.draft_profiles.storage.document.profiles.get_mut(&profile.draft_scope_key())
+		}) else {
 			return;
+		};
+		if matches!(result, Ok(AgentCommandResponse::Accepted { .. })) {
+			profile.messages.remove(key);
+		} else if let Some(message) = profile.messages.get_mut(key) {
+			message.state =
+				if matches!(result, Ok(AgentCommandResponse::PotentiallyDispatched { .. })) {
+					DesktopMessageState::Unconfirmed
+				} else {
+					DesktopMessageState::Failed
+				};
+			message.error = match result {
+				Err(error) => Some(error.clone()),
+				Ok(AgentCommandResponse::Rejected { error }) =>
+					Some(super::super::command_rejection_message(error)),
+				_ => None,
+			};
 		}
-
-		copy.draft.uncertain = uncertain;
-
-		copy.draft.unconfirmed_commands.retain(|key| Some(key) != pending.key.as_ref());
-
-		if uncertain && let Some(key) = &pending.key {
-			copy.draft.unconfirmed_commands.push(key.clone());
-		}
-
-		let storage = &mut self.draft_profiles.storage;
-
-		if !storage.document.recovered.contains(&copy) {
-			storage.document.recovered.push(copy);
-		}
-
-		storage.show_recovered = true;
-		// The ordinary save reports capacity/conflict errors and keeps both copies
-		// in memory. It must not discard the original to make a write fit.
 	}
 
 	fn capture_draft_document(&self, cx: &Context<Self>) -> Option<DesktopProfileDraft> {
@@ -670,6 +647,15 @@ impl AgentSurface {
 			.transpose_option()?;
 
 		Some(DesktopProfileDraft {
+			messages: self
+				.draft_profiles
+				.active
+				.as_ref()
+				.and_then(|profile| {
+					self.draft_profiles.storage.document.profiles.get(&profile.draft_scope_key())
+				})
+				.map(|profile| profile.messages.clone())
+				.unwrap_or_default(),
 			new_conversation_workspace: self
 				.workspace
 				.new_conversation_workspace
@@ -732,6 +718,10 @@ impl AgentSurface {
 				Some("Draft storage unavailable. Nothing sent.".into());
 		}
 
+		if self.draft_profiles.storage.conflicted && self.draft_profiles.storage.task.is_none() {
+			self.merge_current_edits(cx);
+			return;
+		}
 		let state = &mut self.draft_profiles.storage;
 
 		if state.task.is_some() {
@@ -785,18 +775,17 @@ impl AgentSurface {
 						state.saved = saved;
 					},
 					Err(SaveFailure::Busy) => {
+						let changed = !state.busy;
 						state.busy = true;
-
-						cx.notify();
+						if changed {
+							cx.notify();
+						}
 
 						return;
 					},
 					Err(SaveFailure::Conflict) => {
-						state.reconcilable = true;
-						state.error = Some(
-							"Drafts changed in another window. Choose Keep both to continue."
-								.into(),
-						);
+						state.conflicted = true;
+						state.error = None;
 					},
 					Err(SaveFailure::Invalid(reason)) => state.error = Some(reason.into()),
 					Err(SaveFailure::Failed) =>
@@ -847,7 +836,6 @@ impl Drafts {
 		}
 
 		result.steer_pending = saved.pending.map(|pending| PendingCommand {
-			recovery: None,
 			key: pending.steer.as_ref().map(|steer| steer.submission_id.clone()),
 			steer: pending.steer,
 			epoch,
@@ -927,19 +915,19 @@ mod prompt_handback_tests;
 mod prompt_send_tests;
 #[cfg(test)]
 mod tests {
+	use decodex_protocol::AgentActionDto;
 	use std::os::unix::fs::OpenOptionsExt as _;
 
 	#[cfg(test)] use gpui::AppContext as _;
 
 	#[cfg(test)]
 	use crate::shell::agent_surface::drafts::storage::{
-		AgentActionDto, AgentCommandResponse, ConversationReasoningEffort,
-		ConversationWorkingDirectory, IdempotencyKey, LoadState,
+		ConversationReasoningEffort, ConversationWorkingDirectory, IdempotencyKey, LoadState,
 	};
 	use crate::shell::agent_surface::drafts::{
 		storage::{
-			self, AgentSurface, ClientDraftStore, DesktopDraftDocument, DesktopProfileDraft,
-			Drafts, Duration, EntityId, PendingCommand, SaveFailure, Storage, WireText,
+			self, AgentSurface, ClientDraftStore, DesktopDraftDocument, Drafts, Duration, EntityId,
+			SaveFailure, Storage, WireText,
 		},
 		tests,
 	};
@@ -1101,7 +1089,6 @@ mod tests {
 		assert!(!saved.prompt_edits.contains_key(pending.review_token.as_str()));
 		assert!(saved.prompt_edits.contains_key(&"b".repeat(64)));
 		assert_eq!(saved.composer.text, "Unrelated main input");
-		assert!(document.recovered.is_empty(), "accepted edits are not a draft archive");
 	}
 
 	#[gpui::test]
@@ -1166,188 +1153,6 @@ mod tests {
 
 			assert!(!s.prompt_editor_saved(&draft));
 		});
-	}
-
-	#[gpui::test]
-	fn exact_receipt_settles_only_matching_saved_copies(cx: &mut gpui::TestAppContext) {
-		let (_service, profile, other) = tests::profiles();
-		let surface = cx.new(AgentSurface::new);
-
-		surface.update(cx, |s, cx| {
-			s.bind_profile(Some(profile.clone()), cx);
-
-			let identity = decodex_protocol::AgentSteerIdentity {
-				work_id: EntityId::new("work").unwrap(),
-				thread_id: WireText::new("thread").unwrap(),
-				turn_id: WireText::new("turn").unwrap(),
-				submission_id: IdempotencyKey::new("confirmed").unwrap(),
-			};
-			let mut draft = DesktopProfileDraft::default();
-
-			draft.composer.work_id = Some(identity.work_id.clone());
-			draft.composer.thread_id = Some(identity.thread_id.clone());
-			draft.composer.text = "Retain this copy".into();
-			draft.uncertain = true;
-			draft.unconfirmed_commands = vec![identity.submission_id.clone()];
-
-			let copy = decodex_protocol::DesktopRecoveredDraft {
-				scope: Some(profile.draft_scope_key()),
-				draft,
-			};
-			let mut foreign = copy.clone();
-
-			foreign.scope = Some(other.draft_scope_key());
-
-			let mut additional = copy.clone();
-
-			additional.draft.unconfirmed_commands.push(IdempotencyKey::new("unknown").unwrap());
-
-			s.draft_profiles.storage.document.recovered =
-				vec![copy.clone(), foreign.clone(), additional];
-
-			s.resolve_steer_draft_copies(&identity);
-
-			let copies = &s.draft_profiles.storage.document.recovered;
-
-			assert_eq!(copies[0].draft.composer.text, "Retain this copy");
-			assert!(!copies[0].draft.uncertain && copies[0].draft.unconfirmed_commands.is_empty());
-			assert!(copies[1] == foreign, "another service retains its uncertainty");
-			assert!(copies[2].draft.uncertain, "another submission remains unconfirmed");
-			assert_eq!(copies[2].draft.unconfirmed_commands[0].as_str(), "unknown");
-		});
-	}
-
-	#[gpui::test]
-	fn cold_reopen_keeps_inflight_original_after_later_edit(cx: &mut gpui::TestAppContext) {
-		let (_service, profile, _) = tests::profiles();
-		let directory = tempfile::tempdir().unwrap();
-		let store =
-			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
-				.unwrap();
-		let surface = cx.new(AgentSurface::new);
-		let key = IdempotencyKey::new("inflight-original").unwrap();
-
-		surface.update(cx, |s, cx| {
-			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
-
-			s.bind_profile(Some(profile.clone()), cx);
-			s.composer.update(cx, |input, cx| input.set_content("Original in flight", cx));
-
-			let mut pending = PendingCommand {
-				recovery: Some(s.command_draft_copy(cx).unwrap()),
-				key: Some(key.clone()),
-				steer: None,
-				epoch: s.command_epoch,
-				execution_intent: None,
-				draft: Some("Original in flight".into()),
-				owner: None,
-				attachments: Some(vec![]),
-				references: Some(vec![]),
-			};
-
-			s.fence_command_draft(&mut pending);
-			s.submission.unconfirmed.push(key.clone());
-
-			s.sending = true;
-
-			s.composer.update(cx, |input, cx| input.set_content("Later unsent edit", cx));
-			s.remember_draft_document(cx);
-
-			storage::publish_document(&store, 0, &s.draft_profiles.storage.document)
-				.unwrap_or_else(|_| panic!("saved"));
-		});
-
-		let reopened = cx.new(AgentSurface::new);
-
-		reopened.update(cx, |s, cx| {
-			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
-
-			s.bind_profile(Some(profile), cx);
-
-			assert_eq!(s.composer.read(cx).content(), "Later unsent edit");
-			assert!(s.uncertain && !s.sending && s.submission.command.is_none());
-
-			let copies = s.recovered_drafts();
-
-			assert_eq!(copies.len(), 1);
-			assert_eq!(copies[0].draft.composer.text, "Original in flight");
-			assert!(copies[0].draft.uncertain);
-			assert_eq!(copies[0].draft.unconfirmed_commands, vec![key]);
-		});
-	}
-
-	#[gpui::test]
-	fn failed_send_keeps_original_copy_and_new_editor_after_reopen(cx: &mut gpui::TestAppContext) {
-		let (_service, profile, _) = tests::profiles();
-
-		for unknown in [false, true] {
-			let directory = tempfile::tempdir().unwrap();
-			let root = directory.path().canonicalize().unwrap().join("desktop");
-			let store = ClientDraftStore::open_at(&root).unwrap();
-			let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-
-			surface.update(visual, |s, cx| {
-				s.draft_profiles.storage = Storage::open(Ok(store.clone()));
-
-				s.bind_profile(Some(profile.clone()), cx);
-
-				s.composer_manager = Some("original-work".into());
-
-				s.draft_profiles.threads.insert("original-work".into(), "original-thread".into());
-				s.composer.update(cx, |input, cx| input.set_content("Original failed message", cx));
-
-				let pending = PendingCommand {
-					recovery: Some(s.command_draft_copy(cx).unwrap()),
-					key: Some(IdempotencyKey::new("failed-message").unwrap()),
-					steer: None,
-					epoch: s.command_epoch,
-					execution_intent: None,
-					draft: Some("Original failed message".into()),
-					owner: Some("original-work".into()),
-					attachments: Some(vec![]),
-					references: Some(vec![]),
-				};
-
-				s.composer.update(cx, |input, cx| input.set_content("Newer editor", cx));
-				// The late result must retain the thread captured before dispatch.
-				s.draft_profiles
-					.threads
-					.insert("original-work".into(), "replacement-thread".into());
-				s.finish_command(
-					pending,
-					if unknown {
-						Ok(AgentCommandResponse::PotentiallyDispatched {
-							failure: decodex_protocol::ClientFailure::ProtocolTimeout,
-						})
-					} else {
-						Err("Fixture dispatch failed".into())
-					},
-					cx,
-				);
-
-				assert_eq!(s.composer.read(cx).content(), "Newer editor");
-				assert!(s.show_recovered_drafts());
-			});
-
-			visual.run_until_parked();
-
-			let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
-
-			assert_eq!(saved.profiles[&profile.draft_scope_key()].composer.text, "Newer editor");
-			assert_eq!(saved.recovered.len(), 1);
-
-			let copy = &saved.recovered[0];
-
-			assert_eq!(copy.scope, Some(profile.draft_scope_key()));
-			assert_eq!(copy.draft.composer.text, "Original failed message");
-			assert_eq!(copy.draft.composer.thread_id.as_ref().unwrap().as_str(), "original-thread");
-			assert_eq!(copy.draft.uncertain, unknown);
-			assert_eq!(copy.draft.unconfirmed_commands.len(), usize::from(unknown));
-
-			if unknown {
-				assert!(saved.remove_recovered_copy(copy).is_err());
-			}
-		}
 	}
 
 	#[gpui::test]
@@ -1461,7 +1266,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn cold_quit_conflict_retains_window_input(cx: &mut gpui::TestAppContext) {
+	fn cold_quit_merges_current_input_before_close(cx: &mut gpui::TestAppContext) {
 		let (_service, profile, _) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
@@ -1471,7 +1276,7 @@ mod tests {
 		let flush = surface.update(visual, |s, cx| {
 			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
 
-			s.bind_profile(Some(profile), cx);
+			s.bind_profile(Some(profile.clone()), cx);
 			s.composer.update(cx, |input, cx| input.set_content("Unmerged edit", cx));
 			store.save(0, &DesktopDraftDocument::default().encode().unwrap()).unwrap();
 
@@ -1485,87 +1290,15 @@ mod tests {
 		visual.executor().advance_clock(Duration::from_millis(100));
 		visual.run_until_parked();
 
-		assert_eq!(outcome.get(), Some(false));
+		assert_eq!(outcome.get(), Some(true));
 
 		surface.update(visual, |s, cx| {
-			assert!(!s.drafts_ready_for_quit(cx));
+			assert!(s.drafts_ready_for_quit(cx));
 			assert_eq!(s.composer.read(cx).content(), "Unmerged edit");
-			assert!(s.feedback.contains("Quit canceled"));
 		});
 
-		assert_eq!(store.load().unwrap().revision, 1);
-	}
-
-	#[gpui::test]
-	fn cold_accepted_command_publishes_cleanup_without_waiting_for_poll(
-		cx: &mut gpui::TestAppContext,
-	) {
-		let (_service, profile, _) = tests::profiles();
-		let directory = tempfile::tempdir().unwrap();
-		let store =
-			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
-				.unwrap();
-		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-		let key = IdempotencyKey::new("accepted-command").unwrap();
-		let pending = surface.update(visual, |s, cx| {
-			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
-
-			s.bind_profile(Some(profile.clone()), cx);
-
-			s.composer_manager = Some("work".into());
-
-			s.composer.update(cx, |input, cx| input.set_content("Accepted input", cx));
-
-			let mut pending = PendingCommand {
-				recovery: Some(s.command_draft_copy(cx).unwrap()),
-				key: Some(key.clone()),
-				steer: None,
-				epoch: s.command_epoch,
-				execution_intent: None,
-				draft: Some("Accepted input".into()),
-				owner: Some("work".into()),
-				attachments: None,
-				references: None,
-			};
-
-			s.fence_command_draft(&mut pending);
-
-			s.sending = true;
-
-			s.submission.unconfirmed.push(key.clone());
-			s.save_draft_document(cx);
-
-			pending
-		});
-
-		visual.run_until_parked();
-
-		assert_eq!(store.load().unwrap().revision, 1);
-
-		surface.update(visual, |s, cx| {
-			s.finish_command(
-				pending,
-				Ok(AgentCommandResponse::Accepted { work_id: EntityId::new("work").unwrap() }),
-				cx,
-			);
-
-			assert!(s.draft_profiles.storage.task.is_some());
-		});
-		visual.run_until_parked();
-
-		let snapshot = store.load().unwrap();
-
-		assert_eq!(snapshot.revision, 2);
-
-		let doc = DesktopDraftDocument::decode(&snapshot.payload).unwrap();
-
-		assert!(doc.recovered.is_empty(), "accepted copy is removed with its fence");
-
-		let saved = &doc.profiles[&profile.draft_scope_key()];
-
-		assert!(saved.composer.text.is_empty());
-		assert!(saved.unconfirmed_commands.is_empty());
-		assert!(!saved.uncertain);
+		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+		assert_eq!(saved.profiles[&profile.draft_scope_key()].composer.text, "Unmerged edit");
 	}
 
 	#[gpui::test]
@@ -1766,7 +1499,8 @@ mod tests {
 			assert!(s.feedback.contains("Nothing sent"));
 		});
 
-		assert_eq!(store.load().unwrap().revision, 1);
+		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+		assert!(saved.profiles.values().all(|profile| profile.unconfirmed_commands.is_empty()));
 	}
 
 	#[gpui::test]
@@ -1839,7 +1573,9 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn cold_draft_conflict_keeps_disk_and_current_input(cx: &mut gpui::TestAppContext) {
+	fn cold_draft_conflict_saves_current_input_without_alternative_snapshots(
+		cx: &mut gpui::TestAppContext,
+	) {
 		let (_service, profile, _) = tests::profiles();
 		let directory = tempfile::tempdir().unwrap();
 		let store =
@@ -1850,7 +1586,7 @@ mod tests {
 		surface.update(visual, |s, cx| {
 			s.draft_profiles.storage = Storage::open(Ok(store.clone()));
 
-			s.bind_profile(Some(profile), cx);
+			s.bind_profile(Some(profile.clone()), cx);
 			s.composer.update(cx, |input, cx| input.set_content("Keep current edit", cx));
 		});
 
@@ -1861,10 +1597,11 @@ mod tests {
 		visual.run_until_parked();
 		surface.read_with(visual, |s, cx| {
 			assert_eq!(s.composer.read(cx).content(), "Keep current edit");
-			assert!(s.draft_storage_notice().is_some());
+			assert!(s.draft_storage_notice().is_none());
 		});
 
-		assert_eq!(store.load().unwrap().payload, other);
+		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+		assert_eq!(saved.profiles[&profile.draft_scope_key()].composer.text, "Keep current edit");
 	}
 }
 #[cfg(test)]
@@ -1997,7 +1734,9 @@ mod ordinary_owner_tests {
 	}
 
 	#[gpui::test]
-	fn ordinary_competing_writer_blocks_dispatch_until_keep_both(cx: &mut gpui::TestAppContext) {
+	fn ordinary_competing_writer_saves_current_edits_before_dispatch(
+		cx: &mut gpui::TestAppContext,
+	) {
 		exercise_ordinary_competing_writer(cx, false);
 	}
 
@@ -2052,6 +1791,12 @@ mod ordinary_owner_tests {
 				.unwrap();
 
 		competing_store.save(snapshot.revision, &remote.encode().unwrap()).unwrap();
+		let writer = std::fs::OpenOptions::new()
+			.read(true)
+			.write(true)
+			.open(directory.path().join("desktop/client-drafts/writer.lock"))
+			.unwrap();
+		writer.try_lock().unwrap();
 		conversations.submit("Original input").unwrap();
 		shell.update(visual, |s, cx| s.sync_ordinary_drafts(cx));
 		visual.run_until_parked();
@@ -2083,16 +1828,14 @@ mod ordinary_owner_tests {
 			assert!(!conversations.can_cancel_unsent_ordinary());
 		}
 
+		drop(writer);
+		shell.update(visual, |s, cx| s.agent.update(cx, |agent, cx| agent.save_draft_document(cx)));
+		visual.run_until_parked();
+		shell.update(visual, |s, cx| s.synchronize_conversations(cx));
+		visual.run_until_parked();
+
 		shell.update(visual, |s, cx| {
 			assert_eq!(s.composer.read(cx).content(), "Later local input");
-
-			s.agent.update(cx, |agent, cx| {
-				assert!(agent.can_keep_both_drafts());
-
-				agent.keep_both_drafts(cx);
-			});
-
-			assert!(tests::take_ready_command(&conversations, &server).is_none());
 		});
 		visual.run_until_parked();
 
@@ -2102,17 +1845,8 @@ mod ordinary_owner_tests {
 			.profiles
 			.get(&scope)
 			.into_iter()
-			.chain(
-				saved
-					.recovered
-					.iter()
-					.filter(|copy| copy.scope.as_ref() == Some(&scope))
-					.map(|copy| &copy.draft),
-			)
 			.filter_map(|profile| profile.ordinary.get("/tmp"))
 			.collect();
-
-		assert!(records.iter().any(|record| record.composer.text == "Other client input"));
 
 		let local =
 			records.iter().find(|record| record.composer.text == "Later local input").unwrap();
@@ -2127,81 +1861,6 @@ mod ordinary_owner_tests {
 				Some(local.unconfirmed[0].clone())
 			);
 		}
-	}
-
-	#[gpui::test]
-	fn ordinary_live_restore_keeps_both_and_saves_later_input(cx: &mut gpui::TestAppContext) {
-		let (_service, profile, _) = super::super::tests::profiles();
-		let directory = tempfile::tempdir().unwrap();
-		let store =
-			ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
-				.unwrap();
-		let (conversations, server, _) = tests::catalog_conversations();
-		let (shell, visual) =
-			cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped));
-
-		shell.update(visual, |s, cx| {
-			s.conversations = conversations.clone();
-			s.reset_cards.profile = Some(profile.clone());
-			s.agent.update(cx, |agent, cx| {
-				agent.draft_profiles.storage = Storage::open(Ok(store.clone()));
-
-				agent.bind_profile(Some(profile.clone()), cx);
-			});
-
-			s.reset_ordinary_draft_binding(cx);
-			s.composer.update(cx, |input, cx| input.set_content("Original input", cx));
-			s.sync_ordinary_drafts(cx);
-		});
-
-		visual.run_until_parked();
-		conversations.submit("Original input").unwrap();
-
-		shell.update(visual, |s, cx| {
-			s.sync_ordinary_drafts(cx);
-
-			assert!(tests::take_ready_command(&conversations, &server).is_none());
-
-			s.agent.update(cx, |agent, _| {
-				let record = agent
-					.draft_profiles
-					.storage
-					.document
-					.profiles
-					.get_mut(&profile.draft_scope_key())
-					.unwrap()
-					.ordinary
-					.get_mut("/tmp")
-					.unwrap();
-
-				record.composer.text = "Requested replacement".into();
-			});
-
-			s.composer.update(cx, |input, cx| input.set_content("Later local input", cx));
-			s.sync_ordinary_drafts(cx);
-
-			assert_eq!(s.composer.read(cx).content(), "Later local input");
-		});
-
-		visual.run_until_parked();
-
-		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
-		let scope = profile.draft_scope_key();
-		let active = &saved.profiles[&scope].ordinary["/tmp"];
-
-		assert_eq!(active.composer.text, "Later local input");
-		assert_eq!(active.unconfirmed.len(), 1);
-		assert!(saved.recovered.iter().any(|copy| {
-			copy.scope.as_ref() == Some(&scope)
-				&& copy.draft.ordinary.get("/tmp").is_some_and(|draft| {
-					draft.composer.text == "Requested replacement"
-						&& draft.unconfirmed == active.unconfirmed
-				})
-		}));
-		assert_eq!(
-			tests::take_ready_command(&conversations, &server),
-			Some(active.unconfirmed[0].clone())
-		);
 	}
 
 	#[gpui::test]
@@ -2303,3 +1962,75 @@ mod ordinary_owner_tests {
 #[cfg(test)]
 #[path = "agent_ordinary_outcome_tests.rs"]
 mod ordinary_outcome_tests;
+
+#[cfg(test)]
+mod message_tests {
+	use super::{AgentSurface, ClientDraftStore, DesktopDraftDocument, Storage, publish_document};
+	use decodex_protocol::{
+		AgentActionDto, AgentAttachmentDto, ConversationWorkingDirectory, DesktopMessage,
+		DesktopMessageState, EntityId, HistoryText, IdempotencyKey,
+	};
+	use gpui::AppContext as _;
+
+	#[gpui::test]
+	fn submitted_message_and_later_editor_survive_reopen_with_separate_delivery_state(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_service, profile, _) = crate::shell::agent_surface::drafts::tests::profiles();
+		for state in [
+			DesktopMessageState::Sending,
+			DesktopMessageState::Unconfirmed,
+			DesktopMessageState::Failed,
+		] {
+			let directory = tempfile::tempdir().unwrap();
+			let store = ClientDraftStore::open_at(
+				&directory.path().canonicalize().unwrap().join("desktop"),
+			)
+			.unwrap();
+			let surface = cx.new(AgentSurface::new);
+			let key = IdempotencyKey::new("original-message").unwrap();
+			let action = AgentActionDto::SendConfigured {
+				root_id: EntityId::new("agent").unwrap(),
+				text: HistoryText::new("Original message").unwrap(),
+				execution: Default::default(),
+				attachments: vec![AgentAttachmentDto {
+					path: ConversationWorkingDirectory::new("/tmp/original.png").unwrap(),
+					image: true,
+					skill_name: None,
+				}],
+				task_references: vec![],
+			};
+			let message = DesktopMessage {
+				action,
+				owner: Some(EntityId::new("agent").unwrap()),
+				thread_id: None,
+				text: "Original message".into(),
+				state,
+				error: None,
+			};
+			surface.update(cx, |s, cx| {
+				s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+				s.bind_profile(Some(profile.clone()), cx);
+				s.stage_message(&key, message.clone(), None, cx).unwrap();
+				s.composer.update(cx, |input, cx| input.set_content("Later input stays here", cx));
+				s.uncertain = state != DesktopMessageState::Failed;
+				if s.uncertain {
+					s.submission.unconfirmed.push(key.clone());
+				}
+				s.remember_draft_document(cx);
+				assert!(publish_document(&store, 0, &s.draft_profiles.storage.document).is_ok());
+			});
+			let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+			assert!(saved.profiles[&profile.draft_scope_key()].messages[&key] == message);
+			let cold = cx.new(AgentSurface::new);
+			cold.update(cx, |s, cx| {
+				s.draft_profiles.storage = Storage::open(Ok(store));
+				s.bind_profile(Some(profile.clone()), cx);
+				assert_eq!(s.composer.read(cx).content(), "Later input stays here");
+				assert_eq!(s.uncertain, state != DesktopMessageState::Failed);
+				assert!(s.submission.command.is_none() && s.submission.waiting.is_none());
+				assert_eq!(s.retained_messages(), vec![(key.clone(), message.clone())]);
+			});
+		}
+	}
+}

@@ -1,12 +1,12 @@
 //! Local desktop editor snapshots. These records never authorize execution.
-#[path = "desktop_draft_recovery.rs"] mod recovery;
+#[path = "desktop_message_delivery.rs"] mod delivery;
+#[path = "desktop_draft_merge.rs"] mod merge;
 
-pub use self::recovery::DesktopRecoveredDraft;
+pub use self::delivery::{DesktopMessage, DesktopMessageState};
 
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	io::{self, Error, Write},
-	iter,
 };
 
 use serde::{Deserialize, Serialize};
@@ -22,9 +22,6 @@ use crate::{
 #[derive(Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopDraftDocument {
-	/// Source-bound alternatives retained by an explicit keep-both conflict action.
-	#[serde(default)]
-	pub recovered: Vec<DesktopRecoveredDraft>,
 	/// Input entered before any service profile was selected. Never a work-owned draft.
 	#[serde(default)]
 	pub unbound: DesktopComposerDraft,
@@ -43,35 +40,9 @@ impl DesktopDraftDocument {
 			return Err("Draft snapshot is too large");
 		}
 
-		let mut value: Self =
-			serde_json::from_slice(bytes).map_err(|_| "Draft snapshot is invalid")?;
-
-		if value.version <= 5 {
-			for profile in value
-				.profiles
-				.values_mut()
-				.chain(value.recovered.iter_mut().map(|copy| &mut copy.draft))
-			{
-				for ordinary in profile.ordinary.values_mut() {
-					for editor in iter::once(&mut ordinary.composer)
-						.chain(ordinary.new_conversation.iter_mut())
-						.chain(ordinary.parked.values_mut())
-					{
-						if editor.conversation_id.is_some() {
-							editor.creation_intent = DesktopCreationIntent {
-								model: true,
-								reasoning: true,
-								service_tier: true,
-							};
-						}
-					}
-				}
-			}
-		}
+		let value: Self = serde_json::from_slice(bytes).map_err(|_| "Draft snapshot is invalid")?;
 
 		value.validate()?;
-
-		value.version = 10;
 
 		Ok(value)
 	}
@@ -88,18 +59,11 @@ impl DesktopDraftDocument {
 	}
 
 	fn validate(&self) -> Result<(), &'static str> {
-		if !matches!(self.version, 1..=10) {
+		if self.version != 11 {
 			return Err("Draft snapshot version is unsupported");
 		}
 		if self.profiles.len() > 64 {
 			return Err("Too many draft profiles");
-		}
-		if self.recovered.len() > 32 {
-			return Err("Too many recovered draft copies");
-		}
-
-		for saved in &self.recovered {
-			saved.validate()?;
 		}
 
 		self.unbound.validate()?;
@@ -126,11 +90,10 @@ impl DesktopDraftDocument {
 impl Default for DesktopDraftDocument {
 	fn default() -> Self {
 		Self {
-			version: 10,
+			version: 11,
 			profiles: BTreeMap::new(),
 			unbound: Default::default(),
 			unbound_ordinary: Default::default(),
-			recovered: vec![],
 		}
 	}
 }
@@ -139,6 +102,8 @@ impl Default for DesktopDraftDocument {
 #[derive(Clone, Default, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DesktopProfileDraft {
+	/// Exact inputs still waiting for a service receipt or an explicit retry.
+	pub messages: BTreeMap<IdempotencyKey, DesktopMessage>,
 	/// Local new-conversation editor; no server work exists until the first send.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub new_conversation: Option<EntityId>,
@@ -174,6 +139,7 @@ impl DesktopProfileDraft {
 	/// Whether any retained command still needs delivery reconciliation.
 	pub fn has_unconfirmed_delivery(&self) -> bool {
 		self.uncertain
+			|| self.messages.values().any(|message| message.state != DesktopMessageState::Failed)
 			|| self
 				.prompt_edits
 				.values()
@@ -182,6 +148,12 @@ impl DesktopProfileDraft {
 	}
 
 	fn validate(&self) -> Result<(), &'static str> {
+		if self.messages.len() > 64 {
+			return Err("Too many unresolved messages");
+		}
+		for message in self.messages.values() {
+			message.validate()?;
+		}
 		self.composer.validate()?;
 
 		if self.prompt_edits.len() > 64 {
@@ -508,16 +480,15 @@ mod tests {
 		});
 
 		DesktopDraftDocument {
-			version: 10,
+			version: 11,
 			profiles: BTreeMap::from([("a".repeat(64), profile)]),
-			recovered: vec![],
 			unbound: Default::default(),
 			unbound_ordinary: Default::default(),
 		}
 	}
 
 	#[test]
-	fn creation_setup_round_trips_and_old_documents_upgrade_without_authority() {
+	fn creation_setup_round_trips_and_older_documents_are_rejected() {
 		let setup = DesktopCreationSetup {
 			defaults_applied: false,
 			intent: None,
@@ -538,25 +509,7 @@ mod tests {
 
 		assert_eq!(DesktopDraftDocument::decode(&bytes).unwrap().unbound.creation, Some(setup));
 
-		let old = DesktopDraftDocument::decode(br#"{"version":1,"profiles":{}}"#).unwrap();
-
-		assert_eq!(old.version, 10);
-		assert!(old.unbound.creation.is_none());
-
-		let mut remote = document.clone();
-
-		remote.unbound.creation.as_mut().unwrap().model = "other model".into();
-
-		let merged =
-			document.reconcile_keep_both(&DesktopDraftDocument::default(), &remote).unwrap();
-
-		assert_eq!(merged.unbound.creation, document.unbound.creation);
-		assert_eq!(merged.recovered[0].draft.composer.creation, remote.unbound.creation);
-
-		let restored = merged.restore_recovered_copy(&merged.recovered[0]).unwrap();
-
-		assert_eq!(restored.unbound.creation, remote.unbound.creation);
-
+		assert!(DesktopDraftDocument::decode(br#"{"version":1,"profiles":{}}"#).is_err());
 		document.unbound.work_id = Some(EntityId::new("existing").unwrap());
 
 		assert!(document.encode().is_err());
@@ -600,7 +553,7 @@ mod tests {
 	fn draft_document_rejects_changed_contract_and_ambiguous_ownership() {
 		let mut original = document();
 
-		original.version = 11;
+		original.version = 12;
 
 		assert!(original.encode().is_err());
 
@@ -653,7 +606,7 @@ mod tests {
 	}
 
 	#[test]
-	fn unbound_draft_requires_no_work_identity_and_preserves_old_documents() {
+	fn unbound_draft_requires_no_work_identity_and_refuses_older_versions() {
 		let mut doc = DesktopDraftDocument::default();
 
 		doc.unbound.text = "Unassigned input".into();
@@ -669,7 +622,7 @@ mod tests {
 
 		let old = br#"{"version":1,"profiles":{}}"#;
 
-		assert!(DesktopDraftDocument::decode(old).unwrap().unbound.text.is_empty());
+		assert!(DesktopDraftDocument::decode(old).is_err());
 	}
 
 	#[test]

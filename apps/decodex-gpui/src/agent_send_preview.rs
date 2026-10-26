@@ -203,7 +203,6 @@ mod tests {
 			});
 
 			s.capture_send_preview(&PendingCommand {
-				recovery: None,
 				key: Some(IdempotencyKey::new("native-preview").unwrap()),
 				steer: None,
 				execution_intent: None,
@@ -292,7 +291,6 @@ mod tests {
 			record.id = entries.iter().map(|e| e.id).max().unwrap() + 1;
 
 			let pending = |key: &str| PendingCommand {
-				recovery: None,
 				key: Some(IdempotencyKey::new(key).unwrap()),
 				steer: None,
 				execution_intent: None,

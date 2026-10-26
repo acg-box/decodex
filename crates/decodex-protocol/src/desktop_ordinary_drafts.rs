@@ -222,9 +222,7 @@ mod tests {
 			matches!(&saved.unconfirmed[0].payload, CommandPayload::CreateConversation { message,.. } if message.as_str()=="Original submitted input")
 		);
 
-		let old = DesktopDraftDocument::decode(br#"{"version":4,"profiles":{}}"#).unwrap();
-
-		assert_eq!(old.version, 10);
+		assert!(DesktopDraftDocument::decode(br#"{"version":4,"profiles":{}}"#).is_err());
 	}
 
 	#[test]
@@ -262,117 +260,6 @@ mod tests {
 
 		assert!(restored == original);
 		assert!(restored.profiles[&"a".repeat(64)].has_unconfirmed_delivery());
-	}
-
-	#[test]
-	fn legacy_selected_preferences_migrate_to_explicit_choices() {
-		let owner = "30000000-0000-4000-8000-000000000001";
-		let mut value = serde_json::to_value(document("Editor", "command")).unwrap();
-
-		value["profiles"]["a".repeat(64)]["ordinary"]["/tmp/work"]["composer"]["conversation_id"] =
-			owner.into();
-
-		let modern = DesktopDraftDocument::decode(&serde_json::to_vec(&value).unwrap()).unwrap();
-
-		assert!(
-			!modern.profiles[&"a".repeat(64)].ordinary["/tmp/work"]
-				.composer
-				.creation_intent
-				.reasoning
-		);
-
-		value["version"] = 5.into();
-
-		let legacy = DesktopDraftDocument::decode(&serde_json::to_vec(&value).unwrap()).unwrap();
-		let choices =
-			&legacy.profiles[&"a".repeat(64)].ordinary["/tmp/work"].composer.creation_intent;
-
-		assert!(choices.model && choices.reasoning && choices.service_tier);
-		assert_eq!(legacy.version, 10);
-
-		let reopened = DesktopDraftDocument::decode(&legacy.encode().unwrap()).unwrap();
-
-		assert!(reopened == legacy);
-	}
-
-	#[test]
-	fn keep_both_and_restore_preserve_every_ordinary_delivery_fence() {
-		let local = document("Local edit", "local-command");
-		let remote = document("Remote edit", "remote-command");
-		let merged = local.reconcile_keep_both(&DesktopDraftDocument::default(), &remote).unwrap();
-		let active = &merged.profiles[&"a".repeat(64)];
-
-		assert_eq!(active.ordinary["/tmp/work"].composer.text, "Local edit");
-		assert_eq!(active.ordinary["/tmp/work"].unconfirmed.len(), 2);
-		assert!(active.has_unconfirmed_delivery() && !active.uncertain);
-
-		let copy = &merged.recovered[0];
-
-		assert!(merged.remove_recovered_copy(copy).is_err());
-
-		let restored = merged.restore_recovered_copy(copy).unwrap();
-		let selected = &restored.profiles[&"a".repeat(64)].ordinary["/tmp/work"];
-
-		assert_eq!(selected.composer.text, "Remote edit");
-		assert_eq!(selected.unconfirmed.len(), 2);
-
-		let deleted = DesktopDraftDocument::default().reconcile_keep_both(&local, &remote).unwrap();
-
-		assert!(
-			deleted.profiles.contains_key(&"a".repeat(64)),
-			"deletion cannot hide unresolved delivery"
-		);
-	}
-
-	#[test]
-	fn unbound_conflicts_restore_and_first_profile_adoption_preserve_input() {
-		let mut base = DesktopDraftDocument::default();
-		let mut editor = draft("Original unbound", "unused");
-
-		editor.unconfirmed.clear();
-		base.unbound_ordinary.insert("/tmp/work".into(), editor.clone());
-
-		let mut local = base.clone();
-
-		local.unbound_ordinary.get_mut("/tmp/work").unwrap().composer.text = "Local edit".into();
-
-		let merged = local.reconcile_keep_both(&base, &base).unwrap();
-
-		assert_eq!(merged.unbound_ordinary["/tmp/work"].composer.text, "Local edit");
-		assert_eq!(merged.recovered.len(), 1);
-
-		let restored = merged.restore_recovered_copy(&merged.recovered[0]).unwrap();
-
-		assert_eq!(restored.unbound_ordinary["/tmp/work"].composer.text, "Original unbound");
-		assert_eq!(restored.recovered[0].draft.ordinary["/tmp/work"].composer.text, "Local edit");
-
-		let mut with_profile = merged.clone();
-
-		with_profile.profiles = document("Saved service input", "pending").profiles;
-
-		let adopted = with_profile.adopt_unbound_ordinary(&"a".repeat(64)).unwrap();
-
-		assert!(adopted.unbound_ordinary.is_empty());
-
-		let selected = &adopted.profiles[&"a".repeat(64)].ordinary["/tmp/work"];
-
-		assert_eq!(selected.composer.text, "Local edit");
-		assert_eq!(selected.unconfirmed.len(), 1);
-		assert!(adopted.recovered.iter().any(|copy| copy.scope.is_some()
-			&& copy.draft.ordinary["/tmp/work"].composer.text == "Saved service input"));
-
-		let reopened = DesktopDraftDocument::decode(&adopted.encode().unwrap()).unwrap();
-
-		assert!(reopened == adopted);
-
-		let other = adopted.adopt_unbound_ordinary(&"b".repeat(64)).unwrap();
-
-		assert!(!other.profiles.contains_key(&"b".repeat(64)));
-
-		base.unbound_ordinary.get_mut("/tmp/work").unwrap().composer.conversation_id =
-			Some(EntityId::new("foreign").unwrap());
-
-		assert!(base.encode().is_err());
 	}
 
 	#[test]

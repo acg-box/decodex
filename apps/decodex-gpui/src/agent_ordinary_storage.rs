@@ -1,6 +1,6 @@
 //! Ordinary records share Agent's existing atomic desktop writer.
 use crate::shell::agent_surface::drafts::storage::{AgentSurface, Context};
-use decodex_protocol::{CommandEnvelope, DesktopOrdinaryDraft, DesktopRecoveredDraft};
+use decodex_protocol::{CommandEnvelope, DesktopOrdinaryDraft};
 
 impl AgentSurface {
 	pub(in super::super) fn adopt_unbound_ordinary(&mut self, scope: &str) {
@@ -14,26 +14,6 @@ impl AgentSurface {
 
 	pub(crate) fn ordinary_draft_notice(&self) -> Option<&str> {
 		self.draft_storage_notice()
-	}
-
-	pub(crate) fn show_ordinary_draft_recovery(&mut self, cx: &mut Context<Self>) {
-		if !self.show_recovered_drafts() {
-			self.toggle_recovered_drafts(cx);
-		}
-	}
-
-	pub(crate) fn defer_ordinary_restore(&mut self) {
-		let Some(profile) = self.draft_profiles.active.as_ref() else { return };
-		let scope = profile.draft_scope_key();
-		let storage = &mut self.draft_profiles.storage;
-		let Some(draft) = storage.document.profiles.get(&scope).cloned() else { return };
-		let copy = DesktopRecoveredDraft { scope: Some(scope), draft };
-
-		if !storage.document.recovered.contains(&copy) {
-			storage.document.recovered.push(copy);
-		}
-
-		storage.show_recovered = true;
 	}
 
 	pub(crate) fn ordinary_storage_record(
@@ -77,13 +57,7 @@ impl AgentSurface {
 			.ordinary
 			.insert(draft.working_directory.as_str().into(), draft);
 
-		for profile in document.profiles.get_mut(&scope).into_iter().chain(
-			document
-				.recovered
-				.iter_mut()
-				.filter(|copy| copy.scope.as_ref() == Some(&scope))
-				.map(|copy| &mut copy.draft),
-		) {
+		if let Some(profile) = document.profiles.get_mut(&scope) {
 			for ordinary in profile.ordinary.values_mut() {
 				ordinary.unconfirmed.retain(|command| !confirmed.contains(command));
 			}

@@ -2,9 +2,8 @@
 #[cfg(test)] use gpui::AppContext as _;
 use gpui::TestAppContext;
 
-#[cfg(test)] use crate::shell::agent_surface::drafts::storage::IdempotencyKey;
 use crate::shell::agent_surface::drafts::{
-	storage::{self, AgentSurface, ClientDraftStore, Context, PendingCommand, Storage},
+	storage::{self, AgentSurface, ClientDraftStore, Context, Storage},
 	tests,
 };
 use decodex_protocol::{
@@ -112,68 +111,6 @@ fn unbound_creation_edits_survive_reopen(cx: &mut TestAppContext) {
 		assert_eq!(s.composer_effort_value(cx).as_deref(), None);
 		assert_eq!(s.creation_setup(cx), Some(expected));
 		assert!(s.submission.command.is_none());
-	});
-}
-
-#[gpui::test]
-fn uncertain_creation_keeps_original_setup_and_later_edits_separate(cx: &mut TestAppContext) {
-	let (_service, profile, _) = tests::profiles();
-	let directory = tempfile::tempdir().unwrap();
-	let store =
-		ClientDraftStore::open_at(&directory.path().canonicalize().unwrap().join("desktop"))
-			.unwrap();
-	let surface = cx.new(AgentSurface::new);
-	let original = surface.update(cx, |s, cx| {
-		s.draft_profiles.storage = Storage::open(Ok(store.clone()));
-
-		s.bind_profile(Some(profile.clone()), cx);
-
-		let original = choose(s, cx, "original-model");
-
-		s.composer.update(cx, |input, cx| input.set_content("Original message", cx));
-
-		let key = IdempotencyKey::new("creation-unknown").unwrap();
-		let mut pending = PendingCommand {
-			recovery: Some(s.command_draft_copy(cx).unwrap()),
-			key: Some(key.clone()),
-			steer: None,
-			execution_intent: None,
-			epoch: s.command_epoch,
-			draft: Some("Original message".into()),
-			owner: None,
-			attachments: Some(vec![]),
-			references: Some(vec![]),
-		};
-
-		s.fence_command_draft(&mut pending);
-		s.submission.unconfirmed.push(key);
-
-		s.sending = true;
-
-		choose(s, cx, "later-model");
-
-		s.remember_draft_document(cx);
-
-		storage::publish_document(&store, 0, &s.draft_profiles.storage.document)
-			.unwrap_or_else(|_| panic!("save"));
-
-		original
-	});
-	let reopened = cx.new(AgentSurface::new);
-
-	reopened.update(cx, |s, cx| {
-		s.draft_profiles.storage = Storage::open(Ok(store));
-
-		s.bind_profile(Some(profile), cx);
-
-		assert_eq!(s.model.read(cx).content(), "later-model");
-		assert!(s.uncertain && !s.sending && s.submission.command.is_none());
-
-		let copies = s.recovered_drafts();
-
-		assert_eq!(copies.len(), 1);
-		assert_eq!(copies[0].draft.composer.creation, Some(original));
-		assert!(copies[0].draft.uncertain);
 	});
 }
 

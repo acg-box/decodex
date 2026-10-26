@@ -1789,6 +1789,29 @@ impl AgentClient {
 		}
 	}
 
+	/// Check exact queue acceptance. False remains unknown and does not permit replay.
+	pub async fn message_received(
+		&self,
+		work_id: EntityId,
+		key: IdempotencyKey,
+	) -> Result<bool, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"agent-message-receipt",
+				QueryPayload::GetAgentMessageReceipt { work_id, key },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::AgentMessageReceived(received) => Ok(received),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Read a current page of unconfirmed input for one exact local task.
 	pub async fn input_receipts(
 		&self,

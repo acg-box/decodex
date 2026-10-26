@@ -1189,6 +1189,20 @@ impl SqliteStore {
         }).await
 	}
 
+	/// Check an exact input receipt without dispatching or changing delivery state.
+	pub async fn agent_message_received(
+		&self,
+		work: String,
+		key: String,
+	) -> Result<bool, StoreError> {
+		self.run(move |connection| {
+			connection.query_row(
+				"SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE source_event_id=json_array('user_message',?1,?2) AND work_item_id=?1 AND event_kind='user_message')",
+				rusqlite::params![work,key], |row|row.get(0),
+			).map_err(|error|error::sqlite_error(error).into())
+		}).await
+	}
+
 	/// Queue one stable retry of a positively unsent input. Preserve the original receipt.
 	pub async fn retry_agent_input(
 		&self,

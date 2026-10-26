@@ -2736,7 +2736,6 @@ async fn history_events_refresh_only_their_open_conversation() {
 					entity(target),
 					ConversationTitle::new("Recovered task").unwrap(),
 					Some(ProviderThreadId::new("native-thread").unwrap()),
-					None,
 					EntityRevision(1),
 					1,
 					Some(entity("20000000-0000-4000-8000-000000000001")),

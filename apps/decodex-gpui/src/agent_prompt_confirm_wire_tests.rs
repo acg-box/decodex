@@ -1,4 +1,5 @@
 //! Confirmation crosses the socket only after the exact local record is durable.
+use decodex_protocol::AgentActionDto;
 use std::{
 	fs::{self, Permissions},
 	os::unix::fs::PermissionsExt as _,
@@ -15,7 +16,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 #[cfg(test)]
 use crate::shell::agent_surface::drafts::storage::{
-	self, AgentActionDto, Entity, IntoElement, LoadState, Render, Window,
+	self, Entity, IntoElement, LoadState, Render, Window,
 };
 use crate::shell::agent_surface::drafts::{
 	storage::{

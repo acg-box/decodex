@@ -71,3 +71,28 @@ async fn input_retry_refuses_pending_claimed_and_running_inputs() {
 	store.begin_agent_dispatch("agent".into()).await.unwrap();
 	assert!(store.retry_agent_input("agent".into(), "thread".into(), event).await.is_err());
 }
+
+#[tokio::test]
+async fn message_receipt_reads_only_the_exact_queue_identity_without_sending() {
+	let (_directory, store, _, _) = fixture().await;
+	assert!(!store.agent_message_received("agent".into(), "message-key".into()).await.unwrap());
+	let event = store
+		.enqueue_agent_event(EnqueueAgentEvent {
+			source_event_id: serde_json::json!(["user_message", "agent", "message-key"])
+				.to_string(),
+			work_item_id: "agent".into(),
+			event_kind: "user_message".into(),
+			payload: serde_json::json!({"text":"Exact original","source":"user"}).to_string(),
+		})
+		.await
+		.unwrap();
+	for (work, key, expected) in [
+		("agent", "message-key", true),
+		("source", "message-key", false),
+		("agent", "another-key", false),
+	] {
+		assert_eq!(store.agent_message_received(work.into(), key.into()).await.unwrap(), expected);
+	}
+	let unchanged = store.get_agent_inbox_event(event.id).await.unwrap();
+	assert!(unchanged.disposition.is_none() && unchanged.delivered_turn_id.is_none());
+}

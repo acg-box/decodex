@@ -280,11 +280,9 @@ pub(crate) struct Notice {
 impl Notice {
 	pub(crate) fn action(mut self, action: Option<AnyElement>) -> Self {
 		self.action = action;
-
 		self
 	}
 }
-
 impl RenderOnce for Notice {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(self.id, cx, |_, _| NoticeState {
@@ -346,8 +344,7 @@ impl RenderOnce for Notice {
 				let row = tone.row_with_icon("conversation-feedback-status", &feedback.message, icon)
 					.debug_selector(|| "conversation-activity-status".into())
 					.w_full()
-					.min_w_0()
-					.children(self.action.filter(|_| current));
+					.min_w_0().children(self.action.filter(|_|current));
 
 				slot.child(
 					gpui::div().w_full().flex_none()

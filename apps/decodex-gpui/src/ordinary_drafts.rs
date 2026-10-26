@@ -90,10 +90,6 @@ impl Shell {
 				self.ordinary_owner = stored.composer.conversation_id.clone();
 				self.ordinary_last = Some(stored.clone());
 				self.pending_submission = None;
-			} else {
-				// A live command retains its editor. Keep the requested replacement
-				// as a recoverable copy, then save subsequent local edits normally.
-				self.agent.update(cx, |surface, _| surface.defer_ordinary_restore());
 			}
 		}
 

@@ -194,7 +194,8 @@ pub use self::{
 	},
 	desktop_drafts::{
 		DesktopComposerDraft, DesktopCreationIntent, DesktopCreationSetup, DesktopDraftDocument,
-		DesktopPendingDraft, DesktopProfileDraft, DesktopQuestionDraft, DesktopRecoveredDraft,
+		DesktopMessage, DesktopMessageState, DesktopPendingDraft, DesktopProfileDraft,
+		DesktopQuestionDraft,
 	},
 	desktop_ordinary_drafts::{DesktopOrdinaryComposerDraft, DesktopOrdinaryDraft},
 	dictation::{
