@@ -27,6 +27,12 @@ pub(super) struct InputReceipts {
 	result: Option<AgentInputReceiptsResult>,
 }
 
+impl InputReceipts {
+	pub(super) fn cancel_read(&mut self) {
+		self.task = None;
+	}
+}
+
 impl AgentSurface {
 	pub(super) fn saved_input_card(
 		&self,
@@ -129,21 +135,20 @@ impl AgentSurface {
 			return;
 		}
 
-		let Some(binding) = self
+		let Some((work, _)) = self
 			.timeline
 			.native
-			.binding
+			.requested
 			.as_ref()
-			.filter(|binding| self.selected.as_ref() == Some(&binding.work))
+			.filter(|(work, _)| self.selected.as_ref() == Some(work))
 		else {
 			return;
 		};
-		let (Some(profile), Ok(work_id)) =
-			(self.profile.clone(), EntityId::new(binding.work.clone()))
+		let (Some(profile), Ok(work_id)) = (self.profile.clone(), EntityId::new(work.clone()))
 		else {
 			return;
 		};
-		let work = binding.work.clone();
+		let work = work.clone();
 		let epoch = self.timeline.native.epoch;
 		let after = self.timeline.native.input_receipts.after;
 		let request = cx.background_executor().spawn(async move {
@@ -301,6 +306,83 @@ mod tests {
 		AgentInputReceiptsResult, AgentSurface, EntityId,
 	};
 	use decodex_protocol::{AgentHistoryEntryDto, AgentHistoryReceiptDto, AgentTimelinePage};
+
+	#[gpui::test]
+	fn returning_to_a_conversation_releases_receipt_reads_and_keeps_loaded_records(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			long_response(s, cx);
+			for work in &mut s.snapshot.as_mut().unwrap().work_items {
+				if work.id != "agent" {
+					work.codex_thread_id = Some(format!("thread-{}", work.id));
+				}
+			}
+			s.timeline.native.requested = Some(("agent".into(), "native-thread".into()));
+			let retained = s.timeline.native.input_receipts.result.clone();
+			s.timeline.native.input_receipts.task =
+				Some(cx.spawn(async |_, _| std::future::pending::<()>().await));
+			s.open_page("release", cx);
+			let cached = &s.timeline.native_cache[&("agent".into(), "native-thread".into())];
+			assert!(cached.input_receipts.task.is_none(), "a parked reader cannot remain busy");
+			assert_eq!(cached.input_receipts.result, retained);
+			s.open_page("agent", cx);
+			assert!(s.timeline.native.input_receipts.task.is_none());
+			assert!(s.native_input_receipts_loaded("agent"));
+			assert_eq!(s.timeline.native.input_receipts.result, retained);
+		});
+	}
+
+	#[gpui::test]
+	fn local_receipts_load_before_any_native_history_binding(cx: &mut gpui::TestAppContext) {
+		use crate::shell::agent_surface::wire_test_support;
+		use decodex_protocol::{
+			CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
+			ServerId, ServerMessage,
+		};
+		use futures_util::{SinkExt as _, StreamExt as _};
+		use gpui::AppContext as _;
+		use tokio_tungstenite::tungstenite::Message;
+		let (_root, profile, server) = wire_test_support::fixture(|listener| async move {
+			let mut socket = wire_test_support::accept(&listener).await;
+			let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+				panic!("query")
+			};
+			let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
+				panic!("query")
+			};
+			assert!(
+				matches!(&query.payload, QueryPayload::GetAgentInputReceipts { work_id, after: None } if work_id.as_str() == "agent")
+			);
+			let response = ServerMessage::QueryResult(QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: ServerId::new(wire_test_support::SERVER).unwrap(),
+				query_id: query.query_id,
+				payload: QueryResultPayload::AgentInputReceipts(page("agent", None, None)),
+			});
+			socket
+				.send(Message::Text(serde_json::to_string(&response).unwrap().into()))
+				.await
+				.unwrap();
+		});
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.profile = Some(profile);
+			s.timeline.native.requested = Some(("agent".into(), "history-not-loaded".into()));
+			assert!(s.timeline.native.binding.is_none());
+			s.refresh_native_input_receipts(cx);
+		});
+		cx.run_until_parked();
+		server.join().unwrap();
+		cx.run_until_parked();
+		surface.read_with(cx, |s, _| {
+			assert!(s.timeline.native.binding.is_none());
+			assert!(s.native_input_receipts_loaded("agent"));
+			assert!(s.timeline.native.input_receipts.task.is_none());
+		});
+	}
 
 	#[test]
 	fn sending_is_not_reported_as_an_unknown_or_failed_delivery() {

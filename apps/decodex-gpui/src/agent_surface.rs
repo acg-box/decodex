@@ -539,7 +539,6 @@ impl AgentSurface {
 		}
 
 		self.refresh_open_native_history(cx);
-		self.refresh_native_input_receipts(cx);
 		self.load_guardian_reviews(cx);
 		self.load_archive_state(false, cx);
 

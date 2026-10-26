@@ -245,6 +245,8 @@ impl AgentSurface {
 		};
 
 		self.activate_native_timeline(&work, &thread);
+		// Local delivery evidence does not depend on native history or its account binding.
+		self.refresh_native_input_receipts(cx);
 
 		let selected = self.conversation_work();
 		let turn = selected.as_ref().and_then(|work| work.active_turn_id.as_deref());
@@ -1081,8 +1083,6 @@ impl AgentSurface {
 			self.timeline.native.failed(result, std::time::Instant::now());
 		}
 
-		self.refresh_native_input_receipts(cx);
-
 		if changed {
 			cx.notify();
 		}
@@ -1145,6 +1145,7 @@ impl Timeline {
 
 	pub(super) fn cancel_read(&mut self) {
 		self.task = None;
+		self.input_receipts.cancel_read();
 		self.epoch = self.epoch.wrapping_add(1);
 
 		if self.pagination == Pagination::Loading {
