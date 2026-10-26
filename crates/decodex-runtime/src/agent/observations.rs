@@ -24,9 +24,11 @@ fn recovery_turn_items(
 	deadline: Instant,
 ) -> impl futures_util::Stream<Item = Result<Value, app_server_client::ClientError>> {
 	// Fetch missing pages concurrently, then apply each turn in native order.
-	stream::iter(turns.into_iter().map(move |header| {
-		read_turn_items(client.clone(), thread.clone(), header, deadline)
-	}))
+	stream::iter(
+		turns
+			.into_iter()
+			.map(move |header| read_turn_items(client.clone(), thread.clone(), header, deadline)),
+	)
 	.buffered(4)
 }
 
