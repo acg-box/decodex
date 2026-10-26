@@ -1789,6 +1789,16 @@ impl AgentHost {
 				self.start(draft, &key, input_options.as_ref(), active).await,
 			AgentActionDto::Send { root_id, text } =>
 				self.accept_message(&root_id, &text, &key, input_options.as_ref(), active).await,
+			AgentActionDto::RetryInput { work_id, thread_id, event_id } => {
+				self.store
+					.retry_agent_input(work_id.as_str().into(), thread_id.as_str().into(), event_id)
+					.await
+					.map_err(|_| "This message cannot be retried. Refresh its delivery status.")?;
+				if active.is_none() {
+					*active = self.restore().await;
+				}
+				Ok(work_id.as_str().into())
+			},
 			AgentActionDto::Interrupt { work_id, turn_id } =>
 				Self::interrupt_action(work_id.as_str(), turn_id.as_str(), active).await,
 

@@ -920,6 +920,15 @@ pub enum AgentActionDto {
 		/// User input, preserved until processed.
 		text: HistoryText,
 	},
+	/// Retry one exact input positively recorded as not sent, through its existing queue.
+	RetryInput {
+		/// Conversation that owns the saved input.
+		work_id: EntityId,
+		/// Native conversation displayed when the user chose Retry.
+		thread_id: WireText,
+		/// Exact saved input; its full content and attachments remain service-owned.
+		event_id: i64,
+	},
 	/// Stop the exact currently acknowledged work turn.
 	Interrupt {
 		/// Work identity, not a process ID.

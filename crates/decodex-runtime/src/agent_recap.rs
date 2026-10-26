@@ -28,6 +28,7 @@ impl Recaps {
 			AgentActionDto::Send { root_id, .. }
 			| AgentActionDto::SendConfigured { root_id, .. } => self.cancel_work(root_id.as_str()),
 			AgentActionDto::SendPromptInput { work_id, .. }
+			| AgentActionDto::RetryInput { work_id, .. }
 			| AgentActionDto::Steer { work_id, .. }
 			| AgentActionDto::NativeAgentInput { work_id, .. }
 			| AgentActionDto::AnswerQuestion { work_id, .. }

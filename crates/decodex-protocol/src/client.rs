@@ -3869,6 +3869,7 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		AgentActionDto::Send { root_id, .. } | AgentActionDto::SendConfigured { root_id, .. } =>
 			root_id,
 		AgentActionDto::CancelCapacityRetry { work_id, .. }
+		| AgentActionDto::RetryInput { work_id, .. }
 		| AgentActionDto::NativeAgentInput { work_id, .. }
 		| AgentActionDto::PrepareNativeAgent { work_id, .. }
 		| AgentActionDto::Interrupt { work_id, .. }
