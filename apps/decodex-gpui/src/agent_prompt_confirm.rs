@@ -380,7 +380,7 @@ async fn confirm_worker(
 	let result = if worker_draft
 		.fork
 		.as_ref()
-		.is_some_and(|fork| fork.boundary == decodex_protocol::PromptForkBoundary::AfterTurn)
+		.is_some_and(|fork| fork.boundary != decodex_protocol::PromptForkBoundary::BeforeInput)
 	{
 		Ok(()) // No input is sent or restored for a branch after a completed turn.
 	} else {
