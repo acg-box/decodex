@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ad7a68abcaf18883dc0411c3b1fb0699a9a29cbd2648fb247675948c5c329a2f",
+  "pageVersion": "sha256:eec7a9b9816bc8a999f9de6453756541fc6d95172aff54e074e40eeeb01ecbe4",
   "claims": [
     {
       "id": "claim_0cb251fa04a54e8d8923b6e334a500f9",
@@ -35,10 +35,24 @@
           "version": "repo-lines-v1:sha256:088f4f78c07ffc9a0adfbacea5cc2aa3a90055258ca8c851019c0b941cd3d9b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmMGY0MjFiNGE5MzkzNjIwMTkxMWE0ODIzZTYwZjNlZDJjNGI4OTc3ZjljMmM1OTQ5OGE5MGMxNWFlODNkZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA1ZWZlM2QzZWFhOTZlYTViZjU2YTdmMzhiNjdiZDE1YmUwNTY2ODE1OGRiY2Y0YzAyYmE3M2UwOWM2ZTE2YjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI2ZTc3YWYwZTcyZGJkZjI3OTQyNDdiZDIzYTA4MzU2NTk5ZTllNjc3NGU5ZmNkYTViODllZTBhNTJkNjllOGEifQ"
         }
       ]
+    },
+    {
+      "id": "claim_b9924b9130db4af29c050d89cd7719a4",
+      "statement": "The current SQLite schema defines quota activation state and startup verifies that exact schema without an upgrade ledger.",
+      "evidence": [
+        {
+          "resource": "repo://database/schema.sql",
+          "version": "repo-file-v1:sha256:ad3410025cf2a32514b1d7c020ca972bdc4f253e8d2e9198f8aa1ed908e190a2"
+        },
+        {
+          "resource": "repo://database/src/schema.rs",
+          "version": "repo-file-v1:sha256:b3a3c373f7c156e6ba3eb579b1bbd08164a0eda69bd51ba24802741234c95359"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T14:39:55.302Z"
+    "at": "2026-10-26T15:20:45.937Z"
   }
 }

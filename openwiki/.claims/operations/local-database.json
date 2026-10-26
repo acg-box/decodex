@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3212af0ebdb57a2d133ce64016dd39dc707fed9aa18a32e5a9b945cdc91beba9",
+  "pageVersion": "sha256:e53313b62809e3b3299bcc421d3a57178ac36f87f1dfcf92a80528e6f8aa2348",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://database/schema.sql",
-          "version": "repo-file-v1:sha256:4fd878886ed6903409e94f76720d686dbad5e635b006e8c236477cc4cda255a8"
+          "version": "repo-file-v1:sha256:ad3410025cf2a32514b1d7c020ca972bdc4f253e8d2e9198f8aa1ed908e190a2"
         },
         {
           "resource": "repo://database/src/schema.rs",
@@ -84,7 +84,7 @@
       "evidence": [
         {
           "resource": "repo://database/schema.sql",
-          "version": "repo-file-v1:sha256:4fd878886ed6903409e94f76720d686dbad5e635b006e8c236477cc4cda255a8"
+          "version": "repo-file-v1:sha256:ad3410025cf2a32514b1d7c020ca972bdc4f253e8d2e9198f8aa1ed908e190a2"
         },
         {
           "resource": "repo://database/src/works/commands.rs",
@@ -98,7 +98,7 @@
       "evidence": [
         {
           "resource": "repo://database/src/works.rs",
-          "version": "repo-file-v1:sha256:617b485181a7c35dc8ad242da8adbdeb948e91fcb810e53b9c2037b95a0a1c89"
+          "version": "repo-file-v1:sha256:057a31518beddfddc7a3e674c4d68386e0cebf8c921972aafc7563bea0122f57"
         },
         {
           "resource": "repo://database/src/works/commands.rs",
@@ -131,7 +131,7 @@
       "statement": "The current schema allows separate Agent bindings on a shared admitted process and records plaintext or native-task-name assignment proof without inventing absent input deliveries.",
       "evidence": [
         {
-          "resource": "repo://database/schema.sql#L675-L686",
+          "resource": "repo://database/schema.sql#L666-L677",
           "version": "repo-lines-v1:sha256:01b48de0b417b22e7bd530d7fb12c39eb5bebf2e6a2b634e2c19daac335a8d51:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNzMxMTZlZTNlNmQ3YjE5MzY0MWI2NzMzMDAzYjk2MjIxMzA1NzdlMGViZjMxNTdlYjY0ZmM3Y2E4MDEyNjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmMWFjMTAwNzM3OWE1Mzk2Njg2MTZiODQ5N2RiNzk1NmJkMmFlMmVkZmU1ODk1Y2UwMmZiOTAyOTJmMTFiYWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlM2ZkYTRmYzMxMDEzYjUyY2JkNGI2NDk5MjUxNGY0ZjI4MGEzMDA5Mjg0YzNjOGFiYmEyN2JkMzU2ZWE4MWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU4MWFkMGEzM2M2YzU2MDljYjM5NzQ1Y2YyNDhmODA0NjEzMDQ3MGY5OTJhZmRkNWU1YTFiNGY0MGI5YTE2MTEifQ"
         },
         {
@@ -177,6 +177,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T14:39:55.302Z"
+    "at": "2026-10-26T15:20:45.937Z"
   }
 }

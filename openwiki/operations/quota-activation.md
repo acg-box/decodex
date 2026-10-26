@@ -8,12 +8,16 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_api/activation.rs
   - id: openwiki-source-6c8d2efdbf89ccf02451df41
     resource: repo://crates/decodex-runtime/src/account_launch/activation_policy.rs
+  - id: openwiki-source-003f00974f49a9f106bbcbea
+    resource: repo://database/schema.sql
   - id: openwiki-source-9b561c5dd3054cdff0599fb9
     resource: repo://database/src/quota_activation.rs
-generated: { by: "codex", at: "2026-10-03T17:31:35.485Z" }
+  - id: openwiki-source-dc8958560b1230967470835f
+    resource: repo://database/src/schema.rs
+generated: { by: "codex", at: "2026-10-26T15:20:45.937Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T14:39:55.302Z
+    at: 2026-10-26T15:20:45.937Z
 ---
 
 
@@ -33,6 +37,6 @@ The request is intentionally minimal and non-persistent. It uses subscription qu
 
 ## Controls and tests
 
-General settings exposes the opt-out; settings changes remain revision-guarded service state. The embedded baseline schema owns `account_quota_activation`; use the current migration ledger instead of historical migration numbers. Tests in `database/src/quota_activation.rs` cover reset progression, duplicate suppression and preference fences. Runtime tests cover the minimal request and outcome classification without spending a real account's quota.
+General settings exposes the opt-out; settings changes remain revision-guarded service state. `database/schema.sql` owns `account_quota_activation`; startup verifies the exact current schema without an upgrade ledger. Tests in `database/src/quota_activation.rs` cover reset progression, duplicate suppression and preference fences. Runtime tests cover the minimal request and outcome classification without spending a real account's quota.
 
 See [Reset Cards](reset-cards.md) and [Local database operations](local-database.md).

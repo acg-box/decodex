@@ -5,9 +5,6 @@
 - [Execution coordination: current owners and historical design](execution-coordinator-authority.md) - Current ordinary and Agent coordination owners, with a retained superseded sequencing design.
 - [ProcessGeneration authority](process-generation-authority.md) - ProcessGeneration authority
 - [ProviderAttempt authority](provider-attempt-authority.md) - ProviderAttempt authority
-- [Historical Decodex vNext authority contract](vnext-authority.md) - Superseded design provenance; current SQLite migration and validation owners take precedence.
-- [Historical Decodex vNext gate manifest](vnext-gates.md) - Retained milestone provenance, superseded by current repository validation and SQLite migrations.
-- [Historical XY-1368 retained-title freeze](xy-1368-retained-title-freeze.md) - Historical retained-title experiment with no authority over current product migrations.
 
 # Directories
 

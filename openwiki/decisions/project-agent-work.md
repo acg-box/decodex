@@ -16,10 +16,10 @@ sources:
     resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-991553c8d747a54ecf5a9376
     resource: repo://crates/decodex-core/src/work.rs
+  - id: openwiki-source-eccf08613126ff810078b520
+    resource: repo://crates/decodex-protocol/src/agent.rs
   - id: openwiki-source-1b314e86ab2f1adbc0ede4c8
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs
-  - id: openwiki-source-c75093d19a3bc72db5836102
-    resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
@@ -59,7 +59,7 @@ sources:
 generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T14:39:55.302Z
+    at: 2026-10-26T15:20:45.937Z
 ---
 
 # Project, Agent and Work contract

@@ -12,10 +12,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
   - id: openwiki-source-63bea5f3704fcd7e4b161192
     resource: repo://database/src/account_lifecycle.rs
-generated: { by: "codex", at: "2026-10-13T07:37:30.807Z" }
+  - id: openwiki-source-dc8958560b1230967470835f
+    resource: repo://database/src/schema.rs
+generated: { by: "codex", at: "2026-10-26T15:20:45.937Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T14:39:55.302Z
+    at: 2026-10-26T15:20:45.937Z
 ---
 
 # Account lifecycle authority
@@ -46,7 +48,7 @@ Enable/disable, order, selection, logout and manual recovery are service-owned o
 
 An explicit logout can recover from a refresh that was rejected by the provider or from access rejected after refresh. It reuses the exact recovery-operation link used by verified reauthentication. Preparation and commit require the same account revision and credential binding. The failed refresh keeps its original reason and becomes superseded only after the logout commits. Pending effects and ambiguous provider outcomes remain blocked.
 
-Current startup preserves SQLite migrations and user state. Historical disposable-store instructions do not apply. See [Login authority](account-login-authority.md), [Database operations](../operations/local-database.md), [Agent coordination](../architecture/chief-coordination.md) and [Reset Cards](../operations/reset-cards.md).
+Startup verifies the exact current SQLite schema and keeps user state. It does not apply a historical migration chain or reset an older store. See [Login authority](account-login-authority.md), [Database operations](../operations/local-database.md), [Agent coordination](../architecture/chief-coordination.md) and [Reset Cards](../operations/reset-cards.md).
 
 For imported native PAT accounts and their separate identity recheck path, read [account routing and recovery](../operations/accounts-and-routing.md).
 
