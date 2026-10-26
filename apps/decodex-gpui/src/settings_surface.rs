@@ -9,7 +9,7 @@
 #[path = "settings_updates.rs"] mod updates;
 
 use gpui::{
-	AnyElement, ClickEvent, Context, FontWeight, KeyDownEvent, Render, Role, SharedString, Window,
+	AnyElement, ClickEvent, Context, KeyDownEvent, Render, Role, SharedString, Window,
 	prelude::{
 		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
 		Styled,
@@ -32,8 +32,8 @@ use crate::{
 	ui_loading, ui_preferences,
 	ui_scroll::SmoothScrollArea,
 	ui_theme::{
-		self, BODY_LINE_HEIGHT, BODY_SIZE, PANEL_DIVIDER, SETTINGS_CONTROL_HEIGHT,
-		SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_TOP, SETTINGS_WIDTH, TEXT,
+		self, SETTINGS_CONTROL_HEIGHT, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_TOP,
+		SETTINGS_WIDTH, TEXT,
 	},
 };
 use power::PowerSettings;
@@ -279,7 +279,7 @@ impl SettingsSurface {
 
 		ui_theme::settings_row()
 			.child(ui_theme::settings_label(
-				"Appearance",
+				"Color scheme",
 				"System follows your Mac’s light or dark appearance.",
 			))
 			.child(
@@ -473,24 +473,14 @@ impl SettingsSurface {
 			.flex()
 			.flex_col()
 			.gap(gpui::px(SETTINGS_GROUP_GAP))
-			.child(
-				gpui::div()
-					.border_b_1()
-					.border_color(ui_theme::rgba(PANEL_DIVIDER))
-					.child(self.appearance_controls(cx)),
-			)
+			.child(self.appearance_controls(cx))
 			.child(
 				gpui::div()
 					.flex()
 					.flex_col()
 					.gap_2()
-					.child(settings_group_title("Color theme"))
-					.child(
-						gpui::div()
-							.text_size(gpui::px(11.5))
-							.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-							.child(self.theme_description()),
-					)
+					.child(ui_theme::settings_section_title("Color theme"))
+					.child(ui_theme::settings_description(self.theme_description()))
 					.child(self.theme_controls(cx)),
 			)
 			.child(ui_theme::settings_group("Materials", {
@@ -954,8 +944,8 @@ impl Render for SettingsSurface {
 			.size_full()
 			.min_w_0()
 			.min_h_0()
-			.text_size(gpui::px(BODY_SIZE))
-			.line_height(gpui::px(BODY_LINE_HEIGHT))
+			.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
+			.line_height(gpui::px(18.0))
 			.text_color(ui_theme::rgb(TEXT))
 			.child(
 				gpui::div()
@@ -994,7 +984,6 @@ fn setting_action(
 ) -> AnyElement {
 	gpui::div()
 		.flex()
-		.px(gpui::px(14.))
 		.pb_2()
 		.child(
 			ui_theme::settings_button(id, label)
@@ -1014,15 +1003,7 @@ fn setting_action(
 fn setting_notice(id: &'static str, feedback: Option<Feedback>) -> Option<AnyElement> {
 	feedback
 		.and_then(|feedback| ui_feedback::inline_feedback(id, "", &feedback))
-		.map(|notice| gpui::div().px(gpui::px(14.)).pb_2().child(notice).into_any_element())
-}
-
-fn settings_group_title(label: &'static str) -> impl IntoElement {
-	gpui::div()
-		.text_size(gpui::px(11.5))
-		.font_weight(FontWeight::MEDIUM)
-		.text_color(ui_theme::rgb(crate::ui_theme::TEXT_MUTED))
-		.child(label)
+		.map(|notice| gpui::div().pb_2().child(notice).into_any_element())
 }
 
 const fn launch_at_login_detail(state: LaunchAtLoginState) -> &'static str {
@@ -1030,8 +1011,7 @@ const fn launch_at_login_detail(state: LaunchAtLoginState) -> &'static str {
 		LaunchAtLoginState::NotRegistered => "Off",
 		LaunchAtLoginState::Enabled => "On · Opens in the background",
 		LaunchAtLoginState::RequiresApproval => "Allow in System Settings > General > Login Items.",
-		LaunchAtLoginState::NotFound =>
-			"Move Decodex.app to Applications to enable launch at login.",
+		LaunchAtLoginState::NotFound => "macOS could not find Decodex’s login item.",
 		LaunchAtLoginState::OperationFailed => "Login item status unavailable.",
 	}
 }
@@ -1111,7 +1091,8 @@ mod tests {
 
 		if distance > gpui::px(0.) {
 			visual.simulate_event(gpui::ScrollEvent {
-				position: viewport.center(),
+				// Scroll the page gutter, outside the theme gallery's own scroll area.
+				position: gpui::point(viewport.left() + gpui::px(8.), viewport.center().y),
 				delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), -distance)),
 				..Default::default()
 			});

@@ -77,6 +77,9 @@ pub(crate) const SETTINGS_WINDOW_MIN_WIDTH: f32 = 920.0;
 pub(crate) const SETTINGS_INSET: f32 = 24.0;
 pub(crate) const SETTINGS_TOP: f32 = 16.0;
 pub(crate) const SETTINGS_GROUP_GAP: f32 = 18.0;
+pub(crate) const SETTINGS_LABEL_SIZE: f32 = 12.5;
+pub(crate) const SETTINGS_HELP_SIZE: f32 = 11.5;
+pub(crate) const SETTINGS_SECTION_SIZE: f32 = 13.0;
 pub(crate) const SETTINGS_CONTROL_HEIGHT: f32 = 24.0;
 pub(crate) const SETTINGS_CONTROL_RADIUS: f32 = 5.0;
 pub(crate) const PANEL_DIVIDER: u32 = 0xffffff10;
@@ -218,13 +221,35 @@ pub(crate) fn settings_header_inset() -> Div {
 pub(crate) fn settings_row() -> Div {
 	gpui::div()
 		.w_full()
-		.min_h(gpui::px(50.0))
-		.px(gpui::px(14.0))
+		.min_h(gpui::px(48.0))
 		.py(gpui::px(8.0))
 		.flex()
 		.items_center()
 		.gap(gpui::px(16.0))
-		.text_size(gpui::px(BODY_SIZE))
+		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
+		.line_height(gpui::px(18.0))
+		.text_color(rgb(TEXT))
+}
+
+pub(crate) fn settings_section_title(title: &'static str) -> Stateful<Div> {
+	gpui::div()
+		.id(gpui::SharedString::from(format!("settings-group-{title}")))
+		.role(Role::Heading)
+		.aria_level(2)
+		.aria_label(title)
+		.text_size(gpui::px(SETTINGS_SECTION_SIZE))
+		.line_height(gpui::px(18.0))
+		.font_weight(FontWeight::MEDIUM)
+		.text_color(rgb(TEXT))
+		.child(title)
+}
+
+pub(crate) fn settings_description(text: impl Into<gpui::SharedString>) -> Div {
+	gpui::div()
+		.text_size(gpui::px(SETTINGS_HELP_SIZE))
+		.line_height(gpui::px(16.5))
+		.text_color(rgb(TEXT_MUTED))
+		.child(text.into())
 }
 
 pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
@@ -241,18 +266,12 @@ pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
 }
 
 pub(crate) fn settings_heading(title: &'static str, description: &'static str) -> Div {
-	gpui::div().flex().flex_col().gap(gpui::px(6.0)).child(settings_title(title)).when(
-		!description.is_empty(),
-		|column| {
-			column.child(
-				gpui::div()
-					.text_size(gpui::px(11.5))
-					.line_height(gpui::px(17.0))
-					.text_color(rgb(TEXT_MUTED))
-					.child(description),
-			)
-		},
-	)
+	gpui::div()
+		.flex()
+		.flex_col()
+		.gap(gpui::px(6.0))
+		.child(settings_title(title))
+		.when(!description.is_empty(), |column| column.child(settings_description(description)))
 }
 
 pub(crate) fn settings_label(
@@ -267,28 +286,13 @@ pub(crate) fn settings_label(
 		.flex()
 		.flex_col()
 		.gap(gpui::px(2.0))
-		.child(gpui::div().text_size(gpui::px(BODY_SIZE)).line_height(gpui::px(17.0)).child(title))
-		.when(!description.is_empty(), |label| {
-			label.child(
-				gpui::div()
-					.text_size(gpui::px(11.5))
-					.line_height(gpui::px(16.0))
-					.text_color(rgb(TEXT_MUTED))
-					.child(description),
-			)
-		})
-}
-
-pub(crate) fn settings_card() -> Div {
-	gpui::div()
-		.w_full()
-		.min_w_0()
-		.flex()
-		.flex_col()
-		.rounded(gpui::px(10.0))
-		.border_1()
-		.border_color(rgba(0xffffff0c))
-		.bg(rgba(SURFACE_RAISED_MATERIAL))
+		.child(
+			gpui::div()
+				.text_size(gpui::px(SETTINGS_LABEL_SIZE))
+				.line_height(gpui::px(18.0))
+				.child(title),
+		)
+		.when(!description.is_empty(), |label| label.child(settings_description(description)))
 }
 
 pub(crate) fn settings_group(title: &'static str, rows: Vec<AnyElement>) -> Div {
@@ -297,31 +301,8 @@ pub(crate) fn settings_group(title: &'static str, rows: Vec<AnyElement>) -> Div 
 		.flex()
 		.flex_col()
 		.gap_2()
-		.child(
-			gpui::div()
-				.id(gpui::SharedString::from(format!("settings-group-{title}")))
-				.role(Role::Heading)
-				.aria_level(2)
-				.aria_label(title)
-				.text_size(gpui::px(11.5))
-				.font_weight(FontWeight::MEDIUM)
-				.text_color(rgb(TEXT_MUTED))
-				.child(title),
-		)
-		.child(
-			gpui::div()
-				.w_full()
-				.min_w_0()
-				.flex()
-				.flex_col()
-				.border_t_1()
-				.border_color(rgba(PANEL_DIVIDER))
-				.children(rows.into_iter().enumerate().map(|(index, row)| {
-					gpui::div()
-						.when(index > 0, |row| row.border_t_1().border_color(rgba(0xffffff08)))
-						.child(row)
-				})),
-		)
+		.child(settings_section_title(title))
+		.child(gpui::div().w_full().min_w_0().flex().flex_col().children(rows))
 }
 
 pub(crate) fn settings_button(

@@ -4,8 +4,8 @@
 use std::rc::Rc;
 
 use gpui::{
-	AnyElement, ClipboardItem, Context, Div, FontWeight, IntoElement as _, KeyDownEvent, Role,
-	ScrollHandle, Stateful,
+	AnyElement, ClipboardItem, Context, Div, IntoElement as _, KeyDownEvent, Role, ScrollHandle,
+	Stateful,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -21,10 +21,7 @@ use crate::{
 	ui_feedback::{self, Feedback, Tone},
 	ui_motion::SmoothControl as _,
 	ui_scroll::Scrollbar,
-	ui_theme::{
-		self, BODY_SIZE, HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_WIDTH, TEXT,
-		TEXT_MUTED,
-	},
+	ui_theme::{self, HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_WIDTH, TEXT},
 };
 use decodex_protocol::{DoctorComponent, DoctorIssue, DoctorStatus};
 use startup_config::Panel;
@@ -156,10 +153,9 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 		.flex()
 		.flex_col()
 		.gap(gpui::px(SETTINGS_GROUP_GAP))
-		.text_size(gpui::px(BODY_SIZE))
+		.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
 		.child(
-			ui_theme::settings_card()
-				.p_4()
+			ui_theme::settings_row()
 				.id("health-query-status")
 				.debug_selector(|| "health-query-status".into())
 				.child(ui_feedback::status_row(
@@ -175,8 +171,7 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 		let (title, detail) = issue_description(issue);
 
 		content = content.child(
-			ui_theme::settings_card()
-				.p_4()
+			ui_theme::settings_row()
 				.id(("health-issue", index))
 				.debug_selector(move || format!("health-issue-{index}"))
 				.children(ui_feedback::inline_feedback(
@@ -237,18 +232,16 @@ fn details_toggle(shell: &Shell, cx: &Context<Shell>) -> AnyElement {
 		.aria_label("Technical details")
 		.aria_expanded(expanded)
 		.w_full()
-		.px(gpui::px(14.0))
-		.py(gpui::px(10.0))
-		.rounded(gpui::px(10.))
+		.min_h(gpui::px(32.0))
+		.py(gpui::px(6.0))
+		.rounded(gpui::px(6.))
 		.flex()
 		.items_center()
 		.gap_3()
-		.border_1()
-		.border_color(ui_theme::rgba(0xffffff0c))
-		.bg(ui_theme::rgba(0xffffff03))
 		.cursor_pointer()
-		.text_color(ui_theme::rgb(TEXT_MUTED))
-		.hover(|el| el.text_color(ui_theme::rgb(TEXT)))
+		.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
+		.text_color(ui_theme::rgb(TEXT))
+		.hover(|el| el.bg(ui_theme::rgba(HOVER_FILL)))
 		.focus_visible(|el| el.bg(ui_theme::rgba(HOVER_FILL)))
 		.on_click(cx.listener(|shell, _, _, cx| {
 			shell.diagnostics.expanded = !shell.diagnostics.expanded;
@@ -278,18 +271,16 @@ fn technical_details(snapshot: &HealthSnapshot) -> AnyElement {
 		.debug_selector(|| "health-components".into())
 		.flex()
 		.flex_col()
-		.gap_5()
+		.gap(gpui::px(SETTINGS_GROUP_GAP))
 		.child(
 			gpui::div()
 				.flex()
 				.flex_col()
 				.gap_2()
-				.child(gpui::div().font_weight(FontWeight::MEDIUM).child("Agent process"))
-				.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(
-					shell::native_process_summary(
-						snapshot.report.as_ref().and_then(|report| report.native_process()),
-					),
-				)),
+				.child(ui_theme::settings_section_title("Agent process"))
+				.child(ui_theme::settings_description(shell::native_process_summary(
+					snapshot.report.as_ref().and_then(|report| report.native_process()),
+				))),
 		)
 		.child(shell::health_component_section(
 			"health-core-components",

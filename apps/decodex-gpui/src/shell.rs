@@ -74,12 +74,12 @@ use crate::{
 	ui_layout, ui_loading,
 	ui_motion::{self, SmoothControl},
 	ui_theme::{
-		self, ACCENT, BLUE, BODY_SIZE, CANVAS, CHROME_CONTROL_SIZE, COMPOSER_MATERIAL,
-		CONTENT_MATERIAL, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, CONTROL_SELECTED_FILL,
-		CONTROL_SELECTED_HOVER, FONT_FAMILY, HEADING_SIZE, INFO, MOTION_PANEL, PRESSED_FILL,
-		SELECTED_BORDER, SELECTED_FILL, SELECTED_HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET,
-		SETTINGS_TOP, SETTINGS_WIDTH, SETTINGS_WINDOW_MIN_WIDTH, SHELL_MATERIAL,
-		SURFACE_RAISED_MATERIAL, TEXT_FAINT, appearance, window_material,
+		self, ACCENT, BLUE, CANVAS, CHROME_CONTROL_SIZE, COMPOSER_MATERIAL, CONTENT_MATERIAL,
+		CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, CONTROL_SELECTED_FILL, CONTROL_SELECTED_HOVER,
+		FONT_FAMILY, HEADING_SIZE, INFO, MOTION_PANEL, PRESSED_FILL, SELECTED_BORDER,
+		SELECTED_FILL, SELECTED_HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_TOP,
+		SETTINGS_WIDTH, SETTINGS_WINDOW_MIN_WIDTH, SHELL_MATERIAL, SURFACE_RAISED_MATERIAL,
+		TEXT_FAINT, appearance, window_material,
 	},
 };
 use account_feedback::AccountFeedback;
@@ -171,7 +171,6 @@ const WB_TEXT_MUTED: u32 = crate::ui_theme::TEXT_MUTED;
 const WB_TEXT_FAINT: u32 = TEXT_FAINT;
 const WB_ACCENT: u32 = ACCENT;
 const WB_BLUE: u32 = BLUE;
-const WB_SUCCESS: u32 = crate::ui_theme::SUCCESS;
 const WB_WARNING: u32 = crate::ui_theme::WARNING;
 
 /// One window-owned production shell. Connection ownership lives at application scope.
@@ -3199,15 +3198,15 @@ fn health_component_row(
 		.gap_4()
 		.border_b_1()
 		.border_color(ui_theme::rgba(0xffffff0a))
-		.text_size(gpui::px(BODY_SIZE))
-		.text_color(ui_theme::rgb(WB_TEXT_MUTED))
+		.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
+		.text_color(ui_theme::rgb(WB_TEXT))
 		.child(gpui::div().flex_1().min_w_0().flex().flex_col().gap_1().child(label).when(
 			!presentation.detail.is_empty()
 				&& !matches!(presentation.label, "Not checked" | "Disabled"),
 			|element| {
 				element.child(
 					gpui::div()
-						.text_size(gpui::px(BODY_SIZE))
+						.text_size(gpui::px(ui_theme::SETTINGS_HELP_SIZE))
 						.text_color(ui_theme::rgb(WB_TEXT_FAINT))
 						.child(presentation.detail),
 				)
@@ -3256,39 +3255,14 @@ fn health_component_section(
 		.debug_selector(move || id.into())
 		.flex()
 		.flex_col()
-		.child(
-			gpui::div()
-				.px_1()
-				.pb_2()
-				.flex()
-				.flex_col()
-				.gap_1()
-				.child(
-					gpui::div()
-						.text_size(gpui::px(BODY_SIZE))
-						.font_weight(FontWeight::SEMIBOLD)
-						.text_color(ui_theme::rgb(WB_TEXT))
-						.child(title),
-				)
-				.when(!detail.is_empty(), |heading| {
-					heading.child(
-						gpui::div()
-							.text_size(gpui::px(BODY_SIZE))
-							.text_color(ui_theme::rgb(WB_TEXT_FAINT))
-							.child(detail),
-					)
-				}),
-		)
+		.gap_2()
+		.child(ui_theme::settings_section_title(title))
+		.when(!detail.is_empty(), |section| section.child(ui_theme::settings_description(detail)))
 		.child(
 			gpui::div()
 				.id(("health-section-list", index_offset))
 				.role(Role::List)
 				.aria_label(title)
-				.px_4()
-				.border_1()
-				.border_color(ui_theme::rgba(0xffffff10))
-				.rounded(gpui::px(10.0))
-				.bg(ui_theme::rgba(0xffffff04))
 				.children(rows),
 		)
 		.into_any_element()
@@ -3612,15 +3586,13 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.flex()
 				.flex_col()
 				.gap_4()
-				.child(ui_theme::settings_card().flex_row().items_center().justify_between().child(
-					account_pool_header(
-						count,
-						available,
-						balanced,
-						can_manage,
-						shell.account_emails.visible,
-						cx,
-					),
+				.child(account_pool_header(
+					count,
+					available,
+					balanced,
+					can_manage,
+					shell.account_emails.visible,
+					cx,
 				))
 				.children(
 					account_operation_feedback(shell)
@@ -3648,10 +3620,11 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				))
 				.child(
 					gpui::div()
-						.text_size(gpui::px(12.))
-						.font_weight(FontWeight::MEDIUM)
-						.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-						.child("Connected accounts · Remaining quota"),
+						.flex()
+						.items_center()
+						.justify_between()
+						.child(ui_theme::settings_section_title("Connected accounts"))
+						.child(ui_theme::settings_description("Remaining quota")),
 				)
 				.child(
 					gpui::div()
@@ -3783,7 +3756,7 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 				.child(
 					gpui::div()
 						.font_family(FONT_FAMILY)
-						.text_size(gpui::px(11.0))
+						.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
 						.text_color(ui_theme::rgb(WB_TEXT))
 						.child("Add account"),
 				)
@@ -5857,18 +5830,6 @@ fn settings_navigation(
 	.into_iter()
 	.enumerate()
 	{
-		if section_index == 0 || section_index == 2 {
-			navigation = navigation.child(
-				gpui::div()
-					.px_2()
-					.pt(gpui::px(if section_index == 0 { 4. } else { 18. }))
-					.pb_2()
-					.text_size(gpui::px(10.5))
-					.text_color(ui_theme::rgb(crate::ui_theme::TEXT_MUTED))
-					.child(if section_index == 0 { "Preferences" } else { "Application" }),
-			);
-		}
-
 		let symbol = match section_index {
 			0 => workspace_symbols::Symbol::Settings,
 			1 => workspace_symbols::Symbol::Eye,
@@ -5900,7 +5861,8 @@ fn settings_navigation(
 				}))
 				.on_action(cx.listener(Shell::focus_next))
 				.on_action(cx.listener(Shell::focus_previous))
-				.h(gpui::px(28.0))
+				.h(gpui::px(30.0))
+				.when(section_index == 2, |row| row.mt_2())
 				.px_2()
 				.rounded(gpui::px(6.0))
 				.flex()
@@ -5955,15 +5917,19 @@ fn settings_navigation(
 fn settings_navigation_surface() -> Div {
 	gpui::div()
 		.tab_group()
-		.w(gpui::px(184.0))
-		.min_w(gpui::px(184.0))
+		.debug_selector(|| "settings-navigation-pane".into())
+		.rounded(gpui::px(ui_theme::WORKSPACE_RADIUS))
+		.overflow_hidden()
+		.w(gpui::px(176.0))
+		.min_w(gpui::px(176.0))
 		.h_full()
 		.p_4()
 		.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
 		.flex()
 		.flex_col()
 		.gap(gpui::px(3.0))
-		.text_size(gpui::px(BODY_SIZE))
+		.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
+		.line_height(gpui::px(18.0))
 		.pr(gpui::px(16.))
 		.bg(ui_theme::rgba(ui_theme::SIDEBAR_MATERIAL))
 		.child(
@@ -5988,6 +5954,8 @@ fn settings_workspace_content(
 	let selected = if standalone { shell.settings_selected } else { shell.selected };
 	let navigation = settings_navigation(shell, standalone, selected, cx);
 	let panel = gpui::div()
+		.debug_selector(|| "settings-content-pane".into())
+		.rounded(gpui::px(ui_theme::WORKSPACE_RADIUS))
 		.flex_1()
 		.min_w_0()
 		.min_h_0()
@@ -6045,6 +6013,7 @@ fn settings_workspace_content(
 		.id("settings-workspace")
 		.role(Role::Main)
 		.aria_label("Settings")
+		.gap(gpui::px(ui_theme::WORKSPACE_GUTTER))
 		.flex_1()
 		.min_w_0()
 		.min_h_0()
@@ -6474,42 +6443,11 @@ fn account_pool_header(
 	emails_visible: bool,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	gpui::div()
-		.flex_1()
-		.px(gpui::px(16.0))
-		.py(gpui::px(14.0))
-		.flex()
-		.items_center()
-		.justify_between()
-		.gap_3()
-		.rounded(gpui::px(10.0))
-		.child(
-			gpui::div().min_w_0().flex().flex_col().gap_1().child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.gap_2()
-					.child(
-						gpui::div()
-							.size(gpui::px(6.0))
-							.rounded_full()
-							.bg(ui_theme::rgb(WB_SUCCESS)),
-					)
-					.child(
-						gpui::div()
-							.text_size(gpui::px(12.5))
-							.font_weight(FontWeight::SEMIBOLD)
-							.child("Account routing"),
-					)
-					.child(
-						gpui::div()
-							.font_family(FONT_FAMILY)
-							.text_size(gpui::px(11.0))
-							.text_color(ui_theme::rgb(WB_TEXT_FAINT))
-							.child(format!("{available} of {count} available")),
-					),
-			),
-		)
+	ui_theme::settings_row()
+		.child(ui_theme::settings_label(
+			"Account routing",
+			format!("{available} of {count} available"),
+		))
 		.child(
 			gpui::div()
 				.flex()
@@ -6562,8 +6500,8 @@ fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement
 						.overflow_hidden()
 						.whitespace_nowrap()
 						.text_ellipsis()
-						.text_size(gpui::px(10.5))
-						.font_weight(FontWeight::SEMIBOLD)
+						.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
+						.font_weight(FontWeight::MEDIUM)
 						.text_color(if enabled {
 							ui_theme::rgb(WB_TEXT)
 						} else {
@@ -6581,7 +6519,7 @@ fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement
 								.items_center()
 								.gap_2()
 								.font_family(FONT_FAMILY)
-								.text_size(gpui::px(10.5))
+								.text_size(gpui::px(ui_theme::SETTINGS_HELP_SIZE))
 								.text_color(ui_theme::rgb(WB_TEXT_FAINT))
 								.child(account_readiness_status(account)),
 						)

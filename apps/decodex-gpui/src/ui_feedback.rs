@@ -498,7 +498,15 @@ fn state_row(
 		.gap(gpui::px(10.))
 		.text_size(gpui::px(NOTICE_TEXT_SIZE))
 		.line_height(gpui::px(NOTICE_LINE_HEIGHT))
-		.child(gpui::div().flex_none().text_color(ui_theme::rgb(tone.color())).child(icon))
+		.child(
+			gpui::div()
+				.h(gpui::px(NOTICE_LINE_HEIGHT))
+				.flex_none()
+				.flex()
+				.items_center()
+				.text_color(ui_theme::rgb(tone.color()))
+				.child(icon),
+		)
 		.child(
 			gpui::div()
 				.flex_1()
