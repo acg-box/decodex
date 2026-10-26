@@ -36,22 +36,18 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
   - id: openwiki-source-24139c353e393a9759b0267a
     resource: repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs
-  - id: openwiki-source-d511cef2848dd5f6968572ae
-    resource: repo://crates/decodex-runtime/src/agent/tool_migration.rs
   - id: openwiki-source-4f59431f3f6264a65208bdcb
     resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-b1dd4c8ab85f342314daa6f1
     resource: repo://crates/decodex-runtime/src/agent/work.rs
   - id: openwiki-source-275dc903aab820a109a196b4
     resource: repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json
-  - id: openwiki-source-bdc10e06c0058b26a9bde83d
-    resource: repo://database/migrations/0056_project_agent_work.sql
-  - id: openwiki-source-f282017dc1610aa4fa0e6730
-    resource: repo://database/migrations/0058_shared_agent_process.sql
-  - id: openwiki-source-c6616f46cdcd37303054bf01
-    resource: repo://database/migrations/0059_native_assignment_proof.sql
+  - id: openwiki-source-003f00974f49a9f106bbcbea
+    resource: repo://database/schema.sql
   - id: openwiki-source-3030ced79067a3721a08b107
     resource: repo://database/src/agent_native_turns.rs
+  - id: openwiki-source-fc5ad70343bb20c4e9d12540
+    resource: repo://database/src/agent_process/attachments.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-28af4781ad8d9558410630da
@@ -60,10 +56,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
+generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T14:39:55.302Z
 ---
 
 # Project, Agent and Work contract
@@ -74,7 +70,7 @@ Status: **Accepted and implemented in the Project, Agent and Work change.** The 
 
 This decision applies to general-purpose work, including research, planning, writing, operations, analysis and software. It does not authorize installation, release, changes to a maintenance schedule, or automatic execution of all historical optional proposals. It does not certify an installed application. Documentation alone does not establish a migration of an installed application. Review Details remains an explicit global opt-in.
 
-The normative sections define the contract. [Current implementation and migration](#current-implementation-and-migration) describes the implementation and remaining qualification limits. Older qualification records retain their original source, artifact and behavior limits. An older record that calls Review Details unselected describes its qualification scope; the product decision on this page is now accepted.
+The normative sections define the contract. [Current implementation and persistence](#current-implementation-and-persistence) describes the implementation and remaining qualification limits. Older qualification records retain their original source, artifact and behavior limits. An older record that calls Review Details unselected describes its qualification scope; the product decision on this page is now accepted.
 
 ## Canonical vocabulary
 
@@ -96,7 +92,7 @@ Use one English vocabulary in the UI, code, database and documentation. Identifi
 | Review | Guardian's assessment of one action. It is separate from assessment of a Work Result. |
 | Review Details | Supported detailed native reviewer records associated with a Review. |
 
-Native Thread, Turn and Goal keep their distinct execution meanings and protocol names. Some legacy execution readers and viewport identifiers retain old names for actual compatibility. They do not define the business model. Project replaces Workspace in the business schema and public protocol; existing directory and membership data survives the direct migration.
+Native Thread, Turn and Goal keep their distinct execution meanings and protocol names. Viewport identifiers do not define the business model. The current business schema and public protocol use Project, Agent and Work.
 
 ## Responsibilities and native ownership
 
@@ -258,11 +254,11 @@ This example illustrates the contract. The places, amounts and outcomes are assu
 5. Sage finds that insurance in A2 still uses 60 people and returns the same contribution for repair. Iris finds that a proposed hotel does not fit B1's accessible route and arranges a compatible revision. The original Work identities and owners remain.
 6. Each owner checks current Results against the agreed criteria and closes its Works. The user can follow each Result back to requirements, Materials, Collaboration Requests and assessment. The plans do not claim that a venue or hotel has been booked.
 
-## Current implementation and migration
+## Current implementation and persistence
 
-Schema 56 migrates directly to Project membership, persistent Agent responsibilities and separate Work. Protocol 3.1 rejects incompatible clients explicitly. There is no dual business-name API or gradual rollout. The migration preserves genuine legacy execution, instructions, native identities, inbox receipts and historical completion limits. A migrated historical outcome is not newly qualified Result evidence. No legacy executor is relabelled as a native Subagent.
+The current schema stores Project membership, persistent Agent responsibilities and separate Work directly. Protocol 4.0 accepts one exact revision. The service does not carry a second business-name API, historical migration chain or Program model. Native identities, inbox receipts and recorded history remain distinct from current Result qualification.
 
-Schema 57 adds immutable native child-input receipts. Existing dispatch records retain their original limits; the migration does not invent a received message for them. Schema 58 permits several independently owned native conversations on one admitted account process. Schema 59 records whether received assignment proof was plaintext or native task identity. Neither migration grants another Agent's private history or invents missing input.
+Immutable native child-input receipts preserve exact delivery identity. Several independently owned native conversations can share an admitted account process. Received assignment proof records plaintext or native task identity. These records neither grant another Agent's private history nor invent missing input.
 
 | Area | Implemented behavior |
 | --- | --- |
@@ -278,7 +274,7 @@ Schema 57 adds immutable native child-input receipts. Existing dispatch records 
 
 The default tool revision advertises `work_read` and `work_manage`. Managed temporary-worker creation/continuation, subordinate-manager creation and old goal/dependency tools are retired from that surface and rejected if an old schema still advertises them. Existing automation and native recovery remain; no duplicate Work controller, native mailbox or permanent review department is introduced.
 
-Ordinary input retains its native context and tool set. A newer local tool revision does not start a replacement. Recovery continues only an existing migration journal with a known replacement identity. It preserves saved model/provider/effort/tier/permissions and history, verifies actual resumed settings and requires quiescence and positive archive observation before switching. Unknown creation or retirement stays parked. The old context remains read-only history.
+Ordinary input retains its native context and tool set. A newer local tool revision does not replace the conversation. The current runtime has no context-upgrade journal. Unknown native effects require readback; previous native history alone grants no input authority.
 
 A Project association is business scope. A native conversation still has one actual execution directory, Project and permission boundary. Work association does not switch them. Work Pause blocks new Decodex contributions and completion; already-running native actions, Goals and children require native control. These limits are visible in the UI.
 

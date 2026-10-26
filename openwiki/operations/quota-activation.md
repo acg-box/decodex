@@ -12,8 +12,8 @@ sources:
     resource: repo://database/src/quota_activation.rs
 generated: { by: "codex", at: "2026-10-03T17:31:35.485Z" }
 verified:
-  - by: openwiki/0.7.0
-    at: 2026-10-03T17:31:35.485Z
+  - by: openwiki/0.7.2
+    at: 2026-10-26T14:39:55.302Z
 ---
 
 

@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c871574aa50b161b90534cb9d168df6c3bc5dbb5d5d202ccfcb7674a6292e13a",
+  "pageVersion": "sha256:afdef730cb9bd2b495f7e19c546a8b033dcb8e2223d7b9e59208812d244ad29c",
   "claims": [
     {
       "id": "claim_820ae47a5a5d49aab10b5f306ac24685",
-      "statement": "User conversation creation persists an independent Agent with no required parent, while direct schema56 migration retains legacy identities and Project membership.",
+      "statement": "User conversation creation persists an independent Agent with no required parent and records its Project membership in the current schema.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L761-L793",
-          "version": "repo-lines-v1:sha256:dc17af926337458f04935956a127382407d3369b0ac2ee5203bb82d62de2496b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcxZmNiNjNiYzM2YWUzOGM0N2Y3MDcyMjhhYmI0YjEzZjA3NTkxNTQxYTU1ODJkNTkxNTY3Y2FlZDg4NjNlZDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkNDU4NGMyM2VmNGZlMTlkNDEyMTAyNTY2YzViYmI5MTAzNzFjOWQzN2JkOGEwODNjY2VlNjBmN2RhZDgyYjIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYwMzA3YTk0M2EzYmRmMmM1ZWYxMjhjYzAxY2M5YzVjYTY2OTE2YjZiODhlODkzMmQ1M2IxNTlmN2JkNWJhOGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkZWI1MTc4YTdlOTA1OGY1ZjczNTQ4YTVlNGFhNTc5OGUwNDBhZTM1NmQzODUwZjAyMDk3MDU3ZGI0NDdhMWQifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:ccd95f1c036685f8877b38a384f72da324fd3ff17cf81f681ecb3d6a6dba90dd"
         },
         {
-          "resource": "repo://database/migrations/0056_project_agent_work.sql",
-          "version": "repo-file-v1:sha256:ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699"
+          "resource": "repo://database/schema.sql",
+          "version": "repo-file-v1:sha256:4fd878886ed6903409e94f76720d686dbad5e635b006e8c236477cc4cda255a8"
         }
       ]
     },
@@ -21,7 +21,7 @@
       "statement": "Delegation, Collaboration and current Work context retain application-evidence authority instead of becoming user authorization; authoritative Work changes require the actual delivered user decision.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1266-L1376",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1264-L1374",
           "version": "repo-lines-v1:sha256:34c154ed0b2a955952269ea2ba86b94de26fe029840005eeab4bd317d355ae33:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
@@ -71,7 +71,7 @@
           "version": "repo-lines-v1:sha256:e111dbf2f4d4aa117f76345f57907e9d47f124256fe78ec0dd6368d99e5d50d6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2ZmRmZjlhYTNiYTY5YTEwODVhMjY3NjljNDRiMWNjMjRlMDZkZGQ5YWIzNDlkZDY4NDM5OGYyMTQzY2M5MzZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyOWFmM2JiMDRhYjAzOTQwYTQwOGM1MDcyYTVjY2RlMWY4YzUxZTc5YTIyYjE1ZTk5NDNlOTFlY2EyYWMyODFhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwMDc2NDQ5YTA3N2YwNWUwMWUwN2M0NzE5OGVhYWEwNjY5NGNjZWFhZTIxYmEwODFmNTZmMDFjNTI4NzdmZWY3In0"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1550-L1568",
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1547-L1565",
           "version": "repo-lines-v1:sha256:cfd232ec73dc3a45871fb3cf4318614d9f69ffee74f348a28a0257a1c68bf34c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5OWY2NWUyZDI2OTYwNGYxOTgyZjJmOTZkYmI2MjA2NTgwYWU5YzZkYTdiYmU0OTM0MWIzZWU0NDAwNGQ1YjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQwNThlYWViNTQ5M2EyYzdlMzMyMTk5ZjVmNjgxNDkwOWMwNjhiZmMwZGNmMGRkNjdiZmVhODM4MDUzY2E3MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFiNWU2ZDJjY2FlMTc5Yzk0YmI0Yzc0OWZhZmJmNzQzNjVhZGNiNjliMWE3MzY4MTE2YTM3NDBlMjRlMGQwYzkifQ"
         }
       ]
@@ -88,11 +88,11 @@
     },
     {
       "id": "claim_1c21d83e6bc749d9a15f5832705e747b",
-      "statement": "The default Work tools use native helper execution. Ordinary input retains its original native context; only an existing tool-replacement journal is recovered with exact saved settings, quiescence and positive retirement. Uncertain outcomes stay parked and old source history remains read-only.",
+      "statement": "The default Work tools use native helper execution. Ordinary input resumes its original native context and tool set without a context-upgrade journal or automatic thread replacement.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/tool_migration.rs",
-          "version": "repo-file-v1:sha256:149e9203ec7874c40d77b06c0a0a5c693b75b0cbb0a720c4fa8634dcb5733e40"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L960-L966",
+          "version": "repo-lines-v1:sha256:94776a0d435b96647d7166add2c7065508760db388a1d6b1ab244d43e5b1d2f8:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWZkZDg0NjFjMDUwNzdiZTg5NzFhYmUxMWM5ODJhMjU0YWFlMTEyZTM3NzIwZDdhZmViNjBlMWU0ZDUzNDRmZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDQwOThiOWE1NmE3ZGNiZDEzOWQ5N2NiZTQzYmEyNjk4MWViNTc0MmMwNGZmZDY5MTc3ZGNjMGE5MzQyYTdkMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzNhM2E4NGU0NTc2MjMxMDU0MzhlYTg2MGM3MDk5NjA2YTEwYzVkOTM2YTM2ZDQ0Mjk1ZDMyZmE3N2Q3ZjdmNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWFmM2U5ZDA4NDM1MGQzYjExMzJmNzNmZGNkNTIzNjg3OWM1ZmQ5NWUyMTU4NWZjZmNiOGFiZjlkMmNjYzRiNCJ9"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
@@ -104,10 +104,6 @@
       "id": "claim_47ac168f0ad448b89c37cec3e99ae081",
       "statement": "Independent Collaboration Requests preserve separate delivery, acceptance, return, assessment, repair and cancellation under stable request and immutable instruction identities.",
       "evidence": [
-        {
-          "resource": "repo://database/migrations/0056_project_agent_work.sql",
-          "version": "repo-file-v1:sha256:ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699"
-        },
         {
           "resource": "repo://database/src/works/collaboration.rs",
           "version": "repo-file-v1:sha256:ac15fb5772b69ae267a7073810bf6cfe89998c52a60cc706369875ed72415d89"
@@ -186,15 +182,15 @@
     },
     {
       "id": "claim_29630e431b6c42d987ee5732cc43b742",
-      "statement": "Schema 58 preserves independent Agent bindings on a shared admitted process, and schema 59 distinguishes plaintext from native-task-name assignment proof without inventing historical input.",
+      "statement": "The current schema preserves independent Agent bindings on a shared admitted process and distinguishes plaintext from native-task-name assignment proof without inventing historical input.",
       "evidence": [
         {
-          "resource": "repo://database/migrations/0058_shared_agent_process.sql",
-          "version": "repo-file-v1:sha256:05e447b01812463e012054fcb355dda890d814243bab5b944849f943b4ef3c00"
+          "resource": "repo://database/schema.sql#L675-L686",
+          "version": "repo-lines-v1:sha256:01b48de0b417b22e7bd530d7fb12c39eb5bebf2e6a2b634e2c19daac335a8d51:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNzMxMTZlZTNlNmQ3YjE5MzY0MWI2NzMzMDAzYjk2MjIxMzA1NzdlMGViZjMxNTdlYjY0ZmM3Y2E4MDEyNjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmMWFjMTAwNzM3OWE1Mzk2Njg2MTZiODQ5N2RiNzk1NmJkMmFlMmVkZmU1ODk1Y2UwMmZiOTAyOTJmMTFiYWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlM2ZkYTRmYzMxMDEzYjUyY2JkNGI2NDk5MjUxNGY0ZjI4MGEzMDA5Mjg0YzNjOGFiYmEyN2JkMzU2ZWE4MWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU4MWFkMGEzM2M2YzU2MDljYjM5NzQ1Y2YyNDhmODA0NjEzMDQ3MGY5OTJhZmRkNWU1YTFiNGY0MGI5YTE2MTEifQ"
         },
         {
-          "resource": "repo://database/migrations/0059_native_assignment_proof.sql",
-          "version": "repo-file-v1:sha256:c49bd47c9d4f22c1e43ff5c27def8ba36ff0725c355fc9327515408d4400a179"
+          "resource": "repo://database/src/agent_process/attachments.rs",
+          "version": "repo-file-v1:sha256:113726bac40d5f12fb5556dc4e2d6099fb601257f66caa025c562cc21b356e72"
         }
       ]
     },
@@ -269,7 +265,7 @@
           "version": "repo-lines-v1:sha256:f826c16639548bea4feac5128e1c977361fa0672bad2c2cd21eb940497919af1:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2ZDM3NDI5MTRmZTFkODY2ZTY2NGE4NDMzM2FhZWI0Nzk1NDE2ZmZjNDc0NTczYjVhMDU2OWI1ZjEzODQ0ZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1YWEwZjkzOTQ4YjU2ZWM5MTljZjNmNDM5MDEzNGQ2YTFmMGYyODgzYzI1OTdkNjU1OWM1ODYwMzU4NDIzOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwMTJhNDJhNmNmMTg3ZTMzNzAwNDBjMDk5ZjMyNjMxOTBhYWQyNWRlNzMwYzc5OGJlNDU4NDU0YzFiYmMwNWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVmMDg3ZDQzOWMwNWQ3MjIwNWI1ZGFiMGUyMDUyYWVlOGE5ZjM2YjVmNTk3MDZhNWNkODI4Yzk3ZjQzYTZkOTYifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L924-L975",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L923-L974",
           "version": "repo-lines-v1:sha256:6b9ad443c51bcf7aee3379c036b4b064959d07d2a2740f8b55458d91d08e45ac:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzMDQwMDA0N2UzY2U2NjI0Yzk5MTgxNGY5MzRiNDgzNTQ4NWIxNDg0ODFjNTI3MGRlZjE3MjA3ZjE4YzQzNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjYzE1MDQ0YzQ1YzEwMmJjMWNlMTZmMmQwMWQwZjk0MjI3N2MzZDcwMTUyZTAyM2Y2OTAyM2IwY2E0YTA4MmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjMmI1MGY2ZTAyZmY5MGU2ODBjNTE0YzE2Zjc0YzUwNmU4Y2RiZTUxZmVjYWUyMzY1NDhkZGRiOWY5ODFkZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkMTVjYWViZTcyZDQxMjNkZDYzNTRjY2M4ZDZkOTBiYjk0ZjcwZDcwYTAyOTc3MzNkN2UxNDA0ZWI4ZmM4ZTYifQ"
         },
         {
@@ -295,6 +291,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T07:09:00.728Z"
+    "at": "2026-10-26T14:39:55.302Z"
   }
 }

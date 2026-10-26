@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f8ceba4abc1ddf49cd37ae5b8082ce40074f8eaf902b0e0fa0e8f21d3105bde1",
+  "pageVersion": "sha256:8e0df4fb233b6b6b291f9dfe756b5aced691fe31eda698283cee06213f702eef",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -86,7 +86,7 @@
         },
         {
           "resource": "repo://crates/decodex-components/src/install.rs",
-          "version": "repo-file-v1:sha256:9f9e503cc997093393ff04a0bf8014189b730ea52a07c896166dab1a5f1d0af4"
+          "version": "repo-file-v1:sha256:8ae325a6956a3d0f75dfc0272d48e0f36331d45f04dedf22ad80d33036c3b944"
         }
       ]
     },
@@ -95,7 +95,7 @@
       "statement": "Compatibility continuation keeps application tool evidence separate from user input: work_instruction can request native retention while scheduled wakes, capacity retries and other external results remain unselected.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1266-L1376",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1264-L1374",
           "version": "repo-lines-v1:sha256:34c154ed0b2a955952269ea2ba86b94de26fe029840005eeab4bd317d355ae33:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
@@ -211,6 +211,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T07:09:00.728Z"
+    "at": "2026-10-26T14:39:55.302Z"
   }
 }

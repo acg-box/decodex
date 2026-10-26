@@ -4,17 +4,17 @@ title: "Historical Decodex vNext authority contract"
 description: "Superseded design provenance; current SQLite migration and validation owners take precedence."
 tags: ["decodex", "architecture"]
 sources:
-  - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
-    resource: repo://database/src/migrations.rs
+  - id: openwiki-source-dc8958560b1230967470835f
+    resource: repo://database/src/schema.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
-generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T14:39:55.302Z
 ---
 
-> This record remains historical. Its old milestone gates, no-migration/disposable-data assumptions, executable paths and external issue status are not current instructions. Current SQLite migrations preserve product state; active checks are in Makefile.toml. Use [Current product contract](local-product-v1.md) and [Commands and validation](../operations/commands-and-validation.md). This refresh preserves original evidence and does not claim a new live acceptance result.
+> This record remains historical. Its old milestone gates, no-migration/disposable-data assumptions, executable paths and external issue status are not current instructions. The current product uses one SQLite schema directly; active checks are in Makefile.toml. Use [Current database contract](../operations/local-database.md) and [Commands and validation](../operations/commands-and-validation.md). This refresh preserves original evidence and does not claim a new live acceptance result.
 
 > Historical design record. This page does not define current product requirements.
 > See the repository README for current scope. The repository-management and built-in
@@ -24,7 +24,7 @@ verified:
 # Decodex vNext Authority Contract
 
 Status: historical former server store contract. The current normative slice is the
-[Local Product V1 contract](local-product-v1.md). Keep this page as provenance for
+[current database contract](../operations/local-database.md). Keep this page as provenance for
 domain semantics only; its database ownership, reset, and gate requirements no longer
 govern current implementation.
 

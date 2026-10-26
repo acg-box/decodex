@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:79f407ffcff10167609358a96fbc909d0d4571296a711d537eaea228a5cd6d54",
+  "pageVersion": "sha256:23b4756070c35cf2f6848c9d7d523433ed305d837812994c66d2c10eac2ed369",
   "claims": [
     {
       "id": "claim_738021d152cc4128af3d3b4b217fe92c",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:99e61da4fc9c53f7cf60224d66a3665a9fd00e8654d407e3a720e4c356256e14"
+          "version": "repo-file-v1:sha256:3c5a76a4b22355e4b41356f952367830208b66ed6b1444098ebe15680d76ac39"
         }
       ]
     },
@@ -17,8 +17,8 @@
       "statement": "Quota activation uses the existing credential owner and native policy for a minimal non-persistent request, with durable handling of ambiguous outcomes.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_api/activation.rs#L1-L215",
-          "version": "repo-lines-v1:sha256:835660b93e38c324b235932bf6cfa297c41003f81b1bbd7b97095150b3c241f0:eyJzZWxlY3RlZExpbmVDb3VudCI6MjE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjOGVkYmNkYTRmMjdkMzNiZTM0ZDEzZTc2MWRlYmQ4Y2JmM2QwNWUxMjIyNWQzNjQ1MjE0NTU4ZWQ1ZmM4NWRlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzN2NhODhhNDI2ZjU4YmJiMDRkZjg0MWM5NGEyZGMzNWMyYmRkZjY2YWYxOWJmODE4MDM1OGJjZmJhOWFiYjNmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhODgyNTVlZjE2YjYzNTQzMWY4NGZhYmQ3MTI0MGM3ZTYyN2QwNDExNTU1ZTE5NWY2OThjYWI3M2JjZTgxNmQyIn0"
+          "resource": "repo://crates/decodex-runtime/src/account_api/activation.rs#L1-L218",
+          "version": "repo-lines-v1:sha256:36165ffb14bf1238f7897f353fc1be77eeed875e8e35fc01abba132ac7b88998:eyJzZWxlY3RlZExpbmVDb3VudCI6MjE4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjOGVkYmNkYTRmMjdkMzNiZTM0ZDEzZTc2MWRlYmQ4Y2JmM2QwNWUxMjIyNWQzNjQ1MjE0NTU4ZWQ1ZmM4NWRlIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIzN2NhODhhNDI2ZjU4YmJiMDRkZjg0MWM5NGEyZGMzNWMyYmRkZjY2YWYxOWJmODE4MDM1OGJjZmJhOWFiYjNmIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhODgyNTVlZjE2YjYzNTQzMWY4NGZhYmQ3MTI0MGM3ZTYyN2QwNDExNTU1ZTE5NWY2OThjYWI3M2JjZTgxNmQyIn0"
         },
         {
           "resource": "repo://database/src/quota_activation.rs",
@@ -63,7 +63,7 @@
           "version": "repo-lines-v1:sha256:c2de080b4effd234613fce1f76100cd1d0b5e2236e7ddc370c444c0e86b2b65f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU2ZWM0ZTQ1MzljOTQ3OTZmODljMjk1Y2RjNTJkZjZiOTg4NjJhZTIxOGNjZGFhYjRiMmNiMTNmZWI0NmY0ZTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4NmZkYTBjNGNmMjQ2YzVhMTRlMzU1ZTdhZjAyNjQ1OWI3OGI2ZGNhNDEwYWRhNmY5ZDZmN2ExNTI0M2UwZWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MzgyMzEwZGVkNWYwZWMyMGM2MzdmMjEyYWZlZWM1ZDE4OTY1NzRlMDViZGU2Y2I0Njk3YmNjZTkxZTQ4NjAifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L1321-L1361",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L1322-L1362",
           "version": "repo-lines-v1:sha256:02a76291224e3b0dc38f5632e27cf0447b2946c2d27769a0e9018fecf758b9ad:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxNzA4OTc1ODkxMDA3YTAwMTZkZDZkOTg5NWNjODA0ZDdmMDk4YzUzN2NiMDU3MDIzZTU1NTNiNjk5YTIxZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyZjBhNTc4MWJiYTFjNTI4NjcyNzU3ZjEwNGZkN2IwZWZhMzRkYzVhNDgxMzM3NjRmMjQ0M2YxZDNmYWVkZGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRhOTMxZTQ4NGRmZTllMzU5OWFhNDRiMjM1Njk0MjRiMDFmNjZiMzg5MzI1OGI0N2ZmMmQwMDhjMzdhNzRiOTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjczZGMwNjUxOTk2ZWZjNmJhYWY4MDAzNDE5MzgwNDYyMjBhNzM2YTYxYjUzNTM4MGU2ODFlZDZiNzM3Yzk3NzEifQ"
         }
       ]
@@ -101,7 +101,7 @@
           "version": "repo-file-v1:sha256:f79d88c3ada217f0344bf8221693b18974ec0057337ace537baacbfcdc1a852d"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/shell.rs#L4081-L4134",
+          "resource": "repo://apps/decodex-gpui/src/shell.rs#L4080-L4133",
           "version": "repo-lines-v1:sha256:d4a052f2056f39e9f01b99278a3c08cee38da49304d9fefea5aa0fc226c03c18:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4MTNlOGEyNTVkZmUwZWI5NjNiOTFlZWI1NGZlZWVjMTNjOThmNzJjMmVkNzhmYzA3MTQ4YTUxMGU1Y2M0Y2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4NzM0MTFmMDcyZDZiYjMxZGY4YjdiYWY5NWJlNTAxODFhODMxM2FkZjNhZTI0MGM5NjAxZmRlYWNhYjA0YjgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzMDcyM2RhMmVhNmUxNDlkNGI1MGY4ZGQwZDRmMTNmYTRmYTk0OGVhNGQ3MTY4Nzg3N2E1NzhiYTk0ODQwYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFhOTc4M2VlODY1Yjk3NDc5NGMwOGE1ODNhMzA0ZjYxMjc0ZWU1YTgxOThjOTdhYzNkY2RmZWYxNjFhNWI2ZDgifQ"
         }
       ]
@@ -120,7 +120,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:1f7832b3a91b1ad3feeed9f3c6c9eef294c302276f74118c3fc7dca7e4ef47ed"
+          "version": "repo-file-v1:sha256:0ad4dced051b4b0df75c4e7cad2128c66c1eaac667a56f7e09e1d1084222eec0"
         }
       ]
     },
@@ -133,11 +133,11 @@
           "version": "repo-lines-v1:sha256:61e101c541dd6849fbe1e29b0e770ae4ca860ab09c2e31cbef3e0f958a8c0a39:eyJzZWxlY3RlZExpbmVDb3VudCI6MTg4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4ZTA4MGJmNGE3NDU0MTdlMDIxNWE2ZjFlZDJjNTM2ZGJiZmQ0OTg2ZTU0YWNkOTc3M2FiOTI4OTU1MDk1N2JmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJlNTA0YjRiMjBiZjJmMjg4MGRjY2RlNGQzYTEwNmExMzRiYmEzOTExMDM5MGE3ZDQxMDA1MGM5ZWFkNWVmZmI1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhOWVmZjAyMDk3MDIwMDgzYmRhZDlkNzQ5NDZhNjk2ODQ1ZmY5ZTVlMTcwMGI1YzBhNWMyOTFjNTAyMTE2ZWNkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkODBhNjQzNWIzMTM5YmFkNWM3NDFmNGZiYWQ3OTIyMzQ5MDc2ZDE4M2U2NTM1ZWM2OTMxMGMyN2YwMzQ0ODgzIn0"
         },
         {
-          "resource": "repo://database/src/account_lifecycle.rs#L1486-L1560",
+          "resource": "repo://database/src/account_lifecycle.rs#L1474-L1548",
           "version": "repo-lines-v1:sha256:121eef2cf6ad3bd298587c864424399c4fd4dfa5398f9c16a95b38886d3eb3ea:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3NGFhZGIxNjVlZjIyZmFmZTY3ZTJhMDYyNjdmOTU4ZTk4MzNlZTdiYmRlOWVmZWE2YjU5OTQ0ODY1MDFjMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxNjJhYjlmNzZiYjZjMzVmYjIxNmE3OGNlZWEyOGQ0ODQ4ZWYwYjRlYjNjZGE5YjA0ZTM5MDAzMjRlYTYwMTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3NTgyMTZmZWZlNzQ3ZGYxMzA2OWIzNWZlZjVkNDFjNjE3MWNjNTE0Yzk3MTFiMGIzMDZjY2UwYzExMDFkMzEifQ"
         },
         {
-          "resource": "repo://database/src/account_lifecycle.rs#L1853-L1910",
+          "resource": "repo://database/src/account_lifecycle.rs#L1841-L1898",
           "version": "repo-lines-v1:sha256:425e37a5351f4e4abbfe751e1d061188ec9f955ef8315ef968fb99450ba67fb0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1YmJhZjVjNWFjMDFiM2EwNTQzYWQwNzQ2MGQ2MWM5MDhmNzNhMGNkZWIzMmVlOTU0MTU5ODJmMzk5ZDU2NjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllOWQyZTAzNmU3NGNhYjJkYjI4NzA2OWUzZTEzOWRmZjY5YTFiZGVkZDBiZjJmYTFiZTVmMGMwYTQ2ZWJkNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmOGJjNThhNjI3OTYxODlhZWQyNTJmN2EyY2U2YzA4NDZjM2FiYTY3OWRmMjkwOWFiYzc3ZDQ2ZjY1NTMxYzQifQ"
         }
       ]
@@ -147,7 +147,7 @@
       "statement": "Account admission accepts only plus, pro, prolite, promax and team for OAuth and PAT credentials, with Team classified as a workspace plan and absent or unknown plans rejected.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5527-L5536",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5465-L5474",
           "version": "repo-lines-v1:sha256:7cf06081ad220cfd9613ab4a9d4b301980c06fb5a25a2846ae2e37373924fde8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmNjk5MTEzNTNhZjE0Y2FiOWFmMzljZjU2NDA5YzMyNDJlYzAyOTdjMTVmMmU3ZWQxMjAzMGM2M2M2M2EzZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1NTgxZDhlMGQzMjM1MGEzMDlmMjBlYjVhMzNmYzYyYzg3ZWZlNzRmM2UzMGRhMTQ0Yzg5YmYzMmExYWIyYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlhZWIwNGRlNmM5Mjc4Y2ZkODg2ZTJkZjMyZjBlNDA3MGZlZmZlODE0MDM2NWFjODQ0YThjNDA5OTZjMjY3OGUifQ"
         },
         {
@@ -159,6 +159,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T07:09:00.728Z"
+    "at": "2026-10-26T14:39:55.302Z"
   }
 }

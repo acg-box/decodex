@@ -4,17 +4,17 @@ title: "Historical XY-1368 retained-title freeze"
 description: "Historical retained-title experiment with no authority over current product migrations."
 tags: ["decodex", "architecture"]
 sources:
-  - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
-    resource: repo://database/src/migrations.rs
+  - id: openwiki-source-dc8958560b1230967470835f
+    resource: repo://database/src/schema.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
-generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T14:39:55.302Z
 ---
 
-> This record remains historical. Its old milestone gates, no-migration/disposable-data assumptions, executable paths and external issue status are not current instructions. Current SQLite migrations preserve product state; active checks are in Makefile.toml. Use [Current product contract](local-product-v1.md) and [Commands and validation](../operations/commands-and-validation.md). This refresh preserves original evidence and does not claim a new live acceptance result.
+> This record remains historical. Its old milestone gates, no-migration/disposable-data assumptions, executable paths and external issue status are not current instructions. The current product uses one SQLite schema directly; active checks are in Makefile.toml. Use [Current database contract](../operations/local-database.md) and [Commands and validation](../operations/commands-and-validation.md). This refresh preserves original evidence and does not claim a new live acceptance result.
 
 # XY-1368 retained-title freeze
 

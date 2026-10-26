@@ -8,6 +8,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_archive.rs
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
+  - id: openwiki-source-258277a596f7d23ef310055b
+    resource: repo://apps/decodex-gpui/src/agent_draft_merge.rs
   - id: openwiki-source-5eddd1d872eed61f8ba7e703
     resource: repo://apps/decodex-gpui/src/agent_draft_storage.rs
   - id: openwiki-source-d701c906e7fcc9ab2d0917bc
@@ -26,6 +28,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_sample.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
+  - id: openwiki-source-d57edbe5de23ebee985fc88b
+    resource: repo://apps/decodex-gpui/src/agent_timeline_inputs.rs
   - id: openwiki-source-5606e779f593d160176b0a27
     resource: repo://apps/decodex-gpui/src/agent_transcript.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
@@ -40,6 +44,10 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
+  - id: openwiki-source-caeefdea0805519b59a469aa
+    resource: repo://crates/decodex-protocol/src/desktop_drafts.rs
+  - id: openwiki-source-c01ab8da738707861c64c143
+    resource: repo://crates/decodex-protocol/src/desktop_message_delivery.rs
   - id: openwiki-source-95a7168e447de14b4b758f16
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs
   - id: openwiki-source-9e21e877b2d7ad96b0a4d637
@@ -56,26 +64,26 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_transcript.rs
   - id: openwiki-source-f4bc7020783c49a911b7fb29
     resource: repo://crates/decodex-runtime/src/agent_visibility.rs
+  - id: openwiki-source-dbc533dc306a3f520c4241e0
+    resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
-  - id: openwiki-source-d511cef2848dd5f6968572ae
-    resource: repo://crates/decodex-runtime/src/agent/tool_migration.rs
   - id: openwiki-source-88b81a215b1bac061dad80ec
     resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
   - id: openwiki-source-c6bea677adcde563202b65b9
     resource: repo://crates/decodex-runtime/tests/native_qualification/response_identity.py
   - id: openwiki-source-58c0167d31c3e40dc89591ab
     resource: repo://database/src/agent_fork.rs
-  - id: openwiki-source-0f0fc00c258a3ddad6935fcc
-    resource: repo://database/src/agent_tool_migration.rs
+  - id: openwiki-source-7cbe85f6b9884923ffd5cbfa
+    resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
+generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T14:39:55.302Z
 ---
 
 # Conversation input, history and recovery
@@ -90,15 +98,15 @@ The Agent composer and the separate ordinary History workbench share recovery me
 
 Each user-created Agent has one current native conversation. It can own several Works and act as Project Lead without creating a permanent component manager. The Assistant is optional. Current Work requirements and authorized Materials are read before assignment, recovery and assessment; a compacted summary alone is not the authority. Different Work records do not create independent native directories or sandboxes within that conversation.
 
-The canonical tool revision uses Work business commands and native Subagents. Ordinary input retains the original native conversation and its immutable tool set. A new local tool revision does not create a replacement. Recovery applies only to a previously saved context-migration journal. That recovery waits for the source and descendants to be idle, with no active or paused native Goal or running background command. If native inspection is unavailable, it parks. It preserves actual model/provider/effort, explicit service tier and permission profile, and keeps an unset tier unset.
-
-The service saves the acknowledged replacement identity before metadata/readback, materializes an empty native context through supported naming, and verifies the resumed native settings. Only a positive retirement observation for the exact old context permits the atomic binding change. Unknown creation or retirement is not replayed. The old context remains read-only history and requires exact identity when read. Old parent identifiers never grant another persistent Agent input or private-history authority. No reset, unarchive or host-process termination is part of recovery.
+The canonical tool revision uses Work business commands and native Subagents. Ordinary input retains the original native conversation and its immutable tool set. A new local tool revision does not replace that conversation. The runtime checks the capabilities of the bound native context before it uses versioned tools. Old parent identifiers do not grant another persistent Agent input or private-history authority.
 
 Work Results and command receipts are separate from the conversation's latest reply. Restored pending evidence remains awaiting the owner assessment. A requirement change rejects old completion; a pause stays effective after restart. Native continuation and exact terminal readback remain native-owned, with V1 native wait and qualified V2 idle wake limits in the [acceptance record](../testing/upstream-acceptance-boundaries.md).
 
 ## Drafts and uncertain outcomes
 
-`agent_draft_storage`, `agent_draft_recovery` and `ClientDraftStore` preserve unsent input and copies needed for conflict or uncertain-operation recovery. They are not a permanent archive of accepted edits. Shared-store conflicts retain the local edit and the competing saved copy; explicit recovery and export make the distinction visible. Quit can be cancelled while the conflict remains unresolved.
+`agent_draft_storage` and `ClientDraftStore` keep the current editable input under its original conversation owner. A shared-store conflict merges current edits and unresolved delivery records. It does not create alternative whole-editor copies or a separate recovery manager. The current draft format is version 11.
+
+An exact local message has its own delivery state. A positively unsent message shows **Retry** and **Dismiss** through the existing message UI. Retry preserves the original input and its attachments; it does not replace text that the user entered later. Repeated retries refer to one successor event. An **Unconfirmed** message offers **Check status**: an unknown outcome is not safe to resend. Queue acceptance remains separate from native execution.
 
 Persist input before dispatch. A lost response can mean that an operation ran. Check the exact saved receipt or native history before changing its state; do not resend an uncertain command. A later observation from another task, account or generation cannot settle it. Native closing-thread recovery resumes the existing conversation and keeps delivery evidence.
 
@@ -137,7 +145,7 @@ Cancel edit removes the exact saved draft when no confirmation, native receipt, 
 
 An accepted edited-input send removes its matching draft without creating a recovered archive copy. A completed after-turn branch removes the finished source edit operation; a before-input branch keeps the canonical draft on its new destination until the user sends it. Explicit Fork is the way to preserve the original conversation while continuing elsewhere.
 
-Unfinished edit entries, Refresh conversation and Show saved local records live in Details. The normal timeline shows the active editor or one unresolved-edit notice rather than a list of saved drafts. Existing unsent drafts remain available for explicit recovery or discard; this change does not batch-delete them.
+Unfinished edit entries, Refresh conversation and Show saved local records live in Details. The normal timeline shows the active editor or one unresolved-edit notice rather than a list of saved drafts. The current editor and unresolved edit operations retain their own identities; there is no saved-copy list.
 
 ## History and rendering
 
@@ -173,4 +181,4 @@ The adapter can create one ephemeral prediction fork of a loaded parent, with th
 
 ## Evidence and extension boundary
 
-Verify restart, conflict, cancelled Quit and draft export against the actual app artifact; a historical receipt does not qualify the current installed build. Start code investigation with `agent/prompt_edit.rs`, `agent_prompt_edit.rs`, the draft owners and their focused tests. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) and [Agent coordination](../architecture/chief-coordination.md).
+Verify restart, concurrent edits, failed-message retry and uncertain-message status against the actual app artifact; a historical receipt does not qualify the current installed build. Start code investigation with `agent/prompt_edit.rs`, `agent_prompt_edit.rs`, the draft owners and their focused tests. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) and [Agent coordination](../architecture/chief-coordination.md).

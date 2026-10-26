@@ -72,14 +72,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/work.rs
   - id: openwiki-source-2da6601c3f30e806c504e991
     resource: repo://crates/decodex-runtime/src/host_credentials.rs
-  - id: openwiki-source-bdc10e06c0058b26a9bde83d
-    resource: repo://database/migrations/0056_project_agent_work.sql
+  - id: openwiki-source-003f00974f49a9f106bbcbea
+    resource: repo://database/schema.sql
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
+generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T14:39:55.302Z
 ---
 
 # Product scope and native ownership
@@ -88,19 +88,19 @@ Decodex supplies a local workspace, account policy, work relationships and reada
 
 ## Implemented coordination and Guardian
 
-The [Project, Agent and Work contract](project-agent-work.md) is the accepted and implemented contract for general-purpose collaboration. It defines shared English names for code and UI, an optional Assistant, existing Agents acting as Project Leads, one owner per Work, native Subagents, and scoped Collaboration Requests between independent Agents. It does not use fixed L0/L1/L2 business levels. The current implementation and its compatibility names remain documented below.
+The [Project, Agent and Work contract](project-agent-work.md) is the accepted and implemented contract for general-purpose collaboration. It defines shared English names for code and UI, an optional Assistant, existing Agents acting as Project Leads, one owner per Work, native Subagents, and scoped Collaboration Requests between independent Agents. It does not use fixed L0/L1/L2 business levels. The current ownership boundary is documented below.
 
 Global Guardian controls and native private Review Details are now selected product scope. They are no longer awaiting a decision on whether to implement them. The target has no per-Agent Guardian override; actual native requirements and per-source effective settings remain authoritative. Review Details are diagnostic observation, not permission or Work acceptance. Implementation, exact-artifact qualification and a separate local installed development acceptance are recorded in the retained evidence index. The installed scenario qualifies two Projects and four Works, independent-Agent input and approval ownership, Pause/Resume, restart recovery, global Guardian and the Workspace/Full Access sequence. Official Codex desktop Project presentation remains unobserved. A controlled scenario does not establish general model quality. This decision does not enable a native flag, broaden Full Access, or select unrelated historical optional proposals.
 
-The default coordination surface uses `work_read` and `work_manage`. Only users create persistent Agents. Native Subagents own temporary execution. Managed-worker/manager creation and old goal/dependency tools are retired from new conversations and refused in legacy schemas. Real legacy execution and history stay readable; recovery of existing tool-replacement journals does not relabel them as native children.
+The default coordination surface uses `work_read` and `work_manage`. Only users create persistent Agents. Native Subagents own temporary execution. Managed-worker/manager creation and old goal/dependency tools are retired from new conversations and refused in legacy schemas. Native history and recorded tool declarations stay bound to their original conversations.
 
 Global Guardian changes the thread preference for subsequent turns and reports per-source receipts. Existing active captures and pending human approvals retain native ownership. Optional private details retain bounded assistant output and terminal metadata without raw reasoning. Exact action associations are unavailable in the selected runtime and remain explicit. This does not select the separate native Guardian V3 experiment or add a per-Agent override.
 
-Schema 56 and protocol 3.0 implement the direct business migration. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
+The current schema and protocol 4.0 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
 
-The retained-conversation repair reconciles unassigned native Project membership before input and preserves conflicts for inspection. Schema 57 retains actual native child-input receipts for Work attribution when native configuration permits nested V2 Code Mode. Recovery joins exact evidence without replay. V1 nesting remains supported; V2 keeps its direct-only default. These are repairs to retained integration contracts. Native Project identity and membership and Decodex Project presentation passed in the separate installed qualification. Official desktop saved-Project/sidebar presentation remains unobserved. See the [canonical contract](project-agent-work.md#qualification-and-evidence-limits).
+The retained-conversation repair reconciles unassigned native Project membership before input and preserves conflicts for inspection. The current schema retains actual native child-input receipts for Work attribution when native configuration permits nested V2 Code Mode. Recovery joins exact evidence without replay. V1 nesting remains supported; V2 keeps its direct-only default. These are repairs to retained integration contracts. Native Project identity and membership and Decodex Project presentation passed in the separate installed qualification. Official desktop saved-Project/sidebar presentation remains unobserved. See the [canonical contract](project-agent-work.md#qualification-and-evidence-limits).
 
-The lifecycle follow-up preserves this scope. Schema 58 records independent Agent ownership on a shared admitted native process. Schema 59 distinguishes visible input from native task-name proof for encrypted assignments. Guardian history recovery uses supported native reads after restart and preserves missing action associations. These changes repair retained behavior; they add no new reviewer or helper executor. The later installed qualification also repaired independent Agents that lacked conversation controls or sent input to the first Agent. It records the exact development artifact, preserved data scope and three unexplained complete-suite cleanup markers separately from the earlier full-workspace pass. Isolated controls passed; they do not establish the cleanup cause.
+The lifecycle follow-up preserves this scope. The schema records independent Agent ownership on a shared admitted native process and distinguishes visible input from native task-name proof for encrypted assignments. Guardian history recovery uses supported native reads after restart and preserves missing action associations. These changes repair retained behavior; they add no new reviewer or helper executor. The later installed qualification also repaired independent Agents that lacked conversation controls or sent input to the first Agent. It records the exact development artifact, preserved data scope and three unexplained complete-suite cleanup markers separately from the earlier full-workspace pass. Isolated controls passed; they do not establish the cleanup cause.
 
 ## Selected read-only views
 
@@ -110,7 +110,7 @@ The selected scope includes three views in the existing desktop:
 - **Collaboration history:** Retain exact local question replies, their delivery and receiving-turn outcome, plus independent contribution cycles and explicit owner assessments. A reply or returned contribution does not establish resolution or complete Work. Missing external reply bodies remain unknown.
 - **Actual usage:** Read known whole-turn token deltas and recorded duration for a persistent Agent or retained Work references. Shared Work references, missing counters and unobserved child usage remain explicit. Linked turns can contain other activity; recorded duration is not Work elapsed time and these values are not a bill.
 
-These views first shipped with local protocol 3.1 and remain available in 3.2 through the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [retained evidence index](../../automations/upstream/retained-evidence.json). Installed-app acceptance remains separate.
+These views are available through local protocol 4.0 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [retained evidence index](../../automations/upstream/retained-evidence.json). Installed-app acceptance remains separate.
 
 ## Current optional decisions
 

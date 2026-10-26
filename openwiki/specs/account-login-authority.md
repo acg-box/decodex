@@ -12,10 +12,10 @@ sources:
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-f803d54b7400ecfa8c7f5247
     resource: repo://crates/decodex-runtime/src/account_login.rs
-generated: { by: "codex", at: "2026-09-29T13:52:19.644Z" }
+generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T14:39:55.302Z
 ---
 
 # Service-owned account login
@@ -28,7 +28,7 @@ The singleton `AccountLoginManager` in the service coordinates provider authoriz
 
 The dedicated same-UID exchange accepts Start, Status and Cancel using an ephemeral canonical session identity. A repeated matching request is idempotent; a different active request is busy. Status carries bounded prompts and completion/failure state in memory, not durable product snapshots or history.
 
-Current clients negotiate the exact `CURRENT_VERSION` protocol. Old 2.11/cohort-7 instructions are obsolete. Native bundle compatibility is checked separately; do not invent a compatibility fallback.
+Current clients negotiate the exact `CURRENT_VERSION` protocol. Native bundle compatibility is checked separately; do not invent a compatibility fallback.
 
 ## Installation and cancellation
 

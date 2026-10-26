@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ed8ce7e336277f192752253f2d8c9a89388f8fad22704b31ce1c51c66e6fe301",
+  "pageVersion": "sha256:aaca555b24daf0279bf08a12da95a98a14ca1e3c6a0a70e80f7dd469d92ae834",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -133,7 +133,7 @@
       "statement": "The compatibility path requests retention only for work_instruction outputs; wakes, capacity retries and injected evidence remain unselected and retain application authority.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1266-L1376",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1264-L1374",
           "version": "repo-lines-v1:sha256:34c154ed0b2a955952269ea2ba86b94de26fe029840005eeab4bd317d355ae33:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
@@ -160,7 +160,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
-          "version": "repo-file-v1:sha256:373894154e249727ff34f7b09baa3aebe41dc18c8207af92354763dbf7c929bc"
+          "version": "repo-file-v1:sha256:7a28d9f08799303338ebc138328f85b6bab53ed101e26653a92ac98db093bba7"
         }
       ]
     },
@@ -169,7 +169,7 @@
       "statement": "Account admission accepts only the native plus, pro, prolite, promax and team plans, case-insensitively; absent and unknown plans remain unsupported.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5527-L5536",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5465-L5474",
           "version": "repo-lines-v1:sha256:7cf06081ad220cfd9613ab4a9d4b301980c06fb5a25a2846ae2e37373924fde8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmNjk5MTEzNTNhZjE0Y2FiOWFmMzljZjU2NDA5YzMyNDJlYzAyOTdjMTVmMmU3ZWQxMjAzMGM2M2M2M2EzZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1NTgxZDhlMGQzMjM1MGEzMDlmMjBlYjVhMzNmYzYyYzg3ZWZlNzRmM2UzMGRhMTQ0Yzg5YmYzMmExYWIyYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlhZWIwNGRlNmM5Mjc4Y2ZkODg2ZTJkZjMyZjBlNDA3MGZlZmZlODE0MDM2NWFjODQ0YThjNDA5OTZjMjY3OGUifQ"
         }
       ]
@@ -179,26 +179,26 @@
       "statement": "The fixed native launch selects description-first tools, subagent context defaults, Agent message wakeups and fork-prefix preservation while leaving Code Mode transport native-owned.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L130-L150",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L131-L151",
           "version": "repo-lines-v1:sha256:a6b2eef1867776015de103e94d4bd067aedc8577c70159c8c792ab426e27b791:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2YjU1MTM4Y2EyM2U2ZGFkMjJiNjQ4ZjgyOWNlZGM4MWQyMDNiMTlmMTc2MzRkZjZiZTc2MGY1M2JlNGVmOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNmU0ZjMxZGM3MTM2OTU2NmI1MWNjMWExOTVkNDUwY2RmODU3NWU2ZDdhNzYxYzU2NDJiYTMwMjVkYzM0NzMifQ"
         }
       ]
     },
     {
       "id": "claim_52eb8e8acaa34810819bb23c97df6feb",
-      "statement": "Current product scope includes separate Project, Agent and Work records, scoped peer Collaboration, native helper execution and direct schema56/protocol3 migration while preserving actual legacy execution.",
+      "statement": "Current product scope includes separate Project, Agent and Work records, scoped peer Collaboration and native helper execution in the current schema and protocol 4.0.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:f91fc60e30e0ab180639ebb00b3634de55195ec2c4693c9c751f488ee40481a8"
+          "version": "repo-file-v1:sha256:37cd9b6acba0428fdf30e01c1904d1d238e9b6c61b0aa0362f1b0f667c5a11cd"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
           "version": "repo-file-v1:sha256:e85c1662d66a6149590e709bc2a46d548f03fe1bb23a422b4250c938cff48668"
         },
         {
-          "resource": "repo://database/migrations/0056_project_agent_work.sql",
-          "version": "repo-file-v1:sha256:ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699"
+          "resource": "repo://database/schema.sql",
+          "version": "repo-file-v1:sha256:4fd878886ed6903409e94f76720d686dbad5e635b006e8c236477cc4cda255a8"
         }
       ]
     },
@@ -258,7 +258,7 @@
     },
     {
       "id": "claim_242dce1d84bd41829bf2704462e76665",
-      "statement": "The selected product implementation exposes read-only native memory summary, exact collaboration reply and contribution history, and actual retained native usage in existing desktop surfaces first delivered under local protocol 3.1 and retained in 3.2. Native execution and explicit Work assessment retain their owners; missing and shared attribution remain explicit.",
+      "statement": "The product exposes read-only native memory summary, exact collaboration reply and contribution history, and retained native usage in existing desktop surfaces through protocol 4.0. Native execution and explicit Work assessment retain their owners; missing and shared attribution remain explicit.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_cases.rs",
@@ -278,7 +278,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:f91fc60e30e0ab180639ebb00b3634de55195ec2c4693c9c751f488ee40481a8"
+          "version": "repo-file-v1:sha256:37cd9b6acba0428fdf30e01c1904d1d238e9b6c61b0aa0362f1b0f667c5a11cd"
         }
       ]
     },
@@ -303,6 +303,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T07:09:00.728Z"
+    "at": "2026-10-26T14:39:55.302Z"
   }
 }

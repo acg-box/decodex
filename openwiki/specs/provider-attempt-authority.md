@@ -7,10 +7,10 @@ openwiki_generated: true
 sources:
   - id: openwiki-source-54d282edcc6b29f87710c554
     resource: repo://crates/decodex-runtime/src/provider_attempt_service.rs
-generated: { by: "codex", at: "2026-09-22T05:36:11.119Z" }
+generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
-  - by: openwiki/0.7.0
-    at: 2026-10-03T17:31:35.485Z
+  - by: openwiki/0.7.2
+    at: 2026-10-26T14:39:55.302Z
 ---
 
 # ProviderAttempt authority
@@ -29,6 +29,6 @@ A replacement service can reconcile an original attempt with positive provider e
 
 ## Current persistence and verification
 
-The current implementation uses SQLite rather than the historical server-store function/ACL scheme. Existing user state and migration history must be preserved.
+The current implementation uses the current SQLite schema. User state and exact provider receipts retain their owners; application startup has no historical upgrade chain.
 
-Focused tests belong to `provider_attempt_service.rs`, the SQLite provider-attempt owner, conversation restart fixtures and native adapter tests. Live acceptance is separate from fabricated provider responses. See [ProcessGeneration](process-generation-authority.md), [Current product contract](local-product-v1.md), and [Commands and validation](../operations/commands-and-validation.md).
+Focused tests belong to `provider_attempt_service.rs`, the SQLite provider-attempt owner, conversation restart fixtures and native adapter tests. Live acceptance is separate from fabricated provider responses. See [ProcessGeneration](process-generation-authority.md), [Current database contract](../operations/local-database.md), and [Commands and validation](../operations/commands-and-validation.md).

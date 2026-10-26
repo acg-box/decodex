@@ -70,16 +70,12 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-  - id: openwiki-source-5b64299c5e2f5b3bebd5f240
-    resource: repo://scripts/vnext/local_database_gate.py
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-  - id: openwiki-source-bf4767337e400840122c176b
-    resource: repo://tests/scripts/test_gate_contract.py
-generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
+generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T14:39:55.302Z
 ---
 
 
@@ -91,7 +87,7 @@ Use the smallest check that proves the changed contract. Broaden testing for sha
 
 | Owner | Responsibility |
 | --- | --- |
-| `database/` | SQLite schema, migration ledger, transactions and restart fixtures |
+| `database/` | Current SQLite schema, transactions and restart fixtures |
 | `decodex-core` | Domain types, bounded identities, paths and pure policies |
 | `decodex-codex` | Native app-server transport and adapters |
 | `decodex-components` | Runtime requirements, verified acquisition and component cache repair |

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3c5b537a722761ffa589a4274c49eca2f66ffb375f951972697eea1591268887",
+  "pageVersion": "sha256:6eefd5546fe8a8a32c65982cd623eda25b86c8369ebe8e0d5ec8fa3a0421c2a9",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -69,11 +69,11 @@
       "statement": "Cancellation discards only the exact unconfirmed edit draft; accepted edited-input sends remove that draft without creating an archive copy, while uncertain operations retain their recovery identity.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L163-L198",
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L180-L215",
           "version": "repo-lines-v1:sha256:16e922503782a753e20008bc40b0fbce11ecd6df0b48743ce6cbe6c9bb9bf62f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhYTRhMzcwNmVjMjhlNmUxMGEwNjA3ZTM0MWQ1MGExMWQ4NDNjNDljMDk1ZDczODNkZWQzMjJmNTc0MmU2YmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwOTViMGQwNDc3OGY4MGVlMTYyOTE3MDkxZmQ3OTE1YjFhY2M2ZDYzODg3NWFmNWM4M2YwY2I0MWM3ZDFmYzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4ZDYyYmE2ZTBkMDZmNmI0ZjEyNjIzYzkzMjA4NmIzOTA3NGViNDc1NGYzNGQxZWU4NjE1NmY4YTM3ODM1NDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5NjJhMDU5MWE0NjM4NDZkMzJlODQ4MTUyZjA1OGU4N2M4MmI5ZGI4YTUyMmRjYzRjODAxNWUxOWRmMGUzYmMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L291-L330",
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L308-L347",
           "version": "repo-lines-v1:sha256:202256d254ac450e5e97f9283764171c13e8ca0ea9063d7e492d94230348c500:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5NGQ2ZTZjMzBlYmM4OWMwYzBiMTkyNzY2YWI5ODhhOWVmMGRlZDI5NDJhZGUwOTlmNzI4ZWMyOWZkYjdkZGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzODk2NTJjMzE1M2VmMWIzNTVhZmM5Mzk3MGVkNjc1YzJhMjM1N2YyY2I4NWFkYjE4YzUzZjVmM2MwZTc3NjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NzdlNTE3ZjY3NmRlNTEwZWZmMjMxM2RkOTExZGI1YTFhM2VmNTNiZjM4MjIyZmY0Njc0YTA2OGI0YmM1OTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3MDAzNzgwZmFlYzA0Nzk5NWRmYTE0ZWJkZTA2OGM5NjVhOTczNzU5OTI3MzI3N2RlODUwYTY1ZmY0Yjk1MDIifQ"
         },
         {
@@ -105,7 +105,7 @@
           "version": "repo-file-v1:sha256:cdf330e8db97cb474822c98ae2576da9c72d64e996820957197087833b1cadfb"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2397-L2418",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2416-L2437",
           "version": "repo-lines-v1:sha256:4ac7cbb8588c6dfee8d4d6bde9e579163322892b8129ff0bdc622be14429f1f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2NmI1YjkzMDg2NDc5ZmJiMjgzOTZiN2NlZjkzOGY3OWNiMzkyOWE3OGE4M2U2NGUwNjUyYzFkZWY3MmU4MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlNDM4OTRkNmQ1Y2Q5YTQxZmI2MDFmNWI3NjgxMmVhMjNlYTRjODdjNjY1OWY2MTE2MWNkYWE0MzQ1YjBkNDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjZTdkM2E5ZjcwYWZkY2JkOGNmMmZjZTM4NWZhMWZlODJjYWIxNjM1Y2IyYTM2MmVkMzcyYzc0NzYxOWU0YWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4ZjZjZjBiYmNlNzE4MjIxMTBlMDZjNDU3ZWE5YmY1YTM5MzEyNjU1YTMwZDRhOGYyMTg3MzBiYWNmYzBhOGMifQ"
         },
         {
@@ -144,15 +144,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs",
-          "version": "repo-file-v1:sha256:9fea0d98ddb15dc49b20b15216fd7b0dccbcd51003f87adfff79071ad6c0cea6"
+          "version": "repo-file-v1:sha256:0ca5b7343e5ed8be114748d2399ccc13aee78796dadbee1672f86f1133fc874e"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:0e50d076cc5c6abd8a315b8f8eccb3f5456f4d9502a97d92dd18f4695af00852"
+          "version": "repo-file-v1:sha256:b38e57ff3f211efd03fa20d4595e5172956a81b2200f4a70d1ab17f02a7036d0"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:fc9b309618915f34dfcee4e0e6acf0b51f768e126112a938094b1daf209a4d9a"
+          "version": "repo-file-v1:sha256:7c38baca78038c57bec820de6bd32772651a21d83a583e616da8a72c41d177e9"
         }
       ]
     },
@@ -170,7 +170,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs",
-          "version": "repo-file-v1:sha256:4787f813a4ec96885a597a9f95ec172906a5028ab6a21f2bc56e1fec5979ed3f"
+          "version": "repo-file-v1:sha256:4aeb243ce060cbf2878a677c1eea370987cd4e62ed13c802645db91f9136c9be"
         }
       ]
     },
@@ -180,7 +180,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs",
-          "version": "repo-file-v1:sha256:4787f813a4ec96885a597a9f95ec172906a5028ab6a21f2bc56e1fec5979ed3f"
+          "version": "repo-file-v1:sha256:4aeb243ce060cbf2878a677c1eea370987cd4e62ed13c802645db91f9136c9be"
         }
       ]
     },
@@ -236,15 +236,11 @@
     },
     {
       "id": "claim_7e280b9c2a204c0dae598596688418bb",
-      "statement": "Ordinary input preserves its original native conversation and tool set. Recovery of an existing tool-migration journal requires source and descendant quiescence, preserved settings, a known replacement identity and exact positive old-context archive evidence; unknown effects remain parked and old history stays read-only.",
+      "statement": "Ordinary input keeps its original native conversation and immutable tool set; the runtime checks the bound context's tool capabilities rather than replacing it when the local tool revision changes.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/tool_migration.rs",
-          "version": "repo-file-v1:sha256:149e9203ec7874c40d77b06c0a0a5c693b75b0cbb0a720c4fa8634dcb5733e40"
-        },
-        {
-          "resource": "repo://database/src/agent_tool_migration.rs",
-          "version": "repo-file-v1:sha256:769cadbcd1364258be764f75c7d4986ed7bb08c9142ad8162a7367c6a3810187"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:ccd95f1c036685f8877b38a384f72da324fd3ff17cf81f681ecb3d6a6dba90dd"
         }
       ]
     },
@@ -297,10 +293,36 @@
           "version": "repo-lines-v1:sha256:2d15578fba236716e8b7f90e0963dee7200872bbfec4d00a885499899d580e3b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM1ZDg2ZTJhM2I1NmJlN2NjNWFkOTA1Y2Q5YzEwYjczZDU3MzdmZDM3ZDMzNzdhMWFlOTZiN2ZkYzU1NjE1YzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2NDA3MTllMTQ1Nzg2YzExMDJkNTU2Yjc2YTI1MTA5NWZjZTA3YjVhYmM1MDIzZmFlNGYxZTk4OGE2ODA4ZTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhM2I2MjJkNjZiNzljYThlZTgwNGI4YTE5YTMzYzVlZGZlNWNlMmM0ZWUyODU3ZDM4MTgyNzAwNmIyNWM0MTIifQ"
         }
       ]
+    },
+    {
+      "id": "claim_7f2f3b7783224a1db5a50d467a43b6e5",
+      "statement": "The version-11 client draft stores the current editor and exact unresolved messages instead of alternative editor snapshots. Positively unsent messages can retry their original payload without overwriting later input; unknown outcomes require status reads.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_merge.rs",
+          "version": "repo-file-v1:sha256:4ae7fc063b47f82650a956845fb7a66c0b5936c9a3be86bd436af15fc2677ff2"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs",
+          "version": "repo-file-v1:sha256:a3213b7657ff29b292364bce184da77d56f6f4415b401e2f70c9bb333619877c"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/desktop_drafts.rs",
+          "version": "repo-file-v1:sha256:182b3f1970058ac78f10357654bf81faab0e36ceacf9a527c975f14da7769b2e"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/desktop_message_delivery.rs",
+          "version": "repo-file-v1:sha256:c0cfb50e85a339a55f05b2596580eab9246dc811afe6c3d8f67b47a4eaacd2e2"
+        },
+        {
+          "resource": "repo://database/src/agent/tests/input_retry.rs",
+          "version": "repo-file-v1:sha256:f623605937c1b7199826fabb337b1d99c81a05da902ef2492b4fcb2c8adc95a2"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T07:09:00.728Z"
+    "at": "2026-10-26T14:39:55.302Z"
   }
 }

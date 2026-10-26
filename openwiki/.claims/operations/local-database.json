@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1f9621cee2cfb740304ffc1eb6e65e24708b7dd6fdc6be51fade858f040640ad",
+  "pageVersion": "sha256:3212af0ebdb57a2d133ce64016dd39dc707fed9aa18a32e5a9b945cdc91beba9",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
-      "statement": "The embedded migration ledger defines the ordered SQLite migration boundary; historical Pending Route receipts do not define the current synchronous Route API.",
+      "statement": "The service initializes and verifies one exact current SQLite schema, version 60, without an ordered migration ledger or old-vault account-transfer path.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/application.rs",
-          "version": "repo-file-v1:sha256:af496ee5bdfef0aca8e7cf1b4f2f87286e6311b6749fd10c48fb2748928d9605"
+          "resource": "repo://database/schema.sql",
+          "version": "repo-file-v1:sha256:4fd878886ed6903409e94f76720d686dbad5e635b006e8c236477cc4cda255a8"
         },
         {
-          "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:f0efbf6c98677363a985a7c9e8da5f70fa6d72f97f08d8870a9b0e4c5ebcd271"
+          "resource": "repo://database/src/schema.rs",
+          "version": "repo-file-v1:sha256:b3a3c373f7c156e6ba3eb579b1bbd08164a0eda69bd51ba24802741234c95359"
         }
       ]
     },
@@ -22,7 +22,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:99e61da4fc9c53f7cf60224d66a3665a9fd00e8654d407e3a720e4c356256e14"
+          "version": "repo-file-v1:sha256:3c5a76a4b22355e4b41356f952367830208b66ed6b1444098ebe15680d76ac39"
         }
       ]
     },
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:99e61da4fc9c53f7cf60224d66a3665a9fd00e8654d407e3a720e4c356256e14"
+          "version": "repo-file-v1:sha256:3c5a76a4b22355e4b41356f952367830208b66ed6b1444098ebe15680d76ac39"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -45,8 +45,8 @@
       "statement": "Current local clients and service must agree on the exact CURRENT_VERSION protocol; packaged native compatibility is checked separately by the bundle contract verifier.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L293-L320",
-          "version": "repo-lines-v1:sha256:2f0d1eac4cd40b4ac25bd4d90b1928faf1a55c9102c8fd4c115048170115338b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg1NmZiNGFkYzkwOTcyNzA2YTc2YjI0M2UwNTIwNzhjODBiNjk5NGFkMGI2OTI2ZDY3MmFiMGMwMDkwYTEyMDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4ZDA5NzgzZTA2YzlkMGI3MDhhMTFiNTU3N2M2MWNlMjBhZGRjNjZjYmVmMGJkZjc5ODQ2ZWZiN2M5OWM3YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVjNjZkOWNlOGNkNmRlNjQ0YTM4Y2QwYjA0NTRmYjkzYjBjMWEzNTFlNzAyYjc1ODI0NmE2ZTZkZWI3N2Y1MzkifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L285-L305",
+          "version": "repo-lines-v1:sha256:1c44d48aaa887de29f32834e552d02feffa934c64df790e616eabd57707a5a72:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5NzMyMjRjOGMzN2U1NGI0NjM4NjM5ZWM3ZjI5MWYxOWQwNmI3Mjc0YzJhOGYyMzNhZDBhMzQ4YzA5N2VkNDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjOGU3MjlkOThhMmYzNmVmNjEwNjJlYzQzY2UzZWQ3ZWMxZDkyMGYwMjIyNGMxNzMwNjAyZjg0OWU3NjE0YTQifQ"
         },
         {
           "resource": "repo://scripts/macos/verify_decodex_bundle_contracts.py",
@@ -56,19 +56,15 @@
     },
     {
       "id": "claim_1de4b56059ee4b52a1c0151c06d2ce06",
-      "statement": "OAuth credential serialization remains version 1 while PAT records use version 2; migration 52 preserves existing credential/process values and dependent authority while accepting both schema versions and restoring foreign-key enforcement after the transaction.",
+      "statement": "Current OAuth credential serialization uses version 1 and PAT records use version 2; the current schema directly accepts both distinct credential kinds and enforces their authority relationships.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/host_credentials.rs#L266-L380",
           "version": "repo-lines-v1:sha256:8aef15ca7e535676516fd152656e8b5fca30a9904167d3676ef82348265e3365:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0MmVlZTY4NjU2ODM1OWM2MWMxMDkyMjUzOTY3ZTlkNmM3Yzg0OTY1ZDNjZTVlOWYwMDc4ZjE5NTU4YmU1MjRkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmMzA4OWJjMDJmZDZlZmE5NGVlMzNmMDhlYTUyZDdiMDc2MDQ2MjY2NTkxZmY5Yjg2NzUxNjUyZjA3OTg2ZDRlIn0"
         },
         {
-          "resource": "repo://database/migrations/0052_personal_access_token_credentials.sql",
-          "version": "repo-file-v1:sha256:a9cb497d1fa84af093ba66bdf106fb009bf3179794de23eafdb34a24dc4a858b"
-        },
-        {
-          "resource": "repo://database/src/migrations.rs#L117-L175",
-          "version": "repo-lines-v1:sha256:626487d7f9257edc8a7a0252542568a97b100eb908cc7b74ab73128eef19568c:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzYWNlOTQ5YjcyOWM4MjI2YzE0YWM1YzA2OGQ0ZjQ5NDQwMTJjMTg2ZGJjYzkyOWViOTlkNjBhODk1Njg4YTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhZGY0YTk2YTM1ZWFmNjBjZDMwNzIwMDZlZmEzMzUwODQ3NjMzNTc2MmY3MWJjN2NkY2U4NTUzMjllMTI1ZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyZjcxNWExMjAyMmNkOGNiODEzMmM2YmIyZDdlYmM0MGIwNjU2YTE1MzgzYWUwMWM5YjE3ZWFiZGE0YTVjMTYifQ"
+          "resource": "repo://database/schema.sql#L3-L18",
+          "version": "repo-lines-v1:sha256:a47b3176a0f9d3232fbf5dd10bda118abe2d600b642c371e7b049e1b25dbc74e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmMDZjZWQ3MTUxMmJkMWVlNTRjYzI3ZmM3NDM1NmQ3NmZmMWVmMGU4Mjk4YjU5YWU1N2IxMjAxMGQ4YTZhMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhNTI0ZDFkNTBkZGNmYzMxMzkyOWRiZmFjNTZmMTFhOTliZjJhMDRjYTdkNDYxYzAwYjI2YzQ4ZmY5MGU5OTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjoyLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVkYjM5Y2Y5ZGNlZjA3ZWY4NmE3ZDFiYjZhZTlhODlkYTY1YjYzYTMyMTFiNmQ4NTc3NDJiYWJkNmM5MTU3YWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE2ZDVkOGFmYTk5YWMyMTlhZjQ2OWViOWNlNDFmYTVjNmU0YWY2MzFmMjcxYzA2OGQzNTQ2YTFlMmI0OGViZWEifQ"
         }
       ]
     },
@@ -84,15 +80,15 @@
     },
     {
       "id": "claim_f9532ca538ff489f970f38834f724331",
-      "statement": "Schema56 directly adds separate Project Agent Work and Collaboration state while preserving genuine legacy execution and explicit historical qualification limits without reset or dual writing.",
+      "statement": "The current schema directly stores separate Project, Agent, Work and Collaboration state with immutable requirements and scoped evidence.",
       "evidence": [
         {
-          "resource": "repo://database/migrations/0056_project_agent_work.sql",
-          "version": "repo-file-v1:sha256:ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699"
+          "resource": "repo://database/schema.sql",
+          "version": "repo-file-v1:sha256:4fd878886ed6903409e94f76720d686dbad5e635b006e8c236477cc4cda255a8"
         },
         {
-          "resource": "repo://database/src/migrations.rs#L8-L78",
-          "version": "repo-lines-v1:sha256:bb447825df7405cee695e77ef9d442b14b8383485061eb50a8e2a3b5206c35b2:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmOTFlNTk4NmU4OWZjNDI1OWRiY2VhMjU2MDRiNmI5YzMwMTc2NjdlOGRlMDZhOTIwYzY0NWNiMDcwYzVhYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiNGRhM2I1ZGMyYzkwZGI2NGEwMGE0MmNmZGNhZmViZGUzMDI2OTJjYWQ4MWFkNjI1YTgxNjNhZDVhNWMyYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNkMjNjMWJiNjE2NjI5ZTVkYTUxNGJhMmI2Yjk4YWNkYzA1Y2M2ZTIwZTViNTEzYTM5MWY0MTBlYjk1ODQzZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcyZGE5ZWM4MjY5ZTAwN2I3YmUzYTYyMTc1NDFjODJlZGUxZTQxMDgzZDQwNTA0MWVmYWZkN2ZkM2ZiYTUyYmQifQ"
+          "resource": "repo://database/src/works/commands.rs",
+          "version": "repo-file-v1:sha256:3064ed90df1782b54efeece9bb3f2bbd4cdc2f6c0005db66582f34d895a42836"
         }
       ]
     },
@@ -112,15 +108,11 @@
     },
     {
       "id": "claim_2aa8f2a9a2d14842992cb9b946e3277a",
-      "statement": "Ordinary input retains its native context; only an existing tool-migration journal can recover exact source/replacement identities and switch after positive retirement. Unknown effects remain parked and old history remains read-only.",
+      "statement": "Ordinary input resumes its original native context and tool declarations without a context-upgrade journal; uncertain external effects require authoritative readback.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/tool_migration.rs",
-          "version": "repo-file-v1:sha256:149e9203ec7874c40d77b06c0a0a5c693b75b0cbb0a720c4fa8634dcb5733e40"
-        },
-        {
-          "resource": "repo://database/src/agent_tool_migration.rs",
-          "version": "repo-file-v1:sha256:769cadbcd1364258be764f75c7d4986ed7bb08c9142ad8162a7367c6a3810187"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L960-L966",
+          "version": "repo-lines-v1:sha256:94776a0d435b96647d7166add2c7065508760db388a1d6b1ab244d43e5b1d2f8:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWZkZDg0NjFjMDUwNzdiZTg5NzFhYmUxMWM5ODJhMjU0YWFlMTEyZTM3NzIwZDdhZmViNjBlMWU0ZDUzNDRmZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDQwOThiOWE1NmE3ZGNiZDEzOWQ5N2NiZTQzYmEyNjk4MWViNTc0MmMwNGZmZDY5MTc3ZGNjMGE5MzQyYTdkMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzNhM2E4NGU0NTc2MjMxMDU0MzhlYTg2MGM3MDk5NjA2YTEwYzVkOTM2YTM2ZDQ0Mjk1ZDMyZmE3N2Q3ZjdmNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWFmM2U5ZDA4NDM1MGQzYjExMzJmNzNmZGNkNTIzNjg3OWM1ZmQ5NWUyMTU4NWZjZmNiOGFiZjlkMmNjYzRiNCJ9"
         }
       ]
     },
@@ -129,10 +121,6 @@
       "statement": "Global Guardian stores desired settings, source application receipts and bounded deduplicated private observations separately from native approval authority and Work completion.",
       "evidence": [
         {
-          "resource": "repo://database/migrations/0056_project_agent_work.sql",
-          "version": "repo-file-v1:sha256:ff32b55076c88672de82e873955c01869effe561ffd2d7f011675ab2b8dcb699"
-        },
-        {
           "resource": "repo://database/src/guardian_settings.rs",
           "version": "repo-file-v1:sha256:1b874c9a2715b387fc01541ea031297b4ef80e418f11c0f377d955a3da260d19"
         }
@@ -140,29 +128,15 @@
     },
     {
       "id": "claim_720cb8f9892a455cbccf959a9df44908",
-      "statement": "The current ledger ends at schema59. Schema58 preserves existing Agent bindings while allowing separate bindings on a shared admitted process; schema59 adds explicit plaintext or native-task-name proof to received native input receipts without inventing absent deliveries.",
+      "statement": "The current schema allows separate Agent bindings on a shared admitted process and records plaintext or native-task-name assignment proof without inventing absent input deliveries.",
       "evidence": [
         {
-          "resource": "repo://database/migrations/0058_shared_agent_process.sql",
-          "version": "repo-file-v1:sha256:05e447b01812463e012054fcb355dda890d814243bab5b944849f943b4ef3c00"
+          "resource": "repo://database/schema.sql#L675-L686",
+          "version": "repo-lines-v1:sha256:01b48de0b417b22e7bd530d7fb12c39eb5bebf2e6a2b634e2c19daac335a8d51:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhmNzMxMTZlZTNlNmQ3YjE5MzY0MWI2NzMzMDAzYjk2MjIxMzA1NzdlMGViZjMxNTdlYjY0ZmM3Y2E4MDEyNjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmMWFjMTAwNzM3OWE1Mzk2Njg2MTZiODQ5N2RiNzk1NmJkMmFlMmVkZmU1ODk1Y2UwMmZiOTAyOTJmMTFiYWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlM2ZkYTRmYzMxMDEzYjUyY2JkNGI2NDk5MjUxNGY0ZjI4MGEzMDA5Mjg0YzNjOGFiYmEyN2JkMzU2ZWE4MWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU4MWFkMGEzM2M2YzU2MDljYjM5NzQ1Y2YyNDhmODA0NjEzMDQ3MGY5OTJhZmRkNWU1YTFiNGY0MGI5YTE2MTEifQ"
         },
         {
-          "resource": "repo://database/migrations/0059_native_assignment_proof.sql",
-          "version": "repo-file-v1:sha256:c49bd47c9d4f22c1e43ff5c27def8ba36ff0725c355fc9327515408d4400a179"
-        },
-        {
-          "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:f0efbf6c98677363a985a7c9e8da5f70fa6d72f97f08d8870a9b0e4c5ebcd271"
-        }
-      ]
-    },
-    {
-      "id": "claim_d2da440d39b84b41820e06c00e14cb2e",
-      "statement": "The native input follow-up passes the schema57/90-table gate and 189 database tests in temporary roots, including receipt replay and reopen; it does not migrate the installed user database.",
-      "evidence": [
-        {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
+          "resource": "repo://database/src/agent_process/attachments.rs",
+          "version": "repo-file-v1:sha256:113726bac40d5f12fb5556dc4e2d6099fb601257f66caa025c562cc21b356e72"
         }
       ]
     },
@@ -181,22 +155,12 @@
       ]
     },
     {
-      "id": "claim_8204759d2d884ba68dbd13ea64b50f4f",
-      "statement": "The isolated lifecycle acceptance passed schema59 integrity and foreign-key checks and preserved Agent/native identity, Work state, Results and private observations across service restart without migrating installed data.",
-      "evidence": [
-        {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
-        }
-      ]
-    },
-    {
       "id": "claim_968638910f4c42cbbee88d97feb202cd",
-      "statement": "Current local protocol 3.2 retains the selected read-only DTOs, adds the retained attached-branch query and rejects any different major or minor version.",
+      "statement": "Current local protocol 4.0 exposes selected read-only views and retained attached branches and rejects any different major or minor version.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:f91fc60e30e0ab180639ebb00b3634de55195ec2c4693c9c751f488ee40481a8"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L285-L305",
+          "version": "repo-lines-v1:sha256:1c44d48aaa887de29f32834e552d02feffa934c64df790e616eabd57707a5a72:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5NzMyMjRjOGMzN2U1NGI0NjM4NjM5ZWM3ZjI5MWYxOWQwNmI3Mjc0YzJhOGYyMzNhZDBhMzQ4YzA5N2VkNDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjOGU3MjlkOThhMmYzNmVmNjEwNjJlYzQzY2UzZWQ3ZWMxZDkyMGYwMjIyNGMxNzMwNjAyZjg0OWU3NjE0YTQifQ"
         }
       ]
     },
@@ -213,6 +177,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T07:09:00.728Z"
+    "at": "2026-10-26T14:39:55.302Z"
   }
 }

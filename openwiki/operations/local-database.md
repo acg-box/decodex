@@ -1,92 +1,80 @@
 ---
 type: Reference
 title: "Local database operations"
-description: "Service-owned SQLite upgrades, account routing and durable credential and branch records."
+description: "Current-only SQLite initialization, account routing and durable credential and branch records."
 tags: ["decodex", "architecture"]
 sources:
-  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
-    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
     resource: repo://crates/decodex-runtime/src/account_service.rs
-  - id: openwiki-source-d511cef2848dd5f6968572ae
-    resource: repo://crates/decodex-runtime/src/agent/tool_migration.rs
-  - id: openwiki-source-a09c082db4ad1473c4d1e557
-    resource: repo://crates/decodex-runtime/src/application.rs
+  - id: openwiki-source-dbc533dc306a3f520c4241e0
+    resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-2da6601c3f30e806c504e991
     resource: repo://crates/decodex-runtime/src/host_credentials.rs
   - id: openwiki-source-a67672a943dfe221574b2501
     resource: repo://crates/decodex-runtime/src/shared_auth_coordinator.rs
-  - id: openwiki-source-8076269b8760701249ad3b9c
-    resource: repo://database/migrations/0052_personal_access_token_credentials.sql
-  - id: openwiki-source-bdc10e06c0058b26a9bde83d
-    resource: repo://database/migrations/0056_project_agent_work.sql
-  - id: openwiki-source-f282017dc1610aa4fa0e6730
-    resource: repo://database/migrations/0058_shared_agent_process.sql
-  - id: openwiki-source-c6616f46cdcd37303054bf01
-    resource: repo://database/migrations/0059_native_assignment_proof.sql
+  - id: openwiki-source-003f00974f49a9f106bbcbea
+    resource: repo://database/schema.sql
   - id: openwiki-source-58c0167d31c3e40dc89591ab
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
   - id: openwiki-source-d31590aa1b62ee057094fb38
     resource: repo://database/src/agent_process/tests/attachments.rs
-  - id: openwiki-source-0f0fc00c258a3ddad6935fcc
-    resource: repo://database/src/agent_tool_migration.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
-  - id: openwiki-source-601aed9bf7f72a4b5d4a6e78
-    resource: repo://database/src/migrations.rs
+  - id: openwiki-source-dc8958560b1230967470835f
+    resource: repo://database/src/schema.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
+generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T07:09:00.728Z
+    at: 2026-10-26T14:39:55.302Z
 ---
 
 # Local database operations
 
-## Project, Agent and Work migration
+## Current schema and ownership
 
-The current ledger ends at schema 59, `0059_native_assignment_proof.sql`. Schema 56 applies the direct business migration under the existing digest-checked migration owner. It renames Workspace directory and membership data to Projects and Project Agents. It adds persistent Agent responsibilities, separate Work, immutable requirements, scoped Materials, Results and explicit reuse, Collaboration Requests and issued instructions, stable command receipts, global Guardian settings/source receipts, private observations and native tool-migration journals.
+`database/schema.sql` defines the current product schema, version 60. `database/src/schema.rs` initializes empty databases directly and verifies existing databases against that exact application ID, version and structure. There is no migration ledger or historical account-transfer tool. An older database is refused without resetting its contents.
 
-Existing conversation, inbox, native binding and genuine old execution records survive. Passive historical outcomes acquire Work owners and explicit legacy requirements. A migrated completed outcome retains a historical assessment with a no-new-qualification limit. No old executor becomes a native Subagent by renaming a row. The application does not require a reset, a second database or a dual-write migration.
+Project membership, persistent Agent responsibilities, Work, requirements, Materials, Results, Collaboration Requests, Guardian settings and execution receipts are current records in that schema. Native history and current editable input retain separate owners. Program and Domain Pack storage is retired.
 
 Work commands validate the current owner, expected requirements, holds and related evidence inside an immediate transaction. A committed command ID replays only the exact same actor and content. Completion requires current related Results and handled required requests. Old Results stay historical unless a new reuse assessment relates them to current requirements. SQL applies Agent and granted Material scope before bounded reads.
 
-Native contribution intent and exact direct-call identities are attribution records, not another executor or mailbox. Schema 57 adds `native_work_deliveries`: one immutable receipt per contribution with exact parent thread/turn, child thread/receiving turn and message identity. A foreign key requires the contribution, and native child/turn/message identity is unique. An identical store-method retry is idempotent; changed identities conflict. The upgrade keeps existing dispatches and leaves their new delivery receipts absent. It does not invent historical input evidence.
+Native contribution intent and exact direct-call identities are attribution records, not another executor or mailbox. The current schema includes `native_work_deliveries`: one immutable receipt per contribution with exact parent thread/turn, child thread/receiving turn and message identity. A foreign key requires the contribution, and native child/turn/message identity is unique. An identical store-method retry is idempotent; changed identities conflict. A missing received-input receipt remains missing; the service does not invent historical input evidence.
 
-Schema 58 rebuilds `agent_process_bindings` so one admitted native process can hold separate immutable Agent bindings. Existing rows and their rowids are preserved. Each new attachment requires the exact registered Agent/native thread and a ready admitted generation, and rejects a competing live generation. Account and native process authority checks remain in place.
+`agent_process_bindings` permits separate immutable Agent bindings on one admitted native process. Each new attachment requires the exact registered Agent/native thread and a ready admitted generation, and rejects a competing live generation. Account and native process authority checks remain in place.
 
-Schema 59 adds `assignment_proof` to native input receipts. Existing receipts retain `plaintext`; an observed encrypted assignment can use `native_task_name`. A binding recovered from native task metadata and parent activity can exist without a received-input receipt. That absence stays explicit and does not become plaintext proof.
+`assignment_proof` distinguishes `plaintext` from `native_task_name`. A binding recovered from native task metadata and parent activity can exist without a received-input receipt. That absence stays explicit and does not become plaintext proof.
 
 The runtime can save actual native input before parent activity arrives, then join the receipt with exact native history after restart or during `work_read`. It does not replay an instruction or spawn. Missing or ambiguous binding remains Unknown. Peer requests use the existing inbox and exact delivered-turn receipts; restart does not imply acceptance.
 
-Ordinary input preserves its original native context. A newer local tool revision does not create a replacement. Recovery of an existing tool-migration journal uses `reserved`, `created`, `retiring`, `unknown` and `applied` outcomes. It preserves exact old/new identities and requested settings. Positive native retirement is required before the local binding switches. The previous context remains read-only history. Uncertain creation/retirement parks the migration; database retry does not recreate a native thread.
+Ordinary input resumes its original native context and recorded tool declarations. The runtime does not maintain a tool-context upgrade journal or replace a thread because the local tool revision changed. Unconfirmed external effects require authoritative readback.
 
 Global Guardian stores desired reviewer preference and Review Details opt-in separately from source-specific effective receipts. Private records are deduplicated by reviewer thread, turn and item. Records are bounded to 64 KiB and the newest 128; small snapshot previews and exact selected reads stay separate. These records do not grant execution authority or complete Work.
 
-Protocol 3.0 introduced the direct public-contract change. Protocol 3.1 added the selected read-only view DTOs; current protocol 3.2 adds the retained attached-branch query. Clients and service must agree on the exact version. Old clients fail exact negotiation. The original qualification passed schema56/89-table integrity and 188 database tests. The native input follow-up passed schema57/90-table integrity and 189 database tests, including upgrade preservation, immutable receipt replay and store reopen. The later lifecycle acceptance verified schema59 integrity, foreign keys, and persistence of Agent/native identities, Work states, Results and private observations across service restart. The migration and runtime tests use temporary roots; they do not migrate the user's installed database. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
+Local clients and service must agree on exact protocol 4.0. Publication-instance and command receipts preserve reconnect and idempotent recovery. Exact native bundle ABI checks remain a separate verification boundary. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
 
 ## Authority and paths
 
 The sole normal product store is `~/.decodex/server/decodex.sqlite3`, owned by `decodex serve`. GPUI, the menu-bar library and short-lived CLI commands use the local protocol. They must not inspect or mutate SQLite directly as a fallback.
 
-The store uses a serialized connection, owner-private paths, bundled SQLite and embedded migrations. Read `database/src/migrations.rs` for the current schema boundary. The migration ledger is authoritative; old schema-9/10/11 evidence is not a reason to rebuild or reset a user's database.
+The store uses a serialized connection, owner-private paths and bundled SQLite. The verifier checks the current schema, foreign keys and integrity. This validation is not permission to rebuild a retained database.
 
 ## Installation and upgrade
 
 Select the app-bundled CLI installation or the standalone local-service installation. Do not install two competing service owners. The app includes a signed helper and native-client/menu-bar libraries; service and UI compatibility is checked. Clients must match `CURRENT_VERSION` from the local protocol crate. An incompatible service is a version problem, not proof that history has disappeared.
 
-Use `decodex --help` and `decodex serve --help` from the installed artifact before operating a host. Use the repository stage/install scripts for that installation mode. Preserve database and credential rollback sources. A documentation refresh does not authorize deletion of retained data.
+Use `decodex --help` and `decodex serve --help` from the installed artifact before operating a host. Use the repository stage/install scripts for that installation mode. Qualify retained data conversion as an explicit operator task before switching to a different schema. A documentation refresh does not authorize deletion of retained data.
 
-The one-shot `database/transfer` tool imports legacy state through its protected fixed-source workflow. It is not part of normal startup and is not an automatic repair command.
+The product has no automatic old-format converter. For a retained installation, stop its owning service, verify a one-time conversion against the target schema, and preserve native identity, history, current input and unresolved effects. A fresh database test alone does not prove retained-data preservation.
 
 ## Account routing and recovery
 
@@ -113,12 +101,12 @@ The database gate and unit tests use isolated fixtures. The staging test checks 
 - [Weekly quota activation](quota-activation.md): deduplicated minimal subscription request.
 - [Commands and validation](commands-and-validation.md): active tools and evidence boundaries.
 
-## Current migration boundary
+## Current format boundary
 
-The embedded migration ledger defines the baseline and ordered upgrades. The verifier checks migration identity and compatibility; old numbered migration files in historical receipts are not an instruction to reset or reconstruct user data. O24 retirement changes notification recording, not the schema or readability of saved events. See [accounts](accounts-and-routing.md).
+The embedded schema defines one current layout. The application has no ordered upgrade path and does not import obsolete account vaults. Current OAuth, PAT, native process and receipt formats remain supported according to their distinct owners.
 
 ## Credential and branch records
 
-OAuth credentials retain their version-1 payload and fingerprint representation. PAT credentials use version 2 and retain verified user identity without fabricated OAuth refresh or expiry values. Migration 52 rebuilds the credential and process-generation schema checks to accept both versions. The migration copies existing values, recreates the Agent process authority trigger, checks foreign keys before commit and restores foreign-key enforcement on both success and failure. Use the migration owner; do not edit these tables manually.
+OAuth credentials use their current version-1 payload and fingerprint representation. PAT credentials use version 2 and retain verified user identity without fabricated OAuth refresh or expiry values. These are distinct supported credential kinds. The current schema accepts both and enforces their dependent authority directly; no old credential migration runs at startup.
 
 Explicit conversation branches reuse durable inbox event records for their intent, native acknowledgement and observed prefix. Each target has its own work and native thread identity. Attached branches retain the exact source Agent as parent and keep its Project, role and tool revision. The read-only list selects the newest 100 saved attached receipts for that exact source; it adds no schema migration. Before-input branches reuse the existing canonical prompt-edit draft and upload records. Unknown creation does not authorize a second request. See [conversation recovery](../workflows/conversations-and-recovery.md).

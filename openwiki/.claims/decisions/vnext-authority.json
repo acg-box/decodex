@@ -1,20 +1,20 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:81f2c012504f27b251de1099411886bfe9e9f2d7541fa714cb7652230a7b1e4b",
+  "pageVersion": "sha256:d34ebfca2ae980c2d53c66ed2ba6a605dc5b9b2e7d2c13866c779dd5610d2d44",
   "claims": [
     {
       "id": "claim_21af3e466a65493293be783be3dbc70e",
-      "statement": "The historical no-migration server-store design is superseded by the current ordered SQLite migration implementation.",
+      "statement": "The product service initializes and verifies one exact current SQLite schema, and refuses older layouts without resetting their data; no ordered migration chain is maintained.",
       "evidence": [
         {
-          "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:f0efbf6c98677363a985a7c9e8da5f70fa6d72f97f08d8870a9b0e4c5ebcd271"
+          "resource": "repo://database/src/schema.rs",
+          "version": "repo-file-v1:sha256:b3a3c373f7c156e6ba3eb579b1bbd08164a0eda69bd51ba24802741234c95359"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T07:09:00.728Z"
+    "at": "2026-10-26T14:39:55.302Z"
   }
 }

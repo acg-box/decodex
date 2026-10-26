@@ -1,24 +1,24 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1c3baeb4e2aa0ac6b5f3048c3675b1215d28524bf901bce428aee1f996a6f0e0",
+  "pageVersion": "sha256:2ccd91fef46a4bd76a6525b479cc4ac2e8f66edf1253a7a5263bf64224a95867",
   "claims": [
     {
       "id": "claim_0a3f727a31ee46ffb4817dbb5d71e57d",
-      "statement": "Current product persistence uses ordered SQLite migrations and repository-owned Makefile validation, superseding historical server-store reset and gate instructions.",
+      "statement": "Current product persistence initializes and verifies one exact SQLite schema, while repository-owned Makefile tasks define active validation.",
       "evidence": [
         {
           "resource": "repo://Makefile.toml",
           "version": "repo-file-v1:sha256:4c0e12db3d9877f345590fe4fe41e3598e6be2a18e1a78f5284a186c3e50af01"
         },
         {
-          "resource": "repo://database/src/migrations.rs",
-          "version": "repo-file-v1:sha256:f0efbf6c98677363a985a7c9e8da5f70fa6d72f97f08d8870a9b0e4c5ebcd271"
+          "resource": "repo://database/src/schema.rs",
+          "version": "repo-file-v1:sha256:b3a3c373f7c156e6ba3eb579b1bbd08164a0eda69bd51ba24802741234c95359"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T07:09:00.728Z"
+    "at": "2026-10-26T14:39:55.302Z"
   }
 }

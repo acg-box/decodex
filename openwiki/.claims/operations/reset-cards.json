@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7340a08f73b68b7369ad2d5bc01341ca06172af19b788bfa5b952266a71545a6",
+  "pageVersion": "sha256:b6eb7e1080477c701600a99fdd9299aaad3329abb5a48ca715b8f08a22704d5f",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -18,7 +18,7 @@
     },
     {
       "id": "claim_14bd43c1ca984071b3d6a10b07d65c08",
-      "statement": "Reset Card clients restore service operation state; the Rust native library owns the legacy-compatible bounded pending-attempt journal, including validation, duplicate detection, recovery, locks and synchronized atomic writes. Swift chooses the application-support path and calls its versioned API.",
+      "statement": "Reset Card clients restore service operation state; the Rust native library owns the current bounded pending-attempt journal, including validation, duplicate detection, recovery, locks and synchronized atomic writes. Swift chooses the application-support path and calls its versioned API.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardPendingAttemptStore.swift",
@@ -26,7 +26,7 @@
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
-          "version": "repo-file-v1:sha256:d7dee8a8a4690793478b1df3722d2abe551d1bcbbc88db1aabebc64c1030c447"
+          "version": "repo-file-v1:sha256:fc205ef0d7faec7061c0b7dabf9fbf1c7251dc056056a2c2daa4137e29f99287"
         }
       ]
     },
@@ -48,13 +48,13 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/client.rs",
-          "version": "repo-file-v1:sha256:e019fef5e0eeaf1b2fdec88d27c053abc854eb290d86a26cbbb60f92e4b6917c"
+          "version": "repo-file-v1:sha256:5daeea3e529ced5910f9c34521be093d2d12f2915edbc8f3613c271932b0835a"
         }
       ]
     },
     {
       "id": "claim_784c9da3d9954d48b1cea22bac00c273",
-      "statement": "Native dispatch leases retain the existing file lock across async requests and only remove the exact saved attempt after definite completion; unknown schemas and conflicting entries block writes without discarding the original file. Tests exercise legacy documents, cross-process exclusion and Swift recovery against the actual native library.",
+      "statement": "Native dispatch leases retain the existing file lock across async requests and only remove the exact saved attempt after definite completion; unknown schemas and conflicting entries block writes without discarding the original file. Tests exercise the current journal format, cross-process exclusion and Swift recovery against the actual native library.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/ResetCardPendingAttemptStoreTests.swift",
@@ -66,7 +66,7 @@
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
-          "version": "repo-file-v1:sha256:d7dee8a8a4690793478b1df3722d2abe551d1bcbbc88db1aabebc64c1030c447"
+          "version": "repo-file-v1:sha256:fc205ef0d7faec7061c0b7dabf9fbf1c7251dc056056a2c2daa4137e29f99287"
         },
         {
           "resource": "repo://scripts/macos/test_native_app.sh",
@@ -88,7 +88,7 @@
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
-          "version": "repo-file-v1:sha256:d7dee8a8a4690793478b1df3722d2abe551d1bcbbc88db1aabebc64c1030c447"
+          "version": "repo-file-v1:sha256:fc205ef0d7faec7061c0b7dabf9fbf1c7251dc056056a2c2daa4137e29f99287"
         }
       ]
     },
@@ -102,7 +102,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:1f7832b3a91b1ad3feeed9f3c6c9eef294c302276f74118c3fc7dca7e4ef47ed"
+          "version": "repo-file-v1:sha256:0ad4dced051b4b0df75c4e7cad2128c66c1eaac667a56f7e09e1d1084222eec0"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
@@ -145,6 +145,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T07:09:00.728Z"
+    "at": "2026-10-26T14:39:55.302Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:bfcf0bd9f4f331deb1cc463188db5f6e18d6f93e4851cd193f9b1d27814c9bf8",
+  "pageVersion": "sha256:f0320f0e4ab7ea0259d9f62a1521a613966621c714a357c4537a72256f491c2c",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -93,7 +93,7 @@
           "version": "repo-lines-v1:sha256:3c768499f08523e870b3caec2d3aac9f8573f9288ce10092f78a249f283810b1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4NGU2YmFjODRlYjdkMjQ0NTA4NWNiNGFhYTBhYjIyMjliMWQ3NTllNTVmYmI0YmI3YjRjNTkxOTkyYjc1OTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNTAzMjQ5NjI1NjU2ODVhNTljMzk3NWUxYTU0MjRhODE3NWJhNDBmN2RmYTNhMDk2NTc5MTliMjFjZDkyNmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxYjRkMmIxMTA0NzMwMmU1MjQ0MTlhZmQ2ZDJhZTEyOTc1OTBhNzk1NTgwMmM0ZDQ0MmI2NjA4MzJmNTY2NDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzNDhhOGIzYmU0YTMxZTJhY2QyYzcwNTk1YjY0ZTA0MWRhMzYyZjg1YTA4MjU1OGJjMDk5YWU0ZTIzMDM5NmMifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1851-L1863",
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1855-L1867",
           "version": "repo-lines-v1:sha256:699cdaac0ea1c78a0673444325e57b9ee46f747626c944de3fc334e266daae82:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhNTc3OTMwMDQ1ODZhODY2YjE4OGUxNzMzMzUyZmRiNzk5ZGJiYzMyN2RmMjFiYzVhNDQ4ZWE4ZGU2MzNkMDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjOWM2OTk5OGY4MjBlNDY5NzUxNTJiNjMzYjQzOTg1YzNiYzBmNzlmZTViYjlmZmUzMmU3MDIzZjk3Y2YzMjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjY2M3NTlhZjgyZjNkOTQ5NjFmZWE1ZTFjNDU0ZWQ5OGU5YTQ4YjVlNTlmOTk4YTgwODUxNjJhMmQ3YTAwNGUifQ"
         },
         {
@@ -313,14 +313,6 @@
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
           "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
-        },
-        {
-          "resource": "repo://scripts/vnext/local_database_gate.py",
-          "version": "repo-file-v1:sha256:cb2bccfd92f82cee117427c12b2cb48b0c399f9e0ae8c1c679a95211df6ec3c9"
-        },
-        {
-          "resource": "repo://tests/scripts/test_gate_contract.py",
-          "version": "repo-file-v1:sha256:096fd7bf66b5ac6d064a9fc31517bc5901fdcbf61484591abfba14c70e52d35b"
         }
       ]
     },
@@ -351,6 +343,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T07:09:00.728Z"
+    "at": "2026-10-26T14:39:55.302Z"
   }
 }

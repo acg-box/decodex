@@ -1,11 +1,6 @@
 # Files
 
-- [Historical Adaptive Factory Spine V1 evidence](adaptive-factory-spine-v1.md) - Historical Adaptive Factory Spine V1 evidence
-- [Historical built-in Domain Pack pressure test](builtin-domain-pack-pressure-test-v1.md) - Historical built-in Domain Pack pressure test
-- [Historical credential-vault cutover evidence](credential-vault-cutover.md) - Historical credential-vault cutover evidence
 - [Historical Program Graph Surface V1 evidence](program-graph-surface-v1.md) - Historical Program Graph Surface V1 evidence
-- [Historical Repeatable Program Loop V1 evidence](repeatable-program-loop-v1.md) - Historical Repeatable Program Loop V1 evidence
-- [SQLite local product evidence and current verification boundary](sqlite-local-product.md) - Current source owners and the limitations of retained desktop and storage evidence.
 - [Historical Codex runtime proof](vnext-codex-runtime-proof.md) - Version-bound native runtime evidence, distinct from current service capability queries.
 - [Historical server-store feasibility](vnext-storage-feasibility.md) - Retired storage prototype evidence and the current SQLite and blob boundary.
 - [Historical account and runner evidence](xy-1273-account-runner-binding.md) - Historical account and runner evidence
