@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::{
 	DatabaseError, SqliteStore, StoreError,
 	agent::{self, AgentDispatchState},
-	agent_models, agent_permissions, agent_plugins, agent_process, agent_prompt_edit, error,
+	agent_models, agent_permissions, agent_process, agent_prompt_edit, error,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -92,7 +92,7 @@ impl SqliteStore {
             let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
             let item=agent::read_work(&tx,&work)?;
 
-            if item.dispatch_state!=AgentDispatchState::Idle || item.codex_thread_id.is_none() || agent_prompt_edit::pending(&tx,&work)? || agent_permissions::pending(&tx,&work)? || agent_plugins::pending(&tx,&work)? || agent_models::pending(&tx,&work)? { return Err(DatabaseError::Conflict.into()); }
+            if item.dispatch_state!=AgentDispatchState::Idle || item.codex_thread_id.is_none() || agent_prompt_edit::pending(&tx,&work)? || agent_permissions::pending(&tx,&work)? || agent_models::pending(&tx,&work)? { return Err(DatabaseError::Conflict.into()); }
 
             let retry=tx.query_row("SELECT * FROM agent_capacity_retries WHERE event_id=?1 AND work_item_id=?2 AND state='pending' AND due_at_micros<=?3",rusqlite::params![event,work,now],retry_row).optional().map_err(error::sqlite_error)?.ok_or(DatabaseError::Conflict)?;
 

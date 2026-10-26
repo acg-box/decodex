@@ -278,12 +278,7 @@ async fn selection_editable(
 			|| (work.dispatch_state == AgentDispatchState::Running
 				&& work.active_turn_id.is_some()))
 			&& work.status != AgentWorkStatus::Resolved
-			&& !permission_pending
-			&& !store
-				.agent_plugin_receipt(k.work.clone(), k.thread.clone())
-				.await
-				.ok()?
-				.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "queued" | "unknown")),
+			&& !permission_pending,
 	)
 }
 
@@ -316,18 +311,6 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 		Some(history) => Some(historical_receipt(history)?),
 		None => None,
 	};
-
-	if let Some(legacy) = store
-		.pending_agent_legacy_model_change(
-			k.work.clone(),
-			k.thread.clone(),
-			k.generation.as_str().into(),
-		)
-		.await
-		.ok()?
-	{
-		return pending(&legacy.model, Some(&legacy.effort), outcome(&legacy.state)?, last_receipt);
-	}
 
 	let prior = store.agent_model_receipt(k.work.clone(), k.thread.clone()).await.ok()?;
 	let last_outcome = match &prior {

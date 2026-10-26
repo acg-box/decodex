@@ -1,7 +1,6 @@
 //! Durable model selection attempts. A queued response never proves application.
 #[path = "agent_model_history.rs"] mod history;
-#[path = "agent_model_legacy.rs"] mod legacy;
-pub use self::{history::AgentModelHistory, legacy::AgentLegacyModelPending};
+pub use self::history::AgentModelHistory;
 
 use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior};
 use serde::{Deserialize, Serialize};
@@ -9,7 +8,7 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-	SqliteStore, StoreError, agent_permissions, agent_plugins, agent_process, agent_prompt_edit,
+	SqliteStore, StoreError, agent_permissions, agent_process, agent_prompt_edit,
 	error,
 };
 
@@ -24,10 +23,10 @@ pub struct AgentModelAttempt {
 	pub effort: Option<String>,
 	pub review_token: String,
 	pub attempt_id: String,
-	/// Account identity captured by the manual selection owner. Older records omit it.
+	/// Account identity captured by explicit model selection.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub manual_source: Option<AgentManualModelSource>,
-	/// Automatic recovery evidence. Absent in existing explicit selections.
+	/// Account-bound evidence for automatic model fallback.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub recovery: Option<AgentModelRecoveryContext>,
 }
@@ -124,6 +123,11 @@ pub struct AgentModelReceipt {
 }
 
 impl SqliteStore {
+	/// Check unresolved current model selection before changing task settings.
+	pub async fn has_pending_agent_model_change(&self, work: String) -> Result<bool, StoreError> {
+		self.run(move |connection| pending(connection, &work)).await
+	}
+
 	/// Reserve one idle or running owned task edit against the exact saved observation. The caller
 	/// must bind these facts to a current transport
 	/// settings guard. Effort is the expected configured value, including preserved effort.
@@ -136,7 +140,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			let tx=connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 
-			if !agent_process::owns_work(&tx,&attempt.work,attempt.generation.as_deref())? || agent_prompt_edit::pending(&tx,&attempt.work)? || pending(&tx,&attempt.work)? || agent_permissions::pending(&tx,&attempt.work)? || agent_plugins::pending(&tx,&attempt.work)? { return Ok(None); }
+			if !agent_process::owns_work(&tx,&attempt.work,attempt.generation.as_deref())? || agent_prompt_edit::pending(&tx,&attempt.work)? || pending(&tx,&attempt.work)? || agent_permissions::pending(&tx,&attempt.work)? { return Ok(None); }
 			if !recovery_source_is_current(&tx, &attempt)? || !manual_source_is_current(&tx, attempt.generation.as_deref(), attempt.manual_source.as_ref())? || queued_execution_input(&tx, &attempt.work)? { return Ok(None); }
 
 			let saved: Option<String> = tx.query_row("SELECT json_extract(e.payload,'$.settings') FROM agent_work_items w JOIN agent_inbox_events e ON e.work_item_id=w.id WHERE w.id=?1 AND w.codex_thread_id=?2 AND ((w.dispatch_state='idle' AND w.active_turn_id IS NULL) OR (w.dispatch_state='running' AND w.active_turn_id IS NOT NULL)) AND w.status<>'resolved' AND e.id=?4 AND e.event_kind='native_task_models' AND json_extract(e.payload,'$.threadId')=?2 AND json_extract(e.payload,'$.generationId') IS ?3 AND json_type(e.payload,'$.settings')='object' AND e.id=(SELECT max(n.id) FROM agent_inbox_events n WHERE n.work_item_id=w.id AND n.event_kind='native_task_models' AND json_extract(n.payload,'$.threadId')=?2 AND json_extract(n.payload,'$.generationId') IS ?3)", rusqlite::params![attempt.work,attempt.thread,attempt.generation,attempt.settings_event], |r|r.get(0)).optional().map_err(error::sqlite_error)?;
@@ -150,14 +154,6 @@ impl SqliteStore {
 
 			let key=attempt.key();
 
-            if attempt.recovery.is_some() {
-                // The legacy journal used the same stable digest with a different prefix.
-                // A terminal receipt still consumes that occurrence across upgrades.
-                let legacy_key = key.replacen("model-selection:", "model-recovery:", 1);
-                let used: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE source_event_id=?1 AND event_kind='model_recovery')", [&legacy_key], |row| row.get(0)).map_err(error::sqlite_error)?;
-
-                if used { return Ok(None); }
-            }
 
 			let now=crate::unix_micros()?;
 			let changed=tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'model_selection',?3,?4,'resolved','Model selection reserved; not confirmed.',?4)",rusqlite::params![key,attempt.work,serde_json::json!({"attempt":attempt}).to_string(),now]).map_err(error::sqlite_error)?;
@@ -201,10 +197,6 @@ impl SqliteStore {
 }
 
 pub(crate) fn pending(connection: &Connection, work: &str) -> Result<bool, StoreError> {
-	if legacy::pending(connection, work)? {
-		return Ok(true);
-	}
-
 	connection.query_row("SELECT EXISTS(SELECT 1 FROM agent_inbox_events e WHERE e.work_item_id=?1 AND e.event_kind='model_selection' AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND r.event_kind='model_selection_result' AND json_extract(r.payload,'$.state')='rejected') OR (r.source_event_id=e.source_event_id||':observation' AND r.event_kind='model_selection_observation')))", [work], |r|r.get(0)).map_err(|e|error::sqlite_error(e).into())
 }
 
@@ -236,8 +228,6 @@ pub(crate) fn observe(
 			return Ok(());
 		}
 	}
-
-	legacy::observe(connection, work, thread, generation, observation, settings)?;
 
 	let row:Option<(i64,String,Option<String>,String)>=connection.query_row("SELECT e.id,e.source_event_id,json_extract(e.payload,'$.attempt.generation'),json_extract(e.payload,'$.attempt') FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id AND w.codex_thread_id=?2 WHERE e.work_item_id=?1 AND e.event_kind='model_selection' AND e.id<?3 AND json_extract(e.payload,'$.attempt.thread')=?2 AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND json_extract(r.payload,'$.state')='rejected') OR r.source_event_id=e.source_event_id||':observation') ORDER BY e.id DESC LIMIT 1",rusqlite::params![work,thread,observation],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(error::sqlite_error)?;
 	let Some((reservation, key, previous, target)) = row else {
@@ -351,8 +341,7 @@ mod tests {
 	use serde_json::Value;
 
 	use crate::{
-		AgentModelAttempt, AgentModelReceipt, AgentPermissionAttempt, AgentPluginAttempt,
-		EnqueueAgentEvent, SqliteStore, agent_plugins, error, tests,
+		AgentModelAttempt, AgentModelReceipt, AgentPermissionAttempt, EnqueueAgentEvent, SqliteStore, tests,
 	};
 
 	fn settings(model: &str) -> Value {
@@ -390,27 +379,6 @@ mod tests {
 		store.agent_model_receipt("work".into(), "thread".into()).await.unwrap().unwrap()
 	}
 
-	#[tokio::test]
-	async fn legacy_model_recovery_blocks_dispatch_after_reopen() {
-		let dir = tempfile::tempdir().unwrap();
-		let path = dir.path().join("legacy.sqlite3");
-		let store = tests::bound_agent_store(&path).await;
-
-		store.run(|connection| {
-			connection.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES('model-recovery:legacy','work','model_recovery',?1,1,'resolved','Legacy fixture',1)", [serde_json::json!({"attempt":{"work":"work","thread":"thread","generation":"old","account":"account","account_revision":1,"settings_event":1,"banner_digest":"b".repeat(64),"from_model":"original","model":"scoped","effort":"high","service_tier":"priority"},"state":"claimed"}).to_string()]).map_err(error::sqlite_error)?;
-
-			Ok(())
-		}).await.unwrap();
-
-		drop(store);
-
-		let reopened = SqliteStore::open_test(&path).unwrap();
-
-		assert!(
-			reopened.begin_agent_dispatch("work".into()).await.is_err(),
-			"an unresolved legacy request must not be ignored after upgrade"
-		);
-	}
 
 	#[tokio::test]
 	async fn model_reservation_survives_crash_and_blocks_dispatch_until_native_confirmation() {
@@ -657,20 +625,10 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn running_model_edits_respect_permissions_and_historical_plugin_edits() {
+	async fn running_model_edits_respect_permission_edits() {
 		let dir = tempfile::tempdir().unwrap();
 		let store = tests::bound_agent_store(&dir.path().join("mixed.sqlite3")).await;
 		let observed = facts(&store, Some("original"), 'a').await;
-		let plugin_event = store
-			.record_agent_task_plugins_publication(
-				"thread".into(),
-				None,
-				Some(serde_json::json!({"disabledPluginIds":[]}).to_string()),
-				"a".repeat(64),
-			)
-			.await
-			.unwrap()
-			.unwrap();
 		let permission_event = store
 			.record_agent_task_permissions_publication(
 				"thread".into(),
@@ -692,15 +650,6 @@ mod tests {
 
 		let model = attempt(observed, 'a');
 		let id = store.reserve_agent_model_selection(model.clone()).await.unwrap().unwrap();
-		let plugin = AgentPluginAttempt {
-			work: "work".into(),
-			thread: "thread".into(),
-			generation: None,
-			settings_event: plugin_event,
-			disabled_plugin_ids: vec!["scoped".into()],
-			review_token: "b".repeat(64),
-			attempt_id: "plugin".into(),
-		};
 		let permission = AgentPermissionAttempt {
 			work: "work".into(),
 			thread: "thread".into(),
@@ -716,22 +665,6 @@ mod tests {
 		);
 
 		store.finish_agent_model_selection(id, model, "rejected".into()).await.unwrap();
-
-		agent_plugins::seed_legacy_selection(&store, plugin, Some("unknown")).await;
-
-		assert!(
-			store.reserve_agent_model_selection(attempt(observed, 'b')).await.unwrap().is_none()
-		);
-
-		store
-			.record_agent_task_plugins_publication(
-				"thread".into(),
-				None,
-				Some(serde_json::json!({"disabledPluginIds":["scoped"]}).to_string()),
-				"b".repeat(64),
-			)
-			.await
-			.unwrap();
 
 		let id =
 			store.reserve_agent_permission_selection(permission.clone()).await.unwrap().unwrap();

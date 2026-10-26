@@ -18,7 +18,7 @@ use serde_json::Value;
 
 use crate::{
 	AgentLiveOutput, AgentTurnExecution, DatabaseError, Project, SqliteStore, StoreError,
-	agent_models, agent_output, agent_permissions, agent_plugins, agent_prompt_edit,
+	agent_models, agent_output, agent_permissions, agent_prompt_edit,
 	agent_prompt_inputs, agent_questions, agent_request_payload, agent_task_references,
 	agent_turn_execution, error, projects,
 };
@@ -607,7 +607,7 @@ impl SqliteStore {
 			let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 			let work = read_work(&transaction, &id)?;
 
-			if work.dispatch_state != AgentDispatchState::Idle || work.codex_thread_id.is_none() || (agent_permissions::pending(&transaction, &id)? || agent_plugins::pending(&transaction, &id)? || agent_models::pending(&transaction, &id)? || agent_prompt_edit::pending(&transaction, &id)?) {
+			if work.dispatch_state != AgentDispatchState::Idle || work.codex_thread_id.is_none() || (agent_permissions::pending(&transaction, &id)? || agent_models::pending(&transaction, &id)? || agent_prompt_edit::pending(&transaction, &id)?) {
 				return Err(DatabaseError::Conflict.into());
 			}
 

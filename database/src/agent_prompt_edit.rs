@@ -7,7 +7,7 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-	SqliteStore, StoreError, agent_models, agent_permissions, agent_plugins, agent_process, error,
+	SqliteStore, StoreError, agent_models, agent_permissions, agent_process, error,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -84,7 +84,7 @@ impl SqliteStore {
 			let tx = c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 
 			if !owned(&tx,&a,a.generation.as_deref())? || pending(&tx,&a.work)?
-				|| agent_models::pending(&tx,&a.work)? || agent_permissions::pending(&tx,&a.work)? || agent_plugins::pending(&tx,&a.work)? { return Ok(None); }
+				|| agent_models::pending(&tx,&a.work)? || agent_permissions::pending(&tx,&a.work)? { return Ok(None); }
 
 			let eligible: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items w WHERE w.id=?1 AND w.dispatch_state='idle' AND w.active_turn_id IS NULL AND w.status<>'resolved' AND NOT EXISTS(SELECT 1 FROM agent_voice_calls v WHERE v.work_id=w.id AND v.closed_at_micros IS NULL) AND NOT EXISTS(SELECT 1 FROM agent_inbox_events e WHERE (e.work_item_id=w.id OR e.delivery_work_item_id=w.id) AND e.disposition IS NULL AND (e.delivered_turn_id IS NULL OR e.delivered_turn_id='')))",[&a.work],|r|r.get(0)).map_err(error::sqlite_error)?;
 

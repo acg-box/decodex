@@ -701,20 +701,6 @@ pub enum AgentActionDto {
 		/// Explicit advertised effort; omission preserves configured effort.
 		effort: Option<ConversationReasoningEffort>,
 	},
-	/// Change one task plugin exclusion.
-	SetTaskPlugin {
-		/// Exact local work.
-		work_id: EntityId,
-		/// Exact native thread.
-		thread_id: EntityId,
-		/// Reviewed source and selection identity.
-		review_token: WireText,
-		/// Canonical plugin identity.
-		plugin_id: WireText,
-		/// Remove the exclusion when true; shared enablement still applies.
-		enabled: bool,
-	},
-
 	/// Select a reviewed native permission profile for the exact task.
 	SelectPermissions {
 		/// Owning task.

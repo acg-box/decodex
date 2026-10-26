@@ -34,7 +34,7 @@ use crate::{
 	AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState, AgentIntegrationsResult,
 	AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult, AgentModelSelectionState,
 	AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall,
-	AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult, AgentRequestResult,
+	AgentPermissionState, AgentReadStateResult, AgentRequestResult,
 	AgentResourcesResult, AgentSampleStatus, AgentSearchSettingsResult, AgentSkillsResult,
 	AgentSkillsTarget, AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult,
 	AgentTimelineResult, AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult,
@@ -1077,34 +1077,6 @@ impl AgentClient {
 		}
 	}
 
-	/// Inspect saved task exclusions and shared plugin discovery.
-	pub async fn plugin_selection(
-		&self,
-		work_id: EntityId,
-	) -> Result<AgentPluginSelectionState, ClientFailure> {
-		self.transport.require_local_profile()?;
-
-		let transport = ResetCardClient {
-			profile: self.transport.profile.clone(),
-			timeout: Duration::from_secs(45),
-		};
-		let completed = time::timeout(
-			Duration::from_secs(45),
-			transport.query_inner(
-				"agent-plugin-selection",
-				QueryPayload::GetAgentPluginSelection { work_id },
-			),
-		)
-		.await
-		.map_err(|_| ClientFailure::ProtocolTimeout)??;
-
-		close_one_shot_socket(completed.socket).await;
-
-		match completed.value {
-			QueryResultPayload::AgentPluginSelection(result) => Ok(result),
-			_ => Err(ClientFailure::ProtocolMalformed),
-		}
-	}
 
 	/// Inspect native model settings and advertised choices.
 	pub async fn model_selection(
@@ -2367,8 +2339,7 @@ impl AgentClient {
 			| AgentActionDto::EditNativeGoal { .. }
 			| AgentActionDto::SetVoicePreference { .. }
 			| AgentActionDto::SetSearchPreference { .. }
-			| AgentActionDto::SetContextPreference { .. }
-			| AgentActionDto::SetTaskPlugin { .. } => Some(Duration::from_secs(65)),
+			| AgentActionDto::SetContextPreference { .. } => Some(Duration::from_secs(65)),
 			AgentActionDto::RestoreArchivedThread { .. } => Some(RESET_CARD_CLIENT_TIMEOUT),
 			_ => None,
 		};
@@ -3867,7 +3838,6 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		| AgentActionDto::SetLiveReviewer { work_id, .. }
 		| AgentActionDto::SetLiveModel { work_id, .. } => work_id,
 		AgentActionDto::SelectPermissions { work_id, .. } => work_id,
-		AgentActionDto::SetTaskPlugin { work_id, .. } => work_id,
 		AgentActionDto::SetTaskModel { work_id, .. } => work_id,
 		AgentActionDto::SetHookSetting { work_id, .. }
 		| AgentActionDto::SetAppToolExposure { work_id, .. }
@@ -4143,7 +4113,6 @@ async fn close_one_shot_socket(mut socket: OneShotSocket) {
 mod tests {
 	mod account_login;
 	mod native_goal;
-	mod plugin_selection;
 	mod prompt_edit;
 	mod timeline;
 	#[cfg(unix)] use std::os::unix::fs::PermissionsExt;

@@ -25,7 +25,7 @@ use crate::{
 	AgentHistoryResult, AgentHookSettingsState, AgentInputReceiptsResult, AgentInstallState,
 	AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest, AgentMediaResult,
 	AgentMemoryResult, AgentModelSelectionState, AgentModelSettingsResult, AgentNativeGoalResult,
-	AgentOutputResult, AgentPendingAppUiCall, AgentPermissionState, AgentPluginSelectionState,
+	AgentOutputResult, AgentPendingAppUiCall, AgentPermissionState,
 	AgentReadStateResult, AgentRequestResult, AgentResourcesResult, AgentSampleStatus,
 	AgentSavedAppSettingsResult, AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget,
 	AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult,
@@ -2265,11 +2265,6 @@ pub enum QueryPayload {
 		/// Owning task.
 		work_id: EntityId,
 	},
-	/// Read task plugin exclusions.
-	GetAgentPluginSelection {
-		/// Owning task.
-		work_id: EntityId,
-	},
 	/// Inspect current permission facts and profile eligibility for one task.
 	GetAgentPermissionProfiles {
 		/// Owning task.
@@ -3212,8 +3207,6 @@ pub enum QueryResultPayload {
 	AgentLiveReviewer(AgentLiveReviewerState),
 	/// Native permission review or pending selection.
 	AgentPermissionProfiles(AgentPermissionState),
-	/// Task plugin selections and operation receipts.
-	AgentPluginSelection(AgentPluginSelectionState),
 	/// Native model selection and operation receipt.
 	AgentModelSelection(AgentModelSelectionState),
 	/// Current shared hook review.

@@ -1534,8 +1534,6 @@ impl AgentHost {
 					},
 				)
 				.await,
-			AgentActionDto::SetTaskPlugin { .. } =>
-				Err(AgentHostError::Rejected("Configure plugins in Codex for this account.")),
 			AgentActionDto::SetTaskModel { work_id, thread_id, review_token, model, effort } =>
 				self.set_task_model(
 					work_id.as_str(),
@@ -1721,7 +1719,6 @@ impl AgentHost {
 			| AgentActionDto::SetSavedAppSetting { .. }
 			| AgentActionDto::SetAppSetting { .. }
 			| AgentActionDto::SetHookSetting { .. }
-			| AgentActionDto::SetTaskPlugin { .. }
 			| AgentActionDto::SetTaskModel { .. }
 			| AgentActionDto::SelectPermissions { .. }
 			| AgentActionDto::SetLiveReviewer { .. }

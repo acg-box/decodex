@@ -4,7 +4,7 @@ use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
 use crate::{
-	SqliteStore, StoreError, agent_models, agent_permissions, agent_plugins, agent_process, error,
+	SqliteStore, StoreError, agent_models, agent_permissions, agent_process, error,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -47,8 +47,7 @@ impl Kind {
 				observation,
 				settings,
 			),
-			Self::Plugins =>
-				agent_plugins::observe(connection, work, thread, generation, observation, settings),
+			Self::Plugins => Ok(()),
 			Self::Models =>
 				agent_models::observe(connection, work, thread, generation, observation, settings),
 		}

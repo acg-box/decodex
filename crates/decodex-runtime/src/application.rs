@@ -94,7 +94,7 @@ use decodex_protocol::{
 	AgentIntegrationsResult, AgentLiveMessageKind, AgentLiveReviewerState, AgentMediaRequest,
 	AgentMediaResult, AgentMemoryResult, AgentMisalignmentDto, AgentModelSelectionState,
 	AgentModelSettingsResult, AgentNativeGoalResult, AgentOutputResult, AgentPendingAppUiCall,
-	AgentPendingEventDto, AgentPermissionState, AgentPluginSelectionState, AgentReadStateResult,
+	AgentPendingEventDto, AgentPermissionState, AgentReadStateResult,
 	AgentRequestText, AgentResourcesResult, AgentSampleStatus, AgentSavedAppSettingsResult,
 	AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget, AgentSnapshotDto,
 	AgentSteerIdentity, AgentSteerReceiptResult, AgentTaskReferenceDto, AgentTimelineResult,
@@ -360,9 +360,6 @@ impl ServiceApplication {
 		})
 	}
 
-	async fn query_plugin_selection(&self, _work: &str) -> QueryResultPayload {
-		QueryResultPayload::AgentPluginSelection(AgentPluginSelectionState::Unavailable)
-	}
 
 	async fn query_model_selection(&self, work: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentModelSelection(match &self.agent {
@@ -2766,8 +2763,6 @@ impl Application for ServiceApplication {
 				QueryResultPayload::AgentSavedAppSettings(AgentSavedAppSettingsResult::Unavailable),
 			QueryPayload::GetAgentHookSettings { work_id } =>
 				self.query_hook_settings(work_id.as_str()).await,
-			QueryPayload::GetAgentPluginSelection { work_id } =>
-				self.query_plugin_selection(work_id.as_str()).await,
 			QueryPayload::GetAgentModelSelection { work_id } =>
 				self.query_model_selection(work_id.as_str()).await,
 			QueryPayload::GetAgentPermissionProfiles { work_id } =>

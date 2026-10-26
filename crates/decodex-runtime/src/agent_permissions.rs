@@ -330,13 +330,7 @@ async fn selection_editable(
 	let idle = work.dispatch_state == AgentDispatchState::Idle && work.active_turn_id.is_none();
 	let running =
 		work.dispatch_state == AgentDispatchState::Running && work.active_turn_id.is_some();
-	let other_pending = store
-		.agent_plugin_receipt(k.work.clone(), k.thread.clone())
-		.await
-		.ok()?
-		.is_some_and(|r| matches!(r.state.as_str(), "reserved" | "queued" | "unknown"));
 	let can_update = (idle || running)
-		&& !other_pending
 		&& !store.has_pending_agent_model_change(k.work.clone()).await.ok()?
 		&& work.status != AgentWorkStatus::Resolved;
 

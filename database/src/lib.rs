@@ -21,7 +21,8 @@ mod agent_models;
 mod agent_native_turns;
 mod agent_output;
 mod agent_permissions;
-mod agent_plugins;
+#[cfg(test)]
+mod agent_settings_observation_tests;
 mod agent_process;
 mod agent_prompt_edit;
 mod agent_prompt_inputs;
@@ -92,12 +93,11 @@ pub use self::{
 	},
 	agent_misalignment::AgentMisalignment,
 	agent_models::{
-		AgentLegacyModelPending, AgentManualModelSource, AgentModelAttempt, AgentModelHistory,
+		AgentManualModelSource, AgentModelAttempt, AgentModelHistory,
 		AgentModelReceipt, AgentModelRecoveryContext,
 	},
 	agent_output::{AgentLiveOutput, AgentOutputUpdate},
 	agent_permissions::{AgentPermissionAttempt, AgentPermissionReceipt},
-	agent_plugins::{AgentPluginAttempt, AgentPluginReceipt},
 	agent_process::AgentProcessBinding,
 	agent_prompt_edit::{AgentPromptEditAttempt, AgentPromptEditReceipt},
 	agent_prompt_inputs::AgentPromptInput,

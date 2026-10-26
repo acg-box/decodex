@@ -23,7 +23,6 @@ mod agent_model_settings;
 mod agent_models;
 mod agent_native_goal;
 mod agent_permissions;
-mod agent_plugins;
 mod agent_prompt_draft;
 mod agent_prompt_edit;
 mod agent_prompt_send;
@@ -134,7 +133,6 @@ pub use self::{
 		AgentNativeGoalStatus,
 	},
 	agent_permissions::{AgentPermissionOutcome, AgentPermissionProfile, AgentPermissionState},
-	agent_plugins::{AgentPluginOutcome, AgentPluginSelectionState},
 	agent_prompt_draft::{DesktopPromptEditDraft, PromptDraft},
 	agent_prompt_edit::{
 		AttachedBranchesResult, PromptEditEvidence, PromptEditPhase, PromptEditStatus,
