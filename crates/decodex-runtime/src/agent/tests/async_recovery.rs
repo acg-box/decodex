@@ -248,6 +248,50 @@ async fn complete_legacy_question_recovery_reads_history_once_for_many_turns() {
 }
 
 #[tokio::test]
+async fn independent_question_headers_are_prefetched_without_submitting_turns() {
+	let (mut agent, _sent, _directory) = tests::fixture().await;
+	agent.start_agent("agent", "Coordinate").await.unwrap();
+	for index in 1..4 {
+		agent.create_worker("agent", &format!("worker-{index}"), "Research").await.unwrap();
+	}
+	agent.store.queue_agent_async_reconnection().await.unwrap();
+	let (incoming, frames) = mpsc::channel(16);
+	let (outgoing, mut writes) = mpsc::channel(16);
+	let (client, _events) = AppServerClient::from_framed(1, frames, outgoing).unwrap();
+	agent.client = client;
+	let (release, finished) = oneshot::channel();
+	let server = tokio::spawn(async move {
+		let mut requests = Vec::new();
+		for _ in 0..4 {
+			let request = writes.recv().await.unwrap();
+			assert_eq!(request["method"], "thread/read");
+			requests.push(request);
+		}
+		// No first response is available until all four independent reads arrive.
+		for request in requests.into_iter().rev() {
+			let thread = request["params"]["threadId"].clone();
+			incoming.send(Ok(serde_json::json!({"id":request["id"],"result":{"thread":{"id":thread,"historyMode":"paginated","turns":[]}}}))).await.unwrap();
+		}
+		for _ in 0..4 {
+			let request = writes.recv().await.unwrap();
+			assert_eq!(request["method"], "thread/turns/list");
+			incoming
+				.send(Ok(
+					serde_json::json!({"id":request["id"],"result":{"data":[],"nextCursor":null}}),
+				))
+				.await
+				.unwrap();
+		}
+		let _ = finished.await;
+		assert!(writes.try_recv().is_err(), "recovery cannot submit native input");
+	});
+	time::timeout(Duration::from_secs(3), agent.recover_async_questions()).await.unwrap().unwrap();
+	assert!(agent.store.pending_agent_async_recovery().await.unwrap().is_empty());
+	let _ = release.send(());
+	server.await.unwrap();
+}
+
+#[tokio::test]
 async fn paginated_question_recovery_reads_items_concurrently_in_turn_order() {
 	let (mut agent, _sent, _directory) = tests::fixture().await;
 

@@ -69,16 +69,30 @@ impl AgentCoordinator {
 	/// Upgrade old projections from exact native history, including other-client replies.
 	/// An incomplete read leaves the durable recovery marker for the next connection.
 	pub(super) async fn recover_async_questions(&mut self) -> Result<(), AgentError> {
-		for (work, thread, required_item) in self.store.pending_agent_async_recovery().await? {
+		let pending = self.store.pending_agent_async_recovery().await?;
+		let client = self.client.clone();
+		// Prefetch independent thread headers without spawning new owners. Apply each
+		// thread's observations in the same order and retain its original invalidation guards.
+		let headers = stream::iter(pending.into_iter().map(|entry| {
+			let client = client.clone();
+			async move {
+				let revision = client.question_revision();
+				let lifecycle = client.thread_settings_guard(&entry.1);
+				let deadline = Instant::now() + Duration::from_secs(30);
+				let turns =
+					time::timeout_at(deadline, client.thread_turns_since(&entry.1, None)).await;
+				(entry, revision, lifecycle, deadline, turns)
+			}
+		}))
+		.buffered(4);
+		tokio::pin!(headers);
+		while let Some(((work, thread, required_item), revision, lifecycle, deadline, turns)) =
+			headers.next().await
+		{
 			let _phase = crate::startup_trace::Phase::new("recover_async_thread");
-			let revision = self.client.question_revision();
-			let lifecycle = self.client.thread_settings_guard(&thread);
-			let deadline = Instant::now() + Duration::from_secs(30);
-			let (mut projection, mut saw_required, Ok(Ok(turns))) = (
-				Projection::default(),
-				required_item.is_none(),
-				time::timeout_at(deadline, self.client.thread_turns_since(&thread, None)).await,
-			) else {
+			let (mut projection, mut saw_required, Ok(Ok(turns))) =
+				(Projection::default(), required_item.is_none(), turns)
+			else {
 				continue;
 			};
 			let latest = turns.last().and_then(|turn| turn["id"].as_str()).map(str::to_owned);
