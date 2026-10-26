@@ -58,12 +58,10 @@ class LocalServiceInstallerTests(unittest.TestCase):
             root=root,
             config=root / "config.toml",
             database=root / "server/decodex.sqlite3",
-            retired_vault=root / "server/credentials.redb",
             log_directory=root / "logs",
             service_log=root / "logs/local-service.log",
             launch_agent=root / "space.decodex.local-service.plist",
             decodex=root / "bin/decodex",
-            database_transfer=root / "bin/decodex-database-transfer",
             codex=root / "codex-bin/codex",
         )
 
@@ -130,12 +128,10 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 root=root,
                 launch_agent=root / "agent.plist",
                 decodex=root / "decodex",
-                database_transfer=root / "decodex-database-transfer",
                 codex=root / "codex",
             )
             paths = self.module.install_paths(args)
         self.assertEqual(paths.database, root.resolve() / "server/decodex.sqlite3")
-        self.assertEqual(paths.retired_vault, root.resolve() / "server/credentials.redb")
         for retired_field in ("data_directory", "socket_directory", "postgres_log"):
             self.assertFalse(hasattr(paths, retired_field))
 
@@ -150,10 +146,9 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 repository=REPO_ROOT, root=root,
                 launch_agent=root / "agent.plist",
                 decodex=root / "decodex",
-                database_transfer=root / "decodex-database-transfer",
                 codex=root / "codex",
             )
-            for field in ("decodex", "database_transfer"):
+            for field in ("decodex",):
                 with self.subTest(executable=field):
                     link = getattr(args, field)
                     link.symlink_to(target)
@@ -293,7 +288,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
 
     def test_signed_peer_must_match_service_team_and_optional_identifier(self) -> None:
         descriptor = {
-            "identifier": "box.acg.decodex.database-transfer",
+            "identifier": "box.acg.decodex.cli",
             "team_identifier": "T54QFA7W2S",
             "sha256": "0" * 64,
         }
@@ -304,19 +299,19 @@ class LocalServiceInstallerTests(unittest.TestCase):
         ):
             self.assertEqual(
                 self.module.verify_signed_peer(
-                    Path("/private/transfer"),
-                    "Decodex database transfer",
+                    Path("/private/decodex"),
+                    "Decodex CLI",
                     "T54QFA7W2S",
-                    "box.acg.decodex.database-transfer",
+                    "box.acg.decodex.cli",
                 ),
                 descriptor,
             )
             with self.assertRaisesRegex(self.module.InstallError, "signature did not verify"):
                 self.module.verify_signed_peer(
-                    Path("/private/transfer"),
-                    "Decodex database transfer",
+                    Path("/private/decodex"),
+                    "Decodex CLI",
                     "OTHERTEAM",
-                    "box.acg.decodex.database-transfer",
+                    "box.acg.decodex.cli",
                 )
 
     def test_launch_agent_service_binding_is_exact(self) -> None:
@@ -423,68 +418,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
                         raise
                 self.assertEqual(service.returncode, 0)
 
-    def test_retired_snapshot_is_captured_only_before_sqlite_exists(self) -> None:
-        account_id = "10000000-0000-4000-8000-000000000001"
-        with tempfile.TemporaryDirectory() as temp:
-            paths = self.paths(Path(temp))
-            paths.server_directory.mkdir(parents=True)
-            paths.retired_vault.write_bytes(b"retired-vault-fixture")
-            paths.retired_vault.chmod(0o600)
-            with mock.patch.object(
-                self.module,
-                "query_accounts",
-                return_value=self.account_document([account_id]),
-            ) as query:
-                snapshot = self.module.capture_retired_account_snapshot(
-                    paths,
-                    os.geteuid(),
-                )
-                self.assertEqual(json.loads(snapshot), self.account_document([account_id]))
-                query.assert_called_once_with(paths)
 
-            paths.database.write_bytes(b"sqlite-fixture")
-            paths.database.chmod(0o600)
-            with mock.patch.object(self.module, "query_accounts") as query:
-                self.assertIsNone(
-                    self.module.capture_retired_account_snapshot(paths, os.geteuid())
-                )
-                query.assert_not_called()
-
-    def test_transfer_invocation_is_value_suppressing_and_validated(self) -> None:
-        with tempfile.TemporaryDirectory() as temp:
-            paths = self.paths(Path(temp))
-            paths.database_transfer.parent.mkdir(parents=True)
-            paths.database_transfer.write_bytes(b"fixture")
-            paths.database_transfer.chmod(0o755)
-            result = {
-                "schema": "decodex/local-account-transfer/1",
-                "outcome": "imported",
-                "account_count": 6,
-                "source_vault_retained": True,
-            }
-            completed = subprocess.CompletedProcess(
-                ["transfer"],
-                0,
-                json.dumps(result),
-                "",
-            )
-            with (
-                mock.patch.object(self.module, "verify_signed_peer"),
-                mock.patch.object(self.module, "run", return_value=completed) as run,
-            ):
-                self.assertEqual(
-                    self.module.transfer_retired_accounts(
-                        paths,
-                        b'{"credential_negative":true}',
-                        "T54QFA7W2S",
-                    ),
-                    6,
-                )
-        self.assertEqual(
-            run.call_args.kwargs["input_bytes"],
-            b'{"credential_negative":true}',
-        )
-        self.assertNotIn("credentials.redb", " ".join(run.call_args.args[0]))
 
     def test_database_commands_use_only_the_installed_service_and_root(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -511,7 +445,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
             ],
         )
 
-    def test_fresh_and_transfer_install_paths_are_separate(self) -> None:
+    def test_install_initializes_and_validates_under_the_namespace_lock(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             paths = self.paths(Path(temp))
             paths.server_directory.mkdir(parents=True, mode=0o700)
@@ -527,7 +461,6 @@ class LocalServiceInstallerTests(unittest.TestCase):
                     mock.patch.object(self.module, "verify_service_executable"),
                     mock.patch.object(self.module, "verify_signed_peer"),
                     mock.patch.object(self.module, "initialize_local_database") as initialize,
-                    mock.patch.object(self.module, "transfer_retired_accounts", return_value=6) as transfer,
                     mock.patch.object(self.module, "validate_local_database"),
                     mock.patch.object(self.module, "require_owned_private_file"),
                     mock.patch.object(self.module, "atomic_write"),
@@ -547,28 +480,10 @@ class LocalServiceInstallerTests(unittest.TestCase):
                             os.geteuid(),
                             namespace_lock,
                             service,
-                            None,
                         ),
-                        0,
+                        None,
                     )
                     initialize.assert_called_once_with(paths)
-                    transfer.assert_not_called()
-
-                    self.assertEqual(
-                        self.module.install_under_namespace_lock(
-                            paths,
-                            os.geteuid(),
-                            namespace_lock,
-                            service,
-                            b"snapshot",
-                        ),
-                        6,
-                    )
-                    transfer.assert_called_once_with(
-                        paths,
-                        b"snapshot",
-                        service["team_identifier"],
-                    )
             finally:
                 namespace_lock.close()
 
@@ -641,11 +556,6 @@ class LocalServiceInstallerTests(unittest.TestCase):
                         "dirty": False,
                     },
                 ),
-                mock.patch.object(
-                    self.module,
-                    "capture_retired_account_snapshot",
-                    return_value=b"snapshot",
-                ),
                 mock.patch.object(self.module, "bootout_service"),
                 mock.patch.object(
                     self.module.InstallerNamespaceLock,
@@ -670,8 +580,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
         result = json.loads(output.getvalue())
         self.assertEqual(result["database"], "sqlite")
         self.assertEqual(result["account_count"], 1)
-        self.assertEqual(result["account_transfer"], "completed")
-        self.assertTrue(result["retired_sources_retained"])
+        self.assertNotIn("account_transfer", result)
         self.assertNotIn("artifact_cohort", result)
         self.assertNotIn("protocol", result)
         self.assertEqual(

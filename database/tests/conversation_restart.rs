@@ -9,9 +9,8 @@ use tempfile::TempDir;
 use zeroize::Zeroizing;
 
 use decodex_core::{
-	self, AccountId, AccountLifecycleReadiness, AccountOperationId, AccountProvider,
-	AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl,
-	AccountSelectionMode, AccountState, BlobStore, ContextPackInput, ContextPackPolicy,
+	self, AccountId, AccountOperationId, AccountProvider,
+	AccountSelectionMode, BlobStore, ContextPackInput, ContextPackPolicy,
 	ContinuationCommandOutcome, ContinuationPlanKind, ConversationId, CredentialBinding,
 	CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion, DecodexPaths,
 	DecodexRoot, HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata, ItemStatus,
@@ -36,8 +35,7 @@ use decodex_database::{
 	CreateConversationRecord, CreateConversationRoutingSuccessor, CredentialKey, CredentialRecord,
 	FenceRuntimeSessionThreadStart, FenceRuntimeSessionThreadStartOutcome,
 	FreshConversationProcessGeneration, InitialConversationTurnAdmissionOutcome,
-	InitialModelReviewOutcome, InitialModelSource, LocalAccountTransfer, LocalAccountTransferBatch,
-	LocalAccountTransferOutcome, OrdinaryRuntimeSessionResumeReadback,
+	InitialModelReviewOutcome, InitialModelSource, OrdinaryRuntimeSessionResumeReadback,
 	OrdinaryTaskConversationProjection, OrdinaryTaskPreSessionState, PlanContinuation,
 	PlanInitialThreadContinuation, PrepareConversationProcessGeneration,
 	PrepareConversationProcessGenerationOutcome, PrepareProcessGenerationOutcome,
@@ -111,14 +109,15 @@ struct ContinuedTurn {
 	routing_decision_id: String,
 }
 
-fn fixture_account_transfer(
+async fn enroll_fixture_account(
+	store: &SqliteStore,
 	account_id: &str,
 	operation_id: &str,
 	provider_account_id: &str,
 	fingerprint: &str,
 	label: &str,
 	payload: &[u8],
-) -> (AccountId, CredentialBinding, LocalAccountTransfer) {
+) -> (AccountId, CredentialBinding) {
 	let typed_account_id = AccountId::new(account_id).expect("account identity");
 	let typed_operation_id = AccountOperationId::new(operation_id).expect("operation identity");
 	let provider = ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id)
@@ -130,43 +129,23 @@ fn fixture_account_transfer(
 		provider,
 		writer_operation_id: typed_operation_id,
 	};
-	let account = AccountRecord {
-		account_id: typed_account_id.clone(),
-		label: label.to_owned(),
-		enabled: true,
-		revision: 1,
-		observed_state: AccountState::Available,
-		lifecycle_readiness: AccountLifecycleReadiness::Ready,
-		credential: Some(credential.clone()),
-		unsettled_operation: None,
-		usage_observation: None,
-		five_hour_quota: AccountQuotaWindowObservation::unknown(
-			AccountQuotaWindow::FIVE_HOURS_MINUTES,
-		)
-		.expect("unknown five-hour window"),
-		seven_day_quota: AccountQuotaWindowObservation::unknown(
-			AccountQuotaWindow::SEVEN_DAYS_MINUTES,
-		)
-		.expect("unknown seven-day window"),
-		tombstoned: false,
-	};
-	let transferred = LocalAccountTransfer {
-		account,
-		credential: CredentialRecord {
-			key: CredentialKey {
-				account_id: account_id.to_owned(),
-				schema_version: 1,
-				credential_version: 1,
-				fingerprint: fingerprint.to_owned(),
-				writer_operation_id: operation_id.to_owned(),
-				provider: "chatgpt".to_owned(),
-				provider_account_id: provider_account_id.to_owned(),
-			},
-			payload: Zeroizing::new(payload.to_vec()),
-		},
-	};
-
-	(typed_account_id, credential, transferred)
+	store.prepare_account_operation(&decodex_database::AccountOperationPreparation {
+        operation_id: credential.writer_operation_id.clone(), account_id: typed_account_id.clone(),
+        kind: decodex_core::AccountOperationKind::Enroll, display_label: Some(label.into()),
+        enabled: Some(true), expected_account_revision: None, expected: None,
+        target: Some(credential.clone()), provider: credential.provider.clone(),
+    }).await.expect("prepare fixture enrollment");
+    store.create_credential(CredentialRecord {
+        key: CredentialKey {account_id:account_id.into(),schema_version:1,credential_version:1,
+            fingerprint:fingerprint.into(),writer_operation_id:operation_id.into(),
+            provider:"chatgpt".into(),provider_account_id:provider_account_id.into()},
+        payload: Zeroizing::new(payload.to_vec()),
+    }).expect("save fixture credential");
+    for (from,to) in [(decodex_core::AccountOperationPhase::Prepared,decodex_core::AccountOperationPhase::StoreApplied),
+        (decodex_core::AccountOperationPhase::StoreApplied,decodex_core::AccountOperationPhase::Committed)] {
+        store.advance_account_operation(&credential.writer_operation_id,from,to,None).await.expect("commit fixture enrollment");
+    }
+    (typed_account_id,credential)
 }
 
 fn history_item(
@@ -1246,37 +1225,27 @@ async fn verify_restart_dispatch_uniqueness(
 }
 
 async fn import_ready_accounts(store: &SqliteStore) -> (AccountId, CredentialBinding, AccountId) {
-	let (account_id, credential, primary) = fixture_account_transfer(
+	let (account_id, credential) = enroll_fixture_account(
+		store,
 		ACCOUNT_ID,
 		OPERATION_ID,
 		PROVIDER_ACCOUNT_ID,
 		DIGEST_A,
 		"Primary fixture account",
 		b"opaque-primary-fixture-credential",
-	);
-	let (alternate_account_id, _, alternate) = fixture_account_transfer(
+	).await;
+	let (alternate_account_id, _) = enroll_fixture_account(
+		store,
 		ALTERNATE_ACCOUNT_ID,
 		ALTERNATE_OPERATION_ID,
 		ALTERNATE_PROVIDER_ACCOUNT_ID,
 		DIGEST_B,
 		"Alternate fixture account",
 		b"opaque-alternate-fixture-credential",
-	);
+	).await;
 
-	assert_eq!(
-		store
-			.import_local_accounts(LocalAccountTransferBatch {
-				source_sha256: DIGEST_D.to_owned(),
-				accounts: vec![primary, alternate],
-				routing: AccountRoutingControl {
-					revision: 1,
-					mode: AccountSelectionMode::Fixed(account_id.clone()),
-					order: vec![account_id.clone(), alternate_account_id.clone()],
-				},
-			})
-			.expect("import fixture accounts"),
-		LocalAccountTransferOutcome::Imported { account_count: 2 }
-	);
+    let routing=store.read_account_routing_control().await.expect("current fixture routing");
+    assert!(matches!(store.set_fixed_account_selection(routing.revision,&account_id,1).await.expect("fixture account selection"),RoutingControlOutcome::Updated{..}));
 	assert!(
 		store
 			.attest_codex_account_capability(&CodexAccountCapabilityAttestation {

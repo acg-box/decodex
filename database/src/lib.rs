@@ -55,7 +55,6 @@ mod reset_cards;
 mod role_profiles;
 mod runtime_sessions;
 mod schema;
-mod transfers;
 mod usage_evidence;
 mod works;
 
@@ -167,10 +166,6 @@ pub use self::{
 		RuntimeSessionProfileSnapshot, RuntimeSessionThreadBindingReadback,
 		RuntimeSessionThreadEstablishmentRejection, RuntimeSessionThreadFenceReadback,
 		StoredRuntimeSession, SuccessfulRuntimeSessionThreadStart,
-	},
-	transfers::{
-		LocalAccountTransfer, LocalAccountTransferBatch, LocalAccountTransferError,
-		LocalAccountTransferOutcome,
 	},
 	usage_evidence::{UsageEvidence, UsageEvidenceSource},
 };

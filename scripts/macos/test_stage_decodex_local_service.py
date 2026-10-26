@@ -43,7 +43,7 @@ class LocalServiceStageTests(unittest.TestCase):
                     "commit": "0123456789012345678901234567890123456789", "dirty": False,
                 }))
                 fresh = "#!/bin/sh\n# fresh build\nprintf '%s\\n' " + identity + "\n"
-                for name in ("decodex", "decodex-database-transfer"):
+                for name in ("decodex",):
                     executable(
                         root / "target/release" / name,
                         fresh.replace("fresh build", "stale build"),
@@ -65,7 +65,7 @@ class LocalServiceStageTests(unittest.TestCase):
                     capture_output=True, text=True, check=False,
                 )
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                for name in ("decodex", "decodex-database-transfer"):
+                for name in ("decodex",):
                     self.assertEqual((stage / name).read_text(), fresh)
 
 

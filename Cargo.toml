@@ -12,7 +12,6 @@ members = [
 	"crates/decodex-protocol",
 	"crates/decodex-runtime",
 	"database",
-	"database/transfer",
 ]
 resolver = "3"
 
@@ -54,7 +53,6 @@ objc2-core-audio-types = { version = "~0.3", default-features = false, features 
 objc2-core-foundation  = { version = "~0.3", default-features = false, features = ["CFString", "std"] }
 ondine                 = { package = "compiler", git = "https://github.com/wevm/ondine.git", rev = "6a1586e5af980e67c104239593ae931837157b8b" }
 percent-encoding       = { version = "~2.3" }
-redb                   = { version = "~4.3", default-features = false }
 regex                  = { version = "~1.13" }
 reqwest                = { version = "~0.13", default-features = false, features = ["blocking", "json", "rustls"] }
 roxmltree              = { version = "~0.21" }

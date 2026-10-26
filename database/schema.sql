@@ -389,15 +389,6 @@ CREATE TABLE "agent_thread_revisions" (
  PRIMARY KEY(work_id,old_thread_id)
 ) STRICT;
 
-CREATE TABLE agent_tool_migrations (
- agent_id TEXT PRIMARY KEY REFERENCES agents(id),
- old_thread_id TEXT NOT NULL,
- new_thread_id TEXT,
- parameters_json TEXT NOT NULL CHECK(json_valid(parameters_json)),
- outcome TEXT NOT NULL CHECK(outcome IN('reserved','created','retiring','unknown','applied')),
- CHECK(outcome NOT IN('created','retiring','applied') OR new_thread_id IS NOT NULL)
-) STRICT;
-
 CREATE TABLE "agent_tool_versions" (
  work_id TEXT PRIMARY KEY REFERENCES "agent_work_items"(id),
  version INTEGER NOT NULL CHECK(version > 0)
@@ -665,17 +656,6 @@ CREATE TABLE legacy_account_route_interruptions (
   request_sha256 TEXT NOT NULL CHECK (length(request_sha256) = 64),
   terminal_reason TEXT NOT NULL CHECK (terminal_reason = 'interrupted_by_upgrade'),
   interrupted_at_micros INTEGER NOT NULL CHECK (interrupted_at_micros > 0)
-) STRICT;
-
-CREATE TABLE local_account_transfers (
-  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-  source_sha256 TEXT NOT NULL CHECK (
-    length(source_sha256) = 64 AND
-    source_sha256 = lower(source_sha256) AND
-    source_sha256 NOT GLOB '*[^0-9a-f]*'
-  ),
-  account_count INTEGER NOT NULL CHECK (account_count BETWEEN 1 AND 512),
-  imported_at_micros INTEGER NOT NULL CHECK (imported_at_micros > 0)
 ) STRICT;
 
 CREATE TABLE native_work_contributions (
@@ -1143,6 +1123,15 @@ CREATE TABLE works (
  FOREIGN KEY(id,requirements_id) REFERENCES work_requirements(work_id,id) DEFERRABLE INITIALLY DEFERRED
 ) STRICT;
 
+CREATE TABLE agent_tool_migrations (
+ agent_id TEXT PRIMARY KEY REFERENCES agents(id),
+ old_thread_id TEXT NOT NULL,
+ new_thread_id TEXT,
+ parameters_json TEXT NOT NULL CHECK(json_valid(parameters_json)),
+ outcome TEXT NOT NULL CHECK(outcome IN('reserved','created','retiring','unknown','applied')),
+ CHECK(outcome NOT IN('created','retiring','applied') OR new_thread_id IS NOT NULL)
+) STRICT;
+
 CREATE INDEX account_quota_by_account ON account_quota_facts(account_id, duration_minutes);
 
 CREATE INDEX account_registry_order ON account_routing_order(position, account_id);
@@ -1383,10 +1372,10 @@ BEGIN
 	SELECT RAISE(ABORT, 'work identity is immutable');
 END;
 
-INSERT INTO "account_routing_control" ("singleton", "mode", "fixed_account_id", "revision", "updated_at_micros") VALUES (1, 'balanced', NULL, 1, 1);
+INSERT INTO "account_routing_control" VALUES(1,'balanced',NULL,1,1);
 
-INSERT INTO "desktop_settings" ("singleton", "show_in_menu_bar", "revision", "auto_activate_quota", "auto_recap") VALUES (1, 1, 1, 1, 0);
+INSERT INTO "desktop_settings" VALUES(1,1,1,1,0);
 
-INSERT INTO "guardian_settings" ("singleton", "reviewer", "review_details", "revision") VALUES (1, 'user', 0, 1);
+INSERT INTO "guardian_settings" VALUES(1,'user',0,1);
 
-INSERT INTO "role_profiles" ("role", "revision", "model", "reasoning_effort", "service_tier", "instructions", "updated_at_micros") VALUES ('task', 2, 'gpt-5.4', 'high', 'default', 'Follow the user request for this task.', 2);
+INSERT INTO "role_profiles" VALUES('task',2,'gpt-5.4','high','default','Follow the user request for this task.',2);

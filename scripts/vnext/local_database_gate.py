@@ -35,7 +35,6 @@ REQUIRED_TABLES = frozenset(
         "account_operations",
         "accounts",
         "account_credentials",
-        "local_account_transfers",
         "account_routing_control",
         "account_routing_order",
         "account_quota_facts",
@@ -128,11 +127,11 @@ def read_toml(path: Path) -> dict[str, object]:
 
 
 def validate_repository_contract() -> None:
-    """Verify that only the one-shot transfer tool retains redb."""
+    """Verify the one current SQLite store and its supported runtime owner."""
     workspace = read_toml(ROOT / "Cargo.toml")
     members = set(workspace["workspace"]["members"])
     dependencies = workspace["workspace"]["dependencies"]
-    if "database" not in members or "database/transfer" not in members:
+    if "database" not in members:
         raise GateFailure("database workspace owners are missing")
 
     rusqlite = dependencies.get("rusqlite")
@@ -142,12 +141,8 @@ def validate_repository_contract() -> None:
     runtime = read_toml(ROOT / "crates/decodex-runtime/Cargo.toml")["dependencies"]
     if "decodex-database" not in runtime:
         raise GateFailure("runtime does not own the SQLite adapter")
-    if "redb" in runtime:
+    if "redb" in dependencies or "redb" in runtime:
         raise GateFailure("runtime retains a retired storage dependency")
-
-    transfer = read_toml(ROOT / "database/transfer/Cargo.toml")["dependencies"]
-    if "redb" not in transfer or "decodex-database" not in transfer:
-        raise GateFailure("one-shot transfer dependencies are incomplete")
 
     service = (ROOT / "apps/decodex-cli/src/lib.rs").read_text(encoding="utf-8")
     if "InitializeLocalDatabase" not in service or "ValidateLocalDatabase" not in service:

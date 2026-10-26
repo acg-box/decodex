@@ -13,27 +13,16 @@ fi
 
 BUILD_ROOT=$(cargo +stable metadata --locked --no-deps --format-version 1 | python3 -c 'import json, sys; print(json.load(sys.stdin)["target_directory"])')
 
-cargo +stable build --locked --profile "$PROFILE" \
-	-p decodex-cli \
-	-p decodex-database-transfer
+cargo +stable build --locked --profile "$PROFILE" -p decodex-cli
 
 install -d -m 700 "$STAGE_ROOT"
 install -m 755 "$BUILD_ROOT/$PROFILE/decodex" "$STAGE_ROOT/decodex"
-install -m 755 \
-	"$BUILD_ROOT/$PROFILE/decodex-database-transfer" \
-	"$STAGE_ROOT/decodex-database-transfer"
 
 codesign --force --options runtime --timestamp=none \
 	--identifier box.acg.decodex.cli \
 	--sign "$SIGN_IDENTITY" "$STAGE_ROOT/decodex"
-codesign --force --options runtime --timestamp=none \
-	--identifier box.acg.decodex.database-transfer \
-	--sign "$SIGN_IDENTITY" "$STAGE_ROOT/decodex-database-transfer"
 
-for executable in decodex decodex-database-transfer; do
-	codesign --verify --strict --verbose=2 "$STAGE_ROOT/$executable"
-done
-test "$(find "$STAGE_ROOT" -maxdepth 1 -type f | wc -l | tr -d ' ')" = 2
+codesign --verify --strict --verbose=2 "$STAGE_ROOT/decodex"
 "$STAGE_ROOT/decodex" --output json build-info | python3 -c '
 import json, re, sys
 document = json.load(sys.stdin)

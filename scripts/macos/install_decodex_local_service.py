@@ -2,10 +2,7 @@
 """Install the self-contained Decodex SQLite local service on macOS.
 
 The installer retains the existing signature, namespace, and graceful-drain
-boundaries. Fresh installs initialize only the bundled SQLite database. During a
-bounded upgrade, it captures the running service's credential-negative account
-snapshot, stops the old service, and invokes the one-shot retired-vault transfer.
-It never deletes retained rollback data. This standalone mode installs regular
+boundaries. The installer initializes the bundled SQLite schema and verifies existing databases. This standalone mode installs regular
 CLI bytes and is mutually exclusive with the App-owned CLI symlink mode.
 """
 
@@ -35,7 +32,6 @@ from typing import Any, Optional
 LAUNCH_AGENT_LABEL = "space.decodex.local-service"
 MAX_CONFIG_FILE_BYTES = 1024 * 1024
 MAX_LAUNCH_AGENT_FILE_BYTES = 64 * 1024
-MAX_ACCOUNT_SNAPSHOT_BYTES = 4 * 1024 * 1024
 MAX_EXECUTABLE_BYTES = 512 * 1024 * 1024
 MAX_INSTALLER_CHILD_OUTPUT_BYTES = 4 * 1024 * 1024
 INSTALLER_COMMAND_TIMEOUT_SECONDS = 180
@@ -79,12 +75,10 @@ class InstallPaths:
     root: Path
     config: Path
     database: Path
-    retired_vault: Path
     log_directory: Path
     service_log: Path
     launch_agent: Path
     decodex: Path
-    database_transfer: Path
     codex: Path
 
     @property
@@ -292,11 +286,6 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default=home / ".local" / "bin" / "decodex",
     )
     parser.add_argument(
-        "--database-transfer",
-        type=Path,
-        default=home / ".local" / "bin" / "decodex-database-transfer",
-    )
-    parser.add_argument(
         "--codex",
         type=Path,
         default=(
@@ -321,15 +310,11 @@ def install_paths(args: argparse.Namespace) -> InstallPaths:
         root=root,
         config=root / "config.toml",
         database=root / "server" / "decodex.sqlite3",
-        retired_vault=root / "server" / "credentials.redb",
         log_directory=root / "logs",
         service_log=root / "logs" / "local-service.log",
         launch_agent=args.launch_agent.expanduser().resolve(),
         # Keep the final component intact for the executable symlink checks.
         decodex=args.decodex.expanduser().parent.resolve() / args.decodex.name,
-        database_transfer=(
-            args.database_transfer.expanduser().parent.resolve() / args.database_transfer.name
-        ),
         codex=args.codex.expanduser().resolve(),
     )
 
@@ -1188,38 +1173,6 @@ def account_ids_from_result(document: dict[str, Any]) -> Optional[list[str]]:
     return account_ids
 
 
-def capture_retired_account_snapshot(paths: InstallPaths, uid: int) -> Optional[bytes]:
-    if managed_path_exists(paths.database, "SQLite database authority is unsafe"):
-        require_owned_private_file(
-            paths.database,
-            uid,
-            "SQLite database authority is unsafe",
-        )
-        return None
-    if not managed_path_exists(
-        paths.retired_vault,
-        "retired credential source is unsafe",
-    ):
-        return None
-    require_owned_private_file(
-        paths.retired_vault,
-        uid,
-        "retired credential source is unsafe",
-    )
-    document = query_accounts(paths)
-    account_ids = account_ids_from_result(document) if document is not None else None
-    if not account_ids:
-        raise InstallError("retired account snapshot is unavailable")
-    body = json.dumps(
-        document,
-        ensure_ascii=True,
-        allow_nan=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("ascii")
-    if len(body) > MAX_ACCOUNT_SNAPSHOT_BYTES:
-        raise InstallError("retired account snapshot is oversized")
-    return body
 
 
 def service_foundation_is_ready(document: Any) -> bool:
@@ -1336,47 +1289,6 @@ def validate_local_database(paths: InstallPaths) -> None:
         raise InstallError("local SQLite database validation failed") from error
 
 
-def transfer_retired_accounts(
-    paths: InstallPaths,
-    snapshot: bytes,
-    team_identifier: str,
-) -> int:
-    require_regular_executable(paths.database_transfer, "Decodex database transfer")
-    verify_signed_peer(
-        paths.database_transfer,
-        "Decodex database transfer",
-        team_identifier,
-        "box.acg.decodex.database-transfer",
-    )
-    try:
-        completed = run(
-            [
-                str(paths.database_transfer),
-                "--root",
-                str(paths.root),
-            ],
-            cwd=paths.root,
-            input_bytes=snapshot,
-            capture=True,
-        )
-        result = json.loads(completed.stdout)
-    except (
-        OSError,
-        subprocess.CalledProcessError,
-        subprocess.TimeoutExpired,
-        json.JSONDecodeError,
-    ) as error:
-        raise InstallError("retired account transfer failed") from error
-    if (
-        not isinstance(result, dict)
-        or result.get("schema") != "decodex/local-account-transfer/1"
-        or result.get("outcome") not in {"imported", "replayed"}
-        or type(result.get("account_count")) is not int
-        or result["account_count"] <= 0
-        or result.get("source_vault_retained") is not True
-    ):
-        raise InstallError("retired account transfer readback is malformed")
-    return result["account_count"]
 
 
 def validate_host(paths: InstallPaths) -> int:
@@ -1441,8 +1353,7 @@ def install_under_namespace_lock(
     uid: int,
     namespace_lock: InstallerNamespaceLock,
     service_executable: dict[str, str],
-    account_snapshot: Optional[bytes],
-) -> int:
+) -> None:
     namespace_lock.verify()
     ensure_directories(paths, uid)
     verify_service_executable(paths, service_executable, require_launch_agent=False)
@@ -1450,15 +1361,7 @@ def install_under_namespace_lock(
     if not isinstance(team_identifier, str):
         raise InstallError("Decodex service signing identity is invalid")
 
-    transferred_accounts = 0
-    if account_snapshot is None:
-        initialize_local_database(paths)
-    else:
-        transferred_accounts = transfer_retired_accounts(
-            paths,
-            account_snapshot,
-            team_identifier,
-        )
+    initialize_local_database(paths)
     validate_local_database(paths)
     require_owned_private_file(
         paths.database,
@@ -1489,7 +1392,6 @@ def install_under_namespace_lock(
 
     namespace_lock.verify()
     verify_service_executable(paths, service_executable, require_launch_agent=True)
-    return transferred_accounts
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -1503,16 +1405,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     ensure_installer_namespace_layout(paths, uid)
     build_info = read_build_info(paths)
 
-    account_snapshot = capture_retired_account_snapshot(paths, uid)
     bootout_service(paths, uid)
     namespace_lock = InstallerNamespaceLock.acquire(paths, uid)
     try:
-        transferred_accounts = install_under_namespace_lock(
+        install_under_namespace_lock(
             paths,
             uid,
             namespace_lock,
             service_executable,
-            account_snapshot,
         )
     finally:
         namespace_lock.close()
@@ -1522,8 +1422,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     if launch:
         bootstrap_service(paths, uid)
         account_ids = wait_for_service(paths)
-        if account_snapshot is not None and len(account_ids) != transferred_accounts:
-            raise InstallError("transferred account readback differs")
 
     print(
         json.dumps(
@@ -1531,11 +1429,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 "schema": "decodex/local-service-install/1",
                 "outcome": "success",
                 "database": "sqlite",
-                "account_count": len(account_ids) if launch else transferred_accounts,
-                "account_transfer": (
-                    "completed" if account_snapshot is not None else "not_required"
-                ),
-                "retired_sources_retained": True,
+                "account_count": len(account_ids) if launch else None,
                 "build": {
                     "version": build_info["version"],
                     "commit": build_info["commit"],
