@@ -1815,7 +1815,6 @@ impl SupervisedProcess {
 		capability: ExactBuildLaunchCapability,
 		pre_spawn_check: Option<&dyn ConversationPreSpawnCheck>,
 	) -> Result<Self, SupervisionError> {
-		verify_canonical_executable_identity(&command)?;
 		run_before_spawn_test(&command);
 		verify_canonical_executable_identity(&command)?;
 		run_after_verification_test(&command);
