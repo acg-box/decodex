@@ -65,7 +65,7 @@ final class DictationStream: @unchecked Sendable {
 
     private func enqueue(_ message: String) {
         guard outgoing.count < 32 else {
-            fail("Audio could not be sent fast enough. Your received text remains in the draft.")
+            fail("Audio delivery fell behind. Received text is in your draft.")
             return
         }
         outgoing.append(message)
@@ -83,7 +83,7 @@ final class DictationStream: @unchecked Sendable {
                 self.sending = false
                 if let error {
                     self.logFailure(error, operation: "send")
-                    self.fail("Dictation connection failed. Your received text remains in the draft.")
+                    self.fail("Dictation disconnected. Received text is in your draft.")
                 } else {
                     self.sentBytes += message.utf8.count
                     self.drain()
@@ -100,7 +100,7 @@ final class DictationStream: @unchecked Sendable {
                 switch result {
                 case .failure(let error):
                     self.logFailure(error, operation: "receive")
-                    self.fail("Dictation disconnected before final correction. Your received text remains in the draft.")
+                    self.fail("Dictation disconnected before final correction. Received text is in your draft.")
                 case .success(let message):
                     self.receivedMessages += 1
                     let data: Data

@@ -142,7 +142,7 @@ impl AgentSurface {
 					let runtime = Builder::new_current_thread()
 						.enable_all()
 						.build()
-						.map_err(|e| e.to_string())?;
+						.map_err(|_| "Could not connect. Restart Decodex.".to_owned())?;
 
 					runtime
 						.block_on(
@@ -152,7 +152,7 @@ impl AgentSurface {
 									.expect("generated command identity is valid"),
 							),
 						)
-						.map_err(|e| format!("Could not add folder: {e:?}"))
+						.map_err(|error| super::super::startup_failure(error).to_owned())
 				})
 				.await;
 			let _ = surface.update(cx, |s, cx| {
@@ -175,10 +175,8 @@ impl AgentSurface {
 						s.refresh(cx);
 					},
 					_ => {
-						s.workspace.folder_error = Some(
-							"Could not add this folder. Check that it is available and try again."
-								.into(),
-						);
+						s.workspace.folder_error =
+							Some("Folder unavailable. Check its location and retry.".into());
 
 						cx.notify();
 					},

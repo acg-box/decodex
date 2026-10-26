@@ -102,7 +102,7 @@ impl AgentSurface {
 		let work_id = work.to_owned();
 		let mut panel = gpui::div().flex().flex_col().gap_2().child(integration_button(
 			"integration-toggle",
-			"Tool status",
+			"Tools and plugins",
 			cx,
 			move |s, cx| {
 				if s.integrations.as_ref().is_some_and(|(owner, _)| owner == &work_id) {
@@ -117,7 +117,7 @@ impl AgentSurface {
 
 		if let Some((_, result)) = opened {
 			panel = panel.child(agent_surface::muted(
-				"Configure plugins and connections in Codex for this account.",
+				"Manage this account’s plugins and connections in Codex.",
 			));
 
 			let refresh = work.to_owned();
@@ -220,22 +220,21 @@ impl AgentSurface {
 fn integration_text(result: &AgentIntegrationsResult) -> String {
 	let AgentIntegrationsResult::Available { cwd, mcp, plugins, apps } = result else {
 		return match result {
-			AgentIntegrationsResult::CapacityExceeded =>
-				"The complete integration inventory exceeds the display limit.",
-			_ => "Integration status is unavailable for the current task and connection.",
+			AgentIntegrationsResult::CapacityExceeded => "Too many integrations to display.",
+			_ => "Integration status unavailable.",
 		}
 		.into();
 	};
 	let mut lines = vec![
 		format!("Configured repository: {cwd}"),
         app_inventory_text(apps),
-		"Plugin inventory uses the configured repository. MCP status reflects the loaded task; a running turn keeps its previous environment until the next turn.".into(),
+		"Plugins use this repository’s config. MCP status reflects the loaded task. Running turns keep their existing tools.".into(),
 	];
 
 	match mcp {
 		AgentMcpInventory::Available { servers } => {
 			if servers.is_empty() {
-				lines.push("No MCP servers were reported for this task.".into());
+				lines.push("No MCP servers reported.".into());
 			}
 
 			for server in servers {
@@ -264,39 +263,36 @@ fn integration_text(result: &AgentIntegrationsResult) -> String {
 				}
 
 				lines.push(match &server.advertised_capabilities {
-					None => "Advertised capabilities: unavailable".into(),
-					Some(names) if names.is_empty() => "Advertised capabilities: none".into(),
-					Some(names) => format!("Advertised capabilities: {}", names.join(", ")),
+					None => "Capabilities unavailable".into(),
+					Some(names) if names.is_empty() => "No capabilities reported".into(),
+					Some(names) => format!("Capabilities: {}", names.join(", ")),
 				});
 
 				if let Some(error) = &server.tools_error {
 					lines.push(format!("Tool discovery failed: {error}"));
 				} else {
-					lines.push(format!(
-						"Reported tools: {} (catalog may be cached)",
-						server.tool_count
-					));
+					lines.push(format!("Tools: {} · Catalog may be cached", server.tool_count));
 				}
 				if let Some(plugin) = &server.plugin_id {
 					lines.push(format!("Plugin: {plugin}"));
 				}
 
 				lines.push(format!(
-					"Reported resources: {}; templates: {}",
+					"Resources: {} · Templates: {}",
 					server.resource_count, server.template_count
 				));
 			}
 		},
 		AgentMcpInventory::Unsupported =>
-			lines.push("This provider does not support MCP status discovery.".into()),
+			lines.push("MCP discovery unsupported by this provider.".into()),
 		AgentMcpInventory::CapacityExceeded =>
-			lines.push("MCP inventory exceeds the display limit.".into()),
+			lines.push("Too many MCP servers to display.".into()),
 		AgentMcpInventory::Unavailable => lines.push("MCP status could not be read.".into()),
 	}
 	match plugins {
 		AgentPluginInventory::Available { plugins, errors } => {
 			if plugins.is_empty() && errors.is_empty() {
-				lines.push("No installed plugins were reported for this repository.".into());
+				lines.push("No installed plugins in this repository.".into());
 			}
 
 			for plugin in plugins {
@@ -313,7 +309,7 @@ fn integration_text(result: &AgentIntegrationsResult) -> String {
 				));
 
 				if let Some(reason) = &plugin.disabled_reason {
-					lines.push(format!("Unavailable reason: {reason}"));
+					lines.push(format!("Unavailable: {reason}"));
 				}
 			}
 			for error in errors {
@@ -321,11 +317,10 @@ fn integration_text(result: &AgentIntegrationsResult) -> String {
 			}
 		},
 		AgentPluginInventory::Unsupported =>
-			lines.push("This provider does not support installed-plugin discovery.".into()),
-		AgentPluginInventory::CapacityExceeded =>
-			lines.push("Plugin inventory exceeds the display limit.".into()),
+			lines.push("Plugin discovery unsupported by this provider.".into()),
+		AgentPluginInventory::CapacityExceeded => lines.push("Too many plugins to display.".into()),
 		AgentPluginInventory::Unavailable =>
-			lines.push("Plugin configuration could not be read.".into()),
+			lines.push("Could not read plugin configuration.".into()),
 	}
 
 	lines.join("\n\n")
@@ -364,18 +359,18 @@ fn integration_button(
 fn app_inventory_text(inventory: &AgentAppInventory) -> String {
 	match inventory {
 		AgentAppInventory::Available { apps } if apps.is_empty() =>
-			"No installed apps were reported.".into(),
+			"No installed apps reported.".into(),
 		AgentAppInventory::Available { apps } => {
-			let mut lines = vec!["Installed apps:".to_owned()];
+			let mut lines = vec!["Installed apps".to_owned()];
 
 			for app in apps {
 				let name = app.runtime_name.as_deref().unwrap_or(&app.id);
 				let status = if !app.enabled {
 					"Disabled by effective configuration"
 				} else if app.callable {
-					"Enabled; callable tools available"
+					"Enabled · Tools available"
 				} else {
-					"Enabled; no callable tools reported"
+					"Enabled · No tools reported"
 				};
 
 				lines.push(format!("{name} ({}) — {status}", app.id));
@@ -383,10 +378,9 @@ fn app_inventory_text(inventory: &AgentAppInventory) -> String {
 
 			lines.join("\n")
 		},
-		AgentAppInventory::Unsupported => "This provider does not report installed apps.".into(),
-		AgentAppInventory::Unavailable => "Installed apps could not be loaded.".into(),
-		AgentAppInventory::CapacityExceeded =>
-			"There are too many installed apps to display.".into(),
+		AgentAppInventory::Unsupported => "App discovery unsupported by this provider.".into(),
+		AgentAppInventory::Unavailable => "Installed apps unavailable.".into(),
+		AgentAppInventory::CapacityExceeded => "Too many apps to display.".into(),
 	}
 }
 
@@ -440,11 +434,11 @@ mod tests {
 		assert!(text.contains("Reference docs · 1.2"));
 		assert!(text.contains("Sign-in required"));
 		assert!(text.contains("Tool discovery failed"));
-		assert!(text.contains("Advertised capabilities: tools, extensions/openai/settings"));
+		assert!(text.contains("Capabilities: tools, extensions/openai/settings"));
 		assert!(text.contains("Plugin discovery incomplete"));
-		assert!(!text.contains("Reported tools: 0"));
+		assert!(!text.contains("Tools: 0"));
 		assert!(!text.contains("No installed plugins"));
-		assert!(text.contains("Installed apps could not be loaded"));
+		assert!(text.contains("Installed apps unavailable"));
 		assert!(!text.contains("No installed apps"));
 	}
 
@@ -462,8 +456,8 @@ mod tests {
 		let text = integrations::app_inventory_text(&AgentAppInventory::Available { apps });
 
 		assert!(text.contains("disabled (disabled) — Disabled by effective configuration"));
-		assert!(text.contains("empty (empty) — Enabled; no callable tools reported"));
-		assert!(text.contains("ready (ready) — Enabled; callable tools available"));
+		assert!(text.contains("empty (empty) — Enabled · No tools reported"));
+		assert!(text.contains("ready (ready) — Enabled · Tools available"));
 
 		for state in [
 			AgentAppInventory::Unsupported,

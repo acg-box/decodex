@@ -1253,9 +1253,9 @@ impl AgentSurface {
 					color: if blocked { WARNING } else { TEXT_MUTED },
 					label: if blocked { "Waiting" } else { "Prerequisite met" }.into(),
 					detail: if blocked {
-						"This recorded prerequisite has not been resolved."
+						"Waiting for this prerequisite."
 					} else {
-						"This prerequisite is marked resolved. That does not prove the downstream task ran."
+						"Prerequisite resolved · Downstream execution unconfirmed."
 					}
 					.into(),
 					source: None,
@@ -1301,7 +1301,7 @@ impl AgentSurface {
 				});
 			}
 
-			graph.edges.push(Edge { in_progress: false, id:format!("context:{}:{}:{}",reference.event_id,reference.recipient_work_id,reference.source_thread_id),from:key,to:reference.recipient_work_id.clone(),kind:Kind::Context,excerpt:None,color:Kind::Context.color(),label:if reference.delivery_turn_id.is_some(){"Shared context"}else{"Context queued"}.into(),detail:format!("Selected context reference\n\nSource thread: {}\nInput receipt: {}\nReceiving turn: {}\n\nDelivery makes the reference available; it does not prove it was read. No content version was recorded.",reference.source_thread_id,reference.event_id,reference.delivery_turn_id.as_deref().unwrap_or("Not delivered")),link:None,source:Some((reference.source_work_id.clone(),reference.source_thread_id.clone())) });
+			graph.edges.push(Edge { in_progress: false, id:format!("context:{}:{}:{}",reference.event_id,reference.recipient_work_id,reference.source_thread_id),from:key,to:reference.recipient_work_id.clone(),kind:Kind::Context,excerpt:None,color:Kind::Context.color(),label:if reference.delivery_turn_id.is_some(){"Shared context"}else{"Context queued"}.into(),detail:format!("Shared context\n\nSource thread: {}\nInput receipt: {}\nReceiving turn: {}\n\nRead status unknown · Content version not recorded.",reference.source_thread_id,reference.event_id,reference.delivery_turn_id.as_deref().unwrap_or("Not delivered")),link:None,source:Some((reference.source_work_id.clone(),reference.source_thread_id.clone())) });
 		}
 	}
 
@@ -1362,12 +1362,12 @@ impl AgentSurface {
 				let label = Self::native_call_label(&tool, &call.status);
 				let detail = if native_activity {
 					format!(
-						"Native activity: {}\nSource item: {item}\n\nThe provider recorded this event but did not include the message body. This is historical evidence, not the agent's current state.",
+						"Recorded activity: {}\nSource item: {item}\n\nMessage body unavailable.",
 						call.status
 					)
 				} else {
 					format!(
-						"Native tool: {tool}\nCall state: {}\nSource item: {item}\n\nPrompt excerpt:\n{}\n\nThis is the last observed tool call, not a claim about the recipient's current execution.",
+						"Last observed tool: {tool}\nCall state: {}\nSource item: {item}\n\nPrompt excerpt:\n{}",
 						call.status, call.prompt
 					)
 				};
@@ -1411,7 +1411,7 @@ impl AgentSurface {
 						}
 						.into(),
 						detail: format!(
-							"Observed by {tool}\nSource item: {item}\n\nReply excerpt:\n{}\n\nThis target-state snapshot can describe an earlier turn; it does not prove a reply to this call.",
+							"Observed by {tool}\nSource item: {item}\n\nReply excerpt:\n{}\n\nMay describe an earlier turn; reply linkage unknown.",
 							result.message
 						),
 						link: None,

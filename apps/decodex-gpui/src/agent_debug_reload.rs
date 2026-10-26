@@ -13,9 +13,8 @@ impl AgentSurface {
 			|| self.sending
 			|| self.submission.command.is_some()
 		{
-			self.feedback = Feedback::warning(
-				"Finish voice input or the pending send before reloading the workspace.",
-			);
+			self.feedback =
+				Feedback::warning("Finish voice input or the pending send before reloading.");
 
 			cx.notify();
 

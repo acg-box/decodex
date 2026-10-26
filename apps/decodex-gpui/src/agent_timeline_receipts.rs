@@ -103,7 +103,7 @@ impl AgentSurface {
 				.flex_col()
 				.gap_2()
 				.children(rows)
-				.child(agent_surface::muted("Local delivery records are unavailable. Retrying…"))
+				.child(agent_surface::muted("Delivery records unavailable. Retrying…"))
 				.into_any_element();
 		};
 		let cursor =

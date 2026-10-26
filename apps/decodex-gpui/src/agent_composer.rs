@@ -38,9 +38,10 @@ use crate::{
 			selectable_text::SelectableText,
 			ui_theme,
 			ui_theme::{
-				BODY_SIZE, COMPOSER_MATERIAL, COMPOSER_RADIUS, CONVERSATION_WIDTH, ERROR, INFO,
-				LINE_STRONG, ON_PRIMARY, PRIMARY_FILL, WARNING,
+				BODY_SIZE, COMPOSER_MATERIAL, COMPOSER_MIN_HEIGHT, COMPOSER_RADIUS,
+				CONVERSATION_WIDTH, ERROR, INFO, LINE_STRONG, ON_PRIMARY, PRIMARY_FILL, WARNING,
 			},
+			workspace::ARCHIVED_MESSAGE,
 		},
 		workspace_symbols,
 		workspace_symbols::Symbol,
@@ -75,7 +76,6 @@ impl AgentSurface {
 			&& !self.workspace_connecting()
 			&& !self.workspace.browsing
 			&& self.snapshot.is_some()
-			&& !self.selected_is_archived()
 			&& (self.native_agents.selected.is_some() || self.selected_is_agent())
 	}
 
@@ -328,9 +328,8 @@ impl AgentSurface {
 
 				if !accepted && s.interrupting.as_ref() == Some(&target) {
 					s.interrupting = None;
-					s.feedback = Feedback::warning(
-						"Stopping could not be confirmed. If the response is still running, press Stop again.",
-					);
+					s.feedback =
+						Feedback::warning("Stop unconfirmed. Press Stop again if still running.");
 				}
 
 				s.load_history(cx);
@@ -536,25 +535,26 @@ impl AgentSurface {
 		}
 
 		let draft = input.read(cx).content().to_owned();
+		let archived = reason == ARCHIVED_MESSAGE;
 		let draft_key = format!(
 			"composer-saved-draft-{:?}-{}",
 			input.entity_id(),
 			self.selected.as_deref().unwrap_or("new")
 		);
 
-		capsule.child(
+		capsule.justify_center().child(
 			gpui::div()
 				.id("composer-blocked")
 				.debug_selector(|| "composer-blocked".into())
 				.opacity(opacity)
 				.w_full()
-				.min_h(gpui::px(36.))
+				.flex_1()
 				.px(gpui::px(8.))
 				.flex()
 				.flex_col()
 				.justify_center()
 				.child(self.connection_notice(reason, cx))
-				.when(!draft.is_empty(), |d| {
+				.when(!archived && !draft.is_empty(), |d| {
 					d.child(
 						gpui::div()
 							.id("composer-retained-draft")
@@ -580,7 +580,7 @@ impl AgentSurface {
 
 	pub(super) fn render_composer_popover(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		if self.workspace_connecting() || self.composer_unavailable_reason().is_some() {
-			return gpui::div();
+			return gpui::div().absolute();
 		}
 
 		let menu = self.composer_menu.or(self.composer_menu_content);
@@ -1430,7 +1430,7 @@ impl AgentSurface {
 			}
 
 			let Some(path) = path.canonicalize().ok().filter(|p| p.is_file() || p.is_dir()) else {
-				self.feedback = Feedback::error("The selected file or folder is not available.");
+				self.feedback = Feedback::error("File or folder unavailable.");
 
 				continue;
 			};
@@ -1459,8 +1459,7 @@ impl AgentSurface {
 				ClipboardEntry::Image(image) => match save_clipboard_image(image) {
 					Ok(path) => self.attach_paths(vec![path], cx),
 					Err(error) => {
-						self.feedback =
-							Feedback::error(format!("Cannot attach clipboard image: {error}"));
+						self.feedback = Feedback::error(format!("Could not attach image: {error}"));
 
 						cx.notify();
 					},
@@ -1497,6 +1496,7 @@ pub(super) fn composer_capsule(native: bool) -> Stateful<Div> {
 		.w_full()
 		.max_w(gpui::px(CONVERSATION_WIDTH))
 		.min_w_0()
+		.min_h(gpui::px(COMPOSER_MIN_HEIGHT))
 		.px(gpui::px(10.))
 		.py(gpui::px(7.))
 		.rounded(gpui::px(COMPOSER_RADIUS))
@@ -1597,7 +1597,7 @@ fn context_ring(fraction: f32) -> impl IntoElement {
 
 #[cfg(test)]
 mod tests {
-	use std::fs;
+	use std::{fs, thread};
 
 	use gpui::AppContext as _;
 
@@ -1655,6 +1655,62 @@ mod tests {
 
 			assert!(s.native_composer_requested(true, true));
 		});
+	}
+
+	#[gpui::test]
+	fn archived_and_locked_states_keep_the_standard_input_bar(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.snapshot.as_mut().unwrap().pending_events.clear();
+			s.composer.update(cx, |input, cx| input.set_content("", cx));
+			cx.notify();
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1_180.), gpui::px(900.)));
+		visual.update(crate::ui_frame::draw_frame);
+
+		let ready = visual.debug_bounds("agent-composer").expect("ready input bar");
+
+		for archived in [true, false] {
+			surface.update(visual, |s, cx| {
+				let snapshot = s.snapshot.as_mut().unwrap();
+
+				snapshot.archived_work_ids.clear();
+
+				if archived {
+					snapshot.archived_work_ids.insert("agent".into());
+				} else {
+					snapshot.pending_events.push(decodex_protocol::AgentPendingEventDto {
+						id: 99,
+						source_event_id: "writer-lock".into(),
+						work_item_id: "agent".into(),
+						event_kind: "thread_in_use_needs_attention".into(),
+						created_at_micros: 1,
+						delivery_claimed: false,
+					});
+				}
+
+				assert!(s.composer_unavailable_reason().is_some());
+				assert!(s.native_composer_requested(true, true));
+
+				cx.notify();
+			});
+
+			visual.update(crate::ui_frame::draw_frame);
+
+			thread::sleep(std::time::Duration::from_millis(220));
+
+			visual.update(crate::ui_frame::draw_frame);
+
+			let blocked = visual.debug_bounds("agent-composer").expect("disabled input bar");
+
+			assert_eq!(blocked.size, ready.size, "read-only state uses the normal input geometry");
+			assert_eq!(blocked.bottom(), ready.bottom());
+			assert!(visual.debug_bounds("composer-blocked").is_some());
+			assert!(visual.debug_bounds("composer-editor-area").is_none());
+			assert!(surface.read_with(visual, |s, _| s.graph_has_composer()));
+		}
 	}
 
 	#[test]

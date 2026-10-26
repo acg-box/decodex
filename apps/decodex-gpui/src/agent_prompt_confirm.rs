@@ -79,7 +79,7 @@ impl AgentSurface {
 		}
 
 		self.prompt_edit.confirmation = None;
-		self.prompt_edit.feedback = "Checking edited input before changing history…".into();
+		self.prompt_edit.feedback = "Checking the edit…".into();
 		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
 			let checked = check.await.unwrap_or(Err("The edit was not submitted"));
 			let staged = surface
@@ -137,7 +137,7 @@ impl AgentSurface {
 					s.cancel_unsent_prompt_confirmation(
 						&pending,
 						resuming,
-						"The edit stopped before it was submitted.",
+						"Edit stopped before submission.",
 						cx,
 					)
 				});
@@ -172,13 +172,13 @@ impl AgentSurface {
 				.cancel_unsent_prompt_confirmation(
 					pending,
 					resuming,
-					"The edit was rejected. Your draft is kept. Check edit status before trying again.",
+					"Edit rejected. Check status before retrying.",
 					cx,
 				),
 			Ok(Err(_)) if !resuming => self.cancel_unsent_prompt_confirmation(
 				pending,
 				false,
-				"The edit could not be submitted. Your draft is kept.",
+				"Could not submit the edit.",
 				cx,
 			),
 			_ => {
@@ -214,12 +214,7 @@ impl AgentSurface {
 			|| !self.command_connection_ready()
 			|| std::time::Instant::now() >= deadline
 		{
-			self.cancel_unsent_prompt_confirmation(
-				pending,
-				resuming,
-				"The edit was not submitted. Your draft is kept.",
-				cx,
-			);
+			self.cancel_unsent_prompt_confirmation(pending, resuming, "Edit not submitted.", cx);
 
 			return Some(false);
 		}
@@ -243,7 +238,7 @@ impl AgentSurface {
 				|| self.draft_profiles.execution.choice(expected.work_id.as_str())
 					!= *expected_execution
 			{
-				return Err("Draft or settings changed. Review the current edit again.");
+				return Err("Draft or settings changed. Review again.");
 			}
 
 			self.stage_prompt_editor(pending.clone(), cx)?;
@@ -262,7 +257,7 @@ impl AgentSurface {
 			return false;
 		}
 
-		self.prompt_edit.feedback = "Saving the confirmation record…".into();
+		self.prompt_edit.feedback = "Saving confirmation…".into();
 
 		cx.notify();
 
@@ -317,13 +312,11 @@ pub(super) fn readable_local_media(input: &PromptDraft) -> Result<(), &'static s
 		let path = Path::new(path);
 
 		if !path.is_absolute() {
-			return Err(
-				"A local media path is relative. Use Check edited input to resolve and save its location before continuing.",
-			);
+			return Err("Resolve relative media paths with Check edited input before continuing.");
 		}
 		if !fs::metadata(path).is_ok_and(|metadata| metadata.is_file()) || File::open(path).is_err()
 		{
-			return Err("A local media file is unavailable. History was not changed.");
+			return Err("Media file unavailable. History unchanged.");
 		}
 	}
 
@@ -401,9 +394,7 @@ async fn confirm_worker(
 					&execution,
 				)
 				.await
-				.map_err(
-					|_| "The message or conversation settings could not be checked. History was not changed.",
-				),
+				.map_err(|_| "Could not check the message or settings. History unchanged."),
 		}
 	};
 	let qualified = result.is_ok();

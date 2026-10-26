@@ -71,7 +71,7 @@ impl AgentSurface {
 
 				graph.edges.push(Edge { in_progress: false,
                     id: format!("attachment:{}:{}", row.key, resource.id), from: row.key.clone(), to: key, kind: Kind::Resource, excerpt: None, color: Kind::Resource.color(), label: "Attached".into(),
-                    detail: format!("Native resource association\n\nType: {}\nIdentity: {}\nAssociation: {}\nRecorded at: {} (Unix seconds)\n\nAn attachment does not establish who created, read, or verified this resource.{}", resource.attachment_type, resource.identity_key, resource.id, resource.created_at, if resource.payload_omitted { "\nSome metadata is unavailable." } else { "" }),
+                    detail: format!("Recorded resource\n\nType: {}\nIdentity: {}\nAssociation: {}\nRecorded at: {} (Unix seconds)\n\nCreator, read and verification status unknown.{}", resource.attachment_type, resource.identity_key, resource.id, resource.created_at, if resource.payload_omitted { "\nSome metadata is unavailable." } else { "" }),
                     source: row.thread.clone().map(|thread| (row.work.clone(), thread)), link,
                 });
 			}

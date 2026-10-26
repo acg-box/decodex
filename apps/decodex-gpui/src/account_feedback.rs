@@ -11,7 +11,8 @@ use crate::{
 	ui_theme::{ERROR, INFO, SUCCESS, TEXT_MUTED, WARNING},
 };
 use decodex_protocol::{
-	AccountDto, AccountLifecycleReadinessDto, AccountObservedStateDto, AccountProfileResult,
+	AccountCommandRejectionDto, AccountDto, AccountLifecycleReadinessDto, AccountObservedStateDto,
+	AccountProfileResult,
 };
 
 #[derive(IntoElement)]
@@ -33,23 +34,19 @@ impl RenderOnce for AccountFeedback {
 			_ => Tone::Warning,
 		};
 
-		gpui::div().id(self.id).children(ui_feedback::inline_feedback(
-			self.selector,
-			"Account status",
-			&feedback,
-		))
+		gpui::div().id(self.id).children(ui_feedback::inline_feedback(self.selector, "", &feedback))
 	}
 }
 
 pub(super) fn for_account(shell: &Shell, account: &AccountDto) -> Option<(String, u32)> {
 	if account.lifecycle_readiness == AccountLifecycleReadinessDto::UnsupportedPlan {
 		return Some((
-			"This plan is not supported in Decodex. After you upgrade, sign in again.".into(),
+			shell::account_rejection_label(AccountCommandRejectionDto::UnsupportedPlan).into(),
 			WARNING,
 		));
 	}
 	if shell::account_needs_login(account) {
-		return Some(("Sign in again to use this account, or log out.".into(), ERROR));
+		return Some(("Sign in again.".into(), ERROR));
 	}
 
 	if let Some(result) = shell
@@ -66,28 +63,28 @@ pub(super) fn for_account(shell: &Shell, account: &AccountDto) -> Option<(String
 
 		if let Some(error) = error {
 			return Some(if account_profile::requires_login(error) {
-				("Sign in again to update your activity.".into(), ERROR)
+				("Sign in again to update activity.".into(), ERROR)
 			} else {
-				("Your activity couldn’t be updated. Try again later.".into(), WARNING)
+				("Could not update activity.".into(), WARNING)
 			});
 		}
 	}
 
 	match account.lifecycle_readiness {
 		AccountLifecycleReadinessDto::StoreUnavailable =>
-			Some(("Your sign-in information is temporarily unavailable.".into(), WARNING)),
-		AccountLifecycleReadinessDto::StoreMismatch
-		| AccountLifecycleReadinessDto::ProviderMismatch =>
-			Some(("Your sign-in information has changed. Sign in again.".into(), ERROR)),
+			Some(("Sign-in storage unavailable. Open Diagnostics.".into(), WARNING)),
+		AccountLifecycleReadinessDto::StoreMismatch =>
+			Some(("Saved sign-in changed. Sign in again.".into(), ERROR)),
+		AccountLifecycleReadinessDto::ProviderMismatch =>
+			Some(("Saved sign-in belongs to a different account. Sign in again.".into(), ERROR)),
 		AccountLifecycleReadinessDto::OperationUnsettled =>
-			Some(("An account update is still in progress.".into(), INFO)),
+			Some(("Updating account…".into(), INFO)),
 		_ => match account.observed_state {
 			AccountObservedStateDto::PluginUnready =>
-				Some(("Update the provider to use this account.".into(), WARNING)),
+				Some(("Account provider unavailable. Open Diagnostics.".into(), WARNING)),
 			AccountObservedStateDto::Unknown =>
-				Some(("The account status is temporarily unavailable.".into(), WARNING)),
-			AccountObservedStateDto::Unavailable =>
-				Some(("This account is unavailable.".into(), ERROR)),
+				Some(("Account status unavailable.".into(), WARNING)),
+			AccountObservedStateDto::Unavailable => Some(("Account unavailable.".into(), ERROR)),
 			_ => None,
 		},
 	}
@@ -100,6 +97,7 @@ mod tests {
 	use crate::{
 		client_lifecycle::ConnectionView,
 		shell::{Destination, Shell, account_feedback, account_feedback::shell},
+		ui_theme::{ERROR, WARNING},
 	};
 	use decodex_protocol::{
 		AccountCommandRejectionDto, AccountLifecycleReadinessDto, AccountObservedStateDto,
@@ -161,7 +159,7 @@ mod tests {
 
 			assert_eq!(
 				account_feedback::for_account(s, &account),
-				Some(("Sign in again to update your activity.".into(), crate::ui_theme::ERROR))
+				Some(("Sign in again to update activity.".into(), ERROR))
 			);
 
 			account.account_revision = EntityRevision(account.account_revision.0 + 1);
@@ -176,10 +174,7 @@ mod tests {
 
 			assert_eq!(
 				account_feedback::for_account(s, &account),
-				Some((
-					"Sign in again to use this account, or log out.".into(),
-					crate::ui_theme::ERROR
-				))
+				Some(("Sign in again.".into(), ERROR))
 			);
 		});
 	}
@@ -201,11 +196,7 @@ mod tests {
 			assert_eq!(shell::account_readiness_status(account), "Plan not supported");
 			assert_eq!(
 				account_feedback::for_account(s, account),
-				Some((
-					"This plan is not supported in Decodex. After you upgrade, sign in again."
-						.into(),
-					crate::ui_theme::WARNING,
-				))
+				Some(("Use a Plus, Pro, Pro (More), Pro (Max), or Team account.".into(), WARNING,))
 			);
 
 			cx.notify();

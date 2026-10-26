@@ -156,11 +156,8 @@ impl AgentSurface {
 		}
 
 		if count == 0 {
-			list = list.child(
-				gpui::div()
-					.text_size(gpui::px(11.))
-					.child("No matching tasks with a conversation."),
-			);
+			list = list
+				.child(gpui::div().text_size(gpui::px(11.)).child("No matching conversations."));
 		}
 
 		gpui::div()
@@ -174,7 +171,7 @@ impl AgentSurface {
 				gpui::div()
 					.text_size(gpui::px(10.))
 					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child("Sending grants read access to the selected task history."),
+					.child("Sending shares the selected task history with this conversation."),
 			)
 			.child(list)
 			.into_any_element()

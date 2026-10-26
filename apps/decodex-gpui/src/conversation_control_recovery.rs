@@ -24,16 +24,13 @@ impl ControlObservation {
 	pub(crate) fn message(self) -> &'static str {
 		match self {
 			Self::Archived => "Conversation is archived.",
-			Self::RoutingAdvanced =>
-				"Routing state has advanced; original command delivery is unconfirmed.",
-			Self::Current =>
-				"Current conversation state is available; original refresh delivery is unconfirmed.",
-			Self::TurnInactive =>
-				"The original turn is no longer active; cancellation is not confirmed.",
+			Self::RoutingAdvanced => "Routing updated. Earlier command delivery unconfirmed.",
+			Self::Current => "Current state loaded. Earlier refresh delivery unconfirmed.",
+			Self::TurnInactive => "Original turn ended. Cancellation unconfirmed.",
 			Self::StillActive => "The original turn is still active.",
-			Self::Missing => "Conversation not found; original outcome remains unknown.",
-			Self::Conflict => "Observed state does not match the saved request.",
-			Self::Unavailable => "Current state is unavailable. Try again.",
+			Self::Missing => "Conversation missing. Outcome unknown.",
+			Self::Conflict => "Current state does not match the saved request.",
+			Self::Unavailable => "State unavailable. Try again.",
 		}
 	}
 }

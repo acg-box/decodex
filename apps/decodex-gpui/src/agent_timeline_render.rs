@@ -106,9 +106,7 @@ impl AgentSurface {
 							move || selector.into()
 						})
 						.children(message.truncated.then(|| {
-							agent_surface::muted(
-								"Partial output shortened; waiting for saved result.",
-							)
+							agent_surface::muted("Preview shortened. Waiting for saved result.")
 						})),
 					)
 					.into_any_element(),
@@ -243,8 +241,7 @@ impl AgentSurface {
 		}
 
 		if *truncated {
-			body = body
-				.child(agent_surface::muted("Some content was omitted from this history preview."));
+			body = body.child(agent_surface::muted("History preview shortened."));
 		}
 		if kind == "agentMessage" && !text.is_empty() {
 			body = body.child(markdown::response_copy_button(
@@ -668,9 +665,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 				body = body.child(action);
 			}
 			if truncated {
-				body = body.child(agent_surface::muted(
-					"Some content was omitted from this history preview.",
-				));
+				body = body.child(agent_surface::muted("History preview shortened."));
 			}
 
 			return body.into_any_element();
@@ -779,8 +774,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			);
 		}
 		if truncated {
-			row = row
-				.child(agent_surface::muted("Some content was omitted from this history preview."));
+			row = row.child(agent_surface::muted("History preview shortened."));
 		}
 
 		if let Some(activity) = activity {
@@ -1038,7 +1032,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 				row = row.child(
 					gpui::div().debug_selector(|| "native-promotion-unavailable".into()).child(
 						agent_surface::muted(
-							"Referenced result is temporarily unavailable. History refresh will retry.",
+							"Referenced result unavailable. Retrying on history refresh.",
 						),
 					),
 				),
@@ -1166,9 +1160,7 @@ fn process_text(kind: &str, text: &str, identity: &str, truncated: bool) -> AnyE
 	gpui::div()
 		.when(kind == "reasoning", |row| row.debug_selector(|| "native-reasoning-summary".into()))
 		.child(markdown::render_process(text, identity))
-		.when(truncated, |row| {
-			row.child(agent_surface::muted("Some content was omitted from this history preview."))
-		})
+		.when(truncated, |row| row.child(agent_surface::muted("History preview shortened.")))
 		.into_any_element()
 }
 

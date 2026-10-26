@@ -196,7 +196,7 @@ struct ResetCardAccountRow: View {
 			.accessibilityElement()
 			.accessibilityLabel("Reorder \(identity.text)")
 			.accessibilityValue(reorderAccessibilityValue)
-			.accessibilityHint("Drag to change the account routing order.")
+			.accessibilityHint("Drag to reorder accounts.")
 			.accessibilityHidden(store.canReorderAccounts == false)
 			.accessibilityAction(named: Text("Move up")) {
 				moveAccount(by: -1)
@@ -268,7 +268,7 @@ struct ResetCardAccountRow: View {
 
 	private var accountFeedback: (text: String, isDestructive: Bool)? {
 		if state.account.lifecycleReadiness == .unsupportedPlan {
-			return ("This plan is not supported in Decodex. After you upgrade, sign in again.", false)
+			return (AccountControlRejection.unsupportedPlan.presentation, false)
 		}
 		var messages: [String] = []
 		var destructive = state.requiresLoginRefresh
@@ -319,17 +319,17 @@ struct ResetCardAccountRow: View {
 		}
 		switch state.account.lifecycleReadiness {
 		case .unsupportedPlan:
-			return "This plan is not supported in Decodex. After you upgrade, sign in again."
+			return AccountControlRejection.unsupportedPlan.presentation
 		case .credentialAbsent:
 			return "Sign in to use this account."
 		case .storeUnavailable:
-			return "Your sign-in information is temporarily unavailable."
+			return "Sign-in storage unavailable. Open Diagnostics."
 		case .storeMismatch:
-			return "Your sign-in information has changed. Sign in again."
+			return "Sign-in changed. Sign in again."
 		case .providerMismatch:
-			return "This sign-in belongs to another account."
+			return "Sign-in belongs to another account."
 		case .operationUnsettled:
-			return "An account update is still in progress."
+			return "Account update in progress."
 		case .callbackCapabilityUnready:
 			// Account health and usage come from the direct provider API. The callback
 			// capability only gates Conversation routing, so it is not an account-data
@@ -348,11 +348,11 @@ struct ResetCardAccountRow: View {
 		case .depleted:
 			return nil
 		case .pluginUnready:
-			return "Update the provider to use this account."
+			return "Account provider unavailable. Open Diagnostics."
 		case .unknown:
-			return "The account status is temporarily unavailable."
+			return "Account status unavailable."
 		case .unavailable:
-			return "This account is unavailable."
+			return "Account unavailable."
 		}
 	}
 
@@ -539,13 +539,13 @@ struct ResetCardAccountRow: View {
 		if isUsing(target) { return "Applying reset card…" }
 		if confirmation.isSubmitting {
 			return confirmation.isSubmitting(target)
-				? "The request is in progress."
-				: "Wait for the current reset to finish."
+				? "Request in progress."
+				: "Wait for the current reset."
 		}
 
 		return confirmation.isArmed(target)
 			? "Click again to use this reset card."
-			: "Click to confirm, then click again within five seconds to use this card."
+			: "Click twice within five seconds to use this card."
 	}
 
 	private func help(_ target: ResetCardUseTarget) -> String {
@@ -554,8 +554,8 @@ struct ResetCardAccountRow: View {
 		if isUsing(target) { return "Applying reset card…" }
 		if confirmation.isSubmitting {
 			return confirmation.isSubmitting(target)
-				? "\(label). The request is in progress."
-				: "Wait for the current reset to finish."
+				? "\(label). Request in progress."
+				: "Wait for the current reset."
 		}
 		if confirmation.isArmed(target) {
 			return "\(label). Click again within five seconds to use it."

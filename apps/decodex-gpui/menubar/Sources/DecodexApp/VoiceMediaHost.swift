@@ -35,7 +35,7 @@ final class VoiceMediaHost: NSObject {
             do {
                 emit(["type":"devices", "inputs":try MicrophoneDevice.inputs().map { $0.name }])
             } catch {
-                emit(["type":"devices", "inputs":[String](), "message":"Microphones could not be listed. Close this menu and try again."])
+                emit(["type":"devices", "inputs":[String](), "message":"Microphones unavailable. Reopen to retry."])
             }
         case "dictate", "start":
             events.removeAll()
@@ -50,8 +50,8 @@ final class VoiceMediaHost: NSObject {
                     let device = try self.deviceForTesting?() ?? MicrophoneDevice.device(named: input)
                     self.emit(["type":operation == "dictate" ? "dictation_authorized" : "voice_authorized", "device":device])
                 } catch CaptureError.ambiguous {
-                    self.emit(["type":"error", "message":"More than one microphone has this name. Choose System default or another microphone."])
-                } catch { self.emit(["type":"error", "message":"The selected microphone is unavailable."]) }
+                    self.emit(["type":"error", "message":"Duplicate microphone name. Choose System default or another microphone."])
+                } catch { self.emit(["type":"error", "message":"Microphone unavailable."]) }
             }
             if let authorizationRequestForTesting { authorizationRequestForTesting(authorized) }
             else if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized { authorized(true) }

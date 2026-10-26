@@ -171,7 +171,7 @@ impl AgentSurface {
 		}
 
 		panel = panel
-			.child("Uses the same native config.toml as manual edits. Applies to new conversations. Project or managed settings can override these defaults; loaded conversations keep their settings. These experimental features remain subject to native runtime eligibility and capacity limits.")
+			.child("Defaults for new conversations, shared across accounts. Project and managed settings can override them. Experimental features depend on Codex support.")
 			.children(ui_feedback::inline_feedback("context-settings-feedback", "Context settings", &self.context_settings.feedback));
 
 		if self.context_settings.task.is_some() {
@@ -196,7 +196,7 @@ impl AgentSurface {
 					.child(feature_label(preference.feature))
 					.child(feature_detail(preference.feature))
 					.child(format!(
-						"New conversation default: {} · Saved user value: {}",
+						"Effective: {} · Saved: {}",
 						on_off(preference.effective),
 						preference.preference.map_or("Native default (off)", on_off)
 					));
@@ -238,23 +238,19 @@ fn feedback(
 			&& *saved == enabled
 		{
 			return if *effective == enabled {
-				Feedback::success("Context default saved for new conversations.")
+				Feedback::success("Saved for new conversations.")
 			} else {
-				Feedback::info(
-					"Saved. Higher-priority configuration selects a different default for this project.",
-				)
+				Feedback::info("Saved. Overridden by project or managed settings.")
 			};
 		}
 
-		return Feedback::warning(
-			"The save could not be confirmed. Review the refreshed settings before trying again.",
-		);
+		return Feedback::warning("Save unconfirmed. Refresh before retrying.");
 	}
 
 	if matches!(state, AgentContextSettingsResult::Available { .. }) {
 		Feedback::default()
 	} else {
-		Feedback::warning("Context settings are unavailable. Refresh to try again.")
+		Feedback::warning("Context settings unavailable. Refresh to retry.")
 	}
 }
 
@@ -277,9 +273,9 @@ fn feature_label(feature: AgentContextFeature) -> &'static str {
 fn feature_detail(feature: AgentContextFeature) -> &'static str {
 	match feature {
 		AgentContextFeature::AsyncCompaction =>
-			"Prepare a summary before context fills. Can add requests; native eligibility and thresholds apply.",
+			"Summarize before context fills. May use extra quota; availability depends on Codex.",
 		AgentContextFeature::RetainClientToolOutputs =>
-			"Ask Codex to retain Decodex delegation instructions within its budget. Ordinary tool results, wakes and retries are not selected.",
+			"Retain Decodex delegation instructions after compaction, within Codex limits.",
 	}
 }
 

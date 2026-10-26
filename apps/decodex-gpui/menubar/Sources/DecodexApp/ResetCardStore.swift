@@ -552,7 +552,7 @@ final class ResetCardStore {
 				checks += 1
 				if checks >= 6 {
 					for attempt in store.pendingAttempts {
-						store.setPendingStatus(.retrying(detail: "The result is not confirmed yet. Checking the saved request; no card will be used again."), for: attempt)
+						store.setPendingStatus(.retrying(detail: "Reset unconfirmed. Checking saved status; no repeat redemption."), for: attempt)
 					}
 				}
 				if !retry { return }
@@ -1211,7 +1211,7 @@ final class ResetCardStore {
 			message = ResetCardStoreMessage(
 				tone: .error,
 				accountID: attempt.target.accountID,
-				text: "The reset cards changed. Refresh and select the card again."
+				text: "Reset cards changed. Refresh and select again."
 			)
 			return ResetCardUseCompletion(resolved: true)
 		}
@@ -1233,7 +1233,7 @@ final class ResetCardStore {
 			message = ResetCardStoreMessage(
 				tone: .error,
 				accountID: attempt.target.accountID,
-				text: "The pending reset-card limit is reached. Resolve an existing request before starting another."
+				text: "Pending reset limit reached. Resolve a request before starting another."
 			)
 			return ResetCardUseCompletion(resolved: true)
 		}
@@ -1412,7 +1412,7 @@ final class ResetCardStore {
 		await performAccountControl(
 			accountID: accountID,
 			activity: .lifecycle,
-			successMessage: "Account logged out.",
+			successMessage: "Signed out.",
 			operation: {
 				try await accountControlClient.logoutAccount(
 					authority: account.authority ?? establishedAuthority,
@@ -1778,7 +1778,7 @@ final class ResetCardStore {
 			case .requestingCode, .openingBrowser, .waitingForBrowser:
 				setAccountReauthenticationPhase(
 					.cancellationFailed(
-						"The login is still active. Choose Cancel again."
+						"Sign-in still active. Select Cancel again."
 					),
 					sessionID: presentation.sessionID
 				)
@@ -3591,7 +3591,7 @@ final class ResetCardStore {
 	private func presentAccountControlUnavailable() {
 		message = ResetCardStoreMessage(
 			tone: .error,
-			text: "Account controls are unavailable while another account request is active."
+			text: "Wait for the current account request."
 		)
 	}
 
@@ -3706,7 +3706,7 @@ final class ResetCardStore {
 			)
 		case .notFound:
 			return .checking(
-				detail: "The reset request has not been confirmed yet."
+				detail: "Reset unconfirmed."
 			)
 		case .unavailable(let error):
 			return .retrying(detail: error.presentation)
@@ -3717,15 +3717,15 @@ final class ResetCardStore {
 
 	private static let pendingRecoveryBlockedMessage = ResetCardStoreMessage(
 		tone: .error,
-		text: "The pending reset-card recovery journal is invalid or unavailable. New use is blocked. Preserve the journal for manual inspection; no automatic repair is available."
+		text: "Reset recovery data unavailable or invalid. New use blocked. Keep the recovery journal for support."
 	)
 
 	private static let pendingDispatchUnavailableDetail =
-		"Another Decodex window is checking this reset request."
+		"Another window is checking this reset."
 
 	private static let pendingTerminalRemovalFailedMessage = ResetCardStoreMessage(
 		tone: .error,
-		text: "The reset card operation finished, but the recovery journal could not be updated. Preserve the journal and refresh before starting another request."
+		text: "Reset finished, but recovery data was not saved. Keep the journal and refresh before using another card."
 	)
 }
 

@@ -28,8 +28,8 @@ use crate::{
 			creation_setup, dock, graph, prompts, ui_theme,
 			ui_theme::{
 				CAPTION_SIZE, COMPOSER_TOP_GAP, CONVERSATION_HEADER_HEIGHT, CONVERSATION_INSET,
-				CONVERSATION_TAB_GAP, CONVERSATION_TAB_SIZE, CONVERSATION_WIDTH, FIELD_MATERIAL,
-				MESSAGE_GAP, SELECTED_FILL, WORKSPACE_GUTTER, WORKSPACE_RADIUS,
+				CONVERSATION_TAB_GAP, CONVERSATION_TAB_SIZE, CONVERSATION_WIDTH, MESSAGE_GAP,
+				SELECTED_FILL, WORKSPACE_RADIUS,
 			},
 		},
 		workspace_symbols,
@@ -37,6 +37,7 @@ use crate::{
 	ui_feedback::{self, Feedback, Tone},
 	ui_layout, ui_loading,
 	ui_motion::{self, AgentRailStatus, OverflowLabel, SmoothControl, TabReveal},
+	ui_theme::WORKSPACE_GUTTER,
 };
 #[cfg(any(test, feature = "visual-capture"))]
 use decodex_protocol::{
@@ -45,6 +46,9 @@ use decodex_protocol::{
 	AgentWorkStatusDto::{Open, Resolved, UserDecision},
 };
 use decodex_protocol::{AgentWorkKindDto, DesktopRecoveredDraft};
+
+pub(super) const ARCHIVED_MESSAGE: &str = "Archived";
+pub(super) const ARCHIVED_DETAIL: &str = "Read-only until unarchived.";
 
 const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
 const PARENT_MANAGED_MESSAGE: &str = "Continue in parent chat";
@@ -521,7 +525,7 @@ impl AgentSurface {
 			.flex_col()
 			.px(gpui::px(6.))
 			.pb(gpui::px(CONTROL_MARGIN))
-			.pt(gpui::px(WINDOW_CONTROLS_CLEARANCE))
+			.pt(gpui::px(WORKSPACE_GUTTER))
 			.gap_1();
 
 		panel = panel
@@ -797,21 +801,20 @@ impl AgentSurface {
 			)
 			.then_some(PARENT_MANAGED_MESSAGE);
 		}
+		if self.selected_is_archived() {
+			return Some(ARCHIVED_MESSAGE);
+		}
 		if self.uncertain {
-			return Some(
-				"Delivery is unconfirmed. Your draft is kept; sending is paused to avoid duplicates.",
-			);
+			return Some("Delivery unconfirmed. Check history before resending.");
 		}
 		if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
-			return Some("The service connection is unavailable. Your history and draft are kept.");
+			return Some("Service unavailable.");
 		}
 		if self.connection_initializing() {
 			return Some("Connecting to Codex…");
 		}
 		if !self.draft_owner_available() {
-			return Some(
-				"This draft's conversation is unavailable. Select a conversation before sending.",
-			);
+			return Some("Draft conversation unavailable. Select another conversation.");
 		}
 
 		let selected = self.selected.as_deref()?;
@@ -827,12 +830,9 @@ impl AgentSurface {
 				"thread_in_use_needs_attention" if event.work_item_id == *selected =>
 					THREAD_LOCKED_MESSAGE,
 				"thread_in_use_needs_attention" => continue,
-				"reconnection_needs_attention" =>
-					"The agent could not reconnect. Messages are saved and sending is paused. Decodex will retry automatically.",
-				"configuration_needs_attention" =>
-					"The agent configuration is unavailable. Your history and draft are kept.",
-				"recovery_needs_attention" | "wake_failed" =>
-					"The agent could not resume this conversation. Your history and draft are kept.",
+				"reconnection_needs_attention" => "Connection lost. Retrying…",
+				"configuration_needs_attention" => "Agent configuration unavailable.",
+				"recovery_needs_attention" | "wake_failed" => "Could not resume this conversation.",
 				_ => continue,
 			};
 
@@ -844,9 +844,7 @@ impl AgentSurface {
 			.iter()
 			.find(|w| w.id == selected)
 			.filter(|w| w.dispatch_state == AgentDispatchStateDto::Unknown)
-			.map(
-				|_| "The agent connection is interrupted. Checking the current conversation state.",
-			)
+			.map(|_| "Connection interrupted. Checking status…")
 	}
 
 	fn connection_failure_detail(&self) -> Option<&str> {
@@ -877,11 +875,16 @@ impl AgentSurface {
 		reason: &'static str,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		if reason == ARCHIVED_MESSAGE
+			&& let Some(work) = self.conversation_work()
+		{
+			return self.archive_notice(&work, cx);
+		}
 		if reason == PARENT_MANAGED_MESSAGE {
 			return ui_feedback::read_only_row(
 				"conversation-unavailable",
 				PARENT_MANAGED_MESSAGE,
-				"This agent receives messages through its parent conversation.",
+				"",
 				workspace_symbols::icon_sized(workspace_symbols::Symbol::AccountRoute, 14.),
 			)
 			.debug_selector(|| "conversation-unavailable".into())
@@ -897,7 +900,7 @@ impl AgentSurface {
 			return ui_feedback::read_only_row(
 				"conversation-unavailable",
 				THREAD_LOCKED_MESSAGE,
-				"Read-only until the other app releases this conversation. Your draft is kept.",
+				"",
 				workspace_symbols::icon_sized(workspace_symbols::Symbol::Lock, 14.),
 			)
 			.debug_selector(|| "conversation-unavailable".into())
@@ -912,7 +915,7 @@ impl AgentSurface {
 			return ui_feedback::status_row(
 				"conversation-unavailable",
 				Tone::Error,
-				"Account needs attention",
+				"",
 				message,
 				Tone::Error.icon(),
 			)
@@ -921,23 +924,10 @@ impl AgentSurface {
 			.into_any_element();
 		}
 
-		let title = if self.uncertain {
-			"Delivery unconfirmed"
-		} else {
-			match detail {
-				Some(text) if text.contains("ProcessUnavailable") => "Codex unavailable",
-				Some(text) if text.contains("RefreshQuota") || text.contains("usage limit") =>
-					"Account unavailable",
-				Some(text) if text.contains("SelectWorkingDirectory") =>
-					"Project folder unavailable",
-				_ if reason.contains("retry automatically") => "Connection lost",
-				_ => "Sending paused",
-			}
-		};
 		let row = ui_feedback::status_row(
 			"conversation-unavailable",
 			Tone::Warning,
-			title,
+			"",
 			reason,
 			Tone::Warning.icon(),
 		)
@@ -1271,7 +1261,7 @@ impl AgentSurface {
 						.max_w(gpui::px(440.))
 						.px(gpui::px(CONVERSATION_INSET))
 						.child(connection_recovery_notice(
-							"Could not connect to Codex. Your history and drafts are saved.",
+							"Could not connect to Codex.",
 							crate::shell::Destination::Health,
 						))
 						.into_any_element()
@@ -1294,9 +1284,8 @@ impl AgentSurface {
 			return self.workspace_frame(browser, wide, window, cx);
 		}
 
-		let floating_composer = is_agent
-			&& (selected.is_some() || self.is_new_conversation())
-			&& !self.selected_is_archived();
+		let floating_composer = (is_agent || self.selected_is_archived())
+			&& (selected.is_some() || self.is_new_conversation());
 		let mut chat = self.conversation_panel(cx);
 
 		if !floating_composer {
@@ -1317,10 +1306,6 @@ impl AgentSurface {
 				})
 				.child(self.latest_button(window, cx)),
 		);
-		// Read-only state replaces the input at the bottom, never the history header.
-		chat = chat.when(self.native_agents.selected.is_none(), |chat| {
-			chat.when_some(selected.as_ref(), |chat, work| chat.child(self.archive_panel(work, cx)))
-		});
 
 		if !is_agent && let Some(work) = selected.as_ref() {
 			chat = chat
@@ -1468,15 +1453,12 @@ impl AgentSurface {
 				)
 			});
 
-		gpui::div()
+		ui_theme::workspace_surface()
 			.debug_selector(|| "workspace-center-frame".into())
-			.relative()
 			.flex_1()
 			.min_w_0()
 			.h_full()
 			.bg(palette.conversation)
-			.rounded(gpui::px(WORKSPACE_RADIUS))
-			.overflow_hidden()
 			.flex()
 			.flex_col()
 			.child(plane)
@@ -1521,21 +1503,18 @@ impl AgentSurface {
 		);
 		let body = gpui::div()
 			.flex_1()
+			.min_w_0()
 			.min_h_0()
 			.flex()
 			.overflow_hidden()
-			.when(right_width > 0.1, |body| body.gap(gpui::px(WORKSPACE_GUTTER)))
+			.gap(gpui::px(right_width.min(WORKSPACE_GUTTER)))
 			.child(center)
 			.child(
-				gpui::div()
+				ui_theme::workspace_surface()
 					.debug_selector(|| "workspace-activity-frame".into())
 					.flex_none()
-					.relative()
 					.w(gpui::px(right_width))
 					.h_full()
-					.rounded(gpui::px(WORKSPACE_RADIUS))
-					.bg(ui_theme::rgba(FIELD_MATERIAL))
-					.overflow_hidden()
 					.opacity(self.workspace.arrival.progress(0.08))
 					.when(right_width > 0.1, |panel| {
 						self.deliveries.update(cx, |panel, cx| panel.set_width(right_width, cx));
@@ -1547,7 +1526,7 @@ impl AgentSurface {
 							)
 					}),
 			);
-		// Sidebars share the native plane; Thin adds subtle graph and reading tints.
+		// Navigation, content and activity share one inset row with matching outer frames.
 		let main = gpui::div()
 			.flex_1()
 			.min_w_0()
@@ -1557,7 +1536,7 @@ impl AgentSurface {
 			.pb(gpui::px(WORKSPACE_GUTTER))
 			.relative()
 			.flex()
-			.flex_col()
+			.child(self.sidebar_slot(wide, window, cx))
 			.child(body);
 
 		self.workspace_resize_root(cx)
@@ -1569,7 +1548,6 @@ impl AgentSurface {
 			.font_family(FONT_FAMILY)
 			.text_color(crate::ui_theme::rgb(TEXT))
 			.on_action(cx.listener(|_, _: &SubmitComposer, _, cx| cx.stop_propagation()))
-			.child(self.sidebar_slot(wide, window, cx))
 			.child(main)
 			.when(self.workspace.arrival.progress(0.) < 1., |root| {
 				root.child(
@@ -1829,7 +1807,7 @@ impl AgentSurface {
 					.p_3()
 					.text_size(gpui::px(12.))
 					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-					.child("No dependencies are recorded for this task."),
+					.child("No recorded dependencies."),
 			);
 		}
 
@@ -1849,7 +1827,7 @@ impl AgentSurface {
 					.px_2()
 					.text_size(gpui::px(11.0))
 					.text_color(crate::ui_theme::rgb(WARNING))
-					.child("Dependency cycle · review work relations"),
+					.child("Dependency cycle · Review relations"),
 			);
 		}
 
@@ -2467,13 +2445,13 @@ impl AgentSurface {
 				cx,
 			));
 		} else {
-			row = row.child("Unassigned copy · export to retain all data");
+			row = row.child("Unassigned draft · Export to keep all data");
 		}
 		if copy.draft.has_unconfirmed_delivery() {
-			row = row.child("Confirm delivery before removing this copy");
+			row = row.child("Check delivery before removing this copy");
 		} else if self.removing_draft_copy(&copy) {
 			row = row
-				.child("Remove this saved copy? Current input stays.")
+				.child("Remove saved copy? Current input stays.")
 				.child(self.workspace_action(
 					format!("draft-copy-remove-confirm-{index}"),
 					"Confirm removal".into(),
@@ -2534,7 +2512,7 @@ impl AgentSurface {
 					)
 				});
 				let summary = format!(
-					"Copy {} · {} files · {} task references · {} question drafts · {} ordinary directories",
+					"Copy {} · {} files · {} task links · {} answers · {} folders",
 					index + 1,
 					copy.draft.composer.attachments.len(),
 					copy.draft.composer.references.len(),
@@ -2634,18 +2612,18 @@ impl AgentSurface {
 
 		if self.uncertain {
 			Some(Feedback::warning(
-				"Delivery unconfirmed · Draft kept. Sending is paused to avoid duplicates.",
+				"Delivery unconfirmed. Draft kept; check history before resending.",
 			))
 		} else if let Some(notice) = self.draft_storage_notice() {
 			Some(Feedback::error(notice))
 		} else if self.selected.as_deref().is_some_and(|id| self.thread_in_use(id)) {
-			Some(Feedback::warning("In use by another app · Your draft is kept"))
+			Some(Feedback::warning("In use by another app"))
 		} else if pending.iter().any(|event| event.event_kind.ends_with("_failed")) {
-			Some(Feedback::error("The current operation could not complete."))
+			Some(Feedback::error("Operation failed."))
 		} else if pending.iter().any(|event| event.event_kind.ends_with("_needs_attention")) {
 			Some(Feedback::warning("This conversation needs attention."))
 		} else if matches!(self.displayed_load_state(), LoadState::Unavailable | LoadState::Stale) {
-			Some(Feedback::warning("Connection unavailable · Reconnecting"))
+			Some(Feedback::warning("Connection unavailable · Reconnecting…"))
 		} else if compacting {
 			Some(Feedback::loading("Compacting context"))
 		} else if !self.feedback.is_empty()
@@ -2655,7 +2633,7 @@ impl AgentSurface {
 		} else {
 			selected.and_then(|work| match work.dispatch_state {
 				AgentDispatchStateDto::Unknown =>
-					Some(Feedback::warning("Connection interrupted · Checking delivery")),
+					Some(Feedback::warning("Connection interrupted · Checking delivery…")),
 				_ => None,
 			})
 		}
@@ -2850,17 +2828,15 @@ fn account_connection_message(detail: &str) -> Option<&'static str> {
 	let recovery = detail.strip_prefix("Agent account requires recovery: ");
 
 	Some(match recovery {
-		Some("RefreshQuota") =>
-			"Account availability could not be confirmed. Check usage in Accounts. Your draft is saved.",
-		Some("ConfigureFixedAccount") => "Select an account to continue. Your draft is saved.",
-		Some("EnableAccount") => "Enable the selected account to continue. Your draft is saved.",
-		Some("EnrollCredentials" | "RestoreProviderAgreement") =>
-			"Sign in again in Accounts to continue. Your draft is saved.",
+		Some("RefreshQuota") => "Account status unknown. Check Accounts.",
+		Some("ConfigureFixedAccount") => "Select an account.",
+		Some("EnableAccount") => "Enable the selected account.",
+		Some("EnrollCredentials" | "RestoreProviderAgreement") => "Sign in again in Accounts.",
 		Some("ResolveCredentialOperation" | "RepairCredentialStore") =>
-			"Account setup needs attention. Open Accounts to continue. Your draft is saved.",
-		Some("UpgradeCodex") => "This account requires a newer Codex runtime. Your draft is saved.",
+			"Check account setup in Accounts.",
+		Some("UpgradeCodex") => "Update Codex to use this account.",
 		_ if detail.contains("account has reached its usage limit") =>
-			"This account has reached its usage limit. Check Accounts for the reset time. Your draft is saved.",
+			"Usage limit reached. Check Accounts for reset time.",
 		_ => return None,
 	})
 }
@@ -3061,7 +3037,8 @@ mod tests {
 			super::account_connection_message("Agent account requires recovery: RefreshQuota")
 				.unwrap();
 
-		assert!(pending.contains("could not be confirmed"));
+		assert!(pending.contains("unknown"));
+		assert!(!pending.contains("limit"));
 		assert!(!pending.contains("RefreshQuota"));
 		assert!(!pending.contains("retry"));
 
@@ -3415,7 +3392,7 @@ mod tests {
 				},
 			);
 
-			assert!(s.composer_unavailable_reason().unwrap().contains("could not reconnect"));
+			assert!(s.composer_unavailable_reason().unwrap().contains("Retrying"));
 
 			s.submit(cx);
 

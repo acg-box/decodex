@@ -555,8 +555,8 @@ struct AccountPanelView: View {
 					.foregroundStyle(PanelPalette.primaryText(colorScheme))
 					Text(
 						store.hasLoaded
-							? "Add an account to get started."
-							: "The account service has not returned a complete list."
+							? "Add an account."
+							: "Account list incomplete. Refresh to retry."
 				)
 				.font(PanelFont.emptyBody)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))

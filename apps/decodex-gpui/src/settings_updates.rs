@@ -16,7 +16,7 @@ use crate::{
 	native_updater::NativeUpdater,
 	settings_surface::SettingsSurface,
 	ui_feedback::{self, Feedback},
-	ui_theme::{self, BLUE, TEXT_MUTED},
+	ui_theme::{self, BLUE},
 };
 use decodex_components::{ComponentStore, InstallProgress, RuntimeLock};
 
@@ -106,10 +106,7 @@ impl SettingsSurface {
 	fn update_action(&mut self, action: Action, cx: &mut Context<Self>) {
 		match action {
 			Action::Check => {
-				self.updates.app_feedback = Some(match self.updates.native.check() {
-					Ok(()) => Feedback::info("The update window will show available versions."),
-					Err(error) => Feedback::error(error),
-				});
+				self.updates.app_feedback = self.updates.native.check().err().map(Feedback::error);
 			},
 			Action::Prepare => self.updates.prepare_runtime(),
 		}
@@ -148,25 +145,58 @@ impl SettingsSurface {
 			.unwrap_or_else(|_| "Version unavailable".into());
 		let action = match self.updates.shown {
 			ComponentState::Preparing(_) => None,
-			ComponentState::Failed(_) => Some(("updates-retry-runtime", "Retry download")),
-			_ => Some(("updates-prepare-runtime", "Check component")),
+			ComponentState::Failed(_) => Some(("updates-retry-runtime", "Retry setup")),
+			_ => Some(("updates-prepare-runtime", "Check Codex")),
 		};
-		let mut component = ui_theme::settings_card().p_4().gap_3()
-            .child(gpui::div().flex().items_center().justify_between().gap_4()
-                .child(gpui::div().flex_1().min_w_0().flex().flex_col().gap_1()
-                    .child(gpui::div().text_size(gpui::px(13.)).font_weight(FontWeight::SEMIBOLD).child("Codex"))
-                    .child(gpui::div().text_size(gpui::px(11.5)).text_color(ui_theme::rgb(TEXT_MUTED)).child(version)))
-                .when_some(action, |header, (id, label)| header.child(self.update_button(id, label, Action::Prepare, cx))))
-            .child(gpui::div().text_size(gpui::px(12.)).line_height(gpui::px(18.)).text_color(ui_theme::rgb(TEXT_MUTED))
-                .child("The component that runs your conversations. Decodex prepares the required version automatically."));
+		let mut component = ui_theme::settings_card()
+			.p_4()
+			.gap_3()
+			.child(
+				gpui::div()
+					.flex()
+					.items_center()
+					.justify_between()
+					.gap_4()
+					.child(
+						gpui::div()
+							.flex_1()
+							.min_w_0()
+							.flex()
+							.flex_col()
+							.gap_1()
+							.child(
+								gpui::div()
+									.text_size(gpui::px(13.))
+									.font_weight(FontWeight::SEMIBOLD)
+									.child("Codex"),
+							)
+							.child(
+								gpui::div()
+									.text_size(gpui::px(11.5))
+									.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+									.child(version),
+							),
+					)
+					.when_some(action, |header, (id, label)| {
+						header.child(self.update_button(id, label, Action::Prepare, cx))
+					}),
+			)
+			.child(
+				gpui::div()
+					.text_size(gpui::px(11.5))
+					.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+					.child(
+						"Runs your conversations. Decodex prepares the required version automatically.",
+					),
+			);
 
 		match &self.updates.shown {
 			ComponentState::Unchecked => {},
 			ComponentState::Ready => {
 				component = component.children(ui_feedback::inline_feedback(
 					"updates-component-ready",
-					"Codex is ready",
-					&Feedback::success("The required component is available."),
+					"",
+					&Feedback::success("Ready"),
 				));
 			},
 			ComponentState::Failed(error) => {
@@ -237,7 +267,7 @@ impl SettingsSurface {
 									.child(
 										gpui::div()
 											.text_size(gpui::px(11.5))
-											.text_color(ui_theme::rgb(TEXT_MUTED))
+											.text_color(ui_theme::rgb(crate::ui_theme::TEXT_MUTED))
 											.child(format!(
 												"Version {}",
 												env!("CARGO_PKG_VERSION")
@@ -251,13 +281,6 @@ impl SettingsSurface {
 								cx,
 							)),
 					)
-					.child(
-						gpui::div()
-							.text_size(gpui::px(12.))
-							.line_height(gpui::px(18.))
-							.text_color(ui_theme::rgb(TEXT_MUTED))
-							.child("Check for a new version of Decodex."),
-					)
 					.children(self.updates.app_feedback.as_ref().and_then(|feedback| {
 						ui_feedback::inline_feedback("updates-app-feedback", "App update", feedback)
 					})),
@@ -269,12 +292,12 @@ impl SettingsSurface {
 
 fn progress_text(progress: &InstallProgress) -> String {
 	match progress {
-		InstallProgress::Waiting => "Checking the component cache…".into(),
+		InstallProgress::Waiting => "Checking…".into(),
 		InstallProgress::Downloading { received, total } => match total {
 			Some(total) if *total > 0 => format!("Downloading… {}%", received * 100 / total),
 			_ => format!("Downloading… {} MB", received / 1_000_000),
 		},
-		InstallProgress::Verifying => "Verifying the component…".into(),
+		InstallProgress::Verifying => "Verifying…".into(),
 		InstallProgress::Ready => "Ready".into(),
 	}
 }

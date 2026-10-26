@@ -78,8 +78,8 @@ use crate::{
 		CONTENT_MATERIAL, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, CONTROL_SELECTED_FILL,
 		CONTROL_SELECTED_HOVER, FONT_FAMILY, HEADING_SIZE, INFO, MOTION_PANEL, PRESSED_FILL,
 		SELECTED_BORDER, SELECTED_FILL, SELECTED_HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET,
-		SETTINGS_TOP, SETTINGS_WIDTH, SETTINGS_WINDOW_MIN_WIDTH, SHELL_MATERIAL, SUCCESS,
-		SURFACE_RAISED_MATERIAL, TEXT_FAINT, TEXT_MUTED, WARNING, appearance, window_material,
+		SETTINGS_TOP, SETTINGS_WIDTH, SETTINGS_WINDOW_MIN_WIDTH, SHELL_MATERIAL,
+		SURFACE_RAISED_MATERIAL, TEXT_FAINT, appearance, window_material,
 	},
 };
 use account_feedback::AccountFeedback;
@@ -167,12 +167,12 @@ const HEALTH_OPTIONAL_COMPONENTS: [DoctorComponent; 2] =
 	[DoctorComponent::BlobIntegrity, DoctorComponent::PluginReadiness];
 const WB_CANVAS: u32 = CANVAS;
 const WB_TEXT: u32 = ui_theme::TEXT;
-const WB_TEXT_MUTED: u32 = TEXT_MUTED;
+const WB_TEXT_MUTED: u32 = crate::ui_theme::TEXT_MUTED;
 const WB_TEXT_FAINT: u32 = TEXT_FAINT;
 const WB_ACCENT: u32 = ACCENT;
 const WB_BLUE: u32 = BLUE;
-const WB_SUCCESS: u32 = SUCCESS;
-const WB_WARNING: u32 = WARNING;
+const WB_SUCCESS: u32 = crate::ui_theme::SUCCESS;
+const WB_WARNING: u32 = crate::ui_theme::WARNING;
 
 /// One window-owned production shell. Connection ownership lives at application scope.
 pub(crate) struct Shell {
@@ -1159,8 +1159,10 @@ impl Shell {
 
 		if self.pending_account_logout.as_ref() != Some(account_id) {
 			self.pending_account_logout = Some(account_id.clone());
-			self.account_status =
-				Some("Select Sign out again to remove this account’s saved sign-in.".into());
+			self.account_status = Some(
+				"Sign out removes this account and its saved sign-in. Click again to confirm."
+					.into(),
+			);
 
 			cx.notify();
 
@@ -1293,8 +1295,7 @@ impl Shell {
 		}
 
 		let Some(controller) = self.account_login.clone() else {
-			self.account_login_error =
-				Some("The local account-login client is unavailable.".into());
+			self.account_login_error = Some("Sign-in service unavailable.".into());
 
 			cx.notify();
 
@@ -1701,7 +1702,7 @@ impl Shell {
 			} else if self.conversations.refresh_catalog() {
 				None
 			} else {
-				Some("Model options could not be refreshed.".into())
+				Some("Could not refresh models.".into())
 			};
 
 			self.synchronize_conversations(cx);
@@ -1864,7 +1865,7 @@ impl Render for Shell {
 		let root = gpui::div()
 			.id("decodex-shell")
 			.role(Role::Application)
-			.aria_label("Decodex operational shell")
+			.aria_label("Decodex")
 			.font_family(FONT_FAMILY)
 			.text_size(gpui::px(13.0))
 			.key_context("Conversations")
@@ -2203,15 +2204,13 @@ impl Destination {
 		match self {
 			Self::Agent => "Open conversation",
 			Self::Advisor => "Review guidance and bounded decisions.",
-			Self::Projects => "Own repositories and product context.",
-			Self::Conversations =>
-				"Chat directly with Codex: choose a conversation, write a message, and read its reply.",
-			Self::Runs => "Inspect managed run activity and evidence.",
-			Self::Automations => "Operate scheduled and event-driven work.",
-			Self::Accounts =>
-				"Accounts: manage sign-in, usage limits, and the account used for new work.",
-			Self::Health => "Diagnostics: check connection health and find the cause of errors.",
-			Self::Settings => "Configure the window and in-process menu bar.",
+			Self::Projects => "Repositories and product context.",
+			Self::Conversations => "Choose a conversation and send a message.",
+			Self::Runs => "Run activity and records.",
+			Self::Automations => "Scheduled and event-driven work.",
+			Self::Accounts => "Sign-in, usage and routing.",
+			Self::Health => "Connection health and troubleshooting.",
+			Self::Settings => "Window and menu bar preferences.",
 		}
 	}
 }
@@ -2530,33 +2529,33 @@ fn connection_presentation(view: ConnectionView) -> ConnectionPresentation {
 		},
 		ConnectionView::Online { .. } => ConnectionPresentation {
 			label: "Online",
-			detail: "Connected and ready.".into(),
-			color: SUCCESS,
+			detail: "Connected.".into(),
+			color: ui_theme::SUCCESS,
 		},
 		ConnectionView::OfflineRetrying { .. } => ConnectionPresentation {
 			label: "Reconnecting",
-			detail: "Trying to restore Decodex.".into(),
-			color: WARNING,
+			detail: "Work may still be running.".into(),
+			color: ui_theme::WARNING,
 		},
 		ConnectionView::Incompatible(_) => ConnectionPresentation {
-			label: "Restart Decodex",
-			detail: "Restart Decodex to restore the connection.".into(),
+			label: "Cannot connect",
+			detail: "Open Diagnostics to check setup and compatibility.".into(),
 			color: crate::ui_theme::ERROR,
 		},
 		ConnectionView::Quarantined { .. } => ConnectionPresentation {
-			label: "Restart Decodex",
-			detail: "Restart Decodex to restore the connection.".into(),
+			label: "Connection blocked",
+			detail: "Open Diagnostics to review the connection.".into(),
 			color: ui_theme::ERROR,
 		},
 		ConnectionView::ShuttingDown => ConnectionPresentation {
 			label: "Shutting down",
-			detail: "Closing the retained session cooperatively".into(),
-			color: TEXT_MUTED,
+			detail: "Closing the session…".into(),
+			color: ui_theme::TEXT_MUTED,
 		},
 		ConnectionView::Stopped => ConnectionPresentation {
-			label: "Restart Decodex",
-			detail: "Restart Decodex to restore the connection.".into(),
-			color: TEXT_MUTED,
+			label: "Disconnected",
+			detail: "Restart Decodex to reconnect.".into(),
+			color: ui_theme::TEXT_MUTED,
 		},
 	}
 }
@@ -2592,14 +2591,12 @@ const fn input_error_label(error: ConversationInputError) -> &'static str {
 	match error {
 		ConversationInputError::Offline => "Conversations are offline.",
 		ConversationInputError::Busy => "Wait for the current command result.",
-		ConversationInputError::InvalidMessage => "Enter a message within the supported limit.",
+		ConversationInputError::InvalidMessage => "Message exceeds the supported limit.",
 		ConversationInputError::NoSelection => "Select a conversation first.",
-		ConversationInputError::NotReady =>
-			"This conversation is not ready. Wait for it to reconnect.",
+		ConversationInputError::NotReady => "Wait for this conversation to reconnect.",
 		ConversationInputError::NotInterruptible => "The selected turn is not running.",
 		ConversationInputError::IdentityUnavailable => "A command identity could not be created.",
-		ConversationInputError::WorkingDirectoryUnavailable =>
-			"The conversation’s working directory is unavailable.",
+		ConversationInputError::WorkingDirectoryUnavailable => "Working directory unavailable.",
 	}
 }
 
@@ -3025,15 +3022,15 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 	match snapshot.load {
 		HealthLoadState::NeverRequested => HealthPresentation {
 			label: "No report yet",
-			detail: "Check local services to look for a problem.",
-			color: TEXT_MUTED,
+			detail: "Run a check to inspect local services.",
+			color: ui_theme::TEXT_MUTED,
 		},
 		HealthLoadState::Loading => HealthPresentation {
 			label: "Checking local services…",
 			detail: if snapshot.report.is_some() {
-				"The previous results remain below until this check finishes."
+				"Showing previous results while checking."
 			} else {
-				"This checks local services. It does not start a conversation."
+				""
 			},
 			color: INFO,
 		},
@@ -3050,15 +3047,15 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 				if !diagnostics::issues(snapshot).is_empty() {
 					return HealthPresentation {
 						label: "Some features need attention",
-						detail: "Review the issue below, then check again.",
-						color: WARNING,
+						detail: "Review the issue below.",
+						color: ui_theme::WARNING,
 					};
 				}
 
 				HealthPresentation {
 					label: "Local services are ready",
-					detail: "No local configuration, storage or connection errors were found.",
-					color: SUCCESS,
+					detail: "",
+					color: ui_theme::SUCCESS,
 				}
 			} else if core_statuses
 				.iter()
@@ -3066,30 +3063,30 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 			{
 				HealthPresentation {
 					label: "A local service needs attention",
-					detail: "Review the issue below, then check again.",
+					detail: "Review the issue below.",
 					color: crate::ui_theme::ERROR,
 				}
 			} else {
 				HealthPresentation {
 					label: "Some local checks are incomplete",
 					detail: "Check again to update the report.",
-					color: WARNING,
+					color: crate::ui_theme::WARNING,
 				}
 			}
 		},
 		HealthLoadState::Offline => HealthPresentation {
 			label: "Cannot connect to local services",
-			detail: "Restart Decodex, then check again. Your history and drafts are saved.",
-			color: WARNING,
+			detail: "Restart Decodex, then check again.",
+			color: ui_theme::WARNING,
 		},
 		HealthLoadState::Stale => HealthPresentation {
 			label: "Report needs an update",
-			detail: "The connection changed. Check again for current results.",
-			color: WARNING,
+			detail: "Connection changed. Check again.",
+			color: ui_theme::WARNING,
 		},
 		HealthLoadState::Refused => HealthPresentation {
 			label: "Could not update the report",
-			detail: "Check again. The previous results have not changed.",
+			detail: "Check again to retry.",
 			color: crate::ui_theme::ERROR,
 		},
 	}
@@ -3123,23 +3120,23 @@ fn component_label(component: DoctorComponent) -> &'static str {
 fn component_presentation(status: Option<DoctorStatus>) -> HealthPresentation {
 	match status {
 		Some(DoctorStatus::Ready) =>
-			HealthPresentation { label: "Ready", detail: "", color: SUCCESS },
+			HealthPresentation { label: "Ready", detail: "", color: crate::ui_theme::SUCCESS },
 		Some(DoctorStatus::Unavailable(DoctorIssue::Disabled))
 		| Some(DoctorStatus::Unknown(DoctorIssue::Disabled)) => HealthPresentation {
 			label: "Disabled",
-			detail: "This optional capability is intentionally disabled.",
-			color: TEXT_MUTED,
+			detail: "Optional feature disabled.",
+			color: ui_theme::TEXT_MUTED,
 		},
 		Some(DoctorStatus::Unavailable(DoctorIssue::NotProbed))
 		| Some(DoctorStatus::Unknown(DoctorIssue::NotProbed)) => HealthPresentation {
 			label: "Not checked",
-			detail: "The owning boundary did not run an active probe.",
-			color: TEXT_MUTED,
+			detail: "No active check performed.",
+			color: ui_theme::TEXT_MUTED,
 		},
 		Some(DoctorStatus::Unknown(DoctorIssue::Plugin)) => HealthPresentation {
 			label: "Not configured",
-			detail: "No required plugin inventory is configured.",
-			color: TEXT_MUTED,
+			detail: "No required plugins configured.",
+			color: ui_theme::TEXT_MUTED,
 		},
 		Some(DoctorStatus::Unavailable(issue)) => HealthPresentation {
 			label: "Unavailable",
@@ -3149,32 +3146,36 @@ fn component_presentation(status: Option<DoctorStatus>) -> HealthPresentation {
 		Some(DoctorStatus::Unknown(issue)) => HealthPresentation {
 			label: "Not verified",
 			detail: doctor_issue_detail(issue),
-			color: WARNING,
+			color: crate::ui_theme::WARNING,
 		},
-		None => HealthPresentation { label: "No report", detail: "", color: TEXT_MUTED },
+		None => HealthPresentation {
+			label: "No report",
+			detail: "",
+			color: crate::ui_theme::TEXT_MUTED,
+		},
 	}
 }
 
 fn doctor_issue_detail(issue: DoctorIssue) -> &'static str {
 	match issue {
-		DoctorIssue::Authentication => "Authentication was not established.",
-		DoctorIssue::Plugin => "Required plugin readiness was not established.",
-		DoctorIssue::ConfigurationMissing => "The operator configuration is missing.",
-		DoctorIssue::ConfigurationMalformed => "The operator configuration is malformed.",
-		DoctorIssue::ConfigurationVersion => "The configuration version is unsupported.",
-		DoctorIssue::DatabaseNotConfigured => "The local database is not configured.",
-		DoctorIssue::DatabaseMalformedConfig => "The database configuration is malformed.",
-		DoctorIssue::DatabaseUnreachable => "The local database cannot be opened.",
-		DoctorIssue::DatabaseIncompatible => "The local database state is incompatible.",
+		DoctorIssue::Authentication => "Sign-in unconfirmed.",
+		DoctorIssue::Plugin => "Required plugins not ready.",
+		DoctorIssue::ConfigurationMissing => "Configuration missing.",
+		DoctorIssue::ConfigurationMalformed => "Invalid configuration.",
+		DoctorIssue::ConfigurationVersion => "Configuration version unsupported.",
+		DoctorIssue::DatabaseNotConfigured => "Local database not configured.",
+		DoctorIssue::DatabaseMalformedConfig => "Invalid database configuration.",
+		DoctorIssue::DatabaseUnreachable => "Local database unavailable.",
+		DoctorIssue::DatabaseIncompatible => "Local database version incompatible.",
 		DoctorIssue::UnsafeDatabaseAuthority => "The database retains unsafe authority.",
-		DoctorIssue::ProtocolDisconnected => "The daemon protocol is disconnected.",
-		DoctorIssue::ProtocolVersionMismatch => "The protocol versions are incompatible.",
-		DoctorIssue::ServerIdentityMismatch => "The connected server identity does not match.",
-		DoctorIssue::ServerIdentityUnavailable => "A stable server identity is unavailable.",
-		DoctorIssue::UnsafeHostPath => "A required host path failed its safety contract.",
-		DoctorIssue::Integrity => "Storage integrity was not established.",
-		DoctorIssue::NotProbed => "The owning boundary did not run an active probe.",
-		DoctorIssue::Disabled => "This optional capability is intentionally disabled.",
+		DoctorIssue::ProtocolDisconnected => "Service disconnected.",
+		DoctorIssue::ProtocolVersionMismatch => "Protocol versions incompatible.",
+		DoctorIssue::ServerIdentityMismatch => "Server identity mismatch.",
+		DoctorIssue::ServerIdentityUnavailable => "Server identity unavailable.",
+		DoctorIssue::UnsafeHostPath => "Required path failed safety checks.",
+		DoctorIssue::Integrity => "Storage integrity unconfirmed.",
+		DoctorIssue::NotProbed => "No active check performed.",
+		DoctorIssue::Disabled => "Optional feature disabled.",
 	}
 }
 
@@ -3419,16 +3420,6 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 						.line_height(gpui::px(17.0))
 						.text_color(ui_theme::rgb(WB_TEXT_MUTED))
 						.child(selected.description()),
-				)
-				.child(
-					gpui::div()
-						.pt_3()
-						.border_t_1()
-						.border_color(ui_theme::rgba(0xffffff0d))
-						.font_family(FONT_FAMILY)
-						.text_size(gpui::px(11.0))
-						.text_color(ui_theme::rgb(WB_TEXT_FAINT))
-						.child("This feature is not available in this version."),
 				),
 		)
 		.into_any_element()
@@ -3643,19 +3634,11 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 							})
 						})
 						.and_then(|feedback| {
-							ui_feedback::inline_feedback(
-								"account-global-warning",
-								"Account update",
-								&feedback,
-							)
+							ui_feedback::inline_feedback("account-global-warning", "", &feedback)
 						}),
 				)
 				.children(account_list_feedback(snapshot).and_then(|feedback| {
-					ui_feedback::inline_feedback(
-						"account-list-feedback",
-						"Account connection",
-						&feedback,
-					)
+					ui_feedback::inline_feedback("account-list-feedback", "", &feedback)
 				}))
 				.child(ui_theme::settings_group(
 					"Sign-in and quota",
@@ -3668,8 +3651,8 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 					gpui::div()
 						.text_size(gpui::px(12.))
 						.font_weight(FontWeight::MEDIUM)
-						.text_color(ui_theme::rgb(TEXT_MUTED))
-						.child("Connected accounts"),
+						.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+						.child("Connected accounts · Remaining quota"),
 				)
 				.child(
 					gpui::div()
@@ -3714,7 +3697,7 @@ fn empty_accounts() -> impl IntoElement {
 				.font_family(FONT_FAMILY)
 				.text_size(gpui::px(11.0))
 				.text_color(ui_theme::rgb(WB_TEXT_FAINT))
-				.child("Sign in above to add your first account."),
+				.child("Add your first account above."),
 		)
 }
 
@@ -3763,7 +3746,7 @@ fn account_mode_button(
 
 fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let busy = shell.account_login_task.is_some();
-	let available = shell.account_login.is_some();
+	let can_start = shell.account_login.is_some() && !busy;
 	let prompt = shell
 		.account_login_status
 		.as_ref()
@@ -3777,6 +3760,12 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 			!shell.accounts.accounts.iter().any(|account| &account.account_id == target)
 		})
 	});
+	let copy_label =
+		if shell.account_login_status.as_ref().is_some_and(|status| status.prompt.is_some()) {
+			"Copy code"
+		} else {
+			"Copy link"
+		};
 
 	ui_theme::settings_row()
 		.id("account-login-controls")
@@ -3799,11 +3788,15 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 						.text_color(ui_theme::rgb(WB_TEXT))
 						.child("Add account"),
 				)
-				.when(status.is_none() && prompt.is_none(), |row| row.child(gpui::div().text_size(gpui::px(11.5)).text_color(ui_theme::rgb(TEXT_MUTED)).child("Connect a Codex account to run conversations.")))
-				.children(status.as_ref().and_then(|feedback| ui_feedback::inline_feedback("account-login-feedback", "Sign-in", feedback)))
+				.children(status.as_ref().and_then(|feedback| {
+					ui_feedback::inline_feedback("account-login-feedback", "", feedback)
+				}))
 				.when_some(prompt, |details, (code, url)| {
 					details.child(account_login_prompt(code, url)).child(
-						gpui::div().text_size(gpui::px(10.5)).text_color(ui_theme::rgb(WB_TEXT_MUTED)).child("Use this code only for the sign-in you started in Decodex. Cancel if someone else asked you to enter a code."),
+						gpui::div()
+							.text_size(gpui::px(10.5))
+							.text_color(ui_theme::rgb(WB_TEXT_MUTED))
+							.child("Use this code only for the sign-in you started in Decodex."),
 					)
 				}),
 		)
@@ -3813,24 +3806,25 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 				.items_center()
 				.gap_2()
 				.child(
-					account_login_button("account-login-browser", "Open browser", available && !busy)
-						.when(available && !busy, |button| {
-							button.on_click(cx.listener(|shell, _, _, cx| {
-								shell.start_account_enrollment(
-									AccountLoginMethod::BrowserRedirect,
-									cx,
-								);
-							}))
-						}),
+					account_login_button(
+						"account-login-browser",
+						"Sign in with browser",
+						can_start,
+					)
+					.when(can_start, |button| {
+						button.on_click(cx.listener(|shell, _, _, cx| {
+							shell.start_account_enrollment(AccountLoginMethod::BrowserRedirect, cx);
+						}))
+					}),
 				)
-				.child(
-					account_login_button("account-login-device", "Device code", available && !busy)
-						.when(available && !busy, |button| {
-							button.on_click(cx.listener(|shell, _, _, cx| {
-								shell.start_account_enrollment(AccountLoginMethod::DeviceCode, cx);
-							}))
-						}),
-				)
+				.child(account_login_button("account-login-device", "Device code", can_start).when(
+					can_start,
+					|button| {
+						button.on_click(cx.listener(|shell, _, _, cx| {
+							shell.start_account_enrollment(AccountLoginMethod::DeviceCode, cx);
+						}))
+					},
+				))
 				.when(
 					busy && shell.account_login_status.as_ref().is_some_and(|status| {
 						status.prompt.is_some() || status.authorization_url.is_some()
@@ -3838,26 +3832,23 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 					|actions| {
 						actions
 							.child(
-								account_login_button(
-									"account-login-copy",
-									if shell.account_login_status.as_ref().is_some_and(|status| status.prompt.is_some()) {
-										"Copy code"
-									} else {
-										"Copy link"
-									},
-									true,
-								)
+								account_login_button("account-login-copy", copy_label, true)
 									.debug_selector(|| "account-login-copy".to_owned())
 									.on_click(cx.listener(|shell, _, _, cx| {
 										shell.copy_account_login_value(cx);
 									})),
 							)
 							.child(
-								account_login_button("account-login-open", "Open", true).on_click(
-									cx.listener(|shell, _, _, cx| {
+								account_login_button(
+									"account-login-open",
+									"Open sign-in page",
+									true,
+								)
+								.on_click(cx.listener(
+									|shell, _, _, cx| {
 										shell.open_account_login_url(cx);
-									}),
-								),
+									},
+								)),
 							)
 					},
 				)
@@ -3905,7 +3896,7 @@ fn account_login_button(id: &'static str, label: &'static str, enabled: bool) ->
 	ui_theme::settings_button_base(id, label)
 		.tab_index(if enabled { 0 } else { -1 })
 		.focus_visible(|s| s.border_color(ui_theme::rgb(BLUE)))
-		.text_color(ui_theme::rgb(if enabled { TEXT_MUTED } else { TEXT_FAINT }))
+		.text_color(ui_theme::rgb(if enabled { crate::ui_theme::TEXT_MUTED } else { TEXT_FAINT }))
 		.opacity(if enabled { 1.0 } else { 0.55 })
 		.when(!enabled, |button| button.cursor_default())
 		.when(enabled, |button| {
@@ -3922,13 +3913,11 @@ fn account_login_button(id: &'static str, label: &'static str, enabled: bool) ->
 
 fn account_login_status_label(status: &AccountLoginStatus) -> String {
 	match status.state {
-		AccountLoginState::OpeningBrowser => "Opening browser sign-in…".into(),
-		AccountLoginState::RequestingCode => "Requesting a device code…".into(),
-		AccountLoginState::WaitingForBrowser =>
-			"Complete sign-in in the browser, then return to Decodex.".into(),
-		AccountLoginState::Installing =>
-			"Installing the verified account through the Decodex service…".into(),
-		AccountLoginState::Completed => "Sign-in complete. The account is ready to use.".into(),
+		AccountLoginState::OpeningBrowser => "Opening browser…".into(),
+		AccountLoginState::RequestingCode => "Requesting sign-in code…".into(),
+		AccountLoginState::WaitingForBrowser => "Finish sign-in in your browser.".into(),
+		AccountLoginState::Installing => "Saving sign-in…".into(),
+		AccountLoginState::Completed => "Signed in.".into(),
 		AccountLoginState::Failed => status.failure.map_or_else(
 			|| "Could not sign in. Try again.".into(),
 			|failure| account_login_failure_message(failure).into(),
@@ -3939,28 +3928,30 @@ fn account_login_status_label(status: &AccountLoginStatus) -> String {
 
 fn account_login_failure_message(failure: decodex_protocol::AccountLoginFailure) -> &'static str {
 	match failure {
-		decodex_protocol::AccountLoginFailure::LoginFailed
-		| decodex_protocol::AccountLoginFailure::DeviceAuthorizationRejected =>
-			"Sign-in was not completed. Start a new sign-in to try again.",
+		decodex_protocol::AccountLoginFailure::LoginFailed => "Sign-in failed. Try again.",
+		decodex_protocol::AccountLoginFailure::DeviceAuthorizationRejected =>
+			"Device sign-in rejected. Try another sign-in method.",
 		decodex_protocol::AccountLoginFailure::LoginTimedOut
-		| decodex_protocol::AccountLoginFailure::SessionNotFound =>
-			"This sign-in expired. Start a new sign-in to try again.",
-		decodex_protocol::AccountLoginFailure::AccountMismatch
-		| decodex_protocol::AccountLoginFailure::AccountChanged
-		| decodex_protocol::AccountLoginFailure::RecoveryChanged =>
-			"The selected account changed. Review the account, then sign in again.",
-		decodex_protocol::AccountLoginFailure::AccountUnavailable
-		| decodex_protocol::AccountLoginFailure::CredentialStoreUnavailable
-		| decodex_protocol::AccountLoginFailure::ServiceUnavailable =>
-			"Account sign-in is temporarily unavailable. Check the local connection, then try again.",
+		| decodex_protocol::AccountLoginFailure::SessionNotFound => "Sign-in expired. Try again.",
+		decodex_protocol::AccountLoginFailure::AccountMismatch =>
+			"Sign-in belongs to a different account. Sign in with the original account.",
+		decodex_protocol::AccountLoginFailure::AccountChanged =>
+			"Account changed during sign-in. Start sign-in again.",
+		decodex_protocol::AccountLoginFailure::RecoveryChanged =>
+			"Account recovery changed. Check the account before signing in again.",
+		decodex_protocol::AccountLoginFailure::AccountUnavailable =>
+			"Account unavailable. Check its status before signing in again.",
+		decodex_protocol::AccountLoginFailure::CredentialStoreUnavailable =>
+			"Sign-in storage unavailable. Open Diagnostics.",
+		decodex_protocol::AccountLoginFailure::ServiceUnavailable =>
+			"Sign-in service unavailable. Restart Decodex to reconnect.",
 		decodex_protocol::AccountLoginFailure::UnsupportedPlan =>
-			"This account plan is not supported. Sign in with a supported account.",
+			account_rejection_label(AccountCommandRejectionDto::UnsupportedPlan),
 		decodex_protocol::AccountLoginFailure::ProviderAlreadyEnrolled =>
-			"This account is already connected. Use its existing entry in the account list.",
+			"Account already added. Choose another account on the sign-in page.",
 		decodex_protocol::AccountLoginFailure::OutcomeUnknown =>
-			"Sign-in could not be confirmed. Check the account list before trying again.",
-		decodex_protocol::AccountLoginFailure::Busy =>
-			"Another sign-in is still active. Finish or cancel it before trying again.",
+			"Sign-in unconfirmed. Check Accounts before retrying.",
+		decodex_protocol::AccountLoginFailure::Busy => "Finish or cancel the current sign-in.",
 	}
 }
 
@@ -3972,7 +3963,7 @@ fn account_login_start(
 		accounts::canonical_uuid_v4()
 			.map_err(account_input_error_label)
 			.and_then(|value| {
-				EntityId::new(value).map_err(|_| "The sign-in session is invalid. Try again.")
+				EntityId::new(value).map_err(|_| "Invalid sign-in session. Try again.")
 			})
 			.map_err(SharedString::from)
 	};
@@ -4038,10 +4029,10 @@ fn account_readiness_status(account: &AccountDto) -> &'static str {
 		.and_then(|operation| operation.recovery_code.as_ref())
 		.map(WireText::as_str)
 	{
-		Some("provider_refresh_rejected") => "Refresh rejected · re-login",
+		Some("provider_refresh_rejected") => "Refresh rejected · Sign in again",
 		Some("provider_refresh_ambiguous" | "provider_refresh_outcome_unknown") =>
-			"Refresh uncertain · re-login",
-		Some("provider_access_rejected_after_refresh") => "New login required · re-login",
+			"Refresh unconfirmed · Sign in again",
+		Some("provider_access_rejected_after_refresh") => "Sign in again",
 		_ => account_readiness_label(account.lifecycle_readiness),
 	}
 }
@@ -4266,6 +4257,7 @@ fn account_power_control(
 	)
 	.when(busy, |button| button.opacity(1.0))
 	.role(Role::Switch)
+	.aria_label(format!("Account {} enabled", account.alias.as_str()))
 	.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
 	.flex_none()
 	.on_click(cx.listener(move |s, _, _, cx| {
@@ -4340,7 +4332,11 @@ fn account_management_actions(
 					account_icon_action(
 						"account-logout",
 						index,
-						"Sign out of this account",
+						if presentation.logout_pending {
+							"Confirm sign out"
+						} else {
+							"Sign out of this account"
+						},
 						if presentation.logout_pending {
 							workspace_symbols::Symbol::Confirm
 						} else {
@@ -4425,30 +4421,33 @@ fn account_readiness_label(readiness: AccountLifecycleReadinessDto) -> &'static 
 		AccountLifecycleReadinessDto::StoreMismatch => "Saved account mismatch",
 		AccountLifecycleReadinessDto::ProviderMismatch => "Provider mismatch",
 		AccountLifecycleReadinessDto::OperationUnsettled => "Update in progress",
-		AccountLifecycleReadinessDto::CallbackCapabilityUnready => "Sign-in not ready",
+		AccountLifecycleReadinessDto::CallbackCapabilityUnready =>
+			"Conversation routing unavailable",
 		AccountLifecycleReadinessDto::Tombstoned => "Signed out",
 	}
 }
 
 fn accounts_load_label(load: AccountsLoadState) -> &'static str {
 	match load {
-		AccountsLoadState::NeverRequested => "Open Accounts to view your accounts.",
+		AccountsLoadState::NeverRequested => "Accounts not loaded.",
 		AccountsLoadState::Loading => "Loading accounts…",
-		AccountsLoadState::Ready => "Accounts are up to date.",
-		AccountsLoadState::Offline => "The account service is offline.",
-		AccountsLoadState::Stale => "Showing retained account state; refresh after reconnect.",
-		AccountsLoadState::Unavailable => "Account status could not be loaded. Try refreshing.",
-		AccountsLoadState::Refused => "The account response did not match this request.",
+		AccountsLoadState::Ready => "Accounts up to date.",
+		AccountsLoadState::Offline => "Account service offline.",
+		AccountsLoadState::Stale => "Account data may be out of date. Reopen Accounts to refresh.",
+		AccountsLoadState::Unavailable => "Accounts unavailable. Reopen Accounts to retry.",
+		AccountsLoadState::Refused => "Invalid account response. Reopen Accounts to retry.",
 	}
 }
 
 fn account_command_label(command: AccountCommandState) -> Option<&'static str> {
 	match command {
 		AccountCommandState::Idle => None,
-		AccountCommandState::Sending | AccountCommandState::AwaitingResult => Some("Switching"),
+		AccountCommandState::Sending | AccountCommandState::AwaitingResult =>
+			Some("Updating account…"),
 		AccountCommandState::Accepted => Some("Ready"),
-		AccountCommandState::OutcomeUnknown => Some("Restart Decodex."),
-		AccountCommandState::Refused => Some("The account change was refused. Refresh and retry."),
+		AccountCommandState::OutcomeUnknown => Some("Account change unconfirmed. Restart Decodex."),
+		AccountCommandState::Refused =>
+			Some("Account change rejected. Reopen Accounts before retrying."),
 	}
 }
 
@@ -4456,51 +4455,45 @@ fn account_rejection_label(rejection: AccountCommandRejectionDto) -> &'static st
 	match rejection {
 		AccountCommandRejectionDto::UnsupportedPlan =>
 			"Use a Plus, Pro, Pro (More), Pro (Max), or Team account.",
-		AccountCommandRejectionDto::CodexIsRunning =>
-			"Quit ChatGPT or Codex, then try switching again.",
-		AccountCommandRejectionDto::AccountDisabled =>
-			"Enable this account before switching to it.",
-		AccountCommandRejectionDto::CredentialMissing =>
-			"This account has no saved credential. Sign in again.",
-		AccountCommandRejectionDto::CredentialNeedsLogin =>
-			"This account needs you to sign in again.",
+		AccountCommandRejectionDto::CodexIsRunning => "Quit ChatGPT or Codex, then switch again.",
+		AccountCommandRejectionDto::AccountDisabled => "Enable this account first.",
+		AccountCommandRejectionDto::CredentialMissing => "No saved sign-in. Sign in again.",
+		AccountCommandRejectionDto::CredentialNeedsLogin => "Sign in again.",
 		AccountCommandRejectionDto::CredentialRefreshRejected =>
-			"ChatGPT rejected the credential refresh. Sign in again.",
+			"Sign-in refresh rejected. Sign in again.",
 		AccountCommandRejectionDto::CredentialRefreshUnavailable =>
-			"Credential refresh is unavailable. Try again later.",
+			"Sign-in refresh unavailable. Try later.",
 		AccountCommandRejectionDto::AuthSourceAccountUnknown =>
-			"The current Codex login is not in Accounts. Add that account before switching.",
+			"Add the current Codex account before switching.",
 		AccountCommandRejectionDto::AuthCredentialConflict =>
-			"The current Codex login and saved account could not be synchronized. Sign in again to reconnect the account.",
-		AccountCommandRejectionDto::AuthFileUnreadable =>
-			"The Codex authentication file could not be read.",
-		AccountCommandRejectionDto::AuthFileChanged =>
-			"The Codex authentication file changed. Try switching again.",
-		AccountCommandRejectionDto::AuthWriteFailed =>
-			"The selected account could not be written to the Codex authentication file.",
+			"Codex sign-in mismatch. Sign in again.",
+		AccountCommandRejectionDto::AuthFileUnreadable => "Could not read Codex sign-in.",
+		AccountCommandRejectionDto::AuthFileChanged => "Codex sign-in changed. Switch again.",
+		AccountCommandRejectionDto::AuthWriteFailed => "Could not save the Codex sign-in.",
 		AccountCommandRejectionDto::AuthReadbackMismatch =>
-			"The Codex authentication file did not match after switching.",
-		_ => "The account change was refused. Refresh and retry.",
+			"Codex sign-in mismatch after switching.",
+		_ => "Account change rejected. Reopen Accounts before retrying.",
 	}
 }
 
 fn account_input_error_label(error: AccountInputError) -> &'static str {
 	match error {
-		AccountInputError::Offline => "The account service is offline.",
-		AccountInputError::Busy => "Wait for the current account change to finish.",
-		AccountInputError::AccountMissing => "That account is no longer in the current pool.",
-		AccountInputError::RoutingUnavailable => "Routing controls are unavailable. Refresh first.",
-		AccountInputError::IdentityUnavailable => "A command identity could not be created.",
+		AccountInputError::Offline => "Account service offline.",
+		AccountInputError::Busy => "Account change in progress.",
+		AccountInputError::AccountMissing => "Account no longer available.",
+		AccountInputError::RoutingUnavailable => "Routing unavailable. Reopen Accounts to retry.",
+		AccountInputError::IdentityUnavailable =>
+			"Could not prepare the account request. Try again.",
 	}
 }
 
 fn conversation_state_label(state: ConversationState) -> &'static str {
 	match state {
 		ConversationState::RoutingPending => "Routing pending",
-		ConversationState::EstablishmentPending => "Establishment pending",
+		ConversationState::EstablishmentPending => "Connection pending",
 		ConversationState::QuotaExhausted => "Quota exhausted",
 		ConversationState::NoRoute => "No route",
-		ConversationState::Establishing => "Establishing",
+		ConversationState::Establishing => "Connecting",
 		ConversationState::ModelSettingsReviewRequired => "Review model settings",
 		ConversationState::Ready => "Ready",
 		ConversationState::Running => "Running",
@@ -4511,14 +4504,14 @@ fn conversation_state_label(state: ConversationState) -> &'static str {
 
 fn conversation_state_color(state: ConversationState) -> u32 {
 	match state {
-		ConversationState::Ready => SUCCESS,
+		ConversationState::Ready => crate::ui_theme::SUCCESS,
 		ConversationState::Running | ConversationState::Establishing => INFO,
 		ConversationState::ModelSettingsReviewRequired
 		| ConversationState::RoutingPending
 		| ConversationState::EstablishmentPending
 		| ConversationState::QuotaExhausted
 		| ConversationState::NoRoute
-		| ConversationState::OutcomeUnknown => WARNING,
+		| ConversationState::OutcomeUnknown => crate::ui_theme::WARNING,
 		ConversationState::ManualRecovery => crate::ui_theme::ERROR,
 	}
 }
@@ -4531,7 +4524,7 @@ fn command_status(command: ConversationCommandState) -> Option<&'static str> {
 		ConversationCommandState::Accepted => Some("Command accepted"),
 		ConversationCommandState::ManualRecovery(action) => Some(recovery_action_label(action)),
 		ConversationCommandState::OutcomeUnknown =>
-			Some("Submission could not be confirmed. Check its saved state before sending again."),
+			Some("Delivery unconfirmed. Check saved status before resending."),
 		ConversationCommandState::Refused => Some("The command was refused."),
 	}
 }
@@ -4539,48 +4532,41 @@ fn command_status(command: ConversationCommandState) -> Option<&'static str> {
 fn recovery_action_label(action: ConversationRecoveryAction) -> &'static str {
 	match action {
 		ConversationRecoveryAction::ReviewModelSettings =>
-			"The model account changed. Refresh and confirm model settings before starting.",
+			"Model account changed. Refresh model settings before starting.",
 		ConversationRecoveryAction::ResumeRouting => "Resume the pending account route.",
 		ConversationRecoveryAction::CreateRoutingSuccessor =>
-			"Create a new conversation and route it explicitly.",
-		ConversationRecoveryAction::ResumeEstablishment =>
-			"Resume the selected account session establishment.",
-		ConversationRecoveryAction::ConfigureAccount => "Configure an account before continuing.",
-		ConversationRecoveryAction::EnableAccount =>
-			"Enable the selected account before continuing.",
-		ConversationRecoveryAction::EnrollCredentials =>
-			"Enroll account credentials before continuing.",
+			"Start a new conversation and select its account.",
+		ConversationRecoveryAction::ResumeEstablishment => "Resume connecting this account.",
+		ConversationRecoveryAction::ConfigureAccount => "Select an account to continue.",
+		ConversationRecoveryAction::EnableAccount => "Enable the selected account.",
+		ConversationRecoveryAction::EnrollCredentials => "Sign in to this account.",
 		ConversationRecoveryAction::ResolveAccountOperation =>
-			"Resolve the unsettled account operation before continuing.",
+			"Check the pending account operation in Accounts.",
 		ConversationRecoveryAction::RepairCredentialStore =>
-			"Repair the protected credential store before continuing.",
+			"Credential store unavailable. Open Diagnostics.",
 		ConversationRecoveryAction::RestoreProviderAgreement =>
-			"Restore provider account agreement before continuing.",
-		ConversationRecoveryAction::RefreshQuota => "Refresh account quota before continuing.",
-		ConversationRecoveryAction::UpgradeCodex =>
-			"Use a Codex build with the required app-server methods.",
+			"Resolve the provider account mismatch.",
+		ConversationRecoveryAction::RefreshQuota => "Refresh account quota.",
+		ConversationRecoveryAction::UpgradeCodex => "Update Codex to use this feature.",
 		ConversationRecoveryAction::SelectWorkingDirectory =>
-			"Select an owned local working directory before continuing.",
+			"Select an available local working directory.",
 		ConversationRecoveryAction::StartNewConversation =>
-			"This thread cannot resume. Start a new conversation.",
+			"Cannot resume. Start a new conversation.",
 		ConversationRecoveryAction::ResolvePriorActiveTurn =>
-			"Resolve the prior active turn before continuing.",
-		ConversationRecoveryAction::ResolvePriorAttempt =>
-			"Resolve the prior provider attempt before continuing.",
-		ConversationRecoveryAction::RestoreArchivedThread =>
-			"Unarchive the existing Codex thread, then refresh this conversation.",
+			"Check the previous active turn before continuing.",
+		ConversationRecoveryAction::ResolvePriorAttempt => "Check the previous model request.",
+		ConversationRecoveryAction::RestoreArchivedThread => "Unarchive in Codex, then refresh.",
 		ConversationRecoveryAction::WaitForThreadClose =>
-			"Codex is still closing this thread. Wait briefly, then refresh this conversation.",
+			"Codex is closing this conversation. Wait, then refresh.",
 		ConversationRecoveryAction::ReviewSandboxConfiguration =>
-			"Check Codex sandbox permissions and writable roots, then refresh this conversation.",
+			"Check Codex sandbox access, then refresh.",
 		ConversationRecoveryAction::ReviewCodexConfiguration =>
-			"Codex rejected resume. Check its model, provider and project configuration, then refresh.",
+			"Codex could not resume. Check model, provider and project settings.",
 		ConversationRecoveryAction::RestoreProcessReadiness =>
-			"Restore process readiness before continuing.",
+			"Check Codex startup in Diagnostics.",
 		ConversationRecoveryAction::WaitForCurrentCommand =>
-			"Wait for the current command or turn to settle.",
-		ConversationRecoveryAction::RefreshConversation =>
-			"Refresh this conversation before continuing.",
+			"Wait for the current operation to finish.",
+		ConversationRecoveryAction::RefreshConversation => "Refresh this conversation.",
 	}
 }
 
@@ -4589,9 +4575,9 @@ fn conversation_load_status(load: ConversationsLoadState) -> &'static str {
 		ConversationsLoadState::NeverRequested => "Conversations have not loaded.",
 		ConversationsLoadState::Loading => "Loading conversations…",
 		ConversationsLoadState::Ready =>
-			"Local task list loaded. Open or refresh a task for latest Codex state.",
-		ConversationsLoadState::Offline => "Offline. Retained conversation state remains visible.",
-		ConversationsLoadState::Unavailable => "Conversation state is temporarily unavailable.",
+			"Local conversations loaded. Open one for current Codex status.",
+		ConversationsLoadState::Offline => "Offline · Showing saved conversations.",
+		ConversationsLoadState::Unavailable => "Conversation status unavailable.",
 		ConversationsLoadState::Refused => "Conversation readback was refused.",
 	}
 }
@@ -4614,7 +4600,7 @@ fn conversation_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyEl
 	gpui::div()
 		.id("conversation-session-sidebar")
 		.role(Role::TabList)
-		.aria_label("Conversation conversations")
+		.aria_label("Conversations")
 		.w(gpui::px(WORKBENCH_SESSION_SIDEBAR_WIDTH))
 		.min_w(gpui::px(WORKBENCH_SESSION_SIDEBAR_WIDTH))
 		.h_full()
@@ -4784,7 +4770,7 @@ fn conversation_native_settings_inspector(
 			.role(Role::Status)
 			.text_size(gpui::px(11.0))
 			.text_color(ui_theme::rgb(WB_TEXT_FAINT))
-			.child("Native settings have not been observed.")
+			.child("Conversation settings unavailable.")
 			.into_any_element();
 	};
 
@@ -4792,7 +4778,7 @@ fn conversation_native_settings_inspector(
 		.id("conversation-native-settings")
 		.debug_selector(|| "conversation-native-settings".into())
 		.role(Role::Group)
-		.aria_label("Last read Codex settings")
+		.aria_label("Conversation settings")
 		.flex()
 		.flex_col()
 		.gap_2()
@@ -4800,7 +4786,7 @@ fn conversation_native_settings_inspector(
 			gpui::div()
 				.text_size(gpui::px(11.0))
 				.text_color(ui_theme::rgb(WB_TEXT_FAINT))
-				.child("Last read from Codex"),
+				.child("Last known settings"),
 		)
 		.child(inspector_metadata_row("Model", settings.model.as_str().to_owned()))
 		.child(inspector_metadata_row("Provider", settings.model_provider.clone()))
@@ -4819,7 +4805,7 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 			.text_center()
 			.text_size(gpui::px(11.0))
 			.text_color(ui_theme::rgb(WB_TEXT_FAINT))
-			.child("Select a conversation to view its context.")
+			.child("Select a conversation to see its context.")
 			.into_any_element();
 	};
 	let runtime = task
@@ -4898,7 +4884,7 @@ fn conversation_context_inspector(shell: &Shell, cx: &mut Context<Shell>) -> Any
 			gpui::div()
 				.text_size(gpui::px(11.0))
 				.text_color(ui_theme::rgb(WB_TEXT_FAINT))
-				.child("Codex link becomes available after exact provider-thread readback."),
+				.child("Conversation link unavailable."),
 		);
 	}
 
@@ -5038,7 +5024,7 @@ fn activity_inspector_content(shell: &Shell) -> AnyElement {
 						.text_center()
 						.text_size(gpui::px(11.0))
 						.text_color(ui_theme::rgb(WB_TEXT_FAINT))
-						.child("Activity appears after verified history readback."),
+						.child("Activity not loaded."),
 				)
 			},
 		)
@@ -5235,7 +5221,7 @@ fn conversation_transcript(
 	gpui::div()
 		.id("conversation-transcript")
 		.role(Role::Log)
-		.aria_label("Conversation conversation")
+		.aria_label("Conversation")
 		.flex_1()
 		.min_h_0()
 		.overflow_y_scroll()
@@ -5561,14 +5547,16 @@ fn conversation_service_tiers(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 			gpui::div()
 				.id("conversation-defaults-pending")
 				.debug_selector(|| "conversation-defaults-pending".into())
-				.child("Waiting for account model defaults. Refresh model options to retry."),
+				.child("Account defaults unavailable. Refresh models to retry."),
 		);
 	}
 	if shell.quick.selected.is_some() && !shell.quick.model_settings_ready {
-		row = row.child(gpui::div().id("conversation-settings-pending").child("Read this conversation's settings or select model, reasoning and service tier before sending. Refresh model options to retry."));
+		row = row.child(gpui::div().id("conversation-settings-pending").child(
+			"Load conversation settings or select a model, reasoning level and service tier before sending.",
+		));
 	}
 	if shell.conversations.service_tier_unknown() {
-		row = row.child("Service tier follows the native thread");
+		row = row.child("Service tier follows conversation settings");
 	}
 	if !shell.conversations.service_tier_unknown()
 		&& shell.quick.execution.effective_service_tier().as_str() == "flex"
@@ -5669,7 +5657,7 @@ fn conversation_header_state(shell: &Shell) -> (&'static str, u32, String) {
 		.or_else(|| {
 			selected_task
 				.is_some_and(|task| task.state == ConversationState::OutcomeUnknown)
-				.then(|| "Checking the interrupted turn before continuing.".to_owned())
+				.then(|| "Checking the interrupted turn…".to_owned())
 		})
 		.or_else(|| {
 			selected_task
@@ -5779,12 +5767,11 @@ fn native_process_summary(value: Option<&NativeProcessDiagnostics>) -> String {
 
 	match value {
 		None => "No native process sample yet.".into(),
-		Some(NativeProcessDiagnostics::Inactive) =>
-			"No agent is running. Refreshing does not start one.".into(),
+		Some(NativeProcessDiagnostics::Inactive) => "No agent running.".into(),
 		Some(NativeProcessDiagnostics::Unsupported) =>
-			"This Codex version does not provide process diagnostics.".into(),
+			"Process diagnostics unsupported by this Codex version.".into(),
 		Some(NativeProcessDiagnostics::Unavailable) =>
-			"The process sample is unavailable. Refresh to try again.".into(),
+			"Process details unavailable. Refresh to retry.".into(),
 		Some(NativeProcessDiagnostics::Available {
 			process_id,
 			resident_memory_bytes,
@@ -5909,7 +5896,7 @@ fn settings_navigation(
 					.pt(gpui::px(if section_index == 0 { 4. } else { 18. }))
 					.pb_2()
 					.text_size(gpui::px(10.5))
-					.text_color(ui_theme::rgb(TEXT_MUTED))
+					.text_color(ui_theme::rgb(crate::ui_theme::TEXT_MUTED))
 					.child(if section_index == 0 { "Preferences" } else { "Application" }),
 			);
 		}
@@ -5990,7 +5977,7 @@ fn settings_navigation(
 				.flex_col()
 				.gap_1()
 				.text_size(gpui::px(10.5))
-				.text_color(ui_theme::rgb(TEXT_MUTED))
+				.text_color(ui_theme::rgb(crate::ui_theme::TEXT_MUTED))
 				.child("Decodex")
 				.child(format!("Version {}", env!("CARGO_PKG_VERSION"))),
 		)
@@ -6063,9 +6050,9 @@ fn settings_workspace_content(
 								"Diagnostics"
 							},
 							if selected == Destination::Accounts {
-								"Manage sign-in, usage, and account routing."
+								"Choose an account for new conversations, or use Balanced to select one automatically."
 							} else {
-								"Check local services and find details for troubleshooting."
+								"Check local services without starting a conversation."
 							},
 						))
 						.when(selected == Destination::Health, |d| {
@@ -6203,7 +6190,7 @@ fn composer_send(can_send: bool, cx: &mut Context<Shell>) -> AnyElement {
 		.role(Role::Button)
 		.aria_label("Send message")
 		.when(!can_send, |element| {
-			element.aria_label("Send unavailable; check conversation status")
+			element.aria_label("Send unavailable · Check conversation status")
 		})
 		.h(gpui::px(23.0))
 		.min_h(gpui::px(23.0))
@@ -6283,7 +6270,7 @@ fn composer_recover(
 		.rounded(gpui::px(7.0))
 		.border_1()
 		.border_color(if can_recover {
-			ui_theme::rgb(WARNING).opacity(0.33)
+			ui_theme::rgb(crate::ui_theme::WARNING).opacity(0.33)
 		} else {
 			ui_theme::rgba(0xffffff10)
 		})
@@ -6296,7 +6283,7 @@ fn composer_recover(
 		.when(can_recover, |element| {
 			element
 				.cursor_pointer()
-				.hover(|element| element.bg(ui_theme::rgb(WARNING).opacity(0.07)))
+				.hover(|element| element.bg(ui_theme::rgb(crate::ui_theme::WARNING).opacity(0.07)))
 				.active(|element| element.opacity(0.72))
 				.on_click(cx.listener(|shell, _, window, cx| {
 					shell.recover_conversation(window, cx);
@@ -6917,10 +6904,9 @@ fn transcript_history_status(
 	has_rows: bool,
 ) -> Option<&'static str> {
 	history.map_or_else(
-		|| (!has_rows).then_some("Conversation history is not connected."),
+		|| (!has_rows).then_some("Conversation history disconnected."),
 		|history| match history.load {
-			HistoryLoadState::Inactive =>
-				(!has_rows).then_some("Select a conversation or start a new conversation."),
+			HistoryLoadState::Inactive => (!has_rows).then_some("Select or start a conversation."),
 			HistoryLoadState::InitialLoading | HistoryLoadState::RefreshingVisible =>
 				Some(if has_rows {
 					"Syncing earlier context"
@@ -6929,8 +6915,8 @@ fn transcript_history_status(
 				}),
 			HistoryLoadState::PrefetchingAdjacent | HistoryLoadState::Visible => None,
 			HistoryLoadState::RetryableUnavailable(_) =>
-				Some("History is temporarily unavailable. Reconnect or retry."),
-			HistoryLoadState::ClosedUnavailable(_) => Some("History readback was refused."),
+				Some("History unavailable. Reconnect or retry."),
+			HistoryLoadState::ClosedUnavailable(_) => Some("History request rejected."),
 		},
 	)
 }
@@ -7234,7 +7220,7 @@ mod tests {
 			shell::account_login_recovery_operation_id(&rejected),
 			Some(recovery_operation_id)
 		);
-		assert_eq!(shell::account_readiness_status(&rejected), "Refresh rejected · re-login");
+		assert_eq!(shell::account_readiness_status(&rejected), "Refresh rejected · Sign in again");
 
 		rejected.unsettled_operation.as_mut().expect("recovery operation").recovery_code = Some(
 			decodex_protocol::WireText::new("provider_access_rejected_after_refresh")
@@ -7242,7 +7228,7 @@ mod tests {
 		);
 
 		assert!(shell::account_login_recovery_operation_id(&rejected).is_some());
-		assert_eq!(shell::account_readiness_status(&rejected), "New login required · re-login");
+		assert_eq!(shell::account_readiness_status(&rejected), "Sign in again");
 
 		rejected.unsettled_operation.as_mut().expect("recovery operation").recovery_code = Some(
 			decodex_protocol::WireText::new("credential_rotate_failed")
@@ -7560,10 +7546,10 @@ mod tests {
 				"Connecting",
 				"Online",
 				"Reconnecting",
-				"Restart Decodex",
-				"Restart Decodex",
+				"Cannot connect",
+				"Connection blocked",
 				"Shutting down",
-				"Restart Decodex",
+				"Disconnected",
 			]
 		);
 	}
@@ -7681,8 +7667,10 @@ mod tests {
 				reason,
 				recovery: QuarantineRecovery::OperatorRequired,
 			};
+			let presentation = shell::connection_presentation(view);
 
-			assert_eq!(shell::connection_presentation(view).label, "Restart Decodex");
+			assert_eq!(presentation.label, "Connection blocked");
+			assert!(presentation.detail.contains("Diagnostics"));
 		}
 	}
 
@@ -7690,11 +7678,11 @@ mod tests {
 	fn route_rejections_preserve_the_quit_and_login_actions() {
 		assert_eq!(
 			shell::account_rejection_label(AccountCommandRejectionDto::CodexIsRunning),
-			"Quit ChatGPT or Codex, then try switching again."
+			"Quit ChatGPT or Codex, then switch again."
 		);
 		assert_eq!(
 			shell::account_rejection_label(AccountCommandRejectionDto::CredentialNeedsLogin),
-			"This account needs you to sign in again."
+			"Sign in again."
 		);
 	}
 
@@ -7715,13 +7703,13 @@ mod tests {
 			shell::native_process_summary(Some(
 				&decodex_protocol::NativeProcessDiagnostics::Inactive
 			))
-			.contains("does not start")
+			.contains("No agent running")
 		);
 		assert!(
 			shell::native_process_summary(Some(
 				&decodex_protocol::NativeProcessDiagnostics::Unsupported
 			))
-			.contains("does not provide")
+			.contains("unsupported")
 		);
 	}
 

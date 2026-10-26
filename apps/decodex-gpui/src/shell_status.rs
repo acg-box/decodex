@@ -249,7 +249,8 @@ impl Shell {
 
 		if let Some(alias) = &snapshot.route_success_alias {
 			notices.push(
-				Notice::new(format!("Switched to {alias}."), "", Recovery::Accounts).success(),
+				Notice::new(format!("New conversations will use {alias}."), "", Recovery::Accounts)
+					.success(),
 			);
 		}
 		if let Some(feedback) = shell::account_operation_feedback(self) {
@@ -290,9 +291,9 @@ impl Shell {
 			notices.push(Notice::new(
 				"Account profile",
 				if self.account_profile.load == AccountProfileLoadState::Offline {
-					"Connect to the service to update your activity."
+					"Reconnect to update activity."
 				} else {
-					"Your activity couldn’t be loaded. Try again later."
+					"Activity unavailable. Try later."
 				},
 				Recovery::Accounts,
 			));
@@ -303,15 +304,15 @@ impl Shell {
 		let detail = match self.account_profile.result.as_ref() {
 			Some(AccountProfileResult::Cached { refresh_error, .. }) =>
 				Some(if account_profile::requires_login(*refresh_error) {
-					"Sign in again to update your activity."
+					"Sign in again to update activity."
 				} else {
-					"Your activity couldn’t be updated. Try again later."
+					"Could not update activity. Try later."
 				}),
 			Some(AccountProfileResult::Unavailable { error, .. }) =>
 				Some(if account_profile::requires_login(*error) {
 					"Sign in again to view your activity."
 				} else {
-					"Your activity couldn’t be loaded. Try again later."
+					"Activity unavailable. Try later."
 				}),
 			_ => None,
 		};
@@ -347,7 +348,7 @@ impl Shell {
 		let notices = self.notifications(connection, cx);
 		let color = notice_color(&notices);
 		let label = if notices.is_empty() {
-			"Status".to_owned()
+			"Notifications".to_owned()
 		} else {
 			format!("Notifications · {}", notices.len())
 		};

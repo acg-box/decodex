@@ -81,32 +81,11 @@ impl AgentSurface {
 			return;
 		};
 		let action = if save {
-			let Some(AgentAppExposureResult::Available {
-				work_id: actual,
-				connector_id: app,
-				review_token,
-				can_update: true,
-				preference,
-				..
-			}) = &self.app_exposure.state
-			else {
+			let Some(action) = self.app_exposure_edit(&work_id, &connector_id) else {
 				return;
 			};
 
-			if actual != &work_id
-				|| app != &connector_id
-				|| known(preference).is_none()
-				|| known(preference) == Some(self.app_exposure.draft.clone())
-			{
-				return;
-			}
-
-			Some(AgentActionDto::SetAppToolExposure {
-				work_id: work_id.clone(),
-				connector_id: connector_id.clone(),
-				review_token: review_token.clone(),
-				omit: self.app_exposure.draft.clone(),
-			})
+			Some(action)
 		} else {
 			None
 		};
@@ -118,7 +97,7 @@ impl AgentSurface {
 		self.app_exposure.owner = Some((work.into(), connector.into()));
 		self.app_exposure.state = None;
 		self.app_exposure.feedback =
-			if save { "Saving App settings…" } else { "Reading App settings…" }.into();
+			if save { "Saving app settings…" } else { "Reading app settings…" }.into();
 
 		let key =
 			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
@@ -134,30 +113,51 @@ impl AgentSurface {
 		});
 		let work = work.to_owned();
 
-		self.app_exposure.task=Some(cx.spawn(async move |surface,cx| {
-   let result=future.await;
-   let _=surface.update(cx,|s,cx| {
-    if s.app_exposure.epoch!=epoch {return;}
+		self.app_exposure.task = Some(cx.spawn(async move |surface, cx| {
+			let result = future.await;
+			let _ = surface.update(cx, |s, cx| {
+				if s.app_exposure.epoch != epoch {
+					return;
+				}
 
-    s.app_exposure.task=None;
+				s.app_exposure.task = None;
 
-    if s.selected.as_ref()!=Some(&work) || s.snapshot.as_ref().is_none_or(|v|v.runtime_source.as_ref()!=Some(&source) || !v.work_items.iter().any(|w|w.id==work && w.codex_thread_id.as_ref()==Some(&thread))) {s.reset_app_exposure();cx.notify();return;}
+				if s.selected.as_ref() != Some(&work)
+					|| s.snapshot.as_ref().is_none_or(|v| {
+						v.runtime_source.as_ref() != Some(&source)
+							|| !v.work_items.iter().any(|w| {
+								w.id == work && w.codex_thread_id.as_ref() == Some(&thread)
+							})
+					}) {
+					s.reset_app_exposure();
+					cx.notify();
 
-    let (outcome,state)=result.unwrap_or((None,AgentAppExposureResult::Unavailable));
+					return;
+				}
 
-    s.app_exposure.feedback=match outcome {
-     Some(Ok(AgentCommandResponse::Accepted {..}))=>"Preference saved. Current settings are shown below; running tools may retain their previous configuration.",
-     Some(Ok(AgentCommandResponse::Rejected {..}))=>"The edit was not accepted. Refresh the settings before trying again.",
-     Some(_)=>"The write is unconfirmed. It was not retried. Check task diagnostics and the current preference below.",
-     None if save=>"The write is unconfirmed. Refresh before further action.",
-     None=>"This setting affects the App across tasks using this native user configuration.",
-    }.into();
+				let (outcome, state) =
+					result.unwrap_or((None, AgentAppExposureResult::Unavailable));
 
-    if let AgentAppExposureResult::Available {preference,..}=&state {s.app_exposure.draft=known(preference).flatten();}
+				s.app_exposure.feedback = match outcome {
+					Some(Ok(AgentCommandResponse::Accepted { .. })) =>
+						"Saved. Running tools keep their existing settings.",
+					Some(Ok(AgentCommandResponse::Rejected { .. })) =>
+						"Change rejected. Refresh and try again.",
+					Some(_) => "Save unconfirmed. Check current settings before retrying.",
+					None if save => "Save unconfirmed. Refresh before retrying.",
+					None => "Shared by conversations using this config.",
+				}
+				.into();
 
-    s.app_exposure.state=Some(state);cx.notify();
-   });
-  }));
+				if let AgentAppExposureResult::Available { preference, .. } = &state {
+					s.app_exposure.draft = known(preference).flatten();
+				}
+
+				s.app_exposure.state = Some(state);
+
+				cx.notify();
+			});
+		}));
 
 		cx.notify();
 	}
@@ -172,22 +172,7 @@ impl AgentSurface {
 		}
 
 		let (owner, app) = (owner.clone(), connector.clone());
-		let mut panel = gpui::div()
-			.id("app-exposure-panel")
-			.flex()
-			.flex_col()
-			.gap_2()
-			.child(format!("Tool visibility · {connector}"))
-			.child(self.app_exposure.feedback.clone());
-
-		panel = panel.child(mcp_forms::mcp_button(
-			"app-exposure-refresh".into(),
-			"Refresh App settings".into(),
-			false,
-			cx,
-			move |s, cx| s.update_app_exposure(&owner, &app, false, cx),
-		));
-
+		let mut panel = self.app_exposure_header(owner, app, connector, cx);
 		let Some(AgentAppExposureResult::Available {
 			effective,
 			preference,
@@ -196,25 +181,29 @@ impl AgentSurface {
 			..
 		}) = &self.app_exposure.state
 		else {
-			return panel.child("Settings are unavailable or still loading.").into_any_element();
+			if self.app_exposure.task.is_some() {
+				return panel.into_any_element();
+			}
+
+			return panel.child("Settings unavailable. Refresh to retry.").into_any_element();
 		};
 
 		panel = panel
-			.child(format!("Stored preference: {}", description(preference)))
-			.child(format!("Effective connector setting: {}", description(effective)));
+			.child(format!("Saved: {}", description(preference)))
+			.child(format!("Effective: {}", description(effective)));
 
 		if effective != preference && preference.is_some() {
-			panel = panel.child("Another configuration layer overrides this preference.");
+			panel = panel.child("Overridden by another configuration layer.");
 		}
 
 		if let Some(outcome) = last_outcome {
 			panel = panel.child(format!(
-				"Last recorded configuration write: {}",
+				"Last save: {}",
 				match outcome.as_str() {
-					"saved" => "Configuration read back",
-					"overridden" => "Saved; another configuration layer takes precedence",
-					"target_observed" => "Saved value confirmed after recovery",
-					"superseded" => "Configuration changed after the original write",
+					"saved" => "Saved",
+					"overridden" => "Saved; overridden by another configuration layer",
+					"target_observed" => "Saved value confirmed",
+					"superseded" => "Settings changed after saving",
 					"reserved" | "unknown" => "Unconfirmed; no automatic retry",
 					"rejected" => "Not sent",
 					_ => "Unknown outcome",
@@ -223,11 +212,11 @@ impl AgentSurface {
 		}
 
 		if !can_update || self.app_exposure.task.is_some() {
-			return panel.child("Refresh to obtain a current settings review.").into_any_element();
+			return panel.child("Refresh settings to continue.").into_any_element();
 		}
 		if known(preference).is_none() || known(effective).is_none() {
 			return panel
-				.child("This Codex version reports restrictions that this editor does not support.")
+				.child("These restrictions cannot be edited in this Decodex version.")
 				.into_any_element();
 		}
 
@@ -268,7 +257,7 @@ impl AgentSurface {
 
 			panel = panel.child(mcp_forms::mcp_button(
 				"app-exposure-save".into(),
-				"Save App settings".into(),
+				"Save settings".into(),
 				false,
 				cx,
 				move |s, cx| s.update_app_exposure(&owner, &app, true, cx),
@@ -277,13 +266,70 @@ impl AgentSurface {
 
 		panel
 			.child(
-				"Server restrictions still apply. This does not change tool approvals or disconnect the App.",
+				"Visibility only. App connections, approvals and server restrictions stay unchanged.",
 			)
 			.into_any_element()
 	}
 }
 
 impl AgentSurface {
+	fn app_exposure_edit(
+		&self,
+		work_id: &EntityId,
+		connector_id: &WireText,
+	) -> Option<AgentActionDto> {
+		let Some(AgentAppExposureResult::Available {
+			work_id: actual,
+			connector_id: app,
+			review_token,
+			can_update: true,
+			preference,
+			..
+		}) = &self.app_exposure.state
+		else {
+			return None;
+		};
+
+		if actual != work_id
+			|| app != connector_id
+			|| known(preference).is_none()
+			|| known(preference) == Some(self.app_exposure.draft.clone())
+		{
+			return None;
+		}
+
+		Some(AgentActionDto::SetAppToolExposure {
+			work_id: work_id.clone(),
+			connector_id: connector_id.clone(),
+			review_token: review_token.clone(),
+			omit: self.app_exposure.draft.clone(),
+		})
+	}
+
+	fn app_exposure_header(
+		&self,
+		owner: String,
+		app: String,
+		connector: &str,
+		cx: &mut Context<Self>,
+	) -> Stateful<Div> {
+		let panel = gpui::div()
+			.id("app-exposure-panel")
+			.flex()
+			.flex_col()
+			.gap_2()
+			.child(format!("Tool visibility · {connector}"))
+			.child(self.app_exposure.feedback.clone());
+
+		panel.child(mcp_forms::mcp_button(
+			"app-exposure-refresh".into(),
+			"Refresh settings".into(),
+			false,
+			cx,
+			move |s, cx| s.update_app_exposure(&owner, &app, false, cx),
+		))
+	}
+
 	fn app_exposure_reset_controls(
 		&self,
 		mut panel: Stateful<Div>,
@@ -302,7 +348,7 @@ impl AgentSurface {
 		));
 		panel = panel.child(mcp_forms::mcp_button(
 			"app-exposure-clear".into(),
-			"Clear App-specific omissions".into(),
+			"Show in all tool surfaces".into(),
 			self.app_exposure.draft == Some(vec![]),
 			cx,
 			|s, cx| {
@@ -335,7 +381,7 @@ fn known(values: &Option<Vec<String>>) -> Option<Option<Vec<AgentToolExposureSur
 fn description(values: &Option<Vec<String>>) -> String {
 	match values {
 		None => "Inherited".into(),
-		Some(v) if v.is_empty() => "No App-specific omissions".into(),
+		Some(v) if v.is_empty() => "Visible in all tool surfaces".into(),
 		Some(v) => v.join(", "),
 	}
 }

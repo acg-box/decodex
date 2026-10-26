@@ -228,13 +228,13 @@ impl AgentSurface {
 		else {
 			return panel
 				.child(agent_surface::muted(
-					"Choose an available conversation or project, then refresh skills.",
+					"Select a conversation or project, then refresh skills.",
 				))
 				.into_any_element();
 		};
 		let Some(AgentSkillsResult::Available { page, .. }) = &self.skills.state else {
 			return panel
-				.child(agent_surface::muted("Skills are unavailable. Find skills to try again."))
+				.child(agent_surface::muted("Skills unavailable. Choose Find skills to retry."))
 				.into_any_element();
 		};
 		let mut list = gpui::div()
@@ -287,7 +287,7 @@ impl AgentSurface {
 		}
 		if page.errors > 0 {
 			panel = panel.child(agent_surface::muted(format!(
-				"Codex reported {} skill discovery errors.",
+				"Codex reported {} skill errors.",
 				page.errors
 			)));
 		}

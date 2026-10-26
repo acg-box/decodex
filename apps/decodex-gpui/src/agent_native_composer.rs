@@ -12,12 +12,12 @@ use crate::{
 		ActivateAgent, ActivateHealth, ActivateSettings, DismissStatus, GrowPanel, GrowPanels,
 		NavigateBack, NavigateForward, ResetPanel, ResetPanels, ShrinkPanel, ShrinkPanels,
 		ToggleContentFullscreen, ToggleGraph, ToggleInspector, ToggleSidebar,
-		agent_surface::{AgentSurface, voice::Media},
+		agent_surface::{AgentSurface, voice::Media, workspace::ARCHIVED_DETAIL},
 	},
 	ui_motion,
 	ui_theme::{
-		self, BODY_SIZE, COMPOSER_BOTTOM_GAP, COMPOSER_RADIUS, COMPOSER_TOP_GAP,
-		CONVERSATION_INSET, CONVERSATION_WIDTH, FONT_FAMILY, TEXT, appearance,
+		self, BODY_SIZE, COMPOSER_BOTTOM_GAP, COMPOSER_MIN_HEIGHT, COMPOSER_RADIUS,
+		COMPOSER_TOP_GAP, CONVERSATION_INSET, CONVERSATION_WIDTH, FONT_FAMILY, TEXT, appearance,
 		material::Surface,
 		native_material_panel::{self, MaterialPanel},
 	},
@@ -38,7 +38,7 @@ impl Default for NativeComposer {
 			enabled: false,
 			child: None,
 			bounds: None,
-			height: 42.,
+			height: COMPOSER_MIN_HEIGHT,
 			creating: false,
 			failed: false,
 		}
@@ -90,7 +90,7 @@ impl Render for ComposerPanel {
 			.text_color(ui_theme::rgb(TEXT))
 			.on_children_prepainted(move |bounds, _, cx| {
 				if let Some(bounds) = bounds.first() {
-					let height = f32::from(bounds.size.height).max(42.);
+					let height = f32::from(bounds.size.height).max(COMPOSER_MIN_HEIGHT);
 					let _ = owner.update(cx, |s, cx| {
 						if (s.native_controls.composer.height - height).abs() > 0.5 {
 							// Reserve the same new height in the transcript before its next
@@ -299,12 +299,13 @@ impl AgentSurface {
 
 	pub(super) fn render_native_composer_anchor(&self, cx: &mut Context<Self>) -> AnyElement {
 		let blocked = self.composer_unavailable_reason();
+		let archived = self.selected_is_archived();
 		let parent_managed = self.native_agents.selected.is_some()
 			&& matches!(
 				self.native_agents.connection,
 				super::native_agents::NativeConnection::ParentManaged
 			);
-		let read_only = blocked.is_some() && !parent_managed;
+		let read_only = blocked.is_some() && !parent_managed && !archived;
 		let owner = cx.entity().downgrade();
 		let anchor = gpui::canvas(
 			move |bounds, _, cx| {
@@ -329,14 +330,19 @@ impl AgentSurface {
 				gpui::div()
 					.id("native-composer-accessibility-entry")
 					.role(if read_only { Role::Status } else { Role::Button })
-					.aria_label(if parent_managed {
+					.aria_label(if archived {
+						"Archived conversation options"
+					} else if parent_managed {
 						"Open parent conversation"
 					} else {
 						blocked.unwrap_or("Focus message editor")
 					})
+					.aria_description(if archived { ARCHIVED_DETAIL } else { "" })
 					.tab_index(if read_only { -1 } else { 0 })
 					.on_click(cx.listener(move |s, _, window, cx| {
-						if parent_managed {
+						if archived {
+							s.focus_native_composer_actions(cx);
+						} else if parent_managed {
 							s.open_native_parent(cx);
 						} else {
 							s.focus_message(window, cx);
@@ -344,7 +350,9 @@ impl AgentSurface {
 					}))
 					.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 						if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-							if parent_managed {
+							if archived {
+								s.focus_native_composer_actions(cx);
+							} else if parent_managed {
 								s.open_native_parent(cx);
 							} else {
 								s.focus_message(window, cx);
@@ -361,6 +369,24 @@ impl AgentSurface {
 					.child(self.render_composer_popover(cx)),
 			)
 			.into_any_element()
+	}
+
+	fn focus_native_composer_actions(&self, cx: &mut Context<Self>) {
+		let Some(child) =
+			self.native_controls.composer.child.filter(|_| self.native_controls.composer.enabled)
+		else {
+			return;
+		};
+
+		cx.defer(move |cx| {
+			let _ = child.update(cx, |panel, window, cx| {
+				let focus = panel.owner.update(cx, |s, cx| s.archive_recovery_focus(cx));
+
+				cx.activate(true);
+				window.activate_window();
+				window.focus(&focus, cx);
+			});
+		});
 	}
 }
 
@@ -391,7 +417,7 @@ fn create_panel(
 				titlebar: None,
 				window_bounds: Some(WindowBounds::Windowed(Bounds::new(
 					gpui::point(gpui::px(0.), gpui::px(0.)),
-					gpui::size(gpui::px(600.), gpui::px(42.)),
+					gpui::size(gpui::px(600.), gpui::px(COMPOSER_MIN_HEIGHT)),
 				))),
 				window_background: WindowBackgroundAppearance::Transparent,
 				show: false,

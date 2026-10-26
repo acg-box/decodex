@@ -146,12 +146,8 @@ impl AgentSurface {
 		self.hook_settings.work = Some(work.clone());
 		self.hook_settings.state = None;
 		self.hook_settings.reviewed = false;
-		self.hook_settings.feedback = if saving {
-			"Submitting shared hook setting…"
-		} else {
-			"Reading native hook settings…"
-		}
-		.into();
+		self.hook_settings.feedback =
+			if saving { "Updating shared hooks…" } else { "Reading hooks…" }.into();
 
 		let key =
 			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
@@ -190,13 +186,12 @@ impl AgentSurface {
 				s.hook_settings.reviewed = !saving;
 				s.hook_settings.feedback = match outcome {
 					Some(Ok(AgentCommandResponse::Accepted { .. })) =>
-						"Write acknowledged. Read the saved outcome and effective native hook state below.",
+						"Change accepted. Current hook settings appear below.",
 					Some(Ok(AgentCommandResponse::Rejected { .. })) =>
-						"Hook change was not accepted. Review current settings before choosing again.",
-					Some(_) => "Hook change could not be confirmed. It was not retried.",
-					None if saving =>
-						"Hook change could not be confirmed. Refresh its saved state.",
-					None => "These settings are shared by tasks using this native config file.",
+						"Change rejected. Refresh before retrying.",
+					Some(_) => "Change unconfirmed. No automatic retry.",
+					None if saving => "Change unconfirmed. Refresh before retrying.",
+					None => "Shared by conversations using this config.",
 				}
 				.into();
 				s.hook_settings.state = Some(match state {
@@ -242,7 +237,7 @@ impl AgentSurface {
 		let mut panel = gpui::div().flex().flex_col().gap_2().child("Shared hooks").child(
 			mcp_forms::mcp_button(
 				"hook-settings-read".into(),
-				"Review / refresh shared hooks".into(),
+				"Refresh hooks".into(),
 				false,
 				cx,
 				move |s, cx| s.update_hook_settings(owner.clone(), None, cx),
@@ -264,7 +259,7 @@ impl AgentSurface {
 				last_edit,
 				..
 			}) => {
-				panel=panel.child(format!("Shared config: {}",config_file.as_str())).child("Trust approves only the displayed content hash. Enablement is separate. Other tasks using this file are also affected. Native policy and task plugin exclusions still apply.");
+				panel=panel.child(format!("Shared config: {}",config_file.as_str())).child("Trust applies to this exact content; enabling is separate. Changes affect all tasks using this file, subject to Codex policy and plugin exclusions.");
 
 				if let Some(edit) = last_edit {
 					panel = panel.child(format!(
@@ -276,9 +271,8 @@ impl AgentSurface {
 					));
 
 					if matches!(edit.outcome.as_str(), "reserved" | "unknown") {
-						panel = panel.child(
-							"A shared edit is unconfirmed. Refresh to read its result; it will not be resent.",
-						);
+						panel = panel
+							.child("Change unconfirmed. Refresh to check; no automatic retry.");
 					}
 				}
 
@@ -293,10 +287,10 @@ impl AgentSurface {
 							hook.trust_status,
 							if hook.enabled { "enabled" } else { "disabled" }
 						))
-						.child(format!("Reviewed hash: {}", hook.current_hash.as_str()))
+						.child(format!("Content hash: {}", hook.current_hash.as_str()))
 						.child(hook.details.clone());
 					panel = panel.child(format!(
-						"Saved enablement: {}",
+						"Saved: {}",
 						hook.saved_enabled.map_or("inherited", |v| if v {
 							"enabled"
 						} else {
@@ -333,13 +327,11 @@ impl AgentSurface {
 				}
 
 				if hooks.is_empty() {
-					panel = panel.child("No hooks were reported for this directory.");
+					panel = panel.child("No hooks in this directory.");
 				}
 			},
 			Some(AgentHookSettingsState::Unavailable) =>
-				panel = panel.child(
-					"Current hook settings are unavailable. Reconnect and refresh to review them.",
-				),
+				panel = panel.child("Hook settings unavailable. Reconnect and refresh."),
 			None => {},
 		}
 
@@ -359,7 +351,7 @@ fn hook_changes(hook: &AgentHookDto) -> Vec<(AgentHookChange, &'static str)> {
 		if hook.saved_enabled != Some(enabled) {
 			changes.push((
 				AgentHookChange::Enabled(enabled),
-				if enabled { "Save enabled" } else { "Save disabled" },
+				if enabled { "Enable" } else { "Disable" },
 			));
 		}
 	}

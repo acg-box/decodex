@@ -370,7 +370,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 			)
 			XCTAssertEqual(
 				error.localizedDescription,
-				"This Codex login is already added. Choose a different account on the login page, then try again."
+				"Account already added. Choose another account on the sign-in page."
 			)
 		}
 
@@ -650,7 +650,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 		XCTAssertEqual(status.failure, .deviceAuthorizationRejected)
 		XCTAssertEqual(
 			status.failure?.presentation,
-			"Device-code approval failed. Check ChatGPT Security, then try again."
+			"Device sign-in rejected. Try another sign-in method."
 		)
 	}
 
@@ -701,7 +701,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 		XCTAssertEqual(status.failure, .providerAlreadyEnrolled)
 		XCTAssertEqual(
 			status.failure?.presentation,
-			"This Codex login is already added. Choose a different account on the login page, then try again."
+			"Account already added. Choose another account on the sign-in page."
 		)
 	}
 

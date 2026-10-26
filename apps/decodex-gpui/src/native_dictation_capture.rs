@@ -37,16 +37,25 @@ impl Capture {
 		let finish = finished.clone();
 		let requested = Instant::now();
 
-		Builder::new().name("dictation-capture".into()).spawn(move || {
-            let mut audio = match Session::start(device, Mode::Dictation, stop.clone()) {
-                Ok(audio) => audio,
-                Err(error) => { let _ = tx.try_send(serde_json::json!({"type":"error","message":error.message()})); return; }
-            };
+		Builder::new()
+			.name("dictation-capture".into())
+			.spawn(move || {
+				let mut audio = match Session::start(device, Mode::Dictation, stop.clone()) {
+					Ok(audio) => audio,
+					Err(error) => {
+						let _ = tx.try_send(serde_json::json!({"type":"error","message":error.message()}));
 
-            if !run(&mut audio, &tx, &stop, &finish, requested) {
-                let _ = tx.try_send(serde_json::json!({"type":"error","message":"Microphone capture stopped. Check the input device and try again."}));
-            }
-        }).map_err(|_| AudioError::Worker)?;
+						return;
+					},
+				};
+
+				if !run(&mut audio, &tx, &stop, &finish, requested) {
+					let _ = tx.try_send(
+						serde_json::json!({"type":"error","message":"Microphone stopped. Check the device and retry."}),
+					);
+				}
+			})
+			.map_err(|_| AudioError::Worker)?;
 
 		Ok(Self { terminal: Cell::new(false), events, stopped, finished })
 	}
@@ -115,9 +124,9 @@ fn run(
 			last_audio = Instant::now();
 		} else if !final_buffer && last_audio.elapsed() >= Duration::from_secs(3) {
 			let message = if first {
-				"No audio arrived from the microphone. Check its connection or choose another input, then try again."
+				"No microphone audio. Check the connection or choose another input."
 			} else {
-				"The microphone stopped delivering audio. Your received text remains in the draft. Check its connection and try again."
+				"Microphone disconnected. Received text is in your draft."
 			};
 
 			healthy =

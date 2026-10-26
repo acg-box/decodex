@@ -147,7 +147,7 @@ impl AgentSurface {
 					s.read_state.feedback = if applied {
 						"Native read status saved."
 					} else {
-						"The mark was rejected or unconfirmed. Check the refreshed status before trying again."
+						"Read status unconfirmed. Refresh before retrying."
 					}
 					.into();
 				}

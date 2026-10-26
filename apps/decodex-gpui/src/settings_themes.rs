@@ -15,7 +15,7 @@ use crate::{
 	ui_theme::{
 		self, ACCENT, CANVAS, COMPOSER_MATERIAL, CONTENT_MATERIAL, ColorScheme, ColorTheme,
 		HOVER_FILL, MESSAGE_MATERIAL, PRESSED_FILL, PRIMARY_FILL, SELECTED_BORDER, SELECTED_FILL,
-		SIDEBAR_MATERIAL, TEXT, TEXT_MUTED, appearance::Theme,
+		SIDEBAR_MATERIAL, TEXT, TEXT_MUTED,
 	},
 };
 
@@ -23,10 +23,12 @@ impl SettingsSurface {
 	pub(super) fn theme_description(&self) -> String {
 		let saved = ColorTheme::configured();
 
-		if Theme::current() == Theme::Light && saved != ColorTheme::Decodex {
-			format!("Light appearance uses Decodex. Switch to dark to restore {}.", saved.name())
+		if ui_theme::appearance::Theme::current() == ui_theme::appearance::Theme::Light
+			&& saved != ColorTheme::Decodex
+		{
+			format!("Light mode uses Decodex. {} returns in dark mode.", saved.name())
 		} else {
-			"Decodex supports light and dark. Other presets use dark appearance.".into()
+			"Other themes support dark mode only.".into()
 		}
 	}
 
@@ -128,7 +130,11 @@ impl SettingsSurface {
 }
 
 fn preview(theme: ColorTheme) -> impl IntoElement {
-	let appearance = if theme == ColorTheme::Decodex { Theme::current() } else { Theme::Dark };
+	let appearance = if theme == ColorTheme::Decodex {
+		crate::ui_theme::appearance::Theme::current()
+	} else {
+		crate::ui_theme::appearance::Theme::Dark
+	};
 	let colors = ColorScheme::new(appearance, theme);
 
 	gpui::canvas(

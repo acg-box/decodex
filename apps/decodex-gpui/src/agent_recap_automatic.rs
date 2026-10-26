@@ -794,7 +794,7 @@ mod tests {
 
 			assert!(s.recap.task.is_none());
 			assert!(s.recap.cancel.is_none());
-			assert!(s.recap.feedback.contains("Wait for the service connection"));
+			assert!(s.recap.feedback.contains("Reconnect"));
 		});
 	}
 }

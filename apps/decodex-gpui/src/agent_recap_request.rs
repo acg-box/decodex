@@ -40,8 +40,7 @@ pub(super) async fn run(
 		if let Ok(AgentCommandResponse::Rejected { error }) = outcome {
 			let feedback = match error {
 				CommandError::ApplicationUnavailable { message } => message.as_str().to_owned(),
-				_ => "The recap request was not accepted. Refresh to review its current state."
-					.into(),
+				_ => "Recap request rejected. Refresh to check status.".into(),
 			};
 			let _ = updates.send(Some((None, feedback)));
 
@@ -62,10 +61,8 @@ pub(super) async fn run(
 					.await;
 			}
 
-			let _ = updates.send(Some((
-				None,
-				"Recap cancelled locally. Refresh to check service status.".into(),
-			)));
+			let _ = updates
+				.send(Some((None, "Cancelled locally. Refresh to check service status.".into())));
 
 			return;
 		}
@@ -82,18 +79,15 @@ pub(super) async fn run(
 					&& (!generate || state.request_id == request) =>
 				state,
 			Ok(_) => {
-				let _ = updates.send(Some((
-					None,
-					"Recap could not be confirmed. Refresh before trying again.".into(),
-				)));
+				let _ = updates
+					.send(Some((None, "Recap unconfirmed. Refresh before retrying.".into())));
 
 				return;
 			},
 			Err(_) => {
 				let _ = updates.send(Some((
 					None,
-					"Recap status is unavailable. Checking again; generation will not be repeated."
-						.into(),
+					"Checking recap status. Generation will not repeat.".into(),
 				)));
 
 				tokio::select! {
@@ -113,12 +107,12 @@ pub(super) async fn run(
 			TaskRecapPhase::Pending | TaskRecapPhase::Cancelling | TaskRecapPhase::Ready
 		);
 		let message = match state.phase {
-			TaskRecapPhase::Idle => "Generate a short recap of this conversation.",
+			TaskRecapPhase::Idle => "Generate a short recap.",
 			TaskRecapPhase::Pending => "Generating recap…",
 			TaskRecapPhase::Cancelling => "Cancelling recap…",
 			TaskRecapPhase::Ready => "Task recap",
-			TaskRecapPhase::Failed => "Could not generate a recap. You can try again.",
-			TaskRecapPhase::Cancelled => "This recap was cancelled or is no longer current.",
+			TaskRecapPhase::Failed => "Could not generate a recap. Try again.",
+			TaskRecapPhase::Cancelled => "Recap cancelled or outdated.",
 		};
 		let _ = updates.send(Some((Some(state), message.into())));
 

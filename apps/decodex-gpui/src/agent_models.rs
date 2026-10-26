@@ -228,11 +228,11 @@ impl AgentSurface {
 		self.task_models.reviewed = !saving;
 		self.task_models.feedback = match outcome {
 			Some(Ok(AgentCommandResponse::Accepted { .. })) =>
-				"Change submitted. Saved settings appear below.",
+				"Change submitted. Current settings appear below.",
 			Some(Ok(AgentCommandResponse::Rejected { .. })) =>
-				"Change was not accepted. Refresh before choosing again.",
-			Some(_) => "Response was not confirmed. Saved settings appear below.",
-			None if saving => "Change could not be confirmed. Refresh to check its saved state.",
+				"Change rejected. Refresh before retrying.",
+			Some(_) => "Change unconfirmed. Current settings appear below.",
+			None if saving => "Change unconfirmed. Refresh before retrying.",
 			None => "Changes apply to subsequent turns.",
 		}
 		.into();
@@ -262,7 +262,7 @@ impl AgentSurface {
 		let mut panel =
 			gpui::div().flex().flex_col().gap_2().child("Model").child(mcp_forms::mcp_button(
 				"task-models-read".into(),
-				"Review / change model".into(),
+				"Change model".into(),
 				false,
 				cx,
 				move |s, cx| s.update_task_models(owner.clone(), None, cx),
@@ -320,7 +320,7 @@ impl AgentSurface {
 			Some(AgentModelSelectionState::Pending { model, state, last_receipt, .. }) => {
 				panel = panel
 					.child(format!("{} · {}", model.as_str(), label(*state)))
-					.child("Refresh to check confirmation. The change will not be resent.");
+					.child("Refresh to check. The change will not be resent.");
 
 				if let Some(receipt) = last_receipt {
 					panel = panel.child(
@@ -332,8 +332,7 @@ impl AgentSurface {
 				}
 			},
 			Some(AgentModelSelectionState::Unavailable) => {
-				panel = panel
-					.child("Model settings are unavailable. Refresh when the task is connected.");
+				panel = panel.child("Model settings unavailable. Reconnect and refresh.");
 			},
 			None => {},
 		}
@@ -443,7 +442,7 @@ fn history_label(receipt: &AgentModelSelectionReceipt) -> String {
 		AgentModelResponse::Unknown => "delivery unconfirmed",
 	};
 	let observation = if receipt.reconciled {
-		"; current settings reviewed after restart, earlier delivery unconfirmed"
+		"; settings checked after restart, earlier delivery unconfirmed"
 	} else if receipt.target_observed {
 		"; matching native settings observed"
 	} else {

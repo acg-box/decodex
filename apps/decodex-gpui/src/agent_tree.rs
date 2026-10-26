@@ -30,10 +30,9 @@ impl AgentSurface {
 
 		let width = f32::from(window.viewport_size().width);
 		let left = self.workspace_sidebar_width(window);
+		let gutters = 3. * WORKSPACE_GUTTER + left.min(WORKSPACE_GUTTER);
 
-		self.workspace
-			.agent_panel_width
-			.min((width - left - 440.0 - 3. * WORKSPACE_GUTTER).max(0.0))
+		self.workspace.agent_panel_width.min((width - left - 440.0 - gutters).max(0.0))
 	}
 
 	pub(super) fn agent_tree(&self, cx: &mut Context<Self>) -> AnyElement {

@@ -32,8 +32,7 @@ impl AgentSurface {
 				cx.background_executor().spawn(async move { export_copy(&path, copy) }).await;
 			let _ = surface.update(cx, |surface, cx| {
 				surface.feedback = match result {
-					Ok(()) =>
-						Feedback::success("Draft copy exported. The saved copy is still retained."),
+					Ok(()) => Feedback::success("Draft exported."),
 					Err(reason) => Feedback::error(reason),
 				};
 
@@ -52,17 +51,17 @@ fn export_copy(path: &Path, copy: DesktopRecoveredDraft) -> Result<(), &'static 
 		.create_new(true)
 		.mode(0o600)
 		.open(path)
-		.map_err(|_| "Export could not create a new file. Choose a different filename.")?;
+		.map_err(|_| "File already exists or cannot be created. Choose another name.")?;
 
 	file.write_all(&bytes)
 		.and_then(|_| file.sync_all())
-		.map_err(|_| "Export could not be confirmed. The saved draft copy is unchanged.")?;
+		.map_err(|_| "Export unconfirmed. Saved draft unchanged.")?;
 
 	let parent = path.parent().ok_or("Export directory is unavailable")?;
 
 	File::open(parent)
 		.and_then(|parent| parent.sync_all())
-		.map_err(|_| "Export could not be confirmed. The saved draft copy is unchanged.")?;
+		.map_err(|_| "Export unconfirmed. Saved draft unchanged.")?;
 
 	Ok(())
 }

@@ -66,6 +66,8 @@ pub(crate) const CONVERSATION_HEADER_HEIGHT: f32 = 28.0;
 pub(crate) const CONVERSATION_WIDTH: f32 = 880.0;
 pub(crate) const CONVERSATION_INSET: f32 = 16.0;
 pub(crate) const COMPOSER_RADIUS: f32 = 14.0;
+// A one-line editor and its toolbar keep the same footprint in read-only states.
+pub(crate) const COMPOSER_MIN_HEIGHT: f32 = 77.0;
 pub(crate) const COMPOSER_TOP_GAP: f32 = 8.0;
 pub(crate) const COMPOSER_BOTTOM_GAP: f32 = 12.0;
 // Settings share shell typography and a bounded reading width.
@@ -200,6 +202,15 @@ pub(crate) fn canvas_control_group() -> Div {
 		.bg(rgba(FIELD_MATERIAL))
 }
 
+/// Workspace columns share quiet framing while their content keeps its own palette.
+pub(crate) fn workspace_surface() -> Div {
+	gpui::div()
+		.relative()
+		.rounded(gpui::px(WORKSPACE_RADIUS))
+		.bg(rgba(FIELD_MATERIAL))
+		.overflow_hidden()
+}
+
 pub(crate) fn settings_header_inset() -> Div {
 	gpui::div().px(gpui::px(SETTINGS_INSET)).pt(gpui::px(SETTINGS_TOP)).flex().justify_center()
 }
@@ -230,12 +241,17 @@ pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
 }
 
 pub(crate) fn settings_heading(title: &'static str, description: &'static str) -> Div {
-	gpui::div().flex().flex_col().gap(gpui::px(6.0)).child(settings_title(title)).child(
-		gpui::div()
-			.text_size(gpui::px(11.5))
-			.line_height(gpui::px(17.0))
-			.text_color(rgb(TEXT_MUTED))
-			.child(description),
+	gpui::div().flex().flex_col().gap(gpui::px(6.0)).child(settings_title(title)).when(
+		!description.is_empty(),
+		|column| {
+			column.child(
+				gpui::div()
+					.text_size(gpui::px(11.5))
+					.line_height(gpui::px(17.0))
+					.text_color(rgb(TEXT_MUTED))
+					.child(description),
+			)
+		},
 	)
 }
 

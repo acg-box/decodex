@@ -33,7 +33,7 @@ use crate::{
 	ui_scroll::SmoothScrollArea,
 	ui_theme::{
 		self, BODY_LINE_HEIGHT, BODY_SIZE, PANEL_DIVIDER, SETTINGS_CONTROL_HEIGHT,
-		SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_TOP, SETTINGS_WIDTH, TEXT, TEXT_MUTED,
+		SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_TOP, SETTINGS_WIDTH, TEXT,
 	},
 };
 use power::PowerSettings;
@@ -54,14 +54,6 @@ impl SettingsCategory {
 			Self::General => "General",
 			Self::Appearance => "Appearance",
 			Self::Updates => "Updates",
-		}
-	}
-
-	fn description(self) -> &'static str {
-		match self {
-			Self::General => "Choose how Decodex starts, notifies you, and manages activity.",
-			Self::Appearance => "Customize your workspace colors, materials, and reading comfort.",
-			Self::Updates => "Keep Decodex and its Codex component up to date.",
 		}
 	}
 }
@@ -130,91 +122,81 @@ impl SettingsSurface {
 		gpui::div()
 			.flex()
 			.flex_col()
+			.child(
+				gpui::div()
+					.text_size(gpui::px(11.5))
+					.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+					.child("Initial panel sizes. Drag panel edges to resize while working."),
+			)
 			.children(
-				[(true, "Sidebar width", current.sidebar), (false, "Dock height", current.dock)]
-					.into_iter()
-					.map(|(sidebar, title, value)| {
-						ui_theme::settings_row()
-							.child(ui_theme::settings_label(
-								title,
-								"Default size when a panel opens.",
-							))
+				[
+					(true, "Default sidebar width", current.sidebar),
+					(false, "Default Dock height", current.dock),
+				]
+				.into_iter()
+				.map(|(sidebar, title, value)| {
+					ui_theme::settings_row().child(ui_theme::settings_label(title, "")).child(
+						gpui::div()
+							.flex()
+							.items_center()
+							.gap_3()
 							.child(
 								gpui::div()
-									.flex()
-									.items_center()
-									.gap_3()
-									.child(
-										gpui::div()
-											.w(gpui::px(54.))
-											.text_size(gpui::px(12.))
-											.text_color(ui_theme::rgb(TEXT_MUTED))
-											.child(format!("{value} px")),
-									)
-									.child(
-										ui_theme::settings_segments(title)
-											.children([(-24_i32, "−"), (24, "+")].into_iter().map(
-												|(delta, label)| {
-													ui_theme::settings_button(
-														SharedString::from(format!(
-															"panel-default-{sidebar}-{delta}"
-														)),
-														label,
-													)
-													.w(gpui::px(SETTINGS_CONTROL_HEIGHT))
-													.aria_label(format!(
-														"{} {title}",
-														if delta < 0 {
-															"Decrease"
-														} else {
-															"Increase"
-														}
-													))
-													.on_click(cx.listener(move |s, _, _, cx| {
-														s.adjust_panel(sidebar, delta, cx)
-													}))
-													.on_key_down(cx.listener(
-														move |s, e: &KeyDownEvent, _, cx| {
-															if !e.is_held
-																&& ["enter", "space"].contains(
-																	&e.keystroke.key.as_str(),
-																) {
-																s.adjust_panel(sidebar, delta, cx);
-																cx.stop_propagation();
-															}
-														},
-													))
+									.w(gpui::px(54.))
+									.text_size(gpui::px(12.))
+									.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+									.child(format!("{value} px")),
+							)
+							.child(
+								ui_theme::settings_segments(title)
+									.children([(-24_i32, "−"), (24, "+")].into_iter().map(
+										|(delta, label)| {
+											ui_theme::settings_button(
+												SharedString::from(format!(
+													"panel-default-{sidebar}-{delta}"
+												)),
+												label,
+											)
+											.w(gpui::px(SETTINGS_CONTROL_HEIGHT))
+											.aria_label(format!(
+												"{} {title}",
+												if delta < 0 { "Decrease" } else { "Increase" }
+											))
+											.on_click(cx.listener(move |s, _, _, cx| {
+												s.adjust_panel(sidebar, delta, cx)
+											}))
+											.on_key_down(cx.listener(
+												move |s, e: &KeyDownEvent, _, cx| {
+													if !e.is_held
+														&& ["enter", "space"]
+															.contains(&e.keystroke.key.as_str())
+													{
+														s.adjust_panel(sidebar, delta, cx);
+														cx.stop_propagation();
+													}
 												},
 											))
-											.role(Role::Group),
-									),
-							)
-					}),
+										},
+									))
+									.role(Role::Group),
+							),
+					)
+				}),
 			)
 			.child(
-				ui_theme::settings_row()
-					.min_h(gpui::px(44.))
-					.child(
-						gpui::div()
-							.flex_1()
-							.text_size(gpui::px(11.5))
-							.text_color(ui_theme::rgb(TEXT_MUTED))
-							.child("You can also resize panels by dragging their edges."),
-					)
-					.child(
-						ui_theme::settings_button("reset-panel-sizes", "Reset sizes")
-							.on_click(cx.listener(|_, _, _, cx| {
-								PanelDefaults { sidebar: 240, dock: 240 }.select(cx)
-							}))
-							.on_key_down(cx.listener(|_, e: &KeyDownEvent, _, cx| {
-								if !e.is_held
-									&& ["enter", "space"].contains(&e.keystroke.key.as_str())
-								{
-									PanelDefaults { sidebar: 240, dock: 240 }.select(cx);
-									cx.stop_propagation();
-								}
-							})),
-					),
+				ui_theme::settings_row().min_h(gpui::px(44.)).justify_end().child(
+					ui_theme::settings_button("reset-panel-sizes", "Reset sizes")
+						.on_click(cx.listener(|_, _, _, cx| {
+							PanelDefaults { sidebar: 240, dock: 240 }.select(cx)
+						}))
+						.on_key_down(cx.listener(|_, e: &KeyDownEvent, _, cx| {
+							if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str())
+							{
+								PanelDefaults { sidebar: 240, dock: 240 }.select(cx);
+								cx.stop_propagation();
+							}
+						})),
+				),
 			)
 	}
 
@@ -228,7 +210,7 @@ impl SettingsSurface {
 				ui_theme::settings_row()
 					.child(ui_theme::settings_label(
 						"Cursor style",
-						"Choose how the text insertion point looks.",
+						"The text insertion point in message inputs.",
 					))
 					.child(
 						ui_theme::settings_segments("Cursor style").children(
@@ -268,14 +250,14 @@ impl SettingsSurface {
 					(
 						"cursor-blinking",
 						"Blinking cursor",
-						"Blink while the insertion point is idle.",
+						"Blink while you are not typing.",
 						current.blinking,
 						Preference { blinking: !current.blinking, ..current },
 					),
 					(
 						"cursor-animation",
-						"Cursor motion",
-						"Animate the insertion point as you type.",
+						"Animate cursor",
+						"Move smoothly between typed characters.",
 						current.animated,
 						Preference { animated: !current.animated, ..current },
 					),
@@ -298,7 +280,7 @@ impl SettingsSurface {
 		ui_theme::settings_row()
 			.child(ui_theme::settings_label(
 				"Appearance",
-				"Follow your system, or choose a light or dark workspace.",
+				"System follows your Mac’s light or dark appearance.",
 			))
 			.child(
 				ui_theme::settings_segments("Appearance").children(
@@ -333,8 +315,8 @@ impl SettingsSurface {
 			Surface::InputBar => "input-bar-material",
 		};
 		let description = match surface {
-			Surface::Window => "Choose the finish behind the workspace.",
-			Surface::InputBar => "Choose the finish behind the message composer.",
+			Surface::Window => "Thin uses a flat tint; Liquid Glass uses macOS glass.",
+			Surface::InputBar => "Set the message input material separately from the window.",
 		};
 
 		ui_theme::settings_row()
@@ -366,7 +348,7 @@ impl SettingsSurface {
 		ui_theme::settings_row()
 			.child(ui_theme::settings_label(
 				"Glass finish",
-				"Use a softer or more transparent window finish.",
+				"Regular adds tint; Clear shows more of the background.",
 			))
 			.child(ui_theme::settings_segments("Glass appearance").children(
 				[(GlassStyle::Regular, "Regular"), (GlassStyle::Clear, "Clear")].into_iter().map(
@@ -419,66 +401,157 @@ impl SettingsSurface {
 				ui_theme::settings_row()
 					.child(ui_theme::settings_label(
 						"Auto-activate weekly quota",
-						"Start the next weekly window with a small request. Uses quota; no chat is saved.",
+						"Start each weekly quota window with a small request. Uses quota; no chat is saved.",
 					))
 					.child(self.quota_toggle(cx)),
 			)
-			.children(setting_notice(
-				"quota-settings-feedback",
-				"Quota setting needs attention",
-				self.quota_feedback(),
-			))
+			.children(setting_notice("quota-settings-feedback", self.quota_feedback()))
 			.into_any_element()
 	}
 
 	fn category_content(&self, cx: &mut Context<Self>) -> AnyElement {
 		match self.category {
-            SettingsCategory::Updates => self.updates_content(cx),
-            SettingsCategory::General => gpui::div().flex().flex_col().gap(gpui::px(SETTINGS_GROUP_GAP))
-                .child(ui_theme::settings_group("Startup", vec![
-                    self.launch_at_login_card(cx).into_any_element(),
-                    self.menu_bar_card(cx).into_any_element(),
-                ]))
-                .child(ui_theme::settings_group("Notifications", vec![
-                    self.preference_control("notification-count-preference", "notification-count-knob", "Notification count", "Show unread notices on the notification button.", crate::shell::notification_count_preference, cx).into_any_element(),
-                    self.preference_control("question-notice-preference", "question-notice-knob", "New question notices", "Let me know when an agent needs a response.", crate::shell::question_notice_preference, cx).into_any_element(),
-                ]))
-                .child(ui_theme::settings_group("Task recaps", vec![
-                    ui_theme::settings_row().child(ui_theme::settings_label("Automatic task recaps", "After 30 minutes away, recap new completed work in the selected task. Uses its model and quota."))
-                        .child(self.recap_toggle(cx)).into_any_element(),
-                ]))
-                .child(ui_theme::settings_group("Power", vec![self.power_control(cx)]))
-                .into_any_element(),
-            SettingsCategory::Appearance => gpui::div().flex().flex_col().gap(gpui::px(SETTINGS_GROUP_GAP))
-                .child(gpui::div().border_b_1().border_color(ui_theme::rgba(PANEL_DIVIDER)).child(self.appearance_controls(cx)))
-                .child(gpui::div().flex().flex_col().gap_2()
-                    .child(settings_group_title("Color theme"))
-                    .child(gpui::div().text_size(gpui::px(11.5)).text_color(ui_theme::rgb(TEXT_MUTED))
-                        .child(self.theme_description()))
-                    .child(self.theme_controls(cx)))
-                .child(ui_theme::settings_group("Materials", {
-                    let mut controls = vec![
-                        self.material_controls(Surface::Window, cx).into_any_element(),
-                        self.material_controls(Surface::InputBar, cx).into_any_element(),
-                    ];
+			SettingsCategory::General => self.general_content(cx),
+			SettingsCategory::Appearance => self.appearance_content(cx),
+			SettingsCategory::Updates => self.updates_content(cx),
+		}
+	}
 
-                    if Surface::Window.material() == Material::LiquidGlass {
-                        controls.push(self.glass_controls(cx).into_any_element());
-                    }
+	fn general_content(&self, cx: &mut Context<Self>) -> AnyElement {
+		gpui::div()
+			.flex()
+			.flex_col()
+			.gap(gpui::px(SETTINGS_GROUP_GAP))
+			.child(ui_theme::settings_group(
+				"Startup",
+				vec![
+					self.launch_at_login_card(cx).into_any_element(),
+					self.menu_bar_card(cx).into_any_element(),
+				],
+			))
+			.child(ui_theme::settings_group(
+				"Notifications",
+				vec![
+					self.preference_control(
+						"notification-count-preference",
+						"notification-count-knob",
+						"Notification count",
+						"Show the number of notifications on the bell.",
+						crate::shell::notification_count_preference,
+						cx,
+					)
+					.into_any_element(),
+					self.preference_control(
+						"question-notice-preference",
+						"question-notice-knob",
+						"Agent questions",
+						"Show notices for new questions in the selected conversation.",
+						crate::shell::question_notice_preference,
+						cx,
+					)
+					.into_any_element(),
+				],
+			))
+			.child(ui_theme::settings_group(
+				"Task recaps",
+				vec![
+					ui_theme::settings_row()
+						.child(ui_theme::settings_label(
+							"Automatic task recaps",
+						"Recap the selected task’s new results after 30 quiet minutes with Decodex in the background. Uses model quota.",
+						))
+						.child(self.recap_toggle(cx))
+						.into_any_element(),
+				],
+			))
+			.child(ui_theme::settings_group("Power", vec![self.power_control(cx)]))
+			.into_any_element()
+	}
 
-                    controls
-                }))
-                .child(ui_theme::settings_group("Panel layout", vec![self.panel_controls(cx).into_any_element()]))
-                .child(ui_theme::settings_group("Text cursor", vec![self.cursor_controls(cx).into_any_element()]))
-                .child(ui_theme::settings_group("Motion", vec![
-                    self.preference_control("smooth-scrolling", "smooth-scrolling-knob", "Smooth scrolling", "Animate movement when you scroll with a mouse wheel.", crate::ui_scroll::preference, cx).into_any_element(),
-                ]))
-                .child(ui_theme::settings_group("Advanced rendering", vec![
-                    self.preference_control("debug-mode", "debug-mode-knob", "Debug overlay", "Show rendering performance and system GPU metrics in the top bar.", crate::ui_performance::preference, cx).into_any_element(),
-                    self.preference_control("full-background-rendering", "full-background-rendering-knob", "Render while inactive", "Keep the full frame rate when Decodex is in the background. Uses more energy.", crate::ui_frame::background_rendering, cx).into_any_element(),
-                ]))
-                .child(quote_attribution()).into_any_element(),
-        }
+	fn appearance_content(&self, cx: &mut Context<Self>) -> AnyElement {
+		gpui::div()
+			.flex()
+			.flex_col()
+			.gap(gpui::px(SETTINGS_GROUP_GAP))
+			.child(
+				gpui::div()
+					.border_b_1()
+					.border_color(ui_theme::rgba(PANEL_DIVIDER))
+					.child(self.appearance_controls(cx)),
+			)
+			.child(
+				gpui::div()
+					.flex()
+					.flex_col()
+					.gap_2()
+					.child(settings_group_title("Color theme"))
+					.child(
+						gpui::div()
+							.text_size(gpui::px(11.5))
+							.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+							.child(self.theme_description()),
+					)
+					.child(self.theme_controls(cx)),
+			)
+			.child(ui_theme::settings_group("Materials", {
+				let mut controls = vec![
+					self.material_controls(Surface::Window, cx).into_any_element(),
+					self.material_controls(Surface::InputBar, cx).into_any_element(),
+				];
+
+				if Surface::Window.material() == Material::LiquidGlass {
+					controls.push(self.glass_controls(cx).into_any_element());
+				}
+
+				controls
+			}))
+			.child(ui_theme::settings_group(
+				"Panel layout",
+				vec![self.panel_controls(cx).into_any_element()],
+			))
+			.child(ui_theme::settings_group(
+				"Text cursor",
+				vec![self.cursor_controls(cx).into_any_element()],
+			))
+			.child(ui_theme::settings_group(
+				"Motion",
+				vec![
+					self.preference_control(
+						"smooth-scrolling",
+						"smooth-scrolling-knob",
+						"Smooth scrolling",
+						"Animate mouse-wheel scrolling; trackpad gestures stay direct.",
+						crate::ui_scroll::preference,
+						cx,
+					)
+					.into_any_element(),
+				],
+			))
+			.child(ui_theme::settings_group(
+				"Advanced rendering",
+				vec![
+					self.preference_control(
+						"debug-mode",
+						"debug-mode-knob",
+						"Debug overlay",
+						"Show frame rate and GPU usage in the top bar.",
+						crate::ui_performance::preference,
+						cx,
+					)
+					.into_any_element(),
+					self.preference_control(
+						"full-background-rendering",
+						"full-background-rendering-knob",
+						"Render while inactive",
+						"Full frame rate in the background; uses more energy.",
+						crate::ui_frame::background_rendering,
+						cx,
+					)
+					.into_any_element(),
+				],
+			))
+			.child(quote_attribution())
+			.into_any_element()
 	}
 }
 
@@ -633,12 +706,8 @@ impl SettingsSurface {
 				} else {
 					MenuBarRuntimeState::Hidden
 				};
-				self.detail = if visible {
-					"Menu bar enabled."
-				} else {
-					"The Decodex menu-bar item is disabled."
-				}
-				.into();
+				self.detail =
+					if visible { "Menu bar enabled." } else { "Menu bar disabled." }.into();
 			},
 			Err(failure) => {
 				self.runtime = MenuBarRuntimeState::Unavailable;
@@ -777,7 +846,7 @@ impl SettingsSurface {
 				.items_center()
 				.gap_2()
 				.text_size(gpui::px(11.))
-				.text_color(ui_theme::rgb(TEXT_MUTED))
+				.text_color(ui_theme::rgb(crate::ui_theme::TEXT_MUTED))
 				.when(loading, |d| d.child(ui_loading::loading("")))
 				.child(if loading { "Loading…" } else { "Unavailable" })
 				.into_any_element();
@@ -833,19 +902,11 @@ impl SettingsSurface {
 				ui_theme::settings_row()
 					.child(ui_theme::settings_label(
 						"Launch at login",
-						"Open Decodex quietly when you sign in to your Mac.",
+						"Start quietly when you sign in to your Mac.",
 					))
 					.child(self.launch_at_login_toggle(cx)),
 			)
-			.children(setting_notice(
-				"launch-at-login-feedback",
-				match self.launch_at_login {
-					LaunchAtLoginState::RequiresApproval => "Approval required",
-					LaunchAtLoginState::NotFound => "Setup required",
-					_ => "Startup needs attention",
-				},
-				self.launch_at_login_feedback(),
-			))
+			.children(setting_notice("launch-at-login-feedback", self.launch_at_login_feedback()))
 			.when(self.launch_at_login == LaunchAtLoginState::RequiresApproval, |d| {
 				d.child(setting_action(
 					"launch-at-login-open-settings",
@@ -873,13 +934,12 @@ impl SettingsSurface {
 				ui_theme::settings_row()
 					.child(ui_theme::settings_label(
 						"Show in menu bar",
-						"Keep quick access to Decodex in the macOS menu bar.",
+						"Quick access to accounts and usage.",
 					))
 					.child(self.menu_bar_toggle(cx)),
 			)
 			.children(setting_notice(
 				"menubar-runtime-status",
-				"Menu bar unavailable",
 				self.menubar_needs_attention().then(|| Feedback::error(self.detail.to_string())),
 			))
 	}
@@ -917,10 +977,7 @@ impl Render for SettingsSurface {
 							.flex()
 							.flex_col()
 							.gap(gpui::px(SETTINGS_GROUP_GAP))
-							.child(ui_theme::settings_heading(
-								self.category.title(),
-								self.category.description(),
-							))
+							.child(ui_theme::settings_title(self.category.title()))
 							.child(self.category_content(cx)),
 					)
 					.smooth_scroll(("settings-smooth-scroll", self.category as usize))
@@ -954,9 +1011,9 @@ fn setting_action(
 		.into_any_element()
 }
 
-fn setting_notice(id: &'static str, title: &str, feedback: Option<Feedback>) -> Option<AnyElement> {
+fn setting_notice(id: &'static str, feedback: Option<Feedback>) -> Option<AnyElement> {
 	feedback
-		.and_then(|feedback| ui_feedback::inline_feedback(id, title, &feedback))
+		.and_then(|feedback| ui_feedback::inline_feedback(id, "", &feedback))
 		.map(|notice| gpui::div().px(gpui::px(14.)).pb_2().child(notice).into_any_element())
 }
 
@@ -964,19 +1021,18 @@ fn settings_group_title(label: &'static str) -> impl IntoElement {
 	gpui::div()
 		.text_size(gpui::px(11.5))
 		.font_weight(FontWeight::MEDIUM)
-		.text_color(ui_theme::rgb(TEXT_MUTED))
+		.text_color(ui_theme::rgb(crate::ui_theme::TEXT_MUTED))
 		.child(label)
 }
 
 const fn launch_at_login_detail(state: LaunchAtLoginState) -> &'static str {
 	match state {
-		LaunchAtLoginState::NotRegistered => "Decodex does not start automatically at login.",
-		LaunchAtLoginState::Enabled => "macOS will start Decodex quietly when you sign in.",
-		LaunchAtLoginState::RequiresApproval =>
-			"macOS requires approval in System Settings > General > Login Items.",
+		LaunchAtLoginState::NotRegistered => "Off",
+		LaunchAtLoginState::Enabled => "On · Opens in the background",
+		LaunchAtLoginState::RequiresApproval => "Allow in System Settings > General > Login Items.",
 		LaunchAtLoginState::NotFound =>
-			"Install Decodex.app in Applications before enabling launch at login.",
-		LaunchAtLoginState::OperationFailed => "The macOS login-item state is unavailable.",
+			"Move Decodex.app to Applications to enable launch at login.",
+		LaunchAtLoginState::OperationFailed => "Login item status unavailable.",
 	}
 }
 
@@ -987,26 +1043,23 @@ const fn settings_detail(snapshot: DesktopSettingsSnapshot) -> &'static str {
 		DesktopSettingsLoadState::Ready => match snapshot.command {
 			DesktopSettingsCommandState::Sending | DesktopSettingsCommandState::AwaitingResult =>
 				"Saving settings…",
-			DesktopSettingsCommandState::OutcomeUnknown =>
-				"Checking whether your changes were saved…",
-			DesktopSettingsCommandState::Refused => "This setting could not be changed.",
+			DesktopSettingsCommandState::OutcomeUnknown => "Checking save status…",
+			DesktopSettingsCommandState::Refused => "Could not change this setting.",
 			DesktopSettingsCommandState::Idle | DesktopSettingsCommandState::Accepted =>
 				"Settings saved.",
 		},
-		DesktopSettingsLoadState::Offline =>
-			"Connect to the Decodex service to read desktop settings.",
-		DesktopSettingsLoadState::Unavailable => "Settings are temporarily unavailable.",
-		DesktopSettingsLoadState::Refused => "The desktop settings response was invalid.",
+		DesktopSettingsLoadState::Offline => "Reconnect to load settings.",
+		DesktopSettingsLoadState::Unavailable => "Settings unavailable. Try again.",
+		DesktopSettingsLoadState::Refused => "Invalid settings response. Retry.",
 	}
 }
 
 const fn input_error_detail(error: DesktopSettingsInputError) -> &'static str {
 	match error {
-		DesktopSettingsInputError::Offline =>
-			"Connect to the Decodex service before changing this setting.",
-		DesktopSettingsInputError::Busy => "Wait for the current settings request to finish.",
+		DesktopSettingsInputError::Offline => "Reconnect to change this setting.",
+		DesktopSettingsInputError::Busy => "Wait for the current settings request.",
 		DesktopSettingsInputError::NotLoaded => "Wait for settings to load.",
-		DesktopSettingsInputError::IdentityUnavailable => "Could not save this setting. Try again.",
+		DesktopSettingsInputError::IdentityUnavailable => "Could not save. Try again.",
 	}
 }
 
@@ -1016,9 +1069,9 @@ fn quote_attribution() -> impl IntoElement {
 		.debug_selector(|| "quote-source".into())
 		.role(Role::Link)
 		.tab_index(0)
-		.aria_label("Quotes from ZenQuotes. Visit the website.")
+		.aria_label("Quotes by ZenQuotes. Open website.")
 		.text_size(gpui::px(11.))
-		.text_color(ui_theme::rgb(TEXT_MUTED))
+		.text_color(ui_theme::rgb(crate::ui_theme::TEXT_MUTED))
 		.cursor_pointer()
 		.hover(|d| d.text_color(ui_theme::rgb(TEXT)))
 		.on_click(|_, _, cx| cx.open_url("https://zenquotes.io/"))
@@ -1665,7 +1718,7 @@ mod tests {
 			s.snapshot.load = DesktopSettingsLoadState::Ready;
 			s.snapshot.command = DesktopSettingsCommandState::Idle;
 			s.runtime = MenuBarRuntimeState::Hidden;
-			s.detail = "The Decodex menu-bar item is disabled.".into();
+			s.detail = "Menu bar disabled.".into();
 
 			cx.notify();
 		});

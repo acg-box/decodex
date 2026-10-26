@@ -60,28 +60,65 @@ impl AgentSurface {
 		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
 			let result = receive.await.unwrap_or(Err("Branch recovery stopped"));
 			let _ = surface.update(cx, |s, cx| {
-				if s.prompt_edit.key != key || !s.prompt_editor_source_current() { return }
+				if s.prompt_edit.key != key || !s.prompt_editor_source_current() {
+					return;
+				}
 
 				s.prompt_edit.task = None;
 
-				if s.prompt_edit.draft.as_ref() != Some(&expected) { s.prompt_edit.feedback = "The draft changed. Check the new conversation’s status again.".into(); cx.notify(); return }
+				if s.prompt_edit.draft.as_ref() != Some(&expected) {
+					s.prompt_edit.feedback =
+						"Draft changed. Check the new conversation again.".into();
+
+					cx.notify();
+
+					return;
+				}
 
 				match result {
 					Ok((retained, target)) => {
-						if let Err(message) = s.stage_prompt_editor(retained.clone(), cx) { s.prompt_edit.feedback = message.into(); cx.notify(); return }
+						if let Err(message) = s.stage_prompt_editor(retained.clone(), cx) {
+							s.prompt_edit.feedback = message.into();
+
+							cx.notify();
+
+							return;
+						}
 
 						match target {
-							None => { s.prompt_edit.draft = Some(retained); s.prompt_edit.feedback = "Branch was rejected. Original conversation and edited draft retained.".into(); },
+							None => {
+								s.prompt_edit.draft = Some(retained);
+								s.prompt_edit.feedback =
+									"Branch rejected. Original and draft kept.".into();
+							},
 							Some((work, thread, boundary, snapshot)) => {
-                                if boundary == PromptForkBoundary::AfterTurn
-                                    && let Err(message) = s.discard_prompt_editor(&retained, cx) { s.prompt_edit.feedback = message.into(); cx.notify(); return }
+								if boundary == PromptForkBoundary::AfterTurn
+									&& let Err(message) = s.discard_prompt_editor(&retained, cx)
+								{
+									s.prompt_edit.feedback = message.into();
+
+									cx.notify();
+
+									return;
+								}
 
 								s.apply_result(Ok(snapshot));
 								s.open_page(work.as_str(), cx);
 
 								if boundary == PromptForkBoundary::BeforeInput {
-									s.prompt_edit = Panel { work: work.as_str().into(), thread: thread.as_str().into(), profile: s.profile.clone(), ..Default::default() };
-									s.prompt_edit.feedback = match s.install_prompt_editors(retained, cx) { Ok(()) => "Branch created. Original conversation unchanged. Finish restoring the edited draft before sending.", Err(message) => message }.into();
+									s.prompt_edit = Panel {
+										work: work.as_str().into(),
+										thread: thread.as_str().into(),
+										profile: s.profile.clone(),
+										..Default::default()
+									};
+									s.prompt_edit.feedback =
+										match s.install_prompt_editors(retained, cx) {
+											Ok(()) =>
+												"Branch created. Restore the draft before sending.",
+											Err(message) => message,
+										}
+										.into();
 								}
 							},
 						}
@@ -111,11 +148,9 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 	let result = client
 		.prompt_fork(original.work_id.clone(), original.review_token.clone())
 		.await
-		.map_err(|_| "New conversation status is unavailable")?;
+		.map_err(|_| "New conversation status unavailable")?;
 	let PromptForkResult::Available(Some(status)) = result else {
-		return Err(
-			"The new conversation’s status is unavailable. Keep your draft and check again.",
-		);
+		return Err("New conversation unavailable. Keep your draft and check again.");
 	};
 	let intent = original.fork.as_ref().ok_or("Branch intent is missing")?;
 
@@ -123,18 +158,14 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 		|| status.target_work_id != intent.target_work_id
 		|| status.boundary != intent.boundary
 	{
-		return Err("The saved branch does not match this draft");
+		return Err("Saved branch does not match this draft");
 	}
 
 	match status.phase {
 		PromptForkPhase::Uncertain =>
-			return Err(
-				"Branch acceptance is uncertain. Keep the saved draft; do not create the branch again.",
-			),
+			return Err("Branch unconfirmed. Keep the draft; do not create the branch again."),
 		PromptForkPhase::Acknowledged =>
-			return Err(
-				"The new conversation is saved. Check its status again to finish restoring history.",
-			),
+			return Err("New conversation saved. Check status to finish restoring history."),
 		PromptForkPhase::Rejected => {
 			let mut retained = original;
 
@@ -158,7 +189,7 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 		let (edit, content) = client
 			.prompt_edit(status.target_work_id.clone(), target_thread.clone())
 			.await
-			.map_err(|_| "The copied message’s status is unavailable")?;
+			.map_err(|_| "Copied message status unavailable")?;
 		let input = PromptDraft::new(content.ok_or("Branch input is unavailable")?)?;
 
 		retained.work_id = status.target_work_id.clone();

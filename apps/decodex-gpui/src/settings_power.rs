@@ -81,7 +81,7 @@ impl SettingsSurface {
 				ui_theme::settings_row()
 					.child(ui_theme::settings_label(
 						"Prevent system sleep",
-						"Applies to this Mac on power and battery, even after quitting Decodex.",
+						"Changes your Mac’s sleep setting on battery and external power, even after Decodex quits.",
 					))
 					.child(
 						switch::settings_switch(
@@ -94,7 +94,7 @@ impl SettingsSurface {
 						.aria_description(if self.power.pending {
 							"Checking the system setting"
 						} else if self.power.enabled.is_none() {
-							"The system setting is unavailable"
+							"System setting unavailable"
 						} else {
 							"Changes the macOS sleep setting"
 						})
@@ -105,7 +105,6 @@ impl SettingsSurface {
 			)
 			.children(super::setting_notice(
 				"power-settings-feedback",
-				"System sleep setting unavailable",
 				self.power.error.as_ref().map(|message| Feedback::error(message.clone())),
 			))
 			.when(self.power.error.is_some(), |d| {
@@ -125,10 +124,10 @@ fn parse_sleep_disabled(text: &str) -> Result<bool, String> {
 			(words.next() == Some("SleepDisabled")).then(|| match words.next() {
 				Some("0") => Ok(false),
 				Some("1") => Ok(true),
-				_ => Err("macOS returned an unknown sleep setting.".into()),
+				_ => Err("Unknown macOS sleep setting.".into()),
 			})
 		})
-		.unwrap_or_else(|| Err("The macOS sleep setting could not be read.".into()))
+		.unwrap_or_else(|| Err("Could not read macOS sleep setting.".into()))
 }
 
 #[cfg(target_os = "macos")]
@@ -136,10 +135,10 @@ fn read() -> Result<bool, String> {
 	let result = std::process::Command::new("/usr/bin/pmset")
 		.arg("-g")
 		.output()
-		.map_err(|_| "The macOS power service could not be read.".to_string())?;
+		.map_err(|_| "macOS power service unavailable.".to_string())?;
 
 	if !result.status.success() {
-		return Err("The macOS power service could not be read.".into());
+		return Err("macOS power service unavailable.".into());
 	}
 
 	parse_sleep_disabled(&String::from_utf8_lossy(&result.stdout))
@@ -165,24 +164,21 @@ fn set(enabled: bool) -> Result<bool, String> {
 		let result = std::process::Command::new("/usr/bin/osascript")
 			.args(["-e", &script])
 			.output()
-			.map_err(|_| "Could not request administrator authorization.".to_string())?;
+			.map_err(|_| "Could not request administrator approval.".to_string())?;
 
 		if !result.status.success() {
 			if String::from_utf8_lossy(&result.stderr).contains("(-128)") {
 				return read();
 			}
 
-			return Err(
-				"macOS did not apply the sleep setting. Administrator authorization is required."
-					.into(),
-			);
+			return Err("Sleep setting unchanged. Administrator approval required.".into());
 		}
 	}
 
 	let actual = read()?;
 
 	if actual != enabled {
-		return Err("macOS did not confirm the sleep setting.".into());
+		return Err("Sleep setting unconfirmed.".into());
 	}
 
 	Ok(actual)

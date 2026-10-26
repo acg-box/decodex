@@ -98,40 +98,30 @@ impl Handoffs {
 				format!("request:{}", event.id),
 				if permission { "Permission needed" } else { "Answer needed" },
 				if permission {
-					"Review the original request before granting permission."
+					"Review the request before allowing access."
 				} else {
-					"A question is waiting for your response."
+					"Answer the pending question."
 				},
 				false,
 			)
 		} else if work.status == AgentWorkStatusDto::UserDecision
 			&& work.dispatch_state == AgentDispatchStateDto::Idle
 		{
-			(
-				receipt(work),
-				"Decision needed",
-				"This task explicitly asks for your decision.",
-				false,
-			)
+			(receipt(work), "Decision needed", "Review the requested decision.", false)
 		} else if direct_work(snapshot, work)
 			&& work.dispatch_state == AgentDispatchStateDto::Unknown
 		{
 			(
 				receipt(work),
 				"Check execution",
-				"Execution could not be confirmed. Check the conversation before retrying.",
+				"Execution unconfirmed. Check the conversation before retrying.",
 				false,
 			)
 		} else if direct_work(snapshot, work)
 			&& completed(work)
 			&& self.seen.get(&work.id) != Some(&receipt(work))
 		{
-			(
-				receipt(work),
-				"Result ready",
-				"This task reported completion. Review its result and verification.",
-				true,
-			)
+			(receipt(work), "Result ready", "Completion reported. Review the result.", true)
 		} else {
 			return None;
 		};
@@ -163,7 +153,7 @@ impl Handoffs {
 					work: work.id.clone(),
 					key: receipt(work),
 					label: "Running · Preview",
-					reason: "Work is running. Open the conversation for live activity.",
+					reason: "Open the conversation for live activity.",
 					result: false,
 					attention: false,
 				});

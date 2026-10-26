@@ -40,10 +40,16 @@ pub(super) fn content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let current = source(shell, cx);
 	let panel = &shell.diagnostics.startup;
 	let result = panel.result.as_ref().filter(|_| panel.source == current);
-	let mut group=gpui::div().id("native-startup-config").debug_selector(||"native-startup-config".into())
-		.w_full().min_w_0().flex().flex_col().gap_2()
+	let mut group = gpui::div()
+		.id("native-startup-config")
+		.debug_selector(|| "native-startup-config".into())
+		.w_full()
+		.min_w_0()
+		.flex()
+		.flex_col()
+		.gap_2()
 		.child("Local Codex startup configuration")
-		.child("Check configuration with the shared Codex sign-in. Account overrides for a task are not checked.");
+		.child("Checks shared Codex sign-in. Task account overrides are excluded.");
 
 	if let Some(current) = &current {
 		group = group.child(format!("Folder: {}", current.directory.display())).child(
@@ -58,9 +64,7 @@ pub(super) fn content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		group = group.children(ui_feedback::inline_feedback(
 			"native-startup-unavailable",
 			"Configuration check unavailable",
-			&Feedback::info(
-				"Connect to the local service and select an available folder to check configuration.",
-			),
+			&Feedback::info("Reconnect and select an available folder to check configuration."),
 		));
 	}
 
@@ -127,7 +131,7 @@ fn start(shell: &mut Shell, cx: &mut Context<Shell>) {
 
 	panel.source = Some(owner.clone());
 	panel.result = None;
-	panel.feedback = Feedback::info("Checking the selected native component and configuration…");
+	panel.feedback = Feedback::info("Checking Codex configuration…");
 
 	let directory =
 		ConversationWorkingDirectory::new(owner.directory.to_string_lossy().into_owned())
@@ -157,14 +161,11 @@ fn start(shell: &mut Shell, cx: &mut Context<Shell>) {
 				panel.result = result;
 
 				if panel.result.is_none() {
-					panel.feedback = Feedback::warning(
-						"The local service could not complete this check. Reconnect and check again.",
-					);
+					panel.feedback = Feedback::warning("Could not check. Reconnect and retry.");
 				}
 			} else {
 				panel.result = None;
-				panel.feedback =
-					Feedback::warning("The selected folder or connection changed. Check again.");
+				panel.feedback = Feedback::warning("Folder or connection changed. Check again.");
 			}
 
 			cx.notify();

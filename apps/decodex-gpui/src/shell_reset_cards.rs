@@ -146,7 +146,7 @@ impl Update {
 		let (operation_blocked, message) = operation_presentation(state, key.is_some());
 		let blocked = operation_blocked || inventory.is_none();
 		let message = if inventory.is_none() && !operation_blocked {
-			"Card availability could not be refreshed. Checking again before another request."
+			"Card status unavailable. Checking before another request."
 		} else {
 			message
 		};
@@ -256,9 +256,8 @@ impl Shell {
 
 			match client.consume(account.clone(), descriptor, revision, key.clone()).await {
 				Ok(ResetCardConsumeResponse::Rejected { .. }) =>
-					Update::not_accepted("Card was not used. Checking account availability…"),
-				Err(_) =>
-					Update::not_accepted("The request was not sent. Checking account availability…"),
+					Update::not_accepted("Card unused. Checking availability…"),
+				Err(_) => Update::not_accepted("Request not sent. Checking availability…"),
 				Ok(
 					ResetCardConsumeResponse::Accepted { .. }
 					| ResetCardConsumeResponse::PotentiallyDispatched { .. },
@@ -298,7 +297,7 @@ impl Shell {
 						inventory: None,
 						blocked: true,
 						pending_key: failure_pending,
-						message: "Reset cards are temporarily unavailable.".into(),
+						message: "Reset cards unavailable.".into(),
 					},
 				};
 				let _ = sender.send((account, result));
@@ -559,28 +558,22 @@ fn operation_presentation(
 ) -> (bool, &'static str) {
 	match state {
 		Some(ResetCardOperationResult::NotFound) if !known_request =>
-			(false, "Click a card twice within five seconds to use it."),
+			(false, "Click twice within five seconds to use a card."),
 		Some(ResetCardOperationResult::Completed { outcome: ResetCardOutcome::Reset }) =>
-			(false, "Account limits were reset. The card was used."),
+			(false, "Limits reset. Card used."),
 		Some(ResetCardOperationResult::Completed {
 			outcome: ResetCardOutcome::AlreadyRedeemed,
-		}) => (false, "The selected card was already redeemed. No other card was selected."),
+		}) => (false, "Selected card already used. No other card used."),
 		Some(ResetCardOperationResult::Completed { outcome: ResetCardOutcome::NothingToReset }) =>
-			(false, "There was nothing to reset. No card was used."),
+			(false, "Nothing to reset. Card unused."),
 		Some(ResetCardOperationResult::Completed { outcome: ResetCardOutcome::NoCredit }) =>
-			(false, "The selected card is no longer available. No other card was selected."),
-		Some(ResetCardOperationResult::FailedBeforeEffect { .. }) => (
-			false,
-			"The request stopped before redemption. Account availability will update automatically.",
-		),
-		Some(ResetCardOperationResult::Prepared) =>
-			(true, "Your confirmed request is queued. Checking its result…"),
+			(false, "Selected card unavailable. No other card used."),
+		Some(ResetCardOperationResult::FailedBeforeEffect { .. }) =>
+			(false, "Stopped before redemption. Checking availability…"),
+		Some(ResetCardOperationResult::Prepared) => (true, "Request queued. Checking result…"),
 		Some(ResetCardOperationResult::EffectAmbiguous) =>
-			(true, "The result is not confirmed. Checking status without another redemption."),
-		_ => (
-			true,
-			"The previous request could not be verified. Checking status; redemption stays blocked.",
-		),
+			(true, "Reset unconfirmed. Checking status; no repeat redemption."),
+		_ => (true, "Previous reset unconfirmed. Checking status; new use blocked."),
 	}
 }
 
@@ -766,7 +759,7 @@ mod tests {
 		let (blocked, message) = reset_cards::operation_presentation(Some(state), true);
 
 		assert!(!blocked);
-		assert!(message.contains("No card was used"));
+		assert!(message.contains("Card unused"));
 	}
 }
 #[cfg(test)]

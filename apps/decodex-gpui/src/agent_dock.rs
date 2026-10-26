@@ -182,7 +182,7 @@ impl AgentSurface {
 				complete
 			)
 		} else {
-			"Select a task to view its activity or result".into()
+			"Select a task to see its activity or result.".into()
 		}
 	}
 
@@ -543,9 +543,9 @@ impl AgentSurface {
 				body.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(if loading {
 					"Loading task activity…"
 				} else if running {
-					"Running · No activity received for this turn yet."
+					"Running · No activity yet."
 				} else {
-					"No final response is available here. Open the conversation to review its history."
+					"No final response. Open the conversation to view its history."
 				}));
 		}
 
@@ -566,9 +566,9 @@ pub(super) fn progress_state(
 		(
 			"Needs you",
 			match request.event_kind.as_str() {
-				"permission_pending" => "A permission request needs your response.",
+				"permission_pending" => "Review the permission request.",
 				"user_input_pending" => "A question needs your answer.",
-				_ => "An unresolved request needs your response.",
+				_ => "Review the pending request.",
 			}
 			.into(),
 			WARNING,
@@ -577,29 +577,19 @@ pub(super) fn progress_state(
 	} else if work.dispatch_state == crate::shell::agent_surface::AgentDispatchStateDto::Unknown {
 		(
 			"Status unavailable",
-			"Execution could not be confirmed. Open the task to check its connection.".into(),
+			"Execution unconfirmed. Open the conversation to check.".into(),
 			TEXT_MUTED,
 			0,
 		)
 	} else if work.dispatch_state == crate::shell::agent_surface::AgentDispatchStateDto::Running {
-		("Running", "Execution is active. Open the conversation for live activity.".into(), INFO, 1)
+		("Running", "Open the conversation for live activity.".into(), INFO, 1)
 	} else if work.dispatch_state == crate::shell::agent_surface::AgentDispatchStateDto::Dispatching
 	{
-		("Starting", "The task is being submitted; execution is not yet confirmed.".into(), INFO, 1)
+		("Starting", "Submitting · Execution unconfirmed.".into(), INFO, 1)
 	} else if work.status == AgentWorkStatusDto::UserDecision {
-		(
-			"Needs you",
-			"The task is waiting for your decision. Open its conversation for the question.".into(),
-			WARNING,
-			0,
-		)
+		("Needs you", "Open the conversation to respond.".into(), WARNING, 0)
 	} else if work.status == AgentWorkStatusDto::Resolved {
-		(
-			"Marked complete",
-			"Review the result and its verification in the source conversation.".into(),
-			SUCCESS,
-			3,
-		)
+		("Marked complete", "Open the conversation to review the result.".into(), SUCCESS, 3)
 	} else {
 		let blockers = graph::blockers(snapshot, work);
 
@@ -614,12 +604,17 @@ pub(super) fn progress_state(
 				2,
 			)
 		} else if snapshot.pending_events.iter().any(|e| e.work_item_id == work.id) {
-			("Update pending", "A recorded update has not been processed yet. It is not a request for your approval.".into(), TEXT_MUTED, 2)
+			(
+				"Update pending",
+				"Recorded update awaiting processing. No response needed.".into(),
+				TEXT_MUTED,
+				2,
+			)
 		} else {
 			match work.status {
 				AgentWorkStatusDto::FollowUp => (
 					"Follow-up pending",
-					"A follow-up is recorded, but no execution is active.".into(),
+					"Follow-up saved. No execution active.".into(),
 					TEXT_MUTED,
 					2,
 				),
@@ -636,17 +631,11 @@ pub(super) fn progress_state(
 				),
 				AgentWorkStatusDto::Wait => (
 					"Not running",
-					"No active execution or recorded prerequisite. The reason is not available."
-						.into(),
+					"No execution active. Reason unavailable.".into(),
 					TEXT_MUTED,
 					2,
 				),
-				_ => (
-					"Not running",
-					"The task is open, but no execution is active.".into(),
-					TEXT_MUTED,
-					2,
-				),
+				_ => ("Not running", "Open · No execution active.".into(), TEXT_MUTED, 2),
 			}
 		}
 	};
@@ -1264,7 +1253,7 @@ mod tests {
 
 			assert_eq!(state.label, "Not running");
 			assert_eq!(state.color, TEXT_MUTED);
-			assert!(state.reason.contains("reason is not available"));
+			assert!(state.reason.contains("Reason unavailable"));
 
 			unexplained_wait.next_check_at_micros = Some(1);
 

@@ -1,7 +1,7 @@
 //! Explicit restoration of a native archived task, using fresh desired-state readback.
-use std::{rc::Rc, time::Duration};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
-use gpui::{AnyElement, BoxShadow, KeyDownEvent};
+use gpui::{AnyElement, FocusHandle, KeyDownEvent};
 use tokio::runtime::Builder;
 
 #[cfg(test)] use crate::shell::agent_surface::AgentDispatchStateDto;
@@ -13,19 +13,14 @@ use crate::{
 		agent_surface::{
 			self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSurface,
 			AgentWorkItemDto, Context, EntityId, FluentBuilder, IdempotencyKey, InteractiveElement,
-			IntoElement, ParentElement, Role, StatefulInteractiveElement, Styled, Task, WireText,
-			composer,
-			ui_theme::{
-				BLUE, COMPOSER_BOTTOM_GAP, COMPOSER_TOP_GAP, CONTROL_SIZE, CONVERSATION_INSET,
-				FIELD_MATERIAL, HOVER_FILL, LINE_STRONG,
-			},
+			IntoElement, ParentElement, StatefulInteractiveElement, Styled, Task, WireText,
+			workspace::ARCHIVED_DETAIL,
 		},
-		workspace_symbols,
-		workspace_symbols::Symbol,
+		workspace_symbols::{self, Symbol},
 	},
 	ui_feedback::{self, Tone},
 	ui_motion::SmoothControl as _,
-	ui_theme,
+	ui_theme::{self, BLUE},
 };
 use decodex_protocol::AgentArchiveResult;
 
@@ -38,6 +33,7 @@ pub(super) struct Panel {
 	request: Option<Task<()>>,
 	mutation: Option<Task<()>>,
 	mutation_key: Option<String>,
+	recovery_focus: RefCell<Option<FocusHandle>>,
 	pub(super) feedback: String,
 }
 impl Panel {
@@ -67,6 +63,14 @@ impl Panel {
 }
 
 impl AgentSurface {
+	pub(super) fn archive_recovery_focus(&self, cx: &mut Context<Self>) -> FocusHandle {
+		self.archive
+			.recovery_focus
+			.borrow_mut()
+			.get_or_insert_with(|| cx.focus_handle().tab_stop(true))
+			.clone()
+	}
+
 	pub(super) fn archive_disconnected(&mut self) {
 		self.archive.epoch = self.archive.epoch.wrapping_add(1);
 		self.archive.result = None;
@@ -155,15 +159,30 @@ impl AgentSurface {
 	}
 
 	fn restore_archive(&mut self, work: &str, thread: &str, cx: &mut Context<Self>) {
+		let confirmed = self.archive.owner.as_deref() == Some(work)
+			&& matches!(&self.archive.result,Some(AgentArchiveResult::Archived {thread_id}) if thread_id==thread);
+		// The service rechecks this snapshot binding and native archive state before restoring.
+		let bound = self.work_is_archived(work)
+			&& self.conversation_work().is_some_and(|item| {
+				item.id == work && item.codex_thread_id.as_deref() == Some(thread)
+			});
+
 		if self.selected.as_deref() != Some(work)
-			|| self.archive.owner.as_deref() != Some(work)
+			|| !self.selected_is_archived()
 			|| self.archive.mutation.is_some()
-			|| !matches!(&self.archive.result,Some(AgentArchiveResult::Archived {thread_id}) if thread_id==thread)
+			|| !(confirmed || bound)
 		{
 			return;
 		}
+		if self.archive.owner.as_deref() != Some(work) {
+			self.archive = Panel {
+				owner: Some(work.to_owned()),
+				epoch: self.archive.epoch.wrapping_add(1),
+				..Default::default()
+			};
+		}
 		if self.profile.is_none() {
-			self.archive.feedback = "No service profile is configured.".into();
+			self.archive.feedback = "Service not configured.".into();
 
 			cx.notify();
 
@@ -190,7 +209,7 @@ impl AgentSurface {
 
 		self.archive.mutation_key = Some(key.clone());
 		self.archive.result = None;
-		self.archive.feedback = "Restoring the original task…".into();
+		self.archive.feedback = "Unarchiving…".into();
 
 		let request = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
@@ -221,22 +240,15 @@ impl AgentSurface {
 				s.archive.mutation_key = None;
 
 				let (feedback, state) = match completed {
-					Some((_, AgentArchiveResult::Active { thread_id })) => (
-						"The original task is active. Previously queued work can continue.",
-						AgentArchiveResult::Active { thread_id },
-					),
-					Some((Err(_), state)) =>
-						("No restore request was sent. Check the service connection.", state),
-					Some((Ok(AgentCommandResponse::Rejected { .. }), state)) => (
-						"Restoration was not accepted. Review the refreshed state before trying again.",
-						state,
-					),
-					Some((_, state)) => (
-						"Restoration is unconfirmed. Refresh the state before another explicit attempt.",
-						state,
-					),
+					Some((_, AgentArchiveResult::Active { thread_id })) =>
+						("Unarchived.", AgentArchiveResult::Active { thread_id }),
+					Some((Err(_), state)) => ("Not sent. Check the service connection.", state),
+					Some((Ok(AgentCommandResponse::Rejected { .. }), state)) =>
+						("Could not unarchive. Try again.", state),
+					Some((_, state)) =>
+						("Unarchive not confirmed. Reconnect before retrying.", state),
 					None => (
-						"Restoration is unconfirmed. Refresh the state before another explicit attempt.",
+						"Unarchive not confirmed. Reconnect before retrying.",
 						AgentArchiveResult::Unavailable,
 					),
 				};
@@ -264,31 +276,32 @@ impl AgentSurface {
 						|| self.archive.mutation.is_some()))
 	}
 
-	pub(super) fn archive_panel(
+	pub(super) fn archive_notice(
 		&self,
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		if !self.selected_is_archived() {
-			return gpui::div().into_any_element();
-		}
-
 		let current = self.archive.owner.as_deref() == Some(&work.id);
 		let restoring = current && self.archive.mutation.is_some();
 		let feedback = if current { self.archive.feedback.as_str() } else { "" };
-		let thread = match &self.archive.result {
-			Some(AgentArchiveResult::Archived { thread_id }) if current && !restoring =>
-				Some(thread_id.clone()),
-			_ => None,
+		let thread = if restoring || !self.selected_is_archived() {
+			None
+		} else {
+			match &self.archive.result {
+				Some(AgentArchiveResult::Archived { thread_id }) if current =>
+					Some(thread_id.clone()),
+				_ => work.codex_thread_id.clone(),
+			}
 		};
 		let work = work.id.clone();
+		let focus = self.archive_recovery_focus(cx);
 		let tone = if !restoring && !feedback.is_empty() { Tone::Warning } else { Tone::Neutral };
 		let detail = if restoring {
-			"Restoring this conversation. Your history is kept."
-		} else if !feedback.is_empty() {
-			feedback
+			""
+		} else if feedback.is_empty() {
+			ARCHIVED_DETAIL
 		} else {
-			"This conversation is read-only. Unarchive to send messages."
+			feedback
 		};
 		let icon = workspace_symbols::icon_sized(Symbol::Lock, 16.);
 		let row = if !restoring && feedback.is_empty() {
@@ -303,38 +316,12 @@ impl AgentSurface {
 			)
 		}
 		.when_some(thread.clone(), |row, thread| {
-			row.child(button("archive-restore", "Unarchive", cx, move |s, cx| {
+			row.child(button("archive-restore", "Unarchive", focus.clone(), cx, move |s, cx| {
 				s.restore_archive(&work, &thread, cx)
-			}))
-		})
-		.when(thread.is_none() && !restoring, |row| {
-			row.child(button("archive-check", "Check status", cx, |s, cx| {
-				s.load_archive_state(true, cx)
 			}))
 		});
 
-		gpui::div()
-			.debug_selector(|| "archive-banner".into())
-			.w_full()
-			.flex_none()
-			.px(gpui::px(CONVERSATION_INSET))
-			.pt(gpui::px(COMPOSER_TOP_GAP))
-			.pb(gpui::px(COMPOSER_BOTTOM_GAP))
-			.flex()
-			.items_center()
-			.justify_center()
-			.child(
-				composer::composer_capsule(false)
-					.id("archive-read-only")
-					.debug_selector(|| "archive-surface".into())
-					.rounded(gpui::px(10.))
-					.py(gpui::px(4.))
-					.border_color(ui_theme::rgb(LINE_STRONG).opacity(0.22))
-					.bg(ui_theme::rgba(FIELD_MATERIAL))
-					.shadow(Vec::<BoxShadow>::new())
-					.child(row),
-			)
-			.into_any_element()
+		row.debug_selector(|| "archive-banner".into()).into_any_element()
 	}
 }
 
@@ -350,28 +337,16 @@ fn bind_readback(state: AgentArchiveResult, expected: &str) -> AgentArchiveResul
 fn button(
 	id: &'static str,
 	label: &'static str,
+	focus: FocusHandle,
 	cx: &mut Context<AgentSurface>,
 	action: impl Fn(&mut AgentSurface, &mut Context<AgentSurface>) + 'static,
 ) -> AnyElement {
 	let action = Rc::new(action);
 	let click = action.clone();
 
-	gpui::div()
-		.id(id)
-		.debug_selector(move || id.to_owned())
-		.role(Role::Button)
-		.tab_index(0)
-		.aria_label(label)
-		.cursor_pointer()
+	ui_theme::settings_button(id, label)
+		.track_focus(&focus)
 		.text_color(ui_theme::rgb(BLUE))
-		.h(gpui::px(CONTROL_SIZE))
-		.px_2()
-		.flex_none()
-		.flex()
-		.items_center()
-		.justify_center()
-		.rounded(gpui::px(5.))
-		.hover(|button| button.bg(ui_theme::rgba(HOVER_FILL)))
 		.on_click(cx.listener(move |s, _, _, cx| click(s, cx)))
 		.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
 			if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
@@ -380,7 +355,6 @@ fn button(
 				action(s, cx);
 			}
 		}))
-		.child(label)
 		.smooth()
 		.into_any_element()
 }
@@ -441,8 +415,20 @@ mod tests {
 		let bounds = visual.debug_bounds("archive-restore").expect("restore action");
 		let status = visual.debug_bounds("archive-banner").expect("read-only footer");
 		let frame = visual.debug_bounds("workspace-center-frame").expect("conversation frame");
+		let composer = visual.debug_bounds("agent-composer").expect("standard input bar");
 
-		assert_eq!(status.bottom(), frame.bottom(), "read-only state replaces the bottom input");
+		assert!(status.top() >= composer.top() && status.bottom() <= composer.bottom());
+		assert!(
+			(bounds.center().y - composer.center().y).abs() <= gpui::px(0.5),
+			"action {bounds:?}, input bar {composer:?}, status {status:?}"
+		);
+		assert!((status.center().y - composer.center().y).abs() <= gpui::px(0.5));
+		assert!(visual.debug_bounds("composer-retained-draft").is_none());
+		assert_eq!(
+			visual.debug_bounds("floating-composer").unwrap().bottom(),
+			frame.bottom(),
+			"read-only state stays inside the bottom input bar"
+		);
 		assert!(visual.debug_bounds("composer-editor-area").is_none());
 
 		let epoch = surface.update(visual, |s, cx| {
@@ -457,9 +443,12 @@ mod tests {
 
 		assert_eq!(visual.debug_bounds("archive-restore"), Some(bounds));
 
-		visual.simulate_click(bounds.center(), Default::default());
+		let focus = surface.update(visual, |s, cx| s.archive_recovery_focus(cx));
+
+		visual.update(|window, cx| window.focus(&focus, cx));
+		visual.simulate_keystrokes("enter");
 		surface.update(visual, |s, _| {
-			assert_eq!(s.archive.feedback, "No service profile is configured.");
+			assert_eq!(s.archive.feedback, "Service not configured.");
 			assert!(s.complete_archive_read(
 				"agent",
 				epoch,
@@ -470,6 +459,56 @@ mod tests {
 		visual.update(crate::ui_frame::draw_frame);
 
 		assert_eq!(visual.debug_bounds("archive-restore"), Some(bounds));
+	}
+
+	#[gpui::test]
+	fn unarchive_does_not_require_a_separate_status_read(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+
+			s.selected = Some("agent".into());
+
+			let snapshot = s.snapshot.as_mut().unwrap();
+
+			snapshot.archived_work_ids.insert("agent".into());
+
+			snapshot.work_items.iter_mut().find(|w| w.id == "agent").unwrap().codex_thread_id =
+				Some("thread".into());
+		});
+
+		for result in [None, Some(AgentArchiveResult::Unavailable)] {
+			surface.update(visual, |s, cx| {
+				s.archive = Panel {
+					owner: s.selected.clone(),
+					result,
+					request: Some(cx.spawn(async |_, _| future::pending::<()>().await)),
+					..Default::default()
+				};
+
+				s.restore_archive("agent", "foreign", cx);
+
+				assert!(s.archive.feedback.is_empty());
+
+				cx.notify();
+			});
+
+			visual.update(crate::ui_frame::draw_frame);
+
+			thread::sleep(Duration::from_millis(240));
+
+			visual.update(crate::ui_frame::draw_frame);
+
+			assert!(visual.debug_bounds("archive-check").is_none());
+
+			let action = visual.debug_bounds("archive-restore").expect("direct unarchive action");
+
+			visual.simulate_click(action.center(), Default::default());
+			surface.read_with(visual, |s, _| {
+				assert_eq!(s.archive.feedback, "Service not configured.");
+			});
+		}
 	}
 
 	#[gpui::test]
@@ -672,14 +711,14 @@ mod tests {
 			gpui::Modifiers::default(),
 		);
 		surface.update(visual, |s, cx| {
-			assert_eq!(s.archive.feedback, "No service profile is configured.");
+			assert_eq!(s.archive.feedback, "Service not configured.");
 
 			s.archive.feedback.clear();
 			cx.notify();
 		});
 		visual.simulate_keystrokes("space");
 		surface.update(visual, |s, cx| {
-			assert_eq!(s.archive.feedback, "No service profile is configured.");
+			assert_eq!(s.archive.feedback, "Service not configured.");
 
 			s.archive.feedback.clear();
 			s.restore_archive("root", "old-thread", cx);

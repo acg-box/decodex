@@ -181,7 +181,7 @@ impl Transport {
 	pub(super) fn poll(&self) -> Option<Value> {
 		self.events.try_recv().ok().or_else(|| {
 			self.overflow.swap(false, Ordering::AcqRel).then(
-				|| serde_json::json!({"type":"error","message":"Audio updates could not be delivered. The call stopped."}),
+				|| serde_json::json!({"type":"error","message":"Audio delivery failed. Call ended."}),
 			)
 		})
 	}
@@ -255,7 +255,7 @@ fn audio_event_channel(peer: &Peer, captions: Events) -> Result<DataChannel, &'s
 	let channel = peer
 		.0
 		.create_data_channel("oai-events", DataChannelInit::default())
-		.map_err(|_| "The audio event channel could not start.")?;
+		.map_err(|_| "Could not start audio connection.")?;
 
 	channel.on_message(Some(Box::new(move |buffer| {
 		if !buffer.binary

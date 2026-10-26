@@ -140,7 +140,7 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 		assert_eq!(s.composer.read(cx).content(), "Keep this draft");
 		assert!(s.permission_profiles.task.is_none());
 		assert!(!s.permission_profiles.reviewed);
-		assert!(s.permission_profiles.feedback.contains("could not be confirmed"));
+		assert!(s.permission_profiles.feedback.contains("unconfirmed"));
 		assert!(matches!(
 			s.permission_profiles.state,
 			Some(AgentPermissionState::Pending { state: AgentPermissionOutcome::Unknown, .. })
@@ -303,7 +303,7 @@ fn ordinary_refresh_keeps_permission_read_and_unknown_selection(cx: &mut TestApp
 			assert_eq!(s.permission_profiles.reviewed, !saving);
 
 			if saving {
-				assert!(s.permission_profiles.feedback.contains("could not be confirmed"));
+				assert!(s.permission_profiles.feedback.contains("unconfirmed"));
 				assert!(matches!(
 					s.permission_profiles.state,
 					Some(AgentPermissionState::Pending {

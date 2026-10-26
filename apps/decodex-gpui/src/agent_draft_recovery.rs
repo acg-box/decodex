@@ -203,11 +203,9 @@ impl AgentSurface {
 						let message = match failure {
 							SaveFailure::Invalid(reason) => reason,
 							SaveFailure::Busy =>
-								"Draft storage is busy. Keep both copies again after the other save finishes.",
-							SaveFailure::Conflict =>
-								"Drafts changed again. Keep both copies again to include the new changes.",
-							SaveFailure::Failed =>
-								"Draft copies could not be saved. Current edits remain in this window.",
+								"Draft storage busy. Wait, then choose Keep both again.",
+							SaveFailure::Conflict => "Drafts changed. Choose Keep both again.",
+							SaveFailure::Failed => "Drafts not saved. Keep this window open.",
 						};
 
 						surface.draft_profiles.storage.error = Some(message.into());
@@ -278,7 +276,7 @@ impl AgentSurface {
 			self.restore_unbound_draft(cx);
 		}
 
-		self.feedback = Feedback::success("Draft changes saved. Nothing was sent.");
+		self.feedback = Feedback::success("Drafts saved.");
 
 		self.save_draft_document(cx);
 	}

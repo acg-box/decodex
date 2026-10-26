@@ -266,7 +266,7 @@ fn recap_opens_outside_transcript_and_reports_a_missing_connection(cx: &mut Test
 		s.open_recap("agent", cx);
 
 		assert_eq!(s.recap.work.as_deref(), Some("agent"));
-		assert!(s.recap.feedback.contains("Connect to the service"));
+		assert!(s.recap.feedback.contains("Reconnect"));
 	});
 
 	visual.update(crate::ui_frame::draw_current_frame);

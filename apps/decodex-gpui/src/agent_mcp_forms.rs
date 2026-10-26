@@ -199,7 +199,7 @@ impl AgentSurface {
 			if matches!(value["mode"].as_str(), Some("form" | "openai/form" | "openaiForm")) {
 				decodex_protocol::mcp_request_fields(value)
 			} else {
-				Err("This request requires a different verification flow.".into())
+				Err("This request needs another verification method.".into())
 			};
 
 		match fields {
@@ -321,9 +321,7 @@ impl AgentSurface {
 					));
 				}
 			} else {
-				panel = panel.child(agent_surface::muted(
-					"A valid HTTP or HTTPS verification link is unavailable.",
-				));
+				panel = panel.child(agent_surface::muted("Verification link unavailable."));
 			}
 		}
 

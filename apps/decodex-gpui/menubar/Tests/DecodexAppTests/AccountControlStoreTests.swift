@@ -975,7 +975,7 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertFalse(store.isEnrollingAccount)
 		XCTAssertEqual(
 			store.accountReauthentication?.failureText,
-			"This Codex login is already added. Choose a different account on the login page, then try again."
+			"Account already added. Choose another account on the sign-in page."
 		)
 	}
 

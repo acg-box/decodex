@@ -85,8 +85,7 @@ impl AgentSurface {
 
 		self.sample.work = Some(work);
 		self.sample.thread = Some(thread);
-		self.sample.feedback =
-			"Connect to the service to read or request a separate answer.".into();
+		self.sample.feedback = "Reconnect to ask separately.".into();
 		self.sample.input = Some(cx.new(|cx| {
 			ComposerInput::with_placeholder(
 				41,
@@ -114,9 +113,17 @@ impl AgentSurface {
 				.map(|input| input.read(cx).content().to_owned())
 				.unwrap_or_default();
 
-			if text.trim().is_empty() || text.len() > MAX_AGENT_SAMPLE_PROMPT_BYTES {
-				self.sample.feedback =
-					"Enter a short question before asking. Shorten it if it is too long.".into();
+			if text.trim().is_empty() {
+				self.sample.feedback = "Enter a question.".into();
+
+				cx.notify();
+
+				return;
+			}
+			if text.len() > MAX_AGENT_SAMPLE_PROMPT_BYTES {
+				self.sample.feedback = format!(
+					"Question exceeds {MAX_AGENT_SAMPLE_PROMPT_BYTES} bytes. Shorten it and try again."
+				);
 
 				cx.notify();
 
@@ -156,7 +163,7 @@ impl AgentSurface {
 
 		let (Ok(work), Ok(thread)) = (EntityId::new(work), WireText::new(thread)) else { return };
 		let feedback = match &operation {
-			request::Operation::Read => "Reading sample status…",
+			request::Operation::Read => "Checking answer status…",
 			request::Operation::Generate(_) => "Asking separately…",
 			request::Operation::Cancel(_) => "Requesting cancellation…",
 		};
@@ -184,7 +191,7 @@ impl AgentSurface {
 			.is_err()
 		{
 			self.sample.closed = None;
-			self.sample.feedback = "The separate answer worker could not start.".into();
+			self.sample.feedback = "Could not start separate answer.".into();
 
 			cx.notify();
 
@@ -233,7 +240,7 @@ impl AgentSurface {
 
 		let mut panel = gpui::div().id("sample-panel").debug_selector(|| "sample-panel".into()).w_full().min_w_0().flex().flex_col().gap_2().p_3().rounded_lg().bg(ui_theme::rgba(0xffffff06))
 			.child("Ask separately")
-			.child("One answer from this conversation, without tool execution. Uses its model and quota. Your conversation and draft stay unchanged.")
+			.child("Uses this conversation’s model and quota, without tools. The original conversation stays unchanged.")
 			.child(self.sample.feedback.clone());
 
 		if let Some(prompt) = self.sample.state.as_ref().and_then(|s| s.prompt.as_ref()) {

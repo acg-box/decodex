@@ -37,7 +37,8 @@ use media::Preview;
 use motion::Arrivals;
 use scroll::{ROW_GAP, Viewport};
 
-const SUMMARY_NOTICE: &str = "Showing up to 100 recent prompts and final replies. Intermediate messages and tool activity are unavailable.";
+const SUMMARY_NOTICE: &str =
+	"Up to 100 recent prompts and final replies. Intermediate activity is unavailable.";
 
 impl AgentSurface {
 	#[cfg(feature = "visual-capture")]
@@ -123,7 +124,7 @@ impl AgentSurface {
 			return Err("History source changed");
 		}
 		if !matches!(&history, AgentHistoryResult::Available { questions_recovering: false, .. }) {
-			return Err("Question history recovery is incomplete");
+			return Err("Question history recovery incomplete");
 		}
 
 		let decodex_protocol::AgentTimelineResult::Available { work_id, account_id, page } =
@@ -147,7 +148,7 @@ impl AgentSurface {
 			},
 			page,
 		) {
-			return Err("Native history page could not be applied");
+			return Err("Could not load history page");
 		}
 
 		restored.requested = Some((work.into(), thread.into()));
@@ -429,19 +430,19 @@ impl AgentSurface {
 				return Some(
 					panel
 						.child(agent_surface::muted(
-							"Saved local records can include earlier thread bindings and delivery receipts.",
+							"Saved local records may include earlier thread bindings and delivery receipts.",
 						))
 						.into_any_element(),
 				);
 			}
 			if self.timeline.native.browsing_window {
 				panel = panel.child(agent_surface::muted(
-					"Showing an earlier history window. Open Details to refresh the conversation.",
+					"Earlier history window · Open Details to refresh.",
 				));
 			}
 			if self.timeline.native.opening_session.is_some() {
 				panel = panel.child(agent_surface::muted(
-					"Voice conversation continued from an earlier page.",
+					"Voice conversation continues from the previous page.",
 				));
 			}
 			if !self.timeline.native.summary.is_empty() {
@@ -1073,9 +1074,8 @@ impl AgentSurface {
 			} else {
 				changed = true;
 				self.timeline.native.safety_buffering_turn_id = None;
-				self.timeline.native.notice = Some(
-					"History changed or the display limit was reached. Refresh native history.",
-				);
+				self.timeline.native.notice =
+					Some("History changed or display limit reached. Refresh history.");
 			}
 		} else {
 			self.timeline.native.failed(result, std::time::Instant::now());
@@ -1224,9 +1224,9 @@ impl Timeline {
 
 		self.retry_at = Some(now + Duration::from_secs(delay));
 		self.notice = Some(if self.unsupported {
-			"This thread does not support native history. Saved local history remains available."
+			"Codex history unsupported. Showing saved local records."
 		} else {
-			"Native history could not be loaded. Retrying… Saved local history remains available."
+			"Codex history unavailable. Showing local records while retrying…"
 		});
 	}
 
@@ -1881,7 +1881,7 @@ mod tests {
 		assert!(state.entries.is_empty());
 		assert!(state.older_cursor.is_none() && state.opening_session.is_none());
 		assert_eq!(state.summary, vec![item.clone()]);
-		assert!(state.notice.expect("summary notice").contains("Intermediate messages"));
+		assert!(state.notice.expect("summary notice").contains("Intermediate activity"));
 		assert!(state.refresh(
 			binding,
 			AgentTimelinePage {

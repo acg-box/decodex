@@ -35,10 +35,29 @@ impl AgentSurface {
 		if let Some((_, result)) = self.usage_estimate.as_ref().filter(|(owner, _)| owner == work) {
 			let refresh = work.to_owned();
 
-			panel=panel.child(self.workspace_action("task-usage-refresh".into(),"Refresh estimate".into(),move|s,cx|s.load_usage_estimate(&refresh,cx),cx))
-				.child(agent_surface::muted("Backend estimate for the account shown below. It can lag recent activity and is not a final bill or remaining quota."))
-				.child(gpui::div().id("task-usage-details").debug_selector(||"task-usage-details".into()).max_h(gpui::px(320.)).overflow_y_scroll()
-					.child(result.as_ref().map(estimate_text).unwrap_or_else(||"Reading estimate…".into())));
+			panel = panel
+				.child(self.workspace_action(
+					"task-usage-refresh".into(),
+					"Refresh estimate".into(),
+					move |s, cx| s.load_usage_estimate(&refresh, cx),
+					cx,
+				))
+				.child(agent_surface::muted(
+					"Account estimate; may lag activity. Final bill and remaining quota can differ.",
+				))
+				.child(
+					gpui::div()
+						.id("task-usage-details")
+						.debug_selector(|| "task-usage-details".into())
+						.max_h(gpui::px(320.))
+						.overflow_y_scroll()
+						.child(
+							result
+								.as_ref()
+								.map(estimate_text)
+								.unwrap_or_else(|| "Reading estimate…".into()),
+						),
+				);
 		}
 
 		panel.into_any_element()
@@ -148,13 +167,11 @@ fn estimate_text(result: &AgentUsageEstimateResult) -> String {
 	else {
 		return match result {
 			AgentUsageEstimateResult::NotReported =>
-				"The provider has not reported an estimate for this task and account.",
+				"No estimate reported for this task and account.",
 			AgentUsageEstimateResult::Unsupported =>
-				"This provider does not support task usage estimates.",
-			AgentUsageEstimateResult::CapacityExceeded =>
-				"The complete estimate exceeds the display limit.",
-			_ =>
-				"The estimate could not be read, or its account or connection changed. Refresh to try again.",
+				"Usage estimates unsupported by this provider.",
+			AgentUsageEstimateResult::CapacityExceeded => "Estimate too large to display.",
+			_ => "Estimate unavailable or account changed. Refresh to retry.",
 		}
 		.into();
 	};
@@ -382,11 +399,11 @@ mod tests {
 		assert_eq!(usage_estimates::micros(1), "0.000001");
 		assert!(
 			usage_estimates::estimate_text(&AgentUsageEstimateResult::NotReported)
-				.contains("not reported")
+				.contains("No estimate reported")
 		);
 		assert!(
 			usage_estimates::estimate_text(&AgentUsageEstimateResult::Unavailable)
-				.contains("could not be read")
+				.contains("Estimate unavailable")
 		);
 	}
 

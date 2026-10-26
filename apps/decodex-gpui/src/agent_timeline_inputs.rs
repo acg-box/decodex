@@ -264,14 +264,14 @@ impl AgentSurface {
 
 				if entries.is_empty() && state.after.is_some() {
 					rows.push(
-						(agent_surface::muted("No remaining unconfirmed inputs on this page."))
+						(agent_surface::muted("No more unconfirmed inputs on this page."))
 							.into_any_element(),
 					);
 				}
 			},
 			None => rows.push((ui_loading::loading("Loading delivery records")).into_any_element()),
 			_ => rows.push(
-				(agent_surface::muted("Local delivery records could not be read. Retrying…"))
+				(agent_surface::muted("Delivery records unavailable. Retrying…"))
 					.into_any_element(),
 			),
 		}

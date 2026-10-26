@@ -328,8 +328,7 @@ impl AgentSurface {
 					return;
 				}
 				if !visible.get() {
-					self.feedback =
-						Feedback::warning("Show the entire suggested answer before sending.");
+					self.feedback = Feedback::warning("Review the full answer before sending.");
 
 					cx.notify();
 
@@ -549,9 +548,7 @@ impl AgentSurface {
 		}
 
 		if *questions_truncated {
-			panel = panel.child(agent_surface::muted(
-				"More questions are available after these are answered.",
-			));
+			panel = panel.child(agent_surface::muted("Answer these questions to see the rest."));
 		}
 
 		Some(
@@ -998,7 +995,7 @@ mod tests {
 
 				s.perform_question_action(&target(), &action, window, cx);
 
-				assert_eq!(s.feedback.message, "Show the entire suggested answer before sending.");
+				assert_eq!(s.feedback.message, "Review the full answer before sending.");
 
 				s.feedback.clear();
 				visible.set(true);

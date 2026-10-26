@@ -116,10 +116,11 @@ use decodex_protocol::{
 	AgentLiveMessageKind, AgentPendingEventDto, AgentRequestResult, AgentRequestedDecision,
 	AgentResourcesResult, AgentSandboxDto, AgentSnapshotDto, AgentSnapshotResult, AgentStartDto,
 	AgentTaskReferenceDto, AgentUsageEstimateResult, AgentWorkItemDto, AgentWorkKindDto,
-	AgentWorkStatusDto, ClientProfile, ConversationModel, ConversationReasoningEffort,
-	ConversationWorkingDirectory, DesktopCreationIntent, DesktopQuestionDraft,
-	DesktopRecoveredDraft, EntityId, HistoryText, IdempotencyKey, InitialModelCatalogResult,
-	MAX_HISTORY_INLINE_BYTES, ServiceTier, WireText, work::WorkPortfolio,
+	AgentWorkStatusDto, ClientProfile, CommandError, ConversationModel,
+	ConversationReasoningEffort, ConversationWorkingDirectory, DesktopCreationIntent,
+	DesktopQuestionDraft, DesktopRecoveredDraft, EntityId, HistoryText, IdempotencyKey,
+	InitialModelCatalogResult, MAX_HISTORY_INLINE_BYTES, ServiceTier, WireText,
+	work::WorkPortfolio,
 };
 use deliveries::OpenDelivery;
 use detail::ActivityDetailState;
@@ -801,9 +802,7 @@ impl AgentSurface {
 			return;
 		}
 		if !serde_json::from_str::<serde_json::Value>(&json).is_ok_and(|value| value.is_object()) {
-			self.feedback = Feedback::warning(
-				"Response must be a JSON object that matches the displayed provider request.",
-			);
+			self.feedback = Feedback::warning("Enter a JSON object matching this request.");
 
 			cx.notify();
 
@@ -833,7 +832,7 @@ impl AgentSurface {
 
 		let Ok(response_json) = HistoryText::new(json) else {
 			self.feedback = Feedback::warning(format!(
-				"Response is too large after encoding (limit {} bytes). Shorten your answers and retry; your entries are preserved.",
+				"Response exceeds {} bytes. Shorten your answers and retry.",
 				decodex_protocol::MAX_HISTORY_INLINE_BYTES
 			));
 
@@ -877,10 +876,7 @@ impl AgentSurface {
 			});
 		}
 		if !self.draft_owner_available() {
-			return Err(
-				"This draft's conversation is unavailable. Select a conversation before sending."
-					.into(),
-			);
+			return Err("Draft conversation unavailable. Select another conversation.".into());
 		}
 
 		if let Some(root) = self.snapshot.as_ref().and_then(|snapshot| {
@@ -900,7 +896,7 @@ impl AgentSurface {
 		}
 
 		if self.state != LoadState::Ready {
-			return Err("Wait for conversations to load before sending.".into());
+			return Err("Wait for conversations to load.".into());
 		}
 
 		Ok(AgentActionDto::Start(AgentStartDto {
@@ -1077,7 +1073,7 @@ impl AgentSurface {
 
 		if !self.command_connection_ready() {
 			self.feedback =
-				Feedback::error("Connection unavailable. Draft retained; refresh before sending.");
+				Feedback::error("Connection unavailable. Draft kept; refresh before sending.");
 
 			cx.notify();
 
@@ -1147,7 +1143,7 @@ impl AgentSurface {
 		if !self.command_connection_ready() {
 			self.finish_command(
 				pending,
-				Err("Connection changed before dispatch. Draft retained.".into()),
+				Err("Connection changed before sending. Draft kept.".into()),
 				cx,
 			);
 
@@ -1162,7 +1158,7 @@ impl AgentSurface {
 
 			runtime
 				.block_on(AgentClient::new(profile).execute(action, key))
-				.map_err(|error| format!("Request failed before dispatch: {error:?}"))
+				.map_err(|error| format!("Not sent. {}", super::startup_failure(error)))
 		});
 
 		self.submission.command = Some(cx.spawn(async move |surface, cx| {
@@ -1286,13 +1282,12 @@ impl AgentSurface {
 				}
 			},
 			Ok(AgentCommandResponse::Rejected { error }) =>
-				surface.feedback =
-					Feedback::error(format!("Not accepted: {error:?}. Draft retained.")),
-			Ok(AgentCommandResponse::PotentiallyDispatched { failure }) => {
+				surface.feedback = Feedback::error(command_rejection_message(&error)),
+			Ok(AgentCommandResponse::PotentiallyDispatched { .. }) => {
 				surface.uncertain = true;
-				surface.feedback = Feedback::warning(format!(
-					"Acceptance unknown: {failure:?}. Draft retained. Sending is blocked to prevent duplicate effects; inspect history and service state."
-				));
+				surface.feedback = Feedback::warning(
+					"Delivery unconfirmed. Draft kept; check history before resending.",
+				);
 			},
 			Err(message) => surface.feedback = Feedback::error(message),
 		}
@@ -1362,7 +1357,7 @@ impl AgentSurface {
 			self.uncertain = true;
 			self.sending = false;
 			self.feedback = Feedback::warning(
-				"Service changed before acceptance was confirmed. Draft retained; inspect the previous service before sending again.",
+				"Delivery unconfirmed. Draft kept; check the previous connection before resending.",
 			);
 		}
 
@@ -1807,9 +1802,10 @@ impl AgentSurface {
 		if missing > 0 {
 			let conversations = if missing == 1 { "conversation" } else { "conversations" };
 
-			notices.push(("Token statistics unavailable", format!(
-				"Token usage was not recorded for {missing} completed agent {conversations}. Chat history remains available; the token total is unavailable."
-			)));
+			notices.push((
+				"Token statistics unavailable",
+				format!("Token data unavailable for {missing} completed {conversations}."),
+			));
 		}
 
 		for history in histories {
@@ -1847,11 +1843,7 @@ impl AgentSurface {
 			));
 		}
 		if self.selected.as_deref().is_some_and(|work| self.thread_in_use(work)) {
-			return Some((
-				"In use by another app",
-				"This conversation is in use by another app.".into(),
-				false,
-			));
+			return Some(("In use by another app", String::new(), false));
 		}
 
 		let title = match self.displayed_load_state() {
@@ -1883,24 +1875,18 @@ impl AgentSurface {
 	fn status_text(&self) -> String {
 		match self.displayed_load_state() {
 			LoadState::Idle => "Refresh to load your work.".into(),
-			LoadState::Loading => if self.snapshot.is_some() {
-				"Refreshing · showing the previous snapshot"
-			} else {
-				"Loading work…"
-			}
-			.into(),
-			LoadState::Ready => "Saved conversation and work status".into(),
+			LoadState::Loading =>
+				if self.snapshot.is_some() { "Refreshing…" } else { "Loading work…" }.into(),
+			LoadState::Ready => "Up to date".into(),
 			LoadState::Unavailable => if self.profile.is_none() {
-				"No local service profile is configured for this view."
+				"Service not configured."
 			} else {
-				"Reconnecting… Your work may still be running. See Settings → Diagnostics for details."
+				"Reconnecting… Work may still be running."
 			}
 			.into(),
-			LoadState::Stale =>
-				"Latest work status could not be loaded. Your previous view is still available. Decodex will retry automatically."
-					.into(),
+			LoadState::Stale => "Updates paused. Retrying…".into(),
 			LoadState::Capacity { work, edges, events } => format!(
-				"Snapshot capacity exceeded: {work} work items, {edges} dependencies, {events} pending events. No partial graph is shown."
+				"Display limit reached: {work} tasks, {edges} dependencies, {events} pending events."
 			),
 		}
 	}
@@ -2104,7 +2090,7 @@ impl AgentSurface {
 				let older = self.timeline.older_history.get(&work.id);
 
 				if *has_more && next_before.is_none() {
-					panel = panel.child(muted("Some saved message text was shortened."));
+					panel = panel.child(muted("Some saved message text is shortened."));
 				}
 
 				let mut saved = std::collections::BTreeMap::new();
@@ -2157,7 +2143,7 @@ impl AgentSurface {
 					};
 
 					panel = panel.child(body.when(message.truncated, |row| {
-						row.child(muted("Partial output shortened; waiting for saved result."))
+						row.child(muted("Preview shortened. Waiting for saved result."))
 					}));
 				}
 
@@ -2166,7 +2152,7 @@ impl AgentSurface {
 				}
 			},
 			Some(AgentHistoryResult::Unavailable) =>
-				panel = panel.child(muted("Messages could not be loaded. Retrying…")),
+				panel = panel.child(muted("Messages unavailable. Retrying…")),
 			None => {},
 		}
 
@@ -2470,7 +2456,14 @@ impl AgentSurface {
 			))
 			.child(self.workspace_action(
 				"agent-default-access".into(),
-				format!("Access · {:?}", self.sandbox),
+				format!(
+					"Access · {}",
+					match self.sandbox {
+						AgentSandboxDto::ReadOnly => "Read-only",
+						AgentSandboxDto::WorkspaceWrite => "Workspace write",
+						AgentSandboxDto::FullAccess => "Full access",
+					}
+				),
 				|s, cx| s.cycle_sandbox(cx),
 				cx,
 			))
@@ -2842,6 +2835,25 @@ fn next_check_text(due: i64) -> String {
 		format!("In {} hours", seconds / 3_600)
 	} else {
 		format!("In {} days", seconds / 86_400)
+	}
+}
+
+fn command_rejection_message(error: &CommandError) -> String {
+	match error {
+		CommandError::ExpectedRevisionMismatch { .. } => "State changed. Refresh and retry.".into(),
+		CommandError::IdempotencyConflict =>
+			"Request conflicts with an earlier operation. Refresh before retrying.".into(),
+		CommandError::IdempotencyCapacityExceeded { .. } =>
+			"Request limit reached. Restart Decodex before retrying.".into(),
+		CommandError::ApplicationUnavailable { message } => message.as_str().into(),
+		CommandError::ConversationUnavailable { .. } =>
+			"Codex unavailable. Check Diagnostics.".into(),
+		CommandError::AcceptanceUnknown =>
+			"Acceptance unconfirmed. Check status before retrying.".into(),
+		CommandError::ConversationRecoveryRequired { action } =>
+			super::recovery_action_label(*action).into(),
+		CommandError::AccountCommandRejected { rejection, .. } =>
+			super::account_rejection_label(*rejection).into(),
 	}
 }
 
@@ -3497,10 +3509,7 @@ mod tests {
 		});
 		visual.simulate_keystrokes("cmd-enter");
 		surface.update(visual, |surface, cx| {
-			assert_eq!(
-				surface.feedback.message,
-				"Refresh account defaults for this directory before sending."
-			);
+			assert_eq!(surface.feedback.message, "Refresh account defaults before sending.");
 			assert_eq!(surface.composer.read(cx).content(), "Please coordinate this goal");
 			assert!(!surface.sending);
 
@@ -4023,7 +4032,7 @@ mod tests {
 			surface.submit(cx);
 
 			assert!(surface.submission.command.is_none());
-			assert!(surface.feedback.contains("Acceptance unknown"));
+			assert!(surface.feedback.contains("Delivery unconfirmed"));
 		});
 	}
 
@@ -4087,7 +4096,10 @@ mod tests {
 			}));
 
 			assert!(surface.snapshot.is_none());
-			assert!(surface.status_text().contains("No partial graph"));
+			assert!(matches!(
+				surface.displayed_load_state(),
+				LoadState::Capacity { work: 101, edges: 0, events: 0 }
+			));
 		});
 
 		visual.update(|window, cx| {

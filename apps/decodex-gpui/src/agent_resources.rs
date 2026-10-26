@@ -30,7 +30,8 @@ impl AgentSurface {
 		self.resources_task = None;
 
 		if self.resource_mutation_task.take().is_some() {
-			self.resource_form.feedback = "The resource change is unconfirmed. Reopen task resources to inspect the current state; it was not retried.".into();
+			self.resource_form.feedback =
+				"Change unconfirmed. Reopen resources to check before retrying.".into();
 		} else if opened {
 			self.resource_form.feedback.clear();
 		}
@@ -81,11 +82,11 @@ impl AgentSurface {
 			let body = match result {
 				None => gpui::div().child(ui_loading::loading("Loading resources")),
 				Some(AgentResourcesResult::Unsupported) =>
-					gpui::div().child("This Codex provider does not support task resources."),
+					gpui::div().child("Task resources unsupported by this provider."),
 				Some(AgentResourcesResult::Unavailable) =>
-					gpui::div().child("Task resources are unavailable. Retrying…"),
+					gpui::div().child("Resources unavailable. Retrying…"),
 				Some(AgentResourcesResult::CapacityExceeded) =>
-					gpui::div().child("The resource list exceeds the display limit."),
+					gpui::div().child("Too many resources to display."),
 				Some(AgentResourcesResult::Available { resources }) => {
 					let mut list = self.resource_editor(work, cx);
 
@@ -120,7 +121,7 @@ impl AgentSurface {
 								.bg(ui_theme::rgba(0xffffff06))
 								.child(title)
 								.child(if resource.payload_omitted {
-									"Resource details are unavailable for display.".into()
+									"Resource details unavailable.".into()
 								} else {
 									resource.payload_json.clone()
 								}),
@@ -216,7 +217,8 @@ impl AgentSurface {
 			WireText::new(self.resource_form.title.read(cx).content().to_owned()),
 			WireText::new(self.resource_form.url.read(cx).content().to_owned()),
 		) else {
-			self.resource_form.feedback = "Enter a title and a link within the text limit.".into();
+			self.resource_form.feedback =
+				"The title or URL exceeds 4 KiB. Shorten it and try again.".into();
 
 			cx.notify();
 
@@ -257,32 +259,42 @@ impl AgentSurface {
 			Some((result, readback))
 		});
 
-		self.resource_mutation_task=Some(cx.spawn(async move |surface,cx| {
-            let (result,readback)=request.await.unwrap_or((None,None));
-            let observed=readback.as_ref().is_some_and(|resources|resource_change_observed(&expected,resources));
-            let _=surface.update(cx,|s,cx| {
-                if s.selected.as_deref()!=Some(work.as_str()) {return;}
+		self.resource_mutation_task = Some(cx.spawn(async move |surface, cx| {
+			let (result, readback) = request.await.unwrap_or((None, None));
+			let observed = readback
+				.as_ref()
+				.is_some_and(|resources| resource_change_observed(&expected, resources));
+			let _ = surface.update(cx, |s, cx| {
+				if s.selected.as_deref() != Some(work.as_str()) {
+					return;
+				}
 
-                s.resource_mutation_task=None;
+				s.resource_mutation_task = None;
+				s.resource_form.feedback = if observed {
+					"Change confirmed."
+				} else {
+					match result {
+						Some(AgentCommandResponse::Accepted { .. }) =>
+							"Save accepted; current state unconfirmed. Refresh before editing again.",
+						Some(AgentCommandResponse::Rejected { .. }) =>
+							"Change rejected. Check the link and connection.",
+						_ => "Change unconfirmed. Refresh resources before retrying.",
+					}
+				}
+				.into();
 
-                s.resource_form.feedback=if observed {
-                    "The current resource list confirms the requested state."
-                } else {match result {
-                    Some(AgentCommandResponse::Accepted {..}) => "Saved, but the refreshed list does not yet confirm the state. Check it before making another change.",
-                    Some(AgentCommandResponse::Rejected {..}) => "The resource change was not accepted. Check the link and task connection.",
-                    _ => "The change is not confirmed. Check the refreshed resource list before trying again.",
-                }}.into();
+				if s.resources.as_ref().is_some_and(|(owner, _)| owner == &work) {
+					s.resources = None;
 
-                if s.resources.as_ref().is_some_and(|(owner,_)|owner==&work) {
-                    s.resources=None;
+					s.toggle_resources(&work, cx);
 
-                    s.toggle_resources(&work,cx);
-                    s.resources=Some((work,Some(readback.unwrap_or(AgentResourcesResult::Unavailable))));
-                }
+					s.resources =
+						Some((work, Some(readback.unwrap_or(AgentResourcesResult::Unavailable))));
+				}
 
-                cx.notify();
-            });
-        }));
+				cx.notify();
+			});
+		}));
 
 		cx.notify();
 	}
@@ -650,9 +662,9 @@ mod tests {
 					"refresh must not strand a completed mutation"
 				);
 				assert!(s.resource_form.feedback.contains(if remove {
-					"confirms the requested state"
+					"Change confirmed"
 				} else {
-					"not confirmed"
+					"unconfirmed"
 				}));
 			});
 		}

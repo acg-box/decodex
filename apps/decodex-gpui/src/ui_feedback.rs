@@ -1,7 +1,7 @@
 //! Feedback is placed by scope, not by severity.
 //!
 //! - A field or operation error stays beside the affected control.
-//! - A send restriction replaces the composer with one persistent status and recovery action.
+//! - A send restriction disables the composer and explains the reason inside its usual surface.
 //!   Archived and externally owned conversations are read-only states, not failed operations.
 //! - A message receipt stays with its message; it never becomes a global notification.
 //! - App-wide connection, account and background notices belong to the notification center.
@@ -12,6 +12,10 @@
 //! a light border, not elevation. Only overlays have shadows. Tone supplements an icon and
 //! explicit wording; it does not determine placement, focus or automatic dismissal. A blocking
 //! status remains until its cause is resolved, and never discards the user's saved draft.
+//!
+//! Use concise, complete wording that explains the state, effect and required action.
+//! Explain unfamiliar controls and scope beside the control. Remove repeated labels and
+//! boilerplate, while retaining consequences, costs, defaults and recovery steps.
 use std::{
 	f32::consts::TAU,
 	ops::Deref,
@@ -575,7 +579,11 @@ fn state_row(
 	gpui::div()
 		.id(id)
 		.role(Role::Status)
-		.aria_label(format!("{title}. {detail}"))
+		.aria_label(match (title.is_empty(), detail.is_empty()) {
+			(true, _) => detail.to_owned(),
+			(_, true) => title.to_owned(),
+			_ => format!("{title}. {detail}"),
+		})
 		.w_full()
 		.min_w_0()
 		.min_h(gpui::px(if inline { 32. } else { 44. }))
@@ -594,12 +602,14 @@ fn state_row(
 					text.flex_wrap().items_center().gap_x(gpui::px(8.)).gap_y(gpui::px(2.))
 				})
 				.when(!inline, |text| text.flex_col().gap(gpui::px(2.)))
-				.child(
-					gpui::div()
-						.font_weight(FontWeight::MEDIUM)
-						.text_color(ui_theme::rgb(TEXT))
-						.child(title.to_owned()),
-				)
+				.when(!title.is_empty(), |text| {
+					text.child(
+						gpui::div()
+							.font_weight(FontWeight::MEDIUM)
+							.text_color(ui_theme::rgb(TEXT))
+							.child(title.to_owned()),
+					)
+				})
 				.when(!detail.is_empty(), |d| {
 					d.child(
 						gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(detail.to_owned()),

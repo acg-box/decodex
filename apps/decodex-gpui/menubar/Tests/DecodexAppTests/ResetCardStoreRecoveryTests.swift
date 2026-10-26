@@ -170,7 +170,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		XCTAssertEqual(
 			store.pendingStatus(for: fixture.attempt),
 			ResetCardPendingStatus.retrying(
-				detail: "The reset-card request was not dispatched."
+				detail: "Reset request not sent."
 			)
 		)
 	}
@@ -195,7 +195,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		XCTAssertEqual(
 			store.pendingStatus(for: fixture.attempt),
 			ResetCardPendingStatus.checking(
-				detail: "The reset request has not been confirmed yet."
+				detail: "Reset unconfirmed."
 			)
 		)
 		let invocations = try fixture.invocations()
@@ -235,7 +235,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			ResetCardStoreMessage(
 				tone: .error,
 				accountID: "018f0f9e-7b6e-4a31-8f4c-1d2e3f405160",
-				text: "The reset-card request was rejected. Refresh and try again."
+				text: "Reset rejected. Refresh and retry."
 			)
 		)
 	}
@@ -321,7 +321,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			ResetCardStoreMessage(
 				tone: .error,
 				accountID: "018f0f9e-7b6e-4a31-8f4c-1d2e3f405160",
-				text: "The pending reset-card limit is reached. Resolve an existing request before starting another."
+				text: "Pending reset limit reached. Resolve a request before starting another."
 			)
 		)
 	}
@@ -355,7 +355,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			store.message,
 			ResetCardStoreMessage(
 				tone: .error,
-				text: "The pending reset-card recovery journal is invalid or unavailable. New use is blocked. Preserve the journal for manual inspection; no automatic repair is available."
+				text: "Reset recovery data unavailable or invalid. New use blocked. Keep the recovery journal for support."
 			)
 		)
 	}
@@ -489,7 +489,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		XCTAssertEqual(
 			checkingStore.pendingStatus(for: fixture.attempt),
 			ResetCardPendingStatus.retrying(
-				detail: "Another Decodex window is checking this reset request."
+				detail: "Another window is checking this reset."
 			)
 		)
 

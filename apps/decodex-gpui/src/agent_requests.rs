@@ -223,7 +223,7 @@ impl AgentSurface {
 				panel =
 					panel.child(gpui::div().when(!visible, |caption| caption.invisible()).child(
 						agent_surface::muted(format!(
-							"Skips unanswered in {remaining}s. Interact to keep this question open."
+							"Auto-skips in {remaining}s. Interact to keep open."
 						)),
 					));
 			}
@@ -296,16 +296,15 @@ impl AgentSurface {
 		if text.len() > 4_096
 			&& matches!(&self.request, Some(AgentRequestResult::Available { request_json, .. }) if request_json.as_str().len() > decodex_protocol::MAX_HISTORY_INLINE_BYTES)
 		{
-			"Complete content is in the request details above.".into()
+			"Full content is in Request details.".into()
 		} else {
 			text
 		}
 	}
 
 	fn file_approval_details(&self, mut panel: Div, value: &Value) -> Div {
-		let details = value["changeDetails"]
-			.as_str()
-			.unwrap_or("File paths and patch details are unavailable.");
+		let details =
+			value["changeDetails"].as_str().unwrap_or("File paths and patch details unavailable.");
 
 		panel = panel.child(
 			gpui::div()
@@ -932,7 +931,7 @@ connection_initializing: false,
 			s.question_inputs["format"].update(cx, |input, cx| input.set_content(&answer, cx));
 			s.submit_answers(cx);
 
-			assert!(s.feedback.starts_with("Response is too large after encoding"));
+			assert!(s.feedback.starts_with("Response exceeds"));
 			assert_eq!(s.question_inputs["format"].read(cx).content(), answer);
 			assert!(s.submission.command.is_none() && !s.sending);
 			assert_eq!(s.request, Some(request));

@@ -334,7 +334,7 @@ pub(super) mod tests {
 			assert_eq!(s.draft_profiles.texts["manager"], "manager draft");
 			assert_eq!(s.draft_profiles.files["manager"], vec![file]);
 			assert_eq!(s.draft_profiles.tasks["manager"], vec![reference]);
-			assert!(s.uncertain && s.feedback.contains("acceptance"));
+			assert!(s.uncertain && s.feedback.contains("Delivery unconfirmed"));
 			assert_eq!(
 				s.submission
 					.pending

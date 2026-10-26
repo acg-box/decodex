@@ -68,15 +68,15 @@ impl AgentSurface {
 			model: value(&next.model)
 				.map(WireText::new)
 				.transpose()
-				.map_err(|_| "The realtime model name is too long.")?,
+				.map_err(|_| "Voice model name too long.")?,
 			start_instructions: value(&next.start)
 				.map(HistoryText::new)
 				.transpose()
-				.map_err(|_| "The voice start instructions are too long.")?,
+				.map_err(|_| "Voice start instructions too long.")?,
 			end_instructions: value(&next.end)
 				.map(HistoryText::new)
 				.transpose()
-				.map_err(|_| "The voice end instructions are too long.")?,
+				.map_err(|_| "Voice end instructions too long.")?,
 		})
 	}
 
@@ -134,10 +134,14 @@ impl AgentSurface {
 		));
 
 		if active && let Some(next) = &self.voice_settings.next {
-			panel=panel.child("Applies when you start a call. Blank fields use configured defaults. Changes do not affect an active call.")
-                .child("Realtime model").child(next.model.clone())
-                .child("Instructions for the agent when voice starts").child(gpui::div().h(gpui::px(90.)).child(next.start.clone()))
-                .child("Instructions for the agent when voice ends").child(gpui::div().h(gpui::px(90.)).child(next.end.clone()));
+			panel = panel
+				.child("Applies to new calls. Blank fields use defaults.")
+				.child("Realtime model")
+				.child(next.model.clone())
+				.child("Instructions when voice starts")
+				.child(gpui::div().h(gpui::px(90.)).child(next.start.clone()))
+				.child("Instructions when voice ends")
+				.child(gpui::div().h(gpui::px(90.)).child(next.end.clone()));
 		}
 
 		panel.into_any_element()
@@ -210,7 +214,7 @@ impl AgentSurface {
 
 		self.voice_settings.state = None;
 		self.voice_settings.feedback = Feedback::loading(if voice.is_some() {
-			"Saving voice…"
+			"Saving voice settings…"
 		} else {
 			"Reading voice settings…"
 		});
@@ -312,7 +316,7 @@ impl AgentSurface {
 		{
 			if preference != effective {
 				panel = panel.child(format!(
-					"Saved preference: {} · Effective here: {}",
+					"Saved: {} · Effective: {}",
 					preference.as_ref().map_or("Server default", WireText::as_str),
 					effective.as_ref().map_or("Server default", WireText::as_str)
 				));
@@ -356,17 +360,15 @@ fn feedback(
 			AgentVoiceSettingsResult::Available { effective, preference, .. },
 		) if preference.as_ref() == Some(voice) =>
 			if effective.as_ref() == Some(voice) {
-				Feedback::success("Voice saved for your next conversation.")
+				Feedback::success("Saved for your next voice conversation.")
 			} else {
-				Feedback::info("Voice saved. This project's settings select a different voice.")
+				Feedback::info("Saved. Project settings select a different voice.")
 			},
 		(Some(_), Some(Ok(AgentCommandResponse::Rejected { .. })), _) =>
-			Feedback::error("The change was not accepted. Review the refreshed settings."),
-		(Some(_), _, _) => Feedback::warning(
-			"The save could not be confirmed. Review the refreshed settings before trying again.",
-		),
+			Feedback::error("Change rejected. Refresh before retrying."),
+		(Some(_), _, _) => Feedback::warning("Save unconfirmed. Refresh before retrying."),
 		(None, _, AgentVoiceSettingsResult::Available { .. }) => Feedback::default(),
-		(None, _, _) => Feedback::warning("Voice settings are unavailable. Refresh to try again."),
+		(None, _, _) => Feedback::warning("Voice settings unavailable. Refresh to retry."),
 	}
 }
 

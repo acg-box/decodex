@@ -43,7 +43,7 @@ impl AgentSurface {
 		self.reset_usage_evidence();
 
 		self.usage_evidence.scope = Some(scope.clone());
-		self.usage_evidence.feedback = "Reading retained native receipts…".into();
+		self.usage_evidence.feedback = "Reading usage records…".into();
 
 		let epoch = self.usage_evidence.epoch;
 		let generation = self.generation;
@@ -78,7 +78,7 @@ impl AgentSurface {
 					},
 					_ =>
 						s.usage_evidence.feedback =
-							"Usage evidence is unavailable. Refresh to try again.".into(),
+							"Usage records unavailable. Refresh to retry.".into(),
 				}
 
 				cx.notify();
@@ -121,7 +121,7 @@ impl AgentSurface {
 		let selected = scope.clone();
 		let mut panel = gpui::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
 			format!("usage-{}", scope.id().as_str()),
-			"Actual usage".into(),
+			"Recorded usage".into(),
 			opened,
 			cx,
 			move |s, cx| {
@@ -146,7 +146,7 @@ impl AgentSurface {
 		{
 			panel = panel.child(totals_text(&scope, totals));
 
-			panel=panel.child("Known retained receipts only. Work includes turns linked by saved evidence; those turns can contain other activity. Missing history and unobserved native child usage remain unknown. Durations can overlap; these values are not Work elapsed time or a bill.");
+			panel=panel.child("Retained receipts only. Linked turns may include other work; missing history and unseen child usage are unknown. Durations can overlap. These totals are not elapsed time or a bill.");
 
 			let mut preview = gpui::div()
 				.id("usage-source-preview")
@@ -178,9 +178,8 @@ impl AgentSurface {
 			panel = panel.child(preview);
 
 			if *sources_truncated {
-				panel = panel.child(
-					"Source preview is bounded. Totals cover all retained matching receipts.",
-				);
+				panel = panel
+					.child("Preview shortened. Totals include all retained matching receipts.");
 			}
 
 			if let Ok(text) = serde_json::to_string_pretty(
