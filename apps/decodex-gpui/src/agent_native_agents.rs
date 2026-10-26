@@ -591,7 +591,7 @@ impl AgentSurface {
 	}
 
 	fn read_native_agent(&mut self, cx: &mut Context<Self>) {
-		if !self.command_connection_ready() || self.connection_initializing() {
+		if !self.read_connection_ready() {
 			return;
 		}
 

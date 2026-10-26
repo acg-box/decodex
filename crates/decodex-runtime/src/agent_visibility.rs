@@ -21,6 +21,10 @@ pub(crate) struct ArchiveVisibility {
 	initial_pending: Option<HashSet<String>>,
 }
 impl ArchiveVisibility {
+	pub fn ready_for(&self, generation: &str) -> bool {
+		self.generation.as_deref() == Some(generation) && self.initial_pending.is_none()
+	}
+
 	pub fn project(&self, snapshot: &mut AgentSnapshotDto) {
 		// Finishing a request does not prove that the first archive view is complete.
 		snapshot.connection_initializing |=
@@ -444,7 +448,7 @@ mod tests {
 		let mut cache = ArchiveVisibility::default();
 
 		cache.refresh_due("process", &threads, Instant::now());
-
+		assert!(!cache.ready_for("process"));
 		for observed in [
 			HashMap::new(),
 			HashMap::from([("thread-main".into(), ThreadArchiveState::Active)]),
@@ -457,6 +461,7 @@ mod tests {
 			cache.project(&mut pending);
 
 			assert!(pending.connection_initializing);
+			assert!(!cache.ready_for("process"));
 		}
 
 		cache.apply("process", HashMap::from([("thread-live".into(), ThreadArchiveState::Active)]));
@@ -466,6 +471,8 @@ mod tests {
 		cache.project(&mut ready);
 
 		assert!(!ready.connection_initializing);
+		assert!(cache.ready_for("process"));
+		assert!(!cache.ready_for("another-process"));
 		assert_eq!(
 			ready.work_items.iter().map(|work| work.id.as_str()).collect::<Vec<_>>(),
 			["main", "live"]

@@ -402,6 +402,9 @@ impl AgentHost {
 
 	pub(crate) async fn runtime_source(&self) -> Option<decodex_protocol::EntityId> {
 		let (generation, account, revision, client) = self.runtime.agent_usage_source().await?;
+		if !self.archive_visibility.lock().await.ready_for(generation.as_str()) {
+			return None;
+		}
 		let value = serde_json::to_vec(&(
 			generation.as_str(),
 			account.as_str(),
@@ -2288,7 +2291,9 @@ impl AgentHost {
 
 			return None;
 		};
-
+		// Seed the durable question fence before publishing any native client. A
+		// readable workspace must not expose stale questions during later recovery.
+		self.store.queue_agent_async_reconnection().await.ok()?;
 		if let Some(observations) = &self.observations {
 			let _phase = Phase::new("initial_account_observations");
 			let bound_account = self
