@@ -75,6 +75,7 @@ use {
 	libc::UF_IMMUTABLE,
 	std::ffi::CString,
 	std::fs::{OpenOptions, Permissions},
+	std::os::macos::fs::MetadataExt as _,
 	std::os::unix::fs::OpenOptionsExt as _,
 };
 
@@ -1428,7 +1429,9 @@ impl AppServerCommand {
 	/// let _ = AppServerCommand::new("python3", ".");
 	/// ```
 	pub fn new(working_directory: impl Into<PathBuf>) -> Result<Self, SupervisionError> {
+		let phase = crate::startup_trace::Phase::new("executable_snapshot");
 		let (program, executable, executable_digest) = resolve_executable(OsStr::new("codex"))?;
+		drop(phase);
 		let mut command = Self::production_from_resolved(
 			program,
 			executable,
@@ -1438,6 +1441,7 @@ impl AppServerCommand {
 
 		#[cfg(target_os = "macos")]
 		{
+			let _phase = crate::startup_trace::Phase::new("static_code_identity");
 			command.attested_code_identity = Some(
 				AttestedCodeIdentity::capture(
 					&command.executable.execution_path(),
@@ -4866,6 +4870,9 @@ fn capture_platform_executable_snapshot(
 ) -> Result<(ExecutableSnapshot, [u8; 32]), SupervisionError> {
 	let directory = TempDir::new().map_err(|_| SupervisionError::ExecutableUnavailable)?;
 	let snapshot_path = bundle_snapshot::path(_source_path, directory.path())?;
+	if clone_executable_snapshot(source, &snapshot_path)? {
+		return finalize_executable_snapshot(directory, snapshot_path, metadata);
+	}
 	let mut snapshot_writer = OpenOptions::new()
 		.create_new(true)
 		.write(true)
@@ -4898,10 +4905,26 @@ fn capture_platform_executable_snapshot(
 
 	drop(snapshot_writer);
 
-	fs::set_permissions(&snapshot_path, Permissions::from_mode(0o500))
-		.map_err(|_| SupervisionError::ExecutableUnavailable)?;
-
 	finalize_executable_snapshot(directory, snapshot_path, metadata)
+}
+
+#[cfg(target_os = "macos")]
+fn clone_executable_snapshot(source: &File, target: &Path) -> Result<bool, SupervisionError> {
+	let target = CString::new(target.as_os_str().as_bytes())
+		.map_err(|_| SupervisionError::ExecutableUnavailable)?;
+	// SDK sys/clonefile.h: do not inherit ownership from a system-owned source.
+	const CLONE_NOOWNERCOPY: u32 = 0x0002;
+	// SAFETY: the source descriptor is retained, and target is NUL-terminated for the call.
+	let result = unsafe {
+		libc::fclonefileat(source.as_raw_fd(), libc::AT_FDCWD, target.as_ptr(), CLONE_NOOWNERCOPY)
+	};
+	if result == 0 {
+		return Ok(true);
+	}
+	match std::io::Error::last_os_error().raw_os_error() {
+		Some(libc::EXDEV | libc::ENOTSUP) => Ok(false),
+		_ => Err(SupervisionError::ExecutableUnavailable),
+	}
 }
 
 #[cfg(target_os = "macos")]
@@ -4917,6 +4940,11 @@ fn finalize_executable_snapshot(
 		source_inode: metadata.ino(),
 	};
 
+	// A clone can inherit immutability. Retain cleanup ownership before changing
+	// its flags or permissions, then seal and hash the independent image as before.
+	set_snapshot_immutable(&snapshot.path, false)?;
+	fs::set_permissions(&snapshot.path, Permissions::from_mode(0o500))
+		.map_err(|_| SupervisionError::ExecutableUnavailable)?;
 	set_snapshot_immutable(&snapshot.path, true)?;
 
 	let digest = snapshot.digest()?;
@@ -5059,9 +5087,13 @@ const fn is_supported_native_executable_magic(magic: [u8; 4]) -> bool {
 
 #[cfg(target_os = "macos")]
 fn set_snapshot_immutable(path: &Path, immutable: bool) -> Result<(), SupervisionError> {
+	let flags =
+		fs::symlink_metadata(path).map_err(|_| SupervisionError::ExecutableUnavailable)?.st_flags();
 	let path = CString::new(path.as_os_str().as_bytes())
 		.map_err(|_| SupervisionError::ExecutableUnavailable)?;
-	let flags = if immutable { UF_IMMUTABLE } else { 0 };
+	// Clones can retain transparent compression. Changing immutability must not
+	// clear unrelated flags and make the retained executable bytes unreadable.
+	let flags = if immutable { flags | UF_IMMUTABLE } else { flags & !UF_IMMUTABLE };
 	// SAFETY: the C string is NUL-terminated and remains alive for the call.
 	let result = unsafe { libc::chflags(path.as_ptr(), flags) };
 
@@ -7786,6 +7818,52 @@ pub(crate) mod tests {
 			assert_eq!(spawn_count.load(Ordering::Acquire), trigger_spawn);
 			assert!(!attacker_marker.exists());
 		}
+	}
+
+	#[cfg(target_os = "macos")]
+	#[test]
+	fn executable_snapshot_keeps_independent_bytes_and_rejects_existing_clone_targets() {
+		let parent = TempDir::new().unwrap();
+		let source = parent.path().join("source");
+		fs::copy("/bin/cat", &source).unwrap();
+		let original = fs::read(&source).unwrap();
+		let file = fs::File::open(&source).unwrap();
+		let occupied = parent.path().join("occupied");
+		fs::write(&occupied, b"retained target").unwrap();
+		assert!(process::clone_executable_snapshot(&file, &occupied).is_err());
+		assert_eq!(fs::read(&occupied).unwrap(), b"retained target");
+
+		let (snapshot, digest) = process::capture_executable_snapshot(&source).unwrap();
+		let image = snapshot.path.clone();
+		let directory = snapshot._directory.path().to_owned();
+		assert_ne!(image.metadata().unwrap().ino(), source.metadata().unwrap().ino());
+		assert_eq!(image.metadata().unwrap().mode() & 0o777, 0o500);
+		fs::write(&source, b"source changed after capture").unwrap();
+		assert_eq!(fs::read(&image).unwrap(), original);
+		assert_eq!(snapshot.digest().unwrap(), digest);
+		assert!(fs::write(&image, b"cannot change immutable snapshot").is_err());
+		drop(snapshot);
+		assert!(!image.exists());
+		assert!(!directory.exists());
+	}
+
+	#[cfg(target_os = "macos")]
+	#[test]
+	fn snapshot_capture_preserves_an_immutable_source_and_cleans_its_clone() {
+		let parent = TempDir::new().unwrap();
+		let source = parent.path().join("immutable-source");
+		fs::copy("/bin/cat", &source).unwrap();
+		process::set_snapshot_immutable(&source, true).unwrap();
+		let result = process::capture_executable_snapshot(&source);
+		let source_still_immutable = fs::write(&source, b"unchanged source").is_err();
+		// Restore the fixture even if capture fails, so a failed check cannot leak it.
+		process::set_snapshot_immutable(&source, false).unwrap();
+		assert!(source_still_immutable);
+		let (snapshot, digest) = result.unwrap();
+		let image = snapshot.path.clone();
+		assert_eq!(snapshot.digest().unwrap(), digest);
+		drop(snapshot);
+		assert!(!image.exists());
 	}
 
 	#[cfg(target_os = "macos")]

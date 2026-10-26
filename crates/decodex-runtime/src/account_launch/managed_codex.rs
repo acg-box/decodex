@@ -17,11 +17,13 @@ pub(super) fn evidence(
 	if paths.executable.canonicalize().ok().as_ref() != Some(&command.program) {
 		return Ok(None);
 	}
-
+	let phase = crate::startup_trace::Phase::new("managed_component_validation");
 	let runtime = store
 		.installed(&lock)
 		.map_err(|_| SupervisionError::ExecutableChanged)?
 		.ok_or(SupervisionError::ExecutableUnavailable)?;
+	drop(phase);
+	let _phase = crate::startup_trace::Phase::new("managed_schema_load");
 	let generated = GeneratedSchemaEvidence::load(&runtime.schemas)
 		.map_err(|markers| ProbeError::SchemaMissing { markers })?;
 
