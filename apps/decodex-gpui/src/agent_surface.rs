@@ -5,6 +5,7 @@
 #[path = "agent_app_exposure.rs"] mod app_exposure;
 #[path = "agent_archive.rs"] mod archive;
 #[path = "agent_async_questions.rs"] mod async_questions;
+#[path = "agent_attached_branches.rs"] mod attached_branches;
 #[path = "agent_capabilities.rs"] mod capabilities;
 #[path = "agent_composer.rs"] mod composer;
 #[path = "agent_context_settings.rs"] mod context_settings;
@@ -1763,6 +1764,7 @@ impl AgentSurface {
 		self.invalidate_search_settings(snapshot);
 		self.invalidate_context_settings(snapshot);
 		self.invalidate_memory_summary(snapshot);
+		self.invalidate_attached_branches(snapshot);
 		self.invalidate_usage_evidence(snapshot);
 		self.invalidate_recap(snapshot);
 		self.invalidate_sample(snapshot);
@@ -2404,6 +2406,7 @@ impl AgentSurface {
 					.child(self.search_settings_panel(work, cx))
 					.child(self.context_settings_panel(work, cx))
 					.child(self.memory_summary_panel(work, cx))
+					.child(self.attached_branches_panel(work, cx))
 					.child(self.agent_usage_panel(work, cx))
 					.child(self.usage_estimate_panel(work, cx))
 					.child(self.read_state_panel(cx))

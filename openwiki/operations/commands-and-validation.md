@@ -32,6 +32,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs
   - id: openwiki-source-8deed3df92ee012fa13bfea8
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs
+  - id: openwiki-source-68238f7343c9fc1bd11783f3
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-24139c353e393a9759b0267a
@@ -70,12 +72,14 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-5b64299c5e2f5b3bebd5f240
     resource: repo://scripts/vnext/local_database_gate.py
+  - id: openwiki-source-e201f60894c32a914dac99ee
+    resource: repo://scripts/vnext/run_native_regression.py
   - id: openwiki-source-bf4767337e400840122c176b
     resource: repo://tests/scripts/test_gate_contract.py
-generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
+generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T20:12:58.607Z
+    at: 2026-10-26T07:09:00.728Z
 ---
 
 
@@ -279,6 +283,20 @@ cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui --all-feat
 The generator uses an already installed macOS Samantha English voice. It creates mono PCM16 at 24 kHz and 48 kHz and records input digests. It does not install a voice or open a microphone. The test fixture refuses a missing marker or a service with more than its single fixture Agent. The dictation test checks final words and unchanged Agent history. The live test uses manual PCM, checks final assistant text and decoded audio, then requires Ended after Stop.
 
 The final recorded cohort passed two tests, skipped 1023 and had no unmatched selector, retry or LEAK. Strict lint for 13 packages and formatting passed. Keep real-provider results separate from local hardware capture and installed UI checks. The user's separate playback observation was audible but quiet; it did not change system volume or routing. Preserve compact digests and domain receipts, close the owned service, then remove temporary homes, credentials, components and audio. See `retained_project_agent_work.online_voice_acceptance` and the [voice boundary](../integrations/subscription-voice.md#authorized-synthetic-online-checks).
+
+## Attached-branch native regression fixtures
+
+Use `scripts/vnext/run_native_regression.py` with an explicit qualified runtime directory and one exact fixture selector per invocation. It creates a short canonical system-temporary HOME, preserves host Cargo and Rustup locations, runs the explicit component preparation command, and removes the fixture afterward. Preparation uses a separate native home so that it cannot populate the account fixture. The public-socket fixture uses the owned checkout as its working directory; product directory checks remain active.
+
+```sh
+DECODEX_TEST_NATIVE_FORK=1 python3 scripts/vnext/run_native_regression.py \
+  --runtime "$QUALIFIED_RUNTIME" \
+  --filter 'test(installed_recap_public_socket_preserves_parent_and_exact_request_identity)'
+```
+
+The `retained_attached_forks` record in the [portable evidence index](../../automations/upstream/retained-evidence.json) lists the other four exact-artifact native tests and all reproducible commands. The final cohort passed five native tests, 57 focused backend tests and six focused UI tests with zero unmatched selectors. The complete workspace run passed 3006 tests with 1227 skipped and one passed-test LEAK; the affected composer test then passed in the clean focused cohort. These overlapping selections do not establish the cleanup cause.
+
+Strict Clippy for five affected packages, nightly formatting, 28 Python checks, the schema59 database gate and the full 1076-file style audit passed. This style result is separate from the earlier read-only-view audit failure. The native provider is synthetic. These checks did not install or launch the desktop app, qualify real-provider behavior, migrate the runtime baseline, advance upstream review or change the schedule.
 
 ## Prepare Codex components
 

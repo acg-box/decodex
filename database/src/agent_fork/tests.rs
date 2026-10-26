@@ -75,6 +75,7 @@ async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_so
 		(AgentForkBoundary::AfterTurn, "first", vec!["first"]),
 		(AgentForkBoundary::BeforeInput, "second", vec!["first"]),
 		(AgentForkBoundary::AfterTurn, "second", vec!["first", "second"]),
+		(AgentForkBoundary::AttachedAfterTurn, "second", vec!["first", "second"]),
 	] {
 		let expected: Vec<String> = expected.into_iter().map(String::from).collect();
 		let directory = tempfile::tempdir().unwrap();
@@ -180,7 +181,44 @@ async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_so
 		);
 
 		assert_fork_draft(&store, boundary, &a, &result).await;
+		assert_attachment_index(&store, boundary, &result).await;
 	}
+}
+
+#[tokio::test]
+async fn attached_branch_retains_its_exact_source_instead_of_becoming_a_sibling() {
+	let directory = tempfile::tempdir().unwrap();
+	let store = SqliteStore::open_test(&directory.path().join("attached.sqlite3")).unwrap();
+
+	seed(&store).await;
+
+	let mut source = store.get_agent_work_item("main".into()).await.unwrap();
+
+	source.id = "source-agent".into();
+	source.parent_goal_id = Some("main".into());
+	source.codex_thread_id = None;
+
+	store.create_agent_work_item(source).await.unwrap();
+	store.bind_agent_thread("source-agent".into(), "source-agent-native".into()).await.unwrap();
+
+	let mut a = attempt(AgentForkBoundary::AttachedAfterTurn);
+
+	a.source.work = "source-agent".into();
+	a.source.thread = "source-agent-native".into();
+
+	store.reserve_agent_fork(a.clone()).await.unwrap().unwrap();
+
+	assert_eq!(
+		store.get_agent_work_item("branch".into()).await.unwrap().parent_goal_id.as_deref(),
+		Some("source-agent")
+	);
+	assert!(store.agent_attached_forks("main".into()).await.unwrap().0.is_empty());
+
+	let saved = store.agent_attached_forks("source-agent".into()).await.unwrap().0;
+
+	assert_eq!(saved.len(), 1);
+	assert_eq!(saved[0].state, "reserved");
+	assert_eq!(saved[0].attempt, a);
 }
 
 #[tokio::test]
@@ -213,4 +251,21 @@ async fn definite_fork_refusal_resolves_only_the_new_unbound_work() {
 	assert_eq!(branch.status, AgentWorkStatus::Resolved);
 	assert!(branch.codex_thread_id.is_none());
 	assert!(store.acknowledge_agent_fork(a, "late-native".into(), vec![]).await.unwrap().is_none());
+}
+
+async fn assert_attachment_index(
+	store: &SqliteStore,
+	boundary: AgentForkBoundary,
+	result: &AgentForkReceipt,
+) {
+	let (attached, truncated) = store.agent_attached_forks("main".into()).await.unwrap();
+
+	assert!(!truncated);
+	assert_eq!(attached.len(), usize::from(boundary == AgentForkBoundary::AttachedAfterTurn));
+
+	if let Some(attachment) = attached.first() {
+		assert_eq!(attachment, result);
+	}
+
+	assert!(store.agent_attached_forks("branch".into()).await.unwrap().0.is_empty());
 }

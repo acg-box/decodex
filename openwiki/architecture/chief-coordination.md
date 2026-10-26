@@ -5,8 +5,10 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T20:12:58.607Z
+    at: 2026-10-26T07:09:00.728Z
 sources:
+  - id: openwiki-source-bf03f317e64cfefd11f6ea83
+    resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
   - id: openwiki-source-d9c9b48c73ee4a2adc90f01c
     resource: repo://apps/decodex-gpui/src/agent_collaboration_cases.rs
   - id: openwiki-source-c76550e85b25876b339f9255
@@ -93,7 +95,7 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
+generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
 ---
 
 # Project, Agent and Work coordination
@@ -168,7 +170,7 @@ The native context preference panel still edits `features.retain_client_tool_out
 
 Codex owns the archive state. The service observes the exact native thread IDs bound to retained local work. It searches active threads first, then searches archived threads for the remaining IDs. Both lists include every provider and source kind. A positive archived observation hides non-root work; a positive active observation restores it. The personal Agent entry remains present. An absent ID, an empty title or a completed status does not authorize deletion.
 
-The reader orders native pages by update time and stops when it finds every requested ID. It does not need to read the entire archive. Native thread metadata supplies working-directory filters when every binding can be read. Otherwise, the reader scans the complete catalogs. Transport frame limits, per-page deadlines, and retained-ID and cursor budgets bound the operation. Valid positive observations remain usable if a later page fails or times out. IDs without positive evidence retain their previous visibility.
+The reader orders native pages by update time and stops when it finds every requested ID. It does not need to read the entire archive. Native thread metadata supplies working-directory filters when every binding can be read. Otherwise, the reader scans the complete catalogs. Transport frame limits, per-page deadlines, and retained-ID and cursor budgets bound the operation. Valid positive observations remain usable if a later page fails or times out. IDs without positive evidence retain their previous visibility. Attached native threads are hidden from ordinary `thread/list`. Their exact `attachedToThreadId` query supplies archive membership, including empty forks. A failed metadata or attachment-filter read leaves the observation unknown.
 
 Archive observations refresh in the background on a five-second interval. Only one refresh runs at a time within a native process generation; a changed set of bindings can request an earlier refresh. Work snapshots use confirmed observations without waiting for the native read. A new process starts with no inherited observations, and a late result from an earlier process cannot replace them. The service does not write a second archive flag into SQLite.
 
@@ -188,13 +190,13 @@ Review Details can retain exposed native assistant output. The selected native p
 
 ## Explicit conversation branches
 
-A user can create a native branch before an input or after its completed turn. This is a separate action from a same-thread history edit. The source conversation keeps its history. Codex owns the new thread and copied context; `deferGoalContinuation` prevents the copied Goal from continuing as part of fork creation.
+A user can create a native branch before an input, after its completed turn, or as an attached branch after that turn. This is a separate action from a same-thread history edit. The source conversation keeps its history. Codex owns the new thread and copied context. Ordinary forks defer copied Goal continuation. Attached forks use `attachToSource`, start without the source Goal snapshot and leave the original Goal with its original conversation.
 
 Decodex reserves a new local work item before the native request. It saves the acknowledged native ID before a separate history read. A lost creation reply stays uncertain and cannot authorize another fork. Recovery of a known ID reads its exact source and prefix without starting a model turn.
 
-The branch is an independent user-created conversation. Legacy source relationships remain compatibility evidence, not a mandatory business hierarchy. It keeps the source role, Project association and recorded tool version. It does not copy pending inbox work or dependency edges. An acknowledged fork has an explicit ownership record that permits it to use the source process. Independent Agents do not gain that authority from an old parent identifier. A branch does not create another Assistant or silently upgrade native tools.
+An ordinary branch is an independent user-created conversation. An attached branch keeps its exact source Agent as its local parent. It is a persistent Agent conversation, not a native Subagent. Both forms keep the source role, Project association and recorded tool version. It does not copy pending inbox work or dependency edges. An acknowledged fork has an explicit ownership record that permits it to use the source process. Independent Agents do not gain that authority from an old parent identifier. A branch does not create another Assistant or silently upgrade native tools.
 
-Before-input branches use the existing canonical input and draft handback owner. After-turn branches do not prefill the selected input. See [conversation recovery](../workflows/conversations-and-recovery.md) for the user actions and uncertain-result behavior.
+Before-input branches use the existing canonical input and draft handback owner. After-turn branches do not prefill the selected input. The **Attached branches** list shows retained Decodex creation receipts, including unresolved outcomes. Opening a ready branch uses the existing conversation controls and preserves the source draft. Closing a tab keeps the branch; native Codex owns archive, restore and parent-deletion safeguards. See [conversation recovery](../workflows/conversations-and-recovery.md) for the user actions and uncertain-result behavior.
 
 ## Verification and navigation
 

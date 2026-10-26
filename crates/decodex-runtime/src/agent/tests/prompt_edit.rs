@@ -32,14 +32,21 @@ fn transport(
 
 			let is_fork = request["params"]["threadId"] == "branch-thread";
 
-			assert!(is_fork || request["params"]["threadId"] == "opaque thread/1");
+			assert!(
+				is_fork
+					|| request["params"]["threadId"] == "opaque thread/1"
+					|| request["method"] == "thread/list"
+			);
 
 			if is_fork && mode == "fork-read-failure" {
 				return;
 			}
 
 			let visible = if is_fork {
-				fork.clone().unwrap_or_else(|| history.lock().unwrap()[..1].to_vec())
+				fork.clone().unwrap_or_else(|| {
+					history.lock().unwrap()[..if mode == "fork-recovery-after" { 2 } else { 1 }]
+						.to_vec()
+				})
 			} else {
 				history.lock().unwrap().clone()
 			};
@@ -66,19 +73,7 @@ fn transport(
 
 			let result = match method {
 				"thread/fork" => {
-					assert!(mode.starts_with("fork"));
-					assert_eq!(request["params"]["deferGoalContinuation"], true);
-					assert_eq!(request["params"]["excludeTurns"], true);
-
-					let after = request["params"].get("lastTurnId").is_some();
-					let selected = request["params"]
-						[if after { "lastTurnId" } else { "beforeTurnId" }]
-					.as_str()
-					.unwrap();
-					let end = visible.iter().position(|t| t["id"] == selected).unwrap()
-						+ usize::from(after);
-
-					fork = Some(visible[..end].to_vec());
+					fork = Some(fork_prefix(&request, &visible));
 
 					if mode == "fork-lost-reply" {
 						return;
@@ -87,7 +82,12 @@ fn transport(
 					serde_json::json!({"thread":{"id":"branch-thread","forkedFromId":"opaque thread/1","historyMode":"paginated","turns":[]}})
 				},
 				"thread/read" if is_fork =>
-					serde_json::json!({"thread":{"id":"branch-thread","forkedFromId":"opaque thread/1","historyMode":"paginated","turns":[]}}),
+					serde_json::json!({"thread":{"id":"branch-thread","forkedFromId":"opaque thread/1","cwd":"/fixture","historyMode":"paginated","turns":[]}}),
+				"thread/list" => {
+					assert_eq!(request["params"]["attachedToThreadId"], "opaque thread/1");
+
+					serde_json::json!({"data":if request["params"]["archived"]==true {serde_json::json!([])} else {serde_json::json!([{"id":"branch-thread"}])},"nextCursor":null})
+				},
 				"thread/read" | "thread/revert" =>
 					serde_json::json!({"thread":{"id":"opaque thread/1","historyMode":"paginated","turns":[],"model":"fixture-model","reasoningEffort":null,"modelProvider":"fixture-provider"}}),
 				"thread/turns/list" => {
@@ -136,6 +136,23 @@ fn transport(
 	});
 
 	(client, reads, server)
+}
+
+fn fork_prefix(request: &Value, visible: &[Value]) -> Vec<Value> {
+	if request["params"]["attachToSource"] == true {
+		assert!(request["params"].get("deferGoalContinuation").is_none());
+	} else {
+		assert_eq!(request["params"]["deferGoalContinuation"], true);
+	}
+
+	assert_eq!(request["params"]["excludeTurns"], true);
+
+	let after = request["params"].get("lastTurnId").is_some();
+	let selected =
+		request["params"][if after { "lastTurnId" } else { "beforeTurnId" }].as_str().unwrap();
+	let end = visible.iter().position(|t| t["id"] == selected).unwrap() + usize::from(after);
+
+	visible[..end].to_vec()
 }
 
 #[tokio::test]
@@ -401,6 +418,9 @@ async fn prompt_fork_preserves_source_and_recovers_acknowledged_identity_without
 	for (mode, boundary) in [
 		("fork-success", AgentForkBoundary::BeforeInput),
 		("fork-success", AgentForkBoundary::AfterTurn),
+		("fork-success", AgentForkBoundary::AttachedAfterTurn),
+		("fork-read-failure", AgentForkBoundary::AttachedAfterTurn),
+		("fork-lost-reply", AgentForkBoundary::AttachedAfterTurn),
 		("fork-read-failure", AgentForkBoundary::BeforeInput),
 		("fork-lost-reply", AgentForkBoundary::BeforeInput),
 	] {
@@ -475,8 +495,14 @@ async fn prompt_fork_preserves_source_and_recovers_acknowledged_identity_without
 
 			drop(agent);
 
-			let (fresh, mut recovery_reads, recovery_server) =
-				transport("fork-recovery", native.clone());
+			let (fresh, mut recovery_reads, recovery_server) = transport(
+				if boundary == AgentForkBoundary::AttachedAfterTurn {
+					"fork-recovery-after"
+				} else {
+					"fork-recovery"
+				},
+				native.clone(),
+			);
 			let mut recovered = AgentCoordinator::new(store, fresh, config).unwrap();
 			let recovered = recovered.recover_prompt_fork("agent", &token).await.unwrap().unwrap();
 
@@ -484,10 +510,17 @@ async fn prompt_fork_preserves_source_and_recovers_acknowledged_identity_without
 				recovered.state,
 				if mode == "fork-lost-reply" { "reserved" } else { "forked" }
 			);
-			assert!(iter::from_fn(|| recovery_reads.try_recv().ok()).all(|r| matches!(
-				r["method"].as_str(),
-				Some("thread/read" | "thread/turns/list" | "thread/items/list")
-			)));
+			assert!(iter::from_fn(|| recovery_reads.try_recv().ok()).all(|r| {
+				if r["method"] == "thread/list" {
+					boundary == AgentForkBoundary::AttachedAfterTurn
+						&& r["params"]["attachedToThreadId"] == "opaque thread/1"
+				} else {
+					matches!(
+						r["method"].as_str(),
+						Some("thread/read" | "thread/turns/list" | "thread/items/list")
+					)
+				}
+			}));
 
 			recovery_server.abort();
 

@@ -298,7 +298,11 @@ fn serve_recovery(
 fn fork_recovery_opens_verified_target_and_keeps_edited_input(cx: &mut TestAppContext) {
 	cx.background_executor.allow_parking();
 
-	for boundary in [PromptForkBoundary::BeforeInput, PromptForkBoundary::AfterTurn] {
+	for boundary in [
+		PromptForkBoundary::BeforeInput,
+		PromptForkBoundary::AfterTurn,
+		PromptForkBoundary::AttachedAfterTurn,
+	] {
 		let (service, profile, _) = tests::profiles();
 		let surface = cx.new(AgentSurface::new);
 		let mut pending = install_pending(&surface, profile, cx);

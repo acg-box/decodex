@@ -18,6 +18,7 @@ use removal::Removal;
 
 #[derive(Default)]
 pub(super) struct Panel {
+	pub(super) attached: agent_surface::attached_branches::Panel,
 	key: String,
 	profile: Option<ClientProfile>,
 	work: String,
@@ -924,6 +925,7 @@ impl AgentSurface {
 			let original = expected.clone();
 			let branch = expected.clone();
 			let after = expected.clone();
+			let attached = expected.clone();
 
 			panel = panel.child("A new branch preserves the original. Editing the original removes this turn and all later turns; file changes remain. Sending is a separate step.");
 
@@ -952,7 +954,20 @@ impl AgentSurface {
 							)
 						},
 						cx,
-					));
+					))
+					.child(self.workspace_action(
+						"prompt-confirm-attached".into(),
+						"Attached branch after this turn".into(),
+						move |s, cx| {
+							s.confirm_prompt_branch(
+								attached.clone(),
+								PromptForkBoundary::AttachedAfterTurn,
+								cx,
+							)
+						},
+						cx,
+					))
+					.child("An attached branch stays linked to this conversation. It starts without a Goal; the original keeps its Goal.");
 			}
 
 			panel = panel

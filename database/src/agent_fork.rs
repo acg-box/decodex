@@ -14,6 +14,7 @@ use crate::{
 pub enum AgentForkBoundary {
 	BeforeInput,
 	AfterTurn,
+	AttachedAfterTurn,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -44,7 +45,7 @@ impl AgentForkAttempt {
 	pub fn expected_turns(&self) -> Option<&[String]> {
 		let boundary =
 			self.source.turn_ids.iter().position(|turn| turn == &self.source.before_turn_id)?;
-		let end = boundary + usize::from(self.boundary == AgentForkBoundary::AfterTurn);
+		let end = boundary + usize::from(self.boundary != AgentForkBoundary::BeforeInput);
 
 		Some(&self.source.turn_ids[..end])
 	}
@@ -144,11 +145,12 @@ impl SqliteStore {
 				|| agent_prompt_edit::pending(&tx, &a.work)?
 			{ return Ok(None); }
 
-			let mut title = format!("{} (branch)", source.title);
+			let attached = attempt.boundary == AgentForkBoundary::AttachedAfterTurn;
+			let mut title = format!("{} ({})", source.title, if attached { "attached branch" } else { "branch" });
 
 			while title.len() > 1_024 { title.pop(); }
 
-			let parent = source.parent_goal_id.as_deref().unwrap_or(&source.id);
+			let parent = if attached { &source.id } else { source.parent_goal_id.as_deref().unwrap_or(&source.id) };
 			let now=crate::unix_micros()?;
 
 			tx.execute("INSERT INTO agent_work_items(id,parent_goal_id,kind,title,instructions,status,dispatch_state,created_at_micros,updated_at_micros) VALUES(?1,?2,?3,?4,?5,'open','dispatching',?6,?6)", rusqlite::params![attempt.target_work,parent,source.kind.as_str(),title,source.instructions,now]).map_err(error::sqlite_error)?;
@@ -180,6 +182,27 @@ impl SqliteStore {
 		review: String,
 	) -> Result<Option<AgentForkReceipt>, StoreError> {
 		self.run(move |c| receipt(c, &format!("thread-fork:{source_work}:{review}"))).await
+	}
+
+	/// Read a bounded retained attachment index, including uncertain attempts, without native
+	/// effects.
+	pub async fn agent_attached_forks(
+		&self,
+		source_work: String,
+	) -> Result<(Vec<AgentForkReceipt>, bool), StoreError> {
+		self.run(move |c| {
+			agent::read_work(c, &source_work)?;
+
+			let keys = {
+				let mut query=c.prepare("SELECT source_event_id FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='thread_fork_attempt' AND json_extract(payload,'$.boundary')='attached_after_turn' ORDER BY id DESC LIMIT 101").map_err(error::sqlite_error)?;
+
+				query.query_map([source_work],|r|r.get::<_,String>(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?
+			};
+			let truncated=keys.len()>100;
+			let forks=keys.into_iter().take(100).map(|key|receipt(c,&key)?.ok_or(StoreError::InvalidInput("missing attached branch receipt"))).collect::<Result<Vec<_>,_>>()?;
+
+			Ok((forks,truncated))
+		}).await
 	}
 
 	/// Bind only the acknowledged native fork after its exact prefix was read back.

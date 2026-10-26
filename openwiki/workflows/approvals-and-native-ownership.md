@@ -3,9 +3,6 @@ type: Reference
 tags: [decodex, architecture]
 title: "Approvals and native request ownership"
 description: "Complete request evidence, native child ownership, Guardian observations and explicit decisions."
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-25T06:57:32.093Z
 sources:
   - id: openwiki-source-6a1c55b61be8ac251a493046
     resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
@@ -28,6 +25,9 @@ sources:
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
 generated: { by: "codex", at: "2026-10-25T06:57:32.093Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-26T07:09:00.728Z
 ---
 
 

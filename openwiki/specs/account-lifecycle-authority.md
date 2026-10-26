@@ -15,7 +15,7 @@ sources:
 generated: { by: "codex", at: "2026-10-13T07:37:30.807Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-24T21:11:31.338Z
+    at: 2026-10-26T07:09:00.728Z
 ---
 
 # Account lifecycle authority

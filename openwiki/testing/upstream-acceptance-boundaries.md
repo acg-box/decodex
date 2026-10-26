@@ -110,10 +110,12 @@ sources:
     resource: repo://scripts/macos/prepare_voice_acceptance.py
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
+  - id: openwiki-source-e201f60894c32a914dac99ee
+    resource: repo://scripts/vnext/run_native_regression.py
+generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T20:12:58.607Z
+    at: 2026-10-26T07:09:00.728Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -152,7 +154,17 @@ The full workspace run passed 2,998 tests and skipped 1,222. It preceded one add
 
 The full vstyle audit failed with 16,517 findings at implementation commit `1beae0c0415c28ef45d8afaa1bd8117832c62c25`. This qualification does not exempt those findings or classify them all as inherited. The independent repository-wide style cleanup retains that work. Exact selectors, entrypoints, commands and selected source digests remain in the portable index after local products are removed.
 
-A Work result or delivery identifies a linked native turn; it does not prove that every action in the turn belongs to that Work. Input includes cached input, and output includes reasoning. Missing historical or child receipts remain unknown. Summed native duration can overlap and is not Work elapsed time. No complete Work cost, monetary allocation, installed-app interaction, real-provider acceptance, app installation or release is claimed. The selected runtime baseline, upstream review cursor and automation schedule do not change. Attached forks, Guardian V3 and custom managed configuration remain undecided. A rebuilt runtime requires new artifact/helper/schema observations and affected regressions; it is not the original deleted artifact.
+A Work result or delivery identifies a linked native turn; it does not prove that every action in the turn belongs to that Work. Input includes cached input, and output includes reasoning. Missing historical or child receipts remain unknown. Summed native duration can overlap and is not Work elapsed time. No complete Work cost, monetary allocation, installed-app interaction, real-provider acceptance, app installation or release is claimed. The selected runtime baseline, upstream review cursor and automation schedule do not change. The user later selected attached branches; Guardian V3 waits for upstream maturity and custom managed configuration is deferred. A rebuilt runtime requires new artifact/helper/schema observations and affected regressions; it is not the original deleted artifact.
+
+## Persistent attached branches
+
+`retained_attached_forks` in the [portable index](../../automations/upstream/retained-evidence.json) records qualification against native source `970111f6cb62cc02fe36a82ea7d71b37a2889c97`, with separate CLI, Code Mode helper, `rg`, source archive and generated-schema digests. Local protocol is 3.2; the database remains schema59. The two relevant upstream test functions, containing five cases, were read but were not executed.
+
+Five exact-artifact native tests passed: the public-socket fork workflow, source-provider fork control, archive roundtrip, parallel Code Mode tool control and startup configuration control. The fork control exercises legacy and paginated native history, Goal exclusion, provider preservation, restart, archive/restore and refusal to delete a parent with attached children. The public-socket case creates nine source turns and checks all three explicit branch choices, saved-choice retries, retained exact-source listing and canonical draft recovery. Creating or discovering a branch makes no model request. A separate explicit send adds one request to the attached branch and leaves the source history unchanged.
+
+The focused local cohorts passed 57 backend tests and six UI tests with zero unmatched selectors. The complete workspace run passed 3006 tests with 1227 skipped and one passed-test LEAK in the streamed-draft composer test. That test then passed cleanly in the focused UI cohort. The final affected checks also passed strict Clippy for five packages, nightly formatting, 28 Python tests, the schema59 database gate and a 1076-file style audit with zero findings. The complete workspace run preceded later test-fixture diagnostics and formatting; final affected and native checks followed those changes. These cohorts overlap and do not explain the earlier cleanup marker.
+
+The native provider is synthetic. Transport fixtures cover uncertain creation and recovery; no physical crash was injected. The newest-100 query bound was reviewed in source without a 101-record stress run. `rg` integrity was verified but this cohort did not invoke it. External native branch adoption, automatic follow-up, scheduling, result merge and deletion controls are outside this feature. Archived branches retain native restoration. No installed desktop interaction or real-account acceptance was performed. No installation, release, runtime migration, review-cursor advance or schedule change is implied. Use the [portable runner](../operations/commands-and-validation.md#attached-branch-native-regression-fixtures) to reconstruct affected proof after local cleanup.
 
 ## Historical receipts
 

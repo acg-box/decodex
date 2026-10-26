@@ -46,12 +46,12 @@ use crate::{
 	InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES, MAX_AGENT_APP_UI_RECEIPT_BYTES,
 	MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest, McpLoginStatus,
 	NativeAgentsResult, NativeStartupConfiguration, PrivateReviewDetailsResult, PromptDraft,
-	PromptEditStatus, PromptForkResult, PromptInputSendIdentity, PromptInputSendStatus,
-	PromptInputUpload, PromptInputUploadStatus, ProtocolVersion, QueryEnvelope, QueryId,
-	QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope,
-	ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult, ResultPayload,
-	RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage, TRANSCRIPT_CHUNK_BYTES,
-	TaskRecapStatus, WireText, WorkDetailResult,
+	PromptEditStatus, PromptForkBoundary, PromptForkResult, PromptInputSendIdentity,
+	PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus, ProtocolVersion,
+	QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal,
+	RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult,
+	ResultPayload, RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage,
+	TRANSCRIPT_CHUNK_BYTES, TaskRecapStatus, WireText, WorkDetailResult,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 	work::WorkPortfolio,
 };
@@ -663,6 +663,41 @@ impl AgentClient {
 				if let PromptForkResult::Available(Some(status)) = &result
 					&& (status.work_id != work || status.review_token != review)
 				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read retained attached branches without creating a native request.
+	pub async fn attached_branches(
+		&self,
+		work: EntityId,
+	) -> Result<crate::AttachedBranchesResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+
+		let completed = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"attached-branches",
+				QueryPayload::GetAttachedBranches { work_id: work.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
+		close_one_shot_socket(completed.socket).await;
+
+		match completed.value {
+			QueryResultPayload::AttachedBranches(result) => {
+				if let crate::AttachedBranchesResult::Available { branches, .. } = &result
+					&& (branches.len() > 100
+						|| branches.iter().any(|b| {
+							b.work_id != work || b.boundary != PromptForkBoundary::AttachedAfterTurn
+						})) {
 					return Err(ClientFailure::ProtocolMalformed);
 				}
 

@@ -40,26 +40,33 @@ impl AppServerClient {
 			return observed;
 		}
 
-		let directories = self.archive_directories(threads).await;
+		let (directories, fork_sources) = self.archive_scope(threads).await;
+		let complete_metadata = directories.is_some();
 		let mut budget = MAX_FRAME_BYTES;
 		let scan = async {
 			// Most retained work is active. Do not scan unrelated archives once
 			// the active list has supplied every requested identity.
 			for archived in [false, true] {
-				self.visit_archive_catalog(directories.clone(), archived, &mut budget, |id| {
-					if pending.remove(id) {
-						observed.insert(
-							id.to_owned(),
-							if archived {
-								ThreadArchiveState::Archived
-							} else {
-								ThreadArchiveState::Active
-							},
-						);
-					}
+				self.visit_archive_catalog(
+					directories.clone(),
+					None,
+					archived,
+					&mut budget,
+					|id| {
+						if pending.remove(id) {
+							observed.insert(
+								id.to_owned(),
+								if archived {
+									ThreadArchiveState::Archived
+								} else {
+									ThreadArchiveState::Active
+								},
+							);
+						}
 
-					pending.is_empty()
-				})
+						pending.is_empty()
+					},
+				)
 				.await?;
 
 				if pending.is_empty() {
@@ -72,31 +79,55 @@ impl AppServerClient {
 
 		if scan.await.is_ok() {
 			for id in pending {
-				observed.insert(id, ThreadArchiveState::NotFound);
+				// Attached forks are deliberately absent from ordinary native catalogs.
+				// Inspect their exact source before reporting a complete absence.
+				let state = match fork_sources.get(&id) {
+					Some(parent) => self.attached_thread_archive_state(&id, parent).await.ok(),
+					None if complete_metadata => Some(ThreadArchiveState::NotFound),
+					None => self.thread_archive_state(&id).await.ok(),
+				};
+
+				if let Some(state) = state {
+					observed.insert(id, state);
+				}
 			}
 		}
 
 		observed
 	}
 
-	async fn archive_directories(&self, threads: &HashSet<String>) -> Option<Value> {
+	async fn archive_scope(
+		&self,
+		threads: &HashSet<String>,
+	) -> (Option<Value>, HashMap<String, String>) {
 		let mut directories = BTreeSet::new();
+		let mut forks = HashMap::new();
 
 		for thread in threads {
 			let response = time::timeout(
 				Duration::from_secs(8),
 				self.thread_read(serde_json::json!({"threadId":thread,"includeTurns":false})),
 			)
-			.await
-			.ok()?
-			.ok()?;
+			.await;
 
-			directories.insert(archive_directory(&response, thread).ok()?.to_owned());
+			if let Ok(Ok(response)) = response
+				&& let Ok(cwd) = archive_directory(&response, thread)
+			{
+				directories.insert(cwd.to_owned());
+
+				if let Some(parent) = response["thread"]["forkedFromId"].as_str() {
+					forks.insert(thread.clone(), parent.to_owned());
+				}
+
+				continue;
+			}
+
+			return (None, forks);
 		}
 
 		// Native metadata supplies the scope. If a binding cannot be read, inspect
 		// the full catalogs so absence is never inferred from a stale local folder.
-		Some(serde_json::json!(directories))
+		(Some(serde_json::json!(directories)), forks)
 	}
 
 	/// Inspect both lists with explicit provider/source filters and bounded pagination.
@@ -105,6 +136,33 @@ impl AppServerClient {
 		&self,
 		thread: &str,
 	) -> Result<ThreadArchiveState, ClientError> {
+		let (state, parent) = self.archive_state_for(thread, None).await?;
+
+		if state == ThreadArchiveState::NotFound
+			&& let Some(parent) = parent
+		{
+			return self.attached_thread_archive_state(thread, &parent).await;
+		}
+
+		Ok(state)
+	}
+
+	/// Observe a fork only through its exact native attachment source, including empty forks.
+	pub async fn attached_thread_archive_state(
+		&self,
+		thread: &str,
+		parent: &str,
+	) -> Result<ThreadArchiveState, ClientError> {
+		valid_id(parent)?;
+
+		self.archive_state_for(thread, Some(parent)).await.map(|(state, _)| state)
+	}
+
+	async fn archive_state_for(
+		&self,
+		thread: &str,
+		attached_to: Option<&str>,
+	) -> Result<(ThreadArchiveState, Option<String>), ClientError> {
 		valid_id(thread)?;
 
 		time::timeout(Duration::from_secs(8), async {
@@ -112,23 +170,36 @@ impl AppServerClient {
 				.thread_read(serde_json::json!({"threadId":thread,"includeTurns":false}))
 				.await?;
 			let cwd = archive_directory(&before, thread)?;
+			let parent = before["thread"]["forkedFromId"].as_str();
+
+			if attached_to.is_some_and(|source| parent != Some(source)) {
+				return Err(ClientError::InvalidFrame);
+			}
+
 			let mut budget = MAX_FRAME_BYTES;
-			let archived = self.archive_membership(thread, cwd, true, &mut budget).await?;
-			let active = self.archive_membership(thread, cwd, false, &mut budget).await?;
+			let archived =
+				self.archive_membership(thread, cwd, attached_to, true, &mut budget).await?;
+			let active =
+				self.archive_membership(thread, cwd, attached_to, false, &mut budget).await?;
 			let after = self
 				.thread_read(serde_json::json!({"threadId":thread,"includeTurns":false}))
 				.await?;
 
-			if archive_directory(&after, thread)? != cwd {
-				return Ok(ThreadArchiveState::Changed);
+			if archive_directory(&after, thread)? != cwd
+				|| after["thread"]["forkedFromId"] != before["thread"]["forkedFromId"]
+			{
+				return Ok((ThreadArchiveState::Changed, None));
 			}
 
-			Ok(match (archived, active) {
-				(false, true) => ThreadArchiveState::Active,
-				(true, false) => ThreadArchiveState::Archived,
-				(false, false) => ThreadArchiveState::NotFound,
-				(true, true) => ThreadArchiveState::Changed,
-			})
+			Ok((
+				match (archived, active) {
+					(false, true) => ThreadArchiveState::Active,
+					(true, false) => ThreadArchiveState::Archived,
+					(false, false) => ThreadArchiveState::NotFound,
+					(true, true) => ThreadArchiveState::Changed,
+				},
+				parent.map(str::to_owned),
+			))
 		})
 		.await
 		.map_err(|_| ClientError::Io)?
@@ -138,22 +209,27 @@ impl AppServerClient {
 		&self,
 		thread: &str,
 		cwd: &str,
+		attached_to: Option<&str>,
 		archived: bool,
 		budget: &mut usize,
 	) -> Result<bool, ClientError> {
-		Ok(self.archive_catalog(Some(cwd), archived, Some(thread), budget).await?.contains(thread))
+		Ok(self
+			.archive_catalog(Some(cwd), attached_to, archived, Some(thread), budget)
+			.await?
+			.contains(thread))
 	}
 
 	async fn archive_catalog(
 		&self,
 		cwd: Option<&str>,
+		attached_to: Option<&str>,
 		archived: bool,
 		target: Option<&str>,
 		budget: &mut usize,
 	) -> Result<HashSet<String>, ClientError> {
 		let mut ids = HashSet::new();
 
-		self.visit_archive_catalog(cwd.map(Value::from), archived, budget, |id| {
+		self.visit_archive_catalog(cwd.map(Value::from), attached_to, archived, budget, |id| {
 			ids.insert(id.to_owned());
 
 			target == Some(id)
@@ -166,6 +242,7 @@ impl AppServerClient {
 	async fn visit_archive_catalog(
 		&self,
 		cwd: Option<Value>,
+		attached_to: Option<&str>,
 		archived: bool,
 		budget: &mut usize,
 		mut observe: impl FnMut(&str) -> bool,
@@ -184,6 +261,9 @@ impl AppServerClient {
 
 			if let Some(cwd) = &cwd {
 				params["cwd"] = cwd.clone();
+			}
+			if let Some(parent) = attached_to {
+				params["attachedToThreadId"] = Value::from(parent);
 			}
 
 			let page = time::timeout(Duration::from_secs(8), self.request("thread/list", params))
@@ -294,6 +374,82 @@ mod tests {
 
 	fn page(ids: &[&str], next: Value) -> Value {
 		serde_json::json!({"data":ids.iter().map(|id|serde_json::json!({"id":id})).collect::<Vec<_>>(),"nextCursor":next})
+	}
+
+	#[tokio::test]
+	async fn attached_archive_observation_uses_exact_source_and_keeps_failed_reads_unknown() {
+		for mode in 0..4 {
+			let (local, remote) = io::duplex(65_536);
+			let (r, w) = io::split(local);
+			let (client, _events) = AppServerClient::from_io(r, w);
+			let server = tokio::spawn(async move {
+				let (r, mut w) = io::split(remote);
+				let mut lines = BufReader::new(r).lines();
+				let mut reads = 0;
+
+				while let Some(line) = lines.next_line().await.unwrap() {
+					let request: Value = serde_json::from_str(&line).unwrap();
+
+					if request["method"] == "thread/read" {
+						reads += 1;
+
+						if mode == 3 || mode == 2 && reads == 1 {
+							w.write_all(
+								format!(
+									"{}\n",
+									serde_json::json!({"id":request["id"],"error":{"code":-32_600,"message":"unavailable"}})
+								)
+								.as_bytes(),
+							)
+							.await
+							.unwrap();
+
+							continue;
+						}
+					}
+
+					let result = match request["method"].as_str().unwrap() {
+						"thread/read" =>
+							serde_json::json!({"thread":{"id":"fork","cwd":"/workspace","forkedFromId":"source"}}),
+						"thread/list" =>
+							if !request["params"]["attachedToThreadId"].is_null() {
+								assert_eq!(request["params"]["attachedToThreadId"], "source");
+								assert!(request["params"].get("ancestorThreadId").is_none());
+
+								if mode == 1 {
+									return;
+								}
+								if request["params"]["archived"] == true {
+									page(&["fork"], Value::Null)
+								} else {
+									page(&[], Value::Null)
+								}
+							} else {
+								page(&[], Value::Null)
+							},
+						_ => panic!("unexpected mutation"),
+					};
+
+					w.write_all(
+						format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
+							.as_bytes(),
+					)
+					.await
+					.unwrap();
+				}
+			});
+			let observed = client
+				.observe_thread_archives(&std::collections::HashSet::from(["fork".into()]))
+				.await;
+
+			assert_eq!(
+				observed.get("fork"),
+				if matches!(mode, 1 | 3) { None } else { Some(&ThreadArchiveState::Archived) }
+			);
+
+			client.close();
+			server.await.unwrap();
+		}
 	}
 
 	async fn next_catalog_request(
@@ -510,7 +666,7 @@ mod tests {
 			}
 		});
 		let mut budget = super::MAX_FRAME_BYTES;
-		let result = client.archive_catalog(None, true, None, &mut budget).await;
+		let result = client.archive_catalog(None, None, true, None, &mut budget).await;
 
 		client.close();
 		server.await.unwrap();

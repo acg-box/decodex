@@ -104,10 +104,10 @@ use decodex_protocol::{
 	AgentSteerIdentity, AgentSteerReceiptResult, AgentTaskReferenceDto, AgentTimelineResult,
 	AgentTranscriptRequest, AgentTranscriptResult, AgentTurnUsageDto, AgentUsageDto,
 	AgentUsageEstimateResult, AgentVoiceRequest, AgentVoiceSettingsResult, AgentWorkItemDto,
-	AgentWorkKindDto, AgentWorkStatusDto, CausationId, Channel, CodexAuthProjectionResult,
-	CommandEnvelope, CommandError, CommandPayload, ConversationHistoryPage,
-	ConversationHistoryResult, ConversationListCursor, ConversationListPage,
-	ConversationListResult, ConversationModel, ConversationModelReviewResult,
+	AgentWorkKindDto, AgentWorkStatusDto, AttachedBranchesResult, CausationId, Channel,
+	CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandPayload,
+	ConversationHistoryPage, ConversationHistoryResult, ConversationListCursor,
+	ConversationListPage, ConversationListResult, ConversationModel, ConversationModelReviewResult,
 	ConversationModelSettingsResult, ConversationProgramContext, ConversationReadError,
 	ConversationReasoningEffort, ConversationRecoveryAction, ConversationResult, ConversationState,
 	ConversationSummary, ConversationTitle, ConversationTurnOutcome, ConversationWorkingDirectory,
@@ -287,6 +287,16 @@ impl ServiceApplication {
 				self.query_read_state(work_id.as_str(), thread_id.as_str()).await,
 			QueryPayload::GetAgentNativeGoal { work_id, thread_id } =>
 				self.query_native_goal(work_id.as_str(), thread_id.as_str()).await,
+			QueryPayload::GetAgentPromptFork { work_id, review_token } =>
+				QueryResultPayload::AgentPromptFork(match &self.agent {
+					Some(agent) => agent.prompt_fork_status(work_id, review_token).await,
+					None => PromptForkResult::Unavailable,
+				}),
+			QueryPayload::GetAttachedBranches { work_id } =>
+				QueryResultPayload::AttachedBranches(match &self.agent {
+					Some(agent) => agent.attached_branches(work_id).await,
+					None => AttachedBranchesResult::Unavailable,
+				}),
 			_ => unreachable!("native inspection route"),
 		}
 	}
@@ -2829,11 +2839,6 @@ impl Application for ServiceApplication {
 			QueryPayload::GetAgentModelSettings { work_id } =>
 				self.query_model_settings(work_id.as_str()).await,
 			edit @ QueryPayload::GetAgentPromptEdit { .. } => self.query_prompt_edit(edit).await,
-			QueryPayload::GetAgentPromptFork { work_id, review_token } =>
-				QueryResultPayload::AgentPromptFork(match &self.agent {
-					Some(agent) => agent.prompt_fork_status(work_id, review_token).await,
-					None => PromptForkResult::Unavailable,
-				}),
 			QueryPayload::GetAgentPromptInputDirectory { .. }
 			| QueryPayload::GetAgentPromptInputSend { .. }
 			| QueryPayload::GetAgentPromptInputUpload { .. } =>
@@ -2845,7 +2850,9 @@ impl Application for ServiceApplication {
 			| QueryPayload::GetAgentContextSettings { .. }) => self.query_native_preferences(settings).await,
 			QueryPayload::GetAgentSkills { target, filter } =>
 				self.query_skills(query.query_id.as_str(), target, filter.as_str()).await,
-			QueryPayload::GetAgentMemory { .. }
+			QueryPayload::GetAgentPromptFork { .. }
+			| QueryPayload::GetAttachedBranches { .. }
+			| QueryPayload::GetAgentMemory { .. }
 			| QueryPayload::GetUsageEvidence { .. }
 			| QueryPayload::GetAgentReadState { .. }
 			| QueryPayload::GetAgentNativeGoal { .. } => self.query_native_inspection(&query.payload).await,

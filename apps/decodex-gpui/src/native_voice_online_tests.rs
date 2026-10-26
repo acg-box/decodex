@@ -87,9 +87,10 @@ async fn online_synthetic_dictation_returns_final_text_without_sending_an_agent_
 	let (client, input, agent) = fixture().await;
 	let before = client.history(agent.clone()).await.unwrap();
 	let id = session_id("dictation");
-	let mut status =
+	let initial_status =
 		client.dictation(DictationRequest::Start { session_id: id.clone() }).await.unwrap();
 	let deadline = Instant::now() + Duration::from_secs(30);
+	let mut status = initial_status;
 
 	while status.phase == DictationPhase::Connecting && Instant::now() < deadline {
 		time::sleep(Duration::from_millis(100)).await;
@@ -260,9 +261,10 @@ async fn online_synthetic_live_voice_returns_speech_through_the_production_bridg
 }
 
 async fn stop_live_voice(client: &AgentClient, id: &EntityId) -> AgentVoiceStatus {
-	let mut stopped =
+	let initial_status =
 		client.voice(AgentVoiceRequest::Stop { session_id: id.clone() }).await.unwrap();
 	let deadline = Instant::now() + Duration::from_secs(10);
+	let mut stopped = initial_status;
 
 	while matches!(stopped.phase, AgentVoicePhase::Connecting | AgentVoicePhase::Ready)
 		&& Instant::now() < deadline

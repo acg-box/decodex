@@ -405,7 +405,11 @@ mod tests {
 
 		branch_after.fork.as_mut().unwrap().boundary = crate::PromptForkBoundary::AfterTurn;
 
-		for remote in [confirming, branching, branch_after, handback, sending] {
+		let mut attached = branching.clone();
+
+		attached.fork.as_mut().unwrap().boundary = crate::PromptForkBoundary::AttachedAfterTurn;
+
+		for remote in [confirming, branching, branch_after, attached, handback, sending] {
 			let mut base = DesktopDraftDocument::default();
 
 			base.profiles.insert(scope.clone(), profile("occupied composer"));

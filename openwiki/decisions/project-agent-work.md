@@ -10,8 +10,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
-  - id: openwiki-source-5d032c6be684964aa2c401fa
-    resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-ca95ba5564216bb4898c8392
     resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
@@ -65,7 +63,7 @@ sources:
 generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T20:12:58.607Z
+    at: 2026-10-26T07:09:00.728Z
 ---
 
 # Project, Agent and Work contract

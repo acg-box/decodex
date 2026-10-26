@@ -30,7 +30,7 @@ use crate::{
 	AgentSavedAppSettingsResult, AgentSearchSettingsResult, AgentSkillsResult, AgentSkillsTarget,
 	AgentSnapshotResult, AgentSteerIdentity, AgentSteerReceiptResult, AgentTimelineResult,
 	AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest,
-	AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION,
+	AgentVoiceSettingsResult, AgentVoiceStatus, AttachedBranchesResult, CURRENT_VERSION,
 	ConversationCreationReceiptRequest, ConversationCreationReceiptResult,
 	ConversationExecutionOverrides, ConversationExecutionSettings, ConversationListCursor,
 	ConversationListResult, ConversationListSize, ConversationModelReviewResult,
@@ -2181,6 +2181,11 @@ pub enum QueryPayload {
 		/// Original review identity.
 		review_token: WireText,
 	},
+	/// Read the source's retained attached branches without native creation or resume.
+	GetAttachedBranches {
+		/// Original local source owner.
+		work_id: EntityId,
+	},
 	/// Inspect native startup requirements with shared sign-in, without a conversation or sign-out.
 	GetNativeStartupConfiguration {
 		/// Exact directory whose native configuration layers must be checked.
@@ -3190,6 +3195,8 @@ pub enum QueryResultPayload {
 	AgentPromptEdit(PromptEditStatus),
 	/// Exact branch receipt, absent when no attempt was saved.
 	AgentPromptFork(PromptForkResult),
+	/// Bounded source-specific attachment receipts.
+	AttachedBranches(AttachedBranchesResult),
 	/// Task-scoped native voice preferences.
 	AgentVoiceSettings(AgentVoiceSettingsResult),
 	/// Native web-search defaults and permitted modes.

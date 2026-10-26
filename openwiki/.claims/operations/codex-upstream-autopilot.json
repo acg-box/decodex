@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:75c131daa71fa1092ea471783000d11d00fa055373cb5a63ef898701697d412a",
+  "pageVersion": "sha256:f8ceba4abc1ddf49cd37ae5b8082ce40074f8eaf902b0e0fa0e8f21d3105bde1",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -82,11 +82,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-components/src/development.rs",
-          "version": "repo-file-v1:sha256:49942d7a307248fb3c23833b5c068271de5df86fa7439a927cda094b26b8f869"
+          "version": "repo-file-v1:sha256:4d479ec6a04f1ee03b94098ff8eae450dddb7b6daecba576a74b154c6fcf55fc"
         },
         {
           "resource": "repo://crates/decodex-components/src/install.rs",
-          "version": "repo-file-v1:sha256:ddb7aa26dd4e129d62927480d066b2a7c8bd1ad918d1ab9ea8aa16cdefbdae6e"
+          "version": "repo-file-v1:sha256:9f9e503cc997093393ff04a0bf8014189b730ea52a07c896166dab1a5f1d0af4"
         }
       ]
     },
@@ -95,8 +95,8 @@
       "statement": "Compatibility continuation keeps application tool evidence separate from user input: work_instruction can request native retention while scheduled wakes, capacity retries and other external results remain unselected.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1254-L1362",
-          "version": "repo-lines-v1:sha256:e0ad341d1d141c699110b02b6523ea6ef5d2151f529f68b963753ce173ce1cfc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1266-L1376",
+          "version": "repo-lines-v1:sha256:34c154ed0b2a955952269ea2ba86b94de26fe029840005eeab4bd317d355ae33:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs#L151-L197",
@@ -124,7 +124,7 @@
         },
         {
           "resource": "repo://crates/decodex-components/src/pin.rs",
-          "version": "repo-file-v1:sha256:7c437f97869fbf5501d28f221091d0d45a4202f9aa3aaaf5898ef702c590e771"
+          "version": "repo-file-v1:sha256:19ec09f39937336b673d4d75ba4c8ced97f2c71f2b63e6bca1873aa54cb46e6f"
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
@@ -137,12 +137,12 @@
       "statement": "Context defaults in task preferences and manual config.toml edits share the native user configuration; versioned boolean writes preserve async threshold tables, expose project overrides and do not reload loaded conversations.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs#L145-L177",
-          "version": "repo-lines-v1:sha256:40dccf78fbf70a5215c048badeedd442f3e61e45799cef482cf9c9f556779c3c:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5YTVkN2IxMDNmYzM1MWY5NTc1ZmE2ODgwZjlhYTdlYTE4NzY0YjQzNWM2MmRjY2FhNTIxYTRlZjcwZjA1MDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU0ZTE5NWVmZmQ0OTgyNmFjMDcyNDY0MDU3MjBlZTljYWNhMGE0MjdkYjFlOTYzZDNmNzY1NGM0ZTI3ZTY5MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3OGMyMjE2ZDJhNTYxYzc0NWNlMTYxZWYwODMzNTUxM2JkNjE5OTJiMmVmOGFkOTk0ZjJlZDgyNGJiNmQzZGYifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
+          "version": "repo-file-v1:sha256:9a2cbe4b21ace2646a95c735104a60b563df6f4b362ebd62ee865b48f670676b"
         },
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs#L11-L140",
-          "version": "repo-lines-v1:sha256:ff9f4d5d56b7903155a4ed2bcd23c0ca8ddc7f9540a7d48a2dfaf8ae4626f7fb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxNzc0M2U5YWE5NzI5M2I1ZjUzNDY2Mjk2OTVkM2I4M2E0NWM5ZDczYWFmMTI0OTgzMGEzZmIxYzNiMWQ1N2Y3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhZDdiNDg4ZDgyNzNiNmFhMWViYTFlMmFjN2ZkMzJmZDc2MTIyM2UyMDJmNWNjMDkwOTkxMTQ1YjNkYTUxYTIyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyYjNjMWM5OTdjNjQ1Yjc1ZDMzMTg5NTRlY2JlZjU3YmM4NzdkNjA0ZjJkM2U5M2YxN2ZmY2Y5OGVlMzVmOGVhIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIn0"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
+          "version": "repo-file-v1:sha256:7a89c56b2c278e442da7051e41a27995be9ebaf66048c74917ae0876924b340b"
         }
       ]
     },
@@ -156,7 +156,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
+          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
         }
       ]
     },
@@ -194,13 +194,23 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
+          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
+        }
+      ]
+    },
+    {
+      "id": "claim_5931d3b6b6cc4ab7a1a4dcb25a63dc46",
+      "statement": "The current six-item product selection delivers items 1–3, selects persistent attached branches as item 4, waits for upstream maturity on item 5 and defers item 6. The attached-fork evidence preserves separate source-review, runtime, installed-app and native schedule identities.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T20:12:58.607Z"
+    "at": "2026-10-26T07:09:00.728Z"
   }
 }

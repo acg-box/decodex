@@ -20,10 +20,14 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/memory.rs
   - id: openwiki-source-3515e2ff1d1ef96caaa97617
     resource: repo://crates/decodex-codex/src/app_server_client/search_preferences.rs
+  - id: openwiki-source-787f8ad27b8519fbed2bd039
+    resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-5186d5aa506036d23eae1396
     resource: repo://crates/decodex-codex/src/app_server_client/thread_model_selection.rs
   - id: openwiki-source-7a438b090d3a7042aebaf269
     resource: repo://crates/decodex-codex/src/conversation.rs
+  - id: openwiki-source-4a57fba4bea69171318c6323
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs
   - id: openwiki-source-f5d073da07bcb17ee416f3b5
@@ -52,10 +56,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
+generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T20:12:58.607Z
+    at: 2026-10-26T07:09:00.728Z
 ---
 
 # Model selection and settings ownership
@@ -99,6 +103,8 @@ Native model metadata and configuration select V1 or V2 helper behavior. The sel
 The Goal panel reads and edits the Goal attached to the exact owned native thread. A new Goal requires an objective and an explicit start or pause choice. An edit can keep, set or reset its token budget and can explicitly change status. Native policy enforces the allowed budget and status transition. Decodex does not create a second persistent Goal engine.
 
 The reviewed source, thread and Goal identity must still match before a write. Long objectives use a native objective attachment instead of silently truncating the submitted objective. Display truncation is marked separately. An uncertain save requires a fresh native read; it is not permission to repeat the mutation.
+
+**Attached branch after this turn** keeps the source provider even when the configured default changes. It starts without a copied native Goal and leaves the source Goal unchanged. Creating or opening the branch sends no input. Continue it with a separate explicit message, or use its normal Goal controls after selecting that branch. The retained qualification checks both native history modes and restart; it does not certify the installed desktop. See [conversation branches](conversations-and-recovery.md#edit-or-branch-at-an-earlier-input).
 
 ## Search defaults and memory observation
 

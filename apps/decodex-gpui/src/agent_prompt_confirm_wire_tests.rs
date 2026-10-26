@@ -55,6 +55,10 @@ fn branch_confirmation_saves_choice_before_native_dispatch(cx: &mut TestAppConte
 fn branch_after_turn_needs_no_input_preflight(cx: &mut TestAppContext) {
 	run_confirmation(cx, Some(PromptForkBoundary::AfterTurn));
 }
+#[gpui::test]
+fn attached_branch_confirmation_is_saved_and_skips_unsent_input_preflight(cx: &mut TestAppContext) {
+	run_confirmation(cx, Some(PromptForkBoundary::AttachedAfterTurn));
+}
 fn run_confirmation(cx: &mut TestAppContext, boundary: Option<PromptForkBoundary>) {
 	cx.background_executor.allow_parking();
 
@@ -83,6 +87,7 @@ fn run_confirmation(cx: &mut TestAppContext, boundary: Option<PromptForkBoundary
 			None => "prompt-confirm-apply",
 			Some(PromptForkBoundary::BeforeInput) => "prompt-confirm-branch",
 			Some(PromptForkBoundary::AfterTurn) => "prompt-confirm-after",
+			Some(PromptForkBoundary::AttachedAfterTurn) => "prompt-confirm-attached",
 		},
 	] {
 		let mut bounds = None;
@@ -138,7 +143,7 @@ fn spawn_confirmation_server(
 			let listener = tokio::net::UnixListener::from_std(listener).unwrap();
 
 			time::timeout(Duration::from_secs(10), async {
-				for step in (0..4).filter(|step| boundary != Some(PromptForkBoundary::AfterTurn) || *step != 2) {
+				for step in (0..4).filter(|step| !boundary.is_some_and(|b| b != PromptForkBoundary::BeforeInput) || *step != 2) {
 					let mut socket = tokio_tungstenite::accept_async(listener.accept().await.unwrap().0).await.unwrap();
 					let _ = socket.next().await;
 

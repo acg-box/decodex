@@ -33,10 +33,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-25T15:35:33.616Z" }
+generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-25T20:12:58.607Z
+    at: 2026-10-26T07:09:00.728Z
 ---
 
 
@@ -64,6 +64,8 @@ Classify each relevant change:
 | Unsupported installed binary or unrelated platform | Record the boundary and defer the local consumer |
 
 Use the [current product scope](../decisions/upstream-product-scope.md). Retired local plugin management, embedded HTML widgets and provider recovery recording must not return merely because upstream supports them.
+
+The current six-item selection delivers items 1–3 as read-only views and selects item 4, persistent attached branches. Item 5 waits for upstream maturity; item 6 is deferred by the user. The retained `retained_attached_forks` record binds item 4 to the existing runtime artifact, completed-turn attachment contract, exact regression identities and reproducible temporary-fixture runner. This feature delivery does not advance source review, select another runtime, certify the installed app or change the native schedule. No new decision remains in this list.
 
 ## Qualify a source runtime
 

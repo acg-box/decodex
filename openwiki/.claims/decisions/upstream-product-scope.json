@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a4dbf8bcb491daf452bc18736d97e8cff291c771c9b3572f3c07246e6929ce92",
+  "pageVersion": "sha256:ed8ce7e336277f192752253f2d8c9a89388f8fad22704b31ce1c51c66e6fe301",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -17,7 +17,7 @@
       "statement": "The native bridge retains installed-plugin observations but rejects plugin list/read/install/reconcile management and MCP configuration reload; historical plugin state is still persisted as observations.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L787-L828",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L822-L863",
           "version": "repo-lines-v1:sha256:54d229cbf84d87383e867f093b72e720d3db151884b97c6a1006816ad9a88a74:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0ZDAyMDk0NDNhMGVhMDQxNTNlYjM3YzdhNGYzMTU4OGE0MDBmNGE0ZTNkYTE0NDc3ZmVjYTRhYmQ4M2YzYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkifQ"
         },
         {
@@ -31,7 +31,7 @@
       "statement": "The skill picker projects only enabled native skills for the selected workspace, preserves exact skill paths, and does not install or enable plugin candidates.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_skills.rs#L166-L194",
+          "resource": "repo://apps/decodex-gpui/src/agent_skills.rs#L169-L197",
           "version": "repo-lines-v1:sha256:23027d77dad3b1152f8828f4dfae0421fd87c3bf4e8a325b039d2962aebdd22c:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM3ZGU5OWU0OTQ5ODExZmFkNDNiNTZhOTY0NTJjYzc4NmRiODgxZDE3ZjIzN2FiYWFlODk0YTU5Zjg4NmUyNzgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwNzcwYjYwZDU1ZmQ3YjE5NWI0Zjk2NzJhZjkzYjFkY2EyMjA0OTk2MWZhOGMxMWQ2ZGMwZGRhOGQ3YmFiZDQifQ"
         },
         {
@@ -45,16 +45,16 @@
       "statement": "The desktop offers explicit source-preserving native branch choices alongside same-thread edits and keeps branch input as a canonical draft until a separate send.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L761-L786",
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L803-L828",
           "version": "repo-lines-v1:sha256:bff9a7fbe229a1601964d7ca35662f865348a49fdf2c5be26370c5edb2edee69:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBlM2Y0NTE0YmI1MTczYTliODk3N2U2MjBhNzZkMzZkNjI0ODAyZTUyODEyZDNlNDgwZjAwNjUwZDcyNTNkODYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI2ZTVlNGI0YmM0ZTU2MWMxMGFjNjIzYWY1N2ViNzFiNjc3YjIyZjI5ODJkMWQwMjZlNGYwZDcwYzcyMWEzMjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI0ZjIyYTVlMGFlMGE5YmUyNDhmNzhlYjNjMmQwYTNhMmE4NjgxNTY2NjA4M2YwMjk4ZjA0YjVjZmNkYzNmYjcifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L879-L937",
-          "version": "repo-lines-v1:sha256:ee86e61f9b87cdac0925adfa11d2212bdb94469d41ec88edde3d52884c542fb6:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0NmM2YzU4MGI0YWQyMWI3NGQwZTQ3ZWNmNWRiMmEzMWU4M2VlZjM1ZmM1OWM3YWE1MjQ0OGVhMmNkNjk2OWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyODNjNjljNzkxODM4YjUyMGM5ZTJkYmUxMTEyMzkyOTA0YTExYTRlMzZmNmRiOTczZjg4YmI3MmM3M2I1MDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0M2YyOGNhMDJkZDExZDhhMmRiZDZkYjMwNDNkMzAyMzMxNDAwYzgxM2ViYjVjOTZkNzE3NzdjMTU4Yjg4OTkifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L921-L993",
+          "version": "repo-lines-v1:sha256:7e041eb2e616ac174e38cfc9710f3718eb339620667dcb7d392f70ee24aed834:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0NmM2YzU4MGI0YWQyMWI3NGQwZTQ3ZWNmNWRiMmEzMWU4M2VlZjM1ZmM1OWM3YWE1MjQ0OGVhMmNkNjk2OWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyODNjNjljNzkxODM4YjUyMGM5ZTJkYmUxMTEyMzkyOTA0YTExYTRlMzZmNmRiOTczZjg4YmI3MmM3M2I1MDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0M2YyOGNhMDJkZDExZDhhMmRiZDZkYjMwNDNkMzAyMzMxNDAwYzgxM2ViYjVjOTZkNzE3NzdjMTU4Yjg4OTkifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs",
-          "version": "repo-file-v1:sha256:ffe694c5e5b03e337ef4e030b26d031e4a61cb9c60ed1815e45bd006e53e7e93"
+          "version": "repo-file-v1:sha256:8f1ced823225b7d0762db400f14c508f51ab68e15764d85fadb2f3928845061f"
         }
       ]
     },
@@ -77,12 +77,12 @@
       "statement": "Exact tool and file-change details use native item lookup with an older-history fallback only for an explicit unsupported method.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/history_item.rs#L1-L74",
-          "version": "repo-lines-v1:sha256:99e7441b5df2a1530ce22220a76da87be9d8ddc45960e2537704253cfe97cd3b:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2MWMwY2Q1MDZiNDRjMGQ2NjliYWY2NDVjNGZkYjM3ODhhMjE3MDhkYjdhZTRjYWE3NTMwY2Q0MTQzZmZhYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmOWZiMWI3ZjdlNGEyNTliNDBkMmYyM2EyNDRhZGIzZjFjNGVlYjBjOTJlMzAyNDJiYThkZDMzNjQwMTUzMTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmNDlkYTYwNDU2NmY3NDJlNTAzNjJhMzJhNjU1YzI3N2Q4ZmUxY2U1OGI3YWQ3OTliOWJlNzU1YmY3NzRmZDUifQ"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/history_item.rs#L1-L82",
+          "version": "repo-lines-v1:sha256:5f44e7af04f8ccaf0cb7cb311e76ce3f29b98159dbad6d0157ff263756285a6f:eyJzZWxlY3RlZExpbmVDb3VudCI6ODIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2MWMwY2Q1MDZiNDRjMGQ2NjliYWY2NDVjNGZkYjM3ODhhMjE3MDhkYjdhZTRjYWE3NTMwY2Q0MTQzZmZhYWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmOWZiMWI3ZjdlNGEyNTliNDBkMmYyM2EyNDRhZGIzZjFjNGVlYjBjOTJlMzAyNDJiYThkZDMzNjQwMTUzMTciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmNDlkYTYwNDU2NmY3NDJlNTAzNjJhMzJhNjU1YzI3N2Q4ZmUxY2U1OGI3YWQ3OTliOWJlNzU1YmY3NzRmZDUifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_detail.rs",
-          "version": "repo-file-v1:sha256:00ecd8c9e515ac271b4d5d002234be80f473bda79824217249c531cdb1c886dd"
+          "version": "repo-file-v1:sha256:d007f8116c4f5c5516e41159b3b7f812666d0fc1f82a29e15d86360bb81f4fbb"
         }
       ]
     },
@@ -91,12 +91,8 @@
       "statement": "Native prediction forks are explicit ephemeral client capabilities that inherit parent context and tools and reuse bounded temporary-turn cleanup; they do not implement automatic prediction or replace isolated recaps.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/prediction.rs#L1-L90",
-          "version": "repo-lines-v1:sha256:1682f47c6045cf6f05622cf9b30b2f36057274820734bec1fd76184916f4de3c:eyJzZWxlY3RlZExpbmVDb3VudCI6OTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4ODY4NDk4OWY3YjI5ZWU5MmFiMTNkNzE0NjY4MDJiNjViNzkwNDZiM2VlZmYwODdkZTBkY2FmMTFiOTJjZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzNWI0ZmQ2YjE3MDRhMzdhYzRiYjQxNGNhM2ZmN2Y1MTEwNmFiYTVlMDE4NTdlOTM2ZGI0MzlmZTA4NzY0MzUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg1MTgwYjlhMmU4NTViNzA3M2NhYTBhODdjZTg1ZjQ5N2E1ZWQwYmYzZmJmMjMzN2I0YTBiYTRmMzI4ZjE5ZjMifQ"
-        },
-        {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/temporary_structured.rs",
-          "version": "repo-file-v1:sha256:0076b94f4a735c8f73b1764b87e703fa8a1988bb930e0e9cea8cfafffe4860bf"
+          "resource": "repo://crates/decodex-codex/src/app_server_client/prediction.rs",
+          "version": "repo-file-v1:sha256:f51e6e6a68bff15985b1d640883a7cf59172707d72230024bfe82b551f5e9a22"
         }
       ]
     },
@@ -106,11 +102,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_read_state.rs",
-          "version": "repo-file-v1:sha256:7037191d04e5eb38102d3ce3a4f546f7727ba553936bfe3e0694f23c00723567"
+          "version": "repo-file-v1:sha256:cdf330e8db97cb474822c98ae2576da9c72d64e996820957197087833b1cadfb"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_read_state.rs",
-          "version": "repo-file-v1:sha256:623090d06ca0c9c75418b406db1f2299e73eca2b3aa5e32c3cff29fe0b95f67e"
+          "version": "repo-file-v1:sha256:e4aacf6f04f4da62c03378c42e0488899dd9d5e8c0d85f8b00cb6b8f867ccffc"
         }
       ]
     },
@@ -120,15 +116,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:1836ff7c4b66d9ba8f22083439e3a34deb8e7219ce770ccf80e9b660cd40f318"
+          "version": "repo-file-v1:sha256:9a2cbe4b21ace2646a95c735104a60b563df6f4b362ebd62ee865b48f670676b"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
-          "version": "repo-file-v1:sha256:d6def4b663daf493d71564aabfda90f272208b056e1957029721b3e1424e4e2b"
+          "version": "repo-file-v1:sha256:7a89c56b2c278e442da7051e41a27995be9ebaf66048c74917ae0876924b340b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
-          "version": "repo-file-v1:sha256:b5f93b8786f30af8d819c4eed9beeaadf8f4f18148031cd27370e18b589cee97"
+          "version": "repo-file-v1:sha256:b54865e3cdd4228297faa05c79b9dfd3a85560569ddec71ffe27e89200f44717"
         }
       ]
     },
@@ -137,8 +133,8 @@
       "statement": "The compatibility path requests retention only for work_instruction outputs; wakes, capacity retries and injected evidence remain unselected and retain application authority.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1254-L1362",
-          "version": "repo-lines-v1:sha256:e0ad341d1d141c699110b02b6523ea6ef5d2151f529f68b963753ce173ce1cfc:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1266-L1376",
+          "version": "repo-lines-v1:sha256:34c154ed0b2a955952269ea2ba86b94de26fe029840005eeab4bd317d355ae33:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/external_context.rs",
@@ -152,19 +148,19 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:1836ff7c4b66d9ba8f22083439e3a34deb8e7219ce770ccf80e9b660cd40f318"
+          "version": "repo-file-v1:sha256:9a2cbe4b21ace2646a95c735104a60b563df6f4b362ebd62ee865b48f670676b"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
-          "version": "repo-file-v1:sha256:d6def4b663daf493d71564aabfda90f272208b056e1957029721b3e1424e4e2b"
+          "version": "repo-file-v1:sha256:7a89c56b2c278e442da7051e41a27995be9ebaf66048c74917ae0876924b340b"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences_tests.rs",
-          "version": "repo-file-v1:sha256:4c35a917947da20855fc25e3db4b90fcecfcdd9c528e1a30d08ed7a567023f30"
+          "version": "repo-file-v1:sha256:a186c26117ee20dad86727650c105590e6e23228817e0b00c0270caa44057b9c"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
-          "version": "repo-file-v1:sha256:a1e2fcd1fe9c4c57332c9c824e8dd050b513fcbce9ccc8ba98935ea79f2fa2a6"
+          "version": "repo-file-v1:sha256:373894154e249727ff34f7b09baa3aebe41dc18c8207af92354763dbf7c929bc"
         }
       ]
     },
@@ -173,12 +169,8 @@
       "statement": "Account admission accepts only the native plus, pro, prolite, promax and team plans, case-insensitively; absent and unknown plans remain unsupported.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5604-L5618",
-          "version": "repo-lines-v1:sha256:5b47136506971aa4b802d62886d89a48e0c90fbd6e2a71d224b33796f0c135ec:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmNjk5MTEzNTNhZjE0Y2FiOWFmMzljZjU2NDA5YzMyNDJlYzAyOTdjMTVmMmU3ZWQxMjAzMGM2M2M2M2EzZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1NTgxZDhlMGQzMjM1MGEzMDlmMjBlYjVhMzNmYzYyYzg3ZWZlNzRmM2UzMGRhMTQ0Yzg5YmYzMmExYWIyYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5N2M4ZTkyYWMwMjViYTIwYzAwMzE4NzgxOThiYTlmMTY5NTA1MzNjOGQzMjkxYjA0NGEzY2Q5MzUzY2FlNzMifQ"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/account_service/tests/plan_scope.rs",
-          "version": "repo-file-v1:sha256:a699da5c8e090fe7bd07682cee3fc3f9d1908a38d6ea557e618b1e86e2efe9b1"
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5527-L5536",
+          "version": "repo-lines-v1:sha256:7cf06081ad220cfd9613ab4a9d4b301980c06fb5a25a2846ae2e37373924fde8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmNjk5MTEzNTNhZjE0Y2FiOWFmMzljZjU2NDA5YzMyNDJlYzAyOTdjMTVmMmU3ZWQxMjAzMGM2M2M2M2EzZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1NTgxZDhlMGQzMjM1MGEzMDlmMjBlYjVhMzNmYzYyYzg3ZWZlNzRmM2UzMGRhMTQ0Yzg5YmYzMmExYWIyYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlhZWIwNGRlNmM5Mjc4Y2ZkODg2ZTJkZjMyZjBlNDA3MGZlZmZlODE0MDM2NWFjODQ0YThjNDA5OTZjMjY3OGUifQ"
         }
       ]
     },
@@ -187,8 +179,8 @@
       "statement": "The fixed native launch selects description-first tools, subagent context defaults, Agent message wakeups and fork-prefix preservation while leaving Code Mode transport native-owned.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L1395-L1416",
-          "version": "repo-lines-v1:sha256:46e45205f692ef3918ba27a01985983e92c62d5d01358fdb82f0d4271b41a5b9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2NTcwYWIyNjlmYmUzMzFlN2Q3MmIwY2RmOGM3OGQ3ZTlkNzE4ZTBkN2IxMzI3MThkMmJiNWM2YzNmMjgxNmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhiODhkYmNiMGE3ODA4NDVlZjAyMjNjOTZlMTBjMmUzNTFmNGM3NGMxMTc2NGI1ZDk0OWVhN2RmYTQxNzU4MDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxYzIxMmM0MmYxZTRkNTNlNWQyZWU0OTI0Y2NkZDM3OTU4YTRmNjJjZTQ2ZTU4M2YyY2ZmZGY2MWFkZTAwMjgifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L130-L150",
+          "version": "repo-lines-v1:sha256:a6b2eef1867776015de103e94d4bd067aedc8577c70159c8c792ab426e27b791:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2YjU1MTM4Y2EyM2U2ZGFkMjJiNjQ4ZjgyOWNlZGM4MWQyMDNiMTlmMTc2MzRkZjZiZTc2MGY1M2JlNGVmOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNmU0ZjMxZGM3MTM2OTU2NmI1MWNjMWExOTVkNDUwY2RmODU3NWU2ZDdhNzYxYzU2NDJiYTMwMjVkYzM0NzMifQ"
         }
       ]
     },
@@ -197,12 +189,12 @@
       "statement": "Current product scope includes separate Project, Agent and Work records, scoped peer Collaboration, native helper execution and direct schema56/protocol3 migration while preserving actual legacy execution.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L305-L325",
-          "version": "repo-lines-v1:sha256:8ac1b541b3c88fa5de17d6e690c5ce65e64d913409c75074aab45e61c1f68346:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2M2NhYzIyNmZhN2FjOTE1MGUwMTZlODZiODM2YTViMjg5Y2MxNjU4YzNmYTA3YjI1YTdhY2Q5NDMxNTY5YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRkMTAyZWNmMDUwZGViNTQ0YjM1YTJkNDIxYzhmNGMzMzlkYjJmYjE0NmVhYzE1YzY2MGUyZGViYTJjZDUyYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzNzAzOTQzYjAxNmE4ZjUwOWFkZDU4ZGRhNTI1YzJmMzY2N2EwOTMxNWFlYjgwNDQwODIwZTU3ODMwMjBlNTgifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs",
+          "version": "repo-file-v1:sha256:f91fc60e30e0ab180639ebb00b3634de55195ec2c4693c9c751f488ee40481a8"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
-          "version": "repo-file-v1:sha256:af6561b878a7ce5ce8e6fdd502c99c198f664e447c14959c888308f265b53dc7"
+          "version": "repo-file-v1:sha256:e85c1662d66a6149590e709bc2a46d548f03fe1bb23a422b4250c938cff48668"
         },
         {
           "resource": "repo://database/migrations/0056_project_agent_work.sql",
@@ -216,11 +208,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
+          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
-          "version": "repo-file-v1:sha256:131f5d872210abf936e8e602328d7cf1fa8252941ba1832176c2bb32ea1d4839"
+          "version": "repo-file-v1:sha256:7d716b1f0d463043d3844fbcb0e0826390ca08e8984ce15d0bb01fa1e0f8a04b"
         }
       ]
     },
@@ -230,15 +222,15 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
+          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/project.rs",
-          "version": "repo-file-v1:sha256:7fe6e89df741571dec2727e90fb6238d80439631fa3ff6a549654bf119006ec3"
+          "version": "repo-file-v1:sha256:c68660f56ba49a7ca83bac6e472dde10c00e75193ff8db5582d7c7fecdd85cc7"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work_delivery.rs",
-          "version": "repo-file-v1:sha256:735c681f9d34e6fe08eb485c9055cd46347f31f53d1df09f7f8b17831d655fc9"
+          "version": "repo-file-v1:sha256:32e6bcc53e6e91ba954db11633d443a62785b05584476fbc8bf31aeb3e12fc96"
         }
       ]
     },
@@ -248,51 +240,69 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
+          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/guardian_details.rs",
-          "version": "repo-file-v1:sha256:b61d1abbc43be7bb9d2ea1a798cc81421be488a2f7707101c22d44fd161b8d4d"
+          "version": "repo-file-v1:sha256:e388d9f8681c47d17a2aa9946f5281d9dd5341ab1cea3d1d0e2d7f980ed8e251"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work_delivery.rs",
-          "version": "repo-file-v1:sha256:735c681f9d34e6fe08eb485c9055cd46347f31f53d1df09f7f8b17831d655fc9"
+          "version": "repo-file-v1:sha256:32e6bcc53e6e91ba954db11633d443a62785b05584476fbc8bf31aeb3e12fc96"
         },
         {
           "resource": "repo://database/src/agent_process/attachments.rs",
-          "version": "repo-file-v1:sha256:2c3abdbc58fcdb0466a5f9a10c923f8eeeceb716683b0982e5b7ae470355386f"
+          "version": "repo-file-v1:sha256:113726bac40d5f12fb5556dc4e2d6099fb601257f66caa025c562cc21b356e72"
         }
       ]
     },
     {
       "id": "claim_242dce1d84bd41829bf2704462e76665",
-      "statement": "The selected product implementation exposes read-only native memory summary, exact collaboration reply and contribution history, and actual retained native usage in existing desktop surfaces under local protocol 3.1. Native execution and explicit Work assessment retain their owners; missing and shared attribution remain explicit.",
+      "statement": "The selected product implementation exposes read-only native memory summary, exact collaboration reply and contribution history, and actual retained native usage in existing desktop surfaces first delivered under local protocol 3.1 and retained in 3.2. Native execution and explicit Work assessment retain their owners; missing and shared attribution remain explicit.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_cases.rs",
-          "version": "repo-file-v1:sha256:f4c6235157d6116721c3c32e321e1e0c4b6f30deb7917bc1e4156828ce9e47ef"
+          "version": "repo-file-v1:sha256:68a100fb8033b50a40153828344f2ad2de6f65bac51d1c7ef19e786be3723a1a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_memory.rs",
-          "version": "repo-file-v1:sha256:833eb3197234bc9a6ff668b788ab0627914a4d287cc0940b7b0e1ac3395f01fa"
+          "version": "repo-file-v1:sha256:9965c3aaccd28b60c2b3cb6092c254a4bc2c4a0d761e6a20c6f725558b9ae422"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_usage_evidence.rs",
-          "version": "repo-file-v1:sha256:37c521d6f449fbd49a22247b359bb78b0987e89c6fae1b5a7f4b78b83a57ce31"
+          "version": "repo-file-v1:sha256:28b17b9257bd5be5cf758b63369df4c0694a475facf483c016d86153d8c6acab"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:f4ff713f51c74537968615c0f2087c97db5c31fdcecdd2f42c6876e1abc7b1c0"
+          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:0fececdd43aca36dbb34b02cc91830ed7d2245f8eb74b34f61cebdc1ff9e48df"
+          "version": "repo-file-v1:sha256:f91fc60e30e0ab180639ebb00b3634de55195ec2c4693c9c751f488ee40481a8"
+        }
+      ]
+    },
+    {
+      "id": "claim_c1c7ae927c1a4c68a3c6e67e6759d3f7",
+      "statement": "The user selected item 4, persistent attached branches, while item 5 waits for upstream maturity and item 6 is deferred. Items 1–3 are delivered and this six-item list requires no new decision. Attached creation sends no input, copies no Goal and adds no automatic follow-up, scheduling, result merge or deletion policy.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_attached_branches.rs",
+          "version": "repo-file-v1:sha256:a213f1868fb081da579d367d94baf1401943aa7cdd1d2e6b7264d47bd04408eb"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:299764806624ff19d625bbdb92f812183412cc6137722e0268ced88d682fde18"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
+          "version": "repo-file-v1:sha256:eb622f54077106962241838083ffe1a07b73c2309ac7c509eadf80470b285cf9"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-25T20:12:58.607Z"
+    "at": "2026-10-26T07:09:00.728Z"
   }
 }

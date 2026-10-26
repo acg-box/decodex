@@ -302,10 +302,15 @@ async fn installed_native_parallel_dynamic_tools_preserve_ids_and_result_order()
 			0 =>
 				serde_json::json!({"type":"custom_tool_call","name":"exec","call_id":"parallel-cell","input":r#"
 function sort(a) { return a.sort(() => { a.fill(0); return 0; }); }
+
 for (let i = 0; i < 1000; i++) { sort([1, 2]); sort([{}, {}]); }
+
 const object = {};
+
 if (sort([object, {}])[0] !== object) throw new Error('sort changed an element');
+
 const values = await Promise.all([tools.lookup({key: 'A'}), tools.lookup({key: 'B'})]);
+
 text(JSON.stringify({values, sort: true}));
 "#}),
 			_ =>

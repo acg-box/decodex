@@ -92,7 +92,7 @@ impl AgentSurface {
 									"Branch rejected. Original and draft kept.".into();
 							},
 							Some((work, thread, boundary, snapshot)) => {
-								if boundary == PromptForkBoundary::AfterTurn
+								if boundary != PromptForkBoundary::BeforeInput
 									&& let Err(message) = s.discard_prompt_editor(&retained, cx)
 								{
 									s.prompt_edit.feedback = message.into();
