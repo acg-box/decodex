@@ -1,6 +1,6 @@
 //! Source-bound provider observations. They do not authorize a turn or resolve work.
 
-use std::time::Duration;
+use std::{mem, time::Duration};
 
 use futures_util::{StreamExt as _, stream};
 use sha2::{Digest as _, Sha256};
@@ -17,7 +17,38 @@ use decodex_codex::{
 };
 use decodex_database::AgentGuardianObservation;
 
+fn recovery_turn_items(
+	client: app_server_client::AppServerClient,
+	thread: String,
+	turns: Vec<Value>,
+	deadline: Instant,
+) -> impl futures_util::Stream<Item = Result<Value, app_server_client::ClientError>> {
+	// Fetch missing pages concurrently, then apply each turn in native order.
+	stream::iter(turns.into_iter().map(move |header| {
+		read_turn_items(client.clone(), thread.clone(), header, deadline)
+	}))
+	.buffered(4)
+}
+
 impl AgentCoordinator {
+	async fn flush_recovered_steer_receipts(
+		&self,
+		thread: &str,
+		receipts: &mut Vec<(String, String)>,
+	) -> Result<(), AgentError> {
+		if !receipts.is_empty() {
+			let _phase = crate::startup_trace::Phase::new("recover_steer_receipts");
+			self.store
+				.observe_agent_steer_receipts(
+					thread.into(),
+					mem::take(receipts),
+					self.native_generation.as_ref().map(|id| id.as_str().to_owned()),
+				)
+				.await?;
+		}
+		Ok(())
+	}
+
 	pub(super) async fn observe_steer_receipt(
 		&self,
 		thread: &str,
@@ -97,16 +128,10 @@ impl AgentCoordinator {
 			};
 			let latest = turns.last().and_then(|turn| turn["id"].as_str()).map(str::to_owned);
 			let superseded = self.superseded_misalignment(&work, &thread, &turns).await?;
-			let client = self.client.clone();
 			let mut complete = true;
-			// The headers already identify each turn. Fetch only missing item pages,
-			// with bounded read-ahead and chronological application of observations.
-			let reads =
-				stream::iter(turns.into_iter().map(|header| {
-					read_turn_items(client.clone(), thread.clone(), header, deadline)
-				}))
-				.buffered(4);
+			let mut steer_receipts = Vec::new();
 
+			let reads = recovery_turn_items(self.client.clone(), thread.clone(), turns, deadline);
 			tokio::pin!(reads);
 
 			while let Some(result) = reads.next().await {
@@ -130,6 +155,8 @@ impl AgentCoordinator {
 					&& native_turn["status"] == "failed"
 					&& native_turn["error"]["codexErrorInfo"] == "misalignmentPolicyViolation"
 				{
+					// Retain earlier positive receipts even if precaution cleanup fails.
+					self.flush_recovered_steer_receipts(&thread, &mut steer_receipts).await?;
 					self.store
 						.restore_agent_misalignment(
 							thread.clone(),
@@ -141,7 +168,13 @@ impl AgentCoordinator {
 				}
 
 				for item in items {
-					self.observe_steer_receipt(&thread, turn, item).await?;
+					if item["type"] == "userMessage"
+						&& let Some(client) = item["clientId"].as_str()
+						&& !client.is_empty()
+						&& client.len() <= 512
+					{
+						steer_receipts.push((turn.into(), client.into()));
+					}
 
 					saw_required |=
 						item["id"].as_str().is_some_and(|id| required_item.as_deref() == Some(id));
@@ -157,6 +190,7 @@ impl AgentCoordinator {
 					break;
 				}
 			}
+			self.flush_recovered_steer_receipts(&thread, &mut steer_receipts).await?;
 
 			if complete && saw_required && self.client.question_revision() == revision {
 				if let Some(expected) = superseded
@@ -170,6 +204,7 @@ impl AgentCoordinator {
 						.await?;
 				}
 
+				let _phase = crate::startup_trace::Phase::new("recover_question_projection");
 				self.store
 					.replace_agent_async_projection(
 						work,

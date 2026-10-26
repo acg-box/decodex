@@ -248,6 +248,35 @@ async fn complete_legacy_question_recovery_reads_history_once_for_many_turns() {
 }
 
 #[tokio::test]
+async fn incomplete_question_projection_keeps_positive_steer_receipts_without_replay() {
+	let question = serde_json::json!({"id":"duplicate-question","type":"agentMessage","delivery":"async","questions":[{"title":"Continue?"}]});
+	let history = serde_json::json!({"opaque thread/1":{"thread":{"id":"opaque thread/1","historyMode":"legacy","turns":[{"id":"opaque turn/1","status":"inProgress","items":[
+		{"id":"native-receipt","type":"userMessage","clientId":"exact-submission","content":[]},
+		question.clone(), question
+	]}]}}});
+	let (mut agent, mut sent, _directory) = tests::fixture_with_history(history).await;
+	agent.start_agent("agent", "Coordinate").await.unwrap();
+	let pending = agent
+		.store
+		.begin_agent_steer(
+			"agent".into(),
+			"opaque turn/1".into(),
+			"exact-submission".into(),
+			serde_json::json!({"text":"Saved input","source":"user"}).to_string(),
+		)
+		.await
+		.unwrap();
+	agent.store.queue_agent_async_reconnection().await.unwrap();
+	while sent.try_recv().is_ok() {}
+	agent.recover_async_questions().await.unwrap();
+	assert!(agent.store.get_agent_inbox_event(pending).await.unwrap().disposition.is_some());
+	assert!(agent.store.agent_async_questions_recovering("agent".into()).await.unwrap());
+	while let Ok(request) = sent.try_recv() {
+		assert_eq!(request["method"], "thread/read", "recovery must not resubmit input");
+	}
+}
+
+#[tokio::test]
 async fn independent_question_headers_are_prefetched_without_submitting_turns() {
 	let (mut agent, _sent, _directory) = tests::fixture().await;
 	agent.start_agent("agent", "Coordinate").await.unwrap();
