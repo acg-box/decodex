@@ -233,7 +233,8 @@ impl AgentSurface {
 		let viewport = window.viewport_size();
 		let sidebar = self.workspace_sidebar_width(window);
 		let right = self.agent_tree_width(window);
-		let gutters = WORKSPACE_GUTTER * if right > 0.1 { 3. } else { 2. };
+		let gutters =
+			2. * WORKSPACE_GUTTER + sidebar.min(WORKSPACE_GUTTER) + right.min(WORKSPACE_GUTTER);
 		let available = (
 			(f32::from(viewport.width) - sidebar - right - gutters).max(0.),
 			(f32::from(viewport.height) - WINDOW_CONTROLS_CLEARANCE - WORKSPACE_GUTTER).max(0.0),
@@ -301,16 +302,15 @@ impl AgentSurface {
 			ui_motion::request_frame(window, cx);
 		}
 
-		gpui::div()
+		ui_theme::workspace_surface()
 			.id("left-panel-slot")
 			.opacity(self.workspace.arrival.progress(0.))
 			.debug_selector(|| "left-panel-slot".into())
 			.on_hover(cx.listener(|s, hovered: &bool, _, cx| s.sidebar_hover(*hovered, cx)))
 			.flex_none()
-			.relative()
 			.w(gpui::px(width))
+			.mr(gpui::px(width.min(WORKSPACE_GUTTER)))
 			.h_full()
-			.overflow_hidden()
 			.capture_any_mouse_down(
 				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Left)),
 			)
@@ -553,7 +553,10 @@ mod tests {
 
 	use std::thread;
 
-	use crate::shell::agent_surface::workspace_size::{self, AgentSurface, MouseButton, Panel};
+	use crate::{
+		shell::agent_surface::workspace_size::{self, AgentSurface, MouseButton, Panel},
+		ui_theme::WORKSPACE_GUTTER,
+	};
 
 	#[gpui::test]
 	fn graph_fullscreen_keeps_the_workbench_and_restores_preferences(
@@ -705,8 +708,15 @@ mod tests {
 		let sidebar = visual.debug_bounds("left-panel-slot").unwrap();
 		let activity = visual.debug_bounds("workspace-activity-frame").unwrap();
 
-		assert_eq!(frame.left() - sidebar.right(), gpui::px(crate::ui_theme::WORKSPACE_GUTTER));
-		assert_eq!(activity.left() - frame.right(), gpui::px(crate::ui_theme::WORKSPACE_GUTTER));
+		assert_eq!(sidebar.left(), gpui::px(WORKSPACE_GUTTER));
+
+		for side in [sidebar, activity] {
+			assert_eq!(side.top(), frame.top(), "all columns start below the titlebar");
+			assert_eq!(side.bottom(), frame.bottom(), "all columns share the bottom inset");
+		}
+
+		assert_eq!(frame.left() - sidebar.right(), gpui::px(WORKSPACE_GUTTER));
+		assert_eq!(activity.left() - frame.right(), gpui::px(WORKSPACE_GUTTER));
 
 		visual.update(|window, cx| {
 			let (width, _) = surface.read(cx).workspace_graph_size(window, true);
@@ -823,7 +833,7 @@ mod tests {
 				assert_eq!(plane, frame);
 
 				let composer = visual.debug_bounds("floating-composer");
-				let has_composer = !archived && !browsing;
+				let has_composer = !browsing;
 
 				assert_eq!(composer.is_some(), has_composer);
 
@@ -949,16 +959,22 @@ mod tests {
 
 		visual.update(crate::ui_frame::draw_current_frame);
 
-		let point = |x| gpui::point(gpui::px(x), gpui::px(300.0));
+		let start =
+			visual.debug_bounds("agent-sidebar-resize").expect("sidebar resize handle").center();
+		let end = start + gpui::point(gpui::px(80.), gpui::px(0.));
 
-		visual.simulate_mouse_down(point(189.0), MouseButton::Left, Default::default());
-		visual.simulate_mouse_move(point(269.0), MouseButton::Left, Default::default());
+		visual.simulate_mouse_down(start, MouseButton::Left, Default::default());
+		visual.simulate_mouse_move(end, MouseButton::Left, Default::default());
 		surface.update(visual, |s, _| {
 			assert_eq!(s.workspace.sidebar_width, 272.0);
 			assert_eq!(s.workspace.graph_pan, (0.0, 0.0));
 		});
-		visual.simulate_mouse_up(point(269.0), MouseButton::Left, Default::default());
-		visual.simulate_mouse_move(point(400.0), None, Default::default());
+		visual.simulate_mouse_up(end, MouseButton::Left, Default::default());
+		visual.simulate_mouse_move(
+			end + gpui::point(gpui::px(120.), gpui::px(0.)),
+			None,
+			Default::default(),
+		);
 		surface.update(visual, |s, _| {
 			assert_eq!(s.workspace.sidebar_width, 272.0);
 			assert!(s.workspace.panel_drag.is_none());
@@ -1114,7 +1130,7 @@ mod tests {
 
 				assert_eq!(
 					s.workspace_graph_size(window, true).1,
-					900. - super::WINDOW_CONTROLS_CLEARANCE - crate::ui_theme::WORKSPACE_GUTTER
+					900. - super::WINDOW_CONTROLS_CLEARANCE - WORKSPACE_GUTTER
 				);
 
 				s.workspace.graph_visible = false;
