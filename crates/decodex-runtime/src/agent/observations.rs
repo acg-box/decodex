@@ -30,6 +30,91 @@ fn recovery_turn_items(
 	.buffered(4)
 }
 
+struct RecoveredPrecaution {
+	turn: String,
+	details: Option<String>,
+	earlier_receipts: usize,
+}
+
+struct PreparedQuestions {
+	turn_ids: Vec<String>,
+	projection: Projection,
+	receipts: Vec<(String, String)>,
+	precaution: Option<RecoveredPrecaution>,
+	complete: bool,
+	saw_required: bool,
+}
+
+impl PreparedQuestions {
+	async fn read(
+		client: &app_server_client::AppServerClient,
+		thread: &str,
+		required: Option<&str>,
+	) -> Result<Self, app_server_client::ClientError> {
+		let _phase = crate::startup_trace::Phase::new("prepare_question_history");
+		let deadline = Instant::now() + Duration::from_secs(30);
+		let turns = time::timeout_at(deadline, client.thread_turns_since(thread, None))
+			.await
+			.map_err(|_| app_server_client::ClientError::Io)??;
+		let mut prepared = Self {
+			turn_ids: turns
+				.iter()
+				.filter_map(|turn| turn["id"].as_str().map(str::to_owned))
+				.collect(),
+			projection: Projection::default(),
+			receipts: Vec::new(),
+			precaution: None,
+			complete: true,
+			saw_required: required.is_none(),
+		};
+		let reads = recovery_turn_items(client.clone(), thread.into(), turns, deadline);
+		tokio::pin!(reads);
+		while let Some(result) = reads.next().await {
+			let Ok(native_turn) = result else {
+				prepared.complete = false;
+				break;
+			};
+			let (Some(turn), Some(items)) =
+				(native_turn["id"].as_str(), native_turn["items"].as_array())
+			else {
+				prepared.complete = false;
+				break;
+			};
+			if prepared.turn_ids.last().is_some_and(|latest| latest == turn)
+				&& native_turn["status"] == "failed"
+				&& native_turn["error"]["codexErrorInfo"] == "misalignmentPolicyViolation"
+			{
+				prepared.precaution = Some(RecoveredPrecaution {
+					turn: turn.into(),
+					details: misalignment::details(&native_turn["error"]),
+					earlier_receipts: prepared.receipts.len(),
+				});
+			}
+			for item in items {
+				if let Some(client) = steer_client_id(item) {
+					prepared.receipts.push((turn.into(), client.into()));
+				}
+				prepared.saw_required |= item["id"].as_str().is_some_and(|id| required == Some(id));
+				if prepared.projection.observe(thread, turn, item).is_err() {
+					prepared.complete = false;
+					break;
+				}
+			}
+			if !prepared.complete {
+				break;
+			}
+		}
+		Ok(prepared)
+	}
+}
+
+fn steer_client_id(item: &Value) -> Option<&str> {
+	if item["type"] != "userMessage" {
+		return None;
+	}
+	item["clientId"].as_str().filter(|id| !id.is_empty() && id.len() <= 512)
+}
+
 impl AgentCoordinator {
 	async fn flush_recovered_steer_receipts(
 		&self,
@@ -55,11 +140,7 @@ impl AgentCoordinator {
 		turn: &str,
 		item: &Value,
 	) -> Result<(), AgentError> {
-		if item["type"] == "userMessage"
-			&& let Some(client_id) = item["clientId"].as_str()
-			&& !client_id.is_empty()
-			&& client_id.len() <= 512
-		{
+		if let Some(client_id) = steer_client_id(item) {
 			self.store
 				.observe_agent_steer_receipt(
 					thread.into(),
@@ -98,101 +179,43 @@ impl AgentCoordinator {
 	}
 
 	/// Upgrade old projections from exact native history, including other-client replies.
-	/// An incomplete read leaves the durable recovery marker for the next connection.
+	/// Read-only preparation is bounded and concurrent; durable effects remain ordered.
 	pub(super) async fn recover_async_questions(&mut self) -> Result<(), AgentError> {
 		let pending = self.store.pending_agent_async_recovery().await?;
 		let client = self.client.clone();
-		// Prefetch independent thread headers without spawning new owners. Apply each
-		// thread's observations in the same order and retain its original invalidation guards.
-		let headers = stream::iter(pending.into_iter().map(|entry| {
+		let reads = stream::iter(pending.into_iter().map(|entry| {
 			let client = client.clone();
 			async move {
 				let revision = client.question_revision();
 				let lifecycle = client.thread_settings_guard(&entry.1);
-				let deadline = Instant::now() + Duration::from_secs(30);
-				let turns =
-					time::timeout_at(deadline, client.thread_turns_since(&entry.1, None)).await;
-				(entry, revision, lifecycle, deadline, turns)
+				let prepared = PreparedQuestions::read(&client, &entry.1, entry.2.as_deref()).await;
+				(entry, revision, lifecycle, prepared)
 			}
 		}))
 		.buffered(4);
-		tokio::pin!(headers);
-		while let Some(((work, thread, required_item), revision, lifecycle, deadline, turns)) =
-			headers.next().await
+		tokio::pin!(reads);
+		while let Some(((work, thread, required_item), revision, lifecycle, prepared)) =
+			reads.next().await
 		{
 			let _phase = crate::startup_trace::Phase::new("recover_async_thread");
-			let (mut projection, mut saw_required, Ok(Ok(turns))) =
-				(Projection::default(), required_item.is_none(), turns)
-			else {
-				continue;
-			};
-			let latest = turns.last().and_then(|turn| turn["id"].as_str()).map(str::to_owned);
-			let superseded = self.superseded_misalignment(&work, &thread, &turns).await?;
-			let mut complete = true;
-			let mut steer_receipts = Vec::new();
-
-			let reads = recovery_turn_items(self.client.clone(), thread.clone(), turns, deadline);
-			tokio::pin!(reads);
-
-			while let Some(result) = reads.next().await {
-				let Ok(native_turn) = result else {
-					complete = false;
-
-					break;
-				};
-				let Some(turn) = native_turn["id"].as_str() else {
-					complete = false;
-
-					break;
-				};
-				let Some(items) = native_turn["items"].as_array() else {
-					complete = false;
-
-					break;
-				};
-
-				if latest.as_deref() == Some(turn)
-					&& native_turn["status"] == "failed"
-					&& native_turn["error"]["codexErrorInfo"] == "misalignmentPolicyViolation"
-				{
-					// Retain earlier positive receipts even if precaution cleanup fails.
-					self.flush_recovered_steer_receipts(&thread, &mut steer_receipts).await?;
-					self.store
-						.restore_agent_misalignment(
-							thread.clone(),
-							turn.into(),
-							misalignment::details(&native_turn["error"]),
-						)
-						.await?;
-					self.stop_voice_for_precaution(&thread).await?;
-				}
-
-				for item in items {
-					if item["type"] == "userMessage"
-						&& let Some(client) = item["clientId"].as_str()
-						&& !client.is_empty()
-						&& client.len() <= 512
-					{
-						steer_receipts.push((turn.into(), client.into()));
-					}
-
-					saw_required |=
-						item["id"].as_str().is_some_and(|id| required_item.as_deref() == Some(id));
-
-					if projection.observe(&thread, turn, item).is_err() {
-						complete = false;
-
-						break;
-					}
-				}
-
-				if !complete {
-					break;
-				}
+			let Ok(mut prepared) = prepared else { continue };
+			let superseded =
+				self.superseded_misalignment(&work, &thread, &prepared.turn_ids).await?;
+			if let Some(precaution) = prepared.precaution {
+				// Preserve the old order: earlier receipts, the precaution, then later receipts.
+				let later = prepared.receipts.split_off(precaution.earlier_receipts);
+				self.flush_recovered_steer_receipts(&thread, &mut prepared.receipts).await?;
+				self.store
+					.restore_agent_misalignment(thread.clone(), precaution.turn, precaution.details)
+					.await?;
+				self.stop_voice_for_precaution(&thread).await?;
+				prepared.receipts = later;
 			}
-			self.flush_recovered_steer_receipts(&thread, &mut steer_receipts).await?;
-
-			if complete && saw_required && self.client.question_revision() == revision {
+			self.flush_recovered_steer_receipts(&thread, &mut prepared.receipts).await?;
+			if prepared.complete
+				&& prepared.saw_required
+				&& self.client.question_revision() == revision
+			{
 				if let Some(expected) = superseded
 					&& let Some(guard) = self.client.question_guard(revision)
 					&& let Some(lifecycle) = lifecycle
@@ -203,24 +226,21 @@ impl AgentCoordinator {
 						})
 						.await?;
 				}
-
 				let _phase = crate::startup_trace::Phase::new("recover_question_projection");
 				self.store
 					.replace_agent_async_projection(
 						work,
 						thread.clone(),
 						required_item,
-						projection.questions,
-						projection.answers.into_iter().collect(),
+						prepared.projection.questions,
+						prepared.projection.answers.into_iter().collect(),
 					)
 					.await?;
-
 				if self.client.question_revision() != revision {
 					self.store.refresh_agent_async_projection(thread.clone()).await?;
 				}
 			}
 		}
-
 		Ok(())
 	}
 
