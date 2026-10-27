@@ -699,7 +699,7 @@
     "evidence": "automations/upstream/qualification.json",
     "source_archive_sha256": "b93e82b67ca9de55fb1cbcf74be03567f529a03d23b4785de02f966f39f1c4b5",
     "schema_sha256": "86c27115a28bf905f4c25ee204b218b2ba9598ef664787efddd30e2d0c20f2d9",
-    "evidence_sha256": "cd7c138625b15bfe362eb04c08b6a7f97c743680b58cd740f278ec7fb8cadd2e",
+    "evidence_sha256": "d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660",
     "limits": [
       "Source review, tests, artifact qualification, merge and installed acceptance are separate.",
       "Only macOS arm64 private stdio and named native consumers/helpers are qualified. Linux, Windows, remote production execution, live accounts/providers, physical audio and installation/release remain unmeasured.",
@@ -1058,9 +1058,9 @@
       "necessary_repair": 3
     },
     "source_review_evidence": "automations/upstream/current-review.json",
-    "source_review_evidence_sha256": "0e07898e62c9b1a1975e688dfde3c0459e4632e5317d97cbfbc2a4637a06c211",
+    "source_review_evidence_sha256": "3ccca96311d38b0a0578a007e85c2e25c8114098630081bb2c12c01162904d79",
     "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-    "runtime_disposition": "Qualified fixed development artifact; delivery pending",
+    "runtime_disposition": "Qualified fixed development artifact; public delivery reference identifies merge and exact-head checks.",
     "tests_read_unique_function_count": 131,
     "source_tests_executed_count": 1264,
     "source_tests_passed_count": 1263,
@@ -3050,10 +3050,11 @@
     }
   },
   "current_delivery": {
-    "status": "qualified_delivery_pending",
+    "status": "public_pull_request_reference",
     "scope": "Advance development runtime to 33d306d4; accept empty attached-child visible history while preserving parent context, restore acknowledged permissions, avoid dotenv startup hang and preserve native policy-capacity errors. No new optional product capability.",
     "state_source": "Read the focused public PR for exact-head checks and merge state; installed-app acceptance is separate.",
-    "code_commit": "15f7c5a9168ddd76bc9dc0cd9f0dffef13a3d3c3"
+    "code_commit": "15f7c5a9168ddd76bc9dc0cd9f0dffef13a3d3c3",
+    "pull_request": "https://github.com/acg-box/decodex/pull/2532"
   },
   "retained_account_scope": {
     "provider": "ChatGPT-backed identity; recognized plan labels are not separate provider implementations.",

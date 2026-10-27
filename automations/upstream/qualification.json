@@ -4914,7 +4914,7 @@
     "state_source": "OpenWiki-managed metadata and the public delivery reference identify lifecycle and delivery status.",
     "limits": "Documentation reconciliation does not requalify the artifact or establish installation/release."
   },
-  "delivery_reference": "Pending focused pull request",
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2532",
   "schema_identity": {
     "generator": "Exact candidate codex app-server generate-json-schema --experimental --out <directory>",
     "observed_cli_version": "codex-cli 0.0.0",
@@ -4961,6 +4961,6 @@
     "environment": "Empty system-temporary HOME/CODEX_HOME; removed after observation.",
     "scope": "Exact signed candidate default feature state. Decodex startup keeps its existing admitted flags and does not enable the new experiments."
   },
-  "delivery_status": "Qualified fixed development artifact; focused pull request and remote-main readback pending. No installation or release.",
+  "delivery_status": "Public PR reference; inspect linked PR for exact-head checks and merge state. Bounded qualification does not establish installed-app acceptance.",
   "decodex_main_baseline": "7ce7d8a88dd1c054f358a64cd5429a7442da1523"
 }

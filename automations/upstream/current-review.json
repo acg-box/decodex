@@ -5945,6 +5945,6 @@
     "codex-rs/tui/src/style.rs": "0ea813b75bc3fdf59dd79a08e201031df79eafd4ee909b4f5e08def9c255f198",
     "codex-rs/tui/src/terminal_palette.rs": "46a284e5064d7f9b80dd301148459fdf819db78e2d57670bca333453dbb002d9"
   },
-  "delivery_status": "Source review and bounded artifact qualification complete; public delivery reference identifies the merge and exact-head CI state.",
-  "delivery_reference": "Pending focused pull request"
+  "delivery_status": "Public PR reference; inspect linked PR for exact-head checks and merge state. Bounded qualification does not establish installed-app acceptance.",
+  "delivery_reference": "https://github.com/acg-box/decodex/pull/2532"
 }
