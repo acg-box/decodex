@@ -822,7 +822,7 @@
     },
     "observed_native_turn_timings": {
       "contract": "retained_behavior_contracts#observed-native-turn-activity-timings",
-      "surface": "Completed native turn details use the existing response footer hover; unavailable values say Unknown. Model output is observed activity and intervals can overlap.",
+      "surface": "Completed native turn details use the existing response footer hover; unavailable values say Unknown and observed intervals shorter than one second display milliseconds. Model output is observed activity and intervals can overlap.",
       "delivery_reference": "https://github.com/acg-box/decodex/pull/2518"
     }
   },
@@ -1393,7 +1393,7 @@
         "crates/decodex-runtime/src/agent/timeline/metrics.rs": "73f5d0a46c6bd4c368f38bed5cb73765185842f359754cac6b0ff25901806a08",
         "crates/decodex-runtime/src/agent/tests/result_integrity.rs": "800274cbbf3736ee33be5fb7800bdc258e2f4d46eda60ef4f53781d953779e12",
         "crates/decodex-runtime/src/account_launch/agent_process_native_output_rate_tests.rs": "0a9459f95b8795415ae166654479a7c72173ccafc6a6045d183c9177e6b4f809",
-        "apps/decodex-gpui/src/agent_response_metrics.rs": "3f670d52449e177fd040a1953e5df51412fad0fc06566757507b66c11f245395",
+        "apps/decodex-gpui/src/agent_response_metrics.rs": "e6b2d1d57c26d7cee656fe8040b5a62f92d1020c0e8bd7df5f2fea0a53b5edc4",
         "database/src/agent.rs": "8c327fa856c0e5c2545deb90368ce761da572954701ec8ba4dc737726be2974e"
       },
       "tests_read_not_claimed_executed": [

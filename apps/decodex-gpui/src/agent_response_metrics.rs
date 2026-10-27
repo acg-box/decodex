@@ -238,7 +238,10 @@ fn timing_rows(timing: &AgentTurnTimingDto) -> [(&'static str, String); 6] {
 		("User requests", timing.user_request_ms),
 		("Other / unobserved", None),
 	]
-	.map(|(label, value)| (label, value.map(duration_label).unwrap_or_else(|| "Unknown".into())))
+	.map(|(label, value)| {
+		let value = value.map(|ms| if ms < 1_000 { format!("{ms}ms") } else { duration_label(ms) });
+		(label, value.unwrap_or_else(|| "Unknown".into()))
+	})
 }
 
 fn duration_icon() -> impl IntoElement {
@@ -361,11 +364,13 @@ mod tests {
 		let rows = timing_rows(&AgentTurnTimingDto {
 			model_output_ms: Some(1_500),
 			tool_activity_ms: Some(0),
+			auto_review_ms: Some(42),
 			..Default::default()
 		});
 		assert_eq!(rows[0], ("Model output", "1.5s".into()));
 		assert_eq!(rows[1], ("Context compaction", "Unknown".into()));
-		assert_eq!(rows[2], ("Tool activity", "0.0s".into()));
+		assert_eq!(rows[2], ("Tool activity", "0ms".into()));
+		assert_eq!(rows[3], ("Automatic review", "42ms".into()));
 		assert_eq!(rows[5], ("Other / unobserved", "Unknown".into()));
 	}
 }
