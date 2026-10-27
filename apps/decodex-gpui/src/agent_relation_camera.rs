@@ -84,12 +84,9 @@ impl AgentSurface {
 		let mut rect = node.screen_rect(layout.zoom, self.work_board.view.pan);
 
 		if node.row.is_some() && !layout.overview() {
-			let (_, rows) = header::content_rows(
-				&node.assignment,
-				&node.activity,
-				layout,
-				&self.work_board.text_system,
-			);
+			let text_system = gpui::WindowTextSystem::new(self.work_board.text_system.clone());
+			let (_, rows) =
+				header::content_rows(&node.assignment, &node.activity, layout, &text_system);
 
 			rect.height = layout.header_height(rows) + 2. * layout.spacing(INSET_Y);
 		}

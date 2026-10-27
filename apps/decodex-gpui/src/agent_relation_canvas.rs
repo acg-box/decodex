@@ -477,6 +477,7 @@ impl AgentSurface {
 		let mut graph =
 			Graph { layout, scopes: vec![], nodes: vec![], edges: vec![], paths: BTreeMap::new() };
 		let Some(snapshot) = &self.snapshot else { return graph };
+		let text_system = WindowTextSystem::new(self.work_board.text_system.clone());
 		let mut rows = self.factory_rows();
 
 		rows.sort_by_key(|row| self.relation_row_order(row, snapshot));
@@ -505,24 +506,19 @@ impl AgentSurface {
 
 			let text_layout = layout.on_display(self.work_board.view.display_scale);
 			let activity = stream.measured_frame(now, ui_motion::reduced(), |text| {
-				header::operation_height(text, text_layout, &self.work_board.text_system)
+				header::operation_height(text, text_layout, &text_system)
 			});
 			let assignment = self.graph_purpose(&row);
 			let layout_height = layout.world_height(header::detail_rows(
 				&assignment,
 				&activity,
 				text_layout,
-				&self.work_board.text_system,
+				&text_system,
 			));
 			let height = layout_height;
 			let attachment = Some(text_layout.character_bounds(activity.height / LINE));
-			let title_lines = header::content_rows(
-				&assignment,
-				&activity,
-				text_layout,
-				&self.work_board.text_system,
-			)
-			.0;
+			let title_lines =
+				header::content_rows(&assignment, &activity, text_layout, &text_system).0;
 			let identity_bounds = text_layout.identity_bounds(activity.height / LINE, title_lines);
 			let speech = text_layout.speech_bounds(activity.height / LINE);
 
@@ -571,12 +567,14 @@ impl AgentSurface {
 			e.kind != Kind::Assigned || !spawned.contains(&(e.from.clone(), e.to.clone()))
 		});
 		self.add_relation_resources(&rows, &included, &mut graph);
-		self.place_relation_nodes(&mut graph, layout);
+		self.place_relation_nodes(&mut graph, layout, &text_system);
 
-		graph.paths = self.work_board.view.routing.borrow_mut().paths(
-			&groups::routing_nodes(&graph, &self.work_board.text_system),
-			&graph.connections(),
-		);
+		graph.paths = self
+			.work_board
+			.view
+			.routing
+			.borrow_mut()
+			.paths(&groups::routing_nodes(&graph, &text_system), &graph.connections());
 
 		graph.scope_bounds(&snapshot.projects);
 
@@ -1410,7 +1408,12 @@ impl AgentSurface {
 		}
 	}
 
-	fn place_relation_nodes(&self, graph: &mut Graph, layout: card::Layout) {
+	fn place_relation_nodes(
+		&self,
+		graph: &mut Graph,
+		layout: card::Layout,
+		text_system: &WindowTextSystem,
+	) {
 		self.work_board.view.layout.borrow_mut().place(
 			graph,
 			self.work_board.view.layout_viewport,
@@ -1420,7 +1423,7 @@ impl AgentSurface {
 
 		resources::place_resources(graph);
 
-		let text_widths = self.relation_text_widths(graph, layout);
+		let text_widths = self.relation_text_widths(graph, layout, text_system);
 
 		for node in &mut graph.nodes {
 			if layout.overview() && node.row.is_some() {
@@ -1433,13 +1436,8 @@ impl AgentSurface {
 			}
 			if node.row.is_some() {
 				let native = layout.on_display(self.work_board.view.display_scale);
-				let title_lines = header::content_rows(
-					&node.assignment,
-					&node.activity,
-					native,
-					&self.work_board.text_system,
-				)
-				.0;
+				let title_lines =
+					header::content_rows(&node.assignment, &node.activity, native, text_system).0;
 
 				node.identity = native.identity_bounds(node.activity.height / LINE, title_lines);
 
@@ -1514,13 +1512,13 @@ impl AgentSurface {
 		&self,
 		graph: &Graph,
 		layout: card::Layout,
+		text: &WindowTextSystem,
 	) -> BTreeMap<String, TextWidths> {
 		if !layout.activity_visible() {
 			return BTreeMap::new();
 		}
 
 		let native = layout.on_display(self.work_board.view.display_scale);
-		let text = WindowTextSystem::new(self.work_board.text_system.clone());
 		let measure = |value: &str, numeric: bool| {
 			let mut font = gpui::font(FONT_FAMILY);
 
@@ -1564,13 +1562,8 @@ impl AgentSurface {
 					node.key.clone(),
 					TextWidths {
 						nameplate: (width + 1.) / native.zoom,
-						speech: header::speech_width(
-							&node.activity,
-							native,
-							&self.work_board.text_system,
-							&text,
-						)
-						.map(|width| width / native.zoom),
+						speech: header::speech_width(&node.activity, native, text)
+							.map(|width| width / native.zoom),
 					},
 				))
 			})
@@ -4224,8 +4217,9 @@ mod fit_tests {
 			});
 
 			assert!(
-				shaped_height <= f32::from(message.size.height) + 0.5,
-				"the complete native sentence fits at zoom {scale} on display {density}"
+				(shaped_height - f32::from(message.size.height)).abs() <= 0.5,
+				"the bubble uses the painted line count at zoom {scale} on display {density}: shaped {shaped_height}, measured {message:?}, estimated width {}, preview {preview:?}",
+				layout.text_width()
 			);
 		}
 	}

@@ -1,10 +1,7 @@
 //! Compact speech above the character, using the shared native symbols.
-use std::sync::Arc;
-
 use gpui::{
-	App, Div, IndentAdjustment, InteractiveElement as _, LineFragment, ParentElement as _,
-	PathBuilder, Role, SharedString, Stateful, StatefulInteractiveElement as _, Styled as _,
-	TextRun, TextSystem, Window, WindowTextSystem,
+	App, Div, InteractiveElement as _, ParentElement as _, PathBuilder, Role, SharedString,
+	Stateful, StatefulInteractiveElement as _, Styled as _, TextRun, Window, WindowTextSystem,
 };
 
 use crate::{
@@ -34,7 +31,7 @@ pub(super) struct Excerpt<'a> {
 pub(super) fn task_excerpt<'a>(
 	text: &'a str,
 	layout: Layout,
-	text_system: &Arc<TextSystem>,
+	text_system: &WindowTextSystem,
 ) -> Excerpt<'a> {
 	excerpt(text, layout, layout.caption_width(), text_system)
 }
@@ -42,7 +39,7 @@ pub(super) fn task_excerpt<'a>(
 pub(super) fn message_excerpt<'a>(
 	text: &'a str,
 	layout: Layout,
-	text_system: &Arc<TextSystem>,
+	text_system: &WindowTextSystem,
 ) -> Excerpt<'a> {
 	// The icon reinforces the source action; it must not replace its verb.
 	// A filename alone cannot distinguish reading, editing and running it.
@@ -90,14 +87,30 @@ pub(super) fn render(
 	let scale = layout.activity_line() / LINE;
 	let target_width = frame.lines.last().map_or(0., |line| {
 		bubble_width(
-			&message_excerpt(&line.text, layout, cx.text_system()),
+			&message_excerpt(&line.text, layout, window.text_system()),
 			layout,
 			window.text_system(),
 		)
 	});
-	let width = ui_motion::value(
+	let metrics =
+		(layout.zoom, layout.details_width(), layout.activity_size(), layout.bubble_padding());
+	let measured = window.use_keyed_state(
+		SharedString::from(format!("relation-speech-layout-{key}")),
+		cx,
+		|_, _| metrics,
+	);
+	let resized = measured.update(cx, |previous, _| {
+		let resized = *previous != metrics;
+
+		*previous = metrics;
+		resized
+	});
+	// The camera already animates zoom. A second width tween leaves text and
+	// bubble height measured at different widths until that tween catches up.
+	let width = ui_motion::direct_value(
 		SharedString::from(format!("relation-speech-width-{key}")),
 		target_width,
+		resized,
 		window,
 		cx,
 	);
@@ -131,7 +144,7 @@ pub(super) fn render(
 			OperationKind::Action =>
 				(action_icon(&line.text), if live { "Now" } else { "Last action" }, BLUE),
 		};
-		let excerpt = message_excerpt(&line.text, layout, cx.text_system());
+		let excerpt = message_excerpt(&line.text, layout, window.text_system());
 		let selector = format!("relation-operation-{key}-{}", line.id);
 		let body_selector = format!("relation-message-body-{key}");
 
@@ -179,7 +192,7 @@ pub(super) fn render(
 	rows
 }
 
-pub(super) fn goal(key: &str, text: &str, layout: Layout, system: &Arc<TextSystem>) -> Div {
+pub(super) fn goal(key: &str, text: &str, layout: Layout, system: &WindowTextSystem) -> Div {
 	let excerpt = task_excerpt(text, layout, system);
 
 	gpui::div()
@@ -275,17 +288,25 @@ fn excerpt<'a>(
 	text: &'a str,
 	layout: Layout,
 	width: f32,
-	text_system: &Arc<TextSystem>,
+	text_system: &WindowTextSystem,
 ) -> Excerpt<'a> {
 	if text.is_empty() {
 		return Excerpt { text, lines: 0 };
 	}
 
-	let mut wrapper =
-		text_system.line_wrapper(gpui::font(FONT_FAMILY), gpui::px(layout.activity_size()));
-	let fragments = [LineFragment::text(text)];
-	let lines =
-		1 + wrapper.wrap_line(&fragments, gpui::px(width), IndentAdjustment::NoIndent).count();
+	// Use the same shaped glyphs and line breaks as GPUI's text element. The
+	// per-character line wrapper can estimate extra lines for the real font.
+	let runs = [TextRun { len: text.len(), font: gpui::font(FONT_FAMILY), ..Default::default() }];
+	let lines = text_system
+		.shape_text(
+			text.to_owned().into(),
+			gpui::px(layout.activity_size()),
+			&runs,
+			Some(gpui::px(width)),
+			None,
+		)
+		.map(|lines| lines.iter().map(|line| 1 + line.wrap_boundaries.len()).sum())
+		.unwrap_or(0);
 
 	Excerpt { text, lines }
 }
@@ -352,10 +373,49 @@ mod tests {
 	};
 
 	#[gpui::test]
+	fn bubble_height_matches_rendered_wraps_at_intermediate_zoom(cx: &mut gpui::TestAppContext) {
+		let visual = cx.add_empty_window();
+
+		visual.update(|window, _| {
+			let layout = card::Layout::new(0.75).on_display(2.);
+			let system = window.text_system();
+
+			for text in [
+				"Rub the warm buttered toast with a cut garlic clove for extra flavor.",
+				"Stir a pinch of dried basil into the soup for extra flavor.",
+				"First line\nSecond line",
+			] {
+				let runs = [gpui::TextRun {
+					len: text.len(),
+					font: gpui::font(crate::ui_theme::FONT_FAMILY),
+					..Default::default()
+				}];
+				let rendered = window
+					.text_system()
+					.shape_text(
+						text.to_owned().into(),
+						gpui::px(layout.activity_size()),
+						&runs,
+						Some(gpui::px(layout.text_width())),
+						None,
+					)
+					.unwrap();
+				let lines: usize = rendered.iter().map(|line| 1 + line.wrap_boundaries.len()).sum();
+
+				assert_eq!(
+					information_rows::message_excerpt(text, layout, system).lines,
+					lines,
+					"{text}"
+				);
+			}
+		});
+	}
+
+	#[gpui::test]
 	fn complete_thoughts_wrap_without_losing_their_ending_at_any_readable_scale(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let system = cx.update(|cx| cx.text_system().clone());
+		let system = gpui::WindowTextSystem::new(cx.update(|cx| cx.text_system().clone()));
 
 		for zoom in [0.55, 0.64, 0.75, 1.] {
 			let layout = card::Layout::new(zoom).on_display(2.);
@@ -393,7 +453,7 @@ mod tests {
 	fn operation_bubbles_keep_the_source_action_and_its_complete_object(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let system = cx.update(|cx| cx.text_system().clone());
+		let system = gpui::WindowTextSystem::new(cx.update(|cx| cx.text_system().clone()));
 
 		for zoom in [1., 0.75, 0.51] {
 			let layout = card::Layout::new(zoom).on_display(2.);
@@ -418,8 +478,8 @@ mod tests {
 	) {
 		let visual = cx.add_empty_window();
 
-		visual.update(|window, cx| {
-			let system = cx.text_system();
+		visual.update(|window, _| {
+			let system = window.text_system();
 
 			for density in [1., 2.] {
 				for zoom in [0.51, 0.75, 1.] {
