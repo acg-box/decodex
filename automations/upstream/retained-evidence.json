@@ -764,7 +764,7 @@
       "value": "Share compatible local stdio MCP connections among chats in one native process; sharing across independent processes is not established.",
       "maintenance_cost": "Native sharing is low-cost only if discovery and retained legacy fallback qualify; cross-process ownership and isolation need separate research.",
       "recommendation": "Keep the global flag off until a supported scoped opt-in or upstream fallback passes the exact retained native regression and same-process sharing tests.",
-      "evidence": "See retained_behavior_contracts#native-mcp-sharing-qualification-fixtures for the exact artifact, reusable fixture, passing control and explicitly failing enabled regression. Product sharing remains disabled.",
+      "evidence": "See retained_behavior_contracts#native-mcp-sharing-qualification-fixtures and #native-mcp-multi-client-socket-research for the selected artifact, reusable fixtures, passing modern and concurrent-input cases, and failing enabled legacy regression. Production sharing remains disabled.",
       "decision_status": "User approved native sharing; implementation is blocked by a reproduced legacy discovery regression. No new user decision is needed.",
       "qualification_fixture_delivery": "https://github.com/acg-box/decodex/pull/2519",
       "implementation_enabled": false
@@ -1990,15 +1990,17 @@
     },
     {
       "id": "native-mcp-multi-client-socket-research",
-      "contract": "Two independent native proxy clients can use one socket app-server process. For compatible modern local MCP, their calls use the same helper and a remaining client keeps it after the first client unsubscribes and exits. An unmarked legacy helper must stay private when mixed with a modern server.",
+      "contract": "Two independent native proxy clients can use one socket app-server process. Compatible modern local MCP calls share one helper, concurrent per-call input returns to the correct calling thread and answer, and a remaining client keeps the helper after the first client unsubscribes and exits. An unmarked legacy helper must stay private when mixed with a modern server.",
       "source_symbols": [
         "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs#separate_clients_share_a_compatible_native_mcp_helper",
-        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs#separate_clients_keep_unmarked_legacy_helpers_private"
+        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs#separate_clients_keep_unmarked_legacy_helpers_private",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs#shared_modern_input_returns_to_each_calling_client"
       ],
       "selected_source_sha256": {
-        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs": "3c7640b6aa9bfda7527f2f931898bb8af6fee6d32b69ce1b97481d43861f555d",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs": "6719335f15c964beb4c0a2ca2081c0cd2a3ca46c8a9936f5552116f2aa43feeb",
         "crates/decodex-runtime/src/account_launch/agent_process_native_tests.rs": "4e8ce537c16b80e86e0ed407065b442641c0c50aeda9e9c304d01e3a88a94433",
-        "crates/decodex-runtime/src/account_launch/native_mcp_sharing.py": "c58796ab40f1a51aa28e9ea548523c87639362514c55d8d85c85b6d85e8427dc"
+        "crates/decodex-runtime/src/account_launch/native_mcp_sharing.py": "c58796ab40f1a51aa28e9ea548523c87639362514c55d8d85c85b6d85e8427dc",
+        "crates/decodex-runtime/src/account_launch/native_mcp_shared_input.py": "c791063a6f369de9f472318a6af7b35fee7ece38ecc3abe3e63c488bd26ef231"
       },
       "selected_artifact": {
         "source_commit": "abf4bb91ec49fbf443ccec0069f9cab5dd1462d8",
@@ -2007,7 +2009,11 @@
       },
       "executed_regressions": [
         {
-          "selector": "account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper",
+          "selectors": [
+            "account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper",
+            "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private",
+            "account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client"
+          ],
           "environment": "DECODEX_TEST_CODEX_BINARY=<qualified-cli>",
           "command": [
             "cargo",
@@ -2024,42 +2030,19 @@
             "--retries",
             "0",
             "-E",
-            "test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper)"
+            "test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper) | test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private) | test(=account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client)"
           ],
-          "executed": 1,
-          "passed": 1,
-          "unmatched_selectors": []
-        },
-        {
-          "selector": "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private",
-          "environment": "DECODEX_TEST_CODEX_BINARY=<qualified-cli>",
-          "command": [
-            "cargo",
-            "+stable",
-            "nextest",
-            "run",
-            "--locked",
-            "-p",
-            "decodex-runtime",
-            "--lib",
-            "--run-ignored",
-            "only",
-            "--no-fail-fast",
-            "--retries",
-            "0",
-            "-E",
-            "test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private)"
-          ],
-          "executed": 1,
-          "passed": 0,
+          "executed": 3,
+          "passed": 2,
           "failed": 1,
           "unmatched_selectors": [],
-          "result": "Expected failure on the selected artifact: required unmarked legacy discovery returns an empty result and thread startup fails."
+          "result": "Modern helper sharing and concurrent input ownership passed. Mixed unmarked legacy discovery reproduced the expected native thread-start failure."
         },
         {
           "selectors": [
             "account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper",
-            "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private"
+            "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private",
+            "account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client"
           ],
           "environment": "DECODEX_TEST_CODEX_BINARY=<modified-research-cli>",
           "command": [
@@ -2077,19 +2060,21 @@
             "--retries",
             "0",
             "-E",
-            "test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper) | test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private)"
+            "test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper) | test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private) | test(=account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client)"
           ],
-          "executed": 2,
-          "passed": 2,
+          "executed": 3,
+          "passed": 3,
           "unmatched_selectors": [],
-          "result": "The locally modified research runtime passed both modern sharing and mixed private legacy cases.",
-          "research_cli_sha256": "c9313a4989bc840d876a1749304cabd02d9cabc2e1df173c4a2bc0d0d4127342"
+          "research_cli_sha256": "c9313a4989bc840d876a1749304cabd02d9cabc2e1df173c4a2bc0d0d4127342",
+          "result": "The locally modified research runtime passed modern sharing, mixed private legacy, and concurrent input ownership."
         }
       ],
       "upstream_source_read": [
         "codex-rs/codex-mcp/src/connection_pool.rs#McpConnectionPool",
         "codex-rs/app-server-transport/src/transport/unix_socket.rs#run_control_socket_acceptor",
-        "codex-rs/app-server-daemon/README.md"
+        "codex-rs/app-server-daemon/README.md",
+        "codex-rs/codex-mcp/src/connection_pool.rs#ConnectionKey",
+        "crates/decodex-runtime/src/account_launch/process.rs#AttestedAppServerLaunch"
       ],
       "upstream_tests_read_not_executed": [
         "codex-rs/app-server/tests/suite/v2/thread_attachments.rs#thread_attachment_mutations_respond_before_broadcasting_updates_to_multiple_clients",
@@ -2097,7 +2082,8 @@
       ],
       "main_baseline": "c7c8b781280f1d5d4f87c2a9013ac838d4f541e0",
       "limits": [
-        "The test uses two distinct proxy processes, one app-server process, one synthetic account home and actual local MCP calls. It does not demonstrate sharing across independent app-server processes.",
+        "The socket test uses two distinct proxy processes, one app-server process, one synthetic account home and actual local MCP calls. It does not demonstrate sharing across independent app-server processes.",
+        "The input test uses synthetic concurrent calls and verifies their thread and answer ownership; it does not establish cross-account isolation or all permission and cancellation behavior.",
         "No managed daemon is installed or started. Multi-account isolation, current Decodex process supervision, live providers and installed-app acceptance are not established.",
         "The patched research CLI is not an official or qualified artifact. Production sharing remains disabled until the selected development runtime built from official source passes its retained qualification."
       ],
@@ -2111,7 +2097,7 @@
           ],
           "rust_tests_executed": 1891,
           "rust_tests_passed": 1891,
-          "rust_tests_skipped": 137,
+          "rust_tests_skipped": 138,
           "tests_reported_leaky": 0
         },
         "strict_runtime_clippy": {
@@ -2158,7 +2144,39 @@
           "passed": true
         }
       },
-      "delivery_reference": "https://github.com/acg-box/decodex/pull/2521"
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2521",
+      "upstream_source_observation": "The native pool is process-owned and keys entries by server identity, account and authentication state. Decodex attests one account-bound app-server launch. These code properties do not by themselves qualify sharing across app-server processes or accounts.",
+      "upstream_source_tests_executed": {
+        "source_commit": "6a6e2fb1f0e9122464a75929c58356cb7af9e0cc",
+        "checkout": "Modified research source; not selected artifact qualification",
+        "tests": [
+          "codex-rs/codex-mcp/src/connection_manager_tests.rs#shared_elicitation_router_targets_the_exact_pending_request",
+          "codex-rs/codex-mcp/src/connection_pool_tests.rs#callback_during_startup_releases_waiting_chats_without_sharing_authority",
+          "codex-rs/codex-mcp/src/connection_pool_tests.rs#negotiation_requires_the_stateless_protocol_and_detaches_startup_callbacks",
+          "codex-rs/codex-mcp/src/connection_pool_tests.rs#shared_startup_survives_first_chat_cancellation_and_rejects_released_bindings"
+        ],
+        "command": [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "--cargo-profile",
+          "dev-small",
+          "-p",
+          "codex-mcp",
+          "--lib",
+          "-E",
+          "test(shared_elicitation_router_targets_the_exact_pending_request) | test(callback_during_startup_releases_waiting_chats_without_sharing_authority) | test(negotiation_requires_the_stateless_protocol_and_detaches_startup_callbacks) | test(shared_startup_survives_first_chat_cancellation_and_rejects_released_bindings)",
+          "--no-fail-fast",
+          "--retries",
+          "0"
+        ],
+        "executed": 4,
+        "passed": 4,
+        "unmatched_selectors": [],
+        "coverage": "Exact pending-request routing, startup callback isolation, stateless sharing negotiation, and cancellation and lease release."
+      }
     }
   ],
   "retained_native_diagnostics": {

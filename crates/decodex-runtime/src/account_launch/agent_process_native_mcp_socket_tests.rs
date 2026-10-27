@@ -14,6 +14,7 @@ use tokio::{
 	io::{self, Join},
 	net::TcpListener,
 	process::{Child, ChildStdin, ChildStdout, Command},
+	sync::Barrier,
 	time,
 };
 use tokio_tungstenite::{WebSocketStream, client_async, tungstenite::Message};
@@ -90,10 +91,10 @@ impl SocketClient {
 		}
 	}
 
-	async fn start_thread(&mut self, home: &Path) -> String {
+	async fn start_thread(&mut self, home: &Path, approval: &str) -> String {
 		self.request(
 			"thread/start",
-			json!({"cwd":home,"approvalPolicy":"never","sandbox":"read-only"}),
+			json!({"cwd":home,"approvalPolicy":approval,"sandbox":"read-only"}),
 		)
 		.await["thread"]["id"]
 			.as_str()
@@ -109,6 +110,57 @@ impl SocketClient {
 		.await["structuredContent"]["pid"]
 			.as_u64()
 			.expect("MCP helper identity")
+	}
+
+	async fn input_helper(&mut self, thread: &str, label: &str, barrier: Arc<Barrier>) -> u64 {
+		let id = self.next_id;
+		self.next_id += 1;
+		self.socket
+			.send(Message::Text(
+				json!({"id":id,"method":"mcpServer/tool/call","params":{"threadId":thread,"server":"modern","tool":"ask","arguments":{"label":label},"meta":null}}).to_string().into(),
+			))
+			.await
+			.expect("send native input tool call");
+		let mut prompts = 0;
+		loop {
+			let message = self
+				.socket
+				.next()
+				.await
+				.expect("native input response")
+				.expect("read native input response");
+			let Message::Text(text) = message else { continue };
+			let response: Value = serde_json::from_str(&text).expect("native input JSON");
+			if response["method"] == "mcpServer/elicitation/request" {
+				assert_eq!(
+					response["params"]["threadId"], thread,
+					"input belongs to its calling thread"
+				);
+				prompts += 1;
+				assert_eq!(prompts, 1, "each call receives one input request");
+				time::timeout(Duration::from_secs(10), barrier.wait())
+					.await
+					.expect("both shared calls request input before either reply");
+				self.socket
+					.send(Message::Text(json!({"id":response["id"],"result":{"action":"accept","content":{"answer":label}}}).to_string().into()))
+					.await
+					.expect("answer the exact native input request");
+				continue;
+			}
+			if response["id"] != id {
+				continue;
+			}
+			assert!(
+				response.get("error").is_none(),
+				"native input tool call: {}",
+				response["error"]
+			);
+			assert_eq!(prompts, 1);
+			let content = &response["result"]["structuredContent"];
+			assert_eq!(content["label"], label);
+			assert_eq!(content["answer"], label);
+			return content["pid"].as_u64().expect("shared input helper identity");
+		}
 	}
 
 	async fn close(mut self) {
@@ -130,23 +182,34 @@ impl SocketClient {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native socket clients"]
 async fn separate_clients_share_a_compatible_native_mcp_helper() {
-	qualify_socket_clients(false).await;
+	qualify_socket_clients(false, false).await;
 }
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; run before enabling native MCP sharing"]
 async fn separate_clients_keep_unmarked_legacy_helpers_private() {
-	qualify_socket_clients(true).await;
+	qualify_socket_clients(true, false).await;
 }
 
-async fn qualify_socket_clients(mixed: bool) {
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated shared MCP input"]
+async fn shared_modern_input_returns_to_each_calling_client() {
+	qualify_socket_clients(false, true).await;
+}
+
+async fn qualify_socket_clients(mixed: bool, input: bool) {
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let binary = Path::new(&binary);
 	assert!(binary.is_absolute());
 	let root = tempfile::tempdir_in("/tmp").expect("temporary native socket home");
 	let home = root.path();
 	let fixture = home.join("mcp.py");
-	fs::write(&fixture, include_str!("native_mcp_sharing.py")).expect("write MCP fixture");
+	let fixture_source = if input {
+		include_str!("native_mcp_shared_input.py")
+	} else {
+		include_str!("native_mcp_sharing.py")
+	};
+	fs::write(&fixture, fixture_source).expect("write MCP fixture");
 	let fixture = serde_json::to_string(&fixture).expect("serialize MCP fixture path");
 	let listener = TcpListener::bind("127.0.0.1:0").await.expect("fixture listener");
 	let address = listener.local_addr().expect("fixture address");
@@ -195,31 +258,53 @@ async fn qualify_socket_clients(mixed: bool) {
 			);
 			time::sleep(Duration::from_millis(10)).await;
 		}
-		let mut first = SocketClient::connect(binary, home, &socket).await;
-		let mut second = SocketClient::connect(binary, home, &socket).await;
-		assert_ne!(first.process.id(), second.process.id(), "clients use distinct processes");
-		let first_thread = first.start_thread(home).await;
-		let second_thread = second.start_thread(home).await;
-		let modern = first.helper(&first_thread, "modern").await;
-		assert_eq!(second.helper(&second_thread, "modern").await, modern);
-		if mixed {
-			assert_ne!(
-				first.helper(&first_thread, "legacy").await,
-				second.helper(&second_thread, "legacy").await
-			);
-		}
-		first.request("thread/unsubscribe", json!({"threadId":first_thread})).await;
-		time::timeout(Duration::from_secs(20), first.close())
-			.await
-			.expect("first native client exit deadline");
-		assert_eq!(second.helper(&second_thread, "modern").await, modern);
-		second.request("thread/unsubscribe", json!({"threadId":second_thread})).await;
-		time::timeout(Duration::from_secs(20), second.close())
-			.await
-			.expect("second native client exit deadline");
+		exercise_socket_clients(binary, home, &socket, mixed, input).await;
 	})
 	.await
 	.expect("bounded native socket qualification");
 	server.kill().await.expect("stop native socket server");
 	backend.abort();
+}
+
+async fn exercise_socket_clients(
+	binary: &Path,
+	home: &Path,
+	socket: &Path,
+	mixed: bool,
+	input: bool,
+) {
+	let mut first = SocketClient::connect(binary, home, socket).await;
+	let mut second = SocketClient::connect(binary, home, socket).await;
+	assert_ne!(first.process.id(), second.process.id(), "clients use distinct processes");
+	let approval = if input { "on-request" } else { "never" };
+	let first_thread = first.start_thread(home, approval).await;
+	let second_thread = second.start_thread(home, approval).await;
+	let modern = if input {
+		let barrier = Arc::new(Barrier::new(2));
+		let (first_helper, second_helper) = tokio::join!(
+			first.input_helper(&first_thread, "first", Arc::clone(&barrier)),
+			second.input_helper(&second_thread, "second", barrier),
+		);
+		assert_eq!(first_helper, second_helper, "input calls use one shared helper");
+		first_helper
+	} else {
+		let first_helper = first.helper(&first_thread, "modern").await;
+		assert_eq!(second.helper(&second_thread, "modern").await, first_helper);
+		first_helper
+	};
+	if mixed {
+		assert_ne!(
+			first.helper(&first_thread, "legacy").await,
+			second.helper(&second_thread, "legacy").await
+		);
+	}
+	first.request("thread/unsubscribe", json!({"threadId":first_thread})).await;
+	time::timeout(Duration::from_secs(20), first.close())
+		.await
+		.expect("first native client exit deadline");
+	assert_eq!(second.helper(&second_thread, "modern").await, modern);
+	second.request("thread/unsubscribe", json!({"threadId":second_thread})).await;
+	time::timeout(Duration::from_secs(20), second.close())
+		.await
+		.expect("second native client exit deadline");
 }
