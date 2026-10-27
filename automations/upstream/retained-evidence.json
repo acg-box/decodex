@@ -1240,18 +1240,20 @@
   "retained_behavior_contracts": [
     {
       "id": "webrtc-build-archive-security",
-      "contract": "The native voice build uses the current WebRTC release and a maintained ZIP extractor. Keep extraction path, mode and archive-identity checks separate from live voice acceptance.",
+      "contract": "The default native WebRTC build verifies the pinned official archive SHA-256 and ZIP local/central header consistency before extraction. Reuse or repair cached files against that archive, preserve owner access, and keep explicit custom directories distinct.",
       "source_symbols": [
-        "webrtc-sys-build::download_webrtc",
-        "zip::ZipArchive::extract",
+        "webrtc-sys-build::webrtc_dir",
+        "decodex_webrtc_build::pinned_digest",
+        "decodex_webrtc_build::archive::VerifiedArchive::open",
+        "decodex_webrtc_build::archive::VerifiedArchive::matches",
+        "decodex_webrtc_build::archive::prepare",
+        "decodex_webrtc_build::archive::ensure_owner_access",
+        "zip::ZipArchive::validate_header_consistency",
         "zip::read::ExtractOptions::enforce_header_consistency",
-        "zip::read::ZipArchive::get_metadata",
-        "nix::sys::stat::fchmodat",
-        "typed_path::Utf8WindowsPath::components",
         "apps/decodex-gpui/src/native_voice_transport.rs#tests::call_lifecycle"
       ],
       "selected_source_sha256": {
-        "Cargo.lock": "014df1d06c8f2a28e34b26f0265714e86ee20561ae461fa963d11d57543f8121",
+        "Cargo.lock": "de9c17a9db8862f35bc0f95fcbf79830f5bc6437e7a756d3f8e1f8d682651d28",
         "apps/decodex-gpui/src/native_voice_transport.rs": "40aaeabf3f491b33a48a7e6b4ee67ebf202cf8761622e84d9749f5f2be2b1bbf",
         "webrtc-sys-build-0.3.20/src/lib.rs": "e70fd5bd259619ab0d4521d00a0289fc5b159f7dcac10e3fe608e173dc4d4ddb",
         "zip-9.1.2/src/read/extract.rs": "6c94400c4ea9e65c6063435bf2405423fbf21e7881c3ade30e86607f39625694",
@@ -1262,7 +1264,14 @@
         "zip-9.1.2/tests/permissions.rs": "ad8d9885eb6483e787ac76aeec28aaeed953f1a7ede3d0650b777703d61640ba",
         "zip-9.1.2/tests/extract_symlink.rs": "2a53f6570bb4f9bbddad6ddfbb59292004db9b07d71aa0c96ef0d33c2d6a0b33",
         "zip-9.1.2/tests/eocd_fallback.rs": "53cc536e04eb3fcecc3f91370e3cef2e13f04283c5f27ae6434aa1da1124e92c",
-        "zip-9.1.2/tests/header_consistency.rs": "0885ef33c2a19ff0795d004b38a316ff47a1661e8d2d097fca2575c429b23544"
+        "zip-9.1.2/tests/header_consistency.rs": "0885ef33c2a19ff0795d004b38a316ff47a1661e8d2d097fca2575c429b23544",
+        "Cargo.toml": "8064239f7f8c8c627056757c827600e9bc4519f62107340b7affdd6b02a4abc2",
+        "build-support/webrtc-sys-build/Cargo.toml": "4ee6639ace8c182b177eb61d9bdb5f0aa6cfe28e12ede159a59df229050e588c",
+        "build-support/webrtc-sys-build/src/lib.rs": "28a0b7754ff0ceca98ad085d2801ebffadf2eb2b68e81431fae9dd6d490f83b6",
+        "crates/decodex-webrtc-build/Cargo.toml": "bfe2ca16868340837586ec671f40446625e65c9b48e54fb2eb5988e2cc38906c",
+        "crates/decodex-webrtc-build/src/lib.rs": "241b5ec8990c9e4c79c841e4b87531658337432bf060e1e098b72b8c7c90b61d",
+        "crates/decodex-webrtc-build/src/archive.rs": "dfaa47a9971b0f1f441d43c6995066d6035081557d0f26c89fb53376d137d141",
+        "crates/decodex-webrtc-build/src/download.rs": "3603f5f119759498ff048dd2f8be857b32af5d34f0ce694129f9854a00672a20"
       },
       "packages": {
         "webrtc-sys-build": {
@@ -1270,7 +1279,7 @@
           "crate_sha256": "294bd0dfb00120269cdb4d71371348361daa454a6a31c8dd035dfe2a2be47871",
           "source_commit": "fa46e8427050b6ee0c6e40670ff161ee3a2bbf5a",
           "source": "https://github.com/livekit/rust-sdks/tree/fa46e8427050b6ee0c6e40670ff161ee3a2bbf5a/webrtc-sys/build",
-          "verification": "GitHub verified the source commit; lib.rs matches the tag and the previous package. The manifest changes the ZIP dependency and package version."
+          "verification": "The current build uses a repository guard and an immutable official Git dependency at this verified commit. The Git lib.rs SHA-256 is byte-identical to the previously selected registry package. No other registry package identity changed."
         },
         "zip": {
           "version": "9.1.2",
@@ -1293,15 +1302,18 @@
         }
       },
       "artifact": {
-        "scope": "macOS arm64 synthetic voice and build qualification",
+        "scope": "macOS arm64 default acquisition, extracted files and synthetic voice; macOS x64 archive validation only",
         "release": "https://github.com/livekit/rust-sdks/releases/tag/webrtc-89d790b",
-        "separate_verified_archive_sha256": "9f25fea48588deac18d68e120d18b33af7ef10f921f74b7c57f66b642262c348",
+        "official_archive_sha256": {
+          "mac-arm64-release": "9f25fea48588deac18d68e120d18b33af7ef10f921f74b7c57f66b642262c348",
+          "mac-x64-release": "04eea79951eaefc1054099464f949f6dcfab9bc7460c16004811abc4f9ec15d4"
+        },
+        "actual_default_download_sha256": "9f25fea48588deac18d68e120d18b33af7ef10f921f74b7c57f66b642262c348",
         "actual_extracted_libwebrtc_sha256": "979b6310063a49a022bc11cb55397e3ccef887ef23b613fed43afdc4769ea75e",
         "actual_extracted_files_compared": 38722,
-        "mismatches": 0,
         "extra_or_missing_files": 0,
-        "candidate_gui_test_binary_sha256": "53e33692189bf592a1db8a225c495a43b3f35e7e7928a0c6091b6dbba66e5761",
-        "limits": "The default builder deleted its downloaded ZIP before its digest was observed. The extracted file bytes match a separately downloaded and verified release archive; this does not prove that the deleted ZIP was byte-identical. The builder does not verify a digest before extraction. No Codex runtime or schema identity changed."
+        "candidate_gui_test_binary_sha256": "9af5fc7c98313d0ffb0cf8336f0ad8ea363f0e6d1a38c08c6f1cb34530b9b86e",
+        "limits": "The arm64 default build ran the guard and compiled against its verified extraction. The x64 release ZIP was hash and header checked but x64 native execution was not run. Explicit LK_CUSTOM_WEBRTC directories are developer-supplied and are not official archive qualifications. No Codex runtime or schema identity changed."
       },
       "upstream_tests": {
         "source": "https://github.com/zip-rs/zip2/tree/662ae138dbcec989ee99e6bc4668501add70e209/tests",
@@ -1371,18 +1383,47 @@
           "header_consistency::test_enforce_header_consistency_blocks_dual_header_mismatch",
           "header_consistency::test_ziparchive_validate_header_consistency_passes_on_valid_archive"
         ],
-        "interpretation": "The passing legacy stream test deliberately demonstrates that default streaming extraction accepts inconsistent headers. The passing strict tests use an opt-in and do not establish that the WebRTC builder enables it."
+        "interpretation": "The earlier legacy test demonstrates that default upstream extraction accepts inconsistent headers; the new Decodex guard explicitly enables the strict option and tests its own failure path.",
+        "execution_scope": "These 11 upstream ZIP tests passed in the prior delivery; they were read but not rerun in this change."
       },
       "local_checks": {
-        "baseline_main": "4c7e5827d3c0ebd8f6f889336eb87d6fab01e2bd",
-        "baseline": "Prior TLS qualification passed a full workspace check and four synthetic voice tests against the same WebRTC library; preserve its separate 39/40 stress failure and 80/80 paired comparison.",
+        "baseline_main": "356d7856c45ad3214230d65dec1586a2f76ada5b",
+        "baseline": "The previous PR qualified the same WebRTC static library and native voice baseline; its limits remain historical. The current main style audit has 163 findings.",
         "candidate_workspace_check": "cargo +stable check --locked --all-features --all-targets --workspace passed with default WebRTC acquisition",
-        "candidate_lint": "cargo +stable make lint-rust passed for 12 packages",
+        "candidate_lint": "cargo +stable make lint-rust passed for 13 packages",
+        "guard_unit_tests": {
+          "executed": 6,
+          "passed": 6,
+          "ignored": 1,
+          "unmatched_selectors": [],
+          "test_ids": [
+            "archive::tests::wrong_digest_fails_before_extraction_and_preserves_the_cache",
+            "archive::tests::mismatched_headers_fail_before_extraction_even_with_the_expected_digest",
+            "archive::tests::valid_archive_repairs_unverified_or_modified_extracted_files_offline",
+            "archive::tests::corrupt_archive_cache_is_downloaded_and_verified_again",
+            "tests::supported_targets_have_distinct_pins",
+            "tests::custom_build_must_exist"
+          ]
+        },
+        "official_archive_test": {
+          "entrypoint": "archive::tests::official_macos_archives_pass_digest_and_strict_header_validation",
+          "executed": 1,
+          "passed": 1,
+          "unmatched_selectors": [],
+          "arm64_files": 38722,
+          "x64_files": 38723
+        },
         "candidate_voice": {
           "executed": 4,
           "passed": 4,
           "skipped": 1086,
-          "unmatched_selectors": []
+          "unmatched_selectors": [],
+          "test_ids": [
+            "shell::agent_surface::voice::transport::tests::native_call_exchanges_audio_captions_mutes_and_releases_buffers",
+            "shell::agent_surface::voice::transport::tests::remote_channel_loss_reports_failure_and_releases_buffers",
+            "shell::agent_surface::voice::transport::tests::cancellation_releases_audio_before_and_after_the_offer_without_an_answer",
+            "shell::agent_surface::voice::transport::tests::cancelled_offer_continuation_cannot_resume_or_block_the_next_call"
+          ]
         },
         "candidate_voice_stress": {
           "iterations": 20,
@@ -1393,37 +1434,62 @@
           "unmatched_selectors": [],
           "skipped_per_iteration": 1088,
           "runner": "cargo-nextest 0.9.143",
-          "runner_limit": "With --no-fail-fast, this version can exit zero after an earlier failed iteration. Inspect every iteration and the final summary. The behavior was fixed in nextest 0.9.148.",
+          "runner_limit": "Inspect every iteration and the final summary: with --no-fail-fast this version can exit zero after an earlier failed iteration.",
           "runner_reference": "https://nexte.st/changelog/#0.9.148"
+        },
+        "style_audit": {
+          "baseline_git_tree": "440e6318db4380b78acc352768357a0e6cc159be",
+          "baseline_files": 1059,
+          "candidate_files": 1062,
+          "baseline_findings": 163,
+          "candidate_findings": 163,
+          "identical_finding_groups": 33,
+          "scoped_new_files": 3,
+          "scoped_new_findings": 0,
+          "limits": "Both full audits failed with the same pre-existing findings. The new package passed its scoped audit."
         }
       },
       "commands": [
+        "cargo +stable test --locked -p decodex-webrtc-build --lib -- --nocapture",
+        "DECODEX_WEBRTC_ARM64_ARCHIVE=\"$MAC_ARM64_ZIP\" DECODEX_WEBRTC_X64_ARCHIVE=\"$MAC_X64_ZIP\" cargo +stable test --locked -p decodex-webrtc-build --lib archive::tests::official_macos_archives_pass_digest_and_strict_header_validation -- --exact --ignored --nocapture",
         "cargo +stable check --locked --all-features --all-targets --workspace",
         "cargo +stable make lint-rust",
+        "cargo +nightly fmt --all -- --check",
+        "taplo fmt --check",
+        "cargo vstyle curate --language rust --package decodex-webrtc-build --all-features --strict",
+        "python3 scripts/vstyle_audit.py",
         "cargo +stable nextest run --locked -p decodex-gpui --all-targets --all-features -E \"binary_id(decodex-gpui::bin/decodex-gpui) and (test(native_call_exchanges_audio_captions_mutes_and_releases_buffers) or test(remote_channel_loss_reports_failure_and_releases_buffers) or test(cancellation_releases_audio_before_and_after_the_offer_without_an_answer) or test(cancelled_offer_continuation_cannot_resume_or_block_the_next_call))\" --test-threads 1 --retries 0 --no-fail-fast",
-        "cargo +stable nextest run --locked -p decodex-gpui --all-targets --all-features -E \"binary_id(decodex-gpui::bin/decodex-gpui) and (test(native_call_exchanges_audio_captions_mutes_and_releases_buffers) or test(remote_channel_loss_reports_failure_and_releases_buffers))\" --test-threads 1 --stress-count 20 --retries 0 --no-fail-fast",
-        "cargo +stable test --locked --manifest-path <official-zip-source>/Cargo.toml --no-default-features --features deflate-flate2-zlib-rs --test <suite> <test> -- --exact"
+        "cargo +stable nextest run --locked -p decodex-gpui --all-targets --all-features -E \"binary_id(decodex-gpui::bin/decodex-gpui) and (test(native_call_exchanges_audio_captions_mutes_and_releases_buffers) or test(remote_channel_loss_reports_failure_and_releases_buffers))\" --test-threads 1 --stress-count 20 --retries 0 --no-fail-fast"
       ],
       "upstream_test_preparation": "Download the official ZIP source at the recorded commit and the zip 9.1.2 crate; verify the crate checksum and source-file equality. Copy the crate Cargo.lock into the source tree and verify the recorded lock digest. Select each listed suite and test; the first test was run without the final --exact argument.",
-      "audit": {
-        "rustsec_db_revision": "99670cfc0bc574433034b75876a4b791ccaa2efb",
-        "baseline_vulnerabilities": 3,
-        "candidate_vulnerabilities": 0,
-        "warnings": "Six unmaintained and one Tokio unsound warnings remain. RustSec and GitHub advisory metadata are separate sources.",
-        "resolved_rustsec": [
-          "RUSTSEC-2026-0367",
-          "RUSTSEC-2026-0368",
-          "RUSTSEC-2026-0369"
-        ]
-      },
       "behavior_limits": [
-        "The default builder calls ZipArchive::extract and does not enable optional local/central header consistency validation. Upstream strict and legacy tests are recorded separately; no general malformed-archive safety claim follows.",
-        "The upstream builder downloads its archive from GitHub without verifying its digest before extraction. Extracted release bytes were compared afterward. Its default policy does not use unrestricted symlink extraction; Windows was not built or tested.",
-        "Synthetic loopback tests do not establish physical audio, real-provider, installed-app, other-platform or release acceptance. The previously observed unmute assertion remains unexplained in issue #2529."
+        "The guard applies to the pinned official macOS arm64 and x64 release archives. Unsupported default targets fail rather than use an unverified archive.",
+        "An existing LK_CUSTOM_WEBRTC directory is an explicit developer-provided input; archive verification does not apply to it. A missing custom directory fails.",
+        "The full Rust style audit still fails with 163 identical pre-existing main-branch findings; the new package has no findings.",
+        "Synthetic loopback tests do not establish physical audio, live-provider, installed-app, x64 native or release acceptance. The previous intermittent unmute assertion remains unexplained in issue #2529."
       ],
-      "delivery_reference": "https://github.com/acg-box/decodex/commit/7bda3eec47bbbe685cc11967521eead33ed2c434",
-      "delivery_state_source": "Verify that this implementation commit is in remote main and inspect the associated PR checks; local tests do not establish merge or installation.",
-      "tested_source_head": "7bda3eec47bbbe685cc11967521eead33ed2c434"
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2531",
+      "delivery_state_source": "Inspect the PR head and its checks and confirm the merge commit on remote main; local tests do not establish merge or installation.",
+      "tested_source_head": "9a39d07d2623dc2bbf5c1938ebfd215dab03a302",
+      "baseline_audit_preparation": "Export the recorded baseline commit with git archive into a system-temporary directory, initialize a temporary Git repository, stage the exported files and commit them, and confirm its tree equals baseline_git_tree before running python3 scripts/vstyle_audit.py. The candidate audit used the same installed checker.",
+      "prior_qualification": {
+        "delivery": "https://github.com/acg-box/decodex/pull/2530",
+        "tested_source_head": "7bda3eec47bbbe685cc11967521eead33ed2c434",
+        "candidate_gui_test_binary_sha256": "53e33692189bf592a1db8a225c495a43b3f35e7e7928a0c6091b6dbba66e5761",
+        "limit": "The prior builder deleted its downloaded ZIP before its digest was observed. Its extracted files matched a separately verified archive, but this does not establish the deleted ZIP bytes or pre-extraction verification.",
+        "upstream_test_command": "cargo +stable test --locked --manifest-path \"$OFFICIAL_ZIP_SOURCE/Cargo.toml\" --no-default-features --features deflate-flate2-zlib-rs --test \"$SUITE\" \"$TEST\" -- --exact",
+        "rustsec_snapshot": {
+          "rustsec_db_revision": "99670cfc0bc574433034b75876a4b791ccaa2efb",
+          "baseline_vulnerabilities": 3,
+          "candidate_vulnerabilities": 0,
+          "warnings": "Six unmaintained and one Tokio unsound warnings remain. RustSec and GitHub advisory metadata are separate sources.",
+          "resolved_rustsec": [
+            "RUSTSEC-2026-0367",
+            "RUSTSEC-2026-0368",
+            "RUSTSEC-2026-0369"
+          ]
+        }
+      }
     },
     {
       "id": "exact-native-history",
