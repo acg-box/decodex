@@ -120,10 +120,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-27T17:10:26.412Z" }
+generated: { by: "codex", at: "2026-10-27T17:43:10.188Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T17:10:26.412Z
+    at: 2026-10-27T17:43:10.188Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -164,6 +164,14 @@ The locked HTTPS graph selects `rustls` 0.23.46, `rustls-webpki` 0.103.16 and `w
 On macOS arm64, the baseline and candidate each passed a full workspace check and 36 account-login and component tests. The candidate passed 1,891 headless tests and strict lint for 11 packages. The official `rustls-webpki` source test `verify_cert::tests::distrusted_spki` executed once and passed with `ring` enabled. Earlier attempts with missing fixtures or no selected test remain separate from that pass. These checks do not qualify live HTTPS, other platforms, installation or release.
 
 Four synthetic voice tests passed after the user handled the firewall prompt for the test executable. A later 40-execution stress run had 39 passes and one post-unmute audio-energy assertion failure. A separate interleaved comparison then passed 80 executions across the previous and candidate test executables. The isolated failure remains unexplained; see [issue #2529](https://github.com/acg-box/decodex/issues/2529). None of these results qualifies physical audio or installed-app interaction.
+
+## WebRTC build archive
+
+The lock selects `webrtc-sys-build` 0.3.20 and `zip` 9.1.2. The builder keeps the existing `webrtc-89d790b` native release. On macOS arm64, a fresh default acquisition and full workspace check passed. All 38,722 extracted files matched a separately downloaded, verified release archive; the actual static library also matched its recorded digest. The builder deleted its downloaded ZIP before its digest was observed and does not verify a digest before extraction. File equality does not prove that the deleted ZIP had the same archive bytes.
+
+The candidate passed strict Rust lint for 12 packages, four synthetic voice tests and 40 repeated executions of two voice cases. The 40-pass result comes from each iteration and the final summary; the observed Nextest 0.9.143 can return zero after an earlier failure. See the [stress-run procedure](../integrations/subscription-voice.md#diagnose-native-media-ice-timeouts). Eleven selected upstream ZIP tests passed. One passing test demonstrates the legacy streaming behavior rather than a fix. The builder calls `ZipArchive::extract` without the optional local/central header-consistency check; the strict upstream test uses that option explicitly. The [portable evidence](../../automations/upstream/retained-evidence.json) records the exact tests, package source and checksums, and the earlier unexplained unmute assertion separately. The same RustSec snapshot reported three ZIP vulnerabilities on the baseline and none on the candidate; six unmaintained and one unsound warnings remained.
+
+These checks do not qualify arbitrary malformed archives, Windows or other platforms, physical audio, live providers, installed-app behavior or release. They do not establish the cause of the earlier [unmute assertion](https://github.com/acg-box/decodex/issues/2529).
 
 ## Selected read-only views
 
