@@ -286,7 +286,7 @@ fn work_statistics_fit_with_debug_and_with_more_than_ninety_agents(cx: &mut Test
 			visual.debug_bounds("activity-live-live-92").is_none(),
 			"offscreen work is not rendered"
 		);
-		assert_eq!(pill.size.height, gpui::px(186.));
+		assert_eq!(pill.size.height, gpui::px(200.));
 		let total = visual.debug_bounds("activity-work-total").unwrap();
 		let rate = visual.debug_bounds("performance-work-status").unwrap();
 
@@ -310,7 +310,20 @@ fn work_statistics_fit_with_debug_and_with_more_than_ninety_agents(cx: &mut Test
 
 		assert_eq!(input.left(), cached.left());
 		assert_eq!(output.left(), reasoning.left());
-		assert!(input.bottom() <= cached.top() && output.bottom() <= reasoning.top());
+		assert!(input.bottom() + gpui::px(8.) <= cached.top());
+		assert!(output.bottom() + gpui::px(8.) <= reasoning.top());
+		assert!(output.left() - input.right() >= gpui::px(16.));
+		for (unit, cell) in [
+			("performance-work-input-unit", "performance-work-input-row"),
+			("performance-work-output-unit", "performance-work-output-row"),
+			("performance-work-cached-unit", "performance-work-cached-row"),
+			("performance-work-reasoning-unit", "performance-work-reasoning-row"),
+		] {
+			let unit = visual.debug_bounds(unit).expect("token unit");
+			let cell = visual.debug_bounds(cell).unwrap();
+
+			assert!(unit.left() >= cell.left() && unit.right() <= cell.right());
+		}
 		assert!(visual.debug_bounds("performance-needs-you").is_none());
 		assert!(visual.debug_bounds("performance-agent-time").is_none());
 		assert_eq!(island.read_with(visual, |s, _| s.expansion), Expansion::Clicked);
@@ -380,7 +393,7 @@ fn hover_expands_and_leaving_closes_without_a_tooltip(cx: &mut TestAppContext) {
 	let expanded = visual.debug_bounds("performance-island-toggle").unwrap();
 	let gpu = visual.debug_bounds("performance-gpu-label").unwrap();
 
-	assert!(gpu.left() - visual.debug_bounds("performance-fps").unwrap().right() >= gpui::px(12.));
+	assert!(gpu.top() >= expanded.bottom());
 	assert!(visual.debug_bounds("performance-gpu").unwrap().right() < expanded.right());
 
 	visual.simulate_mouse_move(
@@ -417,6 +430,11 @@ fn expanded_details_and_chart_fit_inside_the_compact_capsule(cx: &mut TestAppCon
 		let mut island = PerformanceIsland::new(cx);
 
 		island.expansion = Expansion::Clicked;
+		island.metrics =
+			Metrics { fps: 60., draw_ms: 6., submit_ms: 8., draw_frames: 1, ready_samples: 1 };
+		island.host.gpu_percent = Some(40.);
+		island.host.peak_memory_bytes = Some(2_000_000_000.);
+		island.cpu_percent = Some(25.);
 
 		island
 	});
@@ -431,30 +449,46 @@ fn expanded_details_and_chart_fit_inside_the_compact_capsule(cx: &mut TestAppCon
 	assert!(details.right() <= capsule.right());
 	assert!(chart.size.height >= gpui::px(28.));
 
-	let cells = ["performance-cpu-row", "performance-memory-row", "performance-latency-row"]
-		.map(|id| visual.debug_bounds(id).unwrap());
+	let cells = [
+		"performance-gpu-row",
+		"performance-cpu-row",
+		"performance-memory-row",
+		"performance-latency-row",
+	]
+	.map(|id| visual.debug_bounds(id).unwrap());
 	let draw = visual.debug_bounds("performance-draw-row").unwrap();
 
-	assert_eq!(cells[0].left(), draw.left());
-	assert!(
-		(cells[2].right() - chart.right()).abs() < gpui::px(0.01),
-		"{cells:?} against {chart:?}"
-	);
-
-	for pair in cells.windows(2) {
+	for pair in cells.as_chunks::<2>().0 {
 		assert_eq!(pair[0].top(), pair[1].top());
-		assert_eq!(pair[1].left() - pair[0].right(), gpui::px(12.));
+		assert!(pair[1].left() - pair[0].right() >= gpui::px(16.));
 	}
+	assert_eq!(cells[0].left(), cells[2].left());
+	assert_eq!(cells[1].right(), cells[3].right());
+	assert!(cells[2].top() - cells[0].bottom() >= gpui::px(8.));
+	assert!(draw.top() - cells[2].bottom() >= gpui::px(8.));
+	assert_eq!(cells[0].left(), draw.left());
 
 	assert_eq!(chart.top(), draw.top());
-	assert_eq!(chart.left() - draw.right(), gpui::px(8.));
+	assert_eq!(chart.left() - draw.right(), gpui::px(16.));
+	assert!(chart.size.width >= gpui::px(96.));
 	assert_eq!(visual.debug_bounds("performance-fps-label").unwrap().left(), draw.left());
 	assert!(
 		visual.debug_bounds("performance-fps-label").unwrap().right()
 			< visual.debug_bounds("performance-fps").unwrap().left()
 	);
-	assert_eq!(visual.debug_bounds("performance-gpu").unwrap().right(), chart.right());
-	assert_eq!(capsule.size.height, gpui::px(96.));
+	for id in [
+		"performance-fps-unit",
+		"performance-gpu-unit",
+		"performance-cpu-unit",
+		"performance-memory-unit",
+		"performance-latency-unit",
+		"performance-draw-unit",
+	] {
+		let unit = visual.debug_bounds(id).expect("metric unit");
+
+		assert!(unit.left() >= capsule.left() && unit.right() <= capsule.right());
+	}
+	assert_eq!(capsule.size.height, gpui::px(140.));
 	assert!(capsule.size.width < gpui::px(280.), "content should not fill an arbitrary wide grid");
 	assert!(visual.debug_bounds("performance-island-note").is_none());
 

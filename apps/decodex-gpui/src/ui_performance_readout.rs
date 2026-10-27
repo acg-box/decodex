@@ -22,6 +22,11 @@ pub(super) const TEXT_SIZE: f32 = 11.;
 
 const INSET: f32 = 12.;
 const FRAME: f32 = 2. * INSET + 2.;
+const METRIC_HEIGHT: f32 = 28.;
+const BODY_TOP: f32 = 4.;
+const BODY_BOTTOM: f32 = 8.;
+const METRIC_GAP: f32 = 8.;
+const COLUMN_GAP: f32 = 16.;
 
 pub(super) struct Work {
 	label: String,
@@ -99,7 +104,7 @@ pub(super) struct Debug {
 	memory: String,
 	latency: String,
 	draw: String,
-	columns: [f32; 3],
+	columns: [f32; 2],
 	sizing: Sizing,
 }
 
@@ -228,7 +233,7 @@ impl Content {
 			data.columns.iter().sum::<f32>() + action + 16. + FRAME
 		};
 		data.breakdown_columns = breakdown_columns(&data, &mut width);
-		let breakdown_width = data.breakdown_columns.iter().sum::<f32>() + 12. + FRAME;
+		let breakdown_width = data.breakdown_columns.iter().sum::<f32>() + COLUMN_GAP + FRAME;
 
 		data.sizing = Sizing {
 			minimal,
@@ -253,7 +258,7 @@ impl Content {
 			memory: ui_performance::bytes(island.host.peak_memory_bytes),
 			latency: ui_performance::timing(island.metrics.submit_ms, island.metrics.ready_samples),
 			draw: ui_performance::timing(island.metrics.draw_ms, island.metrics.draw_frames),
-			columns: [0.; 3],
+			columns: [0.; 2],
 			sizing: Sizing { minimal: 0., compact: 0., expanded: 0. },
 		};
 		let mut width = |id, text: &str, size, weight| measure(id, text, size, weight, window, cx);
@@ -271,24 +276,33 @@ impl Content {
 					TEXT_SIZE,
 					FontWeight::MEDIUM,
 				)
-				+ 16.
-				+ width("activity-width-gpu-label", "System GPU", TEXT_SIZE, FontWeight::NORMAL)
-				+ 4.
-				+ width("activity-width-gpu", &data.gpu, TEXT_SIZE, FontWeight::MEDIUM)
 				+ FRAME;
 
 		data.columns = [
-			width("activity-width-cpu-label", "UI CPU", TEXT_SIZE, FontWeight::NORMAL)
-				.max(width("activity-width-cpu", &data.cpu, TEXT_SIZE, FontWeight::MEDIUM))
+			width("activity-width-gpu-label", "System GPU", TEXT_SIZE, FontWeight::NORMAL)
+				.max(width("activity-width-gpu", &data.gpu, TEXT_SIZE, FontWeight::MEDIUM))
+				.max(width(
+					"activity-width-memory-label",
+					"UI peak RAM",
+					TEXT_SIZE,
+					FontWeight::NORMAL,
+				))
+				.max(width("activity-width-memory", &data.memory, TEXT_SIZE, FontWeight::MEDIUM))
 				.max(width("activity-width-draw-label", "Draw p95", TEXT_SIZE, FontWeight::NORMAL))
 				.max(width("activity-width-draw", &data.draw, TEXT_SIZE, FontWeight::MEDIUM)),
-			width("activity-width-memory-label", "UI peak RAM", TEXT_SIZE, FontWeight::NORMAL)
-				.max(width("activity-width-memory", &data.memory, TEXT_SIZE, FontWeight::MEDIUM)),
-			width("activity-width-latency-label", "Latency p95", TEXT_SIZE, FontWeight::NORMAL)
+			width("activity-width-cpu-label", "UI CPU", TEXT_SIZE, FontWeight::NORMAL)
+				.max(width("activity-width-cpu", &data.cpu, TEXT_SIZE, FontWeight::MEDIUM))
+				.max(width(
+					"activity-width-latency-label",
+					"Latency p95",
+					TEXT_SIZE,
+					FontWeight::NORMAL,
+				))
 				.max(width("activity-width-latency", &data.latency, TEXT_SIZE, FontWeight::MEDIUM)),
 		];
 
-		let details = data.columns.iter().sum::<f32>() + 24. + FRAME;
+		// The sparkline gets enough space to show its measured history.
+		let details = data.columns[0] + data.columns[1].max(96.) + COLUMN_GAP + FRAME;
 
 		data.sizing = Sizing {
 			minimal,
@@ -310,9 +324,17 @@ impl Content {
 		match self {
 			Self::Work(v) =>
 				CAPSULE_HEIGHT
-					+ 66.
-					+ if v.rows.is_empty() { 0. } else { 4. + v.rows.len().min(4) as f32 * 22. },
-			Self::Debug(_) => CAPSULE_HEIGHT + 68.,
+					+ BODY_TOP
+					+ 2. * METRIC_HEIGHT
+					+ METRIC_GAP
+					+ BODY_BOTTOM
+					+ if v.rows.is_empty() {
+						0.
+					} else {
+						METRIC_GAP + v.rows.len().min(4) as f32 * 22.
+					},
+			Self::Debug(_) =>
+				CAPSULE_HEIGHT + BODY_TOP + 3. * METRIC_HEIGHT + 2. * METRIC_GAP + BODY_BOTTOM,
 		}
 	}
 
@@ -406,29 +428,50 @@ fn number(id: &'static str, value: String) -> Div {
 		.child(value)
 }
 
-fn debug_header(data: &Debug) -> AnyElement {
-	let field = |id, label, value| {
-		gpui::div()
-			.flex()
-			.items_baseline()
-			.gap_1()
-			.child(
-				gpui::div()
-					.debug_selector(move || format!("performance-{id}-label"))
-					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child(label),
-			)
-			.child(number(id, value))
-	};
+fn measurement(id: &'static str, value: String) -> Div {
+	let unit = [" tok", " FPS", " ms", " GB", "%"]
+		.into_iter()
+		.find_map(|suffix| value.strip_suffix(suffix).map(|number| (number, suffix)));
+	let (number, unit) = unit.map_or_else(
+		|| (value.clone(), None),
+		|(number, suffix)| {
+			(number.to_owned(), Some((suffix.trim_start(), suffix.starts_with(' '))))
+		},
+	);
 
+	gpui::div()
+		.debug_selector(move || format!("performance-{id}"))
+		.flex_none()
+		.flex()
+		.items_baseline()
+		.whitespace_nowrap()
+		.child(gpui::div().font_weight(FontWeight::MEDIUM).child(number))
+		.when_some(unit, |d, (unit, spaced)| {
+			d.child(
+				gpui::div()
+					.debug_selector(move || format!("performance-{id}-unit"))
+					.ml(gpui::px(if spaced { 3. } else { 0. }))
+					.font_weight(FontWeight::NORMAL)
+					.text_color(ui_theme::rgb(TEXT_MUTED))
+					.child(unit),
+			)
+		})
+}
+
+fn debug_header(data: &Debug) -> AnyElement {
 	gpui::div()
 		.w_full()
 		.px(gpui::px(INSET))
 		.flex()
 		.items_center()
-		.justify_between()
-		.child(field("fps", "Frame rate", format!("{} FPS", data.fps)))
-		.child(field("gpu", "System GPU", data.gpu.clone()))
+		.gap_1()
+		.child(
+			gpui::div()
+				.debug_selector(|| "performance-fps-label".into())
+				.text_color(ui_theme::rgb(TEXT_MUTED))
+				.child("Frame rate"),
+		)
+		.child(measurement("fps", format!("{} FPS", data.fps)))
 		.into_any_element()
 }
 
@@ -448,7 +491,7 @@ fn work_header(data: &Work) -> AnyElement {
 				.items_baseline()
 				.gap_1()
 				.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Total"))
-				.child(number("activity-total-value", tokens(&data.total))),
+				.child(measurement("activity-total-value", tokens(&data.total))),
 		)
 		.into_any_element()
 }
@@ -478,7 +521,9 @@ fn work_minimal(data: &Work) -> AnyElement {
 fn work_primary(data: &Work, minimal: bool) -> AnyElement {
 	if let Some(status) = data.status() {
 		return number(if minimal { "live-status" } else { "work-status" }, status.into())
-			.text_color(ui_theme::rgb(TEXT))
+			.when(!minimal && !data.working, |view| {
+				view.font_weight(FontWeight::NORMAL).text_color(ui_theme::rgb(TEXT_MUTED))
+			})
 			.into_any_element();
 	}
 
@@ -651,7 +696,6 @@ fn work_details(data: &Work, window: &mut Window, cx: &mut App) -> AnyElement {
 		let value = tokens(&data.breakdown[index]);
 
 		metric(id, label, value.clone())
-			.id(id)
 			.w(gpui::px(data.breakdown_columns[index % 2]))
 			.role(Role::Group)
 			.aria_label(format!("{description}: {value}"))
@@ -661,7 +705,7 @@ fn work_details(data: &Work, window: &mut Window, cx: &mut App) -> AnyElement {
 			.w_full()
 			.flex()
 			.justify_between()
-			.gap_3()
+			.gap(gpui::px(COLUMN_GAP))
 			.child(field(first))
 			.child(field(first + 1))
 	};
@@ -669,17 +713,18 @@ fn work_details(data: &Work, window: &mut Window, cx: &mut App) -> AnyElement {
 	gpui::div()
 		.w_full()
 		.px(gpui::px(INSET))
-		.pb(gpui::px(6.))
+		.pt(gpui::px(BODY_TOP))
+		.pb(gpui::px(BODY_BOTTOM))
 		.flex()
 		.flex_col()
-		.gap_1()
+		.gap(gpui::px(METRIC_GAP))
 		.child(
 			gpui::div()
 				.debug_selector(|| "activity-work-breakdown".into())
 				.w_full()
 				.flex()
 				.flex_col()
-				.gap_1()
+				.gap(gpui::px(METRIC_GAP))
 				.child(row(0))
 				.child(row(2)),
 		)
@@ -693,41 +738,45 @@ fn debug_details(
 	window: &mut Window,
 	cx: &mut App,
 ) -> AnyElement {
-	let columns = ["activity-column-cpu", "activity-column-memory", "activity-column-latency"]
+	let columns = ["activity-debug-column-left", "activity-debug-column-right"]
 		.into_iter()
 		.zip(data.columns)
 		.map(|(id, width)| ui_motion::value(id, width, window, cx))
 		.collect::<Vec<_>>();
-	let rows = [
-		("cpu", "UI CPU", data.cpu.clone()),
-		("memory", "UI peak RAM", data.memory.clone()),
-		("latency", "Latency p95", data.latency.clone()),
-	];
+	let row = |left: (&'static str, &'static str, String),
+	           right: (&'static str, &'static str, String)| {
+		gpui::div()
+			.w_full()
+			.flex()
+			.justify_between()
+			.gap(gpui::px(COLUMN_GAP))
+			.child(metric(left.0, left.1, left.2).w(gpui::px(columns[0])))
+			.child(metric(right.0, right.1, right.2).w(gpui::px(columns[1])))
+	};
 
 	gpui::div()
 		.debug_selector(|| "performance-island-details".into())
 		.w_full()
 		.px(gpui::px(INSET))
-		.pb(gpui::px(6.))
+		.pt(gpui::px(BODY_TOP))
+		.pb(gpui::px(BODY_BOTTOM))
 		.flex_none()
 		.flex()
 		.flex_col()
-		.gap_1()
-		.child(
-			gpui::div().w_full().flex().justify_between().gap_3().children(
-				rows.into_iter().zip(&columns).map(|((id, label, value), width)| {
-					metric(id, label, value).w(gpui::px(*width))
-				}),
-			),
-		)
+		.gap(gpui::px(METRIC_GAP))
+		.child(row(("gpu", "System GPU", data.gpu.clone()), ("cpu", "UI CPU", data.cpu.clone())))
+		.child(row(
+			("memory", "UI peak RAM", data.memory.clone()),
+			("latency", "Latency p95", data.latency.clone()),
+		))
 		.child(
 			gpui::div()
 				.w_full()
-				.h(gpui::px(28.))
+				.h(gpui::px(METRIC_HEIGHT))
 				.flex_none()
 				.flex()
 				.items_center()
-				.gap_2()
+				.gap(gpui::px(COLUMN_GAP))
 				.child(metric("draw", "Draw p95", data.draw.clone()).w(gpui::px(columns[0])).when(
 					island.display_hz.is_some_and(|hz| island.metrics.draw_ms > 1_000. / hz),
 					|d| d.text_color(ui_theme::rgb(WARNING)),
@@ -737,11 +786,14 @@ fn debug_details(
 		.into_any_element()
 }
 
-fn metric(id: &'static str, label: &'static str, value: String) -> Div {
+fn metric(id: &'static str, label: &'static str, value: String) -> Stateful<Div> {
 	gpui::div()
+		.id(id)
 		.debug_selector(move || format!("performance-{id}-row"))
+		.role(Role::Group)
+		.aria_label(format!("{label}: {value}"))
 		.min_w_0()
-		.h(gpui::px(28.))
+		.h(gpui::px(METRIC_HEIGHT))
 		.flex_none()
 		.flex()
 		.flex_col()
@@ -754,7 +806,7 @@ fn metric(id: &'static str, label: &'static str, value: String) -> Div {
 				.text_color(ui_theme::rgb(if id == "draw" { BLUE } else { TEXT_MUTED }))
 				.child(label),
 		)
-		.child(number(id, value).w_full().text_left())
+		.child(measurement(id, value).w_full().text_left())
 }
 
 #[cfg(test)]
