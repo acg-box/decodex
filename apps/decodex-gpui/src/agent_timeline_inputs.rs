@@ -1,6 +1,9 @@
 //! Current unconfirmed input pages are independent of both transcript cursors.
+use std::rc::Rc;
+
 use gpui::{
-	AnyElement, AppContext as _, Div, StatefulInteractiveElement, prelude::FluentBuilder as _,
+	AnyElement, AppContext as _, Div, KeyDownEvent, Role, StatefulInteractiveElement,
+	prelude::FluentBuilder as _,
 };
 use tokio::runtime::Builder;
 
@@ -19,6 +22,8 @@ use crate::{
 	},
 	ui_feedback::Tone,
 	ui_loading,
+	ui_motion::SmoothControl as _,
+	ui_theme::{self, USER_MESSAGE_ACTION_SIZE, USER_MESSAGE_INSET},
 };
 use decodex_protocol::{
 	AgentActionDto, AgentCommandResponse, AgentDispatchStateDto, AgentHistoryEntryDto,
@@ -38,7 +43,7 @@ struct MessageCard {
 	tone: Tone,
 	text: String,
 	reason: Option<String>,
-	actions: AnyElement,
+	action: Option<AnyElement>,
 }
 
 impl InputReceipts {
@@ -89,22 +94,23 @@ impl AgentSurface {
 					&& !self.uncertain
 					&& !self.selected_is_archived()
 					&& self.composer_unavailable_reason().is_none();
-				let mut actions = gpui::div().flex().items_center().gap_2();
-				if can_retry {
-					actions = actions.child(self.workspace_action(
+				let action = if can_retry {
+					Some(self.message_receipt_action(
 						format!("{id}-retry"),
-						"Resend".into(),
+						"Resend",
 						move |s, cx| s.retry_local_message(&target, &original, cx),
 						cx,
-					));
+					))
 				} else if !failed && self.read_connection_ready() {
-					actions = actions.child(self.workspace_action(
+					Some(self.message_receipt_action(
 						format!("{id}-check"),
-						"Check status".into(),
+						"Check status",
 						move |s, cx| s.check_local_message(&target, &original, cx),
 						cx,
-					));
-				}
+					))
+				} else {
+					None
+				};
 				Self::message_card(MessageCard {
 					key: id,
 					title,
@@ -115,7 +121,7 @@ impl AgentSurface {
 					} else {
 						message.error
 					},
-					actions: actions.into_any_element(),
+					action,
 				})
 				.into_any_element()
 			})
@@ -229,43 +235,88 @@ impl AgentSurface {
 		let target = work.to_owned();
 		let saved = entry.clone();
 		let can_retry = self.can_retry_saved_input(work, entry);
-		let mut actions = gpui::div().flex().items_center().gap_1();
-		if can_retry {
-			actions = actions.child(self.workspace_action(
+		let action = if can_retry {
+			Some(self.message_receipt_action(
 				format!("{key}-retry"),
-				"Resend".into(),
+				"Resend",
 				move |s, cx| s.retry_saved_input(&target, &saved, cx),
 				cx,
-			));
+			))
 		} else if !failed && self.read_connection_ready() {
-			actions = actions.child(self.workspace_action(
+			Some(self.message_receipt_action(
 				format!("{key}-refresh"),
-				"Check status".into(),
+				"Check status",
 				|s, cx| {
 					s.refresh_steer_receipt(cx);
 					s.refresh_native_input_receipts(cx);
 					s.refresh(cx);
 				},
 				cx,
-			));
-		}
+			))
+		} else {
+			None
+		};
 		Self::message_card(MessageCard {
 			key,
 			title: if failed { "Not sent" } else { "Delivery unconfirmed" },
 			tone,
 			text: entry.text.clone(),
 			reason: message_reason(entry.receipt.as_ref().and_then(|r| r.unsent_reason.as_deref())),
-			actions: actions.into_any_element(),
+			action,
 		})
 	}
 
+	fn message_receipt_action(
+		&self,
+		key: String,
+		label: &'static str,
+		action: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let label_key = format!("{key}-text");
+		let selector = key.clone();
+		let action = Rc::new(action);
+		let keyboard = action.clone();
+
+		gpui::div()
+			.id(key)
+			.debug_selector(move || selector.clone())
+			.role(Role::Button)
+			.aria_label(label)
+			.tab_index(0)
+			.h(gpui::px(USER_MESSAGE_ACTION_SIZE))
+			.flex_none()
+			.flex()
+			.items_center()
+			.whitespace_nowrap()
+			.text_color(ui_theme::rgb(ui_theme::TEXT))
+			.cursor_pointer()
+			.rounded(gpui::px(4.))
+			.hover(|s| s.text_color(ui_theme::rgb(ui_theme::BLUE)))
+			.focus_visible(|s| s.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+			.on_click(cx.listener(move |s, _, _, cx| {
+				action(s, cx);
+				cx.stop_propagation();
+			}))
+			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
+				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+					keyboard(s, cx);
+					cx.stop_propagation();
+				}
+			}))
+			.child(gpui::div().debug_selector(move || label_key.clone()).child(label))
+			.smooth()
+			.into_any_element()
+	}
+
 	fn message_card(card: MessageCard) -> Div {
-		let MessageCard { key, title, tone, text, reason, actions } = card;
+		let MessageCard { key, title, tone, text, reason, action } = card;
 		let status_key = format!("{key}-status");
 		let message_key = format!("{key}-message");
 		let status = tone
 			.row(status_key.clone(), title)
-			.py_1()
+			.h(gpui::px(USER_MESSAGE_ACTION_SIZE))
+			.items_center()
 			.debug_selector(move || status_key.clone())
 			.when_some(reason, |status, reason| {
 				status
@@ -303,15 +354,17 @@ impl AgentSurface {
 			)
 			.child(
 				gpui::div()
+					.debug_selector(move || format!("{key}-footer"))
 					.w_full()
+					.pr(gpui::px(USER_MESSAGE_INSET))
 					.flex()
 					.justify_end()
 					.items_center()
-					.gap_1()
+					.gap(gpui::px(12.))
 					.text_size(gpui::px(12.))
 					.line_height(gpui::px(18.))
 					.child(status)
-					.child(actions),
+					.children(action),
 			)
 	}
 
@@ -555,7 +608,72 @@ mod tests {
 			_: &mut gpui::Window,
 			cx: &mut gpui::Context<Self>,
 		) -> impl gpui::IntoElement {
-			self.0.update(cx, |s, cx| s.saved_input_card("agent", &self.1, cx))
+			use gpui::{ParentElement as _, Styled as _};
+
+			gpui::div()
+				.w_full()
+				.font_family(crate::ui_theme::FONT_FAMILY)
+				.text_size(gpui::px(crate::ui_theme::BODY_SIZE))
+				.line_height(gpui::px(crate::ui_theme::BODY_LINE_HEIGHT))
+				.child(self.0.update(cx, |s, cx| s.saved_input_card("agent", &self.1, cx)))
+		}
+	}
+
+	#[gpui::test]
+	fn delivery_labels_share_a_baseline_and_the_bubble_text_edge(cx: &mut gpui::TestAppContext) {
+		for (width, scale, retry, text) in [
+			(280., 1., true, "A short message.".into()),
+			(280., 2., true, "请保留完整内容，并检查失败提示和重发入口的对齐。".repeat(12)),
+			(740., 2., true, "Keep the full original message readable. ".repeat(12)),
+			(740., 2., false, "Keep the full original message readable. ".repeat(12)),
+			(880., 1., false, "A short message.".into()),
+		] {
+			let (_, visual) = cx.add_window_view(|_, cx| {
+				let surface = cx.new(AgentSurface::new);
+				let entry = surface.update(cx, |s, cx| {
+					long_response(s, cx);
+					s.uncertain = !retry;
+
+					let AgentInputReceiptsResult::Available { mut entries, .. } =
+						page("agent", Some(7), None)
+					else {
+						panic!("fixture input");
+					};
+					let mut entry = entries.remove(0);
+
+					entry.kind = "unsent_input".into();
+					entry.text = text;
+					entry.receipt.as_mut().unwrap().disposed = true;
+					entry
+				});
+
+				RetryCard(surface, entry)
+			});
+
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(900.)));
+			visual.simulate_scale_factor_change(scale);
+			visual.update(crate::ui_frame::draw_frame);
+
+			let message = visual.debug_bounds("saved-input-agent-7-message").unwrap();
+			let status = visual.debug_bounds("saved-input-agent-7-status-text").unwrap();
+			let action = visual.debug_bounds("saved-input-agent-7-retry-text");
+
+			assert_eq!(action.is_some(), retry);
+			assert!(status.top() >= message.bottom(), "receipt belongs below its message");
+
+			let trailing = if let Some(action) = action {
+				assert!((status.top() - action.top()).abs() < gpui::px(0.5));
+				assert_eq!(status.size.height, action.size.height);
+				assert!(action.left() > status.right() + gpui::px(7.));
+				action
+			} else {
+				status
+			};
+
+			assert!(
+				(trailing.right() - message.right()).abs() < gpui::px(0.5),
+				"receipt text must align with bubble text at {width}pt / {scale}x: {trailing:?}, {message:?}"
+			);
 		}
 	}
 

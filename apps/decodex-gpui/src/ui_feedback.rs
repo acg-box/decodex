@@ -98,6 +98,9 @@ impl Tone {
 		message: &str,
 		icon: impl IntoElement,
 	) -> Stateful<Div> {
+		let id = id.into();
+		let text_selector = format!("{id}-text");
+
 		gpui::div()
 			.id(id)
 			.role(Role::Status)
@@ -116,7 +119,12 @@ impl Tone {
 					.items_center()
 					.child(icon),
 			)
-			.child(gpui::div().min_w_0().child(message.to_owned()))
+			.child(
+				gpui::div()
+					.debug_selector(move || text_selector.clone())
+					.min_w_0()
+					.child(message.to_owned()),
+			)
 	}
 }
 

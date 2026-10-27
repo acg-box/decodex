@@ -3067,7 +3067,7 @@ fn history_entry_presented(
 					bubble
 						.flex_none()
 						.max_w(gpui::relative(0.78))
-						.px(gpui::px(12.))
+						.px(gpui::px(ui_theme::USER_MESSAGE_INSET))
 						.py(gpui::px(7.))
 						.rounded(gpui::px(10.))
 						.bg(ui_theme::rgba(MESSAGE_MATERIAL))

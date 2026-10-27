@@ -52,6 +52,7 @@ pub(crate) const CONVERSATION_TAB_SIZE: f32 = 28.0;
 pub(crate) const CONVERSATION_TAB_GAP: f32 = 2.0;
 pub(crate) const SIDEBAR_INSET: f32 = 6.0;
 pub(crate) const MESSAGE_GAP: f32 = 20.0;
+pub(crate) const USER_MESSAGE_INSET: f32 = 12.0;
 pub(crate) const USER_MESSAGE_ACTION_SIZE: f32 = 24.0;
 pub(crate) const METADATA_GAP: f32 = 4.0;
 pub(crate) const CONTROL_SIZE: f32 = 28.0;
