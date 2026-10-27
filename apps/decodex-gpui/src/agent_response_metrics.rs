@@ -126,9 +126,10 @@ impl RenderOnce for ResponseMetrics {
 				d.hover(|d| d.text_color(ui_theme::rgb(TEXT)))
 					.on_hover(move |hovered, _, cx| {
 						hover_state.update(cx, |state, cx| {
-							state.0 = *hovered;
-
-							cx.notify();
+							if state.0 != *hovered {
+								state.0 = *hovered;
+								cx.notify();
+							}
 						});
 					})
 					.child(
@@ -260,10 +261,11 @@ fn details_panel(
 	usage: Option<&AgentTurnUsageDto>,
 	timing: Option<&AgentTurnTimingDto>,
 ) -> AnyElement {
+	// Window snapping can place this panel over its hover target. Occluding the
+	// target makes the panel open and close repeatedly; clicks still stop here.
 	let mut panel = gpui::div()
 		.id(SharedString::from(format!("response-detail-panel-{}", key)))
 		.debug_selector(|| "native-turn-usage".into())
-		.occlude()
 		.cursor_default()
 		.on_click(|_, _, cx| cx.stop_propagation())
 		.w(gpui::px(272.))

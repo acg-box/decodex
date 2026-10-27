@@ -1393,7 +1393,7 @@
         "crates/decodex-runtime/src/agent/timeline/metrics.rs": "73f5d0a46c6bd4c368f38bed5cb73765185842f359754cac6b0ff25901806a08",
         "crates/decodex-runtime/src/agent/tests/result_integrity.rs": "800274cbbf3736ee33be5fb7800bdc258e2f4d46eda60ef4f53781d953779e12",
         "crates/decodex-runtime/src/account_launch/agent_process_native_output_rate_tests.rs": "0a9459f95b8795415ae166654479a7c72173ccafc6a6045d183c9177e6b4f809",
-        "apps/decodex-gpui/src/agent_response_metrics.rs": "b716b9c264cdca324c1879e68abd0ae352dc43f2146b74fcdf5a6ba78e547ca1",
+        "apps/decodex-gpui/src/agent_response_metrics.rs": "cc655def89b9269ca3319f3b051f63b2eb79e5ea7561ab0b8cd7b8329af98741",
         "database/src/agent.rs": "8c327fa856c0e5c2545deb90368ce761da572954701ec8ba4dc737726be2974e"
       },
       "tests_read_not_claimed_executed": [
@@ -1445,7 +1445,8 @@
           ],
           "executed": 2,
           "passed": 2,
-          "unmatched_selectors": []
+          "unmatched_selectors": [],
+          "before_after": "An enlarged, snapped details panel caused the hover interaction to redraw repeatedly before the fix; the interaction test was interrupted and the same two selected tests passed after the fix."
         },
         "exact_native": {
           "command": [
@@ -1474,7 +1475,8 @@
             "scripts/lint_rust_workspace.py"
           ],
           "packages": 12,
-          "passed": 12
+          "passed": 12,
+          "followup": "The affected GPUI package passed the same strict Clippy flags again after the final presentation changes."
         },
         "rust_format": {
           "command": [
