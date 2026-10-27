@@ -20,6 +20,7 @@
 #[path = "agent_process_native_folder_trust_tests.rs"] mod folder_trust;
 #[path = "agent_process_native_goal_tests.rs"] mod goals;
 #[path = "agent_process_native_hook_settings_tests.rs"] mod hook_settings;
+#[path = "agent_process_native_mcp_sharing_tests.rs"] mod mcp_sharing;
 #[path = "agent_process_native_memory_tests.rs"] mod memory;
 #[path = "agent_process_native_misalignment_tests.rs"] mod misalignment;
 #[path = "agent_process_native_model_access_tests.rs"] mod model_access;
@@ -107,9 +108,18 @@ impl NativeSession {
 		home: &Path,
 		capabilities: decodex_codex::app_server_client::InitializeCapabilities,
 	) -> Self {
+		Self::with_arguments(binary, home, capabilities, &["app-server"])
+	}
+
+	fn with_arguments(
+		binary: &OsStr,
+		home: &Path,
+		capabilities: decodex_codex::app_server_client::InitializeCapabilities,
+		arguments: &[&str],
+	) -> Self {
 		let mut child = NativeChild(
 			Command::new(binary)
-				.arg("app-server")
+				.args(arguments)
 				.env_clear()
 				.env("HOME", home)
 				.env("CODEX_HOME", home)
