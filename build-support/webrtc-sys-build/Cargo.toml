@@ -1,0 +1,8 @@
+[package]
+edition = "2024"
+name    = "webrtc-sys-build"
+publish = false
+version = "0.3.20"
+
+[dependencies]
+decodex-webrtc-build = { path = "../../crates/decodex-webrtc-build" }

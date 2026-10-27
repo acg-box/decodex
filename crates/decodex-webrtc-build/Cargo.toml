@@ -1,0 +1,19 @@
+[package]
+authors.workspace    = true
+description          = "Verify the native WebRTC build archive before extraction."
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "decodex-webrtc-build"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+anyhow          = { workspace = true }
+fs2             = { workspace = true }
+reqwest-webrtc  = { workspace = true }
+sha2            = { workspace = true }
+tempfile        = { workspace = true }
+walkdir         = { workspace = true }
+webrtc-upstream = { workspace = true }
+zip             = { workspace = true }

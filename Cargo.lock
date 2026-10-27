@@ -1557,6 +1557,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "decodex-webrtc-build"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "fs2",
+ "reqwest 0.12.28",
+ "sha2 0.11.0",
+ "tempfile",
+ "walkdir",
+ "webrtc-sys-build 0.3.20 (git+https://github.com/livekit/rust-sdks.git?rev=fa46e8427050b6ee0c6e40670ff161ee3a2bbf5a)",
+ "zip",
+]
+
+[[package]]
 name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6876,14 +6890,20 @@ dependencies = [
  "glob",
  "log",
  "pkg-config",
- "webrtc-sys-build",
+ "webrtc-sys-build 0.3.20",
 ]
 
 [[package]]
 name = "webrtc-sys-build"
 version = "0.3.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "294bd0dfb00120269cdb4d71371348361daa454a6a31c8dd035dfe2a2be47871"
+dependencies = [
+ "decodex-webrtc-build",
+]
+
+[[package]]
+name = "webrtc-sys-build"
+version = "0.3.20"
+source = "git+https://github.com/livekit/rust-sdks.git?rev=fa46e8427050b6ee0c6e40670ff161ee3a2bbf5a#fa46e8427050b6ee0c6e40670ff161ee3a2bbf5a"
 dependencies = [
  "anyhow",
  "fs2",
