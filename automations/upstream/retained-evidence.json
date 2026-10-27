@@ -1,7 +1,7 @@
 {
   "version": 1,
   "scope": "Portable retained integration requirements. Native automation state owns the review cursor and pending work. This index does not attest missing historical test results.",
-  "source_baseline": "abf4bb91ec49fbf443ccec0069f9cab5dd1462d8",
+  "source_baseline": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
   "delivery": [
     "https://github.com/acg-box/decodex/pull/2451",
     "https://github.com/acg-box/decodex/pull/2452",
@@ -663,34 +663,22 @@
       ]
     ],
     "managed_commands": [
-      {
-        "selector": "installed_recap_public_socket_preserves_parent_and_exact_request_identity",
-        "command": [
-          "python3",
-          "scripts/vnext/run_native_regression.py",
-          "--runtime",
-          "<qualified-runtime-directory>",
-          "--filter",
-          "test(installed_recap_public_socket_preserves_parent_and_exact_request_identity)"
-        ],
-        "environment": {
-          "DECODEX_TEST_NATIVE_FORK": "1"
-        },
-        "passed": true
-      },
-      {
-        "selector": "installed_native_startup_configuration_preserves_auth_config_and_locked_history",
-        "command": [
-          "python3",
-          "scripts/vnext/run_native_regression.py",
-          "--runtime",
-          "<qualified-runtime-directory>",
-          "--filter",
-          "test(installed_native_startup_configuration_preserves_auth_config_and_locked_history)"
-        ],
-        "environment": {},
-        "passed": true
-      }
+      [
+        "python3",
+        "scripts/vnext/run_native_regression.py",
+        "--runtime",
+        "<qualified-runtime>",
+        "--filter",
+        "test(installed_recap_public_socket_preserves_parent_and_exact_request_identity)"
+      ],
+      [
+        "python3",
+        "scripts/vnext/run_native_regression.py",
+        "--runtime",
+        "<qualified-runtime>",
+        "--filter",
+        "test(installed_native_startup_configuration_preserves_auth_config_and_locked_history)"
+      ]
     ],
     "required_environment": {
       "DECODEX_CODEX_DEVELOPMENT_RUNTIME": "Exact prepared runtime root",
@@ -703,54 +691,173 @@
       "reason": "Current source retires automatic native context replacement; retained legacy conversations continue original context. Source and current test body verified. Historical migration test remains a historical delivery claim only.",
       "counted_as_executed": false
     },
-    "limits": "51 selectors invoke the exact artifact; two history-filter tests use local fixtures. One HOME-owning fixture per portable-runner invocation. Recap socket uses DECODEX_TEST_NATIVE_FORK=1 for attached-branch coverage."
+    "limits": "51 exact signed-artifact native tests plus two local history-filter tests passed. Synthetic system-temporary homes and loopback providers; no installation, live account, remote provider, physical audio or performance acceptance.",
+    "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8"
   },
   "qualification": {
     "status": "qualified_fixed_development_artifact",
     "evidence": "automations/upstream/qualification.json",
-    "source_archive_sha256": "d2356cea559f77d768f97af9ca70c8aec625b20a4b05ce66023aa63f02ca07ca",
-    "schema_sha256": "50c4da5e674696a1504e97729bf69b42f867ebe88ab11428ed1de296df79e7dc",
-    "evidence_sha256": "deb30e1b0c062940ae71a89d98a5fbbcc3c2cd6528c17c31b420903a0eb18c9f",
+    "source_archive_sha256": "b93e82b67ca9de55fb1cbcf74be03567f529a03d23b4785de02f966f39f1c4b5",
+    "schema_sha256": "86c27115a28bf905f4c25ee204b218b2ba9598ef664787efddd30e2d0c20f2d9",
+    "evidence_sha256": "cd7c138625b15bfe362eb04c08b6a7f97c743680b58cd740f278ec7fb8cadd2e",
     "limits": [
       "Source review, tests, artifact qualification, merge and installed acceptance are separate.",
       "Only macOS arm64 private stdio and named native consumers/helpers are qualified. Linux, Windows, remote production execution, live accounts/providers, physical audio and installation/release remain unmeasured.",
       "No latency, throughput, memory, billing or cost benchmark.",
-      "Native MCP discovery/sharing and critical-path capture stay default false/unselected. No new product control, workflow, dashboard or automatic policy.",
       "All nine inherited dependency findings remain visible; no audit ignore or broad safety claim added.",
-      "Earlier certified ranges retain their original limits; the missing historical 153-test manifest remains unknown."
+      "Earlier certified ranges retain their original limits; the missing historical 153-test manifest remains unknown.",
+      "New native MCP/Guardian/history experiments and critical-path capture remain unselected; native prediction tool preservation stays enabled without a new product workflow.",
+      "One named-executor cloud-skills source fixture remains unresolved; seven host-skill snapshot failures recovered in isolated HOME. Source execution does not qualify cloud/remote consumers."
     ]
   },
   "retained_artifact_probes": {
-    "source": "crates/decodex-runtime/tests/native_qualification",
+    "command": [
+      "python3",
+      "crates/decodex-runtime/tests/native_qualification/<fixture>"
+    ],
     "environment": {
       "QUALIFIED_CODEX_BINARY": "Absolute exact candidate CLI; keep its packaged helpers in place",
       "QUALIFIED_CODEX_SOURCE_COMMIT": "Exact reviewed 40-character upstream source commit",
       "DECODEX_QUALIFICATION_OUTPUT": "Existing native automation run output directory outside tracked files"
     },
-    "fixtures": [
-      "config_policy.py",
-      "usage.py",
-      "terminal_controls.py",
-      "apps_recovery.py",
-      "proxy_headers.py",
-      "async_compaction.py",
-      "incomplete_response.py",
-      "sample_cancel.py",
-      "thread_settings.py",
-      "log_storage.py",
-      "finished_sample.py",
-      "mcp_cancel.py",
-      "model_errors.py",
-      "large_catalog.py",
-      "response_identity.py",
-      "command_hooks.py"
+    "results": [
+      {
+        "fixture": "config_policy.py",
+        "exit_code": 0,
+        "elapsed_seconds": 0.54
+      },
+      {
+        "fixture": "usage.py",
+        "exit_code": 0,
+        "elapsed_seconds": 1.87
+      },
+      {
+        "fixture": "terminal_controls.py",
+        "exit_code": 0,
+        "elapsed_seconds": 3.63
+      },
+      {
+        "fixture": "apps_recovery.py",
+        "exit_code": 0,
+        "elapsed_seconds": 8.06
+      },
+      {
+        "fixture": "proxy_headers.py",
+        "exit_code": 0,
+        "elapsed_seconds": 0.74
+      },
+      {
+        "fixture": "async_compaction.py",
+        "exit_code": 0,
+        "elapsed_seconds": 0.65
+      },
+      {
+        "fixture": "incomplete_response.py",
+        "exit_code": 0,
+        "elapsed_seconds": 3.59
+      },
+      {
+        "fixture": "sample_cancel.py",
+        "exit_code": 0,
+        "elapsed_seconds": 2.51
+      },
+      {
+        "fixture": "thread_settings.py",
+        "exit_code": 0,
+        "elapsed_seconds": 3.16
+      },
+      {
+        "fixture": "log_storage.py",
+        "exit_code": 0,
+        "elapsed_seconds": 0.36
+      },
+      {
+        "fixture": "finished_sample.py",
+        "exit_code": 0,
+        "elapsed_seconds": 2.55
+      },
+      {
+        "fixture": "mcp_cancel.py",
+        "exit_code": 0,
+        "elapsed_seconds": 1.82
+      },
+      {
+        "fixture": "model_errors.py",
+        "exit_code": 0,
+        "elapsed_seconds": 3.81
+      },
+      {
+        "fixture": "large_catalog.py",
+        "exit_code": 0,
+        "elapsed_seconds": 0.73
+      },
+      {
+        "fixture": "response_identity.py",
+        "exit_code": 0,
+        "elapsed_seconds": 0.76
+      },
+      {
+        "fixture": "command_hooks.py",
+        "exit_code": 0,
+        "elapsed_seconds": 0.8
+      },
+      {
+        "fixture": "dotenv_startup.py",
+        "exit_code": 0,
+        "elapsed_seconds": 0.18
+      }
     ],
-    "command": [
-      "python3",
-      "crates/decodex-runtime/tests/native_qualification/<fixture>"
-    ],
+    "fixture_count": 17,
     "limits": "Synthetic loopback providers and system-temporary homes. No account fixture, real account, provider, billing, installed app or production performance qualification.",
-    "before_after_evidence": "automations/upstream/qualification.json#artifact_probes"
+    "before_after": {
+      "command_hooks": {
+        "fixture": "command_hooks.py",
+        "baseline_source": "970111f6cb62cc02fe36a82ea7d71b37a2889c97",
+        "baseline_cli_sha256": "cbaaabb9381ce36f13c8605def36cede35826fa11b404b8ad4d81a0f648826cd",
+        "candidate_source": "abf4bb91ec49fbf443ccec0069f9cab5dd1462d8",
+        "candidate_cli_sha256": "b851d71b579cf184d5dd92b8fa7a476827c9c9e26a5baf305c1d25e4e577e956",
+        "baseline_exit_code": 1,
+        "baseline_behavior": "All three hook stdin cwd fields incorrectly name project root although exec_command runs in a nested directory.",
+        "candidate_exit_code": 0,
+        "candidate_behavior": "PreToolUse, PermissionRequest and PostToolUse stdin cwd match nested execution. Hook process cwd stays project root. Exactly two model requests, one command output, no replay.",
+        "limits": "Local command only; source tests separately cover rewritten input/path conventions. No remote executor acceptance."
+      },
+      "dotenv_startup": {
+        "fixture": "dotenv_startup.py",
+        "baseline_source": "abf4bb91ec49fbf443ccec0069f9cab5dd1462d8",
+        "candidate_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+        "baseline_exit_code": 1,
+        "candidate_exit_code": 0,
+        "baseline_behavior": "Directory .env causes startup timeout.",
+        "candidate_behavior": "Both missing and directory .env exit --version within the bounded fixture timeout."
+      },
+      "permission_recovery": {
+        "fixture": "thread_settings.py",
+        "baseline_source": "abf4bb91ec49fbf443ccec0069f9cab5dd1462d8",
+        "candidate_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+        "baseline_exit_code": 1,
+        "candidate_exit_code": 0,
+        "baseline_behavior": "Stale turn_context wins over acknowledged permission/reviewer checkpoint.",
+        "candidate_behavior": "Acknowledged on-request/autoreview/read-only settings survive fork and cold resume in legacy and paginated history."
+      }
+    },
+    "current_case_contracts": {
+      "dotenv_startup": {
+        "fixture": "dotenv_startup.py",
+        "passed_cases": 2,
+        "contract": "Missing .env and directory .env both exit --version promptly; the old selected artifact times out for a directory."
+      },
+      "thread_settings": {
+        "fixture": "thread_settings.py",
+        "passed_cases": 5,
+        "contract": "Selected tier/summary, no-op checkpoint and acknowledged approval/reviewer survive fork and cold resume in both history modes; stale context does not overwrite acknowledged permissions."
+      },
+      "model_errors": {
+        "fixture": "model_errors.py",
+        "passed_cases": 5,
+        "contract": "Three modelNotFound transports and HTTP 503/SSE response.failed policy-capacity classification persist across cold reopen. HTTP request_max_retries=2 gives three attempts; SSE failed gives one. No Decodex automatic retry added. Bare SSE error policy classification is outside the upstream change."
+      }
+    }
   },
   "source_review_evidence": "automations/upstream/current-review.json",
   "optional_decisions": [
@@ -936,28 +1043,29 @@
     "environment": {
       "DECODEX_TEST_DEVELOPMENT_RUNTIME": "Exact candidate runtime root"
     },
-    "contract": "Import fixed source, reject wrong/missing source, repair damaged CLI/schema/both helpers offline from verified archive; preserve unrelated cached version and selection after failed import."
+    "contract": "Import fixed source, reject wrong/missing source, repair damaged CLI/schema/both helpers offline from verified archive; preserve unrelated cached version and selection after failed import.",
+    "elapsed_seconds": 85.33
   },
   "source_review_summary": {
-    "range_start_exclusive": "970111f6cb62cc02fe36a82ea7d71b37a2889c97",
-    "range_end_inclusive": "abf4bb91ec49fbf443ccec0069f9cab5dd1462d8",
-    "reviewed_count": 43,
-    "screened_count": 43,
+    "range_start_exclusive": "abf4bb91ec49fbf443ccec0069f9cab5dd1462d8",
+    "range_end_inclusive": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+    "screened_count": 127,
+    "reviewed_count": 127,
+    "remaining_count_against_fixed_target": 0,
     "classification_counts": {
-      "not_applicable": 11,
-      "native_owned": 24,
-      "necessary_repair": 5,
-      "optional_decision": 3
+      "not_applicable": 47,
+      "native_owned": 77,
+      "necessary_repair": 3
     },
     "source_review_evidence": "automations/upstream/current-review.json",
-    "source_review_evidence_sha256": "411a0b5dbff918d7331bace8337763fd55a340290b2f8403cc556d02478ff782",
-    "selected_runtime_source": "abf4bb91ec49fbf443ccec0069f9cab5dd1462d8",
-    "runtime_disposition": "Qualified fixed development artifact; public delivery and merge readback remain separate.",
-    "tests_read_unique_function_count": 101,
-    "source_tests_executed_count": 732,
-    "source_tests_passed_count": 732,
-    "source_tests_failed_count_after_fixture_repair": 0,
-    "source_test_attempts": 742
+    "source_review_evidence_sha256": "0e07898e62c9b1a1975e688dfde3c0459e4632e5317d97cbfbc2a4637a06c211",
+    "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+    "runtime_disposition": "Qualified fixed development artifact; delivery pending",
+    "tests_read_unique_function_count": 131,
+    "source_tests_executed_count": 1264,
+    "source_tests_passed_count": 1263,
+    "source_tests_failed_count_after_fixture_repair": 1,
+    "source_test_attempts": 1593
   },
   "retained_native_coordination": {
     "idle_root_agent_message_wake": {
@@ -1225,17 +1333,17 @@
     }
   },
   "documentation_lifecycle": {
-    "status": "lifecycle_completed_check_delivery",
+    "method": "OpenWiki supported page-job lifecycle",
     "selected_pages": [
-      "openwiki/architecture/conversation-presentation.md",
-      "openwiki/testing/upstream-acceptance-boundaries.md",
       "openwiki/architecture/runtime-architecture.md",
       "openwiki/operations/codex-upstream-autopilot.md",
-      "openwiki/operations/commands-and-validation.md"
+      "openwiki/testing/upstream-acceptance-boundaries.md",
+      "openwiki/workflows/conversations-and-recovery.md",
+      "openwiki/workflows/models-and-settings.md",
+      "openwiki/decisions/upstream-product-scope.md"
     ],
-    "method": "OpenWiki page jobs reconcile the selected pages and mandatory stale Claims before finish.",
-    "delivery_status": "Read the public change and its checks for merge status; a completed local lifecycle does not establish delivery.",
-    "limits": "Documentation reconciliation does not execute native regressions or establish installed-app, live-provider or release acceptance. Historical qualification remains bound to its original source and artifact."
+    "state_source": "OpenWiki-managed metadata and the public delivery reference identify lifecycle and delivery status.",
+    "limits": "Documentation reconciliation does not requalify the artifact or establish installation/release."
   },
   "retained_behavior_contracts": [
     {
@@ -2942,11 +3050,10 @@
     }
   },
   "current_delivery": {
-    "status": "public_pull_request_reference",
-    "scope": "Advance fixed development runtime to abf4bb91, repair native command-hook cwd and output retention, and qualify retained capabilities. No product feature flag enabled.",
-    "state_source": "Read the linked public PR for merge state and exact-head checks. Qualification does not establish installed-app acceptance.",
-    "code_commit": "a2f9c8766814f5173bd3e4a4615874fa3202d02e",
-    "pull_request": "https://github.com/acg-box/decodex/pull/2514"
+    "status": "qualified_delivery_pending",
+    "scope": "Advance development runtime to 33d306d4; accept empty attached-child visible history while preserving parent context, restore acknowledged permissions, avoid dotenv startup hang and preserve native policy-capacity errors. No new optional product capability.",
+    "state_source": "Read the focused public PR for exact-head checks and merge state; installed-app acceptance is separate.",
+    "code_commit": "15f7c5a9168ddd76bc9dc0cd9f0dffef13a3d3c3"
   },
   "retained_account_scope": {
     "provider": "ChatGPT-backed identity; recognized plan labels are not separate provider implementations.",
@@ -4948,7 +5055,7 @@
       "Agent preferences > Attached branches > Open branch"
     ],
     "contracts": [
-      "Create one persistent native attachToSource fork from the reviewed completed prefix. Reuse history/settings guards, durable intent and acknowledgement. Preserve the source provider, submit no model turn and leave source history unchanged.",
+      "Create one persistent native attachToSource fork from the reviewed completed source boundary. Source turn IDs retain provenance; child-visible history starts empty and subsequent child turns are independent. Native model context retains the source prefix. Reuse history/settings guards, durable intent and acknowledgement, preserve source provider, submit no turn during creation and leave source history unchanged.",
       "Retain the exact source Agent as the local parent. Reuse the existing persistent Agent, project membership, normal input, drafts and navigation owners. The branch is not a native Subagent.",
       "Attached forks start without the source Goal snapshot. The original retains its Goal. Do not combine attachToSource with deferGoalContinuation or ephemeral mode.",
       "Native ordinary thread/list omits attached forks. Use exact attachedToThreadId membership for archive observation and acknowledgement recovery, including empty forks. Failed metadata/filter reads remain unknown.",
@@ -5191,13 +5298,27 @@
     "delivery_references": [
       "https://github.com/acg-box/decodex/pull/2511"
     ],
-    "delivery_state_source": "Read the linked public PR for merge state and exact-head checks; review, native qualification and delivery remain separate."
+    "delivery_state_source": "Read the linked public PR for merge state and exact-head checks; review, native qualification and delivery remain separate.",
+    "current_compatibility": {
+      "source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+      "native_constraint": "Attached forks require paginated history. The retained public workflow already enforces this. Legacy attachment is explicitly rejected by native; ordinary legacy forks remain qualified.",
+      "local_source_symbols": [
+        "database/src/agent_fork.rs::expected_turns",
+        "AgentCoordinator::recover_prompt_fork"
+      ],
+      "tests": [
+        "installed_fork_preserves_source_provider_after_default_changes",
+        "installed_recap_public_socket_preserves_parent_and_exact_request_identity"
+      ],
+      "evidence": "automations/upstream/qualification.json",
+      "limits": "Original feature-selection qualification below retains its own source/artifact and delivery limits. Current qualification supersedes its child-visible prefix expectation."
+    }
   },
   "current_runtime_requalification": {
-    "source": "abf4bb91ec49fbf443ccec0069f9cab5dd1462d8",
+    "source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
     "exact_artifact_native_tests": 51,
     "local_history_filter_tests": 2,
-    "python_artifact_probes": 16,
+    "python_artifact_probes": 17,
     "exact_code_mode_helper_tests": 1,
     "retained_manual_deliveries": [
       "https://github.com/acg-box/decodex/pull/2508",
