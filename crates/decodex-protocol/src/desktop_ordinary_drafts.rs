@@ -221,7 +221,6 @@ mod tests {
 		assert!(
 			matches!(&saved.unconfirmed[0].payload, CommandPayload::CreateConversation { message,.. } if message.as_str()=="Original submitted input")
 		);
-
 		assert!(DesktopDraftDocument::decode(br#"{"version":4,"profiles":{}}"#).is_err());
 	}
 

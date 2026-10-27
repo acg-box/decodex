@@ -1766,6 +1766,7 @@ impl AgentClient {
 		key: IdempotencyKey,
 	) -> Result<bool, ClientFailure> {
 		self.transport.require_local_profile()?;
+
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
@@ -1775,7 +1776,9 @@ impl AgentClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
 		close_one_shot_socket(completed.socket).await;
+
 		match completed.value {
 			QueryResultPayload::AgentMessageReceived(received) => Ok(received),
 			_ => Err(ClientFailure::ProtocolMalformed),

@@ -1,6 +1,7 @@
 //! Merge current editor changes without keeping alternative profile snapshots.
-use crate::{DesktopDraftDocument, DesktopProfileDraft};
 use std::{collections::BTreeSet, mem};
+
+use crate::{DesktopDraftDocument, DesktopProfileDraft};
 
 impl DesktopDraftDocument {
 	/// Keep the current edit where this writer changed it; adopt unrelated newer profiles.
@@ -9,18 +10,25 @@ impl DesktopDraftDocument {
 		self.validate()?;
 		baseline.validate()?;
 		latest.validate()?;
-		let mut result = latest.clone();
+
+		let result = latest.clone();
 		let scopes: BTreeSet<_> = self.profiles.keys().chain(baseline.profiles.keys()).collect();
+		let mut result = result;
+
 		for scope in scopes {
 			let local = self.profiles.get(scope);
+
 			if local == baseline.profiles.get(scope) || local == latest.profiles.get(scope) {
 				continue;
 			}
+
 			if let Some(local) = local {
 				let mut selected = local.clone();
+
 				if let Some(remote) = latest.profiles.get(scope) {
 					retain_receipts(&mut selected, remote)?;
 				}
+
 				result.profiles.insert(scope.clone(), selected);
 			} else if !latest
 				.profiles
@@ -30,38 +38,51 @@ impl DesktopDraftDocument {
 				result.profiles.remove(scope);
 			}
 		}
+
 		if self.unbound != baseline.unbound {
 			result.unbound = self.unbound.clone();
 		}
+
 		let directories: BTreeSet<_> =
 			self.unbound_ordinary.keys().chain(baseline.unbound_ordinary.keys()).collect();
+
 		for directory in directories {
 			let local = self.unbound_ordinary.get(directory);
+
 			if local == baseline.unbound_ordinary.get(directory) {
 				continue;
 			}
+
 			if let Some(local) = local {
 				result.unbound_ordinary.insert(directory.clone(), local.clone());
 			} else {
 				result.unbound_ordinary.remove(directory);
 			}
 		}
+
 		result.encode()?;
+
 		Ok(result)
 	}
 
 	/// Move service-free editors to the selected profile and retain unresolved receipts.
 	pub fn adopt_unbound_ordinary(&self, scope: &str) -> Result<Self, &'static str> {
 		self.validate()?;
+
 		let mut result = self.clone();
+
 		if !self.unbound_ordinary.is_empty() {
 			let selected = result.profiles.entry(scope.into()).or_default();
+
 			selected.ordinary.extend(mem::take(&mut result.unbound_ordinary));
+
 			if let Some(saved) = self.profiles.get(scope) {
 				retain_receipts(selected, saved)?;
 			}
 		}
+
 		result.encode()?;
+
 		Ok(result)
 	}
 }
@@ -77,6 +98,7 @@ fn retain_receipts(
 					"A history edit is still being sent in another window. Keep this editor open until its status is resolved.",
 				);
 			}
+
 			selected.prompt_edits.insert(review.clone(), draft.clone());
 
 			continue;
@@ -115,10 +137,10 @@ fn retain_receipts(
 			}
 		}
 	}
-
 	for (key, message) in &other.messages {
 		selected.messages.entry(key.clone()).or_insert_with(|| message.clone());
 	}
+
 	selected.uncertain |= other.uncertain;
 
 	for key in other.unconfirmed_commands.iter().chain(
@@ -132,6 +154,7 @@ fn retain_receipts(
 			selected.unconfirmed_commands.push(key.clone());
 		}
 	}
+
 	Ok(())
 }
 
@@ -139,7 +162,8 @@ fn retain_receipts(
 mod tests {
 	use crate::{
 		AgentActionDto, DesktopDraftDocument, DesktopMessage, DesktopMessageState,
-		DesktopProfileDraft, EntityId, HistoryText, IdempotencyKey,
+		DesktopProfileDraft, DesktopPromptEditDraft, EntityId, HistoryText, IdempotencyKey,
+		PromptDraft, WireText,
 	};
 
 	#[test]
@@ -147,12 +171,18 @@ mod tests {
 		let scope = "a".repeat(64);
 		let other = "b".repeat(64);
 		let mut baseline = DesktopDraftDocument::default();
+
 		baseline.profiles.insert(scope.clone(), DesktopProfileDraft::default());
+
 		let mut local = baseline.clone();
+
 		local.profiles.get_mut(&scope).unwrap().composer.text = "Current input".into();
+
 		let mut latest = baseline.clone();
 		let profile = latest.profiles.get_mut(&scope).unwrap();
+
 		profile.composer.text = "Older competing input".into();
+
 		let key = IdempotencyKey::new("unconfirmed-input").unwrap();
 		let message = DesktopMessage {
 			action: AgentActionDto::Send {
@@ -165,13 +195,21 @@ mod tests {
 			state: DesktopMessageState::Unconfirmed,
 			error: None,
 		};
+
 		profile.messages.insert(key.clone(), message.clone());
+
 		profile.uncertain = true;
+
 		profile.unconfirmed_commands.push(key.clone());
+
 		let mut foreign = DesktopProfileDraft::default();
+
 		foreign.composer.text = "Another profile".into();
+
 		latest.profiles.insert(other.clone(), foreign.clone());
+
 		let merged = local.merge_edits(&baseline, &latest).unwrap();
+
 		assert_eq!(merged.profiles[&scope].composer.text, "Current input");
 		assert_eq!(merged.profiles[&scope].messages[&key], message);
 		assert_eq!(merged.profiles[&scope].unconfirmed_commands, vec![key]);
@@ -181,7 +219,6 @@ mod tests {
 
 	#[test]
 	fn a_competing_pending_prompt_does_not_replace_the_current_editor() {
-		use crate::{DesktopPromptEditDraft, PromptDraft, WireText};
 		let scope = "a".repeat(64);
 		let review = "b".repeat(64);
 		let input =
@@ -201,13 +238,16 @@ mod tests {
 			input,
 		};
 		let mut baseline = DesktopDraftDocument::default();
+
 		baseline
 			.profiles
 			.entry(scope.clone())
 			.or_default()
 			.prompt_edits
 			.insert(review.clone(), draft.clone());
+
 		let mut local = baseline.clone();
+
 		local
 			.profiles
 			.get_mut(&scope)
@@ -218,11 +258,14 @@ mod tests {
 			.input
 			.replace_text(0, 0..8, "Current edit")
 			.unwrap();
+
 		let mut remote = baseline.clone();
+
 		remote.profiles.get_mut(&scope).unwrap().prompt_edits.insert(
 			review.clone(),
 			draft.begin_send(7, IdempotencyKey::new("send").unwrap(), Default::default()).unwrap(),
 		);
+
 		assert!(local.merge_edits(&baseline, &remote).is_err());
 		assert_eq!(
 			local.profiles[&scope].prompt_edits[&review].input.parts()[0]["text"],

@@ -1,6 +1,7 @@
 //! Exact local message delivery state, separate from the editable input.
-use crate::{AgentActionDto, EntityId, WireText, desktop_drafts};
 use serde::{Deserialize, Serialize};
+
+use crate::{AgentActionDto, EntityId, WireText, desktop_drafts};
 
 /// Local knowledge of one input. Unconfirmed input never authorizes a retry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -34,9 +35,11 @@ pub struct DesktopMessage {
 impl DesktopMessage {
 	pub(super) fn validate(&self) -> Result<(), &'static str> {
 		desktop_drafts::validate_text(&self.text)?;
+
 		if let Some(error) = &self.error {
 			desktop_drafts::validate_text(error)?;
 		}
+
 		if !matches!(
 			&self.action,
 			AgentActionDto::Start(_)
@@ -49,6 +52,7 @@ impl DesktopMessage {
 		) {
 			return Err("Saved message is not an input operation");
 		}
+
 		Ok(())
 	}
 }

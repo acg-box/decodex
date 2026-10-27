@@ -2878,6 +2878,7 @@ fn read_conversation_presentation(
         "SELECT c.title,q.message,q.working_directory FROM conversations c JOIN quick_task_requests q USING(conversation_id) WHERE c.conversation_id=?1",
         [conversation_id.as_str()],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?)),
     ).map_err(account_lifecycle::sql_error)?;
+
 	Ok((conversation_display_title(&title, &message), directory))
 }
 

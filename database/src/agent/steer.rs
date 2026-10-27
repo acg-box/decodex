@@ -46,10 +46,12 @@ impl SqliteStore {
 		generation: Option<String>,
 	) -> Result<(), StoreError> {
 		agent::bounded(&thread, 512)?;
+
 		for (turn, client_id) in &receipts {
 			agent::bounded(turn, 512)?;
 			agent::bounded(client_id, 512)?;
 		}
+
 		if receipts.is_empty() {
 			return Ok(());
 		}
@@ -58,6 +60,7 @@ impl SqliteStore {
 			let tx = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(error::sqlite_error)?;
+
 			for (turn, client_id) in receipts {
 				let candidate: Option<(i64, String)> = tx
 					.prepare_cached(
@@ -74,13 +77,16 @@ impl SqliteStore {
 					})
 					.optional()
 					.map_err(error::sqlite_error)?;
+
 				if let Some((event, work)) = candidate
 					&& agent_process::owns_work(&tx, &work, generation.as_deref())?
 				{
 					finish(&tx, event, true)?;
 				}
 			}
+
 			tx.commit().map_err(error::sqlite_error)?;
+
 			Ok(())
 		})
 		.await
