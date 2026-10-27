@@ -22,7 +22,8 @@
     "https://github.com/acg-box/decodex/pull/2508",
     "https://github.com/acg-box/decodex/pull/2511",
     "https://github.com/acg-box/decodex/pull/2514",
-    "https://github.com/acg-box/decodex/pull/2518"
+    "https://github.com/acg-box/decodex/pull/2518",
+    "https://github.com/acg-box/decodex/pull/2519"
   ],
   "retained_native_consumers": {
     "tests": [
@@ -763,8 +764,10 @@
       "value": "Share compatible local stdio MCP connections among chats in one native process; sharing across independent processes is not established.",
       "maintenance_cost": "Native sharing is low-cost only if discovery and retained legacy fallback qualify; cross-process ownership and isolation need separate research.",
       "recommendation": "Keep the global flag off until a supported scoped opt-in or upstream fallback passes the exact retained native regression and same-process sharing tests.",
-      "evidence": "Selected artifact abf4bb91: supported same-process sharing fixture passed; the existing native_subagent_mcp retained fixture passed four sharing-off subcases and failed four sharing-on subcases when server/discover returned an empty result. The changed test fixture remains unmerged; do not infer production acceptance.",
-      "decision_status": "User approved native sharing; implementation is blocked by a reproduced legacy discovery regression. No new user decision is needed."
+      "evidence": "See retained_behavior_contracts#native-mcp-sharing-qualification-fixtures for the exact artifact, reusable fixture, passing control and explicitly failing enabled regression. Product sharing remains disabled.",
+      "decision_status": "User approved native sharing; implementation is blocked by a reproduced legacy discovery regression. No new user decision is needed.",
+      "qualification_fixture_delivery": "https://github.com/acg-box/decodex/pull/2519",
+      "implementation_enabled": false
     },
     {
       "id": "native-critical-path-timing",
@@ -1396,11 +1399,6 @@
         "apps/decodex-gpui/src/agent_response_metrics.rs": "cc655def89b9269ca3319f3b051f63b2eb79e5ea7561ab0b8cd7b8329af98741",
         "database/src/agent.rs": "8c327fa856c0e5c2545deb90368ce761da572954701ec8ba4dc737726be2974e"
       },
-      "tests_read_not_claimed_executed": [
-        "codex-rs/app-server-protocol/src/protocol/v2/item.rs#ToolRequestUserInputParams",
-        "codex-rs/app-server-protocol/src/protocol/v2/thread.rs#ThreadTimelineEntry",
-        "codex-rs/app-server/tests/suite/v2/critical_path_analytics_tests.rs#critical_path_reaches_turn_event"
-      ],
       "executed_regressions": {
         "headless": {
           "command": [
@@ -1542,7 +1540,183 @@
         "remote_checks": "Three CodeQL language analyses succeeded on the exact main commit. The associated merged PR head 9b4b64f9f5edf7cf84fda6f6295cf2c0cc866a05 had three successful analyses and a neutral CodeQL aggregate."
       },
       "delivery_status": "Read the linked public PR for its merge state and exact-head checks.",
-      "documentation_lifecycle": "incomplete; see documentation_lifecycle"
+      "documentation_lifecycle": "incomplete; see documentation_lifecycle",
+      "upstream_source_read": [
+        "codex-rs/app-server-protocol/src/protocol/v2/item.rs#ToolRequestUserInputParams",
+        "codex-rs/app-server-protocol/src/protocol/v2/thread.rs#ThreadTimelineEntry"
+      ],
+      "upstream_tests_read_not_executed": [
+        "codex-rs/app-server/tests/suite/v2/critical_path_analytics_tests.rs#critical_path_reaches_turn_event"
+      ]
+    },
+    {
+      "id": "native-mcp-sharing-qualification-fixtures",
+      "contract": "Keep a reproducible native qualification for compatible same-process MCP sharing, compliant private legacy fallback, separate-process isolation, per-chat helper leases and actual tool calls. Keep the existing child input and policy assertions as a separate sharing-enabled qualification. Native sharing stays disabled until every retained regression passes against the exact selected artifact.",
+      "source_symbols": [
+        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_sharing_tests.rs#explicit_sharing_candidate_uses_compatible_same_process_mcp_connections",
+        "crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs#native_child_mcp_input_preserves_policy_and_exact_request",
+        "crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs#native_shared_child_mcp_input_preserves_policy_and_exact_request",
+        "crates/decodex-runtime/src/account_launch/process.rs#APP_SERVER_ARGS"
+      ],
+      "selected_source_sha256": {
+        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_sharing_tests.rs": "d3955b587ab4e9da97057d414c9de485db11963fcac19f2884e826f6beb119b1",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_tests.rs": "ae5c3048c3a27c3b8d006b1e3fd704cc53e028a53b0e5be0aa611cafbae6994c",
+        "crates/decodex-runtime/src/account_launch/native_mcp_sharing.py": "3f82aa6c227f2d3a963d0ba7dc0ccedcb8e99cebf7be58f4318f608176247c73",
+        "crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs": "1ae4516900cf45cbd1489b243a6ec54f4ca4baaf5e272a18a7463ad509cc262e",
+        "crates/decodex-runtime/src/agent/tests/native_subagent_mcp_server.py": "815d783a154a055aa0de2465795253c8cde271f55e51d8e4efb8333b54c9ec7e",
+        "crates/decodex-runtime/src/account_launch/process.rs": "1c87d79cf8035a79a5ba91f7ce0c011696cdf9490e01f401ad49ef93f3f6cbab"
+      },
+      "executed_regressions": [
+        {
+          "selector": "account_launch::agent_process::native_tests::mcp_sharing::explicit_sharing_candidate_uses_compatible_same_process_mcp_connections",
+          "environment": "DECODEX_TEST_CODEX_BINARY=<qualified-cli>",
+          "executed": 1,
+          "passed": 1,
+          "failed": 0,
+          "command": [
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "account_launch::agent_process::native_tests::mcp_sharing::explicit_sharing_candidate_uses_compatible_same_process_mcp_connections",
+            "--",
+            "--exact",
+            "--ignored",
+            "--nocapture"
+          ]
+        },
+        {
+          "selector": "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
+          "environment": "DECODEX_NATIVE_BINARY=<qualified-cli>",
+          "executed": 1,
+          "passed": 1,
+          "subcases": 4,
+          "subcases_passed": 4,
+          "command": [
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
+            "--",
+            "--exact",
+            "--ignored",
+            "--nocapture"
+          ]
+        },
+        {
+          "selector": "agent::tests::native_subagent_live::mcp::native_shared_child_mcp_input_preserves_policy_and_exact_request",
+          "environment": "DECODEX_NATIVE_BINARY=<qualified-cli>",
+          "executed": 1,
+          "passed": 0,
+          "failed": 1,
+          "subcases": 4,
+          "subcases_failed": 4,
+          "command": [
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "agent::tests::native_subagent_live::mcp::native_shared_child_mcp_input_preserves_policy_and_exact_request",
+            "--",
+            "--exact",
+            "--ignored",
+            "--nocapture"
+          ],
+          "qualification_result": "Expected failure on the current selected artifact: an unmarked helper responds to discovery with an empty result, and native startup reports -32603. This is a delivery blocker, not a passed regression."
+        },
+        {
+          "selector": "account_launch::process::tests::production_command_shape_cannot_inject_fake_launch_arguments",
+          "executed": 1,
+          "passed": 1,
+          "command": [
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "production_command_shape_cannot_inject_fake_launch_arguments",
+            "--",
+            "--nocapture"
+          ]
+        }
+      ],
+      "unmatched_selectors": [],
+      "artifact": {
+        "source_commit": "abf4bb91ec49fbf443ccec0069f9cab5dd1462d8",
+        "cli_sha256": "b851d71b579cf184d5dd92b8fa7a476827c9c9e26a5baf305c1d25e4e577e956",
+        "schema_sha256": "50c4da5e674696a1504e97729bf69b42f867ebe88ab11428ed1de296df79e7dc",
+        "component_qualification": "See qualification.json; the sharing fixture does not requalify every native helper or newer source."
+      },
+      "limits": [
+        "Native candidate sharing was enabled only in isolated fixture processes, not the production launch. Cross-process connection sharing was not observed.",
+        "The current legacy failure prevents feature enablement. It is not an installed-app, real-account or real-provider test.",
+        "The newer upstream research target was inspected selectively; no source-review cursor was advanced and no newer binary was qualified."
+      ],
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2519",
+      "delivery_status": "Read the linked public PR for its merge state and exact-head checks.",
+      "main_baseline": "74d41f05f022acaed85d8e6434aca680a0b179c8",
+      "validation": {
+        "strict_runtime_clippy": {
+          "command": [
+            "cargo",
+            "clippy",
+            "--package",
+            "decodex-runtime",
+            "--all-features",
+            "--all-targets",
+            "--keep-going",
+            "--",
+            "--no-deps",
+            "-D",
+            "clippy::all",
+            "-D",
+            "clippy::too_many_lines",
+            "-D",
+            "clippy::unwrap_used",
+            "-D",
+            "clippy::use_self",
+            "-D",
+            "clippy::wildcard_imports",
+            "-D",
+            "missing-docs",
+            "-D",
+            "unused-crate-dependencies",
+            "-D",
+            "warnings"
+          ],
+          "passed": true
+        },
+        "rust_format": {
+          "command": [
+            "rustup",
+            "run",
+            "nightly",
+            "cargo",
+            "fmt",
+            "--all",
+            "--",
+            "--check"
+          ],
+          "passed": true
+        }
+      },
+      "upstream_source_read": [
+        "codex-rs/codex-mcp/src/connection_pool.rs#McpConnectionPool",
+        "codex-rs/rmcp-client/src/protocol_mode.rs#McpProtocolMode::stdio_mode",
+        "codex-rs/rmcp-client/src/stdio_handshake.rs#should_restart_legacy"
+      ],
+      "upstream_tests_read_not_executed": [
+        "codex-rs/codex-mcp/src/connection_pool_tests.rs#shared_startup_survives_first_chat_cancellation_and_rejects_released_bindings",
+        "codex-rs/codex-mcp/src/connection_pool_tests.rs#negotiation_requires_the_stateless_protocol_and_detaches_startup_callbacks"
+      ]
     }
   ],
   "retained_native_diagnostics": {

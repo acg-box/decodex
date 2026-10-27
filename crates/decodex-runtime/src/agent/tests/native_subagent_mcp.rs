@@ -30,6 +30,18 @@ fn mcp_response(body: &Value, serial: usize) -> Value {
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY; isolated child MCP input"]
 async fn native_child_mcp_input_preserves_policy_and_exact_request() {
+	qualify_cases(false).await;
+}
+
+#[tokio::test]
+#[ignore = "requires DECODEX_NATIVE_BINARY; run before enabling native MCP sharing"]
+async fn native_shared_child_mcp_input_preserves_policy_and_exact_request() {
+	// The selected runtime currently fails this qualification during legacy discovery.
+	// Keep sharing disabled until the exact runtime passes these unchanged assertions.
+	qualify_cases(true).await;
+}
+
+async fn qualify_cases(sharing: bool) {
 	let mut failures = 0;
 
 	for marker in [
@@ -37,8 +49,14 @@ async fn native_child_mcp_input_preserves_policy_and_exact_request() {
 		serde_json::json!({"codex_requires_user_input":true}),
 	] {
 		for interactive in [false, true] {
-			if AssertUnwindSafe(qualify(marker.clone(), interactive)).catch_unwind().await.is_err()
+			if AssertUnwindSafe(qualify(marker.clone(), interactive, sharing))
+				.catch_unwind()
+				.await
+				.is_err()
 			{
+				eprintln!(
+					"child MCP fixture failed with sharing={sharing}, interactive={interactive}"
+				);
 				failures += 1;
 			}
 		}
@@ -47,7 +65,7 @@ async fn native_child_mcp_input_preserves_policy_and_exact_request() {
 	assert_eq!(failures, 0, "native child input must preserve policy and request ownership");
 }
 
-async fn qualify(marker: Value, interactive: bool) {
+async fn qualify(marker: Value, interactive: bool, sharing: bool) {
 	let binary = env::var("DECODEX_NATIVE_BINARY").expect("native binary");
 	let directory = tempfile::tempdir().expect("fixture home");
 	let home = directory.path().canonicalize().expect("canonical home");
@@ -65,7 +83,8 @@ async fn qualify(marker: Value, interactive: bool) {
 		mcp_response,
 	));
 
-	fs::write(home.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2=true\n[model_providers.fixture]\nname=\"Isolated MCP child\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.fixture]\ncommand=\"/usr/bin/python3\"\nargs=[{},{},{},{}]\nrequired=true\ndefault_tools_approval_mode=\"approve\"\n",serde_json::json!(script),serde_json::json!(record),serde_json::json!(marker.to_string()),serde_json::json!(interactive.to_string()))).expect("config");
+	let sharing_feature = if sharing { "mcp_connection_sharing=true\n" } else { "" };
+	fs::write(home.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\napprovals_reviewer=\"user\"\n[features]\nmulti_agent=true\nmulti_agent_v2=true\n{sharing_feature}[model_providers.fixture]\nname=\"Isolated MCP child\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[mcp_servers.fixture]\ncommand=\"/usr/bin/python3\"\nargs=[{},{},{},{}]\nrequired=true\ndefault_tools_approval_mode=\"approve\"\n",serde_json::json!(script),serde_json::json!(record),serde_json::json!(marker.to_string()),serde_json::json!(interactive.to_string()))).expect("config");
 
 	let (mut agent, _, _store_home) = tests::fixture().await;
 	let mut command = Command::new(binary);
@@ -90,7 +109,7 @@ async fn qualify(marker: Value, interactive: bool) {
 
 	let outcome=AssertUnwindSafe(time::timeout(Duration::from_secs(60),async{
  agent.initialize().await.expect("initialize");
- agent.start_agent("agent","ROOT_SPAWN").await.expect("start root");
+ agent.start_agent("agent","ROOT_SPAWN").await.unwrap_or_else(|error| match error {crate::agent::AgentError::Transport(decodex_codex::app_server_client::ClientError::Remote(error))=>panic!("fixture start failed: {} {}",error.code,error.message),other=>panic!("fixture start failed: {other:?}")});
 
  let root=agent.store.get_agent_work_item("agent".into()).await.expect("root").codex_thread_id.expect("root thread");
  let mut prompts=0;
