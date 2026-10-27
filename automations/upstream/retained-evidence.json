@@ -2150,8 +2150,7 @@
         "codex-rs/app-server-daemon/README.md"
       ],
       "upstream_tests_read_not_executed": [
-        "codex-rs/app-server/tests/suite/v2/thread_attachments.rs#thread_attachment_mutations_respond_before_broadcasting_updates_to_multiple_clients",
-        "codex-rs/app-server/tests/suite/v2/mcp_connection_sharing.rs#stdio_sharing_follows_protocol_and_enablement_for_loaded_chats"
+        "codex-rs/app-server/tests/suite/v2/thread_attachments.rs#thread_attachment_mutations_respond_before_broadcasting_updates_to_multiple_clients"
       ],
       "main_baseline": "c7c8b781280f1d5d4f87c2a9013ac838d4f541e0",
       "limits": [
@@ -2336,6 +2335,66 @@
             "executed": 8,
             "passed": 8,
             "unmatched_selectors": []
+          },
+          {
+            "entrypoint": "codex-rs/app-server/tests/suite/v2/mcp_connection_sharing.rs#stdio_sharing_follows_protocol_and_enablement_for_loaded_chats",
+            "selector": "suite::v2::mcp_connection_sharing::stdio_sharing_follows_protocol_and_enablement_for_loaded_chats",
+            "preparation": [
+              [
+                "cargo",
+                "+stable",
+                "build",
+                "--locked",
+                "--profile",
+                "dev-small",
+                "-p",
+                "codex-rmcp-client",
+                "--bin",
+                "test_stdio_server"
+              ],
+              [
+                "cargo",
+                "+stable",
+                "build",
+                "--locked",
+                "--profile",
+                "dev-small",
+                "-p",
+                "codex-app-server",
+                "--bin",
+                "codex-app-server"
+              ]
+            ],
+            "environment": "CARGO_BIN_EXE_codex, CARGO_BIN_EXE_codex_app_server, and CARGO_BIN_EXE_test_stdio_server select locally built combined research executables",
+            "research_executable_sha256": {
+              "codex": "f54f1e6f99a12d8ae27a35e68e02fdad1d0610e3556d9a86d34500cf3100ba2e",
+              "codex-app-server": "3eeb186b1bf441e4ce3762d78cbd8fccaee895a2d09c401fda890b53da4b2bfa",
+              "test_stdio_server": "9f8db4d79f60bbcf68578d5842b91214abd0709e9ed2451fbc20f7f06504f950"
+            },
+            "command": [
+              "cargo",
+              "+stable",
+              "nextest",
+              "run",
+              "--locked",
+              "--cargo-profile",
+              "dev-small",
+              "-p",
+              "codex-app-server",
+              "--test",
+              "all",
+              "-E",
+              "test(=suite::v2::mcp_connection_sharing::stdio_sharing_follows_protocol_and_enablement_for_loaded_chats)",
+              "--no-fail-fast",
+              "--retries",
+              "0"
+            ],
+            "executed": 1,
+            "passed": 1,
+            "skipped": 1651,
+            "unmatched_selectors": [],
+            "coverage": "One native app-server integration test exercises three protocol and enablement combinations across multiple synthetic chats and verifies helper sharing and cleanup.",
+            "limits": "Modified combined source and research executables; not selected-runtime or installed-app qualification."
           }
         ],
         "limits": "The 2025 marker is explicit user configuration and can reach the legacy subprocess. No automatic relabeling of unmarked servers is authorized. A modified research CLI and its helpers are not a qualified development artifact.",
