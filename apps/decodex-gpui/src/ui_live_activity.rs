@@ -69,7 +69,14 @@ pub(crate) fn arrange(
 			.filter(|(i, _)| *i != index)
 			.map(|(_, item)| item.width)
 			.sum();
-		let room = (budget - others).max(0.);
+		let room = if allocations.len() == 2 {
+			// The two controls keep their inner edges fixed while expanding outward.
+			// Only half of the unused centered space is available on either side.
+			let resting: f32 = allocations.iter().map(|item| item.width).sum();
+			allocations[index].width + ((budget - resting) / 2.).max(0.)
+		} else {
+			(budget - others).max(0.)
+		};
 		let resting = sizes[index].minimal.max(MIN_CAPSULE_WIDTH);
 		let size = Sizing {
 			minimal: resting,
@@ -102,17 +109,20 @@ mod tests {
 		assert_eq!(resting.iter().map(|item| item.width).sum::<f32>(), 144.);
 		assert_eq!(resting[0].width, resting[1].width);
 
-		let focus = ui_live_activity::arrange(350., 6., &sizes, Some(1));
+		let focus = ui_live_activity::arrange(550., 6., &sizes, Some(1));
 
 		assert_eq!(focus[0].presentation, Presentation::Minimal);
 		assert_eq!(focus[1].presentation, Presentation::Expanded);
 		assert_eq!(focus[0].width + focus[1].width + 6., 350.);
 
-		let narrow = ui_live_activity::arrange(240., 6., &sizes, Some(1));
+		let narrow = ui_live_activity::arrange(310., 6., &sizes, Some(1));
 
 		assert_eq!(narrow[1].presentation, Presentation::Compact);
 		assert_eq!(narrow[1].width, 148., "unused room is not padding for a compact activity");
-		assert!(narrow.iter().map(|item| item.width).sum::<f32>() + 6. <= 240.);
+		assert!(narrow.iter().map(|item| item.width).sum::<f32>() + 6. <= 310.);
+		let narrow_rest = ui_live_activity::arrange(310., 6., &sizes, None);
+		let centered_right = (310. + narrow_rest[0].width + 6. + narrow_rest[1].width) / 2.;
+		assert!(centered_right + narrow[1].width - narrow_rest[1].width <= 310.);
 		assert_eq!(sizes[0].presentation(120.), Presentation::Minimal);
 
 		let mut uneven = sizes;

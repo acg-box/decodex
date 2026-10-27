@@ -290,17 +290,17 @@ impl PerformanceIsland {
 		&self,
 		activity: Activity,
 		allocation: Allocation,
+		width: f32,
 		content: &readout::Content,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let (control, surface, toggle, width_key, height_key) = activity.ids();
+		let (control, surface, toggle, _, height_key) = activity.ids();
 		let expandable = content.expandable();
 		let expanded = expandable
 			&& self.expanded(activity)
 			&& allocation.presentation == Presentation::Expanded;
 		let open_height = content.height();
-		let width = ui_motion::value(width_key, allocation.width, window, cx);
 		let height = ui_motion::value(
 			height_key,
 			if expanded { open_height } else { CAPSULE_HEIGHT },
@@ -464,16 +464,32 @@ impl Render for PerformanceIsland {
 			.then(|| activities.iter().position(|(activity, _)| *activity == self.activity))
 			.flatten();
 		let sizes: Vec<_> = activities.iter().map(|(_, content)| content.sizing()).collect();
-		let allocations = ui_live_activity::arrange(
-			self.available_width.unwrap_or(f32::from(window.viewport_size().width) / 2.),
-			6.,
-			&sizes,
-			selected,
-		);
-		let mut islands = gpui::div().flex().items_start().gap(gpui::px(6.));
+		let available =
+			self.available_width.unwrap_or(f32::from(window.viewport_size().width) / 2.);
+		let resting = ui_live_activity::arrange(available, 6., &sizes, None);
+		let allocations = ui_live_activity::arrange(available, 6., &sizes, selected);
+		let widths: Vec<_> = activities
+			.iter()
+			.zip(&allocations)
+			.map(|((activity, _), allocation)| {
+				ui_motion::value(activity.ids().3, allocation.width, window, cx)
+			})
+			.collect();
+		// Counter the centered row's movement so each pill expands away from its neighbor.
+		let shift = if let ([left, right], [left_rest, right_rest]) =
+			(widths.as_slice(), resting.as_slice())
+		{
+			((right - right_rest.width) - (left - left_rest.width)) / 2.
+		} else {
+			0.
+		};
+		let mut islands =
+			gpui::div().relative().left(gpui::px(shift)).flex().items_start().gap(gpui::px(6.));
 
-		for ((activity, content), allocation) in activities.iter().zip(allocations) {
-			islands = islands.child(self.pill(*activity, allocation, content, window, cx));
+		for (((activity, content), allocation), width) in
+			activities.iter().zip(allocations).zip(widths)
+		{
+			islands = islands.child(self.pill(*activity, allocation, width, content, window, cx));
 		}
 
 		islands.into_any_element()

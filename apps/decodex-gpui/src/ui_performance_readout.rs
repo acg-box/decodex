@@ -62,6 +62,10 @@ fn activity_status(working: bool, generating: bool, has_rate: bool) -> Option<&'
 	}
 }
 
+fn tokens(value: &str) -> String {
+	if value == "—" { value.into() } else { format!("{value} tok") }
+}
+
 fn breakdown_columns(
 	data: &Work,
 	width: &mut impl FnMut(&'static str, &str, f32, FontWeight) -> f32,
@@ -79,7 +83,7 @@ fn breakdown_columns(
 
 			maximum.max(width(label_id, label, TEXT_SIZE, FontWeight::NORMAL)).max(width(
 				value_id,
-				&data.breakdown[index],
+				&tokens(&data.breakdown[index]),
 				TEXT_SIZE,
 				FontWeight::MEDIUM,
 			))
@@ -168,9 +172,9 @@ impl Content {
 				+ width("activity-width-rate-unit", data.unit(), TEXT_SIZE, FontWeight::NORMAL)
 		};
 		let minimal = if data.idle_total() {
-			width("activity-width-idle-label", "Total", TEXT_SIZE, FontWeight::NORMAL)
+			width("activity-width-idle-total", &data.total, TEXT_SIZE, FontWeight::MEDIUM)
 				+ 3.
-				+ width("activity-width-idle-total", &data.total, TEXT_SIZE, FontWeight::MEDIUM)
+				+ width("activity-width-idle-unit", "tok", TEXT_SIZE, FontWeight::NORMAL)
 				+ 22.
 		} else {
 			primary + 22.
@@ -179,7 +183,12 @@ impl Content {
 			+ 16.
 			+ width("activity-width-total-label", "Total", TEXT_SIZE, FontWeight::NORMAL)
 			+ 4.
-			+ width("activity-width-total-value", &data.total, TEXT_SIZE, FontWeight::MEDIUM)
+			+ width(
+				"activity-width-total-value",
+				&tokens(&data.total),
+				TEXT_SIZE,
+				FontWeight::MEDIUM,
+			)
 			+ FRAME;
 		let longest = |get: fn(&Live) -> String| {
 			data.rows.iter().map(get).max_by_key(String::len).unwrap_or_default()
@@ -253,21 +262,27 @@ impl Content {
 			+ 3.
 			+ width("activity-width-fps-small", "FPS", TEXT_SIZE, FontWeight::NORMAL)
 			+ 22.;
-		let compact = width("activity-width-fps-label", "FPS", TEXT_SIZE, FontWeight::NORMAL)
-			+ 4.
-			+ fps
-			+ 16.
-			+ width("activity-width-gpu-label", "GPU", TEXT_SIZE, FontWeight::NORMAL)
-			+ 4.
-			+ width("activity-width-gpu", &data.gpu, TEXT_SIZE, FontWeight::MEDIUM)
-			+ FRAME;
+		let compact =
+			width("activity-width-fps-label", "Frame rate", TEXT_SIZE, FontWeight::NORMAL)
+				+ 4.
+				+ width(
+					"activity-width-fps-value",
+					&format!("{} FPS", data.fps),
+					TEXT_SIZE,
+					FontWeight::MEDIUM,
+				)
+				+ 16.
+				+ width("activity-width-gpu-label", "System GPU", TEXT_SIZE, FontWeight::NORMAL)
+				+ 4.
+				+ width("activity-width-gpu", &data.gpu, TEXT_SIZE, FontWeight::MEDIUM)
+				+ FRAME;
 
 		data.columns = [
-			width("activity-width-cpu-label", "CPU", TEXT_SIZE, FontWeight::NORMAL)
+			width("activity-width-cpu-label", "UI CPU", TEXT_SIZE, FontWeight::NORMAL)
 				.max(width("activity-width-cpu", &data.cpu, TEXT_SIZE, FontWeight::MEDIUM))
 				.max(width("activity-width-draw-label", "Draw p95", TEXT_SIZE, FontWeight::NORMAL))
 				.max(width("activity-width-draw", &data.draw, TEXT_SIZE, FontWeight::MEDIUM)),
-			width("activity-width-memory-label", "Peak RAM", TEXT_SIZE, FontWeight::NORMAL)
+			width("activity-width-memory-label", "UI peak RAM", TEXT_SIZE, FontWeight::NORMAL)
 				.max(width("activity-width-memory", &data.memory, TEXT_SIZE, FontWeight::MEDIUM)),
 			width("activity-width-latency-label", "Latency p95", TEXT_SIZE, FontWeight::NORMAL)
 				.max(width("activity-width-latency", &data.latency, TEXT_SIZE, FontWeight::MEDIUM)),
@@ -412,8 +427,8 @@ fn debug_header(data: &Debug) -> AnyElement {
 		.flex()
 		.items_center()
 		.justify_between()
-		.child(field("fps", "FPS", data.fps.clone()))
-		.child(field("gpu", "GPU", data.gpu.clone()))
+		.child(field("fps", "Frame rate", format!("{} FPS", data.fps)))
+		.child(field("gpu", "System GPU", data.gpu.clone()))
 		.into_any_element()
 }
 
@@ -433,7 +448,7 @@ fn work_header(data: &Work) -> AnyElement {
 				.items_baseline()
 				.gap_1()
 				.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Total"))
-				.child(number("activity-total-value", data.total.clone())),
+				.child(number("activity-total-value", tokens(&data.total))),
 		)
 		.into_any_element()
 }
@@ -445,8 +460,13 @@ fn work_minimal(data: &Work) -> AnyElement {
 			.items_baseline()
 			.gap(gpui::px(3.))
 			.whitespace_nowrap()
-			.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Total"))
 			.child(number("live-total", data.total.clone()).text_color(ui_theme::rgb(TEXT)))
+			.child(
+				gpui::div()
+					.debug_selector(|| "performance-live-total-unit".into())
+					.text_color(ui_theme::rgb(TEXT_MUTED))
+					.child("tok"),
+			)
 			.into_any_element()
 	} else {
 		work_primary(data, true)
@@ -628,7 +648,7 @@ fn work_details(data: &Work, window: &mut Window, cx: &mut App) -> AnyElement {
 	];
 	let field = |index: usize| {
 		let (id, label, description) = fields[index];
-		let value = data.breakdown[index].clone();
+		let value = tokens(&data.breakdown[index]);
 
 		metric(id, label, value.clone())
 			.id(id)
@@ -679,8 +699,8 @@ fn debug_details(
 		.map(|(id, width)| ui_motion::value(id, width, window, cx))
 		.collect::<Vec<_>>();
 	let rows = [
-		("cpu", "CPU", data.cpu.clone()),
-		("memory", "Peak RAM", data.memory.clone()),
+		("cpu", "UI CPU", data.cpu.clone()),
+		("memory", "UI peak RAM", data.memory.clone()),
 		("latency", "Latency p95", data.latency.clone()),
 	];
 
@@ -739,7 +759,7 @@ fn metric(id: &'static str, label: &'static str, value: String) -> Div {
 
 #[cfg(test)]
 mod tests {
-	use super::activity_status;
+	use super::{activity_status, tokens};
 
 	#[test]
 	fn activity_status_never_presents_an_old_rate_as_live() {
@@ -747,5 +767,12 @@ mod tests {
 		assert_eq!(activity_status(true, false, true), Some("Working"));
 		assert_eq!(activity_status(true, true, false), Some("Generating"));
 		assert_eq!(activity_status(true, true, true), None);
+	}
+
+	#[test]
+	fn token_values_include_a_unit_when_available() {
+		assert_eq!(tokens("2.6M"), "2.6M tok");
+		assert_eq!(tokens("0"), "0 tok");
+		assert_eq!(tokens("—"), "—");
 	}
 }
