@@ -21,7 +21,8 @@
     "https://github.com/acg-box/decodex/pull/2490",
     "https://github.com/acg-box/decodex/pull/2508",
     "https://github.com/acg-box/decodex/pull/2511",
-    "https://github.com/acg-box/decodex/pull/2514"
+    "https://github.com/acg-box/decodex/pull/2514",
+    "https://github.com/acg-box/decodex/pull/2518"
   ],
   "retained_native_consumers": {
     "tests": [
@@ -772,12 +773,13 @@
         "7c997fe2de60e6e4ac95cfc19edf6a5d430f09d6",
         "33b16a9306dbf8c99fc44addd3ed9ce8883a7590"
       ],
-      "status": "approved_bounded_observed_timing_pending_delivery",
+      "status": "approved_observed_timing_with_native_path_research",
       "value": "Show locally observable activity durations and retain unknowns. Full native critical-path capture remains a separate research item.",
       "maintenance_cost": "The observed view uses existing transport and turn receipts. A supported native critical-path exporter and its ownership and qualification remain unresolved.",
-      "recommendation": "Deliver the bounded observation after checks; do not relabel it as full native inference or critical path.",
+      "recommendation": "Retain the bounded observation; do not relabel it as full native inference or critical path.",
       "evidence": "See retained_behavior_contracts#observed-native-turn-activity-timings. Targeted source research found upstream critical-path values in a turn analytics event, but no supported client subscription or newer-artifact qualification.",
-      "decision_status": "User approved observed metrics and asked to continue research on complete critical path."
+      "decision_status": "User approved observed metrics and asked to continue research on complete critical path.",
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2518"
     }
   ],
   "retained_presentation": {
@@ -821,7 +823,7 @@
     "observed_native_turn_timings": {
       "contract": "retained_behavior_contracts#observed-native-turn-activity-timings",
       "surface": "Completed native turn details use the existing response footer hover; unavailable values say Unknown. Model output is observed activity and intervals can overlap.",
-      "delivery_reference": null
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2518"
     }
   },
   "component_cache_repair": {
@@ -1140,19 +1142,17 @@
   "documentation_lifecycle": {
     "status": "incomplete_unrelated_stale_queue",
     "selected_pages": [
-      "openwiki/operations/codex-upstream-autopilot.md",
-      "openwiki/testing/upstream-acceptance-boundaries.md",
-      "openwiki/operations/commands-and-validation.md",
-      "openwiki/architecture/runtime-architecture.md"
+      "openwiki/architecture/conversation-presentation.md",
+      "openwiki/testing/upstream-acceptance-boundaries.md"
     ],
     "completed_selected_pages": [],
     "first_pending_page": "openwiki/architecture/chief-coordination.md",
-    "unrelated_claims_attention_count": 74,
+    "first_pending_attention_count": 7,
+    "queued_page_count": 13,
     "owner": "Repository documentation maintenance; no active owner claimed",
-    "method": "Supported OpenWiki begin/submit-plan/next-page. The tool prepends mandatory stale-claim jobs to the four selected pages.",
-    "next_action": "A documentation owner must reconcile the unrelated stale Claim queue before the selected runtime/acceptance pages can be assigned. Resume through OpenWiki, preserve valid unaffected content and do not hand-edit generated state.",
-    "limits": "No selected page was assigned or hand-edited. Do not report the lifecycle as complete; runtime/source delivery can proceed independently under the maintenance prompt.",
-    "selected_total_jobs": 12
+    "method": "OpenWiki begin, submit-plan and next-page. Mandatory stale-claim jobs expand the two selected pages to a 13-page queue.",
+    "next_action": "A documentation owner should reconcile the unrelated stale Claim queue and then update the selected observed-timing presentation and qualification pages through OpenWiki. Replan on source drift.",
+    "limits": "Neither selected page was assigned or hand-edited; do not report the lifecycle as complete. Prior pending runtime and acceptance documentation jobs remain in the expanded queue."
   },
   "retained_behavior_contracts": [
     {
@@ -1512,7 +1512,7 @@
         ],
         "limits": "The CLI digest was rechecked for this run. Schema and helper digests retain the earlier named qualification; this timing probe did not separately exercise the helpers or regenerate the schema."
       },
-      "delivery_reference": null,
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2518",
       "limits": [
         "Observed model output is not the full inference or native critical path. Tool, user request and automatic-review intervals can overlap. Categories are not a partition of turn duration.",
         "No full coverage for intervals missing boundaries, older unrecorded item timestamps, a connection attached mid-turn or a dropped connection. Historical per-item fallback uses only valid native timestamps.",
@@ -1538,7 +1538,9 @@
           "app_server_client::output_rate::tests::raw_response_finishes_before_tool_wait_and_batched_markers_do_not_invent_speed"
         ],
         "remote_checks": "Three CodeQL language analyses succeeded on the exact main commit. The associated merged PR head 9b4b64f9f5edf7cf84fda6f6295cf2c0cc866a05 had three successful analyses and a neutral CodeQL aggregate."
-      }
+      },
+      "delivery_status": "Read the linked public PR for its merge state and exact-head checks.",
+      "documentation_lifecycle": "incomplete; see documentation_lifecycle"
     }
   ],
   "retained_native_diagnostics": {
