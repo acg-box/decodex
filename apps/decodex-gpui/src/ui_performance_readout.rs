@@ -33,8 +33,6 @@ pub(super) struct Work {
 	rows: Arc<[Live]>,
 	columns: [f32; 2],
 	breakdown: [String; 4],
-	shares: [Option<f32>; 2],
-	share_labels: [String; 2],
 	breakdown_columns: [f32; 2],
 	sizing: Sizing,
 }
@@ -64,14 +62,6 @@ fn activity_status(working: bool, generating: bool, has_rate: bool) -> Option<&'
 	}
 }
 
-fn share(part: u64, total: u64) -> Option<f32> {
-	(total > 0 && part <= total).then(|| part as f32 / total as f32)
-}
-
-fn share_label(value: Option<f32>) -> String {
-	value.map_or_else(|| "—".into(), |value| format!("{:.0}%", value * 100.))
-}
-
 fn breakdown_columns(
 	data: &Work,
 	width: &mut impl FnMut(&'static str, &str, f32, FontWeight) -> f32,
@@ -84,7 +74,7 @@ fn breakdown_columns(
 	];
 
 	std::array::from_fn(|column| {
-		let maximum = [column, column + 2].into_iter().fold(0_f32, |maximum, index| {
+		[column, column + 2].into_iter().fold(0_f32, |maximum, index| {
 			let (label_id, value_id, label) = labels[index];
 
 			maximum.max(width(label_id, label, TEXT_SIZE, FontWeight::NORMAL)).max(width(
@@ -93,19 +83,7 @@ fn breakdown_columns(
 				TEXT_SIZE,
 				FontWeight::MEDIUM,
 			))
-		});
-		let (_, value_id, _) = labels[column + 2];
-		let percent_id = ["activity-cached-percent", "activity-reasoning-percent"][column];
-
-		if data.shares[column].is_some() {
-			maximum.max(
-				width(value_id, &data.breakdown[column + 2], TEXT_SIZE, FontWeight::MEDIUM)
-					+ 6.
-					+ width(percent_id, &data.share_labels[column], TEXT_SIZE, FontWeight::MEDIUM),
-			)
-		} else {
-			maximum
-		}
+		})
 	})
 }
 
@@ -146,12 +124,6 @@ impl Content {
 			.total_tokens()
 			.map_or_else(|| "—".into(), crate::shell::agent_surface::compact_tokens);
 		let breakdown = work.token_breakdown();
-		let shares = breakdown.map_or([None; 2], |value| {
-			[
-				share(value.cached_input_tokens, value.input_tokens),
-				share(value.reasoning_output_tokens, value.output_tokens),
-			]
-		});
 		let count = |value: Option<u64>| {
 			value.map_or_else(|| "—".into(), crate::shell::agent_surface::compact_tokens)
 		};
@@ -170,8 +142,6 @@ impl Content {
 				count(breakdown.map(|v| v.cached_input_tokens)),
 				count(breakdown.map(|v| v.reasoning_output_tokens)),
 			],
-			shares,
-			share_labels: shares.map(share_label),
 			breakdown_columns: [0.; 2],
 			sizing: Sizing { minimal: 0., compact: 0., expanded: 0. },
 		};
@@ -198,18 +168,16 @@ impl Content {
 				+ width("activity-width-rate-unit", data.unit(), TEXT_SIZE, FontWeight::NORMAL)
 		};
 		let minimal = if data.idle_total() {
-			width("activity-width-idle-graph", "Graph", TEXT_SIZE, FontWeight::NORMAL)
+			width("activity-width-idle-label", "Total", TEXT_SIZE, FontWeight::NORMAL)
 				+ 3.
 				+ width("activity-width-idle-total", &data.total, TEXT_SIZE, FontWeight::MEDIUM)
-				+ 3.
-				+ width("activity-width-idle-unit", "tok", TEXT_SIZE, FontWeight::NORMAL)
 				+ 22.
 		} else {
 			primary + 22.
 		};
 		let compact = primary
 			+ 16.
-			+ width("activity-width-total-label", "In graph", TEXT_SIZE, FontWeight::NORMAL)
+			+ width("activity-width-total-label", "Total", TEXT_SIZE, FontWeight::NORMAL)
 			+ 4.
 			+ width("activity-width-total-value", &data.total, TEXT_SIZE, FontWeight::MEDIUM)
 			+ FRAME;
@@ -327,7 +295,7 @@ impl Content {
 		match self {
 			Self::Work(v) =>
 				CAPSULE_HEIGHT
-					+ 71.
+					+ 66.
 					+ if v.rows.is_empty() { 0. } else { 4. + v.rows.len().min(4) as f32 * 22. },
 			Self::Debug(_) => CAPSULE_HEIGHT + 68.,
 		}
@@ -464,7 +432,7 @@ fn work_header(data: &Work) -> AnyElement {
 				.flex()
 				.items_baseline()
 				.gap_1()
-				.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("In graph"))
+				.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Total"))
 				.child(number("activity-total-value", data.total.clone())),
 		)
 		.into_any_element()
@@ -477,9 +445,8 @@ fn work_minimal(data: &Work) -> AnyElement {
 			.items_baseline()
 			.gap(gpui::px(3.))
 			.whitespace_nowrap()
-			.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Graph"))
+			.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Total"))
 			.child(number("live-total", data.total.clone()).text_color(ui_theme::rgb(TEXT)))
-			.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("tok"))
 			.into_any_element()
 	} else {
 		work_primary(data, true)
@@ -659,35 +626,15 @@ fn work_details(data: &Work, window: &mut Window, cx: &mut App) -> AnyElement {
 		("work-cached", "Cached input", "Cached input, included in input"),
 		("work-reasoning", "Reasoning", "Reasoning tokens, included in output"),
 	];
-	let shares: [Option<f32>; 2] = std::array::from_fn(|index| {
-		let id = ["activity-cached-share", "activity-reasoning-share"][index];
-
-		data.shares[index].map(|value| ui_motion::value(id, value, window, cx))
-	});
-	let field = |index: usize| -> AnyElement {
+	let field = |index: usize| {
 		let (id, label, description) = fields[index];
 		let value = data.breakdown[index].clone();
 
-		if index < 2 {
-			metric(id, label, value.clone())
-				.id(id)
-				.w(gpui::px(data.breakdown_columns[index]))
-				.role(Role::Group)
-				.aria_label(format!("{description}: {value}"))
-				.into_any_element()
-		} else {
-			let column = index - 2;
-
-			share_metric(
-				id,
-				label,
-				description,
-				value,
-				data.share_labels[column].clone(),
-				data.breakdown_columns[column],
-				shares[column],
-			)
-		}
+		metric(id, label, value.clone())
+			.id(id)
+			.w(gpui::px(data.breakdown_columns[index % 2]))
+			.role(Role::Group)
+			.aria_label(format!("{description}: {value}"))
 	};
 	let row = |first| {
 		gpui::div()
@@ -717,80 +664,6 @@ fn work_details(data: &Work, window: &mut Window, cx: &mut App) -> AnyElement {
 				.child(row(2)),
 		)
 		.when(!data.rows.is_empty(), |body| body.child(list))
-		.into_any_element()
-}
-
-fn share_metric(
-	id: &'static str,
-	label: &'static str,
-	description: &'static str,
-	value: String,
-	percent: String,
-	width: f32,
-	share: Option<f32>,
-) -> AnyElement {
-	let parent = if id == "work-cached" { "input" } else { "output" };
-	let accessibility = if share.is_some() {
-		format!("{description}: {value}. {percent} of {parent}.")
-	} else {
-		format!("{description}: {value}. Share unavailable.")
-	};
-
-	gpui::div()
-		.id(id)
-		.debug_selector(move || format!("performance-{id}-row"))
-		.role(Role::Group)
-		.aria_label(accessibility)
-		.w(gpui::px(width))
-		.h(gpui::px(33.))
-		.flex_none()
-		.flex()
-		.flex_col()
-		.whitespace_nowrap()
-		.child(
-			gpui::div()
-				.text_size(gpui::px(TEXT_SIZE))
-				.line_height(gpui::px(12.))
-				.text_color(ui_theme::rgb(TEXT_MUTED))
-				.child(label),
-		)
-		.child(
-			gpui::div()
-				.w_full()
-				.flex()
-				.justify_between()
-				.gap(gpui::px(6.))
-				.child(number(id, value))
-				.when(share.is_some(), |row| {
-					row.child(number(
-						if id == "work-cached" {
-							"work-cached-percent"
-						} else {
-							"work-reasoning-percent"
-						},
-						percent,
-					))
-				}),
-		)
-		.when_some(share, |field, share| {
-			field.child(
-				gpui::div()
-					.debug_selector(move || format!("performance-{id}-track"))
-					.mt(gpui::px(2.))
-					.w_full()
-					.h(gpui::px(3.))
-					.rounded_full()
-					.bg(ui_theme::rgb(TEXT_MUTED).opacity(0.2))
-					.child(
-						gpui::div()
-							.debug_selector(move || format!("performance-{id}-fill"))
-							.w(gpui::px(width * share))
-							.h_full()
-							.rounded_full()
-							.bg(ui_theme::rgb(BLUE)),
-					),
-			)
-		})
 		.into_any_element()
 }
 
@@ -866,7 +739,7 @@ fn metric(id: &'static str, label: &'static str, value: String) -> Div {
 
 #[cfg(test)]
 mod tests {
-	use super::{activity_status, share, share_label};
+	use super::activity_status;
 
 	#[test]
 	fn activity_status_never_presents_an_old_rate_as_live() {
@@ -874,13 +747,5 @@ mod tests {
 		assert_eq!(activity_status(true, false, true), Some("Working"));
 		assert_eq!(activity_status(true, true, false), Some("Generating"));
 		assert_eq!(activity_status(true, true, true), None);
-	}
-
-	#[test]
-	fn token_shares_require_a_valid_parent_count() {
-		assert_eq!(share(0, 0), None);
-		assert_eq!(share(2, 1), None);
-		assert_eq!(share_label(share(0, 100)), "0%");
-		assert_eq!(share_label(share(3, 4)), "75%");
 	}
 }

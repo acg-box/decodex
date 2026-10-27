@@ -74,9 +74,9 @@ fn work_capsule_grows_and_shrinks_with_content_instead_of_the_agent_count(cx: &m
 	let busy = visual.debug_bounds("activity-work-island").unwrap();
 
 	assert_eq!(
-		busy.size.width,
 		visual.debug_bounds("performance-island").unwrap().size.width,
-		"resting capsules share one footprint even when a value grows"
+		debug.size.width,
+		"the FPS capsule must not grow with a wider work value"
 	);
 
 	let label = visual.debug_bounds("activity-live-rate").unwrap();
@@ -103,10 +103,6 @@ fn work_capsule_grows_and_shrinks_with_content_instead_of_the_agent_count(cx: &m
 	visual.update(crate::ui_frame::draw_frame);
 
 	assert!(visual.debug_bounds("activity-work-breakdown").is_some());
-	assert!(visual.debug_bounds("performance-work-cached-track").is_none());
-	assert!(visual.debug_bounds("performance-work-reasoning-track").is_none());
-	assert!(visual.debug_bounds("performance-work-cached-percent").is_none());
-	assert!(visual.debug_bounds("performance-work-reasoning-percent").is_none());
 
 	ui_performance::preference(Some(false));
 }
@@ -204,7 +200,7 @@ fn work_statistics_fit_with_debug_and_with_more_than_ninety_agents(cx: &mut Test
 			visual.debug_bounds("activity-live-live-92").is_none(),
 			"offscreen work is not rendered"
 		);
-		assert_eq!(pill.size.height, gpui::px(191.));
+		assert_eq!(pill.size.height, gpui::px(186.));
 		let total = visual.debug_bounds("activity-work-total").unwrap();
 		let rate = visual.debug_bounds("performance-work-status").unwrap();
 
@@ -229,16 +225,6 @@ fn work_statistics_fit_with_debug_and_with_more_than_ninety_agents(cx: &mut Test
 		assert_eq!(input.left(), cached.left());
 		assert_eq!(output.left(), reasoning.left());
 		assert!(input.bottom() <= cached.top() && output.bottom() <= reasoning.top());
-		for (track, fill, expected) in [
-			("performance-work-cached-track", "performance-work-cached-fill", 2. / 3.),
-			("performance-work-reasoning-track", "performance-work-reasoning-fill", 0.6),
-		] {
-			let track = visual.debug_bounds(track).unwrap();
-			let fill = visual.debug_bounds(fill).unwrap();
-			let actual = f32::from(fill.size.width) / f32::from(track.size.width);
-
-			assert!((actual - expected).abs() < 0.02, "{actual} != {expected}");
-		}
 		assert!(visual.debug_bounds("performance-needs-you").is_none());
 		assert!(visual.debug_bounds("performance-agent-time").is_none());
 		assert_eq!(island.read_with(visual, |s, _| s.expansion), Expansion::Clicked);

@@ -52,12 +52,14 @@ pub(crate) fn arrange(
 	selected: Option<usize>,
 ) -> Vec<Allocation> {
 	let budget = (available - gap * sizes.len().saturating_sub(1) as f32).max(0.);
-	let resting = sizes.iter().map(|size| size.minimal).fold(MIN_CAPSULE_WIDTH, f32::max);
-	let minimum = resting * sizes.len() as f32;
+	let minimum: f32 = sizes.iter().map(|size| size.minimal.max(MIN_CAPSULE_WIDTH)).sum();
 	let ratio = (budget / minimum.max(1.)).min(1.);
 	let mut allocations: Vec<_> = sizes
 		.iter()
-		.map(|_| Allocation { presentation: Presentation::Minimal, width: resting * ratio })
+		.map(|size| Allocation {
+			presentation: Presentation::Minimal,
+			width: size.minimal.max(MIN_CAPSULE_WIDTH) * ratio,
+		})
 		.collect();
 
 	if let Some(index) = selected.filter(|&index| index < sizes.len()) {
@@ -68,6 +70,7 @@ pub(crate) fn arrange(
 			.map(|(_, item)| item.width)
 			.sum();
 		let room = (budget - others).max(0.);
+		let resting = sizes[index].minimal.max(MIN_CAPSULE_WIDTH);
 		let size = Sizing {
 			minimal: resting,
 			compact: sizes[index].compact.max(resting),
@@ -111,5 +114,14 @@ mod tests {
 		assert_eq!(narrow[1].width, 148., "unused room is not padding for a compact activity");
 		assert!(narrow.iter().map(|item| item.width).sum::<f32>() + 6. <= 240.);
 		assert_eq!(sizes[0].presentation(120.), Presentation::Minimal);
+
+		let mut uneven = sizes;
+
+		uneven[0].minimal = 108.;
+
+		let resting = ui_live_activity::arrange(400., 6., &uneven, None);
+
+		assert_eq!(resting[0].width, 108.);
+		assert_eq!(resting[1].width, 72., "one activity must not widen the other");
 	}
 }
