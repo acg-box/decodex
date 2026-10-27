@@ -1,9 +1,9 @@
 //! Native composition boundary for the existing Agent composer.
 use gpui::{
-	self, Action, AnyElement, AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity,
-	FocusHandle, Focusable, KeyDownEvent, MouseButton, Pixels, Render, Role,
-	StatefulInteractiveElement as _, Subscription, Window, WindowBackgroundAppearance,
-	WindowBounds, WindowHandle, WindowKind, WindowOptions,
+	self, AnyElement, AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity, FocusHandle,
+	Focusable, KeyDownEvent, MouseButton, Pixels, Render, Role, StatefulInteractiveElement as _,
+	Subscription, Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowKind,
+	WindowOptions,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _,
 	},
@@ -19,6 +19,7 @@ use crate::{
 			voice::Media,
 			workspace::{self, ARCHIVED_MESSAGE},
 		},
+		forward_shell_action as forward,
 	},
 	ui_motion,
 	ui_theme::{
@@ -394,18 +395,6 @@ impl AgentSurface {
 
 pub(super) fn parent_window(window: &Window, cx: &App) -> Option<AnyWindowHandle> {
 	window.root::<ComposerPanel>().flatten().map(|panel| panel.read(cx).parent)
-}
-
-fn forward(parent: AnyWindowHandle, action: &dyn Action, cx: &mut App) {
-	let action = action.boxed_clone();
-
-	cx.defer(move |cx| {
-		let _ = parent.update(cx, |_, window, cx| {
-			workspace::dispatch_shell_action(window, action.as_ref(), cx);
-		});
-	});
-
-	cx.stop_propagation();
 }
 
 fn create_panel(

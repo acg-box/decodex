@@ -105,6 +105,29 @@ use decodex_protocol::{AccountQuotaStateDto, AccountQuotaWindowDto};
 use diagnostics::Diagnostics;
 use quota_meter::ResetFill;
 
+#[cfg(any(target_os = "macos", test))]
+fn dispatch_shell_action(window: &mut Window, action: &dyn gpui::Action, cx: &mut App) {
+	if let Some(shell) = window.root::<Shell>().flatten() {
+		// Child windows can leave the parent's previously focused node detached.
+		let focus = shell.read(cx).root_focus.clone();
+
+		focus.dispatch_action(action, window, cx);
+	}
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn forward_shell_action(parent: gpui::AnyWindowHandle, action: &dyn gpui::Action, cx: &mut App) {
+	let action = action.boxed_clone();
+
+	cx.defer(move |cx| {
+		let _ = parent.update(cx, |_, window, cx| {
+			dispatch_shell_action(window, action.as_ref(), cx);
+		});
+	});
+
+	cx.stop_propagation();
+}
+
 gpui::actions!(
 	decodex_shell,
 	[

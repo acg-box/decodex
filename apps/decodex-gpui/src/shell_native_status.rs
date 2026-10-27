@@ -1,12 +1,12 @@
 //! Keep notifications above native composer windows without moving the editor.
 use gpui::{
-	self, AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity, Render, Subscription,
-	Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowOptions,
+	self, AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity, FocusHandle, Render,
+	Subscription, Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowOptions,
 	prelude::{InteractiveElement as _, IntoElement, ParentElement as _, Styled as _},
 };
 
 use crate::{
-	shell::{self, Shell},
+	shell::{self, Shell, ToggleContentFullscreen, forward_shell_action},
 	ui_motion,
 	ui_theme::{
 		self, CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, FONT_FAMILY, TEXT, appearance,
@@ -23,12 +23,15 @@ pub(super) struct NativeStatus {
 }
 pub(super) struct StatusPanel {
 	owner: Entity<Shell>,
+	parent: AnyWindowHandle,
+	focus: FocusHandle,
 	surface: Option<MaterialPanel>,
 	_observation: Subscription,
 }
 impl Render for StatusPanel {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let owner = self.owner.clone();
+		let parent = self.parent;
 		let panel = owner.update(cx, |s, cx| {
 			s.render_status_panel(&shell::connection_presentation(s.connection), cx)
 		});
@@ -38,6 +41,18 @@ impl Render for StatusPanel {
 			.p(gpui::px(12.))
 			.font_family(FONT_FAMILY)
 			.text_color(ui_theme::rgb(TEXT))
+			.track_focus(&self.focus)
+			.on_action({
+				let owner = owner.clone();
+
+				move |action: &ToggleContentFullscreen, _, cx| {
+					owner.update(cx, |s, cx| {
+						s.status_open = false;
+						cx.notify();
+					});
+					forward_shell_action(parent, action, cx);
+				}
+			})
 			.on_key_down({
 				let owner = owner.clone();
 
@@ -165,8 +180,11 @@ fn create(
 					appearance::observe(window, cx);
 
 					let observation = cx.observe(&owner, |_, _, cx| cx.notify());
+					let focus = cx.focus_handle();
 
-					StatusPanel { owner, surface: None, _observation: observation }
+					window.focus(&focus, cx);
+
+					StatusPanel { owner, parent, focus, surface: None, _observation: observation }
 				})
 			},
 		)

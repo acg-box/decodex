@@ -2639,17 +2639,6 @@ pub(super) fn restore_shell_focus(window: &mut Window, cx: &mut App) {
 	}
 }
 
-#[cfg(any(target_os = "macos", test))]
-pub(super) fn dispatch_shell_action(window: &mut Window, action: &dyn gpui::Action, cx: &mut App) {
-	if let Some(shell) = window.root::<Shell>().flatten() {
-		// A native child owns the editor focus. The parent's last focused node
-		// can be absent, so target the shell rather than that stale node.
-		let focus = shell.read(cx).root_focus.clone();
-
-		focus.dispatch_action(action, window, cx);
-	}
-}
-
 pub(super) fn clock_label(micros: i64) -> String {
 	let seconds = micros / 1_000_000;
 
@@ -2819,7 +2808,7 @@ fn preview_tip(_: &mut Window, cx: &mut App) -> AnyView {
 mod tests {
 	use std::thread;
 
-	use gpui::{AppContext as _, Focusable as _};
+	use gpui::{AppContext as _, Focusable as _, prelude::InteractiveElement as _};
 
 	use crate::{
 		shell::agent_surface::workspace::{
@@ -2844,6 +2833,22 @@ mod tests {
 		}
 	}
 
+	struct ShortcutChild {
+		parent: gpui::AnyWindowHandle,
+		focus: gpui::FocusHandle,
+	}
+	impl Render for ShortcutChild {
+		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+			let parent = self.parent;
+
+			gpui::div().track_focus(&self.focus).on_action(
+				move |action: &crate::shell::ToggleContentFullscreen, _, cx| {
+					crate::shell::forward_shell_action(parent, action, cx);
+				},
+			)
+		}
+	}
+
 	#[gpui::test]
 	fn forwarded_fullscreen_actions_reach_shell_with_detached_parent_focus(
 		cx: &mut gpui::TestAppContext,
@@ -2862,6 +2867,17 @@ mod tests {
 		});
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
 		visual.update(crate::ui_frame::draw_frame);
+		let parent = visual.update(|window, _| window.window_handle());
+		let mut child_context = visual.cx.clone();
+		let (_, child) = child_context.add_window_view(move |window, cx| {
+			let focus = cx.focus_handle();
+
+			window.focus(&focus, cx);
+
+			ShortcutChild { parent, focus }
+		});
+
+		child.update(crate::ui_frame::draw_frame);
 
 		for graph in [false, true] {
 			agent.update(visual, |s, _| {
@@ -2874,9 +2890,8 @@ mod tests {
 				let detached = cx.focus_handle();
 
 				window.focus(&detached, cx);
-
-				super::dispatch_shell_action(window, &crate::shell::ToggleContentFullscreen, cx);
 			});
+			child.simulate_keystrokes("shift-escape");
 
 			visual.run_until_parked();
 			visual.update(crate::ui_frame::draw_frame);
