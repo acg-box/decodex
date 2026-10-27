@@ -68,12 +68,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_visibility.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-052a4071b057633df77b1e21
+    resource: repo://crates/decodex-runtime/src/agent/archive.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
-  - id: openwiki-source-efd01c181e05be3cb110ec94
-    resource: repo://crates/decodex-runtime/src/agent/tests/archive.rs
   - id: openwiki-source-88b81a215b1bac061dad80ec
     resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
   - id: openwiki-source-c6bea677adcde563202b65b9
@@ -89,7 +89,7 @@ sources:
 generated: { by: "codex", at: "2026-10-26T17:25:11.378Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T17:25:11.378Z
+    at: 2026-10-27T03:26:06.307Z
 ---
 
 # Conversation input, history and recovery

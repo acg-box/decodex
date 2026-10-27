@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2d5b28ca27ba73b4822bf1b0bc77dbc38b9e173cbdb10dbd7f768d0e54bff8ec",
+  "pageVersion": "sha256:57579bd314824b2d51047483186390f03b5f825442cd976addb05cdd7fb3f667",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -78,7 +78,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:54a46fcc88c494723e218f88707fd138e11d5c06b5ceddf817c1344788a9fb68"
+          "version": "repo-file-v1:sha256:64c304b9cdf1d8bea29ef5909acea2aaacf88e55a608b7377223241d514bef2b"
         },
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
@@ -162,7 +162,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
-          "version": "repo-file-v1:sha256:1e208f7e679d12db229f61e7b5fda1e1dd8112808926d16c3594175373a11e1b"
+          "version": "repo-file-v1:sha256:ae282a380bd9b3130737cb8cdb9f31ce2f5d16a98c2b5fca5eb32339079ee66a"
         }
       ]
     },
@@ -172,7 +172,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:54a46fcc88c494723e218f88707fd138e11d5c06b5ceddf817c1344788a9fb68"
+          "version": "repo-file-v1:sha256:64c304b9cdf1d8bea29ef5909acea2aaacf88e55a608b7377223241d514bef2b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/native_subagents.rs",
@@ -272,11 +272,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
+          "version": "repo-file-v1:sha256:deb30e1b0c062940ae71a89d98a5fbbcc3c2cd6528c17c31b420903a0eb18c9f"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
+          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
         }
       ]
     },
@@ -286,7 +286,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
+          "version": "repo-file-v1:sha256:deb30e1b0c062940ae71a89d98a5fbbcc3c2cd6528c17c31b420903a0eb18c9f"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs",
@@ -325,7 +325,7 @@
       "statement": "Protocol 4.0 accepts one exact major and minor revision and retains publication-instance receipts for reconnect and idempotent recovery.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L274-L307",
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L275-L308",
           "version": "repo-lines-v1:sha256:182a6f7855881d2eaedb09a050842de6740c458fc4571ffbbc93d29b482b7fbc:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzYzNlOTc4ZDcxMmYwZWNmYzY4M2MzMjcyZWM2YjQ1OGMyNTAxMzZiMjBkODc3MGI5MzhhZmFjM2Y4MDMzNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlMGFmM2ZkNGE0YzNhMWQ0N2M3ZjQ3MGVkMGQ4NmQ5MGQ5ZGUyMTBhNWViMTQ1NWZiZDk0NDgyYTQ3NjViNzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3ZmM2ZGMwOTQ3OGZlZWU0YTMzODIyOTllNWUxY2NiMzIzMTdiMDc1YjhlZGJlMmI1MmYxNjQ5MTMyNzUxOWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3ODJiYWU1YmJiOTM3MGI1NzViNTI3NDgxZGEwMmUwZTY0NTVmNjY3YTcwMDk4NTFkZDBkOWM5N2IzYzQyNTQifQ"
         },
         {
@@ -368,7 +368,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:ff517fbfd2c38854e612a5e3756a13689b72b51d020b2fcad8c8a849e58be8aa"
+          "version": "repo-file-v1:sha256:09058d8b9e323cfa4bf0596ca90d96ba8982b7e6fff9c9f32e9d6707af7637f6"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/project.rs",
@@ -483,6 +483,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T17:08:35.248Z"
+    "at": "2026-10-27T03:26:06.307Z"
   }
 }

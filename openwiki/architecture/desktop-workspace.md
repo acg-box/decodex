@@ -40,10 +40,14 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-15ee466228bdb01892c9678b
     resource: repo://apps/decodex-gpui/src/agent_text_selection.rs
+  - id: openwiki-source-d57edbe5de23ebee985fc88b
+    resource: repo://apps/decodex-gpui/src/agent_timeline_inputs.rs
   - id: openwiki-source-51a4755f3c4ddd78511e5c8e
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
   - id: openwiki-source-0d053d4de2f668168f982629
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
+  - id: openwiki-source-e269da8230b6d51390181459
+    resource: repo://apps/decodex-gpui/src/agent_workspace_size.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-fca3688e96d92c09b7ba015f
@@ -58,10 +62,10 @@ sources:
     resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
+generated: { by: "codex", at: "2026-10-27T03:26:06.307Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T17:25:11.378Z
+    at: 2026-10-27T03:26:06.307Z
 ---
 
 # Desktop workspace and native glass
@@ -75,6 +79,8 @@ Each independent Agent owns its conversation and composer. Messages go to that c
 Collaboration groups source-backed exchanges by participant pair and expands their recorded text without switching the active chat or draft. A participant control locates that Agent in the graph. Tool completion alone is not delivery, and a context reference is not a message. Missing reply text remains explicit. Pending user requests retain their existing native controls; this panel does not answer them automatically or create a second question store.
 
 Global shortcuts in `shell.rs` are Command-E for the left sidebar, Command-B for the inspector/agent side, and Command-J for the graph. Window controls stay in the global shell. Settings is a separate presentation with bounded scrolling and shared spacing tokens.
+
+Shift-Esc toggles Graph or conversation fullscreen according to the active pane. Pane capture tracks clicks across cached Graph layers, and the native composer forwards actions to the persistent shell. Graph fullscreen hides both sidebars and restores their saved visibility and width preferences on exit.
 
 ## Project Work and Guardian
 
@@ -106,7 +112,7 @@ Agent preferences also includes **Attached branches**. It lists the newest 100 s
 
 `native_material_panel.rs` bridges composition only. GPUI still owns UI state, layout and event handlers. The composer is an attached child window created by the main workspace, not another application or service. Settings must not create one. The workspace remains the main window while an attached control can own keyboard focus. See [conversation presentation](conversation-presentation.md#floating-controls-and-motion) for frame ownership and animation policy.
 
-Archived and blocked conversations keep the normal composer surface with sending disabled and a local explanation. Certain detail/full-screen states omit the composer. Reopening includes a short layout-settling interval; failures fall back to GPUI presentation. Notification placement and opacity belong to the same native-panel composition boundary.
+Archived and blocked conversations keep the normal composer geometry with sending disabled and the draft retained. Certain detail/full-screen states omit the composer. Reopening includes a short layout-settling interval; failures fall back to GPUI presentation. Notification placement and opacity belong to the same native-panel composition boundary.
 
 ## Menu focus and account motion
 
@@ -126,7 +132,11 @@ The history rail follows the reading position. Expanding collaboration exchanges
 
 ## State and errors
 
-Ordinary operation feedback goes to the notification center. A conversation that cannot send displays its reason in the normal composer surface and keeps the draft. Archived history has an explicit Unarchive control. Background archive-read failures preserve the last confirmed state. Explicit failed checks show local feedback.
+Conversation errors and recovery actions share one band above the input bar. The input is disabled, its draft is retained, and quote placeholders stay hidden. Parent-managed native chats offer Open parent conversation; Retry is reserved for a failed native connection.
+
+Archive is a normal read-only state. Archived and the short explanation Unarchive to send messages appear inside the disabled input bar, with Unarchive on the right. Read-only notices use a short state followed by one plain sentence about its effect or next action; the explanation wraps when necessary. Background archive-read failures preserve the last confirmed state. A restore failure replaces the ordinary explanation with its actual feedback.
+
+A failed send stays beside its own message in the scrolling transcript, with Not sent and an available Resend action. It does not become a conversation-wide error or a second input panel. App-wide notices go to the notification center; field and operation failures stay beside their owning control.
 
 ## Consistent status presentation
 

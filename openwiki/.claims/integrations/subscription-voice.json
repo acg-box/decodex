@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:90ae6722ed56146e43d5669b45a07f7d366984340a9ae2c000dbfeb7deec1b81",
+  "pageVersion": "sha256:df56868c706feace64004383626997d4f8c68a75b3143fc47e476f834ab4918f",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -242,7 +242,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
+          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
         }
       ]
     },
@@ -260,7 +260,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
+          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
         }
       ]
     },
@@ -270,7 +270,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
+          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
         }
       ]
     },
@@ -284,7 +284,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
+          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
         },
         {
           "resource": "repo://scripts/macos/prepare_voice_acceptance.py",
@@ -295,6 +295,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T15:20:45.937Z"
+    "at": "2026-10-27T03:26:06.307Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:762cd649073a0f6dc03eaa068be542e8826272965dec55b2c7344f52c4409b59",
+  "pageVersion": "sha256:55ac1e55fa07b7c3c966db8ec42e25664a01cbdca6c7b1596c0f8cacd43a8159",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -69,11 +69,11 @@
       "statement": "Cancellation discards only the exact unconfirmed edit draft; accepted edited-input sends remove that draft without creating an archive copy, while uncertain operations retain their recovery identity.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L207-L242",
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L211-L246",
           "version": "repo-lines-v1:sha256:16e922503782a753e20008bc40b0fbce11ecd6df0b48743ce6cbe6c9bb9bf62f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhYTRhMzcwNmVjMjhlNmUxMGEwNjA3ZTM0MWQ1MGExMWQ4NDNjNDljMDk1ZDczODNkZWQzMjJmNTc0MmU2YmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwOTViMGQwNDc3OGY4MGVlMTYyOTE3MDkxZmQ3OTE1YjFhY2M2ZDYzODg3NWFmNWM4M2YwY2I0MWM3ZDFmYzciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4ZDYyYmE2ZTBkMDZmNmI0ZjEyNjIzYzkzMjA4NmIzOTA3NGViNDc1NGYzNGQxZWU4NjE1NmY4YTM3ODM1NDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5NjJhMDU5MWE0NjM4NDZkMzJlODQ4MTUyZjA1OGU4N2M4MmI5ZGI4YTUyMmRjYzRjODAxNWUxOWRmMGUzYmMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L335-L374",
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L339-L378",
           "version": "repo-lines-v1:sha256:202256d254ac450e5e97f9283764171c13e8ca0ea9063d7e492d94230348c500:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5NGQ2ZTZjMzBlYmM4OWMwYzBiMTkyNzY2YWI5ODhhOWVmMGRlZDI5NDJhZGUwOTlmNzI4ZWMyOWZkYjdkZGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzODk2NTJjMzE1M2VmMWIzNTVhZmM5Mzk3MGVkNjc1YzJhMjM1N2YyY2I4NWFkYjE4YzUzZjVmM2MwZTc3NjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NzdlNTE3ZjY3NmRlNTEwZWZmMjMxM2RkOTExZGI1YTFhM2VmNTNiZjM4MjIyZmY0Njc0YTA2OGI0YmM1OTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3MDAzNzgwZmFlYzA0Nzk5NWRmYTE0ZWJkZTA2OGM5NjVhOTczNzU5OTI3MzI3N2RlODUwYTY1ZmY0Yjk1MDIifQ"
         },
         {
@@ -105,7 +105,7 @@
           "version": "repo-file-v1:sha256:cdf330e8db97cb474822c98ae2576da9c72d64e996820957197087833b1cadfb"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2430-L2451",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2441-L2462",
           "version": "repo-lines-v1:sha256:4ac7cbb8588c6dfee8d4d6bde9e579163322892b8129ff0bdc622be14429f1f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2NmI1YjkzMDg2NDc5ZmJiMjgzOTZiN2NlZjkzOGY3OWNiMzkyOWE3OGE4M2U2NGUwNjUyYzFkZWY3MmU4MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlNDM4OTRkNmQ1Y2Q5YTQxZmI2MDFmNWI3NjgxMmVhMjNlYTRjODdjNjY1OWY2MTE2MWNkYWE0MzQ1YjBkNDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjZTdkM2E5ZjcwYWZkY2JkOGNmMmZjZTM4NWZhMWZlODJjYWIxNjM1Y2IyYTM2MmVkMzcyYzc0NzYxOWU0YWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4ZjZjZjBiYmNlNzE4MjIxMTBlMDZjNDU3ZWE5YmY1YTM5MzEyNjU1YTMwZDRhOGYyMTg3MzBiYWNmYzBhOGMifQ"
         },
         {
@@ -144,15 +144,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs",
-          "version": "repo-file-v1:sha256:1ef2673e5a541f306d09dd075f529e14b8cd15edbba1ae8b4a355a8fd8fc65b2"
+          "version": "repo-file-v1:sha256:bf6beb21a39ab3995f19d6d278eef27f19c7df1e3097d00650746ed9edcb0154"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:6ee72a85bd26f6db4667dd9f4dc483e342f34f8721955dbd169c993d4cc59f78"
+          "version": "repo-file-v1:sha256:d79f7f8a2ae14d6a56cafd6ae9de3514c7855931938d50960e79cbfbf95b00f4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:5b4c9344397ecbe424d7ec81f89ab2218e80edc894fed015d21615864431693e"
+          "version": "repo-file-v1:sha256:88a9382f0e82c5c321ca6298f96c9d32b0541798dda40237bdb8844d6ab23232"
         }
       ]
     },
@@ -162,7 +162,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_archive.rs",
-          "version": "repo-file-v1:sha256:33feae5a4c573a999f6525735a20bc50c5c41fcfe4b2cf40092b792d51d30f9f"
+          "version": "repo-file-v1:sha256:2f4c56259ec91f4b780ae776d2fb33d0252d07538ee9a032218751406f208b8a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs",
@@ -170,7 +170,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs",
-          "version": "repo-file-v1:sha256:2569ff38d95ae72c31eaa876483b49f7d11767310ac64a3fc699e4fc5a340c5a"
+          "version": "repo-file-v1:sha256:be7888dc997ae51c168d86cac167530b91d7918cacc0a5bf9091a994a6a3778c"
         }
       ]
     },
@@ -180,7 +180,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_visibility.rs",
-          "version": "repo-file-v1:sha256:2569ff38d95ae72c31eaa876483b49f7d11767310ac64a3fc699e4fc5a340c5a"
+          "version": "repo-file-v1:sha256:be7888dc997ae51c168d86cac167530b91d7918cacc0a5bf9091a994a6a3778c"
         }
       ]
     },
@@ -190,7 +190,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
+          "version": "repo-file-v1:sha256:deb30e1b0c062940ae71a89d98a5fbbcc3c2cd6528c17c31b420903a0eb18c9f"
         }
       ]
     },
@@ -204,7 +204,7 @@
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
+          "version": "repo-file-v1:sha256:deb30e1b0c062940ae71a89d98a5fbbcc3c2cd6528c17c31b420903a0eb18c9f"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_sample.rs",
@@ -218,7 +218,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
+          "version": "repo-file-v1:sha256:deb30e1b0c062940ae71a89d98a5fbbcc3c2cd6528c17c31b420903a0eb18c9f"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs",
@@ -240,7 +240,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:ff517fbfd2c38854e612a5e3756a13689b72b51d020b2fcad8c8a849e58be8aa"
+          "version": "repo-file-v1:sha256:09058d8b9e323cfa4bf0596ca90d96ba8982b7e6fff9c9f32e9d6707af7637f6"
         }
       ]
     },
@@ -304,7 +304,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs",
-          "version": "repo-file-v1:sha256:30eec1f125c161cdcff52dc1d194d2ba24ff85a82e2ea09baf8d5a78bd216f2b"
+          "version": "repo-file-v1:sha256:7fefe96ce6206c5cc3a9cb37430f5443333cc7c4ca4ab56953330ae8ccd05c9b"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/desktop_drafts.rs",
@@ -325,24 +325,24 @@
       "statement": "A failed message uses a normal user bubble at the end of the scrolling transcript and an aligned Not sent and Resend row. The reason is a tooltip, with no disclosure panel or pinning above the input bar. Archived conversations do not offer retry accessories.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2215-L2240",
-          "version": "repo-lines-v1:sha256:0700c41a71eb286f144bf1195dfdff5c068d7d5803e7fbb56fcbd8218a62b632:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMWE4OGNlMDQ3OWM1ZmE3NTI5MmNiOGE1ZWYxOTBhYTg4NDhlMTMyNzg0MDk1ZTI0ZDI1YzM3NDMwOWU5NDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkODIyN2RmMGJmYjc4OWFiOWQ4YjE3ZDQyODhhZDEzMmM5M2U5Y2YwOTlhMTcwNzg3NDViMzk0YzMyZmM4N2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNTViODhjYjRkNTVjN2VmMjE2NDliZWE5MTRiYTEwYTEyNDE0ZDMyOGVkZDhmNTNlMDg1MWRmNDc5MTBhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY3MWM5OTI0YjcyZDgyY2IwMjZmMjNlNWU2NjAwYzczMWIxYmVhNmU4OWVlMDVkZDhhNmYzOGMxNThjMzVkMWIifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2227-L2258",
+          "version": "repo-lines-v1:sha256:f23eb22d81f75af5538eec6a393a7467929e9c440b0bab5cb5fc0837af3c47a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMWE4OGNlMDQ3OWM1ZmE3NTI5MmNiOGE1ZWYxOTBhYTg4NDhlMTMyNzg0MDk1ZTI0ZDI1YzM3NDMwOWU5NDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ODI4NTYwNmQyOGU5MWNlNDRjYWU5MzVjZjg4OTA5MTkxZTA5NWM2YjUzN2NlZTgyNjcyZDdkNzIyYjRhZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNTViODhjYjRkNTVjN2VmMjE2NDliZWE5MTRiYTEwYTEyNDE0ZDMyOGVkZDhmNTNlMDg1MWRmNDc5MTBhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MDZmNmFkYTg4ZjAzZGE2MDU1NmNkOWZkMGY2MGI3NDhkZGMwNjViYjcwN2M5YmNkZGI5ZTc4YThlNGU2YWQifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs#L220-L317",
-          "version": "repo-lines-v1:sha256:8d3f65f45a6a650485500b3e0c4f3f93fca39f6d37830645869167c58ae650e8:eyJzZWxlY3RlZExpbmVDb3VudCI6OTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZiNzI3Njk0MzQ2OGMxNjQ5ZWNiNjIyZWM3YjMyZTA2NWY4MTNhZWUzMGQ3Mzk0MDRmM2M4MTI5YzEzYzY5ZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImEwYTg3NTZhOThiOTVlZTU3NWJlZWU0NjAwNDhjN2ZjOTdhNjdhZDRkZDE1NWFjMWE4NTk3ZWM2NWM0ZmEyODAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwODU3YWFmOWUwZTFiZDY5ZGVkZTYxY2Y3ZmI5NWU0OWQ3M2ZmYzkzZjczNGZmM2IwMDA3ZjcxMTcxNmY1NTEifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs#L238-L385",
+          "version": "repo-lines-v1:sha256:b04bb028107c6c3461947267bb5f77f4b74551a85898bd9efb49798b28a8504c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmYjcyNzY5NDM0NjhjMTY0OWVjYjYyMmVjN2IzMmUwNjVmODEzYWVlMzBkNzM5NDA0ZjNjODEyOWMxM2M2OWY0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMGE4NzU2YTk4Yjk1ZWU1NzViZWVlNDYwMDQ4YzdmYzk3YTY3YWQ0ZGQxNTVhYzFhODU5N2VjNjVjNGZhMjgwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3MTU3MDIxYjdlM2IxMmU1NmNjOGFjOWQzN2E2MDVlZWMyMGQ5ZTVkNzI0ODQ1ZTBiZDlmYzFiNDlmY2YzZTYyIn0"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs#L51-L58",
-          "version": "repo-lines-v1:sha256:78417ed395248670940fa8e6f807e9a7d9d42a3f3201941698119174b67045d2:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzE2NTQxNGRhOWU5MDI0MTg2ZDVmMWJlYzY4ZGRlYjNkOGY1ODNlY2E3MjY1ZWIxZmQ1YjBhZDVjZTJhMDc2ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDExYzEyNTRkODE1YTQ2MjdkODRhOTQ1Nzk2MjYyMmQ3ZjE5YTE0ZGI1MjBlZmMzN2JhMjg5ZjI0YjMxN2I4NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQ5ZTBlNGMzMGRlNmI0NjA1YmNjMjFiNmZmYjVhZDcwN2Q4MDNkZjlmZmY1NmQwMjdkZDYzZmQ1NTI0ODYxMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjM3ZDhjOGVlZWY2ZGQ4NjkyMjgwZWE4M2MzNzk4ODVjNDJjZDQyYTMxMWFmMjQ3ZjZmMzQzYzFmZDIxYjY4OCJ9"
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs#L55-L65",
+          "version": "repo-lines-v1:sha256:951c04258ee053d412fac05045b6787584429e3939b82f4d03fe2412ce8d1a47:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkOWY4OGM5OWU3NzEwNzYwMjI2YjMwYjM4NzNiMjk2ZDNhYzMwNzQzMTc4MWQzNzQzMDFlZjZmZmU3NTNiMjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4MTRmMzIzZDJjNTkxNDMwMzM3NzJhZTBkMGYyNTU0NDVjMWFmMThjNmI4MzMxMjdmZGNjZGNjNzI0MzU4MzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1Yjg2OGEyNWRiYjNlMWQ2ZmU0YWJkNDMxZTkyZjA1ODlhNDEyMzQyZGI2MWMwOGNiNWE3N2E1NWVhMWI4YzUifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline_receipts.rs#L34-L43",
-          "version": "repo-lines-v1:sha256:d860b234271199ba95839d649bcc40f765ed87ec1174416cdadfea780424c180:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3OTQ2ZmQzYWEwNjliZmNmMjBiYzBjMDkwOWE5MDVlMWVhODI4OWU0YWRmNTUzOGE0NjE0NmY2MzRlZmFmZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3OGM0NjczYjU4Yzc1ZWQ3NjBiZjM1YTlkY2M0NTAwY2Y2MTEwNTg5YTI0YTdmNDdiMzJmODlhNGNjY2Y0OGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1OGVhNTM3YjY1YzcwMWY0MDk3YWNkNTQ1ZDI5MjY0NWMwNDUyYTYwODJkYTFjZGFjMTc5MDg1YWY5OTU5NWMifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_receipts.rs#L34-L49",
+          "version": "repo-lines-v1:sha256:85f0e7de4f42cd2960ab0fa1aa3d5ec2c08e77ab87dd5477e629f7e21f7740d2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3OTQ2ZmQzYWEwNjliZmNmMjBiYzBjMDkwOWE5MDVlMWVhODI4OWU0YWRmNTUzOGE0NjE0NmY2MzRlZmFmZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmNzg0OGZiODY0MWE1YjhlZTc4Y2IwMzk2YzdlMDY4NjI5ODA1MDZkZGVjZWU4NjY0OGIzMjI1YTU1OTQ1NjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3OGM0NjczYjU4Yzc1ZWQ3NjBiZjM1YTlkY2M0NTAwY2Y2MTEwNTg5YTI0YTdmNDdiMzJmODlhNGNjY2Y0OGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk5ZDM1ZDI5ZTBmZmE1MmI3YzUyMmFlZGVkZjE5ZGY4ZjMzODkyMDM1MzlkYzZhMWZmNTE3MzQxYzBlYzc1YjcifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1002-L1017",
-          "version": "repo-lines-v1:sha256:b16feaf46a6b7eec52f3bc48fe7bb123877f77bc1b5652c77c0994e6e4498254:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExYTY5MDYzZmFmOWU3ZmFjY2I1MGY0ZDM1ZThmMzI4OTA2NGNkMWUxYmI3ZGNkM2VhYjJhZWE1NmY2MWE5YmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwYTE4YzQ5YzEwODFlZmMyOGJkM2YzYzdmZWI0YjdiOGE2NWVkMmE2NzE2MGQ1MzRjNWQyNzQwNmIwZTJlZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU1YjE4ZDZjNGIzYjYzNThmMzhmODZkNDUxNjQwYzI4M2VjOTRiOTAzMmY5ZTA0Nzk4Zjg2OGFmYzFhNzA0ZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxZGMzNGQzZDY5OTdkNTAxZmM5MGM5NzhkMmRkM2NmN2E0OWRkMTQzYTk1ZjFkODlhZWM2Mzc5ZDIwZGVmYjAifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1020-L1030",
+          "version": "repo-lines-v1:sha256:f1c834ab36d08748f529eafac7ff77239588fdc1f00191fe4f348c755c764e61:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5NjMwY2E4ZjM1NDNiMzY1Zjg5ODMzMWU3OWI1ZThjMmVmOGIyNDA4MDExMzgwYmIzY2ZhZWI1MjJkMWE5OTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQyZTE3Y2NiZTg1YTFjM2QwNTkyNmY5OTFjMzE2MTFkNjRkZDhlMDQyNmY0ZGEzODQxYjJkNjdmYjM5MDg4NjUifQ"
         }
       ]
     },
@@ -351,22 +351,22 @@
       "statement": "Confirmed archive discards never-dispatched user input and failed desktop retry records, retires pending questions and attention, and cancels pending capacity retries and scheduled checks while retaining sent history, claimed receipts, Work and the current editor; restoring the conversation does not revive the discarded input.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L126-L178",
-          "version": "repo-lines-v1:sha256:e6929c914df8a818831aab70395f5a9c2d2e38e3d99720a65f332a67e7073cb6:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjZWViNTVmNjY5YmM2MjQxNzg5MDRmYjE3NTVkYTU4ZmUzMGMzMGEyZDI5NjYyOWUwOWI2MWJlYWMwNjc5NjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViYTY3MzYwZWU2Y2E2MmE1MGFjOWIwOTFiMzM3YTljODRkODdiMWVmZDBmOWQ4OTQxYTBjYmIzODczNTZhZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyZGJkM2QxNmEyNDJhMTRiODFmM2FkY2IwZjMwYTdkMGZmYmFkNzM2OGI3MjAwN2RmOTVlNWFhNWZkZTFmZjcifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L126-L179",
+          "version": "repo-lines-v1:sha256:7703642a6ba26a5703364891a8e15bdd016548169e6b480087bfc575dfa31ff1:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjZWViNTVmNjY5YmM2MjQxNzg5MDRmYjE3NTVkYTU4ZmUzMGMzMGEyZDI5NjYyOWUwOWI2MWJlYWMwNjc5NjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU4MjVmODNhMDAyY2VkYzBkOTA1OTVjMzUwMTc2NjlkMWIwNmMxYjRmZjg1MGMzYTE3ZjExOTFjYjMxZWIxOGUifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/tests/archive.rs#L76-L155",
-          "version": "repo-lines-v1:sha256:f0e37ac55eaf136e6eff583025473f88f243a350867dff17bba76b8d1163885d:eyJzZWxlY3RlZExpbmVDb3VudCI6ODAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlMjcyMjAyYjEyZTY1NTQ5YjZjZTc2YzgwMmZlMTU3YmZmMDJmOTAwZDViMDA4YTE5MzcyMmM0ZTM0OTM3N2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ3ZDFkYTM0ZDc2MDUxMjRjN2I0N2JjY2FhZDliZDg0YjI3NDlmYWVkOGU2ODcyMjAyMWRmZjVjODAzODNkOGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1OTlhMTIxODlhZDhhYjdkMjQwZGZiMTMxZWExMTI0ZTJjNzE4YmRmMTM2OTlkNzU1YWU0ZjAyZTRhMWMyMDAifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent/archive.rs#L44-L56",
+          "version": "repo-lines-v1:sha256:505feab50b90684879b969966286928836fcea9d3ab6b27c7238bd20b5acd69d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRhMGYwMzJiMmFiM2RmYjdkMzNjY2Q2M2VkNjljYTVkYWEyY2M0NDFlZTg1MmVmZWY4NjgyMmYxNzg0MjQ3YzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkZGYxNzQ4NzczN2JiYWVlOTNjY2RiOWQwMTBhNzg4ZmZjMDIzMmE4MzY5MjhlNjJjNTViNTc4NzlkODdjYjQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM0N2E3NjljMWY3MWZmMzhlYjYzYTQ5M2YzMzk5MzMwZWM5YTBkYmNhYjA1ODVmZjgxM2UyODZiODA2ODY1NDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkOTE1MmViMmIyNzU1MTJiYmU1YTQ4ZDU0ZGQyODYzZDVjMjEwNWU1Y2RhNmZmY2JlYjBlNjY3NTVlNWMzMDUifQ"
         },
         {
-          "resource": "repo://database/src/agent/archive.rs#L6-L47",
-          "version": "repo-lines-v1:sha256:c72771a9e242e4d21f696c18ff85f18f454ded8aac1bb3a6d8f2f5210c87439c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhY2QzNjZhNTc1MDVhMWM0M2Y5NmNmZThmODk2ZTdhNzBjMWFmZjdiOTI3YjhkMDU2ZDZhZTc4ZTg0NGM3NzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5MDFlMDgzMjcyN2Y0M2RhZjE1NjI2NDMyNmMzMGZkNzNmNTAwYmUzOTg1NTgwOWJhNTAxNmY2OWMzNmYxMTkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4MjRjMzE2ZmQ5ZGE0OGMxOGNmZDg3MDE4NjZmMzVkOGE5NjhlNGJmNzM5YTg2ZDA1NDA3MjZkZjRhNTY5M2EiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhiZWRlNTlmMTllZGU2Mzg5ZjUxZjE0OWM2NDhkMWY3OGZkZDg3YjE5NWM4YjUwZTYxYzU1NmZlYjkxYWM5OTkifQ"
+          "resource": "repo://database/src/agent/archive.rs#L6-L49",
+          "version": "repo-lines-v1:sha256:c20771d8959c929790b47b1ae0a606d96cc9f5de08ac82d6ecd312f50d107d07:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlhY2QzNjZhNTc1MDVhMWM0M2Y5NmNmZThmODk2ZTdhNzBjMWFmZjdiOTI3YjhkMDU2ZDZhZTc4ZTg0NGM3NzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjUxNWNhNjdhYzhlN2RjNDU3NzJiZWE0NDRkNjI0ZTkyNjM3MGQzYzMyMGVlMzU1Yzk3MzEyYTkzNWE0MTE0ZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1MjE2MDRiMzVmYzQwYWYwMGNiYTRlZWEyZmQ1ZTJjM2FmMTg2M2IzOTExODVkN2JmNGJiMDllNzJkMGM4YjMifQ"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T17:25:11.378Z"
+    "at": "2026-10-27T03:26:06.307Z"
   }
 }
