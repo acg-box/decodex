@@ -21,6 +21,8 @@ for line in sys.stdin:
             "ttlMs": 0,
             "cacheScope": "private",
         }
+    elif method == "server/discover" and mode == "legacy-empty":
+        result = {}
     elif method == "server/discover":
         print(json.dumps({
             "jsonrpc": "2.0", "id": request["id"],
