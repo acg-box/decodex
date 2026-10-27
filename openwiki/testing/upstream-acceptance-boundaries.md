@@ -32,6 +32,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
+  - id: openwiki-source-19796bbb5939eefbc15bb222
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs
   - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs
   - id: openwiki-source-32afc8038b2c3b7df030c573
@@ -112,10 +114,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
+generated: { by: "codex", at: "2026-10-27T15:42:30.799Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T06:15:00.380Z
+    at: 2026-10-27T15:47:51.280Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -136,6 +138,18 @@ verified:
 `Makefile.toml` defines workspace checks. Isolated native fixtures exercise a named Codex binary and must keep their declared environment and effect prerequisites. The signed bundle contract checks packaging, signatures and ABI compatibility; it does not exercise live microphone, network or focus behavior.
 
 For native compatibility, record the upstream commit separately from the installed binary and generated schema. Test the actual consumer contract. A schema field or retained database row is not proof of a delivered UI or supported execution path.
+
+## Observed turn timings
+
+The delivered response details show locally observed activity intervals and explicit unknown values. The [portable record](../../automations/upstream/retained-evidence.json) identifies the source, exact selected native artifact and test entrypoints. Its headless cohort passed 1891 tests, and two selected presentation tests passed. These results do not establish installed-app interaction or live-provider timing. Historical activity durations are available only when the native history or an exact saved observation contains them.
+
+The selected CLI's generated schema exposes a nullable total turn duration but no full critical-path categories. The source research found experimental category totals in native analytics, with disabled, incomplete and complete states. Its tests used modified research source and synthetic services. They do not establish a supported client subscription, a qualified newer artifact or complete inference timing. Continue to show unavailable values as Unknown.
+
+## Native MCP sharing qualification
+
+Five socket cases ran against the selected unmodified CLI from upstream source `abf4bb91ec49fbf443ccec0069f9cab5dd1462d8`. Three passed: compatible modern sharing, concurrent input routing, and an explicitly marked legacy helper with the modern protocol feature disabled. Two failed at thread startup: an unmarked helper returned an empty discovery result, and a marked legacy helper was used with the modern protocol feature enabled. An empty successful discovery result is a synthetic compatibility case, not a conforming method-not-found error or proof of a legacy server.
+
+Two proxy clients sharing one native app-server and one synthetic account home do not prove sharing between separate app-server processes or account isolation. Decodex has not added a launch flag that enables sharing; the native user setting was not inspected. Follow [Decodex issue #2522](https://github.com/acg-box/decodex/issues/2522) and requalify the exact unmodified CLI, helpers and retained mixed-server and child-input regressions before adding a sharing default.
 
 ## Selected read-only views
 

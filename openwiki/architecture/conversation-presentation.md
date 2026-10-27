@@ -58,8 +58,12 @@ sources:
     resource: repo://Cargo.toml
   - id: openwiki-source-2b08587e9b26e203156110c8
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
+  - id: openwiki-source-de4d0cc1dfd69783c61c375f
+    resource: repo://crates/decodex-codex/src/app_server_client/observed_timing.rs
   - id: openwiki-source-c01ab8da738707861c64c143
     resource: repo://crates/decodex-protocol/src/desktop_message_delivery.rs
+  - id: openwiki-source-dbc533dc306a3f520c4241e0
+    resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-64d7588c1af50398568a792e
     resource: repo://crates/decodex-runtime/src/agent/timeline.rs
   - id: openwiki-source-6b78c4fcf18e4d7a81d69679
@@ -68,10 +72,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/media_tests.rs
   - id: openwiki-source-8d3e8e016f038e821f68dd0c
     resource: repo://crates/decodex-runtime/src/agent/timeline/media.rs
-generated: { by: "codex", at: "2026-10-26T17:25:11.378Z" }
+  - id: openwiki-source-74145d84eb83d80ec3062595
+    resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
+  - id: openwiki-source-6197a876b2effbe992b1e2ec
+    resource: repo://database/src/agent.rs
+generated: { by: "codex", at: "2026-10-27T15:42:30.799Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T06:15:00.380Z
+    at: 2026-10-27T15:42:30.799Z
 ---
 
 
@@ -86,6 +94,12 @@ The transcript is the primary reading surface. Intermediate work, response stati
 Interleaved user input remains in source order. A native turn can contain several user messages, including steering input; grouping uses the native turn identity rather than assuming that each input starts another turn. The disclosure shows a count of earlier messages and lets the reader inspect the underlying process.
 
 Response metadata stays compact at the end of the answer: duration and abbreviated input/output amounts. Hover reveals grouped details in a window-anchored overlay. It does not insert a large block into the transcript. Copy controls are separate actions, not part of the statistics disclosure.
+
+### Observed turn activity
+
+The response details can show observed model output, context compaction, tool activity, automatic review and blocking user requests. The native transport records the start and end of these activities with a monotonic clock. It combines overlapping intervals within each category. Categories can overlap each other, so their values do not add up to the turn duration. Model output is the visible output or reasoning item lifetime; it is not the full inference time.
+
+The service saves a completed observation with the exact Work, thread and turn identities. Timeline reads use those identities to retrieve it. A historical activity can also use a valid native item duration or an exact saved activity duration when available. Missing turn starts, unmatched boundaries, overflow and unavailable measurements stay **Unknown**. A measured zero stays zero. Full inference, runtime overhead and other unobserved time remain unknown; these partial observations are not a complete native critical path.
 
 ## Loading and retained content
 

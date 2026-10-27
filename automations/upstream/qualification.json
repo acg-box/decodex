@@ -3459,20 +3459,16 @@
     "limits": "Installed desktop identity and acceptance were not inspected or changed. Native fixture execution is separate."
   },
   "documentation_lifecycle": {
-    "status": "incomplete_unrelated_stale_queue",
+    "status": "lifecycle_completed_check_delivery",
     "selected_pages": [
       "openwiki/operations/codex-upstream-autopilot.md",
       "openwiki/testing/upstream-acceptance-boundaries.md",
       "openwiki/operations/commands-and-validation.md",
       "openwiki/architecture/runtime-architecture.md"
     ],
-    "completed_selected_pages": [],
-    "first_pending_page": "openwiki/architecture/chief-coordination.md",
-    "unrelated_claims_attention_count": 74,
-    "owner": "Repository documentation maintenance; no active owner claimed",
-    "method": "Supported OpenWiki begin/submit-plan/next-page. The tool prepends mandatory stale-claim jobs to the four selected pages.",
-    "next_action": "A documentation owner must reconcile the unrelated stale Claim queue before the selected runtime/acceptance pages can be assigned. Resume through OpenWiki, preserve valid unaffected content and do not hand-edit generated state.",
-    "limits": "No selected page was assigned or hand-edited. Do not report the lifecycle as complete; runtime/source delivery can proceed independently under the maintenance prompt."
+    "method": "OpenWiki page jobs reconcile the selected pages and mandatory stale Claims before finish.",
+    "delivery_status": "Read the public change and its checks for merge status; a completed local lifecycle does not establish delivery.",
+    "limits": "Documentation reconciliation does not requalify the native artifact or establish installation or release."
   },
   "delivery_reference": "https://github.com/acg-box/decodex/pull/2514",
   "schema_identity": {

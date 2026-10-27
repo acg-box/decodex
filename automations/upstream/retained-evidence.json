@@ -1225,19 +1225,17 @@
     }
   },
   "documentation_lifecycle": {
-    "status": "incomplete_unrelated_stale_queue",
+    "status": "lifecycle_completed_check_delivery",
     "selected_pages": [
       "openwiki/architecture/conversation-presentation.md",
-      "openwiki/testing/upstream-acceptance-boundaries.md"
+      "openwiki/testing/upstream-acceptance-boundaries.md",
+      "openwiki/architecture/runtime-architecture.md",
+      "openwiki/operations/codex-upstream-autopilot.md",
+      "openwiki/operations/commands-and-validation.md"
     ],
-    "completed_selected_pages": [],
-    "first_pending_page": "openwiki/architecture/chief-coordination.md",
-    "first_pending_attention_count": 7,
-    "queued_page_count": 13,
-    "owner": "Repository documentation maintenance; no active owner claimed",
-    "method": "OpenWiki begin, submit-plan and next-page. Mandatory stale-claim jobs expand the two selected pages to a 13-page queue.",
-    "next_action": "A documentation owner should reconcile the unrelated stale Claim queue and then update the selected observed-timing presentation and qualification pages through OpenWiki. Replan on source drift.",
-    "limits": "Neither selected page was assigned or hand-edited; do not report the lifecycle as complete. Prior pending runtime and acceptance documentation jobs remain in the expanded queue."
+    "method": "OpenWiki page jobs reconcile the selected pages and mandatory stale Claims before finish.",
+    "delivery_status": "Read the public change and its checks for merge status; a completed local lifecycle does not establish delivery.",
+    "limits": "Documentation reconciliation does not execute native regressions or establish installed-app, live-provider or release acceptance. Historical qualification remains bound to its original source and artifact."
   },
   "retained_behavior_contracts": [
     {
@@ -1622,7 +1620,7 @@
         "remote_checks": "Three CodeQL language analyses succeeded on the exact main commit. The associated merged PR head 9b4b64f9f5edf7cf84fda6f6295cf2c0cc866a05 had three successful analyses and a neutral CodeQL aggregate."
       },
       "delivery_status": "Read the linked public PR for its merge state and exact-head checks.",
-      "documentation_lifecycle": "incomplete; see documentation_lifecycle",
+      "documentation_lifecycle": "See documentation_lifecycle for the current wiki and delivery boundary.",
       "upstream_source_read": [
         "codex-rs/app-server-protocol/src/protocol/v2/item.rs#ToolRequestUserInputParams",
         "codex-rs/app-server-protocol/src/protocol/v2/thread.rs#ThreadTimelineEntry"
