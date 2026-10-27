@@ -364,7 +364,8 @@ impl PerformanceIsland {
 								.role(if expandable { Role::Button } else { Role::Group })
 								.aria_label(content.label().to_owned())
 								.aria_expanded(expanded)
-								.h(gpui::px(CAPSULE_HEIGHT))
+								// The surface border occupies one pixel on each side.
+								.h(gpui::px(CAPSULE_HEIGHT - 2.))
 								.w_full()
 								.flex_none()
 								.flex()

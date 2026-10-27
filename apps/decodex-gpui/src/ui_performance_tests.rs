@@ -26,8 +26,18 @@ fn work_capsule_grows_and_shrinks_with_content_instead_of_the_agent_count(cx: &m
 
 	let before = visual.debug_bounds("activity-work-island").unwrap();
 	let label = visual.debug_bounds("activity-live-rate").unwrap();
+	let debug = visual.debug_bounds("performance-island").unwrap();
+	let fps = visual.debug_bounds("performance-fps").unwrap();
 
 	assert!((label.center().x - before.center().x).abs() < gpui::px(0.5));
+	assert!(
+		(label.center().y - before.center().y).abs() < gpui::px(0.5),
+		"work label {label:?} is not centered in {before:?}"
+	);
+	assert!(
+		(fps.center().y - debug.center().y).abs() < gpui::px(0.5),
+		"fps label {fps:?} is not centered in {debug:?}"
+	);
 
 	island.update(visual, |s, cx| {
 		s.set_work(
