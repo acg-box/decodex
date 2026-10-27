@@ -31,6 +31,8 @@ pub(super) struct Work {
 	rate: String,
 	rows: Arc<[Live]>,
 	columns: [f32; 2],
+	breakdown: [String; 4],
+	breakdown_columns: [f32; 4],
 	sizing: Sizing,
 }
 impl Work {
@@ -74,6 +76,10 @@ impl Content {
 		let total = work
 			.total_tokens()
 			.map_or_else(|| "—".into(), crate::shell::agent_surface::compact_tokens);
+		let breakdown = work.token_breakdown();
+		let count = |value: Option<u64>| {
+			value.map_or_else(|| "—".into(), crate::shell::agent_surface::compact_tokens)
+		};
 		let mut data = Work {
 			label: format!(
 				"{total} recorded tokens, including cached input. Output: {} tok/s. Last measured rate is kept while idle; tool and user waits excluded.",
@@ -85,6 +91,13 @@ impl Content {
 			rate,
 			rows: work.live.clone().into(),
 			columns: [0.; 2],
+			breakdown: [
+				count(breakdown.map(|v| v.input_tokens)),
+				count(breakdown.map(|v| v.cached_input_tokens)),
+				count(breakdown.map(|v| v.output_tokens)),
+				count(breakdown.map(|v| v.reasoning_output_tokens)),
+			],
+			breakdown_columns: [0.; 4],
 			sizing: Sizing { minimal: 0., compact: 0., expanded: 0. },
 		};
 		let mut width = |id, text: &str, size, weight| measure(id, text, size, weight, window, cx);
@@ -138,11 +151,29 @@ impl Content {
 				+ width("activity-width-total-value", &data.total, TEXT_SIZE, FontWeight::MEDIUM)
 				+ 28.
 				+ FRAME;
+		let labels = [
+			("activity-input-label", "activity-input-value", "Input"),
+			("activity-cached-label", "activity-cached-value", "Cached input"),
+			("activity-output-label", "activity-output-value", "Output"),
+			("activity-reasoning-label", "activity-reasoning-value", "Reasoning"),
+		];
+
+		data.breakdown_columns = std::array::from_fn(|index| {
+			let (label_id, value_id, label) = labels[index];
+
+			width(label_id, label, TEXT_SIZE, FontWeight::NORMAL).max(width(
+				value_id,
+				&data.breakdown[index],
+				TEXT_SIZE,
+				FontWeight::MEDIUM,
+			))
+		});
+		let breakdown_width = data.breakdown_columns.iter().sum::<f32>() + 36. + FRAME;
 
 		data.sizing = Sizing {
 			minimal,
 			compact: compact.max(minimal),
-			expanded: details.max(compact).max(minimal).max(total_width),
+			expanded: details.max(compact).max(minimal).max(total_width).max(breakdown_width),
 		};
 
 		Self::Work(data)
@@ -211,7 +242,7 @@ impl Content {
 
 	pub(super) fn height(&self) -> f32 {
 		match self {
-			Self::Work(v) => CAPSULE_HEIGHT + 38. + v.rows.len().min(4) as f32 * 22.,
+			Self::Work(v) => CAPSULE_HEIGHT + 66. + v.rows.len().min(4) as f32 * 22.,
 			Self::Debug(_) => CAPSULE_HEIGHT + 68.,
 		}
 	}
@@ -534,6 +565,31 @@ fn work_details(data: &Work, window: &mut Window, cx: &mut App) -> AnyElement {
 						.child("Recorded tokens"),
 				)
 				.child(number("activity-total-value", data.total.clone())),
+		)
+		.child(
+			gpui::div()
+				.debug_selector(|| "activity-work-breakdown".into())
+				.w_full()
+				.flex()
+				.justify_between()
+				.gap_3()
+				.children(
+					[
+						("work-input", "Input", "Input tokens"),
+						("work-cached", "Cached input", "Cached input, included in input"),
+						("work-output", "Output", "Output tokens"),
+						("work-reasoning", "Reasoning", "Reasoning tokens, included in output"),
+					]
+					.into_iter()
+					.zip(data.breakdown.iter().zip(data.breakdown_columns))
+					.map(|((id, label, description), (value, width))| {
+						metric(id, label, value.clone())
+							.id(id)
+							.w(gpui::px(width))
+							.role(Role::Group)
+							.aria_label(format!("{description}: {value}"))
+					}),
+				),
 		)
 		.when(!data.rows.is_empty(), |body| body.child(list))
 		.into_any_element()

@@ -160,6 +160,7 @@ fn page(items: Vec<AgentTimelineContent>) -> AgentTimelineResult {
 		page: AgentTimelinePage {
 			thread_id: "thread".into(),
 			thread_token_total: None,
+			thread_token_breakdown: None,
 			thread_metrics: None,
 			safety_buffering_turn_id: None,
 			entries: items

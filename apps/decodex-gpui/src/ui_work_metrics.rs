@@ -6,7 +6,8 @@ use gpui::{IntoElement, Styled as _};
 
 use crate::ui_theme;
 use decodex_protocol::{
-	AgentThreadMetrics, AgentTimelineContent, AgentTimelineEntry, AgentTimelinePage,
+	AgentThreadMetrics, AgentThreadTokenBreakdown, AgentTimelineContent, AgentTimelineEntry,
+	AgentTimelinePage,
 };
 
 /// Fixed metric symbols, shared by the graph's header and counters. The atlas
@@ -34,6 +35,7 @@ impl Icon {
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Sample {
 	pub tokens: Option<u64>,
+	pub breakdown: Option<AgentThreadTokenBreakdown>,
 	pub stats: Option<AgentThreadMetrics>,
 	pub read_at: Option<Instant>,
 }
@@ -42,7 +44,8 @@ impl Sample {
 		let mut sample = Self::from_entries(&page.entries);
 
 		sample.tokens = page.thread_token_total.or(sample.tokens);
-		sample.stats = page.thread_metrics;
+		sample.breakdown = page.thread_token_breakdown;
+		sample.stats = page.thread_metrics.as_deref().copied();
 		sample.read_at = Some(Instant::now());
 
 		sample
@@ -116,7 +119,9 @@ impl Sample {
 impl PartialEq for Sample {
 	fn eq(&self, other: &Self) -> bool {
 		// A new receipt clock alone does not change idle counters or invalidate the island.
-		self.tokens == other.tokens && self.stats == other.stats
+		self.tokens == other.tokens
+			&& self.breakdown == other.breakdown
+			&& self.stats == other.stats
 	}
 }
 
@@ -141,6 +146,26 @@ impl Summary {
 		}
 
 		self.samples.iter().try_fold(0_u64, |total, sample| total.checked_add(sample.tokens?))
+	}
+
+	/// Sum only complete native observations for the visible agents.
+	pub(crate) fn token_breakdown(&self) -> Option<AgentThreadTokenBreakdown> {
+		if self.samples.is_empty() {
+			return None;
+		}
+
+		self.samples.iter().try_fold(AgentThreadTokenBreakdown::default(), |mut total, sample| {
+			let value = sample.breakdown?;
+
+			total.input_tokens = total.input_tokens.checked_add(value.input_tokens)?;
+			total.cached_input_tokens =
+				total.cached_input_tokens.checked_add(value.cached_input_tokens)?;
+			total.output_tokens = total.output_tokens.checked_add(value.output_tokens)?;
+			total.reasoning_output_tokens =
+				total.reasoning_output_tokens.checked_add(value.reasoning_output_tokens)?;
+
+			Some(total)
+		})
 	}
 
 	/// Combine the latest overlapping work period; never add unrelated historical speeds.
@@ -249,7 +274,7 @@ pub(crate) fn rate_label(value: Option<f64>) -> String {
 #[cfg(test)]
 mod tests {
 	use crate::ui_work_metrics::{AgentThreadMetrics, Instant, Sample, Summary};
-	use decodex_protocol::AgentOutputRate;
+	use decodex_protocol::{AgentOutputRate, AgentThreadTokenBreakdown, AgentTimelinePage};
 	#[test]
 	fn recorded_total_preserves_missing_zero_and_cumulative_values() {
 		let mut summary = Summary::default();
@@ -267,6 +292,55 @@ mod tests {
 		summary.samples.push(Sample::default());
 
 		assert_eq!(summary.total_tokens(), None);
+	}
+
+	#[test]
+	fn breakdown_sums_complete_observations_without_inventing_missing_counts() {
+		let first = AgentThreadTokenBreakdown {
+			input_tokens: 100,
+			cached_input_tokens: 60,
+			output_tokens: 30,
+			reasoning_output_tokens: 10,
+		};
+		let second = AgentThreadTokenBreakdown {
+			input_tokens: 200,
+			cached_input_tokens: 40,
+			output_tokens: 50,
+			reasoning_output_tokens: 20,
+		};
+		let mut summary = Summary::default();
+		let page = AgentTimelinePage {
+			thread_id: "thread-1".into(),
+			thread_token_total: Some(130),
+			thread_token_breakdown: Some(first),
+			thread_metrics: None,
+			safety_buffering_turn_id: None,
+			entries: vec![],
+			next_cursor: None,
+			weather: Default::default(),
+			active_realtime_session_at_page_start: None,
+		};
+
+		assert_eq!(summary.token_breakdown(), None);
+		summary.samples = vec![
+			Sample::from_page(&page),
+			Sample { breakdown: Some(second), ..Default::default() },
+		];
+		assert_eq!(
+			summary.token_breakdown(),
+			Some(AgentThreadTokenBreakdown {
+				input_tokens: 300,
+				cached_input_tokens: 100,
+				output_tokens: 80,
+				reasoning_output_tokens: 30,
+			})
+		);
+
+		summary.samples.push(Sample::default());
+		assert_eq!(summary.token_breakdown(), None);
+		summary.samples.pop();
+		summary.samples[0].breakdown.as_mut().unwrap().input_tokens = u64::MAX;
+		assert_eq!(summary.token_breakdown(), None);
 	}
 
 	#[test]

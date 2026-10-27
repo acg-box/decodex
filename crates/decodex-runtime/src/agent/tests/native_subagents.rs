@@ -287,7 +287,7 @@ async fn child_usage_is_live_durable_and_keeps_exact_thread_ownership() {
 	for (thread, turn, total) in
 		[("child", "first", 1_234), ("child", "second", 2_468), ("foreign", "other", 9_999)]
 	{
-		let counts = serde_json::json!({"totalTokens":total,"inputTokens":total-34,"cachedInputTokens":0,"outputTokens":34,"reasoningOutputTokens":0});
+		let counts = serde_json::json!({"totalTokens":total,"inputTokens":total-34,"cachedInputTokens":100,"outputTokens":34,"reasoningOutputTokens":10});
 
 		agent.handle_event(ServerEvent::Notification {
 			method: "thread/tokenUsage/updated".into(),
@@ -307,6 +307,18 @@ async fn child_usage_is_live_durable_and_keeps_exact_thread_ownership() {
 		Some(2_468),
 		"the latest native total is not a sum of samples"
 	);
+	assert_eq!(
+		page.thread_token_breakdown,
+		Some(decodex_protocol::AgentThreadTokenBreakdown {
+			input_tokens: 2_434,
+			cached_input_tokens: 100,
+			output_tokens: 34,
+			reasoning_output_tokens: 10,
+		})
+	);
+	let encoded = serde_json::to_vec(&page).unwrap();
+	let received: decodex_protocol::AgentTimelinePage = serde_json::from_slice(&encoded).unwrap();
+	assert_eq!(received.thread_token_breakdown, page.thread_token_breakdown);
 	assert!(
 		agent
 			.store
@@ -331,6 +343,7 @@ async fn child_usage_is_live_durable_and_keeps_exact_thread_ownership() {
 	metrics::enrich(&restored.store, "agent", &mut page).await.unwrap();
 
 	assert_eq!(page.thread_token_total, Some(2_468));
+	assert_eq!(page.thread_token_breakdown.unwrap().cached_input_tokens, 100);
 	assert_eq!(
 		agent.store.get_agent_work_item("agent".into()).await.unwrap().active_turn_id.as_deref(),
 		Some("opaque turn/1")

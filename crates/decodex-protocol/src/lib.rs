@@ -157,9 +157,9 @@ pub use self::{
 	agent_steer::{AgentSteerIdentity, AgentSteerReceiptResult},
 	agent_timeline::{
 		AgentCollaborationDto, AgentCollaborationResultDto, AgentOutputRate, AgentThreadMetrics,
-		AgentTimelineAttachment, AgentTimelineAttachmentSource, AgentTimelineContent,
-		AgentTimelineEntry, AgentTimelineError, AgentTimelinePage, AgentTimelinePromotedContent,
-		AgentTimelineResult, AgentTurnTimingDto,
+		AgentThreadTokenBreakdown, AgentTimelineAttachment, AgentTimelineAttachmentSource,
+		AgentTimelineContent, AgentTimelineEntry, AgentTimelineError, AgentTimelinePage,
+		AgentTimelinePromotedContent, AgentTimelineResult, AgentTurnTimingDto,
 	},
 	agent_transcript::{
 		AgentTranscriptRequest, AgentTranscriptResult, MAX_TRANSCRIPT_BYTES, TRANSCRIPT_CHUNK_BYTES,

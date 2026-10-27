@@ -7,7 +7,7 @@ use crate::{
 	ui_performance::{self, Activity, Expansion, Metrics, PerformanceIsland},
 	ui_work_metrics::{Live, Sample, Summary},
 };
-use decodex_protocol::{AgentOutputRate, AgentThreadMetrics};
+use decodex_protocol::{AgentOutputRate, AgentThreadMetrics, AgentThreadTokenBreakdown};
 
 #[gpui::test]
 fn work_capsule_grows_and_shrinks_with_content_instead_of_the_agent_count(cx: &mut TestAppContext) {
@@ -104,6 +104,19 @@ fn work_statistics_fit_with_debug_and_with_more_than_ninety_agents(cx: &mut Test
 
 			island.work = Some(Summary {
 				working: 92,
+				samples: vec![
+					Sample {
+						tokens: Some(13_000_000_000),
+						breakdown: Some(AgentThreadTokenBreakdown {
+							input_tokens: 12_000_000_000,
+							cached_input_tokens: 8_000_000_000,
+							output_tokens: 1_000_000_000,
+							reasoning_output_tokens: 600_000_000,
+						}),
+						..Default::default()
+					};
+					92
+				],
 				live: (1..=92)
 					.map(|index| Live {
 						key: format!("live-{index}"),
@@ -118,7 +131,6 @@ fn work_statistics_fit_with_debug_and_with_more_than_ninety_agents(cx: &mut Test
 						},
 					})
 					.collect(),
-				..Default::default()
 			});
 			island.expansion = Expansion::Clicked;
 
@@ -140,8 +152,20 @@ fn work_statistics_fit_with_debug_and_with_more_than_ninety_agents(cx: &mut Test
 			visual.debug_bounds("activity-live-live-92").is_none(),
 			"offscreen work is not rendered"
 		);
-		assert_eq!(pill.size.height, gpui::px(154.));
+		assert_eq!(pill.size.height, gpui::px(182.));
 		assert!(visual.debug_bounds("activity-work-total").is_some());
+		let breakdown = visual.debug_bounds("activity-work-breakdown").unwrap();
+		assert!(breakdown.right() <= pill.right() && breakdown.bottom() <= pill.bottom());
+		for id in [
+			"performance-work-input-row",
+			"performance-work-cached-row",
+			"performance-work-output-row",
+			"performance-work-reasoning-row",
+		] {
+			let cell = visual.debug_bounds(id).unwrap();
+
+			assert!(cell.left() >= breakdown.left() && cell.right() <= breakdown.right());
+		}
 		assert!(visual.debug_bounds("performance-needs-you").is_none());
 		assert!(visual.debug_bounds("performance-agent-time").is_none());
 		assert_eq!(island.read_with(visual, |s, _| s.expansion), Expansion::Clicked);

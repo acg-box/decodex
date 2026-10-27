@@ -14,6 +14,7 @@ use decodex_protocol::AgentThreadMetrics;
 fn sample(tokens: Option<u64>, ms: Option<u64>) -> Sample {
 	Sample {
 		tokens,
+		breakdown: None,
 		stats: Some(AgentThreadMetrics { completed_ms: ms, ..Default::default() }),
 		read_at: None,
 	}

@@ -92,6 +92,7 @@ impl AgentSurface {
 			});
 			let sample = crate::ui_work_metrics::Sample {
 				tokens: Some(18_400 + index as u64 * 7_230),
+				breakdown: None,
 				stats: Some(decodex_protocol::AgentThreadMetrics {
 					completed_ms: Some(312_000 + index as u64 * 21_000),
 					active_ms: (row.group == 1).then_some(8_000),

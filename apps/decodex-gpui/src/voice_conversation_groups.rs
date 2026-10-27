@@ -306,6 +306,7 @@ mod tests {
 			next_cursor: cursor,
 			weather: Default::default(),
 			thread_token_total: None,
+			thread_token_breakdown: None,
 			thread_metrics: None,
 			safety_buffering_turn_id: None,
 			active_realtime_session_at_page_start: None,

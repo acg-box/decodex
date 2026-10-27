@@ -100,7 +100,8 @@ where
 								&before.key.work,
 								&before.key.thread,
 							)
-							.await;
+							.await
+							.map(Box::new);
 						}
 						if source().await.is_none_or(|after| after.key != before.key) {
 							return AgentTimelineResult::Unavailable;
@@ -220,6 +221,7 @@ fn project_fields(
 		next_cursor: nullable_text(value.get("nextCursor")?, 4_096)?,
 		weather: Default::default(),
 		thread_token_total: None,
+		thread_token_breakdown: None,
 		thread_metrics: None,
 		safety_buffering_turn_id: None,
 		active_realtime_session_at_page_start: nullable_text(

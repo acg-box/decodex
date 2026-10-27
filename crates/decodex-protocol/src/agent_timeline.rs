@@ -11,9 +11,12 @@ pub struct AgentTimelinePage {
 	/// Latest observed native cumulative total for this exact thread, including live turns.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub thread_token_total: Option<u64>,
+	/// Cumulative native token categories for this exact thread, when observed.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub thread_token_breakdown: Option<AgentThreadTokenBreakdown>,
 	/// Complete native turn durations and the latest measured output rate for this thread.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
-	pub thread_metrics: Option<AgentThreadMetrics>,
+	pub thread_metrics: Option<Box<AgentThreadMetrics>>,
 	/// Live turn whose provider explicitly requests a safety buffering indicator.
 	/// This is connection state, not saved history or an approval request.
 	#[serde(skip_serializing_if = "Option::is_none")]
@@ -29,6 +32,19 @@ pub struct AgentTimelinePage {
 	pub weather: BTreeMap<String, Vec<WeatherForecast>>,
 	/// Voice session active immediately before the first entry, if any.
 	pub active_realtime_session_at_page_start: Option<String>,
+}
+
+/// Provider-reported cumulative categories. Cached input and reasoning are subsets.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub struct AgentThreadTokenBreakdown {
+	/// Input tokens, including cached input.
+	pub input_tokens: u64,
+	/// Cached tokens included in input.
+	pub cached_input_tokens: u64,
+	/// Output tokens, including reasoning.
+	pub output_tokens: u64,
+	/// Reasoning tokens included in output.
+	pub reasoning_output_tokens: u64,
 }
 
 /// Statistics from native turn headers and exact usage observations, independent of pagination.
