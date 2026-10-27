@@ -1,5 +1,6 @@
 //! Durable Agent work and inbox facts. The caller owns planning and judgment.
 
+mod archive;
 mod capacity;
 mod collaboration;
 mod delegation;
@@ -1219,6 +1220,7 @@ impl SqliteStore {
 				"SELECT EXISTS(SELECT 1 FROM agent_managers WHERE work_id=?1)",
 				[&work], |row| row.get(0),
 			).map_err(error::sqlite_error)?;
+
 			if !manager || owner.codex_thread_id.as_deref() != Some(thread.as_str())
 				|| event.work_item_id != work || event.event_kind != "user_message"
 				|| event.disposition != Some(AgentDisposition::UserDecision)
@@ -1226,24 +1228,29 @@ impl SqliteStore {
 			{
 				return Err(DatabaseError::Conflict.into());
 			}
+
 			let source = serde_json::json!(["user_message_retry",work,event_id]).to_string();
 			let exists: bool = tx.query_row(
 				"SELECT EXISTS(SELECT 1 FROM agent_inbox_events WHERE source_event_id=?1)",
 				[&source], |row| row.get(0),
 			).map_err(error::sqlite_error)?;
+
 			if exists { return Ok(()); }
 			if owner.dispatch_state != AgentDispatchState::Idle {
 				return Err(DatabaseError::Conflict.into());
 			}
+
 			insert_event(&tx, EnqueueAgentEvent {
 				source_event_id: source, work_item_id: work.clone(),
 				event_kind: "user_message".into(), payload: event.payload,
 			}, false)?;
+
 			tx.execute(
 				"UPDATE agent_work_items SET status='open',next_check_at_micros=NULL,updated_at_micros=max(updated_at_micros,?2) WHERE id=?1 AND status='user_decision'",
 				rusqlite::params![work,crate::unix_micros()?],
 			).map_err(error::sqlite_error)?;
 			tx.commit().map_err(error::sqlite_error)?;
+
 			Ok(())
 		}).await
 	}

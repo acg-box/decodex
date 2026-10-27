@@ -333,9 +333,17 @@ impl AgentHost {
 		)
 		.await;
 
-		let cache = self.archive_visibility.lock().await;
+		let mut cache = self.archive_visibility.lock().await;
 
 		if self.runtime.agent_catalog_client().is_some_and(|(current, _)| current == generation) {
+			let archived: Vec<_> = cache.archived.difference(&cache.retired).cloned().collect();
+
+			if self.store.retire_archived_agent_threads(archived.clone()).await.is_ok() {
+				cache.retired.extend(archived);
+			} else {
+				snapshot.connection_initializing = true;
+			}
+
 			cache.project(snapshot);
 
 			if agent_slots::synchronize(&self.store, snapshot, slots, &cache.archived)
@@ -402,9 +410,11 @@ impl AgentHost {
 
 	pub(crate) async fn runtime_source(&self) -> Option<decodex_protocol::EntityId> {
 		let (generation, account, revision, client) = self.runtime.agent_usage_source().await?;
+
 		if !self.archive_visibility.lock().await.ready_for(generation.as_str()) {
 			return None;
 		}
+
 		let value = serde_json::to_vec(&(
 			generation.as_str(),
 			account.as_str(),
@@ -1777,9 +1787,11 @@ impl AgentHost {
 					.retry_agent_input(work_id.as_str().into(), thread_id.as_str().into(), event_id)
 					.await
 					.map_err(|_| "This message cannot be retried. Refresh its delivery status.")?;
+
 				if active.is_none() {
 					*active = self.restore().await;
 				}
+
 				Ok(work_id.as_str().into())
 			},
 			AgentActionDto::Interrupt { work_id, turn_id } =>
@@ -2284,9 +2296,11 @@ impl AgentHost {
 
 			return None;
 		};
+
 		// Seed the durable question fence before publishing any native client. A
 		// readable workspace must not expose stale questions during later recovery.
 		self.store.queue_agent_async_reconnection().await.ok()?;
+
 		let reused_observation = if let Some(observations) = &self.observations {
 			let _phase = Phase::new("initial_account_observations");
 			let bound_account = self
@@ -2296,18 +2310,21 @@ impl AgentHost {
 				.ok()?
 				.map(|binding| binding.account_id);
 			let selected = bound_account.as_ref().or(account.as_ref());
+
 			if observations.can_reuse_initial_observation(selected).await {
 				let _phase = Phase::new("cached_account_observation");
+
 				true
 			} else {
 				observations.wait_for_initial_observation(selected).await;
+
 				false
 			}
 		} else {
 			false
 		};
-
 		let connected = self.connect(&root.id, format!("restore-{}", now()), config, account).await;
+
 		if reused_observation && let Some(observations) = &self.observations {
 			// Refresh alongside history recovery, after releasing the startup credential lock.
 			observations.request_refresh();
@@ -2335,6 +2352,7 @@ impl AgentHost {
 				// Native identity and persisted recovery are ready. Routine wake dispatch may
 				// still inspect external writers; it must not hold the workspace reveal.
 				self.initializing.send_replace(false);
+
 				let _phase = Phase::new("wake_pending");
 
 				self.record_delivery(&root.id, active.1.wake_pending().await).await;

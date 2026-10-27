@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8282b0de98b78b01f0ccbb777e074dfcbb3889e657cf1f5365d1ee34799660b2",
+  "pageVersion": "sha256:a3d9a2c67de045cd455659bb966b6654d77806b8b795a84ee1466d984e9fa356",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -88,7 +88,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
+          "version": "repo-file-v1:sha256:deb30e1b0c062940ae71a89d98a5fbbcc3c2cd6528c17c31b420903a0eb18c9f"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
@@ -106,7 +106,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/agent.rs",
-          "version": "repo-file-v1:sha256:65f0c3159e9ab49793db2c3f93603a27671a609e3249f485d0e5c39a06ab3ab8"
+          "version": "repo-file-v1:sha256:6e871f5a43c46a148ea26745e532100a5055db515f3e7c9d614dc7315a27f494"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
@@ -120,7 +120,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
+          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
@@ -170,7 +170,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
+          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -185,6 +185,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T15:20:45.937Z"
+    "at": "2026-10-27T03:26:06.307Z"
   }
 }

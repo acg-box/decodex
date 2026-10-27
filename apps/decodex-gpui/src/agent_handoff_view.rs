@@ -5,7 +5,7 @@ use crate::{
 	shell::agent_surface::{
 		AgentSurface, AgentWorkItemDto, Context, InteractiveElement, IntoElement, ParentElement,
 		Role, SharedString, StatefulInteractiveElement, Styled, dock, graph::Node,
-		handoffs::Handoff, ui_theme::TEXT_MUTED,
+		handoffs::Handoff, panel_controls::Panel, ui_theme::TEXT_MUTED,
 	},
 	ui_theme,
 };
@@ -57,7 +57,7 @@ impl AgentSurface {
 			} else {
 				gpui::div().flex_1().into_any_element()
 			})
-			.child(self.panel_controls(super::panel_controls::Panel::Dock, cx));
+			.child(self.panel_controls(Panel::Dock, cx));
 		let mut panel = gpui::div()
 			.id("work-dock")
 			.relative()
@@ -67,10 +67,7 @@ impl AgentSurface {
 			.flex_col()
 			.overflow_hidden()
 			.when(!self.workspace.graph_expanded, |panel| panel.pb(gpui::px(8.)))
-			.when(self.workspace.panel_drag.is_none(), |panel| panel.occlude())
-			.capture_any_mouse_down(cx.listener(|s, _, _, _| {
-				s.workspace.focused_panel = Some(super::workspace_size::Panel::Bottom)
-			}));
+			.when(self.workspace.panel_drag.is_none(), |panel| panel.occlude());
 
 		if floating {
 			return panel
@@ -375,9 +372,6 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap_2()
-			.capture_any_mouse_down(cx.listener(|s, _, _, _| {
-				s.workspace.focused_panel = Some(super::workspace_size::Panel::Bottom);
-			}))
 			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
 				if e.keystroke.key == "escape" {
 					s.handoffs.focus = None;

@@ -5,7 +5,7 @@ use gpui::{
 };
 
 use crate::{
-	shell::agent_surface::{AgentSurface, Context, Window, workspace_size::Panel},
+	shell::agent_surface::{AgentSurface, Context, Window},
 	ui_theme::WORKSPACE_GUTTER,
 };
 
@@ -23,6 +23,7 @@ impl AgentSurface {
 	pub(super) fn agent_tree_width(&self, window: &Window) -> f32 {
 		if !self.workspace.agent_tree_visible
 			|| self.workspace.chat_expanded
+			|| self.workspace.graph_expanded
 			|| !self.reserve_workspace_panels()
 		{
 			return 0.0;
@@ -42,9 +43,6 @@ impl AgentSurface {
 			.size_full()
 			.flex()
 			.flex_col()
-			.capture_any_mouse_down(
-				cx.listener(|s, _, _, _| s.workspace.focused_panel = Some(Panel::Right)),
-			)
 			.child(self.render_agent_workbench(cx))
 			.into_any_element()
 	}

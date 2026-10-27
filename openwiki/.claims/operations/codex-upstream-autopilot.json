@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2a819242e58fc6e4e76a29bb71452d7455354b17771b24bce71315eea08efbad",
+  "pageVersion": "sha256:ad49f93744424296b399415fdb25b4508f9c402a2770e6c8bf28bfb6ce0eb9e6",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -156,7 +156,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
+          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
         }
       ]
     },
@@ -176,7 +176,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/current-review.json",
-          "version": "repo-file-v1:sha256:0c0b0b5c54033bb5e52b4ff9274903165f17d96f4dbcaefb8ff8ee18ff7e4ebb"
+          "version": "repo-file-v1:sha256:411a0b5dbff918d7331bace8337763fd55a340290b2f8403cc556d02478ff782"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
@@ -184,7 +184,7 @@
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:be0ac7f5e5b8504c2d7e3fb02edd856e46d974f9b16c1f230b3f750dc689ea2b"
+          "version": "repo-file-v1:sha256:deb30e1b0c062940ae71a89d98a5fbbcc3c2cd6528c17c31b420903a0eb18c9f"
         }
       ]
     },
@@ -194,7 +194,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
+          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
         }
       ]
     },
@@ -204,13 +204,13 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
+          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T15:20:45.937Z"
+    "at": "2026-10-27T03:26:06.307Z"
   }
 }

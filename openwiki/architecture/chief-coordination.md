@@ -5,7 +5,7 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T15:20:45.937Z
+    at: 2026-10-27T03:26:06.307Z
 sources:
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
@@ -13,10 +13,14 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration_cases.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
+  - id: openwiki-source-5eddd1d872eed61f8ba7e703
+    resource: repo://apps/decodex-gpui/src/agent_draft_storage.rs
   - id: openwiki-source-1e0b3343cd024646618a1f95
     resource: repo://apps/decodex-gpui/src/agent_native_agents.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
+  - id: openwiki-source-1849030b658783d8ea0855b0
+    resource: repo://apps/decodex-gpui/src/agent_timeline_receipts.rs
   - id: openwiki-source-0d053d4de2f668168f982629
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
@@ -41,6 +45,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_visibility.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-052a4071b057633df77b1e21
+    resource: repo://crates/decodex-runtime/src/agent/archive.rs
   - id: openwiki-source-a5bf72500fe69a895fca0dac
     resource: repo://crates/decodex-runtime/src/agent/coordination.md
   - id: openwiki-source-a7886792ad3e47b8e1afb7fa
@@ -75,6 +81,8 @@ sources:
     resource: repo://database/src/agent_process.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
+  - id: openwiki-source-dd880acfb699314e78cc9985
+    resource: repo://database/src/agent/archive.rs
   - id: openwiki-source-7c1fe4a0f054521cb1d94e08
     resource: repo://database/src/agent/collaboration.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
@@ -89,7 +97,7 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
+generated: { by: "codex", at: "2026-10-26T17:08:35.248Z" }
 ---
 
 # Project, Agent and Work coordination
@@ -169,6 +177,8 @@ The reader orders native pages by update time and stops when it finds every requ
 Archive observations refresh in the background on a five-second interval. Only one refresh runs at a time within a native process generation; a changed set of bindings can request an earlier refresh. Work snapshots use confirmed observations without waiting for the native read. A new process starts with no inherited observations, and a late result from an earlier process cannot replace them. The service does not write a second archive flag into SQLite.
 
 The active snapshot supplies the work list and relationship graph. Archived non-root work is hidden. The personal Agent remains as the coordination entry point, with its archive state available to the input gate. Filtering removes incident relationships, pending-event entries and context references from the view. Hidden conversation records leave the active Project view. Live descendants remain visible under their nearest visible ancestor. Stored work and the original hierarchy remain intact. A later positive active observation restores visibility without an application restart.
+
+A confirmed archive also ends local pending interactions. The service discards user input that never reached native dispatch, cancels pending capacity retries, retires old questions and request notices, and clears scheduled checks. It retains sent history, claimed delivery receipts and Work records. Native archive notifications, positive catalog observations and an archived resume rejection use the same cleanup. Restoration does not revive the discarded input. The desktop removes failed-message retry records for that exact conversation and stops selected voice input while keeping the current editor.
 
 Native child lists explicitly include all providers and exclude archived threads. Only a complete valid list replaces the previous list. When a child leaves that list, the desktop saves its draft and closes its affected tabs. Removal of one local owner clears only that owner's child state. Other open conversations keep their connection, input and view state.
 

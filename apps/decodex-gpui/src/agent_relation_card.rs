@@ -3,7 +3,7 @@ use std::{array, cell::Cell, rc::Rc, sync::Arc, time::Instant};
 
 use gpui::{
 	AccessibleAction, AnyElement, App, Div, InteractiveElement as _, IntoElement, MouseButton,
-	MouseDownEvent, ParentElement as _, PathBuilder, RenderOnce, SharedString, Stateful,
+	MouseDownEvent, ParentElement as _, RenderOnce, SharedString, Stateful,
 	StatefulInteractiveElement as _, Styled as _, Window, prelude::FluentBuilder as _,
 };
 
@@ -416,68 +416,6 @@ impl Interaction {
 	}
 }
 
-/// Routed endpoints remain visible without framing the character and its activity.
-/// Ports are local world coordinates; the router alone chooses their side.
-pub(super) struct Ports {
-	pub zoom: f32,
-	pub selected: bool,
-	pub presence: f32,
-	pub ports: Vec<(f32, f32)>,
-}
-impl Ports {
-	fn element(self) -> impl IntoElement {
-		gpui::canvas(
-			|_, _, _| (),
-			move |bounds, _, window, _| {
-				let density = window.scale_factor();
-				let snap = |v: f32| (v * density).round() / density;
-
-				for &(x, y) in &self.ports {
-					let center = (
-						snap(f32::from(bounds.left()) + x * self.zoom),
-						snap(f32::from(bounds.top()) + y * self.zoom),
-					);
-					let point = |x, y| gpui::point(gpui::px(center.0 + x), gpui::px(center.1 + y));
-					let (radius, control) = (2.5, 2.5 * 0.552_284_8);
-					let mut ring = PathBuilder::stroke(gpui::px(1.));
-
-					ring.move_to(point(radius, 0.));
-					ring.cubic_bezier_to(
-						point(0., radius),
-						point(radius, control),
-						point(control, radius),
-					);
-					ring.cubic_bezier_to(
-						point(-radius, 0.),
-						point(-control, radius),
-						point(-radius, control),
-					);
-					ring.cubic_bezier_to(
-						point(0., -radius),
-						point(-radius, -control),
-						point(-control, -radius),
-					);
-					ring.cubic_bezier_to(
-						point(radius, 0.),
-						point(control, -radius),
-						point(radius, -control),
-					);
-
-					if let Ok(path) = ring.build() {
-						window.paint_path(
-							path,
-							ui_theme::rgb(if self.selected { SELECTED } else { SECONDARY_TEXT })
-								.opacity(self.presence),
-						);
-					}
-				}
-			},
-		)
-		.absolute()
-		.inset_0()
-	}
-}
-
 /// Pointer hit bounds follow the camera. Hover does not change node geometry.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct Rect {
@@ -500,7 +438,6 @@ pub(super) struct Card {
 	pub faded: bool,
 	pub visibility: f32,
 	pub mascot_opacity: Option<Rc<Cell<f32>>>,
-	pub ports: Option<Ports>,
 }
 impl RenderOnce for Card {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -527,7 +464,6 @@ impl RenderOnce for Card {
 
 		self.surface
 			.opacity(self.visibility * arrival)
-			.when_some(self.ports, |surface, ports| surface.child(ports.element()))
 			// The graph already supplies this card's bounds. Measure its contents
 			// once in that slot, outside the graph's intrinsic flex layout passes.
 			.child(

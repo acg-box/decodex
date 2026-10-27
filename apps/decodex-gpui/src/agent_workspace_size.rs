@@ -56,7 +56,8 @@ impl AgentSurface {
 			self.workspace.sidebar_visible && width > 1_000.0,
 			self.workspace.agent_tree_visible
 				&& self.reserve_workspace_panels()
-				&& !self.workspace.chat_expanded,
+				&& !self.workspace.chat_expanded
+				&& !self.workspace.graph_expanded,
 			self.workspace.graph_visible
 				&& self.reserve_workspace_panels()
 				&& !self.workspace.graph_expanded,
@@ -559,9 +560,7 @@ mod tests {
 	};
 
 	#[gpui::test]
-	fn graph_fullscreen_keeps_the_workbench_and_restores_preferences(
-		cx: &mut gpui::TestAppContext,
-	) {
+	fn fullscreen_hides_sidebars_and_restores_preferences(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(900.)));
@@ -587,7 +586,7 @@ mod tests {
 				let s = surface.read(cx);
 
 				assert_eq!(s.sidebar_target_width(window), 0.);
-				assert_eq!(s.agent_tree_width(window), if target.is_some() { 270. } else { 0. });
+				assert_eq!(s.agent_tree_width(window), 0.);
 				assert_eq!(s.workspace.chat_expanded, target.is_none());
 				assert_eq!(s.workspace.graph_expanded, target.is_some());
 
@@ -638,6 +637,14 @@ mod tests {
 			assert!(visual.debug_bounds("chat-expansion-expand-icon").is_some());
 			assert!(visual.debug_bounds("dock-expansion-expand-icon").is_some());
 			assert!(visual.debug_bounds("chat-expansion-restore-icon").is_none());
+
+			visual.update(|window, cx| {
+				let s = surface.read(cx);
+
+				assert_eq!(s.sidebar_target_width(window), 230.);
+				assert_eq!(s.agent_tree_width(window), 270.);
+			});
+
 			assert!(visual.debug_bounds("dock-expansion-restore-icon").is_none());
 		}
 	}

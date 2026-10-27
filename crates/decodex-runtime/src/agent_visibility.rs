@@ -16,6 +16,7 @@ pub(crate) struct ArchiveVisibility {
 	pub generation: Option<String>,
 	pub checked_at: Option<Instant>,
 	pub archived: HashSet<String>,
+	pub retired: HashSet<String>,
 	refreshing: bool,
 	threads: HashSet<String>,
 	initial_pending: Option<HashSet<String>>,
@@ -69,6 +70,7 @@ impl ArchiveVisibility {
 				match state {
 					ThreadArchiveState::Active => {
 						self.archived.remove(&id);
+						self.retired.remove(&id);
 					},
 					ThreadArchiveState::Archived => {
 						self.archived.insert(id);
@@ -448,7 +450,9 @@ mod tests {
 		let mut cache = ArchiveVisibility::default();
 
 		cache.refresh_due("process", &threads, Instant::now());
+
 		assert!(!cache.ready_for("process"));
+
 		for observed in [
 			HashMap::new(),
 			HashMap::from([("thread-main".into(), ThreadArchiveState::Active)]),

@@ -16,13 +16,6 @@ use crate::{
 use decodex_protocol::{AgentHistoryEntryDto, AgentHistorySourceDto, AgentTimelineEntry};
 
 impl AgentSurface {
-	pub(in super::super) fn saved_inputs_in_composer(&self, work: &AgentWorkItemDto) -> bool {
-		self.native_agents.selected.is_none()
-			&& self.native_history_active(work)
-			&& !self.selected_is_archived()
-			&& !self.workspace.browsing
-	}
-
 	fn saved_delivery_entries(&self, work: &str) -> BTreeMap<i64, &AgentHistoryEntryDto> {
 		let mut saved = BTreeMap::new();
 
@@ -43,6 +36,10 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> Vec<AnyElement> {
+		if self.work_is_archived(&work.id) {
+			return Vec::new();
+		}
+
 		let mut rows = self.native_input_receipts_panel(work, cx);
 
 		for entry in self.saved_delivery_entries(&work.id).values() {
@@ -91,7 +88,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		let mut rows = Vec::new();
 
-		if !diagnostics && !self.saved_inputs_in_composer(work) {
+		if !diagnostics {
 			rows.extend(self.saved_input_rows(work, cx));
 		}
 
@@ -125,7 +122,7 @@ impl AgentSurface {
 		}
 
 		for entry in saved.values() {
-			// Saved inputs have one owner, beside the composer or in archived history.
+			// Pending input is rendered once with its message, outside diagnostic records.
 			if entry.kind == "unsent_input"
 				|| receipt_label(entry) == Some("Local input · Delivery not confirmed")
 			{
@@ -333,7 +330,6 @@ fn receipt_label(entry: &AgentHistoryEntryDto) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
-	use std::thread;
 
 	use crate::shell::agent_surface::native_timeline::receipts::{
 		self, AgentHistoryEntryDto, AgentHistoryResult, AgentSurface, AgentTimelineContent,
@@ -421,29 +417,10 @@ mod tests {
 		assert!(visual.debug_bounds("local-receipt-92").is_none());
 		assert!(visual.debug_bounds("local-receipt-93").is_some());
 		assert!(visual.debug_bounds("local-receipt-93").unwrap().size.height <= gpui::px(96.));
-		assert!(visual.debug_bounds("saved-input-body-93").is_none());
+		assert!(visual.debug_bounds("saved-input-agent-93-message").is_some());
 		assert!(visual.debug_bounds("local-records-toggle").is_some());
-
-		let copy = visual.debug_bounds("saved-input-agent-93-copy").unwrap();
-
-		visual.simulate_click(copy.center(), Default::default());
-		visual.update(|_, cx| {
-			assert_eq!(
-				cx.read_from_clipboard().and_then(|item| item.text()),
-				Some("Saved **local** record".into())
-			);
-		});
-
-		let toggle = visual.debug_bounds("saved-input-toggle").unwrap();
-
-		visual.simulate_click(toggle.center(), Default::default());
-		visual.update(crate::ui_frame::draw_frame);
-
-		thread::sleep(std::time::Duration::from_millis(240));
-
-		visual.update(crate::ui_frame::draw_frame);
-
-		assert!(visual.debug_bounds("saved-input-body-93").is_some());
+		assert!(visual.debug_bounds("saved-input-agent-93-copy").is_none());
+		assert!(visual.debug_bounds("saved-input-toggle").is_none());
 
 		surface.update(visual, |s, cx| {
 			s.workspace.details_visible = true;

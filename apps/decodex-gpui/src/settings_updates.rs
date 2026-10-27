@@ -5,7 +5,7 @@ use std::{
 };
 
 use gpui::{
-	AnyElement, Context, Div, FontWeight, KeyDownEvent,
+	AnyElement, Context, Div, KeyDownEvent,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, IntoElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -133,7 +133,7 @@ impl SettingsSurface {
 			.into_any_element()
 	}
 
-	fn component_card(&self, cx: &mut Context<Self>) -> Div {
+	fn component_settings(&self, cx: &mut Context<Self>) -> Div {
 		let version = RuntimeLock::embedded()
 			.map(|lock| {
 				if lock.source.is_some() {
@@ -148,47 +148,18 @@ impl SettingsSurface {
 			ComponentState::Failed(_) => Some(("updates-retry-runtime", "Retry setup")),
 			_ => Some(("updates-prepare-runtime", "Check Codex")),
 		};
-		let mut component = ui_theme::settings_card()
-			.p_4()
-			.gap_3()
-			.child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.justify_between()
-					.gap_4()
-					.child(
-						gpui::div()
-							.flex_1()
-							.min_w_0()
-							.flex()
-							.flex_col()
-							.gap_1()
-							.child(
-								gpui::div()
-									.text_size(gpui::px(13.))
-									.font_weight(FontWeight::SEMIBOLD)
-									.child("Codex"),
-							)
-							.child(
-								gpui::div()
-									.text_size(gpui::px(11.5))
-									.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-									.child(version),
-							),
-					)
-					.when_some(action, |header, (id, label)| {
-						header.child(self.update_button(id, label, Action::Prepare, cx))
-					}),
-			)
-			.child(
-				gpui::div()
-					.text_size(gpui::px(11.5))
-					.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-					.child(
-						"Runs your conversations. Decodex prepares the required version automatically.",
+		let mut component = gpui::div().w_full().flex().flex_col().child(
+			ui_theme::settings_row()
+				.child(ui_theme::settings_label(
+					"Codex",
+					format!(
+						"{version}\nRuns your conversations. Prepared automatically by Decodex."
 					),
-			);
+				))
+				.when_some(action, |row, (id, label)| {
+					row.child(self.update_button(id, label, Action::Prepare, cx))
+				}),
+		);
 
 		match &self.updates.shown {
 			ComponentState::Unchecked => {},
@@ -239,54 +210,32 @@ impl SettingsSurface {
 	}
 
 	pub(super) fn updates_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		gpui::div()
+		let app = gpui::div()
+			.w_full()
 			.flex()
 			.flex_col()
-			.gap_5()
 			.child(
-				ui_theme::settings_card()
-					.p_4()
-					.gap_3()
-					.child(
-						gpui::div()
-							.flex()
-							.items_center()
-							.justify_between()
-							.gap_4()
-							.child(
-								gpui::div()
-									.flex()
-									.flex_col()
-									.gap_1()
-									.child(
-										gpui::div()
-											.text_size(gpui::px(13.))
-											.font_weight(FontWeight::SEMIBOLD)
-											.child("Decodex"),
-									)
-									.child(
-										gpui::div()
-											.text_size(gpui::px(11.5))
-											.text_color(ui_theme::rgb(crate::ui_theme::TEXT_MUTED))
-											.child(format!(
-												"Version {}",
-												env!("CARGO_PKG_VERSION")
-											)),
-									),
-							)
-							.child(self.update_button(
-								"updates-check",
-								"Check for updates",
-								Action::Check,
-								cx,
-							)),
-					)
-					.children(self.updates.app_feedback.as_ref().and_then(|feedback| {
-						ui_feedback::inline_feedback("updates-app-feedback", "App update", feedback)
-					})),
+				ui_theme::settings_row()
+					.child(ui_theme::settings_label(
+						"Decodex",
+						format!("Version {}", env!("CARGO_PKG_VERSION")),
+					))
+					.child(self.update_button(
+						"updates-check",
+						"Check for updates",
+						Action::Check,
+						cx,
+					)),
 			)
-			.child(self.component_card(cx))
-			.into_any_element()
+			.children(self.updates.app_feedback.as_ref().and_then(|feedback| {
+				ui_feedback::inline_feedback("updates-app-feedback", "App update", feedback)
+			}));
+
+		ui_theme::settings_group(
+			"Installed software",
+			vec![app.into_any_element(), self.component_settings(cx).into_any_element()],
+		)
+		.into_any_element()
 	}
 }
 

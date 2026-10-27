@@ -17,7 +17,9 @@ use crate::{
 	},
 	ui_feedback::Feedback,
 };
-use decodex_protocol::{CommandError, NativeAgentDto, NativeAgentsResult};
+use decodex_protocol::{
+	CommandError, NATIVE_PARENT_RECONNECT_MESSAGE, NativeAgentDto, NativeAgentsResult,
+};
 
 #[derive(Default)]
 pub(super) struct NativeAgents {
@@ -714,7 +716,7 @@ impl AgentSurface {
 						error: CommandError::ApplicationUnavailable { message },
 					}) => {
 						s.native_agents.connection =
-							if message.as_str() == "Open the parent conversation to reconnect." {
+							if message.as_str() == NATIVE_PARENT_RECONNECT_MESSAGE {
 								NativeConnection::ParentManaged
 							} else {
 								NativeConnection::Failed(message.as_str().into())
@@ -909,7 +911,7 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use std::future;
+	use std::{future, thread};
 
 	use futures_util::{SinkExt as _, StreamExt as _};
 	use gpui::AppContext as _;
@@ -1259,6 +1261,7 @@ mod tests {
 			s.composer.update(cx, |input, cx| input.set_content("Parent draft", cx));
 			s.enter_native_conversation("agent", "child", cx);
 
+			s.native_agents.detail_task = None;
 			s.native_agents.connection = super::NativeConnection::ParentManaged;
 
 			assert_eq!(s.composer_unavailable_reason(), Some("Continue in parent chat"));
@@ -1293,6 +1296,7 @@ mod tests {
 
 		let action = visual.debug_bounds("native-open-parent").unwrap();
 
+		visual.simulate_mouse_move(action.center(), None, Default::default());
 		visual.simulate_click(action.center(), Default::default());
 		surface.update(visual, |s, cx| {
 			assert!(s.native_agents.selected.is_none());
@@ -1306,12 +1310,105 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn native_connection_notices_share_one_band_without_quotes_or_toolbar_errors(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_root, profile, server) = wire_test_support::fixture(|_| async {});
+
+		server.join().unwrap();
+
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
+		visual.simulate_resize(gpui::size(gpui::px(1_100.), gpui::px(800.)));
+
+		surface.update(visual, |s, cx| {
+			bind_fixture(s, profile, cx);
+
+			s.composer.update(cx, |input, cx| input.set_content("Parent draft", cx));
+
+			s.native_agents.selected = Some(("agent".into(), "child".into()));
+			s.native_agents.editor = s.native_agent_target("agent", "child");
+			s.native_agents.last_poll = Some(std::time::Instant::now());
+			s.native_agents.next_detail =
+				Some(std::time::Instant::now() + std::time::Duration::from_secs(60));
+			s.native_agents.input = Some(cx.new(|cx| {
+				ComposerInput::message(35, "Quote must stay hidden", "Agent message", cx)
+			}));
+		});
+
+		for state in [
+			super::NativeConnection::default(),
+			super::NativeConnection::ParentManaged,
+			super::NativeConnection::Failed("Could not connect.".into()),
+		] {
+			let retry = matches!(state, super::NativeConnection::Failed(_));
+			let parent = matches!(state, super::NativeConnection::ParentManaged);
+
+			surface.update(visual, |s, cx| {
+				s.native_agents.connection = state;
+
+				cx.notify();
+			});
+
+			visual.update(crate::ui_frame::draw_frame);
+
+			thread::sleep(std::time::Duration::from_millis(260));
+
+			visual.update(crate::ui_frame::draw_frame);
+
+			let composer = visual.debug_bounds("composer-blocked").unwrap();
+			let notice = visual.debug_bounds("conversation-unavailable").unwrap();
+
+			assert!(
+				notice.bottom() <= composer.top(),
+				"the same notice band stays above the input bar"
+			);
+			assert!(visual.debug_bounds("composer-editor-area").is_none());
+			assert!(visual.debug_bounds("composer-blocked-placeholder").is_some());
+			assert!(visual.debug_bounds("native-connection-error").is_none());
+			assert_eq!(visual.debug_bounds("native-connect-retry").is_some(), retry);
+			assert_eq!(visual.debug_bounds("native-open-parent").is_some(), parent);
+		}
+
+		surface.update(visual, |s, cx| {
+			s.conversation_composer().update(cx, |input, cx| input.set_content("Child draft", cx));
+
+			s.native_agents.detail = Some(conversation("child"));
+			s.native_agents.connection = super::NativeConnection::Ready;
+
+			cx.notify();
+		});
+
+		visual.update(crate::ui_frame::draw_frame);
+
+		thread::sleep(std::time::Duration::from_millis(260));
+
+		visual.update(crate::ui_frame::draw_frame);
+
+		assert!(visual.debug_bounds("composer-editor-area").is_some());
+		assert!(visual.debug_bounds("conversation-unavailable").is_none());
+
+		surface.read_with(visual, |s, cx| {
+			assert_eq!(s.composer.read(cx).content(), "Parent draft");
+			assert_eq!(s.conversation_composer().read(cx).content(), "Child draft");
+		});
+	}
+
+	#[gpui::test]
 	fn native_connection_prepares_once_preserves_draft_and_respects_parent_ownership(
 		cx: &mut gpui::TestAppContext,
 	) {
-		for (managed, fail) in [(false, false), (true, false), (false, true)] {
+		let reconnect = decodex_protocol::NATIVE_PARENT_RECONNECT_MESSAGE;
+
+		for (managed, failure) in [
+			(false, None),
+			(true, None),
+			(false, Some("Connection failed.")),
+			(false, Some(reconnect)),
+		] {
+			let parent_managed = managed || failure == Some(reconnect);
 			let (_root, profile, server) = wire_test_support::fixture(move |listener| {
-				serve_native_preparation(listener, managed, fail)
+				serve_native_preparation(listener, managed, failure)
 			});
 			let surface = cx.new(AgentSurface::new);
 
@@ -1332,14 +1429,18 @@ mod tests {
 
 			cx.run_until_parked();
 
-			if fail {
+			if let Some(reason) = failure {
 				surface.update(cx, |s, cx| {
-                    assert!(matches!(&s.native_agents.connection, super::NativeConnection::Failed(reason) if reason == "Connection failed."));
+                    assert!(if parent_managed {
+                        matches!(s.native_agents.connection, super::NativeConnection::ParentManaged)
+                    } else {
+                        matches!(&s.native_agents.connection, super::NativeConnection::Failed(message) if message == reason)
+                    });
                     assert!(!s.native_input_available());
                     assert!(s.native_agents.detail_task.is_none());
                     assert_eq!(s.native_agents.input.as_ref().unwrap().read(cx).content(), "Keep this draft");
 
-                    s.retry_native_connection(cx);
+                    if !parent_managed { s.retry_native_connection(cx); }
                 });
 				cx.run_until_parked();
 			}
@@ -1351,8 +1452,8 @@ mod tests {
 					"Keep this draft"
 				);
 				assert!(s.native_agents.pending.is_none() && s.native_agents.detail_task.is_none());
-				assert_eq!(s.native_input_available(), !managed);
-				assert!(if managed {
+				assert_eq!(s.native_input_available(), !parent_managed);
+				assert!(if parent_managed {
 					matches!(s.native_agents.connection, super::NativeConnection::ParentManaged)
 				} else {
 					matches!(s.native_agents.connection, super::NativeConnection::Ready)
@@ -1642,9 +1743,17 @@ mod tests {
 	async fn serve_native_preparation(
 		listener: tokio::net::UnixListener,
 		managed: bool,
-		fail: bool,
+		failure: Option<&'static str>,
 	) {
-		for step in 0..if managed { 1 } else { 3 } {
+		let steps = if managed {
+			1
+		} else if failure == Some(decodex_protocol::NATIVE_PARENT_RECONNECT_MESSAGE) {
+			2
+		} else {
+			3
+		};
+
+		for step in 0..steps {
 			let mut socket = wire_test_support::accept(&listener).await;
 			let request: ClientMessage =
 				serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap())
@@ -1677,17 +1786,19 @@ mod tests {
 					server_id: ServerId::new(wire_test_support::SERVER).unwrap(),
 					client_command_id: command.client_command_id,
 					idempotency_key: command.idempotency_key,
-					outcome: if fail {
+					outcome: if failure.is_some() {
 						CommandOutcome::Rejected
 					} else {
 						CommandOutcome::Succeeded
 					},
-					entity_revision: (!fail).then_some(EntityRevision(0)),
-					payload: (!fail).then_some(ResultPayload::AgentAccepted {
+					entity_revision: failure.is_none().then_some(EntityRevision(0)),
+					payload: failure.is_none().then_some(ResultPayload::AgentAccepted {
 						work_id: EntityId::new("agent").unwrap(),
 					}),
-					error: fail.then(|| decodex_protocol::CommandError::ApplicationUnavailable {
-						message: decodex_protocol::WireText::new("Connection failed.").unwrap(),
+					error: failure.map(|reason| {
+						decodex_protocol::CommandError::ApplicationUnavailable {
+							message: decodex_protocol::WireText::new(reason).unwrap(),
+						}
 					}),
 				})
 			} else {

@@ -87,7 +87,8 @@ pub use self::{
 		AgentSnapshotResult, AgentStartDto, AgentTaskReferenceDto, AgentTurnUsageDto,
 		AgentUsageDetailsDto, AgentUsageDto, AgentWorkItemDto, AgentWorkKindDto,
 		AgentWorkStatusDto, MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS,
-		MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS, ProjectDto,
+		MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS, NATIVE_PARENT_RECONNECT_MESSAGE,
+		ProjectDto,
 	},
 	agent_app_exposure::{AgentAppExposureResult, AgentToolExposureSurface},
 	agent_app_ui::{

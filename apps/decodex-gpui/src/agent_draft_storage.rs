@@ -21,9 +21,9 @@ use crate::{
 	ui_feedback::Feedback,
 };
 use decodex_protocol::{
-	AgentCommandResponse, ClientDraftStore, DesktopComposerDraft, DesktopDraftDocument,
-	DesktopMessage, DesktopMessageState, DesktopPendingDraft, DesktopProfileDraft,
-	DesktopPromptEditDraft, IdempotencyKey,
+	AgentCommandResponse, AgentSnapshotDto, ClientDraftStore, DesktopComposerDraft,
+	DesktopDraftDocument, DesktopMessage, DesktopMessageState, DesktopPendingDraft,
+	DesktopProfileDraft, DesktopPromptEditDraft, IdempotencyKey,
 };
 
 // Preserve absence separately from a failed bounded conversion.
@@ -123,27 +123,58 @@ impl Default for Storage {
 }
 
 impl AgentSurface {
-	pub(in super::super) fn dismiss_failed_message(
+	pub(in super::super) fn retire_archived_messages(
 		&mut self,
-		key: &IdempotencyKey,
+		snapshot: &AgentSnapshotDto,
 		cx: &mut Context<Self>,
 	) {
-		let state = &mut self.draft_profiles.storage;
-		let Some(profile) = self
-			.profile
-			.as_ref()
-			.and_then(|profile| state.document.profiles.get_mut(&profile.draft_scope_key()))
-		else {
+		let mut closed: BTreeMap<_, _> = snapshot
+			.work_items
+			.iter()
+			.filter(|work| snapshot.archived_work_ids.contains(&work.id))
+			.filter_map(|work| {
+				work.codex_thread_id.as_ref().map(|thread| (work.id.clone(), thread.clone()))
+			})
+			.collect();
+
+		if !snapshot.connection_initializing
+			&& let Some(previous) =
+				self.snapshot.as_ref().filter(|old| old.runtime_source == snapshot.runtime_source)
+		{
+			closed.extend(
+				previous
+					.work_items
+					.iter()
+					.filter(|work| !snapshot.work_items.iter().any(|current| current.id == work.id))
+					.filter_map(|work| {
+						work.codex_thread_id
+							.as_ref()
+							.map(|thread| (work.id.clone(), thread.clone()))
+					}),
+			);
+		}
+
+		let Some(profile) = self.profile.as_ref().and_then(|profile| {
+			self.draft_profiles.storage.document.profiles.get_mut(&profile.draft_scope_key())
+		}) else {
 			return;
 		};
-		if profile
-			.messages
-			.get(key)
-			.is_some_and(|message| message.state == DesktopMessageState::Failed)
-		{
-			profile.messages.remove(key);
+		let before = profile.messages.len();
+
+		profile.messages.retain(|_, message| {
+			message.state != DesktopMessageState::Failed
+				|| !message.owner.as_ref().is_some_and(|owner| {
+					closed.get(owner.as_str()).is_some_and(|thread| {
+						message
+							.thread_id
+							.as_ref()
+							.is_some_and(|original| original.as_str() == thread)
+					})
+				})
+		});
+
+		if before != profile.messages.len() {
 			self.save_draft_document(cx);
-			cx.notify();
 		}
 	}
 
@@ -459,7 +490,9 @@ impl AgentSurface {
 		if !self.can_retry_input_save() {
 			return;
 		}
+
 		self.draft_profiles.storage.error = None;
+
 		self.save_draft_document(cx);
 		cx.notify();
 	}
@@ -542,6 +575,7 @@ impl AgentSurface {
 		cx: &Context<Self>,
 	) -> Result<(), &'static str> {
 		self.remember_draft_document(cx);
+
 		let scope = self
 			.draft_profiles
 			.active
@@ -550,12 +584,16 @@ impl AgentSurface {
 			.draft_scope_key();
 		let mut document = self.draft_profiles.storage.document.clone();
 		let messages = &mut document.profiles.entry(scope).or_default().messages;
+
 		if let Some(previous) = replaces {
 			messages.remove(previous);
 		}
+
 		messages.insert(key.clone(), message);
 		document.encode().map_err(|_| "Input could not be saved. Nothing sent.")?;
+
 		self.draft_profiles.storage.document = document;
+
 		Ok(())
 	}
 
@@ -570,6 +608,7 @@ impl AgentSurface {
 		}) else {
 			return;
 		};
+
 		if matches!(result, Ok(AgentCommandResponse::Accepted { .. })) {
 			profile.messages.remove(key);
 		} else if let Some(message) = profile.messages.get_mut(key) {
@@ -657,10 +696,10 @@ impl AgentSurface {
 				})
 			})
 			.transpose_option()?;
-
 		let saved = self.draft_profiles.active.as_ref().and_then(|profile| {
 			self.draft_profiles.storage.document.profiles.get(&profile.draft_scope_key())
 		});
+
 		Some(DesktopProfileDraft {
 			messages: saved.map(|profile| profile.messages.clone()).unwrap_or_default(),
 			new_conversation_workspace: self
@@ -708,11 +747,12 @@ impl AgentSurface {
 			self.draft_profiles.storage.error =
 				Some("Draft storage unavailable. Nothing sent.".into());
 		}
-
 		if self.draft_profiles.storage.conflicted && self.draft_profiles.storage.task.is_none() {
 			self.merge_current_edits(cx);
+
 			return;
 		}
+
 		let state = &mut self.draft_profiles.storage;
 
 		if state.task.is_some() {
@@ -767,7 +807,9 @@ impl AgentSurface {
 					},
 					Err(SaveFailure::Busy) => {
 						let changed = !state.busy;
+
 						state.busy = true;
+
 						if changed {
 							cx.notify();
 						}
@@ -906,7 +948,6 @@ mod prompt_handback_tests;
 mod prompt_send_tests;
 #[cfg(test)]
 mod tests {
-	use decodex_protocol::AgentActionDto;
 	use std::os::unix::fs::OpenOptionsExt as _;
 
 	#[cfg(test)] use gpui::AppContext as _;
@@ -922,6 +963,7 @@ mod tests {
 		},
 		tests,
 	};
+	use decodex_protocol::AgentActionDto;
 
 	#[gpui::test]
 	fn new_conversation_draft_restores_without_creating_work(cx: &mut gpui::TestAppContext) {
@@ -1289,6 +1331,7 @@ mod tests {
 		});
 
 		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+
 		assert_eq!(saved.profiles[&profile.draft_scope_key()].composer.text, "Unmerged edit");
 	}
 
@@ -1503,6 +1546,7 @@ mod tests {
 		});
 
 		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+
 		assert!(saved.profiles.values().all(|profile| profile.unconfirmed_commands.is_empty()));
 	}
 
@@ -1604,6 +1648,7 @@ mod tests {
 		});
 
 		let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+
 		assert_eq!(saved.profiles[&profile.draft_scope_key()].composer.text, "Keep current edit");
 	}
 }
@@ -1794,11 +1839,13 @@ mod ordinary_owner_tests {
 				.unwrap();
 
 		competing_store.save(snapshot.revision, &remote.encode().unwrap()).unwrap();
+
 		let writer = std::fs::OpenOptions::new()
 			.read(true)
 			.write(true)
 			.open(directory.path().join("desktop/client-drafts/writer.lock"))
 			.unwrap();
+
 		writer.try_lock().unwrap();
 		conversations.submit("Original input").unwrap();
 		shell.update(visual, |s, cx| s.sync_ordinary_drafts(cx));
@@ -1832,11 +1879,11 @@ mod ordinary_owner_tests {
 		}
 
 		drop(writer);
+
 		shell.update(visual, |s, cx| s.agent.update(cx, |agent, cx| agent.save_draft_document(cx)));
 		visual.run_until_parked();
 		shell.update(visual, |s, cx| s.synchronize_conversations(cx));
 		visual.run_until_parked();
-
 		shell.update(visual, |s, cx| {
 			assert_eq!(s.composer.read(cx).content(), "Later local input");
 		});
@@ -1850,7 +1897,6 @@ mod ordinary_owner_tests {
 			.into_iter()
 			.filter_map(|profile| profile.ordinary.get("/tmp"))
 			.collect();
-
 		let local =
 			records.iter().find(|record| record.composer.text == "Later local input").unwrap();
 
@@ -1965,21 +2011,83 @@ mod ordinary_owner_tests {
 #[cfg(test)]
 #[path = "agent_ordinary_outcome_tests.rs"]
 mod ordinary_outcome_tests;
-
 #[cfg(test)]
 mod message_tests {
-	use super::{AgentSurface, ClientDraftStore, DesktopDraftDocument, Storage, publish_document};
+	use gpui::AppContext as _;
+
+	use crate::shell::agent_surface::drafts::{
+		storage::{self, AgentSurface, ClientDraftStore, DesktopDraftDocument, Storage},
+		tests,
+	};
 	use decodex_protocol::{
 		AgentActionDto, AgentAttachmentDto, ConversationWorkingDirectory, DesktopMessage,
 		DesktopMessageState, EntityId, HistoryText, IdempotencyKey,
 	};
-	use gpui::AppContext as _;
+
+	#[gpui::test]
+	fn archive_retires_failed_messages_without_touching_other_editors_or_unknown_delivery(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (_root, profile, _) = tests::profiles();
+		let surface = cx.new(AgentSurface::new);
+
+		surface.update(cx, |s, cx| {
+			s.bind_profile(Some(profile), cx);
+			s.visual_workspace_fixture(cx);
+
+			s.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| work.id == "agent")
+				.unwrap()
+				.codex_thread_id = Some("native-thread".into());
+
+			for (key, owner, state) in [
+				("failed", "agent", DesktopMessageState::Failed),
+				("unknown", "agent", DesktopMessageState::Unconfirmed),
+				("other", "release", DesktopMessageState::Failed),
+			] {
+				let message = DesktopMessage {
+					action: AgentActionDto::Send {
+						root_id: EntityId::new(owner).unwrap(),
+						text: HistoryText::new("Original input").unwrap(),
+					},
+					owner: Some(EntityId::new(owner).unwrap()),
+					thread_id: Some(decodex_protocol::WireText::new("native-thread").unwrap()),
+					text: "Original input".into(),
+					state,
+					error: None,
+				};
+
+				s.stage_message(&IdempotencyKey::new(key).unwrap(), message, None, cx).unwrap();
+			}
+
+			s.composer.update(cx, |input, cx| input.set_content("Keep the current editor", cx));
+
+			let mut archived = s.snapshot.clone().unwrap();
+
+			archived.archived_work_ids.insert("agent".into());
+			s.retire_archived_messages(&archived, cx);
+
+			let keys = s
+				.retained_messages()
+				.into_iter()
+				.map(|(key, _)| key.as_str().to_owned())
+				.collect::<Vec<_>>();
+
+			assert_eq!(keys, vec!["other", "unknown"]);
+			assert_eq!(s.composer.read(cx).content(), "Keep the current editor");
+		});
+	}
 
 	#[gpui::test]
 	fn submitted_message_and_later_editor_survive_reopen_with_separate_delivery_state(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let (_service, profile, _) = crate::shell::agent_surface::drafts::tests::profiles();
+		let (_service, profile, _) = tests::profiles();
+
 		for state in [
 			DesktopMessageState::Sending,
 			DesktopMessageState::Unconfirmed,
@@ -2011,24 +2119,39 @@ mod message_tests {
 				state,
 				error: None,
 			};
+
 			surface.update(cx, |s, cx| {
 				s.draft_profiles.storage = Storage::open(Ok(store.clone()));
+
 				s.bind_profile(Some(profile.clone()), cx);
 				s.stage_message(&key, message.clone(), None, cx).unwrap();
 				s.composer.update(cx, |input, cx| input.set_content("Later input stays here", cx));
+
 				s.uncertain = state != DesktopMessageState::Failed;
+
 				if s.uncertain {
 					s.submission.unconfirmed.push(key.clone());
 				}
+
 				s.remember_draft_document(cx);
-				assert!(publish_document(&store, 0, &s.draft_profiles.storage.document).is_ok());
+
+				assert!(
+					storage::publish_document(&store, 0, &s.draft_profiles.storage.document)
+						.is_ok()
+				);
 			});
+
 			let saved = DesktopDraftDocument::decode(&store.load().unwrap().payload).unwrap();
+
 			assert!(saved.profiles[&profile.draft_scope_key()].messages[&key] == message);
+
 			let cold = cx.new(AgentSurface::new);
+
 			cold.update(cx, |s, cx| {
 				s.draft_profiles.storage = Storage::open(Ok(store));
+
 				s.bind_profile(Some(profile.clone()), cx);
+
 				assert_eq!(s.composer.read(cx).content(), "Later input stays here");
 				assert_eq!(s.uncertain, state != DesktopMessageState::Failed);
 				assert!(s.submission.command.is_none() && s.submission.waiting.is_none());

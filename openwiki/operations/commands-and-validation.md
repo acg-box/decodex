@@ -72,10 +72,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
+generated: { by: "codex", at: "2026-10-27T03:26:06.307Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T15:20:45.937Z
+    at: 2026-10-27T03:26:06.307Z
 ---
 
 
@@ -352,7 +352,7 @@ Report source checks, unit tests, signed build, visual acceptance, provider acce
 
 ### Nextest exit markers
 
-A `LEAK` marker can accompany a passed test when its captured output remains open after process exit. Diagnose the exact runner, test cohort and pipe owners before attributing the marker to application cleanup. The [historical diagnosis](https://github.com/acg-box/decodex/blob/f6640838f0997493704ff87e46205b46a700eef2/automations/upstream/retained-evidence.json) records a macOS Nextest 0.9.143 capture-inheritance reproduction, its upstream fix and separate isolated and serial controls. The earlier component qualification separately records a passed in-memory test with a LEAK marker and a passing isolated rerun without the marker. The Project/Work complete suite separately records a leaky pass in `ui_working::tests::appearance_and_disappearance_share_one_continuous_fade`; its cause was not established. Neither result establishes the cause of a future marker. The original event has no pipe trace. Do not suppress the test, lower the timeout or claim that an unexecuted runner upgrade has passed.
+A `LEAK` marker can accompany a passed test when its captured output remains open after process exit. Diagnose the exact runner, test cohort and pipe owners before attributing the marker to application cleanup. The [historical diagnosis](https://github.com/acg-box/decodex/blob/f6640838f0997493704ff87e46205b46a700eef2/automations/upstream/retained-evidence.json) records a macOS Nextest 0.9.143 capture-inheritance reproduction, its upstream fix and separate isolated and serial controls. The Project/Work complete suite separately records a leaky pass in `ui_working::tests::appearance_and_disappearance_share_one_continuous_fade`; its cause was not established. Neither result establishes the cause of a future marker. The original event has no pipe trace. Do not suppress the test, lower the timeout or claim that an unexecuted runner upgrade has passed.
 
 [Wiki maintenance](wiki-maintenance.md) describes the separate documentation lifecycle.
 

@@ -2,8 +2,9 @@
 use std::{mem, rc::Rc};
 
 use gpui::{
-	AnyElement, AnyView, App, AppContext as _, Bounds, ClickEvent, Div, KeyDownEvent, MouseButton,
-	MouseDownEvent, MouseMoveEvent, PathBuilder, Pixels, Point, ScrollEvent, Stateful,
+	AnyElement, AnyView, App, AppContext as _, Bounds, ClickEvent, DispatchPhase, Div,
+	KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, PathBuilder, Pixels, Point,
+	ScrollEvent, Stateful,
 };
 use graph::{Layout, Node};
 use ui_theme::{
@@ -25,11 +26,12 @@ use crate::{
 			FluentBuilder, InteractiveElement, IntoElement, LoadState, ParentElement, Render, Role,
 			SharedString, StatefulInteractiveElement, Styled, SubmitComposer, Window,
 			activity::HistoryScrollAnchor,
-			dock, graph, prompts, ui_theme,
+			dock, graph,
+			native_agents::NativeConnection,
+			prompts, ui_theme,
 			ui_theme::{
-				CAPTION_SIZE, COMPOSER_TOP_GAP, CONVERSATION_HEADER_HEIGHT, CONVERSATION_INSET,
-				CONVERSATION_TAB_GAP, CONVERSATION_TAB_SIZE, CONVERSATION_WIDTH, MESSAGE_GAP,
-				SELECTED_FILL, WORKSPACE_RADIUS,
+				CAPTION_SIZE, CONVERSATION_HEADER_HEIGHT, CONVERSATION_INSET, CONVERSATION_TAB_GAP,
+				CONVERSATION_TAB_SIZE, CONVERSATION_WIDTH, SELECTED_FILL, WORKSPACE_RADIUS,
 			},
 		},
 		workspace_symbols,
@@ -48,10 +50,11 @@ use decodex_protocol::{
 };
 
 pub(super) const ARCHIVED_MESSAGE: &str = "Archived";
-pub(super) const ARCHIVED_DETAIL: &str = "Read-only until unarchived.";
 
 const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
 const PARENT_MANAGED_MESSAGE: &str = "Continue in parent chat";
+const NATIVE_CONNECTION_FAILED_MESSAGE: &str = "Could not connect to this conversation.";
+const NATIVE_CONNECTING_MESSAGE: &str = "Connecting to this conversation…";
 
 #[derive(Clone)]
 pub(super) struct PageView {
@@ -796,11 +799,12 @@ impl AgentSurface {
 
 	pub(super) fn composer_unavailable_reason(&self) -> Option<&'static str> {
 		if self.native_agents.selected.is_some() {
-			return matches!(
-				self.native_agents.connection,
-				super::native_agents::NativeConnection::ParentManaged
-			)
-			.then_some(PARENT_MANAGED_MESSAGE);
+			return match self.native_agents.connection {
+				NativeConnection::ParentManaged => Some(PARENT_MANAGED_MESSAGE),
+				NativeConnection::Failed(_) => Some(NATIVE_CONNECTION_FAILED_MESSAGE),
+				NativeConnection::Checking { .. } => Some(NATIVE_CONNECTING_MESSAGE),
+				NativeConnection::Ready => None,
+			};
 		}
 		if self.selected_is_archived() {
 			return Some(ARCHIVED_MESSAGE);
@@ -871,21 +875,46 @@ impl AgentSurface {
 			.map(|entry| entry.text.as_str())
 	}
 
-	pub(super) fn connection_notice(
-		&self,
-		reason: &'static str,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		if reason == ARCHIVED_MESSAGE
-			&& let Some(work) = self.conversation_work()
-		{
-			return self.archive_notice(&work, cx);
+	fn native_connection_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+		self.native_agents.selected.as_ref()?;
+
+		let feedback = match &self.native_agents.connection {
+			NativeConnection::Failed(message) => Feedback::error(message),
+			NativeConnection::Checking { .. } => Feedback::loading(NATIVE_CONNECTING_MESSAGE),
+			_ => return None,
+		};
+
+		Some(
+			ui_feedback::status_row(
+				"conversation-unavailable",
+				feedback.tone,
+				"",
+				&feedback.message,
+				feedback.icon(),
+			)
+			.debug_selector(|| "conversation-unavailable".into())
+			.when(matches!(self.native_agents.connection, NativeConnection::Failed(_)), |row| {
+				row.child(self.workspace_action(
+					"native-connect-retry".into(),
+					"Retry".into(),
+					|s, cx| s.retry_native_connection(cx),
+					cx,
+				))
+			})
+			.into_any_element(),
+		)
+	}
+
+	fn connection_notice(&self, reason: &'static str, cx: &mut Context<Self>) -> AnyElement {
+		if let Some(notice) = self.native_connection_notice(cx) {
+			return notice;
 		}
+
 		if reason == PARENT_MANAGED_MESSAGE {
 			return ui_feedback::read_only_row(
 				"conversation-unavailable",
 				PARENT_MANAGED_MESSAGE,
-				"",
+				"This chat is read-only.",
 				workspace_symbols::icon_sized(workspace_symbols::Symbol::AccountRoute, 14.),
 			)
 			.debug_selector(|| "conversation-unavailable".into())
@@ -901,7 +930,7 @@ impl AgentSurface {
 			return ui_feedback::read_only_row(
 				"conversation-unavailable",
 				THREAD_LOCKED_MESSAGE,
-				"",
+				"Sending is disabled here.",
 				workspace_symbols::icon_sized(workspace_symbols::Symbol::Lock, 14.),
 			)
 			.debug_selector(|| "conversation-unavailable".into())
@@ -989,64 +1018,13 @@ impl AgentSurface {
 	}
 
 	pub(super) fn composer_footer(&self, window: &mut Window, cx: &mut Context<Self>) -> Div {
-		if self.native_agents.selected.is_some() {
-			let feedback = self.native_feedback();
-
-			return gpui::div()
-				.flex_none()
-				.w_full()
-				.child(ui_feedback::notice(
-					"conversation-feedback",
-					self.feedback_scope(),
-					(!matches!(feedback.message.as_str(), "Sent" | "Sending…"))
-						.then(|| feedback.clone()),
-				))
-				.child(self.render_composer(window, cx));
-		}
-
-		let saved_inputs = self
-			.conversation_work()
-			.filter(|work| self.saved_inputs_in_composer(work))
-			.map(|work| self.saved_input_rows(&work, cx))
-			.unwrap_or_default();
-		let has_saved_inputs = !saved_inputs.is_empty();
-
 		// The parent overlays this transparent footer above the scrolling conversation.
 		gpui::div().debug_selector(|| "composer-footer".into()).flex_none().w_full().child(
-			gpui::div()
-				.w_full()
-				.flex()
-				.flex_col()
-				.child(self.conversation_activity(cx))
-				.children(self.local_message_cards(cx))
-				.when(has_saved_inputs, |footer| {
-					footer.child(
-						gpui::div()
-							.debug_selector(|| "composer-saved-inputs".into())
-							.w_full()
-							.px(gpui::px(CONVERSATION_INSET))
-							.pb(gpui::px(MESSAGE_GAP - COMPOSER_TOP_GAP))
-							.flex()
-							.justify_center()
-							.child(
-								gpui::div()
-									.id("composer-saved-inputs-scroll")
-									.w_full()
-									.max_w(gpui::px(CONVERSATION_WIDTH))
-									.max_h(window.viewport_size().height * 0.35)
-									.overflow_y_scroll()
-									.flex()
-									.flex_col()
-									.gap_2()
-									.children(saved_inputs),
-							),
-					)
-				})
-				.child(
-					gpui::div()
-						.debug_selector(|| "composer-input-region".into())
-						.child(self.render_composer(window, cx)),
-				),
+			gpui::div().w_full().flex().flex_col().child(self.conversation_activity(cx)).child(
+				gpui::div()
+					.debug_selector(|| "composer-input-region".into())
+					.child(self.render_composer(window, cx)),
+			),
 		)
 	}
 
@@ -1309,10 +1287,8 @@ impl AgentSurface {
 		);
 
 		if !is_agent && let Some(work) = selected.as_ref() {
-			chat = chat
-				.children(self.local_message_cards(cx))
-				.child(self.conversation_activity(cx))
-				.child(self.workspace_followup(work, cx));
+			chat =
+				chat.child(self.conversation_activity(cx)).child(self.workspace_followup(work, cx));
 		}
 
 		let chat = self.workspace_details_overlay(chat, selected.as_ref(), window, cx);
@@ -1323,8 +1299,8 @@ impl AgentSurface {
 	fn conversation_panel(&self, cx: &mut Context<Self>) -> Stateful<Div> {
 		gpui::div()
 			.id("conversation-panel-focus")
-			.capture_any_mouse_down(cx.listener(|s, _, _, _| s.workspace.focused_panel = None))
 			.relative()
+			.child(self.workspace_focus_region(None, cx))
 			.opacity(self.workspace.arrival.progress(0.12))
 			.flex_1()
 			.min_w_0()
@@ -1389,6 +1365,34 @@ impl AgentSurface {
 			)
 	}
 
+	fn workspace_focus_region(
+		&self,
+		panel: Option<super::workspace_size::Panel>,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let owner = cx.entity().downgrade();
+
+		// Graph controls and selectable history can occlude their parent hitboxes.
+		// Track the pane bounds in capture, without intercepting its interactions.
+		gpui::canvas(
+			|_, _, _| (),
+			move |bounds, _, window, _| {
+				window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
+					if phase == DispatchPhase::Capture && bounds.contains(&event.position) {
+						let _ = owner.update(cx, |s, cx| {
+							s.workspace.focused_panel = panel;
+
+							restore_shell_focus(window, cx);
+						});
+					}
+				});
+			},
+		)
+		.absolute()
+		.inset_0()
+		.into_any_element()
+	}
+
 	fn workspace_center(
 		&self,
 		chat: AnyElement,
@@ -1428,6 +1432,10 @@ impl AgentSurface {
 					.opacity(self.workspace.arrival.progress(0.06))
 					.when(height > 0.1, |panel| {
 						panel
+							.child(self.workspace_focus_region(
+								Some(super::workspace_size::Panel::Bottom),
+								cx,
+							))
 							.child(ui_layout::pane(self.presentations.graph.clone(), window))
 							.child(self.graph_layers())
 					}),
@@ -1521,6 +1529,10 @@ impl AgentSurface {
 						self.deliveries.update(cx, |panel, cx| panel.set_width(right_width, cx));
 
 						panel
+							.child(self.workspace_focus_region(
+								Some(super::workspace_size::Panel::Right),
+								cx,
+							))
 							.child(ui_layout::pane(self.presentations.activity.clone(), window))
 							.child(
 								self.sidebar_resize_handle(super::workspace_size::Panel::Right, cx),
@@ -2429,20 +2441,46 @@ impl AgentSurface {
 	}
 
 	fn conversation_activity(&self, cx: &mut Context<Self>) -> AnyElement {
-		ui_feedback::notice(
-			"conversation-feedback",
-			self.feedback_scope(),
-			self.conversation_feedback(),
-		)
-		.action(self.can_retry_input_save().then(|| {
+		let reason = self.composer_unavailable_reason();
+		let feedback = reason.is_none().then(|| self.visible_conversation_feedback()).flatten();
+		let action = (reason.is_none() && self.can_retry_input_save()).then(|| {
 			self.workspace_action(
 				"retry-input-save".into(),
 				"Retry saving".into(),
 				|s, cx| s.retry_input_save(cx),
 				cx,
 			)
-		}))
-		.into_any_element()
+		});
+
+		gpui::div()
+			.debug_selector(|| "conversation-status-band".into())
+			.w_full()
+			.flex_none()
+			.occlude()
+			.when_some(reason.filter(|reason| *reason != ARCHIVED_MESSAGE), |band, reason| {
+				band.child(ui_feedback::notice_rail(self.connection_notice(reason, cx)))
+			})
+			.child(
+				ui_feedback::notice(
+					"conversation-activity",
+					format!("{}:{reason:?}", self.feedback_scope()),
+					feedback,
+				)
+				.action(action),
+			)
+			.into_any_element()
+	}
+
+	pub(super) fn visible_conversation_feedback(&self) -> Option<Feedback> {
+		if self.native_agents.selected.is_some() {
+			let feedback = self.native_feedback();
+
+			return (!feedback.is_empty()
+				&& !matches!(feedback.message.as_str(), "Sent" | "Sending…"))
+			.then(|| feedback.clone());
+		}
+
+		self.conversation_feedback()
 	}
 
 	fn conversation_feedback(&self) -> Option<Feedback> {
@@ -2588,6 +2626,17 @@ pub(super) fn restore_shell_focus(window: &mut Window, cx: &mut App) {
 		let focus = shell.read(cx).root_focus.clone();
 
 		window.focus(&focus, cx);
+	}
+}
+
+#[cfg(any(target_os = "macos", test))]
+pub(super) fn dispatch_shell_action(window: &mut Window, action: &dyn gpui::Action, cx: &mut App) {
+	if let Some(shell) = window.root::<Shell>().flatten() {
+		// A native child owns the editor focus. The parent's last focused node
+		// can be absent, so target the shell rather than that stale node.
+		let focus = shell.read(cx).root_focus.clone();
+
+		focus.dispatch_action(action, window, cx);
 	}
 }
 
@@ -2782,6 +2831,122 @@ mod tests {
 					cx,
 				)
 			})
+		}
+	}
+
+	#[gpui::test]
+	fn forwarded_fullscreen_actions_reach_shell_with_detached_parent_focus(
+		cx: &mut gpui::TestAppContext,
+	) {
+		cx.update(crate::shell::bind_keys);
+
+		let (shell, visual) = cx.add_window_view(|window, cx| {
+			crate::shell::Shell::new(window, cx, crate::shell::ConnectionView::Stopped)
+		});
+		let agent = shell.read_with(visual, |s, _| s.agent.clone());
+
+		agent.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_workspace_page("workbench-split", cx);
+			s.composer.update(cx, |input, cx| input.set_content("Preserve this input", cx));
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
+		visual.update(crate::ui_frame::draw_frame);
+
+		for graph in [false, true] {
+			agent.update(visual, |s, _| {
+				s.workspace.focused_panel =
+					graph.then_some(super::super::workspace_size::Panel::Bottom);
+			});
+			visual.update(|window, cx| {
+				// The native editor renders in a child window. The parent can still
+				// hold its focus handle after that node leaves the parent's tree.
+				let detached = cx.focus_handle();
+
+				window.focus(&detached, cx);
+
+				super::dispatch_shell_action(window, &crate::shell::ToggleContentFullscreen, cx);
+			});
+
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+			agent.read_with(visual, |s, cx| {
+				assert_eq!(
+					(s.workspace.graph_expanded, s.workspace.chat_expanded),
+					(graph, !graph)
+				);
+				assert_eq!(s.composer.read(cx).content(), "Preserve this input");
+			});
+			visual.simulate_keystrokes("shift-escape");
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+			agent.read_with(visual, |s, _| {
+				assert!(!s.workspace.graph_expanded && !s.workspace.chat_expanded);
+			});
+		}
+	}
+
+	#[gpui::test]
+	fn fullscreen_shortcut_targets_the_clicked_pane_across_graph_layers(
+		cx: &mut gpui::TestAppContext,
+	) {
+		cx.update(crate::shell::bind_keys);
+
+		let (shell, visual) = cx.add_window_view(|window, cx| {
+			crate::shell::Shell::new(window, cx, crate::shell::ConnectionView::Stopped)
+		});
+		let agent = shell.read_with(visual, |s, _| s.agent.clone());
+
+		agent.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.visual_workspace_page("workbench-split", cx);
+		});
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
+		visual.update(crate::ui_frame::draw_frame);
+
+		for (selector, graph) in [
+			("relations-fit", true),
+			("relations-canvas", true),
+			("workspace-transcript", false),
+			("workbench-body", false),
+		] {
+			thread::sleep(std::time::Duration::from_millis(260));
+
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+
+			let bounds = visual.debug_bounds(selector).expect(selector);
+			let point = if selector == "relations-canvas" {
+				bounds.origin + gpui::point(gpui::px(3.), gpui::px(60.))
+			} else {
+				bounds.center()
+			};
+
+			visual.update(|window, cx| {
+				let detached = cx.focus_handle();
+
+				window.focus(&detached, cx);
+			});
+
+			visual.simulate_click(point, Default::default());
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+			visual.simulate_keystrokes("shift-escape");
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+			agent.read_with(visual, |s, _| {
+				assert_eq!(
+					(s.workspace.graph_expanded, s.workspace.chat_expanded),
+					(graph, !graph),
+					"{selector} selects its pane for the shortcut"
+				);
+			});
+			visual.simulate_keystrokes("shift-escape");
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+			agent.read_with(visual, |s, _| {
+				assert!(!s.workspace.graph_expanded && !s.workspace.chat_expanded);
+			});
 		}
 	}
 
@@ -3465,7 +3630,7 @@ mod tests {
 		let composer = visual.debug_bounds("agent-composer").unwrap();
 		let notice = visual.debug_bounds("conversation-unavailable").unwrap();
 
-		assert!(notice.top() >= composer.top() && notice.bottom() <= composer.bottom());
+		assert!(notice.bottom() <= composer.top(), "status stays above the input bar");
 		assert!(visual.debug_bounds("composer-retained-draft").is_some());
 		assert!(visual.debug_bounds("composer-editor-area").is_none());
 		assert!(visual.debug_bounds("composer-action-row").is_none());

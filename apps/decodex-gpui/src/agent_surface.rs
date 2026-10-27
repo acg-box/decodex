@@ -103,7 +103,7 @@ use crate::{
 	ui_motion::{self, SmoothControl, Tween},
 	ui_theme::{
 		self, BLUE, CAPTION_SIZE, COMPOSER_TOP_GAP, HOVER_FILL, MESSAGE_GAP, MESSAGE_MATERIAL,
-		TEXT_MUTED, WARNING,
+		TEXT_MUTED, USER_MESSAGE_INSET, WARNING,
 	},
 	ui_working::Working,
 };
@@ -1106,10 +1106,10 @@ impl AgentSurface {
 			owner: self.composer_manager.clone().or_else(|| self.root_id()),
 			draft,
 		};
-
 		let message = retry.as_ref().map(|(_, message)| message.clone()).or_else(|| {
 			draft_for_message(&action, pending.draft.as_deref(), pending.owner.as_deref())
 		});
+
 		if let Some(mut message) = message {
 			if retry.is_none() {
 				message.thread_id = match &action {
@@ -1123,16 +1123,21 @@ impl AgentSurface {
 						.and_then(|thread| WireText::new(thread).ok()),
 				};
 			}
+
 			message.state = DesktopMessageState::Sending;
 			message.error = None;
+
 			if let Err(error) =
 				self.stage_message(&key, message, retry.as_ref().map(|(key, _)| key), cx)
 			{
 				self.feedback = Feedback::error(error);
+
 				cx.notify();
+
 				return;
 			}
 		}
+
 		self.capture_send_preview(&pending);
 
 		if pending.draft.is_some() {
@@ -1221,6 +1226,7 @@ impl AgentSurface {
 			matches!(&result, Ok(AgentCommandResponse::Accepted { .. })),
 		);
 		self.settle_message(pending.key.as_ref(), &result);
+
 		if !matches!(&result, Ok(AgentCommandResponse::PotentiallyDispatched { .. })) {
 			self.submission.unconfirmed.retain(|key| Some(key) != pending.key.as_ref());
 		}
@@ -1583,6 +1589,7 @@ impl AgentSurface {
 		};
 
 		self.apply_refreshed_snapshot(result, cx);
+
 		if self.read_connection_ready()
 			&& (changed || self.timeline.read_at.is_none_or(|at| at.elapsed().as_secs() >= 2))
 		{
@@ -1600,6 +1607,7 @@ impl AgentSurface {
 			{
 				self.load_capabilities(cx);
 			}
+
 			self.sync_request(cx);
 			self.refresh_composer_model_settings(cx);
 			self.tick_question_timeout(cx);
@@ -1618,6 +1626,14 @@ impl AgentSurface {
 	) {
 		let owner = self.composer_manager.clone().or_else(|| self.root_id());
 		let previous_selection = self.selected.clone();
+
+		if matches!(&result, Ok(AgentSnapshotResult::Available(snapshot))
+			if [self.selected.as_ref(), owner.as_ref()].into_iter().flatten()
+				.any(|id| snapshot.archived_work_ids.contains(id)))
+		{
+			self.stop_voice(cx);
+		}
+
 		let removed = matches!(&result, Ok(AgentSnapshotResult::Available(snapshot))
 			if !self.is_new_conversation()
 				&& [self.selected.as_ref(), owner.as_ref()].into_iter().flatten()
@@ -1635,6 +1651,11 @@ impl AgentSurface {
 		}
 
 		self.remember_native_draft(cx);
+
+		if let Ok(AgentSnapshotResult::Available(snapshot)) = &result {
+			self.retire_archived_messages(snapshot, cx);
+		}
+
 		self.apply_result(result);
 
 		let recovered_selection = previous_selection.is_none()
@@ -2088,10 +2109,8 @@ impl AgentSurface {
 		let panel = self.saved_history_panel(work, cx);
 
 		if self.native_history_active(work) {
-			// Receipts belong to the preceding response. Its footer already
-			// reserves space around the icons, so use the compact related-content gap.
 			return self.history_activity(
-				panel.gap_3().child(self.native_receipts_panel(work, false, cx)),
+				panel.child(self.native_receipts_panel(work, false, cx)),
 				work,
 				cx,
 			);
@@ -2205,7 +2224,12 @@ impl AgentSurface {
 			.children(self.native_timeline_panel(work, cx))
 	}
 
-	fn history_activity(&self, mut panel: Div, work: &AgentWorkItemDto, cx: &Context<Self>) -> Div {
+	fn history_activity(
+		&self,
+		mut panel: Div,
+		work: &AgentWorkItemDto,
+		cx: &mut Context<Self>,
+	) -> Div {
 		let active = self.response_in_progress(work)
 			|| (self.native_agents.selected.is_none()
 				&& self.selected.as_ref() == Some(&work.id)
@@ -2215,6 +2239,7 @@ impl AgentSurface {
 			panel = panel.children(self.send_previews(&work.id));
 		}
 
+		panel = panel.children(self.local_message_cards(cx));
 		// The composer supplies part of the shared reading gap. Keep the total
 		// spacing the same as between messages, including after a saved input.
 		panel = gpui::div()
@@ -2820,6 +2845,7 @@ fn draft_for_message(
 	) {
 		return None;
 	}
+
 	let text = text?;
 	let owner = match action {
 		AgentActionDto::NewConversation { work_id, .. } => Some(work_id.clone()),
@@ -2831,6 +2857,7 @@ fn draft_for_message(
 		| AgentActionDto::NativeAgentInput { work_id, .. } => Some(work_id.clone()),
 		_ => owner.and_then(|owner| EntityId::new(owner).ok()),
 	};
+
 	Some(DesktopMessage {
 		action: action.clone(),
 		owner,
@@ -3053,7 +3080,7 @@ fn history_entry_presented(
 					bubble
 						.flex_none()
 						.max_w(gpui::relative(0.78))
-						.px(gpui::px(12.))
+						.px(gpui::px(USER_MESSAGE_INSET))
 						.py(gpui::px(7.))
 						.rounded(gpui::px(10.))
 						.bg(ui_theme::rgba(MESSAGE_MATERIAL))

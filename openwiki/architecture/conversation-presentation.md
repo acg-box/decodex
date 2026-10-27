@@ -34,6 +34,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_timeline_groups.rs
   - id: openwiki-source-d57edbe5de23ebee985fc88b
     resource: repo://apps/decodex-gpui/src/agent_timeline_inputs.rs
+  - id: openwiki-source-1849030b658783d8ea0855b0
+    resource: repo://apps/decodex-gpui/src/agent_timeline_receipts.rs
   - id: openwiki-source-691432bb61082c358b6f9c24
     resource: repo://apps/decodex-gpui/src/agent_timeline.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
@@ -66,10 +68,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/media_tests.rs
   - id: openwiki-source-8d3e8e016f038e821f68dd0c
     resource: repo://crates/decodex-runtime/src/agent/timeline/media.rs
-generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
+generated: { by: "codex", at: "2026-10-26T17:25:11.378Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T14:39:55.302Z
+    at: 2026-10-27T03:26:06.307Z
 ---
 
 
@@ -103,9 +105,11 @@ Completed calls with no transcript and no failure are hidden from history and it
 
 The first native page requests up to 30 records. Earlier pages request up to 15 and can retry smaller sizes when a page is too dense. Records are not conversation rounds: grouping and hidden items affect how many rows appear. Automatic prefetch waits for anchor restoration. It can fill an underfilled viewport; once content fills the viewport, further prefetch requires upward-scroll intent.
 
-Submitted input has message delivery state separate from the current editor. A positively unsent message offers Retry. An unconfirmed message offers a status read, not another send. Retrying keeps the original operation and does not replace later text in the input bar. No saved-copy counter or profile-snapshot manager appears in the conversation.
+Submitted input has message delivery state separate from the current editor. A positively unsent message offers **Resend**. An unconfirmed message offers a status read, not another send. Resending keeps the original operation and does not replace later text in the input bar. No saved-copy counter or profile-snapshot manager appears in the conversation.
 
-Saved edit recovery and history refresh/source controls live in Details. The normal transcript contains the active editor or a compact notice for an unresolved operation, rather than a permanent list of saved drafts. See [conversation recovery](../workflows/conversations-and-recovery.md) for edit and Fork ownership.
+An unsent input uses the normal right-aligned user bubble at the end of the transcript. Its full text wraps and scrolls with the conversation; it is not pinned above the input bar. One compact row below it aligns **Not sent** and, when available, **Resend**. Hover over the status to inspect the reason. There is no separate error panel, disclosure header, copy action or dismiss action. Archived conversations do not show retry accessories.
+
+Saved edit recovery and history refresh/source controls live in Details. Failed input remains an ordinary message in the transcript. Active editing and unresolved-operation notices also use the chat flow. There is no permanent list of saved drafts. See [conversation recovery](../workflows/conversations-and-recovery.md) for edit and Fork ownership.
 
 ## Generated image attachments
 

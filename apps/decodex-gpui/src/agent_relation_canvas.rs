@@ -53,7 +53,7 @@ use crate::{
 	ui_motion::{self, SmoothControl},
 	ui_theme::{self, COMPOSER_MATERIAL, FONT_FAMILY, INFO, LINE_STRONG, TEXT},
 };
-use card::{Card, INSET_X, INSET_Y, MAX_ZOOM, MIN_ZOOM, OVERVIEW_HEIGHT, Ports, SELECTED};
+use card::{Card, INSET_X, INSET_Y, MAX_ZOOM, MIN_ZOOM, OVERVIEW_HEIGHT, SELECTED};
 use decodex_protocol::{AgentSnapshotDto, AgentWorkKindDto};
 use header::Header;
 use hover::Hover;
@@ -261,35 +261,6 @@ pub(super) struct Graph {
 	paths: BTreeMap<String, std::rc::Rc<Route>>,
 }
 impl Graph {
-	/// Draw only real, exposed route endpoints. Routing owns side selection and
-	/// obstacle avoidance; decoration must never invent another attachment point.
-	fn connection_ports(&self, lines: &[Link]) -> BTreeMap<String, Vec<(f32, f32)>> {
-		let mut ports = BTreeMap::<String, Vec<(f32, f32)>>::new();
-
-		for link in lines {
-			let (edge, path) = (&link.base, &link.path);
-
-			for (key, point) in [
-				(&edge.from, path.curves.first().expect("route start").start),
-				(&edge.to, path.curves.last().expect("route end").end),
-			] {
-				let Some(node) =
-					self.nodes.iter().find(|node| &node.key == key && node.row.is_some())
-				else {
-					continue;
-				};
-				let local = (point.0 - node.x, point.1 - node.y);
-				let entry = ports.entry(key.clone()).or_default();
-
-				if !entry.contains(&local) {
-					entry.push(local);
-				}
-			}
-		}
-
-		ports
-	}
-
 	fn connections(&self) -> Vec<Edge> {
 		let mut connections: Vec<Edge> = Vec::new();
 
@@ -1042,7 +1013,7 @@ impl AgentSurface {
 
 		canvas = self.relation_scope_layer(canvas, graph, scale, pan);
 		canvas = self.paint_relation_connections(canvas, graph, &lines, moving, cx);
-		canvas = self.relation_node_layer(canvas, graph, &lines, cx);
+		canvas = self.relation_node_layer(canvas, graph, cx);
 
 		self.work_board.view.layers.links.replace(lines);
 
@@ -1786,14 +1757,10 @@ impl AgentSurface {
 		&self,
 		mut canvas: Stateful<Div>,
 		graph: &Graph,
-		lines: &[Link],
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
-		let scale = self.relation_scale();
 		let neighborhood = self.relation_neighborhood(graph);
 		let layout = graph.layout.on_display(self.work_board.view.display_scale);
-		let wire_presence = self.relation_wire_presence(std::time::Instant::now());
-		let mut ports = graph.connection_ports(lines);
 
 		for node in self.relation_nodes(graph) {
 			let opacity = self.work_board.view.visibility.borrow().node_opacity(graph, node);
@@ -1832,12 +1799,6 @@ impl AgentSurface {
 					.borrow()
 					.get(&node.key)
 					.map(mascot::Actor::opacity),
-				ports: node.row.as_ref().filter(|_| !layout.points()).map(|_| Ports {
-					zoom: scale,
-					selected: emphasized,
-					presence: layout.card_presence() * wire_presence,
-					ports: ports.remove(&node.key).unwrap_or_default(),
-				}),
 			});
 		}
 
@@ -4003,7 +3964,7 @@ mod fit_tests {
 	}
 
 	#[gpui::test]
-	fn visible_ports_follow_the_router_on_all_sides_and_share_branch_origins(
+	fn routes_follow_character_edges_on_all_sides_and_share_branch_origins(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let surface = cx.new(super::super::tests::fixture);
@@ -4043,17 +4004,26 @@ mod fit_tests {
 					false,
 					std::time::Instant::now(),
 				);
-				let ports = graph.connection_ports(&lines);
 
 				for key in ["parent", "child"] {
-					let port = ports[key][0];
+					let node = graph.nodes.iter().find(|node| node.key == key).unwrap();
+					let link = lines
+						.iter()
+						.find(|line| line.base.from == key || line.base.to == key)
+						.unwrap();
+					let point = if link.base.from == key {
+						link.path.curves.first().unwrap().start
+					} else {
+						link.path.curves.last().unwrap().end
+					};
+					let port = (point.0 - node.x, point.1 - node.y);
 
 					assert!(port.0 >= left && port.0 <= right && port.1 >= top && port.1 <= bottom);
 					assert!(port.0 == left || port.0 == right || port.1 == top || port.1 == bottom);
 					assert!(port.0 >= left && port.0 <= right, "attach to the centered character");
 				}
 
-				let start = ports["parent"][0];
+				let start = lines[0].path.curves.first().unwrap().start;
 
 				if position.1 > 0. {
 					let mut sibling = graph.nodes[1].clone();
@@ -4079,7 +4049,9 @@ mod fit_tests {
 						std::time::Instant::now(),
 					);
 
-					assert_eq!(graph.connection_ports(&lines)["parent"], vec![start]);
+					assert!(
+						lines.iter().all(|line| line.path.curves.first().unwrap().start == start)
+					);
 				}
 
 				for edge in &mut graph.edges {
@@ -4094,10 +4066,7 @@ mod fit_tests {
 					std::time::Instant::now(),
 				);
 
-				assert!(
-					graph.connection_ports(&hidden).is_empty(),
-					"hidden links have no floating ports"
-				);
+				assert!(hidden.is_empty(), "unfocused collaboration stays hidden");
 			}
 		});
 	}

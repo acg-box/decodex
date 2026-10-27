@@ -30,6 +30,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-d57edbe5de23ebee985fc88b
     resource: repo://apps/decodex-gpui/src/agent_timeline_inputs.rs
+  - id: openwiki-source-1849030b658783d8ea0855b0
+    resource: repo://apps/decodex-gpui/src/agent_timeline_receipts.rs
   - id: openwiki-source-5606e779f593d160176b0a27
     resource: repo://apps/decodex-gpui/src/agent_transcript.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
@@ -66,6 +68,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_visibility.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-052a4071b057633df77b1e21
+    resource: repo://crates/decodex-runtime/src/agent/archive.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
@@ -76,14 +80,16 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/response_identity.py
   - id: openwiki-source-58c0167d31c3e40dc89591ab
     resource: repo://database/src/agent_fork.rs
+  - id: openwiki-source-dd880acfb699314e78cc9985
+    resource: repo://database/src/agent/archive.rs
   - id: openwiki-source-7cbe85f6b9884923ffd5cbfa
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
+generated: { by: "codex", at: "2026-10-26T17:25:11.378Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T15:20:45.937Z
+    at: 2026-10-27T03:26:06.307Z
 ---
 
 # Conversation input, history and recovery
@@ -106,7 +112,9 @@ Work Results and command receipts are separate from the conversation's latest re
 
 `agent_draft_storage` and `ClientDraftStore` keep the current editable input under its original conversation owner. A shared-store conflict merges current edits and unresolved delivery records. It does not create alternative whole-editor copies or a separate recovery manager. The current draft format is version 11.
 
-An exact local message has its own delivery state. A positively unsent message shows **Retry** and **Dismiss** through the existing message UI. Retry preserves the original input and its attachments; it does not replace text that the user entered later. Repeated retries refer to one successor event. An **Unconfirmed** message offers **Check status**: an unknown outcome is not safe to resend. Queue acceptance remains separate from native execution.
+An exact local message has its own delivery state. A positively unsent message shows **Not sent** and **Resend** below its normal user bubble. Resend preserves the original input and its attachments; it does not replace text that the user entered later. Repeated retries refer to one successor event. An **Unconfirmed** message offers **Check status**: an unknown outcome is not safe to resend. Queue acceptance remains separate from native execution.
+
+The original text stays visible and wraps inside the ordinary bubble at the end of the transcript. It scrolls with chat history and is not pinned above the input bar. The status and Resend action share one aligned row. Hover over the failure status to read its reason. There is no separate error panel or disclosure. Archived conversations have no retry accessory.
 
 Persist input before dispatch. A lost response can mean that an operation ran. Check the exact saved receipt or native history before changing its state; do not resend an uncertain command. A later observation from another task, account or generation cannot settle it. Native closing-thread recovery resumes the existing conversation and keeps delivery evidence.
 
@@ -116,7 +124,9 @@ Codex owns archive state. A confirmed archive removes non-root bound work from t
 
 When a refreshed active snapshot removes the selected conversation or its composer owner, the desktop stops voice input and saves the draft under its original work and thread identity. Normal navigation restores the next conversation's own draft. If no conversation remains active, sending stays unavailable; a retained draft cannot start a replacement conversation or move to the Assistant. A failed snapshot read does not trigger this transition.
 
-After Codex restores the original thread, a positive active-list observation restores its original relationships through the normal background refresh. An application restart is not required. Opening that conversation restores its saved draft under the original work and thread IDs. Native child tabs follow the same complete-list rule and retain their own draft when removed from the active view. An archive refresh does not delete accepted input or replay an uncertain command.
+Archiving ends local pending interactions: never-dispatched input and failed-message retry records are discarded, old questions and request notices are retired, and pending automatic retries and scheduled checks are cancelled. Sent history, claimed delivery receipts, Work and Results remain. The current editor stays under its original owner.
+
+After Codex restores the original thread, a positive active-list observation restores its original relationships through the normal background refresh. An application restart is not required. Opening that conversation restores its saved editor under the original work and thread IDs. Native child tabs follow the same complete-list rule and retain their own editor when removed from the active view. Restoration does not replay discarded input or an uncertain command.
 
 ## Edit or branch at an earlier input
 

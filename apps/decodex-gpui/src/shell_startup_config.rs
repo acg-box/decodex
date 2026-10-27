@@ -10,6 +10,7 @@ use tokio::runtime::Builder;
 use crate::{
 	shell::diagnostics::{self, Shell},
 	ui_feedback::{self, Feedback},
+	ui_theme,
 };
 use decodex_protocol::{
 	ClientProfile, ConversationWorkingDirectory, DoctorClient, NativeStartupConfiguration,
@@ -48,18 +49,23 @@ pub(super) fn content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.flex()
 		.flex_col()
 		.gap_2()
-		.child("Local Codex startup configuration")
-		.child("Checks shared Codex sign-in. Task account overrides are excluded.");
+		.child(ui_theme::settings_section_title("Local Codex startup configuration"))
+		.child(ui_theme::settings_description(
+			"Checks shared Codex sign-in. Task account overrides are excluded.",
+		));
 
 	if let Some(current) = &current {
-		group = group.child(format!("Folder: {}", current.directory.display())).child(
-			diagnostics::control(
+		group = group
+			.child(ui_theme::settings_description(format!(
+				"Folder: {}",
+				current.directory.display()
+			)))
+			.child(gpui::div().flex().child(diagnostics::control(
 				"native-startup-check",
 				if panel.task.is_some() { "Checking…" } else { "Check Codex configuration" },
 				cx,
 				start,
-			),
-		);
+			)));
 	} else {
 		group = group.children(ui_feedback::inline_feedback(
 			"native-startup-unavailable",

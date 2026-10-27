@@ -24,6 +24,9 @@ pub const MAX_AGENT_DEPENDENCIES: usize = 500;
 pub const MAX_AGENT_PENDING_EVENTS: usize = 100;
 /// Maximum encoded snapshot size, below the transport frame bound.
 pub const MAX_AGENT_SNAPSHOT_BYTES: usize = 128 * 1_024;
+/// Native preparation requires the parent agent to reconnect this conversation.
+pub const NATIVE_PARENT_RECONNECT_MESSAGE: &str =
+	"Open the parent agent to reconnect this conversation.";
 
 /// Complete selected request content assembled from bounded local protocol pages.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

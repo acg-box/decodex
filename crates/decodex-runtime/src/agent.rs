@@ -1753,6 +1753,11 @@ impl AgentCoordinator {
 				if ["thread/closed", "thread/archived", "thread/deleted"]
 					.contains(&method.as_str()) =>
 			{
+				if method == "thread/archived" {
+					self.store
+						.retire_archived_agent_threads(vec![exact(&params, "/threadId")?])
+						.await?;
+				}
 				if method == "thread/closed" {
 					self.store
 						.release_native_agent_slots(vec![exact(&params, "/threadId")?])
@@ -2480,15 +2485,18 @@ impl AgentCoordinator {
 			return Ok(());
 		}
 
-		let phase = crate::startup_trace::Phase::new("wake_guardian");
+		let phase = Phase::new("wake_guardian");
+
 		self.sync_global_guardian().await?;
+
 		drop(phase);
 
-		let phase = crate::startup_trace::Phase::new("wake_thread_ownership");
+		let phase = Phase::new("wake_thread_ownership");
 		let blocked = self.recover_thread_ownership().await?;
+
 		drop(phase);
 
-		let _phase = crate::startup_trace::Phase::new("wake_ready_work");
+		let _phase = Phase::new("wake_ready_work");
 		let voice_calls = self.store.open_agent_voice_calls().await?;
 		let work = self.store.list_agent_work_items().await?;
 		let managers = self.store.agent_manager_ids().await?;
@@ -2552,9 +2560,11 @@ impl AgentCoordinator {
 				.await
 			{
 				Ok(_) => {},
-				// A queued archived owner waits for explicit restoration. Its retained
-				// input must not stop later owners in this wake batch.
-				Err(AgentError::ThreadArchived | AgentError::ProjectPending(_)) => {},
+				Err(AgentError::ThreadArchived) =>
+					if let Some(thread) = &agent.codex_thread_id {
+						self.store.retire_archived_agent_threads(vec![thread.clone()]).await?;
+					},
+				Err(AgentError::ProjectPending(_)) => {},
 				Err(error @ AgentError::ThreadOwnedElsewhere { .. }) => {
 					self.store.hold_agent_unsent_input(agent.id.clone()).await?;
 					self.store
@@ -2589,10 +2599,9 @@ impl AgentCoordinator {
 				{
 					Ok(value) => value,
 					Err(AgentError::ThreadArchived) => {
-						// Archiving ends the external-writer condition. Keep this owner's
-						// input parked without blocking unrelated conversations.
+						// Archiving ends pending delivery and external-writer attention.
 						self.loaded_threads.remove(thread);
-						self.store.resolve_agent_thread_in_use(item.id.clone()).await?;
+						self.store.retire_archived_agent_threads(vec![thread.clone()]).await?;
 						blocked.insert(item.id.clone());
 
 						continue;

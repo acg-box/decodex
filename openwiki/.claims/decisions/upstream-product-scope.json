@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ba6b7654954d31bffdb4a24c67bc078026480ed53b9ef7a87bc3b678e1c12cdf",
+  "pageVersion": "sha256:25e6f9ba8b5be662f1d8055b4165d96e79524d5fedda6dccd83107289d6935f7",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -190,7 +190,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:37cd9b6acba0428fdf30e01c1904d1d238e9b6c61b0aa0362f1b0f667c5a11cd"
+          "version": "repo-file-v1:sha256:6e0ec3e9e7a1cc96060a5db3703f4185abac7e7a6f803274c41ad1f3d67567da"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
@@ -208,7 +208,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
+          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
@@ -218,11 +218,11 @@
     },
     {
       "id": "claim_d6d7d688f6a645a09c7356f11d70cf29",
-      "statement": "Retained integration repairs reconcile unassigned native Project membership and retain schema57 native input receipts for permitted V2 nested Work attribution without changing native V2 defaults or adding another executor; native identity, membership and Decodex presentation passed separate installed qualification, while official desktop Project presentation remains unobserved.",
+      "statement": "Retained integration repairs reconcile unassigned native Project membership and retain native child-input receipts for permitted V2 nested Work attribution without changing native V2 defaults or adding another executor; native identity, membership and Decodex presentation passed separate installed qualification, while official desktop Project presentation remains unobserved.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
+          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/project.rs",
@@ -240,7 +240,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
+          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/guardian_details.rs",
@@ -274,11 +274,11 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
+          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:37cd9b6acba0428fdf30e01c1904d1d238e9b6c61b0aa0362f1b0f667c5a11cd"
+          "version": "repo-file-v1:sha256:6e0ec3e9e7a1cc96060a5db3703f4185abac7e7a6f803274c41ad1f3d67567da"
         }
       ]
     },
@@ -292,7 +292,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5dbeeb95f2e9c3afaa0c98ae7fe50d470389ebaec538ed88a489f90f703de76b"
+          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -303,6 +303,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T15:20:45.937Z"
+    "at": "2026-10-27T03:26:06.307Z"
   }
 }

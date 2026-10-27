@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b3bf72a09b9b90043f552d40ec5e108abba37dbd561aa0025a7064609e5854fa",
+  "pageVersion": "sha256:54d5385ac4d2a23946d2406022557417105de5bcefba82522a9c9e900d1b8d65",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -70,11 +70,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_composer.rs",
-          "version": "repo-file-v1:sha256:6a3309011bf522100c94941ad937f8e169043f1e991f880bfa39234300f55f11"
+          "version": "repo-file-v1:sha256:0f3b0895f49094b4921098715815b1b6de91a931f1159f12a240e7aee448e0ed"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:7c38baca78038c57bec820de6bd32772651a21d83a583e616da8a72c41d177e9"
+          "version": "repo-file-v1:sha256:88a9382f0e82c5c321ca6298f96c9d32b0541798dda40237bdb8844d6ab23232"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_text.rs",
@@ -82,7 +82,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:bcda6c1adde801f4a6b51f3b86b06eb90808a78704ef3be5b3790678019bc2a0"
+          "version": "repo-file-v1:sha256:a75fb81529a47d243861497b5825fb685fbeaeb02f2804a7498d97605a570cf0"
         }
       ]
     },
@@ -130,7 +130,7 @@
     },
     {
       "id": "claim_f591a4d003dd4eaba5893bb1837aa273",
-      "statement": "Saved edit recovery and native history refresh and source controls appear in Details rather than the normal transcript; only active editing and unresolved-operation notices occupy the chat flow.",
+      "statement": "Saved edit recovery and native history refresh and source controls appear in Details. Failed input remains an ordinary message in the transcript; active editing and unresolved-operation notices also use the chat flow, without a permanent list of saved drafts.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_inspection.rs",
@@ -141,8 +141,8 @@
           "version": "repo-file-v1:sha256:3152f0f7ee2fb9ada541b68df8956133ecd7bae3587ad25305aa18db8f48ac71"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:b38e57ff3f211efd03fa20d4595e5172956a81b2200f4a70d1ab17f02a7036d0"
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2227-L2258",
+          "version": "repo-lines-v1:sha256:f23eb22d81f75af5538eec6a393a7467929e9c440b0bab5cb5fc0837af3c47a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMWE4OGNlMDQ3OWM1ZmE3NTI5MmNiOGE1ZWYxOTBhYTg4NDhlMTMyNzg0MDk1ZTI0ZDI1YzM3NDMwOWU5NDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ODI4NTYwNmQyOGU5MWNlNDRjYWU5MzVjZjg4OTA5MTkxZTA5NWM2YjUzN2NlZTgyNjcyZDdkNzIyYjRhZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNTViODhjYjRkNTVjN2VmMjE2NDliZWE5MTRiYTEwYTEyNDE0ZDMyOGVkZDhmNTNlMDg1MWRmNDc5MTBhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MDZmNmFkYTg4ZjAzZGE2MDU1NmNkOWZkMGY2MGI3NDhkZGMwNjViYjcwN2M5YmNkZGI5ZTc4YThlNGU2YWQifQ"
         }
       ]
     },
@@ -156,7 +156,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:b38e57ff3f211efd03fa20d4595e5172956a81b2200f4a70d1ab17f02a7036d0"
+          "version": "repo-file-v1:sha256:d79f7f8a2ae14d6a56cafd6ae9de3514c7855931938d50960e79cbfbf95b00f4"
         }
       ]
     },
@@ -267,18 +267,40 @@
       "statement": "Local message delivery state is separate from the current editor; only positively unsent input offers retry, and retry preserves the original operation without replacing later input.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs#L125-L185",
-          "version": "repo-lines-v1:sha256:9cf381bf1d51d8005eaa8915a2e84d818b49f6aaec4df1ccf6a2126dff48563a:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwZWQ5ZDg1YzAyODQ0ZGM4ODZiMDEwZjQyNDI5NmFlMDhiNGFjYjJlNDdjNTVkZGZmZDJmZTY0MDc5YmEwY2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5YzkxMWM5NDdiY2ZmMTYyMGY2MDUxN2VmMjQ2YTk2YzY1M2ZlMmFmM2ExMDVjM2Q1MWVkNTYyNGQwMDBkZWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM5YzJjNmRjYmFlMzUzN2Q4NmYxMjFiNzFmMGEzMjdiYjVjNjc0ZWQ3N2NkY2UwYzZjODY5MjY3Y2IxMDU4MDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdmNjA0ZGQyMTQzMjI2ZDA1ODE1ZjE5YWE5Zjg4N2JlNjlhODczOThkZWU4NDIwNGQ5NTRmOWZhYzg5Yzc1NDIifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs#L55-L237",
+          "version": "repo-lines-v1:sha256:11eafb58a75240e14c521ae17caf7da5b1cffedef9db00cfb7871997a652ab4c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5ZDlmODhjOTllNzcxMDc2MDIyNmIzMGIzODczYjI5NmQzYWMzMDc0MzE3ODFkMzc0MzAxZWY2ZmZlNzUzYjI3IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJiZDllMGU0YzMwZGU2YjQ2MDViY2MyMWI2ZmZiNWFkNzA3ZDgwM2RmOWZmZjU2ZDAyN2RkNjNmZDU1MjQ4NjEyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1ZDQzZjc4ODNlOTdiMjY5MmMxYzA0OGYxNzg4ODJhODNhMTAwYTEwMjQ1ZDY0M2NkMDk3ZTE5ZTMzNWFiZGVkIn0"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/desktop_message_delivery.rs",
           "version": "repo-file-v1:sha256:c0cfb50e85a339a55f05b2596580eab9246dc811afe6c3d8f67b47a4eaacd2e2"
         }
       ]
+    },
+    {
+      "id": "claim_73aeaa5b784e4b0e9d1b3c953ba42feb",
+      "statement": "An unsent input uses the ordinary right-aligned user bubble at the end of the scrolling transcript, with full wrapped text and an aligned Not sent and Resend row. It is not pinned above the input bar. The failure reason is a tooltip; there is no disclosure, copy or dismiss action.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2227-L2258",
+          "version": "repo-lines-v1:sha256:f23eb22d81f75af5538eec6a393a7467929e9c440b0bab5cb5fc0837af3c47a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMWE4OGNlMDQ3OWM1ZmE3NTI5MmNiOGE1ZWYxOTBhYTg4NDhlMTMyNzg0MDk1ZTI0ZDI1YzM3NDMwOWU5NDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ODI4NTYwNmQyOGU5MWNlNDRjYWU5MzVjZjg4OTA5MTkxZTA5NWM2YjUzN2NlZTgyNjcyZDdkNzIyYjRhZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNTViODhjYjRkNTVjN2VmMjE2NDliZWE5MTRiYTEwYTEyNDE0ZDMyOGVkZDhmNTNlMDg1MWRmNDc5MTBhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MDZmNmFkYTg4ZjAzZGE2MDU1NmNkOWZkMGY2MGI3NDhkZGMwNjViYjcwN2M5YmNkZGI5ZTc4YThlNGU2YWQifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs#L238-L385",
+          "version": "repo-lines-v1:sha256:b04bb028107c6c3461947267bb5f77f4b74551a85898bd9efb49798b28a8504c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmYjcyNzY5NDM0NjhjMTY0OWVjYjYyMmVjN2IzMmUwNjVmODEzYWVlMzBkNzM5NDA0ZjNjODEyOWMxM2M2OWY0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMGE4NzU2YTk4Yjk1ZWU1NzViZWVlNDYwMDQ4YzdmYzk3YTY3YWQ0ZGQxNTVhYzFhODU5N2VjNjVjNGZhMjgwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3MTU3MDIxYjdlM2IxMmU1NmNjOGFjOWQzN2E2MDVlZWMyMGQ5ZTVkNzI0ODQ1ZTBiZDlmYzFiNDlmY2YzZTYyIn0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_receipts.rs#L83-L100",
+          "version": "repo-lines-v1:sha256:80b0f845e3c0639cf50f4f6fbd1d3526841e9b564cc105d6d502c208ee4e240d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwZjQyNmM5MmM0YzI2MTRkY2VhN2Q1NDFmZmEzZmMzOWE0OTUwNjhmODUxNWRlOGQyYWZmOTkxMTE0YjU5NDIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3M2VhN2UyZmY5Yjk4Yzk2YzYyYzI5YzAyMWVkOWZlNzFkYjcxNzRkNjc2Yjg0MDY2N2RiNWJmYTk4OTZmZjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmN2FjN2ZiYjc1MDM1ZTk4MDQ4MWI4NjkwN2U1ZGM2OTY0MzE0MmZjMjJlMGU2OTQ2NDY2YTQ1NDg1MDdmMWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU0MzcxMGE5NzJjZTkyNWEyYmUwZTdlNmVkNGExNjgyYmRjMDI3ZGEyMDg0OWRiYzNmMWQ4NWM5OGFkNzZmZjkifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1020-L1030",
+          "version": "repo-lines-v1:sha256:f1c834ab36d08748f529eafac7ff77239588fdc1f00191fe4f348c755c764e61:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5NjMwY2E4ZjM1NDNiMzY1Zjg5ODMzMWU3OWI1ZThjMmVmOGIyNDA4MDExMzgwYmIzY2ZhZWI1MjJkMWE5OTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQyZTE3Y2NiZTg1YTFjM2QwNTkyNmY5OTFjMzE2MTFkNjRkZDhlMDQyNmY0ZGEzODQxYjJkNjdmYjM5MDg4NjUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T14:39:55.302Z"
+    "at": "2026-10-27T03:26:06.307Z"
   }
 }

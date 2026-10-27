@@ -8,8 +8,6 @@ sources:
     resource: repo://.config/nextest.toml
   - id: openwiki-source-1b7747f8ae67c32e5670817d
     resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
-  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
-    resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-c740d34a4e6c4e581873e50e
@@ -18,10 +16,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-24139c353e393a9759b0267a
     resource: repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs
-generated: { by: "codex", at: "2026-10-25T15:35:33.616Z" }
+generated: { by: "codex", at: "2026-10-27T03:26:06.307Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-26T15:20:45.937Z
+    at: 2026-10-27T03:26:06.307Z
 ---
 
 # Test quality and coverage
@@ -57,7 +55,7 @@ Motion tests should use controlled times where possible. Fixed intermediate wall
 
 ## Cleanup evidence
 
-Nextest `LEAK` output means that captured output did not close within the runner's exit window; it does not by itself identify an application-owned survivor. The historical macOS Nextest 0.9.143 investigation reproduced sibling capture-pipe inheritance. The original test passed repeated isolated checks; the original marker had no pipe trace. The earlier component qualification records a separate marker and passing isolated rerun, without claiming the same cause. Preserve those limits and diagnose each new marker on its own evidence. Do not change the timeout, skip tests or serialize the default suite merely to hide a marker. See the [validation guide](../operations/commands-and-validation.md#nextest-exit-markers) and its immutable historical diagnosis link.
+Nextest `LEAK` output means that captured output did not close within the runner's exit window; it does not by itself identify an application-owned survivor. The historical macOS Nextest 0.9.143 investigation reproduced sibling capture-pipe inheritance. The original test passed repeated isolated checks; the original marker had no pipe trace. Preserve those limits and diagnose each new marker on its own evidence. Do not change the timeout, skip tests or serialize the default suite merely to hide a marker. See the [validation guide](../operations/commands-and-validation.md#nextest-exit-markers) and its immutable historical diagnosis link.
 
 Record the removed assertion, the contract it purported to protect, and the retained owner or reason it is no longer needed. Validate the affected owner before merging a coherent batch. A repository-wide search is candidate discovery, not proof that every scenario was reviewed. Do not use deleted line or test counts as a completion target.
 
