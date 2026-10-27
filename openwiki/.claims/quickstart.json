@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c24fdecafbcc63eefe636341a85505ad4984c2710516faa448f005d2124fa792",
+  "pageVersion": "sha256:3b1e84fbe0e15f1860d0b63df8b26e53073d6d83f0f970523fe402fedc8ccd83",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -26,7 +26,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:3c5a76a4b22355e4b41356f952367830208b66ed6b1444098ebe15680d76ac39"
+          "version": "repo-file-v1:sha256:7c56d46b9cada4c54af903505b3b88a0788d8b0b0cf5e844b2f2422fc4029b24"
         }
       ]
     },
@@ -36,7 +36,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:3c5a76a4b22355e4b41356f952367830208b66ed6b1444098ebe15680d76ac39"
+          "version": "repo-file-v1:sha256:7c56d46b9cada4c54af903505b3b88a0788d8b0b0cf5e844b2f2422fc4029b24"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -58,7 +58,7 @@
         },
         {
           "resource": "repo://database/src/schema.rs",
-          "version": "repo-file-v1:sha256:b3a3c373f7c156e6ba3eb579b1bbd08164a0eda69bd51ba24802741234c95359"
+          "version": "repo-file-v1:sha256:74832a5c5ad0f16ae99c3c413ccfefec379b65f03e95e34f43756dac4d26dc04"
         }
       ]
     },
@@ -95,7 +95,7 @@
       "statement": "Account admission accepts only native plus, pro, prolite, promax and team plans for OAuth and PAT credentials.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5466-L5576",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5467-L5577",
           "version": "repo-lines-v1:sha256:29e335940f8b7368c86807515d156b757198ad8a020b42bab05ae733447b5504:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJjMGM4NTk1ZWRjNDNlZjI5Mzc4NTI1NDVmMzUyMGRkMzQ4MjA0ZmVhNjdiOTQyZjE0ZDM2ZTcxM2UzNDUxZmQwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJkZDNhMDJkMWRmNTQ5N2U1YzI2NmRlYzhkNDM0ZmI5NThhMDg2YWE5NjQzZjczODYyZTY1YTU5ZTc4NGVkOGU2IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4YTZkNjQyY2IwZDE5NmQ4MWMxOTY2ZjRiOTQ3Y2U2ODQyODkyNGM5ZmZiMWIyOWY5MjUzM2U2MmM3OWZjZDliIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4NjE1OTY2MmUwMDhhMDBkNmVkNDRkZDk0YWRhMzMyMWI0YzAxZTBkNjAxZDZiN2E3NDMxMzMxOWUyYjZjNzExIn0"
         },
         {
@@ -157,6 +157,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T03:26:06.307Z"
+    "at": "2026-10-27T06:15:00.380Z"
   }
 }

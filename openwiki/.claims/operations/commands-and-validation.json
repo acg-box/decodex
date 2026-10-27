@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7d096f0bcfb32a3f5f6004e432e8b192da1e752207e934caf18d37d7c2c0d33e",
+  "pageVersion": "sha256:3758a85e5432c4fd1a107087b03e78bbaba822d17914b44c2f5cfbe27f49e9a2",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://Makefile.toml",
-          "version": "repo-file-v1:sha256:4c0e12db3d9877f345590fe4fe41e3598e6be2a18e1a78f5284a186c3e50af01"
+          "version": "repo-file-v1:sha256:cc289ecb9c3e770d9d25e5c6b97e5f79b42dd5c9a0b66f782ee9b833d1a53f16"
         },
         {
           "resource": "repo://rust-toolchain.toml",
@@ -58,7 +58,7 @@
       "evidence": [
         {
           "resource": "repo://Makefile.toml",
-          "version": "repo-file-v1:sha256:4c0e12db3d9877f345590fe4fe41e3598e6be2a18e1a78f5284a186c3e50af01"
+          "version": "repo-file-v1:sha256:cc289ecb9c3e770d9d25e5c6b97e5f79b42dd5c9a0b66f782ee9b833d1a53f16"
         },
         {
           "resource": "repo://crates/decodex-components/src/pin.rs",
@@ -230,7 +230,7 @@
       "evidence": [
         {
           "resource": "repo://.config/nextest.toml",
-          "version": "repo-file-v1:sha256:85f6a30b21a1a8e734b6d81aad00a781657dc39d7762cd9d02c0ffc9f8154698"
+          "version": "repo-file-v1:sha256:ce577761f68d3b449024148355098ceecf471f6069ed25a5c7d5882a31be85e7"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
@@ -339,6 +339,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T03:26:06.307Z"
+    "at": "2026-10-27T06:15:00.380Z"
   }
 }

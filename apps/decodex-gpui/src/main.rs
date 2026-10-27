@@ -498,3 +498,7 @@ fn install_application_menu(cx: &mut App) {
 		Menu::new("Debug").items([MenuItem::action("Reload Workspace", ReloadWorkspace)]),
 	]);
 }
+
+#[cfg(test)]
+#[path = "bin/workbench_visual_capture/send.rs"]
+mod capture_send;

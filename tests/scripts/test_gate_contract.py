@@ -84,6 +84,26 @@ class GateContractTests(unittest.TestCase):
                 self.assertEqual(task["command"], "cargo")
                 self.assertIn("--locked", task["args"])
 
+    def test_rust_test_gate_respects_diagnostic_target_ownership(self) -> None:
+        with (REPO_ROOT / "apps/decodex-gpui/Cargo.toml").open("rb") as source:
+            manifest = tomllib.load(source)
+
+        diagnostic_targets = {
+            "decodex-gpui-workbench-visual-capture",
+            "decodex-native-glass-probe",
+        }
+        for target in manifest.get("bin", []):
+            if target["name"] in diagnostic_targets:
+                with self.subTest(target=target["name"]):
+                    self.assertIs(target.get("test"), False)
+                    self.assertIs(target.get("bench"), False)
+
+        for task_name in ("test-rust", "test-rust-headless"):
+            with self.subTest(task=task_name):
+                arguments = self.tasks[task_name]["args"]
+                self.assertTrue({"--tests", "--examples", "--benches"}.issubset(arguments))
+                self.assertNotIn("--all-targets", arguments)
+
     def test_blocking_test_aggregates_include_the_local_database_gate(self) -> None:
         for task_name in ("test", "test-sandboxed", "test-headless", "test-headless-sandboxed"):
             with self.subTest(task=task_name):
