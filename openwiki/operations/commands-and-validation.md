@@ -36,6 +36,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
+  - id: openwiki-source-5af40fd50adccf5d93ff82a0
+    resource: repo://crates/decodex-runtime/src/agent/tests/capacity.rs
   - id: openwiki-source-24139c353e393a9759b0267a
     resource: repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs
   - id: openwiki-source-275dc903aab820a109a196b4
@@ -44,6 +46,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/apps_recovery.py
   - id: openwiki-source-30f880169ba4c3067a852d8f
     resource: repo://crates/decodex-runtime/tests/native_qualification/command_hooks.py
+  - id: openwiki-source-b1a8e98eb39febad19f64bda
+    resource: repo://crates/decodex-runtime/tests/native_qualification/dotenv_startup.py
+  - id: openwiki-source-88b81a215b1bac061dad80ec
+    resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
   - id: openwiki-source-e7a53f398340c29957bd81d3
     resource: repo://crates/decodex-runtime/tests/native_qualification/native_session.py
   - id: openwiki-source-8e6f29de9ed0d4825985ec62
@@ -52,6 +58,8 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/proxy_headers.py
   - id: openwiki-source-aac8f76a32012d4a3e5a445d
     resource: repo://crates/decodex-runtime/tests/native_qualification/terminal_controls.py
+  - id: openwiki-source-b30d382781a313611ecd221f
+    resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-157a50123cd9da439c18985d
     resource: repo://crates/decodex-runtime/tests/native_qualification/usage.py
   - id: openwiki-source-6197a876b2effbe992b1e2ec
@@ -74,10 +82,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-27T15:42:30.799Z" }
+generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T18:33:20.613Z
+    at: 2026-10-27T21:12:13.971Z
 ---
 
 
@@ -169,15 +177,18 @@ python3 crates/decodex-runtime/tests/native_qualification/large_catalog.py
 python3 crates/decodex-runtime/tests/native_qualification/response_identity.py
 python3 crates/decodex-runtime/tests/native_qualification/project_guardian.py
 python3 crates/decodex-runtime/tests/native_qualification/command_hooks.py
+python3 crates/decodex-runtime/tests/native_qualification/dotenv_startup.py
 ```
 
 These probes use loopback providers, synthetic account data and system-temporary homes. They close their own child processes and servers. They do not establish installed-app or live-provider acceptance. Keep raw output in the native run directory; keep current requirements, fixture implementations, hashes and limits in the repository.
 
 The command hook probe checks the command directory in the `PreToolUse`, `PermissionRequest` and `PostToolUse` payloads. The hook process keeps the project directory, while each payload identifies the nested command directory. It checks one local command without a model retry; it does not qualify a remote executor.
 
+The startup probe checks both a missing `.env` and a directory at that path. The settings probe separately checks saved tier/summary and permission recovery despite stale turn context in legacy and paginated history. The model-error probe keeps `policyCapacityUnavailable` distinct from overload; the HTTP fixture permits three native requests with `request_max_retries=2`, while the SSE failed-response case permits one. Neither adds a Decodex automatic retry.
+
 A hook start event can precede native trust verification. The hook regression checks actual script effects after declaration or script changes, enablement changes and restart. The parallel tool regression requires both requests before either reply and verifies result order. The MCP status regression waits for discovery to finish, then checks opaque first-page metadata through tool pagination, status pagination and restart.
 
-Use the current [qualification record](../../automations/upstream/qualification.json) for the source-test helper recipe and exact registered identities. Its current source cohort uses a `dev-small` app-server helper. Helper-spawn cases also require the exact signed candidate CLI through `CARGO_BIN_EXE_codex`; `CARGO_BIN_EXE_codex-app-server` identifies the source helper. Record the helper and production CLI separately and preserve the original assertions and timeouts. Older private-hook launchers apply only to their recorded source snapshot; do not copy their private configuration into the production CLI.
+Use the current [qualification record](../../automations/upstream/qualification.json) for the source-test helper recipe and exact registered identities. Its source cohort uses `dev-small` helpers. Nextest can replace requested `CARGO_BIN_EXE_*` values with its own build outputs; those tests do not prove that the signed production CLI ran. Use the Decodex native cohort and standalone probes for exact CLI checks. For the signed Code Mode helper, invoke the compiled `grpc_tcp` test binary directly with both documented helper path variables. Record each actual artifact separately and preserve the original assertions and timeouts. Older private-hook launchers apply only to their recorded source snapshot; do not copy their private configuration into the production CLI.
 
 ## Memory, collaboration history and actual usage
 

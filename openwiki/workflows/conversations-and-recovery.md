@@ -74,6 +74,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
+  - id: openwiki-source-5af40fd50adccf5d93ff82a0
+    resource: repo://crates/decodex-runtime/src/agent/tests/capacity.rs
   - id: openwiki-source-88b81a215b1bac061dad80ec
     resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
   - id: openwiki-source-c6bea677adcde563202b65b9
@@ -86,10 +88,10 @@ sources:
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-26T17:25:11.378Z" }
+generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T15:47:51.280Z
+    at: 2026-10-27T21:12:13.971Z
 ---
 
 # Conversation input, history and recovery
@@ -136,12 +138,12 @@ Review the exact native item and complete input, including image, skill and ment
 | --- | --- | --- |
 | **Edit in new branch** | Create a fork before the selected input; keep the original conversation unchanged | Restore the edited canonical input on the new branch |
 | **Branch after this turn** | Copy the selected completed turn and all earlier turns; keep the original unchanged | Open the branch without prefilling that input |
-| **Attached branch after this turn** | Attach a persistent native branch containing the completed-turn prefix to the exact source conversation | Open the branch without prefilling or sending input |
+| **Attached branch after this turn** | Attach a persistent native branch to the reviewed source boundary; native inference retains the parent context while the child view contains only child turns | Open the branch without prefilling or sending input |
 | **Remove turns from original and keep draft** | Revert the original before the selected input, removing it and all later turns | Keep the edited draft on the original thread |
 
-A branch before the first input is an empty-prefix native fork, not an unrelated replacement conversation. Ordinary branches defer copied Goal continuation. An attached branch starts without a copied native Goal; the source Goal remains unchanged. Opening any branch does not send input or start a model turn. Neither a fork nor a same-thread revert undoes workspace file changes.
+A branch before the first input is an empty-prefix native fork, not an unrelated replacement conversation. Ordinary branches defer copied Goal continuation. An attached branch starts without a copied native Goal; the source Goal remains unchanged. Its visible history is initially empty, and later child turns are independent of the parent view. The saved source turn IDs retain the reviewed boundary. This choice requires paginated source history, as checked by the public flow. Opening any branch does not send input or start a model turn. Neither a fork nor a same-thread revert undoes workspace file changes.
 
-The desktop saves the exact choice, destination and edited draft before dispatch. The service reserves the operation before one native write. It saves a returned fork ID before a separate prefix read. If creation acceptance is unknown, retain the draft and read its receipt; do not create another branch. Known fork recovery only reads native identity and history. The source keeps its normal history and has no branch-draft input fence.
+The desktop saves the exact choice, destination and edited draft before dispatch. The service reserves the operation before one native write. It saves a returned fork ID before a separate visible-history read. Ordinary forks validate the reviewed prefix; attached creation validates an empty child view. If creation acceptance is unknown, retain the draft and read its receipt; do not create another branch. Known fork recovery only reads native identity and history. The source keeps its normal history and has no branch-draft input fence.
 
 An attached branch retains the exact source Agent as its local parent and keeps its Project, role, provider and tool revision. In the source Agent's preferences, open **Attached branches**, then **Open branch** to continue a verified active branch. Navigation preserves the source draft. The list reads the newest 100 saved Decodex attached-branch receipts and discloses truncation; it does not adopt branches created outside Decodex. Refresh is explicit.
 
@@ -166,6 +168,8 @@ Complete Markdown export reads the full native conversation through its history 
 ## Terminal model errors and item identity
 
 A native `modelNotFound` result is terminal. Its provider message and typed classification remain available in live results, stored history and a cold read; Decodex does not turn it into a capacity retry. Capacity recovery requires its own exact failed-turn evidence. A changed model or later user request is a separate action.
+
+A native `policyCapacityUnavailable` error remains distinct from overload and persists through cold history. Decodex does not schedule its overload recovery for this error. Native transport retries have their own bounded configuration and do not authorize a Decodex continuation.
 
 Native history also keeps one nonempty item identity when a provider assistant message omits its ID. The source-access and cold-read probes inspect the existing result without another inference request. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md#terminal-errors-and-external-context) for the exact artifact and transport limits.
 

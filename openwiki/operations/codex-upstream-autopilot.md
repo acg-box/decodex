@@ -35,10 +35,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-27T15:42:30.799Z" }
+generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T18:33:20.613Z
+    at: 2026-10-27T21:12:13.971Z
 ---
 
 
@@ -77,7 +77,7 @@ The runtime lock can select an exact official source archive. Use the explicit d
 2. Qualify the packaged executable, Code Mode helper and `rg`. The builder signs and verifies these components. The component store checks the executable and helper commit, CLI version, signatures and generated experimental app-server schemas against the local adapter and pinned fingerprint. It records archive and executable hashes with the fixed source requirement. The selection changes only after the prepared component verifies. App startup and packaging never compile Codex.
 3. Exercise the affected native behavior and current local consumer before delivering a lock update. A matching schema establishes protocol structure. It does not establish saved-permission behavior, compaction, transport lifecycle or desktop acceptance. Keep source review, artifact qualification, merge, installed identity and live acceptance as separate evidence.
 
-The current development requirement selects upstream commit `abf4bb91ec49fbf443ccec0069f9cab5dd1462d8`. Its portable qualification records 41 unique Rust consumer selections: 39 used the exact signed CLI and packaged helpers, while two tested local history projections. It also records fifteen reusable probes and an exact-artifact cache-repair regression. This synthetic macOS arm64 qualification did not install or release the application.
+The current development requirement selects upstream commit `33d306d457a4632b22bebf214e0c25d91f90f6e8`. Its portable qualification records 53 unique Rust consumer selections: 51 used the exact signed CLI and packaged helpers, while two tested local history projections. It also records 17 reusable probe groups, exact-artifact cache repair and a direct session test of the signed Code Mode helper. The source dev-small suite is separate: Nextest can select its own helper binaries. One named-executor cloud-skills fixture remains unresolved and is outside the selected local private-stdio consumer. This synthetic macOS arm64 qualification did not install or release the application.
 
 ## Retain evidence after artifact cleanup
 

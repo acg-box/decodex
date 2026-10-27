@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e6e80b82735c131642a432f063ae24d0e47f06c8a4d8dcdfdae110c512811dee",
+  "pageVersion": "sha256:19a17665cb34641ab7d3f54dd838e9c9e8a0cbaff66788fa3da060909e07dcf8",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -156,7 +156,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     },
@@ -176,7 +176,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/current-review.json",
-          "version": "repo-file-v1:sha256:411a0b5dbff918d7331bace8337763fd55a340290b2f8403cc556d02478ff782"
+          "version": "repo-file-v1:sha256:3ccca96311d38b0a0578a007e85c2e25c8114098630081bb2c12c01162904d79"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md",
@@ -184,7 +184,7 @@
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:16ddc9a1e1dfcd3e2bf324db5e7734ff021ac8f42588bac8c530bba3bc9b95b4"
+          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
         }
       ]
     },
@@ -194,7 +194,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     },
@@ -204,27 +204,27 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     },
     {
       "id": "claim_2a04e76c08ab48b4affea61ea59dd1b1",
-      "statement": "The current development requirement selects upstream commit abf4bb91ec49fbf443ccec0069f9cab5dd1462d8; the portable qualification records 39 exact-artifact Rust selections, two local history projections, fifteen probes and one exact-artifact cache-repair regression without installation or release.",
+      "statement": "The development requirement selects upstream commit 33d306d457a4632b22bebf214e0c25d91f90f6e8; qualification records 51 exact-artifact Rust consumer tests, two local history tests, 17 probe groups, cache repair and a direct signed Code Mode helper session. Source dev-small tests remain separate and one named-executor cloud-skills fixture is unresolved; no installation or release is established.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:16ddc9a1e1dfcd3e2bf324db5e7734ff021ac8f42588bac8c530bba3bc9b95b4"
+          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
         },
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:64c304b9cdf1d8bea29ef5909acea2aaacf88e55a608b7377223241d514bef2b"
+          "version": "repo-file-v1:sha256:cc5ad01847aeedd94f3fad7d425b5f4eaf9011dc440c448a42d6943bbe215ac8"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T18:33:20.613Z"
+    "at": "2026-10-27T21:12:13.971Z"
   }
 }

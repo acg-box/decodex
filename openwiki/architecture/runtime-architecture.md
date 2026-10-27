@@ -44,8 +44,6 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch.rs
   - id: openwiki-source-9e21e877b2d7ad96b0a4d637
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs
-  - id: openwiki-source-f5d073da07bcb17ee416f3b5
-    resource: repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-4e8482c0f2dbe370858a1b11
@@ -72,6 +70,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/project.rs
   - id: openwiki-source-2a0e86d8a9789b05a13deccc
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
+  - id: openwiki-source-5af40fd50adccf5d93ff82a0
+    resource: repo://crates/decodex-runtime/src/agent/tests/capacity.rs
   - id: openwiki-source-30c7edf894a639091ecbafc6
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
   - id: openwiki-source-4f59431f3f6264a65208bdcb
@@ -84,10 +84,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
     resource: repo://crates/decodex-runtime/src/work_portfolio.rs
+  - id: openwiki-source-b1a8e98eb39febad19f64bda
+    resource: repo://crates/decodex-runtime/tests/native_qualification/dotenv_startup.py
   - id: openwiki-source-07c9cc033899826079f8efb5
     resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
   - id: openwiki-source-88b81a215b1bac061dad80ec
     resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
+  - id: openwiki-source-b30d382781a313611ecd221f
+    resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-003f00974f49a9f106bbcbea
     resource: repo://database/schema.sql
   - id: openwiki-source-58c0167d31c3e40dc89591ab
@@ -108,10 +112,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-27T15:42:30.799Z" }
+generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T18:33:20.613Z
+    at: 2026-10-27T21:12:13.971Z
 ---
 
 # Runtime Architecture
@@ -169,13 +173,13 @@ After a completed Guardian review, optional history recovery can read up to 32 s
 
 Native memory inspection and retained usage use read-only local queries. The memory adapter reads the already-loaded native thread and preserves native version selection. Collaboration history and usage derive from existing exact source records; they add no executor, acceptance policy or monetary estimate. See [read-only evidence](chief-coordination.md#read-only-collaboration-evidence-and-usage).
 
-Attached branches use the existing prompt-fork journal and persistent Agent records. Native `thread/fork` attaches a completed-turn prefix to the exact source. Decodex retains that source Agent as the local parent and preserves Project, role and provider identity. It does not copy the native Goal or send input during creation. Unknown creation outcomes retain the original receipt for recovery without replay.
+Attached branches use the existing prompt-fork journal and persistent Agent records. Native `thread/fork` attaches a completed-turn prefix to the exact source. Decodex retains that source Agent as the local parent and preserves Project, role and provider identity. It does not copy the native Goal or send input during creation. Unknown creation outcomes retain the original receipt for recovery without replay. Attached children expose only their own turns. Source turn IDs retain the reviewed boundary, and native inference still receives the parent context. The retained public workflow requires paginated source history.
 
 The read-only `GetAttachedBranches` query returns the newest 100 retained Decodex receipts for one exact source. It does not adopt external native branches. Native archive observation checks hidden attached conversations through `attachedToThreadId` and verifies the source binding before reporting membership. Incomplete metadata or catalog reads remain unknown. [Retained attached-fork evidence](../../automations/upstream/retained-evidence.json) records the exact artifact and executed regressions separately from historical acceptance.
 
 ## Native launch policy
 
-Decodex constructs and attests one fixed app-server argument list. It enables native tool-description-first ordering, native subagent context defaults, Agent message wakeups, and full-fork prefix preservation. The dotted prefix option preserves the existing `multi_agent_v2` selection; it does not enable multi-agent execution by itself. Code Mode hosting transport stays under native configuration.
+Decodex constructs and attests one fixed app-server argument list. It requests native subagent context defaults, Agent message wakeups, and full-fork prefix preservation. The retained `code_mode_tool_description_first` argument is accepted but is now a removed native feature; current ordering is native-owned. The dotted prefix option preserves the existing `multi_agent_v2` selection; it does not enable multi-agent execution by itself. Code Mode hosting transport stays under native configuration.
 
 The embedded runtime requirement selects the exact component. Development uses a reviewed upstream commit; production selects a qualified official Release. Check the actual component and its generated protocol schema before claiming that an API is available. See [upstream maintenance](../operations/codex-upstream-autopilot.md).
 
@@ -225,11 +229,13 @@ Development artifacts use the same package verification and installation path. A
 
 The [portable qualification record](../../automations/upstream/qualification.json) binds the current artifact, helper hashes, source checks and native consumer results to their limits. The [retained evidence index](../../automations/upstream/retained-evidence.json) supplies the reusable requirements and commands. The native automation directory owns detailed receipts and the live review cursor. A source-test launcher that enables private fixture hooks is separate from the production CLI; neither source-test success nor this record establishes installed-app acceptance.
 
-The development lock selects upstream commit `abf4bb91ec49fbf443ccec0069f9cab5dd1462d8`. Its qualification covers the signed macOS arm64 CLI, Code Mode and search helpers, generated schema, and named private-stdio consumers with synthetic local providers. The record does not establish live-provider behavior, installation or release. The selected runtime, the source-review cursor and an installed binary are separate identities.
+The development lock selects upstream commit `33d306d457a4632b22bebf214e0c25d91f90f6e8`. Its qualification covers the signed macOS arm64 CLI, Code Mode and search helpers, generated schema, and named private-stdio consumers with synthetic local providers. The record does not establish live-provider behavior, installation or release. The selected runtime, the source-review cursor and an installed binary are separate identities.
 
 The separate `retained_project_agent_work.installed_acceptance` entry records the local installed development app, its executable identities and observed behavior. It includes the independent-Agent composer and input-routing repairs. It retains its own limits and does not extend the earlier synthetic native qualification. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian).
 
 The current qualification retains terminal `modelNotFound` classification through live, stored and cold history without native retries or Decodex capacity retries. It also checks that an explicitly configured model catalog larger than 1 MiB reaches native model discovery. Reusable fixtures belong to `crates/decodex-runtime/tests/native_qualification/`; these synthetic provider cases do not add an account type or a provider setup control.
+
+Native `policyCapacityUnavailable` remains a distinct persisted error. It does not select Decodex overload retries. The local HTTP fixture permits native request retries; those are separate from a Decodex continuation. Native permission checkpoints retain acknowledged approval and reviewer settings through fork and cold resume despite stale turn context. Startup also skips a directory at `.env`. The reusable fixtures qualify these bounded behaviors, not a live provider.
 
 Production staging selects a separate official Release requirement. Release pinning requires the Release to contain the current development baseline, and behavioral qualification must cover retained fixes. An older official Release is not a fallback. Packaging includes the requirement and Sparkle, but no Codex binary or schemas. See [Commands and validation](../operations/commands-and-validation.md).
 

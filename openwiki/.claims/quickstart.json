@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4061445bed14132d8b9d915ea033524cb2de353c63fab712e82e35dd0afd7602",
+  "pageVersion": "sha256:e22cce5318b5ad78ad1435dc4d86bab3056bbeb99c6624fadbf1e5daeb5560d1",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -132,13 +132,13 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     },
     {
       "id": "claim_ae5ca53da8764b778c143a44bb446bfe",
-      "statement": "The explicit persistent attached-branch workflow preserves source history, draft and Goal, sends no creation input and copies no native Goal. Agent preferences can reopen verified retained branches through the normal navigation owner; qualification remains separate from installed desktop acceptance.",
+      "statement": "Persistent attached branches preserve source history, draft and Goal while their visible history starts empty and native inference retains parent context. Creation requires paginated source history, sends no input and copies no Goal. Existing preferences reopen verified retained branches; installed acceptance remains separate.",
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_attached_branches.rs",
@@ -146,17 +146,17 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
-          "version": "repo-file-v1:sha256:cb31feead81d6c702b0e393f11eeb67d962fceeded432b9c32014b77349d4dc7"
+          "version": "repo-file-v1:sha256:b2dfd71c5787b88f014ce587f27b8c7be9515efcd85865db739c09d590f497ef"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T18:33:20.613Z"
+    "at": "2026-10-27T21:12:13.971Z"
   }
 }
