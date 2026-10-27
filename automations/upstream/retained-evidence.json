@@ -2148,7 +2148,10 @@
         "codex-rs/codex-mcp/src/server.rs#EffectiveMcpServer::can_discover_local_stdio",
         "codex-rs/rmcp-client/src/protocol_mode.rs#McpProtocolMode::stdio_mode",
         "codex-rs/app-server-transport/src/transport/unix_socket.rs#run_control_socket_acceptor",
-        "codex-rs/app-server-daemon/README.md"
+        "codex-rs/app-server-daemon/README.md",
+        "codex-rs/app-server/src/lib.rs#run_main_with_transport_options",
+        "codex-rs/app-server/src/message_processor.rs#MessageProcessor",
+        "codex-rs/app-server/src/request_processors/account_processor.rs#AccountRequestProcessor::login_api_key_common"
       ],
       "upstream_tests_read_not_executed": [
         "codex-rs/app-server/tests/suite/v2/thread_attachments.rs#thread_attachment_mutations_respond_before_broadcasting_updates_to_multiple_clients"
@@ -2242,7 +2245,7 @@
         }
       },
       "delivery_reference": "https://github.com/acg-box/decodex/pull/2521",
-      "upstream_source_observation": "The native pool is process-owned and keys entries by server identity, account and authentication state. Decodex attests one account-bound app-server launch. These code properties do not by themselves qualify sharing across app-server processes or accounts.",
+      "upstream_source_observation": "The native MCP pool is process-owned and keys entries by server identity, account and authentication state. One native app-server constructs a shared AuthManager for its message processor and connected clients. Decodex attests an account-bound app-server launch. These code properties do not establish cross-account or independent app-server isolation.",
       "upstream_source_tests_executed": {
         "source_commit": "6a6e2fb1f0e9122464a75929c58356cb7af9e0cc",
         "checkout": "Modified combined research source; not selected artifact qualification",
