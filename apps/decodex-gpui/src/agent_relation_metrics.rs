@@ -493,6 +493,7 @@ mod tests {
 				completed: true,
 				status: None,
 				duration_ms: duration,
+				timing: None,
 				usage_summary: None,
 				usage: tokens.map(|input_tokens| decodex_protocol::AgentTurnUsageDto {
 					input_tokens,

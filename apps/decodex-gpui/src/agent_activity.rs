@@ -1437,7 +1437,7 @@ mod tests {
 				position: i,
 				content: if i % 3 == 2 { decodex_protocol::AgentTimelineContent::TurnBoundary {
 					turn_id: format!("turn-{}", i / 3), completed: true, status: Some("completed".into()),
-					duration_ms: Some(3_200), usage: None, usage_summary: None, error: None,
+					duration_ms: Some(3_200), usage: None, timing: None, usage_summary: None, error: None,
 				} } else { decodex_protocol::AgentTimelineContent::Item { collaboration: None,
 phase: None,
 					app_ui: false,

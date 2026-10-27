@@ -514,7 +514,9 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 		identity: &str,
 		_cx: &mut Context<Self>,
 	) -> AnyElement {
-		let AgentTimelineContent::TurnBoundary { duration_ms, status, usage, .. } = boundary else {
+		let AgentTimelineContent::TurnBoundary { duration_ms, status, usage, timing, .. } =
+			boundary
+		else {
 			return gpui::div().into_any_element();
 		};
 
@@ -523,6 +525,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			duration_ms: *duration_ms,
 			status: status.clone(),
 			usage: usage.clone(),
+			timing: Some(timing.clone().unwrap_or_default()),
 		}
 		.into_any_element()
 	}
@@ -1480,6 +1483,7 @@ mod tests {
 							status: Some("completed".into()),
 							duration_ms: Some(1_200),
 							usage: None,
+							timing: None,
 							usage_summary: None,
 							error: None,
 						},
@@ -1705,7 +1709,7 @@ phase: None, app_ui: false,
 					completed: true,
 					status: Some("failed".into()),
 					duration_ms: Some(100),
-					usage: Some(decodex_protocol::AgentTurnUsageDto { input_tokens: 120, output_tokens: 30, details: None }), usage_summary: Some(
+					usage: Some(decodex_protocol::AgentTurnUsageDto { input_tokens: 120, output_tokens: 30, details: None }), timing: None, usage_summary: Some(
 						"Turn tokens: input 120, output 30.\nThread total tokens: 900.\nObserved responses: 1. Showing 1 recorded amounts; units are provider-defined.\nResponse fixture: 0.12345678901234567890.".into(),
 					),
 					error: Some(decodex_protocol::AgentTimelineError {
@@ -1948,6 +1952,7 @@ phase: None, app_ui: false,
 			"details must not shift the transcript"
 		);
 		assert!(visual.debug_bounds("native-turn-usage").is_some());
+		assert!(visual.debug_bounds("observed-timing-details").is_some());
 
 		visual.simulate_mouse_move(
 			gpui::point(gpui::px(1_390.), gpui::px(1_390.)),

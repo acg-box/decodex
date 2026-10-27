@@ -1913,7 +1913,7 @@ mod tests {
                 decodex_protocol::AgentTimelineEntry {position:0, content:decodex_protocol::AgentTimelineContent::Speech {item_id:"speech".into(),session_id:"call".into(),role:"user".into(),text:"Hello".into(),truncated:false}},
                 decodex_protocol::AgentTimelineEntry {position:1, content:decodex_protocol::AgentTimelineContent::VoiceBoundary {item_id:"closed".into(),session_id:"call".into(),kind:"realtimeSessionClosed".into(),outcome:Some("ended".into())}},
                 decodex_protocol::AgentTimelineEntry {position:2, content:decodex_protocol::AgentTimelineContent::Item {turn_id:"tail".into(),item_id:"input".into(),kind:"userMessage".into(),phase:None,text:"<realtime_delegation><source>transcript_tail_flush</source><input>Session ended</input><transcript_delta>user: Hello</transcript_delta></realtime_delegation>".into(),attachments:vec![],activity:None,app_ui:false,collaboration:None,truncated:false}},
-                decodex_protocol::AgentTimelineEntry {position:3, content:decodex_protocol::AgentTimelineContent::TurnBoundary {turn_id:"tail".into(),completed:true,status:Some("completed".into()),error:None,duration_ms:Some(0),usage:None,usage_summary:None}},
+                decodex_protocol::AgentTimelineEntry {position:3, content:decodex_protocol::AgentTimelineContent::TurnBoundary {turn_id:"tail".into(),completed:true,status:Some("completed".into()),error:None,duration_ms:Some(0),usage:None,timing: None, usage_summary:None}},
             ];
             cx.notify();
         });

@@ -263,6 +263,7 @@ mod tests {
 				completed: true,
 				status: Some(status.into()),
 				duration_ms: Some(500),
+				timing: None,
 				usage_summary: None,
 				usage: None,
 				error: None,

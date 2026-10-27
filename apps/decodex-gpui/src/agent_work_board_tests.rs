@@ -953,6 +953,7 @@ fn new_turn_start_clears_previous_terminal_outcome() {
 			completed,
 			status: Some(status.into()),
 			duration_ms: None,
+			timing: None,
 			usage_summary: None,
 			usage: None,
 			error: None,

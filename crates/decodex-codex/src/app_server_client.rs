@@ -22,6 +22,7 @@ mod live_settings;
 mod memory;
 mod model_defaults;
 mod model_recovery;
+mod observed_timing;
 mod output_rate;
 mod permission_observations;
 mod permissions;
@@ -72,6 +73,7 @@ pub use self::{
 	model_recovery::{
 		ThreadModelRecoveryQueued, ThreadModelRecoveryUpdate, is_thread_model_recovery_update,
 	},
+	observed_timing::ObservedTurnTiming,
 	output_rate::ObservedOutputRate,
 	permissions::{
 		NativePermissionProfile, NativeTaskPermissions, ThreadPermissionSelection,
@@ -1016,9 +1018,11 @@ async fn run_frames(
 						break ClientError::Closed;
 					},
 					Outbound::Message { value, reply, .. } => {
-						if value.get("method").is_none() && let Ok(id)=serde_json::from_value::<RequestId>(value["id"].clone()) {server_requests.remove(&id);}
+						let response_id = value.get("method").is_none().then(|| serde_json::from_value::<RequestId>(value["id"].clone()).ok()).flatten();
+						if let Some(id) = &response_id { server_requests.remove(id); }
 
 						let result = writer.write(value).await;
+						if result.is_ok() && let Some(id) = &response_id { server_requests.timing_response_written(id); }
 						let _ = reply.send(result.clone().map(|_| Value::Null));
 
 						if let Err(error) = result { break error; }

@@ -1,5 +1,41 @@
 use crate::agent::tests::{self, ClientError, ServerEvent, Value, result_messages};
 
+#[tokio::test]
+async fn live_transport_saves_observed_timings_for_the_exact_completed_turn() {
+	let (mut agent, _sent, _directory) = tests::fixture().await;
+	let work = agent.start_agent("agent", "Coordinate").await.unwrap();
+	let thread = work.codex_thread_id.unwrap();
+	let turn = work.active_turn_id.unwrap();
+	let _sent = tests::attach_request_transport(
+		&mut agent,
+		serde_json::json!({}),
+		serde_json::json!([
+			{"method":"turn/started","params":{"threadId":thread,"turn":{"id":turn}}},
+			{"method":"item/started","params":{"threadId":thread,"turnId":turn,"item":{"type":"commandExecution","id":"cmd","commandActions":[]}}},
+			{"method":"item/completed","params":{"threadId":thread,"turnId":turn,"item":{"type":"commandExecution","id":"cmd","commandActions":[]}}},
+			{"method":"turn/completed","params":{"threadId":thread,"turn":{"id":turn,"status":"completed","items":[]}}}
+		]),
+	)
+	.await;
+	let saved = agent
+		.store
+		.read_agent_turn_metrics("agent".into(), thread.clone(), vec![turn.clone()])
+		.await
+		.unwrap();
+	let timing: Value = serde_json::from_str(saved[0].timing_json.as_ref().unwrap()).unwrap();
+
+	assert!(timing["tool_activity_ms"].as_u64().is_some());
+	assert!(timing["model_output_ms"].is_null());
+	assert!(
+		agent
+			.store
+			.read_agent_turn_metrics("agent".into(), "other thread".into(), vec![turn])
+			.await
+			.unwrap()
+			.is_empty()
+	);
+}
+
 #[test]
 fn completion_summary_excludes_nonfinal_and_unscoped_items() {
 	let turn = serde_json::json!({"status":"completed","itemsView":"summary","items":[

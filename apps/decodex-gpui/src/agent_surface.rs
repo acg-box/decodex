@@ -3116,6 +3116,7 @@ fn reply_metrics(entry: &AgentHistoryEntryDto) -> impl IntoElement {
 		duration_ms: entry.duration_ms,
 		status: None,
 		usage: entry.usage.clone(),
+		timing: None,
 	}
 }
 

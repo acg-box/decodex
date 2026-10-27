@@ -4,7 +4,9 @@ use serde_json::Value;
 use crate::agent::observations;
 use decodex_codex::ThreadTokenUsage;
 use decodex_database::{AgentResponseUsageSummary, AgentTurnMetrics, SqliteStore, StoreError};
-use decodex_protocol::{AgentTimelineContent, AgentTimelinePage, AgentTurnUsageDto};
+use decodex_protocol::{
+	AgentTimelineContent, AgentTimelinePage, AgentTurnTimingDto, AgentTurnUsageDto,
+};
 
 pub(crate) async fn enrich(
 	store: &SqliteStore,
@@ -73,9 +75,15 @@ pub(crate) async fn enrich(
 			completed: true,
 			usage_summary,
 			usage,
+			timing,
 			..
 		} = &mut entry.content
 		{
+			*timing = saved
+				.iter()
+				.find(|saved| &saved.turn_id == turn_id)
+				.and_then(|saved| saved.timing_json.as_deref())
+				.and_then(|value| serde_json::from_str::<AgentTurnTimingDto>(value).ok());
 			*usage = saved
 				.iter()
 				.find(|saved| &saved.turn_id == turn_id)
@@ -268,6 +276,7 @@ mod tests {
 		let counts = serde_json::json!({"totalTokens":150,"inputTokens":120,"cachedInputTokens":50,"cacheWriteInputTokens":10,"outputTokens":30,"reasoningOutputTokens":8});
 		let mut saved = decodex_database::AgentTurnMetrics {
 			turn_id: "turn".into(),
+			timing_json: None,
 			usage_json: Some(serde_json::json!({"input_tokens":240,"output_tokens":60}).to_string()),
 			observation_json: Some(
 				serde_json::json!({"last":counts,"total":{"totalTokens":900,"inputTokens":700,"cachedInputTokens":200,"cacheWriteInputTokens":20,"outputTokens":200,"reasoningOutputTokens":100},"modelContextWindow":128_000}).to_string(),
@@ -330,7 +339,7 @@ mod tests {
 			})
 			.await
 			.unwrap();
-		store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:serde_json::json!(["turn/completed","thread","turn"]).to_string(),work_item_id:"work".into(),event_kind:"agent_turn_completed".into(),payload:serde_json::json!({"terminal":{"threadId":"thread","turn":{"id":"turn"}},"usage":{"input_tokens":11,"output_tokens":2}}).to_string()}).await.unwrap();
+		store.enqueue_agent_event(EnqueueAgentEvent {source_event_id:serde_json::json!(["turn/completed","thread","turn"]).to_string(),work_item_id:"work".into(),event_kind:"agent_turn_completed".into(),payload:serde_json::json!({"terminal":{"threadId":"thread","turn":{"id":"turn"}},"usage":{"input_tokens":11,"output_tokens":2},"observedTiming":{"model_output_ms":1500,"tool_activity_ms":2500}}).to_string()}).await.unwrap();
 
 		for change in [false, true] {
 			let (local, remote) = io::duplex(8_192);
@@ -402,9 +411,12 @@ mod tests {
 				assert!(
 					matches!(&page.entries[0].content,AgentTimelineContent::TurnBoundary {usage_summary:Some(text),..} if text=="Turn tokens: input 11, output 2.")
 				);
+				assert!(
+					matches!(&page.entries[0].content, AgentTimelineContent::TurnBoundary { timing: Some(timing), .. } if timing.model_output_ms == Some(1_500) && timing.tool_activity_ms == Some(2_500) && timing.auto_review_ms.is_none())
+				);
 				assert!(matches!(
 					&page.entries[1].content,
-					AgentTimelineContent::TurnBoundary { usage_summary: None, .. }
+					AgentTimelineContent::TurnBoundary { usage_summary: None, timing: None, .. }
 				));
 			}
 		}
