@@ -1909,7 +1909,8 @@
           "--bin",
           "codex"
         ]
-      }
+      },
+      "followup_delivery_reference": "https://github.com/acg-box/decodex/pull/2520"
     }
   ],
   "retained_native_diagnostics": {
