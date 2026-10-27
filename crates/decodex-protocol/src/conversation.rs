@@ -940,12 +940,12 @@ mod native_effort_tests {
 			serde_json::to_value(ConversationReasoningEffort::XHigh).expect("native wire"),
 			"xhigh"
 		);
-
 		assert_eq!(
 			serde_json::from_value::<ConversationReasoningEffort>(serde_json::json!("xhigh"))
 				.expect("native effort"),
 			ConversationReasoningEffort::XHigh
 		);
+
 		for invalid in [
 			String::new(),
 			"x".repeat(129),

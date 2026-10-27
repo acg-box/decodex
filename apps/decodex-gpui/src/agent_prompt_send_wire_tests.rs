@@ -1,6 +1,4 @@
 //! Lost send replies are reconciled through read-only receipts, with one submission.
-use decodex_protocol::AgentActionDto;
-
 use std::{
 	fs::{self, Permissions},
 	os::unix::fs::PermissionsExt as _,
@@ -27,10 +25,10 @@ use crate::shell::agent_surface::drafts::{
 	tests,
 };
 use decodex_protocol::{
-	AgentModelSettingsResult, CURRENT_VERSION, ClientMessage, CommandPayload, Cursor, PromptDraft,
-	PromptInputSend, PromptInputSendIdentity, PromptInputSendStatus, PromptInputUploadStatus,
-	QueryPayload, QueryResultEnvelope, QueryResultPayload, ReconnectMode, ServerId, ServerMessage,
-	ServerWelcome, SnapshotEnvelope,
+	AgentActionDto, AgentModelSettingsResult, CURRENT_VERSION, ClientMessage, CommandPayload,
+	Cursor, PromptDraft, PromptInputSend, PromptInputSendIdentity, PromptInputSendStatus,
+	PromptInputUploadStatus, QueryPayload, QueryResultEnvelope, QueryResultPayload, ReconnectMode,
+	ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,
 };
 
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";

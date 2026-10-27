@@ -1090,12 +1090,14 @@ mod tests {
 
 		assert_eq!(merged.profiles[&scope].composer.text, "Existing unsent input");
 		assert_eq!(merged.profiles[&scope].prompt_edits, local.profiles[&scope].prompt_edits);
+
 		let mut removed = restored.clone();
+
 		removed.profiles.get_mut(&scope).unwrap().prompt_edits.clear();
+
 		let reconciled = removed.merge_edits(&restored, &remote).unwrap();
 
 		assert_eq!(reconciled.profiles[&scope].prompt_edits, remote.profiles[&scope].prompt_edits);
-
 		assert!(DesktopDraftDocument::decode(br#"{"version":7,"profiles":{}}"#).is_err());
 	}
 }

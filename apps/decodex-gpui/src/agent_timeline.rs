@@ -1145,7 +1145,9 @@ impl Timeline {
 
 	pub(super) fn cancel_read(&mut self) {
 		self.task = None;
+
 		self.input_receipts.cancel_read();
+
 		self.epoch = self.epoch.wrapping_add(1);
 
 		if self.pagination == Pagination::Loading {
@@ -1479,36 +1481,52 @@ mod tests {
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+
 			let snapshot = s.snapshot.as_mut().unwrap();
+
 			snapshot.connection_initializing = true;
 			snapshot.runtime_source = None;
+
 			let work = snapshot
 				.work_items
 				.iter_mut()
 				.find(|work| Some(&work.id) == s.selected.as_ref())
 				.unwrap();
+
 			work.codex_thread_id = Some("selected-native-history".into());
+
 			let work = work.id.clone();
+
 			s.composer.update(cx, |input, cx| input.set_content("Keep my draft", cx));
 			s.load_history(cx);
+
 			assert!(s.workspace_connecting());
 			assert!(s.timeline.native.requested.is_none());
+
 			s.snapshot.as_mut().unwrap().runtime_source =
 				Some(EntityId::new("confirmed-source").unwrap());
+
 			s.load_history(cx);
+
 			assert!(!s.workspace_connecting());
 			assert!(s.read_connection_ready());
 			assert_eq!(s.timeline.native.requested, Some((work, "selected-native-history".into())));
 			assert!(!s.command_connection_ready());
+
 			s.submit(cx);
+
 			assert!(!s.sending);
 			assert!(s.submission.command.is_none());
 			assert_eq!(s.composer.read(cx).content(), "Keep my draft");
+
 			cx.notify();
 		});
+
 		visual.update(|window, cx| window.draw(cx).clear(cx));
+
 		assert!(visual.debug_bounds("workspace-connecting").is_none());
 		assert!(visual.debug_bounds("workspace-transcript").is_some());
 	}

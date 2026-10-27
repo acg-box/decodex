@@ -1,5 +1,4 @@
 //! Confirmation crosses the socket only after the exact local record is durable.
-use decodex_protocol::AgentActionDto;
 use std::{
 	fs::{self, Permissions},
 	os::unix::fs::PermissionsExt as _,
@@ -26,8 +25,8 @@ use crate::shell::agent_surface::drafts::{
 	tests,
 };
 use decodex_protocol::{
-	AgentModelSettingsResult, CURRENT_VERSION, ClientMessage, CommandError, CommandOutcome,
-	CommandPayload, CommandReceipt, CommandResultEnvelope, Cursor, EntityRevision,
+	AgentActionDto, AgentModelSettingsResult, CURRENT_VERSION, ClientMessage, CommandError,
+	CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope, Cursor, EntityRevision,
 	PromptEditEvidence, PromptEditPhase, PromptEditStatus, PromptForkBoundary, PromptForkIntent,
 	QueryPayload, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ReconnectMode,
 	ResultPayload, ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope,

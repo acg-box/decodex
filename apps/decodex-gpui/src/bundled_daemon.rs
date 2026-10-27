@@ -170,14 +170,20 @@ max_entry_bytes = 65536
 			executable: root.join("codex"),
 			schemas: root.join("schemas"),
 		};
+
 		assert!(!bundled_daemon::runtime_files_are_present(&runtime));
+
 		let marker = root.join("executed");
+
 		fs::write(&runtime.executable, format!("#!/bin/sh\ntouch '{}'\n", marker.display()))
 			.expect("unverified executable");
 		fs::set_permissions(&runtime.executable, fs::Permissions::from_mode(0o700))
 			.expect("fixture permissions");
+
 		assert!(!bundled_daemon::runtime_files_are_present(&runtime));
+
 		fs::create_dir(&runtime.schemas).expect("schema directory");
+
 		assert!(bundled_daemon::runtime_files_are_present(&runtime));
 		assert!(!marker.exists(), "presence is advisory and must never run Codex");
 	}
@@ -596,20 +602,6 @@ struct SupervisorState {
 	preparing_runtime: bool,
 }
 
-#[cfg(target_os = "macos")]
-fn required_runtime_is_present() -> bool {
-	decodex_components::RuntimeLock::embedded()
-		.and_then(|lock| decodex_components::ComponentStore::for_user()?.paths(&lock))
-		.is_ok_and(|runtime| runtime_files_are_present(&runtime))
-}
-
-#[cfg(target_os = "macos")]
-fn runtime_files_are_present(runtime: &decodex_components::InstalledRuntime) -> bool {
-	// This only schedules the bundled service. Its native launch preflight owns full
-	// component attestation; do not hash or execute Codex on the GUI thread as well.
-	runtime.executable.is_file() && runtime.schemas.is_dir()
-}
-
 struct BundledDaemonOwner {
 	supervisor: Arc<BundledDaemonSupervisor>,
 	_quit: Option<Subscription>,
@@ -642,6 +634,20 @@ pub(crate) fn retain(supervisor: Arc<BundledDaemonSupervisor>, cx: &mut App) {
 	let owner = cx.new(|cx| BundledDaemonOwner::new(supervisor, cx));
 
 	cx.set_global(BundledDaemonGlobal { _owner: owner });
+}
+
+#[cfg(target_os = "macos")]
+fn required_runtime_is_present() -> bool {
+	decodex_components::RuntimeLock::embedded()
+		.and_then(|lock| decodex_components::ComponentStore::for_user()?.paths(&lock))
+		.is_ok_and(|runtime| runtime_files_are_present(&runtime))
+}
+
+#[cfg(target_os = "macos")]
+fn runtime_files_are_present(runtime: &decodex_components::InstalledRuntime) -> bool {
+	// This only schedules the bundled service. Its native launch preflight owns full
+	// component attestation; do not hash or execute Codex on the GUI thread as well.
+	runtime.executable.is_file() && runtime.schemas.is_dir()
 }
 
 #[cfg(target_os = "macos")]

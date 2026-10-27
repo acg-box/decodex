@@ -4,10 +4,12 @@ use crate::{SqliteStore, agent::tests};
 async fn native_receipt_batch_keeps_exact_matches_and_validates_before_writing() {
 	let directory = tempfile::tempdir().unwrap();
 	let store = SqliteStore::open_test(&directory.path().join("batch.sqlite3")).unwrap();
+
 	store.create_agent_work_item(tests::item("work", None)).await.unwrap();
 	store.bind_agent_thread("work".into(), "thread".into()).await.unwrap();
 	store.begin_agent_dispatch("work".into()).await.unwrap();
 	store.acknowledge_agent_dispatch("work".into(), "turn".into()).await.unwrap();
+
 	let payload = serde_json::json!({"text":"Saved input","source":"user"}).to_string();
 	let first = store
 		.begin_agent_steer("work".into(), "turn".into(), "first".into(), payload.clone())
@@ -17,6 +19,7 @@ async fn native_receipt_batch_keeps_exact_matches_and_validates_before_writing()
 		.begin_agent_steer("work".into(), "turn".into(), "second".into(), payload)
 		.await
 		.unwrap();
+
 	assert!(
 		store
 			.observe_agent_steer_receipts(
@@ -28,23 +31,30 @@ async fn native_receipt_batch_keeps_exact_matches_and_validates_before_writing()
 			.is_err()
 	);
 	assert!(store.get_agent_inbox_event(first).await.unwrap().disposition.is_none());
+
 	let receipts = vec![
 		("wrong-turn".into(), "first".into()),
 		("turn".into(), "unknown".into()),
 		("turn".into(), "second".into()),
 		("turn".into(), "second".into()),
 	];
+
 	store
 		.observe_agent_steer_receipts("thread".into(), receipts.clone(), Some("unbound".into()))
 		.await
 		.unwrap();
+
 	assert!(store.get_agent_inbox_event(second).await.unwrap().disposition.is_none());
+
 	for _ in 0..2 {
 		store.observe_agent_steer_receipts("thread".into(), receipts.clone(), None).await.unwrap();
 	}
+
 	assert!(store.get_agent_inbox_event(first).await.unwrap().disposition.is_none());
 	assert!(store.get_agent_inbox_event(second).await.unwrap().disposition.is_some());
+
 	let events = store.list_agent_events_for_turn("turn".into(), 100).await.unwrap();
+
 	assert_eq!(events.iter().filter(|event| event.event_kind == "user_message").count(), 1);
 }
 

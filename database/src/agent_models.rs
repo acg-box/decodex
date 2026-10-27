@@ -150,8 +150,6 @@ impl SqliteStore {
 			if conflict {return Ok(None);}
 
 			let key=attempt.key();
-
-
 			let now=crate::unix_micros()?;
 			let changed=tx.execute("INSERT OR IGNORE INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros) VALUES(?1,?2,'model_selection',?3,?4,'resolved','Model selection reserved; not confirmed.',?4)",rusqlite::params![key,attempt.work,serde_json::json!({"attempt":attempt}).to_string(),now]).map_err(error::sqlite_error)?;
 

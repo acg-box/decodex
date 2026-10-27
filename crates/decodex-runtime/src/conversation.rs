@@ -60,6 +60,7 @@ use crate::{
 		AccountLifecycleError, AccountProcessCredential, AccountSelectionResult, AccountService,
 	},
 	agent_capabilities::ModelCatalogPages,
+	native_preparation::{NativePreparation, PreparationState},
 	process_supervisor::{FencedProcess, ProcessGenerationTermination},
 	provider_attempt_service::{
 		FreshRuntimeSessionResume, ProviderAttemptRuntimeAuthority, RuntimeSessionResumeRequest,
@@ -249,7 +250,7 @@ impl ConversationRuntime {
 		process_generations: ProcessGenerationControl,
 		provider_attempts: ProviderAttemptControl,
 		execution_authorization: ProcessExecutionAuthorization,
-		launch_profile: impl Into<crate::native_preparation::NativePreparation>,
+		launch_profile: impl Into<NativePreparation>,
 		capacity: Arc<RunnerCapacity>,
 	) -> Self {
 		let (events, event_receiver) = tokio::sync::mpsc::channel(EVENT_QUEUE_CAPACITY);
@@ -530,6 +531,7 @@ impl ConversationRuntime {
 		request: StartAgentProcess,
 	) -> Result<AgentConnection, AgentLaunchError> {
 		self.inner.launch_profile.profile().await.ok_or(AgentLaunchError::Unavailable)?;
+
 		let phase = Phase::new("agent_admission_locks");
 		let _launch = self.inner.agent_launch.lock().await;
 		let _catalog = self.inner.initial_catalog.lock().await;
@@ -6368,7 +6370,7 @@ struct ConversationRuntimeInner {
 	process_generations: ProcessGenerationControl,
 	provider_attempts: ProviderAttemptControl,
 	execution_authorization: ProcessExecutionAuthorization,
-	launch_profile: crate::native_preparation::NativePreparation,
+	launch_profile: NativePreparation,
 	capacity: Arc<RunnerCapacity>,
 	local: std::sync::Mutex<BTreeMap<String, LocalTask>>,
 	events: tokio::sync::mpsc::Sender<ConversationOutcome>,
@@ -6719,14 +6721,11 @@ impl ConversationCapability {
 	pub(crate) fn readiness(&self) -> ConversationReadiness {
 		match self {
 			Self::Ready(runtime) => match runtime.inner.launch_profile.state() {
-				crate::native_preparation::PreparationState::Pending =>
-					ConversationReadiness::Preparing,
-				crate::native_preparation::PreparationState::Ready(_) =>
-					ConversationReadiness::Ready,
-				crate::native_preparation::PreparationState::Unavailable =>
-					ConversationReadiness::Unavailable(
-						ConversationUnavailableReason::AppServerProfile,
-					),
+				PreparationState::Pending => ConversationReadiness::Preparing,
+				PreparationState::Ready(_) => ConversationReadiness::Ready,
+				PreparationState::Unavailable => ConversationReadiness::Unavailable(
+					ConversationUnavailableReason::AppServerProfile,
+				),
 			},
 			Self::Unavailable(reason) => ConversationReadiness::Unavailable(*reason),
 		}

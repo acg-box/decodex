@@ -17,6 +17,7 @@ use crate::{
 		AccountApiCredential, AccountLifecycleError, AccountService, CredentialRefreshError,
 	},
 	native_preparation::NativePreparation,
+	startup_trace::Phase,
 };
 use decodex_codex::{
 	self, AccountApiBannerState, AccountApiConsumeOutcome, AccountApiProfile,
@@ -156,29 +157,6 @@ pub(crate) struct AccountApiRuntime {
 	client: reqwest::Client,
 	activation_profile: Option<NativePreparation>,
 }
-
-async fn observe_provider_reads<F>(
-	usage: impl Future<Output = Result<AccountApiUsage, AccountApiRuntimeError>>,
-	profile: impl Future<Output = Result<AccountApiProfile, AccountApiRuntimeError>>,
-	enrich: impl FnOnce(AccountApiUsage) -> F,
-) -> (
-	bool,
-	Result<AccountApiInventory, AccountApiRuntimeError>,
-	Result<AccountApiProfile, AccountApiRuntimeError>,
-)
-where
-	F: Future<Output = Result<AccountApiInventory, AccountApiRuntimeError>>,
-{
-	let inventory = async {
-		match usage.await {
-			Ok(usage) => (true, enrich(usage).await),
-			Err(error) => (false, Err(error)),
-		}
-	};
-	let ((usage_accepted, inventory), profile) = tokio::join!(inventory, profile);
-	(usage_accepted, inventory, profile)
-}
-
 impl AccountApiRuntime {
 	/// Build the account client; only model activation needs the optional native policy profile.
 	pub(crate) fn new(
@@ -298,7 +276,7 @@ impl AccountApiRuntime {
 		&self,
 		account_id: &AccountId,
 	) -> PendingAccountApiObservation {
-		let phase = crate::startup_trace::Phase::new("account_observation_credential");
+		let phase = Phase::new("account_observation_credential");
 		let credential = match self
 			.accounts
 			.api_credential_for_observation(account_id, MINIMUM_ACCESS_TOKEN_VALIDITY)
@@ -311,6 +289,7 @@ impl AccountApiRuntime {
 				return PendingAccountApiObservation::credential_error(error);
 			},
 		};
+
 		drop(phase);
 
 		if credential.binding.provider.provider() != AccountProvider::Chatgpt {
@@ -325,6 +304,7 @@ impl AccountApiRuntime {
 				.request_json(Method::GET, USAGE_PATH, &credential, None)
 				.await
 				.map_err(map_request_error)?;
+
 			decodex_codex::decode_account_api_usage(&body).map_err(map_protocol_error)
 		};
 		let profile = async {
@@ -332,6 +312,7 @@ impl AccountApiRuntime {
 				.request_json(Method::GET, PROFILE_PATH, &credential, None)
 				.await
 				.map_err(map_request_error)?;
+
 			decodex_codex::decode_account_api_profile(&body).map_err(map_protocol_error)
 		};
 		// Start conditional detail reads as soon as usage is known. Keep every read
@@ -341,6 +322,7 @@ impl AccountApiRuntime {
 				self.enrich_inventory(&credential, usage)
 			})
 			.await;
+
 		if usage_accepted
 			&& profile.is_ok()
 			&& let Err(error) = self.accounts.accept_observation_recovery(&credential).await
@@ -350,6 +332,7 @@ impl AccountApiRuntime {
 				map_account_service_error(error),
 			);
 		}
+
 		let observation = Box::new(AccountApiObservation {
 			account_revision: credential.account_revision,
 			provider: Some(credential.binding.provider.clone()),
@@ -492,7 +475,7 @@ impl AccountApiRuntime {
 		credential: &AccountApiCredential,
 		json: Option<&Value>,
 	) -> Result<Vec<u8>, AccountApiRequestError> {
-		let _phase = crate::startup_trace::Phase::new(match path {
+		let _phase = Phase::new(match path {
 			USAGE_PATH => "account_api_usage",
 			PROFILE_PATH => "account_api_profile",
 			RESET_CREDITS_PATH => "account_api_reset_details",
@@ -633,53 +616,38 @@ fn should_retry_reset_credit_details(
 	}
 }
 
+async fn observe_provider_reads<F>(
+	usage: impl Future<Output = Result<AccountApiUsage, AccountApiRuntimeError>>,
+	profile: impl Future<Output = Result<AccountApiProfile, AccountApiRuntimeError>>,
+	enrich: impl FnOnce(AccountApiUsage) -> F,
+) -> (
+	bool,
+	Result<AccountApiInventory, AccountApiRuntimeError>,
+	Result<AccountApiProfile, AccountApiRuntimeError>,
+)
+where
+	F: Future<Output = Result<AccountApiInventory, AccountApiRuntimeError>>,
+{
+	let inventory = async {
+		match usage.await {
+			Ok(usage) => (true, enrich(usage).await),
+			Err(error) => (false, Err(error)),
+		}
+	};
+	let ((usage_accepted, inventory), profile) = tokio::join!(inventory, profile);
+
+	(usage_accepted, inventory, profile)
+}
+
 #[cfg(test)]
 mod tests {
+	use tokio::{sync::oneshot, time};
+
 	use crate::{
 		account_api::{self, AccountApiRuntimeError, PendingAccountApiObservation},
 		account_service::{AccountLifecycleError, CredentialRefreshError},
 	};
 	use decodex_codex::{self, AccountApiResetCredits};
-
-	#[tokio::test]
-	async fn usage_details_start_before_a_delayed_profile_completes() {
-		let usage = decodex_codex::decode_account_api_usage(
-			br#"{"rate_limit":{"primary_window":{"used_percent":8,"limit_window_seconds":18000,"reset_at":1800000000}},"rate_limit_reset_credits":{"available_count":1}}"#,
-		)
-		.expect("usage fixture");
-		let (details_started, wait_for_details) = tokio::sync::oneshot::channel();
-		let reads = account_api::observe_provider_reads(
-			async { Ok(usage) },
-			async {
-				wait_for_details.await.expect("detail read must start while profile is pending");
-				Err(AccountApiRuntimeError::Unauthorized)
-			},
-			|_| async {
-				details_started.send(()).expect("profile must still be observed");
-				Err(AccountApiRuntimeError::ProviderUnavailable)
-			},
-		);
-		let (usage_accepted, inventory, profile) =
-			tokio::time::timeout(std::time::Duration::from_secs(1), reads)
-				.await
-				.expect("profile must not prevent the dependent detail read");
-		assert!(usage_accepted);
-		assert_eq!(inventory, Err(AccountApiRuntimeError::ProviderUnavailable));
-		assert_eq!(profile, Err(AccountApiRuntimeError::Unauthorized));
-	}
-
-	#[tokio::test]
-	async fn failed_usage_retains_profile_evidence_without_requesting_details() {
-		let (usage_accepted, inventory, profile) = account_api::observe_provider_reads(
-			async { Err(AccountApiRuntimeError::Unauthorized) },
-			async { Err(AccountApiRuntimeError::ProtocolUnavailable) },
-			|_| async { panic!("failed usage must not request detail inventory") },
-		)
-		.await;
-		assert!(!usage_accepted);
-		assert_eq!(inventory, Err(AccountApiRuntimeError::Unauthorized));
-		assert_eq!(profile, Err(AccountApiRuntimeError::ProtocolUnavailable));
-	}
 
 	#[test]
 	fn incomplete_or_mismatched_reset_credit_details_get_one_bounded_retry() {
@@ -754,5 +722,49 @@ mod tests {
 				expected
 			);
 		}
+	}
+
+	#[tokio::test]
+	async fn usage_details_start_before_a_delayed_profile_completes() {
+		let usage = decodex_codex::decode_account_api_usage(
+			br#"{"rate_limit":{"primary_window":{"used_percent":8,"limit_window_seconds":18000,"reset_at":1800000000}},"rate_limit_reset_credits":{"available_count":1}}"#,
+		)
+		.expect("usage fixture");
+		let (details_started, wait_for_details) = oneshot::channel();
+		let reads = account_api::observe_provider_reads(
+			async { Ok(usage) },
+			async {
+				wait_for_details.await.expect("detail read must start while profile is pending");
+
+				Err(AccountApiRuntimeError::Unauthorized)
+			},
+			|_| async {
+				details_started.send(()).expect("profile must still be observed");
+
+				Err(AccountApiRuntimeError::ProviderUnavailable)
+			},
+		);
+		let (usage_accepted, inventory, profile) =
+			time::timeout(std::time::Duration::from_secs(1), reads)
+				.await
+				.expect("profile must not prevent the dependent detail read");
+
+		assert!(usage_accepted);
+		assert_eq!(inventory, Err(AccountApiRuntimeError::ProviderUnavailable));
+		assert_eq!(profile, Err(AccountApiRuntimeError::Unauthorized));
+	}
+
+	#[tokio::test]
+	async fn failed_usage_retains_profile_evidence_without_requesting_details() {
+		let (usage_accepted, inventory, profile) = account_api::observe_provider_reads(
+			async { Err(AccountApiRuntimeError::Unauthorized) },
+			async { Err(AccountApiRuntimeError::ProtocolUnavailable) },
+			|_| async { panic!("failed usage must not request detail inventory") },
+		)
+		.await;
+
+		assert!(!usage_accepted);
+		assert_eq!(inventory, Err(AccountApiRuntimeError::Unauthorized));
+		assert_eq!(profile, Err(AccountApiRuntimeError::ProtocolUnavailable));
 	}
 }

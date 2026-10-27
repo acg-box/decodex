@@ -30,7 +30,6 @@ mod agent_questions;
 mod agent_reasoning_summary;
 mod agent_request_payload;
 mod agent_response_usage;
-#[cfg(test)] mod agent_settings_observation_tests;
 mod agent_settings_observations;
 mod agent_slots;
 mod agent_task_references;
@@ -381,6 +380,7 @@ fn open_connection(path: &Path) -> Result<Connection, DatabaseError> {
 	Connection::open_with_flags(path, flags).map_err(error::sqlite_error)
 }
 
+#[cfg(test)] mod agent_settings_observation_tests;
 #[cfg(test)]
 mod tests {
 	#[cfg(unix)] use std::os::unix::{
@@ -498,12 +498,15 @@ mod tests {
 		let directory = tempfile::tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
+
 		store
 			.with_connection(|connection| {
 				let version: i64 = connection
 					.query_row("PRAGMA user_version", [], |row| row.get(0))
 					.map_err(error::sqlite_error)?;
+
 				assert_eq!(version, schema::CURRENT_SCHEMA_VERSION);
+
 				let ledgers: i64 = connection
 					.query_row(
 						"SELECT count(*) FROM sqlite_schema WHERE name='schema_migrations'",
@@ -511,11 +514,15 @@ mod tests {
 						|row| row.get(0),
 					)
 					.map_err(error::sqlite_error)?;
+
 				assert_eq!(ledgers, 0);
+
 				Ok(())
 			})
 			.expect("current schema");
+
 		drop(store);
+
 		SqliteStore::open_test(&path).expect("reopen current schema");
 	}
 
@@ -524,14 +531,19 @@ mod tests {
 		let directory = tempfile::tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
+
 		store
 			.with_connection(|connection| {
 				connection.pragma_update(None, "user_version", 59).map_err(error::sqlite_error)
 			})
 			.expect("older version");
+
 		drop(store);
+
 		assert_eq!(SqliteStore::open_test(&path).err(), Some(DatabaseError::Incompatible));
+
 		let connection = rusqlite::Connection::open(&path).expect("read refused schema");
+
 		assert_eq!(
 			connection.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0)).unwrap(),
 			59

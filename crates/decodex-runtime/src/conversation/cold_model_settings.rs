@@ -55,6 +55,7 @@ impl ConversationRuntime {
 		conversation: &str,
 	) -> Option<ConversationModelSettingsResult> {
 		self.inner.launch_profile.profile().await?;
+
 		let id = ConversationId::new(conversation).ok()?;
 
 		if self.local().contains_key(conversation) {

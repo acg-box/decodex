@@ -1167,7 +1167,6 @@ fn reserve_command_sync(
 	let transaction =
 		connection.transaction_with_behavior(TransactionBehavior::Immediate).map_err(sql_error)?;
 	let now = crate::unix_micros().map_err(StoreError::from)?;
-
 	let existing = read_command_receipt(&transaction, &command.key)?;
 	let receipt_exists = existing.is_some();
 

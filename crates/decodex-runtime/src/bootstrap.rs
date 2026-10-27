@@ -239,6 +239,28 @@ struct MacosAccountServiceComposition {
 	account_profiles: Option<AccountProfileRuntime>,
 }
 
+pub(crate) fn conversation_doctor(capability: &ConversationCapability) -> DoctorStatus {
+	match capability.readiness() {
+		ConversationReadiness::Ready => DoctorStatus::Ready,
+		ConversationReadiness::Preparing => DoctorStatus::Unknown(DoctorIssue::NotProbed),
+		ConversationReadiness::Unavailable(ConversationUnavailableReason::ProductState) =>
+			DoctorStatus::Unavailable(DoctorIssue::DatabaseNotConfigured),
+		ConversationReadiness::Unavailable(
+			ConversationUnavailableReason::AccountService
+			| ConversationUnavailableReason::ExecutionAuthorization,
+		) => DoctorStatus::Unavailable(DoctorIssue::Authentication),
+		ConversationReadiness::Unavailable(ConversationUnavailableReason::UnsupportedPlatform) =>
+			DoctorStatus::Unavailable(DoctorIssue::Disabled),
+		ConversationReadiness::Unavailable(
+			ConversationUnavailableReason::BlobStore
+			| ConversationUnavailableReason::ProcessGeneration
+			| ConversationUnavailableReason::ProviderAttempt
+			| ConversationUnavailableReason::AppServerProfile
+			| ConversationUnavailableReason::RunnerCapacity,
+		) => DoctorStatus::Unavailable(DoctorIssue::Integrity),
+	}
+}
+
 pub(crate) async fn bootstrap_default() -> ServiceBootstrap {
 	match DecodexRoot::platform_default() {
 		Ok(root) => bootstrap(root).await,
@@ -455,28 +477,6 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 		conversations,
 		doctor,
 		daemon_authority: Err(LocalTransportRefusal::ConfigurationUnavailable),
-	}
-}
-
-pub(crate) fn conversation_doctor(capability: &ConversationCapability) -> DoctorStatus {
-	match capability.readiness() {
-		ConversationReadiness::Ready => DoctorStatus::Ready,
-		ConversationReadiness::Preparing => DoctorStatus::Unknown(DoctorIssue::NotProbed),
-		ConversationReadiness::Unavailable(ConversationUnavailableReason::ProductState) =>
-			DoctorStatus::Unavailable(DoctorIssue::DatabaseNotConfigured),
-		ConversationReadiness::Unavailable(
-			ConversationUnavailableReason::AccountService
-			| ConversationUnavailableReason::ExecutionAuthorization,
-		) => DoctorStatus::Unavailable(DoctorIssue::Authentication),
-		ConversationReadiness::Unavailable(ConversationUnavailableReason::UnsupportedPlatform) =>
-			DoctorStatus::Unavailable(DoctorIssue::Disabled),
-		ConversationReadiness::Unavailable(
-			ConversationUnavailableReason::BlobStore
-			| ConversationUnavailableReason::ProcessGeneration
-			| ConversationUnavailableReason::ProviderAttempt
-			| ConversationUnavailableReason::AppServerProfile
-			| ConversationUnavailableReason::RunnerCapacity,
-		) => DoctorStatus::Unavailable(DoctorIssue::Integrity),
 	}
 }
 
@@ -797,15 +797,16 @@ async fn bootstrap_macos_account_runtime(
 			Ok(composition) => composition,
 			Err(issue) => return unavailable_macos_account_runtime(None, None, issue),
 		};
+
 	{
 		let _phase = Phase::new("account_reconcile");
 		let _ = service.reconcile_startup().await;
 	}
+
 	let conversation_launch_profile = Some(crate::native_preparation::NativePreparation::pending(
 		paths.root().as_path().to_owned(),
 		Arc::clone(&service),
 	));
-
 	#[cfg(all(feature = "process-acceptance-fixture", debug_assertions))]
 	let api = if crate::account_service::process_acceptance_fixture_endpoint().is_some() {
 		// The process fixture scripts refresh and liveness without an installed Codex.

@@ -7,6 +7,7 @@ use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
 pub(crate) const CURRENT_SCHEMA_VERSION: i64 = 60;
+
 const SCHEMA: &str = include_str!("../schema.sql");
 
 pub(crate) fn configure(connection: &Connection) -> Result<(), DatabaseError> {
@@ -37,17 +38,21 @@ pub(crate) fn initialize(connection: &mut Connection) -> Result<(), DatabaseErro
 		let application: i64 = connection
 			.query_row("PRAGMA application_id", [], |row| row.get(0))
 			.map_err(sqlite_error)?;
+
 		if application != 0 && application != APPLICATION_ID {
 			return Err(DatabaseError::Incompatible);
 		}
+
 		let tx = connection
 			.transaction_with_behavior(TransactionBehavior::Immediate)
 			.map_err(sqlite_error)?;
+
 		tx.execute_batch(SCHEMA).map_err(sqlite_error)?;
 		tx.pragma_update(None, "application_id", APPLICATION_ID).map_err(sqlite_error)?;
 		tx.pragma_update(None, "user_version", CURRENT_SCHEMA_VERSION).map_err(sqlite_error)?;
 		tx.commit().map_err(sqlite_error)?;
 	}
+
 	verify(connection)
 }
 
@@ -60,7 +65,6 @@ pub(crate) fn verify(connection: &Connection) -> Result<(), DatabaseError> {
 	{
 		return Err(DatabaseError::Incompatible);
 	}
-
 	if connection
 		.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
 		.map_err(sqlite_error)?
@@ -113,7 +117,9 @@ fn user_table_count(connection: &Connection) -> Result<i64, DatabaseError> {
 
 fn expected_inventory() -> Result<Vec<(String, String, String, String)>, DatabaseError> {
 	let connection = Connection::open_in_memory().map_err(sqlite_error)?;
+
 	connection.execute_batch(SCHEMA).map_err(sqlite_error)?;
+
 	schema_inventory(&connection)
 }
 

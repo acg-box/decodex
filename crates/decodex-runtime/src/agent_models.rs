@@ -311,7 +311,6 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 		Some(history) => Some(historical_receipt(history)?),
 		None => None,
 	};
-
 	let prior = store.agent_model_receipt(k.work.clone(), k.thread.clone()).await.ok()?;
 	let last_outcome = match &prior {
 		Some(receipt) => Some(outcome(&receipt.state)?),

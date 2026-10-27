@@ -151,9 +151,11 @@ impl DesktopProfileDraft {
 		if self.messages.len() > 64 {
 			return Err("Too many unresolved messages");
 		}
+
 		for message in self.messages.values() {
 			message.validate()?;
 		}
+
 		self.composer.validate()?;
 
 		if self.prompt_edits.len() > 64 {
@@ -508,8 +510,8 @@ mod tests {
 		let bytes = document.encode().unwrap();
 
 		assert_eq!(DesktopDraftDocument::decode(&bytes).unwrap().unbound.creation, Some(setup));
-
 		assert!(DesktopDraftDocument::decode(br#"{"version":1,"profiles":{}}"#).is_err());
+
 		document.unbound.work_id = Some(EntityId::new("existing").unwrap());
 
 		assert!(document.encode().is_err());

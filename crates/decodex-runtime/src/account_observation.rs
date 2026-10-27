@@ -16,7 +16,7 @@ use tokio::{
 		watch::{Receiver, Sender},
 	},
 	task::{Id, JoinError, JoinSet},
-	time::{self, MissedTickBehavior},
+	time::{self, Instant, MissedTickBehavior},
 };
 
 use crate::{
@@ -103,6 +103,7 @@ impl AccountObservationService {
 		if self.initial_observation_pending.borrow().is_none() {
 			self.request_refresh();
 		}
+
 		let _ = self
 			.initial_observation_pending
 			.subscribe()
@@ -119,7 +120,9 @@ impl AccountObservationService {
 		if self.initial_observation_pending.borrow().is_some() {
 			return false;
 		}
+
 		let (Some(account), Some(now)) = (account, current_unix_micros()) else { return false };
+
 		// Leave room for the existing bounded native preflight before process admission.
 		self.accounts.reusable_agent_observation(account, now, Duration::from_secs(30)).await
 	}
@@ -213,7 +216,7 @@ impl AccountObservationService {
 		let reset_card_wakeup =
 			self.reset_cards.as_ref().map(ApiResetCardRuntime::observation_wakeup);
 		let mut interval = time::interval_at(
-			time::Instant::now() + OBSERVATION_REFRESH_INTERVAL,
+			Instant::now() + OBSERVATION_REFRESH_INTERVAL,
 			OBSERVATION_REFRESH_INTERVAL,
 		);
 
@@ -282,6 +285,7 @@ impl AccountObservationService {
 					).await;
 				},
 			}
+
 			if !self.initial_observation_pending.borrow().as_ref().is_some_and(HashSet::is_empty) {
 				let initial = initial_tasks
 					.get_or_insert_with(|| task_accounts.keys().copied().collect::<HashSet<_>>());
@@ -1187,6 +1191,10 @@ mod tests {
 			self, AccountObservationOutcome, AccountObservationState, AccountProfileRefreshStatus,
 			ResetCardInventoryObservation, ResetCardServiceError,
 		},
+		account_service::{
+			AccountService, CredentialRefreshError, CredentialRefreshPort, CredentialRefreshResult,
+		},
+		host_credentials::{CredentialSecretBundle, SqliteCredentialStore},
 	};
 	use decodex_codex::AccountApiQuotaWindow;
 	use decodex_core::{
@@ -1198,51 +1206,6 @@ mod tests {
 		ResetCardTimestamp,
 	};
 	use decodex_database::AccountProfileSnapshot;
-
-	#[tokio::test]
-	async fn bound_account_admission_does_not_wait_for_an_unrelated_provider() {
-		use crate::{
-			account_service::{
-				AccountService, CredentialRefreshError, CredentialRefreshPort,
-				CredentialRefreshResult,
-			},
-			host_credentials::{CredentialSecretBundle, SqliteCredentialStore},
-		};
-		struct NoRefresh;
-		impl CredentialRefreshPort for NoRefresh {
-			fn refresh(
-				&self,
-				_: &CredentialSecretBundle,
-			) -> Result<CredentialRefreshResult, CredentialRefreshError> {
-				panic!("waiting cannot refresh credentials")
-			}
-		}
-		let directory = tempfile::tempdir().unwrap();
-		let root =
-			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
-		let store = decodex_database::SqliteStore::open(&root.paths()).unwrap();
-		let accounts = Arc::new(AccountService::new(
-			store.clone(),
-			Arc::new(SqliteCredentialStore::new(store)),
-			Arc::new(NoRefresh),
-		));
-		let observations = super::AccountObservationService::new(accounts, None, None, None);
-		let bound = account(1);
-		let unrelated = account(2);
-		let explicit = observations.wait_for_initial_observation(Some(&bound));
-		let automatic = observations.wait_for_initial_observation(None);
-		tokio::pin!(explicit, automatic);
-		assert!(futures_util::poll!(explicit.as_mut()).is_pending());
-		observations
-			.initial_observation_pending
-			.send_replace(Some(HashSet::from([bound.clone(), unrelated.clone()])));
-		assert!(futures_util::poll!(explicit.as_mut()).is_pending());
-		observations.initial_observation_pending.send_replace(Some(HashSet::from([unrelated])));
-		assert!(futures_util::poll!(explicit.as_mut()).is_ready());
-		assert!(futures_util::poll!(automatic.as_mut()).is_pending());
-		observations.initial_observation_pending.send_replace(Some(HashSet::new()));
-		assert!(futures_util::poll!(automatic.as_mut()).is_ready());
-	}
 
 	#[test]
 	fn optional_absence_requires_successful_five_slot_and_current_weekly_fact() {
@@ -1722,6 +1685,54 @@ mod tests {
 	fn account(index: u16) -> AccountId {
 		AccountId::new(format!("00000000-0000-4000-8000-{index:012}"))
 			.expect("fixture account ID is canonical")
+	}
+
+	#[tokio::test]
+	async fn bound_account_admission_does_not_wait_for_an_unrelated_provider() {
+		struct NoRefresh;
+
+		impl CredentialRefreshPort for NoRefresh {
+			fn refresh(
+				&self,
+				_: &CredentialSecretBundle,
+			) -> Result<CredentialRefreshResult, CredentialRefreshError> {
+				panic!("waiting cannot refresh credentials")
+			}
+		}
+
+		let directory = tempfile::tempdir().unwrap();
+		let root =
+			decodex_core::DecodexRoot::new(directory.path().canonicalize().unwrap()).unwrap();
+		let store = decodex_database::SqliteStore::open(&root.paths()).unwrap();
+		let accounts = Arc::new(AccountService::new(
+			store.clone(),
+			Arc::new(SqliteCredentialStore::new(store)),
+			Arc::new(NoRefresh),
+		));
+		let observations = super::AccountObservationService::new(accounts, None, None, None);
+		let bound = account(1);
+		let unrelated = account(2);
+		let explicit = observations.wait_for_initial_observation(Some(&bound));
+		let automatic = observations.wait_for_initial_observation(None);
+
+		tokio::pin!(explicit, automatic);
+
+		assert!(futures_util::poll!(explicit.as_mut()).is_pending());
+
+		observations
+			.initial_observation_pending
+			.send_replace(Some(HashSet::from([bound.clone(), unrelated.clone()])));
+
+		assert!(futures_util::poll!(explicit.as_mut()).is_pending());
+
+		observations.initial_observation_pending.send_replace(Some(HashSet::from([unrelated])));
+
+		assert!(futures_util::poll!(explicit.as_mut()).is_ready());
+		assert!(futures_util::poll!(automatic.as_mut()).is_pending());
+
+		observations.initial_observation_pending.send_replace(Some(HashSet::new()));
+
+		assert!(futures_util::poll!(automatic.as_mut()).is_ready());
 	}
 
 	#[tokio::test]
