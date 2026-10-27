@@ -208,7 +208,7 @@ async fn continue_attached_branch(
 			.await
 			.expect("continued branch history")
 			.len(),
-		2
+		1
 	);
 	assert_eq!(
 		native.thread_turns_since(source_thread, None).await.expect("unchanged source history"),
@@ -256,11 +256,12 @@ async fn qualify_native_fork(binary: &OsStr, history_mode: &str) {
 	let listener = TcpListener::bind("127.0.0.1:0").await.expect("native fork fixture");
 	let address = listener.local_addr().expect("native fork fixture");
 	let requests = Arc::new(AtomicUsize::new(0));
+	let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
 	let backend = tokio::spawn(native_tests::serve_fixture(
 		listener,
 		requests.clone(),
 		None,
-		None,
+		Some(Arc::clone(&bodies)),
 		None,
 		|_| serde_json::json!({"type":"message","role":"assistant","id":"answer","content":[{"type":"output_text","text":"Done"}]}),
 	));
@@ -294,7 +295,12 @@ async fn qualify_native_fork(binary: &OsStr, history_mode: &str) {
 		for mode in 0..3 {
 			let turn = turn["turn"]["id"].as_str().expect("native fork fixture");
 			let boundary = match mode { 0 => ThreadForkBoundary::BeforeInput(turn), 1 => ThreadForkBoundary::AfterTurn(turn), _ => ThreadForkBoundary::AttachedAfterTurn(turn) };
-			let fork = client.fork_thread_at_boundary(thread, boundary, client.thread_settings_guard(thread).expect("native fork fixture")).await.expect("native fork fixture");
+			let result = client.fork_thread_at_boundary(thread, boundary, client.thread_settings_guard(thread).expect("native fork fixture")).await;
+			if history_mode == "legacy" && mode == 2 {
+				assert!(matches!(result, Err(decodex_codex::app_server_client::ClientError::Remote(error)) if error.code == -32600), "native attachment requires a paginated source");
+				continue;
+			}
+			let fork = result.expect("native fork fixture");
 
 			assert_eq!(fork["modelProvider"], "fixture");
 
@@ -305,8 +311,9 @@ async fn qualify_native_fork(binary: &OsStr, history_mode: &str) {
 			if mode == 2 {
 				assert!(client.thread_goal(fork["thread"]["id"].as_str().expect("native fork fixture")).await.expect("native fork fixture").is_none(), "attached branches start without a copied goal");
 				assert_eq!(client.thread_goal(thread).await.expect("native fork fixture"), source_goal);
-
-				attached = Some((thread.to_owned(), fork["thread"]["id"].as_str().expect("native fork fixture").to_owned()));
+			}
+			if mode == 2 || (history_mode == "legacy" && mode == 1) {
+				attached = Some((thread.to_owned(), fork["thread"]["id"].as_str().expect("native fork fixture").to_owned(), mode == 2));
 			}
 		}
 
@@ -315,7 +322,7 @@ async fn qualify_native_fork(binary: &OsStr, history_mode: &str) {
 
 	drop(session);
 
-	let (parent, fork) = attached.expect("native fork fixture");
+	let (parent, fork, is_attached) = attached.expect("native fork fixture");
 	let mut restarted = NativeSession::start(binary, home.path());
 
 	time::timeout(Duration::from_secs(30), async {
@@ -325,7 +332,9 @@ async fn qualify_native_fork(binary: &OsStr, history_mode: &str) {
 
 		assert_eq!(resumed["modelProvider"], "fixture");
 		assert_eq!(client.thread_archive_state(&fork).await.expect("native fork fixture"), decodex_codex::app_server_client::ThreadArchiveState::Active);
-		assert!(client.request("thread/delete",serde_json::json!({"threadId":parent})).await.is_err(), "native parent deletion must retain attached children");
+		if is_attached {
+			assert!(client.request("thread/delete",serde_json::json!({"threadId":parent})).await.is_err(), "native parent deletion must retain attached children");
+		}
 
 		client.request("thread/archive",serde_json::json!({"threadId":fork})).await.expect("native fork fixture");
 
@@ -335,7 +344,9 @@ async fn qualify_native_fork(binary: &OsStr, history_mode: &str) {
 
 		client.thread_unarchive(&fork).await.expect("native fork fixture");
 
-		assert_eq!(client.attached_thread_archive_state(&fork,&parent).await.expect("native fork fixture"),decodex_codex::app_server_client::ThreadArchiveState::Active);
+		if is_attached {
+			assert_eq!(client.attached_thread_archive_state(&fork,&parent).await.expect("native fork fixture"),decodex_codex::app_server_client::ThreadArchiveState::Active);
+		}
 
 		let resumed = client.thread_resume(serde_json::json!({"threadId":fork,"excludeTurns":true})).await.expect("native fork fixture");
 
@@ -349,6 +360,9 @@ async fn qualify_native_fork(binary: &OsStr, history_mode: &str) {
 		}
 
 		assert_eq!(requests.load(Ordering::Acquire),count+1);
+		let input = bodies.lock().expect("native fork request bodies").last().expect("continued fork request")["input"].to_string();
+		assert!(input.contains("Reply Done"), "the model must retain the source context");
+		assert!(input.contains("Explicitly continue this attached branch"));
 		assert_eq!(client.thread_turns_since(&parent,None).await.expect("native fork fixture").len(),1,"branch input must preserve the original history");
 	}).await.expect("native fork fixture");
 
@@ -368,7 +382,7 @@ async fn assert_fork_lineage(
 
 	assert_eq!(
 		turns.len(),
-		usize::from(boundary != decodex_protocol::PromptForkBoundary::BeforeInput)
+		usize::from(boundary == decodex_protocol::PromptForkBoundary::AfterTurn)
 	);
 	assert_eq!(
 		native.thread_turns_since(thread, None).await.expect("reread unchanged source"),

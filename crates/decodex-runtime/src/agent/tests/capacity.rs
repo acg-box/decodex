@@ -238,6 +238,7 @@ async fn capacity_retry_keeps_model_thread_and_context_and_stops_after_three_att
 async fn quota_other_errors_and_missing_history_do_not_schedule_capacity_retries() {
 	for (code, history_present) in [
 		("usageLimitExceeded", true),
+		("policyCapacityUnavailable", true),
 		("rateLimitExceeded", true),
 		("contextWindowExceeded", true),
 		("other", true),

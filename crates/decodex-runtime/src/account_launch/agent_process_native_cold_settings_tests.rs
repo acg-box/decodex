@@ -446,7 +446,9 @@ async fn serve(
 		let mut socket = tokio::io::BufReader::new(socket);
 		let mut first = String::new();
 
-		socket.read_line(&mut first).await.expect("loopback native backend");
+		if socket.read_line(&mut first).await.expect("loopback native backend") == 0 {
+			continue;
+		}
 
 		let path = first.split_whitespace().nth(1).expect("loopback native backend").to_owned();
 		let mut length = 0;

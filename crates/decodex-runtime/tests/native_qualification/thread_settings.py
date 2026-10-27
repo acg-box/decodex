@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from native_session import Session
 
 
-def case(mode, unchanged=False):
+def case(mode, unchanged=False, permission_recovery=False):
     requests = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -71,6 +71,11 @@ def case(mode, unchanged=False):
                 if not unchanged:
                     assert requests[-1]["service_tier"] == "flex"
                     assert requests[-1]["reasoning"]["summary"] == "concise"
+                if permission_recovery:
+                    session.call("thread/settings/update", {
+                        "threadId": thread, "approvalPolicy": "on-request",
+                        "approvalsReviewer": "auto_review", "permissions": ":read-only",
+                    })
             finally:
                 session.close()
 
@@ -85,9 +90,26 @@ def case(mode, unchanged=False):
             else:
                 # A later global preference must not replace the saved thread selection.
                 config.write_text('service_tier="default"\nmodel_reasoning_summary="detailed"\n' + base)
+            if permission_recovery:
+                rollout = Path(started["path"])
+                frozen = next(line for line in rollout.read_text().splitlines()
+                              if json.loads(line).get("type") == "turn_context")
+                # Reproduce a running turn that persisted its old context after acknowledgement.
+                with rollout.open("a") as output:
+                    output.write(frozen + "\n")
             session = Session(home)
             try:
+                if permission_recovery:
+                    fork = session.call("thread/fork", {"threadId": thread, "excludeTurns": True})
                 resumed = session.call("thread/resume", {"threadId": thread, "excludeTurns": True})
+                if permission_recovery:
+                    for response in [fork, resumed]:
+                        assert response["approvalPolicy"] == "on-request", response["approvalPolicy"]
+                        assert response["approvalsReviewer"] == "auto_review", response["approvalsReviewer"]
+                        assert response["activePermissionProfile"]["id"] == ":read-only"
+                    assert len(requests) == 1, "Permission recovery must not run inference"
+                    return {"history_mode": mode, "stale_permission_context_recovered": True,
+                            "fork_and_resume_checked": True, "requests": len(requests)}
                 if unchanged:
                     assert checkpoints() == before, "Cold resume appended redundant settings"
                     assert len(requests) == 1, "Cold resume must not run inference"
@@ -112,6 +134,7 @@ def case(mode, unchanged=False):
 
 def main():
     results = [case(mode) for mode in ["legacy", "paginated"]] + [case("legacy", unchanged=True)]
+    results += [case(mode, permission_recovery=True) for mode in ["legacy", "paginated"]]
     binary = Path(os.environ["QUALIFIED_CODEX_BINARY"])
     result = {
         "status": "passed", "cases": results, "case_count": len(results),
@@ -122,7 +145,7 @@ def main():
     Path(os.environ["DECODEX_QUALIFICATION_OUTPUT"], "thread-settings-native.json").write_text(
         json.dumps(result, indent=2) + "\n"
     )
-    print("Cold resume preserved tier and summary in both history modes and skipped unchanged settings checkpoints.")
+    print("Cold resume preserved settings and skipped unchanged checkpoints; resume and fork recovered acknowledged permissions.")
 
 
 if __name__ == "__main__":

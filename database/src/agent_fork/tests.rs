@@ -75,7 +75,7 @@ async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_so
 		(AgentForkBoundary::AfterTurn, "first", vec!["first"]),
 		(AgentForkBoundary::BeforeInput, "second", vec!["first"]),
 		(AgentForkBoundary::AfterTurn, "second", vec!["first", "second"]),
-		(AgentForkBoundary::AttachedAfterTurn, "second", vec!["first", "second"]),
+		(AgentForkBoundary::AttachedAfterTurn, "second", vec![]),
 	] {
 		let expected: Vec<String> = expected.into_iter().map(String::from).collect();
 		let directory = tempfile::tempdir().unwrap();
@@ -90,6 +90,19 @@ async fn fork_receipt_survives_restart_without_repeating_creation_or_changing_so
 		a.source.before_turn_id = before.into();
 
 		assert_eq!(a.expected_turns(), Some(expected.as_slice()));
+		if boundary == AgentForkBoundary::AttachedAfterTurn {
+			assert_eq!(a.source.turn_ids, ["first", "second"]);
+			assert!(
+				store
+					.acknowledge_agent_fork(
+						a.clone(),
+						"fork-native".into(),
+						vec!["first".into(), "second".into()]
+					)
+					.await
+					.is_err()
+			);
+		}
 
 		let saved = store.reserve_agent_fork(a.clone()).await.unwrap().unwrap();
 
