@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b235be3ae8f7a19791b404985558b7cf44b3843ffd774adfbc9cef95b8fd2565",
+  "pageVersion": "sha256:a7d4a868b1a9d7b97fc2709738da6721da7c125a0ed2ba953ac0db335432fcf0",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -62,7 +62,7 @@
       "evidence": [
         {
           "resource": "repo://database/src/agent_fork.rs",
-          "version": "repo-file-v1:sha256:3592e024d32622ffdd6dd61a7ce8fbb141eed5298c310062f7db89cf2d056e42"
+          "version": "repo-file-v1:sha256:b07b1a16c8648a9a6ce3d31d532cec93e59decf3aa8b32711ea572952ac04c19"
         },
         {
           "resource": "repo://database/src/agent_process.rs",
@@ -254,7 +254,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
@@ -350,7 +350,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     },
@@ -400,7 +400,7 @@
         },
         {
           "resource": "repo://database/src/agent_fork.rs",
-          "version": "repo-file-v1:sha256:3592e024d32622ffdd6dd61a7ce8fbb141eed5298c310062f7db89cf2d056e42"
+          "version": "repo-file-v1:sha256:b07b1a16c8648a9a6ce3d31d532cec93e59decf3aa8b32711ea572952ac04c19"
         }
       ]
     },
@@ -453,10 +453,24 @@
           "version": "repo-lines-v1:sha256:285dbf922f1c6f456c95ca8bffcc796aed4dfd0fe2e7de6c58f843de42d6d801:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3OTQ2ZmQzYWEwNjliZmNmMjBiYzBjMDkwOWE5MDVlMWVhODI4OWU0YWRmNTUzOGE0NjE0NmY2MzRlZmFmZWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3OGM0NjczYjU4Yzc1ZWQ3NjBiZjM1YTlkY2M0NTAwY2Y2MTEwNTg5YTI0YTdmNDdiMzJmODlhNGNjY2Y0OGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU5M2VhZmI5MWU3YWIyNzI2NmM1MjYxODc3ZDYxZjI0ZmY0MmIxNTA0ZTJiNmIyNDA5YjkzNmI0MTJhZGRjYmYifQ"
         }
       ]
+    },
+    {
+      "id": "claim_193319fe992a420d9c7240ac446c109a",
+      "statement": "Attached-branch acknowledgement validates an empty child-visible history while retaining the source boundary and source turn IDs; native inference still receives the parent context.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs#L350-L368",
+          "version": "repo-lines-v1:sha256:36da6c5e10c5a1c63f3f4b609af570ec0a7f47c5988e6f2f93cab70bbca09776:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRkYjRiZWU5MGI1N2I5N2YyOTY4NDQ4YzRhMzEzODUyOGEwMzAzYzk3YzFhOWY5ODczOWY1MTUxMGJlZmMwMTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3MjVjZTE4Mjk3M2E0OGQ4Mzk3ZWEwMDY2NjBjNzEzZGE3Y2NiZDBlYThjOTFkZDJmNDc3ZGY1YWUyMTAzMGIifQ"
+        },
+        {
+          "resource": "repo://database/src/agent_fork.rs#L35-L58",
+          "version": "repo-lines-v1:sha256:61f6d011722ff1d9a807722e1d6e8fcad4b923fb44f4250937dc39589dd97937:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwOWY3NjdjOWM0NzVkNDA4ZWJiY2NkYjZiN2JhMDIxMzdiYjQ4MWJlNjQ4YmVmZTQ4YmRkMTFkMzY1MjUwMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyOTVmYzg0YjFjZDJmNjgxMGNiZWY0MzVmMTRhYzRhYzA5NzgxYTNkYzM4OTYyYjdkYTg1MGYwMDY4YWEyMDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhNjQ4YjhiNDRjMDVmYjZmZTQ1NDA1ZTM1MzZkZDk0ZTBmZTI0NjMyM2FhN2ZiYTQ1OWYyNmEyNGY4MmFjZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM1MTU4MDUwZjc4YmI3NDhkYzY0NjQwYzkxOTg2NTcyYmRiOTgzM2Y4ZDNiZTE1MTc4YjJjNDhhNjZkZTliNjMifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T18:33:20.613Z"
+    "at": "2026-10-27T21:12:13.971Z"
   }
 }

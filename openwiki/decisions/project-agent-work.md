@@ -12,8 +12,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-ca95ba5564216bb4898c8392
     resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
+  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
+    resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
+  - id: openwiki-source-f02ae41e2bd15dda85dc86b9
+    resource: repo://codex-runtime.lock.json
   - id: openwiki-source-991553c8d747a54ecf5a9376
     resource: repo://crates/decodex-core/src/work.rs
   - id: openwiki-source-eccf08613126ff810078b520
@@ -56,10 +60,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
+generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T18:33:20.613Z
+    at: 2026-10-27T21:12:13.971Z
 ---
 
 # Project, Agent and Work contract
@@ -159,7 +163,7 @@ Use two execution paths with this shared attribution contract:
 - Native Subagent contributions use native spawn, message, follow-up, wait, interruption and recovery behavior. Do not add a second mailbox for those native messages.
 - Independent Agent contributions use the existing Decodex inbox and root-conversation admission path, extended with request identities and explicit acceptance. Preserve tool authority for application-origin input.
 
-The selected native interface must actually support each operation. A helper follow-up API must not be assumed to be a generic bus for unrelated root conversations. The [inspected native implementation](https://github.com/openai/codex/blob/970111f6cb62cc02fe36a82ea7d71b37a2889c97/codex-rs/core/src/agent/control/api.rs#L126-L147) rejects a follow-up that targets a root. The selected development artifact uses this exact source. Its affected native behavior was tested separately; source inclusion alone does not establish qualification.
+The selected native interface must actually support each operation. A helper follow-up API must not be assumed to be a generic bus for unrelated root conversations. The [inspected native implementation](https://github.com/openai/codex/blob/970111f6cb62cc02fe36a82ea7d71b37a2889c97/codex-rs/core/src/agent/control/api.rs#L126-L147) rejects a follow-up that targets a root. The original architecture qualification used this source. The current fixed development artifact has a separate [qualification record](../../automations/upstream/qualification.json); source inclusion alone does not establish behavior.
 
 When an independent Agent is busy, a durable request can wait without being reported as accepted. The recipient can decline or identify a conflict. The requester then chooses another path or records a blocker. Do not add an automatic global priority optimizer or require the Assistant to arbitrate every request. Preserve user-input priority, explicit pauses and current native ownership gates.
 
@@ -280,7 +284,7 @@ A Project association is business scope. A native conversation still has one act
 
 ## Qualification and evidence limits
 
-The selected development source is official Codex `970111f6cb62cc02fe36a82ea7d71b37a2889c97`. Explicit `cargo +stable make prepare-codex` verifies the actual package, CLI, Code Mode helper, search helper, provenance and generated schema. This change keeps the selected runtime baseline; it does not advance the upstream review cursor or identify the installed application. Component hashes, retained regression identities, entrypoints and reproducible commands are in [retained evidence](../../automations/upstream/retained-evidence.json), under `retained_project_agent_work`.
+The original architecture qualification used official Codex `970111f6cb62cc02fe36a82ea7d71b37a2889c97`. The [development lock](../../codex-runtime.lock.json) and [current qualification](../../automations/upstream/qualification.json) identify the separately qualified current runtime. Explicit `cargo +stable make prepare-codex` verifies the actual package, CLI, Code Mode helper, search helper, provenance and generated schema. This change keeps the selected runtime baseline; it does not advance the upstream review cursor or identify the installed application. Component hashes, retained regression identities, entrypoints and reproducible commands are in [retained evidence](../../automations/upstream/retained-evidence.json), under `retained_project_agent_work`.
 
 Original architecture qualification, retained as historical evidence:
 

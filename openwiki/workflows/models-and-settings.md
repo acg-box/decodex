@@ -56,10 +56,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-10-26T15:20:45.937Z" }
+generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T18:33:20.613Z
+    at: 2026-10-27T21:12:13.971Z
 ---
 
 # Model selection and settings ownership
@@ -86,7 +86,7 @@ A review binds the displayed source and current settings to an explicit action. 
 
 Shared native configuration writes retain file/version identity and arbitration. Historical model journals remain readable; old unresolved records are not converted into successful modern operations or replayed through a second writer. Queued user execution choices must not be overwritten by an unrelated settings edit.
 
-Cold resume inherits the saved native thread settings without reapplying creation settings. A model-only update preserves the native tier, provider and collaboration settings. The reusable qualification probe checks that the saved service tier and summary setting survive changed global defaults in both legacy and paginated thread modes. This evidence applies to the selected qualified artifact; it does not establish installed-app acceptance. See [saved settings and diagnostic storage](../testing/upstream-acceptance-boundaries.md#saved-settings-and-diagnostic-storage) for the commands and limits.
+Cold resume inherits the saved native thread settings without reapplying creation settings. A model-only update preserves the native tier, provider and collaboration settings. The reusable qualification probe checks that the saved service tier and summary setting survive changed global defaults in both legacy and paginated thread modes. The probe also checks acknowledged approval, reviewer and read-only permission recovery despite stale turn context during fork and cold resume in both history modes. Each recovery case makes one inference request and does not replay the saved turn. This evidence applies to the selected qualified artifact; it does not establish installed-app acceptance. See [saved settings and diagnostic storage](../testing/upstream-acceptance-boundaries.md#saved-settings-and-diagnostic-storage) for the commands and limits.
 
 Plugin installation and selection are configured in Codex. Maintenance of the current model controls does not authorize a new editor for every upstream setting.
 
@@ -104,7 +104,7 @@ The Goal panel reads and edits the Goal attached to the exact owned native threa
 
 The reviewed source, thread and Goal identity must still match before a write. Long objectives use a native objective attachment instead of silently truncating the submitted objective. Display truncation is marked separately. An uncertain save requires a fresh native read; it is not permission to repeat the mutation.
 
-**Attached branch after this turn** keeps the source provider even when the configured default changes. It starts without a copied native Goal and leaves the source Goal unchanged. Creating or opening the branch sends no input. Continue it with a separate explicit message, or use its normal Goal controls after selecting that branch. The retained qualification checks both native history modes and restart; it does not certify the installed desktop. See [conversation branches](conversations-and-recovery.md#edit-or-branch-at-an-earlier-input).
+**Attached branch after this turn** keeps the source provider even when the configured default changes. It starts without a copied native Goal and leaves the source Goal unchanged. Creating or opening the branch sends no input. Continue it with a separate explicit message, or use its normal Goal controls after selecting that branch. Current qualification checks ordinary forks in both history modes, attached creation in paginated history and explicit native rejection of legacy attachment. It checks restart separately and does not certify the installed desktop. See [conversation branches](conversations-and-recovery.md#edit-or-branch-at-an-earlier-input).
 
 ## Search defaults and memory observation
 
@@ -124,7 +124,7 @@ Only the native read method is admitted through the retained bridge. This view d
 
 ## Native launch defaults
 
-The attested app-server launch enables description-first Code Mode, native child context limits and Agent message wakeups. It also enables fork-prefix preservation through the dotted `features.multi_agent_v2.preserve_fork_prefix` option, which preserves the user's existing multi-agent enablement. These are runtime launch defaults, not new desktop switches. Description ordering does not itself enable Code Mode.
+The attested app-server launch requests native child context limits and Agent message wakeups. Its retained description-first argument is accepted as a removed native feature; current ordering is native-owned. It also enables fork-prefix preservation through the dotted `features.multi_agent_v2.preserve_fork_prefix` option, which preserves the user's existing multi-agent enablement. These are runtime launch defaults, not new desktop switches. Description ordering does not itself enable Code Mode.
 
 Native Codex retains transport selection. The integration does not force shared gRPC hosting or a global tool-output retention setting. Fork-prefix preservation and child context limits have bounded compatibility evidence; they do not establish provider cache savings, latency improvements or better model answers. Follow [acceptance boundaries](../testing/upstream-acceptance-boundaries.md) when evaluating those effects.
 

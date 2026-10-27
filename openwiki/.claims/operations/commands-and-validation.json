@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:df7c4223f10f1947b5d012fbce2f07293fd1c9128eb3ab1ed76d8023a4062657",
+  "pageVersion": "sha256:552f3eca0f3d6318a70eb54e222b8b6736f686f79d133d9968ede73cdc5e7fe7",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -122,7 +122,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     },
@@ -172,11 +172,11 @@
     },
     {
       "id": "claim_e52d8cb77a3d41a8acda75806a31a102",
-      "statement": "The current upstream source qualification uses a dev-small app-server helper and supplies the exact signed candidate CLI for helper-spawn tests through explicit CARGO_BIN_EXE paths; source helpers, the production CLI and historical private-hook launcher scopes remain distinct.",
+      "statement": "The source qualification uses dev-small helpers and Nextest can replace CARGO_BIN_EXE paths with source build outputs. Exact production CLI behavior is qualified separately by the Decodex native cohort and probes; the signed Code Mode helper session invokes the compiled test binary directly with explicit helper paths.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:16ddc9a1e1dfcd3e2bf324db5e7734ff021ac8f42588bac8c530bba3bc9b95b4"
+          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
         }
       ]
     },
@@ -186,7 +186,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     },
@@ -206,7 +206,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/project_guardian.py",
@@ -220,7 +220,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     },
@@ -234,7 +234,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     },
@@ -244,7 +244,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json",
@@ -262,7 +262,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs",
@@ -280,7 +280,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     },
@@ -294,7 +294,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         },
         {
           "resource": "repo://scripts/macos/prepare_voice_acceptance.py",
@@ -308,7 +308,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     },
@@ -332,7 +332,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     },
@@ -342,17 +342,39 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:16ddc9a1e1dfcd3e2bf324db5e7734ff021ac8f42588bac8c530bba3bc9b95b4"
+          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/command_hooks.py",
           "version": "repo-file-v1:sha256:369a93ff63a36048bddf87ad60c04aa376f2907cf51b5115b13a07b88a63973a"
         }
       ]
+    },
+    {
+      "id": "claim_997819ccde67421cbf69dbaa5c3d1978",
+      "statement": "Reusable exact-artifact probes check missing or directory .env startup, saved permission recovery despite stale turn context in both history modes, and distinct persisted policy-capacity errors without a Decodex automatic retry.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs",
+          "version": "repo-file-v1:sha256:1de3ca45c57477c7bd58b4d66b5c5cc863d97ebf796125f864dae30c013dce9c"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/dotenv_startup.py",
+          "version": "repo-file-v1:sha256:f6a0a6294eff68dece725d15ebc189e23c322ab7166ce76eddc2a7e94f9b6b33"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/model_errors.py",
+          "version": "repo-file-v1:sha256:cfd01bd9f8a1d9d4f9f14e410955f82fd0ff49163027b086e407b16a0b5f23f0"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py",
+          "version": "repo-file-v1:sha256:cf4bb4274aac52b69ebd3936204a2f1570753e2e38c2afc4fd9796deaa278049"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T18:33:20.613Z"
+    "at": "2026-10-27T21:12:13.971Z"
   }
 }

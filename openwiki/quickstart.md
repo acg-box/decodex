@@ -40,10 +40,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
+generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T18:33:20.613Z
+    at: 2026-10-27T21:12:13.971Z
 ---
 
 # OpenWiki quickstart
@@ -70,7 +70,7 @@ These views preserve unknown coverage and resolution limits. Their retained qual
 
 ## Persistent attached branches
 
-When reviewing an earlier message, choose **Attached branch after this turn** to create a persistent native branch from its completed-turn prefix. The source history, draft and Goal remain unchanged. Creation sends no input and copies no native Goal. Reopen a verified branch through **Agent preferences > Attached branches > Open branch**. See [conversation recovery](workflows/conversations-and-recovery.md#edit-or-branch-at-an-earlier-input) and the [exact-artifact qualification](testing/upstream-acceptance-boundaries.md#persistent-attached-branches).
+When reviewing an earlier message, choose **Attached branch after this turn** to create a persistent native branch from its completed-turn prefix. The source history, draft and Goal remain unchanged. The child view starts empty while native inference retains the parent context. Creation requires paginated source history, sends no input and copies no native Goal. Reopen a verified branch through **Agent preferences > Attached branches > Open branch**. See [conversation recovery](workflows/conversations-and-recovery.md#edit-or-branch-at-an-earlier-input) and the [exact-artifact qualification](testing/upstream-acceptance-boundaries.md#persistent-attached-branches).
 
 ## Start by task
 

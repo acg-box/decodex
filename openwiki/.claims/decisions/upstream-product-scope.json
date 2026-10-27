@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:30ea694ceccba933b6527de6256a511ab453f396703fb7d8a43f2ca2dd465d0f",
+  "pageVersion": "sha256:c9e526760ecff4aed10142069d615b5aa3db2645fb589410a23016b6b68cd132",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -176,8 +176,12 @@
     },
     {
       "id": "claim_ac79a5891011490b80da38fbd08a7e92",
-      "statement": "The fixed native launch selects description-first tools, subagent context defaults, Agent message wakeups and fork-prefix preservation while leaving Code Mode transport native-owned.",
+      "statement": "The fixed native launch requests subagent context defaults, Agent message wakeups and fork-prefix preservation while leaving Code Mode transport native-owned; its retained description-first option is accepted as a removed native feature.",
       "evidence": [
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
+        },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L131-L151",
           "version": "repo-lines-v1:sha256:a6b2eef1867776015de103e94d4bd067aedc8577c70159c8c792ab426e27b791:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2YjU1MTM4Y2EyM2U2ZGFkMjJiNjQ4ZjgyOWNlZGM4MWQyMDNiMTlmMTc2MzRkZjZiZTc2MGY1M2JlNGVmOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNmU0ZjMxZGM3MTM2OTU2NmI1MWNjMWExOTVkNDUwY2RmODU3NWU2ZDdhNzYxYzU2NDJiYTMwMjVkYzM0NzMifQ"
@@ -208,7 +212,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
@@ -222,7 +226,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/project.rs",
@@ -240,7 +244,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/guardian_details.rs",
@@ -274,7 +278,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
@@ -292,17 +296,35 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
           "version": "repo-file-v1:sha256:eb622f54077106962241838083ffe1a07b73c2309ac7c509eadf80470b285cf9"
         }
       ]
+    },
+    {
+      "id": "claim_a655bb03d9f64cc3bb70213f40fc2375",
+      "statement": "Persistent attached branches expose only their own turns while native inference retains the reviewed parent context and saved source turn IDs retain boundary provenance. The retained public workflow already requires paginated source history.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
+          "version": "repo-file-v1:sha256:b2dfd71c5787b88f014ce587f27b8c7be9515efcd85865db739c09d590f497ef"
+        },
+        {
+          "resource": "repo://database/src/agent_fork.rs#L35-L58",
+          "version": "repo-lines-v1:sha256:61f6d011722ff1d9a807722e1d6e8fcad4b923fb44f4250937dc39589dd97937:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEwOWY3NjdjOWM0NzVkNDA4ZWJiY2NkYjZiN2JhMDIxMzdiYjQ4MWJlNjQ4YmVmZTQ4YmRkMTFkMzY1MjUwMDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkyOTVmYzg0YjFjZDJmNjgxMGNiZWY0MzVmMTRhYzRhYzA5NzgxYTNkYzM4OTYyYjdkYTg1MGYwMDY4YWEyMDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhNjQ4YjhiNDRjMDVmYjZmZTQ1NDA1ZTM1MzZkZDk0ZTBmZTI0NjMyM2FhN2ZiYTQ1OWYyNmEyNGY4MmFjZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM1MTU4MDUwZjc4YmI3NDhkYzY0NjQwYzkxOTg2NTcyYmRiOTgzM2Y4ZDNiZTE1MTc4YjJjNDhhNjZkZTliNjMifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T18:33:20.613Z"
+    "at": "2026-10-27T21:12:13.971Z"
   }
 }

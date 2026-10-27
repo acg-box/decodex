@@ -45,6 +45,10 @@ impl AgentForkAttempt {
 	pub fn expected_turns(&self) -> Option<&[String]> {
 		let boundary =
 			self.source.turn_ids.iter().position(|turn| turn == &self.source.before_turn_id)?;
+		// Attached branches retain the parent context natively but expose only their own turns.
+		if self.boundary == AgentForkBoundary::AttachedAfterTurn {
+			return Some(&self.source.turn_ids[..0]);
+		}
 		let end = boundary + usize::from(self.boundary != AgentForkBoundary::BeforeInput);
 
 		Some(&self.source.turn_ids[..end])
@@ -205,7 +209,7 @@ impl SqliteStore {
 		}).await
 	}
 
-	/// Bind only the acknowledged native fork after its exact prefix was read back.
+	/// Bind the acknowledged native fork after its expected visible history was read back.
 	/// Install a canonical draft receipt for before-input branches without reverting either thread.
 	pub async fn acknowledge_agent_fork(
 		&self,

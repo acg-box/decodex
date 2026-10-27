@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:994aa8b9f040a7137dc55fbd2f1fc5b6b4f946f6f19aea1c1048cd92f99925bb",
+  "pageVersion": "sha256:c46745213b2bf29d107d727463cbd654a12026884d8f2f6390bf62fe726b32fd",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -242,7 +242,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     },
@@ -260,7 +260,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     },
@@ -270,7 +270,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     },
@@ -284,7 +284,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         },
         {
           "resource": "repo://scripts/macos/prepare_voice_acceptance.py",
@@ -298,13 +298,13 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T18:33:20.613Z"
+    "at": "2026-10-27T21:12:13.971Z"
   }
 }

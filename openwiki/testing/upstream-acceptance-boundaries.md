@@ -92,6 +92,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/work_portfolio.rs
   - id: openwiki-source-275dc903aab820a109a196b4
     resource: repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json
+  - id: openwiki-source-b1a8e98eb39febad19f64bda
+    resource: repo://crates/decodex-runtime/tests/native_qualification/dotenv_startup.py
   - id: openwiki-source-07c9cc033899826079f8efb5
     resource: repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py
   - id: openwiki-source-c772fc057f500f765d09a3c7
@@ -124,10 +126,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-27T18:33:20.613Z" }
+generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T18:33:20.613Z
+    at: 2026-10-27T21:12:13.971Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -149,6 +151,16 @@ verified:
 
 For native compatibility, record the upstream commit separately from the installed binary and generated schema. Test the actual consumer contract. A schema field or retained database row is not proof of a delivered UI or supported execution path.
 
+## Current fixed development qualification
+
+The development requirement selects official source `33d306d457a4632b22bebf214e0c25d91f90f6e8`. The current source review covers all 127 commits after `abf4bb91ec49fbf443ccec0069f9cab5dd1462d8`; that review is separate from execution and public delivery. The exact production-profile artifact has verified source, CLI, Code Mode helper, search helper and generated-schema identities.
+
+The exact-artifact native cohort passed 51 tests. Two local history tests, 17 standalone probe groups, component cache repair and a direct signed Code Mode helper session also passed. The repository `check-automations` aggregate passed, including 1,897 headless tests, 43 Python tests, two CLI diagnostics, formatting, strict Clippy and site checks. It does not repeat the full GPUI suite or installed acceptance.
+
+The source `dev-small` cohort executed 1,264 unique identities: 1,263 passed and one named-executor cloud-skills fixture remains unresolved after an isolated-home rerun. Seven initial snapshot failures recovered after host skills were excluded through an isolated HOME. Library and integration selections overlap by 315 identities. Linux-only tests and unavailable GStreamer/GLib voice-host prerequisites are explicit gaps. Source test executables can select their own helpers; they do not establish exact production CLI behavior. The cloud fixture remains outside the selected local private-stdio consumer and is not counted as a pass.
+
+Both unignored upstream locks retain the same nine Rust dependency advisories and warnings in one fresh database snapshot. No local audit ignore or broad safety claim was added. These checks do not qualify cloud execution, live accounts, physical audio, installation or release. See the [current qualification](../../automations/upstream/qualification.json) for exact identities, selectors, commands, digests and limits.
+
 ## Observed turn timings
 
 The delivered response details show locally observed activity intervals and explicit unknown values. The [portable record](../../automations/upstream/retained-evidence.json) identifies the source, exact selected native artifact and test entrypoints. Its headless cohort passed 1891 tests, and two selected presentation tests passed. These results do not establish installed-app interaction or live-provider timing. Historical activity durations are available only when the native history or an exact saved observation contains them.
@@ -157,7 +169,7 @@ The selected CLI's generated schema exposes a nullable total turn duration but n
 
 ## Native MCP sharing qualification
 
-Five socket cases ran against the selected unmodified CLI from upstream source `abf4bb91ec49fbf443ccec0069f9cab5dd1462d8`. Three passed: compatible modern sharing, concurrent input routing, and an explicitly marked legacy helper with the modern protocol feature disabled. Two failed at thread startup: an unmarked helper returned an empty discovery result, and a marked legacy helper was used with the modern protocol feature enabled. An empty successful discovery result is a synthetic compatibility case, not a conforming method-not-found error or proof of a legacy server.
+Five historical socket cases ran against the then-selected unmodified CLI from upstream source `abf4bb91ec49fbf443ccec0069f9cab5dd1462d8`. Three passed: compatible modern sharing, concurrent input routing, and an explicitly marked legacy helper with the modern protocol feature disabled. Two failed at thread startup: an unmarked helper returned an empty discovery result, and a marked legacy helper was used with the modern protocol feature enabled. An empty successful discovery result is a synthetic compatibility case, not a conforming method-not-found error or proof of a legacy server.
 
 Two proxy clients sharing one native app-server and one synthetic account home do not prove sharing between separate app-server processes or account isolation. Decodex has not added a launch flag that enables sharing; the native user setting was not inspected. Follow [Decodex issue #2522](https://github.com/acg-box/decodex/issues/2522) and requalify the exact unmodified CLI, helpers and retained mixed-server and child-input regressions before adding a sharing default.
 
@@ -204,6 +216,8 @@ A Work result or delivery identifies a linked native turn; it does not prove tha
 
 Five exact-artifact native tests passed: the public-socket fork workflow, source-provider fork control, archive roundtrip, parallel Code Mode tool control and startup configuration control. The fork control exercises legacy and paginated native history, Goal exclusion, provider preservation, restart, archive/restore and refusal to delete a parent with attached children. The public-socket case creates nine source turns and checks all three explicit branch choices, saved-choice retries, retained exact-source listing and canonical draft recovery. Creating or discovering a branch makes no model request. A separate explicit send adds one request to the attached branch and leaves the source history unchanged.
 
+Current compatibility keeps the original source boundary as provenance but validates an empty child-visible history for attached creation. Native inference retains the source context, subsequent child turns are independent, and the original history is unchanged. Attachment requires paginated source history. The raw legacy negative control and ordinary legacy fork controls remain explicit. These current checks supersede the historical child-prefix expectation without extending its installed-app scope.
+
 The focused local cohorts passed 57 backend tests and six UI tests with zero unmatched selectors. The complete workspace run passed 3006 tests with 1227 skipped and one passed-test LEAK in the streamed-draft composer test. That test then passed cleanly in the focused UI cohort. The final affected checks also passed strict Clippy for five packages, nightly formatting, 28 Python tests, the schema59 database gate and a 1076-file style audit with zero findings. The complete workspace run preceded later test-fixture diagnostics and formatting; final affected and native checks followed those changes. These cohorts overlap and do not explain the earlier cleanup marker.
 
 The native provider is synthetic. Transport fixtures cover uncertain creation and recovery; no physical crash was injected. The newest-100 query bound was reviewed in source without a 101-record stress run. `rg` integrity was verified but this cohort did not invoke it. External native branch adoption, automatic follow-up, scheduling, result merge and deletion controls are outside this feature. Archived branches retain native restoration. No installed desktop interaction or real-account acceptance was performed. No installation, release, runtime migration, review-cursor advance or schedule change is implied. Use the [portable runner](../operations/commands-and-validation.md#attached-branch-native-regression-fixtures) to reconstruct affected proof after local cleanup.
@@ -238,15 +252,17 @@ The signed stage test checks that the app contains the runtime requirement and S
 
 The [portable qualification record](../../automations/upstream/qualification.json) identifies exact source tests, artifact and helper hashes, reusable probes and limits. The [retained evidence index](../../automations/upstream/retained-evidence.json) identifies the current native consumers. Native run receipts retain raw output; Git retains replaced compact records.
 
-The current source cohort uses a `dev-small` app-server helper with explicit `CARGO_BIN_EXE_*` paths; helper-spawn cases also use the exact signed candidate CLI. The qualification record preserves both roles and the original assertions. Older source fixtures that require private startup arguments retain their own launcher and build limits in Git history. Passing a source fixture does not establish behavior through a production API. Test supported production inputs against the exact selected CLI and helpers as a separate step.
+The source cohort uses `dev-small` helpers. Nextest can replace requested `CARGO_BIN_EXE_*` paths with source build outputs. Only the separate Decodex native cohort and standalone probes establish exact production CLI behavior. The direct signed Code Mode helper test bypasses Nextest path replacement. The qualification record preserves these roles and the original assertions. Older source fixtures that require private startup arguments retain their own launcher and build limits in Git history. Passing a source fixture does not establish behavior through a production API. Test supported production inputs against the exact selected CLI and helpers as a separate step.
 
 Earlier conditional remote-credential snapshot cases failed because the host resolver returned a reserved address or could not resolve a fixture hostname. Native address protection remained enabled. Current Decodex runtime consumers use app-server stdio and do not provision a remote executor. The record qualifies retained consumers within that scope; it does not qualify the failed conditional remote behavior. Reopen that proof when a concrete retained remote consumer exists or the fixture can use compatible system DNS. Preserve the failure evidence, original assertions and native policy.
 
 ## Terminal errors and external context
 
-The terminal projection retains the native turn status and bounds its error details. Capacity retry requires an exact failed-turn readback with `serverOverloaded`. The `quota_other_errors_and_missing_history_do_not_schedule_capacity_retries` test includes the `other` error classification. The `failed_turn_keeps_public_reason_and_explicit_bounds` test checks the public failure reason and its size and privacy limits.
+The terminal projection retains the native turn status and bounds its error details. Capacity retry requires an exact failed-turn readback with `serverOverloaded`. The `quota_other_errors_and_missing_history_do_not_schedule_capacity_retries` test includes `other` and `policyCapacityUnavailable`; neither selects an overload retry. The `failed_turn_keeps_public_reason_and_explicit_bounds` test checks the public failure reason and its size and privacy limits.
 
 The exact-artifact `model_errors.py` probe covers HTTP 404, SSE `error` and SSE `response.failed` carrying `model_not_found`. Each candidate case makes one request without retry and preserves `modelNotFound` plus the provider message in live, stored and cold history. The native capacity fixture also checks that Decodex does not schedule another attempt. Source tests cover additional HTTP and WebSocket mappings; these source cases are not additional artifact transport executions.
+
+The same model-error probe checks `policy_capacity_unavailable` over HTTP 503 and SSE `response.failed`. Native `policyCapacityUnavailable` and the provider message survive live, stored and cold reads. The HTTP fixture permits three native requests with `request_max_retries=2`; the SSE case permits one. Native transport retry is distinct from a Decodex continuation, and no Decodex automatic retry is added. Bare SSE `error` policy classification is outside the upstream change and this qualification.
 
 `large_catalog.py` checks native discovery from an explicitly configured synthetic catalog larger than 1 MiB. `response_identity.py` checks that a provider message without an ID keeps one native identity through live events, storage and cold read. The identity probe passes on both the previous and candidate artifacts; it does not establish a reproduced defect in the previous artifact.
 
@@ -274,6 +290,8 @@ The fixture is ignored by default. It checks the named CLI with synthetic input 
 
 The reusable `thread_settings.py` probe selects a service tier and reasoning summary through native `thread/settings/update`. It completes one turn, closes the native process, changes the global defaults and resumes the same task without overrides. It checks the resumed tier and the next provider request in both legacy and paginated history. Each case permits exactly two inference requests, so recovery cannot hide the result by replaying a turn.
 
+Two further settings cases inject stale turn context after an acknowledged permission update. Fork and cold resume retain the acknowledged on-request policy, automatic reviewer and read-only permissions in both history modes, with one inference request each. A separate unchanged-settings case checks that cold resume adds no checkpoint. The startup probe checks that both a missing `.env` and a directory at `.env` exit `--version` promptly.
+
 The `log_storage.py` probe checks the default diagnostic database, an explicit `log_dir`, and an environment-selected state directory with a separate diagnostic directory. A fourth case verifies that an unavailable diagnostic directory does not prevent unauthenticated `login status`. These cases use system-temporary homes. Managed storage precedence is covered by the recorded source tests; this probe does not qualify NFS or migrate existing databases.
 
 Set `QUALIFIED_CODEX_BINARY`, `QUALIFIED_CODEX_SOURCE_COMMIT` and `DECODEX_QUALIFICATION_OUTPUT` as described in [Commands and validation](../operations/commands-and-validation.md#qualify-retained-native-behavior), then run:
@@ -281,6 +299,7 @@ Set `QUALIFIED_CODEX_BINARY`, `QUALIFIED_CODEX_SOURCE_COMMIT` and `DECODEX_QUALI
 ```sh
 python3 crates/decodex-runtime/tests/native_qualification/thread_settings.py
 python3 crates/decodex-runtime/tests/native_qualification/log_storage.py
+python3 crates/decodex-runtime/tests/native_qualification/dotenv_startup.py
 ```
 
 The [qualification record](../../automations/upstream/qualification.json) binds each probe to the exact CLI and packaged helpers. The [earlier storage before/after receipt](https://github.com/acg-box/decodex/blob/f6640838f0997493704ff87e46205b46a700eef2/automations/upstream/qualification.json) retains its original artifact scope; the current record contains the selected artifact's requalification. The checked-in probe implementations remain available after local build products are removed. A rebuilt artifact requires its own identity and qualification; these results do not establish installed-app or real-provider acceptance.
@@ -318,7 +337,7 @@ The ignored prediction fixture checks parent context and tool-catalog inheritanc
 
 For a runtime change to prediction compaction, also test a fork above the compaction threshold. Check pre-turn, tool-continuation and post-turn boundaries in both native history modes. The prediction must preserve its inherited context while the parent retains normal compaction. Check context-limit failures and model-requested context resets separately. The local inheritance fixture alone does not cover these cases.
 
-The native launch fixture checks description-first Code Mode, child context defaults, Agent message wakeups and fork-prefix preservation while retaining boolean and table forms of the user's multi-agent selection. Semantic prefix preservation does not prove provider cache savings. Synthetic context-limit and compaction probes do not prove real-provider latency or cost improvements. Code Mode transport remains controlled by native configuration; this integration adds no transport selector or universal tool-output retention policy.
+The native launch fixture checks admitted Code Mode launch arguments, child context defaults, Agent message wakeups and fork-prefix preservation while retaining boolean and table forms of the user's multi-agent selection. Semantic prefix preservation does not prove provider cache savings. Synthetic context-limit and compaction probes do not prove real-provider latency or cost improvements. Code Mode transport remains controlled by native configuration; this integration adds no transport selector or universal tool-output retention policy.
 
 ## Question routing, completion and cancellation
 
@@ -332,7 +351,7 @@ These fixture definitions specify what can be checked. They do not claim a new e
 
 The `retained_project_agent_work` entry in the [portable index](../../automations/upstream/retained-evidence.json) is the reconstruction authority for this change. It records contracts, current source symbols and digests, tests read separately from tests executed, exact selectors/entrypoints, artifact/helper/schema identities and public delivery. Detailed raw receipts stay in the native automation directory. Missing old local products do not erase certified earlier ranges; a rebuilt artifact needs its own identity and qualification.
 
-The selected official source is `970111f6cb62cc02fe36a82ea7d71b37a2889c97`. The package passed explicit `cargo +stable make prepare-codex` component, helper and schema verification. It did not replace the installed application or advance the upstream source-review cursor.
+The original Project, Agent and Work qualification used official source `970111f6cb62cc02fe36a82ea7d71b37a2889c97`; current runtime qualification is separate. The package passed explicit `cargo +stable make prepare-codex` component, helper and schema verification. It did not replace the installed application or advance the upstream source-review cursor.
 
 The following table preserves the original architecture qualification and its separate media follow-up.
 

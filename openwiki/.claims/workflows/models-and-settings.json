@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:6cea85949f5a9f8dfe95d86d91a784b1f7faf0c63eaee1bd160b784419009179",
+  "pageVersion": "sha256:71576a496806735445f797c0998655f531daf05fc4de6e1823148cea91c024ea",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -52,8 +52,12 @@
     },
     {
       "id": "claim_44c1374d75fc42698bc1e9b1bcbfd46c",
-      "statement": "The fixed attested app-server launch enables description-first Code Mode, native child context limits, Agent message wakeups and dotted fork-prefix preservation while leaving multi-agent enablement and transport selection native-owned.",
+      "statement": "The attested launch requests native child context limits, Agent message wakeups and dotted fork-prefix preservation while preserving native multi-agent and transport selection. Its retained description-first argument is accepted as a removed native feature.",
       "evidence": [
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
+        },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L131-L151",
           "version": "repo-lines-v1:sha256:a6b2eef1867776015de103e94d4bd067aedc8577c70159c8c792ab426e27b791:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2YjU1MTM4Y2EyM2U2ZGFkMjJiNjQ4ZjgyOWNlZGM4MWQyMDNiMTlmMTc2MzRkZjZiZTc2MGY1M2JlNGVmOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNmU0ZjMxZGM3MTM2OTU2NmI1MWNjMWExOTVkNDUwY2RmODU3NWU2ZDdhNzYxYzU2NDJiYTMwMjVkYzM0NzMifQ"
@@ -66,7 +70,7 @@
     },
     {
       "id": "claim_8c580886dcb44687a794ca95d8536963",
-      "statement": "Decodex cold resume can inherit saved native thread settings without creation overrides, and its model-only update omits tier, provider and collaboration settings. The reusable thread-settings probe qualifies saved tier and summary across changed global defaults in legacy and paginated history against the selected artifact, without installed-app acceptance.",
+      "statement": "Cold resume inherits saved native settings without creation overrides, and model-only updates omit tier, provider and collaboration settings. Exact-artifact probes cover tier/summary recovery and acknowledged approval/reviewer/read-only permissions despite stale context across fork and cold resume in legacy and paginated history, without installed-app acceptance.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_model_selection.rs#L10-L70",
@@ -78,7 +82,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py",
-          "version": "repo-file-v1:sha256:781055b5e62f333908268a1cabcc027cb700ce4ebc9e0ee8af5b2bd29e7bd65d"
+          "version": "repo-file-v1:sha256:cf4bb4274aac52b69ebd3936204a2f1570753e2e38c2afc4fd9796deaa278049"
         }
       ]
     },
@@ -88,7 +92,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:16ddc9a1e1dfcd3e2bf324db5e7734ff021ac8f42588bac8c530bba3bc9b95b4"
+          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
@@ -120,7 +124,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
@@ -166,25 +170,25 @@
     },
     {
       "id": "claim_9815b02e2bec42e2972b00e7894ad1f4",
-      "statement": "Attached branches preserve the exact source provider after a changed default, start without a copied native Goal and leave the source Goal unchanged. Creation and navigation send no input; retained qualification covers both history modes and restart without installed desktop acceptance.",
+      "statement": "Attached branches preserve source provider and Goal ownership and create no model input. Current qualification covers paginated attachment, native legacy-attachment refusal, ordinary forks in both history modes and restart; installed desktop acceptance remains separate.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:2c5c430bbc82ea3e8dffcad63bb2d3dd047ff9af9e1db53ca4ba43515a0aeaf0"
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
           "version": "repo-file-v1:sha256:eb622f54077106962241838083ffe1a07b73c2309ac7c509eadf80470b285cf9"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs#L254-L352",
-          "version": "repo-lines-v1:sha256:a0e395c6216763c087a3b482cf375ada1bb342d82915b71658ca20887ea5efc6:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4MDE1NTZkOTdhZGJiODJkZjk1MzNiMWJhYTA2YTY3MThlNzgzMWJjNWMwY2FiZjc0MzkyMGE5ZDU2ZGUyNDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxZmFhNTc2N2VkYjU5ZGU5NmFkZjA5MzdjMDgwMDQzZDc2OTcyN2MzNWQxYmIwNGE2OGFlYTM1YTNiZTIwNTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3NGRhNjA3ZDQ2YWRlYjI1OTU2MTRhNjJlMTZiMWM2NDAwM2U1ZWMxZjllNGYyOWE5YTNkNzM4MDI1MzVkZWQifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs#L254-L367",
+          "version": "repo-lines-v1:sha256:c6bc095fb9b38d4f88a01ac5f067ff34b13a1371d8d289306a46cd442cd7fa4e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5ODAxNTU2ZDk3YWRiYjgyZGY5NTMzYjFiYWEwNmE2NzE4ZTc4MzFiYzVjMGNhYmY3NDM5MjBhOWQ1NmRlMjQzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2Nzc3Y2JkNWZmMjUyMDg5M2YzNzM0ZGExZjFkYmExMTM4OTdjMDhhODk4NTY1NDIwOTAzMzcyNGE4MjkwZTM0IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhZTFlOTVhNDBjYzVkMDg4NTEwNDQzYjY4NDk1MzNkNWUwMTQwYjE0OWU2NzkzZGE2ODMzNTczNjUzZGFiNTEyIn0"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T18:33:20.613Z"
+    "at": "2026-10-27T21:12:13.971Z"
   }
 }

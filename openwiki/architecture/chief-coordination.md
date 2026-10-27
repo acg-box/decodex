@@ -5,7 +5,7 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T18:33:20.613Z
+    at: 2026-10-27T21:12:13.971Z
 sources:
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
@@ -33,6 +33,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-991553c8d747a54ecf5a9376
     resource: repo://crates/decodex-core/src/work.rs
+  - id: openwiki-source-4a57fba4bea69171318c6323
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-1b314e86ab2f1adbc0ede4c8
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs
   - id: openwiki-source-725813d500ec103482924456
@@ -97,7 +99,7 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-26T17:08:35.248Z" }
+generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
 ---
 
 # Project, Agent and Work coordination
@@ -196,7 +198,7 @@ Review Details can retain exposed native assistant output. The selected native p
 
 A user can create a native branch before an input, after its completed turn, or as an attached branch after that turn. This is a separate action from a same-thread history edit. The source conversation keeps its history. Codex owns the new thread and copied context. Ordinary forks defer copied Goal continuation. Attached forks use `attachToSource`, start without the source Goal snapshot and leave the original Goal with its original conversation.
 
-Decodex reserves a new local work item before the native request. It saves the acknowledged native ID before a separate history read. A lost creation reply stays uncertain and cannot authorize another fork. Recovery of a known ID reads its exact source and prefix without starting a model turn.
+Decodex reserves a new local work item before the native request. It saves the acknowledged native ID before a separate history read. A lost creation reply stays uncertain and cannot authorize another fork. Recovery of a known ID validates its exact source boundary and expected visible history without starting a model turn. An attached child starts with no visible turns; native inference still retains the reviewed parent context. The saved source turn IDs remain provenance for the branch boundary.
 
 An ordinary branch is an independent user-created conversation. An attached branch keeps its exact source Agent as its local parent. It is a persistent Agent conversation, not a native Subagent. Both forms keep the source role, Project association and recorded tool version. It does not copy pending inbox work or dependency edges. An acknowledged fork has an explicit ownership record that permits it to use the source process. Independent Agents do not gain that authority from an old parent identifier. A branch does not create another Assistant or silently upgrade native tools.
 

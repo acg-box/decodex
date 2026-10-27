@@ -12,10 +12,12 @@ from pathlib import Path
 from native_session import Session
 
 
-def case(transport):
+def case(transport, policy_capacity=False):
     requests = []
-    message = "The selected fixture model is unavailable."
-    error = {"code": "model_not_found", "message": message}
+    message = ("Policy-restricted capacity is unavailable. Please try again later."
+               if policy_capacity else "The selected fixture model is unavailable.")
+    error = {"code": "policy_capacity_unavailable" if policy_capacity else "model_not_found",
+             "message": message}
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -26,9 +28,10 @@ def case(transport):
             requests.append(self.path)
             if transport == "http":
                 payload = json.dumps({"error": error}).encode()
-                self.send_response(404)
+                self.send_response(503 if policy_capacity else 404)
                 self.send_header("Content-Type", "application/json")
-                self.send_header("Retry-After", "0")
+                if not policy_capacity:
+                    self.send_header("Retry-After", "0")
             else:
                 event = ({"type": "error", "error": error} if transport == "sse_error"
                          else {"type": "response.failed", "response": {"id": "failed", "error": error}})
@@ -76,11 +79,13 @@ def case(transport):
                 recovered = cold.call("thread/read", {"threadId": tid, "includeTurns": True})["thread"]
             finally:
                 cold.close()
-            result = {"transport": transport, "request_count": len(requests), "live": live["error"],
+            result = {"transport": transport, "policy_capacity": policy_capacity, "request_count": len(requests), "live": live["error"],
                       "status": live["status"], "retrying_errors": sum(e.get("willRetry") is True for e in errors),
                       "stored": stored["turns"][-1]["error"], "cold": recovered["turns"][-1]["error"]}
-            expected = {"message": message, "codexErrorInfo": "modelNotFound"}
-            result["passed"] = (len(requests) == 1 and live["status"] == "failed" and bool(errors)
+            expected = {"message": message, "codexErrorInfo": "policyCapacityUnavailable" if policy_capacity else "modelNotFound"}
+            expected_requests = 3 if policy_capacity and transport == "http" else 1
+            result["expected_request_count"] = expected_requests
+            result["passed"] = (len(requests) == expected_requests and live["status"] == "failed" and bool(errors)
                                 and all(e.get("willRetry") is False for e in errors)
                                 and all(result[key].get("message") == expected["message"]
                                         and result[key].get("codexErrorInfo") == expected["codexErrorInfo"]
@@ -95,7 +100,8 @@ if __name__ == "__main__":
     binary = Path(os.environ["QUALIFIED_CODEX_BINARY"])
     result = {"source_commit": os.environ["QUALIFIED_CODEX_SOURCE_COMMIT"],
               "cli_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
-              "cases": [case(transport) for transport in ("http", "sse_error", "sse_failed")]}
+              "cases": [case(transport) for transport in ("http", "sse_error", "sse_failed")]
+                       + [case(transport, True) for transport in ("http", "sse_failed")]}
     Path(os.environ["DECODEX_QUALIFICATION_OUTPUT"], "model-errors-native.json").write_text(
         json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))

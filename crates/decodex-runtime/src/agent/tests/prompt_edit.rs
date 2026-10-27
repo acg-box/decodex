@@ -44,7 +44,7 @@ fn transport(
 
 			let visible = if is_fork {
 				fork.clone().unwrap_or_else(|| {
-					history.lock().unwrap()[..if mode == "fork-recovery-after" { 2 } else { 1 }]
+					history.lock().unwrap()[..if mode == "fork-recovery-after" { 0 } else { 1 }]
 						.to_vec()
 				})
 			} else {
@@ -152,7 +152,7 @@ fn fork_prefix(request: &Value, visible: &[Value]) -> Vec<Value> {
 		request["params"][if after { "lastTurnId" } else { "beforeTurnId" }].as_str().unwrap();
 	let end = visible.iter().position(|t| t["id"] == selected).unwrap() + usize::from(after);
 
-	visible[..end].to_vec()
+	if request["params"]["attachToSource"] == true { Vec::new() } else { visible[..end].to_vec() }
 }
 
 #[tokio::test]

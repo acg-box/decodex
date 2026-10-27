@@ -22,6 +22,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
   - id: openwiki-source-0d053d4de2f668168f982629
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
+  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
+    resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
@@ -36,6 +38,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
+  - id: openwiki-source-4a57fba4bea69171318c6323
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process.rs
   - id: openwiki-source-b2869e6da778a74cb6afc667
@@ -74,12 +78,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/host_credentials.rs
   - id: openwiki-source-003f00974f49a9f106bbcbea
     resource: repo://database/schema.sql
+  - id: openwiki-source-58c0167d31c3e40dc89591ab
+    resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
+generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T18:33:20.613Z
+    at: 2026-10-27T21:12:13.971Z
 ---
 
 # Product scope and native ownership
@@ -114,7 +120,7 @@ These views are available through local protocol 4.0 and the same source owners.
 
 ## Current optional decisions
 
-Items 1–3 are delivered through the selected read-only views above. The user selected **item 4, persistent attached branches**. An explicit completed-turn branch uses native attachment, retains the exact source relationship and can be reopened from Agent preferences. Creation sends no input and copies no native Goal. It adds no automatic follow-up, scheduling, result merge or deletion policy. The retained `retained_attached_forks` evidence identifies its regressions and qualification limits.
+Items 1–3 are delivered through the selected read-only views above. The user selected **item 4, persistent attached branches**. An explicit completed-turn branch uses native attachment, retains the exact source relationship and can be reopened from Agent preferences. Creation sends no input and copies no native Goal. The child-visible history starts empty, while native inference retains the reviewed parent context. Source turn IDs preserve boundary provenance. Native attachment requires paginated source history; the public branch flow already checks this. It adds no automatic follow-up, scheduling, result merge or deletion policy. The retained `retained_attached_forks` evidence identifies its regressions and qualification limits.
 
 **Item 5, the native Guardian V3 experiment, waits for upstream maturity. Item 6, a custom managed configuration server, is deferred by the user.** Neither is selected for implementation. Existing global Guardian and native managed requirements keep their current scope. There is no outstanding new decision in this six-item list.
 
@@ -144,7 +150,7 @@ Eligible root conversations expose native read receipts in task preferences. Rea
 
 The client also exposes a bounded, explicitly invoked ephemeral prediction fork. It inherits the loaded parent's context, tools and permissions. It is not a tool-free recap, an automatic background job, or a composer suggestion interface. Its caller must own authorization and event routing. The isolated recap path remains separate.
 
-Native launch policy enables description-first tool ordering, full-fork prefix preservation, model-specific subagent context defaults and Agent message wakeups. The native configuration still selects Code Mode hosting transport.
+Native launch policy requests full-fork prefix preservation, model-specific subagent context defaults and Agent message wakeups. The retained description-first argument is accepted as a removed native feature, so current tool ordering stays native-owned. The native configuration still selects Code Mode hosting transport.
 
 Background compaction and retention of delegation instructions are configurable native additions. Task preferences > Context defaults reads and writes the same native configuration used by manual `config.toml` edits. Explicit off values remain valid; saving a default does not restart loaded conversations. The panel distinguishes a saved user value from a project override.
 
