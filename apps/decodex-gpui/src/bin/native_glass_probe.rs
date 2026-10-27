@@ -1,4 +1,5 @@
 //! Isolated native compositing experiment. Does not connect to the Decodex daemon.
+#![cfg(not(test))]
 #![allow(dead_code)]
 #[path = "../composer_input.rs"] mod composer_input;
 #[cfg(target_os = "macos")]

@@ -50,12 +50,17 @@ gpui              = { workspace = true, features = ["leak-detection", "test-supp
 tempfile          = { workspace = true }
 tokio-tungstenite = { workspace = true }
 
+# Diagnostic executables reuse app modules; shared tests run in the app target.
 [[bin]]
+bench             = false
 name              = "decodex-gpui-workbench-visual-capture"
 path              = "src/bin/workbench_visual_capture.rs"
 required-features = ["visual-capture"]
+test              = false
 
 [[bin]]
+bench             = false
 name              = "decodex-native-glass-probe"
 path              = "src/bin/native_glass_probe.rs"
 required-features = ["native-glass-probe"]
+test              = false
