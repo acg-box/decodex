@@ -2431,6 +2431,144 @@
           "unmatched_selectors": []
         }
       }
+    },
+    {
+      "id": "tls-dependency-certificate-security",
+      "contract": "Keep account refresh and component-download HTTPS clients on the locked TLS graph that rejects distrusted certificate paths. Preserve the native voice loopback and cancellation behaviors while qualifying local dependency changes.",
+      "source_symbols": [
+        "crates/decodex-account-login/src/system_proxy.rs#RefreshTransport::client",
+        "crates/decodex-components/src/install.rs#download_with",
+        "apps/decodex-gpui/src/native_voice_transport.rs#tests::call_lifecycle",
+        "apps/decodex-gpui/src/native_voice_transport.rs#tests::connect_fixture_peer"
+      ],
+      "selected_source_sha256": {
+        "Cargo.lock": "97851c9cf131a70c7ca6c0d08e12c3e7e0ce420e2a04d9a75e1d44a13faf69bf",
+        "crates/decodex-account-login/src/system_proxy.rs": "83d2e0553e89745deccf3698581f1789eb41c373935f52efc792ba5568f340ce",
+        "crates/decodex-account-login/src/system_proxy_tests.rs": "36c6bc83dc80c2c4111120f05c4fb1331809c7e13760cece7e4bbf531f568c02",
+        "crates/decodex-components/src/install.rs": "1c36bd38f86efc5ffc9e8fa13006d7abef050209189ec8a81d56cb9751837984",
+        "apps/decodex-gpui/src/native_voice_transport.rs": "40aaeabf3f491b33a48a7e6b4ee67ebf202cf8761622e84d9749f5f2be2b1bbf"
+      },
+      "packages": {
+        "rustls": {
+          "version": "0.23.46",
+          "source_commit": "f04804fa13341a9b1dc02b5d1dd8a746f2c4b7fb",
+          "crate_sha256": "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
+        },
+        "rustls-webpki": {
+          "version": "0.103.16",
+          "source_commit": "8ecdcc76f56b68fda67a6adf7976f5eed5006a4c",
+          "crate_sha256": "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
+        },
+        "webpki-root-certs": {
+          "version": "1.0.10",
+          "source_commit": "70760478b9d3ea729b22faa0b5324da38a297c1c",
+          "crate_sha256": "58ec80e73fd8baf57bf0d9615554c75348bda990d6d5bbeab964dd068319fecb"
+        }
+      },
+      "artifact": {
+        "scope": "macOS arm64 full-workspace and voice tests",
+        "webrtc_release": "https://github.com/livekit/rust-sdks/releases/tag/webrtc-89d790b",
+        "webrtc_archive_sha256": "9f25fea48588deac18d68e120d18b33af7ef10f921f74b7c57f66b642262c348",
+        "libwebrtc_sha256": "979b6310063a49a022bc11cb55397e3ccef887ef23b613fed43afdc4769ea75e",
+        "gui_test_binary_sha256": "d20eeaeba5577c3d616d784f29d42637a60f79d6e4fc4a41f14609c54756957e",
+        "codex_runtime_schema": "Not changed or qualified by this dependency batch.",
+        "preparation": "Download the linked official WebRTC release archive, verify its recorded SHA-256, extract it in a system-temporary directory, and set VERIFIED_WEBRTC to its mac-arm64-release directory. This is a fresh artifact check, not proof that a deleted original was rebuilt."
+      },
+      "test_entrypoints": [
+        "decodex-account-login and decodex-components workspace tests",
+        "decodex-gpui::bin/decodex-gpui",
+        "rustls-webpki upstream src/lib.rs tests"
+      ],
+      "tests_read_not_executed": [
+        "rustls src/compress.rs#test_brotli_rejects_large_window"
+      ],
+      "executed_regressions": {
+        "baseline_and_candidate_full_workspace_check": "passed on macOS arm64 with the same verified WebRTC artifact",
+        "baseline_and_candidate_account_components": {
+          "executed_each": 36,
+          "passed_each": 36,
+          "skipped_each": 2,
+          "unmatched_selectors": []
+        },
+        "candidate_headless": {
+          "executed": 1891,
+          "passed": 1891,
+          "skipped": 140,
+          "unmatched_selectors": []
+        },
+        "candidate_headless_lint": {
+          "packages_executed": 11,
+          "passed": 11
+        },
+        "webpki_distrust": {
+          "tests": [
+            "verify_cert::tests::distrusted_spki"
+          ],
+          "executed": 1,
+          "passed": 1,
+          "unmatched_selectors": [],
+          "notes": "Official source at the package commit, with ring enabled. The packaged-source attempt lacked test fixtures; an earlier retry without ring selected zero tests."
+        },
+        "candidate_voice": {
+          "tests": [
+            "native_call_exchanges_audio_captions_mutes_and_releases_buffers",
+            "remote_channel_loss_reports_failure_and_releases_buffers",
+            "cancellation_releases_audio_before_and_after_the_offer_without_an_answer",
+            "cancelled_offer_continuation_cannot_resume_or_block_the_next_call"
+          ],
+          "executed": 4,
+          "passed": 4,
+          "skipped": 1086,
+          "unmatched_selectors": [],
+          "prior_attempts": "One initial test and two recheck cases timed out while the firewall queued inbound flows. The user handled the system prompt; the same two tests and the four-case run then passed. Preserve the original failure evidence."
+        },
+        "candidate_voice_stress": {
+          "iterations": 20,
+          "executed": 40,
+          "passed": 39,
+          "failed": 1,
+          "retries": 0,
+          "unmatched_selectors": [],
+          "failure": "remote_channel_loss_reports_failure_and_releases_buffers failed its post-unmute audio-energy threshold after connection; cause unconfirmed. The runner returned exit 0 despite reporting a failed iteration."
+        },
+        "paired_voice_comparison": {
+          "entrypoint": "decodex-gpui::bin/decodex-gpui test harness",
+          "iterations_per_binary": 20,
+          "executed": 80,
+          "passed": 80,
+          "retries": 0,
+          "unmatched_selectors": [],
+          "tests": [
+            "native_call_exchanges_audio_captions_mutes_and_releases_buffers",
+            "remote_channel_loss_reports_failure_and_releases_buffers"
+          ],
+          "baseline_test_binary_sha256": "016c874ec44938866623bbb9bfd0da95ec553db960c0402b74328080b5b2bc63",
+          "candidate_test_binary_sha256": "d20eeaeba5577c3d616d784f29d42637a60f79d6e4fc4a41f14609c54756957e",
+          "notes": "The two exact selectors were each checked against both executable identities before the interleaved comparison. The earlier 39/40 stress result remains separate."
+        }
+      },
+      "commands": [
+        "LK_CUSTOM_WEBRTC=\"$VERIFIED_WEBRTC\" cargo +stable check --locked --all-features --all-targets --workspace",
+        "cargo +stable nextest run --locked --all-features -p decodex-account-login -p decodex-components",
+        "cargo +stable nextest run --locked --workspace --tests --examples --benches --all-features --exclude decodex-gpui",
+        "cargo +stable make lint-rust-headless",
+        "cargo +stable test --locked --manifest-path <official-webpki-source>/Cargo.toml --lib --features ring distrusted_spki",
+        "LK_CUSTOM_WEBRTC=\"$VERIFIED_WEBRTC\" cargo +stable nextest run --locked -p decodex-gpui --all-targets --all-features -E \"binary_id(decodex-gpui::bin/decodex-gpui) and (test(native_call_exchanges_audio_captions_mutes_and_releases_buffers) or test(remote_channel_loss_reports_failure_and_releases_buffers))\" --stress-count 20 --retries 0 --no-fail-fast --test-threads 1",
+        "LK_CUSTOM_WEBRTC=\"$VERIFIED_WEBRTC\" cargo +stable nextest run --locked -p decodex-gpui --all-features -E \"test(native_call_exchanges_audio_captions_mutes_and_releases_buffers) or test(remote_channel_loss_reports_failure_and_releases_buffers) or test(cancellation_releases_audio_before_and_after_the_offer_without_an_answer) or test(cancelled_offer_continuation_cannot_resume_or_block_the_next_call)\" --test-threads 1 --retries 0 --no-fail-fast"
+      ],
+      "audit": {
+        "rustsec_db_revision": "99670cfc0bc574433034b75876a4b791ccaa2efb",
+        "baseline_vulnerabilities": 9,
+        "candidate_vulnerabilities": 3,
+        "remaining": "Three build-time zip advisories and separate unmaintained/unsound warnings at observation."
+      },
+      "graph_limits": "Cargo also reselected existing windows-sys 0.61.2 for six target-specific consumers and getrandom 0.3.4 for tempfile. Both getrandom versions use the macOS getentropy backend for the fallback seed; Windows was not built.",
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2528",
+      "delivery_state_source": "Read the linked pull request for merge and exact-head CI state.",
+      "limits": "Synthetic local tests and a verified build artifact do not establish live HTTPS, physical audio, other-platform, installed-app or release acceptance. The isolated unmute-energy failure has no established cause.",
+      "baseline_main": "a7a9121e089f55aebbf8615783a478aedc68cbd8",
+      "tested_source_head": "94c08acd3682bf34f67198937ac1da7d25b1a28a",
+      "unresolved_voice_issue": "https://github.com/acg-box/decodex/issues/2529"
     }
   ],
   "retained_native_diagnostics": {
