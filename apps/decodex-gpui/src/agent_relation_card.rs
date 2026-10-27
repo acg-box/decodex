@@ -130,7 +130,7 @@ impl Layout {
 		// Once type reaches its readable floor, retain a useful reading column
 		// instead of continuing to narrow the bubble at the camera's rate.
 		self.spacing(256.)
-			.max(self.pixel(self.activity_size() * 22.))
+			.max(self.pixel(self.activity_size() * 23.))
 			.min(self.width - 2. * self.spacing(INSET_X))
 			.max(1.)
 	}

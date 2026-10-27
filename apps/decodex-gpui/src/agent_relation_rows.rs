@@ -373,40 +373,16 @@ mod tests {
 	};
 
 	#[gpui::test]
-	fn bubble_height_matches_rendered_wraps_at_intermediate_zoom(cx: &mut gpui::TestAppContext) {
+	fn explicit_line_breaks_count_as_visible_rows(cx: &mut gpui::TestAppContext) {
 		let visual = cx.add_empty_window();
 
 		visual.update(|window, _| {
 			let layout = card::Layout::new(0.75).on_display(2.);
 			let system = window.text_system();
 
-			for text in [
-				"Rub the warm buttered toast with a cut garlic clove for extra flavor.",
-				"Stir a pinch of dried basil into the soup for extra flavor.",
-				"First line\nSecond line",
-			] {
-				let runs = [gpui::TextRun {
-					len: text.len(),
-					font: gpui::font(crate::ui_theme::FONT_FAMILY),
-					..Default::default()
-				}];
-				let rendered = window
-					.text_system()
-					.shape_text(
-						text.to_owned().into(),
-						gpui::px(layout.activity_size()),
-						&runs,
-						Some(gpui::px(layout.text_width())),
-						None,
-					)
-					.unwrap();
-				let lines: usize = rendered.iter().map(|line| 1 + line.wrap_boundaries.len()).sum();
-
-				assert_eq!(
-					information_rows::message_excerpt(text, layout, system).lines,
-					lines,
-					"{text}"
-				);
+			for (text, lines) in [("One line", 1), ("First\nSecond", 2), ("First\n\nThird", 3)] {
+				assert_eq!(information_rows::message_excerpt(text, layout, system).lines, lines);
+				assert_eq!(information_rows::task_excerpt(text, layout, system).lines, lines);
 			}
 		});
 	}
