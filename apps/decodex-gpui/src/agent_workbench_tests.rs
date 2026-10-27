@@ -275,7 +275,8 @@ fn selecting_agents_keeps_the_single_composer_in_the_center(cx: &mut TestAppCont
 	surface.update(visual, |s, cx| {
 		s.workspace.graph_visible = true;
 		s.work_board.graph = false;
-		s.workspace.graph_expanded = true;
+		s.workspace.graph_expanded = false;
+		s.workspace.graph_panel_height = 600.;
 
 		s.select_workbench_agent("release", cx);
 	});
@@ -330,11 +331,8 @@ fn selecting_agents_keeps_the_single_composer_in_the_center(cx: &mut TestAppCont
 	assert!(visual.debug_bounds("floating-composer").is_some());
 
 	surface.update(visual, |s, cx| {
-		s.workspace.graph_expanded = false;
-
 		s.clear_workbench_agent(cx);
 	});
-
 	visual.update(crate::ui_frame::draw_frame);
 
 	assert!(visual.debug_bounds("workbench-body").is_some());
