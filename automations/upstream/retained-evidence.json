@@ -826,7 +826,82 @@
     "observed_native_turn_timings": {
       "contract": "retained_behavior_contracts#observed-native-turn-activity-timings",
       "surface": "Completed native turn details use the existing response footer hover; unavailable values, including full inference and runtime overhead, say Unknown. Observed intervals shorter than one second display milliseconds. Model output is observed activity and intervals can overlap.",
-      "delivery_reference": "https://github.com/acg-box/decodex/pull/2518"
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2518",
+      "full_critical_path_research": {
+        "upstream_source": "6a6e2fb1f0e9122464a75929c58356cb7af9e0cc",
+        "source_symbols": [
+          "codex-rs/core/src/turn_timing/report.rs#completed_critical_path",
+          "codex-rs/analytics/src/turn_critical_path.rs#TurnCriticalPath",
+          "codex-rs/analytics/src/client.rs#AnalyticsEventsDestination"
+        ],
+        "selected_schema_sha256": "50c4da5e674696a1504e97729bf69b42f867ebe88ab11428ed1de296df79e7dc",
+        "selected_schema_observation": "The selected CLI generated 460 experimental schema files; no critical-path or turn-profile fields were found.",
+        "source_tests_executed": [
+          {
+            "selector": "tests::suite::turns::events::critical_path_payload_preserves_capture_status_and_emits_once",
+            "entrypoint": "codex-rs/analytics/src/tests/suite/turns/events_tests.rs",
+            "executed": 1,
+            "passed": 1,
+            "unmatched_selectors": [],
+            "command": [
+              "cargo",
+              "+stable",
+              "nextest",
+              "run",
+              "--locked",
+              "--cargo-profile",
+              "dev-small",
+              "-p",
+              "codex-analytics",
+              "--lib",
+              "-E",
+              "test(critical_path_payload_preserves_capture_status_and_emits_once)",
+              "--no-fail-fast",
+              "--retries",
+              "0"
+            ]
+          },
+          {
+            "selector": "suite::v2::critical_path_analytics::critical_path_reaches_turn_event",
+            "entrypoint": "codex-rs/app-server/tests/suite/v2/critical_path_analytics_tests.rs",
+            "executed": 6,
+            "passed": 6,
+            "unmatched_selectors": [],
+            "preparation": [
+              "cargo",
+              "+stable",
+              "build",
+              "--locked",
+              "--profile",
+              "dev-small",
+              "-p",
+              "codex-app-server",
+              "--bin",
+              "codex-app-server"
+            ],
+            "environment": "CARGO_BIN_EXE_codex and CARGO_BIN_EXE_codex_app_server point to local research executables",
+            "command": [
+              "cargo",
+              "+stable",
+              "nextest",
+              "run",
+              "--locked",
+              "--cargo-profile",
+              "dev-small",
+              "-p",
+              "codex-app-server",
+              "--test",
+              "all",
+              "-E",
+              "test(critical_path_reaches_turn_event)",
+              "--no-fail-fast",
+              "--retries",
+              "0"
+            ]
+          }
+        ],
+        "limits": "Source tests use a modified research checkout and synthetic services. Native critical path is experimental, currently reaches analytics rather than an app-server field, and can be incomplete. Debug-only analytics capture is not a release integration. Existing observed timings and unknowns remain separate."
+      }
     }
   },
   "component_cache_repair": {
@@ -1562,7 +1637,7 @@
       ],
       "selected_source_sha256": {
         "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_sharing_tests.rs": "750d74e679480c9b19b1a6632c2bca8e3a18e51a2ba8d3c775e6f4518fdfb4fe",
-        "crates/decodex-runtime/src/account_launch/agent_process_native_tests.rs": "ae5c3048c3a27c3b8d006b1e3fd704cc53e028a53b0e5be0aa611cafbae6994c",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_tests.rs": "4e8ce537c16b80e86e0ed407065b442641c0c50aeda9e9c304d01e3a88a94433",
         "crates/decodex-runtime/src/account_launch/native_mcp_sharing.py": "c58796ab40f1a51aa28e9ea548523c87639362514c55d8d85c85b6d85e8427dc",
         "crates/decodex-runtime/src/agent/tests/native_subagent_mcp.rs": "1caffa78fe704e7b5d76edc5d3704006c6009a9eed1ea4dbaa1faafa501d8343",
         "crates/decodex-runtime/src/agent/tests/native_subagent_mcp_server.py": "0f5a92e7ffc4f828db4843764164c7aa5b9b2b56db1fe1452baeaf538c3519f6",
@@ -1910,7 +1985,179 @@
           "codex"
         ]
       },
-      "followup_delivery_reference": "https://github.com/acg-box/decodex/pull/2520"
+      "followup_delivery_reference": "https://github.com/acg-box/decodex/pull/2520",
+      "current_source_reconciliation": "The native test registry adds the separate socket-client module; the previously qualified sharing and child-input fixtures are unchanged."
+    },
+    {
+      "id": "native-mcp-multi-client-socket-research",
+      "contract": "Two independent native proxy clients can use one socket app-server process. For compatible modern local MCP, their calls use the same helper and a remaining client keeps it after the first client unsubscribes and exits. An unmarked legacy helper must stay private when mixed with a modern server.",
+      "source_symbols": [
+        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs#separate_clients_share_a_compatible_native_mcp_helper",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs#separate_clients_keep_unmarked_legacy_helpers_private"
+      ],
+      "selected_source_sha256": {
+        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs": "3c7640b6aa9bfda7527f2f931898bb8af6fee6d32b69ce1b97481d43861f555d",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_tests.rs": "4e8ce537c16b80e86e0ed407065b442641c0c50aeda9e9c304d01e3a88a94433",
+        "crates/decodex-runtime/src/account_launch/native_mcp_sharing.py": "c58796ab40f1a51aa28e9ea548523c87639362514c55d8d85c85b6d85e8427dc"
+      },
+      "selected_artifact": {
+        "source_commit": "abf4bb91ec49fbf443ccec0069f9cab5dd1462d8",
+        "cli_sha256": "b851d71b579cf184d5dd92b8fa7a476827c9c9e26a5baf305c1d25e4e577e956",
+        "schema_sha256": "50c4da5e674696a1504e97729bf69b42f867ebe88ab11428ed1de296df79e7dc"
+      },
+      "executed_regressions": [
+        {
+          "selector": "account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper",
+          "environment": "DECODEX_TEST_CODEX_BINARY=<qualified-cli>",
+          "command": [
+            "cargo",
+            "+stable",
+            "nextest",
+            "run",
+            "--locked",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "--run-ignored",
+            "only",
+            "--no-fail-fast",
+            "--retries",
+            "0",
+            "-E",
+            "test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper)"
+          ],
+          "executed": 1,
+          "passed": 1,
+          "unmatched_selectors": []
+        },
+        {
+          "selector": "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private",
+          "environment": "DECODEX_TEST_CODEX_BINARY=<qualified-cli>",
+          "command": [
+            "cargo",
+            "+stable",
+            "nextest",
+            "run",
+            "--locked",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "--run-ignored",
+            "only",
+            "--no-fail-fast",
+            "--retries",
+            "0",
+            "-E",
+            "test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private)"
+          ],
+          "executed": 1,
+          "passed": 0,
+          "failed": 1,
+          "unmatched_selectors": [],
+          "result": "Expected failure on the selected artifact: required unmarked legacy discovery returns an empty result and thread startup fails."
+        },
+        {
+          "selectors": [
+            "account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper",
+            "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private"
+          ],
+          "environment": "DECODEX_TEST_CODEX_BINARY=<modified-research-cli>",
+          "command": [
+            "cargo",
+            "+stable",
+            "nextest",
+            "run",
+            "--locked",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "--run-ignored",
+            "only",
+            "--no-fail-fast",
+            "--retries",
+            "0",
+            "-E",
+            "test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper) | test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private)"
+          ],
+          "executed": 2,
+          "passed": 2,
+          "unmatched_selectors": [],
+          "result": "The locally modified research runtime passed both modern sharing and mixed private legacy cases.",
+          "research_cli_sha256": "c9313a4989bc840d876a1749304cabd02d9cabc2e1df173c4a2bc0d0d4127342"
+        }
+      ],
+      "upstream_source_read": [
+        "codex-rs/codex-mcp/src/connection_pool.rs#McpConnectionPool",
+        "codex-rs/app-server-transport/src/transport/unix_socket.rs#run_control_socket_acceptor",
+        "codex-rs/app-server-daemon/README.md"
+      ],
+      "upstream_tests_read_not_executed": [
+        "codex-rs/app-server/tests/suite/v2/thread_attachments.rs#thread_attachment_mutations_respond_before_broadcasting_updates_to_multiple_clients",
+        "codex-rs/app-server/tests/suite/v2/mcp_connection_sharing.rs#stdio_sharing_follows_protocol_and_enablement_for_loaded_chats"
+      ],
+      "main_baseline": "c7c8b781280f1d5d4f87c2a9013ac838d4f541e0",
+      "limits": [
+        "The test uses two distinct proxy processes, one app-server process, one synthetic account home and actual local MCP calls. It does not demonstrate sharing across independent app-server processes.",
+        "No managed daemon is installed or started. Multi-account isolation, current Decodex process supervision, live providers and installed-app acceptance are not established.",
+        "The patched research CLI is not an official or qualified artifact. Production sharing remains disabled until the selected development runtime built from official source passes its retained qualification."
+      ],
+      "validation": {
+        "headless": {
+          "command": [
+            "cargo",
+            "+stable",
+            "make",
+            "test-headless"
+          ],
+          "rust_tests_executed": 1891,
+          "rust_tests_passed": 1891,
+          "rust_tests_skipped": 137,
+          "tests_reported_leaky": 0
+        },
+        "strict_runtime_clippy": {
+          "command": [
+            "cargo",
+            "+stable",
+            "clippy",
+            "--package",
+            "decodex-runtime",
+            "--all-features",
+            "--all-targets",
+            "--keep-going",
+            "--",
+            "--no-deps",
+            "-D",
+            "clippy::all",
+            "-D",
+            "clippy::too_many_lines",
+            "-D",
+            "clippy::unwrap_used",
+            "-D",
+            "clippy::use_self",
+            "-D",
+            "clippy::wildcard_imports",
+            "-D",
+            "missing-docs",
+            "-D",
+            "unused-crate-dependencies",
+            "-D",
+            "warnings"
+          ],
+          "passed": true
+        },
+        "rust_format": {
+          "command": [
+            "cargo",
+            "+nightly",
+            "fmt",
+            "--package",
+            "decodex-runtime",
+            "--",
+            "--check"
+          ],
+          "passed": true
+        }
+      }
     }
   ],
   "retained_native_diagnostics": {

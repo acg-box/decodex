@@ -21,6 +21,9 @@
 #[path = "agent_process_native_goal_tests.rs"] mod goals;
 #[path = "agent_process_native_hook_settings_tests.rs"] mod hook_settings;
 #[path = "agent_process_native_mcp_sharing_tests.rs"] mod mcp_sharing;
+#[cfg(unix)]
+#[path = "agent_process_native_mcp_socket_tests.rs"]
+mod mcp_socket;
 #[path = "agent_process_native_memory_tests.rs"] mod memory;
 #[path = "agent_process_native_misalignment_tests.rs"] mod misalignment;
 #[path = "agent_process_native_model_access_tests.rs"] mod model_access;
