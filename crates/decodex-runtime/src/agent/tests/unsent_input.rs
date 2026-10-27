@@ -9,6 +9,7 @@ use decodex_core::DecodexRoot;
 #[tokio::test]
 async fn explicit_retry_uses_the_original_input_once_through_normal_dispatch() {
 	let (mut agent, mut sent, _directory) = tests::fixture().await;
+
 	AgentCoordinator::create_conversation(
 		&agent.store,
 		"agent",
@@ -22,9 +23,13 @@ async fn explicit_retry_uses_the_original_input_once_through_normal_dispatch() {
 	)
 	.await
 	.unwrap();
+
 	agent.wake_pending().await.unwrap();
+
 	tests::complete(&mut agent, "agent").await;
+
 	agent.enqueue_user_message("agent", "original", "Retry this exact message").await.unwrap();
+
 	let event = agent
 		.store
 		.list_pending_agent_events(100)
@@ -33,8 +38,11 @@ async fn explicit_retry_uses_the_original_input_once_through_normal_dispatch() {
 		.into_iter()
 		.find(|event| event.event_kind == "user_message")
 		.unwrap();
+
 	agent.store.hold_agent_unsent_input("agent".into()).await.unwrap();
+
 	while sent.try_recv().is_ok() {}
+
 	agent
 		.store
 		.retry_agent_input("agent".into(), "opaque thread/1".into(), event.id)
@@ -47,12 +55,16 @@ async fn explicit_retry_uses_the_original_input_once_through_normal_dispatch() {
 		.await
 		.unwrap();
 	agent.wake_pending().await.unwrap();
+
 	let starts = iter::from_fn(|| sent.try_recv().ok())
 		.filter(|request| request["method"] == "turn/start")
 		.collect::<Vec<_>>();
+
 	assert_eq!(starts.len(), 1);
 	assert!(starts[0]["params"]["input"].to_string().contains("Retry this exact message"));
+
 	let original = agent.store.get_agent_inbox_event(event.id).await.unwrap();
+
 	assert!(original.disposition.is_some() && original.delivered_turn_id.is_none());
 }
 

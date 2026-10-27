@@ -46,7 +46,7 @@ use crate::{
 	agent, agent_app_ui_receipt, agent_detail, agent_guardian,
 	agent_host::AgentHostError,
 	agent_recap::Recaps,
-	agent_voice,
+	agent_voice, bootstrap,
 	conversation::{
 		ControlConversation, ConversationCapability, ConversationControlOutcome,
 		ConversationLocalState, ConversationManualRecovery, ConversationOutcome,
@@ -54,6 +54,7 @@ use crate::{
 		ConversationTerminalState, CreateConversation, RecoverConversation, SubmitConversationTurn,
 	},
 	dictation, mcp_login,
+	native_preparation::NativePreparation,
 	routing_orchestration::{ExecutionCoordinator, RoutingSuccessorExecutionCommand},
 	work_portfolio,
 };
@@ -259,7 +260,7 @@ pub(crate) struct ServiceApplication {
 	accounts: Option<Arc<AccountService>>,
 	publication_stop: Sender<bool>,
 	reset_cards: Option<ApiResetCardRuntime>,
-	native_preparation: Option<crate::native_preparation::NativePreparation>,
+	native_preparation: Option<NativePreparation>,
 	account_observations: Option<AccountObservationService>,
 	account_login: Option<Arc<AccountLoginManager>>,
 	conversations: ConversationCapability,
@@ -756,9 +757,10 @@ impl ServiceApplication {
 
 	pub(crate) fn with_native_preparation(
 		mut self,
-		preparation: Option<crate::native_preparation::NativePreparation>,
+		preparation: Option<NativePreparation>,
 	) -> Self {
 		self.native_preparation = preparation;
+
 		self
 	}
 
@@ -816,7 +818,7 @@ impl ServiceApplication {
 				} else if check.component == DoctorComponent::Conversation {
 					DoctorCheck::new(
 						DoctorComponent::Conversation,
-						crate::bootstrap::conversation_doctor(&self.conversations),
+						bootstrap::conversation_doctor(&self.conversations),
 					)
 				} else {
 					*check
@@ -2795,6 +2797,7 @@ impl Application for ServiceApplication {
 						.unwrap_or(false),
 					_ => false,
 				};
+
 				QueryResultPayload::AgentMessageReceived(received)
 			},
 			QueryPayload::GetAgentSteerReceipt { identity } =>

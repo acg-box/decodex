@@ -14,6 +14,7 @@ use crate::{
 		ConversationRefreshCallback, ConversationRuntime, ProcessGenerationId,
 		SelectedWorkingDirectory,
 	},
+	native_preparation::PreparationState,
 };
 use decodex_codex::app_server_client::NativeExecutionDefaults;
 use decodex_protocol::{
@@ -92,6 +93,7 @@ impl ConversationRuntime {
 		T: Send + 'static,
 	{
 		self.inner.launch_profile.profile().await?;
+
 		let preferred =
 			request.account_id.as_ref().map(|id| AccountId::new(id.as_str())).transpose().ok()?;
 		let now =
@@ -174,9 +176,7 @@ impl ConversationRuntime {
 		callback: Arc<dyn AccountRefreshCallback>,
 		read: impl FnOnce(&mut AttestedProcessChild) -> Option<T>,
 	) -> Option<T> {
-		let crate::native_preparation::PreparationState::Ready(profile) =
-			self.inner.launch_profile.state()
-		else {
+		let PreparationState::Ready(profile) = self.inner.launch_profile.state() else {
 			return None;
 		};
 		let selected = Arc::new(SelectedWorkingDirectory::acquire(directory).ok()?);

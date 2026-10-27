@@ -1,6 +1,9 @@
 //! Attest the exact component selected by this Decodex build's runtime lock.
-use crate::account_launch::process::{
-	AppServerCommand, BuildId, GeneratedSchemaEvidence, ProbeError, SupervisionError,
+use crate::{
+	account_launch::process::{
+		AppServerCommand, BuildId, GeneratedSchemaEvidence, ProbeError, SupervisionError,
+	},
+	startup_trace::Phase,
 };
 use decodex_components::{ComponentStore, RuntimeLock};
 
@@ -17,13 +20,16 @@ pub(super) fn evidence(
 	if paths.executable.canonicalize().ok().as_ref() != Some(&command.program) {
 		return Ok(None);
 	}
-	let phase = crate::startup_trace::Phase::new("managed_component_validation");
+
+	let phase = Phase::new("managed_component_validation");
 	let runtime = store
 		.installed(&lock)
 		.map_err(|_| SupervisionError::ExecutableChanged)?
 		.ok_or(SupervisionError::ExecutableUnavailable)?;
+
 	drop(phase);
-	let _phase = crate::startup_trace::Phase::new("managed_schema_load");
+
+	let _phase = Phase::new("managed_schema_load");
 	let generated = GeneratedSchemaEvidence::load(&runtime.schemas)
 		.map_err(|markers| ProbeError::SchemaMissing { markers })?;
 

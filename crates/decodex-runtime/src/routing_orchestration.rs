@@ -554,6 +554,7 @@ fn same_consumer(execution: &ExecutionConsumer, attempt: &ProviderAttemptConsume
 		conversation_id: attempt_conversation,
 		turn_id: attempt_turn,
 	} = attempt;
+
 	conversation_id == attempt_conversation && turn_id == attempt_turn
 }
 

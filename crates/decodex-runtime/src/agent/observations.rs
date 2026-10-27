@@ -2,35 +2,19 @@
 
 use std::{mem, time::Duration};
 
-use futures_util::{StreamExt as _, stream};
+use futures_util::{Stream, StreamExt as _, stream};
 use sha2::{Digest as _, Sha256};
 use tokio::time::{self, Instant};
 
-use crate::agent::{
-	self, AgentCoordinator, AgentError, EnqueueAgentEvent, Value, async_projection::Projection,
-	misalignment, result_messages,
+use crate::{
+	agent::{
+		self, AgentCoordinator, AgentError, EnqueueAgentEvent, Value, async_projection::Projection,
+		misalignment, result_messages,
+	},
+	startup_trace::Phase,
 };
-use decodex_codex::{
-	ThreadTokenUsage,
-	app_server_client::{self, AppServerClient},
-	guardian,
-};
+use decodex_codex::{ThreadTokenUsage, app_server_client, guardian};
 use decodex_database::AgentGuardianObservation;
-
-fn recovery_turn_items(
-	client: app_server_client::AppServerClient,
-	thread: String,
-	turns: Vec<Value>,
-	deadline: Instant,
-) -> impl futures_util::Stream<Item = Result<Value, app_server_client::ClientError>> {
-	// Fetch missing pages concurrently, then apply each turn in native order.
-	stream::iter(
-		turns
-			.into_iter()
-			.map(move |header| read_turn_items(client.clone(), thread.clone(), header, deadline)),
-	)
-	.buffered(4)
-}
 
 struct RecoveredPrecaution {
 	turn: String,
@@ -46,19 +30,18 @@ struct PreparedQuestions {
 	complete: bool,
 	saw_required: bool,
 }
-
 impl PreparedQuestions {
 	async fn read(
 		client: &app_server_client::AppServerClient,
 		thread: &str,
 		required: Option<&str>,
 	) -> Result<Self, app_server_client::ClientError> {
-		let _phase = crate::startup_trace::Phase::new("prepare_question_history");
+		let _phase = Phase::new("prepare_question_history");
 		let deadline = Instant::now() + Duration::from_secs(30);
 		let turns = time::timeout_at(deadline, client.thread_turns_since(thread, None))
 			.await
 			.map_err(|_| app_server_client::ClientError::Io)??;
-		let mut prepared = Self {
+		let prepared = Self {
 			turn_ids: turns
 				.iter()
 				.filter_map(|turn| turn["id"].as_str().map(str::to_owned))
@@ -70,18 +53,24 @@ impl PreparedQuestions {
 			saw_required: required.is_none(),
 		};
 		let reads = recovery_turn_items(client.clone(), thread.into(), turns, deadline);
+		let mut prepared = prepared;
+
 		tokio::pin!(reads);
+
 		while let Some(result) = reads.next().await {
 			let Ok(native_turn) = result else {
 				prepared.complete = false;
+
 				break;
 			};
 			let (Some(turn), Some(items)) =
 				(native_turn["id"].as_str(), native_turn["items"].as_array())
 			else {
 				prepared.complete = false;
+
 				break;
 			};
+
 			if prepared.turn_ids.last().is_some_and(|latest| latest == turn)
 				&& native_turn["status"] == "failed"
 				&& native_turn["error"]["codexErrorInfo"] == "misalignmentPolicyViolation"
@@ -92,29 +81,28 @@ impl PreparedQuestions {
 					earlier_receipts: prepared.receipts.len(),
 				});
 			}
+
 			for item in items {
 				if let Some(client) = steer_client_id(item) {
 					prepared.receipts.push((turn.into(), client.into()));
 				}
+
 				prepared.saw_required |= item["id"].as_str().is_some_and(|id| required == Some(id));
+
 				if prepared.projection.observe(thread, turn, item).is_err() {
 					prepared.complete = false;
+
 					break;
 				}
 			}
+
 			if !prepared.complete {
 				break;
 			}
 		}
+
 		Ok(prepared)
 	}
-}
-
-fn steer_client_id(item: &Value) -> Option<&str> {
-	if item["type"] != "userMessage" {
-		return None;
-	}
-	item["clientId"].as_str().filter(|id| !id.is_empty() && id.len() <= 512)
 }
 
 impl AgentCoordinator {
@@ -124,7 +112,8 @@ impl AgentCoordinator {
 		receipts: &mut Vec<(String, String)>,
 	) -> Result<(), AgentError> {
 		if !receipts.is_empty() {
-			let _phase = crate::startup_trace::Phase::new("recover_steer_receipts");
+			let _phase = Phase::new("recover_steer_receipts");
+
 			self.store
 				.observe_agent_steer_receipts(
 					thread.into(),
@@ -133,6 +122,7 @@ impl AgentCoordinator {
 				)
 				.await?;
 		}
+
 		Ok(())
 	}
 
@@ -187,33 +177,42 @@ impl AgentCoordinator {
 		let client = self.client.clone();
 		let reads = stream::iter(pending.into_iter().map(|entry| {
 			let client = client.clone();
+
 			async move {
 				let revision = client.question_revision();
 				let lifecycle = client.thread_settings_guard(&entry.1);
 				let prepared = PreparedQuestions::read(&client, &entry.1, entry.2.as_deref()).await;
+
 				(entry, revision, lifecycle, prepared)
 			}
 		}))
 		.buffered(4);
+
 		tokio::pin!(reads);
+
 		while let Some(((work, thread, required_item), revision, lifecycle, prepared)) =
 			reads.next().await
 		{
-			let _phase = crate::startup_trace::Phase::new("recover_async_thread");
+			let _phase = Phase::new("recover_async_thread");
 			let Ok(mut prepared) = prepared else { continue };
 			let superseded =
 				self.superseded_misalignment(&work, &thread, &prepared.turn_ids).await?;
+
 			if let Some(precaution) = prepared.precaution {
 				// Preserve the old order: earlier receipts, the precaution, then later receipts.
 				let later = prepared.receipts.split_off(precaution.earlier_receipts);
+
 				self.flush_recovered_steer_receipts(&thread, &mut prepared.receipts).await?;
 				self.store
 					.restore_agent_misalignment(thread.clone(), precaution.turn, precaution.details)
 					.await?;
 				self.stop_voice_for_precaution(&thread).await?;
+
 				prepared.receipts = later;
 			}
+
 			self.flush_recovered_steer_receipts(&thread, &mut prepared.receipts).await?;
+
 			if prepared.complete
 				&& prepared.saw_required
 				&& self.client.question_revision() == revision
@@ -228,7 +227,9 @@ impl AgentCoordinator {
 						})
 						.await?;
 				}
-				let _phase = crate::startup_trace::Phase::new("recover_question_projection");
+
+				let _phase = Phase::new("recover_question_projection");
+
 				self.store
 					.replace_agent_async_projection(
 						work,
@@ -238,11 +239,13 @@ impl AgentCoordinator {
 						prepared.projection.answers.into_iter().collect(),
 					)
 					.await?;
+
 				if self.client.question_revision() != revision {
 					self.store.refresh_agent_async_projection(thread.clone()).await?;
 				}
 			}
 		}
+
 		Ok(())
 	}
 
@@ -663,8 +666,31 @@ pub(super) fn retires_async_questions(item: &Value) -> bool {
 	!parts.is_empty()
 }
 
+fn recovery_turn_items(
+	client: app_server_client::AppServerClient,
+	thread: String,
+	turns: Vec<Value>,
+	deadline: Instant,
+) -> impl Stream<Item = Result<Value, app_server_client::ClientError>> {
+	// Fetch missing pages concurrently, then apply each turn in native order.
+	stream::iter(
+		turns
+			.into_iter()
+			.map(move |header| read_turn_items(client.clone(), thread.clone(), header, deadline)),
+	)
+	.buffered(4)
+}
+
+fn steer_client_id(item: &Value) -> Option<&str> {
+	if item["type"] != "userMessage" {
+		return None;
+	}
+
+	item["clientId"].as_str().filter(|id| !id.is_empty() && id.len() <= 512)
+}
+
 async fn read_turn_items(
-	client: AppServerClient,
+	client: decodex_codex::app_server_client::AppServerClient,
 	thread: String,
 	mut header: Value,
 	deadline: Instant,

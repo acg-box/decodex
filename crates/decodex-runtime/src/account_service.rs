@@ -3672,6 +3672,7 @@ impl AccountService {
 	) -> bool {
 		let Ok(account) = self.load_account(account_id).await else { return false };
 		let Ok(minimum) = i64::try_from(minimum_validity.as_micros()) else { return false };
+
 		account
 			.usage_observation
 			.and_then(|observation| {
@@ -7886,6 +7887,7 @@ mod tests {
 			independently_owned_observation_service(Err(CredentialRefreshError::Unavailable)).await;
 		let observations = AccountObservationService::new(Arc::new(service), None, None, None);
 		let initial = observations.wait_for_initial_observation(None);
+
 		tokio::pin!(initial);
 
 		assert!(futures_util::poll!(initial.as_mut()).is_pending());
@@ -7900,7 +7902,9 @@ mod tests {
 		assert_eq!(shared.project_attempts.load(Ordering::Relaxed), 0);
 
 		observations.request_refresh();
+
 		let refreshed = observations.wait_for_initial_observation(None);
+
 		tokio::pin!(refreshed);
 
 		assert!(futures_util::poll!(refreshed.as_mut()).is_ready());
@@ -9370,7 +9374,6 @@ mod tests {
 			AccountId::new("21000000-0000-4000-8000-000000000020").expect("original account");
 		let _initial_source =
 			prepare_logged_out_provider(&store, &service, &provider, &original_account).await;
-
 		let requested_account =
 			AccountId::new("21000000-0000-4000-8000-000000000023").expect("requested account");
 		let restore_operation = AccountOperationId::new("22000000-0000-4000-8000-000000000023")
