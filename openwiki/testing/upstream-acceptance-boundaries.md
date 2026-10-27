@@ -20,10 +20,16 @@ sources:
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
+  - id: openwiki-source-16e6e7418602542c69565bde
+    resource: repo://Cargo.lock
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
     resource: repo://codex-runtime.lock.json
+  - id: openwiki-source-091210eb4586f0ba4c9d751d
+    resource: repo://crates/decodex-account-login/src/system_proxy.rs
   - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences_tests.rs
+  - id: openwiki-source-0d4c68456f2e50c6fc7ad5eb
+    resource: repo://crates/decodex-components/src/install.rs
   - id: openwiki-source-8bbd4ba0cf275fa1b4da9acf
     resource: repo://crates/decodex-components/tests/development.rs
   - id: openwiki-source-08dbb31668b58707418687d2
@@ -114,10 +120,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-27T15:42:30.799Z" }
+generated: { by: "codex", at: "2026-10-27T17:10:26.412Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T15:47:51.280Z
+    at: 2026-10-27T17:10:26.412Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -150,6 +156,14 @@ The selected CLI's generated schema exposes a nullable total turn duration but n
 Five socket cases ran against the selected unmodified CLI from upstream source `abf4bb91ec49fbf443ccec0069f9cab5dd1462d8`. Three passed: compatible modern sharing, concurrent input routing, and an explicitly marked legacy helper with the modern protocol feature disabled. Two failed at thread startup: an unmarked helper returned an empty discovery result, and a marked legacy helper was used with the modern protocol feature enabled. An empty successful discovery result is a synthetic compatibility case, not a conforming method-not-found error or proof of a legacy server.
 
 Two proxy clients sharing one native app-server and one synthetic account home do not prove sharing between separate app-server processes or account isolation. Decodex has not added a launch flag that enables sharing; the native user setting was not inspected. Follow [Decodex issue #2522](https://github.com/acg-box/decodex/issues/2522) and requalify the exact unmodified CLI, helpers and retained mixed-server and child-input regressions before adding a sharing default.
+
+## TLS dependency qualification
+
+The locked HTTPS graph selects `rustls` 0.23.46, `rustls-webpki` 0.103.16 and `webpki-root-certs` 1.0.10. Account refresh and component downloads use `reqwest` clients. The selected dependencies include certificate-distrust updates. The [portable record](../../automations/upstream/retained-evidence.json) identifies the package sources and checksums, the verified WebRTC build artifact, exact test commands and the platform-specific dependency changes.
+
+On macOS arm64, the baseline and candidate each passed a full workspace check and 36 account-login and component tests. The candidate passed 1,891 headless tests and strict lint for 11 packages. The official `rustls-webpki` source test `verify_cert::tests::distrusted_spki` executed once and passed with `ring` enabled. Earlier attempts with missing fixtures or no selected test remain separate from that pass. These checks do not qualify live HTTPS, other platforms, installation or release.
+
+Four synthetic voice tests passed after the user handled the firewall prompt for the test executable. A later 40-execution stress run had 39 passes and one post-unmute audio-energy assertion failure. A separate interleaved comparison then passed 80 executions across the previous and candidate test executables. The isolated failure remains unexplained; see [issue #2529](https://github.com/acg-box/decodex/issues/2529). None of these results qualifies physical audio or installed-app interaction.
 
 ## Selected read-only views
 

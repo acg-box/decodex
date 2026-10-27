@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2a9a9bd228fe1fbac0a51d30828cfcbca934ec987121e4872ba33ad26ea76486",
+  "pageVersion": "sha256:ea09666ef2a0d3d133946c8a81bc09b6b5c99556402068d50d4c1b7a6d03cd17",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -208,7 +208,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:70ba9c3f58cb8fd53c40a60db56e3cb09f35d91fed979523e0bb88e155c44281"
+          "version": "repo-file-v1:sha256:9ced48bb0db4322fea5a9614fceea04f91648e4e72beb508d6d387dce7b03650"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
@@ -222,7 +222,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:70ba9c3f58cb8fd53c40a60db56e3cb09f35d91fed979523e0bb88e155c44281"
+          "version": "repo-file-v1:sha256:9ced48bb0db4322fea5a9614fceea04f91648e4e72beb508d6d387dce7b03650"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/project.rs",
@@ -240,7 +240,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:70ba9c3f58cb8fd53c40a60db56e3cb09f35d91fed979523e0bb88e155c44281"
+          "version": "repo-file-v1:sha256:9ced48bb0db4322fea5a9614fceea04f91648e4e72beb508d6d387dce7b03650"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/guardian_details.rs",
@@ -274,7 +274,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:70ba9c3f58cb8fd53c40a60db56e3cb09f35d91fed979523e0bb88e155c44281"
+          "version": "repo-file-v1:sha256:9ced48bb0db4322fea5a9614fceea04f91648e4e72beb508d6d387dce7b03650"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
@@ -292,7 +292,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:70ba9c3f58cb8fd53c40a60db56e3cb09f35d91fed979523e0bb88e155c44281"
+          "version": "repo-file-v1:sha256:9ced48bb0db4322fea5a9614fceea04f91648e4e72beb508d6d387dce7b03650"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -303,6 +303,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T15:47:51.280Z"
+    "at": "2026-10-27T17:10:26.412Z"
   }
 }
