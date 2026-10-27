@@ -1089,14 +1089,7 @@ fn archived_coordinator_stays_out_of_the_active_graph_and_statistics(cx: &mut Te
 
 	surface.update(cx, |s, _| {
 		let root = s.root_id().unwrap();
-
-		s.snapshot.as_mut().unwrap().archived_work_ids.insert(root.clone());
-
-		let rows = s.factory_rows();
-
-		assert!(rows.iter().all(|row| row.key != root));
-
-		for row in &rows {
+		for row in s.factory_rows() {
 			s.work_board.briefs.insert(
 				row.key.clone(),
 				Brief {
@@ -1109,15 +1102,24 @@ fn archived_coordinator_stays_out_of_the_active_graph_and_statistics(cx: &mut Te
 					question: None,
 					resources: None,
 					relations: vec![],
-					metrics: Default::default(),
-					stamp: s.brief_stamp(row),
+					metrics: Sample { tokens: Some(100), ..Default::default() },
+					stamp: s.brief_stamp(&row),
 					read_at: Instant::now(),
 				},
 			);
 		}
 
 		assert!(s.publish_usage());
+		let before = s.work_statistics().unwrap().total_tokens().unwrap();
+
+		s.snapshot.as_mut().unwrap().archived_work_ids.insert(root.clone());
+
+		let rows = s.factory_rows();
+
+		assert!(rows.iter().all(|row| row.key != root));
+		assert!(s.publish_usage());
 		assert_eq!(s.work_board.usage.as_ref().unwrap().len(), rows.len());
+		assert_eq!(s.work_statistics().unwrap().total_tokens(), Some(before - 100));
 
 		let graph = s.relation_graph();
 

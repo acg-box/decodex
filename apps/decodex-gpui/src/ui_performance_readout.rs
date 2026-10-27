@@ -14,7 +14,7 @@ use crate::{
 	ui_live_activity::{CAPSULE_HEIGHT, Sizing},
 	ui_motion,
 	ui_performance::{self, PerformanceIsland, chart},
-	ui_theme::{self, BLUE, TEXT_MUTED, WARNING},
+	ui_theme::{self, BLUE, TEXT, TEXT_MUTED, WARNING},
 	ui_work_metrics::{self, Live, Summary},
 };
 
@@ -26,19 +26,87 @@ const FRAME: f32 = 2. * INSET + 2.;
 pub(super) struct Work {
 	label: String,
 	total: String,
+	working: bool,
 	live: bool,
 	estimated: bool,
 	rate: String,
 	rows: Arc<[Live]>,
 	columns: [f32; 2],
 	breakdown: [String; 4],
+	shares: [Option<f32>; 2],
+	share_labels: [String; 2],
 	breakdown_columns: [f32; 2],
 	sizing: Sizing,
 }
 impl Work {
+	fn idle_total(&self) -> bool {
+		!self.working && self.total != "—"
+	}
+
+	fn status(&self) -> Option<&'static str> {
+		activity_status(self.working, self.live, self.rate != "—")
+	}
+
 	fn unit(&self) -> &'static str {
 		if self.live || self.estimated || self.rate == "—" { "tok/s" } else { "avg tok/s" }
 	}
+}
+
+fn activity_status(working: bool, generating: bool, has_rate: bool) -> Option<&'static str> {
+	if !working {
+		Some("Idle")
+	} else if !generating {
+		Some("Working")
+	} else if !has_rate {
+		Some("Generating")
+	} else {
+		None
+	}
+}
+
+fn share(part: u64, total: u64) -> Option<f32> {
+	(total > 0 && part <= total).then(|| part as f32 / total as f32)
+}
+
+fn share_label(value: Option<f32>) -> String {
+	value.map_or_else(|| "—".into(), |value| format!("{:.0}%", value * 100.))
+}
+
+fn breakdown_columns(
+	data: &Work,
+	width: &mut impl FnMut(&'static str, &str, f32, FontWeight) -> f32,
+) -> [f32; 2] {
+	let labels = [
+		("activity-input-label", "activity-input-value", "Input"),
+		("activity-output-label", "activity-output-value", "Output"),
+		("activity-cached-label", "activity-cached-value", "Cached input"),
+		("activity-reasoning-label", "activity-reasoning-value", "Reasoning"),
+	];
+
+	std::array::from_fn(|column| {
+		let maximum = [column, column + 2].into_iter().fold(0_f32, |maximum, index| {
+			let (label_id, value_id, label) = labels[index];
+
+			maximum.max(width(label_id, label, TEXT_SIZE, FontWeight::NORMAL)).max(width(
+				value_id,
+				&data.breakdown[index],
+				TEXT_SIZE,
+				FontWeight::MEDIUM,
+			))
+		});
+		let (_, value_id, _) = labels[column + 2];
+		let percent_id = ["activity-cached-percent", "activity-reasoning-percent"][column];
+
+		if data.shares[column].is_some() {
+			maximum.max(
+				width(value_id, &data.breakdown[column + 2], TEXT_SIZE, FontWeight::MEDIUM)
+					+ 6.
+					+ width(percent_id, &data.share_labels[column], TEXT_SIZE, FontWeight::MEDIUM),
+			)
+		} else {
+			maximum
+		}
+	})
 }
 
 pub(super) struct Debug {
@@ -72,21 +140,26 @@ pub(super) enum Content {
 }
 impl Content {
 	pub(super) fn work(work: &Summary, window: &mut Window, cx: &mut App) -> Self {
-		let rate = work.display_rate_text();
+		let live = work.working > 0 && work.generating();
+		let rate = if live { work.display_rate_text() } else { "—".into() };
 		let total = work
 			.total_tokens()
 			.map_or_else(|| "—".into(), crate::shell::agent_surface::compact_tokens);
 		let breakdown = work.token_breakdown();
+		let shares = breakdown.map_or([None; 2], |value| {
+			[
+				share(value.cached_input_tokens, value.input_tokens),
+				share(value.reasoning_output_tokens, value.output_tokens),
+			]
+		});
 		let count = |value: Option<u64>| {
 			value.map_or_else(|| "—".into(), crate::shell::agent_surface::compact_tokens)
 		};
 		let mut data = Work {
-			label: format!(
-				"Graph agent conversations: {total} recorded tokens, including cached input. Output: {} tok/s. Last measured rate is kept while idle; tool and user waits excluded.",
-				rate
-			),
+			label: String::new(),
 			total,
-			live: work.working > 0 && work.generating(),
+			working: work.working > 0,
+			live,
 			estimated: work.rate_estimated(),
 			rate,
 			rows: work.live.clone().into(),
@@ -97,19 +170,46 @@ impl Content {
 				count(breakdown.map(|v| v.cached_input_tokens)),
 				count(breakdown.map(|v| v.reasoning_output_tokens)),
 			],
+			shares,
+			share_labels: shares.map(share_label),
 			breakdown_columns: [0.; 2],
 			sizing: Sizing { minimal: 0., compact: 0., expanded: 0. },
 		};
+		let activity = if let Some(status) = data.status() {
+			status.to_owned()
+		} else {
+			format!(
+				"{} {}. Estimated generation rate excludes tool and user waits.",
+				data.rate,
+				data.unit()
+			)
+		};
+
+		data.label = format!(
+			"{activity}. Current graph agents: {} cumulative tokens, including cached input. Adding or archiving agents changes this amount.",
+			data.total
+		);
 		let mut width = |id, text: &str, size, weight| measure(id, text, size, weight, window, cx);
-		let minimal = width("activity-width-live", &data.rate, TEXT_SIZE, FontWeight::MEDIUM)
-			+ 3.
-			+ width("activity-width-live-unit", data.unit(), TEXT_SIZE, FontWeight::NORMAL)
-			+ 22.;
-		let compact = width("activity-width-rate", &data.rate, TEXT_SIZE, FontWeight::MEDIUM)
-			+ 4.
-			+ width("activity-width-rate-unit", data.unit(), TEXT_SIZE, FontWeight::NORMAL)
+		let primary = if let Some(status) = data.status() {
+			width("activity-width-status", status, TEXT_SIZE, FontWeight::MEDIUM)
+		} else {
+			width("activity-width-rate", &data.rate, TEXT_SIZE, FontWeight::MEDIUM)
+				+ 4.
+				+ width("activity-width-rate-unit", data.unit(), TEXT_SIZE, FontWeight::NORMAL)
+		};
+		let minimal = if data.idle_total() {
+			width("activity-width-idle-graph", "Graph", TEXT_SIZE, FontWeight::NORMAL)
+				+ 3.
+				+ width("activity-width-idle-total", &data.total, TEXT_SIZE, FontWeight::MEDIUM)
+				+ 3.
+				+ width("activity-width-idle-unit", "tok", TEXT_SIZE, FontWeight::NORMAL)
+				+ 22.
+		} else {
+			primary + 22.
+		};
+		let compact = primary
 			+ 16.
-			+ width("activity-width-total-label", "Graph total", TEXT_SIZE, FontWeight::NORMAL)
+			+ width("activity-width-total-label", "In graph", TEXT_SIZE, FontWeight::NORMAL)
 			+ 4.
 			+ width("activity-width-total-value", &data.total, TEXT_SIZE, FontWeight::MEDIUM)
 			+ FRAME;
@@ -150,25 +250,7 @@ impl Content {
 		} else {
 			data.columns.iter().sum::<f32>() + action + 16. + FRAME
 		};
-		let labels = [
-			("activity-input-label", "activity-input-value", "Input"),
-			("activity-output-label", "activity-output-value", "Output"),
-			("activity-cached-label", "activity-cached-value", "Cached input"),
-			("activity-reasoning-label", "activity-reasoning-value", "Reasoning"),
-		];
-
-		data.breakdown_columns = std::array::from_fn(|column| {
-			[column, column + 2].into_iter().fold(0_f32, |maximum, index| {
-				let (label_id, value_id, label) = labels[index];
-
-				maximum.max(width(label_id, label, TEXT_SIZE, FontWeight::NORMAL)).max(width(
-					value_id,
-					&data.breakdown[index],
-					TEXT_SIZE,
-					FontWeight::MEDIUM,
-				))
-			})
-		});
+		data.breakdown_columns = breakdown_columns(&data, &mut width);
 		let breakdown_width = data.breakdown_columns.iter().sum::<f32>() + 12. + FRAME;
 
 		data.sizing = Sizing {
@@ -245,7 +327,7 @@ impl Content {
 		match self {
 			Self::Work(v) =>
 				CAPSULE_HEIGHT
-					+ 66.
+					+ 71.
 					+ if v.rows.is_empty() { 0. } else { 4. + v.rows.len().min(4) as f32 * 22. },
 			Self::Debug(_) => CAPSULE_HEIGHT + 68.,
 		}
@@ -375,44 +457,54 @@ fn work_header(data: &Work) -> AnyElement {
 		.items_center()
 		.justify_between()
 		.gap_3()
-		.child(
-			gpui::div()
-				.flex()
-				.items_baseline()
-				.gap_1()
-				.child(
-					number("work-rate", data.rate.clone())
-						.text_color(ui_theme::rgb(if data.live { BLUE } else { TEXT_MUTED })),
-				)
-				.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(data.unit())),
-		)
+		.child(work_primary(data, false))
 		.child(
 			gpui::div()
 				.debug_selector(|| "activity-work-total".into())
 				.flex()
 				.items_baseline()
 				.gap_1()
-				.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Graph total"))
+				.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("In graph"))
 				.child(number("activity-total-value", data.total.clone())),
 		)
 		.into_any_element()
 }
 
 fn work_minimal(data: &Work) -> AnyElement {
+	let content = if data.idle_total() {
+		gpui::div()
+			.flex()
+			.items_baseline()
+			.gap(gpui::px(3.))
+			.whitespace_nowrap()
+			.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Graph"))
+			.child(number("live-total", data.total.clone()).text_color(ui_theme::rgb(TEXT)))
+			.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("tok"))
+			.into_any_element()
+	} else {
+		work_primary(data, true)
+	};
+
+	gpui::div().debug_selector(|| "activity-live-rate".into()).child(content).into_any_element()
+}
+
+fn work_primary(data: &Work, minimal: bool) -> AnyElement {
+	if let Some(status) = data.status() {
+		return number(if minimal { "live-status" } else { "work-status" }, status.into())
+			.text_color(ui_theme::rgb(TEXT))
+			.into_any_element();
+	}
+
 	gpui::div()
-		.debug_selector(|| "activity-live-rate".into())
 		.flex()
 		.items_baseline()
-		.gap(gpui::px(3.))
+		.gap(gpui::px(if minimal { 3. } else { 4. }))
 		.whitespace_nowrap()
-		.text_color(ui_theme::rgb(if data.live { BLUE } else { TEXT_MUTED }))
-		.child(number("live-rate", data.rate.clone()))
 		.child(
-			gpui::div()
-				.text_size(gpui::px(TEXT_SIZE))
-				.text_color(ui_theme::rgb(TEXT_MUTED))
-				.child(data.unit()),
+			number(if minimal { "live-rate" } else { "work-rate" }, data.rate.clone())
+				.text_color(ui_theme::rgb(TEXT)),
 		)
+		.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(data.unit()))
 		.into_any_element()
 }
 
@@ -567,15 +659,35 @@ fn work_details(data: &Work, window: &mut Window, cx: &mut App) -> AnyElement {
 		("work-cached", "Cached input", "Cached input, included in input"),
 		("work-reasoning", "Reasoning", "Reasoning tokens, included in output"),
 	];
-	let field = |index: usize| {
+	let shares: [Option<f32>; 2] = std::array::from_fn(|index| {
+		let id = ["activity-cached-share", "activity-reasoning-share"][index];
+
+		data.shares[index].map(|value| ui_motion::value(id, value, window, cx))
+	});
+	let field = |index: usize| -> AnyElement {
 		let (id, label, description) = fields[index];
 		let value = data.breakdown[index].clone();
 
-		metric(id, label, value.clone())
-			.id(id)
-			.w(gpui::px(data.breakdown_columns[index % 2]))
-			.role(Role::Group)
-			.aria_label(format!("{description}: {value}"))
+		if index < 2 {
+			metric(id, label, value.clone())
+				.id(id)
+				.w(gpui::px(data.breakdown_columns[index]))
+				.role(Role::Group)
+				.aria_label(format!("{description}: {value}"))
+				.into_any_element()
+		} else {
+			let column = index - 2;
+
+			share_metric(
+				id,
+				label,
+				description,
+				value,
+				data.share_labels[column].clone(),
+				data.breakdown_columns[column],
+				shares[column],
+			)
+		}
 	};
 	let row = |first| {
 		gpui::div()
@@ -605,6 +717,80 @@ fn work_details(data: &Work, window: &mut Window, cx: &mut App) -> AnyElement {
 				.child(row(2)),
 		)
 		.when(!data.rows.is_empty(), |body| body.child(list))
+		.into_any_element()
+}
+
+fn share_metric(
+	id: &'static str,
+	label: &'static str,
+	description: &'static str,
+	value: String,
+	percent: String,
+	width: f32,
+	share: Option<f32>,
+) -> AnyElement {
+	let parent = if id == "work-cached" { "input" } else { "output" };
+	let accessibility = if share.is_some() {
+		format!("{description}: {value}. {percent} of {parent}.")
+	} else {
+		format!("{description}: {value}. Share unavailable.")
+	};
+
+	gpui::div()
+		.id(id)
+		.debug_selector(move || format!("performance-{id}-row"))
+		.role(Role::Group)
+		.aria_label(accessibility)
+		.w(gpui::px(width))
+		.h(gpui::px(33.))
+		.flex_none()
+		.flex()
+		.flex_col()
+		.whitespace_nowrap()
+		.child(
+			gpui::div()
+				.text_size(gpui::px(TEXT_SIZE))
+				.line_height(gpui::px(12.))
+				.text_color(ui_theme::rgb(TEXT_MUTED))
+				.child(label),
+		)
+		.child(
+			gpui::div()
+				.w_full()
+				.flex()
+				.justify_between()
+				.gap(gpui::px(6.))
+				.child(number(id, value))
+				.when(share.is_some(), |row| {
+					row.child(number(
+						if id == "work-cached" {
+							"work-cached-percent"
+						} else {
+							"work-reasoning-percent"
+						},
+						percent,
+					))
+				}),
+		)
+		.when_some(share, |field, share| {
+			field.child(
+				gpui::div()
+					.debug_selector(move || format!("performance-{id}-track"))
+					.mt(gpui::px(2.))
+					.w_full()
+					.h(gpui::px(3.))
+					.rounded_full()
+					.bg(ui_theme::rgb(TEXT_MUTED).opacity(0.2))
+					.child(
+						gpui::div()
+							.debug_selector(move || format!("performance-{id}-fill"))
+							.w(gpui::px(width * share))
+							.h_full()
+							.rounded_full()
+							.bg(ui_theme::rgb(BLUE)),
+					),
+			)
+		})
 		.into_any_element()
 }
 
@@ -676,4 +862,25 @@ fn metric(id: &'static str, label: &'static str, value: String) -> Div {
 				.child(label),
 		)
 		.child(number(id, value).w_full().text_left())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{activity_status, share, share_label};
+
+	#[test]
+	fn activity_status_never_presents_an_old_rate_as_live() {
+		assert_eq!(activity_status(false, false, true), Some("Idle"));
+		assert_eq!(activity_status(true, false, true), Some("Working"));
+		assert_eq!(activity_status(true, true, false), Some("Generating"));
+		assert_eq!(activity_status(true, true, true), None);
+	}
+
+	#[test]
+	fn token_shares_require_a_valid_parent_count() {
+		assert_eq!(share(0, 0), None);
+		assert_eq!(share(2, 1), None);
+		assert_eq!(share_label(share(0, 100)), "0%");
+		assert_eq!(share_label(share(3, 4)), "75%");
+	}
 }

@@ -26,6 +26,8 @@ fn work_capsule_grows_and_shrinks_with_content_instead_of_the_agent_count(cx: &m
 
 	let before = visual.debug_bounds("activity-work-island").unwrap();
 	let label = visual.debug_bounds("activity-live-rate").unwrap();
+	assert!(visual.debug_bounds("performance-live-status").is_some());
+	assert!(visual.debug_bounds("performance-live-rate").is_none());
 	let debug = visual.debug_bounds("performance-island").unwrap();
 	let fps = visual.debug_bounds("performance-fps").unwrap();
 
@@ -81,6 +83,7 @@ fn work_capsule_grows_and_shrinks_with_content_instead_of_the_agent_count(cx: &m
 
 	assert!(busy.size.width > before.size.width);
 	assert!(label.left() > busy.left() && label.right() < busy.right());
+	assert!(visual.debug_bounds("performance-live-rate").is_some());
 
 	island.update(visual, |s, cx| s.set_work(Some(idle), cx));
 	visual.update(crate::ui_frame::draw_frame);
@@ -90,6 +93,55 @@ fn work_capsule_grows_and_shrinks_with_content_instead_of_the_agent_count(cx: &m
 	visual.update(crate::ui_frame::draw_frame);
 
 	assert_eq!(visual.debug_bounds("activity-work-island").unwrap().size.width, before.size.width);
+
+	island.update(visual, |s, cx| {
+		s.expansion = Expansion::Clicked;
+		cx.notify();
+	});
+	visual.update(crate::ui_frame::draw_frame);
+	thread::sleep(Duration::from_millis(250));
+	visual.update(crate::ui_frame::draw_frame);
+
+	assert!(visual.debug_bounds("activity-work-breakdown").is_some());
+	assert!(visual.debug_bounds("performance-work-cached-track").is_none());
+	assert!(visual.debug_bounds("performance-work-reasoning-track").is_none());
+	assert!(visual.debug_bounds("performance-work-cached-percent").is_none());
+	assert!(visual.debug_bounds("performance-work-reasoning-percent").is_none());
+
+	ui_performance::preference(Some(false));
+}
+
+#[gpui::test]
+fn idle_capsule_shows_current_graph_usage_without_a_stale_rate(cx: &mut TestAppContext) {
+	ui_performance::preference(Some(true));
+
+	let (island, visual) = cx.add_window_view(|_, cx| {
+		let mut island = PerformanceIsland::new(cx);
+
+		island.work = Some(Summary {
+			samples: vec![Sample { tokens: Some(2_345_678), ..Default::default() }],
+			..Default::default()
+		});
+
+		island
+	});
+
+	visual.update(crate::ui_frame::draw_current_frame);
+
+	assert!(visual.debug_bounds("performance-live-total").is_some());
+	assert!(visual.debug_bounds("performance-live-rate").is_none());
+	assert!(visual.debug_bounds("performance-live-status").is_none());
+
+	island.update(visual, |s, cx| {
+		s.set_work(Some(Summary { samples: vec![Sample::default()], ..Default::default() }), cx);
+	});
+	visual.update(crate::ui_frame::draw_frame);
+	thread::sleep(Duration::from_millis(250));
+	visual.update(crate::ui_frame::draw_frame);
+
+	assert!(visual.debug_bounds("performance-live-status").is_some());
+	assert!(visual.debug_bounds("performance-live-total").is_none());
+	assert!(visual.debug_bounds("performance-live-rate").is_none());
 
 	ui_performance::preference(Some(false));
 }
@@ -152,9 +204,9 @@ fn work_statistics_fit_with_debug_and_with_more_than_ninety_agents(cx: &mut Test
 			visual.debug_bounds("activity-live-live-92").is_none(),
 			"offscreen work is not rendered"
 		);
-		assert_eq!(pill.size.height, gpui::px(186.));
+		assert_eq!(pill.size.height, gpui::px(191.));
 		let total = visual.debug_bounds("activity-work-total").unwrap();
-		let rate = visual.debug_bounds("performance-work-rate").unwrap();
+		let rate = visual.debug_bounds("performance-work-status").unwrap();
 
 		assert!(rate.right() < total.left() && total.right() < pill.right());
 		let breakdown = visual.debug_bounds("activity-work-breakdown").unwrap();
@@ -177,6 +229,16 @@ fn work_statistics_fit_with_debug_and_with_more_than_ninety_agents(cx: &mut Test
 		assert_eq!(input.left(), cached.left());
 		assert_eq!(output.left(), reasoning.left());
 		assert!(input.bottom() <= cached.top() && output.bottom() <= reasoning.top());
+		for (track, fill, expected) in [
+			("performance-work-cached-track", "performance-work-cached-fill", 2. / 3.),
+			("performance-work-reasoning-track", "performance-work-reasoning-fill", 0.6),
+		] {
+			let track = visual.debug_bounds(track).unwrap();
+			let fill = visual.debug_bounds(fill).unwrap();
+			let actual = f32::from(fill.size.width) / f32::from(track.size.width);
+
+			assert!((actual - expected).abs() < 0.02, "{actual} != {expected}");
+		}
 		assert!(visual.debug_bounds("performance-needs-you").is_none());
 		assert!(visual.debug_bounds("performance-agent-time").is_none());
 		assert_eq!(island.read_with(visual, |s, _| s.expansion), Expansion::Clicked);
