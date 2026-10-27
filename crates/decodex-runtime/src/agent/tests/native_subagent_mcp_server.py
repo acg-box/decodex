@@ -6,15 +6,23 @@ from pathlib import Path
 record = Path(sys.argv[1])
 marker = json.loads(sys.argv[2])
 interactive = sys.argv[3] == "true"
+late_discovery = sys.argv[4] == "true"
 schema = {"type": "object", "properties": {}}
 if interactive:
     schema["properties"] = {"answer": {"type": "string"}}
     schema["required"] = ["answer"]
 pending = None
+discovery_id = None
 for line in sys.stdin:
     request = json.loads(line)
     method = request.get("method")
+    if method == "server/discover" and late_discovery:
+        discovery_id = request["id"]
+        continue
     if method == "initialize":
+        if discovery_id is not None:
+            print(json.dumps({"jsonrpc": "2.0", "id": discovery_id, "result": {}}), flush=True)
+            discovery_id = None
         result = {"protocolVersion": request["params"]["protocolVersion"],
                   "capabilities": {"tools": {}}, "serverInfo": {"name": "child-input", "version": "1"}}
     elif method == "tools/list":
