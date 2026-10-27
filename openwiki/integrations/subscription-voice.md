@@ -49,7 +49,7 @@ sources:
 generated: { by: "codex", at: "2026-10-25T16:38:56.487Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T03:26:06.307Z
+    at: 2026-10-27T15:47:51.280Z
 ---
 
 # Subscription dictation and live voice

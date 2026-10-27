@@ -17,6 +17,8 @@ sources:
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
+  - id: openwiki-source-f02ae41e2bd15dda85dc86b9
+    resource: repo://codex-runtime.lock.json
   - id: openwiki-source-2b08587e9b26e203156110c8
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-75f737a722500e44692521ca
@@ -33,10 +35,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-26T07:09:00.728Z" }
+generated: { by: "codex", at: "2026-10-27T15:42:30.799Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T06:15:00.380Z
+    at: 2026-10-27T15:47:51.280Z
 ---
 
 
@@ -74,6 +76,8 @@ The runtime lock can select an exact official source archive. Use the explicit d
 1. Verify the selected commit, official archive URL and SHA-256 digest. The builder recreates its extracted source with current file modification times, invokes the upstream package builder with locked Cargo dependencies, stamps the selected commit, and checks package identity and the unchanged Cargo lock. Refreshing the source timestamps prevents reuse of stale local Cargo artifacts.
 2. Qualify the packaged executable, Code Mode helper and `rg`. The builder signs and verifies these components. The component store checks the executable and helper commit, CLI version, signatures and generated experimental app-server schemas against the local adapter and pinned fingerprint. It records archive and executable hashes with the fixed source requirement. The selection changes only after the prepared component verifies. App startup and packaging never compile Codex.
 3. Exercise the affected native behavior and current local consumer before delivering a lock update. A matching schema establishes protocol structure. It does not establish saved-permission behavior, compaction, transport lifecycle or desktop acceptance. Keep source review, artifact qualification, merge, installed identity and live acceptance as separate evidence.
+
+The current development requirement selects upstream commit `abf4bb91ec49fbf443ccec0069f9cab5dd1462d8`. Its portable qualification records 41 unique Rust consumer selections: 39 used the exact signed CLI and packaged helpers, while two tested local history projections. It also records fifteen reusable probes and an exact-artifact cache-repair regression. This synthetic macOS arm64 qualification did not install or release the application.
 
 ## Retain evidence after artifact cleanup
 

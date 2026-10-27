@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:df56868c706feace64004383626997d4f8c68a75b3143fc47e476f834ab4918f",
+  "pageVersion": "sha256:dce04c19bb24a3221e390aa497076ee50d4dc5791120b635042e689bc7ec6ab2",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -60,7 +60,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:3321d743da883c2d8e4ad250878f9aa841f56cf93f56e933013da7e4e45cc63c"
+          "version": "repo-file-v1:sha256:9e1ce15e9502464102ea0633caadc0f8fa041c262cb49161ad3972f847506264"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_live_audio.rs",
@@ -88,7 +88,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:3321d743da883c2d8e4ad250878f9aa841f56cf93f56e933013da7e4e45cc63c"
+          "version": "repo-file-v1:sha256:9e1ce15e9502464102ea0633caadc0f8fa041c262cb49161ad3972f847506264"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_audio_owner.rs",
@@ -166,7 +166,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_voice.rs",
-          "version": "repo-file-v1:sha256:3321d743da883c2d8e4ad250878f9aa841f56cf93f56e933013da7e4e45cc63c"
+          "version": "repo-file-v1:sha256:9e1ce15e9502464102ea0633caadc0f8fa041c262cb49161ad3972f847506264"
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
@@ -227,7 +227,7 @@
       "statement": "The two native media regressions share the ICE connection fixture, use synthetic PCM with device I/O disabled, and reserve the Nextest runner for packet-flow and mute assertions.",
       "evidence": [
         {
-          "resource": "repo://.config/nextest.toml#L25-L31",
+          "resource": "repo://.config/nextest.toml#L20-L26",
           "version": "repo-lines-v1:sha256:7ed67ab14439eac9e0d0b806cdf59026d9e78b0195f93ddbebf756f6cf697045:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2U0ZjIxNDE3OGEwZmJiZTI4ZjQ0MTgxMmUwY2UxZTYxNTAyZDM5NTI4YjhmY2ZkOTlkYWI4Nzg3NDllNjExMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGNlY2U3ZWNhOTQ0NjNhYzZlOGY1MjZkNzQ0MmMwYzUxNTdjMTJiMjJiOGFhYTkxZmY1MTgyNmVjYTI0YjMzMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjUwNTJhMDQ2NmU2ZDMwMjE5NDMwMTNiNGM0ZDJhNjVhMWQ0N2JhMDUyZTExY2FkN2E1ZDRlYzUxYTk1NTZmOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTc3NmFiNDE0OTJiODEwOTZhNzU2MGM4ZmQ3YmJiZjUyYmU0YWRmYTVkZTY0ZDBiOTUwNjJkMWE4NWQyNGRlYyJ9"
         },
         {
@@ -242,7 +242,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
+          "version": "repo-file-v1:sha256:70ba9c3f58cb8fd53c40a60db56e3cb09f35d91fed979523e0bb88e155c44281"
         }
       ]
     },
@@ -260,7 +260,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
+          "version": "repo-file-v1:sha256:70ba9c3f58cb8fd53c40a60db56e3cb09f35d91fed979523e0bb88e155c44281"
         }
       ]
     },
@@ -270,7 +270,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
+          "version": "repo-file-v1:sha256:70ba9c3f58cb8fd53c40a60db56e3cb09f35d91fed979523e0bb88e155c44281"
         }
       ]
     },
@@ -284,7 +284,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:57817c7c5b09742fa21bca4ddd93eb61d061adf95a43a8f544c5701997f4be9d"
+          "version": "repo-file-v1:sha256:70ba9c3f58cb8fd53c40a60db56e3cb09f35d91fed979523e0bb88e155c44281"
         },
         {
           "resource": "repo://scripts/macos/prepare_voice_acceptance.py",
@@ -295,6 +295,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T03:26:06.307Z"
+    "at": "2026-10-27T15:47:51.280Z"
   }
 }

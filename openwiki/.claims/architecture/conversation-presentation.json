@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:41b6889424c267efe10adaaf202502c527434c8b465687faadd09273033768be",
+  "pageVersion": "sha256:c4178f4ec933be0c1c54150705ff41af57e46de9af9f8326cf2321a08aa6ea96",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -18,7 +18,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs",
-          "version": "repo-file-v1:sha256:043774adce3bb339ac83e0657a922daa750ccfa723e938a26fc28f4ecedeb7e4"
+          "version": "repo-file-v1:sha256:cc655def89b9269ca3319f3b051f63b2eb79e5ea7561ab0b8cd7b8329af98741"
         }
       ]
     },
@@ -92,7 +92,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:3b8824b78b281d95e16250d9c27d8aa04b88e7c72a0157c2afd2dfa9f2cb9cee"
+          "version": "repo-file-v1:sha256:82d11e99f97591f372e5faf3e9cb2ff73581d41cc2afde982967598e2444f82b"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/voice_conversation_groups.rs",
@@ -156,7 +156,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:d79f7f8a2ae14d6a56cafd6ae9de3514c7855931938d50960e79cbfbf95b00f4"
+          "version": "repo-file-v1:sha256:6799e78f0a6173a52c4e67f83a6f1c4fb6814d8b5956d165dede21c28c891cd0"
         }
       ]
     },
@@ -297,10 +297,60 @@
           "version": "repo-lines-v1:sha256:f1c834ab36d08748f529eafac7ff77239588fdc1f00191fe4f348c755c764e61:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5NjMwY2E4ZjM1NDNiMzY1Zjg5ODMzMWU3OWI1ZThjMmVmOGIyNDA4MDExMzgwYmIzY2ZhZWI1MjJkMWE5OTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQyZTE3Y2NiZTg1YTFjM2QwNTkyNmY5OTFjMzE2MTFkNjRkZDhlMDQyNmY0ZGEzODQxYjJkNjdmYjM5MDg4NjUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_e61b9c48bc1a467cb2c9b0ec93fe3de0",
+      "statement": "The native transport observes monotonic intervals for model output, compaction, tool activity, automatic review and blocking user requests; it unions overlaps within each category while categories can overlap each other.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs",
+          "version": "repo-file-v1:sha256:cc655def89b9269ca3319f3b051f63b2eb79e5ea7561ab0b8cd7b8329af98741"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/observed_timing.rs",
+          "version": "repo-file-v1:sha256:90d496e1b0d1b7f9b13e7c10161f5559488328e03f70aa51b803fb55dd2ee109"
+        }
+      ]
+    },
+    {
+      "id": "claim_8b346081fa604ee6925446a3244c50bd",
+      "statement": "Completed observed timings are saved and retrieved for the exact Work, thread and turn; missing starts, unmatched boundaries, overflow and unavailable measurements remain unknown.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/observed_timing.rs",
+          "version": "repo-file-v1:sha256:90d496e1b0d1b7f9b13e7c10161f5559488328e03f70aa51b803fb55dd2ee109"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:769c21fbd5a23b0713b704ef74aca3bef3b7f1be4167e9475a6a0dbe12ddf166"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/timeline/metrics.rs",
+          "version": "repo-file-v1:sha256:73f5d0a46c6bd4c368f38bed5cb73765185842f359754cac6b0ff25901806a08"
+        },
+        {
+          "resource": "repo://database/src/agent.rs",
+          "version": "repo-file-v1:sha256:8c327fa856c0e5c2545deb90368ce761da572954701ec8ba4dc737726be2974e"
+        }
+      ]
+    },
+    {
+      "id": "claim_e9f293bd4a4646579ce50e4e0f436f96",
+      "statement": "Visible model output is not full inference or a complete native critical path; the response details leave full inference, runtime overhead and other unobserved time unknown.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_response_metrics.rs",
+          "version": "repo-file-v1:sha256:cc655def89b9269ca3319f3b051f63b2eb79e5ea7561ab0b8cd7b8329af98741"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/observed_timing.rs",
+          "version": "repo-file-v1:sha256:90d496e1b0d1b7f9b13e7c10161f5559488328e03f70aa51b803fb55dd2ee109"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T06:15:00.380Z"
+    "at": "2026-10-27T15:42:30.799Z"
   }
 }

@@ -42,6 +42,8 @@ sources:
     resource: repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json
   - id: openwiki-source-ba12412e93bca80301ac28a3
     resource: repo://crates/decodex-runtime/tests/native_qualification/apps_recovery.py
+  - id: openwiki-source-30f880169ba4c3067a852d8f
+    resource: repo://crates/decodex-runtime/tests/native_qualification/command_hooks.py
   - id: openwiki-source-e7a53f398340c29957bd81d3
     resource: repo://crates/decodex-runtime/tests/native_qualification/native_session.py
   - id: openwiki-source-8e6f29de9ed0d4825985ec62
@@ -72,10 +74,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-27T03:26:06.307Z" }
+generated: { by: "codex", at: "2026-10-27T15:42:30.799Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T06:15:00.380Z
+    at: 2026-10-27T15:47:51.280Z
 ---
 
 
@@ -166,9 +168,12 @@ python3 crates/decodex-runtime/tests/native_qualification/model_errors.py
 python3 crates/decodex-runtime/tests/native_qualification/large_catalog.py
 python3 crates/decodex-runtime/tests/native_qualification/response_identity.py
 python3 crates/decodex-runtime/tests/native_qualification/project_guardian.py
+python3 crates/decodex-runtime/tests/native_qualification/command_hooks.py
 ```
 
 These probes use loopback providers, synthetic account data and system-temporary homes. They close their own child processes and servers. They do not establish installed-app or live-provider acceptance. Keep raw output in the native run directory; keep current requirements, fixture implementations, hashes and limits in the repository.
+
+The command hook probe checks the command directory in the `PreToolUse`, `PermissionRequest` and `PostToolUse` payloads. The hook process keeps the project directory, while each payload identifies the nested command directory. It checks one local command without a model retry; it does not qualify a remote executor.
 
 A hook start event can precede native trust verification. The hook regression checks actual script effects after declaration or script changes, enablement changes and restart. The parallel tool regression requires both requests before either reply and verifies result order. The MCP status regression waits for discovery to finish, then checks opaque first-page metadata through tool pagination, status pagination and restart.
 
