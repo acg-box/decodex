@@ -234,13 +234,11 @@ fn exercise_live_settings(cx: &mut TestAppContext) {
 	surface.read_with(visual, |s, _| {
 		assert!(s.live_reviewer.task.is_none());
 		assert!(s.live_reviewer.feedback.contains("unconfirmed"));
-
 		assert!(matches!(
 			&s.live_reviewer.state,
 			Some(AgentLiveReviewerState::Available { last_model: Some(selection), .. })
 				if selection.model.as_str() == "selected" && selection.effort.as_str() == "high"
 		));
-
 		assert!(matches!(
 			s.live_reviewer.state,
 			Some(AgentLiveReviewerState::Available {

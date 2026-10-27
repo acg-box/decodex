@@ -7,11 +7,14 @@ impl AgentSurface {
 	pub(super) fn merge_current_edits(&mut self, cx: &mut Context<Self>) {
 		self.cancel_queued_command(cx);
 		self.remember_draft_document(cx);
+
 		let state = &mut self.draft_profiles.storage;
 		let Some(store) = state.store.clone() else { return };
+
 		if state.seeded {
 			state.document.unbound = Default::default();
 		}
+
 		let captured = state.document.clone();
 		let local = captured.clone();
 		let baseline = state.saved.clone();
@@ -24,12 +27,15 @@ impl AgentSurface {
 			};
 			let merged = local.merge_edits(&baseline, &latest).map_err(SaveFailure::Invalid)?;
 			let revision = storage::publish_document(&store, snapshot.revision, &merged)?;
+
 			Ok::<_, SaveFailure>((revision, merged))
 		});
+
 		state.task = Some(cx.spawn(async move |surface, cx| {
 			let result = write.await;
 			let _ = surface.update(cx, |surface, cx| {
 				surface.draft_profiles.storage.task = None;
+
 				match result {
 					Ok((revision, merged)) =>
 						surface.finish_draft_reconciliation(captured, merged, revision, cx),
@@ -40,13 +46,16 @@ impl AgentSurface {
 								"Input changed while saving. Retry when the other write completes.",
 							SaveFailure::Failed => "Input not saved. Keep this window open.",
 						};
+
 						surface.draft_profiles.storage.error = Some(message.into());
 						surface.draft_profiles.storage.conflicted = false;
 					},
 				}
+
 				cx.notify();
 			});
 		}));
+
 		cx.notify();
 	}
 

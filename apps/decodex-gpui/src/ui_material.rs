@@ -70,8 +70,8 @@ impl Surface {
 		}
 
 		let saved = ui_preferences::string(self.key(), None);
-
 		let material = initial_material(saved.as_deref());
+
 		MATERIALS[self as usize].store(material as u8, Ordering::Relaxed);
 
 		material
