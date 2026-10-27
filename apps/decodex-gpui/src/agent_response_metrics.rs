@@ -229,13 +229,15 @@ fn duration_label(ms: u64) -> String {
 	}
 }
 
-fn timing_rows(timing: &AgentTurnTimingDto) -> [(&'static str, String); 6] {
+fn timing_rows(timing: &AgentTurnTimingDto) -> [(&'static str, String); 8] {
 	[
+		("Full model inference", None),
 		("Model output", timing.model_output_ms),
 		("Context compaction", timing.compaction_ms),
 		("Tool activity", timing.tool_activity_ms),
 		("Automatic review", timing.auto_review_ms),
 		("User requests", timing.user_request_ms),
+		("Runtime overhead", None),
 		("Other / unobserved", None),
 	]
 	.map(|(label, value)| {
@@ -367,10 +369,12 @@ mod tests {
 			auto_review_ms: Some(42),
 			..Default::default()
 		});
-		assert_eq!(rows[0], ("Model output", "1.5s".into()));
-		assert_eq!(rows[1], ("Context compaction", "Unknown".into()));
-		assert_eq!(rows[2], ("Tool activity", "0ms".into()));
-		assert_eq!(rows[3], ("Automatic review", "42ms".into()));
-		assert_eq!(rows[5], ("Other / unobserved", "Unknown".into()));
+		assert_eq!(rows[0], ("Full model inference", "Unknown".into()));
+		assert_eq!(rows[1], ("Model output", "1.5s".into()));
+		assert_eq!(rows[2], ("Context compaction", "Unknown".into()));
+		assert_eq!(rows[3], ("Tool activity", "0ms".into()));
+		assert_eq!(rows[4], ("Automatic review", "42ms".into()));
+		assert_eq!(rows[6], ("Runtime overhead", "Unknown".into()));
+		assert_eq!(rows[7], ("Other / unobserved", "Unknown".into()));
 	}
 }
