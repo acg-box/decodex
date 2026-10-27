@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e53313b62809e3b3299bcc421d3a57178ac36f87f1dfcf92a80528e6f8aa2348",
+  "pageVersion": "sha256:13432070ef407b7cab137a36c470e4043cdb06ac1d9209ca1d3b460f5dfc2c93",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://database/src/schema.rs",
-          "version": "repo-file-v1:sha256:b3a3c373f7c156e6ba3eb579b1bbd08164a0eda69bd51ba24802741234c95359"
+          "version": "repo-file-v1:sha256:74832a5c5ad0f16ae99c3c413ccfefec379b65f03e95e34f43756dac4d26dc04"
         }
       ]
     },
@@ -22,7 +22,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:3c5a76a4b22355e4b41356f952367830208b66ed6b1444098ebe15680d76ac39"
+          "version": "repo-file-v1:sha256:7c56d46b9cada4c54af903505b3b88a0788d8b0b0cf5e844b2f2422fc4029b24"
         }
       ]
     },
@@ -32,7 +32,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:3c5a76a4b22355e4b41356f952367830208b66ed6b1444098ebe15680d76ac39"
+          "version": "repo-file-v1:sha256:7c56d46b9cada4c54af903505b3b88a0788d8b0b0cf5e844b2f2422fc4029b24"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/shared_auth_coordinator.rs",
@@ -45,7 +45,7 @@
       "statement": "Current local clients and service must agree on the exact CURRENT_VERSION protocol; packaged native compatibility is checked separately by the bundle contract verifier.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L285-L305",
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L286-L306",
           "version": "repo-lines-v1:sha256:1c44d48aaa887de29f32834e552d02feffa934c64df790e616eabd57707a5a72:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5NzMyMjRjOGMzN2U1NGI0NjM4NjM5ZWM3ZjI5MWYxOWQwNmI3Mjc0YzJhOGYyMzNhZDBhMzQ4YzA5N2VkNDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjOGU3MjlkOThhMmYzNmVmNjEwNjJlYzQzY2UzZWQ3ZWMxZDkyMGYwMjIyNGMxNzMwNjAyZjg0OWU3NjE0YTQifQ"
         },
         {
@@ -159,7 +159,7 @@
       "statement": "Current local protocol 4.0 exposes selected read-only views and retained attached branches and rejects any different major or minor version.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L285-L305",
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L286-L306",
           "version": "repo-lines-v1:sha256:1c44d48aaa887de29f32834e552d02feffa934c64df790e616eabd57707a5a72:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5NzMyMjRjOGMzN2U1NGI0NjM4NjM5ZWM3ZjI5MWYxOWQwNmI3Mjc0YzJhOGYyMzNhZDBhMzQ4YzA5N2VkNDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjOGU3MjlkOThhMmYzNmVmNjEwNjJlYzQzY2UzZWQ3ZWMxZDkyMGYwMjIyNGMxNzMwNjAyZjg0OWU3NjE0YTQifQ"
         }
       ]
@@ -177,6 +177,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-26T15:20:45.937Z"
+    "at": "2026-10-27T06:15:00.380Z"
   }
 }

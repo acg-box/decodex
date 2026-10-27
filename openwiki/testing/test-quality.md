@@ -6,8 +6,18 @@ tags: [testing, maintenance]
 sources:
   - id: openwiki-source-95772fa38252ded838ec3a2f
     resource: repo://.config/nextest.toml
+  - id: openwiki-source-30634b029f7a214a4cfa8636
+    resource: repo://apps/decodex-gpui/Cargo.toml
   - id: openwiki-source-1b7747f8ae67c32e5670817d
     resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
+  - id: openwiki-source-81428eaea331210561f63f66
+    resource: repo://apps/decodex-gpui/src/bin/native_glass_probe.rs
+  - id: openwiki-source-1bc5c8a6672bb09ef7b2d30f
+    resource: repo://apps/decodex-gpui/src/bin/workbench_visual_capture.rs
+  - id: openwiki-source-5c72291df76e3033136ad050
+    resource: repo://apps/decodex-gpui/src/bin/workbench_visual_capture/send.rs
+  - id: openwiki-source-37f9a508a2aebf9382d3b23f
+    resource: repo://apps/decodex-gpui/src/main.rs
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-c740d34a4e6c4e581873e50e
@@ -16,10 +26,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_service.rs
   - id: openwiki-source-24139c353e393a9759b0267a
     resource: repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs
-generated: { by: "codex", at: "2026-10-27T03:26:06.307Z" }
+  - id: openwiki-source-c8b1a2a9f2113ec43d4066da
+    resource: repo://Makefile.toml
+generated: { by: "codex", at: "2026-10-27T06:15:00.380Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T03:26:06.307Z
+    at: 2026-10-27T06:15:00.380Z
 ---
 
 # Test quality and coverage
@@ -41,7 +53,7 @@ A source scan can enforce a narrow explicit boundary, but it does not prove exec
 
 ## Avoid duplicate execution
 
-The default nextest filter excludes shared application tests from the workbench visual-capture binary and excludes the native-glass diagnostic binary. The main application owns those shared tests. The visual-capture binary's own `capture_send_tests::` remain selected. All targets still compile. A target with independent behavior tests, such as the weather preview, remains in the test set.
+The main application owns the shared application tests. The visual-capture and native-glass diagnostic binaries disable their test and benchmark targets and exclude their bodies from test builds. The three capture-send tests use the same helper as the capture binary and run in the main application test target. Workspace test tasks select tests, examples and benchmarks without forcing the diagnostic binaries into empty test harnesses. Explicit `--all-targets` runs also produce no duplicate diagnostic tests. The diagnostic executables remain buildable, and independent targets such as the weather preview remain in the test set.
 
 Process fixtures have a separate serialized test group. CLI shutdown fixtures reserve the available test threads so unrelated heavy work does not consume their bounded startup window. These scheduling rules protect test reliability; they are not performance acceptance.
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:cf119e24f0998da9e9695d12740652703a3c0a0166d8aae7c6f286637db97f39",
+  "pageVersion": "sha256:72070986d2449910e99c4655011969e44e7ebb278cdf3fc5cc66c39061d503eb",
   "claims": [
     {
       "id": "claim_738021d152cc4128af3d3b4b217fe92c",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:3c5a76a4b22355e4b41356f952367830208b66ed6b1444098ebe15680d76ac39"
+          "version": "repo-file-v1:sha256:7c56d46b9cada4c54af903505b3b88a0788d8b0b0cf5e844b2f2422fc4029b24"
         }
       ]
     },
@@ -133,11 +133,11 @@
           "version": "repo-lines-v1:sha256:61e101c541dd6849fbe1e29b0e770ae4ca860ab09c2e31cbef3e0f958a8c0a39:eyJzZWxlY3RlZExpbmVDb3VudCI6MTg4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4ZTA4MGJmNGE3NDU0MTdlMDIxNWE2ZjFlZDJjNTM2ZGJiZmQ0OTg2ZTU0YWNkOTc3M2FiOTI4OTU1MDk1N2JmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJlNTA0YjRiMjBiZjJmMjg4MGRjY2RlNGQzYTEwNmExMzRiYmEzOTExMDM5MGE3ZDQxMDA1MGM5ZWFkNWVmZmI1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhOWVmZjAyMDk3MDIwMDgzYmRhZDlkNzQ5NDZhNjk2ODQ1ZmY5ZTVlMTcwMGI1YzBhNWMyOTFjNTAyMTE2ZWNkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJkODBhNjQzNWIzMTM5YmFkNWM3NDFmNGZiYWQ3OTIyMzQ5MDc2ZDE4M2U2NTM1ZWM2OTMxMGMyN2YwMzQ0ODgzIn0"
         },
         {
-          "resource": "repo://database/src/account_lifecycle.rs#L1460-L1534",
+          "resource": "repo://database/src/account_lifecycle.rs#L1459-L1533",
           "version": "repo-lines-v1:sha256:121eef2cf6ad3bd298587c864424399c4fd4dfa5398f9c16a95b38886d3eb3ea:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3NGFhZGIxNjVlZjIyZmFmZTY3ZTJhMDYyNjdmOTU4ZTk4MzNlZTdiYmRlOWVmZWE2YjU5OTQ0ODY1MDFjMzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxNjJhYjlmNzZiYjZjMzVmYjIxNmE3OGNlZWEyOGQ0ODQ4ZWYwYjRlYjNjZGE5YjA0ZTM5MDAzMjRlYTYwMTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ3NTgyMTZmZWZlNzQ3ZGYxMzA2OWIzNWZlZjVkNDFjNjE3MWNjNTE0Yzk3MTFiMGIzMDZjY2UwYzExMDFkMzEifQ"
         },
         {
-          "resource": "repo://database/src/account_lifecycle.rs#L1827-L1884",
+          "resource": "repo://database/src/account_lifecycle.rs#L1826-L1883",
           "version": "repo-lines-v1:sha256:425e37a5351f4e4abbfe751e1d061188ec9f955ef8315ef968fb99450ba67fb0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1YmJhZjVjNWFjMDFiM2EwNTQzYWQwNzQ2MGQ2MWM5MDhmNzNhMGNkZWIzMmVlOTU0MTU5ODJmMzk5ZDU2NjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjllOWQyZTAzNmU3NGNhYjJkYjI4NzA2OWUzZTEzOWRmZjY5YTFiZGVkZDBiZjJmYTFiZTVmMGMwYTQ2ZWJkNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjFmOGJjNThhNjI3OTYxODlhZWQyNTJmN2EyY2U2YzA4NDZjM2FiYTY3OWRmMjkwOWFiYzc3ZDQ2ZjY1NTMxYzQifQ"
         }
       ]
@@ -147,7 +147,7 @@
       "statement": "Account admission accepts only plus, pro, prolite, promax and team for OAuth and PAT credentials, with Team classified as a workspace plan and absent or unknown plans rejected.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5465-L5474",
+          "resource": "repo://crates/decodex-runtime/src/account_service.rs#L5466-L5475",
           "version": "repo-lines-v1:sha256:7cf06081ad220cfd9613ab4a9d4b301980c06fb5a25a2846ae2e37373924fde8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmNjk5MTEzNTNhZjE0Y2FiOWFmMzljZjU2NDA5YzMyNDJlYzAyOTdjMTVmMmU3ZWQxMjAzMGM2M2M2M2EzZTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1NTgxZDhlMGQzMjM1MGEzMDlmMjBlYjVhMzNmYzYyYzg3ZWZlNzRmM2UzMGRhMTQ0Yzg5YmYzMmExYWIyYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlhZWIwNGRlNmM5Mjc4Y2ZkODg2ZTJkZjMyZjBlNDA3MGZlZmZlODE0MDM2NWFjODQ0YThjNDA5OTZjMjY3OGUifQ"
         },
         {
@@ -159,6 +159,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T03:26:06.307Z"
+    "at": "2026-10-27T06:15:00.380Z"
   }
 }

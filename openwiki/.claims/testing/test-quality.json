@@ -1,14 +1,38 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:30c7efda8a239ac6b3b73fdbefcaa2283fe8aeeaca1a1bcea9f151d2aedfdead",
+  "pageVersion": "sha256:e8336699b8406e76c9d8d13f780800f3c8230cb563aae66613c55f42932a36d7",
   "claims": [
     {
       "id": "claim_070657bf065541118dc7ae41cdeffc2c",
-      "statement": "The default Nextest filter excludes shared application tests from diagnostic binaries while retaining independent capture_send_tests in the workbench capture binary; app-server process fixtures run in a serialized group.",
+      "statement": "The application owns shared tests and the three capture-send tests. Diagnostic binaries disable test and benchmark targets and exclude their bodies from test builds; workspace test tasks avoid empty diagnostic harnesses, and app-server process fixtures run in a serialized group.",
       "evidence": [
         {
           "resource": "repo://.config/nextest.toml",
-          "version": "repo-file-v1:sha256:85f6a30b21a1a8e734b6d81aad00a781657dc39d7762cd9d02c0ffc9f8154698"
+          "version": "repo-file-v1:sha256:ce577761f68d3b449024148355098ceecf471f6069ed25a5c7d5882a31be85e7"
+        },
+        {
+          "resource": "repo://Makefile.toml",
+          "version": "repo-file-v1:sha256:cc289ecb9c3e770d9d25e5c6b97e5f79b42dd5c9a0b66f782ee9b833d1a53f16"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/Cargo.toml",
+          "version": "repo-file-v1:sha256:b4bd75dfd94cf8ae4d0f56fa4be2d6151f8ae9940a2d82fbb52871647ce6f98f"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/bin/native_glass_probe.rs",
+          "version": "repo-file-v1:sha256:f18bbe5b9d286c9670411d6cdf89ba7a952603e6e111b863f67c2c6fe4dfdba4"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/bin/workbench_visual_capture.rs",
+          "version": "repo-file-v1:sha256:f5408c66c92066042b8c6a27b81ccafef309f9141a956411821d0d462df7d5e1"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/bin/workbench_visual_capture/send.rs",
+          "version": "repo-file-v1:sha256:8eaae61204a40af539516e6dc86a057fb0ed869d820c1375fe868c7ed5bf5551"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/main.rs",
+          "version": "repo-file-v1:sha256:2f3fd18e4bea0e13bce53850ade6381b4ff4f5db41b19d4bc399b4f1a42f65de"
         }
       ]
     },
@@ -28,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_service.rs",
-          "version": "repo-file-v1:sha256:3c5a76a4b22355e4b41356f952367830208b66ed6b1444098ebe15680d76ac39"
+          "version": "repo-file-v1:sha256:7c56d46b9cada4c54af903505b3b88a0788d8b0b0cf5e844b2f2422fc4029b24"
         }
       ]
     },
@@ -48,7 +72,7 @@
       "evidence": [
         {
           "resource": "repo://.config/nextest.toml",
-          "version": "repo-file-v1:sha256:85f6a30b21a1a8e734b6d81aad00a781657dc39d7762cd9d02c0ffc9f8154698"
+          "version": "repo-file-v1:sha256:ce577761f68d3b449024148355098ceecf471f6069ed25a5c7d5882a31be85e7"
         }
       ]
     },
@@ -103,6 +127,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T03:26:06.307Z"
+    "at": "2026-10-27T06:15:00.380Z"
   }
 }

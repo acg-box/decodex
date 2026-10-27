@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e9e854ed7502967654192654fc2bd4d00dd162065953e70e4d8d8b655a4e6c89",
+  "pageVersion": "sha256:0d735b41e9880228dbd910bf75f8365e912edb89ea4f3ea0424bd0b099e4dfd0",
   "claims": [
     {
       "id": "claim_820ae47a5a5d49aab10b5f306ac24685",
@@ -172,7 +172,7 @@
       "evidence": [
         {
           "resource": "repo://.config/nextest.toml",
-          "version": "repo-file-v1:sha256:85f6a30b21a1a8e734b6d81aad00a781657dc39d7762cd9d02c0ffc9f8154698"
+          "version": "repo-file-v1:sha256:ce577761f68d3b449024148355098ceecf471f6069ed25a5c7d5882a31be85e7"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
@@ -291,6 +291,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T03:26:06.307Z"
+    "at": "2026-10-27T06:15:00.380Z"
   }
 }
