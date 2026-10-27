@@ -46,8 +46,8 @@ impl AgentCoordinator {
 
 			return Ok(());
 		}
-		self.store.retire_archived_agent_threads(vec![thread.into()]).await?;
 
+		self.store.retire_archived_agent_threads(vec![thread.into()]).await?;
 		self.loaded_threads.remove(thread);
 
 		let submitted = self.client.thread_unarchive(thread).await;

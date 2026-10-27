@@ -14,7 +14,11 @@ use crate::{
 		ActivateAgent, ActivateHealth, ActivateSettings, DismissStatus, GrowPanel, GrowPanels,
 		NavigateBack, NavigateForward, ResetPanel, ResetPanels, ShrinkPanel, ShrinkPanels,
 		ToggleContentFullscreen, ToggleGraph, ToggleInspector, ToggleSidebar,
-		agent_surface::{AgentSurface, voice::Media, workspace},
+		agent_surface::{
+			AgentSurface,
+			voice::Media,
+			workspace::{self, ARCHIVED_MESSAGE},
+		},
 	},
 	ui_motion,
 	ui_theme::{
@@ -301,7 +305,7 @@ impl AgentSurface {
 
 	pub(super) fn render_native_composer_anchor(&self, cx: &mut Context<Self>) -> AnyElement {
 		let blocked = self.composer_unavailable_reason();
-		let archived = blocked == Some(workspace::ARCHIVED_MESSAGE);
+		let archived = blocked == Some(ARCHIVED_MESSAGE);
 		let read_only = blocked.is_some() && !archived;
 		let owner = cx.entity().downgrade();
 		let anchor = gpui::canvas(
@@ -354,6 +358,7 @@ impl AgentSurface {
 									} else {
 										s.focus_message(window, cx);
 									}
+
 									cx.stop_propagation();
 								}
 							}))

@@ -2,8 +2,9 @@
 use std::{mem, rc::Rc};
 
 use gpui::{
-	AnyElement, AnyView, App, AppContext as _, Bounds, ClickEvent, Div, KeyDownEvent, MouseButton,
-	MouseDownEvent, MouseMoveEvent, PathBuilder, Pixels, Point, ScrollEvent, Stateful,
+	AnyElement, AnyView, App, AppContext as _, Bounds, ClickEvent, DispatchPhase, Div,
+	KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, PathBuilder, Pixels, Point,
+	ScrollEvent, Stateful,
 };
 use graph::{Layout, Node};
 use ui_theme::{
@@ -25,7 +26,9 @@ use crate::{
 			FluentBuilder, InteractiveElement, IntoElement, LoadState, ParentElement, Render, Role,
 			SharedString, StatefulInteractiveElement, Styled, SubmitComposer, Window,
 			activity::HistoryScrollAnchor,
-			dock, graph, prompts, ui_theme,
+			dock, graph,
+			native_agents::NativeConnection,
+			prompts, ui_theme,
 			ui_theme::{
 				CAPTION_SIZE, CONVERSATION_HEADER_HEIGHT, CONVERSATION_INSET, CONVERSATION_TAB_GAP,
 				CONVERSATION_TAB_SIZE, CONVERSATION_WIDTH, SELECTED_FILL, WORKSPACE_RADIUS,
@@ -797,13 +800,10 @@ impl AgentSurface {
 	pub(super) fn composer_unavailable_reason(&self) -> Option<&'static str> {
 		if self.native_agents.selected.is_some() {
 			return match self.native_agents.connection {
-				super::native_agents::NativeConnection::ParentManaged =>
-					Some(PARENT_MANAGED_MESSAGE),
-				super::native_agents::NativeConnection::Failed(_) =>
-					Some(NATIVE_CONNECTION_FAILED_MESSAGE),
-				super::native_agents::NativeConnection::Checking { .. } =>
-					Some(NATIVE_CONNECTING_MESSAGE),
-				super::native_agents::NativeConnection::Ready => None,
+				NativeConnection::ParentManaged => Some(PARENT_MANAGED_MESSAGE),
+				NativeConnection::Failed(_) => Some(NATIVE_CONNECTION_FAILED_MESSAGE),
+				NativeConnection::Checking { .. } => Some(NATIVE_CONNECTING_MESSAGE),
+				NativeConnection::Ready => None,
 			};
 		}
 		if self.selected_is_archived() {
@@ -876,8 +876,6 @@ impl AgentSurface {
 	}
 
 	fn native_connection_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-		use super::native_agents::NativeConnection;
-
 		self.native_agents.selected.as_ref()?;
 
 		let feedback = match &self.native_agents.connection {
@@ -911,6 +909,7 @@ impl AgentSurface {
 		if let Some(notice) = self.native_connection_notice(cx) {
 			return notice;
 		}
+
 		if reason == PARENT_MANAGED_MESSAGE {
 			return ui_feedback::read_only_row(
 				"conversation-unavailable",
@@ -1379,9 +1378,10 @@ impl AgentSurface {
 			|_, _, _| (),
 			move |bounds, _, window, _| {
 				window.on_mouse_event(move |event: &MouseDownEvent, phase, window, cx| {
-					if phase == gpui::DispatchPhase::Capture && bounds.contains(&event.position) {
+					if phase == DispatchPhase::Capture && bounds.contains(&event.position) {
 						let _ = owner.update(cx, |s, cx| {
 							s.workspace.focused_panel = panel;
+
 							restore_shell_focus(window, cx);
 						});
 					}
@@ -2864,8 +2864,10 @@ mod tests {
 				let detached = cx.focus_handle();
 
 				window.focus(&detached, cx);
+
 				super::dispatch_shell_action(window, &crate::shell::ToggleContentFullscreen, cx);
 			});
+
 			visual.run_until_parked();
 			visual.update(crate::ui_frame::draw_frame);
 			agent.read_with(visual, |s, cx| {
@@ -2875,7 +2877,6 @@ mod tests {
 				);
 				assert_eq!(s.composer.read(cx).content(), "Preserve this input");
 			});
-
 			visual.simulate_keystrokes("shift-escape");
 			visual.run_until_parked();
 			visual.update(crate::ui_frame::draw_frame);
@@ -2910,6 +2911,7 @@ mod tests {
 			("workbench-body", false),
 		] {
 			thread::sleep(std::time::Duration::from_millis(260));
+
 			visual.run_until_parked();
 			visual.update(crate::ui_frame::draw_frame);
 
@@ -2925,6 +2927,7 @@ mod tests {
 
 				window.focus(&detached, cx);
 			});
+
 			visual.simulate_click(point, Default::default());
 			visual.run_until_parked();
 			visual.update(crate::ui_frame::draw_frame);
@@ -2938,7 +2941,6 @@ mod tests {
 					"{selector} selects its pane for the shortcut"
 				);
 			});
-
 			visual.simulate_keystrokes("shift-escape");
 			visual.run_until_parked();
 			visual.update(crate::ui_frame::draw_frame);

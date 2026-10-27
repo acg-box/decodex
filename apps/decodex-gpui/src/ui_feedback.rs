@@ -191,9 +191,11 @@ pub(crate) struct Notice {
 impl Notice {
 	pub(crate) fn action(mut self, action: Option<AnyElement>) -> Self {
 		self.action = action;
+
 		self
 	}
 }
+
 impl RenderOnce for Notice {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let state = window.use_keyed_state(self.id, cx, |_, _| NoticeState {
@@ -459,6 +461,15 @@ pub(crate) fn composer_block(
 	(displayed, opacity)
 }
 
+pub(crate) fn notice_rail(content: impl IntoElement) -> Div {
+	gpui::div()
+		.w_full()
+		.flex()
+		.justify_center()
+		.px(gpui::px(CONVERSATION_INSET))
+		.child(gpui::div().w_full().min_w_0().max_w(gpui::px(CONVERSATION_WIDTH)).child(content))
+}
+
 fn state_row(
 	id: impl Into<ElementId>,
 	tone: Tone,
@@ -515,15 +526,6 @@ fn state_row(
 					)
 				}),
 		)
-}
-
-pub(crate) fn notice_rail(content: impl IntoElement) -> Div {
-	gpui::div()
-		.w_full()
-		.flex()
-		.justify_center()
-		.px(gpui::px(CONVERSATION_INSET))
-		.child(gpui::div().w_full().min_w_0().max_w(gpui::px(CONVERSATION_WIDTH)).child(content))
 }
 
 #[cfg(test)]
@@ -639,6 +641,7 @@ mod tests {
 		assert!(state.displayed.is_none());
 		assert!(!state.moving(now + SETTLE, Duration::ZERO));
 	}
+
 	#[gpui::test]
 	fn the_slot_measures_content_and_animates_height_through_exit(cx: &mut gpui::TestAppContext) {
 		let (view, visual) = cx.add_window_view(|_, _| NoticeView(None));

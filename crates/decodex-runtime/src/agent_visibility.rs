@@ -450,7 +450,9 @@ mod tests {
 		let mut cache = ArchiveVisibility::default();
 
 		cache.refresh_due("process", &threads, Instant::now());
+
 		assert!(!cache.ready_for("process"));
+
 		for observed in [
 			HashMap::new(),
 			HashMap::from([("thread-main".into(), ThreadArchiveState::Active)]),

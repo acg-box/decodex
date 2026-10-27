@@ -78,7 +78,6 @@ async fn archived_owners_and_their_old_writer_notices_do_not_block_new_conversat
 
 		assert_eq!(new.codex_thread_id.as_deref(), Some("opaque thread/2"));
 		assert_eq!(new.dispatch_state, decodex_database::AgentDispatchState::Running);
-
 		assert!(
 			agent.store.get_agent_inbox_event(old_input.id).await.is_err(),
 			"archiving discards input that was never dispatched"

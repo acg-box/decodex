@@ -22,7 +22,7 @@ use crate::{
 			},
 			workspace,
 		},
-		workspace_symbols,
+		workspace_symbols::{self, Symbol},
 	},
 	ui_motion::{self, SmoothControl},
 	ui_scroll::SmoothScrollArea,
@@ -611,7 +611,7 @@ impl AgentSurface {
 					},
 					cx,
 				)
-				.child(workspace_symbols::icon_sized(workspace_symbols::Symbol::Forward, 12.))
+				.child(workspace_symbols::icon_sized(Symbol::Forward, 12.))
 				.smooth(),
 			);
 		}
@@ -669,7 +669,7 @@ impl AgentSurface {
 					move |s, cx| s.open_graph_agent(&row, cx),
 					cx,
 				)
-				.child(workspace_symbols::icon_sized(workspace_symbols::Symbol::Forward, 12.))
+				.child(workspace_symbols::icon_sized(Symbol::Forward, 12.))
 				.smooth(),
 			);
 		}
@@ -857,7 +857,7 @@ impl AgentSurface {
 					|s, cx| s.read_collaboration(None, true, cx),
 					cx,
 				)
-				.child(workspace_symbols::icon_sized(workspace_symbols::Symbol::Back, 12.))
+				.child(workspace_symbols::icon_sized(Symbol::Back, 12.))
 				.smooth(),
 			);
 		}
@@ -870,7 +870,7 @@ impl AgentSurface {
 					move |s, cx| s.read_collaboration(Some(before), true, cx),
 					cx,
 				)
-				.child(workspace_symbols::icon_sized(workspace_symbols::Symbol::Back, 12.))
+				.child(workspace_symbols::icon_sized(Symbol::Back, 12.))
 				.smooth(),
 			);
 		}

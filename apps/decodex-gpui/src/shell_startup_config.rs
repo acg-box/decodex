@@ -10,6 +10,7 @@ use tokio::runtime::Builder;
 use crate::{
 	shell::diagnostics::{self, Shell},
 	ui_feedback::{self, Feedback},
+	ui_theme,
 };
 use decodex_protocol::{
 	ClientProfile, ConversationWorkingDirectory, DoctorClient, NativeStartupConfiguration,
@@ -48,14 +49,14 @@ pub(super) fn content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.flex()
 		.flex_col()
 		.gap_2()
-		.child(crate::ui_theme::settings_section_title("Local Codex startup configuration"))
-		.child(crate::ui_theme::settings_description(
+		.child(ui_theme::settings_section_title("Local Codex startup configuration"))
+		.child(ui_theme::settings_description(
 			"Checks shared Codex sign-in. Task account overrides are excluded.",
 		));
 
 	if let Some(current) = &current {
 		group = group
-			.child(crate::ui_theme::settings_description(format!(
+			.child(ui_theme::settings_description(format!(
 				"Folder: {}",
 				current.directory.display()
 			)))

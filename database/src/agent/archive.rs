@@ -1,7 +1,7 @@
 //! Retire conversation-local pending work after native archive confirmation.
 use rusqlite::TransactionBehavior;
 
-use crate::{SqliteStore, StoreError, error};
+use crate::{SqliteStore, StoreError, agent::capacity, error};
 
 impl SqliteStore {
 	/// End local input and attention lifecycles for confirmed archived native threads.
@@ -13,21 +13,26 @@ impl SqliteStore {
 		if threads.is_empty() {
 			return Ok(());
 		}
+
 		self.run(move |connection| {
 			let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(error::sqlite_error)?;
 			let now = crate::unix_micros()?;
+
 			for thread in threads {
 				let owners = tx.prepare("SELECT id FROM agent_work_items WHERE codex_thread_id=?1")
 					.map_err(error::sqlite_error)?
 					.query_map([&thread], |row| row.get::<_, String>(0))
 					.map_err(error::sqlite_error)?
 					.collect::<Result<Vec<_>, _>>().map_err(error::sqlite_error)?;
+
 				for owner in owners {
 					// NULL means no native dispatch was attempted; an empty turn ID is
 					// a claimed delivery whose outcome must still be reconciled.
 					tx.execute("DELETE FROM agent_inbox_events WHERE work_item_id=?1 AND event_kind='user_message' AND delivered_turn_id IS NULL AND (disposition IS NULL OR disposition='user_decision')", [&owner]).map_err(error::sqlite_error)?;
-					super::capacity::cancel_pending_with_note(&tx, &owner, "Automatic retry cancelled because the conversation was archived.")?;
+
+					capacity::cancel_pending_with_note(&tx, &owner, "Automatic retry cancelled because the conversation was archived.")?;
+
 					tx.execute("UPDATE agent_inbox_events SET disposition='resolved',disposition_note='Pending action cancelled because the conversation was archived.',disposed_at_micros=max(created_at_micros,?2) WHERE work_item_id=?1 AND disposition IS NULL AND event_kind IN ('async_question_answer','steer_pending','user_input_pending','permission_pending','server_request_pending','thread_in_use_needs_attention','wake_failed','followup_processing_failed','reconnection_needs_attention','event_processing_failed')", rusqlite::params![owner,now]).map_err(error::sqlite_error)?;
 					// Reuse skipped-question identities so a history replay cannot
 					// turn an archived prompt into a new question after restoration.
@@ -36,7 +41,9 @@ impl SqliteStore {
 					tx.execute("UPDATE agent_work_items SET next_check_at_micros=NULL WHERE id=?1 AND next_check_at_micros IS NOT NULL", [&owner]).map_err(error::sqlite_error)?;
 				}
 			}
+
 			tx.commit().map_err(error::sqlite_error)?;
+
 			Ok(())
 		}).await
 	}
@@ -50,9 +57,11 @@ mod tests {
 	async fn archive_retires_inputs_questions_and_retries_without_erasing_sent_history() {
 		let root = tempfile::tempdir().unwrap();
 		let store = SqliteStore::open_test(&root.path().join("archive.sqlite3")).unwrap();
+
 		store.with_connection(|c| {
 			for owner in ["archived","active"] {
 				c.execute("INSERT INTO agent_work_items(id,kind,title,instructions,codex_thread_id,dispatch_state,status,next_check_at_micros,created_at_micros,updated_at_micros) VALUES(?1,'goal',?1,'Keep requirements',?1,'idle','open',100,1,1)",[owner]).map_err(error::sqlite_error)?;
+
 				for (suffix,kind,disposition,turn) in [
 					("failed","user_message",Some("user_decision"),None),
 					("queued","user_message",None,None),
@@ -65,16 +74,21 @@ mod tests {
 				] {
 					c.execute("INSERT INTO agent_inbox_events(source_event_id,work_item_id,event_kind,payload,created_at_micros,disposition,disposition_note,disposed_at_micros,delivery_work_item_id,delivered_turn_id) VALUES(?1,?2,?3,'{}',1,?4,?5,?6,?7,?8)",rusqlite::params![format!("{owner}-{suffix}"),owner,kind,disposition,disposition.map(|_|"Kept fact"),disposition.map(|_|1),turn.map(|_|owner),turn]).map_err(error::sqlite_error)?;
 				}
+
 				c.execute("INSERT INTO agent_capacity_retries(event_id,work_item_id,failed_turn_id,attempt,due_at_micros,state) SELECT id,?1,'failed-turn',1,100,'pending' FROM agent_inbox_events WHERE source_event_id=?2",rusqlite::params![owner,format!("{owner}-retry")]).map_err(error::sqlite_error)?;
 				c.execute("INSERT INTO agent_async_questions VALUES(?1,?1,'turn','item','question','{}',1,0)",[owner]).map_err(error::sqlite_error)?;
 			}
+
 			Ok(())
 		}).unwrap();
+
 		for _ in 0..2 {
 			store.retire_archived_agent_threads(vec!["archived".into()]).await.unwrap();
 		}
+
 		store.with_connection(|c| {
 			let count = |sql:&str| c.query_row(sql,[],|r|r.get::<_,i64>(0)).map_err(error::sqlite_error);
+
 			assert_eq!(count("SELECT count(*) FROM agent_inbox_events WHERE work_item_id='active'")?,8);
 			assert_eq!(count("SELECT count(*) FROM agent_inbox_events WHERE source_event_id IN('archived-failed','archived-queued')")?,0);
 			assert_eq!(count("SELECT count(*) FROM agent_inbox_events WHERE source_event_id IN('archived-sent','archived-uncertain','archived-result') AND payload='{}'")?,3);
@@ -84,8 +98,10 @@ mod tests {
 			assert_eq!(count("SELECT count(*) FROM agent_async_answers WHERE work_id='archived'")?,0);
 			assert_eq!(count("SELECT count(*) FROM agent_work_items WHERE id='active' AND next_check_at_micros=100")?,1);
 			assert_eq!(count("SELECT count(*) FROM agent_work_items WHERE id='archived' AND status='open' AND instructions='Keep requirements' AND next_check_at_micros IS NULL")?,1);
+
 			Ok(())
 		}).unwrap();
+
 		assert!(store.read_agent_async_questions("archived".into()).await.unwrap().is_empty());
 		assert_eq!(store.read_agent_async_questions("active".into()).await.unwrap().len(), 1);
 	}

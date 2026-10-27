@@ -164,16 +164,6 @@ pub(super) fn next_retry(
 	)))
 }
 
-fn retry_row(row: &Row<'_>) -> rusqlite::Result<AgentCapacityRetry> {
-	Ok(AgentCapacityRetry {
-		event_id: row.get("event_id")?,
-		work_item_id: row.get("work_item_id")?,
-		failed_turn_id: row.get("failed_turn_id")?,
-		attempt: row.get("attempt")?,
-		due_at_micros: row.get("due_at_micros")?,
-	})
-}
-
 pub(super) fn cancel_pending_with_note(
 	connection: &Connection,
 	work: &str,
@@ -188,4 +178,14 @@ pub(super) fn cancel_pending_with_note(
 		.map_err(error::sqlite_error)?;
 
 	Ok(())
+}
+
+fn retry_row(row: &Row<'_>) -> rusqlite::Result<AgentCapacityRetry> {
+	Ok(AgentCapacityRetry {
+		event_id: row.get("event_id")?,
+		work_item_id: row.get("work_item_id")?,
+		failed_turn_id: row.get("failed_turn_id")?,
+		attempt: row.get("attempt")?,
+		due_at_micros: row.get("due_at_micros")?,
+	})
 }

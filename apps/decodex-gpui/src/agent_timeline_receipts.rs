@@ -39,6 +39,7 @@ impl AgentSurface {
 		if self.work_is_archived(&work.id) {
 			return Vec::new();
 		}
+
 		let mut rows = self.native_input_receipts_panel(work, cx);
 
 		for entry in self.saved_delivery_entries(&work.id).values() {

@@ -21,7 +21,10 @@ use crate::{
 	ui_feedback::{self, Feedback, Tone},
 	ui_motion::SmoothControl as _,
 	ui_scroll::Scrollbar,
-	ui_theme::{self, HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_WIDTH, TEXT},
+	ui_theme::{
+		self, HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_LABEL_SIZE, SETTINGS_WIDTH,
+		TEXT,
+	},
 };
 use decodex_protocol::{DoctorComponent, DoctorIssue, DoctorStatus};
 use startup_config::Panel;
@@ -153,7 +156,7 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 		.flex()
 		.flex_col()
 		.gap(gpui::px(SETTINGS_GROUP_GAP))
-		.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
+		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 		.child(
 			ui_theme::settings_row()
 				.id("health-query-status")
@@ -239,7 +242,7 @@ fn details_toggle(shell: &Shell, cx: &Context<Shell>) -> AnyElement {
 		.items_center()
 		.gap_3()
 		.cursor_pointer()
-		.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
+		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 		.text_color(ui_theme::rgb(TEXT))
 		.hover(|el| el.bg(ui_theme::rgba(HOVER_FILL)))
 		.focus_visible(|el| el.bg(ui_theme::rgba(HOVER_FILL)))

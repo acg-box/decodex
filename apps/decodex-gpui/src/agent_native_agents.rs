@@ -911,7 +911,7 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
-	use std::future;
+	use std::{future, thread};
 
 	use futures_util::{SinkExt as _, StreamExt as _};
 	use gpui::AppContext as _;
@@ -1320,9 +1320,12 @@ mod tests {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 
 		visual.simulate_resize(gpui::size(gpui::px(1_100.), gpui::px(800.)));
+
 		surface.update(visual, |s, cx| {
 			bind_fixture(s, profile, cx);
+
 			s.composer.update(cx, |input, cx| input.set_content("Parent draft", cx));
+
 			s.native_agents.selected = Some(("agent".into(), "child".into()));
 			s.native_agents.editor = s.native_agent_target("agent", "child");
 			s.native_agents.last_poll = Some(std::time::Instant::now());
@@ -1343,10 +1346,14 @@ mod tests {
 
 			surface.update(visual, |s, cx| {
 				s.native_agents.connection = state;
+
 				cx.notify();
 			});
+
 			visual.update(crate::ui_frame::draw_frame);
-			std::thread::sleep(std::time::Duration::from_millis(260));
+
+			thread::sleep(std::time::Duration::from_millis(260));
+
 			visual.update(crate::ui_frame::draw_frame);
 
 			let composer = visual.debug_bounds("composer-blocked").unwrap();
@@ -1365,15 +1372,22 @@ mod tests {
 
 		surface.update(visual, |s, cx| {
 			s.conversation_composer().update(cx, |input, cx| input.set_content("Child draft", cx));
+
 			s.native_agents.detail = Some(conversation("child"));
 			s.native_agents.connection = super::NativeConnection::Ready;
+
 			cx.notify();
 		});
+
 		visual.update(crate::ui_frame::draw_frame);
-		std::thread::sleep(std::time::Duration::from_millis(260));
+
+		thread::sleep(std::time::Duration::from_millis(260));
+
 		visual.update(crate::ui_frame::draw_frame);
+
 		assert!(visual.debug_bounds("composer-editor-area").is_some());
 		assert!(visual.debug_bounds("conversation-unavailable").is_none());
+
 		surface.read_with(visual, |s, cx| {
 			assert_eq!(s.composer.read(cx).content(), "Parent draft");
 			assert_eq!(s.conversation_composer().read(cx).content(), "Child draft");

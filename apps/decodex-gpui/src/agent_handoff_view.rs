@@ -5,7 +5,7 @@ use crate::{
 	shell::agent_surface::{
 		AgentSurface, AgentWorkItemDto, Context, InteractiveElement, IntoElement, ParentElement,
 		Role, SharedString, StatefulInteractiveElement, Styled, dock, graph::Node,
-		handoffs::Handoff, ui_theme::TEXT_MUTED,
+		handoffs::Handoff, panel_controls::Panel, ui_theme::TEXT_MUTED,
 	},
 	ui_theme,
 };
@@ -57,7 +57,7 @@ impl AgentSurface {
 			} else {
 				gpui::div().flex_1().into_any_element()
 			})
-			.child(self.panel_controls(super::panel_controls::Panel::Dock, cx));
+			.child(self.panel_controls(Panel::Dock, cx));
 		let mut panel = gpui::div()
 			.id("work-dock")
 			.relative()

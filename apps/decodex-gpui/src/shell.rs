@@ -77,9 +77,10 @@ use crate::{
 		self, ACCENT, BLUE, CANVAS, CHROME_CONTROL_SIZE, COMPOSER_MATERIAL, CONTENT_MATERIAL,
 		CONTROL_GROUP_HEIGHT, CONTROL_MARGIN, CONTROL_SELECTED_FILL, CONTROL_SELECTED_HOVER,
 		FONT_FAMILY, HEADING_SIZE, INFO, MOTION_PANEL, PRESSED_FILL, SELECTED_BORDER,
-		SELECTED_FILL, SELECTED_HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_TOP,
-		SETTINGS_WIDTH, SETTINGS_WINDOW_MIN_WIDTH, SHELL_MATERIAL, SURFACE_RAISED_MATERIAL,
-		TEXT_FAINT, appearance, window_material,
+		SELECTED_FILL, SELECTED_HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_HELP_SIZE, SETTINGS_INSET,
+		SETTINGS_LABEL_SIZE, SETTINGS_TOP, SETTINGS_WIDTH, SETTINGS_WINDOW_MIN_WIDTH,
+		SHELL_MATERIAL, SURFACE_RAISED_MATERIAL, TEXT_FAINT, WORKSPACE_GUTTER, WORKSPACE_RADIUS,
+		appearance, window_material,
 	},
 };
 use account_feedback::AccountFeedback;
@@ -3198,7 +3199,7 @@ fn health_component_row(
 		.gap_4()
 		.border_b_1()
 		.border_color(ui_theme::rgba(0xffffff0a))
-		.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
+		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 		.text_color(ui_theme::rgb(WB_TEXT))
 		.child(gpui::div().flex_1().min_w_0().flex().flex_col().gap_1().child(label).when(
 			!presentation.detail.is_empty()
@@ -3206,7 +3207,7 @@ fn health_component_row(
 			|element| {
 				element.child(
 					gpui::div()
-						.text_size(gpui::px(ui_theme::SETTINGS_HELP_SIZE))
+						.text_size(gpui::px(SETTINGS_HELP_SIZE))
 						.text_color(ui_theme::rgb(WB_TEXT_FAINT))
 						.child(presentation.detail),
 				)
@@ -3756,7 +3757,7 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 				.child(
 					gpui::div()
 						.font_family(FONT_FAMILY)
-						.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
+						.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 						.text_color(ui_theme::rgb(WB_TEXT))
 						.child("Add account"),
 				)
@@ -5918,7 +5919,7 @@ fn settings_navigation_surface() -> Div {
 	gpui::div()
 		.tab_group()
 		.debug_selector(|| "settings-navigation-pane".into())
-		.rounded(gpui::px(ui_theme::WORKSPACE_RADIUS))
+		.rounded(gpui::px(WORKSPACE_RADIUS))
 		.overflow_hidden()
 		.w(gpui::px(176.0))
 		.min_w(gpui::px(176.0))
@@ -5928,7 +5929,7 @@ fn settings_navigation_surface() -> Div {
 		.flex()
 		.flex_col()
 		.gap(gpui::px(3.0))
-		.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
+		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 		.line_height(gpui::px(18.0))
 		.pr(gpui::px(16.))
 		.bg(ui_theme::rgba(ui_theme::SIDEBAR_MATERIAL))
@@ -5955,7 +5956,7 @@ fn settings_workspace_content(
 	let navigation = settings_navigation(shell, standalone, selected, cx);
 	let panel = gpui::div()
 		.debug_selector(|| "settings-content-pane".into())
-		.rounded(gpui::px(ui_theme::WORKSPACE_RADIUS))
+		.rounded(gpui::px(WORKSPACE_RADIUS))
 		.flex_1()
 		.min_w_0()
 		.min_h_0()
@@ -6013,7 +6014,7 @@ fn settings_workspace_content(
 		.id("settings-workspace")
 		.role(Role::Main)
 		.aria_label("Settings")
-		.gap(gpui::px(ui_theme::WORKSPACE_GUTTER))
+		.gap(gpui::px(WORKSPACE_GUTTER))
 		.flex_1()
 		.min_w_0()
 		.min_h_0()
@@ -6500,7 +6501,7 @@ fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement
 						.overflow_hidden()
 						.whitespace_nowrap()
 						.text_ellipsis()
-						.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
+						.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 						.font_weight(FontWeight::MEDIUM)
 						.text_color(if enabled {
 							ui_theme::rgb(WB_TEXT)
@@ -6519,7 +6520,7 @@ fn account_row_identity(account: &AccountDto, email: Option<&str>) -> AnyElement
 								.items_center()
 								.gap_2()
 								.font_family(FONT_FAMILY)
-								.text_size(gpui::px(ui_theme::SETTINGS_HELP_SIZE))
+								.text_size(gpui::px(SETTINGS_HELP_SIZE))
 								.text_color(ui_theme::rgb(WB_TEXT_FAINT))
 								.child(account_readiness_status(account)),
 						)

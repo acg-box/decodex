@@ -637,12 +637,14 @@ mod tests {
 			assert!(visual.debug_bounds("chat-expansion-expand-icon").is_some());
 			assert!(visual.debug_bounds("dock-expansion-expand-icon").is_some());
 			assert!(visual.debug_bounds("chat-expansion-restore-icon").is_none());
+
 			visual.update(|window, cx| {
 				let s = surface.read(cx);
 
 				assert_eq!(s.sidebar_target_width(window), 230.);
 				assert_eq!(s.agent_tree_width(window), 270.);
 			});
+
 			assert!(visual.debug_bounds("dock-expansion-restore-icon").is_none());
 		}
 	}

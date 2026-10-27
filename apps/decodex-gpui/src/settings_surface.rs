@@ -32,8 +32,8 @@ use crate::{
 	ui_loading, ui_preferences,
 	ui_scroll::SmoothScrollArea,
 	ui_theme::{
-		self, SETTINGS_CONTROL_HEIGHT, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_TOP,
-		SETTINGS_WIDTH, TEXT,
+		self, SETTINGS_CONTROL_HEIGHT, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_LABEL_SIZE,
+		SETTINGS_TOP, SETTINGS_WIDTH, TEXT,
 	},
 };
 use power::PowerSettings;
@@ -944,7 +944,7 @@ impl Render for SettingsSurface {
 			.size_full()
 			.min_w_0()
 			.min_h_0()
-			.text_size(gpui::px(ui_theme::SETTINGS_LABEL_SIZE))
+			.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 			.line_height(gpui::px(18.0))
 			.text_color(ui_theme::rgb(TEXT))
 			.child(

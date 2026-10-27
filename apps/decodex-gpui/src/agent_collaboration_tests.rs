@@ -37,6 +37,7 @@ fn collaboration_stays_global_and_expands_without_switching_chat_or_draft(cx: &m
 
 		surface.visual_workspace_fixture(cx);
 		surface.visual_workbench_page("workbench", cx);
+
 		surface.workspace.graph_expanded = false;
 
 		surface
