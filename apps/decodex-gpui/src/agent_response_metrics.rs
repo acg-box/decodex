@@ -19,7 +19,7 @@ use crate::{
 	ui_motion::{self, Tween},
 	ui_theme::{self, METADATA_GAP},
 };
-use decodex_protocol::{AgentHistoryEntryDto, AgentTurnUsageDto};
+use decodex_protocol::{AgentHistoryEntryDto, AgentTurnTimingDto, AgentTurnUsageDto};
 
 const METRICS_HEIGHT: f32 = 24.;
 
@@ -63,6 +63,7 @@ pub(super) struct ResponseMetrics {
 	pub duration_ms: Option<u64>,
 	pub status: Option<String>,
 	pub usage: Option<AgentTurnUsageDto>,
+	pub timing: Option<AgentTurnTimingDto>,
 }
 impl RenderOnce for ResponseMetrics {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -73,12 +74,15 @@ impl RenderOnce for ResponseMetrics {
 		);
 		let open = state.read(cx).0;
 		let anchor = state.read(cx).1.origin;
-		let has_details = self.usage.is_some();
+		let has_details = self.usage.is_some() || self.timing.is_some();
 		let duration = self.duration_ms.map(duration_label);
-		let label = duration.clone().or(self.status).unwrap_or_default();
+		let label = duration
+			.clone()
+			.or(self.status)
+			.unwrap_or_else(|| if has_details { "—".into() } else { String::new() });
 		let has_duration = duration.is_some();
 		let panel = if open {
-			details_panel(&self.key, duration, self.usage.as_ref())
+			details_panel(&self.key, duration, self.usage.as_ref(), self.timing.as_ref())
 		} else {
 			gpui::div().into_any_element()
 		};
@@ -225,6 +229,18 @@ fn duration_label(ms: u64) -> String {
 	}
 }
 
+fn timing_rows(timing: &AgentTurnTimingDto) -> [(&'static str, String); 6] {
+	[
+		("Model output", timing.model_output_ms),
+		("Context compaction", timing.compaction_ms),
+		("Tool activity", timing.tool_activity_ms),
+		("Automatic review", timing.auto_review_ms),
+		("User requests", timing.user_request_ms),
+		("Other / unobserved", None),
+	]
+	.map(|(label, value)| (label, value.map(duration_label).unwrap_or_else(|| "Unknown".into())))
+}
+
 fn duration_icon() -> impl IntoElement {
 	gpui::svg()
 		.data(br#"<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11"><g fill="none" stroke="white" stroke-width="1"><circle cx="5.5" cy="5.5" r="4.25"/><path d="M5.5 2.5V5.5L7.5 6.5"/></g></svg>"#)
@@ -237,6 +253,7 @@ fn details_panel(
 	key: &str,
 	duration: Option<String>,
 	usage: Option<&AgentTurnUsageDto>,
+	timing: Option<&AgentTurnTimingDto>,
 ) -> AnyElement {
 	let mut panel = gpui::div()
 		.id(SharedString::from(format!("response-detail-panel-{}", key)))
@@ -262,23 +279,24 @@ fn details_panel(
 			spread_radius: gpui::px(-3.),
 		}]);
 
-	panel = panel.child(
-		gpui::div()
-			.flex()
-			.justify_between()
-			.mb(gpui::px(8.))
-			.child(
-				gpui::div()
-					.text_size(gpui::px(13.))
-					.font_weight(FontWeight::MEDIUM)
-					.child("Turn details"),
-			)
-			.child(
-				gpui::div()
-					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child(duration.unwrap_or_default()),
-			),
-	);
+	panel =
+		panel.child(
+			gpui::div()
+				.flex()
+				.justify_between()
+				.mb(gpui::px(8.))
+				.child(
+					gpui::div()
+						.text_size(gpui::px(13.))
+						.font_weight(FontWeight::MEDIUM)
+						.child("Turn details"),
+				)
+				.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(
+					duration.unwrap_or_else(|| {
+						if timing.is_some() { "—".into() } else { String::new() }
+					}),
+				)),
+		);
 
 	if let Some(usage) = usage {
 		panel = panel
@@ -314,6 +332,40 @@ fn details_panel(
 				.children(number("Context capacity", details.context_capacity));
 		}
 	}
+	if let Some(timing) = timing {
+		let mut details = gpui::div()
+			.debug_selector(|| "observed-timing-details".into())
+			.flex()
+			.flex_col()
+			.gap(gpui::px(2.))
+			.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Observed activity"));
+		for (label, value) in timing_rows(timing) {
+			details = details.child(row(label, value));
+		}
+		details = details.child(
+			gpui::div().mt(gpui::px(4.)).text_color(ui_theme::rgb(TEXT_MUTED))
+				.child("Output is observed activity, not full inference. Intervals can overlap; missing durations are unknown."),
+		);
+		panel = panel.child(gpui::div().h(gpui::px(6.))).child(details);
+	}
 
 	panel.into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{AgentTurnTimingDto, timing_rows};
+
+	#[test]
+	fn observed_timing_rows_distinguish_unknown_from_a_measured_zero() {
+		let rows = timing_rows(&AgentTurnTimingDto {
+			model_output_ms: Some(1_500),
+			tool_activity_ms: Some(0),
+			..Default::default()
+		});
+		assert_eq!(rows[0], ("Model output", "1.5s".into()));
+		assert_eq!(rows[1], ("Context compaction", "Unknown".into()));
+		assert_eq!(rows[2], ("Tool activity", "0.0s".into()));
+		assert_eq!(rows[5], ("Other / unobserved", "Unknown".into()));
+	}
 }

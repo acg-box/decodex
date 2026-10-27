@@ -75,7 +75,7 @@ async fn installed_native_generation_rate_survives_cold_resume_without_raw_notif
 			let thread =
 				store.get_agent_work_item("speed".into()).await.unwrap().codex_thread_id.unwrap();
 			let event = store
-				.read_agent_output_rate_observation("speed".into(), thread)
+				.read_agent_output_rate_observation("speed".into(), thread.clone())
 				.await
 				.unwrap()
 				.expect("stream timing saved");
@@ -95,6 +95,17 @@ async fn installed_native_generation_rate_survives_cold_resume_without_raw_notif
 				"paced generation interval: {}ms",
 				rate.duration_ms
 			);
+
+			let saved =
+				store.read_agent_turn_metrics("speed".into(), thread, vec![turn]).await.unwrap();
+			let timing: Value = serde_json::from_str(
+				saved[0].timing_json.as_ref().expect("native observed timings saved"),
+			)
+			.unwrap();
+			assert!((300..=3_000).contains(
+				&timing["model_output_ms"].as_u64().expect("paced native output observed")
+			));
+			assert!(timing["tool_activity_ms"].is_null(), "no tool activity was observed");
 		})
 		.await
 		.unwrap();

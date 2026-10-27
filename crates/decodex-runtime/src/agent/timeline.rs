@@ -255,6 +255,7 @@ fn entry(row: &Value) -> Option<AgentTimelineEntry> {
 				status,
 				duration_ms: row["durationMs"].as_u64(),
 				usage: None,
+				timing: None,
 				usage_summary: None,
 				error: if completed && !row["error"].is_null() {
 					let (message, truncated) = visible_text(row["error"]["message"].as_str()?);
@@ -310,7 +311,18 @@ fn ordinary(row: &Value) -> Option<AgentTimelineContent> {
 	let completed = !matches!(item["status"].as_str(), Some("inProgress" | "in_progress"));
 	let activity = (kind != "reasoning")
 		.then(|| activity::project(&serde_json::json!({"turnId":turn_id,"item":item}), completed))
-		.flatten();
+		.flatten()
+		.map(|mut activity| {
+			let start = item["startedAtMs"].as_u64().filter(|time| *time > 0);
+			let end = item["completedAtMs"].as_u64().filter(|time| *time > 0);
+
+			if completed && activity.duration_ms.is_none() {
+				activity.duration_ms =
+					start.zip(end).and_then(|(start, end)| end.checked_sub(start));
+			}
+			activity.native_timestamp_ms = if completed { end } else { start };
+			activity
+		});
 
 	Some(AgentTimelineContent::Item {
 		collaboration: collaboration(item),
@@ -652,6 +664,30 @@ mod tests {
 		assert_eq!(activity.label, "Sign-in required");
 		assert_eq!(activity.status, "failed");
 		assert!(!serde_json::to_string(&projected).expect("json").contains("PRIVATE"));
+	}
+
+	#[test]
+	fn native_history_uses_valid_item_lifecycle_timestamps_without_inventing_old_durations() {
+		let row = |start: Value, end: Value, native_duration: Value| {
+			serde_json::json!({"turnId":"turn","item":{
+				"type":"mcpToolCall","id":"call","server":"docs","tool":"search",
+				"status":"completed","startedAtMs":start,"completedAtMs":end,
+				"durationMs":native_duration
+			}})
+		};
+		for (start, end, native_duration, expected) in [
+			(serde_json::json!(1_000), serde_json::json!(1_600), Value::Null, Some(600)),
+			(serde_json::json!(1_000), serde_json::json!(1_600), serde_json::json!(250), Some(250)),
+			(Value::Null, serde_json::json!(1_600), Value::Null, None),
+			(serde_json::json!(1_600), serde_json::json!(1_000), Value::Null, None),
+			(serde_json::json!(0), serde_json::json!(1_600), Value::Null, None),
+		] {
+			let projected = timeline::ordinary(&row(start, end, native_duration)).unwrap();
+			let AgentTimelineContent::Item { activity: Some(activity), .. } = projected else {
+				panic!("expected native activity")
+			};
+			assert_eq!(activity.duration_ms, expected);
+		}
 	}
 
 	#[test]

@@ -65,6 +65,22 @@ pub struct AgentOutputRate {
 	pub completed_at_ms: Option<u64>,
 }
 
+/// Durations of locally observed activity for one completed native turn.
+/// Each value is a union within its category; categories can overlap.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub struct AgentTurnTimingDto {
+	/// Visible output or reasoning item lifetimes, not the complete model request.
+	pub model_output_ms: Option<u64>,
+	/// Observed context-compaction item lifetimes.
+	pub compaction_ms: Option<u64>,
+	/// Observed tool item lifetimes, which can include approval or other waits.
+	pub tool_activity_ms: Option<u64>,
+	/// Observed automatic-review lifetimes.
+	pub auto_review_ms: Option<u64>,
+	/// Observed blocking approval or input request lifetimes.
+	pub user_request_ms: Option<u64>,
+}
+
 /// A canonical position with its own typed identity; position alone is not unique.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AgentTimelineEntry {
@@ -243,6 +259,9 @@ pub enum AgentTimelineContent {
 		usage_summary: Option<String>,
 		/// Compact token counts for this exact turn.
 		usage: Option<AgentTurnUsageDto>,
+		/// Local observations, absent for unobserved or recovered turns.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		timing: Option<AgentTurnTimingDto>,
 		/// Public provider failure message, when present.
 		error: Option<AgentTimelineError>,
 	},

@@ -2202,6 +2202,7 @@ mod tests {
 				status: None,
 				duration_ms: None,
 				usage: None,
+				timing: None,
 				usage_summary: None,
 				error: None,
 			},

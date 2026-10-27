@@ -157,7 +157,7 @@ pub use self::{
 		AgentCollaborationDto, AgentCollaborationResultDto, AgentOutputRate, AgentThreadMetrics,
 		AgentTimelineAttachment, AgentTimelineAttachmentSource, AgentTimelineContent,
 		AgentTimelineEntry, AgentTimelineError, AgentTimelinePage, AgentTimelinePromotedContent,
-		AgentTimelineResult,
+		AgentTimelineResult, AgentTurnTimingDto,
 	},
 	agent_transcript::{
 		AgentTranscriptRequest, AgentTranscriptResult, MAX_TRANSCRIPT_BYTES, TRANSCRIPT_CHUNK_BYTES,

@@ -171,6 +171,7 @@ fn completed(position: u64, turn: &str) -> AgentTimelineEntry {
 			status: Some("completed".into()),
 			duration_ms: Some(800),
 			usage: None,
+			timing: None,
 			usage_summary: None,
 			error: None,
 		},

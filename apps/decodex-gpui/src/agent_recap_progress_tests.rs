@@ -97,6 +97,7 @@ fn boundary(position: u64, turn: &str, status: &str) -> decodex_protocol::AgentT
 			status: Some(status.into()),
 			duration_ms: None,
 			usage: None,
+			timing: None,
 			usage_summary: None,
 			error: None,
 		},

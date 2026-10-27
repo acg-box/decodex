@@ -330,6 +330,9 @@ impl AgentCoordinator {
 			evidence["tokenUsage"] = value["tokenUsage"].clone();
 		}
 
+		let observed_timing =
+			usage_complete.then(|| self.client.take_observed_turn_timing(&thread, &turn)).flatten();
+
 		self.store
 			.complete_agent_turn_with_event(
 				item.id.clone(),
@@ -340,7 +343,7 @@ impl AgentCoordinator {
 					// The store routes results for outstanding assignments atomically.
 					// Workspace ownership alone does not subscribe a parent to every turn.
 					event_kind: "agent_turn_completed".into(),
-					payload: serde_json::json!({"terminal":result_messages::terminal(&params),"threadReadback":evidence,"usage":usage}).to_string(),
+					payload: serde_json::json!({"terminal":result_messages::terminal(&params),"threadReadback":evidence,"usage":usage,"observedTiming":observed_timing}).to_string(),
 				},
 			)
 			.await?;

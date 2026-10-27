@@ -164,8 +164,8 @@ impl SqliteStore {
 			.map_err(|_| StoreError::InvalidInput("invalid turn identities"))?;
 
 		self.run(move |connection| {
-			connection.prepare("SELECT requested.value,json_extract(e.payload,'$.usage'),json_extract(e.payload,'$.threadReadback.tokenUsage') FROM json_each(?3) requested JOIN agent_inbox_events e ON e.source_event_id=json_array('turn/completed',?2,requested.value) WHERE e.work_item_id=?1 AND e.event_kind IN ('agent_turn_completed','worker_turn_completed') AND json_extract(e.payload,'$.terminal.threadId')=?2 AND json_extract(e.payload,'$.terminal.turn.id')=requested.value")
-				.map_err(error::sqlite_error)?.query_map(rusqlite::params![work,thread,turns],|row|Ok(AgentTurnMetrics {turn_id:row.get(0)?,usage_json:row.get(1)?,observation_json:row.get(2)?}))
+			connection.prepare("SELECT requested.value,json_extract(e.payload,'$.usage'),json_extract(e.payload,'$.threadReadback.tokenUsage'),json_extract(e.payload,'$.observedTiming') FROM json_each(?3) requested JOIN agent_inbox_events e ON e.source_event_id=json_array('turn/completed',?2,requested.value) WHERE e.work_item_id=?1 AND e.event_kind IN ('agent_turn_completed','worker_turn_completed') AND json_extract(e.payload,'$.terminal.threadId')=?2 AND json_extract(e.payload,'$.terminal.turn.id')=requested.value")
+				.map_err(error::sqlite_error)?.query_map(rusqlite::params![work,thread,turns],|row|Ok(AgentTurnMetrics {turn_id:row.get(0)?,usage_json:row.get(1)?,observation_json:row.get(2)?,timing_json:row.get(3)?}))
 				.map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(|error|error::sqlite_error(error).into())
 		}).await
 	}
@@ -1604,6 +1604,8 @@ pub struct AgentTurnMetrics {
 	pub usage_json: Option<String>,
 	/// Latest provider usage observation retained with this completion.
 	pub observation_json: Option<String>,
+	/// Locally observed activity durations, absent if this turn was not observed.
+	pub timing_json: Option<String>,
 }
 
 pub(crate) fn read_work(connection: &Connection, id: &str) -> Result<AgentWorkItem, StoreError> {
@@ -2085,7 +2087,7 @@ mod tests {
 		] {
 			store.enqueue_agent_event(EnqueueAgentEvent {
 				source_event_id:serde_json::json!(["turn/completed",thread,turn]).to_string(),work_item_id:work.into(),event_kind:"agent_turn_completed".into(),
-				payload:serde_json::json!({"terminal":{"threadId":payload_thread,"turn":{"id":turn}},"usage":{"input_tokens":input,"output_tokens":2},"threadReadback":{"tokenUsage":{"marker":"observed"},"assistantMessages":"PRIVATE_TRANSCRIPT"}}).to_string(),
+				payload:serde_json::json!({"terminal":{"threadId":payload_thread,"turn":{"id":turn}},"usage":{"input_tokens":input,"output_tokens":2},"observedTiming":{"model_output_ms":input},"threadReadback":{"tokenUsage":{"marker":"observed"},"assistantMessages":"PRIVATE_TRANSCRIPT"}}).to_string(),
 			}).await.unwrap();
 		}
 		for n in 0..50 {
@@ -2114,6 +2116,10 @@ mod tests {
 
 		assert_eq!(metrics.len(), 1);
 		assert_eq!(metrics[0].turn_id, "same/turn");
+		assert_eq!(
+			serde_json::from_str::<Value>(metrics[0].timing_json.as_ref().unwrap()).unwrap()["model_output_ms"],
+			11
+		);
 		assert_eq!(
 			serde_json::from_str::<Value>(metrics[0].usage_json.as_ref().unwrap()).unwrap()["input_tokens"],
 			11

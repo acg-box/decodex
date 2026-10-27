@@ -758,12 +758,12 @@
         "0bc73bbeb18ddadf69c2e4c0da4322949de73dc6",
         "5e3496e0ad6a85d7f57cbe3b6d576db3b317766c"
       ],
-      "status": "recorded_optional_no_implementation",
-      "value": "Avoid duplicate compatible local MCP helpers across loaded native chats.",
-      "maintenance_cost": "Medium: protocol opt-in, per-account ownership, catalog/input isolation and helper lifecycle qualification.",
-      "recommendation": "Defer while native discovery/sharing remain UnderDevelopment and default false; no feature flag or product control added.",
-      "evidence": "Current review records 37 and 38; source pooling/lease tests and retained MCP regressions are recorded separately.",
-      "decision_status": "User authorization required before product enablement."
+      "status": "approved_blocked_by_retained_legacy_regression",
+      "value": "Share compatible local stdio MCP connections among chats in one native process; sharing across independent processes is not established.",
+      "maintenance_cost": "Native sharing is low-cost only if discovery and retained legacy fallback qualify; cross-process ownership and isolation need separate research.",
+      "recommendation": "Keep the global flag off until a supported scoped opt-in or upstream fallback passes the exact retained native regression and same-process sharing tests.",
+      "evidence": "Selected artifact abf4bb91: supported same-process sharing fixture passed; the existing native_subagent_mcp retained fixture passed four sharing-off subcases and failed four sharing-on subcases when server/discover returned an empty result. The changed test fixture remains unmerged; do not infer production acceptance.",
+      "decision_status": "User approved native sharing; implementation is blocked by a reproduced legacy discovery regression. No new user decision is needed."
     },
     {
       "id": "native-critical-path-timing",
@@ -772,12 +772,12 @@
         "7c997fe2de60e6e4ac95cfc19edf6a5d430f09d6",
         "33b16a9306dbf8c99fc44addd3ed9ce8883a7590"
       ],
-      "status": "recorded_optional_no_implementation",
-      "value": "Explain which model, tool and approval waits contribute to native turn latency.",
-      "maintenance_cost": "Medium to high: new presentation, incomplete/unsupported capture semantics and timing validation across execution paths.",
-      "recommendation": "Defer while capture is UnderDevelopment/default false. Retain existing actual token and native-duration views.",
-      "evidence": "Current review records 29, 34 and 36; no Decodex critical-path consumer.",
-      "decision_status": "User authorization required before adding a view or automatic policy."
+      "status": "approved_bounded_observed_timing_pending_delivery",
+      "value": "Show locally observable activity durations and retain unknowns. Full native critical-path capture remains a separate research item.",
+      "maintenance_cost": "The observed view uses existing transport and turn receipts. A supported native critical-path exporter and its ownership and qualification remain unresolved.",
+      "recommendation": "Deliver the bounded observation after checks; do not relabel it as full native inference or critical path.",
+      "evidence": "See retained_behavior_contracts#observed-native-turn-activity-timings. Targeted source research found upstream critical-path values in a turn analytics event, but no supported client subscription or newer-artifact qualification.",
+      "decision_status": "User approved observed metrics and asked to continue research on complete critical path."
     }
   ],
   "retained_presentation": {
@@ -817,6 +817,11 @@
       },
       "delivery_reference": "https://github.com/acg-box/decodex/pull/2457",
       "limits": "Automated parser/layout and GPUI viewport/copy fixtures. This record does not establish installed-app or live-provider acceptance. Broader optional grammar remains separate."
+    },
+    "observed_native_turn_timings": {
+      "contract": "retained_behavior_contracts#observed-native-turn-activity-timings",
+      "surface": "Completed native turn details use the existing response footer hover; unavailable values say Unknown. Model output is observed activity and intervals can overlap.",
+      "delivery_reference": null
     }
   },
   "component_cache_repair": {
@@ -1367,6 +1372,173 @@
         31
       ],
       "limits": "Original defect reproduced against prior exact artifact; candidate passed local command case. No remote executor acceptance."
+    },
+    {
+      "id": "observed-native-turn-activity-timings",
+      "contract": "Observe complete native item, review and blocking-request intervals on the transport with a monotonic clock. Union overlaps within each category, keep categories separate, and save only against the exact work, thread and terminal turn. A missing turn start, unmatched boundary, overflow or missing measurement remains unknown. A native historical activity may use a valid recorded item start and end when its own provider duration is absent.",
+      "source_symbols": [
+        "crates/decodex-codex/src/app_server_client/observed_timing.rs#ObservedTimings",
+        "crates/decodex-codex/src/app_server_client/server_requests.rs#ServerRequests",
+        "crates/decodex-runtime/src/agent.rs#AgentCoordinator::record_terminal",
+        "database/src/agent.rs#SqliteStore::read_agent_turn_metrics",
+        "crates/decodex-runtime/src/agent/timeline.rs#ordinary",
+        "crates/decodex-runtime/src/agent/timeline/metrics.rs#enrich",
+        "apps/decodex-gpui/src/agent_response_metrics.rs#timing_rows"
+      ],
+      "selected_source_sha256": {
+        "crates/decodex-codex/src/app_server_client/observed_timing.rs": "90d496e1b0d1b7f9b13e7c10161f5559488328e03f70aa51b803fb55dd2ee109",
+        "crates/decodex-codex/src/app_server_client/server_requests.rs": "44c8c84f18240a3c0850ac2cdc01c97d1abc12b7665f6506b670fc24f0cf3092",
+        "crates/decodex-runtime/src/agent.rs": "769c21fbd5a23b0713b704ef74aca3bef3b7f1be4167e9475a6a0dbe12ddf166",
+        "crates/decodex-runtime/src/agent/timeline.rs": "2473ae71ffa53d296905a2bb1795b4b8a999194128580ed4283e176d80f980c1",
+        "crates/decodex-runtime/src/agent/timeline/metrics.rs": "73f5d0a46c6bd4c368f38bed5cb73765185842f359754cac6b0ff25901806a08",
+        "crates/decodex-runtime/src/agent/tests/result_integrity.rs": "800274cbbf3736ee33be5fb7800bdc258e2f4d46eda60ef4f53781d953779e12",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_output_rate_tests.rs": "0a9459f95b8795415ae166654479a7c72173ccafc6a6045d183c9177e6b4f809",
+        "apps/decodex-gpui/src/agent_response_metrics.rs": "3f670d52449e177fd040a1953e5df51412fad0fc06566757507b66c11f245395",
+        "database/src/agent.rs": "8c327fa856c0e5c2545deb90368ce761da572954701ec8ba4dc737726be2974e"
+      },
+      "tests_read_not_claimed_executed": [
+        "codex-rs/app-server-protocol/src/protocol/v2/item.rs#ToolRequestUserInputParams",
+        "codex-rs/app-server-protocol/src/protocol/v2/thread.rs#ThreadTimelineEntry",
+        "codex-rs/app-server/tests/suite/v2/critical_path_analytics_tests.rs#critical_path_reaches_turn_event"
+      ],
+      "executed_regressions": {
+        "headless": {
+          "command": [
+            "cargo",
+            "nextest",
+            "run",
+            "--locked",
+            "--workspace",
+            "--tests",
+            "--examples",
+            "--benches",
+            "--all-features",
+            "--exclude",
+            "decodex-gpui",
+            "--status-level",
+            "fail",
+            "--final-status-level",
+            "fail"
+          ],
+          "executed": 1891,
+          "passed": 1891,
+          "skipped": 131,
+          "unmatched_selectors": [],
+          "included": [
+            "app_server_client::observed_timing::tests (7)",
+            "agent::tests::result_integrity::live_transport_saves_observed_timings_for_the_exact_completed_turn",
+            "agent::timeline::tests::native_history_uses_valid_item_lifecycle_timestamps_without_inventing_old_durations",
+            "agent::timeline::metrics::tests::native_page_reads_enrich_exact_turns_and_recheck_source_after_saved_usage",
+            "agent::tests::saved_turn_metrics_require_exact_work_thread_and_turn_after_reopen"
+          ]
+        },
+        "gui": {
+          "command": [
+            "cargo",
+            "nextest",
+            "run",
+            "--locked",
+            "-p",
+            "decodex-gpui",
+            "-E",
+            "test(observed_timing_rows_distinguish_unknown_from_a_measured_zero) | test(native_messages_and_promotions_render_with_distinct_provider_identities)"
+          ],
+          "executed": 2,
+          "passed": 2,
+          "unmatched_selectors": []
+        },
+        "exact_native": {
+          "command": [
+            "env",
+            "DECODEX_TEST_CODEX_BINARY=<qualified-cli>",
+            "cargo",
+            "test",
+            "--locked",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "account_launch::agent_process::native_tests::usage::output_rate::installed_native_generation_rate_survives_cold_resume_without_raw_notifications",
+            "--",
+            "--exact",
+            "--ignored",
+            "--nocapture"
+          ],
+          "executed": 1,
+          "passed": 1,
+          "unmatched_selectors": [],
+          "scenario": "Local paced SSE fixture through the selected native binary, real bridge, AgentCoordinator and SQLite for a new and cold-resumed turn. No real account or provider."
+        },
+        "strict_workspace_lint": {
+          "command": [
+            "python3",
+            "scripts/lint_rust_workspace.py"
+          ],
+          "packages": 12,
+          "passed": 12
+        },
+        "rust_format": {
+          "command": [
+            "rustup",
+            "run",
+            "nightly",
+            "cargo",
+            "fmt",
+            "--all",
+            "--",
+            "--check"
+          ],
+          "passed": true
+        }
+      },
+      "artifact": {
+        "source_commit": "abf4bb91ec49fbf443ccec0069f9cab5dd1462d8",
+        "cli_sha256": "b851d71b579cf184d5dd92b8fa7a476827c9c9e26a5baf305c1d25e4e577e956",
+        "schema_sha256": "50c4da5e674696a1504e97729bf69b42f867ebe88ab11428ed1de296df79e7dc",
+        "code_mode_helper_sha256": "7063d8f84762326c469b0bda178d21fda241edabaa3ca06fe8e5628b6b05f382",
+        "rg_helper_sha256": "84144fdd85749ff728c655ed438ce2a5f11c4720a7a4a2d95ef6dc1356c5800d",
+        "preparation": [
+          "cargo",
+          "run",
+          "--locked",
+          "--quiet",
+          "-p",
+          "decodex-components",
+          "--",
+          "import-dev",
+          "codex-runtime.lock.json",
+          "<verified-development-artifact>",
+          "--store",
+          "<temporary-component-store>"
+        ],
+        "limits": "The CLI digest was rechecked for this run. Schema and helper digests retain the earlier named qualification; this timing probe did not separately exercise the helpers or regenerate the schema."
+      },
+      "delivery_reference": null,
+      "limits": [
+        "Observed model output is not the full inference or native critical path. Tool, user request and automatic-review intervals can overlap. Categories are not a partition of turn duration.",
+        "No full coverage for intervals missing boundaries, older unrecorded item timestamps, a connection attached mid-turn or a dropped connection. Historical per-item fallback uses only valid native timestamps.",
+        "Source and fixture checks do not establish live-account, live-provider, cross-process sharing, production performance, installed-app acceptance or release."
+      ],
+      "main_baseline": {
+        "commit": "5ec1ab8037973a7e3355f4ec9aa88124b9e99a48",
+        "command": [
+          "cargo",
+          "test",
+          "--locked",
+          "-p",
+          "decodex-codex",
+          "app_server_client::output_rate::tests",
+          "--",
+          "--nocapture"
+        ],
+        "executed": 2,
+        "passed": 2,
+        "unmatched_selectors": [],
+        "tests": [
+          "app_server_client::output_rate::tests::delayed_usage_excludes_tools_and_questions_and_pairs_queued_responses_exactly",
+          "app_server_client::output_rate::tests::raw_response_finishes_before_tool_wait_and_batched_markers_do_not_invent_speed"
+        ],
+        "remote_checks": "Three CodeQL language analyses succeeded on the exact main commit. The associated merged PR head 9b4b64f9f5edf7cf84fda6f6295cf2c0cc866a05 had three successful analyses and a neutral CodeQL aggregate."
+      }
     }
   ],
   "retained_native_diagnostics": {
