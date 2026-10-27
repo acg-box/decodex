@@ -46,10 +46,10 @@ sources:
     resource: repo://scripts/macos/prepare_voice_acceptance.py
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-25T16:38:56.487Z" }
+generated: { by: "codex", at: "2026-10-27T17:43:10.188Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T17:40:02.033Z
+    at: 2026-10-27T17:43:10.188Z
 ---
 
 # Subscription dictation and live voice
@@ -106,6 +106,8 @@ cargo +stable nextest run --locked --workspace --all-targets --all-features \
   -E 'binary_id(decodex-gpui::bin/decodex-gpui) and (test(native_call_exchanges_audio_captions_mutes_and_releases_buffers) or test(remote_channel_loss_reports_failure_and_releases_buffers))' \
   --stress-count 20 --retries 0 --no-fail-fast
 ```
+
+The observed `cargo-nextest` 0.9.143 can return exit code zero after an earlier stress iteration fails when `--no-fail-fast` is used. Inspect every iteration and the final summary; do not use the exit code alone to mark the run as passed. The [nextest 0.9.148 changelog](https://nexte.st/changelog/#0.9.148) records the upstream fix. The [retained evidence](../../automations/upstream/retained-evidence.json) keeps the original failed iteration separately from later passes.
 
 These tests need incoming network access for the actual compiled test executable. A package-only build and a workspace feature build can have different executable identities and firewall decisions. On macOS, inspect the application firewall decision for that executable and its `socketfilterfw` events at the failure time. A saved allow rule alone does not show that a particular flow received an allow verdict. [Apple documents](https://support.apple.com/guide/mac-help/block-connections-to-your-mac-with-a-firewall-mh34041/mac) that connections remain denied while an access alert awaits a response. Do not disable the firewall, add retries, remove candidates or extend deadlines to conceal this prerequisite.
 

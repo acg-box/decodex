@@ -1391,7 +1391,10 @@
           "failed": 0,
           "retries": 0,
           "unmatched_selectors": [],
-          "skipped_per_iteration": 1088
+          "skipped_per_iteration": 1088,
+          "runner": "cargo-nextest 0.9.143",
+          "runner_limit": "With --no-fail-fast, this version can exit zero after an earlier failed iteration. Inspect every iteration and the final summary. The behavior was fixed in nextest 0.9.148.",
+          "runner_reference": "https://nexte.st/changelog/#0.9.148"
         }
       },
       "commands": [

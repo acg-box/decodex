@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:dbc8e0cd3f0a6b7a7ed462282ad06342d9af1334e7b38047bae8444d22d46bbb",
+  "pageVersion": "sha256:325ad77e345bb0a4bf546b633110867f7aa19a38e3096c24f81a8e6a6c6dcaba",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -156,7 +156,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:a2135742a17d98b8b8eeea368125b6077462da23073cd659f0731eefcba9acdb"
+          "version": "repo-file-v1:sha256:8ce0d20637adb7e700801e00dea90329d5c7522f75f1cd539c6b00bd5aec8066"
         }
       ]
     },
@@ -194,7 +194,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:a2135742a17d98b8b8eeea368125b6077462da23073cd659f0731eefcba9acdb"
+          "version": "repo-file-v1:sha256:8ce0d20637adb7e700801e00dea90329d5c7522f75f1cd539c6b00bd5aec8066"
         }
       ]
     },
@@ -204,7 +204,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:a2135742a17d98b8b8eeea368125b6077462da23073cd659f0731eefcba9acdb"
+          "version": "repo-file-v1:sha256:8ce0d20637adb7e700801e00dea90329d5c7522f75f1cd539c6b00bd5aec8066"
         }
       ]
     },
@@ -225,6 +225,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T17:40:02.033Z"
+    "at": "2026-10-27T17:43:10.188Z"
   }
 }
