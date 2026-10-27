@@ -1040,21 +1040,21 @@ mod tests {
 
 		parent.size = (368., 220.);
 		parent.attachment = Some([144., 115., 224., 220.]);
-		parent.speech = Some([56., 0., 312., 80.]);
+		parent.speech = Some([37., 0., 331., 80.]);
 		parent.identity = Some([45., 200., 323., 216.]);
 
 		let mut left = node("left", -379., 67.);
 
 		left.size = (368., 180.);
 		left.attachment = Some([144., 72., 224., 170.]);
-		left.speech = Some([56., 0., 312., 63.]);
+		left.speech = Some([37., 0., 331., 63.]);
 		left.identity = Some([125., 150., 243., 165.]);
 
 		let mut right = node("right", 11., 67.);
 
 		right.size = (368., 165.);
 		right.attachment = Some([144., 55., 224., 155.]);
-		right.speech = Some([56., 0., 312., 48.]);
+		right.speech = Some([37., 0., 331., 48.]);
 		right.identity = Some([125., 135., 243., 150.]);
 
 		let nodes = [parent, left, right];
