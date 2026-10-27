@@ -152,8 +152,11 @@ fn work_statistics_fit_with_debug_and_with_more_than_ninety_agents(cx: &mut Test
 			visual.debug_bounds("activity-live-live-92").is_none(),
 			"offscreen work is not rendered"
 		);
-		assert_eq!(pill.size.height, gpui::px(182.));
-		assert!(visual.debug_bounds("activity-work-total").is_some());
+		assert_eq!(pill.size.height, gpui::px(186.));
+		let total = visual.debug_bounds("activity-work-total").unwrap();
+		let rate = visual.debug_bounds("performance-work-rate").unwrap();
+
+		assert!(rate.right() < total.left() && total.right() < pill.right());
 		let breakdown = visual.debug_bounds("activity-work-breakdown").unwrap();
 		assert!(breakdown.right() <= pill.right() && breakdown.bottom() <= pill.bottom());
 		for id in [
@@ -166,6 +169,14 @@ fn work_statistics_fit_with_debug_and_with_more_than_ninety_agents(cx: &mut Test
 
 			assert!(cell.left() >= breakdown.left() && cell.right() <= breakdown.right());
 		}
+		let input = visual.debug_bounds("performance-work-input-row").unwrap();
+		let cached = visual.debug_bounds("performance-work-cached-row").unwrap();
+		let output = visual.debug_bounds("performance-work-output-row").unwrap();
+		let reasoning = visual.debug_bounds("performance-work-reasoning-row").unwrap();
+
+		assert_eq!(input.left(), cached.left());
+		assert_eq!(output.left(), reasoning.left());
+		assert!(input.bottom() <= cached.top() && output.bottom() <= reasoning.top());
 		assert!(visual.debug_bounds("performance-needs-you").is_none());
 		assert!(visual.debug_bounds("performance-agent-time").is_none());
 		assert_eq!(island.read_with(visual, |s, _| s.expansion), Expansion::Clicked);

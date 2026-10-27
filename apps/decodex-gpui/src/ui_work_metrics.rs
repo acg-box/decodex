@@ -2,35 +2,10 @@
 
 use std::time::Instant;
 
-use gpui::{IntoElement, Styled as _};
-
-use crate::ui_theme;
 use decodex_protocol::{
 	AgentThreadMetrics, AgentThreadTokenBreakdown, AgentTimelineContent, AgentTimelineEntry,
 	AgentTimelinePage,
 };
-
-/// Fixed metric symbols, shared by the graph's header and counters. The atlas
-/// caches their outlines; changing a value or tint does not rebuild a path.
-#[derive(Clone, Copy)]
-pub(crate) enum Icon {
-	Tokens,
-}
-impl Icon {
-	fn source(self) -> (&'static str, &'static [u8]) {
-		match self {
-			Self::Tokens => ("work-metric-tokens", br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2 5l6-3 6 3-6 3-6-3Zm0 3 6 3 6-3M2 11l6 3 6-3" fill="none" stroke="white" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>"#),
-		}
-	}
-
-	pub(crate) fn element(self, size: f32, color: u32) -> impl IntoElement {
-		gpui::svg()
-			.data(self.source().1)
-			.size(gpui::px(size))
-			.flex_none()
-			.text_color(ui_theme::rgb(color))
-	}
-}
 
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Sample {

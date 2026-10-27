@@ -15,7 +15,7 @@ use crate::{
 	ui_motion,
 	ui_performance::{self, PerformanceIsland, chart},
 	ui_theme::{self, BLUE, TEXT_MUTED, WARNING},
-	ui_work_metrics::{self, Icon, Live, Summary},
+	ui_work_metrics::{self, Live, Summary},
 };
 
 pub(super) const TEXT_SIZE: f32 = 11.;
@@ -32,7 +32,7 @@ pub(super) struct Work {
 	rows: Arc<[Live]>,
 	columns: [f32; 2],
 	breakdown: [String; 4],
-	breakdown_columns: [f32; 4],
+	breakdown_columns: [f32; 2],
 	sizing: Sizing,
 }
 impl Work {
@@ -82,7 +82,7 @@ impl Content {
 		};
 		let mut data = Work {
 			label: format!(
-				"{total} recorded tokens, including cached input. Output: {} tok/s. Last measured rate is kept while idle; tool and user waits excluded.",
+				"Graph agent conversations: {total} recorded tokens, including cached input. Output: {} tok/s. Last measured rate is kept while idle; tool and user waits excluded.",
 				rate
 			),
 			total,
@@ -93,11 +93,11 @@ impl Content {
 			columns: [0.; 2],
 			breakdown: [
 				count(breakdown.map(|v| v.input_tokens)),
-				count(breakdown.map(|v| v.cached_input_tokens)),
 				count(breakdown.map(|v| v.output_tokens)),
+				count(breakdown.map(|v| v.cached_input_tokens)),
 				count(breakdown.map(|v| v.reasoning_output_tokens)),
 			],
-			breakdown_columns: [0.; 4],
+			breakdown_columns: [0.; 2],
 			sizing: Sizing { minimal: 0., compact: 0., expanded: 0. },
 		};
 		let mut width = |id, text: &str, size, weight| measure(id, text, size, weight, window, cx);
@@ -108,6 +108,10 @@ impl Content {
 		let compact = width("activity-width-rate", &data.rate, TEXT_SIZE, FontWeight::MEDIUM)
 			+ 4.
 			+ width("activity-width-rate-unit", data.unit(), TEXT_SIZE, FontWeight::NORMAL)
+			+ 16.
+			+ width("activity-width-total-label", "Graph total", TEXT_SIZE, FontWeight::NORMAL)
+			+ 4.
+			+ width("activity-width-total-value", &data.total, TEXT_SIZE, FontWeight::MEDIUM)
 			+ FRAME;
 		let longest = |get: fn(&Live) -> String| {
 			data.rows.iter().map(get).max_by_key(String::len).unwrap_or_default()
@@ -146,34 +150,31 @@ impl Content {
 		} else {
 			data.columns.iter().sum::<f32>() + action + 16. + FRAME
 		};
-		let total_width =
-			width("activity-width-total-label", "Recorded tokens", TEXT_SIZE, FontWeight::NORMAL)
-				+ width("activity-width-total-value", &data.total, TEXT_SIZE, FontWeight::MEDIUM)
-				+ 28.
-				+ FRAME;
 		let labels = [
 			("activity-input-label", "activity-input-value", "Input"),
-			("activity-cached-label", "activity-cached-value", "Cached input"),
 			("activity-output-label", "activity-output-value", "Output"),
+			("activity-cached-label", "activity-cached-value", "Cached input"),
 			("activity-reasoning-label", "activity-reasoning-value", "Reasoning"),
 		];
 
-		data.breakdown_columns = std::array::from_fn(|index| {
-			let (label_id, value_id, label) = labels[index];
+		data.breakdown_columns = std::array::from_fn(|column| {
+			[column, column + 2].into_iter().fold(0_f32, |maximum, index| {
+				let (label_id, value_id, label) = labels[index];
 
-			width(label_id, label, TEXT_SIZE, FontWeight::NORMAL).max(width(
-				value_id,
-				&data.breakdown[index],
-				TEXT_SIZE,
-				FontWeight::MEDIUM,
-			))
+				maximum.max(width(label_id, label, TEXT_SIZE, FontWeight::NORMAL)).max(width(
+					value_id,
+					&data.breakdown[index],
+					TEXT_SIZE,
+					FontWeight::MEDIUM,
+				))
+			})
 		});
-		let breakdown_width = data.breakdown_columns.iter().sum::<f32>() + 36. + FRAME;
+		let breakdown_width = data.breakdown_columns.iter().sum::<f32>() + 12. + FRAME;
 
 		data.sizing = Sizing {
 			minimal,
 			compact: compact.max(minimal),
-			expanded: details.max(compact).max(minimal).max(total_width).max(breakdown_width),
+			expanded: details.max(compact).max(minimal).max(breakdown_width),
 		};
 
 		Self::Work(data)
@@ -242,7 +243,10 @@ impl Content {
 
 	pub(super) fn height(&self) -> f32 {
 		match self {
-			Self::Work(v) => CAPSULE_HEIGHT + 66. + v.rows.len().min(4) as f32 * 22.,
+			Self::Work(v) =>
+				CAPSULE_HEIGHT
+					+ 66.
+					+ if v.rows.is_empty() { 0. } else { 4. + v.rows.len().min(4) as f32 * 22. },
 			Self::Debug(_) => CAPSULE_HEIGHT + 68.,
 		}
 	}
@@ -368,15 +372,29 @@ fn work_header(data: &Work) -> AnyElement {
 		.w_full()
 		.px(gpui::px(INSET))
 		.flex()
-		.items_baseline()
-		.justify_center()
-		.gap_1()
-		.child(number("work-rate", data.rate.clone()).text_color(ui_theme::rgb(if data.live {
-			BLUE
-		} else {
-			TEXT_MUTED
-		})))
-		.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(data.unit()))
+		.items_center()
+		.justify_between()
+		.gap_3()
+		.child(
+			gpui::div()
+				.flex()
+				.items_baseline()
+				.gap_1()
+				.child(
+					number("work-rate", data.rate.clone())
+						.text_color(ui_theme::rgb(if data.live { BLUE } else { TEXT_MUTED })),
+				)
+				.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(data.unit())),
+		)
+		.child(
+			gpui::div()
+				.debug_selector(|| "activity-work-total".into())
+				.flex()
+				.items_baseline()
+				.gap_1()
+				.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Graph total"))
+				.child(number("activity-total-value", data.total.clone())),
+		)
 		.into_any_element()
 }
 
@@ -543,53 +561,48 @@ fn work_details(data: &Work, window: &mut Window, cx: &mut App) -> AnyElement {
 	.track_scroll(scroll.read(cx))
 	.w_full()
 	.h(gpui::px(data.rows.len().min(4) as f32 * 22.));
+	let fields = [
+		("work-input", "Input", "Input tokens"),
+		("work-output", "Output", "Output tokens"),
+		("work-cached", "Cached input", "Cached input, included in input"),
+		("work-reasoning", "Reasoning", "Reasoning tokens, included in output"),
+	];
+	let field = |index: usize| {
+		let (id, label, description) = fields[index];
+		let value = data.breakdown[index].clone();
+
+		metric(id, label, value.clone())
+			.id(id)
+			.w(gpui::px(data.breakdown_columns[index % 2]))
+			.role(Role::Group)
+			.aria_label(format!("{description}: {value}"))
+	};
+	let row = |first| {
+		gpui::div()
+			.w_full()
+			.flex()
+			.justify_between()
+			.gap_3()
+			.child(field(first))
+			.child(field(first + 1))
+	};
 
 	gpui::div()
 		.w_full()
 		.px(gpui::px(INSET))
-		.pb(gpui::px(8.))
-		.child(
-			gpui::div()
-				.debug_selector(|| "activity-work-total".into())
-				.h(gpui::px(30.))
-				.flex()
-				.items_center()
-				.justify_between()
-				.gap_3()
-				.child(
-					gpui::div()
-						.flex()
-						.items_center()
-						.gap_1()
-						.child(Icon::Tokens.element(11., TEXT_MUTED))
-						.child("Recorded tokens"),
-				)
-				.child(number("activity-total-value", data.total.clone())),
-		)
+		.pb(gpui::px(6.))
+		.flex()
+		.flex_col()
+		.gap_1()
 		.child(
 			gpui::div()
 				.debug_selector(|| "activity-work-breakdown".into())
 				.w_full()
 				.flex()
-				.justify_between()
-				.gap_3()
-				.children(
-					[
-						("work-input", "Input", "Input tokens"),
-						("work-cached", "Cached input", "Cached input, included in input"),
-						("work-output", "Output", "Output tokens"),
-						("work-reasoning", "Reasoning", "Reasoning tokens, included in output"),
-					]
-					.into_iter()
-					.zip(data.breakdown.iter().zip(data.breakdown_columns))
-					.map(|((id, label, description), (value, width))| {
-						metric(id, label, value.clone())
-							.id(id)
-							.w(gpui::px(width))
-							.role(Role::Group)
-							.aria_label(format!("{description}: {value}"))
-					}),
-				),
+				.flex_col()
+				.gap_1()
+				.child(row(0))
+				.child(row(2)),
 		)
 		.when(!data.rows.is_empty(), |body| body.child(list))
 		.into_any_element()
