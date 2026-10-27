@@ -763,11 +763,12 @@
       "status": "approved_blocked_by_retained_legacy_regression",
       "value": "Share compatible local stdio MCP connections among chats in one native process; sharing across independent processes is not established.",
       "maintenance_cost": "Native sharing is low-cost only if discovery and retained legacy fallback qualify; cross-process ownership and isolation need separate research.",
-      "recommendation": "Keep the global flag off until a supported scoped opt-in or upstream fallback passes the exact retained native regression and same-process sharing tests.",
-      "evidence": "See retained_behavior_contracts#native-mcp-sharing-qualification-fixtures and #native-mcp-multi-client-socket-research for the selected artifact, reusable fixtures, passing modern and concurrent-input cases, and failing enabled legacy regression. Production sharing remains disabled.",
+      "recommendation": "Do not add global sharing to the Decodex launch until a supported scoped opt-in or upstream fallback passes the retained native regressions against the selected artifact.",
+      "evidence": "See retained_behavior_contracts#native-mcp-sharing-qualification-fixtures and #native-mcp-multi-client-socket-research for the selected artifact, reusable fixtures, passing modern and concurrent-input cases, and failing enabled legacy regression. Decodex does not enable the feature by default; native user configuration was not inspected.",
       "decision_status": "User approved native sharing; implementation is blocked by a reproduced legacy discovery regression. No new user decision is needed.",
       "qualification_fixture_delivery": "https://github.com/acg-box/decodex/pull/2519",
-      "implementation_enabled": false
+      "implementation_enabled": false,
+      "implementation_enablement_scope": "Decodex has not added a launch flag enabling sharing. The native feature defaults to false but native user configuration can independently select it; its current user setting is unknown."
     },
     {
       "id": "native-critical-path-timing",
@@ -1632,7 +1633,7 @@
     },
     {
       "id": "native-mcp-sharing-qualification-fixtures",
-      "contract": "Keep a reproducible native qualification for compatible same-process MCP sharing, compliant private legacy fallback, including an unmarked legacy server alongside a modern shared server, separate-process isolation, per-chat helper leases and actual tool calls. Keep the child input and policy assertions for both immediate and late empty legacy discovery responses. Native sharing stays disabled until every retained regression passes against the exact selected artifact.",
+      "contract": "Keep a reproducible native qualification for compatible same-process MCP sharing, compliant private legacy fallback, including an unmarked legacy server alongside a modern shared server, separate-process isolation, per-chat helper leases and actual tool calls. Keep the child input and policy assertions for both immediate and late empty legacy discovery responses. Do not add sharing to the Decodex launch until every retained regression passes against the exact selected artifact; native user configuration was not inspected.",
       "source_symbols": [
         "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_sharing_tests.rs#explicit_sharing_candidate_uses_compatible_same_process_mcp_connections",
         "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_sharing_tests.rs#explicit_sharing_keeps_unmarked_legacy_connection_private",
@@ -1791,8 +1792,8 @@
         "component_qualification": "See qualification.json; the sharing fixture does not requalify every native helper or newer source."
       },
       "limits": [
-        "Native candidate sharing was enabled only in isolated fixture processes, not the production launch. Cross-process connection sharing was not observed.",
-        "The current legacy failure prevents feature enablement. It is not an installed-app, real-account or real-provider test.",
+        "Native candidate sharing was enabled in isolated fixture processes. Decodex did not add a production launch flag; the current native user configuration was not inspected. Cross-process connection sharing was not observed.",
+        "The current legacy failure blocks qualifying a Decodex launch default. It is not an installed-app, real-account or real-provider test.",
         "The newer upstream research target was inspected selectively; no source-review cursor was advanced and no newer binary was qualified.",
         "The late-response fixture uses synthetic local helpers and does not establish the behavior of any user's configured server."
       ],
@@ -2158,7 +2159,7 @@
         "The input test uses synthetic concurrent calls and verifies their thread and answer ownership; it does not establish cross-account isolation or all permission and cancellation behavior.",
         "The explicit 2025 marker passes on the selected CLI only when the separate modern protocol feature is disabled. The marker can reach the legacy subprocess; no user server or configuration was tested or modified.",
         "No managed daemon is installed or started. Multi-account isolation, current Decodex process supervision, live providers and installed-app acceptance are not established.",
-        "The patched research CLIs are not official or qualified artifacts. Production sharing remains disabled until the selected development runtime built from official source passes retained qualification."
+        "The patched research CLIs are not official or qualified artifacts. Decodex must not add a default sharing launch flag until the selected development runtime built from official source passes retained qualification; the native user setting was not inspected."
       ],
       "validation": {
         "headless": {
