@@ -1239,6 +1239,190 @@
   },
   "retained_behavior_contracts": [
     {
+      "id": "webrtc-build-archive-security",
+      "contract": "The native voice build uses the current WebRTC release and a maintained ZIP extractor. Keep extraction path, mode and archive-identity checks separate from live voice acceptance.",
+      "source_symbols": [
+        "webrtc-sys-build::download_webrtc",
+        "zip::ZipArchive::extract",
+        "zip::read::ExtractOptions::enforce_header_consistency",
+        "zip::read::ZipArchive::get_metadata",
+        "nix::sys::stat::fchmodat",
+        "typed_path::Utf8WindowsPath::components",
+        "apps/decodex-gpui/src/native_voice_transport.rs#tests::call_lifecycle"
+      ],
+      "selected_source_sha256": {
+        "Cargo.lock": "014df1d06c8f2a28e34b26f0265714e86ee20561ae461fa963d11d57543f8121",
+        "apps/decodex-gpui/src/native_voice_transport.rs": "40aaeabf3f491b33a48a7e6b4ee67ebf202cf8761622e84d9749f5f2be2b1bbf",
+        "webrtc-sys-build-0.3.20/src/lib.rs": "e70fd5bd259619ab0d4521d00a0289fc5b159f7dcac10e3fe608e173dc4d4ddb",
+        "zip-9.1.2/src/read/extract.rs": "6c94400c4ea9e65c6063435bf2405423fbf21e7881c3ade30e86607f39625694",
+        "zip-9.1.2/src/read/zip_archive.rs": "e9bfabe5a5bd487ee34b66f156cc08b8b72cd03ef5d98dba127036d90d67a2f1",
+        "zip-9.1.2/src/path.rs": "8b93c93937161ba308bff6061fe33818e7d2572b54895fd99ea7b7c4f4c6785e",
+        "nix-0.31.3/build.rs": "b41a7d4331f46c610c5f2bcb151894b5cf49527677d39174223c634c0d7162ed",
+        "typed-path-0.13.0/src/windows/utf8/components.rs": "f45a3e1e30eb9570aafb2db4fed0805edb881ed5648572ba8f351716c9cdd0a3",
+        "zip-9.1.2/tests/permissions.rs": "ad8d9885eb6483e787ac76aeec28aaeed953f1a7ede3d0650b777703d61640ba",
+        "zip-9.1.2/tests/extract_symlink.rs": "2a53f6570bb4f9bbddad6ddfbb59292004db9b07d71aa0c96ef0d33c2d6a0b33",
+        "zip-9.1.2/tests/eocd_fallback.rs": "53cc536e04eb3fcecc3f91370e3cef2e13f04283c5f27ae6434aa1da1124e92c",
+        "zip-9.1.2/tests/header_consistency.rs": "0885ef33c2a19ff0795d004b38a316ff47a1661e8d2d097fca2575c429b23544"
+      },
+      "packages": {
+        "webrtc-sys-build": {
+          "version": "0.3.20",
+          "crate_sha256": "294bd0dfb00120269cdb4d71371348361daa454a6a31c8dd035dfe2a2be47871",
+          "source_commit": "fa46e8427050b6ee0c6e40670ff161ee3a2bbf5a",
+          "source": "https://github.com/livekit/rust-sdks/tree/fa46e8427050b6ee0c6e40670ff161ee3a2bbf5a/webrtc-sys/build",
+          "verification": "GitHub verified the source commit; lib.rs matches the tag and the previous package. The manifest changes the ZIP dependency and package version."
+        },
+        "zip": {
+          "version": "9.1.2",
+          "crate_sha256": "ec2e3161de27091f18a831d9494e9c53378a34833af5c1dda35ad85849da18d6",
+          "source_commit": "662ae138dbcec989ee99e6bc4668501add70e209",
+          "source": "https://github.com/zip-rs/zip2/tree/662ae138dbcec989ee99e6bc4668501add70e209",
+          "verification": "GitHub verified the source commit; all 47 packaged Rust source files match the official source."
+        },
+        "nix": {
+          "version": "0.31.3",
+          "crate_sha256": "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d",
+          "source_commit": "b5933ca178802b558a667514f717a86b3a1cedcc",
+          "verification": "The annotated release tag resolves to this unsigned commit. All 64 packaged Rust source files and the platform-configuration build script match the official source."
+        },
+        "typed-path": {
+          "version": "0.13.0",
+          "crate_sha256": "9ce898823d8cd0f028662d2f349694b1af0a5cc9be83f1d213a00d3147445e1e",
+          "source_commit": "93554f5a6a79a5d98c446fff724967f83cd72b91",
+          "verification": "GitHub verified the source commit; all 53 packaged Rust source files match the official source. The package has no build script."
+        }
+      },
+      "artifact": {
+        "scope": "macOS arm64 synthetic voice and build qualification",
+        "release": "https://github.com/livekit/rust-sdks/releases/tag/webrtc-89d790b",
+        "separate_verified_archive_sha256": "9f25fea48588deac18d68e120d18b33af7ef10f921f74b7c57f66b642262c348",
+        "actual_extracted_libwebrtc_sha256": "979b6310063a49a022bc11cb55397e3ccef887ef23b613fed43afdc4769ea75e",
+        "actual_extracted_files_compared": 38722,
+        "mismatches": 0,
+        "extra_or_missing_files": 0,
+        "candidate_gui_test_binary_sha256": "53e33692189bf592a1db8a225c495a43b3f35e7e7928a0c6091b6dbba66e5761",
+        "limits": "The default builder deleted its downloaded ZIP before its digest was observed. The extracted file bytes match a separately downloaded and verified release archive; this does not prove that the deleted ZIP was byte-identical. The builder does not verify a digest before extraction. No Codex runtime or schema identity changed."
+      },
+      "upstream_tests": {
+        "source": "https://github.com/zip-rs/zip2/tree/662ae138dbcec989ee99e6bc4668501add70e209/tests",
+        "source_test_lock_sha256": "674e2882cec60f2ce5e426296070e36b4a4b27a6192e847ea1365c976166eadf",
+        "features": "--no-default-features --features deflate-flate2-zlib-rs",
+        "executed": 11,
+        "passed": 11,
+        "unmatched_selectors": [],
+        "executed_tests": [
+          {
+            "suite": "permissions",
+            "test": "test_strip_suid",
+            "selection": "one match; selected without --exact"
+          },
+          {
+            "suite": "permissions",
+            "test": "test_strip_sgid",
+            "selection": "one exact match"
+          },
+          {
+            "suite": "extract_symlink",
+            "test": "test_cannot_create_symlink_pointing_outside_destination",
+            "selection": "one exact match"
+          },
+          {
+            "suite": "extract_symlink",
+            "test": "ziparchive_extract_does_not_set_symlink_target_mode",
+            "selection": "one exact match"
+          },
+          {
+            "suite": "extract_symlink",
+            "test": "dangling_outward_symlink_is_not_created",
+            "selection": "one exact match"
+          },
+          {
+            "suite": "extract_symlink",
+            "test": "ordering_bypass_default",
+            "selection": "one exact match"
+          },
+          {
+            "suite": "eocd_fallback",
+            "test": "invalid_last_central_directory_is_an_error",
+            "selection": "one exact match"
+          },
+          {
+            "suite": "eocd_fallback",
+            "test": "central_directory_ending_at_eocd_takes_precedence",
+            "selection": "one exact match"
+          },
+          {
+            "suite": "header_consistency",
+            "test": "test_ziparchive_validate_header_consistency_detects_dual_header_mismatch",
+            "selection": "one exact match"
+          },
+          {
+            "suite": "header_consistency",
+            "test": "test_extract_with_options_enforce_header_consistency_blocks_dual_header_mismatch",
+            "selection": "one exact match"
+          },
+          {
+            "suite": "header_consistency",
+            "test": "test_legacy_behavior_without_header_consistency_enforcement",
+            "selection": "one exact match"
+          }
+        ],
+        "tests_read_not_executed": [
+          "header_consistency::test_enforce_header_consistency_blocks_dual_header_mismatch",
+          "header_consistency::test_ziparchive_validate_header_consistency_passes_on_valid_archive"
+        ],
+        "interpretation": "The passing legacy stream test deliberately demonstrates that default streaming extraction accepts inconsistent headers. The passing strict tests use an opt-in and do not establish that the WebRTC builder enables it."
+      },
+      "local_checks": {
+        "baseline_main": "4c7e5827d3c0ebd8f6f889336eb87d6fab01e2bd",
+        "baseline": "Prior TLS qualification passed a full workspace check and four synthetic voice tests against the same WebRTC library; preserve its separate 39/40 stress failure and 80/80 paired comparison.",
+        "candidate_workspace_check": "cargo +stable check --locked --all-features --all-targets --workspace passed with default WebRTC acquisition",
+        "candidate_lint": "cargo +stable make lint-rust passed for 12 packages",
+        "candidate_voice": {
+          "executed": 4,
+          "passed": 4,
+          "skipped": 1086,
+          "unmatched_selectors": []
+        },
+        "candidate_voice_stress": {
+          "iterations": 20,
+          "executed": 40,
+          "passed": 40,
+          "failed": 0,
+          "retries": 0,
+          "unmatched_selectors": [],
+          "skipped_per_iteration": 1088
+        }
+      },
+      "commands": [
+        "cargo +stable check --locked --all-features --all-targets --workspace",
+        "cargo +stable make lint-rust",
+        "cargo +stable nextest run --locked -p decodex-gpui --all-targets --all-features -E \"binary_id(decodex-gpui::bin/decodex-gpui) and (test(native_call_exchanges_audio_captions_mutes_and_releases_buffers) or test(remote_channel_loss_reports_failure_and_releases_buffers) or test(cancellation_releases_audio_before_and_after_the_offer_without_an_answer) or test(cancelled_offer_continuation_cannot_resume_or_block_the_next_call))\" --test-threads 1 --retries 0 --no-fail-fast",
+        "cargo +stable nextest run --locked -p decodex-gpui --all-targets --all-features -E \"binary_id(decodex-gpui::bin/decodex-gpui) and (test(native_call_exchanges_audio_captions_mutes_and_releases_buffers) or test(remote_channel_loss_reports_failure_and_releases_buffers))\" --test-threads 1 --stress-count 20 --retries 0 --no-fail-fast",
+        "cargo +stable test --locked --manifest-path <official-zip-source>/Cargo.toml --no-default-features --features deflate-flate2-zlib-rs --test <suite> <test> -- --exact"
+      ],
+      "upstream_test_preparation": "Download the official ZIP source at the recorded commit and the zip 9.1.2 crate; verify the crate checksum and source-file equality. Copy the crate Cargo.lock into the source tree and verify the recorded lock digest. Select each listed suite and test; the first test was run without the final --exact argument.",
+      "audit": {
+        "rustsec_db_revision": "99670cfc0bc574433034b75876a4b791ccaa2efb",
+        "baseline_vulnerabilities": 3,
+        "candidate_vulnerabilities": 0,
+        "warnings": "Six unmaintained and one Tokio unsound warnings remain. RustSec and GitHub advisory metadata are separate sources.",
+        "resolved_rustsec": [
+          "RUSTSEC-2026-0367",
+          "RUSTSEC-2026-0368",
+          "RUSTSEC-2026-0369"
+        ]
+      },
+      "behavior_limits": [
+        "The default builder calls ZipArchive::extract and does not enable optional local/central header consistency validation. Upstream strict and legacy tests are recorded separately; no general malformed-archive safety claim follows.",
+        "The upstream builder downloads its archive from GitHub without verifying its digest before extraction. Extracted release bytes were compared afterward. Its default policy does not use unrestricted symlink extraction; Windows was not built or tested.",
+        "Synthetic loopback tests do not establish physical audio, real-provider, installed-app, other-platform or release acceptance. The previously observed unmute assertion remains unexplained in issue #2529."
+      ],
+      "delivery_reference": "https://github.com/acg-box/decodex/commit/7bda3eec47bbbe685cc11967521eead33ed2c434",
+      "delivery_state_source": "Verify that this implementation commit is in remote main and inspect the associated PR checks; local tests do not establish merge or installation.",
+      "tested_source_head": "7bda3eec47bbbe685cc11967521eead33ed2c434"
+    },
+    {
       "id": "exact-native-history",
       "contract": "Use exact native thread, turn and item identities; preserve complete large patch pages through cold restart, expire old process continuations and never replay inference to read history. Compaction checkpoints retain complete history and reject partial output.",
       "source_symbols": [
