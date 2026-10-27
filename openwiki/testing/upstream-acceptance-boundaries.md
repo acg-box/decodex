@@ -104,6 +104,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/response_identity.py
   - id: openwiki-source-b30d382781a313611ecd221f
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
+  - id: openwiki-source-042bf1b2b00d2d0ac4dced71
+    resource: repo://crates/decodex-webrtc-build/src/archive.rs
+  - id: openwiki-source-9d02660394edc50f69d35816
+    resource: repo://crates/decodex-webrtc-build/src/lib.rs
   - id: openwiki-source-a6440a3d3a3c3121fd4c553f
     resource: repo://database/src/agent_output.rs
   - id: openwiki-source-2b705b409434252a7417e708
@@ -120,10 +124,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-27T17:43:10.188Z" }
+generated: { by: "codex", at: "2026-10-27T18:33:20.613Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T17:43:10.188Z
+    at: 2026-10-27T18:33:20.613Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -167,11 +171,13 @@ Four synthetic voice tests passed after the user handled the firewall prompt for
 
 ## WebRTC build archive
 
-The lock selects `webrtc-sys-build` 0.3.20 and `zip` 9.1.2. The builder keeps the existing `webrtc-89d790b` native release. On macOS arm64, a fresh default acquisition and full workspace check passed. All 38,722 extracted files matched a separately downloaded, verified release archive; the actual static library also matched its recorded digest. The builder deleted its downloaded ZIP before its digest was observed and does not verify a digest before extraction. File equality does not prove that the deleted ZIP had the same archive bytes.
+The default macOS build routes `webrtc-sys-build` 0.3.20 through a Decodex guard and retains the `webrtc-89d790b` native release. Before extraction, the guard checks the complete ZIP against the pinned official SHA-256 and checks the local and central ZIP headers for consistency. A digest or header failure stops preparation before it replaces the existing build cache. The guard compares cached regular files with the verified archive, stages repairs and preserves the upstream owner-access behavior. An existing `LK_CUSTOM_WEBRTC` directory remains a developer-provided input; the official archive checks do not qualify it.
 
-The candidate passed strict Rust lint for 12 packages, four synthetic voice tests and 40 repeated executions of two voice cases. The 40-pass result comes from each iteration and the final summary; the observed Nextest 0.9.143 can return zero after an earlier failure. See the [stress-run procedure](../integrations/subscription-voice.md#diagnose-native-media-ice-timeouts). Eleven selected upstream ZIP tests passed. One passing test demonstrates the legacy streaming behavior rather than a fix. The builder calls `ZipArchive::extract` without the optional local/central header-consistency check; the strict upstream test uses that option explicitly. The [portable evidence](../../automations/upstream/retained-evidence.json) records the exact tests, package source and checksums, and the earlier unexplained unmute assertion separately. The same RustSec snapshot reported three ZIP vulnerabilities on the baseline and none on the candidate; six unmaintained and one unsound warnings remained.
+On macOS arm64, the default build retained the actual downloaded ZIP and checked its pinned digest. Its 38,722 extracted files matched that verified archive, and the static library matched the earlier qualified library. Both official macOS arm64 and x64 ZIPs passed their pinned digest and strict-header checks; native x64 execution was not tested. Six local guard tests passed, including incorrect digest, inconsistent headers, cache repair and file permissions. The full workspace check, strict lint for 13 packages and four synthetic voice tests passed. Two voice tests each passed 20 repeated executions. Every iteration and the final summary were inspected because the observed Nextest 0.9.143 can return zero after an earlier failure with fail-fast disabled.
 
-These checks do not qualify arbitrary malformed archives, Windows or other platforms, physical audio, live providers, installed-app behavior or release. They do not establish the cause of the earlier [unmute assertion](https://github.com/acg-box/decodex/issues/2529).
+The full Rust style audit reported the same 163 findings on the exact main snapshot and this branch. The three new source files had no findings in their focused audit. Eleven selected upstream ZIP tests passed in the [previous delivery](https://github.com/acg-box/decodex/pull/2530); one intentionally demonstrates the earlier default behavior without strict header enforcement. The previous builder deleted its downloaded ZIP before its digest was observed. Its extracted files matched a separate verified archive, but that earlier result does not identify the deleted ZIP bytes. The [portable evidence](../../automations/upstream/retained-evidence.json) records the current source, artifact digests, exact tests and these separate historical limits.
+
+These checks do not qualify arbitrary malformed archives, unpinned default targets, physical audio, live providers, installed-app behavior or release. They do not establish the cause of the earlier [unmute assertion](https://github.com/acg-box/decodex/issues/2529).
 
 ## Selected read-only views
 
