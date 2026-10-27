@@ -182,22 +182,42 @@ impl SocketClient {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native socket clients"]
 async fn separate_clients_share_a_compatible_native_mcp_helper() {
-	qualify_socket_clients(false, false).await;
+	qualify_socket_clients(LegacyMode::None, false).await;
 }
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; run before enabling native MCP sharing"]
 async fn separate_clients_keep_unmarked_legacy_helpers_private() {
-	qualify_socket_clients(true, false).await;
+	qualify_socket_clients(LegacyMode::Unmarked, false).await;
 }
 
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated shared MCP input"]
 async fn shared_modern_input_returns_to_each_calling_client() {
-	qualify_socket_clients(false, true).await;
+	qualify_socket_clients(LegacyMode::None, true).await;
 }
 
-async fn qualify_socket_clients(mixed: bool, input: bool) {
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; explicitly marked legacy fixture"]
+async fn separate_clients_keep_marked_legacy_helpers_private() {
+	qualify_socket_clients(LegacyMode::Marked, false).await;
+}
+
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; check mixed native protocol settings"]
+async fn separate_clients_keep_marked_legacy_private_with_modern_protocol_enabled() {
+	qualify_socket_clients(LegacyMode::MarkedModernProtocol, false).await;
+}
+
+#[derive(Clone, Copy)]
+enum LegacyMode {
+	None,
+	Unmarked,
+	Marked,
+	MarkedModernProtocol,
+}
+
+async fn qualify_socket_clients(legacy: LegacyMode, input: bool) {
 	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
 	let binary = Path::new(&binary);
 	assert!(binary.is_absolute());
@@ -221,16 +241,21 @@ async fn qualify_socket_clients(mixed: bool, input: bool) {
 		None,
 		|serial| json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Done"}]}),
 	));
+	let modern_protocol = matches!(legacy, LegacyMode::MarkedModernProtocol);
 	let mut config = format!(
 		"thread_unload_delay_secs=0\nmodel=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\n\
 		[model_providers.fixture]\nname=\"fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n\
-		[features]\ncode_mode=false\nmcp_connection_sharing=true\n\
+		[features]\ncode_mode=false\nmcp_connection_sharing=true\nmcp_2026_07_28={modern_protocol}\n\
 		[mcp_servers.modern]\ncommand=\"/usr/bin/python3\"\nargs=[{fixture},\"modern\"]\nrequired=true\n"
 	);
+	let mixed = !matches!(legacy, LegacyMode::None);
 	if mixed {
 		config.push_str(&format!(
 			"[mcp_servers.legacy]\ncommand=\"/usr/bin/python3\"\nargs=[{fixture},\"legacy-empty\"]\nrequired=true\n"
 		));
+	}
+	if matches!(legacy, LegacyMode::Marked | LegacyMode::MarkedModernProtocol) {
+		config.push_str("[mcp_servers.legacy.env]\nCODEX_MCP_PROTOCOL_VERSION=\"2025-06-18\"\n");
 	}
 	fs::write(home.join("config.toml"), config).expect("write native socket config");
 	let socket = home.join("native.sock");

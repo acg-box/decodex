@@ -832,7 +832,9 @@
         "source_symbols": [
           "codex-rs/core/src/turn_timing/report.rs#completed_critical_path",
           "codex-rs/analytics/src/turn_critical_path.rs#TurnCriticalPath",
-          "codex-rs/analytics/src/client.rs#AnalyticsEventsDestination"
+          "codex-rs/analytics/src/client.rs#AnalyticsEventsDestination",
+          "codex-rs/app-server-protocol/src/protocol/v2/turn.rs#TurnCompletedNotification",
+          "codex-rs/app-server-protocol/src/protocol/v2/thread_data.rs#Turn"
         ],
         "selected_schema_sha256": "50c4da5e674696a1504e97729bf69b42f867ebe88ab11428ed1de296df79e7dc",
         "selected_schema_observation": "The selected CLI generated 460 experimental schema files; no critical-path or turn-profile fields were found.",
@@ -900,7 +902,11 @@
             ]
           }
         ],
-        "limits": "Source tests use a modified research checkout and synthetic services. Native critical path is experimental, currently reaches analytics rather than an app-server field, and can be incomplete. Debug-only analytics capture is not a release integration. Existing observed timings and unknowns remain separate."
+        "limits": "Source tests use a modified research checkout and synthetic services. Native critical path is experimental, currently reaches analytics rather than an app-server field, and can be incomplete. Debug-only analytics capture is not a release integration. Existing observed timings and unknowns remain separate.",
+        "tests_read_not_executed": [
+          "codex-rs/app-server/tests/suite/v2/turn_start.rs#turn_profile_tracks_blocking_tool_and_follow_up_sampling"
+        ],
+        "protocol_observation": "The public Turn has an optional total duration but no category critical path; the source turn-profile test reads internal analytics events."
       }
     }
   },
@@ -1990,14 +1996,16 @@
     },
     {
       "id": "native-mcp-multi-client-socket-research",
-      "contract": "Two independent native proxy clients can use one socket app-server process. Compatible modern local MCP calls share one helper, concurrent per-call input returns to the correct calling thread and answer, and a remaining client keeps the helper after the first client unsubscribes and exits. An unmarked legacy helper must stay private when mixed with a modern server.",
+      "contract": "Separate native proxy clients can share a compatible modern MCP helper through one app-server. Concurrent input must return to its calling thread. A legacy helper remains private, including when explicitly marked; the remaining client keeps the modern helper after the first client exits.",
       "source_symbols": [
         "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs#separate_clients_share_a_compatible_native_mcp_helper",
         "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs#separate_clients_keep_unmarked_legacy_helpers_private",
-        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs#shared_modern_input_returns_to_each_calling_client"
+        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs#shared_modern_input_returns_to_each_calling_client",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs#separate_clients_keep_marked_legacy_helpers_private",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs#separate_clients_keep_marked_legacy_private_with_modern_protocol_enabled"
       ],
       "selected_source_sha256": {
-        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs": "6719335f15c964beb4c0a2ca2081c0cd2a3ca46c8a9936f5552116f2aa43feeb",
+        "crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs": "afb9f3033336af7b6b0ef291bb8ec0c9392caec1f4bafe034cc4ebf1c4bebdc1",
         "crates/decodex-runtime/src/account_launch/agent_process_native_tests.rs": "4e8ce537c16b80e86e0ed407065b442641c0c50aeda9e9c304d01e3a88a94433",
         "crates/decodex-runtime/src/account_launch/native_mcp_sharing.py": "c58796ab40f1a51aa28e9ea548523c87639362514c55d8d85c85b6d85e8427dc",
         "crates/decodex-runtime/src/account_launch/native_mcp_shared_input.py": "c791063a6f369de9f472318a6af7b35fee7ece38ecc3abe3e63c488bd26ef231"
@@ -2012,7 +2020,9 @@
           "selectors": [
             "account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper",
             "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private",
-            "account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client"
+            "account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client",
+            "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_marked_legacy_helpers_private",
+            "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_marked_legacy_private_with_modern_protocol_enabled"
           ],
           "environment": "DECODEX_TEST_CODEX_BINARY=<qualified-cli>",
           "command": [
@@ -2030,21 +2040,23 @@
             "--retries",
             "0",
             "-E",
-            "test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper) | test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private) | test(=account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client)"
+            "test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper) | test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private) | test(=account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client) | test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_marked_legacy_helpers_private) | test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_marked_legacy_private_with_modern_protocol_enabled)"
           ],
-          "executed": 3,
-          "passed": 2,
-          "failed": 1,
+          "executed": 5,
+          "passed": 3,
+          "failed": 2,
           "unmatched_selectors": [],
-          "result": "Modern helper sharing and concurrent input ownership passed. Mixed unmarked legacy discovery reproduced the expected native thread-start failure."
+          "result": "Modern sharing, concurrent input, and explicit legacy with the modern protocol feature disabled passed. Unmarked empty discovery and explicit legacy with the modern protocol feature enabled failed at thread startup."
         },
         {
           "selectors": [
             "account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper",
             "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private",
-            "account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client"
+            "account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client",
+            "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_marked_legacy_helpers_private",
+            "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_marked_legacy_private_with_modern_protocol_enabled"
           ],
-          "environment": "DECODEX_TEST_CODEX_BINARY=<modified-research-cli>",
+          "environment": "DECODEX_TEST_CODEX_BINARY=<empty-discovery-research-cli>",
           "command": [
             "cargo",
             "+stable",
@@ -2060,21 +2072,82 @@
             "--retries",
             "0",
             "-E",
-            "test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper) | test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private) | test(=account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client)"
+            "test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper) | test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private) | test(=account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client) | test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_marked_legacy_helpers_private) | test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_marked_legacy_private_with_modern_protocol_enabled)"
           ],
-          "executed": 3,
-          "passed": 3,
+          "executed": 5,
+          "passed": 4,
+          "failed": 1,
           "unmatched_selectors": [],
           "research_cli_sha256": "c9313a4989bc840d876a1749304cabd02d9cabc2e1df173c4a2bc0d0d4127342",
-          "result": "The locally modified research runtime passed modern sharing, mixed private legacy, and concurrent input ownership."
+          "result": "The first modified research CLI passed the empty-discovery case but still rejected the explicit legacy marker with the modern protocol feature enabled."
+        },
+        {
+          "selectors": [
+            "account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper",
+            "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private",
+            "account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client",
+            "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_marked_legacy_helpers_private",
+            "account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_marked_legacy_private_with_modern_protocol_enabled"
+          ],
+          "environment": "DECODEX_TEST_CODEX_BINARY=<combined-research-cli>",
+          "command": [
+            "cargo",
+            "+stable",
+            "nextest",
+            "run",
+            "--locked",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "--run-ignored",
+            "only",
+            "--no-fail-fast",
+            "--retries",
+            "0",
+            "-E",
+            "test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_share_a_compatible_native_mcp_helper) | test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_unmarked_legacy_helpers_private) | test(=account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client) | test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_marked_legacy_helpers_private) | test(=account_launch::agent_process::native_tests::mcp_socket::separate_clients_keep_marked_legacy_private_with_modern_protocol_enabled)"
+          ],
+          "executed": 5,
+          "passed": 5,
+          "unmatched_selectors": [],
+          "research_cli_sha256": "f54f1e6f99a12d8ae27a35e68e02fdad1d0610e3556d9a86d34500cf3100ba2e",
+          "result": "The combined modified research CLI passed all five native socket cases.",
+          "tests_reported_leaky": 1,
+          "leaky_test": "account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client",
+          "leak_recheck": {
+            "selector": "account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client",
+            "environment": "DECODEX_TEST_CODEX_BINARY=<combined-research-cli>",
+            "command": [
+              "cargo",
+              "+stable",
+              "nextest",
+              "run",
+              "--locked",
+              "-p",
+              "decodex-runtime",
+              "--lib",
+              "--run-ignored",
+              "only",
+              "--no-fail-fast",
+              "--retries",
+              "0",
+              "-E",
+              "test(=account_launch::agent_process::native_tests::mcp_socket::shared_modern_input_returns_to_each_calling_client)"
+            ],
+            "executed": 1,
+            "passed": 1,
+            "tests_reported_leaky": 0,
+            "unmatched_selectors": []
+          }
         }
       ],
       "upstream_source_read": [
         "codex-rs/codex-mcp/src/connection_pool.rs#McpConnectionPool",
-        "codex-rs/app-server-transport/src/transport/unix_socket.rs#run_control_socket_acceptor",
-        "codex-rs/app-server-daemon/README.md",
         "codex-rs/codex-mcp/src/connection_pool.rs#ConnectionKey",
-        "crates/decodex-runtime/src/account_launch/process.rs#AttestedAppServerLaunch"
+        "codex-rs/codex-mcp/src/server.rs#EffectiveMcpServer::can_discover_local_stdio",
+        "codex-rs/rmcp-client/src/protocol_mode.rs#McpProtocolMode::stdio_mode",
+        "codex-rs/app-server-transport/src/transport/unix_socket.rs#run_control_socket_acceptor",
+        "codex-rs/app-server-daemon/README.md"
       ],
       "upstream_tests_read_not_executed": [
         "codex-rs/app-server/tests/suite/v2/thread_attachments.rs#thread_attachment_mutations_respond_before_broadcasting_updates_to_multiple_clients",
@@ -2084,8 +2157,9 @@
       "limits": [
         "The socket test uses two distinct proxy processes, one app-server process, one synthetic account home and actual local MCP calls. It does not demonstrate sharing across independent app-server processes.",
         "The input test uses synthetic concurrent calls and verifies their thread and answer ownership; it does not establish cross-account isolation or all permission and cancellation behavior.",
+        "The explicit 2025 marker passes on the selected CLI only when the separate modern protocol feature is disabled. The marker can reach the legacy subprocess; no user server or configuration was tested or modified.",
         "No managed daemon is installed or started. Multi-account isolation, current Decodex process supervision, live providers and installed-app acceptance are not established.",
-        "The patched research CLI is not an official or qualified artifact. Production sharing remains disabled until the selected development runtime built from official source passes its retained qualification."
+        "The patched research CLIs are not official or qualified artifacts. Production sharing remains disabled until the selected development runtime built from official source passes retained qualification."
       ],
       "validation": {
         "headless": {
@@ -2097,8 +2171,31 @@
           ],
           "rust_tests_executed": 1891,
           "rust_tests_passed": 1891,
-          "rust_tests_skipped": 138,
-          "tests_reported_leaky": 0
+          "rust_tests_skipped": 140,
+          "tests_reported_leaky": 1,
+          "leaky_test": "conversation::model_settings::tests::ordinary_settings_read_preserves_terminal_events_and_native_identity",
+          "leak_recheck": {
+            "selector": "conversation::model_settings::tests::ordinary_settings_read_preserves_terminal_events_and_native_identity",
+            "command": [
+              "cargo",
+              "+stable",
+              "nextest",
+              "run",
+              "--locked",
+              "-p",
+              "decodex-runtime",
+              "--lib",
+              "--no-fail-fast",
+              "--retries",
+              "0",
+              "-E",
+              "test(=conversation::model_settings::tests::ordinary_settings_read_preserves_terminal_events_and_native_identity)"
+            ],
+            "executed": 1,
+            "passed": 1,
+            "tests_reported_leaky": 0,
+            "unmatched_selectors": []
+          }
         },
         "strict_runtime_clippy": {
           "command": [
@@ -2148,8 +2245,10 @@
       "upstream_source_observation": "The native pool is process-owned and keys entries by server identity, account and authentication state. Decodex attests one account-bound app-server launch. These code properties do not by themselves qualify sharing across app-server processes or accounts.",
       "upstream_source_tests_executed": {
         "source_commit": "6a6e2fb1f0e9122464a75929c58356cb7af9e0cc",
-        "checkout": "Modified research source; not selected artifact qualification",
+        "checkout": "Modified combined research source; not selected artifact qualification",
+        "combined_patch_sha256": "9818caee3d797aee9c4e8984a6f464677383b19fb97ceacd39cfdd38c522f7d2",
         "tests": [
+          "codex-rs/codex-mcp/src/server_tests.rs#local_discovery_skips_explicit_legacy_and_invalid_markers",
           "codex-rs/codex-mcp/src/connection_manager_tests.rs#shared_elicitation_router_targets_the_exact_pending_request",
           "codex-rs/codex-mcp/src/connection_pool_tests.rs#callback_during_startup_releases_waiting_chats_without_sharing_authority",
           "codex-rs/codex-mcp/src/connection_pool_tests.rs#negotiation_requires_the_stateless_protocol_and_detaches_startup_callbacks",
@@ -2167,15 +2266,109 @@
           "codex-mcp",
           "--lib",
           "-E",
-          "test(shared_elicitation_router_targets_the_exact_pending_request) | test(callback_during_startup_releases_waiting_chats_without_sharing_authority) | test(negotiation_requires_the_stateless_protocol_and_detaches_startup_callbacks) | test(shared_startup_survives_first_chat_cancellation_and_rejects_released_bindings)",
+          "test(local_discovery_skips_explicit_legacy_and_invalid_markers) | test(shared_elicitation_router_targets_the_exact_pending_request) | test(callback_during_startup_releases_waiting_chats_without_sharing_authority) | test(negotiation_requires_the_stateless_protocol_and_detaches_startup_callbacks) | test(shared_startup_survives_first_chat_cancellation_and_rejects_released_bindings)",
           "--no-fail-fast",
           "--retries",
           "0"
         ],
-        "executed": 4,
-        "passed": 4,
+        "executed": 5,
+        "passed": 5,
         "unmatched_selectors": [],
-        "coverage": "Exact pending-request routing, startup callback isolation, stateless sharing negotiation, and cancellation and lease release."
+        "coverage": "Explicit legacy discovery exclusion, exact pending-request routing, startup callback isolation, stateless sharing negotiation, and cancellation and lease release."
+      },
+      "local_source_read": [
+        "crates/decodex-runtime/src/account_launch/process.rs#AttestedAppServerLaunch"
+      ],
+      "combined_compatibility_research": {
+        "source_commit": "6a6e2fb1f0e9122464a75929c58356cb7af9e0cc",
+        "patch_sha256": "9818caee3d797aee9c4e8984a6f464677383b19fb97ceacd39cfdd38c522f7d2",
+        "research_cli_sha256": "f54f1e6f99a12d8ae27a35e68e02fdad1d0610e3556d9a86d34500cf3100ba2e",
+        "status": "modified_source_research_only_not_a_qualified_runtime",
+        "approach": "Recognize a declared 2025-06-18 local stdio marker as legacy even with the modern protocol feature enabled, and exclude that helper from discovery and pooling. The combined prototype also contains the separate empty-discovery retry.",
+        "source_tests": [
+          {
+            "entrypoints": [
+              "codex-rs/rmcp-client/src/local_stdio_transport.rs#discovery_empty_result_tests",
+              "codex-rs/rmcp-client/src/stdio_handshake.rs#empty_probe_tests",
+              "codex-rs/rmcp-client/src/protocol_mode.rs#tests"
+            ],
+            "command": [
+              "cargo",
+              "+stable",
+              "nextest",
+              "run",
+              "--locked",
+              "--cargo-profile",
+              "dev-small",
+              "-p",
+              "codex-rmcp-client",
+              "--lib",
+              "-E",
+              "test(discovery_empty_result_tests::) | test(empty_probe_tests::) | test(protocol_mode::tests::)",
+              "--no-fail-fast",
+              "--retries",
+              "0"
+            ],
+            "executed": 10,
+            "passed": 10,
+            "unmatched_selectors": []
+          },
+          {
+            "entrypoint": "codex-rs/rmcp-client/tests/mcp_2026_stdio.rs",
+            "command": [
+              "cargo",
+              "+stable",
+              "nextest",
+              "run",
+              "--locked",
+              "--cargo-profile",
+              "dev-small",
+              "-p",
+              "codex-rmcp-client",
+              "--test",
+              "mcp_2026_stdio",
+              "--test-threads",
+              "1",
+              "--no-fail-fast",
+              "--retries",
+              "0"
+            ],
+            "executed": 8,
+            "passed": 8,
+            "unmatched_selectors": []
+          }
+        ],
+        "limits": "The 2025 marker is explicit user configuration and can reach the legacy subprocess. No automatic relabeling of unmarked servers is authorized. A modified research CLI and its helpers are not a qualified development artifact.",
+        "retained_native_regressions": {
+          "selectors": [
+            "account_launch::agent_process::native_tests::mcp_sharing::explicit_sharing_candidate_uses_compatible_same_process_mcp_connections",
+            "account_launch::agent_process::native_tests::mcp_sharing::explicit_sharing_keeps_unmarked_legacy_connection_private",
+            "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request",
+            "agent::tests::native_subagent_live::mcp::native_shared_child_mcp_input_preserves_policy_and_exact_request",
+            "agent::tests::native_subagent_live::mcp::native_shared_child_mcp_input_survives_late_empty_discovery"
+          ],
+          "environment": "DECODEX_TEST_CODEX_BINARY and DECODEX_NATIVE_BINARY select the combined research CLI",
+          "command": [
+            "cargo",
+            "+stable",
+            "nextest",
+            "run",
+            "--locked",
+            "-p",
+            "decodex-runtime",
+            "--lib",
+            "--run-ignored",
+            "only",
+            "--no-fail-fast",
+            "--retries",
+            "0",
+            "-E",
+            "test(=account_launch::agent_process::native_tests::mcp_sharing::explicit_sharing_candidate_uses_compatible_same_process_mcp_connections) | test(=account_launch::agent_process::native_tests::mcp_sharing::explicit_sharing_keeps_unmarked_legacy_connection_private) | test(=agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request) | test(=agent::tests::native_subagent_live::mcp::native_shared_child_mcp_input_preserves_policy_and_exact_request) | test(=agent::tests::native_subagent_live::mcp::native_shared_child_mcp_input_survives_late_empty_discovery)"
+          ],
+          "executed": 5,
+          "passed": 5,
+          "unmatched_selectors": []
+        }
       }
     }
   ],
