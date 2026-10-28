@@ -306,21 +306,15 @@ impl AgentSurface {
 			Some(AgentPermissionState::Available { profiles, can_update: true, .. })
 			if self.permission_profiles.reviewed && profiles.iter().any(|p| p.id.as_str() == mode.profile() && p.allowed && p.can_select))
 		};
-		let mut menu = crate::ui_motion::menu_surface(gpui::div())
-			.p_1()
-			.flex()
-			.flex_col()
-			.child(crate::session_settings::permission_choices(
+		let mut menu = crate::ui_motion::menu_surface(gpui::div()).p_1().flex().flex_col().child(
+			crate::session_settings::permission_choices(
 				current,
+				true,
 				available,
 				Self::choose_permission_mode,
 				cx,
-			))
-			.child(gpui::div().px_3().py_2().text_size(gpui::px(11.)).child(if creating {
-				"For this new Agent and its subagents."
-			} else {
-				"For new turns and newly spawned subagents. Running steps keep their current permissions."
-			}));
+			),
+		);
 		if !creating {
 			menu = menu.children(ui_feedback::inline_feedback(
 				"permission-settings-feedback",
@@ -353,7 +347,9 @@ impl AgentSurface {
 					}
 				}
 			}
-			if let Some(work) = self.permission_owner() {
+			if !self.permission_profiles.reviewed
+				&& let Some(work) = self.permission_owner()
+			{
 				menu = menu.child(mcp_forms::mcp_button(
 					"permission-profiles-read".into(),
 					"Refresh permissions".into(),

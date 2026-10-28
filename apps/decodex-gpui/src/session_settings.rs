@@ -34,6 +34,7 @@ impl Defaults {
 
 pub(crate) fn permission_choices<T: 'static>(
 	selected: Option<PermissionMode>,
+	compact: bool,
 	available: impl Fn(PermissionMode) -> bool,
 	choose: fn(&mut T, PermissionMode, &mut Context<T>),
 	cx: &Context<T>,
@@ -51,7 +52,7 @@ pub(crate) fn permission_choices<T: 'static>(
 				.aria_selected(chosen)
 				.tab_index(if enabled { 0 } else { -1 })
 				.px_3()
-				.py_2()
+				.py(gpui::px(if compact { 6. } else { 8. }))
 				.rounded_lg()
 				.flex()
 				.flex_col()
@@ -65,12 +66,14 @@ pub(crate) fn permission_choices<T: 'static>(
 					if chosen { "✓ " } else { "" },
 					mode.label()
 				)))
-				.child(
-					gpui::div()
-						.text_size(gpui::px(11.))
-						.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-						.child(mode.description()),
-				)
+				.when(!compact, |row| {
+					row.child(
+						gpui::div()
+							.text_size(gpui::px(11.))
+							.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+							.child(mode.description()),
+					)
+				})
 				.on_click(cx.listener(move |this, _, _, cx| {
 					if enabled && !chosen {
 						choose(this, mode, cx);

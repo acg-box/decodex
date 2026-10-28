@@ -487,6 +487,7 @@ impl SettingsSurface {
 			.when(self.session_menu == Some("permissions"), |d| {
 				d.child(crate::session_settings::permission_choices(
 					Some(self.session_defaults.permissions),
+					false,
 					|_| true,
 					Self::choose_default_permissions,
 					cx,
@@ -507,20 +508,26 @@ impl SettingsSurface {
 					)),
 			)
 			.when(self.session_menu == Some("speed"), |d| {
-				d.child(crate::session_settings::speed_choices(
-					self.session_defaults.speed.as_ref(),
-					true,
-					Self::choose_default_speed,
-					cx,
-				))
-				.child(
-					ui_theme::settings_button("default-speed-inherit", "Use Codex default")
-						.on_click(cx.listener(|s, _, _, cx| {
-							s.session_defaults.speed = None;
-							s.session_defaults.save();
-							s.session_menu = None;
-							cx.refresh_windows();
-						})),
+				d.child(
+					gpui::div()
+						.flex()
+						.items_center()
+						.gap_2()
+						.child(crate::session_settings::speed_choices(
+							self.session_defaults.speed.as_ref(),
+							true,
+							Self::choose_default_speed,
+							cx,
+						))
+						.child(
+							ui_theme::settings_button("default-speed-inherit", "Use Codex default")
+								.on_click(cx.listener(|s, _, _, cx| {
+									s.session_defaults.speed = None;
+									s.session_defaults.save();
+									s.session_menu = None;
+									cx.refresh_windows();
+								})),
+						),
 				)
 			})
 			.into_any_element()

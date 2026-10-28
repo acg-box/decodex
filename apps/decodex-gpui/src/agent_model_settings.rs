@@ -163,7 +163,7 @@ impl AgentSurface {
 			None if self.is_new_conversation()
 				|| (self.composer_manager.is_none() && self.root_id().is_none()) =>
 				"Codex default".into(),
-			None => "Speed".into(),
+			None => "Not reported".into(),
 		}
 	}
 

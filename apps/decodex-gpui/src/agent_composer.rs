@@ -55,7 +55,7 @@ pub(super) const MODEL_MENU_WIDTH: f32 = 232.;
 pub(super) const MODEL_MENU_SHADOW: f32 = 8.;
 
 pub(super) fn selection_menu(menu: Option<&str>) -> bool {
-	matches!(menu, Some("model" | "permissions" | "speed"))
+	matches!(menu, Some("model" | "permissions"))
 }
 
 pub(super) struct ComposerTip(pub(super) String);
@@ -915,13 +915,6 @@ impl AgentSurface {
 				|s, cx| s.toggle_composer_menu("permissions", cx),
 				cx,
 			))
-			.child(self.composer_control(
-				"speed",
-				self.composer_speed_label(),
-				"Speed for the next turn",
-				|s, cx| s.toggle_composer_menu("speed", cx),
-				cx,
-			))
 			.child(gpui::div().flex_1())
 			.children(self.usage_line(cx))
 			.when(self.async_question_composer().is_none(), |row| {
@@ -1005,7 +998,9 @@ impl AgentSurface {
 		let tooltip = if disabled {
 			"Sending paused until the connection is restored".to_owned()
 		} else if id == "model" {
-			format!("Model and reasoning · {label}")
+			format!("Model and reasoning · {label} · Speed: {}", self.composer_speed_label())
+		} else if id == "permissions" && label != "Permissions" {
+			format!("Permissions · {label}")
 		} else {
 			tip.to_owned()
 		};
@@ -1039,6 +1034,7 @@ impl AgentSurface {
 			.justify_center()
 			.text_size(gpui::px(12.0))
 			.line_height(gpui::px(16.0))
+			.whitespace_nowrap()
 			.text_color(ui_theme::rgb(if send { ON_PRIMARY } else { TEXT_MUTED }))
 			.when(id == "model", |d| {
 				d.px(gpui::px(4.))
@@ -1096,7 +1092,7 @@ impl AgentSurface {
 				}
 			}))
 			.child(self.composer_control_content(id, label, cx))
-			.when(["model", "effort", "attach", "permissions", "speed"].contains(&id), |d| {
+			.when(["model", "effort", "attach", "permissions"].contains(&id), |d| {
 				d.child(
 					gpui::canvas(
 						move |bounds, _, cx| {
@@ -1136,6 +1132,7 @@ impl AgentSurface {
 			}
 			.into_any_element(),
 			"attach" => workspace_symbols::icon(Symbol::Plus),
+			"permissions" => workspace_symbols::icon(Symbol::Shield),
 			"attachment-item" => gpui::div()
 				.flex()
 				.items_center()
@@ -1281,11 +1278,6 @@ impl AgentSurface {
 					self.skill_options(cx)
 				} else if menu == "permissions" {
 					self.permission_options(cx)
-				} else if menu == "speed" {
-					crate::ui_motion::menu_surface(gpui::div())
-						.p_2()
-						.child(self.service_tier_picker(cx))
-						.into_any_element()
 				} else if menu == "agent-settings" {
 					gpui::div()
 						.id("agent-settings-scroll")
@@ -1310,7 +1302,10 @@ impl AgentSurface {
 			.flex_col()
 			.gap(gpui::px(6.))
 			.child(
-				ui_motion::menu_surface(gpui::div()).p(gpui::px(5.)).child(self.model_palette(cx)),
+				ui_motion::menu_surface(gpui::div())
+					.p(gpui::px(5.))
+					.child(self.model_palette(cx))
+					.child(gpui::div().mt(gpui::px(6.)).child(self.service_tier_picker(cx))),
 			)
 			.child(
 				ui_motion::menu_surface(gpui::div())
@@ -1821,6 +1816,30 @@ mod tests {
 
 		assert!((4. ..=16.).contains(&gap), "menu gap: {gap}");
 		assert!(menu.bottom() > composer.top() + gpui::px(50.));
+	}
+
+	#[gpui::test]
+	fn permission_icon_keeps_toolbar_compact_and_speed_in_model_menu(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.new_work_conversation(cx);
+		});
+		for width in [1_180., 1_400.] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(1_000.)));
+			visual.update(crate::ui_frame::draw_current_frame);
+			let model = visual.debug_bounds("composer-model").unwrap();
+			let permissions = visual.debug_bounds("composer-permissions").unwrap();
+			assert_eq!(permissions.size.width, gpui::px(super::CONTROL_SIZE));
+			assert!(visual.debug_bounds("composer-speed").is_none());
+			assert!(model.right() < permissions.left());
+		}
+		surface.update(visual, |s, cx| s.toggle_composer_menu("model", cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("tier-default").is_some());
+		assert!(visual.debug_bounds("tier-priority").is_some());
 	}
 
 	#[gpui::test]

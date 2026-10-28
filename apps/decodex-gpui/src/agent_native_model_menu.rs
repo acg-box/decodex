@@ -33,10 +33,6 @@ impl Render for ModelMenu {
 		let owner = self.owner.clone();
 		let content = owner.update(cx, |s, cx| match s.composer_menu.or(s.composer_menu_content) {
 			Some("permissions") => s.permission_options(cx),
-			Some("speed") => crate::ui_motion::menu_surface(gpui::div())
-				.p_2()
-				.child(s.service_tier_picker(cx))
-				.into_any_element(),
 			_ => s.model_options(cx),
 		});
 
