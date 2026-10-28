@@ -269,7 +269,7 @@ impl AgentSurface {
 					panel = panel.child(self.live_model_controls(work, models, cx));
 				}
 
-				panel = panel.child("Review routing follows global Guardian settings.");
+				panel = panel.child("Change review routing with Permissions in the input bar.");
 			}
 		}
 

@@ -8,6 +8,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_hooks.rs
   - id: openwiki-source-01379a7fb49ab2d638863891
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
+  - id: openwiki-source-59ed67d26d1c310707a365e5
+    resource: repo://apps/decodex-gpui/src/component_plugins.rs
+  - id: openwiki-source-0813b2e35e2133631c0aa4db
+    resource: repo://apps/decodex-gpui/src/settings_components.rs
+  - id: openwiki-source-e379b8a714d71f87371ae328
+    resource: repo://crates/decodex-components/src/plugins.rs
   - id: openwiki-source-eccf08613126ff810078b520
     resource: repo://crates/decodex-protocol/src/agent.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
@@ -20,10 +26,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_skill_roots.rs
   - id: openwiki-source-8b32cad13ab2428dd54bd986
     resource: repo://crates/decodex-runtime/src/agent_skills.rs
-generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T07:49:54.224Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 # Native tools and connection ownership
@@ -36,7 +42,9 @@ Codex owns native tool discovery, filtering, plugin activation and execution. De
 
 ## Plugin configuration belongs to Codex
 
-The desktop shows tool status and source ownership. Install and configure plugins and connections in Codex for the selected account. Local task-plugin selection, plugin installation, sync and authentication-management controls are retired. Native settings observations remain available. The retired local selection journals, query types and mutation commands are removed.
+The desktop shows tool status and source ownership. Configure general plugins and connections in Codex for the selected account. Generic local task-plugin selection, sync and authentication-management controls are retired. Native settings observations remain available. The retired local selection journals, query types and mutation commands are removed.
+
+The explicit [EGM Component](elephant-goldfish.md) is a narrow native-lifecycle adapter in Settings > Components. It installs, updates and removes the original plugin through the Codex CLI. It does not restore the retired Agent plugin-management API or add a second marketplace cache.
 
 ## Native settings boundaries
 

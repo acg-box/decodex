@@ -80,6 +80,9 @@ pub struct AgentConfig {
 	pub cwd: String,
 	/// Provider approval policy selected by the host.
 	pub approval_policy: Value,
+	/// Explicit creation choice. Existing conversations keep native review routing.
+	#[serde(default)]
+	pub approvals_reviewer: Option<String>,
 	/// Provider sandbox mode selected by the host.
 	pub sandbox: String,
 }
@@ -98,6 +101,7 @@ impl AgentConfig {
 			worker_effort: Some("medium".into()),
 			cwd,
 			approval_policy: serde_json::json!("on-request"),
+			approvals_reviewer: None,
 			sandbox: "workspace-write".into(),
 		}
 	}
@@ -442,9 +446,33 @@ impl AgentCoordinator {
 		let guardian = self.store.guardian_state().await?.settings;
 		let mut params = self.thread_params(manager);
 
-		params["approvalsReviewer"] = serde_json::json!(guardian.reviewer.native());
+		params["approvalsReviewer"] =
+			serde_json::json!(self.config.approvals_reviewer.as_deref().unwrap_or("user"));
 		params["config"]["features.guardian_recorded_items"] =
 			serde_json::json!(guardian.review_details);
+		// Capture the user's creation choice only when creating this native thread.
+		// Later turns and recovery use native settings, never these old defaults.
+		if item.codex_thread_id.is_none() {
+			let mode = self
+				.store
+				.list_agent_wake_events(item.id.clone(), 100)
+				.await?
+				.iter()
+				.find(|event| {
+					event.event_kind == "user_message" && event.delivered_turn_id.is_none()
+				})
+				.and_then(|event| serde_json::from_str::<Value>(&event.payload).ok())
+				.and_then(|value| value.pointer("/options/permissionMode").cloned())
+				.filter(|value| !value.is_null())
+				.map(serde_json::from_value::<decodex_core::PermissionMode>)
+				.transpose()
+				.map_err(|_| AgentError::Invalid("Invalid initial permission mode".into()))?;
+			if let Some(mode) = mode {
+				params["sandbox"] = serde_json::json!(mode.sandbox());
+				params["approvalPolicy"] = serde_json::json!(mode.approval_policy());
+				params["approvalsReviewer"] = serde_json::json!(mode.reviewer());
+			}
+		}
 
 		// User-created Agents have native user sources. Retained legacy execution
 		// rows must not gain that eligibility through the business migration.
@@ -2511,12 +2539,6 @@ impl AgentCoordinator {
 		if self.dispatch_paused {
 			return Ok(());
 		}
-
-		let phase = Phase::new("wake_guardian");
-
-		self.sync_global_guardian().await?;
-
-		drop(phase);
 
 		let phase = Phase::new("wake_thread_ownership");
 		let blocked = self.recover_thread_ownership().await?;

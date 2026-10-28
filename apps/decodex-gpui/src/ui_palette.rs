@@ -7,7 +7,7 @@ use crate::ui_theme::{
 	AGENT_CHAT_OVERLAY, AGENT_SIDEBAR_MATERIAL, CANVAS, COMPOSER_MATERIAL, CONTENT_MATERIAL,
 	CONTROL_ACTIVE_FILL, ColorTheme, ERROR, INFO, ON_PRIMARY, PRIMARY_FILL, SHELL_MATERIAL,
 	SIDEBAR_MATERIAL, SUCCESS, SURFACE_OVERLAY_MATERIAL, TEXT, TOPBAR_MATERIAL, WARNING,
-	appearance::Theme, color_themes,
+	WorkspacePalette, appearance::Theme, color_themes, material::Material,
 };
 
 pub(crate) const MASCOT_FAMILIES: [&str; 12] = [
@@ -133,28 +133,50 @@ impl ColorScheme {
 		color
 	}
 
-	/// Keep the reading planes stable while the window frame admits background light.
-	pub(crate) fn material(self, token: u32, material: super::material::Material) -> Rgba {
+	/// Color themes supply the tint; native glass uses one shared opacity policy.
+	pub(crate) fn material(self, token: u32, material: Material) -> Rgba {
 		let color = self.rgba(token);
 
-		if self.appearance != Theme::Dark
-			|| self.colors != ColorTheme::Decodex
-			|| material != super::material::Material::LiquidGlass
-		{
+		if self.appearance != Theme::Dark || material != Material::LiquidGlass {
 			return color;
 		}
 
 		let alpha = match token {
-			SHELL_MATERIAL => 0xc2,
-			SIDEBAR_MATERIAL | AGENT_SIDEBAR_MATERIAL => 0xc2,
-			TOPBAR_MATERIAL => 0xd9,
-			CONTENT_MATERIAL | AGENT_CHAT_OVERLAY => 0xf0,
-			COMPOSER_MATERIAL => 0xf5,
-			SURFACE_OVERLAY_MATERIAL => 0xf7,
+			SHELL_MATERIAL => 0xb0,
+			SIDEBAR_MATERIAL => 0x84,
+			AGENT_SIDEBAR_MATERIAL => 0x90,
+			TOPBAR_MATERIAL => 0x68,
+			CONTENT_MATERIAL => 0x78,
+			AGENT_CHAT_OVERLAY => 0x0e,
+			COMPOSER_MATERIAL => 0x88,
+			SURFACE_OVERLAY_MATERIAL => 0xd8,
 			_ => return color,
 		};
 
 		color.alpha(alpha as f32 / 255.)
+	}
+
+	pub(crate) fn workspace(self, material: Material) -> WorkspacePalette {
+		if material == Material::LiquidGlass {
+			return WorkspacePalette {
+				graph: gpui::rgba(0),
+				conversation: self.material(AGENT_CHAT_OVERLAY, material),
+			};
+		}
+		if self.appearance == Theme::Dark && self.colors == ColorTheme::Decodex {
+			return WorkspacePalette {
+				graph: self.rgb(CANVAS).opacity(0.86),
+				conversation: self.rgba(CONTENT_MATERIAL),
+			};
+		}
+
+		// Thin retains its matte reading planes independently of glass opacity.
+		let (graph, conversation) = match self.appearance {
+			Theme::Dark => (0x00000028, 0xffffff06),
+			Theme::Light => (0x00000008, 0xffffffb0),
+		};
+
+		WorkspacePalette { graph: gpui::rgba(graph), conversation: gpui::rgba(conversation) }
 	}
 }
 
@@ -212,7 +234,7 @@ mod tests {
 	use crate::ui_theme::{
 		self, AGENT_CHAT_OVERLAY, AGENT_SIDEBAR_MATERIAL, BLUE, CANVAS, COMPOSER_MATERIAL,
 		CONTENT_MATERIAL, SHELL_MATERIAL, SIDEBAR_MATERIAL, SURFACE_OVERLAY_MATERIAL, TEXT,
-		TEXT_MUTED, appearance, foreground,
+		TEXT_MUTED, TOPBAR_MATERIAL, appearance,
 		material::Material,
 		palette::{ColorScheme, ColorTheme, Theme},
 	};
@@ -429,53 +451,57 @@ mod tests {
 	}
 
 	#[test]
-	fn glass_reading_surfaces_keep_contrast_over_light_dark_and_colored_backdrops() {
-		let colors = ColorScheme::new(Theme::Dark, ColorTheme::Decodex);
+	fn glass_transparency_is_independent_of_color_theme_and_preserves_thin() {
+		// Native glass supplies the backdrop. A raw-desktop contrast calculation
+		// must not replace it with an almost opaque foreground reading surface.
+		let reference = ColorScheme::new(Theme::Dark, ColorTheme::TokyoNight);
 
-		for backdrop in [0xffffff, 0x000000, 0xf5cc72, 0xe66d85, 0x709fcb] {
-			let shell =
-				gpui::rgb(backdrop).blend(colors.material(SHELL_MATERIAL, Material::LiquidGlass));
-			let surfaces = [
-				shell.blend(colors.rgb(CANVAS).opacity(0.8)),
-				shell.blend(colors.material(SIDEBAR_MATERIAL, Material::LiquidGlass)),
-				shell.blend(colors.material(AGENT_SIDEBAR_MATERIAL, Material::LiquidGlass)),
-				shell.blend(colors.material(CONTENT_MATERIAL, Material::LiquidGlass)),
-				gpui::rgb(backdrop)
-					.blend(colors.material(COMPOSER_MATERIAL, Material::LiquidGlass)),
-				gpui::rgb(backdrop)
-					.blend(colors.material(SURFACE_OVERLAY_MATERIAL, Material::LiquidGlass)),
-			];
-
-			for background in surfaces {
-				for token in [
-					TEXT,
-					foreground::BODY,
-					TEXT_MUTED,
-					super::super::INFO,
-					super::super::SUCCESS,
-					super::super::WARNING,
-					super::super::ERROR,
-				] {
-					assert!(
-						contrast(colors.rgb(token), background) >= 4.5,
-						"{token:06x} over {backdrop:06x}"
-					);
-				}
-			}
-		}
 		for theme in ColorTheme::ALL {
 			let colors = ColorScheme::new(Theme::Dark, theme);
 
-			assert_eq!(
-				colors.material(CONTENT_MATERIAL, Material::Thin),
-				colors.rgba(CONTENT_MATERIAL)
-			);
+			for token in [
+				SHELL_MATERIAL,
+				SIDEBAR_MATERIAL,
+				AGENT_SIDEBAR_MATERIAL,
+				TOPBAR_MATERIAL,
+				CONTENT_MATERIAL,
+				AGENT_CHAT_OVERLAY,
+				COMPOSER_MATERIAL,
+				SURFACE_OVERLAY_MATERIAL,
+			] {
+				let glass = colors.material(token, Material::LiquidGlass);
+
+				assert_eq!(glass.a, reference.rgba(token).a, "{theme:?} {token:08x}");
+				assert_eq!(glass.alpha(1.), colors.rgba(token).alpha(1.));
+				assert_eq!(colors.material(token, Material::Thin), colors.rgba(token));
+			}
+
+			let glass = colors.workspace(Material::LiquidGlass);
+
+			assert_eq!(glass.graph.a, 0., "{theme:?} must not cover native glass");
+			assert_eq!(glass.conversation.a, reference.rgba(AGENT_CHAT_OVERLAY).a);
+		}
+	}
+
+	#[test]
+	fn thin_workspace_keeps_its_existing_reading_planes() {
+		let decodex = ColorScheme::new(Theme::Dark, ColorTheme::Decodex);
+		let thin = decodex.workspace(Material::Thin);
+
+		assert_eq!(thin.graph, decodex.rgb(CANVAS).opacity(0.86));
+		assert_eq!(thin.conversation, decodex.rgba(CONTENT_MATERIAL));
+
+		for theme in ColorTheme::ALL {
+			let light = ColorScheme::new(Theme::Light, theme).workspace(Material::Thin);
+
+			assert_eq!(light.graph, gpui::rgba(0x00000008));
+			assert_eq!(light.conversation, gpui::rgba(0xffffffb0));
 
 			if theme != ColorTheme::Decodex {
-				assert_eq!(
-					colors.material(CONTENT_MATERIAL, Material::LiquidGlass),
-					colors.rgba(CONTENT_MATERIAL)
-				);
+				let dark = ColorScheme::new(Theme::Dark, theme).workspace(Material::Thin);
+
+				assert_eq!(dark.graph, gpui::rgba(0x00000028));
+				assert_eq!(dark.conversation, gpui::rgba(0xffffff06));
 			}
 		}
 	}

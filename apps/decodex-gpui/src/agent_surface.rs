@@ -115,13 +115,13 @@ use decodex_protocol::{
 	AgentActionDto, AgentAttachmentDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
 	AgentExecutionOverrides, AgentHistoryEntryDto, AgentHistoryResult, AgentIntegrationsResult,
 	AgentLiveMessageKind, AgentPendingEventDto, AgentRequestResult, AgentRequestedDecision,
-	AgentResourcesResult, AgentSandboxDto, AgentSnapshotDto, AgentSnapshotResult, AgentStartDto,
+	AgentResourcesResult, AgentSnapshotDto, AgentSnapshotResult, AgentStartDto,
 	AgentTaskReferenceDto, AgentUsageEstimateResult, AgentWorkItemDto, AgentWorkKindDto,
 	AgentWorkStatusDto, ClientProfile, CommandError, ConversationModel,
 	ConversationReasoningEffort, ConversationWorkingDirectory, DesktopCreationIntent,
 	DesktopMessage, DesktopMessageState, DesktopQuestionDraft, EntityId, HistoryText,
-	IdempotencyKey, InitialModelCatalogResult, MAX_HISTORY_INLINE_BYTES, ServiceTier, WireText,
-	work::WorkPortfolio,
+	IdempotencyKey, InitialModelCatalogResult, MAX_HISTORY_INLINE_BYTES, PermissionMode,
+	ServiceTier, WireText, work::WorkPortfolio,
 };
 use deliveries::OpenDelivery;
 use detail::ActivityDetailState;
@@ -245,7 +245,7 @@ pub(crate) struct AgentSurface {
 	creation_intent: DesktopCreationIntent,
 	creation_defaults_applied: bool,
 	creation_defaults: Option<InitialModelCatalogResult>,
-	sandbox: AgentSandboxDto,
+	permission_mode: PermissionMode,
 	submission: SubmissionState,
 	command_epoch: u64,
 	sending: bool,
@@ -347,7 +347,13 @@ impl AgentSurface {
 		cx.subscribe(&deliveries, |s, _, event: &OpenDelivery, cx| s.open_page(&event.0, cx))
 			.detach();
 
-		Self::initial_state(inputs, presentations, deliveries, cx)
+		let mut surface = Self::initial_state(inputs, presentations, deliveries, cx);
+		let defaults = crate::session_settings::Defaults::load();
+		surface.permission_mode = defaults.permissions;
+		surface.fast = defaults.speed.as_ref().is_some_and(|tier| tier.as_str() == "priority");
+		surface.creation_intent.service_tier = defaults.speed.is_some();
+		surface.service_tier = defaults.speed;
+		surface
 	}
 
 	fn initial_state(
@@ -438,7 +444,7 @@ impl AgentSurface {
 			creation_intent: Default::default(),
 			creation_defaults_applied: false,
 			creation_defaults: None,
-			sandbox: AgentSandboxDto::ReadOnly,
+			permission_mode: PermissionMode::default(),
 			submission: Default::default(),
 			command_epoch: 0,
 			sending: false,
@@ -859,6 +865,10 @@ impl AgentSurface {
 		.map_err(|_| "Message is too long")?;
 
 		if self.is_new_conversation() {
+			let execution = self
+				.draft_profiles
+				.execution
+				.choice(self.selected.as_deref().expect("new draft identity"));
 			return Ok(AgentActionDto::NewConversation {
 				project_id: self
 					.workspace
@@ -870,9 +880,8 @@ impl AgentSurface {
 				work_id: EntityId::new(self.selected.clone().expect("draft identity"))
 					.map_err(|_| "Invalid conversation identity")?,
 				text: prompt,
-				execution: self.draft_profiles.execution.choice(
-					self.selected.as_deref().expect("new conversation has a draft identity"),
-				),
+				execution,
+				permission_mode: Some(self.creation_permission_mode()),
 				attachments: self.attachments.clone(),
 				task_references: self.task_references.clone(),
 			});
@@ -918,7 +927,7 @@ impl AgentSurface {
 				)
 			},
 			effort: self.creation_effort(),
-			sandbox: self.sandbox,
+			permission_mode: self.permission_mode,
 		}))
 	}
 
@@ -1749,6 +1758,7 @@ impl AgentSurface {
 					.is_some_and(|id| snapshot.work_items.iter().any(|work| &work.id == id))
 				{
 					self.workspace.new_conversation = None;
+					self.workspace.new_conversation_permissions = None;
 				}
 
 				if let Some(profile) = &self.profile {
@@ -2374,18 +2384,6 @@ impl AgentSurface {
 			))
 	}
 
-	fn cycle_sandbox(&mut self, cx: &mut Context<Self>) {
-		self.sandbox = match self.sandbox {
-			AgentSandboxDto::ReadOnly => AgentSandboxDto::WorkspaceWrite,
-			AgentSandboxDto::WorkspaceWrite => AgentSandboxDto::FullAccess,
-			AgentSandboxDto::FullAccess => AgentSandboxDto::ReadOnly,
-		};
-
-		cx.notify();
-	}
-}
-
-impl AgentSurface {
 	fn render_preferences(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		gpui::div()
 			.w_full()
@@ -2470,7 +2468,6 @@ impl AgentSurface {
 									.gap_2()
 									.child(self.model_settings_panel(item, cx))
 									.child(self.live_reviewer_panel(item, cx))
-									.child(self.permission_profiles_panel(item, cx))
 									.child(self.task_models_panel(item, cx))
 									.child(self.hook_settings_panel(item, cx))
 							}),
@@ -2502,19 +2499,6 @@ impl AgentSurface {
 				"agent-default-account".into(),
 				format!("Account · {account}"),
 				|s, cx| s.cycle_account(cx),
-				cx,
-			))
-			.child(self.workspace_action(
-				"agent-default-access".into(),
-				format!(
-					"Access · {}",
-					match self.sandbox {
-						AgentSandboxDto::ReadOnly => "Read-only",
-						AgentSandboxDto::WorkspaceWrite => "Workspace write",
-						AgentSandboxDto::FullAccess => "Full access",
-					}
-				),
-				|s, cx| s.cycle_sandbox(cx),
 				cx,
 			))
 	}
@@ -2648,6 +2632,7 @@ struct WorkspaceView {
 	browsing: bool,
 	workspace_filter: Option<String>,
 	new_conversation_workspace: Option<String>,
+	new_conversation_permissions: Option<PermissionMode>,
 	folder_error: Option<String>,
 	workspace_picker: Option<bool>,
 	workspace_search: Option<Entity<ComposerInput>>,
@@ -2701,6 +2686,7 @@ impl Default for WorkspaceView {
 			browsing: false,
 			workspace_filter: None,
 			new_conversation_workspace: None,
+			new_conversation_permissions: None,
 			folder_error: None,
 			workspace_picker: None,
 			workspace_search: None,

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:aa50bf10c72e555c42014fd0272d3fd56e946cb208abc5fcba2394fc5449ac17",
+  "pageVersion": "sha256:05a1fbe3c2b811086c3e9fe0bbb7434a5cf25e8bd12737f512572c2cfdfb518b",
   "claims": [
     {
       "id": "claim_180212e57d1d44369eb0d24fc94defa4",
@@ -24,29 +24,37 @@
     },
     {
       "id": "claim_bcde900dcc80430cae0a5b8d6438b8f3",
-      "statement": "Global Guardian persists desired reviewer preference separately from native per-source application receipts; reviewer-only publication affects subsequent turns and leaves active captures, pending approvals and execution permissions unchanged.",
+      "statement": "Conversation permission selection reserves one source-bound native update and uses native readback for effective settings; global Guardian only controls optional review records.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-codex/src/app_server_client/guardian_settings.rs",
-          "version": "repo-file-v1:sha256:0f07fb0db693bd5104ab3e61be73a3e052231be5b364f911f9953bc5f9338fbd"
+          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
+          "version": "repo-file-v1:sha256:565df042b95aaab735d1f0775319652f84665a39d3d4e1c394a0d756c83b1201"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs#L1-L103",
-          "version": "repo-lines-v1:sha256:e111dbf2f4d4aa117f76345f57907e9d47f124256fe78ec0dd6368d99e5d50d6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2ZmRmZjlhYTNiYTY5YTEwODVhMjY3NjljNDRiMWNjMjRlMDZkZGQ5YWIzNDlkZDY4NDM5OGYyMTQzY2M5MzZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyOWFmM2JiMDRhYjAzOTQwYTQwOGM1MDcyYTVjY2RlMWY4YzUxZTc5YTIyYjE1ZTk5NDNlOTFlY2EyYWMyODFhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwMDc2NDQ5YTA3N2YwNWUwMWUwN2M0NzE5OGVhYWEwNjY5NGNjZWFhZTIxYmEwODFmNTZmMDFjNTI4NzdmZWY3In0"
+          "resource": "repo://crates/decodex-runtime/src/agent_permissions.rs",
+          "version": "repo-file-v1:sha256:32b59c5f26a9d009d71536689d3d377e3ef8b2ca518bd896678ad543bc5c46b4"
         }
       ]
     },
     {
       "id": "claim_61a41353d7d945658e87540d4c4b6ac7",
-      "statement": "The local protocol exposes no per-Agent reviewer write command. Ask Me approvals remain human-owned and native Full Access stays separate.",
+      "statement": "Settings defaults and the composer shield share native permission presets. Existing conversations retain their own settings, native children inherit parent settings, and human approvals remain human-owned.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/agent.rs",
-          "version": "repo-file-v1:sha256:4505107622b2a83de9f0c5e552c2680a09c67f60391c08e32f7bb467d52f5d3c"
+          "resource": "repo://apps/decodex-gpui/src/agent_permissions.rs",
+          "version": "repo-file-v1:sha256:6cfdf89ff83453377e58af615d3409d083677a92be3945c9859d56f00bac59b0"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
-          "version": "repo-file-v1:sha256:7d716b1f0d463043d3844fbcb0e0826390ca08e8984ce15d0bb01fa1e0f8a04b"
+          "resource": "repo://crates/decodex-core/src/permissions.rs",
+          "version": "repo-file-v1:sha256:263f2b7b4c82f13d9bf293c2be98238b2616f85e2fdbc30f827d5a85fdb27057"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/agent.rs",
+          "version": "repo-file-v1:sha256:82d61a3f523e49b02ab5216a2fe14da7ffcf08d0491a401ecdd869fadf9c3b19"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs",
+          "version": "repo-file-v1:sha256:8948624703d6f76b17fb7c768076868f9dff3085012c305122dba764b4c2b0cc"
         }
       ]
     },
@@ -56,7 +64,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
-          "version": "repo-file-v1:sha256:7d716b1f0d463043d3844fbcb0e0826390ca08e8984ce15d0bb01fa1e0f8a04b"
+          "version": "repo-file-v1:sha256:565df042b95aaab735d1f0775319652f84665a39d3d4e1c394a0d756c83b1201"
         }
       ]
     },
@@ -66,11 +74,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:922c1f03d6fa985fafe13a52155dee905122864de4447d110f8a4596e0ae0fef"
+          "version": "repo-file-v1:sha256:9a028e475f9f50eaf8414eb02db6702fa32a1b5f5fa5965cc99ff98491b1e9eb"
         },
         {
           "resource": "repo://database/src/guardian_settings.rs",
-          "version": "repo-file-v1:sha256:1b874c9a2715b387fc01541ea031297b4ef80e418f11c0f377d955a3da260d19"
+          "version": "repo-file-v1:sha256:9eed8d64b595ffb61974b5d32270defa026efffee2318badb061f41210622f6c"
         }
       ]
     },
@@ -84,17 +92,17 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/native_settings.rs",
-          "version": "repo-file-v1:sha256:7d656487836cec8da96e859c52a81b69e85f50410cb536220ad61b5c7074199e"
+          "version": "repo-file-v1:sha256:13d55743e1fa204d609b465bc1ff522f8e036cdca04c31ba86d72c153cd35af6"
         },
         {
           "resource": "repo://database/src/guardian_settings.rs",
-          "version": "repo-file-v1:sha256:1b874c9a2715b387fc01541ea031297b4ef80e418f11c0f377d955a3da260d19"
+          "version": "repo-file-v1:sha256:9eed8d64b595ffb61974b5d32270defa026efffee2318badb061f41210622f6c"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T07:49:54.224Z"
+    "at": "2026-10-28T08:28:06.287Z"
   }
 }

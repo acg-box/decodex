@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2dd699450229bfa68804f583b53b03eece44b50e45cc82fc831c8e65b038acd7",
+  "pageVersion": "sha256:482edd88a7dc4d8f8524f660a8383a02675cc4bf3b94ca38cd6bcd5822cf7e5d",
   "claims": [
     {
       "id": "claim_3f139c853db04d169600a9ee50a8d9b8",
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:25efeb2099951175da8e0a46b892bf1efbf14b7141fc98c3c35e1650c6be5140"
+          "version": "repo-file-v1:sha256:7eac904c9e540c0823485a755eec14ef1bff9e52922612e3df837caba8373c45"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_skill_roots.rs",
@@ -66,7 +66,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/agent.rs",
-          "version": "repo-file-v1:sha256:4505107622b2a83de9f0c5e552c2680a09c67f60391c08e32f7bb467d52f5d3c"
+          "version": "repo-file-v1:sha256:82d61a3f523e49b02ab5216a2fe14da7ffcf08d0491a401ecdd869fadf9c3b19"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L1058-L1073",
@@ -77,10 +77,28 @@
           "version": "repo-lines-v1:sha256:fdab87d7dfa58ec733435205803eec25a7b7c33cc46556f16922b1814111744a:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJhMjcyYzE4ODBhMjZmMWJkNzM4ZGIyZjFjZTVjNzJlZmMyOTQwNzQzMGIyNjJkMWVhYTcyNDllNmI4OGY1Y2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk2ZWFiN2E0NWUwOWFlNDU0MWRlOWI4YjY0NjFhYTU0NTEzYzVhMGI4MmM3NWI2NWY1ZTMzNWUwZTkzYzA2NjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBlYTI0MGMzMmYzMmMxZTNmN2NkMjJjOTgyZTViNmM4YjBhNTNhZmQxZWEwMzZiM2QxYTVhOTM5Yjg0YjVkMTcifQ"
         }
       ]
+    },
+    {
+      "id": "claim_7c9ff77b29c947289bf84292b2720a19",
+      "statement": "Settings > Components contains an explicit original-EGM lifecycle adapter that uses the native Codex CLI, without restoring generic Agent plugin management or adding a second marketplace cache.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/component_plugins.rs",
+          "version": "repo-file-v1:sha256:61fc6c35849bf457d0fd048882c5cdec0254f05c7dc98fdc0a47e4d02d03a83d"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:c0b24d7968af78951a23c1fc13a3c9b6fdf68ac9247604511b71d9d3d3859542"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/plugins.rs",
+          "version": "repo-file-v1:sha256:e93dfce3fa78548c4e6c7569b98478092562292b7a0b69b53c7440daef660916"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T07:49:54.224Z"
+    "at": "2026-10-28T08:28:06.287Z"
   }
 }

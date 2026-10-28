@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:86c711044f7c257ca6fda7eeca721b7b85f46efdbd7f7e56d47717e2a9d16c91",
+  "pageVersion": "sha256:92f6decd72834f5c472d97533d38f1b1498556b301b0d5f84ce5622f158109da",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -8,11 +8,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
-          "version": "repo-file-v1:sha256:25e5c24fce0d9f3725bb3bd006a9a94f20deb2fda5441d6ccc0142837fe05ea5"
+          "version": "repo-file-v1:sha256:7db2485b1dfbc10208c3f2a310a6bc71ac497852f6cc84e631ec5ed2e8e520dc"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
-          "version": "repo-file-v1:sha256:0f37133a6f06d9a27b748b43bf33d9ef96df3f9a836ea8cc745a6a725292a0bb"
+          "version": "repo-file-v1:sha256:8931248220c89584d386f2565372cabc82e5f574922526bf5ea158d2301d39dc"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_tree.rs",
@@ -50,7 +50,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:6eae55c91f5fe965b5ac69b4b12a2378585bd2ef95f19117b1f075a8d751f8b6"
+          "version": "repo-file-v1:sha256:ef610e368cea461087f4345cb2cd4ad778652613db48e08b50b7364e3f623ce3"
         },
         {
           "resource": "repo://database/schema.sql",
@@ -110,11 +110,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:922c1f03d6fa985fafe13a52155dee905122864de4447d110f8a4596e0ae0fef"
+          "version": "repo-file-v1:sha256:9a028e475f9f50eaf8414eb02db6702fa32a1b5f5fa5965cc99ff98491b1e9eb"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
-          "version": "repo-file-v1:sha256:27dceb0235bfd0ed93987e89f4522048704ed176a6cf364f352173b411d7f0ed"
+          "version": "repo-file-v1:sha256:ede8778c3941e42556a06ca592a2881d216f7d01aaadf9071febccd40bf5ec61"
         },
         {
           "resource": "repo://database/schema.sql",
@@ -128,7 +128,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:118d49764ae1d23c7de26a8652aeb3573ddb8f5eb0026b6cb3566b45c94d65fe"
+          "version": "repo-file-v1:sha256:e25ffc756305c75c1641d513afd356949c74493ce5fd8475f44b8efc35a99bd1"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4162-L4378",
@@ -153,10 +153,28 @@
           "version": "repo-file-v1:sha256:b2dfd71c5787b88f014ce587f27b8c7be9515efcd85865db739c09d590f497ef"
         }
       ]
+    },
+    {
+      "id": "claim_f55bacdde1c745b487bec296914adf9e",
+      "statement": "Settings > Components manages the explicit original EGM plugin through native Codex lifecycle operations. The composer shield controls conversation permissions and Settings > Agents supplies new-conversation defaults.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_permissions.rs",
+          "version": "repo-file-v1:sha256:6cfdf89ff83453377e58af615d3409d083677a92be3945c9859d56f00bac59b0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
+          "version": "repo-file-v1:sha256:c5f3946b5c4a5d78d6c4a7f51bbe6711878997feea541d2f37911fc6ee61671d"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
+          "version": "repo-file-v1:sha256:c0b24d7968af78951a23c1fc13a3c9b6fdf68ac9247604511b71d9d3d3859542"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T07:58:23.862Z"
+    "at": "2026-10-28T08:28:06.287Z"
   }
 }

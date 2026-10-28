@@ -3045,7 +3045,7 @@ pub(crate) mod tests {
 		(conversations, server_id, task)
 	}
 
-	fn seed_execution_catalog(conversations: &Conversations) {
+	pub(super) fn seed_execution_catalog(conversations: &Conversations) {
 		let mut state = conversations.lock();
 		let source = state.selected_task().expect("selected fixture conversation").clone();
 		state.catalog = Some(

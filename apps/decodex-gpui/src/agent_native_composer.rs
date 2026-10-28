@@ -15,7 +15,7 @@ use crate::{
 		NavigateBack, NavigateForward, ResetPanel, ResetPanels, ShrinkPanel, ShrinkPanels,
 		ToggleContentFullscreen, ToggleGraph, ToggleInspector, ToggleSidebar,
 		agent_surface::{
-			AgentSurface,
+			AgentSurface, composer,
 			voice::Media,
 			workspace::{self, ARCHIVED_MESSAGE},
 		},
@@ -123,10 +123,10 @@ impl Render for ComposerPanel {
 				focus_owner.update(cx, |s, cx| {
 					s.workspace.focused_panel = None;
 
-					if s.composer_menu == Some("model")
+					if composer::selection_menu(s.composer_menu)
 						&& !s
 							.menu_trigger_bounds
-							.get("model")
+							.get(s.composer_menu.expect("selection menu"))
 							.is_some_and(|b| b.contains(&event.position))
 					{
 						s.dismiss_composer_menu(cx);
@@ -438,7 +438,7 @@ fn create_panel(
 						|panel: &mut ComposerPanel, window, cx| {
 							if !window.is_window_active() && !ui_motion::application_active() {
 								panel.owner.update(cx, |s, cx| {
-									if s.composer_menu == Some("model") {
+									if composer::selection_menu(s.composer_menu) {
 										s.dismiss_composer_menu(cx);
 									}
 								});

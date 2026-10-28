@@ -13,9 +13,9 @@ use tokio::{
 };
 
 use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::{
-	self, AccountId, AgentActionDto, AgentClient, AgentSandboxDto, AgentStartDto,
-	ConversationModel, ConversationReasoningEffort, ConversationWorkingDirectory, Duration,
-	EntityId, HistoryText, Ordering,
+	self, AccountId, AgentActionDto, AgentClient, AgentStartDto, ConversationModel,
+	ConversationReasoningEffort, ConversationWorkingDirectory, Duration, EntityId, HistoryText,
+	Ordering, PermissionMode,
 };
 
 pub(super) async fn check(
@@ -46,7 +46,7 @@ pub(super) async fn check(
 			)
 			.expect("valid fixture directory"),
 			account_id: Some(EntityId::new(account.as_str()).expect("valid fixture account")),
-			sandbox: AgentSandboxDto::ReadOnly,
+			permission_mode: PermissionMode::ReadOnly,
 		}),
 		"desktop-start",
 	)

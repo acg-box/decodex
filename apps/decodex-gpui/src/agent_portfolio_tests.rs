@@ -7,8 +7,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::shell::agent_surface::{
 	portfolio::{
-		AgentActionDto, AgentSurface, Context, EntityId, IntoElement, ResultSource,
-		ReviewPreference, Work, WorkState,
+		AgentActionDto, AgentSurface, Context, EntityId, IntoElement, ResultSource, Work, WorkState,
 	},
 	wire_test_support::{self, SERVER},
 };
@@ -305,9 +304,7 @@ fn two_projects_four_works_open_scoped_collaboration_material_and_result(cx: &mu
 }
 
 #[gpui::test]
-fn guardian_click_sends_one_global_preference_without_claiming_application(
-	cx: &mut TestAppContext,
-) {
+fn review_details_click_does_not_change_execution_settings(cx: &mut TestAppContext) {
 	let (_home, profile, server) = wire_test_support::fixture(|listener| async move {
 		let mut socket = wire_test_support::accept(&listener).await;
 		let message = socket.next().await.unwrap().unwrap();
@@ -340,21 +337,20 @@ fn guardian_click_sends_one_global_preference_without_claiming_application(
 		w.draw(cx).clear(cx);
 	});
 
-	let button = visual.debug_bounds("guardian-automatic").unwrap();
+	let button = visual.debug_bounds("guardian-review-details").unwrap();
 
 	visual.simulate_click(button.center(), Default::default());
 	visual.run_until_parked();
 
 	assert!(
-		matches!(server.join().unwrap(),AgentActionDto::SetGuardian{settings_id,expected_revision:1,reviewer:ReviewPreference::AutomaticReview,review_details:false} if settings_id.as_str()=="guardian-global")
+		matches!(server.join().unwrap(),AgentActionDto::SetReviewDetails{settings_id,expected_revision:1,review_details:true} if settings_id.as_str()=="guardian-global")
 	);
 
 	let surface = view.read_with(visual, |v, _| v.surface.clone());
 
 	surface.read_with(visual, |s, _| {
-		assert_eq!(
-			s.snapshot.as_ref().unwrap().guardian.settings.reviewer,
-			ReviewPreference::AskMe,
+		assert!(
+			!s.snapshot.as_ref().unwrap().guardian.settings.review_details,
 			"A lost reply is not an application receipt"
 		);
 	});

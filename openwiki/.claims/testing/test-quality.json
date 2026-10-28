@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a222a621b402c9f15166255bd3aa45749ccef02fdf9e9e2e3d7ce1a580ad1926",
+  "pageVersion": "sha256:58f4b35e391f5db54133026974f30315b820367a93e4beefee0fd03d7a057c1a",
   "claims": [
     {
       "id": "claim_070657bf065541118dc7ae41cdeffc2c",
@@ -24,7 +24,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/bin/workbench_visual_capture.rs",
-          "version": "repo-file-v1:sha256:f5408c66c92066042b8c6a27b81ccafef309f9141a956411821d0d462df7d5e1"
+          "version": "repo-file-v1:sha256:9a6fbb15249ccc734861d92c311a3ffebcb15bedf8966c67967e81c8f9d93747"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/bin/workbench_visual_capture/send.rs",
@@ -32,7 +32,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/main.rs",
-          "version": "repo-file-v1:sha256:2f3fd18e4bea0e13bce53850ade6381b4ff4f5db41b19d4bc399b4f1a42f65de"
+          "version": "repo-file-v1:sha256:4d5986bb453ed04848b5f70479c2bff34207b1ab5909330367c055e4c1b1897d"
         }
       ]
     },
@@ -98,7 +98,7 @@
     },
     {
       "id": "claim_b445d0678d0d4a108f9e1c0efe6623bf",
-      "statement": "The control follow-up retained its missing-binary setup failure and stale per-thread reviewer fixture failure separately. It explicitly sets global Automatic Review, preserves native permission and request-count assertions, and passes three native permission tests plus one database hold test; real UI and provider probes remain separate from the unrepeated full workspace suite.",
+      "statement": "The historical control follow-up retained setup failures and passed three native permission tests and one database hold test without repeating the full workspace suite. The current native permission fixture keeps Review Details independent and retains its profile, policy, directory and request-count assertions.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L2674-L4161",
@@ -106,7 +106,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs",
-          "version": "repo-file-v1:sha256:dfc41811bae2bf516e6bedaab02e49ddf6bd8b7cf84f9eaf07f6f0603bc4b84c"
+          "version": "repo-file-v1:sha256:90b43b04eba4be987cf82931e374f9b87c358b14c8f16773a23e98312ba8d519"
         }
       ]
     },
@@ -116,7 +116,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio_tests.rs",
-          "version": "repo-file-v1:sha256:1c00e7ffdf80d0472353aff5159ef523e2c5ff8740d7b1ae58ee8361f1ef53e2"
+          "version": "repo-file-v1:sha256:d9dbabdbfe734cd3bc3b631ed6fb4242d85b3a111e41fb69312ef2d4383f574d"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L2674-L4161",
@@ -145,6 +145,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T06:51:55.940Z"
+    "at": "2026-10-28T08:28:06.287Z"
   }
 }

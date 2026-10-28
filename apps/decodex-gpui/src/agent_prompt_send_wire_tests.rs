@@ -306,6 +306,7 @@ fn spawn_server(
 
 fn model_settings_response(work_id: EntityId) -> QueryResultPayload {
 	QueryResultPayload::AgentModelSettings(AgentModelSettingsResult::Available {
+		service_tier: None,
 		work_id,
 		thread_id: EntityId::new("thread").unwrap(),
 		account_id: EntityId::new("account").unwrap(),

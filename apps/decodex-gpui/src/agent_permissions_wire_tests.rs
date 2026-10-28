@@ -1,6 +1,7 @@
 //! Permission clicks cross the public socket; lost replies trigger reads, not retries.
 use std::thread::JoinHandle;
 
+use decodex_protocol::{AgentPermissionOutcome, AgentWorkItemDto};
 use futures_util::{SinkExt as _, StreamExt as _};
 use gpui::{AppContext as _, TestAppContext};
 use tempfile::TempDir;
@@ -9,9 +10,9 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::shell::agent_surface::{
 	permissions::{
-		self, AgentActionDto, AgentDispatchStateDto, AgentPermissionOutcome, AgentPermissionState,
-		AgentSnapshotDto, AgentSnapshotResult, AgentSurface, AgentWorkItemDto, AgentWorkStatusDto,
-		ClientProfile, Context, Entity, EntityId, IntoElement, Render, Window, WireText,
+		self, AgentActionDto, AgentDispatchStateDto, AgentPermissionState, AgentSnapshotDto,
+		AgentSnapshotResult, AgentSurface, AgentWorkStatusDto, ClientProfile, Context, Entity,
+		EntityId, IntoElement, Render, Window, WireText,
 	},
 	wire_test_support::{self, SERVER},
 };
@@ -25,7 +26,7 @@ struct PermissionView {
 }
 impl Render for PermissionView {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.surface.update(cx, |s, cx| s.permission_profiles_panel(&work(), cx))
+		self.surface.update(cx, |s, cx| s.permission_options(cx))
 	}
 }
 
@@ -40,6 +41,7 @@ fn available() -> AgentPermissionState {
 		review_token: WireText::new("a".repeat(64)).unwrap(),
 		cwd: WireText::new("/native").unwrap(),
 		profile_id: Some(WireText::new("readonly").unwrap()),
+		mode: None,
 		approvals_reviewer: WireText::new("user").unwrap(),
 		profiles: vec![
 			decodex_protocol::AgentPermissionProfile {
@@ -161,6 +163,35 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 }
 
 #[gpui::test]
+fn independent_agent_permissions_follow_the_composer_and_new_draft(cx: &mut TestAppContext) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		let mut snapshot = snapshot();
+		let mut lead = work();
+		lead.id = "lead".into();
+		lead.codex_thread_id = Some("lead-thread".into());
+		snapshot.work_items.push(lead);
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot)));
+		s.composer_manager = Some("lead".into());
+		s.selected = Some("lead".into());
+		assert_eq!(s.permission_owner().as_deref(), Some("lead"));
+		s.permission_profiles.work = Some("root".into());
+		s.permission_profiles.state = Some(available());
+		assert_eq!(s.permission_label(), "Permissions", "another Agent's facts are not current");
+		s.permission_mode = decodex_protocol::PermissionMode::FullAccess;
+		s.new_work_conversation(cx);
+		assert!(s.permission_owner().is_none());
+		assert_eq!(s.creation_permission_mode(), decodex_protocol::PermissionMode::AskForApproval);
+		s.choose_permission_mode(decodex_protocol::PermissionMode::ApproveForMe, cx);
+		assert_eq!(s.permission_label(), "Approve for me");
+		s.open_page("lead", cx);
+		assert_eq!(s.permission_owner().as_deref(), Some("lead"));
+		s.new_work_conversation(cx);
+		assert_eq!(s.permission_label(), "Approve for me", "reopening retains the draft choice");
+	});
+}
+
+#[gpui::test]
 fn permission_review_is_invalidated_on_task_or_source_transition(cx: &mut TestAppContext) {
 	let surface = cx.new(AgentSurface::new);
 
@@ -232,7 +263,8 @@ fn running_permissions_offer_both_named_and_builtin_profiles(cx: &mut TestAppCon
 	});
 
 	assert!(visual.debug_bounds("permission-profile-0").is_some());
-	assert!(visual.debug_bounds("permission-profile-1").is_some());
+	assert!(visual.debug_bounds("permission-choice-0").is_some());
+	assert!(visual.debug_bounds("permission-choice-1").is_some());
 }
 
 #[gpui::test]
@@ -257,13 +289,18 @@ fn child_navigation_and_disconnect_cannot_edit_parent_permissions(cx: &mut TestA
 		assert!(!s.permission_profiles.reviewed);
 		assert!(s.permission_profiles.state.is_none());
 
-		s.update_permission_profiles("root".into(), Some(WireText::new("scoped").unwrap()), cx);
+		s.update_permission_profiles(
+			"root".into(),
+			Some(WireText::new("scoped").unwrap()),
+			None,
+			cx,
+		);
 
 		assert!(s.permission_profiles.task.is_none());
 
 		s.open_page("root", cx);
 		s.apply_result(Ok(AgentSnapshotResult::Unavailable));
-		s.update_permission_profiles("root".into(), None, cx);
+		s.update_permission_profiles("root".into(), None, None, cx);
 
 		assert!(s.permission_profiles.task.is_none());
 	});
@@ -284,7 +321,7 @@ fn ordinary_refresh_keeps_permission_read_and_unknown_selection(cx: &mut TestApp
 		let saving = selection.is_some();
 
 		surface.update(cx, |s, cx| {
-			s.update_permission_profiles("root".into(), selection, cx);
+			s.update_permission_profiles("root".into(), selection, None, cx);
 
 			assert!(s.permission_profiles.task.is_some());
 
@@ -360,8 +397,13 @@ async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 		if index == 1 {
 			let ClientMessage::Command(command) = request else { panic!("setting command") };
 			let CommandPayload::Agent { action } = command.payload else { panic!("Agent command") };
-			let AgentActionDto::SelectPermissions { work_id, thread_id, review_token, profile_id } =
-				&*action
+			let AgentActionDto::SelectPermissions {
+				work_id,
+				thread_id,
+				review_token,
+				profile_id,
+				mode: None,
+			} = &*action
 			else {
 				panic!("account setting")
 			};

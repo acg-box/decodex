@@ -741,6 +741,7 @@ mod tests {
 
 			entries[0].native_source = None;
 			entries[0].activity = Some(decodex_protocol::AgentActivityDto {
+				review: None,
 				turn_id: "previous".into(),
 				item_id: "command".into(),
 				kind: "commandExecution".into(),

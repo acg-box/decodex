@@ -3,7 +3,7 @@ use tempfile::TempDir;
 
 use crate::{AgentDispatchState, AgentWorkItem, AgentWorkKind, AgentWorkStatus, SqliteStore};
 use decodex_core::{
-	guardian::{GuardianSource, ReviewDetails, ReviewPreference},
+	guardian::ReviewDetails,
 	work::{
 		CollaborationInstruction, CollaborationRequest, CollaborationState, Material,
 		NativeContribution, NativeWorkDelivery, ResultSource, Work, WorkAssessment, WorkCommand,
@@ -611,44 +611,18 @@ async fn native_binding_and_completion_intents_stay_separate_after_restart() {
 }
 
 #[tokio::test]
-async fn global_guardian_unknown_writes_and_observation_opt_out_survive_restart() {
+async fn review_observation_opt_out_survives_restart() {
 	let home = tempfile::tempdir().unwrap();
 	let path = home.path().join("work.db");
 	let store = SqliteStore::open_test(&path).unwrap();
 
 	agents(&store).await;
 
-	store.set_guardian_settings(1, ReviewPreference::AutomaticReview, true).await.unwrap();
-
-	let mut source = GuardianSource {
-		source_id: "native-generation-one".into(),
-		agent_id: "sage".into(),
-		thread_id: "sage".into(),
-		revision: 2,
-		outcome: "pending".into(),
-		effective_reviewer: None,
-		detail: "Reserved".into(),
-	};
-
-	assert!(store.reserve_guardian_source(source.clone()).await.unwrap());
-
-	source.outcome = "unknown".into();
-
-	store.observe_guardian_source(source.clone()).await.unwrap();
+	store.set_review_details(1, true).await.unwrap();
 
 	drop(store);
-
 	let store = SqliteStore::open_test(&path).unwrap();
-
-	assert!(!store.reserve_guardian_source(source.clone()).await.unwrap());
-
-	source.source_id = "native-generation-two".into();
-
-	assert!(store.reserve_guardian_source(source).await.unwrap());
-	assert_eq!(
-		store.guardian_state().await.unwrap().settings.reviewer,
-		ReviewPreference::AutomaticReview
-	);
+	assert!(store.guardian_settings().await.unwrap().review_details);
 
 	let details = ReviewDetails {
 		parent_thread_id: Some("sage".into()),
@@ -665,7 +639,7 @@ async fn global_guardian_unknown_writes_and_observation_opt_out_survive_restart(
 
 	assert_eq!(store.guardian_state().await.unwrap().details.len(), 1);
 
-	store.set_guardian_settings(2, ReviewPreference::AskMe, false).await.unwrap();
+	store.set_review_details(2, false).await.unwrap();
 
 	let mut other = details;
 

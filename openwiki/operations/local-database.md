@@ -32,10 +32,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T21:12:13.971Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 # Local database operations
@@ -58,7 +58,7 @@ The runtime can save actual native input before parent activity arrives, then jo
 
 Ordinary input resumes its original native context and recorded tool declarations. The runtime does not maintain a tool-context upgrade journal or replace a thread because the local tool revision changed. Unconfirmed external effects require authoritative readback.
 
-Global Guardian stores desired reviewer preference and Review Details opt-in separately from source-specific effective receipts. Private records are deduplicated by reviewer thread, turn and item. Records are bounded to 64 KiB and the newest 128; small snapshot previews and exact selected reads stay separate. These records do not grant execution authority or complete Work.
+Global Guardian stores the Review Details opt-in and private review records. Conversation permission settings have a separate owner. Private records are deduplicated by reviewer thread, turn and item. Records are bounded to 64 KiB and the newest 128; small snapshot previews and exact selected reads stay separate. These records do not grant execution authority or complete Work.
 
 Local clients and service must agree on exact protocol 4.0. Publication-instance and command receipts preserve reconnect and idempotent recovery. Exact native bundle ABI checks remain a separate verification boundary. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
 

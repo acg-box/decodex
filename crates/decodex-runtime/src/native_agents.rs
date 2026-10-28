@@ -27,7 +27,15 @@ pub(crate) async fn read(
 
             let value = client.thread_read(serde_json::json!({"threadId":thread,"includeTurns":true})).await.ok()?;
 
-            return conversation(&value,thread);
+            let mut result = conversation(&value,thread)?;
+            if let NativeAgentsResult::Conversation { permission_mode, service_tier, .. } = &mut result {
+                *permission_mode = client.configured_task_permissions(thread)
+                    .filter(|(_, guard)| guard.is_live()).and_then(|(facts, _)| facts.mode());
+                *service_tier = client.configured_task_models(thread)
+                    .filter(|(_, guard)| guard.is_live())
+                    .map(|(facts, _)| facts.service_tier.unwrap_or_else(|| "default".into()));
+            }
+            return Some(result);
         }
 
         let value = client.request("thread/list",serde_json::json!({"ancestorThreadId":root,"sourceKinds":["subAgentThreadSpawn"],"archived":false,"modelProviders":[],"sortKey":"recency_at","sortDirection":"desc","limit":100,"cursor":cursor,"useStateDbOnly":true})).await.ok()?;
@@ -160,6 +168,8 @@ fn conversation(value: &Value, thread: &str) -> Option<NativeAgentsResult> {
 			.find(|t| t["status"] == "inProgress")
 			.and_then(|t| t["id"].as_str())
 			.map(str::to_owned),
+		permission_mode: None,
+		service_tier: None,
 	})
 }
 #[cfg(test)]

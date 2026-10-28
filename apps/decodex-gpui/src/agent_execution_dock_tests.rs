@@ -136,6 +136,7 @@ fn step(turn: &str, id: &str, label: &str, status: &str) -> AgentTimelineContent
 	if let AgentTimelineContent::Item { item_id, activity, .. } = &mut item {
 		*item_id = id.into();
 		*activity = Some(AgentActivityDto {
+			review: None,
 			turn_id: turn.into(),
 			item_id: id.into(),
 			kind: "commandExecution".into(),

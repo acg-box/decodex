@@ -1628,6 +1628,7 @@ impl AgentSurface {
 		{
 			self.workspace.opening_work = None;
 			self.workspace.new_conversation = None;
+			self.workspace.new_conversation_permissions = None;
 
 			self.open_page(&id, cx);
 		}

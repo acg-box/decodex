@@ -65,6 +65,7 @@ async fn scenario(outcome: &'static str) {
 			"foreign",
 			review_token.as_str(),
 			"scoped",
+			None,
 			"foreign"
 		)
 		.await
@@ -77,6 +78,7 @@ async fn scenario(outcome: &'static str) {
 			"thread",
 			review_token.as_str(),
 			"forbidden",
+			None,
 			"forbidden"
 		)
 		.await
@@ -90,6 +92,7 @@ async fn scenario(outcome: &'static str) {
 		"thread",
 		review_token.as_str(),
 		"scoped",
+		None,
 		"first",
 	)
 	.await;
@@ -125,6 +128,7 @@ async fn scenario(outcome: &'static str) {
 			"thread",
 			review_token.as_str(),
 			"scoped",
+			None,
 			"different-key"
 		)
 		.await
@@ -243,8 +247,16 @@ async fn reject_changed_sources(owned: &OwnedReviewer, review: &str) {
 
 		assert!(
 			matches!(
-				agent_permissions::write(&owned.store, source, "thread", review, "scoped", "stale")
-					.await,
+				agent_permissions::write(
+					&owned.store,
+					source,
+					"thread",
+					review,
+					"scoped",
+					None,
+					"stale"
+				)
+				.await,
 				Err(crate::agent_host::AgentHostError::Rejected(_))
 			),
 			"{change}"
@@ -264,6 +276,7 @@ async fn reject_restored_settings(owned: &OwnedReviewer, old: WireText) -> WireT
 			"thread",
 			old.as_str(),
 			"scoped",
+			None,
 			"restored"
 		)
 		.await

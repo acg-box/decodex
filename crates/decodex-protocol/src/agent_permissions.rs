@@ -1,7 +1,7 @@
 //! Named native permission profiles for an exact saved task.
 use serde::{Deserialize, Serialize};
 
-use crate::{EntityId, WireText};
+use crate::{EntityId, PermissionMode, WireText};
 
 /// Native profile eligibility in the task's current directory.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -50,6 +50,8 @@ pub enum AgentPermissionState {
 		profile_id: Option<WireText>,
 		/// Native reviewer, independent of profile identity.
 		approvals_reviewer: WireText,
+		/// Recognized native preset. None means a custom policy.
+		mode: Option<PermissionMode>,
 		/// Native catalog, including profiles prohibited by policy.
 		profiles: Vec<AgentPermissionProfile>,
 		/// The task state permits permission selection; each profile has its own eligibility.

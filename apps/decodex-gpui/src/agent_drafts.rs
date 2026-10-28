@@ -53,6 +53,7 @@ pub(super) struct Profiles {
 struct Drafts {
 	new_conversation: Option<String>,
 	new_conversation_workspace: Option<String>,
+	new_conversation_permissions: Option<decodex_protocol::PermissionMode>,
 	creation: Option<DesktopCreationSetup>,
 	unconfirmed: Vec<IdempotencyKey>,
 	threads: BTreeMap<String, String>,
@@ -148,6 +149,7 @@ impl AgentSurface {
 		Drafts {
 			new_conversation: self.workspace.new_conversation.take(),
 			new_conversation_workspace: self.workspace.new_conversation_workspace.take(),
+			new_conversation_permissions: self.workspace.new_conversation_permissions.take(),
 			creation: self.creation_setup(cx),
 			unconfirmed: mem::take(&mut self.submission.unconfirmed),
 			threads: mem::take(&mut self.draft_profiles.threads),
@@ -175,6 +177,7 @@ impl AgentSurface {
 		self.restored_question_drafts = restored.restored_questions;
 		self.workspace.new_conversation = restored.new_conversation;
 		self.workspace.new_conversation_workspace = restored.new_conversation_workspace;
+		self.workspace.new_conversation_permissions = restored.new_conversation_permissions;
 		self.composer_manager = restored.manager;
 
 		if self.workspace.new_conversation.is_some()

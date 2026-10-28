@@ -156,6 +156,7 @@ async fn permission_owner_reviews_allowed_profiles_and_never_replays_queued_or_l
 				"task",
 				review_token.as_str(),
 				"scoped",
+				None,
 				"changed-account"
 			)
 			.await
@@ -168,6 +169,7 @@ async fn permission_owner_reviews_allowed_profiles_and_never_replays_queued_or_l
 				"replacement",
 				review_token.as_str(),
 				"scoped",
+				None,
 				"changed-thread"
 			)
 			.await
@@ -193,6 +195,7 @@ async fn permission_owner_reviews_allowed_profiles_and_never_replays_queued_or_l
 				"task",
 				review_token.as_str(),
 				":full-access",
+				None,
 				"disabled"
 			)
 			.await
@@ -206,6 +209,7 @@ async fn permission_owner_reviews_allowed_profiles_and_never_replays_queued_or_l
 			"task",
 			review_token.as_str(),
 			"scoped",
+			None,
 			"selection",
 		)
 		.await;
@@ -225,6 +229,7 @@ async fn permission_owner_reviews_allowed_profiles_and_never_replays_queued_or_l
 				"task",
 				review_token.as_str(),
 				"scoped",
+				None,
 				"another-key"
 			)
 			.await
@@ -266,7 +271,7 @@ async fn installed_native_permission_controller_uses_retained_bridge_and_confirm
 
 		assert!(can_update);assert!(profiles.iter().any(|p|p.id.as_str()=="scoped"&&p.allowed));
 
-		agent_permissions::write(&owned.store,source,thread,review_token.as_str(),"scoped","native-selection").await.unwrap();
+		agent_permissions::write(&owned.store,source,thread,review_token.as_str(),"scoped", None,"native-selection").await.unwrap();
 
 		assert_eq!(owned.store.agent_permission_receipt("root".into(),thread.into()).await.unwrap().unwrap().state,"queued");
 
@@ -287,7 +292,7 @@ async fn installed_native_permission_controller_uses_retained_bridge_and_confirm
 		let AgentPermissionState::Available {profile_id,last_outcome,cwd:observed_cwd,..}=agent_permissions::read(&owned.store,source).await else {panic!("native current state")};
 
 		assert_eq!(profile_id.unwrap().as_str(),"scoped");assert_eq!(last_outcome,Some(decodex_protocol::AgentPermissionOutcome::TargetObserved));assert_eq!(observed_cwd.as_str(),cwd.to_str().unwrap());
-		assert!(agent_permissions::write(&owned.store,source,thread,review_token.as_str(),"scoped","replay-key").await.is_err());
+		assert!(agent_permissions::write(&owned.store,source,thread,review_token.as_str(),"scoped", None,"replay-key").await.is_err());
 
 		match session.client.thread_latest_turn_id(thread).await {
                 Ok(None)=>{},
@@ -549,7 +554,7 @@ async fn installed_native_running_builtin_permissions_preserve_pending_tools() {
         assert!(profiles.iter().any(|p|p.id.as_str()==":workspace" && p.allowed && p.can_select));
         assert!(owned.store.agent_permission_receipt("root".into(),thread.into()).await.expect("receipt").is_none());
 
-        agent_permissions::write(&owned.store,source,thread,review_token.as_str(),":workspace","builtin-running").await.expect("builtin queue");
+        agent_permissions::write(&owned.store,source,thread,review_token.as_str(),":workspace", None,"builtin-running").await.expect("builtin queue");
 
         assert_eq!(calls.load(Ordering::Acquire),1,"selection must not release the pending tool");
 

@@ -18,12 +18,14 @@ sources:
     resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
     resource: repo://codex-runtime.lock.json
+  - id: openwiki-source-40db4dc21bafde1429326458
+    resource: repo://crates/decodex-core/src/permissions.rs
   - id: openwiki-source-991553c8d747a54ecf5a9376
     resource: repo://crates/decodex-core/src/work.rs
-  - id: openwiki-source-eccf08613126ff810078b520
-    resource: repo://crates/decodex-protocol/src/agent.rs
   - id: openwiki-source-1b314e86ab2f1adbc0ede4c8
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs
+  - id: openwiki-source-5bc08ad67fcdb104dfcde7bf
+    resource: repo://crates/decodex-runtime/src/agent_permissions.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
@@ -60,10 +62,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T07:58:23.862Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 # Project, Agent and Work contract
@@ -92,7 +94,7 @@ Use one English vocabulary in the UI, code, database and documentation. Identifi
 | Collaboration Request | A scoped request for a contribution, with acceptance, Results and an explicit assessment. It is a record associated with Work, not another management layer. |
 | Material | An authorized input, such as a file, link, reference or decision. |
 | Result | An output or outcome associated with specific Work requirements. A Result can await assessment. |
-| Guardian | The native action-review mechanism, controlled from global Decodex settings in the target. |
+| Guardian | The native action-review mechanism. Each conversation controls its permission mode; optional review-record observation is global. |
 | Review | Guardian's assessment of one action. It is separate from assessment of a Work Result. |
 | Review Details | Supported detailed native reviewer records associated with a Review. |
 
@@ -213,22 +215,22 @@ Native context compaction remains native-owned. Before a new assignment, recover
 
 ## Global Guardian decision
 
-Guardian controls are global for Decodex, with no per-Agent override. Apply the same desired Review preference to the supported native sources used by all Agents and Projects. Managed native requirements still apply. A source that cannot adopt the global preference reports its actual effective value and reason; it does not gain an editable local exception.
+Permission mode belongs to the native conversation. Settings supplies creation defaults; the input-bar shield changes the selected Agent's native policy without changing other independent Agents. Managed native requirements still apply. Guardian's global control only enables optional review records.
 
 Keep the following separate:
 
 | Concern | Target behavior |
 | --- | --- |
-| Review preference | Global Ask Me or Automatic Review selection, using supported native settings. |
-| Execution permissions | Native filesystem, network, tool and approval rules. A Guardian switch does not grant Full Access. |
+| Permission mode | Ask for approval, Approve for me or Full access for the selected native conversation. |
+| Execution permissions | Native filesystem, network, tool and approval rules. A review-record switch does not grant Full access. |
 | Review observation | Existing action, decision, risk and rationale remain readable for the specific operation. |
 | Review Details | Accepted global opt-in for supported private reviewer output and interruption records. It is diagnostic observation, not another reviewer. |
 
-An effective setting requires native readback. Store the desired global setting and the per-source application receipt separately from observed effective facts. These observations are not per-Agent controls. A save acknowledgment does not establish application to every loaded conversation. Display pending, overridden, unsupported, rejected or Unknown outcomes truthfully. Reconnect and settings recovery must not silently reapply creation defaults or replay uncertain writes.
+An effective setting requires native readback. Permission writes remain bound to the exact Agent, native thread and reviewed source. A save acknowledgment does not establish application to every loaded conversation. Reconnect and settings recovery must not silently reapply creation defaults or replay uncertain writes.
 
 Changing the Review preference does not answer an already-pending approval. Ask Me requests remain human decisions; another Agent cannot impersonate that approval. Ordinary factual questions can be investigated or escalated within authority, but they do not confer execution permission. Automatic Review routes eligible approvals to the native reviewer and can deny them. Full Access remains a separate permission choice under native policy; approval_policy=never alone does not grant broader access.
 
-Subagents follow the actual native parent permission rules. An independent Agent keeps its own native execution boundary, subject to the global Review preference where supported. A Work label does not create an isolated sandbox inside a shared conversation. The architecture does not promise simultaneous, independently enforced permission modes for several Works in one native execution context.
+Subagents follow the actual native parent permission rules. An independent Agent keeps its own native execution boundary. Changing a parent does not broadcast a policy update to existing children. A Work label does not create an isolated sandbox inside a shared conversation. The architecture does not promise simultaneous, independently enforced permission modes for several Works in one native execution context.
 
 ### Review Details lifecycle
 
@@ -271,7 +273,7 @@ Immutable native child-input receipts preserve exact delivery identity. Several 
 | Collaboration | Stable request and instruction identities, durable busy queue, exact delivered-turn acceptance, targeted return, assessment, repair and scoped cancellation. |
 | Native execution | Intent before native call, exact direct-call attribution, verified child input or native task identity, native messages, waits and continuation. Saved identity can join native parent activity after restart. Ambiguous evidence stays Unknown without a duplicate spawn. |
 | Project | Supported native Project create/read/list and exact idempotency. Retained unassigned conversations join their registered native Project before input; conflicts park only the affected Agent. Work and responsibilities stay local. Native catalog and membership do not prove official desktop saved-Project/sidebar presentation. |
-| Guardian | Global Ask Me or Automatic Review, separate desired and per-source effective receipts, no editable per-Agent reviewer override. Native permissions and Full Access remain separate. |
+| Guardian | Per-conversation native permission modes and global optional review records. No global override changes every Agent's permissions. |
 | Review Details | Explicit global opt-in; verified private reviewer/parent identity; native assistant output and terminal metadata only. No raw reasoning frames, parent-history pollution, action replay or guessed action association. |
 | Presentation | Existing desktop Work and Guardian entries, Project grouping, existing-Agent responsibility selectors, clickable Materials, Results and Collaboration evidence. |
 | Compatibility | Retained real old execution, archive, forks, input, automation and evidence consumers. New default helper creation uses native tools. |

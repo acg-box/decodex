@@ -21,6 +21,8 @@ pub enum AgentModelSettingsResult {
 		model: Option<WireText>,
 		/// Configured effort. Null means unset or unavailable.
 		reasoning_effort: Option<WireText>,
+		/// Actual configured speed; None means not reported.
+		service_tier: Option<WireText>,
 	},
 	/// The server does not expose these fields.
 	NotReported,

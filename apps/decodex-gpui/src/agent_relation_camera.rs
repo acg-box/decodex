@@ -215,6 +215,7 @@ mod tests {
 			s.work_board.briefs.insert(
 				row.key.clone(),
 				Brief {
+					review: None,
 					source_thread: row.thread.clone(),
 					output: Some(super::super::super::activity::Output {
 						turn: "camera-check".into(),

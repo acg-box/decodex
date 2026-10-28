@@ -56,11 +56,11 @@ use decodex_protocol::{
 	AgentHookSettingsState, AgentIntegrationsResult, AgentLiveReviewerState, AgentMediaRequest,
 	AgentMediaResult, AgentMemoryResult, AgentModelSelectionState, AgentModelSettingsResult,
 	AgentNativeGoalResult, AgentPermissionState, AgentReadStateResult, AgentRequestedDecision,
-	AgentResourcesResult, AgentSandboxDto, AgentSearchSettingsResult, AgentSkillsResult,
-	AgentSnapshotDto, AgentStartDto, AgentToolExposureSurface, AgentTranscriptRequest,
-	AgentTranscriptResult, AgentUsageEstimateResult, AgentVoicePhase, AgentVoiceRequest,
-	AgentVoiceSettingsResult, AgentVoiceStatus, DictationRequest, DictationStatus, HistoryText,
-	McpLoginPhase, McpLoginRequest, McpLoginStatus, NativeProcessDiagnostics,
+	AgentResourcesResult, AgentSearchSettingsResult, AgentSkillsResult, AgentSnapshotDto,
+	AgentStartDto, AgentToolExposureSurface, AgentTranscriptRequest, AgentTranscriptResult,
+	AgentUsageEstimateResult, AgentVoicePhase, AgentVoiceRequest, AgentVoiceSettingsResult,
+	AgentVoiceStatus, DictationRequest, DictationStatus, HistoryText, McpLoginPhase,
+	McpLoginRequest, McpLoginStatus, NativeProcessDiagnostics,
 };
 use prompt_edit::Reviews;
 use weather::CachedWeather;
@@ -551,6 +551,7 @@ impl AgentHost {
 		thread: &str,
 		review: &str,
 		profile: &str,
+		mode: Option<decodex_core::PermissionMode>,
 		key: &str,
 	) -> Result<String, AgentHostError> {
 		agent_permissions::write(
@@ -563,6 +564,7 @@ impl AgentHost {
 			thread,
 			review,
 			profile,
+			mode,
 			key,
 		)
 		.await?;
@@ -1552,12 +1554,19 @@ impl AgentHost {
 					},
 				)
 				.await,
-			AgentActionDto::SelectPermissions { work_id, thread_id, review_token, profile_id } =>
+			AgentActionDto::SelectPermissions {
+				work_id,
+				thread_id,
+				review_token,
+				profile_id,
+				mode,
+			} =>
 				self.select_permissions(
 					work_id.as_str(),
 					thread_id.as_str(),
 					review_token.as_str(),
 					profile_id.as_str(),
+					mode,
 					key,
 				)
 				.await,
@@ -1617,32 +1626,18 @@ impl AgentHost {
 
 				Ok(project_id.as_str().into())
 			},
-			AgentActionDto::SetGuardian {
-				settings_id,
-				expected_revision,
-				reviewer,
-				review_details,
-			} => {
+			AgentActionDto::SetReviewDetails { settings_id, expected_revision, review_details } => {
 				if settings_id.as_str() != "guardian-global" {
 					return Err("Invalid global settings identity".into());
 				}
 
-				self.store
-					.set_guardian_settings(expected_revision, reviewer, review_details)
-					.await
-					.map_err(|_| {
+				self.store.set_review_details(expected_revision, review_details).await.map_err(
+					|_| {
 						AgentHostError::Rejected(
-							"Global Guardian settings changed. Refresh before saving.",
+							"Review record settings changed. Refresh before saving.",
 						)
-					})?;
-
-				if let Some((_, coordinator, _)) = active.as_ref() {
-					coordinator.sync_global_guardian().await.map_err(|_| {
-						AgentHostError::Unknown(
-							"Preference saved; native source application remains pending. Refresh the source receipts.",
-						)
-					})?;
-				}
+					},
+				)?;
 
 				Ok("guardian-global".into())
 			},
@@ -1687,7 +1682,7 @@ impl AgentHost {
 		match action {
 			action @ (AgentActionDto::SetAssistant { .. }
 			| AgentActionDto::SetProjectLead { .. }
-			| AgentActionDto::SetGuardian { .. }
+			| AgentActionDto::SetReviewDetails { .. }
 			| AgentActionDto::ManageWork { .. }) => self.handle_work_action(key, action, active).await,
 
 			action @ (AgentActionDto::GenerateSample { .. }
@@ -1886,12 +1881,13 @@ impl AgentHost {
 				work_id,
 				text,
 				execution,
+				permission_mode,
 				attachments,
 				task_references,
 			} => {
 				validate_attachments(&attachments)?;
 
-				let options = serde_json::json!({"execution":execution,"attachments":attachments,"taskReferences":task_references});
+				let options = serde_json::json!({"execution":execution,"permissionMode":permission_mode,"attachments":attachments,"taskReferences":task_references});
 
 				AgentCoordinator::create_conversation(
 					&self.store,
@@ -2551,16 +2547,9 @@ fn config(draft: &AgentStartDto) -> AgentConfig {
 		draft.cwd.as_str().into(),
 	);
 
-	config.sandbox = match draft.sandbox {
-		AgentSandboxDto::ReadOnly => "read-only",
-		AgentSandboxDto::WorkspaceWrite => "workspace-write",
-		AgentSandboxDto::FullAccess => "danger-full-access",
-	}
-	.into();
-
-	if draft.sandbox == AgentSandboxDto::FullAccess {
-		config.approval_policy = serde_json::json!("never");
-	}
+	config.sandbox = draft.permission_mode.sandbox().into();
+	config.approval_policy = serde_json::json!(draft.permission_mode.approval_policy());
+	config.approvals_reviewer = Some(draft.permission_mode.reviewer().into());
 
 	config
 }

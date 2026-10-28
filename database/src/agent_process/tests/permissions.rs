@@ -159,6 +159,7 @@ async fn prepare_unknown_permission_selection(
 		generation: Some(tests::generation_id(1).as_str().into()),
 		settings_event: event,
 		profile: "scoped".into(),
+		mode: None,
 		review_token: DIGEST.into(),
 		attempt_id: "first".into(),
 	};

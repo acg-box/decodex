@@ -54,6 +54,10 @@ use decodex_protocol::AgentAttachmentDto;
 pub(super) const MODEL_MENU_WIDTH: f32 = 232.;
 pub(super) const MODEL_MENU_SHADOW: f32 = 8.;
 
+pub(super) fn selection_menu(menu: Option<&str>) -> bool {
+	matches!(menu, Some("model" | "permissions"))
+}
+
 pub(super) struct ComposerTip(pub(super) String);
 impl Render for ComposerTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
@@ -622,7 +626,7 @@ impl AgentSurface {
 		let menu = self.composer_menu.or(self.composer_menu_content);
 
 		#[cfg(all(target_os = "macos", not(test)))]
-		if menu == Some("model")
+		if selection_menu(menu)
 			&& self.native_controls.composer.enabled
 			&& !self.native_controls.model_menu.failed
 		{
@@ -630,7 +634,7 @@ impl AgentSurface {
 			// the main window's outside-click dismissal here.
 			return gpui::div().absolute().inset_0().on_mouse_down_out(cx.listener(
 				|s, _, _, cx| {
-					if s.composer_menu == Some("model") {
+					if selection_menu(s.composer_menu) {
 						s.dismiss_composer_menu(cx);
 					}
 				},
@@ -642,8 +646,10 @@ impl AgentSurface {
 		#[cfg(not(all(target_os = "macos", not(test))))]
 		let inline = true;
 
-		if menu == Some("model") && inline {
-			let Some(anchor) = self.menu_trigger_bounds.get("model") else { return gpui::div() };
+		if selection_menu(menu) && inline {
+			let Some(anchor) = menu.and_then(|key| self.menu_trigger_bounds.get(key)) else {
+				return gpui::div();
+			};
 
 			return gpui::div().absolute().inset_0().child(
 				gpui::deferred(
@@ -823,6 +829,30 @@ impl AgentSurface {
 				.flex()
 				.items_center()
 				.gap(gpui::px(8.))
+				.child(
+					gpui::div()
+						.flex_1()
+						.text_size(gpui::px(11.))
+						.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+						.child(match &self.native_agents.detail {
+							Some(decodex_protocol::NativeAgentsResult::Conversation {
+								permission_mode,
+								service_tier,
+								..
+							}) => {
+								let permissions = permission_mode
+									.map_or("Permissions not reported", |mode| mode.label());
+								let speed = match service_tier.as_deref() {
+									Some("priority") => "Fast",
+									Some("default") => "Standard",
+									Some(tier) => tier,
+									None => "Speed not reported",
+								};
+								format!("{permissions} · {speed} · Managed by parent")
+							},
+							_ => "Permissions and speed are managed by the parent Agent".into(),
+						}),
+				)
 				.justify_end()
 				.child(
 					if self.running_turn().is_some()
@@ -876,6 +906,13 @@ impl AgentSurface {
 				model,
 				"Model and reasoning · Applies to the next turn",
 				|s, cx| s.toggle_composer_menu("model", cx),
+				cx,
+			))
+			.child(self.composer_control(
+				"permissions",
+				self.permission_label(),
+				"Permissions for this Agent",
+				|s, cx| s.toggle_composer_menu("permissions", cx),
 				cx,
 			))
 			.child(gpui::div().flex_1())
@@ -961,7 +998,9 @@ impl AgentSurface {
 		let tooltip = if disabled {
 			"Sending paused until the connection is restored".to_owned()
 		} else if id == "model" {
-			format!("Model and reasoning · {label}")
+			format!("Model and reasoning · {label} · Speed: {}", self.composer_speed_label())
+		} else if id == "permissions" && label != "Permissions" {
+			format!("Permissions · {label}")
 		} else {
 			tip.to_owned()
 		};
@@ -995,6 +1034,7 @@ impl AgentSurface {
 			.justify_center()
 			.text_size(gpui::px(12.0))
 			.line_height(gpui::px(16.0))
+			.whitespace_nowrap()
 			.text_color(ui_theme::rgb(if send { ON_PRIMARY } else { TEXT_MUTED }))
 			.when(id == "model", |d| {
 				d.px(gpui::px(4.))
@@ -1052,7 +1092,7 @@ impl AgentSurface {
 				}
 			}))
 			.child(self.composer_control_content(id, label, cx))
-			.when(["model", "effort", "attach"].contains(&id), |d| {
+			.when(["model", "effort", "attach", "permissions"].contains(&id), |d| {
 				d.child(
 					gpui::canvas(
 						move |bounds, _, cx| {
@@ -1092,6 +1132,7 @@ impl AgentSurface {
 			}
 			.into_any_element(),
 			"attach" => workspace_symbols::icon(Symbol::Plus),
+			"permissions" => workspace_symbols::icon(Symbol::Shield),
 			"attachment-item" => gpui::div()
 				.flex()
 				.items_center()
@@ -1235,6 +1276,8 @@ impl AgentSurface {
 					self.task_reference_options(cx)
 				} else if menu == "skills" {
 					self.skill_options(cx)
+				} else if menu == "permissions" {
+					self.permission_options(cx)
 				} else if menu == "agent-settings" {
 					gpui::div()
 						.id("agent-settings-scroll")
@@ -1773,6 +1816,30 @@ mod tests {
 
 		assert!((4. ..=16.).contains(&gap), "menu gap: {gap}");
 		assert!(menu.bottom() > composer.top() + gpui::px(50.));
+	}
+
+	#[gpui::test]
+	fn permission_icon_keeps_toolbar_compact_and_speed_in_model_menu(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.new_work_conversation(cx);
+		});
+		for width in [1_180., 1_400.] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(1_000.)));
+			visual.update(crate::ui_frame::draw_current_frame);
+			let model = visual.debug_bounds("composer-model").unwrap();
+			let permissions = visual.debug_bounds("composer-permissions").unwrap();
+			assert_eq!(permissions.size.width, gpui::px(super::CONTROL_SIZE));
+			assert!(visual.debug_bounds("composer-speed").is_none());
+			assert!(model.right() < permissions.left());
+		}
+		surface.update(visual, |s, cx| s.toggle_composer_menu("model", cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("tier-default").is_some());
+		assert!(visual.debug_bounds("tier-priority").is_some());
 	}
 
 	#[gpui::test]

@@ -434,6 +434,7 @@ mod tests {
 				app_ui: false,
 				attachments: vec![],
 				activity: Some(AgentActivityDto {
+					review: None,
 					turn_id: "turn".into(),
 					item_id: "search".into(),
 					kind: "webSearch".into(),

@@ -19,6 +19,7 @@ use crate::{
 		},
 	},
 	ui_feedback::Feedback,
+	ui_scroll::SmoothScrollArea as _,
 	ui_theme::{self, HOVER_FILL},
 };
 use decodex_protocol::MAX_HISTORY_INLINE_BYTES;
@@ -256,11 +257,13 @@ impl AgentSurface {
 			.child(
 				gpui::div()
 					.id("large-request-detail")
+					.debug_selector(|| "large-request-detail".into())
 					.max_h(gpui::px(280.0))
-					.overflow_y_scroll()
 					.font_family("Menlo")
 					.text_size(gpui::px(12.0))
-					.child(text[offset..end].to_owned()),
+					.child(text[offset..end].to_owned())
+					.smooth_scroll(format!("large-request-{event}-{revision}-{offset}"))
+					.contain_scroll(),
 			);
 
 		for (id, label, target) in [
@@ -309,11 +312,17 @@ impl AgentSurface {
 		panel = panel.child(
 			gpui::div()
 				.id("file-approval-details")
+				.debug_selector(|| "file-approval-details".into())
 				.max_h(gpui::px(280.0))
-				.overflow_y_scroll()
 				.text_size(gpui::px(12.0))
 				.font_family("Menlo")
-				.child(self.request_summary(details.to_owned())),
+				.child(
+					gpui::div()
+						.debug_selector(|| "file-approval-content".into())
+						.child(self.request_summary(details.to_owned())),
+				)
+				.smooth_scroll(format!("file-approval-{}", self.request_reader.revision))
+				.contain_scroll(),
 		);
 
 		if value["changeDetailsTruncated"] == true {
@@ -649,6 +658,7 @@ fn permission_summary(value: &Value) -> String {
 
 #[cfg(test)]
 mod timing_tests {
+	use decodex_protocol::AgentPendingEventDto;
 	use std::{
 		thread,
 		time::{Duration, Instant},
@@ -703,6 +713,68 @@ mod timing_tests {
 
 		assert!(!timer.claim_expired(start + Duration::from_secs(500)));
 	}
+	#[gpui::test]
+	fn file_approval_scroll_does_not_move_or_pause_the_transcript(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_180.), gpui::px(1_600.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+			let work = s.selected.clone().unwrap();
+			s.snapshot.as_mut().unwrap().pending_events = vec![AgentPendingEventDto {
+				id: 906,
+				source_event_id: "patch-scroll".into(),
+				work_item_id: work.clone(),
+				event_kind: "permission_pending".into(),
+				created_at_micros: 1,
+				delivery_claimed: false,
+			}];
+			let request = AgentRequestResult::Available {
+				event_id: 906, work_id: work.clone(), method: "item/fileChange/requestApproval".into(),
+				request_json: decodex_protocol::AgentRequestText::new(
+					serde_json::json!({"changeDetails": "A complete review finding.\n".repeat(120)}).to_string()
+				).unwrap(),
+			};
+			s.prepare_question_inputs(&request, cx);
+			s.request = Some(request);
+			s.timeline.follow_paused.remove(&work);
+			s.timeline.latest_follow_work = Some(work);
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		thread::sleep(Duration::from_millis(240));
+		visual.update(crate::ui_frame::draw_current_frame);
+		visual.update(crate::ui_frame::draw_current_frame);
+		let reader = visual.debug_bounds("file-approval-details").unwrap();
+		let scroll = surface.read_with(visual, |s, _| s.timeline.scroll["agent"].clone());
+		let before = visual
+			.debug_bounds("file-approval-content")
+			.unwrap_or_else(|| {
+				panic!(
+					"patch content missing: reader {reader:?}, viewport {:?}, offset {:?}",
+					scroll.bounds(),
+					scroll.offset()
+				)
+			})
+			.top();
+		let outer = scroll.offset();
+		for delta in [-80., -10_000., -80., 10_000., 80.] {
+			visual.simulate_event(gpui::ScrollEvent {
+				position: reader.center(),
+				delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(delta))),
+				..Default::default()
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			assert_eq!(scroll.offset(), outer, "patch scrolling must not move its parent");
+			surface.read_with(visual, |s, _| {
+				assert!(!s.timeline.follow_paused.contains("agent"));
+				assert_eq!(s.timeline.latest_follow_work.as_deref(), Some("agent"));
+			});
+			if delta == -80. {
+				assert!(visual.debug_bounds("file-approval-content").unwrap().top() < before);
+			}
+		}
+	}
+
 	#[gpui::test]
 	fn large_request_reader_navigates_and_rejects_stale_sections(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));

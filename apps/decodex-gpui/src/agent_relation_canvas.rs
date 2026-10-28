@@ -27,8 +27,8 @@ use std::{
 };
 
 use gpui::{
-	AppContext, ClickEvent, Div, FontWeight, KeyDownEvent, MouseButton, MouseDownEvent,
-	MouseMoveEvent, PathBuilder, Pixels, Point, Render, Role, ScrollEvent, SharedString, Stateful,
+	AppContext, ClickEvent, Div, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent,
+	PathBuilder, Pixels, Point, Render, Role, ScrollEvent, SharedString, Stateful,
 	StatefulInteractiveElement, TextRun, Window, WindowTextSystem,
 };
 
@@ -1584,9 +1584,6 @@ impl AgentSurface {
 		scale: f32,
 		pan: (f32, f32),
 	) -> Stateful<Div> {
-		if graph.layout.points() {
-			return canvas;
-		}
 		if self.work_board.view.presentation == layout::Presentation::Together {
 			canvas = groups::paint(
 				canvas,
@@ -1599,38 +1596,48 @@ impl AgentSurface {
 
 		for scope in &graph.scopes {
 			let [left, top, right, bottom] = scope.bounds;
+			let selected = self
+				.work_board
+				.view
+				.picked_agent
+				.as_deref()
+				.is_some_and(|key| scope.contains(graph, key));
+			let label = scope.label();
 
 			canvas = canvas.child(
 				gpui::div()
+					.id(SharedString::from(format!(
+						"project-{}",
+						scope.id.as_deref().unwrap_or("unassigned")
+					)))
+					.debug_selector(|| "project-scope".into())
+					.role(Role::Group)
+					.aria_label(label.clone())
 					.absolute()
 					.left(gpui::px(left * scale + pan.0))
 					.top(gpui::px(top * scale + pan.1))
 					.w(gpui::px((right - left) * scale))
 					.h(gpui::px((bottom - top) * scale))
-					.opacity(graph.layout.card_presence())
 					.rounded(gpui::px(18. * scale))
 					.px(gpui::px(12. * scale))
 					.pt(gpui::px(8. * scale))
-					.text_size(gpui::px(11. * scale))
+					.text_size(gpui::px((11. * scale).max(10.)))
 					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child(
-						gpui::div()
-							.flex()
-							.items_center()
-							.gap(gpui::px(8. * scale))
-							.child(
-								gpui::div()
-									.text_color(ui_theme::rgb(0xc5c6ce))
-									.font_weight(FontWeight::MEDIUM)
-									.child(scope.title.clone()),
-							)
-							.child(
-								gpui::div()
-									.text_size(gpui::px(10. * scale))
-									.text_color(ui_theme::rgb(TEXT_MUTED))
-									.child(format!("{} agents", scope.count)),
-							),
-					),
+					.child(scope.outline(scale, selected))
+					.when(graph.layout.labels(), |group| {
+						group.child(
+							gpui::div()
+								.flex()
+								.items_center()
+								.gap(gpui::px(6.))
+								.text_color(ui_theme::rgb(if selected {
+									ui_theme::BLUE
+								} else {
+									TEXT
+								}))
+								.child(label),
+						)
+					}),
 			);
 		}
 
@@ -2269,6 +2276,10 @@ impl AgentSurface {
 				}
 
 				view.child(Header {
+					reviewer: node
+						.row
+						.as_ref()
+						.is_some_and(|row| self.reviewer_role(row).is_some()),
 					team_members,
 					key: node.key.clone(),
 					parent,
@@ -2589,7 +2600,7 @@ impl AgentSurface {
 			.find(|r| r.key == "release")
 			.expect("relation fixture owner");
 
-		self.work_board.briefs.insert(row.key.clone(),Brief{output:None,source_thread:row.thread.clone(),assignments:Default::default(),outcome:None,preview:None,question:None,metrics:Default::default(),resources:None,stamp:self.brief_stamp(&row),read_at:std::time::Instant::now(),relations:vec![("review-wait".into(),decodex_protocol::AgentCollaborationDto {sender_thread_id:"fixture-release".into(),receiver_thread_ids:vec!["fixture-reviewer".into()],tool:"wait".into(),status:"completed".into(),prompt:String::new(),results:vec![decodex_protocol::AgentCollaborationResultDto{thread_id:"fixture-reviewer".into(),status:"completed".into(),message:"Cancellation can leave the sign-in button disabled. Add a regression test before release.".into()}]})]});
+		self.work_board.briefs.insert(row.key.clone(),Brief{review:None,output:None,source_thread:row.thread.clone(),assignments:Default::default(),outcome:None,preview:None,question:None,metrics:Default::default(),resources:None,stamp:self.brief_stamp(&row),read_at:std::time::Instant::now(),relations:vec![("review-wait".into(),decodex_protocol::AgentCollaborationDto {sender_thread_id:"fixture-release".into(),receiver_thread_ids:vec!["fixture-reviewer".into()],tool:"wait".into(),status:"completed".into(),prompt:String::new(),results:vec![decodex_protocol::AgentCollaborationResultDto{thread_id:"fixture-reviewer".into(),status:"completed".into(),message:"Cancellation can leave the sign-in button disabled. Add a regression test before release.".into()}]})]});
 
 		for owner in ["flow", "verify"] {
 			let row = self
@@ -2607,6 +2618,7 @@ impl AgentSurface {
 			self.work_board.briefs.insert(
 				row.key.clone(),
 				Brief {
+					review: None,
 					output: None,
 					source_thread: row.thread.clone(),
 					assignments: Default::default(),
@@ -2806,6 +2818,7 @@ mod fit_tests {
 				.find(|node| node.key == row.key)
 				.unwrap();
 			let brief = s.work_board.briefs.entry(row.key.clone()).or_insert_with(|| Brief {
+				review: None,
 				output: None,
 				source_thread: row.thread.clone(),
 				assignments: Default::default(),
@@ -4096,6 +4109,7 @@ mod fit_tests {
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
+				review: None,
 				output: None,
 				source_thread: row.thread.clone(),
 				assignments: Default::default(),
@@ -5184,36 +5198,46 @@ mod fit_tests {
 			}];
 			s.workspace.workspace_filter = Some("scope-a".into());
 
-			let graph = s.relation_graph();
+			for mode in layout::Mode::ALL {
+				for presentation in [layout::Presentation::Links, layout::Presentation::Together] {
+					s.work_board.view.layout_mode = mode;
+					s.work_board.view.presentation = presentation;
 
-			// Native point geometry follows animated content heights. Workspace
-			// frames and explicitly dragged positions retain the world lattice.
-			for scope in &graph.scopes {
-				for coordinate in scope.bounds {
-					assert_eq!(coordinate, relations::snap(coordinate));
-				}
-			}
+					let graph = s.relation_graph();
 
-			assert_eq!(graph.nodes.len(), original.nodes.len());
-			assert_eq!(graph.edges.len(), original.edges.len());
-			assert_eq!(graph.scopes.len(), 2);
+					// Native point geometry follows animated content heights. Workspace
+					// frames and explicitly dragged positions retain the world lattice.
+					for scope in &graph.scopes {
+						for coordinate in scope.bounds {
+							assert_eq!(coordinate, relations::snap(coordinate));
+						}
+					}
 
-			let a = &graph.scopes[0].bounds;
-			let b = &graph.scopes[1].bounds;
+					assert_eq!(graph.nodes.len(), original.nodes.len());
+					assert_eq!(graph.edges.len(), original.edges.len());
+					assert_eq!(graph.scopes.len(), 2);
 
-			assert!(a[3] <= b[1] || b[3] <= a[1] || a[2] <= b[0] || b[2] <= a[0]);
+					let a = &graph.scopes[0].bounds;
+					let b = &graph.scopes[1].bounds;
 
-			for scope in &graph.scopes {
-				for node in graph
-					.nodes
-					.iter()
-					.filter(|n| n.row.as_ref().is_some_and(|r| r.workspace == scope.id))
-				{
-					assert!(node.x >= scope.bounds[0] && node.x + node.width() <= scope.bounds[2]);
-					assert!(
-						node.y >= scope.bounds[1] + 30.
-							&& node.y + node.height() <= scope.bounds[3]
-					);
+					assert!(a[3] <= b[1] || b[3] <= a[1] || a[2] <= b[0] || b[2] <= a[0]);
+
+					for scope in &graph.scopes {
+						for node in graph
+							.nodes
+							.iter()
+							.filter(|n| n.row.as_ref().is_some_and(|r| r.workspace == scope.id))
+						{
+							assert!(
+								node.x >= scope.bounds[0]
+									&& node.x + node.width() <= scope.bounds[2]
+							);
+							assert!(
+								node.y >= scope.bounds[1] + 30.
+									&& node.y + node.height() <= scope.bounds[3]
+							);
+						}
+					}
 				}
 			}
 

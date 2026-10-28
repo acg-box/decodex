@@ -4,12 +4,18 @@ tags: [decodex, architecture]
 title: "Approvals and native request ownership"
 description: "Complete request evidence, native child ownership, Guardian observations and explicit decisions."
 sources:
+  - id: openwiki-source-c6ac7d6b2fdeb458faab2c3a
+    resource: repo://apps/decodex-gpui/src/agent_permissions.rs
   - id: openwiki-source-6a1c55b61be8ac251a493046
     resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
-  - id: openwiki-source-f05abb1636e0c1ff279607a6
-    resource: repo://crates/decodex-codex/src/app_server_client/guardian_settings.rs
+  - id: openwiki-source-40db4dc21bafde1429326458
+    resource: repo://crates/decodex-core/src/permissions.rs
   - id: openwiki-source-eccf08613126ff810078b520
     resource: repo://crates/decodex-protocol/src/agent.rs
+  - id: openwiki-source-5bc08ad67fcdb104dfcde7bf
+    resource: repo://crates/decodex-runtime/src/agent_permissions.rs
+  - id: openwiki-source-dbc533dc306a3f520c4241e0
+    resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
     resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
   - id: openwiki-source-a7886792ad3e47b8e1afb7fa
@@ -22,10 +28,10 @@ sources:
     resource: repo://database/src/agent_guardian.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
-generated: { by: "codex", at: "2026-10-26T15:20:45.937Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T07:49:54.224Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 
@@ -43,17 +49,17 @@ Large approvals use bounded pages and durable payload records rather than a clip
 
 Guardian evidence is durable and can contain conflicts. It does not wake work or mark a task complete. Explicit continuation for a misalignment finding must match the current finding and checkpoint. A stale callback cannot dismiss a newer block.
 
-## Global Guardian
+## Conversation permissions
 
-Guardian has one global Review preference: Ask Me or Automatic Review. It also has one optional global Review Details setting. The desktop has no editable per-Agent reviewer override. The local protocol exposes no per-Agent reviewer write command. Native filesystem, network, tool, profile and managed policy remain separate authority.
+Settings > Agents defines defaults for new conversations. The composer shield controls the selected conversation. Both use the same native presets: Ask for approval, Approve for me, Full access and Read-only. Speed stays in the model menu. Changing defaults does not rewrite existing conversations.
 
-Ask Me sends eligible native approval requests to the human. An Agent cannot impersonate the answer. Automatic Review routes eligible requests to the native reviewer, which can allow or deny the action. Full Access remains a distinct native permission choice; setting `approval_policy=never` alone does not broaden permissions. Independent Collaboration does not transfer the other Agent's execution authority.
+Ask for approval sends eligible native requests to the human. An Agent cannot impersonate the answer. Approve for me routes eligible requests to the native reviewer, which can allow or deny the action. Full access selects the native unrestricted profile; Read-only selects the inspection profile. Native filesystem, network, tool and managed policy remain authoritative.
 
-The service records desired global settings and per-source application receipts separately. It writes a reviewer-only `thread/settings/update` for the exact loaded source. The acknowledgment records publication, not application. Actual native readback determines Applied, Pending, Overridden, Unsupported, Rejected or Unknown. Unknown publication is not automatically retried. Managed native restrictions remain visible.
+The service reviews the exact thread, current permission facts and allowed profiles before reserving one native selection. A queued update is not proof of application; native readback supplies the effective result. Unconfirmed writes are not retried automatically. Managed restrictions remain visible.
 
-Thread preference changes apply to subsequent turns. Active turns, pending human approvals and previously captured child policy keep their native owner. Changing Guardian does not answer an existing approval or restart the action. Native Subagents follow actual inherited native rules. Several Works in one conversation do not gain separate enforced permission sandboxes.
+Changes apply through native thread settings. Active turns and pending approvals keep native ownership. Native children inherit their parent's settings; independent conversations use their own settings. Several Works in one conversation do not gain separate sandboxes. Independent Collaboration does not transfer the other Agent's execution authority.
 
-Saved permission, Hook and App connection settings remain configuration controls. Their receipts distinguish saved, overridden, rejected and unknown. Uncertain writes require source-bound readback. See [models and settings](models-and-settings.md).
+Global Guardian controls only optional Review Details. It does not overwrite conversation permissions. Saved permission, Hook and App connection settings remain configuration controls with separate observed outcomes. See [models and settings](models-and-settings.md).
 
 ## Optional Review Details
 
@@ -65,7 +71,7 @@ Retention is bounded to 128 records at 64 KiB each. The snapshot includes the ne
 
 ## Boundaries and tests
 
-The [global Guardian contract](../decisions/project-agent-work.md#global-guardian-decision) is implemented and qualified with the exact selected CLI and helpers in synthetic fixtures. Tests cover Project idempotency, Ask Me approval preservation during a global switch, native effective readback, unchanged sandbox and approval policy, private reviewer identity, parent-history isolation and opt-out. Local tests cover bounds, stale receipts, protocol and UI controls. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian) for actual counts and limits.
+The [Guardian contract](../decisions/project-agent-work.md#global-guardian-decision) keeps private observation separate from execution policy. Synthetic fixtures cover native permission readback and resume, private reviewer identity, parent-history isolation and opt-out. Earlier global-switch qualification remains historical evidence. Local tests cover bounds, stale receipts, protocol and UI controls. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian) for actual counts and limits.
 
 Child browser-auth and user-input handoff still need their own exact native interaction evidence; ancestry and permission tests do not establish all interactions. The later [source-built acceptance](../testing/upstream-acceptance-boundaries.md#source-built-real-provider-acceptance) exercises a real provider in one controlled scenario. It does not establish installed-app behavior or general model judgment.
 

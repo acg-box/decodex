@@ -866,24 +866,6 @@ impl AgentSurface {
 		let jump = self.timeline.native.viewport.take_latest_request();
 		let work = binding.work.clone();
 
-		// Do not fold a running process out from under a reader browsing history.
-		if self.timeline.follow_paused.contains(&work) && !self.timeline.native.entries.is_empty() {
-			for entry in &page.entries {
-				if let AgentTimelineContent::TurnBoundary { turn_id, completed: true, .. } =
-					&entry.content
-				{
-					let already_finished = self.timeline.native.entries.iter().any(|old| {
-						matches!(&old.content,
-						AgentTimelineContent::TurnBoundary {turn_id: old_turn, completed: true, ..} if old_turn == turn_id)
-					});
-
-					if !already_finished {
-						self.timeline.native.expanded_turns.insert(turn_id.clone());
-					}
-				}
-			}
-		}
-
 		let accepted = if jump {
 			self.timeline.native.replace(binding, page)
 		} else {
