@@ -170,7 +170,8 @@ impl AgentSurface {
 			.flex_col()
 			.gap_2()
 			.child(format!("Request from {}", value["serverName"].as_str().unwrap_or("MCP server")))
-			.child(
+			.child(agent_surface::selectable_prose(
+				format!("mcp-message-{event}"),
 				self.request_summary(
 					value["message"]
 						.as_str()
@@ -178,7 +179,7 @@ impl AgentSurface {
 						.unwrap_or("")
 						.to_owned(),
 				),
-			);
+			));
 
 		if let Some(account) = mcp_account_label(value) {
 			panel = panel
@@ -336,7 +337,10 @@ impl AgentSurface {
 		));
 
 		if let Some(description) = field.description {
-			row = row.child(agent_surface::muted(description));
+			row = row.child(agent_surface::selectable_prose(
+				format!("mcp-description-{event}-{}", field.id),
+				description,
+			));
 		}
 		if let Some(input) = self.mcp_inputs.get(&field.id) {
 			row = row.child(gpui::div().h(gpui::px(40.0)).child(input.clone()));

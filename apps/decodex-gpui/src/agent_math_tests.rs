@@ -65,6 +65,25 @@ fn math_keeps_link_ranges_and_code_bytes_correct() {
 }
 
 #[test]
+fn structured_math_renders_aligned_models_and_grouped_scripts() {
+	assert_eq!(
+		plain(r"Zero $0$, indices $x_{gpt}$ and $\bigwedge_{j=0}^{n}$."),
+		"Zero 0, indices x_{gpt} and ⋀ⱼ₌₀ⁿ."
+	);
+	let source = r"$$\boxed{\begin{aligned}x&=1\\y&=2\end{aligned}}$$";
+	assert_eq!(plain(source), "┌──────┐\n│ x =1 │\n│ y =2 │\n└──────┘");
+	let model = plain(r"$$\underset{x\ge0}{\min}\sum_{i=1}^{N}x_i$$");
+	assert!(model.contains("min"));
+	assert!(model.contains("x≥0"));
+	assert!(model.contains('∑'));
+	assert!(!model.contains('\\'));
+	for formula in [r"\begin{aligned}x&=1\end{pmatrix}", r"\boxed{\unknown{x}}"] {
+		let source = format!("$${formula}$$");
+		assert_eq!(plain(&source), source);
+	}
+}
+
+#[test]
 fn growing_display_stays_literal_until_closed_and_bounds_preserve_following_text() {
 	let source = "$$\n\\frac{a+b}{c+d}\n$$";
 

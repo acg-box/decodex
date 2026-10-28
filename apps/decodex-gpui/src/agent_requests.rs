@@ -346,11 +346,12 @@ impl AgentSurface {
 
 		for key in ["reason", "command", "cwd", "grantRoot"] {
 			if let Some(text) = value[key].as_str() {
-				panel = panel.child(
-					gpui::div()
-						.text_size(gpui::px(12.0))
-						.child(self.request_summary(text.to_owned())),
-				);
+				panel = panel.child(gpui::div().text_size(gpui::px(12.0)).child(
+					agent_surface::selectable_prose(
+						format!("approval-{key}"),
+						self.request_summary(text.to_owned()),
+					),
+				));
 			}
 		}
 
@@ -554,11 +555,10 @@ impl AgentSurface {
 
 	fn question_form(&self, question: &Value, cx: &mut Context<Self>) -> AnyElement {
 		let id = question["id"].as_str().unwrap_or_default();
-		let mut row = gpui::div()
-			.flex()
-			.flex_col()
-			.gap_2()
-			.child(question["question"].as_str().unwrap_or_default().to_owned());
+		let mut row = gpui::div().flex().flex_col().gap_2().child(agent_surface::selectable_prose(
+			format!("request-question-{id}"),
+			question["question"].as_str().unwrap_or_default().to_owned(),
+		));
 		let Some(input) = self.question_inputs.get(id) else {
 			return row.into_any_element();
 		};
@@ -589,7 +589,8 @@ impl AgentSurface {
 						cx.notify();
 					}))
 					.child(label)
-					.child(agent_surface::muted(
+					.child(agent_surface::selectable_prose(
+						format!("request-description-{id}-{index}"),
 						option["description"].as_str().unwrap_or_default().to_owned(),
 					))
 					.smooth(),

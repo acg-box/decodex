@@ -635,25 +635,13 @@ struct ResetCardAccountRow: View {
 	}
 
 	static func cardExpiryText(
-		_ unixSeconds: Int64?,
-		timeZone: TimeZone = .current
-	) -> String {
-		guard let unixSeconds else { return "No expiry" }
-		let date = Date(timeIntervalSince1970: TimeInterval(unixSeconds))
-		var dayStyle = Date.FormatStyle.dateTime
-			.month(.abbreviated)
-			.day()
-		dayStyle.locale = Locale(identifier: "en_US_POSIX")
-		dayStyle.calendar = Calendar(identifier: .gregorian)
-		dayStyle.timeZone = timeZone
-		var timeStyle = Date.FormatStyle.dateTime
-			.hour(.twoDigits(amPM: .omitted))
-			.minute(.twoDigits)
-		timeStyle.locale = Locale(identifier: "en_US_POSIX@hours=h23")
-		timeStyle.calendar = Calendar(identifier: .gregorian)
-		timeStyle.timeZone = timeZone
-		return "\(date.formatted(dayStyle)) \(date.formatted(timeStyle))"
-	}
+        _ unixSeconds: Int64?,
+        timeZone: TimeZone = .current,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        guard let unixSeconds else { return "No expiry" }
+        return localizedResetDateTime(Date(timeIntervalSince1970: TimeInterval(unixSeconds)), locale: locale, timeZone: timeZone)
+    }
 
 	static func cardAccessibilityLabel(
 		expiresAtUnixSeconds: Int64?,
@@ -933,12 +921,18 @@ struct ResetCardQuotaWindowView: View {
 	}
 
 	private static func compactDateTime(_ date: Date) -> String {
-		let day = date.formatted(.dateTime.month(.abbreviated).day(.twoDigits))
-		let time = date.formatted(
-			.dateTime
-				.hour(.twoDigits(amPM: .omitted))
-				.minute(.twoDigits)
-		)
-		return "\(day) \(time)"
-	}
+        localizedResetDateTime(date)
+    }
+}
+
+private func localizedResetDateTime(
+    _ date: Date,
+    locale: Locale = .autoupdatingCurrent,
+    timeZone: TimeZone = .current
+) -> String {
+    let formatter = DateFormatter()
+    formatter.locale = locale
+    formatter.timeZone = timeZone
+    formatter.setLocalizedDateFormatFromTemplate("MMMdjmm")
+    return formatter.string(from: date)
 }

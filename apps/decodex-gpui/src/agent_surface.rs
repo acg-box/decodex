@@ -2943,6 +2943,10 @@ fn command_rejection_message(error: &CommandError) -> String {
 	}
 }
 
+pub(crate) fn selectable_prose(key: String, text: String) -> AnyElement {
+	SelectableText::plain(key, text).into_any_element()
+}
+
 fn muted(text: impl Into<SharedString>) -> impl IntoElement {
 	gpui::div()
 		.text_size(gpui::px(CAPTION_SIZE))

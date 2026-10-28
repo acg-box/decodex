@@ -1,7 +1,5 @@
 //! One value drives the quota percentage and bar during a confirmed reset.
 use std::{
-	ffi::CStr,
-	mem::MaybeUninit,
 	sync::Arc,
 	time::{Duration, Instant},
 };
@@ -10,7 +8,10 @@ use gpui::{
 	AnyElement, App, FontFeatures, IntoElement, RenderOnce, Window,
 	prelude::{InteractiveElement as _, ParentElement as _, Styled as _},
 };
-use libc::{c_char, time_t, tm};
+#[cfg(not(target_os = "macos"))] use libc::{c_char, time_t, tm};
+#[cfg(target_os = "macos")]
+use objc2_foundation::{NSDate, NSDateFormatter, NSLocale, NSString, NSTimeZone};
+#[cfg(not(target_os = "macos"))] use std::{ffi::CStr, mem::MaybeUninit};
 
 use crate::{
 	shell::WB_TEXT_FAINT,
@@ -135,6 +136,31 @@ pub(super) fn meter(
 	QuotaMeter { label, quota, fill }.into_any_element()
 }
 
+#[cfg(target_os = "macos")]
+pub(super) fn local_date_time(seconds: i64) -> Option<String> {
+	format_local_date_time(seconds, &NSLocale::autoupdatingCurrentLocale(), None)
+}
+
+#[cfg(target_os = "macos")]
+fn format_local_date_time(
+	seconds: i64,
+	locale: &NSLocale,
+	zone: Option<&NSTimeZone>,
+) -> Option<String> {
+	let formatter = NSDateFormatter::new();
+	formatter.setLocale(Some(locale));
+	if let Some(zone) = zone {
+		formatter.setTimeZone(Some(zone));
+	}
+	// The skeleton's j asks Foundation to apply the user's 12/24-hour preference.
+	formatter.setLocalizedDateFormatFromTemplate(&NSString::from_str("MMMdjmm"));
+	let result = formatter
+		.stringFromDate(&NSDate::dateWithTimeIntervalSince1970(seconds as f64))
+		.to_string();
+	(!result.is_empty()).then_some(result)
+}
+
+#[cfg(not(target_os = "macos"))]
 pub(super) fn local_date_time(seconds: i64) -> Option<String> {
 	let seconds: time_t = seconds;
 	let mut local = MaybeUninit::<tm>::uninit();
@@ -263,5 +289,22 @@ mod tests {
 			AccountQuotaWindowDto { result: AccountQuotaStateDto::NotApplicable, ..quota(64, 1) };
 
 		assert_eq!(fill.remaining(not_applicable, started, false), None);
+	}
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod hour_cycle_tests {
+	use super::*;
+
+	#[test]
+	fn reset_dates_respect_twelve_and_twenty_four_hour_locales() {
+		let zone = NSTimeZone::timeZoneForSecondsFromGMT(0);
+		let twelve = NSLocale::localeWithLocaleIdentifier(&NSString::from_str("en_US@hours=h12"));
+		let twenty_four =
+			NSLocale::localeWithLocaleIdentifier(&NSString::from_str("en_GB@hours=h23"));
+		let twelve = format_local_date_time(1_704_121_440, &twelve, Some(&zone)).unwrap();
+		let twenty_four = format_local_date_time(1_704_121_440, &twenty_four, Some(&zone)).unwrap();
+		assert!(twelve.contains("3:04") && twelve.contains("PM"), "{twelve}");
+		assert!(twenty_four.contains("15:04") && !twenty_four.contains("PM"), "{twenty_four}");
 	}
 }

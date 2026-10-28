@@ -1,4 +1,6 @@
 //! Frame-paced presentation of received text. Never delays transport or stores output.
+#[path = "agent_link_preview.rs"] mod link_preview;
+
 use std::{cell::Cell, rc::Rc, time::Instant};
 
 use gpui::{
@@ -58,7 +60,12 @@ impl RenderOnce for StreamingText {
 			ui_motion::request_frame(window, cx);
 		}
 
-		let content = markdown::render(&self.text[..end], &self.key);
+		let visible = if self.output {
+			link_preview::visible(&self.text[..end], self.complete && end == self.text.len())
+		} else {
+			&self.text[..end]
+		};
+		let content = markdown::render(visible, &self.key);
 		let flow = window.use_keyed_state(
 			SharedString::from(format!("text-flow-{}", self.key)),
 			cx,

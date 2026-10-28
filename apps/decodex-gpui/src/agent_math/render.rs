@@ -1,11 +1,14 @@
-// Adapted from openai/codex at 595cc91e8cbb1c2ca822d0311dcf12709410c582.
+// Adapted from openai/codex at 33d306d457a4632b22bebf214e0c25d91f90f6e8.
 // Copyright OpenAI. Licensed under Apache-2.0; see LICENSE-APACHE.
-// Decodex changes: module paths and iterator adaptation for the desktop renderer.
+// Decodex changes: module paths and desktop width integration.
 //! Bounded Unicode layout for a deliberately small TeX math subset.
 //! Accents apply only to single graphemes so their scope survives terminal rendering.
+//! Unsupported Unicode scripts use explicit grouping; structured layouts remain bounded.
 
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
+
+#[path = "render/structured.rs"] mod structured;
 
 const MAX_ROWS: usize = 16;
 const MAX_COLUMNS: usize = 256;
@@ -14,6 +17,7 @@ struct Layout {
 	rows: Vec<String>,
 	baseline: usize,
 }
+
 impl Layout {
 	fn text(text: impl Into<String>) -> Self {
 		Self { rows: vec![text.into()], baseline: 0 }
@@ -29,29 +33,23 @@ impl Layout {
 			.max(baseline + right.rows.len() - right.baseline);
 		// Separate neighboring fraction bars so their numerators cannot become one number.
 		let width = self.width() + usize::from(self.rows.len() > 1 && right.rows.len() > 1);
-
 		if height > MAX_ROWS || width + right.width() > MAX_COLUMNS {
 			return None;
 		}
-
 		let mut rows = vec![String::new(); height];
-
 		for (index, row) in rows.iter_mut().enumerate() {
 			if let Some(left) =
 				index.checked_sub(baseline - self.baseline).and_then(|i| self.rows.get(i))
 			{
 				row.push_str(left);
 			}
-
 			row.push_str(&" ".repeat(width - display_width(row)));
-
 			if let Some(right) =
 				index.checked_sub(baseline - right.baseline).and_then(|i| right.rows.get(i))
 			{
 				row.push_str(right);
 			}
 		}
-
 		Some(Self { rows, baseline })
 	}
 
@@ -60,79 +58,111 @@ impl Layout {
 	}
 }
 
+#[derive(Debug, PartialEq)]
+pub(super) struct RenderedMath {
+	pub(super) text: String,
+	/// Spatial layouts must fit in full, including single-row matrices.
+	pub(super) required_width: Option<usize>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum MathMode {
+	Inline,
+	Display,
+	NestedDisplay,
+}
+
+pub(super) fn render(source: &str, mode: MathMode) -> Option<RenderedMath> {
+	let mut parser = MathParser {
+		remaining: source.trim(),
+		depth: 0,
+		mode,
+		stack_annotations: mode != MathMode::Inline,
+		has_matrix: false,
+	};
+	let result = parser.sequence(SequenceEnd::Input)?;
+	(!result.rows.iter().all(|row| row.trim().is_empty())).then(|| RenderedMath {
+		required_width: (parser.has_matrix || result.rows.len() > 1).then(|| result.width()),
+		text: result.rows.join("\n"),
+	})
+}
+
 struct MathParser<'a> {
 	remaining: &'a str,
 	depth: usize,
-	display: bool,
+	mode: MathMode,
+	stack_annotations: bool,
+	has_matrix: bool,
 }
+
+#[derive(Clone, Copy, PartialEq)]
+enum SequenceEnd {
+	Input,
+	Group,
+	Cell,
+}
+
 impl MathParser<'_> {
 	fn take(&mut self) -> Option<char> {
 		let ch = self.remaining.chars().next()?;
-
 		self.remaining = &self.remaining[ch.len_utf8()..];
-
 		Some(ch)
 	}
 
-	fn sequence(&mut self, group: bool) -> Option<Layout> {
+	fn sequence(&mut self, end: SequenceEnd) -> Option<Layout> {
 		if self.depth >= 32 {
 			return None;
 		}
-
 		self.depth += 1;
-
 		let mut result = Layout::text("");
 		let mut scripts = 0;
 		let mut has_base = false;
-
 		while let Some(ch) = self.remaining.chars().next() {
+			let remaining = self.remaining.trim_start();
+			if end == SequenceEnd::Cell
+				&& (remaining.starts_with(['&', '}'])
+					|| remaining.starts_with(r"\\")
+					|| remaining.starts_with(r"\end{"))
+			{
+				self.remaining = remaining;
+				self.depth -= 1;
+				return Some(result);
+			}
 			if ch == '}' {
-				if !group {
+				if end != SequenceEnd::Group {
 					return None;
 				}
-
 				self.take();
-
 				self.depth -= 1;
-
 				return Some(result);
 			}
 			if ch == '^' || ch == '_' {
 				let script = if ch == '^' { 1 } else { 2 };
-
 				if !has_base || scripts & script != 0 {
 					return None;
 				}
-
 				scripts |= script;
 			} else if !ch.is_whitespace() {
 				scripts = 0;
 			}
-
 			let atom = self.atom()?;
-
 			if !ch.is_whitespace() && ch != '^' && ch != '_' {
 				// Flattening a compound base would change the scope of a following script.
 				has_base = atom
 					.single()
 					.is_some_and(|text| text.graphemes(/* is_extended */ true).count() == 1);
 			}
-
 			result = result.join(atom)?;
 		}
-
 		self.depth -= 1;
-
-		(!group).then_some(result)
+		(end == SequenceEnd::Input).then_some(result)
 	}
 
 	fn argument(&mut self) -> Option<Layout> {
 		self.remaining = self.remaining.trim_start();
-
 		if self.remaining.starts_with(['^', '_']) {
 			return None;
 		}
-
 		self.atom()
 	}
 
@@ -140,24 +170,19 @@ impl MathParser<'_> {
 		if self.depth >= 32 {
 			return None;
 		}
-
 		self.depth += 1;
-
 		let result = self.atom_inner();
-
 		self.depth -= 1;
-
 		result
 	}
 
 	fn atom_inner(&mut self) -> Option<Layout> {
 		let ch = self.take()?;
-
 		match ch {
-			'{' => self.sequence(/* group */ true),
+			'{' => self.sequence(SequenceEnd::Group),
 			'\\' => self.command(),
 			'^' | '_' => {
-				let arg = self.argument()?;
+				let arg = self.compact_argument()?;
 				let (plain, alphabet) = if ch == '^' {
 					(
 						"0123456789+-=()abcdefghijklmnoprstuvwxyz",
@@ -166,20 +191,19 @@ impl MathParser<'_> {
 				} else {
 					("0123456789+-=()aehijklmnoprstuvx", "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₕᵢⱼₖₗₘₙₒₚᵣₛₜᵤᵥₓ")
 				};
-				let mut output = String::new();
-
-				for value in arg.single()?.chars() {
-					let index = plain.chars().position(|ch| ch == value)?;
-
-					output.push(alphabet.chars().nth(index)?);
-				}
-
-				Some(Layout::text(output))
+				let text = arg.single()?;
+				let output: Option<String> = text
+					.chars()
+					.map(|value| {
+						let index = plain.chars().position(|ch| ch == value)?;
+						alphabet.chars().nth(index)
+					})
+					.collect();
+				Some(Layout::text(output.unwrap_or_else(|| format!("{ch}{{{text}}}"))))
 			},
 			'}' | '$' | '%' | '#' | '&' | '`' => None,
 			ch if ch.is_whitespace() => {
 				self.remaining = self.remaining.trim_start();
-
 				Some(Layout::text(" "))
 			},
 			ch if ch.is_control() => None,
@@ -187,65 +211,70 @@ impl MathParser<'_> {
 		}
 	}
 
-	fn fraction(&mut self) -> Option<Layout> {
-		let numerator = self.argument()?;
-		let denominator = self.argument()?;
-
-		if !self.display {
-			return Some(Layout::text(format!(
-				"(({})/({}))",
-				numerator.single()?,
-				denominator.single()?
-			)));
-		}
-
-		// Nested bars need a richer layout to preserve fraction hierarchy.
-		let numerator = numerator.single()?;
-		let denominator = denominator.single()?;
-		let width =
-			display_width(numerator).max(display_width(denominator)).max(/* other */ 1);
-
-		if width > MAX_COLUMNS {
-			return None;
-		}
-
-		Some(Layout {
-			rows: vec![
-				format!("{}{numerator}", " ".repeat((width - display_width(numerator)) / 2)),
-				"─".repeat(width),
-				format!("{}{denominator}", " ".repeat((width - display_width(denominator)) / 2)),
-			],
-			baseline: 1,
-		})
-	}
-
+	#[allow(
+		clippy::too_many_lines,
+		reason = "Keep the bounded upstream command parser directly comparable to its source."
+	)]
 	fn command(&mut self) -> Option<Layout> {
 		let length = self.remaining.bytes().take_while(u8::is_ascii_alphabetic).count();
-
 		if length == 0 {
 			return match self.take()? {
 				',' | ';' | ':' | ' ' => Some(Layout::text(" ")),
 				'!' => Some(Layout::text("")),
+				'%' => Some(Layout::text("%")),
 				'{' => Some(Layout::text("{")),
 				'}' => Some(Layout::text("}")),
 				'|' => Some(Layout::text("‖")),
 				_ => None,
 			};
 		}
-
 		let name = &self.remaining[..length];
-
 		self.remaining = &self.remaining[length..];
-
 		match name {
-			"frac" | "dfrac" | "tfrac" => self.fraction(),
+			"sum" | "bigwedge" | "int"
+				if self.stack_annotations && (name != "int" || self.mode == MathMode::Display) =>
+				self.display_operator(symbol(name)?),
+			"begin" | "boxed" | "underset" | "overset" | "substack" | "mathcal" =>
+				self.structured_command(name),
+			"frac" | "dfrac" | "tfrac" => {
+				let numerator = self.compact_argument()?;
+				let denominator = self.compact_argument()?;
+				if self.mode == MathMode::Inline {
+					return Some(Layout::text(format!(
+						"(({})/({}))",
+						numerator.single()?,
+						denominator.single()?
+					)));
+				}
+				// Nested bars need a richer layout to preserve fraction hierarchy.
+				let numerator = numerator.single()?;
+				let denominator = denominator.single()?;
+				let width = display_width(numerator)
+					.max(display_width(denominator))
+					.max(/* other */ 1);
+				if width > MAX_COLUMNS {
+					return None;
+				}
+				Some(Layout {
+					rows: vec![
+						format!(
+							"{}{numerator}",
+							" ".repeat((width - display_width(numerator)) / 2)
+						),
+						"─".repeat(width),
+						format!(
+							"{}{denominator}",
+							" ".repeat((width - display_width(denominator)) / 2)
+						),
+					],
+					baseline: 1,
+				})
+			},
 			"sqrt" => {
 				if self.remaining.trim_start().starts_with('[') {
 					return None;
 				}
-
-				let radicand = self.argument()?;
-
+				let radicand = self.compact_argument()?;
 				Some(Layout::text(format!("√({})", radicand.single()?)))
 			},
 			"mathbb" => {
@@ -259,22 +288,19 @@ impl MathParser<'_> {
 					"P" => "ℙ",
 					_ => return None,
 				};
-
 				Some(Layout::text(text))
 			},
-			"hat" | "bar" | "tilde" | "vec" | "dot" | "ddot" => {
+			"hat" | "widehat" | "bar" | "tilde" | "vec" | "dot" | "ddot" => {
 				let arg = self.argument()?;
 				let text = arg.single()?;
-
 				if text.graphemes(/* is_extended */ true).count() != 1
 					|| text.trim().is_empty()
 					|| display_width(text) == 0
 				{
 					return None;
 				}
-
 				let accent = match name {
-					"hat" => '\u{0302}',
+					"hat" | "widehat" => '\u{0302}',
 					"bar" => '\u{0304}',
 					"tilde" => '\u{0303}',
 					"vec" => '\u{20d7}',
@@ -282,29 +308,23 @@ impl MathParser<'_> {
 					"ddot" => '\u{0308}',
 					_ => unreachable!(),
 				};
-
 				Some(Layout::text(format!("{text}{accent}")))
 			},
 			"mathrm" | "mathbf" | "mathit" => self.argument(),
 			"text" | "operatorname" => {
 				self.remaining = self.remaining.trim_start().strip_prefix('{')?;
-
 				let end = self.remaining.find('}')?;
 				let text = &self.remaining[..end];
-
 				if text.contains(['{', '\\', '$', '%', '#', '&'])
 					|| text.chars().any(char::is_control)
 				{
 					return None;
 				}
-
 				self.remaining = &self.remaining[end + 1..];
-
 				Some(Layout::text(text))
 			},
-			"left" | "right" => {
+			"left" | "right" | "bigl" | "bigr" => {
 				self.remaining = self.remaining.trim_start();
-
 				match self.take()? {
 					'.' => Some(Layout::text("")),
 					ch @ ('(' | ')' | '[' | ']' | '|') => Some(Layout::text(ch.to_string())),
@@ -318,9 +338,7 @@ impl MathParser<'_> {
 							.count()
 							.max(/* other */ 1);
 						let (name, remaining) = self.remaining.split_at_checked(length)?;
-
 						self.remaining = remaining;
-
 						delimiter(name).map(Layout::text)
 					},
 					_ => None,
@@ -334,20 +352,50 @@ impl MathParser<'_> {
 	}
 }
 
-pub(super) fn display_width(text: &str) -> usize {
-	UnicodeWidthStr::width(text)
-		+ text.chars().filter(|ch| matches!(ch, '\u{FF9E}' | '\u{FF9F}')).count()
-}
-
-pub(super) fn render(source: &str, display: bool) -> Option<String> {
-	let mut parser = MathParser { remaining: source.trim(), depth: 0, display };
-	let result = parser.sequence(/* group */ false)?;
-
-	(!result.rows.iter().all(|row| row.trim().is_empty())).then(|| result.rows.join("\n"))
-}
-
+#[allow(clippy::too_many_lines, reason = "Keep the upstream symbol table in one auditable match.")]
 fn symbol(name: &str) -> Option<&'static str> {
 	Some(match name {
+		"alpha" => "α",
+		"beta" => "β",
+		"gamma" => "γ",
+		"delta" => "δ",
+		"epsilon" => "ϵ",
+		"varepsilon" => "ε",
+		"zeta" => "ζ",
+		"eta" => "η",
+		"theta" => "θ",
+		"vartheta" => "ϑ",
+		"iota" => "ι",
+		"kappa" => "κ",
+		"varkappa" => "ϰ",
+		"lambda" => "λ",
+		"mu" => "μ",
+		"nu" => "ν",
+		"xi" => "ξ",
+		"pi" => "π",
+		"varpi" => "ϖ",
+		"rho" => "ρ",
+		"varrho" => "ϱ",
+		"sigma" => "σ",
+		"varsigma" => "ς",
+		"tau" => "τ",
+		"upsilon" => "υ",
+		"phi" => "ϕ",
+		"varphi" => "φ",
+		"chi" => "χ",
+		"psi" => "ψ",
+		"omega" => "ω",
+		"Gamma" => "Γ",
+		"Delta" => "Δ",
+		"Theta" => "Θ",
+		"Lambda" => "Λ",
+		"Xi" => "Ξ",
+		"Pi" => "Π",
+		"Sigma" => "Σ",
+		"Upsilon" => "Υ",
+		"Phi" => "Φ",
+		"Psi" => "Ψ",
+		"Omega" => "Ω",
 		"sum" => "∑",
 		"prod" => "∏",
 		"coprod" => "∐",
@@ -405,6 +453,7 @@ fn symbol(name: &str) -> Option<&'static str> {
 		"cap" => "∩",
 		"bigcup" => "⋃",
 		"bigcap" => "⋂",
+		"bigwedge" => "⋀",
 		"setminus" => "∖",
 		"emptyset" | "varnothing" => "∅",
 		"land" | "wedge" => "∧",
@@ -429,7 +478,7 @@ fn symbol(name: &str) -> Option<&'static str> {
 		"cdots" => "⋯",
 		"vdots" => "⋮",
 		"ddots" => "⋱",
-		_ => return greek(name).or_else(|| delimiter(name)),
+		_ => return delimiter(name),
 	})
 }
 
@@ -451,50 +500,7 @@ fn delimiter(name: &str) -> Option<&'static str> {
 	})
 }
 
-fn greek(name: &str) -> Option<&'static str> {
-	Some(match name {
-		"alpha" => "α",
-		"beta" => "β",
-		"gamma" => "γ",
-		"delta" => "δ",
-		"epsilon" => "ϵ",
-		"varepsilon" => "ε",
-		"zeta" => "ζ",
-		"eta" => "η",
-		"theta" => "θ",
-		"vartheta" => "ϑ",
-		"iota" => "ι",
-		"kappa" => "κ",
-		"varkappa" => "ϰ",
-		"lambda" => "λ",
-		"mu" => "μ",
-		"nu" => "ν",
-		"xi" => "ξ",
-		"pi" => "π",
-		"varpi" => "ϖ",
-		"rho" => "ρ",
-		"varrho" => "ϱ",
-		"sigma" => "σ",
-		"varsigma" => "ς",
-		"tau" => "τ",
-		"upsilon" => "υ",
-		"phi" => "ϕ",
-		"varphi" => "φ",
-		"chi" => "χ",
-		"psi" => "ψ",
-		"omega" => "ω",
-		"Gamma" => "Γ",
-		"Delta" => "Δ",
-		"Theta" => "Θ",
-		"Lambda" => "Λ",
-		"Xi" => "Ξ",
-		"Pi" => "Π",
-		"Sigma" => "Σ",
-		"Upsilon" => "Υ",
-		"Phi" => "Φ",
-		"Psi" => "Ψ",
-		"Omega" => "Ω",
-
-		_ => return None,
-	})
+pub(super) fn display_width(text: &str) -> usize {
+	UnicodeWidthStr::width(text)
+		+ text.chars().filter(|ch| matches!(ch, '\u{FF9E}' | '\u{FF9F}')).count()
 }
