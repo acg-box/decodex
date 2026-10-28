@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d021aadde2258a8dc3c2d747b2356bcf1cf68899a8da9210be809d3e06b7cb22",
+  "pageVersion": "sha256:717d9cf20aa298287ba5ae483afbaaddc63c6148c9f6789a6f6d350169de8a83",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -210,15 +210,19 @@
     },
     {
       "id": "claim_22c649d4fcdf471a899e2d9c03b35774",
-      "statement": "An explicit past native retirement deadline selects the same catalog's current default for new Agent settings and loaded idle recovery, using existing source checks, settings journal and readback. No missing entry, upgrade suggestion, network error or quota response alone triggers that retirement policy. The local 20-runtime and 18-desktop test cohort does not qualify a new native artifact or installed application.",
+      "statement": "An explicit past native retirement deadline selects the same catalog's current default for new Agent settings, new Agents in a shared process and loaded idle recovery, preserving shared configuration and using existing source checks, settings journal and readback. Missing entries, upgrade suggestions, network errors or quota responses alone do not trigger retirement migration. The 24-runtime and 18-desktop test cohort does not qualify a new native artifact or installed application.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:a5ba4fc4cbfb45055f271d00c39b5004566dd153c8847d3bb2db2218a38318d9"
+          "version": "repo-file-v1:sha256:31b135003bcc180f47662d5ed3a221003658592d1da509d9f8cdb2b3ef53734f"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
           "version": "repo-lines-v1:sha256:f4b851127d577fcebde31500784313617e7b0796409a2b012a5e0705d1e82782:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1ZmM3ZDk2YTVkZTViNWM2Yzg3NjhiZDM2NTI4YTYwY2E1YTliNjE0OTI5MDgwOTEzZjVlMGQwNTgzMmY0ZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzOGQ4NzM3YTVmMGY1ODRmZTE5MjlkNGViOTk4ZTkyMzU0YWVmNmQ1MWQxNmUxMTVjYWRmZjRmNmQwMzc5NDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3N2I2YjVjMzk5MTEzMjYyZTg0NDY4ZjJjN2E1YmMwMmU2NDQ4ZDVkOWYyOGM3Y2RlNTM0YjIwOGRiYTJiOTUifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L963-L1047",
+          "version": "repo-lines-v1:sha256:4e941ab731689a14e7503ec5327e666c98bccc345ffc5a3ac15e6e8ba148f17c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmZGQ4NDYxYzA1MDc3YmU4OTcxYWJlMTFjOTgyYTI1NGFhZTExMmUzNzcyMGQ3YWZlYjYwZTFlNGQ1MzQ0ZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxZTBhNDI1ZmI5NmZiNTliZmZmMDg5MmFkYjE5YTQ5NTlhYWQyNzM2MjU3NDhlNGNlYjY0NmU5ZWE4ZDhmY2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzYTNhODRlNDU3NjIzMTA1NDM4ZWE4NjBjNzA5OTYwNmExMGM1ZDkzNmEzNmQ0NDI5NWQzMmZhNzdkN2Y3ZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM2Yzk4YTFiYWZhYjhkMDU3MDhmMTNlZWQyOTZkYzBjNTNhMTEwOGIwZDhhYTc0MGFhNWY0OTg0ODcyYmYwODIifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_initial_settings.rs",
@@ -233,6 +237,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T07:51:34.051Z"
+    "at": "2026-10-28T07:58:23.862Z"
   }
 }

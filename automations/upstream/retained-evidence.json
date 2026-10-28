@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "93efbdc4fec6c466d49bb3cb21cfa29009b025af6ebb0988b4270442bdcfd601",
+    "sha256": "605dff41372cf046c8cdd2fc0cca4d697ad6421b469d7d2f0c5f564af6b2299f",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -1155,7 +1155,7 @@
   },
   "model_retirement_defaults": {
     "contracts": "automations/upstream/retained-contracts.json#retained_model_retirement_defaults",
-    "source_revision": "6cc96bbcfad7bb66028af09d2a2e01e70bfddef6",
+    "source_revision": "5683fa8ea2a50ae4937534f304cddc475cc96944",
     "source_sha256": {
       "apps/decodex-gpui/src/agent_creation_defaults.rs": "52d5a4ded5003432e2e5efbd986d3e009fcc95f9e49a733045e755ffc2d5e41b",
       "apps/decodex-gpui/src/conversation_creation_defaults_tests.rs": "5d8b78385679eab3962f7b7a41e6ab30ca2f95537f8e201844dad73767ad843c",
@@ -1167,17 +1167,23 @@
       "crates/decodex-runtime/src/agent_capabilities.rs": "5e3adebafb51b955e1eddf39c4117df36ead4eddf39234df874bb3086d49f3ad",
       "crates/decodex-runtime/src/agent_initial_settings.rs": "5cc6ff063aa0038c7255d9454bae517556ba47b4b8f2ae07be8dd36469d21933",
       "crates/decodex-runtime/src/agent_model_recovery.rs": "4cb67bcf80a54a5d7b04c4b85acff08f0dbf5f7345a3c5e0f938040675f49203",
-      "crates/decodex-runtime/src/conversation/model_catalog.rs": "6064dada16f3be3eb154513fe055384d3143588b355e1b79aa5977432e1cb30a"
+      "crates/decodex-runtime/src/conversation/model_catalog.rs": "6064dada16f3be3eb154513fe055384d3143588b355e1b79aa5977432e1cb30a",
+      "crates/decodex-runtime/src/agent.rs": "379bebc24b275d32794219bccb90a7909414606eb6e8b31dd7930614c203e1fe",
+      "crates/decodex-runtime/src/agent/tests.rs": "9955d01408c29b1f5f92be01f32c5b0821b35348715abf61ea310cbec368f047"
     },
     "executed_tests": {
       "runtime": {
-        "command": "cargo +stable test --locked -p decodex-runtime --lib -- agent_capabilities:: model_fallback_service:: conversation::model_catalog:: initial_settings::",
-        "unique_passed": 20,
+        "command": "cargo +stable test --locked -p decodex-runtime --lib -- agent_capabilities:: model_fallback_service:: conversation::model_catalog:: initial_settings:: shared_process_agent_creation_uses_current_default_after_retirement native_effort_inheritance advertised_efforts_survive failed_thread_start",
+        "unique_passed": 24,
         "selectors": {
           "agent_capabilities::": 12,
           "model_fallback_service::": 2,
           "conversation::model_catalog::": 5,
-          "initial_settings::": 1
+          "initial_settings::": 1,
+          "shared_process_agent_creation_uses_current_default_after_retirement": 1,
+          "native_effort_inheritance": 1,
+          "advertised_efforts_survive": 1,
+          "failed_thread_start": 1
         },
         "unmatched_selectors": []
       },

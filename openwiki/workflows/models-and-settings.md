@@ -58,6 +58,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_native_goal.rs
   - id: openwiki-source-d28152527a1218d5afb307f7
     resource: repo://crates/decodex-runtime/src/agent_search_settings.rs
+  - id: openwiki-source-dbc533dc306a3f520c4241e0
+    resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
     resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
   - id: openwiki-source-a7b97dd347fbe2f630692d12
@@ -68,10 +70,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-10-28T07:49:54.224Z" }
+generated: { by: "codex", at: "2026-10-28T07:58:23.862Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T07:51:34.051Z
+    at: 2026-10-28T07:58:23.862Z
 ---
 
 # Model selection and settings ownership
@@ -106,11 +108,11 @@ Plugin installation and selection are configured in Codex. Maintenance of the cu
 
 The desktop reads `model/list` from the current native connection and refreshes its Agent catalog at a 60-second interval. Account, directory and process changes invalidate the observation. Model and effort cycling require that catalog; an unavailable read does not provide a fixed fallback list.
 
-When the same complete catalog gives the selected model a retirement deadline that has passed, Decodex uses the catalog's explicit current default. This applies to new Agent settings and loaded idle Agent recovery. An upgrade suggestion alone, a missing model, a network failure or an account quota response does not prove retirement. A usable selected model stays selected.
+When the same complete catalog gives the selected model a retirement deadline that has passed, Decodex uses the catalog's explicit current default. This applies to new Agent settings, new Agents in an existing shared process, and loaded idle Agent recovery. Shared process configuration stays unchanged. An upgrade suggestion alone, a missing model, a network failure or an account quota response does not prove retirement. A usable selected model stays selected.
 
 Recovery uses the existing source-bound settings journal and publication readback. It preserves compatible effort and service-tier choices, does not change provider or permission ownership, and does not replay input. Active turns keep their current execution. A native session that cannot be loaded remains outside this retirement check.
 
-The [retained evidence](../../automations/upstream/retained-evidence.json) records 20 runtime and 18 desktop tests, with a failing-before and passing-after retirement case. The fixtures cover native-default selection, future or absent deadlines, missing defaults, source changes, draft preservation and no replay. They do not qualify a new native artifact, a real retired provider model or an installed application.
+The [retained evidence](../../automations/upstream/retained-evidence.json) records 24 runtime and 18 desktop tests, with a failing-before and passing-after retirement case. The fixtures cover native-default selection, future or absent deadlines, missing defaults, source changes, draft preservation and no replay. They do not qualify a new native artifact, a real retired provider model or an installed application.
 
 ## Guardian and helper settings
 

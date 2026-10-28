@@ -4716,6 +4716,9 @@
       "apps/decodex-gpui/src/conversations.rs": [
         "Conversations::cycle_model",
         "Conversations::cycle_reasoning_effort"
+      ],
+      "crates/decodex-runtime/src/agent.rs": [
+        "AgentCoordinator::ensure_thread"
       ]
     },
     "regression_groups": [
@@ -4725,7 +4728,11 @@
           "agent_capabilities::",
           "model_fallback_service::",
           "conversation::model_catalog::",
-          "initial_settings::"
+          "initial_settings::",
+          "shared_process_agent_creation_uses_current_default_after_retirement",
+          "native_effort_inheritance",
+          "advertised_efforts_survive",
+          "failed_thread_start"
         ]
       },
       {
