@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a7d4a868b1a9d7b97fc2709738da6721da7c125a0ed2ba953ac0db335432fcf0",
+  "pageVersion": "sha256:fad947371bf187f7431e58a67b67f05631cf79a25f23296845d390d4cacf829e",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -254,7 +254,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
@@ -350,7 +350,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         }
       ]
     },
@@ -471,6 +471,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T21:12:13.971Z"
+    "at": "2026-10-28T02:37:26.121Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c46745213b2bf29d107d727463cbd654a12026884d8f2f6390bf62fe726b32fd",
+  "pageVersion": "sha256:f9a898019fa0cdb84a3d2e9603925a5c8a51aa8676527c65f924b71ebc8783ea",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -68,7 +68,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:40aaeabf3f491b33a48a7e6b4ee67ebf202cf8761622e84d9749f5f2be2b1bbf"
+          "version": "repo-file-v1:sha256:622c5171ebfae3e6ff580ff43063b3716d1b6992426e019a3352f10a8fccb78c"
         }
       ]
     },
@@ -96,7 +96,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:40aaeabf3f491b33a48a7e6b4ee67ebf202cf8761622e84d9749f5f2be2b1bbf"
+          "version": "repo-file-v1:sha256:622c5171ebfae3e6ff580ff43063b3716d1b6992426e019a3352f10a8fccb78c"
         }
       ]
     },
@@ -152,7 +152,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:40aaeabf3f491b33a48a7e6b4ee67ebf202cf8761622e84d9749f5f2be2b1bbf"
+          "version": "repo-file-v1:sha256:622c5171ebfae3e6ff580ff43063b3716d1b6992426e019a3352f10a8fccb78c"
         }
       ]
     },
@@ -184,7 +184,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:40aaeabf3f491b33a48a7e6b4ee67ebf202cf8761622e84d9749f5f2be2b1bbf"
+          "version": "repo-file-v1:sha256:622c5171ebfae3e6ff580ff43063b3716d1b6992426e019a3352f10a8fccb78c"
         }
       ]
     },
@@ -231,8 +231,8 @@
           "version": "repo-lines-v1:sha256:7ed67ab14439eac9e0d0b806cdf59026d9e78b0195f93ddbebf756f6cf697045:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2U0ZjIxNDE3OGEwZmJiZTI4ZjQ0MTgxMmUwY2UxZTYxNTAyZDM5NTI4YjhmY2ZkOTlkYWI4Nzg3NDllNjExMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMGNlY2U3ZWNhOTQ0NjNhYzZlOGY1MjZkNzQ0MmMwYzUxNTdjMTJiMjJiOGFhYTkxZmY1MTgyNmVjYTI0YjMzMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjUwNTJhMDQ2NmU2ZDMwMjE5NDMwMTNiNGM0ZDJhNjVhMWQ0N2JhMDUyZTExY2FkN2E1ZDRlYzUxYTk1NTZmOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTc3NmFiNDE0OTJiODEwOTZhNzU2MGM4ZmQ3YmJiZjUyYmU0YWRmYTVkZTY0ZDBiOTUwNjJkMWE4NWQyNGRlYyJ9"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs#L695-L944",
-          "version": "repo-lines-v1:sha256:0fd00d90ad130389d49e53e5f83198bf3832b3f591ff45390fb9bba403cdc4b1:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5ZWEzNTcwYTMwMWE5MmFjYjQ3MTBlMDc2YWEwNzUzZTk4MGU2MTRmNGJkMmMyMTlhY2QwN2Y4MWE4YWJiZDZmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5ZDhlOTA2ZmZmZjcyMmVjYTMwNjBkODU2YWNiNDYyOGU5NGE3YTMzOTBiNjFkMDYxZGMzNTQyNTI4N2RiYzBjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMWRmMTFkN2IwYTBhN2YxOWQ3ZWExMmU4Y2YzN2QwMzFjNzUxODU5NzI3ZWE3OTgyNTQ0MzcyYWYzNzZmOWE5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs#L695-L947",
+          "version": "repo-lines-v1:sha256:d3cfccf840b7e61eb2f1ecf53513121da8d7a6ce5c994cc4f4e6d5cde98288da:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5ZWEzNTcwYTMwMWE5MmFjYjQ3MTBlMDc2YWEwNzUzZTk4MGU2MTRmNGJkMmMyMTlhY2QwN2Y4MWE4YWJiZDZmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5ZDhlOTA2ZmZmZjcyMmVjYTMwNjBkODU2YWNiNDYyOGU5NGE3YTMzOTBiNjFkMDYxZGMzNTQyNTI4N2RiYzBjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMWRmMTFkN2IwYTBhN2YxOWQ3ZWExMmU4Y2YzN2QwMzFjNzUxODU5NzI3ZWE3OTgyNTQ0MzcyYWYzNzZmOWE5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         }
       ]
     },
@@ -242,7 +242,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         }
       ]
     },
@@ -256,11 +256,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/native_voice_transport.rs",
-          "version": "repo-file-v1:sha256:40aaeabf3f491b33a48a7e6b4ee67ebf202cf8761622e84d9749f5f2be2b1bbf"
+          "version": "repo-file-v1:sha256:622c5171ebfae3e6ff580ff43063b3716d1b6992426e019a3352f10a8fccb78c"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         }
       ]
     },
@@ -270,7 +270,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         }
       ]
     },
@@ -284,7 +284,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         },
         {
           "resource": "repo://scripts/macos/prepare_voice_acceptance.py",
@@ -298,13 +298,37 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
+        }
+      ]
+    },
+    {
+      "id": "claim_0d191663e2cc4b42bb1296749b9906be",
+      "statement": "The explicit macOS native voice test command builds the existing test binary, signs a separate stable-path copy with the selected development identity and fixed test identifier, and runs four exact real WebRTC regressions through Nextest build reuse. It preserves the original Cargo artifact and refuses missing, ignored or unsigned selections.",
+      "evidence": [
+        {
+          "resource": "repo://Makefile.toml#L447-L449",
+          "version": "repo-lines-v1:sha256:28b421f6ee501a3ce643638e1689af4776daff7d5d716917f8bd768ceaef1707:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTdlOTI1NGNjNWQ3ZDM0YTI3YzU3YTk0NTU5Mzg2ZTA2OTZiMDYzOGQxYjlkZTVhMjAxNjhkYmQ1MDA4ZmJlMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjA3OTYxZGY0MGI0MDIyNWQ4NDI2NzM2MGFjMmUwYWU2Yjc3NjZhOWU1NmEyYWFjYTU4NzMwMTJmYzRlNDAyNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjU0NTIyN2E3YzliNmIzNjc0NTYyNzdjYmQyNjNkZjgxNDVkMTI4MDM2OGNjNDc4YmU1Zjc1ZTMxM2E0NDNmNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGQ0ZTVhN2FkM2I2MzA5NDQ4ZmZhN2NhMGM0ZGU2ZDgxMzdkYjY5MTQ5NWI4OGQ3NTgxNzNjMjljOWM0NmUwZSJ9"
+        },
+        {
+          "resource": "repo://scripts/macos/run_native_voice_tests.py#L14-L78",
+          "version": "repo-lines-v1:sha256:f38b646b76ef64f8c5178492647c2f58e69fa1adfd4e1d898123d82789f1fee6:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2MzlhNTFkNWQ5ZTEwNTJlZDFjZTBmOTk3ZjVlMDc5Y2UxMmRjZTc5NjIyYzE4NmQxNzE1MTZmNzc4YjIzMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkMzYzY2U4MzkwZDRiZTRhYzQxN2ZjYWZhMDI3MmY3M2IyYzc3MTg2NTBmY2YxNTg1N2M0YzhmMjg5OThiZWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxOGUxNTE4ZWJmOWM3ZDE1OGI3ZTFkMzRhMjRjZjJiNjMyYTk4OTViM2Q2NjQyOTRkOTYxYjhlZTQ1ZjA3MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkNDEzNDBjYzIzOWExNTljZTliNjAyMmU5ZjYzMjI4MzJlMmVhZDc2Y2FlOWU0NzU0ZDIxMGViOGZiNmQ1ZTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_abb9a74dfaaf439d8c716d14712c8fc7",
+      "statement": "After one user-confirmed firewall allow, the measured original and rebuilt native voice test executables had different code hashes and the same designated requirement; both passed four tests with 28 known allow events each and no queued or prompt events in their test windows. Sixteen post-consent executions passed in total, while first consent, signer/path/host limits and the original timeout remain explicit.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json#L2934-L3099",
+          "version": "repo-lines-v1:sha256:9c13cb5cc940f112b89d44beb7b466773b8094fc5f78409ef0cb00c95fd0f8b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTY2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmOWNhODkxYmZmN2FjMWY3Y2VhYWU0MGVmMDUxMDY2YmU5ZWZlNDdiNGU0MjgxZTg2YzMxOWJlMmM1NWViY2U0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMTE1MThiN2Y4MjdiN2JiNmViZGZjMDhiYjJkMTFiODVkMjg2MmMzMWM3YzRjNzVkYmRlZmRlZThiNmIyOTYyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmM2UyNGMyYWQwZDhmZDJlZGE2ODdkNjE5YmI3ZjFkOWRiMjU5YmM1NmU3M2M5NTAzYTkwMGQ1YTg4YjYxOWJiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3OTk3Y2FkNzBiZDEyOTJkYTE3OWI1Y2RkMjllNzViOGQ2YjUzNjBjZGM0Yjc4YjM2MThjNDViZjJiNDg5MzYyIn0"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T21:12:13.971Z"
+    "at": "2026-10-28T02:37:26.121Z"
   }
 }
