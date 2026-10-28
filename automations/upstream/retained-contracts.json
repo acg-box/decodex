@@ -4763,5 +4763,53 @@
       "The existing account-bound automatic recovery applies to loaded idle Agent conversations. It does not replay input, interrupt an active turn or migrate an unavailable native session.",
       "No new native artifact qualification, real retired-provider check, installed-app acceptance, installation or release."
     ]
+  },
+  "retained_prompt_suggestions": {
+    "manual_review_item": 26,
+    "behavior": [
+      "The user selects Suggest next message in the composer menu. The existing native sampler makes one explicit request using the current root conversation; opening ordinary Ask separately remains read-only.",
+      "Display the result separately. Use as draft accepts a matching suggestion into the same idle conversation only when its composer is empty. Acceptance is one undoable edit and never sends. Preserve later edits and reject replaced sources or results from an unrelated sample question.",
+      "Reuse existing cancellation, timeout, source invalidation and lost-acknowledgement readback. Do not retry inference after uncertain delivery, add background predictions, or execute inherited tools through a generic fork."
+    ],
+    "source_symbols": {
+      "apps/decodex-gpui/src/agent_composer.rs": [
+        "AgentSurface::attachment_options"
+      ],
+      "apps/decodex-gpui/src/agent_sample.rs": [
+        "AgentSurface::suggest_next_prompt",
+        "AgentSurface::open_sample_panel",
+        "AgentSurface::suggested_prompt",
+        "AgentSurface::accept_prompt_suggestion"
+      ],
+      "apps/decodex-gpui/src/composer_input.rs": [
+        "ComposerInput::append_recovered_text"
+      ]
+    },
+    "regression_group": {
+      "entrypoint": "apps/decodex-gpui/src/main.rs",
+      "selector": "sample::tests::",
+      "tests": [
+        "shell::agent_surface::sample::tests::a_lost_cancellation_acknowledgement_reads_back_the_exact_sample_without_replay",
+        "shell::agent_surface::sample::tests::a_lost_sample_acknowledgement_is_read_back_without_another_model_command",
+        "shell::agent_surface::sample::tests::cancellation_controls_wait_for_native_completion_and_preserve_the_draft",
+        "shell::agent_surface::sample::tests::enter_in_a_separate_question_does_not_reach_the_main_send_action",
+        "shell::agent_surface::sample::tests::prompt_suggestion_needs_a_click_and_accepts_as_an_undoable_unsent_draft",
+        "shell::agent_surface::sample::tests::prompt_suggestion_preserves_later_edits_and_rejects_stale_or_unrelated_results",
+        "shell::agent_surface::sample::tests::separate_answer_preserves_the_composer_and_hides_a_replaced_source"
+      ]
+    },
+    "native_contract": {
+      "selected_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+      "method": "thread/sample",
+      "implementation": "codex-rs/app-server/src/thread_sample.rs#SampleTask::run,SampleInterceptor::intercept",
+      "existing_qualification": "automations/upstream/retained-evidence.json#retained_native_consumers",
+      "dedicated_prediction_limit": "thread/prediction/request returns method-not-found in the selected source. Do not infer support from its schema."
+    },
+    "limits": [
+      "The UI uses the existing native thread/sample integration; no new native artifact was built or qualified. Reuse the selected-artifact sampling qualification within its recorded scope.",
+      "Sampling requires an idle persistent root with a latest finished turn. Native tool attempts return no text; no tool-enabled prediction fork is substituted.",
+      "Suggestions are model-generated proposals. This change does not measure their usefulness or latency, exercise a live provider, or establish installed-app acceptance.",
+      "No installation, application launch, release, automatic suggestion generation, schedule change, or source-review cursor advance."
+    ]
   }
 }

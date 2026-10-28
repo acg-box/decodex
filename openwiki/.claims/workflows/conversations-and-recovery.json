@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b5847b6253f36433c964de052d612fe9aab4936a1592df69aa2bb791237bce11",
+  "pageVersion": "sha256:fedb9885109f5906f565fa8bbe329d5208ce6a1aad9323b2d5c165d1b44c94a8",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -196,7 +196,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample.rs",
-          "version": "repo-file-v1:sha256:6d4b37d3ccc228c7e00e399c4ce40cd0630c0f23ec599168bebad4f680f07e72"
+          "version": "repo-file-v1:sha256:69e51ae051571d885aa9aaf54fa31ab7d9d4b5b4f14291a1b231df1c5ec235bc"
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
@@ -415,10 +415,28 @@
           "version": "repo-lines-v1:sha256:e99d161babdf568d554305c64a4ee7ca05bd9a9429b68a9f650aa9025a95e9fe:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5NGVlMDg5ZGVmNjUxNjgyN2JkZGU1Mzg0ZmU1ZDkzMDExOTY1YTg2MTliZWQyMjkzMWRlNjhhODZkODliNTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkYTExOWFkZTJlMWUwZTQ4ZDFmNTMwMjU4YjYzYmQwMjY3M2EyZmNkMjdlZThjNjJkZDlkOWI0OWQ5N2M4NDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjMDdkNzhkZDAyYWI3ZTZlZDA2N2FmNDM4MTIwMmJhMWY4NGM3YmY0NDcxNTMyYjA4ZTIzODk2Y2YyNjFiYzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1YTI1YzIyOWQ1YTg5YTQ0ZDUxYWJkZWU2Mzk2NWNjODE0ODkwYjA0ODExOWE1YzVmZmUxYjZjNjhkYTJhNmQifQ"
         }
       ]
+    },
+    {
+      "id": "claim_fc6cae154fc04d67aa6fa1eaf19096b5",
+      "statement": "The composer offers explicit next-message suggestions through the existing native sampler. Use as draft inserts one undoable edit into the same idle conversation's empty composer and never sends automatically; later edits, replaced threads and unrelated sample results cannot be overwritten.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs#L737-L769",
+          "version": "repo-lines-v1:sha256:2668ce2e3cf1fa11a3cb3e0b334b28dba0fc73067c12bb77b1d039bd1e761c22:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0MDQxNjM4NjNjMjg5YzE1YzNkNmE3OWYxYjlkNmZiZjZmZGJiY2I0OGY0MjQxN2VmZmU3ZGU0Y2I0YzU3ODUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzNDdmMmIyNDhlZmY3NzZlYmQ0OTM0MmRjZGExNmRmNzJiZWFmN2Y4YzViMjBlZDg4ZjU1MjE2ZWRiMTMwNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM0NzAzOGNmZWMzNDM0NWI0ZDJhZTkxNWZjZTQ3NjBjNmVhYzc3YjBlZGRjOWIxMDBhNTkyMmNkYjE5MDE3MDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3YTIxZmY5NzYzMGZiMGMwMGMwZTY4MDE5OGI3MmVjOTc2NTU4ZTMxOWU2ZTUyY2JjYzZkYjY2ZmNhMWI1OGIifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_sample.rs#L68-L211",
+          "version": "repo-lines-v1:sha256:1d5507d0f92f51daec5d0cfbddef562462312d54a16ae362cf0882d90b78dc1e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0YjQ4YTk1ZDczZjZlMGU1MGE0ZjdmZjRkMzVhZmJhMTA2MTQ5OTQxMGNiNjFlMTViNTZkY2I2OTUzNjE5ZmM3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzZTA3YWUzNzlhODQ4YmJmOWRiMDIwY2M1YTJiMzBjNmIwNmFlY2Y4YjVhNzczM2JjMjIwYWY4MDUzZDdjODUzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0NjI5MGY3ZDI5ZTYwY2MwYmU5ZGE5ZDE5YTIwYTEzYmVlNWJiYzE1ZjFjYTFhOTI5ZGZiZWQ2N2RlNDFkNDQyIn0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs#L24-L132",
+          "version": "repo-lines-v1:sha256:755e360234d0cdd4b67312577cd5aa9165feead46c03c2d5de98a19fa21cd02a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0M2YzNzFkZGQ0YTdmMTNkMGJiOGYyMzU4ZTA0ZTFlNjM5NDRiYTZjMTBhZjA2N2E0ZDQ2M2QxZmFmMjAxY2RiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1Y2RiYzQ5MTM5Y2JjYTRjM2IyY2YxZTkzMGY2OTFmMTBjZGNmN2E3MTBjMmIwMTY3NWUxMWNjYmNiNTFhMzI5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxYTI3MWMwZmYwMjJjYjA0NmI0ZjdjNDJmYjdhYTEwNmJlY2FhZTY0ZDM4OGFjODczZDM1NmQ3ZTliOGM4NDNjIn0"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T07:58:23.862Z"
+    "at": "2026-10-28T08:27:50.875Z"
   }
 }

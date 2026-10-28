@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "605dff41372cf046c8cdd2fc0cca4d697ad6421b469d7d2f0c5f564af6b2299f",
+    "sha256": "cc00d2765accf3bb736b88f091d4e950b994271f802d3f27f6867ea422ac40a2",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -1231,5 +1231,50 @@
       "desktop-diagnostic-log-upload": "Rejected by the user to protect privacy; do not add an upload capability.",
       "semantic-transcript-selection-copy": "Additional partial-Markdown/table selection is not selected; preserve existing copy behavior."
     }
+  },
+  "prompt_suggestions": {
+    "contracts": "automations/upstream/retained-contracts.json#retained_prompt_suggestions",
+    "source_revision": "e2d65bd3070a0b30e4fb63dde356d3ccb0d3c7b8",
+    "source_sha256": {
+      "apps/decodex-gpui/src/agent_composer.rs": "5fa9030baecd4e0d71d4947851156ecdd2e41674cb3a774adb829ed19be4a13d",
+      "apps/decodex-gpui/src/agent_sample.rs": "69e51ae051571d885aa9aaf54fa31ab7d9d4b5b4f14291a1b231df1c5ec235bc",
+      "apps/decodex-gpui/src/agent_sample_tests.rs": "9dea564675deb4634c46ef10aacd9c7e9c031773e57e78c5091b000854a4294c",
+      "apps/decodex-gpui/src/agent_sample_request.rs": "0944061b207548f39670ea47073a455fb7d48c7736fbc938e728fd64f9cf2183",
+      "crates/decodex-codex/src/app_server_client/sample.rs": "424ef6cb93c923c8db8f050a10b67bfd9a008860e8054d04b6843b3379568e2a",
+      "crates/decodex-runtime/src/agent_sample_host.rs": "d1fa63e10dc35bb2b39f669c4d2da7a37d4b65c101d15027632b099f45d0ab48"
+    },
+    "tests": {
+      "command": "cargo +stable test --locked -p decodex-gpui --bin decodex-gpui -- sample::tests:: --test-threads 1",
+      "baseline_passed": 5,
+      "final_unique_passed": 7,
+      "identities": [
+        "shell::agent_surface::sample::tests::a_lost_cancellation_acknowledgement_reads_back_the_exact_sample_without_replay",
+        "shell::agent_surface::sample::tests::a_lost_sample_acknowledgement_is_read_back_without_another_model_command",
+        "shell::agent_surface::sample::tests::cancellation_controls_wait_for_native_completion_and_preserve_the_draft",
+        "shell::agent_surface::sample::tests::enter_in_a_separate_question_does_not_reach_the_main_send_action",
+        "shell::agent_surface::sample::tests::prompt_suggestion_needs_a_click_and_accepts_as_an_undoable_unsent_draft",
+        "shell::agent_surface::sample::tests::prompt_suggestion_preserves_later_edits_and_rejects_stale_or_unrelated_results",
+        "shell::agent_surface::sample::tests::separate_answer_preserves_the_composer_and_hides_a_replaced_source"
+      ],
+      "unmatched_selectors": [],
+      "initial_failure": "The first added undo test did not render the composer. Rendering the actual input fixed the test harness; the final click/undo test passed."
+    },
+    "static_checks": {
+      "strict_clippy": "cargo +stable clippy --locked -p decodex-gpui --all-features --bin decodex-gpui -- --no-deps -D clippy::all -D clippy::too_many_lines -D clippy::unwrap_used -D clippy::use_self -D clippy::wildcard_imports -D missing-docs -D unused-crate-dependencies -D warnings",
+      "rust_format": "cargo +nightly fmt --all -- --check"
+    },
+    "qualification_reused": {
+      "path": "automations/upstream/qualification.json",
+      "sha256": "33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602",
+      "schema_sha256": "86c27115a28bf905f4c25ee204b218b2ba9598ef664787efddd30e2d0c20f2d9",
+      "scope": "Existing selected-artifact native sampling/tool-suppression and cleanup contracts only. No new native execution."
+    },
+    "limits": [
+      "The UI uses the existing native thread/sample integration; no new native artifact was built or qualified. Reuse the selected-artifact sampling qualification within its recorded scope.",
+      "Sampling requires an idle persistent root with a latest finished turn. Native tool attempts return no text; no tool-enabled prediction fork is substituted.",
+      "Suggestions are model-generated proposals. This change does not measure their usefulness or latency, exercise a live provider, or establish installed-app acceptance.",
+      "No installation, application launch, release, automatic suggestion generation, schedule change, or source-review cursor advance."
+    ],
+    "delivery_reference": "https://github.com/acg-box/decodex/commit/e2d65bd3070a0b30e4fb63dde356d3ccb0d3c7b8"
   }
 }
