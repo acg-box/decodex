@@ -1,9 +1,4 @@
 //! App updates use Sparkle; component preparation always uses this build's lock.
-use std::{
-	sync::{Arc, Mutex},
-	thread,
-};
-
 use gpui::{
 	AnyElement, Context, Div, KeyDownEvent,
 	prelude::{
@@ -13,20 +8,13 @@ use gpui::{
 };
 
 use crate::{
+	component_runtime::{PreparationState as ComponentState, RuntimePreparation},
 	native_updater::NativeUpdater,
 	settings_surface::SettingsSurface,
 	ui_feedback::{self, Feedback},
 	ui_theme::{self, BLUE},
 };
-use decodex_components::{ComponentStore, InstallProgress, RuntimeLock};
-
-#[derive(Clone, Debug, PartialEq)]
-enum ComponentState {
-	Unchecked,
-	Preparing(InstallProgress),
-	Ready,
-	Failed(String),
-}
+use decodex_components::{InstallProgress, RuntimeLock};
 
 #[derive(Clone, Copy)]
 enum Action {
@@ -35,59 +23,24 @@ enum Action {
 }
 
 pub(super) struct Updates {
-	shared: Arc<Mutex<ComponentState>>,
+	preparation: RuntimePreparation,
 	shown: ComponentState,
 	native: NativeUpdater,
 	app_feedback: Option<Feedback>,
 }
 impl Updates {
-	pub(super) fn new() -> Self {
-		// The app lifecycle prepares the runtime. Settings checks it only on request.
-		let shown = ComponentState::Unchecked;
+	pub(super) fn new(preparation: RuntimePreparation) -> Self {
+		let shown = preparation.snapshot();
 
-		Self {
-			shared: Arc::new(Mutex::new(shown.clone())),
-			shown,
-			native: NativeUpdater::new(),
-			app_feedback: None,
-		}
-	}
-
-	fn spawn_preparation(&self) {
-		let shared = self.shared.clone();
-
-		thread::spawn(move || {
-			let result = RuntimeLock::embedded().and_then(|lock| {
-				ComponentStore::for_user()?.ensure(&lock, |progress| {
-					*shared.lock().expect("component state") = ComponentState::Preparing(progress);
-				})
-			});
-
-			*shared.lock().expect("component state") = match result {
-				Ok(_) => ComponentState::Ready,
-				Err(error) => ComponentState::Failed(error),
-			};
-		});
+		Self { preparation, shown, native: NativeUpdater::new(), app_feedback: None }
 	}
 
 	fn prepare_runtime(&self) {
-		let mut state = self.shared.lock().expect("component state");
-
-		// Check the worker's state, not a rendered snapshot: repeated clicks cannot
-		// queue another download before the view receives its next frame.
-		if matches!(*state, ComponentState::Preparing(_)) {
-			return;
-		}
-
-		*state = ComponentState::Preparing(InstallProgress::Waiting);
-
-		drop(state);
-
-		self.spawn_preparation();
+		self.preparation.prepare();
 	}
 
 	pub(super) fn poll(&mut self) -> bool {
-		let next = self.shared.lock().expect("component state").clone();
+		let next = self.preparation.snapshot();
 		let changed = next != self.shown;
 
 		self.shown = next;
@@ -253,25 +206,7 @@ fn progress_text(progress: &InstallProgress) -> String {
 
 #[cfg(test)]
 mod tests {
-	use crate::settings_surface::updates::{
-		ComponentState, InstallProgress, SettingsSurface, Updates,
-	};
-
-	#[test]
-	fn repeated_clicks_do_not_queue_downloads_while_the_worker_is_busy() {
-		let mut updates = Updates::new();
-
-		updates.shown = ComponentState::Failed("Previous failure".into());
-		*updates.shared.lock().expect("state") =
-			ComponentState::Preparing(InstallProgress::Waiting);
-
-		updates.prepare_runtime();
-
-		assert_eq!(
-			*updates.shared.lock().expect("state"),
-			ComponentState::Preparing(InstallProgress::Waiting)
-		);
-	}
+	use crate::settings_surface::updates::{ComponentState, RuntimePreparation, SettingsSurface};
 
 	#[gpui::test]
 	fn opening_settings_does_not_start_another_component_check(cx: &mut gpui::TestAppContext) {
@@ -287,7 +222,7 @@ mod tests {
 
 			s.refresh(cx);
 
-			assert_eq!(*s.updates.shared.lock().expect("state"), ComponentState::Unchecked);
+			assert_eq!(s.updates.preparation.snapshot(), ComponentState::Unchecked);
 		});
 
 		visual.update(crate::ui_frame::draw_current_frame);
@@ -310,8 +245,8 @@ mod tests {
 		});
 
 		settings.update(visual, |settings, cx| {
-			*settings.updates.shared.lock().expect("state") =
-				ComponentState::Failed("Download failed".into());
+			settings.updates.preparation =
+				RuntimePreparation::fixture(ComponentState::Failed("Download failed".into()));
 
 			settings.poll_updates(cx);
 		});
@@ -322,7 +257,7 @@ mod tests {
 		assert!(visual.debug_bounds("updates-retry-runtime").is_some());
 
 		settings.update(visual, |settings, cx| {
-			*settings.updates.shared.lock().expect("state") = ComponentState::Ready;
+			settings.updates.preparation.finish_fixture(Ok(()));
 
 			settings.poll_updates(cx);
 		});

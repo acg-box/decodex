@@ -2521,6 +2521,16 @@ fn conversation_recovery_presentation(task: Option<&ConversationSummary>) -> (bo
 
 fn connection_presentation(view: ConnectionView) -> ConnectionPresentation {
 	match view {
+		ConnectionView::PreparingComponents { failed } => ConnectionPresentation {
+			label: if failed { "Codex setup failed" } else { "Preparing Codex" },
+			detail: if failed {
+				"Open Settings > Updates to retry setup."
+			} else {
+				"Installing the required runtime."
+			}
+			.into(),
+			color: if failed { crate::ui_theme::ERROR } else { INFO },
+		},
 		ConnectionView::Connecting { .. } => ConnectionPresentation {
 			label: "Connecting",
 			detail: "Starting Decodex.".into(),
@@ -7433,6 +7443,8 @@ mod tests {
 	#[test]
 	fn every_connection_state_has_a_bounded_deterministic_presentation() {
 		let states = [
+			ConnectionView::PreparingComponents { failed: false },
+			ConnectionView::PreparingComponents { failed: true },
 			ConnectionView::Connecting { attempt: 2 },
 			ConnectionView::Online { generation: 4, applied: Some(Cursor(9)) },
 			ConnectionView::OfflineRetrying { next_attempt: 3, delay: Duration::from_millis(250) },
@@ -7449,6 +7461,8 @@ mod tests {
 		assert_eq!(
 			labels,
 			[
+				"Preparing Codex",
+				"Codex setup failed",
 				"Connecting",
 				"Online",
 				"Reconnecting",

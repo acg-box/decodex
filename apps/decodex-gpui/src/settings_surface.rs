@@ -565,7 +565,7 @@ impl SettingsSurface {
 		let launch_at_login =
 			menu_bar.launch_at_login_state().unwrap_or(LaunchAtLoginState::OperationFailed);
 		let mut surface = Self {
-			updates: updates::Updates::new(),
+			updates: updates::Updates::new(crate::component_runtime::shared(cx)),
 			power: Default::default(),
 			category: SettingsCategory::General,
 			snapshot,

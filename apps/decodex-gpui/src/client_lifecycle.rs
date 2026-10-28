@@ -54,6 +54,9 @@ const CLIENT_CACHE_SCHEMA_GENERATION: u64 = 1;
 const HISTORY_PAGE_CACHE_SCHEMA_GENERATION: u32 = 1;
 
 pub(crate) trait AppOwnedDaemonRecovery: Send + Sync {
+	fn component_preparation_failed(&self) -> bool {
+		false
+	}
 	/// Component acquisition does not consume connection-recovery attempts.
 	fn preparing_components(&self) -> bool {
 		false
@@ -94,6 +97,8 @@ trait LifecycleIo {
 /// State rendered by the later shell without exposing transport or cache internals.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ConnectionView {
+	/// Runtime setup is separate from connection retries and remains manually retryable.
+	PreparingComponents { failed: bool },
 	/// One caller-owned connection attempt is in progress.
 	Connecting { attempt: u8 },
 	/// A verified retained session is online.
@@ -389,6 +394,12 @@ impl ClientLifecycle {
 		I: LifecycleIo,
 	{
 		while self.app_owned_daemon.as_ref().is_some_and(|owner| owner.preparing_components()) {
+			let failed = self
+				.app_owned_daemon
+				.as_ref()
+				.is_some_and(|owner| owner.component_preparation_failed());
+
+			self.set_view(ConnectionView::PreparingComponents { failed });
 			if let Some(owner) = &self.app_owned_daemon {
 				owner.recover_transport();
 
