@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:8cdec3fda563d191d890e10723f5fabbd7f688055ee5cdf95af4ae048c4ea1c5",
+  "claims": [
+    {
+      "id": "claim_95da7355536d42fb9ba017dae9558113",
+      "statement": "The optional EGM component selects the original Google repository as egm@egm and delegates installation, Git updates and removal to native Codex plugin commands rather than a local prompt or package implementation.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-components/src/lib.rs#L30-L39",
+          "version": "repo-lines-v1:sha256:38ed59d3e314e5bfbdb3d8997881c966198b7b50aaa5bea7768ad00ab8b36fa5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExMjEyMjI0ZGYyZDIzZjYwOGI4ZjA5YjJhZGM3YjdiOWQwMGMxNjg5NjZmMGFkNzk2OWYxNGI4YjJiODQ4ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjY2Q5NjRhZDI5ODU2MzQwMGM2MWYwOTA1MTVmMjI4ZWIwMDZiYTNhYTliNTcyZGU2NjE1OTY2Y2FmMzhlMTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4MzliMWExOGNiNTA0ZWEzMThmZDhmMzIxYjNhYTdmZGJiYThjNjM3OTM1ZDQ2NTg2YWJiZDQ5OGMwNGFkNzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjOGQ1MWFjOTYxZTZhNmRhNzJlOTVkYjkxNGE4N2E5ZTUzNTVkODgxYjgyMzc3ZGZkZGJlZTBhYjhmNTk5MDEifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/plugins.rs#L73-L147",
+          "version": "repo-lines-v1:sha256:b6c570d30f11890695a13f365f24e3c7636f81d44a16266acb9c0eae1a372a5f:eyJzZWxlY3RlZExpbmVDb3VudCI6NzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyZTYxNjYzNTdiZTcwOTMyNjFlOGY1NTk2ODYzMzI0NmQ4NDA0NjMzMmU4Y2FiNGRmNjRkZmM2NjQyZWJjMTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVhMDU5MDIzMTJkMDdjYzBkMDY5YWYwZDE4NGYyMjg0Zjk4NzdiZDg1YzJiNTg3MzM0NGExYmFlZjM3ZGVlZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFkMjM0YzUyYWNmNjA0MjY4ODZhMTU4ZDRlMmIzNmYwZWMzODYxYjEyYzM0NjJjMzMzOTQzZWVjOTI3MWU1NGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkOWQ4Y2I4OWE1ZWZkZDUwODI0MDBkN2JiMTdkODFjYmE4ZmVjZTdjZjE1MzExOWQ2ZDg5ODdjNWUwNDc3YmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3ca9161484f24f26bb9c1976620ea4f0",
+      "statement": "Settings > Components manages local optional plugin actions in the This Mac section, showing native installed version and enabled state with install, enable, update, refresh and uninstall controls, separately from required-runtime verification and Sparkle application updates.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L167-L272",
+          "version": "repo-lines-v1:sha256:19727ba82f3e45b9f7c3b35ea7dd5380660571313787b324113c73bbad7f43ce:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0ZTRlMGQ1Y2U2NzhmNGIyNDY0OWQ4ZGYxM2JiZTA2YzdmMjY0ZGQ2N2JmMTkzOTliMmM3OGRiYWM2YzJmZTJmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJkM2QwOWUyNWUzM2U2YjVmNTcxMDU0MWVlZDc5NWE1NTgxYWExNDI1ZDNjMjUyMGJlNzJkYjg4ZmNlYjg0MmFkIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhNTIxNjA0YjM1ZmM0MGFmMDBjYmE0ZWVhMmZkNWUyYzNhZjE4NjNiMzkxMTg1ZDdiZjRiYjA5ZTcyZDBjOGIzIn0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_updates.rs",
+          "version": "repo-file-v1:sha256:36f1d723023f92b9e981084c184ad9eb1b086651c494f3abef3a66eb7c4be6a2"
+        }
+      ]
+    },
+    {
+      "id": "claim_52ae678628b04bcb95a5d086ba5ea647",
+      "statement": "PluginOperations coalesces actions while busy and retains action errors separately from installed state read back from native Codex, including after an action fails.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/component_plugins.rs#L34-L86",
+          "version": "repo-lines-v1:sha256:b3a16acd0360c2a981c720d0599aec029a051040f08d33eaf4a53e65df66a6a6:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMwNDYzODA5ZGZmYjNiZDE5NDA1YTdkN2I2ZjliYTJjMWNlZDE2NGVjODEyNjcxMzliOTI1ZjhjZTdjOGI3YjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdkNWZhOTFjY2M2NDgxYzViMzJkY2U4YzcwZjViZTM0MDU0YWFkOTZiODZkZjAxZDYwMzIwZmMwZTEwYmE1NDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhZDg1ZGU3YTUwODFmMTQ5ZTliNGM0YTliOTcxYmQ4OTQwYjE0MTc0YmVmZmMzMWQ0YjgyNTQzMDVhODhmNTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0cd33064cbce4b54906f6ae43d17f7bd",
+      "statement": "The native EGM fixture installs the original plugin in an isolated home, discovers seven plugin skills by their native identities, compares original runtime directories, runs fresh-context model reviewers through the existing client, checks child completion and resource reads, and requires an unchanged target and a generated report after one review round.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_component_tests.rs#L148-L385",
+          "version": "repo-lines-v1:sha256:19ff7036a7097077d8ffb3f935ac882f7fcc62a030918dadefc5562dda866b3d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjM4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxMTFmZWM5MmUyODhkMjBkYzgxYThhMjM4NjM4Zjk0ZWM0ZmQyMzYwNjIwNGZiMDEwY2JiNTZiZDY2NTFkNWU2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_50097bdc77e1492bb48396bffd7a4d45",
+      "statement": "The opt-in live EGM fixture uses the protected shared credential reader and process-scoped ChatGPT token projection, does not use the refresh token, and checks that no auth file persists in the isolated native home.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_component_tests.rs#L25-L84",
+          "version": "repo-lines-v1:sha256:1567f866c481fc6541826bc4bc84ba97b571ed2da8de30e11e79a812dde297aa:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwY2QxNWY1Yzg4ODE2N2RlY2U0NmZmMTU5YTg0ODY1ZTRmYTNkZTg2OGY4Mzc4ZGYxY2E0NjJlYjI5MGQ0ODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyN2MxN2ViZWM5OTIwMTYwNmE2NDA2YzlkYjA5ZWY0MDI4MmFiNmQ4YmFmN2I3MmZjYzQ2NTc4NDE3NzE1NWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4ZGQ4ZTZmZDJiODlmNzg0MmMxMjVjNzIzZmRmZTQ3Mjk4MjliMzNjOWMzY2RlM2VmYmJlMjQzODg1MWU3YjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg2OWZiNzczNjYwM2FiYmU0NDcyM2EyMWQ4OGRlMWFiY2VmNWVkODBmYjRhM2RlZTI3NTAyNDZmNTY3NGViNzMifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_component_tests.rs#L363-L385",
+          "version": "repo-lines-v1:sha256:23699fa8f0e0444d728e3d0efd9c563ce735d5ae8daf1cc8f4cad91fc87ead32:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiMzVhNWU3YTU5NzgzYTc5YWNkMmU3ZTNmZmY4NGMwYzQ3ZjhjYWFhZDVmY2Q4MmE1ZDI5MGQ1YjA1NWExZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM2NWFmNWVkZmM5YzY3ZWQ5Mzk4MzlkZmMyMGMyMjhlOTkyODI1NGVlZGUyZDI4NzRjODg0NDhjNDMxYjNmNTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-28T03:38:22.084Z"
+  }
+}
