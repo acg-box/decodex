@@ -14,12 +14,16 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Tests/DecodexAppTests/NativeJournalFixture.swift
   - id: openwiki-source-ca95ba5564216bb4898c8392
     resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
+  - id: openwiki-source-f7ecbc6c02d8c1b7873858d6
+    resource: repo://automations/upstream/checkpoint.test.mts
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
-  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
-    resource: repo://automations/upstream/retained-evidence.json
+  - id: openwiki-source-8b67a68a7ef89772aa8180d1
+    resource: repo://automations/upstream/README.md
+  - id: openwiki-source-3127fd4c7b2aefcc9cea7961
+    resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-2d990e4e2bc233a95b4894b9
     resource: repo://crates/decodex-components/src/pin.rs
   - id: openwiki-source-95a7168e447de14b4b758f16
@@ -84,10 +88,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-28T02:37:26.121Z" }
+generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T02:37:26.121Z
+    at: 2026-10-28T03:00:10.087Z
 ---
 
 
@@ -175,7 +179,7 @@ The GPUI `archived_selection_parks_exact_draft_and_restores_it_on_unarchive` che
 
 ## Qualify retained native behavior
 
-Use [the portable evidence index](../../automations/upstream/retained-evidence.json) for current retained requirements, exact test names and qualification limits. Use its command and environment with the candidate CLI and its packaged helpers. Register the selected tests first and include ignored native fixtures explicitly. Require every listed test to execute. Keep source tests, local projection tests and actual CLI tests in separate receipts.
+Use [the stable contract catalog](../../automations/upstream/retained-contracts.json) for retained requirements, exact test names and original limits. The [current evidence router](../../automations/upstream/retained-evidence.json) links the selected runtime qualification. Choose only probes affected by the changed consumer; the command list below is not a daily test cohort. Use its command and environment with the candidate CLI and its packaged helpers. Register the selected tests first and include ignored native fixtures explicitly. Require every listed test to execute. Keep source tests, local projection tests and actual CLI tests in separate receipts.
 
 The reusable artifact probes are in `crates/decodex-runtime/tests/native_qualification/`. Set `QUALIFIED_CODEX_BINARY` to the absolute candidate CLI path and `QUALIFIED_CODEX_SOURCE_COMMIT` to its exact upstream commit. Set `DECODEX_QUALIFICATION_OUTPUT` to an existing output directory under the native automation run, outside tracked files. Keep the packaged Code Mode helper beside the selected package.
 
@@ -202,11 +206,11 @@ The startup probe checks both a missing `.env` and a directory at that path. The
 
 A hook start event can precede native trust verification. The hook regression checks actual script effects after declaration or script changes, enablement changes and restart. The parallel tool regression requires both requests before either reply and verifies result order. The MCP status regression waits for discovery to finish, then checks opaque first-page metadata through tool pagination, status pagination and restart.
 
-Use the current [qualification record](../../automations/upstream/qualification.json) for the source-test helper recipe and exact registered identities. Its source cohort uses `dev-small` helpers. Nextest can replace requested `CARGO_BIN_EXE_*` values with its own build outputs; those tests do not prove that the signed production CLI ran. Use the Decodex native cohort and standalone probes for exact CLI checks. For the signed Code Mode helper, invoke the compiled `grpc_tcp` test binary directly with both documented helper path variables. Record each actual artifact separately and preserve the original assertions and timeouts. Older private-hook launchers apply only to their recorded source snapshot; do not copy their private configuration into the production CLI.
+Read the current [qualification record](../../automations/upstream/qualification.json) for the recorded source-test helper recipe and exact registered identities. Run an upstream selection only for a concrete compatibility diagnosis or missing retained-fix proof; do not inherit that cohort as a daily gate. The recorded source cohort uses `dev-small` helpers. Nextest can replace requested `CARGO_BIN_EXE_*` values with its own build outputs; those tests do not prove that the signed production CLI ran. Use the Decodex native cohort and standalone probes for exact CLI checks. For the signed Code Mode helper, invoke the compiled `grpc_tcp` test binary directly with both documented helper path variables. Record each actual artifact separately and preserve the original assertions and timeouts. Older private-hook launchers apply only to their recorded source snapshot; do not copy their private configuration into the production CLI.
 
 ## Memory, collaboration history and actual usage
 
-`selected_read_views` in the [retained index](../../automations/upstream/retained-evidence.json) records the exact regression identities, source entrypoints, selected CLI and helper digests, generated schema digest and scope limits for these three views. Run preparation explicitly. Set `DECODEX_TEST_CODEX_BINARY` to the prepared CLI; keep its packaged helpers available.
+`selected_read_views` in the [stable contract catalog](../../automations/upstream/retained-contracts.json) records the exact regression identities, source entrypoints, selected CLI and helper digests, generated schema digest and scope limits for these three views. Run preparation explicitly. Set `DECODEX_TEST_CODEX_BINARY` to the prepared CLI; keep its packaged helpers available.
 
 ```sh
 DECODEX_CODEX_DEVELOPMENT_RUNTIME=<qualified-runtime-directory> cargo make prepare-codex
@@ -226,7 +230,7 @@ These results establish source and fixture behavior. They do not establish insta
 
 ## Project, Work and global Guardian validation
 
-The exact commands and selected identities are in `retained_project_agent_work` in the [retained index](../../automations/upstream/retained-evidence.json). Prepare the selected package with `DECODEX_CODEX_DEVELOPMENT_RUNTIME` and `cargo +stable make prepare-codex` before native qualification. Set both `DECODEX_TEST_CODEX_BINARY` and `DECODEX_NATIVE_BINARY` to its CLI for the native Nextest matrix. The Python Project/Guardian probe uses `QUALIFIED_CODEX_BINARY`, not either Nextest variable. Keep packaged helpers intact and use an existing temporary output directory.
+The exact commands and selected identities are in `retained_project_agent_work` in the [stable contract catalog](../../automations/upstream/retained-contracts.json). Prepare the selected package with `DECODEX_CODEX_DEVELOPMENT_RUNTIME` and `cargo +stable make prepare-codex` before native qualification. Set both `DECODEX_TEST_CODEX_BINARY` and `DECODEX_NATIVE_BINARY` to its CLI for the native Nextest matrix. The Python Project/Guardian probe uses `QUALIFIED_CODEX_BINARY`, not either Nextest variable. Keep packaged helpers intact and use an existing temporary output directory.
 
 ```sh
 cargo +stable make check-rust
@@ -320,7 +324,7 @@ DECODEX_TEST_NATIVE_FORK=1 python3 scripts/vnext/run_native_regression.py \
   --filter 'test(installed_recap_public_socket_preserves_parent_and_exact_request_identity)'
 ```
 
-The `retained_attached_forks` record in the [portable evidence index](../../automations/upstream/retained-evidence.json) lists the other four exact-artifact native tests and all reproducible commands. The final cohort passed five native tests, 57 focused backend tests and six focused UI tests with zero unmatched selectors. The complete workspace run passed 3006 tests with 1227 skipped and one passed-test LEAK; the affected composer test then passed in the clean focused cohort. These overlapping selections do not establish the cleanup cause.
+The `retained_attached_forks` record in the [stable contract catalog](../../automations/upstream/retained-contracts.json) lists the other four exact-artifact native tests and all reproducible commands. The final cohort passed five native tests, 57 focused backend tests and six focused UI tests with zero unmatched selectors. The complete workspace run passed 3006 tests with 1227 skipped and one passed-test LEAK; the affected composer test then passed in the clean focused cohort. These overlapping selections do not establish the cleanup cause.
 
 Strict Clippy for five affected packages, nightly formatting, 28 Python checks, the schema59 database gate and the full 1076-file style audit passed. This style result is separate from the earlier read-only-view audit failure. The native provider is synthetic. These checks did not install or launch the desktop app, qualify real-provider behavior, migrate the runtime baseline, advance upstream review or change the schedule.
 
@@ -375,6 +379,8 @@ cargo +stable test -p decodex-publisher
 ```
 
 Makefile.toml owns the complete gate and tool-specific formatter/linter settings. Use repository lockfiles and already-managed tools. A missing prerequisite is not a source defect and does not authorize arbitrary toolchain replacement.
+
+The automation test task uses the managed Node version from `site/.nvmrc` and runs checkpoint behavior regressions before the existing portfolio tests. It checks contiguous publication, stale input, exact replay, explicit archival and read-only inspection. Use the [checkpoint publisher](codex-upstream-autopilot.md#publish-a-checkpoint) for native state changes. Automation-control changes need these affected checks, not a Codex build or app/provider suite.
 
 ## Evidence boundaries
 

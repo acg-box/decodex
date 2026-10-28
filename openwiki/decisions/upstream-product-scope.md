@@ -24,8 +24,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
-  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
-    resource: repo://automations/upstream/retained-evidence.json
+  - id: openwiki-source-3127fd4c7b2aefcc9cea7961
+    resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences_tests.rs
   - id: openwiki-source-2b08587e9b26e203156110c8
@@ -82,10 +82,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
+generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T02:37:26.121Z
+    at: 2026-10-28T03:10:40.743Z
 ---
 
 # Product scope and native ownership
@@ -96,7 +96,7 @@ Decodex supplies a local workspace, account policy, work relationships and reada
 
 The [Project, Agent and Work contract](project-agent-work.md) is the accepted and implemented contract for general-purpose collaboration. It defines shared English names for code and UI, an optional Assistant, existing Agents acting as Project Leads, one owner per Work, native Subagents, and scoped Collaboration Requests between independent Agents. It does not use fixed L0/L1/L2 business levels. The current ownership boundary is documented below.
 
-Global Guardian controls and native private Review Details are now selected product scope. They are no longer awaiting a decision on whether to implement them. The target has no per-Agent Guardian override; actual native requirements and per-source effective settings remain authoritative. Review Details are diagnostic observation, not permission or Work acceptance. Implementation, exact-artifact qualification and a separate local installed development acceptance are recorded in the retained evidence index. The installed scenario qualifies two Projects and four Works, independent-Agent input and approval ownership, Pause/Resume, restart recovery, global Guardian and the Workspace/Full Access sequence. Official Codex desktop Project presentation remains unobserved. A controlled scenario does not establish general model quality. This decision does not enable a native flag, broaden Full Access, or select unrelated historical optional proposals.
+Global Guardian controls and native private Review Details are now selected product scope. They are no longer awaiting a decision on whether to implement them. The target has no per-Agent Guardian override; actual native requirements and per-source effective settings remain authoritative. Review Details are diagnostic observation, not permission or Work acceptance. Implementation, exact-artifact qualification and a separate local installed development acceptance are recorded in the stable retained contract catalog. The installed scenario qualifies two Projects and four Works, independent-Agent input and approval ownership, Pause/Resume, restart recovery, global Guardian and the Workspace/Full Access sequence. Official Codex desktop Project presentation remains unobserved. A controlled scenario does not establish general model quality. This decision does not enable a native flag, broaden Full Access, or select unrelated historical optional proposals.
 
 The default coordination surface uses `work_read` and `work_manage`. Only users create persistent Agents. Native Subagents own temporary execution. Managed-worker/manager creation and old goal/dependency tools are retired from new conversations and refused in legacy schemas. Native history and recorded tool declarations stay bound to their original conversations.
 
@@ -116,7 +116,7 @@ The selected scope includes three views in the existing desktop:
 - **Collaboration history:** Retain exact local question replies, their delivery and receiving-turn outcome, plus independent contribution cycles and explicit owner assessments. A reply or returned contribution does not establish resolution or complete Work. Missing external reply bodies remain unknown.
 - **Actual usage:** Read known whole-turn token deltas and recorded duration for a persistent Agent or retained Work references. Shared Work references, missing counters and unobserved child usage remain explicit. Linked turns can contain other activity; recorded duration is not Work elapsed time and these values are not a bill.
 
-These views are available through local protocol 4.0 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [retained evidence index](../../automations/upstream/retained-evidence.json). Installed-app acceptance remains separate.
+These views are available through local protocol 4.0 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
 
 ## Current optional decisions
 

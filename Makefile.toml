@@ -349,6 +349,7 @@ args = [
 # | test-rust                          | command   |     |
 # | test-rust-headless                 | command   |     |
 # | test-sandboxed                     | composite |     |
+# | test-upstream-checkpoint           | command   |     |
 # | test-vnext-architecture            | command   |     |
 # | test-vnext-cli-diagnostics         | command   |     |
 
@@ -364,11 +365,20 @@ dependencies = [
 ]
 
 [tasks.test-automations]
+dependencies = ["test-upstream-checkpoint"]
 command = "python3"
 args = [
 	"-m",
 	"unittest",
 	"automations.decodex.scripts.config.tests.test_portfolio",
+]
+
+[tasks.test-upstream-checkpoint]
+command = "node"
+args = [
+	"--experimental-strip-types",
+	"--test",
+	"automations/upstream/checkpoint.test.mts",
 ]
 
 [tasks.test-sandboxed]

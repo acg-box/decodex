@@ -16,10 +16,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
   - id: openwiki-source-d1f06f7b22d0c2eec328d95f
     resource: repo://apps/decodex-gpui/src/native_voice_transport.rs
+  - id: openwiki-source-7dcbb082d2502f1ec4386c39
+    resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
-  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
-    resource: repo://automations/upstream/retained-evidence.json
+  - id: openwiki-source-3127fd4c7b2aefcc9cea7961
+    resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-16e6e7418602542c69565bde
     resource: repo://Cargo.lock
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
@@ -128,10 +130,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-28T02:37:26.121Z" }
+generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T02:37:26.121Z
+    at: 2026-10-28T03:00:10.087Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -155,17 +157,13 @@ For native compatibility, record the upstream commit separately from the install
 
 ## Current fixed development qualification
 
-The development requirement selects official source `33d306d457a4632b22bebf214e0c25d91f90f6e8`. The current source review covers all 127 commits after `abf4bb91ec49fbf443ccec0069f9cab5dd1462d8`; that review is separate from execution and public delivery. The exact production-profile artifact has verified source, CLI, Code Mode helper, search helper and generated-schema identities.
+Read the development lock, [current source review](../../automations/upstream/current-review.json) and [current qualification](../../automations/upstream/qualification.json) for the fixed target, exact CLI/helpers/schema, executed identities and limits. Keep source review, source-test execution, exact production-artifact tests, delivery and installed acceptance separate. Current run counts and hashes belong in those records, not repeated across Wiki pages.
 
-The exact-artifact native cohort passed 51 tests. Two local history tests, 17 standalone probe groups, component cache repair and a direct signed Code Mode helper session also passed. The repository `check-automations` aggregate passed, including 1,897 headless tests, 43 Python tests, two CLI diagnostics, formatting, strict Clippy and site checks. It does not repeat the full GPUI suite or installed acceptance.
-
-The source `dev-small` cohort executed 1,264 unique identities: 1,263 passed and one named-executor cloud-skills fixture remains unresolved after an isolated-home rerun. Seven initial snapshot failures recovered after host skills were excluded through an isolated HOME. Library and integration selections overlap by 315 identities. Linux-only tests and unavailable GStreamer/GLib voice-host prerequisites are explicit gaps. Source test executables can select their own helpers; they do not establish exact production CLI behavior. The cloud fixture remains outside the selected local private-stdio consumer and is not counted as a pass.
-
-Both unignored upstream locks retain the same nine Rust dependency advisories and warnings in one fresh database snapshot. No local audit ignore or broad safety claim was added. These checks do not qualify cloud execution, live accounts, physical audio, installation or release. See the [current qualification](../../automations/upstream/qualification.json) for exact identities, selectors, commands, digests and limits.
+The default execution scope is affected Decodex consumers against the prepared artifact and the applicable repository gate. Read relevant upstream implementation and test bodies for source review; execute upstream tests only for a concrete compatibility question or missing retained-fix proof. An unconsumed fixture failure remains a diagnostic limit and is not counted as passed. It does not create a Decodex repair item. This does not relax the evidence needed to advance the source-review cursor or qualify an artifact.
 
 ## Observed turn timings
 
-The delivered response details show locally observed activity intervals and explicit unknown values. The [portable record](../../automations/upstream/retained-evidence.json) identifies the source, exact selected native artifact and test entrypoints. Its headless cohort passed 1891 tests, and two selected presentation tests passed. These results do not establish installed-app interaction or live-provider timing. Historical activity durations are available only when the native history or an exact saved observation contains them.
+The delivered response details show locally observed activity intervals and explicit unknown values. The [portable record](../../automations/upstream/retained-contracts.json) identifies the source, exact selected native artifact and test entrypoints. Its headless cohort passed 1891 tests, and two selected presentation tests passed. These results do not establish installed-app interaction or live-provider timing. Historical activity durations are available only when the native history or an exact saved observation contains them.
 
 The selected CLI's generated schema exposes a nullable total turn duration but no full critical-path categories. The source research found experimental category totals in native analytics, with disabled, incomplete and complete states. Its tests used modified research source and synthetic services. They do not establish a supported client subscription, a qualified newer artifact or complete inference timing. Continue to show unavailable values as Unknown.
 
@@ -177,7 +175,7 @@ Two proxy clients sharing one native app-server and one synthetic account home d
 
 ## TLS dependency qualification
 
-The locked HTTPS graph selects `rustls` 0.23.46, `rustls-webpki` 0.103.16 and `webpki-root-certs` 1.0.10. Account refresh and component downloads use `reqwest` clients. The selected dependencies include certificate-distrust updates. The [portable record](../../automations/upstream/retained-evidence.json) identifies the package sources and checksums, the verified WebRTC build artifact, exact test commands and the platform-specific dependency changes.
+The locked HTTPS graph selects `rustls` 0.23.46, `rustls-webpki` 0.103.16 and `webpki-root-certs` 1.0.10. Account refresh and component downloads use `reqwest` clients. The selected dependencies include certificate-distrust updates. The [portable record](../../automations/upstream/retained-contracts.json) identifies the package sources and checksums, the verified WebRTC build artifact, exact test commands and the platform-specific dependency changes.
 
 On macOS arm64, the baseline and candidate each passed a full workspace check and 36 account-login and component tests. The candidate passed 1,891 headless tests and strict lint for 11 packages. The official `rustls-webpki` source test `verify_cert::tests::distrusted_spki` executed once and passed with `ring` enabled. Earlier attempts with missing fixtures or no selected test remain separate from that pass. These checks do not qualify live HTTPS, other platforms, installation or release.
 
@@ -189,7 +187,7 @@ The default macOS build routes `webrtc-sys-build` 0.3.20 through a Decodex guard
 
 On macOS arm64, the default build retained the actual downloaded ZIP and checked its pinned digest. Its 38,722 extracted files matched that verified archive, and the static library matched the earlier qualified library. Both official macOS arm64 and x64 ZIPs passed their pinned digest and strict-header checks; native x64 execution was not tested. Six local guard tests passed, including incorrect digest, inconsistent headers, cache repair and file permissions. The full workspace check, strict lint for 13 packages and four synthetic voice tests passed. Two voice tests each passed 20 repeated executions. Every iteration and the final summary were inspected because the observed Nextest 0.9.143 can return zero after an earlier failure with fail-fast disabled.
 
-The full Rust style audit reported the same 163 findings on the exact main snapshot and this branch. The three new source files had no findings in their focused audit. Eleven selected upstream ZIP tests passed in the [previous delivery](https://github.com/acg-box/decodex/pull/2530); one intentionally demonstrates the earlier default behavior without strict header enforcement. The previous builder deleted its downloaded ZIP before its digest was observed. Its extracted files matched a separate verified archive, but that earlier result does not identify the deleted ZIP bytes. The [portable evidence](../../automations/upstream/retained-evidence.json) records the current source, artifact digests, exact tests and these separate historical limits.
+The full Rust style audit reported the same 163 findings on the exact main snapshot and this branch. The three new source files had no findings in their focused audit. Eleven selected upstream ZIP tests passed in the [previous delivery](https://github.com/acg-box/decodex/pull/2530); one intentionally demonstrates the earlier default behavior without strict header enforcement. The previous builder deleted its downloaded ZIP before its digest was observed. Its extracted files matched a separate verified archive, but that earlier result does not identify the deleted ZIP bytes. The [portable evidence](../../automations/upstream/retained-contracts.json) records the current source, artifact digests, exact tests and these separate historical limits.
 
 These checks do not qualify arbitrary malformed archives, unpinned default targets, physical audio, live providers, installed-app behavior or release. They do not establish the cause of the earlier [unmute assertion](https://github.com/acg-box/decodex/issues/2529).
 
@@ -199,7 +197,7 @@ The separate `native-voice-test-development-signing` contract qualifies the expl
 
 ## Selected read-only views
 
-The approved views add native memory inspection, collaboration reply/contribution history and retained Agent/Work usage. Their current contract and portable proof are under `selected_read_views` in the [retained index](../../automations/upstream/retained-evidence.json). Public delivery is tracked in [PR #2508](https://github.com/acg-box/decodex/pull/2508); inspect its current head and checks separately from local qualification.
+The approved views add native memory inspection, collaboration reply/contribution history and retained Agent/Work usage. Their current contract and portable proof are under `selected_read_views` in the [stable contract catalog](../../automations/upstream/retained-contracts.json). Public delivery is tracked in [PR #2508](https://github.com/acg-box/decodex/pull/2508); inspect its current head and checks separately from local qualification.
 
 | Evidence | Qualified behavior and limits |
 | --- | --- |
@@ -218,7 +216,7 @@ A Work result or delivery identifies a linked native turn; it does not prove tha
 
 ## Persistent attached branches
 
-`retained_attached_forks` in the [portable index](../../automations/upstream/retained-evidence.json) records qualification against native source `970111f6cb62cc02fe36a82ea7d71b37a2889c97`, with separate CLI, Code Mode helper, `rg`, source archive and generated-schema digests. Local protocol is 3.2; the database remains schema59. The two relevant upstream test functions, containing five cases, were read but were not executed.
+`retained_attached_forks` in the [stable contract catalog](../../automations/upstream/retained-contracts.json) records qualification against native source `970111f6cb62cc02fe36a82ea7d71b37a2889c97`, with separate CLI, Code Mode helper, `rg`, source archive and generated-schema digests. Local protocol is 3.2; the database remains schema59. The two relevant upstream test functions, containing five cases, were read but were not executed.
 
 Five exact-artifact native tests passed: the public-socket fork workflow, source-provider fork control, archive roundtrip, parallel Code Mode tool control and startup configuration control. The fork control exercises legacy and paginated native history, Goal exclusion, provider preservation, restart, archive/restore and refusal to delete a parent with attached children. The public-socket case creates nine source turns and checks all three explicit branch choices, saved-choice retries, retained exact-source listing and canonical draft recovery. Creating or discovering a branch makes no model request. A separate explicit send adds one request to the attached branch and leaves the source history unchanged.
 
@@ -256,11 +254,11 @@ The signed stage test checks that the app contains the runtime requirement and S
 
 ## Source fixture scope
 
-The [portable qualification record](../../automations/upstream/qualification.json) identifies exact source tests, artifact and helper hashes, reusable probes and limits. The [retained evidence index](../../automations/upstream/retained-evidence.json) identifies the current native consumers. Native run receipts retain raw output; Git retains replaced compact records.
+The [portable qualification record](../../automations/upstream/qualification.json) identifies exact source tests, artifact and helper hashes, reusable probes and limits. The [stable contract catalog](../../automations/upstream/retained-contracts.json) identifies retained consumer requirements and original feature limits. The [current router](../../automations/upstream/retained-evidence.json) links the selected qualification. Native run receipts retain raw output; Git retains replaced compact records.
 
 The source cohort uses `dev-small` helpers. Nextest can replace requested `CARGO_BIN_EXE_*` paths with source build outputs. Only the separate Decodex native cohort and standalone probes establish exact production CLI behavior. The direct signed Code Mode helper test bypasses Nextest path replacement. The qualification record preserves these roles and the original assertions. Older source fixtures that require private startup arguments retain their own launcher and build limits in Git history. Passing a source fixture does not establish behavior through a production API. Test supported production inputs against the exact selected CLI and helpers as a separate step.
 
-Earlier conditional remote-credential snapshot cases failed because the host resolver returned a reserved address or could not resolve a fixture hostname. Native address protection remained enabled. Current Decodex runtime consumers use app-server stdio and do not provision a remote executor. The record qualifies retained consumers within that scope; it does not qualify the failed conditional remote behavior. Reopen that proof when a concrete retained remote consumer exists or the fixture can use compatible system DNS. Preserve the failure evidence, original assertions and native policy.
+Earlier conditional remote-credential snapshot cases failed because the host resolver returned a reserved address or could not resolve a fixture hostname. Native address protection remained enabled. Current Decodex runtime consumers use app-server stdio and do not provision a remote executor. The record qualifies retained consumers within that scope; it does not qualify the failed conditional remote behavior. Reopen that qualification only when a concrete retained consumer or required retained-fix proof makes it applicable. A fixture environment becoming available alone does not create daily maintenance work. Preserve the failure evidence, original assertions and native policy.
 
 ## Terminal errors and external context
 
@@ -347,7 +345,7 @@ The native launch fixture checks admitted Code Mode launch arguments, child cont
 
 ## Question routing, completion and cancellation
 
-The [retained coordination evidence](../../automations/upstream/retained-evidence.json) links the bounded historical real-model evaluations for self-resolution, peer coordination, parent escalation, user decisions and persistent Agent completion. Those evaluations cover the legacy managed-worker contract for exact inbox receipts, separate child-goal resolution and an idle-only Busy refusal. In that legacy continuation path, Busy means the instruction was not sent or queued, so the caller waits for the same worker. The new default uses native Subagents; independent Collaboration Requests have their own durable busy queue and acceptance contract. Do not apply the legacy Busy refusal as the current peer-queue behavior. The historical evaluations used one model and effort with controlled scenarios and predefined user choices. Current synthetic child-approval and local library regressions are separate requalification; they do not repeat real-model judgment or establish every model, permission configuration, race or installed interaction.
+The [retained coordination evidence](../../automations/upstream/retained-contracts.json) links the bounded historical real-model evaluations for self-resolution, peer coordination, parent escalation, user decisions and persistent Agent completion. Those evaluations cover the legacy managed-worker contract for exact inbox receipts, separate child-goal resolution and an idle-only Busy refusal. In that legacy continuation path, Busy means the instruction was not sent or queued, so the caller waits for the same worker. The new default uses native Subagents; independent Collaboration Requests have their own durable busy queue and acceptance contract. Do not apply the legacy Busy refusal as the current peer-queue behavior. The historical evaluations used one model and effort with controlled scenarios and predefined user choices. Current synthetic child-approval and local library regressions are separate requalification; they do not repeat real-model judgment or establish every model, permission configuration, race or installed interaction.
 
 The [sampling qualification](../../automations/upstream/qualification.json) separately records explicit cancellation of Ask separately. Closing its panel only hides presentation; Cancel answer targets the exact native sampling request. A cancellation request, native acknowledgement and a result that wins a race are different outcomes. Preserve exact request ownership and uncertain-state readback. This is not cancellation of the parent conversation or a general scheduler. These receipts do not establish installed-app acceptance.
 
@@ -355,7 +353,7 @@ These fixture definitions specify what can be checked. They do not claim a new e
 
 ## Project, Agent, Work and global Guardian
 
-The `retained_project_agent_work` entry in the [portable index](../../automations/upstream/retained-evidence.json) is the reconstruction authority for this change. It records contracts, current source symbols and digests, tests read separately from tests executed, exact selectors/entrypoints, artifact/helper/schema identities and public delivery. Detailed raw receipts stay in the native automation directory. Missing old local products do not erase certified earlier ranges; a rebuilt artifact needs its own identity and qualification.
+The `retained_project_agent_work` entry in the [stable contract catalog](../../automations/upstream/retained-contracts.json) is the reconstruction authority for this change. It records contracts, current source symbols and digests, tests read separately from tests executed, exact selectors/entrypoints, artifact/helper/schema identities and public delivery. Detailed raw receipts stay in the native automation directory. Missing old local products do not erase certified earlier ranges; a rebuilt artifact needs its own identity and qualification.
 
 The original Project, Agent and Work qualification used official source `970111f6cb62cc02fe36a82ea7d71b37a2889c97`; current runtime qualification is separate. The package passed explicit `cargo +stable make prepare-codex` component, helper and schema verification. It did not replace the installed application or advance the upstream source-review cursor.
 
@@ -428,7 +426,7 @@ The later `controls_followup` record adds the following live checks without chan
 | Full Access | The same write outside the Project failed under Workspace permissions, succeeded under Full Access, succeeded after restart without an override, and failed after Workspace permissions were restored. Global Guardian preference remained separate. |
 | Old encrypted helpers | Native parentage and identical encrypted send/receive payloads identify the venue and lodging children. Their own returned messages name the expected contributions. The exact prepared plaintext remains unproved, so no strong Work binding was written. |
 
-The follow-up passed three selected native permission tests, one selected database hold test, strict lint for 13 packages and formatting. It did not rerun the earlier full workspace suite. An initial missing binary environment variable and an outdated per-thread reviewer fixture failed separately. The corrected fixture sets global Automatic Review and preserves its original permission, directory and request-count assertions. Cold profile controls can remain unavailable until the native context loads; this does not authorize an implicit resume. See the exact selectors, artifact references and limits in the [retained index](../../automations/upstream/retained-evidence.json).
+The follow-up passed three selected native permission tests, one selected database hold test, strict lint for 13 packages and formatting. It did not rerun the earlier full workspace suite. An initial missing binary environment variable and an outdated per-thread reviewer fixture failed separately. The corrected fixture sets global Automatic Review and preserves its original permission, directory and request-count assertions. Cold profile controls can remain unavailable until the native context loads; this does not authorize an implicit resume. See the exact selectors, artifact references and limits in the [stable contract catalog](../../automations/upstream/retained-contracts.json).
 
 ### Local hardware capture follow-up
 

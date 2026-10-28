@@ -18,8 +18,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/bin/workbench_visual_capture/send.rs
   - id: openwiki-source-37f9a508a2aebf9382d3b23f
     resource: repo://apps/decodex-gpui/src/main.rs
-  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
-    resource: repo://automations/upstream/retained-evidence.json
+  - id: openwiki-source-f7ecbc6c02d8c1b7873858d6
+    resource: repo://automations/upstream/checkpoint.test.mts
+  - id: openwiki-source-7dcbb082d2502f1ec4386c39
+    resource: repo://automations/upstream/prompts/maintainer.md
+  - id: openwiki-source-3127fd4c7b2aefcc9cea7961
+    resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-c740d34a4e6c4e581873e50e
     resource: repo://crates/decodex-account-login/src/lib.rs
   - id: openwiki-source-f4724776aade804ebf838e2e
@@ -28,10 +32,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
-generated: { by: "codex", at: "2026-10-27T06:15:00.380Z" }
+generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T02:37:26.121Z
+    at: 2026-10-28T03:00:10.087Z
 ---
 
 # Test quality and coverage
@@ -50,6 +54,10 @@ Keep a test when it can detect a meaningful change in supported behavior. Exact 
 | Packaging | Signed bundle inspection and native ABI checks |
 
 A source scan can enforce a narrow explicit boundary, but it does not prove execution or security. Do not duplicate a behavioral test with assertions that its function name or implementation statement appears in a file. Keep license and provenance records intact when removing incidental source assertions.
+
+Upstream implementation and test bodies are required source-review evidence, but generic Codex correctness remains upstream-owned. Daily maintenance executes affected Decodex consumers against the selected artifact. A targeted upstream test needs a concrete compatibility question or missing retained-fix proof. Workflow-only changes use the automation gate; do not repeat app or provider suites.
+
+The checkpoint regressions protect observable state publication: a completed prefix updates cursor, certificate and remaining work together; stale input and unread evidence leave state unchanged; exact replay avoids duplicate counts; explicit archival preserves the original. They do not certify source-review truth or provide a second scheduler.
 
 ## Avoid duplicate execution
 
@@ -75,11 +83,11 @@ Earlier cleanup reports remain in Git history. They do not establish exhaustive 
 
 ## Project and Work qualification
 
-The separate retained Project/Work qualification records actual native and local test cohorts. Its original complete workspace run has 2918 executed, 2916 passed, two native audio ICE timeout failures and 1154 skipped. A passed appearance-fade test has a LEAK marker with unknown cause. Keep that original failed output. The separate media follow-up records a fresh current-main full run with all 2918 passed and no LEAK, plus 40 media executions on each of current main and the pre-change baseline, all passed without retries. The source and feature comparison and macOS firewall events support an external admission cause for the ICE stalls. Lock state was recovered retrospectively. The already-allowed package-only baseline passed while locked; after unlock, the workspace binary received a prompt and allow verdict. No new controlled lock or firewall-denial comparison was run. These later passes do not explain the earlier LEAK or replace its receipt. Use the retained index for exact identities, qualification limits and overlapping counts; use the [native media procedure](../integrations/subscription-voice.md#diagnose-native-media-ice-timeouts) for another ICE timeout.
+The separate retained Project/Work qualification records actual native and local test cohorts. Its original complete workspace run has 2918 executed, 2916 passed, two native audio ICE timeout failures and 1154 skipped. A passed appearance-fade test has a LEAK marker with unknown cause. Keep that original failed output. The separate media follow-up records a fresh current-main full run with all 2918 passed and no LEAK, plus 40 media executions on each of current main and the pre-change baseline, all passed without retries. The source and feature comparison and macOS firewall events support an external admission cause for the ICE stalls. Lock state was recovered retrospectively. The already-allowed package-only baseline passed while locked; after unlock, the workspace binary received a prompt and allow verdict. No new controlled lock or firewall-denial comparison was run. These later passes do not explain the earlier LEAK or replace its receipt. Use the stable contract catalog for exact identities, qualification limits and overlapping counts; use the [native media procedure](../integrations/subscription-voice.md#diagnose-native-media-ice-timeouts) for another ICE timeout.
 
 The later native Project and nested Work follow-up retains a separate initial full run with 2918 passed, three failures and one passed-test LEAK. Two failures were the unchanged frame samples named above; the same test executable passed each sample five times in isolation. The other failure was an old native fixture missing `projectId`, now corrected to match the real response. The final full run passed 2921 tests with 1157 skipped and no LEAK. The first follow-up LEAK was in the native resume test and has no established cause. These later passes do not replace its receipt or prove a general scheduler defect. The index retains the original identities, the artifact digest, source comparisons and the ten isolated executions.
 
-The later source-built lifecycle acceptance records another distinct result: its final full run passed 2924 tests with 1159 skipped and no LEAK. An earlier run passed all assertions but marked two tests as leaky; both unchanged tests passed in isolation. That clean result does not explain the earlier markers. The current source, native artifact, selectors and limits are under `retained_project_agent_work.live_acceptance` in the [portable index](../../automations/upstream/retained-evidence.json).
+The later source-built lifecycle acceptance records another distinct result: its final full run passed 2924 tests with 1159 skipped and no LEAK. An earlier run passed all assertions but marked two tests as leaky; both unchanged tests passed in isolation. That clean result does not explain the earlier markers. The current source, native artifact, selectors and limits are under `retained_project_agent_work.live_acceptance` in the [stable contract catalog](../../automations/upstream/retained-contracts.json).
 
 The control follow-up keeps its setup failures separate from product behavior. One native permission test first lacked its documented binary environment variable. It then exposed a stale fixture assumption: a per-thread automatic reviewer was expected to survive the persisted global Ask Me setting. The fixture now sets and checks global Automatic Review while retaining all profile, policy, directory and request-count assertions. The final selected cohort passed three native permission tests and one database hold test. Live UI and real-provider probes separately verified Pause/Resume and Full Access. The full workspace suite was not repeated for this test-only change.
 

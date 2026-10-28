@@ -12,8 +12,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
-  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
-    resource: repo://automations/upstream/retained-evidence.json
+  - id: openwiki-source-3127fd4c7b2aefcc9cea7961
+    resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-f2483b817a8847254a871b51
     resource: repo://crates/decodex-codex/src/app_server_client/goals.rs
   - id: openwiki-source-9819ced71ede01a1ddc5af56
@@ -59,7 +59,7 @@ sources:
 generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T02:37:26.121Z
+    at: 2026-10-28T03:00:10.087Z
 ---
 
 # Model selection and settings ownership
