@@ -4768,12 +4768,13 @@
     "manual_review_item": 26,
     "behavior": [
       "A newly observed completed answer in the selected independent root conversation generates one native sample when the composer is empty. Existing history refreshes observe completion; no new poller or timer is added. The menu retains explicit generation.",
-      "Display the result separately. Use as draft accepts a matching suggestion into the same idle conversation only when its composer is empty. Acceptance is one undoable edit and never sends. Preserve later edits and reject replaced sources or results from an unrelated sample question.",
+      "Display the result separately with a Tab hint. Tab in the same idle conversation's empty message field accepts a current suggestion as one undoable edit and never sends. Remove the click-acceptance button. Other fields, Shift-Tab, nonempty drafts and obsolete results keep normal focus navigation.",
       "Reuse existing cancellation, timeout, source invalidation and lost-acknowledgement readback. Opening saved history, repeated refresh, failed turns and nonempty drafts do not trigger generation. Do not retry inference after uncertain delivery or execute inherited tools through a generic fork."
     ],
     "source_symbols": {
       "apps/decodex-gpui/src/agent_composer.rs": [
-        "AgentSurface::attachment_options"
+        "AgentSurface::attachment_options",
+        "AgentSurface::composer_editor"
       ],
       "apps/decodex-gpui/src/agent_sample.rs": [
         "AgentSurface::suggest_next_prompt",
@@ -4805,9 +4806,10 @@
         "shell::agent_surface::sample::tests::automatic_suggestion_skips_old_history_drafts_failed_turns_and_replaced_sources",
         "shell::agent_surface::sample::tests::cancellation_controls_wait_for_native_completion_and_preserve_the_draft",
         "shell::agent_surface::sample::tests::enter_in_a_separate_question_does_not_reach_the_main_send_action",
-        "shell::agent_surface::sample::tests::prompt_suggestion_needs_a_click_and_accepts_as_an_undoable_unsent_draft",
         "shell::agent_surface::sample::tests::prompt_suggestion_preserves_later_edits_and_rejects_stale_or_unrelated_results",
-        "shell::agent_surface::sample::tests::separate_answer_preserves_the_composer_and_hides_a_replaced_source"
+        "shell::agent_surface::sample::tests::separate_answer_preserves_the_composer_and_hides_a_replaced_source",
+        "shell::agent_surface::sample::tests::tab_accepts_prompt_suggestion_as_an_undoable_unsent_draft",
+        "shell::agent_surface::sample::tests::tab_preserves_normal_focus_navigation_without_a_current_empty_draft_suggestion"
       ]
     },
     "native_contract": {
