@@ -812,6 +812,51 @@ async fn fixture() -> (AgentCoordinator, UnboundedReceiver<Value>, TempDir) {
 	fixture_with_history(serde_json::json!({})).await
 }
 
+#[tokio::test]
+async fn shared_process_agent_creation_uses_current_default_after_retirement() {
+	for inherited in [false, true] {
+		let make_model = |name: &str| serde_json::json!({"model":name,"displayName":name,"supportedReasoningEfforts":[{"reasoningEffort":"high"}],"defaultReasoningEffort":"high"});
+		let mut old = make_model("selected-model");
+		old["upgradeInfo"] = serde_json::json!({"model":"older-replacement","retirementAt":1});
+		let mut current = make_model("native-default");
+		current["isDefault"] = serde_json::json!(true);
+		if inherited {
+			current["supportedReasoningEfforts"] = serde_json::json!([]);
+			current["defaultReasoningEffort"] = Value::Null;
+		}
+		let (mut agent, mut sent, _home) =
+			fixture_with_history(serde_json::json!({"_models":[old,current]})).await;
+		agent.start_agent("first", "Keep this input").await.unwrap();
+		complete(&mut agent, "first").await;
+		AgentCoordinator::create_conversation(
+			&agent.store,
+			"second",
+			EnqueueAgentEvent {
+				source_event_id: "second-input".into(),
+				work_item_id: "second".into(),
+				event_kind: "user_message".into(),
+				payload: serde_json::json!({"text":"Keep this input"}).to_string(),
+			},
+			None,
+		)
+		.await
+		.unwrap();
+		agent.wake_pending().await.unwrap();
+		let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+		let starts: Vec<_> =
+			requests.iter().filter(|request| request["method"] == "thread/start").collect();
+		assert_eq!(starts.len(), 2);
+		assert!(starts.iter().all(|request| request["params"]["model"] == "native-default"));
+		if inherited {
+			assert!(starts.iter().all(|request| {
+				request["params"]["config"].get("model_reasoning_effort").is_none()
+			}));
+		}
+		assert_eq!(agent.config.model, "selected-model", "do not rewrite shared configuration");
+		assert_eq!(requests.iter().filter(|request| request["method"] == "turn/start").count(), 2);
+	}
+}
+
 // Deliver through the actual native transport so response guards have real evidence.
 async fn attach_request_transport(
 	agent: &mut AgentCoordinator,
@@ -897,6 +942,8 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 		}
 
 		let result = match request["method"].as_str() {
+			Some("model/list") =>
+				serde_json::json!({"data":history["_models"].as_array().cloned().unwrap_or_default(),"nextCursor":null}),
 			Some("project/list") =>
 				serde_json::json!({"data":projects.values().cloned().collect::<Vec<_>>(),"nextCursor":null}),
 			Some("project/create") => {

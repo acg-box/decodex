@@ -969,6 +969,36 @@ impl AgentCoordinator {
 		self.store.begin_agent_thread_creation(item.id.clone()).await?;
 
 		let mut params = self.work_thread_params(item).await?;
+		if let Some(catalog) = crate::agent_capabilities::read_catalog(&self.client).await {
+			let now = SystemTime::now()
+				.duration_since(UNIX_EPOCH)
+				.ok()
+				.and_then(|time| i64::try_from(time.as_secs()).ok());
+			if let Some((target, _)) = params["model"].as_str().and_then(|model| {
+				now.and_then(|now| {
+					decodex_protocol::AgentModelDto::retired_default(
+						model,
+						&catalog.models,
+						catalog.default_model.as_ref(),
+						now,
+					)
+				})
+			}) {
+				params["model"] = serde_json::json!(target.model);
+				if params["config"]["model_reasoning_effort"].as_str().is_some_and(|effort| {
+					!target.efforts.iter().any(|value| value.as_str() == effort)
+				}) {
+					if let Some(effort) = &target.default_effort {
+						params["config"]["model_reasoning_effort"] = serde_json::json!(effort);
+					} else if let Some(config) = params["config"].as_object_mut() {
+						config.remove("model_reasoning_effort");
+					}
+				}
+			}
+		}
+		let expected_model = params["model"].as_str().map(str::to_owned);
+		let expected_effort =
+			params["config"]["model_reasoning_effort"].as_str().map(str::to_owned);
 
 		params["historyMode"] = serde_json::json!("paginated");
 
@@ -990,15 +1020,9 @@ impl AgentCoordinator {
 		};
 		let bound =
 			self.store.acknowledge_agent_thread_creation(item.id.clone(), thread.clone()).await?;
-		let effort = if self.is_manager(&item.id).await? {
-			&self.config.agent_effort
-		} else {
-			&self.config.worker_effort
-		};
-
 		if !Self::hydrated_thread_matches(&response, &thread)
-			|| response["model"].as_str() != Some(&self.config.model)
-			|| effort
+			|| response["model"].as_str() != expected_model.as_deref()
+			|| expected_effort
 				.as_deref()
 				.is_some_and(|expected| response["reasoningEffort"].as_str() != Some(expected))
 		{
