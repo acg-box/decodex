@@ -35,6 +35,10 @@ pub enum NativeAgentsResult {
 		can_input: Option<bool>,
 		/// Observed running turn for steering.
 		active_turn: Option<String>,
+		/// Observed child permissions, never inferred from its parent.
+		permission_mode: Option<crate::PermissionMode>,
+		/// Observed child service tier, absent when not reported.
+		service_tier: Option<String>,
 	},
 	/// Current native state could not be verified.
 	Unavailable,

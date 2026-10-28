@@ -1,7 +1,5 @@
 //! Preserve pre-creation input independently of existing task execution overrides.
-use crate::shell::agent_surface::{
-	AgentSandboxDto, AgentSurface, Context, ConversationReasoningEffort,
-};
+use crate::shell::agent_surface::{AgentSurface, Context, ConversationReasoningEffort};
 use decodex_protocol::{DesktopCreationIntent, DesktopCreationSetup};
 
 pub(super) const DEFAULT_MODEL: &str = "gpt-6-astra";
@@ -22,7 +20,7 @@ impl AgentSurface {
 			reasoning_effort: self.effort.clone(),
 			fast: self.fast,
 			service_tier: self.service_tier.clone(),
-			sandbox: self.sandbox,
+			permission_mode: self.permission_mode,
 		};
 
 		(self.creation_setup_present || setup != empty_setup()).then_some(setup)
@@ -53,7 +51,7 @@ impl AgentSurface {
 		self.creation_defaults_applied = setup.defaults_applied;
 		self.fast = setup.fast;
 		self.service_tier = setup.service_tier.clone();
-		self.sandbox = setup.sandbox;
+		self.permission_mode = setup.permission_mode;
 		// Discovery from a different setup must never be treated as current after restoration.
 		self.capabilities = None;
 		self.capabilities_context = None;
@@ -68,16 +66,20 @@ impl AgentSurface {
 }
 
 fn empty_setup() -> DesktopCreationSetup {
+	let defaults = crate::session_settings::Defaults::load();
 	DesktopCreationSetup {
 		defaults_applied: false,
-		intent: Some(Default::default()),
+		intent: Some(decodex_protocol::DesktopCreationIntent {
+			service_tier: defaults.speed.is_some(),
+			..Default::default()
+		}),
 		inherit_effort: false,
 		model: DEFAULT_MODEL.into(),
 		working_directory: String::new(),
 		account: String::new(),
 		reasoning_effort: ConversationReasoningEffort::High,
-		fast: false,
-		service_tier: None,
-		sandbox: AgentSandboxDto::ReadOnly,
+		fast: defaults.speed.as_ref().is_some_and(|tier| tier.as_str() == "priority"),
+		service_tier: defaults.speed,
+		permission_mode: defaults.permissions,
 	}
 }

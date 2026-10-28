@@ -701,6 +701,7 @@ impl AgentSurface {
 		});
 
 		Some(DesktopProfileDraft {
+			new_conversation_permissions: self.workspace.new_conversation_permissions,
 			messages: saved.map(|profile| profile.messages.clone()).unwrap_or_default(),
 			new_conversation_workspace: self
 				.workspace
@@ -838,6 +839,7 @@ impl AgentSurface {
 impl Drafts {
 	fn from_document(saved: DesktopProfileDraft, epoch: u64) -> Self {
 		let mut result = Self {
+			new_conversation_permissions: saved.new_conversation_permissions,
 			new_conversation: saved.new_conversation.map(|id| id.as_str().into()),
 			new_conversation_workspace: saved
 				.new_conversation_workspace
@@ -974,20 +976,33 @@ mod tests {
 			s.new_work_conversation(cx);
 
 			s.workspace.new_conversation_workspace = Some("folder".into());
+			s.workspace.new_conversation_permissions =
+				Some(decodex_protocol::PermissionMode::ApproveForMe);
+			let draft_id = s.selected.clone().unwrap();
+			s.draft_profiles.execution.change(draft_id, |choice| {
+				choice.service_tier = Some(decodex_protocol::ServiceTier::from_fast(true));
+			});
 
 			s.composer.update(cx, |input, cx| input.set_content("Unsent idea", cx));
 
 			let saved = s.capture_draft_document(cx).unwrap();
+			let saved = serde_json::from_slice(&serde_json::to_vec(&saved).unwrap()).unwrap();
 			let restored = Drafts::from_document(saved, s.command_epoch);
 
 			s.workspace.new_conversation = None;
 			s.workspace.new_conversation_workspace = None;
+			s.workspace.new_conversation_permissions = None;
 			s.selected = s.root_id();
 
 			s.apply_drafts(restored, cx);
 
 			assert!(s.is_new_conversation());
 			assert_eq!(s.workspace.new_conversation_workspace.as_deref(), Some("folder"));
+			assert_eq!(
+				s.creation_permission_mode(),
+				decodex_protocol::PermissionMode::ApproveForMe
+			);
+			assert_eq!(s.composer_speed_label(), "Fast");
 			assert_eq!(s.composer.read(cx).content(), "Unsent idea");
 			assert!(s.conversation_work().is_none());
 			assert!(s.submission.waiting.is_none());

@@ -1,5 +1,4 @@
 ---
-
 type: Reference
 title: "Conversation input, history and recovery"
 description: "Explicit native branches, same-thread edits, canonical drafts, complete export and uncertain result recovery."
@@ -23,14 +22,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
     resource: repo://apps/decodex-gpui/src/agent_prompt_fork.rs
-  - id: openwiki-source-0f9840ddf9e841a062aa905a
-    resource: repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs
   - id: openwiki-source-56b561d7e6dd906d218aa9d1
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-3362ac542db6e3212a621c47
     resource: repo://apps/decodex-gpui/src/agent_recap_automatic.rs
-  - id: openwiki-source-296a92a9cefecb19f0fc1f95
-    resource: repo://apps/decodex-gpui/src/agent_sample_tests.rs
   - id: openwiki-source-912dbe8f46e7ec6026887bbe
     resource: repo://apps/decodex-gpui/src/agent_sample.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
@@ -99,10 +94,10 @@ sources:
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-28T08:39:27.042Z" }
+generated: { by: "codex", at: "2026-10-28T07:13:51.367Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T08:42:08.680Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 # Conversation input, history and recovery
@@ -206,21 +201,9 @@ A pending submission is not recovered as a new answer. Replayed historical quest
 
 For parent escalation and exact event receipts, use [Agent coordination](../architecture/chief-coordination.md#native-contributions-and-independent-collaboration). In Ask separately, **Close** hides the panel; **Cancel answer** requests cancellation of its exact native sampling request. A late result or uncertain cancellation keeps its original request identity. This does not cancel the parent conversation.
 
-## Next-message suggestions
-
-After a newly completed answer in the selected independent root conversation, an empty composer triggers one native suggestion request. It uses the conversation's model and quota. It does not run tools or send input to the parent conversation. The composer menu retains **Suggest next message…** for an explicit request.
-
-Review the result in **Suggested next message**. **Use as draft** is available when the same conversation is idle and its composer is empty. It inserts one undoable edit; send it separately after review. Text entered while the suggestion is generated stays in place. Copy the suggestion or clear the current draft before accepting it. A replaced thread or stale sample cannot supply a new draft.
-
-Existing history and snapshot refreshes observe the new completed answer. Opening saved history, repeated refreshes, failed turns and an existing draft do not trigger generation. Attachments, task references and active voice input also keep the current draft in place. A skipped trigger does not run later when the editor is cleared. Automatic generation does not move the scroll position.
-
-The panel shares the existing separate-answer lifecycle. **Cancel answer** targets its original request; **Close** hides the panel. Status refresh does not generate another suggestion. A native tool attempt can return no text, and an unsupported or unavailable sampler remains visible as a failure. There is no automatic fallback to a tool-enabled prediction fork or separate polling timer.
-
-The [retained contract and test identities](../../automations/upstream/retained-contracts.json) record the scoped interface and wire checks. Existing native sampling qualification is reused; these checks do not establish live-provider suggestion quality or installed-app acceptance.
-
 ## Explicit prediction capability
 
-The adapter can create one ephemeral prediction fork of a loaded parent, with the native model, provider, environment, context, tools and permissions inherited. Its bounded structured run has a 30-second deadline and exact-thread cleanup; cancellation before inference makes no model request. It does not send to the parent, modify a draft or schedule background predictions. Callers must authorize inherited tool use. The suggestion UI above uses native sampling instead of this tool-enabled fork. This fork must not replace the tool-free recap path.
+The adapter can create one ephemeral prediction fork of a loaded parent, with the native model, provider, environment, context, tools and permissions inherited. Its bounded structured run has a 30-second deadline and exact-thread cleanup; cancellation before inference makes no model request. It does not send to the parent, modify a draft, schedule background predictions or add a suggestion UI. Callers must authorize inherited tool use. It must not replace the tool-free recap path.
 
 ## Evidence and extension boundary
 

@@ -17,9 +17,9 @@ use crate::{
 use decodex_core::DecodexRoot;
 use decodex_database::SqliteStore;
 use decodex_protocol::{
-	AgentCapabilitiesResult, AgentExecutionOverrides, AgentSandboxDto, AgentStartDto,
-	ConversationModel, ConversationReasoningEffort, ConversationWorkingDirectory, EntityId,
-	HistoryText,
+	AgentCapabilitiesResult, AgentExecutionOverrides, AgentStartDto, ConversationModel,
+	ConversationReasoningEffort, ConversationWorkingDirectory, EntityId, HistoryText,
+	PermissionMode,
 };
 
 const EFFORT: &str = "future-provider-reasoning-effort-over-32-bytes";
@@ -49,7 +49,7 @@ fn creation_action(requested: Option<&str>, home: &Path) -> decodex_protocol::Ag
 			effort: effort.clone(),
 			cwd: ConversationWorkingDirectory::new(home.display().to_string()).expect("cwd"),
 			account_id: None,
-			sandbox: AgentSandboxDto::ReadOnly,
+			permission_mode: PermissionMode::ReadOnly,
 		},
 		execution: AgentExecutionOverrides {
 			model: Some(model),

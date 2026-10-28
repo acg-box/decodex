@@ -3822,7 +3822,7 @@ impl<T> CompletedOneShot<T> {
 fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 	match action {
 		AgentActionDto::ManageWork { agent_id, .. } => agent_id,
-		AgentActionDto::SetGuardian { settings_id, .. } => settings_id,
+		AgentActionDto::SetReviewDetails { settings_id, .. } => settings_id,
 		AgentActionDto::SetProjectLead { project_id, .. } => project_id,
 		AgentActionDto::SetAssistant { agent_id, .. } => agent_id,
 		AgentActionDto::AddProject { project_id, .. } => project_id,

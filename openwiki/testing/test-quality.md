@@ -32,10 +32,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
-generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T06:51:55.940Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 # Test quality and coverage
@@ -89,6 +89,6 @@ The later native Project and nested Work follow-up retains a separate initial fu
 
 The later source-built lifecycle acceptance records another distinct result: its final full run passed 2924 tests with 1159 skipped and no LEAK. An earlier run passed all assertions but marked two tests as leaky; both unchanged tests passed in isolation. That clean result does not explain the earlier markers. The current source, native artifact, selectors and limits are under `retained_project_agent_work.live_acceptance` in the [stable contract catalog](../../automations/upstream/retained-contracts.json).
 
-The control follow-up keeps its setup failures separate from product behavior. One native permission test first lacked its documented binary environment variable. It then exposed a stale fixture assumption: a per-thread automatic reviewer was expected to survive the persisted global Ask Me setting. The fixture now sets and checks global Automatic Review while retaining all profile, policy, directory and request-count assertions. The final selected cohort passed three native permission tests and one database hold test. Live UI and real-provider probes separately verified Pause/Resume and Full Access. The full workspace suite was not repeated for this test-only change.
+The control follow-up keeps its setup failures separate from product behavior. One native permission test first lacked its documented binary environment variable. It then exposed a stale fixture assumption: a per-thread automatic reviewer was expected to survive the persisted global Ask Me setting. That historical run set global Automatic Review and passed three native permission tests and one database hold test. Live UI and real-provider probes separately verified Pause/Resume and Full Access. The full workspace suite was not repeated for that test-only change. The current fixture uses conversation-owned permission settings and verifies that the separate Review Details preference does not change them; it retains the profile, policy, directory and request-count assertions.
 
 The installed development follow-up adds two symptom regressions for independent-Agent conversation controls and input routing. Both failed before their fixes. Its complete UI package runs passed 1025 tests with 1031 skipped, but retained cleanup markers across three unchanged tests. Two isolated controls passed together and the third passed separately, without markers and with no unmatched selectors. The cause remains unknown. No assertions, deadlines or runner policy were weakened, and these package runs do not repeat the earlier full-workspace qualification. Exact identities and artifact limits are in `retained_project_agent_work.installed_acceptance`.

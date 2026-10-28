@@ -6,14 +6,14 @@ use tokio::runtime::Builder;
 
 use crate::{
 	shell::agent_surface::{
-		AgentSnapshotDto, AgentSurface, Context, InteractiveElement, IntoElement, ParentElement,
-		SharedString, Styled, mcp_forms,
+		AgentSurface, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+		Styled, mcp_forms,
 	},
 	ui_theme::{self, TEXT_MUTED},
 };
 use decodex_protocol::{
 	AgentActionDto, AgentClient, EntityId, PrivateReviewDetailsResult, ProjectDto, WireText,
-	guardian::{ReviewDetails, ReviewPreference},
+	guardian::ReviewDetails,
 	work::{ResultSource, Work, WorkCommand, WorkPortfolio, WorkResult, WorkState},
 };
 
@@ -260,7 +260,7 @@ impl AgentSurface {
 			.p_4()
 			.child(gpui::div().text_lg().child("Guardian"))
 			.child(label(
-				"Shared across Agents and Projects. Execution permissions are managed separately.",
+				"Review records across Agents and Projects. Change permissions in the conversation toolbar.",
 			));
 		let Some(snapshot) = &self.snapshot else {
 			return panel.child("Connect to read global settings.").into_any_element();
@@ -270,7 +270,6 @@ impl AgentSurface {
 		panel = panel.child(label(
 			"Turning off Review details stops new records. Pending approvals keep their owner.",
 		));
-		panel = panel.child(self.guardian_source_readback(snapshot, cx));
 
 		for details in &snapshot.guardian.details {
 			let key = format!(
@@ -320,89 +319,6 @@ impl AgentSurface {
 						.child(label("Partial review observation; full transcript not included."));
 				}
 			}
-		}
-
-		panel.into_any_element()
-	}
-}
-
-impl AgentSurface {
-	fn guardian_source_readback(
-		&self,
-		snapshot: &AgentSnapshotDto,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		let expanded =
-			self.workspace.contribution_detail.as_deref() == Some("guardian-settings-details");
-		let mut panel = gpui::div().flex().flex_col().gap_2().child(label("Effective settings"));
-
-		if snapshot.guardian.sources.is_empty() {
-			panel = panel.child(label("No settings application confirmed yet."));
-		}
-
-		for source in &snapshot.guardian.sources {
-			let name = snapshot
-				.work_items
-				.iter()
-				.find(|a| a.id == source.agent_id)
-				.map(|a| a.title.as_str())
-				.unwrap_or(&source.agent_id);
-			let outcome = match source.outcome.as_str() {
-				"applied" => "Applied",
-				"pending" => "Pending",
-				"unknown" => "Unconfirmed",
-				"unsupported" => "Unavailable",
-				"rejected" => "Rejected",
-				"overridden" => "Overridden",
-				_ => "Unknown",
-			};
-			let reviewer = match source.effective_reviewer.as_deref() {
-				Some("user") => "Ask me",
-				Some("auto_review") => "Automatic review",
-				_ => "Reviewer unknown",
-			};
-			let mut row = gpui::div()
-				.id(SharedString::from(format!(
-					"guardian-source-{}-{}",
-					source.source_id, source.agent_id
-				)))
-				.flex()
-				.flex_col()
-				.gap_1()
-				.child(format!("{name} · {outcome} · {reviewer}"));
-
-			if expanded {
-				row = row
-					.child(label(format!(
-						"Source {} · Revision {}",
-						source.source_id, source.revision
-					)))
-					.child(label(source.detail.clone()));
-			}
-
-			panel = panel.child(row);
-		}
-
-		panel = panel.child(mcp_forms::mcp_button(
-			"guardian-settings-details-toggle".into(),
-			"Technical details".into(),
-			expanded,
-			cx,
-			|s, cx| {
-				s.workspace.contribution_detail = if s.workspace.contribution_detail.as_deref()
-					== Some("guardian-settings-details")
-				{
-					None
-				} else {
-					Some("guardian-settings-details".into())
-				};
-
-				cx.notify();
-			},
-		));
-
-		if expanded {
-			panel = panel.child(label(snapshot.guardian.observation_limit.clone()));
 		}
 
 		panel.into_any_element()
@@ -883,35 +799,7 @@ impl AgentSurface {
 		let settings = &snapshot.guardian.settings;
 		let mut panel = gpui::div().flex().flex_col().gap_2();
 
-		for (id, title, reviewer) in [
-			("guardian-ask-me", "Ask me", ReviewPreference::AskMe),
-			("guardian-automatic", "Automatic review", ReviewPreference::AutomaticReview),
-		] {
-			let (revision, details) = (settings.revision, settings.review_details);
-
-			panel = panel.child(mcp_forms::mcp_button(
-				id.into(),
-				format!("{}{}", if settings.reviewer == reviewer { "✓ " } else { "" }, title),
-				self.sending,
-				cx,
-				move |s, cx| {
-					s.execute(
-						AgentActionDto::SetGuardian {
-							settings_id: EntityId::new("guardian-global")
-								.expect("global settings identity"),
-							expected_revision: revision,
-							reviewer,
-							review_details: details,
-						},
-						None,
-						cx,
-					);
-				},
-			));
-		}
-
-		let (revision, reviewer, enabled) =
-			(settings.revision, settings.reviewer, settings.review_details);
+		let (revision, enabled) = (settings.revision, settings.review_details);
 
 		panel = panel.child(mcp_forms::mcp_button(
 			"guardian-review-details".into(),
@@ -920,11 +808,10 @@ impl AgentSurface {
 			cx,
 			move |s, cx| {
 				s.execute(
-					AgentActionDto::SetGuardian {
+					AgentActionDto::SetReviewDetails {
 						settings_id: EntityId::new("guardian-global")
 							.expect("global settings identity"),
 						expected_revision: revision,
-						reviewer,
 						review_details: !enabled,
 					},
 					None,

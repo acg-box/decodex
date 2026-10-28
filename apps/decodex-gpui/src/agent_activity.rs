@@ -413,6 +413,7 @@ impl AgentSurface {
 			if let Some(id) = &self.selected {
 				if following {
 					self.timeline.follow_paused.remove(id);
+					self.timeline.latest_follow_work = Some(id.clone());
 				} else {
 					self.timeline.follow_paused.insert(id.clone());
 				}
@@ -457,6 +458,7 @@ impl AgentSurface {
 
 					if following {
 						self.timeline.follow_paused.remove(&wheel.work);
+						self.timeline.latest_follow_work = Some(wheel.work.clone());
 						self.set_voice_follow(true);
 					}
 
@@ -2105,6 +2107,49 @@ phase: None,
 				scroll.offset(),
 				scroll.max_offset()
 			);
+		}
+	}
+
+	#[gpui::test]
+	fn scrolling_to_bottom_resumes_follow_for_trackpad_and_wheel(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(320.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.workspace.graph_visible = false;
+		});
+		thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(crate::ui_frame::draw_current_frame);
+		for delta in [
+			gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-10_000.))),
+			gpui::ScrollDelta::Lines(gpui::point(0., -1_000.)),
+		] {
+			surface.update(visual, |s, cx| {
+				let scroll = &s.timeline.scroll["agent"];
+				scroll.set_offset(gpui::point(gpui::px(0.), gpui::px(0.)));
+				s.timeline.latest_follow_work = None;
+				s.timeline.follow_paused.insert("agent".into());
+				s.scroll_history(&gpui::ScrollEvent { delta, ..Default::default() }, cx);
+				if let Some(wheel) = &mut s.timeline.wheel_scroll {
+					wheel.motion.started -= std::time::Duration::from_secs(1);
+				}
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			surface.read_with(visual, |s, _| {
+				assert!(!s.timeline.follow_paused.contains("agent"));
+				assert_eq!(s.timeline.latest_follow_work.as_deref(), Some("agent"));
+			});
+			surface.update(visual, |s, cx| {
+				if let Some((_, AgentHistoryResult::Available { entries, .. })) = &mut s.history {
+					entries[1].text.push_str(&"\n\nAnother complete output line.".repeat(20));
+				}
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			surface.read_with(visual, |s, _| {
+				let scroll = &s.timeline.scroll["agent"];
+				assert!((scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(1.));
+			});
 		}
 	}
 

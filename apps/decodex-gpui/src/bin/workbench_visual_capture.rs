@@ -18,6 +18,12 @@ mod client_cache;
 #[path = "../client_lifecycle.rs"]
 mod client_lifecycle;
 #[allow(dead_code)]
+#[path = "../component_plugins.rs"]
+mod component_plugins;
+#[allow(dead_code)]
+#[path = "../component_runtime.rs"]
+mod component_runtime;
+#[allow(dead_code)]
 #[path = "../composer_input.rs"]
 mod composer_input;
 #[allow(dead_code)]
@@ -46,6 +52,7 @@ mod native_scroll;
 #[path = "../native_updater.rs"]
 mod native_updater;
 #[path = "../panel_preferences.rs"] mod panel_preferences;
+#[path = "../session_settings.rs"] mod session_settings;
 #[allow(dead_code)]
 #[path = "../settings_surface.rs"]
 mod settings_surface;
@@ -238,8 +245,15 @@ fn capture_collaboration(cx: &mut VisualTestAppContext) -> Result<AnyWindowHandl
 					surface.visual_workspace_fixture(cx);
 					surface.visual_workspace_page("workbench", cx);
 
+					if env::var_os("DECODEX_VISUAL_PROJECT_SCOPES").is_some() {
+						surface.visual_project_scopes();
+					}
+
 					if let Ok(count) = env::var("DECODEX_VISUAL_GRAPH_AGENTS") {
 						surface.visual_relation_density(count.parse().expect("agent count"), cx);
+					}
+					if let Some(path) = env::var_os("DECODEX_VISUAL_REVIEW_CAPTURE") {
+						surface.visual_review_capture(Path::new(&path), cx);
 					}
 
 					surface

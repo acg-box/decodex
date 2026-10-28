@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f04e6b28e43a21978c518bfc6078bd0b20d7b54bf7086ede8f6bb8faacf32d5c",
+  "pageVersion": "sha256:5adb145a5a7a535133db5f056975e826813f192354af69b4e2a5854c3c45b50a",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -70,11 +70,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_composer.rs",
-          "version": "repo-file-v1:sha256:0f3b0895f49094b4921098715815b1b6de91a931f1159f12a240e7aee448e0ed"
+          "version": "repo-file-v1:sha256:2065f26ceaff0267ba6296fc5a4a42bff2909660269281357c10b3899028faed"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:e994e29cb5968140805fcafbc0f1aeeec4b23fcfc0954512630a58ff95ee10d6"
+          "version": "repo-file-v1:sha256:995c8642a656955795a201607e5d7af5e7126a1dda351504f50f39123862b1a4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_text.rs",
@@ -82,7 +82,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_theme.rs",
-          "version": "repo-file-v1:sha256:a75fb81529a47d243861497b5825fb685fbeaeb02f2804a7498d97605a570cf0"
+          "version": "repo-file-v1:sha256:21ca3a9000cdf45b56ad7ef90740e544e5a0a41d43938039487c729e383bbed1"
         }
       ]
     },
@@ -92,7 +92,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:b147a123139376220ac697c4c00577e2af2eaa0b6ba10365ee3abca63cd506b2"
+          "version": "repo-file-v1:sha256:bb757cbe00a81ebc6dac088a9a8260c5f4de4047cecef59b8ed99eaf978912e4"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/voice_conversation_groups.rs",
@@ -141,7 +141,7 @@
           "version": "repo-file-v1:sha256:2b1a67f00c6d9e928caf820184346f563f11d37e430619b194e05d0952021a11"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2231-L2262",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2240-L2271",
           "version": "repo-lines-v1:sha256:f23eb22d81f75af5538eec6a393a7467929e9c440b0bab5cb5fc0837af3c47a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMWE4OGNlMDQ3OWM1ZmE3NTI5MmNiOGE1ZWYxOTBhYTg4NDhlMTMyNzg0MDk1ZTI0ZDI1YzM3NDMwOWU5NDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ODI4NTYwNmQyOGU5MWNlNDRjYWU5MzVjZjg4OTA5MTkxZTA5NWM2YjUzN2NlZTgyNjcyZDdkNzIyYjRhZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNTViODhjYjRkNTVjN2VmMjE2NDliZWE5MTRiYTEwYTEyNDE0ZDMyOGVkZDhmNTNlMDg1MWRmNDc5MTBhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MDZmNmFkYTg4ZjAzZGE2MDU1NmNkOWZkMGY2MGI3NDhkZGMwNjViYjcwN2M5YmNkZGI5ZTc4YThlNGU2YWQifQ"
         }
       ]
@@ -156,7 +156,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:be02795a1f5604cbbe47df567e9409cabac835aaae386f21262b89c17e6baeb0"
+          "version": "repo-file-v1:sha256:e25ffc756305c75c1641d513afd356949c74493ce5fd8475f44b8efc35a99bd1"
         }
       ]
     },
@@ -281,7 +281,7 @@
       "statement": "An unsent input uses the ordinary right-aligned user bubble at the end of the scrolling transcript, with full wrapped text and an aligned Not sent and Resend row. It is not pinned above the input bar. The failure reason is a tooltip; there is no disclosure, copy or dismiss action.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2231-L2262",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2240-L2271",
           "version": "repo-lines-v1:sha256:f23eb22d81f75af5538eec6a393a7467929e9c440b0bab5cb5fc0837af3c47a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMWE4OGNlMDQ3OWM1ZmE3NTI5MmNiOGE1ZWYxOTBhYTg4NDhlMTMyNzg0MDk1ZTI0ZDI1YzM3NDMwOWU5NDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ODI4NTYwNmQyOGU5MWNlNDRjYWU5MzVjZjg4OTA5MTkxZTA5NWM2YjUzN2NlZTgyNjcyZDdkNzIyYjRhZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNTViODhjYjRkNTVjN2VmMjE2NDliZWE5MTRiYTEwYTEyNDE0ZDMyOGVkZDhmNTNlMDg1MWRmNDc5MTBhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MDZmNmFkYTg4ZjAzZGE2MDU1NmNkOWZkMGY2MGI3NDhkZGMwNjViYjcwN2M5YmNkZGI5ZTc4YThlNGU2YWQifQ"
         },
         {
@@ -322,7 +322,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:379bebc24b275d32794219bccb90a7909414606eb6e8b31dd7930614c203e1fe"
+          "version": "repo-file-v1:sha256:8948624703d6f76b17fb7c768076868f9dff3085012c305122dba764b4c2b0cc"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline/metrics.rs",
@@ -411,10 +411,28 @@
           "version": "repo-lines-v1:sha256:ba207ddc6422c7fc5648b8738aea19ca0591070b9ea9137be0418e8b668e1012:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3NTdmNGQ5OGIzODJkZGY0OWFhZDEzYWQwMWNiYWFkMDNmY2M3NTkyNDgwNDM4N2E3MjIwNTI3NzkwMGU1NTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3MTZkNmM3YjA1NGJmZTBiYWEwOTM3MTcyY2FiNGQxY2JjMzFhMTgxZjVjYzRmMDk2OTk1YzZhYWZiMTk3YjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjNTlkNmYxNmY0OTBmYTZiNjdiOGIyNWM3ZTQzMTU5YzEyNTY2MDg4MzRiMmM5ZTkwNWY1MWNhMzlkOGE0ZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ0ZGUxNzkwNzM1OTQwZjRkNmIwYWVkMjY5MDhhM2VhMjc1M2IyZDExY2RlMmI0MjhhODFhZmRjOTU2Y2QzNTMifQ"
         }
       ]
+    },
+    {
+      "id": "claim_4420318b66f54adcbcef906416b495b0",
+      "statement": "Window and input-bar material preferences are independent; dark Liquid Glass shares surface opacity across themes while Thin retains its matte palette and the native input bar retains focused and unfocused glass styles.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/native_material_panel.rs",
+          "version": "repo-file-v1:sha256:5b1ea6a30931b04e7103676be1ea17c4b8515efc2dd5bde6bc5bdcf8413a2e9f"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_material.rs",
+          "version": "repo-file-v1:sha256:916b634ef436fdac3bec230a2757b3bebc799c965cc19f6224d197df4340b25c"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_palette.rs",
+          "version": "repo-file-v1:sha256:1cb3f5e5681ea73c447a227b220a2f78a377f2c117845b434b519da09ef8d39c"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T08:39:27.042Z"
+    "at": "2026-10-28T08:28:06.287Z"
   }
 }

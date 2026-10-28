@@ -14,11 +14,50 @@ mod tests {
 
 	use tempfile::TempDir;
 
-	use crate::bundled_daemon::{
-		self, BundledDaemonFailure, BundledDaemonSupervisor, ClientProfile, Command, Path, PathBuf,
-		Stdio,
+	use crate::{
+		bundled_daemon::{
+			self, BundledDaemonFailure, BundledDaemonSupervisor, ClientProfile, Command, Path,
+			PathBuf, Stdio,
+		},
+		component_runtime::{PreparationState, RuntimePreparation},
 	};
+	use decodex_components::InstallProgress;
 	use decodex_protocol::DoctorClient;
+
+	#[test]
+	#[ignore = "run through scripts/test_gpui_bundled_daemon_supervision.sh with a freshly built decodex"]
+	fn process_missing_runtime_waits_for_setup_and_retry_before_launching_the_owned_service() {
+		let fixture = ProcessFixture::new();
+		let preparation =
+			RuntimePreparation::fixture(PreparationState::Preparing(InstallProgress::Waiting));
+		let supervisor = BundledDaemonSupervisor {
+			daemon: fixture.daemon.clone(),
+			environment: Some(super::DaemonEnvironment {
+				home: fixture.home.clone(),
+				path: fixture.path.clone(),
+			}),
+			preparation: preparation.clone(),
+			state: std::sync::Mutex::new(super::SupervisorState {
+				guard: None,
+				restarts: 0,
+				preparing_runtime: true,
+			}),
+		};
+
+		assert!(supervisor.recover_transport());
+		assert!(supervisor.child_id().is_none());
+		preparation.finish_fixture(Err("fixture setup failed".into()));
+		assert!(supervisor.recover_transport());
+		assert!(supervisor.child_id().is_none());
+		assert!(super::AppOwnedDaemonRecovery::component_preparation_failed(&supervisor));
+		preparation.finish_fixture(Ok(()));
+		assert!(supervisor.recover_transport());
+		assert!(supervisor.child_id().is_some());
+		wait_until("service starts after successful preparation", || fixture.socket.exists());
+		assert_eq!(supervisor.state.lock().expect("supervisor").restarts, 0);
+		supervisor.shutdown();
+		wait_until("owned service shuts down", || !fixture.socket.exists());
+	}
 
 	struct ProcessFixture {
 		_temporary: TempDir,
@@ -342,7 +381,10 @@ use std::{
 
 use gpui::{App, AppContext as _, Context, Entity, Global, Subscription};
 
-use crate::client_lifecycle::AppOwnedDaemonRecovery;
+use crate::{
+	client_lifecycle::AppOwnedDaemonRecovery,
+	component_runtime::{PreparationState, RuntimePreparation},
+};
 use decodex_protocol::{ClientProfile, ProfileKind};
 
 const MAX_RECOVERY_RESTARTS: u8 = 2;
@@ -362,6 +404,7 @@ pub(crate) enum BundledDaemonFailure {
 
 /// Ownership-aware recovery for the daemon child carried by this exact app bundle.
 pub(crate) struct BundledDaemonSupervisor {
+	preparation: RuntimePreparation,
 	#[cfg(target_os = "macos")]
 	daemon: PathBuf,
 	#[cfg(target_os = "macos")]
@@ -371,6 +414,7 @@ pub(crate) struct BundledDaemonSupervisor {
 impl BundledDaemonSupervisor {
 	pub(crate) fn launch_for_profile(
 		profile: &ClientProfile,
+		preparation: RuntimePreparation,
 	) -> Result<Option<Arc<Self>>, BundledDaemonFailure> {
 		if profile.kind() == ProfileKind::Remote {
 			return Ok(None);
@@ -383,12 +427,14 @@ impl BundledDaemonSupervisor {
 			let daemon = bundled_daemon_path(&executable)?;
 			let preparing_runtime = !required_runtime_is_present();
 			let guard = if preparing_runtime {
+				preparation.prepare();
 				None
 			} else {
 				Some(BundledDaemonGuard::launch_macos(&daemon, None)?)
 			};
 
 			Ok(Some(Arc::new(Self {
+				preparation,
 				daemon,
 				environment: None,
 				state: Mutex::new(SupervisorState { guard, restarts: 0, preparing_runtime }),
@@ -408,7 +454,7 @@ impl BundledDaemonSupervisor {
 
 		#[cfg(target_os = "macos")]
 		if state.preparing_runtime {
-			if !required_runtime_is_present() {
+			if self.preparation.snapshot() != PreparationState::Ready {
 				return true;
 			}
 
@@ -455,6 +501,7 @@ impl BundledDaemonSupervisor {
 		let guard = BundledDaemonGuard::launch_macos(&daemon, Some(&environment))?;
 
 		Ok(Arc::new(Self {
+			preparation: RuntimePreparation::default(),
 			daemon,
 			environment: Some(environment),
 			state: Mutex::new(SupervisorState {
@@ -493,6 +540,10 @@ impl BundledDaemonSupervisor {
 }
 
 impl AppOwnedDaemonRecovery for BundledDaemonSupervisor {
+	fn component_preparation_failed(&self) -> bool {
+		matches!(self.preparation.snapshot(), PreparationState::Failed(_))
+	}
+
 	fn preparing_components(&self) -> bool {
 		self.state.lock().unwrap_or_else(PoisonError::into_inner).preparing_runtime
 	}

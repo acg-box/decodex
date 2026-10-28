@@ -12,11 +12,11 @@ use serde_json::Value;
 
 use crate::{CommandOutput, OutputFormat};
 use decodex_protocol::{
-	AgentActionDto, AgentClient, AgentCommandResponse, AgentRequestResult, AgentSandboxDto,
-	AgentSnapshotResult, AgentStartDto, ConversationModel, ConversationReasoningEffort,
-	ConversationWorkingDirectory, EntityId, HistoryText, IdempotencyKey, MAX_AGENT_DEPENDENCIES,
-	MAX_AGENT_PENDING_EVENTS, MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS,
-	MAX_HISTORY_INLINE_BYTES, WireText,
+	AgentActionDto, AgentClient, AgentCommandResponse, AgentRequestResult, AgentSnapshotResult,
+	AgentStartDto, ConversationModel, ConversationReasoningEffort, ConversationWorkingDirectory,
+	EntityId, HistoryText, IdempotencyKey, MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS,
+	MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS, MAX_HISTORY_INLINE_BYTES, PermissionMode,
+	WireText,
 };
 
 /// Explicit Agent operations. Execution stays inside the service.
@@ -312,12 +312,12 @@ fn prepare(command: AgentCommand) -> Result<(AgentActionDto, IdempotencyKey), &'
 				cwd: ConversationWorkingDirectory::new(cwd)
 					.map_err(|_| "execution directory must be an absolute bounded path")?,
 				account_id: account_id.map(identity).transpose()?,
-				sandbox: if full_access {
-					AgentSandboxDto::FullAccess
+				permission_mode: if full_access {
+					PermissionMode::FullAccess
 				} else if read_only {
-					AgentSandboxDto::ReadOnly
+					PermissionMode::ReadOnly
 				} else {
-					AgentSandboxDto::WorkspaceWrite
+					PermissionMode::AskForApproval
 				},
 			}),
 			idempotency_key,
@@ -632,7 +632,7 @@ mod tests {
 
 		assert!(key.as_str().starts_with("agent-"));
 		assert!(
-			matches!(action, decodex_protocol::AgentActionDto::Start(start) if start.model.as_str() == "gpt-6-astra" && start.effort == Some(decodex_protocol::ConversationReasoningEffort::Medium) && start.sandbox == decodex_protocol::AgentSandboxDto::ReadOnly)
+			matches!(action, decodex_protocol::AgentActionDto::Start(start) if start.model.as_str() == "gpt-6-astra" && start.effort == Some(decodex_protocol::ConversationReasoningEffort::Medium) && start.permission_mode == decodex_protocol::PermissionMode::ReadOnly)
 		);
 
 		for args in [
@@ -724,7 +724,7 @@ mod tests {
 		};
 
 		assert!(
-			matches!(super::prepare(command).unwrap().0, decodex_protocol::AgentActionDto::Start(start) if start.sandbox == decodex_protocol::AgentSandboxDto::WorkspaceWrite)
+			matches!(super::prepare(command).unwrap().0, decodex_protocol::AgentActionDto::Start(start) if start.permission_mode == decodex_protocol::PermissionMode::AskForApproval)
 		);
 
 		let mut args = base.to_vec();
@@ -737,7 +737,7 @@ mod tests {
 		};
 
 		assert!(
-			matches!(super::prepare(command).unwrap().0, decodex_protocol::AgentActionDto::Start(start) if start.sandbox == decodex_protocol::AgentSandboxDto::FullAccess)
+			matches!(super::prepare(command).unwrap().0, decodex_protocol::AgentActionDto::Start(start) if start.permission_mode == decodex_protocol::PermissionMode::FullAccess)
 		);
 
 		args.push("--read-only");

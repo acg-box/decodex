@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:32151b73606b08c93df5f3e639437e8123230e015c90a494a512ef54d40a3a51",
+  "pageVersion": "sha256:e712ffcb873816706f3fea9840c506b09473fbfd5fa28f3d5e3940dce7b8544a",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -133,7 +133,7 @@
       "statement": "The compatibility path requests retention only for work_instruction outputs; wakes, capacity retries and injected evidence remain unselected and retain application authority.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1291-L1401",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1319-L1429",
           "version": "repo-lines-v1:sha256:34c154ed0b2a955952269ea2ba86b94de26fe029840005eeab4bd317d355ae33:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
@@ -160,7 +160,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
-          "version": "repo-file-v1:sha256:1c87d79cf8035a79a5ba91f7ce0c011696cdf9490e01f401ad49ef93f3f6cbab"
+          "version": "repo-file-v1:sha256:8c78b64e71823916e54e82dd1036811566e1e370092044ba4230e6da7e426cbd"
         }
       ]
     },
@@ -183,7 +183,7 @@
           "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L131-L151",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L135-L155",
           "version": "repo-lines-v1:sha256:a6b2eef1867776015de103e94d4bd067aedc8577c70159c8c792ab426e27b791:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2YjU1MTM4Y2EyM2U2ZGFkMjJiNjQ4ZjgyOWNlZGM4MWQyMDNiMTlmMTc2MzRkZjZiZTc2MGY1M2JlNGVmOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNmU0ZjMxZGM3MTM2OTU2NmI1MWNjMWExOTVkNDUwY2RmODU3NWU2ZDdhNzYxYzU2NDJiYTMwMjVkYzM0NzMifQ"
         }
       ]
@@ -194,7 +194,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:6eae55c91f5fe965b5ac69b4b12a2378585bd2ef95f19117b1f075a8d751f8b6"
+          "version": "repo-file-v1:sha256:ef610e368cea461087f4345cb2cd4ad778652613db48e08b50b7364e3f623ce3"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
@@ -208,15 +208,15 @@
     },
     {
       "id": "claim_a9a16ba608b9409b958efbec4515c3fa",
-      "statement": "Global Guardian and opt-in bounded private observations are implemented with per-source effective receipts and explicit missing action association, without selecting the separate Guardian V3 experiment.",
+      "statement": "Native per-conversation permissions and optional bounded private review observations are implemented; Guardian no longer overrides all conversations' reviewer preferences, and missing action associations stay explicit without selecting the Guardian V3 experiment.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2674-L4161",
-          "version": "repo-lines-v1:sha256:dca51e28f266f3fd054b394a5451bb61a595544c5b5e6c017bbc9a2bff362c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRlOTQ2ZjE1NzYwNjdhMTM0ZWZiZDhhZTE1MjI2MDI5NzdkMDBlOTFkNjY2YzYyMGE3Yzg0NjdjYjY0ZjE4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhlNmNhNGUyMTVlOTEyMDdlOWZlMDk3ZDUyZGI5M2ViNjVkZTRjOThmZDgwYjE3OTY3MjliM2UxMWQ3MTY5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzIyZjc2YzIxZjc0OTU3ZDkyNWUxOGQzYTY0YWJiNTYwN2ZmMDgwYTc3NDU2MjA4ZThlMDY3ODQ0MDJjMGNhMSJ9"
+          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
+          "version": "repo-file-v1:sha256:565df042b95aaab735d1f0775319652f84665a39d3d4e1c394a0d756c83b1201"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
-          "version": "repo-file-v1:sha256:7d716b1f0d463043d3844fbcb0e0826390ca08e8984ce15d0bb01fa1e0f8a04b"
+          "resource": "repo://crates/decodex-runtime/src/agent_permissions.rs",
+          "version": "repo-file-v1:sha256:32b59c5f26a9d009d71536689d3d377e3ef8b2ca518bd896678ad543bc5c46b4"
         }
       ]
     },
@@ -282,7 +282,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:6eae55c91f5fe965b5ac69b4b12a2378585bd2ef95f19117b1f075a8d751f8b6"
+          "version": "repo-file-v1:sha256:ef610e368cea461087f4345cb2cd4ad778652613db48e08b50b7364e3f623ce3"
         }
       ]
     },
@@ -296,7 +296,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:e63f541a2c927852609b7b4bf494e34ee749686fce665e2faeef2c76ba4838d8"
+          "version": "repo-file-v1:sha256:605dff41372cf046c8cdd2fc0cca4d697ad6421b469d7d2f0c5f564af6b2299f"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -309,8 +309,8 @@
       "statement": "Persistent attached branches expose only their own turns while native inference retains the reviewed parent context and saved source turn IDs retain boundary provenance. The retained public workflow already requires paginated source history.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4422-L4827",
-          "version": "repo-lines-v1:sha256:78cd6312eadaebc2327ea0988595803d1148bd4a1539f92d2ee4c3f12f78b8ce:eyJzZWxlY3RlZExpbmVDb3VudCI6NDA2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4422-L4767",
+          "version": "repo-lines-v1:sha256:3aa28dd7618294cbedc31d6d3d574c1b1a2ce1e332278034413d629ea4646b36:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQ2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
@@ -328,11 +328,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:e63f541a2c927852609b7b4bf494e34ee749686fce665e2faeef2c76ba4838d8"
+          "version": "repo-file-v1:sha256:605dff41372cf046c8cdd2fc0cca4d697ad6421b469d7d2f0c5f564af6b2299f"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:02099c5ef8013cc1109974781e11686d503d2538696ff79642cc79bf9534bf46"
+          "version": "repo-file-v1:sha256:31b135003bcc180f47662d5ed3a221003658592d1da509d9f8cdb2b3ef53734f"
         }
       ]
     },
@@ -342,11 +342,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/conversations.rs",
-          "version": "repo-file-v1:sha256:7bf90101a6c1bde73fac1c50f69b361828b8047a7fa4da78324c5e59b1f86d48"
+          "version": "repo-file-v1:sha256:0e4c6da959822e5b58b0b5c32e570184592d45496ce7ddc527c6ee001bd91db8"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:e63f541a2c927852609b7b4bf494e34ee749686fce665e2faeef2c76ba4838d8"
+          "version": "repo-file-v1:sha256:605dff41372cf046c8cdd2fc0cca4d697ad6421b469d7d2f0c5f564af6b2299f"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -360,41 +360,27 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:02099c5ef8013cc1109974781e11686d503d2538696ff79642cc79bf9534bf46"
+          "version": "repo-file-v1:sha256:31b135003bcc180f47662d5ed3a221003658592d1da509d9f8cdb2b3ef53734f"
         }
       ]
     },
     {
-      "id": "claim_90ff9a5af58e487f96fde29fd45b6f16",
-      "statement": "Newly observed completed answers in the selected independent root conversation automatically request one native suggestion when its composer is empty. Saved history, repeated refreshes and existing drafts do not trigger generation. Explicit acceptance remains one undoable edit into the same idle conversation's empty composer and never sends automatically.",
+      "id": "claim_a6c6192e6e5446588b25df30a95f4bf9",
+      "statement": "The explicit EGM Component controls invoke the original native plugin lifecycle without reopening generic plugin management through the Agent bridge.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
-          "version": "repo-file-v1:sha256:eff9bd808613584fa9abf6ee2ce12cfa901817207d58c9f6a668bcd8e6c62c80"
+          "resource": "repo://apps/decodex-gpui/src/component_plugins.rs",
+          "version": "repo-file-v1:sha256:61fc6c35849bf457d0fd048882c5cdec0254f05c7dc98fdc0a47e4d02d03a83d"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_sample.rs#L165-L222",
-          "version": "repo-lines-v1:sha256:bbb1167ea839a68aab8399ed02e713cc3115fb54264be3744655fbbeddc66537:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3NjY1MTU5ZjNmYmIxNzkyZmVmNTEwZmViN2ZiOTFlN2ZmODM4ZTc1YTg3MTI5YzUwNjRjMmIzZjEyYzc0NzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmM2M1MjVlMGM3M2JjOWVhNDMyYjgzMjIyZTEyODgyMWM1MDcyMzQ4YjlkZjQ5NzEwOWFjNGM2YjI5ODc5N2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3MDFjZmY0ZGY4Njc3YjU3ZWE5ZjIwNGVkMDdmZDhiOTFlNGE5YjkwMjhiN2I4ZjQyMzk2MzU5NWYwZTBkOTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiMWEyYjlhZDFkNDljMTViZWUxY2Q3MzMyYjkyNGQ5ZGE0ZTM4MzA1ZDM3ZjIwMzU5MzY4NjAwYmM4ZGUzZWUifQ"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
-          "version": "repo-file-v1:sha256:27ea5cd3b1c0d5b05b46bc7b0434578ee83fcdabbb8126df840706329c7a4123"
-        }
-      ]
-    },
-    {
-      "id": "claim_8e001097ffbf4a9e974e1decd9bdc4e7",
-      "statement": "Independent account observations and reset-credit requests remain owned by the Decodex account API client; only model activation uses its optional native policy profile.",
-      "evidence": [
-        {
-          "resource": "repo://crates/decodex-runtime/src/account_api.rs#L152-L212",
-          "version": "repo-lines-v1:sha256:891d95ef1a93fde67eab94d17fa0a60b9923702c63522656ab5752c973170b31:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyNWY3Yjg2NmZhZjRjNmNiMTQ1NjI4ODFjNmZjMDExODQ3OWNjY2YzYzhjNjc5YTc2MjcyNmU1YjYzY2UwNTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlNGY1MTMwZTYwNzQ2M2JhNTAzNTNjOTYxY2Q0ZDVmY2Q2ODQ3NmFhOWZlN2IxOGZiOWZmOTI4MzU3ZTQ4MjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBjNGIzNDVhNzA1OGFmMjQ2MWEzZDVhNjQwMDM4NTZkMTc0MWQzMTBkMjM5MzE4M2Q1YTg3NGU3MWI1YzgzMjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ2MmViMThkMTA0MWY1YmIyYzhlNjcwNzA0YmVhZmNkYTExMTU5NmZiY2EyZDI4NmZkNTIwMDM2MzJjMTQ5ZWIifQ"
+          "resource": "repo://crates/decodex-components/src/plugins.rs",
+          "version": "repo-file-v1:sha256:e93dfce3fa78548c4e6c7569b98478092562292b7a0b69b53c7440daef660916"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T08:42:08.680Z"
+    "at": "2026-10-28T08:28:06.287Z"
   }
 }

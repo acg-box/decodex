@@ -3,11 +3,13 @@
 mod development;
 mod install;
 mod pin;
+mod plugins;
 
 pub use self::{
 	development::prepare_source,
 	install::{ComponentStore, InstallProgress, InstalledRuntime},
 	pin::pin_release,
+	plugins::{NativePlugins, PluginAction, PluginComponent, PluginInstallation},
 };
 
 use std::{
@@ -23,6 +25,15 @@ use development::PREPARE_REQUIRED;
 
 /// Result of component acquisition or validation, with a user-readable failure.
 pub type Result<T> = std::result::Result<T, String>;
+
+/// Complete Google EGM plugin. Native Codex owns acquisition and future updates.
+pub fn egm_component() -> PluginComponent {
+	PluginComponent {
+		name: "egm".into(),
+		marketplace: "egm".into(),
+		source: "https://github.com/google/elephant-goldfish-model.git".into(),
+	}
+}
 
 /// The exact upstream revision and protocol required by a Decodex build.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]

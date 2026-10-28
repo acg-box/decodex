@@ -72,6 +72,7 @@ impl AgentSurface {
 			.new_conversation
 			.is_none()
 			.then(|| (self.composer_model_value(cx), self.composer_effort_value(cx)));
+		let defaults = initial_model.as_ref().map(|_| crate::session_settings::Defaults::load());
 
 		self.close_native_agent(cx);
 		self.cancel_dictation(cx);
@@ -90,6 +91,14 @@ impl AgentSurface {
 			self.draft_profiles.execution.change(id.clone(), |choice| {
 				choice.model = Some(model);
 				choice.reasoning_effort = effort;
+			});
+		}
+		if let Some(defaults) = defaults {
+			self.workspace.new_conversation_permissions = Some(defaults.permissions);
+			self.service_tier = defaults.speed.clone();
+			self.fast = defaults.speed.as_ref().is_some_and(|tier| tier.as_str() == "priority");
+			self.draft_profiles.execution.change(id.clone(), |choice| {
+				choice.service_tier = defaults.speed;
 			});
 		}
 

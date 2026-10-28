@@ -12,12 +12,18 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration_tests.rs
   - id: openwiki-source-2a6989c7fa25b9681df71f95
     resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
+  - id: openwiki-source-c6ac7d6b2fdeb458faab2c3a
+    resource: repo://apps/decodex-gpui/src/agent_permissions.rs
   - id: openwiki-source-6a1c55b61be8ac251a493046
     resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-51a4755f3c4ddd78511e5c8e
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
+  - id: openwiki-source-a2f254020dd8eaabd6366c91
+    resource: repo://apps/decodex-gpui/src/session_settings.rs
+  - id: openwiki-source-0813b2e35e2133631c0aa4db
+    resource: repo://apps/decodex-gpui/src/settings_components.rs
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
@@ -40,10 +46,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T08:39:27.042Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 # OpenWiki quickstart
@@ -56,7 +62,7 @@ The [canonical contract](decisions/project-agent-work.md) is implemented: Projec
 
 Agents use native Subagents for bounded execution and scoped Collaboration Requests for independent peers. Native Codex owns execution, context, permissions and continuation. Decodex owns durable business relationships, evidence, coordination and presentation. The default Work tools do not create another executor, and no part of this contract requires Ultra.
 
-Work and Guardian fit the existing desktop. Expand Work to inspect Materials, Collaboration, Results and assessment. Guardian has global Ask Me or Automatic Review and optional bounded Review Details; Full Access stays a separate native permission choice. Review records with no exact action association stay explicitly unassociated.
+Work and Guardian fit the existing desktop. Expand Work to inspect Materials, Collaboration, Results and assessment. The composer shield selects native conversation permissions; Settings > Agents defines defaults for new conversations. Guardian keeps optional bounded Review Details and does not override conversation permissions. Review records with no exact action association stay explicitly unassociated.
 
 The current SQLite schema preserves native input receipts, independent process ownership and exact assignment evidence. Conversations can start without an Assistant. Native Project reconciliation, assignment recovery and Guardian detail recovery keep native execution in Codex. See the [acceptance boundaries](testing/upstream-acceptance-boundaries.md) for historical source-built, installed-app and online voice qualifications. Those records do not qualify a later artifact.
 
@@ -83,6 +89,7 @@ When reviewing an earlier message, choose **Attached branch after this turn** to
 | Change input, branches, drafts, read state, export or recap | [Conversations and recovery](workflows/conversations-and-recovery.md) |
 | Change model, effort, Goal, search or native launch defaults | [Models and settings](workflows/models-and-settings.md) |
 | Handle an approval or provider question | [Approvals and ownership](workflows/approvals-and-native-ownership.md) |
+| Install, update or remove original EGM | [Elephant and Goldfish component](integrations/elephant-goldfish.md) |
 | Use native skills or understand plugin and connection ownership | [Tools and integrations](integrations/tools-plugins-and-apps.md) |
 | Change dictation, live voice or voice preferences | [Subscription voice](integrations/subscription-voice.md) |
 | Import OAuth/PAT accounts or diagnose routing and activation | [Accounts and routing](operations/accounts-and-routing.md) |
@@ -101,7 +108,7 @@ When reviewing an earlier message, choose **Attached branch after this turn** to
 - Account admission accepts native `plus`, `pro`, `prolite`, `promax` and `team` plans. OAuth and PAT use the same plan scope; native identity, quota and entitlement remain authoritative. See [Accounts](operations/accounts-and-routing.md).
 - Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.
 - Unknown submission outcomes require exact receipts or native history. They do not authorize replay. Unavailable conversations keep readable history.
-- Local plugin management and embedded MCP HTML widgets are retired. Codex owns configuration and native execution; Decodex retains tool observations, native forms and readable history.
+- Generic plugin management and embedded MCP HTML widgets are retired. The explicit EGM component uses the native Codex plugin lifecycle through Settings > Components. Codex owns configuration and execution; Decodex retains tool observations, native forms and readable history.
 - The checked-in automation portfolio marks the upstream maintainer **ACTIVE**. This is configuration evidence, not scheduler readback. Documentation generation does not enable automations, install an app or publish a release.
 
 ## Build and evidence

@@ -13,6 +13,9 @@ pub struct AgentPermissionAttempt {
 	pub generation: Option<String>,
 	pub settings_event: i64,
 	pub profile: String,
+	/// Older retained profile-only attempts preserve their original target.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub mode: Option<decodex_core::PermissionMode>,
 	pub review_token: String,
 	pub attempt_id: String,
 }
@@ -67,7 +70,7 @@ impl SqliteStore {
 
 			if !agent_process::owns_work(&tx,&attempt.work,attempt.generation.as_deref())? || agent_prompt_edit::pending(&tx,&attempt.work)? || pending(&tx,&attempt.work)? || agent_models::pending(&tx,&attempt.work)? { return Ok(None); }
 
-			let valid: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items w JOIN agent_inbox_events e ON e.work_item_id=w.id WHERE w.id=?1 AND w.codex_thread_id=?2 AND ((w.dispatch_state='idle' AND w.active_turn_id IS NULL) OR (w.dispatch_state='running' AND w.active_turn_id IS NOT NULL)) AND w.status<>'resolved' AND e.id=?4 AND e.event_kind='native_task_permissions' AND json_extract(e.payload,'$.threadId')=?2 AND json_extract(e.payload,'$.generationId') IS ?3 AND json_type(e.payload,'$.settings')='object' AND json_extract(e.payload,'$.settings.profileId') IS NOT ?5 AND e.id=(SELECT max(n.id) FROM agent_inbox_events n WHERE n.work_item_id=w.id AND n.event_kind='native_task_permissions' AND json_extract(n.payload,'$.threadId')=?2 AND json_extract(n.payload,'$.generationId') IS ?3))",rusqlite::params![attempt.work,attempt.thread,attempt.generation,attempt.settings_event,attempt.profile],|r|r.get(0)).map_err(error::sqlite_error)?;
+			let valid: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM agent_work_items w JOIN agent_inbox_events e ON e.work_item_id=w.id WHERE w.id=?1 AND w.codex_thread_id=?2 AND ((w.dispatch_state='idle' AND w.active_turn_id IS NULL) OR (w.dispatch_state='running' AND w.active_turn_id IS NOT NULL)) AND w.status<>'resolved' AND e.id=?4 AND e.event_kind='native_task_permissions' AND json_extract(e.payload,'$.threadId')=?2 AND json_extract(e.payload,'$.generationId') IS ?3 AND json_type(e.payload,'$.settings')='object' AND (json_extract(e.payload,'$.settings.profileId') IS NOT ?5 OR ?6) AND e.id=(SELECT max(n.id) FROM agent_inbox_events n WHERE n.work_item_id=w.id AND n.event_kind='native_task_permissions' AND json_extract(n.payload,'$.threadId')=?2 AND json_extract(n.payload,'$.generationId') IS ?3))",rusqlite::params![attempt.work,attempt.thread,attempt.generation,attempt.settings_event,attempt.profile,attempt.mode.is_some()],|r|r.get(0)).map_err(error::sqlite_error)?;
 
 			if !valid {return Ok(None);}
 
@@ -159,11 +162,17 @@ pub(crate) fn observe(
 		return Ok(());
 	}
 
-	let row:Option<(i64,String,Option<String>,String)>=connection.query_row("SELECT e.id,e.source_event_id,json_extract(e.payload,'$.attempt.generation'),json_extract(e.payload,'$.attempt.profile') FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id AND w.codex_thread_id=?2 WHERE e.work_item_id=?1 AND e.event_kind='permission_selection' AND e.id<?3 AND json_extract(e.payload,'$.attempt.thread')=?2 AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND json_extract(r.payload,'$.state')='rejected') OR r.source_event_id=e.source_event_id||':observation') ORDER BY e.id DESC LIMIT 1",rusqlite::params![work,thread,observation],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(error::sqlite_error)?;
+	let row:Option<(i64,String,Option<String>,String)>=connection.query_row("SELECT e.id,e.source_event_id,json_extract(e.payload,'$.attempt.generation'),json_extract(e.payload,'$.attempt') FROM agent_inbox_events e JOIN agent_work_items w ON w.id=e.work_item_id AND w.codex_thread_id=?2 WHERE e.work_item_id=?1 AND e.event_kind='permission_selection' AND e.id<?3 AND json_extract(e.payload,'$.attempt.thread')=?2 AND NOT EXISTS(SELECT 1 FROM agent_inbox_events r WHERE (r.source_event_id=e.source_event_id||':result' AND json_extract(r.payload,'$.state')='rejected') OR r.source_event_id=e.source_event_id||':observation') ORDER BY e.id DESC LIMIT 1",rusqlite::params![work,thread,observation],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional().map_err(error::sqlite_error)?;
 	let Some((reservation, key, previous, target)) = row else {
 		return Ok(());
 	};
-	let matches = profile == Some(target.as_str());
+	let target: AgentPermissionAttempt = serde_json::from_str(&target)
+		.map_err(|_| StoreError::InvalidInput("invalid saved permission selection"))?;
+	let matches = profile == Some(target.profile.as_str())
+		&& target.mode.is_none_or(|mode| {
+			settings["approvalPolicy"].as_str() == Some(mode.approval_policy())
+				&& settings["approvalsReviewer"].as_str() == Some(mode.reviewer())
+		});
 	let state = if previous.as_deref() == generation {
 		if !matches {
 			return Ok(());
@@ -202,6 +211,7 @@ mod tests {
 			generation: None,
 			settings_event,
 			profile: "scoped".into(),
+			mode: None,
 			review_token: token.to_string().repeat(64),
 			attempt_id: format!("attempt-{token}"),
 		}
@@ -212,6 +222,23 @@ mod tests {
 	}
 	async fn receipt(store: &SqliteStore) -> AgentPermissionReceipt {
 		store.agent_permission_receipt("work".into(), "thread".into()).await.unwrap().unwrap()
+	}
+
+	#[tokio::test]
+	async fn reviewer_only_preset_change_requires_complete_native_readback() {
+		let dir = tempfile::tempdir().unwrap();
+		let store = tests::bound_agent_store(&dir.path().join("permissions.sqlite3")).await;
+		let first = facts(&store, Some(":workspace"), 'a').await;
+		let mut selected = attempt(first, 'a');
+		selected.profile = ":workspace".into();
+		selected.mode = Some(decodex_core::PermissionMode::ApproveForMe);
+		let id = store.reserve_agent_permission_selection(selected.clone()).await.unwrap().unwrap();
+		store.finish_agent_permission_selection(id, selected, "queued".into()).await.unwrap();
+		facts(&store, Some(":workspace"), 'b').await;
+		assert_eq!(receipt(&store).await.state, "queued");
+		store.record_agent_task_permissions_publication("thread".into(), None,
+			Some(serde_json::json!({"profileId":":workspace","cwd":"/native","approvalPolicy":"on-request","approvalsReviewer":"auto_review","sandboxPolicy":{"type":"workspaceWrite"}}).to_string()), "c".repeat(64)).await.unwrap();
+		assert_eq!(receipt(&store).await.state, "target_observed");
 	}
 
 	#[tokio::test]

@@ -74,6 +74,7 @@ fn snapshot() -> AgentSnapshotDto {
 #[test]
 fn repeated_model_observations_only_invalidate_changed_values() {
 	let state = AgentModelSettingsResult::Available {
+		service_tier: None,
 		work_id: EntityId::new("root").unwrap(),
 		thread_id: EntityId::new("thread").unwrap(),
 		account_id: EntityId::new("account").unwrap(),
@@ -211,6 +212,7 @@ fn main_and_other_chats_keep_their_models_across_navigation_and_turn_changes(
 			s.model_settings.observations.insert(
 				owner.into(),
 				AgentModelSettingsResult::Available {
+					service_tier: None,
 					work_id: EntityId::new(owner).unwrap(),
 					thread_id: EntityId::new(thread).unwrap(),
 					account_id: EntityId::new("account").unwrap(),
@@ -295,6 +297,7 @@ fn failed_refresh_keeps_the_same_threads_last_native_model(cx: &mut TestAppConte
 		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
 
 		let observation = AgentModelSettingsResult::Available {
+			service_tier: None,
 			work_id: EntityId::new("root").unwrap(),
 			thread_id: EntityId::new("thread").unwrap(),
 			account_id: EntityId::new("account").unwrap(),
@@ -376,6 +379,7 @@ fn model_default_reasoning_has_the_same_value_in_new_and_existing_chats(cx: &mut
 		s.model_settings.observations.insert(
 			"root".into(),
 			AgentModelSettingsResult::Available {
+				service_tier: None,
 				work_id: EntityId::new("root").unwrap(),
 				thread_id: EntityId::new("thread").unwrap(),
 				account_id: EntityId::new("account").unwrap(),
@@ -418,6 +422,7 @@ fn observed_settings_do_not_replace_newer_manual_intent(cx: &mut TestAppContext)
 		let version = s.draft_profiles.execution.revision();
 		let input_at_read = s.model.read(cx).content().to_owned();
 		let observation = AgentModelSettingsResult::Available {
+			service_tier: None,
 			work_id: EntityId::new("agent").unwrap(),
 			thread_id: EntityId::new("native-thread").unwrap(),
 			account_id: EntityId::new("account").unwrap(),
@@ -466,6 +471,7 @@ fn a_new_explicit_model_uses_its_own_capabilities_not_the_observed_model(cx: &mu
 		s.model_settings.observations.insert(
 			"agent".into(),
 			AgentModelSettingsResult::Available {
+				service_tier: None,
 				work_id: EntityId::new("agent").unwrap(),
 				thread_id: EntityId::new("native-thread").unwrap(),
 				account_id: EntityId::new("account").unwrap(),
@@ -523,6 +529,7 @@ fn inspecting_a_worker_does_not_replace_the_composers_model_observation(cx: &mut
 		s.model_settings.observations.insert(
 			"agent".into(),
 			AgentModelSettingsResult::Available {
+				service_tier: None,
 				work_id: EntityId::new("agent").unwrap(),
 				thread_id: EntityId::new("native-thread").unwrap(),
 				account_id: EntityId::new("account").unwrap(),
@@ -677,6 +684,7 @@ async fn serve(listener: UnixListener) {
 			AgentModelSettingsResult::NotReported
 		} else {
 			AgentModelSettingsResult::Available {
+				service_tier: None,
 				work_id: EntityId::new(if index == 3 { "foreign" } else { "root" }).unwrap(),
 				thread_id: EntityId::new("thread").unwrap(),
 				account_id: EntityId::new("account").unwrap(),

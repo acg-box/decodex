@@ -4542,3 +4542,29 @@ async fn first_message_creates_conversation_and_starts_exactly_once() {
 	assert_eq!(starts.len(), 1);
 	assert_eq!(starts[0]["params"]["input"][0]["text"], "Improve sidebar navigation");
 }
+#[tokio::test]
+async fn initial_permission_choice_applies_only_to_the_new_native_conversation() {
+	let (agent, _, _home) = fixture().await;
+	let mut work = AgentCoordinator::create_conversation(
+		&agent.store,
+		"fresh-permissions",
+		EnqueueAgentEvent {
+			source_event_id: "fresh-permission-input".into(),
+			work_item_id: "fresh-permissions".into(),
+			event_kind: "user_message".into(),
+			payload:
+				serde_json::json!({"source":"user","options":{"permissionMode":"full_access"}})
+					.to_string(),
+		},
+		None,
+	)
+	.await
+	.unwrap();
+	let initial = agent.work_thread_params(&work).await.unwrap();
+	assert_eq!(initial["sandbox"], "danger-full-access");
+	assert_eq!(initial["approvalPolicy"], "never");
+	assert_eq!(initial["approvalsReviewer"], "user");
+	work.codex_thread_id = Some("already-created".into());
+	let existing = agent.work_thread_params(&work).await.unwrap();
+	assert_eq!(existing["sandbox"], agent.config.sandbox);
+}

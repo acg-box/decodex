@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:055cc888b39eb1ca76a26943e76bf6dfc325f994ffc265618dab704816e8291c",
+  "pageVersion": "sha256:9af58281480e1d3a80b20540014cc14724ed830f02d0e9b0dd15141eef8980fa",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -48,7 +48,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/client.rs",
-          "version": "repo-file-v1:sha256:47ade93daa374a837ceece043eefeb0059b58f7b8c05b6e0b8671a60b433ade4"
+          "version": "repo-file-v1:sha256:117c9647e1c2a980fe66621f2e97a7f69513cf943d947cfd36dfb67c1a9ab161"
         }
       ]
     },
@@ -102,7 +102,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:87a3f34bf270b016cb766203307a6ceea904972fac89e2991c183ecf214753a6"
+          "version": "repo-file-v1:sha256:baeb014cd95555604c5b6ea71af9925656d66d53c4c81acfaa3bc529f206292c"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
@@ -159,6 +159,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T06:51:55.940Z"
+    "at": "2026-10-28T08:28:06.287Z"
   }
 }

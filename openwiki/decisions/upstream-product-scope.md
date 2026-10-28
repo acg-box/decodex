@@ -1,5 +1,4 @@
 ---
-
 type: Reference
 title: "Retained upstream product capabilities"
 description: "Current native integration, account and conversation scope, with excluded duplicate surfaces."
@@ -17,18 +16,14 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
     resource: repo://apps/decodex-gpui/src/agent_prompt_fork.rs
-  - id: openwiki-source-0f9840ddf9e841a062aa905a
-    resource: repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs
   - id: openwiki-source-56b561d7e6dd906d218aa9d1
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
-  - id: openwiki-source-296a92a9cefecb19f0fc1f95
-    resource: repo://apps/decodex-gpui/src/agent_sample_tests.rs
-  - id: openwiki-source-912dbe8f46e7ec6026887bbe
-    resource: repo://apps/decodex-gpui/src/agent_sample.rs
   - id: openwiki-source-01379a7fb49ab2d638863891
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
   - id: openwiki-source-0d053d4de2f668168f982629
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
+  - id: openwiki-source-59ed67d26d1c310707a365e5
+    resource: repo://apps/decodex-gpui/src/component_plugins.rs
   - id: openwiki-source-682f90c6d08ed3207257f1d5
     resource: repo://apps/decodex-gpui/src/conversations.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
@@ -47,12 +42,12 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/prediction.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
+  - id: openwiki-source-e379b8a714d71f87371ae328
+    resource: repo://crates/decodex-components/src/plugins.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-0d29990b5fd295fa89a495ad
     resource: repo://crates/decodex-protocol/src/model_catalog.rs
-  - id: openwiki-source-84719462dc44acb0bf71023b
-    resource: repo://crates/decodex-runtime/src/account_api.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
@@ -67,6 +62,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs
   - id: openwiki-source-720a745d503e0e60ebcad0c5
     resource: repo://crates/decodex-runtime/src/agent_detail.rs
+  - id: openwiki-source-5bc08ad67fcdb104dfcde7bf
+    resource: repo://crates/decodex-runtime/src/agent_permissions.rs
   - id: openwiki-source-d8df4be72e86f8bd3d65cce8
     resource: repo://crates/decodex-runtime/src/agent_plugins.rs
   - id: openwiki-source-3d25cb6558fde84d70520ac2
@@ -97,10 +94,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-28T08:39:27.042Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T08:42:08.680Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 # Product scope and native ownership
@@ -111,11 +108,11 @@ Decodex supplies a local workspace, account policy, work relationships and reada
 
 The [Project, Agent and Work contract](project-agent-work.md) is the accepted and implemented contract for general-purpose collaboration. It defines shared English names for code and UI, an optional Assistant, existing Agents acting as Project Leads, one owner per Work, native Subagents, and scoped Collaboration Requests between independent Agents. It does not use fixed L0/L1/L2 business levels. The current ownership boundary is documented below.
 
-Global Guardian controls and native private Review Details are now selected product scope. They are no longer awaiting a decision on whether to implement them. The target has no per-Agent Guardian override; actual native requirements and per-source effective settings remain authoritative. Review Details are diagnostic observation, not permission or Work acceptance. Implementation, exact-artifact qualification and a separate local installed development acceptance are recorded in the stable retained contract catalog. The installed scenario qualifies two Projects and four Works, independent-Agent input and approval ownership, Pause/Resume, restart recovery, global Guardian and the Workspace/Full Access sequence. Official Codex desktop Project presentation remains unobserved. A controlled scenario does not establish general model quality. This decision does not enable a native flag, broaden Full Access, or select unrelated historical optional proposals.
+Native permissions and private Review Details are selected product scope. Each conversation owns its permission mode; the global Guardian control only enables optional review records. Review Details are observation, not permission or Work acceptance. The retained contract catalog records an earlier installed scenario with two Projects, four Works, independent-Agent input and approval ownership, Pause/Resume, restart recovery and a Workspace/Full Access sequence. That historical qualification does not establish the current installed artifact or general model quality. Official Codex desktop Project presentation remains unobserved.
 
 The default coordination surface uses `work_read` and `work_manage`. Only users create persistent Agents. Native Subagents own temporary execution. Managed-worker/manager creation and old goal/dependency tools are retired from new conversations and refused in legacy schemas. Native history and recorded tool declarations stay bound to their original conversations.
 
-Global Guardian changes the thread preference for subsequent turns and reports per-source receipts. Existing active captures and pending human approvals retain native ownership. Optional private details retain bounded assistant output and terminal metadata without raw reasoning. Exact action associations are unavailable in the selected runtime and remain explicit. This does not select the separate native Guardian V3 experiment or add a per-Agent override.
+Permission changes use the selected native conversation's supported profile and reviewer settings. Existing child captures and pending human approvals retain native ownership. Optional private details retain bounded assistant output and terminal metadata without raw reasoning. Exact action associations are unavailable in the selected runtime and remain explicit. This does not select the separate native Guardian V3 experiment.
 
 The current schema and protocol 4.0 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
 
@@ -166,14 +163,6 @@ The native model catalog already refreshes automatically; this work does not add
 
 Diagnostic-log upload (**original item 24**) is excluded at the user's request to protect privacy. Terminal queue-navigation keys, copy-on-select and additional semantic range-copy gestures (**items 16, 17 and 25**) are not selected. Clipboard latency (**item 22**) requires a reproduced defect before maintenance work starts. Existing desktop copy behavior remains supported.
 
-## Next-message suggestions and current choices
-
-The user selected **original item 26** with automatic generation: a newly completed answer in the selected independent root conversation requests one suggestion when its composer is empty. Opening saved history, repeated refreshes and an existing draft do not trigger inference. The composer menu retains **Suggest next message…** for an explicit request. **Use as draft** places the suggestion in the same conversation's empty composer as one undoable edit. Later edits are preserved, and acceptance does not send a message. The feature uses the existing native sampler and conversation refresh; it adds no separate poller. See [the suggestion workflow](../workflows/conversations-and-recovery.md#next-message-suggestions) and `retained_prompt_suggestions` in the [retained contracts](../../automations/upstream/retained-contracts.json).
-
-**Original item 19**, authenticated remote execution, remains deferred in [issue 1693](https://github.com/acg-box/decodex/issues/1693). **Item 21** retains Decodex account management: independent account observations and reset-credit requests use the existing account API client. This decision does not make those operations inherit native `application.network` policy.
-
-**Items 27 and 30 remain product decisions.** Do not enable deferred mailbox preemption globally or add schema-budget monitoring and automatic tuning from this review. **Item 29** records native per-server catalog-readiness support; it does not record a new desktop setting, global enablement or a dedicated native qualification. Native support and delivered desktop behavior remain separate.
-
 ## Current integration boundary
 
 | Area | Decodex responsibility |
@@ -190,7 +179,7 @@ The bridge admits installed-plugin observations but rejects local plugin list/re
 
 Provider authentication recovery recording, formerly O24, is also retired. Saved recovery history remains readable without generating new notifications or outgoing work.
 
-The desktop does not need a duplicate plugin marketplace, plugin publishing workflow or embedded browser to use these native capabilities. A local skill picker selects an already enabled skill; it does not reproduce plugin setup.
+The desktop does not need a duplicate plugin marketplace, plugin publishing workflow or embedded browser to use these native capabilities. A local skill picker selects an already enabled skill. The explicit [EGM Component](../integrations/elephant-goldfish.md) controls invoke the original native plugin lifecycle; they do not reopen generic plugin management through the Agent bridge.
 
 ## Retained native additions
 
@@ -198,7 +187,7 @@ Tool and file-change details use exact native thread, turn and item identities. 
 
 Eligible root conversations expose native read receipts in task preferences. Read and unread marks require the reviewed native revision and local source identity. Reading does not acknowledge a result, and these receipts do not replace Dock handoff or attention state.
 
-The client also exposes a bounded, explicitly invoked ephemeral prediction fork. It inherits the loaded parent's context, tools and permissions. It is not a tool-free recap or an automatic background job. Its caller must own authorization and event routing. Next-message suggestions use the separate native sampling path described above; the isolated recap path remains separate.
+The client also exposes a bounded, explicitly invoked ephemeral prediction fork. It inherits the loaded parent's context, tools and permissions. It is not a tool-free recap, an automatic background job, or a composer suggestion interface. Its caller must own authorization and event routing. The isolated recap path remains separate.
 
 Native launch policy requests full-fork prefix preservation, model-specific subagent context defaults and Agent message wakeups. The retained description-first argument is accepted as a removed native feature, so current tool ordering stays native-owned. The native configuration still selects Code Mode hosting transport.
 

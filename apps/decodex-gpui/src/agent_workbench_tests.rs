@@ -35,6 +35,7 @@ fn work_activity_keeps_outputs_bound_to_their_thread_and_turn(cx: &mut TestAppCo
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
+				review: None,
 				source_thread: row.thread.clone(),
 				output: Some(Output {
 					truncated: false,
@@ -210,6 +211,7 @@ fn async_questions_enter_the_desk_without_a_pending_server_event(cx: &mut TestAp
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
+				review: None,
 				output: None,
 				source_thread: row.thread.clone(),
 				assignments: Default::default(),

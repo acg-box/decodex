@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:2a7212083fa2ddc22f4cc9f38a0516438739ea8f14161791dcff11c1138d1ac3",
+  "claims": [
+    {
+      "id": "claim_95da7355536d42fb9ba017dae9558113",
+      "statement": "The optional EGM component selects the original Google repository as egm@egm and delegates installation, Git updates and removal to native Codex plugin commands rather than a local prompt or package implementation.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-components/src/lib.rs#L30-L39",
+          "version": "repo-lines-v1:sha256:38ed59d3e314e5bfbdb3d8997881c966198b7b50aaa5bea7768ad00ab8b36fa5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImExMjEyMjI0ZGYyZDIzZjYwOGI4ZjA5YjJhZGM3YjdiOWQwMGMxNjg5NjZmMGFkNzk2OWYxNGI4YjJiODQ4ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJjY2Q5NjRhZDI5ODU2MzQwMGM2MWYwOTA1MTVmMjI4ZWIwMDZiYTNhYTliNTcyZGU2NjE1OTY2Y2FmMzhlMTQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4MzliMWExOGNiNTA0ZWEzMThmZDhmMzIxYjNhYTdmZGJiYThjNjM3OTM1ZDQ2NTg2YWJiZDQ5OGMwNGFkNzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjOGQ1MWFjOTYxZTZhNmRhNzJlOTVkYjkxNGE4N2E5ZTUzNTVkODgxYjgyMzc3ZGZkZGJlZTBhYjhmNTk5MDEifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/plugins.rs#L73-L148",
+          "version": "repo-lines-v1:sha256:3e8313c5b04a5c5ecf617a488317dc714a32a20868121f0416b975c5aad4d331:eyJzZWxlY3RlZExpbmVDb3VudCI6NzYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyZTYxNjYzNTdiZTcwOTMyNjFlOGY1NTk2ODYzMzI0NmQ4NDA0NjMzMmU4Y2FiNGRmNjRkZmM2NjQyZWJjMTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVhMDU5MDIzMTJkMDdjYzBkMDY5YWYwZDE4NGYyMjg0Zjk4NzdiZDg1YzJiNTg3MzM0NGExYmFlZjM3ZGVlZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFkMjM0YzUyYWNmNjA0MjY4ODZhMTU4ZDRlMmIzNmYwZWMzODYxYjEyYzM0NjJjMzMzOTQzZWVjOTI3MWU1NGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkOWQ4Y2I4OWE1ZWZkZDUwODI0MDBkN2JiMTdkODFjYmE4ZmVjZTdjZjE1MzExOWQ2ZDg5ODdjNWUwNDc3YmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3ca9161484f24f26bb9c1976620ea4f0",
+      "statement": "Settings > Components manages local optional plugin actions in This Mac, reports native version and enabled configuration, and offers exact cleanup even when EGM is no longer listed, separately from required-runtime verification and Sparkle updates.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/component_plugins.rs#L18-L29",
+          "version": "repo-lines-v1:sha256:cab1baff18df605fb2049a0acd7cabcc41cb92f91bacb7bc3603c4ddbf4248c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxOTdiY2M5ZTFlY2Q2YzQwNDVjMTBjYmY4NTc1ZWVhNTBhYWVhYzUyYmY2MmM4MWY1MjdjYzcxODY0YmEzZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY0YTUyMmU2MTFmNGFiNGQ2ZWE3NGI0MGExZDg5MGFiMGVmNjc0ZmVjM2Q0ZmFiZmE4NTlmZWRiODVhMGEyYTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxNTliYmEzMTAxMGIyYjJhMzE4NDljZGRkZWU0YmQ3ZTE4NTAxN2E1M2RiMDMzNDU2NWQzYmEyMTQ0NTM5MjMifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L190-L250",
+          "version": "repo-lines-v1:sha256:0d5f9ce5106308cc7549cfe4342f255e1ca8456cb963ffba3fed6edcf98f354c:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2ZWQ3OTM0NmE1YjQ4MTZiODEyMzQyMzNkNWMzMzE3MmQ5YTE0ZjUyODE2ZWQ0NWQ0NzFmNmFkZDNkOGM0OWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyMDAxM2E4MjU1ODYxYmI1Y2ZkNTRlOTViMTg5MjkyOTliOWU5MWI3MTAxZDYzM2EyZmVmOWQ1MmIwNjc2NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlmYjA5ZWEyZWIwZWFlYjNjNzZhZThiZDY0NDBjMGFjYWNmNDU2ZDY1ODVkMzMzNmIwOWRjMmE4ZGNjNWRhN2QifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_52ae678628b04bcb95a5d086ba5ea647",
+      "statement": "PluginOperations coalesces actions while busy and retains action errors separately from installed state read back from native Codex, including after an action fails.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/component_plugins.rs#L47-L89",
+          "version": "repo-lines-v1:sha256:c3b2d81d812ad8daf51da8b7f3bcc4c63b2844a87f660dbd23930d6076c55ff5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjYWEyMDM3ZjBjZjllZGVjNTM2OTAzMzRkNjNkYjk1OTZiMDU0MGMxODVhN2JjYmU3ZTgxMmE4NjA2YjVkNzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4OWNjZjNlODY4NjkzMGE5ZTUzOGQ5MTQ1Yjk3NTM5MmNiZGY1YTNhOGUxZWQ5OTlhNWRhY2Q5YjY1YThhZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0cd33064cbce4b54906f6ae43d17f7bd",
+      "statement": "The native EGM fixture installs the original seven-skill plugin in an isolated home, compares its original runtime files, performs a first fresh review without edits, uses separate approval and second-review messages, and verifies child completion, source reads and the repaired target revision before explicitly halting.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_component_tests.rs",
+          "version": "repo-file-v1:sha256:97d65bc9f995cda36154a493ea726a9ff4568a3571b29f21e75f247785ece7e2"
+        }
+      ]
+    },
+    {
+      "id": "claim_50097bdc77e1492bb48396bffd7a4d45",
+      "statement": "The opt-in live EGM fixture uses the protected shared credential reader and process-scoped ChatGPT token projection, does not use the refresh token, and checks that no auth file persists in the isolated native home.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_component_tests.rs",
+          "version": "repo-file-v1:sha256:97d65bc9f995cda36154a493ea726a9ff4568a3571b29f21e75f247785ece7e2"
+        }
+      ]
+    },
+    {
+      "id": "claim_f65e404f7a9d4ec4a550b3a395cb5b14",
+      "statement": "Native component removal always calls exact plugin uninstall, including after external marketplace removal, and regression tests cover incomplete orphan cleanup, repetition, peer preservation and user work retention.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-components/src/plugins.rs#L108-L138",
+          "version": "repo-lines-v1:sha256:15ecdf5521fc8edde2049545518651f0431d4a5a8f75ab237f261f69773833e5:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU3YzkyYjgyZTQ5ZDNjNGQwNjE3ZGZjYTNlNmE2MGEzMzQ2NGI5OGI3YTQ1NDc4Y2I5ZjhmNWU2YmNkYzg1MDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdjOTc3MGM4NDQ4ZGI3OTNmOGM4YWNlZDk1ZDdmMTk3ODUwNTNkN2QwNzU0NWExYmE0NjI5N2VjMGEzMTkwY2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk1MjUxZDE2MDE3MTI3YmRkOGFiOTNlYzE1MGFiZDMwMWYwM2Q3MDYwM2Q5ODVkZTBiZjAyZmQ0NmM1YmY0ZjEifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/plugins.rs#L339-L390",
+          "version": "repo-lines-v1:sha256:3fabfd7a142f209dac4a6db62a6df3a2d1210c285fd85fbc14558d90f985fd62:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYzNWI0ZmQ2YjE3MDRhMzdhYzRiYjQxNGNhM2ZmN2Y1MTEwNmFiYTVlMDE4NTdlOTM2ZGI0MzlmZTA4NzY0MzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyN2FiN2Y3NDg3OWUwODZiMDQxOGNkMDQyMzM1MWY5NWZmNmZmODg3Yjg1ZTI3MjRkNWYyZDI1ODcxZjVlOGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyY2ZmM2RkMGIzZGU1M2ZjODBiNTIwMDQyNzdiYzE4NGI0MWIyMGZmYjA5YzMzMGZiMzgzZTRlMGQ3N2NiMzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImRmOWI5MTdhNGFhNjdmY2QyMzAzNWZhYzQ4MDBhMGY1YWFjZjM2N2U4Yzk4ZGRhYzFkNWZiZjJjZTEzZDgwZmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5a89486dceff4c03b7c9919994e03499",
+      "statement": "New Lead guidance conditionally selects original EGM skills for useful independent design review, keeps simple tasks direct, and preserves fresh reviewer context and original human decisions without replacing existing Main instructions.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L624-L647",
+          "version": "repo-lines-v1:sha256:826834bf758b81ae18865205f8a94973ec4f59b24242e0edd299fb6f294e468e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwNGEyM2VkM2Q0ZjMzNjVjNWI3ZmJjYmFhN2Q5MzQ1YzY4ZTExZGU4NjVjMWU5MTI4YTUxYzQ5YmU5NzJlODYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExMGYzYWI4ODk2ZTkzZDUwMjMzMDQ1NTA0ZjAwZGE5YWNjNjIxN2MyYjNiN2Y1NDZjZDAwYzBhMzg5OTk0ZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZjU2YmIyNmM0ZjE2NjU5YmYwYjI1NjFiYTA0MzEwMzU3N2RlNTI1N2JiZWJlNTRiMjljMDBkZjRlMDI1MmIifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L990-L998",
+          "version": "repo-lines-v1:sha256:fb1b26291086ee7b1da2bd688e8dd69028ac26f705931f83c49a8bcb0e0e80d8:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjk4ZTg4ZWYzNDIwNjJiZDNmMjM0NWVmNmM4M2UxMzc1NDg1YzViYmVjMjRlOTQ1MmQ4N2NhNmIzYWNlZTIzZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTE5ODlhYzQzODRlZWEwN2EwM2QwMzA4NzBhOTdkZjcxNzQzYTUxMWMzNjU1ZDNmNDE4ODNhOTM3YWVjOWU0OSJ9"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/instructions.md#L1-L7",
+          "version": "repo-lines-v1:sha256:e7917bc91ac91955d948921c8744de3534ddf6f192f708a252a27f75fb87adc1:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmUyZDlmODkwNTVmNWUyZmQ2OWFmNzBiYjJjNmQ0ZGNkMDZhOWJiOTNiY2Y4MTE2ZjQ2YTQ1ZjBkNTAzMzk5MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTAxNjQzOTNmNjdmYmI5YjViYTkzOWJjZDljOTYyM2U3ZDJhMGJlNGE5ZWMwZmVkYWJlNWQ3M2M2ODRlYTA1ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWFiNmFmMDE1ZGEwZjdjNGQ3ZDc5OGZiMDM0MWUzMzJiYzQ1ZWE1YmY3N2ZiMmM4ZTZjMjZjZTBlYTAxODEwZiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_0ebe1b4ce1e549b28ebb758fabd6e359",
+      "statement": "Native EGM review presentation reuses the Graph and Collaboration panel, preserves the native Lead and reviewer source conversations, and does not equate returned reports with acceptance or count children as review rounds.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
+          "version": "repo-file-v1:sha256:7db2485b1dfbc10208c3f2a310a6bc71ac497852f6cc84e631ec5ed2e8e520dc"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_relation_header.rs",
+          "version": "repo-file-v1:sha256:34bdbcd9101710f9c88cd309a5409ff4c4d94d53b69ff74d58e29983daf86c6d"
+        }
+      ]
+    },
+    {
+      "id": "claim_91dbbfd2222b493fb4bcde1078a83b81",
+      "statement": "EGM markers are bound to supported successful native instruction reads and the current native thread and turn; unrelated or unsupported sources remain ordinary activity, and later ordinary turns do not inherit the previous review phase.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
+          "version": "repo-file-v1:sha256:8931248220c89584d386f2565372cabc82e5f574922526bf5ea158d2301d39dc"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_review.rs",
+          "version": "repo-file-v1:sha256:a535b5e08456375eb9a07b788bf8edf0ce9120cdb91e75f16499684348fef343"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/review_activity.rs",
+          "version": "repo-file-v1:sha256:eb180099689b0b1f5db5868b3903489d1a11e5c60cc9bf5ac67f9884cb249542"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.7.2",
+    "at": "2026-10-28T08:28:06.287Z"
+  }
+}

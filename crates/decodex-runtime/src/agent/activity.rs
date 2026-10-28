@@ -1,4 +1,5 @@
 //! Public activity projection from native item events. Raw arguments and output stay private.
+#[path = "review_activity.rs"] mod review;
 use serde_json::Value;
 
 use crate::agent::image_generation;
@@ -73,6 +74,7 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 	};
 
 	Some(AgentActivityDto {
+		review: review::observe(item, completed),
 		turn_id: params["turnId"].as_str()?.into(),
 		item_id: item["id"].as_str()?.into(),
 		kind: kind.into(),

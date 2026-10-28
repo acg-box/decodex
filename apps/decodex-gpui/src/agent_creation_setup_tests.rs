@@ -7,8 +7,8 @@ use crate::shell::agent_surface::drafts::{
 	tests,
 };
 use decodex_protocol::{
-	AgentSandboxDto, ConversationReasoningEffort, ConversationWorkingDirectory,
-	DesktopCreationSetup, ServiceTier,
+	ConversationReasoningEffort, ConversationWorkingDirectory, DesktopCreationSetup,
+	PermissionMode, ServiceTier,
 };
 
 fn choose(
@@ -23,7 +23,7 @@ fn choose(
 	surface.effort = ConversationReasoningEffort::new("provider-effort").unwrap();
 	surface.fast = false;
 	surface.service_tier = Some(ServiceTier::new("flex").unwrap());
-	surface.sandbox = AgentSandboxDto::WorkspaceWrite;
+	surface.permission_mode = PermissionMode::AskForApproval;
 
 	surface.creation_setup(cx).unwrap()
 }

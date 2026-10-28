@@ -22,6 +22,7 @@ use crate::{
 
 #[derive(IntoElement)]
 pub(super) struct Header {
+	pub reviewer: bool,
 	pub key: String,
 	pub parent: Option<String>,
 	pub team_members: Option<usize>,
@@ -69,6 +70,14 @@ impl Header {
 					.text_color(ui_theme::rgb(if self.selected { BLUE } else { BODY }))
 					.child(self.number.clone()),
 			)
+			.when(self.reviewer && layout.activity_visible(), |row| {
+				row.child(
+					gpui::div()
+						.text_size(gpui::px(layout.title_size()))
+						.text_color(ui_theme::rgb(ui_theme::INFO))
+						.child("Review"),
+				)
+			})
 			.when(self.picked, |row| {
 				row.when_some(self.parent.clone(), |row, parent| {
 					row.child(information_rows::parent(&self.key, parent, layout))

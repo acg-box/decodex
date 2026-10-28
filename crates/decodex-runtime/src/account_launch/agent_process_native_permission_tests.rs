@@ -9,6 +9,48 @@ use crate::account_launch::agent_process::native_tests::{
 use decodex_codex::app_server_client::{NativeTaskPermissions, ThreadPermissionSelection};
 
 #[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated permission presets without inference"]
+async fn installed_permission_presets_change_only_the_selected_native_conversation() {
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit binary");
+	let home = tempfile::tempdir().unwrap();
+	let root = home.path().canonicalize().unwrap();
+	fs::write(root.join("config.toml"), "model=\"fixture-model\"\nmodel_provider=\"fixture\"\n[model_providers.fixture]\nname=\"Permission-only fixture\"\nbase_url=\"http://127.0.0.1:1\"\nwire_api=\"responses\"\nrequires_openai_auth=false\n").unwrap();
+	let session = NativeSession::start(&binary, &root);
+	let parameters = serde_json::json!({"cwd":root,"permissions":":workspace","approvalPolicy":"on-request","approvalsReviewer":"user"});
+	let first = session.client.thread_start(parameters.clone()).await.unwrap();
+	let second = session.client.thread_start(parameters).await.unwrap();
+	let first = first["thread"]["id"].as_str().unwrap();
+	let second = second["thread"]["id"].as_str().unwrap();
+	let unchanged = session.client.configured_task_permissions(second).unwrap().0;
+	for mode in decodex_core::PermissionMode::ALL {
+		let (current, guard) = session.client.configured_task_permissions(first).unwrap();
+		if current.mode() == Some(mode) {
+			continue;
+		}
+		session
+			.client
+			.queue_thread_permission_selection(
+				&ThreadPermissionSelection::for_mode(first, mode).unwrap(),
+				guard,
+			)
+			.await
+			.unwrap();
+		time::timeout(Duration::from_secs(3), async {
+			while session
+				.client
+				.configured_task_permissions(first)
+				.is_none_or(|(facts, _)| facts.mode() != Some(mode))
+			{
+				time::sleep(Duration::from_millis(10)).await;
+			}
+		})
+		.await
+		.expect("native preset readback");
+		assert_eq!(session.client.configured_task_permissions(second).unwrap().0, unchanged);
+	}
+}
+
+#[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated permission selection qualification"]
 async fn installed_permission_selection_publishes_and_survives_native_restart() {
 	time::timeout(Duration::from_secs(45), qualify(false))

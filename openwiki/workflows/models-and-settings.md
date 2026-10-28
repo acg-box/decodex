@@ -4,16 +4,20 @@ title: "Model selection and settings ownership"
 description: "Native model, Goal and search settings, source-bound writes and memory observation."
 tags: ["decodex", "architecture"]
 sources:
-  - id: openwiki-source-ef01be458d459d884afe8624
-    resource: repo://apps/decodex-gpui/src/agent_live_settings.rs
+  - id: openwiki-source-b243cfb8ae3053f8047fdab0
+    resource: repo://apps/decodex-gpui/src/agent_capabilities.rs
   - id: openwiki-source-9c68c30b2ff24ddf9a764d74
     resource: repo://apps/decodex-gpui/src/agent_memory.rs
+  - id: openwiki-source-c6ac7d6b2fdeb458faab2c3a
+    resource: repo://apps/decodex-gpui/src/agent_permissions.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-0d053d4de2f668168f982629
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
   - id: openwiki-source-682f90c6d08ed3207257f1d5
     resource: repo://apps/decodex-gpui/src/conversations.rs
+  - id: openwiki-source-a2f254020dd8eaabd6366c91
+    resource: repo://apps/decodex-gpui/src/session_settings.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
@@ -32,8 +36,6 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/thread_model_selection.rs
   - id: openwiki-source-7a438b090d3a7042aebaf269
     resource: repo://crates/decodex-codex/src/conversation.rs
-  - id: openwiki-source-eccf08613126ff810078b520
-    resource: repo://crates/decodex-protocol/src/agent.rs
   - id: openwiki-source-0d29990b5fd295fa89a495ad
     resource: repo://crates/decodex-protocol/src/model_catalog.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
@@ -56,12 +58,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_model_settings.rs
   - id: openwiki-source-f251e17a7693193da84b2f7a
     resource: repo://crates/decodex-runtime/src/agent_native_goal.rs
+  - id: openwiki-source-5bc08ad67fcdb104dfcde7bf
+    resource: repo://crates/decodex-runtime/src/agent_permissions.rs
   - id: openwiki-source-d28152527a1218d5afb307f7
     resource: repo://crates/decodex-runtime/src/agent_search_settings.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
-  - id: openwiki-source-a4a2658e06fa2cf48ff4589e
-    resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
   - id: openwiki-source-a7b97dd347fbe2f630692d12
     resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
   - id: openwiki-source-07c9cc033899826079f8efb5
@@ -70,10 +72,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-10-28T07:58:23.862Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T08:42:08.680Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 # Model selection and settings ownership
@@ -90,8 +92,9 @@ Codex owns the effective model catalog, task configuration, provider admission a
 | Live model/reasoning | Later steps of the exact active turn when the installed native capability supports it |
 | Exact model ID, effort and service tier | Explicit execution intent, with native validation and inherited settings preserved |
 | Ordinary model fallback | A retained automatic policy for an idle task after current recovery evidence; it does not replay input |
-| Permission profiles | Native execution policy for the selected conversation; Full Access stays separate |
-| Global Guardian | Ask Me or Automatic Review for supported sources; no per-Agent reviewer override |
+| Permissions | Composer shield: Ask for approval, Approve for me, Full access or Read-only for the selected conversation |
+| New-conversation defaults | Settings > Agents; apply only when a new conversation starts |
+| Speed | Standard or Fast in the model menu, subject to native availability |
 | Review Details | Global optional bounded private reviewer output and lifecycle observations |
 
 ## Writes and recovery
@@ -116,7 +119,7 @@ The [retained evidence](../../automations/upstream/retained-evidence.json) recor
 
 ## Guardian and helper settings
 
-Global Guardian stores desired reviewer intent and reports actual native per-source readback. Its thread preference affects subsequent turns. Active-turn policy, already-pending human approvals and previously spawned child captures retain native ownership. Retained per-turn reviewer receipts are read-only evidence; the local protocol exposes no per-Agent reviewer write command. Live model/reasoning controls remain source-bound supported native edits.
+The composer shield and Settings > Agents use the same permission presets. Settings defines creation defaults; the shield reads and changes the selected conversation through native permission selection. Native children inherit their parent settings. Independent conversations retain their own choices. Active turns and pending human approvals keep native ownership. Global Guardian only controls optional Review Details. Live model/reasoning controls remain source-bound native edits. Speed stays in the model menu.
 
 Full Access is a native permission choice, not a Guardian mode. Turning optional Review Details off stops new observation; it does not approve pending actions or remove native enforcement. See [approvals](approvals-and-native-ownership.md).
 

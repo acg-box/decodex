@@ -14,6 +14,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/bundled_daemon.rs
   - id: openwiki-source-c1d5f763b821a11957a8c33b
     resource: repo://apps/decodex-gpui/src/client_lifecycle.rs
+  - id: openwiki-source-0813b2e35e2133631c0aa4db
+    resource: repo://apps/decodex-gpui/src/settings_components.rs
   - id: openwiki-source-cfb92e5db8b3a39d51f6a057
     resource: repo://apps/decodex-gpui/src/settings_updates.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
@@ -114,10 +116,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T07:58:23.862Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 # Runtime Architecture
@@ -161,7 +163,7 @@ Project and Work are durable business records. A persistent Agent owns one curre
 
 The first actual user input can initialize an independent Agent without an Assistant. Native thread metadata is materialized before Project reconciliation. Every independent conversation must attach to the exact process that created or resumed its native thread; a shared account process does not make one Agent the parent of another.
 
-The overview contains Work headers. `work_portfolio` serves selected evidence in digest-checked 8 KiB pages with a 32 MiB ceiling. SQL applies Agent and granted Material scope before the per-category record limit. The global Guardian coordinator records desired reviewer preference and actual per-source application receipts. It does not own execution approval or business assessment. Optional private records exclude raw reasoning and preserve explicit missing action associations.
+The overview contains Work headers. `work_portfolio` serves selected evidence in digest-checked 8 KiB pages with a 32 MiB ceiling. SQL applies Agent and granted Material scope before the per-category record limit. Guardian observes optional native review records without overriding conversation permissions or business assessment. Private records exclude raw reasoning and preserve explicit missing action associations.
 
 The service initializes the current schema directly. New conversations advertise the canonical tool revision. Ordinary input resumes its retained native context without a context-upgrade journal. Unknown external effects require authoritative readback. Previous history supplies evidence, not input authority. See [coordination](chief-coordination.md) and [local database](../operations/local-database.md).
 
@@ -221,7 +223,7 @@ Compatibility tool-output retention selects only Decodex delegation instructions
 
 ## Components and app updates
 
-`decodex-components` owns one per-user component store, package verification and cache repair. The GUI and service embed the same runtime requirement. App startup prepares that component before launching the owned service; preparation does not consume connection retry attempts. Settings > Updates & Components shows the selected component, progress, errors and Retry. Sparkle owns the separate Decodex application update flow.
+`decodex-components` owns one per-user component store, package verification and cache repair. The GUI and service embed the same runtime requirement. App startup prepares that component before launching the owned service; preparation does not consume connection retry attempts. Settings > Components shows the selected component, progress, errors and Retry. Optional EGM installation, update and removal use the native Codex plugin lifecycle. Sparkle owns the separate Decodex application update flow in Settings > Updates.
 
 Official Release inputs require an exact tag, canonical OpenAI asset URL, archive SHA-256, executable SHA-256 and generated schema fingerprint. The installer checks the archive before extraction, then verifies signatures, version and protocol evidence. Downloads have three bounded attempts. A verified replacement is published atomically; a failed repair preserves the previous directory, and other versions remain available.
 

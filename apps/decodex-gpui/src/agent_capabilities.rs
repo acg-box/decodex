@@ -1,19 +1,10 @@
 //! Runtime model catalog. Loading metadata never sends a conversation message.
 use std::time::Instant;
 
-use gpui::{
-	AnyElement, SharedString,
-	prelude::{
-		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
-		Styled,
-	},
-};
+use gpui::{AnyElement, prelude::IntoElement};
 use tokio::runtime::Builder;
 
-use crate::{
-	shell::agent_surface::{AgentClient, AgentSurface, Context},
-	ui_theme::{self, HOVER_FILL, SELECTED_HOVER_FILL},
-};
+use crate::shell::agent_surface::{AgentClient, AgentSurface, Context};
 use decodex_protocol::{
 	AgentCapabilitiesResult, AgentModelDto, ConversationReasoningEffort,
 	ConversationWorkingDirectory, InitialModelCatalogRequest, ModelCatalogPurpose, ServiceTier,
@@ -30,57 +21,22 @@ pub(super) struct CatalogContext {
 impl AgentSurface {
 	pub(super) fn service_tier_picker(&self, cx: &Context<Self>) -> AnyElement {
 		let supports_fast = self.selected_model(cx).is_some_and(|model| model.supports_fast);
-		let tiers = [
-			(ServiceTier::standard(), "Standard", true),
-			(ServiceTier::from_fast(true), "Fast", supports_fast),
-		];
-		let selected = if let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id())
-		{
-			self.draft_profiles.execution.choice(&owner).selected_service_tier()
-		} else {
-			Some(self.service_tier.clone().unwrap_or_else(|| ServiceTier::from_fast(self.fast)))
-		};
-		let selected = selected.unwrap_or_else(|| {
-			self.service_tier.clone().unwrap_or_else(|| ServiceTier::from_fast(self.fast))
-		});
-		let mut panel = gpui::div().id("service-tier-picker").flex().items_center().gap_1();
+		let selected = self.composer_service_tier();
+		crate::session_settings::speed_choices(
+			selected.as_ref(),
+			supports_fast,
+			Self::choose_service_tier,
+			cx,
+		)
+		.into_any_element()
+	}
 
-		for (id, label, available) in tiers {
-			let chosen = selected == id;
-
-			panel = panel.child(
-				gpui::div()
-					.id(SharedString::from(format!("tier-{}", id.as_str())))
-					.debug_selector({
-						let label = format!("tier-{}", id.as_str());
-
-						move || label.clone()
-					})
-					.when(available, |d| d.cursor_pointer())
-					.when(!available, |d| d.opacity(0.4))
-					.px_2()
-					.py_1()
-					.child(format!("{}{}", if chosen { "✓ " } else { "" }, label))
-					.text_size(gpui::px(11.))
-					.rounded(gpui::px(8.))
-					.bg(ui_theme::rgba(if chosen { 0xffffff16 } else { 0x00000000 }))
-					.hover(move |s| {
-						s.bg(ui_theme::rgba(if chosen { SELECTED_HOVER_FILL } else { HOVER_FILL }))
-					})
-					.on_click(cx.listener(move |s, _, _, cx| {
-						if available {
-							s.fast = id.as_str() == "priority";
-							s.service_tier = Some(id.clone());
-
-							s.mark_tier_intent();
-							s.save_draft_document(cx);
-							cx.notify();
-						}
-					})),
-			);
-		}
-
-		panel.into_any_element()
+	fn choose_service_tier(&mut self, tier: ServiceTier, cx: &mut Context<Self>) {
+		self.fast = tier.as_str() == "priority";
+		self.service_tier = Some(tier);
+		self.mark_tier_intent();
+		self.save_draft_document(cx);
+		cx.notify();
 	}
 
 	fn catalog_context(&self, cx: &Context<Self>) -> Option<CatalogContext> {

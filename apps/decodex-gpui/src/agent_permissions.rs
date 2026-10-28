@@ -1,6 +1,6 @@
-//! Saved task permission profiles; current-turn reviewer controls remain separate.
+//! Native permission presets for the current Agent and independent creation defaults.
+use gpui::AnyElement;
 #[cfg(test)] use gpui::px;
-use gpui::{AnyElement, Div};
 use tokio::runtime::Builder;
 
 #[cfg(test)] use crate::shell::agent_surface::AgentDispatchStateDto;
@@ -13,12 +13,12 @@ use tokio::runtime::Builder;
 use crate::{
 	shell::agent_surface::{
 		self, AgentActionDto, AgentClient, AgentCommandResponse, AgentSnapshotDto, AgentSurface,
-		AgentWorkItemDto, Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled,
-		Task, WireText, mcp_forms,
+		Context, EntityId, IdempotencyKey, IntoElement, ParentElement, Styled, Task, WireText,
+		mcp_forms,
 	},
 	ui_feedback::{self, Feedback},
 };
-use decodex_protocol::{AgentPermissionOutcome, AgentPermissionState};
+use decodex_protocol::{AgentPermissionState, PermissionMode};
 
 #[derive(Default)]
 pub(super) struct Panel {
@@ -55,6 +55,7 @@ impl AgentSurface {
 		work_id: &EntityId,
 		thread: &str,
 		profile_id: WireText,
+		mode: Option<PermissionMode>,
 	) -> Option<AgentActionDto> {
 		let AgentPermissionState::Available {
 			work_id: reviewed_work,
@@ -81,13 +82,15 @@ impl AgentSurface {
 			thread_id: thread_id.clone(),
 			review_token: review_token.clone(),
 			profile_id,
+			mode,
 		})
 	}
 
-	fn update_permission_profiles(
+	pub(super) fn update_permission_profiles(
 		&mut self,
 		work: String,
 		profile_id: Option<WireText>,
+		mode: Option<PermissionMode>,
 		cx: &mut Context<Self>,
 	) {
 		if self.permission_profiles.task.is_some()
@@ -120,7 +123,8 @@ impl AgentSurface {
 			return;
 		};
 		let action = if let Some(profile_id) = profile_id {
-			let Some(action) = self.permission_selection(&work_id, &thread, profile_id) else {
+			let Some(action) = self.permission_selection(&work_id, &thread, profile_id, mode)
+			else {
 				return;
 			};
 
@@ -136,9 +140,11 @@ impl AgentSurface {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
 			let outcome = action.map(|action| runtime.block_on(client.execute(action, key)));
-			let state = runtime
-				.block_on(client.permission_profiles(work_id))
-				.unwrap_or(AgentPermissionState::Unavailable);
+			let state = runtime.block_on(read_selection(
+				&client,
+				work_id,
+				matches!(outcome, Some(Ok(AgentCommandResponse::Accepted { .. }))),
+			));
 
 			Some((outcome, state))
 		});
@@ -171,8 +177,20 @@ impl AgentSurface {
 
 				let (outcome, state) = result.unwrap_or((None, AgentPermissionState::Unavailable));
 
-				s.permission_profiles.reviewed = !saving;
+				s.permission_profiles.reviewed =
+					matches!(state, AgentPermissionState::Available { .. });
 				s.permission_profiles.feedback = match outcome {
+					Some(Ok(AgentCommandResponse::Accepted { .. }))
+						if matches!(
+							state,
+							AgentPermissionState::Available {
+								last_outcome: Some(
+									decodex_protocol::AgentPermissionOutcome::TargetObserved
+								),
+								..
+							}
+						) =>
+						Feedback::success("Permissions updated"),
 					Some(Ok(AgentCommandResponse::Accepted { .. })) =>
 						Feedback::info("Selection queued. Check current permissions below."),
 					Some(Ok(AgentCommandResponse::Rejected { .. })) =>
@@ -213,145 +231,168 @@ impl AgentSurface {
 		epoch
 	}
 
-	pub(super) fn permission_profiles_panel(
-		&self,
-		work: &AgentWorkItemDto,
-		cx: &mut Context<Self>,
-	) -> AnyElement {
-		if work.codex_thread_id.is_none()
-			|| self.native_agents.selected.is_some()
-			|| !self.command_connection_ready()
-		{
-			return gpui::div().into_any_element();
+	fn permission_owner(&self) -> Option<String> {
+		if self.is_new_conversation() {
+			return None;
 		}
+		self.composer_manager.clone().or_else(|| self.root_id())
+	}
 
-		let owner = work.id.clone();
-		let mut panel = self.permission_profiles_header(owner, cx);
-
-		if self.permission_profiles.work.as_ref() != Some(&work.id) {
-			return panel.into_any_element();
+	pub(super) fn creation_permission_mode(&self) -> PermissionMode {
+		if self.is_new_conversation() {
+			self.workspace.new_conversation_permissions.unwrap_or(self.permission_mode)
+		} else {
+			self.permission_mode
 		}
+	}
 
-		panel = panel.children(ui_feedback::inline_feedback(
-			"permission-settings-feedback",
-			"Task permissions",
-			&self.permission_profiles.feedback,
-		));
-
+	pub(super) fn permission_label(&self) -> String {
+		if self.permission_owner().is_none() {
+			return self.creation_permission_mode().label().into();
+		}
+		if self.permission_profiles.work != self.permission_owner() {
+			return "Permissions".into();
+		}
 		match &self.permission_profiles.state {
-			Some(AgentPermissionState::Available {
-				cwd,
-				profile_id,
-				profiles,
-				can_update,
-				last_outcome,
-				..
-			}) => {
-				panel = panel
-					.child(format!(
-						"Configured profile: {}",
-						profile_id.as_ref().map_or("Unnamed policy", |id| id.as_str())
-					))
-					.child(format!("Directory: {}", cwd.as_str()))
-					.child("An active step keeps its existing permissions.");
+			Some(AgentPermissionState::Available { mode: Some(mode), .. }) => mode.label().into(),
+			Some(AgentPermissionState::Available { .. }) => "Custom permissions".into(),
+			Some(AgentPermissionState::Pending { .. }) => "Updating permissions…".into(),
+			_ => "Permissions".into(),
+		}
+	}
 
-				if let Some(state) = last_outcome {
-					panel = panel.child(format!("Last selection: {}", label(*state)));
-				}
+	pub(super) fn refresh_composer_permissions(&mut self, cx: &mut Context<Self>) {
+		if let Some(work) = self.permission_owner()
+			&& self.native_agents.selected.is_none()
+			&& self.permission_profiles.work.as_ref() != Some(&work)
+			&& self.permission_profiles.task.is_none()
+		{
+			self.update_permission_profiles(work, None, None, cx);
+		}
+	}
 
-				if !can_update {
-					panel = panel.children(ui_feedback::inline_feedback(
-						"permission-settings-read-only",
-						"Read-only",
-						&Feedback::neutral(
-							"Wait for the task to settle before changing permissions.",
-						),
-					));
-				}
+	fn choose_permission_mode(&mut self, mode: PermissionMode, cx: &mut Context<Self>) {
+		if let Some(work) = self.permission_owner() {
+			self.update_permission_profiles(
+				work,
+				Some(WireText::new(mode.profile()).expect("native preset")),
+				Some(mode),
+				cx,
+			);
+		} else {
+			if self.is_new_conversation() {
+				self.workspace.new_conversation_permissions = Some(mode);
+			} else {
+				self.permission_mode = mode;
+			}
+			self.save_draft_document(cx);
+		}
+		cx.notify();
+	}
 
-				for (index, p) in profiles.iter().enumerate() {
-					let description = p
-						.description
-						.as_ref()
-						.map(|d| format!(" — {}", d.as_str()))
-						.unwrap_or_default();
-					let text = format!("{}{description}", p.id.as_str());
-
-					if !p.allowed {
-						panel = panel.child(format!("{text} · Unavailable by policy"));
-					} else if profile_id.as_ref() == Some(&p.id) {
-						panel = panel.child(format!("{text} · Configured"));
-					} else if !p.can_select {
-						panel =
-							panel.child(format!("{text} · Unavailable in the current task state"));
-					} else if *can_update
-						&& self.permission_profiles.task.is_none()
-						&& self.permission_profiles.reviewed
-					{
-						let (owner, id) = (work.id.clone(), p.id.clone());
-
-						panel = panel.child(mcp_forms::mcp_button(
+	pub(super) fn permission_options(&self, cx: &mut Context<Self>) -> AnyElement {
+		let creating = self.permission_owner().is_none();
+		let current = if creating {
+			Some(self.creation_permission_mode())
+		} else {
+			match &self.permission_profiles.state {
+				Some(AgentPermissionState::Available { mode, .. }) => *mode,
+				_ => None,
+			}
+		};
+		let available = |mode: PermissionMode| {
+			creating
+				|| matches!(&self.permission_profiles.state,
+			Some(AgentPermissionState::Available { profiles, can_update: true, .. })
+			if self.permission_profiles.reviewed && profiles.iter().any(|p| p.id.as_str() == mode.profile() && p.allowed && p.can_select))
+		};
+		let mut menu = crate::ui_motion::menu_surface(gpui::div()).p_1().flex().flex_col().child(
+			crate::session_settings::permission_choices(
+				current,
+				true,
+				available,
+				Self::choose_permission_mode,
+				cx,
+			),
+		);
+		if !creating {
+			menu = menu.children(ui_feedback::inline_feedback(
+				"permission-settings-feedback",
+				"",
+				&self.permission_profiles.feedback,
+			));
+			if let Some(AgentPermissionState::Available { profiles, can_update, .. }) =
+				&self.permission_profiles.state
+			{
+				for (index, profile) in
+					profiles.iter().enumerate().filter(|(_, p)| !p.id.as_str().starts_with(':'))
+				{
+					let (work, id) =
+						(self.permission_owner().expect("existing Agent"), profile.id.clone());
+					if *can_update && profile.allowed && profile.can_select {
+						menu = menu.child(mcp_forms::mcp_button(
 							format!("permission-profile-{index}"),
-							text,
+							id.as_str().into(),
 							false,
 							cx,
 							move |s, cx| {
-								s.update_permission_profiles(owner.clone(), Some(id.clone()), cx)
+								s.update_permission_profiles(
+									work.clone(),
+									Some(id.clone()),
+									None,
+									cx,
+								)
 							},
 						));
-					} else {
-						panel = panel.child(text);
 					}
 				}
-			},
-			Some(AgentPermissionState::Pending { profile_id, state }) => {
-				panel = panel
-					.child(format!("{}: {}", profile_id.as_str(), label(*state)))
-					.child("Refresh to check. The selection will not be resent.");
-			},
-			Some(AgentPermissionState::Unsupported) => {
-				panel = panel.children(ui_feedback::inline_feedback(
-					"permission-settings-unsupported",
-					"Not available",
-					&Feedback::info("Permission profiles unsupported by this Codex version."),
-				));
-			},
-			Some(AgentPermissionState::Unavailable)
-				if self.permission_profiles.feedback.is_empty() =>
+			}
+			if !self.permission_profiles.reviewed
+				&& let Some(work) = self.permission_owner()
 			{
-				panel = panel.children(ui_feedback::inline_feedback(
-					"permission-settings-unavailable",
-					"Permissions unavailable",
-					&Feedback::warning("Permissions unavailable. Reconnect and refresh."),
+				menu = menu.child(mcp_forms::mcp_button(
+					"permission-profiles-read".into(),
+					"Refresh permissions".into(),
+					false,
+					cx,
+					move |s, cx| s.update_permission_profiles(work.clone(), None, None, cx),
 				));
-			},
-			Some(AgentPermissionState::Unavailable) | None => {},
+			}
 		}
-
-		panel.into_any_element()
-	}
-
-	fn permission_profiles_header(&self, owner: String, cx: &mut Context<Self>) -> Div {
-		gpui::div().flex().flex_col().gap_2().child("Task permissions").child(
-			mcp_forms::mcp_button(
-				"permission-profiles-read".into(),
-				"Refresh permissions".into(),
-				false,
-				cx,
-				move |s, cx| s.update_permission_profiles(owner.clone(), None, cx),
-			),
-		)
+		menu.into_any_element()
 	}
 }
-fn label(state: AgentPermissionOutcome) -> &'static str {
-	match state {
-		AgentPermissionOutcome::Reserved => "Awaiting confirmation",
-		AgentPermissionOutcome::Queued => "Queued · Awaiting confirmation",
-		AgentPermissionOutcome::Unknown => "Unconfirmed",
-		AgentPermissionOutcome::Rejected => "Rejected",
-		AgentPermissionOutcome::TargetObserved => "Current profile matches",
-		AgentPermissionOutcome::Superseded => "Replaced by current permissions",
+
+async fn read_selection(
+	client: &AgentClient,
+	work: EntityId,
+	wait_for_accepted: bool,
+) -> AgentPermissionState {
+	let mut state =
+		client.permission_profiles(work.clone()).await.unwrap_or(AgentPermissionState::Unavailable);
+	for _ in 0..6 {
+		if !wait_for_accepted
+			|| !matches!(
+				state,
+				AgentPermissionState::Pending {
+					state: decodex_protocol::AgentPermissionOutcome::Reserved
+						| decodex_protocol::AgentPermissionOutcome::Queued,
+					..
+				}
+			) {
+			break;
+		}
+		tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+		let next = client
+			.permission_profiles(work.clone())
+			.await
+			.unwrap_or(AgentPermissionState::Unavailable);
+		if matches!(next, AgentPermissionState::Unavailable) {
+			break;
+		}
+		state = next;
 	}
+	state
 }
 
 #[cfg(test)]

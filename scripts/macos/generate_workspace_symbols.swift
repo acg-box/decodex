@@ -19,6 +19,7 @@ let symbols = [
     "power-on": "power",
     "power-off": "power",
     "lock": "lock.fill",
+    "shield": "shield",
     "eye": "eye",
     "eye-slash": "eye.slash",
     "account-route": "arrow.triangle.branch",

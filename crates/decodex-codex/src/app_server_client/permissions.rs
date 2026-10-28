@@ -1,6 +1,7 @@
 //! Native permission catalogs and task-local selections. A queue ACK is not confirmation.
 use std::{collections::HashSet, path::Path, time::Duration};
 
+use decodex_core::PermissionMode;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::time;
@@ -24,17 +25,44 @@ pub struct NativePermissionProfile {
 pub struct ThreadPermissionSelection {
 	thread_id: String,
 	permissions: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	approval_policy: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	approvals_reviewer: Option<String>,
 }
 impl ThreadPermissionSelection {
 	/// The runtime must authorize the exact task and revalidate the allowed catalog entry.
 	pub fn new(thread: &str, profile: &str) -> Result<Self, ClientError> {
-		let value = Self { thread_id: thread.into(), permissions: profile.into() };
+		let value = Self {
+			thread_id: thread.into(),
+			permissions: profile.into(),
+			approval_policy: None,
+			approvals_reviewer: None,
+		};
 
 		if value.valid() { Ok(value) } else { Err(ClientError::InvalidFrame) }
 	}
 
+	/// Change a preset in one native settings request, including its review routing.
+	pub fn for_mode(thread: &str, mode: PermissionMode) -> Result<Self, ClientError> {
+		let mut selection = Self::new(thread, mode.profile())?;
+		selection.approval_policy = Some(mode.approval_policy().into());
+		selection.approvals_reviewer = Some(mode.reviewer().into());
+		Ok(selection)
+	}
+
 	fn valid(&self) -> bool {
-		bounded(&self.thread_id, 512) && bounded(&self.permissions, 256)
+		bounded(&self.thread_id, 512)
+			&& bounded(&self.permissions, 256)
+			&& match (&self.approval_policy, &self.approvals_reviewer) {
+				(None, None) => true,
+				(Some(policy), Some(reviewer)) => PermissionMode::ALL.into_iter().any(|mode| {
+					self.permissions == mode.profile()
+						&& policy == mode.approval_policy()
+						&& reviewer == mode.reviewer()
+				}),
+				_ => false,
+			}
 	}
 }
 
@@ -153,6 +181,33 @@ pub struct NativeTaskPermissions {
 	pub sandbox_policy: Value,
 }
 impl NativeTaskPermissions {
+	/// Recognize complete native presets; custom policies retain their own identity.
+	pub fn mode(&self) -> Option<PermissionMode> {
+		PermissionMode::ALL.into_iter().find(|mode| {
+			let profile_matches = self.profile_id.as_deref().map_or_else(
+				|| {
+					self.sandbox_policy["type"].as_str().is_some_and(|kind| {
+						kind == mode.sandbox()
+							|| matches!(
+								(kind, mode),
+								("readOnly", PermissionMode::ReadOnly)
+									| (
+										"workspaceWrite",
+										PermissionMode::AskForApproval
+											| PermissionMode::ApproveForMe
+									)
+									| ("dangerFullAccess", PermissionMode::FullAccess)
+							)
+					})
+				},
+				|profile| profile == mode.profile(),
+			);
+			profile_matches
+				&& self.approval_policy.as_str() == Some(mode.approval_policy())
+				&& self.approvals_reviewer == mode.reviewer()
+		})
+	}
+
 	/// Parse a complete native settings publication.
 	pub fn from_notification(value: &Value) -> Option<Self> {
 		Self::from_fields(value, "sandboxPolicy")

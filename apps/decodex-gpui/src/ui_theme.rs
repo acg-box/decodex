@@ -39,7 +39,7 @@ use gpui::{
 };
 
 use appearance::Theme;
-use material::{Material, Surface};
+use material::Surface;
 
 pub(crate) const FONT_FAMILY: &str = ".SystemUIFont";
 pub(crate) const BODY_SIZE: f32 = 12.5;
@@ -161,27 +161,7 @@ pub(crate) fn rgba(token: u32) -> Rgba {
 }
 
 pub(crate) fn workspace_palette() -> WorkspacePalette {
-	let colors = ColorScheme::current();
-	let glass = Surface::Window.material() == Material::LiquidGlass;
-
-	if Theme::current() == Theme::Dark && colors.color_theme() == ColorTheme::Decodex {
-		return WorkspacePalette {
-			graph: colors.rgb(CANVAS).opacity(if glass { 0.8 } else { 0.86 }),
-			conversation: rgba(if glass { AGENT_CHAT_OVERLAY } else { CONTENT_MATERIAL }),
-		};
-	}
-	if glass {
-		return WorkspacePalette { graph: gpui::rgba(0), conversation: rgba(AGENT_CHAT_OVERLAY) };
-	}
-
-	// Neutral tints leave the native matte material underneath. Only the reading
-	// plane is lighter; sidebars stay on the shared window surface.
-	let (graph, conversation) = match Theme::current() {
-		Theme::Dark => (0x00000028, 0xffffff06),
-		Theme::Light => (0x00000008, 0xffffffb0),
-	};
-
-	WorkspacePalette { graph: gpui::rgba(graph), conversation: gpui::rgba(conversation) }
+	ColorScheme::current().workspace(Surface::Window.material())
 }
 
 pub(crate) fn floating_group() -> Div {

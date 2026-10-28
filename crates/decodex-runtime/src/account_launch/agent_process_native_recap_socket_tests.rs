@@ -38,11 +38,11 @@ use decodex_core::{AccountQuotaWindow, LocalTrustPolicy};
 use decodex_database::AgentVoiceCall;
 use decodex_protocol::{
 	AgentActionDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
-	AgentExecutionOverrides, AgentSandboxDto, AgentSnapshotResult, AgentStartDto,
-	AgentTimelineContent, AgentTimelineResult, ClientProfile, ConversationModel,
-	ConversationReasoningEffort, ConversationWorkingDirectory, EntityId, HistoryText,
-	IdempotencyKey, LocalTransportAuthority, PromptDraft, PromptEditStatus, PromptInputSend,
-	PromptInputSendIdentity, PromptInputUpload, ServerId, TaskRecapPhase, WireText,
+	AgentExecutionOverrides, AgentSnapshotResult, AgentStartDto, AgentTimelineContent,
+	AgentTimelineResult, ClientProfile, ConversationModel, ConversationReasoningEffort,
+	ConversationWorkingDirectory, EntityId, HistoryText, IdempotencyKey, LocalTransportAuthority,
+	PermissionMode, PromptDraft, PromptEditStatus, PromptInputSend, PromptInputSendIdentity,
+	PromptInputUpload, ServerId, TaskRecapPhase, WireText,
 };
 use reply_proxy::Proxy;
 
@@ -119,7 +119,7 @@ fn start_recap_parent(work: &EntityId, directory: &Path, account: &AccountId) ->
 		cwd: ConversationWorkingDirectory::new(directory.to_str().expect("directory"))
 			.expect("directory"),
 		account_id: Some(EntityId::new(account.as_str()).expect("account")),
-		sandbox: AgentSandboxDto::ReadOnly,
+		permission_mode: PermissionMode::ReadOnly,
 	})
 }
 

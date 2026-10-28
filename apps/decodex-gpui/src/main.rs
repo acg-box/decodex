@@ -13,6 +13,8 @@ mod bundled_daemon;
 )]
 mod client_cache;
 mod client_lifecycle;
+mod component_plugins;
+mod component_runtime;
 mod composer_input;
 mod conversations;
 mod creation_defaults;
@@ -25,6 +27,7 @@ mod native_menu_bar;
 #[cfg(target_os = "macos")] mod native_reopen;
 mod native_updater;
 mod panel_preferences;
+mod session_settings;
 mod settings_surface;
 mod shell;
 mod ui_feedback;
@@ -115,8 +118,14 @@ fn main() {
 
 		let profile = ClientProfile::load_default(None);
 		let agent_profile = profile.as_ref().ok().cloned();
+		let preparation = component_runtime::shared(cx);
 		let bundled_daemon = profile.as_ref().ok().and_then(|profile| {
-			bundled_daemon::BundledDaemonSupervisor::launch_for_profile(profile).ok().flatten()
+			bundled_daemon::BundledDaemonSupervisor::launch_for_profile(
+				profile,
+				preparation.clone(),
+			)
+			.ok()
+			.flatten()
 		});
 
 		if let Some(supervisor) = bundled_daemon.as_ref() {

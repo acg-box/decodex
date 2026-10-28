@@ -64,6 +64,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs
   - id: openwiki-source-fe4da151d2112b589ec8679c
     resource: repo://crates/decodex-runtime/src/agent_context_settings_tests.rs
+  - id: openwiki-source-5bc08ad67fcdb104dfcde7bf
+    resource: repo://crates/decodex-runtime/src/agent_permissions.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
@@ -134,10 +136,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-28T03:55:33.038Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T08:39:27.042Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -440,7 +442,7 @@ The later `controls_followup` record adds the following live checks without chan
 | Full Access | The same write outside the Project failed under Workspace permissions, succeeded under Full Access, succeeded after restart without an override, and failed after Workspace permissions were restored. Global Guardian preference remained separate. |
 | Old encrypted helpers | Native parentage and identical encrypted send/receive payloads identify the venue and lodging children. Their own returned messages name the expected contributions. The exact prepared plaintext remains unproved, so no strong Work binding was written. |
 
-The follow-up passed three selected native permission tests, one selected database hold test, strict lint for 13 packages and formatting. It did not rerun the earlier full workspace suite. An initial missing binary environment variable and an outdated per-thread reviewer fixture failed separately. The corrected fixture sets global Automatic Review and preserves its original permission, directory and request-count assertions. Cold profile controls can remain unavailable until the native context loads; this does not authorize an implicit resume. See the exact selectors, artifact references and limits in the [stable contract catalog](../../automations/upstream/retained-contracts.json).
+The follow-up passed three selected native permission tests, one selected database hold test, strict lint for 13 packages and formatting. It did not rerun the earlier full workspace suite. An initial missing binary environment variable and an outdated per-thread reviewer fixture failed separately. That historical fixture correction set global Automatic Review and preserved its original permission, directory and request-count assertions. Current fixtures use conversation-owned permissions and keep optional review records separate. Cold profile controls can remain unavailable until the native context loads; this does not authorize an implicit resume. See the exact selectors, artifact references and limits in the [stable contract catalog](../../automations/upstream/retained-contracts.json).
 
 ### Local hardware capture follow-up
 
@@ -482,7 +484,7 @@ The native backend comes from model catalog metadata plus configuration. The mat
 
 Work attribution uses an exact direct native call, verified input delivery or prepared native task identity joined with one unique parent activity. V2 canonical child history omits inbound Agent messages. Visible input can prove the exact prompt and receiving turn. Native task-name recovery proves the route through parent metadata, root turn and activity, not encrypted prompt content. Unnamed, missing or ambiguous assignment evidence stays Unknown without duplicate execution. Script text, output text or timing cannot replace native identity. V2 remains direct-only by default; qualification explicitly sets native `multi_agent_v2.non_code_mode_only=false`. Decodex does not change that policy.
 
-Global Guardian preference changes apply to subsequent native turns. Active turns, already-pending human approvals and previously captured child policy keep native ownership. Reviewer selection never grants Full Access. Private details retain verified native assistant output and item-free terminal metadata only. They exclude raw reasoning frames and do not enter parent canonical history, complete Work or replay actions. Exact action Review association is unavailable in this runtime and remains explicit. Optional records are limited to 128 at 64 KiB each, with 32 short overview previews; reconnect gaps remain visible. After a completed review, history recovery examines up to 32 same-directory private candidates and five turns each, verifying the parent before retention. The selected runtime cannot subscribe to raw events on resume.
+Conversation permission changes apply through native thread settings. Defaults apply to newly created conversations, and native children inherit their parent settings. Active turns and already-pending human approvals keep native ownership. Global Guardian now controls optional review records only; it does not override a conversation reviewer. Reviewer selection alone never grants Full Access. Private details retain verified native assistant output and item-free terminal metadata only. They exclude raw reasoning frames and do not enter parent canonical history, complete Work or replay actions. Exact action Review association is unavailable in this runtime and remains explicit. Optional records are limited to 128 at 64 KiB each, with 32 short overview previews; reconnect gaps remain visible. After a completed review, history recovery examines up to 32 same-directory private candidates and five turns each, verifying the parent before retention. The selected runtime cannot subscribe to raw events on resume.
 
 Agent/Material scope precedes SQL page limits. Work/evidence views keep at most 100 records per category and expose additional retained data. Selected evidence uses digest-checked 8 KiB pages up to 32 MiB. Work association does not move the native conversation to another execution directory or create another sandbox. Pause does not roll back existing native actions.
 

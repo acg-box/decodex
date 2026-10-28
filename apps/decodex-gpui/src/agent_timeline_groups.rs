@@ -582,6 +582,8 @@ mod tests {
 		});
 
 		visual.update(crate::ui_frame::draw_frame);
+		thread::sleep(std::time::Duration::from_millis(240));
+		visual.update(crate::ui_frame::draw_frame);
 
 		assert!(visual.debug_bounds("turn-process-toggle").is_none());
 		assert!(visual.debug_bounds("archived-process-content").is_none());
@@ -589,7 +591,11 @@ mod tests {
 
 		page.entries.push(completed("completed"));
 		surface.update(visual, |s, cx| {
-			assert!(s.timeline.native.refresh(binding, page));
+			// Reading above the tail must not turn automatic folding into a
+			// permanent explicit expansion when the completion arrives.
+			s.timeline.follow_paused.insert(binding.work.clone());
+			assert!(s.refresh_native_history(binding, page));
+			assert!(s.timeline.native.expanded_turns.is_empty());
 
 			cx.notify();
 		});

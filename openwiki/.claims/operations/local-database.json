@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a606b8f63ff568694cec87516ffbada90e49ca2368007c7ec955b904270f7892",
+  "pageVersion": "sha256:aa99014d3a23af05dfd5a4fcfacf68e9459fe84275a8d0f572b81d17ce6733a4",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -45,7 +45,7 @@
       "statement": "Current local clients and service must agree on the exact CURRENT_VERSION protocol; packaged native compatibility is checked separately by the bundle contract verifier.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L286-L306",
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L288-L308",
           "version": "repo-lines-v1:sha256:1c44d48aaa887de29f32834e552d02feffa934c64df790e616eabd57707a5a72:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5NzMyMjRjOGMzN2U1NGI0NjM4NjM5ZWM3ZjI5MWYxOWQwNmI3Mjc0YzJhOGYyMzNhZDBhMzQ4YzA5N2VkNDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjOGU3MjlkOThhMmYzNmVmNjEwNjJlYzQzY2UzZWQ3ZWMxZDkyMGYwMjIyNGMxNzMwNjAyZjg0OWU3NjE0YTQifQ"
         },
         {
@@ -111,18 +111,18 @@
       "statement": "Ordinary input resumes its original native context and tool declarations without a context-upgrade journal; uncertain external effects require authoritative readback.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L963-L969",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L991-L997",
           "version": "repo-lines-v1:sha256:94776a0d435b96647d7166add2c7065508760db388a1d6b1ab244d43e5b1d2f8:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWZkZDg0NjFjMDUwNzdiZTg5NzFhYmUxMWM5ODJhMjU0YWFlMTEyZTM3NzIwZDdhZmViNjBlMWU0ZDUzNDRmZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDQwOThiOWE1NmE3ZGNiZDEzOWQ5N2NiZTQzYmEyNjk4MWViNTc0MmMwNGZmZDY5MTc3ZGNjMGE5MzQyYTdkMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzNhM2E4NGU0NTc2MjMxMDU0MzhlYTg2MGM3MDk5NjA2YTEwYzVkOTM2YTM2ZDQ0Mjk1ZDMyZmE3N2Q3ZjdmNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWFmM2U5ZDA4NDM1MGQzYjExMzJmNzNmZGNkNTIzNjg3OWM1ZmQ5NWUyMTU4NWZjZmNiOGFiZjlkMmNjYzRiNCJ9"
         }
       ]
     },
     {
       "id": "claim_274f511d5a484f5f8e48209137c998c5",
-      "statement": "Global Guardian stores desired settings, source application receipts and bounded deduplicated private observations separately from native approval authority and Work completion.",
+      "statement": "Global Guardian stores the Review Details opt-in and bounded deduplicated private review records, separately from conversation permissions, native approval authority and Work completion.",
       "evidence": [
         {
           "resource": "repo://database/src/guardian_settings.rs",
-          "version": "repo-file-v1:sha256:1b874c9a2715b387fc01541ea031297b4ef80e418f11c0f377d955a3da260d19"
+          "version": "repo-file-v1:sha256:9eed8d64b595ffb61974b5d32270defa026efffee2318badb061f41210622f6c"
         }
       ]
     },
@@ -159,7 +159,7 @@
       "statement": "Current local protocol 4.0 exposes selected read-only views and retained attached branches and rejects any different major or minor version.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L286-L306",
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L288-L308",
           "version": "repo-lines-v1:sha256:1c44d48aaa887de29f32834e552d02feffa934c64df790e616eabd57707a5a72:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5NzMyMjRjOGMzN2U1NGI0NjM4NjM5ZWM3ZjI5MWYxOWQwNmI3Mjc0YzJhOGYyMzNhZDBhMzQ4YzA5N2VkNDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjOGU3MjlkOThhMmYzNmVmNjEwNjJlYzQzY2UzZWQ3ZWMxZDkyMGYwMjIyNGMxNzMwNjAyZjg0OWU3NjE0YTQifQ"
         }
       ]
@@ -177,6 +177,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T21:12:13.971Z"
+    "at": "2026-10-28T08:28:06.287Z"
   }
 }

@@ -40,9 +40,9 @@ use decodex_protocol::{
 	AccountClient, AccountCommandResponse, AccountInspectResult, AccountProfileResult,
 	AccountQuotaStateDto, AgentActionDto, AgentCapabilitiesResult, AgentClient,
 	AgentCommandResponse, AgentDispatchStateDto, AgentHistoryEntryDto, AgentHistoryResult,
-	AgentSandboxDto, AgentSnapshotDto, AgentSnapshotResult, AgentStartDto, AgentWorkStatusDto,
-	ClientProfile, CommandPayload, ConversationModel, ConversationReasoningEffort,
-	ConversationWorkingDirectory, EntityId, HistoryText, IdempotencyKey, ResetCardClient,
+	AgentSnapshotDto, AgentSnapshotResult, AgentStartDto, AgentWorkStatusDto, ClientProfile,
+	CommandPayload, ConversationModel, ConversationReasoningEffort, ConversationWorkingDirectory,
+	EntityId, HistoryText, IdempotencyKey, PermissionMode, ResetCardClient,
 	ResetCardInventoryResult, WireText,
 };
 use decodex_runtime::{ServerConfig, ServiceComposition};
@@ -162,7 +162,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			root_id:EntityId::new("agent-service-smoke").expect("valid bounded qualification fixture"),
 			prompt:HistoryText::new(if scope == SmokeScope::Evidence { evidence::prompt() } else if scope == SmokeScope::Hierarchy { hierarchy_prompt(&working_directory) } else { "Read-only coordination qualification. Use only Agent coordination tools; never shell, file, network or native subagent tools. Create exactly two independent workers directly under this Agent: service-a asks its worker to reply exactly DRAFT_A without tools; service-b asks its worker to reply exactly RESULT_B without tools. Finish this initial turn with SERVICE_READY after creating both. When completion inbox events arrive later, assess each, record resolved disposition only if the requested output was delivered; otherwise record follow_up with the actual problem. Summarize. Do not create more work. Later explicit user inputs will request a repair and a decision.".into() }).expect("valid bounded qualification fixture"),
 			model:ConversationModel::new(model).map_err(|_|"invalid model")?,effort:Some(ConversationReasoningEffort::Medium),
-			cwd:ConversationWorkingDirectory::new(working_directory.to_string_lossy()).map_err(|_|"invalid smoke directory")?,account_id:Some(account),sandbox:AgentSandboxDto::ReadOnly,
+			cwd:ConversationWorkingDirectory::new(working_directory.to_string_lossy()).map_err(|_|"invalid smoke directory")?,account_id:Some(account),permission_mode:PermissionMode::ReadOnly,
 		}),IdempotencyKey::new("smoke-start").expect("valid bounded qualification fixture")).await?;
 
 		verify_initial_service(&client, outcome, &root, scope).await

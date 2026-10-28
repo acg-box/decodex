@@ -187,8 +187,12 @@ impl AgentSurface {
 			if rebound { vec![] } else { state.entries.values().cloned().collect() };
 		let questions = if rebound { &[][..] } else { state.questions.as_slice() };
 		let mut cases = cases::exchanges(graph, rows, &records, questions);
+		self.append_review_cases(&mut cases, rows);
 
-		for row in rows.iter().filter(|row| row.native && row.group != 1) {
+		for row in rows
+			.iter()
+			.filter(|row| row.native && row.group != 1 && self.reviewer_role(row).is_none())
+		{
 			let Some(brief) = self.work_board.briefs.get(&row.key).filter(|brief| {
 				brief.source_thread == row.thread && brief.stamp == self.brief_stamp(row)
 			}) else {
@@ -270,6 +274,143 @@ impl AgentSurface {
 		}
 
 		cases
+	}
+
+	fn append_review_cases(&self, cases: &mut Vec<Exchange>, rows: &[Row]) {
+		for row in rows {
+			let role = self.reviewer_role(row);
+			let Some(evidence) = role
+				.as_ref()
+				.and_then(|_| self.review_evidence(row))
+				.or_else(|| self.lead_review(row))
+			else {
+				continue;
+			};
+			let Some(phase) = self.review_phase(row) else { continue };
+			// The reviewer entry already shows this handoff. Keep Lead entries for
+			// preparation, findings and decisions rather than repeating the same wait.
+			if role.is_none() && phase == "Waiting for review" {
+				continue;
+			}
+			// Keep the native question's reply authority and exact pending state.
+			if let Some(question) = cases.iter_mut().find(|case| {
+				case.question.as_ref().is_some_and(|q| {
+					q.pending && q.work_id == row.work && Some(&q.thread_id) == row.thread.as_ref()
+				})
+			}) {
+				question.title = "Review decision".into();
+				continue;
+			}
+			let parent = role.as_ref().and_then(|_| self.reviewer_parent(row, rows));
+			let output = self.work_output(row);
+			let completed =
+				output.as_ref().is_some_and(|output| self.work_output_complete(row, output.turn));
+			// The same native lifecycle is already represented by this review entry.
+			// Leave peer messages and managed Work receipts intact.
+			cases.retain(|case| {
+				!case.edge.as_ref().is_some_and(|edge| {
+					matches!(edge.kind, Kind::Returned | Kind::Wait)
+						&& (edge.from == row.key || edge.to == row.key)
+				})
+			});
+			let summary = output
+				.as_ref()
+				.map(|output| {
+					if role.is_some() {
+						review_excerpt(output.text)
+					} else {
+						activity::wording::message(output.text)
+					}
+				})
+				.filter(|text| !text.is_empty())
+				.unwrap_or_else(|| {
+					role.as_ref().map_or("Using the original EGM workflow.".into(), |role| {
+						format!("Independent {role} review in progress.")
+					})
+				});
+			let summary = if role.is_none() && row.group != 1 {
+				match evidence.step {
+					decodex_protocol::AgentReviewActivity::Assess =>
+						"Open Lead to inspect the findings and choose the next step.",
+					_ => "Open Lead to inspect the review setup and continue.",
+				}
+				.into()
+			} else {
+				summary
+			};
+			let title = self.reviewer_title(row).unwrap_or_else(|| {
+				match evidence.step {
+					decodex_protocol::AgentReviewActivity::Assess => "Review findings",
+					_ => "Review setup",
+				}
+				.into()
+			});
+			let source_text = output.as_ref().map_or_else(
+				|| "Original EGM instructions were read successfully.".into(),
+				|output| {
+					let mut text: String = output.text.chars().take(1_200).collect();
+					if output.truncated || output.text.chars().count() > 1_200 {
+						text.push('…');
+					}
+					text
+				},
+			);
+			cases.push(Exchange {
+				id: format!(
+					"review:{}:{}",
+					row.thread.as_deref().unwrap_or(&row.key),
+					evidence.turn
+				),
+				from: row.clone(),
+				to: parent.cloned(),
+				title,
+				summary,
+				state: phase,
+				color: if row.group == 1 || role.is_some() { INFO } else { ui_theme::WARNING },
+				request: None,
+				steps: vec![
+					(
+						"Scope",
+						if role.is_some() {
+							"Independent reviewer · original EGM instructions"
+						} else {
+							"Lead · original EGM workflow"
+						}
+						.into(),
+					),
+					(
+						"Outcome",
+						if completed && role.is_some() {
+							"Report returned. Open Lead to review the next step."
+						} else {
+							"Continue in the original conversation."
+						}
+						.into(),
+					),
+				],
+				source: "EGM activity".into(),
+				source_text,
+				source_row: row.clone(),
+				source_event: None,
+				source_item: (!completed).then_some(evidence.item),
+				source_turn: Some(output.map_or(evidence.turn, |output| output.turn.into())),
+				source_thread: row.thread.clone(),
+				edge: None,
+				earlier: false,
+				question: None,
+				order: i64::MAX - 1,
+			});
+		}
+	}
+
+	fn reviewer_parent<'a>(&self, row: &Row, rows: &'a [Row]) -> Option<&'a Row> {
+		let agent = self
+			.native_agents
+			.lists
+			.get(&row.work)?
+			.iter()
+			.find(|agent| Some(&agent.thread_id) == row.thread.as_ref())?;
+		rows.iter().find(|parent| parent.thread.as_ref() == Some(&agent.parent_thread_id))
 	}
 
 	fn collaboration_action(
@@ -530,13 +671,18 @@ impl AgentSurface {
 					.rounded_full()
 					.bg(ui_theme::rgb(case.color)),
 			)
-			.child(self.collaboration_participant(&case.from, &case.id, cx))
-			.child(gpui::div().flex_none().text_color(ui_theme::rgb(SECONDARY)).child("→"));
+			.child(self.collaboration_participant(&case.from, &case.id, cx));
 
-		route = if let Some(to) = &case.to {
-			route.child(self.collaboration_participant(to, &case.id, cx))
+		route = if case.source == "EGM activity" && case.to.is_none() {
+			route.child("Lead")
 		} else {
-			route.child(if case.question.is_some() { "You" } else { "Unknown" })
+			route = route
+				.child(gpui::div().flex_none().text_color(ui_theme::rgb(SECONDARY)).child("→"));
+			if let Some(to) = &case.to {
+				route.child(self.collaboration_participant(to, &case.id, cx))
+			} else {
+				route.child(if case.question.is_some() { "You" } else { "Unknown" })
+			}
 		};
 		route = route.child(gpui::div().flex_1()).child(
 			gpui::div()
@@ -598,6 +744,8 @@ impl AgentSurface {
 			let row = row.clone();
 			let label = if case.question.as_ref().is_some_and(|question| question.pending) {
 				"Open question".into()
+			} else if case.source == "EGM activity" {
+				if case.to.is_some() { "Open report" } else { "Open Lead" }.into()
 			} else {
 				format!("Open {}", self.relation_agent_number(&row))
 			};
@@ -609,6 +757,21 @@ impl AgentSurface {
 					move |s, cx| {
 						s.open_graph_agent(&row, cx);
 					},
+					cx,
+				)
+				.child(workspace_symbols::icon_sized(Symbol::Forward, 12.))
+				.smooth(),
+			);
+		}
+		if case.source == "EGM activity"
+			&& let Some(lead) = &case.to
+		{
+			let lead = lead.clone();
+			actions = actions.child(
+				self.collaboration_action(
+					format!("collaboration-lead-{key}"),
+					"Open Lead".into(),
+					move |s, cx| s.open_graph_agent(&lead, cx),
 					cx,
 				)
 				.child(workspace_symbols::icon_sized(Symbol::Forward, 12.))
@@ -636,11 +799,13 @@ impl AgentSurface {
 			.text_color(ui_theme::rgb(SECONDARY))
 			.children(source_notes);
 
-		source = if matches!(case.source.as_str(), "Native report" | "Native question") {
-			source.child(gpui::div().child(case.source.clone()))
-		} else {
-			source.child(self.collaboration_source_field(case, "Source", &case.source))
-		};
+		source =
+			if matches!(case.source.as_str(), "Native report" | "Native question" | "EGM activity")
+			{
+				source.child(gpui::div().child(case.source.clone()))
+			} else {
+				source.child(self.collaboration_source_field(case, "Source", &case.source))
+			};
 
 		if let Some(event) = case.source_event {
 			source =
@@ -832,6 +997,7 @@ impl AgentSurface {
 
 		for entry in entries.iter().filter(|entry| {
 			!entry.result
+				&& (entry.request.is_some() || self.review_phase(&entry.row).is_none())
 				&& (entry.request.is_some()
 					|| !cases.iter().any(|case| {
 						case.question.as_ref().is_some_and(|question| {
@@ -964,6 +1130,20 @@ impl AgentSurface {
 
 fn same_excerpt(a: &str, b: &str) -> bool {
 	a.split_whitespace().eq(b.split_whitespace())
+}
+
+fn review_excerpt(text: &str) -> String {
+	// Select original report text, not a computed verdict or an acceptance signal.
+	let paragraph = text
+		.split("\n\n")
+		.find(|paragraph| {
+			let lower = paragraph.to_ascii_lowercase();
+			["blocker", "major", "nit"].iter().any(|severity| {
+				lower.split(|c: char| !c.is_ascii_alphabetic()).any(|word| word == *severity)
+			})
+		})
+		.unwrap_or(text);
+	activity::wording::message(paragraph)
 }
 
 #[cfg(test)]

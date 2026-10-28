@@ -1,6 +1,7 @@
 //! Source-backed agent relationships and execution previews.
 #[path = "agent_relation_activity.rs"] mod activity;
 #[path = "agent_relation_canvas.rs"] mod relations;
+#[path = "agent_review.rs"] mod review;
 #[path = "agent_workbench.rs"] mod workbench;
 
 use std::{
@@ -86,6 +87,7 @@ pub(super) struct Row {
 }
 
 pub(super) struct Brief {
+	review: Option<review::Evidence>,
 	source_thread: Option<String>,
 	output: Option<activity::Output>,
 	assignments: BTreeMap<String, String>,
@@ -102,6 +104,9 @@ impl Brief {
 	fn retain_relations(&mut self, previous: &Self) {
 		if self.source_thread != previous.source_thread {
 			return;
+		}
+		if self.review.is_none() {
+			self.review = previous.review.clone();
 		}
 
 		let mut records = previous.relations.clone();
@@ -487,6 +492,9 @@ impl AgentSurface {
 	}
 
 	fn graph_purpose(&self, row: &Row) -> String {
+		if let Some(title) = self.reviewer_title(row) {
+			return title;
+		}
 		let input = self.graph_preview(row).0;
 		let source = if row.native {
 			self.native_assignment(row).unwrap_or(input)
@@ -585,6 +593,13 @@ impl AgentSurface {
 					kind: OperationKind::Action,
 				});
 			}
+		}
+		if let Some(phase) = self.review_phase(row) {
+			operations.push(activity::Operation {
+				id: format!("review:{phase}"),
+				text: phase.into(),
+				kind: OperationKind::Action,
+			});
 		}
 
 		(scope, operations)
@@ -698,6 +713,7 @@ impl AgentSurface {
 						continue;
 					};
 					let mut relations = Vec::new();
+					let mut review = None;
 					let mut outcome = None;
 					let mut preview = None;
 					let mut output = None;
@@ -714,6 +730,7 @@ impl AgentSurface {
 						metrics = crate::ui_work_metrics::Sample::from_page(page);
 						outcome = latest_outcome(&page.entries);
 						preview = activity::latest(&page.entries, None);
+						review = review::latest(&page.entries);
 						output = activity::output(&page.entries);
 						assignments = activity::assignments(&page.entries, &page.thread_id);
 						relations = page
@@ -757,6 +774,7 @@ impl AgentSurface {
 					results.push((
 						row.key,
 						Brief {
+							review,
 							output,
 							source_thread: row.thread.clone(),
 							assignments,
