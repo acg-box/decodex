@@ -256,7 +256,7 @@ pub(crate) fn settings_heading(title: &'static str, description: &'static str) -
 }
 
 pub(crate) fn settings_label(
-	title: &'static str,
+	title: impl Into<gpui::SharedString>,
 	description: impl Into<gpui::SharedString>,
 ) -> Div {
 	let description = description.into();
@@ -271,7 +271,7 @@ pub(crate) fn settings_label(
 			gpui::div()
 				.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 				.line_height(gpui::px(18.0))
-				.child(title),
+				.child(title.into()),
 		)
 		.when(!description.is_empty(), |label| label.child(settings_description(description)))
 }

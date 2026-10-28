@@ -4,6 +4,7 @@
 //! run in the desktop and must not wait for service startup or queries.
 
 #[path = "settings_components.rs"] mod components;
+#[path = "settings_native.rs"] mod native;
 #[path = "settings_power.rs"] mod power;
 #[path = "ui_switch.rs"] mod switch;
 #[path = "settings_themes.rs"] mod themes;
@@ -38,6 +39,7 @@ use crate::{
 	},
 };
 use power::PowerSettings;
+pub(crate) use switch::settings_switch;
 
 const MENU_BAR_PREFERENCE: &str = "DecodexMenuBarVisible";
 const RECAP_PREFERENCE: &str = "DecodexAutomaticTaskRecaps";
@@ -75,6 +77,7 @@ pub(crate) struct SettingsSurface {
 	components: components::Components,
 	updates: updates::Updates,
 	pub(crate) category: SettingsCategory,
+	native_agent: Option<gpui::Entity<crate::shell::agent_surface::AgentSurface>>,
 	power: PowerSettings,
 	snapshot: DesktopSettingsSnapshot,
 	runtime: MenuBarRuntimeState,
@@ -530,6 +533,12 @@ impl SettingsSurface {
 						),
 				)
 			})
+			.child(ui_theme::settings_group("Conversation assistance", vec![self.preference_control(
+				"automatic-prompt-suggestions", "automatic-prompt-suggestions-knob", "Automatic next-message suggestions",
+				"Generate a suggestion after a new answer when the input is empty. Uses quota. Press Tab to accept; never sends automatically.",
+				crate::ui_preferences::automatic_prompt_suggestions, cx,
+			).into_any_element()]))
+			.child(ui_theme::settings_group("Native defaults", vec![self.native_defaults(cx)]))
 			.into_any_element()
 	}
 
@@ -685,6 +694,7 @@ impl SettingsSurface {
 			components: components::Components::new(crate::component_runtime::shared(cx)),
 			power: Default::default(),
 			category: SettingsCategory::General,
+			native_agent: None,
 			snapshot,
 			runtime: MenuBarRuntimeState::Waiting,
 			detail: "Loading settings…".into(),
@@ -755,6 +765,12 @@ impl SettingsSurface {
 	}
 
 	pub(crate) fn refresh(&mut self, cx: &mut Context<Self>) {
+		if self.category == SettingsCategory::Agents
+			&& let Some(agent) = &self.native_agent
+		{
+			agent.update(cx, |agent, cx| agent.read_native_defaults(cx));
+		}
+
 		#[cfg(not(test))]
 		if self.category == SettingsCategory::Components {
 			self.components.refresh_optional();

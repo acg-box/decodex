@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:fc549d259db72a0d0a3333d0e830b26466aac039c073fc2b8a75470fa4c9757e",
+  "pageVersion": "sha256:317869228557478e81634342ba37ba22f2c0e82aa05d03a5fe564c63a95e64d4",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -218,7 +218,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:7435a41852147b5aa3f3749fdfda3e69700679ee2d02a351f611afa7e1e3346e"
+          "version": "repo-file-v1:sha256:3a40d5af6a670d4c68bec399bde3b1e4851d1daa597854acb6b2c6e2cc607fe2"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -237,10 +237,50 @@
           "version": "repo-file-v1:sha256:4cb67bcf80a54a5d7b04c4b85acff08f0dbf5f7345a3c5e0f938040675f49203"
         }
       ]
+    },
+    {
+      "id": "claim_2d5d27649dc84298a4608e6f33b6ec10",
+      "statement": "Settings > Agents exposes background compaction, delegation-instruction retention and a per-user-configured-server cached MCP catalog switch through the existing account/source-bound native configuration controls. Saved values and effective project values remain distinct, with no second configuration store or restart of loaded conversations.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
+          "version": "repo-file-v1:sha256:dbc62214cd0f163d6d9ec5e23d4b3ccb885a1a763958543244ae3288998c6670"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
+          "version": "repo-file-v1:sha256:a0ebf3339bb6bd7695eefab2c6011fe5397d14ad57a8cb31e321b1aee76ee2d8"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
+          "version": "repo-file-v1:sha256:bfe56443590413065e0aca21a1a126ae939b0ca63923601b4da8192b47d1a5bb"
+        }
+      ]
+    },
+    {
+      "id": "claim_ae80d6525a7c4e9f9fef8b9241c057d6",
+      "statement": "Settings > Agents > Conversation assistance controls automatic next-message suggestions. The preference defaults on; disabling consumes turn boundaries without starting automatic sampling, and re-enabling does not replay those completions. Tab acceptance remains an unsent undoable draft.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
+          "version": "repo-file-v1:sha256:b71437e4b1b4211fead0e9c486ff29d70d33f53da233109de147edcb5424d9a1"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
+          "version": "repo-file-v1:sha256:d70c02ddeef5a2d26610464f45a39f430accf387a4c73ecfcb289b9300b62988"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
+          "version": "repo-file-v1:sha256:dd412044199decb99c9f88c1d642c0bd9b90cf4a1e86c81ca006e7b37a49afdd"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
+          "version": "repo-file-v1:sha256:540a21db111b48ddc5db30848f8c5885593558d1ffd11d7524545b86e6ea933b"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T08:48:31.048Z"
+    "at": "2026-10-28T18:12:33.127Z"
   }
 }

@@ -1,11 +1,11 @@
-//! Read and edit two native context defaults without overriding loaded conversations.
+//! Read and edit selected native defaults without overriding loaded conversations.
 use std::{path::Path, time::Duration};
 
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 use tokio::{sync::mpsc::Sender, time};
 
-use crate::app_server_client::{AppServerClient, ClientError, Outbound};
+use crate::app_server_client::{AppServerClient, ClientError, Outbound, app_link_settings};
 
 /// Native context feature keys, in presentation order.
 pub const CONTEXT_FEATURES: [&str; 2] = ["async_compaction", "retain_client_tool_outputs"];
@@ -22,6 +22,8 @@ pub struct NativeContextSettings {
 	pub effective: [bool; 2],
 	/// Explicit user values; absent values use the native default.
 	pub preference: [Option<bool>; 2],
+	/// Startup defaults for existing user-configured MCP servers, without their credentials.
+	pub mcp_startup: Vec<(String, bool, Option<bool>)>,
 }
 impl NativeContextSettings {
 	/// Bind a settings review to the native file version and effective configuration.
@@ -33,7 +35,8 @@ impl NativeContextSettings {
 				self.version,
 				self.user_features,
 				self.effective,
-				self.preference
+				self.preference,
+				self.mcp_startup
 			])
 			.to_string()
 			.as_bytes(),
@@ -91,6 +94,10 @@ impl AppServerClient {
 			user_features,
 			effective,
 			preference,
+			mcp_startup: mcp_startup(
+				&user["config"]["mcp_servers"],
+				&config["config"]["mcp_servers"],
+			),
 		})
 	}
 
@@ -107,22 +114,50 @@ impl AppServerClient {
 			.position(|key| *key == feature)
 			.ok_or(ClientError::InvalidFrame)?;
 
-		if !self.outbound.same_channel(&observed.connection) {
-			return Err(ClientError::InvalidFrame);
-		}
-
 		let key = if index == 0 && observed.user_features[feature].is_object() {
 			"features.async_compaction.enabled".to_owned()
 		} else {
 			format!("features.{feature}")
 		};
+		self.write_native_default(observed, key, serde_json::json!(enabled)).await
+	}
+
+	/// Save catalog readiness for one existing user-configured server, then read it back.
+	pub async fn write_mcp_startup_preference(
+		&self,
+		observed: &NativeContextSettings,
+		server: &str,
+		enabled: bool,
+	) -> Result<NativeContextSettings, ClientError> {
+		if !observed.mcp_startup.iter().any(|(name, _, _)| name == server) {
+			return Err(ClientError::InvalidFrame);
+		}
+
+		self.write_native_default(
+			observed,
+			format!("mcp_servers.{}.startup_readiness", app_link_settings::quoted_key(server)),
+			serde_json::json!(if enabled { "catalog" } else { "connection" }),
+		)
+		.await
+	}
+
+	async fn write_native_default(
+		&self,
+		observed: &NativeContextSettings,
+		key: String,
+		value: Value,
+	) -> Result<NativeContextSettings, ClientError> {
+		if !self.outbound.same_channel(&observed.connection) {
+			return Err(ClientError::InvalidFrame);
+		}
+
 		let receipt = time::timeout(
 			Duration::from_secs(15),
 			self.request(
 				"config/batchWrite",
 				serde_json::json!({
 					"filePath":observed.file,"expectedVersion":observed.version,"reloadUserConfig":false,
-					"edits":[{"keyPath":key,"value":enabled,"mergeStrategy":"replace"}]
+					"edits":[{"keyPath":key,"value":value,"mergeStrategy":"replace"}]
 				}),
 			),
 		)
@@ -140,7 +175,7 @@ impl AppServerClient {
 	}
 }
 
-/// Permit only one versioned boolean edit for the two exposed context preferences.
+/// Permit one versioned edit for an exposed context or MCP startup preference.
 pub fn is_context_preference_write(params: &Value) -> bool {
 	params.as_object().is_some_and(|v| v.len() == 4)
 		&& params["reloadUserConfig"] == false
@@ -149,17 +184,54 @@ pub fn is_context_preference_write(params: &Value) -> bool {
 		&& params["edits"].as_array().is_some_and(|edits| {
 			edits.len() == 1
 				&& edits[0].as_object().is_some_and(|v| v.len() == 3)
-				&& matches!(
-					edits[0]["keyPath"].as_str(),
-					Some(
-						"features.async_compaction"
-							| "features.async_compaction.enabled"
-							| "features.retain_client_tool_outputs"
-					)
-				)
 				&& edits[0]["mergeStrategy"] == "replace"
-				&& edits[0]["value"].is_boolean()
+				&& valid_preference_edit(&edits[0])
 		})
+}
+
+fn valid_preference_edit(edit: &Value) -> bool {
+	let Some(path) = edit["keyPath"].as_str() else { return false };
+
+	if matches!(
+		path,
+		"features.async_compaction"
+			| "features.async_compaction.enabled"
+			| "features.retain_client_tool_outputs"
+	) {
+		return edit["value"].is_boolean();
+	}
+
+	path.strip_prefix("mcp_servers.").and_then(app_link_settings::take_quoted_key).is_some_and(
+		|(server, field)| {
+			app_link_settings::valid_identity(&server) && field == ".startup_readiness"
+		},
+	) && matches!(edit["value"].as_str(), Some("catalog" | "connection"))
+}
+
+fn mcp_startup(user: &Value, effective: &Value) -> Vec<(String, bool, Option<bool>)> {
+	let Some(servers) = user.as_object() else { return Vec::new() };
+
+	servers
+		.iter()
+		.filter_map(|(name, entry)| {
+			if !app_link_settings::valid_identity(name) || !entry.is_object() {
+				return None;
+			}
+			let preference = catalog_readiness(&entry["startup_readiness"])?;
+			let effective = catalog_readiness(&effective[name]["startup_readiness"])?;
+
+			Some((name.clone(), effective.unwrap_or(false), preference))
+		})
+		.collect()
+}
+
+fn catalog_readiness(value: &Value) -> Option<Option<bool>> {
+	match value {
+		Value::Null => Some(None),
+		Value::String(value) if value == "catalog" => Some(Some(true)),
+		Value::String(value) if value == "connection" => Some(Some(false)),
+		_ => None,
+	}
 }
 
 fn enabled(value: &Value, index: usize) -> Result<Option<bool>, ClientError> {

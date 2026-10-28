@@ -14,6 +14,7 @@ impl Automatic {
 		&mut self,
 		owner: (Option<EntityId>, Binding),
 		turn: Option<(String, bool)>,
+		enabled: bool,
 	) -> bool {
 		// A cleared active-turn snapshot can arrive before that turn's history page.
 		// Keep waiting for its boundary instead of treating an older answer as new.
@@ -27,7 +28,7 @@ impl Automatic {
 			&& self.turn != turn;
 		self.owner = Some(owner);
 		self.turn = turn;
-		completed
+		completed && enabled
 	}
 }
 
@@ -54,7 +55,11 @@ impl AgentSurface {
 			(None, _) => boundary.as_ref().map(|(id, complete, _)| (id.clone(), *complete)),
 		};
 		let owner = (self.snapshot.as_ref().and_then(|s| s.runtime_source.clone()), binding);
-		if !self.sample.automatic.observe(owner, turn) {
+		if !self.sample.automatic.observe(
+			owner,
+			turn,
+			crate::ui_preferences::automatic_prompt_suggestions(None),
+		) {
 			return;
 		}
 		let Some((turn, true, true)) = boundary else { return };
@@ -78,5 +83,26 @@ impl AgentSurface {
 		{
 			self.open_sample_panel(true, false, cx);
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	#[test]
+	fn disabling_suggestions_consumes_turn_boundaries_without_replaying_them_on_enable() {
+		let owner = (
+			None,
+			super::Binding {
+				work: "work".into(),
+				thread: "thread".into(),
+				account: "account".into(),
+			},
+		);
+		let mut automatic = super::Automatic::default();
+
+		assert!(!automatic.observe(owner.clone(), Some(("first".into(), false)), false));
+		assert!(!automatic.observe(owner.clone(), Some(("first".into(), true)), false));
+		assert!(!automatic.observe(owner.clone(), Some(("first".into(), true)), true));
+		assert!(automatic.observe(owner, Some(("second".into(), true)), true));
 	}
 }

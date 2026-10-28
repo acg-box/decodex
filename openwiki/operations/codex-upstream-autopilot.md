@@ -36,6 +36,9 @@ sources:
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
 generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-28T18:12:33.127Z
 ---
 
 
@@ -43,7 +46,7 @@ generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
 
 ## Desired registration and authority
 
-The checked-in portfolio contains one upstream Maintainer, plus the separate Content Manager and Xurl Publisher. The earlier upstream Reviewer and Health role descriptions are historical. The repository configures the upstream Maintainer as **ACTIVE**, with model `gpt-6.1-sol`, reasoning effort `max`, worktree execution and a daily UTC 20:05 schedule. Its prompt is `automations/upstream/prompts/maintainer.md`. A repository definition is not proof of host registration or execution. Verify host state through supported automation tools before changing it.
+The checked-in portfolio contains one upstream Maintainer, plus the separate Content Manager and Xurl Publisher. The earlier upstream Reviewer and Health role descriptions are historical. The repository keeps the upstream Maintainer **PAUSED** for the manual proposal review, with model `gpt-6.1-sol`, reasoning effort `max`, worktree execution and a daily UTC 20:05 schedule. Its prompt is `automations/upstream/prompts/maintainer.md`. A repository definition is not proof of host registration or execution. Verify host state through supported automation tools before changing it.
 
 The checked-in prompt requires the automation to remain paused during manual catch-up. A completed catch-up or documentation update does not authorize resumption; that requires an explicit user instruction. When maintenance is authorized to run, existing-capability fixes may be implemented and merged after required checks; new product capabilities still require a user decision. Content publication has separate scope and is not part of upstream compatibility work.
 
@@ -139,11 +142,13 @@ Validate selected retention against the exact native artifact. Check compaction 
 
 ## Configure native context defaults
 
-Task preferences > Context defaults and manual `config.toml` edits use the same native configuration. The two settings are `features.async_compaction` and `features.retain_client_tool_outputs`. Both use the native off default when no enabled value is present. A configured preference does not bypass native runtime eligibility or capacity limits.
+Settings > Agents > Native defaults, Agent preferences > Context defaults and manual `config.toml` edits use the same native configuration. The two settings are `features.async_compaction` and `features.retain_client_tool_outputs`. Both use the native off default when no enabled value is present. A configured preference does not bypass native runtime eligibility or capacity limits.
 
 The settings owner reads the user layer and effective project configuration, then writes one versioned boolean through native `config/batchWrite`. It preserves an existing async threshold table and distinguishes the saved user value from a higher-priority override. The write does not reload the configuration of loaded conversations; it changes defaults for new conversations. A lost reply requires readback, not automatic replay.
 
 Background compaction can prepare work before foreground compaction needs it. Extra or discarded requests can add cost. Native fixtures establish behavior under their recorded conditions; they do not establish a real-provider latency or cost benefit. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md).
+
+The selected per-server cached MCP catalog switch shares this versioned native writer. It saves only an existing user-configured server’s `startup_readiness` as `catalog` or `connection`. Configuration roundtrips do not establish cache performance, live tool execution or installed-app acceptance. See [retained switches](../workflows/models-and-settings.md#find-the-retained-switches).
 
 ## Deliver small complete batches
 

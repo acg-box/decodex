@@ -73,6 +73,9 @@ sources:
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-28T18:12:33.127Z
 ---
 
 # Model selection and settings ownership
@@ -93,6 +96,27 @@ Codex owns the effective model catalog, task configuration, provider admission a
 | New-conversation defaults | Settings > Agents; apply only when a new conversation starts |
 | Speed | Standard or Fast in the model menu, subject to native availability |
 | Review Details | Global optional bounded private reviewer output and lifecycle observations |
+
+## Find the retained switches
+
+| Control | Location |
+| --- | --- |
+| Background compaction | Settings > Agents > Native defaults |
+| Keep delegation instructions after compaction | Settings > Agents > Native defaults |
+| Cached MCP catalog, one switch per configured server | Settings > Agents > Native defaults |
+| Automatic next-message suggestions | Settings > Agents > Conversation assistance |
+| Automatic task recaps | Settings > General |
+| Permissions and speed for new Agents | Settings > Agents |
+| Model, reasoning, search, voice and Goal for the selected Agent | Composer and Agent preferences |
+| Optional EGM component | Settings > Components |
+
+Open Settings > Agents after selecting a connected Agent. The native section reads through that Agent's account and project. It uses the same controls and native configuration as Agent preferences > Context defaults. Saved user values and effective project values remain separate; project or managed policy can override a saved choice. Saving does not restart loaded conversations. Decodex keeps no second copy of these native preferences.
+
+The cached-catalog switch writes only `startup_readiness` for an existing user-configured MCP server: on selects `catalog`, and off selects `connection`. Native Codex owns the cache and tool connection. A missing or invalid cache keeps normal discovery; a tool call still needs the live connection. Configure project-only and plugin servers in Codex.
+
+Automatic suggestions are enabled by default. Turning the switch off prevents future automatic requests. Turning it back on does not request suggestions for answers that completed while it was off. Tab acceptance still creates an undoable draft and never sends it. This setting does not turn on content export or the deferred messaging experiments.
+
+The [retained settings evidence](../../automations/upstream/retained-evidence.json) separates the 23 targeted checks, 12 incidental unit checks and exact-artifact configuration roundtrip from installed-app acceptance. The remaining manual proposals are outside this settings audit.
 
 ## Writes and recovery
 

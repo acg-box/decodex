@@ -9,9 +9,6 @@ sources:
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
 generated: { by: "codex", at: "2026-09-29T06:24:17.023Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-17T07:29:15.006Z
 ---
 
 # Wiki maintenance

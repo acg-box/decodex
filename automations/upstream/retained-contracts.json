@@ -4825,5 +4825,78 @@
       "Suggestions are model-generated proposals. This change does not measure their usefulness or latency, exercise a live provider, or establish installed-app acceptance.",
       "No installation, application launch, release, schedule change, or source-review cursor advance. Automatic suggestions apply to newly observed completed answers in the selected independent root conversation; opening saved history does not trigger inference."
     ]
+  },
+  "retained_settings_controls": {
+    "scope": "Selected, retained controls discussed in the manual proposal review. This is not an audit or approval of the remaining proposals.",
+    "controls": [
+      {
+        "control": "Background compaction",
+        "location": "Settings > Agents > Native defaults; Agent preferences > Context defaults",
+        "owner": "Native features.async_compaction, including the existing threshold table. Explicit off values and thresholds remain valid."
+      },
+      {
+        "control": "Keep delegation instructions after compaction",
+        "location": "Settings > Agents > Native defaults; Agent preferences > Context defaults",
+        "owner": "Native features.retain_client_tool_outputs. Retention requests remain limited to work_instruction outputs."
+      },
+      {
+        "control": "Cached MCP catalog, per server",
+        "location": "Settings > Agents > Native defaults; Agent preferences > Context defaults",
+        "owner": "Native mcp_servers.<quoted-server>.startup_readiness. On saves catalog; off saves connection. Only existing user-configured servers are writable. Codex manages project-only and plugin servers."
+      },
+      {
+        "control": "Automatic next-message suggestions",
+        "location": "Settings > Agents > Conversation assistance",
+        "owner": "Desktop preference; enabled by default to preserve the approved behavior. Disabled observations consume completed-turn boundaries, so re-enabling does not replay them. Native sampling, Tab acceptance and unsent undoable drafts retain their existing owners."
+      }
+    ],
+    "invariants": [
+      "Reuse the existing account/source-bound config read, review token, native version check and readback; do not add another configuration store.",
+      "Show the saved user value separately from the effective project value. Opening Settings > Agents reads defaults through the last selected connected Agent.",
+      "Save defaults for new conversations without restarting loaded conversations.",
+      "No global MCP catalog enablement, local cache policy or replacement tool transport. No valid native cache means normal discovery; tool execution still needs the current connection."
+    ],
+    "other_retained_settings": [
+      {
+        "location": "Settings > General",
+        "controls": [
+          "Automatic task recaps"
+        ]
+      },
+      {
+        "location": "Settings > Agents",
+        "controls": [
+          "Default permissions",
+          "Default speed"
+        ]
+      },
+      {
+        "location": "Agent preferences and composer",
+        "controls": [
+          "Model and reasoning",
+          "Search defaults",
+          "Voice preferences",
+          "Native Goal"
+        ]
+      },
+      {
+        "location": "Settings > Components",
+        "controls": [
+          "Optional EGM component"
+        ]
+      }
+    ],
+    "source_symbols": [
+      "apps/decodex-gpui/src/settings_native.rs#SettingsSurface::native_defaults",
+      "apps/decodex-gpui/src/agent_context_settings.rs#AgentSurface::context_settings_controls",
+      "apps/decodex-gpui/src/agent_prompt_suggestions.rs#Automatic::observe",
+      "crates/decodex-codex/src/app_server_client/context_preferences.rs#AppServerClient::write_mcp_startup_preference",
+      "crates/decodex-runtime/src/agent_context_settings.rs#write"
+    ],
+    "limits": [
+      "The other original proposals remain subject to manual review. Deferred messaging/mailbox experiments and content export do not become selected settings.",
+      "No installed-app acceptance, live-provider exercise, cache performance benchmark, installation or release."
+    ],
+    "delivery_reference": "https://github.com/acg-box/decodex/commit/42e6f0b2cd89e671f93fe5662b92a598f5e80686"
   }
 }

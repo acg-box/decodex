@@ -67,7 +67,7 @@ impl AgentSurface {
 			return;
 		};
 		let Ok(owner) = EntityId::new(work) else { return };
-		let action = if let Some((feature, enabled)) = change {
+		let action = if let Some((feature, enabled)) = &change {
 			let Some(AgentContextSettingsResult::Available {
 				work_id,
 				review_token,
@@ -78,15 +78,15 @@ impl AgentSurface {
 				return;
 			};
 
-			if work_id != &owner || !preferences.iter().any(|p| p.feature == feature) {
+			if work_id != &owner || !preferences.iter().any(|p| &p.feature == feature) {
 				return;
 			}
 
 			Some(AgentActionDto::SetContextPreference {
 				work_id: owner.clone(),
 				review_token: review_token.clone(),
-				feature,
-				enabled,
+				feature: feature.clone(),
+				enabled: *enabled,
 			})
 		} else {
 			None
@@ -134,7 +134,7 @@ impl AgentSurface {
 				let (outcome, state) =
 					result.unwrap_or((None, AgentContextSettingsResult::Unavailable));
 
-				s.context_settings.feedback = feedback(change, outcome.as_ref(), &state);
+				s.context_settings.feedback = feedback(change.as_ref(), outcome.as_ref(), &state);
 				s.context_settings.state = Some(state);
 
 				cx.notify();
@@ -151,7 +151,7 @@ impl AgentSurface {
 
 		let owner = work.to_owned();
 		let opened = self.context_settings.work.as_deref() == Some(work);
-		let mut panel = gpui::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
+		let panel = gpui::div().flex().flex_col().gap_2().child(mcp_forms::mcp_button(
 			"context-settings-toggle".into(),
 			"Context defaults".into(),
 			opened,
@@ -170,8 +170,31 @@ impl AgentSurface {
 			return panel.into_any_element();
 		}
 
+		panel.child(self.context_settings_controls(work, cx)).into_any_element()
+	}
+
+	pub(crate) fn native_defaults_settings(&self, cx: &mut Context<Self>) -> AnyElement {
+		let Some(work) = self.selected.as_deref().filter(|_| self.native_agents.selected.is_none())
+		else {
+			return gpui::div()
+				.child("Select a connected Agent to read native defaults.")
+				.into_any_element();
+		};
+
+		self.context_settings_controls(work, cx)
+	}
+
+	pub(crate) fn read_native_defaults(&mut self, cx: &mut Context<Self>) {
+		if let Some(work) = self.selected.clone() {
+			self.update_context_settings(&work, None, cx);
+		}
+	}
+
+	fn context_settings_controls(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
+		let mut panel = gpui::div().flex().flex_col().gap_2();
+
 		panel = panel
-			.child("Defaults for new conversations, shared across accounts. Project and managed settings can override them. Experimental features depend on Codex support.")
+			.child(crate::ui_theme::settings_description("Native defaults apply to new conversations. The selected Agent’s project and managed settings can override saved values. Experimental features depend on Codex support."))
 			.children(ui_feedback::inline_feedback("context-settings-feedback", "Context settings", &self.context_settings.feedback));
 
 		if self.context_settings.task.is_some() {
@@ -182,43 +205,56 @@ impl AgentSurface {
 
 		panel = panel.child(mcp_forms::mcp_button(
 			"context-settings-refresh".into(),
-			"Refresh context settings".into(),
+			"Read native settings".into(),
 			false,
 			cx,
 			move |s, cx| s.update_context_settings(&owner, None, cx),
 		));
 
-		if let Some(AgentContextSettingsResult::Available { preferences, .. }) =
-			&self.context_settings.state
+		if self.context_settings.work.as_deref() == Some(work)
+			&& let Some(AgentContextSettingsResult::Available { preferences, .. }) =
+				&self.context_settings.state
 		{
 			for preference in preferences {
-				panel = panel
-					.child(feature_label(preference.feature))
-					.child(feature_detail(preference.feature))
-					.child(format!(
-						"Effective: {} · Saved: {}",
-						on_off(preference.effective),
-						preference.preference.map_or("Native default (off)", on_off)
-					));
+				let feature = preference.feature.clone();
+				let owner = work.to_owned();
+				let epoch = self.context_settings.epoch;
+				let key = feature_key(&feature);
+				let label = feature_label(&feature);
+				let detail = format!(
+					"{} Effective: {} · Saved: {}.",
+					feature_detail(&feature),
+					on_off(preference.effective),
+					preference.preference.map_or("Native default (off)", on_off)
+				);
 
-				for enabled in [false, true] {
-					let owner = work.to_owned();
-					let feature = preference.feature;
-					let epoch = self.context_settings.epoch;
-
-					panel = panel.child(mcp_forms::mcp_button(
-						format!("context-choice-{}-{enabled}", feature_key(feature)),
-						on_off(enabled).into(),
-						preference.preference == Some(enabled),
-						cx,
-						move |s, cx| {
-							if s.context_settings.epoch == epoch {
-								s.update_context_settings(&owner, Some((feature, enabled)), cx);
-							}
-						},
-					));
-				}
+				panel = panel.child(
+					crate::ui_theme::settings_row()
+						.child(crate::ui_theme::settings_label(label.clone(), detail))
+						.child(
+							crate::settings_surface::settings_switch(
+								format!("context-choice-{key}"),
+								format!("context-knob-{key}"),
+								label,
+								preference.preference.unwrap_or(preference.effective),
+								true,
+							)
+							.on_change(cx.listener(
+								move |s, enabled: &bool, _, cx| {
+									if s.context_settings.epoch == epoch {
+										s.update_context_settings(
+											&owner,
+											Some((feature.clone(), *enabled)),
+											cx,
+										);
+									}
+								},
+							)),
+						),
+				);
 			}
+
+			panel = panel.child(crate::ui_theme::settings_description("Cached MCP catalogs are configured per user-owned server. No valid cache means normal discovery waits; tool calls still need a live connection. Manage plugin and project-only servers in Codex."));
 		}
 
 		panel.into_any_element()
@@ -226,7 +262,7 @@ impl AgentSurface {
 }
 
 fn feedback(
-	change: Option<(AgentContextFeature, bool)>,
+	change: Option<&(AgentContextFeature, bool)>,
 	outcome: Option<&Result<AgentCommandResponse, ClientFailure>>,
 	state: &AgentContextSettingsResult,
 ) -> Feedback {
@@ -234,10 +270,10 @@ fn feedback(
 		if matches!(outcome, Some(Ok(AgentCommandResponse::Accepted { .. })))
 			&& let AgentContextSettingsResult::Available { preferences, .. } = state
 			&& let Some(AgentContextPreference { effective, preference: Some(saved), .. }) =
-				preferences.iter().find(|p| p.feature == feature)
-			&& *saved == enabled
+				preferences.iter().find(|p| &p.feature == feature)
+			&& saved == enabled
 		{
-			return if *effective == enabled {
+			return if effective == enabled {
 				Feedback::success("Saved for new conversations.")
 			} else {
 				Feedback::info("Saved. Overridden by project or managed settings.")
@@ -257,25 +293,30 @@ fn feedback(
 fn on_off(enabled: bool) -> &'static str {
 	if enabled { "On" } else { "Off" }
 }
-fn feature_key(feature: AgentContextFeature) -> &'static str {
+fn feature_key(feature: &AgentContextFeature) -> String {
 	match feature {
-		AgentContextFeature::AsyncCompaction => "async",
-		AgentContextFeature::RetainClientToolOutputs => "retain",
+		AgentContextFeature::AsyncCompaction => "async".into(),
+		AgentContextFeature::RetainClientToolOutputs => "retain".into(),
+		AgentContextFeature::McpCatalogStartup { server } => format!("mcp-{}", server.as_str()),
 	}
 }
-fn feature_label(feature: AgentContextFeature) -> &'static str {
+fn feature_label(feature: &AgentContextFeature) -> String {
 	match feature {
-		AgentContextFeature::AsyncCompaction => "Background compaction",
+		AgentContextFeature::AsyncCompaction => "Background compaction".into(),
 		AgentContextFeature::RetainClientToolOutputs =>
-			"Keep delegation instructions after compaction",
+			"Keep delegation instructions after compaction".into(),
+		AgentContextFeature::McpCatalogStartup { server } =>
+			format!("Cached MCP catalog: {}", server.as_str()),
 	}
 }
-fn feature_detail(feature: AgentContextFeature) -> &'static str {
+fn feature_detail(feature: &AgentContextFeature) -> &'static str {
 	match feature {
 		AgentContextFeature::AsyncCompaction =>
 			"Summarize before context fills. May use extra quota; availability depends on Codex.",
 		AgentContextFeature::RetainClientToolOutputs =>
 			"Retain Decodex delegation instructions after compaction, within Codex limits.",
+		AgentContextFeature::McpCatalogStartup { .. } =>
+			"Allow a valid cached tool catalog while this server connects.",
 	}
 }
 

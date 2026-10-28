@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:d1e2750fe617a6d9ec1fda10e22e6198d2ca3bed68caed1092806f8843b06f65",
+  "pageVersion": "sha256:e82751dd6007675caca853cd4de9424d9f36a4b1532dd6d59f26ec1ae419643e",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -190,11 +190,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:9a2cbe4b21ace2646a95c735104a60b563df6f4b362ebd62ee865b48f670676b"
+          "version": "repo-file-v1:sha256:dbc62214cd0f163d6d9ec5e23d4b3ccb885a1a763958543244ae3288998c6670"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
-          "version": "repo-file-v1:sha256:7a89c56b2c278e442da7051e41a27995be9ebaf66048c74917ae0876924b340b"
+          "version": "repo-file-v1:sha256:bfe56443590413065e0aca21a1a126ae939b0ca63923601b4da8192b47d1a5bb"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
@@ -202,7 +202,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:fb6c6ca5fa8d5b3ddfc9e84eaa0a0463a1f0887a65688aa37a99eed354550767"
+          "version": "repo-file-v1:sha256:7ed45fc7f30a1f0d49257965446e7eb759317200015eca4456a0b38bc8896f91"
         }
       ]
     },
@@ -212,15 +212,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs",
-          "version": "repo-file-v1:sha256:b7bdf7b6725ecf39c8aac0b6ca6f470363f323c795027ec8d7f028f4462e5d49"
+          "version": "repo-file-v1:sha256:71d665cbcf987458961663a102e5594f5400d8c38ae4d9cc1f1163f33ea39b15"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
-          "version": "repo-file-v1:sha256:7a89c56b2c278e442da7051e41a27995be9ebaf66048c74917ae0876924b340b"
+          "version": "repo-file-v1:sha256:bfe56443590413065e0aca21a1a126ae939b0ca63923601b4da8192b47d1a5bb"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
-          "version": "repo-file-v1:sha256:b54865e3cdd4228297faa05c79b9dfd3a85560569ddec71ffe27e89200f44717"
+          "version": "repo-file-v1:sha256:7355c71bda61ac6fcd55e00c92be805979565b5abfafc63e8ef5db48290145e3"
         }
       ]
     },
@@ -509,10 +509,32 @@
           "version": "repo-file-v1:sha256:cf4bb4274aac52b69ebd3936204a2f1570753e2e38c2afc4fd9796deaa278049"
         }
       ]
+    },
+    {
+      "id": "claim_413abd3cf5a54300a98316224d5b6c7a",
+      "statement": "Settings > Agents and Agent preferences share the native defaults controls. The MCP switch edits only startup_readiness for an existing writable user server, using catalog or connection and the same source/version-bound write/readback. It exposes names and readiness without credentials and does not implement cache or connection policy.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
+          "version": "repo-file-v1:sha256:dbc62214cd0f163d6d9ec5e23d4b3ccb885a1a763958543244ae3288998c6670"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
+          "version": "repo-file-v1:sha256:a0ebf3339bb6bd7695eefab2c6011fe5397d14ad57a8cb31e321b1aee76ee2d8"
+        },
+        {
+          "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
+          "version": "repo-file-v1:sha256:bfe56443590413065e0aca21a1a126ae939b0ca63923601b4da8192b47d1a5bb"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
+          "version": "repo-file-v1:sha256:7355c71bda61ac6fcd55e00c92be805979565b5abfafc63e8ef5db48290145e3"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T08:28:06.287Z"
+    "at": "2026-10-28T18:12:33.127Z"
   }
 }

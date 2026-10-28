@@ -1,6 +1,12 @@
 //! Cached host-local presentation preferences.
 use std::sync::atomic::{AtomicU8, Ordering};
 
+pub(crate) fn automatic_prompt_suggestions(value: Option<bool>) -> bool {
+	static CACHE: AtomicU8 = AtomicU8::new(u8::MAX);
+
+	boolean("DecodexAutomaticPromptSuggestions", &CACHE, value, true)
+}
+
 #[cfg(all(target_os = "macos", not(test)))]
 use objc2::{
 	rc::Retained,

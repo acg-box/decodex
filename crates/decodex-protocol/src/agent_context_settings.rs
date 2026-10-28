@@ -1,16 +1,21 @@
-//! Native context defaults for new conversations.
+//! Selected native defaults for new conversations.
 use serde::{Deserialize, Serialize};
 
 use crate::{EntityId, WireText};
 
-/// Context features exposed in task preferences.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+/// Native preferences exposed in Settings and Agent preferences.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentContextFeature {
 	/// Prepare a compaction result while a conversation continues.
 	AsyncCompaction,
 	/// Preserve selected client tool instructions across compaction.
 	RetainClientToolOutputs,
+	/// Use a valid cached catalog while this configured MCP server connects.
+	McpCatalogStartup {
+		/// Existing server in the writable native user configuration.
+		server: WireText,
+	},
 }
 
 /// One native preference and its effective project default.

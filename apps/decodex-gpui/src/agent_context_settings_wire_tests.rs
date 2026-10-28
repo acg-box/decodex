@@ -22,22 +22,37 @@ use decodex_protocol::{
 	QueryResultPayload, ServerId, ServerMessage, WireText,
 };
 
-struct ContextPanel(Entity<AgentSurface>);
+struct ContextPanel(Entity<AgentSurface>, Entity<crate::settings_surface::SettingsSurface>);
 impl Render for ContextPanel {
-	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.0.update(cx, |s, cx| s.context_settings_panel("root", cx))
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		self.1.clone()
 	}
 }
 
-fn fixture() -> (TempDir, ClientProfile, JoinHandle<Vec<AgentActionDto>>) {
-	wire_test_support::fixture(serve)
+fn fixture(
+	feature: AgentContextFeature,
+) -> (TempDir, ClientProfile, JoinHandle<Vec<AgentActionDto>>) {
+	wire_test_support::fixture(move |listener| serve(listener, feature))
 }
 
 #[gpui::test]
 fn context_picker_sends_once_then_reads_effective_override_after_lost_reply(
 	cx: &mut TestAppContext,
 ) {
-	let (_directory, profile, server) = fixture();
+	run_setting(cx, AgentContextFeature::AsyncCompaction, "context-choice-async");
+}
+
+#[gpui::test]
+fn global_settings_mcp_switch_sends_only_its_reviewed_server(cx: &mut TestAppContext) {
+	run_setting(
+		cx,
+		AgentContextFeature::McpCatalogStartup { server: WireText::new("docs.v2").unwrap() },
+		"context-choice-mcp-docs.v2",
+	);
+}
+
+fn run_setting(cx: &mut TestAppContext, feature: AgentContextFeature, selector: &'static str) {
+	let (_directory, profile, server) = fixture(feature);
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
 
@@ -46,22 +61,33 @@ fn context_picker_sends_once_then_reads_effective_override_after_lost_reply(
 			s.profile = Some(profile);
 		});
 
-		ContextPanel(surface)
+		let settings = cx.new(|cx| {
+			let mut s = crate::settings_surface::SettingsSurface::new(
+				crate::desktop_settings::DesktopSettingsController::production(),
+				cx,
+			);
+			s.category = crate::settings_surface::SettingsCategory::Agents;
+			s.bind_native_agent(surface.clone(), cx);
+			s
+		});
+
+		ContextPanel(surface, settings)
 	});
 	let surface = view.read_with(visual, |v, _| v.0.clone());
 
 	visual.update(|w, cx| {
-		w.resize(gpui::size(context_settings::px(700.), context_settings::px(850.)));
+		w.resize(gpui::size(context_settings::px(1000.), context_settings::px(1400.)));
 		w.draw(cx).clear(cx);
 	});
 
-	let button = visual.debug_bounds("context-settings-toggle").unwrap();
+	assert!(visual.debug_bounds("automatic-prompt-suggestions").is_some());
+	let button = visual.debug_bounds("context-settings-refresh").unwrap();
 
 	visual.simulate_click(button.center(), Default::default());
 	visual.run_until_parked();
 	visual.update(crate::ui_frame::draw_current_frame);
 
-	let button = visual.debug_bounds("context-choice-async-false").unwrap();
+	let button = visual.debug_bounds(selector).unwrap();
 
 	visual.simulate_click(button.center(), Default::default());
 	visual.simulate_keystrokes("space");
@@ -77,7 +103,7 @@ fn context_picker_sends_once_then_reads_effective_override_after_lost_reply(
     });
 }
 
-async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
+async fn serve(listener: UnixListener, expected: AgentContextFeature) -> Vec<AgentActionDto> {
 	let mut actions = Vec::new();
 
 	for index in 0..3 {
@@ -98,7 +124,7 @@ async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 
 			assert_eq!(work_id.as_str(), "root");
 			assert_eq!(review_token.as_str(), "a".repeat(64));
-			assert_eq!(*feature, AgentContextFeature::AsyncCompaction);
+			assert_eq!(feature, &expected);
 			assert!(!enabled);
 
 			actions.push(*action);
@@ -119,9 +145,15 @@ async fn serve(listener: UnixListener) -> Vec<AgentActionDto> {
 			work_id: EntityId::new("root").unwrap(),
 			review_token: WireText::new(if index == 0 { "a" } else { "b" }.repeat(64)).unwrap(),
 			preferences: vec![AgentContextPreference {
-				feature: AgentContextFeature::AsyncCompaction,
+				feature: expected.clone(),
 				effective: true,
-				preference: Some(index == 0),
+				preference: if index == 0
+					&& matches!(expected, AgentContextFeature::McpCatalogStartup { .. })
+				{
+					None
+				} else {
+					Some(index == 0)
+				},
 			}],
 		};
 		let result = ServerMessage::QueryResult(QueryResultEnvelope {

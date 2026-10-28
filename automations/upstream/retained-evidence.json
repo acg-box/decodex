@@ -1289,5 +1289,197 @@
     "trigger": "Generate once when a newly completed visible answer leaves an empty composer. Preserve explicit acceptance, one-shot cancellation and no replay.",
     "main_baseline": "6d7833693e08031599109aabd9854a70e34bdc39",
     "acceptance": "Tab accepts only from the focused empty message field. Other fields, Shift-Tab, nonempty drafts and obsolete suggestions retain normal focus navigation. Acceptance is undoable and never sends."
+  },
+  "native_settings_controls": {
+    "contracts": "automations/upstream/retained-contracts.json#retained_settings_controls",
+    "source_revision": "42e6f0b2cd89e671f93fe5662b92a598f5e80686",
+    "source_sha256": {
+      "apps/decodex-gpui/src/agent_context_settings.rs": "dbc62214cd0f163d6d9ec5e23d4b3ccb885a1a763958543244ae3288998c6670",
+      "apps/decodex-gpui/src/agent_context_settings_wire_tests.rs": "71d665cbcf987458961663a102e5594f5400d8c38ae4d9cc1f1163f33ea39b15",
+      "apps/decodex-gpui/src/agent_prompt_suggestions.rs": "b71437e4b1b4211fead0e9c486ff29d70d33f53da233109de147edcb5424d9a1",
+      "apps/decodex-gpui/src/settings_surface.rs": "dd412044199decb99c9f88c1d642c0bd9b90cf4a1e86c81ca006e7b37a49afdd",
+      "apps/decodex-gpui/src/shell.rs": "b3a65e3afacb6eb2e46878bb6a334458e4748e951181edb658d1de20e86f4cb1",
+      "apps/decodex-gpui/src/ui_preferences.rs": "540a21db111b48ddc5db30848f8c5885593558d1ffd11d7524545b86e6ea933b",
+      "apps/decodex-gpui/src/ui_switch.rs": "f2f24e81d87a865d2d30a23b770d706e07b89790fd78615a4d50488111f21a27",
+      "apps/decodex-gpui/src/ui_theme.rs": "4354fc3873a609385650f035bec0aadf78e905a88a1d366d929073d021956e76",
+      "crates/decodex-codex/src/app_server_client/context_preferences.rs": "bfe56443590413065e0aca21a1a126ae939b0ca63923601b4da8192b47d1a5bb",
+      "crates/decodex-codex/src/app_server_client/context_preferences_tests.rs": "57e67996a3bc6ed726dd147d008cf08f69af46f2ecc81f85eac2feb12f1ba9cb",
+      "crates/decodex-protocol/src/agent_context_settings.rs": "779caab296c93d4ea98cf9aafe4b10bc39dd3c986da4ec5b25f62bf3747ee6d8",
+      "crates/decodex-runtime/src/agent_context_settings.rs": "7ed45fc7f30a1f0d49257965446e7eb759317200015eca4456a0b38bc8896f91",
+      "crates/decodex-runtime/src/agent_context_settings_native_tests.rs": "7355c71bda61ac6fcd55e00c92be805979565b5abfafc63e8ef5db48290145e3",
+      "crates/decodex-runtime/src/agent_context_settings_tests.rs": "c948b2ce9f339aa8fd30136e72614189becddc0adf6e5c5e9783b8d4613e371d",
+      "apps/decodex-gpui/src/settings_native.rs": "a0ebf3339bb6bd7695eefab2c6011fe5397d14ad57a8cb31e321b1aee76ee2d8"
+    },
+    "upstream_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+    "upstream_source_symbols": [
+      "codex-rs/config/src/mcp_types.rs#McpStartupReadiness",
+      "codex-rs/codex-mcp/src/connection_manager.rs#McpServerView::allows_cached_startup",
+      "codex-rs/codex-mcp/src/connection_manager.rs#McpServerView::accepts_cached_tools"
+    ],
+    "upstream_tests_read": [
+      {
+        "entrypoint": "codex-rs/codex-mcp/src/connection_manager_tests.rs",
+        "identity": "capture_binding_exposes_cached_tools_before_startup",
+        "executed": false,
+        "limit": "This test covers the native Apps cached catalog boundary; it is not a new ordinary-server catalog qualification."
+      }
+    ],
+    "tests": {
+      "targeted_unique_passed": 23,
+      "incidental_unit_tests_passed": 12,
+      "total_unique_passed": 35,
+      "groups": [
+        {
+          "entrypoint": "crates/decodex-codex/src/app_server_client/context_preferences_tests.rs",
+          "selector": "app_server_client::context_preferences::tests::",
+          "passed": 4
+        },
+        {
+          "entrypoint": "crates/decodex-runtime/src/agent_context_settings_tests.rs",
+          "selector": "agent_context_settings::tests::",
+          "passed": 2
+        },
+        {
+          "entrypoint": "apps/decodex-gpui/src/agent_context_settings_wire_tests.rs",
+          "selector": "context_settings::tests::",
+          "passed": 2
+        },
+        {
+          "entrypoint": "apps/decodex-gpui/src/agent_prompt_suggestions.rs",
+          "selector": "sample::suggestions::tests::",
+          "passed": 1
+        },
+        {
+          "entrypoint": "apps/decodex-gpui/src/agent_sample_tests.rs",
+          "selector": "sample::tests::",
+          "passed": 10
+        },
+        {
+          "entrypoint": "apps/decodex-gpui/src/ui_switch.rs",
+          "selector": "settings_surface::switch::tests::",
+          "passed": 3
+        },
+        {
+          "entrypoint": "crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
+          "selector": "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds",
+          "passed": 1
+        }
+      ],
+      "unmatched_selectors": [],
+      "commands_executed": [
+        [
+          "cargo",
+          "+stable",
+          "test",
+          "--locked",
+          "-p",
+          "decodex-codex",
+          "-p",
+          "decodex-runtime",
+          "--lib",
+          "context_"
+        ],
+        [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "-p",
+          "decodex-gpui",
+          "--bin",
+          "decodex-gpui",
+          "-E",
+          "test(context_settings::tests::) | test(sample::tests::) | test(sample::suggestions::tests::) | test(settings_surface::switch::tests::)",
+          "--test-threads",
+          "1",
+          "--retries",
+          "0"
+        ],
+        [
+          "cargo",
+          "+stable",
+          "test",
+          "--locked",
+          "-p",
+          "decodex-runtime",
+          "--lib",
+          "agent_context_settings::tests::",
+          "--",
+          "--test-threads",
+          "1"
+        ],
+        [
+          "cargo",
+          "+stable",
+          "test",
+          "--locked",
+          "-p",
+          "decodex-runtime",
+          "--lib",
+          "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds",
+          "--",
+          "--exact",
+          "--ignored",
+          "--test-threads",
+          "1"
+        ],
+        [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "-p",
+          "decodex-gpui",
+          "--bin",
+          "decodex-gpui",
+          "-E",
+          "test(context_settings::tests::)",
+          "--test-threads",
+          "1",
+          "--retries",
+          "0"
+        ]
+      ]
+    },
+    "native_configuration_probe": {
+      "preparation_command": "cargo make prepare-codex",
+      "execution_environment": "DECODEX_TEST_CODEX_BINARY points to the explicitly prepared Codex executable. Fixtures use system-temporary homes and remove them.",
+      "qualified_artifact": "automations/upstream/qualification.json#components",
+      "component_sha256_verified": [
+        {
+          "path": "CodexCLI.app/Contents/MacOS/codex",
+          "sha256": "cb933d4981df419760215afba381372b400d0906bd3c2bc5d29186b200740986"
+        },
+        {
+          "path": "bin/codex-code-mode-host",
+          "sha256": "aed64fd191c96a7b9aefe581b01b3f02a28f6938958667424a457c59309614bd"
+        },
+        {
+          "path": "codex-path/rg",
+          "sha256": "8c8aef5fb93e91174cc49abd7847eee15a8996d336ac29147ba66f8b87134cf4"
+        }
+      ],
+      "schema_sha256": "86c27115a28bf905f4c25ee204b218b2ba9598ef664787efddd30e2d0c20f2d9",
+      "result": "One executed test, two configuration forms. Both context switches and MCP catalog/connection values round-trip; stale versions fail, async thresholds and server transport remain unchanged.",
+      "limit": "No MCP server or model is contacted. The existing runtime baseline and qualification limits remain unchanged."
+    },
+    "static_checks": {
+      "strict_package_clippy": [
+        "decodex-codex",
+        "decodex-protocol",
+        "decodex-runtime",
+        "decodex-gpui"
+      ],
+      "nightly_format": "passed",
+      "portfolio": "Only the maintainer status changes to PAUSED. Daily cadence and unrelated definitions remain unchanged."
+    },
+    "limits": [
+      "No upstream test suites executed.",
+      "Only Settings, native configuration, source binding, and existing suggestion/draft/switch regressions executed.",
+      "No installed-app, live-provider, MCP cache performance, installation or release acceptance."
+    ],
+    "delivery_reference": "https://github.com/acg-box/decodex/commit/42e6f0b2cd89e671f93fe5662b92a598f5e80686"
   }
 }

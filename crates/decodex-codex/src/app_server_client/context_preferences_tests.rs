@@ -1,6 +1,42 @@
 use crate::app_server_client::context_preferences;
 
 #[test]
+fn mcp_startup_projects_only_known_user_servers_and_never_credentials() {
+	let user = serde_json::json!({
+		"docs.v2":{"url":"http://localhost","bearer_token":"synthetic-secret"},
+		"unknown":{"startup_readiness":"future-value"}
+	});
+	let effective =
+		serde_json::json!({"docs.v2":{"startup_readiness":"catalog"},"project-only":{}});
+
+	assert_eq!(
+		context_preferences::mcp_startup(&user, &effective),
+		vec![("docs.v2".into(), true, None)]
+	);
+}
+
+#[test]
+fn mcp_startup_write_changes_only_a_quoted_server_readiness_leaf() {
+	let mut valid = serde_json::json!({"filePath":"/home/config.toml","expectedVersion":"v1","reloadUserConfig":false,"edits":[{"keyPath":"mcp_servers.\"docs.v2\".startup_readiness","value":"catalog","mergeStrategy":"replace"}]});
+
+	assert!(context_preferences::is_context_preference_write(&valid));
+	valid["edits"][0]["value"] = serde_json::json!("connection");
+	assert!(context_preferences::is_context_preference_write(&valid));
+
+	for path in [
+		"mcp_servers.docs.v2.startup_readiness",
+		"mcp_servers.\"docs.v2\".required",
+		"mcp_servers.\"docs.v2\".startup_readiness.extra",
+	] {
+		let mut edit = valid.clone();
+		edit["edits"][0]["keyPath"] = serde_json::json!(path);
+		assert!(!context_preferences::is_context_preference_write(&edit));
+	}
+	valid["edits"][0]["value"] = serde_json::json!(true);
+	assert!(!context_preferences::is_context_preference_write(&valid));
+}
+
+#[test]
 fn threshold_only_configuration_does_not_enable_async_compaction() {
 	assert_eq!(
 		context_preferences::enabled(
