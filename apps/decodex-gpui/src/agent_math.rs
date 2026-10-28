@@ -295,21 +295,24 @@ fn render_formula(
 	nested: bool,
 	width: Option<usize>,
 ) -> String {
+	let mode = if !display {
+		render::MathMode::Inline
+	} else if nested {
+		render::MathMode::NestedDisplay
+	} else {
+		render::MathMode::Display
+	};
 	let rendered =
-		if formula.len() < MAX_MATH_BYTES { render::render(formula, display) } else { None };
+		if formula.len() < MAX_MATH_BYTES { render::render(formula, mode) } else { None };
 
 	rendered
-		.filter(|text| {
-			// Nested Markdown prefixes have their own width; keep spatial layouts at the top level.
-			// Never wrap a spatial layout into misleading pieces.
-			!text.contains('\n')
-				|| !nested
-					&& width.is_none_or(|width| {
-						text.lines().all(|line| {
-							render::display_width(line) <= width.saturating_sub(/* rhs */ 4)
-						})
-					})
+		.filter(|rendered| {
+			// Keep spatial layouts intact. Nested Markdown owns its available width.
+			rendered.required_width.is_none_or(|required| {
+				!nested && width.is_none_or(|width| required <= width.saturating_sub(4))
+			})
 		})
+		.map(|rendered| rendered.text)
 		.unwrap_or_else(|| input[span.clone()].to_owned())
 }
 
@@ -366,7 +369,8 @@ fn delimiters(rest: &str) -> Option<(&'static str, &'static str, bool)> {
 }
 
 fn currency_or_environment(formula: &str) -> bool {
-	formula.starts_with(|ch: char| ch.is_ascii_digit())
+	formula != "0"
+		&& formula.starts_with(|ch: char| ch.is_ascii_digit())
 		&& !formula.contains(['\\', '^', '_', '=', '+', '-', '*', '/', '<', '>'])
 		|| formula.len() > 1 && formula.chars().all(|ch| ch.is_ascii_uppercase())
 }

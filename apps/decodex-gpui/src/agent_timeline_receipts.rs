@@ -601,7 +601,7 @@ mod tests {
 
 			work.codex_thread_id = Some("native-thread".into());
 			s.history = Some((work.id.clone(), AgentHistoryResult::Available {
-				questions: vec![], questions_truncated: false, questions_recovering: false, misalignment: None, usage: None, has_more: false, next_before: None, live: vec![],
+				questions: vec![], expired_question_ids: Vec::new(), questions_truncated: false, questions_recovering: false, misalignment: None, usage: None, has_more: false, next_before: None, live: vec![],
 				entries: vec![AgentHistoryEntryDto {
 					native_source: None, turn_id: None, weather: vec![], id: 91,kind:"auth_recovery".into(),text:"Codex reported that provider sign-in recovery started.\n\nAWS: [Sign in](https://example.invalid)\n\nSaved event; current sign-in status is not confirmed by this record.".into(),created_at_micros:1,receipt:None,activity:None,usage:None,duration_ms:None,
 				}],

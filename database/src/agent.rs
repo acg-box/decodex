@@ -1837,6 +1837,7 @@ fn insert_event(
 #[cfg(test)]
 mod tests {
 	mod activity;
+	mod async_turn_end;
 	mod collaboration_history;
 	mod delegation;
 	mod dispatch_refusals;

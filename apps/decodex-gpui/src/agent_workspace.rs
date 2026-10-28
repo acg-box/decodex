@@ -51,7 +51,7 @@ use decodex_protocol::{
 
 pub(super) const ARCHIVED_MESSAGE: &str = "Archived";
 
-const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
+pub(super) const THREAD_LOCKED_MESSAGE: &str = "In use by another app";
 const PARENT_MANAGED_MESSAGE: &str = "Continue in parent chat";
 const NATIVE_CONNECTION_FAILED_MESSAGE: &str = "Could not connect to this conversation.";
 const NATIVE_CONNECTING_MESSAGE: &str = "Connecting to this conversation…";
@@ -330,7 +330,7 @@ impl AgentSurface {
 	fn release_previous_conversation(&mut self, id: &str, cx: &mut Context<Self>) {
 		if self.selected.as_deref() != Some(id) {
 			// Cancel against the outgoing editor before parking or replacing its draft.
-			self.stop_voice(cx);
+			self.cancel_dictation(cx);
 			self.reset_automatic_recap();
 			self.reset_voice_settings();
 			self.reset_resources();
@@ -546,7 +546,7 @@ impl AgentSurface {
 				"Work",
 				workspace_symbols::Symbol::AllWork,
 				|s, cx| {
-					s.stop_voice(cx);
+					s.cancel_dictation(cx);
 
 					s.workspace.portfolio_mode = true;
 					s.workspace.guardian_open = false;
@@ -573,7 +573,7 @@ impl AgentSurface {
 				"Agents",
 				workspace_symbols::Symbol::AllWork,
 				|s, cx| {
-					s.stop_voice(cx);
+					s.cancel_dictation(cx);
 
 					s.workspace.portfolio_mode = false;
 					s.workspace.guardian_open = false;
@@ -1501,6 +1501,14 @@ impl AgentSurface {
 			cx,
 		);
 		let center = self.workspace_center(chat, displayed_height, has_composer, window, cx);
+		let center = gpui::div()
+			.flex_1()
+			.min_w_0()
+			.min_h_0()
+			.flex()
+			.flex_col()
+			.children(self.background_voice_toolbar(cx))
+			.child(center);
 		let right_width = ui_motion::direct_value(
 			"agent-tree-panel",
 			self.agent_tree_width(window),
@@ -2392,6 +2400,7 @@ impl AgentSurface {
 		];
 		let history = AgentHistoryResult::Available {
 			questions: vec![],
+			expired_question_ids: Vec::new(),
 			questions_truncated: false,
 			questions_recovering: false,
 			misalignment: None,
@@ -2426,7 +2435,7 @@ impl AgentSurface {
 		self.workspace.graph_scope = Some("release".into());
 		self.workspace.graph_selected = Some("verify".into());
 
-		self.timeline.cache.insert("verify".into(),AgentHistoryResult::Available{questions:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![crate::shell::agent_surface::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
+		self.timeline.cache.insert("verify".into(),AgentHistoryResult::Available{questions:vec![],expired_question_ids:vec![],questions_truncated:false,questions_recovering:false,misalignment:None,usage: None,entries:vec![crate::shell::agent_surface::AgentHistoryEntryDto{native_source:None,receipt: None, turn_id: None, weather:Vec::new(), activity: None,usage: None,duration_ms: None,id:100,kind:"assistant".into(),text:"Checking that existing sessions reopen without another sign-in. Fresh-install verification is still running.".into(),created_at_micros:1_789_481_040_000_000}],has_more:false,next_before:None,live:vec![]});
 		cx.notify();
 	}
 }

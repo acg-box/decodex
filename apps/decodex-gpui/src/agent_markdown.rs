@@ -440,7 +440,18 @@ fn parse(text: &str) -> Vec<Node> {
 					_ => continue,
 				};
 
-				stack.last_mut().expect("root").1.push(node.located(range));
+				let siblings = &mut stack.last_mut().expect("root").1;
+				if let Some(previous) = siblings.last_mut()
+					&& let (NodeContent::Text(before), NodeContent::Text(after)) =
+						(&mut previous.content, &node.content)
+					&& let Some(source) = &mut previous.source
+					&& source.end == range.start
+				{
+					before.push_str(after);
+					source.end = range.end;
+				} else {
+					siblings.push(node.located(range));
+				}
 			},
 		}
 	}
@@ -449,6 +460,16 @@ fn parse(text: &str) -> Vec<Node> {
 }
 
 fn append_inline(nodes: &[Node], style: HighlightStyle, link: Option<&str>, out: &mut Inline) {
+	append_prose(nodes, style, link, true, out);
+}
+
+fn append_prose(
+	nodes: &[Node],
+	style: HighlightStyle,
+	link: Option<&str>,
+	prose: bool,
+	out: &mut Inline,
+) {
 	for node in nodes {
 		let start = out.text.len();
 
@@ -460,10 +481,31 @@ fn append_inline(nodes: &[Node], style: HighlightStyle, link: Option<&str>, out:
 
 				let range = start..out.text.len();
 
-				out.highlights.push((range.clone(), style));
-
 				if let Some(link) = link {
+					out.highlights.push((range.clone(), style));
 					out.links.push((range, link.into()));
+				} else if prose {
+					let mut cursor = start;
+					for (range, url) in selectable_text::web_links(text) {
+						let range = start + range.start..start + range.end;
+						if cursor < range.start {
+							out.highlights.push((cursor..range.start, style));
+						}
+						out.highlights.push((
+							range.clone(),
+							HighlightStyle {
+								color: Some(crate::ui_theme::rgb(BLUE).into()),
+								..style
+							},
+						));
+						cursor = range.end;
+						out.links.push((range, url));
+					}
+					if cursor < out.text.len() {
+						out.highlights.push((cursor..out.text.len(), style));
+					}
+				} else {
+					out.highlights.push((range, style));
 				}
 			},
 			NodeContent::Block(kind, children) => {
@@ -483,7 +525,13 @@ fn append_inline(nodes: &[Node], style: HighlightStyle, link: Option<&str>, out:
 
 				let target = if let Kind::Link(url) = kind { Some(url.as_str()) } else { link };
 
-				append_inline(children, next, target, out);
+				append_prose(
+					children,
+					next,
+					target,
+					prose && !matches!(kind, Kind::InlineCode | Kind::Math { .. }),
+					out,
+				);
 			},
 			NodeContent::Rule => {},
 		}

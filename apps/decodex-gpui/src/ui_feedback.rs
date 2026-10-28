@@ -100,6 +100,7 @@ impl Tone {
 	) -> Stateful<Div> {
 		let id = id.into();
 		let text_selector = format!("{id}-text");
+		let prose_key = format!("{id}-prose");
 
 		gpui::div()
 			.id(id)
@@ -119,12 +120,9 @@ impl Tone {
 					.items_center()
 					.child(icon),
 			)
-			.child(
-				gpui::div()
-					.debug_selector(move || text_selector.clone())
-					.min_w_0()
-					.child(message.to_owned()),
-			)
+			.child(gpui::div().debug_selector(move || text_selector.clone()).min_w_0().child(
+				crate::shell::agent_surface::selectable_prose(prose_key, message.to_owned()),
+			))
 	}
 }
 

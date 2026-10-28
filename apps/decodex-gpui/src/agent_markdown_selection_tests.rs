@@ -235,6 +235,21 @@ fn links_still_open_on_click_but_never_during_cross_paragraph_selection(cx: &mut
 }
 
 #[gpui::test]
+fn bare_urls_open_from_their_visible_text_without_changing_copy(cx: &mut TestAppContext) {
+	let (_, visual) = cx.add_window_view(|_, _| Preview {
+		text: "https://example.com/文档_(one).".into(),
+		process: false,
+	});
+	draw(visual);
+	let line = visual.debug_bounds("selection-preview-0").unwrap();
+	visual.simulate_click(
+		gpui::point(line.left() + gpui::px(2.), line.top() + gpui::px(8.)),
+		Default::default(),
+	);
+	assert_eq!(visual.opened_url().as_deref(), Some("https://example.com/文档_(one)"));
+}
+
+#[gpui::test]
 fn clicking_blank_space_clears_the_whole_selection(cx: &mut TestAppContext) {
 	let (_, visual) =
 		cx.add_window_view(|_, _| Preview { text: "First.\n\nSecond.".into(), process: false });

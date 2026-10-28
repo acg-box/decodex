@@ -409,7 +409,7 @@ impl AgentSurface {
 		if self.selected_is_archived() || self.composer_unavailable_reason().is_some() {
 			return;
 		}
-		if self.voice_task.is_some() || self.dictation_task.is_some() {
+		if self.voice.is_some() || self.voice_task.is_some() || self.dictation_task.is_some() {
 			return;
 		}
 
@@ -790,11 +790,71 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	pub(super) fn voice_owner(&self) -> Option<&str> {
+		self.voice.as_ref().map(|voice| voice.work.as_str())
+	}
+
+	pub(super) fn voice_on_current_conversation(&self) -> bool {
+		self.voice.as_ref().is_some_and(|voice| {
+			!self.workspace.browsing
+				&& self.native_agents.selected.is_none()
+				&& self
+					.selected
+					.as_deref()
+					.or(self.composer_manager.as_deref())
+					.or(self.root_id().as_deref())
+					== Some(voice.work.as_str())
+		})
+	}
+
+	pub(super) fn background_voice_toolbar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+		let voice = self.voice.as_ref()?;
+		if self.voice_on_current_conversation() {
+			return None;
+		}
+		let work = voice.work.as_str();
+		let label = self
+			.snapshot
+			.as_ref()
+			.and_then(|s| s.work_items.iter().find(|item| item.id == work))
+			.map(|item| self.work_label(item))
+			.unwrap_or_else(|| "Conversation".into());
+		Some(
+			gpui::div()
+				.id("background-voice")
+				.debug_selector(|| "background-voice".into())
+				.w_full()
+				.flex_none()
+				.flex()
+				.items_center()
+				.gap_2()
+				.px_3()
+				.py_2()
+				.child(self.composer_control(
+					"voice-return",
+					format!("Voice · {label}"),
+					"Return to voice conversation",
+					|s, cx| {
+						if let Some(work) = s.voice_owner().map(str::to_owned) {
+							s.open_page(&work, cx);
+						}
+					},
+					cx,
+				))
+				.child(gpui::div().flex_1())
+				.children(self.voice_toolbar(cx))
+				.into_any_element(),
+		)
+	}
+
 	pub(super) fn voice_controls(
 		&self,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Option<AnyElement> {
+		if !self.voice_on_current_conversation() {
+			return None;
+		}
 		let voice = self.voice.as_ref()?;
 
 		if !voice.connected {
@@ -1510,6 +1570,7 @@ mod tests {
 			let surface = cx.new(AgentSurface::new);
 
 			surface.update(cx, |s, _| {
+				s.selected = Some("agent".into());
 				s.prepare_voice_ui(
 					Default::default(),
 					Media,
@@ -2419,6 +2480,60 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn navigating_keeps_the_call_owner_and_each_conversation_draft(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let owner = s.selected.clone().unwrap();
+			let mut other = s
+				.snapshot
+				.as_ref()
+				.unwrap()
+				.work_items
+				.iter()
+				.find(|w| w.id == owner)
+				.unwrap()
+				.clone();
+			other.id = "other-voice-chat".into();
+			other.kind = decodex_protocol::AgentWorkKindDto::Manager;
+			other.codex_thread_id = Some("other-thread".into());
+			s.snapshot.as_mut().unwrap().work_items.push(other);
+			s.composer_manager = Some(owner.clone());
+			s.composer.update(cx, |input, cx| input.set_content("Call draft", cx));
+			s.voice = Some(VoiceUi {
+				options: Default::default(),
+				media: Media,
+				session: EntityId::new("call").unwrap(),
+				work: EntityId::new(&owner).unwrap(),
+				request: None,
+				answered: true,
+				signaling: true,
+				connected: true,
+				connection_status: "Live".into(),
+				muted: false,
+				captions: Vec::new(),
+				matched_receipts: Default::default(),
+				levels: Default::default(),
+				follow: true,
+			});
+			assert!(s.voice_on_current_conversation());
+			s.open_page("other-voice-chat", cx);
+			assert_eq!(s.voice_owner(), Some(owner.as_str()));
+			assert!(!s.voice_on_current_conversation());
+			assert!(s.background_voice_toolbar(cx).is_some());
+			assert!(s.live_chat_caption("other-voice-chat", cx).is_none());
+			s.composer.update(cx, |input, cx| input.set_content("Other draft", cx));
+			s.open_page(&owner, cx);
+			assert!(s.voice_on_current_conversation());
+			assert_eq!(s.composer.read(cx).content(), "Call draft");
+			s.open_page("other-voice-chat", cx);
+			assert_eq!(s.composer.read(cx).content(), "Other draft");
+			s.retire_voice_media();
+			assert!(s.voice.is_none());
+		});
+	}
+
+	#[gpui::test]
 	fn active_voice_replaces_the_editor_and_restores_its_draft(cx: &mut gpui::TestAppContext) {
 		cx.update(crate::composer_input::bind_keys);
 
@@ -2426,6 +2541,7 @@ mod tests {
 			let surface = cx.new(AgentSurface::new);
 
 			surface.update(cx, |s, cx| {
+				s.selected = Some("agent".into());
 				s.composer.update(cx, |input, cx| input.set_content("Draft", cx));
 
 				s.voice = Some(VoiceUi {
@@ -2491,6 +2607,7 @@ mod tests {
 	fn saved_voice_history(session: Option<&str>) -> AgentHistoryResult {
 		AgentHistoryResult::Available {
 			questions: vec![],
+			expired_question_ids: Vec::new(),
 			questions_truncated: false,
 			questions_recovering: false,
 			misalignment: None,

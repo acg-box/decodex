@@ -1,5 +1,8 @@
 //! Read-only rich text with native hit testing and clipboard selection.
+#[path = "agent_text_links.rs"] mod links;
 #[path = "agent_text_selection.rs"] mod selection;
+
+pub(super) use links::web_links;
 
 pub(super) use selection::Document;
 
@@ -30,7 +33,20 @@ pub(super) struct SelectableText {
 }
 impl SelectableText {
 	pub(super) fn plain(key: String, text: String) -> Self {
-		Self { key, text, highlights: Vec::new(), links: Vec::new() }
+		let links = links::prose_links(&text);
+		let highlights = links
+			.iter()
+			.map(|(range, _)| {
+				(
+					range.clone(),
+					HighlightStyle {
+						color: Some(ui_theme::rgb(ui_theme::BLUE).into()),
+						..Default::default()
+					},
+				)
+			})
+			.collect();
+		Self { key, text, highlights, links }
 	}
 }
 
@@ -150,6 +166,7 @@ impl RenderOnce for TextBlock {
 						self.text.links.iter().find(|(range, _)| range.contains(&ix))
 				{
 					open_selection_link(url, cx);
+					cx.stop_propagation();
 				}
 			})
 			.child(TextLayer { styled, batch, range: self.range, scope: self.scope })

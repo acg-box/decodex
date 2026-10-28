@@ -289,6 +289,7 @@ impl AgentCoordinator {
 		let mut params = serde_json::json!({
 			"threadId":thread,"realtimeSessionId":session_id.as_str(),"version":"v3","outputModality":"audio","voice":selected_voice,
 			"includeStartupContext":true,"flushTranscriptTailOnSessionEnd":true,
+			"backendReasoningStatus":true,
 			"prompt":"Continue this Agent conversation by voice. Wait for the user's new spoken request before starting new work. Use the existing conversation and its tools when the user asks for work.",
 			"transport":{"type":"webrtc","sdp":offer.as_str()}
 		});

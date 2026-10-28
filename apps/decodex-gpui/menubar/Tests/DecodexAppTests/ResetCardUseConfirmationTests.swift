@@ -2,6 +2,17 @@
 import XCTest
 
 final class ResetCardUseConfirmationTests: XCTestCase {
+    func testCardExpiryRespectsHourCycleAndTimeZone() {
+        let date: Int64 = 1_704_121_440
+        let utc = TimeZone(secondsFromGMT: 0)!
+        let twelve = ResetCardAccountRow.cardExpiryText(date, timeZone: utc, locale: Locale(identifier: "en_US@hours=h12"))
+        let twentyFour = ResetCardAccountRow.cardExpiryText(date, timeZone: utc, locale: Locale(identifier: "en_GB@hours=h23"))
+        XCTAssertTrue(twelve.contains("3:04") && twelve.contains("PM"), twelve)
+        XCTAssertTrue(twentyFour.contains("15:04") && !twentyFour.contains("PM"), twentyFour)
+        let shifted = ResetCardAccountRow.cardExpiryText(date, timeZone: TimeZone(secondsFromGMT: 3600)!, locale: Locale(identifier: "en_GB@hours=h23"))
+        XCTAssertTrue(shifted.contains("16:04"), shifted)
+    }
+
 	func testNonexpiringCardRetainsIdentityAndRequiresTheSameConfirmation() throws {
 		let descriptor = try ResetCardDescriptor(grantedAtUnixSeconds: 100, expiresAtUnixSeconds: nil)
 		let encoded = try JSONEncoder().encode(descriptor)
