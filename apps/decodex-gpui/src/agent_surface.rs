@@ -1623,6 +1623,7 @@ impl AgentSurface {
 			self.refresh_composer_model_settings(cx);
 			self.tick_question_timeout(cx);
 		}
+		self.observe_prompt_completion(cx);
 		// Background reads keep recovery and question timers live. An identical
 		// snapshot must not invalidate every presentation pane twice a second.
 		if changed || previous != *self.displayed_load_state() || self.request.is_some() {

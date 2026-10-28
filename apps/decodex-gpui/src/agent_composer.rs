@@ -741,17 +741,28 @@ impl AgentSurface {
 				cx,
 			))
 			.when(self.can_open_sample(), |options| {
-				options.child(self.composer_control(
-					"task-sample-item",
-					"Ask separately…".into(),
-					"Ask separately",
-					|s, cx| {
-						s.composer_menu = None;
+				options
+					.child(self.composer_control(
+						"task-suggest-item",
+						"Suggest next message…".into(),
+						"Generate a suggestion for your next message",
+						|s, cx| {
+							s.composer_menu = None;
+							s.suggest_next_prompt(cx);
+						},
+						cx,
+					))
+					.child(self.composer_control(
+						"task-sample-item",
+						"Ask separately…".into(),
+						"Ask separately",
+						|s, cx| {
+							s.composer_menu = None;
 
-						s.open_sample(cx);
-					},
-					cx,
-				))
+							s.open_sample(cx);
+						},
+						cx,
+					))
 			})
 			.child(self.composer_control(
 				"task-recap-item",
