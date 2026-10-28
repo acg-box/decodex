@@ -1,104 +1,13 @@
-//! Apply global intent to exact loaded native sources. Never answer pending approvals.
+//! Observe native reviewer details without overriding conversation permissions.
 use std::time::Duration;
 
 use sha2::{Digest as _, Sha256};
 use tokio::time;
 
 use crate::agent::{AgentCoordinator, AgentError, Value, native_subagents};
-use decodex_core::guardian::{GuardianSource, ReviewDetails};
+use decodex_core::guardian::ReviewDetails;
 
 impl AgentCoordinator {
-	pub(crate) async fn sync_global_guardian(&self) -> Result<(), AgentError> {
-		let state = self.store.guardian_state().await?;
-		let desired = state.settings.reviewer.native();
-
-		for (id, _) in self.store.persistent_agents().await? {
-			let agent = self.store.get_agent_work_item(id.clone()).await?;
-			let Some(thread) = agent.codex_thread_id else { continue };
-
-			if !self.loaded_threads.contains(&thread) {
-				continue;
-			}
-
-			let mut receipt = GuardianSource {
-				source_id: self
-					.native_generation
-					.as_ref()
-					.map(|g| g.as_str())
-					.unwrap_or_else(|| self.client.connection_identity())
-					.into(),
-				agent_id: id,
-				thread_id: thread.clone(),
-				revision: state.settings.revision,
-				outcome: "pending".into(),
-				effective_reviewer: None,
-				detail: String::new(),
-			};
-			let reserved = self.store.reserve_guardian_source(receipt.clone()).await?;
-			let Some((before, guard)) = self.client.configured_task_permissions(&thread) else {
-				receipt.outcome = "unsupported".into();
-				receipt.detail =
-					"Native effective reviewer readback is unavailable; no setting was inferred"
-						.into();
-
-				self.store.observe_guardian_source(receipt).await?;
-
-				continue;
-			};
-			let previous = state.sources.iter().find(|s| {
-				s.agent_id == receipt.agent_id
-					&& s.thread_id == thread
-					&& s.source_id == receipt.source_id
-			});
-
-			if reserved && before.approvals_reviewer != desired {
-				let result = self.client.select_thread_reviewer(&thread, desired, guard).await;
-
-				if let Err(error) = result {
-					receipt.outcome = if matches!(
-						error,
-						super::ClientError::Remote(_)
-							| super::ClientError::InvalidFrame
-							| super::ClientError::StaleHistory
-					) {
-						"rejected"
-					} else {
-						"unknown"
-					}
-					.into();
-					receipt.effective_reviewer = Some(before.approvals_reviewer);
-					receipt.detail="Native publication was not confirmed. Pending approvals are unchanged; no automatic replay.".into();
-
-					self.store.observe_guardian_source(receipt).await?;
-
-					continue;
-				}
-			}
-
-			let observed = self
-				.client
-				.configured_task_permissions(&thread)
-				.map(|(facts, _)| facts.approvals_reviewer);
-
-			receipt.outcome = if observed.as_deref() == Some(desired) {
-				"applied"
-			} else if reserved || previous.is_some_and(|p| p.outcome == "pending") {
-				"pending"
-			} else if previous.is_some_and(|p| p.outcome == "unknown") {
-				"unknown"
-			} else {
-				"overridden"
-			}
-			.into();
-			receipt.effective_reviewer = observed;
-
-			receipt.detail=if agent.active_turn_id.is_some(){"Observed thread preference applies to subsequent turns. The active turn and already-pending human approvals keep their native owner."}else{"Observed native thread preference. Execution permissions and Full Access are separate."}.into();
-			self.store.observe_guardian_source(receipt).await?;
-		}
-
-		Ok(())
-	}
-
 	pub(super) async fn global_guardian_notification(
 		&self,
 		method: &str,

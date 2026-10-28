@@ -651,6 +651,7 @@ mod tests {
 			generation: None,
 			settings_event: permission_event,
 			profile: "scoped".into(),
+			mode: None,
 			review_token: "c".repeat(64),
 			attempt_id: "permission".into(),
 		};

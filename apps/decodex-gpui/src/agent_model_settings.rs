@@ -55,6 +55,7 @@ impl Panel {
 
 impl AgentSurface {
 	pub(super) fn refresh_composer_model_settings(&mut self, cx: &mut Context<Self>) {
+		self.refresh_composer_permissions(cx);
 		if self.is_new_conversation() || self.sending || self.profile.is_none() {
 			return;
 		}
@@ -130,6 +131,40 @@ impl AgentSurface {
 		});
 
 		(model, effort)
+	}
+
+	pub(super) fn composer_service_tier(&self) -> Option<decodex_protocol::ServiceTier> {
+		if self.is_new_conversation() {
+			return self
+				.draft_profiles
+				.execution
+				.choice(self.selected.as_deref()?)
+				.selected_service_tier();
+		}
+		if let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) {
+			self.draft_profiles.execution.choice(&owner).selected_service_tier().or_else(|| {
+				let AgentModelSettingsResult::Available { service_tier, .. } =
+					self.model_settings.observations.get(&owner)?
+				else {
+					return None;
+				};
+				decodex_protocol::ServiceTier::new(service_tier.as_ref()?.as_str()).ok()
+			})
+		} else {
+			self.service_tier.clone()
+		}
+	}
+
+	pub(super) fn composer_speed_label(&self) -> String {
+		match self.composer_service_tier().as_ref().map(|s| s.as_str()) {
+			Some("default") => "Standard".into(),
+			Some("priority") => "Fast".into(),
+			Some(value) => value.into(),
+			None if self.is_new_conversation()
+				|| (self.composer_manager.is_none() && self.root_id().is_none()) =>
+				"Codex default".into(),
+			None => "Speed".into(),
+		}
 	}
 
 	pub(super) fn composer_model_value(&self, cx: &Context<Self>) -> Option<String> {

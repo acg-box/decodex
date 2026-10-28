@@ -10,9 +10,9 @@ use serde_json::Value;
 use tokio::{process::Command, time};
 
 use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::{
-	self, AccountId, AgentActionDto, AgentClient, AgentSandboxDto, AgentStartDto,
-	ConversationModel, ConversationReasoningEffort, ConversationRuntime,
-	ConversationWorkingDirectory, Duration, EntityId, HistoryText, Ordering, WireText,
+	self, AccountId, AgentActionDto, AgentClient, AgentStartDto, ConversationModel,
+	ConversationReasoningEffort, ConversationRuntime, ConversationWorkingDirectory, Duration,
+	EntityId, HistoryText, Ordering, PermissionMode, WireText,
 };
 use decodex_protocol::{AgentMediaRequest, AgentMediaResult, AgentResourcesResult};
 
@@ -180,7 +180,7 @@ async fn start_media_parent(
 			cwd: ConversationWorkingDirectory::new(home.to_str().expect("native media fixture"))
 				.expect("native media fixture"),
 			account_id: Some(EntityId::new(account.as_str()).expect("native media fixture")),
-			sandbox: AgentSandboxDto::ReadOnly,
+			permission_mode: PermissionMode::ReadOnly,
 		}),
 		"media-parent",
 	)

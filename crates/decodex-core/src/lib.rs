@@ -16,6 +16,7 @@ mod fast_mode;
 mod identity;
 #[cfg(unix)] mod path_unix;
 mod paths;
+mod permissions;
 mod process_generation;
 mod provider_attempt;
 mod quota;
@@ -99,6 +100,7 @@ pub use client_drafts::{
 	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES,
 };
 pub use fast_mode::{FastModeFailure, global_fast_mode_enabled, set_global_fast_mode_enabled};
+pub use permissions::PermissionMode;
 pub use service_tier::{InvalidServiceTier, ServiceTier};
 
 #[cfg(test)] use tempfile as _;

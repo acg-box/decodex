@@ -17,6 +17,8 @@ pub struct NativeThreadModelSettings {
 	pub model: Option<String>,
 	/// Native effort spelling, including future levels. Null means unset or unavailable.
 	pub reasoning_effort: Option<String>,
+	/// Actual native service tier; None means not reported.
+	pub service_tier: Option<String>,
 }
 impl NativeThreadModelSettings {
 	/// Project one exact thread/read response. Missing fields mean unsupported metadata.
@@ -74,12 +76,16 @@ fn project(value: Value, expected: &str) -> Result<Option<NativeThreadModelSetti
 		return Ok(None);
 	}
 
-	let settings: NativeThreadModelSettings =
+	let mut settings: NativeThreadModelSettings =
 		serde_json::from_value(thread.clone()).map_err(|_| ClientError::InvalidFrame)?;
 
+	if thread.get("serviceTier").is_some_and(Value::is_null) {
+		settings.service_tier = Some("default".into());
+	}
 	if settings.model_provider.as_deref().is_some_and(|v| !valid(v, 512))
 		|| settings.model.as_deref().is_some_and(|v| !valid(v, 512))
 		|| settings.reasoning_effort.as_deref().is_some_and(|v| !valid(v, 128))
+		|| settings.service_tier.as_deref().is_some_and(|v| !valid(v, 128))
 	{
 		return Err(ClientError::InvalidFrame);
 	}
@@ -108,7 +114,7 @@ mod tests {
 
 			assert_eq!(
 				serde_json::to_value(settings).unwrap(),
-				serde_json::json!({"model":model,"reasoningEffort":effort,"modelProvider":null})
+				serde_json::json!({"model":model,"reasoningEffort":effort,"modelProvider":null,"serviceTier":null})
 			);
 		}
 

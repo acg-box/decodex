@@ -106,6 +106,7 @@ async fn capacity_retry_waits_for_unknown_permission_selection_after_reopen() {
 		generation: None,
 		settings_event: observed,
 		profile: "scoped".into(),
+		mode: None,
 		review_token: "b".repeat(64),
 		attempt_id: "permission".into(),
 	};

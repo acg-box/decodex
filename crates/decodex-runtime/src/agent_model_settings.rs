@@ -38,6 +38,7 @@ where
 		Ok(None) => return decodex_protocol::AgentModelSettingsResult::NotReported,
 		Err(_) => return decodex_protocol::AgentModelSettingsResult::Unavailable,
 	};
+	let service_tier = settings.service_tier.as_ref().and_then(|s| WireText::new(s.clone()).ok());
 	let (
 		Ok(work_id),
 		Ok(thread_id),
@@ -64,6 +65,7 @@ where
 		model,
 		reasoning_effort,
 		model_provider,
+		service_tier,
 	}
 }
 

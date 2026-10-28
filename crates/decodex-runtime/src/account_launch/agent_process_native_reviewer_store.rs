@@ -310,6 +310,7 @@ impl OwnedReviewer {
 			&self.key.thread,
 			review_token.as_str(),
 			"scoped",
+			None,
 			"native-permission",
 		)
 		.await
@@ -341,6 +342,7 @@ impl OwnedReviewer {
 				&self.key.thread,
 				review_token.as_str(),
 				"scoped",
+				None,
 				"duplicate"
 			)
 			.await

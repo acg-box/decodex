@@ -197,7 +197,8 @@ fn spawn_confirmation_server(
 
 									QueryResultPayload::AgentPromptEdit(PromptEditStatus { work_id, thread_id, phase: PromptEditPhase::Review, evidence: Some(PromptEditEvidence { review_token: WireText::new("a".repeat(64)).unwrap(), receipt_id: None, before_turn_id: WireText::new("turn").unwrap(), item_id: WireText::new("item").unwrap(), removed_turns: 2, content_bytes: fragment.len() as u64, offset: 0, fragment }) })
 								},
-								QueryPayload::GetAgentModelSettings { work_id } if step == 2 => QueryResultPayload::AgentModelSettings(AgentModelSettingsResult::Available { work_id, thread_id: EntityId::new("thread").unwrap(), account_id: EntityId::new("account").unwrap(), model_provider: None, model: Some(WireText::new("model").unwrap()), reasoning_effort: None }),
+								QueryPayload::GetAgentModelSettings { work_id } if step == 2 => QueryResultPayload::AgentModelSettings(AgentModelSettingsResult::Available {
+ service_tier: None, work_id, thread_id: EntityId::new("thread").unwrap(), account_id: EntityId::new("account").unwrap(), model_provider: None, model: Some(WireText::new("model").unwrap()), reasoning_effort: None }),
 								_ => panic!("unexpected query"),
 							};
 							let message = ServerMessage::QueryResult(QueryResultEnvelope { version: CURRENT_VERSION, server_id: ServerId::new(SERVER).unwrap(), query_id: query.query_id, payload });

@@ -27,6 +27,7 @@ mod native_menu_bar;
 #[cfg(target_os = "macos")] mod native_reopen;
 mod native_updater;
 mod panel_preferences;
+mod session_settings;
 mod settings_surface;
 mod shell;
 mod ui_feedback;

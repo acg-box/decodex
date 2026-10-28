@@ -12,10 +12,10 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	AgentAttachmentDto, AgentExecutionOverrides, AgentSandboxDto, AgentSteerIdentity,
-	AgentTaskReferenceDto, ConversationReasoningEffort, DesktopOrdinaryDraft,
-	DesktopPromptEditDraft, EntityId, IdempotencyKey, MAX_CLIENT_DRAFT_BYTES, ServiceTier,
-	WireText, desktop_ordinary_drafts,
+	AgentAttachmentDto, AgentExecutionOverrides, AgentSteerIdentity, AgentTaskReferenceDto,
+	ConversationReasoningEffort, DesktopOrdinaryDraft, DesktopPromptEditDraft, EntityId,
+	IdempotencyKey, MAX_CLIENT_DRAFT_BYTES, PermissionMode, ServiceTier, WireText,
+	desktop_ordinary_drafts,
 };
 
 /// Versioned local file payload, keyed by the exact client profile's opaque scope.
@@ -110,6 +110,9 @@ pub struct DesktopProfileDraft {
 	/// Folder selected for the unsent conversation.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub new_conversation_workspace: Option<EntityId>,
+	/// Permission choice for the unsent independent Agent, separate from existing chats.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub new_conversation_permissions: Option<PermissionMode>,
 	/// Canonical history editors, retained separately from an occupied main composer.
 	/// Keyed by service review identity so competing edits remain distinct.
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -351,7 +354,8 @@ pub struct DesktopCreationSetup {
 	/// Displayed service tier, without inferring consent from discovery.
 	pub service_tier: Option<ServiceTier>,
 	/// Displayed sandbox choice; runtime policy still controls admission.
-	pub sandbox: AgentSandboxDto,
+	#[serde(alias = "sandbox")]
+	pub permission_mode: PermissionMode,
 }
 
 /// A retained asynchronous question editor, bound to its original source.
@@ -501,7 +505,7 @@ mod tests {
 			reasoning_effort: crate::ConversationReasoningEffort::High,
 			fast: false,
 			service_tier: Some(crate::ServiceTier::new("flex").unwrap()),
-			sandbox: crate::AgentSandboxDto::ReadOnly,
+			permission_mode: crate::PermissionMode::ReadOnly,
 		};
 		let mut document = DesktopDraftDocument::default();
 

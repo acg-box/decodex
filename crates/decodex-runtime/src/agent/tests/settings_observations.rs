@@ -418,6 +418,7 @@ async fn permission_receipt_requires_current_wire_facts_not_queued_payload_or_hi
 		generation: None,
 		settings_event: observed.id,
 		profile: "scoped".into(),
+		mode: None,
 		review_token: "a".repeat(64),
 		attempt_id: "review".into(),
 	};

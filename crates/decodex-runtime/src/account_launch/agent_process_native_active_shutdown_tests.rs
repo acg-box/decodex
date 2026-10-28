@@ -4,9 +4,9 @@ use std::{env, fs, path::Path, sync::atomic::AtomicUsize};
 use tokio::time;
 
 use crate::account_launch::agent_process::native_tests::cold_settings::recap_socket::{
-	self, AccountId, AgentActionDto, AgentClient, AgentDispatchStateDto, AgentSandboxDto,
-	AgentSnapshotResult, AgentStartDto, ConversationModel, ConversationReasoningEffort,
-	ConversationWorkingDirectory, Duration, EntityId, HistoryText, Ordering,
+	self, AccountId, AgentActionDto, AgentClient, AgentDispatchStateDto, AgentSnapshotResult,
+	AgentStartDto, ConversationModel, ConversationReasoningEffort, ConversationWorkingDirectory,
+	Duration, EntityId, HistoryText, Ordering, PermissionMode,
 };
 
 pub(super) async fn prepare(client: &AgentClient, home: &Path, account: &AccountId) {
@@ -23,7 +23,7 @@ pub(super) async fn prepare(client: &AgentClient, home: &Path, account: &Account
 			cwd: ConversationWorkingDirectory::new(home.to_str().expect("fixture path"))
 				.expect("fixture directory"),
 			account_id: Some(EntityId::new(account.as_str()).expect("fixture account")),
-			sandbox: AgentSandboxDto::ReadOnly,
+			permission_mode: PermissionMode::ReadOnly,
 		}),
 		"active-shutdown-start",
 	)

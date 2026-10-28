@@ -933,6 +933,8 @@ mod tests {
 
 	fn conversation(thread: &str) -> NativeAgentsResult {
 		NativeAgentsResult::Conversation {
+			permission_mode: None,
+			service_tier: None,
 			thread_id: thread.into(),
 			can_input: Some(true),
 			active_turn: None,
@@ -1815,6 +1817,8 @@ mod tests {
 					server_id: ServerId::new(wire_test_support::SERVER).unwrap(),
 					query_id: query.query_id,
 					payload: QueryResultPayload::NativeAgents(NativeAgentsResult::Conversation {
+						permission_mode: None,
+						service_tier: None,
 						thread_id: "child".into(),
 						can_input: if managed {
 							Some(false)

@@ -52,6 +52,7 @@ mod native_scroll;
 #[path = "../native_updater.rs"]
 mod native_updater;
 #[path = "../panel_preferences.rs"] mod panel_preferences;
+#[path = "../session_settings.rs"] mod session_settings;
 #[allow(dead_code)]
 #[path = "../settings_surface.rs"]
 mod settings_surface;

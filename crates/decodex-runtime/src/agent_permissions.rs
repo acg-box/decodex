@@ -47,6 +47,7 @@ pub(crate) async fn write<F, Fut>(
 	thread: &str,
 	review: &str,
 	profile: &str,
+	mode: Option<decodex_core::PermissionMode>,
 	attempt_id: &str,
 ) -> Result<(), AgentHostError>
 where
@@ -63,8 +64,14 @@ where
 	let inspected = inspect(store, &before).await.ok_or(AgentHostError::Rejected(
 		"Current native permissions are unavailable. Refresh the task.",
 	))?;
-	let AgentPermissionState::Available { review_token, profiles, can_update, profile_id, .. } =
-		&inspected.state
+	let AgentPermissionState::Available {
+		review_token,
+		profiles,
+		can_update,
+		profile_id,
+		mode: current_mode,
+		..
+	} = &inspected.state
 	else {
 		return Err(AgentHostError::Rejected(
 			"A permission selection is unavailable or remains unconfirmed.",
@@ -73,7 +80,9 @@ where
 
 	if review_token.as_str() != review
 		|| !can_update
-		|| profile_id.as_ref().is_some_and(|p| p.as_str() == profile)
+		|| (profile_id.as_ref().is_some_and(|p| p.as_str() == profile)
+			&& mode.is_none_or(|m| Some(m) == *current_mode))
+		|| mode.is_some_and(|m| m.profile() != profile)
 		|| !profiles.iter().any(|p| p.id.as_str() == profile && p.allowed && p.can_select)
 	{
 		return Err(AgentHostError::Rejected(
@@ -89,7 +98,11 @@ where
 		return Err(AgentHostError::Rejected("The task source changed before selection."));
 	}
 
-	let selection = ThreadPermissionSelection::new(thread, profile)
+	let selection = mode
+		.map_or_else(
+			|| ThreadPermissionSelection::new(thread, profile),
+			|mode| ThreadPermissionSelection::for_mode(thread, mode),
+		)
 		.map_err(|_| AgentHostError::Rejected("Invalid permission selection."))?;
 	let attempt = AgentPermissionAttempt {
 		work: before.key.work.clone(),
@@ -97,6 +110,7 @@ where
 		generation: Some(before.key.generation.as_str().into()),
 		settings_event: inspected.settings_event,
 		profile: profile.into(),
+		mode,
 		review_token: review.into(),
 		attempt_id: attempt_id.into(),
 	};
@@ -304,6 +318,7 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 	]);
 	let token = review_token(&identity);
 
+	let mode = native.mode();
 	Some(Inspection {
 		settings_event: saved.id,
 		guard: Some(guard),
@@ -314,6 +329,7 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 			cwd: WireText::new(native.cwd).ok()?,
 			profile_id: native.profile_id.map(WireText::new).transpose().ok()?,
 			approvals_reviewer: WireText::new(native.approvals_reviewer).ok()?,
+			mode,
 			profiles,
 			can_update,
 			last_outcome,

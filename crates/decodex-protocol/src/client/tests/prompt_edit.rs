@@ -320,6 +320,7 @@ async fn prompt_preflight_reads_current_settings_without_mutating_history() {
 			);
 
 			let state = AgentModelSettingsResult::Available {
+				service_tier: None,
 				work_id: EntityId::new("root").unwrap(),
 				thread_id: EntityId::new(if mode == "crossed" { "other" } else { "native" })
 					.unwrap(),

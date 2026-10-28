@@ -35,6 +35,31 @@ fn selection_cannot_carry_unrelated_policy_or_configuration() {
 }
 
 #[test]
+fn presets_publish_permissions_and_reviewer_together_and_keep_custom_modes_distinct() {
+	for mode in decodex_core::PermissionMode::ALL {
+		let selection = ThreadPermissionSelection::for_mode("thread", mode).unwrap();
+		let wire = serde_json::to_value(selection).unwrap();
+		assert_eq!(wire["permissions"], mode.profile());
+		assert_eq!(wire["approvalPolicy"], mode.approval_policy());
+		assert_eq!(wire["approvalsReviewer"], mode.reviewer());
+		assert!(permissions::is_thread_permission_selection(&wire));
+
+		let facts = NativeTaskPermissions {
+			cwd: "/workspace".into(),
+			profile_id: Some(mode.profile().into()),
+			approval_policy: serde_json::json!(mode.approval_policy()),
+			approvals_reviewer: mode.reviewer().into(),
+			sandbox_policy: serde_json::json!({"type":mode.sandbox()}),
+		};
+		assert_eq!(facts.mode(), Some(mode));
+		assert_eq!(
+			NativeTaskPermissions { profile_id: Some("custom".into()), ..facts }.mode(),
+			None
+		);
+	}
+}
+
+#[test]
 fn permission_projection_keeps_native_facts_without_copying_unrelated_instructions() {
 	let value = serde_json::json!({"cwd":"/native","activePermissionProfile":{"id":"scoped"},
 		"approvalPolicy":{"reject":{"sandbox_approval":true}},"approvalsReviewer":"auto_review",

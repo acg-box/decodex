@@ -1,4 +1,4 @@
-//! Keep the model menu attached to its button above the native composer surface.
+//! Share one anchored native popover for model, permission and speed choices.
 use composer::{MODEL_MENU_SHADOW, MODEL_MENU_WIDTH};
 use gpui::{
 	AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity, FocusHandle, Render,
@@ -31,7 +31,14 @@ struct ModelMenu {
 impl Render for ModelMenu {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let owner = self.owner.clone();
-		let content = owner.update(cx, |s, cx| s.model_options(cx));
+		let content = owner.update(cx, |s, cx| match s.composer_menu.or(s.composer_menu_content) {
+			Some("permissions") => s.permission_options(cx),
+			Some("speed") => crate::ui_motion::menu_surface(gpui::div())
+				.p_2()
+				.child(s.service_tier_picker(cx))
+				.into_any_element(),
+			_ => s.model_options(cx),
+		});
 
 		gpui::div()
 			.w_full()
@@ -81,14 +88,14 @@ impl AgentSurface {
 			.native_controls
 			.composer
 			.bounds
-			.zip(self.menu_trigger_bounds.get("model").copied())
+			.zip(self.composer_menu.and_then(|menu| self.menu_trigger_bounds.get(menu)).copied())
 			.map(|(composer, trigger)| Bounds::new(composer.origin + trigger.origin, trigger.size));
 		let active = ui_motion::application_active();
 		let available = self.composer_unavailable_reason().is_none();
 		let open = active
 			&& available
 			&& self.native_controls.composer.enabled
-			&& self.composer_menu == Some("model")
+			&& composer::selection_menu(self.composer_menu)
 			&& anchor.is_some();
 		let opacity = ui_motion::native_presence("model-menu-native-opacity", open, window, cx);
 		let opacity = if active && available { opacity } else { 0. };
@@ -176,7 +183,7 @@ fn create(
 					cx.observe_window_activation(window, |panel: &mut ModelMenu, window, cx| {
 						if !window.is_window_active() && !ui_motion::application_active() {
 							panel.owner.update(cx, |s, cx| {
-								if s.composer_menu == Some("model") {
+								if composer::selection_menu(s.composer_menu) {
 									s.dismiss_composer_menu(cx);
 								}
 							});
@@ -199,7 +206,7 @@ fn create(
 			panel.surface = MaterialPanel::install_overlay(window, child_window);
 
 			if let Some(surface) = &panel.surface {
-				surface.set_title("Decodex Model Menu");
+				surface.set_title("Decodex Session Settings");
 				surface.focus_text();
 			}
 

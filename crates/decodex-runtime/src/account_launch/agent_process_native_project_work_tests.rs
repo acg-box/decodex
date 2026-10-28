@@ -16,7 +16,7 @@ use crate::{
 use decodex_codex::app_server_client::{
 	InitializeCapabilities, NativeTaskPermissions, ThreadArchiveState,
 };
-use decodex_core::{DecodexRoot, guardian::ReviewPreference};
+use decodex_core::DecodexRoot;
 use decodex_database::SqliteStore;
 
 pub(super) async fn setup(
@@ -87,13 +87,22 @@ fn output(serial: usize) -> Value {
 #[tokio::test]
 #[ignore = "requires DECODEX_TEST_CODEX_BINARY; private review recovery after cold resume"]
 async fn native_guardian_details_survive_cold_resume_without_raw_subscription() {
-	let (home, mut session, store, mut agent, backend) = setup(|serial| match serial % 3 {
+	let (home, mut session, store, _, backend) = setup(|serial| match serial % 3 {
 		0 => serde_json::json!({"type":"function_call","name":"exec_command","call_id":format!("approval-{serial}"),"arguments":"{\"cmd\":\"exit 0\",\"sandbox_permissions\":\"require_escalated\",\"justification\":\"Isolated review recovery\"}"}),
 		1 => serde_json::json!({"type":"message","role":"assistant","id":format!("review-{serial}"),"content":[{"type":"output_text","text":"{\"outcome\":\"allow\"}"}]}),
 		_ => serde_json::json!({"type":"message","role":"assistant","id":format!("answer-{serial}"),"content":[{"type":"output_text","text":"Completed"}]}),
 	}).await;
 	let outcome = time::timeout(Duration::from_secs(90), async {
-		store.set_guardian_settings(1, ReviewPreference::AutomaticReview, true).await.unwrap();
+		store.set_review_details(1, true).await.unwrap();
+		let mut config = AgentConfig::new(
+			"gpt-5.6-sol".into(),
+			"medium".into(),
+			home.path().display().to_string(),
+		);
+		config.sandbox = "read-only".into();
+		config.approvals_reviewer = Some("auto_review".into());
+		let mut agent =
+			AgentCoordinator::new(store.clone(), session.client.clone(), config).unwrap();
 		agent.start_agent("sage", "Review recovery").await.unwrap();
 
 		let thread =
@@ -150,7 +159,7 @@ async fn native_project_global_review_and_private_records_cross_retained_bridge(
 	let (home, mut session, store, mut agent, backend) = setup(output).await;
 
 	time::timeout(Duration::from_secs(90),async{
-		store.set_guardian_settings(1,ReviewPreference::AskMe,true).await.expect("Project and Work qualification fixture");
+		store.set_review_details(1,true).await.expect("Project and Work qualification fixture");
 
 		let project=session.client.create_project("Community Market",home.path().to_str().expect("Project and Work qualification fixture"),"native-project-test").await.expect("Project and Work qualification fixture");
 		let duplicate=session.client.create_project("Community Market",home.path().to_str().expect("Project and Work qualification fixture"),"native-project-test").await.expect("Project and Work qualification fixture");assert_eq!(project["project"]["id"],duplicate["project"]["id"]);
@@ -161,20 +170,22 @@ async fn native_project_global_review_and_private_records_cross_retained_bridge(
 		let before=session.client.configured_task_permissions(&root).expect("Project and Work qualification fixture").0;
 		let (id,method,params)=loop{let event=session.events.recv().await.expect("Project and Work qualification fixture");let request=match &event{ServerEvent::Request{id,method,params} if method=="item/commandExecution/requestApproval"=>Some((id.clone(),method.clone(),params.clone())),_=>None};agent.handle_event(event).await.expect("Project and Work qualification fixture");if let Some(r)=request{break r;}};
 
-		store.set_guardian_settings(2,ReviewPreference::AutomaticReview,true).await.expect("Project and Work qualification fixture");agent.sync_global_guardian().await.expect("Project and Work qualification fixture");
+		store.set_review_details(2,true).await.expect("Project and Work qualification fixture");
 
-		let queued=store.guardian_state().await.expect("Project and Work qualification fixture");assert!(matches!(queued.sources[0].outcome.as_str(),"pending"|"applied"),"{queued:?}");
+		let queued=store.guardian_state().await.expect("Project and Work qualification fixture");assert!(queued.settings.review_details);assert_eq!(session.client.configured_task_permissions(&root).unwrap().0, before);
 		let pending=session.client.server_request_guard(&id,&method,&params).expect("global switch must not answer an existing human approval");let _=pending;agent.respond_permission(id,serde_json::json!({"decision":"decline"})).await.expect("Project and Work qualification fixture");finish(&mut session,&mut agent,&root).await;
 
+		let (_, guard) = session.client.configured_task_permissions(&root).unwrap();
+		session.client.select_thread_reviewer(&root, "auto_review", guard).await.unwrap();
 		while session.client.configured_task_permissions(&root).expect("Project and Work qualification fixture").0.approvals_reviewer!="auto_review" {let event=time::timeout(Duration::from_secs(10),session.events.recv()).await.expect("Project and Work qualification fixture").expect("Project and Work qualification fixture");agent.handle_event(event).await.expect("Project and Work qualification fixture");}
 
-		agent.continue_worker("sage","Exercise Automatic Review").await.expect("Project and Work qualification fixture");finish(&mut session,&mut agent,&root).await;agent.sync_global_guardian().await.expect("Project and Work qualification fixture");
+		agent.continue_worker("sage","Exercise Automatic Review").await.expect("Project and Work qualification fixture");finish(&mut session,&mut agent,&root).await;
 
-		let state=store.guardian_state().await.expect("Project and Work qualification fixture");assert!(!state.details.is_empty(),"production observer must retain private records");assert!(state.details.iter().all(|d|d.parent_thread_id.as_deref()==Some(&root)&&d.reviewer_thread_id!=root&&d.review_id.is_none()));assert_eq!(state.sources[0].effective_reviewer.as_deref(),Some("auto_review"));
+		let state=store.guardian_state().await.expect("Project and Work qualification fixture");assert!(!state.details.is_empty(),"production observer must retain private records");assert!(state.details.iter().all(|d|d.parent_thread_id.as_deref()==Some(&root)&&d.reviewer_thread_id!=root&&d.review_id.is_none()));
 		let after=session.client.configured_task_permissions(&root).expect("Project and Work qualification fixture").0;assert_eq!(before.sandbox_policy,after.sandbox_policy);assert_eq!(before.approval_policy,after.approval_policy);
 		let history=session.client.thread_read(serde_json::json!({"threadId":root,"includeTurns":true})).await.expect("Project and Work qualification fixture");assert!(!history.to_string().contains("outcome\\\":\\\"deny"));
 
-		store.set_guardian_settings(3,ReviewPreference::AutomaticReview,false).await.expect("Project and Work qualification fixture");let count=state.details.len();agent.continue_worker("sage","Exercise observer opt out").await.expect("Project and Work qualification fixture");finish(&mut session,&mut agent,&root).await;assert_eq!(store.guardian_state().await.expect("Project and Work qualification fixture").details.len(),count);
+		store.set_review_details(3,false).await.expect("Project and Work qualification fixture");let count=state.details.len();agent.continue_worker("sage","Exercise observer opt out").await.expect("Project and Work qualification fixture");finish(&mut session,&mut agent,&root).await;assert_eq!(store.guardian_state().await.expect("Project and Work qualification fixture").details.len(),count);
 	}).await.expect("bounded native qualification");
 
 	backend.abort();

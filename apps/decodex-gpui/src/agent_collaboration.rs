@@ -301,15 +301,7 @@ impl AgentSurface {
 				question.title = "Review decision".into();
 				continue;
 			}
-			let parent = role.as_ref().and_then(|_| {
-				let agent = self
-					.native_agents
-					.lists
-					.get(&row.work)?
-					.iter()
-					.find(|agent| Some(&agent.thread_id) == row.thread.as_ref())?;
-				rows.iter().find(|parent| parent.thread.as_ref() == Some(&agent.parent_thread_id))
-			});
+			let parent = role.as_ref().and_then(|_| self.reviewer_parent(row, rows));
 			let output = self.work_output(row);
 			let completed =
 				output.as_ref().is_some_and(|output| self.work_output_complete(row, output.turn));
@@ -409,6 +401,16 @@ impl AgentSurface {
 				order: i64::MAX - 1,
 			});
 		}
+	}
+
+	fn reviewer_parent<'a>(&self, row: &Row, rows: &'a [Row]) -> Option<&'a Row> {
+		let agent = self
+			.native_agents
+			.lists
+			.get(&row.work)?
+			.iter()
+			.find(|agent| Some(&agent.thread_id) == row.thread.as_ref())?;
+		rows.iter().find(|parent| parent.thread.as_ref() == Some(&agent.parent_thread_id))
 	}
 
 	fn collaboration_action(

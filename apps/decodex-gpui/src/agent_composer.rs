@@ -54,6 +54,10 @@ use decodex_protocol::AgentAttachmentDto;
 pub(super) const MODEL_MENU_WIDTH: f32 = 232.;
 pub(super) const MODEL_MENU_SHADOW: f32 = 8.;
 
+pub(super) fn selection_menu(menu: Option<&str>) -> bool {
+	matches!(menu, Some("model" | "permissions" | "speed"))
+}
+
 pub(super) struct ComposerTip(pub(super) String);
 impl Render for ComposerTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
@@ -622,7 +626,7 @@ impl AgentSurface {
 		let menu = self.composer_menu.or(self.composer_menu_content);
 
 		#[cfg(all(target_os = "macos", not(test)))]
-		if menu == Some("model")
+		if selection_menu(menu)
 			&& self.native_controls.composer.enabled
 			&& !self.native_controls.model_menu.failed
 		{
@@ -630,7 +634,7 @@ impl AgentSurface {
 			// the main window's outside-click dismissal here.
 			return gpui::div().absolute().inset_0().on_mouse_down_out(cx.listener(
 				|s, _, _, cx| {
-					if s.composer_menu == Some("model") {
+					if selection_menu(s.composer_menu) {
 						s.dismiss_composer_menu(cx);
 					}
 				},
@@ -642,8 +646,10 @@ impl AgentSurface {
 		#[cfg(not(all(target_os = "macos", not(test))))]
 		let inline = true;
 
-		if menu == Some("model") && inline {
-			let Some(anchor) = self.menu_trigger_bounds.get("model") else { return gpui::div() };
+		if selection_menu(menu) && inline {
+			let Some(anchor) = menu.and_then(|key| self.menu_trigger_bounds.get(key)) else {
+				return gpui::div();
+			};
 
 			return gpui::div().absolute().inset_0().child(
 				gpui::deferred(
@@ -823,6 +829,30 @@ impl AgentSurface {
 				.flex()
 				.items_center()
 				.gap(gpui::px(8.))
+				.child(
+					gpui::div()
+						.flex_1()
+						.text_size(gpui::px(11.))
+						.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+						.child(match &self.native_agents.detail {
+							Some(decodex_protocol::NativeAgentsResult::Conversation {
+								permission_mode,
+								service_tier,
+								..
+							}) => {
+								let permissions = permission_mode
+									.map_or("Permissions not reported", |mode| mode.label());
+								let speed = match service_tier.as_deref() {
+									Some("priority") => "Fast",
+									Some("default") => "Standard",
+									Some(tier) => tier,
+									None => "Speed not reported",
+								};
+								format!("{permissions} · {speed} · Managed by parent")
+							},
+							_ => "Permissions and speed are managed by the parent Agent".into(),
+						}),
+				)
 				.justify_end()
 				.child(
 					if self.running_turn().is_some()
@@ -876,6 +906,20 @@ impl AgentSurface {
 				model,
 				"Model and reasoning · Applies to the next turn",
 				|s, cx| s.toggle_composer_menu("model", cx),
+				cx,
+			))
+			.child(self.composer_control(
+				"permissions",
+				self.permission_label(),
+				"Permissions for this Agent",
+				|s, cx| s.toggle_composer_menu("permissions", cx),
+				cx,
+			))
+			.child(self.composer_control(
+				"speed",
+				self.composer_speed_label(),
+				"Speed for the next turn",
+				|s, cx| s.toggle_composer_menu("speed", cx),
 				cx,
 			))
 			.child(gpui::div().flex_1())
@@ -1052,7 +1096,7 @@ impl AgentSurface {
 				}
 			}))
 			.child(self.composer_control_content(id, label, cx))
-			.when(["model", "effort", "attach"].contains(&id), |d| {
+			.when(["model", "effort", "attach", "permissions", "speed"].contains(&id), |d| {
 				d.child(
 					gpui::canvas(
 						move |bounds, _, cx| {
@@ -1235,6 +1279,13 @@ impl AgentSurface {
 					self.task_reference_options(cx)
 				} else if menu == "skills" {
 					self.skill_options(cx)
+				} else if menu == "permissions" {
+					self.permission_options(cx)
+				} else if menu == "speed" {
+					crate::ui_motion::menu_surface(gpui::div())
+						.p_2()
+						.child(self.service_tier_picker(cx))
+						.into_any_element()
 				} else if menu == "agent-settings" {
 					gpui::div()
 						.id("agent-settings-scroll")
@@ -1259,10 +1310,7 @@ impl AgentSurface {
 			.flex_col()
 			.gap(gpui::px(6.))
 			.child(
-				ui_motion::menu_surface(gpui::div())
-					.p(gpui::px(5.))
-					.child(self.model_palette(cx))
-					.child(gpui::div().mt(gpui::px(6.)).child(self.service_tier_picker(cx))),
+				ui_motion::menu_surface(gpui::div()).p(gpui::px(5.)).child(self.model_palette(cx)),
 			)
 			.child(
 				ui_motion::menu_surface(gpui::div())

@@ -137,7 +137,7 @@ mod creation_tests {
 	#[test]
 	fn creation_keeps_legacy_effort_and_nullable_inheritance_distinct() {
 		for effort in [serde_json::json!("none"), serde_json::json!("high"), Value::Null] {
-			let wire = serde_json::json!({"action":"start_configured","data":{"start":{"root_id":"root","prompt":"hello","model":"model","effort":effort,"cwd":"/tmp","account_id":null,"sandbox":"read_only"},"execution":{"model":"model","reasoning_effort":effort,"fast":false},"attachments":[]}});
+			let wire = serde_json::json!({"action":"start_configured","data":{"start":{"root_id":"root","prompt":"hello","model":"model","effort":effort,"cwd":"/tmp","account_id":null,"permission_mode":"read_only"},"execution":{"model":"model","reasoning_effort":effort,"fast":false},"attachments":[]}});
 			let action: AgentActionDto = serde_json::from_value(wire).unwrap();
 			let AgentActionDto::StartConfigured { start, execution, .. } = action else {
 				panic!("start")

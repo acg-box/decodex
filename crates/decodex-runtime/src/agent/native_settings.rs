@@ -62,7 +62,6 @@ impl AgentCoordinator {
 		if let Some(thread) = params["threadId"].as_str() {
 			self.cancel_changed_capacity_selection(thread, &params["threadSettings"]).await?;
 			self.persist_task_settings(thread).await?;
-			self.sync_global_guardian().await?;
 		}
 
 		Ok(true)

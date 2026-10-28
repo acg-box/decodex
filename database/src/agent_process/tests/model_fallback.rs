@@ -389,6 +389,7 @@ async fn assert_permissions_after_reconciliation(store: &SqliteStore) {
 		generation,
 		settings_event: observed,
 		profile: ":workspace".into(),
+		mode: None,
 		review_token: OTHER_DIGEST.into(),
 		attempt_id: "after-reconciliation".into(),
 	};

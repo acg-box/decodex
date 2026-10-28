@@ -63,6 +63,8 @@ mod weather;
 mod wire;
 mod work_portfolio;
 
+pub use decodex_core::PermissionMode;
+
 pub use self::{
 	account_login::{
 		AccountLoginContractError, AccountLoginFailure, AccountLoginInstallMode,
@@ -83,9 +85,9 @@ pub use self::{
 		AgentHistorySourceDto, AgentInputReceiptsResult, AgentLiveMessageDto, AgentLiveMessageKind,
 		AgentMisalignmentDto, AgentModelDto, AgentModelUpgradeDto, AgentOutputResult,
 		AgentPendingEventDto, AgentRequestResult, AgentRequestText, AgentResourceDto,
-		AgentResourcesResult, AgentReviewActivity, AgentSandboxDto, AgentServiceTierDto,
-		AgentSnapshotDto, AgentSnapshotResult, AgentStartDto, AgentTaskReferenceDto,
-		AgentTurnUsageDto, AgentUsageDetailsDto, AgentUsageDto, AgentWorkItemDto, AgentWorkKindDto,
+		AgentResourcesResult, AgentReviewActivity, AgentServiceTierDto, AgentSnapshotDto,
+		AgentSnapshotResult, AgentStartDto, AgentTaskReferenceDto, AgentTurnUsageDto,
+		AgentUsageDetailsDto, AgentUsageDto, AgentWorkItemDto, AgentWorkKindDto,
 		AgentWorkStatusDto, MAX_AGENT_DEPENDENCIES, MAX_AGENT_PENDING_EVENTS,
 		MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS, NATIVE_PARENT_RECONNECT_MESSAGE,
 		ProjectDto,

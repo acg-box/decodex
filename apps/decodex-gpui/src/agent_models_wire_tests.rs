@@ -651,6 +651,7 @@ async fn serve(listener: UnixListener, preserve: bool, confirmed: bool) -> Vec<A
 			assert_eq!(work_id.as_str(), "root");
 
 			let state = AgentModelSettingsResult::Available {
+				service_tier: None,
 				work_id,
 				thread_id: EntityId::new("thread").unwrap(),
 				account_id: EntityId::new("account").unwrap(),

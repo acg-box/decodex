@@ -173,6 +173,15 @@ const WB_TEXT_FAINT: u32 = TEXT_FAINT;
 const WB_ACCENT: u32 = ACCENT;
 const WB_BLUE: u32 = BLUE;
 const WB_WARNING: u32 = crate::ui_theme::WARNING;
+const SETTINGS_SECTIONS: [(Destination, Option<SettingsCategory>, &str); 7] = [
+	(Destination::Settings, Some(SettingsCategory::General), "General"),
+	(Destination::Settings, Some(SettingsCategory::Agents), "Agents"),
+	(Destination::Settings, Some(SettingsCategory::Appearance), "Appearance"),
+	(Destination::Settings, Some(SettingsCategory::Components), "Components"),
+	(Destination::Settings, Some(SettingsCategory::Updates), "Updates"),
+	(Destination::Accounts, None, "Accounts"),
+	(Destination::Health, None, "Diagnostics"),
+];
 
 /// One window-owned production shell. Connection ownership lives at application scope.
 pub(crate) struct Shell {
@@ -193,7 +202,7 @@ pub(crate) struct Shell {
 	connection: ConnectionView,
 	root_focus: FocusHandle,
 	destination_focus: Vec<FocusHandle>,
-	settings_focus: [FocusHandle; 6],
+	settings_focus: [FocusHandle; SETTINGS_SECTIONS.len()],
 	refresh_focus: FocusHandle,
 	composer: Entity<ComposerInput>,
 	agent: Entity<AgentSurface>,
@@ -743,6 +752,7 @@ impl Shell {
 					match std::env::var("DECODEX_VISUAL_SETTINGS_CATEGORY").as_deref() {
 						Ok("appearance") => SettingsCategory::Appearance,
 						Ok("updates") => SettingsCategory::Updates,
+						Ok("agents") => SettingsCategory::Agents,
 						Ok("components") => SettingsCategory::Components,
 						_ => SettingsCategory::General,
 					};
@@ -5832,24 +5842,16 @@ fn settings_navigation(
 ) -> AnyElement {
 	let mut navigation = settings_navigation_surface();
 
-	for (section_index, (destination, category, label)) in [
-		(Destination::Settings, Some(SettingsCategory::General), "General"),
-		(Destination::Settings, Some(SettingsCategory::Appearance), "Appearance"),
-		(Destination::Settings, Some(SettingsCategory::Components), "Components"),
-		(Destination::Settings, Some(SettingsCategory::Updates), "Updates"),
-		(Destination::Accounts, None, "Accounts"),
-		(Destination::Health, None, "Diagnostics"),
-	]
-	.into_iter()
-	.enumerate()
+	for (section_index, (destination, category, label)) in SETTINGS_SECTIONS.into_iter().enumerate()
 	{
-		let symbol = match section_index {
-			0 => workspace_symbols::Symbol::Settings,
-			1 => workspace_symbols::Symbol::Eye,
-			2 => workspace_symbols::Symbol::Graph,
-			3 => workspace_symbols::Symbol::ArrowDown,
-			4 => workspace_symbols::Symbol::Agents,
-			_ => workspace_symbols::Symbol::Waveform,
+		let symbol = match category {
+			Some(SettingsCategory::General) => workspace_symbols::Symbol::Settings,
+			Some(SettingsCategory::Agents) => workspace_symbols::Symbol::Agents,
+			Some(SettingsCategory::Appearance) => workspace_symbols::Symbol::Eye,
+			Some(SettingsCategory::Components) => workspace_symbols::Symbol::Graph,
+			Some(SettingsCategory::Updates) => workspace_symbols::Symbol::ArrowDown,
+			None if destination == Destination::Accounts => workspace_symbols::Symbol::Agents,
+			None => workspace_symbols::Symbol::Waveform,
 		};
 		let active = selected == destination
 			&& category.is_none_or(|category| shell.settings.read(cx).category == category);
@@ -5876,7 +5878,7 @@ fn settings_navigation(
 				.on_action(cx.listener(Shell::focus_next))
 				.on_action(cx.listener(Shell::focus_previous))
 				.h(gpui::px(30.0))
-				.when(section_index == 2, |row| row.mt_2())
+				.when(destination == Destination::Accounts, |row| row.mt_2())
 				.px_2()
 				.rounded(gpui::px(6.0))
 				.flex()
@@ -8050,7 +8052,7 @@ mod tests {
 		let (shell, visual) = open_shell(cx);
 
 		for (index, expected) in
-			[(0, Destination::Settings), (4, Destination::Accounts), (5, Destination::Health)]
+			[(0, Destination::Settings), (5, Destination::Accounts), (6, Destination::Health)]
 		{
 			let focused = shell.read_with(visual, |shell, _| shell.settings_focus[index].clone());
 
@@ -8078,6 +8080,7 @@ mod tests {
 
 		for (index, (destination, category)) in [
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::General)),
+			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Agents)),
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Appearance)),
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Components)),
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Updates)),
@@ -8124,7 +8127,7 @@ mod tests {
 			gpui::px(ui_theme::SETTINGS_WINDOW_MIN_WIDTH),
 			gpui::px(480.),
 		));
-		settings.simulate_keystrokes("tab tab enter");
+		settings.simulate_keystrokes("tab tab tab enter");
 		settings.update(crate::ui_frame::draw_current_frame);
 
 		let gallery = settings.debug_bounds("color-theme-picker").expect("theme gallery");

@@ -46,6 +46,7 @@ const RECAP_PREFERENCE: &str = "DecodexAutomaticTaskRecaps";
 pub(crate) enum SettingsCategory {
 	#[default]
 	General,
+	Agents,
 	Appearance,
 	Components,
 	Updates,
@@ -54,6 +55,7 @@ impl SettingsCategory {
 	pub(crate) fn title(self) -> &'static str {
 		match self {
 			Self::General => "General",
+			Self::Agents => "Agents",
 			Self::Appearance => "Appearance",
 			Self::Components => "Components",
 			Self::Updates => "Updates",
@@ -84,6 +86,8 @@ pub(crate) struct SettingsSurface {
 	menu_bar: NativeMenuBarHost,
 	launch_at_login: LaunchAtLoginState,
 	launch_at_login_detail: SharedString,
+	session_defaults: crate::session_settings::Defaults,
+	session_menu: Option<&'static str>,
 }
 impl SettingsSurface {
 	fn preference_control(
@@ -416,10 +420,110 @@ impl SettingsSurface {
 	fn category_content(&self, cx: &mut Context<Self>) -> AnyElement {
 		match self.category {
 			SettingsCategory::General => self.general_content(cx),
+			SettingsCategory::Agents => self.agent_defaults_content(cx),
 			SettingsCategory::Appearance => self.appearance_content(cx),
 			SettingsCategory::Components => self.components_content(cx),
 			SettingsCategory::Updates => self.updates_content(cx),
 		}
+	}
+
+	fn choose_default_permissions(
+		&mut self,
+		mode: decodex_protocol::PermissionMode,
+		cx: &mut Context<Self>,
+	) {
+		self.session_defaults.permissions = mode;
+		self.session_defaults.save();
+		self.session_menu = None;
+		cx.refresh_windows();
+	}
+
+	fn choose_default_speed(
+		&mut self,
+		tier: decodex_protocol::ServiceTier,
+		cx: &mut Context<Self>,
+	) {
+		self.session_defaults.speed = Some(tier);
+		self.session_defaults.save();
+		self.session_menu = None;
+		cx.refresh_windows();
+	}
+
+	fn agent_defaults_content(&self, cx: &mut Context<Self>) -> AnyElement {
+		let speed =
+			self.session_defaults.speed.as_ref().map_or("Codex default", |s| match s.as_str() {
+				"default" => "Standard",
+				"priority" => "Fast",
+				_ => "Custom speed",
+			});
+		gpui::div()
+			.flex()
+			.flex_col()
+			.gap_3()
+			.child(ui_theme::settings_description(
+				"Defaults apply only to new Agents. Existing chats and running work keep their settings.",
+			))
+			.child(
+				ui_theme::settings_row()
+					.child(ui_theme::settings_label(
+						"Default permissions",
+						"Subagents inherit the parent’s native permissions.",
+					))
+					.child(
+						ui_theme::settings_button(
+							"default-permissions",
+							self.session_defaults.permissions.label(),
+						)
+						.on_click(cx.listener(|s, _, _, cx| {
+							s.session_menu = if s.session_menu == Some("permissions") {
+								None
+							} else {
+								Some("permissions")
+							};
+							cx.notify();
+						})),
+					),
+			)
+			.when(self.session_menu == Some("permissions"), |d| {
+				d.child(crate::session_settings::permission_choices(
+					Some(self.session_defaults.permissions),
+					|_| true,
+					Self::choose_default_permissions,
+					cx,
+				))
+			})
+			.child(
+				ui_theme::settings_row()
+					.child(ui_theme::settings_label(
+						"Default speed",
+						"Fast can use more of your allowance. Availability depends on the model.",
+					))
+					.child(ui_theme::settings_button("default-speed", speed).on_click(
+						cx.listener(|s, _, _, cx| {
+							s.session_menu =
+								if s.session_menu == Some("speed") { None } else { Some("speed") };
+							cx.notify();
+						}),
+					)),
+			)
+			.when(self.session_menu == Some("speed"), |d| {
+				d.child(crate::session_settings::speed_choices(
+					self.session_defaults.speed.as_ref(),
+					true,
+					Self::choose_default_speed,
+					cx,
+				))
+				.child(
+					ui_theme::settings_button("default-speed-inherit", "Use Codex default")
+						.on_click(cx.listener(|s, _, _, cx| {
+							s.session_defaults.speed = None;
+							s.session_defaults.save();
+							s.session_menu = None;
+							cx.refresh_windows();
+						})),
+				)
+			})
+			.into_any_element()
 	}
 
 	fn general_content(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -584,6 +688,8 @@ impl SettingsSurface {
 			menu_bar,
 			launch_at_login,
 			launch_at_login_detail: launch_at_login_detail(launch_at_login).into(),
+			session_defaults: crate::session_settings::Defaults::load(),
+			session_menu: None,
 		};
 
 		surface.apply_snapshot(snapshot);

@@ -12,7 +12,7 @@ use crate::{
 };
 use decodex_core::{
 	MAX_APPROVAL_ENVELOPE_BYTES, ServiceTier,
-	guardian::{GuardianState, ReviewPreference},
+	guardian::GuardianState,
 	work::{Agent, WorkCommand, WorkPortfolio},
 };
 
@@ -141,7 +141,10 @@ pub enum AgentReviewActivity {
 	/// The Lead read the review-loop instructions.
 	Prepare,
 	/// A native agent read an EGM reviewer persona.
-	Reviewer { role: String },
+	Reviewer {
+		/// Persona name read from the original plugin.
+		role: String,
+	},
 	/// The Lead read the findings-resolution instructions.
 	Assess,
 }
@@ -362,19 +365,8 @@ pub struct AgentStartDto {
 	/// Optional explicit account; otherwise the service selects it.
 	pub account_id: Option<EntityId>,
 	/// Runtime sandbox selected by the user.
-	pub sandbox: AgentSandboxDto,
-}
-
-/// Sandbox modes supported by the initial Agent product.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AgentSandboxDto {
-	/// Permit observation only.
-	ReadOnly,
-	/// Permit edits within the selected workspace.
-	WorkspaceWrite,
-	/// User explicitly grants unrestricted local execution for this Agent context.
-	FullAccess,
+	#[serde(alias = "sandbox")]
+	pub permission_mode: crate::PermissionMode,
 }
 
 /// A user-selected local file, directory, or skill. Images use native vision input;
@@ -421,14 +413,12 @@ pub enum AgentActionDto {
 		/// Existing independent Agent.
 		agent_id: EntityId,
 	},
-	/// Save the global Guardian preference; source receipts are observations, never overrides.
-	SetGuardian {
+	/// Set review-history observation without changing execution permissions.
+	SetReviewDetails {
 		/// Global settings identity, always guardian-global.
 		settings_id: EntityId,
 		/// Last displayed desired-state revision.
 		expected_revision: u64,
-		/// Native review routing, separate from Full Access.
-		reviewer: ReviewPreference,
 		/// Optional native private reviewer observation.
 		review_details: bool,
 	},
@@ -461,6 +451,9 @@ pub enum AgentActionDto {
 		text: HistoryText,
 		/// Model settings captured at send time.
 		execution: AgentExecutionOverrides,
+		/// Explicit creation choice. Omission preserves already queued input.
+		#[serde(default)]
+		permission_mode: Option<crate::PermissionMode>,
 		/// Attached context.
 		attachments: Vec<AgentAttachmentDto>,
 		/// Referenced tasks.
@@ -705,6 +698,8 @@ pub enum AgentActionDto {
 		review_token: WireText,
 		/// Explicit native profile ID.
 		profile_id: WireText,
+		/// Select a complete preset; None preserves custom native policy and reviewer.
+		mode: Option<crate::PermissionMode>,
 	},
 	/// Publish a model and effort for subsequent captures in one reviewed running turn.
 	SetLiveModel {
