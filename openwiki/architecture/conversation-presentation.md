@@ -58,12 +58,18 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-7b89f5bc6ecd604ca4e97dc2
     resource: repo://apps/decodex-gpui/src/composer_text.rs
+  - id: openwiki-source-fca3688e96d92c09b7ba015f
+    resource: repo://apps/decodex-gpui/src/native_material_panel.rs
   - id: openwiki-source-592957b8edd8a689f738c189
     resource: repo://apps/decodex-gpui/src/ui_frame.rs
   - id: openwiki-source-246a7882a46c2cac4571760d
     resource: repo://apps/decodex-gpui/src/ui_loading.rs
+  - id: openwiki-source-2316e3cffd10487b54cd63f4
+    resource: repo://apps/decodex-gpui/src/ui_material.rs
   - id: openwiki-source-afbf2d30c0979a844373d8e5
     resource: repo://apps/decodex-gpui/src/ui_motion.rs
+  - id: openwiki-source-1b1f8653954117c3fd5fc77c
+    resource: repo://apps/decodex-gpui/src/ui_palette.rs
   - id: openwiki-source-23959670579000a30234423d
     resource: repo://apps/decodex-gpui/src/ui_text_reveal.rs
   - id: openwiki-source-570564020f98df7a4d6d0b61
@@ -92,10 +98,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T07:58:23.862Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 
@@ -168,6 +174,8 @@ These defaults apply to new conversations. Saving them does not restart a loaded
 The shared GPUI popover moves into place by four points as one opaque surface. Its background, shadow and content move together, without a height clip or separate primitive fades. The menu overlays the page so the layout does not clip its blur and shadow.
 
 Presentation entities request GPUI animation frames while application policy permits animation. Keyboard focus does not set the cadence of sibling windows. Native glass surfaces have their own host integration. Transcript expansion must not recreate or change the composer's material.
+
+Window and input-bar materials are independent preferences. Dark Liquid Glass uses shared surface opacity across color themes; Decodex does not add an opaque Graph or composer cover. Thin retains its separate matte palette. The native input bar keeps its focused and unfocused glass styles.
 
 Streamed model output, dictation and Live captions share a grapheme-safe text reveal. Model output uses an adaptive reserve across network gaps, with a 300–700 ms receive horizon. Completion limits the remaining reveal deadline to 160 ms. Dictation and Live captions keep a 120 ms response horizon. Corrections replace the visible prefix without replay. Reduced motion reveals current text directly. These are presentation policies, not transport-latency or microphone-readiness guarantees.
 

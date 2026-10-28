@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:dae78c9494ec7dc995894f298de43ce8b79bf7dbac0ff25ad2f6549b1e03b5d5",
+  "pageVersion": "sha256:6f49b3430442c2956c9dfd7c4cb012ba12d98ac53d762ca5d7f9feb415b147a3",
   "claims": [
     {
       "id": "claim_820ae47a5a5d49aab10b5f306ac24685",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:379bebc24b275d32794219bccb90a7909414606eb6e8b31dd7930614c203e1fe"
+          "version": "repo-file-v1:sha256:8948624703d6f76b17fb7c768076868f9dff3085012c305122dba764b4c2b0cc"
         },
         {
           "resource": "repo://database/schema.sql",
@@ -21,7 +21,7 @@
       "statement": "Delegation, Collaboration and current Work context retain application-evidence authority instead of becoming user authorization; authoritative Work changes require the actual delivered user decision.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1291-L1401",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1319-L1429",
           "version": "repo-lines-v1:sha256:34c154ed0b2a955952269ea2ba86b94de26fe029840005eeab4bd317d355ae33:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
@@ -64,15 +64,19 @@
     },
     {
       "id": "claim_5abfcf5d17ac4d19b4475850bbff4b46",
-      "statement": "Global Guardian owns reviewer intent and per-source readback for future turns. The public protocol has no per-Agent reviewer override, and native execution permissions, active captures and pending human approvals keep their native owners.",
+      "statement": "Permission modes belong to the selected native conversation; the global Guardian option controls only review-record observation, while native child inheritance and pending approval ownership remain native.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/agent.rs",
-          "version": "repo-file-v1:sha256:4505107622b2a83de9f0c5e552c2680a09c67f60391c08e32f7bb467d52f5d3c"
+          "resource": "repo://crates/decodex-core/src/permissions.rs",
+          "version": "repo-file-v1:sha256:263f2b7b4c82f13d9bf293c2be98238b2616f85e2fdbc30f827d5a85fdb27057"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs#L1-L103",
-          "version": "repo-lines-v1:sha256:e111dbf2f4d4aa117f76345f57907e9d47f124256fe78ec0dd6368d99e5d50d6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2ZmRmZjlhYTNiYTY5YTEwODVhMjY3NjljNDRiMWNjMjRlMDZkZGQ5YWIzNDlkZDY4NDM5OGYyMTQzY2M5MzZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyOWFmM2JiMDRhYjAzOTQwYTQwOGM1MDcyYTVjY2RlMWY4YzUxZTc5YTIyYjE1ZTk5NDNlOTFlY2EyYWMyODFhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwMDc2NDQ5YTA3N2YwNWUwMWUwN2M0NzE5OGVhYWEwNjY5NGNjZWFhZTIxYmEwODFmNTZmMDFjNTI4NzdmZWY3In0"
+          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
+          "version": "repo-file-v1:sha256:565df042b95aaab735d1f0775319652f84665a39d3d4e1c394a0d756c83b1201"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_permissions.rs",
+          "version": "repo-file-v1:sha256:32b59c5f26a9d009d71536689d3d377e3ef8b2ca518bd896678ad543bc5c46b4"
         }
       ]
     },
@@ -91,7 +95,7 @@
       "statement": "The default Work tools use native helper execution. Ordinary input resumes its original native context and tool set without a context-upgrade journal or automatic thread replacement.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L963-L969",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L991-L997",
           "version": "repo-lines-v1:sha256:94776a0d435b96647d7166add2c7065508760db388a1d6b1ab244d43e5b1d2f8:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWZkZDg0NjFjMDUwNzdiZTg5NzFhYmUxMWM5ODJhMjU0YWFlMTEyZTM3NzIwZDdhZmViNjBlMWU0ZDUzNDRmZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZDQwOThiOWE1NmE3ZGNiZDEzOWQ5N2NiZTQzYmEyNjk4MWViNTc0MmMwNGZmZDY5MTc3ZGNjMGE5MzQyYTdkMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzNhM2E4NGU0NTc2MjMxMDU0MzhlYTg2MGM3MDk5NjA2YTEwYzVkOTM2YTM2ZDQ0Mjk1ZDMyZmE3N2Q3ZjdmNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWFmM2U5ZDA4NDM1MGQzYjExMzJmNzNmZGNkNTIzNjg3OWM1ZmQ5NWUyMTU4NWZjZmNiOGFiZjlkMmNjYzRiNCJ9"
         },
         {
@@ -116,11 +120,11 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
-          "version": "repo-file-v1:sha256:7d716b1f0d463043d3844fbcb0e0826390ca08e8984ce15d0bb01fa1e0f8a04b"
+          "version": "repo-file-v1:sha256:565df042b95aaab735d1f0775319652f84665a39d3d4e1c394a0d756c83b1201"
         },
         {
           "resource": "repo://database/src/guardian_settings.rs",
-          "version": "repo-file-v1:sha256:1b874c9a2715b387fc01541ea031297b4ef80e418f11c0f377d955a3da260d19"
+          "version": "repo-file-v1:sha256:9eed8d64b595ffb61974b5d32270defa026efffee2318badb061f41210622f6c"
         }
       ]
     },
@@ -218,7 +222,7 @@
         },
         {
           "resource": "repo://database/src/guardian_settings.rs",
-          "version": "repo-file-v1:sha256:1b874c9a2715b387fc01541ea031297b4ef80e418f11c0f377d955a3da260d19"
+          "version": "repo-file-v1:sha256:9eed8d64b595ffb61974b5d32270defa026efffee2318badb061f41210622f6c"
         }
       ]
     },
@@ -234,7 +238,7 @@
     },
     {
       "id": "claim_a14e8ae7c91741ceb385960bd275df1c",
-      "statement": "The control follow-up verified an outside-Project write denied under Workspace permissions, allowed under Full Access before and after restart, then denied after Workspace restoration; three native permission tests, one hold test, strict lint and format checks passed. The test fixture explicitly uses the global reviewer without weakening its original assertions.",
+      "statement": "The retained control follow-up records the outside-Project Workspace/Full Access permission sequence; the current native restoration fixture validates selected native permissions independently of optional review-record observation.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L2674-L4161",
@@ -242,7 +246,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs",
-          "version": "repo-file-v1:sha256:dfc41811bae2bf516e6bedaab02e49ddf6bd8b7cf84f9eaf07f6f0603bc4b84c"
+          "version": "repo-file-v1:sha256:90b43b04eba4be987cf82931e374f9b87c358b14c8f16773a23e98312ba8d519"
         }
       ]
     },
@@ -261,11 +265,11 @@
       "statement": "Independent Agents retain their own composer and approval controls, and submitted input targets the selected independent conversation; the installed qualification separately binds these fixes and the two-Project/four-Work scenario to an exact signed development artifact and explicit cleanup, official-UI and voice limits.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_portfolio_tests.rs#L163-L230",
+          "resource": "repo://apps/decodex-gpui/src/agent_portfolio_tests.rs#L162-L229",
           "version": "repo-lines-v1:sha256:f826c16639548bea4feac5128e1c977361fa0672bad2c2cd21eb940497919af1:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2ZDM3NDI5MTRmZTFkODY2ZTY2NGE4NDMzM2FhZWI0Nzk1NDE2ZmZjNDc0NTczYjVhMDU2OWI1ZjEzODQ0ZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1YWEwZjkzOTQ4YjU2ZWM5MTljZjNmNDM5MDEzNGQ2YTFmMGYyODgzYzI1OTdkNjU1OWM1ODYwMzU4NDIzOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwMTJhNDJhNmNmMTg3ZTMzNzAwNDBjMDk5ZjMyNjMxOTBhYWQyNWRlNzMwYzc5OGJlNDU4NDU0YzFiYmMwNWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVmMDg3ZDQzOWMwNWQ3MjIwNWI1ZGFiMGUyMDUyYWVlOGE5ZjM2YjVmNTk3MDZhNWNkODI4Yzk3ZjQzYTZkOTYifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L925-L976",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L934-L985",
           "version": "repo-lines-v1:sha256:767972a08dac70d0d177bbfbadbb3b9ebf0a7b452dc8d3b6f16386e7c62277fe:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzMDQwMDA0N2UzY2U2NjI0Yzk5MTgxNGY5MzRiNDgzNTQ4NWIxNDg0ODFjNTI3MGRlZjE3MjA3ZjE4YzQzNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjYzE1MDQ0YzQ1YzEwMmJjMWNlMTZmMmQwMWQwZjk0MjI3N2MzZDcwMTUyZTAyM2Y2OTAyM2IwY2E0YTA4MmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjMmI1MGY2ZTAyZmY5MGU2ODBjNTE0YzE2Zjc0YzUwNmU4Y2RiZTUxZmVjYWUyMzY1NDhkZGRiOWY5ODFkZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkMTVjYWViZTcyZDQxMjNkZDYzNTRjY2M4ZDZkOTBiYjk0ZjcwZDcwYTAyOTc3MzNkN2UxNDA0ZWI4ZmM4ZTYifQ"
         },
         {
@@ -309,6 +313,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T07:58:23.862Z"
+    "at": "2026-10-28T08:28:06.287Z"
   }
 }

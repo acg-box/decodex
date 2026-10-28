@@ -28,10 +28,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-f20a9fcd74237051ab396266
     resource: repo://crates/decodex-runtime/src/agent/review_activity.rs
-generated: { by: "codex", at: "2026-10-28T05:56:56.666Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T05:56:56.666Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 # Elephant–Goldfish component
@@ -85,10 +85,10 @@ The focused fixtures cover these different boundaries:
 - An empty component store prepares the qualified runtime, then the owned service starts. Failure and retry preserve the connection retry budget.
 - The native plugin adapter tests installation, same-version payload updates, failed-update preservation and removal. It also covers incomplete orphan installations, repeated cleanup and preservation of unrelated files and another installed plugin in a shared marketplace.
 - The optional-component worker exercises the original Google Git install, update and uninstall path in a private native home.
-- The opt-in native EGM fixture discovers the original skill suite, compares installed skills, personas, standards and documentation with the marketplace source, and uses the existing app-server client for real model turns. It checks a fresh-context probe and one original review round, native child completion and successful source reads, the report artifact and the unchanged target. It stops at the resolution decision gate.
+- The opt-in native EGM fixture discovers the original skill suite, compares installed skills, personas, standards and documentation with the marketplace source, and uses the existing app-server client for real model turns. The first review leaves the target unchanged at the decision gate. A separate approval permits repairs; another explicit message starts a second fresh-context review of Revision 2. The fixture retains both target versions, reports and native events, then explicitly halts the loop. It verifies actual reviewer completion and source reads rather than accepting the parent's summary.
 
 The live fixture reads the existing native subscription through the protected credential reader. It projects access only into the test process, uses no refresh token and asserts that the private home contains no persisted auth file. Component setup needs no new API key. Live review qualification consumes subscription model quota.
 
-This fixture does not qualify every EGM workflow, nested synthesizer dispatch, user-driven repair loops, long-running quality or an installed Decodex application. Keep these boundaries separate. Run the [focused commands](../operations/commands-and-validation.md#qualify-components-and-original-egm) with the qualified runtime and an explicit private evidence directory. The pinned Codex source and generated protocol remain separate from the installed desktop binary.
+This fixture qualifies one bounded review, approved repair and second-review cycle. It does not qualify every EGM workflow, nested synthesizer dispatch, long-running quality or an installed Decodex application. A review can still report remaining findings; the fixture does not require the model to declare success. Run the [focused commands](../operations/commands-and-validation.md#qualify-components-and-original-egm) with the qualified runtime and an explicit private evidence directory. The pinned Codex source and generated protocol remain separate from the installed desktop binary.
 
 See [tools and integrations](tools-plugins-and-apps.md) for native skill selection and [runtime architecture](../architecture/runtime-architecture.md) for execution ownership.

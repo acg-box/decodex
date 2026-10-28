@@ -15,7 +15,7 @@ sources:
 generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T06:15:00.380Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 # Service-owned account login

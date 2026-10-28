@@ -22,6 +22,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
   - id: openwiki-source-0d053d4de2f668168f982629
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
+  - id: openwiki-source-59ed67d26d1c310707a365e5
+    resource: repo://apps/decodex-gpui/src/component_plugins.rs
   - id: openwiki-source-682f90c6d08ed3207257f1d5
     resource: repo://apps/decodex-gpui/src/conversations.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
@@ -40,6 +42,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/prediction.rs
   - id: openwiki-source-787f8ad27b8519fbed2bd039
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
+  - id: openwiki-source-e379b8a714d71f87371ae328
+    resource: repo://crates/decodex-components/src/plugins.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-0d29990b5fd295fa89a495ad
@@ -58,6 +62,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs
   - id: openwiki-source-720a745d503e0e60ebcad0c5
     resource: repo://crates/decodex-runtime/src/agent_detail.rs
+  - id: openwiki-source-5bc08ad67fcdb104dfcde7bf
+    resource: repo://crates/decodex-runtime/src/agent_permissions.rs
   - id: openwiki-source-d8df4be72e86f8bd3d65cce8
     resource: repo://crates/decodex-runtime/src/agent_plugins.rs
   - id: openwiki-source-3d25cb6558fde84d70520ac2
@@ -88,10 +94,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-28T07:51:34.051Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T07:58:23.862Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 # Product scope and native ownership
@@ -102,11 +108,11 @@ Decodex supplies a local workspace, account policy, work relationships and reada
 
 The [Project, Agent and Work contract](project-agent-work.md) is the accepted and implemented contract for general-purpose collaboration. It defines shared English names for code and UI, an optional Assistant, existing Agents acting as Project Leads, one owner per Work, native Subagents, and scoped Collaboration Requests between independent Agents. It does not use fixed L0/L1/L2 business levels. The current ownership boundary is documented below.
 
-Global Guardian controls and native private Review Details are now selected product scope. They are no longer awaiting a decision on whether to implement them. The target has no per-Agent Guardian override; actual native requirements and per-source effective settings remain authoritative. Review Details are diagnostic observation, not permission or Work acceptance. Implementation, exact-artifact qualification and a separate local installed development acceptance are recorded in the stable retained contract catalog. The installed scenario qualifies two Projects and four Works, independent-Agent input and approval ownership, Pause/Resume, restart recovery, global Guardian and the Workspace/Full Access sequence. Official Codex desktop Project presentation remains unobserved. A controlled scenario does not establish general model quality. This decision does not enable a native flag, broaden Full Access, or select unrelated historical optional proposals.
+Native permissions and private Review Details are selected product scope. Each conversation owns its permission mode; the global Guardian control only enables optional review records. Review Details are observation, not permission or Work acceptance. The retained contract catalog records an earlier installed scenario with two Projects, four Works, independent-Agent input and approval ownership, Pause/Resume, restart recovery and a Workspace/Full Access sequence. That historical qualification does not establish the current installed artifact or general model quality. Official Codex desktop Project presentation remains unobserved.
 
 The default coordination surface uses `work_read` and `work_manage`. Only users create persistent Agents. Native Subagents own temporary execution. Managed-worker/manager creation and old goal/dependency tools are retired from new conversations and refused in legacy schemas. Native history and recorded tool declarations stay bound to their original conversations.
 
-Global Guardian changes the thread preference for subsequent turns and reports per-source receipts. Existing active captures and pending human approvals retain native ownership. Optional private details retain bounded assistant output and terminal metadata without raw reasoning. Exact action associations are unavailable in the selected runtime and remain explicit. This does not select the separate native Guardian V3 experiment or add a per-Agent override.
+Permission changes use the selected native conversation's supported profile and reviewer settings. Existing child captures and pending human approvals retain native ownership. Optional private details retain bounded assistant output and terminal metadata without raw reasoning. Exact action associations are unavailable in the selected runtime and remain explicit. This does not select the separate native Guardian V3 experiment.
 
 The current schema and protocol 4.0 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
 
@@ -173,7 +179,7 @@ The bridge admits installed-plugin observations but rejects local plugin list/re
 
 Provider authentication recovery recording, formerly O24, is also retired. Saved recovery history remains readable without generating new notifications or outgoing work.
 
-The desktop does not need a duplicate plugin marketplace, plugin publishing workflow or embedded browser to use these native capabilities. A local skill picker selects an already enabled skill; it does not reproduce plugin setup.
+The desktop does not need a duplicate plugin marketplace, plugin publishing workflow or embedded browser to use these native capabilities. A local skill picker selects an already enabled skill. The explicit [EGM Component](../integrations/elephant-goldfish.md) controls invoke the original native plugin lifecycle; they do not reopen generic plugin management through the Agent bridge.
 
 ## Retained native additions
 

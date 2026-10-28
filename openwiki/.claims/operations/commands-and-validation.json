@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f18e0a0daef6b22c2b60b031a48f666ff608b85366b398e1d3672ceba9a7d53c",
+  "pageVersion": "sha256:e9e5c2b4dff255fb26b7d24fe7042af4860669f4a78a1495890254e60ed85343",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -93,7 +93,7 @@
           "version": "repo-lines-v1:sha256:3c768499f08523e870b3caec2d3aac9f8573f9288ce10092f78a249f283810b1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4NGU2YmFjODRlYjdkMjQ0NTA4NWNiNGFhYTBhYjIyMjliMWQ3NTllNTVmYmI0YmI3YjRjNTkxOTkyYjc1OTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNTAzMjQ5NjI1NjU2ODVhNTljMzk3NWUxYTU0MjRhODE3NWJhNDBmN2RmYTNhMDk2NTc5MTliMjFjZDkyNmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxYjRkMmIxMTA0NzMwMmU1MjQ0MTlhZmQ2ZDJhZTEyOTc1OTBhNzk1NTgwMmM0ZDQ0MmI2NjA4MzJmNTY2NDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMzNDhhOGIzYmU0YTMxZTJhY2QyYzcwNTk1YjY0ZTA0MWRhMzYyZjg1YTA4MjU1OGJjMDk5YWU0ZTIzMDM5NmMifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1859-L1871",
+          "resource": "repo://crates/decodex-runtime/src/agent_host.rs#L1854-L1866",
           "version": "repo-lines-v1:sha256:699cdaac0ea1c78a0673444325e57b9ee46f747626c944de3fc334e266daae82:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhNTc3OTMwMDQ1ODZhODY2YjE4OGUxNzMzMzUyZmRiNzk5ZGJiYzMyN2RmMjFiYzVhNDQ4ZWE4ZGU2MzNkMDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjOWM2OTk5OGY4MjBlNDY5NzUxNTJiNjMzYjQzOTg1YzNiYzBmNzlmZTViYjlmZmUzMmU3MDIzZjk3Y2YzMjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjY2M3NTlhZjgyZjNkOTQ5NjFmZWE1ZTFjNDU0ZWQ5OGU5YTQ4YjVlNTlmOTk4YTgwODUxNjJhMmQ3YTAwNGUifQ"
         },
         {
@@ -266,11 +266,11 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs",
-          "version": "repo-file-v1:sha256:19466b3021ea6d604c15df46e4744220e371f79f9b375506a701793b23ab7a2f"
+          "version": "repo-file-v1:sha256:cb9e21ef8159ab651097e1b378408596d451f2f51dba67fc8a0cc9d916dc398a"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs",
-          "version": "repo-file-v1:sha256:dfc41811bae2bf516e6bedaab02e49ddf6bd8b7cf84f9eaf07f6f0603bc4b84c"
+          "version": "repo-file-v1:sha256:90b43b04eba4be987cf82931e374f9b87c358b14c8f16773a23e98312ba8d519"
         }
       ]
     },
@@ -318,7 +318,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs",
-          "version": "repo-file-v1:sha256:3b78e03fab2d6f4370956cccc722290dbd1740984e394c37f687b7258c49368b"
+          "version": "repo-file-v1:sha256:1bd69b1df433b544d7847e14a884574e7e9a4e4fac3f67e6b305b5f3793036ce"
         },
         {
           "resource": "repo://scripts/vnext/run_native_regression.py",
@@ -449,10 +449,20 @@
           "version": "repo-file-v1:sha256:348cbc75935ac1f0c6e6c4220f34e26afb96ef7cc0456bc2f8d4eec62bbc4a1a"
         }
       ]
+    },
+    {
+      "id": "claim_866754b08b004ce5a28e3378a2cc9100",
+      "statement": "The opt-in original EGM validation uses a verified native executable, a private evidence directory and process-scoped subscription authentication for a first review, separate approved repair, second fresh review and explicit halt; it retains artifacts and native events and consumes model quota.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_component_tests.rs",
+          "version": "repo-file-v1:sha256:97d65bc9f995cda36154a493ea726a9ff4568a3571b29f21e75f247785ece7e2"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T07:58:23.862Z"
+    "at": "2026-10-28T08:28:06.287Z"
   }
 }

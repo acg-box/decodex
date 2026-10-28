@@ -38,6 +38,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs
   - id: openwiki-source-68238f7343c9fc1bd11783f3
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs
+  - id: openwiki-source-9976259de97569ef11093ba6
+    resource: repo://crates/decodex-runtime/src/account_launch/process_native_component_tests.rs
   - id: openwiki-source-c75093d19a3bc72db5836102
     resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-5af40fd50adccf5d93ff82a0
@@ -96,10 +98,10 @@ sources:
     resource: repo://scripts/vnext/run_native_regression.py
   - id: openwiki-source-d45a647d565211cf9b5cb067
     resource: repo://scripts/vstyle_audit.py
-generated: { by: "codex", at: "2026-10-28T03:55:33.038Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T07:58:23.862Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 
@@ -415,6 +417,18 @@ A full Xcode installation and its Metal toolchain are required for GPUI. The scr
 The staging test verifies payload counts, Info.plist, signatures, team identity, native ABI and a deliberately mismatched ABI fixture. Python reads piped entitlement bytes explicitly for compatibility. A passing package test is not live UI, speech, release notarization or installation acceptance.
 
 An explicit `DECODEX_RUNTIME_LOCK_PATH` can select a prepared requirement for development staging. This selection does not qualify another artifact or compile Codex. Release staging still checks its selected official requirement against the development baseline.
+
+## Qualify components and original EGM
+
+Use the verified prepared Codex executable and a private evidence directory:
+
+```sh
+DECODEX_TEST_CODEX_BINARY="$PREPARED_CODEX" DECODEX_TEST_EGM_EVIDENCE="$EGM_EVIDENCE" cargo +stable nextest run --locked -p decodex-runtime --lib --run-ignored only -E 'test(isolated_original_egm_completes_an_approved_review_repair_cycle)' --test-threads 1
+```
+
+The fixture installs the original plugin in a temporary native home. It retains an unchanged target at the first decision gate, sends a separate repair approval, then explicitly starts a second fresh review and halts the loop. It saves both target versions, reports and native events. Source-read and completion checks do not rely on the parent's summary. The fixture uses process-scoped existing subscription authentication and consumes model quota; it needs no API key. Its bounded workflow does not prove every EGM scenario or installed-app appearance.
+
+The native plugin adapter and component worker separately test installation, updates, failure preservation, removal and orphan cleanup. They retain unrelated plugins and user artifacts.
 
 ## Native macOS tests
 

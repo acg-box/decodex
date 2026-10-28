@@ -32,12 +32,22 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_memory.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
+  - id: openwiki-source-93bd8c5fcf58e2a9c861da67
+    resource: repo://apps/decodex-gpui/src/agent_native_model_menu.rs
+  - id: openwiki-source-c6ac7d6b2fdeb458faab2c3a
+    resource: repo://apps/decodex-gpui/src/agent_permissions.rs
   - id: openwiki-source-1b7747f8ae67c32e5670817d
     resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
   - id: openwiki-source-6a1c55b61be8ac251a493046
     resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
+  - id: openwiki-source-c222de0005be9c363ba17232
+    resource: repo://apps/decodex-gpui/src/agent_relation_canvas.rs
+  - id: openwiki-source-eaafddc6420cb2e60f559a55
+    resource: repo://apps/decodex-gpui/src/agent_relation_layout.rs
+  - id: openwiki-source-a94720ef223006f5ecee5f55
+    resource: repo://apps/decodex-gpui/src/agent_relation_scopes.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-15ee466228bdb01892c9678b
@@ -58,20 +68,24 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-fca3688e96d92c09b7ba015f
     resource: repo://apps/decodex-gpui/src/native_material_panel.rs
+  - id: openwiki-source-a2f254020dd8eaabd6366c91
+    resource: repo://apps/decodex-gpui/src/session_settings.rs
   - id: openwiki-source-2986b39185cca5c00a29ad1d
     resource: repo://apps/decodex-gpui/src/shell_status.rs
   - id: openwiki-source-2f256c95c226c1326d164ad3
     resource: repo://apps/decodex-gpui/src/ui_feedback.rs
+  - id: openwiki-source-c29d70b5569f29b7122f2f6b
+    resource: repo://crates/decodex-runtime/src/native_agents.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
     resource: repo://crates/decodex-runtime/src/work_portfolio.rs
   - id: openwiki-source-d1279ad243eb550afec4d0e6
     resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T06:51:55.940Z
+    at: 2026-10-28T08:28:06.287Z
 ---
 
 # Desktop workspace and native glass
@@ -86,6 +100,10 @@ Collaboration groups source-backed exchanges by participant pair and expands the
 
 Global shortcuts in `shell.rs` are Command-E for the left sidebar, Command-B for the inspector/agent side, and Command-J for the graph. Window controls stay in the global shell. Settings is a separate presentation with bounded scrolling and shared spacing tokens.
 
+The Graph groups Agents by recorded Project membership. A dashed rounded boundary separates that scope from solid relationship links. Selecting an Agent highlights its Project boundary. Tree, Radial and Grouped retain compact branches within a Project and clearance between Projects. Point overview retains boundaries while hiding small labels. These frames do not move an Agent to another Project or change ownership.
+
+Settings > Agents supplies permission and speed defaults for new independent conversations. The input-bar shield selects the current Agent's native permission mode; speed stays inside the model menu. Existing conversations retain their own settings, and native Subagents follow native inheritance rather than a Decodex broadcast.
+
 Shift-Esc toggles Graph or conversation fullscreen according to the active pane. Pane capture tracks clicks across cached Graph layers, and the native composer forwards actions to the persistent shell. Graph fullscreen hides both sidebars and restores their saved visibility and width preferences on exit.
 
 ## Project Work and Guardian
@@ -98,7 +116,7 @@ The overview carries headers; selected Work evidence loads separately. Reads are
 
 Pause Work prevents new Decodex contributions and completion. It cannot roll back already-running actions and does not replace native interruption. Work association with a Project does not change the native conversation's working directory or execution permission.
 
-Guardian settings are global: Ask Me or Automatic Review. Full Access remains a separate native permission choice. Desired reviewer settings and actual per-source receipts are visible separately. Review Details is an optional bounded observation: the selected runtime does not provide exact action Review IDs for private reviewer records, so the UI displays Action association unavailable. It does not infer a link to the latest action. Turning details off stops new records; it does not erase retained history.
+Guardian shows review records across Agents and Projects. Its global Review Details switch controls optional bounded observation, not conversation permissions. The selected runtime does not provide exact action Review IDs for private reviewer records, so the UI displays Action association unavailable. It does not infer a link to the latest action. Turning details off stops new records; it does not approve requests or erase retained history.
 
 Only native assistant output and item-free terminal metadata enter retained private records. Raw reasoning frames are excluded. The store retains at most 128 records of 64 KiB each; the snapshot previews the newest 32 and loads the exact selected record on demand. This is not a complete reviewer transcript or proof of a live approval decision.
 

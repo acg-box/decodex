@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:af488ee2d5bf5e7b0b68affd65e917413c33d962eaebce27d92998438309f25a",
+  "pageVersion": "sha256:2a7212083fa2ddc22f4cc9f38a0516438739ea8f14161791dcff11c1138d1ac3",
   "claims": [
     {
       "id": "claim_95da7355536d42fb9ba017dae9558113",
@@ -42,11 +42,11 @@
     },
     {
       "id": "claim_0cd33064cbce4b54906f6ae43d17f7bd",
-      "statement": "The native EGM fixture installs the original plugin in an isolated home, discovers seven plugin skills by their native identities, compares original runtime directories, runs fresh-context model reviewers through the existing client, checks child completion and resource reads, and requires an unchanged target and a generated report after one review round.",
+      "statement": "The native EGM fixture installs the original seven-skill plugin in an isolated home, compares its original runtime files, performs a first fresh review without edits, uses separate approval and second-review messages, and verifies child completion, source reads and the repaired target revision before explicitly halting.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_component_tests.rs#L148-L385",
-          "version": "repo-lines-v1:sha256:19ff7036a7097077d8ffb3f935ac882f7fcc62a030918dadefc5562dda866b3d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjM4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIxMTFmZWM5MmUyODhkMjBkYzgxYThhMjM4NjM4Zjk0ZWM0ZmQyMzYwNjIwNGZiMDEwY2JiNTZiZDY2NTFkNWU2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_component_tests.rs",
+          "version": "repo-file-v1:sha256:97d65bc9f995cda36154a493ea726a9ff4568a3571b29f21e75f247785ece7e2"
         }
       ]
     },
@@ -55,12 +55,8 @@
       "statement": "The opt-in live EGM fixture uses the protected shared credential reader and process-scoped ChatGPT token projection, does not use the refresh token, and checks that no auth file persists in the isolated native home.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_component_tests.rs#L25-L84",
-          "version": "repo-lines-v1:sha256:1567f866c481fc6541826bc4bc84ba97b571ed2da8de30e11e79a812dde297aa:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwY2QxNWY1Yzg4ODE2N2RlY2U0NmZmMTU5YTg0ODY1ZTRmYTNkZTg2OGY4Mzc4ZGYxY2E0NjJlYjI5MGQ0ODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyN2MxN2ViZWM5OTIwMTYwNmE2NDA2YzlkYjA5ZWY0MDI4MmFiNmQ4YmFmN2I3MmZjYzQ2NTc4NDE3NzE1NWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4ZGQ4ZTZmZDJiODlmNzg0MmMxMjVjNzIzZmRmZTQ3Mjk4MjliMzNjOWMzY2RlM2VmYmJlMjQzODg1MWU3YjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg2OWZiNzczNjYwM2FiYmU0NDcyM2EyMWQ4OGRlMWFiY2VmNWVkODBmYjRhM2RlZTI3NTAyNDZmNTY3NGViNzMifQ"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_component_tests.rs#L363-L385",
-          "version": "repo-lines-v1:sha256:23699fa8f0e0444d728e3d0efd9c563ce735d5ae8daf1cc8f4cad91fc87ead32:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiMzVhNWU3YTU5NzgzYTc5YWNkMmU3ZTNmZmY4NGMwYzQ3ZjhjYWFhZDVmY2Q4MmE1ZDI5MGQ1YjA1NWExZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM2NWFmNWVkZmM5YzY3ZWQ5Mzk4MzlkZmMyMGMyMjhlOTkyODI1NGVlZGUyZDI4NzRjODg0NDhjNDMxYjNmNTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_component_tests.rs",
+          "version": "repo-file-v1:sha256:97d65bc9f995cda36154a493ea726a9ff4568a3571b29f21e75f247785ece7e2"
         }
       ]
     },
@@ -83,11 +79,11 @@
       "statement": "New Lead guidance conditionally selects original EGM skills for useful independent design review, keeps simple tasks direct, and preserves fresh reviewer context and original human decisions without replacing existing Main instructions.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L596-L619",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L624-L647",
           "version": "repo-lines-v1:sha256:826834bf758b81ae18865205f8a94973ec4f59b24242e0edd299fb6f294e468e:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwNGEyM2VkM2Q0ZjMzNjVjNWI3ZmJjYmFhN2Q5MzQ1YzY4ZTExZGU4NjVjMWU5MTI4YTUxYzQ5YmU5NzJlODYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjExMGYzYWI4ODk2ZTkzZDUwMjMzMDQ1NTA0ZjAwZGE5YWNjNjIxN2MyYjNiN2Y1NDZjZDAwYzBhMzg5OTk0ZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxZjU2YmIyNmM0ZjE2NjU5YmYwYjI1NjFiYTA0MzEwMzU3N2RlNTI1N2JiZWJlNTRiMjljMDBkZjRlMDI1MmIifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L962-L970",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L990-L998",
           "version": "repo-lines-v1:sha256:fb1b26291086ee7b1da2bd688e8dd69028ac26f705931f83c49a8bcb0e0e80d8:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjk4ZTg4ZWYzNDIwNjJiZDNmMjM0NWVmNmM4M2UxMzc1NDg1YzViYmVjMjRlOTQ1MmQ4N2NhNmIzYWNlZTIzZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTE5ODlhYzQzODRlZWEwN2EwM2QwMzA4NzBhOTdkZjcxNzQzYTUxMWMzNjU1ZDNmNDE4ODNhOTM3YWVjOWU0OSJ9"
         },
         {
@@ -101,16 +97,12 @@
       "statement": "Native EGM review presentation reuses the Graph and Collaboration panel, preserves the native Lead and reviewer source conversations, and does not equate returned reports with acceptance or count children as review rounds.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs#L279-L425",
-          "version": "repo-lines-v1:sha256:e404fde0895f5eea4378e7724892326e8f05626631a07e9b845dc307670d7d8f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzMjE0OTBkNTFjZmEyNTI2ZjdkYTk3YWMwYTA5M2VmYzg4OTY0MzJkYTA0ZTI2MTdiNDQ2MWZiMDhkYWVjZWExIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwZDc1NzExMDA5NjIwNmNhMzM2NGQ0ZjEyY2E5MzMwNTgzODAzMjQ0OTE3MTM4ZjYyZGFlNTk0MTNiMDcwYjc1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmM2ViMjhjYzI3OGY0ODU0MmUxNjUwODMyOWRkNGU1YmU4YTIxY2NkMjg0ZThiNzY1ZjZiMTA5YjI1NTAzMjc5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiZjAwNDdjNzk2NzY0MTRhMDYwODgzNGFmOTYxMjI0ZDU2ODQ2MTYwMDEwNmJlYTc5Yjk4YTM2OGU0MjRhYzQ4In0"
+          "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs",
+          "version": "repo-file-v1:sha256:7db2485b1dfbc10208c3f2a310a6bc71ac497852f6cc84e631ec5ed2e8e520dc"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs#L670-L800",
-          "version": "repo-lines-v1:sha256:17b41583e66cbb4657df642bc51eff91b2742b23acf7a1539b8a74d0511cb00b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlZDE0NjdmMWVhZGMxZjU3NjA0MDBkMzQ2NDRhNTRhZTcwZTY0ZjJjZjFkMWU2MTQxM2FjNjFmZjc2MWY0MzNmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxODdjM2FlMTRkMjRlYzA4YmFhNmViYjJjMjZjYTlhYTM1ZjRiNGYyM2JiMjBkNDkyNmZhYzdiMWU2N2ZhMjRhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMzNmN2FmM2Q2Y2M5NzVkNDAwNDAwMDA5YmFiN2Q4NDVkYjE3Y2VjNWUzMDkwN2Q4ZGEyNTc3YWM4NjdmZDBmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3ZDdlNWY1ZTczOTE1NzI4OTdhMzgzNzQ0OTYxYzQxYzI1ODQwM2Q3MjUxNzhhN2M1OTJiNTliZTA0MjhkOTRkIn0"
-        },
-        {
-          "resource": "repo://apps/decodex-gpui/src/agent_relation_header.rs#L25-L95",
-          "version": "repo-lines-v1:sha256:94a7fd1647c47252b82dd173006c9bd36d929927ec2487944be3329e5a755e45:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmMTM0Y2Q2ZGNiZGQwMzRmN2YyYWU4MDcxOTk2ZTgwY2I0MmZiNzUzNzcyOThlOTlkOTNmZWQ5NjE5ZmI3MWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2MGI4OGEwNWQ1YjUzODQ3NjAyMjliZTYwNTcyZmU2MmIxYzI5Y2RjNTdlZGI1ZTY5NTFkYWE0ZmQ0NmM4MDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY1YTIxMjY3NGMxODZhZGZlOTYyN2U1MDdiOTJiZmY1ZjNkYTc0OTliMzFkN2YyNGUzODYxZTI1NGQ3YTMzMjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwOTUxN2I3MTM2ZDU1ZmI0MzEzNTZlYzc1NWMzODdiMDZlM2UxNTZhM2U5ZTU5OTc3NGJhNGQ4YWJkMGQ5YTIifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_relation_header.rs",
+          "version": "repo-file-v1:sha256:34bdbcd9101710f9c88cd309a5409ff4c4d94d53b69ff74d58e29983daf86c6d"
         }
       ]
     },
@@ -119,22 +111,22 @@
       "statement": "EGM markers are bound to supported successful native instruction reads and the current native thread and turn; unrelated or unsupported sources remain ordinary activity, and later ordinary turns do not inherit the previous review phase.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs#L89-L121",
-          "version": "repo-lines-v1:sha256:a7d71ef18bb4abff14d7c206db0797253f29fa29c453b3234249f3d0fc353d56:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNzM0OTJkODk0NmIxZDBmOWQ5YzA0YjcwNGE5MjBmMjRmODllZjdjN2Y3MzExYTg1OTlkMTBjN2Y2MzU4ZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxOTRlOWZiNmU2NzA3Mjc3NTkyNTE1NzAxNmI0NzViNmFiM2QxMzU0NTU5MjJmODgwNGMyNjUwMDU3NzU1ZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4OWQ0NmJhZmVjNTFiYmNlY2Y0YTA3MTYwYTVhODgyNTIxZTdkMDRkYmRmY2IxZDZjYWM1MmQzNzk2MWQyNjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNhNTY0MGEwMjg4NzA3NTYzMDMzMTVmZDBlZGQ4MDExM2E5NTFmMjA5N2JlZTExZDM5OWE1MjkzNDhkOGNmZWMifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs",
+          "version": "repo-file-v1:sha256:8931248220c89584d386f2565372cabc82e5f574922526bf5ea158d2301d39dc"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_review.rs#L25-L146",
-          "version": "repo-lines-v1:sha256:ef8d4c74c6c4fb86f20505fe4bf7144d2b45a2504e2e24ff4a776eabc388bf5c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4Y2YzMmEyOTY5NzY4OTM4OTYwZjI0YTI4MTk4NDc5ZmViNTUyZTE1M2RkYzczMjZkZGJmMWNjYzhiMjNmNmI4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0YmMyOWQ3NWNjMzI3OTNhNjk0NzE4N2IwNWM3NDczZmVkZjlmNjAzMTUwNWY4Mjc5NTVlNTY2M2U5ZTNiMTI0In0"
+          "resource": "repo://apps/decodex-gpui/src/agent_review.rs",
+          "version": "repo-file-v1:sha256:a535b5e08456375eb9a07b788bf8edf0ce9120cdb91e75f16499684348fef343"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/review_activity.rs#L1-L108",
-          "version": "repo-lines-v1:sha256:0f3ff43b15e0810b2439be9efffce13ef8e5a97db60a30edec2512fda97c41e3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkZDFkYWYxYjdlYTYzNjk4OTJhMzE3NzVjNjM4NjM1YWI0MGY4ZTYxYzNkZGM1MDA2MzlhM2E2OTI3M2JkZDczIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiOThlMjE3MTFmMmU1MGJjYzRjMDNiODhhNWM4Njk0ZjE5N2MxNDBkZWY3OGZmZjg4MTQzMDFhOTRlNTU4MDc4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5YjdhYTJmOTFhMWVkMjhlOWUwMDY1ZWU0YmQ0ODQxOGFiMGQ4NTc0NjNkNWQ1NTI3NWY3YTU4NjViOWJiZDUzIn0"
+          "resource": "repo://crates/decodex-runtime/src/agent/review_activity.rs",
+          "version": "repo-file-v1:sha256:eb180099689b0b1f5db5868b3903489d1a11e5c60cc9bf5ac67f9884cb249542"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T05:56:56.666Z"
+    "at": "2026-10-28T08:28:06.287Z"
   }
 }

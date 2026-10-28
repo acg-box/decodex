@@ -5,7 +5,7 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T07:58:23.862Z
+    at: 2026-10-28T08:28:06.287Z
 sources:
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
@@ -103,7 +103,7 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-28T07:49:54.224Z" }
+generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 ---
 
 # Project, Agent and Work coordination
@@ -123,6 +123,8 @@ Several independent conversations can share one admitted native process. Each Ag
 A Work has one accountable Agent, immutable requirements revisions and explicit completion criteria. The owner can perform it directly or use native helpers. `work_read` supplies current scoped evidence. `work_manage` uses a stable command ID and exact content for retries. The service verifies authority from the actual delivered user decision, then applies the command transactionally. A contributor's request is application evidence, not a new user instruction.
 
 The evidence chain is Work -> requirements -> issued instruction -> execution -> Result -> assessment. Native evidence keeps exact thread, turn and item identities. Mutable files keep their digest and execution-directory boundary. Identity checks establish provenance; the owner still judges whether the Result meets the requirements. Native completion, transport delivery, acceptance, a Guardian Review and a read receipt do not complete Work.
+
+A Lead can select the installed original [EGM workflow](../integrations/elephant-goldfish.md) when an independent design review is useful. It uses fresh native reviewers and preserves the original user decision gates. Installing EGM does not start a review or create a separate executor.
 
 Project membership does not grant private conversation access. Agent and granted Material scope is applied in SQL before bounded reads. A native conversation still has its actual execution directory and Project. Associating Work with another Project does not switch that directory, change permissions or create a sandbox. Use a separate execution context when hard isolation is required.
 

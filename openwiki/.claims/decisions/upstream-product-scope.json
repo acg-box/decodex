@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:82de1ac0521ca92fc0e6b9f66ccf5b249851b323c20d9d133cd2ed045c846b4e",
+  "pageVersion": "sha256:e712ffcb873816706f3fea9840c506b09473fbfd5fa28f3d5e3940dce7b8544a",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -133,7 +133,7 @@
       "statement": "The compatibility path requests retention only for work_instruction outputs; wakes, capacity retries and injected evidence remain unselected and retain application authority.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1291-L1401",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1319-L1429",
           "version": "repo-lines-v1:sha256:34c154ed0b2a955952269ea2ba86b94de26fe029840005eeab4bd317d355ae33:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
@@ -160,7 +160,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
-          "version": "repo-file-v1:sha256:1c87d79cf8035a79a5ba91f7ce0c011696cdf9490e01f401ad49ef93f3f6cbab"
+          "version": "repo-file-v1:sha256:8c78b64e71823916e54e82dd1036811566e1e370092044ba4230e6da7e426cbd"
         }
       ]
     },
@@ -183,7 +183,7 @@
           "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L131-L151",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L135-L155",
           "version": "repo-lines-v1:sha256:a6b2eef1867776015de103e94d4bd067aedc8577c70159c8c792ab426e27b791:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2YjU1MTM4Y2EyM2U2ZGFkMjJiNjQ4ZjgyOWNlZGM4MWQyMDNiMTlmMTc2MzRkZjZiZTc2MGY1M2JlNGVmOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNmU0ZjMxZGM3MTM2OTU2NmI1MWNjMWExOTVkNDUwY2RmODU3NWU2ZDdhNzYxYzU2NDJiYTMwMjVkYzM0NzMifQ"
         }
       ]
@@ -194,7 +194,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:6eae55c91f5fe965b5ac69b4b12a2378585bd2ef95f19117b1f075a8d751f8b6"
+          "version": "repo-file-v1:sha256:ef610e368cea461087f4345cb2cd4ad778652613db48e08b50b7364e3f623ce3"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/work.rs",
@@ -208,15 +208,15 @@
     },
     {
       "id": "claim_a9a16ba608b9409b958efbec4515c3fa",
-      "statement": "Global Guardian and opt-in bounded private observations are implemented with per-source effective receipts and explicit missing action association, without selecting the separate Guardian V3 experiment.",
+      "statement": "Native per-conversation permissions and optional bounded private review observations are implemented; Guardian no longer overrides all conversations' reviewer preferences, and missing action associations stay explicit without selecting the Guardian V3 experiment.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2674-L4161",
-          "version": "repo-lines-v1:sha256:dca51e28f266f3fd054b394a5451bb61a595544c5b5e6c017bbc9a2bff362c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRlOTQ2ZjE1NzYwNjdhMTM0ZWZiZDhhZTE1MjI2MDI5NzdkMDBlOTFkNjY2YzYyMGE3Yzg0NjdjYjY0ZjE4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhlNmNhNGUyMTVlOTEyMDdlOWZlMDk3ZDUyZGI5M2ViNjVkZTRjOThmZDgwYjE3OTY3MjliM2UxMWQ3MTY5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzIyZjc2YzIxZjc0OTU3ZDkyNWUxOGQzYTY0YWJiNTYwN2ZmMDgwYTc3NDU2MjA4ZThlMDY3ODQ0MDJjMGNhMSJ9"
+          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
+          "version": "repo-file-v1:sha256:565df042b95aaab735d1f0775319652f84665a39d3d4e1c394a0d756c83b1201"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
-          "version": "repo-file-v1:sha256:7d716b1f0d463043d3844fbcb0e0826390ca08e8984ce15d0bb01fa1e0f8a04b"
+          "resource": "repo://crates/decodex-runtime/src/agent_permissions.rs",
+          "version": "repo-file-v1:sha256:32b59c5f26a9d009d71536689d3d377e3ef8b2ca518bd896678ad543bc5c46b4"
         }
       ]
     },
@@ -282,7 +282,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:6eae55c91f5fe965b5ac69b4b12a2378585bd2ef95f19117b1f075a8d751f8b6"
+          "version": "repo-file-v1:sha256:ef610e368cea461087f4345cb2cd4ad778652613db48e08b50b7364e3f623ce3"
         }
       ]
     },
@@ -342,7 +342,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/conversations.rs",
-          "version": "repo-file-v1:sha256:7bf90101a6c1bde73fac1c50f69b361828b8047a7fa4da78324c5e59b1f86d48"
+          "version": "repo-file-v1:sha256:0e4c6da959822e5b58b0b5c32e570184592d45496ce7ddc527c6ee001bd91db8"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -363,10 +363,24 @@
           "version": "repo-file-v1:sha256:31b135003bcc180f47662d5ed3a221003658592d1da509d9f8cdb2b3ef53734f"
         }
       ]
+    },
+    {
+      "id": "claim_a6c6192e6e5446588b25df30a95f4bf9",
+      "statement": "The explicit EGM Component controls invoke the original native plugin lifecycle without reopening generic plugin management through the Agent bridge.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/component_plugins.rs",
+          "version": "repo-file-v1:sha256:61fc6c35849bf457d0fd048882c5cdec0254f05c7dc98fdc0a47e4d02d03a83d"
+        },
+        {
+          "resource": "repo://crates/decodex-components/src/plugins.rs",
+          "version": "repo-file-v1:sha256:e93dfce3fa78548c4e6c7569b98478092562292b7a0b69b53c7440daef660916"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T07:58:23.862Z"
+    "at": "2026-10-28T08:28:06.287Z"
   }
 }
