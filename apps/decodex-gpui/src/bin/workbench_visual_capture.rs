@@ -245,6 +245,10 @@ fn capture_collaboration(cx: &mut VisualTestAppContext) -> Result<AnyWindowHandl
 					surface.visual_workspace_fixture(cx);
 					surface.visual_workspace_page("workbench", cx);
 
+					if env::var_os("DECODEX_VISUAL_PROJECT_SCOPES").is_some() {
+						surface.visual_project_scopes();
+					}
+
 					if let Ok(count) = env::var("DECODEX_VISUAL_GRAPH_AGENTS") {
 						surface.visual_relation_density(count.parse().expect("agent count"), cx);
 					}

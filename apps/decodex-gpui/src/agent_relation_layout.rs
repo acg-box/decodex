@@ -133,6 +133,38 @@ struct Input {
 	zoom: u32,
 }
 impl Input {
+	fn grouped_branches<'a>(&self, branches: &'a [Tree]) -> Vec<Vec<&'a Tree>> {
+		let Some(first) = branches.first() else { return vec![] };
+		let project = &self.nodes[first.index].1;
+
+		if branches.iter().all(|branch| &self.nodes[branch.index].1 == project) {
+			return branches.iter().map(|branch| vec![branch]).collect();
+		}
+
+		let mut groups = BTreeMap::<_, Vec<_>>::new();
+
+		for branch in branches {
+			groups.entry(&self.nodes[branch.index].1).or_default().push(branch);
+		}
+
+		groups.into_values().collect()
+	}
+
+	fn project_gap(&self) -> f32 {
+		let mut projects = self
+			.nodes
+			.iter()
+			.filter(|(key, _, _)| !key.starts_with("resource:"))
+			.map(|(_, project, _)| project);
+		let first = projects.next();
+
+		if projects.any(|project| Some(project) != first) {
+			WORKSPACE_GAP
+		} else {
+			self.presentation.gap(WORKSPACE_GAP, 24.)
+		}
+	}
+
 	fn same_arrangement(&self, next: &Self) -> bool {
 		self.mode == next.mode
 			&& self.presentation == next.presentation
@@ -228,8 +260,20 @@ impl Input {
 		);
 		let block = match self.mode {
 			Mode::Tree | Mode::Grouped => Block::pack(
-				trees.iter().map(|tree| tree.layout(self, self.mode == Mode::Grouped)).collect(),
-				self.presentation.gap(WORKSPACE_GAP, 24.),
+				self.grouped_branches(&trees)
+					.into_iter()
+					.map(|group| {
+						Block::siblings(
+							group
+								.into_iter()
+								.map(|tree| tree.layout(self, self.mode == Mode::Grouped))
+								.collect(),
+							self.mode == Mode::Grouped,
+							self.presentation.gap(SIBLING_GAP, 24.),
+						)
+					})
+					.collect(),
+				self.project_gap(),
 				available,
 			),
 			Mode::Radial => self.radial(&trees),
@@ -239,7 +283,7 @@ impl Input {
 	}
 
 	fn radial(&self, trees: &[Tree]) -> Block {
-		let gap = self.presentation.gap(WORKSPACE_GAP, 24.);
+		let gap = self.project_gap();
 		let (root, branches) = if trees.len() == 1 && !trees[0].children.is_empty() {
 			(Some(trees[0].index), trees[0].children.as_slice())
 		} else {
@@ -253,11 +297,17 @@ impl Input {
 		let mut blocks = Vec::new();
 		let mut directions = Vec::new();
 
-		for (index, tree) in branches.iter().enumerate() {
-			let angle = -FRAC_PI_2 + index as f32 * TAU / branches.len() as f32;
+		let branch_groups = self.grouped_branches(branches);
+
+		for (index, group) in branch_groups.iter().enumerate() {
+			let angle = -FRAC_PI_2 + index as f32 * TAU / branch_groups.len() as f32;
 			let (x, y) = (angle.cos(), angle.sin());
 			let horizontal = x.abs() > y.abs();
-			let mut block = tree.layout(self, horizontal);
+			let mut block = Block::siblings(
+				group.iter().map(|tree| tree.layout(self, horizontal)).collect(),
+				horizontal,
+				self.presentation.gap(SIBLING_GAP, 24.),
+			);
 
 			if horizontal && x < 0. {
 				for &mut (_, ref mut px, _) in &mut block.positions {
@@ -374,20 +424,36 @@ impl Tree {
 	}
 
 	fn layout(&self, input: &Input, horizontal: bool) -> Block {
-		let gap = input.presentation.gap(
+		let crosses_project = self
+			.children
+			.iter()
+			.any(|child| input.nodes[child.index].1 != input.nodes[self.index].1);
+		let sibling_gap = input.presentation.gap(
 			SIBLING_GAP,
 			if self.children.iter().any(|child| !child.children.is_empty()) { 24. } else { 12. },
 		);
+		let gap = if crosses_project { input.project_gap() } else { sibling_gap };
 		let height = f32::from_bits(input.nodes[self.index].2);
 		let base =
 			input.base_heights.get(self.index).copied().map(f32::from_bits).unwrap_or(height);
-		let step = if horizontal {
+		let step = if crosses_project {
+			(if horizontal { input.width } else { height }) + gap
+		} else if horizontal {
 			input.width + input.column_gap
 		} else {
 			(base + input.presentation.gap(28., 8.)).max(height + input.presentation.gap(24., 8.))
 		};
-		let children: Vec<_> =
-			self.children.iter().map(|child| child.layout(input, horizontal)).collect();
+		let children: Vec<_> = input
+			.grouped_branches(&self.children)
+			.into_iter()
+			.map(|group| {
+				Block::siblings(
+					group.into_iter().map(|child| child.layout(input, horizontal)).collect(),
+					horizontal,
+					sibling_gap,
+				)
+			})
+			.collect();
 		let leaves = self.children.iter().all(|child| child.children.is_empty());
 		let mut block = if leaves && children.len() >= 4 {
 			// Balance the actual footprints and their parent as one compact group.
@@ -467,7 +533,7 @@ impl Block {
 			}
 
 			result.height = y + height;
-			y += height + ROW_GAP;
+			y += height + ROW_GAP.max(gap);
 		}
 
 		result

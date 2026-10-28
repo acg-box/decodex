@@ -21,6 +21,23 @@ use decodex_protocol::{
 };
 
 impl AgentSurface {
+	/// Two projects and an unassigned coordinator for native grouping acceptance.
+	#[allow(dead_code)]
+	pub(crate) fn visual_project_scopes(&mut self) {
+		self.snapshot.as_mut().expect("visual snapshot").projects =
+			[("recovery", "Recovery", "mira"), ("graph", "Graph", "sage")]
+				.into_iter()
+				.map(|(id, name, agent)| decodex_protocol::ProjectDto {
+					id: id.into(),
+					name: name.into(),
+					directory: format!("/tmp/{id}"),
+					native_project_id: None,
+					lead_agent_id: None,
+					agent_ids: vec![agent.into()],
+				})
+				.collect();
+	}
+
 	#[cfg(any(test, feature = "visual-capture"))]
 	#[allow(dead_code)]
 	pub(crate) fn visual_speech_sample(&mut self, step: usize, cx: &mut Context<Self>) {
