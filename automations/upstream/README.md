@@ -1,68 +1,79 @@
 # Codex upstream synchronization
 
-One daily task, `codex-upstream-maintainer`, owns source review, adaptation,
-validation, PR merge and the resume record. There is no separate scheduled
-reviewer or health role. The task uses the current maintainer model and effort
-from `automations/portfolio.toml` and runs in a Codex-managed project worktree.
+One daily task, `codex-upstream-maintainer`, owns incremental source review,
+retained-capability repairs, qualification and delivery. Its desired model,
+effort, worktree environment and daily UTC cadence are in
+`automations/portfolio.toml`. The [maintainer prompt](prompts/maintainer.md) owns
+the workload contract. Native tools own registration; repository declarations do
+not activate or resume a task.
 
-The schedule is UTC 20:05, which is Beijing 04:05 the next day throughout the
-year. The explicit UTC start prevents daylight-saving changes. The portfolio
-declares the desired configuration; inspect the native definition for its current
-status. Preserve the user's pause decision. A source-review batch, schema check
-or manifest status does not authorize activation.
+Upstream owns generic Codex correctness. Read its relevant implementation and
+test bodies, and reuse upstream CI evidence. Default execution covers affected
+Decodex-owned consumers against the exact prepared CLI/helpers and the required
+repository gate. Run upstream tests only for a concrete compatibility diagnosis
+or specific missing proof. Do not inherit old source-suite selections. Keep an
+unconsumed upstream failure as a diagnostic limit, not a Decodex repair item.
 
-Development can use official Codex main at a fixed reviewed commit before a
-Release exists. The actual artifact and its helpers must be qualified, preserve
-the fixes already merged into Decodex, and pass the applicable native regressions.
-Formal Decodex releases use official Codex Releases and must preserve the current
-merged baseline. An older Release is not an automatic fallback. Development
-artifacts are prepared explicitly; app packaging and startup do not compile Codex.
-Both use the same component verification and cache repair. The
-[maintainer prompt](prompts/maintainer.md) owns the qualification and merge
-requirements. Tag creation, installation and publication remain outside this task.
+Development can use a fixed reviewed official main commit before a Release.
+Qualify the actual artifact, helpers, provenance, schema and retained fixes with
+explicit `prepare-codex`. Formal releases require a qualified official Release
+that retains the development baseline. App startup and packaging never compile
+Codex. Installation, startup, tags and publication are outside maintenance scope.
 
-The maintainer reads consecutive official Codex commits and traces relevant
-behavior into current Decodex consumers. It checks merged and concurrent work
-before adding an implementation. Native Codex owns supported execution behavior;
-Decodex owns its presentation and coordination. The installed binary, upstream
-main, local tests and delivered behavior are separate evidence scopes.
+## Current state and checkpoint
 
-Use `state.json` in the native automation directory as the current cursor and
-pending-work index, as specified by the [maintainer prompt](prompts/maintainer.md).
-Treat older `memory.md` and dated records as historical evidence. Store longer
-batch evidence separately.
-A source-review cursor must not imply that all adaptation or acceptance is done.
-No-op runs stay quiet; report useful merged changes or actionable blockers.
-
-Keep the portable retention index in [retained-evidence.json](retained-evidence.json).
-It records retained behavior requirements, exact validation entrypoints, artifact
-identities and qualification limits. It is not the live cursor or a task journal.
-Update current entries and let Git retain older versions. Keep raw logs, build
-products, personal paths, real account data and native scheduler state outside the
-repository. Preserve reusable custom regression fixtures with their test owner.
-
-Build directories and old local receipts can be removed. If they are absent,
-continue independent source review and reconstruct only the affected proof from
-the index, current source, tests and public delivery records. Prepare the exact
-artifact again when required. A rebuilt artifact needs its own qualification;
-do not treat it as the deleted original or require the user to restore old builds.
-Scope an evidence gap to the action that needs it. Never infer a new source-review
-cursor or a passed test from missing logs.
-
-The portfolio also retains the independent content manager and publisher
-configuration. This upstream task does not manage those roles, OpenWiki, or the
-website. Rendering the portfolio is read-only; it does not register or
-activate tasks. Use native automation tools for an explicitly selected definition
-and preserve the user's current pause and notification settings.
-
-Validation commands:
+The native automation directory's `state.json` is the current cursor and pending
+index. Memory, dated receipts and archives remain evidence. Establish one owner
+before writing; the checkpoint command is not a scheduler or distributed lock.
+Use the already-managed Node version from `site/.nvmrc`:
 
 ```sh
-python3 automations/decodex/scripts/config/render_automation_plan.py --json
-python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json
-cargo make test-automations
+node --experimental-strip-types automations/upstream/checkpoint.mts \
+  --automation-dir "$AUTOMATION_DIRECTORY"
+node --experimental-strip-types automations/upstream/checkpoint.mts \
+  --automation-dir "$AUTOMATION_DIRECTORY" --input "$RUN_DIRECTORY/checkpoint.json" --dry-run
+node --experimental-strip-types automations/upstream/checkpoint.mts \
+  --automation-dir "$AUTOMATION_DIRECTORY" --input "$RUN_DIRECTORY/checkpoint.json"
 ```
 
-The runtime evaluator reports drift; it does not repair, delete, activate, or
-create native definitions. Missing unrelated content tasks are not authority to
-register them as part of upstream synchronization.
+The read-only form returns a compact summary and state digest. The publisher
+saves an immutable review receipt before atomically replacing the state. It
+updates cursor, certificate, remaining count and next commit together, rejects
+stale/incomplete input and supports exact replay. Use it for pending work and
+runtime/delivery observations too; do not patch counters with per-run scripts.
+It validates bookkeeping, not the truth of source or runtime qualification.
+See the [checkpoint input contract](../../openwiki/operations/codex-upstream-autopilot.md#publish-a-checkpoint)
+for input fields, explicit historical-field archival and recovery limits.
+
+## Portable evidence and delivery
+
+[retained-evidence.json](retained-evidence.json) is the compact current router.
+It binds [retained-contracts.json](retained-contracts.json), which owns stable
+consumer requirements, selected product decisions and original feature limits.
+Change that catalog only when its contracts or evidence change. Routine source
+review and actual artifact/test results stay in `current-review.json` and
+`qualification.json`; Git retains replaced versions.
+
+Wiki owns stable behavior, responsibility and procedures. Prefer narrow source,
+test or stable-contract Claim evidence. Link current qualification instead of
+copying each run's counters/hashes into several pages. Use its supported lifecycle.
+Keep raw logs, private paths, account data, native definitions and builds native.
+Missing local artifacts require only affected proof to be rebuilt and qualified;
+a rebuilt artifact is not the deleted original.
+
+Finish code, tests, evidence and related Wiki jobs before the first push when
+practical. Use known code commits for portable public references; keep PR numbers,
+live CI and merge receipts native. Avoid a commit solely to backfill a PR link.
+Require final-head CI and verify remote main after merge. Notify only material
+Decodex effects, decisions and blockers. Preserve unrelated resources on cleanup.
+
+Validation:
+
+```sh
+python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json
+cargo +stable make test-automations
+```
+
+The automation gate includes the checkpoint regressions. Workflow-only changes
+do not require building Codex, app/provider tests or broad upstream suites.
+The runtime evaluator reports drift; it does not change native definitions.
