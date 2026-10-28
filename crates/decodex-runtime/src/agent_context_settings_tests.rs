@@ -36,6 +36,7 @@ fn source(client: AppServerClient, revision: usize) -> Source {
 fn fixture(
 	fail_readback: bool,
 	table: bool,
+	mcp: bool,
 ) -> (AppServerClient, Arc<AtomicUsize>, JoinHandle<()>) {
 	let (local, remote) = io::duplex(8_192);
 	let (read, write) = io::split(local);
@@ -50,7 +51,7 @@ fn fixture(
 			let request: Value = serde_json::from_str(&line).unwrap();
 			let saved = count.load(Ordering::SeqCst) > 0;
 			let version = if saved { "v2" } else { "v1" };
-			let enabled = !saved;
+			let enabled = mcp || !saved;
 			let user = if table {
 				serde_json::json!({"enabled":enabled,"model_async_compact_threshold_percent":70})
 			} else {
@@ -62,16 +63,16 @@ fn fixture(
 				"config/read" if saved && fail_readback =>
 					serde_json::json!({"error":{"code":-32_603,"message":"read unavailable"}}),
 				"config/read" =>
-					serde_json::json!({"result":{"config":{"features":{"async_compaction":true,"retain_client_tool_outputs":false}},"layers":[{
+					serde_json::json!({"result":{"config":{"mcp_servers":{"docs.v2":{"startup_readiness":"connection"}},"features":{"async_compaction":true,"retain_client_tool_outputs":false}},"layers":[{
 						"name":{"type":"user","file":"/home/config.toml"},"version":version,
-						"config":{"features":{"async_compaction":user,"retain_client_tool_outputs":false}}
+						"config":{"mcp_servers":{"docs.v2":{"startup_readiness":if mcp && saved {"catalog"} else {"connection"}}},"features":{"async_compaction":user,"retain_client_tool_outputs":false}}
 					}]}}),
 				"config/batchWrite" => {
 					assert_eq!(request["params"]["expectedVersion"], version);
 					assert_eq!(request["params"]["reloadUserConfig"], false);
 					assert_eq!(
 						request["params"]["edits"],
-						serde_json::json!([{"keyPath":if table {"features.async_compaction.enabled"} else {"features.async_compaction"},"value":false,"mergeStrategy":"replace"}])
+						serde_json::json!([{"keyPath":if mcp {"mcp_servers.\"docs.v2\".startup_readiness"} else if table {"features.async_compaction.enabled"} else {"features.async_compaction"},"value":if mcp {serde_json::json!("catalog")} else {serde_json::json!(false)},"mergeStrategy":"replace"}])
 					);
 					assert!(app_server_client::is_context_preference_write(&request["params"]));
 
@@ -96,7 +97,7 @@ fn fixture(
 #[tokio::test]
 async fn context_settings_bind_source_version_and_report_uncertain_readback() {
 	for (fail_readback, table) in [(false, false), (false, true), (true, true)] {
-		let (client, writes, task) = fixture(fail_readback, table);
+		let (client, writes, task) = fixture(fail_readback, table, false);
 		let read_source = || future::ready(Some(source(client.clone(), 1)));
 		let AgentContextSettingsResult::Available { review_token, preferences, .. } =
 			agent_context_settings::read(read_source).await
@@ -153,4 +154,44 @@ async fn context_settings_bind_source_version_and_report_uncertain_readback() {
 
 		task.abort();
 	}
+}
+
+#[tokio::test]
+async fn mcp_startup_preference_uses_the_reviewed_server_and_reports_an_override() {
+	let (client, writes, task) = fixture(false, false, true);
+	let read_source = || future::ready(Some(source(client.clone(), 1)));
+	let AgentContextSettingsResult::Available { review_token, preferences, .. } =
+		agent_context_settings::read(read_source).await
+	else {
+		panic!("settings")
+	};
+	let feature = AgentContextFeature::McpCatalogStartup {
+		server: decodex_protocol::WireText::new("docs.v2").unwrap(),
+	};
+	assert_eq!(preferences[2].feature, feature);
+	assert!(
+		agent_context_settings::write(
+			|| future::ready(Some(source(client.clone(), 2))),
+			review_token.as_str(),
+			feature.clone(),
+			true
+		)
+		.await
+		.is_err()
+	);
+	assert_eq!(writes.load(Ordering::SeqCst), 0);
+	assert!(
+		agent_context_settings::write(read_source, review_token.as_str(), feature, true)
+			.await
+			.is_ok()
+	);
+	let AgentContextSettingsResult::Available { preferences, .. } =
+		agent_context_settings::read(read_source).await
+	else {
+		panic!("readback")
+	};
+	assert!(!preferences[2].effective);
+	assert_eq!(preferences[2].preference, Some(true));
+	assert_eq!(writes.load(Ordering::SeqCst), 1);
+	task.abort();
 }

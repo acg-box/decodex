@@ -18,7 +18,7 @@ async fn installed_native_context_preferences_share_config_and_preserve_threshol
 		fs::write(
 			&file,
 			format!(
-				"[features]\nasync_compaction={async_value}\nretain_client_tool_outputs=false\n"
+				"[features]\nasync_compaction={async_value}\nretain_client_tool_outputs=false\n[mcp_servers.\"docs.v2\"]\nurl=\"http://127.0.0.1:1/mcp\"\nenabled=false\n"
 			),
 		)
 		.unwrap();
@@ -51,6 +51,7 @@ async fn installed_native_context_preferences_share_config_and_preserve_threshol
 			"production arguments must respect explicit disable"
 		);
 		assert_eq!(observed.preference, [Some(false), Some(false)]);
+		assert_eq!(observed.mcp_startup, vec![("docs.v2".into(), false, None)]);
 
 		let saved =
 			client.write_context_preference(&observed, "async_compaction", true).await.unwrap();
@@ -84,6 +85,15 @@ async fn installed_native_context_preferences_share_config_and_preserve_threshol
 				70
 			);
 		}
+
+		let saved = client.write_mcp_startup_preference(&saved, "docs.v2", true).await.unwrap();
+		assert_eq!(saved.mcp_startup, vec![("docs.v2".into(), true, Some(true))]);
+		assert!(client.write_mcp_startup_preference(&saved, "not-configured", true).await.is_err());
+		let saved = client.write_mcp_startup_preference(&saved, "docs.v2", false).await.unwrap();
+		assert_eq!(saved.mcp_startup, vec![("docs.v2".into(), false, Some(false))]);
+		let content = fs::read_to_string(&file).unwrap();
+		assert!(content.contains("enabled=false"));
+		assert!(content.contains("http://127.0.0.1:1/mcp"));
 
 		// A manual config edit is the same owner as a UI write and invalidates its version.
 		fs::write(&file, "[features]\nasync_compaction=true\nretain_client_tool_outputs=false\n")

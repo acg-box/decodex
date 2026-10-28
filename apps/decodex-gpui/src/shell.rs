@@ -370,6 +370,7 @@ impl Shell {
 		let account_profile = account_profile_controller.snapshot();
 		let settings_controller = desktop_settings.clone();
 		let settings = cx.new(|cx| SettingsSurface::new(settings_controller, cx));
+		settings.update(cx, |settings, cx| settings.bind_native_agent(agent.clone(), cx));
 		let accounts_controller = AccountsController::production();
 		let accounts = accounts_controller.snapshot();
 		let health_query = HealthQuery::production();

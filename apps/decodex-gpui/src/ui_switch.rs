@@ -26,9 +26,9 @@ const TRAVEL: f32 = 12.;
 
 #[derive(IntoElement)]
 pub(crate) struct Switch {
-	id: &'static str,
-	knob: &'static str,
-	label: &'static str,
+	id: SharedString,
+	knob: SharedString,
+	label: SharedString,
 	enabled: bool,
 	interactive: bool,
 	description: Option<&'static str>,
@@ -70,7 +70,7 @@ impl RenderOnce for Switch {
 			.as_ref()
 			.filter(|g| g.dragging)
 			.map_or(f32::from(enabled), |g| g.position);
-		let position = ui_motion::direct_value(knob, target, dragging, window, cx);
+		let position = ui_motion::direct_value(knob.clone(), target, dragging, window, cx);
 		let thumb = if Theme::current() == Theme::Dark {
 			ui_theme::rgb(TEXT).blend(ui_theme::rgb(ON_PRIMARY).opacity(position))
 		} else {
@@ -82,8 +82,8 @@ impl RenderOnce for Switch {
 		let track = SharedString::from(format!("{id}-track"));
 
 		gpui::div()
-			.id(id)
-			.debug_selector(move || id.into())
+			.id(id.clone())
+			.debug_selector(move || id.to_string())
 			.role(Role::Switch)
 			.aria_label(label)
 			.aria_toggled(if enabled { Toggled::True } else { Toggled::False })
@@ -185,18 +185,26 @@ struct State {
 }
 
 pub(crate) fn settings_switch(
-	id: &'static str,
-	knob: &'static str,
-	label: &'static str,
+	id: impl Into<SharedString>,
+	knob: impl Into<SharedString>,
+	label: impl Into<SharedString>,
 	enabled: bool,
 	interactive: bool,
 ) -> Switch {
-	Switch { id, knob, label, enabled, interactive, description: None, change: None }
+	Switch {
+		id: id.into(),
+		knob: knob.into(),
+		label: label.into(),
+		enabled,
+		interactive,
+		description: None,
+		change: None,
+	}
 }
 
 fn switch_track(
 	track: SharedString,
-	knob: &'static str,
+	knob: SharedString,
 	position: f32,
 	thumb: Rgba,
 ) -> Stateful<Div> {
@@ -216,8 +224,8 @@ fn switch_track(
 				.ml(gpui::px(position * TRAVEL))
 				.size(gpui::px(14.))
 				.flex_none()
-				.id(knob)
-				.debug_selector(move || knob.into())
+				.id(knob.clone())
+				.debug_selector(move || knob.to_string())
 				.rounded_full()
 				.bg(thumb),
 		)

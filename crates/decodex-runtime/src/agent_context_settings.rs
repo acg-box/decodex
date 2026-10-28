@@ -58,24 +58,22 @@ where
 		return Err(Rejected("Context settings changed. Refresh the context preferences."));
 	}
 
-	let index = match feature {
-		AgentContextFeature::AsyncCompaction => 0,
-		AgentContextFeature::RetainClientToolOutputs => 1,
+	let result = match &feature {
+		AgentContextFeature::AsyncCompaction =>
+			before.client.write_context_preference(&settings, CONTEXT_FEATURES[0], enabled).await,
+		AgentContextFeature::RetainClientToolOutputs =>
+			before.client.write_context_preference(&settings, CONTEXT_FEATURES[1], enabled).await,
+		AgentContextFeature::McpCatalogStartup { server } =>
+			before.client.write_mcp_startup_preference(&settings, server.as_str(), enabled).await,
 	};
-	let saved = before
-		.client
-		.write_context_preference(&settings, CONTEXT_FEATURES[index], enabled)
-		.await
-		.map_err(|_| {
-			Unknown(
-				"Context save or readback is unconfirmed. Refresh settings before trying again.",
-			)
-		})?;
+	let saved = result.map_err(|_| {
+		Unknown("Context save or readback is unconfirmed. Refresh settings before trying again.")
+	})?;
 
 	if source().await.is_none_or(|after| {
 		after.key != before.key
 			|| after.client.connection_identity() != before.client.connection_identity()
-	}) || saved.preference[index] != Some(enabled)
+	}) || preference(&saved, &feature) != Some(enabled)
 	{
 		return Err(Unknown("Context save is unconfirmed for this task. Refresh settings."));
 	}
@@ -89,24 +87,44 @@ fn project(
 	settings: NativeContextSettings,
 	token: String,
 ) -> Option<AgentContextSettingsResult> {
+	let mut preferences: Vec<_> =
+		[AgentContextFeature::AsyncCompaction, AgentContextFeature::RetainClientToolOutputs]
+			.into_iter()
+			.enumerate()
+			.map(|(index, feature)| AgentContextPreference {
+				feature,
+				effective: settings.effective[index],
+				preference: settings.preference[index],
+			})
+			.collect();
+
+	for (server, effective, preference) in settings.mcp_startup {
+		preferences.push(AgentContextPreference {
+			feature: AgentContextFeature::McpCatalogStartup { server: WireText::new(server).ok()? },
+			effective,
+			preference,
+		});
+	}
+
 	let result = AgentContextSettingsResult::Available {
 		work_id: EntityId::new(work).ok()?,
 		review_token: WireText::new(token).ok()?,
-		preferences: [
-			AgentContextFeature::AsyncCompaction,
-			AgentContextFeature::RetainClientToolOutputs,
-		]
-		.into_iter()
-		.enumerate()
-		.map(|(index, feature)| AgentContextPreference {
-			feature,
-			effective: settings.effective[index],
-			preference: settings.preference[index],
-		})
-		.collect(),
+		preferences,
 	};
 
 	(serde_json::to_vec(&result).ok()?.len() <= 32 * 1_024).then_some(result)
+}
+
+fn preference(settings: &NativeContextSettings, feature: &AgentContextFeature) -> Option<bool> {
+	match feature {
+		AgentContextFeature::AsyncCompaction => settings.preference[0],
+		AgentContextFeature::RetainClientToolOutputs => settings.preference[1],
+		AgentContextFeature::McpCatalogStartup { server } => settings
+			.mcp_startup
+			.iter()
+			.find(|(name, _, _)| name == server.as_str())
+			.and_then(|(_, _, saved)| *saved),
+	}
 }
 
 async fn inspect(source: &Source) -> Option<(NativeContextSettings, String)> {
