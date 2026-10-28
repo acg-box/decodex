@@ -897,7 +897,10 @@ mod tests {
 
 			assert!(muted < audible * 0.1, "muted microphone must not transmit the tone");
 			assert!(transport.command(Command::Mute(false)));
-			assert!(energy(&mut stream).await > audible * 0.3);
+			assert!(
+				energy(&mut stream).await > audible * 0.3,
+				"unmuting must resume the outgoing tone after the peer is connected"
+			);
 
 			if close_remote_channel {
 				data.close();
