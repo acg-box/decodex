@@ -4,6 +4,14 @@ title: "Elephant–Goldfish component"
 description: "Install, update and remove Google's original EGM plugin through native Codex, then use its design and independent review skills in a fresh conversation."
 tags: ["components", "egm", "plugins", "review"]
 sources:
+  - id: openwiki-source-3708e6cf9324a8ff1f6c39ae
+    resource: repo://apps/decodex-gpui/src/agent_collaboration_tests.rs
+  - id: openwiki-source-2a6989c7fa25b9681df71f95
+    resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
+  - id: openwiki-source-a1250bcb34986a02a14e8466
+    resource: repo://apps/decodex-gpui/src/agent_relation_header.rs
+  - id: openwiki-source-02d96e83c5e4b010bd8b2fe7
+    resource: repo://apps/decodex-gpui/src/agent_review.rs
   - id: openwiki-source-59ed67d26d1c310707a365e5
     resource: repo://apps/decodex-gpui/src/component_plugins.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
@@ -18,10 +26,12 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-acd129fd3a88516b785fc929
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
-generated: { by: "codex", at: "2026-10-28T05:00:14.298Z" }
+  - id: openwiki-source-f20a9fcd74237051ab396266
+    resource: repo://crates/decodex-runtime/src/agent/review_activity.rs
+generated: { by: "codex", at: "2026-10-28T05:56:56.666Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T05:00:14.298Z
+    at: 2026-10-28T05:56:56.666Z
 ---
 
 # Elephant–Goldfish component
@@ -41,6 +51,14 @@ Use the original brainstorm, drafting, review or resolution skill that fits the 
 New Lead conversations receive concise selection principles through the existing Agent instructions. Use EGM when independent review can resolve important design assumptions, competing approaches or cross-component contracts. The Lead chooses the smallest useful review; simple explanations and local fixes need no EGM phase. User-selected skills retain the existing native skill input path.
 
 The Lead reads the original skill and necessary resources, gives Goldfish the current artifact and bounded materials in fresh context, waits for actual findings, and preserves the original human decision gates. A skill read or reviewer launch is not a completed review. The guidance respects current native invocation policy and does not install or modify an unavailable plugin. Existing Main conversations keep their native context; this change does not hot-replace their instructions or migrate their history.
+
+## Follow a review in the workspace
+
+The existing Graph marks an observed native EGM reviewer with `Review`. The existing Collaboration panel shows its relation to the Lead, current activity and report excerpt. Expand the entry to open the original report conversation or the Lead. Report excerpts prefer the original severity paragraph. A completed report remains distinct from an accepted result.
+
+The adapter observes successful reads of installed EGM instructions through native read actions or a limited plain multi-file `cat` command. It does not infer a review from message keywords, a failed read or a launch alone. Unsupported read forms remain ordinary activity. The current native thread and turn bound the marker; an ordinary later turn retires the previous phase. Recorded task labels can identify review passes, but the UI does not infer round numbers from the number of children.
+
+Native pending questions and approvals retain their existing controls and owners. Text-only EGM checkpoints remain in the Lead conversation; the panel offers that conversation rather than fabricating a native question. No new panel, scheduler, review database or EGM modification is required.
 
 ## Lifecycle and owners
 

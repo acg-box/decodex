@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:50f0fccab83dc459efb20a456cd919f2798af7a91269498c6b7f5d06fd4fe052",
+  "pageVersion": "sha256:af488ee2d5bf5e7b0b68affd65e917413c33d962eaebce27d92998438309f25a",
   "claims": [
     {
       "id": "claim_95da7355536d42fb9ba017dae9558113",
@@ -95,10 +95,46 @@
           "version": "repo-lines-v1:sha256:e7917bc91ac91955d948921c8744de3534ddf6f192f708a252a27f75fb87adc1:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmUyZDlmODkwNTVmNWUyZmQ2OWFmNzBiYjJjNmQ0ZGNkMDZhOWJiOTNiY2Y4MTE2ZjQ2YTQ1ZjBkNTAzMzk5MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTAxNjQzOTNmNjdmYmI5YjViYTkzOWJjZDljOTYyM2U3ZDJhMGJlNGE5ZWMwZmVkYWJlNWQ3M2M2ODRlYTA1ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOWFiNmFmMDE1ZGEwZjdjNGQ3ZDc5OGZiMDM0MWUzMzJiYzQ1ZWE1YmY3N2ZiMmM4ZTZjMjZjZTBlYTAxODEwZiJ9"
         }
       ]
+    },
+    {
+      "id": "claim_0ebe1b4ce1e549b28ebb758fabd6e359",
+      "statement": "Native EGM review presentation reuses the Graph and Collaboration panel, preserves the native Lead and reviewer source conversations, and does not equate returned reports with acceptance or count children as review rounds.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs#L279-L425",
+          "version": "repo-lines-v1:sha256:e404fde0895f5eea4378e7724892326e8f05626631a07e9b845dc307670d7d8f:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzMjE0OTBkNTFjZmEyNTI2ZjdkYTk3YWMwYTA5M2VmYzg4OTY0MzJkYTA0ZTI2MTdiNDQ2MWZiMDhkYWVjZWExIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwZDc1NzExMDA5NjIwNmNhMzM2NGQ0ZjEyY2E5MzMwNTgzODAzMjQ0OTE3MTM4ZjYyZGFlNTk0MTNiMDcwYjc1IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmM2ViMjhjYzI3OGY0ODU0MmUxNjUwODMyOWRkNGU1YmU4YTIxY2NkMjg0ZThiNzY1ZjZiMTA5YjI1NTAzMjc5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJiZjAwNDdjNzk2NzY0MTRhMDYwODgzNGFmOTYxMjI0ZDU2ODQ2MTYwMDEwNmJlYTc5Yjk4YTM2OGU0MjRhYzQ4In0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_collaboration.rs#L670-L800",
+          "version": "repo-lines-v1:sha256:17b41583e66cbb4657df642bc51eff91b2742b23acf7a1539b8a74d0511cb00b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlZDE0NjdmMWVhZGMxZjU3NjA0MDBkMzQ2NDRhNTRhZTcwZTY0ZjJjZjFkMWU2MTQxM2FjNjFmZjc2MWY0MzNmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxODdjM2FlMTRkMjRlYzA4YmFhNmViYjJjMjZjYTlhYTM1ZjRiNGYyM2JiMjBkNDkyNmZhYzdiMWU2N2ZhMjRhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMzNmN2FmM2Q2Y2M5NzVkNDAwNDAwMDA5YmFiN2Q4NDVkYjE3Y2VjNWUzMDkwN2Q4ZGEyNTc3YWM4NjdmZDBmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3ZDdlNWY1ZTczOTE1NzI4OTdhMzgzNzQ0OTYxYzQxYzI1ODQwM2Q3MjUxNzhhN2M1OTJiNTliZTA0MjhkOTRkIn0"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_relation_header.rs#L25-L95",
+          "version": "repo-lines-v1:sha256:94a7fd1647c47252b82dd173006c9bd36d929927ec2487944be3329e5a755e45:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmMTM0Y2Q2ZGNiZGQwMzRmN2YyYWU4MDcxOTk2ZTgwY2I0MmZiNzUzNzcyOThlOTlkOTNmZWQ5NjE5ZmI3MWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2MGI4OGEwNWQ1YjUzODQ3NjAyMjliZTYwNTcyZmU2MmIxYzI5Y2RjNTdlZGI1ZTY5NTFkYWE0ZmQ0NmM4MDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY1YTIxMjY3NGMxODZhZGZlOTYyN2U1MDdiOTJiZmY1ZjNkYTc0OTliMzFkN2YyNGUzODYxZTI1NGQ3YTMzMjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYwOTUxN2I3MTM2ZDU1ZmI0MzEzNTZlYzc1NWMzODdiMDZlM2UxNTZhM2U5ZTU5OTc3NGJhNGQ4YWJkMGQ5YTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_91dbbfd2222b493fb4bcde1078a83b81",
+      "statement": "EGM markers are bound to supported successful native instruction reads and the current native thread and turn; unrelated or unsupported sources remain ordinary activity, and later ordinary turns do not inherit the previous review phase.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_collaboration_tests.rs#L89-L121",
+          "version": "repo-lines-v1:sha256:a7d71ef18bb4abff14d7c206db0797253f29fa29c453b3234249f3d0fc353d56:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBhNzM0OTJkODk0NmIxZDBmOWQ5YzA0YjcwNGE5MjBmMjRmODllZjdjN2Y3MzExYTg1OTlkMTBjN2Y2MzU4ZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxOTRlOWZiNmU2NzA3Mjc3NTkyNTE1NzAxNmI0NzViNmFiM2QxMzU0NTU5MjJmODgwNGMyNjUwMDU3NzU1ZGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4OWQ0NmJhZmVjNTFiYmNlY2Y0YTA3MTYwYTVhODgyNTIxZTdkMDRkYmRmY2IxZDZjYWM1MmQzNzk2MWQyNjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNhNTY0MGEwMjg4NzA3NTYzMDMzMTVmZDBlZGQ4MDExM2E5NTFmMjA5N2JlZTExZDM5OWE1MjkzNDhkOGNmZWMifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_review.rs#L25-L146",
+          "version": "repo-lines-v1:sha256:ef8d4c74c6c4fb86f20505fe4bf7144d2b45a2504e2e24ff4a776eabc388bf5c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI4Y2YzMmEyOTY5NzY4OTM4OTYwZjI0YTI4MTk4NDc5ZmViNTUyZTE1M2RkYzczMjZkZGJmMWNjYzhiMjNmNmI4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0YmMyOWQ3NWNjMzI3OTNhNjk0NzE4N2IwNWM3NDczZmVkZjlmNjAzMTUwNWY4Mjc5NTVlNTY2M2U5ZTNiMTI0In0"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/review_activity.rs#L1-L108",
+          "version": "repo-lines-v1:sha256:0f3ff43b15e0810b2439be9efffce13ef8e5a97db60a30edec2512fda97c41e3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkZDFkYWYxYjdlYTYzNjk4OTJhMzE3NzVjNjM4NjM1YWI0MGY4ZTYxYzNkZGM1MDA2MzlhM2E2OTI3M2JkZDczIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiOThlMjE3MTFmMmU1MGJjYzRjMDNiODhhNWM4Njk0ZjE5N2MxNDBkZWY3OGZmZjg4MTQzMDFhOTRlNTU4MDc4IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MCwicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5YjdhYTJmOTFhMWVkMjhlOWUwMDY1ZWU0YmQ0ODQxOGFiMGQ4NTc0NjNkNWQ1NTI3NWY3YTU4NjViOWJiZDUzIn0"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T05:00:14.298Z"
+    "at": "2026-10-28T05:56:56.666Z"
   }
 }
