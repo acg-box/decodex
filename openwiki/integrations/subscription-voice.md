@@ -28,8 +28,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
   - id: openwiki-source-d1f06f7b22d0c2eec328d95f
     resource: repo://apps/decodex-gpui/src/native_voice_transport.rs
-  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
-    resource: repo://automations/upstream/retained-evidence.json
+  - id: openwiki-source-3127fd4c7b2aefcc9cea7961
+    resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-c990afbb3dfa828de42edbc3
     resource: repo://crates/decodex-codex/src/app_server_client/realtime_preferences.rs
   - id: openwiki-source-91dfc90839432583cfb2a467
@@ -50,10 +50,10 @@ sources:
     resource: repo://scripts/macos/run_native_voice_tests.py
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-28T02:37:26.121Z" }
+generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T02:37:26.121Z
+    at: 2026-10-28T03:00:10.087Z
 ---
 
 # Subscription dictation and live voice
@@ -109,7 +109,7 @@ DECODEX_APP_SIGN_IDENTITY="$EXISTING_DEVELOPMENT_IDENTITY" cargo +stable make te
 
 The task builds the locked GPUI test target with all features. It signs a separate copy at `target/native-voice-tests/decodex-native-voice-tests` with the fixed identifier `box.acg.decodex.tests.native-voice`, then uses Nextest build metadata to run the four retained transport tests. Cargo's original executable stays unchanged. The task serializes the signed copy, verifies its signature, and fails if a selected test is missing or ignored. A missing identity or ad hoc `-` identity is rejected before the build. General workspace test commands keep their existing behavior.
 
-First execution can require an explicit system firewall allow. In the bounded signing qualification, the first pre-consent run failed while waiting for `connected`. After the user allowed it, the original and a genuinely rebuilt executable each passed all four tests. Their code hashes differed and their designated signing requirements matched. Each test window contained 28 known allow events, with no queued or prompt events. Two additional task runs passed all four tests, for 16 post-consent executions. The initial failure remains a separate result in the [retained qualification](../../automations/upstream/retained-evidence.json).
+First execution can require an explicit system firewall allow. In the bounded signing qualification, the first pre-consent run failed while waiting for `connected`. After the user allowed it, the original and a genuinely rebuilt executable each passed all four tests. Their code hashes differed and their designated signing requirements matched. Each test window contained 28 known allow events, with no queued or prompt events. Two additional task runs passed all four tests, for 16 post-consent executions. The initial failure remains a separate result in the [retained qualification](../../automations/upstream/retained-contracts.json).
 
 This qualifies the measured macOS arm64 host, development certificate and stable path. Certificate renewal, a different team, identifier or path, OS or firewall policy changes, and a locked session remain unmeasured. The tests retain real WebRTC packet flow and synthetic PCM; they do not open the microphone or speaker. No automatic firewall rule edit, installation or release occurs. The historical audio-energy failure after connection still has no confirmed cause; this result does not attribute that later assertion to the firewall.
 
@@ -125,17 +125,17 @@ cargo +stable nextest run --locked --workspace --all-targets --all-features \
   --stress-count 20 --retries 0 --no-fail-fast
 ```
 
-The observed `cargo-nextest` 0.9.143 can return exit code zero after an earlier stress iteration fails when `--no-fail-fast` is used. Inspect every iteration and the final summary; do not use the exit code alone to mark the run as passed. The [nextest 0.9.148 changelog](https://nexte.st/changelog/#0.9.148) records the upstream fix. The [retained evidence](../../automations/upstream/retained-evidence.json) keeps the original failed iteration separately from later passes.
+The observed `cargo-nextest` 0.9.143 can return exit code zero after an earlier stress iteration fails when `--no-fail-fast` is used. Inspect every iteration and the final summary; do not use the exit code alone to mark the run as passed. The [nextest 0.9.148 changelog](https://nexte.st/changelog/#0.9.148) records the upstream fix. The [retained evidence](../../automations/upstream/retained-contracts.json) keeps the original failed iteration separately from later passes.
 
 These tests need incoming network access for the actual compiled test executable. A package-only build and a workspace feature build can have different executable identities and firewall decisions. On macOS, inspect the application firewall decision for that executable and its `socketfilterfw` events at the failure time. A saved allow rule alone does not show that a particular flow received an allow verdict. [Apple documents](https://support.apple.com/guide/mac-help/block-connections-to-your-mac-with-a-firewall-mh34041/mac) that connections remain denied while an access alert awaits a response. Do not disable the firewall, add retries, remove candidates or extend deadlines to conceal this prerequisite.
 
-The `retained_project_agent_work.native_media_followup` section in [retained evidence](../../automations/upstream/retained-evidence.json) preserves the original two failed results and the separate passing reruns. The audio sources, dependencies and WebRTC features match across the pre-change baseline and current main. Each source passed 40 repeated media executions without retries; current main also passed all 2918 workspace tests. Historical firewall events support an external admission cause. Recovered `loginwindow` info/debug events place both failed workspace tests within the locked interval. The already-allowed package-only baseline also passed both tests while locked. After unlock, the workspace test binary received a firewall prompt, then a known allow verdict. This supports an admission request left unattended during locking; it does not show that locking alone broke audio. The evidence is retrospective, with no new controlled lock or firewall-denial experiment. Physical audio, provider behavior and installed-app acceptance remain separate.
+The `retained_project_agent_work.native_media_followup` section in [retained evidence](../../automations/upstream/retained-contracts.json) preserves the original two failed results and the separate passing reruns. The audio sources, dependencies and WebRTC features match across the pre-change baseline and current main. Each source passed 40 repeated media executions without retries; current main also passed all 2918 workspace tests. Historical firewall events support an external admission cause. Recovered `loginwindow` info/debug events place both failed workspace tests within the locked interval. The already-allowed package-only baseline also passed both tests while locked. After unlock, the workspace test binary received a firewall prompt, then a known allow verdict. This supports an admission request left unattended during locking; it does not show that locking alone broke audio. The evidence is retrospective, with no new controlled lock or firewall-denial experiment. Physical audio, provider behavior and installed-app acceptance remain separate.
 
 For a lock correlation, include the preceding lock and subsequent unlock in the log time window. Read the info/debug state transitions as well as the firewall verdicts. A short window around the timeout can omit the state transition and cannot establish that the session stayed unlocked.
 
 ### Authorized local hardware checks
 
-The later `media_hardware_followup` record in the [retained evidence](../../automations/upstream/retained-evidence.json) qualifies one host's current physical USB input. With explicit microphone permission, three existing opt-in tests passed: deferred Live capture, repeated dictation/Live capture with release before transport teardown, and native device PCM delivery to a local peer across dictation. The two synthetic ICE/media tests also passed separately. No retries, saved microphone audio, uploads or system route changes were used.
+The later `media_hardware_followup` record in the [retained evidence](../../automations/upstream/retained-contracts.json) qualifies one host's current physical USB input. With explicit microphone permission, three existing opt-in tests passed: deferred Live capture, repeated dictation/Live capture with release before transport teardown, and native device PCM delivery to a local peer across dictation. The two synthetic ICE/media tests also passed separately. No retries, saved microphone audio, uploads or system route changes were used.
 
 Resolve the input ID locally and set `DECODEX_AUDIO_TEST_DEVICE_ID` before running:
 
@@ -151,7 +151,7 @@ See [Agent coordination](../architecture/chief-coordination.md) and [Desktop wor
 
 ### Authorized synthetic online checks
 
-The later `online_voice_acceptance` entry in the [retained index](../../automations/upstream/retained-evidence.json) qualifies one existing subscription connection with local TTS input. The final run uses fresh product and native homes and the same verified CLI, Code Mode helper and search helper. The production voice implementation did not change.
+The later `online_voice_acceptance` entry in the [retained index](../../automations/upstream/retained-contracts.json) qualifies one existing subscription connection with local TTS input. The final run uses fresh product and native homes and the same verified CLI, Code Mode helper and search helper. The production voice implementation did not change.
 
 | Check | Observed result |
 | --- | --- |

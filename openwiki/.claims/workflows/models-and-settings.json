@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:bfcf5931fbf8bcd34c6fc5792b5d071eaf2285dc25befec668106807c8bcff32",
+  "pageVersion": "sha256:3ce9c7d38adc5d12945e1eab011d18d800102c26131716c323e42ee68bd3c18c",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -123,8 +123,8 @@
       "statement": "Native model metadata and configuration determine the helper backend; the qualified synthetic matrix uses V1 and V2 at Medium without Ultra and leaves model judgment unmeasured.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
+          "resource": "repo://automations/upstream/retained-contracts.json#L2713-L2720",
+          "version": "repo-lines-v1:sha256:8e6e3bdd228d54f00f8683d30913924cbf52ba99ba0384b2584ed81b2906292e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjVlMGNmNTA1M2U5YmRiZTc5ZmVlY2E5NWUzZjk4YTJjOGY2ZDZhYWRlZjhjNGIwZWU1ODk0ZTBjY2ExYTBiNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzVlZWJkNGIwMjc1ZTcxYmRjNDUwNGIwZDc1MzM2NmQ3ZDhlZGUwNzYyOGMwMDViZTg2Njc2NTNhY2UxYjcwMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTM5NGU3YTZlMWU4MGJjNGQ4Y2YzNTVjYjI1ZWU4ZDg0ZGM0NDZhNDkwMThlMjgyNGY1ZTNiZWY1M2ZmM2U0NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzYzOTQyY2VjMGEwMGQ0YzE3NDRiOTU5YzA4NTQ3M2Q5ZjlhN2NkY2NhODY0ZTJiYTQ4MjE2ZmJmNTBhMWQyOCJ9"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
@@ -189,6 +189,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T02:37:26.121Z"
+    "at": "2026-10-28T03:00:10.087Z"
   }
 }

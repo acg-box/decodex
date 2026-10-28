@@ -14,8 +14,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
-  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
-    resource: repo://automations/upstream/retained-evidence.json
+  - id: openwiki-source-3127fd4c7b2aefcc9cea7961
+    resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
     resource: repo://codex-runtime.lock.json
   - id: openwiki-source-991553c8d747a54ecf5a9376
@@ -60,10 +60,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
+generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T02:37:26.121Z
+    at: 2026-10-28T03:00:10.087Z
 ---
 
 # Project, Agent and Work contract
@@ -284,7 +284,7 @@ A Project association is business scope. A native conversation still has one act
 
 ## Qualification and evidence limits
 
-The original architecture qualification used official Codex `970111f6cb62cc02fe36a82ea7d71b37a2889c97`. The [development lock](../../codex-runtime.lock.json) and [current qualification](../../automations/upstream/qualification.json) identify the separately qualified current runtime. Explicit `cargo +stable make prepare-codex` verifies the actual package, CLI, Code Mode helper, search helper, provenance and generated schema. This change keeps the selected runtime baseline; it does not advance the upstream review cursor or identify the installed application. Component hashes, retained regression identities, entrypoints and reproducible commands are in [retained evidence](../../automations/upstream/retained-evidence.json), under `retained_project_agent_work`.
+The original architecture qualification used official Codex `970111f6cb62cc02fe36a82ea7d71b37a2889c97`. The [development lock](../../codex-runtime.lock.json) and [current qualification](../../automations/upstream/qualification.json) identify the separately qualified current runtime. Explicit `cargo +stable make prepare-codex` verifies the actual package, CLI, Code Mode helper, search helper, provenance and generated schema. This change keeps the selected runtime baseline; it does not advance the upstream review cursor or identify the installed application. Component hashes, retained regression identities, entrypoints and reproducible commands are in [retained evidence](../../automations/upstream/retained-contracts.json), under `retained_project_agent_work`.
 
 Original architecture qualification, retained as historical evidence:
 
@@ -300,7 +300,7 @@ The native Project and Work follow-up separately reproduced and repaired missing
 
 For permitted V2 nesting, visible plaintext can prove the saved prompt, child ancestry and receiving turn. A prepared native task name can instead prove the assignment route when input is encrypted. Recovery verifies native parent metadata, root turn and one unique parent activity; it never claims to decrypt the prompt. An exact `work_read` request can reconcile recent history without another spawn. Original unnamed encrypted or ambiguous assignments stay Unknown. Store-reopen qualification and service restart are not physical machine crash tests.
 
-The follow-up passed 7 exact-artifact native tests, 189 database tests, 4 focused runtime guards, workspace checking, strict lint for 13 packages, nightly formatting, 40 Python tests, 2 CLI diagnostic tests and the schema57/90-table gate. Its final complete suite passed 2921 tests with 1157 skipped and no LEAK. Its first full run had three failures: two unchanged short-frame UI samples and an old fixture without native `projectId`. The fixture now follows the native response. The same UI test executable passed ten isolated executions; existing Nextest resource reservation now covers those two samples with all assertions retained. The first run's passed resume test had a LEAK of unknown cause. The final pass does not replace that receipt. Exact selectors, commands, digests and limits are in `retained_project_agent_work.native_project_and_work_followup` in the retained index. Counts overlap.
+The follow-up passed 7 exact-artifact native tests, 189 database tests, 4 focused runtime guards, workspace checking, strict lint for 13 packages, nightly formatting, 40 Python tests, 2 CLI diagnostic tests and the schema57/90-table gate. Its final complete suite passed 2921 tests with 1157 skipped and no LEAK. Its first full run had three failures: two unchanged short-frame UI samples and an old fixture without native `projectId`. The fixture now follows the native response. The same UI test executable passed ten isolated executions; existing Nextest resource reservation now covers those two samples with all assertions retained. The first run's passed resume test had a LEAK of unknown cause. The final pass does not replace that receipt. Exact selectors, commands, digests and limits are in `retained_project_agent_work.native_project_and_work_followup` in the stable contract catalog. Counts overlap.
 
 Global reviewer updates set the native thread preference for subsequent turns. Active turns, pending human approvals and already-created child captures retain native ownership. Private reviewer records lack exact action Review IDs in this runtime; the UI states the association is unavailable. It retains at most 128 records, at most 64 KiB each, previews the newest 32 and retrieves a selected exact record separately. The selected protocol cannot subscribe to raw events on resume. Completed reviews therefore use bounded native history recovery: up to 32 private candidates in the same directory and five turns each, with parent identity checked before retention. Reconnect gaps remain explicit.
 

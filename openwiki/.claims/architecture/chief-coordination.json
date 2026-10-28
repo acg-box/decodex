@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:fad947371bf187f7431e58a67b67f05631cf79a25f23296845d390d4cacf829e",
+  "pageVersion": "sha256:1289e12682d6b2e82cc4626642a40c254c9775ce65b4d714bfd4f34048956b23",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -253,8 +253,8 @@
       "statement": "Native V2 continuation and V1 waits retain native ownership without Ultra; V1 nested Work attribution and V2 nesting explicitly permitted by native configuration are qualified while the V2 default remains direct-only.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
+          "resource": "repo://automations/upstream/retained-contracts.json#L2706-L2720",
+          "version": "repo-lines-v1:sha256:a16793a1b0ad93075fdfa9483929ce73230d0cb1f8783359a59baa44e1e3e104:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNkZGFlMWUxNzA0MTQ0ZWM3ZjNhZTk5MDQ1MjE4M2Q0ZTNhZGMyMTFlMTdjNjk3NDkxYzM3YzFmZjk0NTAyMGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1ZWViZDRiMDI3NWU3MWJkYzQ1MDRiMGQ3NTMzNjZkN2Q4ZWRlMDc2MjhjMDA1YmU4NjY3NjUzYWNlMWI3MDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUwMjExYTliMWU3MzM3ODljZDQxYTZmOWI3NmM3MTVkOTU3ZjcxYmZiYWViNjdhZWRkN2ViYjZjMjBmMGFmNzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2Mzk0MmNlYzBhMDBkNGMxNzQ0Yjk1OWMwODU0NzNkOWY5YTdjZGNjYTg2NGUyYmE0ODIxNmZiZjUwYTFkMjgifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
@@ -349,8 +349,8 @@
       "statement": "The control acceptance follow-up verified native owner links and exact encrypted delivery for the old venue and lodging helpers. Their own returned messages identified the expected contributions, but prepared-plaintext proof remained unavailable and no inferred Work binding was written.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
+          "resource": "repo://automations/upstream/retained-contracts.json#L3538-L3590",
+          "version": "repo-lines-v1:sha256:482a3cd124f141c018411af1c9b15b63413a068a7097b33ea3cc47cff6c592ec:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzZTBhYWIxMWFmZWMyN2I0NTg4YmY2ODFmOTEzZjNhZjgwNzQwYTY4NGY5YzI0MzdkZmFhNGVjNGQ2NDRkYzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmZWEwMmExM2E5ZDAwMmVjZWUxM2ZkMTMzNzNiMWQ2NWZlNWEwYzRiOTI0Mzk4M2UxN2ZkZTEzNDUzYTIyOTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhZDdlY2Q5ZGUxOTU4OTVlOTcwYWM3ZDIzZWMwOTViYjFhZDEwYTc4YjYwNmI5ODRmYzAzNmE3ZmY1NmNlNjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjMjU5MzBjZDdjZWVhODkxMWRmYjRkZTE3MmE5OTgwMjI2YzhlZmNmNTU5MTk1OGVjZmVlMDU0NmU0ZWU4ZjQifQ"
         }
       ]
     },
@@ -471,6 +471,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T02:37:26.121Z"
+    "at": "2026-10-28T03:00:10.087Z"
   }
 }

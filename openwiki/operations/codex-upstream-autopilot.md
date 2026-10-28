@@ -9,16 +9,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
-  - id: openwiki-source-a5b9d61b2b9a5f7492d602ac
-    resource: repo://automations/upstream/current-review.json
+  - id: openwiki-source-99e1051d423378c9417d6a88
+    resource: repo://automations/upstream/checkpoint.mts
+  - id: openwiki-source-f7ecbc6c02d8c1b7873858d6
+    resource: repo://automations/upstream/checkpoint.test.mts
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
-  - id: openwiki-source-f580b10e16f1d25ebfea3bf8
-    resource: repo://automations/upstream/qualification.json
-  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
-    resource: repo://automations/upstream/retained-evidence.json
-  - id: openwiki-source-f02ae41e2bd15dda85dc86b9
-    resource: repo://codex-runtime.lock.json
+  - id: openwiki-source-8b67a68a7ef89772aa8180d1
+    resource: repo://automations/upstream/README.md
+  - id: openwiki-source-3127fd4c7b2aefcc9cea7961
+    resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-2b08587e9b26e203156110c8
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-75f737a722500e44692521ca
@@ -35,10 +35,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
+generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T02:37:26.121Z
+    at: 2026-10-28T03:00:10.087Z
 ---
 
 
@@ -69,6 +69,43 @@ Use the [current product scope](../decisions/upstream-product-scope.md). Retired
 
 The current six-item selection delivers items 1–3 as read-only views and selects item 4, persistent attached branches. Item 5 waits for upstream maturity; item 6 is deferred by the user. The retained `retained_attached_forks` record binds item 4 to the existing runtime artifact, completed-turn attachment contract, exact regression identities and reproducible temporary-fixture runner. This feature delivery does not advance source review, select another runtime, certify the installed app or change the native schedule. No new decision remains in this list.
 
+## Choose execution by consumer
+
+Upstream owns generic Codex correctness. Read the relevant upstream implementation and test bodies for every reviewed commit, then trace the behavior to an existing Decodex consumer. Reuse official upstream test evidence. Default execution covers affected Decodex regressions against the exact prepared artifact and helpers, plus the applicable repository gate.
+
+Run a small upstream selection only for a concrete compatibility defect or specific missing proof for a retained fix. State the consumer and missing proof first. Do not inherit an earlier source-test cohort or select broad suites from changed paths or function-name patterns. An unresolved upstream fixture with no selected consumer remains a diagnostic limit; it does not create a Decodex repair item. Unread source or relevant test bodies still block the review cursor.
+
+Register exact selectors and check the executed count and unmatched selectors. Nextest can replace binary environment paths with its own build outputs. Use the existing direct compiled-test entrypoint or native fixture when the signed helpers must run. Use already-managed tools and the repository version files. Workflow-only changes do not need app, provider or upstream suites. After code settles, run the final affected gate once and retain its actual scope.
+
+## Publish a checkpoint
+
+The native `state.json` is the sole current cursor and pending-work index. Establish one owner before a write. Use the managed Node version from `site/.nvmrc` and the repository publisher:
+
+```sh
+node --experimental-strip-types automations/upstream/checkpoint.mts \
+  --automation-dir "$AUTOMATION_DIRECTORY"
+node --experimental-strip-types automations/upstream/checkpoint.mts \
+  --automation-dir "$AUTOMATION_DIRECTORY" --input "$RUN_DIRECTORY/checkpoint.json" --dry-run
+node --experimental-strip-types automations/upstream/checkpoint.mts \
+  --automation-dir "$AUTOMATION_DIRECTORY" --input "$RUN_DIRECTORY/checkpoint.json"
+```
+
+The first form is read-only. Its `state_sha256` binds a save to the state inspected by the owner. Put the input and detailed receipts in the native run directory. Use these fields:
+
+| Input | Contract |
+| --- | --- |
+| `expected_state_sha256` | Digest from the latest state summary. A stale digest rejects the save. |
+| `updates` | Current observations only: pending lists, `active_run`, `runtime_qualification`, `continuation`, `definition_update`, `followups`, `pending_wiki_lifecycle`, `last_run_receipt` or `current_qualification_receipt`. Preserve unrelated pending work. |
+| `review`, `inventory` | Optional pair of JSON file paths, relative to the input file. Omit both for a pending-work or delivery-only save. |
+| `observed_at` | Original fixed-target observation time. Required when the target changes. |
+| `archive_fields` | Optional explicit list of reconciled historical root fields. The full original state is saved before those fields are removed. Current counters, certificates, pending fields and active owners cannot be archived through this option. |
+
+The inventory is the complete consecutive delta after `review.start_exclusive`, through the frozen target. Each entry has a full `commit` SHA and `time`. The review contains a completed prefix in `records`. Every record has its one-based `index`, full `commit`, `source_review_complete: true`, `behavior`, `decodex_consumer`, a `classification` (`already_covered`, `native_owned`, `not_applicable`, `necessary_repair`, `optional_decision` or `deferred`), nonempty `implementation_symbols`, `tests_read`, `tests_executed` and `validation_limits`. Each read-test entry names `source`, `symbol`, `revision` and `body_read: true`. An empty executed list means no test was executed; it is not a pass. The owner must establish source order, completeness and the truth of the evidence.
+
+The publisher validates the prefix and saves an immutable content-addressed review receipt before atomically replacing `state.json`. It derives the cursor, new certificate, remaining count, next commit and oldest unreviewed time together. Repeated complete prefixes do not add review counts or certificates. Exact input replay is read-only. Old certified ranges and limits remain intact. Caller-supplied cursor or counter updates are rejected.
+
+Use this same entrypoint for pending work, runtime and delivery observations. It validates bookkeeping, not source semantics or actual artifact qualification. It is not a scheduler or distributed lock. Reconcile another active owner before writing. If publication fails, the old state remains current; an unreferenced prepared receipt is not a published checkpoint. Re-read the summary and reconcile before retrying. Do not restore an archive over newer pending work. Memory, old status blocks and dated receipts remain evidence rather than duplicate current instructions.
+
 ## Qualify a source runtime
 
 The runtime lock can select an exact official source archive. Use the explicit development preparation command and shared component store described in [Runtime architecture](../architecture/runtime-architecture.md); retain the repository's stable Rust build channel.
@@ -77,13 +114,13 @@ The runtime lock can select an exact official source archive. Use the explicit d
 2. Qualify the packaged executable, Code Mode helper and `rg`. The builder signs and verifies these components. The component store checks the executable and helper commit, CLI version, signatures and generated experimental app-server schemas against the local adapter and pinned fingerprint. It records archive and executable hashes with the fixed source requirement. The selection changes only after the prepared component verifies. App startup and packaging never compile Codex.
 3. Exercise the affected native behavior and current local consumer before delivering a lock update. A matching schema establishes protocol structure. It does not establish saved-permission behavior, compaction, transport lifecycle or desktop acceptance. Keep source review, artifact qualification, merge, installed identity and live acceptance as separate evidence.
 
-The current development requirement selects upstream commit `33d306d457a4632b22bebf214e0c25d91f90f6e8`. Its portable qualification records 53 unique Rust consumer selections: 51 used the exact signed CLI and packaged helpers, while two tested local history projections. It also records 17 reusable probe groups, exact-artifact cache repair and a direct session test of the signed Code Mode helper. The source dev-small suite is separate: Nextest can select its own helper binaries. One named-executor cloud-skills fixture remains unresolved and is outside the selected local private-stdio consumer. This synthetic macOS arm64 qualification did not install or release the application.
+Read the development lock and linked current qualification for the selected source, component identities, executed identities and limits. Do not copy each daily target or cohort count into this procedure. A source test can select its own helpers; that result does not establish execution of the signed production artifact.
 
 ## Retain evidence after artifact cleanup
 
-The [portable evidence index](../../automations/upstream/retained-evidence.json) keeps current retained behavior requirements, exact test entrypoints, artifact and helper identities, public delivery references and qualification limits. The linked [current source review](../../automations/upstream/current-review.json) records each reviewed behavior, source and test references, concrete consumers and validation limits. The [current qualification](../../automations/upstream/qualification.json) records the exact CLI and helpers, reusable fixture hashes and executed test identities. These current records are replaced when the baseline changes; Git retains earlier versions. The native automation directory still owns the live cursor, pending work and detailed run receipts. The index does not turn a source review, a historical test selection or a merged PR into fresh artifact qualification.
+The [portable evidence router](../../automations/upstream/retained-evidence.json) identifies the current runtime evidence and the digest of the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). The catalog keeps consumer requirements, selected product decisions and original feature-qualification limits. Change it only when those contracts or their evidence change. The linked [current source review](../../automations/upstream/current-review.json) records each reviewed behavior, source and test references, concrete consumers and validation limits. The [current qualification](../../automations/upstream/qualification.json) records the exact CLI and helpers, reusable fixture hashes and executed test identities. These current records are replaced when the baseline changes; Git retains earlier versions. The native automation directory still owns the live cursor, pending work and detailed run receipts. The index does not turn a source review, a historical test selection or a merged PR into fresh artifact qualification.
 
-Keep the index compact and use Git history for replaced entries. Keep binaries, build trees, real account data, personal paths, native scheduler definitions and raw logs outside the repository. Preserve a required custom regression fixture with its repository test owner so that removal of a local run directory does not remove the only implementation.
+Keep the router compact and use Git history for replaced entries. Wiki records stable responsibilities, behavior and procedures. Prefer narrow source/test or stable-contract Claim evidence; link current qualification instead of copying per-run counters and hashes into several pages. Use one page job at a time and retain unrelated stale work with its owner rather than expanding this batch. Keep binaries, build trees, real account data, personal paths, native scheduler definitions and raw logs outside the repository. Preserve a required custom regression fixture with its repository test owner so that removal of a local run directory does not remove the only implementation.
 
 Missing local products or logs do not block independent source review. Reconcile the index with current source, tests and public delivery evidence. Reconstruct only the affected proof and prepare an exact artifact again when required. Qualify the rebuilt artifact separately; do not identify it as the deleted original. Record unrecovered historical claims as unknown, scope a proof gap to the action that needs it, and retain the existing cursor and runtime baseline until their own requirements are met.
 
@@ -113,7 +150,7 @@ Background compaction can prepare work before foreground compaction needs it. Ex
 
 ## Deliver small complete batches
 
-Use a focused signed commit and PR for each independent capability or repair. Merge when repository requirements pass and read back the resulting remote main. Do not hold completed independent work behind an unfinished broad catch-up batch. Distinguish source implementation, local tests, native fixtures, desktop acceptance, installation and release.
+Finish code, tests, portable evidence and related OpenWiki jobs locally before the first push when practical. Use small signed commits and a focused PR. Public code commit references are sufficient; keep the PR number, live CI and merge receipt native. Do not add a commit only to backfill a PR link. Wait for the final PR head's required checks, merge with an imperative commit message and verify remote main contains the delivered head and merge. Do not hold completed independent work behind an unfinished broad catch-up batch. Distinguish source implementation, local tests, native fixtures, desktop acceptance, installation and release.
 
 Keep the automation's durable cursor and pending delivery records in its own directory. Record unread upstream commits separately from known implementation gaps. Historical completion words in archived notes do not create new pending work.
 
@@ -121,10 +158,10 @@ Match checks to the changed behavior. Use isolated system-temporary fixtures, re
 
 ## Notifications and historical records
 
-Report useful merges and actionable blockers concisely; remain quiet when nothing changes. Optional proposals require a user decision before implementation. When enabled by the current operator decision, run once daily without a task-defined duration limit. Continue across small review and delivery batches until the fixed upstream target and its required repair, artifact qualification, PR, CI and merge work are complete. End early only when a concrete blocker requires user input or an external change. Save the exact continuation and pending CI head, preserve active processes and changes, and prevent overlapping runs.
+Read bounded fields, complete relevant symbols and one page job at a time. Keep full raw output native. If output truncates, narrow the next read. Report useful Decodex merges and actionable blockers concisely; remain quiet when nothing changes. Unconsumed upstream failures and unchanged inherited warnings need notification only when they change a Decodex decision or require action. Optional proposals require a user decision before implementation. When enabled by the current operator decision, run once daily without a task-defined duration limit. Continue across small review and delivery batches until the fixed upstream target and its required repair, artifact qualification, PR, CI and merge work are complete. End early only when a concrete blocker requires user input or an external change. Save the exact continuation and pending CI head, preserve active processes and changes, and prevent overlapping runs.
 
 The automation directory's `state.json` owns the current reviewed cursor, next unreviewed commit, pending adaptations, PRs and separate baseline-audit queue. Apply the latest explicit operator decision; neither old pause notes nor old resumption notes determine current host state. Complete or repair existing PRs first; avoid overlapping runs and duplicate implementation.
 
 ## Project and Work delivery evidence
 
-The retained index has a separate `retained_project_agent_work` qualification for the direct schema56/protocol3 change and global Guardian. It records exact source, artifact/helper/schema identities, reusable tests, executed counts and unmeasured limits. It does not advance the upstream source-review cursor. Its original source and synthetic qualification does not certify an installed app. The separate `installed_acceptance` entry binds later authorized local development acceptance to its own signed application identity and measured limits; it does not authorize release or a runtime-baseline change. The accepted private Review Details decision is implemented; unrelated optional proposals keep their recorded decisions. Native automation state and current supported host readback own the actual schedule status. A product receipt does not prove that the schedule is paused or authorize activation. Reconcile delivered changes with current main and pending native receipts; resuming a paused schedule still requires explicit user authorization.
+The stable contract catalog has a separate `retained_project_agent_work` qualification for the direct schema56/protocol3 change and global Guardian. It records exact source, artifact/helper/schema identities, reusable tests, executed counts and unmeasured limits. It does not advance the upstream source-review cursor. Its original source and synthetic qualification does not certify an installed app. The separate `installed_acceptance` entry binds later authorized local development acceptance to its own signed application identity and measured limits; it does not authorize release or a runtime-baseline change. The accepted private Review Details decision is implemented; unrelated optional proposals keep their recorded decisions. Native automation state and current supported host readback own the actual schedule status. A product receipt does not prove that the schedule is paused or authorize activation. Reconcile delivered changes with current main and pending native receipts; resuming a paused schedule still requires explicit user authorization.

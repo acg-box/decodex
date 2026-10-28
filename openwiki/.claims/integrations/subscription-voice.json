@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f9a898019fa0cdb84a3d2e9603925a5c8a51aa8676527c65f924b71ebc8783ea",
+  "pageVersion": "sha256:800e3f41f1f1b5267db71a380db4271249831a89a7c9616194188e03b7876802",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -241,8 +241,8 @@
       "statement": "The media follow-up retains original failures and passing reruns with recovered lock and firewall history: an already-allowed package-only baseline passed while locked, and the workspace binary received its prompt and allow verdict after unlock; a new controlled lock experiment and physical or installed-app acceptance remain unqualified.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
+          "resource": "repo://automations/upstream/retained-contracts.json#L2741-L2839",
+          "version": "repo-lines-v1:sha256:247b9f15b66dcb372d7d7941dbda2774534c8a79d325531a9b2d8a40317366f6:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyNTgxYjg0YjMxYmQ1MTk5ODFiMDk3YzA5MzkwOTViNDg5MmE4MjU2YzczN2QzMmRjZDI0OGQ5ZjM4NWFlY2UiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4YjAyMjMwYzViMGMzNDU2ZWIwNjU3YjZhMzBmZThiY2UxZWM5OTU3YjNjNmMyNzM2Mjc0Y2QyOTVhYTQwNzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4ZTcwMmRiMTg0MzVjZGViNDc1OGU3N2NiOWNmZjhjNTM4M2MwOGE5NmYyOGI2NzU5ZDQ1ODYzODMxNmRkNzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3YTA3ZTU1ZGE3NjYzYzExZjVkNGE5NTQyZGMwODRlNzRlMWQzZTZhZDUwNmY2NDJkNWMwMmM1NWU0MjdiNDcifQ"
         }
       ]
     },
@@ -259,8 +259,8 @@
           "version": "repo-file-v1:sha256:622c5171ebfae3e6ff580ff43063b3716d1b6992426e019a3352f10a8fccb78c"
         },
         {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
+          "resource": "repo://automations/upstream/retained-contracts.json#L3649-L3747",
+          "version": "repo-lines-v1:sha256:04aa7cf0b815c5283c4994fd73ecb18fe3b187e85ac823ba2fc08c6d5781617a:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkYWE1YzQ5NTUxOWRhMmRhNGRjYzhiZDI0MjU3MjhkNmQwM2Y3Nzg1YWM2YzcwYzc4MzQ5MTM4MDI0Y2VlM2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwYzlhYTVhOGI0MzJjNmRjMjJhNjdmYTI1M2U3YmMzMTZmMmE2ZWJjMWM5MjA1OTA4ZTAyMWNjNjI1NzVhMjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2ZTZjYTZiZTFlY2ZiZTU5OTYwYjI4ZGEwYmIzMDMxOGRlYzk3YTUyMGEzOGY0NWI4ZGJkMTBmNDZhMjIyYmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEyZTMzNzlmYzM0ZTVlMTZlZmM4NWRlZmExZjdlNjBiYTYwNTliYTEyZmZhM2U3M2U5ODhiZjA0ZDdlYmNhMzEifQ"
         }
       ]
     },
@@ -269,8 +269,8 @@
       "statement": "The current output route was virtual; the hardware follow-up does not qualify physical speaker output, intelligibility, audible quality, controlled lock behavior, a provider voice session or installed-app behavior. The temporary fixture and its exact-owned helpers were removed after receipt preservation.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
+          "resource": "repo://automations/upstream/retained-contracts.json#L3649-L3747",
+          "version": "repo-lines-v1:sha256:04aa7cf0b815c5283c4994fd73ecb18fe3b187e85ac823ba2fc08c6d5781617a:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJkYWE1YzQ5NTUxOWRhMmRhNGRjYzhiZDI0MjU3MjhkNmQwM2Y3Nzg1YWM2YzcwYzc4MzQ5MTM4MDI0Y2VlM2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwYzlhYTVhOGI0MzJjNmRjMjJhNjdmYTI1M2U3YmMzMTZmMmE2ZWJjMWM5MjA1OTA4ZTAyMWNjNjI1NzVhMjkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE2ZTZjYTZiZTFlY2ZiZTU5OTYwYjI4ZGEwYmIzMDMxOGRlYzk3YTUyMGEzOGY0NWI4ZGJkMTBmNDZhMjIyYmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEyZTMzNzlmYzM0ZTVlMTZlZmM4NWRlZmExZjdlNjBiYTYwNTliYTEyZmZhM2U3M2U5ODhiZjA0ZDdlYmNhMzEifQ"
         }
       ]
     },
@@ -283,8 +283,8 @@
           "version": "repo-file-v1:sha256:e690a3df678f8287d60b096ee063256b10d653bbb8ead78b2ff5bd90eae2d306"
         },
         {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
+          "resource": "repo://automations/upstream/retained-contracts.json#L3906-L4003",
+          "version": "repo-lines-v1:sha256:6be864a8fb8c50c5a4aa30c99a05a9a9607077f8edde7ba74d0412d79ea5f674:eyJzZWxlY3RlZExpbmVDb3VudCI6OTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI3N2E3MmE4ZWYxNmQ4YzZiODg3ZjE0Zjc2YTQzMDZlNGE2NGY1MjE5ZGM5ZThmNDk1MDczOGE1MzNlMzdjODAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRkNWNkMmZiNGYzZGY4ODQ1MTUyNTViMzk1MjNmMmY4YjU0NzJiZWVhOWY1NjZmZmNhMjA0ZGI4MDI1NjEwNDEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAxNDliNzU5MzNmNzExYmQ4ZTU5MjkzNTFlNDU3MDNmNTEzYWJmNzk5OGYzNDViZjI3NDY3ZDJmZThiZThhNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMyMmY3NmMyMWY3NDk1N2Q5MjVlMThkM2E2NGFiYjU2MDdmZjA4MGE3NzQ1NjIwOGU4ZTA2Nzg0NDAyYzBjYTEifQ"
         },
         {
           "resource": "repo://scripts/macos/prepare_voice_acceptance.py",
@@ -297,8 +297,8 @@
       "statement": "Observed cargo-nextest 0.9.143 can return a zero exit code when a non-final stress iteration failed with fail-fast disabled; the qualification checks individual iterations and the final summary, and upstream fixed the exit behavior in 0.9.148.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
+          "resource": "repo://automations/upstream/retained-contracts.json#L615-L626",
+          "version": "repo-lines-v1:sha256:b909442046f7c285f6089dfa556da03db8536a6428746e393e02c61a9e59fde6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYwNzllNGIxZDI3ZWEyMzhhMmViOGMwMzQ2ZTg2ZjI4ZWNmMzI3ZGRhYTRkMWYzMjZlYzMzNTNmMmQ5MzJiNWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlNjczYWJkNDU3YTk3ZWVhMTdhNjAwNjJlYjBmYWVhNmJkZjA5NDg2OGNjNmI4ZjhjMGViZGEyZjYxZWQ0MmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4ZmU4ZmYzMmQ2YjM0OThkYTBiMDQzZDY4OGU1MmEyMTU3MmM3YjExOTI2ZjBiMjUzYjg2YzA1MTM4NzFlOTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0NGZjNTVhZmE1ZDE4YTU2YTRiMDJkNmMzY2MwM2U0OTQyMGExNzNiMzkwZDdhNjczOTZkNThjMmYzMTI0MmMifQ"
         }
       ]
     },
@@ -307,7 +307,7 @@
       "statement": "The explicit macOS native voice test command builds the existing test binary, signs a separate stable-path copy with the selected development identity and fixed test identifier, and runs four exact real WebRTC regressions through Nextest build reuse. It preserves the original Cargo artifact and refuses missing, ignored or unsigned selections.",
       "evidence": [
         {
-          "resource": "repo://Makefile.toml#L447-L449",
+          "resource": "repo://Makefile.toml#L457-L459",
           "version": "repo-lines-v1:sha256:28b421f6ee501a3ce643638e1689af4776daff7d5d716917f8bd768ceaef1707:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTdlOTI1NGNjNWQ3ZDM0YTI3YzU3YTk0NTU5Mzg2ZTA2OTZiMDYzOGQxYjlkZTVhMjAxNjhkYmQ1MDA4ZmJlMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjA3OTYxZGY0MGI0MDIyNWQ4NDI2NzM2MGFjMmUwYWU2Yjc3NjZhOWU1NmEyYWFjYTU4NzMwMTJmYzRlNDAyNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjU0NTIyN2E3YzliNmIzNjc0NTYyNzdjYmQyNjNkZjgxNDVkMTI4MDM2OGNjNDc4YmU1Zjc1ZTMxM2E0NDNmNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGQ0ZTVhN2FkM2I2MzA5NDQ4ZmZhN2NhMGM0ZGU2ZDgxMzdkYjY5MTQ5NWI4OGQ3NTgxNzNjMjljOWM0NmUwZSJ9"
         },
         {
@@ -321,14 +321,14 @@
       "statement": "After one user-confirmed firewall allow, the measured original and rebuilt native voice test executables had different code hashes and the same designated requirement; both passed four tests with 28 known allow events each and no queued or prompt events in their test windows. Sixteen post-consent executions passed in total, while first consent, signer/path/host limits and the original timeout remain explicit.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-evidence.json#L2934-L3099",
-          "version": "repo-lines-v1:sha256:9c13cb5cc940f112b89d44beb7b466773b8094fc5f78409ef0cb00c95fd0f8b7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTY2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmOWNhODkxYmZmN2FjMWY3Y2VhYWU0MGVmMDUxMDY2YmU5ZWZlNDdiNGU0MjgxZTg2YzMxOWJlMmM1NWViY2U0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMTE1MThiN2Y4MjdiN2JiNmViZGZjMDhiYjJkMTFiODVkMjg2MmMzMWM3YzRjNzVkYmRlZmRlZThiNmIyOTYyIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmM2UyNGMyYWQwZDhmZDJlZGE2ODdkNjE5YmI3ZjFkOWRiMjU5YmM1NmU3M2M5NTAzYTkwMGQ1YTg4YjYxOWJiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3OTk3Y2FkNzBiZDEyOTJkYTE3OWI1Y2RkMjllNzViOGQ2YjUzNjBjZGM0Yjc4YjM2MThjNDViZjJiNDg5MzYyIn0"
+          "resource": "repo://automations/upstream/retained-contracts.json#L2013-L2152",
+          "version": "repo-lines-v1:sha256:1234c4b473b37de473d4c8826220c2eefebe5396973b815bf50f444d28c6ecb2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmOWNhODkxYmZmN2FjMWY3Y2VhYWU0MGVmMDUxMDY2YmU5ZWZlNDdiNGU0MjgxZTg2YzMxOWJlMmM1NWViY2U0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5NjRkOGMwNzM0Mjk4OTMxMDE1NzZkODhkOTkxMjdlODlkNjg5MWQzYjE3ZTg5ZGYwMmVjOWFlNzA3MDVkOGJlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmM2UyNGMyYWQwZDhmZDJlZGE2ODdkNjE5YmI3ZjFkOWRiMjU5YmM1NmU3M2M5NTAzYTkwMGQ1YTg4YjYxOWJiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhZDU3M2UzM2ZiNzNjYzBkZjZiYzU5YmRjNjVhODE5MmZmNDUxYmIwMTUyYzE0OWNjMDRhMGI3MGE1MmM5NTA4In0"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T02:37:26.121Z"
+    "at": "2026-10-28T03:00:10.087Z"
   }
 }
