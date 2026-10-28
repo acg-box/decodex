@@ -2930,6 +2930,145 @@
       "baseline_main": "a7a9121e089f55aebbf8615783a478aedc68cbd8",
       "tested_source_head": "94c08acd3682bf34f67198937ac1da7d25b1a28a",
       "unresolved_voice_issue": "https://github.com/acg-box/decodex/issues/2529"
+    },
+    {
+      "id": "native-voice-test-development-signing",
+      "contract": "Keep a fixed development signing identity, test identifier and target path for the four retained real WebRTC transport tests. Build through Cargo, sign a separate test copy and execute it through supported Nextest build reuse; preserve the Cargo artifact and native packet-flow coverage. Require an explicit existing development identity and fail when a selected test is missing or ignored.",
+      "source_symbols": [
+        "scripts/macos/run_native_voice_tests.py::main",
+        "scripts/macos/run_native_voice_tests.py::run_tests",
+        "Makefile.toml::tasks.test-native-voice",
+        "apps/decodex-gpui/src/native_voice_transport.rs::tests::call_lifecycle",
+        "apps/decodex-gpui/src/native_voice_transport.rs::tests::connect_fixture_peer"
+      ],
+      "selected_source_sha256": {
+        "scripts/macos/run_native_voice_tests.py": "4c89e8939408260ba668f54a153e546a38d3522e1c9f9ce14c2f014bb67ae453",
+        "Makefile.toml": "7d341617f28260df0f1e6adf8b8858f4dbb543a3eace63c3810bca53259ac779",
+        "apps/decodex-gpui/src/native_voice_transport.rs": "622c5171ebfae3e6ff580ff43063b3716d1b6992426e019a3352f10a8fccb78c",
+        ".config/nextest.toml": "ce577761f68d3b449024148355098ceecf471f6069ed25a5c7d5882a31be85e7",
+        "Cargo.lock": "de9c17a9db8862f35bc0f95fcbf79830f5bc6437e7a756d3f8e1f8d682651d28"
+      },
+      "tested_source_head": "8ec3922101eb91c3faf34ed0cd27e98c05d506d3",
+      "baseline_source": "86cbf7a6d0679f6a664c3b925911fd4fb7cd63c3",
+      "tests_read": [
+        "shell::agent_surface::voice::transport::tests::cancellation_releases_audio_before_and_after_the_offer_without_an_answer",
+        "shell::agent_surface::voice::transport::tests::cancelled_offer_continuation_cannot_resume_or_block_the_next_call",
+        "shell::agent_surface::voice::transport::tests::native_call_exchanges_audio_captions_mutes_and_releases_buffers",
+        "shell::agent_surface::voice::transport::tests::remote_channel_loss_reports_failure_and_releases_buffers"
+      ],
+      "tests_executed": {
+        "binary_id": "decodex-gpui::bin/decodex-gpui",
+        "identities": [
+          "shell::agent_surface::voice::transport::tests::cancellation_releases_audio_before_and_after_the_offer_without_an_answer",
+          "shell::agent_surface::voice::transport::tests::cancelled_offer_continuation_cannot_resume_or_block_the_next_call",
+          "shell::agent_surface::voice::transport::tests::native_call_exchanges_audio_captions_mutes_and_releases_buffers",
+          "shell::agent_surface::voice::transport::tests::remote_channel_loss_reports_failure_and_releases_buffers"
+        ],
+        "post_consent_runs": {
+          "build-a-after-consent": {
+            "executed": 4,
+            "passed": 4,
+            "failed": 0,
+            "skipped": 1086,
+            "retries": 0
+          },
+          "build-b-tests": {
+            "executed": 4,
+            "passed": 4,
+            "failed": 0,
+            "skipped": 1086,
+            "retries": 0
+          },
+          "canonical-command": {
+            "executed": 4,
+            "passed": 4,
+            "failed": 0,
+            "skipped": 1086,
+            "retries": 0
+          },
+          "canonical-command-final": {
+            "executed": 4,
+            "passed": 4,
+            "failed": 0,
+            "skipped": 1086,
+            "retries": 0
+          }
+        },
+        "post_consent_total": {
+          "executed": 16,
+          "passed": 16,
+          "failed": 0
+        },
+        "initial_pre_consent_run": {
+          "selected": 4,
+          "executed": 3,
+          "passed": 2,
+          "failed": 1,
+          "not_run": 1,
+          "failure": "Native ICE connected deadline while the new signed test executable had inbound flows queued for first consent."
+        },
+        "unmatched_selectors": []
+      },
+      "signing_qualification": {
+        "identifier": "box.acg.decodex.tests.native-voice",
+        "signer": "Existing development identity selected through DECODEX_APP_SIGN_IDENTITY; no identity or credentials embedded in the runner.",
+        "stable_target_path": "target/native-voice-tests/decodex-native-voice-tests",
+        "distinct_compiled_code_hashes": true,
+        "same_designated_requirement": true,
+        "designated_requirement_uses_cdhash": false,
+        "baseline_signed_sha256": "34efd11ef4d8d61e60b05ec5f15f85ea04f03d4d65a00585bf12f7cd03ae38fa",
+        "rebuilt_signed_sha256": "cf63f083cff848ca341afe7e50d78fa438a87e75edebe2a4503125e5b7f94300",
+        "rebuilt_original_cargo_artifact_sha256": "bfb82666b64ab980439284c3f98ea5f987ad81f79238406cfca9668be5d07569",
+        "libwebrtc_archive_sha256": "979b6310063a49a022bc11cb55397e3ccef887ef23b613fed43afdc4769ea75e",
+        "first_consent": "User confirmed the first allow in the system prompt.",
+        "firewall_decisions_after_consent": {
+          "a": {
+            "known_allow_events": 28,
+            "queued_events": 0,
+            "prompt_events": 0,
+            "other_events": 0
+          },
+          "b": {
+            "known_allow_events": 28,
+            "queued_events": 0,
+            "prompt_events": 0,
+            "other_events": 0
+          }
+        },
+        "agent_firewall_settings_mutated": false
+      },
+      "commands": [
+        "DECODEX_APP_SIGN_IDENTITY=\"$EXISTING_DEVELOPMENT_IDENTITY\" cargo +stable make test-native-voice",
+        "python3 -m unittest tests/scripts/test_gate_contract.py",
+        "cargo +stable make lint-rust",
+        "cargo +nightly fmt --all -- --check",
+        "taplo fmt --check Makefile.toml",
+        "git diff --check"
+      ],
+      "local_checks": {
+        "task_contract_tests": {
+          "executed": 9,
+          "passed": 9
+        },
+        "workspace_strict_lint": {
+          "packages": 13,
+          "passed": 13
+        },
+        "rust_format": "passed",
+        "toml_format": "passed",
+        "diff_check": "passed",
+        "absent_or_ad_hoc_identity": "Both inputs returned exit 2 before building or running tests."
+      },
+      "behavior_limits": [
+        "Qualified on macOS arm64 with the measured development certificate and stable target path. The first system allow remains required.",
+        "This proves one transition between different compiled code versions and subsequent command reruns; it does not prove approval retention across certificate renewal, a new team or identifier, target-path changes, OS upgrades, a locked session or a firewall policy change.",
+        "The four retained tests use synthetic PCM and native WebRTC network traffic with hardware capture and playback disabled. They do not establish physical audio quality, provider entitlement or installed-app acceptance.",
+        "Ordinary Cargo and workspace test commands retain their existing behavior. Use the explicit signed command for this qualification; no global compiler runner, implicit signing, retries or relaxed assertions were added.",
+        "The prior isolated audio-energy failure after connection has no confirmed cause. This firewall qualification does not resolve that separate historical assertion.",
+        "No application installation, packaging, publication or automatic firewall-rule edit occurred."
+      ],
+      "delivery_reference": "https://github.com/acg-box/decodex/pull/2533",
+      "delivery_state_source": "Read the public pull request for merge and CI state; qualification is distinct from delivery."
     }
   ],
   "retained_native_diagnostics": {

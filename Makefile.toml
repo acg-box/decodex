@@ -345,6 +345,7 @@ args = [
 # | test-headless-sandboxed            | composite |     |
 # | test-gate-contract                 | command   |     |
 # | test-local-database                | command   |     |
+# | test-native-voice                  | command   |     |
 # | test-rust                          | command   |     |
 # | test-rust-headless                 | command   |     |
 # | test-sandboxed                     | composite |     |
@@ -442,6 +443,10 @@ args = [
 	"--exclude",
 	"decodex-gpui",
 ]
+
+[tasks.test-native-voice]
+command = "python3"
+args = ["scripts/macos/run_native_voice_tests.py"]
 
 [tasks.test-vnext-architecture]
 command = "python3"

@@ -42,14 +42,18 @@ sources:
     resource: repo://crates/decodex-runtime/src/dictation_transcript.rs
   - id: openwiki-source-7b941e7c2c91cb7415f05243
     resource: repo://crates/decodex-runtime/src/dictation.rs
+  - id: openwiki-source-c8b1a2a9f2113ec43d4066da
+    resource: repo://Makefile.toml
   - id: openwiki-source-90e2e66c4c17531650b4f54e
     resource: repo://scripts/macos/prepare_voice_acceptance.py
+  - id: openwiki-source-2fc96071d03c8f12c8c6fb3a
+    resource: repo://scripts/macos/run_native_voice_tests.py
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-27T17:43:10.188Z" }
+generated: { by: "codex", at: "2026-10-28T02:37:26.121Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T21:12:13.971Z
+    at: 2026-10-28T02:37:26.121Z
 ---
 
 # Subscription dictation and live voice
@@ -94,6 +98,20 @@ The native media ABI is version 4. The static libwebrtc archive needs the Object
 The normal composer receives dictation text. Live voice uses its own waveform/voice state in that area. The selected input device applies to capture, not to a model-selector control.
 
 Focused tests live in the Rust dictation/voice modules and Swift `VoiceMediaHostTests`. Rust capture tests cover PCM conversion and terminal delivery, while composer tests cover early audio buffering, continued capture feedback during a pending network request, and draining audio before Finish. Rust `dictation_transcript.rs` tests cover segment order, stale revisions, final corrections and transcript limits. The native transport loopback test covers offer/answer, bidirectional audio, captions, mute before negotiation, subsequent mute changes and buffer release. Opt-in tests in `native_audio_owner_tests.rs` exercise hardware capture, playback, mode changes, preparation and route changes. These test definitions do not establish audible quality, echo cancellation quality or provider entitlement. Live acceptance separately requires microphone permission, selected-device capture, partial text, final correction, and both live transcript roles. Unit tests do not establish provider entitlement or network latency.
+
+### Run native WebRTC tests with a development signature
+
+On macOS, select an existing development certificate in the local Keychain. Set `DECODEX_APP_SIGN_IDENTITY` to its name or fingerprint, then run:
+
+```sh
+DECODEX_APP_SIGN_IDENTITY="$EXISTING_DEVELOPMENT_IDENTITY" cargo +stable make test-native-voice
+```
+
+The task builds the locked GPUI test target with all features. It signs a separate copy at `target/native-voice-tests/decodex-native-voice-tests` with the fixed identifier `box.acg.decodex.tests.native-voice`, then uses Nextest build metadata to run the four retained transport tests. Cargo's original executable stays unchanged. The task serializes the signed copy, verifies its signature, and fails if a selected test is missing or ignored. A missing identity or ad hoc `-` identity is rejected before the build. General workspace test commands keep their existing behavior.
+
+First execution can require an explicit system firewall allow. In the bounded signing qualification, the first pre-consent run failed while waiting for `connected`. After the user allowed it, the original and a genuinely rebuilt executable each passed all four tests. Their code hashes differed and their designated signing requirements matched. Each test window contained 28 known allow events, with no queued or prompt events. Two additional task runs passed all four tests, for 16 post-consent executions. The initial failure remains a separate result in the [retained qualification](../../automations/upstream/retained-evidence.json).
+
+This qualifies the measured macOS arm64 host, development certificate and stable path. Certificate renewal, a different team, identifier or path, OS or firewall policy changes, and a locked session remain unmeasured. The tests retain real WebRTC packet flow and synthetic PCM; they do not open the microphone or speaker. No automatic firewall rule edit, installation or release occurs. The historical audio-energy failure after connection still has no confirmed cause; this result does not attribute that later assertion to the firewall.
 
 ### Diagnose native media ICE timeouts
 

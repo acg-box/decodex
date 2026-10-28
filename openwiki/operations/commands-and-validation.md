@@ -74,6 +74,8 @@ sources:
     resource: repo://scripts/macos/prepare_codex.mts
   - id: openwiki-source-90e2e66c4c17531650b4f54e
     resource: repo://scripts/macos/prepare_voice_acceptance.py
+  - id: openwiki-source-2fc96071d03c8f12c8c6fb3a
+    resource: repo://scripts/macos/run_native_voice_tests.py
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
@@ -82,10 +84,10 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
+generated: { by: "codex", at: "2026-10-28T02:37:26.121Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T21:12:13.971Z
+    at: 2026-10-28T02:37:26.121Z
 ---
 
 
@@ -125,6 +127,18 @@ python3 -m unittest tests/scripts/test_account_login_architecture.py
 ```
 
 The database gate uses an isolated owner-private root. It is not permission to reset the user's database. Ignored live-provider tests require their documented account and effect prerequisites; do not enable every ignored test as a routine check.
+
+## Signed native WebRTC checks
+
+On macOS, set `DECODEX_APP_SIGN_IDENTITY` to the name or fingerprint of an existing development certificate in the local Keychain:
+
+```sh
+DECODEX_APP_SIGN_IDENTITY="$EXISTING_DEVELOPMENT_IDENTITY" cargo +stable make test-native-voice
+```
+
+This explicit task builds the locked GPUI test target with all features, signs a separate test copy at a stable target path and uses Nextest build reuse to run four exact transport tests. A missing or ignored test fails selection. An unavailable signature stops execution. Cargo's original artifact, general test commands, native WebRTC packet flow, assertions and zero-retry policy stay intact. The signed copy is serialized so another invocation cannot replace it during a test run.
+
+Allow the first system firewall prompt for `decodex-native-voice-tests`, then rerun the command. The measured certificate and path retained their allow decision across different compiled code versions. Other certificates, paths, systems and firewall policies remain outside that qualification. The tests use synthetic PCM with hardware I/O disabled; separate physical-device and online-provider prerequisites still apply. See [the signing evidence and limits](../integrations/subscription-voice.md#run-native-webrtc-tests-with-a-development-signature).
 
 ## Discard an unused local draft
 

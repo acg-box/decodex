@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:552f3eca0f3d6318a70eb54e222b8b6736f686f79d133d9968ede73cdc5e7fe7",
+  "pageVersion": "sha256:baec586a4e5bc0afb5fc0a48c1225f6a45588c47a602188c087a19f5ef49be7d",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://Makefile.toml",
-          "version": "repo-file-v1:sha256:cc289ecb9c3e770d9d25e5c6b97e5f79b42dd5c9a0b66f782ee9b833d1a53f16"
+          "version": "repo-file-v1:sha256:7d341617f28260df0f1e6adf8b8858f4dbb543a3eace63c3810bca53259ac779"
         },
         {
           "resource": "repo://rust-toolchain.toml",
@@ -58,7 +58,7 @@
       "evidence": [
         {
           "resource": "repo://Makefile.toml",
-          "version": "repo-file-v1:sha256:cc289ecb9c3e770d9d25e5c6b97e5f79b42dd5c9a0b66f782ee9b833d1a53f16"
+          "version": "repo-file-v1:sha256:7d341617f28260df0f1e6adf8b8858f4dbb543a3eace63c3810bca53259ac779"
         },
         {
           "resource": "repo://crates/decodex-components/src/pin.rs",
@@ -122,7 +122,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         }
       ]
     },
@@ -186,7 +186,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         }
       ]
     },
@@ -206,7 +206,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/project_guardian.py",
@@ -220,7 +220,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         }
       ]
     },
@@ -234,7 +234,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         }
       ]
     },
@@ -244,7 +244,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/fixtures/project_work_acceptance.json",
@@ -262,7 +262,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs",
@@ -280,7 +280,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         }
       ]
     },
@@ -294,7 +294,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         },
         {
           "resource": "repo://scripts/macos/prepare_voice_acceptance.py",
@@ -308,7 +308,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         }
       ]
     },
@@ -332,7 +332,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:4be8e3489c5eb066350dc6969f6d7ae7e032e25a3f60f8821eb7ee9b28798f78"
+          "version": "repo-file-v1:sha256:77ac69bedf64fa8b1a0a058660ea96d8eaf9c851ac03571a85eda5cae5247e39"
         }
       ]
     },
@@ -371,10 +371,24 @@
           "version": "repo-file-v1:sha256:cf4bb4274aac52b69ebd3936204a2f1570753e2e38c2afc4fd9796deaa278049"
         }
       ]
+    },
+    {
+      "id": "claim_d9058766d30e44e88f086a8fc98f68f0",
+      "statement": "The explicit test-native-voice task requires macOS and an existing DECODEX_APP_SIGN_IDENTITY, builds the locked GPUI test target, signs a separate serialized test copy with a fixed identifier, verifies four exact non-ignored selectors and executes them through supported Nextest build reuse without changing Cargo's original artifact or general test commands.",
+      "evidence": [
+        {
+          "resource": "repo://Makefile.toml#L447-L449",
+          "version": "repo-lines-v1:sha256:28b421f6ee501a3ce643638e1689af4776daff7d5d716917f8bd768ceaef1707:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTdlOTI1NGNjNWQ3ZDM0YTI3YzU3YTk0NTU5Mzg2ZTA2OTZiMDYzOGQxYjlkZTVhMjAxNjhkYmQ1MDA4ZmJlMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjA3OTYxZGY0MGI0MDIyNWQ4NDI2NzM2MGFjMmUwYWU2Yjc3NjZhOWU1NmEyYWFjYTU4NzMwMTJmYzRlNDAyNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjU0NTIyN2E3YzliNmIzNjc0NTYyNzdjYmQyNjNkZjgxNDVkMTI4MDM2OGNjNDc4YmU1Zjc1ZTMxM2E0NDNmNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGQ0ZTVhN2FkM2I2MzA5NDQ4ZmZhN2NhMGM0ZGU2ZDgxMzdkYjY5MTQ5NWI4OGQ3NTgxNzNjMjljOWM0NmUwZSJ9"
+        },
+        {
+          "resource": "repo://scripts/macos/run_native_voice_tests.py#L14-L78",
+          "version": "repo-lines-v1:sha256:f38b646b76ef64f8c5178492647c2f58e69fa1adfd4e1d898123d82789f1fee6:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2MzlhNTFkNWQ5ZTEwNTJlZDFjZTBmOTk3ZjVlMDc5Y2UxMmRjZTc5NjIyYzE4NmQxNzE1MTZmNzc4YjIzMGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkMzYzY2U4MzkwZDRiZTRhYzQxN2ZjYWZhMDI3MmY3M2IyYzc3MTg2NTBmY2YxNTg1N2M0YzhmMjg5OThiZWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcxOGUxNTE4ZWJmOWM3ZDE1OGI3ZTFkMzRhMjRjZjJiNjMyYTk4OTViM2Q2NjQyOTRkOTYxYjhlZTQ1ZjA3MDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkNDEzNDBjYzIzOWExNTljZTliNjAyMmU5ZjYzMjI4MzJlMmVhZDc2Y2FlOWU0NzU0ZDIxMGViOGZiNmQ1ZTgifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T21:12:13.971Z"
+    "at": "2026-10-28T02:37:26.121Z"
   }
 }

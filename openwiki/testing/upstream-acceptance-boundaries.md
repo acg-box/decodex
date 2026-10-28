@@ -122,14 +122,16 @@ sources:
     resource: repo://scripts/macos/build_codex_source.test.mts
   - id: openwiki-source-90e2e66c4c17531650b4f54e
     resource: repo://scripts/macos/prepare_voice_acceptance.py
+  - id: openwiki-source-2fc96071d03c8f12c8c6fb3a
+    resource: repo://scripts/macos/run_native_voice_tests.py
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
+generated: { by: "codex", at: "2026-10-28T02:37:26.121Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T21:12:13.971Z
+    at: 2026-10-28T02:37:26.121Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -190,6 +192,10 @@ On macOS arm64, the default build retained the actual downloaded ZIP and checked
 The full Rust style audit reported the same 163 findings on the exact main snapshot and this branch. The three new source files had no findings in their focused audit. Eleven selected upstream ZIP tests passed in the [previous delivery](https://github.com/acg-box/decodex/pull/2530); one intentionally demonstrates the earlier default behavior without strict header enforcement. The previous builder deleted its downloaded ZIP before its digest was observed. Its extracted files matched a separate verified archive, but that earlier result does not identify the deleted ZIP bytes. The [portable evidence](../../automations/upstream/retained-evidence.json) records the current source, artifact digests, exact tests and these separate historical limits.
 
 These checks do not qualify arbitrary malformed archives, unpinned default targets, physical audio, live providers, installed-app behavior or release. They do not establish the cause of the earlier [unmute assertion](https://github.com/acg-box/decodex/issues/2529).
+
+## Signed native WebRTC tests
+
+The separate `native-voice-test-development-signing` contract qualifies the explicit `test-native-voice` command on the measured macOS arm64 host, development certificate and stable test path. After the first user-confirmed firewall allow, the original and rebuilt test executables each passed four real WebRTC regressions. Their code hashes differed, their designated requirements matched, and both test windows contained known allow decisions without queued or prompt events. Two task reruns passed the same four tests, for 16 post-consent executions. The first pre-consent ICE timeout remains failed. Certificate, path, OS and policy changes and a locked session remain unmeasured. This result does not resolve the older post-unmute assertion or qualify physical audio, a provider or the installed app. See [the signed test procedure](../integrations/subscription-voice.md#run-native-webrtc-tests-with-a-development-signature).
 
 ## Selected read-only views
 
