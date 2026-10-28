@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8e49af1b008eecda4c65a394a9d8dd0763446b40bd29e1bd0437da2e47ae2cbf",
+  "pageVersion": "sha256:3bd7c97d09762538f12c56da9e8a9b4141d5f117854d83971cc181cfc07124d2",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -50,7 +50,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:ef610e368cea461087f4345cb2cd4ad778652613db48e08b50b7364e3f623ce3"
+          "version": "repo-file-v1:sha256:34ca9d65ef5d50e35eb352daf033f654c0dd8ef086733552a9935db7d481bbc2"
         },
         {
           "resource": "repo://database/schema.sql",
@@ -82,11 +82,15 @@
     },
     {
       "id": "claim_ff1c469c90a84778af3fc5cc4d53d84b",
-      "statement": "The checked-in portfolio explicitly configures the upstream Maintainer as ACTIVE; configuration is separate from host registration and execution.",
+      "statement": "The checked-in portfolio keeps the upstream Maintainer PAUSED for manual proposal review, preserving its daily cadence. Native schedule control remains separate and resume requires explicit user authorization.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:3bf79f4a90eb718b25d39c46b5bcd111fee762673bec926788b8c24f4221e073"
+          "version": "repo-file-v1:sha256:80883810dcacedff483d5f743ffe3fcbd174d1358d1834de3bf701bf5fec995e"
+        },
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:61589af15dd39794cc85bc49c03f28040ce4b7a5cec49595b9e26f7be4943fbd"
         }
       ]
     },
@@ -145,8 +149,8 @@
           "version": "repo-file-v1:sha256:a213f1868fb081da579d367d94baf1401943aa7cdd1d2e6b7264d47bd04408eb"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4422-L4827",
-          "version": "repo-lines-v1:sha256:78cd6312eadaebc2327ea0988595803d1148bd4a1539f92d2ee4c3f12f78b8ce:eyJzZWxlY3RlZExpbmVDb3VudCI6NDA2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4422-L4902",
+          "version": "repo-lines-v1:sha256:04a4d254438c385f8274d9217f1b636e8c992a671dce83c0073f2c606d7a1396:eyJzZWxlY3RlZExpbmVDb3VudCI6NDgxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
@@ -171,10 +175,28 @@
           "version": "repo-file-v1:sha256:c0b24d7968af78951a23c1fc13a3c9b6fdf68ac9247604511b71d9d3d3859542"
         }
       ]
+    },
+    {
+      "id": "claim_1d5d3fff2b3841d4a02aca831b013244",
+      "statement": "Settings > Agents exposes retained compaction and delegation-retention defaults, per-user-server MCP catalog readiness and an automatic next-message suggestion switch. Native controls reuse the selected connected Agent's source-bound configuration path.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
+          "version": "repo-file-v1:sha256:dbc62214cd0f163d6d9ec5e23d4b3ccb885a1a763958543244ae3288998c6670"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_native.rs",
+          "version": "repo-file-v1:sha256:a0ebf3339bb6bd7695eefab2c6011fe5397d14ad57a8cb31e321b1aee76ee2d8"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
+          "version": "repo-file-v1:sha256:dd412044199decb99c9f88c1d642c0bd9b90cf4a1e86c81ca006e7b37a49afdd"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T08:48:31.048Z"
+    "at": "2026-10-28T18:12:33.127Z"
   }
 }

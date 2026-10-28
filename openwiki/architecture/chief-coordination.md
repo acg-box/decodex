@@ -3,9 +3,6 @@ type: Reference
 title: "Project, Agent and Work coordination"
 description: "Local work ownership, native conversation dispatch, explicit branches and recovery."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-28T08:48:31.048Z
 sources:
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
@@ -104,6 +101,9 @@ sources:
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-28T18:12:33.127Z
 ---
 
 # Project, Agent and Work coordination

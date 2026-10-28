@@ -101,7 +101,7 @@ sources:
 generated: { by: "codex", at: "2026-10-28T08:48:31.048Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T17:29:05.448Z
+    at: 2026-10-28T18:12:33.127Z
 ---
 
 # Conversation input, history and recovery
@@ -207,7 +207,7 @@ For parent escalation and exact event receipts, use [Agent coordination](../arch
 
 ## Next-message suggestions
 
-After a newly completed answer in the selected independent root conversation, an empty composer triggers one native suggestion request. It uses the conversation's model and quota. It does not run tools or send input to the parent conversation. The composer menu retains **Suggest next message…** for an explicit request.
+With **Settings > Agents > Conversation assistance > Automatic next-message suggestions** enabled, a newly completed answer in the selected independent root conversation triggers one native suggestion request when its composer is empty. The preference defaults on. Turning it off prevents new automatic requests; turning it back on does not replay completions observed while it was off. It uses the conversation's model and quota. It does not run tools or send input to the parent conversation. The composer menu retains **Suggest next message…** for an explicit request.
 
 Review the result in **Suggested next message**. Focus the same idle conversation's empty message field and press **Tab** to insert the current suggestion as one undoable edit. Send it separately after review. Other fields, Shift-Tab and a nonempty draft keep normal focus navigation. Text entered while the suggestion is generated stays in place. Copy the suggestion or clear the current draft before accepting it. A replaced thread or stale sample cannot supply a new draft.
 

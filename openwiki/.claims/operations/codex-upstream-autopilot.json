@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1ea09a2f2524a2a17626f76a63791cf5ef5336e37b0c61a3c48fc3b42d02ca24",
+  "pageVersion": "sha256:202419cdd525972f3e90e567ebd8bfcdfc9d83b3907fb7468bf3a3f6945eb105",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:3bf79f4a90eb718b25d39c46b5bcd111fee762673bec926788b8c24f4221e073"
+          "version": "repo-file-v1:sha256:80883810dcacedff483d5f743ffe3fcbd174d1358d1834de3bf701bf5fec995e"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md#L1-L3",
@@ -18,11 +18,15 @@
     },
     {
       "id": "claim_d1a992e40d1147c3928b5de580178ed5",
-      "statement": "The portfolio defines three native automation roles and configures the upstream Maintainer as ACTIVE with model gpt-6.1-sol, max reasoning effort, worktree execution and a daily UTC20:05 schedule.",
+      "statement": "The portfolio retains three native automation roles and keeps the upstream Maintainer PAUSED during manual proposal review, with its gpt-6.1-sol model, max reasoning effort, worktree execution and daily UTC20:05 schedule preserved. Repository declarations do not authorize activation; resume requires explicit user authorization.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:3bf79f4a90eb718b25d39c46b5bcd111fee762673bec926788b8c24f4221e073"
+          "version": "repo-file-v1:sha256:80883810dcacedff483d5f743ffe3fcbd174d1358d1834de3bf701bf5fec995e"
+        },
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:61589af15dd39794cc85bc49c03f28040ce4b7a5cec49595b9e26f7be4943fbd"
         }
       ]
     },
@@ -138,11 +142,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_context_settings.rs",
-          "version": "repo-file-v1:sha256:9a2cbe4b21ace2646a95c735104a60b563df6f4b362ebd62ee865b48f670676b"
+          "version": "repo-file-v1:sha256:dbc62214cd0f163d6d9ec5e23d4b3ccb885a1a763958543244ae3288998c6670"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/context_preferences.rs",
-          "version": "repo-file-v1:sha256:7a89c56b2c278e442da7051e41a27995be9ebaf66048c74917ae0876924b340b"
+          "version": "repo-file-v1:sha256:bfe56443590413065e0aca21a1a126ae939b0ca63923601b4da8192b47d1a5bb"
         }
       ]
     },
@@ -196,11 +200,11 @@
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:3bf79f4a90eb718b25d39c46b5bcd111fee762673bec926788b8c24f4221e073"
+          "version": "repo-file-v1:sha256:80883810dcacedff483d5f743ffe3fcbd174d1358d1834de3bf701bf5fec995e"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:e63f541a2c927852609b7b4bf494e34ee749686fce665e2faeef2c76ba4838d8"
+          "version": "repo-file-v1:sha256:f6942a020934533871027efb80beb7fcb7f9cc6a4e62db44a07ef4f2c9ac700e"
         }
       ]
     },
@@ -259,6 +263,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T08:48:31.048Z"
+    "at": "2026-10-28T18:12:33.127Z"
   }
 }

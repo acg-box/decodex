@@ -105,7 +105,7 @@ sources:
 generated: { by: "codex", at: "2026-10-28T08:48:31.048Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T17:29:05.448Z
+    at: 2026-10-28T18:12:33.127Z
 ---
 
 # Product scope and native ownership
@@ -173,11 +173,11 @@ Diagnostic-log upload (**original item 24**) is excluded at the user's request t
 
 ## Next-message suggestions and current choices
 
-The user selected **original item 26** with automatic generation: a newly completed answer in the selected independent root conversation requests one suggestion when its composer is empty. Opening saved history, repeated refreshes and an existing draft do not trigger inference. The composer menu retains **Suggest next message…** for an explicit request. Press **Tab** in the focused empty message field to place the current suggestion in the composer as one undoable edit. Other fields, Shift-Tab and nonempty drafts keep normal focus navigation. Later edits are preserved, and acceptance does not send a message. The feature uses the existing native sampler and conversation refresh; it adds no separate poller. See [the suggestion workflow](../workflows/conversations-and-recovery.md#next-message-suggestions) and `retained_prompt_suggestions` in the [retained contracts](../../automations/upstream/retained-contracts.json).
+The user selected **original item 26** with automatic generation, controlled by **Settings > Agents > Conversation assistance**: a newly completed answer in the selected independent root conversation requests one suggestion when its composer is empty. Opening saved history, repeated refreshes and an existing draft do not trigger inference. The composer menu retains **Suggest next message…** for an explicit request. Press **Tab** in the focused empty message field to place the current suggestion in the composer as one undoable edit. Other fields, Shift-Tab and nonempty drafts keep normal focus navigation. Later edits are preserved, and acceptance does not send a message. The switch defaults on. Disabling prevents new automatic requests, and re-enabling does not replay answers completed while disabled. The feature uses the existing native sampler and conversation refresh; it adds no separate poller. See [the suggestion workflow](../workflows/conversations-and-recovery.md#next-message-suggestions) and `retained_prompt_suggestions` in the [retained contracts](../../automations/upstream/retained-contracts.json).
 
 **Original item 19**, authenticated remote execution, remains deferred in [issue 1693](https://github.com/acg-box/decodex/issues/1693). **Item 21** retains Decodex account management: independent account observations and reset-credit requests use the existing account API client. This decision does not make those operations inherit native `application.network` policy.
 
-**Item 27 is deferred until the final research review.** Do not implement or enable deferred mailbox preemption from this review. The user rejected the proposed schema-size risk indication for **item 30**; its diagnostic gap remains unresolved. Do not add that indication or automatic budget tuning. **Item 29** records native per-server catalog-readiness support; it does not record a new desktop setting, global enablement or a dedicated native qualification. Native support and delivered desktop behavior remain separate.
+**Item 27 is deferred until the final research review.** Do not implement or enable deferred mailbox preemption from this review. The user rejected the proposed schema-size risk indication for **item 30**; its diagnostic gap remains unresolved. Do not add that indication or automatic budget tuning. **Item 29** is selected as a per-server switch in **Settings > Agents > Native defaults**. It edits only an existing user-configured server’s native `startup_readiness`: `catalog` when on, `connection` when off. A valid native cache can satisfy startup; tool execution still needs a live connection. The configuration roundtrip qualifies the setting boundary, not MCP cache performance or installed-app behavior. No global enablement is selected.
 
 ## Current integration boundary
 
@@ -207,7 +207,7 @@ The client also exposes a bounded, explicitly invoked ephemeral prediction fork.
 
 Native launch policy requests full-fork prefix preservation, model-specific subagent context defaults and Agent message wakeups. The retained description-first argument is accepted as a removed native feature, so current tool ordering stays native-owned. The native configuration still selects Code Mode hosting transport.
 
-Background compaction and retention of delegation instructions are configurable native additions. Task preferences > Context defaults reads and writes the same native configuration used by manual `config.toml` edits. Explicit off values remain valid; saving a default does not restart loaded conversations. The panel distinguishes a saved user value from a project override.
+Background compaction and retention of delegation instructions are configurable native additions. Settings > Agents > Native defaults and Agent preferences > Context defaults read and write the same native configuration used by manual `config.toml` edits. Explicit off values remain valid; saving a default does not restart loaded conversations. The panel distinguishes a saved user value from a project override.
 
 The compatibility path requests retention only for `work_instruction` outputs. This covers initial delegation and explicit follow-up instructions while keeping application tool authority. Wakes, capacity retries and arbitrary external results remain unselected. Codex owns the retention decision and budget.
 

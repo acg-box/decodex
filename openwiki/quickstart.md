@@ -47,6 +47,9 @@ sources:
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-28T18:12:33.127Z
 ---
 
 # OpenWiki quickstart
@@ -62,6 +65,8 @@ Agents use native Subagents for bounded execution and scoped Collaboration Reque
 Work and Guardian fit the existing desktop. Expand Work to inspect Materials, Collaboration, Results and assessment. The composer shield selects native conversation permissions; Settings > Agents defines defaults for new conversations. Guardian keeps optional bounded Review Details and does not override conversation permissions. Review records with no exact action association stay explicitly unassociated.
 
 The current SQLite schema preserves native input receipts, independent process ownership and exact assignment evidence. Conversations can start without an Assistant. Native Project reconciliation, assignment recovery and Guardian detail recovery keep native execution in Codex. See the [acceptance boundaries](testing/upstream-acceptance-boundaries.md) for historical source-built, installed-app and online voice qualifications. Those records do not qualify a later artifact.
+
+**Settings > Agents** groups background compaction, delegation-instruction retention, per-server cached MCP catalogs and automatic next-message suggestions. Native defaults use the selected connected Agent’s project and the same native configuration as Agent preferences. See [retained switches](workflows/models-and-settings.md#find-the-retained-switches) for their scope and other existing settings.
 
 ## Memory, collaboration and usage views
 
@@ -106,7 +111,7 @@ When reviewing an earlier message, choose **Attached branch after this turn** to
 - Account Route is synchronous and service-owned. Shared-auth liveness, exact source identity and readback govern completion. Same-account refresh adopts a valid non-older native winner instead of restoring a losing token.
 - Unknown submission outcomes require exact receipts or native history. They do not authorize replay. Unavailable conversations keep readable history.
 - Generic plugin management and embedded MCP HTML widgets are retired. The explicit EGM component uses the native Codex plugin lifecycle through Settings > Components. Codex owns configuration and execution; Decodex retains tool observations, native forms and readable history.
-- The checked-in automation portfolio marks the upstream maintainer **ACTIVE**. This is configuration evidence, not scheduler readback. Documentation generation does not enable automations, install an app or publish a release.
+- The checked-in automation portfolio keeps the upstream maintainer **PAUSED** for manual proposal review. The daily cadence is retained, and resuming still requires explicit user authorization. This is configuration evidence, not scheduler readback. Documentation generation does not enable automations, install an app or publish a release.
 
 ## Build and evidence
 
