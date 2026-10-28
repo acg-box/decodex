@@ -14,11 +14,7 @@ use crate::{
 		ActivateAgent, ActivateHealth, ActivateSettings, DismissStatus, GrowPanel, GrowPanels,
 		NavigateBack, NavigateForward, ResetPanel, ResetPanels, ShrinkPanel, ShrinkPanels,
 		ToggleContentFullscreen, ToggleGraph, ToggleInspector, ToggleSidebar,
-		agent_surface::{
-			AgentSurface, composer,
-			voice::Media,
-			workspace::{self, ARCHIVED_MESSAGE},
-		},
+		agent_surface::{AgentSurface, composer, voice::Media, workspace::ARCHIVED_MESSAGE},
 		forward_shell_action as forward,
 	},
 	ui_motion,
