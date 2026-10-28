@@ -33,7 +33,7 @@ EXPECTED_INSTALL_METADATA_SHA256 = {
     ),
 }
 EXPECTED_NATIVE_PACKAGE_SET_SHA256 = (
-    "58d20f50bb414be855fd1b3577fce8f83865f282e7d5c73f3a16da7c6da1e0a8"
+    "0a298be14f4ebae0338db9b0ea5c3a5563b219a77579bdb24ff3623e4e746e67"
 )
 REGISTRY_PREFIX = "https://registry.npmjs.org/"
 INTEGRITY_PATTERN = re.compile(r"sha512-[A-Za-z0-9+/]+={0,2}")
