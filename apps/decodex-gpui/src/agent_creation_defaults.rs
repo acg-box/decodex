@@ -62,6 +62,7 @@ impl AgentSurface {
 			working_directory,
 			account_id,
 			account_revision,
+			models,
 			..
 		}) = self.creation_defaults.as_ref()
 		else {
@@ -87,15 +88,16 @@ impl AgentSurface {
 					.clone()
 					.or_else(|| Some(ServiceTier::from_fast(self.fast))),
 			},
+			models,
 		);
 
 		self.creation_defaults_applied = true;
 
 		// Keep incomplete explicit edits visible, but never manufacture a native default model.
-		if !self.creation_intent.model {
-			let Some(model) = selected.model else { return };
-
+		if let Some(model) = selected.model {
 			self.model.update(cx, |input, cx| input.set_content(model.as_str(), cx));
+		} else if !self.creation_intent.model {
+			return;
 		}
 
 		self.creation_inherit_effort = selected.reasoning_effort.is_none();
@@ -297,11 +299,59 @@ mod tests {
 				reasoning_effort: Some(ConversationReasoningEffort::High),
 				service_tier: None,
 			},
+			&[],
 		);
 
 		assert_eq!(selected.model.unwrap().as_str(), "chosen");
 		assert!(selected.reasoning_effort.is_none(), "do not retain stale managed effort");
 		assert_eq!(selected.service_tier.unwrap().as_str(), "priority");
+	}
+
+	#[gpui::test]
+	fn retired_creation_model_uses_catalog_default_without_sending(cx: &mut gpui::TestAppContext) {
+		let model = |id: &str| decodex_protocol::AgentModelDto {
+			model: ConversationModel::new(id).unwrap(),
+			name: id.into(),
+			efforts: vec![ConversationReasoningEffort::High],
+			default_effort: Some(ConversationReasoningEffort::High),
+			supports_fast: false,
+			service_tiers: vec![],
+			default_service_tier: None,
+			available_cyber_programs: None,
+			specialty: None,
+			supports_images: true,
+			availability: None,
+			upgrade: None,
+		};
+		let mut retired = model("old");
+		retired.upgrade = Some(decodex_protocol::AgentModelUpgradeDto {
+			model: ConversationModel::new("older-replacement").unwrap(),
+			notice: None,
+			retirement_at: Some(1),
+		});
+		let models = vec![retired, model("catalog")];
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.cwd.update(cx, |input, cx| input.set_content("/tmp", cx));
+			s.model.update(cx, |input, cx| input.set_content("old", cx));
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+			s.creation_intent.model = true;
+			s.capabilities = Some(decodex_protocol::AgentCapabilitiesResult::Available {
+				models: models.clone(),
+				memory_enabled: None,
+			});
+			s.creation_defaults = Some(InitialModelCatalogResult::Available {
+				account_id: EntityId::new("account").unwrap(),
+				account_revision: 1,
+				working_directory: ConversationWorkingDirectory::new("/tmp").unwrap(),
+				models,
+				defaults: Some(Box::new(defaults())),
+			});
+			s.apply_creation_defaults(cx);
+			assert_eq!(s.model.read(cx).content(), "catalog");
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+			assert!(s.submission.command.is_none() && s.submission.waiting.is_none());
+		});
 	}
 
 	#[gpui::test]

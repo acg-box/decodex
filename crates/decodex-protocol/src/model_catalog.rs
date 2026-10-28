@@ -70,8 +70,39 @@ pub struct InitialModelDefaults {
 	pub configured: InitialExecutionDefaults,
 	/// Managed new-thread defaults; explicit model or effort opts out of that pair.
 	pub managed: InitialExecutionDefaults,
-	/// Provider catalog default, used only when configuration does not select a model.
+	/// Provider catalog default, used for an absent selection or a confirmed retired model.
 	pub catalog_model: Option<ConversationModel>,
+}
+
+impl AgentModelDto {
+	/// Choose the current native default only after the selected model's explicit retirement
+	/// deadline. Missing catalog entries and upgrade suggestions alone do not prove retirement.
+	pub fn retired_default<'a>(
+		current: &str,
+		models: &'a [Self],
+		default_model: Option<&ConversationModel>,
+		now: i64,
+	) -> Option<(&'a Self, i64)> {
+		let retirement_at = models
+			.iter()
+			.find(|model| model.model.as_str() == current)?
+			.upgrade
+			.as_ref()?
+			.retirement_at
+			.filter(|at| *at > 0 && *at <= now)?;
+		let target = models.iter().find(|model| Some(&model.model) == default_model)?;
+		if target.model.as_str() == current
+			|| target.model.as_str() == "gpt-reserve"
+			|| target
+				.upgrade
+				.as_ref()
+				.and_then(|upgrade| upgrade.retirement_at)
+				.is_some_and(|at| at <= now)
+		{
+			return None;
+		}
+		Some((target, retirement_at))
+	}
 }
 
 /// Account observation used to choose a new conversation's execution settings.

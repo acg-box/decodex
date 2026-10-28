@@ -1,14 +1,18 @@
 //! Native new-thread default precedence shared by desktop creation flows.
-use decodex_protocol::{DesktopCreationIntent, InitialExecutionDefaults, InitialModelDefaults};
+use decodex_protocol::{
+	AgentModelDto, DesktopCreationIntent, InitialExecutionDefaults, InitialModelDefaults,
+};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) fn resolve(
 	defaults: &InitialModelDefaults,
 	intent: &DesktopCreationIntent,
 	explicit: InitialExecutionDefaults,
+	models: &[AgentModelDto],
 ) -> InitialExecutionDefaults {
 	let managed_pair = !intent.model && !intent.reasoning;
 
-	InitialExecutionDefaults {
+	let mut selected = InitialExecutionDefaults {
 		model: if intent.model {
 			explicit.model
 		} else {
@@ -35,5 +39,26 @@ pub(crate) fn resolve(
 				.clone()
 				.or_else(|| defaults.configured.service_tier.clone())
 		},
+	};
+	let now = SystemTime::now()
+		.duration_since(UNIX_EPOCH)
+		.ok()
+		.and_then(|value| i64::try_from(value.as_secs()).ok());
+	if let Some((model, _)) = selected.model.as_ref().and_then(|current| {
+		now.and_then(|now| {
+			AgentModelDto::retired_default(
+				current.as_str(),
+				models,
+				defaults.catalog_model.as_ref(),
+				now,
+			)
+		})
+	}) {
+		selected.model = Some(model.model.clone());
+		if selected.reasoning_effort.as_ref().is_some_and(|effort| !model.efforts.contains(effort))
+		{
+			selected.reasoning_effort = model.default_effort.clone();
+		}
 	}
+	selected
 }

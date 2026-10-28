@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "9c7d882a2af2a4f00696ef225661a8adb103917b53be591d87554c24a18d5814",
+    "sha256": "605dff41372cf046c8cdd2fc0cca4d697ad6421b469d7d2f0c5f564af6b2299f",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -1152,5 +1152,84 @@
       ]
     },
     "pull_request": "https://github.com/acg-box/decodex/pull/2537"
+  },
+  "model_retirement_defaults": {
+    "contracts": "automations/upstream/retained-contracts.json#retained_model_retirement_defaults",
+    "source_revision": "5683fa8ea2a50ae4937534f304cddc475cc96944",
+    "source_sha256": {
+      "apps/decodex-gpui/src/agent_creation_defaults.rs": "52d5a4ded5003432e2e5efbd986d3e009fcc95f9e49a733045e755ffc2d5e41b",
+      "apps/decodex-gpui/src/conversation_creation_defaults_tests.rs": "5d8b78385679eab3962f7b7a41e6ab30ca2f95537f8e201844dad73767ad843c",
+      "apps/decodex-gpui/src/conversations.rs": "7bf90101a6c1bde73fac1c50f69b361828b8047a7fa4da78324c5e59b1f86d48",
+      "apps/decodex-gpui/src/creation_defaults.rs": "878aa32f47d9770643aff9867839ed3b0db6dbf82cb11f98b0a0fe68dee61fa3",
+      "crates/decodex-protocol/src/agent.rs": "4505107622b2a83de9f0c5e552c2680a09c67f60391c08e32f7bb467d52f5d3c",
+      "crates/decodex-protocol/src/model_catalog.rs": "7ff289f530e76e55a739147eca4e34adaa41a354c6efa02630996089368811e3",
+      "crates/decodex-runtime/src/account_launch/agent_process_model_fallback_service_tests.rs": "a1f2fa29771da5576cbe905a646a421859c3629ac83fc8647b25e2cc00f43461",
+      "crates/decodex-runtime/src/agent_capabilities.rs": "5e3adebafb51b955e1eddf39c4117df36ead4eddf39234df874bb3086d49f3ad",
+      "crates/decodex-runtime/src/agent_initial_settings.rs": "5cc6ff063aa0038c7255d9454bae517556ba47b4b8f2ae07be8dd36469d21933",
+      "crates/decodex-runtime/src/agent_model_recovery.rs": "4cb67bcf80a54a5d7b04c4b85acff08f0dbf5f7345a3c5e0f938040675f49203",
+      "crates/decodex-runtime/src/conversation/model_catalog.rs": "6064dada16f3be3eb154513fe055384d3143588b355e1b79aa5977432e1cb30a",
+      "crates/decodex-runtime/src/agent.rs": "379bebc24b275d32794219bccb90a7909414606eb6e8b31dd7930614c203e1fe",
+      "crates/decodex-runtime/src/agent/tests.rs": "9955d01408c29b1f5f92be01f32c5b0821b35348715abf61ea310cbec368f047"
+    },
+    "executed_tests": {
+      "runtime": {
+        "command": "cargo +stable test --locked -p decodex-runtime --lib -- agent_capabilities:: model_fallback_service:: conversation::model_catalog:: initial_settings:: shared_process_agent_creation_uses_current_default_after_retirement native_effort_inheritance advertised_efforts_survive failed_thread_start",
+        "unique_passed": 24,
+        "selectors": {
+          "agent_capabilities::": 12,
+          "model_fallback_service::": 2,
+          "conversation::model_catalog::": 5,
+          "initial_settings::": 1,
+          "shared_process_agent_creation_uses_current_default_after_retirement": 1,
+          "native_effort_inheritance": 1,
+          "advertised_efforts_survive": 1,
+          "failed_thread_start": 1
+        },
+        "unmatched_selectors": []
+      },
+      "gpui": {
+        "command": "cargo +stable test --locked -p decodex-gpui --bin decodex-gpui -- creation_defaults missing_catalog_does_not_cycle selected_execution_controls configured_settings_are_source_bound selecting_an_unseen sent_command_disconnect routing_successor --test-threads 1",
+        "unique_passed": 18,
+        "selectors": {
+          "creation_defaults": 10,
+          "missing_catalog_does_not_cycle": 1,
+          "selected_execution_controls": 1,
+          "configured_settings_are_source_bound": 1,
+          "selecting_an_unseen": 1,
+          "sent_command_disconnect": 1,
+          "routing_successor": 3
+        },
+        "unmatched_selectors": []
+      }
+    },
+    "reproduction": {
+      "test": "account_launch::agent_process::native_tests::reviewer::store::model_fallback_service::retired_model_uses_current_native_default_without_replaying_input",
+      "before": "Failed: retired model produced no default-model update.",
+      "after": "Passed with the same selector; future or absent retirement deadlines and absent native defaults do not migrate."
+    },
+    "static_checks": {
+      "strict_clippy_packages": [
+        "decodex-protocol (library)",
+        "decodex-runtime (library)",
+        "decodex-gpui (all features, application binary)"
+      ],
+      "command_policy": "scripts/lint_rust_workspace.py#DENY_FLAGS",
+      "rust_format": "cargo +nightly fmt --all -- --check"
+    },
+    "selected_runtime": "automations/upstream/qualification.json",
+    "scope": "Local model-default integration only. Native artifact, source-review cursor and schedule are unchanged.",
+    "limits": [
+      "Retirement must be explicit in current native metadata. Removed entries without a retirement deadline stay unresolved.",
+      "The existing account-bound automatic recovery applies to loaded idle Agent conversations. It does not replay input, interrupt an active turn or migrate an unavailable native session.",
+      "No new native artifact qualification, real retired-provider check, installed-app acceptance, installation or release.",
+      "The GPUI test linker reported an oversized unwind-table warning; these tests do not measure exception-handling performance."
+    ],
+    "current_product_decisions": {
+      "queued-input-keyboard-navigation": "Not selected; retain desktop text-selection keys.",
+      "desktop-copy-on-select": "Not selected; retain explicit copy.",
+      "gpui-clipboard-latency": "Do not create speculative optimization work without a reproduced defect.",
+      "desktop-diagnostic-log-upload": "Rejected by the user to protect privacy; do not add an upload capability.",
+      "semantic-transcript-selection-copy": "Additional partial-Markdown/table selection is not selected; preserve existing copy behavior."
+    }
   }
 }

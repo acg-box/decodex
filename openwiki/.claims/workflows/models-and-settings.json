@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e6d5a88a30bd33d4d78dcb610ff739e71573f38f91b2ccb03554174c2107c945",
+  "pageVersion": "sha256:717d9cf20aa298287ba5ae483afbaaddc63c6148c9f6789a6f6d350169de8a83",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -45,8 +45,12 @@
       "statement": "Agent memory availability is read from the native memories feature observation rather than a separate local memory configuration owner.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_capabilities.rs#L287-L299",
-          "version": "repo-lines-v1:sha256:063df2cf702a366c8e829d85b95a14db403f5b9097dfebfb990fbffc158e965c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiNDVkYTQ0ODM2MjZkNjhkMzU0NmU1MGNlZjJhMjIwMjkxY2JiNGI5MWQ1ZTdlNjM3YzgwNWMzOTcyNmRjOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4MWI4NWFiMDUyNGY2NzQzYjcyZDgzYzIwZGFkNjQzYzA5YWQ2OTA4ZWFkNWJhNzEwNDhhOTllNTNkM2M0OTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiYzk4ZDZiMGRjNDkyYzUwMTZkZjEwODA1YTNhNTRlYjljMTg0YTVhNjEzN2U3ZjRiZWNmYTBjMjIwNTUwZDAifQ"
+          "resource": "repo://crates/decodex-runtime/src/agent_capabilities.rs#L275-L282",
+          "version": "repo-lines-v1:sha256:7504ba5f70ce67ae6761fb27ec089f7b827fbe56f0cf78afa04aed73efd60b18:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWVkZDM1MWQ5NTZkYWYwZTlkNTkyYTcyZDkzOThlNWE5OWMzNzliODk3NGZkY2IzNWRkZTE0ZTViODYwNzRkYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjdjZGE4MmRhNjA2MjM4ZTA1ZTYyMzk5NTY5YzVlZTAzOTkzNDE5NjQ4YWU1ZDQzYTJiZjhjZDYzNDdmODI2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWM2OTA0MzFkM2M4MmVkYjdmYzJiYzIxY2NmYmJlOTFiNDE3YzIxMDlmY2M3NzIyNzA1ODVjZGVkOWI1ZTVhYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDBmZDU0ODkwMGMxZjU0M2MxODZiMDdjMWQ0MDg5MDBiMjFlNzgyOThhM2YyMDU0NzZlMTk5NmFmN2Y4ZDBiMCJ9"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_capabilities.rs#L315-L317",
+          "version": "repo-lines-v1:sha256:a69b762379cc34549872baf173778d961eed7c7b0601413184b026b7377e1307:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjk0MGU0YjBlMWY0YmEwYmQyYjg3MWJjNmQ1Y2I0NTIxN2U3MmVhM2QzOTViOTI1NGM2ZDNiZTkxNmY0MGUwNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzJmOGI5ZmRkMzc0NjIzNmRlYzQwZWY0MzMyMjkwZTc2Nzc4MzExMTVhYTZhNDIxYTcwMDVkNjRiYTY0YmM1YiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTkzNjhiYzM0YjIxOGQxMWJiMTQ1MTljNmIwZGQwNmJmYTljNWZmN2RhNzExYzMyOTJmYzhkM2U4YzE2ODRkNSJ9"
         }
       ]
     },
@@ -110,7 +114,7 @@
         },
         {
           "resource": "repo://crates/decodex-protocol/src/agent.rs",
-          "version": "repo-file-v1:sha256:de7f6bc17297e1a270fd00538aee5921287435ccfc08f940d331b56a7531bbe2"
+          "version": "repo-file-v1:sha256:4505107622b2a83de9f0c5e552c2680a09c67f60391c08e32f7bb467d52f5d3c"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs",
@@ -185,10 +189,54 @@
           "version": "repo-lines-v1:sha256:c6bc095fb9b38d4f88a01ac5f067ff34b13a1371d8d289306a46cd442cd7fa4e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5ODAxNTU2ZDk3YWRiYjgyZGY5NTMzYjFiYWEwNmE2NzE4ZTc4MzFiYzVjMGNhYmY3NDM5MjBhOWQ1NmRlMjQzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2Nzc3Y2JkNWZmMjUyMDg5M2YzNzM0ZGExZjFkYmExMTM4OTdjMDhhODk4NTY1NDIwOTAzMzcyNGE4MjkwZTM0IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhZTFlOTVhNDBjYzVkMDg4NTEwNDQzYjY4NDk1MzNkNWUwMTQwYjE0OWU2NzkzZGE2ODMzNTczNjUzZGFiNTEyIn0"
         }
       ]
+    },
+    {
+      "id": "claim_ca851ae0999941d39a8320f5bce6f24b",
+      "statement": "The Agent model catalog refreshes through native model/list every 60 seconds, with account, directory and process binding. Model and effort cycling have no fixed fallback list when the catalog is unavailable.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1606-L1612",
+          "version": "repo-lines-v1:sha256:94822da03cc24717c86a1aa5781a22c5c4fb39bb3eba280843acf0a8d9a36fb4:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzhhZThkZGM3MTdhMDlmMzU0ZmUzMWU4ZWI3YTU3MWNkZDQwZGQ3NmU0MjVhZjliYjU2MTM3ZTVhZDlkZTEzNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTdhZjQ0ZjllMmU0MDU4YzAyNDA0YTJhMDI0M2JjNTk1ZWE2ZmIxOGUxNzdmMjJiOWEyOWMzZDQ3ZjAwZTExOSJ9"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/conversations.rs",
+          "version": "repo-file-v1:sha256:7bf90101a6c1bde73fac1c50f69b361828b8047a7fa4da78324c5e59b1f86d48"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_capabilities.rs#L275-L317",
+          "version": "repo-lines-v1:sha256:56089cfa753ba1e41bab42f40d2a86c12269ab4ba86370d5550fe478c3aa93ca:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVlZGQzNTFkOTU2ZGFmMGU5ZDU5MmE3MmQ5Mzk4ZTVhOTljMzc5Yjg5NzRmZGNiMzVkZGUxNGU1Yjg2MDc0ZGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVjNjkwNDMxZDNjODJlZGI3ZmMyYmMyMWNjZmJiZTkxYjQxN2MyMTA5ZmNjNzcyMjcwNTg1Y2RlZDliNWU1YWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE5MzY4YmMzNGIyMThkMTFiYjE0NTE5YzZiMGRkMDZiZmE5YzVmZjdkYTcxMWMzMjkyZmM4ZDNlOGMxNjg0ZDUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_22c649d4fcdf471a899e2d9c03b35774",
+      "statement": "An explicit past native retirement deadline selects the same catalog's current default for new Agent settings, new Agents in a shared process and loaded idle recovery, preserving shared configuration and using existing source checks, settings journal and readback. Missing entries, upgrade suggestions, network errors or quota responses alone do not trigger retirement migration. The 24-runtime and 18-desktop test cohort does not qualify a new native artifact or installed application.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:31b135003bcc180f47662d5ed3a221003658592d1da509d9f8cdb2b3ef53734f"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
+          "version": "repo-lines-v1:sha256:f4b851127d577fcebde31500784313617e7b0796409a2b012a5e0705d1e82782:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1ZmM3ZDk2YTVkZTViNWM2Yzg3NjhiZDM2NTI4YTYwY2E1YTliNjE0OTI5MDgwOTEzZjVlMGQwNTgzMmY0ZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzOGQ4NzM3YTVmMGY1ODRmZTE5MjlkNGViOTk4ZTkyMzU0YWVmNmQ1MWQxNmUxMTVjYWRmZjRmNmQwMzc5NDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3N2I2YjVjMzk5MTEzMjYyZTg0NDY4ZjJjN2E1YmMwMmU2NDQ4ZDVkOWYyOGM3Y2RlNTM0YjIwOGRiYTJiOTUifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L963-L1047",
+          "version": "repo-lines-v1:sha256:4e941ab731689a14e7503ec5327e666c98bccc345ffc5a3ac15e6e8ba148f17c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVmZGQ4NDYxYzA1MDc3YmU4OTcxYWJlMTFjOTgyYTI1NGFhZTExMmUzNzcyMGQ3YWZlYjYwZTFlNGQ1MzQ0ZmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxZTBhNDI1ZmI5NmZiNTliZmZmMDg5MmFkYjE5YTQ5NTlhYWQyNzM2MjU3NDhlNGNlYjY0NmU5ZWE4ZDhmY2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzYTNhODRlNDU3NjIzMTA1NDM4ZWE4NjBjNzA5OTYwNmExMGM1ZDkzNmEzNmQ0NDI5NWQzMmZhNzdkN2Y3ZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM2Yzk4YTFiYWZhYjhkMDU3MDhmMTNlZWQyOTZkYzBjNTNhMTEwOGIwZDhhYTc0MGFhNWY0OTg0ODcyYmYwODIifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_initial_settings.rs",
+          "version": "repo-file-v1:sha256:5cc6ff063aa0038c7255d9454bae517556ba47b4b8f2ae07be8dd36469d21933"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent_model_recovery.rs",
+          "version": "repo-file-v1:sha256:4cb67bcf80a54a5d7b04c4b85acff08f0dbf5f7345a3c5e0f938040675f49203"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T06:51:55.940Z"
+    "at": "2026-10-28T07:58:23.862Z"
   }
 }

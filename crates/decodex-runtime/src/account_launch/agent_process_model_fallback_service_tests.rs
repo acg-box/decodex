@@ -34,6 +34,7 @@ fn fallback_is_sent(mode: &str) -> bool {
 	matches!(
 		mode,
 		"queued"
+			| "retired"
 			| "unknown"
 			| "rejected"
 			| "preserve-tier"
@@ -62,6 +63,13 @@ async fn automatic_fallback_service_preserves_source_settings_and_no_replay() {
 		"banner-after",
 		"explicit-input",
 	] {
+		time::timeout(Duration::from_secs(15), scenario(mode)).await.expect(mode);
+	}
+}
+
+#[tokio::test]
+async fn retired_model_uses_current_native_default_without_replaying_input() {
+	for mode in ["retired", "retirement-future", "retirement-no-default", "retirement-no-notice"] {
 		time::timeout(Duration::from_secs(15), scenario(mode)).await.expect(mode);
 	}
 }
@@ -108,6 +116,9 @@ async fn scenario(mode: &'static str) {
 	let banner = |account, revision| {
 		let call = banner_reads.fetch_add(1, Ordering::AcqRel);
 		let mut value = recovery(account, revision, mode == "reserve");
+		if mode.starts_with("retir") {
+			value.state = AccountRecoveryState::Absent;
+		}
 
 		if mode == "stale-banner"
 			|| (mode == "banner-before" && call == 1)
@@ -220,8 +231,21 @@ async fn serve(remote: DuplexStream, writes: Arc<AtomicUsize>, mode: &str) {
 
 				serde_json::json!({"id":id,"result":{"authMethod":"chatgpt","requiresOpenaiAuth":mode!="custom-auth","authToken":null}})
 			},
-			"model/list" =>
-				serde_json::json!({"id":id,"result":{"data":[{"id":"scoped","model":"scoped","displayName":"Scoped","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"}],"defaultReasoningEffort":"medium","serviceTiers":[{"id":tier}],"defaultServiceTier":tier}],"nextCursor":null}}),
+			"model/list" => {
+				let mut models = vec![
+					serde_json::json!({"id":"scoped","model":"scoped","displayName":"Scoped","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"medium"}],"defaultReasoningEffort":"medium","serviceTiers":[{"id":tier}],"defaultServiceTier":tier,"isDefault":mode!="retirement-no-default"}),
+				];
+				if mode.starts_with("retir") {
+					let mut previous = models[0].clone();
+					previous["model"] = serde_json::json!("original");
+					previous["isDefault"] = serde_json::json!(false);
+					if mode != "retirement-no-notice" {
+						previous["upgradeInfo"] = serde_json::json!({"model":"advertised-upgrade","retirementAt":if mode=="retirement-future" {i64::MAX} else {1}});
+					}
+					models.insert(0, previous);
+				}
+				serde_json::json!({"id":id,"result":{"data":models,"nextCursor":null}})
+			},
 			"experimentalFeature/list" =>
 				serde_json::json!({"id":id,"result":{"data":[{"name":"fast_mode","enabled":!matches!(mode,"preserve-tier" | "ultrafast-allowed" | "ultrafast-default")},{"name":"ultrafast_mode","enabled":mode!="ultrafast-denied"}],"nextCursor":null}}),
 			"thread/settings/update" => {
@@ -237,8 +261,8 @@ async fn serve(remote: DuplexStream, writes: Arc<AtomicUsize>, mode: &str) {
 				assert_eq!(request["params"], expected);
 
 				match mode {
-					"queued" | "preserve-tier" | "ultrafast-allowed" | "ultrafast-default"
-					| "ultrafast-denied" => {
+					"queued" | "retired" | "preserve-tier" | "ultrafast-allowed"
+					| "ultrafast-default" | "ultrafast-denied" => {
 						let event = serde_json::json!({"method":"thread/settings/updated","params":{"threadId":"thread","threadSettings":settings_for("scoped")}});
 
 						w.write_all(format!("{event}\n").as_bytes())

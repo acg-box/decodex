@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e49f9988f89fd0a619b6d7a234ade29aead0e3e55971230057cb4d4ac7a85af5",
+  "pageVersion": "sha256:dae78c9494ec7dc995894f298de43ce8b79bf7dbac0ff25ad2f6549b1e03b5d5",
   "claims": [
     {
       "id": "claim_820ae47a5a5d49aab10b5f306ac24685",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:769c21fbd5a23b0713b704ef74aca3bef3b7f1be4167e9475a6a0dbe12ddf166"
+          "version": "repo-file-v1:sha256:379bebc24b275d32794219bccb90a7909414606eb6e8b31dd7930614c203e1fe"
         },
         {
           "resource": "repo://database/schema.sql",
@@ -21,7 +21,7 @@
       "statement": "Delegation, Collaboration and current Work context retain application-evidence authority instead of becoming user authorization; authoritative Work changes require the actual delivered user decision.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1267-L1377",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1291-L1401",
           "version": "repo-lines-v1:sha256:34c154ed0b2a955952269ea2ba86b94de26fe029840005eeab4bd317d355ae33:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
@@ -68,7 +68,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/agent.rs",
-          "version": "repo-file-v1:sha256:de7f6bc17297e1a270fd00538aee5921287435ccfc08f940d331b56a7531bbe2"
+          "version": "repo-file-v1:sha256:4505107622b2a83de9f0c5e552c2680a09c67f60391c08e32f7bb467d52f5d3c"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/global_guardian.rs#L1-L103",
@@ -309,6 +309,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T06:51:55.940Z"
+    "at": "2026-10-28T07:58:23.862Z"
   }
 }

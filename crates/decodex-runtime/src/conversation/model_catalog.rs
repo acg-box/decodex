@@ -228,8 +228,8 @@ fn read_catalog_with_default(
 	child: &mut AttestedProcessChild,
 	cancelled: impl Fn() -> bool,
 ) -> Option<(Vec<AgentModelDto>, Option<decodex_protocol::ConversationModel>)> {
-	let (mut pages, mut cursor, mut default_model, deadline) =
-		(ModelCatalogPages::default(), None, None, Instant::now() + Duration::from_secs(8));
+	let (mut pages, mut cursor, deadline) =
+		(ModelCatalogPages::default(), None, Instant::now() + Duration::from_secs(8));
 
 	for _ in 0..8 {
 		if cancelled() || Instant::now() >= deadline {
@@ -242,20 +242,9 @@ fn read_catalog_with_default(
 
 		let page = page.ok()?;
 
-		for model in page["data"].as_array()? {
-			if model["isDefault"] == true {
-				if default_model.is_some() {
-					return None;
-				}
-
-				default_model =
-					Some(decodex_protocol::ConversationModel::new(model["model"].as_str()?).ok()?);
-			}
-		}
-
 		match pages.push(&page).ok()? {
 			Some(next) => cursor = Some(next),
-			None => return Some((pages.models, default_model)),
+			None => return Some((pages.models, pages.default_model)),
 		}
 	}
 

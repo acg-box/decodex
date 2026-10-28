@@ -5,7 +5,7 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T06:51:55.940Z
+    at: 2026-10-28T07:58:23.862Z
 sources:
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
@@ -35,6 +35,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-991553c8d747a54ecf5a9376
     resource: repo://crates/decodex-core/src/work.rs
+  - id: openwiki-source-0d29990b5fd295fa89a495ad
+    resource: repo://crates/decodex-protocol/src/model_catalog.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-1b314e86ab2f1adbc0ede4c8
@@ -101,7 +103,7 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
+generated: { by: "codex", at: "2026-10-28T07:49:54.224Z" }
 ---
 
 # Project, Agent and Work coordination
@@ -114,7 +116,7 @@ The [accepted contract](../decisions/project-agent-work.md) defines the shared v
 
 The desktop sends typed commands to the service. SQLite owns Project membership, Agent responsibilities, Work requirements, holds, Results, assessments and Collaboration Requests. Codex owns native threads, turns, Subagents, messages, waits, context, Goals, permissions and enforcement. Work commands persist business decisions; they do not spawn or message native helpers.
 
-A new independent conversation can derive its initial settings from its actual first pending user input. An Assistant is not required. Explicit model and effort choices are retained. A bound conversation or uncertain native effect never uses this bootstrap path. After native creation, Decodex materializes the thread name before Project reconciliation.
+A new independent conversation can derive its initial settings from its actual first pending user input. An Assistant is not required. Explicit model and compatible effort choices are retained. If the current native catalog gives the model a retirement deadline that has passed, creation uses that catalog's current default. The normal model workflow describes this [retirement policy](../workflows/models-and-settings.md#native-model-retirement). A bound conversation or uncertain native effect never uses this bootstrap path. After native creation, Decodex materializes the thread name before Project reconciliation.
 
 Several independent conversations can share one admitted native process. Each Agent attaches only after that process has created or resumed its exact native thread. The binding preserves the process account, generation and live-owner fences; Project membership alone grants no process authority.
 

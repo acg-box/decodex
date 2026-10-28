@@ -8,12 +8,18 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_live_settings.rs
   - id: openwiki-source-9c68c30b2ff24ddf9a764d74
     resource: repo://apps/decodex-gpui/src/agent_memory.rs
+  - id: openwiki-source-5da2f5dd568514f1f464d177
+    resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-0d053d4de2f668168f982629
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
+  - id: openwiki-source-682f90c6d08ed3207257f1d5
+    resource: repo://apps/decodex-gpui/src/conversations.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-f2483b817a8847254a871b51
     resource: repo://crates/decodex-codex/src/app_server_client/goals.rs
   - id: openwiki-source-9819ced71ede01a1ddc5af56
@@ -28,6 +34,8 @@ sources:
     resource: repo://crates/decodex-codex/src/conversation.rs
   - id: openwiki-source-eccf08613126ff810078b520
     resource: repo://crates/decodex-protocol/src/agent.rs
+  - id: openwiki-source-0d29990b5fd295fa89a495ad
+    resource: repo://crates/decodex-protocol/src/model_catalog.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
@@ -38,14 +46,20 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-ba9677fef0b3a23f71d07771
     resource: repo://crates/decodex-runtime/src/agent_capabilities.rs
+  - id: openwiki-source-1477615a268800361379ce21
+    resource: repo://crates/decodex-runtime/src/agent_initial_settings.rs
   - id: openwiki-source-dc51b38db429ec5fe466c5f2
     resource: repo://crates/decodex-runtime/src/agent_memory.rs
+  - id: openwiki-source-81ce54e50da763fa2a1f8813
+    resource: repo://crates/decodex-runtime/src/agent_model_recovery.rs
   - id: openwiki-source-a2c2a5ced9dfa1aee02eedc2
     resource: repo://crates/decodex-runtime/src/agent_model_settings.rs
   - id: openwiki-source-f251e17a7693193da84b2f7a
     resource: repo://crates/decodex-runtime/src/agent_native_goal.rs
   - id: openwiki-source-d28152527a1218d5afb307f7
     resource: repo://crates/decodex-runtime/src/agent_search_settings.rs
+  - id: openwiki-source-dbc533dc306a3f520c4241e0
+    resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
     resource: repo://crates/decodex-runtime/src/agent/global_guardian.rs
   - id: openwiki-source-a7b97dd347fbe2f630692d12
@@ -56,10 +70,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
+generated: { by: "codex", at: "2026-10-28T07:58:23.862Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T06:51:55.940Z
+    at: 2026-10-28T07:58:23.862Z
 ---
 
 # Model selection and settings ownership
@@ -89,6 +103,16 @@ Shared native configuration writes retain file/version identity and arbitration.
 Cold resume inherits the saved native thread settings without reapplying creation settings. A model-only update preserves the native tier, provider and collaboration settings. The reusable qualification probe checks that the saved service tier and summary setting survive changed global defaults in both legacy and paginated thread modes. The probe also checks acknowledged approval, reviewer and read-only permission recovery despite stale turn context during fork and cold resume in both history modes. Each recovery case makes one inference request and does not replay the saved turn. This evidence applies to the selected qualified artifact; it does not establish installed-app acceptance. See [saved settings and diagnostic storage](../testing/upstream-acceptance-boundaries.md#saved-settings-and-diagnostic-storage) for the commands and limits.
 
 Plugin installation and selection are configured in Codex. Maintenance of the current model controls does not authorize a new editor for every upstream setting.
+
+## Native model retirement
+
+The desktop reads `model/list` from the current native connection and refreshes its Agent catalog at a 60-second interval. Account, directory and process changes invalidate the observation. Model and effort cycling require that catalog; an unavailable read does not provide a fixed fallback list.
+
+When the same complete catalog gives the selected model a retirement deadline that has passed, Decodex uses the catalog's explicit current default. This applies to new Agent settings, new Agents in an existing shared process, and loaded idle Agent recovery. Shared process configuration stays unchanged. An upgrade suggestion alone, a missing model, a network failure or an account quota response does not prove retirement. A usable selected model stays selected.
+
+Recovery uses the existing source-bound settings journal and publication readback. It preserves compatible effort and service-tier choices, does not change provider or permission ownership, and does not replay input. Active turns keep their current execution. A native session that cannot be loaded remains outside this retirement check.
+
+The [retained evidence](../../automations/upstream/retained-evidence.json) records 24 runtime and 18 desktop tests, with a failing-before and passing-after retirement case. The fixtures cover native-default selection, future or absent deadlines, missing defaults, source changes, draft preservation and no replay. They do not qualify a new native artifact, a real retired provider model or an installed application.
 
 ## Guardian and helper settings
 

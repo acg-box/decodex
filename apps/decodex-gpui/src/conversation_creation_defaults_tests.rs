@@ -48,7 +48,26 @@ fn response(
 			account_id: EntityId::new("10000000-0000-4000-8000-000000000001").unwrap(),
 			account_revision: 1,
 			working_directory: ConversationWorkingDirectory::new("/tmp").unwrap(),
-			models: vec![],
+			models: ["managed-model", "configured-model"]
+				.into_iter()
+				.map(|model| decodex_protocol::AgentModelDto {
+					model: ConversationModel::new(model).unwrap(),
+					name: model.into(),
+					efforts: vec![
+						ConversationReasoningEffort::Low,
+						ConversationReasoningEffort::High,
+					],
+					default_effort: Some(ConversationReasoningEffort::High),
+					supports_fast: false,
+					service_tiers: vec![],
+					default_service_tier: None,
+					available_cyber_programs: None,
+					specialty: None,
+					supports_images: true,
+					availability: None,
+					upgrade: None,
+				})
+				.collect(),
 			defaults: defaults.map(Box::new),
 		}),
 	}
@@ -191,6 +210,9 @@ fn fully_explicit_creation_does_not_require_native_defaults() {
 	let (conversations, server, _) = tests::catalog_conversations();
 
 	conversations.begin_new();
+	conversations.ensure_initial_catalog();
+	let query = conversations.try_take_dispatch(1, &server).unwrap().query().unwrap().clone();
+	conversations.route_query_result(1, &server, &response(&server, query.query_id, None));
 	conversations.cycle_model();
 	conversations.cycle_reasoning_effort();
 

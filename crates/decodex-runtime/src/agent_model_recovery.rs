@@ -1,5 +1,8 @@
 //! Automatic ordinary fallback uses the existing model journal and native settings owner.
-use std::future::Future;
+use std::{
+	future::Future,
+	time::{SystemTime, UNIX_EPOCH},
+};
 
 use sha2::{Digest as _, Sha256};
 use tokio::sync::mpsc::Receiver;
@@ -10,9 +13,7 @@ use decodex_codex::app_server_client::{
 	ServerEvent, ThreadModelRecoveryUpdate,
 };
 use decodex_database::{AgentModelAttempt, AgentModelRecoveryContext, SqliteStore};
-use decodex_protocol::{
-	AccountRecoveryResult, AgentCapabilitiesResult, AgentModelDto, EntityId, EntityRevision,
-};
+use decodex_protocol::{AccountRecoveryResult, AgentModelDto, EntityId, EntityRevision};
 
 /// Evaluate one exact source. The Agent actor owns scheduling and drains native events.
 pub(crate) async fn recover_ordinary_model<F, Fut, B, BFut>(
@@ -42,11 +43,6 @@ where
 		return Ok(());
 	};
 	let recovery = banner(account.clone(), EntityRevision(revision)).await;
-
-	if !matches!(&recovery.state, decodex_protocol::AccountRecoveryState::Current(b) if !b.fallback_model_slugs.is_empty())
-	{
-		return Ok(());
-	}
 
 	let Some((native, guard)) = before.client.configured_task_models(thread) else {
 		return Ok(());
@@ -85,18 +81,35 @@ where
 		return Ok(());
 	}
 
-	let AgentCapabilitiesResult::Available { models, .. } =
-		agent_capabilities::read(&before.client).await
-	else {
+	let Some(catalog) = agent_capabilities::read_catalog(&before.client).await else {
 		return Ok(());
 	};
-	let Some(target) = recovery.ordinary_fallback_model(
-		&account,
-		EntityRevision(revision),
-		&settings.model,
-		&models,
-	) else {
-		return Ok(());
+	let now = SystemTime::now()
+		.duration_since(UNIX_EPOCH)
+		.ok()
+		.and_then(|now| i64::try_from(now.as_secs()).ok());
+	let (target, evidence) = if let Some((target, retirement_at)) = now.and_then(|now| {
+		AgentModelDto::retired_default(
+			&settings.model,
+			&catalog.models,
+			catalog.default_model.as_ref(),
+			now,
+		)
+	}) {
+		(
+			target,
+			serde_json::json!({"retired_model":settings.model,"retirement_at":retirement_at,"default_model":target.model}),
+		)
+	} else {
+		let Some(target) = recovery.ordinary_fallback_model(
+			&account,
+			EntityRevision(revision),
+			&settings.model,
+			&catalog.models,
+		) else {
+			return Ok(());
+		};
+		(target, serde_json::to_value(&recovery.state).expect("serializable recovery evidence"))
 	};
 	let feature = if target_service_tier(&settings, target) == "ultrafast" {
 		"ultrafast_mode"
@@ -106,7 +119,7 @@ where
 	let tier_enabled =
 		agent_capabilities::feature_enabled(&before.client, feature, Some(thread)).await;
 	let Some((update, attempt)) =
-		prepare_recovery(&before, observed.id, settings, target, tier_enabled, &recovery)?
+		prepare_recovery(&before, observed.id, settings, target, tier_enabled, &evidence)?
 	else {
 		return Ok(());
 	};
@@ -144,7 +157,7 @@ fn prepare_recovery(
 	settings: NativeTaskModelSettings,
 	target: &AgentModelDto,
 	tier_enabled: Option<bool>,
-	recovery: &AccountRecoveryResult,
+	evidence: &serde_json::Value,
 ) -> Result<Option<(ThreadModelRecoveryUpdate, AgentModelAttempt)>, AgentError> {
 	let thread = &source.key.thread;
 	let Some((effort, tier)) = target_settings(&settings, target, tier_enabled) else {
@@ -159,7 +172,7 @@ fn prepare_recovery(
 		)?,
 	};
 	let digest: String =
-		Sha256::digest(serde_json::to_vec(&recovery.state).expect("serializable banner"))
+		Sha256::digest(serde_json::to_vec(evidence).expect("serializable recovery evidence"))
 			.iter()
 			.map(|b| format!("{b:02x}"))
 			.collect();

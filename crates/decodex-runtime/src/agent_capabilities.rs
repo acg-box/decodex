@@ -15,6 +15,7 @@ use decodex_protocol::{
 #[derive(Default)]
 pub(crate) struct ModelCatalogPages {
 	pub models: Vec<AgentModelDto>,
+	pub default_model: Option<ConversationModel>,
 	seen: std::collections::HashSet<String>,
 	pages: usize,
 	complete: bool,
@@ -36,6 +37,12 @@ impl ModelCatalogPages {
 			}
 
 			let model = project_model(entry).ok_or(())?;
+			if entry["isDefault"] == true {
+				if self.default_model.is_some() {
+					return Err(());
+				}
+				self.default_model = Some(model.model.clone());
+			}
 
 			if self.models.len() >= 100
 				|| self.models.iter().any(|known| known.model == model.model)
@@ -266,6 +273,20 @@ fn project_service_tiers(value: &Value) -> Option<Vec<AgentServiceTierDto>> {
 }
 
 async fn read_inner(client: &AppServerClient) -> AgentCapabilitiesResult {
+	let Some(catalog) = read_catalog(client).await else {
+		return AgentCapabilitiesResult::Unavailable;
+	};
+	AgentCapabilitiesResult::Available {
+		models: catalog.models,
+		memory_enabled: memory_feature(client).await,
+	}
+}
+
+pub(crate) async fn read_catalog(client: &AppServerClient) -> Option<ModelCatalogPages> {
+	time::timeout(Duration::from_secs(8), read_catalog_inner(client)).await.ok().flatten()
+}
+
+async fn read_catalog_inner(client: &AppServerClient) -> Option<ModelCatalogPages> {
 	let mut catalog = ModelCatalogPages::default();
 	let mut cursor = Value::Null;
 
@@ -277,21 +298,17 @@ async fn read_inner(client: &AppServerClient) -> AgentCapabilitiesResult {
 			)
 			.await
 		else {
-			return AgentCapabilitiesResult::Unavailable;
+			return None;
 		};
 
 		match catalog.push(&page) {
 			Ok(Some(next)) => cursor = serde_json::json!(next),
-			Ok(None) =>
-				return AgentCapabilitiesResult::Available {
-					models: catalog.models,
-					memory_enabled: memory_feature(client).await,
-				},
-			Err(()) => return AgentCapabilitiesResult::Unavailable,
+			Ok(None) => return Some(catalog),
+			Err(()) => return None,
 		}
 	}
 
-	AgentCapabilitiesResult::Unavailable
+	None
 }
 
 async fn memory_feature(client: &AppServerClient) -> Option<bool> {
@@ -435,6 +452,25 @@ mod tests {
 		);
 		assert_eq!(pages.models.len(), 1);
 		assert!(pages.push(&serde_json::json!({"data":[],"nextCursor":null})).is_err());
+
+		let mut default = serde_json::json!({"model":"default","displayName":"Default","supportedReasoningEfforts":[],"defaultReasoningEffort":"high","isDefault":true});
+		let mut pages = ModelCatalogPages::default();
+		assert_eq!(
+			pages.push(&serde_json::json!({"data":[default.clone()],"nextCursor":null})),
+			Ok(None)
+		);
+		assert_eq!(pages.default_model.unwrap().as_str(), "default");
+		let mut second = default.clone();
+		second["model"] = serde_json::json!("second");
+		assert!(
+			ModelCatalogPages::default()
+				.push(&serde_json::json!({"data":[default.clone(),second],"nextCursor":null}))
+				.is_err()
+		);
+		default["hidden"] = serde_json::json!(true);
+		let mut hidden = ModelCatalogPages::default();
+		assert_eq!(hidden.push(&serde_json::json!({"data":[default],"nextCursor":null})), Ok(None));
+		assert!(hidden.default_model.is_none());
 	}
 
 	#[test]

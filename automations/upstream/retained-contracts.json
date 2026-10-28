@@ -4683,5 +4683,85 @@
       "evidence": "automations/upstream/qualification.json",
       "limits": "Original feature-selection qualification below retains its own source/artifact and delivery limits. Current qualification supersedes its child-visible prefix expectation."
     }
+  },
+  "retained_model_retirement_defaults": {
+    "manual_review_item": 28,
+    "behavior": [
+      "Read the current source-bound native model catalog, including its explicit default and retirement deadlines. Keep the existing automatic catalog refresh.",
+      "After an explicit retirement deadline, choose the same complete catalog’s current default for new Agent settings and loaded idle Agent recovery. Reuse the existing settings journal, source checks and readback.",
+      "Keep an available model and preserve compatible reasoning/service-tier choices. Do not infer retirement from a missing catalog entry, an upgrade suggestion, a quota response or a network error.",
+      "Desktop model and effort cycling requires a current native catalog; it does not fall back to a fixed list. Restored unsent drafts are not sent by this change."
+    ],
+    "source_symbols": {
+      "crates/decodex-protocol/src/model_catalog.rs": [
+        "AgentModelDto::retired_default"
+      ],
+      "crates/decodex-runtime/src/agent_capabilities.rs": [
+        "ModelCatalogPages::push",
+        "read_catalog"
+      ],
+      "crates/decodex-runtime/src/agent_model_recovery.rs": [
+        "recover_ordinary_model",
+        "prepare_recovery"
+      ],
+      "crates/decodex-runtime/src/agent_initial_settings.rs": [
+        "AgentHost::initial_agent_settings"
+      ],
+      "apps/decodex-gpui/src/creation_defaults.rs": [
+        "resolve"
+      ],
+      "apps/decodex-gpui/src/agent_creation_defaults.rs": [
+        "AgentSurface::apply_creation_defaults"
+      ],
+      "apps/decodex-gpui/src/conversations.rs": [
+        "Conversations::cycle_model",
+        "Conversations::cycle_reasoning_effort"
+      ],
+      "crates/decodex-runtime/src/agent.rs": [
+        "AgentCoordinator::ensure_thread"
+      ]
+    },
+    "regression_groups": [
+      {
+        "entrypoint": "crates/decodex-runtime/src/lib.rs",
+        "selectors": [
+          "agent_capabilities::",
+          "model_fallback_service::",
+          "conversation::model_catalog::",
+          "initial_settings::",
+          "shared_process_agent_creation_uses_current_default_after_retirement",
+          "native_effort_inheritance",
+          "advertised_efforts_survive",
+          "failed_thread_start"
+        ]
+      },
+      {
+        "entrypoint": "apps/decodex-gpui/src/main.rs",
+        "selectors": [
+          "creation_defaults",
+          "missing_catalog_does_not_cycle",
+          "selected_execution_controls",
+          "configured_settings_are_source_bound",
+          "selecting_an_unseen",
+          "sent_command_disconnect",
+          "routing_successor"
+        ]
+      }
+    ],
+    "upstream_reference": {
+      "commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+      "implementation": [
+        "codex-rs/models-manager/src/manager.rs#ModelsManager::get_default_model",
+        "codex-rs/config/src/mcp_types.rs#McpStartupReadiness"
+      ],
+      "tests_read_not_executed": [
+        "codex-rs/tui/src/app/tests/model_catalog.rs#model_picker_refresh_updates_app_catalog_from_app_server"
+      ]
+    },
+    "limits": [
+      "Retirement must be explicit in current native metadata. Removed entries without a retirement deadline stay unresolved.",
+      "The existing account-bound automatic recovery applies to loaded idle Agent conversations. It does not replay input, interrupt an active turn or migrate an unavailable native session.",
+      "No new native artifact qualification, real retired-provider check, installed-app acceptance, installation or release."
+    ]
   }
 }
