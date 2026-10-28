@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:92cf0e84fc01a73a4618da66ae12c89e786961ff21ce09f012193999a19b65f5",
+  "pageVersion": "sha256:989bc0ab4a49e0bce4cdaeb865136c34c2e9f090ddcf1bb6f23b1039dc7edfac",
   "claims": [
     {
       "id": "claim_b2a02c31d4c84b959a4c49ad2fc064b0",
@@ -30,13 +30,55 @@
         },
         {
           "resource": "repo://site/package.json",
-          "version": "repo-file-v1:sha256:ef97530c5ed137f5c975d8f522d164bf2a9239ac59d315e5e2e70e32df4016ae"
+          "version": "repo-file-v1:sha256:d692d2ef71ff9c5af692adbd4adff51a08554e8b28a29ba26ed7235abe0153be"
+        }
+      ]
+    },
+    {
+      "id": "claim_8c3e320b2a994cbab334ca0bee16a0bf",
+      "statement": "Radar ledger persistence exclusively borrows the SQLite connection for serialization, then closes it before atomically publishing the image under the cache lock and file-identity check.",
+      "evidence": [
+        {
+          "resource": "repo://apps/radar/src/ledger/schema/setup.rs",
+          "version": "repo-file-v1:sha256:790489971abb88836d1562efb34f63e0b365a0c0f633b88912fa45c517f60bda"
+        }
+      ]
+    },
+    {
+      "id": "claim_3ed712373ec54cf8b7694d555f3821ab",
+      "statement": "The site selects Astro 7.4 and TypeScript 6 with repository-owned Node/npm versions; the selected official Astro checker supports TypeScript 5 or 6, so TypeScript 7 remains blocked by its peer contract.",
+      "evidence": [
+        {
+          "resource": "repo://site/.nvmrc",
+          "version": "repo-file-v1:sha256:10e4e07fe7b63d3da1d899ea0f9a7a3d78c116051fae44b9f245a53d6f665a41"
+        },
+        {
+          "resource": "repo://site/package-lock.json",
+          "version": "repo-file-v1:sha256:e757c54318fb9549c3011ae3bdc2a97a210396ec3406c16f6c4db95e21c2bb49"
+        },
+        {
+          "resource": "repo://site/package.json",
+          "version": "repo-file-v1:sha256:d692d2ef71ff9c5af692adbd4adff51a08554e8b28a29ba26ed7235abe0153be"
+        }
+      ]
+    },
+    {
+      "id": "claim_883be65140dc4a3cb74aa60ae3379867",
+      "statement": "The site audit disables install scripts during acquisition and verifies registry identities, integrity, reviewed native-package metadata, registry signatures and available attestations before the build and type check.",
+      "evidence": [
+        {
+          "resource": "repo://Makefile.toml",
+          "version": "repo-file-v1:sha256:87e1915e9fdd86f0e28f4c2593cbda1bc3185d9da1d9b82a2a234e9d03a746f1"
+        },
+        {
+          "resource": "repo://scripts/audit_node_lock.py",
+          "version": "repo-file-v1:sha256:7d7e4481f613365ce46173c832a594f96192bb19f769e44507a8a73ae54ac75f"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-10T06:49:11.265Z"
+    "at": "2026-10-28T03:55:33.038Z"
   }
 }

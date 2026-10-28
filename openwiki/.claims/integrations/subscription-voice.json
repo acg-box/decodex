@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:800e3f41f1f1b5267db71a380db4271249831a89a7c9616194188e03b7876802",
+  "pageVersion": "sha256:38ef0aabd1c112ffa98fd65071cf50756db3c786ebbbcaa6acf863480625cd9b",
   "claims": [
     {
       "id": "claim_93b99ffbc7b84692b730b24680f83bd2",
@@ -170,7 +170,7 @@
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
-          "version": "repo-file-v1:sha256:4c8dab6abd1a26b236184a5c514f9ec27668dbc396b1f8271cf189ea8efb9baf"
+          "version": "repo-file-v1:sha256:1ac6c4ff625492e12740f830073fbaffec3acdc39cca0e9950d60cfc5d1cc5bd"
         }
       ]
     },
@@ -325,10 +325,38 @@
           "version": "repo-lines-v1:sha256:1234c4b473b37de473d4c8826220c2eefebe5396973b815bf50f444d28c6ecb2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJmOWNhODkxYmZmN2FjMWY3Y2VhYWU0MGVmMDUxMDY2YmU5ZWZlNDdiNGU0MjgxZTg2YzMxOWJlMmM1NWViY2U0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI5NjRkOGMwNzM0Mjk4OTMxMDE1NzZkODhkOTkxMjdlODlkNjg5MWQzYjE3ZTg5ZGYwMmVjOWFlNzA3MDVkOGJlIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmM2UyNGMyYWQwZDhmZDJlZGE2ODdkNjE5YmI3ZjFkOWRiMjU5YmM1NmU3M2M5NTAzYTkwMGQ1YTg4YjYxOWJiIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhZDU3M2UzM2ZiNzNjYzBkZjZiYzU5YmRjNjVhODE5MmZmNDUxYmIwMTUyYzE0OWNjMDRhMGI3MGE1MmM5NTA4In0"
         }
       ]
+    },
+    {
+      "id": "claim_badf0d4551914ef48f666f2fd2a8dd9a",
+      "statement": "Default macOS WebRTC acquisition checks the selected official archive digest and strict ZIP headers before extraction or cache repair.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-webrtc-build/src/archive.rs",
+          "version": "repo-file-v1:sha256:dfaa47a9971b0f1f441d43c6995066d6035081557d0f26c89fb53376d137d141"
+        },
+        {
+          "resource": "repo://crates/decodex-webrtc-build/src/lib.rs",
+          "version": "repo-file-v1:sha256:177c7bd900313d6d7706e5365489d29ec78c9c1bc8ef810d9d82c12f6b0836db"
+        }
+      ]
+    },
+    {
+      "id": "claim_a3e361d8e8064836aa3281ee087ded96",
+      "statement": "The retained trust-anchor probe verifies a retired AAA certificate is absent and a known control certificate remains in the distributed static library; it does not execute TURN/TLS or establish provider acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-webrtc-build/tests/qualify_trust_roots.py",
+          "version": "repo-file-v1:sha256:5fbdabf78d9dca686ad5c2c374f7d149997295561625fc8679923e54925213cb"
+        },
+        {
+          "resource": "repo://crates/decodex-webrtc-build/tests/trust_roots.json",
+          "version": "repo-file-v1:sha256:cc9e5cee85e1f954975ba5eae071a00fdb2f001b5aa07ff8004399ba4cf4f823"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T03:00:10.087Z"
+    "at": "2026-10-28T03:55:33.038Z"
   }
 }

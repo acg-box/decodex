@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:40a7d54bc4f6398143283846929f47db0161f0b42d8bca8ab8c29186713b4370",
+  "pageVersion": "sha256:33d2e3bada6992a27a9f4a4da51dd533998f3979c9fca47e9e6a44282860e311",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -26,11 +26,11 @@
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
-          "version": "repo-file-v1:sha256:4c8dab6abd1a26b236184a5c514f9ec27668dbc396b1f8271cf189ea8efb9baf"
+          "version": "repo-file-v1:sha256:1ac6c4ff625492e12740f830073fbaffec3acdc39cca0e9950d60cfc5d1cc5bd"
         },
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
-          "version": "repo-file-v1:sha256:0fcf192a8d236147381d8067846c334acd5ea376109fad692b7035b32c054178"
+          "version": "repo-file-v1:sha256:c4a92caac75080b14c49119bb6a19926616d21e914153284f8b1b7ceae69ee26"
         }
       ]
     },
@@ -76,11 +76,11 @@
       "evidence": [
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
-          "version": "repo-file-v1:sha256:4c8dab6abd1a26b236184a5c514f9ec27668dbc396b1f8271cf189ea8efb9baf"
+          "version": "repo-file-v1:sha256:1ac6c4ff625492e12740f830073fbaffec3acdc39cca0e9950d60cfc5d1cc5bd"
         },
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
-          "version": "repo-file-v1:sha256:0fcf192a8d236147381d8067846c334acd5ea376109fad692b7035b32c054178"
+          "version": "repo-file-v1:sha256:c4a92caac75080b14c49119bb6a19926616d21e914153284f8b1b7ceae69ee26"
         }
       ]
     },
@@ -176,7 +176,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
+          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
         }
       ]
     },
@@ -196,7 +196,7 @@
       "evidence": [
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
-          "version": "repo-file-v1:sha256:4c8dab6abd1a26b236184a5c514f9ec27668dbc396b1f8271cf189ea8efb9baf"
+          "version": "repo-file-v1:sha256:1ac6c4ff625492e12740f830073fbaffec3acdc39cca0e9950d60cfc5d1cc5bd"
         }
       ]
     },
@@ -252,7 +252,7 @@
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
-          "version": "repo-file-v1:sha256:4c8dab6abd1a26b236184a5c514f9ec27668dbc396b1f8271cf189ea8efb9baf"
+          "version": "repo-file-v1:sha256:1ac6c4ff625492e12740f830073fbaffec3acdc39cca0e9950d60cfc5d1cc5bd"
         }
       ]
     },
@@ -342,7 +342,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
+          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/command_hooks.py",
@@ -403,10 +403,56 @@
           "version": "repo-lines-v1:sha256:57248cc99302ca8aa636d5e485c16f59c0d50dcaa05955d6e2986848f4244349:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmJiNDg5YzIyMTM3OTY3NDhlYzRjNWI3ZGJlMWE1NTNiZWUxZTZmMTc0ZTNjZjU0MjA3NWU4OGI5MmZkMjRhMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTMzOWI3MDcxMzhlYTk2OGQ4YThiY2I4MWI0MGM3Y2M5NmMzYjM2YzAyMjYxZDhiNWRlNTQxOTc5YjgxNmQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzU0ZTU4YjM0MDk1Mzg5ODJiMjY5YTc5NjcyZDliOTBmYmU2MTRjZjViZjcxNzkyZDVhYjViOWEzMjY2YzI0ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWNkMTIzY2U5MjJjNzAzMDE3N2Q1MTdmZTk3MjViMmEzZTQ5OGFlNGZmNjNlOGExY2M4NjQ5MzZlNGMwN2Y4MyJ9"
         }
       ]
+    },
+    {
+      "id": "claim_5244a0a0a0f54ea9911a970ea98d38bb",
+      "statement": "Full macOS workspace validation can run the ordinary suite with the exact four transport names excluded, then run those same four through the signed task; the signed task rejects missing or ignored selected tests.",
+      "evidence": [
+        {
+          "resource": "repo://Makefile.toml",
+          "version": "repo-file-v1:sha256:87e1915e9fdd86f0e28f4c2593cbda1bc3185d9da1d9b82a2a234e9d03a746f1"
+        },
+        {
+          "resource": "repo://scripts/macos/run_native_voice_tests.py",
+          "version": "repo-file-v1:sha256:4c89e8939408260ba668f54a153e546a38d3522e1c9f9ce14c2f014bb67ae453"
+        }
+      ]
+    },
+    {
+      "id": "claim_2bc598a676e74dbe855ad983e57671c5",
+      "statement": "The explicit official-archive test validates both macOS WebRTC ZIP digests and strict headers, while the retained trust-anchor probe checks retired and control certificate DER bytes in each selected static library.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-webrtc-build/src/archive.rs",
+          "version": "repo-file-v1:sha256:dfaa47a9971b0f1f441d43c6995066d6035081557d0f26c89fb53376d137d141"
+        },
+        {
+          "resource": "repo://crates/decodex-webrtc-build/tests/qualify_trust_roots.py",
+          "version": "repo-file-v1:sha256:5fbdabf78d9dca686ad5c2c374f7d149997295561625fc8679923e54925213cb"
+        },
+        {
+          "resource": "repo://crates/decodex-webrtc-build/tests/trust_roots.json",
+          "version": "repo-file-v1:sha256:cc9e5cee85e1f954975ba5eae071a00fdb2f001b5aa07ff8004399ba4cf4f823"
+        }
+      ]
+    },
+    {
+      "id": "claim_7f534f8f92034f78ba677532dfe46a14",
+      "statement": "Workspace dependency qualification keeps source and artifact identities, executed tests, residual constraints and the existing full-style failure separate from selected Codex runtime and installed-app acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
+        },
+        {
+          "resource": "repo://scripts/vstyle_audit.py",
+          "version": "repo-file-v1:sha256:348cbc75935ac1f0c6e6c4220f34e26afb96ef7cc0456bc2f8d4eec62bbc4a1a"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T03:00:10.087Z"
+    "at": "2026-10-28T03:55:33.038Z"
   }
 }

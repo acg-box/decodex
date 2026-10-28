@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:78a5c2abd8a7391624ff6d571db129a381721e8e2bd72580396a068e1c8455de",
+  "pageVersion": "sha256:64409f1fed1fd9f9f35f193409de44b4cc777d73203a855dae286f288a4bc81a",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://Cargo.toml",
-          "version": "repo-file-v1:sha256:8064239f7f8c8c627056757c827600e9bc4519f62107340b7affdd6b02a4abc2"
+          "version": "repo-file-v1:sha256:b35896e15710d70cb92d531631aa3631105b247be35d6d6dcedcaf873f486805"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_mermaid.rs",
@@ -351,6 +351,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-27T18:33:20.613Z"
+    "at": "2026-10-28T03:55:33.038Z"
   }
 }

@@ -66,6 +66,12 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-157a50123cd9da439c18985d
     resource: repo://crates/decodex-runtime/tests/native_qualification/usage.py
+  - id: openwiki-source-042bf1b2b00d2d0ac4dced71
+    resource: repo://crates/decodex-webrtc-build/src/archive.rs
+  - id: openwiki-source-87ec62f51f8e5d9a99b4bb6e
+    resource: repo://crates/decodex-webrtc-build/tests/qualify_trust_roots.py
+  - id: openwiki-source-b7b32ffdb5400494a6a36b80
+    resource: repo://crates/decodex-webrtc-build/tests/trust_roots.json
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
@@ -88,10 +94,12 @@ sources:
     resource: repo://scripts/macos/test_native_app.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
+  - id: openwiki-source-d45a647d565211cf9b5cb067
+    resource: repo://scripts/vstyle_audit.py
+generated: { by: "codex", at: "2026-10-28T03:55:33.038Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T03:00:10.087Z
+    at: 2026-10-28T03:55:33.038Z
 ---
 
 
@@ -143,6 +151,50 @@ DECODEX_APP_SIGN_IDENTITY="$EXISTING_DEVELOPMENT_IDENTITY" cargo +stable make te
 This explicit task builds the locked GPUI test target with all features, signs a separate test copy at a stable target path and uses Nextest build reuse to run four exact transport tests. A missing or ignored test fails selection. An unavailable signature stops execution. Cargo's original artifact, general test commands, native WebRTC packet flow, assertions and zero-retry policy stay intact. The signed copy is serialized so another invocation cannot replace it during a test run.
 
 Allow the first system firewall prompt for `decodex-native-voice-tests`, then rerun the command. The measured certificate and path retained their allow decision across different compiled code versions. Other certificates, paths, systems and firewall policies remain outside that qualification. The tests use synthetic PCM with hardware I/O disabled; separate physical-device and online-provider prerequisites still apply. See [the signing evidence and limits](../integrations/subscription-voice.md#run-native-webrtc-tests-with-a-development-signature).
+
+For full macOS workspace coverage, run the other tests in the ordinary lane and
+run these four tests through the signed task. Derive their exact filter from the
+checked-in runner:
+
+```sh
+DECODEX_VOICE_FILTER="$(python3 -c 'import runpy; print(runpy.run_path("scripts/macos/run_native_voice_tests.py")["FILTER"])')"
+cargo +stable nextest run --locked --workspace --tests --examples --benches --all-features -E "not ($DECODEX_VOICE_FILTER)"
+DECODEX_APP_SIGN_IDENTITY="$EXISTING_DEVELOPMENT_IDENTITY" cargo +stable make test-native-voice
+```
+
+Report both lanes and their selected counts. The signed task checks that every
+selected transport test exists and is not ignored.
+
+## Qualify native dependency artifacts
+
+Freeze dependency versions and immutable Git refs before qualification. Use the
+repository lockfiles and existing managed tools. Resolve new graphs without
+executing install scripts, inspect changed source and build entrypoints, then run
+the affected repository checks. Keep direct declarations in inherited minor-line
+tables and let the package managers regenerate their locks.
+
+For the official WebRTC archives, download the selected arm64 and x64 release
+assets into system-temporary paths. Set `DECODEX_WEBRTC_ARM64_ARCHIVE` and
+`DECODEX_WEBRTC_X64_ARCHIVE` to those files. Run the retained digest and strict-header
+test:
+
+```sh
+cargo +stable test --locked -p decodex-webrtc-build archive::tests::official_macos_archives_pass_digest_and_strict_header_validation -- --exact --ignored --nocapture
+python3 crates/decodex-webrtc-build/tests/qualify_trust_roots.py --archive "$DECODEX_WEBRTC_ARM64_ARCHIVE" --sha256 153a1f1a268b812b4a501deda6505037f29481691efec52be817f560ff09e206
+python3 crates/decodex-webrtc-build/tests/qualify_trust_roots.py --archive "$DECODEX_WEBRTC_X64_ARCHIVE" --sha256 c53d7d20277f7729956854f1268c372360f08732520136b559034eedae0980a2
+```
+
+Use the hashes for the selected release in `pinned_digest` and the
+`workspace_dependencies` section of the [qualification record](../../automations/upstream/qualification.json)
+when that selection changes. The probe checks certificate DER bytes in the actual
+static library and retains a positive control. Its optional baseline arguments
+verify a previous library against its recorded digest. Header and library checks
+do not execute TURN/TLS or qualify physical audio and providers. Run the signed
+real WebRTC lane for packet flow against the rebuilt artifact.
+
+Keep workspace dependency results separate from the selected Codex CLI and its
+helpers. Record residual upstream constraints and the actual full-style audit
+outcome. A baseline comparison does not turn a failed style audit into a pass.
 
 ## Discard an unused local draft
 
