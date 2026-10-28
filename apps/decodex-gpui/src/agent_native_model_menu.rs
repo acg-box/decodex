@@ -7,7 +7,11 @@ use gpui::{
 };
 
 use crate::{
-	shell::agent_surface::{AgentSurface, composer},
+	shell::{
+		ToggleContentFullscreen,
+		agent_surface::{AgentSurface, composer},
+		forward_shell_action,
+	},
 	ui_motion,
 	ui_theme::{
 		self, BODY_SIZE, FONT_FAMILY, TEXT, appearance, native_material_panel::MaterialPanel,
@@ -24,6 +28,7 @@ pub(super) struct NativeModelMenu {
 
 struct ModelMenu {
 	owner: Entity<AgentSurface>,
+	parent: AnyWindowHandle,
 	surface: Option<MaterialPanel>,
 	focus: FocusHandle,
 	_observation: Subscription,
@@ -31,6 +36,7 @@ struct ModelMenu {
 impl Render for ModelMenu {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let owner = self.owner.clone();
+		let parent = self.parent;
 		let content = owner.update(cx, |s, cx| match s.composer_menu.or(s.composer_menu_content) {
 			Some("permissions") => s.permission_options(cx),
 			_ => s.model_options(cx),
@@ -42,6 +48,17 @@ impl Render for ModelMenu {
 			.font_family(FONT_FAMILY)
 			.text_size(gpui::px(BODY_SIZE))
 			.text_color(ui_theme::rgb(TEXT))
+			.on_action({
+				let owner = owner.clone();
+
+				move |action: &ToggleContentFullscreen, _, cx| {
+					owner.update(cx, |s, cx| {
+						s.dismiss_composer_menu(cx);
+						s.focus_native_message(cx);
+					});
+					forward_shell_action(parent, action, cx);
+				}
+			})
 			.on_key_down({
 				let owner = owner.clone();
 
@@ -192,7 +209,7 @@ fn create(
 
 					window.focus(&focus, cx);
 
-					ModelMenu { owner, surface: None, focus, _observation: observation }
+					ModelMenu { owner, parent, surface: None, focus, _observation: observation }
 				})
 			},
 		)

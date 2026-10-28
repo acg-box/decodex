@@ -259,6 +259,7 @@ impl AgentSurface {
 					relations: vec![],
 					metrics: Sample {
 						tokens: Some(37_000 + index as u64 * 7_000),
+						breakdown: None,
 						stats: Some(AgentThreadMetrics {
 							completed_ms: Some(480_000 + index as u64 * 17_000),
 							active_ms: None,

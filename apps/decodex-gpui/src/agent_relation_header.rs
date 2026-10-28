@@ -1,11 +1,9 @@
 //! A character speaks above its head; its stable identity stays at its feet.
 #[path = "agent_relation_rows.rs"] mod information_rows;
 
-use std::sync::Arc;
-
 use gpui::{
 	AnyElement, App, Div, FontWeight, InteractiveElement as _, IntoElement, MouseButton,
-	PathBuilder, RenderOnce, Role, SharedString, Stateful, TextSystem, Window, WindowTextSystem,
+	PathBuilder, RenderOnce, Role, SharedString, Stateful, Window, WindowTextSystem,
 	prelude::{FluentBuilder, ParentElement, StatefulInteractiveElement, Styled},
 };
 
@@ -89,7 +87,7 @@ impl Header {
 				})
 			});
 		let lines = if layout.activity_visible() {
-			information_rows::task_excerpt(&self.task, layout, cx.text_system()).lines.max(1)
+			information_rows::task_excerpt(&self.task, layout, window.text_system()).lines.max(1)
 		} else {
 			1
 		};
@@ -104,11 +102,9 @@ impl Header {
 			.gap(gpui::px(6.))
 			.child(identity)
 			.when(layout.activity_visible() && !self.task.is_empty(), |row| {
-				row.child(
-					gpui::div().max_w(gpui::px(layout.caption_width())).flex_none().child(
-						information_rows::goal(&self.key, &self.task, layout, cx.text_system()),
-					),
-				)
+				row.child(gpui::div().max_w(gpui::px(layout.caption_width())).flex_none().child(
+					information_rows::goal(&self.key, &self.task, layout, window.text_system()),
+				))
 			});
 
 		self.interaction.apply(caption, false)
@@ -158,7 +154,7 @@ impl RenderOnce for Header {
 
 		let metadata = layout.labels().then(|| self.metadata(layout, window, cx));
 		let h = self;
-		let (_, count) = content_rows(&h.task, &h.activity, layout, cx.text_system());
+		let (_, count) = content_rows(&h.task, &h.activity, layout, window.text_system());
 		let speech_height = h.activity.height * layout.activity_line() / LINE;
 		let portrait_width = layout.portrait_spacing(PORTRAIT_WIDTH);
 		let selection = selection_mark(&h.key, h.selected, layout, window, cx);
@@ -220,7 +216,6 @@ impl RenderOnce for Header {
 pub(super) fn speech_width(
 	activity: &Frame,
 	layout: Layout,
-	system: &Arc<TextSystem>,
 	shaper: &WindowTextSystem,
 ) -> Option<f32> {
 	activity
@@ -228,7 +223,7 @@ pub(super) fn speech_width(
 		.iter()
 		.map(|line| {
 			information_rows::bubble_width(
-				&information_rows::message_excerpt(&line.text, layout, system),
+				&information_rows::message_excerpt(&line.text, layout, shaper),
 				layout,
 				shaper,
 			)
@@ -241,7 +236,7 @@ pub(super) fn content_rows(
 	task: &str,
 	activity: &Frame,
 	layout: Layout,
-	text_system: &Arc<TextSystem>,
+	text_system: &WindowTextSystem,
 ) -> (usize, f32) {
 	if !layout.activity_visible() {
 		return (0, 0.);
@@ -261,7 +256,7 @@ pub(super) fn detail_rows(
 	task: &str,
 	activity: &Frame,
 	layout: Layout,
-	text_system: &Arc<TextSystem>,
+	text_system: &WindowTextSystem,
 ) -> f32 {
 	let Some((min, max)) = layout.activity_range() else { return 0. };
 	let task_lines = [min, max]
@@ -281,7 +276,7 @@ pub(super) fn detail_rows(
 pub(super) fn operation_height(
 	text: &str,
 	layout: Layout,
-	text_system: &Arc<TextSystem>,
+	text_system: &WindowTextSystem,
 ) -> (f32, f32) {
 	let height = |layout| {
 		information_rows::message_height(

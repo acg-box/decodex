@@ -1,7 +1,7 @@
 //! Selection reveals the whole ownership branch, with no second routing algorithm.
-use std::{collections::BTreeSet, sync::Arc};
+use std::collections::BTreeSet;
 
-use gpui::{Div, ParentElement as _, Stateful, Styled as _, TextSystem};
+use gpui::{Div, ParentElement as _, Stateful, Styled as _, WindowTextSystem};
 
 use crate::{
 	shell::agent_surface::work_board::relations::{
@@ -13,7 +13,7 @@ use crate::{
 
 // Routing obstacles describe painted text, not the blank area below it.
 // Keep the character/HUD attachment intact so connections still end outside it.
-pub(super) fn routing_nodes(graph: &Graph, text_system: &Arc<TextSystem>) -> Vec<Node> {
+pub(super) fn routing_nodes(graph: &Graph, text_system: &WindowTextSystem) -> Vec<Node> {
 	let layout = graph.layout;
 
 	graph

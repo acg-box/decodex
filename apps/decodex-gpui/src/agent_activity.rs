@@ -1215,6 +1215,7 @@ mod tests {
 					next_cursor: Some("older".into()),
 					weather: Default::default(),
 					thread_token_total: None,
+					thread_token_breakdown: None,
 					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
@@ -1252,6 +1253,7 @@ mod tests {
 					next_cursor: None,
 					weather: Default::default(),
 					thread_token_total: None,
+					thread_token_breakdown: None,
 					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,
@@ -1370,6 +1372,7 @@ mod tests {
 					next_cursor: None,
 					weather: Default::default(),
 					thread_token_total: None,
+					thread_token_breakdown: None,
 					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None
@@ -1454,7 +1457,7 @@ phase: None,
 				work: "agent".into(), thread: "benchmark-thread".into(), account: "benchmark".into(),
 			}, decodex_protocol::AgentTimelinePage {
 				thread_id: "benchmark-thread".into(), entries, next_cursor: None,
-				weather: Default::default(), thread_token_total: None,
+				weather: Default::default(), thread_token_total: None, thread_token_breakdown: None,
 		thread_metrics: None, safety_buffering_turn_id: None, active_realtime_session_at_page_start: None,
 			}));
 

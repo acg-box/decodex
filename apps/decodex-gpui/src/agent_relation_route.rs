@@ -672,6 +672,36 @@ fn avoid_cards_from(
 				return path;
 			}
 		}
+
+		// A child's speech can block its top port. Bend down first and then
+		// enter its exposed side, without turning the shared branch into a rail.
+		if origin.is_some() {
+			for (start, end) in &pairs {
+				let dx = end.anchor.0 - start.anchor.0;
+				let dy = end.anchor.1 - start.anchor.1;
+				let start_y = start.outer.1 - start.anchor.1;
+				let end_x = end.outer.0 - end.anchor.0;
+
+				if start_y * dy <= 0. || end_x * dx >= 0. {
+					continue;
+				}
+
+				for first in [0.5, 0.75, 1.] {
+					for second in [0.35, 0.6, 0.85] {
+						let path = Route::curve(
+							start.anchor,
+							toward(start.anchor, start.outer, dy.abs() * first),
+							toward(end.anchor, end.outer, dx.abs() * second),
+							end.anchor,
+						);
+
+						if clears_cards(&path, a, b, cards) {
+							return path;
+						}
+					}
+				}
+			}
+		}
 	}
 
 	let arc = vertical_arc(&pairs, a, b, cards);
@@ -683,7 +713,13 @@ fn avoid_cards_from(
 			points.insert(0, start.anchor);
 			points.push(end.anchor);
 
-			let routed = rounded_path(points, CLEARANCE);
+			// Use a softer turn when the wider bend still clears every obstacle.
+			let soft = rounded_path(points.clone(), CLEARANCE * 3.);
+			let routed = if clears_cards(&soft, a, b, cards) {
+				soft
+			} else {
+				rounded_path(points, CLEARANCE)
+			};
 			let cost = routed.measured_length() + (routed.curves.len() / 2) as f32 * TURN_COST;
 
 			return arc.filter(|arc| arc.measured_length() < cost).unwrap_or(routed);
@@ -996,6 +1032,65 @@ mod tests {
 		}
 
 		assert!(paths.values().all(|path| path.ink_arrow));
+	}
+
+	#[test]
+	fn speech_above_siblings_keeps_tree_branches_smooth() {
+		let mut parent = node("parent", -184., -220.);
+
+		parent.size = (368., 220.);
+		parent.attachment = Some([144., 115., 224., 220.]);
+		parent.speech = Some([20., 0., 348., 80.]);
+		parent.identity = Some([45., 200., 323., 216.]);
+
+		let mut left = node("left", -379., 67.);
+
+		left.size = (368., 180.);
+		left.attachment = Some([144., 72., 224., 170.]);
+		left.speech = Some([20., 0., 348., 63.]);
+		left.identity = Some([125., 150., 243., 165.]);
+
+		let mut right = node("right", 11., 67.);
+
+		right.size = (368., 165.);
+		right.attachment = Some([144., 55., 224., 155.]);
+		right.speech = Some([20., 0., 348., 48.]);
+		right.identity = Some([125., 135., 243., 150.]);
+
+		let nodes = [parent, left, right];
+		let paths =
+			Cache::default().paths(&nodes, &[edge("parent", "left"), edge("parent", "right")]);
+
+		for child in ["left", "right"] {
+			let path = &paths[&format!("parent-{child}")];
+
+			assert_eq!(path.curves[0].start, (0., 0.));
+			assert_eq!(path.curves.len(), 1, "{child} should not form a rectangular detour");
+			let target = nodes.iter().find(|node| node.key == child).unwrap();
+			let end = path.curves[0].end;
+			let [left, _, right, _] = target.connection_bounds();
+
+			assert_eq!(end.0, if child == "left" { right } else { left });
+			for pair in path.samples.windows(2) {
+				let dx = pair[1].0.0 - pair[0].0.0;
+
+				assert!(if child == "left" { dx <= 0. } else { dx >= 0. });
+				assert!(pair[1].0.1 >= pair[0].0.1, "branches must not double back");
+			}
+
+			for sample in &path.samples {
+				for node in &nodes {
+					let [left, top, right, bottom] = node.speech.unwrap();
+
+					assert!(
+						!(sample.0.0 > node.x + left
+							&& sample.0.0 < node.x + right
+							&& sample.0.1 > node.y + top
+							&& sample.0.1 < node.y + bottom)
+					);
+				}
+			}
+		}
 	}
 
 	#[test]

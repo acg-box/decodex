@@ -289,7 +289,7 @@ fn spawn_server(
 										QueryResultPayload::AgentPromptEdit(PromptEditStatus { work_id, thread_id, phase: if step == 1 { PromptEditPhase::Applied } else { PromptEditPhase::Restored }, evidence: Some(PromptEditEvidence { review_token: WireText::new("a".repeat(64)).unwrap(), receipt_id: Some(10), before_turn_id: WireText::new("turn").unwrap(), item_id: WireText::new("item").unwrap(), removed_turns: 2, content_bytes: fragment.len() as u64, offset: 0, fragment }) })
 									},
 									QueryPayload::GetAgentHistory { .. } if step == 2 => QueryResultPayload::AgentHistory(AgentHistoryResult::Available { questions: vec![], expired_question_ids: Vec::new(), questions_truncated: false, questions_recovering: false, misalignment: None, usage: None, entries: vec![], has_more: false, next_before: None, live: vec![] }),
-									QueryPayload::GetAgentTimeline { work_id, thread_id, .. } if step == 3 => QueryResultPayload::AgentTimeline(AgentTimelineResult::Available { work_id, account_id: EntityId::new("account").unwrap(), page: AgentTimelinePage { thread_id: thread_id.as_str().into(), entries: vec![], next_cursor: None, weather: Default::default(), thread_token_total: None,
+									QueryPayload::GetAgentTimeline { work_id, thread_id, .. } if step == 3 => QueryResultPayload::AgentTimeline(AgentTimelineResult::Available { work_id, account_id: EntityId::new("account").unwrap(), page: AgentTimelinePage { thread_id: thread_id.as_str().into(), entries: vec![], next_cursor: None, weather: Default::default(), thread_token_total: None, thread_token_breakdown: None,
 		thread_metrics: None, safety_buffering_turn_id: None, active_realtime_session_at_page_start: None } }),
 									_ => panic!("unexpected query at step {step}"),
 								};

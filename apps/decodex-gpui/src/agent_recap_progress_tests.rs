@@ -269,6 +269,7 @@ async fn serve(listener: &tokio::net::UnixListener, changed_account: bool) {
 					next_cursor: (page_index == 0).then(|| "older".into()),
 					weather: Default::default(),
 					thread_token_total: None,
+					thread_token_breakdown: None,
 					thread_metrics: None,
 					safety_buffering_turn_id: None,
 					active_realtime_session_at_page_start: None,

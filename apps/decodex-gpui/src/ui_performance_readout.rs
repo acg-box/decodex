@@ -14,29 +14,86 @@ use crate::{
 	ui_live_activity::{CAPSULE_HEIGHT, Sizing},
 	ui_motion,
 	ui_performance::{self, PerformanceIsland, chart},
-	ui_theme::{self, BLUE, TEXT_MUTED, WARNING},
-	ui_work_metrics::{self, Icon, Live, Summary},
+	ui_theme::{self, BLUE, TEXT, TEXT_MUTED, WARNING},
+	ui_work_metrics::{self, Live, Summary},
 };
 
 pub(super) const TEXT_SIZE: f32 = 11.;
 
 const INSET: f32 = 12.;
 const FRAME: f32 = 2. * INSET + 2.;
+const METRIC_HEIGHT: f32 = 28.;
+const BODY_TOP: f32 = 4.;
+const BODY_BOTTOM: f32 = 8.;
+const METRIC_GAP: f32 = 8.;
+const COLUMN_GAP: f32 = 16.;
 
 pub(super) struct Work {
 	label: String,
 	total: String,
+	working: bool,
 	live: bool,
 	estimated: bool,
 	rate: String,
 	rows: Arc<[Live]>,
 	columns: [f32; 2],
+	breakdown: [String; 4],
+	breakdown_columns: [f32; 2],
 	sizing: Sizing,
 }
 impl Work {
+	fn idle_total(&self) -> bool {
+		!self.working && self.total != "—"
+	}
+
+	fn status(&self) -> Option<&'static str> {
+		activity_status(self.working, self.live, self.rate != "—")
+	}
+
 	fn unit(&self) -> &'static str {
 		if self.live || self.estimated || self.rate == "—" { "tok/s" } else { "avg tok/s" }
 	}
+}
+
+fn activity_status(working: bool, generating: bool, has_rate: bool) -> Option<&'static str> {
+	if !working {
+		Some("Idle")
+	} else if !generating {
+		Some("Working")
+	} else if !has_rate {
+		Some("Generating")
+	} else {
+		None
+	}
+}
+
+fn tokens(value: &str) -> String {
+	if value == "—" { value.into() } else { format!("{value} tok") }
+}
+
+fn breakdown_columns(
+	data: &Work,
+	width: &mut impl FnMut(&'static str, &str, f32, FontWeight) -> f32,
+) -> [f32; 2] {
+	let labels = [
+		("activity-input-label", "activity-input-value", "Input"),
+		("activity-output-label", "activity-output-value", "Output"),
+		("activity-cached-label", "activity-cached-value", "Cached input"),
+		("activity-reasoning-label", "activity-reasoning-value", "Reasoning"),
+	];
+
+	std::array::from_fn(|column| {
+		[column, column + 2].into_iter().fold(0_f32, |maximum, index| {
+			let (label_id, value_id, label) = labels[index];
+
+			maximum.max(width(label_id, label, TEXT_SIZE, FontWeight::NORMAL)).max(width(
+				value_id,
+				&tokens(&data.breakdown[index]),
+				TEXT_SIZE,
+				FontWeight::MEDIUM,
+			))
+		})
+	})
 }
 
 pub(super) struct Debug {
@@ -47,7 +104,7 @@ pub(super) struct Debug {
 	memory: String,
 	latency: String,
 	draw: String,
-	columns: [f32; 3],
+	columns: [f32; 2],
 	sizing: Sizing,
 }
 
@@ -70,31 +127,73 @@ pub(super) enum Content {
 }
 impl Content {
 	pub(super) fn work(work: &Summary, window: &mut Window, cx: &mut App) -> Self {
-		let rate = work.display_rate_text();
+		let live = work.working > 0 && work.generating();
+		let rate = if live { work.display_rate_text() } else { "—".into() };
 		let total = work
 			.total_tokens()
 			.map_or_else(|| "—".into(), crate::shell::agent_surface::compact_tokens);
+		let breakdown = work.token_breakdown();
+		let count = |value: Option<u64>| {
+			value.map_or_else(|| "—".into(), crate::shell::agent_surface::compact_tokens)
+		};
 		let mut data = Work {
-			label: format!(
-				"{total} recorded tokens, including cached input. Output: {} tok/s. Last measured rate is kept while idle; tool and user waits excluded.",
-				rate
-			),
+			label: String::new(),
 			total,
-			live: work.working > 0 && work.generating(),
+			working: work.working > 0,
+			live,
 			estimated: work.rate_estimated(),
 			rate,
 			rows: work.live.clone().into(),
 			columns: [0.; 2],
+			breakdown: [
+				count(breakdown.map(|v| v.input_tokens)),
+				count(breakdown.map(|v| v.output_tokens)),
+				count(breakdown.map(|v| v.cached_input_tokens)),
+				count(breakdown.map(|v| v.reasoning_output_tokens)),
+			],
+			breakdown_columns: [0.; 2],
 			sizing: Sizing { minimal: 0., compact: 0., expanded: 0. },
 		};
+		let activity = if let Some(status) = data.status() {
+			status.to_owned()
+		} else {
+			format!(
+				"{} {}. Estimated generation rate excludes tool and user waits.",
+				data.rate,
+				data.unit()
+			)
+		};
+
+		data.label = format!(
+			"{activity}. Current graph agents: {} cumulative tokens, including cached input. Adding or archiving agents changes this amount.",
+			data.total
+		);
 		let mut width = |id, text: &str, size, weight| measure(id, text, size, weight, window, cx);
-		let minimal = width("activity-width-live", &data.rate, TEXT_SIZE, FontWeight::MEDIUM)
-			+ 3.
-			+ width("activity-width-live-unit", data.unit(), TEXT_SIZE, FontWeight::NORMAL)
-			+ 22.;
-		let compact = width("activity-width-rate", &data.rate, TEXT_SIZE, FontWeight::MEDIUM)
+		let primary = if let Some(status) = data.status() {
+			width("activity-width-status", status, TEXT_SIZE, FontWeight::MEDIUM)
+		} else {
+			width("activity-width-rate", &data.rate, TEXT_SIZE, FontWeight::MEDIUM)
+				+ 4.
+				+ width("activity-width-rate-unit", data.unit(), TEXT_SIZE, FontWeight::NORMAL)
+		};
+		let minimal = if data.idle_total() {
+			width("activity-width-idle-total", &data.total, TEXT_SIZE, FontWeight::MEDIUM)
+				+ 3.
+				+ width("activity-width-idle-unit", "tok", TEXT_SIZE, FontWeight::NORMAL)
+				+ 22.
+		} else {
+			primary + 22.
+		};
+		let compact = primary
+			+ 16.
+			+ width("activity-width-total-label", "Total", TEXT_SIZE, FontWeight::NORMAL)
 			+ 4.
-			+ width("activity-width-rate-unit", data.unit(), TEXT_SIZE, FontWeight::NORMAL)
+			+ width(
+				"activity-width-total-value",
+				&tokens(&data.total),
+				TEXT_SIZE,
+				FontWeight::MEDIUM,
+			)
 			+ FRAME;
 		let longest = |get: fn(&Live) -> String| {
 			data.rows.iter().map(get).max_by_key(String::len).unwrap_or_default()
@@ -133,16 +232,13 @@ impl Content {
 		} else {
 			data.columns.iter().sum::<f32>() + action + 16. + FRAME
 		};
-		let total_width =
-			width("activity-width-total-label", "Recorded tokens", TEXT_SIZE, FontWeight::NORMAL)
-				+ width("activity-width-total-value", &data.total, TEXT_SIZE, FontWeight::MEDIUM)
-				+ 28.
-				+ FRAME;
+		data.breakdown_columns = breakdown_columns(&data, &mut width);
+		let breakdown_width = data.breakdown_columns.iter().sum::<f32>() + COLUMN_GAP + FRAME;
 
 		data.sizing = Sizing {
 			minimal,
 			compact: compact.max(minimal),
-			expanded: details.max(compact).max(minimal).max(total_width),
+			expanded: details.max(compact).max(minimal).max(breakdown_width),
 		};
 
 		Self::Work(data)
@@ -162,7 +258,7 @@ impl Content {
 			memory: ui_performance::bytes(island.host.peak_memory_bytes),
 			latency: ui_performance::timing(island.metrics.submit_ms, island.metrics.ready_samples),
 			draw: ui_performance::timing(island.metrics.draw_ms, island.metrics.draw_frames),
-			columns: [0.; 3],
+			columns: [0.; 2],
 			sizing: Sizing { minimal: 0., compact: 0., expanded: 0. },
 		};
 		let mut width = |id, text: &str, size, weight| measure(id, text, size, weight, window, cx);
@@ -171,27 +267,42 @@ impl Content {
 			+ 3.
 			+ width("activity-width-fps-small", "FPS", TEXT_SIZE, FontWeight::NORMAL)
 			+ 22.;
-		let compact = width("activity-width-fps-label", "FPS", TEXT_SIZE, FontWeight::NORMAL)
-			+ 4.
-			+ fps
-			+ 16.
-			+ width("activity-width-gpu-label", "GPU", TEXT_SIZE, FontWeight::NORMAL)
-			+ 4.
-			+ width("activity-width-gpu", &data.gpu, TEXT_SIZE, FontWeight::MEDIUM)
-			+ FRAME;
+		let compact =
+			width("activity-width-fps-label", "Frame rate", TEXT_SIZE, FontWeight::NORMAL)
+				+ 4.
+				+ width(
+					"activity-width-fps-value",
+					&format!("{} FPS", data.fps),
+					TEXT_SIZE,
+					FontWeight::MEDIUM,
+				)
+				+ FRAME;
 
 		data.columns = [
-			width("activity-width-cpu-label", "CPU", TEXT_SIZE, FontWeight::NORMAL)
-				.max(width("activity-width-cpu", &data.cpu, TEXT_SIZE, FontWeight::MEDIUM))
+			width("activity-width-gpu-label", "System GPU", TEXT_SIZE, FontWeight::NORMAL)
+				.max(width("activity-width-gpu", &data.gpu, TEXT_SIZE, FontWeight::MEDIUM))
+				.max(width(
+					"activity-width-memory-label",
+					"UI peak RAM",
+					TEXT_SIZE,
+					FontWeight::NORMAL,
+				))
+				.max(width("activity-width-memory", &data.memory, TEXT_SIZE, FontWeight::MEDIUM))
 				.max(width("activity-width-draw-label", "Draw p95", TEXT_SIZE, FontWeight::NORMAL))
 				.max(width("activity-width-draw", &data.draw, TEXT_SIZE, FontWeight::MEDIUM)),
-			width("activity-width-memory-label", "Peak RAM", TEXT_SIZE, FontWeight::NORMAL)
-				.max(width("activity-width-memory", &data.memory, TEXT_SIZE, FontWeight::MEDIUM)),
-			width("activity-width-latency-label", "Latency p95", TEXT_SIZE, FontWeight::NORMAL)
+			width("activity-width-cpu-label", "UI CPU", TEXT_SIZE, FontWeight::NORMAL)
+				.max(width("activity-width-cpu", &data.cpu, TEXT_SIZE, FontWeight::MEDIUM))
+				.max(width(
+					"activity-width-latency-label",
+					"Latency p95",
+					TEXT_SIZE,
+					FontWeight::NORMAL,
+				))
 				.max(width("activity-width-latency", &data.latency, TEXT_SIZE, FontWeight::MEDIUM)),
 		];
 
-		let details = data.columns.iter().sum::<f32>() + 24. + FRAME;
+		// The sparkline gets enough space to show its measured history.
+		let details = data.columns[0] + data.columns[1].max(96.) + COLUMN_GAP + FRAME;
 
 		data.sizing = Sizing {
 			minimal,
@@ -211,8 +322,19 @@ impl Content {
 
 	pub(super) fn height(&self) -> f32 {
 		match self {
-			Self::Work(v) => CAPSULE_HEIGHT + 38. + v.rows.len().min(4) as f32 * 22.,
-			Self::Debug(_) => CAPSULE_HEIGHT + 68.,
+			Self::Work(v) =>
+				CAPSULE_HEIGHT
+					+ BODY_TOP
+					+ 2. * METRIC_HEIGHT
+					+ METRIC_GAP
+					+ BODY_BOTTOM
+					+ if v.rows.is_empty() {
+						0.
+					} else {
+						METRIC_GAP + v.rows.len().min(4) as f32 * 22.
+					},
+			Self::Debug(_) =>
+				CAPSULE_HEIGHT + BODY_TOP + 3. * METRIC_HEIGHT + 2. * METRIC_GAP + BODY_BOTTOM,
 		}
 	}
 
@@ -306,29 +428,50 @@ fn number(id: &'static str, value: String) -> Div {
 		.child(value)
 }
 
-fn debug_header(data: &Debug) -> AnyElement {
-	let field = |id, label, value| {
-		gpui::div()
-			.flex()
-			.items_baseline()
-			.gap_1()
-			.child(
-				gpui::div()
-					.debug_selector(move || format!("performance-{id}-label"))
-					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child(label),
-			)
-			.child(number(id, value))
-	};
+fn measurement(id: &'static str, value: String) -> Div {
+	let unit = [" tok", " FPS", " ms", " GB", "%"]
+		.into_iter()
+		.find_map(|suffix| value.strip_suffix(suffix).map(|number| (number, suffix)));
+	let (number, unit) = unit.map_or_else(
+		|| (value.clone(), None),
+		|(number, suffix)| {
+			(number.to_owned(), Some((suffix.trim_start(), suffix.starts_with(' '))))
+		},
+	);
 
+	gpui::div()
+		.debug_selector(move || format!("performance-{id}"))
+		.flex_none()
+		.flex()
+		.items_baseline()
+		.whitespace_nowrap()
+		.child(gpui::div().font_weight(FontWeight::MEDIUM).child(number))
+		.when_some(unit, |d, (unit, spaced)| {
+			d.child(
+				gpui::div()
+					.debug_selector(move || format!("performance-{id}-unit"))
+					.ml(gpui::px(if spaced { 3. } else { 0. }))
+					.font_weight(FontWeight::NORMAL)
+					.text_color(ui_theme::rgb(TEXT_MUTED))
+					.child(unit),
+			)
+		})
+}
+
+fn debug_header(data: &Debug) -> AnyElement {
 	gpui::div()
 		.w_full()
 		.px(gpui::px(INSET))
 		.flex()
 		.items_center()
-		.justify_between()
-		.child(field("fps", "FPS", data.fps.clone()))
-		.child(field("gpu", "GPU", data.gpu.clone()))
+		.gap_1()
+		.child(
+			gpui::div()
+				.debug_selector(|| "performance-fps-label".into())
+				.text_color(ui_theme::rgb(TEXT_MUTED))
+				.child("Frame rate"),
+		)
+		.child(measurement("fps", format!("{} FPS", data.fps)))
 		.into_any_element()
 }
 
@@ -337,33 +480,63 @@ fn work_header(data: &Work) -> AnyElement {
 		.w_full()
 		.px(gpui::px(INSET))
 		.flex()
-		.items_baseline()
-		.justify_center()
-		.gap_1()
-		.child(number("work-rate", data.rate.clone()).text_color(ui_theme::rgb(if data.live {
-			BLUE
-		} else {
-			TEXT_MUTED
-		})))
-		.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(data.unit()))
+		.items_center()
+		.justify_between()
+		.gap_3()
+		.child(work_primary(data, false))
+		.child(
+			gpui::div()
+				.debug_selector(|| "activity-work-total".into())
+				.flex()
+				.items_baseline()
+				.gap_1()
+				.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Total"))
+				.child(measurement("activity-total-value", tokens(&data.total))),
+		)
 		.into_any_element()
 }
 
 fn work_minimal(data: &Work) -> AnyElement {
+	let content = if data.idle_total() {
+		gpui::div()
+			.flex()
+			.items_baseline()
+			.gap(gpui::px(3.))
+			.whitespace_nowrap()
+			.child(number("live-total", data.total.clone()).text_color(ui_theme::rgb(TEXT)))
+			.child(
+				gpui::div()
+					.debug_selector(|| "performance-live-total-unit".into())
+					.text_color(ui_theme::rgb(TEXT_MUTED))
+					.child("tok"),
+			)
+			.into_any_element()
+	} else {
+		work_primary(data, true)
+	};
+
+	gpui::div().debug_selector(|| "activity-live-rate".into()).child(content).into_any_element()
+}
+
+fn work_primary(data: &Work, minimal: bool) -> AnyElement {
+	if let Some(status) = data.status() {
+		return number(if minimal { "live-status" } else { "work-status" }, status.into())
+			.when(!minimal && !data.working, |view| {
+				view.font_weight(FontWeight::NORMAL).text_color(ui_theme::rgb(TEXT_MUTED))
+			})
+			.into_any_element();
+	}
+
 	gpui::div()
-		.debug_selector(|| "activity-live-rate".into())
 		.flex()
 		.items_baseline()
-		.gap(gpui::px(3.))
+		.gap(gpui::px(if minimal { 3. } else { 4. }))
 		.whitespace_nowrap()
-		.text_color(ui_theme::rgb(if data.live { BLUE } else { TEXT_MUTED }))
-		.child(number("live-rate", data.rate.clone()))
 		.child(
-			gpui::div()
-				.text_size(gpui::px(TEXT_SIZE))
-				.text_color(ui_theme::rgb(TEXT_MUTED))
-				.child(data.unit()),
+			number(if minimal { "live-rate" } else { "work-rate" }, data.rate.clone())
+				.text_color(ui_theme::rgb(TEXT)),
 		)
+		.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(data.unit()))
 		.into_any_element()
 }
 
@@ -512,28 +685,48 @@ fn work_details(data: &Work, window: &mut Window, cx: &mut App) -> AnyElement {
 	.track_scroll(scroll.read(cx))
 	.w_full()
 	.h(gpui::px(data.rows.len().min(4) as f32 * 22.));
+	let fields = [
+		("work-input", "Input", "Input tokens"),
+		("work-output", "Output", "Output tokens"),
+		("work-cached", "Cached input", "Cached input, included in input"),
+		("work-reasoning", "Reasoning", "Reasoning tokens, included in output"),
+	];
+	let field = |index: usize| {
+		let (id, label, description) = fields[index];
+		let value = tokens(&data.breakdown[index]);
+
+		metric(id, label, value.clone())
+			.w(gpui::px(data.breakdown_columns[index % 2]))
+			.role(Role::Group)
+			.aria_label(format!("{description}: {value}"))
+	};
+	let row = |first| {
+		gpui::div()
+			.w_full()
+			.flex()
+			.justify_between()
+			.gap(gpui::px(COLUMN_GAP))
+			.child(field(first))
+			.child(field(first + 1))
+	};
 
 	gpui::div()
 		.w_full()
 		.px(gpui::px(INSET))
-		.pb(gpui::px(8.))
+		.pt(gpui::px(BODY_TOP))
+		.pb(gpui::px(BODY_BOTTOM))
+		.flex()
+		.flex_col()
+		.gap(gpui::px(METRIC_GAP))
 		.child(
 			gpui::div()
-				.debug_selector(|| "activity-work-total".into())
-				.h(gpui::px(30.))
+				.debug_selector(|| "activity-work-breakdown".into())
+				.w_full()
 				.flex()
-				.items_center()
-				.justify_between()
-				.gap_3()
-				.child(
-					gpui::div()
-						.flex()
-						.items_center()
-						.gap_1()
-						.child(Icon::Tokens.element(11., TEXT_MUTED))
-						.child("Recorded tokens"),
-				)
-				.child(number("activity-total-value", data.total.clone())),
+				.flex_col()
+				.gap(gpui::px(METRIC_GAP))
+				.child(row(0))
+				.child(row(2)),
 		)
 		.when(!data.rows.is_empty(), |body| body.child(list))
 		.into_any_element()
@@ -545,41 +738,45 @@ fn debug_details(
 	window: &mut Window,
 	cx: &mut App,
 ) -> AnyElement {
-	let columns = ["activity-column-cpu", "activity-column-memory", "activity-column-latency"]
+	let columns = ["activity-debug-column-left", "activity-debug-column-right"]
 		.into_iter()
 		.zip(data.columns)
 		.map(|(id, width)| ui_motion::value(id, width, window, cx))
 		.collect::<Vec<_>>();
-	let rows = [
-		("cpu", "CPU", data.cpu.clone()),
-		("memory", "Peak RAM", data.memory.clone()),
-		("latency", "Latency p95", data.latency.clone()),
-	];
+	let row = |left: (&'static str, &'static str, String),
+	           right: (&'static str, &'static str, String)| {
+		gpui::div()
+			.w_full()
+			.flex()
+			.justify_between()
+			.gap(gpui::px(COLUMN_GAP))
+			.child(metric(left.0, left.1, left.2).w(gpui::px(columns[0])))
+			.child(metric(right.0, right.1, right.2).w(gpui::px(columns[1])))
+	};
 
 	gpui::div()
 		.debug_selector(|| "performance-island-details".into())
 		.w_full()
 		.px(gpui::px(INSET))
-		.pb(gpui::px(6.))
+		.pt(gpui::px(BODY_TOP))
+		.pb(gpui::px(BODY_BOTTOM))
 		.flex_none()
 		.flex()
 		.flex_col()
-		.gap_1()
-		.child(
-			gpui::div().w_full().flex().justify_between().gap_3().children(
-				rows.into_iter().zip(&columns).map(|((id, label, value), width)| {
-					metric(id, label, value).w(gpui::px(*width))
-				}),
-			),
-		)
+		.gap(gpui::px(METRIC_GAP))
+		.child(row(("gpu", "System GPU", data.gpu.clone()), ("cpu", "UI CPU", data.cpu.clone())))
+		.child(row(
+			("memory", "UI peak RAM", data.memory.clone()),
+			("latency", "Latency p95", data.latency.clone()),
+		))
 		.child(
 			gpui::div()
 				.w_full()
-				.h(gpui::px(28.))
+				.h(gpui::px(METRIC_HEIGHT))
 				.flex_none()
 				.flex()
 				.items_center()
-				.gap_2()
+				.gap(gpui::px(COLUMN_GAP))
 				.child(metric("draw", "Draw p95", data.draw.clone()).w(gpui::px(columns[0])).when(
 					island.display_hz.is_some_and(|hz| island.metrics.draw_ms > 1_000. / hz),
 					|d| d.text_color(ui_theme::rgb(WARNING)),
@@ -589,11 +786,14 @@ fn debug_details(
 		.into_any_element()
 }
 
-fn metric(id: &'static str, label: &'static str, value: String) -> Div {
+fn metric(id: &'static str, label: &'static str, value: String) -> Stateful<Div> {
 	gpui::div()
+		.id(id)
 		.debug_selector(move || format!("performance-{id}-row"))
+		.role(Role::Group)
+		.aria_label(format!("{label}: {value}"))
 		.min_w_0()
-		.h(gpui::px(28.))
+		.h(gpui::px(METRIC_HEIGHT))
 		.flex_none()
 		.flex()
 		.flex_col()
@@ -606,5 +806,25 @@ fn metric(id: &'static str, label: &'static str, value: String) -> Div {
 				.text_color(ui_theme::rgb(if id == "draw" { BLUE } else { TEXT_MUTED }))
 				.child(label),
 		)
-		.child(number(id, value).w_full().text_left())
+		.child(measurement(id, value).w_full().text_left())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{activity_status, tokens};
+
+	#[test]
+	fn activity_status_never_presents_an_old_rate_as_live() {
+		assert_eq!(activity_status(false, false, true), Some("Idle"));
+		assert_eq!(activity_status(true, false, true), Some("Working"));
+		assert_eq!(activity_status(true, true, false), Some("Generating"));
+		assert_eq!(activity_status(true, true, true), None);
+	}
+
+	#[test]
+	fn token_values_include_a_unit_when_available() {
+		assert_eq!(tokens("2.6M"), "2.6M tok");
+		assert_eq!(tokens("0"), "0 tok");
+		assert_eq!(tokens("—"), "—");
+	}
 }

@@ -1930,6 +1930,7 @@ mod tests {
 				next_cursor: Some("real-cursor".into()),
 				weather: Default::default(),
 				thread_token_total: None,
+				thread_token_breakdown: None,
 				thread_metrics: None,
 				safety_buffering_turn_id: None,
 				active_realtime_session_at_page_start: None
@@ -2203,6 +2204,7 @@ mod tests {
 			next_cursor: next.map(str::to_owned),
 			weather: Default::default(),
 			thread_token_total: None,
+			thread_token_breakdown: None,
 			thread_metrics: None,
 			safety_buffering_turn_id: None,
 			active_realtime_session_at_page_start: session.map(str::to_owned),

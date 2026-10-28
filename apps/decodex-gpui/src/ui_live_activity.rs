@@ -52,12 +52,14 @@ pub(crate) fn arrange(
 	selected: Option<usize>,
 ) -> Vec<Allocation> {
 	let budget = (available - gap * sizes.len().saturating_sub(1) as f32).max(0.);
-	let resting = sizes.iter().map(|size| size.minimal).fold(MIN_CAPSULE_WIDTH, f32::max);
-	let minimum = resting * sizes.len() as f32;
+	let minimum: f32 = sizes.iter().map(|size| size.minimal.max(MIN_CAPSULE_WIDTH)).sum();
 	let ratio = (budget / minimum.max(1.)).min(1.);
 	let mut allocations: Vec<_> = sizes
 		.iter()
-		.map(|_| Allocation { presentation: Presentation::Minimal, width: resting * ratio })
+		.map(|size| Allocation {
+			presentation: Presentation::Minimal,
+			width: size.minimal.max(MIN_CAPSULE_WIDTH) * ratio,
+		})
 		.collect();
 
 	if let Some(index) = selected.filter(|&index| index < sizes.len()) {
@@ -67,7 +69,15 @@ pub(crate) fn arrange(
 			.filter(|(i, _)| *i != index)
 			.map(|(_, item)| item.width)
 			.sum();
-		let room = (budget - others).max(0.);
+		let room = if allocations.len() == 2 {
+			// The two controls keep their inner edges fixed while expanding outward.
+			// Only half of the unused centered space is available on either side.
+			let resting: f32 = allocations.iter().map(|item| item.width).sum();
+			allocations[index].width + ((budget - resting) / 2.).max(0.)
+		} else {
+			(budget - others).max(0.)
+		};
+		let resting = sizes[index].minimal.max(MIN_CAPSULE_WIDTH);
 		let size = Sizing {
 			minimal: resting,
 			compact: sizes[index].compact.max(resting),
@@ -99,17 +109,29 @@ mod tests {
 		assert_eq!(resting.iter().map(|item| item.width).sum::<f32>(), 144.);
 		assert_eq!(resting[0].width, resting[1].width);
 
-		let focus = ui_live_activity::arrange(350., 6., &sizes, Some(1));
+		let focus = ui_live_activity::arrange(550., 6., &sizes, Some(1));
 
 		assert_eq!(focus[0].presentation, Presentation::Minimal);
 		assert_eq!(focus[1].presentation, Presentation::Expanded);
 		assert_eq!(focus[0].width + focus[1].width + 6., 350.);
 
-		let narrow = ui_live_activity::arrange(240., 6., &sizes, Some(1));
+		let narrow = ui_live_activity::arrange(310., 6., &sizes, Some(1));
 
 		assert_eq!(narrow[1].presentation, Presentation::Compact);
 		assert_eq!(narrow[1].width, 148., "unused room is not padding for a compact activity");
-		assert!(narrow.iter().map(|item| item.width).sum::<f32>() + 6. <= 240.);
+		assert!(narrow.iter().map(|item| item.width).sum::<f32>() + 6. <= 310.);
+		let narrow_rest = ui_live_activity::arrange(310., 6., &sizes, None);
+		let centered_right = (310. + narrow_rest[0].width + 6. + narrow_rest[1].width) / 2.;
+		assert!(centered_right + narrow[1].width - narrow_rest[1].width <= 310.);
 		assert_eq!(sizes[0].presentation(120.), Presentation::Minimal);
+
+		let mut uneven = sizes;
+
+		uneven[0].minimal = 108.;
+
+		let resting = ui_live_activity::arrange(400., 6., &uneven, None);
+
+		assert_eq!(resting[0].width, 108.);
+		assert_eq!(resting[1].width, 72., "one activity must not widen the other");
 	}
 }
