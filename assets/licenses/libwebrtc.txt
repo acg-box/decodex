@@ -1,7 +1,7 @@
 Native WebRTC notices
 
-Native library: LiveKit rust-sdks release webrtc-89d790b.
-Source: https://github.com/livekit/rust-sdks/releases/tag/webrtc-89d790b
+Native library: LiveKit rust-sdks release webrtc-a545de4.
+Source: https://github.com/livekit/rust-sdks/releases/tag/webrtc-a545de4
 The libwebrtc Rust bindings are Copyright 2025 LiveKit, Inc., licensed under
 Apache License 2.0, which is reproduced in the notices below.
 

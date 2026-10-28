@@ -119,7 +119,7 @@ impl RadarLedgerImage {
 		lock: &RadarCacheLock,
 		max_bytes: u64,
 	) -> prelude::Result<PrivateFileIdentity> {
-		let connection = self
+		let mut connection = self
 			.connection
 			.take()
 			.ok_or_else(|| eyre::eyre!("Radar ledger connection is already closed"))?;

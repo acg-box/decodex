@@ -11,7 +11,7 @@ version.workspace    = true
 [dependencies]
 anyhow          = { workspace = true }
 fs2             = { workspace = true }
-reqwest-webrtc  = { workspace = true }
+reqwest         = { workspace = true }
 sha2            = { workspace = true }
 tempfile        = { workspace = true }
 walkdir         = { workspace = true }
