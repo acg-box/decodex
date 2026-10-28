@@ -1,5 +1,6 @@
 //! Explicit one-shot sampling with an editor separate from the conversation draft.
 #[path = "agent_sample_request.rs"] mod request;
+#[path = "agent_prompt_suggestions.rs"] mod suggestions;
 
 use gpui::{AnyElement, AppContext as _, StatefulInteractiveElement as _};
 use tokio::sync::watch::{self, Sender};
@@ -30,6 +31,7 @@ pub(super) struct Panel {
 	epoch: u64,
 	feedback: String,
 	suggestion: bool,
+	automatic: suggestions::Automatic,
 }
 impl Panel {
 	fn busy(&self) -> bool {
@@ -51,7 +53,11 @@ impl AgentSurface {
 	}
 
 	pub(super) fn reset_sample(&mut self) {
-		self.sample = Panel { epoch: self.sample.epoch.wrapping_add(1), ..Default::default() };
+		self.sample = Panel {
+			epoch: self.sample.epoch.wrapping_add(1),
+			automatic: std::mem::take(&mut self.sample.automatic),
+			..Default::default()
+		};
 	}
 
 	pub(super) fn invalidate_sample(&mut self, next: &AgentSnapshotDto) {
@@ -68,14 +74,14 @@ impl AgentSurface {
 	}
 
 	pub(super) fn open_sample(&mut self, cx: &mut Context<Self>) {
-		self.open_sample_panel(false, cx);
+		self.open_sample_panel(false, true, cx);
 	}
 
 	pub(super) fn suggest_next_prompt(&mut self, cx: &mut Context<Self>) {
-		self.open_sample_panel(true, cx);
+		self.open_sample_panel(true, true, cx);
 	}
 
-	fn open_sample_panel(&mut self, suggestion: bool, cx: &mut Context<Self>) {
+	fn open_sample_panel(&mut self, suggestion: bool, show_latest: bool, cx: &mut Context<Self>) {
 		let Some(work) = self.selected.clone() else { return };
 
 		if self.sample.busy()
@@ -115,7 +121,9 @@ impl AgentSurface {
 		});
 
 		self.request_sample(suggestion, cx);
-		self.jump_to_latest(cx);
+		if show_latest {
+			self.jump_to_latest(cx);
+		}
 		cx.notify();
 	}
 

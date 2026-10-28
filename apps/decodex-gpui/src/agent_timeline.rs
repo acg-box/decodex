@@ -1069,6 +1069,7 @@ impl AgentSurface {
 				changed |= self.retire_native_output();
 
 				self.timeline.native.recovered();
+				self.observe_prompt_completion(cx);
 			} else if self.timeline.native.pagination == Pagination::Loading {
 				changed = true;
 

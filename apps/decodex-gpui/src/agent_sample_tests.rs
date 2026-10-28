@@ -13,8 +13,9 @@ use crate::shell::agent_surface::{
 	wire_test_support::{self, SERVER},
 };
 use decodex_protocol::{
-	AgentActionDto, AgentSampleAnswer, CURRENT_VERSION, ClientMessage, CommandPayload,
-	QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId, ServerMessage,
+	AgentActionDto, AgentSampleAnswer, AgentTimelineContent, AgentTimelineEntry, CURRENT_VERSION,
+	ClientMessage, CommandPayload, QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId,
+	ServerMessage,
 };
 
 struct SamplePanel(Entity<AgentSurface>);
@@ -59,6 +60,149 @@ fn suggestion_fixture(s: &mut AgentSurface, cx: &mut Context<AgentSurface>) {
 			cached_input_tokens: None,
 			output_tokens: None,
 		}),
+	});
+}
+
+fn automatic_fixture(s: &mut AgentSurface, cx: &mut Context<AgentSurface>) {
+	suggestion_fixture(s, cx);
+	s.reset_sample();
+	s.timeline.native.binding = Some(crate::shell::agent_surface::native_timeline::Binding {
+		work: s.selected.clone().unwrap(),
+		thread: "parent".into(),
+		account: "account".into(),
+	});
+	s.timeline.native.entries.clear();
+	s.observe_prompt_completion(cx);
+}
+
+fn completed_answer(turn: &str, status: &str) -> Vec<AgentTimelineEntry> {
+	vec![
+		AgentTimelineEntry {
+			position: 0,
+			content: AgentTimelineContent::Item {
+				turn_id: turn.into(),
+				item_id: format!("answer-{turn}"),
+				kind: "agentMessage".into(),
+				text: "The answer is ready.".into(),
+				phase: Some("final_answer".into()),
+				app_ui: false,
+				truncated: false,
+				activity: None,
+				attachments: vec![],
+				collaboration: None,
+			},
+		},
+		AgentTimelineEntry {
+			position: 1,
+			content: AgentTimelineContent::TurnBoundary {
+				turn_id: turn.into(),
+				completed: true,
+				status: Some(status.into()),
+				duration_ms: None,
+				usage_summary: None,
+				usage: None,
+				timing: None,
+				error: None,
+			},
+		},
+	]
+}
+
+#[gpui::test]
+fn automatic_suggestion_sends_once_after_a_new_answer_and_never_sends_the_draft(
+	cx: &mut TestAppContext,
+) {
+	cx.background_executor.allow_parking();
+	let (_root, profile, server) = wire_test_support::fixture(|listener| async move {
+		let mut socket = wire_test_support::accept(&listener).await;
+		let Message::Text(text) = socket.next().await.unwrap().unwrap() else { panic!("command") };
+		let ClientMessage::Command(command) = serde_json::from_str::<ClientMessage>(&text).unwrap()
+		else {
+			panic!("one sample")
+		};
+		let CommandPayload::Agent { action } = command.payload else { panic!("agent sample") };
+		let AgentActionDto::GenerateSample { work_id, thread_id, prompt } = *action else {
+			panic!("no send action")
+		};
+		assert_eq!(thread_id.as_str(), "parent");
+		assert_eq!(prompt.as_str(), NEXT_PROMPT);
+		socket.close(None).await.unwrap();
+		let mut socket = wire_test_support::accept(&listener).await;
+		let Message::Text(text) = socket.next().await.unwrap().unwrap() else { panic!("readback") };
+		let ClientMessage::Query(query) = serde_json::from_str::<ClientMessage>(&text).unwrap()
+		else {
+			panic!("no inference replay")
+		};
+		assert!(matches!(query.payload, QueryPayload::GetAgentSample { .. }));
+		let status = AgentSampleStatus {
+			work_id,
+			thread_id: Some(thread_id),
+			request_id: Some(WireText::new(command.idempotency_key.as_str()).unwrap()),
+			prompt: Some(prompt),
+			phase: AgentSamplePhase::Obsolete,
+			answer: None,
+		};
+		let result = ServerMessage::QueryResult(QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: ServerId::new(SERVER).unwrap(),
+			query_id: query.query_id,
+			payload: QueryResultPayload::AgentSample(status),
+		});
+		socket.send(Message::Text(serde_json::to_string(&result).unwrap().into())).await.unwrap();
+	});
+	let (view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			automatic_fixture(s, cx);
+			s.profile = Some(profile);
+			s.timeline.native.entries = completed_answer("new-turn", "completed");
+			s.observe_prompt_completion(cx);
+			s.observe_prompt_completion(cx);
+			assert!(s.sample.suggestion);
+			assert!(s.composer.read(cx).content().is_empty());
+			assert!(!s.sending);
+		});
+		SuggestionPanel(surface)
+	});
+	visual.run_until_parked();
+	server.join().unwrap();
+	let surface = view.read_with(visual, |view, _| view.0.clone());
+	surface.update(visual, |s, cx| {
+		s.reset_sample();
+		s.observe_prompt_completion(cx);
+		assert!(s.sample.work.is_none(), "closing cannot regenerate the same turn");
+		assert!(s.composer.read(cx).content().is_empty());
+	});
+}
+
+#[gpui::test]
+fn automatic_suggestion_skips_old_history_drafts_failed_turns_and_replaced_sources(
+	cx: &mut TestAppContext,
+) {
+	cx.update(|cx| {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			automatic_fixture(s, cx);
+			s.timeline.native.binding.as_mut().unwrap().account = "other-account".into();
+			s.timeline.native.entries = completed_answer("old", "completed");
+			s.observe_prompt_completion(cx);
+			assert!(s.sample.work.is_none(), "opening saved history is not a new answer");
+			s.composer.update(cx, |input, cx| input.set_content("Already typing", cx));
+			s.timeline.native.entries = completed_answer("new", "completed");
+			s.observe_prompt_completion(cx);
+			assert!(s.sample.work.is_none());
+			s.composer.update(cx, |input, cx| input.set_content("", cx));
+			s.observe_prompt_completion(cx);
+			assert!(s.sample.work.is_none(), "clearing a draft does not replay a skipped trigger");
+			s.timeline.native.entries = completed_answer("failed", "failed");
+			s.observe_prompt_completion(cx);
+			assert!(s.sample.work.is_none());
+			s.snapshot.as_mut().unwrap().runtime_source =
+				Some(EntityId::new("replacement").unwrap());
+			s.timeline.native.entries = completed_answer("other-source", "completed");
+			s.observe_prompt_completion(cx);
+			assert!(s.sample.work.is_none());
+		});
 	});
 }
 
