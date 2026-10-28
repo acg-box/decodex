@@ -192,6 +192,7 @@ mod tests {
 			assert_eq!(state.execution.model.as_str(), "native-c");
 		}
 
+		tests::seed_execution_catalog(&conversations);
 		conversations.cycle_model();
 
 		let selected = conversations.snapshot().execution.model;
@@ -221,6 +222,7 @@ mod tests {
 			"manual refresh invalidates observed defaults"
 		);
 
+		tests::seed_execution_catalog(&conversations);
 		conversations.cycle_reasoning_effort();
 
 		assert!(conversations.select_service_tier(ServiceTier::standard()));
@@ -239,6 +241,8 @@ mod tests {
 	#[test]
 	fn model_choice_keeps_its_required_effort_adjustment_during_a_native_read() {
 		let (conversations, _, source) = tests::connected_conversations();
+
+		tests::seed_execution_catalog(&conversations);
 
 		{
 			let mut state = conversations.lock();
