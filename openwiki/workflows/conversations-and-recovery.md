@@ -4,9 +4,6 @@ type: Reference
 title: "Conversation input, history and recovery"
 description: "Explicit native branches, same-thread edits, canonical drafts, complete export and uncertain result recovery."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-28T08:27:50.875Z
 sources:
   - id: openwiki-source-6512b631b67649d924c16ba3
     resource: repo://apps/decodex-gpui/src/agent_archive.rs
@@ -14,8 +11,6 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_async_questions.rs
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
-  - id: openwiki-source-48758ba7d154c82885281d2c
-    resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-258277a596f7d23ef310055b
     resource: repo://apps/decodex-gpui/src/agent_draft_merge.rs
   - id: openwiki-source-5eddd1d872eed61f8ba7e703
@@ -28,6 +23,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
     resource: repo://apps/decodex-gpui/src/agent_prompt_fork.rs
+  - id: openwiki-source-0f9840ddf9e841a062aa905a
+    resource: repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs
   - id: openwiki-source-56b561d7e6dd906d218aa9d1
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-3362ac542db6e3212a621c47
@@ -102,7 +99,10 @@ sources:
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-28T08:27:50.875Z" }
+generated: { by: "codex", at: "2026-10-28T08:39:27.042Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-28T08:39:27.042Z
 ---
 
 # Conversation input, history and recovery
@@ -208,11 +208,13 @@ For parent escalation and exact event receipts, use [Agent coordination](../arch
 
 ## Next-message suggestions
 
-For an independent root conversation, open the composer menu and select **Suggest next message…**. This makes one explicit native sampling request from the latest finished turn. It uses the conversation's model and quota. It does not run tools or send input to the parent conversation.
+After a newly completed answer in the selected independent root conversation, an empty composer triggers one native suggestion request. It uses the conversation's model and quota. It does not run tools or send input to the parent conversation. The composer menu retains **Suggest next message…** for an explicit request.
 
 Review the result in **Suggested next message**. **Use as draft** is available when the same conversation is idle and its composer is empty. It inserts one undoable edit; send it separately after review. Text entered while the suggestion is generated stays in place. Copy the suggestion or clear the current draft before accepting it. A replaced thread or stale sample cannot supply a new draft.
 
-The panel shares the existing separate-answer lifecycle. **Cancel answer** targets its original request; **Close** hides the panel. Status refresh does not generate another suggestion. A native tool attempt can return no text, and an unsupported or unavailable sampler remains visible as a failure. There is no automatic fallback to a tool-enabled prediction fork and no background suggestion timer.
+Existing history and snapshot refreshes observe the new completed answer. Opening saved history, repeated refreshes, failed turns and an existing draft do not trigger generation. Attachments, task references and active voice input also keep the current draft in place. A skipped trigger does not run later when the editor is cleared. Automatic generation does not move the scroll position.
+
+The panel shares the existing separate-answer lifecycle. **Cancel answer** targets its original request; **Close** hides the panel. Status refresh does not generate another suggestion. A native tool attempt can return no text, and an unsupported or unavailable sampler remains visible as a failure. There is no automatic fallback to a tool-enabled prediction fork or separate polling timer.
 
 The [retained contract and test identities](../../automations/upstream/retained-contracts.json) record the scoped interface and wire checks. Existing native sampling qualification is reused; these checks do not establish live-provider suggestion quality or installed-app acceptance.
 

@@ -4767,9 +4767,9 @@
   "retained_prompt_suggestions": {
     "manual_review_item": 26,
     "behavior": [
-      "The user selects Suggest next message in the composer menu. The existing native sampler makes one explicit request using the current root conversation; opening ordinary Ask separately remains read-only.",
+      "A newly observed completed answer in the selected independent root conversation generates one native sample when the composer is empty. Existing history refreshes observe completion; no new poller or timer is added. The menu retains explicit generation.",
       "Display the result separately. Use as draft accepts a matching suggestion into the same idle conversation only when its composer is empty. Acceptance is one undoable edit and never sends. Preserve later edits and reject replaced sources or results from an unrelated sample question.",
-      "Reuse existing cancellation, timeout, source invalidation and lost-acknowledgement readback. Do not retry inference after uncertain delivery, add background predictions, or execute inherited tools through a generic fork."
+      "Reuse existing cancellation, timeout, source invalidation and lost-acknowledgement readback. Opening saved history, repeated refresh, failed turns and nonempty drafts do not trigger generation. Do not retry inference after uncertain delivery or execute inherited tools through a generic fork."
     ],
     "source_symbols": {
       "apps/decodex-gpui/src/agent_composer.rs": [
@@ -4783,6 +4783,16 @@
       ],
       "apps/decodex-gpui/src/composer_input.rs": [
         "ComposerInput::append_recovered_text"
+      ],
+      "apps/decodex-gpui/src/agent_prompt_suggestions.rs": [
+        "Automatic::observe",
+        "AgentSurface::observe_prompt_completion"
+      ],
+      "apps/decodex-gpui/src/agent_surface.rs": [
+        "AgentSurface::finish_snapshot_refresh"
+      ],
+      "apps/decodex-gpui/src/agent_timeline.rs": [
+        "AgentSurface::finish_native_timeline_read"
       ]
     },
     "regression_group": {
@@ -4791,6 +4801,8 @@
       "tests": [
         "shell::agent_surface::sample::tests::a_lost_cancellation_acknowledgement_reads_back_the_exact_sample_without_replay",
         "shell::agent_surface::sample::tests::a_lost_sample_acknowledgement_is_read_back_without_another_model_command",
+        "shell::agent_surface::sample::tests::automatic_suggestion_sends_once_after_a_new_answer_and_never_sends_the_draft",
+        "shell::agent_surface::sample::tests::automatic_suggestion_skips_old_history_drafts_failed_turns_and_replaced_sources",
         "shell::agent_surface::sample::tests::cancellation_controls_wait_for_native_completion_and_preserve_the_draft",
         "shell::agent_surface::sample::tests::enter_in_a_separate_question_does_not_reach_the_main_send_action",
         "shell::agent_surface::sample::tests::prompt_suggestion_needs_a_click_and_accepts_as_an_undoable_unsent_draft",
@@ -4809,7 +4821,7 @@
       "The UI uses the existing native thread/sample integration; no new native artifact was built or qualified. Reuse the selected-artifact sampling qualification within its recorded scope.",
       "Sampling requires an idle persistent root with a latest finished turn. Native tool attempts return no text; no tool-enabled prediction fork is substituted.",
       "Suggestions are model-generated proposals. This change does not measure their usefulness or latency, exercise a live provider, or establish installed-app acceptance.",
-      "No installation, application launch, release, automatic suggestion generation, schedule change, or source-review cursor advance."
+      "No installation, application launch, release, schedule change, or source-review cursor advance. Automatic suggestions apply to newly observed completed answers in the selected independent root conversation; opening saved history does not trigger inference."
     ]
   }
 }

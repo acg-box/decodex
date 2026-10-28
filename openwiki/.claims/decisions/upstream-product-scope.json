@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c6b23ee8879951644aa8be341c6cc124765c512dfc1447a2167f3197431aecae",
+  "pageVersion": "sha256:ba21956524be239216f766ee11eac5f2ca7741129d4b6e8d08e8b0d3e8f99726",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -296,7 +296,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:cc00d2765accf3bb736b88f091d4e950b994271f802d3f27f6867ea422ac40a2"
+          "version": "repo-file-v1:sha256:e63f541a2c927852609b7b4bf494e34ee749686fce665e2faeef2c76ba4838d8"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -309,8 +309,8 @@
       "statement": "Persistent attached branches expose only their own turns while native inference retains the reviewed parent context and saved source turn IDs retain boundary provenance. The retained public workflow already requires paginated source history.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4422-L4815",
-          "version": "repo-lines-v1:sha256:15547eb71d40cb8c99e87eda094d2585d35e6cb5d473a8ef59fb9f2239374f95:eyJzZWxlY3RlZExpbmVDb3VudCI6Mzk0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4422-L4827",
+          "version": "repo-lines-v1:sha256:78cd6312eadaebc2327ea0988595803d1148bd4a1539f92d2ee4c3f12f78b8ce:eyJzZWxlY3RlZExpbmVDb3VudCI6NDA2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
@@ -328,11 +328,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:cc00d2765accf3bb736b88f091d4e950b994271f802d3f27f6867ea422ac40a2"
+          "version": "repo-file-v1:sha256:e63f541a2c927852609b7b4bf494e34ee749686fce665e2faeef2c76ba4838d8"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:bf0b2e55edef87abac0b4724748c4299591f0c55a8368f6c51803a885fb7ba07"
+          "version": "repo-file-v1:sha256:30232eca27d6a7b0c34f76a621db79acfa12912ea09f80667692a1c4284fdbfc"
         }
       ]
     },
@@ -346,7 +346,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:cc00d2765accf3bb736b88f091d4e950b994271f802d3f27f6867ea422ac40a2"
+          "version": "repo-file-v1:sha256:e63f541a2c927852609b7b4bf494e34ee749686fce665e2faeef2c76ba4838d8"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -360,25 +360,25 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:bf0b2e55edef87abac0b4724748c4299591f0c55a8368f6c51803a885fb7ba07"
+          "version": "repo-file-v1:sha256:30232eca27d6a7b0c34f76a621db79acfa12912ea09f80667692a1c4284fdbfc"
         }
       ]
     },
     {
       "id": "claim_90ff9a5af58e487f96fde29fd45b6f16",
-      "statement": "The selected next-message suggestion UI uses the existing native sampler only on an explicit request. Acceptance places the suggestion into the same idle conversation's empty composer as one undoable edit without sending; later draft edits and replaced sources are preserved.",
+      "statement": "Newly observed completed answers in the selected independent root conversation automatically request one native suggestion when its composer is empty. Saved history, repeated refreshes and existing drafts do not trigger generation. Explicit acceptance remains one undoable edit into the same idle conversation's empty composer and never sends automatically.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_sample.rs#L68-L211",
-          "version": "repo-lines-v1:sha256:1d5507d0f92f51daec5d0cfbddef562462312d54a16ae362cf0882d90b78dc1e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0YjQ4YTk1ZDczZjZlMGU1MGE0ZjdmZjRkMzVhZmJhMTA2MTQ5OTQxMGNiNjFlMTViNTZkY2I2OTUzNjE5ZmM3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIzZTA3YWUzNzlhODQ4YmJmOWRiMDIwY2M1YTJiMzBjNmIwNmFlY2Y4YjVhNzczM2JjMjIwYWY4MDUzZDdjODUzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0NjI5MGY3ZDI5ZTYwY2MwYmU5ZGE5ZDE5YTIwYTEzYmVlNWJiYzE1ZjFjYTFhOTI5ZGZiZWQ2N2RlNDFkNDQyIn0"
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
+          "version": "repo-file-v1:sha256:f34a78b869fefbb590c750b3c976b13bdd7e3d1dbf4a17b142443eb7e9ade4dd"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs#L24-L132",
-          "version": "repo-lines-v1:sha256:755e360234d0cdd4b67312577cd5aa9165feead46c03c2d5de98a19fa21cd02a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0M2YzNzFkZGQ0YTdmMTNkMGJiOGYyMzU4ZTA0ZTFlNjM5NDRiYTZjMTBhZjA2N2E0ZDQ2M2QxZmFmMjAxY2RiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1Y2RiYzQ5MTM5Y2JjYTRjM2IyY2YxZTkzMGY2OTFmMTBjZGNmN2E3MTBjMmIwMTY3NWUxMWNjYmNiNTFhMzI5IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxYTI3MWMwZmYwMjJjYjA0NmI0ZjdjNDJmYjdhYTEwNmJlY2FhZTY0ZDM4OGFjODczZDM1NmQ3ZTliOGM4NDNjIn0"
+          "resource": "repo://apps/decodex-gpui/src/agent_sample.rs#L165-L222",
+          "version": "repo-lines-v1:sha256:bbb1167ea839a68aab8399ed02e713cc3115fb54264be3744655fbbeddc66537:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3NjY1MTU5ZjNmYmIxNzkyZmVmNTEwZmViN2ZiOTFlN2ZmODM4ZTc1YTg3MTI5YzUwNjRjMmIzZjEyYzc0NzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmM2M1MjVlMGM3M2JjOWVhNDMyYjgzMjIyZTEyODgyMWM1MDcyMzQ4YjlkZjQ5NzEwOWFjNGM2YjI5ODc5N2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3MDFjZmY0ZGY4Njc3YjU3ZWE5ZjIwNGVkMDdmZDhiOTFlNGE5YjkwMjhiN2I4ZjQyMzk2MzU5NWYwZTBkOTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiMWEyYjlhZDFkNDljMTViZWUxY2Q3MzMyYjkyNGQ5ZGE0ZTM4MzA1ZDM3ZjIwMzU5MzY4NjAwYmM4ZGUzZWUifQ"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:cc00d2765accf3bb736b88f091d4e950b994271f802d3f27f6867ea422ac40a2"
+          "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
+          "version": "repo-file-v1:sha256:6f082885b54b38031fe77a80b050be5c40d4f22650fd90f75fba6fae7bd7bc7f"
         }
       ]
     },
@@ -395,6 +395,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T08:29:33.227Z"
+    "at": "2026-10-28T08:39:27.042Z"
   }
 }

@@ -4,9 +4,6 @@ type: Reference
 title: "Retained upstream product capabilities"
 description: "Current native integration, account and conversation scope, with excluded duplicate surfaces."
 tags: ["decodex", "architecture"]
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-28T08:29:33.227Z
 sources:
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
@@ -20,6 +17,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
     resource: repo://apps/decodex-gpui/src/agent_prompt_fork.rs
+  - id: openwiki-source-0f9840ddf9e841a062aa905a
+    resource: repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs
   - id: openwiki-source-56b561d7e6dd906d218aa9d1
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-296a92a9cefecb19f0fc1f95
@@ -98,7 +97,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-28T08:27:50.875Z" }
+generated: { by: "codex", at: "2026-10-28T08:39:27.042Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-28T08:39:27.042Z
 ---
 
 # Product scope and native ownership
@@ -166,7 +168,7 @@ Diagnostic-log upload (**original item 24**) is excluded at the user's request t
 
 ## Next-message suggestions and current choices
 
-The user selected **original item 26**. In the composer menu, **Suggest next message…** requests one suggestion through the existing native sampler. **Use as draft** places the suggestion in the same conversation's empty composer as one undoable edit. A later draft edit is preserved, and acceptance does not send a message. Generation is explicit; this adds no background inference policy. See [the suggestion workflow](../workflows/conversations-and-recovery.md#next-message-suggestions) and `retained_prompt_suggestions` in the [retained contracts](../../automations/upstream/retained-contracts.json).
+The user selected **original item 26** with automatic generation: a newly completed answer in the selected independent root conversation requests one suggestion when its composer is empty. Opening saved history, repeated refreshes and an existing draft do not trigger inference. The composer menu retains **Suggest next message…** for an explicit request. **Use as draft** places the suggestion in the same conversation's empty composer as one undoable edit. Later edits are preserved, and acceptance does not send a message. The feature uses the existing native sampler and conversation refresh; it adds no separate poller. See [the suggestion workflow](../workflows/conversations-and-recovery.md#next-message-suggestions) and `retained_prompt_suggestions` in the [retained contracts](../../automations/upstream/retained-contracts.json).
 
 **Original item 19**, authenticated remote execution, remains deferred in [issue 1693](https://github.com/acg-box/decodex/issues/1693). **Item 21** retains Decodex account management: independent account observations and reset-credit requests use the existing account API client. This decision does not make those operations inherit native `application.network` policy.
 

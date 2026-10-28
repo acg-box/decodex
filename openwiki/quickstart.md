@@ -43,7 +43,7 @@ sources:
 generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T08:27:50.875Z
+    at: 2026-10-28T08:39:27.042Z
 ---
 
 # OpenWiki quickstart
