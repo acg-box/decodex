@@ -275,6 +275,9 @@ pub enum AgentHistoryResult {
 		/// Unanswered asynchronous questions for the current native thread, independent of history
 		/// paging.
 		questions: Vec<AgentAsyncQuestionDto>,
+		/// Live questions whose exact native turn ended. Recover local draft text only.
+		#[serde(default)]
+		expired_question_ids: Vec<String>,
 		/// Additional questions exist beyond this bounded page.
 		questions_truncated: bool,
 		/// Native history recovery is incomplete; historical question cards are withheld.

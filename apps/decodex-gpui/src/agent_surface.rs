@@ -593,6 +593,7 @@ impl AgentSurface {
 						.as_ref()
 						.is_some_and(|(owner, previous)| owner == &id && previous == &history)
 					{
+						surface.recover_expired_question_drafts(&id, &history, cx);
 						return;
 					}
 					if matches!(history, AgentHistoryResult::Available { .. })
@@ -600,7 +601,7 @@ impl AgentSurface {
 							current == &id && matches!(saved, AgentHistoryResult::Available { .. })
 						}) {
 						if let Some(scroll) = surface.timeline.scroll.get(&id)
-							&& surface.voice.is_none()
+							&& !surface.voice_on_current_conversation()
 							&& !surface.timeline.follow_paused.contains(&id)
 							&& (scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(24.0)
 						{
@@ -620,6 +621,7 @@ impl AgentSurface {
 						}
 
 						surface.reconcile_voice_captions(&id, &history);
+						surface.recover_expired_question_drafts(&id, &history, cx);
 						surface.prune_async_question_drafts(&id, &history);
 						surface.timeline.cache.insert(id.clone(), history.clone());
 
@@ -776,7 +778,7 @@ impl AgentSurface {
 					&& snapshot.pending_events.contains(&source.event)
 			}) {
 			if let Some(scroll) = self.timeline.scroll.get(&source.event.work_item_id)
-				&& self.voice.is_none()
+				&& !self.voice_on_current_conversation()
 				&& !self.timeline.follow_paused.contains(&source.event.work_item_id)
 				&& (scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(24.0)
 			{
@@ -927,7 +929,7 @@ impl AgentSurface {
 			return;
 		}
 		// Live uses this slot for the microphone. Do not send a hidden draft.
-		if self.voice.is_some() {
+		if self.voice_on_current_conversation() {
 			return;
 		}
 		if self.composer_unavailable_reason().is_some() {
@@ -938,7 +940,7 @@ impl AgentSurface {
 		if self.selected_is_archived() {
 			return;
 		}
-		if self.voice.is_some() {
+		if self.voice_on_current_conversation() {
 			return;
 		}
 		if self.dictation.is_some() {
@@ -1627,10 +1629,11 @@ impl AgentSurface {
 		let owner = self.composer_manager.clone().or_else(|| self.root_id());
 		let previous_selection = self.selected.clone();
 
-		if matches!(&result, Ok(AgentSnapshotResult::Available(snapshot))
-			if [self.selected.as_ref(), owner.as_ref()].into_iter().flatten()
-				.any(|id| snapshot.archived_work_ids.contains(id)))
-		{
+		if let Ok(AgentSnapshotResult::Available(snapshot)) = &result
+			&& self.voice_owner().is_some_and(|voice| {
+				snapshot.archived_work_ids.iter().any(|id| id == voice)
+					|| !snapshot.work_items.iter().any(|work| work.id == voice)
+			}) {
 			self.stop_voice(cx);
 		}
 
@@ -1642,7 +1645,7 @@ impl AgentSurface {
 						&& !snapshot.work_items.iter().any(|work| &work.id == id)));
 
 		if removed {
-			self.stop_voice(cx);
+			self.cancel_dictation(cx);
 
 			// Bind an initial root editor before replacing the snapshot that identifies it.
 			self.composer_manager = owner.clone();
@@ -3817,6 +3820,7 @@ mod tests {
 				"root".into(),
 				AgentHistoryResult::Available {
 					questions: vec![],
+					expired_question_ids: Vec::new(),
 					questions_truncated: false,
 					questions_recovering: false,
 					misalignment: None,
@@ -3899,6 +3903,7 @@ mod tests {
 				"root".into(),
 				AgentHistoryResult::Available {
 					questions: vec![],
+					expired_question_ids: Vec::new(),
 					questions_truncated: false,
 					questions_recovering: false,
 					misalignment: None,
@@ -4210,6 +4215,7 @@ mod tests {
 				"agent".into(),
 				AgentHistoryResult::Available {
 					questions: vec![],
+					expired_question_ids: Vec::new(),
 					questions_truncated: false,
 					questions_recovering: false,
 					misalignment: None,

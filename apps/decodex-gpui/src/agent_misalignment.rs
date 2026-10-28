@@ -167,6 +167,7 @@ mod tests {
 				"root".into(),
 				AgentHistoryResult::Available {
 					questions: vec![],
+					expired_question_ids: Vec::new(),
 					questions_truncated: false,
 					questions_recovering: false,
 					misalignment: Some(Box::new(decodex_protocol::AgentMisalignmentDto {

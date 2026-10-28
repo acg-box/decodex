@@ -439,9 +439,11 @@ impl AgentSurface {
 					.flex_col()
 					.gap(gpui::px(4.))
 					.opacity(ready)
-					.when(self.native_agents.selected.is_none() && self.voice.is_none(), |d| {
-						d.child(self.composer_question_panel(cx))
-					})
+					.when(
+						self.native_agents.selected.is_none()
+							&& !self.voice_on_current_conversation(),
+						|d| d.child(self.composer_question_panel(cx)),
+					)
 					.when(
 						self.native_agents.selected.is_none()
 							&& self.async_question_composer().is_none(),
@@ -462,7 +464,7 @@ impl AgentSurface {
 							.when(
 								self.native_agents.selected.is_none()
 									&& self.dictation.is_none()
-									&& self.voice.is_none()
+									&& !self.voice_on_current_conversation()
 									&& self.async_question_composer().is_none(),
 								|d| {
 									d.child(self.composer_control(
@@ -475,7 +477,7 @@ impl AgentSurface {
 								},
 							);
 
-						if self.voice.is_some() {
+						if self.voice_on_current_conversation() {
 							capsule.child(
 								controls.child(editor).child(self.composer_toolbar(window, cx)),
 							)
@@ -500,7 +502,7 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.flex_1()
-			.when(self.voice.is_none(), |d| d.flex_none().w_full())
+			.when(!self.voice_on_current_conversation(), |d| d.flex_none().w_full())
 			.min_w_0()
 			.when(native, |d| {
 				d.on_mouse_down(
@@ -593,7 +595,15 @@ impl AgentSurface {
 							.child(SelectableText::plain(draft_key, draft)),
 					)
 				})
-				.when(self.voice.is_some() || self.dictation.is_some(), |d| {
+				.when(self.locked_branch_source().is_some(), |d| {
+					d.child(self.workspace_action(
+						"locked-thread-branch".into(),
+						"Continue in a new branch…".into(),
+						|s, cx| s.review_locked_branch(cx),
+						cx,
+					))
+				})
+				.when(self.voice_on_current_conversation() || self.dictation.is_some(), |d| {
 					d.child(self.workspace_action(
 						"composer-stop-recording".into(),
 						"Stop recording".into(),
@@ -843,7 +853,9 @@ impl AgentSurface {
 		if let Some(controls) = self.dictation_controls(window, cx) {
 			return controls;
 		}
-		if let Some(controls) = self.voice_toolbar(cx) {
+		if self.voice_on_current_conversation()
+			&& let Some(controls) = self.voice_toolbar(cx)
+		{
 			return controls;
 		}
 

@@ -532,7 +532,7 @@ impl AgentSurface {
 		};
 
 		self.close_native_agent(cx);
-		self.stop_voice(cx);
+		self.cancel_dictation(cx);
 		self.reset_recap();
 		self.reset_sample();
 

@@ -140,6 +140,7 @@ mod tests {
 	fn history(questions: Vec<AgentAsyncQuestionDto>) -> AgentHistoryResult {
 		AgentHistoryResult::Available {
 			questions,
+			expired_question_ids: Vec::new(),
 			questions_truncated: false,
 			questions_recovering: false,
 			misalignment: None,

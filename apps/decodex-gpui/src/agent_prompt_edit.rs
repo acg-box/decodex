@@ -18,6 +18,7 @@ use removal::Removal;
 
 #[derive(Default)]
 pub(super) struct Panel {
+	branch_only: bool,
 	pub(super) attached: agent_surface::attached_branches::Panel,
 	key: String,
 	profile: Option<ClientProfile>,
@@ -419,6 +420,41 @@ impl AgentSurface {
 		}
 	}
 
+	pub(super) fn locked_branch_source(&self) -> Option<(String, String, String, String)> {
+		if self.composer_unavailable_reason()
+			!= Some(agent_surface::workspace::THREAD_LOCKED_MESSAGE)
+		{
+			return None;
+		}
+		let (work, AgentHistoryResult::Available { entries, .. }) = self.history.as_ref()? else {
+			return None;
+		};
+		if self.selected.as_ref() != Some(work) {
+			return None;
+		}
+		let source = entries
+			.iter()
+			.rev()
+			.filter(|entry| entry.kind == "user")
+			.find_map(|entry| entry.native_source.as_ref())?;
+		Some((
+			work.clone(),
+			source.thread_id.clone(),
+			source.turn_id.clone(),
+			source.item_id.clone(),
+		))
+	}
+
+	pub(super) fn review_locked_branch(&mut self, cx: &mut Context<Self>) {
+		if self.prompt_edit.task.is_some() {
+			return;
+		}
+		let Some((work, thread, turn, item)) = self.locked_branch_source() else {
+			return;
+		};
+		self.review_prompt(&work, &thread, &turn, &item, cx);
+	}
+
 	pub(super) fn review_prompt(
 		&mut self,
 		work: &str,
@@ -436,6 +472,7 @@ impl AgentSurface {
 		self.reset_prompt_edit();
 
 		self.prompt_edit = Panel {
+			branch_only: self.locked_branch_source().is_some(),
 			key: key.clone(),
 			profile: Some(profile.clone()),
 			work: work.into(),
@@ -553,9 +590,8 @@ impl AgentSurface {
 					Ok((draft, turns)) => {
 						s.prompt_edit.feedback =
 							match s.apply_prompt_review(previous.as_ref(), draft, cx) {
-								Ok(()) => format!(
-									"Removes {turns} turns, including this one. File changes remain. Confirmation required."
-								),
+								Ok(()) if s.prompt_edit.branch_only => "Create an editable branch after this prompt's turn. The original conversation and draft stay saved.".into(),
+                                Ok(()) => format!("Removes {turns} turns, including this one. File changes remain. Confirmation required."),
 								Err(message) => message.into(),
 							};
 					},
@@ -768,8 +804,10 @@ impl AgentSurface {
 			.gap_2()
 			.child(self.prompt_edit.feedback.clone());
 
-		for (_, editor) in &self.prompt_edit.editors {
-			panel = panel.child(editor.clone());
+		if !self.prompt_edit.branch_only {
+			for (_, editor) in &self.prompt_edit.editors {
+				panel = panel.child(editor.clone());
+			}
 		}
 
 		if let Some(draft) = &self.prompt_edit.draft {
@@ -807,6 +845,28 @@ impl AgentSurface {
 		draft: &DesktopPromptEditDraft,
 		cx: &mut Context<Self>,
 	) -> Div {
+		if self.prompt_edit.branch_only {
+			let expected = draft.clone();
+			let pending = draft.fork.is_some();
+			return panel.child(self.workspace_action(
+				"locked-branch-confirm".into(),
+				if pending { "Check branch status" } else { "Create new branch" }.into(),
+				move |s, cx| {
+					if pending {
+						s.recover_prompt_branch(expected.clone(), cx);
+					} else if s.locked_branch_source().is_some() && s.prompt_edit.task.is_none() {
+						s.prompt_edit.confirmation = Some(expected.clone());
+						s.confirm_prompt_branch(
+							expected.clone(),
+							PromptForkBoundary::AfterTurn,
+							cx,
+						);
+					}
+				},
+				cx,
+			));
+		}
+
 		if draft.receipt_id.is_some() && !draft.handback_pending {
 			let expected = draft.clone();
 			let checking = draft.pending_send.is_some();
@@ -1017,6 +1077,45 @@ mod tests {
 			IdempotencyKey, Panel, PromptDraft, WireText,
 		},
 	};
+
+	#[gpui::test]
+	fn locked_conversation_offers_only_a_source_bound_branch(cx: &mut gpui::TestAppContext) {
+		let (_directory, profile, _) = tests::profiles();
+		let surface = cx.new(AgentSurface::new);
+		install_fixture_editor(&surface, profile.clone(), cx);
+		surface.update(cx, |s, cx| {
+			let work = s.selected.clone().unwrap();
+			let (_, history) = s.history.as_mut().unwrap();
+			let crate::shell::agent_surface::AgentHistoryResult::Available { entries, .. } =
+				history
+			else {
+				panic!("fixture");
+			};
+			let entry = entries.iter_mut().find(|entry| entry.kind == "user").unwrap();
+			entry.native_source = Some(decodex_protocol::AgentHistorySourceDto {
+				thread_id: "thread".into(),
+				turn_id: "turn".into(),
+				item_id: "item".into(),
+			});
+			assert!(s.locked_branch_source().is_none());
+			s.snapshot.as_mut().unwrap().pending_events =
+				vec![decodex_protocol::AgentPendingEventDto {
+					id: 99,
+					source_event_id: "external-lock".into(),
+					work_item_id: work.clone(),
+					event_kind: "thread_in_use_needs_attention".into(),
+					created_at_micros: 1,
+					delivery_claimed: false,
+				}];
+			assert_eq!(
+				s.locked_branch_source(),
+				Some((work.clone(), "thread".into(), "turn".into(), "item".into()))
+			);
+			s.begin_prompt_review(&profile, &work, "thread");
+			assert!(s.prompt_edit.branch_only);
+			assert_eq!(s.composer.read(cx).content(), "Unrelated unsent input");
+		});
+	}
 
 	#[gpui::test]
 	fn cancel_edit_removes_only_unsubmitted_draft(cx: &mut gpui::TestAppContext) {

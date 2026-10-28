@@ -235,10 +235,22 @@ impl SqliteStore {
 		work: String,
 	) -> Result<Vec<AgentAsyncQuestion>, StoreError> {
 		self.run(move |connection| {
-            let mut statement=connection.prepare("SELECT q.thread_id,q.turn_id,q.item_id,q.question_id,q.question_json,q.arrived_live FROM agent_async_questions q JOIN agent_work_items w ON w.id=q.work_id AND w.codex_thread_id=q.thread_id WHERE q.work_id=?1 AND NOT EXISTS(SELECT 1 FROM agent_async_recovery r WHERE r.work_id=q.work_id AND r.thread_id=q.thread_id) AND NOT EXISTS(SELECT 1 FROM agent_async_answers a WHERE a.work_id=q.work_id AND a.thread_id=q.thread_id AND a.question_id IN(q.question_id,q.item_id)) AND NOT EXISTS(SELECT 1 FROM agent_async_skips s WHERE s.work_id=q.work_id AND s.thread_id=q.thread_id AND s.question_id=q.question_id) ORDER BY q.created_at_micros,q.rowid LIMIT 33").map_err(error::sqlite_error)?;
+            let mut statement=connection.prepare("SELECT q.thread_id,q.turn_id,q.item_id,q.question_id,q.question_json,q.arrived_live FROM agent_async_questions q JOIN agent_work_items w ON w.id=q.work_id AND w.codex_thread_id=q.thread_id WHERE q.work_id=?1 AND NOT EXISTS(SELECT 1 FROM agent_inbox_events e WHERE e.work_item_id=q.work_id AND e.event_kind IN ('agent_turn_completed','worker_turn_completed','capacity_retry') AND json_extract(e.payload,'$.terminal.threadId')=q.thread_id AND json_extract(e.payload,'$.terminal.turn.id')=q.turn_id AND json_extract(e.payload,'$.terminal.turn.status') IN ('completed','interrupted','failed')) AND NOT EXISTS(SELECT 1 FROM agent_async_recovery r WHERE r.work_id=q.work_id AND r.thread_id=q.thread_id) AND NOT EXISTS(SELECT 1 FROM agent_async_answers a WHERE a.work_id=q.work_id AND a.thread_id=q.thread_id AND a.question_id IN(q.question_id,q.item_id)) AND NOT EXISTS(SELECT 1 FROM agent_async_skips s WHERE s.work_id=q.work_id AND s.thread_id=q.thread_id AND s.question_id=q.question_id) ORDER BY q.created_at_micros,q.rowid LIMIT 33").map_err(error::sqlite_error)?;
             let result=statement.query_map([work],|row|Ok(AgentAsyncQuestion {arrived_live:row.get(5)?,thread_id:row.get(0)?,turn_id:row.get(1)?,item_id:row.get(2)?,question_id:row.get(3)?,question_json:row.get(4)?})).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
 
             Ok(result)
+        }).await
+	}
+
+	/// Expired live cards are separate from pending questions so clients can recover unsent text.
+	pub async fn expired_agent_async_question_ids(
+		&self,
+		work: String,
+	) -> Result<Vec<String>, StoreError> {
+		self.run(move |connection| {
+            let mut statement = connection.prepare("SELECT q.question_id FROM agent_async_questions q JOIN agent_work_items w ON w.id=q.work_id AND w.codex_thread_id=q.thread_id WHERE q.work_id=?1 AND q.arrived_live=1 AND EXISTS(SELECT 1 FROM agent_inbox_events e WHERE e.work_item_id=q.work_id AND e.event_kind IN ('agent_turn_completed','worker_turn_completed','capacity_retry') AND json_extract(e.payload,'$.terminal.threadId')=q.thread_id AND json_extract(e.payload,'$.terminal.turn.id')=q.turn_id AND json_extract(e.payload,'$.terminal.turn.status') IN ('completed','interrupted','failed')) AND NOT EXISTS(SELECT 1 FROM agent_async_answers a WHERE a.work_id=q.work_id AND a.thread_id=q.thread_id AND a.question_id IN(q.question_id,q.item_id)) AND NOT EXISTS(SELECT 1 FROM agent_async_skips s WHERE s.work_id=q.work_id AND s.thread_id=q.thread_id AND s.question_id=q.question_id) ORDER BY q.created_at_micros,q.rowid LIMIT 1025").map_err(error::sqlite_error)?;
+            let ids = statement.query_map([work], |row| row.get(0)).map_err(error::sqlite_error)?.collect::<Result<Vec<_>,_>>().map_err(error::sqlite_error)?;
+            Ok(ids)
         }).await
 	}
 }

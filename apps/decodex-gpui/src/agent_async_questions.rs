@@ -252,10 +252,93 @@ impl AgentSurface {
 		true
 	}
 
+	pub(super) fn recover_expired_question_drafts(
+		&mut self,
+		work: &str,
+		history: &AgentHistoryResult,
+		cx: &mut Context<Self>,
+	) {
+		let AgentHistoryResult::Available {
+			expired_question_ids,
+			questions_recovering: false,
+			misalignment: None,
+			..
+		} = history
+		else {
+			return;
+		};
+		let Some(thread) = self
+			.snapshot
+			.as_ref()
+			.and_then(|s| s.work_items.iter().find(|item| item.id == work))
+			.and_then(|item| item.codex_thread_id.clone())
+		else {
+			return;
+		};
+		let mut recovered: Vec<_> = self
+			.restored_question_drafts
+			.iter()
+			.filter(|draft| {
+				draft.work_id.as_str() == work
+					&& draft.thread_id.as_str() == thread
+					&& expired_question_ids.iter().any(|id| id == draft.question_id.as_str())
+					&& !self.async_question_submissions.iter().any(|submitted| {
+						submitted.target.work == work
+							&& submitted.target.thread == thread
+							&& submitted.target.question == draft.question_id.as_str()
+					})
+			})
+			.filter_map(|draft| {
+				saved_custom_answer(draft)
+					.filter(|text| !text.trim().is_empty())
+					.map(|text| (draft.question_id.clone(), text.to_owned()))
+			})
+			.collect();
+		if recovered.is_empty() {
+			return;
+		}
+		recovered.sort_by_key(|(id, _)| {
+			expired_question_ids.iter().position(|candidate| candidate == id.as_str())
+		});
+		let text = recovered.iter().map(|(_, text)| text.as_str()).collect::<Vec<_>>().join("\n\n");
+		let current = self.composer_manager.as_deref().or(self.root_id().as_deref()) == Some(work);
+		let saved = if current {
+			self.composer.update(cx, |input, cx| input.append_recovered_text(&text, cx))
+		} else {
+			let previous = self.draft_profiles.texts.get(work).cloned().unwrap_or_default();
+			let joined = if previous.is_empty() { text } else { format!("{previous}\n\n{text}") };
+			if joined.len() > crate::composer_input::MAX_COMPOSER_BYTES {
+				false
+			} else {
+				self.draft_profiles.texts.insert(work.to_owned(), joined);
+				true
+			}
+		};
+		if saved {
+			self.restored_question_drafts.retain(|draft| {
+				!(draft.work_id.as_str() == work
+					&& draft.thread_id.as_str() == thread
+					&& recovered.iter().any(|(id, _)| id == &draft.question_id))
+			});
+			if self.feedback.message
+				== "Unsent question answers are saved. Make room in the message draft to restore them."
+			{
+				self.feedback.clear();
+			}
+			self.save_draft_document(cx);
+		} else if current {
+			self.feedback = Feedback::warning(
+				"Unsent question answers are saved. Make room in the message draft to restore them.",
+			);
+			cx.notify();
+		}
+	}
+
 	pub(super) fn prune_async_question_drafts(&mut self, work: &str, history: &AgentHistoryResult) {
 		let AgentHistoryResult::Available {
 			questions,
 			questions_truncated,
+			expired_question_ids,
 			questions_recovering: false,
 			..
 		} = history
@@ -281,6 +364,7 @@ impl AgentSurface {
 			saved.work_id.as_str() != work
 				|| (owner.codex_thread_id.as_deref() == Some(saved.thread_id.as_str())
 					&& (*questions_truncated
+						|| expired_question_ids.iter().any(|id| id == saved.question_id.as_str())
 						|| questions.iter().any(|q| q.id == saved.question_id.as_str())))
 		});
 	}
@@ -641,6 +725,7 @@ fn question_source(id: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+	use gpui::AppContext as _;
 	use std::{cell::Cell, rc::Rc, thread};
 
 	use crate::shell::agent_surface::{
@@ -1071,6 +1156,82 @@ mod tests {
 			assert!(s.restored_question_drafts.is_empty());
 		});
 	}
+	#[gpui::test]
+	fn terminal_question_drafts_return_in_question_order_without_resubmission(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			install_question_fixture(s, cx);
+			s.composer.update(cx, |input, cx| input.set_content("Existing draft", cx));
+			for (id, text) in
+				[("q2", "Second answer"), ("q1", "First answer"), ("other", "Keep separate")]
+			{
+				s.restored_question_drafts.push(DesktopQuestionDraft {
+					work_id: EntityId::new("root").unwrap(),
+					thread_id: WireText::new("thread").unwrap(),
+					question_id: WireText::new(id).unwrap(),
+					text: text.into(),
+					custom: None,
+					selected: None,
+					collapsed: false,
+				});
+			}
+			let (_, mut history) = s.history.clone().unwrap();
+			if let AgentHistoryResult::Available { questions, expired_question_ids, .. } =
+				&mut history
+			{
+				questions.clear();
+				*expired_question_ids = vec!["q1".into(), "q2".into()];
+			}
+			s.recover_expired_question_drafts("other-work", &history, cx);
+			assert_eq!(s.composer.read(cx).content(), "Existing draft");
+			s.recover_expired_question_drafts("root", &history, cx);
+			assert_eq!(
+				s.composer.read(cx).content(),
+				"Existing draft\n\nFirst answer\n\nSecond answer"
+			);
+			s.recover_expired_question_drafts("root", &history, cx);
+			assert_eq!(
+				s.composer.read(cx).content(),
+				"Existing draft\n\nFirst answer\n\nSecond answer"
+			);
+			assert_eq!(s.restored_question_drafts.len(), 1);
+			assert_eq!(s.restored_question_drafts[0].question_id.as_str(), "other");
+			assert!(!s.sending && s.async_question_submissions.is_empty());
+		});
+	}
+
+	#[gpui::test]
+	fn terminal_question_keeps_oversized_answer_recoverable(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			install_question_fixture(s, cx);
+			let full = "x".repeat(crate::composer_input::MAX_COMPOSER_BYTES);
+			s.composer.update(cx, |input, cx| input.set_content(&full, cx));
+			s.restored_question_drafts.push(DesktopQuestionDraft {
+				work_id: EntityId::new("root").unwrap(),
+				thread_id: WireText::new("thread").unwrap(),
+				question_id: WireText::new("q1").unwrap(),
+				text: "Answer".into(),
+				custom: None,
+				selected: None,
+				collapsed: false,
+			});
+			let (_, mut history) = s.history.clone().unwrap();
+			if let AgentHistoryResult::Available { questions, expired_question_ids, .. } =
+				&mut history
+			{
+				questions.clear();
+				*expired_question_ids = vec!["q1".into()];
+			}
+			s.recover_expired_question_drafts("root", &history, cx);
+			s.prune_async_question_drafts("root", &history);
+			assert_eq!(s.composer.read(cx).content(), full);
+			assert_eq!(s.restored_question_drafts.len(), 1);
+		});
+	}
+
 	fn install_question_fixture(s: &mut AgentSurface, _cx: &mut Context<AgentSurface>) {
 		s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
 			agents: Default::default(),
@@ -1106,6 +1267,7 @@ mod tests {
 				title: "Choose a format".into(),
 				options: vec!["PDF".into(), "Markdown".into()],
 			}],
+			expired_question_ids: Vec::new(),
 			questions_truncated: false,
 			questions_recovering: false,
 			misalignment: None,

@@ -5624,9 +5624,25 @@ async fn query_agent_history_page(
 	let Ok(pending_questions) = store.read_agent_async_questions(id.into()).await else {
 		return decodex_protocol::AgentHistoryResult::Unavailable;
 	};
+	let Ok(expired) = store.expired_agent_async_question_ids(id.into()).await else {
+		return decodex_protocol::AgentHistoryResult::Unavailable;
+	};
+	let mut expired_question_ids = Vec::new();
+	let mut expired_bytes = 0;
+	let mut expired_truncated = false;
+	for id in expired {
+		let cost = serde_json::to_vec(&id).expect("serializable identity").len() + 1;
+		if expired_question_ids.len() >= 1024 || expired_bytes + cost > MAX_HISTORY_INLINE_BYTES / 4
+		{
+			expired_truncated = true;
+			break;
+		}
+		expired_bytes += cost;
+		expired_question_ids.push(id);
+	}
 	let mut questions = Vec::new();
-	let mut questions_truncated = false;
-	let mut question_bytes = 2;
+	let mut questions_truncated = expired_truncated;
+	let mut question_bytes = 2 + expired_bytes;
 
 	for pending in pending_questions {
 		let Ok(mut question) =
@@ -5657,6 +5673,7 @@ async fn query_agent_history_page(
 
 	decodex_protocol::AgentHistoryResult::Available {
 		questions,
+		expired_question_ids,
 		questions_truncated,
 		questions_recovering,
 		misalignment,

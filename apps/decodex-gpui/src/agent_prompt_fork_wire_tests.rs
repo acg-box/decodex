@@ -407,7 +407,14 @@ fn fork_recovery_opens_verified_target_and_keeps_edited_input(cx: &mut TestAppCo
 				assert!(s.saved_prompt_editors(pending.work_id.as_str()).is_empty());
 			}
 
-			assert!(s.composer.read(cx).content().is_empty());
+			assert_eq!(
+				s.composer.read(cx).content(),
+				if boundary == PromptForkBoundary::AfterTurn {
+					"Separate unsent input"
+				} else {
+					""
+				}
+			);
 
 			s.open_page(pending.work_id.as_str(), cx);
 

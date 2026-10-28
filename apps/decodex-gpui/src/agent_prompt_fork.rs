@@ -102,8 +102,25 @@ impl AgentSurface {
 									return;
 								}
 
+								let continuation = (boundary == PromptForkBoundary::AfterTurn
+									&& s.composer_manager.as_deref().or(s.selected.as_deref())
+										== Some(retained.work_id.as_str()))
+								.then(|| {
+									(
+										s.composer.read(cx).content().to_owned(),
+										s.attachments.clone(),
+										s.task_references.clone(),
+									)
+								});
+
 								s.apply_result(Ok(snapshot));
 								s.open_page(work.as_str(), cx);
+								if let Some((text, attachments, references)) = continuation {
+									s.composer.update(cx, |input, cx| input.set_content(&text, cx));
+									s.attachments = attachments;
+									s.task_references = references;
+									s.save_draft_document(cx);
+								}
 
 								if boundary == PromptForkBoundary::BeforeInput {
 									s.prompt_edit = Panel {

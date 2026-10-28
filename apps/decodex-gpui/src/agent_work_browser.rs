@@ -74,7 +74,7 @@ impl AgentSurface {
 			.then(|| (self.composer_model_value(cx), self.composer_effort_value(cx)));
 
 		self.close_native_agent(cx);
-		self.stop_voice(cx);
+		self.cancel_dictation(cx);
 
 		let id = self
 			.workspace

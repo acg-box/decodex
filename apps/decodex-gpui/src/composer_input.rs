@@ -225,6 +225,18 @@ impl ComposerInput {
 		self.redo.clear();
 	}
 
+	/// Append recovered user text as one undoable edit, without truncation or automatic send.
+	pub(crate) fn append_recovered_text(&mut self, text: &str, cx: &mut Context<Self>) -> bool {
+		let separator = if self.content.is_empty() { "" } else { "\n\n" };
+		let appended = format!("{separator}{text}");
+		if self.native_part.is_some() || self.content.len() + appended.len() > MAX_COMPOSER_BYTES {
+			return false;
+		}
+		let end = self.content.len();
+		self.replace_bytes(end..end, &appended, false, None, cx);
+		true
+	}
+
 	pub(crate) fn set_streaming_content(&mut self, value: &str, cx: &mut Context<Self>) {
 		if self.content == value {
 			return;
@@ -925,6 +937,22 @@ mod multiline_tests {
 	use crate::composer_input::{
 		self, ClipboardItem, ComposerInput, Paste, Redo, Undo, bind_keys, text, ui_theme,
 	};
+
+	#[gpui::test]
+	fn recovered_answers_append_as_one_undoable_edit(cx: &mut gpui::TestAppContext) {
+		let (input, visual) = cx.add_window_view(|_, cx| ComposerInput::new(0, cx));
+		visual.update(|window, cx| {
+			input.update(cx, |input, cx| {
+				input.set_content("Existing", cx);
+				assert!(input.append_recovered_text("First\n\nSecond", cx));
+				assert_eq!(input.content(), "Existing\n\nFirst\n\nSecond");
+				input.undo(&Undo, window, cx);
+				assert_eq!(input.content(), "Existing");
+				input.redo(&Redo, window, cx);
+				assert_eq!(input.content(), "Existing\n\nFirst\n\nSecond");
+			})
+		});
+	}
 
 	#[gpui::test]
 	fn pasted_tabs_preserve_indentation_and_undo(cx: &mut gpui::TestAppContext) {

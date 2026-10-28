@@ -27,6 +27,7 @@ fn assert_voice_start(start: &Value, thread: &str, voice: &str) {
 	assert_eq!(start["params"]["realtimeSessionId"], "voice");
 	assert_eq!(start["params"]["transport"]["type"], "webrtc");
 	assert_eq!(start["params"]["outputModality"], "audio");
+	assert_eq!(start["params"]["backendReasoningStatus"], true);
 
 	if voice == "juniper" {
 		assert_eq!(start["params"]["model"], "realtime-fixture");
