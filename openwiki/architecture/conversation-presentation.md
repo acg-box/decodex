@@ -10,6 +10,16 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-d701c906e7fcc9ab2d0917bc
     resource: repo://apps/decodex-gpui/src/agent_inspection.rs
+  - id: openwiki-source-0afccc244c69eb8da96d1fa9
+    resource: repo://apps/decodex-gpui/src/agent_link_preview.rs
+  - id: openwiki-source-2ee1164d01a09b38a208f1ac
+    resource: repo://apps/decodex-gpui/src/agent_markdown.rs
+  - id: openwiki-source-711411d5917ac189d9d28e37
+    resource: repo://apps/decodex-gpui/src/agent_math_tests.rs
+  - id: openwiki-source-d69026af05a9b3138e4656f4
+    resource: repo://apps/decodex-gpui/src/agent_math.rs
+  - id: openwiki-source-3cb0fdba7d0304893cb4f3a3
+    resource: repo://apps/decodex-gpui/src/agent_math/render/structured.rs
   - id: openwiki-source-bbf48964e1bd60f04ecb7f62
     resource: repo://apps/decodex-gpui/src/agent_mermaid_tests.rs
   - id: openwiki-source-4dfe438694434f1f2e34b2f9
@@ -26,8 +36,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-15d320ea458ddf705d950ba9
     resource: repo://apps/decodex-gpui/src/agent_response_metrics.rs
+  - id: openwiki-source-77f7f96f348908c8779b5df6
+    resource: repo://apps/decodex-gpui/src/agent_selectable_text.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
+  - id: openwiki-source-afe7c47e476800002dba8df3
+    resource: repo://apps/decodex-gpui/src/agent_text_links.rs
   - id: openwiki-source-4247deee56f626d37a52d5b0
     resource: repo://apps/decodex-gpui/src/agent_text_reveal.rs
   - id: openwiki-source-b76859cf2790cc53340f082d
@@ -38,6 +52,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_timeline_receipts.rs
   - id: openwiki-source-691432bb61082c358b6f9c24
     resource: repo://apps/decodex-gpui/src/agent_timeline.rs
+  - id: openwiki-source-32bb36aae256aa57e6e82bd0
+    resource: repo://apps/decodex-gpui/src/agent_voice.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-7b89f5bc6ecd604ca4e97dc2
@@ -76,10 +92,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-10-27T15:42:30.799Z" }
+generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T03:55:33.038Z
+    at: 2026-10-28T06:51:55.940Z
 ---
 
 
@@ -109,7 +125,7 @@ A first conversation read reserves a centered reading surface. Its shape is deli
 
 The composer and ordinary transcript share an 880-point maximum width with 16-point side insets. Narrow windows use the available width. User messages remain narrower and right-aligned. The history rail and composer use the same animated inset so their content edges stay aligned when the rail opens or closes. Native child-agent conversations use the same width tokens.
 
-The composer sits over the bottom of the conversation. Its measured height supplies bottom padding to the scroll content, so the final rows can move above the composer. The editor grows to six lines, then scrolls its text internally. Its action row remains below the text. Live replaces the text editor slot with a compact waveform and restores the draft when the call ends.
+The composer sits over the bottom of the conversation. Its measured height supplies bottom padding to the scroll content, so the final rows can move above the composer. The editor grows to six lines, then scrolls its text internally. Its action row remains below the text. In the conversation that owns the call, Live replaces the text editor slot with a compact waveform. Other conversations retain their own text editors. A background call bar identifies the owner and provides Return, Mute and End controls.
 
 ## Voice history and pagination
 
@@ -124,6 +140,12 @@ Submitted input has message delivery state separate from the current editor. A p
 An unsent input uses the normal right-aligned user bubble at the end of the transcript. Its full text wraps and scrolls with the conversation; it is not pinned above the input bar. One compact row below it aligns **Not sent** and, when available, **Resend**. Hover over the status to inspect the reason. There is no separate error panel, disclosure header, copy action or dismiss action. Archived conversations do not show retry accessories.
 
 Saved edit recovery and history refresh/source controls live in Details. Failed input remains an ordinary message in the transcript. Active editing and unresolved-operation notices also use the chat flow. There is no permanent list of saved drafts. See [conversation recovery](../workflows/conversations-and-recovery.md) for edit and Fork ownership.
+
+## Prose links and formulas
+
+HTTP and HTTPS URLs in prose are clickable in messages, question titles, approval explanations, MCP descriptions and feedback. Link ranges preserve the complete destination, including Unicode paths and balanced parentheses. Code spans and blocks stay literal; explicit Markdown links keep their authored destinations. Selecting text does not open a link.
+
+The bounded Unicode math renderer supports aligned equations, boxed models, grouped scripts, parenthesized matrices, display annotations and inline zero. Unsupported notation and layouts that exceed the available width retain their TeX source. Conversion is limited to 4,096 input bytes, 16 rows and 256 columns, with a shared parser-depth limit. Copy retains the original source.
 
 ## Generated image attachments
 
@@ -148,6 +170,8 @@ The shared GPUI popover moves into place by four points as one opaque surface. I
 Presentation entities request GPUI animation frames while application policy permits animation. Keyboard focus does not set the cadence of sibling windows. Native glass surfaces have their own host integration. Transcript expansion must not recreate or change the composer's material.
 
 Streamed model output, dictation and Live captions share a grapheme-safe text reveal. Model output uses an adaptive reserve across network gaps, with a 300–700 ms receive horizon. Completion limits the remaining reveal deadline to 160 ms. Dictation and Live captions keep a 120 ms response horizon. Corrections replace the visible prefix without replay. Reduced motion reveals current text directly. These are presentation policies, not transport-latency or microphone-readiness guarantees.
+
+While a rich response streams, an unfinished Markdown link keeps its label visible and holds back the destination. A closing parenthesis, a newline or finalization restores normal source rendering. Code and stored response text are unaffected.
 
 ## Mermaid diagrams
 

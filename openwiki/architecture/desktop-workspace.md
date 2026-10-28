@@ -36,6 +36,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
   - id: openwiki-source-6a1c55b61be8ac251a493046
     resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
+  - id: openwiki-source-b2084dffd07b4229957a0f94
+    resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-15ee466228bdb01892c9678b
@@ -46,6 +48,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
   - id: openwiki-source-0d053d4de2f668168f982629
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
+  - id: openwiki-source-32bb36aae256aa57e6e82bd0
+    resource: repo://apps/decodex-gpui/src/agent_voice.rs
+  - id: openwiki-source-3fa6d6c49e3542409542045b
+    resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
   - id: openwiki-source-e269da8230b6d51390181459
     resource: repo://apps/decodex-gpui/src/agent_workspace_size.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
@@ -62,10 +68,10 @@ sources:
     resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-27T03:26:06.307Z" }
+generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T03:26:06.307Z
+    at: 2026-10-28T06:51:55.940Z
 ---
 
 # Desktop workspace and native glass
@@ -112,7 +118,7 @@ Agent preferences also includes **Attached branches**. It lists the newest 100 s
 
 `native_material_panel.rs` bridges composition only. GPUI still owns UI state, layout and event handlers. The composer is an attached child window created by the main workspace, not another application or service. Settings must not create one. The workspace remains the main window while an attached control can own keyboard focus. See [conversation presentation](conversation-presentation.md#floating-controls-and-motion) for frame ownership and animation policy.
 
-Archived and blocked conversations keep the normal composer geometry with sending disabled and the draft retained. Certain detail/full-screen states omit the composer. Reopening includes a short layout-settling interval; failures fall back to GPUI presentation. Notification placement and opacity belong to the same native-panel composition boundary.
+Archived and blocked conversations keep the normal composer geometry with sending disabled and the draft retained. A locked conversation with a readable, currently bound native prompt offers **Continue in a new branch…**. This opens a reviewed native branch without taking over the original writer. Certain detail/full-screen states omit the composer. Reopening includes a short layout-settling interval; failures fall back to GPUI presentation. Notification placement and opacity belong to the same native-panel composition boundary.
 
 ## Menu focus and account motion
 
@@ -125,6 +131,8 @@ The row animation requests the current screen's maximum refresh rate. It can ret
 See [Accounts and routing](../operations/accounts-and-routing.md) and [Reset Cards](../operations/reset-cards.md) for row actions and independent account details.
 
 ## Reading and input
+
+A live call remains bound to its original conversation while the user browses another conversation or starts a new one. The background call bar identifies that owner and supplies Return, Mute and End controls. The other conversation keeps its own editor and draft.
 
 Markdown renders native text, code, lists, and links. Text selection and clipboard operations are read-only. One rendered message shares a selection document across its text blocks. This does not create a selection spanning all messages. Copy controls show short success feedback. Duration and abbreviated token counts remain together at the end of each answer; hovering this row shows detailed usage without changing transcript height.
 

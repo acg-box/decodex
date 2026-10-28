@@ -5,7 +5,7 @@ description: "Local work ownership, native conversation dispatch, explicit branc
 tags: ["decodex", "architecture"]
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T03:10:40.743Z
+    at: 2026-10-28T06:51:55.940Z
 sources:
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
@@ -17,6 +17,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_draft_storage.rs
   - id: openwiki-source-1e0b3343cd024646618a1f95
     resource: repo://apps/decodex-gpui/src/agent_native_agents.rs
+  - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
+    resource: repo://apps/decodex-gpui/src/agent_prompt_fork.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-1849030b658783d8ea0855b0
@@ -99,7 +101,7 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
+generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
 ---
 
 # Project, Agent and Work coordination
@@ -180,7 +182,7 @@ Archive observations refresh in the background on a five-second interval. Only o
 
 The active snapshot supplies the work list and relationship graph. Archived non-root work is hidden. The personal Agent remains as the coordination entry point, with its archive state available to the input gate. Filtering removes incident relationships, pending-event entries and context references from the view. Hidden conversation records leave the active Project view. Live descendants remain visible under their nearest visible ancestor. Stored work and the original hierarchy remain intact. A later positive active observation restores visibility without an application restart.
 
-A confirmed archive also ends local pending interactions. The service discards user input that never reached native dispatch, cancels pending capacity retries, retires old questions and request notices, and clears scheduled checks. It retains sent history, claimed delivery receipts and Work records. Native archive notifications, positive catalog observations and an archived resume rejection use the same cleanup. Restoration does not revive the discarded input. The desktop removes failed-message retry records for that exact conversation and stops selected voice input while keeping the current editor.
+A confirmed archive also ends local pending interactions. The service discards user input that never reached native dispatch, cancels pending capacity retries, retires old questions and request notices, and clears scheduled checks. It retains sent history, claimed delivery receipts and Work records. Native archive notifications, positive catalog observations and an archived resume rejection use the same cleanup. Restoration does not revive the discarded input. The desktop removes failed-message retry records for that exact conversation and stops voice input when the archived conversation owns the call while keeping the current editor.
 
 Native child lists explicitly include all providers and exclude archived threads. Only a complete valid list replaces the previous list. When a child leaves that list, the desktop saves its draft and closes its affected tabs. Removal of one local owner clears only that owner's child state. Other open conversations keep their connection, input and view state.
 
@@ -202,7 +204,7 @@ Decodex reserves a new local work item before the native request. It saves the a
 
 An ordinary branch is an independent user-created conversation. An attached branch keeps its exact source Agent as its local parent. It is a persistent Agent conversation, not a native Subagent. Both forms keep the source role, Project association and recorded tool version. It does not copy pending inbox work or dependency edges. An acknowledged fork has an explicit ownership record that permits it to use the source process. Independent Agents do not gain that authority from an old parent identifier. A branch does not create another Assistant or silently upgrade native tools.
 
-Before-input branches use the existing canonical input and draft handback owner. After-turn branches do not prefill the selected input. The **Attached branches** list shows retained Decodex creation receipts, including unresolved outcomes. Opening a ready branch uses the existing conversation controls and preserves the source draft. Closing a tab keeps the branch; native Codex owns archive, restore and parent-deletion safeguards. See [conversation recovery](../workflows/conversations-and-recovery.md) for the user actions and uncertain-result behavior.
+Before-input branches use the existing canonical input and draft handback owner. After-turn branches do not prefill the selected input. They preserve the source draft and copy its ordinary composer text, attachments and references into the new branch. The **Attached branches** list shows retained Decodex creation receipts, including unresolved outcomes. Opening a ready branch uses the existing conversation controls and preserves the source draft. Closing a tab keeps the branch; native Codex owns archive, restore and parent-deletion safeguards. See [conversation recovery](../workflows/conversations-and-recovery.md) for the user actions and uncertain-result behavior.
 
 ## Verification and navigation
 

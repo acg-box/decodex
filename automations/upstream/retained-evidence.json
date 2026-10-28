@@ -1120,19 +1120,36 @@
       "https://github.com/acg-box/decodex/commit/7d9d4329fa46ef0be9069fe250e6006b92495cac"
     ],
     "documentation": {
-      "status": "incomplete_scope_expansion",
+      "status": "complete",
       "requested_pages": [
         "openwiki/architecture/conversation-presentation.md",
         "openwiki/workflows/conversations-and-recovery.md",
         "openwiki/integrations/subscription-voice.md",
         "openwiki/decisions/upstream-product-scope.md"
       ],
-      "queued_pages": 16,
-      "completed_pages": 0,
-      "owner": "OpenWiki maintenance continuation",
-      "reason": "The supported lifecycle automatically adds pre-existing stale and unresolved claim jobs and has no skip or scoped assignment operation. Do not expand this product batch into historical wiki reconciliation.",
-      "next_action": "Rebegin the supported OpenWiki lifecycle on merged main; reconcile the preceding historical claim queue before updating the four requested pages. No generated page or control state was hand-edited.",
-      "first_pending_page": "openwiki/architecture/chief-coordination.md"
+      "reconciled_pages": 16,
+      "changed_body_pages": [
+        "openwiki/architecture/chief-coordination.md",
+        "openwiki/architecture/conversation-presentation.md",
+        "openwiki/architecture/desktop-workspace.md",
+        "openwiki/decisions/upstream-product-scope.md",
+        "openwiki/integrations/subscription-voice.md",
+        "openwiki/operations/accounts-and-routing.md",
+        "openwiki/operations/codex-upstream-autopilot.md",
+        "openwiki/operations/reset-cards.md",
+        "openwiki/workflows/conversations-and-recovery.md"
+      ],
+      "scope": "Update the approved desktop behavior and reconcile only affected source claims; preserve unrelated page content.",
+      "verification": {
+        "openwiki_lifecycle": "complete",
+        "relative_links_checked": 147,
+        "relative_link_failures": 0,
+        "diff_whitespace": "passed"
+      },
+      "limits": [
+        "Documentation and source-reference review only; no new application test, native qualification or installed-app acceptance.",
+        "Original item 13 remains undecided. Source review, runtime selection and the automation schedule are unchanged."
+      ]
     },
     "pull_request": "https://github.com/acg-box/decodex/pull/2537"
   }
