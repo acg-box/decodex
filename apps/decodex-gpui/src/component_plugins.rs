@@ -15,6 +15,20 @@ pub(crate) struct Snapshot {
 	pub(crate) error: Option<String>,
 }
 
+impl Snapshot {
+	pub(crate) fn status_text(&self) -> String {
+		match &self.installed {
+			Some(plugin) => format!(
+				"Version {} · {} in Codex",
+				plugin.version,
+				if plugin.enabled { "Enabled" } else { "Disabled" }
+			),
+			None if self.inspected => "Not listed in Codex".into(),
+			_ => "Status not checked".into(),
+		}
+	}
+}
+
 pub(crate) struct PluginOperations {
 	state: Arc<Mutex<Snapshot>>,
 	component: PluginComponent,
@@ -79,13 +93,95 @@ impl PluginOperations {
 #[cfg(test)]
 mod tests {
 	use std::{
-		env,
+		env, fs,
 		path::PathBuf,
+		process::Command,
 		time::{Duration, Instant},
 	};
 
 	use super::{NativePlugins, PluginAction, PluginOperations};
 	use decodex_components::egm_component;
+
+	#[test]
+	#[ignore = "requires DECODEX_TEST_CODEX_EXECUTABLE; uses an isolated local marketplace"]
+	fn refresh_and_cleanup_recover_an_orphan_without_claiming_installation_integrity() {
+		let executable = PathBuf::from(
+			env::var_os("DECODEX_TEST_CODEX_EXECUTABLE").expect("qualified executable"),
+		);
+		let root = tempfile::tempdir().expect("isolated fixture");
+		let home = root.path().join("home");
+		let codex_home = home.join(".codex");
+		let source = root.path().join("source");
+
+		fs::create_dir_all(&codex_home).unwrap();
+		fs::create_dir_all(source.join(".agents/plugins")).unwrap();
+		fs::create_dir_all(source.join(".codex-plugin")).unwrap();
+		fs::write(
+			source.join(".agents/plugins/marketplace.json"),
+			r#"{"name":"fixture","plugins":[{"name":"fixture","source":"./"}]}"#,
+		)
+		.unwrap();
+		fs::write(
+			source.join(".codex-plugin/plugin.json"),
+			r#"{"name":"fixture","version":"1.0.0"}"#,
+		)
+		.unwrap();
+		let native = NativePlugins::new(executable.clone(), codex_home.clone());
+		let operations = PluginOperations::new(
+			super::PluginComponent {
+				name: "fixture".into(),
+				marketplace: "fixture".into(),
+				source: source.to_str().unwrap().into(),
+			},
+			Some(native),
+		);
+
+		operations.start(PluginAction::Install);
+		assert!(wait(&operations).error.is_none());
+		let cache = codex_home.join("plugins/cache/fixture/fixture");
+		let manifest = cache.join("1.0.0/.codex-plugin/plugin.json");
+
+		for invalid_manifest in [false, true] {
+			if invalid_manifest {
+				fs::write(&manifest, "invalid").unwrap();
+			} else {
+				fs::remove_file(&manifest).unwrap();
+			}
+			operations.start(PluginAction::Refresh);
+			let state = wait(&operations);
+
+			assert!(state.error.is_none());
+			assert!(
+				state.installed.as_ref().unwrap().enabled,
+				"native flag is not integrity evidence"
+			);
+			assert_eq!(state.status_text(), "Version 1.0.0 · Enabled in Codex");
+		}
+		let output = Command::new(executable)
+			.args(["plugin", "marketplace", "remove", "fixture", "--json"])
+			.env_clear()
+			.env("HOME", &home)
+			.env("CODEX_HOME", &codex_home)
+			.env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+			.current_dir(&home)
+			.output()
+			.unwrap();
+
+		assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+		operations.start(PluginAction::Refresh);
+		let state = wait(&operations);
+
+		assert!(state.inspected && state.installed.is_none() && state.error.is_none());
+		assert_eq!(state.status_text(), "Not listed in Codex");
+		assert!(cache.exists());
+		for _ in 0..2 {
+			operations.start(PluginAction::Remove);
+			let state = wait(&operations);
+
+			assert!(state.inspected && state.installed.is_none() && state.error.is_none());
+			assert!(!cache.exists());
+		}
+	}
 
 	fn wait(operations: &PluginOperations) -> super::Snapshot {
 		let deadline = Instant::now() + Duration::from_secs(120);

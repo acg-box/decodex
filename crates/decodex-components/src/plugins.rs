@@ -29,9 +29,9 @@ impl PluginComponent {
 /// Installed state read from Codex, never from a Decodex registry.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 pub struct PluginInstallation {
-	/// Version reported by the installed plugin manifest.
+	/// Version reported by the native catalog, which may fall back to source metadata.
 	pub version: String,
-	/// Whether native Codex sessions can select the plugin.
+	/// Native configuration's enabled flag; not proof of installation integrity.
 	pub enabled: bool,
 }
 
@@ -105,19 +105,20 @@ impl NativePlugins {
 
 				self.run(&["add", &selector, "--json"])?;
 			},
-			PluginAction::Remove =>
-				if marketplace.is_some() {
-					let shared = self
+			PluginAction::Remove => {
+				let remove_marketplace = marketplace.is_some()
+					&& !self
 						.list(component)?
 						.installed
 						.iter()
 						.any(|entry| entry.plugin_id != selector);
 
-					self.run(&["remove", &selector, "--json"])?;
-					if !shared {
-						self.run(&["marketplace", "remove", &component.marketplace, "--json"])?;
-					}
-				},
+				// Native uninstall also clears files left after external marketplace removal.
+				self.run(&["remove", &selector, "--json"])?;
+				if remove_marketplace {
+					self.run(&["marketplace", "remove", &component.marketplace, "--json"])?;
+				}
+			},
 		}
 
 		let installation = self
@@ -334,6 +335,55 @@ mod tests {
 			fs::read_to_string(root.path().join("work.md")).expect("retained work"),
 			"Keep user work."
 		);
+	}
+	#[test]
+	#[ignore = "requires the qualified runtime in DECODEX_TEST_CODEX_EXECUTABLE"]
+	fn removal_without_a_marketplace_cleans_only_the_selected_plugin_and_can_retry() {
+		for incomplete in [false, true] {
+			let (root, native, component) = fixture();
+			let source = PathBuf::from(&component.source);
+
+			fs::create_dir_all(source.join("peer/.codex-plugin")).expect("peer source");
+			fs::write(
+				source.join("peer/.codex-plugin/plugin.json"),
+				r#"{"name":"peer","version":"1.0.0"}"#,
+			)
+			.expect("peer manifest");
+			fs::write(source.join(".agents/plugins/marketplace.json"), r#"{"name":"fixture","plugins":[{"name":"fixture","source":"./"},{"name":"peer","source":"./peer"}]}"#).expect("shared catalog");
+			native.apply(&component, PluginAction::Install).expect("component installation");
+			native.run(&["add", "peer@fixture", "--json"]).expect("peer installation");
+			let selected = native.codex_home.join("plugins/cache/fixture/fixture");
+			let peer = native
+				.codex_home
+				.join("plugins/cache/fixture/peer/1.0.0/.codex-plugin/plugin.json");
+			let peer_manifest = fs::read(&peer).expect("installed peer");
+
+			if incomplete {
+				fs::remove_file(selected.join("1.0.0/.codex-plugin/plugin.json"))
+					.expect("incomplete installation");
+			}
+			native
+				.run(&["marketplace", "remove", "fixture", "--json"])
+				.expect("independent native marketplace removal");
+			assert!(native.marketplace(&component).expect("marketplaces").is_none());
+			assert!(selected.exists(), "marketplace removal leaves the plugin cache");
+
+			for _ in 0..2 {
+				assert_eq!(native.apply(&component, PluginAction::Remove), Ok(None));
+				assert!(!selected.exists(), "successful removal must clean the orphan cache");
+				assert_eq!(fs::read(&peer).expect("retained peer"), peer_manifest);
+				let config = fs::read_to_string(native.codex_home.join("config.toml"))
+					.expect("native config");
+
+				assert!(!config.contains("fixture@fixture"));
+				assert!(config.contains("peer@fixture"));
+				assert!(config.contains("fixture-model"));
+				assert_eq!(
+					fs::read_to_string(root.path().join("work.md")).unwrap(),
+					"Keep user work."
+				);
+			}
+		}
 	}
 	#[test]
 	#[ignore = "requires the qualified runtime in DECODEX_TEST_CODEX_EXECUTABLE"]

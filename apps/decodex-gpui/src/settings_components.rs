@@ -199,15 +199,7 @@ impl SettingsSurface {
 
 	fn egm_settings(&self, cx: &mut Context<Self>) -> Div {
 		let state = &self.components.plugin;
-		let status = match &state.installed {
-			Some(plugin) => format!(
-				"Version {} · {}",
-				plugin.version,
-				if plugin.enabled { "Enabled" } else { "Disabled" }
-			),
-			None if state.inspected => "Not installed".into(),
-			_ => "Status not checked".into(),
-		};
+		let status = state.status_text();
 		let mut controls = gpui::div().flex().items_center().gap_2();
 
 		if state.busy.is_none() {
@@ -230,14 +222,12 @@ impl SettingsSurface {
 					Action::Plugin(action),
 					cx,
 				));
-				if state.installed.is_some() {
-					controls = controls.child(self.component_button(
-						"components-remove-egm",
-						"Uninstall",
-						Action::Plugin(PluginAction::Remove),
-						cx,
-					));
-				}
+				controls = controls.child(self.component_button(
+					"components-remove-egm",
+					if state.installed.is_some() { "Uninstall" } else { "Clean up" },
+					Action::Plugin(PluginAction::Remove),
+					cx,
+				));
 			}
 		}
 
@@ -306,7 +296,7 @@ mod tests {
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("components-install-egm").is_some());
-		assert!(visual.debug_bounds("components-remove-egm").is_none());
+		assert!(visual.debug_bounds("components-remove-egm").is_some());
 		settings.update(visual, |settings, cx| {
 			settings.components.plugin.installed =
 				Some(PluginInstallation { version: "0.1.0".into(), enabled: true });
