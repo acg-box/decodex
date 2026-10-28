@@ -18,6 +18,9 @@ mod client_cache;
 #[path = "../client_lifecycle.rs"]
 mod client_lifecycle;
 #[allow(dead_code)]
+#[path = "../component_runtime.rs"]
+mod component_runtime;
+#[allow(dead_code)]
 #[path = "../composer_input.rs"]
 mod composer_input;
 #[allow(dead_code)]

@@ -193,7 +193,7 @@ pub(crate) struct Shell {
 	connection: ConnectionView,
 	root_focus: FocusHandle,
 	destination_focus: Vec<FocusHandle>,
-	settings_focus: [FocusHandle; 5],
+	settings_focus: [FocusHandle; 6],
 	refresh_focus: FocusHandle,
 	composer: Entity<ComposerInput>,
 	agent: Entity<AgentSurface>,
@@ -743,6 +743,7 @@ impl Shell {
 					match std::env::var("DECODEX_VISUAL_SETTINGS_CATEGORY").as_deref() {
 						Ok("appearance") => SettingsCategory::Appearance,
 						Ok("updates") => SettingsCategory::Updates,
+						Ok("components") => SettingsCategory::Components,
 						_ => SettingsCategory::General,
 					};
 			});
@@ -2524,7 +2525,7 @@ fn connection_presentation(view: ConnectionView) -> ConnectionPresentation {
 		ConnectionView::PreparingComponents { failed } => ConnectionPresentation {
 			label: if failed { "Codex setup failed" } else { "Preparing Codex" },
 			detail: if failed {
-				"Open Settings > Updates to retry setup."
+				"Open Settings > Components to retry setup."
 			} else {
 				"Installing the required runtime."
 			}
@@ -2684,7 +2685,7 @@ fn publish_views(shell: &WeakEntity<Shell>, views: &Receiver<ConnectionView>, cx
 	let _ = shell.update(cx, |shell, cx| {
 		shell.poll_account_login(cx);
 		shell.poll_reset_cards(cx);
-		shell.settings.update(cx, |settings, cx| settings.poll_updates(cx));
+		shell.settings.update(cx, |settings, cx| settings.poll_components(cx));
 
 		let accounts = shell.accounts_controller.snapshot();
 
@@ -5834,6 +5835,7 @@ fn settings_navigation(
 	for (section_index, (destination, category, label)) in [
 		(Destination::Settings, Some(SettingsCategory::General), "General"),
 		(Destination::Settings, Some(SettingsCategory::Appearance), "Appearance"),
+		(Destination::Settings, Some(SettingsCategory::Components), "Components"),
 		(Destination::Settings, Some(SettingsCategory::Updates), "Updates"),
 		(Destination::Accounts, None, "Accounts"),
 		(Destination::Health, None, "Diagnostics"),
@@ -5844,8 +5846,9 @@ fn settings_navigation(
 		let symbol = match section_index {
 			0 => workspace_symbols::Symbol::Settings,
 			1 => workspace_symbols::Symbol::Eye,
-			2 => workspace_symbols::Symbol::ArrowDown,
-			3 => workspace_symbols::Symbol::Agents,
+			2 => workspace_symbols::Symbol::Graph,
+			3 => workspace_symbols::Symbol::ArrowDown,
+			4 => workspace_symbols::Symbol::Agents,
 			_ => workspace_symbols::Symbol::Waveform,
 		};
 		let active = selected == destination
@@ -8047,7 +8050,7 @@ mod tests {
 		let (shell, visual) = open_shell(cx);
 
 		for (index, expected) in
-			[(0, Destination::Settings), (3, Destination::Accounts), (4, Destination::Health)]
+			[(0, Destination::Settings), (4, Destination::Accounts), (5, Destination::Health)]
 		{
 			let focused = shell.read_with(visual, |shell, _| shell.settings_focus[index].clone());
 
@@ -8076,6 +8079,7 @@ mod tests {
 		for (index, (destination, category)) in [
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::General)),
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Appearance)),
+			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Components)),
 			(Destination::Settings, Some(crate::settings_surface::SettingsCategory::Updates)),
 			(Destination::Accounts, None),
 			(Destination::Health, None),

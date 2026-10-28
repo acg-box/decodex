@@ -3,11 +3,13 @@
 mod development;
 mod install;
 mod pin;
+mod plugins;
 
 pub use self::{
 	development::prepare_source,
 	install::{ComponentStore, InstallProgress, InstalledRuntime},
 	pin::pin_release,
+	plugins::{NativePlugins, PluginAction, PluginComponent, PluginInstallation},
 };
 
 use std::{

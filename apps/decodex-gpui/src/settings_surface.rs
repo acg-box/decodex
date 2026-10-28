@@ -3,6 +3,7 @@
 //! Service behavior remains daemon-owned. Menu-bar visibility and automatic recaps
 //! run in the desktop and must not wait for service startup or queries.
 
+#[path = "settings_components.rs"] mod components;
 #[path = "settings_power.rs"] mod power;
 #[path = "ui_switch.rs"] mod switch;
 #[path = "settings_themes.rs"] mod themes;
@@ -46,6 +47,7 @@ pub(crate) enum SettingsCategory {
 	#[default]
 	General,
 	Appearance,
+	Components,
 	Updates,
 }
 impl SettingsCategory {
@@ -53,6 +55,7 @@ impl SettingsCategory {
 		match self {
 			Self::General => "General",
 			Self::Appearance => "Appearance",
+			Self::Components => "Components",
 			Self::Updates => "Updates",
 		}
 	}
@@ -67,6 +70,7 @@ enum MenuBarRuntimeState {
 }
 
 pub(crate) struct SettingsSurface {
+	components: components::Components,
 	updates: updates::Updates,
 	pub(crate) category: SettingsCategory,
 	power: PowerSettings,
@@ -413,6 +417,7 @@ impl SettingsSurface {
 		match self.category {
 			SettingsCategory::General => self.general_content(cx),
 			SettingsCategory::Appearance => self.appearance_content(cx),
+			SettingsCategory::Components => self.components_content(cx),
 			SettingsCategory::Updates => self.updates_content(cx),
 		}
 	}
@@ -565,7 +570,8 @@ impl SettingsSurface {
 		let launch_at_login =
 			menu_bar.launch_at_login_state().unwrap_or(LaunchAtLoginState::OperationFailed);
 		let mut surface = Self {
-			updates: updates::Updates::new(crate::component_runtime::shared(cx)),
+			updates: updates::Updates::new(),
+			components: components::Components::new(crate::component_runtime::shared(cx)),
 			power: Default::default(),
 			category: SettingsCategory::General,
 			snapshot,
