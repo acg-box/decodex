@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:0f1dc28aecff682aa1eae50faec3279e32d5b23872303b0330e9a3150b541b7d",
+  "pageVersion": "sha256:e4f2498a2c71391fd9357d32dd2dcd99dba3760aa6cb285ff82243f5f9c7cded",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -296,7 +296,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:9c7d882a2af2a4f00696ef225661a8adb103917b53be591d87554c24a18d5814"
+          "version": "repo-file-v1:sha256:93efbdc4fec6c466d49bb3cb21cfa29009b025af6ebb0988b4270442bdcfd601"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -309,8 +309,8 @@
       "statement": "Persistent attached branches expose only their own turns while native inference retains the reviewed parent context and saved source turn IDs retain boundary provenance. The retained public workflow already requires paginated source history.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4422-L4687",
-          "version": "repo-lines-v1:sha256:fb7bb37a0128e2c185f71baabeecfedab9cf555ac2f37648f89cd53ce09a8800:eyJzZWxlY3RlZExpbmVDb3VudCI6MjY2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4422-L4760",
+          "version": "repo-lines-v1:sha256:1adce661fc02f66a64e61cfcc1cf341014fdbaf6599c8b7df5480261d4d28d00:eyJzZWxlY3RlZExpbmVDb3VudCI6MzM5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
@@ -328,17 +328,45 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:9c7d882a2af2a4f00696ef225661a8adb103917b53be591d87554c24a18d5814"
+          "version": "repo-file-v1:sha256:93efbdc4fec6c466d49bb3cb21cfa29009b025af6ebb0988b4270442bdcfd601"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:b9a521a9f30e6d37c73b9c1de51dd371be85f27be6a63b2b3309945d63096fbe"
+          "version": "repo-file-v1:sha256:a5ba4fc4cbfb45055f271d00c39b5004566dd153c8847d3bb2db2218a38318d9"
+        }
+      ]
+    },
+    {
+      "id": "claim_e2a46e444f184ef4beae75f5a614006b",
+      "statement": "Original item 28 selects the current native catalog default after an explicit model retirement deadline, through existing new-Agent settings and idle recovery paths. Missing entries or upgrade suggestions alone do not cause migration; desktop cycling no longer uses a fixed model or effort list.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/conversations.rs",
+          "version": "repo-file-v1:sha256:7bf90101a6c1bde73fac1c50f69b361828b8047a7fa4da78324c5e59b1f86d48"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-contracts.json",
+          "version": "repo-file-v1:sha256:93efbdc4fec6c466d49bb3cb21cfa29009b025af6ebb0988b4270442bdcfd601"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
+          "version": "repo-lines-v1:sha256:f4b851127d577fcebde31500784313617e7b0796409a2b012a5e0705d1e82782:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1ZmM3ZDk2YTVkZTViNWM2Yzg3NjhiZDM2NTI4YTYwY2E1YTliNjE0OTI5MDgwOTEzZjVlMGQwNTgzMmY0ZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzOGQ4NzM3YTVmMGY1ODRmZTE5MjlkNGViOTk4ZTkyMzU0YWVmNmQ1MWQxNmUxMTVjYWRmZjRmNmQwMzc5NDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3N2I2YjVjMzk5MTEzMjYyZTg0NDY4ZjJjN2E1YmMwMmU2NDQ4ZDVkOWYyOGM3Y2RlNTM0YjIwOGRiYTJiOTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9ec6de1679a04a6fa5808c03271656f5",
+      "statement": "The user excludes diagnostic-log upload for privacy. Queue-navigation keys, copy-on-select and additional semantic range-copy gestures are not selected; clipboard latency work needs a reproduced defect, and current copy behavior stays supported.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:a5ba4fc4cbfb45055f271d00c39b5004566dd153c8847d3bb2db2218a38318d9"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T07:13:51.367Z"
+    "at": "2026-10-28T07:51:34.051Z"
   }
 }

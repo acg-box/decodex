@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:609fca6253ef4c7102ce33a1fed681fa39a851cc35ad3aead0eb644c5b0a7337",
+  "pageVersion": "sha256:c7e2bb7e7f9a0d9b33608d9e285b71375528f431c6fac0f123c4e88888eab509",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -200,7 +200,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:9c7d882a2af2a4f00696ef225661a8adb103917b53be591d87554c24a18d5814"
+          "version": "repo-file-v1:sha256:93efbdc4fec6c466d49bb3cb21cfa29009b025af6ebb0988b4270442bdcfd601"
         }
       ]
     },
@@ -259,6 +259,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T06:51:55.940Z"
+    "at": "2026-10-28T07:49:54.224Z"
   }
 }

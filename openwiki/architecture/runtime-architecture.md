@@ -117,7 +117,7 @@ sources:
 generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T06:51:55.940Z
+    at: 2026-10-28T07:49:54.224Z
 ---
 
 # Runtime Architecture

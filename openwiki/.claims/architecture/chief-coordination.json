@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5af9882842fa7a2a043c74a1195200342d8990f08912e9fcc8ef14b5c76bdcc6",
+  "pageVersion": "sha256:96b9777850f2391d3f07bcf2cc74228155f3c7cc1352234932066a7da7440132",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -300,15 +300,15 @@
     },
     {
       "id": "claim_05b8bc6a4a884702a693687685123de9",
-      "statement": "An independent conversation can initialize settings from its real first pending user input without an Assistant, preserving explicit model and effort while refusing to reconstruct a bound or uncertain native effect.",
+      "statement": "An independent conversation can initialize settings from its real first pending user input without an Assistant. It preserves explicit models and compatible effort except when an explicit native retirement deadline selects the current catalog default; bound or uncertain native effects are not reconstructed.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:25efeb2099951175da8e0a46b892bf1efbf14b7141fc98c3c35e1650c6be5140"
+          "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
+          "version": "repo-lines-v1:sha256:f4b851127d577fcebde31500784313617e7b0796409a2b012a5e0705d1e82782:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1ZmM3ZDk2YTVkZTViNWM2Yzg3NjhiZDM2NTI4YTYwY2E1YTliNjE0OTI5MDgwOTEzZjVlMGQwNTgzMmY0ZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzOGQ4NzM3YTVmMGY1ODRmZTE5MjlkNGViOTk4ZTkyMzU0YWVmNmQ1MWQxNmUxMTVjYWRmZjRmNmQwMzc5NDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM3N2I2YjVjMzk5MTEzMjYyZTg0NDY4ZjJjN2E1YmMwMmU2NDQ4ZDVkOWYyOGM3Y2RlNTM0YjIwOGRiYTJiOTUifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/agent_initial_settings.rs",
-          "version": "repo-file-v1:sha256:d9e79dd537c9b4a9c6201c25a86f3c1c4a4e7d4f30b55c9ddda1211509598524"
+          "resource": "repo://crates/decodex-runtime/src/agent_initial_settings.rs#L15-L85",
+          "version": "repo-lines-v1:sha256:4e72564efb0f6ddee2582a7795afc18da625a69e00901bed0a0d3dfcafd25b2d:eyJzZWxlY3RlZExpbmVDb3VudCI6NzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjOTM2ZmNlZjg1NzllZGY0M2FjZTYxZDNlM2YwNzVjYWI3ODM3MDAxN2YzNjZlMjBmYzI5NTRiZTY4MDcwZTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNhMjEwM2I4NGY2MWJlMjQzMDZkMjM1MjgzN2JmNWIwYWUyODI2YmFkMDViOGJhNTNlODI5OWNlNjY5ZjlkNDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVlODFlMjRlYjY2MjYxM2RhN2FiMGNmNjcyY2MxMGIxNzNlZjlhN2NlNjAwYzc5M2M5YWYxNGZlNzFmOTFjNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAifQ"
         }
       ]
     },
@@ -481,6 +481,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T06:51:55.940Z"
+    "at": "2026-10-28T07:49:54.224Z"
   }
 }

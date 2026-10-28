@@ -22,6 +22,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
   - id: openwiki-source-0d053d4de2f668168f982629
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
+  - id: openwiki-source-682f90c6d08ed3207257f1d5
+    resource: repo://apps/decodex-gpui/src/conversations.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
@@ -40,6 +42,8 @@ sources:
     resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
+  - id: openwiki-source-0d29990b5fd295fa89a495ad
+    resource: repo://crates/decodex-protocol/src/model_catalog.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
@@ -84,10 +88,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
+generated: { by: "codex", at: "2026-10-28T07:51:34.051Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T07:13:51.367Z
+    at: 2026-10-28T07:51:34.051Z
 ---
 
 # Product scope and native ownership
@@ -141,9 +145,17 @@ The later manual review approved original items **2, 3, 6, 7, 9, 10, 12 and 15**
 | 12 | Unsent question drafts return to the composer after exact terminal turn evidence. |
 | 15 | Rich streaming previews withhold unfinished link destinations until closure, newline or completion. |
 
-**Original item 13, board-only native messaging, remains undecided.** The current native collaboration surface stays available. These eight approvals do not select other historical proposals.
+**Original item 13, board-only native messaging, remains undecided** in [issue 2539](https://github.com/acg-box/decodex/issues/2539). The current native collaboration surface stays available. These eight approvals do not select other historical proposals.
 
 The [retained contracts](../../automations/upstream/retained-contracts.json) and [validation index](../../automations/upstream/retained-evidence.json) record source references and qualified limits. The implementation used focused desktop, storage and wire tests. It did not install or release an application or add a new live-provider or physical-audio qualification.
+
+## Model retirement and native catalogs
+
+The user selected **original item 28**: use the current native catalog default after an explicit model retirement deadline. An upgrade suggestion or a missing entry alone does not establish retirement. New Agent settings and idle loaded Agent recovery use the existing native settings and receipt paths. The desktop no longer cycles through a fixed model or reasoning-effort list when a current catalog is unavailable.
+
+The native model catalog already refreshes automatically; this work does not add another model directory, poller or provider. See [model retirement](../workflows/models-and-settings.md#native-model-retirement) for the preserved settings and validation limits, and `retained_model_retirement_defaults` in the [retained contracts](../../automations/upstream/retained-contracts.json).
+
+Diagnostic-log upload (**original item 24**) is excluded at the user's request to protect privacy. Terminal queue-navigation keys, copy-on-select and additional semantic range-copy gestures (**items 16, 17 and 25**) are not selected. Clipboard latency (**item 22**) requires a reproduced defect before maintenance work starts. Existing desktop copy behavior remains supported.
 
 ## Current integration boundary
 
