@@ -426,23 +426,18 @@ impl AgentSurface {
 		{
 			return None;
 		}
-		let (work, AgentHistoryResult::Available { entries, .. }) = self.history.as_ref()? else {
-			return None;
-		};
-		if self.selected.as_ref() != Some(work) {
+		let work = self.conversation_work()?;
+		if !self.native_history_active(&work) {
 			return None;
 		}
-		let source = entries
-			.iter()
-			.rev()
-			.filter(|entry| entry.kind == "user")
-			.find_map(|entry| entry.native_source.as_ref())?;
-		Some((
-			work.clone(),
-			source.thread_id.clone(),
-			source.turn_id.clone(),
-			source.item_id.clone(),
-		))
+		let (turn, item) =
+			self.timeline.native.entries.iter().rev().find_map(|entry| match &entry.content {
+				decodex_protocol::AgentTimelineContent::Item { kind, turn_id, item_id, .. }
+					if kind == "userMessage" =>
+					Some((turn_id, item_id)),
+				_ => None,
+			})?;
+		Some((work.id, work.codex_thread_id?, turn.clone(), item.clone()))
 	}
 
 	pub(super) fn review_locked_branch(&mut self, cx: &mut Context<Self>) {
@@ -1085,18 +1080,28 @@ mod tests {
 		install_fixture_editor(&surface, profile.clone(), cx);
 		surface.update(cx, |s, cx| {
 			let work = s.selected.clone().unwrap();
-			let (_, history) = s.history.as_mut().unwrap();
-			let crate::shell::agent_surface::AgentHistoryResult::Available { entries, .. } =
-				history
-			else {
-				panic!("fixture");
-			};
-			let entry = entries.iter_mut().find(|entry| entry.kind == "user").unwrap();
-			entry.native_source = Some(decodex_protocol::AgentHistorySourceDto {
-				thread_id: "thread".into(),
-				turn_id: "turn".into(),
-				item_id: "item".into(),
-			});
+			s.history = None;
+			s.timeline.native.binding =
+				Some(crate::shell::agent_surface::native_timeline::Binding {
+					work: work.clone(),
+					thread: "thread".into(),
+					account: "account".into(),
+				});
+			s.timeline.native.entries = vec![decodex_protocol::AgentTimelineEntry {
+				position: 1,
+				content: decodex_protocol::AgentTimelineContent::Item {
+					turn_id: "turn".into(),
+					item_id: "item".into(),
+					kind: "userMessage".into(),
+					phase: None,
+					text: "Original".into(),
+					truncated: false,
+					activity: None,
+					app_ui: false,
+					attachments: vec![],
+					collaboration: None,
+				},
+			}];
 			assert!(s.locked_branch_source().is_none());
 			s.snapshot.as_mut().unwrap().pending_events =
 				vec![decodex_protocol::AgentPendingEventDto {
@@ -1111,6 +1116,10 @@ mod tests {
 				s.locked_branch_source(),
 				Some((work.clone(), "thread".into(), "turn".into(), "item".into()))
 			);
+			s.timeline.native.binding.as_mut().unwrap().thread = "stale-thread".into();
+			assert!(s.locked_branch_source().is_none());
+			s.timeline.native.binding.as_mut().unwrap().thread = "thread".into();
+
 			s.begin_prompt_review(&profile, &work, "thread");
 			assert!(s.prompt_edit.branch_only);
 			assert_eq!(s.composer.read(cx).content(), "Unrelated unsent input");
