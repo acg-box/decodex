@@ -105,7 +105,7 @@ sources:
 generated: { by: "codex", at: "2026-10-28T08:48:31.048Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T08:48:31.048Z
+    at: 2026-10-28T17:29:05.448Z
 ---
 
 # Product scope and native ownership
@@ -173,11 +173,11 @@ Diagnostic-log upload (**original item 24**) is excluded at the user's request t
 
 ## Next-message suggestions and current choices
 
-The user selected **original item 26** with automatic generation: a newly completed answer in the selected independent root conversation requests one suggestion when its composer is empty. Opening saved history, repeated refreshes and an existing draft do not trigger inference. The composer menu retains **Suggest next message…** for an explicit request. **Use as draft** places the suggestion in the same conversation's empty composer as one undoable edit. Later edits are preserved, and acceptance does not send a message. The feature uses the existing native sampler and conversation refresh; it adds no separate poller. See [the suggestion workflow](../workflows/conversations-and-recovery.md#next-message-suggestions) and `retained_prompt_suggestions` in the [retained contracts](../../automations/upstream/retained-contracts.json).
+The user selected **original item 26** with automatic generation: a newly completed answer in the selected independent root conversation requests one suggestion when its composer is empty. Opening saved history, repeated refreshes and an existing draft do not trigger inference. The composer menu retains **Suggest next message…** for an explicit request. Press **Tab** in the focused empty message field to place the current suggestion in the composer as one undoable edit. Other fields, Shift-Tab and nonempty drafts keep normal focus navigation. Later edits are preserved, and acceptance does not send a message. The feature uses the existing native sampler and conversation refresh; it adds no separate poller. See [the suggestion workflow](../workflows/conversations-and-recovery.md#next-message-suggestions) and `retained_prompt_suggestions` in the [retained contracts](../../automations/upstream/retained-contracts.json).
 
 **Original item 19**, authenticated remote execution, remains deferred in [issue 1693](https://github.com/acg-box/decodex/issues/1693). **Item 21** retains Decodex account management: independent account observations and reset-credit requests use the existing account API client. This decision does not make those operations inherit native `application.network` policy.
 
-**Items 27 and 30 remain product decisions.** Do not enable deferred mailbox preemption globally or add schema-budget monitoring and automatic tuning from this review. **Item 29** records native per-server catalog-readiness support; it does not record a new desktop setting, global enablement or a dedicated native qualification. Native support and delivered desktop behavior remain separate.
+**Item 27 is deferred until the final research review.** Do not implement or enable deferred mailbox preemption from this review. The user rejected the proposed schema-size risk indication for **item 30**; its diagnostic gap remains unresolved. Do not add that indication or automatic budget tuning. **Item 29** records native per-server catalog-readiness support; it does not record a new desktop setting, global enablement or a dedicated native qualification. Native support and delivered desktop behavior remain separate.
 
 ## Current integration boundary
 

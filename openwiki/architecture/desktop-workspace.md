@@ -83,9 +83,6 @@ sources:
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-28T08:28:06.287Z
 ---
 
 # Desktop workspace and native glass

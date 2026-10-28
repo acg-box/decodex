@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:825bf1fcabfe39b42d81af91db2a94c8174a3ff4c99cfee6ff3db8d895943fd5",
+  "pageVersion": "sha256:d3c927ecb79c9d7056e92e3b5d82e3a13c8af30be4385756a12cf1177a62893d",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -196,7 +196,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample.rs",
-          "version": "repo-file-v1:sha256:be97c9e9c9f8720d1be73dc79f96b801028ca4c2c7a2726b742ea24dccac8784"
+          "version": "repo-file-v1:sha256:b5986a3dffeb04e568c14917bd34db5cbbfa309193ea5bc94c8d1c9a147484de"
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
@@ -300,7 +300,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_inputs.rs",
-          "version": "repo-file-v1:sha256:7dddad5b1e374cdba68f67a58b9bf89cb4d45c39dbfdfe9253970e76cb850771"
+          "version": "repo-file-v1:sha256:24803bbbf7cba9ac50cae88955e69cdd1bccabd64e38d0f05f57c2ae40569bd9"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/desktop_drafts.rs",
@@ -418,25 +418,29 @@
     },
     {
       "id": "claim_00df095f06b942e592cfecad5e6f03ed",
-      "statement": "A newly completed visible answer in an independent root conversation automatically requests one native suggestion when the composer is empty. Saved history, repeated refreshes, failed turns and an existing draft do not trigger generation; acceptance remains an undoable edit without automatic send or overwrite of later input.",
+      "statement": "A newly completed visible root answer requests one native suggestion for an empty composer. Tab accepts only a current suggestion from the focused empty message field, as an undoable edit without sending. Other fields, Shift-Tab, later input and obsolete results keep normal focus navigation.",
       "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs#L523-L535",
+          "version": "repo-lines-v1:sha256:1b7348cd349a91c66e77c95ea54192f76d6796254eece6889742a84df64281a3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhiYTQ3MDQxNmY4ZmMyMDdmYzg3MTU1N2UzYWJiZGMyN2I2MzFhMzVjNWJkMGQ5NGRlZjMwNGQ4YjI3YjY3ODkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlMThiYThmOTIxZThjZTQ1ZjQ4YmIzNzE3MmIzMTcwNjExZGYwM2VjM2VjNDU3MTU5MGI5MGNlMTQ1MWEwMDAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFkM2E4YjJlYWY3N2Q3NDUxMGE5MzZiMDAwYTA0ZTI2Mjk2ODExZmZjNTg4MzJjZmYwZDI5MmI2NjdkZmI1YTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU5MTQ5OTA5Mjk1MzY0MTk2MDg1ZGVkNWY4YTE1OTQwZWNkOWRiMGNmZDMxN2U1NjM4OTJhODY2NmNmZGY0YmUifQ"
+        },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
           "version": "repo-file-v1:sha256:eff9bd808613584fa9abf6ee2ce12cfa901817207d58c9f6a668bcd8e6c62c80"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_sample.rs#L165-L222",
-          "version": "repo-lines-v1:sha256:bbb1167ea839a68aab8399ed02e713cc3115fb54264be3744655fbbeddc66537:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3NjY1MTU5ZjNmYmIxNzkyZmVmNTEwZmViN2ZiOTFlN2ZmODM4ZTc1YTg3MTI5YzUwNjRjMmIzZjEyYzc0NzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmM2M1MjVlMGM3M2JjOWVhNDMyYjgzMjIyZTEyODgyMWM1MDcyMzQ4YjlkZjQ5NzEwOWFjNGM2YjI5ODc5N2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3MDFjZmY0ZGY4Njc3YjU3ZWE5ZjIwNGVkMDdmZDhiOTFlNGE5YjkwMjhiN2I4ZjQyMzk2MzU5NWYwZTBkOTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiMWEyYjlhZDFkNDljMTViZWUxY2Q3MzMyYjkyNGQ5ZGE0ZTM4MzA1ZDM3ZjIwMzU5MzY4NjAwYmM4ZGUzZWUifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_sample.rs#L182-L216",
+          "version": "repo-lines-v1:sha256:cd3cb32e7839c4650f5cd7704c386e366c308792c4d5e386579f57054da9c717:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMWMxODM3MTkyYThmY2U0YTdhMmE2Yjk1ZWNkNDdlYTk4MTE4NGUzY2U4ZDliZGIwZDI0ZjcwZTVmZjVmNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhZmY5YmY4YmQ0MzQ3OGVmMDU0MTgyNzk4MTk5MzU0MzEyMWFmOTNjNmE5NDg4YjlkMjA1MmU2NzUxMDhjMzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3YThlYWZmMmFmMDFjMGI0NTFiZjFjYTRhMmZjYmU2OWY4ZjQzMTM1YzhjMDM2MDg5YjQ3N2RhYWI2MzcyZjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdmNjdiYjBhZGY4ZjYwYzZiYjY2ODAwZjMwMzRjY2RlOGQyYzRmZGQ1Y2M2YWYxMGYxNGVlOGNhNWM5NGM1MTMifQ"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
-          "version": "repo-file-v1:sha256:27ea5cd3b1c0d5b05b46bc7b0434578ee83fcdabbb8126df840706329c7a4123"
+          "version": "repo-file-v1:sha256:d70c02ddeef5a2d26610464f45a39f430accf387a4c73ecfcb289b9300b62988"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T08:48:31.048Z"
+    "at": "2026-10-28T17:29:05.448Z"
   }
 }

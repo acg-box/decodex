@@ -29,9 +29,6 @@ sources:
   - id: openwiki-source-f20a9fcd74237051ab396266
     resource: repo://crates/decodex-runtime/src/agent/review_activity.rs
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-28T08:28:06.287Z
 ---
 
 # Elephant–Goldfish component

@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "e63f541a2c927852609b7b4bf494e34ee749686fce665e2faeef2c76ba4838d8",
+    "sha256": "36b3431bce445abb0b40a50bdaa49f96eb1353a793bdd3b968e0dcf41080dec3",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -1234,22 +1234,21 @@
   },
   "prompt_suggestions": {
     "contracts": "automations/upstream/retained-contracts.json#retained_prompt_suggestions",
-    "source_revision": "734a77c314781bac62621e9bab260d2969201efd",
+    "source_revision": "c38c999d70604029eceec0e4fd4e1c4436b761b5",
     "source_sha256": {
-      "apps/decodex-gpui/src/agent_composer.rs": "677d835dd2de41ae043b8102f608b99aa22103f182ab83392e792d6562396197",
-      "apps/decodex-gpui/src/agent_sample.rs": "be97c9e9c9f8720d1be73dc79f96b801028ca4c2c7a2726b742ea24dccac8784",
-      "apps/decodex-gpui/src/agent_sample_tests.rs": "27ea5cd3b1c0d5b05b46bc7b0434578ee83fcdabbb8126df840706329c7a4123",
+      "apps/decodex-gpui/src/agent_composer.rs": "6c6b6e6de45263367a3f7430c51cc73cd14b16b39c8196b745431f752145ad77",
+      "apps/decodex-gpui/src/agent_sample.rs": "b5986a3dffeb04e568c14917bd34db5cbbfa309193ea5bc94c8d1c9a147484de",
+      "apps/decodex-gpui/src/agent_sample_tests.rs": "d70c02ddeef5a2d26610464f45a39f430accf387a4c73ecfcb289b9300b62988",
       "apps/decodex-gpui/src/agent_sample_request.rs": "0944061b207548f39670ea47073a455fb7d48c7736fbc938e728fd64f9cf2183",
       "crates/decodex-codex/src/app_server_client/sample.rs": "424ef6cb93c923c8db8f050a10b67bfd9a008860e8054d04b6843b3379568e2a",
       "crates/decodex-runtime/src/agent_sample_host.rs": "d1fa63e10dc35bb2b39f669c4d2da7a37d4b65c101d15027632b099f45d0ab48",
       "apps/decodex-gpui/src/agent_prompt_suggestions.rs": "eff9bd808613584fa9abf6ee2ce12cfa901817207d58c9f6a668bcd8e6c62c80",
       "apps/decodex-gpui/src/agent_surface.rs": "aa6050b210768d28830acd50ce1f109e6399bcf700bf91b112bacfa2b757e248",
-      "apps/decodex-gpui/src/agent_timeline.rs": "6f43f05cb8efa3d6dfdfcf0ba8247d7aa8b27343e77343ab1392828d61ff9e28"
+      "apps/decodex-gpui/src/agent_timeline.rs": "392c3bbf19d888f97c9cb0050c6b16cf15f7cc72d7a4bd94847577b14c0df0c8"
     },
     "tests": {
       "command": "cargo +stable test --locked -p decodex-gpui --bin decodex-gpui -- sample::tests:: --test-threads 1",
-      "baseline_passed": 5,
-      "final_unique_passed": 9,
+      "final_unique_passed": 10,
       "identities": [
         "shell::agent_surface::sample::tests::a_lost_cancellation_acknowledgement_reads_back_the_exact_sample_without_replay",
         "shell::agent_surface::sample::tests::a_lost_sample_acknowledgement_is_read_back_without_another_model_command",
@@ -1257,11 +1256,18 @@
         "shell::agent_surface::sample::tests::automatic_suggestion_skips_old_history_drafts_failed_turns_and_replaced_sources",
         "shell::agent_surface::sample::tests::cancellation_controls_wait_for_native_completion_and_preserve_the_draft",
         "shell::agent_surface::sample::tests::enter_in_a_separate_question_does_not_reach_the_main_send_action",
-        "shell::agent_surface::sample::tests::prompt_suggestion_needs_a_click_and_accepts_as_an_undoable_unsent_draft",
         "shell::agent_surface::sample::tests::prompt_suggestion_preserves_later_edits_and_rejects_stale_or_unrelated_results",
-        "shell::agent_surface::sample::tests::separate_answer_preserves_the_composer_and_hides_a_replaced_source"
+        "shell::agent_surface::sample::tests::separate_answer_preserves_the_composer_and_hides_a_replaced_source",
+        "shell::agent_surface::sample::tests::tab_accepts_prompt_suggestion_as_an_undoable_unsent_draft",
+        "shell::agent_surface::sample::tests::tab_preserves_normal_focus_navigation_without_a_current_empty_draft_suggestion"
       ],
-      "unmatched_selectors": []
+      "unmatched_selectors": [],
+      "baseline_reused": {
+        "source": "6d7833693e08031599109aabd9854a70e34bdc39",
+        "delivery": "https://github.com/acg-box/decodex/pull/2541",
+        "passed": 9,
+        "limit": "Prior delivery on this same baseline. No new native artifact or upstream test execution."
+      }
     },
     "static_checks": {
       "strict_clippy": "cargo +stable clippy --locked -p decodex-gpui --all-features --bin decodex-gpui -- --no-deps -D clippy::all -D clippy::too_many_lines -D clippy::unwrap_used -D clippy::use_self -D clippy::wildcard_imports -D missing-docs -D unused-crate-dependencies -D warnings",
@@ -1279,8 +1285,9 @@
       "Suggestions are model-generated proposals. This change does not measure their usefulness or latency, exercise a live provider, or establish installed-app acceptance.",
       "No installation, application launch, release, schedule change, or source-review cursor advance. Automatic suggestions apply to newly observed completed answers in the selected independent root conversation; opening saved history does not trigger inference."
     ],
-    "delivery_reference": "https://github.com/acg-box/decodex/pull/2541",
+    "delivery_reference": "https://github.com/acg-box/decodex/commit/c38c999d70604029eceec0e4fd4e1c4436b761b5",
     "trigger": "Generate once when a newly completed visible answer leaves an empty composer. Preserve explicit acceptance, one-shot cancellation and no replay.",
-    "main_baseline": "8ba29a4da00eae7b3ca99f42ad04f2cbcfb8d0fc"
+    "main_baseline": "6d7833693e08031599109aabd9854a70e34bdc39",
+    "acceptance": "Tab accepts only from the focused empty message field. Other fields, Shift-Tab, nonempty drafts and obsolete suggestions retain normal focus navigation. Acceptance is undoable and never sends."
   }
 }
