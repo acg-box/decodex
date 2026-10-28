@@ -1,5 +1,8 @@
 //! Bootstrap the shared native connection from a real first user conversation.
-use std::env;
+use std::{
+	env,
+	time::{SystemTime, UNIX_EPOCH},
+};
 
 use crate::agent_host::{AccountId, AgentConfig, AgentDispatchState, AgentHost, Value};
 use decodex_database::{AgentWorkItem, SqliteStore};
@@ -21,30 +24,56 @@ impl AgentHost {
 			.ok()?
 			.or_else(|| env::var_os("HOME").map(|home| home.to_string_lossy().into_owned()))?;
 		let directory = ConversationWorkingDirectory::new(cwd.clone()).ok()?;
-		let model = if let Some(model) = execution.model {
-			model
-		} else {
-			let catalog = self
-				.runtime
-				.initial_model_catalog(
-					&format!("agent-initial-{}", root.id),
-					InitialModelCatalogRequest {
-						working_directory: directory,
-						purpose: ModelCatalogPurpose::Agent,
-						account_id: None,
-					},
-				)
-				.await;
-			let InitialModelCatalogResult::Available { defaults: Some(defaults), .. } = catalog
-			else {
-				return None;
+		let mut effort = execution.reasoning_effort.clone();
+		let catalog = self
+			.runtime
+			.initial_model_catalog(
+				&format!("agent-initial-{}", root.id),
+				InitialModelCatalogRequest {
+					working_directory: directory,
+					purpose: ModelCatalogPurpose::Agent,
+					account_id: None,
+				},
+			)
+			.await;
+		let model =
+			if let InitialModelCatalogResult::Available {
+				defaults: Some(defaults), models, ..
+			} = catalog
+			{
+				let managed = execution
+					.reasoning_effort
+					.is_none()
+					.then(|| defaults.managed.model.clone())
+					.flatten();
+				let selected = execution
+					.model
+					.or(managed)
+					.or(defaults.configured.model)
+					.or_else(|| defaults.catalog_model.clone())?;
+				let now = SystemTime::now()
+					.duration_since(UNIX_EPOCH)
+					.ok()
+					.and_then(|time| i64::try_from(time.as_secs()).ok());
+				if let Some((target, _)) = now.and_then(|now| {
+					decodex_protocol::AgentModelDto::retired_default(
+						selected.as_str(),
+						&models,
+						defaults.catalog_model.as_ref(),
+						now,
+					)
+				}) {
+					if effort.as_ref().is_some_and(|value| !target.efforts.contains(value)) {
+						effort = target.default_effort.clone();
+					}
+					target.model.clone()
+				} else {
+					selected
+				}
+			} else {
+				execution.model?
 			};
-			let managed =
-				execution.reasoning_effort.is_none().then_some(defaults.managed.model).flatten();
-
-			managed.or(defaults.configured.model).or(defaults.catalog_model)?
-		};
-		let effort = execution.reasoning_effort.map(|effort| effort.as_str().to_owned());
+		let effort = effort.map(|effort| effort.as_str().to_owned());
 		let mut config = AgentConfig::with_optional_effort(model.as_str().into(), effort, cwd);
 
 		config.worker_effort.clone_from(&config.agent_effort);

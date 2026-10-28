@@ -37,22 +37,10 @@ use decodex_protocol::{
 use drafts::DeliveryDrafts;
 use model_settings::Observation;
 
-pub(crate) const CONVERSATION_MODELS: &[&str] =
-	&["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"];
-
 const MAX_LIVE_DELTAS: usize = 64;
 const MAX_LIVE_DELTA_BYTES: usize = 64 * 1_024;
 const MAX_LIST_PAGES: usize = 32;
 const CONVERSATION_WORKING_DIRECTORY_ENV: &str = "DECODEX_CONVERSATION_WORKING_DIRECTORY";
-const CONVERSATION_EFFORTS: &[ConversationReasoningEffort] = &[
-	ConversationReasoningEffort::Low,
-	ConversationReasoningEffort::Medium,
-	ConversationReasoningEffort::High,
-	ConversationReasoningEffort::XHigh,
-	ConversationReasoningEffort::Max,
-	ConversationReasoningEffort::Ultra,
-];
-
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
 /// Current bounded state rendered by the Conversations destination.
@@ -196,8 +184,6 @@ impl Conversations {
 
 		state.prepare_execution_choice();
 
-		state.creation_intent.model = true;
-
 		if let Some(models) = state.current_catalog() {
 			if models.is_empty() {
 				return;
@@ -209,6 +195,7 @@ impl Conversations {
 				.map_or(0, |i| (i + 1) % models.len());
 			let model = models[next].clone();
 
+			state.creation_intent.model = true;
 			state.execution.model = model.model;
 
 			state.apply_initial_defaults();
@@ -226,22 +213,7 @@ impl Conversations {
 			}
 
 			state.reconcile_catalog_tier();
-
-			return;
 		}
-
-		let current = state.execution.model.as_str();
-		let next = CONVERSATION_MODELS
-			.iter()
-			.position(|model| *model == current)
-			.map_or(0, |index| (index + 1) % CONVERSATION_MODELS.len());
-
-		state.execution.model = ConversationModel::new(CONVERSATION_MODELS[next])
-			.expect("curated model identifier is valid");
-
-		state.apply_initial_defaults();
-		state.clamp_effort_for_model();
-		state.reconcile_catalog_tier();
 	}
 
 	pub(crate) fn cycle_reasoning_effort(&self) {
@@ -253,7 +225,7 @@ impl Conversations {
 			.current_catalog()
 			.and_then(|models| models.iter().find(|model| model.model == state.execution.model))
 			.map(|model| model.efforts.clone())
-			.unwrap_or_else(|| supported_efforts(state.execution.model.as_str()).to_vec());
+			.unwrap_or_default();
 
 		if supported.is_empty() {
 			return;
@@ -1591,6 +1563,7 @@ impl State {
 				reasoning_effort: self.execution.reasoning_effort.clone(),
 				service_tier: Some(self.execution.effective_service_tier()),
 			},
+			self.current_catalog().expect("catalog checked above"),
 		);
 		let Some(model) = resolved.model else { return };
 
@@ -1694,21 +1667,6 @@ impl State {
 				ConversationReasoningEffort::High,
 				false,
 			),
-		}
-	}
-
-	fn clamp_effort_for_model(&mut self) {
-		let supported = supported_efforts(self.execution.model.as_str());
-
-		if self
-			.execution
-			.reasoning_effort
-			.as_ref()
-			.is_some_and(|effort| !supported.contains(effort))
-		{
-			self.execution.reasoning_effort =
-				Some(supported.last().expect("every curated model has a reasoning effort").clone());
-			self.creation_intent.reasoning = true;
 		}
 	}
 
@@ -2566,14 +2524,6 @@ enum ConversationQueryPurpose {
 	},
 }
 
-pub(crate) fn supported_efforts(model: &str) -> &'static [ConversationReasoningEffort] {
-	match model {
-		"gpt-6-astra" | "gpt-5.6-sol" | "gpt-5.6-terra" => CONVERSATION_EFFORTS,
-		"gpt-5.6-luna" => &CONVERSATION_EFFORTS[..5],
-		_ => &CONVERSATION_EFFORTS[..4],
-	}
-}
-
 fn accepted_result_task(
 	in_flight: &InFlightCommand,
 	result: &CommandResultEnvelope,
@@ -3093,6 +3043,51 @@ pub(crate) mod tests {
 		}
 
 		(conversations, server_id, task)
+	}
+
+	fn seed_execution_catalog(conversations: &Conversations) {
+		let mut state = conversations.lock();
+		let source = state.selected_task().expect("selected fixture conversation").clone();
+		state.catalog = Some(
+			["gpt-5.6-sol", "gpt-5.6-terra"]
+				.into_iter()
+				.map(|id| decodex_protocol::AgentModelDto {
+					model: ConversationModel::new(id).unwrap(),
+					name: id.into(),
+					efforts: vec![
+						ConversationReasoningEffort::Low,
+						ConversationReasoningEffort::Medium,
+						ConversationReasoningEffort::High,
+						ConversationReasoningEffort::XHigh,
+						ConversationReasoningEffort::Max,
+						ConversationReasoningEffort::Ultra,
+					],
+					default_effort: Some(ConversationReasoningEffort::High),
+					supports_fast: true,
+					service_tiers: vec![decodex_protocol::AgentServiceTierDto {
+						id: decodex_protocol::ServiceTier::from_fast(true),
+						name: "Fast".into(),
+						description: String::new(),
+					}],
+					default_service_tier: None,
+					available_cyber_programs: None,
+					specialty: None,
+					supports_images: true,
+					availability: None,
+					upgrade: None,
+				})
+				.collect(),
+		);
+		state.catalog_source = Some(CatalogSource::Conversation(Box::new(source)));
+	}
+
+	#[test]
+	fn missing_catalog_does_not_cycle_through_fixed_models_or_efforts() {
+		let (conversations, _, _) = connected_conversations();
+		let before = conversations.snapshot().execution;
+		conversations.cycle_model();
+		conversations.cycle_reasoning_effort();
+		assert_eq!(conversations.snapshot().execution, before);
 	}
 
 	pub(crate) fn recorded_creation_fixture(
@@ -3803,6 +3798,7 @@ pub(crate) mod tests {
 	fn selecting_an_unseen_conversation_cannot_send_previous_execution_choices() {
 		let (conversations, _, mut other) = connected_conversations();
 
+		seed_execution_catalog(&conversations);
 		conversations.cycle_model();
 
 		other.conversation_id = EntityId::new("00000000-0000-4000-8000-000000000099").unwrap();
@@ -3847,6 +3843,7 @@ pub(crate) mod tests {
 			matches!(&query.payload, QueryPayload::GetConversationModelSettings { conversation_id } if conversation_id == &target.conversation_id)
 		);
 
+		seed_execution_catalog(&conversations);
 		conversations.cycle_model();
 
 		let selected = conversations.snapshot().execution.model;
@@ -4896,6 +4893,7 @@ pub(crate) mod tests {
 	fn selected_execution_controls_are_carried_by_each_subsequent_turn() {
 		let (conversations, server_id, task) = connected_conversations();
 
+		seed_execution_catalog(&conversations);
 		conversations.cycle_model();
 		conversations.cycle_reasoning_effort();
 		conversations.toggle_fast();
@@ -5217,6 +5215,7 @@ pub(crate) mod tests {
 		assert!(conversations.select(task.conversation_id));
 		assert_eq!(conversations.submit("retry explicitly"), Err(ConversationInputError::Busy));
 
+		seed_execution_catalog(&conversations);
 		conversations.cycle_model();
 		conversations.cycle_reasoning_effort();
 
@@ -5601,6 +5600,7 @@ pub(crate) mod tests {
 
 		assert!(!reconciled.can_submit, "successor settings must not come from the source editor");
 
+		seed_execution_catalog(&conversations);
 		conversations.cycle_model();
 		conversations.cycle_reasoning_effort();
 

@@ -1159,7 +1159,8 @@ pub struct AgentModelDto {
 	pub supports_images: bool,
 	/// Provider availability information for the current account, when supplied.
 	pub availability: Option<String>,
-	/// Informational upgrade or retirement notice; selection stays explicit.
+	/// Native upgrade or retirement notice. Only an explicit retirement deadline can trigger
+	/// the retained automatic-default policy; an upgrade suggestion alone cannot.
 	pub upgrade: Option<AgentModelUpgradeDto>,
 }
 
