@@ -112,6 +112,10 @@ sources:
     resource: repo://crates/decodex-webrtc-build/src/archive.rs
   - id: openwiki-source-9d02660394edc50f69d35816
     resource: repo://crates/decodex-webrtc-build/src/lib.rs
+  - id: openwiki-source-87ec62f51f8e5d9a99b4bb6e
+    resource: repo://crates/decodex-webrtc-build/tests/qualify_trust_roots.py
+  - id: openwiki-source-b7b32ffdb5400494a6a36b80
+    resource: repo://crates/decodex-webrtc-build/tests/trust_roots.json
   - id: openwiki-source-a6440a3d3a3c3121fd4c553f
     resource: repo://database/src/agent_output.rs
   - id: openwiki-source-2b705b409434252a7417e708
@@ -130,10 +134,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
+generated: { by: "codex", at: "2026-10-28T03:55:33.038Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T03:00:10.087Z
+    at: 2026-10-28T03:55:33.038Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -175,19 +179,29 @@ Two proxy clients sharing one native app-server and one synthetic account home d
 
 ## TLS dependency qualification
 
-The locked HTTPS graph selects `rustls` 0.23.46, `rustls-webpki` 0.103.16 and `webpki-root-certs` 1.0.10. Account refresh and component downloads use `reqwest` clients. The selected dependencies include certificate-distrust updates. The [portable record](../../automations/upstream/retained-contracts.json) identifies the package sources and checksums, the verified WebRTC build artifact, exact test commands and the platform-specific dependency changes.
+The locked HTTPS graph selects `rustls` 0.23.46, `rustls-webpki` 0.103.16 and `webpki-root-certs` 1.0.11. Account refresh and component downloads use `reqwest` clients. The selected dependencies include certificate-distrust updates. The `workspace_dependencies` section of the [current qualification](../../automations/upstream/qualification.json) identifies the selected source, artifact checks and executed regressions. The [original TLS record](../../automations/upstream/retained-contracts.json) retains its earlier package identities and limits.
 
-On macOS arm64, the baseline and candidate each passed a full workspace check and 36 account-login and component tests. The candidate passed 1,891 headless tests and strict lint for 11 packages. The official `rustls-webpki` source test `verify_cert::tests::distrusted_spki` executed once and passed with `ring` enabled. Earlier attempts with missing fixtures or no selected test remain separate from that pass. These checks do not qualify live HTTPS, other platforms, installation or release.
+In the original macOS arm64 TLS batch, the baseline and candidate each passed a full workspace check and 36 account-login and component tests. The candidate passed 1,891 headless tests and strict lint for 11 packages. The official `rustls-webpki` source test `verify_cert::tests::distrusted_spki` executed once and passed with `ring` enabled. Earlier attempts with missing fixtures or no selected test remain separate from that pass. These checks do not qualify live HTTPS, other platforms, installation or release.
 
 Four synthetic voice tests passed after the user handled the firewall prompt for the test executable. A later 40-execution stress run had 39 passes and one post-unmute audio-energy assertion failure. A separate interleaved comparison then passed 80 executions across the previous and candidate test executables. The isolated failure remains unexplained; see [issue #2529](https://github.com/acg-box/decodex/issues/2529). None of these results qualifies physical audio or installed-app interaction.
 
 ## WebRTC build archive
 
-The default macOS build routes `webrtc-sys-build` 0.3.20 through a Decodex guard and retains the `webrtc-89d790b` native release. Before extraction, the guard checks the complete ZIP against the pinned official SHA-256 and checks the local and central ZIP headers for consistency. A digest or header failure stops preparation before it replaces the existing build cache. The guard compares cached regular files with the verified archive, stages repairs and preserves the upstream owner-access behavior. An existing `LK_CUSTOM_WEBRTC` directory remains a developer-provided input; the official archive checks do not qualify it.
+The default macOS build routes `webrtc-sys-build` 0.3.21 through a Decodex guard and selects the `webrtc-a545de4` native release. Before extraction, the guard checks the complete ZIP against the pinned official SHA-256 and checks the local and central ZIP headers for consistency. A digest or header failure stops preparation before it replaces the existing build cache. The guard compares cached regular files with the verified archive, stages repairs and preserves the upstream owner-access behavior. An existing `LK_CUSTOM_WEBRTC` directory remains a developer-provided input; the official archive checks do not qualify it.
 
-On macOS arm64, the default build retained the actual downloaded ZIP and checked its pinned digest. Its 38,722 extracted files matched that verified archive, and the static library matched the earlier qualified library. Both official macOS arm64 and x64 ZIPs passed their pinned digest and strict-header checks; native x64 execution was not tested. Six local guard tests passed, including incorrect digest, inconsistent headers, cache repair and file permissions. The full workspace check, strict lint for 13 packages and four synthetic voice tests passed. Two voice tests each passed 20 repeated executions. Every iteration and the final summary were inspected because the observed Nextest 0.9.143 can return zero after an earlier failure with fail-fast disabled.
+In the original guard qualification on macOS arm64, the default build retained the actual downloaded ZIP and checked its pinned digest. Its 38,722 extracted files matched that verified archive, and the static library matched the earlier qualified library. Both official macOS arm64 and x64 ZIPs passed their pinned digest and strict-header checks; native x64 execution was not tested. Six local guard tests passed, including incorrect digest, inconsistent headers, cache repair and file permissions. The full workspace check, strict lint for 13 packages and four synthetic voice tests passed. Two voice tests each passed 20 repeated executions. Every iteration and the final summary were inspected because the observed Nextest 0.9.143 can return zero after an earlier failure with fail-fast disabled.
 
-The full Rust style audit reported the same 163 findings on the exact main snapshot and this branch. The three new source files had no findings in their focused audit. Eleven selected upstream ZIP tests passed in the [previous delivery](https://github.com/acg-box/decodex/pull/2530); one intentionally demonstrates the earlier default behavior without strict header enforcement. The previous builder deleted its downloaded ZIP before its digest was observed. Its extracted files matched a separate verified archive, but that earlier result does not identify the deleted ZIP bytes. The [portable evidence](../../automations/upstream/retained-contracts.json) records the current source, artifact digests, exact tests and these separate historical limits.
+That original full Rust style audit reported the same 163 findings on its exact main snapshot and branch. The three new source files had no findings in their focused audit. Eleven selected upstream ZIP tests passed in the [previous delivery](https://github.com/acg-box/decodex/pull/2530); one intentionally demonstrates the earlier default behavior without strict header enforcement. The previous builder deleted its downloaded ZIP before its digest was observed. Its extracted files matched a separate verified archive, but that earlier result does not identify the deleted ZIP bytes. The [stable contract catalog](../../automations/upstream/retained-contracts.json) retains this original qualification and its limits.
+
+The current `workspace_dependencies` qualification separately records both selected
+official ZIPs, their headers and compiled trust-anchor probes, the linked arm64
+library, and the signed real WebRTC transport lane. The retained public certificate
+fixtures verify that the retired AAA root occurs in the qualified old library but
+is absent from both new libraries, while a control root remains. The [reproducible
+procedure](../operations/commands-and-validation.md#qualify-native-dependency-artifacts)
+does not require an old disposable build directory. Static artifact inspection
+does not execute a TURN/TLS handshake. Workspace dependency results do not migrate
+the separately qualified Codex CLI or extend installed-app acceptance.
 
 These checks do not qualify arbitrary malformed archives, unpinned default targets, physical audio, live providers, installed-app behavior or release. They do not establish the cause of the earlier [unmute assertion](https://github.com/acg-box/decodex/issues/2529).
 

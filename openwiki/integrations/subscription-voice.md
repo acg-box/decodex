@@ -42,6 +42,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/dictation_transcript.rs
   - id: openwiki-source-7b941e7c2c91cb7415f05243
     resource: repo://crates/decodex-runtime/src/dictation.rs
+  - id: openwiki-source-042bf1b2b00d2d0ac4dced71
+    resource: repo://crates/decodex-webrtc-build/src/archive.rs
+  - id: openwiki-source-9d02660394edc50f69d35816
+    resource: repo://crates/decodex-webrtc-build/src/lib.rs
+  - id: openwiki-source-87ec62f51f8e5d9a99b4bb6e
+    resource: repo://crates/decodex-webrtc-build/tests/qualify_trust_roots.py
+  - id: openwiki-source-b7b32ffdb5400494a6a36b80
+    resource: repo://crates/decodex-webrtc-build/tests/trust_roots.json
   - id: openwiki-source-c8b1a2a9f2113ec43d4066da
     resource: repo://Makefile.toml
   - id: openwiki-source-90e2e66c4c17531650b4f54e
@@ -50,10 +58,10 @@ sources:
     resource: repo://scripts/macos/run_native_voice_tests.py
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
+generated: { by: "codex", at: "2026-10-28T03:55:33.038Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T03:00:10.087Z
+    at: 2026-10-28T03:55:33.038Z
 ---
 
 # Subscription dictation and live voice
@@ -92,6 +100,18 @@ The Live factory selects the requested input and default output without starting
 Closing the Rust media owner cancels its capture and peer connection worker. The shared owner stops hardware independently of peer teardown and prepares a new Live factory after release. Provider findings can retire local microphone authority even if stop acknowledgment is lost. Unknown native stop outcomes must not be treated as a guaranteed remote stop.
 
 The native media ABI is version 4. The static libwebrtc archive needs the Objective-C linker flag in the GPUI build script. Bundles include its license notices under `Resources/ThirdPartyNotices`. Subscription voice does not switch to API-key billing.
+
+Default macOS acquisition uses the Decodex archive guard with the selected official
+WebRTC release. The guard checks the complete ZIP digest and strict header layout
+before it extracts or repairs the cache. The current release, source identities and
+artifact digests are in the `workspace_dependencies` section of the
+[qualification record](../../automations/upstream/qualification.json).
+
+The retained trust-anchor probe checks the distributed header and certificate DER
+bytes in the static library. It verifies that the retired AAA root is absent and
+that a known control root remains. This artifact check complements the real WebRTC
+transport tests; it does not execute a TURN/TLS handshake or qualify a live
+provider. See the [archive procedure](../operations/commands-and-validation.md#qualify-native-dependency-artifacts).
 
 ## UI and verification
 

@@ -12,7 +12,7 @@ use std::{path::PathBuf, sync::OnceLock};
 
 use anyhow::{self, Context, Result};
 
-const RELEASE: &str = "webrtc-89d790b";
+const RELEASE: &str = "webrtc-a545de4";
 
 static PREPARED: OnceLock<Result<PathBuf, String>> = OnceLock::new();
 
@@ -57,8 +57,8 @@ fn pinned_digest(triple: &str) -> Result<&'static str> {
 
 	match triple {
 		"mac-arm64-release" =>
-			Ok("9f25fea48588deac18d68e120d18b33af7ef10f921f74b7c57f66b642262c348"),
-		"mac-x64-release" => Ok("04eea79951eaefc1054099464f949f6dcfab9bc7460c16004811abc4f9ec15d4"),
+			Ok("153a1f1a268b812b4a501deda6505037f29481691efec52be817f560ff09e206"),
+		"mac-x64-release" => Ok("c53d7d20277f7729956854f1268c372360f08732520136b559034eedae0980a2"),
 		_ => Err(anyhow::anyhow!("no verified WebRTC archive is pinned for {triple}")),
 	}
 }

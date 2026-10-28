@@ -9,7 +9,7 @@ let package = Package(
 		.library(name: "DecodexMenuBar", type: .dynamic, targets: ["DecodexApp", "DecodexTransport"]),
 	],
 	dependencies: [
-		.package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
+		.package(url: "https://github.com/sparkle-project/Sparkle", "2.10.0"..<"2.11.0"),
 	],
 	targets: [
 		.target(name: "DecodexApp", dependencies: [.product(name: "Sparkle", package: "Sparkle")]),

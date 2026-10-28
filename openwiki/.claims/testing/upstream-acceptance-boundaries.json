@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:55bca96dd9d1e327bc4e4dff14b1c1ba523b7bef75274d8c06581911e4f2cf6f",
+  "pageVersion": "sha256:1e9418984d3d125d18ddd73a37cdc6d438411e0a55e5d76ea80d8279dad7e725",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -12,7 +12,7 @@
         },
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
-          "version": "repo-file-v1:sha256:0fcf192a8d236147381d8067846c334acd5ea376109fad692b7035b32c054178"
+          "version": "repo-file-v1:sha256:c4a92caac75080b14c49119bb6a19926616d21e914153284f8b1b7ceae69ee26"
         }
       ]
     },
@@ -70,7 +70,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
+          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process_native_control_tests.rs",
@@ -166,7 +166,7 @@
       "evidence": [
         {
           "resource": "repo://scripts/macos/test_decodex_app_stage.sh",
-          "version": "repo-file-v1:sha256:0fcf192a8d236147381d8067846c334acd5ea376109fad692b7035b32c054178"
+          "version": "repo-file-v1:sha256:c4a92caac75080b14c49119bb6a19926616d21e914153284f8b1b7ceae69ee26"
         }
       ]
     },
@@ -258,7 +258,7 @@
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
+          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
         }
       ]
     },
@@ -272,7 +272,7 @@
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
+          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
@@ -296,7 +296,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
+          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
         }
       ]
     },
@@ -326,7 +326,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
+          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs",
@@ -668,15 +668,11 @@
     },
     {
       "id": "claim_d0acd511080e4398915816887d65a04c",
-      "statement": "The locked HTTPS graph selects rustls 0.23.46, rustls-webpki 0.103.16 and webpki-root-certs 1.0.10; account refresh and component downloads use reqwest clients and the selected dependencies include certificate-distrust updates.",
+      "statement": "The locked HTTPS graph selects rustls 0.23.46, rustls-webpki 0.103.16 and webpki-root-certs 1.0.11; account refresh and component downloads use reqwest clients and the selected dependencies include certificate-distrust updates.",
       "evidence": [
         {
           "resource": "repo://Cargo.lock",
-          "version": "repo-file-v1:sha256:de9c17a9db8862f35bc0f95fcbf79830f5bc6437e7a756d3f8e1f8d682651d28"
-        },
-        {
-          "resource": "repo://automations/upstream/retained-contracts.json#L427-L2152",
-          "version": "repo-lines-v1:sha256:2289c29aac60b4156b2f061edad445ae8fbc6a8844e296b3ed3f35be67fecb05:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcyNiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTQyOTljYTRiYjNhMTE2YWMyNWFlNmFkNWI5N2FhNzI5MmFjYmNhODYxZmNiMWFjODE3NmZmMjg3MmZmNWNkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY0ZDhjMDczNDI5ODkzMTAxNTc2ZDg4ZDk5MTI3ZTg5ZDY4OTFkM2IxN2U4OWRmMDJlYzlhZTcwNzA1ZDhiZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWZlOTMwYTIyOWI5YzQzOTdlYjZiNGY5MzI4YThhM2QyMTRlNGE0ZjczZmFkNmY0NzBiN2M2NzhjNThlNDMxYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWQ1NzNlMzNmYjczY2MwZGY2YmM1OWJkYzY1YTgxOTJmZjQ1MWJiMDE1MmMxNDljYzA0YTBiNzBhNTJjOTUwOCJ9"
+          "version": "repo-file-v1:sha256:ee959f129830cb3e90dc23ae0ea22986af3d2b30d32777cb34329f0127a59027"
         },
         {
           "resource": "repo://crates/decodex-account-login/src/system_proxy.rs",
@@ -690,7 +686,7 @@
     },
     {
       "id": "claim_e6c9f6edc79a430da7f4654374ba2c97",
-      "statement": "The macOS arm64 TLS qualification records passing baseline and candidate workspace checks and 36 account/component tests each, 1891 candidate headless tests, lint for 11 packages, and one executed upstream distrusted-SPKI test; it does not qualify live HTTPS, other platforms, installation or release.",
+      "statement": "The original macOS arm64 TLS qualification records passing baseline and candidate workspace checks and 36 account/component tests each, 1891 candidate headless tests, lint for 11 packages, and one executed upstream distrusted-SPKI test; it does not qualify live HTTPS, other platforms, installation or release.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L427-L2152",
@@ -714,33 +710,25 @@
     },
     {
       "id": "claim_76a41e6c940045fd97c2a927a51ff1cd",
-      "statement": "The default macOS WebRTC build retains release webrtc-89d790b and checks the pinned official archive SHA-256 and ZIP local/central header consistency before extraction or cache replacement; explicit custom directories remain separate developer-provided inputs.",
+      "statement": "The default macOS WebRTC build selects webrtc-sys-build 0.3.21 and release webrtc-a545de4, verifies the pinned official ZIP digest and local/central header consistency before extraction or cache replacement, and keeps explicit custom directories separate.",
       "evidence": [
         {
           "resource": "repo://Cargo.lock",
-          "version": "repo-file-v1:sha256:de9c17a9db8862f35bc0f95fcbf79830f5bc6437e7a756d3f8e1f8d682651d28"
+          "version": "repo-file-v1:sha256:ee959f129830cb3e90dc23ae0ea22986af3d2b30d32777cb34329f0127a59027"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L427-L2152",
-          "version": "repo-lines-v1:sha256:2289c29aac60b4156b2f061edad445ae8fbc6a8844e296b3ed3f35be67fecb05:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcyNiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTQyOTljYTRiYjNhMTE2YWMyNWFlNmFkNWI5N2FhNzI5MmFjYmNhODYxZmNiMWFjODE3NmZmMjg3MmZmNWNkNyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY0ZDhjMDczNDI5ODkzMTAxNTc2ZDg4ZDk5MTI3ZTg5ZDY4OTFkM2IxN2U4OWRmMDJlYzlhZTcwNzA1ZDhiZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWZlOTMwYTIyOWI5YzQzOTdlYjZiNGY5MzI4YThhM2QyMTRlNGE0ZjczZmFkNmY0NzBiN2M2NzhjNThlNDMxYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWQ1NzNlMzNmYjczY2MwZGY2YmM1OWJkYzY1YTgxOTJmZjQ1MWJiMDE1MmMxNDljYzA0YTBiNzBhNTJjOTUwOCJ9"
+          "resource": "repo://crates/decodex-webrtc-build/src/archive.rs",
+          "version": "repo-file-v1:sha256:dfaa47a9971b0f1f441d43c6995066d6035081557d0f26c89fb53376d137d141"
         },
         {
-          "resource": "repo://crates/decodex-webrtc-build/src/archive.rs#L124-L192",
-          "version": "repo-lines-v1:sha256:04e433ecef9472c43fb267909d00af96a10a6654195bf591ec5458bed57c4e89:eyJzZWxlY3RlZExpbmVDb3VudCI6NjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyOTJjNWYzYjJhYjZhZWU0ZWUzZTRmMTc0NzJmZDUzZWNiOGJhOWQ4MDVjNjQ4ZmRlNTZlYzA4YzVkYzYyOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3ZjBhNWY1M2Q4NWJjY2NmYjYyNWNkY2I2OWNhNDRmM2Q0Nzc4YWMyMjc5N2VkYjExMTBiM2EwYTM4OWJkNjUifQ"
-        },
-        {
-          "resource": "repo://crates/decodex-webrtc-build/src/archive.rs#L27-L66",
-          "version": "repo-lines-v1:sha256:e1621f4bbff34781102f192c4400f5be2ad1d8a68ae31a0bce5bf6733e6a7273:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVmOWJjMWZjMDBmNDliYTg5YjRhMWYzNjkxMTYwNGUxNmM5OGUyZTY2ODc2MzAwYmU1ZGZhNTE1ZTk3YmFmOGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg0NDEyMzM1MzUwNzY3MDMyZmM4N2IzOTAxNjE0ZTQ2NTdkODU3YjJjOTRkMWI1OGU0MzMxZTRhNTFkNDIxN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY1MTk0MDAxZjgwYTA4YTE1ODk1MTZhNGI3OGQ4OTk5N2I2Yzk0NDVmMzQyZWE1MjNlZGZhY2Y3Yzc1ZGFmNWYifQ"
-        },
-        {
-          "resource": "repo://crates/decodex-webrtc-build/src/lib.rs#L55-L89",
-          "version": "repo-lines-v1:sha256:b13504ee04b33aaf89e5a81ac1579c715f9c4d3365b33b33b7413872f30a8207:eyJzZWxlY3RlZExpbmVDb3VudCI6MzUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzZGQwMjVhZWQ4N2M4Mjc5MGU3NmEzYmVjNzA2ZjE0NWIyZDA0MDYxZWVmNThhYjlmZjE5MmIyNWIyZjI4MjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2ZGI3NzFlNGFmODk1NWViOTdiZTVmZTBmNGNkOTNlN2Q0MjlhYjNhM2VlNDIwMzA2MDMwNzg2M2U1NDE3MTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJjNmQ4ZjhjZTFlMGEyNDNiYjdmODNiYmQ4MDFhNDM2NzRmY2NjYjAyNGFjNmRmYzliNTNiMjQ5MmJlMzYxMjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ5MzJmZmQ1NDIyNGQ3NzAwNTNiZjA0ZjE5OTc5YmZkOWFkODg1MzVlNzY4Zjg3NjAzMTU4ODYwNjBiNWVhZjkifQ"
+          "resource": "repo://crates/decodex-webrtc-build/src/lib.rs",
+          "version": "repo-file-v1:sha256:177c7bd900313d6d7706e5365489d29ec78c9c1bc8ef810d9d82c12f6b0836db"
         }
       ]
     },
     {
       "id": "claim_54c6ffa74b9842deaa892e7832441c07",
-      "statement": "The macOS arm64 qualification passed the full workspace check, strict lint for 13 packages, six guard tests, four synthetic voice tests and 40 repeated voice executions; both official macOS archives passed digest and strict-header validation, while eleven upstream ZIP tests are retained from the preceding delivery.",
+      "statement": "The original macOS arm64 guard qualification passed the full workspace check, strict lint for 13 packages, six guard tests, four synthetic voice tests and 40 repeated voice executions; both original official macOS archives passed digest and strict-header validation, while eleven upstream ZIP tests are retained from the preceding delivery.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L427-L2152",
@@ -786,7 +774,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660"
+          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/dotenv_startup.py",
@@ -825,10 +813,24 @@
           "version": "repo-lines-v1:sha256:57248cc99302ca8aa636d5e485c16f59c0d50dcaa05955d6e2986848f4244349:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmJiNDg5YzIyMTM3OTY3NDhlYzRjNWI3ZGJlMWE1NTNiZWUxZTZmMTc0ZTNjZjU0MjA3NWU4OGI5MmZkMjRhMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTMzOWI3MDcxMzhlYTk2OGQ4YThiY2I4MWI0MGM3Y2M5NmMzYjM2YzAyMjYxZDhiNWRlNTQxOTc5YjgxNmQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzU0ZTU4YjM0MDk1Mzg5ODJiMjY5YTc5NjcyZDliOTBmYmU2MTRjZjViZjcxNzkyZDVhYjViOWEzMjY2YzI0ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWNkMTIzY2U5MjJjNzAzMDE3N2Q1MTdmZTk3MjViMmEzZTQ5OGFlNGZmNjNlOGExY2M4NjQ5MzZlNGMwN2Y4MyJ9"
         }
       ]
+    },
+    {
+      "id": "claim_db7868ea05424d149c5624541f398220",
+      "statement": "The retained public certificate probe checks the selected exact WebRTC ZIP, retired AAA root absence and retained control DER bytes in its static library; optional baseline verification uses a recorded old-library digest, and these checks do not execute TURN/TLS or qualify the selected Codex CLI or installed application.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-webrtc-build/tests/qualify_trust_roots.py",
+          "version": "repo-file-v1:sha256:5fbdabf78d9dca686ad5c2c374f7d149997295561625fc8679923e54925213cb"
+        },
+        {
+          "resource": "repo://crates/decodex-webrtc-build/tests/trust_roots.json",
+          "version": "repo-file-v1:sha256:cc9e5cee85e1f954975ba5eae071a00fdb2f001b5aa07ff8004399ba4cf4f823"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T03:00:10.087Z"
+    "at": "2026-10-28T03:55:33.038Z"
   }
 }

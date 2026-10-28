@@ -699,7 +699,7 @@
     "evidence": "automations/upstream/qualification.json",
     "source_archive_sha256": "b93e82b67ca9de55fb1cbcf74be03567f529a03d23b4785de02f966f39f1c4b5",
     "schema_sha256": "86c27115a28bf905f4c25ee204b218b2ba9598ef664787efddd30e2d0c20f2d9",
-    "evidence_sha256": "d05f98e59733306a48c4f900233bd4edbd7436cbcbcb1f04b2781b943e520660",
+    "evidence_sha256": "33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602",
     "limits": [
       "Source review, tests, artifact qualification, merge and installed acceptance are separate.",
       "Only macOS arm64 private stdio and named native consumers/helpers are qualified. Linux, Windows, remote production execution, live accounts/providers, physical audio and installation/release remain unmeasured.",
@@ -945,5 +945,14 @@
     "path": "automations/upstream/retained-contracts.json",
     "sha256": "e30efc453f42c4afc4e9a00a1a02d9d487012918fed15b53f16f4dd618e2ba09",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
+  },
+  "workspace_dependencies": {
+    "status": "qualified_workspace_dependency_batch",
+    "evidence": "automations/upstream/qualification.json#workspace_dependencies",
+    "evidence_sha256": "33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602",
+    "code_commit": "580bf63a570d73af7dbeb18b8e8a537537f5bb65",
+    "requirements": "Preserve native archive verification and real WebRTC transport, use inherited minor-line dependencies, and retain explicit source/artifact/installed-app limits.",
+    "summary": "Tokio 1.54.1, rusqlite 0.41, latest selected GPUI/Git refs, compatible Astro 7.4 graph and Sparkle 2.10.1. 2993 nonignored Rust cases pass across the ordinary and signed transport lanes; both official WebRTC archives and compiled root probes pass.",
+    "limits": "TypeScript 7 is blocked by the official checker. Host tools and native Codex remain independently governed. Existing full-style findings are unchanged; physical audio, provider, installed-app and release acceptance are unmeasured."
   }
 }

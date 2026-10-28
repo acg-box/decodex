@@ -1,7 +1,7 @@
 use std::{fs::File, io, thread, time::Duration};
 
 use anyhow::{Context, Result};
-use reqwest_webrtc::{StatusCode, blocking};
+use reqwest::{StatusCode, blocking};
 
 pub(crate) fn archive(url: &str, output: &mut File) -> Result<()> {
 	for attempt in 1..=3 {

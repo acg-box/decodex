@@ -9,16 +9,26 @@ sources:
     resource: repo://apps/decodex-publisher/src/social_contracts.rs
   - id: openwiki-source-281fbf8eca61c5e14e9af3fb
     resource: repo://apps/decodex-publisher/src/social_workflow.rs
+  - id: openwiki-source-ce6eb7685a73961a6bcbe513
+    resource: repo://apps/radar/src/ledger/schema/setup.rs
   - id: openwiki-source-e631b7e718f7140e71df9fc2
     resource: repo://apps/radar/src/paths.rs
+  - id: openwiki-source-c8b1a2a9f2113ec43d4066da
+    resource: repo://Makefile.toml
+  - id: openwiki-source-016127f3ab4fb65e6830b0bf
+    resource: repo://scripts/audit_node_lock.py
+  - id: openwiki-source-9fc3e2b8c3b9a8bbafd984f3
+    resource: repo://site/.nvmrc
   - id: openwiki-source-986e29707183495223eebed9
     resource: repo://site/astro.config.mjs
+  - id: openwiki-source-dc27aae0de6ec48a0bfa0253
+    resource: repo://site/package-lock.json
   - id: openwiki-source-cb47fe9c0d47072a7555387e
     resource: repo://site/package.json
-generated: { by: "codex", at: "2026-09-29T06:49:47.866Z" }
+generated: { by: "codex", at: "2026-10-28T03:55:33.038Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-10T06:49:11.265Z
+    at: 2026-10-28T03:55:33.038Z
 ---
 
 > Current boundary rechecked: Radar and Publisher remain auxiliary CLIs in the Rust workspace. The retirement of built-in repository/PR orchestration does not remove these tools or grant them Chief product-state authority. Checked-in automation definitions are desired state, not proof that a host scheduler is running. See [Wiki maintenance](../operations/wiki-maintenance.md) for documentation freshness.
@@ -83,6 +93,10 @@ resetting an oversized ledger. Retention covers every current Radar writer
 collection and removes abandoned internal temporary files while the cache-wide lock
 is held.
 
+Ledger persistence takes exclusive access to the SQLite connection while it copies
+the serialized database image. It then closes the connection and uses the existing
+cache lock and file-identity check to publish the image atomically.
+
 ## Publisher scope
 
 `decodex-publisher` owns content evidence recording, publication reservation, xurl
@@ -109,3 +123,16 @@ hidden reasoning.
 The static site under `site/` is a public product surface. Route budget, homepage obligations, static boundary, and asset boundary are site-owned concerns. Site content should be source-backed and buildable without a live Decodex daemon.
 
 Use `site/src/`, `site/package.json`, and site tests/build output as authority for current behavior. Keep product claims consistent with runtime capability and OpenWiki summaries.
+
+Use the managed Node version in `site/.nvmrc` and the npm version in
+`site/package.json`. The site selects the Astro 7.4 minor series and TypeScript 6.
+The selected official Astro checker supports TypeScript 5 or 6. Do not bypass its
+peer contract to select TypeScript 7. The current compatible graph and deferred
+candidates are in the `workspace_dependencies` section of the
+[qualification record](../../automations/upstream/qualification.json).
+
+Run `cargo +stable make audit-node`, `cargo +stable make build-node` and
+`cargo +stable make check-node` from the repository root. Acquisition disables
+install scripts. The audit checks registry identities, integrity, the reviewed
+native-package set, installed script metadata, signatures and available
+attestations. A dependency update must preserve these checks.

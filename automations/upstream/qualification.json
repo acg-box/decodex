@@ -4962,5 +4962,425 @@
     "scope": "Exact signed candidate default feature state. Decodex startup keeps its existing admitted flags and does not enable the new experiments."
   },
   "delivery_status": "Public PR reference; inspect linked PR for exact-head checks and merge state. Bounded qualification does not establish installed-app acceptance.",
-  "decodex_main_baseline": "7ce7d8a88dd1c054f358a64cd5429a7442da1523"
+  "decodex_main_baseline": "7ce7d8a88dd1c054f358a64cd5429a7442da1523",
+  "workspace_dependencies": {
+    "version": 1,
+    "status": "qualified_workspace_dependency_batch",
+    "observed_at": "2026-10-28T03:55:03.336773+00:00",
+    "baseline_source": "0c1bd74af1f45fa79e01d9fbdbb75e426df0c372",
+    "code_commit": "580bf63a570d73af7dbeb18b8e8a537537f5bb65",
+    "scope": "Decodex workspace Cargo, site npm, SwiftPM and direct immutable Git dependencies; host tools and the separately governed Codex runtime retain their existing authority. No source-review cursor advance, app installation, startup or release.",
+    "source_symbols": [
+      "apps/radar/src/ledger/schema/setup.rs::RadarLedgerImage::persist",
+      "crates/decodex-webrtc-build/src/lib.rs::pinned_digest",
+      "crates/decodex-webrtc-build/src/lib.rs::prepare",
+      "crates/decodex-webrtc-build/src/archive.rs::VerifiedArchive::open",
+      "crates/decodex-webrtc-build/src/archive.rs::prepare",
+      "crates/decodex-webrtc-build/src/download.rs::archive",
+      "crates/decodex-webrtc-build/tests/qualify_trust_roots.py::main",
+      "scripts/audit_node_lock.py::audit_package_graph",
+      "scripts/macos/run_native_voice_tests.py::run_tests"
+    ],
+    "selected_source_sha256": {
+      "Cargo.toml": "b35896e15710d70cb92d531631aa3631105b247be35d6d6dcedcaf873f486805",
+      "Cargo.lock": "ee959f129830cb3e90dc23ae0ea22986af3d2b30d32777cb34329f0127a59027",
+      "apps/radar/src/ledger/schema/setup.rs": "790489971abb88836d1562efb34f63e0b365a0c0f633b88912fa45c517f60bda",
+      "build-support/webrtc-sys-build/Cargo.toml": "d238ec3e27699d360b19e1ff7979d1d731e049f697a116e2d7ac13a989fdde60",
+      "crates/decodex-webrtc-build/Cargo.toml": "4d118de0e0552b8ffa91798da859226b88a002c626f7a07e5fe74cac8dabfd52",
+      "crates/decodex-webrtc-build/src/lib.rs": "177c7bd900313d6d7706e5365489d29ec78c9c1bc8ef810d9d82c12f6b0836db",
+      "crates/decodex-webrtc-build/src/archive.rs": "dfaa47a9971b0f1f441d43c6995066d6035081557d0f26c89fb53376d137d141",
+      "crates/decodex-webrtc-build/src/download.rs": "5b46878a79307708c1ecfdc110b9dbd6de5c9e239c4d225d1cc330d766b07af1",
+      "crates/decodex-webrtc-build/tests/qualify_trust_roots.py": "5fbdabf78d9dca686ad5c2c374f7d149997295561625fc8679923e54925213cb",
+      "crates/decodex-webrtc-build/tests/trust_roots.json": "cc9e5cee85e1f954975ba5eae071a00fdb2f001b5aa07ff8004399ba4cf4f823",
+      "scripts/macos/run_native_voice_tests.py": "4c89e8939408260ba668f54a153e546a38d3522e1c9f9ce14c2f014bb67ae453",
+      "scripts/macos/stage_decodex_app.sh": "1ac6c4ff625492e12740f830073fbaffec3acdc39cca0e9950d60cfc5d1cc5bd",
+      "scripts/macos/test_native_app.sh": "abac020709eaf6841f79b701bdbd20a0024680b59aebb301a24cf0f395f86f5f",
+      "site/package.json": "d692d2ef71ff9c5af692adbd4adff51a08554e8b28a29ba26ed7235abe0153be",
+      "site/package-lock.json": "e757c54318fb9549c3011ae3bdc2a97a210396ec3406c16f6c4db95e21c2bb49",
+      "scripts/audit_node_lock.py": "7d7e4481f613365ce46173c832a594f96192bb19f769e44507a8a73ae54ac75f",
+      "apps/decodex-gpui/menubar/Package.swift": "648136bb410507ef20e4b3a3e8ea7f9fed3e2749d8bb3cf9cfaed305b1a5e19e",
+      "apps/decodex-gpui/menubar/Package.resolved": "814612fa518998c19441e6d2e0caec1888feb60641b91eab2a32834031809613",
+      ".config/nextest.toml": "ce577761f68d3b449024148355098ceecf471f6069ed25a5c7d5882a31be85e7",
+      "assets/licenses/libwebrtc.txt": "3533530fc4e9b0836f5d33b49ad34f1c4d8d09f024ec9995c359659907f19746",
+      "assets/licenses/ondine.txt": "23e50ec87ae38be3d53630a536c3e7fd201f3c5aa5f6d84169cc1772d859cc7d"
+    },
+    "selected_dependencies": {
+      "tokio": "1.54.1",
+      "rusqlite": "0.41.0",
+      "libwebrtc": "0.3.54",
+      "webrtc-sys": "0.3.51",
+      "webrtc-sys-build": "0.3.21",
+      "gpui_revision": "37faef81f74fc1bb08be9939c4cffc8ede6ced2f",
+      "ondine_revision": "0b589ec34481856b4153526f10a0a35558a201a8",
+      "webrtc_builder_revision": "71219b95e402b720b5c2682496c50b6cc80b0888",
+      "site": {
+        "@astrojs/check": {
+          "before": "0.9.10",
+          "selected": "0.9.12"
+        },
+        "@tailwindcss/vite": {
+          "before": "4.3.3",
+          "selected": "4.3.3"
+        },
+        "astro": {
+          "before": "7.3.8",
+          "selected": "7.4.2"
+        },
+        "tailwindcss": {
+          "before": "4.3.3",
+          "selected": "4.3.3"
+        },
+        "typescript": {
+          "before": "6.0.3",
+          "selected": "6.0.3"
+        }
+      },
+      "Sparkle": {
+        "revision": "ab7d71291238df6e0492143b120c9b696a35f603",
+        "version": "2.10.1"
+      }
+    },
+    "declaration_contract": {
+      "status": "pass",
+      "workspace_members": 13,
+      "workspace_declarations": 62,
+      "member_external_declarations": "All inherit from the root workspace table, including target/dev/build dependencies.",
+      "exception": "The excluded webrtc-sys-build shim keeps its path dependency and upstream-compatible package version outside the workspace; this prevents package-name ambiguity and a patch dependency cycle.",
+      "SwiftPM": "Sparkle selects the 2.10 minor line with a regenerated 2.10.1 pin.",
+      "npm": "All five direct dependencies use ~minor.patch ranges.",
+      "external_actions": 0
+    },
+    "graph_delta": {
+      "cargo": {
+        "baseline": 763,
+        "selected": 745,
+        "new_or_source_changed": 106
+      },
+      "npm": {
+        "baseline": 378,
+        "selected": 378,
+        "new_or_source_changed": 67
+      },
+      "inspection": "Checked every changed identity, registry/source and package/build entrypoint escalation before execution. Detailed package records remain native; exact identities are recoverable from these locks and immutable refs. This is not an exhaustive third-party source certification."
+    },
+    "artifacts": {
+      "WebRTC": {
+        "release": "webrtc-a545de4",
+        "source": "https://github.com/livekit/rust-sdks/releases/tag/webrtc-a545de4",
+        "published_at": "2026-10-23T00:14:16Z",
+        "arm64": {
+          "zip_sha256": "153a1f1a268b812b4a501deda6505037f29481691efec52be817f560ff09e206",
+          "library_sha256": "47423d514baccc138cba9b7aadb5d8554480a12c1fa010df848d99175fdc3e1d",
+          "verified_regular_files": 38734
+        },
+        "x64": {
+          "zip_sha256": "c53d7d20277f7729956854f1268c372360f08732520136b559034eedae0980a2",
+          "library_sha256": "370d3ff8fb20ff04107afd8346deea5a3e4b5adfaf2c29bb71193c8004a9ba6c",
+          "verified_regular_files": 38735
+        },
+        "header_sha256": "f54188260ea8fd409ecd789a463931e9b1bde5a37a0c699a2535044c4ba9b7f3",
+        "compiled_root_probes": {
+          "executed": 2,
+          "passed": 2,
+          "retired_root": "AAA Certificate Services",
+          "retired_root_sha256": "d7a7a0fb5d7e2731d771e9484ebcdef71d5f0c3e0a2948782bc83ee0ea699ef4",
+          "positive_control": "COMODO ECC Certification Authority",
+          "old_library_positive_control_sha256": "979b6310063a49a022bc11cb55397e3ccef887ef23b613fed43afdc4769ea75e",
+          "limit": "The old static library matched the earlier qualified library digest. This run did not identify the deleted original old ZIP. New ZIPs and linked arm64 libraries were verified directly. Compiled DER absence/presence does not execute a TURN/TLS handshake."
+        }
+      },
+      "Sparkle": {
+        "source": "https://github.com/sparkle-project/Sparkle/releases/tag/2.10.1",
+        "published_at": "2026-10-25T14:36:36Z",
+        "SwiftPM_zip_sha256": "4c2e48a3e50ebcc2c88a58a4c7264a1a99c3c31857ce754357afb9cdb323022a",
+        "strict_nested_signature_verification": "passed"
+      },
+      "signed_voice_test": {
+        "binary_sha256": "4f579a850894119c50e789f7c0532256496e49b0813d25e662030e4d4a415fa4",
+        "identifier": "box.acg.decodex.tests.native-voice",
+        "codesign_verification": "pass",
+        "selected_native_libwebrtc": "webrtc-a545de4",
+        "native_voice_executed": 4,
+        "native_voice_passed": 4,
+        "selected_tests_were_exact_and_not_ignored": true,
+        "original_cargo_artifact_preserved": true
+      }
+    },
+    "tests_read": {
+      "entrypoints": [
+        "apps/radar/src/tests/automation/ledger/ledger_bounds_are_enforced_at_write_time.rs::ledger_writer_prunes_oldest_rows_before_commit",
+        "apps/radar/src/tests/automation/ledger/ledger_schema_initialization_is_atomic.rs::first_initialization_rolls_back_at_every_precommit_boundary_and_restarts_cleanly",
+        "crates/decodex-webrtc-build/src/archive.rs::tests::official_macos_archives_pass_digest_and_strict_header_validation",
+        "scripts/macos/run_native_voice_tests.py::TEST_NAMES",
+        "crates/decodex-webrtc-build/tests/qualify_trust_roots.py::main"
+      ],
+      "limit": "The complete test listing is execution evidence; it does not claim that all 3150 test bodies were read during this dependency batch."
+    },
+    "tests_executed": {
+      "rust_ordinary": {
+        "executed": 2989,
+        "passed": 2989,
+        "skipped": 161,
+        "filter": "not (binary_id(=decodex-gpui::bin/decodex-gpui) and (test(=shell::agent_surface::voice::transport::tests::cancellation_releases_audio_before_and_after_the_offer_without_an_answer) or test(=shell::agent_surface::voice::transport::tests::cancelled_offer_continuation_cannot_resume_or_block_the_next_call) or test(=shell::agent_surface::voice::transport::tests::native_call_exchanges_audio_captions_mutes_and_releases_buffers) or test(=shell::agent_surface::voice::transport::tests::remote_channel_loss_reports_failure_and_releases_buffers)))"
+      },
+      "signed_real_WebRTC": {
+        "executed": 4,
+        "passed": 4,
+        "identities": [
+          "shell::agent_surface::voice::transport::tests::cancellation_releases_audio_before_and_after_the_offer_without_an_answer",
+          "shell::agent_surface::voice::transport::tests::cancelled_offer_continuation_cannot_resume_or_block_the_next_call",
+          "shell::agent_surface::voice::transport::tests::native_call_exchanges_audio_captions_mutes_and_releases_buffers",
+          "shell::agent_surface::voice::transport::tests::remote_channel_loss_reports_failure_and_releases_buffers"
+        ],
+        "unmatched_selectors": []
+      },
+      "explicit_ignored_archive_test": {
+        "executed": 1,
+        "passed": 1,
+        "identity": "archive::tests::official_macos_archives_pass_digest_and_strict_header_validation"
+      },
+      "retained_archive_and_ledger_selectors": {
+        "decodex-webrtc-build": [
+          "archive::tests::corrupt_archive_cache_is_downloaded_and_verified_again",
+          "archive::tests::mismatched_headers_fail_before_extraction_even_with_the_expected_digest",
+          "archive::tests::official_macos_archives_pass_digest_and_strict_header_validation",
+          "archive::tests::valid_archive_repairs_unverified_or_modified_extracted_files_offline",
+          "archive::tests::wrong_digest_fails_before_extraction_and_preserves_the_cache",
+          "tests::custom_build_must_exist",
+          "tests::supported_targets_have_distinct_pins"
+        ],
+        "radar-serialization-regressions": [
+          "tests::automation::cache::cache_gc_prunes_ledger_rows_with_atomic_persistence",
+          "tests::automation::ledger::ledger_bounds_are_enforced_at_write_time::ledger_writer_prunes_oldest_rows_before_commit",
+          "tests::automation::ledger::ledger_ingests_existing_bundle_analysis_and_signal_artifacts::ledger_ingest_existing_completes_with_the_canonical_cache_layout",
+          "tests::automation::ledger::ledger_ingests_existing_bundle_analysis_and_signal_artifacts::ledger_ingests_existing_bundle_analysis_and_signal_artifacts",
+          "tests::automation::ledger::ledger_schema_initialization_is_atomic::first_initialization_rolls_back_at_every_precommit_boundary_and_restarts_cleanly"
+        ]
+      },
+      "SwiftPM": {
+        "reported_cases": 265,
+        "passed": 264,
+        "skipped": 1,
+        "failed": 0,
+        "skip": "Requires local audio hardware; does not start recording."
+      },
+      "repository_gates": {
+        "gate_contract": 27,
+        "architecture": 9,
+        "checkpoint": 8,
+        "portfolio": 7,
+        "CLI_diagnostics": 2,
+        "local_database": "passed; version 60, 75 tables"
+      },
+      "site": "Build passed; 22 Astro files, zero errors/warnings/hints.",
+      "unmatched_selectors": []
+    },
+    "checks": [
+      {
+        "check": "node-validate",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:33:22.459922+00:00"
+      },
+      {
+        "check": "build-node",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:33:54.729561+00:00"
+      },
+      {
+        "check": "check-node",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:33:59.358025+00:00"
+      },
+      {
+        "check": "check-rust",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:34:11.839950+00:00"
+      },
+      {
+        "check": "lint-rust",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:37:48.336216+00:00"
+      },
+      {
+        "check": "formatting-check",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:33:38.994547+00:00"
+      },
+      {
+        "check": "test-rust",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:41:48.981803+00:00"
+      },
+      {
+        "check": "test-native-voice",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:42:57.076276+00:00"
+      },
+      {
+        "check": "test-webrtc-official-archives",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:43:08.940038+00:00"
+      },
+      {
+        "check": "test-native-app",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:44:32.204535+00:00"
+      },
+      {
+        "check": "test-local-database",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:45:07.484252+00:00"
+      },
+      {
+        "check": "test-vnext-cli-diagnostics",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:45:38.363700+00:00"
+      },
+      {
+        "check": "test-automations-main",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:45:39.705850+00:00"
+      },
+      {
+        "check": "test-gate-contract",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:34:00.526801+00:00"
+      },
+      {
+        "check": "test-vnext-architecture",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:34:02.648749+00:00"
+      },
+      {
+        "check": "webrtc-compiled-roots-final-arm64",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:52:55.179029+00:00"
+      },
+      {
+        "check": "webrtc-compiled-roots-final-x64",
+        "status": "passed",
+        "completed_at": "2026-10-28T03:52:57.124517+00:00"
+      }
+    ],
+    "risk": {
+      "risk_coverage": "complete",
+      "risk_delta": "improved",
+      "decision": "proceed",
+      "checks": [
+        {
+          "check": "RustSec selected workspace lock",
+          "status": "finding",
+          "source": "https://github.com/RustSec/advisory-db",
+          "result": "Tokio RUSTSEC-2026-0386 is removed from the workspace graph. Six original unmaintained package advisories remain; no new or worsened match."
+        },
+        {
+          "check": "OSV baseline and selected Cargo/npm/Git/Swift identities",
+          "status": "finding",
+          "source": "https://api.osv.dev/v1/querybatch",
+          "result": "No new or worsened match, and no MAL identifier match. The unchanged legacy block-buffer 0.10.4 GHSA-qwgh-2vcv-g2f7 match remains explicit."
+        },
+        {
+          "check": "npm baseline and selected lock audit",
+          "status": "checked-no-record",
+          "source": "https://registry.npmjs.org",
+          "result": "Zero advisory matches in both graphs."
+        },
+        {
+          "check": "npm selected installed signatures and provenance",
+          "status": "checked-no-record",
+          "source": "https://registry.npmjs.org",
+          "result": "282 verified registry signatures and 101 verified attestations. 378 lock identities and SHA-512 sources audited; 96 optional platform packages absent on this host."
+        },
+        {
+          "check": "Changed Cargo/npm artifact integrity and source identity",
+          "status": "checked-no-record",
+          "source": "Official registry metadata, immutable producer Git refs and checked archive SHA-256/SHA-512",
+          "result": "All new/source-changed identities passed the pre-execution gate. No new npm lifecycle script; retained fsevents script metadata unchanged and install scripts disabled."
+        },
+        {
+          "check": "Swift binary provenance",
+          "status": "checked-no-record",
+          "source": "Official Sparkle release and SwiftPM package manifest",
+          "result": "Published SHA-256 and strict framework signature verified."
+        }
+      ],
+      "claim_limit": "These are source- and observation-bounded checks, not a general claim of benign code or absence of vulnerabilities."
+    },
+    "residuals": [
+      {
+        "candidate": "TypeScript 7.0.2",
+        "outcome": "blocked",
+        "reason": "Official @astrojs/check 0.9.12 supports TypeScript ^5 or ^6; clean resolution rejects 7. Keep 6.0.3 without force or legacy-peer-deps."
+      },
+      {
+        "candidate": "Indirect package newer series",
+        "outcome": "intentionally deferred",
+        "reason": "Installed npm current equals wanted; missing optional platforms/peers are separate. Cargo dry-run changes zero packages; generic-array 0.14.7, taffy 0.15.0 and unicode-properties 0.1.3 remain constrained by current upstream parents. No forced incompatible overrides."
+      },
+      {
+        "candidate": "Host Node/npm pins",
+        "outcome": "intentionally deferred",
+        "reason": "Keep required existing host-managed Node 26.10.0/npm 12.1.0. New host runtime/package-manager installation or reconfiguration is outside this batch."
+      },
+      {
+        "candidate": "Native Codex runtime",
+        "outcome": "intentionally deferred",
+        "selected_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+        "source_lock_tokio": "1.52.3",
+        "reason": "The latest observed official source also retains 1.52.3. This batch fixes Decodex workspace Tokio, not dependencies embedded in the independently qualified Codex artifact. Do not fork or relabel that artifact."
+      }
+    ],
+    "qualification_limits": [
+      "macOS arm64 execution only; x64 ZIP, headers and compiled roots were inspected without x64 execution.",
+      "Synthetic WebRTC packet flow and Swift tests do not qualify physical audio, online providers, installed application behavior, release or performance.",
+      "The existing full Rust style audit reports the same 175 findings on current main and this branch; it remains failed, with zero new findings and no exemption. Required rustfmt and strict Clippy passed.",
+      "Signed staging was not executed; shell syntax and checked notices were verified.",
+      "An extra checkpoint type diagnostic could not find optional Node declarations. The unchanged checkpoint passed its repository-native eight behavior tests; this diagnostic is not a required repository gate."
+    ],
+    "style_audit": {
+      "baseline_source": "0c1bd74af1f45fa79e01d9fbdbb75e426df0c372",
+      "baseline_findings": 175,
+      "candidate_findings": 175,
+      "same_finding_multiset": true,
+      "new_findings": 0,
+      "checked_files": 1062,
+      "status": "existing optional full Rust style audit fails on both; required rustfmt and strict Clippy passed; no exemptions or rule changes"
+    },
+    "schema": {
+      "local_database_sha256": "ad3410025cf2a32514b1d7c020ca972bdc4f253e8d2e9198f8aa1ed908e190a2",
+      "Codex_schema_unchanged": "86c27115a28bf905f4c25ee204b218b2ba9598ef664787efddd30e2d0c20f2d9"
+    },
+    "reproduce": {
+      "prepare": [
+        "cargo +stable fetch --locked",
+        "npm ci --ignore-scripts --prefix site",
+        "swift package --package-path apps/decodex-gpui/menubar --force-resolved-versions resolve"
+      ],
+      "validation": [
+        "cargo +stable check --locked --all-features --all-targets --workspace",
+        "cargo +stable make lint-rust",
+        "cargo +stable make fmt-check",
+        "cargo +stable make audit-node",
+        "cargo +stable make build-node",
+        "cargo +stable make check-node",
+        "cargo +stable nextest run --locked --workspace --tests --examples --benches --all-features -E \"not (binary_id(=decodex-gpui::bin/decodex-gpui) and (test(=shell::agent_surface::voice::transport::tests::cancellation_releases_audio_before_and_after_the_offer_without_an_answer) or test(=shell::agent_surface::voice::transport::tests::cancelled_offer_continuation_cannot_resume_or_block_the_next_call) or test(=shell::agent_surface::voice::transport::tests::native_call_exchanges_audio_captions_mutes_and_releases_buffers) or test(=shell::agent_surface::voice::transport::tests::remote_channel_loss_reports_failure_and_releases_buffers)))\"",
+        "DECODEX_APP_SIGN_IDENTITY=\"$EXISTING_DEVELOPMENT_IDENTITY\" cargo +stable make test-native-voice",
+        "bash scripts/macos/test_native_app.sh",
+        "cargo +stable make test-automations",
+        "cargo +stable make test-gate-contract",
+        "cargo +stable make test-vnext-architecture",
+        "cargo +stable make test-local-database",
+        "cargo +stable make test-vnext-cli-diagnostics",
+        "cargo +stable test --locked -p decodex-webrtc-build archive::tests::official_macos_archives_pass_digest_and_strict_header_validation -- --exact --ignored --nocapture"
+      ],
+      "archive_probe": "python3 crates/decodex-webrtc-build/tests/qualify_trust_roots.py --archive \"$DECODEX_WEBRTC_ARM64_ARCHIVE\" --sha256 153a1f1a268b812b4a501deda6505037f29481691efec52be817f560ff09e206; repeat with the x64 ZIP and its recorded digest. Optional --baseline-library and --baseline-sha256 979b6310063a49a022bc11cb55397e3ccef887ef23b613fed43afdc4769ea75e verify the old-library positive control.",
+      "archive_inputs": "Download the two official ZIP assets from the recorded immutable WebRTC release. The ignored archive test uses DECODEX_WEBRTC_ARM64_ARCHIVE and DECODEX_WEBRTC_X64_ARCHIVE. Use system-temporary paths; do not store artifacts or account fixtures in Git.",
+      "lock_regeneration": "Cargo update; npm update --package-lock-only --ignore-scripts --allow-remote=all --prefix site; swift package --package-path apps/decodex-gpui/menubar update Sparkle. The one-command URL allowance covers npm 12.1 registry-hosted optional WASI resolution only; no persisted npm configuration changed, and the full repository registry/integrity gate passed before execution."
+    },
+    "delivery_reference": {
+      "code_commit": "580bf63a570d73af7dbeb18b8e8a537537f5bb65",
+      "repository": "https://github.com/acg-box/decodex",
+      "state_source": "Read the focused public pull request for exact-head CI and merge; installed-app acceptance is separate."
+    }
+  }
 }

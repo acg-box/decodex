@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b8c8fe03011d6ce342b04cc6139d38ea622cc104fad68bd913bf08b99921d576",
+  "pageVersion": "sha256:b0aecb6af52aa601918f52d44dc34b6b7821dddeb64c3d453a7f6f44ad8759f0",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -128,7 +128,7 @@
         },
         {
           "resource": "repo://scripts/macos/stage_decodex_app.sh",
-          "version": "repo-file-v1:sha256:4c8dab6abd1a26b236184a5c514f9ec27668dbc396b1f8271cf189ea8efb9baf"
+          "version": "repo-file-v1:sha256:1ac6c4ff625492e12740f830073fbaffec3acdc39cca0e9950d60cfc5d1cc5bd"
         }
       ]
     },
@@ -255,6 +255,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T03:00:10.087Z"
+    "at": "2026-10-28T03:55:33.038Z"
   }
 }

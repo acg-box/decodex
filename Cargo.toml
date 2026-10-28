@@ -47,22 +47,21 @@ fs2                    = { version = "~0.4" }
 futures-util           = { version = "~0.3" }
 getrandom              = { version = "~0.4" }
 globset                = { version = "~0.4" }
-gpui                   = { git = "https://github.com/zed-industries/zed.git", rev = "294169aeedbbe6aaa50fa3d00b5e865ed2aa9aa0", default-features = false, features = ["profiler"] }
-gpui_platform          = { git = "https://github.com/zed-industries/zed.git", rev = "294169aeedbbe6aaa50fa3d00b5e865ed2aa9aa0", default-features = false, features = ["font-kit"] }
+gpui                   = { git = "https://github.com/zed-industries/zed.git", rev = "37faef81f74fc1bb08be9939c4cffc8ede6ced2f", default-features = false, features = ["profiler"] }
+gpui_platform          = { git = "https://github.com/zed-industries/zed.git", rev = "37faef81f74fc1bb08be9939c4cffc8ede6ced2f", default-features = false, features = ["font-kit"] }
 httparse               = { version = "~1.10" }
 libc                   = { version = "~0.2" }
 libwebrtc              = { version = "~0.3" }
 objc2-audio-toolbox    = { version = "~0.3", default-features = false, features = ["AUComponent", "AudioComponent", "AudioUnitProperties", "objc2-core-audio-types", "std"] }
 objc2-core-audio-types = { version = "~0.3", default-features = false, features = ["CoreAudioBaseTypes", "std"] }
 objc2-core-foundation  = { version = "~0.3", default-features = false, features = ["CFString", "std"] }
-ondine                 = { package = "compiler", git = "https://github.com/wevm/ondine.git", rev = "6a1586e5af980e67c104239593ae931837157b8b" }
+ondine                 = { package = "compiler", git = "https://github.com/wevm/ondine.git", rev = "0b589ec34481856b4153526f10a0a35558a201a8" }
 percent-encoding       = { version = "~2.3" }
 regex                  = { version = "~1.13" }
 reqwest                = { version = "~0.13", default-features = false, features = ["blocking", "json", "rustls"] }
-reqwest-webrtc         = { package = "reqwest", version = "~0.12", default-features = false, features = ["blocking", "rustls-tls-native-roots"] }
 roxmltree              = { version = "~0.21" }
 rtrb                   = { version = "~0.4" }
-rusqlite               = { version = "~0.40", features = ["bundled"] }
+rusqlite               = { version = "~0.41", features = ["bundled"] }
 rustix                 = { version = "~1.1", features = ["fs"] }
 security-framework     = { version = "~3.7", default-features = false, features = ["OSX_10_15"] }
 semver                 = { version = "~1.0" }
@@ -72,7 +71,7 @@ sha1                   = { version = "~0.11" }
 sha2                   = { version = "~0.11" }
 tempfile               = { version = "~3.27" }
 time                   = { version = "~0.3", features = ["formatting"] }
-tokio                  = { version = "~1.53", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio                  = { version = "~1.54", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-tungstenite      = { version = "~0.30" }
 toml                   = { version = "~1.1" }
 toml_edit              = { version = "~0.25" }
@@ -83,7 +82,7 @@ url                    = { version = "~2.5" }
 vergen-gitcl           = { version = "~10.0", features = ["cargo"] }
 wait-timeout           = { version = "~0.2" }
 walkdir                = { version = "~2.5" }
-webrtc-upstream        = { package = "webrtc-sys-build", git = "https://github.com/livekit/rust-sdks.git", rev = "fa46e8427050b6ee0c6e40670ff161ee3a2bbf5a" }
+webrtc-upstream        = { package = "webrtc-sys-build", git = "https://github.com/livekit/rust-sdks.git", rev = "71219b95e402b720b5c2682496c50b6cc80b0888" }
 zeroize                = { version = "~1.9" }
 zip                    = { version = "~9.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
