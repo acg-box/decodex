@@ -247,6 +247,9 @@ fn capture_collaboration(cx: &mut VisualTestAppContext) -> Result<AnyWindowHandl
 					if let Ok(count) = env::var("DECODEX_VISUAL_GRAPH_AGENTS") {
 						surface.visual_relation_density(count.parse().expect("agent count"), cx);
 					}
+					if let Some(path) = env::var_os("DECODEX_VISUAL_REVIEW_CAPTURE") {
+						surface.visual_review_capture(Path::new(&path), cx);
+					}
 
 					surface
 				});

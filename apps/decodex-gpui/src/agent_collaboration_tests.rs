@@ -30,6 +30,94 @@ impl Render for WireView {
 	}
 }
 
+fn review_capture(completed: bool) -> crate::shell::agent_surface::work_board::review::Capture {
+	use serde_json::json;
+	let item = |turn: &str, id: &str, kind: &str, text: &str, review| {
+		json!({"position":1,"content":{
+			"type":"item","turn_id":turn,"item_id":id,"kind":kind,"phase":"final_answer","text":text,"truncated":false,"attachments":[],
+			"activity": if kind=="commandExecution" {json!({"turn_id":turn,"item_id":id,"kind":kind,"status":"completed","label":"File read","detail":"Exit code 0","review":review})} else {json!(null)}
+		}})
+	};
+	let boundary = |done| json!({"position":3,"content":{"type":"turn_boundary","turn_id":"review-turn","completed":done,"status":if done {Some("completed")} else {None}}});
+	serde_json::from_value(json!({
+		"thread":"lead-thread","agents":[{"thread_id":"reviewer-thread","parent_thread_id":"lead-thread","title":"Reviewer","task":"Check the implementation design","status":if completed {"idle"} else {"active"}}],
+		"pages":[
+			{"thread_id":"lead-thread","entries":[item("lead-turn","prepare","commandExecution","",json!({"kind":"prepare"}))],"next_cursor":null},
+			{"thread_id":"reviewer-thread","entries":[item("review-turn","persona","commandExecution","",json!({"kind":"reviewer","role":"implementation_readiness"})),item("review-turn","report","agentMessage",if completed {"Read the original instructions.\n\nOne blocker: completion does not establish acceptance."} else {"Checking the current design."},json!(null)),boundary(completed)],"next_cursor":null}
+		]
+	})).expect("review fixture")
+}
+
+#[gpui::test]
+fn review_events_share_graph_and_sidebar_without_claiming_acceptance(cx: &mut TestAppContext) {
+	let (surface, visual) = cx.add_window_view(|_, cx| {
+		let mut surface = AgentSurface::new(cx);
+		surface.apply_review_capture(review_capture(false), cx);
+		surface
+	});
+
+	surface.read_with(visual, |s, _| {
+		let rows = s.factory_rows();
+		let reviewer = rows.iter().find(|row| row.native).unwrap();
+		assert_eq!(s.reviewer_role(reviewer).as_deref(), Some("implementation readiness"));
+		assert_eq!(s.review_phase(reviewer), Some("Reviewing"));
+		let cases = s.collaboration_cases(&s.relation_graph(), &rows);
+		assert!(
+			cases.iter().any(|case| case.state == "Reviewing" && case.from.key == reviewer.key)
+		);
+	});
+	surface.update(visual, |s, cx| {
+		s.native_agents.lists.get_mut("agent").unwrap()[0].status = "waitingOnApproval".into();
+		let pending = s.factory_rows().into_iter().find(|row| row.native).unwrap();
+		assert_eq!(s.review_phase(&pending), Some("Needs approval"));
+		s.apply_review_capture(review_capture(true), cx);
+		s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+		let rows = s.factory_rows();
+		let cases = s.collaboration_cases(&s.relation_graph(), &rows);
+		let report = cases.iter().find(|case| case.state == "Report ready").unwrap();
+		assert!(report.summary.contains("blocker"));
+		assert!(!report.summary.contains("Read the original"));
+		assert_eq!(report.source_thread.as_deref(), Some("reviewer-thread"));
+		assert_eq!(report.source_turn.as_deref(), Some("review-turn"));
+		assert!(!cases.iter().any(|case| case.state == "Accepted"));
+		s.toggle_collaboration_exchange(&report.id, None, cx);
+		assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+		assert_ne!(
+			s.native_agents.selected.as_ref().map(|(_, thread)| thread.as_str()),
+			Some("reviewer-thread")
+		);
+	});
+}
+
+#[gpui::test]
+fn ordinary_followup_and_rebound_threads_do_not_inherit_review_state(cx: &mut TestAppContext) {
+	let (surface, visual) = cx.add_window_view(|_, cx| {
+		let mut surface = AgentSurface::new(cx);
+		surface.apply_review_capture(review_capture(true), cx);
+		surface
+	});
+	surface.update(visual, |s, _| {
+		let rows = s.factory_rows();
+		let lead = rows.iter().find(|row| !row.native).unwrap();
+		assert!(s.lead_review(lead).is_some());
+		s.snapshot.as_mut().unwrap().work_items[0].active_turn_id = Some("new-live-turn".into());
+		assert!(s.lead_review(lead).is_none(), "new native turn immediately retires the old phase");
+		s.snapshot.as_mut().unwrap().work_items[0].active_turn_id = None;
+		let brief = s.work_board.briefs.get_mut(&lead.key).unwrap();
+		brief.preview.as_mut().unwrap().turn = "ordinary-followup".into();
+		assert!(s.lead_review(lead).is_none());
+		let reviewer = rows.iter().find(|row| row.native).unwrap();
+		let brief = s.work_board.briefs.get_mut(&reviewer.key).unwrap();
+		brief.preview.as_mut().unwrap().turn = "ordinary-native-followup".into();
+		assert!(s.reviewer_role(reviewer).is_none());
+		let brief = s.work_board.briefs.get_mut(&reviewer.key).unwrap();
+		brief.preview.as_mut().unwrap().turn = "review-turn".into();
+		let brief = s.work_board.briefs.get_mut(&reviewer.key).unwrap();
+		brief.source_thread = Some("different-thread".into());
+		assert!(s.reviewer_role(reviewer).is_none());
+	});
+}
+
 #[gpui::test]
 fn collaboration_stays_global_and_expands_without_switching_chat_or_draft(cx: &mut TestAppContext) {
 	let (surface, visual) = cx.add_window_view(|_, cx| {

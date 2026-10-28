@@ -2269,6 +2269,10 @@ impl AgentSurface {
 				}
 
 				view.child(Header {
+					reviewer: node
+						.row
+						.as_ref()
+						.is_some_and(|row| self.reviewer_role(row).is_some()),
 					team_members,
 					key: node.key.clone(),
 					parent,
@@ -2589,7 +2593,7 @@ impl AgentSurface {
 			.find(|r| r.key == "release")
 			.expect("relation fixture owner");
 
-		self.work_board.briefs.insert(row.key.clone(),Brief{output:None,source_thread:row.thread.clone(),assignments:Default::default(),outcome:None,preview:None,question:None,metrics:Default::default(),resources:None,stamp:self.brief_stamp(&row),read_at:std::time::Instant::now(),relations:vec![("review-wait".into(),decodex_protocol::AgentCollaborationDto {sender_thread_id:"fixture-release".into(),receiver_thread_ids:vec!["fixture-reviewer".into()],tool:"wait".into(),status:"completed".into(),prompt:String::new(),results:vec![decodex_protocol::AgentCollaborationResultDto{thread_id:"fixture-reviewer".into(),status:"completed".into(),message:"Cancellation can leave the sign-in button disabled. Add a regression test before release.".into()}]})]});
+		self.work_board.briefs.insert(row.key.clone(),Brief{review:None,output:None,source_thread:row.thread.clone(),assignments:Default::default(),outcome:None,preview:None,question:None,metrics:Default::default(),resources:None,stamp:self.brief_stamp(&row),read_at:std::time::Instant::now(),relations:vec![("review-wait".into(),decodex_protocol::AgentCollaborationDto {sender_thread_id:"fixture-release".into(),receiver_thread_ids:vec!["fixture-reviewer".into()],tool:"wait".into(),status:"completed".into(),prompt:String::new(),results:vec![decodex_protocol::AgentCollaborationResultDto{thread_id:"fixture-reviewer".into(),status:"completed".into(),message:"Cancellation can leave the sign-in button disabled. Add a regression test before release.".into()}]})]});
 
 		for owner in ["flow", "verify"] {
 			let row = self
@@ -2607,6 +2611,7 @@ impl AgentSurface {
 			self.work_board.briefs.insert(
 				row.key.clone(),
 				Brief {
+					review: None,
 					output: None,
 					source_thread: row.thread.clone(),
 					assignments: Default::default(),
@@ -2806,6 +2811,7 @@ mod fit_tests {
 				.find(|node| node.key == row.key)
 				.unwrap();
 			let brief = s.work_board.briefs.entry(row.key.clone()).or_insert_with(|| Brief {
+				review: None,
 				output: None,
 				source_thread: row.thread.clone(),
 				assignments: Default::default(),
@@ -4096,6 +4102,7 @@ mod fit_tests {
 		s.work_board.briefs.insert(
 			row.key.clone(),
 			Brief {
+				review: None,
 				output: None,
 				source_thread: row.thread.clone(),
 				assignments: Default::default(),

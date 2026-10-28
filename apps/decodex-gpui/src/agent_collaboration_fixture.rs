@@ -217,6 +217,7 @@ impl AgentSurface {
 			self.work_board.briefs.insert(
 				row.key.clone(),
 				Brief {
+					review: None,
 					source_thread: row.thread.clone(),
 					output: None,
 					assignments: Default::default(),
