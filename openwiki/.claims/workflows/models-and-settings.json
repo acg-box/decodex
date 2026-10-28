@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:7b771351429d3945a89c4ad21d3ab8435350b3c9799f3378f5d276bb6f4d7792",
+  "pageVersion": "sha256:db866a21f3f39916426745427c870fb6afe6320601fd41cb31e3dba894cb54c3",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -214,7 +214,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:30232eca27d6a7b0c34f76a621db79acfa12912ea09f80667692a1c4284fdbfc"
+          "version": "repo-file-v1:sha256:02099c5ef8013cc1109974781e11686d503d2538696ff79642cc79bf9534bf46"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -237,6 +237,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T08:39:27.042Z"
+    "at": "2026-10-28T08:42:08.680Z"
   }
 }

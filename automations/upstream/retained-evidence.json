@@ -1234,15 +1234,15 @@
   },
   "prompt_suggestions": {
     "contracts": "automations/upstream/retained-contracts.json#retained_prompt_suggestions",
-    "source_revision": "72f2d49bd812778ba3a317309f91083ddfb80cc0",
+    "source_revision": "d6a24e28714cf42881635d779d44a4a4073ff9e4",
     "source_sha256": {
       "apps/decodex-gpui/src/agent_composer.rs": "5fa9030baecd4e0d71d4947851156ecdd2e41674cb3a774adb829ed19be4a13d",
       "apps/decodex-gpui/src/agent_sample.rs": "be97c9e9c9f8720d1be73dc79f96b801028ca4c2c7a2726b742ea24dccac8784",
-      "apps/decodex-gpui/src/agent_sample_tests.rs": "6f082885b54b38031fe77a80b050be5c40d4f22650fd90f75fba6fae7bd7bc7f",
+      "apps/decodex-gpui/src/agent_sample_tests.rs": "27ea5cd3b1c0d5b05b46bc7b0434578ee83fcdabbb8126df840706329c7a4123",
       "apps/decodex-gpui/src/agent_sample_request.rs": "0944061b207548f39670ea47073a455fb7d48c7736fbc938e728fd64f9cf2183",
       "crates/decodex-codex/src/app_server_client/sample.rs": "424ef6cb93c923c8db8f050a10b67bfd9a008860e8054d04b6843b3379568e2a",
       "crates/decodex-runtime/src/agent_sample_host.rs": "d1fa63e10dc35bb2b39f669c4d2da7a37d4b65c101d15027632b099f45d0ab48",
-      "apps/decodex-gpui/src/agent_prompt_suggestions.rs": "f34a78b869fefbb590c750b3c976b13bdd7e3d1dbf4a17b142443eb7e9ade4dd",
+      "apps/decodex-gpui/src/agent_prompt_suggestions.rs": "eff9bd808613584fa9abf6ee2ce12cfa901817207d58c9f6a668bcd8e6c62c80",
       "apps/decodex-gpui/src/agent_surface.rs": "be02795a1f5604cbbe47df567e9409cabac835aaae386f21262b89c17e6baeb0",
       "apps/decodex-gpui/src/agent_timeline.rs": "b147a123139376220ac697c4c00577e2af2eaa0b6ba10365ee3abca63cd506b2"
     },
