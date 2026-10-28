@@ -157,6 +157,162 @@
         ],
         "protocol_observation": "The public Turn has an optional total duration but no category critical path; the source turn-profile test reads internal analytics events."
       }
+    },
+    "approved_desktop_refinements": {
+      "scope": "The user approved original manual review numbers 2, 3, 6, 7, 9, 10, 12 and 15. Number 13 remains undecided. These approvals do not apply to unrelated historical proposals.",
+      "items": [
+        {
+          "id": "locked-thread-fork-entry",
+          "manual_review_number": 2,
+          "upstream_commits": [
+            "d1092865f8ec63735006211f65ee109ce91c30b9"
+          ],
+          "behavior": "Locked conversations offer a reviewed branch after the last visible prompt turn. The existing native fork path preserves the original, its lease and saved draft. After-turn branches copy the ordinary composer draft without submitting it.",
+          "source_symbols": [
+            "apps/decodex-gpui/src/agent_prompt_edit.rs#locked_branch_source",
+            "apps/decodex-gpui/src/agent_prompt_edit.rs#review_locked_branch",
+            "apps/decodex-gpui/src/agent_prompt_fork.rs#recover_prompt_branch"
+          ],
+          "test_identities_or_selectors": [
+            "locked_conversation_offers_only_a_source_bound_branch",
+            "fork_recovery_opens_verified_target_and_keeps_edited_input"
+          ],
+          "limits": "Existing idle, current-thread and native history guards still apply. The entry is for the selected managed conversation with a readable native prompt; it does not take over external execution."
+        },
+        {
+          "id": "structured-math-layout",
+          "manual_review_number": 3,
+          "upstream_commits": [
+            "639d2478cc2e16d6ca715952d2e726a3aecc024e",
+            "7b7d934408e6df20950a7a2501a669650279ab06"
+          ],
+          "behavior": "Bounded Unicode math adds aligned equations, boxed models, grouped scripts, parenthesized matrices, display annotations and inline zero. Source copy, code protection and literal fallback remain intact.",
+          "source_symbols": [
+            "apps/decodex-gpui/src/agent_math.rs#render_formula",
+            "apps/decodex-gpui/src/agent_math/render.rs#render",
+            "apps/decodex-gpui/src/agent_math/render/structured.rs#grid"
+          ],
+          "test_identities_or_selectors": [
+            "structured_math_renders_aligned_models_and_grouped_scripts",
+            "display_math_keeps_geometry_on_resize_and_copies_tex"
+          ],
+          "limits": "Retains 4096-byte input, 16-row, 256-column and depth limits. Spatial output must fit; nested or unsupported layout retains literal source."
+        },
+        {
+          "id": "system-hour-cycle-display",
+          "manual_review_number": 6,
+          "upstream_commits": [
+            "13a966fc652d1037c7ee93a15b2bdfa0610748ae"
+          ],
+          "behavior": "Quota reset and reset-card expiry labels use Foundation localized date templates so the host hour cycle and time zone apply.",
+          "source_symbols": [
+            "apps/decodex-gpui/src/quota_meter.rs#format_local_date_time",
+            "apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift#localizedResetDateTime"
+          ],
+          "test_identities_or_selectors": [
+            "reset_dates_respect_twelve_and_twenty_four_hour_locales",
+            "testCardExpiryRespectsHourCycleAndTimeZone"
+          ],
+          "limits": "macOS tests inject 12-hour/24-hour locales and UTC/offset zones. A user changing system settings during an installed session was not measured."
+        },
+        {
+          "id": "bare-prompt-url-links",
+          "manual_review_number": 7,
+          "upstream_commits": [
+            "7db578fca663b3e0026996e9c50104784d420744",
+            "eef47199272f4eb456f45d7b795109f8c3029c76"
+          ],
+          "behavior": "Prose URLs retain complete destinations and clickable byte ranges in messages, question text, approval reasons, MCP descriptions and feedback. Adjacent Markdown text tokens coalesce before link annotation.",
+          "source_symbols": [
+            "apps/decodex-gpui/src/agent_text_links.rs#prose_links",
+            "apps/decodex-gpui/src/agent_text_links.rs#web_links",
+            "apps/decodex-gpui/src/agent_markdown.rs#append_prose",
+            "apps/decodex-gpui/src/agent_selectable_text.rs#SelectableText::plain"
+          ],
+          "test_identities_or_selectors": [
+            "prose_urls_preserve_unicode_parentheses_and_skip_code_and_destinations",
+            "bare_urls_open_from_their_visible_text_without_changing_copy",
+            "links_still_open_on_click_but_never_during_cross_paragraph_selection"
+          ],
+          "limits": "HTTP and HTTPS prose only; code and explicit Markdown destinations retain their existing treatment. URLs are not fetched automatically."
+        },
+        {
+          "id": "voice-public-reasoning-status",
+          "manual_review_number": 9,
+          "upstream_commits": [
+            "90e653014ab56215362f065be0cb4698bd75a15e"
+          ],
+          "behavior": "Native V3 voice starts opt into backendReasoningStatus. Codex owns public-summary filtering and quiet context delivery; Decodex does not copy private reasoning.",
+          "source_symbols": [
+            "crates/decodex-runtime/src/agent/voice.rs#start_voice"
+          ],
+          "test_identities_or_selectors": [
+            "voice_start_applies_effective_voice_and_rejects_failed_reads_before_recording_call"
+          ],
+          "limits": "Exact selected artifact components and freshly generated start schema verified. Wire fixture executed; no new live provider or hardware voice qualification."
+        },
+        {
+          "id": "background-voice-navigation",
+          "manual_review_number": 10,
+          "upstream_commits": [
+            "a837a656ff15a90e86f4ae4d5f2e6833114d6f61",
+            "58d722cb5d2acfc8c5ebeb7c596d18b6562fdc85"
+          ],
+          "behavior": "Navigation and new-chat browsing retain the active voice session and its original work. A background bar provides return, mute and end controls; other conversation drafts remain separate.",
+          "source_symbols": [
+            "apps/decodex-gpui/src/agent_voice.rs#voice_on_current_conversation",
+            "apps/decodex-gpui/src/agent_voice.rs#background_voice_toolbar",
+            "apps/decodex-gpui/src/agent_workspace.rs#release_previous_conversation"
+          ],
+          "test_identities_or_selectors": [
+            "navigating_keeps_the_call_owner_and_each_conversation_draft",
+            "active_voice_replaces_the_editor_and_restores_its_draft",
+            "saved_voice_caption_and_disconnect_remain_bound_to_the_current_call"
+          ],
+          "limits": "Synthetic UI/media fixtures cover routing and draft ownership. Owner removal/archive and app exit still end local capture. Background OS audio, actual devices and live provider navigation were not requalified."
+        },
+        {
+          "id": "question-turn-end-recovery",
+          "manual_review_number": 12,
+          "upstream_commits": [
+            "811fe5fa4311d33a4d4626509025b6c61100245e"
+          ],
+          "behavior": "Exact completed, interrupted or failed native turn receipts retire question cards. Expired live question identities let the desktop append nonblank unsent custom answers in question order, with one undo group and no automatic send.",
+          "source_symbols": [
+            "database/src/agent_questions.rs#expired_agent_async_question_ids",
+            "apps/decodex-gpui/src/agent_async_questions.rs#recover_expired_question_drafts",
+            "apps/decodex-gpui/src/composer_input.rs#append_recovered_text"
+          ],
+          "test_identities_or_selectors": [
+            "exact_terminal_turn_expires_questions_without_replaying_or_answering_them",
+            "terminal_question_drafts_return_in_question_order_without_resubmission",
+            "terminal_question_keeps_oversized_answer_recoverable",
+            "recovered_answers_append_as_one_undoable_edit"
+          ],
+          "limits": "Answers with a pending submission, historical replay questions and misalignment recovery do not append. Oversized drafts remain saved for retry. Expired identity transport is bounded to 1024 identities and one quarter of the history byte budget; truncation preserves unreturned drafts."
+        },
+        {
+          "id": "streaming-link-holdback",
+          "manual_review_number": 15,
+          "upstream_commits": [
+            "e0a64cf2bc4535eb330c22857260a7856c1e8749"
+          ],
+          "behavior": "Rich streaming previews keep an incomplete Markdown link label visible while holding its destination. Closing the link, newline commitment and finalization retain source text.",
+          "source_symbols": [
+            "apps/decodex-gpui/src/agent_link_preview.rs#visible",
+            "apps/decodex-gpui/src/agent_text_reveal.rs#StreamingText::render"
+          ],
+          "test_identities_or_selectors": [
+            "streaming_links_hold_destinations_until_closed_and_preserve_final_source",
+            "streaming_links_leave_code_escapes_and_committed_lines_intact"
+          ],
+          "limits": "Presentation only; stored output, complete history and code source remain unchanged. Parser and long Unicode destination fixtures executed; no performance benchmark claim."
+        }
+      ],
+      "implementation_commits": [
+        "https://github.com/acg-box/decodex/commit/0c7c7c5940327aeb0a929b356edb987626563ff2",
+        "https://github.com/acg-box/decodex/commit/6b76edfc002ee35270d528217adca36ad0fb6015"
+      ]
     }
   },
   "retained_native_coordination": {
@@ -4219,7 +4375,7 @@
     }
   },
   "current_optional_decision_menu": {
-    "scope": "The current six-item selection supersedes historical optional inventories without selecting their other capabilities.",
+    "scope": "Historical six-item selection, retained for its delivered contracts. The approved_desktop_refinements entry records the later selection; native automation state owns outstanding decisions.",
     "items": [
       {
         "number": 1,

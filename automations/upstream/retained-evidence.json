@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "e30efc453f42c4afc4e9a00a1a02d9d487012918fed15b53f16f4dd618e2ba09",
+    "sha256": "3fc7b1d503ae04bf829d98c1377398fc681a76cb770991e1fdbb352e752f81b9",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -954,5 +954,175 @@
     "requirements": "Preserve native archive verification and real WebRTC transport, use inherited minor-line dependencies, and retain explicit source/artifact/installed-app limits.",
     "summary": "Tokio 1.54.1, rusqlite 0.41, latest selected GPUI/Git refs, compatible Astro 7.4 graph and Sparkle 2.10.1. 2993 nonignored Rust cases pass across the ordinary and signed transport lanes; both official WebRTC archives and compiled root probes pass.",
     "limits": "TypeScript 7 is blocked by the official checker. Host tools and native Codex remain independently governed. Existing full-style findings are unchanged; physical audio, provider, installed-app and release acceptance are unmeasured."
+  },
+  "approved_desktop_refinements": {
+    "contracts": "automations/upstream/retained-contracts.json#retained_presentation.approved_desktop_refinements",
+    "source_revision": "6b76edfc002ee35270d528217adca36ad0fb6015",
+    "source_sha256": {
+      "apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift": "0245279267e8c49003fdde88c640385a6c3a8fa1e9faa0523be0272e917ad326",
+      "apps/decodex-gpui/src/agent_async_questions.rs": "46a6f1f3bd8c29c976124e85879e8e8bc86335d83e58e477f1872a60915f2c74",
+      "apps/decodex-gpui/src/agent_link_preview.rs": "ffef54084a9389eaeb2b469b32206968b17701b6856bb0bd2cf249bfd0eb9fa1",
+      "apps/decodex-gpui/src/agent_markdown.rs": "159153a80550121560b419c74ec37d9cb631ba7cc786804b9940f67539be79ff",
+      "apps/decodex-gpui/src/agent_math.rs": "fa96979c256b963d06d21d6627af19c3e1887b3faad769975927e13293956a2b",
+      "apps/decodex-gpui/src/agent_math/render.rs": "45ebbb3c0c8d70d4d17b8eb553e5b81973f3383a62d2aa2284df8f2e20b29201",
+      "apps/decodex-gpui/src/agent_math/render/structured.rs": "785805d717bcb0beef6f8ae1108fe8834e1d3137fe265fa35037b4f5d49b96f8",
+      "apps/decodex-gpui/src/agent_prompt_edit.rs": "41259244f7681415474205908f0322490bc457fc4cc3bf79e8b6764dac3b7c73",
+      "apps/decodex-gpui/src/agent_prompt_fork.rs": "bc12abfa4aee0cbc0e140b2b7100f18341f5a497d38c733d48da5b91d72ab575",
+      "apps/decodex-gpui/src/agent_selectable_text.rs": "4473894c319130b40a785731f39706b2a66f4d8fd072942eb826f1368f213acc",
+      "apps/decodex-gpui/src/agent_text_links.rs": "24c42f686026347162676bf1cef1956387cf9cf1d4761a85ba2752f5e373b352",
+      "apps/decodex-gpui/src/agent_text_reveal.rs": "34a76eaa707535561dd2468b0bd7b0171616b6b6cf729a11a7f614f13cb3fac2",
+      "apps/decodex-gpui/src/agent_voice.rs": "3840a7e7abb217f76cbbed1ccaf7dbcf1dc4d6dc119bcb05719bb12f6babc8f8",
+      "apps/decodex-gpui/src/agent_workspace.rs": "e994e29cb5968140805fcafbc0f1aeeec4b23fcfc0954512630a58ff95ee10d6",
+      "apps/decodex-gpui/src/composer_input.rs": "ce2648c490a4b5cd507244818f92221c5495a8eebcc63b5ca12454d9c2ffe9b5",
+      "apps/decodex-gpui/src/quota_meter.rs": "3fb82ce192e4dd279e3f057d3d70f61e152be4818cc336fffe3dd4e6e151a630",
+      "crates/decodex-runtime/src/agent/voice.rs": "e1b98a6b32598b8eb9b520c8d8a6e80b2064cde153e5e3954d4032f4aa2c40ac",
+      "database/src/agent_questions.rs": "ec603cb81c19da504f304c989c6fb3208dbca24b9bea495f9406c9167030b9a1"
+    },
+    "executed_tests": {
+      "gpui": {
+        "entrypoint": "apps/decodex-gpui/src/main.rs",
+        "command": [
+          "cargo",
+          "+stable",
+          "test",
+          "--locked",
+          "-p",
+          "decodex-gpui",
+          "--bin",
+          "decodex-gpui",
+          "--",
+          "shell::agent_surface::markdown::math_tests",
+          "shell::agent_surface::markdown::selection_tests",
+          "shell::agent_surface::text_reveal::link_preview",
+          "shell::agent_surface::selectable_text::links",
+          "shell::agent_surface::async_questions",
+          "shell::agent_surface::prompt_edit",
+          "shell::agent_surface::voice::tests",
+          "quota_meter::hour_cycle_tests",
+          "recovered_answers_append",
+          "--test-threads",
+          "1"
+        ],
+        "passed": 58,
+        "selectors": [
+          {
+            "selector": "shell::agent_surface::markdown::math_tests",
+            "matched": 5
+          },
+          {
+            "selector": "shell::agent_surface::markdown::selection_tests",
+            "matched": 11
+          },
+          {
+            "selector": "shell::agent_surface::text_reveal::link_preview",
+            "matched": 2
+          },
+          {
+            "selector": "shell::agent_surface::selectable_text::links",
+            "matched": 1
+          },
+          {
+            "selector": "shell::agent_surface::async_questions",
+            "matched": 12
+          },
+          {
+            "selector": "shell::agent_surface::prompt_edit",
+            "matched": 6
+          },
+          {
+            "selector": "shell::agent_surface::voice::tests",
+            "matched": 19
+          },
+          {
+            "selector": "quota_meter::hour_cycle_tests",
+            "matched": 1
+          },
+          {
+            "selector": "recovered_answers_append",
+            "matched": 1
+          }
+        ],
+        "unmatched_selectors": []
+      },
+      "database": {
+        "entrypoint": "database/src/lib.rs",
+        "commands": [
+          "cargo +stable test --locked -p decodex-database --lib question",
+          "cargo +stable test --locked -p decodex-database --lib async"
+        ],
+        "unique_passed": 6,
+        "counts": [
+          5,
+          2
+        ],
+        "overlap": 1
+      },
+      "voice_boundary": {
+        "entrypoint": "crates/decodex-runtime/src/lib.rs",
+        "command": "cargo +stable test --locked -p decodex-runtime --lib voice_start_applies_effective_voice_and_rejects_failed_reads_before_recording_call",
+        "passed": 1
+      },
+      "swift": {
+        "entrypoint": "apps/decodex-gpui/menubar/Package.swift",
+        "command": "swift test --package-path apps/decodex-gpui/menubar --filter ResetCardUseConfirmationTests",
+        "passed": 17
+      }
+    },
+    "baseline": {
+      "revision": "65c41e54bf961112bb544acb2978b5f6e50ce904",
+      "gpui_existing_passed": 47,
+      "database_existing_passed": 4
+    },
+    "static_checks": {
+      "strict_clippy_packages": [
+        "decodex-gpui (all features, application binary)",
+        "decodex-database (library)",
+        "decodex-protocol (library)",
+        "decodex-runtime (library)"
+      ],
+      "rust_format": "rustup run nightly cargo fmt --all --check",
+      "toml_format": "cargo make fmt-toml-check"
+    },
+    "runtime_boundary": {
+      "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+      "components": "automations/upstream/qualification.json#components",
+      "components_rehashed_and_equal": 3,
+      "schema_generator": "<prepared-cli> app-server generate-json-schema --experimental --out <directory>",
+      "start_schema": "v2/ThreadRealtimeStartParams.json",
+      "start_schema_sha256": "46ad48bf0050f101363940c66a49a9ebc2ed24c383cfd7d096e67bb09c137eaf",
+      "backendReasoningStatus": "boolean; quiet public summaries in native V3"
+    },
+    "upstream_tests_read_not_executed": [
+      "codex-rs/tui/src/markdown_render/math_display_tests.rs#unicode_math_optimization_model",
+      "codex-rs/tui/src/markdown_render/math_display_tests.rs#issue_48403_renders_zero_and_multiline_display",
+      "codex-rs/tui/src/history_cell/messages_tests.rs#user_prompt_urls_keep_destinations_across_widths",
+      "codex-rs/tui/src/bottom_pane/async_questions/state_tests.rs#multiline_question_preserves_line_breaks_and_link_destinations",
+      "codex-rs/core/tests/suite/realtime_conversation.rs#conversation_relays_only_public_reasoning_as_quiet_status",
+      "codex-rs/tui/src/streaming/controller_preview_tests.rs#unfinished_link_destinations_do_not_expand_the_preview"
+    ],
+    "limits": [
+      "No upstream test suite was executed.",
+      "No new real-account, physical-audio or installed-app acceptance was performed.",
+      "No runtime migration, application installation, release or source-review cursor advance."
+    ],
+    "delivery_commits": [
+      "https://github.com/acg-box/decodex/commit/0c7c7c5940327aeb0a929b356edb987626563ff2",
+      "https://github.com/acg-box/decodex/commit/6b76edfc002ee35270d528217adca36ad0fb6015"
+    ],
+    "documentation": {
+      "status": "incomplete_scope_expansion",
+      "requested_pages": [
+        "openwiki/architecture/conversation-presentation.md",
+        "openwiki/workflows/conversations-and-recovery.md",
+        "openwiki/integrations/subscription-voice.md",
+        "openwiki/decisions/upstream-product-scope.md"
+      ],
+      "queued_pages": 16,
+      "completed_pages": 0,
+      "owner": "OpenWiki maintenance continuation",
+      "reason": "The supported lifecycle automatically adds pre-existing stale and unresolved claim jobs and has no skip or scoped assignment operation. Do not expand this product batch into historical wiki reconciliation.",
+      "next_action": "Rebegin the supported OpenWiki lifecycle on merged main; reconcile the preceding historical claim queue before updating the four requested pages. No generated page or control state was hand-edited.",
+      "first_pending_page": "openwiki/architecture/chief-coordination.md"
+    }
   }
 }
