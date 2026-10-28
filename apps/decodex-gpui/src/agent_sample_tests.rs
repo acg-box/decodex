@@ -187,6 +187,30 @@ fn automatic_suggestion_skips_old_history_drafts_failed_turns_and_replaced_sourc
 			s.timeline.native.entries = completed_answer("old", "completed");
 			s.observe_prompt_completion(cx);
 			assert!(s.sample.work.is_none(), "opening saved history is not a new answer");
+			let selected = s.selected.clone().unwrap();
+			let item = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == selected)
+				.unwrap();
+			item.active_turn_id = Some("new".into());
+			s.observe_prompt_completion(cx);
+			s.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == selected)
+				.unwrap()
+				.active_turn_id = None;
+			s.observe_prompt_completion(cx);
+			assert!(
+				s.sample.work.is_none(),
+				"wait for the completed active turn, not an old history page"
+			);
 			s.composer.update(cx, |input, cx| input.set_content("Already typing", cx));
 			s.timeline.native.entries = completed_answer("new", "completed");
 			s.observe_prompt_completion(cx);

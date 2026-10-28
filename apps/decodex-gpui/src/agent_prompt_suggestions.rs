@@ -15,6 +15,13 @@ impl Automatic {
 		owner: (Option<EntityId>, Binding),
 		turn: Option<(String, bool)>,
 	) -> bool {
+		// A cleared active-turn snapshot can arrive before that turn's history page.
+		// Keep waiting for its boundary instead of treating an older answer as new.
+		if self.owner.as_ref() == Some(&owner)
+			&& matches!((&self.turn, &turn), (Some((pending, false)), Some((finished, true))) if pending != finished)
+		{
+			return false;
+		}
 		let completed = self.owner.as_ref() == Some(&owner)
 			&& turn.as_ref().is_some_and(|(_, complete)| *complete)
 			&& self.turn != turn;
