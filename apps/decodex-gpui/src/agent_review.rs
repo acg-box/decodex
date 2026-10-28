@@ -53,6 +53,13 @@ impl AgentSurface {
 		}
 	}
 
+	pub(super) fn reviewer_title(&self, row: &Row) -> Option<String> {
+		let role = self.reviewer_role(row)?;
+		let mut chars = role.chars();
+		let title: String = chars.next()?.to_uppercase().chain(chars).collect();
+		Some(format!("{title} review"))
+	}
+
 	/// Only the current Lead turn owns a preparation/assessment phase. A later
 	/// ordinary question must not inherit an earlier review workflow.
 	pub(super) fn lead_review(&self, row: &Row) -> Option<Evidence> {

@@ -1611,22 +1611,26 @@ impl AgentSurface {
 					.rounded(gpui::px(18. * scale))
 					.px(gpui::px(12. * scale))
 					.pt(gpui::px(8. * scale))
-					.text_size(gpui::px(11. * scale))
+					.text_size(gpui::px((11. * scale).max(10.)))
 					.text_color(ui_theme::rgb(TEXT_MUTED))
 					.child(
 						gpui::div()
 							.flex()
 							.items_center()
-							.gap(gpui::px(8. * scale))
+							.gap(gpui::px(6.))
 							.child(
 								gpui::div()
 									.text_color(ui_theme::rgb(0xc5c6ce))
 									.font_weight(FontWeight::MEDIUM)
-									.child(scope.title.clone()),
+									.child(if scope.id.is_some() {
+										format!("Project: {}", scope.title)
+									} else {
+										"No project".into()
+									}),
 							)
 							.child(
 								gpui::div()
-									.text_size(gpui::px(10. * scale))
+									.text_size(gpui::px((10. * scale).max(10.)))
 									.text_color(ui_theme::rgb(TEXT_MUTED))
 									.child(format!("{} agents", scope.count)),
 							),

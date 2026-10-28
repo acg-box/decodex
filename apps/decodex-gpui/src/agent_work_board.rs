@@ -492,6 +492,9 @@ impl AgentSurface {
 	}
 
 	fn graph_purpose(&self, row: &Row) -> String {
+		if let Some(title) = self.reviewer_title(row) {
+			return title;
+		}
 		let input = self.graph_preview(row).0;
 		let source = if row.native {
 			self.native_assignment(row).unwrap_or(input)

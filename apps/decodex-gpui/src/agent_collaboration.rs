@@ -346,21 +346,13 @@ impl AgentSurface {
 			} else {
 				summary
 			};
-			let title = role.as_ref().map_or_else(
-				|| {
-					match evidence.step {
-						decodex_protocol::AgentReviewActivity::Assess => "Review findings",
-						_ => "Review setup",
-					}
-					.into()
-				},
-				|role| {
-					self.native_assignment(row)
-						.map(|assignment| activity::wording::purpose(&assignment))
-						.filter(|title| !title.is_empty())
-						.unwrap_or_else(|| format!("{} review", sentence_case(role)))
-				},
-			);
+			let title = self.reviewer_title(row).unwrap_or_else(|| {
+				match evidence.step {
+					decodex_protocol::AgentReviewActivity::Assess => "Review findings",
+					_ => "Review setup",
+				}
+				.into()
+			});
 			let source_text = output.as_ref().map_or_else(
 				|| "Original EGM instructions were read successfully.".into(),
 				|output| {
@@ -1136,11 +1128,6 @@ impl AgentSurface {
 
 fn same_excerpt(a: &str, b: &str) -> bool {
 	a.split_whitespace().eq(b.split_whitespace())
-}
-
-fn sentence_case(text: &str) -> String {
-	let mut chars = text.chars();
-	chars.next().map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
 }
 
 fn review_excerpt(text: &str) -> String {
