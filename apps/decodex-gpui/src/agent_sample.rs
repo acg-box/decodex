@@ -14,6 +14,11 @@ use crate::{
 };
 use decodex_protocol::{AgentSamplePhase, AgentSampleStatus, MAX_AGENT_SAMPLE_PROMPT_BYTES};
 
+const NEXT_PROMPT: &str = "Suggest one useful next message that I could send in this conversation. \
+Write it from my perspective, in the language I have been using. Keep it concise and specific to \
+the latest conversation. Return only the suggested message, without quotes, a heading, or an \
+explanation. Do not execute the task or call tools.";
+
 #[derive(Default)]
 pub(super) struct Panel {
 	work: Option<String>,
@@ -24,6 +29,7 @@ pub(super) struct Panel {
 	task: Option<Task<()>>,
 	epoch: u64,
 	feedback: String,
+	suggestion: bool,
 }
 impl Panel {
 	fn busy(&self) -> bool {
@@ -62,9 +68,19 @@ impl AgentSurface {
 	}
 
 	pub(super) fn open_sample(&mut self, cx: &mut Context<Self>) {
+		self.open_sample_panel(false, cx);
+	}
+
+	pub(super) fn suggest_next_prompt(&mut self, cx: &mut Context<Self>) {
+		self.open_sample_panel(true, cx);
+	}
+
+	fn open_sample_panel(&mut self, suggestion: bool, cx: &mut Context<Self>) {
 		let Some(work) = self.selected.clone() else { return };
 
-		if self.sample.work.as_ref() == Some(&work) {
+		if self.sample.busy()
+			|| (self.sample.work.as_ref() == Some(&work) && self.sample.suggestion == suggestion)
+		{
 			return;
 		}
 
@@ -85,17 +101,20 @@ impl AgentSurface {
 
 		self.sample.work = Some(work);
 		self.sample.thread = Some(thread);
-		self.sample.feedback = "Reconnect to ask separately.".into();
-		self.sample.input = Some(cx.new(|cx| {
-			ComposerInput::with_placeholder(
-				41,
-				"Ask for another perspective…",
-				"Separate question",
-				cx,
-			)
-		}));
+		self.sample.suggestion = suggestion;
+		self.sample.feedback = "Reconnect to generate an answer.".into();
+		self.sample.input = (!suggestion).then(|| {
+			cx.new(|cx| {
+				ComposerInput::with_placeholder(
+					41,
+					"Ask for another perspective…",
+					"Separate question",
+					cx,
+				)
+			})
+		});
 
-		self.request_sample(false, cx);
+		self.request_sample(suggestion, cx);
 		self.jump_to_latest(cx);
 		cx.notify();
 	}
@@ -106,12 +125,15 @@ impl AgentSurface {
 		}
 
 		let operation = if generate {
-			let text = self
-				.sample
-				.input
-				.as_ref()
-				.map(|input| input.read(cx).content().to_owned())
-				.unwrap_or_default();
+			let text = if self.sample.suggestion {
+				NEXT_PROMPT.to_owned()
+			} else {
+				self.sample
+					.input
+					.as_ref()
+					.map(|input| input.read(cx).content().to_owned())
+					.unwrap_or_default()
+			};
 
 			if text.trim().is_empty() {
 				self.sample.feedback = "Enter a question.".into();
@@ -136,6 +158,51 @@ impl AgentSurface {
 		};
 
 		self.run_sample_request(operation, cx);
+	}
+
+	fn suggested_prompt(&self) -> Option<&str> {
+		let state = self.sample.state.as_ref()?;
+		if !self.sample.suggestion
+			|| state.phase != AgentSamplePhase::Ready
+			|| state.prompt.as_ref().is_none_or(|prompt| prompt.as_str() != NEXT_PROMPT)
+		{
+			return None;
+		}
+		state.answer.as_ref()?.text.as_deref().filter(|text| !text.trim().is_empty())
+	}
+
+	fn can_accept_prompt_suggestion(&self, cx: &Context<Self>) -> bool {
+		self.suggested_prompt().is_some()
+			&& self.can_open_sample()
+			&& self.sample.work == self.selected
+			&& self
+				.composer_manager
+				.as_ref()
+				.is_none_or(|owner| Some(owner) == self.selected.as_ref())
+			&& self.draft_owner_available()
+			&& !self.sending
+			&& !self.uncertain
+			&& self.composer.read(cx).content().is_empty()
+			&& !self.composer.read(cx).is_composing()
+			&& self.snapshot.as_ref().is_some_and(|snapshot| {
+				snapshot.work_items.iter().any(|work| {
+					Some(&work.id) == self.selected.as_ref()
+						&& work.codex_thread_id == self.sample.thread
+						&& work.active_turn_id.is_none()
+				})
+			})
+	}
+
+	fn accept_prompt_suggestion(&mut self, cx: &mut Context<Self>) {
+		if !self.can_accept_prompt_suggestion(cx) {
+			return;
+		}
+		let text = self.suggested_prompt().expect("current suggestion").to_owned();
+		if self.composer.update(cx, |input, cx| input.append_recovered_text(&text, cx)) {
+			self.remember_draft_document(cx);
+			self.reset_sample();
+			cx.notify();
+		}
 	}
 
 	fn cancel_sample(&mut self, cx: &mut Context<Self>) {
@@ -164,6 +231,7 @@ impl AgentSurface {
 		let (Ok(work), Ok(thread)) = (EntityId::new(work), WireText::new(thread)) else { return };
 		let feedback = match &operation {
 			request::Operation::Read => "Checking answer status…",
+			request::Operation::Generate(_) if self.sample.suggestion => "Generating suggestion…",
 			request::Operation::Generate(_) => "Asking separately…",
 			request::Operation::Cancel(_) => "Requesting cancellation…",
 		};
@@ -239,14 +307,27 @@ impl AgentSurface {
 		}
 
 		let mut panel = gpui::div().id("sample-panel").debug_selector(|| "sample-panel".into()).w_full().min_w_0().flex().flex_col().gap_2().p_3().rounded_lg().bg(ui_theme::rgba(0xffffff06))
-			.child("Ask separately")
-			.child("Uses this conversation’s model and quota, without tools. The original conversation stays unchanged.")
+			.child(if self.sample.suggestion { "Suggested next message" } else { "Ask separately" })
+			.child(if self.sample.suggestion {
+				"Uses this conversation’s model and quota. Review the suggestion, then use it in an empty draft. Nothing is sent automatically."
+			} else { "Uses this conversation’s model and quota, without tools. The original conversation stays unchanged." })
 			.child(self.sample.feedback.clone());
 
-		if let Some(prompt) = self.sample.state.as_ref().and_then(|s| s.prompt.as_ref()) {
+		if !self.sample.suggestion
+			&& let Some(prompt) = self.sample.state.as_ref().and_then(|s| s.prompt.as_ref())
+		{
 			panel = panel.child(format!("Question: {}", prompt.as_str()));
 		}
-		if let Some(answer) = self.sample.state.as_ref().and_then(|s| s.answer.as_ref()) {
+		if let Some(answer) = self
+			.sample
+			.state
+			.as_ref()
+			.filter(|s| {
+				!self.sample.suggestion
+					|| s.prompt.as_ref().is_some_and(|p| p.as_str() == NEXT_PROMPT)
+			})
+			.and_then(|s| s.answer.as_ref())
+		{
 			if let Some(text) = &answer.text {
 				panel = panel
 					.child(
@@ -265,6 +346,18 @@ impl AgentSurface {
 			if let (Some(input), Some(output)) = (answer.input_tokens, answer.output_tokens) {
 				panel = panel.child(format!("{input} input tokens · {output} output tokens"));
 			}
+		}
+		if self.can_accept_prompt_suggestion(cx) {
+			panel = panel.child(mcp_forms::mcp_button(
+				"sample-use-draft".into(),
+				"Use as draft".into(),
+				false,
+				cx,
+				|s, cx| s.accept_prompt_suggestion(cx),
+			));
+		} else if self.suggested_prompt().is_some() && !self.composer.read(cx).content().is_empty()
+		{
+			panel = panel.child("Clear the current draft to use this suggestion, or copy it.");
 		}
 
 		if !self.sample.busy() {
@@ -285,7 +378,7 @@ impl AgentSurface {
 				panel = panel
 					.child(mcp_forms::mcp_button(
 						"sample-ask".into(),
-						"Ask".into(),
+						if self.sample.suggestion { "Generate suggestion" } else { "Ask" }.into(),
 						false,
 						cx,
 						|s, cx| s.request_sample(true, cx),
