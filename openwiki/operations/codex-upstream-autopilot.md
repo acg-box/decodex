@@ -35,10 +35,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
+generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T03:55:33.038Z
+    at: 2026-10-28T06:51:55.940Z
 ---
 
 
@@ -67,7 +67,7 @@ Classify each relevant change:
 
 Use the [current product scope](../decisions/upstream-product-scope.md). Retired local plugin management, embedded HTML widgets and provider recovery recording must not return merely because upstream supports them.
 
-The current six-item selection delivers items 1–3 as read-only views and selects item 4, persistent attached branches. Item 5 waits for upstream maturity; item 6 is deferred by the user. The retained `retained_attached_forks` record binds item 4 to the existing runtime artifact, completed-turn attachment contract, exact regression identities and reproducible temporary-fixture runner. This feature delivery does not advance source review, select another runtime, certify the installed app or change the native schedule. No new decision remains in this list.
+The earlier six-item selection delivered items 1–3 as read-only views and selects item 4, persistent attached branches. Item 5 waits for upstream maturity; item 6 is deferred by the user. The retained `retained_attached_forks` record binds item 4 to the existing runtime artifact, completed-turn attachment contract, exact regression identities and reproducible temporary-fixture runner. This feature delivery does not advance source review, select another runtime, certify the installed app or change the native schedule. No new decision remains in that earlier list. The later desktop selection and its held item 13 are recorded separately in [product scope](../decisions/upstream-product-scope.md#approved-desktop-refinements); they do not advance the review cursor or change the schedule.
 
 ## Choose execution by consumer
 

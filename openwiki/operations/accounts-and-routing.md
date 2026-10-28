@@ -32,10 +32,10 @@ sources:
     resource: repo://database/src/account_lifecycle.rs
   - id: openwiki-source-9b561c5dd3054cdff0599fb9
     resource: repo://database/src/quota_activation.rs
-generated: { by: "codex", at: "2026-10-25T20:12:58.607Z" }
+generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T06:15:00.380Z
+    at: 2026-10-28T06:51:55.940Z
 ---
 
 # Account routing and recovery
@@ -76,7 +76,7 @@ Swift and GPUI use the same interaction model. Normal accounts retain route, pow
 
 Each account has independent expanded state. Opening one account does not close another. Details contain the saved activity metrics, usage graph and Reset Cards. Do not add a second Reset Cards disclosure or duplicate logout control. The GPUI account hover covers the row. Native menu focus and synchronized expansion belong to the [desktop presentation boundary](../architecture/desktop-workspace.md).
 
-GPUI keeps `5h` and `7d` quota slots in one row. Labels, percentages and local reset timestamps have stable columns, and a separator distinguishes the two windows. Progress tracks fill the remaining width. An unavailable window keeps its slot with `—` or `N/A`; it does not become a fake zero-percent value. Both clients show the local reset date and time.
+GPUI keeps `5h` and `7d` quota slots in one row. Labels, percentages and local reset timestamps have stable columns, and a separator distinguishes the two windows. Progress tracks fill the remaining width. An unavailable window keeps its slot with `—` or `N/A`; it does not become a fake zero-percent value. Both clients show the local reset date and time. On macOS, Foundation supplies the system hour-cycle preference, locale and time zone for quota reset and Reset Card expiry labels. This changes presentation only; it does not change the native reset instant or quota evidence.
 
 ## Saved activity status
 

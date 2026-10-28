@@ -12,8 +12,12 @@ sources:
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexTransport/DictationStream.swift
   - id: openwiki-source-7a380101e79db24d163b9af6
     resource: repo://apps/decodex-gpui/src/agent_dictation.rs
+  - id: openwiki-source-5da2f5dd568514f1f464d177
+    resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-32bb36aae256aa57e6e82bd0
     resource: repo://apps/decodex-gpui/src/agent_voice.rs
+  - id: openwiki-source-5d032c6be684964aa2c401fa
+    resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-032278b78f4f6cac0e654ef0
     resource: repo://apps/decodex-gpui/src/native_audio_owner_tests.rs
   - id: openwiki-source-684fc3cac9c65ba3343eb51f
@@ -58,10 +62,10 @@ sources:
     resource: repo://scripts/macos/run_native_voice_tests.py
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-28T03:55:33.038Z" }
+generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T03:55:33.038Z
+    at: 2026-10-28T06:51:55.940Z
 ---
 
 # Subscription dictation and live voice
@@ -113,9 +117,15 @@ that a known control root remains. This artifact check complements the real WebR
 transport tests; it does not execute a TURN/TLS handshake or qualify a live
 provider. See the [archive procedure](../operations/commands-and-validation.md#qualify-native-dependency-artifacts).
 
+## Call ownership while navigating
+
+Browsing another conversation, the Work overview or a new conversation keeps the Live call attached to its original work and session. A background bar identifies that conversation and provides Return, Mute and End controls. Other conversations retain their own text editors and drafts; their text does not become input to the call.
+
+Ending the call retires its media owner. Confirmed removal or archive of the call's owner also stops local capture. Navigation alone does not stop it. The tests for this behavior use synthetic UI and media fixtures; they do not requalify background OS audio, physical devices or a live provider.
+
 ## UI and verification
 
-The normal composer receives dictation text. Live voice uses its own waveform/voice state in that area. The selected input device applies to capture, not to a model-selector control.
+The normal composer receives dictation text. The conversation that owns a Live call shows its waveform in that area. The selected input device applies to capture, not to a model-selector control.
 
 Focused tests live in the Rust dictation/voice modules and Swift `VoiceMediaHostTests`. Rust capture tests cover PCM conversion and terminal delivery, while composer tests cover early audio buffering, continued capture feedback during a pending network request, and draining audio before Finish. Rust `dictation_transcript.rs` tests cover segment order, stale revisions, final corrections and transcript limits. The native transport loopback test covers offer/answer, bidirectional audio, captions, mute before negotiation, subsequent mute changes and buffer release. Opt-in tests in `native_audio_owner_tests.rs` exercise hardware capture, playback, mode changes, preparation and route changes. These test definitions do not establish audible quality, echo cancellation quality or provider entitlement. Live acceptance separately requires microphone permission, selected-device capture, partial text, final correction, and both live transcript roles. Unit tests do not establish provider entitlement or network latency.
 
@@ -171,7 +181,7 @@ See [Agent coordination](../architecture/chief-coordination.md) and [Desktop wor
 
 ### Authorized synthetic online checks
 
-The later `online_voice_acceptance` entry in the [retained index](../../automations/upstream/retained-contracts.json) qualifies one existing subscription connection with local TTS input. The final run uses fresh product and native homes and the same verified CLI, Code Mode helper and search helper. The production voice implementation did not change.
+The later `online_voice_acceptance` entry in the [retained index](../../automations/upstream/retained-contracts.json) qualifies one existing subscription connection with local TTS input. The final run uses fresh product and native homes and the same verified CLI, Code Mode helper and search helper. The production voice implementation did not change during that earlier qualification.
 
 | Check | Observed result |
 | --- | --- |
@@ -187,6 +197,6 @@ This is a bounded synthetic sample. Separate playback through the current virtua
 
 The voice preference picker uses the nonempty native V3 catalog. It falls back to V1 only when V3 is missing, null or empty; a malformed V3 value is an error. The native `defaultV1` field supplies the shared default and must belong to the selected catalog. There is no local fixed voice whitelist.
 
-The picker reads effective project settings, then writes one reviewed `realtime.voice` preference with native version checking. It affects the next call and does not restart active audio. Project settings can override the saved preference. At each call start, the coordinator reads the effective voice for the exact native thread and passes it to the v3 real-time request. The request retains startup context and requests transcript-tail flush at session end. Optional model and start/end instructions stay bound to that call.
+The picker reads effective project settings, then writes one reviewed `realtime.voice` preference with native version checking. It affects the next call and does not restart active audio. Project settings can override the saved preference. At each call start, the coordinator reads the effective voice for the exact native thread and passes it to the v3 real-time request. The request retains startup context, requests transcript-tail flush at session end, and sets `backendReasoningStatus: true`. Codex can relay completed public reasoning summaries as quiet V3 context. Decodex does not copy private reasoning or force a summary when none is available. Optional model and start/end instructions stay bound to that call.
 
 Configuration and synthetic media tests do not establish real microphone, WebRTC, audible next-call selection or late remote caption identity. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md). Memory configuration is separate from audio capture; see [Models and settings](../workflows/models-and-settings.md).

@@ -37,10 +37,10 @@ sources:
     resource: repo://database/src/reset_cards.rs
   - id: openwiki-source-e0e48fb115095577a43dbc91
     resource: repo://scripts/macos/test_native_app.sh
-generated: { by: "codex", at: "2026-10-26T14:39:55.302Z" }
+generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-27T06:15:00.380Z
+    at: 2026-10-28T06:51:55.940Z
 ---
 
 > Current scope: Reset Card redemption is available in Accounts and the explicit CLI, with durable account-scoped recovery. The embedded schema owns the redemption ledger and separate weekly activation records. The source/release comparison below is a version-bound implementation receipt, not a statement of the currently installed Codex version. Quota refill animation displays confirmed results; it does not redeem a card. See [Weekly activation](quota-activation.md).
@@ -54,7 +54,7 @@ Managed Repository or GitHub effect layers.
 
 In Accounts or the native menu, click the account body to open its details. The activity graph and Reset Cards share this disclosure. Multiple accounts can stay open at the same time. A separate drag handle changes account order; account actions and card clicks do not toggle the disclosure.
 
-Each card shows its expiry. Click the selected card once to arm `Confirm · 5s`, then click the same card again within five seconds to use it. Confirmation expires without dispatch. The UI checks the exact account, revision, descriptor and current eligibility again before use. A confirmed result can animate the quota fill; the animation itself has no redemption authority.
+Each card shows its expiry. On macOS, expiry and quota-reset labels use the system locale, hour-cycle preference and time zone; the native expiry instant is unchanged. Click the selected card once to arm `Confirm · 5s`, then click the same card again within five seconds to use it. Confirmation expires without dispatch. The UI checks the exact account, revision, descriptor and current eligibility again before use. A confirmed result can animate the quota fill; the animation itself has no redemption authority.
 
 There is no separate Reset Cards expand button or manual refresh button in the compact account details. Inventory and operation-state reads remain service-backed. The CLI offers `reset-card list`, `use`, and `status`; `use` requires an explicit account revision, descriptor, and request key.
 

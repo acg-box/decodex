@@ -26,6 +26,8 @@ sources:
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-02bd3cfc9d4db9d1d1d8fd59
     resource: repo://crates/decodex-codex/src/app_server_client/context_preferences_tests.rs
   - id: openwiki-source-2b08587e9b26e203156110c8
@@ -82,10 +84,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-28T03:00:10.087Z" }
+generated: { by: "codex", at: "2026-10-28T06:51:55.940Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T03:55:33.038Z
+    at: 2026-10-28T07:13:51.367Z
 ---
 
 # Product scope and native ownership
@@ -120,9 +122,28 @@ These views are available through local protocol 4.0 and the same source owners.
 
 ## Current optional decisions
 
-Items 1–3 are delivered through the selected read-only views above. The user selected **item 4, persistent attached branches**. An explicit completed-turn branch uses native attachment, retains the exact source relationship and can be reopened from Agent preferences. Creation sends no input and copies no native Goal. The child-visible history starts empty, while native inference retains the reviewed parent context. Source turn IDs preserve boundary provenance. Native attachment requires paginated source history; the public branch flow already checks this. It adds no automatic follow-up, scheduling, result merge or deletion policy. The retained `retained_attached_forks` evidence identifies its regressions and qualification limits.
+In the earlier six-item review, items 1–3 are delivered through the selected read-only views above. The user selected **item 4, persistent attached branches**. An explicit completed-turn branch uses native attachment, retains the exact source relationship and can be reopened from Agent preferences. Creation sends no input and copies no native Goal. The child-visible history starts empty, while native inference retains the reviewed parent context. Source turn IDs preserve boundary provenance. Native attachment requires paginated source history; the public branch flow already checks this. It adds no automatic follow-up, scheduling, result merge or deletion policy. The retained `retained_attached_forks` evidence identifies its regressions and qualification limits.
 
 **Item 5, the native Guardian V3 experiment, waits for upstream maturity. Item 6, a custom managed configuration server, is deferred by the user.** Neither is selected for implementation. Existing global Guardian and native managed requirements keep their current scope. There is no outstanding new decision in this six-item list.
+
+## Approved desktop refinements
+
+The later manual review approved original items **2, 3, 6, 7, 9, 10, 12 and 15**. These are delivered in [PR 2537](https://github.com/acg-box/decodex/pull/2537):
+
+| Original item | Retained capability |
+| --- | --- |
+| 2 | Reviewed native branching from a locked conversation, with source and draft preservation. |
+| 3 | Bounded structured math, including aligned equations, boxed models and grouped scripts. |
+| 6 | Host hour-cycle and time-zone formatting for reset and expiry labels. |
+| 7 | Clickable prose URLs with complete destinations and literal code handling. |
+| 9 | Native V3 public reasoning summaries supplied as quiet voice context. |
+| 10 | A call stays with its owner while the user browses other conversations. |
+| 12 | Unsent question drafts return to the composer after exact terminal turn evidence. |
+| 15 | Rich streaming previews withhold unfinished link destinations until closure, newline or completion. |
+
+**Original item 13, board-only native messaging, remains undecided.** The current native collaboration surface stays available. These eight approvals do not select other historical proposals.
+
+The [retained contracts](../../automations/upstream/retained-contracts.json) and [validation index](../../automations/upstream/retained-evidence.json) record source references and qualified limits. The implementation used focused desktop, storage and wire tests. It did not install or release an application or add a new live-provider or physical-audio qualification.
 
 ## Current integration boundary
 

@@ -6,6 +6,8 @@ tags: ["decodex", "architecture"]
 sources:
   - id: openwiki-source-6512b631b67649d924c16ba3
     resource: repo://apps/decodex-gpui/src/agent_archive.rs
+  - id: openwiki-source-dac0b6b29f475a07a99ba3a4
+    resource: repo://apps/decodex-gpui/src/agent_async_questions.rs
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
   - id: openwiki-source-258277a596f7d23ef310055b
@@ -36,6 +38,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_transcript.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
+  - id: openwiki-source-7a7e7b3407a8222085c2d27e
+    resource: repo://apps/decodex-gpui/src/composer_input.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-ecdf4586908bb6226955607a
@@ -82,16 +86,18 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/response_identity.py
   - id: openwiki-source-58c0167d31c3e40dc89591ab
     resource: repo://database/src/agent_fork.rs
+  - id: openwiki-source-19db8626100a957faa6818d2
+    resource: repo://database/src/agent_questions.rs
   - id: openwiki-source-dd880acfb699314e78cc9985
     resource: repo://database/src/agent/archive.rs
   - id: openwiki-source-7cbe85f6b9884923ffd5cbfa
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-27T21:12:13.971Z" }
+generated: { by: "codex", at: "2026-10-28T07:13:51.367Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T03:55:33.038Z
+    at: 2026-10-28T07:13:51.367Z
 ---
 
 # Conversation input, history and recovery
@@ -124,7 +130,7 @@ Persist input before dispatch. A lost response can mean that an operation ran. C
 
 Codex owns archive state. A confirmed archive removes non-root bound work from the active list and graph, while the service keeps its stored history and original relationships. The Assistant entry remains present and carries its archive state. Active descendants stay visible under their nearest visible ancestor. See [archive synchronization](../architecture/chief-coordination.md#archive-synchronization).
 
-When a refreshed active snapshot removes the selected conversation or its composer owner, the desktop stops voice input and saves the draft under its original work and thread identity. Normal navigation restores the next conversation's own draft. If no conversation remains active, sending stays unavailable; a retained draft cannot start a replacement conversation or move to the Assistant. A failed snapshot read does not trigger this transition.
+When a refreshed active snapshot removes the selected conversation or its composer owner, the desktop cancels dictation and saves the draft under its original work and thread identity. It stops a Live call only when that call's own conversation is removed or archived. Normal navigation restores the next conversation's own draft. If no conversation remains active, sending stays unavailable; a retained draft cannot start a replacement conversation or move to the Assistant. A failed snapshot read does not trigger this transition.
 
 Archiving ends local pending interactions: never-dispatched input and failed-message retry records are discarded, old questions and request notices are retired, and pending automatic retries and scheduled checks are cancelled. Sent history, claimed delivery receipts, Work and Results remain. The current editor stays under its original owner.
 
@@ -132,12 +138,14 @@ After Codex restores the original thread, a positive active-list observation res
 
 ## Edit or branch at an earlier input
 
+A locked conversation can offer **Continue in a new branch…** when its current native timeline contains a readable user prompt. The entry reviews the latest visible prompt's turn and then offers **Create new branch**. It uses the existing native fork and receipt recovery path. It does not acquire the original writer's lease or unlock the source conversation. A stale timeline binding does not offer this entry.
+
 Review the exact native item and complete input, including image, skill and mention identity. The confirmation panel offers four explicit choices:
 
 | Choice | Native history | Draft |
 | --- | --- | --- |
 | **Edit in new branch** | Create a fork before the selected input; keep the original conversation unchanged | Restore the edited canonical input on the new branch |
-| **Branch after this turn** | Copy the selected completed turn and all earlier turns; keep the original unchanged | Open the branch without prefilling that input |
+| **Branch after this turn** | Copy the selected completed turn and all earlier turns; keep the original unchanged | Copy the separate ordinary composer draft, including attachments and references; do not prefill the selected historical input |
 | **Attached branch after this turn** | Attach a persistent native branch to the reviewed source boundary; native inference retains the parent context while the child view contains only child turns | Open the branch without prefilling or sending input |
 | **Remove turns from original and keep draft** | Revert the original before the selected input, removing it and all later turns | Keep the edited draft on the original thread |
 
@@ -186,6 +194,10 @@ Manual recap is available. Automatic recap is a separate preference and defaults
 Recap requests an isolated temporary native thread with tools disabled. For absent or built-in permission profiles, it selects the native `:read-only` default explicitly, so a managed workspace default cannot override the read-only request. An explicit custom profile keeps its own restrictions. The adapter checks the returned profile or sandbox and the ephemeral-thread flag before it starts inference. The retained native qualification still observed a model-required `apply_patch` entry: it verified environment denial, not removal of every tool name from the model catalog.
 
 Asynchronous questions keep explicit answers and Skip. The separately retained nonblocking timeout policy can produce an empty answer after its grace/countdown conditions; it is not a general permission to answer questions for the user.
+
+An exact native `completed`, `interrupted` or `failed` turn receipt retires that turn's pending question cards. For questions first received live, the desktop returns nonblank unsent custom answers to the ordinary composer in question order. Existing composer text stays first. In the active composer, the append is one undoable edit. For an inactive conversation, the text is saved with its own draft. Nothing is sent automatically.
+
+A pending submission is not recovered as a new answer. Replayed historical questions and a current misalignment finding do not trigger this append. If the composer has no room, the answer remains saved and the UI explains how to make room; an existing history refresh can retry restoration. Thread binding, recovery state and bounded identity reads still apply. This does not interpret an unavailable history read as completion.
 
 For parent escalation and exact event receipts, use [Agent coordination](../architecture/chief-coordination.md#native-contributions-and-independent-collaboration). In Ask separately, **Close** hides the panel; **Cancel answer** requests cancellation of its exact native sampling request. A late result or uncertain cancellation keeps its original request identity. This does not cancel the parent conversation.
 
