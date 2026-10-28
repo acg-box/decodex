@@ -7243,6 +7243,7 @@ mod tests {
 		store.acknowledge_agent_dispatch("chosen".into(), "turn".into()).await.unwrap();
 
 		let activity = decodex_protocol::AgentActivityDto {
+			review: None,
 			turn_id: "turn".into(),
 			item_id: "item".into(),
 			kind: "contextCompaction".into(),

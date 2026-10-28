@@ -254,6 +254,7 @@ mod tests {
 				attachments: vec![],
 				collaboration: None,
 				activity: Some(AgentActivityDto {
+					review: None,
 					turn_id: "turn".into(),
 					item_id: index.to_string(),
 					kind: kind.into(),

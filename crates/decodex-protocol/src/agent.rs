@@ -106,6 +106,9 @@ pub enum AgentRequestResult {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentActivityDto {
+	/// Observed read of an EGM instruction. This is not an approval or review result.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub review: Option<AgentReviewActivity>,
 	/// Exact provider turn.
 	pub turn_id: String,
 	/// Exact provider item.
@@ -129,6 +132,18 @@ pub struct AgentActivityDto {
 	pub native_timestamp_ms: Option<u64>,
 	/// Provider-reported duration or elapsed native lifecycle time, when available.
 	pub duration_ms: Option<u64>,
+}
+
+/// A successfully read instruction from the original EGM plugin.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AgentReviewActivity {
+	/// The Lead read the review-loop instructions.
+	Prepare,
+	/// A native agent read an EGM reviewer persona.
+	Reviewer { role: String },
+	/// The Lead read the findings-resolution instructions.
+	Assess,
 }
 
 /// A source-bound readable entry. Raw tool or credential frames are never projected.
