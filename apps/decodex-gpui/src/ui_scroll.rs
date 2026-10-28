@@ -76,8 +76,15 @@ pub(crate) struct ScrollArea {
 	id: ElementId,
 	content: Stateful<Div>,
 	scrollbar: Option<(&'static str, &'static str)>,
+	contain: bool,
 }
 impl ScrollArea {
+	/// Keep wheel gestures inside an overflowing nested reader, including at its ends.
+	pub(crate) fn contain_scroll(mut self) -> Self {
+		self.contain = true;
+		self
+	}
+
 	pub(crate) fn with_scrollbar(mut self, id: &'static str, label: &'static str) -> Self {
 		self.scrollbar = Some((id, label));
 
@@ -123,6 +130,9 @@ impl RenderOnce for ScrollArea {
 				if (delta > gpui::px(0.) && current >= gpui::px(0.))
 					|| (delta < gpui::px(0.) && current <= -maximum)
 				{
+					if self.contain && maximum > gpui::px(0.) {
+						cx.stop_propagation();
+					}
 					return;
 				}
 
@@ -292,7 +302,7 @@ struct AreaState {
 
 impl SmoothScrollArea for Stateful<Div> {
 	fn smooth_scroll(self, id: impl Into<ElementId>) -> ScrollArea {
-		ScrollArea { id: id.into(), content: self, scrollbar: None }
+		ScrollArea { id: id.into(), content: self, scrollbar: None, contain: false }
 	}
 }
 
