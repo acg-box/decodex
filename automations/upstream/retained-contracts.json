@@ -311,8 +311,10 @@
       ],
       "implementation_commits": [
         "https://github.com/acg-box/decodex/commit/0c7c7c5940327aeb0a929b356edb987626563ff2",
-        "https://github.com/acg-box/decodex/commit/6b76edfc002ee35270d528217adca36ad0fb6015"
-      ]
+        "https://github.com/acg-box/decodex/commit/6b76edfc002ee35270d528217adca36ad0fb6015",
+        "https://github.com/acg-box/decodex/commit/7d9d4329fa46ef0be9069fe250e6006b92495cac"
+      ],
+      "pull_request": "https://github.com/acg-box/decodex/pull/2537"
     }
   },
   "retained_native_coordination": {

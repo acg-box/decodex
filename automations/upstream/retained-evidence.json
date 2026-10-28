@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "3fc7b1d503ae04bf829d98c1377398fc681a76cb770991e1fdbb352e752f81b9",
+    "sha256": "9c7d882a2af2a4f00696ef225661a8adb103917b53be591d87554c24a18d5814",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -957,7 +957,7 @@
   },
   "approved_desktop_refinements": {
     "contracts": "automations/upstream/retained-contracts.json#retained_presentation.approved_desktop_refinements",
-    "source_revision": "6b76edfc002ee35270d528217adca36ad0fb6015",
+    "source_revision": "7d9d4329fa46ef0be9069fe250e6006b92495cac",
     "source_sha256": {
       "apps/decodex-gpui/menubar/Sources/DecodexApp/ResetCardSectionView.swift": "0245279267e8c49003fdde88c640385a6c3a8fa1e9faa0523be0272e917ad326",
       "apps/decodex-gpui/src/agent_async_questions.rs": "46a6f1f3bd8c29c976124e85879e8e8bc86335d83e58e477f1872a60915f2c74",
@@ -966,7 +966,7 @@
       "apps/decodex-gpui/src/agent_math.rs": "fa96979c256b963d06d21d6627af19c3e1887b3faad769975927e13293956a2b",
       "apps/decodex-gpui/src/agent_math/render.rs": "45ebbb3c0c8d70d4d17b8eb553e5b81973f3383a62d2aa2284df8f2e20b29201",
       "apps/decodex-gpui/src/agent_math/render/structured.rs": "785805d717bcb0beef6f8ae1108fe8834e1d3137fe265fa35037b4f5d49b96f8",
-      "apps/decodex-gpui/src/agent_prompt_edit.rs": "41259244f7681415474205908f0322490bc457fc4cc3bf79e8b6764dac3b7c73",
+      "apps/decodex-gpui/src/agent_prompt_edit.rs": "2b1a67f00c6d9e928caf820184346f563f11d37e430619b194e05d0952021a11",
       "apps/decodex-gpui/src/agent_prompt_fork.rs": "bc12abfa4aee0cbc0e140b2b7100f18341f5a497d38c733d48da5b91d72ab575",
       "apps/decodex-gpui/src/agent_selectable_text.rs": "4473894c319130b40a785731f39706b2a66f4d8fd072942eb826f1368f213acc",
       "apps/decodex-gpui/src/agent_text_links.rs": "24c42f686026347162676bf1cef1956387cf9cf1d4761a85ba2752f5e373b352",
@@ -1042,7 +1042,8 @@
             "matched": 1
           }
         ],
-        "unmatched_selectors": []
+        "unmatched_selectors": [],
+        "source_revision": "6b76edfc002ee35270d528217adca36ad0fb6015"
       },
       "database": {
         "entrypoint": "database/src/lib.rs",
@@ -1066,6 +1067,14 @@
         "entrypoint": "apps/decodex-gpui/menubar/Package.swift",
         "command": "swift test --package-path apps/decodex-gpui/menubar --filter ResetCardUseConfirmationTests",
         "passed": 17
+      },
+      "locked_timeline_followup": {
+        "source_revision": "7d9d4329fa46ef0be9069fe250e6006b92495cac",
+        "entrypoint": "apps/decodex-gpui/src/main.rs",
+        "command": "cargo +stable test --locked -p decodex-gpui --bin decodex-gpui prompt_edit:: -- --test-threads 1",
+        "passed": 6,
+        "unmatched_selectors": [],
+        "scope": "Uses the native timeline with no local history fallback; stale thread bindings do not offer the fork entry. Strict GPUI Clippy and formatting passed after the correction."
       }
     },
     "baseline": {
@@ -1107,7 +1116,8 @@
     ],
     "delivery_commits": [
       "https://github.com/acg-box/decodex/commit/0c7c7c5940327aeb0a929b356edb987626563ff2",
-      "https://github.com/acg-box/decodex/commit/6b76edfc002ee35270d528217adca36ad0fb6015"
+      "https://github.com/acg-box/decodex/commit/6b76edfc002ee35270d528217adca36ad0fb6015",
+      "https://github.com/acg-box/decodex/commit/7d9d4329fa46ef0be9069fe250e6006b92495cac"
     ],
     "documentation": {
       "status": "incomplete_scope_expansion",
@@ -1123,6 +1133,7 @@
       "reason": "The supported lifecycle automatically adds pre-existing stale and unresolved claim jobs and has no skip or scoped assignment operation. Do not expand this product batch into historical wiki reconciliation.",
       "next_action": "Rebegin the supported OpenWiki lifecycle on merged main; reconcile the preceding historical claim queue before updating the four requested pages. No generated page or control state was hand-edited.",
       "first_pending_page": "openwiki/architecture/chief-coordination.md"
-    }
+    },
+    "pull_request": "https://github.com/acg-box/decodex/pull/2537"
   }
 }
