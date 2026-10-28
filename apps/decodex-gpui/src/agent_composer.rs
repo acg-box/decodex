@@ -26,6 +26,7 @@ use ui_theme::{
 #[cfg(test)] use crate::shell::agent_surface::ConversationModel;
 use crate::{
 	shell::{
+		FocusNext,
 		agent_surface::{
 			self, AgentActionDto, AgentClient, AgentCommandResponse, AgentDispatchStateDto,
 			AgentHistoryResult, AgentSnapshotResult, AgentSurface, ClipboardItem, ComposerInput,
@@ -521,6 +522,16 @@ impl AgentSurface {
 			.on_action(cx.listener(|s, _: &SubmitComposer, _, cx| {
 				s.submit(cx);
 				cx.stop_propagation();
+			}))
+			.on_action(cx.listener(|s, _: &FocusNext, window, cx| {
+				if s.composer.focus_handle(cx).is_focused(window)
+					&& s.can_accept_prompt_suggestion(cx)
+				{
+					s.accept_prompt_suggestion(cx);
+					cx.stop_propagation();
+				} else {
+					cx.propagate();
+				}
 			}))
 			.map(|editor| {
 				if let Some(waveform) = self.voice_controls(window, cx) {

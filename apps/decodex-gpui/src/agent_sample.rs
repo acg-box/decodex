@@ -179,7 +179,7 @@ impl AgentSurface {
 		state.answer.as_ref()?.text.as_deref().filter(|text| !text.trim().is_empty())
 	}
 
-	fn can_accept_prompt_suggestion(&self, cx: &Context<Self>) -> bool {
+	pub(super) fn can_accept_prompt_suggestion(&self, cx: &Context<Self>) -> bool {
 		self.suggested_prompt().is_some()
 			&& self.can_open_sample()
 			&& self.sample.work == self.selected
@@ -201,7 +201,7 @@ impl AgentSurface {
 			})
 	}
 
-	fn accept_prompt_suggestion(&mut self, cx: &mut Context<Self>) {
+	pub(super) fn accept_prompt_suggestion(&mut self, cx: &mut Context<Self>) {
 		if !self.can_accept_prompt_suggestion(cx) {
 			return;
 		}
@@ -356,13 +356,7 @@ impl AgentSurface {
 			}
 		}
 		if self.can_accept_prompt_suggestion(cx) {
-			panel = panel.child(mcp_forms::mcp_button(
-				"sample-use-draft".into(),
-				"Use as draft".into(),
-				false,
-				cx,
-				|s, cx| s.accept_prompt_suggestion(cx),
-			));
+			panel = panel.child("Press Tab in the message field to use this suggestion.");
 		} else if self.suggested_prompt().is_some() && !self.composer.read(cx).content().is_empty()
 		{
 			panel = panel.child("Clear the current draft to use this suggestion, or copy it.");

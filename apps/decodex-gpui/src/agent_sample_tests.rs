@@ -1,7 +1,10 @@
 //! Separate answer controls must not submit or replace the ordinary conversation draft.
 
 use futures_util::{SinkExt as _, StreamExt as _};
-use gpui::{AppContext as _, Focusable as _, ParentElement as _, Render, TestAppContext, Window};
+use gpui::{
+	AppContext as _, Focusable as _, InteractiveElement as _, ParentElement as _, Render,
+	TestAppContext, Window,
+};
 use tokio::runtime::Builder;
 use tokio_tungstenite::tungstenite::Message;
 
@@ -25,14 +28,22 @@ impl Render for SamplePanel {
 	}
 }
 
-struct SuggestionPanel(Entity<AgentSurface>);
+struct SuggestionPanel(Entity<AgentSurface>, usize);
 impl Render for SuggestionPanel {
-	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.0.update(cx, |s, cx| {
+	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let body = self.0.update(cx, |s, cx| {
 			gpui::div()
 				.child(s.sample_panel(&s.selected.clone().unwrap(), cx))
-				.child(s.composer.clone())
-		})
+				.child(s.render_composer_capsule(false, window, cx))
+				.child(s.model.clone())
+		});
+		body.on_action(cx.listener(|view, _: &crate::shell::FocusNext, window, cx| {
+			view.1 += 1;
+			window.focus_next(cx);
+		}))
+		.on_action(
+			cx.listener(|_, _: &crate::shell::FocusPrevious, window, cx| window.focus_prev(cx)),
+		)
 	}
 }
 
@@ -162,7 +173,7 @@ fn automatic_suggestion_sends_once_after_a_new_answer_and_never_sends_the_draft(
 			assert!(s.composer.read(cx).content().is_empty());
 			assert!(!s.sending);
 		});
-		SuggestionPanel(surface)
+		SuggestionPanel(surface, 0)
 	});
 	visual.run_until_parked();
 	server.join().unwrap();
@@ -231,14 +242,12 @@ fn automatic_suggestion_skips_old_history_drafts_failed_turns_and_replaced_sourc
 }
 
 #[gpui::test]
-fn prompt_suggestion_needs_a_click_and_accepts_as_an_undoable_unsent_draft(
-	cx: &mut TestAppContext,
-) {
-	cx.update(crate::composer_input::bind_keys);
+fn tab_accepts_prompt_suggestion_as_an_undoable_unsent_draft(cx: &mut TestAppContext) {
+	cx.update(crate::shell::bind_keys);
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
 		surface.update(cx, suggestion_fixture);
-		SuggestionPanel(surface)
+		SuggestionPanel(surface, 0)
 	});
 	let surface = view.read_with(visual, |view, _| view.0.clone());
 	visual.update(|window, cx| {
@@ -250,16 +259,58 @@ fn prompt_suggestion_needs_a_click_and_accepts_as_an_undoable_unsent_draft(
 		assert!(s.composer.read(cx).content().is_empty());
 		assert!(!s.sending);
 	});
-	let use_draft = visual.debug_bounds("sample-use-draft").expect("explicit acceptance");
-	visual.simulate_click(use_draft.center(), Default::default());
+	assert!(visual.debug_bounds("sample-use-draft").is_none());
+	visual.update(|window, cx| window.focus(&surface.read(cx).composer.focus_handle(cx), cx));
+	visual.simulate_keystrokes("tab");
 	surface.update(visual, |s, cx| {
 		assert_eq!(s.composer.read(cx).content(), "Compare the two approaches.");
 		assert!(s.sample.work.is_none());
 		assert!(!s.sending);
 	});
+	assert_eq!(view.read_with(visual, |view, _| view.1), 0, "accept without moving focus");
 	visual.update(|window, cx| window.focus(&surface.read(cx).composer.focus_handle(cx), cx));
 	visual.simulate_keystrokes("cmd-z");
 	surface.update(visual, |s, cx| assert!(s.composer.read(cx).content().is_empty()));
+}
+
+#[gpui::test]
+fn tab_preserves_normal_focus_navigation_without_a_current_empty_draft_suggestion(
+	cx: &mut TestAppContext,
+) {
+	cx.update(crate::shell::bind_keys);
+	let (view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, suggestion_fixture);
+		SuggestionPanel(surface, 0)
+	});
+	let surface = view.read_with(visual, |view, _| view.0.clone());
+	visual.update(|window, cx| {
+		window.resize(gpui::size(gpui::px(650.), gpui::px(700.)));
+		window.draw(cx).clear(cx);
+		window.focus(&surface.read(cx).composer.focus_handle(cx), cx);
+	});
+	visual.simulate_keystrokes("shift-tab");
+	assert!(surface.read_with(visual, |s, cx| s.composer.read(cx).content().is_empty()));
+	visual.update(|window, cx| window.focus(&surface.read(cx).model.focus_handle(cx), cx));
+	visual.simulate_keystrokes("tab");
+	assert!(surface.read_with(visual, |s, cx| s.composer.read(cx).content().is_empty()));
+	surface.update(visual, |s, cx| {
+		s.composer.update(cx, |input, cx| input.set_content("Keep typing", cx))
+	});
+	visual.update(|window, cx| window.focus(&surface.read(cx).composer.focus_handle(cx), cx));
+	visual.simulate_keystrokes("tab");
+	assert_eq!(
+		surface.read_with(visual, |s, cx| s.composer.read(cx).content().to_owned()),
+		"Keep typing"
+	);
+	surface.update(visual, |s, cx| {
+		s.composer.update(cx, |input, cx| input.set_content("", cx));
+		s.sample.state.as_mut().unwrap().phase = AgentSamplePhase::Obsolete;
+	});
+	visual.update(|window, cx| window.focus(&surface.read(cx).composer.focus_handle(cx), cx));
+	visual.simulate_keystrokes("tab");
+	assert_eq!(view.read_with(visual, |view, _| view.1), 3);
+	assert!(surface.read_with(visual, |s, cx| s.composer.read(cx).content().is_empty()));
 }
 
 #[gpui::test]
