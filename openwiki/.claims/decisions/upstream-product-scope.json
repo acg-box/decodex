@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e712ffcb873816706f3fea9840c506b09473fbfd5fa28f3d5e3940dce7b8544a",
+  "pageVersion": "sha256:6c5efdc5bce6b678ce390cae7e404b219def38ae5203860d3e08556edc408585",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -296,7 +296,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:605dff41372cf046c8cdd2fc0cca4d697ad6421b469d7d2f0c5f564af6b2299f"
+          "version": "repo-file-v1:sha256:e63f541a2c927852609b7b4bf494e34ee749686fce665e2faeef2c76ba4838d8"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -309,8 +309,8 @@
       "statement": "Persistent attached branches expose only their own turns while native inference retains the reviewed parent context and saved source turn IDs retain boundary provenance. The retained public workflow already requires paginated source history.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4422-L4767",
-          "version": "repo-lines-v1:sha256:3aa28dd7618294cbedc31d6d3d574c1b1a2ce1e332278034413d629ea4646b36:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQ2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4422-L4827",
+          "version": "repo-lines-v1:sha256:78cd6312eadaebc2327ea0988595803d1148bd4a1539f92d2ee4c3f12f78b8ce:eyJzZWxlY3RlZExpbmVDb3VudCI6NDA2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
@@ -328,11 +328,11 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:605dff41372cf046c8cdd2fc0cca4d697ad6421b469d7d2f0c5f564af6b2299f"
+          "version": "repo-file-v1:sha256:e63f541a2c927852609b7b4bf494e34ee749686fce665e2faeef2c76ba4838d8"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:31b135003bcc180f47662d5ed3a221003658592d1da509d9f8cdb2b3ef53734f"
+          "version": "repo-file-v1:sha256:7435a41852147b5aa3f3749fdfda3e69700679ee2d02a351f611afa7e1e3346e"
         }
       ]
     },
@@ -346,7 +346,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:605dff41372cf046c8cdd2fc0cca4d697ad6421b469d7d2f0c5f564af6b2299f"
+          "version": "repo-file-v1:sha256:e63f541a2c927852609b7b4bf494e34ee749686fce665e2faeef2c76ba4838d8"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -360,7 +360,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:31b135003bcc180f47662d5ed3a221003658592d1da509d9f8cdb2b3ef53734f"
+          "version": "repo-file-v1:sha256:7435a41852147b5aa3f3749fdfda3e69700679ee2d02a351f611afa7e1e3346e"
         }
       ]
     },
@@ -377,10 +377,38 @@
           "version": "repo-file-v1:sha256:e93dfce3fa78548c4e6c7569b98478092562292b7a0b69b53c7440daef660916"
         }
       ]
+    },
+    {
+      "id": "claim_c3dfe225c5fe4237868d3ca93830c019",
+      "statement": "Newly observed completed answers in the selected independent root conversation automatically request one native suggestion when its composer is empty. Saved history, repeated refreshes and existing drafts do not trigger generation. Explicit acceptance remains one undoable edit into the same idle conversation's empty composer and never sends automatically.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
+          "version": "repo-file-v1:sha256:eff9bd808613584fa9abf6ee2ce12cfa901817207d58c9f6a668bcd8e6c62c80"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_sample.rs#L165-L222",
+          "version": "repo-lines-v1:sha256:bbb1167ea839a68aab8399ed02e713cc3115fb54264be3744655fbbeddc66537:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3NjY1MTU5ZjNmYmIxNzkyZmVmNTEwZmViN2ZiOTFlN2ZmODM4ZTc1YTg3MTI5YzUwNjRjMmIzZjEyYzc0NzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmM2M1MjVlMGM3M2JjOWVhNDMyYjgzMjIyZTEyODgyMWM1MDcyMzQ4YjlkZjQ5NzEwOWFjNGM2YjI5ODc5N2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3MDFjZmY0ZGY4Njc3YjU3ZWE5ZjIwNGVkMDdmZDhiOTFlNGE5YjkwMjhiN2I4ZjQyMzk2MzU5NWYwZTBkOTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiMWEyYjlhZDFkNDljMTViZWUxY2Q3MzMyYjkyNGQ5ZGE0ZTM4MzA1ZDM3ZjIwMzU5MzY4NjAwYmM4ZGUzZWUifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
+          "version": "repo-file-v1:sha256:27ea5cd3b1c0d5b05b46bc7b0434578ee83fcdabbb8126df840706329c7a4123"
+        }
+      ]
+    },
+    {
+      "id": "claim_7a80d7f1843048e7a4c44251c24cd50e",
+      "statement": "Independent account observations and reset-credit requests remain owned by the Decodex account API client; only model activation uses its optional native policy profile.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_api.rs#L152-L212",
+          "version": "repo-lines-v1:sha256:891d95ef1a93fde67eab94d17fa0a60b9923702c63522656ab5752c973170b31:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMyNWY3Yjg2NmZhZjRjNmNiMTQ1NjI4ODFjNmZjMDExODQ3OWNjY2YzYzhjNjc5YTc2MjcyNmU1YjYzY2UwNTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJlNGY1MTMwZTYwNzQ2M2JhNTAzNTNjOTYxY2Q0ZDVmY2Q2ODQ3NmFhOWZlN2IxOGZiOWZmOTI4MzU3ZTQ4MjUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBjNGIzNDVhNzA1OGFmMjQ2MWEzZDVhNjQwMDM4NTZkMTc0MWQzMTBkMjM5MzE4M2Q1YTg3NGU3MWI1YzgzMjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ2MmViMThkMTA0MWY1YmIyYzhlNjcwNzA0YmVhZmNkYTExMTU5NmZiY2EyZDI4NmZkNTIwMDM2MzJjMTQ5ZWIifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T08:28:06.287Z"
+    "at": "2026-10-28T08:48:31.048Z"
   }
 }

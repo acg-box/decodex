@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:38358864c0a890b7fa6ef17e5b15900b713b25f9c285bb6f7bd2fc173240c47f",
+  "pageVersion": "sha256:825bf1fcabfe39b42d81af91db2a94c8174a3ff4c99cfee6ff3db8d895943fd5",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -105,7 +105,7 @@
           "version": "repo-file-v1:sha256:cdf330e8db97cb474822c98ae2576da9c72d64e996820957197087833b1cadfb"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2442-L2463",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2443-L2464",
           "version": "repo-lines-v1:sha256:4ac7cbb8588c6dfee8d4d6bde9e579163322892b8129ff0bdc622be14429f1f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2NmI1YjkzMDg2NDc5ZmJiMjgzOTZiN2NlZjkzOGY3OWNiMzkyOWE3OGE4M2U2NGUwNjUyYzFkZWY3MmU4MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlNDM4OTRkNmQ1Y2Q5YTQxZmI2MDFmNWI3NjgxMmVhMjNlYTRjODdjNjY1OWY2MTE2MWNkYWE0MzQ1YjBkNDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjZTdkM2E5ZjcwYWZkY2JkOGNmMmZjZTM4NWZhMWZlODJjYWIxNjM1Y2IyYTM2MmVkMzcyYzc0NzYxOWU0YWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4ZjZjZjBiYmNlNzE4MjIxMTBlMDZjNDU3ZWE5YmY1YTM5MzEyNjU1YTMwZDRhOGYyMTg3MzBiYWNmYzBhOGMifQ"
         },
         {
@@ -143,7 +143,7 @@
       "statement": "When a refreshed active snapshot removes the selected conversation or composer owner, the desktop cancels dictation and preserves the draft under its original owner. It stops a Live call only when that call's own conversation is removed or archived; normal navigation restores the next conversation's draft and unavailable owners cannot send.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1636-L1701",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1637-L1702",
           "version": "repo-lines-v1:sha256:adb6fed9e31857629b718b62fcc9f4ca8691931219919246760908d78d5120b3:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4NDA2NWNjOTFkNmQyZmM1ZjNlMTg4ODFkZDkwNGQxN2YxNGFlODk0YjAzMDJlZjk0OGE2YjMxNDgwODQ0M2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgxOWY1MDE3OTNiZjgzNjk5Njc5MzY0NzFhMDQ3NmM1NmE0MjFlYmVkZTQyNWNjYmNmNTgyMDBhNGUwZjJiNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4Mjg1MGE3OWVlMTYyNjQ4NmRjZGFlMzA4NGE0Mjc4ZTY1Yjc4YjVjMmNmNmM0YTliYjU1YmZkNmMzYTFjZmUifQ"
         },
         {
@@ -196,7 +196,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample.rs",
-          "version": "repo-file-v1:sha256:6d4b37d3ccc228c7e00e399c4ce40cd0630c0f23ec599168bebad4f680f07e72"
+          "version": "repo-file-v1:sha256:be97c9e9c9f8720d1be73dc79f96b801028ca4c2c7a2726b742ea24dccac8784"
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
@@ -321,7 +321,7 @@
       "statement": "A failed message uses a normal user bubble at the end of the scrolling transcript and an aligned Not sent and Resend row. The reason is a tooltip, with no disclosure panel or pinning above the input bar. Archived conversations do not offer retry accessories.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2240-L2271",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2241-L2272",
           "version": "repo-lines-v1:sha256:f23eb22d81f75af5538eec6a393a7467929e9c440b0bab5cb5fc0837af3c47a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMWE4OGNlMDQ3OWM1ZmE3NTI5MmNiOGE1ZWYxOTBhYTg4NDhlMTMyNzg0MDk1ZTI0ZDI1YzM3NDMwOWU5NDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ODI4NTYwNmQyOGU5MWNlNDRjYWU5MzVjZjg4OTA5MTkxZTA5NWM2YjUzN2NlZTgyNjcyZDdkNzIyYjRhZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNTViODhjYjRkNTVjN2VmMjE2NDliZWE5MTRiYTEwYTEyNDE0ZDMyOGVkZDhmNTNlMDg1MWRmNDc5MTBhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MDZmNmFkYTg4ZjAzZGE2MDU1NmNkOWZkMGY2MGI3NDhkZGMwNjViYjcwN2M5YmNkZGI5ZTc4YThlNGU2YWQifQ"
         },
         {
@@ -415,10 +415,28 @@
           "version": "repo-lines-v1:sha256:e99d161babdf568d554305c64a4ee7ca05bd9a9429b68a9f650aa9025a95e9fe:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5NGVlMDg5ZGVmNjUxNjgyN2JkZGU1Mzg0ZmU1ZDkzMDExOTY1YTg2MTliZWQyMjkzMWRlNjhhODZkODliNTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkYTExOWFkZTJlMWUwZTQ4ZDFmNTMwMjU4YjYzYmQwMjY3M2EyZmNkMjdlZThjNjJkZDlkOWI0OWQ5N2M4NDQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjMDdkNzhkZDAyYWI3ZTZlZDA2N2FmNDM4MTIwMmJhMWY4NGM3YmY0NDcxNTMyYjA4ZTIzODk2Y2YyNjFiYzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1YTI1YzIyOWQ1YTg5YTQ0ZDUxYWJkZWU2Mzk2NWNjODE0ODkwYjA0ODExOWE1YzVmZmUxYjZjNjhkYTJhNmQifQ"
         }
       ]
+    },
+    {
+      "id": "claim_00df095f06b942e592cfecad5e6f03ed",
+      "statement": "A newly completed visible answer in an independent root conversation automatically requests one native suggestion when the composer is empty. Saved history, repeated refreshes, failed turns and an existing draft do not trigger generation; acceptance remains an undoable edit without automatic send or overwrite of later input.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
+          "version": "repo-file-v1:sha256:eff9bd808613584fa9abf6ee2ce12cfa901817207d58c9f6a668bcd8e6c62c80"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_sample.rs#L165-L222",
+          "version": "repo-lines-v1:sha256:bbb1167ea839a68aab8399ed02e713cc3115fb54264be3744655fbbeddc66537:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3NjY1MTU5ZjNmYmIxNzkyZmVmNTEwZmViN2ZiOTFlN2ZmODM4ZTc1YTg3MTI5YzUwNjRjMmIzZjEyYzc0NzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZmM2M1MjVlMGM3M2JjOWVhNDMyYjgzMjIyZTEyODgyMWM1MDcyMzQ4YjlkZjQ5NzEwOWFjNGM2YjI5ODc5N2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3MDFjZmY0ZGY4Njc3YjU3ZWE5ZjIwNGVkMDdmZDhiOTFlNGE5YjkwMjhiN2I4ZjQyMzk2MzU5NWYwZTBkOTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNiMWEyYjlhZDFkNDljMTViZWUxY2Q3MzMyYjkyNGQ5ZGE0ZTM4MzA1ZDM3ZjIwMzU5MzY4NjAwYmM4ZGUzZWUifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
+          "version": "repo-file-v1:sha256:27ea5cd3b1c0d5b05b46bc7b0434578ee83fcdabbb8126df840706329c7a4123"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T08:28:06.287Z"
+    "at": "2026-10-28T08:48:31.048Z"
   }
 }

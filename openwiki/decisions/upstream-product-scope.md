@@ -16,8 +16,14 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
     resource: repo://apps/decodex-gpui/src/agent_prompt_fork.rs
+  - id: openwiki-source-0f9840ddf9e841a062aa905a
+    resource: repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs
   - id: openwiki-source-56b561d7e6dd906d218aa9d1
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
+  - id: openwiki-source-296a92a9cefecb19f0fc1f95
+    resource: repo://apps/decodex-gpui/src/agent_sample_tests.rs
+  - id: openwiki-source-912dbe8f46e7ec6026887bbe
+    resource: repo://apps/decodex-gpui/src/agent_sample.rs
   - id: openwiki-source-01379a7fb49ab2d638863891
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
   - id: openwiki-source-0d053d4de2f668168f982629
@@ -48,6 +54,8 @@ sources:
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-0d29990b5fd295fa89a495ad
     resource: repo://crates/decodex-protocol/src/model_catalog.rs
+  - id: openwiki-source-84719462dc44acb0bf71023b
+    resource: repo://crates/decodex-runtime/src/account_api.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
   - id: openwiki-source-a0063c7b07a1bc990ee9af6c
@@ -94,10 +102,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+generated: { by: "codex", at: "2026-10-28T08:48:31.048Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T08:28:06.287Z
+    at: 2026-10-28T08:48:31.048Z
 ---
 
 # Product scope and native ownership
@@ -163,6 +171,14 @@ The native model catalog already refreshes automatically; this work does not add
 
 Diagnostic-log upload (**original item 24**) is excluded at the user's request to protect privacy. Terminal queue-navigation keys, copy-on-select and additional semantic range-copy gestures (**items 16, 17 and 25**) are not selected. Clipboard latency (**item 22**) requires a reproduced defect before maintenance work starts. Existing desktop copy behavior remains supported.
 
+## Next-message suggestions and current choices
+
+The user selected **original item 26** with automatic generation: a newly completed answer in the selected independent root conversation requests one suggestion when its composer is empty. Opening saved history, repeated refreshes and an existing draft do not trigger inference. The composer menu retains **Suggest next message…** for an explicit request. **Use as draft** places the suggestion in the same conversation's empty composer as one undoable edit. Later edits are preserved, and acceptance does not send a message. The feature uses the existing native sampler and conversation refresh; it adds no separate poller. See [the suggestion workflow](../workflows/conversations-and-recovery.md#next-message-suggestions) and `retained_prompt_suggestions` in the [retained contracts](../../automations/upstream/retained-contracts.json).
+
+**Original item 19**, authenticated remote execution, remains deferred in [issue 1693](https://github.com/acg-box/decodex/issues/1693). **Item 21** retains Decodex account management: independent account observations and reset-credit requests use the existing account API client. This decision does not make those operations inherit native `application.network` policy.
+
+**Items 27 and 30 remain product decisions.** Do not enable deferred mailbox preemption globally or add schema-budget monitoring and automatic tuning from this review. **Item 29** records native per-server catalog-readiness support; it does not record a new desktop setting, global enablement or a dedicated native qualification. Native support and delivered desktop behavior remain separate.
+
 ## Current integration boundary
 
 | Area | Decodex responsibility |
@@ -187,7 +203,7 @@ Tool and file-change details use exact native thread, turn and item identities. 
 
 Eligible root conversations expose native read receipts in task preferences. Read and unread marks require the reviewed native revision and local source identity. Reading does not acknowledge a result, and these receipts do not replace Dock handoff or attention state.
 
-The client also exposes a bounded, explicitly invoked ephemeral prediction fork. It inherits the loaded parent's context, tools and permissions. It is not a tool-free recap, an automatic background job, or a composer suggestion interface. Its caller must own authorization and event routing. The isolated recap path remains separate.
+The client also exposes a bounded, explicitly invoked ephemeral prediction fork. It inherits the loaded parent's context, tools and permissions. It is not a tool-free recap or an automatic background job. Its caller must own authorization and event routing. Next-message suggestions use the separate native sampling path described above; the isolated recap path remains separate.
 
 Native launch policy requests full-fork prefix preservation, model-specific subagent context defaults and Agent message wakeups. The retained description-first argument is accepted as a removed native feature, so current tool ordering stays native-owned. The native configuration still selects Code Mode hosting transport.
 
