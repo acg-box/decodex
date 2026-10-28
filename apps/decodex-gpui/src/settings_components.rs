@@ -8,27 +8,36 @@ use gpui::{
 };
 
 use crate::{
+	component_plugins::{PluginOperations, Snapshot},
 	component_runtime::{PreparationState as ComponentState, RuntimePreparation},
 	settings_surface::SettingsSurface,
 	ui_feedback::{self, Feedback},
 	ui_theme::{self, BLUE},
 };
-use decodex_components::{InstallProgress, RuntimeLock};
+use decodex_components::{InstallProgress, PluginAction, RuntimeLock, egm_component};
 
 #[derive(Clone, Copy)]
 enum Action {
 	Prepare,
+	Plugin(PluginAction),
 }
 
 pub(super) struct Components {
 	preparation: RuntimePreparation,
 	shown: ComponentState,
+	optional: PluginOperations,
+	plugin: Snapshot,
 }
 impl Components {
 	pub(super) fn new(preparation: RuntimePreparation) -> Self {
 		let shown = preparation.snapshot();
 
-		Self { preparation, shown }
+		Self {
+			preparation,
+			shown,
+			optional: PluginOperations::new(egm_component(), None),
+			plugin: Snapshot::default(),
+		}
 	}
 
 	fn prepare_runtime(&self) {
@@ -37,17 +46,38 @@ impl Components {
 
 	pub(super) fn poll(&mut self) -> bool {
 		let next = self.preparation.snapshot();
-		let changed = next != self.shown;
+		let plugin = self.optional.snapshot();
+		let changed = next != self.shown || plugin != self.plugin;
 
 		self.shown = next;
+		self.plugin = plugin;
 
 		changed
+	}
+
+	#[cfg(not(test))]
+	pub(super) fn refresh_optional(&self) {
+		if matches!(self.preparation.snapshot(), ComponentState::Unchecked | ComponentState::Ready)
+		{
+			self.optional.start(PluginAction::Refresh);
+		}
 	}
 }
 
 impl SettingsSurface {
 	pub(crate) fn poll_components(&mut self, cx: &mut Context<Self>) {
+		#[cfg(not(test))]
+		let preparing = matches!(self.components.shown, ComponentState::Preparing(_));
+
 		if self.components.poll() {
+			#[cfg(not(test))]
+			if preparing
+				&& self.components.shown == ComponentState::Ready
+				&& self.category == super::SettingsCategory::Components
+			{
+				self.components.refresh_optional();
+			}
+
 			cx.notify();
 		}
 	}
@@ -55,6 +85,7 @@ impl SettingsSurface {
 	fn component_action(&mut self, action: Action, cx: &mut Context<Self>) {
 		match action {
 			Action::Prepare => self.components.prepare_runtime(),
+			Action::Plugin(action) => self.components.optional.start(action),
 		}
 
 		self.components.poll();
@@ -156,8 +187,76 @@ impl SettingsSurface {
 	}
 
 	pub(super) fn components_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		ui_theme::settings_group("This Mac", vec![self.component_settings(cx).into_any_element()])
-			.into_any_element()
+		ui_theme::settings_group(
+			"This Mac",
+			vec![
+				self.component_settings(cx).into_any_element(),
+				self.egm_settings(cx).into_any_element(),
+			],
+		)
+		.into_any_element()
+	}
+
+	fn egm_settings(&self, cx: &mut Context<Self>) -> Div {
+		let state = &self.components.plugin;
+		let status = match &state.installed {
+			Some(plugin) => format!(
+				"Version {} · {}",
+				plugin.version,
+				if plugin.enabled { "Enabled" } else { "Disabled" }
+			),
+			None if state.inspected => "Not installed".into(),
+			_ => "Status not checked".into(),
+		};
+		let mut controls = gpui::div().flex().items_center().gap_2();
+
+		if state.busy.is_none() {
+			controls = controls.child(self.component_button(
+				"components-refresh-egm",
+				"Refresh",
+				Action::Plugin(PluginAction::Refresh),
+				cx,
+			));
+			if state.inspected {
+				let (label, action) = match &state.installed {
+					None => ("Install", PluginAction::Install),
+					Some(plugin) if !plugin.enabled => ("Enable", PluginAction::Install),
+					Some(_) => ("Update", PluginAction::Update),
+				};
+
+				controls = controls.child(self.component_button(
+					"components-install-egm",
+					label,
+					Action::Plugin(action),
+					cx,
+				));
+				if state.installed.is_some() {
+					controls = controls.child(self.component_button(
+						"components-remove-egm",
+						"Uninstall",
+						Action::Plugin(PluginAction::Remove),
+						cx,
+					));
+				}
+			}
+		}
+
+		let feedback =
+			state.error.as_ref().map(|error| Feedback::error(error.clone())).or_else(|| {
+				state.busy.map(|action| {
+					Feedback::info(match action {
+						PluginAction::Refresh => "Reading native plugin state…",
+						PluginAction::Install => "Installing EGM…",
+						PluginAction::Update => "Updating EGM…",
+						PluginAction::Remove => "Uninstalling EGM…",
+					})
+				})
+			});
+
+		gpui::div().w_full().flex().flex_col().child(ui_theme::settings_row()
+			.child(ui_theme::settings_label("Elephant–Goldfish (EGM)", format!("{status}\nGoogle's complete design and review plugin. Optional; uses your Codex subscription.\nStart a new conversation after installing or updating.")))
+			.child(controls))
+			.children(feedback.as_ref().and_then(|feedback| ui_feedback::inline_feedback("components-egm-feedback", "", feedback)))
 	}
 }
 
@@ -175,9 +274,55 @@ fn progress_text(progress: &InstallProgress) -> String {
 
 #[cfg(test)]
 mod tests {
+	use decodex_components::{PluginAction, PluginInstallation};
+
 	use crate::settings_surface::components::{
 		ComponentState, RuntimePreparation, SettingsSurface,
 	};
+
+	#[gpui::test]
+	fn optional_component_controls_follow_native_readback_and_busy_state(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (settings, visual) = cx.add_window_view(|_, cx| {
+			let mut settings = SettingsSurface::new(
+				crate::desktop_settings::DesktopSettingsController::production(),
+				cx,
+			);
+
+			settings.category = crate::settings_surface::SettingsCategory::Components;
+			settings
+		});
+
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("components-refresh-egm").is_some());
+		assert!(
+			visual.debug_bounds("components-install-egm").is_none(),
+			"inspect before writing native configuration"
+		);
+		settings.update(visual, |settings, cx| {
+			settings.components.plugin.inspected = true;
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("components-install-egm").is_some());
+		assert!(visual.debug_bounds("components-remove-egm").is_none());
+		settings.update(visual, |settings, cx| {
+			settings.components.plugin.installed =
+				Some(PluginInstallation { version: "0.1.0".into(), enabled: true });
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("components-remove-egm").is_some());
+		settings.update(visual, |settings, cx| {
+			settings.components.plugin.busy = Some(PluginAction::Update);
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("components-install-egm").is_none());
+		assert!(visual.debug_bounds("components-remove-egm").is_none());
+		assert!(visual.debug_bounds("components-egm-feedback").is_some());
+	}
 
 	#[gpui::test]
 	fn opening_settings_does_not_start_another_component_check(cx: &mut gpui::TestAppContext) {

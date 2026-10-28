@@ -642,6 +642,11 @@ impl SettingsSurface {
 	}
 
 	pub(crate) fn refresh(&mut self, cx: &mut Context<Self>) {
+		#[cfg(not(test))]
+		if self.category == SettingsCategory::Components {
+			self.components.refresh_optional();
+		}
+
 		if self.category == SettingsCategory::General {
 			self.refresh_launch_at_login();
 			self.refresh_power(cx);

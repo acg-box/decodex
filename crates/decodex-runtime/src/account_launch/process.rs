@@ -3,6 +3,10 @@
 pub(crate) mod native_control_tests;
 
 #[cfg(all(test, target_os = "macos"))]
+#[path = "process_native_component_tests.rs"]
+mod native_component_tests;
+
+#[cfg(all(test, target_os = "macos"))]
 #[path = "activation_policy_native_tests.rs"]
 mod activation_policy_native_tests;
 #[cfg(target_os = "macos")]
