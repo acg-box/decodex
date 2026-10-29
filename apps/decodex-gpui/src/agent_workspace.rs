@@ -1329,6 +1329,7 @@ impl AgentSurface {
 					)
 					.child(self.panel_controls(super::panel_controls::Panel::Conversation, cx)),
 			)
+			.children(self.conversation_find_bar(cx))
 	}
 
 	fn floating_composer(&self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

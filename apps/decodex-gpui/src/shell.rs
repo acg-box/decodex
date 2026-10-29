@@ -156,6 +156,7 @@ gpui::actions!(
 		DismissStatus,
 		NavigateBack,
 		NavigateForward,
+		FindConversation,
 		SelectPreviousConversation,
 		SelectNextConversation,
 		ActivateConversationRow,
@@ -1961,6 +1962,11 @@ impl Render for Shell {
 			.on_action(cx.listener(Self::select_previous_conversation))
 			.on_action(cx.listener(Self::select_next_conversation))
 			.on_action(cx.listener(Self::submit_composer))
+			.on_action(cx.listener(|s, _: &FindConversation, window, cx| {
+				if s.selected == Destination::Agent {
+					s.agent.update(cx, |agent, cx| agent.open_conversation_find(window, cx));
+				}
+			}))
 			.size_full()
 			.min_w(gpui::px(1_180.0))
 			.min_h(gpui::px(720.0))
@@ -2313,6 +2319,7 @@ pub(crate) fn bind_keys(cx: &mut App) {
 		KeyBinding::new("cmd-j", ToggleGraph, None),
 		KeyBinding::new("shift-escape", ToggleContentFullscreen, None),
 		KeyBinding::new("cmd-[", NavigateBack, None),
+		KeyBinding::new("cmd-f", FindConversation, None),
 		KeyBinding::new("cmd-]", NavigateForward, None),
 		KeyBinding::new("enter", ActivateDestination, Some("Destination")),
 		KeyBinding::new("space", ActivateDestination, Some("Destination")),
