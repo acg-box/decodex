@@ -1187,6 +1187,8 @@ mod tests {
 	#[test]
 	fn activity_labels_name_agents_and_actions_without_masking_errors_or_unknown_tools() {
 		let agents = vec![decodex_protocol::NativeAgentDto {
+			model: None,
+			reasoning_effort: None,
 			thread_id: "child".into(),
 			parent_thread_id: "parent".into(),
 			title: "Mia".into(),
@@ -1200,6 +1202,8 @@ mod tests {
 			}))
 			.unwrap();
 		let mut call = decodex_protocol::AgentCollaborationDto {
+			model: None,
+			reasoning_effort: None,
 			results: vec![],
 			sender_thread_id: "parent".into(),
 			receiver_thread_ids: vec!["child".into()],

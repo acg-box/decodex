@@ -15,6 +15,12 @@ pub struct NativeAgentDto {
 	pub task: String,
 	/// Provider-reported thread state.
 	pub status: String,
+	/// Native current configuration when loaded, otherwise its latest saved model.
+	#[serde(default)]
+	pub model: Option<String>,
+	/// Native configured or latest saved effort; this is not per-turn telemetry.
+	#[serde(default)]
+	pub reasoning_effort: Option<String>,
 }
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
@@ -31,6 +37,12 @@ pub enum NativeAgentsResult {
 	Conversation {
 		/// Exact inspected thread.
 		thread_id: String,
+		/// Native configured or latest saved model; never inherited locally.
+		#[serde(default)]
+		model: Option<String>,
+		/// Native configured or latest saved effort; absent stays unknown.
+		#[serde(default)]
+		reasoning_effort: Option<String>,
 		/// Native capability. None means the stored thread has not exposed its capability.
 		can_input: Option<bool>,
 		/// Observed running turn for steering.

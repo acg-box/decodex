@@ -870,7 +870,11 @@ impl AgentSurface {
 									Some(tier) => tier,
 									None => "Speed not reported",
 								};
-								format!("{permissions} · {speed} · Managed by parent")
+								format!(
+									"{} · {} · {permissions} · {speed}",
+									model.as_deref().unwrap_or("Model unknown"),
+									reasoning_effort.as_deref().unwrap_or("Effort unknown")
+								)
 							},
 							_ => "Permissions and speed are managed by the parent Agent".into(),
 						}),

@@ -195,6 +195,8 @@ impl AgentSurface {
 			("ravi", "eden", "ravi", "Eden", "Runtime", "idle"),
 		] {
 			self.native_agents.lists.entry(owner.into()).or_default().push(NativeAgentDto {
+				model: None,
+				reasoning_effort: None,
 				thread_id: format!("ref-{id}"),
 				parent_thread_id: format!("ref-{parent}"),
 				title: name.into(),
@@ -406,6 +408,8 @@ impl AgentSurface {
 				brief.relations.push((
 					format!("request-{sender}-{receiver}"),
 					AgentCollaborationDto {
+						model: None,
+						reasoning_effort: None,
 						sender_thread_id: format!("ref-{sender}"),
 						receiver_thread_ids: vec![format!("ref-{receiver}")],
 						tool: tool.into(),

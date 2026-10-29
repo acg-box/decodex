@@ -611,6 +611,8 @@ mod tests {
 				duration_ms: None,
 			});
 			*collaboration = Some(decodex_protocol::AgentCollaborationDto {
+				model: None,
+				reasoning_effort: None,
 				sender_thread_id: "parent".into(),
 				receiver_thread_ids: vec!["child".into()],
 				tool: "subAgentActivity/started".into(),

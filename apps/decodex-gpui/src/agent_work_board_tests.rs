@@ -35,6 +35,8 @@ pub(super) fn fixture(cx: &mut Context<AgentSurface>) -> AgentSurface {
 	s.native_agents.lists.insert(
 		"release".into(),
 		vec![NativeAgentDto {
+			model: None,
+			reasoning_effort: None,
 			thread_id: "native-child".into(),
 			parent_thread_id: "thread-release".into(),
 			title: "Reviewer".into(),
@@ -574,6 +576,8 @@ fn current_native_activity_creates_interaction_and_reverse_completion_edges(
 						(
 							kind.into(),
 							AgentCollaborationDto {
+								model: None,
+								reasoning_effort: None,
 								sender_thread_id: "thread-release".into(),
 								receiver_thread_ids: vec!["native-child".into()],
 								tool: format!("subAgentActivity/{kind}"),
@@ -701,6 +705,8 @@ fn native_reply_requires_observed_call_and_rejects_changed_binding(cx: &mut Test
 				relations: vec![(
 					"call-1".into(),
 					AgentCollaborationDto {
+						model: None,
+						reasoning_effort: None,
 						sender_thread_id: "thread-release".into(),
 						receiver_thread_ids: vec!["native-child".into()],
 						tool: "wait".into(),
@@ -1411,6 +1417,8 @@ fn observed_collaboration_survives_page_rollover_but_not_another_thread(cx: &mut
 			(
 				format!("item-{id}"),
 				AgentCollaborationDto {
+					model: None,
+					reasoning_effort: None,
 					sender_thread_id: row.thread.clone().unwrap(),
 					receiver_thread_ids: vec!["target".into()],
 					tool: "sendInput".into(),

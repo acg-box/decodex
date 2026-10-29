@@ -933,6 +933,8 @@ mod tests {
 
 	fn conversation(thread: &str) -> NativeAgentsResult {
 		NativeAgentsResult::Conversation {
+			model: None,
+			reasoning_effort: None,
 			permission_mode: None,
 			service_tier: None,
 			thread_id: thread.into(),
@@ -966,6 +968,8 @@ mod tests {
 			s.apply_native_list(
 				"agent".into(),
 				vec![NativeAgentDto {
+					model: None,
+					reasoning_effort: None,
 					thread_id: "child-b".into(),
 					parent_thread_id: "parent".into(),
 					title: "Live child".into(),
@@ -1168,6 +1172,8 @@ mod tests {
 				s.native_agents.lists.insert(
 					"agent".into(),
 					vec![NativeAgentDto {
+						model: None,
+						reasoning_effort: None,
 						task: String::new(),
 						thread_id: "child".into(),
 						parent_thread_id: "parent".into(),
@@ -1817,6 +1823,8 @@ mod tests {
 					server_id: ServerId::new(wire_test_support::SERVER).unwrap(),
 					query_id: query.query_id,
 					payload: QueryResultPayload::NativeAgents(NativeAgentsResult::Conversation {
+						model: None,
+						reasoning_effort: None,
 						permission_mode: None,
 						service_tier: None,
 						thread_id: "child".into(),
