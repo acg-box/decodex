@@ -146,6 +146,8 @@ struct AccountPanelView: View {
 		VStack(alignment: .leading, spacing: PanelSpacing.related) {
 			header
 
+			ConversationEstimatesView(authority: store.accounts.first?.account.authority, accounts: store.accounts, showsEmail: accountPrivacy == AccountPrivacy.visible)
+
 			if let profileAggregate {
 				AccountProfileOverviewView(
 					aggregate: profileAggregate

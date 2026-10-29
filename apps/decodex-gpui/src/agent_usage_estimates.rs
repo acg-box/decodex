@@ -63,9 +63,68 @@ impl AgentSurface {
 		panel.into_any_element()
 	}
 
+	pub(super) fn conversation_cost_control(&self, cx: &mut Context<Self>) -> AnyElement {
+		let Some(work) = self.conversation_work().filter(|_| self.native_agents.selected.is_none())
+		else {
+			return gpui::div().into_any_element();
+		};
+		let label = self
+			.usage_estimate
+			.as_ref()
+			.filter(|(id, _)| id == &work.id)
+			.and_then(|(_, result)| result.as_ref())
+			.map_or_else(|| "Cost estimate".into(), compact_estimate);
+		self.workspace_action(
+			"conversation-cost-estimate".into(),
+			label,
+			move |s, cx| {
+				if s.usage_estimate.as_ref().is_some_and(|(id, _)| id == &work.id) {
+					s.workspace.cost_estimate_open = !s.workspace.cost_estimate_open;
+					cx.notify();
+				} else {
+					s.load_usage_estimate(&work.id, cx);
+				}
+			},
+			cx,
+		)
+	}
+
+	pub(super) fn conversation_cost_details(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+		let work = self.conversation_work()?;
+		let (_, result) = self
+			.usage_estimate
+			.as_ref()
+			.filter(|(id, _)| id == &work.id && self.workspace.cost_estimate_open)?;
+		let owner = work.id;
+		Some(
+			gpui::div()
+				.id("conversation-cost-details")
+				.debug_selector(|| "conversation-cost-details".into())
+				.px(gpui::px(16.))
+				.pb(gpui::px(8.))
+				.max_h(gpui::px(180.))
+				.overflow_y_scroll()
+				.child("Conversation estimate · may lag activity")
+				.child(
+					result
+						.as_ref()
+						.map(estimate_text)
+						.unwrap_or_else(|| "Reading estimate…".into()),
+				)
+				.child(self.workspace_action(
+					"conversation-cost-refresh".into(),
+					"Refresh estimate".into(),
+					move |s, cx| s.load_usage_estimate(&owner, cx),
+					cx,
+				))
+				.into_any_element(),
+		)
+	}
+
 	pub(super) fn clear_usage_estimate(&mut self) {
 		self.usage_estimate_epoch = self.usage_estimate_epoch.wrapping_add(1);
 		self.usage_estimate = None;
+		self.workspace.cost_estimate_open = false;
 		self.usage_estimate_task = None;
 	}
 
@@ -131,6 +190,7 @@ impl AgentSurface {
 		let epoch = self.usage_estimate_epoch;
 
 		self.usage_estimate = Some((work.into(), None));
+		self.workspace.cost_estimate_open = true;
 
 		let work = work.to_owned();
 		let request = cx.background_executor().spawn(async move {
@@ -212,8 +272,20 @@ fn estimate_text(result: &AgentUsageEstimateResult) -> String {
 	lines.join("\n\n")
 }
 
+fn compact_estimate(result: &AgentUsageEstimateResult) -> String {
+	match result {
+		AgentUsageEstimateResult::Available { estimate, .. } =>
+			estimate.estimated_usage_usd_micros.map_or_else(
+				|| format!("≈ {} credits", micros(estimate.estimated_usage_credits_micros)),
+				|usd| format!("≈ ${}", micros(usd)),
+			),
+		_ => "Cost unavailable".into(),
+	}
+}
+
 #[cfg(test)]
 mod tests {
+	use gpui::ParentElement as _;
 	use std::thread;
 
 	use futures_util::{SinkExt as _, StreamExt as _};
@@ -234,6 +306,71 @@ mod tests {
 		CURRENT_VERSION, ClientMessage, QueryPayload, QueryResultEnvelope, QueryResultPayload,
 		ServerId, ServerMessage,
 	};
+
+	struct CostView(gpui::Entity<AgentSurface>);
+	impl gpui::Render for CostView {
+		fn render(
+			&mut self,
+			_: &mut gpui::Window,
+			cx: &mut gpui::Context<Self>,
+		) -> impl gpui::IntoElement {
+			self.0.update(cx, |s, cx| {
+				gpui::div()
+					.child(s.conversation_cost_control(cx))
+					.children(s.conversation_cost_details(cx))
+			})
+		}
+	}
+
+	#[gpui::test]
+	fn conversation_cost_toggle_keeps_estimate_until_its_source_changes(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (view, visual) = cx.add_window_view(|_, cx| {
+			let surface = cx.new(AgentSurface::new);
+			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+			surface.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				s.usage_estimate = Some((
+					"agent".into(),
+					Some(AgentUsageEstimateResult::Available {
+						work_id: EntityId::new("agent").unwrap(),
+						account_id: EntityId::new("account").unwrap(),
+						observed_at_micros: 1,
+						estimate: decodex_protocol::ThreadUsageEstimate {
+							thread_id: "thread".into(),
+							estimated_usage_credits_micros: 46_000_000,
+							estimated_usage_usd_micros: None,
+							groups: vec![],
+						},
+					}),
+				));
+			});
+			CostView(surface)
+		});
+		let surface = view.read_with(visual, |view, _| view.0.clone());
+		visual.update(crate::ui_frame::draw_frame);
+		for open in [true, false] {
+			let button = visual.debug_bounds("conversation-cost-estimate").unwrap();
+			visual.simulate_click(button.center(), Default::default());
+			visual.update(crate::ui_frame::draw_frame);
+			assert_eq!(visual.debug_bounds("conversation-cost-details").is_some(), open);
+			surface.read_with(visual, |s, _| {
+				assert!(s.usage_estimate_task.is_none(), "cached toggle must not start a read");
+				assert_eq!(
+					usage_estimates::compact_estimate(
+						s.usage_estimate.as_ref().unwrap().1.as_ref().unwrap()
+					),
+					"≈ 46 credits"
+				);
+			});
+		}
+		view.update(visual, |view, cx| view.0.update(cx, |s, _| s.clear_usage_estimate()));
+		surface.read_with(visual, |s, _| {
+			assert!(s.usage_estimate.is_none());
+			assert!(!s.workspace.cost_estimate_open);
+		});
+	}
 
 	#[gpui::test]
 	fn task_usage_estimate_is_explicit_and_clears_when_task_changes(cx: &mut gpui::TestAppContext) {

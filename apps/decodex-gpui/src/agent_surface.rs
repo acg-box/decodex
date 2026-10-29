@@ -2732,6 +2732,7 @@ struct WorkspaceView {
 	connection_details_expanded: bool,
 	details_visible: bool,
 	setup_expanded: bool,
+	cost_estimate_open: bool,
 }
 impl Default for WorkspaceView {
 	fn default() -> Self {
@@ -2786,6 +2787,7 @@ impl Default for WorkspaceView {
 			connection_details_expanded: false,
 			details_visible: false,
 			setup_expanded: false,
+			cost_estimate_open: false,
 		}
 	}
 }
