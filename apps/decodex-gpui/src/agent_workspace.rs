@@ -2455,15 +2455,29 @@ impl AgentSurface {
 
 	fn conversation_activity(&self, cx: &mut Context<Self>) -> AnyElement {
 		let reason = self.composer_unavailable_reason();
-		let feedback = reason.is_none().then(|| self.visible_conversation_feedback()).flatten();
-		let action = (reason.is_none() && self.can_retry_input_save()).then(|| {
-			self.workspace_action(
-				"retry-input-save".into(),
-				"Retry saving".into(),
-				|s, cx| s.retry_input_save(cx),
+		let waiting = self.waiting_for_reconnect();
+		let feedback = if waiting {
+			Some(Feedback::neutral("Waiting for connection · Nothing sent yet"))
+		} else {
+			reason.is_none().then(|| self.visible_conversation_feedback()).flatten()
+		};
+		let action = if waiting {
+			Some(self.workspace_action(
+				"cancel-waiting-send".into(),
+				"Cancel send".into(),
+				|s, cx| s.cancel_waiting_send(cx),
 				cx,
-			)
-		});
+			))
+		} else {
+			(reason.is_none() && self.can_retry_input_save()).then(|| {
+				self.workspace_action(
+					"retry-input-save".into(),
+					"Retry saving".into(),
+					|s, cx| s.retry_input_save(cx),
+					cx,
+				)
+			})
+		};
 
 		gpui::div()
 			.debug_selector(|| "conversation-status-band".into())
