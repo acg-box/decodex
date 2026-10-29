@@ -45,21 +45,31 @@ impl Render for View {
 
 #[gpui::test]
 fn confirmation_waits_for_disk_and_keeps_the_main_composer(cx: &mut TestAppContext) {
-	run_confirmation(cx, None);
+	run_confirmation(cx, None, false);
 }
 #[gpui::test]
 fn branch_confirmation_saves_choice_before_native_dispatch(cx: &mut TestAppContext) {
-	run_confirmation(cx, Some(PromptForkBoundary::BeforeInput));
+	run_confirmation(cx, Some(PromptForkBoundary::BeforeInput), false);
 }
 #[gpui::test]
 fn branch_after_turn_needs_no_input_preflight(cx: &mut TestAppContext) {
-	run_confirmation(cx, Some(PromptForkBoundary::AfterTurn));
+	run_confirmation(cx, Some(PromptForkBoundary::AfterTurn), false);
 }
 #[gpui::test]
 fn attached_branch_confirmation_is_saved_and_skips_unsent_input_preflight(cx: &mut TestAppContext) {
-	run_confirmation(cx, Some(PromptForkBoundary::AttachedAfterTurn));
+	run_confirmation(cx, Some(PromptForkBoundary::AttachedAfterTurn), false);
 }
-fn run_confirmation(cx: &mut TestAppContext, boundary: Option<PromptForkBoundary>) {
+
+#[gpui::test]
+fn list_branch_confirmation_uses_native_after_turn_without_sending(cx: &mut TestAppContext) {
+	run_confirmation(cx, Some(PromptForkBoundary::AfterTurn), true);
+}
+
+fn run_confirmation(
+	cx: &mut TestAppContext,
+	boundary: Option<PromptForkBoundary>,
+	from_list: bool,
+) {
 	cx.background_executor.allow_parking();
 
 	let (service, profile, _) = tests::profiles();
@@ -81,15 +91,22 @@ fn run_confirmation(cx: &mut TestAppContext, boundary: Option<PromptForkBoundary
 	let (view, visual) =
 		cx.add_window_view(|_, cx| confirmation_view(store.clone(), profile.clone(), cx));
 
-	for button in [
-		"prompt-confirm-review",
-		match boundary {
-			None => "prompt-confirm-apply",
-			Some(PromptForkBoundary::BeforeInput) => "prompt-confirm-branch",
-			Some(PromptForkBoundary::AfterTurn) => "prompt-confirm-after",
-			Some(PromptForkBoundary::AttachedAfterTurn) => "prompt-confirm-attached",
-		},
-	] {
+	let buttons = if from_list {
+		let surface = view.read_with(visual, |v, _| v.surface.clone());
+		surface.update(visual, |s, _| s.prompt_edit.branch_only = true);
+		vec!["locked-branch-confirm"]
+	} else {
+		vec![
+			"prompt-confirm-review",
+			match boundary {
+				None => "prompt-confirm-apply",
+				Some(PromptForkBoundary::BeforeInput) => "prompt-confirm-branch",
+				Some(PromptForkBoundary::AfterTurn) => "prompt-confirm-after",
+				Some(PromptForkBoundary::AttachedAfterTurn) => "prompt-confirm-attached",
+			},
+		]
+	};
+	for button in buttons {
 		let mut bounds = None;
 
 		for _ in 0..200 {

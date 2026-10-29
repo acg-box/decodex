@@ -915,7 +915,7 @@ impl AgentSurface {
 		accepted
 	}
 
-	fn load_native_timeline(
+	pub(super) fn load_native_timeline(
 		&mut self,
 		work: &str,
 		thread: &str,
@@ -1051,6 +1051,7 @@ impl AgentSurface {
 				cx.notify();
 			}
 
+			self.resume_list_branch_review(false, cx);
 			return;
 		}
 
@@ -1088,18 +1089,22 @@ impl AgentSurface {
 
 				self.timeline.native.recovered();
 				self.observe_prompt_completion(cx);
+				self.resume_list_branch_review(true, cx);
 			} else if self.timeline.native.pagination == Pagination::Loading {
 				changed = true;
 
 				self.timeline.native.failed(None, std::time::Instant::now());
+				self.resume_list_branch_review(false, cx);
 			} else {
 				changed = true;
 				self.timeline.native.safety_buffering_turn_id = None;
 				self.timeline.native.notice =
 					Some("History changed or display limit reached. Refresh history.");
+				self.resume_list_branch_review(false, cx);
 			}
 		} else {
 			self.timeline.native.failed(result, std::time::Instant::now());
+			self.resume_list_branch_review(false, cx);
 		}
 
 		if changed {

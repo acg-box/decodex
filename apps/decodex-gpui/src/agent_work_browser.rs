@@ -680,6 +680,31 @@ impl AgentSurface {
 		rows
 	}
 
+	fn list_branch_button(&self, branch: String, cx: &mut Context<Self>) -> impl IntoElement {
+		let branch_keyboard = branch.clone();
+		gpui::div()
+			.id(SharedString::from(format!("branch-{branch}")))
+			.role(Role::Button)
+			.aria_label("Branch conversation")
+			.tab_index(0)
+			.px_2()
+			.py_1()
+			.rounded(gpui::px(5.))
+			.text_size(gpui::px(11.))
+			.hover(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
+			.child("Branch…")
+			.on_click(cx.listener(move |s, _, _, cx| {
+				cx.stop_propagation();
+				s.review_list_branch(&branch, cx);
+			}))
+			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+				if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+					cx.stop_propagation();
+					s.review_list_branch(&branch_keyboard, cx);
+				}
+			}))
+	}
+
 	pub(super) fn render_work_browser(&self, cx: &mut Context<Self>) -> AnyElement {
 		if self.workspace.guardian_open {
 			return self.render_global_guardian(cx);
@@ -705,6 +730,14 @@ impl AgentSurface {
 		{
 			let keyboard = id.clone();
 			let native_keyboard = native.clone();
+			let branch = id.clone();
+			let can_branch = native.is_none()
+				&& self.snapshot.as_ref().is_some_and(|snapshot| {
+					snapshot
+						.work_items
+						.iter()
+						.any(|work| work.id == id && work.codex_thread_id.is_some())
+				});
 
 			count += 1;
 			list = list.child(
@@ -748,6 +781,7 @@ impl AgentSurface {
 							.text_color(ui_theme::rgb(color))
 							.child(status),
 					)
+					.children(can_branch.then(|| self.list_branch_button(branch, cx)))
 					.on_click(cx.listener(move |s, _, _, cx| {
 						s.open_work_preview(&id, native.as_ref(), cx);
 					}))
