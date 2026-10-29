@@ -297,8 +297,6 @@ impl Shell {
 		profile: Option<ClientProfile>,
 		cx: &mut Context<Self>,
 	) -> Self {
-		self.diagnostics.reset_startup_config();
-
 		self.account_emails = Default::default();
 
 		self.expanded_accounts.clear();

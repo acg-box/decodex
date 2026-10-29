@@ -648,17 +648,6 @@ impl AgentSurface {
 		}
 	}
 
-	pub(crate) fn native_configuration_directory(&self) -> Option<std::path::PathBuf> {
-		let selected = self.selected.as_ref()?;
-
-		self.snapshot
-			.as_ref()?
-			.projects
-			.iter()
-			.find(|workspace| workspace.agent_ids.contains(selected))
-			.map(|workspace| std::path::PathBuf::from(&workspace.directory))
-	}
-
 	pub(crate) fn seed_context(
 		&mut self,
 		cwd: Option<ConversationWorkingDirectory>,

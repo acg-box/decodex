@@ -38,10 +38,10 @@ use crate::{
 	ConversationTurnOutcomeResult, ConversationUnavailableReason, ConversationWorkingDirectory,
 	DictationRequest, DictationStatus, DoctorReport, InitialModelCatalogRequest,
 	InitialModelCatalogResult, InitialModelSource, McpLoginRequest, McpLoginStatus,
-	ModelCatalogPurpose, NativeAgentsResult, NativeStartupConfiguration,
-	PrivateReviewDetailsResult, PromptEditStatus, PromptForkResult, PromptInputSendIdentity,
-	PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus, ProtocolVersion,
-	TaskRecapStatus, UsageEvidenceResult, UsageEvidenceScope, WorkDetailResult,
+	ModelCatalogPurpose, NativeAgentsResult, PrivateReviewDetailsResult, PromptEditStatus,
+	PromptForkResult, PromptInputSendIdentity, PromptInputSendStatus, PromptInputUpload,
+	PromptInputUploadStatus, ProtocolVersion, TaskRecapStatus, UsageEvidenceResult,
+	UsageEvidenceScope, WorkDetailResult,
 };
 
 /// Maximum UTF-8 size of any human-readable text carried by the wire protocol.
@@ -2184,11 +2184,6 @@ pub enum QueryPayload {
 		/// Original local source owner.
 		work_id: EntityId,
 	},
-	/// Inspect native startup requirements with shared sign-in, without a conversation or sign-out.
-	GetNativeStartupConfiguration {
-		/// Exact directory whose native configuration layers must be checked.
-		directory: ConversationWorkingDirectory,
-	},
 	/// Read existing sample state without starting inference.
 	GetAgentSample {
 		/// Owning local task.
@@ -3166,8 +3161,6 @@ pub enum QueryResultPayload {
 		/// Absolute working directory of the retained native process.
 		directory: Option<WireText>,
 	},
-	/// Safe native startup configuration snapshot for one explicit check.
-	NativeStartupConfiguration(NativeStartupConfiguration),
 	/// Latest explicit native sample state.
 	AgentSample(AgentSampleStatus),
 	/// Service-owned task recap state.

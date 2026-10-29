@@ -23,10 +23,8 @@ mod managed_codex;
 #[cfg(target_os = "macos")]
 #[path = "provisioned_cli.rs"]
 mod provisioned_cli;
-#[path = "process_startup_config.rs"] mod startup_config;
 
 pub(crate) use decodex_database::ConversationResumeRejection as ConversationRejectionReason;
-pub(crate) use startup_config::inspect_native_startup_configuration;
 
 #[cfg(target_os = "linux")] use std::os::fd::FromRawFd as _;
 #[cfg(test)] use std::sync::atomic::AtomicU32;

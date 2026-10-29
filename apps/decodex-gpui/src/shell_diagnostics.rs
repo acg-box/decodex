@@ -1,5 +1,4 @@
 //! A small troubleshooting summary with optional technical details.
-#[path = "shell_startup_config.rs"] mod startup_config;
 
 use std::rc::Rc;
 
@@ -27,19 +26,12 @@ use crate::{
 	},
 };
 use decodex_protocol::{DoctorComponent, DoctorIssue, DoctorStatus};
-use startup_config::Panel;
 
 #[derive(Default)]
 pub(super) struct Diagnostics {
 	pub(super) expanded: bool,
 	pub(super) scroll: ScrollHandle,
 	pub(super) copied: bool,
-	startup: Panel,
-}
-impl Diagnostics {
-	pub(super) fn reset_startup_config(&mut self) {
-		self.startup.reset();
-	}
 }
 
 /// Unchecked and unused capabilities are not problems. An old report cannot
@@ -217,8 +209,7 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 		.child(details_toggle(shell, cx));
 
 	if expanded {
-		content =
-			content.child(startup_config::content(shell, cx)).child(technical_details(snapshot));
+		content = content.child(technical_details(snapshot));
 	}
 
 	content.into_any_element()
