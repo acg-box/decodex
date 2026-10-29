@@ -16,8 +16,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/client_lifecycle.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
     resource: repo://apps/decodex-gpui/src/settings_components.rs
+  - id: openwiki-source-37be5bb3dc64279420e57b31
+    resource: repo://apps/decodex-gpui/src/settings_native.rs
   - id: openwiki-source-cfb92e5db8b3a39d51f6a057
     resource: repo://apps/decodex-gpui/src/settings_updates.rs
+  - id: openwiki-source-5afd606185b0f01d8fc4f429
+    resource: repo://apps/decodex-gpui/src/shell_diagnostics.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-8b67a68a7ef89772aa8180d1
@@ -44,6 +48,8 @@ sources:
     resource: repo://crates/decodex-protocol/src/client.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
+  - id: openwiki-source-268229e2b9f21dae93c32513
+    resource: repo://crates/decodex-protocol/src/wire.rs
   - id: openwiki-source-1f19769e3cb97a2389e92f82
     resource: repo://crates/decodex-runtime/src/account_launch.rs
   - id: openwiki-source-9e21e877b2d7ad96b0a4d637
@@ -54,10 +60,16 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs
   - id: openwiki-source-f2860995fd89f9170b5406cb
     resource: repo://crates/decodex-runtime/src/agent_context_settings.rs
+  - id: openwiki-source-c75093d19a3bc72db5836102
+    resource: repo://crates/decodex-runtime/src/agent_host.rs
   - id: openwiki-source-1477615a268800361379ce21
     resource: repo://crates/decodex-runtime/src/agent_initial_settings.rs
+  - id: openwiki-source-39b6138ef382ed5417dddcbd
+    resource: repo://crates/decodex-runtime/src/agent_item_context.rs
   - id: openwiki-source-dc51b38db429ec5fe466c5f2
     resource: repo://crates/decodex-runtime/src/agent_memory.rs
+  - id: openwiki-source-ac4b738d63d48fc19492febe
+    resource: repo://crates/decodex-runtime/src/agent_resources.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
   - id: openwiki-source-a4a2658e06fa2cf48ff4589e
@@ -119,7 +131,7 @@ sources:
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T18:12:33.127Z
+    at: 2026-10-29T18:53:39.584Z
 ---
 
 # Runtime Architecture

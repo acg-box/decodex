@@ -10,6 +10,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration_cases.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
+  - id: openwiki-source-77ad5024b567271a0f618fd7
+    resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
   - id: openwiki-source-9c68c30b2ff24ddf9a764d74
     resource: repo://apps/decodex-gpui/src/agent_memory.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
@@ -22,16 +24,24 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-296a92a9cefecb19f0fc1f95
     resource: repo://apps/decodex-gpui/src/agent_sample_tests.rs
-  - id: openwiki-source-912dbe8f46e7ec6026887bbe
-    resource: repo://apps/decodex-gpui/src/agent_sample.rs
   - id: openwiki-source-01379a7fb49ab2d638863891
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
+  - id: openwiki-source-5606e779f593d160176b0a27
+    resource: repo://apps/decodex-gpui/src/agent_transcript.rs
   - id: openwiki-source-0d053d4de2f668168f982629
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
+  - id: openwiki-source-3fa6d6c49e3542409542045b
+    resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
   - id: openwiki-source-59ed67d26d1c310707a365e5
     resource: repo://apps/decodex-gpui/src/component_plugins.rs
   - id: openwiki-source-682f90c6d08ed3207257f1d5
     resource: repo://apps/decodex-gpui/src/conversations.rs
+  - id: openwiki-source-a16804a567889414868e5d67
+    resource: repo://apps/decodex-gpui/src/settings_surface.rs
+  - id: openwiki-source-5afd606185b0f01d8fc4f429
+    resource: repo://apps/decodex-gpui/src/shell_diagnostics.rs
+  - id: openwiki-source-2986b39185cca5c00a29ad1d
+    resource: repo://apps/decodex-gpui/src/shell_status.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
@@ -102,10 +112,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-28T08:48:31.048Z" }
+generated: { by: "codex", at: "2026-10-29T18:53:39.584Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T18:12:33.127Z
+    at: 2026-10-29T18:53:39.584Z
 ---
 
 # Product scope and native ownership
@@ -159,7 +169,7 @@ The later manual review approved original items **2, 3, 6, 7, 9, 10, 12 and 15**
 | 12 | Unsent question drafts return to the composer after exact terminal turn evidence. |
 | 15 | Rich streaming previews withhold unfinished link destinations until closure, newline or completion. |
 
-**Original item 13, board-only native messaging, remains undecided** in [issue 2539](https://github.com/acg-box/decodex/issues/2539). The current native collaboration surface stays available. These eight approvals do not select other historical proposals.
+**Original items 13 and 31, board-only native messaging and the related coordination choice, remain undecided** in [issue 2539](https://github.com/acg-box/decodex/issues/2539). The current native collaboration surface stays available. These eight approvals do not select other historical proposals.
 
 The [retained contracts](../../automations/upstream/retained-contracts.json) and [validation index](../../automations/upstream/retained-evidence.json) record source references and qualified limits. The implementation used focused desktop, storage and wire tests. It did not install or release an application or add a new live-provider or physical-audio qualification.
 
@@ -175,9 +185,9 @@ Diagnostic-log upload (**original item 24**) is excluded at the user's request t
 
 The user selected **original item 26** with automatic generation, controlled by **Settings > Agents > Conversation assistance**: a newly completed answer in the selected independent root conversation requests one suggestion when its composer is empty. Opening saved history, repeated refreshes and an existing draft do not trigger inference. The composer menu retains **Suggest next message…** for an explicit request. Press **Tab** in the focused empty message field to place the current suggestion in the composer as one undoable edit. Other fields, Shift-Tab and nonempty drafts keep normal focus navigation. Later edits are preserved, and acceptance does not send a message. The switch defaults on. Disabling prevents new automatic requests, and re-enabling does not replay answers completed while disabled. The feature uses the existing native sampler and conversation refresh; it adds no separate poller. See [the suggestion workflow](../workflows/conversations-and-recovery.md#next-message-suggestions) and `retained_prompt_suggestions` in the [retained contracts](../../automations/upstream/retained-contracts.json).
 
-**Original item 19**, authenticated remote execution, remains deferred in [issue 1693](https://github.com/acg-box/decodex/issues/1693). **Item 21** retains Decodex account management: independent account observations and reset-credit requests use the existing account API client. This decision does not make those operations inherit native `application.network` policy.
+**Original items 19 and 69**, authenticated remote execution, remain deferred in [issue 1693](https://github.com/acg-box/decodex/issues/1693). **Item 21** retains Decodex account management: independent account observations and reset-credit requests use the existing account API client. This decision does not make those operations inherit native `application.network` policy.
 
-**Item 27 is deferred until the final research review.** Do not implement or enable deferred mailbox preemption from this review. The user rejected the proposed schema-size risk indication for **item 30**; its diagnostic gap remains unresolved. Do not add that indication or automatic budget tuning. **Item 29** is selected as a per-server switch in **Settings > Agents > Native defaults**. It edits only an existing user-configured server’s native `startup_readiness`: `catalog` when on, `connection` when off. A valid native cache can satisfy startup; tool execution still needs a live connection. The configuration roundtrip qualifies the setting boundary, not MCP cache performance or installed-app behavior. No global enablement is selected.
+**Item 27 is deferred until the final research review.** Do not implement or enable deferred mailbox preemption from this review. The user rejected the proposed schema-size risk indication for **item 30**; its diagnostic gap remains tracked in [issue 2546](https://github.com/acg-box/decodex/issues/2546). Do not add that indication or automatic budget tuning. **Item 29** is selected as a per-server switch in **Settings > Agents > Native defaults**. It edits only an existing user-configured server’s native `startup_readiness`: `catalog` when on, `connection` when off. A valid native cache can satisfy startup; tool execution still needs a live connection. The configuration roundtrip qualifies the setting boundary, not MCP cache performance or installed-app behavior. No global enablement is selected.
 
 ## Selected conversation improvements
 
@@ -206,7 +216,39 @@ Item 67 uses the current shared native store. Exact current local conversations 
 
 **Items 32, 33, 37, 40, 52, 54, 56 and 81 are excluded.** Codex owns its app-server self-diagnostics. Decodex diagnoses its own product and integration failures. The standalone Codex startup-configuration UI, query and dedicated qualification helper are retired. Diagnostic export and upload capabilities are not selected. Ordinary conversation Markdown export and normal error or warning presentation remain retained.
 
-Other unresolved proposals remain product choices, not daily maintenance debt. An implemented branch operation does not establish a task-list shortcut, and microphone selection does not establish independent output-device or input-channel selection. The [current contracts](../../automations/upstream/retained-contracts.json) define the selected behavior. The [qualification index](../../automations/upstream/retained-evidence.json) separates executed Decodex tests, upstream tests read, unchanged runtime identities and installed-app limits. The automation remains paused until explicit user authorization resumes it.
+The manual proposal records have current dispositions. Deferred research does not authorize implementation, experimental activation, a new setting or daily maintenance debt. Microphone selection does not select independent output-device or input-channel controls. The [current contracts](../../automations/upstream/retained-contracts.json) retain approvals, deferrals, exclusions and duplicates. The [qualification index](../../automations/upstream/retained-evidence.json) separates executed Decodex tests, source inspection, unchanged runtime identities and installed-app limits. The automation remains paused until explicit user authorization resumes it.
+
+## Conversation list and remaining manual scope
+
+**Item 59 is delivered** in [PR 2559](https://github.com/acg-box/decodex/pull/2559). A locally managed conversation row offers **Branch…**. The action opens that exact source, reads its latest completed native turn and reuses the existing explicit after-turn confirmation. Source and unrelated drafts survive navigation and cancellation. Creation sends no input. Native inventory rows without a local managed source gain no adoption path. The focused client checks do not establish installed-app or live-provider acceptance.
+
+**Item 74 is approved** for status grouping or filtering in the existing Work/conversation list, with a retained view preference. It must reuse current status facts and preserve Project/search filters, exact row opening and drafts. It adds no model grouping, command center, execution policy or native runtime change. Its implementation waits for overlapping active UI work to be reconciled; approval is not delivery. The native maintenance index owns the current implementation state.
+
+The following native options remain deferred research:
+
+| Item | Scope | Tracking |
+| --- | --- | --- |
+| 49 | Guardian selects root evidence around native child handoffs. | [Issue 2556](https://github.com/acg-box/decodex/issues/2556) |
+| 66 | Fresh native Subagent client-tool inheritance and upstream readiness. | [Issue 2553](https://github.com/acg-box/decodex/issues/2553) |
+| 68 | Native Guardian decision-comparison readiness. | [Issue 2554](https://github.com/acg-box/decodex/issues/2554) |
+| 70 | Native managed-worktree tools, considered with LayerFS research. | [Issue 2555](https://github.com/acg-box/decodex/issues/2555) |
+| 79 | Structured JSON evidence for native Guardian review. | [Issue 2557](https://github.com/acg-box/decodex/issues/2557) |
+
+Items 44 and 82 are not selected. Item 46 shares the retired parser scope of item 38. Item 58 adds no separate next-message suggestion feature. The ignored native async-classifier override in item 62 must not become an ineffective setting; it is distinct from the retained background-compaction control.
+
+## Native compatibility maintenance
+
+Keep native execution, enforcement and algorithms in Codex. Decodex maintains its actual launch, configuration, custom-tool routing, authorization, protocol and presentation consumers. Native source inclusion alone does not establish configured activation, supported client behavior or artifact qualification.
+
+| Item | Retained Decodex boundary |
+| --- | --- |
+| 55 | Keep launch environment and verified helpers correct; native Codex restores login-shell PATH. |
+| 60 | Preserve the native model source and configuration boundary; retain one model-context catalog owner. |
+| 73 | Keep supported client-tool routing, callback content and authorization if strict Code Mode exposure is explicitly selected later. |
+| 75 | Check supported native/model capability and the current client-tool discovery boundary if ranked search is explicitly selected later. |
+| 76 | Preserve real parent/root turn attribution where the supported caller contract requires it. Work relationships do not establish native turn causality. |
+
+Items 45 and 48 also retain native ownership. These decisions select no replacement executor or search algorithm and enable no experiment. Source inspection has not reproduced an item-76 defect; retain the narrow caller-attribution check without claiming scenario qualification. Run affected Decodex checks when a concrete integration change requires proof.
 
 ## Current integration boundary
 

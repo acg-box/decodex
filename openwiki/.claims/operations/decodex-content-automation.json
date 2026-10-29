@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3c608706f7c3da5af2cfb9fc57f169ef93fab1d154ca2ffed394ea5e41943907",
+  "pageVersion": "sha256:f5ef0c7799cad57bc7d74b9a792d420d99e77b54fe9df685bea23add5668c05f",
   "claims": [
     {
       "id": "claim_b9d9d60a2b70439da2780d92ae95c878",
-      "statement": "The portfolio separates content research from X publication and gives the upstream Maintainer an explicit ACTIVE setting.",
+      "statement": "The portfolio separates content research from X publication. The content roles inherit ACTIVE defaults, while the upstream Maintainer has an explicit PAUSED setting, retains its daily cadence, and requires explicit user approval to resume.",
       "evidence": [
         {
           "resource": "repo://automations/decodex/prompts/content-manager.md",
@@ -16,13 +16,13 @@
         },
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:3bf79f4a90eb718b25d39c46b5bcd111fee762673bec926788b8c24f4221e073"
+          "version": "repo-file-v1:sha256:80883810dcacedff483d5f743ffe3fcbd174d1358d1834de3bf701bf5fec995e"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-17T07:31:21.183Z"
+    "at": "2026-10-29T18:53:39.584Z"
   }
 }

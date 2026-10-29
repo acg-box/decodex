@@ -22,6 +22,8 @@ sources:
     resource: repo://crates/decodex-core/src/permissions.rs
   - id: openwiki-source-991553c8d747a54ecf5a9376
     resource: repo://crates/decodex-core/src/work.rs
+  - id: openwiki-source-cc0439b23243c3697ba49199
+    resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-1b314e86ab2f1adbc0ede4c8
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_project_sync_tests.rs
   - id: openwiki-source-5bc08ad67fcdb104dfcde7bf

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:482edd88a7dc4d8f8524f660a8383a02675cc4bf3b94ca38cd6bcd5822cf7e5d",
+  "pageVersion": "sha256:9d43c43bfc85ca2809f1fcb7c31b84d4b4be91121533820211d8ab41a742b81f",
   "claims": [
     {
       "id": "claim_3f139c853db04d169600a9ee50a8d9b8",
@@ -27,7 +27,7 @@
       "statement": "The account-owned bridge rejects local plugin management and retired widget resource/tool-call methods while retaining native integration observations.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L822-L865",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L823-L866",
           "version": "repo-lines-v1:sha256:c6d3d32d87a2b9459e0ee8c261b88bd9386392bb456ff9dd93eed96d99ba76ba:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0ZDAyMDk0NDNhMGVhMDQxNTNlYjM3YzdhNGYzMTU4OGE0MDBmNGE0ZTNkYTE0NDc3ZmVjYTRhYmQ4M2YzYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ1YmZmMDY0M2Y4MTMwOWI5OTYzNjY3ODkyZTMzYWNhYzU2NzBiMzQ2YWZjMDc5MDk2Mjc0ZTA5Y2QzNTk0MjUifQ"
         }
       ]
@@ -52,7 +52,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent_host.rs",
-          "version": "repo-file-v1:sha256:7eac904c9e540c0823485a755eec14ef1bff9e52922612e3df837caba8373c45"
+          "version": "repo-file-v1:sha256:7344aab59f9bcabd76b87723a4883f3401d780e6de691b0fa3d3a7bceb42d7d4"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_skill_roots.rs",
@@ -65,12 +65,12 @@
       "statement": "The local API does not expose connector approval/reviewer configuration commands; native integration observations and pending approval handling remain separate supported capabilities.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/agent.rs",
-          "version": "repo-file-v1:sha256:82d61a3f523e49b02ab5216a2fe14da7ffcf08d0491a401ecdd869fadf9c3b19"
+          "resource": "repo://crates/decodex-protocol/src/agent.rs#L642-L681",
+          "version": "repo-lines-v1:sha256:78cd5ebe6b09647e80befcc16abb384c93dd85503140de19438f8598c9ccbf33:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk4YTAwOWNiODY3NGYwN2U0M2Y3ODg1ZjIyNTJkNDk5NzUyOGY3NzBhNzYzZGVjYjJhOGEzZmZiNTUyYmM4YTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzMDdkZDhhMmUyMzI0ZGViMWU5NDQ4MzMwYTUzZjBjYWFmOGEwZWI3MmMxYTM1NzhjNjMyM2Q4NzBlY2IzYjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0NjhlOWU4Y2ZmZDFiMzkxOTQzMjQ2MWRmY2E1N2RlODUzYTkxZDY5NmRmMDkzMmIzMjQ4YzA5MzJlMGNlMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZlZjk2YmVlZWZiY2I0MTBiMTc5NDg0NzhjMzVlMWRiYTk1MmNkYzM2N2ZkMmQ1Mjg0ZmVkZjA5ZWFiNzFlOTMifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L1058-L1073",
-          "version": "repo-lines-v1:sha256:359c5cd359abedd93f41e57246f7b935447c103dc4033da7c4a923e5c732a998:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZlMDc3OGEzNjg0ZWY2ZjFkOWUwOTRhNTM4NTAxNTMyYWViZDM2ODFmZTM4OWQ5MjI2YmUzNzFmMDIzYTlhMDciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ0NTRiMDRkMGZmMTM5NGU5Y2RkNTRmMGE1ZjZhYzY0ZDA5MzNmMTRhNzk0MTNkMTNjYThhYTBiMTNkODFjYzYifQ"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L350-L407",
+          "version": "repo-lines-v1:sha256:da1c72de6c071b8d212cb504c37fd7d571ff56a7055a19b9f19e1e58c30a0466:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYyNGI5MjUxMzQ1YTAwZmIwMzgzNGY5YmU1MjM1YjA3ZGFhYmI5MDFkOWIyNTU2OTljNDQ1MTAwZDNjY2MyMTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg5YmM3NTExYjIyYjUzOGRmMTQyODMzNzUxZDRhMDM3NDFiYjI4MzkzYjQzZjE5ZjhkNjZkNDkxZGFmNTJkOWUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4N2JiNWU3ODcwMzg1ZjBlZDRkZDUzYWNkMTFjZjI4NTJlZjgzZmQzYWU1OGNlMWYwM2Y1YzY3OTVhMjlhMjcifQ"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_integrations.rs#L84-L120",
@@ -99,6 +99,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T08:28:06.287Z"
+    "at": "2026-10-29T18:53:39.584Z"
   }
 }

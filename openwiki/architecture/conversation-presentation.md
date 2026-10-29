@@ -4,6 +4,8 @@ title: Conversation presentation and motion
 description: Bounded chat layout, grouped voice history, incremental loading, and adaptive streamed text in the native desktop.
 tags: [desktop, conversation, motion]
 sources:
+  - id: openwiki-source-ca9ad15cc8ba4a0657d1c24d
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/BrandLoading.swift
   - id: openwiki-source-0a61b25348131fe1bb6e1d12
     resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
   - id: openwiki-source-c76550e85b25876b339f9255
@@ -12,6 +14,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_inspection.rs
   - id: openwiki-source-0afccc244c69eb8da96d1fa9
     resource: repo://apps/decodex-gpui/src/agent_link_preview.rs
+  - id: openwiki-source-9cda3120e5cf6c9c303ec1d9
+    resource: repo://apps/decodex-gpui/src/agent_markdown_selection_tests.rs
   - id: openwiki-source-2ee1164d01a09b38a208f1ac
     resource: repo://apps/decodex-gpui/src/agent_markdown.rs
   - id: openwiki-source-711411d5917ac189d9d28e37
@@ -40,18 +44,28 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_selectable_text.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
+  - id: openwiki-source-04e81f339ea9d70e791f5b0e
+    resource: repo://apps/decodex-gpui/src/agent_text_link_hover_tests.rs
   - id: openwiki-source-afe7c47e476800002dba8df3
     resource: repo://apps/decodex-gpui/src/agent_text_links.rs
   - id: openwiki-source-4247deee56f626d37a52d5b0
     resource: repo://apps/decodex-gpui/src/agent_text_reveal.rs
+  - id: openwiki-source-2fb9e466c6aafdf4f4950bc1
+    resource: repo://apps/decodex-gpui/src/agent_timeline_find.rs
   - id: openwiki-source-b76859cf2790cc53340f082d
     resource: repo://apps/decodex-gpui/src/agent_timeline_groups.rs
   - id: openwiki-source-d57edbe5de23ebee985fc88b
     resource: repo://apps/decodex-gpui/src/agent_timeline_inputs.rs
   - id: openwiki-source-1849030b658783d8ea0855b0
     resource: repo://apps/decodex-gpui/src/agent_timeline_receipts.rs
+  - id: openwiki-source-73d67d21d29d49e7272436e0
+    resource: repo://apps/decodex-gpui/src/agent_timeline_render.rs
+  - id: openwiki-source-2da3727221b66d60f1a2e9ef
+    resource: repo://apps/decodex-gpui/src/agent_timeline_scroll.rs
   - id: openwiki-source-691432bb61082c358b6f9c24
     resource: repo://apps/decodex-gpui/src/agent_timeline.rs
+  - id: openwiki-source-40c9c6a55485557343853517
+    resource: repo://apps/decodex-gpui/src/agent_usage_estimates.rs
   - id: openwiki-source-32bb36aae256aa57e6e82bd0
     resource: repo://apps/decodex-gpui/src/agent_voice.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
@@ -74,6 +88,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_text_reveal.rs
   - id: openwiki-source-570564020f98df7a4d6d0b61
     resource: repo://apps/decodex-gpui/src/ui_theme.rs
+  - id: openwiki-source-343d35c489d39a7a672412a2
+    resource: repo://apps/decodex-gpui/src/ui_working.rs
   - id: openwiki-source-d6e2f0d0037f3d6ddcd4f6ac
     resource: repo://apps/decodex-gpui/src/voice_conversation_groups.rs
   - id: openwiki-source-651d1fb6c9e49916a916ab51
@@ -86,6 +102,8 @@ sources:
     resource: repo://crates/decodex-protocol/src/desktop_message_delivery.rs
   - id: openwiki-source-dbc533dc306a3f520c4241e0
     resource: repo://crates/decodex-runtime/src/agent.rs
+  - id: openwiki-source-4a97944ff4c701a054e27291
+    resource: repo://crates/decodex-runtime/src/agent/activity.rs
   - id: openwiki-source-64d7588c1af50398568a792e
     resource: repo://crates/decodex-runtime/src/agent/timeline.rs
   - id: openwiki-source-6b78c4fcf18e4d7a81d69679
@@ -101,7 +119,7 @@ sources:
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T18:12:33.127Z
+    at: 2026-10-29T18:53:39.584Z
 ---
 
 

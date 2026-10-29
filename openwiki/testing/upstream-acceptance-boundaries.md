@@ -8,20 +8,30 @@ sources:
     resource: repo://.config/nextest.toml
   - id: openwiki-source-0a61b25348131fe1bb6e1d12
     resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
+  - id: openwiki-source-77ad5024b567271a0f618fd7
+    resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
   - id: openwiki-source-1b7747f8ae67c32e5670817d
     resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
+  - id: openwiki-source-0eea3c2bab20e4a9d8e3d80a
+    resource: repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs
+  - id: openwiki-source-218f7834832fc84c2fbc7cf7
+    resource: repo://apps/decodex-gpui/src/agent_reconnect_queue_tests.rs
   - id: openwiki-source-032278b78f4f6cac0e654ef0
     resource: repo://apps/decodex-gpui/src/native_audio_owner_tests.rs
   - id: openwiki-source-ca95ba5564216bb4898c8392
     resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
   - id: openwiki-source-d1f06f7b22d0c2eec328d95f
     resource: repo://apps/decodex-gpui/src/native_voice_transport.rs
+  - id: openwiki-source-14193a66abfb7d3230f476bf
+    resource: repo://automations/portfolio.toml
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-16e6e7418602542c69565bde
     resource: repo://Cargo.lock
   - id: openwiki-source-f02ae41e2bd15dda85dc86b9
@@ -40,6 +50,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
+  - id: openwiki-source-8d32d49a0bc31600300d9335
+    resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_lookup_tests.rs
   - id: openwiki-source-19796bbb5939eefbc15bb222
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_mcp_socket_tests.rs
   - id: openwiki-source-e5be8be8499e6ccee0cf7ad0
@@ -136,10 +148,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+generated: { by: "codex", at: "2026-10-29T18:53:39.584Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T18:12:33.127Z
+    at: 2026-10-29T18:53:39.584Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -239,6 +251,12 @@ The 25 test assertions passed. One pure layout-state case received a nextest pro
 The selected native source remains `33d306d457a4632b22bebf214e0c25d91f90f6e8`. The CLI, Code Mode helper and `rg` byte digests still match the earlier qualification. The previously generated exact-artifact schema document passed its canonical digest check and contains the nullable model/effort metadata. This work made no runtime migration or provider request. An offscreen native workspace-loading capture shows the cloud mark. Installed interactions, physical display timing, native child-window focus and packaged SwiftUI rendering remain unmeasured. Find covers loaded retained text and explicit earlier pages; shortened output remains incomplete.
 
 The standalone Codex startup-configuration diagnostic capability and its dedicated helper are retired. Historical executions of that control remain evidence at their original source revision and create no current validation requirement. Decodex product/integration diagnostics and normal warning presentation remain supported. The source-review cursor and paused automation are unchanged.
+
+## Conversation-list branch qualification
+
+The list entry is delivered in [PR #2559](https://github.com/acg-box/decodex/pull/2559). The `conversation_list_branch` entry in the [portable evidence index](../../automations/upstream/retained-evidence.json) binds source `5f2fbffac0a5590affd76dcdc3bc73ff83b3cefe` to eight executed GPUI tests with zero unmatched selectors. They check the latest completed turn, its own user input, exact source identity, unmanaged-row refusal, draft preservation, cancellation and the existing explicit native branch confirmation without sending input. Strict GPUI Clippy and nightly formatting passed.
+
+This change adds a Decodex entry and reuses the retained native fork contract within its recorded limits. Relevant upstream protocol and implementation were read; the active-turn rejection test was inspected only in part. No upstream tests or exact-artifact native tests ran in this batch. The runtime selection and source-review cursor did not change. Physical keyboard behavior, app startup, installed-app and live-provider acceptance remain unmeasured. No installation, release or schedule activation occurred.
 
 ## Native history, resources and estimate qualification
 

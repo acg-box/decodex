@@ -12,20 +12,36 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration_tests.rs
   - id: openwiki-source-2a6989c7fa25b9681df71f95
     resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
+  - id: openwiki-source-c76550e85b25876b339f9255
+    resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
+  - id: openwiki-source-77ad5024b567271a0f618fd7
+    resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
   - id: openwiki-source-c6ac7d6b2fdeb458faab2c3a
     resource: repo://apps/decodex-gpui/src/agent_permissions.rs
   - id: openwiki-source-6a1c55b61be8ac251a493046
     resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
+  - id: openwiki-source-b2084dffd07b4229957a0f94
+    resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
+  - id: openwiki-source-2fb9e466c6aafdf4f4950bc1
+    resource: repo://apps/decodex-gpui/src/agent_timeline_find.rs
   - id: openwiki-source-51a4755f3c4ddd78511e5c8e
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
+  - id: openwiki-source-3fa6d6c49e3542409542045b
+    resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
     resource: repo://apps/decodex-gpui/src/session_settings.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
     resource: repo://apps/decodex-gpui/src/settings_components.rs
+  - id: openwiki-source-37be5bb3dc64279420e57b31
+    resource: repo://apps/decodex-gpui/src/settings_native.rs
+  - id: openwiki-source-a16804a567889414868e5d67
+    resource: repo://apps/decodex-gpui/src/settings_surface.rs
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
+  - id: openwiki-source-7dcbb082d2502f1ec4386c39
+    resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-cc0439b23243c3697ba49199
@@ -46,10 +62,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+generated: { by: "codex", at: "2026-10-29T18:53:39.584Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T18:12:33.127Z
+    at: 2026-10-29T18:53:39.584Z
 ---
 
 # OpenWiki quickstart
@@ -83,6 +99,10 @@ Use **Cmd-F** or the conversation header's search control to find loaded convers
 Choose **Nearby history** at a retained message or expanded tool detail to read a bounded same-turn native window. **Related conversations** in Resources uses registered resource identities, archive filtering and native paging. It opens existing local conversations or copies an unmanaged native reference. It does not scan historical uploads. See [history and resource lookup](workflows/conversations-and-recovery.md#read-items-near-a-known-message).
 
 **Cost estimate** in the conversation header and **Conversation estimates** in Menu Bar expose existing provider estimates, with explicit refresh, source-account labels and unknown values. The Menu Bar list covers up to eight recent locally managed conversations, not account-wide spending. See [estimate scope](workflows/models-and-settings.md#conversation-cost-estimates).
+
+## Branch from a list row
+
+Choose **Branch…** on an existing locally managed conversation row to review its latest completed native turn. Confirm **Create new branch** to use the ordinary after-turn branch path. Source drafts stay preserved, and creation sends no input. Unavailable native history and unmanaged rows cannot provide this shortcut. See [the list workflow](workflows/conversations-and-recovery.md#branch-from-the-conversation-list) and [its qualification](testing/upstream-acceptance-boundaries.md#conversation-list-branch-qualification).
 
 ## Persistent attached branches
 
