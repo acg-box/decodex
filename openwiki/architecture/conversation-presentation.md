@@ -165,6 +165,8 @@ Saved edit recovery and history refresh/source controls live in Details. Failed 
 
 HTTP and HTTPS URLs in prose are clickable in messages, question titles, approval explanations, MCP descriptions and feedback. Link ranges preserve the complete destination, including Unicode paths and balanced parentheses. Code spans and blocks stay literal; explicit Markdown links keep their authored destinations. Selecting text does not open a link.
 
+Selectable text shows a hand pointer over an actionable link. Ordinary text, empty space and unsupported destinations keep the text cursor. Hover and click use the current shaped text positions. Each paint recomputes the hover target, so reflow and scrolling do not retain an old link position. Drag selection and copy keep their existing behavior.
+
 The bounded Unicode math renderer supports aligned equations, boxed models, grouped scripts, parenthesized matrices, display annotations and inline zero. Unsupported notation and layouts that exceed the available width retain their TeX source. Conversion is limited to 4,096 input bytes, 16 rows and 256 columns, with a shared parser-depth limit. Copy retains the original source.
 
 ## Generated image attachments

@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "4219b17fe6426e6d8048cd52dbc00d309b2ca23d84d53e8d19adbb8610df92a4",
+    "sha256": "188bc5289c8188190a4fc764b3a3855f9a96372e807ccc6eeb4ca7d294d655f3",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -2090,6 +2090,88 @@
       "earlier_cohort_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b",
       "current_additional_revision": "52c8996d53b0c8443ced6b2c9e952cae50693fd7",
       "reuse": "The prior 18 Rust, two Swift and 14 architecture/gate checks retain their limits. Only related-owner navigation changed afterward; the new UI regression and strict GPUI Clippy qualify that change. Native runtime, protocol, transport and estimate implementations are unchanged."
+    }
+  },
+  "link_hover_pointer": {
+    "manual_item": 47,
+    "contracts": "retained-contracts.json#retained_desktop_feedback.link_hover_pointer",
+    "source_revision": "346209860808f9f35c970421ab66eb8c54b81a32",
+    "main_baseline": {
+      "revision": "4882d70dc078995b39b24a73da33195cb7d7933c",
+      "executed_existing_interaction_tests": 2,
+      "passed": 2,
+      "required_analyzers": "Python, JavaScript/TypeScript and Rust passed at this exact merge head."
+    },
+    "source_sha256": {
+      "apps/decodex-gpui/src/agent_selectable_text.rs": "40d281c13faff0defb991ce494dba9ec115271f22dbca7b47071741f44a8339b",
+      "apps/decodex-gpui/src/agent_text_link_hover_tests.rs": "eb83f3caf921199b8237339a073a9a9d0bd5ac1036991785a13d9830742eac3e",
+      "apps/decodex-gpui/src/agent_text_selection.rs": "921261903bcfbb0ed2d1014cd9ffb08f678f7ca577e6c65f9be5c0ab56fe80f3",
+      "apps/decodex-gpui/src/agent_markdown_selection_tests.rs": "5386170d443bbdcc3f5c5cdfe84dc550ef372d4fc67c73678bccb16c8afab8b0"
+    },
+    "tests_read": [
+      {
+        "entrypoint": "apps/decodex-gpui/src/agent_text_link_hover_tests.rs",
+        "test": "shell::agent_surface::selectable_text::link_hover_tests::link_pointer_matches_actionable_glyphs_and_excludes_whitespace"
+      },
+      {
+        "entrypoint": "apps/decodex-gpui/src/agent_text_link_hover_tests.rs",
+        "test": "shell::agent_surface::selectable_text::link_hover_tests::link_pointer_recomputes_wrapped_targets_after_reflow_and_movement"
+      },
+      {
+        "entrypoint": "apps/decodex-gpui/src/agent_markdown_selection_tests.rs",
+        "test": "shell::agent_surface::markdown::selection_tests::links_still_open_on_click_but_never_during_cross_paragraph_selection"
+      },
+      {
+        "entrypoint": "apps/decodex-gpui/src/agent_markdown_selection_tests.rs",
+        "test": "shell::agent_surface::markdown::selection_tests::bare_urls_open_from_their_visible_text_without_changing_copy"
+      },
+      {
+        "entrypoint": "apps/decodex-gpui/src/agent_markdown_selection_tests.rs",
+        "test": "shell::agent_surface::markdown::selection_tests::one_drag_selects_multiple_paragraphs_in_both_directions"
+      }
+    ],
+    "tests_executed": {
+      "executed": 5,
+      "passed": 5,
+      "unmatched_selectors": [],
+      "binary_id": "decodex-gpui::bin/decodex-gpui",
+      "tests": [
+        "shell::agent_surface::selectable_text::link_hover_tests::link_pointer_matches_actionable_glyphs_and_excludes_whitespace",
+        "shell::agent_surface::selectable_text::link_hover_tests::link_pointer_recomputes_wrapped_targets_after_reflow_and_movement",
+        "shell::agent_surface::markdown::selection_tests::links_still_open_on_click_but_never_during_cross_paragraph_selection",
+        "shell::agent_surface::markdown::selection_tests::bare_urls_open_from_their_visible_text_without_changing_copy",
+        "shell::agent_surface::markdown::selection_tests::one_drag_selects_multiple_paragraphs_in_both_directions"
+      ]
+    },
+    "commands": {
+      "affected_tests": "cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui --all-features -E 'test(link_pointer_) | test(links_still_open_on_click_but_never_during_cross_paragraph_selection) | test(bare_urls_open_from_their_visible_text_without_changing_copy) | test(one_drag_selects_multiple_paragraphs_in_both_directions)' --no-tests=fail",
+      "lint": "cargo +stable clippy --locked -p decodex-gpui --all-features --all-targets -- --no-deps -D clippy::all -D clippy::too_many_lines -D clippy::unwrap_used -D clippy::use_self -D clippy::wildcard_imports -D missing-docs -D unused-crate-dependencies -D warnings",
+      "format": "cargo +nightly fmt --all -- --check"
+    },
+    "upstream_reference": {
+      "commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+      "source_read": [
+        "codex-rs/tui/src/app/link_hover.rs#App::refresh_link_hover"
+      ],
+      "tests_read": [
+        "codex-rs/tui/src/transcript_view/input_tests.rs#hover_links_match_wrapped_click_targets_and_refresh_after_scrolling",
+        "codex-rs/tui/src/tui/link_pointer_tests.rs#hover_transitions_are_deduplicated_and_restore_after_leaving_a_link"
+      ],
+      "tests_executed": 0,
+      "boundary": "The terminal-capture implementation is not a Decodex consumer. GPUI owns this pointer presentation. The existing native baseline, component digests, schema and certified source-review range are unchanged."
+    },
+    "limits": [
+      "The GPUI test platform does not expose its OS cursor. Tests verify the production cursor decision against real shaped layouts and existing GPUI click/selection/copy events.",
+      "Reflow and text-origin movement are tested; no installed scroll-wheel, OS-cursor, overlay or visual acceptance is claimed.",
+      "No Codex runtime tests, cloud fixtures, build preparation, app installation, release or schedule activation."
+    ],
+    "public_source_reference": "https://github.com/acg-box/decodex/commit/346209860808f9f35c970421ab66eb8c54b81a32",
+    "documentation": {
+      "method": "OpenWiki page-job lifecycle",
+      "completed_selected_pages": [
+        "openwiki/architecture/conversation-presentation.md"
+      ],
+      "full_lifecycle": "Incomplete. Unrelated page jobs remain with the existing manual continuation owner."
     }
   }
 }

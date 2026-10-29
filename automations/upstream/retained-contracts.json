@@ -4572,7 +4572,7 @@
     "manual_review_item": 28,
     "behavior": [
       "Read the current source-bound native model catalog, including its explicit default and retirement deadlines. Keep the existing automatic catalog refresh.",
-      "After an explicit retirement deadline, choose the same complete catalog\u2019s current default for new Agent settings and loaded idle Agent recovery. Reuse the existing settings journal, source checks and readback.",
+      "After an explicit retirement deadline, choose the same complete catalog’s current default for new Agent settings and loaded idle Agent recovery. Reuse the existing settings journal, source checks and readback.",
       "Keep an available model and preserve compatible reasoning/service-tier choices. Do not infer retirement from a missing catalog entry, an upgrade suggestion, a quota response or a network error.",
       "Desktop model and effort cycling requires a current native catalog; it does not fall back to a fixed list. Restored unsent drafts are not sent by this change."
     ],
@@ -4900,6 +4900,14 @@
         "apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift#ConversationEstimatesView"
       ],
       "limits": "Estimates can lag provider activity; they are neither a final bill nor an account total or remaining quota. Reads require an available admitted conversation source; inactive sources can remain unknown. No local price table or cross-account sum."
+    },
+    "link_hover_pointer": {
+      "manual_item": 47,
+      "behavior": "Show a pointing-hand cursor only over an existing actionable link in selectable transcript text. Use current shaped glyph hit testing and the same admitted HTTP, HTTPS, native-thread and absolute-file destinations as click handling. Recompute after each paint; preserve ordinary text selection, click admission, copy and paragraph foreground batching.",
+      "source_symbols": [
+        "apps/decodex-gpui/src/agent_selectable_text.rs#TextBlock::render,#TextLayer::prepaint,#TextLayer::paint,#link_cursor,#is_selection_url,#open_selection_link"
+      ],
+      "limits": "GPUI presentation only. No new link scheme, app-server endpoint, runtime setting, native artifact or automatic navigation. Tests cover shaped glyph targets and geometry reflow/movement; no installed OS-cursor acceptance."
     }
   }
 }
