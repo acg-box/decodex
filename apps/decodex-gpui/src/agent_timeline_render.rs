@@ -926,6 +926,17 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 					format!("{:.1}s", ms as f64 / 1_000.)
 				})
 			})
+			.when_some(
+				(!expanded && kind == "commandExecution")
+					.then_some(activity.retained_output_lines)
+					.flatten()
+					.filter(|count| *count > 0),
+				|row, count| {
+					row.child(gpui::div().debug_selector(|| "hidden-output-lines".into()).child(
+						format!("{count} output {}", if count == 1 { "line" } else { "lines" }),
+					))
+				},
+			)
 			.when(detail_key.is_some(), |row| {
 				row.child(
 					gpui::div()

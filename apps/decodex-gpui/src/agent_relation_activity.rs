@@ -438,6 +438,7 @@ mod tests {
 
 		if let AgentTimelineContent::Item { activity, .. } = &mut command.content {
 			*activity = Some(decodex_protocol::AgentActivityDto {
+				retained_output_lines: None,
 				review: None,
 				turn_id: "now".into(),
 				item_id: "cmd".into(),
@@ -598,6 +599,7 @@ mod tests {
 
 		if let AgentTimelineContent::Item { activity, collaboration, .. } = &mut event.content {
 			*activity = Some(decodex_protocol::AgentActivityDto {
+				retained_output_lines: None,
 				review: None,
 				turn_id: "turn".into(),
 				item_id: "spawn".into(),
@@ -660,6 +662,7 @@ mod tests {
 			if let AgentTimelineContent::Item { item_id, activity, .. } = &mut entry.content {
 				*item_id = id.into();
 				*activity = Some(decodex_protocol::AgentActivityDto {
+					retained_output_lines: None,
 					review: None,
 					turn_id: "now".into(),
 					item_id: id.into(),

@@ -38,6 +38,7 @@ impl Render for DetailView {
 			s.detail_row(
 				&work(),
 				&AgentActivityDto {
+					retained_output_lines: None,
 					review: None,
 					turn_id: "turn".into(),
 					item_id: "item".into(),

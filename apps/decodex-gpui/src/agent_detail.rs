@@ -449,6 +449,7 @@ mod tests {
 				app_ui: false,
 				attachments: vec![],
 				activity: Some(AgentActivityDto {
+					retained_output_lines: None,
 					review: None,
 					turn_id: "turn".into(),
 					item_id: "search".into(),
@@ -543,13 +544,28 @@ mod tests {
 
 		let ids = ("agent".to_owned(), "turn".to_owned(), "search".to_owned());
 
-		surface.update(visual, prepare_tool_history);
+		surface.update(visual, |s, cx| {
+			prepare_tool_history(s, cx);
+			for entry in &mut s.timeline.native.entries {
+				if let decodex_protocol::AgentTimelineContent::Item {
+					kind,
+					activity: Some(activity),
+					..
+				} = &mut entry.content
+				{
+					*kind = "commandExecution".into();
+					activity.kind = "commandExecution".into();
+					activity.retained_output_lines = Some(120);
+				}
+			}
+		});
 		visual.update(crate::ui_frame::draw_frame);
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(crate::ui_frame::draw_frame);
 
+		assert!(visual.debug_bounds("hidden-output-lines").is_some());
 		let row = visual.debug_bounds("tool-detail-row").unwrap();
 		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
 
@@ -586,6 +602,7 @@ mod tests {
 
 		visual.update(crate::ui_frame::draw_frame);
 
+		assert!(visual.debug_bounds("hidden-output-lines").is_none());
 		let expanded = visual.debug_bounds("tool-detail-row").unwrap();
 
 		assert!(expanded.size.height > row.size.height);

@@ -290,6 +290,7 @@ impl AgentSurface {
 				weather: Vec::new(),
 				receipt: None,
 				activity: Some(AgentActivityDto {
+					retained_output_lines: None,
 					review: None,
 					turn_id: "capture-turn".into(),
 					item_id: format!("capture-{index}"),
