@@ -76,6 +76,10 @@ The current SQLite schema preserves native input receipts, independent process o
 
 These views preserve unknown coverage and resolution limits. Their retained qualification is in [the acceptance boundary](testing/upstream-acceptance-boundaries.md#selected-read-only-views). Runtime selection, source-review state, installed artifacts and schedules remain separate.
 
+## Find and reconnect
+
+Use **Cmd-F** or the conversation header's search control to find loaded conversation text, including folded activity. **Load earlier and search** extends the existing history window; shortened output remains incomplete. The current match keeps its text revision during refresh and resize. See [Find and saved-send recovery](workflows/conversations-and-recovery.md#find-conversation-text) for keyboard ownership and the live never-dispatched reconnect slot. Ordinary offline drafts and uncertain deliveries are not automatically sent.
+
 ## Persistent attached branches
 
 When reviewing an earlier message, choose **Attached branch after this turn** to create a persistent native branch from its completed-turn prefix. The source history, draft and Goal remain unchanged. The child view starts empty while native inference retains the parent context. Creation requires paginated source history, sends no input and copies no native Goal. Reopen a verified branch through **Agent preferences > Attached branches > Open branch**. See [conversation recovery](workflows/conversations-and-recovery.md#edit-or-branch-at-an-earlier-input) and the [exact-artifact qualification](testing/upstream-acceptance-boundaries.md#persistent-attached-branches).

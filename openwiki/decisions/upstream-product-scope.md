@@ -122,7 +122,7 @@ The default coordination surface uses `work_read` and `work_manage`. Only users 
 
 Permission changes use the selected native conversation's supported profile and reviewer settings. Existing child captures and pending human approvals retain native ownership. Optional private details retain bounded assistant output and terminal metadata without raw reasoning. Exact action associations are unavailable in the selected runtime and remain explicit. This does not select the separate native Guardian V3 experiment.
 
-The current schema and protocol 4.0 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
+The current schema and protocol 4.1 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
 
 The retained-conversation repair reconciles unassigned native Project membership before input and preserves conflicts for inspection. The current schema retains actual native child-input receipts for Work attribution when native configuration permits nested V2 Code Mode. Recovery joins exact evidence without replay. V1 nesting remains supported; V2 keeps its direct-only default. These are repairs to retained integration contracts. Native Project identity and membership and Decodex Project presentation passed in the separate installed qualification. Official desktop saved-Project/sidebar presentation remains unobserved. See the [canonical contract](project-agent-work.md#qualification-and-evidence-limits).
 
@@ -136,7 +136,7 @@ The selected scope includes three views in the existing desktop:
 - **Collaboration history:** Retain exact local question replies, their delivery and receiving-turn outcome, plus independent contribution cycles and explicit owner assessments. A reply or returned contribution does not establish resolution or complete Work. Missing external reply bodies remain unknown.
 - **Actual usage:** Read known whole-turn token deltas and recorded duration for a persistent Agent or retained Work references. Shared Work references, missing counters and unobserved child usage remain explicit. Linked turns can contain other activity; recorded duration is not Work elapsed time and these values are not a bill.
 
-These views are available through local protocol 4.0 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
+These views are available through local protocol 4.1 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
 
 ## Current optional decisions
 
@@ -178,6 +178,24 @@ The user selected **original item 26** with automatic generation, controlled by 
 **Original item 19**, authenticated remote execution, remains deferred in [issue 1693](https://github.com/acg-box/decodex/issues/1693). **Item 21** retains Decodex account management: independent account observations and reset-credit requests use the existing account API client. This decision does not make those operations inherit native `application.network` policy.
 
 **Item 27 is deferred until the final research review.** Do not implement or enable deferred mailbox preemption from this review. The user rejected the proposed schema-size risk indication for **item 30**; its diagnostic gap remains unresolved. Do not add that indication or automatic budget tuning. **Item 29** is selected as a per-server switch in **Settings > Agents > Native defaults**. It edits only an existing user-configured server’s native `startup_readiness`: `catalog` when on, `connection` when off. A valid native cache can satisfy startup; tool execution still needs a live connection. The configuration roundtrip qualifies the setting boundary, not MCP cache performance or installed-app behavior. No global enablement is selected.
+
+## Selected conversation improvements
+
+The current selected desktop scope includes these original review items:
+
+| Item | Retained behavior |
+| --- | --- |
+| 39 | One Decodex cloud identity for work, loading and the welcome entrance, including menu-bar loading. |
+| 42 | A color-only working-text sweep with a static reduced-motion presentation. |
+| 50 | Reconnect the same live, saved, never-dispatched follow-up slot. Changed sources, uncertain delivery, pending requests and compaction keep their existing fences. |
+| 65 | Find in loaded retained conversation text, including folded activity and the current live revision, with explicit earlier-history loading. |
+| 78 | Native child model and effort with distinct resolved-creation, requested-legacy and current-thread provenance. |
+
+**Item 36** is covered by the existing Decodex warning system. Exact unchanged notices stay dismissed until their source changes or recovers; opening Settings does not reset dismissal. This does not select a new native warning viewer or pin controls.
+
+**Items 32, 33, 37, 40, 52, 54, 56 and 81 are excluded.** Codex owns its app-server self-diagnostics. Decodex diagnoses its own product and integration failures. The standalone Codex startup-configuration UI, query and dedicated qualification helper are retired. Diagnostic export and upload capabilities are not selected. Ordinary conversation Markdown export and normal error or warning presentation remain retained.
+
+Other unresolved proposals remain product choices, not daily maintenance debt. An implemented branch operation does not establish a task-list shortcut, and microphone selection does not establish independent output-device or input-channel selection. The [current contracts](../../automations/upstream/retained-contracts.json) define the selected behavior. The [qualification index](../../automations/upstream/retained-evidence.json) separates executed Decodex tests, upstream tests read, unchanged runtime identities and installed-app limits. The automation remains paused until explicit user authorization resumes it.
 
 ## Current integration boundary
 

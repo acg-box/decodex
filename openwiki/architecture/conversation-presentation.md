@@ -99,6 +99,9 @@ sources:
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-28T18:12:33.127Z
 ---
 
 
@@ -123,6 +126,16 @@ The service saves a completed observation with the exact Work, thread and turn i
 ## Loading and retained content
 
 A first conversation read reserves a centered reading surface. Its shape is deliberately neutral: history has not arrived, so the placeholder does not invent message bubbles or text lengths. Compact loading feedback uses a status role and respects reduced motion. Existing content can remain readable during refresh instead of repeatedly replacing the page with a loading state.
+
+The shared work and loading components use the approved Decodex cloud mark. The welcome view uses the same mark for its entrance. Menu-bar account, profile and sign-in loading reuse the packaged status icon through one SwiftUI component. The existing loading delays and retained-content transitions still apply. Working text uses a color-only sweep; reduced motion keeps the mark and text static.
+
+## Find in retained history
+
+Use **Cmd-F** or the conversation header's search control. Find includes text inside folded activity and the retained live reply. It temporarily opens the current matching process, wait or voice group and leaves manual disclosure state unchanged. The current matched native text revision stays readable through live refresh and resize.
+
+**Previous**, **Next** and Enter move between matching records. Escape closes Find. The query owns Enter while it is open, so repeated Enter does not send the message draft. A blue edge and a matching excerpt identify the current record. The count covers records in the loaded history window, not every occurrence in the complete native store.
+
+**Load earlier and search** uses the existing older-history cursor and bounded window. The UI states its loaded-history coverage. Shortened output and unavailable full tool output are not completely searched. Summary-only history does not offer a complete-search claim. See [conversation recovery](../workflows/conversations-and-recovery.md) and `retained_desktop_feedback.find` in the [contract catalog](../../automations/upstream/retained-contracts.json).
 
 ## Conversation layout
 

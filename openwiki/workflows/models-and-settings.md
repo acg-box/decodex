@@ -73,9 +73,6 @@ sources:
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
-verified:
-  - by: openwiki/0.7.2
-    at: 2026-10-28T18:12:33.127Z
 ---
 
 # Model selection and settings ownership

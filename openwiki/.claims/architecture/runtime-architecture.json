@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:e82751dd6007675caca853cd4de9424d9f36a4b1532dd6d59f26ec1ae419643e",
+  "pageVersion": "sha256:b69179d4aaf44c1a5e9ad9c2598b1daee0d9cacd3657c0a99d01b1ea31192b5e",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -33,7 +33,7 @@
           "version": "repo-lines-v1:sha256:e730ee0cb44b1c4ae1c87a6c36d03c6f1331bac286b45cc2e5e5d7748c37d43c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcwYTBkZmUwZjk0YTlmZmQ0MDRkZGEyNGMyZWQ3ZDIyOTA4MTIwNmZmMTE1ZmIxOTE5ZjhlZDNhY2IwMjIzNjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2YzM0ODNhOGY0ZDNhM2Q0YTc3OTMxOTNiYzM1YjI3ZDNiY2ZlMjU0OTI0ZWM2MGE4YjZmM2NlZmQ5NjJmZTQifQ"
         },
         {
-          "resource": "repo://crates/decodex-protocol/src/client.rs#L2561-L2588",
+          "resource": "repo://crates/decodex-protocol/src/client.rs#L2529-L2556",
           "version": "repo-lines-v1:sha256:f9076f56054fb5de44d6c9b0483832b918a24c0b0193ecdb0dbe39c73f00ef75:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUzMDMxNjg5NzQxYmNjM2ZlMmIxYmNiMDFjMDE3ZDNkYTg0YjcyN2JjMzY0ODQzY2RmMjI4ZWI2YWY5MmUwNTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRmYzBjMmJhYThjYjgxMTg0MzAxZjA4OGYwNzFkZWNjNzgwMzgzNTMyNDM4YTVjYTVhNjMwNzIzM2E4N2JkZGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjIxODUxNjFiNGVmZmVlNzE1NGNmNWUxNTUxYTMyZjFmMWY5NWZiYjhkNmZmZjhiODQzMzMyMzVlNzllYmViZmUifQ"
         }
       ]
@@ -57,7 +57,7 @@
           "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L135-L155",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
           "version": "repo-lines-v1:sha256:a6b2eef1867776015de103e94d4bd067aedc8577c70159c8c792ab426e27b791:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2YjU1MTM4Y2EyM2U2ZGFkMjJiNjQ4ZjgyOWNlZGM4MWQyMDNiMTlmMTc2MzRkZjZiZTc2MGY1M2JlNGVmOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNmU0ZjMxZGM3MTM2OTU2NmI1MWNjMWExOTVkNDUwY2RmODU3NWU2ZDdhNzYxYzU2NDJiYTMwMjVkYzM0NzMifQ"
         }
       ]
@@ -198,7 +198,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs",
-          "version": "repo-file-v1:sha256:8c78b64e71823916e54e82dd1036811566e1e370092044ba4230e6da7e426cbd"
+          "version": "repo-file-v1:sha256:5d53fbccfc5c79df9d78f8bd8f243226d5ff9ef770f8d1db1f145c927f3fae7f"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_context_settings.rs",
@@ -247,11 +247,11 @@
           "version": "repo-lines-v1:sha256:42b6c443172646dfc7de54b493b4ff3b76661f322d7db6920ee9bf1048beac9b:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkxY2VhNjY5NzhmMzkyNDUwNWQ5YjI1MzRhZGQ0ODNlYjAxZjIxYWI4MmMxM2NhMDcyMjVlNjNiYjQ1YjM2YWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE3ZTQ5ZjgxZGUzOWM0M2RkMGI1YjFjNTIyZGU2OTIxMzhhYmNmZjMyY2UyYmFlZmU2OTk3YmMxODYzZGRlNWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlMDA2MmM2Y2Y3YzMzNDU1Mjk5ZmYxNDM3MDYzYjY2ZTMxMjJkZjlkZTczNjcwMGY3MmJiNzdlYTQ0YjAyMDMifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L4233-L4264",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L4231-L4262",
           "version": "repo-lines-v1:sha256:344d28a7cc9f8b83a44a1bc43e2b8d03d57313c24e4a427a4a9de6fbd752b1f3:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxYWY4NjY3MjJkNDAxNDk2OWRjNDc4NDRhMTAxMGYzM2ZiOGM0OWYxYzVlNjM0M2ZmMDJmOTkwMDkzOTdlNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM4NzlkZmFmOGJjOWFjNjI1NDgwMGI4ZGIyYzUyNTAzODA2OTRkOTdjZmEzOTc5Mjk2NmY0NTFkM2U2N2UxNzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAzMDRlMzU2ZDI5MjI5YzliNWI0YjhlZDFmZjgwODdjMTFlOTNiZGMyMjE3ODBlYTllNzdiZGRhYWNmYzEyODQifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L5735-L5796",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L5733-L5794",
           "version": "repo-lines-v1:sha256:e336b36da6fda19d56919f3a4ebb7a881d15c8ffc9d22ddeed609ce7aeb7aa32:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM0YzQzOTI2OGQ0OWQxYmM3ZjlkZTNhYmVkNDUzNzE4YjY0OGVmOTVjOTJmMTRmZDg5ODE2NmE4M2I2NTA1YjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEzZmM2OTE2YmQxMzYxZDgwN2MxM2U1Yzk4MDY1YzYxZDZiYmFiMzhjMmQ4MWI0OWE4MzIzNWYyODMyOThhOGEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ0OWVmMzE3MDI4ZmQ2ZDM5MzYwYjIzMGQ0OWI3MjhmYWJhN2VjNjVhNzViYzZjMjc1ZDVjZTc3YjNmYzIzYTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJmMWE2MmE4M2ZlM2UzNjhiMTdlMTVkMTBiNDZlN2ExYzEwMGE0ZTBkYTVjMzM4NWExMmY0NjFhMGM0MmVmMmMifQ"
         }
       ]
@@ -261,11 +261,11 @@
       "statement": "When immediate child cleanup cannot finish, ProcessGroupOwner transfers the child, output pump and cleanup guard to the reaper, and the profile regression covers this handoff during either preflight phase.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L3281-L3307",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L3279-L3305",
           "version": "repo-lines-v1:sha256:299908a14e83570c1e28b6f462df6085b93c90de51238a33c56c7cf091272152:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVjMmY1NDhkNjIzY2U3OTI5ZGUxN2JiOTg3OWViYjNjMWVlNjI4OTUxYjNmZjE0Mzc0ODQ3NmE5NjhiNWM0ZjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQyYWM3NDBkMjQxZTdjNDkyYzJhMTZlNTNhMGYwZTljMDJlMDY3NWJlYmEzZjZkYmFhYjE4YWFiNmRiYjAwNzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJhODI2NTM0ZTM1YTc5OWNjOWNkMTEwMmU0ZjYzNDFlNmEyNTNiMTE5NTMyZTg2MDJmNGUyZjhjMjNmMDdhOGMifQ"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L8196-L8247",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L8194-L8245",
           "version": "repo-lines-v1:sha256:b1b49a5540e8078aef8ad502b52875491b48cfe0871ca7d194cb6cf7a2b61859:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmNzkxZjEyMWZiN2M4MDM3N2I0NjIyM2RiMjM2YjJkMzg1MzRkODhmZTZkYWZmODRiNGZhZGViMTZhYWUxNzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5ODE1NjhiMjIxMDY4NDYyOWFiNTBkOWY1MWE3Mjc2MGM3MzllYzcwNGQ2NTJmZDI5ZTU4N2I3Y2QxZTA5ZDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdiOGI2NjY4MmZiNjgwNmRhY2QwYTJkZGU2ZWJmZDllYjgzZTZhMWQ0ZDdkMzA3OGRlNTg3NmY0YWM0MWU4ZDgifQ"
         }
       ]
@@ -279,7 +279,7 @@
           "version": "repo-lines-v1:sha256:d3a762ea3fa395e01d0024e6adcb575ab10587a29978a7282f5aa40a817d9cfd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxM2U5ODE0M2JiNjI2ZWJmZDFiOGVjZTI3ZDVlNmE5Yzg2YzIxMGQ5ZGFjNTE0YjFjY2YyMTQ0YzUwZGEyNzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzZTIxOTRlM2Y2NjU0MGU5YzE2YjhkMDA2MmYyZGUzNTFkNTNhOTA3MmQ3MzIxYjI2ZTMwMzgzNjU1NDU5YmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwOTNkZjFmNmNiZmVhNDEwM2JkYjAyMGNhMDg2MWFkNjg5NjliMjdlMDViYWY5ZmJkN2RkYmYwNWY2MjBlNGMifQ"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2674-L4161",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2557-L4044",
           "version": "repo-lines-v1:sha256:dca51e28f266f3fd054b394a5451bb61a595544c5b5e6c017bbc9a2bff362c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRlOTQ2ZjE1NzYwNjdhMTM0ZWZiZDhhZTE1MjI2MDI5NzdkMDBlOTFkNjY2YzYyMGE3Yzg0NjdjYjY0ZjE4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhlNmNhNGUyMTVlOTEyMDdlOWZlMDk3ZDUyZGI5M2ViNjVkZTRjOThmZDgwYjE3OTY3MjliM2UxMWQ3MTY5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzIyZjc2YzIxZjc0OTU3ZDkyNWUxOGQzYTY0YWJiNTYwN2ZmMDgwYTc3NDU2MjA4ZThlMDY3ODQ0MDJjMGNhMSJ9"
         }
       ]
@@ -326,15 +326,15 @@
     },
     {
       "id": "claim_d253a751cef64b8e8fd316634981b84e",
-      "statement": "Protocol 4.0 accepts one exact major and minor revision and retains publication-instance receipts for reconnect and idempotent recovery.",
+      "statement": "Protocol 4.1 accepts one exact major and minor revision and retains publication-instance receipts for reconnect and idempotent recovery.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L277-L310",
-          "version": "repo-lines-v1:sha256:182a6f7855881d2eaedb09a050842de6740c458fc4571ffbbc93d29b482b7fbc:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzYzNlOTc4ZDcxMmYwZWNmYzY4M2MzMjcyZWM2YjQ1OGMyNTAxMzZiMjBkODc3MGI5MzhhZmFjM2Y4MDMzNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlMGFmM2ZkNGE0YzNhMWQ0N2M3ZjQ3MGVkMGQ4NmQ5MGQ5ZGUyMTBhNWViMTQ1NWZiZDk0NDgyYTQ3NjViNzIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3ZmM2ZGMwOTQ3OGZlZWU0YTMzODIyOTllNWUxY2NiMzIzMTdiMDc1YjhlZGJlMmI1MmYxNjQ5MTMyNzUxOWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3ODJiYWU1YmJiOTM3MGI1NzViNTI3NDgxZGEwMmUwZTY0NTVmNjY3YTcwMDk4NTFkZDBkOWM5N2IzYzQyNTQifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs",
+          "version": "repo-file-v1:sha256:31ad4259a90a0c22fcac92f1794f648fa74b0d6d329e58f4d995573aae648860"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/application.rs",
-          "version": "repo-file-v1:sha256:3c634ebedbb73e0553f9de62f50325c846fcaa448975695f5a2f5703393faef1"
+          "version": "repo-file-v1:sha256:007ea8a82efe2aa1a6d49c5ef0f79fa7253ffa56e5891f6c113a45e15d58d6c5"
         }
       ]
     },
@@ -529,6 +529,28 @@
         {
           "resource": "repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
           "version": "repo-file-v1:sha256:7355c71bda61ac6fcd55e00c92be805979565b5abfafc63e8ef5db48290145e3"
+        }
+      ]
+    },
+    {
+      "id": "claim_813b87726bcc41fe99da5a8b0f918c5d",
+      "statement": "The standalone Codex startup-configuration diagnostic UI, local query and dedicated qualification helper are retired. Decodex retains product/integration diagnostics, ordinary warnings and conversation Markdown export; this does not qualify an installed protocol 4.0 application against the current service.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/shell_diagnostics.rs",
+          "version": "repo-file-v1:sha256:ff0b564868b973192289cad09f0468b39959e9dbb29b51d0e678be581685aede"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-contracts.json",
+          "version": "repo-file-v1:sha256:0febfcd77d1ef19aec8eb5ab3a460432087d819822d0d89ab983b16ea182b913"
+        },
+        {
+          "resource": "repo://crates/decodex-protocol/src/wire.rs",
+          "version": "repo-file-v1:sha256:444ba957978421f722a29e2f0e9c49b2f1615c55c28e9b3ad5ba695a46bf7b1a"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/application.rs",
+          "version": "repo-file-v1:sha256:007ea8a82efe2aa1a6d49c5ef0f79fa7253ffa56e5891f6c113a45e15d58d6c5"
         }
       ]
     }

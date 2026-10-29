@@ -130,6 +130,12 @@ The original text stays visible and wraps inside the ordinary bubble at the end 
 
 Persist input before dispatch. A lost response can mean that an operation ran. Check the exact saved receipt or native history before changing its state; do not resend an uncertain command. A later observation from another task, account or generation cannot settle it. Native closing-thread recovery resumes the existing conversation and keeps delivery evidence.
 
+### Reconnect a saved send
+
+A follow-up can lose its connection while the desktop saves the explicit Send operation. If dispatch has not started, the same live write-ahead slot waits for reconnection. The conversation shows **Waiting for connection · Nothing sent yet** and **Cancel send**. A fresh ready connection resumes the original command key, input, attachments and execution choices only for the same profile, runtime and conversation/thread. Pending requests and compaction keep the send paused. Later edits remain separate and are not cleared by the older input.
+
+A changed source or target refuses that intent and keeps the draft. Cancel send removes the pending preview and retains current input. An ordinary offline draft is not an accepted send. Application restart, an attempted or uncertain delivery, a steer, a new conversation or a native child input does not gain automatic replay authority from this slot. Use the existing receipt and status workflow for uncertain outcomes.
+
 ## Native archive changes
 
 Codex owns archive state. A confirmed archive removes non-root bound work from the active list and graph, while the service keeps its stored history and original relationships. The Assistant entry remains present and carries its archive state. Active descendants stay visible under their nearest visible ancestor. See [archive synchronization](../architecture/chief-coordination.md#archive-synchronization).
@@ -176,6 +182,12 @@ Unfinished edit entries, Refresh conversation and Show saved local records live 
 Current native timeline readers preserve complete selected items through paging. Large approvals, long tool output, unfinished answers, native image references and public reasoning must not become fabricated complete text. Optional math, Mermaid, weather and rich previews keep source access and literal fallback. A historical opaque media reference does not prove the underlying media is currently available.
 
 Complete Markdown export reads the full native conversation through its history owner. The service transfers bounded chunks tied to the exact source and export token, then releases the temporary document. The desktop can save it to a file or copy it. **Loaded excerpt** is a distinct action and must not be described as a complete export when older history is not loaded.
+
+### Find conversation text
+
+Open **Cmd-F** or the search control in the conversation header. Type literal text, then use **Previous**, **Next**, Enter or Shift-Enter to move between matching loaded records. Escape closes the query. Find owns Enter while open and preserves the message draft.
+
+Find reads the existing timeline, including text in folded activity and the retained live reply. It temporarily reveals the current matching group without changing manual disclosures. The matched native text revision stays readable during refresh and resize. Use **Load earlier and search** to extend the search through the existing older cursor. The count covers the loaded window; shortened output and unavailable full tool output remain incomplete. Summary-only history does not provide a complete-search claim. This adds no search database, history importer or new native execution request.
 
 ## Terminal model errors and item identity
 
