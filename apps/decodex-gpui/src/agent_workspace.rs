@@ -1327,8 +1327,18 @@ impl AgentSurface {
 							.aria_label("Conversation")
 							.child("Conversation"),
 					)
-					.child(self.panel_controls(super::panel_controls::Panel::Conversation, cx)),
+					.child(
+						gpui::div()
+							.flex()
+							.items_center()
+							.gap_2()
+							.child(self.conversation_cost_control(cx))
+							.child(
+								self.panel_controls(super::panel_controls::Panel::Conversation, cx),
+							),
+					),
 			)
+			.children(self.conversation_cost_details(cx))
 			.children(self.conversation_find_bar(cx))
 	}
 

@@ -2420,7 +2420,17 @@ pub enum QueryPayload {
 		/// Exact pending native event.
 		event_id: i64,
 	},
-	/// Read the exact work thread native resource associations.
+	/// Read native items near an exact known message.
+	GetItemContext {
+		/// Exact known native item and directional continuation.
+		request: crate::ItemContextRequest,
+	},
+	/// Find conversations with an existing resource association.
+	GetResourceOwners {
+		/// Exact registered resource and page.
+		request: crate::ResourceOwnersRequest,
+	},
+	/// Read one conversation resource list.
 	GetAgentResources {
 		/// Exact local work identity.
 		work_id: EntityId,
@@ -3217,6 +3227,10 @@ pub enum QueryResultPayload {
 	NativeAgents(NativeAgentsResult),
 	/// Native resource associations for an exact work thread.
 	AgentResources(AgentResourcesResult),
+	/// Exact resource-associated conversations.
+	ResourceOwners(crate::ResourceOwnersResult),
+	/// Nearby visible native items.
+	ItemContext(crate::ItemContextResult),
 	/// Saved Guardian assessments and explicit user approval receipts.
 	PrivateReviewDetails(PrivateReviewDetailsResult),
 	/// One exact selected Work view page.

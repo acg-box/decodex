@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "0febfcd77d1ef19aec8eb5ab3a460432087d819822d0d89ab983b16ea182b913",
+    "sha256": "4219b17fe6426e6d8048cd52dbc00d309b2ca23d84d53e8d19adbb8610df92a4",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -1723,5 +1723,373 @@
       "Native metadata provenance stays distinct; current Thread settings do not prove a per-turn execution model.",
       "No app installation, release, live-provider/audio acceptance or automation activation. No new source-review range was certified."
     ]
+  },
+  "history_resource_cost": {
+    "manual_items": [
+      35,
+      43,
+      67,
+      72
+    ],
+    "contracts": "retained-contracts.json#retained_desktop_feedback",
+    "source_revision": "52c8996d53b0c8443ced6b2c9e952cae50693fd7",
+    "main_baseline": {
+      "revision": "e9b95a6b7c5d45a6bf91f9b07dda1ef1638ef2fa",
+      "required_analyzers": "Python, JavaScript/TypeScript and Rust checks passed at this exact merge head. No historical checks were rerun."
+    },
+    "local_protocol": "4.2; exact major/minor negotiation; service and clients must use matching builds",
+    "source_sha256": {
+      "apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift": "12138f8a2a818d8a851f5bb063fc96c6ffd61c51e201432c846574e1148a1527",
+      "apps/decodex-gpui/menubar/Tests/DecodexAppTests/ConversationEstimatesTests.swift": "9f449de521e5ded3785a739bf7288f94c12ba491ad4363cf2fc2109893205a7c",
+      "apps/decodex-gpui/src/agent_detail.rs": "f3962122e3272e290f72099efb463c7b15115d154f52f50c9d3eced22e7391fb",
+      "apps/decodex-gpui/src/agent_item_context.rs": "d6daf6377eec0de663910d8ce65101a4b993b15818e650cc82e34edce7fbb540",
+      "apps/decodex-gpui/src/agent_resource_owners.rs": "324473dccaf30d28f29017e5b54e87861575a67f6832c33397e7782657e3bc6a",
+      "apps/decodex-gpui/src/agent_timeline_render.rs": "5f60919da8434af81409945a4f970b0967be61e0b151570b9b82f6d67d2132de",
+      "apps/decodex-gpui/src/agent_usage_estimates.rs": "c88a6132ab1cd0ef6fba935985f64d398a26715226168970ea1b9db459665950",
+      "crates/decodex-app-client-ffi/src/conversation_estimates.rs": "8a465b0198f60825b2d902aec9edb7539dd89fe9d7e5edc11c2b40711476be91",
+      "crates/decodex-codex/src/app_server_client/attachment_owners.rs": "bd77c4c777393df81cab80facc85cbb2ac9afbe9d2f07e6ca403a3309435d653",
+      "crates/decodex-codex/src/app_server_client/item_context.rs": "db2657968f07fabcdc6ffcc2458da58f7921a7210ecbf81178925ff597038110",
+      "crates/decodex-codex/src/app_server_client/usage.rs": "c34f16f110cd7f79ae812a29fa23269e1ddee0277b15c3a9567ce7c3fbe946ef",
+      "crates/decodex-protocol/src/item_context.rs": "e3d983c08734834240a2ec46f8bc3fa93d322b7e0c88df7337d4bedf754058d2",
+      "crates/decodex-protocol/src/lib.rs": "0b2f3a485d0b45e3b788c26953d834d3b7fc0f7d365b3ec9d90ba152f89d0b78",
+      "crates/decodex-protocol/src/resource_owners.rs": "ae0ca85ce9a1f9cd1cf61f724f003fc25e821d3ec7f72c0c3fdc00eed9c23873",
+      "crates/decodex-runtime/src/account_launch/agent_process_native_lookup_tests.rs": "96b823e425e2412b547a7e6a04405eb8f3bcc3c9fc9da248e11041d9b7e5a56d",
+      "crates/decodex-runtime/src/agent/activity.rs": "b247a7f0617da9c0dd7d4486d04785b7f6e629cab6bfeb17a14e065f89f0dcfc",
+      "crates/decodex-runtime/src/agent_item_context.rs": "8488c009fd1f5514aab00d2ab8fe3df5ea6125ebe188e329bc9c7cca24d91bfe",
+      "crates/decodex-runtime/src/agent_resources.rs": "d5b4cb85eed4a0fdc72481da2759ac9c9fcb06e51f28fd1574ea2dd7f0b5ea19",
+      "crates/decodex-runtime/src/agent_usage_estimate.rs": "f99986eb43d94b998652fb65b5d3365c09d26238621c9d7cda65725decf77d2c"
+    },
+    "executed_tests": [
+      {
+        "kind": "Decodex native adapter and GPUI regressions",
+        "executed": 15,
+        "passed": 15,
+        "unmatched_selectors": [],
+        "tests": [
+          {
+            "binary_id": "decodex-codex",
+            "test": "app_server_client::usage::tests::thread_usage_rejects_negative_and_out_of_range_estimates",
+            "entrypoint": "crates/decodex-codex/src/app_server_client/usage.rs"
+          },
+          {
+            "binary_id": "decodex-codex",
+            "test": "app_server_client::usage::tests::native_thread_usage_keeps_missing_null_and_failure_distinct",
+            "entrypoint": "crates/decodex-codex/src/app_server_client/usage.rs"
+          },
+          {
+            "binary_id": "decodex-codex",
+            "test": "app_server_client::usage::tests::native_thread_usage_retains_precision_unknowns_and_exact_identity",
+            "entrypoint": "crates/decodex-codex/src/app_server_client/usage.rs"
+          },
+          {
+            "binary_id": "decodex-codex",
+            "test": "app_server_client::attachment_owners::tests::reverse_lookup_preserves_identity_archive_filter_and_opaque_page",
+            "entrypoint": "crates/decodex-codex/src/app_server_client/attachment_owners.rs"
+          },
+          {
+            "binary_id": "decodex-codex",
+            "test": "app_server_client::item_context::tests::known_item_reads_exclusive_neighbors_and_keeps_native_cursors",
+            "entrypoint": "crates/decodex-codex/src/app_server_client/item_context.rs"
+          },
+          {
+            "binary_id": "decodex-runtime",
+            "test": "agent::activity::tests::command_disclosure_counts_only_native_retained_output",
+            "entrypoint": "crates/decodex-runtime/src/agent/activity.rs"
+          },
+          {
+            "binary_id": "decodex-runtime",
+            "test": "agent_usage_estimate::tests::task_usage_discards_reply_after_account_revision_process_or_thread_changes",
+            "entrypoint": "crates/decodex-runtime/src/agent_usage_estimate.rs"
+          },
+          {
+            "binary_id": "decodex-gpui::bin/decodex-gpui",
+            "test": "shell::agent_surface::usage_estimates::tests::task_estimates_keep_micros_exact_and_absence_distinct_from_zero",
+            "entrypoint": "apps/decodex-gpui/src/agent_usage_estimates.rs"
+          },
+          {
+            "binary_id": "decodex-gpui::bin/decodex-gpui",
+            "test": "shell::agent_surface::usage_estimates::tests::estimates_discard_changed_sources_and_late_reopened_requests",
+            "entrypoint": "apps/decodex-gpui/src/agent_usage_estimates.rs"
+          },
+          {
+            "binary_id": "decodex-gpui::bin/decodex-gpui",
+            "test": "shell::agent_surface::usage_estimates::tests::unrelated_refresh_does_not_strand_an_estimate_read",
+            "entrypoint": "apps/decodex-gpui/src/agent_usage_estimates.rs"
+          },
+          {
+            "binary_id": "decodex-gpui::bin/decodex-gpui",
+            "test": "shell::agent_surface::usage_estimates::tests::conversation_cost_toggle_keeps_estimate_until_its_source_changes",
+            "entrypoint": "apps/decodex-gpui/src/agent_usage_estimates.rs"
+          },
+          {
+            "binary_id": "decodex-gpui::bin/decodex-gpui",
+            "test": "shell::agent_surface::resource_owners::tests::related_conversations_keep_filter_cursor_and_reject_a_changed_source",
+            "entrypoint": "apps/decodex-gpui/src/agent_resource_owners.rs"
+          },
+          {
+            "binary_id": "decodex-gpui::bin/decodex-gpui",
+            "test": "shell::agent_surface::item_context::tests::nearby_history_query_keeps_identity_and_discards_a_changed_source",
+            "entrypoint": "apps/decodex-gpui/src/agent_item_context.rs"
+          },
+          {
+            "binary_id": "decodex-gpui::bin/decodex-gpui",
+            "test": "shell::agent_surface::usage_estimates::tests::task_usage_estimate_is_explicit_and_clears_when_task_changes",
+            "entrypoint": "apps/decodex-gpui/src/agent_usage_estimates.rs"
+          },
+          {
+            "binary_id": "decodex-gpui::bin/decodex-gpui",
+            "test": "shell::agent_surface::detail::tests::expanded_tool_stays_inside_transcript_and_survives_background_refresh",
+            "entrypoint": "apps/decodex-gpui/src/agent_detail.rs"
+          }
+        ],
+        "command": [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "-p",
+          "decodex-gpui",
+          "-p",
+          "decodex-runtime",
+          "-p",
+          "decodex-codex",
+          "-p",
+          "decodex-protocol",
+          "-p",
+          "decodex-app-client-ffi",
+          "-E",
+          "test(conversation_cost_toggle_keeps_estimate_until_its_source_changes) | test(expanded_tool_stays_inside_transcript_and_survives_background_refresh) | test(command_disclosure_counts_only_native_retained_output) | test(known_item_reads_exclusive_neighbors_and_keeps_native_cursors) | test(reverse_lookup_preserves_identity_archive_filter_and_opaque_page) | test(thread_usage_) | test(task_usage_) | test(task_estimates_keep_micros_exact_and_absence_distinct_from_zero) | test(estimates_discard_changed_sources_and_late_reopened_requests) | test(unrelated_refresh_does_not_strand_an_estimate_read) | test(nearby_history_query_keeps_identity_and_discards_a_changed_source) | test(related_conversations_keep_filter_cursor_and_reject_a_changed_source)"
+        ],
+        "code_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b"
+      },
+      {
+        "kind": "GPUI child-thread action",
+        "executed": 1,
+        "passed": 1,
+        "unmatched_selectors": [],
+        "tests": [
+          {
+            "binary_id": "decodex-gpui::bin/decodex-gpui",
+            "test": "shell::agent_surface::item_context::tests::nearby_history_action_reads_the_selected_native_child",
+            "entrypoint": "apps/decodex-gpui/src/agent_item_context.rs"
+          }
+        ],
+        "command": [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "-p",
+          "decodex-gpui",
+          "-E",
+          "test(nearby_history_action_reads_the_selected_native_child)"
+        ],
+        "code_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b"
+      },
+      {
+        "kind": "local protocol negotiation",
+        "executed": 1,
+        "passed": 1,
+        "unmatched_selectors": [],
+        "tests": [
+          {
+            "binary_id": "decodex-protocol",
+            "test": "tests::negotiation_accepts_only_the_current_major_and_minor"
+          }
+        ],
+        "command": [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "-p",
+          "decodex-protocol",
+          "-E",
+          "test(negotiation_accepts_only_the_current_major_and_minor)"
+        ],
+        "code_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b"
+      },
+      {
+        "kind": "exact selected artifact integration",
+        "executed": 1,
+        "passed": 1,
+        "unmatched_selectors": [],
+        "tests": [
+          {
+            "binary_id": "decodex-runtime",
+            "test": "account_launch::agent_process::native_tests::lookup::qualified_artifact_reads_item_anchors_and_registered_resource_owners",
+            "entrypoint": "crates/decodex-runtime/src/account_launch/agent_process_native_lookup_tests.rs"
+          }
+        ],
+        "command": [
+          "cargo",
+          "+stable",
+          "test",
+          "--locked",
+          "-p",
+          "decodex-runtime",
+          "--lib",
+          "account_launch::agent_process::native_tests::lookup::qualified_artifact_reads_item_anchors_and_registered_resource_owners",
+          "--",
+          "--ignored",
+          "--exact"
+        ],
+        "environment": [
+          "DECODEX_TEST_CODEX_BINARY=<explicit prepared CLI>"
+        ],
+        "fixture": "System-temporary private native store and two synthetic Responses turns. Lookups add no model requests; test retains reusable fixture implementation.",
+        "code_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b"
+      },
+      {
+        "kind": "Menu Bar bridge and amount presentation",
+        "executed": 2,
+        "passed": 2,
+        "unmatched_selectors": [],
+        "entrypoint": "apps/decodex-gpui/menubar/Tests/DecodexAppTests/ConversationEstimatesTests.swift",
+        "tests": [
+          "ConversationEstimatesTests.testUnknownCostAndReportedZeroRemainDifferent",
+          "ConversationEstimatesTests.testEstimateReadUsesTheExistingPinnedNativeAuthority"
+        ],
+        "command": [
+          "swift",
+          "test",
+          "--package-path",
+          "apps/decodex-gpui/menubar",
+          "--filter",
+          "ConversationEstimatesTests"
+        ],
+        "code_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b"
+      },
+      {
+        "kind": "existing architecture and gate contracts",
+        "executed": 14,
+        "passed": 14,
+        "unmatched_selectors": [],
+        "entrypoints": [
+          "tests/scripts/test_vnext_architecture.py",
+          "tests/scripts/test_gate_contract.py"
+        ],
+        "command": [
+          "python3",
+          "-m",
+          "unittest",
+          "tests/scripts/test_vnext_architecture.py",
+          "tests/scripts/test_gate_contract.py"
+        ],
+        "code_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b"
+      },
+      {
+        "kind": "Current resource-owner navigation",
+        "executed": 1,
+        "passed": 1,
+        "unmatched_selectors": [],
+        "code_revision": "52c8996d53b0c8443ced6b2c9e952cae50693fd7",
+        "tests": [
+          {
+            "binary_id": "decodex-gpui::bin/decodex-gpui",
+            "test": "shell::agent_surface::resource_owners::tests::related_navigation_requires_a_current_local_thread",
+            "entrypoint": "apps/decodex-gpui/src/agent_resource_owners.rs"
+          }
+        ],
+        "command": [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "-p",
+          "decodex-gpui",
+          "-E",
+          "test(related_navigation_requires_a_current_local_thread)"
+        ],
+        "before_after": "The added GPUI regression failed against the original navigation row, then passed after requiring an exact current local thread. It covers an available destination, a hidden archived destination and a replaced binding, including exact reference copy."
+      }
+    ],
+    "static_checks": {
+      "strict_clippy": "passed for five affected packages, all features and targets; repository deny flags",
+      "format": "cargo +nightly fmt --all --check passed",
+      "whitespace": "git diff --check passed",
+      "menu_bar_build": "swift build and focused test build passed",
+      "additional_affected_clippy": "decodex-gpui all features/targets passed at the navigation repair revision; other four package implementations are unchanged."
+    },
+    "selected_runtime": {
+      "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+      "components": [
+        {
+          "path": "CodexCLI.app/Contents/MacOS/codex",
+          "sha256": "cb933d4981df419760215afba381372b400d0906bd3c2bc5d29186b200740986",
+          "bytes": 263862032
+        },
+        {
+          "path": "bin/codex-code-mode-host",
+          "sha256": "aed64fd191c96a7b9aefe581b01b3f02a28f6938958667424a457c59309614bd",
+          "bytes": 68979184
+        },
+        {
+          "path": "codex-path/rg",
+          "sha256": "8c8aef5fb93e91174cc49abd7847eee15a8996d336ac29147ba66f8b87134cf4",
+          "bytes": 4009552
+        }
+      ],
+      "schema_canonical_sha256": "2b5514c533e3f1cee7df56d2df718bb275604b37f376840b010803a02b1ebfe5",
+      "schema_matches_retained_bundle": true,
+      "runtime_migration": false,
+      "preparation_command": [
+        "cargo",
+        "+stable",
+        "make",
+        "prepare-codex"
+      ],
+      "schema_fingerprint_sha256": "86c27115a28bf905f4c25ee204b218b2ba9598ef664787efddd30e2d0c20f2d9",
+      "qualification_reused": "qualification.json; component digests read back and schema regenerated for this batch. This is the retained artifact, not a reconstructed replacement."
+    },
+    "upstream_tests_read_not_executed": [
+      {
+        "revision": "de9e78e3e7caed0fdd75d20ae617faa646dfef3c",
+        "entrypoint": "codex-rs/thread-store/src/local/thread_history/read_tests.rs",
+        "symbol": "item_anchors_page_exclusively_while_the_turn_grows"
+      },
+      {
+        "revision": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+        "entrypoint": "codex-rs/app-server/tests/suite/v2/thread_attachments.rs",
+        "symbol": "thread_attachments_support_unloaded_listing_and_idempotent_attachment"
+      },
+      {
+        "revision": "e75b6b1e0c87b13b36ff552d6201755107553cce",
+        "entrypoint": "codex-rs/tui/src/transcript_view_tests.rs",
+        "symbol": "terminal_output_disclosure_counts_only_revealable_lines"
+      },
+      {
+        "revision": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+        "entrypoint": "codex-rs/app-server/tests/suite/v2/account_thread_usage.rs",
+        "symbol": "account_thread_usage_uses_active_workspace_and_canonical_thread_ids"
+      }
+    ],
+    "delivery_commits": [
+      "https://github.com/acg-box/decodex/commit/5a8e15775463b95ea07e4de92790d0cc1e2ff9b5",
+      "https://github.com/acg-box/decodex/commit/05c955ac426073b4b7a88cc808d531192d1bc977",
+      "https://github.com/acg-box/decodex/commit/0a89f75416c21052308e19d678035a63ac30629c",
+      "https://github.com/acg-box/decodex/commit/8ad568916453d30304d5c891b7d79b531b4ecd9b",
+      "https://github.com/acg-box/decodex/commit/52c8996d53b0c8443ced6b2c9e952cae50693fd7"
+    ],
+    "limits": [
+      "No source cursor advancement or runtime migration. Automation remains paused.",
+      "Only the selected macOS arm64 private-stdio artifact and named synthetic or GPUI/Swift fixtures are qualified. No upstream suites executed.",
+      "No installed-app, live account/provider, historical upload scanning, cross-store discovery, final-bill accuracy or Menu Bar packaged UI acceptance.",
+      "History windows retain native turn and item identities; selected message text may be shortened by the existing projection and capacity limit.",
+      "Menu Bar reads at most eight recent locally managed conversations and does not imply complete account usage."
+    ],
+    "documentation": {
+      "scope": "The nine directly related workflow, presentation, scope, acceptance, protocol and entrypoint pages use OpenWiki page jobs.",
+      "lifecycle_limit": "Unrelated stale page jobs remain with the existing Wiki maintenance owner. Selected page submissions do not establish whole-run finalization."
+    },
+    "validation_source_limits": {
+      "earlier_cohort_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b",
+      "current_additional_revision": "52c8996d53b0c8443ced6b2c9e952cae50693fd7",
+      "reuse": "The prior 18 Rust, two Swift and 14 architecture/gate checks retain their limits. Only related-owner navigation changed afterward; the new UI regression and strict GPUI Clippy qualify that change. Native runtime, protocol, transport and estimate implementations are unchanged."
+    }
   }
 }

@@ -6,6 +6,7 @@ mod account_nudge;
 mod app_link_settings;
 mod app_tool_exposure;
 mod archive;
+mod attachment_owners;
 mod attachments;
 mod context_preferences;
 mod dispatch_refusal;
@@ -17,6 +18,7 @@ mod history_summary;
 mod hooks;
 mod initialize;
 mod integrations;
+mod item_context;
 mod live_reviews;
 mod live_settings;
 mod memory;
@@ -56,6 +58,7 @@ pub use self::{
 		AppToolExposureSettings, AppToolExposureWrite, is_app_tool_exposure_write,
 	},
 	archive::ThreadArchiveState,
+	attachment_owners::{ThreadAttachmentOwner, ThreadAttachmentOwnerPage},
 	attachments::{ThreadAttachment, ThreadAttachmentAddOutcome, ThreadAttachmentAddResult},
 	context_preferences::{CONTEXT_FEATURES, NativeContextSettings, is_context_preference_write},
 	dispatch_refusal::{NativeDispatchRefusal, classify_dispatch_refusal},

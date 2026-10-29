@@ -73,6 +73,9 @@ sources:
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-28T18:12:33.127Z
 ---
 
 # Model selection and settings ownership
@@ -166,6 +169,14 @@ The view preserves the returned summary text. **Copy summary** copies it only af
 Only the native read method is admitted through the retained bridge. This view does not write memory, generate a summary, change feature configuration or add distillation, retention or cleanup policy. The exact-artifact fixture checks native versions and empty states, including an unstarted thread, with zero model requests. The UI regression checks original copy text, draft preservation and source invalidation. See [Selected read-only views](../testing/upstream-acceptance-boundaries.md#selected-read-only-views) for the exact artifact and unmeasured installed-app limits.
 
 **Actual usage** in Agent preferences and Work details reads retained native turn receipts. It reports known token deltas and native duration with source coverage. Work totals include only exactly linked, unshared turns; missing child/history evidence remains unknown. These totals do not establish billing, complete Work cost or elapsed time. The view adds no execution or automatic allocation policy.
+
+## Conversation cost estimates
+
+Use **Cost estimate** in the conversation header to read the existing native provider estimate. The compact amount shows approximate USD when reported, otherwise credits. Open the details for the source account, observation time and **Refresh estimate**. Closing and reopening cached details does not issue another read. A changed conversation or runtime source discards the old observation.
+
+The Menu Bar account surface has **Conversation estimates** and **Refresh estimates**. Opening it reads up to eight recent locally managed native conversations with available sources. Each reported row retains its source-account label. Email visibility follows the existing privacy preference. The view is a recent-conversation list, not an account total, and unavailable conversations stay unavailable.
+
+Native estimates can lag activity. A missing USD value is not zero; reported zero stays zero. No local model price table, incomplete account sum, final-bill promise or quota calculation is added. The main view and Menu Bar reuse the existing service usage path. See [the retained qualification](../../automations/upstream/retained-evidence.json) for the `history_resource_cost` entry, named checks and installed-app limits.
 
 ## Native launch defaults
 

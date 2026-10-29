@@ -34,6 +34,7 @@ pub(super) struct ActivityDetailState {
 
 impl AgentSurface {
 	pub(super) fn clear_activity_detail(&mut self) {
+		self.reset_item_context();
 		self.activity_detail.revision += 1;
 		self.activity_detail.value = None;
 		self.activity_detail.closing = None;
@@ -90,6 +91,7 @@ impl AgentSurface {
 			return row.into_any_element();
 		};
 		let expanded = self.activity_detail.value.as_ref().is_some_and(|(id, _)| id == &key);
+		let context_ids = ids.clone();
 		let click = ids.clone();
 		let result = self
 			.activity_detail
@@ -182,6 +184,7 @@ impl AgentSurface {
 					.child(ui_loading::content(format!("detail-{key}"), result.is_some(), body))
 					.children(creation)
 					.children(agents)
+					.child(self.item_context_panel(&context_ids, cx))
 					.child(metadata_toggle)
 					.child(ui_motion::disclosure(
 						SharedString::from(format!("tool-reference-body-{key}")),
@@ -449,6 +452,7 @@ mod tests {
 				app_ui: false,
 				attachments: vec![],
 				activity: Some(AgentActivityDto {
+					retained_output_lines: None,
 					review: None,
 					turn_id: "turn".into(),
 					item_id: "search".into(),
@@ -543,13 +547,28 @@ mod tests {
 
 		let ids = ("agent".to_owned(), "turn".to_owned(), "search".to_owned());
 
-		surface.update(visual, prepare_tool_history);
+		surface.update(visual, |s, cx| {
+			prepare_tool_history(s, cx);
+			for entry in &mut s.timeline.native.entries {
+				if let decodex_protocol::AgentTimelineContent::Item {
+					kind,
+					activity: Some(activity),
+					..
+				} = &mut entry.content
+				{
+					*kind = "commandExecution".into();
+					activity.kind = "commandExecution".into();
+					activity.retained_output_lines = Some(120);
+				}
+			}
+		});
 		visual.update(crate::ui_frame::draw_frame);
 
 		thread::sleep(std::time::Duration::from_millis(240));
 
 		visual.update(crate::ui_frame::draw_frame);
 
+		assert!(visual.debug_bounds("hidden-output-lines").is_some());
 		let row = visual.debug_bounds("tool-detail-row").unwrap();
 		let transcript = visual.debug_bounds("workspace-transcript").unwrap();
 
@@ -586,6 +605,7 @@ mod tests {
 
 		visual.update(crate::ui_frame::draw_frame);
 
+		assert!(visual.debug_bounds("hidden-output-lines").is_none());
 		let expanded = visual.debug_bounds("tool-detail-row").unwrap();
 
 		assert!(expanded.size.height > row.size.height);

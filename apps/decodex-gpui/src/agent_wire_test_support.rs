@@ -89,3 +89,19 @@ pub(super) async fn accept(listener: &tokio::net::UnixListener) -> WebSocketStre
 
 	socket
 }
+
+/// Reply to one feature query and complete its ordinary one-shot close.
+pub(super) async fn answer_query(
+	socket: &mut WebSocketStream<UnixStream>,
+	query_id: decodex_protocol::QueryId,
+	payload: decodex_protocol::QueryResultPayload,
+) {
+	let response = ServerMessage::QueryResult(decodex_protocol::QueryResultEnvelope {
+		version: CURRENT_VERSION,
+		server_id: ServerId::new(SERVER).unwrap(),
+		query_id,
+		payload,
+	});
+	socket.send(Message::Text(serde_json::to_string(&response).unwrap().into())).await.unwrap();
+	let _ = socket.next().await;
+}

@@ -5,6 +5,7 @@
 //! is a short-lived protocol exchange; Swift never receives credential bytes
 //! or a credential-file path.
 
+mod conversation_estimates;
 #[cfg(target_os = "macos")] mod reset_card_journal;
 
 use std::{
@@ -82,6 +83,9 @@ enum Request {
 	GetResetCards {
 		schema: String,
 		account_id: String,
+	},
+	GetConversationEstimates {
+		schema: String,
 	},
 	GetAccountProfile {
 		schema: String,
@@ -191,6 +195,7 @@ impl Request {
 		match self {
 			Self::ListAccounts { .. } => "list_accounts",
 			Self::GetResetCards { .. } => "get_reset_cards",
+			Self::GetConversationEstimates { .. } => "get_conversation_estimates",
 			Self::GetAccountProfile { .. } => "get_account_profile",
 			Self::GetCodexAuthProjection { .. } => "get_codex_auth_projection",
 			Self::WaitForAccountObservation { .. } => "wait_for_account_observation",
@@ -216,6 +221,7 @@ impl Request {
 		match self {
 			Self::ListAccounts { schema }
 			| Self::GetResetCards { schema, .. }
+			| Self::GetConversationEstimates { schema }
 			| Self::GetAccountProfile { schema, .. }
 			| Self::GetCodexAuthProjection { schema }
 			| Self::WaitForAccountObservation { schema, .. }
@@ -857,6 +863,7 @@ async fn execute_request(
 	match request {
 		Request::ListAccounts { .. } => list_accounts(profile).await,
 		Request::GetResetCards { account_id, .. } => get_reset_cards(profile, account_id).await,
+		Request::GetConversationEstimates { .. } => conversation_estimates::read(profile).await,
 		Request::GetAccountProfile { account_id, include_email, .. } =>
 			get_account_profile(profile, account_id, include_email).await,
 		Request::GetCodexAuthProjection { .. } => get_codex_auth_projection(profile).await,

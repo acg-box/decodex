@@ -25,6 +25,7 @@ use decodex_protocol::AgentResourcesResult;
 
 impl AgentSurface {
 	pub(super) fn reset_resources(&mut self) {
+		self.reset_resource_owners();
 		let opened = self.resources.take().is_some();
 
 		self.resources_task = None;
@@ -95,6 +96,7 @@ impl AgentSurface {
 					}
 
 					for resource in resources {
+						list = list.child(self.resource_owner_rows(work, resource, cx));
 						let owner = work.to_owned();
 						let kind = resource.attachment_type.clone();
 						let key = resource.identity_key.clone();

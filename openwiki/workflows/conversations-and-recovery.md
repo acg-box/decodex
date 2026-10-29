@@ -189,6 +189,20 @@ Open **Cmd-F** or the search control in the conversation header. Type literal te
 
 Find reads the existing timeline, including text in folded activity and the retained live reply. It temporarily reveals the current matching group without changing manual disclosures. The matched native text revision stays readable during refresh and resize. Use **Load earlier and search** to extend the search through the existing older cursor. The count covers the loaded window; shortened output and unavailable full tool output remain incomplete. Summary-only history does not provide a complete-search claim. This adds no search database, history importer or new native execution request.
 
+### Read items near a known message
+
+Choose **Nearby history** under a retained message or in expanded tool details. The first read includes that exact native item and up to three earlier and three later items in the same turn. **Earlier items** and **Later items** use native continuation cursors. **Close nearby history** closes the view. A selected native child uses its own thread, rather than the parent thread.
+
+This bounded text view uses the existing native history owner. It does not start inference or replace Find, ordinary history paging or complete export. Shortened text and unavailable source data remain explicit. It does not search across turns or reconstruct missing history.
+
+### Find conversations for a registered resource
+
+In the existing Resources panel, choose **Related conversations** for a resource. The service queries the native store with that resource's exact existing type and identity key. Use **All**, **Current** or **Archived** and **Next conversations** to read the native result pages.
+
+**Open conversation** navigates only to an exact current local thread. For a hidden archived conversation, a changed binding or an unmanaged owner, **Copy conversation reference** copies the native identity. This lookup does not adopt that conversation. Account labels use retained local bindings; a missing binding stays unknown. Current account processes share one native store, so the catalog query does not need a separate query for every login.
+
+Only registered native associations are searched. Earlier uploads, PDFs and matching filenames do not create new associations. The lookup adds no file scan, retrospective index, association write or deletion authority.
+
 ## Terminal model errors and item identity
 
 A native `modelNotFound` result is terminal. Its provider message and typed classification remain available in live results, stored history and a cold read; Decodex does not turn it into a capacity retry. Capacity recovery requires its own exact failed-turn evidence. A changed model or later user request is a separate action.

@@ -117,6 +117,10 @@ Interleaved user input remains in source order. A native turn can contain severa
 
 Response metadata stays compact at the end of the answer: duration and abbreviated input/output amounts. Hover reveals grouped details in a window-anchored overlay. It does not insert a large block into the transcript. Copy controls are separate actions, not part of the statistics disclosure.
 
+A collapsed command row shows the number of native-retained output lines when that count is available. Opening the output removes the count label. The count excludes command text and discarded output; it does not claim terminal wrapping or recovery of truncated bytes.
+
+The conversation header provides **Cost estimate**. On request, it shows reported approximate USD or, when USD is absent, reported credits. Open its details to inspect the source and refresh the estimate. Missing data stays unavailable. See [usage estimates](../workflows/models-and-settings.md#conversation-cost-estimates) for the Menu Bar view and coverage limits.
+
 ### Observed turn activity
 
 The response details can show observed model output, context compaction, tool activity, automatic review and blocking user requests. The native transport records the start and end of these activities with a monotonic clock. It combines overlapping intervals within each category. Categories can overlap each other, so their values do not add up to the turn duration. Model output is the visible output or reasoning item lifetime; it is not the full inference time.

@@ -4572,7 +4572,7 @@
     "manual_review_item": 28,
     "behavior": [
       "Read the current source-bound native model catalog, including its explicit default and retirement deadlines. Keep the existing automatic catalog refresh.",
-      "After an explicit retirement deadline, choose the same complete catalog’s current default for new Agent settings and loaded idle Agent recovery. Reuse the existing settings journal, source checks and readback.",
+      "After an explicit retirement deadline, choose the same complete catalog\u2019s current default for new Agent settings and loaded idle Agent recovery. Reuse the existing settings journal, source checks and readback.",
       "Keep an available model and preserve compatible reasoning/service-tier choices. Do not infer retirement from a missing catalog entry, an upgrade suggestion, a quota response or a network error.",
       "Desktop model and effort cycling requires a current native catalog; it does not fall back to a fixed list. Restored unsent drafts are not sent by this change."
     ],
@@ -4858,6 +4858,48 @@
       "source_symbols": [
         "apps/decodex-gpui/src/shell_status.rs#Notice::key,#Shell::notifications"
       ]
+    },
+    "nearby_history": {
+      "manual_item": 35,
+      "behavior": "Read a known native message and up to three items on either side within its exact turn. Continue earlier or later through native opaque cursors. Ordinary history, Find and execution ownership stay native.",
+      "source_symbols": [
+        "apps/decodex-gpui/src/agent_item_context.rs#AgentSurface::item_context_panel",
+        "apps/decodex-gpui/src/agent_timeline_render.rs#AgentSurface::native_item_content",
+        "crates/decodex-codex/src/app_server_client/item_context.rs#AppServerClient::thread_item_context",
+        "crates/decodex-runtime/src/agent_item_context.rs#read"
+      ],
+      "limits": "Retained text window in the existing conversation/detail surface; no whole-conversation or cross-turn search. Child views use their exact native thread. Missing support stays explicit."
+    },
+    "hidden_output_lines": {
+      "manual_item": 43,
+      "behavior": "Show the count of native-retained command output lines while its disclosure is closed. Remove the label when opened. Do not count command text or discarded output.",
+      "source_symbols": [
+        "crates/decodex-runtime/src/agent/activity.rs#project",
+        "apps/decodex-gpui/src/agent_timeline_render.rs#AgentSurface::native_activity_content"
+      ],
+      "limits": "Available only when native aggregatedOutput is retained and safe to display; no reconstruction of discarded output or terminal width wrapping."
+    },
+    "related_resources": {
+      "manual_item": 67,
+      "behavior": "Find persisted native associations by the existing exact resource type and identity key, with native archive filtering and paging. Open only exact current local conversation bindings; copy native references for other owners.",
+      "source_symbols": [
+        "crates/decodex-codex/src/app_server_client/attachment_owners.rs#AppServerClient::thread_attachment_owners",
+        "crates/decodex-runtime/src/agent_resources.rs#owners",
+        "apps/decodex-gpui/src/agent_resource_owners.rs#AgentSurface::resource_owner_rows",
+        "crates/decodex-runtime/src/account_launch/process.rs#AccountBinding::shared_home"
+      ],
+      "limits": "Current account processes share one native store, so one admitted catalog query covers it. Account labels come only from retained local bindings and can be unknown. No upload/PDF scan, file equivalence, retrospective association index, adoption of unmanaged threads, cross-store discovery or cleanup authorization. Archived or replaced owners absent from the current local snapshot provide a native reference instead of an unavailable navigation action."
+    },
+    "cost_estimates": {
+      "manual_item": 72,
+      "behavior": "Show the existing native provider estimate in the conversation header, with details and explicit refresh. Menu Bar shows estimates for up to eight recent locally managed native conversations on request, with source account labels. Prefer reported USD, otherwise reported credits; keep missing data distinct from zero.",
+      "source_symbols": [
+        "apps/decodex-gpui/src/agent_usage_estimates.rs#AgentSurface::conversation_cost_control",
+        "apps/decodex-gpui/src/agent_usage_estimates.rs#AgentSurface::conversation_cost_details",
+        "crates/decodex-app-client-ffi/src/conversation_estimates.rs#read",
+        "apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift#ConversationEstimatesView"
+      ],
+      "limits": "Estimates can lag provider activity; they are neither a final bill nor an account total or remaining quota. Reads require an available admitted conversation source; inactive sources can remain unknown. No local price table or cross-account sum."
     }
   }
 }

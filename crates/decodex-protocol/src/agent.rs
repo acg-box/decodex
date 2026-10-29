@@ -106,6 +106,9 @@ pub enum AgentRequestResult {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentActivityDto {
+	/// Retained command output lines available behind its disclosure, not discarded output.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub retained_output_lines: Option<u64>,
 	/// Observed read of an EGM instruction. This is not an approval or review result.
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub review: Option<AgentReviewActivity>,

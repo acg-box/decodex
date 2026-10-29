@@ -280,6 +280,38 @@ impl AgentHost {
 		}
 	}
 
+	pub(crate) async fn item_context(
+		&self,
+		request: &decodex_protocol::ItemContextRequest,
+	) -> decodex_protocol::ItemContextResult {
+		crate::agent_item_context::read(
+			|| self.timeline_source(request.work_id.as_str(), request.thread_id.as_str()),
+			request,
+		)
+		.await
+	}
+
+	pub(crate) async fn resource_owners(
+		&self,
+		request: &decodex_protocol::ResourceOwnersRequest,
+	) -> decodex_protocol::ResourceOwnersResult {
+		let unavailable = decodex_protocol::ResourceOwnersResult::Unavailable;
+		let Some((generation, client)) = self.runtime.agent_catalog_client() else {
+			return unavailable;
+		};
+		let result = time::timeout(
+			Duration::from_secs(20),
+			crate::agent_resources::owners(&self.store, &client, request, generation.as_str()),
+		)
+		.await
+		.unwrap_or(unavailable);
+		if self.runtime.agent_catalog_client().is_some_and(|(current, _)| current == generation) {
+			result
+		} else {
+			decodex_protocol::ResourceOwnersResult::Unavailable
+		}
+	}
+
 	pub(crate) async fn resources(&self, work: &str) -> AgentResourcesResult {
 		let Some((generation, client)) = self.runtime.agent_catalog_client() else {
 			return AgentResourcesResult::Unavailable;

@@ -122,7 +122,7 @@ The default coordination surface uses `work_read` and `work_manage`. Only users 
 
 Permission changes use the selected native conversation's supported profile and reviewer settings. Existing child captures and pending human approvals retain native ownership. Optional private details retain bounded assistant output and terminal metadata without raw reasoning. Exact action associations are unavailable in the selected runtime and remain explicit. This does not select the separate native Guardian V3 experiment.
 
-The current schema and protocol 4.1 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
+The current schema and protocol 4.2 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
 
 The retained-conversation repair reconciles unassigned native Project membership before input and preserves conflicts for inspection. The current schema retains actual native child-input receipts for Work attribution when native configuration permits nested V2 Code Mode. Recovery joins exact evidence without replay. V1 nesting remains supported; V2 keeps its direct-only default. These are repairs to retained integration contracts. Native Project identity and membership and Decodex Project presentation passed in the separate installed qualification. Official desktop saved-Project/sidebar presentation remains unobserved. See the [canonical contract](project-agent-work.md#qualification-and-evidence-limits).
 
@@ -136,7 +136,7 @@ The selected scope includes three views in the existing desktop:
 - **Collaboration history:** Retain exact local question replies, their delivery and receiving-turn outcome, plus independent contribution cycles and explicit owner assessments. A reply or returned contribution does not establish resolution or complete Work. Missing external reply bodies remain unknown.
 - **Actual usage:** Read known whole-turn token deltas and recorded duration for a persistent Agent or retained Work references. Shared Work references, missing counters and unobserved child usage remain explicit. Linked turns can contain other activity; recorded duration is not Work elapsed time and these values are not a bill.
 
-These views are available through local protocol 4.1 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
+These views are available through local protocol 4.2 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
 
 ## Current optional decisions
 
@@ -190,6 +190,17 @@ The current selected desktop scope includes these original review items:
 | 50 | Reconnect the same live, saved, never-dispatched follow-up slot. Changed sources, uncertain delivery, pending requests and compaction keep their existing fences. |
 | 65 | Find in loaded retained conversation text, including folded activity and the current live revision, with explicit earlier-history loading. |
 | 78 | Native child model and effort with distinct resolved-creation, requested-legacy and current-thread provenance. |
+
+The user also approved these bounded additions:
+
+| Item | Retained behavior |
+| --- | --- |
+| 35 | Read nearby native items around a known message, within its exact turn and with native continuation cursors. |
+| 43 | Show the native-retained command output line count while output is collapsed. |
+| 67 | Find conversations with the same registered native resource type and identity, including archive filtering and paging. No historical upload or PDF scan is selected. |
+| 72 | Show existing provider cost estimates in the conversation header and Menu Bar, with source account, unknown values and explicit refresh. No account total or local pricing engine is selected. |
+
+Item 67 uses the current shared native store. Exact current local conversations can open; hidden archived, replaced or unmanaged owners provide a copied native reference. This does not adopt external conversations or create new associations. **Item 71** is deferred in [issue 2549](https://github.com/acg-box/decodex/issues/2549). **Item 77** is not selected. Items 57 and 64 add no speaker or channel configuration.
 
 **Item 36** is covered by the existing Decodex warning system. Exact unchanged notices stay dismissed until their source changes or recovers; opening Settings does not reset dismissal. This does not select a new native warning viewer or pin controls.
 

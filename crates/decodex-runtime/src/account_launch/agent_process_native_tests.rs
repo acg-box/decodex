@@ -20,6 +20,7 @@
 #[path = "agent_process_native_folder_trust_tests.rs"] mod folder_trust;
 #[path = "agent_process_native_goal_tests.rs"] mod goals;
 #[path = "agent_process_native_hook_settings_tests.rs"] mod hook_settings;
+#[path = "agent_process_native_lookup_tests.rs"] mod lookup;
 #[path = "agent_process_native_mcp_sharing_tests.rs"] mod mcp_sharing;
 #[cfg(unix)]
 #[path = "agent_process_native_mcp_socket_tests.rs"]

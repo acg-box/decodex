@@ -2310,6 +2310,22 @@ impl ServiceApplication {
 		}
 	}
 
+	async fn query_native_lookup(&self, query: &QueryPayload) -> QueryResultPayload {
+		match query {
+			QueryPayload::GetItemContext { request } =>
+				QueryResultPayload::ItemContext(match &self.agent {
+					Some(agent) => agent.item_context(request).await,
+					None => decodex_protocol::ItemContextResult::Unavailable,
+				}),
+			QueryPayload::GetResourceOwners { request } =>
+				QueryResultPayload::ResourceOwners(match &self.agent {
+					Some(agent) => agent.resource_owners(request).await,
+					None => decodex_protocol::ResourceOwnersResult::Unavailable,
+				}),
+			_ => unreachable!("native lookup routing"),
+		}
+	}
+
 	async fn query_resources(&self, work_id: &str) -> QueryResultPayload {
 		QueryResultPayload::AgentResources(match &self.agent {
 			Some(agent) => agent.resources(work_id).await,
@@ -2739,6 +2755,8 @@ impl Application for ServiceApplication {
 			| QueryPayload::GetConversationCapabilities { .. } => self.query_model_catalog(query).await,
 			QueryPayload::ExchangeDictation { request } => self.query_dictation(request).await,
 			QueryPayload::ExchangeAgentVoice { request } => self.query_voice(request),
+			lookup @ (QueryPayload::GetItemContext { .. }
+			| QueryPayload::GetResourceOwners { .. }) => self.query_native_lookup(lookup).await,
 			QueryPayload::GetAgentResources { work_id } =>
 				self.query_resources(work_id.as_str()).await,
 			QueryPayload::ExchangeMcpLogin { request } =>
@@ -7228,6 +7246,7 @@ mod tests {
 		store.acknowledge_agent_dispatch("chosen".into(), "turn".into()).await.unwrap();
 
 		let activity = decodex_protocol::AgentActivityDto {
+			retained_output_lines: None,
 			review: None,
 			turn_id: "turn".into(),
 			item_id: "item".into(),

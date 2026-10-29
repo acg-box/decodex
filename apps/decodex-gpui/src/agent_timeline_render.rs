@@ -673,6 +673,13 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			if truncated {
 				body = body.child(agent_surface::muted("History preview shortened."));
 			}
+			if draft.is_none() {
+				body =
+					body.child(self.item_context_panel(
+						&(work.id.clone(), turn_id.clone(), item_id.clone()),
+						cx,
+					));
+			}
 
 			return body.into_any_element();
 		}
@@ -926,6 +933,17 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 					format!("{:.1}s", ms as f64 / 1_000.)
 				})
 			})
+			.when_some(
+				(!expanded && kind == "commandExecution")
+					.then_some(activity.retained_output_lines)
+					.flatten()
+					.filter(|count| *count > 0),
+				|row, count| {
+					row.child(gpui::div().debug_selector(|| "hidden-output-lines".into()).child(
+						format!("{count} output {}", if count == 1 { "line" } else { "lines" }),
+					))
+				},
+			)
 			.when(detail_key.is_some(), |row| {
 				row.child(
 					gpui::div()

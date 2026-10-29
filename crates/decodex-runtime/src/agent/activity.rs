@@ -74,6 +74,11 @@ pub(super) fn project(params: &Value, completed: bool) -> Option<AgentActivityDt
 	};
 
 	Some(AgentActivityDto {
+		retained_output_lines: (kind == "commandExecution")
+			.then(|| item["aggregatedOutput"].as_str())
+			.flatten()
+			.filter(|text| !decodex_core::contains_credential_material(text))
+			.map(|text| text.lines().count() as u64),
 		review: review::observe(item, completed),
 		turn_id: params["turnId"].as_str()?.into(),
 		item_id: item["id"].as_str()?.into(),
@@ -166,6 +171,23 @@ fn activity_label(item: &Value, kind: &str, completed: bool) -> Option<&'static 
 mod tests {
 
 	use crate::agent::activity;
+
+	#[test]
+	fn command_disclosure_counts_only_native_retained_output() {
+		for (text, expected) in [("", 0), ("一行\n", 1), ("one\n\nthree", 3)] {
+			let params = serde_json::json!({"turnId":"turn","item":{
+				"type":"commandExecution","id":"item","aggregatedOutput":text,
+				"originalLineCount":10000,"status":"completed","exitCode":0
+			}});
+			let activity = activity::project(&params, true).unwrap();
+			assert_eq!(activity.retained_output_lines, Some(expected));
+			assert!(!activity.detail.contains(text) || text.is_empty());
+		}
+		let params = serde_json::json!({"turnId":"turn","item":{
+			"type":"commandExecution","id":"item","status":"inProgress"
+		}});
+		assert_eq!(activity::project(&params, false).unwrap().retained_output_lines, None);
+	}
 
 	#[test]
 	fn sleep_duration_is_a_request_and_not_a_success_or_elapsed_time() {

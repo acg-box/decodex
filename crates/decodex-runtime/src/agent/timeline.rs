@@ -274,7 +274,7 @@ fn entry(row: &Value) -> Option<AgentTimelineEntry> {
 	Some(AgentTimelineEntry { position: row["position"].as_u64()?, content })
 }
 
-fn ordinary(row: &Value) -> Option<AgentTimelineContent> {
+pub(crate) fn ordinary(row: &Value) -> Option<AgentTimelineContent> {
 	let item = &row["item"];
 	let kind = id(&item["type"])?;
 	// Assigned instructions are visible context. Automatic wakeups stay in the

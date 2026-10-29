@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c800c6b320afb0f5effa01c7d257380c1149f2322b5026e09b421e09e887184a",
+  "pageVersion": "sha256:3a5fbc7bc4b7449730a9141a02e1526a86967eaada4edef9e6fc1c2913289cfd",
   "claims": [
     {
       "id": "claim_820ae47a5a5d49aab10b5f306ac24685",
@@ -269,7 +269,7 @@
           "version": "repo-lines-v1:sha256:f826c16639548bea4feac5128e1c977361fa0672bad2c2cd21eb940497919af1:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2ZDM3NDI5MTRmZTFkODY2ZTY2NGE4NDMzM2FhZWI0Nzk1NDE2ZmZjNDc0NTczYjVhMDU2OWI1ZjEzODQ0ZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1YWEwZjkzOTQ4YjU2ZWM5MTljZjNmNDM5MDEzNGQ2YTFmMGYyODgzYzI1OTdkNjU1OWM1ODYwMzU4NDIzOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwMTJhNDJhNmNmMTg3ZTMzNzAwNDBjMDk5ZjMyNjMxOTBhYWQyNWRlNzMwYzc5OGJlNDU4NDU0YzFiYmMwNWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVmMDg3ZDQzOWMwNWQ3MjIwNWI1ZGFiMGUyMDUyYWVlOGE5ZjM2YjVmNTk3MDZhNWNkODI4Yzk3ZjQzYTZkOTYifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L923-L974",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L929-L980",
           "version": "repo-lines-v1:sha256:767972a08dac70d0d177bbfbadbb3b9ebf0a7b452dc8d3b6f16386e7c62277fe:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzMDQwMDA0N2UzY2U2NjI0Yzk5MTgxNGY5MzRiNDgzNTQ4NWIxNDg0ODFjNTI3MGRlZjE3MjA3ZjE4YzQzNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjYzE1MDQ0YzQ1YzEwMmJjMWNlMTZmMmQwMWQwZjk0MjI3N2MzZDcwMTUyZTAyM2Y2OTAyM2IwY2E0YTA4MmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjMmI1MGY2ZTAyZmY5MGU2ODBjNTE0YzE2Zjc0YzUwNmU4Y2RiZTUxZmVjYWUyMzY1NDhkZGRiOWY5ODFkZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkMTVjYWViZTcyZDQxMjNkZDYzNTRjY2M4ZDZkOTBiYjk0ZjcwZDcwYTAyOTc3MzNkN2UxNDA0ZWI4ZmM4ZTYifQ"
         },
         {
@@ -312,11 +312,11 @@
     },
     {
       "id": "claim_9292d25fb8e34952a893358d0d64f3db",
-      "statement": "The current local protocol accepts exactly version 4.1 and rejects a different major or minor revision.",
+      "statement": "The current local protocol accepts exactly version 4.2 and rejects a different major or minor revision.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:31ad4259a90a0c22fcac92f1794f648fa74b0d6d329e58f4d995573aae648860"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L284-L327",
+          "version": "repo-lines-v1:sha256:f15b897b4d3f7efa59271a48e9bf5628b28941f2ba480efce892f7eeabf53ccd:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2M2NhYzIyNmZhN2FjOTE1MGUwMTZlODZiODM2YTViMjg5Y2MxNjU4YzNmYTA3YjI1YTdhY2Q5NDMxNTY5YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzNTJlMTRhMTgxNzhiOWVkNzc1ODJhOTkzZjI0MWY3YWRhMDM5NzA2YWY2YmMxMzZjZjM1MjFmYmIyZTY3YTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlNzAxMzc5NDEwYzhjZjM0ODQ3MWNkYTNmMzA0YjA2YzRmZWNjZjI4ZDM5YTZmYzliOWFjM2JhYTQ0YmVhZDUifQ"
         }
       ]
     }

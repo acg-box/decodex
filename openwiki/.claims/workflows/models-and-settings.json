@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:317869228557478e81634342ba37ba22f2c0e82aa05d03a5fe564c63a95e64d4",
+  "pageVersion": "sha256:f233630c3bf80adfe1117a755bf5b1ac9264ba2e8865e240db00cb4e9a587d15",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -63,7 +63,7 @@
           "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
         },
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L135-L155",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
           "version": "repo-lines-v1:sha256:a6b2eef1867776015de103e94d4bd067aedc8577c70159c8c792ab426e27b791:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIwMmQyYzBkNmRjNWU3NGQ5MmZhMTRiOTFkYmVhMjY0MDkwYmViMzVmZGI5MTg4ZDliMzQxMTgxZGNlOWY0Y2UiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM2YjU1MTM4Y2EyM2U2ZGFkMjJiNjQ4ZjgyOWNlZGM4MWQyMDNiMTlmMTc2MzRkZjZiZTc2MGY1M2JlNGVmOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNmU0ZjMxZGM3MTM2OTU2NmI1MWNjMWExOTVkNDUwY2RmODU3NWU2ZDdhNzYxYzU2NDJiYTMwMjVkYzM0NzMifQ"
         },
         {
@@ -131,7 +131,7 @@
       "statement": "Native model metadata and configuration determine the helper backend; the qualified synthetic matrix uses V1 and V2 at Medium without Ultra and leaves model judgment unmeasured.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2871-L2878",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2754-L2761",
           "version": "repo-lines-v1:sha256:8e6e3bdd228d54f00f8683d30913924cbf52ba99ba0384b2584ed81b2906292e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjVlMGNmNTA1M2U5YmRiZTc5ZmVlY2E5NWUzZjk4YTJjOGY2ZDZhYWRlZjhjNGIwZWU1ODk0ZTBjY2ExYTBiNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzVlZWJkNGIwMjc1ZTcxYmRjNDUwNGIwZDc1MzM2NmQ3ZDhlZGUwNzYyOGMwMDViZTg2Njc2NTNhY2UxYjcwMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTM5NGU3YTZlMWU4MGJjNGQ4Y2YzNTVjYjI1ZWU4ZDg0ZGM0NDZhNDkwMThlMjgyNGY1ZTNiZWY1M2ZmM2U0NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzYzOTQyY2VjMGEwMGQ0YzE3NDRiOTU5YzA4NTQ3M2Q5ZjlhN2NkY2NhODY0ZTJiYTQ4MjE2ZmJmNTBhMWQyOCJ9"
         },
         {
@@ -199,7 +199,7 @@
       "statement": "The Agent model catalog refreshes through native model/list every 60 seconds, with account, directory and process binding. Model and effort cycling have no fixed fallback list when the catalog is unavailable.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1615-L1621",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1678-L1684",
           "version": "repo-lines-v1:sha256:94822da03cc24717c86a1aa5781a22c5c4fb39bb3eba280843acf0a8d9a36fb4:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzhhZThkZGM3MTdhMDlmMzU0ZmUzMWU4ZWI3YTU3MWNkZDQwZGQ3NmU0MjVhZjliYjU2MTM3ZTVhZDlkZTEzNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTdhZjQ0ZjllMmU0MDU4YzAyNDA0YTJhMDI0M2JjNTk1ZWE2ZmIxOGUxNzdmMjJiOWEyOWMzZDQ3ZjAwZTExOSJ9"
         },
         {
@@ -218,7 +218,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:3a40d5af6a670d4c68bec399bde3b1e4851d1daa597854acb6b2c6e2cc607fe2"
+          "version": "repo-file-v1:sha256:b5b7931366ab7fb7548c1b487542d23004b783e99bbe6de7bd2547e6c302c6a5"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -275,6 +275,24 @@
         {
           "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
           "version": "repo-file-v1:sha256:540a21db111b48ddc5db30848f8c5885593558d1ffd11d7524545b86e6ea933b"
+        }
+      ]
+    },
+    {
+      "id": "claim_7817c7b72e854491af3db423ce49d596",
+      "statement": "Cost estimate in the conversation header and Conversation estimates in Menu Bar reuse native provider estimates, prefer reported USD over credits, preserve missing values, retain account scope and explicit refresh, and do not invent account totals or final billing.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift",
+          "version": "repo-file-v1:sha256:12138f8a2a818d8a851f5bb063fc96c6ffd61c51e201432c846574e1148a1527"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs#L65-L126",
+          "version": "repo-lines-v1:sha256:12cece0bcc021ddc297c9cd7dbb1ed78a6b4a4421063d5e9857a6f8e5e2247bb:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYxOGIyN2ZkYTUzNDU1MjM2N2FlODRiMmNhZmNlMzM4YmEyMzE5M2Q4MWFhYzhkMzkwOTdmMzY1MDQ0ZmM5OTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZmYmMyNWQ5Njk5ZmVkMjUwNjczYzVmNzNjM2YwODM3YjU2NTc4OTZiM2RmMjk1NjdjMmVmYTljNzkzOWI1OTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY5N2ZkMjUyNTAwZmM0MjI2OTk5ZmUzNTUwNzU1MGE4MTI0ZmQzMTc3NWRjODFhMDg3NzAwMTk0ODUzNjc3MzAifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-app-client-ffi/src/conversation_estimates.rs",
+          "version": "repo-file-v1:sha256:8a465b0198f60825b2d902aec9edb7539dd89fe9d7e5edc11c2b40711476be91"
         }
       ]
     }
