@@ -4908,6 +4908,30 @@
         "apps/decodex-gpui/src/agent_selectable_text.rs#TextBlock::render,#TextLayer::prepaint,#TextLayer::paint,#link_cursor,#is_selection_url,#open_selection_link"
       ],
       "limits": "GPUI presentation only. No new link scheme, app-server endpoint, runtime setting, native artifact or automatic navigation. Tests cover shaped glyph targets and geometry reflow/movement; no installed OS-cursor acceptance."
+    },
+    "conversation_list_branch": {
+      "manual_item": 59,
+      "entrypoint": "Choose Branch on an existing locally managed conversation row in the work browser.",
+      "behavior": [
+        "Open the exact local source and preserve unrelated and source drafts through existing navigation.",
+        "Read a full native timeline and select the user input in its latest completed turn. Reuse existing bounded earlier-page loading when required.",
+        "Reuse the source-bound prompt review and explicit AfterTurn branch confirmation. Native fork creation sends no input and preserves the source history.",
+        "Retain profile/thread/history guards, durable fork intent, source provider and uncertain-result recovery. Cancellation leaves drafts intact."
+      ],
+      "source_symbols": [
+        "AgentSurface::list_branch_button",
+        "AgentSurface::review_list_branch",
+        "AgentSurface::resume_list_branch_review",
+        "latest_completed_input",
+        "AgentSurface::request_prompt_review",
+        "AgentSurface::branch_confirmation_action"
+      ],
+      "source_implementation": "https://github.com/acg-box/decodex/commit/5f2fbffac0a5590affd76dcdc3bc73ff83b3cefe",
+      "limits": [
+        "No adoption or branch shortcut for unmanaged native inventory rows.",
+        "No new fork mode, execution policy, native runtime or automatic send.",
+        "GPUI TestPlatform and synthetic local sockets qualify the client entry and existing confirmation boundary; installed-app and live-provider behavior were not exercised."
+      ]
     }
   },
   "manual_review_scope": {
@@ -4917,7 +4941,7 @@
         "manual_item": 59,
         "issue": "https://github.com/acg-box/decodex/issues/2552",
         "scope": "Add a conversation-list entry to the existing source-bound native branch confirmation flow. Preserve the source draft and send no input.",
-        "delivery": "Approved for a separate implementation task; not delivered by the decision record."
+        "delivery": "Source implementation and focused checks are retained in retained_desktop_feedback.conversation_list_branch. Native state owns live merge reconciliation."
       },
       {
         "manual_item": 74,

@@ -2,6 +2,7 @@
 #[path = "agent_prompt_confirm.rs"] mod confirmation;
 #[path = "agent_prompt_fork.rs"] mod fork;
 #[path = "agent_prompt_handback.rs"] mod handback;
+#[path = "agent_list_branch.rs"] mod list_branch;
 #[path = "agent_prompt_remove.rs"] mod removal;
 #[path = "agent_prompt_send.rs"] mod sending;
 
@@ -18,7 +19,8 @@ use removal::Removal;
 
 #[derive(Default)]
 pub(super) struct Panel {
-	branch_only: bool,
+	pub(super) branch_only: bool,
+	list_branch_pending: bool,
 	pub(super) attached: agent_surface::attached_branches::Panel,
 	key: String,
 	profile: Option<ClientProfile>,
@@ -458,7 +460,7 @@ impl AgentSurface {
 		item: &str,
 		cx: &mut Context<Self>,
 	) {
-		self.request_prompt_review((work, thread, turn, item), None, cx);
+		self.request_prompt_review((work, thread, turn, item), None, false, cx);
 	}
 
 	fn begin_prompt_review(&mut self, profile: &ClientProfile, work: &str, thread: &str) -> String {
@@ -483,6 +485,7 @@ impl AgentSurface {
 		&mut self,
 		source: (&str, &str, &str, &str),
 		previous: Option<DesktopPromptEditDraft>,
+		branch_only: bool,
 		cx: &mut Context<Self>,
 	) {
 		let (work, thread, turn, item) = source;
@@ -498,6 +501,7 @@ impl AgentSurface {
 			return;
 		};
 		let key = self.begin_prompt_review(&profile, work, thread);
+		self.prompt_edit.branch_only |= branch_only;
 		let (send, receive) = oneshot::channel();
 		let request_key = key.clone();
 		let started =
@@ -823,6 +827,8 @@ impl AgentSurface {
 							|| draft.pending_send.is_some()
 					}) {
 						"Close"
+					} else if self.prompt_edit.branch_only {
+						"Cancel branch"
 					} else {
 						"Cancel edit"
 					}
@@ -834,6 +840,29 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	fn branch_confirmation_action(
+		&self,
+		panel: Div,
+		draft: &DesktopPromptEditDraft,
+		cx: &mut Context<Self>,
+	) -> Div {
+		let expected = draft.clone();
+		let pending = draft.fork.is_some();
+		panel.child(self.workspace_action(
+			"locked-branch-confirm".into(),
+			if pending { "Check branch status" } else { "Create new branch" }.into(),
+			move |s, cx| {
+				if pending {
+					s.recover_prompt_branch(expected.clone(), cx);
+				} else if s.prompt_editor_source_current() && s.prompt_edit.task.is_none() {
+					s.prompt_edit.confirmation = Some(expected.clone());
+					s.confirm_prompt_branch(expected.clone(), PromptForkBoundary::AfterTurn, cx);
+				}
+			},
+			cx,
+		))
+	}
+
 	fn prompt_edit_actions(
 		&self,
 		mut panel: Div,
@@ -841,25 +870,7 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Div {
 		if self.prompt_edit.branch_only {
-			let expected = draft.clone();
-			let pending = draft.fork.is_some();
-			return panel.child(self.workspace_action(
-				"locked-branch-confirm".into(),
-				if pending { "Check branch status" } else { "Create new branch" }.into(),
-				move |s, cx| {
-					if pending {
-						s.recover_prompt_branch(expected.clone(), cx);
-					} else if s.locked_branch_source().is_some() && s.prompt_edit.task.is_none() {
-						s.prompt_edit.confirmation = Some(expected.clone());
-						s.confirm_prompt_branch(
-							expected.clone(),
-							PromptForkBoundary::AfterTurn,
-							cx,
-						);
-					}
-				},
-				cx,
-			));
+			return self.branch_confirmation_action(panel, draft, cx);
 		}
 
 		if draft.receipt_id.is_some() && !draft.handback_pending {
@@ -949,7 +960,12 @@ impl AgentSurface {
 						original.item_id.as_str(),
 					);
 
-					s.request_prompt_review(source, Some(original.clone()), cx);
+					s.request_prompt_review(
+						source,
+						Some(original.clone()),
+						s.prompt_edit.branch_only,
+						cx,
+					);
 				},
 				cx,
 			));
@@ -1176,7 +1192,7 @@ mod tests {
 		.unwrap()
 	}
 
-	fn install_fixture_editor(
+	pub(super) fn install_fixture_editor(
 		surface: &Entity<AgentSurface>,
 		profile: ClientProfile,
 		cx: &mut gpui::TestAppContext,
