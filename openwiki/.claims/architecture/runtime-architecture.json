@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:86d4078d3587039a157dad930fd8ec29dcf8cea9ef554de30a7af1bc60075d69",
+  "pageVersion": "sha256:a8a56b17a9f0e17ece066844c7e29f4fdcb3b7236c2339e68c2222b1f9393feb",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -542,7 +542,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:506bc47eeaab54ac85cedfddfff818e4a9811e6f4debf4acf18a38f4cceba49e"
+          "version": "repo-file-v1:sha256:4219b17fe6426e6d8048cd52dbc00d309b2ca23d84d53e8d19adbb8610df92a4"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/wire.rs",

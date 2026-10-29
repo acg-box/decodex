@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a467dcb5a30f2617794d2e648a763d2f3dc07a77a9cc7c6448a356fae2898fa5",
+  "pageVersion": "sha256:8a7986b54b188ca627dbe7bcd48e46f28e02b9a045eefac315023525d324c496",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -494,11 +494,11 @@
     },
     {
       "id": "claim_292b4e98c3ff4c98bd57e3d4d035bbd4",
-      "statement": "Related conversations queries an existing resource's exact native type and identity with archive filtering and paging, opens known local conversations, and offers a copied native reference for unmanaged owners without scanning historical uploads or creating associations.",
+      "statement": "Related conversations queries an existing resource's exact native type and identity with archive filtering and paging, opens only an exact current local thread, and offers copied native references for hidden archived, replaced or unmanaged owners without scanning historical uploads or creating associations.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_resource_owners.rs#L25-L135",
-          "version": "repo-lines-v1:sha256:e35aaf558fedc569868d6d3db985fc9ebdf4a8bace08d59904f6df49bfe80d70:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3OGI1NDg5MGYzYmU2ZGFjMTUwMmQ1MGNkMTI0YTU2MmFmYjUxNTVmZmEwYzVlZmU3MTY1MWMzN2ZkNDIyMWYwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2NGVmYzQ5NDE4ZDI2ZGNmMTI5YjIyYTZhYTIxMTA4Y2VlYzM3Njc3YTMyZDA4ZTlkNWZlZTM1ZGRhNjZiYjlkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMWYwYWE0NjE3ZWU3OTE3MmIyZDQxNWU1OGRkYjEwZWQ0OGIxNzkxMTEwNmQ1MDA3OTNhNzliOWY2MGVmYjM2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5ZTkzOTQ0YTQ1ODAzMGZlNDc3NzFiYWE5YWQyZWQxYTI4N2FmZTYxOGJjM2JmY2EzNzEyZTAwYWFjYTRlMzBiIn0"
+          "resource": "repo://apps/decodex-gpui/src/agent_resource_owners.rs#L25-L142",
+          "version": "repo-lines-v1:sha256:598491684f9011a34bc48ce35306ec8a7c846a9cd4c224f54b255d12cbb15221:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE4LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3OGI1NDg5MGYzYmU2ZGFjMTUwMmQ1MGNkMTI0YTU2MmFmYjUxNTVmZmEwYzVlZmU3MTY1MWMzN2ZkNDIyMWYwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2N2NkYTgyZGE2MDYyMzhlMDVlNjIzOTk1NjljNWVlMDM5OTM0MTk2NDhhZTVkNDNhMmJmOGNkNjM0N2Y4MjYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhMWYwYWE0NjE3ZWU3OTE3MmIyZDQxNWU1OGRkYjEwZWQ0OGIxNzkxMTEwNmQ1MDA3OTNhNzliOWY2MGVmYjM2IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3ZjRiZGU3NDExODgxYzU3ZjYwYTljYjIxYmFmNGI4NWJjODYxNDg4MGQwZmVmYTA3YmQ0NjVhOTkyNWVhNjExIn0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L270-L293",

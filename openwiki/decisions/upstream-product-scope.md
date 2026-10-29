@@ -200,7 +200,7 @@ The user also approved these bounded additions:
 | 67 | Find conversations with the same registered native resource type and identity, including archive filtering and paging. No historical upload or PDF scan is selected. |
 | 72 | Show existing provider cost estimates in the conversation header and Menu Bar, with source account, unknown values and explicit refresh. No account total or local pricing engine is selected. |
 
-Item 67 uses the current shared native store. Known local conversations can open; unmanaged owners provide a copied native reference. This does not adopt external conversations or create new associations. **Item 71** is deferred in [issue 2549](https://github.com/acg-box/decodex/issues/2549). **Item 77** is not selected. Items 57 and 64 add no speaker or channel configuration.
+Item 67 uses the current shared native store. Exact current local conversations can open; hidden archived, replaced or unmanaged owners provide a copied native reference. This does not adopt external conversations or create new associations. **Item 71** is deferred in [issue 2549](https://github.com/acg-box/decodex/issues/2549). **Item 77** is not selected. Items 57 and 64 add no speaker or channel configuration.
 
 **Item 36** is covered by the existing Decodex warning system. Exact unchanged notices stay dismissed until their source changes or recovers; opening Settings does not reset dismissal. This does not select a new native warning viewer or pin controls.
 

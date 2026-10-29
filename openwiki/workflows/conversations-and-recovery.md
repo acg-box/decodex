@@ -199,7 +199,7 @@ This bounded text view uses the existing native history owner. It does not start
 
 In the existing Resources panel, choose **Related conversations** for a resource. The service queries the native store with that resource's exact existing type and identity key. Use **All**, **Current** or **Archived** and **Next conversations** to read the native result pages.
 
-**Open conversation** navigates to an existing Decodex conversation. For a conversation that Decodex does not manage, **Copy conversation reference** copies its native identity. This lookup does not adopt that conversation. Account labels use retained local bindings; a missing binding stays unknown. Current account processes share one native store, so the catalog query does not need a separate query for every login.
+**Open conversation** navigates only to an exact current local thread. For a hidden archived conversation, a changed binding or an unmanaged owner, **Copy conversation reference** copies the native identity. This lookup does not adopt that conversation. Account labels use retained local bindings; a missing binding stays unknown. Current account processes share one native store, so the catalog query does not need a separate query for every login.
 
 Only registered native associations are searched. Earlier uploads, PDFs and matching filenames do not create new associations. The lookup adds no file scan, retrospective index, association write or deletion authority.
 

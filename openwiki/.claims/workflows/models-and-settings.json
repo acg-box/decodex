@@ -218,7 +218,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:58577ff94b7887fa036774483caf098dbbd8cbdb5b5ea53242355525d60560cc"
+          "version": "repo-file-v1:sha256:b5b7931366ab7fb7548c1b487542d23004b783e99bbe6de7bd2547e6c302c6a5"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
