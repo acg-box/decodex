@@ -1727,6 +1727,9 @@ impl AgentSurface {
 			.justify_center()
 			.items_center()
 			.pb(gpui::px(90.0))
+			.child(crate::ui_working::Welcome {
+				key: self.conversation_page().unwrap_or_else(|| "new".into()),
+			})
 			.child(self.conversation_activity(cx))
 			.children(self.local_message_cards(cx))
 			.child(gpui::div().w_full().child(self.render_composer(window, cx)))

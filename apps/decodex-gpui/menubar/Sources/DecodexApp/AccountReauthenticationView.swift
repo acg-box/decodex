@@ -105,8 +105,7 @@ struct AccountReauthenticationView: View {
 					if presentation.showsProgress
 						&& presentation.canRequestCancellation
 					{
-						ProgressView()
-							.controlSize(.mini)
+						BrandLoading(size: 14)
 							.transition(.opacity)
 							.accessibilityHidden(true)
 					}
@@ -160,8 +159,7 @@ struct AccountReauthenticationView: View {
 				)
 			)
 		} else {
-			ProgressView()
-				.controlSize(.mini)
+			BrandLoading(size: 14)
 				.frame(width: 28, height: 28)
 				.help(presentation.mode.installingLabel)
 				.accessibilityLabel(presentation.mode.installingLabel)
