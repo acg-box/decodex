@@ -27,6 +27,7 @@
 #[path = "agent_inspection.rs"] mod inspection;
 #[path = "agent_install.rs"] mod install;
 #[path = "agent_integrations.rs"] mod integrations;
+#[path = "agent_item_context.rs"] mod item_context;
 #[path = "agent_live_settings.rs"] mod live_settings;
 #[path = "agent_markdown.rs"] mod markdown;
 #[path = "agent_mcp_forms.rs"] mod mcp_forms;
@@ -54,6 +55,7 @@ mod native_model_menu;
 #[path = "agent_read_state.rs"] mod read_state;
 #[path = "agent_recap.rs"] mod recap;
 #[path = "agent_requests.rs"] mod requests;
+#[path = "agent_resource_owners.rs"] mod resource_owners;
 #[path = "agent_resources.rs"] mod resources;
 #[path = "agent_response_metrics.rs"] mod response_metrics;
 #[path = "agent_sample.rs"] mod sample;
@@ -182,6 +184,8 @@ pub(crate) struct AgentSurface {
 	deliveries: Entity<deliveries::Panel>,
 	resources: Option<(String, Option<AgentResourcesResult>)>,
 	resources_task: Option<Task<()>>,
+	related_resources: resource_owners::Panel,
+	nearby_history: item_context::Panel,
 	usage_estimate: Option<(String, Option<AgentUsageEstimateResult>)>,
 	usage_estimate_task: Option<Task<()>>,
 	usage_estimate_epoch: u64,
@@ -387,6 +391,8 @@ impl AgentSurface {
 			handoffs: Default::default(),
 			resources: None,
 			resources_task: None,
+			related_resources: Default::default(),
+			nearby_history: Default::default(),
 			usage_estimate: None,
 			usage_estimate_task: None,
 			usage_estimate_epoch: 0,

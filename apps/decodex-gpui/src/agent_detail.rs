@@ -34,6 +34,7 @@ pub(super) struct ActivityDetailState {
 
 impl AgentSurface {
 	pub(super) fn clear_activity_detail(&mut self) {
+		self.reset_item_context();
 		self.activity_detail.revision += 1;
 		self.activity_detail.value = None;
 		self.activity_detail.closing = None;
@@ -90,6 +91,7 @@ impl AgentSurface {
 			return row.into_any_element();
 		};
 		let expanded = self.activity_detail.value.as_ref().is_some_and(|(id, _)| id == &key);
+		let context_ids = ids.clone();
 		let click = ids.clone();
 		let result = self
 			.activity_detail
@@ -182,6 +184,7 @@ impl AgentSurface {
 					.child(ui_loading::content(format!("detail-{key}"), result.is_some(), body))
 					.children(creation)
 					.children(agents)
+					.child(self.item_context_panel(&context_ids, cx))
 					.child(metadata_toggle)
 					.child(ui_motion::disclosure(
 						SharedString::from(format!("tool-reference-body-{key}")),
