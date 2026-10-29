@@ -9,8 +9,9 @@ pub(super) use selection::Document;
 use std::{cell::OnceCell, ops::Range, panic::Location, path::Path, rc::Rc};
 
 use gpui::{
-	App, Bounds, Element, ElementId, GlobalElementId, HighlightStyle, InspectorElementId,
-	IntoElement, LayoutId, MouseButton, Pixels, RenderOnce, StyledText,
+	App, Bounds, CursorStyle, DispatchPhase, Element, ElementId, GlobalElementId, HighlightStyle,
+	Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId, MouseButton, MouseMoveEvent,
+	Pixels, Point, RenderOnce, StyledText, TextLayout,
 };
 use unicode_segmentation::UnicodeSegmentation as _;
 
@@ -89,6 +90,8 @@ impl RenderOnce for TextBlock {
 		let end = self.range.end;
 		let text = self.text.text;
 		let selector = self.text.key.clone();
+		let hover_links = Rc::new(self.text.links);
+		let click_links = hover_links.clone();
 
 		gpui::div()
 			.id(SharedString::from(self.text.key))
@@ -163,13 +166,13 @@ impl RenderOnce for TextBlock {
 					&& let Ok(ix) = layout.index_for_position(event.position)
 					&& s.anchor == start + ix
 					&& let Some((_, url)) =
-						self.text.links.iter().find(|(range, _)| range.contains(&ix))
+						click_links.iter().find(|(range, _)| range.contains(&ix))
 				{
 					open_selection_link(url, cx);
 					cx.stop_propagation();
 				}
 			})
-			.child(TextLayer { styled, batch, range: self.range, scope: self.scope })
+			.child(TextLayer { styled, batch, range: self.range, scope: self.scope, hover_links })
 	}
 }
 
@@ -181,6 +184,7 @@ struct TextLayer {
 	batch: bool,
 	range: Range<usize>,
 	scope: Rc<OnceCell<Scope>>,
+	hover_links: Rc<Vec<(Range<usize>, String)>>,
 }
 impl IntoElement for TextLayer {
 	type Element = Self;
@@ -191,7 +195,7 @@ impl IntoElement for TextLayer {
 }
 
 impl Element for TextLayer {
-	type PrepaintState = ();
+	type PrepaintState = Option<Hitbox>;
 	type RequestLayoutState = ();
 
 	fn id(&self) -> Option<ElementId> {
@@ -220,7 +224,7 @@ impl Element for TextLayer {
 		state: &mut (),
 		window: &mut Window,
 		cx: &mut App,
-	) {
+	) -> Self::PrepaintState {
 		self.styled.prepaint(id, inspector, bounds, state, window, cx);
 		self.scope
 			.get()
@@ -228,6 +232,7 @@ impl Element for TextLayer {
 			.layouts
 			.borrow_mut()
 			.push((self.range.clone(), self.styled.layout().clone()));
+		(!self.hover_links.is_empty()).then(|| window.insert_hitbox(bounds, HitboxBehavior::Normal))
 	}
 
 	fn paint(
@@ -236,13 +241,28 @@ impl Element for TextLayer {
 		_: Option<&InspectorElementId>,
 		bounds: Bounds<Pixels>,
 		_: &mut (),
-		_: &mut (),
+		hitbox: &mut Self::PrepaintState,
 		window: &mut Window,
 		cx: &mut App,
 	) {
 		// Keep layout for selection and scrolling, but skip glyph work outside the viewport.
 		if bounds.intersect(&window.content_mask().bounds).is_empty() {
 			return;
+		}
+		if let Some(hitbox) = hitbox {
+			let layout = self.styled.layout().clone();
+			let links = self.hover_links.clone();
+			let cursor = link_cursor(&layout, &links, window.mouse_position());
+			window.set_cursor_style(cursor, hitbox);
+			let hitbox = hitbox.clone();
+			window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, _| {
+				if phase == DispatchPhase::Bubble
+					&& hitbox.is_hovered(window)
+					&& link_cursor(&layout, &links, event.position) != cursor
+				{
+					window.refresh();
+				}
+			});
 		}
 		if self.batch {
 			self.styled.layout().paint_background(window, cx).expect("text background");
@@ -255,11 +275,28 @@ impl Element for TextLayer {
 	}
 }
 
+fn link_cursor(
+	layout: &TextLayout,
+	links: &[(Range<usize>, String)],
+	position: Point<Pixels>,
+) -> CursorStyle {
+	if layout.index_for_position(position).is_ok_and(|ix| {
+		links.iter().any(|(range, url)| {
+			range.contains(&ix) && (is_selection_url(url) || url.starts_with('/'))
+		})
+	}) {
+		CursorStyle::PointingHand
+	} else {
+		CursorStyle::IBeam
+	}
+}
+
+fn is_selection_url(url: &str) -> bool {
+	url.starts_with("https://") || url.starts_with("http://") || url.starts_with("codex://threads/")
+}
+
 fn open_selection_link(url: &str, cx: &mut App) {
-	if url.starts_with("https://")
-		|| url.starts_with("http://")
-		|| url.starts_with("codex://threads/")
-	{
+	if is_selection_url(url) {
 		cx.open_url(url);
 	} else if url.starts_with('/') {
 		let path = markdown::without_line_column(url);
@@ -267,6 +304,10 @@ fn open_selection_link(url: &str, cx: &mut App) {
 		cx.reveal_path(Path::new(path));
 	}
 }
+
+#[cfg(test)]
+#[path = "agent_text_link_hover_tests.rs"]
+mod link_hover_tests;
 
 fn selection_highlights(
 	length: usize,
