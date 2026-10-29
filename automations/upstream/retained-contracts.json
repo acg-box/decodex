@@ -4909,5 +4909,159 @@
       ],
       "limits": "GPUI presentation only. No new link scheme, app-server endpoint, runtime setting, native artifact or automatic navigation. Tests cover shaped glyph targets and geometry reflow/movement; no installed OS-cursor acceptance."
     }
+  },
+  "manual_review_scope": {
+    "scope": "Current decisions from the original 84-proposal review. Approval, source review, delivery and runtime qualification are separate. Native automation state owns current pending work and ownership.",
+    "approved_implementation": [
+      {
+        "manual_item": 59,
+        "issue": "https://github.com/acg-box/decodex/issues/2552",
+        "scope": "Add a conversation-list entry to the existing source-bound native branch confirmation flow. Preserve the source draft and send no input.",
+        "delivery": "Approved for a separate implementation task; not delivered by the decision record."
+      },
+      {
+        "manual_item": 74,
+        "scope": "Group or filter the existing Work/conversation list by current status and retain the view preference. Reuse existing status facts and preserve project/search filters, exact row opening and drafts.",
+        "exclusions": "No model grouping, generic command center, execution policy or native runtime change.",
+        "delivery": "Approved; reconcile overlapping active UI work before implementation. Approval is not delivery."
+      }
+    ],
+    "deferred_research": [
+      {
+        "manual_items": [
+          13,
+          31
+        ],
+        "issue": "https://github.com/acg-box/decodex/issues/2539",
+        "topic": "Native board-only messaging and the related coordination choice."
+      },
+      {
+        "manual_items": [
+          19,
+          69
+        ],
+        "issue": "https://github.com/acg-box/decodex/issues/1693",
+        "topic": "Authenticated remote execution."
+      },
+      {
+        "manual_items": [
+          27
+        ],
+        "topic": "Native deferred mailbox preemption; retain for the final research review."
+      },
+      {
+        "manual_items": [
+          30
+        ],
+        "issue": "https://github.com/acg-box/decodex/issues/2546",
+        "topic": "Code Mode schema-budget behavior; no risk indicator or automatic tuning is selected."
+      },
+      {
+        "manual_items": [
+          49
+        ],
+        "issue": "https://github.com/acg-box/decodex/issues/2556",
+        "topic": "Native Guardian root handoff context for child approvals."
+      },
+      {
+        "manual_items": [
+          66
+        ],
+        "issue": "https://github.com/acg-box/decodex/issues/2553",
+        "topic": "Fresh native subagent client-tool inheritance and upstream readiness."
+      },
+      {
+        "manual_items": [
+          68
+        ],
+        "issue": "https://github.com/acg-box/decodex/issues/2554",
+        "topic": "Native Guardian decision comparison readiness."
+      },
+      {
+        "manual_items": [
+          70
+        ],
+        "issue": "https://github.com/acg-box/decodex/issues/2555",
+        "topic": "Native managed-worktree tools, considered with LayerFS research."
+      },
+      {
+        "manual_items": [
+          71
+        ],
+        "issue": "https://github.com/acg-box/decodex/issues/2549",
+        "topic": "Semantic keyboard selection and copy."
+      },
+      {
+        "manual_items": [
+          79
+        ],
+        "issue": "https://github.com/acg-box/decodex/issues/2557",
+        "topic": "Native Guardian JSON transcript mode."
+      }
+    ],
+    "deferral_contract": "An issue preserves a later research or product decision. It does not authorize implementation, experimental activation, a new setting, or a daily maintenance obligation.",
+    "not_selected_manual_items": [
+      1,
+      4,
+      5,
+      8,
+      14,
+      16,
+      17,
+      22,
+      24,
+      25,
+      32,
+      33,
+      34,
+      37,
+      38,
+      40,
+      41,
+      44,
+      51,
+      52,
+      53,
+      54,
+      56,
+      57,
+      61,
+      63,
+      64,
+      77,
+      80,
+      81,
+      82
+    ],
+    "obsolete_or_duplicate_manual_items": [
+      {
+        "manual_item": 46,
+        "canonical_manual_item": 38,
+        "reason": "The same obsolete local parser extension; no separate capability is selected."
+      },
+      {
+        "manual_item": 58,
+        "reason": "Duplicate proposal; no separate product decision or implementation is required."
+      },
+      {
+        "manual_item": 62,
+        "reason": "The native async-classifier override is deprecated and ignored; do not add an ineffective switch."
+      }
+    ],
+    "native_compatibility": {
+      "contract": "Maintain concrete Decodex launch, configuration, custom-tool routing, authorization, protocol and presentation consumers. Keep native execution, enforcement and algorithms in Codex. Inspect a real consumer before opening repair work.",
+      "manual_items": {
+        "45": "Retain native ownership; no new local capability is selected.",
+        "48": "Retain native ownership; no new local capability is selected.",
+        "55": "Keep launch environment and verified bundled helpers correct. Native Codex owns login-shell PATH restoration.",
+        "60": "Preserve the native model source and configuration boundary. Do not build a second model-context catalog.",
+        "73": "Strict Code Mode exposure stays native-owned. A later explicit activation must preserve supported custom-tool routing, callback content and authorization.",
+        "75": "Ranked Code Mode search stays native-owned. A later explicit activation must preserve supported model capability and client-tool discovery.",
+        "76": "Keep real native parent/root turn attribution when the supported caller contract requires it. Decodex Work relationships do not establish native turn causality. Preserve a narrow attribution check; source inspection alone has not reproduced a defect."
+      },
+      "limits": "No experimental activation, replacement executor, broad upstream test project or claim of complete artifact qualification follows from native implementation ownership."
+    },
+    "diagnostics_and_privacy": "Retain Decodex diagnostics and normal warnings. Do not restore Codex/app-server self-diagnostic UI, diagnostic exports or uploads. Item 24 remains rejected for privacy; normal retained conversation export has its existing scope.",
+    "schedule_contract": "Keep the daily cadence declared, but keep native scheduling paused until the user explicitly authorizes resumption. A completed review or a repository update does not resume it."
   }
 }
