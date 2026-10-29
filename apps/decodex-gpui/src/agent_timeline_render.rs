@@ -465,7 +465,7 @@ impl AgentSurface {
 	) -> AnyElement {
 		let row = gpui::div().w_full().min_w_0().flex().flex_col().gap_1();
 
-		match &entry.content {
+		let body = match &entry.content {
 			content @ AgentTimelineContent::Item { .. } =>
 				self.native_item_content(work, content, identity, archived, cx),
 			AgentTimelineContent::Speech { role, text, truncated, .. } => row
@@ -505,7 +505,8 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			},
 			content @ AgentTimelineContent::Promotion { .. } =>
 				self.native_promotion(work, content, identity, cx),
-		}
+		};
+		self.find_result_row(entry, body)
 	}
 
 	fn native_turn_metrics(
@@ -579,8 +580,10 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			unreachable!("item renderer")
 		};
 		let draft = self.native_item_draft(work, kind, turn_id, item_id);
-		let (text, truncated) = draft.map_or((text.as_str(), *truncated), |message| {
-			(message.text.as_str(), message.truncated)
+		let (text, truncated) = self.find_retained_text(turn_id, item_id).unwrap_or_else(|| {
+			draft.map_or((text.as_str(), *truncated), |message| {
+				(message.text.as_str(), message.truncated)
+			})
 		});
 
 		if kind == "agentMessage" && !truncated && attachments.is_empty() {
@@ -680,7 +683,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 		self.native_item_text(work, content, identity, text, truncated, cx)
 	}
 
-	fn native_item_draft(
+	pub(super) fn native_item_draft(
 		&self,
 		work: &AgentWorkItemDto,
 		kind: &str,
@@ -1187,6 +1190,8 @@ mod tests {
 	#[test]
 	fn activity_labels_name_agents_and_actions_without_masking_errors_or_unknown_tools() {
 		let agents = vec![decodex_protocol::NativeAgentDto {
+			model: None,
+			reasoning_effort: None,
 			thread_id: "child".into(),
 			parent_thread_id: "parent".into(),
 			title: "Mia".into(),
@@ -1200,6 +1205,8 @@ mod tests {
 			}))
 			.unwrap();
 		let mut call = decodex_protocol::AgentCollaborationDto {
+			model: None,
+			reasoning_effort: None,
 			results: vec![],
 			sender_thread_id: "parent".into(),
 			receiver_thread_ids: vec!["child".into()],

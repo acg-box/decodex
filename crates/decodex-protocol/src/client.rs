@@ -40,17 +40,17 @@ use crate::{
 	AgentTranscriptRequest, AgentTranscriptResult, AgentUsageEstimateResult, AgentVoiceRequest,
 	AgentVoiceSettingsResult, AgentVoiceStatus, CURRENT_VERSION, ClientCommandId, ClientHello,
 	ClientMessage, CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandOutcome,
-	CommandPayload, CommandResultEnvelope, ConversationWorkingDirectory, CorrelationId,
-	DictationRequest, DictationStatus, DoctorReport, EntityId, EntityRevision, IdempotencyKey,
-	InitialModelCatalogRequest, InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES,
-	MAX_AGENT_APP_UI_RECEIPT_BYTES, MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest,
-	McpLoginStatus, NativeAgentsResult, NativeStartupConfiguration, PrivateReviewDetailsResult,
-	PromptDraft, PromptEditStatus, PromptForkBoundary, PromptForkResult, PromptInputSendIdentity,
-	PromptInputSendStatus, PromptInputUpload, PromptInputUploadStatus, ProtocolVersion,
-	QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal,
-	RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult,
-	ResultPayload, RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage,
-	TRANSCRIPT_CHUNK_BYTES, TaskRecapStatus, WireText, WorkDetailResult,
+	CommandPayload, CommandResultEnvelope, CorrelationId, DictationRequest, DictationStatus,
+	DoctorReport, EntityId, EntityRevision, IdempotencyKey, InitialModelCatalogRequest,
+	InitialModelCatalogResult, MAX_AGENT_APP_UI_BYTES, MAX_AGENT_APP_UI_RECEIPT_BYTES,
+	MAX_AGENT_MEDIA_BYTES, MAX_TRANSCRIPT_BYTES, McpLoginRequest, McpLoginStatus,
+	NativeAgentsResult, PrivateReviewDetailsResult, PromptDraft, PromptEditStatus,
+	PromptForkBoundary, PromptForkResult, PromptInputSendIdentity, PromptInputSendStatus,
+	PromptInputUpload, PromptInputUploadStatus, ProtocolVersion, QueryEnvelope, QueryId,
+	QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope,
+	ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult, ResultPayload,
+	RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage, TRANSCRIPT_CHUNK_BYTES,
+	TaskRecapStatus, WireText, WorkDetailResult,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 	work::WorkPortfolio,
 };
@@ -2495,38 +2495,6 @@ impl DoctorClient {
 		close_one_shot_socket(completed.socket).await;
 
 		Ok(completed.value)
-	}
-
-	/// Inspect startup configuration through the local service without starting a conversation.
-	pub async fn startup_configuration(
-		&self,
-		directory: ConversationWorkingDirectory,
-	) -> Result<NativeStartupConfiguration, ClientFailure> {
-		self.transport.require_local_profile()?;
-
-		let transport = ResetCardClient {
-			profile: self.transport.profile.clone(),
-			timeout: Duration::from_secs(40),
-		};
-		let expected = directory.as_str().to_owned();
-		let completed = time::timeout(
-			transport.timeout,
-			transport.query_inner(
-				"decodex-native-startup-configuration",
-				QueryPayload::GetNativeStartupConfiguration { directory },
-			),
-		)
-		.await
-		.map_err(|_| ClientFailure::ProtocolTimeout)??;
-
-		close_one_shot_socket(completed.socket).await;
-
-		match completed.value {
-			QueryResultPayload::NativeStartupConfiguration(result)
-				if result.is_valid() && result.directory.as_deref() == Some(expected.as_str()) =>
-				Ok(result),
-			_ => Err(ClientFailure::ProtocolMalformed),
-		}
 	}
 
 	async fn query_inner(&self) -> Result<CompletedOneShot<DoctorReport>, ClientFailure> {

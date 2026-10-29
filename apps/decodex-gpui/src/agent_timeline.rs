@@ -1,5 +1,6 @@
 //! Native timeline page state. Native IDs remain distinct from local inbox row IDs.
 #[path = "agent_timeline_completion.rs"] mod completion;
+#[path = "agent_timeline_find.rs"] mod find;
 #[path = "agent_timeline_groups.rs"] mod groups;
 #[path = "agent_timeline_inputs.rs"] mod inputs;
 #[path = "agent_timeline_media.rs"] mod media;
@@ -516,7 +517,12 @@ impl AgentSurface {
 	) -> Div {
 		let header = self.turn_process_header(work, group, entry, cx);
 
-		if let Some(motion) = self.timeline.native.completions.get(group) {
+		if let Some(motion) = self.timeline.native.completions.get(group)
+			&& !group
+				.indices
+				.iter()
+				.any(|index| self.is_conversation_match(&self.timeline.native.entries[*index]))
+		{
 			let indices: Vec<_> = group
 				.indices
 				.iter()
@@ -564,7 +570,13 @@ impl AgentSurface {
 		archived: bool,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let waits = waits::groups(&self.timeline.native.entries, indices);
+		let mut waits = waits::groups(&self.timeline.native.entries, indices);
+		waits.retain(|_, group| {
+			!group
+				.indices
+				.iter()
+				.any(|index| self.is_conversation_match(&self.timeline.native.entries[*index]))
+		});
 		let hidden: BTreeSet<_> =
 			waits.values().flat_map(|group| group.indices.iter().skip(1)).collect();
 		let body = gpui::div().w_full().min_w_0().flex().flex_col().gap_2().children(
@@ -574,13 +586,18 @@ impl AgentSurface {
 				} else {
 					let entry = &self.timeline.native.entries[*i];
 
-					self.native_timeline_content(
+					let body = self.native_timeline_content(
 						work,
 						entry,
 						&serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
 						archived,
 						cx,
-					)
+					);
+					if self.is_conversation_match(entry) {
+						self.native_scroll_row(work, entry, body, cx)
+					} else {
+						body
+					}
 				}
 			}),
 		);
@@ -633,8 +650,14 @@ impl AgentSurface {
 		work: &AgentWorkItemDto,
 		cx: &mut Context<Self>,
 	) -> Div {
-		let groups =
+		let mut groups =
 			groups::groups(&self.timeline.native.entries, &self.timeline.native.expanded_turns);
+		for group in &mut groups {
+			group.expanded |= group
+				.indices
+				.iter()
+				.any(|index| self.is_conversation_match(&self.timeline.native.entries[*index]));
+		}
 		let mut collapsed = BTreeSet::new();
 		let mut headers = std::collections::BTreeMap::new();
 
@@ -643,13 +666,26 @@ impl AgentSurface {
 			collapsed.extend(group.indices.iter().copied());
 		}
 
-		let waits = self.native_wait_groups();
+		let mut waits = self.native_wait_groups();
+		waits.retain(|_, group| {
+			!group
+				.indices
+				.iter()
+				.any(|index| self.is_conversation_match(&self.timeline.native.entries[*index]))
+		});
 		let wait_hidden: BTreeSet<_> =
 			waits.values().flat_map(|group| group.indices.iter().skip(1).copied()).collect();
 
 		self.prepare_native_process_folds(&groups, &collapsed, &wait_hidden, &waits);
 
-		let voice_groups = history::groups(&self.timeline.native.entries);
+		let mut voice_groups = history::groups(&self.timeline.native.entries);
+		voice_groups.retain(|group| {
+			group.hidden()
+				|| !group
+					.indices
+					.iter()
+					.any(|index| self.is_conversation_match(&self.timeline.native.entries[*index]))
+		});
 		let (voice_headers, voice_hidden) = Self::voice_group_indices(&voice_groups);
 		let voice_tail_turns = history::tail_flush_turns(&self.timeline.native.entries);
 		let hidden_items = groups::hidden_items(&self.timeline.native.entries);
@@ -1067,6 +1103,11 @@ impl AgentSurface {
 		}
 
 		if changed {
+			if self.timeline.native.find.searching_earlier {
+				self.timeline.native.find.searching_earlier = false;
+				self.timeline.native.find.current = None;
+				self.select_conversation_match(false, cx);
+			}
 			cx.notify();
 		}
 	}
@@ -1081,6 +1122,7 @@ pub(super) struct Binding {
 
 #[derive(Default)]
 pub(super) struct Timeline {
+	find: find::Panel,
 	arrival: ContentArrival,
 	preview: Preview,
 	input_receipts: InputReceipts,

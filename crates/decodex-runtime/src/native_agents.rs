@@ -106,6 +106,8 @@ fn observation(item: &Value) -> Option<NativeAgentDto> {
 	}
 
 	Some(NativeAgentDto {
+		model: native_setting(item, "model"),
+		reasoning_effort: native_setting(item, "reasoningEffort"),
 		thread_id: id.into(),
 		parent_thread_id: parent.into(),
 		title: clean(
@@ -119,6 +121,13 @@ fn observation(item: &Value) -> Option<NativeAgentDto> {
 		task: clean(item["preview"].as_str().unwrap_or(""), 320),
 		status: observed_status(item),
 	})
+}
+
+fn native_setting(value: &Value, key: &str) -> Option<String> {
+	value[key]
+		.as_str()
+		.filter(|text| !text.is_empty() && !decodex_core::contains_credential_material(text))
+		.map(|text| clean(text, 160))
 }
 
 // Preserve native waiting flags instead of presenting every active thread as executing.
@@ -160,6 +169,8 @@ fn conversation(value: &Value, thread: &str) -> Option<NativeAgentsResult> {
 	let turns = value.pointer("/thread/turns")?.as_array()?;
 
 	Some(NativeAgentsResult::Conversation {
+		model: native_setting(&value["thread"], "model"),
+		reasoning_effort: native_setting(&value["thread"], "reasoningEffort"),
 		thread_id: thread.into(),
 		can_input: value.pointer("/thread/canAcceptDirectInput").and_then(Value::as_bool),
 		active_turn: turns
@@ -178,7 +189,7 @@ mod tests {
 
 	#[test]
 	fn native_input_metadata_keeps_turn_identity_and_does_not_guess_capability() {
-		let v = serde_json::json!({"thread":{"id":"child","turns":[{"id":"t","status":"inProgress","items":[{"id":"u","type":"userMessage","content":[{"text":"Check"}]},{"id":"a","type":"agentMessage","text":"Result"}]}]}});
+		let mut v = serde_json::json!({"thread":{"id":"child","turns":[{"id":"t","status":"inProgress","items":[{"id":"u","type":"userMessage","content":[{"text":"Check"}]},{"id":"a","type":"agentMessage","text":"Result"}]}]}});
 		let Some(NativeAgentsResult::Conversation { can_input, active_turn, .. }) =
 			native_agents::conversation(&v, "child")
 		else {
@@ -187,6 +198,15 @@ mod tests {
 
 		assert_eq!(can_input, None);
 		assert_eq!(active_turn.as_deref(), Some("t"));
+		assert!(matches!(
+			native_agents::conversation(&v, "child"),
+			Some(NativeAgentsResult::Conversation { model: None, reasoning_effort: None, .. })
+		));
+		v["thread"]["model"] = serde_json::json!("child-model");
+		v["thread"]["reasoningEffort"] = serde_json::json!("medium");
+		assert!(
+			matches!(native_agents::conversation(&v, "child"),Some(NativeAgentsResult::Conversation { model:Some(model), reasoning_effort:Some(effort), .. }) if model == "child-model" && effort == "medium")
+		);
 		assert!(native_agents::conversation(&v, "other").is_none());
 	}
 }
@@ -218,11 +238,13 @@ mod observation_tests {
 
 	#[test]
 	fn native_inventory_retains_bounded_task_and_exact_parent() {
-		let mut item = serde_json::json!({"id":"child","parentThreadId":"parent","source":{"subAgent":{"thread_spawn":{"parent_thread_id":"parent"}}},"agentNickname":"Mencius","preview":"Review navigation","status":{"type":"idle"}});
+		let mut item = serde_json::json!({"id":"child","parentThreadId":"parent","source":{"subAgent":{"thread_spawn":{"parent_thread_id":"parent"}}},"agentNickname":"Mencius","preview":"Review navigation","status":{"type":"idle"},"model":"child-model","reasoningEffort":"high"});
 		let agent = native_agents::observation(&item).unwrap();
 
 		assert_eq!(agent.task, "Review navigation");
 		assert_eq!(agent.status, "idle");
+		assert_eq!(agent.model.as_deref(), Some("child-model"));
+		assert_eq!(agent.reasoning_effort.as_deref(), Some("high"));
 
 		item["preview"] = Value::String("x".repeat(400));
 
@@ -237,5 +259,6 @@ mod observation_tests {
 		let agent: NativeAgentDto = serde_json::from_value(serde_json::json!({"thread_id":"child","parent_thread_id":"parent","title":"Agent","status":"idle"})).unwrap();
 
 		assert!(agent.task.is_empty());
+		assert!(agent.model.is_none() && agent.reasoning_effort.is_none());
 	}
 }

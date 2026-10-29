@@ -177,6 +177,13 @@ pub struct AgentCollaborationResultDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AgentCollaborationDto {
+	/// Native model metadata: resolved creation settings for subAgentActivity,
+	/// requested settings for legacy collaboration calls. Absent in older records.
+	#[serde(default)]
+	pub model: Option<String>,
+	/// Native effort with the same provenance as model. Never inferred from the parent.
+	#[serde(default)]
+	pub reasoning_effort: Option<String>,
 	/// Target states returned by the native call.
 	pub results: Vec<AgentCollaborationResultDto>,
 	/// Native thread that made the call.

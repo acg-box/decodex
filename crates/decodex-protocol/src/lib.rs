@@ -54,7 +54,6 @@ mod mcp_install;
 mod mcp_login;
 mod model_catalog;
 mod native_agents;
-mod native_startup_config;
 mod reset_card_recovery;
 mod retained_session;
 mod usage_evidence;
@@ -273,10 +272,6 @@ pub use decodex_core::{
 };
 /// Shared global client settings; these do not change thread execution settings.
 pub use decodex_core::{FastModeFailure, global_fast_mode_enabled, set_global_fast_mode_enabled};
-pub use native_startup_config::{
-	NativeStartupConfigLocation, NativeStartupConfigStatus, NativeStartupConfiguration,
-	NativeStartupLoginMethod,
-};
 pub use usage_evidence::{
 	UsageEvidenceResult, UsageEvidenceScope, UsageEvidenceSource, UsageEvidenceTotals,
 };
@@ -285,7 +280,7 @@ pub use work_portfolio::{MAX_WORK_DETAIL_BYTES, WORK_DETAIL_PAGE_BYTES, WorkDeta
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 4, minor: 0 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 4, minor: 1 };
 
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]

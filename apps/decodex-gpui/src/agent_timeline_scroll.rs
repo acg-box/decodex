@@ -32,6 +32,16 @@ pub(super) const ROW_GAP: f32 = MESSAGE_GAP;
 #[derive(Default)]
 pub(super) struct Viewport(Rc<RefCell<Geometry>>);
 impl Viewport {
+	pub(super) fn find(&self, key: RowKey) {
+		let mut state = self.0.borrow_mut();
+		state.revision = state.revision.wrapping_add(1);
+		state.process_motion_until = None;
+		state.latest_requested = false;
+		state.pinned = Some(key.clone());
+		state.pending =
+			Some(Anchor { key, viewport_top: 56., revision: state.revision, scheduled: false });
+	}
+
 	fn prepare_layout(&self, layout: Layout) {
 		let mut state = self.0.borrow_mut();
 

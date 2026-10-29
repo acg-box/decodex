@@ -37,7 +37,7 @@ struct AccountProfileDetailView: View {
 				AccountProfileSummaryView(profile: profile.snapshot)
 			}
 			if state.profile == nil && state.isProfileRefreshing {
-				ProgressView().controlSize(.mini).accessibilityLabel("Loading activity")
+				BrandLoading(size: 14).accessibilityLabel("Loading activity")
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)

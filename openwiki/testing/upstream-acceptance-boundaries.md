@@ -137,6 +137,9 @@ sources:
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-28T18:12:33.127Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -227,11 +230,21 @@ The full vstyle audit failed with 16,517 findings at implementation commit `1bea
 
 A Work result or delivery identifies a linked native turn; it does not prove that every action in the turn belongs to that Work. Input includes cached input, and output includes reasoning. Missing historical or child receipts remain unknown. Summed native duration can overlap and is not Work elapsed time. No complete Work cost, monetary allocation, installed-app interaction, real-provider acceptance, app installation or release is claimed. The selected runtime baseline, upstream review cursor and automation schedule do not change. The user later selected attached branches; Guardian V3 waits for upstream maturity and custom managed configuration is deferred. A rebuilt runtime requires new artifact/helper/schema observations and affected regressions; it is not the original deleted artifact.
 
+## Current desktop feedback qualification
+
+`desktop_feedback_scope` in the [portable evidence index](../../automations/upstream/retained-evidence.json) qualifies the selected conversation changes at source `cfa54c6f2689cf5b2f4e1f09afbcc1664396eb31`. The cohort executed 25 distinct Decodex tests: 19 GPUI and six runtime projection tests, with no unmatched selector. Four upstream test functions were read; no upstream suite was executed. A function-level comparison with the original dispatcher reproduces the reconnect waiting failure, and the repaired source passes with the original key, pending-approval pause and later-edit preservation.
+
+The 25 test assertions passed. One pure layout-state case received a nextest process-cleanup marker in the combined run; its exact isolated repeat passed without the marker. The exit-delay cause remains unmeasured. Four affected Rust packages passed repository Clippy deny flags with all features and targets. Nightly format, 14 architecture/gate tests and the menu-bar Swift build passed.
+
+The selected native source remains `33d306d457a4632b22bebf214e0c25d91f90f6e8`. The CLI, Code Mode helper and `rg` byte digests still match the earlier qualification. The previously generated exact-artifact schema document passed its canonical digest check and contains the nullable model/effort metadata. This work made no runtime migration or provider request. An offscreen native workspace-loading capture shows the cloud mark. Installed interactions, physical display timing, native child-window focus and packaged SwiftUI rendering remain unmeasured. Find covers loaded retained text and explicit earlier pages; shortened output remains incomplete.
+
+The standalone Codex startup-configuration diagnostic capability and its dedicated helper are retired. Historical executions of that control remain evidence at their original source revision and create no current validation requirement. Decodex product/integration diagnostics and normal warning presentation remain supported. The source-review cursor and paused automation are unchanged.
+
 ## Persistent attached branches
 
 `retained_attached_forks` in the [stable contract catalog](../../automations/upstream/retained-contracts.json) records qualification against native source `970111f6cb62cc02fe36a82ea7d71b37a2889c97`, with separate CLI, Code Mode helper, `rg`, source archive and generated-schema digests. Local protocol is 3.2; the database remains schema59. The two relevant upstream test functions, containing five cases, were read but were not executed.
 
-Five exact-artifact native tests passed: the public-socket fork workflow, source-provider fork control, archive roundtrip, parallel Code Mode tool control and startup configuration control. The fork control exercises legacy and paginated native history, Goal exclusion, provider preservation, restart, archive/restore and refusal to delete a parent with attached children. The public-socket case creates nine source turns and checks all three explicit branch choices, saved-choice retries, retained exact-source listing and canonical draft recovery. Creating or discovering a branch makes no model request. A separate explicit send adds one request to the attached branch and leaves the source history unchanged.
+Five exact-artifact native tests passed: the public-socket fork workflow, source-provider fork control, archive roundtrip, parallel Code Mode tool control and startup configuration control. The startup-configuration control is now retired; its execution remains a historical receipt. The fork control exercises legacy and paginated native history, Goal exclusion, provider preservation, restart, archive/restore and refusal to delete a parent with attached children. The public-socket case creates nine source turns and checks all three explicit branch choices, saved-choice retries, retained exact-source listing and canonical draft recovery. Creating or discovering a branch makes no model request. A separate explicit send adds one request to the attached branch and leaves the source history unchanged.
 
 Current compatibility keeps the original source boundary as provenance but validates an empty child-visible history for attached creation. Native inference retains the source context, subsequent child turns are independent, and the original history is unchanged. Attachment requires paginated source history. The raw legacy negative control and ordinary legacy fork controls remain explicit. These current checks supersede the historical child-prefix expectation without extending its installed-app scope.
 

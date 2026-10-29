@@ -1,6 +1,9 @@
 //! Local cold recovery and background publication of unsent desktop inputs.
 #[path = "agent_draft_merge.rs"] mod merge;
 #[path = "agent_ordinary_storage.rs"] mod ordinary;
+#[cfg(test)]
+#[path = "agent_reconnect_queue_tests.rs"]
+mod reconnect;
 
 use std::{
 	collections::BTreeSet,

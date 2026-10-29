@@ -25,6 +25,7 @@ pub(super) enum Panel {
 
 #[derive(Clone, Copy)]
 enum Action {
+	Find,
 	Toggle(Panel),
 	CloseDock,
 }
@@ -43,6 +44,9 @@ impl AgentSurface {
 			.flex()
 			.items_center()
 			.gap_1()
+			.when(matches!(panel, Panel::Conversation), |group| {
+				group.child(self.panel_action(Action::Find, cx))
+			})
 			.child(self.panel_action(Action::Toggle(panel), cx));
 
 		if matches!(panel, Panel::Dock) {
@@ -54,6 +58,12 @@ impl AgentSurface {
 
 	fn panel_action(&self, action: Action, cx: &mut Context<Self>) -> AnyElement {
 		let (id, label, expanded, icon) = match action {
+			Action::Find => (
+				"conversation-find-open",
+				"Find in conversation · Cmd-F",
+				None,
+				workspace_symbols::icon(Symbol::ActivitySearch),
+			),
 			Action::Toggle(panel) => {
 				let (id, key, expanded, label) = match panel {
 					Panel::Conversation => (
@@ -101,6 +111,11 @@ impl AgentSurface {
 			.hover(|button| button.bg(ui_theme::rgba(HOVER_FILL)))
 			.focus_visible(|button| button.border_color(ui_theme::rgb(BLUE)))
 			.on_click(cx.listener(move |s, _, window, cx| {
+				if matches!(action, Action::Find) {
+					s.open_conversation_find(window, cx);
+					cx.stop_propagation();
+					return;
+				}
 				s.perform_panel_action(action, cx);
 
 				workspace::restore_shell_focus(window, cx);
@@ -109,6 +124,11 @@ impl AgentSurface {
 			}))
 			.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
 				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+					if matches!(action, Action::Find) {
+						s.open_conversation_find(window, cx);
+						cx.stop_propagation();
+						return;
+					}
 					s.perform_panel_action(action, cx);
 
 					workspace::restore_shell_focus(window, cx);
@@ -123,6 +143,7 @@ impl AgentSurface {
 
 	fn perform_panel_action(&mut self, action: Action, cx: &mut Context<Self>) {
 		match action {
+			Action::Find => {},
 			Action::Toggle(Panel::Conversation) => self.toggle_chat_fullscreen(cx),
 			Action::Toggle(Panel::Dock) => self.toggle_graph_fullscreen(cx),
 			Action::CloseDock => {

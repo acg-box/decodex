@@ -883,6 +883,8 @@ mod tests {
 			s.workspace.browsing = true;
 
 			let child = decodex_protocol::NativeAgentDto {
+				model: None,
+				reasoning_effort: None,
 				task: String::new(),
 				thread_id: "child-thread".into(),
 				parent_thread_id: "parent".into(),

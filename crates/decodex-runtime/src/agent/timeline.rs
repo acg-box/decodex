@@ -445,6 +445,8 @@ fn subagent_activity(
 	}
 
 	Some(decodex_protocol::AgentCollaborationDto {
+		model: creation_setting(item, "model"),
+		reasoning_effort: creation_setting(item, "reasoningEffort"),
 		sender_thread_id: id(&Value::String(thread.into()))?,
 		receiver_thread_ids: vec![id(&item["agentThreadId"])?],
 		tool: format!("subAgentActivity/{kind}"),
@@ -470,6 +472,8 @@ fn collaboration(item: &Value) -> Option<decodex_protocol::AgentCollaborationDto
 	let (prompt, _) = visible_text(prompt);
 
 	Some(decodex_protocol::AgentCollaborationDto {
+		model: creation_setting(item, "model"),
+		reasoning_effort: creation_setting(item, "reasoningEffort"),
 		results: receivers
 			.iter()
 			.filter_map(|receiver| {
@@ -493,6 +497,12 @@ fn collaboration(item: &Value) -> Option<decodex_protocol::AgentCollaborationDto
 		status: item["status"].as_str()?.chars().take(64).collect(),
 		prompt: prompt.chars().take(1_024).collect(),
 	})
+}
+
+fn creation_setting(item: &Value, key: &str) -> Option<String> {
+	let text = item[key].as_str()?;
+	(!text.is_empty() && text.len() <= 160 && !decodex_core::contains_credential_material(text))
+		.then(|| text.into())
 }
 
 async fn project_with_saved_origins(
@@ -574,6 +584,14 @@ mod tests {
 			assert_eq!(call.receiver_thread_ids, ["child"]);
 			assert_eq!(call.tool, format!("subAgentActivity/{kind}"));
 			assert!(call.prompt.is_empty() && call.results.is_empty());
+			assert!(call.model.is_none() && call.reasoning_effort.is_none());
+			let mut with_model = value.clone();
+			with_model["data"][0]["item"]["model"] = serde_json::json!("role-model");
+			with_model["data"][0]["item"]["reasoningEffort"] = serde_json::json!("high");
+			let page = super::project("parent", &with_model).unwrap();
+			assert!(matches!(&page.entries[0].content,
+				AgentTimelineContent::Item { collaboration: Some(call), .. }
+				if call.model.as_deref() == Some("role-model") && call.reasoning_effort.as_deref() == Some("high")));
 		}
 	}
 
@@ -584,6 +602,10 @@ mod tests {
 
 		assert_eq!(call.receiver_thread_ids, vec!["child"]);
 		assert_eq!(call.results[0].message, "Review complete");
+		assert!(call.model.is_none() && call.reasoning_effort.is_none());
+		let spawned = super::collaboration(&serde_json::json!({"type":"collabAgentToolCall","senderThreadId":"sender","receiverThreadIds":["child"],"tool":"spawnAgent","status":"completed","model":"child-model","reasoningEffort":"medium"})).unwrap();
+		assert_eq!(spawned.model.as_deref(), Some("child-model"));
+		assert_eq!(spawned.reasoning_effort.as_deref(), Some("medium"));
 		assert!(
 			super::collaboration(
 				&serde_json::json!({"type":"agentMessage","text":item.to_string()})

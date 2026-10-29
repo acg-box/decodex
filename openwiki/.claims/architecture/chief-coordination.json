@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8a6bfca1c30533470cfe77803c74fbf0dcd1539a6e4845c981bbe9b42abb21c9",
+  "pageVersion": "sha256:58238442e4708c69838fd210fa82f165e8e343e4e31fcb32e57678d24b75a248",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -94,7 +94,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/application.rs",
-          "version": "repo-file-v1:sha256:3c634ebedbb73e0553f9de62f50325c846fcaa448975695f5a2f5703393faef1"
+          "version": "repo-file-v1:sha256:007ea8a82efe2aa1a6d49c5ef0f79fa7253ffa56e5891f6c113a45e15d58d6c5"
         }
       ]
     },
@@ -118,11 +118,11 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_native_agents.rs",
-          "version": "repo-file-v1:sha256:6b3cdd82b54cae089f43b298280e83042caed77cd4a8f46634ee057a82ea520f"
+          "version": "repo-file-v1:sha256:5ca6ee504df7f86fc4a48266836d24e73d8e6e023979b028202625886b3899dc"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:aa6050b210768d28830acd50ce1f109e6399bcf700bf91b112bacfa2b757e248"
+          "version": "repo-file-v1:sha256:bc64f7dc40ab0416c112b439093de950fbaba8e546256622a68035c59f1f9c54"
         }
       ]
     },
@@ -253,7 +253,7 @@
       "statement": "Native V2 continuation and V1 waits retain native ownership without Ultra; V1 nested Work attribution and V2 nesting explicitly permitted by native configuration are qualified while the V2 default remains direct-only.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2674-L4161",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2557-L4044",
           "version": "repo-lines-v1:sha256:dca51e28f266f3fd054b394a5451bb61a595544c5b5e6c017bbc9a2bff362c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRlOTQ2ZjE1NzYwNjdhMTM0ZWZiZDhhZTE1MjI2MDI5NzdkMDBlOTFkNjY2YzYyMGE3Yzg0NjdjYjY0ZjE4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhlNmNhNGUyMTVlOTEyMDdlOWZlMDk3ZDUyZGI5M2ViNjVkZTRjOThmZDgwYjE3OTY3MjliM2UxMWQ3MTY5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzIyZjc2YzIxZjc0OTU3ZDkyNWUxOGQzYTY0YWJiNTYwN2ZmMDgwYTc3NDU2MjA4ZThlMDY3ODQ0MDJjMGNhMSJ9"
         },
         {
@@ -349,7 +349,7 @@
       "statement": "The control acceptance follow-up verified native owner links and exact encrypted delivery for the old venue and lodging helpers. Their own returned messages identified the expected contributions, but prepared-plaintext proof remained unavailable and no inferred Work binding was written.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L3696-L3748",
+          "resource": "repo://automations/upstream/retained-contracts.json#L3579-L3631",
           "version": "repo-lines-v1:sha256:482a3cd124f141c018411af1c9b15b63413a068a7097b33ea3cc47cff6c592ec:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzZTBhYWIxMWFmZWMyN2I0NTg4YmY2ODFmOTEzZjNhZjgwNzQwYTY4NGY5YzI0MzdkZmFhNGVjNGQ2NDRkYzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmZWEwMmExM2E5ZDAwMmVjZWUxM2ZkMTMzNzNiMWQ2NWZlNWEwYzRiOTI0Mzk4M2UxN2ZkZTEzNDUzYTIyOTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhZDdlY2Q5ZGUxOTU4OTVlOTcwYWM3ZDIzZWMwOTViYjFhZDEwYTc4YjYwNmI5ODRmYzAzNmE3ZmY1NmNlNjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjMjU5MzBjZDdjZWVhODkxMWRmYjRkZTE3MmE5OTgwMjI2YzhlZmNmNTU5MTk1OGVjZmVlMDU0NmU0ZWU4ZjQifQ"
         }
       ]
@@ -441,11 +441,11 @@
       "statement": "On confirmed archive, the desktop removes failed-message records bound to that owner and native thread and hides retry accessories. It stops live voice only when the archived or removed conversation owns the call, while preserving editable text.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L126-L179",
+          "resource": "repo://apps/decodex-gpui/src/agent_draft_storage.rs#L129-L182",
           "version": "repo-lines-v1:sha256:7703642a6ba26a5703364891a8e15bdd016548169e6b480087bfc575dfa31ff1:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdjZWViNTVmNjY5YmM2MjQxNzg5MDRmYjE3NTVkYTU4ZmUzMGMzMGEyZDI5NjYyOWUwOWI2MWJlYWMwNjc5NjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU4MjVmODNhMDAyY2VkYzBkOTA1OTVjMzUwMTc2NjlkMWIwNmMxYjRmZjg1MGMzYTE3ZjExOTFjYjMxZWIxOGUifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1637-L1702",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1694-L1759",
           "version": "repo-lines-v1:sha256:adb6fed9e31857629b718b62fcc9f4ca8691931219919246760908d78d5120b3:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4NDA2NWNjOTFkNmQyZmM1ZjNlMTg4ODFkZDkwNGQxN2YxNGFlODk0YjAzMDJlZjk0OGE2YjMxNDgwODQ0M2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgxOWY1MDE3OTNiZjgzNjk5Njc5MzY0NzFhMDQ3NmM1NmE0MjFlYmVkZTQyNWNjYmNmNTgyMDBhNGUwZjJiNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4Mjg1MGE3OWVlMTYyNjQ4NmRjZGFlMzA4NGE0Mjc4ZTY1Yjc4YjVjMmNmNmM0YTliYjU1YmZkNmMzYTFjZmUifQ"
         },
         {
@@ -485,6 +485,32 @@
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
           "version": "repo-file-v1:sha256:ede8778c3941e42556a06ca592a2881d216f7d01aaadf9071febccd40bf5ec61"
+        }
+      ]
+    },
+    {
+      "id": "claim_2937be93cbfa402fb7ae1110c8679b00",
+      "statement": "The child composer and Started agent detail show nullable native model and effort without parent fallback. Thread observations are current or latest persisted settings, not per-turn telemetry. SubAgentActivity creation metadata is resolved; legacy collaboration settings are requested and use different labels.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
+          "version": "repo-file-v1:sha256:1f3c295b6baad304b9a9b0a8cf90c9bff6dde2eaa42c1e46cc94f85110fa074f"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_detail.rs",
+          "version": "repo-file-v1:sha256:475302a1e6825aab1aa7e70c9a824510793ab9b20293fb25b1dcde7df7e181f4"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_relation_canvas.rs",
+          "version": "repo-file-v1:sha256:9743513a0ac4ed35ed61da14c0c4afc7f2af342d453df7437f4fee135e91c403"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs",
+          "version": "repo-file-v1:sha256:a14add5951034e1bbc4eec7d0f20c6d79fadbb6ee41a59b078b7d29b08829488"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/native_agents.rs",
+          "version": "repo-file-v1:sha256:1c3a8568e943065e012ef60bddd14b2dee12829dc6191ba4f2c03bb9483a7d18"
         }
       ]
     }

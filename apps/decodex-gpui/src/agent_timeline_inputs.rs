@@ -127,7 +127,7 @@ impl AgentSurface {
 			.collect()
 	}
 
-	fn local_message_target_matches(&self, message: &DesktopMessage) -> bool {
+	pub(in super::super) fn local_message_target_matches(&self, message: &DesktopMessage) -> bool {
 		let owner = self.conversation_work();
 		let local_owner = owner
 			.as_ref()

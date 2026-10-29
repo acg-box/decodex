@@ -148,6 +148,12 @@ Independent Agents cooperate through scoped Collaboration Requests in the existi
 
 Questions first stay within the assignment and existing authority. A Subagent uses native messages and waits. An independent Agent uses the scoped request. The owner escalates only missing decisions or authority to the user. Ask Me approvals remain human-owned. Agent conversations stay available after individual Work completes.
 
+## Native child model metadata
+
+The existing child composer and **Started agent** relationship detail show the child's native model and reasoning effort. A `Thread` observation supplies the current configured values when loaded, or the latest persisted values otherwise. These values are not per-turn execution telemetry. Missing values stay Unknown; Decodex does not substitute the parent's settings.
+
+Native activity detail keeps a separate creation record. `subAgentActivity` model and effort are resolved creation settings and use **Created with**. Legacy collaboration metadata describes requested settings and uses **Spawn requested**. This presentation preserves native permission and speed ownership and adds no execution request. The retained contract and qualification limits are in `retained_desktop_feedback.child_model_metadata` in the [contract catalog](../../automations/upstream/retained-contracts.json).
+
 ## Read-only collaboration evidence and usage
 
 The existing collaboration history shows locally retained answers beside their exact native question. The join uses the Agent, native thread and question ID. A reply receipt can prove saved text, acknowledged delivery and the receiving turn's terminal outcome. None of these facts resolves the question or completes Work. A reply made through another client can lack a retained body; a question tombstone then remains an unknown disposition rather than an invented answer.

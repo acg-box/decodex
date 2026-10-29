@@ -541,8 +541,7 @@ struct AccountPanelView: View {
 	private var emptyOrLoadingState: some View {
 		HStack(alignment: .center, spacing: PanelSpacing.section) {
 			if store.isInitialLoading {
-				ProgressView()
-					.controlSize(.small)
+				BrandLoading()
 			} else {
 				Image(systemName: store.hasLoaded ? "person.2.slash" : "bolt.horizontal.circle")
 					.font(PanelFont.emptyIcon)

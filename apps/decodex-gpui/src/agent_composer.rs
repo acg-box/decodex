@@ -76,6 +76,7 @@ impl AgentSurface {
 	pub(super) fn native_composer_requested(&self, allowed: bool, supported: bool) -> bool {
 		allowed
 			&& supported
+			&& !self.conversation_find_open()
 			&& !self.workspace_connecting()
 			&& !self.workspace.browsing
 			&& self.snapshot.is_some()
@@ -854,11 +855,15 @@ impl AgentSurface {
 				.child(
 					gpui::div()
 						.flex_1()
+						.min_w_0()
+						.text_ellipsis()
 						.text_size(gpui::px(11.))
 						.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 						.child(match &self.native_agents.detail {
 							Some(decodex_protocol::NativeAgentsResult::Conversation {
 								permission_mode,
+								model,
+								reasoning_effort,
 								service_tier,
 								..
 							}) => {
@@ -870,7 +875,11 @@ impl AgentSurface {
 									Some(tier) => tier,
 									None => "Speed not reported",
 								};
-								format!("{permissions} · {speed} · Managed by parent")
+								format!(
+									"{} · {} · {permissions} · {speed}",
+									model.as_deref().unwrap_or("Model unknown"),
+									reasoning_effort.as_deref().unwrap_or("Effort unknown")
+								)
 							},
 							_ => "Permissions and speed are managed by the parent Agent".into(),
 						}),

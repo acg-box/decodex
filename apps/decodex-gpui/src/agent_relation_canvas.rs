@@ -1184,9 +1184,11 @@ impl AgentSurface {
 					label: "Started agent".into(),
 					excerpt: (!agent.task.is_empty()).then(|| agent.task.clone()),
 					detail: format!(
-						"{}\n\nNative child state: {}\n\n{}",
+						"{}\n\nNative child state: {}\nModel: {}\nEffort: {}\nCurrent native configuration when loaded; otherwise the latest saved values.\n\n{}",
 						agent.title,
 						agent.status,
+						agent.model.as_deref().unwrap_or("Unknown"),
+						agent.reasoning_effort.as_deref().unwrap_or("Unknown"),
 						if agent.task.is_empty() {
 							"No initial task text was returned."
 						} else {
@@ -2579,6 +2581,8 @@ impl AgentSurface {
 		self.native_agents.lists.insert(
 			"release".into(),
 			vec![decodex_protocol::NativeAgentDto {
+				model: None,
+				reasoning_effort: None,
 				thread_id: "fixture-reviewer".into(),
 				parent_thread_id: "fixture-release".into(),
 				title: "Security review".into(),
@@ -2593,7 +2597,7 @@ impl AgentSurface {
 			.find(|r| r.key == "release")
 			.expect("relation fixture owner");
 
-		self.work_board.briefs.insert(row.key.clone(),Brief{review:None,output:None,source_thread:row.thread.clone(),assignments:Default::default(),outcome:None,preview:None,question:None,metrics:Default::default(),resources:None,stamp:self.brief_stamp(&row),read_at:std::time::Instant::now(),relations:vec![("review-wait".into(),decodex_protocol::AgentCollaborationDto {sender_thread_id:"fixture-release".into(),receiver_thread_ids:vec!["fixture-reviewer".into()],tool:"wait".into(),status:"completed".into(),prompt:String::new(),results:vec![decodex_protocol::AgentCollaborationResultDto{thread_id:"fixture-reviewer".into(),status:"completed".into(),message:"Cancellation can leave the sign-in button disabled. Add a regression test before release.".into()}]})]});
+		self.work_board.briefs.insert(row.key.clone(),Brief{review:None,output:None,source_thread:row.thread.clone(),assignments:Default::default(),outcome:None,preview:None,question:None,metrics:Default::default(),resources:None,stamp:self.brief_stamp(&row),read_at:std::time::Instant::now(),relations:vec![("review-wait".into(),decodex_protocol::AgentCollaborationDto { model: None, reasoning_effort: None,sender_thread_id:"fixture-release".into(),receiver_thread_ids:vec!["fixture-reviewer".into()],tool:"wait".into(),status:"completed".into(),prompt:String::new(),results:vec![decodex_protocol::AgentCollaborationResultDto{thread_id:"fixture-reviewer".into(),status:"completed".into(),message:"Cancellation can leave the sign-in button disabled. Add a regression test before release.".into()}]})]});
 
 		for owner in ["flow", "verify"] {
 			let row = self

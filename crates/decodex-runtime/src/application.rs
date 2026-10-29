@@ -9,7 +9,6 @@
 
 use std::{
 	future::{self, Future},
-	path::PathBuf,
 	pin::Pin,
 	sync::{
 		Arc,
@@ -23,14 +22,13 @@ use sha2::{Digest as _, Sha256};
 use tokio::{
 	runtime::Handle,
 	sync::watch::{self, Receiver, Sender},
-	task,
 };
 
 use crate::{
 	CredentialRefreshError, CredentialStoreError, ProcessGenerationControl, ProviderAttemptControl,
 	account_launch::{
 		ApiResetCardRuntime, ResetCardFailureCode, ResetCardInventoryObservation,
-		ResetCardOperationStatus, ResetCardServiceError, process,
+		ResetCardOperationStatus, ResetCardServiceError,
 	},
 	account_login::{self, AccountLoginManager},
 	account_observation::AccountObservationService,
@@ -117,12 +115,11 @@ use decodex_protocol::{
 	MAX_AGENT_PENDING_EVENTS, MAX_AGENT_SNAPSHOT_BYTES, MAX_AGENT_WORK_ITEMS,
 	MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_PAGE_SIZE, McpLoginPhase, McpLoginRequest,
 	McpLoginStatus, ModelCatalogPurpose, NativeAgentsResult, NativeProcessDiagnostics,
-	NativeStartupConfiguration, PrivateReviewDetailsResult, ProjectDto, PromptEditPhase,
-	PromptEditStatus, PromptForkResult, PromptInputSendStatus, PromptInputUploadStatus,
-	ProviderThreadId, QueryEnvelope, QueryPayload, QueryResultPayload, ResetCardDescriptorDto,
-	ResetCardError, ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
-	ResetCardOperationView, ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem, WireText,
-	WorkDetailResult,
+	PrivateReviewDetailsResult, ProjectDto, PromptEditPhase, PromptEditStatus, PromptForkResult,
+	PromptInputSendStatus, PromptInputUploadStatus, ProviderThreadId, QueryEnvelope, QueryPayload,
+	QueryResultPayload, ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult,
+	ResetCardObservationDto, ResetCardOperationResult, ResetCardOperationView, ResetCardOutcome,
+	ResultPayload, Sha256Digest, SnapshotItem, WireText, WorkDetailResult,
 };
 
 const ACCOUNT_COMMAND_RECEIPT_SCHEMA: &str = "decodex/account-command-result/1";
@@ -486,17 +483,6 @@ impl ServiceApplication {
 
 	async fn query_product_state(&self, payload: &QueryPayload) -> QueryResultPayload {
 		match payload {
-			QueryPayload::GetNativeStartupConfiguration { directory } => {
-				let path = PathBuf::from(directory.as_str());
-				let fallback = NativeStartupConfiguration::unavailable(directory.as_str());
-				let report = task::spawn_blocking(move || {
-					process::inspect_native_startup_configuration(&path)
-				})
-				.await
-				.unwrap_or(fallback);
-
-				QueryResultPayload::NativeStartupConfiguration(report)
-			},
 			QueryPayload::GetDesktopSettings =>
 				QueryResultPayload::DesktopSettings(self.desktop_settings().await),
 			QueryPayload::ListConversations { after, page_size } =>
@@ -2843,7 +2829,6 @@ impl Application for ServiceApplication {
 			QueryPayload::GetDesktopSettings
 			| QueryPayload::ListConversations { .. }
 			| QueryPayload::GetConversation { .. }
-			| QueryPayload::GetNativeStartupConfiguration { .. }
 			| QueryPayload::GetDoctorStatus
 			| QueryPayload::GetConversationHistory { .. }
 			| QueryPayload::GetResetCards { .. }

@@ -40,14 +40,11 @@ impl RenderOnce for Working {
 		let active = self.turn.is_some();
 		let (opacity, moving, elapsed) = state.update(cx, |s, _| s.sample(active, now));
 		let reduced = ui_motion::reduced();
-		let time = elapsed;
 
 		if moving || (active && !reduced) {
 			ui_motion::request_frame(window, cx);
 		}
 
-		// Use one transition for both visibility and space. Keep the artwork at
-		// its natural size instead of squeezing it as the slot closes.
 		gpui::div()
 			.id("work-status-slot")
 			.debug_selector(|| "work-status-slot".into())
@@ -72,75 +69,120 @@ impl RenderOnce for Working {
 						.text_size(gpui::px(12.))
 						.line_height(gpui::px(18.))
 						.text_color(ui_theme::rgb(TEXT_MUTED))
-						.child(
-							gpui::div()
-								.relative()
-								.w(gpui::px(32.))
-								.h(gpui::px(24.))
-								.flex_none()
-								.child(
-									gpui::img(CLOUD.clone())
-										.absolute()
-										.top_0()
-										.left_0()
-										.size(gpui::px(24.))
-										.opacity(0.9),
-								)
-								.child(
-									gpui::canvas(
-										|_, _, _| (),
-										move |bounds, _, window, _| {
-											for index in 0..10 {
-												let (x, y, edge, alpha) = particle(
-													if reduced { 1.4 } else { time },
-													index,
-												);
-												let b = Bounds::new(
-													bounds.origin
-														+ gpui::point(gpui::px(x), gpui::px(y)),
-													gpui::size(gpui::px(edge), gpui::px(edge)),
-												);
-
-												paint_particle(
-													window,
-													b,
-													gpui::linear_gradient(
-														155.,
-														gpui::linear_color_stop(
-															ui_theme::rgba(0xe8f3f8ff)
-																.opacity(alpha),
-															0.,
-														),
-														gpui::linear_color_stop(
-															ui_theme::rgba(0x9ec8d9ff)
-																.opacity(alpha * 0.7),
-															1.,
-														),
-													),
-												);
-
-												let rim = Bounds::new(
-													b.origin,
-													gpui::size(b.size.width, gpui::px(0.35)),
-												);
-
-												paint_particle(
-													window,
-													rim,
-													ui_theme::rgba(0xf1fcffff)
-														.opacity(alpha * 0.55)
-														.into(),
-												);
-											}
-										},
-									)
-									.absolute()
-									.size_full(),
-								),
-						)
-						.child("Working"),
+						.child(emblem(elapsed, reduced, 24.))
+						.child(status_text("Working", elapsed, reduced)),
 				)
 			})
+	}
+}
+
+/// Share the approved Decodex mark across work, first-load and pagination feedback.
+pub(crate) fn emblem(elapsed: f32, reduced: bool, edge: f32) -> gpui::Div {
+	let scale = edge / 24.;
+	gpui::div()
+		.relative()
+		.w(gpui::px(edge * 4. / 3.))
+		.h(gpui::px(edge))
+		.flex_none()
+		.child(
+			gpui::img(CLOUD.clone()).absolute().top_0().left_0().size(gpui::px(edge)).opacity(0.9),
+		)
+		.child(
+			gpui::canvas(
+				|_, _, _| (),
+				move |bounds, _, window, _| {
+					for index in 0..10 {
+						let (x, y, size, alpha) =
+							particle(if reduced { 1.4 } else { elapsed }, index);
+						let bounds = Bounds::new(
+							bounds.origin + gpui::point(gpui::px(x * scale), gpui::px(y * scale)),
+							gpui::size(gpui::px(size * scale), gpui::px(size * scale)),
+						);
+						paint_particle(
+							window,
+							bounds,
+							gpui::linear_gradient(
+								155.,
+								gpui::linear_color_stop(
+									ui_theme::rgba(0xe8f3f8ff).opacity(alpha),
+									0.,
+								),
+								gpui::linear_color_stop(
+									ui_theme::rgba(0x9ec8d9ff).opacity(alpha * 0.7),
+									1.,
+								),
+							),
+						);
+					}
+				},
+			)
+			.absolute()
+			.size_full(),
+		)
+}
+
+/// Change color only, with complete grapheme ranges and fixed text geometry.
+pub(crate) fn status_text(label: &'static str, elapsed: f32, reduced: bool) -> gpui::StyledText {
+	use unicode_segmentation::UnicodeSegmentation as _;
+	let count = label.graphemes(true).count().max(1) as f32;
+	let highlights =
+		label.grapheme_indices(true).enumerate().filter_map(|(index, (start, grapheme))| {
+			let amount = shimmer(elapsed, (index as f32 + 0.5) / count, reduced);
+			(amount > 0.).then(|| {
+				(
+					start..start + grapheme.len(),
+					gpui::HighlightStyle {
+						color: Some(
+							ui_theme::rgb(TEXT_MUTED)
+								.blend(ui_theme::rgb(ui_theme::TEXT).opacity(amount * 0.9))
+								.into(),
+						),
+						..Default::default()
+					},
+				)
+			})
+		});
+	gpui::StyledText::new(label).with_highlights(highlights)
+}
+
+fn shimmer(elapsed: f32, position: f32, reduced: bool) -> f32 {
+	if reduced || elapsed < 0.7 {
+		return 0.;
+	}
+	let sweep = (elapsed - 0.7).rem_euclid(3.2);
+	if sweep > 1.15 {
+		return 0.;
+	}
+	let center = sweep / 1.15 * 1.5 - 0.25;
+	(1. - (position - center).abs() / 0.26).clamp(0., 1.)
+}
+
+#[derive(IntoElement)]
+pub(crate) struct Welcome {
+	pub key: String,
+}
+impl RenderOnce for Welcome {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let clock = window.use_keyed_state(
+			SharedString::from(format!("welcome-mark-{}", self.key)),
+			cx,
+			|_, _| Instant::now(),
+		);
+		let elapsed = clock.read(cx).elapsed().as_secs_f32();
+		let reduced = ui_motion::reduced();
+		if elapsed < 0.8 && !reduced {
+			ui_motion::request_frame(window, cx);
+		}
+		let progress = if reduced { 1. } else { smooth(elapsed / 0.8) };
+		gpui::div()
+			.id("welcome-brand-mark")
+			.debug_selector(|| "welcome-brand-mark".into())
+			.h(gpui::px(76.))
+			.flex()
+			.items_center()
+			.justify_center()
+			.opacity(progress)
+			.child(emblem(elapsed.min(0.8), reduced, 48.))
 	}
 }
 
@@ -218,6 +260,16 @@ mod tests {
 	impl gpui::Render for Signal {
 		fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
 			Working { key: "test-work".into(), turn: self.0.then(|| "turn".into()) }
+		}
+	}
+
+	#[test]
+	fn shimmer_waits_sweeps_and_stays_static_with_reduced_motion() {
+		assert_eq!(super::shimmer(0.5, 0.5, false), 0.);
+		assert!(super::shimmer(1.275, 0.5, false) > 0.9);
+		assert_eq!(super::shimmer(2.1, 0.5, false), 0.);
+		for i in 0..50 {
+			assert_eq!(super::shimmer(i as f32 / 10., 0.5, true), 0.);
 		}
 	}
 

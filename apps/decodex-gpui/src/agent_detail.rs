@@ -108,6 +108,20 @@ impl AgentSurface {
 			matches!(item.kind.as_str(), "subAgentActivity" | "collabAgentToolCall");
 		let body = self.activity_detail_body(&ids, &key, result, markdown_reply, cx);
 		let agents = self.collaboration_agent_links(work, collaboration, cx);
+		let creation = collaboration
+			.filter(|call| call.model.is_some() || call.reasoning_effort.is_some())
+			.map(|call| {
+				gpui::div().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child(format!(
+					"{} {} · {}",
+					if call.tool.starts_with("subAgentActivity/") {
+						"Created with"
+					} else {
+						"Spawn requested"
+					},
+					call.model.as_deref().unwrap_or("model unknown"),
+					call.reasoning_effort.as_deref().unwrap_or("effort unknown")
+				))
+			});
 		let metadata_key = format!("tool-reference-{key}");
 		let metadata_open = self.timeline.expanded_records.contains(&metadata_key);
 		let metadata_toggle = self.workspace_action(
@@ -166,6 +180,7 @@ impl AgentSurface {
 					.line_height(gpui::px(if markdown_reply { 19. } else { 16. }))
 					.text_color(crate::ui_theme::rgb(TEXT))
 					.child(ui_loading::content(format!("detail-{key}"), result.is_some(), body))
+					.children(creation)
 					.children(agents)
 					.child(metadata_toggle)
 					.child(ui_motion::disclosure(
@@ -660,6 +675,8 @@ mod tests {
 				activity.kind = kind.into();
 				activity.label = "Subagent completed a turn".into();
 				*collaboration = Some(decodex_protocol::AgentCollaborationDto {
+					model: None,
+					reasoning_effort: None,
 					sender_thread_id: "thread".into(),
 					receiver_thread_ids: vec!["child".into()],
 					tool: "subAgentActivity/completed".into(),

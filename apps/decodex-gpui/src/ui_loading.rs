@@ -1,7 +1,6 @@
 //! Compact feedback for a first read. Refreshes with retained content stay quiet.
 use std::{
 	cell::RefCell,
-	f32::consts::TAU,
 	rc::Rc,
 	time::{Duration, Instant},
 };
@@ -446,8 +445,7 @@ pub(crate) fn history(
 }
 
 fn indicator(label: &'static str, icon_only: bool, elapsed: f32, reduced: bool) -> Stateful<Div> {
-	let scale = if icon_only { 1.5 } else { 1. };
-	let phase = if reduced { 0. } else { elapsed * TAU / 1.4 };
+	let edge = if icon_only { 28. } else { 20. };
 
 	gpui::div()
 		.id(SharedString::from(format!("loading-row-{label}")))
@@ -461,20 +459,10 @@ fn indicator(label: &'static str, icon_only: bool, elapsed: f32, reduced: bool) 
 		.gap(gpui::px(8.))
 		.text_size(gpui::px(11.))
 		.text_color(ui_theme::rgb(TEXT_MUTED))
-		.child(gpui::div().flex().items_center().gap(gpui::px(4. * scale)).children((0..3).map(
-			|i| {
-				gpui::div()
-					.size(gpui::px(4. * scale))
-					.rounded_full()
-					.bg(ui_theme::rgb(TEXT_MUTED))
-					.opacity(if reduced {
-						0.6
-					} else {
-						0.3 + 0.45 * ((phase - i as f32 * 0.7).sin() + 1.) / 2.
-					})
-			},
-		)))
-		.when(!icon_only && !label.is_empty(), |row| row.child(label))
+		.child(crate::ui_working::emblem(elapsed, reduced, edge))
+		.when(!icon_only && !label.is_empty(), |row| {
+			row.child(crate::ui_working::status_text(label, elapsed, reduced))
+		})
 }
 
 #[cfg(test)]

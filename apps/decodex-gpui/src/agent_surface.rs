@@ -648,17 +648,6 @@ impl AgentSurface {
 		}
 	}
 
-	pub(crate) fn native_configuration_directory(&self) -> Option<std::path::PathBuf> {
-		let selected = self.selected.as_ref()?;
-
-		self.snapshot
-			.as_ref()?
-			.projects
-			.iter()
-			.find(|workspace| workspace.agent_ids.contains(selected))
-			.map(|workspace| std::path::PathBuf::from(&workspace.directory))
-	}
-
 	pub(crate) fn seed_context(
 		&mut self,
 		cwd: Option<ConversationWorkingDirectory>,
@@ -1169,27 +1158,55 @@ impl AgentSurface {
 		self.submission.unconfirmed.push(key.clone());
 		self.begin_question_submission(&action, &key, cx);
 
-		self.submission.waiting = Some(QueuedCommand { profile, action, key, pending });
+		self.submission.waiting = Some(QueuedCommand {
+			profile,
+			action,
+			key,
+			pending,
+			runtime_source: self.snapshot.as_ref().and_then(|s| s.runtime_source.clone()),
+		});
 
 		self.save_draft_document(cx);
 		cx.notify();
 	}
 
 	fn dispatch_saved_command(&mut self, queued: QueuedCommand, cx: &mut Context<Self>) {
-		let QueuedCommand { profile, action, key, pending } = queued;
-
-		if self.command_epoch != pending.epoch || self.profile.as_ref() != Some(&profile) {
+		if self.command_epoch != queued.pending.epoch
+			|| self.profile.as_ref() != Some(&queued.profile)
+		{
 			return;
 		}
-		if !self.command_connection_ready() {
+
+		// Only this live write-ahead slot proves that dispatch never started. Restored
+		// Sending/Unconfirmed records still require receipt reconciliation, not replay.
+		let followup = matches!(
+			queued.action,
+			AgentActionDto::Send { .. } | AgentActionDto::SendConfigured { .. }
+		) && queued.pending.draft.is_some();
+		if followup && !self.queued_followup_matches(&queued) {
 			self.finish_command(
-				pending,
+				queued.pending,
+				Err("Not sent: the conversation or connection identity changed. Draft kept.".into()),
+				cx,
+			);
+			return;
+		}
+		if !self.command_connection_ready() || (followup && !self.waiting_followup_ready()) {
+			if followup && queued.runtime_source.is_some() {
+				self.submission.waiting = Some(queued);
+				self.feedback = Feedback::neutral("Waiting for connection · Nothing sent yet");
+				cx.notify();
+				return;
+			}
+			self.finish_command(
+				queued.pending,
 				Err("Connection changed before sending. Draft kept.".into()),
 				cx,
 			);
 
 			return;
 		}
+		let QueuedCommand { profile, action, key, pending, .. } = queued;
 
 		let request = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread()
@@ -1209,6 +1226,41 @@ impl AgentSurface {
 			});
 		}));
 
+		cx.notify();
+	}
+
+	fn queued_followup_matches(&self, queued: &QueuedCommand) -> bool {
+		self.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref())
+			== queued.runtime_source.as_ref()
+			&& !self.selected_is_archived()
+			&& !self.uncertain
+			&& self.retained_messages().iter().any(|(key, message)| {
+				key == &queued.key
+					&& message.state == DesktopMessageState::Sending
+					&& self.local_message_target_matches(message)
+			})
+	}
+
+	fn waiting_for_reconnect(&self) -> bool {
+		self.submission.waiting.is_some() && !self.waiting_followup_ready()
+	}
+
+	fn waiting_followup_ready(&self) -> bool {
+		self.command_connection_ready()
+			&& self.composer_unavailable_reason().is_none()
+			&& self.request.is_none()
+			&& !self.snapshot.as_ref().is_some_and(|snapshot| {
+				snapshot.pending_events.iter().any(|event| {
+					Some(&event.work_item_id) == self.selected.as_ref()
+						&& event.event_kind.ends_with("_pending")
+				})
+			})
+			&& !self.conversation_work().is_some_and(|work| self.has_active_compaction(&work))
+	}
+
+	fn cancel_waiting_send(&mut self, cx: &mut Context<Self>) {
+		self.cancel_queued_command(cx);
+		self.save_draft_document(cx);
 		cx.notify();
 	}
 
@@ -1329,6 +1381,7 @@ impl AgentSurface {
 
 	fn cancel_queued_command(&mut self, _cx: &Context<Self>) {
 		if let Some(queued) = self.submission.waiting.take() {
+			self.finish_send_preview(&queued.pending, false);
 			self.restore_question_submission(Some(&queued.key));
 			self.settle_message(
 				queued.pending.key.as_ref(),
@@ -1600,6 +1653,10 @@ impl AgentSurface {
 		};
 
 		self.apply_refreshed_snapshot(result, cx);
+
+		if self.command_connection_ready() && self.submission.waiting.is_some() {
+			self.save_draft_document(cx);
+		}
 
 		if self.read_connection_ready()
 			&& (changed || self.timeline.read_at.is_none_or(|at| at.elapsed().as_secs() >= 2))
@@ -2771,6 +2828,7 @@ struct QueuedCommand {
 	action: AgentActionDto,
 	key: IdempotencyKey,
 	pending: PendingCommand,
+	runtime_source: Option<EntityId>,
 }
 
 #[derive(Clone)]
