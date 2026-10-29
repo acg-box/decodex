@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "bf7cb9780729c53179fa115b7178a79407db3287522cab67cf18d4bbdd7ef79c",
+    "sha256": "2f9a2fc079fa4450693334e8a0675e38e415d650512ca39be6a865c033e74e35",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -2177,7 +2177,7 @@
   "manual_decision_scope": {
     "contracts": "automations/upstream/retained-contracts.json#manual_review_scope",
     "scope": "Current manual product decisions and bounded native integration responsibilities. Detailed ownership and pending work remain in native automation state.",
-    "qualification_limit": "This decision update changes no product code, runtime artifact, native feature flag, source-review cursor or certified range. It does not deliver approved items 59 or 74.",
+    "qualification_limit": "The decision catalog alone does not deliver a capability. Item 59 has separate source and client-entry evidence in conversation_list_branch; item 74 remains approved and pending. Source-review cursor and certified ranges are unchanged.",
     "documentation": {
       "method": "OpenWiki page-job lifecycle",
       "selected_page": "openwiki/decisions/upstream-product-scope.md",
@@ -2207,5 +2207,62 @@
       "product_tests_executed": 0,
       "limits": "Decision and bookkeeping validation only. No app build, runtime qualification, upstream source-review count or installed-app acceptance."
     }
+  },
+  "conversation_list_branch": {
+    "manual_item": 59,
+    "contracts": "automations/upstream/retained-contracts.json#retained_desktop_feedback.conversation_list_branch",
+    "source_revision": "5f2fbffac0a5590affd76dcdc3bc73ff83b3cefe",
+    "main_baseline": "0af292f463c3c297abc7763f76e7ea10e32cb574",
+    "source_sha256": {
+      "apps/decodex-gpui/src/agent_list_branch.rs": "0dd6b14117ddb0454681aaebd8433b114df37ce0c55846c713d596b446c29426",
+      "apps/decodex-gpui/src/agent_work_browser.rs": "050e3bb7ea99db2ad7c2cb8432ebd209555702c264fd1f191b41220e5b58f342",
+      "apps/decodex-gpui/src/agent_prompt_edit.rs": "6a54b70616fd65fafad4b773badba78bc2b4306994728d82f0654aae86b991a1",
+      "apps/decodex-gpui/src/agent_timeline.rs": "32bdec1fe6adacfca8fe26d5c36b5fb07b607fc4a19e241df3b27a36dcd261d7",
+      "apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs": "86ce9dd3aa50d65bf8ee4cbd80adee10421aec30d58a4e5ec13d12d360f89c05"
+    },
+    "tests_executed": {
+      "package": "decodex-gpui",
+      "binary": "decodex-gpui",
+      "identities": [
+        "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_selects_the_latest_completed_turn_not_live_input",
+        "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_requires_the_completed_turns_own_input",
+        "shell::agent_surface::prompt_edit::tests::locked_conversation_offers_only_a_source_bound_branch",
+        "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_rejects_changed_source_and_unmanaged_rows",
+        "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_entry_preserves_drafts_and_cancellation",
+        "shell::agent_surface::prompt_edit::fork::tests::fork_recovery_opens_verified_target_and_keeps_edited_input",
+        "shell::agent_surface::drafts::storage::prompt_confirm_tests::list_branch_confirmation_uses_native_after_turn_without_sending",
+        "shell::agent_surface::drafts::storage::prompt_confirm_tests::branch_after_turn_needs_no_input_preflight"
+      ],
+      "executed_count": 8,
+      "passed_count": 8,
+      "unmatched_selectors": [],
+      "selector": "test(list_branch) | test(branch_after_turn_needs_no_input_preflight) | test(locked_conversation_offers_only_a_source_bound_branch) | test(fork_recovery_opens_verified_target_and_keeps_edited_input)",
+      "command": "cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui -E 'test(list_branch) | test(branch_after_turn_needs_no_input_preflight) | test(locked_conversation_offers_only_a_source_bound_branch) | test(fork_recovery_opens_verified_target_and_keeps_edited_input)' --no-tests=fail",
+      "environment": "GPUI TestPlatform and temporary synthetic local service sockets."
+    },
+    "native_source_read": {
+      "revision": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+      "protocol": "codex-rs/app-server-protocol/src/protocol/v2/thread.rs::ThreadForkParams.last_turn_id",
+      "implementation": "codex-rs/app-server/src/request_processors/thread_processor.rs:5585-5635",
+      "test_excerpt": "codex-rs/app-server/tests/suite/v2/thread_fork.rs:1900-1988",
+      "test_excerpt_limit": "Partial test-body inspection of active-turn rejection, not a newly completed upstream commit review.",
+      "upstream_tests_executed": 0
+    },
+    "native_boundary": {
+      "selected_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+      "runtime_artifact_changed": false,
+      "native_artifact_executed": false,
+      "qualification_reused": "Existing reviewed native fork/provider/history contract in retained_attached_forks. This batch changes only the Decodex entry and presentation. No new binary, helper or schema qualification is claimed."
+    },
+    "static_checks": {
+      "strict_gpui_clippy": "pass with all features and targets and the repository deny flags",
+      "format": "cargo +nightly fmt --all -- --check; git diff --check"
+    },
+    "delivery_reference": "https://github.com/acg-box/decodex/commit/5f2fbffac0a5590affd76dcdc3bc73ff83b3cefe",
+    "limits": [
+      "No installation, release, app startup, live provider or physical keyboard acceptance.",
+      "Existing native fork and source-provider regressions are reused within their recorded limits; no fresh native baseline run.",
+      "Source review and installed runtime identities remain unchanged."
+    ]
   }
 }
