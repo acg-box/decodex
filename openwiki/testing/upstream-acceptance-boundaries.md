@@ -240,6 +240,14 @@ The selected native source remains `33d306d457a4632b22bebf214e0c25d91f90f6e8`. T
 
 The standalone Codex startup-configuration diagnostic capability and its dedicated helper are retired. Historical executions of that control remain evidence at their original source revision and create no current validation requirement. Decodex product/integration diagnostics and normal warning presentation remain supported. The source-review cursor and paused automation are unchanged.
 
+## Native history, resources and estimate qualification
+
+The `history_resource_cost` entry in the [portable evidence index](../../automations/upstream/retained-evidence.json) retains the exact source, commands, test identities, selected component/helper digests and qualification limits for items 35, 43, 67 and 72. It separates 18 executed Rust checks, two Menu Bar tests and 14 existing architecture/gate checks from four upstream test bodies read but not executed. Strict Clippy for the five affected packages and nightly formatting passed.
+
+One Rust check runs the exact selected native artifact in a system-temporary private store with two synthetic Responses turns. It checks an exact same-turn history anchor, matching registered resource owners, archived filtering and an empty unmatched lookup. The lookup makes no additional model request. A reusable repository fixture preserves this proof after local logs are removed. Socket and GPUI checks separately cover opaque continuations, source changes, selected-child identity and collapsed output counts.
+
+The selected native source remains `33d306d457a4632b22bebf214e0c25d91f90f6e8`. CLI and helper digests were read back, and its experimental schema was generated again. This is no runtime migration or source cursor advance. The tests do not establish live provider billing, full account usage, cross-store discovery, historical upload search or packaged Menu Bar interaction. Installed-app acceptance stays separate. No application was installed or released, and automation stays paused.
+
 ## Persistent attached branches
 
 `retained_attached_forks` in the [stable contract catalog](../../automations/upstream/retained-contracts.json) records qualification against native source `970111f6cb62cc02fe36a82ea7d71b37a2889c97`, with separate CLI, Code Mode helper, `rg`, source archive and generated-schema digests. Local protocol is 3.2; the database remains schema59. The two relevant upstream test functions, containing five cases, were read but were not executed.

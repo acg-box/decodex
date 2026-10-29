@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:79d5eb4fd4314011d71edde5bf2f6a453b7e6342e6fba7a8b0b8d226cc6233e8",
+  "pageVersion": "sha256:ae1f49053df6972cfac9662606bc786e50dbef9264cac5e0ebdf36f24d14396d",
   "claims": [
     {
       "id": "claim_36b9a49ffa87416e8add8befc7d10efe",
@@ -74,7 +74,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:5093c1bac7dc3191d0a65ea1fbe8e16e115de844e2db833248304b104e6314d2"
+          "version": "repo-file-v1:sha256:5ef06000915dca6a4c089f996183667d77167f502a270d35dab847ca5832213a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/composer_text.rs",
@@ -141,7 +141,7 @@
           "version": "repo-file-v1:sha256:2b1a67f00c6d9e928caf820184346f563f11d37e430619b194e05d0952021a11"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2298-L2329",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2304-L2335",
           "version": "repo-lines-v1:sha256:f23eb22d81f75af5538eec6a393a7467929e9c440b0bab5cb5fc0837af3c47a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMWE4OGNlMDQ3OWM1ZmE3NTI5MmNiOGE1ZWYxOTBhYTg4NDhlMTMyNzg0MDk1ZTI0ZDI1YzM3NDMwOWU5NDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ODI4NTYwNmQyOGU5MWNlNDRjYWU5MzVjZjg4OTA5MTkxZTA5NWM2YjUzN2NlZTgyNjcyZDdkNzIyYjRhZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNTViODhjYjRkNTVjN2VmMjE2NDliZWE5MTRiYTEwYTEyNDE0ZDMyOGVkZDhmNTNlMDg1MWRmNDc5MTBhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MDZmNmFkYTg4ZjAzZGE2MDU1NmNkOWZkMGY2MGI3NDhkZGMwNjViYjcwN2M5YmNkZGI5ZTc4YThlNGU2YWQifQ"
         }
       ]
@@ -156,7 +156,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:bc64f7dc40ab0416c112b439093de950fbaba8e546256622a68035c59f1f9c54"
+          "version": "repo-file-v1:sha256:56ad0e7b103c2330c491d9b23eeb5c2b3618e734c13ca74a9ffdc8f5eaffad99"
         }
       ]
     },
@@ -281,7 +281,7 @@
       "statement": "An unsent input uses the ordinary right-aligned user bubble at the end of the scrolling transcript, with full wrapped text and an aligned Not sent and Resend row. It is not pinned above the input bar. The failure reason is a tooltip; there is no disclosure, copy or dismiss action.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2298-L2329",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2304-L2335",
           "version": "repo-lines-v1:sha256:f23eb22d81f75af5538eec6a393a7467929e9c440b0bab5cb5fc0837af3c47a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMWE4OGNlMDQ3OWM1ZmE3NTI5MmNiOGE1ZWYxOTBhYTg4NDhlMTMyNzg0MDk1ZTI0ZDI1YzM3NDMwOWU5NDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ODI4NTYwNmQyOGU5MWNlNDRjYWU5MzVjZjg4OTA5MTkxZTA5NWM2YjUzN2NlZTgyNjcyZDdkNzIyYjRhZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNTViODhjYjRkNTVjN2VmMjE2NDliZWE5MTRiYTEwYTEyNDE0ZDMyOGVkZDhmNTNlMDg1MWRmNDc5MTBhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MDZmNmFkYTg4ZjAzZGE2MDU1NmNkOWZkMGY2MGI3NDhkZGMwNjViYjcwN2M5YmNkZGI5ZTc4YThlNGU2YWQifQ"
         },
         {
@@ -407,7 +407,7 @@
           "version": "repo-lines-v1:sha256:4e6bf22b18dd8392c809fd9520af81190b4041b85b8325f35b7ea974d848bcb3:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlkYTgxMGEzZGU2ZWEwODJjYzMwN2ExMWUxZmZiOGFlNDc5ZWY2OWM2NTI0ZTRiY2VhOTdkMzgxNzYwN2U0NGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmNzEyMTI4NjkzM2U3NzgyYWQ4ZDIzYzI2YzM1MzAxNTg0ZDZmZmE1MjhlZDY3MzFmMmM4YjBmMTI0NGIyMjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjYyMzI1ZDVlYTMyNzM3OTYyNjM1ZmI0YjdmYzA4ZGE5ZjYxNWM5NTkxZWEzMTQ2YmU0Njk3NDY2ZjQyMGE0MjMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1504-L1513",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1514-L1523",
           "version": "repo-lines-v1:sha256:ba207ddc6422c7fc5648b8738aea19ca0591070b9ea9137be0418e8b668e1012:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3NTdmNGQ5OGIzODJkZGY0OWFhZDEzYWQwMWNiYWFkMDNmY2M3NTkyNDgwNDM4N2E3MjIwNTI3NzkwMGU1NTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3MTZkNmM3YjA1NGJmZTBiYWEwOTM3MTcyY2FiNGQxY2JjMzFhMTgxZjVjYzRmMDk2OTk1YzZhYWZiMTk3YjAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZjNTlkNmYxNmY0OTBmYTZiNjdiOGIyNWM3ZTQzMTU5YzEyNTY2MDg4MzRiMmM5ZTkwNWY1MWNhMzlkOGE0ZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ0ZGUxNzkwNzM1OTQwZjRkNmIwYWVkMjY5MDhhM2VhMjc1M2IyZDExY2RlMmI0MjhhODFhZmRjOTU2Y2QzNTMifQ"
         }
       ]
@@ -440,7 +440,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:5093c1bac7dc3191d0a65ea1fbe8e16e115de844e2db833248304b104e6314d2"
+          "version": "repo-file-v1:sha256:5ef06000915dca6a4c089f996183667d77167f502a270d35dab847ca5832213a"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_loading.rs",
@@ -466,11 +466,39 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_render.rs",
-          "version": "repo-file-v1:sha256:e1bc87ebaea208d673a10e6151e6de7e4a90bf36495c3eb87fc651a612252f11"
+          "version": "repo-file-v1:sha256:5f60919da8434af81409945a4f970b0967be61e0b151570b9b82f6d67d2132de"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_scroll.rs",
           "version": "repo-file-v1:sha256:fa1b95588bed56032dfeb7c5f385ff7416cdd67e1a3eae98bd005e0dacc4c681"
+        }
+      ]
+    },
+    {
+      "id": "claim_cb3e38ace7744913812eb4294d19554d",
+      "statement": "A collapsed command row shows only the native-retained output line count and removes its label on expansion; command text, discarded output and terminal wrapping are not included.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_render.rs#L889-L956",
+          "version": "repo-lines-v1:sha256:27ffa0efa56091f6b67f82dd89d206e3ad5c2bc6b3e1c5aa8f8073c615051d17:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2MGI4OGEwNWQ1YjUzODQ3NjAyMjliZTYwNTcyZmU2MmIxYzI5Y2RjNTdlZGI1ZTY5NTFkYWE0ZmQ0NmM4MDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5YjNjYmQyMjZhMWU3OTJlOTczZWZhZTA0YzZlNDA4ZjAyMjExNjNjMTc0YTc5YjI4MmU5NTlhNDJjZGE4OTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdmYjU1MWNmNGI1NDlmMGZkYzY3YjIyODMzNzIzN2E0MmFhZDU0YWRkOTZkZjcyODhlOWFhM2VkZWY2ODU1ODIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ4OTYwNWI3NGNjZDY1MGY2OGM3MmM0M2RmYjRlMGYyZGUyNTk1MmUwMWNmZWQxZGFlYWU2OWRlM2YxNTVhYjQifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/activity.rs#L51-L90",
+          "version": "repo-lines-v1:sha256:162958816b0774712d26ccad1d7b31766dbf94c6e43ab2e3e542d4f4cc839745:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVhMTQwN2YyZjIyMThmYjAyMGRkMjEwMzZiYTU0ZGFhNjU0NDAxNTA1YmM3N2FkN2U0MzA3YmM5ODUxNDA3YmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzNWE4OTllNGJmNDk5YzViZjg3ODQzNjE5NTY2MTZmMDkxYzVjOWYzNTZiYjNjMTcyYjQwYzAzMzk1ODE5ZTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyZmQzYTUzYWMzZmQ4NGYxNDQ1NDY1NDNhMjAxYzM5MzQxMzlkNDc3YTA3NTJlZmEyYmYxNWY4ZDUzNzkyN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU2YzQ4NDZmNjJhYjBkODkyZmNhMWNhMWI5NGM1OWI0ODZjODJiNzZjMzM1MDI5NTE3YWE2MWExMTM1MzNmYmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3a1c13623ed2476a8ac31bd8b21cf12f",
+      "statement": "The conversation header reads and displays existing native provider cost estimates on request, prefers reported USD over credits, retains missing values as unavailable, and exposes source details and explicit refresh.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_usage_estimates.rs#L66-L122",
+          "version": "repo-lines-v1:sha256:8d8c87ff0729b0b156494099c3c0a79faa53f61502a38645ffed342a8ce3963f:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5OTUwZDU5YzNkYjA1YTE4MzQwYTk2NTdmNzgwNGRhNzQ3YjU1OWNiYjc0YTJmZmM2ZDM2ZWJmMjA5YWM5YjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4OTNhNDQ3YzViMTFmMGIyMzJkYzA2MTEzZDc1MzQ4ZGVjMTVkZmNiZGQ1ZWQ0MDlkMDU4ZDNmMDkyZjY5MTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjkwNzM3MGQ0YjhhOTQ2YzMxMWE4MzQ3Njc5MjgzMjYwMjA2ZjlmZGM4YmYyYzRjMjQxYWIwZDZiOTAxZjU3OTQifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L1324-L1344",
+          "version": "repo-lines-v1:sha256:fee462cd14a90549c93dda9ce81158896940f60236ec69b3d1843e13a81b0bac:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZhNmNkYTQxMTFmYmJhMzlkZTM3OTVlMGVkNThiNTdlMjFhYTBhNDQwYjQ0MTFlMjQ4YTA4YjI1MWIxMzNhMWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE3Mzc1ZDM0YTA4MjA2NzhiZDY4MDFmOTFmODIwYjIzYWFlMmNhNTM5ZGRkYmY3OGM5OTU5YjYyZjgxMTYzM2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU2NzE3YWNjNWVjMjM0Nzc1YWJlYmRkYTJiNGEwYjcyNDBmYTZjNWZmMzA4ODg3YzVlNDcyYjEyODI0NTIyYmUifQ"
         }
       ]
     }

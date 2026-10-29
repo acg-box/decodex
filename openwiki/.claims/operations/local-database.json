@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:637677546c2fba50292127b9502ed90da906676a73489c5a345241940d2d07a7",
+  "pageVersion": "sha256:fb46d8a2bcc141ee22b3a72f16f73b48ad88bdf2d6a885c4038453a47f0202b1",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -45,8 +45,8 @@
       "statement": "Current local clients and service must agree on the exact CURRENT_VERSION protocol; packaged native compatibility is checked separately by the bundle contract verifier.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs#L283-L303",
-          "version": "repo-lines-v1:sha256:f245717c577cb4eb943a756443be96be2c91f77a5cb8332d2d9c48f9bb59e1c2:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjllMGQ0NzRhN2IyZWUzZDljMzdiN2Y3YTY5NWM1ZDBiNTY1MWJhYWNlODUyYjU2OTgzNjIyNjRjZWI0ZTY1OTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NDRiODJkNDFjYjI3YmQ0MDk2MDdiNzE3MWIxOWY1YWEzMDJmMWNjODhlOGJhYzY0YzE3NDc4OGI3MDFmNTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjOGU3MjlkOThhMmYzNmVmNjEwNjJlYzQzY2UzZWQ3ZWMxZDkyMGYwMjIyNGMxNzMwNjAyZjg0OWU3NjE0YTQifQ"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L284-L327",
+          "version": "repo-lines-v1:sha256:f15b897b4d3f7efa59271a48e9bf5628b28941f2ba480efce892f7eeabf53ccd:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2M2NhYzIyNmZhN2FjOTE1MGUwMTZlODZiODM2YTViMjg5Y2MxNjU4YzNmYTA3YjI1YTdhY2Q5NDMxNTY5YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzNTJlMTRhMTgxNzhiOWVkNzc1ODJhOTkzZjI0MWY3YWRhMDM5NzA2YWY2YmMxMzZjZjM1MjFmYmIyZTY3YTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlNzAxMzc5NDEwYzhjZjM0ODQ3MWNkYTNmMzA0YjA2YzRmZWNjZjI4ZDM5YTZmYzliOWFjM2JhYTQ0YmVhZDUifQ"
         },
         {
           "resource": "repo://scripts/macos/verify_decodex_bundle_contracts.py",
@@ -156,11 +156,11 @@
     },
     {
       "id": "claim_968638910f4c42cbbee88d97feb202cd",
-      "statement": "Current local protocol 4.1 exposes selected read-only views and retained attached branches and rejects any different major or minor version.",
+      "statement": "Current local protocol 4.2 exposes selected read-only views and retained attached branches and rejects any different major or minor version.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:31ad4259a90a0c22fcac92f1794f648fa74b0d6d329e58f4d995573aae648860"
+          "resource": "repo://crates/decodex-protocol/src/lib.rs#L284-L327",
+          "version": "repo-lines-v1:sha256:f15b897b4d3f7efa59271a48e9bf5628b28941f2ba480efce892f7eeabf53ccd:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2M2NhYzIyNmZhN2FjOTE1MGUwMTZlODZiODM2YTViMjg5Y2MxNjU4YzNmYTA3YjI1YTdhY2Q5NDMxNTY5YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzNTJlMTRhMTgxNzhiOWVkNzc1ODJhOTkzZjI0MWY3YWRhMDM5NzA2YWY2YmMxMzZjZjM1MjFmYmIyZTY3YTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlNzAxMzc5NDEwYzhjZjM0ODQ3MWNkYTNmMzA0YjA2YzRmZWNjZjI4ZDM5YTZmYzliOWFjM2JhYTQ0YmVhZDUifQ"
         }
       ]
     },

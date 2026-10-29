@@ -181,6 +181,14 @@ Attached branches use the existing prompt-fork journal and persistent Agent reco
 
 The read-only `GetAttachedBranches` query returns the newest 100 retained Decodex receipts for one exact source. It does not adopt external native branches. Native archive observation checks hidden attached conversations through `attachedToThreadId` and verifies the source binding before reporting membership. Incomplete metadata or catalog reads remain unknown. [Retained attached-fork evidence](../../automations/upstream/retained-contracts.json) records the exact artifact and executed regressions separately from historical acceptance.
 
+## Native history and resource lookup
+
+The read-only local `GetItemContext` query uses the existing native history source for an exact Work, thread, turn and item. It reads a bounded same-turn window and native directional continuations. The source is checked before and after the read; a changed source discards the result. The desktop presents this text beside the selected message or tool detail without a new history store or executor.
+
+`GetResourceOwners` checks that the selected exact resource belongs to the current conversation, then calls native `thread/attachmentOwner/list`. Native Codex owns the association store, archive filter and cursors. The current account processes use the same native home, so one admitted catalog read covers that store. Local retained bindings supply navigation and account labels. Unmanaged native owners remain references; lookup creates no new local conversation or file association.
+
+The conversation header and Menu Bar expose the existing source-bound provider usage estimate. Menu Bar uses the native-client FFI and at most eight recent locally managed conversations. It checks the runtime and thread bindings again before publishing the result. Estimates preserve unknown values and do not supply an account total, billing service or local model price table. See [estimate presentation](../workflows/models-and-settings.md#conversation-cost-estimates).
+
 ## Native launch policy
 
 Decodex constructs and attests one fixed app-server argument list. It requests native subagent context defaults, Agent message wakeups, and full-fork prefix preservation. The retained `code_mode_tool_description_first` argument is accepted but is now a removed native feature; current ordering is native-owned. The dotted prefix option preserves the existing `multi_agent_v2` selection; it does not enable multi-agent execution by itself. Code Mode hosting transport stays under native configuration.
@@ -247,7 +255,7 @@ Production staging selects a separate official Release requirement. Release pinn
 
 ## Protocol and safety
 
-Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.1 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
+Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.2 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
 
 Diagnostics covers Decodex product storage, local transport and integration failures. The standalone Codex startup-configuration check, its local query and its dedicated qualification helper are retired. Codex owns its app-server self-diagnostics. Ordinary error and warning presentation and user-requested conversation Markdown export remain supported. This retirement does not qualify an installed protocol 4.0 application against the current service.
 

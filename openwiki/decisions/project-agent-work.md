@@ -262,7 +262,7 @@ This example illustrates the contract. The places, amounts and outcomes are assu
 
 ## Current implementation and persistence
 
-The current schema stores Project membership, persistent Agent responsibilities and separate Work directly. Protocol 4.1 accepts one exact revision. The service does not carry a second business-name API, historical migration chain or Program model. Native identities, inbox receipts and recorded history remain distinct from current Result qualification.
+The current schema stores Project membership, persistent Agent responsibilities and separate Work directly. Protocol 4.2 accepts one exact revision. The service does not carry a second business-name API, historical migration chain or Program model. Native identities, inbox receipts and recorded history remain distinct from current Result qualification.
 
 Immutable native child-input receipts preserve exact delivery identity. Several independently owned native conversations can share an admitted account process. Received assignment proof records plaintext or native task identity. These records neither grant another Agent's private history nor invent missing input.
 

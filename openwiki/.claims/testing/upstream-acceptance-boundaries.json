@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:582f31ecbbd92c8b5c84dc55d2e06eaadebb75bd010d7ec3a3f13af39008ae16",
+  "pageVersion": "sha256:ed33f9cb804876878d5726b5beac01b8018aea2dc4f68da395d8a8ec3b942a73",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -96,7 +96,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/timeline.rs",
-          "version": "repo-file-v1:sha256:a14add5951034e1bbc4eec7d0f20c6d79fadbb6ee41a59b078b7d29b08829488"
+          "version": "repo-file-v1:sha256:68a328e4c7ecb0b407132e2c244e59dff1d275c319aa1959104fc29a418e62f9"
         }
       ]
     },
@@ -616,7 +616,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:0febfcd77d1ef19aec8eb5ab3a460432087d819822d0d89ab983b16ea182b913"
+          "version": "repo-file-v1:sha256:506bc47eeaab54ac85cedfddfff818e4a9811e6f4debf4acf18a38f4cceba49e"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
@@ -856,7 +856,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5d5c7ce6db0529934c5280f33f7fb09e53da30e567e0608ae50f582e77c03947"
+          "version": "repo-file-v1:sha256:58577ff94b7887fa036774483caf098dbbd8cbdb5b5ea53242355525d60560cc"
         }
       ]
     },
@@ -866,7 +866,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5d5c7ce6db0529934c5280f33f7fb09e53da30e567e0608ae50f582e77c03947"
+          "version": "repo-file-v1:sha256:58577ff94b7887fa036774483caf098dbbd8cbdb5b5ea53242355525d60560cc"
         }
       ]
     },
@@ -880,11 +880,25 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:0febfcd77d1ef19aec8eb5ab3a460432087d819822d0d89ab983b16ea182b913"
+          "version": "repo-file-v1:sha256:506bc47eeaab54ac85cedfddfff818e4a9811e6f4debf4acf18a38f4cceba49e"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5d5c7ce6db0529934c5280f33f7fb09e53da30e567e0608ae50f582e77c03947"
+          "version": "repo-file-v1:sha256:58577ff94b7887fa036774483caf098dbbd8cbdb5b5ea53242355525d60560cc"
+        }
+      ]
+    },
+    {
+      "id": "claim_f8538f97e1bb4313acf6c93a6cd499b8",
+      "statement": "The history_resource_cost qualification records 18 executed Rust checks, two Menu Bar tests, 14 architecture/gate checks and four upstream test bodies read without execution. Its exact selected-artifact fixture checks nearby native history and registered resource owners using two synthetic turns without additional lookup inference; runtime migration, installed app, live billing and historical upload discovery remain unqualified.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json#L1727-L2055",
+          "version": "repo-lines-v1:sha256:bd3c7e14c1af78155136a7180d20e2e50cb824c9dfc2b60270467f1d593fda51:eyJzZWxlY3RlZExpbmVDb3VudCI6MzI5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlMGU0ODg5Y2I0MGYzMGRmMTRjOTE0NTY0ZmVhOWM3NzYyNjlkODdiNGE3ZTc2ZmQ1NzJmZTcxODljZTMyMmYwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWY1Mjg4YmJjNWM3MTM2OGEyZGNiZWIzZmRlZGI5ZDY0NmE3NmM2NTkwNTFjZmMzMzM0MTlkNGNhMzdmMjEyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MSwiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIn0"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_lookup_tests.rs",
+          "version": "repo-file-v1:sha256:96b823e425e2412b547a7e6a04405eb8f3bcc3c9fc9da248e11041d9b7e5a56d"
         }
       ]
     }
