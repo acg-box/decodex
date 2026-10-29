@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "188bc5289c8188190a4fc764b3a3855f9a96372e807ccc6eeb4ca7d294d655f3",
+    "sha256": "bf7cb9780729c53179fa115b7178a79407db3287522cab67cf18d4bbdd7ef79c",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -2172,6 +2172,40 @@
         "openwiki/architecture/conversation-presentation.md"
       ],
       "full_lifecycle": "Incomplete. Unrelated page jobs remain with the existing manual continuation owner."
+    }
+  },
+  "manual_decision_scope": {
+    "contracts": "automations/upstream/retained-contracts.json#manual_review_scope",
+    "scope": "Current manual product decisions and bounded native integration responsibilities. Detailed ownership and pending work remain in native automation state.",
+    "qualification_limit": "This decision update changes no product code, runtime artifact, native feature flag, source-review cursor or certified range. It does not deliver approved items 59 or 74.",
+    "documentation": {
+      "method": "OpenWiki page-job lifecycle",
+      "selected_page": "openwiki/decisions/upstream-product-scope.md",
+      "status": "pending_selected_page",
+      "limit": "The generated queue places unrelated stale pages before this page. Preserve the queue and keep this decision update scoped; no completed lifecycle is claimed."
+    },
+    "validation": {
+      "repository_contract_tests": {
+        "command": "cargo +stable make test-automations",
+        "checkpoint_tests_passed": 8,
+        "portfolio_tests_passed": 7,
+        "failed": 0,
+        "unmatched_selectors": []
+      },
+      "manifest_check": {
+        "command": "python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json",
+        "status": "pass"
+      },
+      "static_checks": [
+        "Retained contract SHA-256 matches the index.",
+        "Existing retained contracts are unchanged.",
+        "Approved and deferred items have distinct dispositions and valid public issue links.",
+        "Changed retained data contains no personal machine paths.",
+        "git diff --check"
+      ],
+      "native_tests_executed": 0,
+      "product_tests_executed": 0,
+      "limits": "Decision and bookkeeping validation only. No app build, runtime qualification, upstream source-review count or installed-app acceptance."
     }
   }
 }
