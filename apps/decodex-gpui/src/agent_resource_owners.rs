@@ -86,8 +86,8 @@ impl AgentSurface {
 						owner.title,
 						if owner.archived { " · Archived" } else { "" }
 					));
-					if let Some(work) = owner.work_id.as_ref() {
-						let target = work.as_str().to_owned();
+					if let Some(work) = self.resource_owner_destination(owner) {
+						let target = work.to_owned();
 						row = row.child(self.workspace_action(
 							format!("resource-open-{target}"),
 							"Open conversation".into(),
@@ -123,6 +123,22 @@ impl AgentSurface {
 			None => row = row.child(crate::ui_loading::loading("Finding related conversations")),
 		}
 		row.into_any_element()
+	}
+
+	fn resource_owner_destination<'a>(
+		&self,
+		owner: &'a decodex_protocol::ResourceOwner,
+	) -> Option<&'a str> {
+		let work = owner.work_id.as_ref()?;
+		self.snapshot
+			.as_ref()?
+			.work_items
+			.iter()
+			.any(|current| {
+				current.id == work.as_str()
+					&& current.codex_thread_id.as_deref() == Some(owner.thread_id.as_str())
+			})
+			.then_some(work.as_str())
 	}
 
 	fn load_resource_owners(&mut self, request: ResourceOwnersRequest, cx: &mut Context<Self>) {
@@ -178,6 +194,99 @@ mod tests {
 			_: &mut gpui::Context<Self>,
 		) -> impl gpui::IntoElement {
 			gpui::div()
+		}
+	}
+	struct OwnersView(gpui::Entity<AgentSurface>);
+	impl gpui::Render for OwnersView {
+		fn render(
+			&mut self,
+			_: &mut gpui::Window,
+			cx: &mut gpui::Context<Self>,
+		) -> impl gpui::IntoElement {
+			self.0.update(cx, |s, cx| {
+				s.resource_owner_rows(
+					"agent",
+					&decodex_protocol::AgentResourceDto {
+						id: "resource".into(),
+						attachment_type: "decodex.link".into(),
+						identity_key: "exact-resource".into(),
+						payload_json: "{}".into(),
+						payload_omitted: false,
+						created_at: 1,
+					},
+					cx,
+				)
+			})
+		}
+	}
+
+	#[gpui::test]
+	fn related_navigation_requires_a_current_local_thread(cx: &mut gpui::TestAppContext) {
+		for (work, thread, can_open, open_selector, copy_selector) in [
+			("agent", "thread", true, "resource-open-agent", "resource-owner-thread"),
+			(
+				"archived",
+				"old-thread",
+				false,
+				"resource-open-archived",
+				"resource-owner-old-thread",
+			),
+			(
+				"agent",
+				"replaced-thread",
+				false,
+				"resource-open-agent",
+				"resource-owner-replaced-thread",
+			),
+		] {
+			let (_, visual) = cx.add_window_view(|_, cx| {
+				let surface = cx.new(AgentSurface::new);
+				surface.update(cx, |s, cx| {
+					s.visual_workspace_fixture(cx);
+					s.snapshot
+						.as_mut()
+						.unwrap()
+						.work_items
+						.iter_mut()
+						.find(|w| w.id == "agent")
+						.unwrap()
+						.codex_thread_id = Some("thread".into());
+					let request = ResourceOwnersRequest {
+						work_id: EntityId::new("agent").unwrap(),
+						attachment_type: WireText::new("decodex.link").unwrap(),
+						identity_key: WireText::new("exact-resource").unwrap(),
+						archived: None,
+						cursor: None,
+					};
+					s.related_resources.request = Some(request.clone());
+					s.related_resources.result = Some(ResourceOwnersResult::Available {
+						request,
+						source: EntityId::new("source").unwrap(),
+						next_cursor: None,
+						owners: vec![decodex_protocol::ResourceOwner {
+							thread_id: WireText::new(thread).unwrap(),
+							archived: !can_open,
+							work_id: Some(EntityId::new(work).unwrap()),
+							title: "Known conversation".into(),
+							account_id: None,
+						}],
+					});
+				});
+				OwnersView(surface)
+			});
+			visual.update(crate::ui_frame::draw_frame);
+			assert_eq!(visual.debug_bounds(open_selector).is_some(), can_open);
+			let copy = visual.debug_bounds(copy_selector);
+			assert_eq!(copy.is_some(), !can_open);
+			if let Some(copy) = copy {
+				visual.simulate_click(copy.center(), Default::default());
+				visual.update(|_, cx| {
+					assert_eq!(
+						cx.read_from_clipboard().and_then(|v| v.text()).as_deref(),
+						Some(thread)
+					)
+				});
+			}
 		}
 	}
 
