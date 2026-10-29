@@ -2047,6 +2047,10 @@
       "No installed-app, live account/provider, historical upload scanning, cross-store discovery, final-bill accuracy or Menu Bar packaged UI acceptance.",
       "History windows retain native turn and item identities; selected message text may be shortened by the existing projection and capacity limit.",
       "Menu Bar reads at most eight recent locally managed conversations and does not imply complete account usage."
-    ]
+    ],
+    "documentation": {
+      "scope": "The nine directly related workflow, presentation, scope, acceptance, protocol and entrypoint pages use OpenWiki page jobs.",
+      "lifecycle_limit": "Unrelated stale page jobs remain with the existing Wiki maintenance owner. Selected page submissions do not establish whole-run finalization."
+    }
   }
 }
