@@ -1659,6 +1659,62 @@ impl AgentClient {
 		}
 	}
 
+	/// Read a bounded native window around a known item without resuming it.
+	pub async fn item_context(
+		&self,
+		request: crate::ItemContextRequest,
+	) -> Result<crate::ItemContextResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			Duration::from_secs(30),
+			self.transport.query_inner(
+				"item-context",
+				QueryPayload::GetItemContext { request: request.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ItemContext(result) => {
+				if matches!(&result, crate::ItemContextResult::Available { request: actual, .. } if actual != &request)
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Read one page of native resource associations without creating an executor.
+	pub async fn resource_owners(
+		&self,
+		request: crate::ResourceOwnersRequest,
+	) -> Result<crate::ResourceOwnersResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let completed = time::timeout(
+			Duration::from_secs(30),
+			self.transport.query_inner(
+				"resource-owners",
+				QueryPayload::GetResourceOwners { request: request.clone() },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		match completed.value {
+			QueryResultPayload::ResourceOwners(result) => {
+				if matches!(&result, crate::ResourceOwnersResult::Available { request: actual, .. } if actual != &request)
+				{
+					return Err(ClientFailure::ProtocolMalformed);
+				}
+				Ok(result)
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Start or poll one ephemeral native sign-in without retained command receipts.
 	pub async fn mcp_login(
 		&self,

@@ -6,6 +6,93 @@ use crate::agent::AgentError;
 use decodex_codex::app_server_client::{AppServerClient, ClientError, ThreadAttachment};
 use decodex_protocol::{AgentResourceDto, AgentResourcesResult};
 
+pub(crate) async fn owners(
+	store: &decodex_database::SqliteStore,
+	client: &AppServerClient,
+	request: &decodex_protocol::ResourceOwnersRequest,
+	source: &str,
+) -> decodex_protocol::ResourceOwnersResult {
+	use decodex_protocol::{EntityId, ResourceOwner, ResourceOwnersResult, WireText};
+	let unavailable = ResourceOwnersResult::Unavailable;
+	let Ok(before) = store.get_agent_work_item(request.work_id.as_str().into()).await else {
+		return unavailable;
+	};
+	let Some(thread) = before.codex_thread_id.as_deref() else {
+		return unavailable;
+	};
+	let Ok(resources) = client.thread_attachments(thread).await else {
+		return unavailable;
+	};
+	if !resources.iter().any(|resource| {
+		resource.attachment_type == request.attachment_type.as_str()
+			&& resource.identity_key == request.identity_key.as_str()
+	}) {
+		return unavailable;
+	}
+	let page = match client
+		.thread_attachment_owners(
+			request.attachment_type.as_str(),
+			request.identity_key.as_str(),
+			request.archived,
+			request.cursor.as_ref().map(WireText::as_str),
+		)
+		.await
+	{
+		Ok(page) => page,
+		Err(ClientError::Remote(error)) if error.code == -32_601 =>
+			return ResourceOwnersResult::Unsupported,
+		_ => return unavailable,
+	};
+	let Ok(work) = store.list_agent_work_items().await else {
+		return unavailable;
+	};
+	let mut owners = Vec::new();
+	for owner in page.data {
+		let local =
+			work.iter().find(|item| item.codex_thread_id.as_deref() == Some(&owner.thread_id));
+		let account_id = if let Some(local) = local {
+			store
+				.read_agent_process_binding(&local.id)
+				.await
+				.ok()
+				.flatten()
+				.and_then(|binding| EntityId::new(binding.account_id.as_str()).ok())
+		} else {
+			None
+		};
+		let Ok(thread_id) = WireText::new(owner.thread_id) else {
+			return unavailable;
+		};
+		owners.push(ResourceOwner {
+			thread_id,
+			archived: owner.archived,
+			work_id: local.and_then(|item| EntityId::new(&item.id).ok()),
+			title: local.map_or_else(
+				|| "Native conversation".into(),
+				|item| item.title.chars().filter(|c| !c.is_control()).take(160).collect(),
+			),
+			account_id,
+		});
+	}
+	if store
+		.get_agent_work_item(request.work_id.as_str().into())
+		.await
+		.ok()
+		.is_none_or(|after| after.codex_thread_id != before.codex_thread_id)
+	{
+		return unavailable;
+	}
+	let Ok(source) = EntityId::new(source) else {
+		return unavailable;
+	};
+	ResourceOwnersResult::Available {
+		request: request.clone(),
+		source,
+		owners,
+		next_cursor: page.next_cursor.and_then(|cursor| WireText::new(cursor).ok()),
+	}
+}
+
 pub(crate) async fn read(client: &AppServerClient, thread: &str) -> AgentResourcesResult {
 	match client.thread_attachments(thread).await {
 		Ok(resources) => project(resources),

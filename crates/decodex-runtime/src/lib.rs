@@ -22,6 +22,7 @@ mod agent_guardian;
 mod agent_hooks;
 mod agent_host;
 mod agent_integrations;
+mod agent_item_context;
 mod agent_live_settings;
 mod agent_memory;
 mod agent_model_settings;

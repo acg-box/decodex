@@ -48,6 +48,7 @@ mod desktop_drafts;
 mod desktop_ordinary_drafts;
 mod dictation;
 mod doctor;
+mod item_context;
 mod local_transport;
 mod mcp_elicitation;
 mod mcp_install;
@@ -55,6 +56,7 @@ mod mcp_login;
 mod model_catalog;
 mod native_agents;
 mod reset_card_recovery;
+mod resource_owners;
 mod retained_session;
 mod usage_evidence;
 mod voice;
@@ -63,6 +65,8 @@ mod wire;
 mod work_portfolio;
 
 pub use decodex_core::PermissionMode;
+pub use item_context::{ItemContextRequest, ItemContextResult};
+pub use resource_owners::{ResourceOwner, ResourceOwnersRequest, ResourceOwnersResult};
 
 pub use self::{
 	account_login::{

@@ -431,6 +431,7 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 				| "thread/resume"
 				| "thread/inject_items"
 				| "thread/attachment/list"
+				| "thread/attachmentOwner/list"
 				| "mcpServerStatus/list"
 				| "plugin/installed"
 				| "app/installed"
