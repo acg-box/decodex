@@ -8,14 +8,20 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
   - id: openwiki-source-d9c9b48c73ee4a2adc90f01c
     resource: repo://apps/decodex-gpui/src/agent_collaboration_cases.rs
+  - id: openwiki-source-48758ba7d154c82885281d2c
+    resource: repo://apps/decodex-gpui/src/agent_composer.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
+  - id: openwiki-source-6f69523179c5058ea4906b5f
+    resource: repo://apps/decodex-gpui/src/agent_detail.rs
   - id: openwiki-source-5eddd1d872eed61f8ba7e703
     resource: repo://apps/decodex-gpui/src/agent_draft_storage.rs
   - id: openwiki-source-1e0b3343cd024646618a1f95
     resource: repo://apps/decodex-gpui/src/agent_native_agents.rs
   - id: openwiki-source-5e245e8cc4db92f2dbe2ba47
     resource: repo://apps/decodex-gpui/src/agent_prompt_fork.rs
+  - id: openwiki-source-c222de0005be9c363ba17232
+    resource: repo://apps/decodex-gpui/src/agent_relation_canvas.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-1849030b658783d8ea0855b0
@@ -68,6 +74,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/tests/external_context.rs
   - id: openwiki-source-a7b97dd347fbe2f630692d12
     resource: repo://crates/decodex-runtime/src/agent/tests/native_agent_wake.rs
+  - id: openwiki-source-64d7588c1af50398568a792e
+    resource: repo://crates/decodex-runtime/src/agent/timeline.rs
   - id: openwiki-source-4f59431f3f6264a65208bdcb
     resource: repo://crates/decodex-runtime/src/agent/work_delivery.rs
   - id: openwiki-source-b1dd4c8ab85f342314daa6f1
@@ -76,6 +84,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/application_collaboration.rs
   - id: openwiki-source-a09c082db4ad1473c4d1e557
     resource: repo://crates/decodex-runtime/src/application.rs
+  - id: openwiki-source-c29d70b5569f29b7122f2f6b
+    resource: repo://crates/decodex-runtime/src/native_agents.rs
   - id: openwiki-source-58c0167d31c3e40dc89591ab
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-51332b5dcd4b194b62fec905
@@ -103,7 +113,7 @@ sources:
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T18:12:33.127Z
+    at: 2026-10-29T18:53:39.584Z
 ---
 
 # Project, Agent and Work coordination

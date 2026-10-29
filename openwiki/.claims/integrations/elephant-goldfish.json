@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:2a7212083fa2ddc22f4cc9f38a0516438739ea8f14161791dcff11c1138d1ac3",
+  "pageVersion": "sha256:b272aa7bbd434f12a473acdea17f6ddfab6a419209a3c365feb39fbf7d63dabb",
   "claims": [
     {
       "id": "claim_95da7355536d42fb9ba017dae9558113",
@@ -76,7 +76,7 @@
     },
     {
       "id": "claim_5a89486dceff4c03b7c9919994e03499",
-      "statement": "New Lead guidance conditionally selects original EGM skills for useful independent design review, keeps simple tasks direct, and preserves fresh reviewer context and original human decisions without replacing existing Main instructions.",
+      "statement": "New Lead guidance conditionally selects original EGM skills for useful independent design review, keeps simple tasks direct, and preserves fresh reviewer context and original human decisions without replacing existing conversation instructions.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs#L624-L647",
@@ -102,7 +102,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_relation_header.rs",
-          "version": "repo-file-v1:sha256:34bdbcd9101710f9c88cd309a5409ff4c4d94d53b69ff74d58e29983daf86c6d"
+          "version": "repo-file-v1:sha256:b78a33ee0c5c83f180c204498e5786821c677637192e06dbeb87e4f1511ee671"
         }
       ]
     },
@@ -127,6 +127,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T08:28:06.287Z"
+    "at": "2026-10-29T18:53:39.584Z"
   }
 }

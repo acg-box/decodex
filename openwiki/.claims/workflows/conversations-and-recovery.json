@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8a7986b54b188ca627dbe7bcd48e46f28e02b9a045eefac315023525d324c496",
+  "pageVersion": "sha256:5a82eb2561bc8e7680424ff22565dd2d0f3eb373106791969f721ad63dbe20b3",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -32,7 +32,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs",
-          "version": "repo-file-v1:sha256:2b1a67f00c6d9e928caf820184346f563f11d37e430619b194e05d0952021a11"
+          "version": "repo-file-v1:sha256:6a54b70616fd65fafad4b773badba78bc2b4306994728d82f0654aae86b991a1"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_fork.rs",
@@ -77,7 +77,7 @@
           "version": "repo-lines-v1:sha256:202256d254ac450e5e97f9283764171c13e8ca0ea9063d7e492d94230348c500:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU5NGQ2ZTZjMzBlYmM4OWMwYzBiMTkyNzY2YWI5ODhhOWVmMGRlZDI5NDJhZGUwOTlmNzI4ZWMyOWZkYjdkZGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQzODk2NTJjMzE1M2VmMWIzNTVhZmM5Mzk3MGVkNjc1YzJhMjM1N2YyY2I4NWFkYjE4YzUzZjVmM2MwZTc3NjEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0NzdlNTE3ZjY3NmRlNTEwZWZmMjMxM2RkOTExZGI1YTFhM2VmNTNiZjM4MjIyZmY0Njc0YTA2OGI0YmM1OTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk3MDAzNzgwZmFlYzA0Nzk5NWRmYTE0ZWJkZTA2OGM5NjVhOTczNzU5OTI3MzI3N2RlODUwYTY1ZmY0Yjk1MDIifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L347-L368",
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L349-L370",
           "version": "repo-lines-v1:sha256:cb651007a4a2b7bcfa9032774f98146d9777ec57219b20fb267677c08701ff36:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1MzRiNTU1ZTFkOGExMjljYmEwMzcxZGQxNmQ5YWUyMTRhYTgxODYxMDQ2ZWQxMzY1ZDU0ZjNhOWUyZmMxMjAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU2MjgyN2IwYmYxZjM0Mzk0MTM0OGUyMjViNWEyMjJkMWU2YmRlZTVlMDQ3MTUxN2VhYjI5OGY0YzIzM2MwYjEifQ"
         }
       ]
@@ -259,7 +259,7 @@
       "statement": "Attached branch after this turn retains the reviewed source boundary and parent model context while exposing only child turns. It preserves the exact source Agent, provider, Project, role and tool revision, requires paginated source history, and creates no copied Goal or model input. Ordinary forks retain deferred Goal continuation.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L989-L1026",
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L1005-L1042",
           "version": "repo-lines-v1:sha256:cc1dc65fa4069845c34177ed77f474321d3ea5e01c59646db719d37f887814bd:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwMDY0MWUwZmVkYTQ5NmZkZjFkMDEyNDE5ODAwMjkwZjFlZjQ4MWRiODU2YzhmNWRjM2QzZjcyOTEyZDg0MTUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU2ODA2ZjE1NWM1YWMxYWUyNzIyY2EwNmYyYWM5Y2FkY2I4ODFiOTEyM2NiNjI0YTNjMTA0NzViNDQ0OWRjMmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0ZjNmMDdhZjk4MzMzOWIzZjU5YjY3NTVkZDgwOWRjMWFkMTYxNzMxZGQ3MDdhYzU5N2U5MDhiMDZiMGEzZDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlMWIwMmUxZGZkNTNkNDI3YzYyOGFiNTUzZjc3YzllNzJkZTQ0M2I3NmI0OGQwMDM2ZjhlZWJiNTcxYjc0ODcifQ"
         },
         {
@@ -379,12 +379,12 @@
       "statement": "Locked conversation branching reads the latest visible user prompt from the current native timeline binding and uses the existing guarded native fork path; a stale binding does not provide the entry and the original writer is not taken over.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L422-L462",
-          "version": "repo-lines-v1:sha256:4bab629ae7166240b9281af048bdf0fc1ca0ab91161a0ab61767e5980049713c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA2Y2JkOWUyMWRlZDUzNGEwYzhmYzVmNGQ0OGVkZjgzODJmNTRiNzc5NmFlOWRjMjIyYmRiZjdjOTVlNmQ1YzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMwNjNmMzliZGFlZjg1NTcxOWYyMDJjYjVjNjc2YjkzMGMxYWRlYzgwZjBhOWMwY2UzZjU1M2QzODBiY2ZiZTYifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L424-L464",
+          "version": "repo-lines-v1:sha256:4b9fa56f30f7e9178a3137207cef9fdf502f9eeeb8012463a82d20fc34deafb2:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA2Y2JkOWUyMWRlZDUzNGEwYzhmYzVmNGQ0OGVkZjgzODJmNTRiNzc5NmFlOWRjMjIyYmRiZjdjOTVlNmQ1YzEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMwNjNmMzliZGFlZjg1NTcxOWYyMDJjYjVjNjc2YjkzMGMxYWRlYzgwZjBhOWMwY2UzZjU1M2QzODBiY2ZiZTYifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L840-L870",
-          "version": "repo-lines-v1:sha256:08bf6d787c993dc5a1edb8ef94418597f1401850394f43de21ec2bbf7d645b0f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlMTg0NWFhMGU3MTYyNjgxMzAzY2Y3NTE4YjI5MzFiMTA5NzEwMjBiYTQwNTY5ZGNlOThjMzFhZmY0YjAxYmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2Mzg3N2UxYTAxYzMxMzNlNjY3YmVjNTkxMDNhZmJhZGUxMTA5ZDIzYzAzYzc5MWM1OWUzOTU5ZWJlNDQ0MzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZmEzOGEyYzM4MDhkOGU3N2YyN2FjYTMyNzUzNWMxMzM5ZTM1YjIxNmM1ODAxNGQxNGQ5ODE1MmNiMmE5YjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5OGI2MzhkNzU1M2M3NzZkOWJhZDVlZmJkZWZiZmI5YjdlNDQ0YzBhMGQxZjJkOTY0ODQ0MDc0MTQ3NTM0NTQifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L869-L881",
+          "version": "repo-lines-v1:sha256:269d461edb13c4476bd35705c7bd531cf105ace66008dfb7fe47274dce5e1f0e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlMTg0NWFhMGU3MTYyNjgxMzAzY2Y3NTE4YjI5MzFiMTA5NzEwMjBiYTQwNTY5ZGNlOThjMzFhZmY0YjAxYmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2Mzg3N2UxYTAxYzMxMzNlNjY3YmVjNTkxMDNhZmJhZGUxMTA5ZDIzYzAzYzc5MWM1OWUzOTU5ZWJlNDQ0MzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZmEzOGEyYzM4MDhkOGU3N2YyN2FjYTMyNzUzNWMxMzM5ZTM1YjIxNmM1ODAxNGQxNGQ5ODE1MmNiMmE5YjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM5OGI2MzhkNzU1M2M3NzZkOWJhZDVlZmJkZWZiZmI5YjdlNDQ0YzBhMGQxZjJkOTY0ODQ0MDc0MTQ3NTM0NTQifQ"
         }
       ]
     },
@@ -466,7 +466,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:a84ee1de3db68b7efa7c4bfcf1572b15271f352a13f42394383b37cf6159f805"
+          "version": "repo-file-v1:sha256:32bdec1fe6adacfca8fe26d5c36b5fb07b607fc4a19e241df3b27a36dcd261d7"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_find.rs",
@@ -509,10 +509,32 @@
           "version": "repo-lines-v1:sha256:2eae828ec2cd5d89c8cc644f8e1591008db925ace100868702ea1dd7d9537f62:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczNzkyNzhmMjk4MjY2NmZhZDA0MGI4NjFmOTc5NWNmOTMxYjZmMTBkNzc2ODEzYjBiYTc2NGU2N2M3ZTZiOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZlMjViZjY0Zjc3NjY2ZjA2Y2VlNzEwOGJlYWJjZDQ1OGYyMDZlYzYyOWRkNjZlMTI4NTlmMmNjMTY1OGM5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3NDFhMGNlMWI4MjdlYzg1ZGNlMmYzMmY1N2M2NzVlZTZiNTQzZjk1ZWM5MjAyYTZjNzY1YTBmZDk1NTQ3OTIifQ"
         }
       ]
+    },
+    {
+      "id": "claim_1b096737004d4553877b9f8eb647b9ed",
+      "statement": "The Branch… action on a locally managed conversation list row opens the exact source, preserves drafts and reviews the latest completed native turn's own user input through existing bounded history loading. Explicit Create new branch reuses AfterTurn confirmation without sending input. Cancellation and source changes end the pending review; unavailable/full-history gaps and unmanaged rows cannot supply this entry.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_list_branch.rs",
+          "version": "repo-file-v1:sha256:0dd6b14117ddb0454681aaebd8433b114df37ce0c55846c713d596b446c29426"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
+          "version": "repo-file-v1:sha256:86ce9dd3aa50d65bf8ee4cbd80adee10421aec30d58a4e5ec13d12d360f89c05"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_prompt_edit.rs#L843-L874",
+          "version": "repo-lines-v1:sha256:a1521f0992c0c8f68dc96cf02f2067cae4a0297c2b8a864d1cc804039655bf47:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5ZWNjOGZjZDNjODBhZGNmODcxZDY0ZmIyMmQ2MjQ2YTc5YzY4ZDlmOGY4NTYxODM2NjRhOGViMGU0ZWNmMGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1OTQ3ZjdmY2UzYmM4MmYyMjM0ODE3NTZmZTAyODFlNWM3MjdhMzRjMzAyZmU5YzEwZGYyM2IxMTQ5MzkzYWYifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs#L683-L710",
+          "version": "repo-lines-v1:sha256:709b9acc2636df303dc994cde8b3db1c5af5e60be29157b6165d880eaf41116f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3NmQyN2IwNmI1ODAzNTg3NTNlMjJlMjQwMjUwODVlZjE1MTU2NGM1MDdiYTdmYmZmOGQ5OGE2ZmUxMDNkYjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlODAzYmM3OTExM2YyNTc3ZmI3ZjljMDY0ODQxM2JkOWZmYTg5NDczODJjOGEwNDAxMjIwNGIxOWQ2YjU2NmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdlY2Y5ZWU1ZmQxYmVmZDAwN2U4ZWRkZGFjMGY2M2M4ZTBlNzc1NjkyMmYwMjU1ODBhNDFmYzFiNWQ2YmVlN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmMWZjNGM5MzY2N2RkYzQ2ZTU2ZmI2YzUzNzcyYTA0MjE0NjFlNWRkYWM2NGJmNTk0NWU1OTFiZTQ5MjczYWQifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T18:12:33.127Z"
+    "at": "2026-10-29T18:53:39.584Z"
   }
 }

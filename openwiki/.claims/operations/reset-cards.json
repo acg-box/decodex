@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:9af58281480e1d3a80b20540014cc14724ed830f02d0e9b0dd15141eef8980fa",
+  "pageVersion": "sha256:ef56648c3f9d3e09c8c5f369b226ff8759817838274c02b83fc48a38b57065b2",
   "claims": [
     {
       "id": "claim_f04618e1bd8949938c67c23ed12ff25c",
@@ -44,11 +44,11 @@
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/lib.rs",
-          "version": "repo-file-v1:sha256:1ba9cbd1b5663c0d46d59de2593953ea20b7279fbaad0a673cea7b00b0bff22c"
+          "version": "repo-file-v1:sha256:61e7eac8d514976366656ec68fb2b1e1a70a64a349fca4148a82fbb6f7281cf3"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/client.rs",
-          "version": "repo-file-v1:sha256:117c9647e1c2a980fe66621f2e97a7f69513cf943d947cfd36dfb67c1a9ab161"
+          "version": "repo-file-v1:sha256:b08a7596f4550386e893ca707abd8fd65274d3710cd99dcfc3f11dac18fc350d"
         }
       ]
     },
@@ -84,7 +84,7 @@
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/lib.rs",
-          "version": "repo-file-v1:sha256:1ba9cbd1b5663c0d46d59de2593953ea20b7279fbaad0a673cea7b00b0bff22c"
+          "version": "repo-file-v1:sha256:61e7eac8d514976366656ec68fb2b1e1a70a64a349fca4148a82fbb6f7281cf3"
         },
         {
           "resource": "repo://crates/decodex-app-client-ffi/src/reset_card_journal.rs",
@@ -102,7 +102,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
-          "version": "repo-file-v1:sha256:baeb014cd95555604c5b6ea71af9925656d66d53c4c81acfaa3bc529f206292c"
+          "version": "repo-file-v1:sha256:35126362efa4d108d383d97d4e4e3a90bb870a8b437759bf0502a794cec15047"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell_reset_cards.rs",
@@ -159,6 +159,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-28T08:28:06.287Z"
+    "at": "2026-10-29T18:53:39.584Z"
   }
 }

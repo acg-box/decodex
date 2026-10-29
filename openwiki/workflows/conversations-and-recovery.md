@@ -16,6 +16,14 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_draft_storage.rs
   - id: openwiki-source-d701c906e7fcc9ab2d0917bc
     resource: repo://apps/decodex-gpui/src/agent_inspection.rs
+  - id: openwiki-source-7aecb0d94903aac848b2cdfd
+    resource: repo://apps/decodex-gpui/src/agent_item_context.rs
+  - id: openwiki-source-77ad5024b567271a0f618fd7
+    resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
+  - id: openwiki-source-ae2ce5cda718ede63f50be9b
+    resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
+  - id: openwiki-source-0eea3c2bab20e4a9d8e3d80a
+    resource: repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs
   - id: openwiki-source-0a913db08f7e3fac688dbce5
     resource: repo://apps/decodex-gpui/src/agent_prompt_confirm.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
@@ -28,26 +36,42 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-3362ac542db6e3212a621c47
     resource: repo://apps/decodex-gpui/src/agent_recap_automatic.rs
+  - id: openwiki-source-218f7834832fc84c2fbc7cf7
+    resource: repo://apps/decodex-gpui/src/agent_reconnect_queue_tests.rs
+  - id: openwiki-source-833f63423276cad9a26295cf
+    resource: repo://apps/decodex-gpui/src/agent_resource_owners.rs
   - id: openwiki-source-296a92a9cefecb19f0fc1f95
     resource: repo://apps/decodex-gpui/src/agent_sample_tests.rs
   - id: openwiki-source-912dbe8f46e7ec6026887bbe
     resource: repo://apps/decodex-gpui/src/agent_sample.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
+  - id: openwiki-source-2fb9e466c6aafdf4f4950bc1
+    resource: repo://apps/decodex-gpui/src/agent_timeline_find.rs
   - id: openwiki-source-d57edbe5de23ebee985fc88b
     resource: repo://apps/decodex-gpui/src/agent_timeline_inputs.rs
   - id: openwiki-source-1849030b658783d8ea0855b0
     resource: repo://apps/decodex-gpui/src/agent_timeline_receipts.rs
+  - id: openwiki-source-691432bb61082c358b6f9c24
+    resource: repo://apps/decodex-gpui/src/agent_timeline.rs
   - id: openwiki-source-5606e779f593d160176b0a27
     resource: repo://apps/decodex-gpui/src/agent_transcript.rs
+  - id: openwiki-source-3fa6d6c49e3542409542045b
+    resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
   - id: openwiki-source-5d032c6be684964aa2c401fa
     resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-7a7e7b3407a8222085c2d27e
     resource: repo://apps/decodex-gpui/src/composer_input.rs
+  - id: openwiki-source-a16804a567889414868e5d67
+    resource: repo://apps/decodex-gpui/src/settings_surface.rs
+  - id: openwiki-source-1291f5243fa6c9cb52149bda
+    resource: repo://apps/decodex-gpui/src/shell.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-ecdf4586908bb6226955607a
     resource: repo://crates/decodex-codex/src/app_server_client/history_item.rs
+  - id: openwiki-source-08977baecd43b927489f58e8
+    resource: repo://crates/decodex-codex/src/app_server_client/item_context.rs
   - id: openwiki-source-830a575f82404942511da59b
     resource: repo://crates/decodex-codex/src/app_server_client/prediction.rs
   - id: openwiki-source-dc292a3cdb3064363ab29907
@@ -64,10 +88,14 @@ sources:
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
     resource: repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs
+  - id: openwiki-source-b2869e6da778a74cb6afc667
+    resource: repo://crates/decodex-runtime/src/account_launch/process.rs
   - id: openwiki-source-720a745d503e0e60ebcad0c5
     resource: repo://crates/decodex-runtime/src/agent_detail.rs
   - id: openwiki-source-3d25cb6558fde84d70520ac2
     resource: repo://crates/decodex-runtime/src/agent_read_state.rs
+  - id: openwiki-source-ac4b738d63d48fc19492febe
+    resource: repo://crates/decodex-runtime/src/agent_resources.rs
   - id: openwiki-source-72323573c4abb11c31ffbeec
     resource: repo://crates/decodex-runtime/src/agent_sample.rs
   - id: openwiki-source-5a9a9e8bb72a23939f23f6f6
@@ -98,10 +126,10 @@ sources:
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-28T08:48:31.048Z" }
+generated: { by: "codex", at: "2026-10-29T18:53:39.584Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T18:12:33.127Z
+    at: 2026-10-29T18:53:39.584Z
 ---
 
 # Conversation input, history and recovery
@@ -145,6 +173,12 @@ When a refreshed active snapshot removes the selected conversation or its compos
 Archiving ends local pending interactions: never-dispatched input and failed-message retry records are discarded, old questions and request notices are retired, and pending automatic retries and scheduled checks are cancelled. Sent history, claimed delivery receipts, Work and Results remain. The current editor stays under its original owner.
 
 After Codex restores the original thread, a positive active-list observation restores its original relationships through the normal background refresh. An application restart is not required. Opening that conversation restores its saved editor under the original work and thread IDs. Native child tabs follow the same complete-list rule and retain their own editor when removed from the active view. Restoration does not replay discarded input or an uncertain command.
+
+## Branch from the conversation list
+
+For an existing locally managed conversation, choose **Branch…** on its list row. Decodex opens that exact source, preserves the current drafts, and reads the latest completed native turn and its own user input. If needed, it uses the existing bounded earlier-history pages. An active turn is not selected. Incomplete, unavailable or summary-only history cannot supply a branch boundary.
+
+Review the source, then choose **Create new branch**. This uses the existing **Branch after this turn** path; creation sends no input. **Cancel branch** closes the review without changing the source draft. A profile, thread, selected source or history change cancels the pending review. A native-only inventory row without a local source does not offer this shortcut and is not adopted. The [qualification](../testing/upstream-acceptance-boundaries.md#conversation-list-branch-qualification) records the focused checks and limits.
 
 ## Edit or branch at an earlier input
 

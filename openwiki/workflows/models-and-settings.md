@@ -4,26 +4,46 @@ title: "Model selection and settings ownership"
 description: "Native model, Goal and search settings, source-bound writes and memory observation."
 tags: ["decodex", "architecture"]
 sources:
+  - id: openwiki-source-4e2d2760a1fe5d904918afb7
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift
   - id: openwiki-source-b243cfb8ae3053f8047fdab0
     resource: repo://apps/decodex-gpui/src/agent_capabilities.rs
+  - id: openwiki-source-c76550e85b25876b339f9255
+    resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-9c68c30b2ff24ddf9a764d74
     resource: repo://apps/decodex-gpui/src/agent_memory.rs
   - id: openwiki-source-c6ac7d6b2fdeb458faab2c3a
     resource: repo://apps/decodex-gpui/src/agent_permissions.rs
+  - id: openwiki-source-0f9840ddf9e841a062aa905a
+    resource: repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs
+  - id: openwiki-source-296a92a9cefecb19f0fc1f95
+    resource: repo://apps/decodex-gpui/src/agent_sample_tests.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
+  - id: openwiki-source-40c9c6a55485557343853517
+    resource: repo://apps/decodex-gpui/src/agent_usage_estimates.rs
   - id: openwiki-source-0d053d4de2f668168f982629
     resource: repo://apps/decodex-gpui/src/agent_usage_evidence.rs
   - id: openwiki-source-682f90c6d08ed3207257f1d5
     resource: repo://apps/decodex-gpui/src/conversations.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
     resource: repo://apps/decodex-gpui/src/session_settings.rs
+  - id: openwiki-source-37be5bb3dc64279420e57b31
+    resource: repo://apps/decodex-gpui/src/settings_native.rs
+  - id: openwiki-source-a16804a567889414868e5d67
+    resource: repo://apps/decodex-gpui/src/settings_surface.rs
+  - id: openwiki-source-546812ff3637690f4a184b89
+    resource: repo://apps/decodex-gpui/src/ui_preferences.rs
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
+  - id: openwiki-source-451b1382eb8cdcb9915ac78b
+    resource: repo://crates/decodex-app-client-ffi/src/conversation_estimates.rs
+  - id: openwiki-source-2b08587e9b26e203156110c8
+    resource: repo://crates/decodex-codex/src/app_server_client/context_preferences.rs
   - id: openwiki-source-f2483b817a8847254a871b51
     resource: repo://crates/decodex-codex/src/app_server_client/goals.rs
   - id: openwiki-source-9819ced71ede01a1ddc5af56
@@ -75,7 +95,7 @@ sources:
 generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T18:12:33.127Z
+    at: 2026-10-29T18:53:39.584Z
 ---
 
 # Model selection and settings ownership

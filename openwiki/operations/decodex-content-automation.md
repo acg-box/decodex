@@ -11,11 +11,14 @@ sources:
     resource: repo://automations/decodex/prompts/xurl-publisher.md
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
-generated: { by: "codex", at: "2026-10-17T07:31:21.183Z" }
+generated: { by: "codex", at: "2026-10-29T18:53:39.584Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-29T18:53:39.584Z
 ---
 
 
-> Repository configuration: `automations/portfolio.toml` declares ACTIVE defaults for the content roles and an explicit ACTIVE setting for the upstream Maintainer. The content roles' PAUSED-first sequence below is historical activation procedure, not a report that today's host is paused. Verify native task definitions separately; repository configuration does not prove execution. This documentation refresh publishes nothing and changes no schedule.
+> Repository configuration: `automations/portfolio.toml` declares ACTIVE defaults for the content roles and an explicit PAUSED setting for the upstream Maintainer. The Maintainer retains its daily cadence and requires explicit user approval before it resumes. The content roles' PAUSED-first sequence below is historical activation procedure, not a report that today's host is paused. Verify native task definitions separately; repository configuration does not prove execution. This documentation refresh publishes nothing and changes no schedule.
 
 # Decodex Content Automation
 

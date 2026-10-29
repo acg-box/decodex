@@ -2171,7 +2171,7 @@
       "completed_selected_pages": [
         "openwiki/architecture/conversation-presentation.md"
       ],
-      "full_lifecycle": "Incomplete. Unrelated page jobs remain with the existing manual continuation owner."
+      "full_lifecycle": "The original feature batch qualified only its selected page. Current full-generation status is recorded in native automation state and finalized OpenWiki metadata."
     }
   },
   "manual_decision_scope": {
@@ -2181,8 +2181,8 @@
     "documentation": {
       "method": "OpenWiki page-job lifecycle",
       "selected_page": "openwiki/decisions/upstream-product-scope.md",
-      "status": "pending_selected_page",
-      "limit": "The generated queue places unrelated stale pages before this page. Preserve the queue and keep this decision update scoped; no completed lifecycle is claimed."
+      "state_source": "Native automation state and finalized OpenWiki metadata own the current queue and completion result.",
+      "limit": "Source delivery and Wiki lifecycle completion are separate. Historical feature qualifications do not certify a later full generation."
     },
     "validation": {
       "repository_contract_tests": {

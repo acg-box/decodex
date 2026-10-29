@@ -28,7 +28,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/instructions.md
   - id: openwiki-source-f20a9fcd74237051ab396266
     resource: repo://crates/decodex-runtime/src/agent/review_activity.rs
-generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+generated: { by: "codex", at: "2026-10-29T18:53:39.584Z" }
+verified:
+  - by: openwiki/0.7.2
+    at: 2026-10-29T18:53:39.584Z
 ---
 
 # Elephant–Goldfish component
@@ -47,7 +50,7 @@ Use the original brainstorm, drafting, review or resolution skill that fits the 
 
 New Lead conversations receive concise selection principles through the existing Agent instructions. Use EGM when independent review can resolve important design assumptions, competing approaches or cross-component contracts. The Lead chooses the smallest useful review; simple explanations and local fixes need no EGM phase. User-selected skills retain the existing native skill input path.
 
-The Lead reads the original skill and necessary resources, gives Goldfish the current artifact and bounded materials in fresh context, waits for actual findings, and preserves the original human decision gates. A skill read or reviewer launch is not a completed review. The guidance respects current native invocation policy and does not install or modify an unavailable plugin. Existing Main conversations keep their native context; this change does not hot-replace their instructions or migrate their history.
+The Lead reads the original skill and necessary resources, gives Goldfish the current artifact and bounded materials in fresh context, waits for actual findings, and preserves the original human decision gates. A skill read or reviewer launch is not a completed review. The guidance respects current native invocation policy and does not install or modify an unavailable plugin. Existing conversations keep their native context; this change does not hot-replace their instructions or migrate their history.
 
 ## Follow a review in the workspace
 
