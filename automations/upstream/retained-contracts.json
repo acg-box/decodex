@@ -4881,14 +4881,14 @@
     },
     "related_resources": {
       "manual_item": 67,
-      "behavior": "Find persisted native associations by the existing exact resource type and identity key, with native archive filtering and paging. Open existing local conversations and copy references for unmanaged ones.",
+      "behavior": "Find persisted native associations by the existing exact resource type and identity key, with native archive filtering and paging. Open only exact current local conversation bindings; copy native references for other owners.",
       "source_symbols": [
         "crates/decodex-codex/src/app_server_client/attachment_owners.rs#AppServerClient::thread_attachment_owners",
         "crates/decodex-runtime/src/agent_resources.rs#owners",
         "apps/decodex-gpui/src/agent_resource_owners.rs#AgentSurface::resource_owner_rows",
         "crates/decodex-runtime/src/account_launch/process.rs#AccountBinding::shared_home"
       ],
-      "limits": "Current account processes share one native store, so one admitted catalog query covers it. Account labels come only from retained local bindings and can be unknown. No upload/PDF scan, file equivalence, retrospective association index, adoption of unmanaged threads, cross-store discovery or cleanup authorization."
+      "limits": "Current account processes share one native store, so one admitted catalog query covers it. Account labels come only from retained local bindings and can be unknown. No upload/PDF scan, file equivalence, retrospective association index, adoption of unmanaged threads, cross-store discovery or cleanup authorization. Archived or replaced owners absent from the current local snapshot provide a native reference instead of an unavailable navigation action."
     },
     "cost_estimates": {
       "manual_item": 72,

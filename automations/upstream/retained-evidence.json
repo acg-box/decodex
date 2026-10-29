@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "506bc47eeaab54ac85cedfddfff818e4a9811e6f4debf4acf18a38f4cceba49e",
+    "sha256": "4219b17fe6426e6d8048cd52dbc00d309b2ca23d84d53e8d19adbb8610df92a4",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -1732,7 +1732,7 @@
       72
     ],
     "contracts": "retained-contracts.json#retained_desktop_feedback",
-    "source_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b",
+    "source_revision": "52c8996d53b0c8443ced6b2c9e952cae50693fd7",
     "main_baseline": {
       "revision": "e9b95a6b7c5d45a6bf91f9b07dda1ef1638ef2fa",
       "required_analyzers": "Python, JavaScript/TypeScript and Rust checks passed at this exact merge head. No historical checks were rerun."
@@ -1743,7 +1743,7 @@
       "apps/decodex-gpui/menubar/Tests/DecodexAppTests/ConversationEstimatesTests.swift": "9f449de521e5ded3785a739bf7288f94c12ba491ad4363cf2fc2109893205a7c",
       "apps/decodex-gpui/src/agent_detail.rs": "f3962122e3272e290f72099efb463c7b15115d154f52f50c9d3eced22e7391fb",
       "apps/decodex-gpui/src/agent_item_context.rs": "d6daf6377eec0de663910d8ce65101a4b993b15818e650cc82e34edce7fbb540",
-      "apps/decodex-gpui/src/agent_resource_owners.rs": "b74b40cd5a020b064eea9523fa91841302d57250e31c1f4d529f9b638952ddc9",
+      "apps/decodex-gpui/src/agent_resource_owners.rs": "324473dccaf30d28f29017e5b54e87861575a67f6832c33397e7782657e3bc6a",
       "apps/decodex-gpui/src/agent_timeline_render.rs": "5f60919da8434af81409945a4f970b0967be61e0b151570b9b82f6d67d2132de",
       "apps/decodex-gpui/src/agent_usage_estimates.rs": "c88a6132ab1cd0ef6fba935985f64d398a26715226168970ea1b9db459665950",
       "crates/decodex-app-client-ffi/src/conversation_estimates.rs": "8a465b0198f60825b2d902aec9edb7539dd89fe9d7e5edc11c2b40711476be91",
@@ -1860,7 +1860,8 @@
           "decodex-app-client-ffi",
           "-E",
           "test(conversation_cost_toggle_keeps_estimate_until_its_source_changes) | test(expanded_tool_stays_inside_transcript_and_survives_background_refresh) | test(command_disclosure_counts_only_native_retained_output) | test(known_item_reads_exclusive_neighbors_and_keeps_native_cursors) | test(reverse_lookup_preserves_identity_archive_filter_and_opaque_page) | test(thread_usage_) | test(task_usage_) | test(task_estimates_keep_micros_exact_and_absence_distinct_from_zero) | test(estimates_discard_changed_sources_and_late_reopened_requests) | test(unrelated_refresh_does_not_strand_an_estimate_read) | test(nearby_history_query_keeps_identity_and_discards_a_changed_source) | test(related_conversations_keep_filter_cursor_and_reject_a_changed_source)"
-        ]
+        ],
+        "code_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b"
       },
       {
         "kind": "GPUI child-thread action",
@@ -1884,7 +1885,8 @@
           "decodex-gpui",
           "-E",
           "test(nearby_history_action_reads_the_selected_native_child)"
-        ]
+        ],
+        "code_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b"
       },
       {
         "kind": "local protocol negotiation",
@@ -1907,7 +1909,8 @@
           "decodex-protocol",
           "-E",
           "test(negotiation_accepts_only_the_current_major_and_minor)"
-        ]
+        ],
+        "code_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b"
       },
       {
         "kind": "exact selected artifact integration",
@@ -1937,7 +1940,8 @@
         "environment": [
           "DECODEX_TEST_CODEX_BINARY=<explicit prepared CLI>"
         ],
-        "fixture": "System-temporary private native store and two synthetic Responses turns. Lookups add no model requests; test retains reusable fixture implementation."
+        "fixture": "System-temporary private native store and two synthetic Responses turns. Lookups add no model requests; test retains reusable fixture implementation.",
+        "code_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b"
       },
       {
         "kind": "Menu Bar bridge and amount presentation",
@@ -1956,7 +1960,8 @@
           "apps/decodex-gpui/menubar",
           "--filter",
           "ConversationEstimatesTests"
-        ]
+        ],
+        "code_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b"
       },
       {
         "kind": "existing architecture and gate contracts",
@@ -1973,14 +1978,42 @@
           "unittest",
           "tests/scripts/test_vnext_architecture.py",
           "tests/scripts/test_gate_contract.py"
-        ]
+        ],
+        "code_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b"
+      },
+      {
+        "kind": "Current resource-owner navigation",
+        "executed": 1,
+        "passed": 1,
+        "unmatched_selectors": [],
+        "code_revision": "52c8996d53b0c8443ced6b2c9e952cae50693fd7",
+        "tests": [
+          {
+            "binary_id": "decodex-gpui::bin/decodex-gpui",
+            "test": "shell::agent_surface::resource_owners::tests::related_navigation_requires_a_current_local_thread",
+            "entrypoint": "apps/decodex-gpui/src/agent_resource_owners.rs"
+          }
+        ],
+        "command": [
+          "cargo",
+          "+stable",
+          "nextest",
+          "run",
+          "--locked",
+          "-p",
+          "decodex-gpui",
+          "-E",
+          "test(related_navigation_requires_a_current_local_thread)"
+        ],
+        "before_after": "The added GPUI regression failed against the original navigation row, then passed after requiring an exact current local thread. It covers an available destination, a hidden archived destination and a replaced binding, including exact reference copy."
       }
     ],
     "static_checks": {
       "strict_clippy": "passed for five affected packages, all features and targets; repository deny flags",
       "format": "cargo +nightly fmt --all --check passed",
       "whitespace": "git diff --check passed",
-      "menu_bar_build": "swift build and focused test build passed"
+      "menu_bar_build": "swift build and focused test build passed",
+      "additional_affected_clippy": "decodex-gpui all features/targets passed at the navigation repair revision; other four package implementations are unchanged."
     },
     "selected_runtime": {
       "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
@@ -2039,7 +2072,8 @@
       "https://github.com/acg-box/decodex/commit/5a8e15775463b95ea07e4de92790d0cc1e2ff9b5",
       "https://github.com/acg-box/decodex/commit/05c955ac426073b4b7a88cc808d531192d1bc977",
       "https://github.com/acg-box/decodex/commit/0a89f75416c21052308e19d678035a63ac30629c",
-      "https://github.com/acg-box/decodex/commit/8ad568916453d30304d5c891b7d79b531b4ecd9b"
+      "https://github.com/acg-box/decodex/commit/8ad568916453d30304d5c891b7d79b531b4ecd9b",
+      "https://github.com/acg-box/decodex/commit/52c8996d53b0c8443ced6b2c9e952cae50693fd7"
     ],
     "limits": [
       "No source cursor advancement or runtime migration. Automation remains paused.",
@@ -2051,6 +2085,11 @@
     "documentation": {
       "scope": "The nine directly related workflow, presentation, scope, acceptance, protocol and entrypoint pages use OpenWiki page jobs.",
       "lifecycle_limit": "Unrelated stale page jobs remain with the existing Wiki maintenance owner. Selected page submissions do not establish whole-run finalization."
+    },
+    "validation_source_limits": {
+      "earlier_cohort_revision": "8ad568916453d30304d5c891b7d79b531b4ecd9b",
+      "current_additional_revision": "52c8996d53b0c8443ced6b2c9e952cae50693fd7",
+      "reuse": "The prior 18 Rust, two Swift and 14 architecture/gate checks retain their limits. Only related-owner navigation changed afterward; the new UI regression and strict GPUI Clippy qualify that change. Native runtime, protocol, transport and estimate implementations are unchanged."
     }
   }
 }
