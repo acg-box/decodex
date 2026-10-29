@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "36b3431bce445abb0b40a50bdaa49f96eb1353a793bdd3b968e0dcf41080dec3",
+    "sha256": "0febfcd77d1ef19aec8eb5ab3a460432087d819822d0d89ab983b16ea182b913",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -1481,5 +1481,247 @@
       "No installed-app, live-provider, MCP cache performance, installation or release acceptance."
     ],
     "delivery_reference": "https://github.com/acg-box/decodex/commit/42e6f0b2cd89e671f93fe5662b92a598f5e80686"
+  },
+  "desktop_feedback_scope": {
+    "contracts": "retained-contracts.json#retained_desktop_feedback",
+    "source_revision": "cfa54c6f2689cf5b2f4e1f09afbcc1664396eb31",
+    "main_baseline": "694aff34dd5b868c331b18b8253c3e534f7455f2",
+    "local_protocol": "4.1",
+    "source_sha256": {
+      "apps/decodex-gpui/menubar/Sources/DecodexApp/BrandLoading.swift": "6628aa5868c06e9c49e8f5eeb530ce19b97a0ae338c9cff33eaa2739538eb7dd",
+      "apps/decodex-gpui/src/agent_composer.rs": "1f3c295b6baad304b9a9b0a8cf90c9bff6dde2eaa42c1e46cc94f85110fa074f",
+      "apps/decodex-gpui/src/agent_detail.rs": "475302a1e6825aab1aa7e70c9a824510793ab9b20293fb25b1dcde7df7e181f4",
+      "apps/decodex-gpui/src/agent_native_composer.rs": "76a986f8599d647ab16186cb0745ceb851ff3627cfe28d82cce5b5427d9e590c",
+      "apps/decodex-gpui/src/agent_reconnect_queue_tests.rs": "35dd494dd6228c3a8f997718927aeea9a891be04f70a015e1fae85c45dba382b",
+      "apps/decodex-gpui/src/agent_surface.rs": "bc64f7dc40ab0416c112b439093de950fbaba8e546256622a68035c59f1f9c54",
+      "apps/decodex-gpui/src/agent_timeline.rs": "a84ee1de3db68b7efa7c4bfcf1572b15271f352a13f42394383b37cf6159f805",
+      "apps/decodex-gpui/src/agent_timeline_find.rs": "df0d8caca326d0ff12888f2cce1b6c3385e0211f4902b1aef314b9b260a53eab",
+      "apps/decodex-gpui/src/agent_timeline_render.rs": "e1bc87ebaea208d673a10e6151e6de7e4a90bf36495c3eb87fc651a612252f11",
+      "apps/decodex-gpui/src/agent_timeline_scroll.rs": "fa1b95588bed56032dfeb7c5f385ff7416cdd67e1a3eae98bd005e0dacc4c681",
+      "apps/decodex-gpui/src/agent_wire_test_support.rs": "95aced9c4b27b0b90a55c5a73e644858d8777b332cf2e8c047e4405803f07978",
+      "apps/decodex-gpui/src/shell_diagnostics.rs": "ff0b564868b973192289cad09f0468b39959e9dbb29b51d0e678be581685aede",
+      "apps/decodex-gpui/src/shell_status.rs": "aa8c56f007f88b08dfefeeeae0ec0a30cecc335c130d09aa3649d88246f3080c",
+      "apps/decodex-gpui/src/ui_loading.rs": "2e6ba7dc87c659f1212295885631db02b99e4ea8e7b0c12ee0234ddb7990c243",
+      "apps/decodex-gpui/src/ui_working.rs": "668dda96576a057dc575d55c2fa9bba336574290da9081dba65e99461c53157f",
+      "assets/app-icon/liquid-glass/01-mercury-cloud/AppIcon.icon/Assets/shape-0.svg": "531bd6045a9b2b2d888249734aed26cac35b0a422f7e7a00fda5b283ac40da03",
+      "assets/app-icon/liquid-glass/01-mercury-cloud/StatusBarIcon-22@2x.png": "6804d7ed4ea6216bd2027a56ae50328c2ad06b187bd81b8f6ab318ef9967935b",
+      "crates/decodex-protocol/src/agent_timeline.rs": "07f554eb79300fbdd5884cf7257ec942f125f21124eee2663becd5724f6bf81a",
+      "crates/decodex-protocol/src/lib.rs": "31ad4259a90a0c22fcac92f1794f648fa74b0d6d329e58f4d995573aae648860",
+      "crates/decodex-protocol/src/native_agents.rs": "04a4009c54454c035406e23011b62c22ba454ed0df664e3ab536348197091a13",
+      "crates/decodex-runtime/src/agent/timeline.rs": "a14add5951034e1bbc4eec7d0f20c6d79fadbb6ee41a59b078b7d29b08829488",
+      "crates/decodex-runtime/src/native_agents.rs": "1c3a8568e943065e012ef60bddd14b2dee12829dc6191ba4f2c03bb9483a7d18"
+    },
+    "executed_tests": {
+      "unique": 25,
+      "passed": 25,
+      "failed_assertions": 0,
+      "packages": {
+        "decodex-gpui": 19,
+        "decodex-runtime": 6
+      },
+      "identities": [
+        {
+          "package": "decodex-gpui",
+          "test": "ui_loading::tests::feedback_cannot_flash_off_at_the_delay_boundary_and_reduced_motion_stays_delayed",
+          "source": "apps/decodex-gpui/src/ui_loading.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "ui_loading::tests::cached_history_keeps_its_reveal_clock_when_the_view_is_recreated",
+          "source": "apps/decodex-gpui/src/ui_loading.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "shell::agent_surface::native_timeline::find::tests::find_excerpt_keeps_a_late_unicode_match_on_original_boundaries",
+          "source": "apps/decodex-gpui/src/agent_timeline_find.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "ui_loading::tests::workspace_regions_reveal_in_place_and_refresh_does_not_restart_them",
+          "source": "apps/decodex-gpui/src/ui_loading.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "ui_loading::tests::fast_history_reads_never_flash_feedback_or_wait_for_an_arrival_animation",
+          "source": "apps/decodex-gpui/src/ui_loading.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "ui_loading::tests::slow_history_crossfades_without_holding_back_the_result",
+          "source": "apps/decodex-gpui/src/ui_loading.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "ui_loading::tests::pagination_feedback_ignores_fast_reads_and_stays_continuous_between_pages",
+          "source": "apps/decodex-gpui/src/ui_loading.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "ui_loading::tests::retained_content_stays_visible_but_an_explicit_reload_replays_arrival",
+          "source": "apps/decodex-gpui/src/ui_loading.rs"
+        },
+        {
+          "package": "decodex-runtime",
+          "test": "agent::timeline::tests::collaboration_preserves_receivers_and_reply_evidence",
+          "source": "crates/decodex-runtime/src/agent/timeline.rs"
+        },
+        {
+          "package": "decodex-runtime",
+          "test": "native_agents::observation_tests::active_waiting_flags_are_not_running",
+          "source": "crates/decodex-runtime/src/native_agents.rs"
+        },
+        {
+          "package": "decodex-runtime",
+          "test": "native_agents::observation_tests::older_native_observations_without_task_remain_readable",
+          "source": "crates/decodex-runtime/src/native_agents.rs"
+        },
+        {
+          "package": "decodex-runtime",
+          "test": "native_agents::observation_tests::native_inventory_retains_bounded_task_and_exact_parent",
+          "source": "crates/decodex-runtime/src/native_agents.rs"
+        },
+        {
+          "package": "decodex-runtime",
+          "test": "agent::timeline::tests::native_subagent_activity_keeps_thread_identity_without_inventing_message_body",
+          "source": "crates/decodex-runtime/src/agent/timeline.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "ui_working::tests::appearance_and_disappearance_share_one_continuous_fade",
+          "source": "apps/decodex-gpui/src/ui_working.rs"
+        },
+        {
+          "package": "decodex-runtime",
+          "test": "native_agents::tests::native_input_metadata_keeps_turn_identity_and_does_not_guess_capability",
+          "source": "crates/decodex-runtime/src/native_agents.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "ui_working::tests::shimmer_waits_sweeps_and_stays_static_with_reduced_motion",
+          "source": "apps/decodex-gpui/src/ui_working.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "shell::agent_surface::drafts::storage::reconnect::reconnect_resumes_only_the_persisted_unsent_message_and_preserves_new_edits",
+          "source": "apps/decodex-gpui/src/agent_reconnect_queue_tests.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "ui_loading::tests::initial_history_waits_for_scroll_and_layout_to_stop_changing",
+          "source": "apps/decodex-gpui/src/ui_loading.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "shell::status::tests::dismissed_notice_stays_hidden_until_source_recovers",
+          "source": "apps/decodex-gpui/src/shell_status.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "shell::status::tests::profile_dismissal_is_scoped_to_account_and_revision",
+          "source": "apps/decodex-gpui/src/shell_status.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "shell::agent_surface::tests::offline_commands_preserve_editable_draft_and_attachments",
+          "source": "apps/decodex-gpui/src/agent_surface.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "shell::agent_surface::native_timeline::find::tests::find_uses_the_existing_older_page_and_rejects_a_changed_source",
+          "source": "apps/decodex-gpui/src/agent_timeline_find.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "shell::agent_surface::native_timeline::find::tests::find_retains_the_matched_live_revision_through_refresh_and_resize",
+          "source": "apps/decodex-gpui/src/agent_timeline_find.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "shell::agent_surface::native_timeline::find::tests::find_reads_folded_text_keeps_manual_disclosures_and_owns_enter",
+          "source": "apps/decodex-gpui/src/agent_timeline_find.rs"
+        },
+        {
+          "package": "decodex-gpui",
+          "test": "ui_working::tests::finished_work_releases_its_slot",
+          "source": "apps/decodex-gpui/src/ui_working.rs"
+        }
+      ],
+      "selector": "(package(=decodex-gpui) & (test(native_timeline::find::tests) | test(reconnect_resumes_only) | test(ui_working::tests) | test(ui_loading::tests) | test(dismissed_notice_stays_hidden_until_source_recovers) | test(profile_dismissal_is_scoped_to_account_and_revision) | test(offline_commands_preserve_editable_draft_and_attachments))) | (package(=decodex-runtime) & (test(native_agents::) | test(native_subagent_activity_keeps_thread_identity_without_inventing_message_body) | test(collaboration_preserves_receivers_and_reply_evidence)))",
+      "unmatched_selectors": [],
+      "command": "cargo +stable nextest run --locked -p decodex-gpui -p decodex-runtime -E '(package(=decodex-gpui) & (test(native_timeline::find::tests) | test(reconnect_resumes_only) | test(ui_working::tests) | test(ui_loading::tests) | test(dismissed_notice_stays_hidden_until_source_recovers) | test(profile_dismissal_is_scoped_to_account_and_revision) | test(offline_commands_preserve_editable_draft_and_attachments))) | (package(=decodex-runtime) & (test(native_agents::) | test(native_subagent_activity_keeps_thread_identity_without_inventing_message_body) | test(collaboration_preserves_receivers_and_reply_evidence)))' --no-tests=fail",
+      "process_cleanup_limit": "One successful pure layout-state test received a nextest LEAK process-cleanup marker in the combined run. Its exact isolated repeat passed without a marker. The exit-delay cause remains unmeasured; this is not a claim of a universally clean whole-suite shutdown."
+    },
+    "before_after": {
+      "test": "shell::agent_surface::drafts::storage::reconnect::reconnect_resumes_only_the_persisted_unsent_message_and_preserves_new_edits",
+      "before": "The original dispatcher from main 694aff34, placed in the current test branch with only a rest-pattern adjustment for the added runtime_source field, fails the waiting-for-reconnect assertion. This is a function-level baseline reproduction, not a complete baseline run.",
+      "after": "The selected source passes with the original key, waits through a pending approval, preserves later edits and leaves a lost post-dispatch result uncertain."
+    },
+    "tests_read_not_executed": {
+      "upstream_test_function_count": 4,
+      "upstream_tests": [
+        {
+          "revision": "136391a23ec456be08d68b1e6695946b731c19af",
+          "source": "codex-rs/tui/src/chatwidget/tests/composer_submission.rs",
+          "test": "reconnect_resumes_unsent_input_and_reconciles_confirmed_submissions"
+        },
+        {
+          "revision": "136391a23ec456be08d68b1e6695946b731c19af",
+          "source": "codex-rs/tui/src/chatwidget/tests/composer_submission.rs",
+          "test": "reconnect_keeps_queue_paused_after_pending_compact"
+        },
+        {
+          "revision": "1cc9917508ab791e0bf996e6ada8d91eb3edfe33",
+          "source": "codex-rs/tui/src/transcript_view/search_tests.rs",
+          "test": "find_expands_only_the_match_and_preserves_manual_disclosures"
+        },
+        {
+          "revision": "b0a6b8d86f455d3db9dd869fc1178a5fbd865e7f",
+          "source": "codex-rs/core/src/agent/control_tests.rs",
+          "test": "v2_spawn_resolves_reported_effort_without_changing_child_selection"
+        }
+      ],
+      "upstream_tests_executed": 0
+    },
+    "static_checks": {
+      "rust": "Affected GPUI, runtime, protocol and CLI packages pass repository Clippy deny flags with all features and targets.",
+      "format": "cargo +nightly fmt --all -- --check; git diff --check",
+      "architecture": {
+        "command": "python3 -m unittest tests/scripts/test_vnext_architecture.py tests/scripts/test_gate_contract.py",
+        "passed": 14
+      },
+      "swift": "swift build --skip-update in apps/decodex-gpui/menubar; host-managed SDK and existing dependency cache."
+    },
+    "runtime_boundary": {
+      "selected_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+      "artifact_changed": false,
+      "components_rehashed": {
+        "CodexCLI.app/Contents/MacOS/codex": "cb933d4981df419760215afba381372b400d0906bd3c2bc5d29186b200740986",
+        "bin/codex-code-mode-host": "aed64fd191c96a7b9aefe581b01b3f02a28f6938958667424a457c59309614bd",
+        "codex-path/rg": "8c8aef5fb93e91174cc49abd7847eee15a8996d336ac29147ba66f8b87134cf4"
+      },
+      "schema_fingerprint": "86c27115a28bf905f4c25ee204b218b2ba9598ef664787efddd30e2d0c20f2d9",
+      "schema_document_canonical_sha256": "2b5514c533e3f1cee7df56d2df718bb275604b37f376840b010803a02b1ebfe5",
+      "schema_fields_read": [
+        "Thread.model",
+        "Thread.reasoningEffort",
+        "ThreadItem.collabAgentToolCall.model/reasoningEffort (requested)",
+        "ThreadItem.subAgentActivity.model/reasoningEffort (resolved creation)"
+      ],
+      "scope": "Reused the previously generated exact-artifact schema and checked its canonical digest; all three component byte digests still match. No runtime migration, native provider operation or upstream suite was executed."
+    },
+    "visual_scope": "Inspected an offscreen native workspace-loading capture using the current cloud mark. This does not qualify installed-app interactions, animation timing on physical displays, native child-window focus, or the SwiftUI menu-bar rendering on a packaged app.",
+    "delivery_commits": [
+      "https://github.com/acg-box/decodex/commit/cfa54c6f2689cf5b2f4e1f09afbcc1664396eb31",
+      "https://github.com/acg-box/decodex/commit/cb4152a66088fe6097d5019145470f726958540c",
+      "https://github.com/acg-box/decodex/commit/7a21f2100fa49529690c2d389bd9265a955b754c",
+      "https://github.com/acg-box/decodex/commit/0c8ea9f6638aa424a6e2ffbe9cba321c8bcdf5fa",
+      "https://github.com/acg-box/decodex/commit/87d0244e90eb50760917ea87a5d6880332b72320"
+    ],
+    "limits": [
+      "Find covers loaded retained text and explicit earlier pages, not unavailable or shortened full output.",
+      "Reconnect authority exists only in the current live write-ahead slot. Ordinary drafts and restored or uncertain messages are never auto-sent.",
+      "Native metadata provenance stays distinct; current Thread settings do not prove a per-turn execution model.",
+      "No app installation, release, live-provider/audio acceptance or automation activation. No new source-review range was certified."
+    ]
   }
 }
