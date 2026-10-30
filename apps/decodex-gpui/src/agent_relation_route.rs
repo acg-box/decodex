@@ -17,6 +17,28 @@ pub(super) struct Curve {
 	pub second: Point,
 }
 impl Curve {
+	pub(super) fn intersects_bounds(&self, bounds: [f32; 4]) -> bool {
+		fn intersects(curve: &Curve, bounds: [f32; 4], depth: u8) -> bool {
+			let [left, top, right, bottom] = bounds;
+			let points = [curve.start, curve.first, curve.second, curve.end];
+			let min_x = points.iter().map(|p| p.0).fold(f32::INFINITY, f32::min);
+			let max_x = points.iter().map(|p| p.0).fold(f32::NEG_INFINITY, f32::max);
+			let min_y = points.iter().map(|p| p.1).fold(f32::INFINITY, f32::min);
+			let max_y = points.iter().map(|p| p.1).fold(f32::NEG_INFINITY, f32::max);
+
+			if max_x <= left || min_x >= right || max_y <= top || min_y >= bottom {
+				return false;
+			}
+			if depth == 0 || min_x == max_x || min_y == max_y {
+				return true;
+			}
+
+			curve.halves().iter().any(|half| intersects(half, bounds, depth - 1))
+		}
+
+		intersects(self, bounds, 8)
+	}
+
 	fn line(start: Point, end: Point) -> Self {
 		let length = distance(start, end);
 
@@ -360,27 +382,9 @@ struct Card {
 }
 impl Card {
 	fn blocks_curve(&self, curve: &Curve) -> bool {
-		fn intersects(curve: &Curve, bounds: [f32; 4], depth: u8) -> bool {
-			let [left, top, right, bottom] = bounds;
-			let points = [curve.start, curve.first, curve.second, curve.end];
-			let min_x = points.iter().map(|p| p.0).fold(f32::INFINITY, f32::min);
-			let max_x = points.iter().map(|p| p.0).fold(f32::NEG_INFINITY, f32::max);
-			let min_y = points.iter().map(|p| p.1).fold(f32::INFINITY, f32::min);
-			let max_y = points.iter().map(|p| p.1).fold(f32::NEG_INFINITY, f32::max);
-
-			if max_x <= left || min_x >= right || max_y <= top || min_y >= bottom {
-				return false;
-			}
-			if depth == 0 || min_x == max_x || min_y == max_y {
-				return true;
-			}
-
-			curve.halves().iter().any(|half| intersects(half, bounds, depth - 1))
-		}
-
 		// Subdivision keeps the conservative hull guarantee without routing around
 		// cards that lie inside the full control hull but nowhere near the curve.
-		intersects(curve, self.bounds, 8)
+		curve.intersects_bounds(self.bounds)
 	}
 
 	fn crosses(&self, a: Point, b: Point) -> bool {

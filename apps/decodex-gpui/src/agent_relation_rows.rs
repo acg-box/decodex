@@ -19,7 +19,7 @@ use crate::{
 	ui_motion,
 	ui_theme::{
 		self, BLUE, FONT_FAMILY, HOVER_FILL, SUCCESS, WARNING,
-		foreground::{BODY, PRIMARY},
+		foreground::{BODY, PRIMARY, SECONDARY},
 	},
 };
 
@@ -107,14 +107,15 @@ pub(super) fn render(
 	});
 	// The camera already animates zoom. A second width tween leaves text and
 	// bubble height measured at different widths until that tween catches up.
-	let width = ui_motion::direct_value(
+	let width = layout.pixel(ui_motion::direct_value(
 		SharedString::from(format!("relation-speech-width-{key}")),
 		target_width,
 		resized,
 		window,
 		cx,
-	);
-	let left = (layout.details_width() - width) / 2.;
+	));
+	let left = layout.pixel((layout.details_width() - width) / 2.);
+	let height = layout.pixel(frame.height * scale);
 	let mut rows = gpui::div()
 		.debug_selector({
 			let key = key.to_owned();
@@ -123,7 +124,7 @@ pub(super) fn render(
 		})
 		.relative()
 		.w_full()
-		.h(gpui::px(frame.height * scale))
+		.h(gpui::px(height))
 		.flex_none()
 		.child(
 			gpui::div()
@@ -131,7 +132,7 @@ pub(super) fn render(
 				.left(gpui::px(left))
 				.top_0()
 				.w(gpui::px(width))
-				.h(gpui::px(frame.height * scale))
+				.h(gpui::px(height))
 				.child(bubble_shape(layout)),
 		);
 
@@ -157,8 +158,8 @@ pub(super) fn render(
 				.absolute()
 				.left(gpui::px(left))
 				.w(gpui::px(width))
-				.top(gpui::px(line.y * scale))
-				.h(gpui::px(frame.height * scale))
+				.top(gpui::px(layout.pixel(line.y * scale)))
+				.h(gpui::px(height))
 				.overflow_hidden()
 				.p(gpui::px(layout.bubble_padding()))
 				.flex()
@@ -230,7 +231,7 @@ pub(super) fn team(key: &str, count: usize, layout: Layout) -> Div {
 		.text_size(gpui::px(layout.title_size()))
 		.line_height(gpui::px(layout.title_line()))
 		.font_features(card::number_features())
-		.text_color(ui_theme::rgb(BODY))
+		.text_color(ui_theme::rgb(SECONDARY))
 		.child(
 			gpui::div()
 				.debug_selector({

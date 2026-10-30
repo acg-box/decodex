@@ -22,6 +22,27 @@ use crate::{
 use decodex_protocol::{AgentPermissionState, WireText};
 
 #[tokio::test]
+async fn permission_read_reports_a_detached_conversation_without_resuming_it() {
+	let home = tempfile::tempdir().expect("fixture home");
+	let (local, remote) = io::duplex(32_768);
+	let (r, w) = io::split(local);
+	let (client, _events) = AppServerClient::from_io(r, w);
+	let owned = OwnedReviewer::new(home.path(), &client, "thread", "turn").await;
+	let mut key = owned.key.clone();
+	key.generation = ProcessGenerationId::new("30000000-0000-4000-8000-000000000002").unwrap();
+	assert_eq!(
+		agent_permissions::read(&owned.store, || async { Some(owned.source(&key)) }).await,
+		AgentPermissionState::NotConnected
+	);
+	assert_eq!(
+		agent_permissions::read(&owned.store, || async { None }).await,
+		AgentPermissionState::NotConnected
+	);
+	let mut wire = BufReader::new(remote).lines();
+	assert!(time::timeout(Duration::from_millis(20), wire.next_line()).await.is_err());
+}
+
+#[tokio::test]
 async fn permission_service_preserves_unknown_receipts_and_never_replays_a_review() {
 	for outcome in ["queued", "rejected", "unknown"] {
 		time::timeout(Duration::from_secs(15), scenario(outcome))

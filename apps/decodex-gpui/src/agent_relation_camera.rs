@@ -4,10 +4,38 @@ use std::time::Instant;
 use crate::shell::agent_surface::work_board::relations::{
 	AgentSurface, Context, FRAME_INSET, Graph, Node,
 	card::{self, INSET_Y, Layout, MAX_ZOOM, MIN_ZOOM},
-	groups, header,
+	groups, header, scopes,
 };
 
+#[derive(Clone, Copy)]
+enum Target<'a> {
+	All,
+	Team(&'a str),
+	Project(&'a scopes::Selection),
+}
+
 impl AgentSurface {
+	pub(super) fn frame_relation_project(
+		&mut self,
+		selection: scopes::Selection,
+		cx: &mut Context<Self>,
+	) {
+		if !self.relation_graph().scopes.iter().any(|scope| scope.selection() == selection) {
+			return;
+		}
+
+		self.clear_relation_selection();
+		self.work_board.view.hover = Default::default();
+		self.work_board.view.camera_fixed = true;
+		self.work_board.view.card_transition = None;
+		self.work_board.view.motion = None;
+		self.work_board.view.drag = None;
+		self.frame_relation_scope(Target::Project(&selection), MAX_ZOOM);
+		self.work_board.view.picked_scope = Some(selection);
+
+		cx.notify();
+	}
+
 	pub(super) fn frame_relation_team(&mut self, key: &str, cx: &mut Context<Self>) {
 		self.select_workbench_agent(key, cx);
 
@@ -21,7 +49,7 @@ impl AgentSurface {
 			if fits(rect, self.work_board.view.viewport) {
 				self.center_relation_rect(rect);
 			} else {
-				self.frame_relation_scope(Some(key), self.relation_scale());
+				self.frame_relation_scope(Target::Team(key), self.relation_scale());
 			}
 		}
 
@@ -34,23 +62,28 @@ impl AgentSurface {
 		// Global framing fits the current pane. A team frame keeps its placement.
 		self.work_board.view.layout_viewport = self.work_board.view.viewport;
 
-		self.frame_relation_scope(None, MAX_ZOOM);
+		self.frame_relation_scope(Target::All, MAX_ZOOM);
 	}
 
-	fn frame_relation_scope(&mut self, team: Option<&str>, max_zoom: f32) {
+	fn frame_relation_scope(&mut self, target: Target<'_>, max_zoom: f32) {
 		let (w, h) = self.work_board.view.viewport;
 
 		if w <= 48. || h <= 48. {
 			return;
 		}
 
-		let usable_height = (h - 2. * FRAME_INSET).max(1.);
 		let now = Instant::now();
 
 		for zoom in [1., 0.6, 0.3, MIN_ZOOM] {
 			let layout = Layout::new(zoom.min(max_zoom));
 			let graph = self.relation_graph_with_layout(now, layout.with_presence(1., false));
-			let Some([min_x, min_y, max_x, max_y]) = frame_bounds(&graph, team) else { return };
+			let Some([min_x, min_y, max_x, max_y]) = frame_bounds(&graph, target) else { return };
+			let header = if !graph.scopes.is_empty() && !matches!(target, Target::Team(_)) {
+				scopes::HEADER_HEIGHT
+			} else {
+				0.
+			};
+			let usable_height = (h - 2. * FRAME_INSET - header).max(1.);
 			let width = (max_x - min_x).max(1.);
 			let height = (max_y - min_y).max(1.);
 			let fitted = ((w - 2. * FRAME_INSET) / width).min(usable_height / height);
@@ -65,7 +98,7 @@ impl AgentSurface {
 			self.work_board.view.zoom = Some(scale);
 			self.work_board.view.pan = (
 				(w - width * scale) / 2. - min_x * scale,
-				FRAME_INSET + (usable_height - height * scale) / 2. - min_y * scale,
+				FRAME_INSET + header + (usable_height - height * scale) / 2. - min_y * scale,
 			);
 
 			break;
@@ -128,8 +161,10 @@ impl AgentSurface {
 	}
 }
 
-fn frame_bounds(graph: &Graph, team: Option<&str>) -> Option<[f32; 4]> {
-	if let Some(key) = team {
+fn frame_bounds(graph: &Graph, target: Target<'_>) -> Option<[f32; 4]> {
+	if let Target::Project(selection) = target {
+		graph.scopes.iter().find(|scope| &scope.selection() == selection).map(|scope| scope.bounds)
+	} else if let Target::Team(key) = target {
 		let members = groups::descendants(graph, key);
 		let rect = graph
 			.nodes

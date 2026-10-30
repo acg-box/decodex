@@ -15,7 +15,7 @@ use crate::{
 		stream::{self, Frame, LINE},
 	},
 	ui_motion::{self, SmoothControl as _},
-	ui_theme::{self, BLUE, FONT_FAMILY, HOVER_FILL, foreground::BODY},
+	ui_theme::{self, BLUE, FONT_FAMILY, HOVER_FILL, foreground::SECONDARY},
 };
 
 #[derive(IntoElement)]
@@ -65,7 +65,7 @@ impl Header {
 					.font_features(card::number_features())
 					.text_size(gpui::px(layout.title_size()))
 					.line_height(gpui::px(layout.title_line()))
-					.text_color(ui_theme::rgb(if self.selected { BLUE } else { BODY }))
+					.text_color(ui_theme::rgb(if self.picked { BLUE } else { SECONDARY }))
 					.child(self.number.clone()),
 			)
 			.when(self.reviewer && layout.activity_visible(), |row| {

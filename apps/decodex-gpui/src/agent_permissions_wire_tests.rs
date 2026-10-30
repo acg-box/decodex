@@ -108,6 +108,7 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
 
 			s.profile = Some(profile);
+			s.refresh_composer_permissions(true, cx);
 		});
 
 		PermissionView { surface }
@@ -118,11 +119,9 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 		w.draw(cx).clear(cx);
 	});
 
-	let button = visual.debug_bounds("permission-profiles-read").unwrap();
-
-	visual.simulate_click(button.center(), Default::default());
 	visual.run_until_parked();
 	visual.update(crate::ui_frame::draw_current_frame);
+	assert!(visual.debug_bounds("permission-profiles-read").is_none());
 
 	assert!(
 		visual.debug_bounds("permission-profile-1").is_none(),
@@ -151,6 +150,7 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 	visual.update(crate::ui_frame::draw_current_frame);
 
 	assert!(visual.debug_bounds("permission-profile-0").is_none());
+	assert!(visual.debug_bounds("permission-profiles-read").is_some());
 
 	surface.update(visual, |s, _| {
 		s.apply_result(Err(()));
@@ -159,6 +159,78 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 	surface.read_with(visual, |s, _| {
 		assert!(s.permission_profiles.state.is_none());
 		assert!(s.permission_profiles.work.is_none());
+	});
+}
+
+#[gpui::test]
+fn permission_read_keeps_the_current_choice_and_menu_geometry(cx: &mut TestAppContext) {
+	let (view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+		surface.update(cx, |s, _| {
+			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+			s.permission_profiles.work = Some("root".into());
+			let mut state = available();
+			if let AgentPermissionState::Available { mode, .. } = &mut state {
+				*mode = Some(decodex_protocol::PermissionMode::ApproveForMe);
+			}
+			s.permission_profiles.state = Some(state);
+			s.permission_profiles.reviewed = true;
+		});
+		PermissionView { surface }
+	});
+	visual.update(crate::ui_frame::draw_current_frame);
+	let before = visual.debug_bounds("permission-choice-1").unwrap();
+	let surface = view.read_with(visual, |v, _| v.surface.clone());
+	surface.update(visual, |s, cx| {
+		s.begin_permission_read("root", false);
+		assert_eq!(s.permission_label(), "Approve for me");
+		cx.notify();
+	});
+	visual.update(crate::ui_frame::draw_current_frame);
+	assert_eq!(visual.debug_bounds("permission-choice-1"), Some(before));
+	assert!(visual.debug_bounds("permission-profiles-read").is_none());
+}
+
+#[gpui::test]
+fn disconnected_conversation_has_no_ineffective_permission_retry(cx: &mut TestAppContext) {
+	let (_view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, _| {
+			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+			s.permission_profiles.work = Some("root".into());
+			s.permission_profiles.state = Some(AgentPermissionState::NotConnected);
+			assert_eq!(s.permission_label(), "Conversation not connected");
+		});
+		PermissionView { surface }
+	});
+	visual.update(crate::ui_frame::draw_current_frame);
+	assert!(visual.debug_bounds("permission-profiles-read").is_none());
+	assert!(visual.debug_bounds("permission-choice-0").is_none());
+}
+
+#[gpui::test]
+fn permission_shields_distinguish_modes_without_using_other_agents_state(cx: &mut TestAppContext) {
+	use crate::shell::workspace_symbols::Symbol;
+	use decodex_protocol::PermissionMode;
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.new_work_conversation(cx);
+		for mode in PermissionMode::ALL {
+			s.choose_permission_mode(mode, cx);
+			assert!(matches!(
+				(mode, s.permission_symbol()),
+				(PermissionMode::AskForApproval, Symbol::Shield)
+					| (PermissionMode::ApproveForMe, Symbol::ShieldCheck)
+					| (PermissionMode::FullAccess, Symbol::ShieldSlash)
+					| (PermissionMode::ReadOnly, Symbol::ShieldLock)
+			));
+		}
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		s.open_page("root", cx);
+		s.permission_profiles.work = Some("other-agent".into());
+		s.permission_profiles.state = Some(available());
+		assert!(matches!(s.permission_symbol(), Symbol::Shield));
 	});
 }
 

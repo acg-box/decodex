@@ -17,6 +17,12 @@ pub(super) struct Link {
 	pub dim: f32,
 	pub active: bool,
 }
+impl Link {
+	/// A running child is active, but only an ongoing native call denotes a transfer.
+	pub(super) fn flowing(&self) -> bool {
+		self.active && self.fact.in_progress
+	}
+}
 
 #[derive(Default)]
 pub(super) struct Cache {
@@ -233,6 +239,7 @@ mod tests {
 			let running = links.iter().find(|link| link.base.same_pair(&edge)).unwrap();
 
 			assert!(running.active);
+			assert!(!running.flowing(), "working alone must not imply a handoff");
 			assert_eq!(running.detail, 1.);
 			assert_eq!(running.fact.from, edge.from);
 			assert_eq!(running.fact.to, edge.to);
@@ -291,6 +298,7 @@ mod tests {
 
 			assert!(link.base.kind.hierarchy(), "call arrival order must not replace the tree");
 			assert!(link.active);
+			assert!(link.flowing());
 			assert_eq!(link.fact.id, "live-message");
 
 			graph.edges[0].in_progress = false;
@@ -299,6 +307,7 @@ mod tests {
 				cache.sample(&graph, None, None, true, now + Duration::from_millis(221));
 
 			assert!(links.iter().all(|link| !link.active));
+			assert!(links.iter().all(|link| !link.flowing()));
 		});
 	}
 }

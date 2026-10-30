@@ -107,6 +107,7 @@ pub(super) struct View {
 	usage_menu: bool,
 	hover: Hover,
 	pub(super) picked_agent: Option<String>,
+	pub(super) picked_scope: Option<scopes::Selection>,
 }
 impl View {
 	fn hold_camera(&mut self, scale: f32, pan: (f32, f32), layout_viewport: (f32, f32)) {
@@ -450,6 +451,7 @@ impl AgentSurface {
 
 	pub(in super::super) fn clear_relation_selection(&mut self) {
 		self.work_board.view.picked_agent = None;
+		self.work_board.view.picked_scope = None;
 		self.work_board.view.edge = None;
 		self.work_board.focus = None;
 	}
@@ -1040,6 +1042,7 @@ impl AgentSurface {
 	) -> Stateful<Div> {
 		// Visible relationship labels keep their own hit targets above transparent node areas.
 		canvas = self.relation_label_layer(canvas, graph, lines, cx);
+		canvas = self.relation_scope_headers(canvas, graph, cx);
 
 		if let Some(map) = self.relation_minimap(graph, cx) {
 			canvas = canvas.child(map);
@@ -1589,15 +1592,25 @@ impl AgentSurface {
 			);
 		}
 
-		for scope in &graph.scopes {
+		let labels = self.relation_scope_labels(graph);
+
+		for scope in graph.scopes.iter().filter(|scope| scope.id.is_some()) {
 			let [left, top, right, bottom] = scope.bounds;
-			let selected = self
-				.work_board
-				.view
-				.picked_agent
-				.as_deref()
-				.is_some_and(|key| scope.contains(graph, key));
+			let selected = self.relation_scope_selected(scope);
 			let label = scope.label();
+			let title_gap = labels
+				.iter()
+				.find(|(label_scope, _)| label_scope.id == scope.id)
+				.map(|(_, rect)| rect)
+				.filter(|rect| {
+					(rect.y + scopes::HEADER_HEIGHT / 2. - (top * scale + pan.1)).abs() < 0.1
+				})
+				.map(|rect| {
+					(
+						rect.x - (left * scale + pan.0) - 5.,
+						rect.x + rect.width - (left * scale + pan.0) + 5.,
+					)
+				});
 
 			canvas = canvas.child(
 				gpui::div()
@@ -1613,26 +1626,7 @@ impl AgentSurface {
 					.top(gpui::px(top * scale + pan.1))
 					.w(gpui::px((right - left) * scale))
 					.h(gpui::px((bottom - top) * scale))
-					.rounded(gpui::px(18. * scale))
-					.px(gpui::px(12. * scale))
-					.pt(gpui::px(8. * scale))
-					.text_size(gpui::px((11. * scale).max(10.)))
-					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child(scope.outline(scale, selected))
-					.when(graph.layout.labels(), |group| {
-						group.child(
-							gpui::div()
-								.flex()
-								.items_center()
-								.gap(gpui::px(6.))
-								.text_color(ui_theme::rgb(if selected {
-									ui_theme::BLUE
-								} else {
-									TEXT
-								}))
-								.child(label),
-						)
-					}),
+					.child(scope.outline(scale, selected, title_gap)),
 			);
 		}
 
@@ -1721,6 +1715,7 @@ impl AgentSurface {
 							s.work_board.view.show_record = false;
 							s.work_board.view.camera_fixed = true;
 							s.work_board.view.edge = Some(pressed_edge.clone());
+							s.work_board.view.picked_scope = None;
 							s.workspace.agent_tree_visible = true;
 
 							cx.stop_propagation();
@@ -1733,6 +1728,7 @@ impl AgentSurface {
 							s.handoffs.focus = None;
 							s.work_board.view.camera_fixed = true;
 							s.work_board.view.edge = Some(keyboard_edge.clone());
+							s.work_board.view.picked_scope = None;
 							s.workspace.agent_tree_visible = true;
 
 							cx.stop_propagation();
@@ -1744,6 +1740,7 @@ impl AgentSurface {
 						s.handoffs.focus = None;
 						s.work_board.view.camera_fixed = true;
 						s.work_board.view.picked_agent = None;
+						s.work_board.view.picked_scope = None;
 						s.work_board.view.edge = Some(picked.clone());
 						s.workspace.agent_tree_visible = true;
 
@@ -1865,6 +1862,7 @@ impl AgentSurface {
 				} else {
 					s.work_board.focus = None;
 					s.work_board.view.picked_agent = None;
+					s.work_board.view.picked_scope = None;
 					s.work_board.view.edge = target.clone();
 					s.workspace.agent_tree_visible = true;
 
@@ -2009,9 +2007,10 @@ impl AgentSurface {
 						let reversed =
 							(link.fact.from != link.base.from).then(|| link.path.reversed());
 						let route = reversed.as_ref().unwrap_or(&link.path);
+						let flowing = link.flowing() && !reduce_motion;
 
 						if link.base.kind.hierarchy() {
-							if link.active && !reduce_motion {
+							if flowing {
 								flows.push((reversed, link.path.as_ref(), link.detail * 0.65));
 							}
 
@@ -2038,7 +2037,7 @@ impl AgentSurface {
 							);
 						}
 
-						if link.active && !reduce_motion {
+						if flowing {
 							flows.push((reversed, link.path.as_ref(), link.detail));
 						}
 					}
@@ -2363,10 +2362,18 @@ impl AgentSurface {
 		graph: &Graph,
 		neighborhood: &BTreeSet<String>,
 	) -> (bool, bool) {
+		let project = self
+			.work_board
+			.view
+			.picked_scope
+			.as_ref()
+			.and_then(|picked| graph.scopes.iter().find(|scope| &scope.selection() == picked));
+		let member = project.is_some_and(|scope| scope.members.contains(&node.key));
 		let linked = self.work_board.view.hover.current(std::time::Instant::now())
 			== Some(node.key.as_str())
 			|| self.work_board.view.picked_agent.as_ref() == Some(&node.key);
-		let selected = linked
+		let selected = member
+			|| linked
 			|| self.work_board.view.picked_agent.as_ref().is_some_and(|picked| {
 				graph.edges.iter().any(|edge| {
 					edge.kind.hierarchy() && edge.to == *picked && edge.from == node.key
@@ -2385,8 +2392,10 @@ impl AgentSurface {
 			|| (self.work_board.focus.is_some() && neighborhood.contains(&node.key))
 			|| (self.work_board.focus.is_none()
 				&& self.work_board.view.edge.is_none()
+				&& project.is_none()
 				&& self.relation_node_current(node));
-		let faded = self.relation_context().is_some() && !neighborhood.contains(&node.key)
+		let faded = project.is_some() && !member
+			|| self.relation_context().is_some() && !neighborhood.contains(&node.key)
 			|| self.work_board.view.edge.as_ref().is_some_and(|e| {
 				e.from != node.key
 					&& e.to != node.key
@@ -2509,6 +2518,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn fit_relations(&mut self) {
+		self.work_board.view.picked_scope = None;
 		self.frame_relations();
 	}
 }
@@ -2547,6 +2557,12 @@ impl AgentSurface {
 		assert!(self.factory_rows().iter().any(|row| row.key == key), "known capture team");
 
 		self.frame_relation_team(key, cx);
+	}
+
+	#[cfg(feature = "visual-capture")]
+	#[allow(dead_code)] // A small speech capture frames its speaker, not the complete team.
+	pub(crate) fn visual_relation_agent(&mut self, key: &str, cx: &mut Context<Self>) {
+		self.locate_relation_agent(key, cx);
 	}
 
 	#[cfg(feature = "visual-capture")]
@@ -5173,7 +5189,9 @@ mod fit_tests {
 				(root.y + root.height() < child.y && child.y == project.y)
 					|| (root.x + root.width() < child.x && child.x == project.x)
 			);
-			assert_eq!(graph.scopes.iter().find(|scope| scope.id.is_none()).unwrap().count, 1);
+			let unassigned = graph.scopes.iter().find(|scope| scope.id.is_none()).unwrap();
+			assert_eq!(unassigned.members.len(), 1);
+			assert!(!unassigned.members.contains("agent"));
 		});
 	}
 

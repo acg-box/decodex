@@ -25,7 +25,7 @@ macro_rules! symbol_sources {
 	]};
 }
 
-static TEMPLATES: LazyLock<[String; 45]> = LazyLock::new(|| {
+static TEMPLATES: LazyLock<[String; 48]> = LazyLock::new(|| {
 	let sources = symbol_sources![
 		"sidebar",
 		"graph",
@@ -72,6 +72,9 @@ static TEMPLATES: LazyLock<[String; 45]> = LazyLock::new(|| {
 		"team-members",
 		"team-parent",
 		"shield",
+		"shield-check",
+		"shield-slash",
+		"shield-lock",
 	];
 	sources.map(|bytes| {
 		format!(
@@ -128,6 +131,9 @@ pub(crate) enum Symbol {
 	TeamMembers,
 	TeamParent,
 	Shield,
+	ShieldCheck,
+	ShieldSlash,
+	ShieldLock,
 }
 
 /// Both panel controls use their layout state and the same interruptible transition.
@@ -244,9 +250,9 @@ struct SymbolIcon {
 impl RenderOnce for SymbolIcon {
 	fn render(self, window: &mut Window, _cx: &mut App) -> impl IntoElement {
 		let color = match self.symbol {
-			Symbol::BellAttention => ui_theme::rgb(WARNING).into(),
+			Symbol::BellAttention | Symbol::ShieldSlash => ui_theme::rgb(WARNING).into(),
 			Symbol::BellError => ui_theme::rgb(ERROR).into(),
-			Symbol::BellInfo => ui_theme::rgb(INFO).into(),
+			Symbol::BellInfo | Symbol::ShieldCheck => ui_theme::rgb(INFO).into(),
 			Symbol::AccountRouteActive | Symbol::PowerOn => ui_theme::rgb(SUCCESS).into(),
 			_ => window.text_style().color,
 		};

@@ -13,7 +13,7 @@ use crate::{
 	ui_theme::{self, ACCENT, foreground::SECONDARY},
 };
 
-type PointerAction<E> = Rc<dyn Fn(&E, &mut Window, &mut App)>;
+pub(super) type PointerAction<E> = Rc<dyn Fn(&E, &mut Window, &mut App)>;
 
 // Geometry stays in world space. Text stops shrinking before it becomes illegible.
 // At 100%, graph type uses the same sizes as the native shell.
@@ -379,7 +379,7 @@ impl Interaction {
 		Self::keyboard_action(view, &self.click)
 	}
 
-	fn keyboard_action(
+	pub(super) fn keyboard_action(
 		view: Stateful<Div>,
 		action: &PointerAction<gpui::ClickEvent>,
 	) -> Stateful<Div> {

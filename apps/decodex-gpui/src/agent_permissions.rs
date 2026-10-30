@@ -190,14 +190,17 @@ impl AgentSurface {
 								..
 							}
 						) =>
-						Feedback::success("Permissions updated"),
+						Feedback::default(),
 					Some(Ok(AgentCommandResponse::Accepted { .. })) =>
 						Feedback::info("Selection queued. Check current permissions below."),
 					Some(Ok(AgentCommandResponse::Rejected { .. })) =>
-						Feedback::error("Selection rejected. Refresh before retrying."),
+						Feedback::error("Permissions were not changed. Try again."),
 					Some(_) => Feedback::warning("Selection unconfirmed. No automatic retry."),
-					None if saving =>
-						Feedback::warning("Selection unconfirmed. Refresh before retrying."),
+					None if saving => Feedback::warning("Permission change is not confirmed."),
+					None if matches!(state, AgentPermissionState::Unavailable) =>
+						Feedback::error("Couldn't load permissions."),
+					None if matches!(state, AgentPermissionState::Unsupported) =>
+						Feedback::neutral("Permissions aren't available for this conversation."),
 					None => Feedback::default(),
 				};
 				s.permission_profiles.state = Some(match state {
@@ -219,14 +222,25 @@ impl AgentSurface {
 
 		let epoch = self.permission_profiles.epoch;
 
+		// Keep this conversation's last observation mounted while reading. The
+		// in-flight task already blocks writes; clearing it made the menu flash.
+		if self.permission_profiles.work.as_deref() != Some(work) {
+			self.permission_profiles.state = None;
+			self.permission_profiles.reviewed = false;
+		}
 		self.permission_profiles.work = Some(work.to_owned());
-		self.permission_profiles.state = None;
-		self.permission_profiles.reviewed = false;
-		self.permission_profiles.feedback = Feedback::loading(if saving {
-			"Updating permissions…"
+		self.permission_profiles.feedback = if matches!(
+			self.permission_profiles.state,
+			Some(AgentPermissionState::Available { .. })
+		) {
+			Feedback::default()
 		} else {
-			"Reading permissions…"
-		});
+			Feedback::loading(if saving {
+				"Updating permissions…"
+			} else {
+				"Loading permissions…"
+			})
+		};
 
 		epoch
 	}
@@ -257,14 +271,35 @@ impl AgentSurface {
 			Some(AgentPermissionState::Available { mode: Some(mode), .. }) => mode.label().into(),
 			Some(AgentPermissionState::Available { .. }) => "Custom permissions".into(),
 			Some(AgentPermissionState::Pending { .. }) => "Updating permissions…".into(),
+			Some(AgentPermissionState::NotConnected) => "Conversation not connected".into(),
 			_ => "Permissions".into(),
 		}
 	}
 
-	pub(super) fn refresh_composer_permissions(&mut self, cx: &mut Context<Self>) {
+	pub(super) fn permission_symbol(&self) -> crate::shell::workspace_symbols::Symbol {
+		use crate::shell::workspace_symbols::Symbol;
+		let mode = if self.permission_owner().is_none() {
+			Some(self.creation_permission_mode())
+		} else if self.permission_profiles.work == self.permission_owner() {
+			match &self.permission_profiles.state {
+				Some(AgentPermissionState::Available { mode, .. }) => *mode,
+				_ => None,
+			}
+		} else {
+			None
+		};
+		match mode {
+			Some(PermissionMode::ApproveForMe) => Symbol::ShieldCheck,
+			Some(PermissionMode::FullAccess) => Symbol::ShieldSlash,
+			Some(PermissionMode::ReadOnly) => Symbol::ShieldLock,
+			_ => Symbol::Shield,
+		}
+	}
+
+	pub(super) fn refresh_composer_permissions(&mut self, force: bool, cx: &mut Context<Self>) {
 		if let Some(work) = self.permission_owner()
 			&& self.native_agents.selected.is_none()
-			&& self.permission_profiles.work.as_ref() != Some(&work)
+			&& (force || self.permission_profiles.work.as_ref() != Some(&work))
 			&& self.permission_profiles.task.is_none()
 		{
 			self.update_permission_profiles(work, None, None, cx);
@@ -292,6 +327,14 @@ impl AgentSurface {
 
 	pub(super) fn permission_options(&self, cx: &mut Context<Self>) -> AnyElement {
 		let creating = self.permission_owner().is_none();
+		if !creating
+			&& matches!(self.permission_profiles.state, Some(AgentPermissionState::NotConnected))
+		{
+			return crate::ui_motion::menu_surface(gpui::div())
+				.p_3()
+				.child("Permissions load when this conversation reconnects.")
+				.into_any_element();
+		}
 		let current = if creating {
 			Some(self.creation_permission_mode())
 		} else {
@@ -348,11 +391,16 @@ impl AgentSurface {
 				}
 			}
 			if !self.permission_profiles.reviewed
+				&& self.permission_profiles.task.is_none()
+				&& matches!(
+					self.permission_profiles.state,
+					Some(AgentPermissionState::Unavailable | AgentPermissionState::Pending { .. })
+				)
 				&& let Some(work) = self.permission_owner()
 			{
 				menu = menu.child(mcp_forms::mcp_button(
 					"permission-profiles-read".into(),
-					"Refresh permissions".into(),
+					"Retry".into(),
 					false,
 					cx,
 					move |s, cx| s.update_permission_profiles(work.clone(), None, None, cx),

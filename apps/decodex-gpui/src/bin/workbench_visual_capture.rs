@@ -390,6 +390,9 @@ fn capture_speech_sequence(
 			.0
 			.clone()
 	})?;
+
+	surface.update(cx, |surface, cx| surface.visual_relation_agent("agent", cx));
+
 	let frames = output.with_extension("frames");
 
 	fs::create_dir_all(&frames)?;

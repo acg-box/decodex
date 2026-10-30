@@ -190,6 +190,7 @@ impl AgentSurface {
 		self.handoffs.read_on_open = None;
 		self.workspace.agent_tree_visible = true;
 		self.work_board.view.picked_agent = Some(key.into());
+		self.work_board.view.picked_scope = None;
 		self.work_board.view.edge = None;
 		self.work_board.focus = Some(key.into());
 		self.handoffs.focus = None;

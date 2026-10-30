@@ -1163,7 +1163,7 @@ impl AgentSurface {
 			}
 			.into_any_element(),
 			"attach" => workspace_symbols::icon(Symbol::Plus),
-			"permissions" => workspace_symbols::icon(Symbol::Shield),
+			"permissions" => workspace_symbols::icon(self.permission_symbol()),
 			"attachment-item" => gpui::div()
 				.flex()
 				.items_center()
@@ -1239,6 +1239,9 @@ impl AgentSurface {
 		if self.composer_menu.is_some() {
 			self.composer_menu_content = self.composer_menu;
 
+			if name == "permissions" {
+				self.refresh_composer_permissions(true, cx);
+			}
 			self.load_capabilities(cx);
 			self.refresh_composer_model_settings(cx);
 		}

@@ -55,7 +55,7 @@ impl Panel {
 
 impl AgentSurface {
 	pub(super) fn refresh_composer_model_settings(&mut self, cx: &mut Context<Self>) {
-		self.refresh_composer_permissions(cx);
+		self.refresh_composer_permissions(false, cx);
 		if self.is_new_conversation() || self.sending || self.profile.is_none() {
 			return;
 		}
