@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a57e615ec441d9409b44397b2bde908d481d030120bdac625fc093e155e243a5",
+  "pageVersion": "sha256:d674cee24d39a7e76fc1a6736f1569e87693bee9bb8a7aab38c591b48f1fdae8",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -455,7 +455,7 @@
       "statement": "Attached-branch acknowledgement validates an empty child-visible history while retaining the source boundary and source turn IDs; native inference still receives the parent context.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs#L350-L368",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs#L353-L371",
           "version": "repo-lines-v1:sha256:36da6c5e10c5a1c63f3f4b609af570ec0a7f47c5988e6f2f93cab70bbca09776:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRkYjRiZWU5MGI1N2I5N2YyOTY4NDQ4YzRhMzEzODUyOGEwMzAzYzk3YzFhOWY5ODczOWY1MTUxMGJlZmMwMTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3MjVjZTE4Mjk3M2E0OGQ4Mzk3ZWEwMDY2NjBjNzEzZGE3Y2NiZDBlYThjOTFkZDJmNDc3ZGY1YWUyMTAzMGIifQ"
         },
         {
@@ -490,7 +490,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_composer.rs",
-          "version": "repo-file-v1:sha256:85f83c842a671e6479da10ef20431e47d37c5db400119170d6d312bcf5632f0b"
+          "version": "repo-file-v1:sha256:bafb2feff4031ae70b426a6cf2b050fdb4cf64d42c4e49b29a545723de6bd199"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_detail.rs",
@@ -513,6 +513,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T17:36:00.319Z"
+    "at": "2026-10-30T20:00:55.995Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:14cdf13e6c85ee172557f2138f2fab2c62e6d5da07ce9f1b17312dd6f469d6ff",
+  "pageVersion": "sha256:b7269abb2f79a96d13fd7935512f7fc85370ec940a8c0fca05fb39c3e70d9894",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -154,7 +154,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
-          "version": "repo-file-v1:sha256:b2dfd71c5787b88f014ce587f27b8c7be9515efcd85865db739c09d590f497ef"
+          "version": "repo-file-v1:sha256:8ffe1af5fb71647214910d8943da3272de6bac3428e582eb1e8bbc9ee2036aec"
         }
       ]
     },
@@ -168,7 +168,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
-          "version": "repo-file-v1:sha256:3825776ca7840f37ac2ee668951220444913d791d25bb626b0c69c1ad9328669"
+          "version": "repo-file-v1:sha256:839774c9ea84c4c08526203d98e0bd82e7f2ed5d7e72e009a44e39e5145ece67"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_components.rs",
@@ -190,7 +190,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:8e7460c3600d71686bf62d9cd82ecf223cb3b5adcc9306d1b3caa4e29a9bbb57"
+          "version": "repo-file-v1:sha256:fc331a11fc4501aa52252008b619d6a6a86bf646320cebc519cff6a3b688d015"
         }
       ]
     },
@@ -204,7 +204,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_find.rs",
-          "version": "repo-file-v1:sha256:a3e22820414a6df37420936bd47fa40859d5d7d60b252b0b3c1e3315ed23c1f3"
+          "version": "repo-file-v1:sha256:d8bdf7785efff404d99fc7d978ef83b7fcf6720dd8285a45010d7a4d3659630e"
         }
       ]
     },
@@ -271,6 +271,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T17:36:00.319Z"
+    "at": "2026-10-30T20:00:55.995Z"
   }
 }

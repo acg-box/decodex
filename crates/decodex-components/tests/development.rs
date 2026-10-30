@@ -43,7 +43,17 @@ fn fixed_commit_import_offline_repair_and_wrong_commit_rejection() {
 
 	store.ensure(&lock, |_| {}).expect("repair schema from exact artifact");
 
-	for relative in ["bin/codex-code-mode-host", "codex-path/rg"] {
+	let mut helpers = vec!["bin/codex-code-mode-host", "codex-path/rg"];
+	let metadata: serde_json::Value = serde_json::from_slice(
+		&fs::read(artifact.join("codex-package.json")).expect("package metadata"),
+	)
+	.expect("metadata JSON");
+
+	if metadata.get("execServer").is_some() {
+		helpers.push("bin/codex-exec-server");
+	}
+
+	for relative in helpers {
 		let helper = installed.root.join(relative);
 		let expected = fs::read(artifact.join(relative)).expect("qualified helper");
 

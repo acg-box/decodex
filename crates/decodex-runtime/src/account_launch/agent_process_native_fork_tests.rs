@@ -328,7 +328,10 @@ async fn qualify_native_fork(binary: &OsStr, history_mode: &str) {
 	time::timeout(Duration::from_secs(30), async {
 		let client = &restarted.client;
 		let count = requests.load(Ordering::Acquire);
-		let resumed = client.thread_resume(serde_json::json!({"threadId":fork,"excludeTurns":true})).await.expect("native fork fixture");
+		let resumed = client.thread_resume(serde_json::json!({"threadId":fork,"excludeTurns":true})).await.unwrap_or_else(|error| match error {
+			decodex_codex::app_server_client::ClientError::Remote(error) => panic!("isolated native fork resume: {}", error.message),
+			error => panic!("isolated native fork resume: {error:?}"),
+		});
 
 		assert_eq!(resumed["modelProvider"], "fixture");
 		assert_eq!(client.thread_archive_state(&fork).await.expect("native fork fixture"), decodex_codex::app_server_client::ThreadArchiveState::Active);

@@ -37,7 +37,7 @@ fn permission_command(binary: &str, home: &Path) -> Command {
 
 fn configure_permission_fixture(home: &Path, workspace: &Path, address: std::net::SocketAddr) {
 	fs::write(home.join("config.toml"), format!(
-		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\napprovals_reviewer = \"user\"\n[model_providers.fixture]\nname = \"Isolated permissions fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[permissions.scoped.filesystem]\n\":root\" = \"read\"\n{} = \"write\"\n{} = \"deny\"\n",
+		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ndefault_permissions = \":read-only\"\ncli_auth_credentials_store = \"file\"\napprovals_reviewer = \"user\"\n[model_providers.fixture]\nname = \"Isolated permissions fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[permissions.scoped.filesystem]\n\":root\" = \"read\"\n{} = \"write\"\n{} = \"deny\"\n",
 		serde_json::json!(workspace.join("writable")), serde_json::json!(workspace.join("writable/private"))
 	)).unwrap();
 }

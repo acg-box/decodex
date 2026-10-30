@@ -40,6 +40,8 @@ sources:
     resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
     resource: repo://automations/upstream/retained-evidence.json
+  - id: openwiki-source-f02ae41e2bd15dda85dc86b9
+    resource: repo://codex-runtime.lock.json
   - id: openwiki-source-451b1382eb8cdcb9915ac78b
     resource: repo://crates/decodex-app-client-ffi/src/conversation_estimates.rs
   - id: openwiki-source-2b08587e9b26e203156110c8
@@ -92,10 +94,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+generated: { by: "codex", at: "2026-10-30T20:00:55.995Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T17:36:00.319Z
+    at: 2026-10-30T20:00:55.995Z
 ---
 
 # Model selection and settings ownership
@@ -114,7 +116,7 @@ Codex owns the effective model catalog, task configuration, provider admission a
 | Ordinary model fallback | A retained automatic policy for an idle task after current recovery evidence; it does not replay input |
 | Permissions | Composer shield: Ask for approval, Approve for me, Full access or Read-only for the selected conversation |
 | New-conversation defaults | Settings > Agents; apply only when a new conversation starts |
-| Speed | Standard or Fast in the model menu, subject to native availability |
+| Speed | Native advertised speed choices in the model menu |
 | Review Details | Global optional bounded private reviewer output and lifecycle observations |
 
 ## Find the retained switches
@@ -172,7 +174,7 @@ The Goal panel reads and edits the Goal attached to the exact owned native threa
 
 The reviewed source, thread and Goal identity must still match before a write. Long objectives use a native objective attachment instead of silently truncating the submitted objective. Display truncation is marked separately. An uncertain save requires a fresh native read; it is not permission to repeat the mutation.
 
-**Attached branch after this turn** keeps the source provider even when the configured default changes. It starts without a copied native Goal and leaves the source Goal unchanged. Creating or opening the branch sends no input. Continue it with a separate explicit message, or use its normal Goal controls after selecting that branch. Current qualification checks ordinary forks in both history modes, attached creation in paginated history and explicit native rejection of legacy attachment. It checks restart separately and does not certify the installed desktop. See [conversation branches](conversations-and-recovery.md#edit-or-branch-at-an-earlier-input).
+**Attached branch after this turn** keeps the source provider even when the configured default changes. It starts without a copied native Goal and leaves the source Goal unchanged. Creating or opening the branch sends no input. Continue it with a separate explicit message, or use its normal Goal controls after selecting that branch. The selected runtime qualification checks ordinary forks in both history modes, attached creation in paginated history and explicit native rejection of legacy attachment. It checks restart separately and does not certify the installed desktop. A newer candidate that rejects cold resume after a provider-default change remains unselected; source review alone does not replace this retained contract. See [conversation branches](conversations-and-recovery.md#edit-or-branch-at-an-earlier-input).
 
 ## Search defaults and memory observation
 

@@ -36,6 +36,8 @@ sources:
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-f7ecbc6c02d8c1b7873858d6
     resource: repo://automations/upstream/checkpoint.test.mts
+  - id: openwiki-source-a5b9d61b2b9a5f7492d602ac
+    resource: repo://automations/upstream/current-review.json
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
@@ -162,10 +164,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-30T17:36:00.319Z" }
+generated: { by: "codex", at: "2026-10-30T20:00:55.995Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T17:36:00.319Z
+    at: 2026-10-30T20:00:55.995Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -192,6 +194,10 @@ Workflow-only maintenance uses the checkpoint and portfolio checks in `cargo +st
 ## Current fixed development qualification
 
 Read the development lock, [current source review](../../automations/upstream/current-review.json) and [current qualification](../../automations/upstream/qualification.json) for the fixed target, exact CLI/helpers/schema, executed identities and limits. Keep source review, source-test execution, exact production-artifact tests, delivery and installed acceptance separate. Current run counts and hashes belong in those records, not repeated across Wiki pages.
+
+The current candidate has 50 retained native selections: 49 pass and saved-provider cold fork resume fails. The original selected artifact passes that same fork test and four affected permission/Recap comparisons. Source review is complete through the fixed target, but the runtime lock remains on the qualified baseline. See [the compatibility blocker](https://github.com/acg-box/decodex/issues/2575). No upstream test suite was executed for this catch-up.
+
+The retired Codex startup-configuration diagnostic is absent from the current router. Its earlier execution remains historical proof. Valid named-permission defaults and an owned Recap working directory repair fixture admission without weakening existing behavior assertions. The exact-artifact development cache test also corrupts and repairs any advertised standalone executor.
 
 The default execution scope is affected Decodex consumers against the prepared artifact and the applicable repository gate. Read relevant upstream implementation and test bodies for source review; execute upstream tests only for a concrete compatibility question or missing retained-fix proof. An unconsumed fixture failure remains a diagnostic limit and is not counted as passed. It does not create a Decodex repair item. This does not relax the evidence needed to advance the source-review cursor or qualify an artifact.
 

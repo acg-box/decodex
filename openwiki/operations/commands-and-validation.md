@@ -24,6 +24,8 @@ sources:
     resource: repo://automations/upstream/README.md
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
+  - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
+    resource: repo://automations/upstream/retained-evidence.json
   - id: openwiki-source-2d990e4e2bc233a95b4894b9
     resource: repo://crates/decodex-components/src/pin.rs
   - id: openwiki-source-95a7168e447de14b4b758f16
@@ -98,10 +100,10 @@ sources:
     resource: repo://scripts/vnext/run_native_regression.py
   - id: openwiki-source-d45a647d565211cf9b5cb067
     resource: repo://scripts/vstyle_audit.py
-generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+generated: { by: "codex", at: "2026-10-30T20:00:55.995Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T17:36:00.319Z
+    at: 2026-10-30T20:07:24.899Z
 ---
 
 
@@ -233,7 +235,7 @@ The GPUI `archived_selection_parks_exact_draft_and_restores_it_on_unarchive` che
 
 ## Qualify retained native behavior
 
-Use [the stable contract catalog](../../automations/upstream/retained-contracts.json) for retained requirements, exact test names and original limits. The [current evidence router](../../automations/upstream/retained-evidence.json) links the selected runtime qualification. Choose only probes affected by the changed consumer; the command list below is not a daily test cohort. Use its command and environment with the candidate CLI and its packaged helpers. Register the selected tests first and include ignored native fixtures explicitly. Require every listed test to execute. Keep source tests, local projection tests and actual CLI tests in separate receipts.
+Use [the stable contract catalog](../../automations/upstream/retained-contracts.json) for retained requirements, exact test names and original limits. The [current evidence router](../../automations/upstream/retained-evidence.json) links the selected runtime qualification. Choose only probes affected by the changed consumer; the command list below is not a daily test cohort. Use its command and environment with the candidate CLI and its packaged helpers. Register the selected tests first and include ignored native fixtures explicitly. Require every listed test to execute. Keep source tests, local projection tests and actual CLI tests in separate receipts. Set `DECODEX_TEST_CODEX_BINARY` and `DECODEX_NATIVE_BINARY` to the same verified CLI. A named-permission fixture must declare an explicit `default_permissions` before selecting its profile; the retained fixtures use `:read-only` as that default. Keep profile, directory and restart assertions unchanged. The current router excludes the retired Codex startup-configuration diagnostic; an old selector does not authorize restoring it.
 
 The reusable artifact probes are in `crates/decodex-runtime/tests/native_qualification/`. Set `QUALIFIED_CODEX_BINARY` to the absolute candidate CLI path and `QUALIFIED_CODEX_SOURCE_COMMIT` to its exact upstream commit. Set `DECODEX_QUALIFICATION_OUTPUT` to an existing output directory under the native automation run, outside tracked files. Keep the packaged Code Mode helper beside the selected package.
 
@@ -370,7 +372,7 @@ The final recorded cohort passed two tests, skipped 1023 and had no unmatched se
 
 ## Attached-branch native regression fixtures
 
-Use `scripts/vnext/run_native_regression.py` with an explicit qualified runtime directory and one exact fixture selector per invocation. It creates a short canonical system-temporary HOME, preserves host Cargo and Rustup locations, runs the explicit component preparation command, and removes the fixture afterward. Preparation uses a separate native home so that it cannot populate the account fixture. The public-socket fixture uses the owned checkout as its working directory; product directory checks remain active.
+Use `scripts/vnext/run_native_regression.py` with an explicit qualified runtime directory and one exact fixture selector per invocation. It creates a short canonical system-temporary HOME, preserves host Cargo and Rustup locations, runs the explicit component preparation command, and removes the fixture afterward. Preparation uses a separate native home so that it cannot populate the account fixture. Every Recap public-socket mode uses the owned checkout as its working directory because execution authority follows the actual OS account, not the overridden HOME. Account, configuration and socket fixtures stay temporary; product directory checks remain active.
 
 ```sh
 DECODEX_TEST_NATIVE_FORK=1 python3 scripts/vnext/run_native_regression.py \

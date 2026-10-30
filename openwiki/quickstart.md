@@ -71,7 +71,7 @@ sources:
 generated: { by: "codex", at: "2026-10-30T17:36:00.319Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T17:36:00.319Z
+    at: 2026-10-30T20:00:55.995Z
 ---
 
 # OpenWiki quickstart

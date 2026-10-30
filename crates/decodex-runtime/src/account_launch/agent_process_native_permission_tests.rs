@@ -88,7 +88,7 @@ async fn qualify(running: bool) {
 		)));
 	}
 
-	fs::write(root.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ncli_auth_credentials_store=\"file\"\napprovals_reviewer=\"user\"\n[model_providers.fixture]\nname=\"Isolated permission fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[permissions.scoped.filesystem]\n\":root\"=\"read\"\n{}=\"write\"\n{}=\"deny\"\n",serde_json::json!(workspace.join("writable")),serde_json::json!(workspace.join("writable/private")))).expect("fixture config");
+	fs::write(root.join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\ndefault_permissions=\":read-only\"\ncli_auth_credentials_store=\"file\"\napprovals_reviewer=\"user\"\n[model_providers.fixture]\nname=\"Isolated permission fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n[permissions.scoped.filesystem]\n\":root\"=\"read\"\n{}=\"write\"\n{}=\"deny\"\n",serde_json::json!(workspace.join("writable")),serde_json::json!(workspace.join("writable/private")))).expect("fixture config");
 
 	let mut session = NativeSession::start(&binary, &root);
 	let profiles = session

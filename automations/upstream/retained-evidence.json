@@ -501,17 +501,6 @@
         "passed": true
       },
       {
-        "test": "installed_native_startup_configuration_preserves_auth_config_and_locked_history",
-        "package": "decodex-runtime",
-        "source": "crates/decodex-runtime/src/account_launch/process_startup_config_tests.rs",
-        "executed_identity": {
-          "binary_id": "decodex-runtime",
-          "test": "account_launch::process::startup_config::tests::installed_native_startup_configuration_preserves_auth_config_and_locked_history"
-        },
-        "uses_exact_native_artifact": true,
-        "passed": true
-      },
-      {
         "test": "native_child_completion_wakes_idle_root_once",
         "package": "decodex-runtime",
         "source": "crates/decodex-runtime/src/agent/tests/native_agent_wake.rs",
@@ -611,10 +600,8 @@
         "passed": true
       }
     ],
-    "executed_count": 53,
-    "exact_artifact_test_count": 51,
+    "exact_artifact_test_count": 50,
     "local_history_test_count": 2,
-    "passed_count": 53,
     "unmatched_selectors": [],
     "command": [
       "cargo",
@@ -670,20 +657,12 @@
         "<qualified-runtime>",
         "--filter",
         "test(installed_recap_public_socket_preserves_parent_and_exact_request_identity)"
-      ],
-      [
-        "python3",
-        "scripts/vnext/run_native_regression.py",
-        "--runtime",
-        "<qualified-runtime>",
-        "--filter",
-        "test(installed_native_startup_configuration_preserves_auth_config_and_locked_history)"
       ]
     ],
     "required_environment": {
       "DECODEX_CODEX_DEVELOPMENT_RUNTIME": "Exact prepared runtime root",
       "DECODEX_TEST_CODEX_BINARY": "Exact signed candidate CLI",
-      "DECODEX_NATIVE_BINARY": "Same CLI, with packaged helpers in place"
+      "DECODEX_NATIVE_BINARY": "Same exact CLI as DECODEX_TEST_CODEX_BINARY; required by seven retained fixtures."
     },
     "selector_reconciliation": {
       "unmatched_historical_selector": "native_legacy_tools_migrate_once_and_retire_the_old_context",
@@ -691,8 +670,24 @@
       "reason": "Current source retires automatic native context replacement; retained legacy conversations continue original context. Source and current test body verified. Historical migration test remains a historical delivery claim only.",
       "counted_as_executed": false
     },
-    "limits": "51 exact signed-artifact native tests plus two local history-filter tests passed. Synthetic system-temporary homes and loopback providers; no installation, live account, remote provider, physical audio or performance acceptance.",
-    "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8"
+    "limits": "Current reconstruction router: 50 exact-artifact native tests and two local history projections. Historical passes refer to selected 33d306d4 only. Current candidate results are under candidate_qualification; no new run of the two local projections or historical artifact probes.",
+    "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+    "historical_execution": {
+      "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+      "exact_artifact_tests": 51,
+      "local_history_tests": 2,
+      "evidence": "https://github.com/acg-box/decodex/blob/69ef0e38d74d407a1cbe84ab06ba802adc786a8a/automations/upstream/qualification.json#retained_consumers",
+      "limit": "These are historical executed counts, including one now-retired diagnostic. Do not relabel them as current-run executions."
+    },
+    "selected_count": 52,
+    "retired_selectors": [
+      {
+        "selector": "account_launch::process::startup_config::tests::installed_native_startup_configuration_preserves_auth_config_and_locked_history",
+        "retirement_commit": "87d0244e90eb50760917ea87a5d6880332b72320",
+        "reason": "User excluded Codex startup diagnostics; current source and the stable contract record removal. Do not restore it.",
+        "historical_execution_preserved": true
+      }
+    ]
   },
   "qualification": {
     "status": "qualified_fixed_development_artifact",
@@ -889,25 +884,16 @@
     "elapsed_seconds": 85.33
   },
   "source_review_summary": {
-    "range_start_exclusive": "abf4bb91ec49fbf443ccec0069f9cab5dd1462d8",
-    "range_end_inclusive": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-    "screened_count": 127,
-    "reviewed_count": 127,
-    "remaining_count_against_fixed_target": 0,
-    "classification_counts": {
-      "not_applicable": 47,
-      "native_owned": 77,
-      "necessary_repair": 3
-    },
+    "range_start_exclusive": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+    "range_end_inclusive": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+    "fixed_target_observed_at": "2026-10-30T17:33:53.818815+00:00",
+    "screened": 158,
+    "completed_review": 158,
+    "remaining": 0,
+    "test_or_fixture_bodies_read": 381,
+    "upstream_tests_executed": 0,
     "source_review_evidence": "automations/upstream/current-review.json",
-    "source_review_evidence_sha256": "3ccca96311d38b0a0578a007e85c2e25c8114098630081bb2c12c01162904d79",
-    "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-    "runtime_disposition": "Qualified fixed development artifact; public delivery reference identifies merge and exact-head checks.",
-    "tests_read_unique_function_count": 131,
-    "source_tests_executed_count": 1264,
-    "source_tests_passed_count": 1263,
-    "source_tests_failed_count_after_fixture_repair": 1,
-    "source_test_attempts": 1593
+    "limit": "Source review complete; candidate runtime qualification remains partial. Historical certified ranges and their recorded limits remain in native state."
   },
   "documentation_lifecycle": {
     "method": "OpenWiki supported page-job lifecycle",
@@ -930,16 +916,19 @@
     "pull_request": "https://github.com/acg-box/decodex/pull/2532"
   },
   "current_runtime_requalification": {
-    "source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-    "exact_artifact_native_tests": 51,
-    "local_history_filter_tests": 2,
-    "python_artifact_probes": 17,
-    "exact_code_mode_helper_tests": 1,
-    "retained_manual_deliveries": [
-      "https://github.com/acg-box/decodex/pull/2508",
-      "https://github.com/acg-box/decodex/pull/2511"
-    ],
-    "limits": "Older selected-feature/account/Project/voice receipts below retain original source/artifact and acceptance limits. Current synthetic regression does not relabel historical installed or real-provider evidence."
+    "selected_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+    "candidate_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+    "candidate_status": "blocked_provider_resume",
+    "current_native_selections": 50,
+    "candidate_passed": 49,
+    "candidate_failed": 1,
+    "current_unmatched_selectors": [],
+    "retired_selector_count": 1,
+    "selected_baseline_comparison_tests": 5,
+    "selected_baseline_passed": 5,
+    "evidence": "automations/upstream/qualification.json#candidate_qualification",
+    "blocking_issue": "https://github.com/acg-box/decodex/issues/2575",
+    "retained_manual_deliveries": "Existing approved manual capabilities and their portable contracts remain retained. Deferred product issues are separate from maintenance debt."
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
@@ -2851,5 +2840,18 @@
       "Native definition readback confirmed the prompt update and preserved paused daily scheduling; native definition and receipts remain outside Git.",
       "This evidence does not advance source review or qualify another runtime artifact."
     ]
+  },
+  "upstream_catchup": {
+    "source_review": "automations/upstream/current-review.json",
+    "candidate_qualification": "automations/upstream/qualification.json#candidate_qualification",
+    "selected_runtime_qualification": "automations/upstream/qualification.json",
+    "implementation_commits": [
+      "https://github.com/acg-box/decodex/commit/768690c268e679df140b0c588f02f3d91c633eec",
+      "https://github.com/acg-box/decodex/commit/283741d89b57346bd25ac91283ef682da0a2d327"
+    ],
+    "maintenance_workflow_delivery": "https://github.com/acg-box/decodex/pull/2573",
+    "blocking_issue": "https://github.com/acg-box/decodex/issues/2575",
+    "native_schedule": "PAUSED; daily cadence preserved; explicit user authorization is required to resume.",
+    "scope": "Sign and verify advertised executor with shared acquisition/cache repair; fix existing fixture prerequisites and improve isolated error detail. No runtime pin, product capability, app installation or release."
   }
 }
