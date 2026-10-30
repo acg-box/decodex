@@ -13,7 +13,7 @@ prompt_file           = "automations/upstream/prompts/maintainer.md"
 reasoning_effort      = "max"
 rrule                 = "DTSTART:20260919T200500Z\nRRULE:FREQ=DAILY;BYHOUR=20;BYMINUTE=5;BYSECOND=0"
 # Keep daily runs paused until the manual proposal review and explicit resume approval.
-status                = "PAUSED"
+status = "PAUSED"
 
 [[automations]]
 id               = "decodex-content-manager"
