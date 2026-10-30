@@ -10,6 +10,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
   - id: openwiki-source-77ad5024b567271a0f618fd7
     resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
+  - id: openwiki-source-89a6e0bcef9377afc01425eb
+    resource: repo://apps/decodex-gpui/src/agent_list_status_tests.rs
   - id: openwiki-source-1b7747f8ae67c32e5670817d
     resource: repo://apps/decodex-gpui/src/agent_portfolio_tests.rs
   - id: openwiki-source-0eea3c2bab20e4a9d8e3d80a
@@ -22,6 +24,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/native_voice_online_tests.rs
   - id: openwiki-source-d1f06f7b22d0c2eec328d95f
     resource: repo://apps/decodex-gpui/src/native_voice_transport.rs
+  - id: openwiki-source-546812ff3637690f4a184b89
+    resource: repo://apps/decodex-gpui/src/ui_preferences.rs
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
@@ -148,10 +152,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-29T18:53:39.584Z" }
+generated: { by: "codex", at: "2026-10-30T02:31:10.035Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-29T18:53:39.584Z
+    at: 2026-10-30T02:31:10.035Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -257,6 +261,12 @@ The standalone Codex startup-configuration diagnostic capability and its dedicat
 The list entry is delivered in [PR #2559](https://github.com/acg-box/decodex/pull/2559). The `conversation_list_branch` entry in the [portable evidence index](../../automations/upstream/retained-evidence.json) binds source `5f2fbffac0a5590affd76dcdc3bc73ff83b3cefe` to eight executed GPUI tests with zero unmatched selectors. They check the latest completed turn, its own user input, exact source identity, unmanaged-row refusal, draft preservation, cancellation and the existing explicit native branch confirmation without sending input. Strict GPUI Clippy and nightly formatting passed.
 
 This change adds a Decodex entry and reuses the retained native fork contract within its recorded limits. Relevant upstream protocol and implementation were read; the active-turn rejection test was inspected only in part. No upstream tests or exact-artifact native tests ran in this batch. The runtime selection and source-review cursor did not change. Physical keyboard behavior, app startup, installed-app and live-provider acceptance remain unmeasured. No installation, release or schedule activation occurred.
+
+## List status filter qualification
+
+The `status_list_filters` entry in the [portable evidence index](../../automations/upstream/retained-evidence.json) binds source `5c95cf7a8c283369e14b6de9c171d3bc563bbb9c` to five executed GPUI checks with zero unmatched selectors. Three click-through fixtures check combined status, Project and search filtering, changed native status labels, separate Work/conversation choices, exact row opening and retained drafts. Two existing browser regressions check preview reuse and opening closed work without losing other drafts. Strict GPUI Clippy with all features and targets, nightly formatting and whitespace checks passed.
+
+The fixtures use GPUI TestPlatform and synthetic snapshots. They do not start a service or native process or write host preferences. Production preference persistence reuses the existing macOS NSUserDefaults owner; a physical application restart and installed UI were not exercised. No native artifact, upstream test, live provider, installation, release or schedule activation is qualified by this presentation change. The source-review cursor and selected runtime remain unchanged.
 
 ## Native history, resources and estimate qualification
 

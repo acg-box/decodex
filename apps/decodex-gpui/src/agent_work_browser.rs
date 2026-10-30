@@ -705,6 +705,22 @@ impl AgentSurface {
 			}))
 	}
 
+	fn work_browser_controls(&self, filters: AnyElement) -> Div {
+		gpui::div()
+			.flex()
+			.items_center()
+			.gap_2()
+			.flex_none()
+			.child(
+				gpui::div()
+					.w(gpui::px(260.))
+					.max_w_full()
+					.h(gpui::px(CONTROL_SIZE))
+					.child(self.work_search.clone()),
+			)
+			.child(filters)
+	}
+
 	pub(super) fn render_work_browser(&self, cx: &mut Context<Self>) -> AnyElement {
 		if self.workspace.guardian_open {
 			return self.render_global_guardian(cx);
@@ -716,6 +732,12 @@ impl AgentSurface {
 		let query = self.work_search.read(cx).content().trim().to_lowercase();
 		let selected_workspace = self.workspace.workspace_filter.as_deref();
 		let filters = self.workspace_choices(false, cx);
+		let rows = self.browsable_work(&query, selected_workspace);
+		let statuses = self.list_status_filters(
+			super::list_status::View::Conversations,
+			rows.iter().map(|row| row.status.as_str()),
+			cx,
+		);
 		let mut list = gpui::div()
 			.id("all-work-list")
 			.flex_1()
@@ -726,11 +748,15 @@ impl AgentSurface {
 		let mut count = 0;
 
 		for WorkRow { id, title, workspace: workspace_name, status, color, native } in
-			self.browsable_work(&query, selected_workspace)
-		{
+			rows.into_iter().filter(|row| {
+				self.workspace
+					.list_status
+					.matches(super::list_status::View::Conversations, &row.status)
+			}) {
 			let keyboard = id.clone();
 			let native_keyboard = native.clone();
 			let branch = id.clone();
+			let selector = id.clone();
 			let can_branch = native.is_none()
 				&& self.snapshot.as_ref().is_some_and(|snapshot| {
 					snapshot
@@ -743,6 +769,7 @@ impl AgentSurface {
 			list = list.child(
 				gpui::div()
 					.id(SharedString::from(format!("browse-{id}")))
+					.debug_selector(move || format!("browse-{selector}"))
 					.role(Role::Button)
 					.aria_label(format!("Open {title}"))
 					.tab_index(0)
@@ -810,21 +837,8 @@ impl AgentSurface {
 			.flex_col()
 			.p_4()
 			.gap_3()
-			.child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.gap_2()
-					.flex_none()
-					.child(
-						gpui::div()
-							.w(gpui::px(260.))
-							.max_w_full()
-							.h(gpui::px(CONTROL_SIZE))
-							.child(self.work_search.clone()),
-					)
-					.child(filters),
-			)
+			.child(self.work_browser_controls(filters))
+			.child(statuses)
 			.child(list)
 			.into_any_element()
 	}
