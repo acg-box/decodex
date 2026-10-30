@@ -116,10 +116,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-30T02:31:10.035Z" }
+generated: { by: "codex", at: "2026-10-30T03:12:23.375Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T02:31:10.035Z
+    at: 2026-10-30T03:12:23.375Z
 ---
 
 # Product scope and native ownership
@@ -156,7 +156,7 @@ These views are available through local protocol 4.2 and the same source owners.
 
 In the earlier six-item review, items 1–3 are delivered through the selected read-only views above. The user selected **item 4, persistent attached branches**. An explicit completed-turn branch uses native attachment, retains the exact source relationship and can be reopened from Agent preferences. Creation sends no input and copies no native Goal. The child-visible history starts empty, while native inference retains the reviewed parent context. Source turn IDs preserve boundary provenance. Native attachment requires paginated source history; the public branch flow already checks this. It adds no automatic follow-up, scheduling, result merge or deletion policy. The retained `retained_attached_forks` evidence identifies its regressions and qualification limits.
 
-**Item 5, the native Guardian V3 experiment, waits for upstream maturity. Item 6, a custom managed configuration server, is deferred by the user.** Neither is selected for implementation. Existing global Guardian and native managed requirements keep their current scope. There is no outstanding new decision in this six-item list.
+**Item 5, the native Guardian V3 experiment, waits for upstream maturity** ([issue #2563](https://github.com/acg-box/decodex/issues/2563)). **Item 6, a custom managed configuration server, is deferred by the user** ([issue #2564](https://github.com/acg-box/decodex/issues/2564)). Neither is selected for implementation. Existing global Guardian and native managed requirements keep their current scope. There is no outstanding new decision in this six-item list.
 
 ## Approved desktop refinements
 
@@ -191,7 +191,7 @@ The user selected **original item 26** with automatic generation, controlled by 
 
 **Original items 19 and 69**, authenticated remote execution, remain deferred in [issue 1693](https://github.com/acg-box/decodex/issues/1693). **Item 21** retains Decodex account management: independent account observations and reset-credit requests use the existing account API client. This decision does not make those operations inherit native `application.network` policy.
 
-**Item 27 is deferred until the final research review.** Do not implement or enable deferred mailbox preemption from this review. The user rejected the proposed schema-size risk indication for **item 30**; its diagnostic gap remains tracked in [issue 2546](https://github.com/acg-box/decodex/issues/2546). Do not add that indication or automatic budget tuning. **Item 29** is selected as a per-server switch in **Settings > Agents > Native defaults**. It edits only an existing user-configured server’s native `startup_readiness`: `catalog` when on, `connection` when off. A valid native cache can satisfy startup; tool execution still needs a live connection. The configuration roundtrip qualifies the setting boundary, not MCP cache performance or installed-app behavior. No global enablement is selected.
+**Item 27 is deferred until the final research review**, tracked in [issue #2562](https://github.com/acg-box/decodex/issues/2562). Do not implement or enable deferred mailbox preemption from this review. The user rejected the proposed schema-size risk indication for **item 30**; its diagnostic gap remains tracked in [issue 2546](https://github.com/acg-box/decodex/issues/2546). Do not add that indication or automatic budget tuning. **Item 29** is selected as a per-server switch in **Settings > Agents > Native defaults**. It edits only an existing user-configured server’s native `startup_readiness`: `catalog` when on, `connection` when off. A valid native cache can satisfy startup; tool execution still needs a live connection. The configuration roundtrip qualifies the setting boundary, not MCP cache performance or installed-app behavior. No global enablement is selected.
 
 ## Selected conversation improvements
 
@@ -239,6 +239,8 @@ The following native options remain deferred research:
 | 79 | Structured JSON evidence for native Guardian review. | [Issue 2557](https://github.com/acg-box/decodex/issues/2557) |
 
 Items 44 and 82 are not selected. Item 46 shares the retired parser scope of item 38. Item 58 adds no separate next-message suggestion feature. The ignored native async-classifier override in item 62 must not become an ineffective setting; it is distinct from the retained background-compaction control.
+
+Conditional research on [account-safe cross-process MCP sharing](https://github.com/acg-box/decodex/issues/2524) and [a supported complete critical-path interface](https://github.com/acg-box/decodex/issues/2525) also retains its existing issues. These records preserve deferred scope; they do not authorize implementation or add daily maintenance debt.
 
 ## Native compatibility maintenance
 
