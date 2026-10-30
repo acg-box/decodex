@@ -18,7 +18,7 @@ use crate::{
 	},
 	ui_motion,
 	ui_theme::{
-		self, BLUE, FONT_FAMILY, HOVER_FILL, SUCCESS, WARNING,
+		self, BLUE, FONT_FAMILY, SUCCESS, WARNING,
 		foreground::{BODY, PRIMARY, SECONDARY},
 	},
 };
@@ -358,7 +358,7 @@ fn bubble_shape(layout: Layout) -> Div {
 				path.close();
 
 				if let Ok(path) = path.build() {
-					window.paint_path(path, ui_theme::rgba(HOVER_FILL));
+					window.paint_path(path, ui_theme::annotation_surface());
 				}
 			},
 		)

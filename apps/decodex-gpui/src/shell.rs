@@ -1978,7 +1978,7 @@ impl Render for Shell {
 		#[cfg(all(target_os = "macos", not(test)))]
 		self.agent.update(cx, |agent, cx| {
 			agent.prepare_native_composer(self.selected == Destination::Agent, window, cx);
-			agent.prepare_native_model_menu(window, cx);
+			agent.prepare_native_menu(window, cx);
 		});
 
 		let controls = floating_window_controls(self, &presentation, cx);

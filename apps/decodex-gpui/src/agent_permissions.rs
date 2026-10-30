@@ -330,8 +330,8 @@ impl AgentSurface {
 		if !creating
 			&& matches!(self.permission_profiles.state, Some(AgentPermissionState::NotConnected))
 		{
-			return crate::ui_motion::menu_surface(gpui::div())
-				.p_3()
+			return gpui::div()
+				.p_1()
 				.child("Permissions load when this conversation reconnects.")
 				.into_any_element();
 		}
@@ -349,15 +349,14 @@ impl AgentSurface {
 			Some(AgentPermissionState::Available { profiles, can_update: true, .. })
 			if self.permission_profiles.reviewed && profiles.iter().any(|p| p.id.as_str() == mode.profile() && p.allowed && p.can_select))
 		};
-		let mut menu = crate::ui_motion::menu_surface(gpui::div()).p_1().flex().flex_col().child(
-			crate::session_settings::permission_choices(
+		let mut menu =
+			gpui::div().flex().flex_col().child(crate::session_settings::permission_choices(
 				current,
 				true,
 				available,
 				Self::choose_permission_mode,
 				cx,
-			),
-		);
+			));
 		if !creating {
 			menu = menu.children(ui_feedback::inline_feedback(
 				"permission-settings-feedback",

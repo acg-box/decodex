@@ -722,6 +722,9 @@ impl AgentSurface {
 	}
 
 	pub(super) fn render_work_browser(&self, cx: &mut Context<Self>) -> AnyElement {
+		if self.workspace.archives.open {
+			return self.render_archive_catalog(cx);
+		}
 		if self.workspace.guardian_open {
 			return self.render_global_guardian(cx);
 		}

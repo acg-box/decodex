@@ -1,4 +1,6 @@
 //! Explicit restoration of a native archived task, using fresh desired-state readback.
+#[path = "agent_archive_catalog.rs"] mod catalog;
+pub(super) use catalog::Catalog;
 use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use gpui::{AnyElement, FocusHandle, KeyDownEvent};
@@ -253,7 +255,11 @@ impl AgentSurface {
 				};
 
 				s.archive.feedback = feedback.into();
+				let restored = matches!(state, AgentArchiveResult::Active { .. });
 				s.archive.result = Some(state);
+				if restored {
+					s.refresh(cx);
+				}
 				s.archive.last_read = Some(std::time::Instant::now());
 
 				cx.notify();

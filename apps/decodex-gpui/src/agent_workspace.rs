@@ -551,6 +551,7 @@ impl AgentSurface {
 					s.workspace.portfolio_mode = true;
 					s.workspace.guardian_open = false;
 					s.workspace.browsing = true;
+					s.workspace.archives.open = false;
 
 					cx.notify();
 				},
@@ -563,6 +564,7 @@ impl AgentSurface {
 				|s, cx| {
 					s.workspace.guardian_open = true;
 					s.workspace.browsing = true;
+					s.workspace.archives.open = false;
 
 					cx.notify();
 				},
@@ -578,9 +580,17 @@ impl AgentSurface {
 					s.workspace.portfolio_mode = false;
 					s.workspace.guardian_open = false;
 					s.workspace.browsing = true;
+					s.workspace.archives.open = false;
 
 					cx.notify();
 				},
+				cx,
+			))
+			.child(self.work_navigation(
+				"archive-browser",
+				"Archive",
+				workspace_symbols::Symbol::Restore,
+				|s, cx| s.open_archive_catalog(cx),
 				cx,
 			));
 

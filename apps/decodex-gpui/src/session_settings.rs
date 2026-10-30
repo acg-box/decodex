@@ -1,7 +1,7 @@
 //! Shared desktop creation defaults and session-setting choices.
 use decodex_protocol::{PermissionMode, ServiceTier};
 use gpui::{
-	Context, Div, SharedString,
+	Context, Div,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -44,8 +44,7 @@ pub(crate) fn permission_choices<T: 'static>(
 		let enabled = available(mode);
 		let chosen = selected == Some(mode);
 		menu = menu.child(
-			gpui::div()
-				.id(SharedString::from(format!("permission-choice-{index}")))
+			ui_theme::menu_row(format!("permission-choice-{index}"), enabled)
 				.debug_selector(move || format!("permission-choice-{index}"))
 				.role(gpui::Role::Button)
 				.aria_label(format!("{}: {}", mode.label(), mode.description()))
@@ -57,9 +56,6 @@ pub(crate) fn permission_choices<T: 'static>(
 				.flex()
 				.flex_col()
 				.gap_1()
-				.when(enabled, |d| {
-					d.cursor_pointer().hover(|s| s.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
-				})
 				.when(!enabled, |d| d.opacity(0.4))
 				.child(gpui::div().text_color(ui_theme::rgb(ui_theme::TEXT)).child(format!(
 					"{}{}",
@@ -107,8 +103,8 @@ pub(crate) fn speed_choices<T: 'static>(
 		let chosen = selected == Some(&id);
 		let keyboard_id = id.clone();
 		menu = menu.child(
-			gpui::div()
-				.id(SharedString::from(format!("tier-{}", id.as_str())))
+			ui_theme::menu_row(format!("tier-{}", id.as_str()), available)
+				.w_auto()
 				.debug_selector({
 					let id = id.clone();
 					move || format!("tier-{}", id.as_str())
@@ -120,9 +116,6 @@ pub(crate) fn speed_choices<T: 'static>(
 				.px_3()
 				.py_2()
 				.rounded_lg()
-				.when(available, |d| {
-					d.cursor_pointer().hover(|s| s.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
-				})
 				.when(!available, |d| d.opacity(0.4))
 				.child(format!("{}{}", if chosen { "✓ " } else { "" }, name))
 				.on_click(cx.listener(move |this, _, _, cx| {

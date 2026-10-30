@@ -33,9 +33,9 @@ pub(crate) use self::{color_themes::ColorTheme, palette::ColorScheme};
 use std::time::Duration;
 
 use gpui::{
-	self, AnyElement, Div, ElementId, FontWeight, InteractiveElement as _, IntoElement,
-	ParentElement as _, Rgba, Role, Stateful, StatefulInteractiveElement as _, Styled as _,
-	accesskit::Toggled, prelude::FluentBuilder as _,
+	self, AnyElement, Div, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
+	Rgba, Role, Stateful, StatefulInteractiveElement as _, Styled as _,
+	prelude::FluentBuilder as _,
 };
 
 use appearance::Theme;
@@ -60,6 +60,8 @@ pub(crate) const CHROME_CONTROL_SIZE: f32 = 24.0;
 pub(crate) const CONTROL_GROUP_HEIGHT: f32 = 28.0;
 pub(crate) const CONTROL_MARGIN: f32 = 8.0;
 pub(crate) const CONTROL_RADIUS: f32 = 8.0;
+pub(crate) const POPOVER_RADIUS: f32 = 10.;
+pub(crate) const POPOVER_PADDING: f32 = 8.;
 pub(crate) const WORKSPACE_GUTTER: f32 = 8.0;
 pub(crate) const WORKSPACE_RADIUS: f32 = 16.0;
 pub(crate) const CONVERSATION_HEADER_HEIGHT: f32 = 28.0;
@@ -141,6 +143,49 @@ pub(crate) struct WorkspacePalette {
 
 pub(crate) fn rgb(token: u32) -> Rgba {
 	ColorScheme::current().rgb(token)
+}
+
+/// Content annotations remain readable without adding a glass layer per Agent.
+pub(crate) fn annotation_surface() -> Rgba {
+	ColorScheme::current().annotation()
+}
+
+/// Inline menus retain a stable reading surface when native glass is unavailable.
+pub(crate) fn popover_surface() -> Rgba {
+	rgb(SURFACE_OVERLAY_MATERIAL >> 8)
+}
+
+/// The native panel owns blur. A single theme tint keeps Clear lighter than Regular.
+pub(crate) fn popover_tint(material: material::Material, style: material::GlassStyle) -> Rgba {
+	popover_surface().opacity(match (material, style) {
+		(material::Material::Thin, _) => 1.,
+		(_, material::GlassStyle::Regular) => 0.12,
+		(_, material::GlassStyle::Clear) => 0.02,
+	})
+}
+
+/// Menu rows use neutral feedback; selection is a check, danger uses ERROR text.
+/// Primary actions keep their filled treatment outside selection menus.
+pub(crate) fn menu_row(id: impl Into<gpui::SharedString>, enabled: bool) -> Stateful<Div> {
+	gpui::div()
+		.id(id.into())
+		.role(Role::Button)
+		.tab_index(0)
+		.w_full()
+		.min_w_0()
+		.min_h(gpui::px(32.))
+		.px(gpui::px(8.))
+		.py(gpui::px(6.))
+		.rounded(gpui::px(6.))
+		.text_size(gpui::px(12.))
+		.line_height(gpui::px(18.))
+		.text_color(rgb(TEXT))
+		.when(enabled, |d| {
+			d.cursor_pointer()
+				.hover(|s| s.bg(rgba(HOVER_FILL)))
+				.active(|s| s.bg(rgba(PRESSED_FILL)))
+		})
+		.focus_visible(|s| s.bg(rgba(HOVER_FILL)))
 }
 
 pub(crate) fn rgba(token: u32) -> Rgba {
@@ -325,12 +370,12 @@ pub(crate) fn settings_button_base(
 		.child(label)
 }
 
-pub(crate) fn settings_segments(label: &'static str) -> Stateful<Div> {
+pub(crate) fn settings_button_group(label: &'static str) -> Stateful<Div> {
 	let light = Theme::current() == Theme::Light;
 
 	gpui::div()
 		.id(gpui::SharedString::from(format!("settings-segments-{label}")))
-		.role(Role::RadioGroup)
+		.role(Role::Group)
 		.aria_label(label)
 		.flex()
 		.flex_none()
@@ -338,38 +383,4 @@ pub(crate) fn settings_segments(label: &'static str) -> Stateful<Div> {
 		.p(gpui::px(2.0))
 		.rounded(gpui::px(6.))
 		.bg(gpui::rgba(if light { 0x00000008 } else { 0x00000020 }))
-}
-
-pub(crate) fn settings_segment(
-	id: impl Into<ElementId>,
-	label: &'static str,
-	selected: bool,
-) -> Stateful<Div> {
-	let light = Theme::current() == Theme::Light;
-	let selected_fill = if light { gpui::rgba(0xfffffff0) } else { rgba(CONTROL_SELECTED_FILL) };
-	let selected_hover = if light { gpui::rgba(0xffffffff) } else { rgba(CONTROL_SELECTED_HOVER) };
-
-	gpui::div()
-		.id(id)
-		.role(Role::RadioButton)
-		.aria_label(label)
-		.aria_selected(selected)
-		.aria_toggled(if selected { Toggled::True } else { Toggled::False })
-		.tab_index(0)
-		.h(gpui::px(22.))
-		.px(gpui::px(8.0))
-		.flex()
-		.items_center()
-		.justify_center()
-		.rounded(gpui::px(4.))
-		.border_1()
-		.border_color(gpui::transparent_black())
-		.text_size(gpui::px(11.5))
-		.line_height(gpui::px(16.0))
-		.cursor_pointer()
-		.text_color(rgb(if selected { TEXT } else { TEXT_MUTED }))
-		.when(selected, |s| s.bg(selected_fill).border_color(rgba(CONTROL_SELECTED_BORDER)))
-		.hover(move |s| s.bg(if selected { selected_hover } else { rgba(HOVER_FILL) }))
-		.focus_visible(|s| s.border_color(rgb(ACCENT)))
-		.child(label)
 }

@@ -11,16 +11,12 @@ use crate::shell::agent_surface::work_board::relations::{
 enum Target<'a> {
 	All,
 	Team(&'a str),
-	Project(&'a scopes::Selection),
+	Project(&'a str),
 }
 
 impl AgentSurface {
-	pub(super) fn frame_relation_project(
-		&mut self,
-		selection: scopes::Selection,
-		cx: &mut Context<Self>,
-	) {
-		if !self.relation_graph().scopes.iter().any(|scope| scope.selection() == selection) {
+	pub(super) fn frame_relation_project(&mut self, project: String, cx: &mut Context<Self>) {
+		if !self.relation_graph().scopes.iter().any(|scope| scope.id == project) {
 			return;
 		}
 
@@ -30,8 +26,8 @@ impl AgentSurface {
 		self.work_board.view.card_transition = None;
 		self.work_board.view.motion = None;
 		self.work_board.view.drag = None;
-		self.frame_relation_scope(Target::Project(&selection), MAX_ZOOM);
-		self.work_board.view.picked_scope = Some(selection);
+		self.frame_relation_scope(Target::Project(&project), MAX_ZOOM);
+		self.work_board.view.picked_project = Some(project);
 
 		cx.notify();
 	}
@@ -162,8 +158,8 @@ impl AgentSurface {
 }
 
 fn frame_bounds(graph: &Graph, target: Target<'_>) -> Option<[f32; 4]> {
-	if let Target::Project(selection) = target {
-		graph.scopes.iter().find(|scope| &scope.selection() == selection).map(|scope| scope.bounds)
+	if let Target::Project(project) = target {
+		graph.scopes.iter().find(|scope| scope.id == project).map(|scope| scope.bounds)
 	} else if let Target::Team(key) = target {
 		let members = groups::descendants(graph, key);
 		let rect = graph
@@ -422,6 +418,7 @@ mod tests {
 		for mode in layout::Mode::ALL {
 			surface.update(visual, |s, cx| {
 				s.switch_relation_layout(mode, cx);
+				s.clear_relation_selection();
 
 				s.work_board.view.motion = None;
 
@@ -438,6 +435,11 @@ mod tests {
 				cx.notify();
 			});
 
+			visual.update(crate::ui_frame::draw_frame);
+
+			assert!(visual.debug_bounds("relation-team-release").is_none());
+			let portrait = visual.debug_bounds("relation-avatar-release").unwrap();
+			visual.simulate_click(portrait.center(), Default::default());
 			visual.update(crate::ui_frame::draw_frame);
 
 			let team = visual.debug_bounds("relation-team-release").unwrap();

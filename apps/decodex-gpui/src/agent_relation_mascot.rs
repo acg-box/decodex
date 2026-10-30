@@ -329,8 +329,8 @@ impl Avatar {
 			},
 			|_, _, _, _| {},
 		)
-		.w(gpui::px(layout.portrait_spacing(PORTRAIT_WIDTH)))
-		.h(gpui::px(layout.portrait_spacing(PORTRAIT_HEIGHT)))
+		.w(gpui::px(layout.spacing(PORTRAIT_WIDTH)))
+		.h(gpui::px(layout.spacing(PORTRAIT_HEIGHT)))
 	}
 }
 

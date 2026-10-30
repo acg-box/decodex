@@ -81,7 +81,7 @@ impl Header {
 					row.child(information_rows::parent(&self.key, parent, layout))
 				})
 			})
-			.when(!(self.picked && self.parent.is_some()), |row| {
+			.when(self.picked, |row| {
 				row.when_some(self.team_members, |row, count| {
 					row.child(self.team_button(count, layout, window, cx))
 				})
@@ -156,7 +156,7 @@ impl RenderOnce for Header {
 		let h = self;
 		let (_, count) = content_rows(&h.task, &h.activity, layout, window.text_system());
 		let speech_height = h.activity.height * layout.activity_line() / LINE;
-		let portrait_width = layout.portrait_spacing(PORTRAIT_WIDTH);
+		let portrait_width = layout.spacing(PORTRAIT_WIDTH);
 		let selection = selection_mark(&h.key, h.selected, layout, window, cx);
 		let avatar_selector = format!("relation-avatar-{}", h.key);
 		let figure = gpui::div()
@@ -164,7 +164,7 @@ impl RenderOnce for Header {
 			.relative()
 			.flex_none()
 			.w(gpui::px(portrait_width))
-			.h(gpui::px(layout.portrait_spacing(PORTRAIT_HEIGHT)))
+			.h(gpui::px(layout.spacing(PORTRAIT_HEIGHT)))
 			.child(selection)
 			.child(h.avatar.element(layout));
 		let portrait = gpui::div()
@@ -319,10 +319,9 @@ fn selection_mark(
 				move |bounds, _, window, _| {
 					let center = gpui::point(
 						bounds.center().x,
-						bounds.top() + gpui::px(layout.portrait_spacing(42.)),
+						bounds.top() + gpui::px(layout.spacing(42.)),
 					);
-					let (rx, ry) =
-						(layout.portrait_spacing(22.), layout.portrait_spacing(2.5).max(1.));
+					let (rx, ry) = (layout.spacing(22.), layout.spacing(2.5).max(1.));
 					let p = |x, y| center + gpui::point(gpui::px(x), gpui::px(y));
 					let k = 0.552_284_8;
 					let mut ring = PathBuilder::stroke(gpui::px(1.));

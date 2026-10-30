@@ -156,6 +156,10 @@ impl ColorScheme {
 		color.alpha(alpha as f32 / 255.)
 	}
 
+	pub(crate) fn annotation(self) -> Rgba {
+		self.rgb(CANVAS).blend(self.rgb(TEXT).opacity(0.02)).opacity(0.96)
+	}
+
 	pub(crate) fn workspace(self, material: Material) -> WorkspacePalette {
 		if material == Material::LiquidGlass {
 			return WorkspacePalette {
@@ -238,6 +242,31 @@ mod tests {
 		material::Material,
 		palette::{ColorScheme, ColorTheme, Theme},
 	};
+
+	#[gpui::test]
+	fn popover_tints_follow_every_theme_and_keep_clear_lighter(cx: &mut gpui::TestAppContext) {
+		use crate::ui_theme::{appearance::Appearance, material::GlassStyle};
+		cx.update(|cx| {
+			let before = (Appearance::current(), ColorTheme::configured());
+			for theme in ColorTheme::ALL {
+				theme.select(cx);
+				for appearance in [Appearance::Dark, Appearance::Light] {
+					appearance.select(cx);
+					let thin = ui_theme::popover_tint(Material::Thin, GlassStyle::Regular);
+					let regular =
+						ui_theme::popover_tint(Material::LiquidGlass, GlassStyle::Regular);
+					let clear = ui_theme::popover_tint(Material::LiquidGlass, GlassStyle::Clear);
+					assert_eq!(thin, ui_theme::popover_surface());
+					assert_eq!((thin.r, thin.g, thin.b), (clear.r, clear.g, clear.b));
+					assert_eq!((thin.r, thin.g, thin.b), (regular.r, regular.g, regular.b));
+					assert_eq!(thin.a, 1.);
+					assert!(clear.a < regular.a && regular.a < thin.a);
+				}
+			}
+			before.1.select(cx);
+			before.0.select(cx);
+		});
+	}
 
 	#[test]
 	fn presets_resolve_shared_roles_and_leave_light_appearance_readable() {
@@ -334,6 +363,31 @@ mod tests {
 						contrast(colors.rgb(token), colors.rgb(background)) >= 4.5,
 						"{theme:?} {token:06x} on {background:06x}"
 					);
+				}
+			}
+		}
+	}
+
+	#[test]
+	fn annotations_and_popovers_keep_readable_text_across_presets_and_backdrops() {
+		for appearance in [Theme::Light, Theme::Dark] {
+			for theme in ColorTheme::ALL {
+				let colors = ColorScheme::new(appearance, theme);
+				for background in
+					[gpui::rgb(0), gpui::rgb(0xffffff), colors.rgb(super::super::CANVAS)]
+				{
+					for fill in [
+						colors.annotation(),
+						colors.rgb(super::super::SURFACE_OVERLAY_MATERIAL >> 8),
+					] {
+						assert!(
+							contrast(
+								colors.rgb(super::super::foreground::PRIMARY),
+								background.blend(fill)
+							) >= 4.5,
+							"{appearance:?} {theme:?}: text on an elevated reading surface"
+						);
+					}
 				}
 			}
 		}

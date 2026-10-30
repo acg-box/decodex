@@ -52,4 +52,19 @@ final class ThinMaterialViewTests: XCTestCase {
 		XCTAssertTrue(foreground.superview === next)
 		XCTAssertEqual(foreground.frame, next.bounds)
 	}
+
+	@MainActor
+	func testExplicitPopoverTintDoesNotChangeUntintedSurfaces() throws {
+		let popover = ThinMaterialView(frame: .zero)
+		let input = ThinMaterialView(frame: .zero)
+		let tint = NSColor(srgbRed: 0.1, green: 0.15, blue: 0.25, alpha: 1)
+		let original = input.layer?.backgroundColor
+		popover.tintColor = tint
+		XCTAssertEqual(popover.layer?.backgroundColor, tint.cgColor)
+		XCTAssertTrue(try XCTUnwrap(popover.subviews.first).isHidden)
+		XCTAssertEqual(input.layer?.backgroundColor, original)
+		XCTAssertFalse(try XCTUnwrap(input.subviews.first).isHidden)
+		popover.tintColor = nil
+		XCTAssertFalse(try XCTUnwrap(popover.subviews.first).isHidden)
+	}
 }

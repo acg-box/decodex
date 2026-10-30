@@ -89,6 +89,18 @@ mod macos {
 		}
 	}
 
+	pub(super) fn remove_backdrop(window: &Window) {
+		let Some(content) = content(window) else { return };
+		let identifier = objc2_foundation::NSString::from_str("decodex-window-material");
+		for view in content.subviews().iter() {
+			let tag: Option<Retained<objc2_foundation::NSString>> =
+				unsafe { msg_send![&*view, identifier] };
+			if tag.is_some_and(|tag| tag == identifier) {
+				view.removeFromSuperview();
+			}
+		}
+	}
+
 	fn content(window: &Window) -> Option<Retained<NSView>> {
 		let handle = HasWindowHandle::window_handle(window).ok()?;
 		let RawWindowHandle::AppKit(handle) = handle.as_raw() else { return None };
@@ -102,6 +114,11 @@ mod macos {
 use gpui::{Window, WindowBackgroundAppearance};
 
 use crate::ui_theme::material::{Material, Surface};
+
+#[cfg(all(target_os = "macos", not(test)))]
+pub(crate) fn remove_backdrop(window: &Window) {
+	macos::remove_backdrop(window);
+}
 
 pub(crate) fn configure(window: &mut Window) {
 	apply(window, Surface::Window.material());

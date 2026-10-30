@@ -19,7 +19,7 @@ use gpui::{
 };
 use ui_theme::{
 	appearance::Appearance,
-	material::{GlassStyle, Material, Surface},
+	material::{GlassScope, GlassStyle, Material, Surface},
 };
 
 use crate::{
@@ -31,7 +31,9 @@ use crate::{
 	native_menu_bar::{LaunchAtLoginState, NativeMenuBarHost},
 	panel_preferences::PanelDefaults,
 	ui_feedback::{self, Feedback},
-	ui_loading, ui_preferences,
+	ui_loading,
+	ui_motion::{Choice, Segmented},
+	ui_preferences,
 	ui_scroll::SmoothScrollArea,
 	ui_theme::{
 		self, SETTINGS_CONTROL_HEIGHT, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_LABEL_SIZE,
@@ -159,7 +161,7 @@ impl SettingsSurface {
 									.child(format!("{value} px")),
 							)
 							.child(
-								ui_theme::settings_segments(title)
+								ui_theme::settings_button_group(title)
 									.children([(-24_i32, "−"), (24, "+")].into_iter().map(
 										|(delta, label)| {
 											ui_theme::settings_button(
@@ -223,38 +225,33 @@ impl SettingsSurface {
 						"Cursor style",
 						"The text insertion point in message inputs.",
 					))
-					.child(
-						ui_theme::settings_segments("Cursor style").children(
-							[
-								("Bar", Shape::Bar),
-								("Block", Shape::Block),
-								("Underline", Shape::Underline),
-							]
-							.into_iter()
-							.map(|(label, shape)| {
-								let value = Preference { shape, ..current };
-
-								ui_theme::settings_segment(
-									SharedString::from(format!("Cursor style-{label}")),
-									label,
-									current.shape == shape,
-								)
-								.aria_label(format!("Cursor style: {label}"))
-								.on_click(cx.listener(move |_, _, _, cx| value.select(cx)))
-								.on_key_down(cx.listener(
-									move |_, e: &KeyDownEvent, _, cx| {
-										if !e.is_held
-											&& ["enter", "space"]
-												.contains(&e.keystroke.key.as_str())
-										{
-											value.select(cx);
-											cx.stop_propagation();
-										}
-									},
-								))
-							}),
-						),
-					),
+					.child(Segmented::new(
+						"settings-segments-Cursor style",
+						"Cursor style",
+						[
+							("Bar", Shape::Bar),
+							("Block", Shape::Block),
+							("Underline", Shape::Underline),
+						]
+						.map(|(label, _)| {
+							Choice::new(
+								format!("Cursor style-{label}"),
+								label,
+								format!("Cursor style: {label}"),
+							)
+						}),
+						[Shape::Bar, Shape::Block, Shape::Underline]
+							.iter()
+							.position(|shape| *shape == current.shape)
+							.unwrap_or(0),
+						cx.listener(move |_, index: &usize, _, cx| {
+							Preference {
+								shape: [Shape::Bar, Shape::Block, Shape::Underline][*index],
+								..current
+							}
+							.select(cx);
+						}),
+					)),
 			)
 			.children(
 				[
@@ -293,30 +290,20 @@ impl SettingsSurface {
 				"Color scheme",
 				"System follows your Mac’s light or dark appearance.",
 			))
-			.child(
-				ui_theme::settings_segments("Appearance").children(
-					[
-						(Appearance::System, "System"),
-						(Appearance::Light, "Light"),
-						(Appearance::Dark, "Dark"),
-					]
-					.into_iter()
-					.map(|(value, label)| {
-						ui_theme::settings_segment(label, label, value == selected)
-							.debug_selector(move || format!("theme-{label}"))
-							.aria_label(format!("Appearance: {label}"))
-							.on_click(cx.listener(move |_, _, _, cx| value.select(cx)))
-							.on_key_down(cx.listener(move |_, event: &KeyDownEvent, _, cx| {
-								if !event.is_held
-									&& ["enter", "space"].contains(&event.keystroke.key.as_str())
-								{
-									value.select(cx);
-									cx.stop_propagation();
-								}
-							}))
-					}),
-				),
-			)
+			.child(Segmented::new(
+				"settings-segments-Appearance",
+				"Appearance",
+				["System", "Light", "Dark"].map(|label| {
+					Choice::new(format!("theme-{label}"), label, format!("Appearance: {label}"))
+				}),
+				[Appearance::System, Appearance::Light, Appearance::Dark]
+					.iter()
+					.position(|value| *value == selected)
+					.unwrap_or(0),
+				cx.listener(|_, index: &usize, _, cx| {
+					[Appearance::System, Appearance::Light, Appearance::Dark][*index].select(cx)
+				}),
+			))
 	}
 
 	fn material_controls(&self, surface: Surface, cx: &mut Context<Self>) -> impl IntoElement {
@@ -324,60 +311,56 @@ impl SettingsSurface {
 		let id = match surface {
 			Surface::Window => "window-material",
 			Surface::InputBar => "input-bar-material",
+			Surface::Popover => "popover-material",
 		};
 		let description = match surface {
 			Surface::Window => "Thin uses a flat tint; Liquid Glass uses macOS glass.",
 			Surface::InputBar => "Set the message input material separately from the window.",
+			Surface::Popover => "Shared by model, Guardian, permissions and other selection menus.",
 		};
 
 		ui_theme::settings_row()
 			.id(id)
 			.child(ui_theme::settings_label(surface.label(), description))
-			.child(ui_theme::settings_segments(surface.label()).children(
-				[Material::Thin, Material::LiquidGlass].into_iter().map(|material| {
-					let label = material.label();
-
-					ui_theme::settings_segment(label, label, material == selected)
-						.debug_selector(move || format!("{id}-{label}"))
-						.aria_label(format!("{}: {label}", surface.label()))
-						.on_click(cx.listener(move |_, _, _, cx| surface.select(material, cx)))
-						.on_key_down(cx.listener(move |_, event: &KeyDownEvent, _, cx| {
-							if !event.is_held
-								&& ["enter", "space"].contains(&event.keystroke.key.as_str())
-							{
-								surface.select(material, cx);
-								cx.stop_propagation();
-							}
-						}))
+			.child(Segmented::new(
+				format!("settings-segments-{}", surface.label()),
+				surface.label(),
+				[Material::Thin, Material::LiquidGlass].map(|material| {
+					Choice::new(
+						format!("{id}-{}", material.label()),
+						material.label(),
+						format!("{}: {}", surface.label(), material.label()),
+					)
+				}),
+				usize::from(selected == Material::LiquidGlass),
+				cx.listener(move |_, index: &usize, _, cx| {
+					surface.select([Material::Thin, Material::LiquidGlass][*index], cx)
 				}),
 			))
 	}
 
-	fn glass_controls(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		let style = GlassStyle::configured();
+	fn glass_controls(&self, scope: GlassScope, cx: &mut Context<Self>) -> impl IntoElement {
+		let style = scope.configured();
 
 		ui_theme::settings_row()
 			.child(ui_theme::settings_label(
-				"Glass finish",
-				"Regular adds tint; Clear shows more of the background.",
+				scope.label(),
+				"Regular softens the background; Clear shows more through.",
 			))
-			.child(ui_theme::settings_segments("Glass appearance").children(
-				[(GlassStyle::Regular, "Regular"), (GlassStyle::Clear, "Clear")].into_iter().map(
-					|(value, label)| {
-						ui_theme::settings_segment(label, label, value == style)
-							.debug_selector(move || label.into())
-							.aria_label(format!("Window Liquid Glass style: {label}"))
-							.on_click(cx.listener(move |_, _, _, cx| value.select(cx)))
-							.on_key_down(cx.listener(move |_, event: &KeyDownEvent, _, cx| {
-								if !event.is_held
-									&& ["enter", "space"].contains(&event.keystroke.key.as_str())
-								{
-									value.select(cx);
-									cx.stop_propagation();
-								}
-							}))
-					},
-				),
+			.child(Segmented::new(
+				format!("settings-segments-{}", scope.label()),
+				scope.label(),
+				["Regular", "Clear"].map(|label| {
+					Choice::new(
+						format!("{}-{label}", scope.id()),
+						label,
+						format!("{}: {label}", scope.label()),
+					)
+				}),
+				usize::from(style == GlassStyle::Clear),
+				cx.listener(move |_, index: &usize, _, cx| {
+					scope.select([GlassStyle::Regular, GlassStyle::Clear][*index], cx)
+				}),
 			))
 	}
 }
@@ -609,13 +592,18 @@ impl SettingsSurface {
 					.child(self.theme_controls(cx)),
 			)
 			.child(ui_theme::settings_group("Materials", {
-				let mut controls = vec![
-					self.material_controls(Surface::Window, cx).into_any_element(),
-					self.material_controls(Surface::InputBar, cx).into_any_element(),
-				];
-
-				if Surface::Window.material() == Material::LiquidGlass {
-					controls.push(self.glass_controls(cx).into_any_element());
+				let mut controls = Vec::new();
+				for (surface, scope) in [
+					(Surface::Window, Some(GlassScope::Window)),
+					(Surface::InputBar, None),
+					(Surface::Popover, Some(GlassScope::Popover)),
+				] {
+					controls.push(self.material_controls(surface, cx).into_any_element());
+					if surface.material() == Material::LiquidGlass
+						&& let Some(scope) = scope
+					{
+						controls.push(self.glass_controls(scope, cx).into_any_element());
+					}
 				}
 
 				controls
@@ -1211,7 +1199,7 @@ mod tests {
 	use gpui::{self, AppContext as _, TestAppContext};
 	use ui_theme::{
 		appearance::Appearance,
-		material::{GlassStyle, Material, Surface},
+		material::{GlassScope, GlassStyle, Material, Surface},
 	};
 
 	use crate::{
@@ -1908,19 +1896,19 @@ mod tests {
 			window.draw(cx).clear(cx);
 		});
 
-		scroll_to_control(visual, "Clear");
+		scroll_to_control(visual, "window-glass-Clear");
 
-		let clear = visual.debug_bounds("Clear").expect("Clear control");
+		let clear = visual.debug_bounds("window-glass-Clear").expect("Clear control");
 
 		visual.simulate_click(clear.center(), Default::default());
 
-		assert_eq!(GlassStyle::configured(), GlassStyle::Clear);
+		assert_eq!(GlassScope::Window.configured(), GlassStyle::Clear);
 
-		let regular = visual.debug_bounds("Regular").expect("Regular control");
+		let regular = visual.debug_bounds("window-glass-Regular").expect("Regular control");
 
 		visual.simulate_click(regular.center(), Default::default());
 
-		assert_eq!(GlassStyle::configured(), GlassStyle::Regular);
+		assert_eq!(GlassScope::Window.configured(), GlassStyle::Regular);
 	}
 
 	#[gpui::test]
@@ -1957,7 +1945,10 @@ mod tests {
 			visual.update(crate::ui_frame::draw_current_frame);
 		}
 
-		assert!(visual.debug_bounds("Regular").is_none(), "glass style has no effect on Thin");
+		assert!(
+			visual.debug_bounds("window-glass-Regular").is_none(),
+			"glass style has no effect on Thin"
+		);
 
 		for target in [Surface::Window, Surface::InputBar] {
 			let id = if target == Surface::Window {
@@ -1971,7 +1962,34 @@ mod tests {
 			visual.update(crate::ui_frame::draw_current_frame);
 		}
 
-		assert!(visual.debug_bounds("Regular").is_some());
+		assert!(visual.debug_bounds("window-glass-Regular").is_some());
+	}
+
+	#[gpui::test]
+	fn popover_glass_can_be_set_while_window_and_input_remain_thin(cx: &mut TestAppContext) {
+		let (_, visual) = cx.add_window_view(|_, cx| {
+			Surface::Window.select(Material::Thin, cx);
+			Surface::InputBar.select(Material::Thin, cx);
+			Surface::Popover.select(Material::Thin, cx);
+			GlassScope::Window.select(GlassStyle::Regular, cx);
+			let mut settings = SettingsSurface::new(DesktopSettingsController::production(), cx);
+			settings.category = SettingsCategory::Appearance;
+			settings
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("popover-glass-Clear").is_none());
+		scroll_to_control(visual, "popover-material-Liquid Glass");
+		let material = visual.debug_bounds("popover-material-Liquid Glass").unwrap();
+		visual.simulate_click(material.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		scroll_to_control(visual, "popover-glass-Clear");
+		let clear = visual.debug_bounds("popover-glass-Clear").unwrap();
+		visual.simulate_click(clear.center(), Default::default());
+		assert_eq!(GlassScope::Popover.configured(), GlassStyle::Clear);
+		assert_eq!(GlassScope::Window.configured(), GlassStyle::Regular);
+		assert_eq!(Surface::Window.material(), Material::Thin);
+		assert_eq!(Surface::InputBar.material(), Material::Thin);
+		assert_eq!(Surface::Popover.material(), Material::LiquidGlass);
 	}
 
 	#[gpui::test]

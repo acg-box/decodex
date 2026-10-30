@@ -526,7 +526,7 @@ impl ServiceApplication {
 		)
 	}
 
-	async fn query_agent_snapshot(&self) -> QueryResultPayload {
+	async fn query_agent_snapshot(&self, archived: bool) -> QueryResultPayload {
 		let initializing = self.agent.as_ref().is_some_and(|agent| agent.connection_initializing());
 		let before = match &self.agent {
 			Some(agent) => agent.runtime_source().await,
@@ -548,7 +548,7 @@ impl ServiceApplication {
 					);
 				}
 
-				agent.retain_active_work(snapshot).await;
+				agent.project_work(snapshot, archived).await;
 			}
 
 			let after = match &self.agent {
@@ -2841,7 +2841,8 @@ impl Application for ServiceApplication {
 				query_work_evidence(&self.store, &query.payload).await,
 			QueryPayload::GetAgentGuardianReviews { .. }
 			| QueryPayload::GetAgentGuardianDetail { .. } => self.query_guardian(&query.payload).await,
-			QueryPayload::GetAgentSnapshot => self.query_agent_snapshot().await,
+			QueryPayload::GetAgentSnapshot => self.query_agent_snapshot(false).await,
+			QueryPayload::GetAgentArchiveCatalog => self.query_agent_snapshot(true).await,
 			QueryPayload::GetAgentExchanges { before } => self.query_exchanges(*before).await,
 			QueryPayload::GetAgentDeliveries { query } => self.query_deliveries(query).await,
 			QueryPayload::GetDesktopSettings

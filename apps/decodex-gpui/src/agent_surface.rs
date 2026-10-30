@@ -42,8 +42,8 @@
 mod native_composer;
 #[path = "agent_native_goal.rs"] mod native_goal;
 #[cfg(all(target_os = "macos", not(test)))]
-#[path = "agent_native_model_menu.rs"]
-mod native_model_menu;
+#[path = "agent_native_menu.rs"]
+mod native_menu;
 #[path = "agent_timeline.rs"] mod native_timeline;
 #[path = "agent_output_stream.rs"] mod output_stream;
 #[path = "agent_panel_controls.rs"] mod panel_controls;
@@ -2617,7 +2617,7 @@ impl ResourceForm {
 #[derive(Default)]
 struct NativeControls {
 	composer: native_composer::NativeComposer,
-	model_menu: native_model_menu::NativeModelMenu,
+	menu: native_menu::NativeMenu,
 }
 
 struct SurfacePresentations {
@@ -2686,6 +2686,7 @@ impl SurfacePresentations {
 }
 
 struct WorkspaceView {
+	archives: archive::Catalog,
 	portfolio_mode: bool,
 	work_detail: Option<String>,
 	work_evidence: Option<WorkPortfolio>,
@@ -2742,6 +2743,7 @@ struct WorkspaceView {
 impl Default for WorkspaceView {
 	fn default() -> Self {
 		Self {
+			archives: Default::default(),
 			arrival: Default::default(),
 			portfolio_mode: false,
 			work_detail: None,

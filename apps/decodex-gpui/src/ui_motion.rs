@@ -1,12 +1,14 @@
 //! Interruptible motion shared by native controls and workspace panels.
 
 #[path = "ui_overflow_label.rs"] mod overflow_label;
+#[path = "ui_segmented.rs"] mod segmented;
 #[path = "ui_text_reveal.rs"] mod text_reveal;
 
 pub(crate) use crate::ui_frame::{
 	animations_active, application_active, observe_activation, request_frame, window_options,
 };
 pub(crate) use overflow_label::OverflowLabel;
+pub(crate) use segmented::{Choice, Segmented};
 pub(crate) use text_reveal::TextReveal;
 
 use std::{
@@ -30,8 +32,8 @@ use objc2::{
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::ui_theme::{
-	self, CONVERSATION_TAB_GAP, CONVERSATION_TAB_SIZE, ColorScheme, ERROR, INFO, SUCCESS,
-	SURFACE_OVERLAY_MATERIAL, TEXT, WARNING,
+	self, CONVERSATION_TAB_GAP, CONVERSATION_TAB_SIZE, ColorScheme, ERROR, INFO, SUCCESS, TEXT,
+	WARNING,
 };
 
 pub(crate) trait SmoothControl {
@@ -289,16 +291,8 @@ impl RenderOnce for Arrival {
 #[derive(IntoElement)]
 pub(crate) struct Popover {
 	id: ElementId,
-	unframed: bool,
 	visible: bool,
 	child: AnyElement,
-}
-impl Popover {
-	pub(crate) fn unframed(mut self, unframed: bool) -> Self {
-		self.unframed = unframed;
-
-		self
-	}
 }
 
 impl RenderOnce for Popover {
@@ -326,8 +320,9 @@ impl RenderOnce for Popover {
 				gpui::div()
 					.w_full()
 					.relative()
+					.debug_selector(|| "popover-surface".into())
 					.top(gpui::px(-4. * (1. - progress)))
-					.when(!self.unframed, menu_surface)
+					.map(menu_surface)
 					.child(self.child),
 			)
 		})
@@ -559,10 +554,10 @@ where
 	T: Styled,
 {
 	surface
-		.rounded(gpui::px(10.))
+		.rounded(gpui::px(ui_theme::POPOVER_RADIUS))
 		.border_1()
-		.border_color(ui_theme::rgba(0xffffff14))
-		.bg(ui_theme::rgb(SURFACE_OVERLAY_MATERIAL >> 8))
+		.border_color(ui_theme::rgb(TEXT).opacity(0.06))
+		.bg(ui_theme::popover_surface())
 		.shadow(vec![gpui::BoxShadow {
 			inset: false,
 			color: ui_theme::rgba(0x00000028).into(),
@@ -681,7 +676,7 @@ pub(crate) fn arrival(route: String, child: impl IntoElement) -> Arrival {
 }
 
 pub(crate) fn popover(id: impl Into<ElementId>, visible: bool, child: impl IntoElement) -> Popover {
-	Popover { id: id.into(), visible, child: child.into_any_element(), unframed: false }
+	Popover { id: id.into(), visible, child: child.into_any_element() }
 }
 
 #[cfg(test)]

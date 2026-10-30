@@ -1,5 +1,7 @@
 //! Workspace membership is visible on the canvas, without hiding cross-workspace edges.
-use gpui::{AnyElement, ClickEvent, PathBuilder, TextRun, WindowTextSystem};
+use gpui::{
+	AnyElement, ClickEvent, PathBuilder, TextRun, WindowTextSystem, prelude::FluentBuilder,
+};
 
 use crate::{
 	shell::agent_surface::work_board::relations::{
@@ -21,28 +23,14 @@ fn corner_radius(scale: f32) -> f32 {
 	(16. * scale).clamp(4., 16.)
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(in super::super::super) enum Selection {
-	Project(String),
-	Unassigned,
-}
-
 pub(super) struct Scope {
-	pub id: Option<String>,
+	pub id: String,
 	pub title: String,
 	pub members: BTreeSet<String>,
 	pub bounds: [f32; 4],
 }
 
 impl Scope {
-	pub(super) fn selection(&self) -> Selection {
-		self.id.as_ref().map_or(Selection::Unassigned, |id| Selection::Project(id.clone()))
-	}
-
-	fn heading(&self) -> String {
-		if self.id.is_some() { self.title.clone() } else { "No project".into() }
-	}
-
 	fn count_label(&self) -> String {
 		let count = self.members.len();
 
@@ -50,15 +38,10 @@ impl Scope {
 	}
 
 	pub(super) fn label(&self) -> String {
-		format!(
-			"{}{} · {}",
-			if self.id.is_some() { "Project: " } else { "" },
-			self.heading(),
-			self.count_label()
-		)
+		format!("Project: {} · {}", self.title, self.count_label())
 	}
 
-	pub(super) fn header_width(&self, text: &WindowTextSystem) -> f32 {
+	pub(super) fn header_width(&self, text: &WindowTextSystem, show_count: bool) -> f32 {
 		let measure = |value: String, size: f32, numeric: bool| {
 			let len = value.len();
 			let mut font = gpui::font(ui_theme::FONT_FAMILY);
@@ -79,13 +62,16 @@ impl Scope {
 		};
 
 		2. * LABEL_PADDING
-			+ LABEL_GAP
 			+ 4.
-			+ measure(self.heading(), TITLE_SIZE, false).min(240.)
-			+ measure(self.count_label(), COUNT_SIZE, true)
+			+ measure(self.title.clone(), TITLE_SIZE, false)
+			+ if show_count {
+				LABEL_GAP + measure(self.count_label(), COUNT_SIZE, true)
+			} else {
+				0.
+			}
 	}
 
-	/// Pin the title to the visible portion without turning the whole group into a hit target.
+	/// Keep the whole title in its border. A small or clipped scope needs no legend.
 	pub(super) fn header_rect(
 		&self,
 		scale: f32,
@@ -105,21 +91,19 @@ impl Scope {
 			return None;
 		}
 
-		let width = width.min((viewport.0 - 8.).max(0.));
 		let inset = corner_radius(scale) + 12.;
-		let embedded = self.id.is_some()
-			&& 2. * GRID * scale >= HEADER_HEIGHT / 2. + 4.
-			&& right - left >= width + 2. * inset;
+		let start = (left + inset).max(4.);
+		let end = (right - inset).min(viewport.0 - 4.);
 
-		Some(card::Rect {
-			x: (left + if embedded { inset } else { 4. })
-				.clamp(4., (viewport.0 - width - 4.).max(4.)),
-			y: (top - if embedded { HEADER_HEIGHT / 2. } else { HEADER_HEIGHT })
-				.max(4.)
-				.min(bottom - HEADER_HEIGHT),
-			width,
-			height: HEADER_HEIGHT,
-		})
+		if 2. * GRID * scale < HEADER_HEIGHT / 2. + 4.
+			|| end - start < width
+			|| top < HEADER_HEIGHT / 2. + 4.
+			|| top + HEADER_HEIGHT / 2. > viewport.1 - 4.
+		{
+			return None;
+		}
+
+		Some(card::Rect { x: start, y: top - HEADER_HEIGHT / 2., width, height: HEADER_HEIGHT })
 	}
 
 	/// A quiet dashed boundary keeps membership visible without enclosing a card.
@@ -129,7 +113,7 @@ impl Scope {
 		selected: bool,
 		title_gap: Option<(f32, f32)>,
 	) -> AnyElement {
-		let id = format!("project-scope-{}", self.id.as_deref().unwrap_or("unassigned"));
+		let id = format!("project-scope-{}", self.id);
 
 		gpui::canvas(
 			|_, _, _| (),
@@ -142,14 +126,14 @@ impl Scope {
 					gpui::px(snap(f32::from(bounds.top()))),
 				);
 				let radius = snap(corner_radius(scale));
-				let stroke = snap(1.);
+				let stroke = snap(1.5);
 				let left = stroke / 2.;
 				let top = stroke / 2.;
 				let right = snap(f32::from(bounds.right())) - f32::from(origin.x) - stroke / 2.;
 				let bottom = snap(f32::from(bounds.bottom())) - f32::from(origin.y) - stroke / 2.;
 				let point = |x, y| origin + gpui::point(gpui::px(x), gpui::px(y));
 				let dashed = || {
-					PathBuilder::stroke(gpui::px(stroke)).dash_array(&[gpui::px(4.), gpui::px(6.)])
+					PathBuilder::stroke(gpui::px(stroke)).dash_array(&[gpui::px(5.), gpui::px(4.)])
 				};
 				let gap = title_gap.map(|(start, end)| {
 					(
@@ -174,7 +158,10 @@ impl Scope {
 				path.curve_to(point(left + radius, top), point(left, top));
 
 				if let Ok(path) = path.build() {
-					window.paint_path(path, ui_theme::rgb(ui_theme::TEXT_MUTED).opacity(0.24));
+					window.paint_path(
+						path,
+						ui_theme::rgb(ui_theme::TEXT_MUTED).opacity(0.53 + active * 0.06),
+					);
 				}
 
 				// Selection belongs to the legend, not a second bright box around
@@ -214,7 +201,7 @@ impl Scope {
 
 impl AgentSurface {
 	pub(super) fn relation_scope_selected(&self, scope: &Scope) -> bool {
-		self.work_board.view.picked_scope.as_ref() == Some(&scope.selection())
+		self.work_board.view.picked_project.as_ref() == Some(&scope.id)
 			|| self
 				.work_board
 				.view
@@ -233,7 +220,8 @@ impl AgentSurface {
 		let mut labels = Vec::new();
 
 		for scope in &graph.scopes {
-			let width = scope.header_width(&text);
+			let show_count = self.work_board.view.picked_project.as_ref() == Some(&scope.id);
+			let width = scope.header_width(&text, show_count);
 			let Some(rect) = scope.header_rect(
 				self.relation_scale(),
 				self.work_board.view.pan,
@@ -242,10 +230,7 @@ impl AgentSurface {
 			) else {
 				continue;
 			};
-			let Some(rect) = place_header(rect, &placed, self.work_board.view.viewport.1) else {
-				continue;
-			};
-			let rect = clear_header_routes(
+			let Some(rect) = clear_header_routes(
 				rect,
 				scope,
 				graph,
@@ -253,7 +238,9 @@ impl AgentSurface {
 				self.work_board.view.pan,
 				self.work_board.view.viewport.0,
 				&placed,
-			);
+			) else {
+				continue;
+			};
 
 			placed.push(rect);
 			labels.push((scope, rect));
@@ -269,14 +256,15 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
 		for (scope, rect) in self.relation_scope_labels(graph) {
-			let heading = scope.heading();
+			let heading = scope.title.clone();
 			let count = scope.count_label();
-			let selection = scope.selection();
+			let project = scope.id.clone();
+			let show_count = self.work_board.view.picked_project.as_ref() == Some(&scope.id);
 			let selected = self.relation_scope_selected(scope);
-			let id = format!("project-title-{}", scope.id.as_deref().unwrap_or("unassigned"));
+			let id = format!("project-title-{}", scope.id);
 			let action: card::PointerAction<ClickEvent> =
 				std::rc::Rc::new(cx.listener(move |s, _, _, cx| {
-					s.frame_relation_project(selection.clone(), cx);
+					s.frame_relation_project(project.clone(), cx);
 					cx.stop_propagation();
 				}));
 			let button = gpui::div()
@@ -305,14 +293,20 @@ impl AgentSurface {
 				.hover(|style| style.text_color(ui_theme::rgb(ui_theme::BLUE)))
 				.focus_visible(|style| style.bg(ui_theme::rgb(ui_theme::BLUE).opacity(0.10)))
 				.child(gpui::div().flex_1().min_w_0().truncate().child(heading))
-				.child(
-					gpui::div()
-						.flex_none()
-						.text_size(gpui::px(COUNT_SIZE))
-						.font_features(card::number_features())
-						.text_color(ui_theme::rgb(ui_theme::foreground::SECONDARY))
-						.child(count),
-				);
+				.when(show_count, |button| {
+					button.child(
+						gpui::div()
+							.debug_selector({
+								let id = scope.id.clone();
+								move || format!("project-count-{id}")
+							})
+							.flex_none()
+							.text_size(gpui::px(COUNT_SIZE))
+							.font_features(card::number_features())
+							.text_color(ui_theme::rgb(ui_theme::foreground::SECONDARY))
+							.child(count),
+					)
+				});
 
 			canvas = canvas.child(
 				gpui::div()
@@ -342,7 +336,7 @@ fn clear_header_routes(
 	pan: (f32, f32),
 	viewport_width: f32,
 	placed: &[card::Rect],
-) -> card::Rect {
+) -> Option<card::Rect> {
 	let clear = |candidate: card::Rect| {
 		let bounds = [
 			(candidate.x - pan.0 - 4.) / zoom,
@@ -363,7 +357,7 @@ fn clear_header_routes(
 	};
 
 	if clear(rect) {
-		return rect;
+		return Some(rect);
 	}
 
 	let right = (scope.bounds[2] * zoom + pan.0 - corner_radius(zoom) - 12.)
@@ -374,62 +368,13 @@ fn clear_header_routes(
 	(1..=steps)
 		.map(|step| card::Rect { x: rect.x + step as f32 * 16., ..rect })
 		.find(|candidate| clear(*candidate))
-		.unwrap_or(rect)
-}
-
-/// Small-zoom titles can overlap even though the project geometry does not.
-/// Move only the label, keeping node positions and camera anchors unchanged.
-fn place_header(rect: card::Rect, placed: &[card::Rect], height: f32) -> Option<card::Rect> {
-	std::iter::once(rect.y)
-		.chain((1..=placed.len()).flat_map(|step| {
-			let offset = step as f32 * (HEADER_HEIGHT + 4.);
-
-			[rect.y - offset, rect.y + offset]
-		}))
-		.find(|y| {
-			*y >= 4.
-				&& *y + rect.height <= height - 4.
-				&& placed.iter().all(|other| {
-					rect.x + rect.width + 4. <= other.x
-						|| other.x + other.width + 4. <= rect.x
-						|| *y + rect.height + 4. <= other.y
-						|| other.y + other.height + 4. <= *y
-				})
-		})
-		.map(|y| card::Rect { y, ..rect })
 }
 
 impl Graph {
 	pub(super) fn scope_bounds(&mut self, projects: &[ProjectDto]) {
-		if !self.nodes.iter().any(|n| n.row.as_ref().is_some_and(|r| r.workspace.is_some())) {
-			return;
-		}
-
-		// A root that coordinates across projects belongs above those groups.
-		// Including it in "No Project" would stretch that frame across all branches.
-		let coordinator = self
-			.nodes
-			.iter()
-			.find(|node| {
-				node.row.as_ref().is_some_and(|row| row.workspace.is_none())
-					&& !self.edges.iter().any(|edge| edge.kind.hierarchy() && edge.to == node.key)
-					&& self.edges.iter().any(|edge| {
-						edge.kind.hierarchy()
-							&& edge.from == node.key
-							&& self.nodes.iter().any(|child| {
-								child.key == edge.to
-									&& child.row.as_ref().is_some_and(|row| row.workspace.is_some())
-							})
-					})
-			})
-			.map(|node| node.key.as_str());
-
 		for node in &self.nodes {
-			if coordinator == Some(node.key.as_str()) {
-				continue;
-			}
-
 			let Some(row) = &node.row else { continue };
+			let Some(project) = &row.workspace else { continue };
 			let bounds = [
 				((node.x - GRID) / GRID).floor() * GRID,
 				((node.y - 2. * GRID) / GRID).floor() * GRID,
@@ -437,22 +382,21 @@ impl Graph {
 				((node.y + node.height() + GRID) / GRID).ceil() * GRID,
 			];
 
-			if let Some(scope) = self.scopes.iter_mut().find(|g| g.id == row.workspace) {
+			if let Some(scope) = self.scopes.iter_mut().find(|g| &g.id == project) {
 				scope.bounds[0] = scope.bounds[0].min(bounds[0]);
 				scope.bounds[1] = scope.bounds[1].min(bounds[1]);
 				scope.bounds[2] = scope.bounds[2].max(bounds[2]);
 				scope.bounds[3] = scope.bounds[3].max(bounds[3]);
 				scope.members.insert(node.key.clone());
 			} else {
-				let title = row
-					.workspace
-					.as_ref()
-					.and_then(|id| projects.iter().find(|w| &w.id == id))
+				let title = projects
+					.iter()
+					.find(|w| &w.id == project)
 					.map(|w| w.name.clone())
-					.unwrap_or_else(|| "No Project".into());
+					.unwrap_or_else(|| "Project".into());
 
 				self.scopes.push(Scope {
-					id: row.workspace.clone(),
+					id: project.clone(),
 					title,
 					members: BTreeSet::from([node.key.clone()]),
 					bounds,
@@ -470,25 +414,19 @@ mod tests {
 	use crate::shell::agent_surface::work_board::{relations::layout, tests};
 
 	#[test]
-	fn small_zoom_titles_remain_separate_without_moving_their_horizontal_anchor() {
-		let mut placed = Vec::new();
+	fn titles_hide_when_small_or_clipped_instead_of_floating_outside_the_border() {
+		let scope = Scope {
+			id: "project".into(),
+			title: "Project".into(),
+			members: BTreeSet::new(),
+			bounds: [0., 0., 600., 300.],
+		};
 
-		for x in [200., 250., 300.] {
-			let rect = place_header(
-				card::Rect { x, y: 80., width: 180., height: HEADER_HEIGHT },
-				&placed,
-				200.,
-			)
-			.unwrap();
-
-			assert_eq!(rect.x, x);
-			assert!(
-				placed
-					.iter()
-					.all(|other: &card::Rect| (other.y - rect.y).abs() >= HEADER_HEIGHT + 4.)
-			);
-			placed.push(rect);
-		}
+		assert!(scope.header_rect(0.1, (40., 80.), (500., 400.), 100.).is_none());
+		assert!(scope.header_rect(1., (40., 80.), (120., 400.), 100.).is_none());
+		assert!(scope.header_rect(1., (40., 0.), (500., 400.), 100.).is_none());
+		let rect = scope.header_rect(1., (40., 80.), (500., 400.), 100.).unwrap();
+		assert_eq!(rect.y + HEADER_HEIGHT / 2., 80.);
 	}
 
 	#[test]
@@ -503,13 +441,14 @@ mod tests {
 			paths: std::collections::BTreeMap::from([("wire".into(), std::rc::Rc::new(curve))]),
 		};
 		let scope = Scope {
-			id: Some("project".into()),
+			id: "project".into(),
 			title: "Project".into(),
 			members: BTreeSet::new(),
 			bounds: [0., 0., 600., 300.],
 		};
 		let rect = card::Rect { x: 41., y: 11., width: 100., height: HEADER_HEIGHT };
-		let placed = clear_header_routes(rect, &scope, &graph, 0.75, (17., 23.), 500., &[]);
+		let placed =
+			clear_header_routes(rect, &scope, &graph, 0.75, (17., 23.), 500., &[]).unwrap();
 
 		assert!(placed.x > 81. && placed.x + placed.width < 500.);
 		assert_eq!(placed.y, rect.y);
@@ -543,7 +482,7 @@ mod tests {
 
 		surface.update(cx, |s, cx| {
 			let current = (s.selected.clone(), s.native_agents.selected.clone());
-			let selection = Selection::Project("project".into());
+			let selection = String::from("project");
 
 			for mode in layout::Mode::ALL {
 				for presentation in [layout::Presentation::Links, layout::Presentation::Together] {
@@ -554,8 +493,7 @@ mod tests {
 					s.frame_relation_project(selection.clone(), cx);
 
 					let graph = s.relation_graph();
-					let scope =
-						graph.scopes.iter().find(|scope| scope.selection() == selection).unwrap();
+					let scope = graph.scopes.iter().find(|scope| scope.id == selection).unwrap();
 					let zoom = s.relation_scale();
 					let (x, y) = s.work_board.view.pan;
 					let [left, top, right, bottom] = scope.bounds;
@@ -564,7 +502,7 @@ mod tests {
 					assert!(top * zoom + y >= HEADER_HEIGHT + 15.9);
 					assert!(right * zoom + x <= 1_184.1);
 					assert!(bottom * zoom + y <= 684.1);
-					assert_eq!(s.work_board.view.picked_scope.as_ref(), Some(&selection));
+					assert_eq!(s.work_board.view.picked_project.as_ref(), Some(&selection));
 					assert_eq!((s.selected.clone(), s.native_agents.selected.clone()), current);
 					assert_eq!(s.composer.read(cx).content(), "Keep this draft");
 					assert!(s.work_board.view.positions.is_empty());
@@ -588,19 +526,21 @@ mod tests {
 			}
 
 			s.select_workbench_agent("release", cx);
-			assert!(s.work_board.view.picked_scope.is_none());
+			assert!(s.work_board.view.picked_project.is_none());
 		});
 	}
 
 	#[gpui::test]
-	fn project_legend_stays_on_its_border_after_other_group_headers(cx: &mut gpui::TestAppContext) {
+	fn project_legend_stays_on_its_border_without_unassigned_headers(
+		cx: &mut gpui::TestAppContext,
+	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| fixture(cx));
 
 		visual.simulate_resize(gpui::size(gpui::px(1_600.), gpui::px(900.)));
 		surface.update(visual, |s, cx| {
 			s.work_board.view.zoom = Some(0.75);
 			let graph = s.relation_graph();
-			let scope = graph.scopes.iter().find(|scope| scope.id.is_some()).unwrap();
+			let scope = graph.scopes.iter().find(|scope| scope.id == "project").unwrap();
 
 			s.work_board.view.pan = (80. - scope.bounds[0] * 0.75, 80. - scope.bounds[1] * 0.75);
 			cx.notify();
@@ -612,7 +552,7 @@ mod tests {
 		surface.read_with(visual, |s, _| {
 			let graph = s.work_board.view.layers.graph.borrow();
 			let scope =
-				graph.as_ref().unwrap().scopes.iter().find(|scope| scope.id.is_some()).unwrap();
+				graph.as_ref().unwrap().scopes.iter().find(|scope| scope.id == "project").unwrap();
 			let border_y = f32::from(canvas.origin.y)
 				+ scope.bounds[1] * s.relation_scale()
 				+ s.work_board.view.pan.1;
@@ -639,42 +579,49 @@ mod tests {
 		let current = surface
 			.read_with(visual, |s, _| (s.selected.clone(), s.native_agents.selected.clone()));
 		let title = visual.debug_bounds("project-title-project").unwrap();
+		assert!(visual.debug_bounds("project-title-unassigned").is_none());
+		assert!(visual.debug_bounds("project-count-project").is_none());
+		assert!(visual.debug_bounds("relation-team-release").is_none());
 
 		visual.simulate_click(title.center(), Default::default());
 		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("project-count-project").is_some());
+		assert!(visual.debug_bounds("relation-team-release").is_none());
 
 		surface.read_with(visual, |s, cx| {
-			assert_eq!(s.work_board.view.picked_scope, Some(Selection::Project("project".into())));
+			assert_eq!(s.work_board.view.picked_project, Some(String::from("project")));
 			assert!(s.work_board.view.picked_agent.is_none());
 			assert!(s.work_board.view.drag.is_none());
 			assert_eq!((s.selected.clone(), s.native_agents.selected.clone()), current);
 			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
 		});
 
-		// A title remains usable when individual agent labels disappear.
+		// The title hides when there is no longer room in its own border.
 		surface.update(visual, |s, cx| {
 			s.work_board.view.zoom = Some(0.1);
 			s.work_board.view.card_transition = None;
 			let graph = s.relation_graph();
-			let scope = graph.scopes.iter().find(|scope| scope.id.is_some()).unwrap();
+			let scope = graph.scopes.iter().find(|scope| scope.id == "project").unwrap();
 
 			s.work_board.view.pan = (60. - scope.bounds[0] * 0.1, 80. - scope.bounds[1] * 0.1);
 			cx.notify();
 		});
 		visual.update(crate::ui_frame::draw_frame);
-		assert!(visual.debug_bounds("project-title-project").is_some());
+		assert!(visual.debug_bounds("project-title-project").is_none());
 
-		let title = visual.debug_bounds("project-title-unassigned").unwrap();
-		visual.simulate_click(title.center(), Default::default());
-		visual.update(crate::ui_frame::draw_frame);
-		assert!(
-			visual.debug_bounds("project-unassigned").is_none(),
-			"unassigned agents are not a framed team"
-		);
-		surface.read_with(visual, |s, _| {
-			assert_eq!(s.work_board.view.picked_scope, Some(Selection::Unassigned))
+		assert!(visual.debug_bounds("project-title-unassigned").is_none());
+		assert!(visual.debug_bounds("project-unassigned").is_none());
+
+		surface.update(visual, |s, cx| {
+			s.work_board.view.zoom = Some(0.75);
+			let graph = s.relation_graph();
+			let scope = graph.scopes.iter().find(|scope| scope.id == "project").unwrap();
+			s.work_board.view.pan = (60. - scope.bounds[0] * 0.75, 80. - scope.bounds[1] * 0.75);
+			cx.notify();
 		});
-
+		visual.update(crate::ui_frame::draw_frame);
+		let title = visual.debug_bounds("project-title-project").unwrap();
+		visual.simulate_click(title.center(), Default::default());
 		let focus = visual.update(|window, cx| window.focused(cx).unwrap());
 		for key in ["enter", "space"] {
 			surface.update(visual, |s, cx| {
@@ -685,8 +632,13 @@ mod tests {
 			visual.simulate_keystrokes(key);
 			visual.update(crate::ui_frame::draw_frame);
 			surface.read_with(visual, |s, _| {
-				assert_eq!(s.work_board.view.picked_scope, Some(Selection::Unassigned))
+				assert_eq!(s.work_board.view.picked_project.as_deref(), Some("project"));
 			});
 		}
+
+		surface.update(visual, |s, cx| s.select_workbench_agent("release", cx));
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(visual.debug_bounds("project-count-project").is_none());
+		assert!(visual.debug_bounds("relation-team-release").is_some());
 	}
 }

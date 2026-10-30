@@ -1,352 +1,72 @@
-//! Sliding layout segments. Direct manipulation shares the graph's existing layout transition.
-use gpui::{
-	App, Bounds, ClickEvent, DispatchPhase, KeyDownEvent, MouseUpEvent, Pixels, RenderOnce,
-	WeakEntity, Window,
-};
+//! Graph layout and presentation share the same click-and-drag segments.
+use gpui::{AnyElement, IntoElement as _};
 
 use crate::{
 	shell::agent_surface::{
 		work_board::relations::{
-			AgentSurface, AnyElement, Context, FluentBuilder as _, InteractiveElement as _,
-			IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement as _, Role,
-			SharedString, SmoothControl as _, StatefulInteractiveElement as _, Styled as _, TEXT,
-			TEXT_MUTED,
+			AgentSurface, Context,
 			layout::{self, Presentation},
 		},
 		workspace,
 	},
-	ui_motion,
-	ui_theme::{self, BLUE, CONTROL_GROUP_HEIGHT, CONTROL_SELECTED_FILL},
+	ui_motion::{Choice, Segmented},
 };
-
-const SEGMENT: f32 = 60.;
-const INSET: f32 = 2.;
-
-pub(super) struct Drag {
-	start: f32,
-	origin: f32,
-	value: f32,
-	moved: bool,
-	clicked: layout::Mode,
-}
-impl Drag {
-	fn new(x: f32, left: f32) -> Self {
-		let index = ((x - left - INSET) / SEGMENT).floor().clamp(0., 2.);
-
-		Self {
-			start: x,
-			origin: index,
-			value: index,
-			moved: false,
-			clicked: layout::Mode::ALL[index as usize],
-		}
-	}
-
-	fn move_to(&mut self, x: f32) {
-		let delta = x - self.start;
-
-		self.moved |= delta.abs() >= 3.;
-
-		if self.moved {
-			self.value = (self.origin + delta / SEGMENT).clamp(0., 2.);
-		}
-	}
-
-	fn mode(&self) -> layout::Mode {
-		if self.moved { layout::Mode::ALL[self.value.round() as usize] } else { self.clicked }
-	}
-}
-
-#[derive(gpui::IntoElement)]
-struct Thumb {
-	value: f32,
-	dragging: bool,
-}
-impl RenderOnce for Thumb {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let value =
-			ui_motion::direct_value("graph-layout-thumb", self.value, self.dragging, window, cx);
-
-		gpui::div()
-			.id("relations-layout-thumb")
-			.debug_selector(|| "relations-layout-thumb".into())
-			.absolute()
-			.left(gpui::px(INSET + value * SEGMENT))
-			.top(gpui::px(INSET))
-			.w(gpui::px(SEGMENT))
-			.h(gpui::px(CONTROL_GROUP_HEIGHT - (INSET + 1.) * 2.))
-			.rounded(gpui::px(8.))
-			.border_1()
-			.border_color(gpui::transparent_black())
-			.bg(ui_theme::rgba(CONTROL_SELECTED_FILL))
-	}
-}
-
-#[derive(gpui::IntoElement)]
-struct PresentationThumb {
-	together: bool,
-}
-impl RenderOnce for PresentationThumb {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let value = ui_motion::value(
-			"graph-presentation-thumb",
-			if self.together { 1. } else { 0. },
-			window,
-			cx,
-		);
-
-		gpui::div()
-			.absolute()
-			.left(gpui::px(INSET + value * SEGMENT))
-			.top(gpui::px(INSET))
-			.w(gpui::px(SEGMENT))
-			.h(gpui::px(CONTROL_GROUP_HEIGHT - (INSET + 1.) * 2.))
-			.rounded(gpui::px(8.))
-			.border_1()
-			.border_color(gpui::transparent_black())
-			.bg(ui_theme::rgba(CONTROL_SELECTED_FILL))
-	}
-}
 
 impl AgentSurface {
 	pub(super) fn relation_presentation_picker(&self, cx: &mut Context<Self>) -> AnyElement {
-		let current = self.work_board.view.presentation;
-		let mut picker = ui_theme::canvas_control_group()
-			.id("relations-presentation-picker")
-			.debug_selector(|| "relations-presentation-picker".into())
-			.role(Role::Group)
-			.aria_label("Agent view: links or together")
-			.relative()
-			.w(gpui::px(SEGMENT * 2. + (INSET + 1.) * 2.))
-			.p(gpui::px(INSET))
-			.gap_0()
-			.child(PresentationThumb { together: current == Presentation::Together });
-
-		for (mode, label, id) in [
-			(Presentation::Links, "Links", "relations-mode-links"),
-			(Presentation::Together, "Together", "relations-mode-together"),
-		] {
-			picker = picker.child(
-				gpui::div()
-					.id(id)
-					.debug_selector(move || id.into())
-					.role(Role::Button)
-					.aria_label(format!("{label} view"))
-					.aria_selected(current == mode)
-					.tab_index(0)
-					.relative()
-					.w(gpui::px(SEGMENT))
-					.h_full()
-					.flex_none()
-					.flex()
-					.items_center()
-					.justify_center()
-					.rounded(gpui::px(8.))
-					.border_1()
-					.border_color(gpui::transparent_black())
-					.text_color(ui_theme::rgb(if current == mode { TEXT } else { TEXT_MUTED }))
-					.hover(|d| d.text_color(ui_theme::rgb(TEXT)))
-					.focus_visible(|d| d.border_color(ui_theme::rgb(BLUE)))
-					.cursor_pointer()
-					.child(label)
-					.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-					.on_click(cx.listener(move |s, _, window, cx| {
-						s.switch_relation_presentation(mode, cx);
-
-						workspace::restore_shell_focus(window, cx);
-					}))
-					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, window, cx| {
-						let mode = match e.keystroke.key.as_str() {
-							"left" | "home" => Presentation::Links,
-							"right" | "end" => Presentation::Together,
-							"space" | "enter" if !e.is_held => mode,
-							_ => return,
-						};
-
-						s.switch_relation_presentation(mode, cx);
-
-						workspace::restore_shell_focus(window, cx);
-
-						cx.stop_propagation();
-					})),
-			);
-		}
-
-		picker.smooth().into_any_element()
+		Segmented::new(
+			"relations-presentation-picker",
+			"Agent view: links or together",
+			[
+				Choice::new("relations-mode-links", "Links", "Links view"),
+				Choice::new("relations-mode-together", "Together", "Together view"),
+			],
+			usize::from(self.work_board.view.presentation == Presentation::Together),
+			cx.listener(|s, index: &usize, window, cx| {
+				s.switch_relation_presentation(
+					if *index == 0 { Presentation::Links } else { Presentation::Together },
+					cx,
+				);
+				workspace::restore_shell_focus(window, cx);
+			}),
+		)
+		.graph("relations-presentation-thumb")
+		.into_any_element()
 	}
 
 	pub(super) fn relation_layout_picker(&self, cx: &mut Context<Self>) -> AnyElement {
-		let mode = self.work_board.view.layout_mode;
-		let index = layout::Mode::ALL.iter().position(|m| *m == mode).unwrap_or(0);
-		let held = self.work_board.view.layout_drag.is_some();
-		let dragging = self.work_board.view.layout_drag.as_ref().filter(|drag| drag.moved);
-		let bounds = std::rc::Rc::new(std::cell::Cell::new(None::<Bounds<Pixels>>));
-		let measured = bounds.clone();
-		let mut picker = ui_theme::canvas_control_group()
-			.id("relations-layout-picker")
-			.debug_selector(|| "relations-layout-picker".into())
-			.role(Role::Group)
-			.aria_label("Graph layout. Click a layout or drag between layouts.")
-			.relative()
-			.w(gpui::px(SEGMENT * 3. + (INSET + 1.) * 2.))
-			.p(gpui::px(INSET))
-			.gap_0()
-			.occlude()
-			.on_mouse_down(
-				MouseButton::Left,
-				cx.listener(move |s, event: &MouseDownEvent, _, cx| {
-					if let Some(bounds) = bounds.get() {
-						s.work_board.view.layout_drag =
-							Some(Drag::new(event.position.x.into(), bounds.left().into()));
-						s.work_board.view.drag = None;
-						s.work_board.view.map_drag = None;
-
-						cx.stop_propagation();
-						cx.notify();
-					}
-				}),
-			)
-			.child(picker_events(measured, cx.entity().downgrade()))
-			.child(Thumb {
-				value: dragging.map_or(index as f32, |d| d.value),
-				dragging: dragging.is_some(),
-			});
-
-		for mode in layout::Mode::ALL {
-			let active = self.work_board.view.layout_mode == mode;
-			let id = format!("relations-layout-{}", mode.label().to_lowercase());
-
-			picker = picker.child(
-				gpui::div()
-					.id(SharedString::from(id.clone()))
-					.debug_selector(move || id.clone())
-					.role(Role::Button)
-					.aria_label(format!("{} layout", mode.label()))
-					.aria_selected(active)
-					.tab_index(0)
-					.relative()
-					.w(gpui::px(SEGMENT))
-					.h_full()
-					.flex_none()
-					.flex()
-					.items_center()
-					.justify_center()
-					.rounded(gpui::px(8.))
-					.border_1()
-					.border_color(gpui::transparent_black())
-					.text_color(ui_theme::rgb(if active { TEXT } else { TEXT_MUTED }))
-					.cursor_pointer()
-					.when(!held, |d| d.hover(|d| d.text_color(ui_theme::rgb(TEXT))))
-					.focus_visible(|d| d.border_color(ui_theme::rgb(BLUE)))
-					.on_click(cx.listener(move |s, event: &ClickEvent, window, cx| {
-						// Pointer clicks are committed by the captured release, including outside
-						// the track.
-						if event.mouse_position().is_none() {
-							s.switch_relation_layout(mode, cx);
-
-							workspace::restore_shell_focus(window, cx);
-						}
-					}))
-					.on_key_down(cx.listener(move |s, event: &KeyDownEvent, window, cx| {
-						let current = layout::Mode::ALL
-							.iter()
-							.position(|m| *m == s.work_board.view.layout_mode)
-							.unwrap_or(0);
-						let next = match event.keystroke.key.as_str() {
-							"left" => current.saturating_sub(1),
-							"right" => (current + 1).min(2),
-							"home" => 0,
-							"end" => 2,
-							"enter" | "space" if !event.is_held => {
-								s.switch_relation_layout(mode, cx);
-
-								workspace::restore_shell_focus(window, cx);
-
-								cx.stop_propagation();
-
-								return;
-							},
-							_ => return,
-						};
-
-						s.switch_relation_layout(layout::Mode::ALL[next], cx);
-						cx.stop_propagation();
-					}))
-					.child(mode.label()),
-			);
-		}
-
-		picker.smooth().into_any_element()
+		Segmented::new(
+			"relations-layout-picker",
+			"Graph layout. Click a layout or drag between layouts.",
+			layout::Mode::ALL.into_iter().map(|mode| {
+				Choice::new(
+					format!("relations-layout-{}", mode.label().to_lowercase()),
+					mode.label(),
+					format!("{} layout", mode.label()),
+				)
+			}),
+			layout::Mode::ALL
+				.iter()
+				.position(|m| *m == self.work_board.view.layout_mode)
+				.unwrap_or(0),
+			cx.listener(|s, index: &usize, window, cx| {
+				s.switch_relation_layout(layout::Mode::ALL[*index], cx);
+				workspace::restore_shell_focus(window, cx);
+			}),
+		)
+		.graph("relations-layout-thumb")
+		.into_any_element()
 	}
-
-	fn finish_layout_drag(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-		if let Some(drag) = self.work_board.view.layout_drag.take() {
-			self.switch_relation_layout(drag.mode(), cx);
-
-			workspace::restore_shell_focus(window, cx);
-
-			cx.notify();
-		}
-	}
-}
-
-fn picker_events(
-	measured: std::rc::Rc<std::cell::Cell<Option<Bounds<Pixels>>>>,
-	events: WeakEntity<AgentSurface>,
-) -> impl IntoElement {
-	gpui::canvas(
-		move |bounds, _, _| measured.set(Some(bounds)),
-		move |_, _, window, _| {
-			let movement = events.clone();
-
-			window.on_mouse_event(move |event: &MouseMoveEvent, phase, window, cx| {
-				if phase != DispatchPhase::Capture {
-					return;
-				}
-
-				let _ = movement.update(cx, |s, cx| {
-					let Some(drag) = &mut s.work_board.view.layout_drag else { return };
-
-					if event.pressed_button == Some(MouseButton::Left) {
-						drag.move_to(event.position.x.into());
-
-						if drag.moved {
-							let mode = drag.mode();
-
-							s.switch_relation_layout(mode, cx);
-							cx.notify();
-						}
-					} else {
-						s.finish_layout_drag(window, cx);
-					}
-
-					cx.stop_propagation();
-				});
-			});
-
-			let release = events.clone();
-
-			window.on_mouse_event(move |event: &MouseUpEvent, phase, window, cx| {
-				if phase == DispatchPhase::Capture && event.button == MouseButton::Left {
-					let _ = release.update(cx, |s, cx| {
-						if s.work_board.view.layout_drag.is_some() {
-							s.finish_layout_drag(window, cx);
-						}
-					});
-				}
-			});
-		},
-	)
-	.absolute()
-	.inset_0()
 }
 
 #[cfg(test)]
 mod tests {
 	use std::thread;
 
+	use gpui::MouseButton;
+
 	use crate::shell::agent_surface::work_board::{
-		relations::picker::{AgentSurface, Context, MouseButton, layout},
+		relations::picker::{AgentSurface, Context, layout},
 		tests,
 	};
 
@@ -478,7 +198,6 @@ mod tests {
 			visual.update(crate::ui_frame::draw_frame);
 			surface.read_with(visual, |s, cx| {
 				assert_eq!(s.work_board.view.layout_mode, mode);
-				assert!(s.work_board.view.layout_drag.is_none());
 				assert_eq!(s.work_board.view.zoom, Some(0.7));
 				assert_eq!(s.work_board.view.picked_agent.as_deref(), Some("release"));
 				assert_eq!((s.selected.clone(), s.native_agents.selected.clone()), main);
@@ -540,7 +259,6 @@ mod tests {
 		visual.update(crate::ui_frame::draw_frame);
 
 		let pan = surface.read_with(visual, |s, _| {
-			assert!(s.work_board.view.layout_drag.is_none());
 			assert_eq!(s.work_board.view.layout_mode, layout::Mode::Radial);
 			assert_eq!(s.work_board.view.picked_agent.as_deref(), Some("release"));
 			assert_eq!(s.work_board.view.zoom, Some(0.7));
@@ -582,5 +300,38 @@ mod tests {
 			visual.update(crate::ui_frame::draw_frame);
 			surface.read_with(visual, |s, _| assert_eq!(s.work_board.view.layout_mode, mode));
 		}
+	}
+
+	#[gpui::test]
+	fn presentation_picker_drags_without_panning_or_changing_the_conversation(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| fixture(cx));
+		visual.update(crate::ui_frame::draw_frame);
+		visual.run_until_parked();
+		let links = visual.debug_bounds("relations-mode-links").unwrap();
+		let pan = surface.read_with(visual, |s, _| s.work_board.view.pan);
+		visual.simulate_mouse_down(links.center(), MouseButton::Left, Default::default());
+		visual.simulate_mouse_move(
+			links.center() + gpui::point(gpui::px(60.), gpui::px(32.)),
+			Some(MouseButton::Left),
+			Default::default(),
+		);
+		visual.update(crate::ui_frame::draw_frame);
+		surface.read_with(visual, |s, cx| {
+			assert_eq!(s.work_board.view.presentation, layout::Presentation::Together);
+			assert_eq!(s.work_board.view.pan, pan);
+			assert!(s.work_board.view.drag.is_none());
+			assert_eq!(s.composer.read(cx).content(), "Preserve the Main draft");
+		});
+		visual.simulate_mouse_up(
+			links.center() + gpui::point(gpui::px(60.), gpui::px(32.)),
+			MouseButton::Left,
+			Default::default(),
+		);
+		visual.simulate_mouse_move(links.center(), None, Default::default());
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.work_board.view.presentation, layout::Presentation::Together)
+		});
 	}
 }

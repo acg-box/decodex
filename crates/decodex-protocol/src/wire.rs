@@ -2496,6 +2496,8 @@ pub enum QueryPayload {
 	},
 	/// Read the complete bounded Agent work graph and pending result metadata.
 	GetAgentSnapshot,
+	/// Read retained agents with their confirmed native archive membership.
+	GetAgentArchiveCatalog,
 	/// Read exact managed collaboration receipts without changing execution.
 	GetAgentExchanges {
 		/// Read events strictly before this source event, or the latest page.

@@ -110,7 +110,7 @@ impl AgentSurface {
 		}
 
 		self.work_board.view.picked_agent = Some(row.key.clone());
-		self.work_board.view.picked_scope = None;
+		self.work_board.view.picked_project = None;
 
 		cx.notify();
 	}

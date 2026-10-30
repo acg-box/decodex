@@ -38,7 +38,7 @@ impl Render for StatusPanel {
 
 		gpui::div()
 			.w_full()
-			.p(gpui::px(12.))
+			.p(gpui::px(ui_theme::POPOVER_PADDING))
 			.font_family(FONT_FAMILY)
 			.text_color(ui_theme::rgb(TEXT))
 			.track_focus(&self.focus)
@@ -68,7 +68,7 @@ impl Render for StatusPanel {
 			})
 			.on_children_prepainted(move |bounds, _, cx| {
 				if let Some(bounds) = bounds.first() {
-					let height = f32::from(bounds.size.height) + 24.;
+					let height = f32::from(bounds.size.height) + 2. * ui_theme::POPOVER_PADDING;
 
 					owner.update(cx, |s, cx| {
 						if (s.native_status.height - height).abs() > 0.5 {
@@ -79,20 +79,7 @@ impl Render for StatusPanel {
 					});
 				}
 			})
-			.child(
-				gpui::div()
-					.w_full()
-					.rounded(gpui::px(14.))
-					.bg(ui_theme::rgb(0x29292d))
-					.shadow(vec![gpui::BoxShadow {
-						inset: false,
-						color: ui_theme::rgba(0x00000024).into(),
-						offset: gpui::point(gpui::px(0.), gpui::px(4.)),
-						blur_radius: gpui::px(12.),
-						spread_radius: gpui::px(-3.),
-					}])
-					.child(panel),
-			)
+			.child(panel)
 	}
 }
 
@@ -108,8 +95,8 @@ impl Shell {
 			let height = self.native_status.height.max(48.);
 			let bounds = Bounds::new(
 				gpui::point(
-					viewport.width - gpui::px(328. + CONTROL_MARGIN - 12.),
-					gpui::px(CONTROL_MARGIN + CONTROL_GROUP_HEIGHT + CONTROL_MARGIN - 12.),
+					viewport.width - gpui::px(328. + CONTROL_MARGIN),
+					gpui::px(CONTROL_MARGIN + CONTROL_GROUP_HEIGHT + CONTROL_MARGIN),
 				),
 				gpui::size(gpui::px(328.), gpui::px(height)),
 			);
@@ -117,6 +104,7 @@ impl Shell {
 			cx.defer(move |cx| {
 				let _ = child.update(cx, |s, window, cx| {
 					if let Some(surface) = &mut s.surface {
+						surface.refresh_material();
 						if surface.place(bounds) {
 							window.bounds_changed(cx);
 						}
@@ -191,7 +179,7 @@ fn create(
 		.ok()?;
 	let installed = child
 		.update(cx, |s, child_window, _| {
-			s.surface = MaterialPanel::install_overlay(window, child_window);
+			s.surface = MaterialPanel::install_popover(window, child_window);
 
 			s.surface.is_some()
 		})

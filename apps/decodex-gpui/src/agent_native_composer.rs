@@ -123,7 +123,9 @@ impl Render for ComposerPanel {
 					if composer::selection_menu(s.composer_menu)
 						&& !s
 							.menu_trigger_bounds
-							.get(s.composer_menu.expect("selection menu"))
+							.get(composer::composer_menu_trigger(
+								s.composer_menu.expect("selection menu"),
+							))
 							.is_some_and(|b| b.contains(&event.position))
 					{
 						s.dismiss_composer_menu(cx);

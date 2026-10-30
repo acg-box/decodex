@@ -14,7 +14,20 @@ use objc2_foundation::{NSArray, NSPoint, NSRect, NSSize, NSString};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use serde_json::Value;
 
-use crate::ui_theme::material::{GlassStyle, Material, Surface};
+use crate::ui_theme::{
+	self,
+	material::{GlassScope, GlassStyle, Material, Surface},
+};
+
+/// Reduced transparency keeps selection menus readable with the flat material.
+fn panel_material(surface: Surface) -> Material {
+	let requested = surface.material();
+	if surface == Surface::Popover && material_class(requested).is_none() {
+		Material::Thin
+	} else {
+		requested
+	}
+}
 
 thread_local! {
 	// Non-owning handles; each MaterialPanel registers and removes its entry.
@@ -23,8 +36,8 @@ thread_local! {
 
 /// Owns composition separately from the editor and its window lifecycle.
 pub(crate) struct MaterialPanel {
-	surface: Option<Surface>,
-	material: Option<Material>,
+	surface: Surface,
+	material: Material,
 	radius: f64,
 	host: Retained<NSView>,
 	material_view: Retained<NSView>,
@@ -42,21 +55,20 @@ impl MaterialPanel {
 		window: &mut Window,
 		radius: f64,
 	) -> Option<Self> {
-		Self::install_surface(parent, window, Some((Surface::InputBar, radius)))
+		Self::install_surface(parent, window, Surface::InputBar, radius)
 	}
 
-	pub(crate) fn install_overlay(parent: &Window, window: &mut Window) -> Option<Self> {
-		Self::install_surface(parent, window, None)
+	pub(crate) fn install_popover(parent: &Window, window: &mut Window) -> Option<Self> {
+		Self::install_surface(parent, window, Surface::Popover, f64::from(ui_theme::POPOVER_RADIUS))
 	}
 
 	fn install_surface(
 		parent: &Window,
 		window: &mut Window,
-		configuration: Option<(Surface, f64)>,
+		surface: Surface,
+		radius: f64,
 	) -> Option<Self> {
-		let surface = configuration.map(|(surface, _)| surface);
-		let radius = configuration.map_or(0., |(_, radius)| radius);
-		let material = surface.map(Surface::material);
+		let material = panel_material(surface);
 		let parent = native(parent)?;
 		let native = native(window)?;
 		let gpu = view(window)?;
@@ -67,19 +79,20 @@ impl MaterialPanel {
 				| NSWindowCollectionBehavior::IgnoresCycle
 				| NSWindowCollectionBehavior::FullScreenAuxiliary,
 		);
-		native.setTitle(&NSString::from_str(if surface.is_some() {
+		native.setTitle(&NSString::from_str(if surface == Surface::InputBar {
 			"Decodex Composer"
 		} else {
-			"Decodex Status"
+			"Decodex Popover"
 		}));
 		window.set_background_appearance(WindowBackgroundAppearance::Transparent);
 
 		unsafe {
-			let material_view: Retained<NSView> = if let Some(material) = material {
-				create_surface(material, radius)?
-			} else {
-				objc2::msg_send![AnyClass::get(c"NSView")?, new]
-			};
+			let material_view = create_surface(material, radius)?;
+			// Transfer material ownership. A window backdrop under a Clear panel
+			// would blur or tint the same pixels twice.
+			if surface == Surface::Popover {
+				ui_theme::window_material::remove_backdrop(window);
+			}
 
 			material_view.setFrame(content.bounds());
 
@@ -108,19 +121,15 @@ impl MaterialPanel {
 
 			host.addSubview(&gpu);
 
-			if surface.is_some() {
-				// Glass may lay out its content view itself. Give it a plain host,
-				// so its layout never changes the Metal view behind GPUI's back.
-				let _: () = objc2::msg_send![&*material_view, setContentView: &*host];
-			} else {
-				material_view.addSubview(&host);
-
-				let _: () = objc2::msg_send![&*native, setHasShadow: false];
-			}
+			// The material owns a plain host, while GPUI owns Metal sizing.
+			let _: () = objc2::msg_send![&*material_view, setContentView: &*host];
 
 			content.addSubview(&material_view);
 
 			let _: () = objc2::msg_send![&*native, setStyleMask: 0_usize];
+			if surface == Surface::Popover {
+				let _: () = objc2::msg_send![&*native, setHasShadow: true];
+			}
 			let _: () = objc2::msg_send![&*native, setLevel: 0_isize];
 			let _: () = objc2::msg_send![&*native, setMovable: false];
 			let _: () = objc2::msg_send![&*native, setExcludedFromWindowsMenu: true];
@@ -137,9 +146,10 @@ impl MaterialPanel {
 				);
 			});
 
-			if material == Some(Material::LiquidGlass) {
-				apply_glass_style(&material_view, Surface::InputBar, native.isKeyWindow());
+			if material == Material::LiquidGlass {
+				apply_glass_style(&material_view, surface, native.isKeyWindow());
 			}
+			apply_popover_tint(&material_view, surface, material);
 
 			Some(Self {
 				surface,
@@ -160,10 +170,14 @@ impl MaterialPanel {
 
 	/// Replace only the material host; the editor view and its focus stay intact.
 	pub(crate) fn refresh_material(&mut self) {
-		let Some(surface) = self.surface else { return };
-		let material = surface.material();
+		let surface = self.surface;
+		let material = panel_material(surface);
 
-		if self.material == Some(material) {
+		if self.material == material {
+			if material == Material::LiquidGlass {
+				apply_glass_style(&self.material_view, surface, self.native.isKeyWindow());
+			}
+			apply_popover_tint(&self.material_view, surface, material);
 			return;
 		}
 
@@ -188,7 +202,7 @@ impl MaterialPanel {
 		self.material_view.removeFromSuperview();
 
 		self.material_view = replacement;
-		self.material = Some(material);
+		self.material = material;
 
 		if had_focus {
 			self.focus_text();
@@ -196,6 +210,7 @@ impl MaterialPanel {
 		if material == Material::LiquidGlass {
 			apply_glass_style(&self.material_view, surface, self.native.isKeyWindow());
 		}
+		apply_popover_tint(&self.material_view, surface, material);
 	}
 
 	/// GPUI bounds use a top-left origin; AppKit screen conversion uses bottom-left.
@@ -311,7 +326,7 @@ impl Drop for MaterialPanel {
 
 struct Attachment {
 	handle: AnyWindowHandle,
-	surface: Option<Surface>,
+	surface: Surface,
 }
 
 pub(crate) fn material_class(material: Material) -> Option<&'static AnyClass> {
@@ -469,10 +484,15 @@ pub(crate) fn available(surface: Surface) -> bool {
 
 pub(crate) fn apply_glass_style(glass: &NSView, surface: Surface, key: bool) {
 	let clear = match surface {
-		Surface::Window => GlassStyle::configured() == GlassStyle::Clear,
+		Surface::Window => GlassScope::Window.configured() == GlassStyle::Clear,
 		Surface::InputBar => key,
+		Surface::Popover => GlassScope::Popover.configured() == GlassStyle::Clear,
 	};
 
+	set_glass_style(glass, clear, surface == Surface::InputBar);
+}
+
+fn set_glass_style(glass: &NSView, clear: bool, input_bar: bool) {
 	unsafe {
 		let style: isize = objc2::msg_send![glass, style];
 
@@ -481,10 +501,24 @@ pub(crate) fn apply_glass_style(glass: &NSView, surface: Surface, key: bool) {
 		}
 
 		let _: () = objc2::msg_send![glass, setStyle: isize::from(clear)];
-		let tint: Option<Retained<AnyObject>> = (clear && surface == Surface::InputBar).then(|| {
+		let tint: Option<Retained<AnyObject>> = (clear && input_bar).then(|| {
 			objc2::msg_send![AnyClass::get(c"NSColor").expect("AppKit"), colorWithSRGBRed: 0.10_f64, green: 0.11_f64, blue: 0.13_f64, alpha: 0.18_f64]
 		});
 		let _: () = objc2::msg_send![glass, setTintColor: tint.as_deref()];
+	}
+}
+
+fn apply_popover_tint(view: &NSView, surface: Surface, material: Material) {
+	if surface != Surface::Popover {
+		return;
+	}
+	let color = ui_theme::popover_tint(material, GlassScope::Popover.configured());
+	unsafe {
+		let tint: Retained<AnyObject> = objc2::msg_send![AnyClass::get(c"NSColor").expect("AppKit"), colorWithSRGBRed: f64::from(color.r), green: f64::from(color.g), blue: f64::from(color.b), alpha: f64::from(color.a)];
+		let previous: Option<Retained<AnyObject>> = objc2::msg_send![view, tintColor];
+		if !previous.is_some_and(|previous| objc2::msg_send![&*previous, isEqual: &*tint]) {
+			let _: () = objc2::msg_send![view, setTintColor: &*tint];
+		}
 	}
 }
 
@@ -516,7 +550,7 @@ fn update_focus_material(window: &NSWindow) {
 		windows
 			.borrow()
 			.get(&(window as *const NSWindow as usize))
-			.and_then(|attachment| attachment.surface)
+			.map(|attachment| attachment.surface)
 	});
 	let Some(surface) = surface else { return };
 	let Some(content) = window.contentView() else { return };

@@ -17,7 +17,7 @@ impl ServiceApplication {
 			|| QueryResultPayload::AgentDeliveries(AgentDeliveriesResult::Unavailable);
 		let ProductStore::Available(store) = &self.store else { return unavailable() };
 		let QueryResultPayload::AgentSnapshot(AgentSnapshotResult::Available(snapshot)) =
-			self.query_agent_snapshot().await
+			self.query_agent_snapshot(false).await
 		else {
 			return unavailable();
 		};

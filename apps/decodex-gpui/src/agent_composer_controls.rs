@@ -4,17 +4,14 @@
 use std::cmp::Reverse;
 
 use gpui::{
-	AnyElement, App, Context, KeyDownEvent, PathBuilder, RenderOnce, Role, SharedString, Window,
+	AnyElement, App, Context, KeyDownEvent, PathBuilder, RenderOnce, Role, Window,
 	prelude::{InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement, Styled},
 };
 
 use crate::{
 	shell::agent_surface::composer::{
 		AgentSurface, SmoothControl, model_settings,
-		ui_theme::{
-			self, BODY_SIZE, CONTROL_SIZE, HOVER_FILL, ON_PRIMARY, SELECTED_HOVER_FILL, TEXT,
-			TEXT_MUTED,
-		},
+		ui_theme::{self, BODY_SIZE, CONTROL_SIZE, ON_PRIMARY, TEXT_MUTED},
 	},
 	ui_loading, ui_motion,
 	ui_theme::WARNING,
@@ -77,8 +74,7 @@ impl AgentSurface {
 				let full = model_settings::model_choice_label(entry);
 
 				row = row.child(
-					gpui::div()
-						.id(SharedString::from(format!("model-{model}")))
+					ui_theme::menu_row(format!("model-{model}"), true)
 						.role(Role::Button)
 						.tab_index(0)
 						.aria_label(format!("Select {full}"))
@@ -96,14 +92,6 @@ impl AgentSurface {
 						.items_center()
 						.justify_between()
 						.cursor_pointer()
-						.hover(move |d| {
-							d.bg(crate::ui_theme::rgba(if selected {
-								SELECTED_HOVER_FILL
-							} else {
-								HOVER_FILL
-							}))
-							.text_color(crate::ui_theme::rgb(TEXT))
-						})
 						.on_click(cx.listener(move |s, _, _, cx| {
 							s.select_composer_option("model", &click_model, cx)
 						}))
