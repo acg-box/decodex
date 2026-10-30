@@ -1720,6 +1720,21 @@ impl AgentHost {
 		}
 	}
 
+	async fn delete_archived_thread(
+		work: &str,
+		thread: &str,
+		active: &mut Option<(String, AgentCoordinator, mpsc::Receiver<ServerEvent>)>,
+	) -> Result<String, AgentHostError> {
+		let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
+		agent.delete_archived_thread(work, thread).await.map_err(|error| match error {
+			AgentError::Rejected(_) => AgentHostError::Rejected(
+				"This conversation is no longer available for deletion. Refresh the archive.",
+			),
+			_ => AgentHostError::Unknown("Deletion is not confirmed. Refresh before trying again."),
+		})?;
+		Ok(work.into())
+	}
+
 	async fn handle(
 		&self,
 		key: String,
@@ -1791,20 +1806,8 @@ impl AgentHost {
 
 				Ok(work_id.as_str().into())
 			},
-			AgentActionDto::DeleteArchivedThread { work_id, thread_id } => {
-				let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
-				agent.delete_archived_thread(work_id.as_str(), thread_id.as_str()).await.map_err(
-					|error| match error {
-						AgentError::Rejected(_) => AgentHostError::Rejected(
-							"This conversation is no longer available for deletion. Refresh the archive.",
-						),
-						_ => AgentHostError::Unknown(
-							"Deletion is not confirmed. Refresh before trying again.",
-						),
-					},
-				)?;
-				Ok(work_id.as_str().into())
-			},
+			AgentActionDto::DeleteArchivedThread { work_id, thread_id } =>
+				Self::delete_archived_thread(work_id.as_str(), thread_id.as_str(), active).await,
 			action @ (AgentActionDto::AddResourceLink { .. }
 			| AgentActionDto::RemoveResource { .. }) => Self::handle_resource_change(action, active).await,
 

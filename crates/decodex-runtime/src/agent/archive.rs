@@ -7,6 +7,7 @@ use crate::agent::{AgentCoordinator, AgentError, ClientError};
 use decodex_codex::app_server_client::ThreadArchiveState;
 
 impl AgentCoordinator {
+	/// Delete an exact archived binding and retain receipts for uncertain native replies.
 	pub async fn delete_archived_thread(
 		&mut self,
 		work: &str,
