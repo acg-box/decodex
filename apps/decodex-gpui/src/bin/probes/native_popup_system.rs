@@ -131,6 +131,7 @@ fn sample(cx: &mut App) -> Value {
 						"width":f32::from(window.viewport_size().width),
 						"height":f32::from(window.viewport_size().height),
 						"scale":window.scale_factor(),
+						"rendering":native_material_panel::observed_rendering(window),
 					})
 				})
 				.ok()
@@ -148,6 +149,8 @@ fn qualify_sample(row: &Value, material: Material, style: GlassStyle) {
 		.find(|window| window["width"].as_f64().is_some_and(|width| width < 300.))
 		.expect("popup window");
 	assert_eq!(child["visible"], true);
+	assert_eq!(child["rendering"]["window_shadow"], true);
+	assert_eq!(child["rendering"]["window_background_alpha"], 0.);
 	assert_eq!(child["material"], if material == Material::Thin { "thin" } else { "liquid-glass" });
 	if material == Material::LiquidGlass {
 		assert_eq!(child["style"], if style == GlassStyle::Clear { 1 } else { 0 });
@@ -205,6 +208,11 @@ pub fn run() {
 							cx.notify();
 						})
 						.expect("show fixture");
+					cx.background_executor().timer(Duration::from_millis(50)).await;
+					samples.push(json!({
+						"phase":"arrival", "requested_material":material.label(),
+						"requested_style":format!("{style:?}"), "state":cx.update(sample),
+					}));
 					cx.background_executor().timer(settle()).await;
 					let row = cx.update(sample);
 					let open = parent.update(cx, |s, _, _| s.open).expect("fixture flags");
