@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:599ab68fa1d227491049960f10cc39f02f8102c3edfd821299098a8e72b51c51",
+  "pageVersion": "sha256:51c3f1a8cd26472efc11b489811c535ffa0c12667a53ad530fd3e6a0cf1a50e9",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -616,7 +616,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:2f9a2fc079fa4450693334e8a0675e38e415d650512ca39be6a865c033e74e35"
+          "version": "repo-file-v1:sha256:45358875cb823daef213c47ee283a2c916913195115c8c18de2c37dd3c850b67"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
@@ -856,7 +856,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:16823fa6b331f4a9dc6dd304780dd8abb452eb55ae6685cf26eb70575809129f"
+          "version": "repo-file-v1:sha256:2d50976ddcea0ca92bff306de351f145d6158424db80cf4f4be711809a2da1ed"
         }
       ]
     },
@@ -866,7 +866,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:16823fa6b331f4a9dc6dd304780dd8abb452eb55ae6685cf26eb70575809129f"
+          "version": "repo-file-v1:sha256:2d50976ddcea0ca92bff306de351f145d6158424db80cf4f4be711809a2da1ed"
         }
       ]
     },
@@ -880,11 +880,11 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:2f9a2fc079fa4450693334e8a0675e38e415d650512ca39be6a865c033e74e35"
+          "version": "repo-file-v1:sha256:45358875cb823daef213c47ee283a2c916913195115c8c18de2c37dd3c850b67"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:16823fa6b331f4a9dc6dd304780dd8abb452eb55ae6685cf26eb70575809129f"
+          "version": "repo-file-v1:sha256:2d50976ddcea0ca92bff306de351f145d6158424db80cf4f4be711809a2da1ed"
         }
       ]
     },
@@ -893,8 +893,8 @@
       "statement": "The history_resource_cost qualification records 19 distinct qualified Rust checks, two Menu Bar tests, 14 architecture/gate checks and four upstream test bodies read without execution. Its exact selected-artifact fixture checks nearby native history and registered resource owners using two synthetic turns without additional lookup inference; runtime migration, installed app, live billing and historical upload discovery remain unqualified. Earlier unchanged checks retain their recorded limits; the added current-destination regression fails before repair and passes afterward.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-evidence.json#L1727-L2267",
-          "version": "repo-lines-v1:sha256:ff116c3857177500a0129354d5c3ce1ec7d4cfb09253cf4b7aa3d2624eb8a0f2:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQxLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlMGU0ODg5Y2I0MGYzMGRmMTRjOTE0NTY0ZmVhOWM3NzYyNjlkODdiNGE3ZTc2ZmQ1NzJmZTcxODljZTMyMmYwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWY1Mjg4YmJjNWM3MTM2OGEyZGNiZWIzZmRlZGI5ZDY0NmE3NmM2NTkwNTFjZmMzMzM0MTlkNGNhMzdmMjEyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MSwiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIn0"
+          "resource": "repo://automations/upstream/retained-evidence.json#L1727-L2329",
+          "version": "repo-lines-v1:sha256:7c38e4e5d9b6e0ab6e1dfefbb9fe1ac729e2d291163674be7c383865f3291a39:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlMGU0ODg5Y2I0MGYzMGRmMTRjOTE0NTY0ZmVhOWM3NzYyNjlkODdiNGE3ZTc2ZmQ1NzJmZTcxODljZTMyMmYwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWY1Mjg4YmJjNWM3MTM2OGEyZGNiZWIzZmRlZGI5ZDY0NmE3NmM2NTkwNTFjZmMzMzM0MTlkNGNhMzdmMjEyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MSwiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIn0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_lookup_tests.rs",
@@ -916,13 +916,31 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:16823fa6b331f4a9dc6dd304780dd8abb452eb55ae6685cf26eb70575809129f"
+          "version": "repo-file-v1:sha256:2d50976ddcea0ca92bff306de351f145d6158424db80cf4f4be711809a2da1ed"
+        }
+      ]
+    },
+    {
+      "id": "claim_ee82a1f5890341edbe57a880a95c000a",
+      "statement": "List-status-filter source 5c95cf7a8c283369e14b6de9c171d3bc563bbb9c passed five focused GPUI checks with zero unmatched selectors plus strict affected Clippy, nightly format and whitespace checks. Synthetic TestPlatform fixtures cover current status/Project/search interaction, native label changes, separate saved view selections, exact navigation and drafts. Host preference persistence and physical app restart, native artifacts, upstream execution, providers and installed-app acceptance were not executed or newly qualified.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_list_status_tests.rs",
+          "version": "repo-file-v1:sha256:ddbb16cbd34aed9554d55f0ce7c15bbf0a07a77a8cb421e3be0012fac6705953"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs#L38-L66",
+          "version": "repo-lines-v1:sha256:3fcbaa3355e8daffba52ab0b9834fc0b05acff132db27a0b427fe7faeb7f5a49:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUzY2MwYjQ1MTVkYWRhOTU5ZDNlZTkxN2Y5YTBiMjQ1OGZiOWZiNGUzNGM0MzMyMjdlYThkYzY2NzYyYWMyY2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlYTY5ZmUzYWY0MTAwYzljMjRlNmVhMTkzOWIyNjI2YjI1OTA1NDM1N2UxNzc4ZTA3NGYzNDAwYTQ4NmNlY2IiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg3MjI5OWZmNjc0ZjFiZTA2NDdmMjgxNDlkMGNhYjhlYjZiYTAyNTg2YmY0NDA1YTAwNTYwY2ZmODhmZTM4N2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwMTkzNWQyNjBjY2Y2YzFlOGMyZmJiMWU4MmEyOGViYjc3NzAzYTg0NWQ5ODg2ZTc0NTIwMTZjNTJhNDQ2MGIifQ"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:2d50976ddcea0ca92bff306de351f145d6158424db80cf4f4be711809a2da1ed"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-29T18:53:39.584Z"
+    "at": "2026-10-30T02:31:10.035Z"
   }
 }

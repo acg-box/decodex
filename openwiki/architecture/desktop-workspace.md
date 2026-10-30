@@ -26,6 +26,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
+  - id: openwiki-source-02f8a02cdfa0616877cdad62
+    resource: repo://apps/decodex-gpui/src/agent_list_status.rs
   - id: openwiki-source-2ee1164d01a09b38a208f1ac
     resource: repo://apps/decodex-gpui/src/agent_markdown.rs
   - id: openwiki-source-9c68c30b2ff24ddf9a764d74
@@ -76,6 +78,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/shell.rs
   - id: openwiki-source-2f256c95c226c1326d164ad3
     resource: repo://apps/decodex-gpui/src/ui_feedback.rs
+  - id: openwiki-source-546812ff3637690f4a184b89
+    resource: repo://apps/decodex-gpui/src/ui_preferences.rs
   - id: openwiki-source-c29d70b5569f29b7122f2f6b
     resource: repo://crates/decodex-runtime/src/native_agents.rs
   - id: openwiki-source-6085af9603cb7ac0ff3ef1cf
@@ -84,10 +88,10 @@ sources:
     resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+generated: { by: "codex", at: "2026-10-30T02:31:10.035Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-29T18:53:39.584Z
+    at: 2026-10-30T02:31:10.035Z
 ---
 
 # Desktop workspace and native glass
@@ -121,6 +125,12 @@ Pause Work prevents new Decodex contributions and completion. It cannot roll bac
 Guardian shows review records across Agents and Projects. Its global Review Details switch controls optional bounded observation, not conversation permissions. The selected runtime does not provide exact action Review IDs for private reviewer records, so the UI displays Action association unavailable. It does not infer a link to the latest action. Turning details off stops new records; it does not approve requests or erase retained history.
 
 Only native assistant output and item-free terminal metadata enter retained private records. Raw reasoning frames are excluded. The store retains at most 128 records of 64 KiB each; the snapshot previews the newest 32 and loads the exact selected record on demand. This is not a complete reviewer transcript or proof of a live approval decision.
+
+## List status filters
+
+The existing conversation browser and Work list each offer status filters and **All statuses**. Each view keeps its own selection through the host-local presentation preference owner. Status filtering combines with the existing Project and text search filters. A status that no longer has a matching row remains selected and visible until the user clears it.
+
+Managed conversation labels come from the existing status projection, native child rows keep their reported labels, and Work uses its current business state. Filtering does not change those facts, send a command, move a conversation or clear a draft. Work remains grouped by Project, and exact row opening and selected evidence keep their existing owners. See [the list workflow](../workflows/conversations-and-recovery.md#filter-existing-lists-by-status) and [qualification limits](../testing/upstream-acceptance-boundaries.md#list-status-filter-qualification).
 
 ## Read-only evidence views
 

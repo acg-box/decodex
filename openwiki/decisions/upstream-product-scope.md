@@ -12,6 +12,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-77ad5024b567271a0f618fd7
     resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
+  - id: openwiki-source-89a6e0bcef9377afc01425eb
+    resource: repo://apps/decodex-gpui/src/agent_list_status_tests.rs
+  - id: openwiki-source-02f8a02cdfa0616877cdad62
+    resource: repo://apps/decodex-gpui/src/agent_list_status.rs
   - id: openwiki-source-9c68c30b2ff24ddf9a764d74
     resource: repo://apps/decodex-gpui/src/agent_memory.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
@@ -112,10 +116,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-29T18:53:39.584Z" }
+generated: { by: "codex", at: "2026-10-30T02:31:10.035Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-29T18:53:39.584Z
+    at: 2026-10-30T02:31:10.035Z
 ---
 
 # Product scope and native ownership
@@ -222,7 +226,7 @@ The manual proposal records have current dispositions. Deferred research does no
 
 **Item 59 is delivered** in [PR 2559](https://github.com/acg-box/decodex/pull/2559). A locally managed conversation row offers **Branch…**. The action opens that exact source, reads its latest completed native turn and reuses the existing explicit after-turn confirmation. Source and unrelated drafts survive navigation and cancellation. Creation sends no input. Native inventory rows without a local managed source gain no adoption path. The focused client checks do not establish installed-app or live-provider acceptance.
 
-**Item 74 is approved** for status grouping or filtering in the existing Work/conversation list, with a retained view preference. It must reuse current status facts and preserve Project/search filters, exact row opening and drafts. It adds no model grouping, command center, execution policy or native runtime change. Its implementation waits for overlapping active UI work to be reconciled; approval is not delivery. The native maintenance index owns the current implementation state.
+**Item 74 is implemented** as independent status filters in the existing conversation browser and Project-grouped Work list. Each view saves its selection through the existing host-local presentation preference owner and offers **All statuses** to clear it. The filter reuses displayed status facts and combines with Project and search filters. Exact row opening, source drafts and Work details retain their existing owners. It adds no model grouping, command center, execution policy or native runtime change. Five focused GPUI tests and affected static checks passed; physical app restart, installed UI and live-provider acceptance remain separate. The [portable evidence](../../automations/upstream/retained-evidence.json) records the source and limits, and native maintenance state owns merge reconciliation.
 
 The following native options remain deferred research:
 

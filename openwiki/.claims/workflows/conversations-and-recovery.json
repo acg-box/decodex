@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5a82eb2561bc8e7680424ff22565dd2d0f3eb373106791969f721ad63dbe20b3",
+  "pageVersion": "sha256:dfad2884204463ceb9afd697c4cf46014ba6fc9269839c5979d29676024ed61a",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -105,7 +105,7 @@
           "version": "repo-file-v1:sha256:cdf330e8db97cb474822c98ae2576da9c72d64e996820957197087833b1cadfb"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2506-L2527",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2507-L2528",
           "version": "repo-lines-v1:sha256:4ac7cbb8588c6dfee8d4d6bde9e579163322892b8129ff0bdc622be14429f1f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2NmI1YjkzMDg2NDc5ZmJiMjgzOTZiN2NlZjkzOGY3OWNiMzkyOWE3OGE4M2U2NGUwNjUyYzFkZWY3MmU4MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlNDM4OTRkNmQ1Y2Q5YTQxZmI2MDFmNWI3NjgxMmVhMjNlYTRjODdjNjY1OWY2MTE2MWNkYWE0MzQ1YjBkNDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjZTdkM2E5ZjcwYWZkY2JkOGNmMmZjZTM4NWZhMWZlODJjYWIxNjM1Y2IyYTM2MmVkMzcyYzc0NzYxOWU0YWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4ZjZjZjBiYmNlNzE4MjIxMTBlMDZjNDU3ZWE5YmY1YTM5MzEyNjU1YTMwZDRhOGYyMTg3MzBiYWNmYzBhOGMifQ"
         },
         {
@@ -143,7 +143,7 @@
       "statement": "When a refreshed active snapshot removes the selected conversation or composer owner, the desktop cancels dictation and preserves the draft under its original owner. It stops a Live call only when that call's own conversation is removed or archived; normal navigation restores the next conversation's draft and unavailable owners cannot send.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1700-L1765",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1701-L1766",
           "version": "repo-lines-v1:sha256:adb6fed9e31857629b718b62fcc9f4ca8691931219919246760908d78d5120b3:eyJzZWxlY3RlZExpbmVDb3VudCI6NjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE4NDA2NWNjOTFkNmQyZmM1ZjNlMTg4ODFkZDkwNGQxN2YxNGFlODk0YjAzMDJlZjk0OGE2YjMxNDgwODQ0M2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgxOWY1MDE3OTNiZjgzNjk5Njc5MzY0NzFhMDQ3NmM1NmE0MjFlYmVkZTQyNWNjYmNmNTgyMDBhNGUwZjJiNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4Mjg1MGE3OWVlMTYyNjQ4NmRjZGFlMzA4NGE0Mjc4ZTY1Yjc4YjVjMmNmNmM0YTliYjU1YmZkNmMzYTFjZmUifQ"
         },
         {
@@ -321,7 +321,7 @@
       "statement": "A failed message uses a normal user bubble at the end of the scrolling transcript and an aligned Not sent and Resend row. The reason is a tooltip, with no disclosure panel or pinning above the input bar. Archived conversations do not offer retry accessories.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2304-L2335",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2305-L2336",
           "version": "repo-lines-v1:sha256:f23eb22d81f75af5538eec6a393a7467929e9c440b0bab5cb5fc0837af3c47a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMWE4OGNlMDQ3OWM1ZmE3NTI5MmNiOGE1ZWYxOTBhYTg4NDhlMTMyNzg0MDk1ZTI0ZDI1YzM3NDMwOWU5NDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ODI4NTYwNmQyOGU5MWNlNDRjYWU5MzVjZjg4OTA5MTkxZTA5NWM2YjUzN2NlZTgyNjcyZDdkNzIyYjRhZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNTViODhjYjRkNTVjN2VmMjE2NDliZWE5MTRiYTEwYTEyNDE0ZDMyOGVkZDhmNTNlMDg1MWRmNDc5MTBhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MDZmNmFkYTg4ZjAzZGE2MDU1NmNkOWZkMGY2MGI3NDhkZGMwNjViYjcwN2M5YmNkZGI5ZTc4YThlNGU2YWQifQ"
         },
         {
@@ -448,7 +448,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:56ad0e7b103c2330c491d9b23eeb5c2b3618e734c13ca74a9ffdc8f5eaffad99"
+          "version": "repo-file-v1:sha256:ec4966fd182292124acc8c78dd754c4079d884a9bf4580caebe92cbd998ce0bb"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
@@ -527,14 +527,36 @@
           "version": "repo-lines-v1:sha256:a1521f0992c0c8f68dc96cf02f2067cae4a0297c2b8a864d1cc804039655bf47:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5ZWNjOGZjZDNjODBhZGNmODcxZDY0ZmIyMmQ2MjQ2YTc5YzY4ZDlmOGY4NTYxODM2NjRhOGViMGU0ZWNmMGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1OTQ3ZjdmY2UzYmM4MmYyMjM0ODE3NTZmZTAyODFlNWM3MjdhMzRjMzAyZmU5YzEwZGYyM2IxMTQ5MzkzYWYifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs#L683-L710",
-          "version": "repo-lines-v1:sha256:709b9acc2636df303dc994cde8b3db1c5af5e60be29157b6165d880eaf41116f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3NmQyN2IwNmI1ODAzNTg3NTNlMjJlMjQwMjUwODVlZjE1MTU2NGM1MDdiYTdmYmZmOGQ5OGE2ZmUxMDNkYjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlODAzYmM3OTExM2YyNTc3ZmI3ZjljMDY0ODQxM2JkOWZmYTg5NDczODJjOGEwNDAxMjIwNGIxOWQ2YjU2NmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdlY2Y5ZWU1ZmQxYmVmZDAwN2U4ZWRkZGFjMGY2M2M4ZTBlNzc1NjkyMmYwMjU1ODBhNDFmYzFiNWQ2YmVlN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmMWZjNGM5MzY2N2RkYzQ2ZTU2ZmI2YzUzNzcyYTA0MjE0NjFlNWRkYWM2NGJmNTk0NWU1OTFiZTQ5MjczYWQifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs#L683-L726",
+          "version": "repo-lines-v1:sha256:9720d53cd502a9b1831cd079fa4eae71cb7a4f9a58ae8d11d22ef974263c0375:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3NmQyN2IwNmI1ODAzNTg3NTNlMjJlMjQwMjUwODVlZjE1MTU2NGM1MDdiYTdmYmZmOGQ5OGE2ZmUxMDNkYjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlODAzYmM3OTExM2YyNTc3ZmI3ZjljMDY0ODQxM2JkOWZmYTg5NDczODJjOGEwNDAxMjIwNGIxOWQ2YjU2NmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdlY2Y5ZWU1ZmQxYmVmZDAwN2U4ZWRkZGFjMGY2M2M4ZTBlNzc1NjkyMmYwMjU1ODBhNDFmYzFiNWQ2YmVlN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmMWZjNGM5MzY2N2RkYzQ2ZTU2ZmI2YzUzNzcyYTA0MjE0NjFlNWRkYWM2NGJmNTk0NWU1OTFiZTQ5MjczYWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_fb71c6fc2e754516abb2160d3fc6a80b",
+      "statement": "Existing conversation and Work lists expose independent status selections and All statuses clearing, saved by the existing host-local presentation preference owner. Status intersects existing Project/search filters, persists across view switches, and keeps a selected label visible after matching rows leave. Filters preserve drafts, exact navigation and Work detail ownership, and do not dispatch, discover missing history or change native/business state.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_list_status.rs",
+          "version": "repo-file-v1:sha256:41f76591779fbdcb8acd163d1570dfa34bb8f483ac1c4f2d31cb65ce97ef616c"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_list_status_tests.rs",
+          "version": "repo-file-v1:sha256:ddbb16cbd34aed9554d55f0ce7c15bbf0a07a77a8cb421e3be0012fac6705953"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs#L20-L115",
+          "version": "repo-lines-v1:sha256:778f5ceb0cd89b31d3e2f31658159575ed4c97f81aacce29a89f56544f05de89:eyJzZWxlY3RlZExpbmVDb3VudCI6OTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5OTEzZDFkZjMxMjY2MGJjMzUzODcyNWM5MDYzYTkwYTg0ZDA0MzU1OTU2YTk5MDIwNzNkNGViYzJjYWNjOTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRhZjExZDg5NzcyZWU0ZjRiNWIzYWNmN2M1ZWRiYjlkZTJiNDNjOWU3OGU1ODQ2ZjVhMDRlOTlhMGYzMWU2NjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEwMDgxNTk1MWRhYzg4NjYxNjM3NTk0YTNjOWUzOTdlZjhiNjExNDZmOGU4NmYwODBlMmZlZWVlM2UwM2NmMjEifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs#L725-L860",
+          "version": "repo-lines-v1:sha256:a85b99b3f290a30c39a3780c82c733ca4ab8a2ed9402bd49eccb0953a2e3a0ea:eyJzZWxlY3RlZExpbmVDb3VudCI6MTM2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkM2I4ZTg1MDllNjc0ZDQ3NDU3MjVjM2Y3ODFkZmRhMzYxZTJkYWZiMTg3NmY3MGMwMTg4ZjNlYjdiNDUzMmU0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjMTU5YWVjMzMzMWFjNjNmZTllMGU4MWRmNDViNDA5NzQ1MDI1YjMwYjRkZTliZjkyYjhlZWI0MGU2NDI0NmViIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzMmNkOTVkMTZmOTMzMmY0ZGNlZjg1ZTU2NDM2NDI3ZTZiODg3ZTEzMWUzYWRjMWVlNTU5NWEyNjcyZGIwN2ExIn0"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-29T18:53:39.584Z"
+    "at": "2026-10-30T02:31:10.035Z"
   }
 }

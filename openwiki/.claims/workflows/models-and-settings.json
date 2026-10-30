@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4c0a81a976af136b7db485583d7bb5efec897a73b45b0ee53be3477bad9a3822",
+  "pageVersion": "sha256:653f43a2ca5a38a70e5025501903673bc9b7e774157341787797b4d7ddf49f4d",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -199,7 +199,7 @@
       "statement": "The Agent model catalog refreshes through native model/list every 60 seconds, with account, directory and process binding. Model and effort cycling have no fixed fallback list when the catalog is unavailable.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1678-L1684",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1679-L1685",
           "version": "repo-lines-v1:sha256:94822da03cc24717c86a1aa5781a22c5c4fb39bb3eba280843acf0a8d9a36fb4:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzhhZThkZGM3MTdhMDlmMzU0ZmUzMWU4ZWI3YTU3MWNkZDQwZGQ3NmU0MjVhZjliYjU2MTM3ZTVhZDlkZTEzNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTdhZjQ0ZjllMmU0MDU4YzAyNDA0YTJhMDI0M2JjNTk1ZWE2ZmIxOGUxNzdmMjJiOWEyOWMzZDQ3ZjAwZTExOSJ9"
         },
         {
@@ -218,7 +218,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:16823fa6b331f4a9dc6dd304780dd8abb452eb55ae6685cf26eb70575809129f"
+          "version": "repo-file-v1:sha256:2d50976ddcea0ca92bff306de351f145d6158424db80cf4f4be711809a2da1ed"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -299,6 +299,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-29T18:53:39.584Z"
+    "at": "2026-10-30T02:31:10.035Z"
   }
 }

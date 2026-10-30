@@ -16,6 +16,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-77ad5024b567271a0f618fd7
     resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
+  - id: openwiki-source-02f8a02cdfa0616877cdad62
+    resource: repo://apps/decodex-gpui/src/agent_list_status.rs
   - id: openwiki-source-c6ac7d6b2fdeb458faab2c3a
     resource: repo://apps/decodex-gpui/src/agent_permissions.rs
   - id: openwiki-source-6a1c55b61be8ac251a493046
@@ -62,10 +64,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-29T18:53:39.584Z" }
+generated: { by: "codex", at: "2026-10-30T02:31:10.035Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-29T18:53:39.584Z
+    at: 2026-10-30T02:31:10.035Z
 ---
 
 # OpenWiki quickstart
@@ -91,6 +93,8 @@ The current SQLite schema preserves native input receipts, independent process o
 - **Actual usage** in Agent preferences and Work details shows known native token deltas and duration with source coverage. Shared or missing Work attribution stays explicit; this is not billing or complete Work elapsed time.
 
 These views preserve unknown coverage and resolution limits. Their retained qualification is in [the acceptance boundary](testing/upstream-acceptance-boundaries.md#selected-read-only-views). Runtime selection, source-review state, installed artifacts and schedules remain separate.
+
+The conversation browser and Work list have independent saved **status filters**, combined with the existing Project and search filters. Choose **All statuses** to clear a status choice without changing a draft or Work state. See [list filtering](workflows/conversations-and-recovery.md#filter-existing-lists-by-status).
 
 ## Find and reconnect
 

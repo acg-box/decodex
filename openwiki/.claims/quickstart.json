@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:87ba95f0f1ebc4fc3d43d4756e1b88c8d823a1f6c9c8fdb0a7db49d322aa1d91",
+  "pageVersion": "sha256:1018c1a8c38c9ffe8ad7bd7c380269a16cdbc51d313df93f86248fcf6bf49116",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -114,7 +114,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:9a028e475f9f50eaf8414eb02db6702fa32a1b5f5fa5965cc99ff98491b1e9eb"
+          "version": "repo-file-v1:sha256:4db656a896ef6af12aa2857ddac38cdd5e778f6b59ba48126ee5805336a873db"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/instructions.md",
@@ -132,7 +132,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:56ad0e7b103c2330c491d9b23eeb5c2b3618e734c13ca74a9ffdc8f5eaffad99"
+          "version": "repo-file-v1:sha256:ec4966fd182292124acc8c78dd754c4079d884a9bf4580caebe92cbd998ce0bb"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4045-L4261",
@@ -149,8 +149,8 @@
           "version": "repo-file-v1:sha256:a213f1868fb081da579d367d94baf1401943aa7cdd1d2e6b7264d47bd04408eb"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4305-L5091",
-          "version": "repo-lines-v1:sha256:315456fabdd33f7f443a1b2528e84fa96322064ba2fa9f76d47682a617a00fe8:eyJzZWxlY3RlZExpbmVDb3VudCI6Nzg3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4305-L5117",
+          "version": "repo-lines-v1:sha256:10b09c83dccd5805849f8e53d2ad8fdad4020cd090a2846037e1e48237718def:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
@@ -200,7 +200,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:56ad0e7b103c2330c491d9b23eeb5c2b3618e734c13ca74a9ffdc8f5eaffad99"
+          "version": "repo-file-v1:sha256:ec4966fd182292124acc8c78dd754c4079d884a9bf4580caebe92cbd998ce0bb"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_find.rs",
@@ -213,8 +213,8 @@
       "statement": "Nearby history reads same-turn native items around a known message, Related conversations reads registered resource associations without historical upload scanning, and the main header and Menu Bar present existing provider estimates with explicit scope and unknown values.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4862-L5090",
-          "version": "repo-lines-v1:sha256:843b6d1a72e826cc0e0400f502946f67b7b82b7bfabb809b8f37bdc5cad7d657:eyJzZWxlY3RlZExpbmVDb3VudCI6MjI5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhM2Q1NGUyODY2ZmU3MjVjN2I3M2VhYjRjYTlmYjNiOTNkYzAxYzJiYzhmNzdmNjgwMDA1YWFmOTAwYzI4ZmYxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhZGQyYzE5Y2U5ZmJjNjlmMDdmMzk5ZDNjOWUxOGI4YTA3MDVmZGE5ZjIzY2M5MDAxNmRmN2JlMzM0ZDZhMDE1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MSwiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIn0"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4862-L5116",
+          "version": "repo-lines-v1:sha256:f4da511bd47e0be45ef67d533e95ef0f0912a529fd7babfa9e35f6b27a34393f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjU1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhM2Q1NGUyODY2ZmU3MjVjN2I3M2VhYjRjYTlmYjNiOTNkYzAxYzJiYzhmNzdmNjgwMDA1YWFmOTAwYzI4ZmYxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhZGQyYzE5Y2U5ZmJjNjlmMDdmMzk5ZDNjOWUxOGI4YTA3MDVmZGE5ZjIzY2M5MDAxNmRmN2JlMzM0ZDZhMDE1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MSwiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIn0"
         }
       ]
     },
@@ -231,14 +231,32 @@
           "version": "repo-lines-v1:sha256:a1521f0992c0c8f68dc96cf02f2067cae4a0297c2b8a864d1cc804039655bf47:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5ZWNjOGZjZDNjODBhZGNmODcxZDY0ZmIyMmQ2MjQ2YTc5YzY4ZDlmOGY4NTYxODM2NjRhOGViMGU0ZWNmMGIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM3M2FjMDMxZjM0Y2RmZDllMWU0YzJjZjhiNmQyODEzOTkwMDVlZDI0OTlkYzhiNDQ3OWYyMmNjZTRiYjU4YjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY1OTQ3ZjdmY2UzYmM4MmYyMjM0ODE3NTZmZTAyODFlNWM3MjdhMzRjMzAyZmU5YzEwZGYyM2IxMTQ5MzkzYWYifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs#L683-L710",
-          "version": "repo-lines-v1:sha256:709b9acc2636df303dc994cde8b3db1c5af5e60be29157b6165d880eaf41116f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3NmQyN2IwNmI1ODAzNTg3NTNlMjJlMjQwMjUwODVlZjE1MTU2NGM1MDdiYTdmYmZmOGQ5OGE2ZmUxMDNkYjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlODAzYmM3OTExM2YyNTc3ZmI3ZjljMDY0ODQxM2JkOWZmYTg5NDczODJjOGEwNDAxMjIwNGIxOWQ2YjU2NmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdlY2Y5ZWU1ZmQxYmVmZDAwN2U4ZWRkZGFjMGY2M2M4ZTBlNzc1NjkyMmYwMjU1ODBhNDFmYzFiNWQ2YmVlN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmMWZjNGM5MzY2N2RkYzQ2ZTU2ZmI2YzUzNzcyYTA0MjE0NjFlNWRkYWM2NGJmNTk0NWU1OTFiZTQ5MjczYWQifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs#L683-L726",
+          "version": "repo-lines-v1:sha256:9720d53cd502a9b1831cd079fa4eae71cb7a4f9a58ae8d11d22ef974263c0375:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA3NmQyN2IwNmI1ODAzNTg3NTNlMjJlMjQwMjUwODVlZjE1MTU2NGM1MDdiYTdmYmZmOGQ5OGE2ZmUxMDNkYjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlODAzYmM3OTExM2YyNTc3ZmI3ZjljMDY0ODQxM2JkOWZmYTg5NDczODJjOGEwNDAxMjIwNGIxOWQ2YjU2NmUiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdlY2Y5ZWU1ZmQxYmVmZDAwN2U4ZWRkZGFjMGY2M2M4ZTBlNzc1NjkyMmYwMjU1ODBhNDFmYzFiNWQ2YmVlN2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZmMWZjNGM5MzY2N2RkYzQ2ZTU2ZmI2YzUzNzcyYTA0MjE0NjFlNWRkYWM2NGJmNTk0NWU1OTFiZTQ5MjczYWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_49c2ada5c6724d67ba66e3592df25ee4",
+      "statement": "The existing conversation browser and Work list offer independent saved status filters that intersect Project/search predicates. All statuses clears the status choice without changing drafts, native execution or Work state.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_list_status.rs",
+          "version": "repo-file-v1:sha256:41f76591779fbdcb8acd163d1570dfa34bb8f483ac1c4f2d31cb65ce97ef616c"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs#L20-L115",
+          "version": "repo-lines-v1:sha256:778f5ceb0cd89b31d3e2f31658159575ed4c97f81aacce29a89f56544f05de89:eyJzZWxlY3RlZExpbmVDb3VudCI6OTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5OTEzZDFkZjMxMjY2MGJjMzUzODcyNWM5MDYzYTkwYTg0ZDA0MzU1OTU2YTk5MDIwNzNkNGViYzJjYWNjOTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRhZjExZDg5NzcyZWU0ZjRiNWIzYWNmN2M1ZWRiYjlkZTJiNDNjOWU3OGU1ODQ2ZjVhMDRlOTlhMGYzMWU2NjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEwMDgxNTk1MWRhYzg4NjYxNjM3NTk0YTNjOWUzOTdlZjhiNjExNDZmOGU4NmYwODBlMmZlZWVlM2UwM2NmMjEifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs#L725-L860",
+          "version": "repo-lines-v1:sha256:a85b99b3f290a30c39a3780c82c733ca4ab8a2ed9402bd49eccb0953a2e3a0ea:eyJzZWxlY3RlZExpbmVDb3VudCI6MTM2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkM2I4ZTg1MDllNjc0ZDQ3NDU3MjVjM2Y3ODFkZmRhMzYxZTJkYWZiMTg3NmY3MGMwMTg4ZjNlYjdiNDUzMmU0IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIwMWJhNDcxOWM4MGI2ZmU5MTFiMDkxYTdjMDUxMjRiNjRlZWVjZTk2NGUwOWMwNThlZjhmOTgwNWRhY2E1NDZiIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJjMTU5YWVjMzMzMWFjNjNmZTllMGU4MWRmNDViNDA5NzQ1MDI1YjMwYjRkZTliZjkyYjhlZWI0MGU2NDI0NmViIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzMmNkOTVkMTZmOTMzMmY0ZGNlZjg1ZTU2NDM2NDI3ZTZiODg3ZTEzMWUzYWRjMWVlNTU5NWEyNjcyZGIwN2ExIn0"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-29T18:53:39.584Z"
+    "at": "2026-10-30T02:31:10.035Z"
   }
 }

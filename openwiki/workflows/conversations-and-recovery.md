@@ -20,8 +20,14 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_item_context.rs
   - id: openwiki-source-77ad5024b567271a0f618fd7
     resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
+  - id: openwiki-source-89a6e0bcef9377afc01425eb
+    resource: repo://apps/decodex-gpui/src/agent_list_status_tests.rs
+  - id: openwiki-source-02f8a02cdfa0616877cdad62
+    resource: repo://apps/decodex-gpui/src/agent_list_status.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
+  - id: openwiki-source-6a1c55b61be8ac251a493046
+    resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
   - id: openwiki-source-0eea3c2bab20e4a9d8e3d80a
     resource: repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs
   - id: openwiki-source-0a913db08f7e3fac688dbce5
@@ -126,10 +132,10 @@ sources:
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-29T18:53:39.584Z" }
+generated: { by: "codex", at: "2026-10-30T02:31:10.035Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-29T18:53:39.584Z
+    at: 2026-10-30T02:31:10.035Z
 ---
 
 # Conversation input, history and recovery
@@ -179,6 +185,14 @@ After Codex restores the original thread, a positive active-list observation res
 For an existing locally managed conversation, choose **Branch…** on its list row. Decodex opens that exact source, preserves the current drafts, and reads the latest completed native turn and its own user input. If needed, it uses the existing bounded earlier-history pages. An active turn is not selected. Incomplete, unavailable or summary-only history cannot supply a branch boundary.
 
 Review the source, then choose **Create new branch**. This uses the existing **Branch after this turn** path; creation sends no input. **Cancel branch** closes the review without changing the source draft. A profile, thread, selected source or history change cancels the pending review. A native-only inventory row without a local source does not offer this shortcut and is not adopted. The [qualification](../testing/upstream-acceptance-boundaries.md#conversation-list-branch-qualification) records the focused checks and limits.
+
+## Filter existing lists by status
+
+The conversation browser and Work list offer their existing status labels as filters. Choose a label to narrow the current rows, or **All statuses** to clear that choice. Status filtering combines with the existing Project and text search filters; clearing status leaves those filters in place. Work stays grouped by Project.
+
+Each list saves its own view choice. Switching views or opening a conversation does not replace the other list's selection or the source draft. A row that changes status can leave the filtered view; the selected label stays visible even when no rows match, so it can be cleared. Native child labels remain native observations, and Work completion remains an explicit business assessment.
+
+Filtering reads the already retained list. It does not send input, change Work state, discover missing or archived conversations, or adopt unmanaged native rows. Exact row opening and Work detail loading keep their existing identities and ownership. See [the focused qualification](../testing/upstream-acceptance-boundaries.md#list-status-filter-qualification).
 
 ## Edit or branch at an earlier input
 

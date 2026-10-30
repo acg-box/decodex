@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "2f9a2fc079fa4450693334e8a0675e38e415d650512ca39be6a865c033e74e35",
+    "sha256": "45358875cb823daef213c47ee283a2c916913195115c8c18de2c37dd3c850b67",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -2177,7 +2177,7 @@
   "manual_decision_scope": {
     "contracts": "automations/upstream/retained-contracts.json#manual_review_scope",
     "scope": "Current manual product decisions and bounded native integration responsibilities. Detailed ownership and pending work remain in native automation state.",
-    "qualification_limit": "The decision catalog alone does not deliver a capability. Item 59 has separate source and client-entry evidence in conversation_list_branch; item 74 remains approved and pending. Source-review cursor and certified ranges are unchanged.",
+    "qualification_limit": "The decision catalog alone does not deliver a capability. Items 59 and 74 have separate source and GPUI evidence in conversation_list_branch and status_list_filters. Native state owns merge reconciliation; source-review cursor and certified ranges are unchanged.",
     "documentation": {
       "method": "OpenWiki page-job lifecycle",
       "selected_page": "openwiki/decisions/upstream-product-scope.md",
@@ -2264,5 +2264,67 @@
       "Existing native fork and source-provider regressions are reused within their recorded limits; no fresh native baseline run.",
       "Source review and installed runtime identities remain unchanged."
     ]
+  },
+  "status_list_filters": {
+    "manual_item": 74,
+    "contracts": "automations/upstream/retained-contracts.json#retained_desktop_feedback.status_list_filters",
+    "source_revision": "5c95cf7a8c283369e14b6de9c171d3bc563bbb9c",
+    "main_baseline": "65fe79cc197864949254b7dae20195003d53520d",
+    "source_sha256": {
+      "apps/decodex-gpui/src/agent_list_status.rs": "41f76591779fbdcb8acd163d1570dfa34bb8f483ac1c4f2d31cb65ce97ef616c",
+      "apps/decodex-gpui/src/agent_list_status_tests.rs": "ddbb16cbd34aed9554d55f0ce7c15bbf0a07a77a8cb421e3be0012fac6705953",
+      "apps/decodex-gpui/src/agent_portfolio.rs": "4db656a896ef6af12aa2857ddac38cdd5e778f6b59ba48126ee5805336a873db",
+      "apps/decodex-gpui/src/agent_surface.rs": "ec4966fd182292124acc8c78dd754c4079d884a9bf4580caebe92cbd998ce0bb",
+      "apps/decodex-gpui/src/agent_work_browser.rs": "961f079f2ff46fe4e8a8d8e6b5668788b3149e36bfc956f6ce63c815f94c1794",
+      "apps/decodex-gpui/src/ui_preferences.rs": "540a21db111b48ddc5db30848f8c5885593558d1ffd11d7524545b86e6ea933b"
+    },
+    "tests_executed": {
+      "package": "decodex-gpui",
+      "binary": "decodex-gpui",
+      "identities": [
+        "shell::agent_surface::list_status::tests::conversation_status_filter_preserves_search_project_and_source_draft",
+        "shell::agent_surface::list_status::tests::native_status_filter_keeps_unknown_labels_and_changed_status_explicit",
+        "shell::agent_surface::list_status::tests::work_status_filter_is_independent_and_survives_view_switches",
+        "shell::agent_surface::work_browser::tests::browser_finds_closed_work_and_opening_it_preserves_other_drafts",
+        "shell::agent_surface::work_browser::tests::browsing_reuses_preview_but_preserves_edited_conversations"
+      ],
+      "executed_count": 5,
+      "passed_count": 5,
+      "skipped": 1144,
+      "unmatched_selectors": [],
+      "selector": "test(list_status::tests::) | test(browser_finds_closed_work_and_opening_it_preserves_other_drafts) | test(browsing_reuses_preview_but_preserves_edited_conversations)",
+      "command": "cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui -E 'test(list_status::tests::) | test(browser_finds_closed_work_and_opening_it_preserves_other_drafts) | test(browsing_reuses_preview_but_preserves_edited_conversations)' --test-threads 1 --no-tests=fail",
+      "entrypoints": [
+        "apps/decodex-gpui/src/agent_list_status_tests.rs",
+        "apps/decodex-gpui/src/agent_work_browser.rs"
+      ],
+      "environment": "GPUI TestPlatform with synthetic snapshots; no service, native process or host preference write."
+    },
+    "tests_read_not_executed": {
+      "upstream_test_count": 0,
+      "upstream_tests_executed": 0,
+      "reason": "Presentation uses existing local/native status facts without changing the native adapter or runtime."
+    },
+    "static_checks": {
+      "strict_gpui_clippy": "pass with all features/targets and repository deny flags",
+      "format": "cargo +nightly fmt --all -- --check; git diff --check"
+    },
+    "native_boundary": {
+      "runtime_artifact_changed": false,
+      "native_artifact_executed": false,
+      "source_review_cursor_changed": false,
+      "qualification_reused": "Current native status facts remain within the existing runtime qualification; this batch makes no new artifact/helper/schema or upstream source-review claim."
+    },
+    "delivery_reference": "https://github.com/acg-box/decodex/commit/5c95cf7a8c283369e14b6de9c171d3bc563bbb9c",
+    "limits": [
+      "Current retained list contents only; filters do not discover missing, archived or unloaded conversations.",
+      "No model grouping, command center, native execution policy, protocol or runtime migration.",
+      "GPUI TestPlatform checks qualify list interaction and in-session view retention. macOS preference persistence reuses the existing NSUserDefaults owner; a physical application restart and installed UI were not exercised.",
+      "No app startup, live provider, physical keyboard, installation, release or schedule activation."
+    ],
+    "documentation": {
+      "method": "OpenWiki page-job lifecycle",
+      "state_source": "Finalized OpenWiki metadata and native automation state own current completion."
+    }
   }
 }

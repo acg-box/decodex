@@ -4932,6 +4932,32 @@
         "No new fork mode, execution policy, native runtime or automatic send.",
         "GPUI TestPlatform and synthetic local sockets qualify the client entry and existing confirmation boundary; installed-app and live-provider behavior were not exercised."
       ]
+    },
+    "status_list_filters": {
+      "manual_item": 74,
+      "entrypoints": [
+        "Existing conversation browser status row below search and Project controls.",
+        "Existing Work portfolio status row."
+      ],
+      "behavior": [
+        "Filter the existing lists by their displayed status labels. Reuse graph::state_in for managed conversations, exact native labels for child inventory and the current Work state labels.",
+        "Keep conversation and Work selections independent. Save each through the existing host-local ui_preferences owner; the empty saved value selects All statuses.",
+        "Intersect status with the existing Project and search predicates. Keep a selected status visible when matching rows disappear, so All statuses can clear it.",
+        "Keep exact local/native row identity, ordinary navigation, source drafts and Work detail selection under their existing owners. Filtering sends no command and changes no work state."
+      ],
+      "source_symbols": [
+        "apps/decodex-gpui/src/agent_list_status.rs#Filters,#View,#AgentSurface::list_status_filters",
+        "apps/decodex-gpui/src/agent_work_browser.rs#AgentSurface::render_work_browser,#AgentSurface::browsable_work",
+        "apps/decodex-gpui/src/agent_portfolio.rs#AgentSurface::render_work_portfolio,#state",
+        "apps/decodex-gpui/src/agent_graph.rs#state_in",
+        "apps/decodex-gpui/src/ui_preferences.rs#string"
+      ],
+      "source_implementation": "https://github.com/acg-box/decodex/commit/5c95cf7a8c283369e14b6de9c171d3bc563bbb9c",
+      "limits": [
+        "Current retained list contents only; filters do not discover missing, archived or unloaded conversations.",
+        "No model grouping, command center, native execution policy, protocol or runtime migration.",
+        "GPUI TestPlatform checks qualify list interaction and in-session view retention. macOS preference persistence reuses the existing NSUserDefaults owner; a physical application restart and installed UI were not exercised."
+      ]
     }
   },
   "manual_review_scope": {
@@ -4947,7 +4973,7 @@
         "manual_item": 74,
         "scope": "Group or filter the existing Work/conversation list by current status and retain the view preference. Reuse existing status facts and preserve project/search filters, exact row opening and drafts.",
         "exclusions": "No model grouping, generic command center, execution policy or native runtime change.",
-        "delivery": "Approved; reconcile overlapping active UI work before implementation. Approval is not delivery."
+        "delivery": "Source implementation and focused checks are retained in retained_desktop_feedback.status_list_filters. Native state owns live merge reconciliation."
       }
     ],
     "deferred_research": [
