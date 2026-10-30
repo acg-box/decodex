@@ -2,6 +2,9 @@
 #![cfg(not(test))]
 #![allow(dead_code)]
 #[path = "../composer_input.rs"] mod composer_input;
+#[allow(dead_code)]
+#[path = "../frame_trace.rs"]
+mod frame_trace;
 #[cfg(target_os = "macos")]
 #[path = "probes/native_graph.rs"]
 mod graph_probe;

@@ -42,6 +42,9 @@ mod health_query;
 #[allow(dead_code)]
 #[path = "../history_pager.rs"]
 mod history_pager;
+#[cfg(target_os = "macos")]
+#[path = "probes/native_island.rs"]
+mod native_island;
 #[allow(dead_code)]
 #[path = "../native_menu_bar.rs"]
 mod native_menu_bar;
@@ -125,6 +128,12 @@ impl Render for CollaborationComponent {
 }
 
 fn main() -> Result<()> {
+	#[cfg(target_os = "macos")]
+	if env::var_os("DECODEX_VISUAL_NATIVE_ISLAND").is_some() {
+		crate::native_island::run();
+
+		return Ok(());
+	}
 	#[cfg(target_os = "macos")]
 	if env::var_os("DECODEX_VISUAL_NATIVE_SCROLL").is_some() {
 		native_scroll::run();

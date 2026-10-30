@@ -1,6 +1,6 @@
 //! Native material views and foreground-owning GPUI child windows.
 //! GPUI owns UI state and navigation; AppKit composes surfaces and relays side buttons.
-use std::{cell::Cell, env, ptr};
+use std::{cell::Cell, env, ptr, time::Instant};
 
 use block2::RcBlock;
 use gpui::{AnyWindowHandle, Bounds, Pixels, Window, WindowBackgroundAppearance};
@@ -253,6 +253,7 @@ impl MaterialPanel {
 		));
 
 		if self.frame != Some(frame) {
+			let started = Instant::now();
 			// AppKit moves attached children with their parent. Do not submit the
 			// same screen position again or resize Metal during a parent drag.
 			let place = self.native.frame() != frame;
@@ -271,6 +272,7 @@ impl MaterialPanel {
 			}
 
 			self.frame = Some(frame);
+			crate::frame_trace::native_panel_place(started, resize);
 
 			return place || resize;
 		}

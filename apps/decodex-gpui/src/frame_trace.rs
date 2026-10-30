@@ -61,6 +61,11 @@ pub(crate) fn graph_paint(zoom: f32, pan: (f32, f32), size: (f32, f32), reveal: 
 }
 
 pub(crate) fn start(cx: &mut App) {
+	start_for(cx, Duration::from_secs(60));
+}
+
+/// Isolated display fixtures use the same trace with a bounded capture duration.
+pub(crate) fn start_for(cx: &mut App, duration: Duration) {
 	let Some(path) = env::var_os("DECODEX_FRAME_TRACE") else { return };
 	let start = Instant::now();
 	let _ = ROWS.set((start, Mutex::new(Vec::new())));
@@ -73,7 +78,7 @@ pub(crate) fn start(cx: &mut App) {
 	let mut collector = FrameTimingCollector::new();
 
 	cx.spawn(async move |cx| {
-		while start.elapsed() < Duration::from_secs(60) {
+		while start.elapsed() < duration {
 			let sample = cx.update(|cx| {
 				let windows: Vec<_> = cx.windows().into_iter().filter_map(|handle| {
 					handle.update(cx, |_, window, _| {
@@ -106,8 +111,8 @@ pub(crate) fn start(cx: &mut App) {
 		}
 	}).detach();
 	thread::spawn(move || {
-		// Collect for one minute, then stop completely. The GPUI ring is bounded.
-		thread::sleep(Duration::from_secs(60));
+		// Stop completely after the capture interval. The GPUI ring is bounded.
+		thread::sleep(duration);
 
 		let frames = collector.collect_unseen();
 
@@ -152,12 +157,22 @@ pub(crate) fn start(cx: &mut App) {
 			recorded_rows.into_iter().partition(|row| row["phase"] == "viewport");
 		let (popups, arrivals): (Vec<_>, Vec<_>) =
 			arrivals.into_iter().partition(|row| row["phase"] == "popup");
-		let report = serde_json::json!({"schema": 6, "started_at_ms": started_at_ms, "note": "CPU draw and platform submission timing; excludes GPU completion and screen scanout. Activity samples distinguish foreground from hidden or inactive windows. Native glass styles: 0 regular, 1 clear. Row arrivals record presentation progress without message content. Viewport height is the scroll maximum after layout. Graph frames record only camera geometry and reveal opacity. Surface renders count region rebuilds without identifiers or content. Popup events link pointer, selection and native presentation without user text.", "frames": rows, "presentations": presentations, "activity": *activity.lock().expect("frame activity"), "row_arrivals": arrivals, "viewport": viewport, "graph_frames": graph, "surface_renders": surfaces, "popup_events": popups});
+		let (native_panels, arrivals): (Vec<_>, Vec<_>) =
+			arrivals.into_iter().partition(|row| row["phase"] == "native_panel_place");
+		let report = serde_json::json!({"schema": 7, "started_at_ms": started_at_ms, "note": "CPU draw and platform submission timing; excludes GPU completion and screen scanout. Activity samples distinguish foreground from hidden or inactive windows. Native glass styles: 0 regular, 1 clear. Row arrivals record presentation progress without message content. Viewport height is the scroll maximum after layout. Graph frames record only camera geometry and reveal opacity. Surface renders count region rebuilds without identifiers or content. Popup events link pointer, selection and native presentation without user text. Native panel events measure geometry updates outside GPUI draw timing.", "frames": rows, "presentations": presentations, "activity": *activity.lock().expect("frame activity"), "row_arrivals": arrivals, "viewport": viewport, "graph_frames": graph, "surface_renders": surfaces, "popup_events": popups, "native_panels":native_panels});
 
 		if let Err(error) = fs::write(path, report.to_string()) {
 			eprintln!("Could not write frame measurements: {error}");
 		}
 	});
+}
+
+/// Measure native geometry work separately from GPUI frame construction.
+#[cfg(all(target_os = "macos", not(test)))]
+pub(crate) fn native_panel_place(started: Instant, resized: bool) {
+	record(
+		|at_ms| serde_json::json!({"at_ms":at_ms,"phase":"native_panel_place","resized":resized,"duration_ms":started.elapsed().as_secs_f64()*1_000.}),
+	);
 }
 
 fn record_row(

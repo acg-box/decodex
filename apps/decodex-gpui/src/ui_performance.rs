@@ -103,6 +103,14 @@ pub(crate) struct PerformanceIsland {
 	available_width: Option<f32>,
 }
 impl PerformanceIsland {
+	#[cfg(feature = "visual-capture")]
+	#[allow(dead_code)] // Used only by the isolated native frame qualification binary.
+	pub(crate) fn visual_expansion(&mut self, debug: bool, open: bool, cx: &mut Context<Self>) {
+		self.activity = if debug { Activity::Debug } else { Activity::Work };
+		self.expansion = if open { Expansion::Clicked } else { Expansion::Closed };
+		cx.notify();
+	}
+
 	pub(crate) fn new(_: &mut Context<Self>) -> Self {
 		Self {
 			expansion: Expansion::Closed,

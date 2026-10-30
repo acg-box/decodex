@@ -130,8 +130,10 @@ impl Render for Panel {
 			.child(foreground);
 		crate::ui_layout::intrinsic(width, root, move |size, window, cx| {
 			let _ = measured.update(cx, |panel, cx| {
-				panel.height = size.height.max(gpui::px(1.));
-				panel.place(window, cx);
+				if panel.content.as_ref().is_some_and(|content| !content.attached) {
+					panel.height = size.height.max(gpui::px(1.));
+					panel.place(window, cx);
+				}
 				if let Some(surface) = &mut panel.surface {
 					surface.refresh_material();
 				}
@@ -244,6 +246,13 @@ fn present(parent: AnyWindowHandle, request: Content, cx: &mut App) {
 		if changed {
 			panel.close(cx);
 			panel.focus_pending = !request.preview && !request.attached;
+		}
+		if request.attached
+			&& let Some(bounds) = request.trigger
+		{
+			// Attached surfaces use their parent's complete layout. Avoid resizing
+			// Metal with the new width and the previous frame's height first.
+			panel.height = bounds.size.height.max(gpui::px(1.));
 		}
 		panel.content = Some(request);
 		panel.place(window, cx);
