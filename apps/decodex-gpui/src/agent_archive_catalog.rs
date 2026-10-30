@@ -29,6 +29,7 @@ use decodex_protocol::{
 
 const BATCH_BAR_HEIGHT: f32 = 38.;
 const BATCH_BAR_INSET: f32 = 8.;
+const BATCH_BAR_MATERIAL: &str = "archive-selection-material";
 
 #[derive(Default)]
 pub(in crate::shell::agent_surface) struct Catalog {
@@ -175,7 +176,6 @@ impl Catalog {
 			.find(|project| project.agent_ids.iter().any(|agent| agent == id))
 			.map(|project| project.name.as_str())
 	}
-
 }
 
 impl AgentSurface {
@@ -839,7 +839,19 @@ impl AgentSurface {
 		}
 	}
 
+	pub(crate) fn hide_archive_selection_material(window: &gpui::Window, cx: &mut gpui::App) {
+		ui_motion::hide_material_surface(BATCH_BAR_MATERIAL, window, cx);
+	}
+
 	fn archive_selection_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		ArchiveSelectionOverlay {
+			visible: self.workspace.archives.selecting,
+			owner: cx.entity().downgrade(),
+			child: self.archive_selection_content(cx),
+		}
+	}
+
+	fn archive_selection_content(&self, cx: &mut Context<Self>) -> AnyElement {
 		let catalog = &self.workspace.archives;
 		let confirming = catalog.confirming_selection();
 		let unavailable = catalog.mutation.is_some();
@@ -893,13 +905,13 @@ impl AgentSurface {
 						s.exit_archive_selection(cx);
 					}
 				}));
-		let selection = ui_theme::canvas_control_group()
+		ui_theme::canvas_control_group()
 			.id("archive-batch-bar")
 			.debug_selector(|| "archive-batch-bar".into())
 			.h(gpui::px(BATCH_BAR_HEIGHT))
 			.px(gpui::px(10.))
 			.gap(gpui::px(10.))
-			.bg(ui_theme::popover_surface())
+			.bg(gpui::transparent_black())
 			.occlude()
 			.text_color(ui_theme::rgb(ui_theme::TEXT))
 			.child(
@@ -927,8 +939,8 @@ impl AgentSurface {
 					)),
 			)
 			.child(delete.smooth().enabled(delete_enabled))
-			.child(clear.smooth().enabled(!unavailable));
-		ArchiveSelectionOverlay { visible: catalog.selecting, child: selection.into_any_element() }
+			.child(clear.smooth().enabled(!unavailable))
+			.into_any_element()
 	}
 
 	fn archive_catalog_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -978,12 +990,43 @@ impl AgentSurface {
 #[derive(gpui::IntoElement)]
 struct ArchiveSelectionOverlay {
 	visible: bool,
+	owner: gpui::WeakEntity<AgentSurface>,
 	child: AnyElement,
 }
 impl gpui::RenderOnce for ArchiveSelectionOverlay {
 	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
 		let progress =
 			ui_motion::value("archive-selection-actions", f32::from(self.visible), window, cx);
+		let material = if self.visible {
+			let mut child = self.child;
+			// Measure the existing controls, so counts and labels keep their natural width.
+			let size = child.layout_as_root(
+				gpui::size(gpui::AvailableSpace::MaxContent, gpui::AvailableSpace::MinContent),
+				window,
+				cx,
+			);
+			let owner = self.owner.clone();
+			Some(
+				gpui::div().w(size.width).h(size.height).child(
+					ui_motion::material_surface(
+						BATCH_BAR_MATERIAL,
+						10.,
+						move |_, cx| {
+							owner
+								.update(cx, |s, cx| s.archive_selection_content(cx))
+								.unwrap_or_else(|_| gpui::div().into_any_element())
+						},
+						|_| {},
+					)
+					.on_escape(move |cx| {
+						let _ = self.owner.update(cx, |s, cx| s.exit_archive_selection(cx));
+					}),
+				),
+			)
+		} else {
+			AgentSurface::hide_archive_selection_material(window, cx);
+			None
+		};
 		gpui::div()
 			.id("archive-batch-overlay")
 			.debug_selector(|| "archive-batch-overlay".into())
@@ -996,7 +1039,7 @@ impl gpui::RenderOnce for ArchiveSelectionOverlay {
 			.justify_center()
 			.overflow_hidden()
 			.opacity(progress)
-			.children(self.visible.then_some(self.child))
+			.children(material)
 	}
 }
 

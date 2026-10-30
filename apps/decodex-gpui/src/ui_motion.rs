@@ -341,6 +341,14 @@ pub(crate) struct MaterialSurface {
 	radius: f64,
 	content: std::rc::Rc<PopoverContent>,
 	dismiss: std::rc::Rc<dyn Fn(&mut App)>,
+	escape: std::rc::Rc<dyn Fn(&mut App)>,
+}
+impl MaterialSurface {
+	/// Persistent controls can keep outside clicks while allowing an explicit Escape action.
+	pub(crate) fn on_escape(mut self, escape: impl Fn(&mut App) + 'static) -> Self {
+		self.escape = std::rc::Rc::new(escape);
+		self
+	}
 }
 impl RenderOnce for MaterialSurface {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -351,11 +359,12 @@ impl RenderOnce for MaterialSurface {
 				self.radius,
 				self.content,
 				self.dismiss,
+				self.escape,
 				window,
 				cx,
 			);
 		}
-		let _ = (&self.id, &self.dismiss);
+		let _ = (&self.id, &self.dismiss, &self.escape);
 		gpui::div()
 			.size_full()
 			.rounded(gpui::px(self.radius as f32))
@@ -371,11 +380,13 @@ pub(crate) fn material_surface(
 	content: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
 	dismiss: impl Fn(&mut App) + 'static,
 ) -> MaterialSurface {
+	let dismiss = std::rc::Rc::new(dismiss);
 	MaterialSurface {
 		id: id.into(),
 		radius,
 		content: std::rc::Rc::new(content),
-		dismiss: std::rc::Rc::new(dismiss),
+		escape: dismiss.clone(),
+		dismiss,
 	}
 }
 
