@@ -35,6 +35,11 @@ impl AgentSurface {
 		};
 
 		list = list.child(self.assistant_role(cx));
+		list = list.child(self.list_status_filters(
+			super::list_status::View::Work,
+			snapshot.portfolio.works.iter().map(state),
+			cx,
+		));
 
 		let filter = self.workspace.workspace_filter.as_deref();
 		let query = self.work_search.read(cx).content().trim().to_lowercase();
@@ -53,11 +58,22 @@ impl AgentSurface {
 				.iter()
 				.filter(|w| {
 					w.project_id.as_deref() == id
+						&& self
+							.workspace
+							.list_status
+							.matches(super::list_status::View::Work, state(w))
 						&& (query.is_empty() || w.title.to_lowercase().contains(&query))
 				})
 				.collect();
 
-			if works.is_empty() && project.is_none() {
+			if works.is_empty()
+				&& (project.is_none()
+					|| self
+						.workspace
+						.list_status
+						.selected(super::list_status::View::Work)
+						.is_some())
+			{
 				continue;
 			}
 
@@ -81,7 +97,15 @@ impl AgentSurface {
 		}
 
 		if count == 0 {
-			list = list.child(label("Discuss your goal with an Agent to create Work."));
+			list = list.child(label(
+				if self.workspace.list_status.selected(super::list_status::View::Work).is_some()
+					|| !query.is_empty()
+				{
+					"No matching Work."
+				} else {
+					"Discuss your goal with an Agent to create Work."
+				},
+			));
 		}
 		if snapshot.portfolio.has_more {
 			list = list.child(label("More Work and evidence are available in storage."));

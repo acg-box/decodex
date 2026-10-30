@@ -28,6 +28,7 @@
 #[path = "agent_install.rs"] mod install;
 #[path = "agent_integrations.rs"] mod integrations;
 #[path = "agent_item_context.rs"] mod item_context;
+#[path = "agent_list_status.rs"] mod list_status;
 #[path = "agent_live_settings.rs"] mod live_settings;
 #[path = "agent_markdown.rs"] mod markdown;
 #[path = "agent_mcp_forms.rs"] mod mcp_forms;
@@ -2695,6 +2696,7 @@ struct WorkspaceView {
 	new_conversation: Option<String>,
 	browsing: bool,
 	workspace_filter: Option<String>,
+	list_status: list_status::Filters,
 	new_conversation_workspace: Option<String>,
 	new_conversation_permissions: Option<PermissionMode>,
 	folder_error: Option<String>,
@@ -2750,6 +2752,7 @@ impl Default for WorkspaceView {
 			new_conversation: None,
 			browsing: false,
 			workspace_filter: None,
+			list_status: Default::default(),
 			new_conversation_workspace: None,
 			new_conversation_permissions: None,
 			folder_error: None,
