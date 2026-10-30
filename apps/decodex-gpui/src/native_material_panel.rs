@@ -280,6 +280,15 @@ impl MaterialPanel {
 	/// display link of hidden windows; only the content stays transparent here.
 	pub(crate) fn prepare_open(&mut self) {
 		if !self.visible || !self.native.isVisible() {
+			unsafe {
+				let layer: Option<Retained<AnyObject>> =
+					objc2::msg_send![&*self.material_view, layer];
+				if let Some(layer) = layer {
+					for key in ["opacity", "transform.translation.y"] {
+						let _: () = objc2::msg_send![&*layer, removeAnimationForKey: &*NSString::from_str(key)];
+					}
+				}
+			}
 			self.material_view.setAlphaValue(0.);
 			self.material_view.setFrameOrigin(NSPoint::new(0., 0.));
 			self.presented = false;
@@ -298,24 +307,33 @@ impl MaterialPanel {
 		self.prepare_open();
 		if !self.presented {
 			self.presented = true;
+			self.material_view.setAlphaValue(1.);
 			if crate::ui_frame::reduced() {
-				self.material_view.setAlphaValue(1.);
 				return;
 			}
-			self.material_view
-				.setFrameOrigin(NSPoint::new(0., -f64::from(ui_theme::POPOVER_OFFSET)));
 			unsafe {
-				let context = AnyClass::get(c"NSAnimationContext").expect("AppKit");
-				let _: () = objc2::msg_send![context, beginGrouping];
-				let animation: Retained<AnyObject> = objc2::msg_send![context, currentContext];
-				let _: () = objc2::msg_send![&*animation, setDuration: ui_theme::POPOVER_ARRIVAL.as_secs_f64()];
+				let layer: Option<Retained<AnyObject>> =
+					objc2::msg_send![&*self.material_view, layer];
+				let Some(layer) = layer else { return };
 				let timing: Retained<AnyObject> = objc2::msg_send![AnyClass::get(c"CAMediaTimingFunction").expect("QuartzCore"), functionWithName: &*NSString::from_str("easeOut")];
-				let _: () = objc2::msg_send![&*animation, setTimingFunction: &*timing];
-				let animator: Retained<AnyObject> =
-					objc2::msg_send![&*self.material_view, animator];
-				let _: () = objc2::msg_send![&*animator, setFrameOrigin: NSPoint::new(0., 0.)];
-				let _: () = objc2::msg_send![&*animator, setAlphaValue: 1.0_f64];
-				let _: () = objc2::msg_send![context, endGrouping];
+				// Keep arrival in the composite layer. Layout and Metal redraws
+				// use the final geometry throughout the presentation animation.
+				for (key, from, to) in [
+					("opacity", 0., 1.),
+					("transform.translation.y", -f64::from(ui_theme::POPOVER_OFFSET), 0.),
+				] {
+					let key = NSString::from_str(key);
+					let animation: Retained<AnyObject> = objc2::msg_send![AnyClass::get(c"CABasicAnimation").expect("QuartzCore"), animationWithKeyPath: &*key];
+					let number = AnyClass::get(c"NSNumber").expect("Foundation");
+					let from: Retained<AnyObject> =
+						objc2::msg_send![number, numberWithDouble: from];
+					let to: Retained<AnyObject> = objc2::msg_send![number, numberWithDouble: to];
+					let _: () = objc2::msg_send![&*animation, setFromValue: &*from];
+					let _: () = objc2::msg_send![&*animation, setToValue: &*to];
+					let _: () = objc2::msg_send![&*animation, setDuration: ui_theme::POPOVER_ARRIVAL.as_secs_f64()];
+					let _: () = objc2::msg_send![&*animation, setTimingFunction: &*timing];
+					let _: () = objc2::msg_send![&*layer, addAnimation: &*animation, forKey: &*key];
+				}
 			}
 		}
 	}

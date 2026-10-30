@@ -77,10 +77,6 @@ impl AgentSurface {
 		self.open_sample_panel(false, true, cx);
 	}
 
-	pub(super) fn suggest_next_prompt(&mut self, cx: &mut Context<Self>) {
-		self.open_sample_panel(true, true, cx);
-	}
-
 	fn open_sample_panel(&mut self, suggestion: bool, show_latest: bool, cx: &mut Context<Self>) {
 		let Some(work) = self.selected.clone() else { return };
 

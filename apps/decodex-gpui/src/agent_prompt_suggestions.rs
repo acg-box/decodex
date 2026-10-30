@@ -74,10 +74,6 @@ impl AgentSurface {
 			&& self.draft_owner_available()
 			&& !self.sending
 			&& !self.uncertain
-			&& self.composer.read(cx).content().is_empty()
-			&& !self.composer.read(cx).is_composing()
-			&& self.attachments.is_empty()
-			&& self.task_references.is_empty()
 			&& self.voice.is_none()
 			&& self.dictation.is_none()
 		{
@@ -88,21 +84,21 @@ impl AgentSurface {
 
 #[cfg(test)]
 mod tests {
+	use super::{Automatic, Binding};
+
 	#[test]
 	fn disabling_suggestions_consumes_turn_boundaries_without_replaying_them_on_enable() {
 		let owner = (
 			None,
-			super::Binding {
-				work: "work".into(),
-				thread: "thread".into(),
-				account: "account".into(),
-			},
+			Binding { work: "work".into(), thread: "thread".into(), account: "account".into() },
 		);
-		let mut automatic = super::Automatic::default();
-
-		assert!(!automatic.observe(owner.clone(), Some(("first".into(), false)), false));
-		assert!(!automatic.observe(owner.clone(), Some(("first".into(), true)), false));
-		assert!(!automatic.observe(owner.clone(), Some(("first".into(), true)), true));
-		assert!(automatic.observe(owner, Some(("second".into(), true)), true));
+		let mut automatic = Automatic::default();
+		assert!(!automatic.observe(owner.clone(), Some(("old".into(), true)), true));
+		assert!(!automatic.observe(owner.clone(), Some(("new".into(), false)), false));
+		assert!(!automatic.observe(owner.clone(), Some(("new".into(), true)), false));
+		assert!(!automatic.observe(owner.clone(), Some(("new".into(), true)), true));
+		assert!(!automatic.observe(owner.clone(), Some(("next".into(), false)), true));
+		assert!(automatic.observe(owner.clone(), Some(("next".into(), true)), true));
+		assert!(!automatic.observe(owner, Some(("next".into(), true)), true));
 	}
 }

@@ -485,7 +485,6 @@ impl SettingsSurface {
 			.when(self.session_menu == Some("permissions"), |d| {
 				d.child(crate::session_settings::permission_choices(
 					Some(self.session_defaults.permissions),
-					false,
 					|_| true,
 					Self::choose_default_permissions,
 					cx,
@@ -530,7 +529,7 @@ impl SettingsSurface {
 			})
 			.child(ui_theme::settings_group("Conversation assistance", vec![self.preference_control(
 				"automatic-prompt-suggestions", "automatic-prompt-suggestions-knob", "Automatic next-message suggestions",
-				"Generate a suggestion after a new answer when the input is empty. Uses quota. Press Tab to accept; never sends automatically.",
+				"Suggest after each reply. Uses quota; never sends automatically.",
 				crate::ui_preferences::automatic_prompt_suggestions, cx,
 			).into_any_element()]))
 			.child(ui_theme::settings_group("Native defaults", vec![self.native_defaults(cx)]))
@@ -573,7 +572,7 @@ impl SettingsSurface {
 				],
 			))
 			.child(ui_theme::settings_group(
-				"Task recaps",
+				"Conversation assistance",
 				vec![
 					ui_theme::settings_row()
 						.child(ui_theme::settings_label(
@@ -1595,6 +1594,7 @@ mod tests {
 		assert!(visual.debug_bounds("menubar-surface-toggle").is_some());
 		assert!(visual.debug_bounds("menubar-loading").is_none());
 		assert!(visual.debug_bounds("automatic-recap-toggle").is_some());
+		assert!(visual.debug_bounds("prompt-suggestions").is_some());
 		assert!(visual.debug_bounds("recap-loading").is_none());
 		assert!(visual.debug_bounds("loading-feedback-").is_none());
 	}

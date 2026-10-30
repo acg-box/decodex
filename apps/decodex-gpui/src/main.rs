@@ -503,6 +503,12 @@ fn install_application_menu(cx: &mut App) {
 			MenuItem::action("Paste", Paste),
 			MenuItem::action("Select All", SelectAll),
 		]),
+		Menu::new("Conversation").items([
+			MenuItem::action("Use Skill…", shell::ConversationCommand::UseSkill),
+			MenuItem::action("Reference Conversation…", shell::ConversationCommand::Reference),
+			MenuItem::separator(),
+			MenuItem::action("Conversation Settings…", shell::ConversationCommand::Settings),
+		]),
 		Menu::new("Window").items([MenuItem::action("Minimize", Minimize)]),
 		Menu::new("Debug").items([MenuItem::action("Reload Workspace", ReloadWorkspace)]),
 	]);

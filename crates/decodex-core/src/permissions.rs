@@ -34,11 +34,10 @@ impl PermissionMode {
 	/// Short description of the preset's boundary.
 	pub const fn description(self) -> &'static str {
 		match self {
-			Self::AskForApproval =>
-				"Ask before edits outside the workspace or restricted network access.",
-			Self::ApproveForMe => "Let Codex review actions that need approval.",
-			Self::FullAccess => "Allow unrestricted local file and network access.",
-			Self::ReadOnly => "Read and inspect; ask before making file changes.",
+			Self::AskForApproval => "External edits and restricted network.",
+			Self::ApproveForMe => "Codex reviews restricted actions.",
+			Self::FullAccess => "Unrestricted file and network access.",
+			Self::ReadOnly => "Read files; ask before changes.",
 		}
 	}
 

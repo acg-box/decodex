@@ -163,6 +163,14 @@ gpui::actions!(
 	]
 );
 
+#[derive(Clone, Copy, Debug, PartialEq, gpui::Action)]
+#[action(namespace = decodex_shell, no_json)]
+pub(crate) enum ConversationCommand {
+	Settings,
+	UseSkill,
+	Reference,
+}
+
 // Match the gap below floating controls to their inset from the window edge.
 const WINDOW_CONTROLS_CLEARANCE: f32 = CONTROL_MARGIN * 2.0 + CONTROL_GROUP_HEIGHT;
 const WORKBENCH_SESSION_SIDEBAR_WIDTH: f32 = 248.0;
@@ -2289,6 +2297,16 @@ enum InspectorTab {
 
 /// Bind the shell's complete keyboard path once at application startup.
 pub(crate) fn bind_keys(cx: &mut App) {
+	cx.on_action(|command: &ConversationCommand, cx| {
+		let command = *command;
+		cx.defer(move |cx| {
+			if let Some(main) = cx.windows().into_iter().find_map(|w| w.downcast::<Shell>()) {
+				let _ = main.update(cx, |shell, _, cx| {
+					shell.agent.update(cx, |agent, cx| agent.conversation_command(command, cx));
+				});
+			}
+		});
+	});
 	cx.on_action(|_: &ReloadWorkspace, cx| {
 		// Global keyboard actions run while the dispatching window is borrowed.
 		cx.defer(|cx| {

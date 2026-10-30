@@ -56,7 +56,7 @@ fn suggestion_fixture(s: &mut AgentSurface, cx: &mut Context<AgentSurface>) {
 	item.active_turn_id = None;
 	s.composer_manager = Some(work.clone());
 	s.composer.update(cx, |input, cx| input.set_content("", cx));
-	s.suggest_next_prompt(cx);
+	s.open_sample_panel(true, true, cx);
 	s.sample.state = Some(AgentSampleStatus {
 		work_id: EntityId::new(work).unwrap(),
 		thread_id: Some(WireText::new("parent").unwrap()),
@@ -166,11 +166,12 @@ fn automatic_suggestion_sends_once_after_a_new_answer_and_never_sends_the_draft(
 		surface.update(cx, |s, cx| {
 			automatic_fixture(s, cx);
 			s.profile = Some(profile);
+			s.composer.update(cx, |input, cx| input.set_content("Already typing", cx));
 			s.timeline.native.entries = completed_answer("new-turn", "completed");
 			s.observe_prompt_completion(cx);
 			s.observe_prompt_completion(cx);
 			assert!(s.sample.suggestion);
-			assert!(s.composer.read(cx).content().is_empty());
+			assert_eq!(s.composer.read(cx).content(), "Already typing");
 			assert!(!s.sending);
 		});
 		SuggestionPanel(surface, 0)
@@ -182,12 +183,12 @@ fn automatic_suggestion_sends_once_after_a_new_answer_and_never_sends_the_draft(
 		s.reset_sample();
 		s.observe_prompt_completion(cx);
 		assert!(s.sample.work.is_none(), "closing cannot regenerate the same turn");
-		assert!(s.composer.read(cx).content().is_empty());
+		assert_eq!(s.composer.read(cx).content(), "Already typing");
 	});
 }
 
 #[gpui::test]
-fn automatic_suggestion_skips_old_history_drafts_failed_turns_and_replaced_sources(
+fn automatic_suggestion_skips_old_history_failed_turns_and_replaced_sources(
 	cx: &mut TestAppContext,
 ) {
 	cx.update(|cx| {
@@ -222,13 +223,6 @@ fn automatic_suggestion_skips_old_history_drafts_failed_turns_and_replaced_sourc
 				s.sample.work.is_none(),
 				"wait for the completed active turn, not an old history page"
 			);
-			s.composer.update(cx, |input, cx| input.set_content("Already typing", cx));
-			s.timeline.native.entries = completed_answer("new", "completed");
-			s.observe_prompt_completion(cx);
-			assert!(s.sample.work.is_none());
-			s.composer.update(cx, |input, cx| input.set_content("", cx));
-			s.observe_prompt_completion(cx);
-			assert!(s.sample.work.is_none(), "clearing a draft does not replay a skipped trigger");
 			s.timeline.native.entries = completed_answer("failed", "failed");
 			s.observe_prompt_completion(cx);
 			assert!(s.sample.work.is_none());

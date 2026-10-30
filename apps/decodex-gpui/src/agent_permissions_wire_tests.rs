@@ -3,7 +3,10 @@ use std::thread::JoinHandle;
 
 use decodex_protocol::{AgentPermissionOutcome, AgentWorkItemDto};
 use futures_util::{SinkExt as _, StreamExt as _};
-use gpui::{AppContext as _, TestAppContext};
+use gpui::{
+	AppContext as _, TestAppContext,
+	prelude::{ParentElement as _, Styled as _},
+};
 use tempfile::TempDir;
 use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
@@ -26,7 +29,9 @@ struct PermissionView {
 }
 impl Render for PermissionView {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.surface.update(cx, |s, cx| s.permission_options(cx))
+		gpui::div()
+			.w(gpui::px(super::super::composer::composer_menu_width(Some("permissions"))))
+			.child(self.surface.update(cx, |s, cx| s.permission_options(cx)))
 	}
 }
 
@@ -181,6 +186,11 @@ fn permission_read_keeps_the_current_choice_and_menu_geometry(cx: &mut TestAppCo
 	});
 	visual.update(crate::ui_frame::draw_current_frame);
 	let before = visual.debug_bounds("permission-choice-1").unwrap();
+	let row = visual.debug_bounds("permission-choice-0").unwrap();
+	let description = visual.debug_bounds("permission-description-0").unwrap();
+	assert!(row.left() <= description.left() && description.right() <= row.right());
+	assert!(row.top() < description.top() && description.bottom() < row.bottom());
+	assert_eq!(description.size.height, gpui::px(14.), "the short description fits one line");
 	let surface = view.read_with(visual, |v, _| v.surface.clone());
 	surface.update(visual, |s, cx| {
 		s.begin_permission_read("root", false);

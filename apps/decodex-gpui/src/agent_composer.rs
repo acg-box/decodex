@@ -76,10 +76,11 @@ pub(super) fn composer_menu_trigger(menu: &str) -> &str {
 
 pub(super) fn composer_menu_width(menu: Option<&str>) -> f32 {
 	match menu {
-		Some("permissions") => 192.,
-		Some("agent-settings" | "skills") => 380.,
-		Some("attachments" | "microphone" | "tasks") => 280.,
-		_ => 248.,
+		Some("permissions") => 272.,
+		Some("tasks") => 280.,
+		Some("agent-settings" | "skills") => 320.,
+		Some("attachments" | "microphone") => 248.,
+		_ => 224.,
 	}
 }
 
@@ -97,6 +98,23 @@ impl Render for ComposerTip {
 }
 
 impl AgentSurface {
+	pub(in crate::shell) fn conversation_command(
+		&mut self,
+		command: crate::shell::ConversationCommand,
+		cx: &mut Context<Self>,
+	) {
+		use crate::shell::ConversationCommand;
+		match command {
+			ConversationCommand::Settings => {
+				self.workspace.setup_expanded = true;
+				self.toggle_composer_menu("agent-settings", cx);
+			},
+			ConversationCommand::UseSkill => self.open_skill_picker(cx),
+			ConversationCommand::Reference => self.toggle_composer_menu("tasks", cx),
+		}
+		self.notify_composer_controls(cx);
+	}
+
 	#[cfg(any(test, target_os = "macos"))]
 	pub(super) fn native_composer_requested(&self, allowed: bool, supported: bool) -> bool {
 		allowed
@@ -501,7 +519,7 @@ impl AgentSurface {
 									d.child(self.composer_control(
 										"attach",
 										"+".into(),
-										"Attachments, skills and microphone",
+										"Attachments and microphone",
 										|s, cx| s.toggle_composer_menu("attachments", cx),
 										cx,
 									))
@@ -723,37 +741,18 @@ impl AgentSurface {
 				},
 				cx,
 			))
-			.child(self.composer_control(
-				"skill-item",
-				"Use skill…".into(),
-				"Select a native skill",
-				|s, cx| s.open_skill_picker(cx),
-				cx,
-			))
 			.child(ui_theme::menu_separator())
-			.when(self.can_open_sample(), |options| {
-				options
-					.child(self.composer_control(
-						"task-suggest-item",
-						"Suggest next message…".into(),
-						"Generate a suggestion for your next message",
-						|s, cx| {
-							s.composer_menu = None;
-							s.suggest_next_prompt(cx);
-						},
-						cx,
-					))
-					.child(self.composer_control(
-						"task-sample-item",
-						"Ask separately…".into(),
-						"Ask separately",
-						|s, cx| {
-							s.composer_menu = None;
-
-							s.open_sample(cx);
-						},
-						cx,
-					))
+			.when(self.can_open_sample(), |menu| {
+				menu.child(self.composer_control(
+					"task-sample-item",
+					"Ask separately…".into(),
+					"Ask separately",
+					|s, cx| {
+						s.composer_menu = None;
+						s.open_sample(cx);
+					},
+					cx,
+				))
 			})
 			.child(self.composer_control(
 				"task-recap-item",
@@ -762,21 +761,10 @@ impl AgentSurface {
 				|s, cx| {
 					s.composer_menu = None;
 					s.workspace.details_visible = true;
-
 					if let Some(work) = s.selected.clone() {
 						s.open_recap(&work, cx);
 					}
-
 					cx.notify();
-				},
-				cx,
-			))
-			.child(self.composer_control(
-				"task-reference-item",
-				"Reference task…".into(),
-				"Select a task to read",
-				|s, cx| {
-					s.toggle_composer_menu("tasks", cx);
 				},
 				cx,
 			))
@@ -798,17 +786,6 @@ impl AgentSurface {
 						gpui::div().pl(gpui::px(26.)).child(self.audio_palette(cx)),
 					)),
 			)
-			.child(self.composer_control(
-				"agent-settings",
-				"Agent settings…".into(),
-				"Agent settings",
-				|s, cx| {
-					s.workspace.setup_expanded = true;
-
-					s.toggle_composer_menu("agent-settings", cx);
-				},
-				cx,
-			))
 			.child(ui_theme::menu_separator())
 			.child(self.composer_control(
 				"delivery",
@@ -816,7 +793,6 @@ impl AgentSurface {
 				if self.steer { "Add to the current turn" } else { "Send after the current turn" },
 				|s, cx| {
 					s.steer = !s.steer;
-
 					cx.notify();
 				},
 				cx,
@@ -1011,15 +987,7 @@ impl AgentSurface {
 
 		if matches!(
 			id,
-			"attachment-item"
-				| "audio-item"
-				| "delivery"
-				| "skill-item"
-				| "task-suggest-item"
-				| "task-sample-item"
-				| "task-recap-item"
-				| "task-reference-item"
-				| "agent-settings"
+			"attachment-item" | "audio-item" | "delivery" | "task-sample-item" | "task-recap-item"
 		) {
 			return ui_theme::menu_row(format!("composer-{id}"), true)
 				.debug_selector(move || format!("composer-{id}"))
@@ -1203,6 +1171,19 @@ impl AgentSurface {
 				.child(gpui::div().text_color(crate::ui_theme::rgb(TEXT)).child(label))
 				.child(gpui::div().w(gpui::px(12.)).flex_none())
 				.into_any_element(),
+			"task-sample-item" | "task-recap-item" => gpui::div()
+				.w_full()
+				.min_w_0()
+				.flex()
+				.items_center()
+				.gap(gpui::px(10.))
+				.child(workspace_symbols::icon(if id == "task-sample-item" {
+					Symbol::Plus
+				} else {
+					Symbol::Document
+				}))
+				.child(gpui::div().flex_1().min_w_0().child(label))
+				.into_any_element(),
 			"model" => gpui::div()
 				.flex()
 				.items_center()
@@ -1220,30 +1201,6 @@ impl AgentSurface {
 				.when_some(self.composer_effort_value(cx), |row, effort| {
 					row.child(gpui::div().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child("·"))
 						.child(controls::effort_indicator(&effort))
-				})
-				.into_any_element(),
-			"skill-item"
-			| "task-suggest-item"
-			| "task-sample-item"
-			| "task-recap-item"
-			| "task-reference-item"
-			| "agent-settings" => gpui::div()
-				.w_full()
-				.min_w_0()
-				.flex()
-				.items_center()
-				.gap(gpui::px(10.))
-				.child(workspace_symbols::icon(match id {
-					"skill-item" => Symbol::ActivityCommand,
-					"task-suggest-item" => Symbol::ActivitySearch,
-					"task-sample-item" => Symbol::Plus,
-					"task-reference-item" => Symbol::Link,
-					"agent-settings" => Symbol::Settings,
-					_ => Symbol::Document,
-				}))
-				.child(gpui::div().flex_1().min_w_0().child(label))
-				.when(matches!(id, "skill-item" | "task-reference-item" | "agent-settings"), |d| {
-					d.child(workspace_symbols::icon_sized(Symbol::Forward, 12.))
 				})
 				.into_any_element(),
 			_ => gpui::div().child(label).into_any_element(),
@@ -1372,7 +1329,7 @@ impl AgentSurface {
 			.debug_selector(|| "model-options".into())
 			.flex()
 			.flex_col()
-			.gap(gpui::px(8.))
+			.gap(gpui::px(4.))
 			.child(self.model_palette(cx))
 			.child(ui_theme::menu_separator())
 			.child(ui_theme::menu_section("Speed", self.service_tier_picker(cx)))
@@ -1731,6 +1688,30 @@ mod tests {
 	use decodex_protocol::{AgentTimelineContent, AgentTimelineEntry};
 
 	#[gpui::test]
+	fn conversation_menu_reaches_the_workspace_without_a_mounted_focus_node(
+		cx: &mut gpui::TestAppContext,
+	) {
+		cx.update(crate::shell::bind_keys);
+		let (shell, visual) = cx.add_window_view(|window, cx| {
+			crate::shell::Shell::new(window, cx, crate::client_lifecycle::ConnectionView::Stopped)
+		});
+		let surface = shell.read_with(visual, |s, _| s.agent.clone());
+		surface.update(visual, |s, cx| s.visual_workspace_fixture(cx));
+		visual.update(crate::ui_frame::draw_frame);
+		let selected = surface.read_with(visual, |s, _| s.selected.clone());
+		visual.update(|window, cx| {
+			let detached = cx.focus_handle();
+			window.focus(&detached, cx);
+			window.dispatch_action(Box::new(crate::shell::ConversationCommand::Settings), cx);
+		});
+		visual.run_until_parked();
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.composer_menu, Some("agent-settings"));
+			assert_eq!(s.selected, selected);
+		});
+	}
+
+	#[gpui::test]
 	fn expanded_composer_menu_suppresses_its_trigger_tooltip(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
@@ -1765,6 +1746,12 @@ mod tests {
 		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
 		surface.update(visual, |s, cx| {
 			s.visual_workspace_fixture(cx);
+			let selected = s.selected.clone();
+			if let Some(work) = s.snapshot.as_mut().and_then(|snapshot| {
+				snapshot.work_items.iter_mut().find(|work| Some(&work.id) == selected.as_ref())
+			}) {
+				work.codex_thread_id = Some("test-thread".into());
+			}
 			s.composer_menu = Some("attachments");
 			s.composer_menu_content = Some("attachments");
 			cx.notify();
@@ -1775,15 +1762,13 @@ mod tests {
 		let mut previous: Option<gpui::Bounds<gpui::Pixels>> = None;
 		for id in [
 			"composer-attachment-item",
-			"composer-skill-item",
+			"composer-task-sample-item",
 			"composer-task-recap-item",
-			"composer-task-reference-item",
 			"composer-audio-item",
-			"composer-agent-settings",
 			"composer-delivery",
 		] {
 			let row = visual.debug_bounds(id).unwrap();
-			assert!(f32::from(row.size.width) >= 240., "{id} cannot inherit an icon button width");
+			assert!(f32::from(row.size.width) >= 200., "{id} cannot inherit an icon button width");
 			if let Some(previous) = previous {
 				assert_eq!(row.left(), previous.left());
 				assert_eq!(row.right(), previous.right());
@@ -1791,6 +1776,19 @@ mod tests {
 			}
 			previous = Some(row);
 		}
+		for removed in [
+			"composer-skill-item",
+			"composer-task-reference-item",
+			"composer-task-suggest-item",
+			"composer-agent-settings",
+		] {
+			assert!(visual.debug_bounds(removed).is_none());
+		}
+		let steer = surface.read_with(visual, |s, _| s.steer);
+		let delivery = visual.debug_bounds("composer-delivery").unwrap();
+		visual.simulate_click(delivery.center(), Default::default());
+		visual.run_until_parked();
+		assert_ne!(surface.read_with(visual, |s, _| s.steer), steer);
 	}
 
 	#[gpui::test]

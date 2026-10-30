@@ -292,12 +292,7 @@ impl AgentSurface {
 				None
 			}
 		});
-		match mode {
-			Some(PermissionMode::ApproveForMe) => Symbol::ShieldCheck,
-			Some(PermissionMode::FullAccess) => Symbol::ShieldSlash,
-			Some(PermissionMode::ReadOnly) => Symbol::ShieldLock,
-			_ => Symbol::Shield,
-		}
+		mode.map_or(Symbol::Shield, crate::session_settings::permission_symbol)
 	}
 
 	pub(super) fn refresh_composer_permissions(&mut self, force: bool, cx: &mut Context<Self>) {
@@ -382,7 +377,6 @@ impl AgentSurface {
 		let mut menu =
 			gpui::div().flex().flex_col().child(crate::session_settings::permission_choices(
 				current,
-				true,
 				available,
 				Self::choose_permission_mode,
 				cx,
