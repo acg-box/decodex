@@ -35,6 +35,7 @@ struct Content {
 	id: ElementId,
 	render: Rc<PopoverContent>,
 	dismiss: Rc<dyn Fn(&mut App)>,
+	escape: Rc<dyn Fn(&mut App)>,
 	trigger: Option<Bounds<Pixels>>,
 	origin: Point<Pixels>,
 	viewport: Size<Pixels>,
@@ -112,7 +113,7 @@ impl Render for Panel {
 				match event.keystroke.key.as_str() {
 					"escape" => {
 						if let Some(content) = panel.content.as_ref().filter(|c| c.attached) {
-							(content.dismiss)(cx);
+							(content.escape)(cx);
 						} else {
 							panel.close(cx);
 						}
@@ -178,6 +179,7 @@ pub(super) fn render(mut popover: Popover, window: &mut Window, cx: &mut App) ->
 			let request = Content {
 				id: popover.id,
 				render: content,
+				escape: popover.dismiss.clone(),
 				dismiss: popover.dismiss,
 				trigger: popover.trigger.get(),
 				origin: bounds.origin
@@ -268,6 +270,7 @@ pub(super) fn render_surface(
 	radius: f64,
 	content: Rc<PopoverContent>,
 	dismiss: Rc<dyn Fn(&mut App)>,
+	escape: Rc<dyn Fn(&mut App)>,
 	window: &mut Window,
 	cx: &mut App,
 ) -> AnyElement {
@@ -281,6 +284,7 @@ pub(super) fn render_surface(
 				id,
 				render: content,
 				dismiss,
+				escape,
 				trigger: Some(bounds),
 				origin: bounds.origin,
 				viewport,

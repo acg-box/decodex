@@ -1224,6 +1224,12 @@ impl AgentSurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		self.poll_native_agents(cx);
+		if !self.workspace.browsing
+			|| !self.workspace.archives.open
+			|| self.workspace.graph_expanded
+		{
+			Self::hide_archive_selection_material(window, cx);
+		}
 
 		let connecting = self.workspace_connecting();
 

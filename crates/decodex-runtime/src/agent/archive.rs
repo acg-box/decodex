@@ -7,6 +7,53 @@ use crate::agent::{AgentCoordinator, AgentError, ClientError};
 use decodex_codex::app_server_client::ThreadArchiveState;
 
 impl AgentCoordinator {
+	/// Delete an exact archived binding and retain receipts for uncertain native replies.
+	pub async fn delete_archived_thread(
+		&mut self,
+		work: &str,
+		thread: &str,
+	) -> Result<(), AgentError> {
+		let generation = self.native_generation.as_ref().map(|g| g.as_str().to_owned());
+		if !self
+			.store
+			.agent_thread_is_restorable(work.into(), thread.into(), generation.clone())
+			.await?
+		{
+			return Err(AgentError::Rejected("The conversation binding changed.".into()));
+		}
+		if self.store.deleted_agent_thread_ids().await?.contains(thread) {
+			return Ok(());
+		}
+		let state = self.client.thread_archive_state(thread).await;
+		if !matches!(state, Ok(ThreadArchiveState::Active | ThreadArchiveState::Archived))
+			&& self.store.agent_thread_delete_requested(work.into(), thread.into()).await?
+			&& self.client.archived_thread_absent(thread).await?
+		{
+			self.store.confirm_agent_thread_deletion(thread.into()).await?;
+			return Ok(());
+		}
+		let state = state?;
+		if state != ThreadArchiveState::Archived {
+			return Err(AgentError::Rejected("Only archived conversations can be deleted.".into()));
+		}
+		if !self.store.agent_thread_is_restorable(work.into(), thread.into(), generation).await? {
+			return Err(AgentError::Rejected("The conversation binding changed.".into()));
+		}
+		self.store.request_agent_thread_deletion(work.into(), thread.into()).await?;
+		self.loaded_threads.remove(thread);
+		let submitted = self.client.thread_delete(thread).await;
+		let gone = if submitted.is_ok() {
+			true
+		} else {
+			self.client.archived_thread_absent(thread).await.unwrap_or(false)
+		};
+		if !gone {
+			return Err(AgentError::UnknownDispatch);
+		}
+		self.store.confirm_agent_thread_deletion(thread.into()).await?;
+		Ok(())
+	}
+
 	/// Restore only the selected native identity. A restored task may subsequently
 	/// consume its already accepted queue through the ordinary host wake path.
 	pub async fn restore_archived_thread(

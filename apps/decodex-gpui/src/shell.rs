@@ -1920,6 +1920,9 @@ impl Drop for Shell {
 impl Render for Shell {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.navigation.repair_focus(&self.root_focus, window);
+		if self.selected != Destination::Agent {
+			AgentSurface::hide_archive_selection_material(window, cx);
+		}
 		let presentation = connection_presentation(self.connection);
 		let root = gpui::div()
 			.id("decodex-shell")

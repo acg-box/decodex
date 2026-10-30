@@ -46,6 +46,7 @@ use material::Surface;
 
 pub(crate) const FONT_FAMILY: &str = ".SystemUIFont";
 pub(crate) const BODY_SIZE: f32 = 12.5;
+pub(crate) const CONTROL_LABEL_SIZE: f32 = BODY_SIZE - 1.;
 pub(crate) const CAPTION_SIZE: f32 = 10.5;
 pub(crate) const CAPTION_LINE_HEIGHT: f32 = 14.;
 pub(crate) const HEADING_SIZE: f32 = 15.0;
@@ -60,7 +61,7 @@ pub(crate) const USER_MESSAGE_ACTION_SIZE: f32 = 24.0;
 pub(crate) const METADATA_GAP: f32 = 4.0;
 pub(crate) const CONTROL_SIZE: f32 = 28.0;
 pub(crate) const CHROME_CONTROL_SIZE: f32 = 24.0;
-pub(crate) const CONTROL_GROUP_HEIGHT: f32 = 28.0;
+pub(crate) const CONTROL_GROUP_HEIGHT: f32 = CONTROL_SIZE;
 pub(crate) const CONTROL_MARGIN: f32 = 8.0;
 pub(crate) const CONTROL_RADIUS: f32 = 8.0;
 pub(crate) const POPOVER_RADIUS: f32 = 10.;

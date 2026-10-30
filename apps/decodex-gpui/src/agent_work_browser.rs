@@ -748,7 +748,7 @@ impl AgentSurface {
 			.child(filters)
 	}
 
-	pub(super) fn render_work_browser(&self, cx: &mut Context<Self>) -> AnyElement {
+	pub(super) fn render_work_browser(&mut self, cx: &mut Context<Self>) -> AnyElement {
 		if self.workspace.archives.open {
 			return self.render_archive_catalog(cx);
 		}

@@ -1,4 +1,4 @@
-//! One direct-manipulation control for Graph and Settings selections.
+//! Shared appearance and direct manipulation for segmented choices.
 use std::rc::Rc;
 
 use gpui::{
@@ -38,7 +38,7 @@ pub(crate) struct Segmented {
 	choices: Vec<Choice>,
 	selected: usize,
 	change: Change,
-	graph: bool,
+	choice_width: Option<f32>,
 	thumb: SharedString,
 }
 impl Segmented {
@@ -57,14 +57,13 @@ impl Segmented {
 			choices: choices.into_iter().collect(),
 			selected,
 			change: Rc::new(change),
-			graph: false,
+			choice_width: None,
 			thumb,
 		}
 	}
 
-	pub(crate) fn graph(mut self, thumb: &'static str) -> Self {
-		self.graph = true;
-		self.thumb = thumb.into();
+	pub(crate) fn fixed_choice_width(mut self, width: f32) -> Self {
+		self.choice_width = Some(width);
 		self
 	}
 }
@@ -92,12 +91,12 @@ impl Gesture {
 
 impl RenderOnce for Segmented {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let Self { id, label, choices, selected, change, graph, thumb } = self;
+		let Self { id, label, choices, selected, change, choice_width: fixed_width, thumb } = self;
 		let last = choices.len().saturating_sub(1);
 		let selected = selected.min(last);
-		let height = if graph { ui_theme::CONTROL_GROUP_HEIGHT - 2. } else { 26. };
-		let font_size = if graph { 12. } else { 11.5 };
-		let width = if graph { 60. } else { choice_width(&choices, font_size, window) };
+		let height = ui_theme::CONTROL_GROUP_HEIGHT - 2.;
+		let font_size = ui_theme::CONTROL_LABEL_SIZE;
+		let width = fixed_width.unwrap_or_else(|| choice_width(&choices, font_size, window));
 		let state =
 			window.use_keyed_state(SharedString::from(format!("{id}-gesture")), cx, |_, _| {
 				State::default()
@@ -107,16 +106,12 @@ impl RenderOnce for Segmented {
 		let value = drag.map_or(selected as f32, |g| g.value);
 		let position = ui_motion::direct_value(thumb.clone(), value, drag.is_some(), window, cx);
 		let down = state.clone();
-		let mut control = if graph {
-			ui_theme::canvas_control_group()
-		} else {
-			gpui::div().flex().flex_none().rounded(gpui::px(6.)).bg(ui_theme::rgba(0x00000020))
-		};
+		let mut control = ui_theme::canvas_control_group();
 
 		control = control
 			.relative()
-			.w(gpui::px(width * choices.len() as f32 + INSET * 2. + if graph { 2. } else { 0. }))
-			.h(gpui::px(height + if graph { 2. } else { 0. }))
+			.w(gpui::px(width * choices.len() as f32 + INSET * 2. + 2.))
+			.h(gpui::px(ui_theme::CONTROL_GROUP_HEIGHT))
 			.p(gpui::px(INSET))
 			.gap_0();
 		let mut control = control
@@ -149,7 +144,7 @@ impl RenderOnce for Segmented {
 					.top(gpui::px(INSET))
 					.w(gpui::px(width))
 					.h(gpui::px(height - INSET * 2.))
-					.rounded(gpui::px(if graph { 8. } else { 4. }))
+					.rounded(gpui::px(8.))
 					.bg(ui_theme::rgba(ui_theme::CONTROL_SELECTED_FILL)),
 			)
 			.child(pointer_events(state.clone(), width, last, change.clone()));
@@ -173,7 +168,7 @@ impl RenderOnce for Segmented {
 					.flex()
 					.items_center()
 					.justify_center()
-					.rounded(gpui::px(if graph { 8. } else { 4. }))
+					.rounded(gpui::px(8.))
 					.border_1()
 					.border_color(gpui::transparent_black())
 					.text_size(gpui::px(font_size))

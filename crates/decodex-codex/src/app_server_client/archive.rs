@@ -340,6 +340,45 @@ impl AppServerClient {
 
 		Ok(())
 	}
+
+	/// Reconcile an explicit deletion of a previously observed archived thread.
+	/// A failed read alone proves nothing; both unfiltered catalogs must be complete.
+	pub async fn archived_thread_absent(&self, thread: &str) -> Result<bool, ClientError> {
+		valid_id(thread)?;
+		if time::timeout(
+			Duration::from_secs(8),
+			self.thread_read(serde_json::json!({"threadId":thread,"includeTurns":false})),
+		)
+		.await
+		.map_err(|_| ClientError::Io)?
+		.is_ok()
+		{
+			return Ok(false);
+		}
+		let mut budget = MAX_FRAME_BYTES;
+		for archived in [false, true] {
+			if self.archive_catalog(None, None, archived, None, &mut budget).await?.contains(thread)
+			{
+				return Ok(false);
+			}
+		}
+		Ok(true)
+	}
+
+	/// Delete one native root and let Codex enforce descendant and ownership rules.
+	pub async fn thread_delete(&self, thread: &str) -> Result<(), ClientError> {
+		valid_id(thread)?;
+		let response = time::timeout(
+			Duration::from_secs(8),
+			self.request("thread/delete", serde_json::json!({"threadId":thread})),
+		)
+		.await
+		.map_err(|_| ClientError::Io)??;
+		if !response.as_object().is_some_and(serde_json::Map::is_empty) {
+			return Err(ClientError::InvalidFrame);
+		}
+		Ok(())
+	}
 }
 
 fn archive_directory<'a>(value: &'a Value, thread: &str) -> Result<&'a str, ClientError> {
@@ -862,5 +901,32 @@ mod tests {
 		assert!(matches!(client.thread_unarchive("target").await, Err(ClientError::InvalidFrame)));
 
 		server.await.unwrap();
+	}
+	#[tokio::test]
+	async fn deletion_uses_native_empty_response_and_rejects_malformed_success() {
+		for result in
+			[serde_json::json!({}), serde_json::json!({"threadId":"foreign"}), Value::Null]
+		{
+			let (local, remote) = io::duplex(65_536);
+			let (r, w) = io::split(local);
+			let (client, _events) = AppServerClient::from_io(r, w);
+			let expected = result.is_object() && result.as_object().unwrap().is_empty();
+			let server = tokio::spawn(async move {
+				let (r, mut w) = io::split(remote);
+				let mut lines = BufReader::new(r).lines();
+				let request: Value =
+					serde_json::from_str(&lines.next_line().await.unwrap().unwrap()).unwrap();
+				assert_eq!(request["method"], "thread/delete");
+				assert_eq!(request["params"], serde_json::json!({"threadId":"target"}));
+				w.write_all(
+					format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
+						.as_bytes(),
+				)
+				.await
+				.unwrap();
+			});
+			assert_eq!(client.thread_delete("target").await.is_ok(), expected);
+			server.await.unwrap();
+		}
 	}
 }

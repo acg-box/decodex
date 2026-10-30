@@ -30,7 +30,7 @@ impl AgentSurface {
 				workspace::restore_shell_focus(window, cx);
 			}),
 		)
-		.graph("relations-presentation-thumb")
+		.fixed_choice_width(60.)
 		.into_any_element()
 	}
 
@@ -54,7 +54,7 @@ impl AgentSurface {
 				workspace::restore_shell_focus(window, cx);
 			}),
 		)
-		.graph("relations-layout-thumb")
+		.fixed_choice_width(60.)
 		.into_any_element()
 	}
 }
@@ -208,7 +208,7 @@ mod tests {
 
 			visual.update(crate::ui_frame::draw_frame);
 
-			assert_eq!(visual.debug_bounds("relations-layout-thumb").unwrap(), button);
+			assert_eq!(visual.debug_bounds("relations-layout-picker-thumb").unwrap(), button);
 		}
 	}
 
@@ -247,7 +247,7 @@ mod tests {
 				assert!(s.work_board.view.map_drag.is_none());
 			});
 
-			let thumb = visual.debug_bounds("relations-layout-thumb").unwrap();
+			let thumb = visual.debug_bounds("relations-layout-picker-thumb").unwrap();
 
 			assert!((f32::from(thumb.left() - tree.left()) - delta.clamp(0., 120.)).abs() < 0.1);
 		}

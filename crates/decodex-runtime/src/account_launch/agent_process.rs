@@ -457,6 +457,7 @@ fn validate_outbound_method(method: &Value, params: &Value) -> Result<(), Client
 				| "thread/attachment/remove"
 				| "mcpServer/oauth/login"
 				| "thread/archive"
+				| "thread/delete"
 				| "thread/approveGuardianDeniedAction"
 				| "turn/start"
 				| "turn/steer"

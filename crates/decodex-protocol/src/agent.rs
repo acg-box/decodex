@@ -743,6 +743,13 @@ pub enum AgentActionDto {
 		/// Native thread identity shown by archive inspection.
 		thread_id: WireText,
 	},
+	/// Permanently delete the exact archived native conversation after explicit confirmation.
+	DeleteArchivedThread {
+		/// Current local work identity.
+		work_id: EntityId,
+		/// Native thread shown in the archive.
+		thread_id: WireText,
+	},
 	/// Associate a user-selected HTTP(S) link with the current native task thread.
 	AddResourceLink {
 		/// Exact local task identity.

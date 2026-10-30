@@ -211,3 +211,79 @@ async fn restoration_reconciles_only_exact_positive_terminal_history_after_reope
 		assert_ne!(request["method"], "thread/start");
 	}
 }
+
+#[tokio::test]
+async fn delete_requires_an_archived_exact_binding_and_is_durable_and_idempotent() {
+	let (mut agent, mut sent, directory) =
+		tests::fixture_with_history(serde_json::json!({"_archived":true})).await;
+	agent.start_agent("agent", "Initial").await.unwrap();
+	while sent.try_recv().is_ok() {}
+	assert!(matches!(
+		agent.delete_archived_thread("agent", "foreign").await,
+		Err(AgentError::Rejected(_))
+	));
+	assert!(sent.try_recv().is_err());
+	agent.delete_archived_thread("agent", "opaque thread/1").await.unwrap();
+	let root = DecodexRoot::new(directory.path().canonicalize().unwrap().join("root")).unwrap();
+	agent.store = SqliteStore::open(&root.paths()).unwrap();
+	agent.delete_archived_thread("agent", "opaque thread/1").await.unwrap();
+	let requests = iter::from_fn(|| sent.try_recv().ok()).collect::<Vec<_>>();
+	assert_eq!(requests.iter().filter(|r| r["method"] == "thread/delete").count(), 1);
+	assert!(
+		!requests.iter().any(|r| r["method"] == "thread/unarchive" || r["method"] == "turn/start")
+	);
+	assert!(
+		agent
+			.store
+			.agent_thread_is_deleted("agent".into(), "opaque thread/1".into())
+			.await
+			.unwrap()
+	);
+}
+
+#[tokio::test]
+async fn delete_refuses_active_threads_and_preserves_rejected_or_uncertain_archives() {
+	for settings in [
+		serde_json::json!({}),
+		serde_json::json!({"_archived":true,"_delete_reject":true}),
+		serde_json::json!({"_archived":true,"_delete_disconnect":true}),
+	] {
+		let (mut agent, mut sent, _) = tests::fixture_with_history(settings.clone()).await;
+		agent.start_agent("agent", "Initial").await.unwrap();
+		while sent.try_recv().is_ok() {}
+		assert!(agent.delete_archived_thread("agent", "opaque thread/1").await.is_err());
+		let requests = iter::from_fn(|| sent.try_recv().ok()).collect::<Vec<_>>();
+		assert_eq!(
+			requests.iter().filter(|r| r["method"] == "thread/delete").count(),
+			usize::from(settings["_archived"] == true)
+		);
+		assert!(agent.store.deleted_agent_thread_ids().await.unwrap().is_empty());
+	}
+}
+
+#[tokio::test]
+async fn delete_reconciles_a_lost_reply_only_when_explicit_intent_was_recorded() {
+	let (mut agent, _initial_requests, _directory) =
+		tests::fixture_with_history(serde_json::json!({"_archived":true})).await;
+	agent.start_agent("agent", "Initial").await.unwrap();
+	let (reopened, mut sent, _reopened_directory) =
+		tests::fixture_with_history(serde_json::json!({"_deleted":true})).await;
+	agent.client = reopened.client.clone();
+	while sent.try_recv().is_ok() {}
+	assert!(agent.delete_archived_thread("agent", "opaque thread/1").await.is_err());
+	assert!(agent.store.deleted_agent_thread_ids().await.unwrap().is_empty());
+	agent
+		.store
+		.request_agent_thread_deletion("agent".into(), "opaque thread/1".into())
+		.await
+		.unwrap();
+	agent.delete_archived_thread("agent", "opaque thread/1").await.unwrap();
+	assert!(
+		agent
+			.store
+			.agent_thread_is_deleted("agent".into(), "opaque thread/1".into())
+			.await
+			.unwrap()
+	);
+	assert!(!iter::from_fn(|| sent.try_recv().ok()).any(|r| r["method"] == "thread/delete"));
+}
