@@ -66,6 +66,7 @@ use decodex_protocol::{
 };
 
 struct FixtureFaults {
+	deleted: bool,
 	resume_failures: u64,
 	archived: bool,
 	injected: bool,
@@ -77,6 +78,20 @@ impl FixtureFaults {
 		history: &Value,
 		writer: &mut WriteHalf<DuplexStream>,
 	) -> Option<bool> {
+		if self.deleted && request["method"] == "thread/read" {
+			writer
+				.write_all(
+					format!(
+						"{}\n",
+						serde_json::json!({"id":request["id"],"error":{"code":-32600,"message":"thread not found"}})
+					)
+					.as_bytes(),
+				)
+				.await
+				.unwrap();
+			return Some(true);
+		}
+
 		if request["method"] == "thread/items/read" {
 			writer
 				.write_all(
@@ -109,6 +124,15 @@ impl FixtureFaults {
 		if request["method"] == "thread/realtime/stop" && history["_voice_stop_disconnect"] == true
 		{
 			return Some(false);
+		}
+		if request["method"] == "thread/delete" {
+			if history["_delete_disconnect"] == true {
+				return Some(false);
+			}
+			if history["_delete_reject"] == true {
+				writer.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"error":{"code":-32600,"message":"external writer owns this conversation"}})).as_bytes()).await.unwrap();
+				return Some(true);
+			}
 		}
 		if request["method"] == "thread/unarchive" {
 			if history["_archive_disconnect"] == true {
@@ -922,6 +946,7 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 	let mut projects = std::collections::HashMap::<String, Value>::new();
 	let mut faults = FixtureFaults {
 		injected: false,
+		deleted: history["_deleted"] == true,
 		archived: history["_archived"] == true,
 		resume_failures: history["_resume_failures"].as_u64().unwrap_or_default(),
 	};
@@ -964,7 +989,11 @@ async fn serve_fixture(server_io: DuplexStream, history: Value, sent: UnboundedS
 				fixture_thread_read(&request, &history, &settings, turns)
 			},
 			Some("thread/list") =>
-				serde_json::json!({"data":if request["params"]["archived"]==faults.archived {vec![serde_json::json!({"id":"opaque thread/1"})]} else {vec![]},"nextCursor":null}),
+				serde_json::json!({"data":if !faults.deleted && request["params"]["archived"]==faults.archived {vec![serde_json::json!({"id":"opaque thread/1"})]} else {vec![]},"nextCursor":null}),
+			Some("thread/delete") => {
+				faults.deleted = true;
+				serde_json::json!({})
+			},
 			Some("thread/unarchive") => {
 				faults.archived = false;
 

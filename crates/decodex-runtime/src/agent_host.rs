@@ -344,6 +344,11 @@ impl AgentHost {
 		snapshot: &mut AgentSnapshotDto,
 		include_archived: bool,
 	) {
+		let Ok(deleted) = self.store.deleted_agent_thread_ids().await else {
+			snapshot.connection_initializing = true;
+			return;
+		};
+		crate::agent_visibility::retain_active(snapshot, &deleted);
 		let Some((generation, client)) = self.runtime.agent_catalog_client() else {
 			// No native connection is not evidence that retained threads are active.
 			self.archive_visibility.lock().await.project_view(snapshot, include_archived);
@@ -364,7 +369,12 @@ impl AgentHost {
 				.work_items
 				.iter()
 				.filter_map(|work| work.codex_thread_id.clone())
-				.chain(slots.iter().filter_map(|slot| slot.thread_id.clone()))
+				.chain(
+					slots
+						.iter()
+						.filter_map(|slot| slot.thread_id.clone())
+						.filter(|id| !deleted.contains(id)),
+				)
 				.collect(),
 		)
 		.await;
@@ -739,6 +749,9 @@ impl AgentHost {
 		work: &str,
 		thread: &str,
 	) -> Option<crate::agent_usage_estimate::Source> {
+		if self.store.agent_thread_is_deleted(work.into(), thread.into()).await.ok()? {
+			return None;
+		}
 		let (generation, account, revision, client) = self.runtime.agent_usage_source().await?;
 		let owner = self.store.get_agent_work_item(work.into()).await.ok()?;
 
@@ -1776,6 +1789,20 @@ impl AgentHost {
 				let mut visibility = self.archive_visibility.lock().await;
 				visibility.confirm_active(thread_id.as_str());
 
+				Ok(work_id.as_str().into())
+			},
+			AgentActionDto::DeleteArchivedThread { work_id, thread_id } => {
+				let (_, agent, _) = active.as_mut().ok_or("Agent is not connected")?;
+				agent.delete_archived_thread(work_id.as_str(), thread_id.as_str()).await.map_err(
+					|error| match error {
+						AgentError::Rejected(_) => AgentHostError::Rejected(
+							"This conversation is no longer available for deletion. Refresh the archive.",
+						),
+						_ => AgentHostError::Unknown(
+							"Deletion is not confirmed. Refresh before trying again.",
+						),
+					},
+				)?;
 				Ok(work_id.as_str().into())
 			},
 			action @ (AgentActionDto::AddResourceLink { .. }

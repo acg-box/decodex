@@ -1808,6 +1808,9 @@ impl AgentCoordinator {
 				if ["thread/closed", "thread/archived", "thread/deleted"]
 					.contains(&method.as_str()) =>
 			{
+				if method == "thread/deleted" {
+					self.store.confirm_agent_thread_deletion(exact(&params, "/threadId")?).await?;
+				}
 				if method == "thread/archived" {
 					self.store
 						.retire_archived_agent_threads(vec![exact(&params, "/threadId")?])

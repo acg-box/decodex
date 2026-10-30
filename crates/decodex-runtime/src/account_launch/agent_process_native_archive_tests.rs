@@ -1,6 +1,6 @@
 //! Cross-process archive observations through the retained bridge and a local Responses fixture.
-//! Native reference: openai/codex 12cca49c81c8aa6a37a5cc4e39964ee3b70f9458,
-//! thread/list useStateDbOnly and thread/archive + thread/unarchive.
+//! Native reference: openai/codex 33d306d457a4632b22bebf214e0c25d91f90f6e8,
+//! thread/list useStateDbOnly and thread/archive, thread/unarchive and thread/delete.
 use std::{
 	collections::HashSet,
 	env, fs,
@@ -209,6 +209,60 @@ async fn installed_native_archive_roundtrip_refreshes_without_restarting_either_
 		"archive observations must not start additional turns"
 	);
 
+	backend.abort();
+}
+
+#[tokio::test]
+#[ignore = "requires DECODEX_TEST_CODEX_BINARY; isolated native permanent deletion"]
+async fn installed_native_delete_removes_only_the_selected_archive_and_survives_reopen() {
+	let binary = env::var_os("DECODEX_TEST_CODEX_BINARY").expect("explicit native binary");
+	let home = tempfile::tempdir().unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let address = listener.local_addr().unwrap();
+	let requests = Arc::new(AtomicUsize::new(0));
+	let backend = tokio::spawn(native_tests::serve(listener, requests.clone()));
+	fs::write(home.path().join("config.toml"),format!("model=\"gpt-5.6-sol\"\nmodel_provider=\"fixture\"\n[model_providers.fixture]\nname=\"Delete fixture\"\nbase_url=\"http://{address}\"\nwire_api=\"responses\"\nrequires_openai_auth=false\nsupports_websockets=false\n")).unwrap();
+	let mut actor = NativeSession::start(&binary, home.path());
+	let mut ids = Vec::new();
+	for _ in 0..2 {
+		let response=actor.client.thread_start(serde_json::json!({"cwd":home.path(),"historyMode":"paginated","approvalPolicy":"never","sandbox":"read-only"})).await.unwrap();
+		let id = response["thread"]["id"].as_str().unwrap().to_owned();
+		actor
+			.client
+			.turn_start(
+				serde_json::json!({"threadId":id,"input":[{"type":"text","text":"Isolated deletion fixture"}]}),
+			)
+			.await
+			.unwrap();
+		wait_for_completion(&mut actor, &id).await;
+		ids.push(id);
+	}
+	actor.client.request("thread/archive", serde_json::json!({"threadId":ids[0]})).await.unwrap();
+	if let Err(error) = actor.client.thread_delete(&ids[0]).await {
+		match error {
+			decodex_codex::app_server_client::ClientError::Remote(error) =>
+				panic!("native deletion {}: {}", error.code, error.message),
+			other => panic!("native deletion: {other:?}"),
+		}
+	}
+	drop(actor);
+	let observer = NativeSession::start(&binary, home.path());
+	assert!(observer.client.archived_thread_absent(&ids[0]).await.unwrap());
+	assert_eq!(
+		observer.client.thread_archive_state(&ids[1]).await.unwrap(),
+		decodex_codex::app_server_client::ThreadArchiveState::Active
+	);
+	let kept = observer
+		.client
+		.thread_read(serde_json::json!({"threadId":ids[1],"includeTurns":true}))
+		.await
+		.unwrap();
+	assert!(!kept["thread"]["turns"].as_array().unwrap().is_empty());
+	assert_eq!(
+		requests.load(std::sync::atomic::Ordering::Acquire),
+		2,
+		"archive and deletion must not start another turn"
+	);
 	backend.abort();
 }
 

@@ -2412,7 +2412,8 @@ impl AgentClient {
 			| AgentActionDto::SetVoicePreference { .. }
 			| AgentActionDto::SetSearchPreference { .. }
 			| AgentActionDto::SetContextPreference { .. } => Some(Duration::from_secs(65)),
-			AgentActionDto::RestoreArchivedThread { .. } => Some(RESET_CARD_CLIENT_TIMEOUT),
+			AgentActionDto::RestoreArchivedThread { .. }
+			| AgentActionDto::DeleteArchivedThread { .. } => Some(RESET_CARD_CLIENT_TIMEOUT),
 			_ => None,
 		};
 		let timeout = extended_timeout.unwrap_or(RESET_CARD_CLIENT_TIMEOUT);
@@ -3912,6 +3913,7 @@ fn agent_action_work_id(action: &AgentActionDto) -> &EntityId {
 		| AgentActionDto::ContinueMisalignment { work_id, .. }
 		| AgentActionDto::ApproveGuardianDenial { work_id, .. }
 		| AgentActionDto::RestoreArchivedThread { work_id, .. }
+		| AgentActionDto::DeleteArchivedThread { work_id, .. }
 		| AgentActionDto::AddResourceLink { work_id, .. }
 		| AgentActionDto::RemoveResource { work_id, .. } => work_id,
 	}
