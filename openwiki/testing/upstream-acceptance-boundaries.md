@@ -30,12 +30,18 @@ sources:
     resource: repo://apps/decodex-gpui/src/native_voice_transport.rs
   - id: openwiki-source-546812ff3637690f4a184b89
     resource: repo://apps/decodex-gpui/src/ui_preferences.rs
+  - id: openwiki-source-3122dd472ce3039751b99877
+    resource: repo://automations/decodex/scripts/config/tests/test_portfolio.py
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
+  - id: openwiki-source-f7ecbc6c02d8c1b7873858d6
+    resource: repo://automations/upstream/checkpoint.test.mts
   - id: openwiki-source-7dcbb082d2502f1ec4386c39
     resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
+  - id: openwiki-source-8b67a68a7ef89772aa8180d1
+    resource: repo://automations/upstream/README.md
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
   - id: openwiki-source-7eedab1ccdf82ac9ccd3ab32
@@ -156,10 +162,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-30T15:17:49.972Z" }
+generated: { by: "codex", at: "2026-10-30T17:36:00.319Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T15:27:42.105Z
+    at: 2026-10-30T17:36:00.319Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -180,6 +186,8 @@ verified:
 `Makefile.toml` defines workspace checks. Isolated native fixtures exercise a named Codex binary and must keep their declared environment and effect prerequisites. The signed bundle contract checks packaging, signatures and ABI compatibility; it does not exercise live microphone, network or focus behavior.
 
 For native compatibility, record the upstream commit separately from the installed binary and generated schema. Test the actual consumer contract. A schema field or retained database row is not proof of a delivered UI or supported execution path.
+
+Workflow-only maintenance uses the checkpoint and portfolio checks in `cargo +stable make test-automations`. This verifies maintenance bookkeeping and repository configuration; it does not require app, provider or upstream suites and does not qualify a different runtime. The portable index retains the executed identities and limits. Native definition readback is separate from repository validation, and neither resumes a paused schedule.
 
 ## Current fixed development qualification
 

@@ -2797,5 +2797,59 @@
     "delivery_references": [
       "https://github.com/acg-box/decodex/commit/84349473fc6cb1402f6962d49b86d3eeeacd097f"
     ]
+  },
+  "maintenance_workflow": {
+    "contracts": [
+      "Reconcile merged manual delivery with current main before replacing the continuation.",
+      "Publish the fixed target, certified review prefix, remaining inventory and pending delivery through one checkpoint writer.",
+      "Keep deferred product decisions outside the required daily repair backlog.",
+      "Freeze source and portable evidence before OpenWiki page generation.",
+      "Preserve the paused native status until explicit resume authorization."
+    ],
+    "source_revision": "5e62e69c5",
+    "source_sha256": {
+      "automations/upstream/prompts/maintainer.md": "01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f",
+      "automations/upstream/README.md": "d5ec8ffce5d7e254c0d6d4ad26dd453159a7f55214bbd6356a6f244e6cc72941",
+      "automations/upstream/checkpoint.mts": "5ab211e2ee98e1b16fd485a75ccbec5db50dfb359407f5856fc19e0c32aff53f",
+      "automations/upstream/checkpoint.test.mts": "ae6673e3b1847a82c7eb80ae3a81ecb94c2a4cc2adf8ccebe7a1e34745ac4165",
+      "automations/decodex/scripts/config/tests/test_portfolio.py": "e21165087a2b7b90efa00e2f1c1ab2497637cf2dd74cd383452968665a222b8e"
+    },
+    "tests_executed": {
+      "checkpoint_entrypoint": "automations/upstream/checkpoint.test.mts",
+      "checkpoint_identities": [
+        "publish cursor, certificate and remaining count together; preserve pending delivery",
+        "finish a fixed range without duplicating its certificate or review count",
+        "unread or out-of-order review leaves the current checkpoint unchanged",
+        "stale input cannot overwrite a newer pending-work observation",
+        "changing an active fixed target or owner does not publish a checkpoint",
+        "archive only explicit finished fields, with the complete original recoverable",
+        "a pending-only save cannot write a caller-supplied cursor or counter",
+        "CLI inspection is read-only and rejects unknown options"
+      ],
+      "portfolio_entrypoint": "automations/decodex/scripts/config/tests/test_portfolio.py",
+      "portfolio_identities": [
+        "test_manifest_renders_the_configured_values_and_primary_worktree",
+        "test_manifest_rejects_invalid_required_string_fields",
+        "test_manifest_rejects_wrong_scalar_types",
+        "test_primary_project_is_independent_of_branch_and_caller",
+        "test_global_status_does_not_override_explicit_manual_pause",
+        "test_runtime_evaluation_requires_metadata_and_rejects_extra_managed_ids",
+        "test_runtime_status_must_match_the_manifest"
+      ],
+      "count": 15,
+      "passed": 15,
+      "failed": 0,
+      "unmatched_selectors": []
+    },
+    "commands": [
+      "cargo +stable make test-automations",
+      "python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json",
+      "git diff --check"
+    ],
+    "limits": [
+      "Workflow-only verification; no app, provider or upstream test suite executed.",
+      "Native definition readback confirmed the prompt update and preserved paused daily scheduling; native definition and receipts remain outside Git.",
+      "This evidence does not advance source review or qualify another runtime artifact."
+    ]
   }
 }

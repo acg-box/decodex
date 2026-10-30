@@ -45,6 +45,12 @@ It validates bookkeeping, not the truth of source or runtime qualification.
 See the [checkpoint input contract](../../openwiki/operations/codex-upstream-autopilot.md#publish-a-checkpoint)
 for input fields, explicit historical-field archival and recovery limits.
 
+After manual delivery, reconcile later merges and their native receipts with main.
+Replace the current continuation with one accurate next action. Keep deferred
+issues separate from approved implementation and daily source-review backlog.
+Save the fixed target, certified prefix, remaining work and verification limits
+together. Keep the schedule paused until the user explicitly requests resumption.
+
 ## Portable evidence and delivery
 
 [retained-evidence.json](retained-evidence.json) is the compact current router.
@@ -60,6 +66,10 @@ copying each run's counters/hashes into several pages. Use its supported lifecyc
 Keep raw logs, private paths, account data, native definitions and builds native.
 Missing local artifacts require only affected proof to be rebuilt and qualified;
 a rebuilt artifact is not the deleted original.
+
+Complete portable evidence edits and verify the contract-catalog digest before
+starting Wiki generation. Freeze those inputs for the page jobs. PR, CI and merge
+observations remain native and do not require an evidence-only follow-up commit.
 
 Finish code, tests, evidence and related Wiki jobs before the first push when
 practical. Use known code commits for portable public references; keep PR numbers,
