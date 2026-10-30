@@ -103,8 +103,8 @@ struct AccountPrimaryActionsView: View {
 struct AccountUtilityActionsView: View {
 	let state: ResetCardAccountState
 	let store: ResetCardStore
-		@Environment(\.colorScheme) private var colorScheme
-	@State private var isLogoutArmed = false
+	@State private var confirmation = SecondTapConfirmation()
+	@State private var confirmationTrigger = 0
 
 	var body: some View {
 		CompactAccountActionButton(
@@ -112,42 +112,27 @@ struct AccountUtilityActionsView: View {
 			isActive: false, isDisabled: lifecycleActionIsDisabled,
 			isVisuallyDisabled: !store.canPerformDirectAccountControl,
 			usesDisabledEnvironment: !store.canPerformDirectAccountControl,
-			isBusy: false, help: isLogoutArmed ? "" : "Sign out"
-		) { isLogoutArmed = true }
-		.popover(isPresented: $isLogoutArmed, arrowEdge: .trailing) { logoutConfirmation }
-		.onChange(of: state.account.accountRevision) { isLogoutArmed = false }
-	}
-
-	private var logoutConfirmation: some View {
-		VStack(alignment: .leading, spacing: PanelSpacing.section) {
-			Text("Sign out of this account?")
-				.font(PanelFont.transientTitle)
-
-			Text("Removes this account and its saved sign-in from Decodex.")
-				.font(PanelFont.transientBody)
-				.foregroundStyle(.secondary)
-				.fixedSize(horizontal: false, vertical: true)
-
-			HStack {
-				Button("Cancel") {
-					isLogoutArmed = false
-				}
-				.keyboardShortcut(.cancelAction)
-
-				Spacer()
-
-				Button("Sign out", role: .destructive) {
-					Task {
-						await store.logoutAccount(state.account.accountID)
-						isLogoutArmed = false
-					}
-				}
-				.keyboardShortcut(.defaultAction)
-				.disabled(lifecycleActionIsDisabled)
+			isBusy: false, help: "Sign out",
+			isConfirming: confirmation.isArmed(), confirmationTrigger: confirmationTrigger
+		) {
+			if confirmation.tap() {
+				Task { await store.logoutAccount(state.account.accountID) }
+			} else {
+				confirmationTrigger += 1
 			}
 		}
-		.frame(width: 240)
-		.padding(PanelSpacing.popoverInset)
+		.task(id: confirmation.deadline) {
+			guard let deadline = confirmation.deadline else { return }
+			do { try await ContinuousClock().sleep(until: deadline) }
+			catch { return }
+			if confirmation.deadline == deadline { confirmation.cancel() }
+		}
+		.onChange(of: state.account.accountRevision) { confirmation.cancel() }
+		.onChange(of: lifecycleActionIsDisabled) {
+			if lifecycleActionIsDisabled { confirmation.cancel() }
+		}
+		.onDisappear { confirmation.cancel() }
+		.onExitCommand(perform: confirmation.isArmed() ? { confirmation.cancel() } : nil)
 	}
 
 	private var lifecycleActionIsDisabled: Bool {
@@ -201,6 +186,8 @@ private struct CompactAccountActionButton: View {
 	let usesDisabledEnvironment: Bool
 	let isBusy: Bool
 	let help: String
+	var isConfirming = false
+	var confirmationTrigger = 0
 	let action: () -> Void
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
@@ -215,11 +202,20 @@ private struct CompactAccountActionButton: View {
 				.font(.system(size: 11, weight: isActive ? .semibold : .regular))
 				.symbolVariant(isActive ? .fill : .none)
 				.symbolRenderingMode(.hierarchical)
-				.foregroundStyle(isActive ? PanelPalette.routeAccent(colorScheme) : PanelPalette.secondaryText(colorScheme))
+				.foregroundStyle(isConfirming ? PanelPalette.destructive(colorScheme) : (isActive ? PanelPalette.routeAccent(colorScheme) : PanelPalette.secondaryText(colorScheme)))
 				.frame(width: 20, height: 20)
 				.opacity(hovered ? 1 : 0.85)
 				.contentShape(RoundedRectangle(cornerRadius: 7))
 				.symbolEffect(.pulse, options: .repeating, isActive: isBusy && !reduceMotion)
+				.keyframeAnimator(initialValue: CGFloat.zero, trigger: confirmationTrigger) { content, offset in
+					content.offset(x: reduceMotion ? 0 : offset)
+				} keyframes: { _ in
+					LinearKeyframe(-3, duration: 0.04)
+					LinearKeyframe(3, duration: 0.06)
+					LinearKeyframe(-2, duration: 0.05)
+					LinearKeyframe(1, duration: 0.05)
+					LinearKeyframe(0, duration: 0.04)
+				}
 		}
 		.buttonStyle(PanelPressButtonStyle(pressedScale: 0.94))
 		.frame(width: 20, height: 20)
@@ -228,10 +224,11 @@ private struct CompactAccountActionButton: View {
 		.opacity(isVisuallyDisabled && !isActive ? 0.44 : 1)
 		.onHover { hovered = $0 }
 		.animation(controlStateAnimation, value: isActive)
+		.animation(controlStateAnimation, value: isConfirming)
 		.animation(controlStateAnimation, value: hovered)
 		.help(help)
 		.accessibilityLabel(title)
-		.accessibilityValue(isBusy ? "In progress" : (isActive ? "Selected" : ""))
+		.accessibilityValue(isConfirming ? "Confirmation required" : (isBusy ? "In progress" : (isActive ? "Selected" : "")))
 	}
 
 	private var controlStateAnimation: Animation? {
