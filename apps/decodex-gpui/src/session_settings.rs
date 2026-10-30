@@ -146,56 +146,51 @@ pub(crate) fn speed_choices<T: 'static>(
 	tiers: impl IntoIterator<Item = (ServiceTier, String)>,
 	choose: fn(&mut T, ServiceTier, &mut Context<T>),
 	cx: &Context<T>,
-) -> Div {
-	let mut menu = gpui::div().flex().flex_wrap().items_center().gap(gpui::px(2.));
-	let choices = std::iter::once((ServiceTier::standard(), "Standard".into()))
-		.chain(tiers.into_iter().filter(|(id, _)| id.as_str() != "default"));
-	for (id, name) in choices {
-		let label = match id.as_str() {
-			"default" | "priority" | "ultrafast" => speed_label(id.as_str()).to_owned(),
-			_ => name,
-		};
-		let chosen = selected == Some(&id);
-		let keyboard_id = id.clone();
-		menu = menu.child(
-			ui_theme::menu_row(format!("tier-{}", id.as_str()), true)
-				.w_auto()
-				.flex_shrink_0()
-				.debug_selector({
-					let id = id.clone();
-					move || format!("tier-{}", id.as_str())
-				})
-				.role(gpui::Role::Button)
-				.aria_label(label.clone())
-				.aria_selected(chosen)
-				.h(gpui::px(24.))
-				.min_h(gpui::px(24.))
-				.px(gpui::px(6.))
-				.py_0()
-				.rounded(gpui::px(5.))
-				.flex()
-				.items_center()
-				.whitespace_nowrap()
-				.when(chosen, |d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
-				.child(label)
-				.on_click(cx.listener(move |this, _, _, cx| {
-					if !chosen {
-						choose(this, id.clone(), cx);
-					}
-				}))
-				.on_key_down(cx.listener(move |this, key: &gpui::KeyDownEvent, _, cx| {
-					if !chosen
-						&& !key.is_held
-						&& ["enter", "space"].contains(&key.keystroke.key.as_str())
-					{
-						cx.stop_propagation();
-						choose(this, keyboard_id.clone(), cx);
-					}
-				}))
-				.smooth(),
-		);
+) -> crate::ui_motion::Segmented {
+	let mut tiers: Vec<_> = std::iter::once((ServiceTier::standard(), "Standard".into()))
+		.chain(tiers.into_iter().filter(|(id, _)| id.as_str() != "default"))
+		.collect();
+	tiers.sort_by_key(|(id, _)| match id.as_str() {
+		"default" => 0,
+		"priority" => 1,
+		"ultrafast" => 2,
+		_ => 3,
+	});
+	let selected = tiers.iter().position(|(tier, _)| Some(tier) == selected);
+	let choices: Vec<_> = tiers
+		.iter()
+		.map(|(id, name)| {
+			let label = match id.as_str() {
+				"default" | "priority" | "ultrafast" => speed_label(id.as_str()),
+				_ => name.as_str(),
+			};
+			crate::ui_motion::Choice::new(
+				format!("tier-{}", id.as_str()),
+				label.to_owned(),
+				label.to_owned(),
+			)
+		})
+		.collect();
+	crate::ui_motion::Segmented::new(
+		"service-tier-picker",
+		"Speed. Click a speed or drag between speeds.",
+		choices,
+		selected,
+		cx.listener(move |this, index: &usize, _, cx| {
+			if selected != Some(*index) {
+				choose(this, tiers[*index].0.clone(), cx);
+			}
+		}),
+	)
+	.fixed_choice_width(64.)
+}
+
+pub(crate) fn speed_symbol(id: &str) -> Option<workspace_symbols::Symbol> {
+	match id {
+		"priority" => Some(workspace_symbols::Symbol::Fast),
+		"ultrafast" => Some(workspace_symbols::Symbol::Ultrafast),
+		_ => None,
 	}
-	menu
 }
 
 pub(crate) fn speed_label(id: &str) -> &str {

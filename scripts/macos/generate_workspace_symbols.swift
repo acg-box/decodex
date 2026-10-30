@@ -53,6 +53,7 @@ let symbols = [
     "forward": "arrow.right",
     "send": "arrow.up",
     "fast": "bolt.fill",
+    "ultrafast": "forward.fill",
     "microphone": "mic",
     "waveform": "waveform",
     "bell": "bell",

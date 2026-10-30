@@ -18,16 +18,16 @@ const INSET: f32 = 2.;
 
 pub(crate) struct Choice {
 	pub id: SharedString,
-	pub label: &'static str,
+	pub label: SharedString,
 	pub description: SharedString,
 }
 impl Choice {
 	pub(crate) fn new(
 		id: impl Into<SharedString>,
-		label: &'static str,
+		label: impl Into<SharedString>,
 		description: impl Into<SharedString>,
 	) -> Self {
-		Self { id: id.into(), label, description: description.into() }
+		Self { id: id.into(), label: label.into(), description: description.into() }
 	}
 }
 
@@ -36,7 +36,7 @@ pub(crate) struct Segmented {
 	id: SharedString,
 	label: SharedString,
 	choices: Vec<Choice>,
-	selected: usize,
+	selected: Option<usize>,
 	change: Change,
 	choice_width: Option<f32>,
 	thumb: SharedString,
@@ -46,7 +46,7 @@ impl Segmented {
 		id: impl Into<SharedString>,
 		label: impl Into<SharedString>,
 		choices: impl IntoIterator<Item = Choice>,
-		selected: usize,
+		selected: impl Into<Option<usize>>,
 		change: impl Fn(&usize, &mut Window, &mut App) + 'static,
 	) -> Self {
 		let id = id.into();
@@ -55,7 +55,7 @@ impl Segmented {
 			id,
 			label: label.into(),
 			choices: choices.into_iter().collect(),
-			selected,
+			selected: selected.into(),
 			change: Rc::new(change),
 			choice_width: None,
 			thumb,
@@ -93,7 +93,7 @@ impl RenderOnce for Segmented {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
 		let Self { id, label, choices, selected, change, choice_width: fixed_width, thumb } = self;
 		let last = choices.len().saturating_sub(1);
-		let selected = selected.min(last);
+		let selected = selected.map(|selected| selected.min(last));
 		let height = ui_theme::CONTROL_GROUP_HEIGHT - 2.;
 		let font_size = ui_theme::CONTROL_LABEL_SIZE;
 		let width = fixed_width.unwrap_or_else(|| choice_width(&choices, font_size, window));
@@ -103,8 +103,9 @@ impl RenderOnce for Segmented {
 			});
 		let held = state.read(cx).gesture.is_some();
 		let drag = state.read(cx).gesture.as_ref().filter(|g| g.moved);
-		let value = drag.map_or(selected as f32, |g| g.value);
-		let position = ui_motion::direct_value(thumb.clone(), value, drag.is_some(), window, cx);
+		let value = drag.map_or(selected.unwrap_or(0) as f32, |g| g.value);
+		let dragging = drag.is_some();
+		let position = ui_motion::direct_value(thumb.clone(), value, dragging, window, cx);
 		let down = state.clone();
 		let mut control = ui_theme::canvas_control_group();
 
@@ -135,18 +136,20 @@ impl RenderOnce for Segmented {
 				});
 				cx.stop_propagation();
 			})
-			.child(
-				gpui::div()
-					.id(thumb.clone())
-					.debug_selector(move || thumb.to_string())
-					.absolute()
-					.left(gpui::px(INSET + position * width))
-					.top(gpui::px(INSET))
-					.w(gpui::px(width))
-					.h(gpui::px(height - INSET * 2.))
-					.rounded(gpui::px(8.))
-					.bg(ui_theme::rgba(ui_theme::CONTROL_SELECTED_FILL)),
-			)
+			.when(selected.is_some() || dragging, |control| {
+				control.child(
+					gpui::div()
+						.id(thumb.clone())
+						.debug_selector(move || thumb.to_string())
+						.absolute()
+						.left(gpui::px(INSET + position * width))
+						.top(gpui::px(INSET))
+						.w(gpui::px(width))
+						.h(gpui::px(height - INSET * 2.))
+						.rounded(gpui::px(8.))
+						.bg(ui_theme::rgba(ui_theme::CONTROL_SELECTED_FILL)),
+				)
+			})
 			.child(pointer_events(state.clone(), width, last, change.clone()));
 
 		for (index, choice) in choices.into_iter().enumerate() {
@@ -159,7 +162,7 @@ impl RenderOnce for Segmented {
 					.debug_selector(move || choice.id.to_string())
 					.role(Role::RadioButton)
 					.aria_label(choice.description)
-					.aria_selected(selected == index)
+					.aria_selected(selected == Some(index))
 					.tab_index(0)
 					.relative()
 					.w(gpui::px(width))
@@ -172,7 +175,7 @@ impl RenderOnce for Segmented {
 					.border_1()
 					.border_color(gpui::transparent_black())
 					.text_size(gpui::px(font_size))
-					.text_color(ui_theme::rgb(if selected == index {
+					.text_color(ui_theme::rgb(if selected == Some(index) {
 						ui_theme::TEXT
 					} else {
 						ui_theme::TEXT_MUTED
@@ -194,10 +197,11 @@ impl RenderOnce for Segmented {
 									s.gesture = None;
 									cx.notify();
 								});
-								selected
+								cx.stop_propagation();
+								return;
 							},
-							"left" => selected.saturating_sub(1),
-							"right" => (selected + 1).min(last),
+							"left" => selected.unwrap_or(0).saturating_sub(1),
+							"right" => selected.map_or(0, |index| (index + 1).min(last)),
 							"home" => 0,
 							"end" => last,
 							"enter" | "space" if !e.is_held => index,
@@ -220,7 +224,7 @@ fn choice_width(choices: &[Choice], font_size: f32, window: &Window) -> f32 {
 				window
 					.text_system()
 					.shape_line(
-						choice.label.into(),
+						choice.label.clone(),
 						gpui::px(font_size),
 						&[TextRun {
 							len: choice.label.len(),
