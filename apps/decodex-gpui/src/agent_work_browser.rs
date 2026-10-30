@@ -16,10 +16,10 @@ use crate::{
 		},
 		workspace_symbols::{self, Symbol},
 	},
-	ui_motion,
+	ui_motion::{self, SmoothControl as _},
 	ui_theme::{
 		self, BODY_SIZE, CONTROL_SIZE, CONVERSATION_TAB_GAP, CONVERSATION_TAB_SIZE, ERROR,
-		HOVER_FILL, TEXT_MUTED,
+		HOVER_FILL, SELECTED_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED,
 	},
 };
 use decodex_protocol::{
@@ -566,11 +566,24 @@ impl AgentSurface {
 	) -> AnyElement {
 		let action = Rc::new(action);
 		let keyboard = action.clone();
+		let active = self.workspace.browsing
+			&& id
+				== if self.workspace.archives.open {
+					"archive-browser"
+				} else if self.workspace.guardian_open {
+					"global-guardian"
+				} else if self.workspace.portfolio_mode {
+					"project-work"
+				} else {
+					"all-work"
+				};
 
 		gpui::div()
 			.id(id)
+			.debug_selector(move || id.into())
 			.role(Role::Button)
 			.aria_label(label)
+			.aria_selected(active)
 			.tab_index(0)
 			.h(gpui::px(CONVERSATION_TAB_SIZE))
 			.mb(gpui::px(CONVERSATION_TAB_GAP))
@@ -582,7 +595,13 @@ impl AgentSurface {
 			.gap(gpui::px(6.))
 			.rounded(gpui::px(7.))
 			.cursor_pointer()
-			.hover(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
+			.bg(ui_theme::rgba(if active { SELECTED_FILL } else { 0xffffff00 }))
+			.text_color(ui_theme::rgb(if active { TEXT } else { TEXT_MUTED }))
+			.hover(move |s| {
+				s.bg(ui_theme::rgba(if active { SELECTED_HOVER_FILL } else { HOVER_FILL }))
+			})
+			.active(|s| s.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
+			.focus_visible(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
 			.child(
 				gpui::div()
 					.w(gpui::px(CONVERSATION_TAB_SIZE))
@@ -593,13 +612,7 @@ impl AgentSurface {
 					.justify_center()
 					.child(workspace_symbols::icon_sized(symbol, 15.)),
 			)
-			.child(
-				gpui::div()
-					.min_w(gpui::px(120.))
-					.whitespace_nowrap()
-					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child(label),
-			)
+			.child(gpui::div().min_w(gpui::px(120.)).whitespace_nowrap().child(label))
 			.on_click(cx.listener(move |s, _, _, cx| action(s, cx)))
 			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 				if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
@@ -608,6 +621,7 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 			}))
+			.smooth()
 			.into_any_element()
 	}
 

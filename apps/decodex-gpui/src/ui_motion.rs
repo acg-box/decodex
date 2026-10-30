@@ -316,7 +316,7 @@ impl RenderOnce for Popover {
 		// A disclosure's height clip cuts the blur into a rectangular dark patch.
 		// Menus overlay the page, so animate their position without a layout clip.
 		gpui::div().w_full().when(self.visible, |slot| {
-			slot.p_2().child(
+			slot.px(gpui::px(ui_theme::POPOVER_PADDING)).py(gpui::px(ui_theme::POPOVER_GAP)).child(
 				gpui::div()
 					.w_full()
 					.relative()

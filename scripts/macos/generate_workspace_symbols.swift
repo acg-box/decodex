@@ -42,6 +42,7 @@ let symbols = [
     "agents": "sidebar.right",
     "expand": "arrow.up.left.and.arrow.down.right",
     "restore": "arrow.down.right.and.arrow.up.left",
+    "archive": "archivebox",
     "settings": "gearshape",
     "close": "xmark",
     "plus": "plus",

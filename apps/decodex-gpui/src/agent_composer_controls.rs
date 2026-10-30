@@ -9,9 +9,12 @@ use gpui::{
 };
 
 use crate::{
-	shell::agent_surface::composer::{
-		AgentSurface, SmoothControl, model_settings,
-		ui_theme::{self, BODY_SIZE, CONTROL_SIZE, ON_PRIMARY, TEXT_MUTED},
+	shell::{
+		agent_surface::composer::{
+			AgentSurface, SmoothControl, model_settings,
+			ui_theme::{self, BODY_SIZE, CONTROL_SIZE, ON_PRIMARY, TEXT_MUTED},
+		},
+		workspace_symbols,
 	},
 	ui_loading, ui_motion,
 	ui_theme::WARNING,
@@ -78,16 +81,12 @@ impl AgentSurface {
 						.role(Role::Button)
 						.tab_index(0)
 						.aria_label(format!("Select {full}"))
+						.aria_selected(selected)
 						.flex_1()
 						.min_w_0()
 						.h(gpui::px(CONTROL_SIZE))
 						.px(gpui::px(7.))
 						.rounded(gpui::px(6.))
-						.bg(if selected {
-							crate::ui_theme::rgba(0xffffff0c)
-						} else {
-							crate::ui_theme::rgba(0x00000000)
-						})
 						.flex()
 						.items_center()
 						.justify_between()
@@ -96,7 +95,9 @@ impl AgentSurface {
 							s.select_composer_option("model", &click_model, cx)
 						}))
 						.on_key_down(cx.listener(move |s, event: &KeyDownEvent, _, cx| {
-							if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+							if !event.is_held
+								&& ["enter", "space"].contains(&event.keystroke.key.as_str())
+							{
 								s.select_composer_option("model", &model, cx);
 								cx.stop_propagation();
 							}
@@ -116,13 +117,7 @@ impl AgentSurface {
 										.child(full.clone()),
 								),
 						)
-						.child(
-							gpui::div()
-								.w(gpui::px(16.))
-								.text_size(gpui::px(13.))
-								.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-								.child(if selected { "✓" } else { "" }),
-						)
+						.child(workspace_symbols::menu_check(selected))
 						.smooth(),
 				);
 			}

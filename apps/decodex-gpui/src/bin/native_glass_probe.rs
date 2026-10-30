@@ -147,7 +147,8 @@ mod probe {
 	pub fn run_material_update() {
 		let library =
 			std::env::var("DECODEX_PROBE_NATIVE_LIBRARY").expect("explicit native fixture library");
-		let library = std::ffi::CString::new(library).unwrap();
+		let library =
+			std::ffi::CString::new(library).expect("native library path without a NUL byte");
 		assert!(
 			!unsafe { libc::dlopen(library.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) }.is_null(),
 			"load the native fixture library"
@@ -257,34 +258,35 @@ mod probe {
 						})
 						.expect("live material fixture");
 
-					window_material::apply(
-						parent,
-						crate::ui_theme::material::Material::LiquidGlass,
-					);
-
-					let class = AnyClass::get(c"NSGlassEffectView").expect("macOS glass class");
-
-					assert!(
-						native_window(parent)
-							.contentView()
-							.expect("parent content")
-							.subviews()
-							.iter()
-							.any(|v| unsafe { msg_send![&**v, isKindOfClass: class] }),
-						"ordinary windows still receive their material"
-					);
-					eprintln!("material-probe: ordinary window material applied");
-					let expected = crate::ui_theme::material::GlassScope::Window.configured();
-					assert_eq!(
-						crate::ui_theme::native_material_panel::observed_style(parent),
-						Some(isize::from(expected == crate::ui_theme::material::GlassStyle::Clear))
-					);
-					eprintln!("material-probe: native window style {expected:?}");
+					assert_window_material(parent);
 				})
 				.expect("live material fixture");
 
 			cx.defer(|cx| cx.quit());
 		});
+	}
+
+	fn assert_window_material(parent: &mut Window) {
+		window_material::apply(parent, crate::ui_theme::material::Material::LiquidGlass);
+
+		let class = AnyClass::get(c"NSGlassEffectView").expect("macOS glass class");
+
+		assert!(
+			native_window(parent)
+				.contentView()
+				.expect("parent content")
+				.subviews()
+				.iter()
+				.any(|v| unsafe { msg_send![&**v, isKindOfClass: class] }),
+			"ordinary windows still receive their material"
+		);
+		eprintln!("material-probe: ordinary window material applied");
+		let expected = crate::ui_theme::material::GlassScope::Window.configured();
+		assert_eq!(
+			crate::ui_theme::native_material_panel::observed_style(parent),
+			Some(isize::from(expected == crate::ui_theme::material::GlassStyle::Clear))
+		);
+		eprintln!("material-probe: native window style {expected:?}");
 	}
 
 	pub fn run_quit_preflight() {

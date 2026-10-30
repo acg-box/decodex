@@ -58,13 +58,27 @@ pub(crate) fn observe_activation<T>(window: &mut Window, cx: &mut Context<T>)
 where
 	T: 'static,
 {
-	// Re-evaluate the rendering policy on departure and resume all surfaces on return.
-	// A sibling composer becoming key does not deactivate the application.
-	cx.observe_window_activation(window, |_, _, cx| {
-		cx.refresh_windows();
+	let _ = cx.default_global::<Activation>();
+	cx.observe_window_activation(window, |_, window, cx| {
+		let active = application_active();
+		if std::mem::replace(&mut cx.default_global::<Activation>().0, active) != active {
+			// App departure and return change every surface's animation policy.
+			cx.refresh_windows();
+		} else {
+			// A menu taking keyboard focus does not invalidate the transcript cache.
+			window.refresh();
+		}
 	})
 	.detach();
 }
+
+struct Activation(bool);
+impl Default for Activation {
+	fn default() -> Self {
+		Self(application_active())
+	}
+}
+impl gpui::Global for Activation {}
 
 pub(crate) fn application_active() -> bool {
 	#[cfg(all(target_os = "macos", not(test)))]
@@ -119,6 +133,27 @@ mod tests {
 	use gpui::{AppContext as _, Entity, IntoElement, Render};
 
 	struct Motion(Entity<()>);
+	struct Counted(Rc<Cell<usize>>);
+	impl Render for Counted {
+		fn render(
+			&mut self,
+			_: &mut gpui::Window,
+			_: &mut gpui::Context<Self>,
+		) -> impl IntoElement {
+			self.0.set(self.0.get() + 1);
+			gpui::div()
+		}
+	}
+	struct Cached(Entity<Counted>);
+	impl Render for Cached {
+		fn render(
+			&mut self,
+			_: &mut gpui::Window,
+			_: &mut gpui::Context<Self>,
+		) -> impl IntoElement {
+			self.0.clone().cached(gpui::StyleRefinement::default())
+		}
+	}
 	impl Render for Motion {
 		fn render(
 			&mut self,
@@ -151,5 +186,39 @@ mod tests {
 		cx.run_until_parked();
 
 		assert_eq!(notifications.get(), 0);
+	}
+
+	#[gpui::test]
+	fn menu_focus_preserves_the_other_windows_layout_cache(cx: &mut gpui::TestAppContext) {
+		let renders = Rc::new(Cell::new(0));
+		let mut composer_cx = cx.clone();
+		let mut menu_cx = cx.clone();
+		let (_, main) = cx.add_window_view(|window, cx| {
+			super::observe_activation(window, cx);
+			Cached(cx.new(|_| Counted(renders.clone())))
+		});
+		let (_, composer) = composer_cx.add_window_view(|window, cx| {
+			super::observe_activation(window, cx);
+			Counted(Rc::new(Cell::new(0)))
+		});
+		let (_, menu) = menu_cx.add_window_view(|window, cx| {
+			super::observe_activation(window, cx);
+			Counted(Rc::new(Cell::new(0)))
+		});
+		composer.update(|window, _| window.activate_window());
+		main.run_until_parked();
+		main.update(super::draw_current_frame);
+		let before = renders.get();
+
+		for _ in 0..4 {
+			menu.update(|window, _| window.activate_window());
+			main.run_until_parked();
+			main.update(super::draw_current_frame);
+			composer.update(|window, _| window.activate_window());
+			main.run_until_parked();
+			main.update(super::draw_current_frame);
+		}
+		assert!(before > 0);
+		assert_eq!(renders.get(), before, "changing the key window must not re-layout history");
 	}
 }

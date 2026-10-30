@@ -25,7 +25,7 @@ macro_rules! symbol_sources {
 	]};
 }
 
-static TEMPLATES: LazyLock<[String; 48]> = LazyLock::new(|| {
+static TEMPLATES: LazyLock<[String; 49]> = LazyLock::new(|| {
 	let sources = symbol_sources![
 		"sidebar",
 		"graph",
@@ -75,6 +75,7 @@ static TEMPLATES: LazyLock<[String; 48]> = LazyLock::new(|| {
 		"shield-check",
 		"shield-slash",
 		"shield-lock",
+		"archive",
 	];
 	sources.map(|bytes| {
 		format!(
@@ -134,6 +135,7 @@ pub(crate) enum Symbol {
 	ShieldCheck,
 	ShieldSlash,
 	ShieldLock,
+	Archive,
 }
 
 /// Both panel controls use their layout state and the same interruptible transition.
@@ -289,6 +291,17 @@ pub(super) fn panel_expansion(id: &'static str, expanded: bool) -> PanelExpansio
 
 pub(crate) fn icon_sized(symbol: Symbol, size: f32) -> AnyElement {
 	SymbolIcon { symbol, size }.into_any_element()
+}
+
+/// Reserve one selection slot so a check never shifts its menu label.
+pub(crate) fn menu_check(selected: bool) -> gpui::Div {
+	gpui::div()
+		.size(gpui::px(16.))
+		.flex_none()
+		.flex()
+		.items_center()
+		.justify_center()
+		.when(selected, |slot| slot.child(icon_sized(Symbol::Confirm, 12.)))
 }
 
 #[cfg(test)]

@@ -24,6 +24,17 @@ pub(in crate::shell::agent_surface) struct Catalog {
 	feedback: Option<String>,
 }
 
+impl Catalog {
+	fn project_name(&self, id: &str) -> Option<&str> {
+		self.data
+			.as_ref()?
+			.projects
+			.iter()
+			.find(|project| project.agent_ids.iter().any(|agent| agent == id))
+			.map(|project| project.name.as_str())
+	}
+}
+
 impl AgentSurface {
 	pub(in crate::shell::agent_surface) fn open_archive_catalog(&mut self, cx: &mut Context<Self>) {
 		self.cancel_dictation(cx);
@@ -31,7 +42,12 @@ impl AgentSurface {
 		self.workspace.archives.open = true;
 		if self.workspace.archives.search.is_none() {
 			let search = cx.new(|cx| {
-				ComposerInput::with_placeholder(48, "Search archived agents…", "Search archive", cx)
+				ComposerInput::with_placeholder(
+					48,
+					"Search by agent or project…",
+					"Search archive",
+					cx,
+				)
 			});
 			cx.observe(&search, |_, _, cx| cx.notify()).detach();
 			self.workspace.archives.search = Some(search);
@@ -147,7 +163,15 @@ impl AgentSurface {
 			.flat_map(|data| {
 				data.work_items.iter().filter(|item| data.archived_work_ids.contains(&item.id))
 			})
-			.filter(|item| item.title.to_lowercase().contains(&query))
+			.filter(|item| {
+				let terms = format!(
+					"{} {}",
+					item.title,
+					catalog.project_name(&item.id).unwrap_or_default()
+				)
+				.to_lowercase();
+				query.split_whitespace().all(|word| terms.contains(word))
+			})
 			.collect();
 		items.sort_by_key(|item| std::cmp::Reverse(item.updated_at_micros));
 		let count = items.len();
@@ -163,11 +187,7 @@ impl AgentSurface {
 		for item in items {
 			let id = item.id.clone();
 			let key_id = id.clone();
-			let project = catalog
-				.data
-				.as_ref()
-				.and_then(|data| data.projects.iter().find(|p| p.agent_ids.contains(&id)))
-				.map(|p| p.name.clone());
+			let project = catalog.project_name(&id).map(str::to_owned);
 			let busy = catalog.busy.as_ref() == Some(&id);
 			list = list.child(
 				gpui::div()
@@ -244,31 +264,33 @@ impl AgentSurface {
 			.flex_col()
 			.p_4()
 			.gap_3()
-			.child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.gap_3()
-					.child(
-						gpui::div()
-							.flex_1()
-							.min_w_0()
-							.h(gpui::px(ui_theme::CONTROL_SIZE))
-							.children(catalog.search.clone()),
-					)
-					.child(ui_theme::settings_button("refresh-archive", "Refresh").on_click(
-						cx.listener(|s, _, _, cx| {
-							s.load_archive_catalog(cx);
-							cx.notify();
-						}),
-					)),
-			)
+			.child(self.archive_catalog_toolbar(cx))
 			.children(catalog.feedback.as_ref().and_then(|message| {
 				ui_feedback::inline_feedback("archive-feedback", "", &Feedback::error(message))
 			}))
 			.children(catalog.read.is_some().then(|| ui_loading::loading("Reading archive…")))
 			.child(list)
 			.into_any_element()
+	}
+
+	fn archive_catalog_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		gpui::div()
+			.flex()
+			.items_center()
+			.gap_3()
+			.child(
+				gpui::div()
+					.flex_1()
+					.min_w_0()
+					.h(gpui::px(ui_theme::CONTROL_SIZE))
+					.children(self.workspace.archives.search.clone()),
+			)
+			.child(ui_theme::settings_button("refresh-archive", "Refresh").on_click(cx.listener(
+				|s, _, _, cx| {
+					s.load_archive_catalog(cx);
+					cx.notify();
+				},
+			)))
 	}
 }
 
@@ -292,6 +314,71 @@ mod tests {
 		fn render(&mut self, _: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
 			self.0.update(cx, |s, cx| s.render_archive_catalog(cx))
 		}
+	}
+
+	#[gpui::test]
+	fn archive_search_matches_visible_project_and_agent_names(cx: &mut gpui::TestAppContext) {
+		let (view, visual) = cx.add_window_view(|_, cx| {
+			let surface = cx.new(AgentSurface::new);
+			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+			surface.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+				let mut data = s.snapshot.clone().unwrap();
+				for (id, title) in [
+					("design", "Design review"),
+					("reading", "Reading plan"),
+					("other", "Another design"),
+				] {
+					let mut item = data.work_items[0].clone();
+					item.id = id.into();
+					item.title = title.into();
+					data.work_items.push(item);
+					data.archived_work_ids.insert(id.into());
+				}
+				data.projects = vec![decodex_protocol::ProjectDto {
+					id: "books".into(),
+					name: "Reading corner".into(),
+					native_project_id: None,
+					lead_agent_id: None,
+					directory: "/tmp/books".into(),
+					agent_ids: vec!["design".into(), "reading".into()],
+				}];
+				s.workspace.archives.data = Some(data);
+				s.workspace.archives.search =
+					Some(cx.new(|cx| {
+						ComposerInput::with_placeholder(48, "Search", "Search archive", cx)
+					}));
+			});
+			ArchiveView(surface)
+		});
+		let surface = view.read_with(visual, |v, _| v.0.clone());
+		for (query, expected) in [
+			("READING CORNER", [true, true, false]),
+			("design reading", [true, false, false]),
+			("missing", [false; 3]),
+		] {
+			surface.update(visual, |s, cx| {
+				s.workspace
+					.archives
+					.search
+					.as_ref()
+					.unwrap()
+					.update(cx, |input, cx| input.set_content(query, cx));
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			for (selector, present) in ["unarchive-design", "unarchive-reading", "unarchive-other"]
+				.into_iter()
+				.zip(expected)
+			{
+				assert_eq!(visual.debug_bounds(selector).is_some(), present, "query: {query}");
+			}
+		}
+		surface.read_with(visual, |s, cx| {
+			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+			assert!(s.workspace.archives.mutation.is_none());
+		});
 	}
 
 	#[gpui::test]

@@ -318,18 +318,19 @@ fn review_details_click_does_not_change_execution_settings(cx: &mut TestAppConte
 
 		*action
 	});
-	let (view, visual) = cx.add_window_view(|_, cx| {
-		let surface = cx.new(AgentSurface::new);
-
-		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
-
-		surface.update(cx, |s, _| {
-			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
-
-			s.profile = Some(profile);
-		});
-
-		PortfolioView { surface, guardian: true }
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, _| {
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		s.profile = Some(profile);
+	});
+	let (_settings, visual) = cx.add_window_view(|_, cx| {
+		let mut settings = crate::settings_surface::SettingsSurface::new(
+			crate::desktop_settings::DesktopSettingsController::production(),
+			cx,
+		);
+		settings.category = crate::settings_surface::SettingsCategory::Agents;
+		settings.bind_agent(&surface, cx);
+		settings
 	});
 
 	visual.update(|w, cx| {
@@ -346,14 +347,27 @@ fn review_details_click_does_not_change_execution_settings(cx: &mut TestAppConte
 		matches!(server.join().unwrap(),AgentActionDto::SetReviewDetails{settings_id,expected_revision:1,review_details:true} if settings_id.as_str()=="guardian-global")
 	);
 
-	let surface = view.read_with(visual, |v, _| v.surface.clone());
-
 	surface.read_with(visual, |s, _| {
 		assert!(
 			!s.snapshot.as_ref().unwrap().guardian.settings.review_details,
 			"A lost reply is not an application receipt"
 		);
 	});
+}
+
+#[gpui::test]
+fn guardian_history_has_no_settings_control(cx: &mut TestAppContext) {
+	let (_, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, _| {
+			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		});
+		PortfolioView { surface, guardian: true }
+	});
+	visual.update(crate::ui_frame::draw_current_frame);
+	assert!(visual.debug_bounds("global-guardian-history").is_some());
+	assert!(visual.debug_bounds("guardian-history-empty").is_some());
+	assert!(visual.debug_bounds("guardian-review-details").is_none());
 }
 
 async fn work_detail(listener: UnixListener) {

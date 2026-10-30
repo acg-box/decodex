@@ -95,8 +95,7 @@ impl Scope {
 		let start = (left + inset).max(4.);
 		let end = (right - inset).min(viewport.0 - 4.);
 
-		if 2. * GRID * scale < HEADER_HEIGHT / 2. + 4.
-			|| end - start < width
+		if end - start < width
 			|| top < HEADER_HEIGHT / 2. + 4.
 			|| top + HEADER_HEIGHT / 2. > viewport.1 - 4.
 		{
@@ -160,7 +159,7 @@ impl Scope {
 				if let Ok(path) = path.build() {
 					window.paint_path(
 						path,
-						ui_theme::rgb(ui_theme::TEXT_MUTED).opacity(0.53 + active * 0.06),
+						ui_theme::rgb(ui_theme::TEXT_MUTED).opacity(0.44 + active * 0.06),
 					);
 				}
 
@@ -214,36 +213,39 @@ impl AgentSurface {
 	pub(super) fn relation_scope_labels<'a>(
 		&self,
 		graph: &'a Graph,
-	) -> Vec<(&'a Scope, card::Rect)> {
+	) -> Vec<(&'a Scope, card::Rect, bool)> {
 		let text = WindowTextSystem::new(self.work_board.text_system.clone());
 		let mut placed = Vec::new();
 		let mut labels = Vec::new();
 
 		for scope in &graph.scopes {
 			let show_count = self.work_board.view.picked_project.as_ref() == Some(&scope.id);
-			let width = scope.header_width(&text, show_count);
-			let Some(rect) = scope.header_rect(
-				self.relation_scale(),
-				self.work_board.view.pan,
-				self.work_board.view.viewport,
-				width,
-			) else {
-				continue;
+			let place = |show_count| {
+				let rect = scope.header_rect(
+					self.relation_scale(),
+					self.work_board.view.pan,
+					self.work_board.view.viewport,
+					scope.header_width(&text, show_count),
+				)?;
+				clear_header_routes(
+					rect,
+					scope,
+					graph,
+					self.relation_scale(),
+					self.work_board.view.pan,
+					self.work_board.view.viewport.0,
+					&placed,
+				)
+				.map(|rect| (rect, show_count))
 			};
-			let Some(rect) = clear_header_routes(
-				rect,
-				scope,
-				graph,
-				self.relation_scale(),
-				self.work_board.view.pan,
-				self.work_board.view.viewport.0,
-				&placed,
-			) else {
+			let Some((rect, show_count)) =
+				place(show_count).or_else(|| if show_count { place(false) } else { None })
+			else {
 				continue;
 			};
 
 			placed.push(rect);
-			labels.push((scope, rect));
+			labels.push((scope, rect, show_count));
 		}
 
 		labels
@@ -255,11 +257,10 @@ impl AgentSurface {
 		graph: &Graph,
 		cx: &mut Context<Self>,
 	) -> Stateful<Div> {
-		for (scope, rect) in self.relation_scope_labels(graph) {
+		for (scope, rect, show_count) in self.relation_scope_labels(graph) {
 			let heading = scope.title.clone();
 			let count = scope.count_label();
 			let project = scope.id.clone();
-			let show_count = self.work_board.view.picked_project.as_ref() == Some(&scope.id);
 			let selected = self.relation_scope_selected(scope);
 			let id = format!("project-title-{}", scope.id);
 			let action: card::PointerAction<ClickEvent> =
@@ -350,6 +351,20 @@ fn clear_header_routes(
 				|| other.x + other.width + 4. <= candidate.x
 				|| candidate.y + candidate.height + 4. <= other.y
 				|| other.y + other.height + 4. <= candidate.y
+		}) && graph.nodes.iter().all(|node| {
+			[
+				Some(node.attachment.unwrap_or([0., 0., node.width(), node.height()])),
+				node.identity,
+				node.speech,
+			]
+			.into_iter()
+			.flatten()
+			.all(|[left, top, right, bottom]| {
+				node.x + right <= bounds[0]
+					|| node.x + left >= bounds[2]
+					|| node.y + bottom <= bounds[1]
+					|| node.y + top >= bounds[3]
+			})
 		}) && graph
 			.paths
 			.values()
@@ -367,6 +382,7 @@ fn clear_header_routes(
 
 	(1..=steps)
 		.map(|step| card::Rect { x: rect.x + step as f32 * 16., ..rect })
+		.chain((right > rect.x).then_some(card::Rect { x: right, ..rect }))
 		.find(|candidate| clear(*candidate))
 }
 
@@ -427,6 +443,8 @@ mod tests {
 		assert!(scope.header_rect(1., (40., 0.), (500., 400.), 100.).is_none());
 		let rect = scope.header_rect(1., (40., 80.), (500., 400.), 100.).unwrap();
 		assert_eq!(rect.y + HEADER_HEIGHT / 2., 80.);
+		let rect = scope.header_rect(0.4, (40., 80.), (500., 400.), 100.).unwrap();
+		assert_eq!(rect.y + HEADER_HEIGHT / 2., 80.);
 	}
 
 	#[test]
@@ -474,6 +492,38 @@ mod tests {
 		s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
 
 		s
+	}
+
+	#[gpui::test]
+	fn project_caption_uses_visible_ink_instead_of_empty_node_space(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(fixture);
+		surface.update(cx, |s, _| {
+			let mut graph = s.relation_graph();
+			let mut node = graph.nodes[0].clone();
+			node.x = 0.;
+			node.y = 0.;
+			node.size = (600., 300.);
+			node.attachment = Some([250., 100., 300., 140.]);
+			node.identity = None;
+			node.speech = None;
+			graph.nodes = vec![node];
+			graph.paths.clear();
+			let scope = Scope {
+				id: "project".into(),
+				title: "Project".into(),
+				members: BTreeSet::new(),
+				bounds: [0., 0., 600., 300.],
+			};
+			let rect = card::Rect { x: 41., y: 11., width: 100., height: HEADER_HEIGHT };
+			assert_eq!(
+				clear_header_routes(rect, &scope, &graph, 0.4, (17., 23.), 500., &[]),
+				Some(rect)
+			);
+			graph.nodes[0].speech = Some([0., -40., 600., 60.]);
+			assert!(
+				clear_header_routes(rect, &scope, &graph, 0.4, (17., 23.), 500., &[]).is_none()
+			);
+		});
 	}
 
 	#[gpui::test]

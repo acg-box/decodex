@@ -248,10 +248,22 @@ async fn native_prepare_resumes_only_owned_unknown_capability_without_sending_in
 	while sent.try_recv().is_ok() {}
 
 	for id in ["cold", "ready", "managed"] {
-		native_agents::prepare(&agent.store, &agent.client, "agent", id).await.unwrap();
+		native_agents::prepare(&agent.store, &agent.client, "agent", id, "fixture-generation")
+			.await
+			.unwrap();
 	}
 
-	assert!(native_agents::prepare(&agent.store, &agent.client, "agent", "foreign").await.is_err());
+	assert!(
+		native_agents::prepare(
+			&agent.store,
+			&agent.client,
+			"agent",
+			"foreign",
+			"fixture-generation"
+		)
+		.await
+		.is_err()
+	);
 
 	let mut resumed = 0;
 

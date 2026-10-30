@@ -19,7 +19,7 @@ use gpui::{
 };
 use tokio::{runtime::Builder, time};
 use ui_theme::{
-	BLUE, CONTROL_SIZE, HOVER_FILL, SELECTED_HOVER_FILL, TEXT, TEXT_MUTED,
+	BLUE, CONTROL_SIZE, HOVER_FILL, TEXT, TEXT_MUTED,
 	material::{Material, Surface},
 };
 
@@ -1000,15 +1000,7 @@ impl AgentSurface {
 		let disabled = send && self.composer_unavailable_reason().is_some();
 		let menu_active = self.composer_menu.is_some_and(|menu| composer_menu_trigger(menu) == id);
 		let target = cx.entity().downgrade();
-		let tooltip = if disabled {
-			"Sending paused until the connection is restored".to_owned()
-		} else if id == "model" {
-			format!("Model and reasoning · {label} · Speed: {}", self.composer_speed_label())
-		} else if id == "permissions" && label != "Permissions" {
-			format!("Permissions · {label}")
-		} else {
-			tip.to_owned()
-		};
+		let tooltip = self.composer_control_tip(id, &label, tip, disabled);
 
 		if matches!(
 			id,
@@ -1072,7 +1064,10 @@ impl AgentSurface {
 					.max_w(gpui::px(220.))
 					.overflow_hidden()
 			})
-			.when(menu_active, |d| d.bg(crate::ui_theme::rgba(0xffffff12)))
+			.when(menu_active, |d| d.bg(ui_theme::rgba(HOVER_FILL)))
+			.when(["model", "attach", "permissions"].contains(&id), |d| {
+				d.aria_expanded(menu_active)
+			})
 			.when(send, |d| {
 				d.w(gpui::px(28.)).h(gpui::px(28.)).rounded_full().bg(ui_theme::rgb(PRIMARY_FILL))
 			})
@@ -1084,9 +1079,9 @@ impl AgentSurface {
 					return d;
 				}
 
-				d.bg(composer_hover_fill(send, menu_active))
+				d.bg(composer_hover_fill(send))
 			})
-			.focus(move |d| d.bg(composer_hover_fill(send, menu_active)))
+			.focus_visible(move |d| d.bg(composer_hover_fill(send)))
 			.when(!["model", "effort"].contains(&id), |d| {
 				d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
 			})
@@ -1122,6 +1117,18 @@ impl AgentSurface {
 			})
 			.smooth()
 			.into_any_element()
+	}
+
+	fn composer_control_tip(&self, id: &str, label: &str, tip: &str, disabled: bool) -> String {
+		if disabled {
+			"Sending paused until the connection is restored".to_owned()
+		} else if id == "model" {
+			format!("Model and reasoning · {label} · Speed: {}", self.composer_speed_label())
+		} else if id == "permissions" && label != "Permissions" {
+			format!("Permissions · {label}")
+		} else {
+			tip.to_owned()
+		}
 	}
 
 	fn composer_control_content(&self, id: &str, label: String, cx: &Context<Self>) -> AnyElement {
@@ -1250,8 +1257,10 @@ impl AgentSurface {
 			if name == "permissions" {
 				self.refresh_composer_permissions(true, cx);
 			}
-			self.load_capabilities(cx);
-			self.refresh_composer_model_settings(cx);
+			if matches!(name, "model" | "agent-settings") {
+				self.load_capabilities(cx);
+				self.refresh_composer_model_settings(cx);
+			}
 		}
 
 		cx.notify();
@@ -1284,9 +1293,10 @@ impl AgentSurface {
 			gpui::div()
 				.id("composer-menu-popover")
 				.occlude()
-				.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
+				.on_key_down(cx.listener(|s, event: &KeyDownEvent, window, cx| {
 					if event.keystroke.key == "escape" {
 						s.dismiss_composer_menu(cx);
+						s.focus_message(window, cx);
 						cx.stop_propagation();
 					}
 				}))
@@ -1572,7 +1582,7 @@ pub(super) fn composer_menu_bounds(
 	viewport: gpui::Size<gpui::Pixels>,
 ) -> gpui::Bounds<gpui::Pixels> {
 	let x = f32::from(anchor.left()).clamp(8., (f32::from(viewport.width) - width - 8.).max(8.));
-	let y = (f32::from(anchor.top()) - height).max(8.);
+	let y = (f32::from(anchor.top()) - height - ui_theme::POPOVER_GAP).max(8.);
 
 	gpui::Bounds::new(
 		gpui::point(gpui::px(x), gpui::px(y)),
@@ -1614,11 +1624,11 @@ pub(super) fn composer_capsule(native: bool) -> Stateful<Div> {
 		.gap(gpui::px(4.))
 }
 
-fn composer_hover_fill(send: bool, menu_active: bool) -> Rgba {
+fn composer_hover_fill(send: bool) -> Rgba {
 	if send {
 		ui_theme::rgb(PRIMARY_FILL).blend(gpui::rgb(0xffffff).opacity(0.08))
 	} else {
-		crate::ui_theme::rgba(if menu_active { SELECTED_HOVER_FILL } else { HOVER_FILL })
+		crate::ui_theme::rgba(HOVER_FILL)
 	}
 }
 
@@ -1856,7 +1866,7 @@ mod tests {
 				viewport,
 			);
 
-			assert_eq!(menu.bottom(), trigger.top());
+			assert_eq!(trigger.top() - menu.bottom(), gpui::px(crate::ui_theme::POPOVER_GAP));
 			assert!(menu.left() >= gpui::px(8.));
 			assert!(menu.right() <= viewport.width - gpui::px(8.));
 		}

@@ -1,13 +1,14 @@
 //! Share one anchored native popover for model, permission and speed choices.
 use gpui::{
-	AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity, FocusHandle, Render,
-	Subscription, Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowOptions,
+	AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity, FocusHandle, Pixels, Render,
+	Size, Subscription, Window, WindowBackgroundAppearance, WindowBounds, WindowHandle,
+	WindowOptions,
 	prelude::{InteractiveElement as _, IntoElement, ParentElement as _, Styled as _},
 };
 
 use crate::{
 	shell::{
-		ToggleContentFullscreen,
+		FocusNext, FocusPrevious, ToggleContentFullscreen,
 		agent_surface::{AgentSurface, composer},
 		forward_shell_action,
 	},
@@ -22,7 +23,13 @@ pub(super) struct NativeMenu {
 	child: Option<WindowHandle<ComposerMenu>>,
 	creating: bool,
 	pub(super) failed: bool,
-	height: f32,
+}
+
+#[derive(Clone, Copy)]
+struct Placement {
+	anchor: Bounds<Pixels>,
+	viewport: Size<Pixels>,
+	width: f32,
 }
 
 struct ComposerMenu {
@@ -30,12 +37,30 @@ struct ComposerMenu {
 	parent: AnyWindowHandle,
 	surface: Option<MaterialPanel>,
 	focus: FocusHandle,
+	open_menu: Option<&'static str>,
+	placement: Option<Placement>,
+	height: f32,
 	_observation: Subscription,
+}
+impl ComposerMenu {
+	fn place(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		if let Some(placement) = self.placement
+			&& let Some(surface) = &mut self.surface
+			&& surface.place(composer::composer_menu_bounds(
+				placement.anchor,
+				self.height,
+				placement.width,
+				placement.viewport,
+			)) {
+			window.bounds_changed(cx);
+		}
+	}
 }
 impl Render for ComposerMenu {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let owner = self.owner.clone();
 		let parent = self.parent;
+		let menu = cx.entity().downgrade();
 		let content = owner.update(cx, |s, cx| {
 			s.composer_options(cx).unwrap_or_else(|| gpui::div().into_any_element())
 		});
@@ -45,6 +70,8 @@ impl Render for ComposerMenu {
 			.font_family(FONT_FAMILY)
 			.text_size(gpui::px(BODY_SIZE))
 			.text_color(ui_theme::rgb(TEXT))
+			.on_action(|_: &FocusNext, window, cx| window.focus_next(cx))
+			.on_action(|_: &FocusPrevious, window, cx| window.focus_prev(cx))
 			.on_action({
 				let owner = owner.clone();
 
@@ -59,25 +86,30 @@ impl Render for ComposerMenu {
 			.on_key_down({
 				let owner = owner.clone();
 
-				move |event, _, cx| {
+				move |event, window, cx| {
 					if event.keystroke.key == "escape" {
 						owner.update(cx, |s, cx| {
 							s.dismiss_composer_menu(cx);
 							s.focus_native_message(cx);
 						});
 						cx.stop_propagation();
+					} else if event.keystroke.key == "down" {
+						window.focus_next(cx);
+						cx.stop_propagation();
+					} else if event.keystroke.key == "up" {
+						window.focus_prev(cx);
+						cx.stop_propagation();
 					}
 				}
 			})
-			.on_children_prepainted(move |bounds, _, cx| {
+			.on_children_prepainted(move |bounds, window, cx| {
 				if let Some(bounds) = bounds.first() {
-					let height = f32::from(bounds.size.height);
-
-					owner.update(cx, |s, cx| {
-						if (s.native_controls.menu.height - height).abs() > 0.5 {
-							s.native_controls.menu.height = height;
-
-							cx.notify();
+					let height = f32::from(bounds.size.height).max(48.);
+					let _ = menu.update(cx, |panel, cx| {
+						if (panel.height - height).abs() > 0.5 {
+							panel.height = height;
+							// Resize after paint without invalidating the workspace model.
+							cx.defer_in(window, |panel, window, cx| panel.place(window, cx));
 						}
 					});
 				}
@@ -113,27 +145,29 @@ impl AgentSurface {
 		let opacity = if active && available { opacity } else { 0. };
 
 		if let Some(child) = self.native_controls.menu.child {
-			let bounds = anchor.map(|anchor| {
-				composer::composer_menu_bounds(
-					anchor,
-					self.native_controls.menu.height.max(48.),
-					composer::composer_menu_width(menu),
-					window.viewport_size(),
-				)
+			let placement = anchor.map(|anchor| Placement {
+				anchor,
+				viewport: window.viewport_size(),
+				width: composer::composer_menu_width(menu),
 			});
 
 			cx.defer(move |cx| {
 				let _ = child.update(cx, |panel, window, cx| {
+					let selection = if open && opacity > 0.001 { menu } else { None };
+					let opening = selection.is_some() && panel.open_menu != selection;
+					panel.open_menu = selection;
+					panel.placement = placement;
+					panel.place(window, cx);
+
 					if let Some(surface) = &mut panel.surface {
 						surface.refresh_material();
-						if let Some(bounds) = bounds
-							&& surface.place(bounds)
-						{
-							window.bounds_changed(cx);
-						}
-
 						surface.set_opacity(opacity);
-						surface.set_visible(bounds.is_some() && opacity > 0.001);
+						surface.set_visible(placement.is_some() && opacity > 0.001);
+						if opening {
+							surface.focus_text();
+							window.focus(&panel.focus, cx);
+							window.activate_window();
+						}
 					}
 				});
 			});
@@ -207,7 +241,16 @@ fn create(
 
 					window.focus(&focus, cx);
 
-					ComposerMenu { owner, parent, surface: None, focus, _observation: observation }
+					ComposerMenu {
+						owner,
+						parent,
+						surface: None,
+						focus,
+						open_menu: None,
+						placement: None,
+						height: 240.,
+						_observation: observation,
+					}
 				})
 			},
 		)

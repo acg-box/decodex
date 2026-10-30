@@ -560,7 +560,7 @@ impl AgentSurface {
 			.child(self.work_navigation(
 				"global-guardian",
 				"Guardian",
-				workspace_symbols::Symbol::AllWork,
+				workspace_symbols::Symbol::Shield,
 				|s, cx| {
 					s.workspace.guardian_open = true;
 					s.workspace.browsing = true;
@@ -573,7 +573,7 @@ impl AgentSurface {
 			.child(self.work_navigation(
 				"all-work",
 				"Agents",
-				workspace_symbols::Symbol::AllWork,
+				workspace_symbols::Symbol::TeamMembers,
 				|s, cx| {
 					s.cancel_dictation(cx);
 
@@ -589,7 +589,7 @@ impl AgentSurface {
 			.child(self.work_navigation(
 				"archive-browser",
 				"Archive",
-				workspace_symbols::Symbol::Restore,
+				workspace_symbols::Symbol::Archive,
 				|s, cx| s.open_archive_catalog(cx),
 				cx,
 			));
@@ -661,8 +661,9 @@ impl AgentSurface {
 		let mut list = Self::conversation_tab_list();
 
 		for (id, label, closable) in self.conversation_pages() {
-			let active = self.conversation_page().as_ref() == Some(&id)
-				|| (!closable && self.selected.is_none());
+			let active = !self.workspace.browsing
+				&& (self.conversation_page().as_ref() == Some(&id)
+					|| (!closable && self.selected.is_none()));
 			let keyboard_select = id.clone();
 			let row_select = id.clone();
 			let group = SharedString::from(format!("conversation-tab-{id}"));

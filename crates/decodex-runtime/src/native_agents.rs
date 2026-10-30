@@ -56,38 +56,61 @@ pub(crate) async fn read(
 	result.ok().flatten().unwrap_or(NativeAgentsResult::Unavailable)
 }
 
-/// Prepare a conversation, not a turn. Keep inspection read-only and send no queued input.
+/// Explicitly reconnect a conversation without sending input or changing its configuration.
+/// Native resume can continue its existing queue or Goal; ordinary inspection never resumes.
 pub(crate) async fn prepare(
 	store: &SqliteStore,
 	client: &AppServerClient,
 	work: &str,
 	thread: &str,
+	generation: &str,
 ) -> Result<(), &'static str> {
 	time::timeout(Duration::from_secs(20), async {
-		match read(store, client, work, Some(thread), None).await {
-			NativeAgentsResult::Conversation { can_input: Some(_), .. } => return Ok(()),
-			NativeAgentsResult::Conversation { can_input: None, .. } => {},
+		let owner = store
+			.get_agent_work_item(work.into())
+			.await
+			.map_err(|_| "Could not verify this conversation.")?;
+		let own_conversation = owner.codex_thread_id.as_deref() == Some(thread);
+		let connected = match read(store, client, work, Some(thread), None).await {
+			NativeAgentsResult::Conversation { can_input, .. } =>
+				can_input.is_some()
+					&& (!own_conversation
+						|| client
+							.configured_task_permissions(thread)
+							.is_some_and(|(_, guard)| guard.is_live())),
 			_ => return Err("Could not connect to this conversation."),
+		};
+
+		if !connected {
+			// Use persisted native configuration; do not override parent-owned child settings.
+			let value = client
+				.thread_resume(serde_json::json!({"threadId": thread, "excludeTurns": true}))
+				.await
+				.map_err(|error| match error {
+					ClientError::Remote(ref error) if error.message.contains("archived") =>
+						"This conversation is archived. Restore it in Codex before continuing.",
+					ClientError::Remote(ref error)
+						if error.message.contains("resume the parent first") =>
+						NATIVE_PARENT_RECONNECT_MESSAGE,
+					ClientError::Remote(ref error)
+						if error.message.contains("in use") || error.message.contains("locked") =>
+						"This conversation is in use by another app.",
+					_ => "Could not connect to this conversation.",
+				})?;
+
+			if value.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
+				return Err("Could not verify this conversation.");
+			}
 		}
 
-		// Use persisted native configuration; do not override parent-owned child settings.
-		let value = client
-			.thread_resume(serde_json::json!({"threadId": thread, "excludeTurns": true}))
-			.await
-			.map_err(|error| match error {
-				ClientError::Remote(ref error) if error.message.contains("archived") =>
-					"This conversation is archived. Restore it in Codex before continuing.",
-				ClientError::Remote(ref error)
-					if error.message.contains("resume the parent first") =>
-					NATIVE_PARENT_RECONNECT_MESSAGE,
-				ClientError::Remote(ref error)
-					if error.message.contains("in use") || error.message.contains("locked") =>
-					"This conversation is in use by another app.",
-				_ => "Could not connect to this conversation.",
-			})?;
-
-		if value.pointer("/thread/id").and_then(Value::as_str) != Some(thread) {
-			return Err("Could not verify this conversation.");
+		if owner.parent_goal_id.is_none()
+			&& own_conversation
+			&& !store
+				.attach_independent_agent_process(work.into(), thread.into(), generation.into())
+				.await
+				.map_err(|_| "Could not attach this conversation.")?
+		{
+			return Err("Could not attach this conversation.");
 		}
 
 		Ok(())
@@ -186,6 +209,107 @@ fn conversation(value: &Value, thread: &str) -> Option<NativeAgentsResult> {
 #[cfg(test)]
 mod tests {
 	use crate::native_agents::{self, NativeAgentsResult};
+
+	#[tokio::test]
+	async fn reconnect_hydrates_and_attaches_only_the_saved_conversation() {
+		use crate::{agent_model_settings::tests::OwnedReviewer, agent_usage_estimate::Source};
+		use decodex_codex::app_server_client::AppServerClient;
+		use decodex_database::AgentDispatchState;
+		use decodex_protocol::AgentPermissionState;
+		use tokio::io::{self, AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
+
+		let home = tempfile::tempdir().unwrap();
+		let (local, remote) = io::duplex(32_768);
+		let (r, w) = io::split(local);
+		let (client, _events) = AppServerClient::from_io(r, w);
+		let owner = OwnedReviewer::new(home.path(), &client, "main-thread", "main-turn").await;
+		let main = owner.store.get_agent_work_item("root".into()).await.unwrap();
+		let mut chat = main.clone();
+		chat.id = "saved".into();
+		chat.codex_thread_id = None;
+		chat.active_turn_id = None;
+		chat.dispatch_state = AgentDispatchState::Idle;
+		owner.store.create_agent_manager(chat).await.unwrap();
+		owner.store.bind_agent_thread("saved".into(), "saved-thread".into()).await.unwrap();
+		let mut key = owner.key.clone();
+		key.work = "saved".into();
+		key.thread = "saved-thread".into();
+		let source = || async { Some(Source { key: key.clone(), client: client.clone() }) };
+		assert_eq!(
+			crate::agent_permissions::read(&owner.store, source).await,
+			AgentPermissionState::NotConnected
+		);
+
+		let (release, released) = tokio::sync::oneshot::channel::<()>();
+		let server = tokio::spawn(async move {
+			let (r, mut w) = io::split(remote);
+			let mut wire = BufReader::new(r).lines();
+			for method in ["thread/read", "thread/resume", "permissionProfile/list", "thread/read"]
+			{
+				let request: serde_json::Value =
+					serde_json::from_str(&wire.next_line().await.unwrap().unwrap()).unwrap();
+				assert_eq!(request["method"], method);
+				let result = match method {
+					"thread/read" => {
+						assert_eq!(request["params"]["threadId"], "saved-thread");
+						serde_json::json!({"thread":{"id":"saved-thread","canAcceptDirectInput":true,"turns":[]}})
+					},
+					"thread/resume" => {
+						assert_eq!(
+							request["params"],
+							serde_json::json!({"threadId":"saved-thread","excludeTurns":true})
+						);
+						serde_json::json!({"thread":{"id":"saved-thread"},"cwd":"/fixture","approvalPolicy":"on-request","approvalsReviewer":"user","sandbox":{"type":"readOnly"},"activePermissionProfile":{"id":":read-only"}})
+					},
+					_ =>
+						serde_json::json!({"data":[{"id":":read-only","allowed":true}],"nextCursor":null}),
+				};
+				w.write_all(
+					format!("{}\n", serde_json::json!({"id":request["id"],"result":result}))
+						.as_bytes(),
+				)
+				.await
+				.unwrap();
+			}
+			let _ = released.await;
+			assert!(
+				tokio::time::timeout(std::time::Duration::from_millis(20), wire.next_line())
+					.await
+					.is_err()
+			);
+		});
+		native_agents::prepare(
+			&owner.store,
+			&client,
+			"saved",
+			"saved-thread",
+			key.generation.as_str(),
+		)
+		.await
+		.unwrap();
+		assert!(matches!(
+			crate::agent_permissions::read(&owner.store, source).await,
+			AgentPermissionState::Available {
+				mode: Some(decodex_core::PermissionMode::ReadOnly),
+				can_update: true,
+				..
+			}
+		));
+		// Once connected, a second preparation reads without repeating native resume.
+		native_agents::prepare(
+			&owner.store,
+			&client,
+			"saved",
+			"saved-thread",
+			key.generation.as_str(),
+		)
+		.await
+		.unwrap();
+		assert_eq!(owner.store.get_agent_work_item("root".into()).await.unwrap(), main);
+		assert!(owner.store.list_pending_agent_events(100).await.unwrap().is_empty());
+		let _ = release.send(());
+		server.await.unwrap();
+	}
 
 	#[test]
 	fn native_input_metadata_keeps_turn_identity_and_does_not_guess_capability() {

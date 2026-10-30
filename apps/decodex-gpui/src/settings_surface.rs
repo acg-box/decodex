@@ -9,9 +9,10 @@
 #[path = "ui_switch.rs"] mod switch;
 #[path = "settings_themes.rs"] mod themes;
 #[path = "settings_updates.rs"] mod updates;
+pub(crate) use switch::settings_switch;
 
 use gpui::{
-	AnyElement, ClickEvent, Context, KeyDownEvent, Render, Role, SharedString, Window,
+	AnyElement, ClickEvent, Context, Entity, KeyDownEvent, Render, Role, SharedString, Window,
 	prelude::{
 		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
 		Styled,
@@ -30,6 +31,7 @@ use crate::{
 	},
 	native_menu_bar::{LaunchAtLoginState, NativeMenuBarHost},
 	panel_preferences::PanelDefaults,
+	shell::agent_surface::AgentSurface,
 	ui_feedback::{self, Feedback},
 	ui_loading,
 	ui_motion::{Choice, Segmented},
@@ -93,6 +95,7 @@ pub(crate) struct SettingsSurface {
 	launch_at_login_detail: SharedString,
 	session_defaults: crate::session_settings::Defaults,
 	session_menu: Option<&'static str>,
+	guardian: Option<Entity<crate::ui_frame::Presentation<AgentSurface>>>,
 }
 impl SettingsSurface {
 	fn preference_control(
@@ -406,7 +409,16 @@ impl SettingsSurface {
 	fn category_content(&self, cx: &mut Context<Self>) -> AnyElement {
 		match self.category {
 			SettingsCategory::General => self.general_content(cx),
-			SettingsCategory::Agents => self.agent_defaults_content(cx),
+			SettingsCategory::Agents => gpui::div()
+				.flex()
+				.flex_col()
+				.gap(gpui::px(SETTINGS_GROUP_GAP))
+				.child(ui_theme::settings_group(
+					"New conversations",
+					vec![self.agent_defaults_content(cx)],
+				))
+				.children(self.guardian.clone())
+				.into_any_element(),
 			SettingsCategory::Appearance => self.appearance_content(cx),
 			SettingsCategory::Components => self.components_content(cx),
 			SettingsCategory::Updates => self.updates_content(cx),
@@ -695,6 +707,7 @@ impl SettingsSurface {
 			launch_at_login_detail: launch_at_login_detail(launch_at_login).into(),
 			session_defaults: crate::session_settings::Defaults::load(),
 			session_menu: None,
+			guardian: None,
 		};
 
 		surface.apply_snapshot(snapshot);
@@ -706,6 +719,15 @@ impl SettingsSurface {
 		let _ = cx;
 
 		surface
+	}
+
+	pub(crate) fn bind_agent(&mut self, agent: &Entity<AgentSurface>, cx: &mut Context<Self>) {
+		self.guardian = Some(crate::ui_frame::Presentation::new(
+			agent,
+			AgentSurface::render_guardian_settings,
+			cx,
+		));
+		cx.notify();
 	}
 
 	pub(crate) fn bind_controller(

@@ -9,7 +9,7 @@ use gpui::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{ui_preferences, ui_theme};
+use crate::{shell::workspace_symbols, ui_motion::SmoothControl as _, ui_preferences, ui_theme};
 
 const DEFAULTS_KEY: &str = "DecodexSessionDefaults";
 
@@ -49,7 +49,6 @@ pub(crate) fn permission_choices<T: 'static>(
 				.role(gpui::Role::Button)
 				.aria_label(format!("{}: {}", mode.label(), mode.description()))
 				.aria_selected(chosen)
-				.tab_index(if enabled { 0 } else { -1 })
 				.px_3()
 				.py(gpui::px(if compact { 6. } else { 8. }))
 				.rounded_lg()
@@ -57,11 +56,7 @@ pub(crate) fn permission_choices<T: 'static>(
 				.flex_col()
 				.gap_1()
 				.when(!enabled, |d| d.opacity(0.4))
-				.child(gpui::div().text_color(ui_theme::rgb(ui_theme::TEXT)).child(format!(
-					"{}{}",
-					if chosen { "✓ " } else { "" },
-					mode.label()
-				)))
+				.child(choice_label(mode.label(), chosen))
 				.when(!compact, |row| {
 					row.child(
 						gpui::div()
@@ -78,12 +73,15 @@ pub(crate) fn permission_choices<T: 'static>(
 				.on_key_down(cx.listener(move |this, key: &gpui::KeyDownEvent, _, cx| {
 					if enabled
 						&& !chosen
+						&& !key.is_held
 						&& ["enter", "space"].contains(&key.keystroke.key.as_str())
 					{
 						cx.stop_propagation();
 						choose(this, mode, cx);
 					}
-				})),
+				}))
+				.smooth()
+				.enabled(enabled),
 		);
 	}
 	menu
@@ -112,12 +110,11 @@ pub(crate) fn speed_choices<T: 'static>(
 				.role(gpui::Role::Button)
 				.aria_label(name)
 				.aria_selected(chosen)
-				.tab_index(if available { 0 } else { -1 })
 				.px_3()
 				.py_2()
 				.rounded_lg()
 				.when(!available, |d| d.opacity(0.4))
-				.child(format!("{}{}", if chosen { "✓ " } else { "" }, name))
+				.child(choice_label(name, chosen))
 				.on_click(cx.listener(move |this, _, _, cx| {
 					if available && !chosen {
 						choose(this, id.clone(), cx);
@@ -126,13 +123,25 @@ pub(crate) fn speed_choices<T: 'static>(
 				.on_key_down(cx.listener(move |this, key: &gpui::KeyDownEvent, _, cx| {
 					if available
 						&& !chosen
+						&& !key.is_held
 						&& ["enter", "space"].contains(&key.keystroke.key.as_str())
 					{
 						cx.stop_propagation();
 						choose(this, keyboard_id.clone(), cx);
 					}
-				})),
+				}))
+				.smooth()
+				.enabled(available),
 		);
 	}
 	menu
+}
+
+fn choice_label(label: &'static str, selected: bool) -> Div {
+	gpui::div()
+		.flex()
+		.items_center()
+		.gap(gpui::px(8.))
+		.child(gpui::div().flex_1().min_w_0().whitespace_nowrap().child(label))
+		.child(workspace_symbols::menu_check(selected))
 }

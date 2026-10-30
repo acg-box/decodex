@@ -193,7 +193,9 @@ fn permission_read_keeps_the_current_choice_and_menu_geometry(cx: &mut TestAppCo
 }
 
 #[gpui::test]
-fn disconnected_conversation_has_no_ineffective_permission_retry(cx: &mut TestAppContext) {
+fn disconnected_conversation_keeps_the_choices_and_offers_a_real_connection(
+	cx: &mut TestAppContext,
+) {
 	let (_view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
 		surface.update(cx, |s, _| {
@@ -206,7 +208,92 @@ fn disconnected_conversation_has_no_ineffective_permission_retry(cx: &mut TestAp
 	});
 	visual.update(crate::ui_frame::draw_current_frame);
 	assert!(visual.debug_bounds("permission-profiles-read").is_none());
-	assert!(visual.debug_bounds("permission-choice-0").is_none());
+	assert!(visual.debug_bounds("permission-connect").is_some());
+	for id in
+		["permission-choice-0", "permission-choice-1", "permission-choice-2", "permission-choice-3"]
+	{
+		assert!(visual.debug_bounds(id).is_some());
+	}
+}
+
+#[gpui::test]
+fn permission_connect_sends_once_then_reads_current_settings(cx: &mut TestAppContext) {
+	let (_dir, profile, server) = wire_test_support::fixture(|listener| async move {
+		let mut actions = Vec::new();
+		for step in 0..3 {
+			let mut socket = wire_test_support::accept(&listener).await;
+			let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+				panic!("request");
+			};
+			match serde_json::from_str::<ClientMessage>(&text).unwrap() {
+				ClientMessage::Command(command) if step == 1 => {
+					let CommandPayload::Agent { action } = command.payload else {
+						panic!("Agent command")
+					};
+					assert!(
+						matches!(&*action, AgentActionDto::PrepareNativeAgent { work_id, thread_id }
+						if work_id.as_str() == "root" && thread_id.as_str() == "thread")
+					);
+					actions.push(*action);
+					// The connection may succeed even if its reply is lost. Read; do not reconnect.
+					socket.close(None).await.unwrap();
+				},
+				ClientMessage::Query(query) if step != 1 => {
+					assert!(
+						matches!(query.payload, QueryPayload::GetAgentPermissionProfiles { work_id }
+						if work_id.as_str() == "root")
+					);
+					let result = ServerMessage::QueryResult(QueryResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER).unwrap(),
+						query_id: query.query_id,
+						payload: QueryResultPayload::AgentPermissionProfiles(if step == 0 {
+							AgentPermissionState::NotConnected
+						} else {
+							available()
+						}),
+					});
+					socket
+						.send(Message::Text(serde_json::to_string(&result).unwrap().into()))
+						.await
+						.unwrap();
+				},
+				_ => panic!("unexpected request"),
+			}
+		}
+		actions
+	});
+	let (view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+		surface.update(cx, |s, cx| {
+			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+			s.profile = Some(profile);
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+			s.refresh_composer_permissions(true, cx);
+		});
+		PermissionView { surface }
+	});
+	visual.run_until_parked();
+	visual.update(crate::ui_frame::draw_current_frame);
+	let before = visual.debug_bounds("permission-choice-0").unwrap();
+	let connect = visual.debug_bounds("permission-connect").unwrap().center();
+	visual.simulate_click(connect, Default::default());
+	visual.run_until_parked();
+	assert_eq!(server.join().unwrap().len(), 1);
+	visual.update(crate::ui_frame::draw_current_frame);
+	assert_eq!(visual.debug_bounds("permission-choice-0"), Some(before));
+	assert!(visual.debug_bounds("permission-connect").is_none());
+	let surface = view.read_with(visual, |v, _| v.surface.clone());
+	surface.read_with(visual, |s, cx| {
+		assert!(s.permission_profiles.reviewed);
+		assert!(matches!(
+			s.permission_profiles.state,
+			Some(AgentPermissionState::Available { .. })
+		));
+		assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+		assert!(s.permission_profiles.feedback.is_empty());
+	});
 }
 
 #[gpui::test]

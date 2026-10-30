@@ -88,6 +88,12 @@ impl AgentSurface {
 		let Some(context) = self.catalog_context(cx) else {
 			return;
 		};
+		if self.capabilities_context.as_ref() == Some(&context)
+			&& matches!(self.capabilities, Some(AgentCapabilitiesResult::Available { .. }))
+			&& self.capabilities_checked.is_some_and(|at| at.elapsed().as_secs() < 60)
+		{
+			return;
+		}
 		let cold_request = if context.has_root {
 			None
 		} else {
@@ -311,6 +317,43 @@ mod tests {
 	use crate::shell::agent_surface::capabilities::{
 		AgentCapabilitiesResult, AgentModelDto, AgentSurface, ConversationReasoningEffort,
 	};
+
+	#[gpui::test]
+	fn warm_catalog_is_reused_until_expiry_or_source_change(cx: &mut gpui::TestAppContext) {
+		let (_root, profile, server) =
+			crate::shell::agent_surface::wire_test_support::fixture(|_| async {});
+		server.join().unwrap();
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.profile = Some(profile);
+			s.capabilities =
+				Some(AgentCapabilitiesResult::Available { models: vec![], memory_enabled: None });
+			s.capabilities_context = s.catalog_context(cx);
+			s.capabilities_checked = Some(std::time::Instant::now());
+			let before = s.capability_generation;
+			for _ in 0..4 {
+				s.load_capabilities(cx);
+			}
+			assert_eq!(s.capability_generation, before);
+			assert!(s.capability_task.is_none(), "warm menus must not start background requests");
+
+			s.capabilities_checked =
+				Some(std::time::Instant::now() - std::time::Duration::from_secs(61));
+			s.load_capabilities(cx);
+			assert_eq!(s.capability_generation, before + 1);
+			s.capability_task = None;
+			s.account.update(cx, |input, cx| input.set_content("different-account", cx));
+			s.load_capabilities(cx);
+			assert_eq!(s.capability_generation, before + 2);
+			s.capability_task = None;
+			s.capabilities_context = s.catalog_context(cx);
+			s.capabilities = Some(AgentCapabilitiesResult::Unavailable);
+			s.load_capabilities(cx);
+			assert_eq!(s.capability_generation, before + 3, "failed catalogs remain retryable");
+			s.capability_task = None;
+		});
+	}
 
 	#[gpui::test]
 	fn catalog_reply_survives_unrelated_snapshot_refresh(cx: &mut gpui::TestAppContext) {

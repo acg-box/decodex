@@ -62,6 +62,7 @@ pub(crate) const CONTROL_MARGIN: f32 = 8.0;
 pub(crate) const CONTROL_RADIUS: f32 = 8.0;
 pub(crate) const POPOVER_RADIUS: f32 = 10.;
 pub(crate) const POPOVER_PADDING: f32 = 8.;
+pub(crate) const POPOVER_GAP: f32 = 8.;
 pub(crate) const WORKSPACE_GUTTER: f32 = 8.0;
 pub(crate) const WORKSPACE_RADIUS: f32 = 16.0;
 pub(crate) const CONVERSATION_HEADER_HEIGHT: f32 = 28.0;
@@ -171,6 +172,7 @@ pub(crate) fn menu_row(id: impl Into<gpui::SharedString>, enabled: bool) -> Stat
 		.id(id.into())
 		.role(Role::Button)
 		.tab_index(0)
+		.tab_stop(enabled)
 		.w_full()
 		.min_w_0()
 		.min_h(gpui::px(32.))
@@ -184,8 +186,8 @@ pub(crate) fn menu_row(id: impl Into<gpui::SharedString>, enabled: bool) -> Stat
 			d.cursor_pointer()
 				.hover(|s| s.bg(rgba(HOVER_FILL)))
 				.active(|s| s.bg(rgba(PRESSED_FILL)))
+				.focus_visible(|s| s.bg(rgba(HOVER_FILL)))
 		})
-		.focus_visible(|s| s.bg(rgba(HOVER_FILL)))
 }
 
 pub(crate) fn rgba(token: u32) -> Rgba {
@@ -383,4 +385,44 @@ pub(crate) fn settings_button_group(label: &'static str) -> Stateful<Div> {
 		.p(gpui::px(2.0))
 		.rounded(gpui::px(6.))
 		.bg(gpui::rgba(if light { 0x00000008 } else { 0x00000020 }))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use gpui::{Context, Render, TestAppContext, Window};
+
+	struct Menu;
+	impl Render for Menu {
+		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+			gpui::div().flex().flex_col().children([
+				menu_row("enabled-first", true)
+					.debug_selector(|| "enabled-first".into())
+					.child("First"),
+				menu_row("disabled", false).child("Unavailable"),
+				menu_row("enabled-last", true)
+					.debug_selector(|| "enabled-last".into())
+					.child("Last"),
+			])
+		}
+	}
+
+	#[gpui::test]
+	fn menu_keyboard_navigation_skips_disabled_rows_in_both_directions(cx: &mut TestAppContext) {
+		let (_, visual) = cx.add_window_view(|_, _| Menu);
+		visual.update(crate::ui_frame::draw_current_frame);
+		let first = visual.debug_bounds("enabled-first").unwrap().center();
+		let last = visual.debug_bounds("enabled-last").unwrap().center();
+		visual.simulate_click(first, Default::default());
+		let first = visual.update(|window, cx| window.focused(cx).expect("first row focus"));
+		visual.simulate_click(last, Default::default());
+		let last = visual.update(|window, cx| window.focused(cx).expect("last row focus"));
+		visual.update(|window, cx| {
+			assert!(!first.is_focused(window));
+			window.focus_next(cx);
+			assert!(first.is_focused(window), "forward navigation must wrap past disabled rows");
+			window.focus_prev(cx);
+			assert!(last.is_focused(window), "reverse navigation must skip disabled rows");
+		});
+	}
 }

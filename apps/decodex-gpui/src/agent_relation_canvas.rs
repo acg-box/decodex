@@ -1598,8 +1598,8 @@ impl AgentSurface {
 			let label = scope.label();
 			let title_gap = labels
 				.iter()
-				.find(|(label_scope, _)| label_scope.id == scope.id)
-				.map(|(_, rect)| rect)
+				.find(|(label_scope, _, _)| label_scope.id == scope.id)
+				.map(|(_, rect, _)| rect)
 				.filter(|rect| {
 					(rect.y + scopes::HEADER_HEIGHT / 2. - (top * scale + pan.1)).abs() < 0.1
 				})

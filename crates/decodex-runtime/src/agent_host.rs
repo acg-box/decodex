@@ -1878,7 +1878,7 @@ impl AgentHost {
 		let (generation, client) =
 			self.runtime.agent_catalog_client().ok_or("Agent connection unavailable")?;
 
-		native_agents::prepare(&self.store, &client, work_id, thread_id)
+		native_agents::prepare(&self.store, &client, work_id, thread_id, generation.as_str())
 			.await
 			.map_err(AgentHostError::Rejected)?;
 

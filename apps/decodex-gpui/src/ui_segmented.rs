@@ -97,30 +97,7 @@ impl RenderOnce for Segmented {
 		let selected = selected.min(last);
 		let height = if graph { ui_theme::CONTROL_GROUP_HEIGHT - 2. } else { 26. };
 		let font_size = if graph { 12. } else { 11.5 };
-		let width = if graph {
-			60.
-		} else {
-			choices
-				.iter()
-				.map(|choice| {
-					f32::from(
-						window
-							.text_system()
-							.shape_line(
-								choice.label.into(),
-								gpui::px(font_size),
-								&[TextRun {
-									len: choice.label.len(),
-									font: gpui::font(ui_theme::FONT_FAMILY),
-									..Default::default()
-								}],
-								None,
-							)
-							.width,
-					) + 16.
-				})
-				.fold(44., f32::max)
-		};
+		let width = if graph { 60. } else { choice_width(&choices, font_size, window) };
 		let state =
 			window.use_keyed_state(SharedString::from(format!("{id}-gesture")), cx, |_, _| {
 				State::default()
@@ -238,6 +215,29 @@ impl RenderOnce for Segmented {
 		}
 		control
 	}
+}
+
+fn choice_width(choices: &[Choice], font_size: f32, window: &Window) -> f32 {
+	choices
+		.iter()
+		.map(|choice| {
+			f32::from(
+				window
+					.text_system()
+					.shape_line(
+						choice.label.into(),
+						gpui::px(font_size),
+						&[TextRun {
+							len: choice.label.len(),
+							font: gpui::font(ui_theme::FONT_FAMILY),
+							..Default::default()
+						}],
+						None,
+					)
+					.width,
+			) + 16.
+		})
+		.fold(44., f32::max)
 }
 
 fn pointer_events(
