@@ -393,13 +393,14 @@ impl AgentSurface {
 						.id(gpui::SharedString::from(format!("archive-date-{id}")))
 						.debug_selector(move || format!("archive-date-{heading_id}"))
 						.role(Role::Heading)
+						.aria_label(item.day.clone())
 						.flex_none()
 						.px(gpui::px(10.))
 						.pt(gpui::px(if previous_day.is_some() { 18. } else { 6. }))
 						.pb(gpui::px(6.))
 						.text_size(gpui::px(ui_theme::CAPTION_SIZE))
 						.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
-						.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+						.text_color(ui_theme::rgb(ui_theme::TEXT).opacity(0.78))
 						.child(item.day.clone()),
 				);
 				previous_day = Some(item.day.as_str());
@@ -535,6 +536,13 @@ impl AgentSurface {
 											"archive-time-{}",
 											item.id
 										)))
+										.min_w(gpui::px(if catalog.sort == Sort::Name {
+											78.
+										} else {
+											36.
+										}))
+										.text_right()
+										.font_features(ui_theme::tabular_figures())
 										.tooltip(move |_, cx| {
 											cx.new(|_| ControlTooltip(detail.clone())).into()
 										})
@@ -668,7 +676,9 @@ fn archive_action(
 		.cursor_pointer()
 		.hover(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 		.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
-		.focus_visible(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+		.focus_visible(|d| {
+			d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)).border_color(ui_theme::rgb(ui_theme::ACCENT))
+		})
 		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
 		.child(workspace_symbols::icon_sized(symbol, 16.))
 }
