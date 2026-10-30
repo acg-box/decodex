@@ -437,6 +437,7 @@ impl AgentSurface {
 			.unwrap_or_default();
 		self.workspace.archives.prepare_rows(&query);
 		let catalog = &self.workspace.archives;
+		let selecting = !catalog.selected.is_empty();
 		let rows = catalog.rows.clone();
 		let mut list = gpui::div()
 			.id("archive-list")
@@ -469,6 +470,7 @@ impl AgentSurface {
 				let delete_key = id.clone();
 				let confirming = catalog.confirming(&id);
 				let selected = catalog.selected.contains(&id);
+				let check_reveal_id = format!("archive-select-{id}");
 				let check_id = id.clone();
 				let check_key = id.clone();
 				let check = archive_checkbox(
@@ -555,8 +557,19 @@ impl AgentSurface {
 					gpui::div()
 						.id(gpui::SharedString::from(format!("archived-{id}")))
 						.debug_selector(move || format!("archived-{id}"))
-						.role(Role::Button)
-						.aria_label(format!("Open archived {}", item.title))
+						.role(if selecting { Role::CheckBox } else { Role::Button })
+						.aria_label(format!(
+							"{} {}",
+							if selecting { "Select" } else { "Open archived" },
+							item.title
+						))
+						.when(selecting, |row| {
+							row.aria_toggled(if selected {
+								gpui::Toggled::True
+							} else {
+								gpui::Toggled::False
+							})
+						})
 						.aria_description(item.metadata.clone())
 						.tab_index(0)
 						.flex_none()
@@ -580,17 +593,21 @@ impl AgentSurface {
 						})
 						.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
 						.focus_visible(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
-						.on_click(cx.listener(move |s, _, _, cx| {
-							s.open_archived_conversation(&open_id, cx);
+						.on_click(cx.listener(move |s, event: &gpui::ClickEvent, _, cx| {
+							s.activate_archive_row(&open_id, event.modifiers().platform, cx);
 						}))
 						.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 							if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str())
 							{
 								cx.stop_propagation();
-								s.open_archived_conversation(&open_key, cx);
+								s.activate_archive_row(&open_key, false, cx);
 							}
 						}))
-						.child(check.smooth().enabled(!unavailable))
+						.child(ArchiveSelectionControl {
+							id: check_reveal_id.into(),
+							active: selecting,
+							child: check.smooth().enabled(!unavailable).into_any_element(),
+						})
 						.child(
 							gpui::div()
 								.min_w_0()
@@ -659,8 +676,12 @@ impl AgentSurface {
 								.flex()
 								.items_center()
 								.gap(gpui::px(4.))
-								.child(restore.smooth().enabled(!unavailable))
-								.child(delete.smooth().enabled(!unavailable)),
+								.children(
+									(!selecting).then(|| restore.smooth().enabled(!unavailable)),
+								)
+								.children(
+									(!selecting).then(|| delete.smooth().enabled(!unavailable)),
+								),
 						)
 						.when(index + 1 < group.len(), |row| {
 							row.child(
@@ -799,6 +820,25 @@ impl AgentSurface {
 		self.delete_archive_items(self.workspace.archives.selected.iter().cloned().collect(), cx);
 	}
 
+	fn activate_archive_row(&mut self, id: &str, select: bool, cx: &mut Context<Self>) {
+		if select || !self.workspace.archives.selected.is_empty() {
+			if self.workspace.archives.mutation.is_none() {
+				self.workspace.archives.toggle_selected(id);
+				cx.notify();
+			}
+		} else {
+			self.open_archived_conversation(id, cx);
+		}
+	}
+
+	fn clear_archive_selection(&mut self, cx: &mut Context<Self>) {
+		if self.workspace.archives.mutation.is_none() {
+			self.workspace.archives.cancel_confirmation();
+			self.workspace.archives.selected.clear();
+			cx.notify();
+		}
+	}
+
 	fn archive_catalog_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		let catalog = &self.workspace.archives;
 		let confirming = catalog.confirming_selection();
@@ -840,12 +880,42 @@ impl AgentSurface {
 				s.delete_selected_archives(cx);
 			}
 		}));
+		let selected_count = catalog.selected.len();
+		let clear =
+			archive_action("clear-archive-selection", Symbol::Close, "Clear selection", None)
+				.aria_label("Clear selection")
+				.on_click(cx.listener(|s, _, _, cx| s.clear_archive_selection(cx)))
+				.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
+					if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+						cx.stop_propagation();
+						s.clear_archive_selection(cx);
+					}
+				}));
+		let selection = gpui::div()
+			.flex()
+			.items_center()
+			.gap(gpui::px(4.))
+			.w(gpui::px(160.))
+			.flex_none()
+			.child(check.smooth().enabled(!unavailable))
+			.child(
+				gpui::div()
+					.flex_1()
+					.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+					.text_color(ui_theme::rgb(ui_theme::TEXT))
+					.font_features(ui_theme::tabular_figures())
+					.child(format!(
+						"{selected_count} {}",
+						if unavailable { "deleting…" } else { "selected" }
+					)),
+			)
+			.child(delete.smooth().enabled(!unavailable))
+			.child(clear.smooth().enabled(!unavailable));
 		gpui::div()
 			.flex()
 			.flex_wrap()
 			.items_center()
 			.gap(gpui::px(8.))
-			.child(check.smooth().enabled(!unavailable && !catalog.rows.is_empty()))
 			.child(
 				gpui::div()
 					.flex_1()
@@ -854,6 +924,10 @@ impl AgentSurface {
 					.h(gpui::px(ui_theme::CONTROL_SIZE))
 					.children(catalog.search.clone()),
 			)
+			.child(ArchiveSelectionActions {
+				visible: selected_count > 0,
+				child: selection.into_any_element(),
+			})
 			.child(Segmented::new(
 				"archive-sort",
 				"Sort archive",
@@ -876,25 +950,59 @@ impl AgentSurface {
 					cx.notify();
 				}),
 			))
-			.child(
-				gpui::div()
-					.flex_none()
-					.w(gpui::px(70.))
-					.text_right()
-					.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-					.text_color(ui_theme::rgb(if catalog.selected.is_empty() {
-						ui_theme::TEXT_MUTED
-					} else {
-						ui_theme::TEXT
-					}))
-					.font_features(ui_theme::tabular_figures())
-					.child(format!(
-						"{} {}",
-						catalog.selected.len(),
-						if unavailable { "deleting…" } else { "selected" }
-					)),
-			)
-			.child(delete.smooth().enabled(!unavailable && !catalog.selected.is_empty()))
+	}
+}
+
+#[derive(gpui::IntoElement)]
+struct ArchiveSelectionActions {
+	visible: bool,
+	child: AnyElement,
+}
+impl gpui::RenderOnce for ArchiveSelectionActions {
+	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
+		let progress =
+			ui_motion::value("archive-selection-actions", f32::from(self.visible), window, cx);
+		gpui::div()
+			.w(gpui::px(160. * progress))
+			.h(gpui::px(ui_theme::CHROME_CONTROL_SIZE))
+			.flex_none()
+			.overflow_hidden()
+			.opacity(progress)
+			.children(self.visible.then_some(self.child))
+	}
+}
+
+#[derive(gpui::IntoElement)]
+struct ArchiveSelectionControl {
+	id: gpui::SharedString,
+	active: bool,
+	child: AnyElement,
+}
+impl gpui::RenderOnce for ArchiveSelectionControl {
+	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
+		let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| (false, cx.focus_handle()));
+		let (hovered, focus) = {
+			let (hovered, focus) = state.read(cx);
+			(*hovered, focus.clone())
+		};
+		let progress = ui_motion::value(
+			gpui::SharedString::from(format!("{}-reveal", self.id)),
+			f32::from(self.active || hovered || focus.contains_focused(window, cx)),
+			window,
+			cx,
+		);
+		gpui::div()
+			.id(self.id)
+			.size(gpui::px(ui_theme::CHROME_CONTROL_SIZE))
+			.flex_none()
+			.track_focus(&focus)
+			.on_hover(move |hovered, _, cx| {
+				state.update(cx, |s, cx| {
+					s.0 = *hovered;
+					cx.notify();
+				});
+			})
+			.child(gpui::div().opacity(progress).child(self.child))
 	}
 }
 
@@ -1151,6 +1259,26 @@ mod tests {
 		let sort_before = visual.debug_bounds("archive-sort-Name").unwrap();
 		let search = surface.read_with(visual, |s, _| s.workspace.archives.search.clone().unwrap());
 		search.update(visual, |input, cx| input.set_content("Remove", cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("select-all-archives").is_none());
+		let first = visual.debug_bounds("select-archive-parent").unwrap();
+		visual.simulate_click(first.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		let child_row = visual.debug_bounds("archive-title-child").unwrap();
+		visual.simulate_click(child_row.center(), Default::default());
+		surface.read_with(visual, |s, _| {
+			assert!(s.workspace.archives.viewed.is_none(), "selection must not open a chat");
+			assert_eq!(s.workspace.archives.selected.len(), 2);
+		});
+		thread::sleep(Duration::from_millis(240));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let all = visual.debug_bounds("select-all-archives").unwrap();
+		visual.simulate_click(all.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("select-all-archives").is_none());
+		let first = visual.debug_bounds("select-archive-parent").unwrap();
+		visual.simulate_click(first.center(), Default::default());
+		thread::sleep(Duration::from_millis(240));
 		visual.update(crate::ui_frame::draw_current_frame);
 		let all = visual.debug_bounds("select-all-archives").unwrap();
 		visual.simulate_click(all.center(), Default::default());
