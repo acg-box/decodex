@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:295ec3cec0978d58d82283de067c4360891549cc1628fb3573f5071f91ebd128",
+  "pageVersion": "sha256:808a7f41ff3508a151a8aaf0a4a64e32b03a214ceb6355db99568537ed2c116b",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -132,7 +132,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:ec4966fd182292124acc8c78dd754c4079d884a9bf4580caebe92cbd998ce0bb"
+          "version": "repo-file-v1:sha256:9c14e623f2027d99e446b6f5b4132f3f7f10dca0da342625dd4970e4cd6389e9"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4048-L4264",
@@ -149,8 +149,8 @@
           "version": "repo-file-v1:sha256:a213f1868fb081da579d367d94baf1401943aa7cdd1d2e6b7264d47bd04408eb"
         },
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4310-L5123",
-          "version": "repo-lines-v1:sha256:1b5efe2a7c24f2f23be40e4b21ed715b9cc781329afcd0bcd9932e87c1885a35:eyJzZWxlY3RlZExpbmVDb3VudCI6ODE0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4310-L5125",
+          "version": "repo-lines-v1:sha256:00d3f793beb58ef48b9d431f0772640aad1e5e784c6b52702c815e495340972a:eyJzZWxlY3RlZExpbmVDb3VudCI6ODE2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI4N2I1MzQ0Njg0YjAyNjhmZmI3NGQxODNkNDc4NTkyMjZkYWJmMDE0ZDllZjY3OGFmNDFiODhmMGNkZjk2YmY2IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWFkN2VhMmE3ODgyZWExOTU4NTc1NmMwOWQ0ZDc2ZDA4YWU1NDdhYTg1N2VmMzZhMzYzNmFiZDE0ZTMwNWU4IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
@@ -200,21 +200,21 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:ec4966fd182292124acc8c78dd754c4079d884a9bf4580caebe92cbd998ce0bb"
+          "version": "repo-file-v1:sha256:9c14e623f2027d99e446b6f5b4132f3f7f10dca0da342625dd4970e4cd6389e9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_find.rs",
-          "version": "repo-file-v1:sha256:df0d8caca326d0ff12888f2cce1b6c3385e0211f4902b1aef314b9b260a53eab"
+          "version": "repo-file-v1:sha256:a3e22820414a6df37420936bd47fa40859d5d7d60b252b0b3c1e3315ed23c1f3"
         }
       ]
     },
     {
       "id": "claim_33faf7c8885d49c7bfee414b7797f2c6",
-      "statement": "Nearby history reads same-turn native items around a known message, Related conversations reads registered resource associations without historical upload scanning, and the main header and Menu Bar present existing provider estimates with explicit scope and unknown values.",
+      "statement": "Show in conversation locates loaded exact native items or reads bounded same-turn item pages in the main transcript with native earlier/later cursors and a fixed return action. Related conversations retains registered-resource lookup without historical upload scanning, and the main header and Menu Bar retain existing provider estimates with explicit scope and unknown values.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L4867-L5122",
-          "version": "repo-lines-v1:sha256:484e19cf2d85d36c1663a8e7393bfd613bf39423470bc0ac79d196a193b1bf73:eyJzZWxlY3RlZExpbmVDb3VudCI6MjU2LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJhM2Q1NGUyODY2ZmU3MjVjN2I3M2VhYjRjYTlmYjNiOTNkYzAxYzJiYzhmNzdmNjgwMDA1YWFmOTAwYzI4ZmYxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJhZGQyYzE5Y2U5ZmJjNjlmMDdmMzk5ZDNjOWUxOGI4YTA3MDVmZGE5ZjIzY2M5MDAxNmRmN2JlMzM0ZDZhMDE1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MSwiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIn0"
+          "resource": "repo://automations/upstream/retained-contracts.json#L4867-L4930",
+          "version": "repo-lines-v1:sha256:f9c137f55109f2dde38887d907200b2e3b9bc133f683e3751fdc9f7bdb7343f8:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEzZDU0ZTI4NjZmZTcyNWM3YjczZWFiNGNhOWZiM2I5M2RjMDFjMmJjOGY3N2Y2ODAwMDVhYWY5MDBjMjhmZjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyMGEzNzM1MWUwNzM1MDI1NDQwYjViN2M3MWNkOGRkNzgyYzA5YTVlMjQyYzYyYmI2YjU2YThmZTNmYjllOTIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFkZDJjMTljZTlmYmM2OWYwN2YzOTlkM2M5ZTE4YjhhMDcwNWZkYTlmMjNjYzkwMDE2ZGY3YmUzMzRkNmEwMTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhlNjk4Y2UzZTJmYzE1ODJhNzdhZmRlN2YxZDlhMjQzNDAxYjE0NmM1YjFhYTMwNzY3OTZjZTU3MTQ4YTI5M2EifQ"
         }
       ]
     },
@@ -257,6 +257,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T03:12:23.375Z"
+    "at": "2026-10-30T06:46:27.597Z"
   }
 }

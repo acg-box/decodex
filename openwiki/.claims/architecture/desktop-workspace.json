@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:67db9f6d65e27dc721b6864e3b5a62d4933c017c87f08ecb86015359c9d9e665",
+  "pageVersion": "sha256:d5b22529847ad2d063d70101b9e6271b45ca51312c3fd0fbdda0aed3efa93606",
   "claims": [
     {
       "id": "claim_41c9eba720934771bd6b671a7aeb8b6e",
@@ -20,7 +20,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:5ef06000915dca6a4c089f996183667d77167f502a270d35dab847ca5832213a"
+          "version": "repo-file-v1:sha256:40924213d1fbee74e44295e9117e41a3a7defe867c1b229ea337ff43d7faacc5"
         }
       ]
     },
@@ -140,7 +140,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:5ef06000915dca6a4c089f996183667d77167f502a270d35dab847ca5832213a"
+          "version": "repo-file-v1:sha256:40924213d1fbee74e44295e9117e41a3a7defe867c1b229ea337ff43d7faacc5"
         }
       ]
     },
@@ -229,7 +229,7 @@
           "version": "repo-lines-v1:sha256:5c56db9725b63acaf3e60e06fbe2c012a6d2c42b5d4649d657bf0faf5bae7df5:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YzM4ZDc0ODkyYTllMjA2MzE3Y2Y0YjdjYWE2MTlkZDcyZTAyNmMxNDZkM2U4MTA3NDRjNzgyYmQzOTVmYWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFiODc4YWE0ZDRhMGYyOGI1ODZmZWZlZWIwNzlmY2VhOTQzMGU0OGU0YzIwYTQwZjZkMGFiMjdjNzE3ODQ3ZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjcyNDg3MGJiYzhmMGM2MzQ0OTJjNjgyMzdkZGZmNmNlZGU5ODQ2NjFkNmI3MTk0YzVlOWQ3MjYxYzViNjhhZTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJiNTFmNzY2YmM3YTlhYTViNGRlMzQ2OGJmYzYzYWMyMjdhMGU4YWVjNWY2OGU4YjBlYzdhMjI5MWY4M2EyOTQifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L2467-L2526",
+          "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs#L2468-L2527",
           "version": "repo-lines-v1:sha256:365cb0532bf5b83f4c0a119990ac3a0dbfd622a3b0c225eeb575bc8e29430cb9:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyYTRmZWQ0MGFjOTI4Mzg2ODQzZjVkY2Y4ZTJhZjYxOGQwYTAzZTYwNDVmZmU3MTdhMWE1ZDY5MmY5MTkxNGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3ODUxMzQ0M2ZiOGRmMDJjMGY0Y2UwZWEzMDBjOTU3MWZmNTZjZjg4YWMwYTU0N2I1NDhhZjJjNGE1ODZhZTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkZmU5ZTI1NDYzODBlMjFhMmFhMjNhNWE2NTM2NzVhOWRiNTk4YzE2ZmFiYWI5NWVmMjM5OGM1ZTQ5NjVkOTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ1NTZmMWVmN2M4ZmQ3ZDY3MjU3Mjg2MzNlNjU1MzliMDgzYjQ1ZGNhMzgzZjI5NzIwYzIwYjBmYmY1N2FjY2IifQ"
         },
         {
@@ -393,6 +393,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T02:31:10.035Z"
+    "at": "2026-10-30T06:46:27.597Z"
   }
 }

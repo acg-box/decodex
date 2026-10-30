@@ -4866,14 +4866,16 @@
     },
     "nearby_history": {
       "manual_item": 35,
-      "behavior": "Read a known native message and up to three items on either side within its exact turn. Continue earlier or later through native opaque cursors. Ordinary history, Find and execution ownership stay native.",
+      "behavior": "Use Show in conversation from an existing tool/evidence detail. Locate and reveal an already loaded exact native item without a query. Otherwise read its same-turn native anchor window in the main transcript with Earlier messages and Later messages cursors. Keep a fixed Return to conversation action and restore the prior reading offset and composer draft. Do not add an action under every message or nest a second transcript.",
       "source_symbols": [
-        "apps/decodex-gpui/src/agent_item_context.rs#AgentSurface::item_context_panel",
-        "apps/decodex-gpui/src/agent_timeline_render.rs#AgentSurface::native_item_content",
+        "apps/decodex-gpui/src/agent_item_context.rs#AgentSurface::locate_item_context,#AgentSurface::item_context_history,#AgentSurface::item_context_navigation",
+        "apps/decodex-gpui/src/agent_timeline.rs#AgentSurface::locate_loaded_history_item,#AgentSurface::pause_item_history_navigation",
+        "apps/decodex-gpui/src/agent_timeline_scroll.rs#RowKey,#AgentSurface::item_history_scroll_row",
+        "apps/decodex-gpui/src/agent_detail.rs#AgentSurface::detail_row",
         "crates/decodex-codex/src/app_server_client/item_context.rs#AppServerClient::thread_item_context",
         "crates/decodex-runtime/src/agent_item_context.rs#read"
       ],
-      "limits": "Retained text window in the existing conversation/detail surface; no whole-conversation or cross-turn search. Child views use their exact native thread. Missing support stays explicit."
+      "limits": "A source-bound same-turn item window, not whole-conversation or cross-turn search. Native item windows do not provide timeline ordinals and remain separate from the cached canonical page. Directional paging replaces the bounded item window. Failed reads keep the current page. Child views use their exact native thread. Find and Latest return to the ordinary conversation; source changes discard stale results. No inference, history store, fabricated position or runtime migration."
     },
     "hidden_output_lines": {
       "manual_item": 43,

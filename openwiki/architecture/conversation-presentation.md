@@ -12,6 +12,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
   - id: openwiki-source-d701c906e7fcc9ab2d0917bc
     resource: repo://apps/decodex-gpui/src/agent_inspection.rs
+  - id: openwiki-source-85ab533d66ee904d83d8a21a
+    resource: repo://apps/decodex-gpui/src/agent_item_context_tests.rs
+  - id: openwiki-source-7aecb0d94903aac848b2cdfd
+    resource: repo://apps/decodex-gpui/src/agent_item_context.rs
   - id: openwiki-source-0afccc244c69eb8da96d1fa9
     resource: repo://apps/decodex-gpui/src/agent_link_preview.rs
   - id: openwiki-source-9cda3120e5cf6c9c303ec1d9
@@ -116,10 +120,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+generated: { by: "codex", at: "2026-10-30T06:46:27.597Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T02:31:10.035Z
+    at: 2026-10-30T06:46:27.597Z
 ---
 
 
@@ -158,6 +162,14 @@ Use **Cmd-F** or the conversation header's search control. Find includes text in
 **Previous**, **Next** and Enter move between matching records. Escape closes Find. The query owns Enter while it is open, so repeated Enter does not send the message draft. A blue edge and a matching excerpt identify the current record. The count covers records in the loaded history window, not every occurrence in the complete native store.
 
 **Load earlier and search** uses the existing older-history cursor and bounded window. The UI states its loaded-history coverage. Shortened output and unavailable full tool output are not completely searched. Summary-only history does not offer a complete-search claim. See [conversation recovery](../workflows/conversations-and-recovery.md) and `retained_desktop_feedback.find` in the [contract catalog](../../automations/upstream/retained-contracts.json).
+
+## Locate a known native item
+
+Choose **Show in conversation** in an existing tool detail to locate its exact native item. A loaded item scrolls into view and its process group opens temporarily without another history query. Ordinary messages have no nearby-history button.
+
+For an unloaded item, the main transcript displays a bounded same-turn native history window through the existing item reader. **Earlier messages** and **Later messages** replace that window through native cursors. A fixed **Return to conversation** action stays below the conversation header and restores the earlier reading position. The composer draft stays intact. Failed page reads retain the current window.
+
+Item pages have no canonical timeline ordinals. They remain separate from the cached ordinary page and use exact thread, turn and item identities for presentation anchors. Background history refresh does not replace an active location. Find and Latest return to the ordinary conversation. See [history navigation](../workflows/conversations-and-recovery.md#read-items-near-a-known-message).
 
 ## Conversation layout
 

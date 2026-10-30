@@ -116,10 +116,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-30T03:12:23.375Z" }
+generated: { by: "codex", at: "2026-10-30T06:46:27.597Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T03:12:23.375Z
+    at: 2026-10-30T06:46:27.597Z
 ---
 
 # Product scope and native ownership
@@ -209,7 +209,7 @@ The user also approved these bounded additions:
 
 | Item | Retained behavior |
 | --- | --- |
-| 35 | Read nearby native items around a known message, within its exact turn and with native continuation cursors. |
+| 35 | Locate an exact known item in the main conversation. Reuse loaded content; read an unloaded same-turn window through native anchors and cursors. Keep the return action in the header and omit per-message nearby-history buttons. |
 | 43 | Show the native-retained command output line count while output is collapsed. |
 | 67 | Find conversations with the same registered native resource type and identity, including archive filtering and paging. No historical upload or PDF scan is selected. |
 | 72 | Show existing provider cost estimates in the conversation header and Menu Bar, with source account, unknown values and explicit refresh. No account total or local pricing engine is selected. |

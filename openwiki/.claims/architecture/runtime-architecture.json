@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:77fbffcc62f0879d07b4c8a67034a1972dfb66775be9bb8c859a432c88ad19b5",
+  "pageVersion": "sha256:eb8e62019c0333ec85e97539d9c1a706fc34d6465d8360958e469f36b5e6f6ce",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -542,7 +542,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:f024f940a4ac63e2ad2f65122a7f7e2641d01980074fcb4a580dc6bd0ce80459"
+          "version": "repo-file-v1:sha256:c9450247a541f27e3e9cfbc9e99541d603160d7bd698f2493f88c204fb358ab4"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/wire.rs",
@@ -571,10 +571,28 @@
           "version": "repo-lines-v1:sha256:2eae828ec2cd5d89c8cc644f8e1591008db925ace100868702ea1dd7d9537f62:eyJzZWxlY3RlZExpbmVDb3VudCI6ODYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjczNzkyNzhmMjk4MjY2NmZhZDA0MGI4NjFmOTc5NWNmOTMxYjZmMTBkNzc2ODEzYjBiYTc2NGU2N2M3ZTZiOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZlMjViZjY0Zjc3NjY2ZjA2Y2VlNzEwOGJlYWJjZDQ1OGYyMDZlYzYyOWRkNjZlMTI4NTlmMmNjMTY1OGM5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI3NDFhMGNlMWI4MjdlYzg1ZGNlMmYzMmY1N2M2NzVlZTZiNTQzZjk1ZWM5MjAyYTZjNzY1YTBmZDk1NTQ3OTIifQ"
         }
       ]
+    },
+    {
+      "id": "claim_d3da81578cb94ae5814cb2da605c1d70",
+      "statement": "The desktop reuses an already loaded exact native item without GetItemContext; an unloaded item uses the existing query and message/tool renderers in the main transcript. The bounded item window has identity-based presentation anchors rather than fabricated canonical timeline ordinals, remains separate from the cached ordinary page, and offers a fixed return to the prior reading position.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_item_context.rs",
+          "version": "repo-file-v1:sha256:96388223ae3662411b2e0ea62ad6f7f78393351828fdb1ad888b178638bb2fb2"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs#L44-L84",
+          "version": "repo-lines-v1:sha256:9ee3b2ab2e4065a1ae799de9257f916b83538678436458cb9a624a34276f2a3c:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5OTEzZDFkZjMxMjY2MGJjMzUzODcyNWM5MDYzYTkwYTg0ZDA0MzU1OTU2YTk5MDIwNzNkNGViYzJjYWNjOTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI1ZDYwNWNjNDIyMjk5N2E0NjdmNWY0ZGU2MTkzMmI3ODA0MTg5ZTc3ZmIzODY3MDlkZDZmMjFmZWM4MmEyOTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijg4OTBmOGU3ZGI5ZGY1ZmRjMTI0MzM2YzNkYTNmODNhOTQzZDc0MmM5YWE2NmMzZWQyYzc1MzdiZmQzNmIyMGYifQ"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_timeline_scroll.rs#L28-L50",
+          "version": "repo-lines-v1:sha256:9c615bce385512fe7fc2d7efd2dbc18a9e2b06b3cd81a336e6f64715a7902c58:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjY2MzZWI5ZWJhZDdjMDlkYjU5ZDc1OTcyZjlmZjk5OTNjNDU3ZGM1MTIwZTQ1N2U3OGU0Mjk3NDg1NDNkN2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyNmY5MmU4NWQyYzE0NWUyZTU2MmUzOWU4NWY2YTA0YzYyZTljYjVmODc3YTU2NWI2ZWFkOTI2NmU5MDQyNGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4ODlhYTk4NWMzMzUxNDdhZmE4YWVlZTljYmQ3NWY1Zjk3Y2ZiZWQzOTMzNTc3NDIzYTAzNjNmNGI0N2U0NTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjNTRlOTQyNzQ2YTNhMzJlYTA1ZDAyNTVjYTM4MWYwM2VmNWY0NzQzNTNiMGU5YzY1YjBkYWFiNmFiNzQ1MjUifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T03:12:23.375Z"
+    "at": "2026-10-30T06:52:31.470Z"
   }
 }
