@@ -396,11 +396,13 @@ fn hover_expands_and_leaving_closes_without_a_tooltip(cx: &mut TestAppContext) {
 	assert!(gpu.top() >= expanded.bottom());
 	assert!(visual.debug_bounds("performance-gpu").unwrap().right() < expanded.right());
 
-	visual.simulate_mouse_move(
-		gpui::point(gpui::px(600.), gpui::px(400.)),
-		None,
-		Default::default(),
-	);
+	// A native child can lose the pointer without one last MouseMove inside it.
+	visual.simulate_event(gpui::MouseExitEvent {
+		position: gpui::point(gpui::px(600.), gpui::px(400.)),
+		pressed_button: None,
+		modifiers: Default::default(),
+	});
+	visual.update(crate::ui_frame::draw_current_frame);
 	visual.update(crate::ui_frame::draw_current_frame);
 
 	assert!(!island.read_with(visual, |s, _| s.expansion.is_open()));

@@ -10,7 +10,8 @@ use std::{
 };
 
 use gpui::{
-	AnyElement, Context, FontWeight, IntoElement, KeyDownEvent, Render, Role, Task, Window,
+	AnyElement, Context, FontWeight, IntoElement, KeyDownEvent, MouseMoveEvent, Render, Role, Task,
+	Window,
 	prelude::{
 		FluentBuilder, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled,
 	},
@@ -295,7 +296,7 @@ impl PerformanceIsland {
 			self.expansion
 		};
 
-		if hovered || self.expansion != next {
+		if self.expansion != next || (hovered && self.activity != activity) {
 			if hovered {
 				self.activity = activity;
 			}
@@ -403,8 +404,17 @@ impl PerformanceIsland {
 			.whitespace_nowrap()
 			.text_color(ui_theme::rgb(TEXT))
 			.font_features(ui_theme::tabular_figures())
+			.on_mouse_move(cx.listener(move |s, event: &MouseMoveEvent, _, cx| {
+				if event.pressed_button.is_none() && !cx.has_active_drag() {
+					s.hover_pill(activity, expandable, true, cx);
+				}
+			}))
 			.on_hover(cx.listener(move |s, hovered, _, cx| {
-				s.hover_pill(activity, expandable, *hovered, cx)
+				// Native MouseExited does not clear GPUI's last in-window position.
+				// Only a real movement can reopen; layout-derived hover can only close.
+				if !hovered {
+					s.hover_pill(activity, expandable, false, cx);
+				}
 			}))
 			.when(expanded, |d| {
 				d.on_mouse_down_out(cx.listener(move |s, _, _, cx| {
