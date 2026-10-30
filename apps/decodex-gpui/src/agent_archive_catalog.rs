@@ -722,7 +722,8 @@ impl AgentSurface {
 								.flex_none()
 								.pl(gpui::px(40.))
 								.pt(gpui::px(6.))
-								.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+								.text_size(gpui::px(ui_theme::CONTROL_LABEL_SIZE))
+								.font_weight(gpui::FontWeight::NORMAL)
 								.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
 								.text_color(ui_theme::rgb(ui_theme::TEXT).opacity(0.78))
 								.child(first.day.clone()),
