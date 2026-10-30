@@ -35,6 +35,8 @@ use crate::ui_theme::{
 	WARNING,
 };
 
+pub(crate) const HOVER_OPEN_DELAY: Duration = Duration::from_millis(180);
+
 pub(crate) trait SmoothControl {
 	fn smooth(self) -> Control;
 }
