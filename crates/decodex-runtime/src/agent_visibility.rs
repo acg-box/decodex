@@ -161,9 +161,8 @@ impl ArchiveVisibility {
 	}
 }
 
-/// Remove archived conversations, while retaining the personal coordinator entry.
-/// Its native archive state still controls whether its conversation can accept input.
-/// Keep live descendants visible under their nearest retained ancestor.
+/// Hide every confirmed archived conversation from the active view.
+/// Live descendants remain independent roots in this view; the stored parent is unchanged.
 pub(crate) fn retain_active(snapshot: &mut AgentSnapshotDto, archived: &HashSet<String>) {
 	snapshot.archived_work_ids.clear();
 
@@ -178,32 +177,12 @@ pub(crate) fn retain_active(snapshot: &mut AgentSnapshotDto, archived: &HashSet<
 		return;
 	}
 
-	let hidden: HashSet<_> = snapshot
-		.work_items
-		.iter()
-		.filter(|work| work.parent_goal_id.is_some() && inactive.contains(&work.id))
-		.map(|work| work.id.clone())
-		.collect();
-	let parents: HashMap<_, _> = snapshot
-		.work_items
-		.iter()
-		.map(|work| (work.id.clone(), work.parent_goal_id.clone()))
-		.collect();
-
-	snapshot.work_items.retain(|work| !hidden.contains(&work.id));
-	snapshot.archived_work_ids.extend(inactive.iter().filter(|id| !hidden.contains(*id)).cloned());
+	snapshot.work_items.retain(|work| !inactive.contains(&work.id));
+	snapshot.agents.retain(|agent| !inactive.contains(&agent.id));
 
 	for work in &mut snapshot.work_items {
-		let mut seen = HashSet::new();
-
-		while let Some(parent) = work.parent_goal_id.clone().filter(|id| hidden.contains(id)) {
-			if !seen.insert(parent.clone()) {
-				work.parent_goal_id = None;
-
-				break;
-			}
-
-			work.parent_goal_id = parents.get(&parent).cloned().flatten();
+		if work.parent_goal_id.as_ref().is_some_and(|id| inactive.contains(id)) {
+			work.parent_goal_id = None;
 		}
 	}
 
@@ -217,7 +196,7 @@ pub(crate) fn retain_active(snapshot: &mut AgentSnapshotDto, archived: &HashSet<
 	});
 
 	for workspace in &mut snapshot.projects {
-		workspace.agent_ids.retain(|id| !hidden.contains(id));
+		workspace.agent_ids.retain(|id| !inactive.contains(id));
 	}
 }
 
@@ -324,7 +303,7 @@ mod tests {
 			visible.work_items.iter().map(|w| w.id.as_str()).collect::<Vec<_>>(),
 			["main", "live"]
 		);
-		assert_eq!(visible.work_items[1].parent_goal_id.as_deref(), Some("main"));
+		assert_eq!(visible.work_items[1].parent_goal_id, None);
 		assert_eq!(visible.projects[0].agent_ids, ["main", "live"]);
 		assert!(visible.dependencies.is_empty());
 		assert!(visible.is_valid());
@@ -365,25 +344,36 @@ mod tests {
 	}
 
 	#[test]
-	fn archiving_main_retains_its_entry_and_real_ownership_without_restoring_history() {
-		let original = snapshot();
+	fn all_archived_roots_are_hidden_without_hiding_active_descendants() {
+		let mut original = snapshot();
+		original.work_items.push(work("other-root", None));
+		original.projects[0].agent_ids.push("other-root".into());
+		*original.agents = ["main", "other-root", "live"]
+			.map(|id| decodex_core::work::Agent {
+				id: id.into(),
+				name: id.into(),
+				native_thread_id: Some(format!("thread-{id}")),
+				assistant: id == "main",
+			})
+			.into();
 		let mut visible = original.clone();
 
 		agent_visibility::retain_active(
 			&mut visible,
-			&HashSet::from(["thread-main".into(), "thread-old".into()]),
+			&HashSet::from(["thread-main".into(), "thread-old".into(), "thread-other-root".into()]),
 		);
 
 		assert_eq!(
 			visible.work_items.iter().map(|work| work.id.as_str()).collect::<Vec<_>>(),
-			["main", "live"]
+			["live"]
 		);
+		assert!(visible.archived_work_ids.is_empty());
+		assert_eq!(visible.work_items[0].parent_goal_id, None);
+		assert_eq!(visible.projects[0].agent_ids, ["live"]);
 		assert_eq!(
-			visible.work_items[0], original.work_items[0],
-			"keep the exact archived binding"
+			visible.agents.iter().map(|agent| agent.id.as_str()).collect::<Vec<_>>(),
+			["live"]
 		);
-		assert_eq!(visible.archived_work_ids, ["main".to_owned()].into());
-		assert_eq!(visible.work_items[1].parent_goal_id.as_deref(), Some("main"));
 		assert!(visible.dependencies.is_empty());
 		assert!(visible.is_valid());
 
@@ -392,8 +382,12 @@ mod tests {
 			&HashSet::from(["thread-main".into(), "thread-live".into()]),
 		);
 
-		assert_eq!(visible.work_items, vec![original.work_items[0].clone()]);
-		assert!(visible.is_valid(), "Main remains the entry after all conversations are archived");
+		assert!(visible.work_items.is_empty());
+		assert!(visible.is_valid(), "all archived is a valid empty workspace");
+
+		let mut restored = original.clone();
+		agent_visibility::retain_active(&mut restored, &HashSet::new());
+		assert_eq!(restored, original, "restore preserves original identities and parents");
 	}
 
 	#[test]

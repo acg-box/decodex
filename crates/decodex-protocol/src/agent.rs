@@ -1046,7 +1046,7 @@ pub struct AgentSnapshotDto {
 	/// Business outcomes and exact contribution evidence, separate from native conversations.
 	#[serde(default)]
 	pub portfolio: Box<WorkPortfolio>,
-	/// Confirmed native archives retained only as structural coordinator entries.
+	/// Confirmed native archives included in an explicit archive catalog.
 	#[serde(default, skip_serializing_if = "std::collections::BTreeSet::is_empty")]
 	pub archived_work_ids: BTreeSet<String>,
 	/// Runtime-owned reusable display slots. Never use these numbers for message routing.
