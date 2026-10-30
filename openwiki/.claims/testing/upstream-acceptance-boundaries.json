@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:138d3cb843da1cbf085fe0a9e09f4da2e4eaba75e132316df35f96f1932d7b36",
+  "pageVersion": "sha256:171be4a29cbc5f15a482a439c567af52949df33111031783e5f6e69acfd4acd6",
   "claims": [
     {
       "id": "claim_2dd4ad01dd984b80a22d9cb9c9bfd397",
@@ -616,7 +616,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:f024f940a4ac63e2ad2f65122a7f7e2641d01980074fcb4a580dc6bd0ce80459"
+          "version": "repo-file-v1:sha256:c9450247a541f27e3e9cfbc9e99541d603160d7bd698f2493f88c204fb358ab4"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
@@ -856,7 +856,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:8f241f9ee3fa5b33ca78dbfc50249a6df17b7e74cd11be3d6375fe7e782c44c0"
+          "version": "repo-file-v1:sha256:6d12e8fccce15a70a992244c8518aac6ce395f124dd335e8368a6c2e0d2ee7f7"
         }
       ]
     },
@@ -866,7 +866,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:8f241f9ee3fa5b33ca78dbfc50249a6df17b7e74cd11be3d6375fe7e782c44c0"
+          "version": "repo-file-v1:sha256:6d12e8fccce15a70a992244c8518aac6ce395f124dd335e8368a6c2e0d2ee7f7"
         }
       ]
     },
@@ -880,11 +880,11 @@
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:f024f940a4ac63e2ad2f65122a7f7e2641d01980074fcb4a580dc6bd0ce80459"
+          "version": "repo-file-v1:sha256:c9450247a541f27e3e9cfbc9e99541d603160d7bd698f2493f88c204fb358ab4"
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:8f241f9ee3fa5b33ca78dbfc50249a6df17b7e74cd11be3d6375fe7e782c44c0"
+          "version": "repo-file-v1:sha256:6d12e8fccce15a70a992244c8518aac6ce395f124dd335e8368a6c2e0d2ee7f7"
         }
       ]
     },
@@ -893,8 +893,8 @@
       "statement": "The history_resource_cost qualification records 19 distinct qualified Rust checks, two Menu Bar tests, 14 architecture/gate checks and four upstream test bodies read without execution. Its exact selected-artifact fixture checks nearby native history and registered resource owners using two synthetic turns without additional lookup inference; runtime migration, installed app, live billing and historical upload discovery remain unqualified. Earlier unchanged checks retain their recorded limits; the added current-destination regression fails before repair and passes afterward.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-evidence.json#L1727-L2329",
-          "version": "repo-lines-v1:sha256:7c38e4e5d9b6e0ab6e1dfefbb9fe1ac729e2d291163674be7c383865f3291a39:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlMGU0ODg5Y2I0MGYzMGRmMTRjOTE0NTY0ZmVhOWM3NzYyNjlkODdiNGE3ZTc2ZmQ1NzJmZTcxODljZTMyMmYwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWY1Mjg4YmJjNWM3MTM2OGEyZGNiZWIzZmRlZGI5ZDY0NmE3NmM2NTkwNTFjZmMzMzM0MTlkNGNhMzdmMjEyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MSwiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIn0"
+          "resource": "repo://automations/upstream/retained-evidence.json#L1727-L2463",
+          "version": "repo-lines-v1:sha256:1fb35247ad23d7dce5079ab3735b451058627869d1cbdfd487290fbcb5ad0823:eyJzZWxlY3RlZExpbmVDb3VudCI6NzM3LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlMGU0ODg5Y2I0MGYzMGRmMTRjOTE0NTY0ZmVhOWM3NzYyNjlkODdiNGE3ZTc2ZmQ1NzJmZTcxODljZTMyMmYwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIyN2U1Nzg4ZDVkOWQ3M2QyNGE4MWRiYzBhNWE3NGJmYTgyYzljM2IzYWY5OWU1MmFmNzk2ZTkwYjQ2OGE4YTNkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMWY1Mjg4YmJjNWM3MTM2OGEyZGNiZWIzZmRlZGI5ZDY0NmE3NmM2NTkwNTFjZmMzMzM0MTlkNGNhMzdmMjEyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MSwiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIn0"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_lookup_tests.rs",
@@ -916,7 +916,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:8f241f9ee3fa5b33ca78dbfc50249a6df17b7e74cd11be3d6375fe7e782c44c0"
+          "version": "repo-file-v1:sha256:6d12e8fccce15a70a992244c8518aac6ce395f124dd335e8368a6c2e0d2ee7f7"
         }
       ]
     },
@@ -934,13 +934,27 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:8f241f9ee3fa5b33ca78dbfc50249a6df17b7e74cd11be3d6375fe7e782c44c0"
+          "version": "repo-file-v1:sha256:6d12e8fccce15a70a992244c8518aac6ce395f124dd335e8368a6c2e0d2ee7f7"
+        }
+      ]
+    },
+    {
+      "id": "claim_dbeba2f680c148519b4b76d1fe89d2bd",
+      "statement": "Native item navigation source af989d83632b50adc83c420ddc60778cfd7b0885 passed 19 selected GPUI checks with 1134 skipped and no unmatched selectors, plus strict affected Clippy, format and whitespace checks. The redundant-message-button regression failed on the completed main baseline with a test overlay and passes after repair. This synthetic presentation qualification changes no native artifact, helper or schema and adds no upstream/native, provider, physical-display or installed-app acceptance.",
+      "evidence": [
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_item_context_tests.rs",
+          "version": "repo-file-v1:sha256:6f424e2968f01e5550c43306c39424505c20a09040378e6690d12b4df2cce3b6"
+        },
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json",
+          "version": "repo-file-v1:sha256:6d12e8fccce15a70a992244c8518aac6ce395f124dd335e8368a6c2e0d2ee7f7"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T03:12:23.375Z"
+    "at": "2026-10-30T06:46:27.597Z"
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:60fe3ea64d9e428a989c49662962db69a6a3e4a3ff00b0d2716b8ed57b85ca1b",
+  "pageVersion": "sha256:5bba5f6cd35b946ec639a477c08746c132e4591f4af8af46231fed7d1ef67e32",
   "claims": [
     {
       "id": "claim_43786e7afb4249548ed4fab09e0e4afa",
@@ -122,7 +122,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:ec4966fd182292124acc8c78dd754c4079d884a9bf4580caebe92cbd998ce0bb"
+          "version": "repo-file-v1:sha256:9c14e623f2027d99e446b6f5b4132f3f7f10dca0da342625dd4970e4cd6389e9"
         }
       ]
     },
@@ -253,7 +253,7 @@
       "statement": "Native V2 continuation and V1 waits retain native ownership without Ultra; V1 nested Work attribution and V2 nesting explicitly permitted by native configuration are qualified while the V2 default remains direct-only.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2557-L4044",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2560-L4047",
           "version": "repo-lines-v1:sha256:dca51e28f266f3fd054b394a5451bb61a595544c5b5e6c017bbc9a2bff362c86:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQ4OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTRlOTQ2ZjE1NzYwNjdhMTM0ZWZiZDhhZTE1MjI2MDI5NzdkMDBlOTFkNjY2YzYyMGE3Yzg0NjdjYjY0ZjE4OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ1Y2QyZmI0ZjNkZjg4NDUxNTI1NWIzOTUyM2YyZjhiNTQ3MmJlZWE5ZjU2NmZmY2EyMDRkYjgwMjU2MTA0MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDhlNmNhNGUyMTVlOTEyMDdlOWZlMDk3ZDUyZGI5M2ViNjVkZTRjOThmZDgwYjE3OTY3MjliM2UxMWQ3MTY5YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzIyZjc2YzIxZjc0OTU3ZDkyNWUxOGQzYTY0YWJiNTYwN2ZmMDgwYTc3NDU2MjA4ZThlMDY3ODQ0MDJjMGNhMSJ9"
         },
         {
@@ -349,7 +349,7 @@
       "statement": "The control acceptance follow-up verified native owner links and exact encrypted delivery for the old venue and lodging helpers. Their own returned messages identified the expected contributions, but prepared-plaintext proof remained unavailable and no inferred Work binding was written.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L3579-L3631",
+          "resource": "repo://automations/upstream/retained-contracts.json#L3582-L3634",
           "version": "repo-lines-v1:sha256:482a3cd124f141c018411af1c9b15b63413a068a7097b33ea3cc47cff6c592ec:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQzZTBhYWIxMWFmZWMyN2I0NTg4YmY2ODFmOTEzZjNhZjgwNzQwYTY4NGY5YzI0MzdkZmFhNGVjNGQ2NDRkYzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmZWEwMmExM2E5ZDAwMmVjZWUxM2ZkMTMzNzNiMWQ2NWZlNWEwYzRiOTI0Mzk4M2UxN2ZkZTEzNDUzYTIyOTYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhZDdlY2Q5ZGUxOTU4OTVlOTcwYWM3ZDIzZWMwOTViYjFhZDEwYTc4YjYwNmI5ODRmYzAzNmE3ZmY1NmNlNjIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNjMjU5MzBjZDdjZWVhODkxMWRmYjRkZTE3MmE5OTgwMjI2YzhlZmNmNTU5MTk1OGVjZmVlMDU0NmU0ZWU4ZjQifQ"
         }
       ]
@@ -517,6 +517,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T02:31:10.035Z"
+    "at": "2026-10-30T06:46:27.597Z"
   }
 }

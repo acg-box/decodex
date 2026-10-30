@@ -42,6 +42,46 @@ const SUMMARY_NOTICE: &str =
 	"Up to 100 recent prompts and final replies. Intermediate activity is unavailable.";
 
 impl AgentSurface {
+	fn is_revealed_history_item(&self, entry: &AgentTimelineEntry) -> bool {
+		self.is_conversation_match(entry) || self.is_located_item(&entry.content)
+	}
+
+	pub(super) fn pause_item_history_navigation(&mut self) {
+		self.timeline.native.cancel_read();
+		self.timeline.latest_follow_work = None;
+		self.timeline.navigation = None;
+		self.timeline.wheel_scroll = None;
+		self.timeline.native.find.open = false;
+		self.timeline.native.find.current = None;
+		self.timeline.native.find.searching_earlier = false;
+		if let Some(work) = &self.selected {
+			self.timeline.follow_paused.insert(work.clone());
+		}
+		self.set_voice_follow(false);
+	}
+
+	pub(super) fn locate_loaded_history_item(
+		&mut self,
+		request: &decodex_protocol::ItemContextRequest,
+	) -> bool {
+		if !self.timeline.native.binding.as_ref().is_some_and(|binding| {
+			binding.work == request.work_id.as_str() && binding.thread == request.thread_id.as_str()
+		}) {
+			return false;
+		}
+		let Some(entry) = self.timeline.native.entries.iter().find(|entry| {
+			matches!(&entry.content, AgentTimelineContent::Item { turn_id, item_id, .. }
+				if turn_id == request.turn_id.as_str() && item_id == request.item_id.as_str())
+		}) else {
+			return false;
+		};
+		let (position, kind, id) = key(entry);
+		let key = (position, kind, id.to_owned());
+		self.timeline.native.show_saved = false;
+		self.timeline.native.viewport.find(key);
+		true
+	}
+
 	#[cfg(feature = "visual-capture")]
 	pub(crate) fn visual_mermaid_scroll_page(&mut self, cx: &mut Context<Self>) {
 		self.visual_workspace_page("markdown", cx);
@@ -184,7 +224,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn history_viewport_fill_ready(&self) -> bool {
-		if self.profile.is_none() {
+		if self.profile.is_none() || self.item_context_window_active() {
 			return false;
 		}
 
@@ -205,6 +245,9 @@ impl AgentSurface {
 	}
 
 	pub(super) fn prefetch_native_history(&mut self, cx: &mut Context<Self>) -> bool {
+		if self.item_context_window_active() {
+			return true;
+		}
 		let Some(binding) = self.timeline.native.binding.clone().filter(|binding| {
 			!self.timeline.native.show_saved && self.selected.as_ref() == Some(&binding.work)
 		}) else {
@@ -245,9 +288,15 @@ impl AgentSurface {
 			return;
 		};
 
-		self.activate_native_timeline(&work, &thread);
+		let located = self.item_history_location_active();
+		if !located {
+			self.activate_native_timeline(&work, &thread);
+		}
 		// Local delivery evidence does not depend on native history or its account binding.
 		self.refresh_native_input_receipts(cx);
+		if located {
+			return;
+		}
 
 		let selected = self.conversation_work();
 		let turn = selected.as_ref().and_then(|work| work.active_turn_id.as_deref());
@@ -477,6 +526,9 @@ impl AgentSurface {
 	}
 
 	pub(super) fn native_pagination_feedback(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+		if self.item_context_window_active() {
+			return None;
+		}
 		let binding = self.timeline.native.binding.as_ref().filter(|binding| {
 			!self.timeline.native.show_saved && self.selected.as_ref() == Some(&binding.work)
 		})?;
@@ -521,7 +573,7 @@ impl AgentSurface {
 			&& !group
 				.indices
 				.iter()
-				.any(|index| self.is_conversation_match(&self.timeline.native.entries[*index]))
+				.any(|index| self.is_revealed_history_item(&self.timeline.native.entries[*index]))
 		{
 			let indices: Vec<_> = group
 				.indices
@@ -575,7 +627,7 @@ impl AgentSurface {
 			!group
 				.indices
 				.iter()
-				.any(|index| self.is_conversation_match(&self.timeline.native.entries[*index]))
+				.any(|index| self.is_revealed_history_item(&self.timeline.native.entries[*index]))
 		});
 		let hidden: BTreeSet<_> =
 			waits.values().flat_map(|group| group.indices.iter().skip(1)).collect();
@@ -590,10 +642,10 @@ impl AgentSurface {
 						work,
 						entry,
 						&serde_json::json!([work.id, work.codex_thread_id, key(entry)]).to_string(),
-						archived,
+						archived && !self.is_located_item(&entry.content),
 						cx,
 					);
-					if self.is_conversation_match(entry) {
+					if self.is_revealed_history_item(entry) {
 						self.native_scroll_row(work, entry, body, cx)
 					} else {
 						body
@@ -656,7 +708,7 @@ impl AgentSurface {
 			group.expanded |= group
 				.indices
 				.iter()
-				.any(|index| self.is_conversation_match(&self.timeline.native.entries[*index]));
+				.any(|index| self.is_revealed_history_item(&self.timeline.native.entries[*index]));
 		}
 		let mut collapsed = BTreeSet::new();
 		let mut headers = std::collections::BTreeMap::new();
@@ -671,7 +723,7 @@ impl AgentSurface {
 			!group
 				.indices
 				.iter()
-				.any(|index| self.is_conversation_match(&self.timeline.native.entries[*index]))
+				.any(|index| self.is_revealed_history_item(&self.timeline.native.entries[*index]))
 		});
 		let wait_hidden: BTreeSet<_> =
 			waits.values().flat_map(|group| group.indices.iter().skip(1).copied()).collect();
@@ -681,10 +733,9 @@ impl AgentSurface {
 		let mut voice_groups = history::groups(&self.timeline.native.entries);
 		voice_groups.retain(|group| {
 			group.hidden()
-				|| !group
-					.indices
-					.iter()
-					.any(|index| self.is_conversation_match(&self.timeline.native.entries[*index]))
+				|| !group.indices.iter().any(|index| {
+					self.is_revealed_history_item(&self.timeline.native.entries[*index])
+				})
 		});
 		let (voice_headers, voice_hidden) = Self::voice_group_indices(&voice_groups);
 		let voice_tail_turns = history::tail_flush_turns(&self.timeline.native.entries);
@@ -847,6 +898,7 @@ impl AgentSurface {
 	}
 
 	fn read_latest_native_history(&mut self, work: &str, thread: &str, cx: &mut Context<Self>) {
+		self.reset_item_context();
 		if self.selected.as_deref() != Some(work) || self.timeline.native.task.is_some() {
 			return;
 		}
@@ -933,6 +985,9 @@ impl AgentSurface {
 		fill_viewport: bool,
 		cx: &mut Context<Self>,
 	) {
+		if self.item_context_window_active() {
+			return;
+		}
 		if self.selected.as_deref() != Some(work) || self.timeline.native.task.is_some() {
 			return;
 		}

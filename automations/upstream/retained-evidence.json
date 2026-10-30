@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "f024f940a4ac63e2ad2f65122a7f7e2641d01980074fcb4a580dc6bd0ce80459",
+    "sha256": "c9450247a541f27e3e9cfbc9e99541d603160d7bd698f2493f88c204fb358ab4",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -2326,5 +2326,139 @@
       "method": "OpenWiki page-job lifecycle",
       "state_source": "Finalized OpenWiki metadata and native automation state own current completion."
     }
+  },
+  "history_anchor_navigation": {
+    "manual_item": 35,
+    "contracts": "automations/upstream/retained-contracts.json#retained_desktop_feedback.nearby_history",
+    "source_revision": "af989d83632b50adc83c420ddc60778cfd7b0885",
+    "main_baseline": "2fc273ea6f28e718d3ea702a32432fe2861601d6",
+    "upstream_contract": {
+      "commit": "de9e78e3e7caed0fdd75d20ae617faa646dfef3c",
+      "pull_request": "https://github.com/openai/codex/pull/48151",
+      "symbol": "codex-rs/app-server-protocol/src/protocol/v2/thread.rs#ThreadItemsListCursor",
+      "consumer": "Existing Decodex item-context adapter; exact native IDs and opaque continuations remain unchanged."
+    },
+    "source_sha256": {
+      "apps/decodex-gpui/src/agent_activity.rs": "5a9a7783450317e312a77750c4007e816bffbe3448f89d34e8da152bf7bc43b1",
+      "apps/decodex-gpui/src/agent_item_context.rs": "96388223ae3662411b2e0ea62ad6f7f78393351828fdb1ad888b178638bb2fb2",
+      "apps/decodex-gpui/src/agent_item_context_tests.rs": "6f424e2968f01e5550c43306c39424505c20a09040378e6690d12b4df2cce3b6",
+      "apps/decodex-gpui/src/agent_surface.rs": "9c14e623f2027d99e446b6f5b4132f3f7f10dca0da342625dd4970e4cd6389e9",
+      "apps/decodex-gpui/src/agent_timeline.rs": "15743b0a49cc828ee1279683e1f9d92ea380af359dcf06fdf7cd7296d88570dd",
+      "apps/decodex-gpui/src/agent_timeline_find.rs": "a3e22820414a6df37420936bd47fa40859d5d7d60b252b0b3c1e3315ed23c1f3",
+      "apps/decodex-gpui/src/agent_timeline_render.rs": "3b68298f9db3b1726fe9bc560917cb4f43b2329f71e4664ff99a4c56236eac59",
+      "apps/decodex-gpui/src/agent_timeline_scroll.rs": "cbf8362e92aa89d81cab6db2be4a16afd2b45ca50e737ea895a187fdfd56838c",
+      "apps/decodex-gpui/src/agent_workspace.rs": "40924213d1fbee74e44295e9117e41a3a7defe867c1b229ea337ff43d7faacc5"
+    },
+    "tests_read": [
+      {
+        "source": "apps/decodex-gpui/src/agent_item_context_tests.rs",
+        "revision": "af989d83632b50adc83c420ddc60778cfd7b0885",
+        "symbol": "shell::agent_surface::item_context::tests::item_history_pages_use_native_cursors_and_keep_the_visible_page_on_failure",
+        "body_read": true
+      },
+      {
+        "source": "apps/decodex-gpui/src/agent_item_context_tests.rs",
+        "revision": "af989d83632b50adc83c420ddc60778cfd7b0885",
+        "symbol": "shell::agent_surface::item_context::tests::known_message_actions_stay_out_of_the_transcript",
+        "body_read": true
+      },
+      {
+        "source": "apps/decodex-gpui/src/agent_item_context_tests.rs",
+        "revision": "af989d83632b50adc83c420ddc60778cfd7b0885",
+        "symbol": "shell::agent_surface::item_context::tests::located_loaded_item_reveals_its_fold_without_a_native_read",
+        "body_read": true
+      },
+      {
+        "source": "apps/decodex-gpui/src/agent_item_context_tests.rs",
+        "revision": "af989d83632b50adc83c420ddc60778cfd7b0885",
+        "symbol": "shell::agent_surface::item_context::tests::nearby_history_action_reads_the_selected_native_child",
+        "body_read": true
+      },
+      {
+        "source": "apps/decodex-gpui/src/agent_item_context_tests.rs",
+        "revision": "af989d83632b50adc83c420ddc60778cfd7b0885",
+        "symbol": "shell::agent_surface::item_context::tests::nearby_history_query_keeps_identity_and_discards_a_changed_source",
+        "body_read": true
+      },
+      {
+        "source": "apps/decodex-gpui/src/agent_item_context_tests.rs",
+        "revision": "af989d83632b50adc83c420ddc60778cfd7b0885",
+        "symbol": "shell::agent_surface::item_context::tests::unloaded_item_opens_in_the_main_transcript_and_returns_to_the_saved_position",
+        "body_read": true
+      }
+    ],
+    "upstream_tests_read_not_executed": [
+      {
+        "source": "codex-rs/thread-store/src/local/thread_history/read_tests.rs",
+        "revision": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+        "symbol": "item_anchors_page_exclusively_while_the_turn_grows",
+        "body_read": true
+      }
+    ],
+    "tests_executed": {
+      "package": "decodex-gpui",
+      "binary": "decodex-gpui",
+      "identities": [
+        "shell::agent_surface::item_context::tests::item_history_pages_use_native_cursors_and_keep_the_visible_page_on_failure",
+        "shell::agent_surface::item_context::tests::known_message_actions_stay_out_of_the_transcript",
+        "shell::agent_surface::item_context::tests::located_loaded_item_reveals_its_fold_without_a_native_read",
+        "shell::agent_surface::item_context::tests::nearby_history_action_reads_the_selected_native_child",
+        "shell::agent_surface::item_context::tests::nearby_history_query_keeps_identity_and_discards_a_changed_source",
+        "shell::agent_surface::item_context::tests::unloaded_item_opens_in_the_main_transcript_and_returns_to_the_saved_position",
+        "shell::agent_surface::native_timeline::find::tests::find_excerpt_keeps_a_late_unicode_match_on_original_boundaries",
+        "shell::agent_surface::native_timeline::find::tests::find_reads_folded_text_keeps_manual_disclosures_and_owns_enter",
+        "shell::agent_surface::native_timeline::find::tests::find_retains_the_matched_live_revision_through_refresh_and_resize",
+        "shell::agent_surface::native_timeline::find::tests::find_uses_the_existing_older_page_and_rejects_a_changed_source",
+        "shell::agent_surface::native_timeline::scroll::tests::a_new_process_fold_keeps_older_history_virtualized",
+        "shell::agent_surface::native_timeline::scroll::tests::disclosure_anchor_tracks_each_layout_until_motion_finishes",
+        "shell::agent_surface::native_timeline::scroll::tests::evicted_rows_and_obsolete_layout_callbacks_cannot_move_the_viewport",
+        "shell::agent_surface::native_timeline::scroll::tests::history_feedback_keeps_height_and_reading_position",
+        "shell::agent_surface::native_timeline::scroll::tests::latest_arrival_scrolls_new_layout_but_respects_a_later_wheel_gesture",
+        "shell::agent_surface::native_timeline::scroll::tests::layout_changes_invalidate_measured_heights",
+        "shell::agent_surface::native_timeline::scroll::tests::measured_rows_keep_space_and_selection_with_a_viewport_buffer",
+        "shell::agent_surface::native_timeline::scroll::tests::older_page_preserves_visible_assistant_row_without_user_rail_marks",
+        "shell::agent_surface::native_timeline::scroll::tests::trimming_newer_rows_preserves_the_visible_row_and_bounds_geometry"
+      ],
+      "entrypoints": [
+        "apps/decodex-gpui/src/agent_item_context_tests.rs",
+        "apps/decodex-gpui/src/agent_timeline_find.rs",
+        "apps/decodex-gpui/src/agent_timeline_scroll.rs"
+      ],
+      "executed_count": 19,
+      "passed_count": 19,
+      "skipped": 1134,
+      "unmatched_selectors": [],
+      "selector": "test(item_context::tests::) | test(native_timeline::find::tests::) | test(native_timeline::scroll::tests::)",
+      "command": "cargo +stable nextest run --locked --package decodex-gpui --bin decodex-gpui -E \"test(item_context::tests::) | test(native_timeline::find::tests::) | test(native_timeline::scroll::tests::)\" --status-level fail --final-status-level fail"
+    },
+    "reproduced_defect": {
+      "baseline": "2fc273ea6f28e718d3ea702a32432fe2861601d6",
+      "test_overlay": "shell::agent_surface::item_context::tests::known_message_actions_stay_out_of_the_transcript",
+      "executed_count": 1,
+      "failed_count": 1,
+      "skipped": 1149,
+      "after_repair": "The same regression passes in the 19-test selected set."
+    },
+    "static_checks": {
+      "strict_clippy": "Passed for decodex-gpui, all features and targets, with repository deny flags.",
+      "format": "cargo +nightly fmt --all --check passed.",
+      "whitespace": "git diff --check passed."
+    },
+    "runtime_qualification_reuse": {
+      "reference": "history_resource_cost.selected_runtime",
+      "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+      "schema_fingerprint_sha256": "86c27115a28bf905f4c25ee204b218b2ba9598ef664787efddd30e2d0c20f2d9",
+      "artifact_or_helpers_changed": false,
+      "fresh_native_tests_executed": 0,
+      "limits": "Presentation-only repair. Reuse the existing adapter and native qualification only within its recorded source, component and behavior limits; do not treat synthetic GPUI tests as fresh artifact qualification."
+    },
+    "validation_limits": [
+      "Synthetic GPUI and same-UID wire fixtures; no installed-app or real-account acceptance.",
+      "No upstream/native, provider, model, audio, performance or billing tests. No runtime migration, installation, release or schedule activation.",
+      "The selected native item anchor is scoped to one exact turn. It does not add global search, an arbitrary cross-turn index or fabricated timeline positions."
+    ],
+    "delivery_commits": [
+      "https://github.com/acg-box/decodex/commit/af989d83632b50adc83c420ddc60778cfd7b0885"
+    ]
   }
 }

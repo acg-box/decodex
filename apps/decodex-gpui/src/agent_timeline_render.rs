@@ -506,7 +506,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			content @ AgentTimelineContent::Promotion { .. } =>
 				self.native_promotion(work, content, identity, cx),
 		};
-		self.find_result_row(entry, body)
+		self.find_result_row(entry, self.located_item_row(&entry.content, body))
 	}
 
 	fn native_turn_metrics(
@@ -556,7 +556,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 		Some(self.native_turn_metrics(&boundary.content, identity, cx))
 	}
 
-	fn native_item_content(
+	pub(in super::super) fn native_item_content(
 		&self,
 		work: &AgentWorkItemDto,
 		content: &AgentTimelineContent,
@@ -673,14 +673,6 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			if truncated {
 				body = body.child(agent_surface::muted("History preview shortened."));
 			}
-			if draft.is_none() {
-				body =
-					body.child(self.item_context_panel(
-						&(work.id.clone(), turn_id.clone(), item_id.clone()),
-						cx,
-					));
-			}
-
 			return body.into_any_element();
 		}
 		if activity.is_some() && !*app_ui && attachments.is_empty() {

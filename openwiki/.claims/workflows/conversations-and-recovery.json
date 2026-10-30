@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:dfad2884204463ceb9afd697c4cf46014ba6fc9269839c5979d29676024ed61a",
+  "pageVersion": "sha256:3a7cb83f830446df81a9dae6cbbba9088ad5e22b91d69146729d90e054214fe8",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -105,7 +105,7 @@
           "version": "repo-file-v1:sha256:cdf330e8db97cb474822c98ae2576da9c72d64e996820957197087833b1cadfb"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2507-L2528",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2510-L2531",
           "version": "repo-lines-v1:sha256:4ac7cbb8588c6dfee8d4d6bde9e579163322892b8129ff0bdc622be14429f1f5:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA2NmI1YjkzMDg2NDc5ZmJiMjgzOTZiN2NlZjkzOGY3OWNiMzkyOWE3OGE4M2U2NGUwNjUyYzFkZWY3MmU4MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlNDM4OTRkNmQ1Y2Q5YTQxZmI2MDFmNWI3NjgxMmVhMjNlYTRjODdjNjY1OWY2MTE2MWNkYWE0MzQ1YjBkNDkiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFjZTdkM2E5ZjcwYWZkY2JkOGNmMmZjZTM4NWZhMWZlODJjYWIxNjM1Y2IyYTM2MmVkMzcyYzc0NzYxOWU0YWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY4ZjZjZjBiYmNlNzE4MjIxMTBlMDZjNDU3ZWE5YmY1YTM5MzEyNjU1YTMwZDRhOGYyMTg3MzBiYWNmYzBhOGMifQ"
         },
         {
@@ -321,7 +321,7 @@
       "statement": "A failed message uses a normal user bubble at the end of the scrolling transcript and an aligned Not sent and Resend row. The reason is a tooltip, with no disclosure panel or pinning above the input bar. Archived conversations do not offer retry accessories.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2305-L2336",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L2308-L2339",
           "version": "repo-lines-v1:sha256:f23eb22d81f75af5538eec6a393a7467929e9c440b0bab5cb5fc0837af3c47a0:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhkMWE4OGNlMDQ3OWM1ZmE3NTI5MmNiOGE1ZWYxOTBhYTg4NDhlMTMyNzg0MDk1ZTI0ZDI1YzM3NDMwOWU5NDEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ODI4NTYwNmQyOGU5MWNlNDRjYWU5MzVjZjg4OTA5MTkxZTA5NWM2YjUzN2NlZTgyNjcyZDdkNzIyYjRhZTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMyNTViODhjYjRkNTVjN2VmMjE2NDliZWE5MTRiYTEwYTEyNDE0ZDMyOGVkZDhmNTNlMDg1MWRmNDc5MTBhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY4MDZmNmFkYTg4ZjAzZGE2MDU1NmNkOWZkMGY2MGI3NDhkZGMwNjViYjcwN2M5YmNkZGI5ZTc4YThlNGU2YWQifQ"
         },
         {
@@ -448,11 +448,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_surface.rs",
-          "version": "repo-file-v1:sha256:ec4966fd182292124acc8c78dd754c4079d884a9bf4580caebe92cbd998ce0bb"
+          "version": "repo-file-v1:sha256:9c14e623f2027d99e446b6f5b4132f3f7f10dca0da342625dd4970e4cd6389e9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_workspace.rs",
-          "version": "repo-file-v1:sha256:5ef06000915dca6a4c089f996183667d77167f502a270d35dab847ca5832213a"
+          "version": "repo-file-v1:sha256:40924213d1fbee74e44295e9117e41a3a7defe867c1b229ea337ff43d7faacc5"
         }
       ]
     },
@@ -466,11 +466,11 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline.rs",
-          "version": "repo-file-v1:sha256:32bdec1fe6adacfca8fe26d5c36b5fb07b607fc4a19e241df3b27a36dcd261d7"
+          "version": "repo-file-v1:sha256:15743b0a49cc828ee1279683e1f9d92ea380af359dcf06fdf7cd7296d88570dd"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_timeline_find.rs",
-          "version": "repo-file-v1:sha256:df0d8caca326d0ff12888f2cce1b6c3385e0211f4902b1aef314b9b260a53eab"
+          "version": "repo-file-v1:sha256:a3e22820414a6df37420936bd47fa40859d5d7d60b252b0b3c1e3315ed23c1f3"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/shell.rs",
@@ -480,11 +480,15 @@
     },
     {
       "id": "claim_a31dd3be8e924428b02bcb92c15a32ed",
-      "statement": "Nearby history reads an exact native item with at most three earlier and three later items in its turn, continues through native directional cursors, and uses the selected child's exact thread without starting inference.",
+      "statement": "Show in conversation reuses a loaded exact native item and temporarily reveals its group without a query; an unloaded item opens a main-transcript window containing the exact item and up to three neighbors per side in its turn. Native directional cursors replace bounded pages, a fixed return action restores the prior offset and draft, failures retain the visible page, and selected-child/source identities remain exact without inference or fabricated timeline positions.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_item_context.rs#L20-L73",
-          "version": "repo-lines-v1:sha256:66b9fca86f4dfcb51420764e44e4f904f48c56c5ab4330fda5369232b08f8940:eyJzZWxlY3RlZExpbmVDb3VudCI6NTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE0ZDliMDdlMDIwZWVhNzBlMDllY2U1YjY3OTdkODFjZDdlZjAzZjIzNmIyNGVlNTBjNmM5MjM5NmRjY2Y2MzUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjNGMyZjBmZWUxMGM4M2ZiMzQ4ZjQxMzAyYTczMWY1NGE4YzNiZTA1NDM0ZGZhZGM5MGNkNTNiOTgzODBmMzYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJkOWUwZTRjMzBkZTZiNDYwNWJjYzIxYjZmZmI1YWQ3MDdkODAzZGY5ZmZmNTZkMDI3ZGQ2M2ZkNTUyNDg2MTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVlZjlhMzM1MTU3OTdhZTIzM2YyYjNiZmRiNTk0OTg1ZWJiZWE3NDI3YjAxNDc1ZDA4M2RkYmQxMjIxYzA3MzcifQ"
+          "resource": "repo://apps/decodex-gpui/src/agent_item_context.rs",
+          "version": "repo-file-v1:sha256:96388223ae3662411b2e0ea62ad6f7f78393351828fdb1ad888b178638bb2fb2"
+        },
+        {
+          "resource": "repo://apps/decodex-gpui/src/agent_item_context_tests.rs",
+          "version": "repo-file-v1:sha256:6f424e2968f01e5550c43306c39424505c20a09040378e6690d12b4df2cce3b6"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/item_context.rs#L7-L61",
@@ -557,6 +561,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T02:31:10.035Z"
+    "at": "2026-10-30T06:46:27.597Z"
   }
 }

@@ -64,10 +64,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-30T02:31:10.035Z" }
+generated: { by: "codex", at: "2026-10-30T06:46:27.597Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T03:12:23.375Z
+    at: 2026-10-30T06:46:27.597Z
 ---
 
 # OpenWiki quickstart
@@ -100,7 +100,7 @@ The conversation browser and Work list have independent saved **status filters**
 
 Use **Cmd-F** or the conversation header's search control to find loaded conversation text, including folded activity. **Load earlier and search** extends the existing history window; shortened output remains incomplete. The current match keeps its text revision during refresh and resize. See [Find and saved-send recovery](workflows/conversations-and-recovery.md#find-conversation-text) for keyboard ownership and the live never-dispatched reconnect slot. Ordinary offline drafts and uncertain deliveries are not automatically sent.
 
-Choose **Nearby history** at a retained message or expanded tool detail to read a bounded same-turn native window. **Related conversations** in Resources uses registered resource identities, archive filtering and native paging. It opens existing local conversations or copies an unmanaged native reference. It does not scan historical uploads. See [history and resource lookup](workflows/conversations-and-recovery.md#read-items-near-a-known-message).
+Choose **Show in conversation** in a tool detail to locate a loaded message or read its unloaded native history in the main transcript. The history window has native earlier/later pages and a fixed **Return to conversation** action. **Related conversations** in Resources uses registered resource identities, archive filtering and native paging. It opens existing local conversations or copies an unmanaged native reference. It does not scan historical uploads. See [history and resource lookup](workflows/conversations-and-recovery.md#read-items-near-a-known-message).
 
 **Cost estimate** in the conversation header and **Conversation estimates** in Menu Bar expose existing provider estimates, with explicit refresh, source-account labels and unknown values. The Menu Bar list covers up to eight recent locally managed conversations, not account-wide spending. See [estimate scope](workflows/models-and-settings.md#conversation-cost-estimates).
 

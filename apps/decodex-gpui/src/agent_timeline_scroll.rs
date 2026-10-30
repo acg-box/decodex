@@ -25,14 +25,22 @@ use crate::{
 	ui_theme::MESSAGE_GAP,
 };
 
-type RowKey = (u64, u8, String);
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum RowKey {
+	Native(u64, u8, String),
+	Item(String, String),
+}
 
 pub(super) const ROW_GAP: f32 = MESSAGE_GAP;
 
 #[derive(Default)]
 pub(super) struct Viewport(Rc<RefCell<Geometry>>);
 impl Viewport {
-	pub(super) fn find(&self, key: RowKey) {
+	pub(super) fn find(&self, key: (u64, u8, String)) {
+		self.focus(RowKey::Native(key.0, key.1, key.2));
+	}
+
+	fn focus(&self, key: RowKey) {
 		let mut state = self.0.borrow_mut();
 		state.revision = state.revision.wrapping_add(1);
 		state.process_motion_until = None;
@@ -397,10 +405,14 @@ impl AgentSurface {
 			.collect();
 		let mut state = self.timeline.native.viewport.0.borrow_mut();
 
-		if let Some(first) = state.folded.symmetric_difference(&folded).next().map(|key| key.0) {
+		if let Some(RowKey::Native(first, ..)) =
+			state.folded.symmetric_difference(&folded).next().cloned()
+		{
 			// Earlier rows keep their measured size and position. Only the
 			// changed header and following rows can move when a turn folds.
-			state.rows.retain(|key, _| key.0 < first);
+			state
+				.rows
+				.retain(|key, _| matches!(key, RowKey::Native(position, ..) if *position < first));
 
 			state.folded = folded;
 		}
@@ -505,16 +517,47 @@ impl AgentSurface {
 		row: AnyElement,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
+		let arrival = self.timeline.native.arrivals.active(entry).then_some(entry.position);
+		self.history_scroll_row(work, row_key(entry), arrival, row, cx)
+	}
+
+	pub(in super::super) fn item_history_scroll_row(
+		&self,
+		work: &AgentWorkItemDto,
+		turn: &str,
+		item: &str,
+		row: AnyElement,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		self.history_scroll_row(work, RowKey::Item(turn.into(), item.into()), None, row, cx)
+	}
+
+	pub(in super::super) fn focus_item_history(&mut self, turn: &str, item: &str) {
+		self.clear_item_history_viewport();
+		self.timeline.native.viewport.focus(RowKey::Item(turn.into(), item.into()));
+	}
+
+	pub(in super::super) fn clear_item_history_viewport(&mut self) {
+		self.timeline.native.viewport = Viewport::default();
+		self.timeline.marks_revision = None;
+	}
+
+	fn history_scroll_row(
+		&self,
+		work: &AgentWorkItemDto,
+		key: RowKey,
+		arrival: Option<u64>,
+		row: AnyElement,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
 		let Some(scroll) = self.timeline.scroll.get(&work.id).cloned() else {
 			return row;
 		};
-		let key = row_key(entry);
 		let geometry = self.timeline.native.viewport.0.clone();
 		let surface = cx.entity().downgrade();
 		let owner = work.id.clone();
 		let selection = geometry.clone();
 		let selected_key = key.clone();
-		let arrival = self.timeline.native.arrivals.active(entry).then_some(entry.position);
 		let row = PaginationLayout {
 			child: row,
 			geometry: geometry.clone(),
@@ -587,7 +630,7 @@ impl AgentSurface {
 fn row_key(entry: &AgentTimelineEntry) -> RowKey {
 	let (position, kind, id) = native_timeline::key(entry);
 
-	(position, kind, id.into())
+	RowKey::Native(position, kind, id.into())
 }
 
 #[cfg(test)]

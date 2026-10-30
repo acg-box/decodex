@@ -8,6 +8,8 @@ sources:
     resource: repo://.config/nextest.toml
   - id: openwiki-source-0a61b25348131fe1bb6e1d12
     resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
+  - id: openwiki-source-85ab533d66ee904d83d8a21a
+    resource: repo://apps/decodex-gpui/src/agent_item_context_tests.rs
   - id: openwiki-source-77ad5024b567271a0f618fd7
     resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
   - id: openwiki-source-89a6e0bcef9377afc01425eb
@@ -152,10 +154,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-30T02:31:10.035Z" }
+generated: { by: "codex", at: "2026-10-30T06:46:27.597Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T03:12:23.375Z
+    at: 2026-10-30T06:46:27.597Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -275,6 +277,14 @@ The `history_resource_cost` entry in the [portable evidence index](../../automat
 One Rust check runs the exact selected native artifact in a system-temporary private store with two synthetic Responses turns. It checks an exact same-turn history anchor, matching registered resource owners, archived filtering and an empty unmatched lookup. The lookup makes no additional model request. A reusable repository fixture preserves this proof after local logs are removed. Socket and GPUI checks separately cover opaque continuations, source changes, selected-child identity and collapsed output counts.
 
 The selected native source remains `33d306d457a4632b22bebf214e0c25d91f90f6e8`. CLI and helper digests were read back, and its experimental schema was generated again. This is no runtime migration or source cursor advance. The tests do not establish live provider billing, full account usage, cross-store discovery, historical upload search or packaged Menu Bar interaction. Installed-app acceptance stays separate. No application was installed or released, and automation stays paused.
+
+## Native item navigation presentation repair
+
+The `history_anchor_navigation` entry in the [portable evidence index](../../automations/upstream/retained-evidence.json) binds source `af989d83632b50adc83c420ddc60778cfd7b0885` to 19 executed GPUI checks: six item-navigation cases, four existing Find cases and nine viewport cases. All passed, 1134 tests were skipped, and each of the three selectors matched. The ordinary-message button regression first failed on the completed main baseline with only the new test overlaid, then passed after repair. Strict GPUI Clippy with all features and targets, nightly format and whitespace checks passed.
+
+Rendered and same-UID wire fixtures cover direct loaded-item location and temporary unfolding, exact unloaded turn/item reads in the main transcript, native continuation cursors, failed-page retention, a fixed return action, the prior scroll offset, retained drafts, selected-child identity and late-source rejection. The reusable cases are in `apps/decodex-gpui/src/agent_item_context_tests.rs`. Item pages remain bounded and separate from canonical timeline ordinals. Find and Latest return to the ordinary conversation.
+
+This is a presentation repair of the existing item reader. The selected native runtime, helpers and schema are unchanged, and their earlier qualification retains its original limits. One upstream paging test body was read; no upstream or native artifact test was executed for this repair. Installed-app, live-account, physical display, provider and performance acceptance remain unmeasured. No installation, release, review-cursor advance or schedule activation is implied.
 
 ## Persistent attached branches
 

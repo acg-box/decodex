@@ -10,6 +10,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
+  - id: openwiki-source-7aecb0d94903aac848b2cdfd
+    resource: repo://apps/decodex-gpui/src/agent_item_context.rs
+  - id: openwiki-source-2da3727221b66d60f1a2e9ef
+    resource: repo://apps/decodex-gpui/src/agent_timeline_scroll.rs
+  - id: openwiki-source-691432bb61082c358b6f9c24
+    resource: repo://apps/decodex-gpui/src/agent_timeline.rs
   - id: openwiki-source-ae991159453be2ee0c611ac1
     resource: repo://apps/decodex-gpui/src/bundled_daemon.rs
   - id: openwiki-source-c1d5f763b821a11957a8c33b
@@ -128,10 +134,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+generated: { by: "codex", at: "2026-10-30T06:52:31.470Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T03:12:23.375Z
+    at: 2026-10-30T06:52:31.470Z
 ---
 
 # Runtime Architecture
@@ -195,7 +201,7 @@ The read-only `GetAttachedBranches` query returns the newest 100 retained Decode
 
 ## Native history and resource lookup
 
-The read-only local `GetItemContext` query uses the existing native history source for an exact Work, thread, turn and item. It reads a bounded same-turn window and native directional continuations. The source is checked before and after the read; a changed source discards the result. The desktop presents this text beside the selected message or tool detail without a new history store or executor.
+The read-only local `GetItemContext` query uses the existing native history source for an exact Work, thread, turn and item. It reads a bounded same-turn window and native directional continuations. The source is checked before and after the read; a changed source discards the result. The desktop locates an already loaded exact item without this query. For an unloaded item, it presents the bounded result in the main transcript through the existing message and tool renderers. Native item pages have no canonical timeline ordinals and remain separate from the cached ordinary page. A fixed return action restores the prior reading position. This adds no history store or executor.
 
 `GetResourceOwners` checks that the selected exact resource belongs to the current conversation, then calls native `thread/attachmentOwner/list`. Native Codex owns the association store, archive filter and cursors. The current account processes use the same native home, so one admitted catalog read covers that store. Local retained bindings supply account labels. Only an exact current local thread can open directly; other owners remain references; lookup creates no new local conversation or file association.
 

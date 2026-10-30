@@ -16,6 +16,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_draft_storage.rs
   - id: openwiki-source-d701c906e7fcc9ab2d0917bc
     resource: repo://apps/decodex-gpui/src/agent_inspection.rs
+  - id: openwiki-source-85ab533d66ee904d83d8a21a
+    resource: repo://apps/decodex-gpui/src/agent_item_context_tests.rs
   - id: openwiki-source-7aecb0d94903aac848b2cdfd
     resource: repo://apps/decodex-gpui/src/agent_item_context.rs
   - id: openwiki-source-77ad5024b567271a0f618fd7
@@ -132,10 +134,10 @@ sources:
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-30T02:31:10.035Z" }
+generated: { by: "codex", at: "2026-10-30T06:46:27.597Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T02:31:10.035Z
+    at: 2026-10-30T06:46:27.597Z
 ---
 
 # Conversation input, history and recovery
@@ -239,9 +241,13 @@ Find reads the existing timeline, including text in folded activity and the reta
 
 ### Read items near a known message
 
-Choose **Nearby history** under a retained message or in expanded tool details. The first read includes that exact native item and up to three earlier and three later items in the same turn. **Earlier items** and **Later items** use native continuation cursors. **Close nearby history** closes the view. A selected native child uses its own thread, rather than the parent thread.
+Choose **Show in conversation** in an expanded tool or evidence detail. If the exact native item is already loaded, the main conversation scrolls to it, highlights it and temporarily opens its process group. This path does not query history again. Ordinary messages have no nearby-history button.
 
-This bounded text view uses the existing native history owner. It does not start inference or replace Find, ordinary history paging or complete export. Shortened text and unavailable source data remain explicit. It does not search across turns or reconstruct missing history.
+If the item is not loaded, the existing native history owner reads that item and up to three earlier and three later items in its exact turn. The main transcript shows this bounded window through the ordinary message and tool renderers. **Earlier messages** and **Later messages** replace the window through native opaque cursors. Item pages have no canonical timeline positions, so they are not joined to a nonadjacent cached page.
+
+**Return to conversation** stays below the conversation header while this window is open. It restores the previous reading position and keeps the composer draft. Find and Latest also return to the ordinary conversation. Background history refresh does not replace the active location. Failed reads retain the current page; a changed runtime or thread discards a late result. A selected native child uses its own exact thread.
+
+This read starts no inference and adds no history store, global search or cross-turn reconstruction. Shortened text and unavailable source data remain explicit. See [the presentation qualification](../testing/upstream-acceptance-boundaries.md#native-item-navigation-presentation-repair) for the executed fixtures and unmeasured installed-app limits.
 
 ### Find conversations for a registered resource
 
