@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:a3366fc93837698bde4e82df5cfcfc3014af85e1bc6fccb43ed4ab780fa90cc9",
+  "pageVersion": "sha256:66a43492088aa6f2b06024f677390dc42c9174227c71f13520eb31baee36b8a3",
   "claims": [
     {
       "id": "claim_8d60aaceeea74d6189e3d7b0b3ed21fe",
@@ -17,7 +17,7 @@
       "statement": "The native bridge retains installed-plugin observations but rejects plugin list/read/install/reconcile management and MCP configuration reload; historical plugin state is still persisted as observations.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L823-L864",
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process.rs#L824-L865",
           "version": "repo-lines-v1:sha256:54d229cbf84d87383e867f093b72e720d3db151884b97c6a1006816ad9a88a74:eyJzZWxlY3RlZExpbmVDb3VudCI6NDIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI0ZDAyMDk0NDNhMGVhMDQxNTNlYjM3YzdhNGYzMTU4OGE0MDBmNGE0ZTNkYTE0NDc3ZmVjYTRhYmQ4M2YzYWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwODJhZmMzZTFkMmY0ODY0MDA4MDZhZTVlMDQ4ZGQ2YTY5NDRiOGQ5MDExODI4NmUwYTg3MzllMjYzYjIzNDkifQ"
         },
         {
@@ -332,7 +332,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:47eb3d07feda113d08ad4ae5f9558e4d5d24a81977c97e9a35f81526e8584e12"
+          "version": "repo-file-v1:sha256:108fe2e6147d55ba9c0b285eb3ad33def48e3d017b9a4986ad812fcd0616b457"
         }
       ]
     },
@@ -360,7 +360,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:47eb3d07feda113d08ad4ae5f9558e4d5d24a81977c97e9a35f81526e8584e12"
+          "version": "repo-file-v1:sha256:108fe2e6147d55ba9c0b285eb3ad33def48e3d017b9a4986ad812fcd0616b457"
         }
       ]
     },
@@ -416,7 +416,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:47eb3d07feda113d08ad4ae5f9558e4d5d24a81977c97e9a35f81526e8584e12"
+          "version": "repo-file-v1:sha256:108fe2e6147d55ba9c0b285eb3ad33def48e3d017b9a4986ad812fcd0616b457"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_context_settings_native_tests.rs",
@@ -434,7 +434,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:47eb3d07feda113d08ad4ae5f9558e4d5d24a81977c97e9a35f81526e8584e12"
+          "version": "repo-file-v1:sha256:108fe2e6147d55ba9c0b285eb3ad33def48e3d017b9a4986ad812fcd0616b457"
         }
       ]
     },
@@ -480,7 +480,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_work_browser.rs",
-          "version": "repo-file-v1:sha256:d8629b33b0cda4294c2917eaf920b1a39ee1920477426c858a85291c6b4a6b82"
+          "version": "repo-file-v1:sha256:540b6b82cdd672bf83116c4844aa3e87077a77ab732917b1b2ef17572ad02768"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L4968-L5017",
@@ -502,7 +502,7 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:47eb3d07feda113d08ad4ae5f9558e4d5d24a81977c97e9a35f81526e8584e12"
+          "version": "repo-file-v1:sha256:108fe2e6147d55ba9c0b285eb3ad33def48e3d017b9a4986ad812fcd0616b457"
         }
       ]
     },
@@ -564,13 +564,13 @@
         },
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:47eb3d07feda113d08ad4ae5f9558e4d5d24a81977c97e9a35f81526e8584e12"
+          "version": "repo-file-v1:sha256:108fe2e6147d55ba9c0b285eb3ad33def48e3d017b9a4986ad812fcd0616b457"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T15:27:42.105Z"
+    "at": "2026-10-30T17:36:00.319Z"
   }
 }

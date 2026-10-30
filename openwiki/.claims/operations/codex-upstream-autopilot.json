@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c0ede398cfb82d419672d18985654a9475b3f3a2d58d7d8d9093d12b81bb9745",
+  "pageVersion": "sha256:542504c01e8ed8f9dfa4048c55936f1433111634f39e3ac40e53b18764187b31",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:ee57c1485f724e683ccb1f7aa264176cbfc9bc8d3716c3a76409644982210b64"
+          "version": "repo-file-v1:sha256:f12d49a70146b60d4e2230e7cc30c77eff56fc36eeccbc1b321df455abb49210"
         },
         {
           "resource": "repo://automations/upstream/prompts/maintainer.md#L1-L3",
@@ -18,15 +18,15 @@
     },
     {
       "id": "claim_d1a992e40d1147c3928b5de580178ed5",
-      "statement": "The portfolio retains three native automation roles and keeps the upstream Maintainer PAUSED during manual proposal review, with its gpt-6.1-sol model, max reasoning effort, worktree execution and daily UTC20:05 schedule preserved. Repository declarations do not authorize activation; resume requires explicit user authorization.",
+      "statement": "The portfolio retains three native automation roles and keeps the upstream Maintainer PAUSED during manual catch-up and until explicit resume approval, preserving its daily cadence, model, reasoning effort and worktree execution.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:ee57c1485f724e683ccb1f7aa264176cbfc9bc8d3716c3a76409644982210b64"
+          "version": "repo-file-v1:sha256:f12d49a70146b60d4e2230e7cc30c77eff56fc36eeccbc1b321df455abb49210"
         },
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md",
-          "version": "repo-file-v1:sha256:55015da6e74dac35c909f745782c1c1cd69c71597dddef73aba65b99faedd34c"
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L1-L3",
+          "version": "repo-lines-v1:sha256:5ee9f284ed180ea5076618b07373423b1617c3d133f68e6495a64e5bdd684166:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGNlMGVlMTJiZDEyMzEzZmVkMDMzMDllYjEzYWNmODQwOTBlZTI0NTVjMThlNGE2NWRlNjViZjRjMzBiNjdmNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjIxNjdmODRlNzNiMzVkYWE0NjRhYWE2YmIwNGU2ZmYzNGU4OGU2MDkyMTliNWYyYWJjNTRkMGMyNzkyZmUzOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzU0ZTU4YjM0MDk1Mzg5ODJiMjY5YTc5NjcyZDliOTBmYmU2MTRjZjViZjcxNzkyZDVhYjViOWEzMjY2YzI0ZSJ9"
         }
       ]
     },
@@ -45,8 +45,8 @@
       "statement": "The daily maintenance prompt limits automatic implementation to retained capabilities, requires user selection for new features, and runs once daily without a task-defined duration limit until the fixed target and required qualification and delivery work are complete or a concrete blocker requires user input or an external change.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L63-L73",
-          "version": "repo-lines-v1:sha256:56f620e9fdb9fd08100b06e3afd9c333112fad8d8e03114a531fa6f0252ca8c7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4NTBlMzYyOGNjYTA3ZGM5ZDcwNTVjMzk4YWM5Y2RiYzNjZTQyNGNmYTg0Nzc4MzlhZmU1NjkzMGMwYWNhYmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzMzE2ZjBiN2RjNzk2ZmMyYWU2YThmYTZmNTE1NzMxN2U2NjI5ODI2ODhjNTdjY2YyNWEyYTM3ODE3ZTVhNmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNThjYjM5ODEyNTMyMzY0M2VkZTBlMjk3OTNmZGE0ZDQxNTE0MWVmMjNkNTQxZGYxNjQ0YjZkOTM5NmVlNjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L65-L77",
+          "version": "repo-lines-v1:sha256:cee4e11366302cec2f15bd4f731946d5843dadfc2df8cc7434b0b0666c564ae2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4NTBlMzYyOGNjYTA3ZGM5ZDcwNTVjMzk4YWM5Y2RiYzNjZTQyNGNmYTg0Nzc4MzlhZmU1NjkzMGMwYWNhYmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIzMzE2ZjBiN2RjNzk2ZmMyYWU2YThmYTZmNTE1NzMxN2U2NjI5ODI2ODhjNTdjY2YyNWEyYTM3ODE3ZTVhNmYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNThjYjM5ODEyNTMyMzY0M2VkZTBlMjk3OTNmZGE0ZDQxNTE0MWVmMjNkNTQxZGYxNjQ0YjZkOTM5NmVlNjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
         }
       ]
     },
@@ -55,7 +55,7 @@
       "statement": "The maintenance prompt follows a fixed latest-main commit, requires matching runtime artifact qualification and source, test and consumer review for each commit, and forbids advancing the contiguous cursor past unread or unresolved review evidence.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L35-L47",
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L37-L49",
           "version": "repo-lines-v1:sha256:53594513fd9365eab4e439bbfb7e2acd252a27ab04d83e5e2a24b1fffd0477f7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ5MzQ3OTEzNGMzNDUyMThmNzQyYTBlNjg3N2Y3YzUwZWI0NDczODkwYjEzN2RjZTAyYTc0MmU0ZTY3YTRiZjQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjNmMmMxNjdjNDc2OWNjZTBiYWRkNGViM2Q0MWIwNjlkZWZkNWVkN2ZmYzQ1ZjAyOGFmYTc3YmNmYmJkMDdlOWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhmOGNlYjcyOTJiMDA3MzA2N2E0MTQ1ZGEyMDE3NzI2ODQyMzRlYzY5MWVmOTNiYjY0ZTliOGMyNTc0ZTVjMTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliMDY5YmM3OTcwNjM5YTg4M2I5YzdlNGNiODAyYzFkNmUyZDc2N2ZlNzg5YmYzNzcyYmUzMmE3M2QwNWRkZTUifQ"
         }
       ]
@@ -113,8 +113,8 @@
       "statement": "The maintainer requires affected native behavior qualification separately from schema and installed acceptance; new optional product capabilities require a user decision, and a completed manual catch-up does not resume the automation.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L21-L49",
-          "version": "repo-lines-v1:sha256:4e6fac1c4662b09b355be5796c09b27d7501f4a443987a3f404cc54c43ceb517:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3NjMwNzM1ZDBlNTFkMGM3YjcxMzE2MDViM2YyYzkxOGRkMjVkYmExN2ZiNWY5ZDc0MmMxZWEyNmFiZmU3NjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiY2QxMzViNmYyZmRlZmY2OTU0ZGI1MDBhMTQwMzE2ZDcwM2M0NjJjMTU5YTM5MzRlYjYyYTY5NjhlYjhmYWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZkNmEyMWIyM2ExNjZhNmFlNzg2ZmEwNjY3YTMwOWM4YmVmMmE1YTE2M2Y5NWIwNTcwZDhiNDJlOGQ4MjIyMmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1NDI2ODdjNjk2MWExZmI1NWJlNzcyYmIxZWI2ZmNjNDViOGFiZmRiMGY2MDg2Mzc2OTY3OWE3ZjNiNGQ4OWQifQ"
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L21-L51",
+          "version": "repo-lines-v1:sha256:85a7197d3ba890ec562aefc4d6fefd6c60dc894098f81ba9dfe6626dd024d039:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE3NjMwNzM1ZDBlNTFkMGM3YjcxMzE2MDViM2YyYzkxOGRkMjVkYmExN2ZiNWY5ZDc0MmMxZWEyNmFiZmU3NjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJiY2QxMzViNmYyZmRlZmY2OTU0ZGI1MDBhMTQwMzE2ZDcwM2M0NjJjMTU5YTM5MzRlYjYyYTY5NjhlYjhmYWMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjZkNmEyMWIyM2ExNjZhNmFlNzg2ZmEwNjY3YTMwOWM4YmVmMmE1YTE2M2Y5NWIwNTcwZDhiNDJlOGQ4MjIyMmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE1NDI2ODdjNjk2MWExZmI1NWJlNzcyYmIxZWI2ZmNjNDViOGFiZmRiMGY2MDg2Mzc2OTY3OWE3ZjNiNGQ4OWQifQ"
         }
       ]
     },
@@ -123,7 +123,7 @@
       "statement": "Official Release pinning resolves the upstream tag and asset digest, rejects a Release that does not contain the current development baseline, and writes a separate verified requirement for release staging; behavioral qualification remains required in addition to ancestry.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L45-L49",
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L47-L51",
           "version": "repo-lines-v1:sha256:81605f058a653c8c3f031d2d90767de43519e5bf68efd2bf441c32f68c0ab4e9:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGQ0NGY1YTFjMWY4MGRjMmFmM2EwN2IxMjk2ZWRkNTY4YzM3ZWNlN2ZiNTMxMzJiNzRkMTJkYTlmM2M4NTE2OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYmJjZDEzNWI2ZjJmZGVmZjY5NTRkYjUwMGExNDAzMTZkNzAzYzQ2MmMxNTlhMzkzNGViNjJhNjk2OGViOGZhYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWZiOThhMDNjY2ZhYTJkYjU4MWFhMzRlNmVjNTI5MTMzZGQxNTNmMTlkODFiN2FjOGJjNDZhMDAzODJiZjUyZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTU0MjY4N2M2OTYxYTFmYjU1YmU3NzJiYjFlYjZmY2M0NWI4YWJmZGIwZjYwODYzNzY5Njc5YTdmM2I0ZDg5ZCJ9"
         },
         {
@@ -155,7 +155,7 @@
       "statement": "The compact evidence router links current qualification and a digest-bound stable catalog of retained contracts and original limits; native state owns the live cursor and detailed receipts, while raw logs, builds and private runtime data stay outside the repository.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/README.md#L48-L63",
+          "resource": "repo://automations/upstream/README.md#L54-L69",
           "version": "repo-lines-v1:sha256:d3a762ea3fa395e01d0024e6adcb575ab10587a29978a7282f5aa40a817d9cfd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxM2U5ODE0M2JiNjI2ZWJmZDFiOGVjZTI3ZDVlNmE5Yzg2YzIxMGQ5ZGFjNTE0YjFjY2YyMTQ0YzUwZGEyNzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzZTIxOTRlM2Y2NjU0MGU5YzE2YjhkMDA2MmYyZGUzNTFkNTNhOTA3MmQ3MzIxYjI2ZTMwMzgzNjU1NDU5YmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwOTNkZjFmNmNiZmVhNDEwM2JkYjAyMGNhMDg2MWFkNjg5NjliMjdlMDViYWY5ZmJkN2RkYmYwNWY2MjBlNGMifQ"
         }
       ]
@@ -165,7 +165,7 @@
       "statement": "Missing local artifacts or receipts must not stop independent source review; the maintainer reconstructs affected proof and separately qualifies a rebuilt exact artifact before a runtime migration without treating it as the deleted original.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L53-L59",
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L55-L61",
           "version": "repo-lines-v1:sha256:a571ba1eabc65310dac51722833cad58d43390c1b77432cb2433e8b91d6500a8:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDNlMmU1NTMxOWVlYjdhZWVkOTA3ZjUyMGY1MmUyM2RhMTVhY2I2MGMzNGQ2M2ExY2U3YzYxZWQ4ZDFhNDE5MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzM3N2ZhODc0NDIxMzRiYjY0NTNkODc4NzhiNzk4OTdjNWJjYTFjOTg1MjUzNTE1MDA5YmUzMDEyZjFhYWM1NSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTU0MjY4N2M2OTYxYTFmYjU1YmU3NzJiYjFlYjZmY2M0NWI4YWJmZGIwZjYwODYzNzY5Njc5YTdmM2I0ZDg5ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGQ1OGNiMzk4MTI1MzIzNjQzZWRlMGUyOTc5M2ZkYTRkNDE1MTQxZWYyM2Q1NDFkZjE2NDRiNmQ5Mzk2ZWU2OCJ9"
         }
       ]
@@ -175,11 +175,11 @@
       "statement": "Current portable source-review and qualification records retain per-commit behavior and consumer evidence, exact artifact/helper identities, reusable fixture hashes, executed tests and explicit limits; Git retains replaced versions without moving the native review cursor.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/README.md#L48-L63",
+          "resource": "repo://automations/upstream/README.md#L54-L69",
           "version": "repo-lines-v1:sha256:d3a762ea3fa395e01d0024e6adcb575ab10587a29978a7282f5aa40a817d9cfd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxM2U5ODE0M2JiNjI2ZWJmZDFiOGVjZTI3ZDVlNmE5Yzg2YzIxMGQ5ZGFjNTE0YjFjY2YyMTQ0YzUwZGEyNzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYzZTIxOTRlM2Y2NjU0MGU5YzE2YjhkMDA2MmYyZGUzNTFkNTNhOTA3MmQ3MzIxYjI2ZTMwMzgzNjU1NDU5YmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgwOTNkZjFmNmNiZmVhNDEwM2JkYjAyMGNhMDg2MWFkNjg5NjliMjdlMDViYWY5ZmJkN2RkYmYwNWY2MjBlNGMifQ"
         },
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L53-L55",
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L55-L57",
           "version": "repo-lines-v1:sha256:8cce290be8546089884b3253b957ad48d5aa19a191b6d2d6cb0d5d359b2dc34d:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDNlMmU1NTMxOWVlYjdhZWVkOTA3ZjUyMGY1MmUyM2RhMTVhY2I2MGMzNGQ2M2ExY2U3YzYxZWQ4ZDFhNDE5MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWY4NmJhOWYzY2MyZTE0MDNkNmQ4MTFlM2JlNjhmMWE2N2UwZjlhODdjNDM1OTk5NDdmZWRlZmJmODI0ZjBiYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTU0MjY4N2M2OTYxYTFmYjU1YmU3NzJiYjFlYjZmY2M0NWI4YWJmZGIwZjYwODYzNzY5Njc5YTdmM2I0ZDg5ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMzY5Nzc5ODVlN2VjZWUzZTgwMmI1MTJiOTc3ZmFiODBhNmZmMTMxYTA1YjgzYjRhMzdlYWU5OGMxNWRlZDQ1OCJ9"
         }
       ]
@@ -200,7 +200,7 @@
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:ee57c1485f724e683ccb1f7aa264176cbfc9bc8d3716c3a76409644982210b64"
+          "version": "repo-file-v1:sha256:f12d49a70146b60d4e2230e7cc30c77eff56fc36eeccbc1b321df455abb49210"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json",
@@ -252,17 +252,45 @@
     },
     {
       "id": "claim_bb6740f0338e47c981b47f7e94cad4bf",
-      "statement": "Maintenance prepares code, tests, evidence and related Wiki locally before the first push when practical, avoids PR-link-only commits, and requires final-head CI plus remote-main merge verification; bounded output and stable Wiki evidence keep daily context small.",
+      "statement": "Maintenance prepares source, tests, evidence and related Wiki locally before the first push when practical, avoids PR-link-only commits, requires the final PR head's required checks and remote-main merge verification, and retains live delivery observations natively.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L57-L67",
-          "version": "repo-lines-v1:sha256:2faa42593a777a87558162076e09ae2b55868e0f7093803fcb38a09ab5924d62:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE5MGExMTA5YTczMWRiY2QzNzI4OWVhMmM2ZDY0MWMyYjYwNDEyZjUwMmU0ZGExZjIyY2ExMzRmMjU5NGY1YzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliZTJhYzJiNGQ5NWRmNmZkOGRhODMzNTg5OTYxNWM4MWUzNDc4MTRjNTNmYmJiM2RiMDYxMWUyYjZjM2E1ZjciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAyZDBkN2YzMDg2OTYxMzNmZjJhNzRlNDUwYTllZmQyYWQ3ODU5MTI1MDBmYjU2NDZjNzdlNGU3M2UzNzQ1MzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRmZDA3NDhmYTEzZGI3MThlZjYwODZjMDIzZDJlY2FlZmIyN2NkN2RkMzgxOWYzYWE3YWFmZWQ2ODllMGI4YTkifQ"
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
+        }
+      ]
+    },
+    {
+      "id": "claim_8dc255e331d34ba3b0b2defdbe1ba2ec",
+      "statement": "After manual work or catch-up, maintenance reconciles later merged deliveries with current main and native receipts, replaces stale continuation instructions, and saves fixed-target review and pending delivery together. Deferred product choices remain separate from required daily repairs; fixed-target completion does not certify later upstream commits.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/README.md",
+          "version": "repo-file-v1:sha256:d5ec8ffce5d7e254c0d6d4ad26dd453159a7f55214bbd6356a6f244e6cc72941"
+        },
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L23-L23",
+          "version": "repo-lines-v1:sha256:1675e3763d403830b46715830d9524142470c718ebc67c53099f966d73f62308:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTY3NWUzNzYzZDQwMzgzMGI0NjcxNTgzMGQ5NTI0MTQyNDcwYzcxOGViYzY3YzUzMDk5Zjk2NmQ3M2Y2MjMwOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTY3NWUzNzYzZDQwMzgzMGI0NjcxNTgzMGQ5NTI0MTQyNDcwYzcxOGViYzY3YzUzMDk5Zjk2NmQ3M2Y2MjMwOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2NiYTQxMTkyZjEwYTM1ODdkMTNlZmJkZWUzNDdiMjkyMDE1OTRmYTlhN2Y5YThhMjMyODIzYzk4ZmI5OWEyZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGE2YTlhYjlkOGExMmM3Mzg5ODdmZjI1ZTEwMDc2ZjJiODgzYzZmODNlMjg4MWE3NTE1N2JkMDI3ODMzMzc3NCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_5d20ba8abf104ced9ba02b604032db47",
+      "statement": "Maintenance finishes source and portable evidence edits and verifies the retained contract digest before freezing inputs for Wiki page jobs. Live delivery bookkeeping remains native; source drift is reconciled through the Wiki lifecycle without expanding runtime tests.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/README.md",
+          "version": "repo-file-v1:sha256:d5ec8ffce5d7e254c0d6d4ad26dd453159a7f55214bbd6356a6f244e6cc72941"
+        },
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T15:17:49.972Z"
+    "at": "2026-10-30T17:36:00.319Z"
   }
 }

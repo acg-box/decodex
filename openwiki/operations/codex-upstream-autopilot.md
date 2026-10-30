@@ -35,10 +35,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-30T03:12:23.375Z" }
+generated: { by: "codex", at: "2026-10-30T17:36:00.319Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T15:17:49.972Z
+    at: 2026-10-30T17:36:00.319Z
 ---
 
 
@@ -46,7 +46,7 @@ verified:
 
 ## Desired registration and authority
 
-The checked-in portfolio contains one upstream Maintainer, plus the separate Content Manager and Xurl Publisher. The earlier upstream Reviewer and Health role descriptions are historical. The repository keeps the upstream Maintainer **PAUSED** for the manual proposal review, with model `gpt-6.1-sol`, reasoning effort `max`, worktree execution and a daily UTC 20:05 schedule. Its prompt is `automations/upstream/prompts/maintainer.md`. A repository definition is not proof of host registration or execution. Verify host state through supported automation tools before changing it.
+The checked-in portfolio contains one upstream Maintainer, plus the separate Content Manager and Xurl Publisher. The earlier upstream Reviewer and Health role descriptions are historical. The repository keeps the upstream Maintainer **PAUSED** during manual catch-up and until explicit resume approval, with model `gpt-6.1-sol`, reasoning effort `max`, worktree execution and a daily UTC 20:05 schedule. Its prompt is `automations/upstream/prompts/maintainer.md`. A repository definition is not proof of host registration or execution. Verify host state through supported automation tools before changing it.
 
 The checked-in prompt requires the automation to remain paused during manual catch-up. A completed catch-up or documentation update does not authorize resumption; that requires an explicit user instruction. When maintenance is authorized to run, existing-capability fixes may be implemented and merged after required checks; new product capabilities still require a user decision. Content publication has separate scope and is not part of upstream compatibility work.
 
@@ -78,6 +78,8 @@ Run a small upstream selection only for a concrete compatibility defect or speci
 Register exact selectors and check the executed count and unmatched selectors. Nextest can replace binary environment paths with its own build outputs. Use the existing direct compiled-test entrypoint or native fixture when the signed helpers must run. Use already-managed tools and the repository version files. Workflow-only changes do not need app, provider or upstream suites. After code settles, run the final affected gate once and retain its actual scope.
 
 ## Publish a checkpoint
+
+After manual product work or catch-up, reconcile later merged deliveries with current main and their native receipts. Replace a stale continuation with one accurate next action. Keep deferred product decisions in their issues and pending indexes, separate from required daily repairs. Save the fixed target, certified prefix, remaining inventory, pending delivery and verification limits together. Completion of a fixed target does not certify later upstream commits.
 
 The native `state.json` is the sole current cursor and pending-work index. Establish one owner before a write. Use the managed Node version from `site/.nvmrc` and the repository publisher:
 
@@ -151,6 +153,8 @@ Background compaction can prepare work before foreground compaction needs it. Ex
 The selected per-server cached MCP catalog switch shares this versioned native writer. It saves only an existing user-configured server’s `startup_readiness` as `catalog` or `connection`. Configuration roundtrips do not establish cache performance, live tool execution or installed-app acceptance. See [retained switches](../workflows/models-and-settings.md#find-the-retained-switches).
 
 ## Deliver small complete batches
+
+Complete source and portable evidence edits and verify the contract-catalog digest before starting Wiki page jobs. Freeze these inputs during generation. Keep live PR, CI and merge observations in native receipts so bookkeeping does not repeatedly invalidate Wiki evidence. If source changes during generation, reconcile it through the supported lifecycle without adding unrelated runtime tests.
 
 Finish code, tests, portable evidence and related OpenWiki jobs locally before the first push when practical. Use small signed commits and a focused PR. Public code commit references are sufficient; keep the PR number, live CI and merge receipt native. Do not add a commit only to backfill a PR link. Wait for the final PR head's required checks, merge with an imperative commit message and verify remote main contains the delivered head and merge. Do not hold completed independent work behind an unfinished broad catch-up batch. Distinguish source implementation, local tests, native fixtures, desktop acceptance, installation and release.
 
