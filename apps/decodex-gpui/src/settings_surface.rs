@@ -795,7 +795,7 @@ impl SettingsSurface {
 
 		#[cfg(not(test))]
 		if self.category == SettingsCategory::Components {
-			self.components.refresh_optional();
+			self.components.inspect_optional();
 		}
 
 		if self.category == SettingsCategory::General {

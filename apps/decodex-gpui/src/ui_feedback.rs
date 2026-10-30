@@ -185,10 +185,24 @@ pub(crate) struct Notice {
 	scope: SharedString,
 	feedback: Option<Feedback>,
 	action: Option<AnyElement>,
+	loading_delay: Duration,
+	inline: bool,
 }
 impl Notice {
 	pub(crate) fn action(mut self, action: Option<AnyElement>) -> Self {
 		self.action = action;
+
+		self
+	}
+
+	pub(crate) fn loading_delay(mut self, delay: Duration) -> Self {
+		self.loading_delay = delay;
+
+		self
+	}
+
+	pub(crate) fn inline(mut self) -> Self {
+		self.inline = true;
 
 		self
 	}
@@ -203,9 +217,10 @@ impl RenderOnce for Notice {
 		});
 		let now = Instant::now();
 		let reduced = ui_motion::reduced();
+		let inline = self.inline;
 		let target = self.feedback.filter(|feedback| !feedback.is_empty());
 		let delay = if target.as_ref().is_some_and(|f| f.busy) {
-			Duration::from_millis(250)
+			self.loading_delay
 		} else {
 			Duration::ZERO
 		};
@@ -250,7 +265,9 @@ impl RenderOnce for Notice {
 					feedback.icon(),
 				)
 				.debug_selector(|| "conversation-activity-status".into())
-				.children(self.action.filter(|_| current));
+				.children(self.action.filter(|_| current))
+				.when(inline, |row| row.min_h(gpui::px(0.)).items_start().py(gpui::px(6.)));
+				let row = if inline { gpui::div().w_full().child(row) } else { notice_rail(row) };
 
 				slot.child(
 					gpui::div()
@@ -269,7 +286,7 @@ impl RenderOnce for Notice {
 								});
 							}
 						})
-						.child(notice_rail(row).opacity(opacity)),
+						.child(row.opacity(opacity)),
 				)
 			})
 	}
@@ -432,7 +449,14 @@ pub(crate) fn notice(
 	scope: impl Into<SharedString>,
 	feedback: Option<Feedback>,
 ) -> Notice {
-	Notice { id: id.into(), scope: scope.into(), feedback, action: None }
+	Notice {
+		id: id.into(),
+		scope: scope.into(),
+		feedback,
+		action: None,
+		loading_delay: Duration::from_millis(250),
+		inline: false,
+	}
 }
 
 /// Lock immediately, retain the read-only draft through exit, then restore its editor.

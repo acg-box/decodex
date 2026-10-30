@@ -1,10 +1,10 @@
-//! A small troubleshooting summary with optional technical details.
+//! Diagnostic results and actions with optional technical details.
 
 use std::rc::Rc;
 
 use gpui::{
-	AnyElement, ClipboardItem, Context, Div, IntoElement as _, KeyDownEvent, Role, ScrollHandle,
-	Stateful,
+	AnyElement, ClipboardItem, Context, Div, FocusHandle, IntoElement as _, KeyDownEvent, Role,
+	ScrollHandle, Stateful, Window,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -13,19 +13,18 @@ use gpui::{
 
 use crate::{
 	shell::{
-		self, Destination, HEALTH_APP_SERVER_COMPONENTS, HEALTH_CORE_COMPONENTS,
-		HEALTH_OPTIONAL_COMPONENTS, HealthLoadState, HealthSnapshot, Shell, workspace_symbols,
-		workspace_symbols::Symbol,
+		self, HEALTH_APP_SERVER_COMPONENTS, HEALTH_CORE_COMPONENTS, HEALTH_OPTIONAL_COMPONENTS,
+		HealthLoadState, HealthSnapshot, Shell, workspace_symbols, workspace_symbols::Symbol,
 	},
 	ui_feedback::{self, Feedback, Tone},
-	ui_motion::SmoothControl as _,
+	ui_motion::{self, SmoothControl as _},
 	ui_scroll::Scrollbar,
 	ui_theme::{
 		self, HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_INSET, SETTINGS_LABEL_SIZE, SETTINGS_WIDTH,
 		TEXT,
 	},
 };
-use decodex_protocol::{DoctorComponent, DoctorIssue, DoctorStatus};
+use decodex_protocol::{DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus};
 
 #[derive(Default)]
 pub(super) struct Diagnostics {
@@ -62,8 +61,38 @@ pub(super) fn issues(snapshot: &HealthSnapshot) -> Vec<DoctorIssue> {
 	issues
 }
 
-pub(super) fn content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> AnyElement {
-	let content = summary_content(shell, standalone, cx);
+pub(super) fn controls(
+	shell: &Shell,
+	refresh_focus: FocusHandle,
+	window: &Window,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	gpui::div()
+		.flex()
+		.items_center()
+		.gap_2()
+		.when_some(report_text(&shell.health), |row, report| {
+			row.child(
+				control(
+					"health-copy-report",
+					if shell.diagnostics.copied { "Copied" } else { "Copy report" },
+					cx,
+					move |shell, cx| {
+						cx.write_to_clipboard(ClipboardItem::new_string(report.clone()));
+
+						shell.diagnostics.copied = true;
+					},
+				)
+				.min_w(gpui::px(84.))
+				.smooth(),
+			)
+		})
+		.child(shell::refresh_control(refresh_focus, shell.health.can_refresh, window, cx))
+		.into_any_element()
+}
+
+pub(super) fn content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let content = summary_content(shell, cx);
 
 	// The viewport must not contribute the report's intrinsic height to Settings.
 	// One bounded scroll area owns all content, including expanded details.
@@ -130,17 +159,9 @@ fn report_text(snapshot: &HealthSnapshot) -> Option<String> {
 	Some(format!("Decodex diagnostics\nReport state: {:?}\n{report}", snapshot.load))
 }
 
-fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> AnyElement {
+fn summary_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let snapshot = &shell.health;
 	let presentation = shell::health_presentation(snapshot);
-	let expanded = shell.diagnostics.expanded;
-	let report = report_text(snapshot);
-	let tone = match snapshot.load {
-		HealthLoadState::Ready if issues(snapshot).is_empty() => Tone::Success,
-		HealthLoadState::NeverRequested | HealthLoadState::Loading => Tone::Info,
-		HealthLoadState::Refused => Tone::Error,
-		_ => Tone::Warning,
-	};
 	let mut content = gpui::div()
 		.w_full()
 		.max_w(gpui::px(SETTINGS_WIDTH))
@@ -150,23 +171,22 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 		.gap(gpui::px(SETTINGS_GROUP_GAP))
 		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 		.child(
-			ui_theme::settings_row()
-				.id("health-query-status")
-				.debug_selector(|| "health-query-status".into())
-				.child(ui_feedback::status_row(
-					"health-summary",
-					tone,
-					presentation.label,
-					presentation.detail,
-					tone.icon(),
-				)),
+			ui_feedback::status_row(
+				"health-query-status",
+				presentation.tone,
+				presentation.label,
+				presentation.detail,
+				presentation.tone.icon(),
+			)
+			.debug_selector(|| "health-query-status".into())
+			.min_h(gpui::px(32.)),
 		);
 
 	for (index, issue) in issues(snapshot).into_iter().enumerate() {
 		let (title, detail) = issue_description(issue);
 
 		content = content.child(
-			ui_theme::settings_row()
+			gpui::div()
 				.id(("health-issue", index))
 				.debug_selector(move || format!("health-issue-{index}"))
 				.children(ui_feedback::inline_feedback(
@@ -177,42 +197,27 @@ fn summary_content(shell: &Shell, standalone: bool, cx: &mut Context<Shell>) -> 
 		);
 	}
 
-	content = content
-		.child(
-			gpui::div()
-				.flex()
-				.flex_wrap()
-				.gap_2()
-				.child(
-					control("health-accounts", "Accounts", cx, move |shell, cx| {
-						shell.select_settings_destination(Destination::Accounts, standalone, cx);
-					})
-					.smooth(),
-				)
-				.when_some(report, |row, report| {
-					row.child(
-						control(
-							"health-copy-report",
-							if shell.diagnostics.copied { "Copied" } else { "Copy report" },
-							cx,
-							move |shell, cx| {
-								cx.write_to_clipboard(ClipboardItem::new_string(report.clone()));
-
-								shell.diagnostics.copied = true;
-							},
-						)
-						.min_w(gpui::px(84.))
-						.smooth(),
-					)
-				}),
-		)
-		.child(details_toggle(shell, cx));
-
-	if expanded {
-		content = content.child(technical_details(snapshot));
+	if snapshot.load == HealthLoadState::Ready {
+		content = content.child(component_section(
+			"health-core-components",
+			"Local services",
+			0,
+			&HEALTH_CORE_COMPONENTS,
+			snapshot.report.as_ref(),
+		));
 	}
 
-	content.into_any_element()
+	let snapshot = snapshot.clone();
+
+	content
+		.child(gpui::div().flex().flex_col().child(details_toggle(shell, cx)).child(
+			ui_motion::disclosure_lazy(
+				"health-details-motion",
+				shell.diagnostics.expanded,
+				move |_| technical_details(&snapshot),
+			),
+		))
+		.into_any_element()
 }
 
 fn details_toggle(shell: &Shell, cx: &Context<Shell>) -> AnyElement {
@@ -231,7 +236,7 @@ fn details_toggle(shell: &Shell, cx: &Context<Shell>) -> AnyElement {
 		.rounded(gpui::px(6.))
 		.flex()
 		.items_center()
-		.gap_3()
+		.gap_2()
 		.cursor_pointer()
 		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
 		.text_color(ui_theme::rgb(TEXT))
@@ -265,7 +270,19 @@ fn technical_details(snapshot: &HealthSnapshot) -> AnyElement {
 		.debug_selector(|| "health-components".into())
 		.flex()
 		.flex_col()
+		.pt_3()
 		.gap(gpui::px(SETTINGS_GROUP_GAP))
+		.when(snapshot.load != HealthLoadState::Ready && snapshot.report.is_some(), |details| {
+			details
+				.child(ui_theme::settings_description("Previous report; results may have changed."))
+				.child(component_section(
+					"health-previous-core-components",
+					"Local services",
+					0,
+					&HEALTH_CORE_COMPONENTS,
+					snapshot.report.as_ref(),
+				))
+		})
 		.child(
 			gpui::div()
 				.flex()
@@ -276,30 +293,109 @@ fn technical_details(snapshot: &HealthSnapshot) -> AnyElement {
 					snapshot.report.as_ref().and_then(|report| report.native_process()),
 				))),
 		)
-		.child(shell::health_component_section(
-			"health-core-components",
-			"Local services",
-			"",
-			0,
-			&HEALTH_CORE_COMPONENTS,
-			snapshot,
-		))
-		.child(shell::health_component_section(
+		.child(component_section(
 			"health-app-server-components",
 			"Codex capabilities",
-			"Not checked in this report",
 			HEALTH_CORE_COMPONENTS.len(),
 			&HEALTH_APP_SERVER_COMPONENTS,
-			snapshot,
+			snapshot.report.as_ref(),
 		))
-		.child(shell::health_component_section(
+		.child(component_section(
 			"health-optional-components",
 			"Optional features",
-			"",
 			HEALTH_CORE_COMPONENTS.len() + HEALTH_APP_SERVER_COMPONENTS.len(),
 			&HEALTH_OPTIONAL_COMPONENTS,
-			snapshot,
+			snapshot.report.as_ref(),
 		))
+		.into_any_element()
+}
+
+fn component_row(
+	index: usize,
+	component: DoctorComponent,
+	status: Option<DoctorStatus>,
+) -> AnyElement {
+	let label = shell::component_label(component);
+	let presentation = shell::component_presentation(status);
+
+	gpui::div()
+		.id(("health-component", index))
+		.debug_selector(move || format!("health-component-{index}"))
+		.role(Role::ListItem)
+		.aria_label(format!("{label}: {}", presentation.label))
+		.min_w_0()
+		.min_h(gpui::px(28.))
+		.py_1()
+		.flex()
+		.items_center()
+		.justify_between()
+		.gap_3()
+		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
+		.text_color(ui_theme::rgb(TEXT))
+		.child(
+			gpui::div()
+				.min_w_0()
+				.flex()
+				.flex_col()
+				.gap(gpui::px(2.))
+				.child(label)
+				.when(matches!(presentation.tone, Tone::Warning | Tone::Error), |name| {
+					name.child(ui_theme::settings_description(presentation.detail))
+				}),
+		)
+		.child(
+			gpui::div()
+				.flex_none()
+				.flex()
+				.items_center()
+				.gap(gpui::px(6.))
+				.text_color(ui_theme::rgb(if presentation.tone == Tone::Neutral {
+					ui_theme::TEXT_MUTED
+				} else {
+					TEXT
+				}))
+				.child(
+					gpui::div()
+						.size(gpui::px(5.))
+						.flex_none()
+						.rounded_full()
+						.bg(ui_theme::rgb(presentation.tone.color())),
+				)
+				.child(presentation.label),
+		)
+		.into_any_element()
+}
+
+fn component_section(
+	id: &'static str,
+	title: &'static str,
+	index_offset: usize,
+	components: &[DoctorComponent],
+	report: Option<&DoctorReport>,
+) -> AnyElement {
+	let rows = components.iter().copied().enumerate().map(|(index, component)| {
+		let status = report.and_then(|report| report.check(component)).map(|check| check.status);
+
+		component_row(index_offset + index, component, status)
+	});
+
+	gpui::div()
+		.id(id)
+		.debug_selector(move || id.into())
+		.flex()
+		.flex_col()
+		.gap_2()
+		.child(ui_theme::settings_section_title(title))
+		.child(
+			gpui::div()
+				.id(("health-section-list", index_offset))
+				.role(Role::List)
+				.aria_label(title)
+				.grid()
+				.grid_cols(2)
+				.gap_x(gpui::px(32.))
+				.children(rows),
+		)
 		.into_any_element()
 }
 

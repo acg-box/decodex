@@ -335,15 +335,6 @@ pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
 		.child(title)
 }
 
-pub(crate) fn settings_heading(title: &'static str, description: &'static str) -> Div {
-	gpui::div()
-		.flex()
-		.flex_col()
-		.gap(gpui::px(6.0))
-		.child(settings_title(title))
-		.when(!description.is_empty(), |column| column.child(settings_description(description)))
-}
-
 pub(crate) fn settings_label(
 	title: impl Into<gpui::SharedString>,
 	description: impl Into<gpui::SharedString>,
