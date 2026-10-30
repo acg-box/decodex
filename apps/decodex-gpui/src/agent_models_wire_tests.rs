@@ -608,13 +608,38 @@ fn model_selection_after_dispatch(
 
 async fn serve(listener: UnixListener, preserve: bool, confirmed: bool) -> Vec<AgentActionDto> {
 	let mut actions = Vec::new();
-
 	for index in 0..4 {
-		let mut socket = wire_test_support::accept(&listener).await;
-		let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-			panic!("text request")
+		let (mut socket, request) = loop {
+			let mut socket = wire_test_support::accept(&listener).await;
+			let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+				panic!("text request")
+			};
+			let request: ClientMessage = serde_json::from_str(&text).unwrap();
+			// The shared toolbar refresh also reads permissions. This fixture
+			// keeps that read separate from the four model-selection operations.
+			if let ClientMessage::Query(query) = &request
+				&& let QueryPayload::GetAgentPermissionProfiles { work_id } = &query.payload
+			{
+				assert_eq!(work_id.as_str(), "root");
+				socket
+					.send(Message::Text(
+						serde_json::to_string(&ServerMessage::QueryResult(QueryResultEnvelope {
+							version: CURRENT_VERSION,
+							server_id: ServerId::new(SERVER).unwrap(),
+							query_id: query.query_id.clone(),
+							payload: QueryResultPayload::AgentPermissionProfiles(
+								decodex_protocol::AgentPermissionState::Unavailable,
+							),
+						}))
+						.unwrap()
+						.into(),
+					))
+					.await
+					.unwrap();
+				continue;
+			}
+			break (socket, request);
 		};
-		let request: ClientMessage = serde_json::from_str(&text).unwrap();
 
 		if index == 2 {
 			let ClientMessage::Command(command) = request else { panic!("setting command") };

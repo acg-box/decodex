@@ -281,7 +281,17 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 			560
 				- AccountPanelLayout.screenVerticalMargin
 				- AccountPanelLayout.panelVerticalPadding
-				- AccountPanelLayout.fixedChromeHeight
+				- AccountPanelLayout.estimatedChromeHeight
+		)
+		XCTAssertEqual(
+			AccountPanelLayout.accountListHeight(
+				accountCount: 12,
+				measuredContentHeight: 900,
+				windowVisibleFrame: NSRect(x: 0, y: 0, width: 800, height: 300),
+				chromeHeight: 210
+			),
+			34,
+			"The preferred list minimum must not exceed the space left by the measured header."
 		)
 	}
 

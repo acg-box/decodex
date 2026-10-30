@@ -35,6 +35,47 @@ fn permission_command(binary: &str, home: &Path) -> Command {
 	command
 }
 
+fn configure_permission_fixture(home: &Path, workspace: &Path, address: std::net::SocketAddr) {
+	fs::write(home.join("config.toml"), format!(
+		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\napprovals_reviewer = \"user\"\n[model_providers.fixture]\nname = \"Isolated permissions fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[permissions.scoped.filesystem]\n\":root\" = \"read\"\n{} = \"write\"\n{} = \"deny\"\n",
+		serde_json::json!(workspace.join("writable")), serde_json::json!(workspace.join("writable/private"))
+	)).unwrap();
+}
+
+#[tokio::test]
+async fn deferred_permissions_reach_cold_resume_before_the_new_turn() {
+	let (mut agent, mut sent, _home) = tests::fixture().await;
+	agent.start_agent("agent", "First message").await.unwrap();
+	tests::complete(&mut agent, "agent").await;
+	agent.loaded_threads.clear();
+	while sent.try_recv().is_ok() {}
+	let work = agent.store.get_agent_work_item("agent".into()).await.unwrap();
+	let event = agent
+		.store
+		.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
+			source_event_id: "cold-permission-choice".into(),
+			work_item_id: work.id.clone(),
+			event_kind: "user_message".into(),
+			payload: serde_json::json!({"text":"Continue", "source":"user",
+				"options":{"execution":{"permission_mode":"read_only"},"attachments":[]}})
+			.to_string(),
+		})
+		.await
+		.unwrap();
+	agent.dispatch_with_events(&work, "Continue", vec![event.id]).await.unwrap();
+	let requests: Vec<_> = std::iter::from_fn(|| sent.try_recv().ok()).collect();
+	let resume = requests.iter().position(|request| request["method"] == "thread/resume").unwrap();
+	let turn = requests.iter().position(|request| request["method"] == "turn/start").unwrap();
+	assert!(resume < turn, "apply permissions before native work can resume");
+	for request in [&requests[resume], &requests[turn]] {
+		assert_eq!(request["params"]["threadId"], work.codex_thread_id.as_deref().unwrap());
+		assert_eq!(request["params"]["permissions"], ":read-only");
+		assert_eq!(request["params"]["approvalPolicy"], "on-request");
+		assert_eq!(request["params"]["approvalsReviewer"], "user");
+	}
+	assert_eq!(requests.iter().filter(|request| request["method"] == "turn/start").count(), 1);
+}
+
 #[tokio::test]
 #[ignore = "requires DECODEX_NATIVE_BINARY; isolated native permission restoration"]
 async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
@@ -50,10 +91,7 @@ async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
 	let calls = Arc::new(AtomicUsize::new(0));
 	let backend = tokio::spawn(native_goal_fixture::serve(listener, Arc::clone(&calls)));
 
-	fs::write(home.join("config.toml"), format!(
-		"model = \"gpt-5.6-sol\"\nmodel_provider = \"fixture\"\ncli_auth_credentials_store = \"file\"\napprovals_reviewer = \"user\"\n[model_providers.fixture]\nname = \"Isolated permissions fixture\"\nbase_url = \"http://{address}\"\nwire_api = \"responses\"\nrequires_openai_auth = false\nsupports_websockets = false\n[permissions.scoped.filesystem]\n\":root\" = \"read\"\n{} = \"write\"\n{} = \"deny\"\n",
-		serde_json::json!(workspace.join("writable")), serde_json::json!(workspace.join("writable/private"))
-	)).unwrap();
+	configure_permission_fixture(&home, &workspace, address);
 
 	let (mut agent, _, store_home) = tests::fixture().await;
 
@@ -144,6 +182,63 @@ async fn native_agent_resume_preserves_selected_profile_policy_and_cwd() {
 			.expect("native permission qualification timed out");
 	}
 
+	backend.abort();
+}
+
+#[tokio::test]
+#[ignore = "requires DECODEX_NATIVE_BINARY; isolated deferred permission selection"]
+async fn native_deferred_permissions_apply_to_cold_resume_and_the_next_message() {
+	let binary = env::var("DECODEX_NATIVE_BINARY").unwrap();
+	let native_home = tempfile::tempdir().unwrap();
+	let home = native_home.path().canonicalize().unwrap();
+	let workspace = home.join("workspace");
+	fs::create_dir_all(workspace.join("writable/private")).unwrap();
+	let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+	let address = listener.local_addr().unwrap();
+	let calls = Arc::new(AtomicUsize::new(0));
+	let backend = tokio::spawn(native_goal_fixture::serve(listener, Arc::clone(&calls)));
+	configure_permission_fixture(&home, &workspace, address);
+	let (base, _, _store_home) = tests::fixture().await;
+	let mut config =
+		AgentConfig::new("gpt-5.6-sol".into(), "medium".into(), workspace.display().to_string());
+	config.sandbox = "danger-full-access".into();
+	config.approval_policy = serde_json::json!("never");
+	let mut original_thread = None;
+	for cold in [false, true] {
+		let mut command = permission_command(&binary, &home);
+		let (client, mut events, mut process) = AppServerClient::spawn(&mut command).unwrap();
+		let mut agent = AgentCoordinator::new(base.store.clone(), client, config.clone()).unwrap();
+		let result = AssertUnwindSafe(time::timeout(Duration::from_secs(40), async {
+            agent.initialize().await.unwrap();
+            if cold {
+                let work = agent.store.get_agent_work_item("agent".into()).await.unwrap();
+                assert_eq!(work.codex_thread_id, original_thread);
+                let event = agent.store.enqueue_agent_event(decodex_database::EnqueueAgentEvent {
+                    source_event_id: "deferred-read-only".into(), work_item_id: "agent".into(), event_kind: "user_message".into(),
+                    payload: serde_json::json!({"text":"Reply Done again.","source":"user","options":{"execution":{"permission_mode":"read_only"},"attachments":[]}}).to_string(),
+                }).await.unwrap();
+                agent.dispatch_with_events(&work, "Reply Done again.", vec![event.id]).await.unwrap();
+            } else {
+                agent.start_agent("agent", "Reply Done.").await.unwrap();
+            }
+            finish(&mut agent, &mut events).await;
+            let work = agent.store.get_agent_work_item("agent".into()).await.unwrap();
+            let thread = work.codex_thread_id.unwrap();
+            let (permissions, guard) = agent.client.configured_task_permissions(&thread).unwrap();
+            assert!(guard.is_live());
+            assert_eq!(permissions.mode(), Some(if cold { decodex_core::PermissionMode::ReadOnly } else { decodex_core::PermissionMode::FullAccess }));
+            original_thread = Some(thread);
+        })).catch_unwind().await;
+		process.shutdown().await.unwrap();
+		result
+			.expect("native permission qualification panicked")
+			.expect("native permission qualification timed out");
+	}
+	assert_eq!(
+		calls.load(Ordering::SeqCst),
+		2,
+		"permission selection must not start an extra model request"
+	);
 	backend.abort();
 }
 

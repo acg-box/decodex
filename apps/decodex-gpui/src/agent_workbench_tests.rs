@@ -281,6 +281,8 @@ fn selecting_agents_keeps_the_single_composer_in_the_center(cx: &mut TestAppCont
 		s.workspace.graph_panel_height = 600.;
 
 		s.select_workbench_agent("release", cx);
+		// This test checks the full-detail HUD, not automatic overview fitting.
+		s.visual_relation_zoom(1., cx);
 	});
 
 	visual.update(crate::ui_frame::draw_frame);

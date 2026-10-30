@@ -598,10 +598,14 @@ impl AgentSurface {
 						cx.notify();
 					}))
 					.child(label)
-					.child(agent_surface::selectable_prose(
-						format!("request-description-{id}-{index}"),
-						option["description"].as_str().unwrap_or_default().to_owned(),
-					))
+					// An option has one hit target. Selectable text inside it
+					// would consume the click before the option can be chosen.
+					.child(
+						gpui::div()
+							.text_size(gpui::px(ui_theme::BODY_SIZE))
+							.line_height(gpui::px(ui_theme::BODY_LINE_HEIGHT))
+							.child(option["description"].as_str().unwrap_or_default().to_owned()),
+					)
 					.smooth(),
 			);
 		}

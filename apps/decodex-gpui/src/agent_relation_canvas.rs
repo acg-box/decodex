@@ -87,7 +87,6 @@ pub(super) struct View {
 	presentation: layout::Presentation,
 	parked_positions: BTreeMap<String, (f32, f32)>,
 	wires: Option<crate::ui_motion::Tween>,
-	layout_drag: Option<picker::Drag>,
 	motion: Option<SceneMotion>,
 	map_drag: Option<minimap::Drag>,
 	activity: RefCell<BTreeMap<String, stream::Stream>>,
@@ -107,6 +106,7 @@ pub(super) struct View {
 	usage_menu: bool,
 	hover: Hover,
 	pub(super) picked_agent: Option<String>,
+	pub(super) picked_project: Option<String>,
 }
 impl View {
 	fn hold_camera(&mut self, scale: f32, pan: (f32, f32), layout_viewport: (f32, f32)) {
@@ -244,12 +244,7 @@ impl Node {
 pub(super) struct RelationTip(pub(super) String);
 impl Render for RelationTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		ui_motion::tooltip_surface(gpui::div())
-			.p_2()
-			.max_w(gpui::px(360.))
-			.text_color(ui_theme::rgb(TEXT))
-			.text_size(gpui::px(12.))
-			.child(self.0.clone())
+		ui_motion::tooltip_surface(gpui::div()).child(self.0.clone())
 	}
 }
 
@@ -450,6 +445,7 @@ impl AgentSurface {
 
 	pub(in super::super) fn clear_relation_selection(&mut self) {
 		self.work_board.view.picked_agent = None;
+		self.work_board.view.picked_project = None;
 		self.work_board.view.edge = None;
 		self.work_board.focus = None;
 	}
@@ -911,7 +907,9 @@ impl AgentSurface {
 			.rounded(gpui::px(8.))
 			.cursor_pointer()
 			.hover(|d| d.bg(ui_theme::rgba(0xffffff10)))
-			.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
+			.when(id != "usage" || !self.work_board.view.usage_menu, |d| {
+				d.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
+			})
 			.child(label)
 			.on_click(cx.listener(move |s, _, window, cx| {
 				action(s, cx);
@@ -1040,6 +1038,7 @@ impl AgentSurface {
 	) -> Stateful<Div> {
 		// Visible relationship labels keep their own hit targets above transparent node areas.
 		canvas = self.relation_label_layer(canvas, graph, lines, cx);
+		canvas = self.relation_scope_headers(canvas, graph, cx);
 
 		if let Some(map) = self.relation_minimap(graph, cx) {
 			canvas = canvas.child(map);
@@ -1547,14 +1546,13 @@ impl AgentSurface {
 				let (parent, team) = self.relation_node_relatives(node, graph);
 				let mut width = 7. + measure(&self.relation_agent_number(row), true);
 
-				if self.work_board.view.picked_agent.as_deref() == Some(&node.key)
-					&& parent.is_some()
-				{
-					width += 10.
-						+ native.title_size()
-						+ measure(parent.as_deref().unwrap_or_default(), false);
-				} else if let Some(team) = team {
-					width += 7. + native.team_icon_size() + measure(&team.to_string(), true);
+				if self.work_board.view.picked_agent.as_deref() == Some(&node.key) {
+					if let Some(parent) = parent {
+						width += 10. + native.title_size() + measure(&parent, false);
+					}
+					if let Some(team) = team {
+						width += 7. + native.team_icon_size() + measure(&team.to_string(), true);
+					}
 				}
 				if !node.assignment.is_empty() {
 					width += 6. + measure(&node.assignment, false).min(native.caption_width());
@@ -1589,22 +1587,20 @@ impl AgentSurface {
 			);
 		}
 
+		let labels = self.relation_scope_labels(graph);
+
 		for scope in &graph.scopes {
 			let [left, top, right, bottom] = scope.bounds;
-			let selected = self
-				.work_board
-				.view
-				.picked_agent
-				.as_deref()
-				.is_some_and(|key| scope.contains(graph, key));
+			let selected = self.relation_scope_selected(scope);
 			let label = scope.label();
+			let title_gap = labels
+				.iter()
+				.find(|(label_scope, _, _)| label_scope.id == scope.id)
+				.and_then(|(_, rect, _)| scope.title_gap(*rect, scale, pan));
 
 			canvas = canvas.child(
 				gpui::div()
-					.id(SharedString::from(format!(
-						"project-{}",
-						scope.id.as_deref().unwrap_or("unassigned")
-					)))
+					.id(SharedString::from(format!("project-{}", scope.id)))
 					.debug_selector(|| "project-scope".into())
 					.role(Role::Group)
 					.aria_label(label.clone())
@@ -1613,26 +1609,7 @@ impl AgentSurface {
 					.top(gpui::px(top * scale + pan.1))
 					.w(gpui::px((right - left) * scale))
 					.h(gpui::px((bottom - top) * scale))
-					.rounded(gpui::px(18. * scale))
-					.px(gpui::px(12. * scale))
-					.pt(gpui::px(8. * scale))
-					.text_size(gpui::px((11. * scale).max(10.)))
-					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child(scope.outline(scale, selected))
-					.when(graph.layout.labels(), |group| {
-						group.child(
-							gpui::div()
-								.flex()
-								.items_center()
-								.gap(gpui::px(6.))
-								.text_color(ui_theme::rgb(if selected {
-									ui_theme::BLUE
-								} else {
-									TEXT
-								}))
-								.child(label),
-						)
-					}),
+					.child(scope.outline(scale, selected, title_gap)),
 			);
 		}
 
@@ -1721,6 +1698,7 @@ impl AgentSurface {
 							s.work_board.view.show_record = false;
 							s.work_board.view.camera_fixed = true;
 							s.work_board.view.edge = Some(pressed_edge.clone());
+							s.work_board.view.picked_project = None;
 							s.workspace.agent_tree_visible = true;
 
 							cx.stop_propagation();
@@ -1733,6 +1711,7 @@ impl AgentSurface {
 							s.handoffs.focus = None;
 							s.work_board.view.camera_fixed = true;
 							s.work_board.view.edge = Some(keyboard_edge.clone());
+							s.work_board.view.picked_project = None;
 							s.workspace.agent_tree_visible = true;
 
 							cx.stop_propagation();
@@ -1744,6 +1723,7 @@ impl AgentSurface {
 						s.handoffs.focus = None;
 						s.work_board.view.camera_fixed = true;
 						s.work_board.view.picked_agent = None;
+						s.work_board.view.picked_project = None;
 						s.work_board.view.edge = Some(picked.clone());
 						s.workspace.agent_tree_visible = true;
 
@@ -1865,6 +1845,7 @@ impl AgentSurface {
 				} else {
 					s.work_board.focus = None;
 					s.work_board.view.picked_agent = None;
+					s.work_board.view.picked_project = None;
 					s.work_board.view.edge = target.clone();
 					s.workspace.agent_tree_visible = true;
 
@@ -2009,9 +1990,10 @@ impl AgentSurface {
 						let reversed =
 							(link.fact.from != link.base.from).then(|| link.path.reversed());
 						let route = reversed.as_ref().unwrap_or(&link.path);
+						let flowing = link.flowing() && !reduce_motion;
 
 						if link.base.kind.hierarchy() {
-							if link.active && !reduce_motion {
+							if flowing {
 								flows.push((reversed, link.path.as_ref(), link.detail * 0.65));
 							}
 
@@ -2038,7 +2020,7 @@ impl AgentSurface {
 							);
 						}
 
-						if link.active && !reduce_motion {
+						if flowing {
 							flows.push((reversed, link.path.as_ref(), link.detail));
 						}
 					}
@@ -2363,10 +2345,18 @@ impl AgentSurface {
 		graph: &Graph,
 		neighborhood: &BTreeSet<String>,
 	) -> (bool, bool) {
+		let project = self
+			.work_board
+			.view
+			.picked_project
+			.as_ref()
+			.and_then(|picked| graph.scopes.iter().find(|scope| &scope.id == picked));
+		let member = project.is_some_and(|scope| scope.members.contains(&node.key));
 		let linked = self.work_board.view.hover.current(std::time::Instant::now())
 			== Some(node.key.as_str())
 			|| self.work_board.view.picked_agent.as_ref() == Some(&node.key);
-		let selected = linked
+		let selected = member
+			|| linked
 			|| self.work_board.view.picked_agent.as_ref().is_some_and(|picked| {
 				graph.edges.iter().any(|edge| {
 					edge.kind.hierarchy() && edge.to == *picked && edge.from == node.key
@@ -2385,8 +2375,10 @@ impl AgentSurface {
 			|| (self.work_board.focus.is_some() && neighborhood.contains(&node.key))
 			|| (self.work_board.focus.is_none()
 				&& self.work_board.view.edge.is_none()
+				&& project.is_none()
 				&& self.relation_node_current(node));
-		let faded = self.relation_context().is_some() && !neighborhood.contains(&node.key)
+		let faded = project.is_some() && !member
+			|| self.relation_context().is_some() && !neighborhood.contains(&node.key)
 			|| self.work_board.view.edge.as_ref().is_some_and(|e| {
 				e.from != node.key
 					&& e.to != node.key
@@ -2509,6 +2501,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn fit_relations(&mut self) {
+		self.work_board.view.picked_project = None;
 		self.frame_relations();
 	}
 }
@@ -2547,6 +2540,12 @@ impl AgentSurface {
 		assert!(self.factory_rows().iter().any(|row| row.key == key), "known capture team");
 
 		self.frame_relation_team(key, cx);
+	}
+
+	#[cfg(feature = "visual-capture")]
+	#[allow(dead_code)] // A small speech capture frames its speaker, not the complete team.
+	pub(crate) fn visual_relation_agent(&mut self, key: &str, cx: &mut Context<Self>) {
+		self.locate_relation_agent(key, cx);
 	}
 
 	#[cfg(feature = "visual-capture")]
@@ -4361,8 +4360,11 @@ mod fit_tests {
 			visual.simulate_window_scale_factor_change(handle, density);
 
 			let mut previous: Option<gpui::Size<gpui::Pixels>> = None;
+			let mut full_portrait = None;
 
-			for scale in [1., 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.6, 0.55, 0.51, 0.5, 0.45] {
+			for scale in
+				[1., 0.95, 0.9, 0.85, 0.8, 0.75, 0.71, 0.7, 0.69, 0.6, 0.55, 0.51, 0.5, 0.46, 0.45]
+			{
 				let world_height = surface.update(visual, |s, cx| {
 					s.work_board.view.zoom = Some(scale);
 
@@ -4401,6 +4403,17 @@ mod fit_tests {
 
 				let card = visual.debug_bounds("relation-node-release").unwrap();
 				let layout = card::Layout::new(scale).on_display(density);
+				let portrait = visual.debug_bounds("relation-avatar-release").unwrap().size;
+				let full_portrait = *full_portrait.get_or_insert(portrait);
+
+				for (size, full_size) in
+					[(portrait.width, full_portrait.width), (portrait.height, full_portrait.height)]
+				{
+					assert!(
+						(f32::from(size) - f32::from(full_size) * scale).abs() <= 0.5,
+						"character stopped following the camera at zoom {scale}, display {density}: {portrait:?} vs {full_portrait:?}"
+					);
+				}
 
 				if let Some(previous) = previous {
 					assert!(
@@ -4497,12 +4510,15 @@ mod fit_tests {
 		visual.simulate_resize(gpui::size(gpui::px(1_600.), gpui::px(1_000.)));
 		visual.update(crate::ui_frame::draw_frame);
 
-		assert!(visual.debug_bounds("relation-team-mira").is_some());
-		assert!(visual.debug_bounds("relation-team-sage").is_some());
+		assert!(visual.debug_bounds("relation-team-mira").is_none());
+		assert!(visual.debug_bounds("relation-team-sage").is_none());
 		assert!(visual.debug_bounds("relation-team-agent").is_none());
 
 		for zoom in [0.35, 0.5, 0.75, 1.] {
-			surface.update(visual, |s, cx| s.visual_relation_zoom(zoom, cx));
+			surface.update(visual, |s, cx| {
+				s.visual_relation_zoom(zoom, cx);
+				s.select_workbench_agent("mira", cx);
+			});
 			visual.update(crate::ui_frame::draw_frame);
 
 			let team = visual.debug_bounds("relation-team-mira").unwrap();
@@ -4513,6 +4529,7 @@ mod fit_tests {
 			assert_eq!(count.center().y, team.center().y);
 			assert!(icon.right() < count.left());
 			assert!(icon.top() >= team.top() && icon.bottom() <= team.bottom());
+			assert!(visual.debug_bounds("relation-team-sage").is_none());
 		}
 
 		surface.read_with(visual, |s, _| {
@@ -5173,7 +5190,10 @@ mod fit_tests {
 				(root.y + root.height() < child.y && child.y == project.y)
 					|| (root.x + root.width() < child.x && child.x == project.x)
 			);
-			assert_eq!(graph.scopes.iter().find(|scope| scope.id.is_none()).unwrap().count, 1);
+			assert_eq!(graph.scopes.len(), 1);
+			assert!(graph.scopes.iter().all(|scope| {
+				!scope.members.contains("agent") && !scope.members.contains("unassigned")
+			}));
 		});
 	}
 
@@ -5186,14 +5206,24 @@ mod fit_tests {
 			let works: Vec<_> =
 				s.snapshot.as_ref().unwrap().work_items.iter().map(|w| w.id.clone()).collect();
 
-			s.snapshot.as_mut().unwrap().projects = vec![decodex_protocol::ProjectDto {
-				native_project_id: None,
-				lead_agent_id: None,
-				id: "scope-a".into(),
-				name: "Workspace A".into(),
-				directory: "/tmp/a".into(),
-				agent_ids: vec![works[0].clone()],
-			}];
+			s.snapshot.as_mut().unwrap().projects = vec![
+				decodex_protocol::ProjectDto {
+					native_project_id: None,
+					lead_agent_id: None,
+					id: "scope-a".into(),
+					name: "Workspace A".into(),
+					directory: "/tmp/a".into(),
+					agent_ids: vec![works[0].clone()],
+				},
+				decodex_protocol::ProjectDto {
+					native_project_id: None,
+					lead_agent_id: None,
+					id: "scope-b".into(),
+					name: "Workspace B".into(),
+					directory: "/tmp/b".into(),
+					agent_ids: vec![works[1].clone()],
+				},
+			];
 			s.workspace.workspace_filter = Some("scope-a".into());
 
 			for mode in layout::Mode::ALL {
@@ -5221,11 +5251,11 @@ mod fit_tests {
 					assert!(a[3] <= b[1] || b[3] <= a[1] || a[2] <= b[0] || b[2] <= a[0]);
 
 					for scope in &graph.scopes {
-						for node in graph
-							.nodes
-							.iter()
-							.filter(|n| n.row.as_ref().is_some_and(|r| r.workspace == scope.id))
-						{
+						for node in graph.nodes.iter().filter(|n| {
+							n.row
+								.as_ref()
+								.is_some_and(|r| r.workspace.as_deref() == Some(scope.id.as_str()))
+						}) {
 							assert!(
 								node.x >= scope.bounds[0]
 									&& node.x + node.width() <= scope.bounds[2]

@@ -224,7 +224,7 @@ pub(super) struct Actor {
 	state: State,
 	changed: Instant,
 	arrival: bool,
-	idle_phase: f32,
+	phase: f32,
 }
 impl Actor {
 	pub(super) fn new(seed: &str, status: &str, now: Instant, scene: Scene) -> Self {
@@ -239,7 +239,7 @@ impl Actor {
 			state: State::for_status(status),
 			changed: now,
 			arrival: false,
-			idle_phase: (hash(seed) % 5_800) as f32 / 1_000.,
+			phase: (hash(seed) % 5_800) as f32 / 1_000.,
 		}
 	}
 
@@ -284,14 +284,14 @@ impl Actor {
 				drawing: self.drawing.clone(),
 				opacity: self.opacity.clone(),
 				state: animation,
-				seconds: seconds + if animation == State::Idle { self.idle_phase } else { 0. },
+				seconds,
 				at: now,
 				settles: match animation {
 					State::Hopping if self.arrival => Some(State::Working),
 					State::Done => Some(State::Idle),
 					_ => None,
 				},
-				idle_phase: self.idle_phase,
+				phase: self.phase,
 			},
 		}
 	}
@@ -329,8 +329,8 @@ impl Avatar {
 			},
 			|_, _, _, _| {},
 		)
-		.w(gpui::px(layout.portrait_spacing(PORTRAIT_WIDTH)))
-		.h(gpui::px(layout.portrait_spacing(PORTRAIT_HEIGHT)))
+		.w(gpui::px(layout.spacing(PORTRAIT_WIDTH)))
+		.h(gpui::px(layout.spacing(PORTRAIT_HEIGHT)))
 	}
 }
 
@@ -510,7 +510,7 @@ struct Figure {
 	seconds: f32,
 	at: Instant,
 	settles: Option<State>,
-	idle_phase: f32,
+	phase: f32,
 }
 impl Figure {
 	fn sample(&self, now: Instant, reduced: bool) -> (State, f32) {
@@ -525,10 +525,11 @@ impl Figure {
 			&& seconds >= if state == State::Done { 2.2 } else { 0.9 }
 		{
 			state = next;
-
-			if state == State::Idle {
-				seconds += self.idle_phase;
-			}
+		}
+		// A snapshot can introduce many actors in the same frame. Offset their
+		// recurring gestures without shifting arrival or completion timing.
+		if matches!(state, State::Idle | State::Working | State::Waiting | State::Attention) {
+			seconds += self.phase;
 		}
 
 		(state, seconds)
@@ -803,7 +804,11 @@ mod tests {
 	fn moving_a_pixel_part_keeps_its_outline_rigid_at_thumbnail_zoom() {
 		let now = Instant::now();
 		let mut actor = Actor::new("main", "Waiting", now, Scene::default());
-		let figure = actor.frame("Waiting", now).figure;
+		let mut figure = actor.frame("Waiting", now).figure;
+
+		// Exercise a known downward step, independently of the actor's phase.
+		figure.phase = 0.;
+
 		let bounds = gpui::Bounds::new(
 			gpui::point(gpui::px(20.25), gpui::px(30.25)),
 			gpui::size(gpui::px(13.2), gpui::px(10.56)),
@@ -959,5 +964,30 @@ mod tests {
 			done.sample(completed + Duration::from_secs(4), false).1
 				> done.sample(completed + Duration::from_secs(3), false).1
 		);
+	}
+
+	#[test]
+	fn simultaneous_workers_keep_individual_phases_across_model_refreshes() {
+		let now = Instant::now();
+		let mut first = Actor::new("mira", "Running", now, Scene::default());
+		let mut second = Actor::new("sage", "Running", now, Scene::default());
+		let a = first.frame("Running", now).figure;
+		let b = second.frame("Running", now).figure;
+		let later = now + Duration::from_secs(1);
+
+		assert_eq!(
+			a.sample(later, false),
+			first.frame("Running", later).figure.sample(later, false)
+		);
+		assert!((0..30).any(|frame| {
+			let at = now + Duration::from_millis(frame * 40);
+			let pose = |figure: &super::Figure| {
+				let (state, seconds) = figure.sample(at, false);
+
+				state.pose(seconds, figure.drawing.held_right).cloud
+			};
+
+			pose(&a) != pose(&b)
+		}));
 	}
 }

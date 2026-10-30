@@ -44,6 +44,22 @@ impl PluginOperations {
 		self.state.lock().expect("component operation").clone()
 	}
 
+	pub(crate) fn inspect(&self) {
+		let state = self.snapshot();
+
+		// Keep the last native readback across navigation. Errors wait for an explicit retry.
+		if !state.inspected && state.busy.is_none() && state.error.is_none() {
+			self.start(PluginAction::Refresh);
+		}
+	}
+
+	pub(crate) fn invalidate(&self) {
+		let mut state = self.state.lock().expect("component operation");
+
+		state.inspected = false;
+		state.error = None;
+	}
+
 	pub(crate) fn start(&self, action: PluginAction) {
 		let mut state = self.state.lock().expect("component operation");
 
@@ -66,7 +82,7 @@ impl PluginOperations {
 				.and_then(|host| host.apply(&component, action));
 			// A failed update can leave the old installation intact. Report the native
 			// readback separately from the failed action instead of claiming removal.
-			let observed = if result.is_err() {
+			let observed = if result.is_err() && action != PluginAction::Refresh {
 				native.and_then(|host| host.apply(&component, PluginAction::Refresh))
 			} else {
 				result.clone()
@@ -94,6 +110,7 @@ impl PluginOperations {
 mod tests {
 	use std::{
 		env, fs,
+		os::unix::fs::PermissionsExt as _,
 		path::PathBuf,
 		process::Command,
 		time::{Duration, Instant},
@@ -101,6 +118,82 @@ mod tests {
 
 	use super::{NativePlugins, PluginAction, PluginOperations};
 	use decodex_components::egm_component;
+
+	fn catalog_fixture() -> (tempfile::TempDir, PluginOperations) {
+		let root = tempfile::tempdir().unwrap();
+		let executable = root.path().join("codex");
+		fs::write(&executable, r#"#!/bin/sh
+printf '%s\n' "$*" >> "$HOME/reads"
+if test -f "$HOME/fail"; then
+    printf '%s\n' 'Catalog unavailable' >&2
+    exit 1
+fi
+case "$*" in
+    'plugin marketplace list --json')
+        printf '%s\n' '{"marketplaces":[{"name":"fixture","marketplaceSource":{"sourceType":"local","source":"/fixture"}}]}' ;;
+    'plugin list --marketplace fixture --json')
+        printf '%s\n' '{"installed":[{"pluginId":"fixture@fixture","version":"1.0.0","enabled":true}]}' ;;
+    *) exit 2 ;;
+esac
+"#).unwrap();
+		fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+		let native = NativePlugins::new(executable, root.path().join(".codex"));
+		let operations = PluginOperations::new(
+			super::PluginComponent {
+				name: "fixture".into(),
+				marketplace: "fixture".into(),
+				source: "/fixture".into(),
+			},
+			Some(native),
+		);
+
+		(root, operations)
+	}
+
+	#[test]
+	fn navigation_reuses_native_readback_until_an_explicit_refresh() {
+		let (root, operations) = catalog_fixture();
+		operations.inspect();
+		let state = wait(&operations);
+
+		assert!(state.inspected && state.error.is_none());
+		assert_eq!(state.installed.as_ref().unwrap().version, "1.0.0");
+		let reads = fs::read(root.path().join("reads")).unwrap();
+		for _ in 0..3 {
+			operations.inspect();
+			assert_eq!(operations.snapshot(), state);
+		}
+		assert_eq!(fs::read(root.path().join("reads")).unwrap(), reads);
+
+		operations.start(PluginAction::Refresh);
+		assert_eq!(wait(&operations), state);
+		assert_eq!(fs::read(root.path().join("reads")).unwrap().len(), reads.len() * 2);
+		operations.invalidate();
+		operations.inspect();
+		assert_eq!(wait(&operations), state);
+		assert_eq!(fs::read(root.path().join("reads")).unwrap().len(), reads.len() * 3);
+	}
+
+	#[test]
+	fn failed_inspection_waits_for_retry_without_repeating_the_failed_read() {
+		let (root, operations) = catalog_fixture();
+		fs::write(root.path().join("fail"), "").unwrap();
+		operations.inspect();
+		let failed = wait(&operations);
+
+		assert!(!failed.inspected && failed.error.is_some());
+		let reads = fs::read_to_string(root.path().join("reads")).unwrap();
+		assert_eq!(reads.lines().count(), 1, "a failed Refresh must not immediately retry itself");
+		operations.inspect();
+		assert_eq!(operations.snapshot(), failed);
+		assert_eq!(fs::read_to_string(root.path().join("reads")).unwrap(), reads);
+
+		fs::remove_file(root.path().join("fail")).unwrap();
+		operations.start(PluginAction::Refresh);
+		let retried = wait(&operations);
+		assert!(retried.inspected && retried.error.is_none());
+		assert_eq!(fs::read_to_string(root.path().join("reads")).unwrap().lines().count(), 3);
+	}
 
 	#[test]
 	#[ignore = "requires DECODEX_TEST_CODEX_EXECUTABLE; uses an isolated local marketplace"]

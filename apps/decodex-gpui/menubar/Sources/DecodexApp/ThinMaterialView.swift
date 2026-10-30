@@ -21,6 +21,15 @@ private struct ThinMaterialSurface: View {
 final class ThinMaterialView: NSView {
 	private let background = TransparentHostingView(rootView: ThinMaterialSurface(cornerRadius: 0))
 
+	/// Selection panels can use an exact app-theme tint. Other surfaces keep
+	/// the existing menu-bar material and system appearance.
+	@objc var tintColor: NSColor? {
+		didSet {
+			background.isHidden = tintColor != nil
+			updateBackdrop()
+		}
+	}
+
 	@objc var cornerRadius: CGFloat = 0 {
 		didSet {
 			guard cornerRadius != oldValue else { return }
@@ -78,7 +87,7 @@ final class ThinMaterialView: NSView {
 		// A window has no card underneath it. Keep Thin's matte backing opaque;
 		// otherwise its transparent host still exposes the desktop like glass.
 		effectiveAppearance.performAsCurrentDrawingAppearance {
-			layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+			layer?.backgroundColor = (tintColor ?? .windowBackgroundColor).cgColor
 		}
 	}
 }

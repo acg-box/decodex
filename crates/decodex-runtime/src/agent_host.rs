@@ -339,10 +339,14 @@ impl AgentHost {
 		}
 	}
 
-	pub(crate) async fn retain_active_work(&self, snapshot: &mut AgentSnapshotDto) {
+	pub(crate) async fn project_work(
+		&self,
+		snapshot: &mut AgentSnapshotDto,
+		include_archived: bool,
+	) {
 		let Some((generation, client)) = self.runtime.agent_catalog_client() else {
 			// No native connection is not evidence that retained threads are active.
-			self.archive_visibility.lock().await.project(snapshot);
+			self.archive_visibility.lock().await.project_view(snapshot, include_archived);
 
 			return;
 		};
@@ -376,7 +380,7 @@ impl AgentHost {
 				snapshot.connection_initializing = true;
 			}
 
-			cache.project(snapshot);
+			cache.project_view(snapshot, include_archived);
 
 			if agent_slots::synchronize(&self.store, snapshot, slots, &cache.archived)
 				.await
@@ -1767,6 +1771,11 @@ impl AgentHost {
                     _=>AgentHostError::Unknown("Restoration is not confirmed. Refresh archive state; the restore request will not be repeated automatically."),
                 })?;
 
+				// Restoration has exact native readback. Publish it immediately instead
+				// of leaving the restored node hidden for the next polling interval.
+				let mut visibility = self.archive_visibility.lock().await;
+				visibility.confirm_active(thread_id.as_str());
+
 				Ok(work_id.as_str().into())
 			},
 			action @ (AgentActionDto::AddResourceLink { .. }
@@ -1869,7 +1878,7 @@ impl AgentHost {
 		let (generation, client) =
 			self.runtime.agent_catalog_client().ok_or("Agent connection unavailable")?;
 
-		native_agents::prepare(&self.store, &client, work_id, thread_id)
+		native_agents::prepare(&self.store, &client, work_id, thread_id, generation.as_str())
 			.await
 			.map_err(AgentHostError::Rejected)?;
 

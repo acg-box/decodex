@@ -1,4 +1,7 @@
 //! Native component preview using an actual saved tool response, not live weather.
+#[allow(dead_code)] // Native surfaces share opt-in tracing with the application.
+#[path = "../src/frame_trace.rs"]
+mod frame_trace;
 #[allow(dead_code)] // This preview uses the frame policy without an observed model presentation.
 #[path = "../src/ui_frame.rs"]
 mod ui_frame;

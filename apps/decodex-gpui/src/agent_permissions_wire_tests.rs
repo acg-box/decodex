@@ -3,7 +3,10 @@ use std::thread::JoinHandle;
 
 use decodex_protocol::{AgentPermissionOutcome, AgentWorkItemDto};
 use futures_util::{SinkExt as _, StreamExt as _};
-use gpui::{AppContext as _, TestAppContext};
+use gpui::{
+	AppContext as _, TestAppContext,
+	prelude::{ParentElement as _, Styled as _},
+};
 use tempfile::TempDir;
 use tokio::net::UnixListener;
 use tokio_tungstenite::tungstenite::Message;
@@ -26,7 +29,10 @@ struct PermissionView {
 }
 impl Render for PermissionView {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.surface.update(cx, |s, cx| s.permission_options(cx))
+		gpui::div()
+			.w(gpui::px(super::super::composer::composer_menu_width(Some("permissions"))))
+			.p(gpui::px(crate::ui_theme::POPOVER_CONTENT_PADDING))
+			.child(self.surface.update(cx, |s, cx| s.permission_options(cx)))
 	}
 }
 
@@ -108,6 +114,7 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
 
 			s.profile = Some(profile);
+			s.refresh_composer_permissions(true, cx);
 		});
 
 		PermissionView { surface }
@@ -118,11 +125,9 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 		w.draw(cx).clear(cx);
 	});
 
-	let button = visual.debug_bounds("permission-profiles-read").unwrap();
-
-	visual.simulate_click(button.center(), Default::default());
 	visual.run_until_parked();
 	visual.update(crate::ui_frame::draw_current_frame);
+	assert!(visual.debug_bounds("permission-profiles-read").is_none());
 
 	assert!(
 		visual.debug_bounds("permission-profile-1").is_none(),
@@ -151,6 +156,7 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 	visual.update(crate::ui_frame::draw_current_frame);
 
 	assert!(visual.debug_bounds("permission-profile-0").is_none());
+	assert!(visual.debug_bounds("permission-profiles-read").is_some());
 
 	surface.update(visual, |s, _| {
 		s.apply_result(Err(()));
@@ -159,6 +165,140 @@ fn permission_click_sends_once_and_retains_unknown_after_lost_reply(cx: &mut Tes
 	surface.read_with(visual, |s, _| {
 		assert!(s.permission_profiles.state.is_none());
 		assert!(s.permission_profiles.work.is_none());
+	});
+}
+
+#[gpui::test]
+fn permission_read_keeps_the_current_choice_and_menu_geometry(cx: &mut TestAppContext) {
+	let (view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+		surface.update(cx, |s, _| {
+			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+			s.permission_profiles.work = Some("root".into());
+			let mut state = available();
+			if let AgentPermissionState::Available { mode, .. } = &mut state {
+				*mode = Some(decodex_protocol::PermissionMode::ApproveForMe);
+			}
+			s.permission_profiles.state = Some(state);
+			s.permission_profiles.reviewed = true;
+		});
+		PermissionView { surface }
+	});
+	visual.update(crate::ui_frame::draw_current_frame);
+	let before = visual.debug_bounds("permission-choice-1").unwrap();
+	let row = visual.debug_bounds("permission-choice-0").unwrap();
+	let description = visual.debug_bounds("permission-description-0").unwrap();
+	assert_eq!(row.size.height, gpui::px(38.));
+	assert!(row.left() <= description.left() && description.right() <= row.right());
+	assert!(row.top() < description.top() && description.bottom() < row.bottom());
+	assert_eq!(description.size.height, gpui::px(14.), "the short description fits one line");
+	let surface = view.read_with(visual, |v, _| v.surface.clone());
+	surface.update(visual, |s, cx| {
+		s.begin_permission_read("root", false);
+		assert_eq!(s.permission_label(), "Approve for me");
+		cx.notify();
+	});
+	visual.update(crate::ui_frame::draw_current_frame);
+	assert_eq!(visual.debug_bounds("permission-choice-1"), Some(before));
+	assert!(visual.debug_bounds("permission-profiles-read").is_none());
+}
+
+#[gpui::test]
+fn dormant_conversation_keeps_choices_without_a_connect_action(cx: &mut TestAppContext) {
+	let (_view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, _| {
+			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+			s.permission_profiles.work = Some("root".into());
+			s.permission_profiles.state = Some(AgentPermissionState::NotConnected);
+			assert_eq!(s.permission_label(), "Permissions");
+		});
+		PermissionView { surface }
+	});
+	visual.update(crate::ui_frame::draw_current_frame);
+	assert!(visual.debug_bounds("permission-profiles-read").is_none());
+	assert!(visual.debug_bounds("permission-connect").is_none());
+	for id in
+		["permission-choice-0", "permission-choice-1", "permission-choice-2", "permission-choice-3"]
+	{
+		assert!(visual.debug_bounds(id).is_some());
+	}
+}
+
+#[gpui::test]
+fn dormant_permission_choice_is_local_and_carried_by_the_next_message(cx: &mut TestAppContext) {
+	use decodex_protocol::PermissionMode;
+	let (view, visual) = cx.add_window_view(|_, cx| {
+		let surface = cx.new(AgentSurface::new);
+		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+		surface.update(cx, |s, cx| {
+			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+			s.permission_profiles.work = Some("root".into());
+			s.permission_profiles.state = Some(AgentPermissionState::NotConnected);
+			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
+		});
+		PermissionView { surface }
+	});
+	visual.update(crate::ui_frame::draw_current_frame);
+	let choice = visual.debug_bounds("permission-choice-1").unwrap().center();
+	visual.simulate_click(choice, Default::default());
+	visual.run_until_parked();
+	let surface = view.read_with(visual, |view, _| view.surface.clone());
+	surface.read_with(visual, |s, cx| {
+		assert!(matches!(s.permission_profiles.state, Some(AgentPermissionState::NotConnected)));
+		assert!(
+			s.permission_profiles.task.is_none(),
+			"choosing a preset must not connect or send a request"
+		);
+		assert_eq!(s.permission_label(), "Approve for me");
+		assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+		let action = s.configured_send(
+			EntityId::new("root").unwrap(),
+			decodex_protocol::HistoryText::new("Continue").unwrap(),
+			vec![],
+		);
+		let AgentActionDto::SendConfigured { execution, .. } = action else {
+			panic!("configured send")
+		};
+		assert_eq!(execution.permission_mode, Some(PermissionMode::ApproveForMe));
+		assert!(
+			execution.model.is_none()
+				&& execution.reasoning_effort.is_none()
+				&& execution.selected_service_tier().is_none()
+		);
+	});
+	assert!(
+		surface.read_with(visual, |s, _| s
+			.draft_profiles
+			.execution
+			.choice("other-agent")
+			.is_empty())
+	);
+}
+
+#[gpui::test]
+fn permission_shields_distinguish_modes_without_using_other_agents_state(cx: &mut TestAppContext) {
+	use crate::shell::workspace_symbols::Symbol;
+	use decodex_protocol::PermissionMode;
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.new_work_conversation(cx);
+		for mode in PermissionMode::ALL {
+			s.choose_permission_mode(mode, cx);
+			assert!(matches!(
+				(mode, s.permission_symbol()),
+				(PermissionMode::AskForApproval, Symbol::Shield)
+					| (PermissionMode::ApproveForMe, Symbol::ShieldCheck)
+					| (PermissionMode::FullAccess, Symbol::ShieldSlash)
+					| (PermissionMode::ReadOnly, Symbol::ShieldLock)
+			));
+		}
+		s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
+		s.open_page("root", cx);
+		s.permission_profiles.work = Some("other-agent".into());
+		s.permission_profiles.state = Some(available());
+		assert!(matches!(s.permission_symbol(), Symbol::Shield));
 	});
 }
 
@@ -321,9 +461,21 @@ fn ordinary_refresh_keeps_permission_read_and_unknown_selection(cx: &mut TestApp
 		let saving = selection.is_some();
 
 		surface.update(cx, |s, cx| {
+			if saving {
+				s.draft_profiles.execution.change("root".into(), |choice| {
+					choice.permission_mode = Some(decodex_protocol::PermissionMode::ReadOnly);
+					choice.reasoning_effort =
+						Some(decodex_protocol::ConversationReasoningEffort::High);
+				});
+			}
 			s.update_permission_profiles("root".into(), selection, None, cx);
 
 			assert!(s.permission_profiles.task.is_some());
+			if saving {
+				let next = s.draft_profiles.execution.choice("root");
+				assert!(next.permission_mode.is_none(), "a live choice supersedes the dormant one");
+				assert!(next.reasoning_effort.is_some(), "other next-message choices are retained");
+			}
 
 			// Advance the snapshot generation before this operation can complete.
 			s.generation += 1;

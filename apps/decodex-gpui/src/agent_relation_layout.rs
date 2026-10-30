@@ -142,12 +142,20 @@ impl Input {
 		}
 
 		let mut groups = BTreeMap::<_, Vec<_>>::new();
+		let mut unassigned = Vec::new();
 
 		for branch in branches {
-			groups.entry(&self.nodes[branch.index].1).or_default().push(branch);
+			if let Some(project) = &self.nodes[branch.index].1 {
+				groups.entry(project).or_default().push(branch);
+			} else {
+				// Absence of a project does not make independent trees one team.
+				unassigned.push(vec![branch]);
+			}
 		}
 
-		groups.into_values().collect()
+		unassigned.extend(groups.into_values());
+
+		unassigned
 	}
 
 	fn project_gap(&self) -> f32 {

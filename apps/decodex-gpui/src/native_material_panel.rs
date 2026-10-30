@@ -1,20 +1,36 @@
 //! Native material views and foreground-owning GPUI child windows.
-//! UI state and event handlers remain in GPUI; AppKit owns only composition.
-use std::{cell::Cell, env, ptr};
+//! GPUI owns UI state and navigation; AppKit composes surfaces and relays side buttons.
+use std::{cell::Cell, env, ptr, time::Instant};
 
+use block2::RcBlock;
 use gpui::{AnyWindowHandle, Bounds, Pixels, Window, WindowBackgroundAppearance};
 use objc2::{
 	self,
 	rc::{Allocated, Retained},
 	runtime::{AnyClass, AnyObject, ClassBuilder, Sel},
 };
-use objc2_app_kit::{NSResponder, NSView, NSWindow, NSWindowCollectionBehavior};
+use objc2_app_kit::{
+	NSEventMask, NSEventType, NSResponder, NSView, NSWindow, NSWindowCollectionBehavior,
+};
 use objc2_core_foundation::CGAffineTransform;
 use objc2_foundation::{NSArray, NSPoint, NSRect, NSSize, NSString};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use serde_json::Value;
 
-use crate::ui_theme::material::{GlassStyle, Material, Surface};
+use crate::ui_theme::{
+	self,
+	material::{GlassScope, GlassStyle, Material, Surface},
+};
+
+/// Reduced transparency keeps selection menus readable with the flat material.
+fn panel_material(surface: Surface) -> Material {
+	let requested = surface.material();
+	if surface == Surface::Popover && material_class(requested).is_none() {
+		Material::Thin
+	} else {
+		requested
+	}
+}
 
 thread_local! {
 	// Non-owning handles; each MaterialPanel registers and removes its entry.
@@ -23,8 +39,8 @@ thread_local! {
 
 /// Owns composition separately from the editor and its window lifecycle.
 pub(crate) struct MaterialPanel {
-	surface: Option<Surface>,
-	material: Option<Material>,
+	surface: Surface,
+	material: Material,
 	radius: f64,
 	host: Retained<NSView>,
 	material_view: Retained<NSView>,
@@ -33,8 +49,11 @@ pub(crate) struct MaterialPanel {
 	parent: Retained<NSWindow>,
 	frame: Option<NSRect>,
 	visible: bool,
+	presented: bool,
+	shadow_dirty: bool,
 	opacity: Cell<f32>,
 	window_observer: Retained<AnyObject>,
+	side_buttons: Retained<AnyObject>,
 }
 impl MaterialPanel {
 	pub(crate) fn install_input_bar(
@@ -42,21 +61,31 @@ impl MaterialPanel {
 		window: &mut Window,
 		radius: f64,
 	) -> Option<Self> {
-		Self::install_surface(parent, window, Some((Surface::InputBar, radius)))
+		Self::install_surface(parent, window, Surface::InputBar, radius)
 	}
 
-	pub(crate) fn install_overlay(parent: &Window, window: &mut Window) -> Option<Self> {
-		Self::install_surface(parent, window, None)
+	pub(crate) fn install_popover(parent: &Window, window: &mut Window) -> Option<Self> {
+		Self::install_surface(parent, window, Surface::Popover, f64::from(ui_theme::POPOVER_RADIUS))
+	}
+
+	pub(crate) fn set_radius(&mut self, radius: f64) {
+		if self.radius == radius {
+			return;
+		}
+		self.radius = radius;
+		unsafe {
+			let _: () = objc2::msg_send![&*self.material_view, setCornerRadius: radius];
+		}
+		self.shadow_dirty = true;
 	}
 
 	fn install_surface(
 		parent: &Window,
 		window: &mut Window,
-		configuration: Option<(Surface, f64)>,
+		surface: Surface,
+		radius: f64,
 	) -> Option<Self> {
-		let surface = configuration.map(|(surface, _)| surface);
-		let radius = configuration.map_or(0., |(_, radius)| radius);
-		let material = surface.map(Surface::material);
+		let material = panel_material(surface);
 		let parent = native(parent)?;
 		let native = native(window)?;
 		let gpu = view(window)?;
@@ -67,19 +96,20 @@ impl MaterialPanel {
 				| NSWindowCollectionBehavior::IgnoresCycle
 				| NSWindowCollectionBehavior::FullScreenAuxiliary,
 		);
-		native.setTitle(&NSString::from_str(if surface.is_some() {
+		native.setTitle(&NSString::from_str(if surface == Surface::InputBar {
 			"Decodex Composer"
 		} else {
-			"Decodex Status"
+			"Decodex Popover"
 		}));
 		window.set_background_appearance(WindowBackgroundAppearance::Transparent);
 
 		unsafe {
-			let material_view: Retained<NSView> = if let Some(material) = material {
-				create_surface(material, radius)?
-			} else {
-				objc2::msg_send![AnyClass::get(c"NSView")?, new]
-			};
+			let material_view = create_surface(material, radius)?;
+			// Transfer material ownership. A window backdrop under a Clear panel
+			// would blur or tint the same pixels twice.
+			if surface == Surface::Popover {
+				ui_theme::window_material::remove_backdrop(window);
+			}
 
 			material_view.setFrame(content.bounds());
 
@@ -108,19 +138,15 @@ impl MaterialPanel {
 
 			host.addSubview(&gpu);
 
-			if surface.is_some() {
-				// Glass may lay out its content view itself. Give it a plain host,
-				// so its layout never changes the Metal view behind GPUI's back.
-				let _: () = objc2::msg_send![&*material_view, setContentView: &*host];
-			} else {
-				material_view.addSubview(&host);
-
-				let _: () = objc2::msg_send![&*native, setHasShadow: false];
-			}
+			// The material owns a plain host, while GPUI owns Metal sizing.
+			let _: () = objc2::msg_send![&*material_view, setContentView: &*host];
 
 			content.addSubview(&material_view);
 
 			let _: () = objc2::msg_send![&*native, setStyleMask: 0_usize];
+			if surface == Surface::Popover {
+				let _: () = objc2::msg_send![&*native, setHasShadow: true];
+			}
 			let _: () = objc2::msg_send![&*native, setLevel: 0_isize];
 			let _: () = objc2::msg_send![&*native, setMovable: false];
 			let _: () = objc2::msg_send![&*native, setExcludedFromWindowsMenu: true];
@@ -129,6 +155,7 @@ impl MaterialPanel {
 			let _: () = objc2::msg_send![&*native, setAlphaValue: 0.0_f64];
 			let _: () = objc2::msg_send![&*parent, addChildWindow: &*native, ordered: 1_isize];
 			let window_observer = observe_panel_window(&native)?;
+			let side_buttons = route_side_buttons(&native, &gpu)?;
 
 			ATTACHED_WINDOWS.with(|windows| {
 				windows.borrow_mut().insert(
@@ -137,9 +164,10 @@ impl MaterialPanel {
 				);
 			});
 
-			if material == Some(Material::LiquidGlass) {
-				apply_glass_style(&material_view, Surface::InputBar, native.isKeyWindow());
+			if material == Material::LiquidGlass {
+				apply_glass_style(&material_view, surface, native.isKeyWindow());
 			}
+			apply_popover_tint(&material_view, surface, material);
 
 			Some(Self {
 				surface,
@@ -152,18 +180,26 @@ impl MaterialPanel {
 				parent,
 				frame: None,
 				visible: false,
+				presented: false,
+				shadow_dirty: true,
 				opacity: Cell::new(0.),
 				window_observer,
+				side_buttons,
 			})
 		}
 	}
 
 	/// Replace only the material host; the editor view and its focus stay intact.
 	pub(crate) fn refresh_material(&mut self) {
-		let Some(surface) = self.surface else { return };
-		let material = surface.material();
+		let surface = self.surface;
+		let material = panel_material(surface);
 
-		if self.material == Some(material) {
+		if self.material == material {
+			if material == Material::LiquidGlass {
+				self.shadow_dirty |=
+					apply_glass_style(&self.material_view, surface, self.native.isKeyWindow());
+			}
+			apply_popover_tint(&self.material_view, surface, material);
 			return;
 		}
 
@@ -171,6 +207,7 @@ impl MaterialPanel {
 		let Some(content) = self.native.contentView() else { return };
 
 		replacement.setFrame(content.bounds());
+		replacement.setAlphaValue(self.material_view.alphaValue());
 
 		let had_focus = self.native.firstResponder().is_some_and(|first| {
 			ptr::eq(
@@ -188,7 +225,8 @@ impl MaterialPanel {
 		self.material_view.removeFromSuperview();
 
 		self.material_view = replacement;
-		self.material = Some(material);
+		self.material = material;
+		self.shadow_dirty = true;
 
 		if had_focus {
 			self.focus_text();
@@ -196,6 +234,7 @@ impl MaterialPanel {
 		if material == Material::LiquidGlass {
 			apply_glass_style(&self.material_view, surface, self.native.isKeyWindow());
 		}
+		apply_popover_tint(&self.material_view, surface, material);
 	}
 
 	/// GPUI bounds use a top-left origin; AppKit screen conversion uses bottom-left.
@@ -214,6 +253,7 @@ impl MaterialPanel {
 		));
 
 		if self.frame != Some(frame) {
+			let started = Instant::now();
 			// AppKit moves attached children with their parent. Do not submit the
 			// same screen position again or resize Metal during a parent drag.
 			let place = self.native.frame() != frame;
@@ -223,6 +263,7 @@ impl MaterialPanel {
 				self.native.setFrame_display(frame, false);
 			}
 			if resize && let Some(content) = self.native.contentView() {
+				self.shadow_dirty = true;
 				self.material_view.setFrame(content.bounds());
 				// Call the resize hook, not setFrame:, so the drawable and GPUI
 				// viewport use the same size. The foreground has one layout owner.
@@ -231,6 +272,7 @@ impl MaterialPanel {
 			}
 
 			self.frame = Some(frame);
+			crate::frame_trace::native_panel_place(started, resize);
 
 			return place || resize;
 		}
@@ -255,6 +297,79 @@ impl MaterialPanel {
 
 		unsafe {
 			let _: () = objc2::msg_send![&*self.native, setAlphaValue: f64::from(opacity)];
+		}
+	}
+
+	/// Order the native window before asking GPUI for a frame. AppKit stops the
+	/// display link of hidden windows; only the content stays transparent here.
+	pub(crate) fn prepare_open(&mut self) {
+		if !self.visible || !self.native.isVisible() {
+			unsafe {
+				let layer: Option<Retained<AnyObject>> =
+					objc2::msg_send![&*self.material_view, layer];
+				if let Some(layer) = layer {
+					for key in ["opacity", "transform.translation.y"] {
+						let _: () = objc2::msg_send![&*layer, removeAnimationForKey: &*NSString::from_str(key)];
+					}
+				}
+			}
+			self.material_view.setAlphaValue(0.);
+			self.material_view.setFrameOrigin(NSPoint::new(0., 0.));
+			self.presented = false;
+			self.set_opacity(1.);
+		}
+		self.set_visible(true);
+	}
+
+	/// Reveal the prepared content as one surface, without resizing its texture.
+	pub(crate) fn set_open(&mut self, open: bool) {
+		if !open {
+			self.set_visible(false);
+			self.presented = false;
+			return;
+		}
+		self.prepare_open();
+		if !self.presented {
+			self.presented = true;
+			self.material_view.setAlphaValue(1.);
+			self.refresh_shadow();
+			if crate::ui_frame::reduced() {
+				return;
+			}
+			unsafe {
+				let layer: Option<Retained<AnyObject>> =
+					objc2::msg_send![&*self.material_view, layer];
+				let Some(layer) = layer else { return };
+				let timing: Retained<AnyObject> = objc2::msg_send![AnyClass::get(c"CAMediaTimingFunction").expect("QuartzCore"), functionWithName: &*NSString::from_str("easeOut")];
+				// Keep arrival in the composite layer. Layout and Metal redraws
+				// use the final geometry throughout the presentation animation.
+				for (key, from, to) in [
+					("opacity", 0., 1.),
+					("transform.translation.y", -f64::from(ui_theme::POPOVER_OFFSET), 0.),
+				] {
+					let key = NSString::from_str(key);
+					let animation: Retained<AnyObject> = objc2::msg_send![AnyClass::get(c"CABasicAnimation").expect("QuartzCore"), animationWithKeyPath: &*key];
+					let number = AnyClass::get(c"NSNumber").expect("Foundation");
+					let from: Retained<AnyObject> =
+						objc2::msg_send![number, numberWithDouble: from];
+					let to: Retained<AnyObject> = objc2::msg_send![number, numberWithDouble: to];
+					let _: () = objc2::msg_send![&*animation, setFromValue: &*from];
+					let _: () = objc2::msg_send![&*animation, setToValue: &*to];
+					let _: () = objc2::msg_send![&*animation, setDuration: ui_theme::POPOVER_ARRIVAL.as_secs_f64()];
+					let _: () = objc2::msg_send![&*animation, setTimingFunction: &*timing];
+					let _: () = objc2::msg_send![&*layer, addAnimation: &*animation, forKey: &*key];
+				}
+			}
+		}
+		self.refresh_shadow();
+	}
+
+	fn refresh_shadow(&mut self) {
+		if self.surface == Surface::Popover && self.shadow_dirty {
+			// Reused popup windows change their rounded contour after Metal resizes.
+			// Rebuild the system shadow once the final foreground has been painted.
+			self.native.invalidateShadow();
+			self.shadow_dirty = false;
 		}
 	}
 
@@ -294,6 +409,9 @@ impl Drop for MaterialPanel {
 		});
 
 		unsafe {
+			let _: () = objc2::msg_send![
+				AnyClass::get(c"NSEvent").expect("AppKit"), removeMonitor: &*self.side_buttons
+			];
 			let center: Retained<AnyObject> = objc2::msg_send![
 				AnyClass::get(c"NSNotificationCenter").expect("Foundation"),
 				defaultCenter
@@ -309,9 +427,42 @@ impl Drop for MaterialPanel {
 	}
 }
 
+fn route_side_buttons(
+	window: &NSWindow,
+	foreground: &Retained<NSView>,
+) -> Option<Retained<AnyObject>> {
+	let number = window.windowNumber();
+	let foreground = foreground.clone();
+	let handler = RcBlock::new(move |event: *mut AnyObject| -> *mut AnyObject {
+		unsafe {
+			let target: isize = objc2::msg_send![event, windowNumber];
+			let button: isize = objc2::msg_send![event, buttonNumber];
+			if target != number || ![3, 4].contains(&button) {
+				return event;
+			}
+			let kind: NSEventType = objc2::msg_send![event, type];
+			// Deliver to GPUI before the material's native responder chain. GPUI
+			// keeps the navigation policy; consuming here prevents a second delivery.
+			if kind == NSEventType::OtherMouseDown {
+				let _: () = objc2::msg_send![&*foreground, otherMouseDown: event];
+			} else {
+				let _: () = objc2::msg_send![&*foreground, otherMouseUp: event];
+			}
+			ptr::null_mut()
+		}
+	});
+	unsafe {
+		Some(objc2::msg_send![
+			AnyClass::get(c"NSEvent")?,
+			addLocalMonitorForEventsMatchingMask: (NSEventMask::OtherMouseDown | NSEventMask::OtherMouseUp),
+			handler: &*handler
+		])
+	}
+}
+
 struct Attachment {
 	handle: AnyWindowHandle,
-	surface: Option<Surface>,
+	surface: Surface,
 }
 
 pub(crate) fn material_class(material: Material) -> Option<&'static AnyClass> {
@@ -366,6 +517,19 @@ pub(crate) fn observed_style(window: &Window) -> Option<isize> {
 		let glass: bool = objc2::msg_send![&*view, isKindOfClass: class];
 
 		glass.then(|| objc2::msg_send![&*view, style])
+	})
+}
+
+/// Read the applied tint for opt-in material qualification.
+pub(crate) fn observed_tint(window: &Window) -> Option<bool> {
+	let content = native(window)?.contentView()?;
+	let class = AnyClass::get(c"NSGlassEffectView")?;
+	content.subviews().iter().find_map(|view| unsafe {
+		let glass: bool = objc2::msg_send![&*view, isKindOfClass: class];
+		glass.then(|| {
+			let tint: Option<Retained<AnyObject>> = objc2::msg_send![&*view, tintColor];
+			tint.is_some()
+		})
 	})
 }
 
@@ -467,24 +631,52 @@ pub(crate) fn available(surface: Surface) -> bool {
 	material_class(surface.material()).is_some()
 }
 
-pub(crate) fn apply_glass_style(glass: &NSView, surface: Surface, key: bool) {
+pub(crate) fn apply_glass_style(glass: &NSView, surface: Surface, key: bool) -> bool {
 	let clear = match surface {
-		Surface::Window => GlassStyle::configured() == GlassStyle::Clear,
+		Surface::Window => GlassScope::Window.configured() == GlassStyle::Clear,
 		Surface::InputBar => key,
+		Surface::Popover => GlassScope::Popover.configured() == GlassStyle::Clear,
 	};
 
+	set_glass_style(glass, clear, surface == Surface::InputBar)
+}
+
+fn set_glass_style(glass: &NSView, clear: bool, input_bar: bool) -> bool {
 	unsafe {
 		let style: isize = objc2::msg_send![glass, style];
 
 		if style == isize::from(clear) {
-			return;
+			return false;
 		}
 
 		let _: () = objc2::msg_send![glass, setStyle: isize::from(clear)];
-		let tint: Option<Retained<AnyObject>> = (clear && surface == Surface::InputBar).then(|| {
+		let tint: Option<Retained<AnyObject>> = (clear && input_bar).then(|| {
 			objc2::msg_send![AnyClass::get(c"NSColor").expect("AppKit"), colorWithSRGBRed: 0.10_f64, green: 0.11_f64, blue: 0.13_f64, alpha: 0.18_f64]
 		});
 		let _: () = objc2::msg_send![glass, setTintColor: tint.as_deref()];
+		true
+	}
+}
+
+fn apply_popover_tint(view: &NSView, surface: Surface, material: Material) {
+	if surface != Surface::Popover {
+		return;
+	}
+	let color = ui_theme::popover_tint(material, GlassScope::Popover.configured());
+	unsafe {
+		let tint: Option<Retained<AnyObject>> = color.map(|color| objc2::msg_send![AnyClass::get(c"NSColor").expect("AppKit"), colorWithSRGBRed: f64::from(color.r), green: f64::from(color.g), blue: f64::from(color.b), alpha: f64::from(color.a)]);
+		let previous: Option<Retained<AnyObject>> = objc2::msg_send![view, tintColor];
+		let changed = match (previous.as_deref(), tint.as_deref()) {
+			(Some(previous), Some(tint)) => {
+				let equal: bool = objc2::msg_send![previous, isEqual: tint];
+				!equal
+			},
+			(None, None) => false,
+			_ => true,
+		};
+		if changed {
+			let _: () = objc2::msg_send![view, setTintColor: tint.as_deref()];
+		}
 	}
 }
 
@@ -516,7 +708,7 @@ fn update_focus_material(window: &NSWindow) {
 		windows
 			.borrow()
 			.get(&(window as *const NSWindow as usize))
-			.and_then(|attachment| attachment.surface)
+			.map(|attachment| attachment.surface)
 	});
 	let Some(surface) = surface else { return };
 	let Some(content) = window.contentView() else { return };

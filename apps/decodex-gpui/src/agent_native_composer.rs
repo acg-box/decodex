@@ -12,8 +12,9 @@ use gpui::{
 use crate::{
 	shell::{
 		ActivateAgent, ActivateHealth, ActivateSettings, DismissStatus, FindConversation,
-		GrowPanel, GrowPanels, NavigateBack, NavigateForward, ResetPanel, ResetPanels, ShrinkPanel,
-		ShrinkPanels, ToggleContentFullscreen, ToggleGraph, ToggleInspector, ToggleSidebar,
+		FocusNext, FocusPrevious, GrowPanel, GrowPanels, NavigateBack, NavigateForward, ResetPanel,
+		ResetPanels, ShrinkPanel, ShrinkPanels, ToggleContentFullscreen, ToggleGraph,
+		ToggleInspector, ToggleSidebar,
 		agent_surface::{AgentSurface, composer, voice::Media, workspace::ARCHIVED_MESSAGE},
 		forward_shell_action as forward,
 	},
@@ -116,21 +117,30 @@ impl Render for ComposerPanel {
 				}
 			})
 			.id("native-composer-focus-panel")
-			.capture_any_mouse_down(move |event, _, cx| {
+			.capture_any_mouse_down(move |event, window, cx| {
+				if crate::shell::navigation::forward_mouse_navigation(parent, event, window, cx) {
+					return;
+				}
+
+				ui_motion::dismiss_shared_popover(parent, cx);
 				focus_owner.update(cx, |s, cx| {
+					if let Some((name, _)) =
+						s.menu_trigger_bounds.iter().find(|(_, b)| b.contains(&event.position))
+					{
+						crate::frame_trace::popup_event("pointer_down", Some(*name), true);
+					}
 					s.workspace.focused_panel = None;
 
 					if composer::selection_menu(s.composer_menu)
-						&& !s
-							.menu_trigger_bounds
-							.get(s.composer_menu.expect("selection menu"))
-							.is_some_and(|b| b.contains(&event.position))
+						&& !s.menu_trigger_bounds.values().any(|b| b.contains(&event.position))
 					{
 						s.dismiss_composer_menu(cx);
 					}
 				});
 			})
 			.on_action(move |action: &ActivateAgent, _, cx| forward(parent, action, cx))
+			.on_action(|_: &FocusNext, window, cx| window.focus_next(cx))
+			.on_action(|_: &FocusPrevious, window, cx| window.focus_prev(cx))
 			.on_action(move |action: &ActivateHealth, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &ActivateSettings, _, cx| forward(parent, action, cx))
 			.on_action(move |action: &ToggleSidebar, _, cx| forward(parent, action, cx))
@@ -151,6 +161,27 @@ impl Render for ComposerPanel {
 }
 
 impl AgentSurface {
+	pub(super) fn notify_native_composer_controls(&self, cx: &mut Context<Self>) -> bool {
+		let Some(child) =
+			self.native_controls.composer.child.filter(|_| {
+				self.native_controls.composer.enabled && !self.native_controls.menu.failed
+			})
+		else {
+			return false;
+		};
+		self.native_controls.menu.notify(cx);
+		cx.defer(move |cx| {
+			let _ = child.update(cx, |panel, _, cx| {
+				cx.notify();
+				let owner = panel.owner.clone();
+				let _ = panel.parent.update(cx, |_, window, cx| {
+					owner.update(cx, |surface, cx| surface.prepare_native_menu(window, cx));
+				});
+			});
+		});
+		true
+	}
+
 	pub(super) fn retry_native_composer(&mut self) {
 		// An explicit reload can recover a failed initial native-window creation.
 		// Keep an existing panel and its focus intact.

@@ -30,12 +30,15 @@ pub(crate) mod foreground {
 pub(crate) use self::{color_themes::ColorTheme, palette::ColorScheme};
 #[cfg(test)] pub(crate) use palette::MASCOT_FAMILIES;
 
-use std::time::Duration;
+use std::{
+	sync::{Arc, OnceLock},
+	time::Duration,
+};
 
 use gpui::{
-	self, AnyElement, Div, ElementId, FontWeight, InteractiveElement as _, IntoElement,
-	ParentElement as _, Rgba, Role, Stateful, StatefulInteractiveElement as _, Styled as _,
-	accesskit::Toggled, prelude::FluentBuilder as _,
+	self, AnyElement, Div, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
+	Rgba, Role, Stateful, StatefulInteractiveElement as _, Styled as _,
+	prelude::FluentBuilder as _,
 };
 
 use appearance::Theme;
@@ -60,6 +63,12 @@ pub(crate) const CHROME_CONTROL_SIZE: f32 = 24.0;
 pub(crate) const CONTROL_GROUP_HEIGHT: f32 = 28.0;
 pub(crate) const CONTROL_MARGIN: f32 = 8.0;
 pub(crate) const CONTROL_RADIUS: f32 = 8.0;
+pub(crate) const POPOVER_RADIUS: f32 = 10.;
+pub(crate) const POPOVER_PADDING: f32 = 8.;
+pub(crate) const POPOVER_CONTENT_PADDING: f32 = 6.;
+pub(crate) const POPOVER_GAP: f32 = 8.;
+pub(crate) const POPOVER_ARRIVAL: Duration = Duration::from_millis(160);
+pub(crate) const POPOVER_OFFSET: f32 = 4.;
 pub(crate) const WORKSPACE_GUTTER: f32 = 8.0;
 pub(crate) const WORKSPACE_RADIUS: f32 = 16.0;
 pub(crate) const CONVERSATION_HEADER_HEIGHT: f32 = 28.0;
@@ -141,6 +150,86 @@ pub(crate) struct WorkspacePalette {
 
 pub(crate) fn rgb(token: u32) -> Rgba {
 	ColorScheme::current().rgb(token)
+}
+
+/// Keep changing numeric values aligned without changing their text face.
+pub(crate) fn tabular_figures() -> gpui::FontFeatures {
+	static FEATURES: OnceLock<gpui::FontFeatures> = OnceLock::new();
+	FEATURES.get_or_init(|| gpui::FontFeatures(Arc::new(vec![("tnum".into(), 1)]))).clone()
+}
+
+/// Content annotations remain readable without adding a glass layer per Agent.
+pub(crate) fn annotation_surface() -> Rgba {
+	ColorScheme::current().annotation()
+}
+
+/// Inline menus retain a stable reading surface when native glass is unavailable.
+pub(crate) fn popover_surface() -> Rgba {
+	rgb(SURFACE_OVERLAY_MATERIAL >> 8)
+}
+
+/// Thin and Regular follow the theme; Clear keeps the native glass unmodified.
+pub(crate) fn popover_tint(
+	material: material::Material,
+	style: material::GlassStyle,
+) -> Option<Rgba> {
+	match (material, style) {
+		(material::Material::Thin, _) => Some(popover_surface()),
+		(_, material::GlassStyle::Regular) => Some(popover_surface().opacity(0.12)),
+		(_, material::GlassStyle::Clear) => None,
+	}
+}
+
+/// Menu rows use neutral feedback; selection is a check, danger uses ERROR text.
+/// Primary actions keep their filled treatment outside selection menus.
+pub(crate) fn menu_row(id: impl Into<gpui::SharedString>, enabled: bool) -> Stateful<Div> {
+	gpui::div()
+		.id(id.into())
+		.role(Role::Button)
+		.tab_index(0)
+		.tab_stop(enabled)
+		.w_full()
+		.min_w_0()
+		.min_h(gpui::px(CONTROL_SIZE))
+		.px(gpui::px(8.))
+		.py(gpui::px(4.))
+		.rounded(gpui::px(6.))
+		.text_size(gpui::px(12.))
+		.line_height(gpui::px(18.))
+		.text_color(rgb(TEXT))
+		.when(enabled, |d| {
+			d.cursor_pointer()
+				.hover(|s| s.bg(rgba(HOVER_FILL)))
+				.active(|s| s.bg(rgba(PRESSED_FILL)))
+				.focus_visible(|s| s.bg(rgba(HOVER_FILL)))
+		})
+}
+
+/// A restrained edge separates the foreground from either native material.
+pub(crate) fn menu_outline<T: gpui::Styled>(surface: T) -> T {
+	surface
+		.rounded(gpui::px(POPOVER_RADIUS))
+		.border(gpui::px(0.5))
+		.border_color(rgb(TEXT).opacity(0.1))
+}
+
+pub(crate) fn menu_separator() -> Div {
+	gpui::div().h(gpui::px(0.5)).mx(gpui::px(8.)).my(gpui::px(3.)).bg(rgb(TEXT).opacity(0.1))
+}
+
+pub(crate) fn menu_section(label: &'static str, content: impl IntoElement) -> Div {
+	gpui::div()
+		.flex()
+		.flex_col()
+		.gap(gpui::px(3.))
+		.child(
+			gpui::div()
+				.px(gpui::px(8.))
+				.text_size(gpui::px(CAPTION_SIZE))
+				.text_color(rgb(TEXT_MUTED))
+				.child(label),
+		)
+		.child(content)
 }
 
 pub(crate) fn rgba(token: u32) -> Rgba {
@@ -246,15 +335,6 @@ pub(crate) fn settings_title(title: &'static str) -> impl IntoElement {
 		.child(title)
 }
 
-pub(crate) fn settings_heading(title: &'static str, description: &'static str) -> Div {
-	gpui::div()
-		.flex()
-		.flex_col()
-		.gap(gpui::px(6.0))
-		.child(settings_title(title))
-		.when(!description.is_empty(), |column| column.child(settings_description(description)))
-}
-
 pub(crate) fn settings_label(
 	title: impl Into<gpui::SharedString>,
 	description: impl Into<gpui::SharedString>,
@@ -288,7 +368,7 @@ pub(crate) fn settings_group(title: &'static str, rows: Vec<AnyElement>) -> Div 
 
 pub(crate) fn settings_button(
 	id: impl Into<gpui::SharedString>,
-	label: &'static str,
+	label: impl Into<gpui::SharedString>,
 ) -> Stateful<Div> {
 	settings_button_base(id, label)
 		.cursor_pointer()
@@ -299,15 +379,16 @@ pub(crate) fn settings_button(
 
 pub(crate) fn settings_button_base(
 	id: impl Into<gpui::SharedString>,
-	label: &'static str,
+	label: impl Into<gpui::SharedString>,
 ) -> Stateful<Div> {
 	let id = id.into();
+	let label = label.into();
 
 	gpui::div()
 		.id(id.clone())
 		.debug_selector(move || id.to_string())
 		.role(Role::Button)
-		.aria_label(label)
+		.aria_label(label.clone())
 		.tab_index(0)
 		.h(gpui::px(SETTINGS_CONTROL_HEIGHT))
 		.px(gpui::px(8.0))
@@ -325,12 +406,12 @@ pub(crate) fn settings_button_base(
 		.child(label)
 }
 
-pub(crate) fn settings_segments(label: &'static str) -> Stateful<Div> {
+pub(crate) fn settings_button_group(label: &'static str) -> Stateful<Div> {
 	let light = Theme::current() == Theme::Light;
 
 	gpui::div()
 		.id(gpui::SharedString::from(format!("settings-segments-{label}")))
-		.role(Role::RadioGroup)
+		.role(Role::Group)
 		.aria_label(label)
 		.flex()
 		.flex_none()
@@ -340,36 +421,42 @@ pub(crate) fn settings_segments(label: &'static str) -> Stateful<Div> {
 		.bg(gpui::rgba(if light { 0x00000008 } else { 0x00000020 }))
 }
 
-pub(crate) fn settings_segment(
-	id: impl Into<ElementId>,
-	label: &'static str,
-	selected: bool,
-) -> Stateful<Div> {
-	let light = Theme::current() == Theme::Light;
-	let selected_fill = if light { gpui::rgba(0xfffffff0) } else { rgba(CONTROL_SELECTED_FILL) };
-	let selected_hover = if light { gpui::rgba(0xffffffff) } else { rgba(CONTROL_SELECTED_HOVER) };
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use gpui::{Context, Render, TestAppContext, Window};
 
-	gpui::div()
-		.id(id)
-		.role(Role::RadioButton)
-		.aria_label(label)
-		.aria_selected(selected)
-		.aria_toggled(if selected { Toggled::True } else { Toggled::False })
-		.tab_index(0)
-		.h(gpui::px(22.))
-		.px(gpui::px(8.0))
-		.flex()
-		.items_center()
-		.justify_center()
-		.rounded(gpui::px(4.))
-		.border_1()
-		.border_color(gpui::transparent_black())
-		.text_size(gpui::px(11.5))
-		.line_height(gpui::px(16.0))
-		.cursor_pointer()
-		.text_color(rgb(if selected { TEXT } else { TEXT_MUTED }))
-		.when(selected, |s| s.bg(selected_fill).border_color(rgba(CONTROL_SELECTED_BORDER)))
-		.hover(move |s| s.bg(if selected { selected_hover } else { rgba(HOVER_FILL) }))
-		.focus_visible(|s| s.border_color(rgb(ACCENT)))
-		.child(label)
+	struct Menu;
+	impl Render for Menu {
+		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+			gpui::div().flex().flex_col().children([
+				menu_row("enabled-first", true)
+					.debug_selector(|| "enabled-first".into())
+					.child("First"),
+				menu_row("disabled", false).child("Unavailable"),
+				menu_row("enabled-last", true)
+					.debug_selector(|| "enabled-last".into())
+					.child("Last"),
+			])
+		}
+	}
+
+	#[gpui::test]
+	fn menu_keyboard_navigation_skips_disabled_rows_in_both_directions(cx: &mut TestAppContext) {
+		let (_, visual) = cx.add_window_view(|_, _| Menu);
+		visual.update(crate::ui_frame::draw_current_frame);
+		let first = visual.debug_bounds("enabled-first").unwrap().center();
+		let last = visual.debug_bounds("enabled-last").unwrap().center();
+		visual.simulate_click(first, Default::default());
+		let first = visual.update(|window, cx| window.focused(cx).expect("first row focus"));
+		visual.simulate_click(last, Default::default());
+		let last = visual.update(|window, cx| window.focused(cx).expect("last row focus"));
+		visual.update(|window, cx| {
+			assert!(!first.is_focused(window));
+			window.focus_next(cx);
+			assert!(first.is_focused(window), "forward navigation must wrap past disabled rows");
+			window.focus_prev(cx);
+			assert!(last.is_focused(window), "reverse navigation must skip disabled rows");
+		});
+	}
 }

@@ -2,6 +2,9 @@
 #![cfg(not(test))]
 #![allow(dead_code)]
 #[path = "../composer_input.rs"] mod composer_input;
+#[allow(dead_code)]
+#[path = "../frame_trace.rs"]
+mod frame_trace;
 #[cfg(target_os = "macos")]
 #[path = "probes/native_graph.rs"]
 mod graph_probe;
@@ -11,7 +14,14 @@ mod native_quit;
 #[cfg(target_os = "macos")]
 #[path = "../native_reopen.rs"]
 mod native_reopen;
+#[cfg(target_os = "macos")]
+#[path = "probes/native_popover.rs"]
+mod popover_probe;
+#[cfg(target_os = "macos")]
+#[path = "probes/native_popup_system.rs"]
+mod popup_system_probe;
 #[path = "../ui_frame.rs"] mod ui_frame;
+#[path = "../ui_layout.rs"] mod ui_layout;
 #[allow(unused_imports)]
 #[path = "../ui_motion.rs"]
 mod ui_motion;
@@ -142,9 +152,17 @@ mod probe {
 		}
 	}
 
-	/// Exercise the production overlay owner without a daemon or user preferences.
+	/// Exercise the production popover owner without a daemon or the product preference domain.
 	#[cfg(not(test))]
 	pub fn run_material_update() {
+		let library =
+			std::env::var("DECODEX_PROBE_NATIVE_LIBRARY").expect("explicit native fixture library");
+		let library =
+			std::ffi::CString::new(library).expect("native library path without a NUL byte");
+		assert!(
+			!unsafe { libc::dlopen(library.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) }.is_null(),
+			"load the native fixture library"
+		);
 		gpui_platform::application().run(|cx| {
 			let open = |cx: &mut App| {
 				cx.open_window(
@@ -159,9 +177,10 @@ mod probe {
 			parent
 				.update(cx, |_, parent, cx| {
 					child
-						.update(cx, |_, window, _| {
-							let mut panel = MaterialPanel::install_overlay(parent, window)
-								.expect("install production status overlay");
+						.update(cx, |_, window, cx| {
+							window_material::configure(window);
+							let mut panel = MaterialPanel::install_popover(parent, window)
+								.expect("install production popover");
 
 							panel.place(Bounds::new(
 								point(px(0.), px(0.)),
@@ -174,17 +193,51 @@ mod probe {
 							let owner =
 								unsafe { foreground.superview() }.expect("live material fixture");
 							let count = content.subviews().len();
+							assert_eq!(count, 1, "the popover must own exactly one material pass");
 
 							for material in [
 								crate::ui_theme::material::Material::Thin,
 								crate::ui_theme::material::Material::LiquidGlass,
 							] {
-								window_material::apply(window, material);
+								crate::ui_theme::material::Surface::Popover.select(material, cx);
+								panel.refresh_material();
+								assert_eq!(
+									crate::ui_theme::native_material_panel::observed_material(
+										window
+									),
+									Some(
+										if material == crate::ui_theme::material::Material::Thin {
+											"thin"
+										} else {
+											"liquid-glass"
+										}
+									)
+								);
+								if material == crate::ui_theme::material::Material::LiquidGlass {
+									for style in [
+										crate::ui_theme::material::GlassStyle::Clear,
+										crate::ui_theme::material::GlassStyle::Regular,
+									] {
+										crate::ui_theme::material::GlassScope::Popover
+											.select(style, cx);
+										panel.refresh_material();
+										assert_eq!(
+											crate::ui_theme::native_material_panel::observed_style(
+												window
+											),
+											Some(isize::from(
+												style
+													== crate::ui_theme::material::GlassStyle::Clear
+											))
+										);
+										assert_eq!(content.subviews().len(), count);
+									}
+								}
 
 								assert_eq!(
 									content.subviews().len(),
 									count,
-									"material update must not add a backdrop to the status overlay"
+									"material update must not add another backdrop to the popover"
 								);
 								assert!(
 									std::ptr::eq(
@@ -197,33 +250,53 @@ mod probe {
 							}
 
 							eprintln!(
-								"material-probe: status overlay preserved across Thin and Liquid Glass"
+								"material-probe: popover preserved across Thin and Liquid Glass"
 							);
+							if crate::ui_theme::native_material_panel::observed_material(window)
+								== Some("liquid-glass")
+							{
+								let expected =
+									crate::ui_theme::material::GlassScope::Popover.configured();
+								assert_eq!(
+									crate::ui_theme::native_material_panel::observed_style(window),
+									Some(isize::from(
+										expected == crate::ui_theme::material::GlassStyle::Clear
+									))
+								);
+								eprintln!("material-probe: native popover style {expected:?}");
+							}
 						})
 						.expect("live material fixture");
 
-					window_material::apply(
-						parent,
-						crate::ui_theme::material::Material::LiquidGlass,
-					);
-
-					let class = AnyClass::get(c"NSGlassEffectView").expect("macOS glass class");
-
-					assert!(
-						native_window(parent)
-							.contentView()
-							.expect("parent content")
-							.subviews()
-							.iter()
-							.any(|v| unsafe { msg_send![&**v, isKindOfClass: class] }),
-						"ordinary windows still receive their material"
-					);
-					eprintln!("material-probe: ordinary window material applied");
+					assert_window_material(parent);
 				})
 				.expect("live material fixture");
 
 			cx.defer(|cx| cx.quit());
 		});
+	}
+
+	fn assert_window_material(parent: &mut Window) {
+		window_material::apply(parent, crate::ui_theme::material::Material::LiquidGlass);
+
+		let class = AnyClass::get(c"NSGlassEffectView").expect("macOS glass class");
+
+		assert!(
+			native_window(parent)
+				.contentView()
+				.expect("parent content")
+				.subviews()
+				.iter()
+				.any(|v| unsafe { msg_send![&**v, isKindOfClass: class] }),
+			"ordinary windows still receive their material"
+		);
+		eprintln!("material-probe: ordinary window material applied");
+		let expected = crate::ui_theme::material::GlassScope::Window.configured();
+		assert_eq!(
+			crate::ui_theme::native_material_panel::observed_style(parent),
+			Some(isize::from(expected == crate::ui_theme::material::GlassStyle::Clear))
+		);
+		eprintln!("material-probe: native window style {expected:?}");
 	}
 
 	pub fn run_quit_preflight() {
@@ -605,6 +678,17 @@ fn main() {
 
 #[cfg(target_os = "macos")]
 fn main() {
+	if std::env::args()
+		.any(|arg| matches!(arg.as_str(), "--popup-material-system" | "--popup-material-islands"))
+	{
+		popup_system_probe::run();
+		return;
+	}
+	if std::env::args().any(|arg| arg == "--popover-first-frame") {
+		popover_probe::run();
+
+		return;
+	}
 	if std::env::args().any(|arg| arg == "--window-reopen") {
 		probe::run_window_reopen();
 

@@ -27,7 +27,7 @@ use tokio::runtime::{Builder, Runtime};
 use decodex_protocol::{
 	AccountClient, AccountCommandResponse, AccountLoginClient, AccountLoginInstallMode,
 	AccountLoginMethod, AccountLoginStart, AccountLoginState, AccountLoginStatus, ClientFailure,
-	ClientProfile, CommandPayload, EntityId, EntityRevision, FastModeFailure, IdempotencyKey,
+	ClientProfile, CodexConfigError, CommandPayload, EntityId, EntityRevision, IdempotencyKey,
 	ResetCardClient, ResetCardConsumeResponse, ResetCardDescriptorDto, ServerId,
 };
 
@@ -262,7 +262,7 @@ enum BridgeFailure {
 enum ResponseFailure {
 	Client(ClientFailure),
 	Bridge(BridgeFailure),
-	FastMode(FastModeFailure),
+	FastMode(CodexConfigError),
 }
 
 #[derive(Serialize)]
@@ -291,7 +291,7 @@ struct FailureResponse {
 enum RequestFailure {
 	Client(ClientFailure),
 	Bridge(BridgeFailure),
-	FastMode(FastModeFailure),
+	FastMode(CodexConfigError),
 }
 impl From<ClientFailure> for RequestFailure {
 	fn from(failure: ClientFailure) -> Self {
@@ -1263,8 +1263,8 @@ mod tests {
 		RequestFailure, ResponseFailure, SuccessResponse,
 	};
 	use decodex_protocol::{
-		AccountLoginMethod, ClientFailure, CommandError, EntityId, EntityRevision, FastModeFailure,
-		ResetCardConsumeResponse, ResetCardDescriptorDto, ResetCardOperationResult,
+		AccountLoginMethod, ClientFailure, CodexConfigError, CommandError, EntityId,
+		EntityRevision, ResetCardConsumeResponse, ResetCardDescriptorDto, ResetCardOperationResult,
 	};
 
 	const ACCOUNT_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
@@ -1590,7 +1590,7 @@ mod tests {
 			schema: RESPONSE_SCHEMA,
 			outcome: "failure",
 			operation: "fast_mode_status",
-			failure: ResponseFailure::FastMode(FastModeFailure::ConfigInvalid),
+			failure: ResponseFailure::FastMode(CodexConfigError::ConfigInvalid),
 		};
 		let value = serde_json::to_value(response).expect("response must serialize");
 

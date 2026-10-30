@@ -23,7 +23,13 @@ impl AgentSurface {
 			permission_mode: self.permission_mode,
 		};
 
-		(self.creation_setup_present || setup != empty_setup()).then_some(setup)
+		let mut baseline = empty_setup();
+		if !self.creation_intent.service_tier {
+			// A displayed shared default is not a saved user override.
+			baseline.fast = setup.fast;
+			baseline.service_tier.clone_from(&setup.service_tier);
+		}
+		(self.creation_setup_present || setup != baseline).then_some(setup)
 	}
 
 	pub(super) fn restore_creation_setup(
@@ -33,7 +39,9 @@ impl AgentSurface {
 	) {
 		self.creation_setup_present = setup.is_some();
 
-		let empty = empty_setup();
+		let mut empty = empty_setup();
+		empty.service_tier = crate::session_settings::default_speed().ok();
+		empty.fast = empty.service_tier.as_ref().is_some_and(|tier| tier.as_str() == "priority");
 		let setup = setup.unwrap_or(&empty);
 
 		self.model.update(cx, |input, cx| input.set_content(&setup.model, cx));
@@ -70,7 +78,7 @@ fn empty_setup() -> DesktopCreationSetup {
 	DesktopCreationSetup {
 		defaults_applied: false,
 		intent: Some(decodex_protocol::DesktopCreationIntent {
-			service_tier: defaults.speed.is_some(),
+			service_tier: false,
 			..Default::default()
 		}),
 		inherit_effort: false,
@@ -78,8 +86,8 @@ fn empty_setup() -> DesktopCreationSetup {
 		working_directory: String::new(),
 		account: String::new(),
 		reasoning_effort: ConversationReasoningEffort::High,
-		fast: defaults.speed.as_ref().is_some_and(|tier| tier.as_str() == "priority"),
-		service_tier: defaults.speed,
+		fast: false,
+		service_tier: None,
 		permission_mode: defaults.permissions,
 	}
 }

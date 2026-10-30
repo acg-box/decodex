@@ -13,12 +13,14 @@ use gpui::{
 
 use crate::{
 	frame_trace,
-	shell::agent_surface::native_timeline::{AgentTimelineEntry, groups::Group},
+	shell::agent_surface::native_timeline::{
+		AgentTimelineEntry,
+		groups::{Group, HEADER_HEIGHT},
+	},
 	ui_motion,
 };
 
 const DURATION: Duration = Duration::from_millis(280);
-const HEADER_HEIGHT: f32 = 28.;
 
 #[derive(Default)]
 pub(super) struct Completions(RefCell<Presented>);

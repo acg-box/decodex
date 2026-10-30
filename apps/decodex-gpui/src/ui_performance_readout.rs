@@ -1,9 +1,9 @@
 //! Content owns its measured footprint; the activity host owns allocation and motion.
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use gpui::{
-	AnyElement, App, Div, Font, FontFeatures, FontWeight, IntoElement, Role, SharedString,
-	Stateful, TextRun, UniformListScrollHandle, Window,
+	AnyElement, App, Div, Font, FontWeight, IntoElement, Role, SharedString, Stateful, TextRun,
+	UniformListScrollHandle, Window,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -39,6 +39,7 @@ pub(super) struct Work {
 	columns: [f32; 2],
 	breakdown: [String; 4],
 	breakdown_columns: [f32; 2],
+	header_widths: [f32; 3],
 	sizing: Sizing,
 }
 impl Work {
@@ -105,6 +106,7 @@ pub(super) struct Debug {
 	latency: String,
 	draw: String,
 	columns: [f32; 2],
+	header_label_width: f32,
 	sizing: Sizing,
 }
 
@@ -152,6 +154,7 @@ impl Content {
 				count(breakdown.map(|v| v.reasoning_output_tokens)),
 			],
 			breakdown_columns: [0.; 2],
+			header_widths: [0.; 3],
 			sizing: Sizing { minimal: 0., compact: 0., expanded: 0. },
 		};
 		let activity = if let Some(status) = data.status() {
@@ -184,17 +187,16 @@ impl Content {
 		} else {
 			primary + 22.
 		};
-		let compact = primary
-			+ 16.
-			+ width("activity-width-total-label", "Total", TEXT_SIZE, FontWeight::NORMAL)
-			+ 4.
-			+ width(
-				"activity-width-total-value",
-				&tokens(&data.total),
-				TEXT_SIZE,
-				FontWeight::MEDIUM,
-			)
-			+ FRAME;
+		let total_label =
+			width("activity-width-total-label", "Total", TEXT_SIZE, FontWeight::NORMAL);
+		let total_value = width(
+			"activity-width-total-value",
+			&tokens(&data.total),
+			TEXT_SIZE,
+			FontWeight::MEDIUM,
+		);
+		data.header_widths = [primary, total_label + 4., total_value];
+		let compact = primary + 16. + total_label + 4. + total_value + FRAME;
 		let longest = |get: fn(&Live) -> String| {
 			data.rows.iter().map(get).max_by_key(String::len).unwrap_or_default()
 		};
@@ -259,6 +261,7 @@ impl Content {
 			latency: ui_performance::timing(island.metrics.submit_ms, island.metrics.ready_samples),
 			draw: ui_performance::timing(island.metrics.draw_ms, island.metrics.draw_frames),
 			columns: [0.; 2],
+			header_label_width: 0.,
 			sizing: Sizing { minimal: 0., compact: 0., expanded: 0. },
 		};
 		let mut width = |id, text: &str, size, weight| measure(id, text, size, weight, window, cx);
@@ -267,16 +270,17 @@ impl Content {
 			+ 3.
 			+ width("activity-width-fps-small", "FPS", TEXT_SIZE, FontWeight::NORMAL)
 			+ 22.;
-		let compact =
-			width("activity-width-fps-label", "Frame rate", TEXT_SIZE, FontWeight::NORMAL)
-				+ 4.
-				+ width(
-					"activity-width-fps-value",
-					&format!("{} FPS", data.fps),
-					TEXT_SIZE,
-					FontWeight::MEDIUM,
-				)
-				+ FRAME;
+		data.header_label_width =
+			width("activity-width-fps-label", "Frame rate", TEXT_SIZE, FontWeight::NORMAL);
+		let compact = data.header_label_width
+			+ 4.
+			+ width(
+				"activity-width-fps-value",
+				&format!("{} FPS", data.fps),
+				TEXT_SIZE,
+				FontWeight::MEDIUM,
+			)
+			+ FRAME;
 
 		data.columns = [
 			width("activity-width-gpu-label", "System GPU", TEXT_SIZE, FontWeight::NORMAL)
@@ -351,8 +355,8 @@ impl Content {
 
 	pub(super) fn header(&self, fraction: f32) -> AnyElement {
 		match self {
-			Self::Work(v) => presentations(work_minimal(v), work_header(v), fraction),
-			Self::Debug(v) => presentations(debug_minimal(v), debug_header(v), fraction),
+			Self::Work(v) => work_header(v, fraction),
+			Self::Debug(v) => debug_header(v, fraction),
 		}
 	}
 
@@ -369,12 +373,6 @@ impl Content {
 	}
 }
 
-pub(super) fn figures() -> FontFeatures {
-	static FEATURES: OnceLock<FontFeatures> = OnceLock::new();
-
-	FEATURES.get_or_init(|| FontFeatures(Arc::new(vec![("tnum".into(), 1)]))).clone()
-}
-
 // One entry per field, not a growing cache of sampled numbers. Chart frames do
 // not shape the same text again. Measure with the font and figures we render.
 fn measure(
@@ -388,7 +386,7 @@ fn measure(
 	let mut font = window.text_style().font();
 
 	font.weight = weight;
-	font.features = figures();
+	font.features = ui_theme::tabular_figures();
 
 	let state = window.use_keyed_state(id, cx, |_, _| None::<Measured>);
 
@@ -458,64 +456,92 @@ fn measurement(id: &'static str, value: String) -> Div {
 		})
 }
 
-fn debug_header(data: &Debug) -> AnyElement {
+// Keep each value in one element while labels claim space. Crossfading two
+// complete headers paints the same digits twice at different positions.
+fn header_space(grow: f32) -> Div {
+	gpui::div().w_0().min_w_0().flex_grow(grow)
+}
+
+fn header_reveal(content: impl IntoElement, width: f32, fraction: f32) -> Div {
+	// Reserve the full label width before showing text, so no word is cut mid-morph.
 	gpui::div()
-		.w_full()
+		.w(gpui::px(width * (fraction * 2.).min(1.)))
+		.h(gpui::px(16.))
+		.flex_none()
+		.overflow_hidden()
+		.opacity((fraction * 2. - 1.).max(0.))
+		.child(gpui::div().w(gpui::px(width)).whitespace_nowrap().child(content))
+}
+
+fn debug_header(data: &Debug, fraction: f32) -> AnyElement {
+	gpui::div()
+		.size_full()
 		.px(gpui::px(INSET))
 		.flex()
 		.items_center()
-		.gap_1()
-		.child(
+		.child(header_space(1. - fraction))
+		.child(header_reveal(
 			gpui::div()
 				.debug_selector(|| "performance-fps-label".into())
+				.w(gpui::px(data.header_label_width))
 				.text_color(ui_theme::rgb(TEXT_MUTED))
 				.child("Frame rate"),
-		)
+			data.header_label_width + 4.,
+			fraction,
+		))
 		.child(measurement("fps", format!("{} FPS", data.fps)))
+		.child(header_space(1.))
 		.into_any_element()
 }
 
-fn work_header(data: &Work) -> AnyElement {
-	gpui::div()
-		.w_full()
-		.px(gpui::px(INSET))
-		.flex()
-		.items_center()
-		.justify_between()
-		.gap_3()
-		.child(work_primary(data, false))
-		.child(
-			gpui::div()
-				.debug_selector(|| "activity-work-total".into())
-				.flex()
-				.items_baseline()
-				.gap_1()
-				.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Total"))
-				.child(measurement("activity-total-value", tokens(&data.total))),
-		)
-		.into_any_element()
-}
-
-fn work_minimal(data: &Work) -> AnyElement {
-	let content = if data.idle_total() {
+fn work_header(data: &Work, fraction: f32) -> AnyElement {
+	let [primary_width, total_label_width, total_value_width] = data.header_widths;
+	let total_label = gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Total");
+	let total_value = if data.idle_total() {
 		gpui::div()
+			.debug_selector(|| "activity-live-rate".into())
 			.flex()
 			.items_baseline()
 			.gap(gpui::px(3.))
-			.whitespace_nowrap()
-			.child(number("live-total", data.total.clone()).text_color(ui_theme::rgb(TEXT)))
+			.child(number("live-total", data.total.clone()))
 			.child(
 				gpui::div()
 					.debug_selector(|| "performance-live-total-unit".into())
 					.text_color(ui_theme::rgb(TEXT_MUTED))
 					.child("tok"),
 			)
+	} else {
+		measurement("activity-total-value", tokens(&data.total))
+	};
+	let total = gpui::div()
+		.debug_selector(|| "activity-work-total".into())
+		.flex_none()
+		.flex()
+		.items_baseline()
+		.child(header_reveal(total_label, total_label_width, fraction))
+		.child(total_value);
+	let header = gpui::div().size_full().px(gpui::px(INSET)).flex().items_center();
+
+	if data.idle_total() {
+		header
+			.child(header_reveal(work_primary(data, false), primary_width, fraction))
+			.child(header_space(1.))
+			.child(total)
+			.child(header_space(1. - fraction))
 			.into_any_element()
 	} else {
-		work_primary(data, true)
-	};
-
-	gpui::div().debug_selector(|| "activity-live-rate".into()).child(content).into_any_element()
+		header
+			.child(header_space(1. - fraction))
+			.child(
+				gpui::div()
+					.debug_selector(|| "activity-live-rate".into())
+					.flex_none()
+					.child(work_primary(data, fraction < 0.999)),
+			)
+			.child(header_space(1.))
+			.child(header_reveal(total, total_label_width + total_value_width, fraction))
+			.into_any_element()
+	}
 }
 
 fn work_primary(data: &Work, minimal: bool) -> AnyElement {
@@ -537,54 +563,6 @@ fn work_primary(data: &Work, minimal: bool) -> AnyElement {
 				.text_color(ui_theme::rgb(TEXT)),
 		)
 		.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(data.unit()))
-		.into_any_element()
-}
-
-fn debug_minimal(data: &Debug) -> AnyElement {
-	gpui::div()
-		.flex()
-		.items_baseline()
-		.gap(gpui::px(3.))
-		.whitespace_nowrap()
-		.child(number("fps", data.fps.clone()))
-		.child(
-			gpui::div()
-				.text_size(gpui::px(TEXT_SIZE))
-				.text_color(ui_theme::rgb(TEXT_MUTED))
-				.child("FPS"),
-		)
-		.into_any_element()
-}
-
-fn presentations(minimal: AnyElement, compact: AnyElement, fraction: f32) -> AnyElement {
-	gpui::div()
-		.relative()
-		.w_full()
-		.h_full()
-		.when(fraction < 0.999, |d| {
-			d.child(
-				gpui::div()
-					.absolute()
-					.size_full()
-					.flex()
-					.items_center()
-					.justify_center()
-					.opacity(1. - fraction)
-					.child(minimal),
-			)
-		})
-		.when(fraction > 0.001, |d| {
-			d.child(
-				gpui::div()
-					.absolute()
-					.size_full()
-					.flex()
-					.items_center()
-					.justify_center()
-					.opacity(fraction)
-					.child(compact),
-			)
-		})
 		.into_any_element()
 }
 

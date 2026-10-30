@@ -1,9 +1,14 @@
 //! Keep notifications above native composer windows without moving the editor.
 use gpui::{
-	self, AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity, FocusHandle, Render,
-	Subscription, Window, WindowBackgroundAppearance, WindowBounds, WindowHandle, WindowOptions,
-	prelude::{InteractiveElement as _, IntoElement, ParentElement as _, Styled as _},
+	self, AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity, FocusHandle, Pixels,
+	Point, Render, Subscription, Window, WindowBackgroundAppearance, WindowBounds, WindowHandle,
+	WindowOptions,
+	prelude::{
+		FluentBuilder as _, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _,
+	},
 };
+
+const WIDTH: f32 = 328.;
 
 use crate::{
 	shell::{self, Shell, ToggleContentFullscreen, forward_shell_action},
@@ -19,29 +24,68 @@ pub(super) struct NativeStatus {
 	pub(super) child: Option<WindowHandle<StatusPanel>>,
 	creating: bool,
 	failed: bool,
-	height: f32,
 }
 pub(super) struct StatusPanel {
 	owner: Entity<Shell>,
 	parent: AnyWindowHandle,
 	focus: FocusHandle,
 	surface: Option<MaterialPanel>,
+	origin: Option<Point<Pixels>>,
+	height: f32,
+	open: bool,
+	focus_pending: bool,
 	_observation: Subscription,
+}
+
+impl StatusPanel {
+	fn forward_navigation(&self, action: &dyn gpui::Action, cx: &mut App) {
+		self.owner.update(cx, |s, cx| {
+			s.status_open = false;
+			cx.notify();
+		});
+		forward_shell_action(self.parent, action, cx);
+	}
+
+	fn place(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		if let Some(origin) = self.origin
+			&& let Some(surface) = &mut self.surface
+			&& surface
+				.place(Bounds::new(origin, gpui::size(gpui::px(WIDTH), gpui::px(self.height))))
+		{
+			window.bounds_changed(cx);
+		}
+	}
 }
 impl Render for StatusPanel {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let owner = self.owner.clone();
 		let parent = self.parent;
+		let measured = cx.entity().downgrade();
 		let panel = owner.update(cx, |s, cx| {
 			s.render_status_panel(&shell::connection_presentation(s.connection), cx)
 		});
 
-		gpui::div()
+		let content = gpui::div()
 			.w_full()
-			.p(gpui::px(12.))
+			.map(ui_theme::menu_outline)
+			.p(gpui::px(ui_theme::POPOVER_PADDING))
 			.font_family(FONT_FAMILY)
 			.text_color(ui_theme::rgb(TEXT))
 			.track_focus(&self.focus)
+			.capture_any_mouse_down(cx.listener(|panel, event, window, cx| {
+				if shell::navigation::forward_mouse_navigation(panel.parent, event, window, cx) {
+					panel.owner.update(cx, |s, cx| {
+						s.status_open = false;
+						cx.notify();
+					});
+				}
+			}))
+			.on_action(cx.listener(|panel, action: &shell::NavigateBack, _, cx| {
+				panel.forward_navigation(action, cx);
+			}))
+			.on_action(cx.listener(|panel, action: &shell::NavigateForward, _, cx| {
+				panel.forward_navigation(action, cx);
+			}))
 			.on_action({
 				let owner = owner.clone();
 
@@ -63,66 +107,81 @@ impl Render for StatusPanel {
 
 							cx.notify();
 						});
+						cx.stop_propagation();
 					}
 				}
 			})
-			.on_children_prepainted(move |bounds, _, cx| {
-				if let Some(bounds) = bounds.first() {
-					let height = f32::from(bounds.size.height) + 24.;
-
-					owner.update(cx, |s, cx| {
-						if (s.native_status.height - height).abs() > 0.5 {
-							s.native_status.height = height;
-
-							cx.notify();
-						}
-					});
+			.child(panel);
+		crate::ui_layout::intrinsic(gpui::px(WIDTH), content, move |size, window, cx| {
+			let _ = measured.update(cx, |panel, cx| {
+				panel.height = f32::from(size.height).max(48.);
+				panel.place(window, cx);
+				if panel.open
+					&& let Some(surface) = &mut panel.surface
+				{
+					surface.refresh_material();
 				}
-			})
-			.child(
-				gpui::div()
-					.w_full()
-					.rounded(gpui::px(14.))
-					.bg(ui_theme::rgb(0x29292d))
-					.shadow(vec![gpui::BoxShadow {
-						inset: false,
-						color: ui_theme::rgba(0x00000024).into(),
-						offset: gpui::point(gpui::px(0.), gpui::px(4.)),
-						blur_radius: gpui::px(12.),
-						spread_radius: gpui::px(-3.),
-					}])
-					.child(panel),
-			)
+				cx.defer_in(window, |panel, window, cx| {
+					if let Some(surface) = &mut panel.surface {
+						surface.set_open(panel.open);
+						if panel.open && panel.focus_pending {
+							panel.focus_pending = false;
+							surface.focus_text();
+							window.focus(&panel.focus, cx);
+							window.activate_window();
+						}
+					}
+				});
+			});
+		})
 	}
 }
 
 impl Shell {
 	pub(super) fn prepare_native_status(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-		// Drive the fade from the visible parent: AppKit stops the display link
-		// of a fully transparent or hidden child window.
-		let opacity =
-			ui_motion::native_presence("status-native-opacity", self.status_open, window, cx);
+		let open = self.status_open;
 
 		if let Some(child) = self.native_status.child {
+			let parent = window.window_handle();
+			let close = cx.entity().downgrade();
 			let viewport = window.viewport_size();
-			let height = self.native_status.height.max(48.);
-			let bounds = Bounds::new(
-				gpui::point(
-					viewport.width - gpui::px(328. + CONTROL_MARGIN - 12.),
-					gpui::px(CONTROL_MARGIN + CONTROL_GROUP_HEIGHT + CONTROL_MARGIN - 12.),
-				),
-				gpui::size(gpui::px(328.), gpui::px(height)),
+			let origin = gpui::point(
+				viewport.width - gpui::px(WIDTH + CONTROL_MARGIN),
+				gpui::px(CONTROL_MARGIN + CONTROL_GROUP_HEIGHT + CONTROL_MARGIN),
 			);
 
 			cx.defer(move |cx| {
+				if open {
+					ui_motion::claim_popover(
+						parent,
+						child.into(),
+						move |cx| {
+							let _ = close.update(cx, |s, cx| {
+								s.status_open = false;
+								cx.notify();
+							});
+						},
+						cx,
+					);
+				}
 				let _ = child.update(cx, |s, window, cx| {
+					if s.open != open {
+						s.focus_pending = open;
+					}
+					if s.open != open || s.origin != Some(origin) {
+						cx.notify();
+					}
+					s.open = open;
+					s.origin = Some(origin);
+					if open {
+						s.place(window, cx);
+					}
 					if let Some(surface) = &mut s.surface {
-						if surface.place(bounds) {
-							window.bounds_changed(cx);
+						if open {
+							surface.prepare_open();
+						} else {
+							surface.set_open(false);
 						}
-
-						surface.set_opacity(opacity);
-						surface.set_visible(opacity > 0.001);
 					}
 				});
 			});
@@ -167,7 +226,7 @@ fn create(
 				titlebar: None,
 				window_bounds: Some(WindowBounds::Windowed(Bounds::new(
 					gpui::point(gpui::px(0.), gpui::px(0.)),
-					gpui::size(gpui::px(328.), gpui::px(240.)),
+					gpui::size(gpui::px(WIDTH), gpui::px(240.)),
 				))),
 				window_background: WindowBackgroundAppearance::Transparent,
 				show: false,
@@ -184,14 +243,24 @@ fn create(
 
 					window.focus(&focus, cx);
 
-					StatusPanel { owner, parent, focus, surface: None, _observation: observation }
+					StatusPanel {
+						owner,
+						parent,
+						focus,
+						surface: None,
+						origin: None,
+						height: 240.,
+						open: false,
+						focus_pending: false,
+						_observation: observation,
+					}
 				})
 			},
 		)
 		.ok()?;
 	let installed = child
 		.update(cx, |s, child_window, _| {
-			s.surface = MaterialPanel::install_overlay(window, child_window);
+			s.surface = MaterialPanel::install_popover(window, child_window);
 
 			s.surface.is_some()
 		})

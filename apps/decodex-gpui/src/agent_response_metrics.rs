@@ -1,10 +1,14 @@
 //! Compact response statistics with hover details, independent of transcript layout.
 
-use std::{cell::Cell, rc::Rc, time::Instant};
+use std::{
+	cell::Cell,
+	rc::Rc,
+	time::{Duration, Instant},
+};
 
 use gpui::{
-	self, Anchor, AnyElement, App, Bounds, BoxShadow, Div, FontWeight, IntoElement, Pixels,
-	RenderOnce, SharedString, Window,
+	self, Anchor, AnyElement, App, Bounds, Context, Div, IntoElement, Pixels, RenderOnce, Role,
+	SharedString, Stateful, Task, Window,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -67,33 +71,31 @@ pub(super) struct ResponseMetrics {
 }
 impl RenderOnce for ResponseMetrics {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window.use_keyed_state(
-			SharedString::from(format!("response-details-{}", self.key)),
-			cx,
-			|_, _| (false, Bounds::<Pixels>::default()),
-		);
-		let open = state.read(cx).0;
-		let anchor = state.read(cx).1.origin;
-		let has_details = self.usage.is_some() || self.timing.is_some();
-		let duration = self.duration_ms.map(duration_label);
-		let label = duration
-			.clone()
-			.or(self.status)
-			.unwrap_or_else(|| if has_details { "—".into() } else { String::new() });
+		let details = Rc::new(MetricsDetails::new(&self));
+		let duration = details.duration.clone();
 		let has_duration = duration.is_some();
-		let panel = if open {
-			details_panel(&self.key, duration, self.usage.as_ref(), self.timing.as_ref())
-		} else {
-			gpui::div().into_any_element()
-		};
-		let hover_state = state.clone();
+		let label = duration.or(self.status).unwrap_or_else(|| "—".into());
+		let state = window.use_keyed_state(
+			SharedString::from(format!("turn-details-{}", self.key)),
+			cx,
+			|_, _| MetricsPopover::default(),
+		);
+		let (open, anchor) = state.read_with(cx, |state, _| (state.open, state.anchor));
+		let hover = state.clone();
+		let click = state.clone();
 		let measure = state.clone();
+		let panel_hover = state.clone();
+		let outside = state.clone();
+		let dismiss = state.clone();
+		let key = SharedString::from(format!("turn-metrics-popover-{}", self.key));
 
 		gpui::div()
 			.id(SharedString::from(format!("response-metrics-{}", self.key)))
 			.debug_selector(|| "turn-metrics-hover".into())
+			.role(Role::Button)
+			.aria_label("Turn metrics")
 			.relative()
-			.cursor_default()
+			.cursor_pointer()
 			.flex_none()
 			.whitespace_nowrap()
 			.h(gpui::px(METRICS_HEIGHT))
@@ -122,47 +124,140 @@ impl RenderOnce for ResponseMetrics {
 						.child(format!("↓ {}", agent_surface::compact_tokens(u.output_tokens))),
 				)
 			})
-			.when(has_details, |d| {
-				d.hover(|d| d.text_color(ui_theme::rgb(TEXT)))
-					.on_hover(move |hovered, _, cx| {
-						hover_state.update(cx, |state, cx| {
-							if state.0 != *hovered {
-								state.0 = *hovered;
-								cx.notify();
-							}
-						});
-					})
-					.child(
-						gpui::canvas(
-							move |bounds, _, cx| {
-								measure.update(cx, |state, _| state.1 = bounds);
-							},
-							|_, _, _, _| {},
-						)
-						.absolute()
-						.inset_0(),
-					)
-					.when(open, |d| {
-						d.child(
-							gpui::deferred(
-								gpui::anchored()
-									.anchor(Anchor::BottomLeft)
-									.position(anchor)
-									.offset(gpui::point(gpui::px(0.), gpui::px(-6.)))
-									.snap_to_window_with_margin(gpui::px(8.))
-									.child(panel),
-							)
-							.with_priority(4),
-						)
-					})
+			.hover(|d| d.text_color(ui_theme::rgb(TEXT)))
+			.active(|d| d.text_color(ui_theme::rgb(TEXT).opacity(0.8)))
+			.on_hover(move |inside, _, cx| {
+				hover.update(cx, |state, cx| state.hover(HoverTarget::Trigger, *inside, cx))
 			})
+			.on_click(move |_, _, cx| {
+				cx.stop_propagation();
+				click.update(cx, |state, cx| {
+					let pinned = state.pinned;
+					state.set_open(!pinned, !pinned, cx);
+				});
+			})
+			.child(
+				gpui::canvas(
+					move |bounds, _, cx| measure.update(cx, |state, _| state.anchor = bounds),
+					|_, _, _, _| {},
+				)
+				.absolute()
+				.inset_0(),
+			)
+			.child(
+				gpui::deferred(
+					gpui::anchored()
+						.anchor(Anchor::BottomLeft)
+						.position(anchor.origin)
+						.offset(gpui::point(gpui::px(0.), gpui::px(-ui_theme::POPOVER_GAP)))
+						.snap_to_window_with_margin(gpui::px(8.))
+						.child(
+							gpui::div().w(gpui::px(260.)).child(
+								ui_motion::popover_lazy(key, open, move |_, _| {
+									let panel_hover = panel_hover.clone();
+									let outside = outside.clone();
+									details_panel(&details)
+										.on_hover(move |inside, _, cx| {
+											panel_hover.update(cx, |state, cx| {
+												state.hover(HoverTarget::Panel, *inside, cx)
+											})
+										})
+										.on_mouse_down_out(move |event, _, cx| {
+											outside.update(cx, |state, cx| {
+												if !state.anchor.contains(&event.position) {
+													state.set_open(false, false, cx);
+												}
+											})
+										})
+										.into_any_element()
+								})
+								.preview()
+								.above()
+								.trigger(Rc::new(Cell::new(Some(anchor))))
+								.on_dismiss(move |cx| {
+									dismiss
+										.update(cx, |state, cx| state.set_open(false, false, cx));
+								}),
+							),
+						),
+				)
+				.with_priority(4),
+			)
 	}
+}
+
+struct MetricsDetails {
+	key: String,
+	duration: Option<String>,
+	input: Option<u64>,
+	output: Option<u64>,
+	calls: Option<u64>,
+	tokens: Vec<(&'static str, String)>,
+	activity: Vec<(&'static str, String)>,
+}
+impl MetricsDetails {
+	fn new(metrics: &ResponseMetrics) -> Self {
+		Self {
+			key: metrics.key.clone(),
+			duration: metrics.duration_ms.map(duration_label),
+			input: metrics.usage.as_ref().map(|usage| usage.input_tokens),
+			output: metrics.usage.as_ref().map(|usage| usage.output_tokens),
+			calls: metrics
+				.usage
+				.as_ref()
+				.and_then(|usage| usage.details.as_ref())
+				.and_then(|details| details.responses)
+				.filter(|count| *count > 0),
+			tokens: metrics.usage.as_ref().map(usage_rows).unwrap_or_default(),
+			activity: metrics.timing.as_ref().map(timing_rows).unwrap_or_default(),
+		}
+	}
+}
+#[derive(Default)]
+struct MetricsPopover {
+	open: bool,
+	pinned: bool,
+	trigger_hovered: bool,
+	panel_hovered: bool,
+	pending: Option<Task<()>>,
+	anchor: Bounds<Pixels>,
+}
+impl MetricsPopover {
+	fn set_open(&mut self, open: bool, pinned: bool, cx: &mut Context<Self>) {
+		self.pending.take();
+		self.open = open;
+		self.pinned = pinned;
+		cx.notify();
+	}
+
+	fn hover(&mut self, target: HoverTarget, inside: bool, cx: &mut Context<Self>) {
+		match target {
+			HoverTarget::Trigger => self.trigger_hovered = inside,
+			HoverTarget::Panel => self.panel_hovered = inside,
+		}
+		let inside = self.trigger_hovered || self.panel_hovered;
+		self.pending.take();
+		if self.pinned || inside == self.open {
+			return;
+		}
+		let delay = Duration::from_millis(if inside { 180 } else { 100 });
+		self.pending = Some(cx.spawn(async move |popover, cx| {
+			cx.background_executor().timer(delay).await;
+			let _ = popover.update(cx, |state, cx| state.set_open(inside, false, cx));
+		}));
+	}
+}
+
+enum HoverTarget {
+	Trigger,
+	Panel,
 }
 
 pub(super) fn footer(
 	entry: &AgentHistoryEntryDto,
 	identity: &str,
 	metrics: Option<AnyElement>,
+	action: Option<AnyElement>,
 ) -> AnyElement {
 	let text = markdown::response_text(&entry.text);
 	let text = if entry.weather.is_empty() {
@@ -188,36 +283,86 @@ pub(super) fn footer(
 				text,
 			))
 		})
+		.children(action)
 		.into_any_element()
 }
 
 fn row(label: &'static str, value: impl Into<SharedString>) -> Div {
 	gpui::div()
+		.h(gpui::px(20.))
 		.flex()
 		.items_center()
 		.justify_between()
-		.gap(gpui::px(16.))
-		.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(label))
-		.child(gpui::div().text_color(ui_theme::rgb(TEXT)).child(value.into()))
+		.gap(gpui::px(12.))
+		.whitespace_nowrap()
+		.child(gpui::div().text_color(ui_theme::rgb(ui_theme::foreground::BODY)).child(label))
+		.child(
+			gpui::div()
+				.debug_selector(move || format!("turn-metric-value-{label}"))
+				.flex_none()
+				.font_features(ui_theme::tabular_figures())
+				.text_color(ui_theme::rgb(TEXT))
+				.child(value.into()),
+		)
 }
 
-fn usage_row(label: &'static str, input: Option<u64>, output: Option<u64>) -> Div {
+fn exact_tokens(value: u64) -> String {
+	let digits = value.to_string();
+	let mut label = String::with_capacity(digits.len() + digits.len() / 3 + 4);
+	for (index, digit) in digits.chars().enumerate() {
+		if index > 0 && (digits.len() - index).is_multiple_of(3) {
+			label.push(',');
+		}
+		label.push(digit);
+	}
+	label.push_str(" tok");
+	label
+}
+
+fn details_section(title: &'static str, rows: &[(&'static str, String)]) -> Div {
 	gpui::div()
 		.flex()
-		.items_center()
-		.h(gpui::px(22.))
-		.child(gpui::div().flex_1().text_color(ui_theme::rgb(TEXT_MUTED)).child(label))
-		.children([input, output].into_iter().map(|value| {
-			gpui::div().w(gpui::px(58.)).text_right().child(
-				value
-					.map(crate::shell::agent_surface::compact_tokens)
-					.unwrap_or_else(|| "—".into()),
-			)
-		}))
+		.flex_col()
+		.gap(gpui::px(4.))
+		.child(
+			gpui::div()
+				.text_size(gpui::px(11.))
+				.line_height(gpui::px(14.))
+				.text_color(ui_theme::rgb(TEXT_MUTED))
+				.child(title),
+		)
+		.child(gpui::div().flex().flex_col().children(rows.iter().map(|(k, v)| row(k, v.clone()))))
 }
 
-fn number(label: &'static str, value: Option<u64>) -> Option<Div> {
-	value.map(|value| row(label, agent_surface::compact_tokens(value)))
+fn usage_rows(usage: &AgentTurnUsageDto) -> Vec<(&'static str, String)> {
+	let Some(details) = usage.details.as_ref() else { return Vec::new() };
+	let tokens = |value| format!("{} tok", agent_surface::compact_tokens(value));
+	let part = |value, total: Option<u64>| {
+		let value_label = tokens(value);
+		match total.filter(|total| *total > 0) {
+			Some(total) => format!("{value_label} · {:.0}%", value as f64 / total as f64 * 100.),
+			None => value_label,
+		}
+	};
+	[
+		(
+			"Cached input",
+			details
+				.cached_input
+				.filter(|value| *value > 0)
+				.map(|value| part(value, details.last_input)),
+		),
+		(
+			"Reasoning output",
+			details
+				.reasoning_output
+				.filter(|value| *value > 0)
+				.map(|value| part(value, details.last_output)),
+		),
+	]
+	.into_iter()
+	.filter_map(|(label, value)| value.map(|value| (label, value)))
+	.collect()
 }
 
 fn duration_label(ms: u64) -> String {
@@ -230,21 +375,21 @@ fn duration_label(ms: u64) -> String {
 	}
 }
 
-fn timing_rows(timing: &AgentTurnTimingDto) -> [(&'static str, String); 8] {
+fn timing_rows(timing: &AgentTurnTimingDto) -> Vec<(&'static str, String)> {
 	[
-		("Full model inference", None),
-		("Model output", timing.model_output_ms),
-		("Context compaction", timing.compaction_ms),
-		("Tool activity", timing.tool_activity_ms),
-		("Automatic review", timing.auto_review_ms),
-		("User requests", timing.user_request_ms),
-		("Runtime overhead", None),
-		("Other / unobserved", None),
+		("Output activity", timing.model_output_ms),
+		("Tools", timing.tool_activity_ms),
+		("Compaction", timing.compaction_ms),
+		("Review", timing.auto_review_ms),
+		("Waiting for you", timing.user_request_ms),
 	]
-	.map(|(label, value)| {
-		let value = value.map(|ms| if ms < 1_000 { format!("{ms}ms") } else { duration_label(ms) });
-		(label, value.unwrap_or_else(|| "Unknown".into()))
+	.into_iter()
+	.filter_map(|(label, value)| {
+		value
+			.filter(|ms| *ms > 0)
+			.map(|ms| (label, if ms < 1_000 { format!("{ms}ms") } else { duration_label(ms) }))
 	})
+	.collect()
 }
 
 fn duration_icon() -> impl IntoElement {
@@ -255,128 +400,119 @@ fn duration_icon() -> impl IntoElement {
 		.flex_none()
 }
 
-fn details_panel(
-	key: &str,
-	duration: Option<String>,
-	usage: Option<&AgentTurnUsageDto>,
-	timing: Option<&AgentTurnTimingDto>,
-) -> AnyElement {
-	// Window snapping can place this panel over its hover target. Occluding the
-	// target makes the panel open and close repeatedly; clicks still stop here.
-	let mut panel = gpui::div()
-		.id(SharedString::from(format!("response-detail-panel-{}", key)))
+fn details_panel(details: &MetricsDetails) -> Stateful<Div> {
+	// Render one surface for both hover previews and immediate click inspection.
+	gpui::div()
+		.id(SharedString::from(format!("response-detail-panel-{}", details.key)))
 		.debug_selector(|| "native-turn-usage".into())
+		.role(Role::Group)
+		.aria_label("Turn metrics details")
 		.cursor_default()
+		.occlude()
 		.on_click(|_, _, cx| cx.stop_propagation())
-		.w(gpui::px(272.))
+		.w_full()
 		.whitespace_normal()
-		.p(gpui::px(14.))
-		.rounded(gpui::px(12.))
-		.bg(ui_theme::rgb(0x29292d))
+		.p(gpui::px(12.))
+		.text_color(ui_theme::rgb(TEXT))
 		.text_size(gpui::px(12.))
-		.line_height(gpui::px(15.))
+		.line_height(gpui::px(18.))
 		.flex()
 		.flex_col()
-		.gap(gpui::px(2.))
-		.shadow(vec![BoxShadow {
-			inset: false,
-			color: ui_theme::rgba(0x00000024).into(),
-			offset: gpui::point(gpui::px(0.), gpui::px(4.)),
-			blur_radius: gpui::px(12.),
-			spread_radius: gpui::px(-3.),
-		}]);
-
-	panel =
-		panel.child(
+		.gap(gpui::px(10.))
+		.child(
 			gpui::div()
 				.flex()
-				.justify_between()
-				.mb(gpui::px(8.))
-				.child(
-					gpui::div()
-						.text_size(gpui::px(13.))
-						.font_weight(FontWeight::MEDIUM)
-						.child("Turn details"),
-				)
-				.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child(
-					duration.unwrap_or_else(|| {
-						if timing.is_some() { "—".into() } else { String::new() }
-					}),
-				)),
-		);
-
-	if let Some(usage) = usage {
-		panel = panel
-			.child(
-				gpui::div()
-					.flex()
-					.justify_end()
-					.text_color(ui_theme::rgb(TEXT_MUTED))
-					.child(gpui::div().w(gpui::px(58.)).text_right().child("Input"))
-					.child(gpui::div().w(gpui::px(58.)).text_right().child("Output")),
+				.flex_col()
+				.child(row("Time", details.duration.clone().unwrap_or_else(|| "—".into())))
+				.child(row("Input", details.input.map(exact_tokens).unwrap_or_else(|| "—".into())))
+				.child(row(
+					"Output",
+					details.output.map(exact_tokens).unwrap_or_else(|| "—".into()),
+				))
+				.children(details.calls.map(|count| row("Model calls", count.to_string()))),
+		)
+		.when(!details.tokens.is_empty(), |panel| {
+			panel.child(details_section("Last model call", &details.tokens))
+		})
+		.when(!details.activity.is_empty(), |panel| {
+			panel.child(
+				details_section("Activity · may overlap", &details.activity)
+					.debug_selector(|| "observed-timing-details".into()),
 			)
-			.child(usage_row("This turn", Some(usage.input_tokens), Some(usage.output_tokens)));
-
-		if let Some(details) = &usage.details {
-			if details.last_input.is_some() || details.last_output.is_some() {
-				panel = panel.child(usage_row(
-					"Last response",
-					details.last_input,
-					details.last_output,
-				));
-			}
-			if details.cached_input.is_some() {
-				panel = panel.child(usage_row("  Cached", details.cached_input, None));
-			}
-			if details.reasoning_output.is_some() {
-				panel = panel.child(usage_row("  Reasoning", None, details.reasoning_output));
-			}
-
-			panel = panel
-				.child(gpui::div().h(gpui::px(6.)))
-				.children(number("Model responses", details.responses))
-				.children(number("Conversation total", details.thread_total))
-				.children(number("Context capacity", details.context_capacity));
-		}
-	}
-	if let Some(timing) = timing {
-		let mut details = gpui::div()
-			.debug_selector(|| "observed-timing-details".into())
-			.flex()
-			.flex_col()
-			.gap(gpui::px(2.))
-			.child(gpui::div().text_color(ui_theme::rgb(TEXT_MUTED)).child("Observed activity"));
-		for (label, value) in timing_rows(timing) {
-			details = details.child(row(label, value));
-		}
-		details = details.child(
-			gpui::div().mt(gpui::px(4.)).text_color(ui_theme::rgb(TEXT_MUTED))
-				.child("Output is observed activity, not full inference. Intervals can overlap; missing durations are unknown."),
-		);
-		panel = panel.child(gpui::div().h(gpui::px(6.))).child(details);
-	}
-
-	panel.into_any_element()
+		})
 }
 
 #[cfg(test)]
 mod tests {
-	use super::{AgentTurnTimingDto, timing_rows};
+	use super::{AgentTurnTimingDto, AgentTurnUsageDto, timing_rows, usage_rows};
+	use gpui::AppContext as _;
+
+	#[gpui::test]
+	fn entering_details_keeps_the_preview_open_in_either_hover_callback_order(
+		cx: &mut gpui::TestAppContext,
+	) {
+		for panel_first in [true, false] {
+			let popover = cx.new(|_| super::MetricsPopover::default());
+			popover.update(cx, |state, cx| {
+				state.set_open(true, false, cx);
+				state.hover(super::HoverTarget::Trigger, true, cx);
+				if panel_first {
+					state.hover(super::HoverTarget::Panel, true, cx);
+					state.hover(super::HoverTarget::Trigger, false, cx);
+				} else {
+					state.hover(super::HoverTarget::Trigger, false, cx);
+					state.hover(super::HoverTarget::Panel, true, cx);
+				}
+			});
+			cx.run_until_parked();
+			cx.executor().advance_clock(std::time::Duration::from_millis(300));
+			cx.run_until_parked();
+			popover.read_with(cx, |state, _| assert!(state.open));
+		}
+	}
 
 	#[test]
-	fn observed_timing_rows_distinguish_unknown_from_a_measured_zero() {
+	fn details_omit_unobserved_and_zero_duration_activity() {
 		let rows = timing_rows(&AgentTurnTimingDto {
 			model_output_ms: Some(1_500),
 			tool_activity_ms: Some(0),
 			auto_review_ms: Some(42),
 			..Default::default()
 		});
-		assert_eq!(rows[0], ("Full model inference", "Unknown".into()));
-		assert_eq!(rows[1], ("Model output", "1.5s".into()));
-		assert_eq!(rows[2], ("Context compaction", "Unknown".into()));
-		assert_eq!(rows[3], ("Tool activity", "0ms".into()));
-		assert_eq!(rows[4], ("Automatic review", "42ms".into()));
-		assert_eq!(rows[6], ("Runtime overhead", "Unknown".into()));
-		assert_eq!(rows[7], ("Other / unobserved", "Unknown".into()));
+		assert_eq!(rows, vec![("Output activity", "1.5s".into()), ("Review", "42ms".into())]);
+		assert!(timing_rows(&Default::default()).is_empty());
+	}
+
+	#[test]
+	fn cache_and_reasoning_shares_use_the_last_call_instead_of_the_turn_total() {
+		let mut usage = AgentTurnUsageDto {
+			input_tokens: 800,
+			output_tokens: 400,
+			details: Some(decodex_protocol::AgentUsageDetailsDto {
+				last_input: Some(100),
+				cached_input: Some(80),
+				last_output: Some(40),
+				reasoning_output: Some(10),
+				thread_total: Some(99_000),
+				context_capacity: Some(1_000_000),
+				..Default::default()
+			}),
+		};
+		assert_eq!(
+			usage_rows(&usage),
+			vec![
+				("Cached input", "80 tok · 80%".into()),
+				("Reasoning output", "10 tok · 25%".into()),
+			]
+		);
+		usage.input_tokens = 100;
+		usage.output_tokens = 40;
+		let details = usage.details.as_mut().unwrap();
+		details.cached_input = Some(0);
+		details.reasoning_output = Some(0);
+		assert!(
+			usage_rows(&usage).is_empty(),
+			"thread totals and context limits do not describe one turn"
+		);
 	}
 }

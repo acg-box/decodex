@@ -13,14 +13,14 @@ use crate::{
 	ui_theme::{self, ACCENT, foreground::SECONDARY},
 };
 
-type PointerAction<E> = Rc<dyn Fn(&E, &mut Window, &mut App)>;
+pub(super) type PointerAction<E> = Rc<dyn Fn(&E, &mut Window, &mut App)>;
 
 // Geometry stays in world space. Text stops shrinking before it becomes illegible.
 // At 100%, graph type uses the same sizes as the native shell.
 // A compact three-row HUD stays centered under the portrait, with readable
 // counters at the full-detail threshold and the one-times display font floor.
 // At 100%, a 256-point reading column leaves two complete agents within a
-// normal Graph pane. Keep the portrait, native type and numeric floors intact.
+// normal Graph pane. Geometry follows the camera; only type has a readable floor.
 pub(super) const WIDTH: f32 = 368.;
 pub(super) const INSET_X: f32 = 10.;
 pub(super) const INSET_Y: f32 = 8.;
@@ -200,7 +200,7 @@ impl Layout {
 	}
 
 	fn header_origin(self, actions: f32) -> (f32, f32) {
-		let portrait = self.portrait_spacing(PORTRAIT_WIDTH) / self.zoom;
+		let portrait = self.spacing(PORTRAIT_WIDTH) / self.zoom;
 		let left = (self.world_width - portrait) / 2.;
 		let top = if self.overview() {
 			(OVERVIEW_HEIGHT - self.header_height(actions) / self.zoom) / 2.
@@ -216,7 +216,7 @@ impl Layout {
 		self.labels().then(|| {
 			let (left, top) = self.header_origin(actions);
 			let top = top
-				+ (self.portrait_spacing(PORTRAIT_HEIGHT)
+				+ (self.spacing(PORTRAIT_HEIGHT)
 					+ if self.overview() { 0. } else { self.gap() + self.metrics_height() }
 					+ self.metadata_gap())
 					/ self.zoom;
@@ -232,7 +232,7 @@ impl Layout {
 				[
 					left,
 					top,
-					left + self.portrait_spacing(PORTRAIT_WIDTH) / self.zoom,
+					left + self.spacing(PORTRAIT_WIDTH) / self.zoom,
 					top + self.title_line() / self.zoom,
 				]
 			}
@@ -257,8 +257,8 @@ impl Layout {
 	/// During the point morph the same attachment contracts into the visible dot.
 	pub(super) fn character_bounds(self, actions: f32) -> [f32; 4] {
 		let z = self.zoom;
-		let portrait = self.portrait_spacing(PORTRAIT_WIDTH) / z;
-		let height = (self.portrait_spacing(PORTRAIT_HEIGHT)
+		let portrait = self.spacing(PORTRAIT_WIDTH) / z;
+		let height = (self.spacing(PORTRAIT_HEIGHT)
 			+ if self.overview() { 0. } else { self.gap() + self.metrics_height() }
 			+ self.metadata_height())
 			/ z;
@@ -319,15 +319,6 @@ impl Layout {
 		self.pixel(points * self.zoom)
 	}
 
-	/// Balance the figure with readable counters without enlarging its 100% size.
-	/// The floor grows gradually before the HUD appears, preserving the point morph.
-	pub(super) fn portrait_spacing(self, points: f32) -> f32 {
-		let presence = ((self.zoom - LABEL_ZOOM) / (SUMMARY_ZOOM - LABEL_ZOOM)).clamp(0., 1.);
-		let width = self.pixel((PORTRAIT_WIDTH * self.zoom).max(56. * presence));
-
-		self.pixel(points * width / PORTRAIT_WIDTH)
-	}
-
 	pub(super) fn gap(self) -> f32 {
 		self.pixel(0.5).max(0.5)
 	}
@@ -338,7 +329,7 @@ impl Layout {
 	}
 
 	pub(super) fn header_height(self, actions: f32) -> f32 {
-		let portrait = self.portrait_spacing(PORTRAIT_HEIGHT)
+		let portrait = self.spacing(PORTRAIT_HEIGHT)
 			+ if self.overview() { 0. } else { self.gap() + self.metrics_height() };
 		let details = if self.activity_visible() { actions * self.activity_line() } else { 0. };
 
@@ -379,7 +370,7 @@ impl Interaction {
 		Self::keyboard_action(view, &self.click)
 	}
 
-	fn keyboard_action(
+	pub(super) fn keyboard_action(
 		view: Stateful<Div>,
 		action: &PointerAction<gpui::ClickEvent>,
 	) -> Stateful<Div> {

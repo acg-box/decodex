@@ -2352,13 +2352,30 @@ impl AgentClient {
 		}
 	}
 
-	/// Read one complete bounded Agent projection without changing work or runtime state.
+	/// Read the active graph without changing native execution.
 	pub async fn query(&self) -> Result<AgentSnapshotResult, ClientFailure> {
+		self.query_snapshot(false).await
+	}
+
+	/// Read retained archived agents only when the archive browser needs them.
+	pub async fn archive_catalog(&self) -> Result<AgentSnapshotResult, ClientFailure> {
+		self.query_snapshot(true).await
+	}
+
+	/// Read one complete bounded Agent projection without changing work or runtime state.
+	async fn query_snapshot(&self, archived: bool) -> Result<AgentSnapshotResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 
 		let completed = time::timeout(
 			CLIENT_TIMEOUT,
-			self.transport.query_inner("decodex-agent-snapshot", QueryPayload::GetAgentSnapshot),
+			self.transport.query_inner(
+				"decodex-agent-snapshot",
+				if archived {
+					QueryPayload::GetAgentArchiveCatalog
+				} else {
+					QueryPayload::GetAgentSnapshot
+				},
+			),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;

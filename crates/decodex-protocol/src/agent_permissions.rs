@@ -68,6 +68,9 @@ pub enum AgentPermissionState {
 	},
 	/// Installed native service does not support profile discovery.
 	Unsupported,
+	/// This conversation is not attached to the current native process.
+	/// Inspecting permissions must not resume its queued work or active Goal.
+	NotConnected,
 	/// Current exact-source facts cannot be established.
 	Unavailable,
 }

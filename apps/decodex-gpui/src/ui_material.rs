@@ -1,4 +1,4 @@
-//! Independent material preferences for windows and the input bar.
+//! Independent window, input-bar and popover appearance preferences.
 use std::{
 	env,
 	sync::atomic::{AtomicU8, Ordering},
@@ -8,8 +8,9 @@ use gpui::App;
 
 use crate::{ui_preferences, ui_theme::window_material};
 
-static MATERIALS: [AtomicU8; 2] = [AtomicU8::new(u8::MAX), AtomicU8::new(u8::MAX)];
-static GLASS_STYLE: AtomicU8 = AtomicU8::new(u8::MAX);
+static MATERIALS: [AtomicU8; 3] =
+	[AtomicU8::new(u8::MAX), AtomicU8::new(u8::MAX), AtomicU8::new(u8::MAX)];
+static GLASS_STYLES: [AtomicU8; 2] = [AtomicU8::new(u8::MAX), AtomicU8::new(u8::MAX)];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
@@ -46,12 +47,14 @@ impl Material {
 pub(crate) enum Surface {
 	Window,
 	InputBar,
+	Popover,
 }
 impl Surface {
 	pub(crate) const fn label(self) -> &'static str {
 		match self {
 			Self::Window => "Window material",
 			Self::InputBar => "Input bar material",
+			Self::Popover => "Overlay material",
 		}
 	}
 
@@ -59,6 +62,7 @@ impl Surface {
 		match self {
 			Self::Window => "windowMaterial",
 			Self::InputBar => "inputBarMaterial",
+			Self::Popover => "popoverMaterial",
 		}
 	}
 
@@ -70,6 +74,10 @@ impl Surface {
 		}
 
 		let saved = ui_preferences::string(self.key(), None);
+		// Follow the window until the user chooses a separate popover material.
+		if self == Self::Popover && saved.is_none() {
+			return Self::Window.material();
+		}
 		let material = initial_material(saved.as_deref());
 
 		MATERIALS[self as usize].store(material as u8, Ordering::Relaxed);
@@ -92,25 +100,55 @@ pub(crate) enum GlassStyle {
 	Regular,
 	Clear,
 }
-impl GlassStyle {
-	pub(crate) fn configured() -> Self {
-		if GLASS_STYLE.load(Ordering::Relaxed) == u8::MAX
-			&& let Ok(value) = env::var("DECODEX_GLASS_STYLE")
-		{
-			GLASS_STYLE.store(u8::from(value == "clear"), Ordering::Relaxed);
-		}
-		if ui_preferences::boolean("DecodexGlassClear", &GLASS_STYLE, None, false) {
-			Self::Clear
-		} else {
-			Self::Regular
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(usize)]
+pub(crate) enum GlassScope {
+	Window,
+	Popover,
+}
+impl GlassScope {
+	pub(crate) const fn id(self) -> &'static str {
+		match self {
+			Self::Window => "window-glass",
+			Self::Popover => "popover-glass",
 		}
 	}
 
-	pub(crate) fn select(self, cx: &mut App) {
+	pub(crate) const fn label(self) -> &'static str {
+		match self {
+			Self::Window => "Window glass style",
+			Self::Popover => "Overlay glass style",
+		}
+	}
+
+	fn key(self) -> &'static str {
+		match self {
+			Self::Window => "DecodexGlassClear",
+			Self::Popover => "DecodexPopoverGlassClear",
+		}
+	}
+
+	pub(crate) fn configured(self) -> GlassStyle {
+		let cache = &GLASS_STYLES[self as usize];
+
+		if self == Self::Window
+			&& cache.load(Ordering::Relaxed) == u8::MAX
+			&& let Ok(value) = env::var("DECODEX_GLASS_STYLE")
+		{
+			cache.store(u8::from(value == "clear"), Ordering::Relaxed);
+		}
+		if ui_preferences::boolean(self.key(), cache, None, false) {
+			GlassStyle::Clear
+		} else {
+			GlassStyle::Regular
+		}
+	}
+
+	pub(crate) fn select(self, style: GlassStyle, cx: &mut App) {
 		ui_preferences::boolean(
-			"DecodexGlassClear",
-			&GLASS_STYLE,
-			Some(self == Self::Clear),
+			self.key(),
+			&GLASS_STYLES[self as usize],
+			Some(style == GlassStyle::Clear),
 			false,
 		);
 
@@ -138,7 +176,7 @@ fn refresh(surface: Surface, cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
-	use crate::ui_theme::material::{Material, Surface};
+	use crate::ui_theme::material::{GlassScope, GlassStyle, Material, Surface};
 
 	#[test]
 	fn material_names_round_trip_and_match_the_native_panel() {
@@ -154,8 +192,10 @@ mod tests {
 		cx.update(|cx| {
 			Surface::Window.select(Material::Thin, cx);
 			Surface::InputBar.select(Material::LiquidGlass, cx);
+			Surface::Popover.select(Material::LiquidGlass, cx);
 
 			assert_eq!(Surface::Window.material(), Material::Thin);
+			assert_eq!(Surface::Popover.material(), Material::LiquidGlass);
 
 			Surface::InputBar.select(Material::Thin, cx);
 
@@ -164,8 +204,32 @@ mod tests {
 			Surface::Window.select(Material::LiquidGlass, cx);
 
 			assert_eq!(Surface::InputBar.material(), Material::Thin);
+			Surface::Popover.select(Material::Thin, cx);
+			assert_eq!(Surface::Window.material(), Material::LiquidGlass);
 
 			Surface::InputBar.select(Material::LiquidGlass, cx);
+		});
+	}
+
+	#[gpui::test]
+	fn window_and_popover_styles_do_not_change_each_other_or_the_input(
+		cx: &mut gpui::TestAppContext,
+	) {
+		cx.update(|cx| {
+			Surface::Window.select(Material::Thin, cx);
+			Surface::InputBar.select(Material::Thin, cx);
+			Surface::Popover.select(Material::LiquidGlass, cx);
+			GlassScope::Window.select(GlassStyle::Regular, cx);
+			GlassScope::Popover.select(GlassStyle::Clear, cx);
+			assert_eq!(GlassScope::Window.configured(), GlassStyle::Regular);
+			assert_eq!(GlassScope::Popover.configured(), GlassStyle::Clear);
+			GlassScope::Window.select(GlassStyle::Clear, cx);
+			GlassScope::Popover.select(GlassStyle::Regular, cx);
+			assert_eq!(GlassScope::Window.configured(), GlassStyle::Clear);
+			assert_eq!(GlassScope::Popover.configured(), GlassStyle::Regular);
+			assert_eq!(Surface::Window.material(), Material::Thin);
+			assert_eq!(Surface::InputBar.material(), Material::Thin);
+			assert_eq!(Surface::Popover.material(), Material::LiquidGlass);
 		});
 	}
 }

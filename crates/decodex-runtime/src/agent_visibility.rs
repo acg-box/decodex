@@ -20,10 +20,39 @@ pub(crate) struct ArchiveVisibility {
 	refreshing: bool,
 	threads: HashSet<String>,
 	initial_pending: Option<HashSet<String>>,
+	observation: u64,
 }
 impl ArchiveVisibility {
+	pub fn confirm_active(&mut self, thread: &str) {
+		self.observation = self.observation.wrapping_add(1);
+		self.refreshing = false;
+		self.checked_at = None;
+		self.archived.remove(thread);
+		self.retired.remove(thread);
+		if let Some(pending) = &mut self.initial_pending {
+			pending.remove(thread);
+		}
+	}
+
 	pub fn ready_for(&self, generation: &str) -> bool {
 		self.generation.as_deref() == Some(generation) && self.initial_pending.is_none()
+	}
+
+	pub fn project_view(&self, snapshot: &mut AgentSnapshotDto, archived: bool) {
+		if !archived {
+			self.project(snapshot);
+			return;
+		}
+		snapshot.connection_initializing |=
+			self.generation.is_none() || self.initial_pending.is_some();
+		snapshot.archived_work_ids = snapshot
+			.work_items
+			.iter()
+			.filter(|work| {
+				work.codex_thread_id.as_ref().is_some_and(|id| self.archived.contains(id))
+			})
+			.map(|work| work.id.clone())
+			.collect();
 	}
 
 	pub fn project(&self, snapshot: &mut AgentSnapshotDto) {
@@ -45,6 +74,8 @@ impl ArchiveVisibility {
 		if !state.refresh_due(generation, &threads, Instant::now()) {
 			return;
 		}
+		state.observation = state.observation.wrapping_add(1);
+		let observation = state.observation;
 
 		let cache = cache.clone();
 		let generation = generation.to_owned();
@@ -54,7 +85,10 @@ impl ArchiveVisibility {
 		tokio::spawn(async move {
 			let observed = client.observe_thread_archives(&threads).await;
 
-			cache.lock().await.apply(&generation, observed);
+			let mut cache = cache.lock().await;
+			if cache.observation == observation {
+				cache.apply(&generation, observed);
+			}
 		});
 	}
 
@@ -301,6 +335,33 @@ mod tests {
 		agent_visibility::retain_active(&mut restored, &HashSet::new());
 
 		assert_eq!(restored, original, "unarchive restores the original hierarchy");
+	}
+
+	#[test]
+	fn archive_catalog_retains_hidden_nodes_and_original_relationships() {
+		let original = snapshot();
+		let mut catalog = original.clone();
+		let mut cache = ArchiveVisibility {
+			generation: Some("native".into()),
+			archived: HashSet::from(["thread-old".into()]),
+			..Default::default()
+		};
+		cache.project_view(&mut catalog, true);
+		assert_eq!(catalog.work_items, original.work_items);
+		assert_eq!(catalog.projects, original.projects);
+		assert_eq!(catalog.dependencies, original.dependencies);
+		assert_eq!(catalog.archived_work_ids, std::collections::BTreeSet::from(["old".into()]));
+		assert!(catalog.is_valid());
+
+		let previous = cache.observation;
+		cache.confirm_active("thread-old");
+		assert_ne!(
+			cache.observation, previous,
+			"ignore an archive observation started before restoration"
+		);
+		let mut restored = original.clone();
+		cache.project(&mut restored);
+		assert_eq!(restored, original);
 	}
 
 	#[test]

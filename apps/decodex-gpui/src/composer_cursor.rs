@@ -244,13 +244,13 @@ impl ComposerInput {
 			self.cursor.timer = Some(cx.spawn_in(window, async |input, cx| {
 				cx.background_executor().timer(Duration::from_millis(530)).await;
 
-				let _ = input.update_in(cx, |s, window, _| {
+				let _ = input.update_in(cx, |s, _, cx| {
 					s.cursor.timer = None;
 					s.cursor.visible = !s.cursor.visible;
 					s.cursor.fade_at = Some(Instant::now());
 
 					// A blink changes pixels, not the draft or its observers.
-					window.refresh();
+					s.presentation.update(cx, |_, cx| cx.notify());
 				});
 			}));
 		}
@@ -364,11 +364,17 @@ mod tests {
 		visual.run_until_parked();
 
 		let notifications = Rc::new(Cell::new(0));
+		let redraws = Rc::new(Cell::new(0));
 
 		visual.update(|window, cx| {
 			let notifications = notifications.clone();
+			let redraws = redraws.clone();
 
 			cx.observe(&input, move |_, _| notifications.set(notifications.get() + 1)).detach();
+			cx.observe(&input.read(cx).presentation.clone(), move |_, _| {
+				redraws.set(redraws.get() + 1);
+			})
+			.detach();
 			window.draw(cx).clear(cx);
 		});
 
@@ -379,6 +385,13 @@ mod tests {
 
 		assert!(!input.read_with(visual, |input, _| input.cursor.visible));
 		assert_eq!(notifications.get(), 0, "idle blinking must not trigger draft observers");
+		assert!(redraws.get() > 0, "the cached presentation must redraw without mouse input");
+		visual.update(crate::ui_frame::draw_frame);
+		visual.run_until_parked();
+		visual.executor().advance_clock(Duration::from_millis(530));
+		visual.run_until_parked();
+		assert!(input.read_with(visual, |input, _| input.cursor.visible));
+		assert_eq!(notifications.get(), 0);
 
 		input.update(visual, |input, cx| input.move_to(0, cx));
 		visual.run_until_parked();

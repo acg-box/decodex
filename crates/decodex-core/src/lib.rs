@@ -8,11 +8,11 @@ mod account_alias;
 mod blob;
 mod cache;
 mod client_drafts;
+mod codex_config;
 mod config;
 mod continuation;
 mod conversation;
 mod execution;
-mod fast_mode;
 mod identity;
 #[cfg(unix)] mod path_unix;
 mod paths;
@@ -99,7 +99,10 @@ pub use account_alias::account_alias_candidate;
 pub use client_drafts::{
 	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES,
 };
-pub use fast_mode::{FastModeFailure, global_fast_mode_enabled, set_global_fast_mode_enabled};
+pub use codex_config::{
+	CodexConfigError, codex_default_service_tier, global_fast_mode_enabled,
+	set_codex_default_service_tier, set_global_fast_mode_enabled,
+};
 pub use permissions::PermissionMode;
 pub use service_tier::{InvalidServiceTier, ServiceTier};
 

@@ -112,7 +112,7 @@ struct AccountUtilityActionsView: View {
 			isActive: false, isDisabled: lifecycleActionIsDisabled,
 			isVisuallyDisabled: !store.canPerformDirectAccountControl,
 			usesDisabledEnvironment: !store.canPerformDirectAccountControl,
-			isBusy: false, help: "Sign out"
+			isBusy: false, help: isLogoutArmed ? "" : "Sign out"
 		) { isLogoutArmed = true }
 		.popover(isPresented: $isLogoutArmed, arrowEdge: .trailing) { logoutConfirmation }
 		.onChange(of: state.account.accountRevision) { isLogoutArmed = false }

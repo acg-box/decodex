@@ -274,7 +274,8 @@ impl AgentSurface {
 impl AgentSurface {
 	pub(super) fn render_global_guardian(&self, cx: &mut Context<Self>) -> AnyElement {
 		let mut panel = gpui::div()
-			.id("global-guardian-settings")
+			.id("global-guardian-history")
+			.debug_selector(|| "global-guardian-history".into())
 			.flex_1()
 			.min_h_0()
 			.overflow_y_scroll()
@@ -282,18 +283,17 @@ impl AgentSurface {
 			.flex_col()
 			.gap_3()
 			.p_4()
-			.child(gpui::div().text_lg().child("Guardian"))
-			.child(label(
-				"Review records across Agents and Projects. Change permissions in the conversation toolbar.",
-			));
+			.child(gpui::div().text_lg().child("Guardian"));
 		let Some(snapshot) = &self.snapshot else {
-			return panel.child("Connect to read global settings.").into_any_element();
+			return panel.child(label("Connect to view review history.")).into_any_element();
 		};
 
-		panel = panel.child(self.guardian_controls(cx));
-		panel = panel.child(label(
-			"Turning off Review details stops new records. Pending approvals keep their owner.",
-		));
+		if snapshot.guardian.details.is_empty() {
+			panel = panel.child(
+				label("No saved review details.")
+					.debug_selector(|| "guardian-history-empty".into()),
+			);
+		}
 
 		for details in &snapshot.guardian.details {
 			let key = format!(
@@ -448,7 +448,7 @@ impl AgentSurface {
 }
 
 impl AgentSurface {
-	fn load_work_detail(&mut self, id: String, cx: &mut Context<Self>) {
+	pub(super) fn load_work_detail(&mut self, id: String, cx: &mut Context<Self>) {
 		let Some(profile) = self.profile.clone() else { return };
 		let captured = profile.clone();
 
@@ -818,33 +818,46 @@ impl AgentSurface {
 		panel.into_any_element()
 	}
 
-	fn guardian_controls(&self, cx: &mut Context<Self>) -> AnyElement {
-		let Some(snapshot) = &self.snapshot else { return gpui::div().into_any_element() };
-		let settings = &snapshot.guardian.settings;
-		let mut panel = gpui::div().flex().flex_col().gap_2();
-
-		let (revision, enabled) = (settings.revision, settings.review_details);
-
-		panel = panel.child(mcp_forms::mcp_button(
-			"guardian-review-details".into(),
-			format!("Review details: {}", if enabled { "On" } else { "Off" }),
-			self.sending,
-			cx,
-			move |s, cx| {
-				s.execute(
-					AgentActionDto::SetReviewDetails {
-						settings_id: EntityId::new("guardian-global")
-							.expect("global settings identity"),
-						expected_revision: revision,
-						review_details: !enabled,
-					},
-					None,
-					cx,
-				);
-			},
-		));
-
-		panel.into_any_element()
+	pub(crate) fn render_guardian_settings(
+		&mut self,
+		_: &mut gpui::Window,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let settings = self.snapshot.as_ref().map(|s| &s.guardian.settings);
+		let enabled = settings.is_some_and(|settings| settings.review_details);
+		let revision = settings.map_or(0, |settings| settings.revision);
+		let interactive = settings.is_some()
+			&& self.profile.is_some()
+			&& self.command_connection_ready()
+			&& !self.sending
+			&& !self.uncertain;
+		let row = ui_theme::settings_row()
+			.child(ui_theme::settings_label(
+				"Save review details",
+				"Keep Guardian’s review explanations for later. Permissions stay unchanged.",
+			))
+			.child(
+				crate::settings_surface::settings_switch(
+					"guardian-review-details",
+					"guardian-review-details-knob",
+					"Save review details",
+					enabled,
+					interactive,
+				)
+				.on_change(cx.listener(move |s, desired: &bool, _, cx| {
+					s.execute(
+						AgentActionDto::SetReviewDetails {
+							settings_id: EntityId::new("guardian-global")
+								.expect("global settings identity"),
+							expected_revision: revision,
+							review_details: *desired,
+						},
+						None,
+						cx,
+					);
+				})),
+			);
+		ui_theme::settings_group("Guardian", vec![row.into_any_element()]).into_any_element()
 	}
 }
 

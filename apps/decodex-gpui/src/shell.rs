@@ -79,8 +79,8 @@ use crate::{
 		FONT_FAMILY, HEADING_SIZE, INFO, MOTION_PANEL, PRESSED_FILL, SELECTED_BORDER,
 		SELECTED_FILL, SELECTED_HOVER_FILL, SETTINGS_GROUP_GAP, SETTINGS_HELP_SIZE, SETTINGS_INSET,
 		SETTINGS_LABEL_SIZE, SETTINGS_TOP, SETTINGS_WIDTH, SETTINGS_WINDOW_MIN_WIDTH,
-		SHELL_MATERIAL, SURFACE_RAISED_MATERIAL, TEXT_FAINT, WORKSPACE_GUTTER, WORKSPACE_RADIUS,
-		appearance, window_material,
+		SHELL_MATERIAL, SURFACE_RAISED_MATERIAL, TEXT_FAINT, WORKSPACE_RADIUS, appearance,
+		window_material,
 	},
 };
 use account_feedback::AccountFeedback;
@@ -162,6 +162,14 @@ gpui::actions!(
 		ActivateConversationRow,
 	]
 );
+
+#[derive(Clone, Copy, Debug, PartialEq, gpui::Action)]
+#[action(namespace = decodex_shell, no_json)]
+pub(crate) enum ConversationCommand {
+	Settings,
+	UseSkill,
+	Reference,
+}
 
 // Match the gap below floating controls to their inset from the window edge.
 const WINDOW_CONTROLS_CLEARANCE: f32 = CONTROL_MARGIN * 2.0 + CONTROL_GROUP_HEIGHT;
@@ -369,7 +377,10 @@ impl Shell {
 		let account_profile = account_profile_controller.snapshot();
 		let settings_controller = desktop_settings.clone();
 		let settings = cx.new(|cx| SettingsSurface::new(settings_controller, cx));
-		settings.update(cx, |settings, cx| settings.bind_native_agent(agent.clone(), cx));
+		settings.update(cx, |settings, cx| {
+			settings.bind_native_agent(agent.clone(), cx);
+			settings.bind_agent(&agent, cx);
+		});
 		let accounts_controller = AccountsController::production();
 		let accounts = accounts_controller.snapshot();
 		let health_query = HealthQuery::production();
@@ -788,6 +799,10 @@ impl Shell {
 				.expanded_accounts
 				.extend(shell.accounts.accounts.iter().take(2).map(|a| a.account_id.clone()));
 		}
+		if destination == Destination::Health {
+			shell.diagnostics.expanded =
+				std::env::var_os("DECODEX_VISUAL_HEALTH_EXPANDED").is_some();
+		}
 		if destination == Destination::Agent {
 			shell.connection = ConnectionView::Stopped;
 			shell.agent.update(cx, |surface, cx| {
@@ -846,6 +861,8 @@ impl Shell {
 		if self.selected == destination {
 			return;
 		}
+		self.record_navigation(cx);
+
 		if self.selected == Destination::Health {
 			self.health_query.deactivate();
 		}
@@ -1594,6 +1611,7 @@ impl Shell {
 	}
 
 	fn start_new_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		self.record_navigation(cx);
 		self.conversations.begin_new();
 
 		self.deferred_provider_refresh = None;
@@ -1607,6 +1625,7 @@ impl Shell {
 		self.input_status = None;
 
 		self.synchronize_conversations(cx);
+		self.record_navigation(cx);
 		window.focus(&self.composer.focus_handle(cx), cx);
 		cx.notify();
 	}
@@ -1617,6 +1636,7 @@ impl Shell {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
+		self.record_navigation(cx);
 		if self.conversations.select(conversation_id.clone()) {
 			// The same retained connection serializes provider commands before later queries.
 			// Show daemon-owned SQLite history first, then reconcile the provider in background.
@@ -1626,6 +1646,7 @@ impl Shell {
 			self.input_status = None;
 
 			self.synchronize_conversations(cx);
+			self.record_navigation(cx);
 			window.focus(&self.composer.focus_handle(cx), cx);
 			cx.notify();
 		}
@@ -1644,6 +1665,7 @@ impl Shell {
 		};
 		let conversation_id = self.quick.tasks[next].conversation_id.clone();
 
+		self.record_navigation(cx);
 		if self.conversations.select(conversation_id.clone()) {
 			self.deferred_provider_refresh = Some(conversation_id);
 			self.creating_new = false;
@@ -1651,6 +1673,7 @@ impl Shell {
 			self.input_status = None;
 
 			self.synchronize_conversations(cx);
+			self.record_navigation(cx);
 			cx.notify();
 		}
 	}
@@ -1855,6 +1878,8 @@ impl Shell {
 			self.select_settings_section(destination, cx);
 		} else {
 			self.select_destination(destination, cx);
+			self.record_navigation(cx);
+			cx.notify();
 		}
 	}
 
@@ -1894,6 +1919,7 @@ impl Drop for Shell {
 
 impl Render for Shell {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.navigation.repair_focus(&self.root_focus, window);
 		let presentation = connection_presentation(self.connection);
 		let root = gpui::div()
 			.id("decodex-shell")
@@ -1903,6 +1929,13 @@ impl Render for Shell {
 			.text_size(gpui::px(13.0))
 			.key_context("Conversations")
 			.track_focus(&self.root_focus)
+			.capture_any_mouse_down(cx.listener(|s, event: &gpui::MouseDownEvent, window, cx| {
+				if let Some(forward) = navigation::mouse_direction(event.button) {
+					window.prevent_default();
+					s.navigate_history(forward, window, cx);
+					cx.stop_propagation();
+				}
+			}))
 			.on_action(cx.listener(Self::focus_next))
 			.on_action(cx.listener(Self::focus_previous))
 			.on_action(cx.listener(Self::activate_conversations))
@@ -1957,8 +1990,14 @@ impl Render for Shell {
 				}
 			}))
 			.on_key_down(cx.listener(Self::interrupt_reply))
-			.on_action(cx.listener(|s, _: &NavigateBack, _, cx| s.navigate_history(false, cx)))
-			.on_action(cx.listener(|s, _: &NavigateForward, _, cx| s.navigate_history(true, cx)))
+			.on_action(
+				cx.listener(|s, _: &NavigateBack, window, cx| {
+					s.navigate_history(false, window, cx)
+				}),
+			)
+			.on_action(cx.listener(|s, _: &NavigateForward, window, cx| {
+				s.navigate_history(true, window, cx)
+			}))
 			.on_action(cx.listener(Self::select_previous_conversation))
 			.on_action(cx.listener(Self::select_next_conversation))
 			.on_action(cx.listener(Self::submit_composer))
@@ -1976,9 +2015,14 @@ impl Render for Shell {
 			.text_color(ui_theme::rgb(WB_TEXT));
 
 		#[cfg(all(target_os = "macos", not(test)))]
+		let root = root.capture_any_mouse_down(cx.listener(|s, _, _, cx| {
+			s.agent.update(cx, |agent, cx| agent.dismiss_native_menu(cx));
+		}));
+
+		#[cfg(all(target_os = "macos", not(test)))]
 		self.agent.update(cx, |agent, cx| {
 			agent.prepare_native_composer(self.selected == Destination::Agent, window, cx);
-			agent.prepare_native_model_menu(window, cx);
+			agent.prepare_native_menu(window, cx);
 		});
 
 		let controls = floating_window_controls(self, &presentation, cx);
@@ -2068,6 +2112,7 @@ impl LifecycleOwner {
 pub(crate) struct SettingsWindow {
 	owner: Entity<Shell>,
 	focus: FocusHandle,
+	navigation: navigation::NavigationHistory,
 	_observation: Subscription,
 }
 impl SettingsWindow {
@@ -2076,14 +2121,19 @@ impl SettingsWindow {
 
 		window.focus(&focus, cx);
 
-		let observation = cx.observe(&owner, |_, _, cx| cx.notify());
+		let navigation = navigation::NavigationHistory::for_settings(owner.read(cx), cx);
+		let observation = cx.observe(&owner, |settings, _, cx| {
+			settings.record_navigation(cx);
+			cx.notify();
+		});
 
-		Self { owner, focus, _observation: observation }
+		Self { owner, focus, navigation, _observation: observation }
 	}
 }
 
 impl Render for SettingsWindow {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.navigation.repair_focus(&self.focus, window);
 		let content = self.owner.update(cx, |s, cx| {
 			settings_workspace_content(s, true, s.refresh_focus.clone(), window, cx)
 		});
@@ -2097,6 +2147,15 @@ impl Render for SettingsWindow {
 			.bg(ui_theme::rgba(SHELL_MATERIAL))
 			.key_context("SettingsWindow")
 			.track_focus(&self.focus)
+			.capture_any_mouse_down(cx.listener(
+				|settings, event: &gpui::MouseDownEvent, window, cx| {
+					if let Some(forward) = navigation::mouse_direction(event.button) {
+						window.prevent_default();
+						settings.navigate_history(forward, window, cx);
+						cx.stop_propagation();
+					}
+				},
+			))
 			.on_action(cx.listener(|_, _: &CloseWindow, window, cx| {
 				window.remove_window();
 				cx.stop_propagation();
@@ -2104,6 +2163,14 @@ impl Render for SettingsWindow {
 			.on_action(cx.listener(|_, _: &ActivateSettings, _, cx| cx.stop_propagation()))
 			.on_action(cx.listener(|_, _: &FocusNext, window, cx| window.focus_next(cx)))
 			.on_action(cx.listener(|_, _: &FocusPrevious, window, cx| window.focus_prev(cx)))
+			.on_action(cx.listener(|settings, _: &NavigateBack, window, cx| {
+				settings.navigate_history(false, window, cx);
+				cx.stop_propagation();
+			}))
+			.on_action(cx.listener(|settings, _: &NavigateForward, window, cx| {
+				settings.navigate_history(true, window, cx);
+				cx.stop_propagation();
+			}))
 			.relative()
 			.child(content)
 	}
@@ -2133,7 +2200,7 @@ impl Global for LifecycleOwnerGlobal {}
 struct RefreshTooltip;
 impl Render for RefreshTooltip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		tooltip_surface("Refresh health".into(), ui_theme::TEXT)
+		tooltip_surface("Run diagnostic checks".into(), ui_theme::TEXT)
 	}
 }
 
@@ -2161,7 +2228,7 @@ impl Render for StatusTooltip {
 struct HealthPresentation {
 	label: &'static str,
 	detail: &'static str,
-	color: u32,
+	tone: Tone,
 }
 
 #[derive(Clone)]
@@ -2281,6 +2348,16 @@ enum InspectorTab {
 
 /// Bind the shell's complete keyboard path once at application startup.
 pub(crate) fn bind_keys(cx: &mut App) {
+	cx.on_action(|command: &ConversationCommand, cx| {
+		let command = *command;
+		cx.defer(move |cx| {
+			if let Some(main) = cx.windows().into_iter().find_map(|w| w.downcast::<Shell>()) {
+				let _ = main.update(cx, |shell, _, cx| {
+					shell.agent.update(cx, |agent, cx| agent.conversation_command(command, cx));
+				});
+			}
+		});
+	});
 	cx.on_action(|_: &ReloadWorkspace, cx| {
 		// Global keyboard actions run while the dispatching window is borrowed.
 		cx.defer(|cx| {
@@ -2875,11 +2952,7 @@ fn floating_window_controls(
 }
 
 fn tooltip_surface(text: SharedString, color: u32) -> Div {
-	ui_motion::tooltip_surface(gpui::div())
-		.px_2()
-		.py_1()
-		.text_color(ui_theme::rgb(color))
-		.child(text)
+	ui_motion::tooltip_surface(gpui::div()).text_color(ui_theme::rgb(color)).child(text)
 }
 
 fn topbar_controls(
@@ -3072,16 +3145,16 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 		HealthLoadState::NeverRequested => HealthPresentation {
 			label: "No report yet",
 			detail: "Run a check to inspect local services.",
-			color: ui_theme::TEXT_MUTED,
+			tone: Tone::Neutral,
 		},
 		HealthLoadState::Loading => HealthPresentation {
 			label: "Checking local services…",
 			detail: if snapshot.report.is_some() {
-				"Showing previous results while checking."
+				"Previous results are in Technical details."
 			} else {
 				""
 			},
-			color: INFO,
+			tone: Tone::Info,
 		},
 		HealthLoadState::Ready => {
 			let core_statuses = HEALTH_CORE_COMPONENTS.map(|component| {
@@ -3097,14 +3170,14 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 					return HealthPresentation {
 						label: "Some features need attention",
 						detail: "Review the issue below.",
-						color: ui_theme::WARNING,
+						tone: Tone::Warning,
 					};
 				}
 
 				HealthPresentation {
 					label: "Local services are ready",
 					detail: "",
-					color: ui_theme::SUCCESS,
+					tone: Tone::Success,
 				}
 			} else if core_statuses
 				.iter()
@@ -3113,30 +3186,30 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 				HealthPresentation {
 					label: "A local service needs attention",
 					detail: "Review the issue below.",
-					color: crate::ui_theme::ERROR,
+					tone: Tone::Error,
 				}
 			} else {
 				HealthPresentation {
 					label: "Some local checks are incomplete",
 					detail: "Check again to update the report.",
-					color: crate::ui_theme::WARNING,
+					tone: Tone::Warning,
 				}
 			}
 		},
 		HealthLoadState::Offline => HealthPresentation {
 			label: "Cannot connect to local services",
 			detail: "Restart Decodex, then check again.",
-			color: ui_theme::WARNING,
+			tone: Tone::Warning,
 		},
 		HealthLoadState::Stale => HealthPresentation {
 			label: "Report needs an update",
 			detail: "Connection changed. Check again.",
-			color: ui_theme::WARNING,
+			tone: Tone::Warning,
 		},
 		HealthLoadState::Refused => HealthPresentation {
 			label: "Could not update the report",
 			detail: "Check again to retry.",
-			color: crate::ui_theme::ERROR,
+			tone: Tone::Error,
 		},
 	}
 }
@@ -3151,14 +3224,14 @@ fn component_label(component: DoctorComponent) -> &'static str {
 		DoctorComponent::ServerIdentity => "Server identity",
 		DoctorComponent::SharedCodexHome => "Shared Codex home",
 		DoctorComponent::AppServerCapability(capability) => match capability {
-			AppServerCapability::Initialize => "App server: initialize",
-			AppServerCapability::AccountRead => "App server: account read",
-			AppServerCapability::ThreadList => "App server: thread list",
-			AppServerCapability::ThreadRead => "App server: thread read",
-			AppServerCapability::ThreadArchive => "App server: thread archive",
-			AppServerCapability::PaginatedHistory => "App server: paginated history",
-			AppServerCapability::NativeCollaboration => "App server: native collaboration",
-			AppServerCapability::ThreadSearch => "App server: thread search",
+			AppServerCapability::Initialize => "Initialize",
+			AppServerCapability::AccountRead => "Account read",
+			AppServerCapability::ThreadList => "Thread list",
+			AppServerCapability::ThreadRead => "Thread read",
+			AppServerCapability::ThreadArchive => "Thread archive",
+			AppServerCapability::PaginatedHistory => "Paginated history",
+			AppServerCapability::NativeCollaboration => "Native collaboration",
+			AppServerCapability::ThreadSearch => "Thread search",
 		},
 		DoctorComponent::BlobIntegrity => "Blob integrity",
 		DoctorComponent::CredentialVault => "Credential vault",
@@ -3169,39 +3242,35 @@ fn component_label(component: DoctorComponent) -> &'static str {
 fn component_presentation(status: Option<DoctorStatus>) -> HealthPresentation {
 	match status {
 		Some(DoctorStatus::Ready) =>
-			HealthPresentation { label: "Ready", detail: "", color: crate::ui_theme::SUCCESS },
+			HealthPresentation { label: "Ready", detail: "", tone: Tone::Success },
 		Some(DoctorStatus::Unavailable(DoctorIssue::Disabled))
 		| Some(DoctorStatus::Unknown(DoctorIssue::Disabled)) => HealthPresentation {
 			label: "Disabled",
 			detail: "Optional feature disabled.",
-			color: ui_theme::TEXT_MUTED,
+			tone: Tone::Neutral,
 		},
 		Some(DoctorStatus::Unavailable(DoctorIssue::NotProbed))
 		| Some(DoctorStatus::Unknown(DoctorIssue::NotProbed)) => HealthPresentation {
 			label: "Not checked",
 			detail: "No active check performed.",
-			color: ui_theme::TEXT_MUTED,
+			tone: Tone::Neutral,
 		},
 		Some(DoctorStatus::Unknown(DoctorIssue::Plugin)) => HealthPresentation {
 			label: "Not configured",
 			detail: "No required plugins configured.",
-			color: ui_theme::TEXT_MUTED,
+			tone: Tone::Neutral,
 		},
 		Some(DoctorStatus::Unavailable(issue)) => HealthPresentation {
 			label: "Unavailable",
 			detail: doctor_issue_detail(issue),
-			color: crate::ui_theme::ERROR,
+			tone: Tone::Error,
 		},
 		Some(DoctorStatus::Unknown(issue)) => HealthPresentation {
 			label: "Not verified",
 			detail: doctor_issue_detail(issue),
-			color: crate::ui_theme::WARNING,
+			tone: Tone::Warning,
 		},
-		None => HealthPresentation {
-			label: "No report",
-			detail: "",
-			color: crate::ui_theme::TEXT_MUTED,
-		},
+		None => HealthPresentation { label: "No report", detail: "", tone: Tone::Neutral },
 	}
 }
 
@@ -3228,105 +3297,14 @@ fn doctor_issue_detail(issue: DoctorIssue) -> &'static str {
 	}
 }
 
-fn health_component_row(
-	index: usize,
-	component: DoctorComponent,
-	status: Option<DoctorStatus>,
-) -> AnyElement {
-	let label = component_label(component);
-	let presentation = component_presentation(status);
-
-	gpui::div()
-		.id(("health-component", index))
-		.role(Role::ListItem)
-		.aria_label(format!("{label}: {}", presentation.label))
-		.w_full()
-		.min_h(gpui::px(38.0))
-		.py_2()
-		.flex()
-		.items_center()
-		.justify_between()
-		.gap_4()
-		.border_b_1()
-		.border_color(ui_theme::rgba(0xffffff0a))
-		.text_size(gpui::px(SETTINGS_LABEL_SIZE))
-		.text_color(ui_theme::rgb(WB_TEXT))
-		.child(gpui::div().flex_1().min_w_0().flex().flex_col().gap_1().child(label).when(
-			!presentation.detail.is_empty()
-				&& !matches!(presentation.label, "Not checked" | "Disabled"),
-			|element| {
-				element.child(
-					gpui::div()
-						.text_size(gpui::px(SETTINGS_HELP_SIZE))
-						.text_color(ui_theme::rgb(WB_TEXT_FAINT))
-						.child(presentation.detail),
-				)
-			},
-		))
-		.child(
-			gpui::div()
-				.flex_none()
-				.justify_end()
-				.min_w(gpui::px(88.0))
-				.flex()
-				.items_center()
-				.gap_2()
-				.child(
-					gpui::div()
-						.size(gpui::px(5.0))
-						.min_w(gpui::px(5.0))
-						.rounded_full()
-						.bg(ui_theme::rgb(presentation.color)),
-				)
-				.child(presentation.label),
-		)
-		.into_any_element()
-}
-
-fn health_component_section(
-	id: &'static str,
-	title: &'static str,
-	detail: &'static str,
-	index_offset: usize,
-	components: &[DoctorComponent],
-	snapshot: &HealthSnapshot,
-) -> AnyElement {
-	let rows = components.iter().copied().enumerate().map(|(index, component)| {
-		let status = snapshot
-			.report
-			.as_ref()
-			.and_then(|report| report.check(component))
-			.map(|check| check.status);
-
-		health_component_row(index_offset + index, component, status)
-	});
-
-	gpui::div()
-		.id(id)
-		.debug_selector(move || id.into())
-		.flex()
-		.flex_col()
-		.gap_2()
-		.child(ui_theme::settings_section_title(title))
-		.when(!detail.is_empty(), |section| section.child(ui_theme::settings_description(detail)))
-		.child(
-			gpui::div()
-				.id(("health-section-list", index_offset))
-				.role(Role::List)
-				.aria_label(title)
-				.children(rows),
-		)
-		.into_any_element()
-}
-
 fn refresh_control(
 	focus: FocusHandle,
 	can_refresh: bool,
 	window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	ui_theme::settings_button_base("health-refresh", "Refresh")
-		.aria_label("Refresh health")
+	ui_theme::settings_button_base("health-refresh", "Run checks")
+		.aria_label("Run diagnostic checks")
 		.tooltip(|_, cx| cx.new(|_| RefreshTooltip).into())
 		.tab_index(if can_refresh { 0 } else { -1 })
 		.border_color(if can_refresh && focus.is_focused(window) {
@@ -3605,21 +3583,7 @@ fn account_login_feedback(shell: &Shell) -> Option<Feedback> {
 fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let snapshot = &shell.accounts;
 	let rows = account_pool_rows(shell, cx);
-	let balanced = snapshot
-		.routing
-		.as_ref()
-		.is_some_and(|routing| routing.mode == AccountSelectionModeDto::Balanced);
-	let can_manage = snapshot.can_manage;
 	let count = snapshot.accounts.len();
-	let available = snapshot
-		.accounts
-		.iter()
-		.filter(|account| {
-			account.enabled
-				&& account.observed_state == AccountObservedStateDto::Available
-				&& account.lifecycle_readiness == AccountLifecycleReadinessDto::Ready
-		})
-		.count();
 
 	gpui::div()
 		.flex_1()
@@ -3637,14 +3601,7 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.flex()
 				.flex_col()
 				.gap_4()
-				.child(account_pool_header(
-					count,
-					available,
-					balanced,
-					can_manage,
-					shell.account_emails.visible,
-					cx,
-				))
+				.child(account_pool_header(shell, cx))
 				.children(
 					account_operation_feedback(shell)
 						.filter(|_| {
@@ -3662,25 +3619,18 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				.children(account_list_feedback(snapshot).and_then(|feedback| {
 					ui_feedback::inline_feedback("account-list-feedback", "", &feedback)
 				}))
-				.child(ui_theme::settings_group(
-					"Sign-in and quota",
-					vec![
-						account_login_controls(shell, cx),
-						shell.settings.update(cx, |settings, cx| settings.quota_control(cx)),
-					],
-				))
+				.children(account_login_progress(shell))
 				.child(
 					gpui::div()
 						.flex()
 						.items_center()
-						.justify_between()
-						.child(ui_theme::settings_section_title("Connected accounts"))
+						.justify_end()
 						.child(ui_theme::settings_description("Remaining quota")),
 				)
 				.child(
 					gpui::div()
 						.id("account-list")
-						.flex_1()
+						.flex_initial()
 						.min_h_0()
 						.overflow_y_scroll()
 						.flex()
@@ -3694,6 +3644,11 @@ fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 							count > 0,
 							gpui::div().flex().flex_col().gap_2().children(rows),
 						)),
+				)
+				.child(
+					gpui::div().flex_none().child(
+						shell.settings.update(cx, |settings, cx| settings.quota_control(cx)),
+					),
 				),
 		)
 		.into_any_element()
@@ -3736,6 +3691,10 @@ fn account_mode_button(
 		.aria_toggled(if selected { Toggled::True } else { Toggled::False })
 		.tab_index(if can_manage { 0 } else { -1 })
 		.aria_label("Use balanced routing for new conversations")
+		.tooltip(|_, cx| {
+			cx.new(|_| ControlTooltip("Choose accounts automatically for new conversations."))
+				.into()
+		})
 		.h(gpui::px(28.0))
 		.px_3()
 		.flex()
@@ -3770,6 +3729,59 @@ fn account_mode_button(
 fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let busy = shell.account_login_task.is_some();
 	let can_start = shell.account_login.is_some() && !busy;
+	let copy_label =
+		if shell.account_login_status.as_ref().is_some_and(|status| status.prompt.is_some()) {
+			"Copy code"
+		} else {
+			"Copy link"
+		};
+	let mut actions = gpui::div()
+		.id("account-login-controls")
+		.debug_selector(|| "account-login-controls".into())
+		.flex()
+		.items_center()
+		.gap_2();
+
+	for (id, label, method) in [
+		("account-login-browser", "Add account", AccountLoginMethod::BrowserRedirect),
+		("account-login-device", "Device code", AccountLoginMethod::DeviceCode),
+	] {
+		actions =
+			actions.child(account_login_button(id, label, can_start).when(can_start, |button| {
+				button.on_click(cx.listener(move |shell, _, _, cx| {
+					shell.start_account_enrollment(method, cx);
+				}))
+			}));
+	}
+
+	if busy
+		&& shell
+			.account_login_status
+			.as_ref()
+			.is_some_and(|status| status.prompt.is_some() || status.authorization_url.is_some())
+	{
+		actions = actions
+			.child(
+				account_login_button("account-login-copy", copy_label, true)
+					.on_click(cx.listener(|shell, _, _, cx| shell.copy_account_login_value(cx))),
+			)
+			.child(
+				account_login_button("account-login-open", "Open sign-in page", true)
+					.on_click(cx.listener(|shell, _, _, cx| shell.open_account_login_url(cx))),
+			);
+	}
+	if busy {
+		actions = actions.child(
+			account_login_button("account-login-cancel", "Cancel", true)
+				.on_click(cx.listener(|shell, _, _, cx| shell.cancel_account_login(cx))),
+		);
+	}
+
+	actions.into_any_element()
+}
+
+fn account_login_progress(shell: &Shell) -> Option<AnyElement> {
+	let busy = shell.account_login_task.is_some();
 	let prompt = shell
 		.account_login_status
 		.as_ref()
@@ -3783,109 +3795,28 @@ fn account_login_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement 
 			!shell.accounts.accounts.iter().any(|account| &account.account_id == target)
 		})
 	});
-	let copy_label =
-		if shell.account_login_status.as_ref().is_some_and(|status| status.prompt.is_some()) {
-			"Copy code"
-		} else {
-			"Copy link"
-		};
+	if status.is_none() && prompt.is_none() {
+		return None;
+	}
 
-	ui_theme::settings_row()
-		.id("account-login-controls")
-		.flex()
-		.items_center()
-		.justify_between()
-		.gap_4()
-		.rounded(gpui::px(10.0))
-		.child(
-			gpui::div()
-				.flex_1()
-				.min_w_0()
-				.flex()
-				.flex_col()
-				.gap(gpui::px(2.0))
-				.child(
+	Some(
+		gpui::div()
+			.flex()
+			.flex_col()
+			.gap_1()
+			.children(status.as_ref().and_then(|feedback| {
+				ui_feedback::inline_feedback("account-login-feedback", "", feedback)
+			}))
+			.when_some(prompt, |details, (code, url)| {
+				details.child(account_login_prompt(code, url)).child(
 					gpui::div()
-						.font_family(FONT_FAMILY)
-						.text_size(gpui::px(SETTINGS_LABEL_SIZE))
-						.text_color(ui_theme::rgb(WB_TEXT))
-						.child("Add account"),
+						.text_size(gpui::px(10.5))
+						.text_color(ui_theme::rgb(WB_TEXT_MUTED))
+						.child("Use this code only for the sign-in you started in Decodex."),
 				)
-				.children(status.as_ref().and_then(|feedback| {
-					ui_feedback::inline_feedback("account-login-feedback", "", feedback)
-				}))
-				.when_some(prompt, |details, (code, url)| {
-					details.child(account_login_prompt(code, url)).child(
-						gpui::div()
-							.text_size(gpui::px(10.5))
-							.text_color(ui_theme::rgb(WB_TEXT_MUTED))
-							.child("Use this code only for the sign-in you started in Decodex."),
-					)
-				}),
-		)
-		.child(
-			gpui::div()
-				.flex()
-				.items_center()
-				.gap_2()
-				.child(
-					account_login_button(
-						"account-login-browser",
-						"Sign in with browser",
-						can_start,
-					)
-					.when(can_start, |button| {
-						button.on_click(cx.listener(|shell, _, _, cx| {
-							shell.start_account_enrollment(AccountLoginMethod::BrowserRedirect, cx);
-						}))
-					}),
-				)
-				.child(account_login_button("account-login-device", "Device code", can_start).when(
-					can_start,
-					|button| {
-						button.on_click(cx.listener(|shell, _, _, cx| {
-							shell.start_account_enrollment(AccountLoginMethod::DeviceCode, cx);
-						}))
-					},
-				))
-				.when(
-					busy && shell.account_login_status.as_ref().is_some_and(|status| {
-						status.prompt.is_some() || status.authorization_url.is_some()
-					}),
-					|actions| {
-						actions
-							.child(
-								account_login_button("account-login-copy", copy_label, true)
-									.debug_selector(|| "account-login-copy".to_owned())
-									.on_click(cx.listener(|shell, _, _, cx| {
-										shell.copy_account_login_value(cx);
-									})),
-							)
-							.child(
-								account_login_button(
-									"account-login-open",
-									"Open sign-in page",
-									true,
-								)
-								.on_click(cx.listener(
-									|shell, _, _, cx| {
-										shell.open_account_login_url(cx);
-									},
-								)),
-							)
-					},
-				)
-				.when(busy, |actions| {
-					actions.child(
-						account_login_button("account-login-cancel", "Cancel", true).on_click(
-							cx.listener(|shell, _, _, cx| {
-								shell.cancel_account_login(cx);
-							}),
-						),
-					)
-				}),
-		)
-		.into_any_element()
+			})
+			.into_any_element(),
+	)
 }
 
 fn account_login_prompt(code: String, url: String) -> AnyElement {
@@ -5888,6 +5819,7 @@ fn settings_navigation(
 		navigation = navigation.child(
 			gpui::div()
 				.id(SharedString::from(format!("settings-section-{label}")))
+				.debug_selector(move || format!("settings-section-{label}"))
 				.role(Role::Tab)
 				.aria_label(label)
 				.aria_selected(active)
@@ -5963,7 +5895,6 @@ fn settings_navigation_surface() -> Div {
 	gpui::div()
 		.tab_group()
 		.debug_selector(|| "settings-navigation-pane".into())
-		.rounded(gpui::px(WORKSPACE_RADIUS))
 		.overflow_hidden()
 		.w(gpui::px(176.0))
 		.min_w(gpui::px(176.0))
@@ -6000,7 +5931,6 @@ fn settings_workspace_content(
 	let navigation = settings_navigation(shell, standalone, selected, cx);
 	let panel = gpui::div()
 		.debug_selector(|| "settings-content-pane".into())
-		.rounded(gpui::px(WORKSPACE_RADIUS))
 		.flex_1()
 		.min_w_0()
 		.min_h_0()
@@ -6024,32 +5954,20 @@ fn settings_workspace_content(
 						.flex()
 						.items_center()
 						.justify_between()
-						.child(ui_theme::settings_heading(
-							if selected == Destination::Accounts {
-								"Accounts"
-							} else {
-								"Diagnostics"
-							},
-							if selected == Destination::Accounts {
-								"Choose an account for new conversations, or use Balanced to select one automatically."
-							} else {
-								"Check local services without starting a conversation."
-							},
-						))
+						.child(if selected == Destination::Accounts {
+							ui_theme::settings_title("Accounts").into_any_element()
+						} else {
+							ui_theme::settings_title("Diagnostics").into_any_element()
+						})
 						.when(selected == Destination::Health, |d| {
-							d.child(refresh_control(
-								refresh_focus,
-								shell.health.can_refresh,
-								window,
-								cx,
-							))
+							d.child(diagnostics::controls(shell, refresh_focus, window, cx))
 						}),
 				),
 			)
 			.child(if selected == Destination::Accounts {
 				accounts_content(shell, cx)
 			} else {
-				diagnostics::content(shell, standalone, cx)
+				diagnostics::content(shell, cx)
 			})
 			.into_any_element()
 	};
@@ -6058,7 +5976,9 @@ fn settings_workspace_content(
 		.id("settings-workspace")
 		.role(Role::Main)
 		.aria_label("Settings")
-		.gap(gpui::px(WORKSPACE_GUTTER))
+		// One outer contour keeps the tonal pane boundary continuous.
+		.rounded(gpui::px(WORKSPACE_RADIUS))
+		.overflow_hidden()
 		.flex_1()
 		.min_w_0()
 		.min_h_0()
@@ -6480,24 +6400,30 @@ fn topbar_inspector_toggle(
 		.into_any_element()
 }
 
-fn account_pool_header(
-	count: usize,
-	available: usize,
-	balanced: bool,
-	can_manage: bool,
-	emails_visible: bool,
-	cx: &mut Context<Shell>,
-) -> AnyElement {
-	ui_theme::settings_row()
-		.child(ui_theme::settings_label(
-			"Account routing",
-			format!("{available} of {count} available"),
-		))
+fn account_pool_header(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let balanced = shell
+		.accounts
+		.routing
+		.as_ref()
+		.is_some_and(|routing| routing.mode == AccountSelectionModeDto::Balanced);
+	let emails_visible = shell.account_emails.visible;
+
+	gpui::div()
+		.id("account-toolbar")
+		.debug_selector(|| "account-toolbar".into())
+		.flex_none()
+		.min_h(gpui::px(28.))
+		.flex()
+		.items_center()
+		.justify_between()
+		.gap_3()
 		.child(
 			gpui::div()
+				.debug_selector(|| "account-routing-controls".into())
 				.flex()
 				.items_center()
 				.gap_2()
+				.child(account_mode_button("Balanced", balanced, shell.accounts.can_manage, cx))
 				.child(
 					account_icon_action(
 						"account-email-visibility",
@@ -6515,9 +6441,9 @@ fn account_pool_header(
 						true,
 					)
 					.on_click(cx.listener(|shell, _, _, cx| shell.toggle_account_emails(cx))),
-				)
-				.child(account_mode_button("Balanced", balanced, can_manage, cx)),
+				),
 		)
+		.child(account_login_controls(shell, cx))
 		.into_any_element()
 }
 
@@ -6913,7 +6839,9 @@ mod tests {
 		}
 	}
 
-	fn open_shell(cx: &mut TestAppContext) -> (gpui::Entity<Shell>, &mut VisualTestContext) {
+	pub(super) fn open_shell(
+		cx: &mut TestAppContext,
+	) -> (gpui::Entity<Shell>, &mut VisualTestContext) {
 		cx.update(bind_keys);
 
 		cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped))
@@ -7063,10 +6991,24 @@ mod tests {
 			});
 
 			visual.update(|window, cx| {
-				window.resize(gpui::size(gpui::px(1_440.), gpui::px(1_000.)));
+				window.resize(gpui::size(
+					gpui::px(ui_theme::SETTINGS_WINDOW_MIN_WIDTH),
+					gpui::px(620.),
+				));
 				window.draw(cx).clear(cx);
 			});
 
+			let toolbar = visual.debug_bounds("account-toolbar").unwrap();
+			let routing = visual.debug_bounds("account-routing-controls").unwrap();
+			let actions = visual.debug_bounds("account-login-controls").unwrap();
+			assert!(
+				actions.left() >= routing.right(),
+				"login and routing actions must not overlap"
+			);
+			assert!(
+				actions.right() <= toolbar.right(),
+				"all login actions must fit the minimum window"
+			);
 			let bounds = visual.debug_bounds("account-login-copy").expect("sign-in copy button");
 
 			visual.simulate_click(bounds.center(), gpui::Modifiers::default());
@@ -7552,7 +7494,7 @@ mod tests {
 					(None, palette.text_muted),
 				] {
 					assert_eq!(
-						crate::ui_theme::rgb(shell::component_presentation(status).color),
+						crate::ui_theme::rgb(shell::component_presentation(status).tone.color()),
 						gpui::rgb(color)
 					);
 				}
@@ -7576,7 +7518,7 @@ mod tests {
 					let snapshot = HealthSnapshot { load, report: None, can_refresh: false };
 
 					assert_eq!(
-						crate::ui_theme::rgb(shell::health_presentation(&snapshot).color),
+						crate::ui_theme::rgb(shell::health_presentation(&snapshot).tone.color()),
 						gpui::rgb(color)
 					);
 				}
@@ -7697,6 +7639,12 @@ mod tests {
 		};
 
 		assert_eq!(shell::health_presentation(&snapshot).label, "Local services are ready");
+		assert_eq!(shell::health_presentation(&snapshot).tone, crate::ui_feedback::Tone::Success);
+		assert_eq!(
+			shell::health_presentation(&HealthSnapshot { report: None, ..snapshot.clone() }).tone,
+			crate::ui_feedback::Tone::Warning,
+			"a completed query does not make missing checks successful"
+		);
 		assert_eq!(
 			shell::component_presentation(Some(DoctorStatus::Unknown(DoctorIssue::NotProbed)))
 				.label,
@@ -7768,6 +7716,13 @@ mod tests {
 
 		let handle = shell.read_with(visual, |s, _| s.settings_window.unwrap());
 		let settings = &mut VisualTestContext::from_window(handle.into(), visual);
+		let settle = |settings: &mut VisualTestContext| {
+			// A disclosure measures its content before its height transition starts.
+			settings.update(crate::ui_frame::draw_current_frame);
+			settings.update(crate::ui_frame::draw_current_frame);
+			std::thread::sleep(ui_theme::MOTION_PANEL + Duration::from_millis(24));
+			settings.update(crate::ui_frame::draw_current_frame);
+		};
 
 		settings.simulate_resize(gpui::size(gpui::px(860.), gpui::px(480.)));
 		settings.update(crate::ui_frame::draw_current_frame);
@@ -7777,6 +7732,10 @@ mod tests {
 
 		assert!(viewport.size.height > gpui::px(200.) && viewport.bottom() <= gpui::px(480.));
 		assert!(settings.debug_bounds("health-components").is_none());
+		assert!(settings.debug_bounds("health-accounts").is_none());
+		assert!(
+			viewport.contains(&settings.debug_bounds("health-core-components").unwrap().center())
+		);
 		assert_eq!(scroll.max_offset().y, gpui::px(0.));
 
 		let toggle = settings.debug_bounds("health-details-toggle").unwrap();
@@ -7784,20 +7743,22 @@ mod tests {
 		assert!(viewport.contains(&toggle.center()));
 
 		settings.simulate_click(toggle.center(), Default::default());
-		settings.update(crate::ui_frame::draw_current_frame);
+		settle(settings);
 
 		assert!(shell.read_with(settings, |s, _| s.diagnostics.expanded));
 		assert_eq!(scroll.bounds(), viewport, "details must not enlarge the viewport");
-		assert!(scroll.max_offset().y > viewport.size.height);
+		assert!(scroll.max_offset().y > gpui::px(0.));
+
+		let distance = gpui::px(180.).min(scroll.max_offset().y);
 
 		settings.simulate_event(gpui::ScrollEvent {
 			position: viewport.center(),
-			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), gpui::px(-180.))),
+			delta: gpui::ScrollDelta::Pixels(gpui::point(gpui::px(0.), -distance)),
 			..Default::default()
 		});
 		settings.update(crate::ui_frame::draw_current_frame);
 
-		assert_eq!(scroll.offset().y, gpui::px(-180.));
+		assert_eq!(scroll.offset().y, -distance);
 
 		// Clicking the bottom of the track reaches the last technical section.
 		let track = settings.debug_bounds("health-scrollbar").unwrap();
@@ -7836,12 +7797,28 @@ mod tests {
 		let toggle = settings.debug_bounds("health-details-toggle").unwrap();
 
 		settings.simulate_click(toggle.center(), Default::default());
-		settings.update(crate::ui_frame::draw_current_frame);
+		settle(settings);
 
 		assert!(settings.debug_bounds("health-components").is_none());
 		assert_eq!(scroll.offset().y, gpui::px(0.));
 
-		let accounts = settings.debug_bounds("health-accounts").unwrap();
+		// Retained results stay available without appearing to verify a new connection.
+		shell.update(settings, |s, cx| {
+			s.health.load = HealthLoadState::Stale;
+			cx.notify();
+		});
+		settings.update(crate::ui_frame::draw_current_frame);
+
+		assert!(settings.debug_bounds("health-core-components").is_none());
+
+		let toggle = settings.debug_bounds("health-details-toggle").unwrap();
+
+		settings.simulate_click(toggle.center(), Default::default());
+		settle(settings);
+
+		assert!(settings.debug_bounds("health-previous-core-components").is_some());
+
+		let accounts = settings.debug_bounds("settings-section-Accounts").unwrap();
 
 		settings.simulate_click(accounts.center(), Default::default());
 
@@ -8159,6 +8136,12 @@ mod tests {
 		settings.simulate_keystrokes("tab tab tab enter");
 		settings.update(crate::ui_frame::draw_current_frame);
 
+		let navigation = settings.debug_bounds("settings-navigation-pane").expect("navigation");
+		let content = settings.debug_bounds("settings-content-pane").expect("content pane");
+
+		assert_eq!(navigation.right(), content.left(), "settings panes share one flush seam");
+		assert_eq!((navigation.top(), navigation.bottom()), (content.top(), content.bottom()));
+
 		let gallery = settings.debug_bounds("color-theme-picker").expect("theme gallery");
 		let first = settings.debug_bounds("color-theme-decodex").expect("first preview");
 		let fifth = settings.debug_bounds("color-theme-everforest").expect("fifth preview");
@@ -8223,29 +8206,62 @@ mod tests {
 			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
 		});
 		shell.update(visual, |s, cx| {
-			s.agent.update(cx, |agent, cx| agent.restore_work(Some("verify"), cx));
+			s.agent.update(cx, |agent, cx| {
+				assert!(agent.restore_location(
+					&shell::agent_surface::AgentLocation::Conversation {
+						work: Some("verify".into()),
+						thread: None,
+					},
+					cx
+				));
+			});
 			s.record_navigation(cx);
 		});
 		shell.update(visual, |s, cx| s.select_destination(Destination::Settings, cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let appearance = visual.debug_bounds("settings-section-Appearance").unwrap();
+
+		visual.simulate_click(appearance.center(), Default::default());
+		visual.simulate_keystrokes("cmd-[");
+		shell.read_with(visual, |s, cx| {
+			assert_eq!(s.selected, Destination::Settings);
+			assert_eq!(s.settings.read(cx).category, super::SettingsCategory::General);
+		});
 		visual.simulate_keystrokes("cmd-[");
 		shell.read_with(visual, |s, cx| {
 			assert_eq!(s.selected, Destination::Agent);
-			assert_eq!(s.agent.read(cx).navigation_work().as_deref(), Some("verify"));
+			assert_eq!(
+				s.agent.read(cx).navigation_location(),
+				shell::agent_surface::AgentLocation::Conversation {
+					work: Some("verify".into()),
+					thread: None,
+				}
+			);
 		});
 		visual.simulate_keystrokes("cmd-[");
 
-		assert_eq!(shell.read_with(visual, |s, cx| s.agent.read(cx).navigation_work()), None);
+		assert_eq!(
+			shell.read_with(visual, |s, cx| s.agent.read(cx).navigation_location()),
+			shell::agent_surface::AgentLocation::Root
+		);
 
 		visual.simulate_keystrokes("cmd-]");
 
 		assert_eq!(
-			shell.read_with(visual, |s, cx| s.agent.read(cx).navigation_work()),
-			Some("verify".into())
+			shell.read_with(visual, |s, cx| s.agent.read(cx).navigation_location()),
+			shell::agent_surface::AgentLocation::Conversation {
+				work: Some("verify".into()),
+				thread: None
+			}
 		);
 
 		visual.simulate_keystrokes("cmd-]");
 
 		assert_eq!(shell.read_with(visual, |s, _| s.selected), Destination::Settings);
+		visual.simulate_keystrokes("cmd-]");
+		shell.read_with(visual, |s, cx| {
+			assert_eq!(s.settings.read(cx).category, super::SettingsCategory::Appearance);
+		});
 	}
 
 	#[gpui::test]

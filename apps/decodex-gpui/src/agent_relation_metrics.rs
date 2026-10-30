@@ -1,6 +1,7 @@
 //! Per-agent usage, time, rate and the share of recorded conversation tokens.
 use gpui::{
-	App, Div, FontWeight, IntoElement, RenderOnce, Role, SharedString, TextRun, Window,
+	App, Div, FontWeight, HighlightStyle, IntoElement, RenderOnce, Role, SharedString, StyledText,
+	TextRun, Window,
 	prelude::{InteractiveElement as _, ParentElement, StatefulInteractiveElement as _, Styled},
 };
 
@@ -9,7 +10,10 @@ use crate::{
 		AgentSurface, AnyElement, Context, Node, Row, card,
 	},
 	ui_motion,
-	ui_theme::{self, AMBER, BLUE, FONT_FAMILY, GREEN, foreground::PRIMARY},
+	ui_theme::{
+		self, AMBER, BLUE, FONT_FAMILY, GREEN,
+		foreground::{PRIMARY, SECONDARY},
+	},
 	ui_work_metrics::{self, Sample},
 };
 
@@ -106,6 +110,7 @@ impl AgentSurface {
 		}
 
 		self.work_board.view.picked_agent = Some(row.key.clone());
+		self.work_board.view.picked_project = None;
 
 		cx.notify();
 	}
@@ -257,6 +262,17 @@ fn render_hud(
 			}
 		}
 
+		let text = if readout.is_some() { labels[index].as_str() } else { "—" };
+		let units = text.char_indices().filter_map(|(start, character)| {
+			(character.is_ascii_alphabetic() || character == '/').then_some((
+				start..start + character.len_utf8(),
+				HighlightStyle {
+					color: Some(ui_theme::rgb(SECONDARY).into()),
+					..Default::default()
+				},
+			))
+		});
+
 		row = row.child(
 			gpui::div()
 				.absolute()
@@ -270,7 +286,7 @@ fn render_hud(
 				.font_features(card::number_features())
 				.text_color(ui_theme::rgb(PRIMARY))
 				.whitespace_nowrap()
-				.child(if readout.is_some() { labels[index].clone() } else { "—".into() }),
+				.child(StyledText::new(text.to_owned()).with_highlights(units)),
 		);
 		block = block.child(row);
 	}

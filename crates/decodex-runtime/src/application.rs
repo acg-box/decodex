@@ -526,7 +526,17 @@ impl ServiceApplication {
 		)
 	}
 
-	async fn query_agent_snapshot(&self) -> QueryResultPayload {
+	async fn query_message_receipt(&self, work: &str, key: &str) -> QueryResultPayload {
+		let received = match &self.store {
+			ProductStore::Available(store) =>
+				store.agent_message_received(work.into(), key.into()).await.unwrap_or(false),
+			_ => false,
+		};
+
+		QueryResultPayload::AgentMessageReceived(received)
+	}
+
+	async fn query_agent_snapshot(&self, archived: bool) -> QueryResultPayload {
 		let initializing = self.agent.as_ref().is_some_and(|agent| agent.connection_initializing());
 		let before = match &self.agent {
 			Some(agent) => agent.runtime_source().await,
@@ -548,7 +558,7 @@ impl ServiceApplication {
 					);
 				}
 
-				agent.retain_active_work(snapshot).await;
+				agent.project_work(snapshot, archived).await;
 			}
 
 			let after = match &self.agent {
@@ -2793,17 +2803,8 @@ impl Application for ServiceApplication {
 				self.query_usage_estimate(work_id.as_str()).await,
 			QueryPayload::GetAgentInputReceipts { work_id, after } =>
 				self.query_input_receipts(work_id.as_str(), *after).await,
-			QueryPayload::GetAgentMessageReceipt { work_id, key } => {
-				let received = match &self.store {
-					ProductStore::Available(store) => store
-						.agent_message_received(work_id.as_str().into(), key.as_str().into())
-						.await
-						.unwrap_or(false),
-					_ => false,
-				};
-
-				QueryResultPayload::AgentMessageReceived(received)
-			},
+			QueryPayload::GetAgentMessageReceipt { work_id, key } =>
+				self.query_message_receipt(work_id.as_str(), key.as_str()).await,
 			QueryPayload::GetAgentSteerReceipt { identity } =>
 				self.query_steer_receipt(identity).await,
 			QueryPayload::GetAgentPendingAppUiCall { .. }
@@ -2841,7 +2842,8 @@ impl Application for ServiceApplication {
 				query_work_evidence(&self.store, &query.payload).await,
 			QueryPayload::GetAgentGuardianReviews { .. }
 			| QueryPayload::GetAgentGuardianDetail { .. } => self.query_guardian(&query.payload).await,
-			QueryPayload::GetAgentSnapshot => self.query_agent_snapshot().await,
+			QueryPayload::GetAgentSnapshot => self.query_agent_snapshot(false).await,
+			QueryPayload::GetAgentArchiveCatalog => self.query_agent_snapshot(true).await,
 			QueryPayload::GetAgentExchanges { before } => self.query_exchanges(*before).await,
 			QueryPayload::GetAgentDeliveries { query } => self.query_deliveries(query).await,
 			QueryPayload::GetDesktopSettings

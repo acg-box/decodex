@@ -42,9 +42,10 @@
 mod native_composer;
 #[path = "agent_native_goal.rs"] mod native_goal;
 #[cfg(all(target_os = "macos", not(test)))]
-#[path = "agent_native_model_menu.rs"]
-mod native_model_menu;
+#[path = "agent_native_menu.rs"]
+mod native_menu;
 #[path = "agent_timeline.rs"] mod native_timeline;
+#[path = "agent_navigation.rs"] mod navigation;
 #[path = "agent_output_stream.rs"] mod output_stream;
 #[path = "agent_panel_controls.rs"] mod panel_controls;
 #[path = "agent_permissions.rs"] mod permissions;
@@ -134,6 +135,7 @@ use drafts::{Profiles, SubmissionState};
 use handoffs::Handoffs;
 use native_agents::NativeAgents;
 use native_timeline::Timeline;
+pub(crate) use navigation::AgentLocation;
 use output_stream::OutputStream;
 use question_notices::QuestionNotices;
 use recap::Automatic;
@@ -355,9 +357,10 @@ impl AgentSurface {
 		let mut surface = Self::initial_state(inputs, presentations, deliveries, cx);
 		let defaults = crate::session_settings::Defaults::load();
 		surface.permission_mode = defaults.permissions;
-		surface.fast = defaults.speed.as_ref().is_some_and(|tier| tier.as_str() == "priority");
-		surface.creation_intent.service_tier = defaults.speed.is_some();
-		surface.service_tier = defaults.speed;
+		let speed = crate::session_settings::default_speed().ok();
+		surface.fast = speed.as_ref().is_some_and(|tier| tier.as_str() == "priority");
+		surface.creation_intent.service_tier = false;
+		surface.service_tier = speed;
 		surface
 	}
 
@@ -986,6 +989,7 @@ impl AgentSurface {
 					reasoning_effort: self.creation_effort(),
 					fast: Some(self.fast),
 					service_tier: self.service_tier.clone(),
+					permission_mode: None,
 				};
 				let attachments = self.attachments.clone();
 				let action = match action {
@@ -2513,18 +2517,22 @@ impl AgentSurface {
 			))
 			.when_some(self.selected.as_ref(), |panel, work| {
 				panel
+					.child(ui_theme::menu_separator())
 					.child(self.resources_panel(work, cx))
 					.child(self.integrations_panel(work, cx))
 					.child(self.voice_settings_panel(work, cx))
 					.child(self.search_settings_panel(work, cx))
 					.child(self.context_settings_panel(work, cx))
+					.child(ui_theme::menu_separator())
 					.child(self.memory_summary_panel(work, cx))
 					.child(self.attached_branches_panel(work, cx))
+					.child(self.transcript_panel(cx))
+					.child(ui_theme::menu_separator())
 					.child(self.agent_usage_panel(work, cx))
 					.child(self.usage_estimate_panel(work, cx))
+					.child(ui_theme::menu_separator())
 					.child(self.read_state_panel(cx))
 					.child(self.native_goal_panel(cx))
-					.child(self.transcript_panel(cx))
 					.children(
 						self.snapshot
 							.as_ref()
@@ -2554,7 +2562,6 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap_2()
-			.child(muted("Applies when starting a new agent."))
 			.child(
 				gpui::div()
 					.flex()
@@ -2617,7 +2624,7 @@ impl ResourceForm {
 #[derive(Default)]
 struct NativeControls {
 	composer: native_composer::NativeComposer,
-	model_menu: native_model_menu::NativeModelMenu,
+	menu: native_menu::NativeMenu,
 }
 
 struct SurfacePresentations {
@@ -2686,6 +2693,7 @@ impl SurfacePresentations {
 }
 
 struct WorkspaceView {
+	archives: archive::Catalog,
 	portfolio_mode: bool,
 	work_detail: Option<String>,
 	work_evidence: Option<WorkPortfolio>,
@@ -2742,6 +2750,7 @@ struct WorkspaceView {
 impl Default for WorkspaceView {
 	fn default() -> Self {
 		Self {
+			archives: Default::default(),
 			arrival: Default::default(),
 			portfolio_mode: false,
 			work_detail: None,
@@ -3080,7 +3089,7 @@ fn history_entry_presented(
 	streamed_body: Option<AnyElement>,
 	show_metadata: bool,
 	metadata_ready: Option<Rc<Cell<bool>>>,
-	input_action: Option<AnyElement>,
+	message_action: Option<AnyElement>,
 ) -> Div {
 	if matches!(entry.kind.as_str(), "partial_plan" | "partial_answer") {
 		return gpui::div()
@@ -3105,6 +3114,8 @@ fn history_entry_presented(
 	}
 
 	let user = matches!(entry.kind.as_str(), "user" | "instruction");
+	let (input_action, footer_action) =
+		if user { (message_action, None) } else { (None, message_action) };
 	let visible_text = if entry.kind == "assistant" {
 		markdown::response_text(&entry.text)
 	} else {
@@ -3169,8 +3180,9 @@ fn history_entry_presented(
 					body.child(FinishedFooter {
 						visible: show_metadata,
 						ready: metadata_ready,
-						child: show_metadata
-							.then(|| response_metrics::footer(entry, identity, metrics)),
+						child: show_metadata.then(|| {
+							response_metrics::footer(entry, identity, metrics, footer_action)
+						}),
 					})
 				}),
 		)

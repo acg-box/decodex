@@ -23,7 +23,7 @@ use crate::{
 	},
 	ui_motion::{self, SmoothControl},
 	ui_theme::{
-		self, CAPTION_LINE_HEIGHT, CAPTION_SIZE, CONTROL_SIZE, HOVER_FILL, TEXT,
+		self, CAPTION_LINE_HEIGHT, CAPTION_SIZE, TEXT,
 		foreground::{METRIC_SIZE, PRIMARY},
 	},
 	ui_work_metrics::{self, Sample},
@@ -121,63 +121,91 @@ impl AgentSurface {
 				cx,
 			));
 
-		if open {
-			let menu = gpui::div()
-				.id("graph-usage-menu")
-				.debug_selector(|| "graph-usage-menu".into())
-				.role(Role::Group)
-				.aria_label("Usage distribution options")
-				.occlude()
-				.p_1()
-				.flex()
-				.flex_col()
-				.on_mouse_down_out(cx.listener(move |s, event: &MouseDownEvent, window, cx| {
-					if !trigger_bounds.get().is_some_and(|bounds| bounds.contains(&event.position))
-					{
-						s.work_board.view.usage_menu = false;
-
-						workspace::restore_shell_focus(window, cx);
-
-						cx.notify();
-					}
-				}))
-				.child(self.relation_usage_control(Metric::Tokens, cx))
-				.child(self.relation_usage_control(Metric::Time, cx))
-				.child(
-					gpui::div().mt_1().border_t_1().border_color(ui_theme::rgba(0xffffff12)).child(
-						self.workspace_action(
-							"graph-usage-visibility".into(),
-							if self.work_board.view.usage_hidden {
-								"Show distribution"
-							} else {
-								"Hide distribution"
-							}
-							.into(),
-							|s, cx| {
-								s.work_board.view.usage_hidden = !s.work_board.view.usage_hidden;
+		let owner = cx.entity().downgrade();
+		let dismiss = owner.clone();
+		let outside = trigger_bounds.clone();
+		anchor = anchor.child(
+			gpui::deferred(
+				gpui::div()
+					.absolute()
+					.top(gpui::px(26.))
+					.right(gpui::px(-8.))
+					.w(gpui::px(184.))
+					.child(
+						ui_motion::popover_lazy("graph-usage-menu-motion", open, move |_, cx| {
+							owner
+								.update(cx, |s, cx| s.relation_usage_menu(outside.clone(), cx))
+								.unwrap_or_else(|_| gpui::div().into_any_element())
+						})
+						.trigger(trigger_bounds)
+						.on_dismiss(move |cx| {
+							let _ = dismiss.update(cx, |s, cx| {
 								s.work_board.view.usage_menu = false;
-
 								cx.notify();
-							},
-							cx,
-						),
+							});
+						}),
 					),
-				);
-
-			anchor = anchor.child(
-				gpui::deferred(
-					gpui::div()
-						.absolute()
-						.top(gpui::px(26.))
-						.right(gpui::px(-8.))
-						.w(gpui::px(168.))
-						.child(ui_motion::popover("graph-usage-menu-motion", true, menu)),
-				)
-				.priority(3),
-			);
-		}
+			)
+			.priority(3),
+		);
 
 		anchor.into_any_element()
+	}
+
+	fn relation_usage_menu(
+		&self,
+		trigger_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		gpui::div()
+			.id("graph-usage-menu")
+			.debug_selector(|| "graph-usage-menu".into())
+			.role(Role::Group)
+			.aria_label("Usage distribution options")
+			.occlude()
+			.p(gpui::px(ui_theme::POPOVER_CONTENT_PADDING))
+			.flex()
+			.flex_col()
+			.on_mouse_down_out(cx.listener(move |s, event: &MouseDownEvent, window, cx| {
+				if !trigger_bounds.get().is_some_and(|bounds| bounds.contains(&event.position)) {
+					s.work_board.view.usage_menu = false;
+
+					workspace::restore_shell_focus(window, cx);
+
+					cx.notify();
+				}
+			}))
+			.child(self.relation_usage_control(Metric::Tokens, cx))
+			.child(self.relation_usage_control(Metric::Time, cx))
+			.child(ui_theme::menu_separator())
+			.child(
+				ui_theme::menu_row("graph-usage-visibility", true)
+					.debug_selector(|| "graph-usage-visibility".into())
+					.flex()
+					.items_center()
+					.child(if self.work_board.view.usage_hidden {
+						"Show distribution"
+					} else {
+						"Hide distribution"
+					})
+					.on_click(cx.listener(|s, _, _, cx| s.toggle_relation_usage_visibility(cx)))
+					.on_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
+						if !event.is_held
+							&& ["enter", "space"].contains(&event.keystroke.key.as_str())
+						{
+							s.toggle_relation_usage_visibility(cx);
+							cx.stop_propagation();
+						}
+					}))
+					.smooth(),
+			)
+			.into_any_element()
+	}
+
+	fn toggle_relation_usage_visibility(&mut self, cx: &mut Context<Self>) {
+		self.work_board.view.usage_hidden = !self.work_board.view.usage_hidden;
+		self.work_board.view.usage_menu = false;
+		cx.notify();
 	}
 
 	pub(in super::super::super) fn dismiss_relation_usage_options(
@@ -200,25 +228,16 @@ impl AgentSurface {
 			Metric::Time => "graph-usage-time",
 		};
 
-		gpui::div()
-			.id(name)
+		ui_theme::menu_row(name, true)
 			.debug_selector(move || name.into())
 			.role(Role::Button)
 			.occlude()
 			.aria_selected(active)
 			.aria_label(format!("Compare agent {}", metric.label().to_lowercase()))
-			.tab_index(0)
-			.w_full()
-			.h(gpui::px(CONTROL_SIZE))
-			.px_2()
 			.flex()
 			.items_center()
-			.rounded(gpui::px(5.))
-			.text_size(gpui::px(CAPTION_SIZE))
-			.text_color(ui_theme::rgb(if active { TEXT } else { SECONDARY_TEXT }))
-			.when(active, |button| button.bg(ui_theme::rgba(HOVER_FILL)))
-			.cursor_pointer()
-			.hover(|button| button.bg(ui_theme::rgba(HOVER_FILL)))
+			.justify_between()
+			.gap(gpui::px(8.))
 			.on_click(cx.listener(move |s, _, window, cx| {
 				s.set_relation_usage_metric(metric, cx);
 
@@ -234,6 +253,7 @@ impl AgentSurface {
 				}
 			}))
 			.child(if metric == Metric::Time { "Agent time" } else { metric.label() })
+			.child(workspace_symbols::menu_check(active))
 			.smooth()
 			.into_any_element()
 	}

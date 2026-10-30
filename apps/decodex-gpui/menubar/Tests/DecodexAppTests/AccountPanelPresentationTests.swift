@@ -590,7 +590,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 
 		XCTAssertEqual(
 			ResetCardAccountRow.cardExpiryText(0, timeZone: utc),
-			"Jan 1 00:00"
+			"Jan 1 at 00:00"
 		)
 		XCTAssertEqual(
 			ResetCardAccountRow.cardAccessibilityLabel(

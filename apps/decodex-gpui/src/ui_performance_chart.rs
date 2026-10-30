@@ -5,7 +5,7 @@ use std::{
 };
 
 use gpui::{
-	AnyElement, App, Bounds, IntoElement, PathBuilder, Window,
+	AnyElement, App, IntoElement, PathBuilder, Window,
 	prelude::{InteractiveElement as _, ParentElement as _, Styled as _},
 };
 
@@ -94,21 +94,6 @@ pub(super) fn render(history: &History, window: &mut Window, cx: &mut App) -> An
 
 					if let Ok(path) = line.build() {
 						window.paint_path(path, ui_theme::rgb(BLUE));
-					}
-
-					// Fade at fixed screen edges, not at sample boundaries.
-					for (x, angle, width) in [(0., 90., 12.), (width - 8., 270., 8.)] {
-						window.paint_quad(gpui::fill(
-							Bounds::new(
-								bounds.origin + gpui::point(gpui::px(x), gpui::px(0.)),
-								gpui::size(gpui::px(width), bounds.size.height),
-							),
-							gpui::linear_gradient(
-								angle,
-								gpui::linear_color_stop(ui_theme::rgb(0x141418), 0.),
-								gpui::linear_color_stop(ui_theme::rgba(0x14141800), 1.),
-							),
-						));
 					}
 				},
 			)

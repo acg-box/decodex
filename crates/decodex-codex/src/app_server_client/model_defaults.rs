@@ -108,7 +108,8 @@ fn project(value: &Value, managed: bool) -> Result<NativeExecutionDefaults, Clie
 		service_tier: optional(
 			source.get(if managed { "serviceTier" } else { "service_tier" }),
 			128,
-		)?,
+		)?
+		.map(|tier| if tier == "fast" { "priority".into() } else { tier }),
 	})
 }
 
@@ -119,6 +120,16 @@ mod tests {
 	use crate::app_server_client::model_defaults::{
 		self, AppServerClient, NativeExecutionDefaults, Value,
 	};
+	#[test]
+	fn fast_config_spelling_becomes_the_native_request_tier() {
+		for tier in ["fast", "priority"] {
+			let value = NativeExecutionDefaults::from_config_response(
+				&serde_json::json!({"config":{"service_tier":tier}}),
+			)
+			.unwrap();
+			assert_eq!(value.service_tier.as_deref(), Some("priority"));
+		}
+	}
 	#[test]
 	fn projection_preserves_sources_and_omits_unrelated_sensitive_fields() {
 		let configured=model_defaults::project(&serde_json::json!({"config":{"model":"project-model","model_reasoning_effort":"future-effort","service_tier":"flex","model_providers":{"secret":"never-public"}}}),false).unwrap();

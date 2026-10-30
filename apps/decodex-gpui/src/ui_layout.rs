@@ -3,10 +3,94 @@ use std::panic::Location;
 
 use gpui::{
 	AnyElement, App, Bounds, Element, ElementId, Entity, GlobalElementId, InspectorElementId,
-	IntoElement, LayoutId, Pixels, Render, StyleRefinement, Window, prelude::Styled as _,
+	IntoElement, LayoutId, Pixels, Render, Size, Style, StyleRefinement, Window,
+	prelude::Styled as _,
 };
 
 type VisibilityGuard = dyn Fn(&Window, &App) -> bool;
+type Measured = dyn FnMut(Size<Pixels>, &mut Window, &mut App);
+
+struct Intrinsic {
+	child: AnyElement,
+	width: Pixels,
+	measured: Box<Measured>,
+}
+impl IntoElement for Intrinsic {
+	type Element = Self;
+
+	fn into_element(self) -> Self {
+		self
+	}
+}
+impl Element for Intrinsic {
+	type PrepaintState = ();
+	type RequestLayoutState = ();
+
+	fn id(&self) -> Option<ElementId> {
+		None
+	}
+
+	fn source_location(&self) -> Option<&'static Location<'static>> {
+		None
+	}
+
+	fn request_layout(
+		&mut self,
+		_: Option<&GlobalElementId>,
+		_: Option<&InspectorElementId>,
+		window: &mut Window,
+		cx: &mut App,
+	) -> (LayoutId, ()) {
+		let size = self.child.layout_as_root(
+			gpui::size(self.width.into(), gpui::AvailableSpace::MinContent),
+			window,
+			cx,
+		);
+		(self.measured)(size, window, cx);
+		(
+			window.request_layout(
+				Style { size: size.map(Into::into), ..Default::default() },
+				[],
+				cx,
+			),
+			(),
+		)
+	}
+
+	fn prepaint(
+		&mut self,
+		_: Option<&GlobalElementId>,
+		_: Option<&InspectorElementId>,
+		bounds: Bounds<Pixels>,
+		_: &mut (),
+		window: &mut Window,
+		cx: &mut App,
+	) {
+		self.child.prepaint_at(bounds.origin, window, cx);
+	}
+
+	fn paint(
+		&mut self,
+		_: Option<&GlobalElementId>,
+		_: Option<&InspectorElementId>,
+		_: Bounds<Pixels>,
+		_: &mut (),
+		_: &mut (),
+		window: &mut Window,
+		cx: &mut App,
+	) {
+		self.child.paint(window, cx);
+	}
+}
+
+/// Resolve a native panel's content size before its first paint and presentation.
+pub(crate) fn intrinsic(
+	width: Pixels,
+	child: impl IntoElement,
+	measured: impl FnMut(Size<Pixels>, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+	Intrinsic { child: child.into_any_element(), width, measured: Box::new(measured) }
+}
 
 struct Visible {
 	child: AnyElement,
@@ -182,6 +266,50 @@ mod tests {
 	};
 
 	use crate::ui_layout::{self, IntoElement, Window};
+
+	#[gpui::test]
+	fn intrinsic_panel_measures_new_content_before_its_first_paint(cx: &mut gpui::TestAppContext) {
+		use std::{cell::Cell, rc::Rc};
+		struct Menu {
+			size: gpui::Size<gpui::Pixels>,
+			measured: Rc<Cell<gpui::Size<gpui::Pixels>>>,
+		}
+		impl Render for Menu {
+			fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+				let measured = self.measured.clone();
+				let painted = measured.clone();
+				let size = self.size;
+				ui_layout::intrinsic(
+					size.width,
+					gpui::div().w_full().h(size.height).child(
+						gpui::canvas(
+							|_, _, _| (),
+							move |bounds, _, _, _| {
+								assert_eq!(painted.get(), size);
+								assert_eq!(bounds.size, size);
+							},
+						)
+						.size_full(),
+					),
+					move |size, _, _| measured.set(size),
+				)
+			}
+		}
+		let measured = Rc::new(Cell::new(gpui::Size::default()));
+		let (menu, visual) = cx.add_window_view(|_, _| Menu {
+			size: gpui::size(gpui::px(248.), gpui::px(230.)),
+			measured: measured.clone(),
+		});
+		for (width, height) in [(248., 230.), (192., 128.), (280., 328.)] {
+			let size = gpui::size(gpui::px(width), gpui::px(height));
+			menu.update(visual, |menu, cx| {
+				menu.size = size;
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_current_frame);
+			assert_eq!(measured.get(), size);
+		}
+	}
 
 	struct ScrollFixture {
 		scroll: gpui::ScrollHandle,

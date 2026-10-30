@@ -56,10 +56,11 @@ impl Components {
 	}
 
 	#[cfg(not(test))]
-	pub(super) fn refresh_optional(&self) {
+	pub(super) fn inspect_optional(&mut self) {
 		if matches!(self.preparation.snapshot(), ComponentState::Unchecked | ComponentState::Ready)
 		{
-			self.optional.start(PluginAction::Refresh);
+			self.optional.inspect();
+			self.poll();
 		}
 	}
 }
@@ -71,11 +72,11 @@ impl SettingsSurface {
 
 		if self.components.poll() {
 			#[cfg(not(test))]
-			if preparing
-				&& self.components.shown == ComponentState::Ready
-				&& self.category == super::SettingsCategory::Components
-			{
-				self.components.refresh_optional();
+			if preparing && self.components.shown == ComponentState::Ready {
+				self.components.optional.invalidate();
+				if self.category == super::SettingsCategory::Components {
+					self.components.inspect_optional();
+				}
 			}
 
 			cx.notify();
@@ -99,10 +100,26 @@ impl SettingsSurface {
 		action: Action,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		ui_theme::settings_button(id, label)
-			.on_click(cx.listener(move |this, _, _, cx| this.component_action(action, cx)))
+		let enabled = matches!(action, Action::Prepare) || self.components.plugin.busy.is_none();
+		let button = if enabled {
+			ui_theme::settings_button(id, label)
+		} else {
+			ui_theme::settings_button_base(id, label).cursor_default().opacity(0.5)
+		};
+
+		button
+			.tab_index(if enabled { 0 } else { -1 })
+			.when(!enabled, |button| button.aria_description("Operation in progress"))
+			.on_click(cx.listener(move |this, _, _, cx| {
+				if enabled {
+					this.component_action(action, cx);
+				}
+			}))
 			.on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
-				if !event.is_held && ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+				if enabled
+					&& !event.is_held
+					&& ["enter", "space"].contains(&event.keystroke.key.as_str())
+				{
 					this.component_action(action, cx);
 					cx.stop_propagation();
 				}
@@ -200,41 +217,37 @@ impl SettingsSurface {
 	fn egm_settings(&self, cx: &mut Context<Self>) -> Div {
 		let state = &self.components.plugin;
 		let status = state.status_text();
-		let mut controls = gpui::div().flex().items_center().gap_2();
+		let mut controls = gpui::div().flex().items_center().gap_2().child(self.component_button(
+			"components-refresh-egm",
+			"Refresh",
+			Action::Plugin(PluginAction::Refresh),
+			cx,
+		));
+		if state.inspected {
+			let (label, action) = match &state.installed {
+				None => ("Install", PluginAction::Install),
+				Some(plugin) if !plugin.enabled => ("Enable", PluginAction::Install),
+				Some(_) => ("Update", PluginAction::Update),
+			};
 
-		if state.busy.is_none() {
 			controls = controls.child(self.component_button(
-				"components-refresh-egm",
-				"Refresh",
-				Action::Plugin(PluginAction::Refresh),
+				"components-install-egm",
+				label,
+				Action::Plugin(action),
 				cx,
 			));
-			if state.inspected {
-				let (label, action) = match &state.installed {
-					None => ("Install", PluginAction::Install),
-					Some(plugin) if !plugin.enabled => ("Enable", PluginAction::Install),
-					Some(_) => ("Update", PluginAction::Update),
-				};
-
-				controls = controls.child(self.component_button(
-					"components-install-egm",
-					label,
-					Action::Plugin(action),
-					cx,
-				));
-				controls = controls.child(self.component_button(
-					"components-remove-egm",
-					if state.installed.is_some() { "Uninstall" } else { "Clean up" },
-					Action::Plugin(PluginAction::Remove),
-					cx,
-				));
-			}
+			controls = controls.child(self.component_button(
+				"components-remove-egm",
+				if state.installed.is_some() { "Uninstall" } else { "Clean up" },
+				Action::Plugin(PluginAction::Remove),
+				cx,
+			));
 		}
 
 		let feedback =
 			state.error.as_ref().map(|error| Feedback::error(error.clone())).or_else(|| {
 				state.busy.map(|action| {
-					Feedback::info(match action {
+					Feedback::loading(match action {
 						PluginAction::Refresh => "Reading native plugin state…",
 						PluginAction::Install => "Installing EGM…",
 						PluginAction::Update => "Updating EGM…",
@@ -243,10 +256,13 @@ impl SettingsSurface {
 				})
 			});
 
-		gpui::div().w_full().flex().flex_col().child(ui_theme::settings_row()
+		gpui::div().debug_selector(|| "components-egm".into()).w_full().flex().flex_col().child(ui_theme::settings_row()
 			.child(ui_theme::settings_label("Elephant–Goldfish (EGM)", format!("{status}\nGoogle's complete design and review plugin. Optional; uses your Codex subscription.\nStart a new conversation after installing or updating.")))
 			.child(controls))
-			.children(feedback.as_ref().and_then(|feedback| ui_feedback::inline_feedback("components-egm-feedback", "", feedback)))
+			.child(ui_feedback::notice("components-egm-feedback", "egm", feedback).inline()
+				.when(state.busy == Some(PluginAction::Refresh), |notice| {
+					notice.loading_delay(std::time::Duration::from_millis(500))
+				}))
 	}
 }
 
@@ -304,14 +320,62 @@ mod tests {
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("components-remove-egm").is_some());
+		let install = visual.debug_bounds("components-install-egm").unwrap();
+		let remove = visual.debug_bounds("components-remove-egm").unwrap();
+		settings.update(visual, |settings, cx| {
+			settings.components.plugin.busy = Some(PluginAction::Refresh);
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert_eq!(visual.debug_bounds("components-install-egm").unwrap(), install);
+		assert_eq!(visual.debug_bounds("components-remove-egm").unwrap(), remove);
+		assert_eq!(
+			visual.debug_bounds("conversation-feedback-slot").unwrap().size.height,
+			gpui::px(0.)
+		);
+		std::thread::sleep(std::time::Duration::from_millis(350));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert_eq!(
+			visual.debug_bounds("conversation-feedback-slot").unwrap().size.height,
+			gpui::px(0.),
+			"normal native checks must not flash a loading row"
+		);
+		settings.update(visual, |settings, cx| {
+			settings.components.plugin.busy = None;
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(
+			visual.debug_bounds("conversation-activity-status").is_none(),
+			"a quick read must not flash a loading row"
+		);
 		settings.update(visual, |settings, cx| {
 			settings.components.plugin.busy = Some(PluginAction::Update);
 			cx.notify();
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("components-install-egm").is_none());
-		assert!(visual.debug_bounds("components-remove-egm").is_none());
-		assert!(visual.debug_bounds("components-egm-feedback").is_some());
+		assert_eq!(visual.debug_bounds("components-install-egm").unwrap(), install);
+		assert_eq!(visual.debug_bounds("components-remove-egm").unwrap(), remove);
+		visual.simulate_click(install.center(), Default::default());
+		assert_eq!(
+			settings.read_with(visual, |s, _| s.components.optional.snapshot()),
+			Default::default(),
+			"busy controls must not dispatch a second operation"
+		);
+		std::thread::sleep(std::time::Duration::from_millis(300));
+		visual.update(crate::ui_frame::draw_current_frame);
+		std::thread::sleep(std::time::Duration::from_millis(250));
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(
+			visual.debug_bounds("conversation-activity-status").is_some(),
+			"slow operations still show progress"
+		);
+		assert_eq!(
+			visual.debug_bounds("conversation-activity-status").unwrap().left(),
+			visual.debug_bounds("components-egm").unwrap().left(),
+			"component feedback must align with the setting, without conversation insets"
+		);
+		assert_eq!(visual.debug_bounds("components-install-egm").unwrap(), install);
 	}
 
 	#[gpui::test]

@@ -4,12 +4,14 @@
 #[path = "ui_performance_readout.rs"] mod readout;
 
 use std::{
+	rc::Rc,
 	sync::atomic::AtomicU8,
 	time::{Duration, Instant},
 };
 
 use gpui::{
-	AnyElement, Context, FontWeight, IntoElement, KeyDownEvent, Render, Role, Task, Window,
+	AnyElement, Context, FontWeight, IntoElement, KeyDownEvent, MouseMoveEvent, Render, Role, Task,
+	Window,
 	prelude::{
 		FluentBuilder, InteractiveElement, ParentElement, StatefulInteractiveElement, Styled,
 	},
@@ -76,6 +78,17 @@ impl Activity {
 	}
 }
 
+#[derive(Clone, Copy)]
+struct PillFrame {
+	activity: Activity,
+	allocation: Allocation,
+	width: f32,
+	height: f32,
+	expanded: bool,
+	fraction: f32,
+	details_opacity: f32,
+}
+
 pub(crate) struct PerformanceIsland {
 	expansion: Expansion,
 	activity: Activity,
@@ -91,6 +104,14 @@ pub(crate) struct PerformanceIsland {
 	available_width: Option<f32>,
 }
 impl PerformanceIsland {
+	#[cfg(feature = "visual-capture")]
+	#[allow(dead_code)] // Used only by the isolated native frame qualification binary.
+	pub(crate) fn visual_expansion(&mut self, debug: bool, open: bool, cx: &mut Context<Self>) {
+		self.activity = if debug { Activity::Debug } else { Activity::Work };
+		self.expansion = if open { Expansion::Clicked } else { Expansion::Closed };
+		cx.notify();
+	}
+
 	pub(crate) fn new(_: &mut Context<Self>) -> Self {
 		Self {
 			expansion: Expansion::Closed,
@@ -275,7 +296,7 @@ impl PerformanceIsland {
 			self.expansion
 		};
 
-		if hovered || self.expansion != next {
+		if self.expansion != next || (hovered && self.activity != activity) {
 			if hovered {
 				self.activity = activity;
 			}
@@ -291,13 +312,12 @@ impl PerformanceIsland {
 		activity: Activity,
 		allocation: Allocation,
 		width: f32,
-		content: &readout::Content,
+		content: &Rc<readout::Content>,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let (control, surface, toggle, _, height_key) = activity.ids();
-		let expandable = content.expandable();
-		let expanded = expandable
+		let (control, surface, _, _, height_key) = activity.ids();
+		let expanded = content.expandable()
 			&& self.expanded(activity)
 			&& allocation.presentation == Presentation::Expanded;
 		let open_height = content.height();
@@ -309,14 +329,14 @@ impl PerformanceIsland {
 		);
 		let fraction =
 			((height - CAPSULE_HEIGHT) / (open_height - CAPSULE_HEIGHT).max(1.)).clamp(0., 1.);
-		// Enter after the contents fit; exit before the capsule starts clipping them.
 		let details_opacity = ((fraction - 0.65) / 0.35)
 			.clamp(0., 1.)
 			.min(((width - (content.sizing().expanded - 24.)) / 24.).clamp(0., 1.));
-		let header = Self::pill_header(activity, allocation, content, width, window, cx);
-		let body =
-			(expandable && details_opacity > 0.001).then(|| content.details(self, window, cx));
-
+		let frame =
+			PillFrame { activity, allocation, width, height, expanded, fraction, details_opacity };
+		let owner = cx.entity().downgrade();
+		let dismiss = owner.clone();
+		let content = content.clone();
 		gpui::div()
 			.debug_selector(move || control.into())
 			.relative()
@@ -324,86 +344,123 @@ impl PerformanceIsland {
 			.h(gpui::px(CAPSULE_HEIGHT))
 			.flex_none()
 			.child(
-				gpui::deferred(
-					gpui::div()
-						.id(surface)
-						.debug_selector(move || surface.into())
-						.relative()
-						.w_full()
-						.h(gpui::px(height))
-						.flex()
-						.flex_col()
-						.items_center()
-						.overflow_hidden()
-						.rounded(gpui::px(14. + fraction * 6.))
-						.bg(ui_theme::rgb(0x141418))
-						.border_1()
-						.border_color(ui_theme::rgba(0xffffff18))
-						.text_size(gpui::px(TEXT_SIZE))
-						.font_weight(FontWeight::NORMAL)
-						.line_height(gpui::px(16.))
-						.whitespace_nowrap()
-						.text_color(ui_theme::rgb(TEXT))
-						.font_features(readout::figures())
-						.on_hover(cx.listener(move |s, hovered, _, cx| {
-							s.hover_pill(activity, expandable, *hovered, cx)
-						}))
-						.when(expanded, |d| {
-							d.on_mouse_down_out(cx.listener(move |s, _, _, cx| {
-								if s.activity == activity {
-									s.expansion = Expansion::Closed;
-
+				gpui::deferred(gpui::div().relative().w_full().h(gpui::px(height)).child(
+					ui_motion::material_surface(
+						surface,
+						f64::from(14. + fraction * 6.),
+						move |window, cx| {
+							owner
+								.update(cx, |island, cx| {
+									island.pill_surface(frame, &content, window, cx)
+								})
+								.unwrap_or_else(|_| gpui::div().into_any_element())
+						},
+						move |cx| {
+							let _ = dismiss.update(cx, |island, cx| {
+								if island.activity == activity && island.expansion.is_open() {
+									island.expansion = Expansion::Closed;
 									cx.notify();
 								}
-							}))
-						})
-						.child(
-							gpui::div()
-								.id(toggle)
-								.debug_selector(move || toggle.into())
-								.role(if expandable { Role::Button } else { Role::Group })
-								.aria_label(content.label().to_owned())
-								.aria_expanded(expanded)
-								// The surface border occupies one pixel on each side.
-								.h(gpui::px(CAPSULE_HEIGHT - 2.))
-								.w_full()
-								.flex_none()
-								.flex()
-								.items_center()
-								.justify_center()
-								.when(expandable, |d| {
-									d.tab_index(0)
-										.cursor_pointer()
-										.on_click(cx.listener(move |s, _, _, cx| {
-											s.toggle(activity);
-											cx.notify();
-										}))
-										.on_key_down(cx.listener(
-											move |s, e: &KeyDownEvent, _, cx| {
-												if ["enter", "space"]
-													.contains(&e.keystroke.key.as_str())
-												{
-													s.toggle(activity);
-												} else if e.keystroke.key == "escape" {
-													s.expansion = Expansion::Closed;
-												} else {
-													return;
-												}
-
-												cx.notify();
-												cx.stop_propagation();
-											},
-										))
-								})
-								.child(header),
-						)
-						.when_some(body, |d, body| {
-							d.child(gpui::div().w_full().opacity(details_opacity).child(body))
-						}),
-				)
+							});
+						},
+					),
+				))
 				.with_priority(2),
 			)
 			.when_some(self.titlebar.as_ref(), |d, titlebar| d.child(titlebar.control()))
+			.into_any_element()
+	}
+
+	fn pill_surface(
+		&self,
+		frame: PillFrame,
+		content: &readout::Content,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let PillFrame { activity, allocation, width, height, expanded, fraction, details_opacity } =
+			frame;
+		let (_, surface, toggle, _, _) = activity.ids();
+		let expandable = content.expandable();
+		let header = Self::pill_header(activity, allocation, content, width, window, cx);
+		let body =
+			(expandable && details_opacity > 0.001).then(|| content.details(self, window, cx));
+		gpui::div()
+			.id(surface)
+			.debug_selector(move || surface.into())
+			.relative()
+			.w_full()
+			.h(gpui::px(height))
+			.flex()
+			.flex_col()
+			.items_center()
+			.overflow_hidden()
+			.rounded(gpui::px(14. + fraction * 6.))
+			.border_1()
+			.border_color(ui_theme::rgb(TEXT).opacity(0.1))
+			.text_size(gpui::px(TEXT_SIZE))
+			.font_weight(FontWeight::NORMAL)
+			.line_height(gpui::px(16.))
+			.whitespace_nowrap()
+			.text_color(ui_theme::rgb(TEXT))
+			.font_features(ui_theme::tabular_figures())
+			.on_mouse_move(cx.listener(move |s, event: &MouseMoveEvent, _, cx| {
+				if event.pressed_button.is_none() && !cx.has_active_drag() {
+					s.hover_pill(activity, expandable, true, cx);
+				}
+			}))
+			.on_hover(cx.listener(move |s, hovered, _, cx| {
+				// Native MouseExited does not clear GPUI's last in-window position.
+				// Only a real movement can reopen; layout-derived hover can only close.
+				if !hovered {
+					s.hover_pill(activity, expandable, false, cx);
+				}
+			}))
+			.when(expanded, |d| {
+				d.on_mouse_down_out(cx.listener(move |s, _, _, cx| {
+					if s.activity == activity {
+						s.expansion = Expansion::Closed;
+						cx.notify();
+					}
+				}))
+			})
+			.child(
+				gpui::div()
+					.id(toggle)
+					.debug_selector(move || toggle.into())
+					.role(if expandable { Role::Button } else { Role::Group })
+					.aria_label(content.label().to_owned())
+					.aria_expanded(expanded)
+					.h(gpui::px(CAPSULE_HEIGHT - 2.))
+					.w_full()
+					.flex_none()
+					.flex()
+					.items_center()
+					.justify_center()
+					.when(expandable, |d| {
+						d.tab_index(0)
+							.cursor_pointer()
+							.on_click(cx.listener(move |s, _, _, cx| {
+								s.toggle(activity);
+								cx.notify();
+							}))
+							.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+								if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+									s.toggle(activity);
+								} else if e.keystroke.key == "escape" {
+									s.expansion = Expansion::Closed;
+								} else {
+									return;
+								}
+								cx.notify();
+								cx.stop_propagation();
+							}))
+					})
+					.child(header),
+			)
+			.when_some(body, |d, body| {
+				d.child(gpui::div().w_full().opacity(details_opacity).child(body))
+			})
 			.into_any_element()
 	}
 
@@ -437,6 +494,12 @@ impl Render for PerformanceIsland {
 		self.reconcile_live_clock(cx);
 
 		let work = self.work.clone();
+		if !debug {
+			ui_motion::hide_material_surface(Activity::Debug.ids().1, window, cx);
+		}
+		if work.is_none() {
+			ui_motion::hide_material_surface(Activity::Work.ids().1, window, cx);
+		}
 
 		if work.is_none() {
 			ui_motion::value("activity-work-width", 0., window, cx);
@@ -451,11 +514,11 @@ impl Render for PerformanceIsland {
 		let mut activities = Vec::new();
 
 		if let Some(work) = &work {
-			activities.push((Activity::Work, readout::Content::work(work, window, cx)));
+			activities.push((Activity::Work, Rc::new(readout::Content::work(work, window, cx))));
 		}
 
 		if debug {
-			activities.push((Activity::Debug, readout::Content::debug(self, window, cx)));
+			activities.push((Activity::Debug, Rc::new(readout::Content::debug(self, window, cx))));
 		}
 
 		let selected = self
@@ -475,21 +538,33 @@ impl Render for PerformanceIsland {
 				ui_motion::value(activity.ids().3, allocation.width, window, cx)
 			})
 			.collect();
-		// Counter the centered row's movement so each pill expands away from its neighbor.
-		let shift = if let ([left, right], [left_rest, right_rest]) =
-			(widths.as_slice(), resting.as_slice())
-		{
-			((right - right_rest.width) - (left - left_rest.width)) / 2.
-		} else {
-			0.
-		};
-		let mut islands =
-			gpui::div().relative().left(gpui::px(shift)).flex().items_start().gap(gpui::px(6.));
+		let paired = activities.len() == 2;
+		let mut islands = gpui::div().relative().flex().items_start().gap(gpui::px(6.));
 
-		for (((activity, content), allocation), width) in
-			activities.iter().zip(allocations).zip(widths)
+		for (index, (((activity, content), allocation), width)) in
+			activities.iter().zip(allocations).zip(widths).enumerate()
 		{
-			islands = islands.child(self.pill(*activity, allocation, width, content, window, cx));
+			let pill = self.pill(*activity, allocation, width, content, window, cx);
+			islands = islands.child(if paired {
+				// Fixed resting slots keep the inner edges stable through pixel rounding.
+				gpui::div()
+					.relative()
+					.w(gpui::px(resting[index].width))
+					.h(gpui::px(CAPSULE_HEIGHT))
+					.flex_none()
+					.child(
+						gpui::div()
+							.absolute()
+							.top_0()
+							.when(index == 0, |d| d.right_0())
+							.when(index != 0, |d| d.left_0())
+							.w(gpui::px(width))
+							.child(pill),
+					)
+					.into_any_element()
+			} else {
+				pill
+			});
 		}
 
 		islands.into_any_element()

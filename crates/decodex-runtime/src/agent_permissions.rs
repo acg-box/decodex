@@ -28,7 +28,7 @@ where
 	Fut: Future<Output = Option<Source>>,
 {
 	let Some(before) = source().await else {
-		return AgentPermissionState::Unavailable;
+		return AgentPermissionState::NotConnected;
 	};
 	let result = inspect(store, &before).await;
 
@@ -222,7 +222,11 @@ async fn inspect(store: &SqliteStore, source: &Source) -> Option<Inspection> {
 		.await
 		.ok()?
 	{
-		return None;
+		return Some(Inspection {
+			state: AgentPermissionState::NotConnected,
+			settings_event: 0,
+			guard: None,
+		});
 	}
 
 	let work = store.get_agent_work_item(k.work.clone()).await.ok()?;

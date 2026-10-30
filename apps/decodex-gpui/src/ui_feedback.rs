@@ -87,43 +87,6 @@ impl Tone {
 			.flex_none()
 			.text_color(ui_theme::rgb(self.color()))
 	}
-
-	pub(crate) fn row(self, id: impl Into<ElementId>, message: &str) -> Stateful<Div> {
-		self.row_with_icon(id, message, self.icon())
-	}
-
-	pub(crate) fn row_with_icon(
-		self,
-		id: impl Into<ElementId>,
-		message: &str,
-		icon: impl IntoElement,
-	) -> Stateful<Div> {
-		let id = id.into();
-		let text_selector = format!("{id}-text");
-		let prose_key = format!("{id}-prose");
-
-		gpui::div()
-			.id(id)
-			.role(Role::Status)
-			.aria_label(format!("{}: {message}", self.label()))
-			.flex()
-			.items_start()
-			.gap(gpui::px(7.))
-			.text_size(gpui::px(NOTICE_TEXT_SIZE))
-			.line_height(gpui::px(NOTICE_LINE_HEIGHT))
-			.text_color(ui_theme::rgb(self.color()))
-			.child(
-				gpui::div()
-					.h(gpui::px(NOTICE_LINE_HEIGHT))
-					.flex_none()
-					.flex()
-					.items_center()
-					.child(icon),
-			)
-			.child(gpui::div().debug_selector(move || text_selector.clone()).min_w_0().child(
-				crate::shell::agent_surface::selectable_prose(prose_key, message.to_owned()),
-			))
-	}
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -185,10 +148,24 @@ pub(crate) struct Notice {
 	scope: SharedString,
 	feedback: Option<Feedback>,
 	action: Option<AnyElement>,
+	loading_delay: Duration,
+	inline: bool,
 }
 impl Notice {
 	pub(crate) fn action(mut self, action: Option<AnyElement>) -> Self {
 		self.action = action;
+
+		self
+	}
+
+	pub(crate) fn loading_delay(mut self, delay: Duration) -> Self {
+		self.loading_delay = delay;
+
+		self
+	}
+
+	pub(crate) fn inline(mut self) -> Self {
+		self.inline = true;
 
 		self
 	}
@@ -203,9 +180,10 @@ impl RenderOnce for Notice {
 		});
 		let now = Instant::now();
 		let reduced = ui_motion::reduced();
+		let inline = self.inline;
 		let target = self.feedback.filter(|feedback| !feedback.is_empty());
 		let delay = if target.as_ref().is_some_and(|f| f.busy) {
-			Duration::from_millis(250)
+			self.loading_delay
 		} else {
 			Duration::ZERO
 		};
@@ -250,7 +228,9 @@ impl RenderOnce for Notice {
 					feedback.icon(),
 				)
 				.debug_selector(|| "conversation-activity-status".into())
-				.children(self.action.filter(|_| current));
+				.children(self.action.filter(|_| current))
+				.when(inline, |row| row.min_h(gpui::px(0.)).items_start().py(gpui::px(6.)));
+				let row = if inline { gpui::div().w_full().child(row) } else { notice_rail(row) };
 
 				slot.child(
 					gpui::div()
@@ -269,7 +249,7 @@ impl RenderOnce for Notice {
 								});
 							}
 						})
-						.child(notice_rail(row).opacity(opacity)),
+						.child(row.opacity(opacity)),
 				)
 			})
 	}
@@ -432,7 +412,14 @@ pub(crate) fn notice(
 	scope: impl Into<SharedString>,
 	feedback: Option<Feedback>,
 ) -> Notice {
-	Notice { id: id.into(), scope: scope.into(), feedback, action: None }
+	Notice {
+		id: id.into(),
+		scope: scope.into(),
+		feedback,
+		action: None,
+		loading_delay: Duration::from_millis(250),
+		inline: false,
+	}
 }
 
 /// Lock immediately, retain the read-only draft through exit, then restore its editor.

@@ -275,7 +275,10 @@ pub use decodex_core::{
 	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES, guardian, work,
 };
 /// Shared global client settings; these do not change thread execution settings.
-pub use decodex_core::{FastModeFailure, global_fast_mode_enabled, set_global_fast_mode_enabled};
+pub use decodex_core::{
+	CodexConfigError, codex_default_service_tier, global_fast_mode_enabled,
+	set_codex_default_service_tier, set_global_fast_mode_enabled,
+};
 pub use usage_evidence::{
 	UsageEvidenceResult, UsageEvidenceScope, UsageEvidenceSource, UsageEvidenceTotals,
 };
@@ -284,7 +287,7 @@ pub use work_portfolio::{MAX_WORK_DETAIL_BYTES, WORK_DETAIL_PAGE_BYTES, WorkDeta
 use serde::{Deserialize, Serialize};
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 4, minor: 2 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 4, minor: 3 };
 
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]

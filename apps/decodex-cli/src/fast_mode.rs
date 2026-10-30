@@ -4,7 +4,7 @@ use clap::{Args, Subcommand};
 use serde::Serialize;
 
 use crate::{CommandOutput, OutputFormat};
-use decodex_protocol::FastModeFailure;
+use decodex_protocol::CodexConfigError;
 
 const FAST_MODE_OUTPUT_SCHEMA: &str = "decodex/fast-mode-cli/1";
 
@@ -45,7 +45,7 @@ struct FailureDocument {
 	schema: &'static str,
 	command: &'static str,
 	outcome: &'static str,
-	error: FastModeFailure,
+	error: CodexConfigError,
 }
 
 pub(crate) fn execute(command: FastModeCommand, format: OutputFormat) -> CommandOutput {
@@ -80,7 +80,7 @@ fn render_success(command: &'static str, format: OutputFormat, enabled: bool) ->
 fn render_failure(
 	command: &'static str,
 	format: OutputFormat,
-	error: FastModeFailure,
+	error: CodexConfigError,
 ) -> CommandOutput {
 	let (text, error_stream) = match format {
 		OutputFormat::Human => (format!("decodex fast-mode {command} failed: {error}"), true),
@@ -107,7 +107,7 @@ mod tests {
 		Cli, Command, OutputFormat,
 		fast_mode::{self, FastModeCommand, SetArgs},
 	};
-	use decodex_protocol::FastModeFailure;
+	use decodex_protocol::CodexConfigError;
 	#[test]
 	fn command_surface_requires_an_explicit_set_boolean() {
 		let status = Cli::try_parse_from(["decodex", "fast-mode", "status", "--output", "json"])
@@ -127,8 +127,11 @@ mod tests {
 	#[test]
 	fn output_is_stable_bounded_and_path_free() {
 		let enabled = fast_mode::render_success("set", OutputFormat::Json, true);
-		let failure =
-			fast_mode::render_failure("status", OutputFormat::Json, FastModeFailure::ConfigInvalid);
+		let failure = fast_mode::render_failure(
+			"status",
+			OutputFormat::Json,
+			CodexConfigError::ConfigInvalid,
+		);
 
 		assert_eq!(
 			enabled.text(),

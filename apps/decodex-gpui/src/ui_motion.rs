@@ -1,12 +1,18 @@
 //! Interruptible motion shared by native controls and workspace panels.
 
+#[cfg(all(target_os = "macos", not(test)))]
+#[path = "ui_native_popover.rs"]
+mod native_popover;
 #[path = "ui_overflow_label.rs"] mod overflow_label;
+#[path = "ui_segmented.rs"] mod segmented;
 #[path = "ui_text_reveal.rs"] mod text_reveal;
 
 pub(crate) use crate::ui_frame::{
-	animations_active, application_active, observe_activation, request_frame, window_options,
+	animations_active, application_active, observe_activation, reduced, request_frame,
+	window_options,
 };
 pub(crate) use overflow_label::OverflowLabel;
+pub(crate) use segmented::{Choice, Segmented};
 pub(crate) use text_reveal::TextReveal;
 
 use std::{
@@ -22,16 +28,11 @@ use gpui::{
 		StatefulInteractiveElement as _, Styled,
 	},
 };
-#[cfg(all(target_os = "macos", not(test)))]
-use objc2::{
-	rc::Retained,
-	runtime::{AnyClass, AnyObject},
-};
 use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::ui_theme::{
-	self, CONVERSATION_TAB_GAP, CONVERSATION_TAB_SIZE, ColorScheme, ERROR, INFO, SUCCESS,
-	SURFACE_OVERLAY_MATERIAL, TEXT, WARNING,
+	self, CONVERSATION_TAB_GAP, CONVERSATION_TAB_SIZE, ColorScheme, ERROR, INFO, SUCCESS, TEXT,
+	WARNING,
 };
 
 pub(crate) trait SmoothControl {
@@ -285,52 +286,175 @@ impl RenderOnce for Arrival {
 	}
 }
 
-/// Float menus into place without clipping their shadow or fading individual primitives.
+/// Resolve final dimensions before the complete surface arrives.
 #[derive(IntoElement)]
 pub(crate) struct Popover {
 	id: ElementId,
-	unframed: bool,
 	visible: bool,
-	child: AnyElement,
+	child: Option<AnyElement>,
+	content: Option<std::rc::Rc<PopoverContent>>,
+	dismiss: std::rc::Rc<dyn Fn(&mut App)>,
+	trigger: std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
+	above: bool,
+	preview: bool,
+	focus: Option<gpui::FocusHandle>,
 }
-impl Popover {
-	pub(crate) fn unframed(mut self, unframed: bool) -> Self {
-		self.unframed = unframed;
 
+type PopoverContent = dyn Fn(&mut Window, &mut App) -> AnyElement;
+
+/// A persistent floating control reuses the same native material as transient menus.
+#[derive(IntoElement)]
+pub(crate) struct MaterialSurface {
+	id: ElementId,
+	radius: f64,
+	content: std::rc::Rc<PopoverContent>,
+	dismiss: std::rc::Rc<dyn Fn(&mut App)>,
+}
+impl RenderOnce for MaterialSurface {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		#[cfg(all(target_os = "macos", not(test)))]
+		if native_popover::available() {
+			return native_popover::render_surface(
+				self.id,
+				self.radius,
+				self.content,
+				self.dismiss,
+				window,
+				cx,
+			);
+		}
+		let _ = (&self.id, &self.dismiss);
+		gpui::div()
+			.size_full()
+			.rounded(gpui::px(self.radius as f32))
+			.bg(ui_theme::popover_surface())
+			.child((self.content)(window, cx))
+			.into_any_element()
+	}
+}
+
+pub(crate) fn material_surface(
+	id: impl Into<ElementId>,
+	radius: f64,
+	content: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
+	dismiss: impl Fn(&mut App) + 'static,
+) -> MaterialSurface {
+	MaterialSurface {
+		id: id.into(),
+		radius,
+		content: std::rc::Rc::new(content),
+		dismiss: std::rc::Rc::new(dismiss),
+	}
+}
+
+pub(crate) fn hide_material_surface(id: impl Into<ElementId>, window: &Window, cx: &mut App) {
+	let parent = window.window_handle();
+	let id = id.into();
+	#[cfg(all(target_os = "macos", not(test)))]
+	cx.defer(move |cx| native_popover::hide_surface(parent, id, cx));
+	#[cfg(not(all(target_os = "macos", not(test))))]
+	let _ = (parent, id, cx);
+}
+
+#[cfg(all(target_os = "macos", not(test)))]
+pub(crate) fn claim_popover(
+	parent: gpui::AnyWindowHandle,
+	popup: gpui::AnyWindowHandle,
+	dismiss: impl Fn(&mut App) + 'static,
+	cx: &mut App,
+) {
+	native_popover::claim(parent, popup, std::rc::Rc::new(dismiss), cx);
+}
+
+#[cfg(all(target_os = "macos", not(test)))]
+pub(crate) fn dismiss_shared_popover(parent: gpui::AnyWindowHandle, cx: &mut App) {
+	native_popover::dismiss_host(parent, cx);
+}
+
+/// A hover owner's release closes only its own native preview.
+pub(crate) fn dismiss_popover(parent: gpui::AnyWindowHandle, id: ElementId, cx: &mut App) {
+	#[cfg(all(target_os = "macos", not(test)))]
+	native_popover::dismiss(parent, id, cx);
+	#[cfg(not(all(target_os = "macos", not(test))))]
+	let _ = (parent, id, cx);
+}
+
+impl Popover {
+	pub(crate) fn on_dismiss(mut self, dismiss: impl Fn(&mut App) + 'static) -> Self {
+		self.dismiss = std::rc::Rc::new(dismiss);
+		self
+	}
+
+	pub(crate) fn trigger(
+		mut self,
+		bounds: std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
+	) -> Self {
+		self.trigger = bounds;
+		self
+	}
+
+	pub(crate) fn above(mut self) -> Self {
+		self.above = true;
+		self
+	}
+
+	pub(crate) fn preview(mut self) -> Self {
+		self.preview = true;
+		self
+	}
+
+	pub(crate) fn focus(mut self, focus: Option<gpui::FocusHandle>) -> Self {
+		self.focus = focus;
 		self
 	}
 }
 
 impl RenderOnce for Popover {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-		let state = window.use_keyed_state(self.id, cx, |_, _| Tween::new(0.));
-		let now = Instant::now();
-		let (progress, moving) = state.update(cx, |s, _| {
-			if !self.visible {
-				*s = Tween::new(0.);
-			} else {
-				s.target(1., now);
-			}
-
-			(s.sample(now), s.moving(now))
+	fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		#[cfg(all(target_os = "macos", not(test)))]
+		if self.content.is_some() && native_popover::available() {
+			return native_popover::render(self, window, cx);
+		}
+		let child = if let Some(content) = self.content.take() {
+			content(window, cx)
+		} else {
+			self.child.take().expect("popover content")
+		};
+		let arrival = window.use_keyed_state(self.id.clone(), cx, |_, _| {
+			Tween::new(0.).duration(ui_theme::POPOVER_ARRIVAL)
 		});
-
+		let now = Instant::now();
+		let (opacity, moving) = arrival.update(cx, |arrival, _| {
+			if !self.visible {
+				*arrival = Tween::new(0.).duration(ui_theme::POPOVER_ARRIVAL);
+				return (0., false);
+			}
+			arrival.target(1., now);
+			(arrival.sample(now), arrival.moving(now))
+		});
 		if moving {
 			request_frame(window, cx);
 		}
-
-		// A disclosure's height clip cuts the blur into a rectangular dark patch.
-		// Menus overlay the page, so animate their position without a layout clip.
-		gpui::div().w_full().when(self.visible, |slot| {
-			slot.p_2().child(
-				gpui::div()
-					.w_full()
-					.relative()
-					.top(gpui::px(-4. * (1. - progress)))
-					.when(!self.unframed, menu_surface)
-					.child(self.child),
-			)
-		})
+		// The complete surface arrives together; its size and text scale stay fixed.
+		gpui::div()
+			.id(self.id)
+			.w_full()
+			.when(self.visible, |slot| {
+				slot.when(!self.preview, |slot| {
+					slot.px(gpui::px(ui_theme::POPOVER_PADDING)).py(gpui::px(ui_theme::POPOVER_GAP))
+				})
+				.child(
+					gpui::div()
+						.w_full()
+						.relative()
+						.top(gpui::px(ui_theme::POPOVER_OFFSET * (1. - opacity)))
+						.opacity(opacity)
+						.debug_selector(|| "popover-surface".into())
+						.map(menu_surface)
+						.child(child),
+				)
+			})
+			.into_any_element()
 	}
 }
 
@@ -544,9 +668,12 @@ impl SmoothControl for Stateful<Div> {
 pub(crate) fn tooltip_surface(surface: Div) -> Div {
 	surface
 		.rounded(gpui::px(8.))
-		.border_1()
-		.border_color(ui_theme::rgba(0xffffff24))
-		.bg(ui_theme::rgb(0x24242a))
+		.border(gpui::px(0.5))
+		.border_color(ui_theme::rgb(TEXT).opacity(0.1))
+		.bg(ui_theme::popover_surface())
+		.px(gpui::px(8.))
+		.py(gpui::px(6.))
+		.map(popover_elevation)
 		.text_color(ui_theme::rgb(TEXT))
 		.text_size(gpui::px(11.))
 		.line_height(gpui::px(16.))
@@ -558,67 +685,17 @@ pub(crate) fn menu_surface<T>(surface: T) -> T
 where
 	T: Styled,
 {
-	surface
-		.rounded(gpui::px(10.))
-		.border_1()
-		.border_color(ui_theme::rgba(0xffffff14))
-		.bg(ui_theme::rgb(SURFACE_OVERLAY_MATERIAL >> 8))
-		.shadow(vec![gpui::BoxShadow {
-			inset: false,
-			color: ui_theme::rgba(0x00000028).into(),
-			offset: gpui::point(gpui::px(0.), gpui::px(3.)),
-			blur_radius: gpui::px(8.),
-			spread_radius: gpui::px(-2.),
-		}])
+	popover_elevation(ui_theme::menu_outline(surface).bg(ui_theme::popover_surface()))
 }
 
-/// Respect system accessibility preferences and the application rendering policy.
-pub(crate) fn reduced() -> bool {
-	if !animations_active() {
-		return true;
-	}
-
-	#[cfg(all(target_os = "macos", not(test)))]
-	{
-		// AppKit owns this process-wide preference; called from UI rendering.
-		unsafe {
-			let workspace: Retained<AnyObject> =
-				objc2::msg_send![AnyClass::get(c"NSWorkspace").expect("AppKit"), sharedWorkspace];
-			let reduce_motion: bool =
-				objc2::msg_send![&*workspace, accessibilityDisplayShouldReduceMotion];
-			let voice_over: bool = objc2::msg_send![&*workspace, isVoiceOverEnabled];
-
-			reduce_motion || voice_over
-		}
-	}
-
-	#[cfg(any(not(target_os = "macos"), test))]
-	false
-}
-
-/// Animate a native overlay as one composited surface, including its shadow.
-#[cfg(all(target_os = "macos", not(test)))]
-pub(crate) fn native_presence(
-	id: &'static str,
-	visible: bool,
-	window: &mut Window,
-	cx: &mut App,
-) -> f32 {
-	let state = window.use_keyed_state(id, cx, |_, _| Tween::new(0.));
-	let now = Instant::now();
-	let (opacity, moving) = state.update(cx, |s, _| {
-		s.duration = Duration::from_millis(180);
-
-		s.target(if visible { 1. } else { 0. }, now);
-
-		(s.sample(now), s.moving(now))
-	});
-
-	if moving {
-		request_frame(window, cx);
-	}
-
-	opacity
+fn popover_elevation<T: Styled>(surface: T) -> T {
+	surface.shadow(vec![gpui::BoxShadow {
+		inset: false,
+		color: ui_theme::rgba(0x00000020).into(),
+		offset: gpui::point(gpui::px(0.), gpui::px(2.)),
+		blur_radius: gpui::px(10.),
+		spread_radius: gpui::px(-1.),
+	}])
 }
 
 pub(crate) fn value(
@@ -681,7 +758,36 @@ pub(crate) fn arrival(route: String, child: impl IntoElement) -> Arrival {
 }
 
 pub(crate) fn popover(id: impl Into<ElementId>, visible: bool, child: impl IntoElement) -> Popover {
-	Popover { id: id.into(), visible, child: child.into_any_element(), unframed: false }
+	Popover {
+		id: id.into(),
+		visible,
+		child: Some(child.into_any_element()),
+		content: None,
+		dismiss: std::rc::Rc::new(|_| {}),
+		trigger: Default::default(),
+		above: false,
+		preview: false,
+		focus: None,
+	}
+}
+
+/// Rebuild foreground in the material-owning window, with one retained host per parent.
+pub(crate) fn popover_lazy(
+	id: impl Into<ElementId>,
+	visible: bool,
+	content: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
+) -> Popover {
+	Popover {
+		id: id.into(),
+		visible,
+		child: None,
+		content: Some(std::rc::Rc::new(content)),
+		dismiss: std::rc::Rc::new(|_| {}),
+		trigger: Default::default(),
+		above: false,
+		preview: false,
+		focus: None,
+	}
 }
 
 #[cfg(test)]
@@ -689,6 +795,47 @@ mod tests {
 	use std::time::{Duration, Instant};
 
 	use crate::ui_motion::Tween;
+
+	#[gpui::test]
+	fn popover_keeps_its_final_size_during_the_whole_surface_arrival(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use gpui::{IntoElement, Render, Styled as _};
+
+		struct Menu(bool);
+		impl Render for Menu {
+			fn render(
+				&mut self,
+				_: &mut gpui::Window,
+				_: &mut gpui::Context<Self>,
+			) -> impl IntoElement {
+				super::popover("menu", self.0, gpui::div().h(gpui::px(48.)))
+			}
+		}
+
+		let (menu, visual) = cx.add_window_view(|_, _| Menu(true));
+		let mut size = None;
+		for open in [true, false, true] {
+			menu.update(visual, |menu, cx| {
+				menu.0 = open;
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_frame);
+			let bounds = visual.debug_bounds("popover-surface");
+			assert_eq!(bounds.is_some(), open);
+			if let Some(bounds) = bounds {
+				assert!(bounds.top() >= gpui::px(crate::ui_theme::POPOVER_GAP));
+				assert!(
+					bounds.top()
+						<= gpui::px(crate::ui_theme::POPOVER_GAP + crate::ui_theme::POPOVER_OFFSET)
+				);
+				assert_eq!(*size.get_or_insert(bounds.size), bounds.size);
+			}
+			visual.update(|window, cx| {
+				assert_eq!(window.simulate_next_frame(cx) > 0, open);
+			});
+		}
+	}
 
 	#[test]
 	fn reduced_motion_finishes_an_in_progress_transition_immediately() {

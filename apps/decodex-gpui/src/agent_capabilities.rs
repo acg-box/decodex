@@ -20,11 +20,15 @@ pub(super) struct CatalogContext {
 
 impl AgentSurface {
 	pub(super) fn service_tier_picker(&self, cx: &Context<Self>) -> AnyElement {
-		let supports_fast = self.selected_model(cx).is_some_and(|model| model.supports_fast);
+		let tiers = self
+			.selected_model(cx)
+			.into_iter()
+			.flat_map(|model| &model.service_tiers)
+			.map(|tier| (tier.id.clone(), tier.name.clone()));
 		let selected = self.composer_service_tier();
 		crate::session_settings::speed_choices(
 			selected.as_ref(),
-			supports_fast,
+			tiers,
 			Self::choose_service_tier,
 			cx,
 		)
@@ -88,6 +92,12 @@ impl AgentSurface {
 		let Some(context) = self.catalog_context(cx) else {
 			return;
 		};
+		if self.capabilities_context.as_ref() == Some(&context)
+			&& matches!(self.capabilities, Some(AgentCapabilitiesResult::Available { .. }))
+			&& self.capabilities_checked.is_some_and(|at| at.elapsed().as_secs() < 60)
+		{
+			return;
+		}
 		let cold_request = if context.has_root {
 			None
 		} else {
@@ -304,13 +314,50 @@ impl AgentSurface {
 mod effort_tests;
 #[cfg(test)]
 mod tests {
-	use std::{future, thread};
+	use std::future;
 
 	use gpui::AppContext as _;
 
 	use crate::shell::agent_surface::capabilities::{
 		AgentCapabilitiesResult, AgentModelDto, AgentSurface, ConversationReasoningEffort,
 	};
+
+	#[gpui::test]
+	fn warm_catalog_is_reused_until_expiry_or_source_change(cx: &mut gpui::TestAppContext) {
+		let (_root, profile, server) =
+			crate::shell::agent_surface::wire_test_support::fixture(|_| async {});
+		server.join().unwrap();
+		let surface = cx.new(AgentSurface::new);
+		surface.update(cx, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			s.profile = Some(profile);
+			s.capabilities =
+				Some(AgentCapabilitiesResult::Available { models: vec![], memory_enabled: None });
+			s.capabilities_context = s.catalog_context(cx);
+			s.capabilities_checked = Some(std::time::Instant::now());
+			let before = s.capability_generation;
+			for _ in 0..4 {
+				s.load_capabilities(cx);
+			}
+			assert_eq!(s.capability_generation, before);
+			assert!(s.capability_task.is_none(), "warm menus must not start background requests");
+
+			s.capabilities_checked =
+				Some(std::time::Instant::now() - std::time::Duration::from_secs(61));
+			s.load_capabilities(cx);
+			assert_eq!(s.capability_generation, before + 1);
+			s.capability_task = None;
+			s.account.update(cx, |input, cx| input.set_content("different-account", cx));
+			s.load_capabilities(cx);
+			assert_eq!(s.capability_generation, before + 2);
+			s.capability_task = None;
+			s.capabilities_context = s.catalog_context(cx);
+			s.capabilities = Some(AgentCapabilitiesResult::Unavailable);
+			s.load_capabilities(cx);
+			assert_eq!(s.capability_generation, before + 3, "failed catalogs remain retryable");
+			s.capability_task = None;
+		});
+	}
 
 	#[gpui::test]
 	fn catalog_reply_survives_unrelated_snapshot_refresh(cx: &mut gpui::TestAppContext) {
@@ -421,7 +468,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn speed_picker_only_offers_standard_and_fast_and_rechecks_catalog(
+	fn speed_picker_follows_advertised_tiers_without_adopting_native_default(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -431,6 +478,7 @@ mod tests {
 			s.model.update(cx, |input, cx| input.set_content("custom", cx));
 			s.mark_model_intent(cx);
 
+			let configured_tier = s.service_tier.clone();
 			s.capabilities = Some(AgentCapabilitiesResult::Available {
 				memory_enabled: None,
 				models: vec![AgentModelDto {
@@ -457,8 +505,8 @@ mod tests {
 
 			s.reconcile_model_options(cx);
 
-			assert!(
-				s.service_tier.is_none(),
+			assert_eq!(
+				s.service_tier, configured_tier,
 				"catalog default must not silently opt into a paid tier"
 			);
 
@@ -471,11 +519,6 @@ mod tests {
 			window.draw(cx).clear(cx);
 		});
 
-		// The popover uses a real-time entrance translation; click its settled bounds.
-		thread::sleep(std::time::Duration::from_millis(220));
-
-		visual.update(crate::ui_frame::draw_current_frame);
-
 		assert!(visual.debug_bounds("tier-inherited").is_none());
 		assert!(visual.debug_bounds("tier-default").is_some());
 		assert!(visual.debug_bounds("tier-ultrafast").is_none());
@@ -486,6 +529,31 @@ mod tests {
 
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "priority");
+			assert!(s.composer_capability_error(cx).is_none());
+			if let Some(AgentCapabilitiesResult::Available { models, .. }) = &mut s.capabilities {
+				models[0].service_tiers.push(decodex_protocol::AgentServiceTierDto {
+					id: decodex_protocol::ServiceTier::new("ultrafast").unwrap(),
+					name: "Ultrafast".into(),
+					description: "Higher usage".into(),
+				});
+			}
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let standard = visual.debug_bounds("tier-default").unwrap();
+		let fast = visual.debug_bounds("tier-priority").unwrap();
+		let ultrafast = visual.debug_bounds("tier-ultrafast").unwrap();
+		for choice in [standard, fast, ultrafast] {
+			assert_eq!(choice.size.height, gpui::px(24.));
+			assert!(choice.size.width < gpui::px(80.), "speed bounds: {choice:?}");
+			assert_eq!(choice.top(), standard.top(), "all three speeds fit on one line");
+		}
+		assert!(ultrafast.right() <= visual.debug_bounds("model-options").unwrap().right());
+		visual.simulate_click(ultrafast.center(), gpui::Modifiers::default());
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.composer_service_tier().unwrap().as_str(), "ultrafast");
+			assert_eq!(s.composer_speed_label(), "Ultrafast");
+			assert!(!s.fast, "the exact tier takes precedence over the legacy Fast flag");
 			assert!(s.composer_capability_error(cx).is_none());
 
 			if let Some(AgentCapabilitiesResult::Available { models, .. }) = &mut s.capabilities {

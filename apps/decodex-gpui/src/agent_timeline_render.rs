@@ -526,7 +526,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 			duration_ms: *duration_ms,
 			status: status.clone(),
 			usage: usage.clone(),
-			timing: Some(timing.clone().unwrap_or_default()),
+			timing: timing.clone(),
 		}
 		.into_any_element()
 	}
@@ -1923,6 +1923,13 @@ phase: None, app_ui: false,
 		selectors
 	}
 
+	fn advance_metrics_hover(visual: &mut gpui::VisualTestContext, millis: u64) {
+		visual.run_until_parked();
+		visual.executor().advance_clock(std::time::Duration::from_millis(millis));
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_current_frame);
+	}
+
 	#[gpui::test]
 	fn native_messages_and_promotions_render_with_distinct_provider_identities(
 		cx: &mut gpui::TestAppContext,
@@ -1957,14 +1964,30 @@ phase: None, app_ui: false,
 
 		visual.simulate_mouse_move(details.center(), gpui::MouseButton::Left, Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
+		visual.run_until_parked();
+		assert!(visual.debug_bounds("native-turn-usage").is_none(), "passing over is not intent");
+
+		visual.executor().advance_clock(std::time::Duration::from_millis(100));
+		let away = gpui::point(gpui::px(1_390.), gpui::px(1_390.));
+		visual.simulate_mouse_move(away, gpui::MouseButton::Left, Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		advance_metrics_hover(visual, 600);
+		assert!(
+			visual.debug_bounds("native-turn-usage").is_none(),
+			"leaving cancels pending details"
+		);
 
 		let details = visual.debug_bounds("turn-metrics-hover").unwrap();
 
 		visual.simulate_mouse_move(details.center(), gpui::MouseButton::Left, Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
-
-		thread::sleep(std::time::Duration::from_millis(220));
-
+		advance_metrics_hover(visual, 179);
+		assert!(
+			visual.debug_bounds("native-turn-usage").is_none(),
+			"details wait for a steady hover"
+		);
+		visual.executor().advance_clock(std::time::Duration::from_millis(1));
+		visual.run_until_parked();
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert_eq!(
@@ -1973,16 +1996,50 @@ phase: None, app_ui: false,
 			"details must not shift the transcript"
 		);
 		assert!(visual.debug_bounds("native-turn-usage").is_some());
-		assert!(visual.debug_bounds("observed-timing-details").is_some());
-
-		visual.simulate_mouse_move(
-			gpui::point(gpui::px(1_390.), gpui::px(1_390.)),
-			gpui::MouseButton::Left,
-			Default::default(),
+		assert!(
+			visual.debug_bounds("observed-timing-details").is_none(),
+			"missing activity does not add filler rows"
 		);
+		let panel = visual.debug_bounds("native-turn-usage").unwrap();
+		visual.simulate_mouse_move(panel.center(), gpui::MouseButton::Left, Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
+		advance_metrics_hover(visual, 600);
+		assert!(
+			visual.debug_bounds("native-turn-usage").is_some(),
+			"the pointer can enter details"
+		);
 
+		visual.simulate_mouse_move(away, gpui::MouseButton::Left, Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		advance_metrics_hover(visual, 500);
+
+		thread::sleep(std::time::Duration::from_millis(180));
+		visual.update(crate::ui_frame::draw_frame);
 		assert!(visual.debug_bounds("native-turn-usage").is_none(), "moving away closes details");
+		visual.simulate_click(details.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(
+			visual.debug_bounds("native-turn-usage").is_some(),
+			"click opens without waiting for hover"
+		);
+		visual.simulate_mouse_move(away, gpui::MouseButton::Left, Default::default());
+		visual.run_until_parked();
+		visual.executor().advance_clock(std::time::Duration::from_millis(600));
+		visual.run_until_parked();
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(
+			visual.debug_bounds("native-turn-usage").is_some(),
+			"clicked details stay open for inspection"
+		);
+		visual.simulate_click(away, Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		thread::sleep(std::time::Duration::from_millis(180));
+		visual.update(crate::ui_frame::draw_frame);
+		assert!(
+			visual.debug_bounds("native-turn-usage").is_none(),
+			"outside click dismisses details"
+		);
+
 		assert_eq!(details, visual.debug_bounds("turn-metrics-hover").unwrap());
 		assert!(visual.debug_bounds("native-plan-content").is_some());
 		assert!(visual.debug_bounds("native-promotion-content").is_some());

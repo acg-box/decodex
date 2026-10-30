@@ -33,6 +33,7 @@ struct AccountPanelView: View {
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var panelScreenVisibleFrame: CGRect?
 	@State private var measuredAccountListContentHeight: CGFloat = 0
+	@State private var measuredHeaderHeight = AccountPanelLayout.estimatedChromeHeight - PanelSpacing.section
 	@State private var accountCardFrames = [String: CGRect]()
 	@State private var accountReorderInteraction: AccountReorderInteraction?
 	@State private var hoveredAccountID: String?
@@ -136,7 +137,9 @@ struct AccountPanelView: View {
 	private var panelContent: some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.section) {
 			headerOverview
-
+				.onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+					measuredHeaderHeight = $0
+				}
 
 			accountContent
 		}
@@ -532,7 +535,8 @@ struct AccountPanelView: View {
 		AccountPanelLayout.accountListHeight(
 			accountCount: store.accounts.count,
 			measuredContentHeight: measuredAccountListContentHeight,
-			windowVisibleFrame: layoutVisibleFrameOverride ?? panelScreenVisibleFrame
+			windowVisibleFrame: layoutVisibleFrameOverride ?? panelScreenVisibleFrame,
+			chromeHeight: measuredHeaderHeight + PanelSpacing.section
 		)
 	}
 
