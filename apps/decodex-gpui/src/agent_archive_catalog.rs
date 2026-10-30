@@ -27,6 +27,9 @@ use decodex_protocol::{
 	AgentWorkItemDto, EntityId, IdempotencyKey, WireText,
 };
 
+const BATCH_BAR_HEIGHT: f32 = 38.;
+const BATCH_BAR_INSET: f32 = 8.;
+
 #[derive(Default)]
 pub(in crate::shell::agent_surface) struct Catalog {
 	pub open: bool,
@@ -44,6 +47,7 @@ pub(in crate::shell::agent_surface) struct Catalog {
 	confirmation: Option<(Vec<String>, Instant)>,
 	confirmation_task: Option<Task<()>>,
 	deleting: bool,
+	selecting: bool,
 	selected: BTreeSet<String>,
 }
 
@@ -130,6 +134,7 @@ impl Catalog {
 	}
 
 	fn toggle_selected(&mut self, id: &str) {
+		self.selecting = true;
 		self.cancel_confirmation();
 		if !self.selected.remove(id) {
 			self.selected.insert(id.into());
@@ -192,7 +197,6 @@ impl AgentSurface {
 	pub(in crate::shell::agent_surface) fn open_archive_catalog(&mut self, cx: &mut Context<Self>) {
 		self.cancel_dictation(cx);
 		self.workspace.archives.cancel_confirmation();
-		self.workspace.archives.selected.clear();
 		self.workspace.browsing = true;
 		self.workspace.archives.open = true;
 		if self.workspace.archives.search.is_none() {
@@ -437,7 +441,7 @@ impl AgentSurface {
 			.unwrap_or_default();
 		self.workspace.archives.prepare_rows(&query);
 		let catalog = &self.workspace.archives;
-		let selecting = !catalog.selected.is_empty();
+		let selecting = catalog.selecting;
 		let rows = catalog.rows.clone();
 		let mut list = gpui::div()
 			.id("archive-list")
@@ -449,7 +453,9 @@ impl AgentSurface {
 			.flex_col()
 			.gap(gpui::px(16.))
 			.pr(gpui::px(10.))
-			.pb(gpui::px(6.));
+			// End clearance keeps the last row above the floating actions without resizing the
+			// list.
+			.pb(gpui::px(BATCH_BAR_HEIGHT + BATCH_BAR_INSET * 2.));
 		for group in rows.chunk_by(|a, b| catalog.sort == Sort::Name || a.day == b.day) {
 			let first = &group[0];
 			let mut column = gpui::div()
@@ -758,17 +764,13 @@ impl AgentSurface {
 			.p_3()
 			.gap_2()
 			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
-				if e.keystroke.key == "escape"
+				if !e.is_held
+					&& e.keystroke.key == "escape"
 					&& (s.workspace.archives.confirmation.is_some()
-						|| !s.workspace.archives.selected.is_empty())
+						|| s.workspace.archives.selecting)
 				{
-					if s.workspace.archives.confirmation.is_some() {
-						s.workspace.archives.cancel_confirmation();
-					} else if s.workspace.archives.mutation.is_none() {
-						s.workspace.archives.selected.clear();
-					}
+					s.exit_archive_selection(cx);
 					cx.stop_propagation();
-					cx.notify();
 				}
 			}))
 			.child(self.archive_catalog_toolbar(cx))
@@ -783,14 +785,15 @@ impl AgentSurface {
 					.flex_1()
 					.min_h_0()
 					.w_full()
+					.relative()
 					.overflow_hidden()
 					.child(
 						list.smooth_scroll("archive-list-motion")
 							.contain_scroll()
 							.with_scrollbar("archive-scrollbar", "Scroll archive"),
-					),
-			)
-			.child(self.archive_selection_bar(cx));
+					)
+					.child(self.archive_selection_bar(cx)),
+			);
 		gpui::div()
 			.size_full()
 			.min_w_0()
@@ -805,6 +808,7 @@ impl AgentSurface {
 	fn select_all_archived(&mut self, cx: &mut Context<Self>) {
 		let catalog = &mut self.workspace.archives;
 		if catalog.mutation.is_none() {
+			catalog.selecting = true;
 			catalog.cancel_confirmation();
 			if catalog.selected.len() == catalog.rows.len() {
 				catalog.selected.clear();
@@ -826,10 +830,11 @@ impl AgentSurface {
 		}
 	}
 
-	fn clear_archive_selection(&mut self, cx: &mut Context<Self>) {
+	fn exit_archive_selection(&mut self, cx: &mut Context<Self>) {
 		if self.workspace.archives.mutation.is_none() {
 			self.workspace.archives.cancel_confirmation();
 			self.workspace.archives.selected.clear();
+			self.workspace.archives.selecting = false;
 			cx.notify();
 		}
 	}
@@ -838,6 +843,7 @@ impl AgentSurface {
 		let catalog = &self.workspace.archives;
 		let confirming = catalog.confirming_selection();
 		let unavailable = catalog.mutation.is_some();
+		let delete_enabled = !unavailable && !catalog.selected.is_empty();
 		let all = !catalog.rows.is_empty() && catalog.selected.len() == catalog.rows.len();
 		let check = archive_checkbox(
 			"select-all-archives".into(),
@@ -868,6 +874,7 @@ impl AgentSurface {
 				.bg(ui_theme::rgb(ui_theme::ERROR).opacity(0.12))
 				.border_color(ui_theme::rgb(ui_theme::ERROR).opacity(0.35))
 		})
+		.when(!delete_enabled, |d| d.opacity(0.4).cursor_default())
 		.on_click(cx.listener(|s, _, _, cx| s.delete_selected_archives(cx)))
 		.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
 			if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
@@ -877,21 +884,23 @@ impl AgentSurface {
 		}));
 		let selected_count = catalog.selected.len();
 		let clear =
-			archive_action("clear-archive-selection", Symbol::Close, "Clear selection", None)
-				.aria_label("Clear selection")
-				.on_click(cx.listener(|s, _, _, cx| s.clear_archive_selection(cx)))
+			archive_action("exit-archive-selection", Symbol::Close, "Exit selection mode", None)
+				.aria_label("Exit selection mode")
+				.on_click(cx.listener(|s, _, _, cx| s.exit_archive_selection(cx)))
 				.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
 					if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 						cx.stop_propagation();
-						s.clear_archive_selection(cx);
+						s.exit_archive_selection(cx);
 					}
 				}));
 		let selection = ui_theme::canvas_control_group()
 			.id("archive-batch-bar")
 			.debug_selector(|| "archive-batch-bar".into())
-			.h(gpui::px(38.))
+			.h(gpui::px(BATCH_BAR_HEIGHT))
 			.px(gpui::px(10.))
 			.gap(gpui::px(10.))
+			.bg(ui_theme::popover_surface())
+			.occlude()
 			.text_color(ui_theme::rgb(ui_theme::TEXT))
 			.child(
 				check
@@ -902,8 +911,9 @@ impl AgentSurface {
 					.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
 					.text_size(gpui::px(ui_theme::CONTROL_LABEL_SIZE))
 					.child(if all { "Clear all" } else { "Select all" })
+					.when(catalog.rows.is_empty(), |d| d.opacity(0.4).cursor_default())
 					.smooth()
-					.enabled(!unavailable),
+					.enabled(!unavailable && !catalog.rows.is_empty()),
 			)
 			.child(
 				gpui::div()
@@ -916,9 +926,9 @@ impl AgentSurface {
 						if unavailable { "deleting…" } else { "selected" }
 					)),
 			)
-			.child(delete.smooth().enabled(!unavailable))
+			.child(delete.smooth().enabled(delete_enabled))
 			.child(clear.smooth().enabled(!unavailable));
-		ArchiveSelectionActions { visible: selected_count > 0, child: selection.into_any_element() }
+		ArchiveSelectionOverlay { visible: catalog.selecting, child: selection.into_any_element() }
 	}
 
 	fn archive_catalog_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -966,20 +976,21 @@ impl AgentSurface {
 }
 
 #[derive(gpui::IntoElement)]
-struct ArchiveSelectionActions {
+struct ArchiveSelectionOverlay {
 	visible: bool,
 	child: AnyElement,
 }
-impl gpui::RenderOnce for ArchiveSelectionActions {
+impl gpui::RenderOnce for ArchiveSelectionOverlay {
 	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
 		let progress =
 			ui_motion::value("archive-selection-actions", f32::from(self.visible), window, cx);
 		gpui::div()
-			.id("archive-batch-footer")
-			.debug_selector(|| "archive-batch-footer".into())
-			.w_full()
-			.h(gpui::px(48. * progress))
-			.flex_none()
+			.id("archive-batch-overlay")
+			.debug_selector(|| "archive-batch-overlay".into())
+			.absolute()
+			.left_0()
+			.right_0()
+			.bottom(gpui::px(BATCH_BAR_INSET - 12. * (1. - progress)))
 			.flex()
 			.items_center()
 			.justify_center()
@@ -1284,6 +1295,7 @@ mod tests {
 		surface.update(visual, |s, _| s.profile = Some(profile));
 		visual.update(crate::ui_frame::draw_current_frame);
 		let sort_before = visual.debug_bounds("archive-sort-Name").unwrap();
+		let viewport_before = visual.debug_bounds("archive-viewport").unwrap();
 		let search_before = visual.debug_bounds("archive-search").unwrap();
 		let search = surface.read_with(visual, |s, _| s.workspace.archives.search.clone().unwrap());
 		search.update(visual, |input, cx| input.set_content("Remove", cx));
@@ -1303,6 +1315,24 @@ mod tests {
 		let all = visual.debug_bounds("select-all-archives").unwrap();
 		visual.simulate_click(all.center(), Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("select-all-archives").is_some());
+		surface.read_with(visual, |s, _| {
+			assert!(s.workspace.archives.selecting);
+			assert!(s.workspace.archives.selected.is_empty());
+		});
+		let disabled_delete = visual.debug_bounds("delete-archive-selection").unwrap();
+		visual.simulate_click(disabled_delete.center(), Default::default());
+		surface.read_with(visual, |s, _| assert!(s.workspace.archives.mutation.is_none()));
+		search.update(visual, |input, cx| input.set_content("no-match", cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		surface.read_with(visual, |s, _| assert!(s.workspace.archives.selecting));
+		assert!(visual.debug_bounds("exit-archive-selection").is_some());
+		search.update(visual, |input, cx| input.set_content("Remove", cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let exit = visual.debug_bounds("exit-archive-selection").unwrap();
+		visual.simulate_click(exit.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		surface.read_with(visual, |s, _| assert!(!s.workspace.archives.selecting));
 		assert!(visual.debug_bounds("select-all-archives").is_none());
 		let first = visual.debug_bounds("select-archive-parent").unwrap();
 		visual.simulate_click(first.center(), Default::default());
@@ -1323,9 +1353,11 @@ mod tests {
 			"selection must not move the toolbar"
 		);
 		assert_eq!(visual.debug_bounds("archive-search").unwrap(), search_before);
-		let footer = visual.debug_bounds("archive-batch-footer").unwrap();
+		let bar = visual.debug_bounds("archive-batch-bar").unwrap();
 		let viewport = visual.debug_bounds("archive-viewport").unwrap();
-		assert!(footer.top() >= viewport.bottom(), "batch controls do not cover the list");
+		assert_eq!(viewport, viewport_before, "selection must not shrink the viewport");
+		assert!(bar.bottom() <= viewport.bottom());
+		assert!(bar.size.width < viewport.size.width, "only the compact bar covers the list");
 		let delete = visual.debug_bounds("delete-archive-selection").unwrap();
 		visual.simulate_click(delete.center(), Default::default());
 		surface.read_with(visual, |s, _| {
@@ -1692,7 +1724,7 @@ mod tests {
 
 	#[gpui::test]
 	fn archive_scrollbar_moves_rows_within_the_bounded_viewport(cx: &mut gpui::TestAppContext) {
-		let (_view, visual) = cx.add_window_view(|_, cx| {
+		let (view, visual) = cx.add_window_view(|_, cx| {
 			let surface = cx.new(AgentSurface::new);
 			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
 			surface.update(cx, |s, cx| {
@@ -1710,6 +1742,8 @@ mod tests {
 			ArchiveView(surface)
 		});
 		visual.update(crate::ui_frame::draw_current_frame);
+		let surface = view.read_with(visual, |v, _| v.0.clone());
+		let viewport_before = visual.debug_bounds("archive-viewport").unwrap();
 		let before = visual.debug_bounds("archived-scroll-00").unwrap();
 		let bar = visual.debug_bounds("archive-scrollbar").unwrap();
 		let body = visual.debug_bounds("archive-browser-content").unwrap();
@@ -1740,8 +1774,10 @@ mod tests {
 		thread::sleep(Duration::from_millis(240));
 		visual.update(crate::ui_frame::draw_current_frame);
 		let viewport = visual.debug_bounds("archive-viewport").unwrap();
-		let footer = visual.debug_bounds("archive-batch-footer").unwrap();
-		assert!(footer.top() >= viewport.bottom(), "selection bar has its own space");
+		let actions = visual.debug_bounds("archive-batch-bar").unwrap();
+		assert_eq!(viewport, viewport_before, "the floating bar does not reserve a row");
+		assert!(actions.bottom() < viewport.bottom());
+		assert!(last.bottom() <= actions.top(), "the last row has overlay clearance");
 		let bar = visual.debug_bounds("archive-scrollbar").unwrap();
 		visual.simulate_click(
 			gpui::point(bar.center().x, bar.bottom() - gpui::px(1.)),
@@ -1749,7 +1785,20 @@ mod tests {
 		);
 		visual.update(crate::ui_frame::draw_current_frame);
 		let last = visual.debug_bounds("archived-scroll-99").unwrap();
-		assert!(last.bottom() <= viewport.bottom(), "batch actions must not cover the last row");
+		assert!(last.bottom() <= actions.top(), "batch actions must not cover the last row");
+		visual.simulate_click(bar.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		let point = gpui::point(viewport.left() + gpui::px(20.), actions.center().y);
+		assert!(point.x < actions.left(), "click beside the bar");
+		let selected_before =
+			surface.read_with(visual, |s, _| s.workspace.archives.selected.clone());
+		visual.simulate_click(point, Default::default());
+		surface.read_with(visual, |s, _| {
+			assert_ne!(
+				s.workspace.archives.selected, selected_before,
+				"the transparent area beside the bar passes clicks to the row"
+			);
+		});
 	}
 
 	#[gpui::test]
