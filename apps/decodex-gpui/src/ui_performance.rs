@@ -4,6 +4,7 @@
 #[path = "ui_performance_readout.rs"] mod readout;
 
 use std::{
+	rc::Rc,
 	sync::atomic::AtomicU8,
 	time::{Duration, Instant},
 };
@@ -74,6 +75,17 @@ impl Activity {
 			),
 		}
 	}
+}
+
+#[derive(Clone, Copy)]
+struct PillFrame {
+	activity: Activity,
+	allocation: Allocation,
+	width: f32,
+	height: f32,
+	expanded: bool,
+	fraction: f32,
+	details_opacity: f32,
 }
 
 pub(crate) struct PerformanceIsland {
@@ -291,13 +303,12 @@ impl PerformanceIsland {
 		activity: Activity,
 		allocation: Allocation,
 		width: f32,
-		content: &readout::Content,
+		content: &Rc<readout::Content>,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let (control, surface, toggle, _, height_key) = activity.ids();
-		let expandable = content.expandable();
-		let expanded = expandable
+		let (control, surface, _, _, height_key) = activity.ids();
+		let expanded = content.expandable()
 			&& self.expanded(activity)
 			&& allocation.presentation == Presentation::Expanded;
 		let open_height = content.height();
@@ -309,14 +320,14 @@ impl PerformanceIsland {
 		);
 		let fraction =
 			((height - CAPSULE_HEIGHT) / (open_height - CAPSULE_HEIGHT).max(1.)).clamp(0., 1.);
-		// Enter after the contents fit; exit before the capsule starts clipping them.
 		let details_opacity = ((fraction - 0.65) / 0.35)
 			.clamp(0., 1.)
 			.min(((width - (content.sizing().expanded - 24.)) / 24.).clamp(0., 1.));
-		let header = Self::pill_header(activity, allocation, content, width, window, cx);
-		let body =
-			(expandable && details_opacity > 0.001).then(|| content.details(self, window, cx));
-
+		let frame =
+			PillFrame { activity, allocation, width, height, expanded, fraction, details_opacity };
+		let owner = cx.entity().downgrade();
+		let dismiss = owner.clone();
+		let content = content.clone();
 		gpui::div()
 			.debug_selector(move || control.into())
 			.relative()
@@ -324,86 +335,114 @@ impl PerformanceIsland {
 			.h(gpui::px(CAPSULE_HEIGHT))
 			.flex_none()
 			.child(
-				gpui::deferred(
-					gpui::div()
-						.id(surface)
-						.debug_selector(move || surface.into())
-						.relative()
-						.w_full()
-						.h(gpui::px(height))
-						.flex()
-						.flex_col()
-						.items_center()
-						.overflow_hidden()
-						.rounded(gpui::px(14. + fraction * 6.))
-						.bg(ui_theme::rgb(0x141418))
-						.border_1()
-						.border_color(ui_theme::rgba(0xffffff18))
-						.text_size(gpui::px(TEXT_SIZE))
-						.font_weight(FontWeight::NORMAL)
-						.line_height(gpui::px(16.))
-						.whitespace_nowrap()
-						.text_color(ui_theme::rgb(TEXT))
-						.font_features(readout::figures())
-						.on_hover(cx.listener(move |s, hovered, _, cx| {
-							s.hover_pill(activity, expandable, *hovered, cx)
-						}))
-						.when(expanded, |d| {
-							d.on_mouse_down_out(cx.listener(move |s, _, _, cx| {
-								if s.activity == activity {
-									s.expansion = Expansion::Closed;
-
+				gpui::deferred(gpui::div().relative().w_full().h(gpui::px(height)).child(
+					ui_motion::material_surface(
+						surface,
+						f64::from(14. + fraction * 6.),
+						move |window, cx| {
+							owner
+								.update(cx, |island, cx| {
+									island.pill_surface(frame, &content, window, cx)
+								})
+								.unwrap_or_else(|_| gpui::div().into_any_element())
+						},
+						move |cx| {
+							let _ = dismiss.update(cx, |island, cx| {
+								if island.activity == activity && island.expansion.is_open() {
+									island.expansion = Expansion::Closed;
 									cx.notify();
 								}
-							}))
-						})
-						.child(
-							gpui::div()
-								.id(toggle)
-								.debug_selector(move || toggle.into())
-								.role(if expandable { Role::Button } else { Role::Group })
-								.aria_label(content.label().to_owned())
-								.aria_expanded(expanded)
-								// The surface border occupies one pixel on each side.
-								.h(gpui::px(CAPSULE_HEIGHT - 2.))
-								.w_full()
-								.flex_none()
-								.flex()
-								.items_center()
-								.justify_center()
-								.when(expandable, |d| {
-									d.tab_index(0)
-										.cursor_pointer()
-										.on_click(cx.listener(move |s, _, _, cx| {
-											s.toggle(activity);
-											cx.notify();
-										}))
-										.on_key_down(cx.listener(
-											move |s, e: &KeyDownEvent, _, cx| {
-												if ["enter", "space"]
-													.contains(&e.keystroke.key.as_str())
-												{
-													s.toggle(activity);
-												} else if e.keystroke.key == "escape" {
-													s.expansion = Expansion::Closed;
-												} else {
-													return;
-												}
-
-												cx.notify();
-												cx.stop_propagation();
-											},
-										))
-								})
-								.child(header),
-						)
-						.when_some(body, |d, body| {
-							d.child(gpui::div().w_full().opacity(details_opacity).child(body))
-						}),
-				)
+							});
+						},
+					),
+				))
 				.with_priority(2),
 			)
 			.when_some(self.titlebar.as_ref(), |d, titlebar| d.child(titlebar.control()))
+			.into_any_element()
+	}
+
+	fn pill_surface(
+		&self,
+		frame: PillFrame,
+		content: &readout::Content,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let PillFrame { activity, allocation, width, height, expanded, fraction, details_opacity } =
+			frame;
+		let (_, surface, toggle, _, _) = activity.ids();
+		let expandable = content.expandable();
+		let header = Self::pill_header(activity, allocation, content, width, window, cx);
+		let body =
+			(expandable && details_opacity > 0.001).then(|| content.details(self, window, cx));
+		gpui::div()
+			.id(surface)
+			.debug_selector(move || surface.into())
+			.relative()
+			.w_full()
+			.h(gpui::px(height))
+			.flex()
+			.flex_col()
+			.items_center()
+			.overflow_hidden()
+			.rounded(gpui::px(14. + fraction * 6.))
+			.border_1()
+			.border_color(ui_theme::rgb(TEXT).opacity(0.1))
+			.text_size(gpui::px(TEXT_SIZE))
+			.font_weight(FontWeight::NORMAL)
+			.line_height(gpui::px(16.))
+			.whitespace_nowrap()
+			.text_color(ui_theme::rgb(TEXT))
+			.font_features(ui_theme::tabular_figures())
+			.on_hover(cx.listener(move |s, hovered, _, cx| {
+				s.hover_pill(activity, expandable, *hovered, cx)
+			}))
+			.when(expanded, |d| {
+				d.on_mouse_down_out(cx.listener(move |s, _, _, cx| {
+					if s.activity == activity {
+						s.expansion = Expansion::Closed;
+						cx.notify();
+					}
+				}))
+			})
+			.child(
+				gpui::div()
+					.id(toggle)
+					.debug_selector(move || toggle.into())
+					.role(if expandable { Role::Button } else { Role::Group })
+					.aria_label(content.label().to_owned())
+					.aria_expanded(expanded)
+					.h(gpui::px(CAPSULE_HEIGHT - 2.))
+					.w_full()
+					.flex_none()
+					.flex()
+					.items_center()
+					.justify_center()
+					.when(expandable, |d| {
+						d.tab_index(0)
+							.cursor_pointer()
+							.on_click(cx.listener(move |s, _, _, cx| {
+								s.toggle(activity);
+								cx.notify();
+							}))
+							.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+								if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+									s.toggle(activity);
+								} else if e.keystroke.key == "escape" {
+									s.expansion = Expansion::Closed;
+								} else {
+									return;
+								}
+								cx.notify();
+								cx.stop_propagation();
+							}))
+					})
+					.child(header),
+			)
+			.when_some(body, |d, body| {
+				d.child(gpui::div().w_full().opacity(details_opacity).child(body))
+			})
 			.into_any_element()
 	}
 
@@ -437,6 +476,12 @@ impl Render for PerformanceIsland {
 		self.reconcile_live_clock(cx);
 
 		let work = self.work.clone();
+		if !debug {
+			ui_motion::hide_material_surface(Activity::Debug.ids().1, window, cx);
+		}
+		if work.is_none() {
+			ui_motion::hide_material_surface(Activity::Work.ids().1, window, cx);
+		}
 
 		if work.is_none() {
 			ui_motion::value("activity-work-width", 0., window, cx);
@@ -451,11 +496,11 @@ impl Render for PerformanceIsland {
 		let mut activities = Vec::new();
 
 		if let Some(work) = &work {
-			activities.push((Activity::Work, readout::Content::work(work, window, cx)));
+			activities.push((Activity::Work, Rc::new(readout::Content::work(work, window, cx))));
 		}
 
 		if debug {
-			activities.push((Activity::Debug, readout::Content::debug(self, window, cx)));
+			activities.push((Activity::Debug, Rc::new(readout::Content::debug(self, window, cx))));
 		}
 
 		let selected = self

@@ -54,7 +54,7 @@ impl Surface {
 		match self {
 			Self::Window => "Window material",
 			Self::InputBar => "Input bar material",
-			Self::Popover => "Popover material",
+			Self::Popover => "Overlay material",
 		}
 	}
 
@@ -117,7 +117,7 @@ impl GlassScope {
 	pub(crate) const fn label(self) -> &'static str {
 		match self {
 			Self::Window => "Window glass style",
-			Self::Popover => "Popover glass style",
+			Self::Popover => "Overlay glass style",
 		}
 	}
 

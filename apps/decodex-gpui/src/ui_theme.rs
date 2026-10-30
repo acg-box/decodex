@@ -30,7 +30,10 @@ pub(crate) mod foreground {
 pub(crate) use self::{color_themes::ColorTheme, palette::ColorScheme};
 #[cfg(test)] pub(crate) use palette::MASCOT_FAMILIES;
 
-use std::time::Duration;
+use std::{
+	sync::{Arc, OnceLock},
+	time::Duration,
+};
 
 use gpui::{
 	self, AnyElement, Div, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _,
@@ -62,6 +65,7 @@ pub(crate) const CONTROL_MARGIN: f32 = 8.0;
 pub(crate) const CONTROL_RADIUS: f32 = 8.0;
 pub(crate) const POPOVER_RADIUS: f32 = 10.;
 pub(crate) const POPOVER_PADDING: f32 = 8.;
+pub(crate) const POPOVER_CONTENT_PADDING: f32 = 6.;
 pub(crate) const POPOVER_GAP: f32 = 8.;
 pub(crate) const POPOVER_ARRIVAL: Duration = Duration::from_millis(160);
 pub(crate) const POPOVER_OFFSET: f32 = 4.;
@@ -148,6 +152,12 @@ pub(crate) fn rgb(token: u32) -> Rgba {
 	ColorScheme::current().rgb(token)
 }
 
+/// Keep changing numeric values aligned without changing their text face.
+pub(crate) fn tabular_figures() -> gpui::FontFeatures {
+	static FEATURES: OnceLock<gpui::FontFeatures> = OnceLock::new();
+	FEATURES.get_or_init(|| gpui::FontFeatures(Arc::new(vec![("tnum".into(), 1)]))).clone()
+}
+
 /// Content annotations remain readable without adding a glass layer per Agent.
 pub(crate) fn annotation_surface() -> Rgba {
 	ColorScheme::current().annotation()
@@ -158,13 +168,16 @@ pub(crate) fn popover_surface() -> Rgba {
 	rgb(SURFACE_OVERLAY_MATERIAL >> 8)
 }
 
-/// The native panel owns blur. A single theme tint keeps Clear lighter than Regular.
-pub(crate) fn popover_tint(material: material::Material, style: material::GlassStyle) -> Rgba {
-	popover_surface().opacity(match (material, style) {
-		(material::Material::Thin, _) => 1.,
-		(_, material::GlassStyle::Regular) => 0.12,
-		(_, material::GlassStyle::Clear) => 0.02,
-	})
+/// Thin and Regular follow the theme; Clear keeps the native glass unmodified.
+pub(crate) fn popover_tint(
+	material: material::Material,
+	style: material::GlassStyle,
+) -> Option<Rgba> {
+	match (material, style) {
+		(material::Material::Thin, _) => Some(popover_surface()),
+		(_, material::GlassStyle::Regular) => Some(popover_surface().opacity(0.12)),
+		(_, material::GlassStyle::Clear) => None,
+	}
 }
 
 /// Menu rows use neutral feedback; selection is a check, danger uses ERROR text.
@@ -177,9 +190,9 @@ pub(crate) fn menu_row(id: impl Into<gpui::SharedString>, enabled: bool) -> Stat
 		.tab_stop(enabled)
 		.w_full()
 		.min_w_0()
-		.min_h(gpui::px(32.))
+		.min_h(gpui::px(CONTROL_SIZE))
 		.px(gpui::px(8.))
-		.py(gpui::px(6.))
+		.py(gpui::px(4.))
 		.rounded(gpui::px(6.))
 		.text_size(gpui::px(12.))
 		.line_height(gpui::px(18.))
@@ -201,14 +214,14 @@ pub(crate) fn menu_outline<T: gpui::Styled>(surface: T) -> T {
 }
 
 pub(crate) fn menu_separator() -> Div {
-	gpui::div().h(gpui::px(0.5)).mx(gpui::px(8.)).my(gpui::px(4.)).bg(rgb(TEXT).opacity(0.1))
+	gpui::div().h(gpui::px(0.5)).mx(gpui::px(8.)).my(gpui::px(3.)).bg(rgb(TEXT).opacity(0.1))
 }
 
 pub(crate) fn menu_section(label: &'static str, content: impl IntoElement) -> Div {
 	gpui::div()
 		.flex()
 		.flex_col()
-		.gap(gpui::px(4.))
+		.gap(gpui::px(3.))
 		.child(
 			gpui::div()
 				.px(gpui::px(8.))

@@ -31,6 +31,7 @@ impl Render for PermissionView {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		gpui::div()
 			.w(gpui::px(super::super::composer::composer_menu_width(Some("permissions"))))
+			.p(gpui::px(crate::ui_theme::POPOVER_CONTENT_PADDING))
 			.child(self.surface.update(cx, |s, cx| s.permission_options(cx)))
 	}
 }
@@ -188,6 +189,7 @@ fn permission_read_keeps_the_current_choice_and_menu_geometry(cx: &mut TestAppCo
 	let before = visual.debug_bounds("permission-choice-1").unwrap();
 	let row = visual.debug_bounds("permission-choice-0").unwrap();
 	let description = visual.debug_bounds("permission-description-0").unwrap();
+	assert_eq!(row.size.height, gpui::px(38.));
 	assert!(row.left() <= description.left() && description.right() <= row.right());
 	assert!(row.top() < description.top() && description.bottom() < row.bottom());
 	assert_eq!(description.size.height, gpui::px(14.), "the short description fits one line");

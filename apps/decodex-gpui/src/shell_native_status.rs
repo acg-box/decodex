@@ -120,6 +120,8 @@ impl Shell {
 		let open = self.status_open;
 
 		if let Some(child) = self.native_status.child {
+			let parent = window.window_handle();
+			let close = cx.entity().downgrade();
 			let viewport = window.viewport_size();
 			let origin = gpui::point(
 				viewport.width - gpui::px(WIDTH + CONTROL_MARGIN),
@@ -127,6 +129,19 @@ impl Shell {
 			);
 
 			cx.defer(move |cx| {
+				if open {
+					ui_motion::claim_popover(
+						parent,
+						child.into(),
+						move |cx| {
+							let _ = close.update(cx, |s, cx| {
+								s.status_open = false;
+								cx.notify();
+							});
+						},
+						cx,
+					);
+				}
 				let _ = child.update(cx, |s, window, cx| {
 					if s.open != open {
 						s.focus_pending = open;

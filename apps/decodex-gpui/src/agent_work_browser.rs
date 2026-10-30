@@ -224,54 +224,34 @@ impl AgentSurface {
 			.when(draft, |d| d.w(gpui::px(280.)).flex().flex_col().items_center())
 			.child(trigger);
 
-		if let Some(search) = &self.workspace.workspace_search {
-			let (list, no_matches) = self.workspace_picker_items(draft, search, cx);
-			let menu = gpui::div()
-				.id("workspace-picker-menu")
-				.occlude()
-				.on_mouse_down_out(cx.listener(move |s, event: &MouseDownEvent, _, cx| {
-					if !trigger_bounds.get().is_some_and(|b| b.contains(&event.position)) {
-						s.workspace.workspace_picker = None;
-
-						cx.notify();
-					}
-				}))
-				.p_2()
-				.flex()
-				.flex_col()
-				.gap_1()
-				.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
-					if e.keystroke.key == "escape" {
-						s.workspace.workspace_picker = None;
-
-						cx.stop_propagation();
-						cx.notify();
-					}
-				}))
-				.child(gpui::div().h(gpui::px(CONTROL_SIZE)).child(search.clone()))
-				.child(list)
-				.children(no_matches.then(|| {
-					gpui::div()
-						.px_2()
-						.py_1()
-						.text_size(gpui::px(12.))
-						.text_color(ui_theme::rgb(TEXT_MUTED))
-						.child("No matching Projects")
-				}))
-				.child(self.add_workspace_button(cx));
-
-			anchor = anchor.child(
-				gpui::deferred(
-					gpui::div()
-						.absolute()
-						.top(gpui::px(32.))
-						.left_0()
-						.w(gpui::px(280.))
-						.child(ui_motion::popover("workspace-popover-motion", open, menu)),
-				)
-				.priority(3),
-			);
-		}
+		let owner = cx.entity().downgrade();
+		let dismiss = owner.clone();
+		let outside = trigger_bounds.clone();
+		anchor = anchor.child(
+			gpui::deferred(
+				gpui::div().absolute().top(gpui::px(32.)).left_0().w(gpui::px(280.)).child(
+					ui_motion::popover_lazy("workspace-popover-motion", open, move |_, cx| {
+						owner
+							.update(cx, |s, cx| s.workspace_picker_menu(draft, outside.clone(), cx))
+							.unwrap_or_else(|_| gpui::div().into_any_element())
+					})
+					.trigger(trigger_bounds)
+					.focus(
+						self.workspace
+							.workspace_search
+							.as_ref()
+							.map(|input| input.read(cx).focus_handle(cx)),
+					)
+					.on_dismiss(move |cx| {
+						let _ = dismiss.update(cx, |s, cx| {
+							s.workspace.workspace_picker = None;
+							cx.notify();
+						});
+					}),
+				),
+			)
+			.priority(3),
+		);
 
 		gpui::div()
 			.flex()
@@ -284,6 +264,53 @@ impl AgentSurface {
 					.text_color(ui_theme::rgb(ERROR))
 					.child(error.clone())
 			}))
+			.into_any_element()
+	}
+
+	fn workspace_picker_menu(
+		&self,
+		draft: bool,
+		trigger_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let Some(search) = &self.workspace.workspace_search else {
+			return gpui::div().into_any_element();
+		};
+		let (list, no_matches) = self.workspace_picker_items(draft, search, cx);
+		gpui::div()
+			.id("workspace-picker-menu")
+			.occlude()
+			.on_mouse_down_out(cx.listener(move |s, event: &MouseDownEvent, _, cx| {
+				if !trigger_bounds.get().is_some_and(|b| b.contains(&event.position)) {
+					s.workspace.workspace_picker = None;
+
+					cx.notify();
+				}
+			}))
+			.p(gpui::px(ui_theme::POPOVER_CONTENT_PADDING))
+			.flex()
+			.flex_col()
+			.gap_1()
+			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
+				if e.keystroke.key == "escape" {
+					s.workspace.workspace_picker = None;
+
+					cx.stop_propagation();
+					cx.notify();
+				}
+			}))
+			.child(gpui::div().h(gpui::px(CONTROL_SIZE)).child(search.clone()))
+			.child(list)
+			.children(no_matches.then(|| {
+				gpui::div()
+					.px_2()
+					.py_1()
+					.text_size(gpui::px(12.))
+					.text_color(ui_theme::rgb(TEXT_MUTED))
+					.child("No matching Projects")
+			}))
+			.child(ui_theme::menu_separator())
+			.child(self.add_workspace_button(cx))
 			.into_any_element()
 	}
 
@@ -375,56 +402,49 @@ impl AgentSurface {
 			let keyboard_id = id.clone();
 
 			list = list.child(
-				gpui::div()
-					.id(SharedString::from(format!(
+				ui_theme::menu_row(
+					SharedString::from(format!(
 						"workspace-choice-{}",
 						id.as_deref().unwrap_or("all")
-					)))
-					.role(Role::Button)
-					.aria_label(format!("Workspace: {name}"))
-					.tab_index(0)
-					.flex_none()
-					.px_2()
-					.py_1()
-					.flex()
-					.items_center()
-					.gap_2()
-					.rounded(gpui::px(6.))
-					.cursor_pointer()
-					.hover(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
-					.child(gpui::div().w(gpui::px(16.)).flex_none().children(
-						active.then(|| workspace_symbols::icon_sized(Symbol::Confirm, 13.)),
-					))
-					.child(
-						gpui::div()
-							.min_w_0()
-							.flex_1()
-							.flex()
-							.flex_col()
-							.gap_1()
-							.child(
-								gpui::div()
-									.text_size(gpui::px(BODY_SIZE))
-									.text_ellipsis()
-									.child(name),
-							)
-							.children((!path.is_empty()).then(|| {
-								gpui::div()
-									.text_size(gpui::px(11.))
-									.text_color(ui_theme::rgb(TEXT_MUTED))
-									.text_ellipsis()
-									.child(path)
-							})),
-					)
-					.on_click(
-						cx.listener(move |s, _, _, cx| s.choose_workspace(draft, id.clone(), cx)),
-					)
-					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
-						if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-							s.choose_workspace(draft, keyboard_id.clone(), cx);
-							cx.stop_propagation();
-						}
-					})),
+					)),
+					true,
+				)
+				.aria_label(format!("Workspace: {name}"))
+				.flex_none()
+				.flex()
+				.items_center()
+				.gap_2()
+				.child(
+					gpui::div()
+						.min_w_0()
+						.flex_1()
+						.flex()
+						.flex_col()
+						.gap(gpui::px(1.))
+						.child(
+							gpui::div()
+								.text_size(gpui::px(12.))
+								.line_height(gpui::px(16.))
+								.text_ellipsis()
+								.child(name),
+						)
+						.children((!path.is_empty()).then(|| {
+							gpui::div()
+								.text_size(gpui::px(11.))
+								.line_height(gpui::px(14.))
+								.text_color(ui_theme::rgb(TEXT_MUTED))
+								.text_ellipsis()
+								.child(path)
+						})),
+				)
+				.child(workspace_symbols::menu_check(active))
+				.on_click(cx.listener(move |s, _, _, cx| s.choose_workspace(draft, id.clone(), cx)))
+				.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+					if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+						s.choose_workspace(draft, keyboard_id.clone(), cx);
+						cx.stop_propagation();
+					}
+				})),
 			);
 		}
 
@@ -432,18 +452,13 @@ impl AgentSurface {
 	}
 
 	fn add_workspace_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
-		gpui::div()
-			.id("add-workspace-folder")
-			.role(Role::Button)
+		ui_theme::menu_row("add-workspace-folder", true)
 			.aria_label("Add Project folder")
-			.tab_index(0)
-			.px_2()
-			.py_1()
-			.rounded(gpui::px(6.))
-			.cursor_pointer()
-			.text_size(gpui::px(BODY_SIZE))
-			.hover(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
-			.child("+ Add folder")
+			.flex()
+			.items_center()
+			.gap(gpui::px(8.))
+			.child(workspace_symbols::icon_sized(Symbol::Plus, 16.))
+			.child("Add folder")
 			.on_click(cx.listener(|s, _, _, cx| {
 				s.workspace.workspace_picker = None;
 
@@ -459,6 +474,7 @@ impl AgentSurface {
 					cx.notify();
 				}
 			}))
+			.smooth()
 	}
 
 	fn toggle_workspace_picker(

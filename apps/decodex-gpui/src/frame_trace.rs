@@ -80,17 +80,21 @@ pub(crate) fn start(cx: &mut App) {
 						#[cfg(all(target_os = "macos", not(test)))]
 						let glass = crate::ui_theme::native_material_panel::observed_style(window);
 						#[cfg(all(target_os = "macos", not(test)))]
+						let tinted = crate::ui_theme::native_material_panel::observed_tint(window);
+						#[cfg(all(target_os = "macos", not(test)))]
 						let material = crate::ui_theme::native_material_panel::observed_material(window);
 						#[cfg(all(target_os = "macos", not(test)))]
 						let rendering = crate::ui_theme::native_material_panel::observed_rendering(window);
 						#[cfg(any(not(target_os = "macos"), test))]
 						let glass = None::<isize>;
 						#[cfg(any(not(target_os = "macos"), test))]
+						let tinted = None::<bool>;
+						#[cfg(any(not(target_os = "macos"), test))]
 						let material = None::<&str>;
 						#[cfg(any(not(target_os = "macos"), test))]
 						let rendering = None::<Value>;
 
-						serde_json::json!({"window": format!("{:?}", handle.window_id()), "key": window.is_window_active(), "visible": window.is_visible(), "accessibility_active": window.is_a11y_active(), "glass_style": glass, "material": material, "rendering": rendering})
+						serde_json::json!({"window": format!("{:?}", handle.window_id()), "key": window.is_window_active(), "visible": window.is_visible(), "accessibility_active": window.is_a11y_active(), "glass_style": glass, "glass_tinted": tinted, "material": material, "rendering": rendering})
 					}).ok()
 				}).collect();
 

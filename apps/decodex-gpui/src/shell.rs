@@ -2901,11 +2901,7 @@ fn floating_window_controls(
 }
 
 fn tooltip_surface(text: SharedString, color: u32) -> Div {
-	ui_motion::tooltip_surface(gpui::div())
-		.px_2()
-		.py_1()
-		.text_color(ui_theme::rgb(color))
-		.child(text)
+	ui_motion::tooltip_surface(gpui::div()).text_color(ui_theme::rgb(color)).child(text)
 }
 
 fn topbar_controls(

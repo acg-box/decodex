@@ -67,12 +67,7 @@ pub(super) struct PageView {
 struct PanelTip(String);
 impl Render for PanelTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		ui_motion::tooltip_surface(gpui::div())
-			.px_2()
-			.py_1()
-			.text_color(crate::ui_theme::rgb(TEXT))
-			.text_size(gpui::px(11.0))
-			.child(self.0.clone())
+		ui_motion::tooltip_surface(gpui::div()).child(self.0.clone())
 	}
 }
 

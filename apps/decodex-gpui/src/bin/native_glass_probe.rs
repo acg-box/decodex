@@ -14,7 +14,11 @@ mod native_reopen;
 #[cfg(target_os = "macos")]
 #[path = "probes/native_popover.rs"]
 mod popover_probe;
+#[cfg(target_os = "macos")]
+#[path = "probes/native_popup_system.rs"]
+mod popup_system_probe;
 #[path = "../ui_frame.rs"] mod ui_frame;
+#[path = "../ui_layout.rs"] mod ui_layout;
 #[allow(unused_imports)]
 #[path = "../ui_motion.rs"]
 mod ui_motion;
@@ -671,6 +675,12 @@ fn main() {
 
 #[cfg(target_os = "macos")]
 fn main() {
+	if std::env::args()
+		.any(|arg| matches!(arg.as_str(), "--popup-material-system" | "--popup-material-islands"))
+	{
+		popup_system_probe::run();
+		return;
+	}
 	if std::env::args().any(|arg| arg == "--popover-first-frame") {
 		popover_probe::run();
 

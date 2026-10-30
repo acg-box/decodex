@@ -244,12 +244,7 @@ impl Node {
 pub(super) struct RelationTip(pub(super) String);
 impl Render for RelationTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		ui_motion::tooltip_surface(gpui::div())
-			.p_2()
-			.max_w(gpui::px(360.))
-			.text_color(ui_theme::rgb(TEXT))
-			.text_size(gpui::px(12.))
-			.child(self.0.clone())
+		ui_motion::tooltip_surface(gpui::div()).child(self.0.clone())
 	}
 }
 

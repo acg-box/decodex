@@ -38,7 +38,7 @@ pub(crate) fn permission_choices<T: 'static>(
 	choose: fn(&mut T, PermissionMode, &mut Context<T>),
 	cx: &Context<T>,
 ) -> Div {
-	let mut menu = gpui::div().flex().flex_col().gap(gpui::px(2.));
+	let mut menu = gpui::div().flex().flex_col().gap(gpui::px(1.));
 	for (index, mode) in PermissionMode::ALL.into_iter().enumerate() {
 		let enabled = available(mode);
 		let chosen = selected == Some(mode);
@@ -49,7 +49,7 @@ pub(crate) fn permission_choices<T: 'static>(
 				.aria_label(format!("{}: {}", mode.label(), mode.description()))
 				.aria_selected(chosen)
 				.px(gpui::px(8.))
-				.py(gpui::px(5.))
+				.py(gpui::px(4.))
 				.flex()
 				.items_center()
 				.gap(gpui::px(8.))
@@ -64,10 +64,9 @@ pub(crate) fn permission_choices<T: 'static>(
 						.min_w_0()
 						.flex()
 						.flex_col()
-						.gap(gpui::px(1.))
 						.child(
 							gpui::div()
-								.line_height(gpui::px(17.))
+								.line_height(gpui::px(16.))
 								.whitespace_nowrap()
 								.child(mode.label()),
 						)
@@ -122,40 +121,48 @@ pub(crate) fn permission_symbol(mode: PermissionMode) -> workspace_symbols::Symb
 
 pub(crate) fn speed_choices<T: 'static>(
 	selected: Option<&ServiceTier>,
-	fast_available: bool,
+	tiers: impl IntoIterator<Item = (ServiceTier, String)>,
 	choose: fn(&mut T, ServiceTier, &mut Context<T>),
 	cx: &Context<T>,
 ) -> Div {
-	let mut menu = gpui::div().flex().items_center().gap_1();
-	for (id, name, available) in [
-		(ServiceTier::standard(), "Standard", true),
-		(ServiceTier::from_fast(true), "Fast", fast_available),
-	] {
+	let mut menu = gpui::div().flex().flex_wrap().items_center().gap(gpui::px(2.));
+	let choices = std::iter::once((ServiceTier::standard(), "Standard".into()))
+		.chain(tiers.into_iter().filter(|(id, _)| id.as_str() != "default"));
+	for (id, name) in choices {
+		let label = match id.as_str() {
+			"default" | "priority" | "ultrafast" => speed_label(id.as_str()).to_owned(),
+			_ => name,
+		};
 		let chosen = selected == Some(&id);
 		let keyboard_id = id.clone();
 		menu = menu.child(
-			ui_theme::menu_row(format!("tier-{}", id.as_str()), available)
+			ui_theme::menu_row(format!("tier-{}", id.as_str()), true)
 				.w_auto()
+				.flex_shrink_0()
 				.debug_selector({
 					let id = id.clone();
 					move || format!("tier-{}", id.as_str())
 				})
 				.role(gpui::Role::Button)
-				.aria_label(name)
+				.aria_label(label.clone())
 				.aria_selected(chosen)
-				.px_3()
-				.py_2()
-				.rounded_lg()
-				.when(!available, |d| d.opacity(0.4))
-				.child(choice_label(name, chosen))
+				.h(gpui::px(24.))
+				.min_h(gpui::px(24.))
+				.px(gpui::px(6.))
+				.py_0()
+				.rounded(gpui::px(5.))
+				.flex()
+				.items_center()
+				.whitespace_nowrap()
+				.when(chosen, |d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
+				.child(label)
 				.on_click(cx.listener(move |this, _, _, cx| {
-					if available && !chosen {
+					if !chosen {
 						choose(this, id.clone(), cx);
 					}
 				}))
 				.on_key_down(cx.listener(move |this, key: &gpui::KeyDownEvent, _, cx| {
-					if available
-						&& !chosen
+					if !chosen
 						&& !key.is_held
 						&& ["enter", "space"].contains(&key.keystroke.key.as_str())
 					{
@@ -163,18 +170,17 @@ pub(crate) fn speed_choices<T: 'static>(
 						choose(this, keyboard_id.clone(), cx);
 					}
 				}))
-				.smooth()
-				.enabled(available),
+				.smooth(),
 		);
 	}
 	menu
 }
 
-fn choice_label(label: &'static str, selected: bool) -> Div {
-	gpui::div()
-		.flex()
-		.items_center()
-		.gap(gpui::px(8.))
-		.child(gpui::div().flex_1().min_w_0().whitespace_nowrap().child(label))
-		.child(workspace_symbols::menu_check(selected))
+pub(crate) fn speed_label(id: &str) -> &str {
+	match id {
+		"default" => "Standard",
+		"priority" => "Fast",
+		"ultrafast" => "Ultrafast",
+		_ => id,
+	}
 }

@@ -76,10 +76,9 @@ pub(super) fn composer_menu_trigger(menu: &str) -> &str {
 
 pub(super) fn composer_menu_width(menu: Option<&str>) -> f32 {
 	match menu {
-		Some("permissions") => 272.,
+		Some("permissions") => 260.,
 		Some("tasks") => 280.,
 		Some("agent-settings" | "skills") => 320.,
-		Some("attachments" | "microphone") => 248.,
 		_ => 224.,
 	}
 }
@@ -89,10 +88,6 @@ impl Render for ComposerTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
 		ui_motion::tooltip_surface(gpui::div())
 			.debug_selector(|| "composer-hover-tip".into())
-			.px_3()
-			.py_2()
-			.text_size(gpui::px(11.0))
-			.text_color(crate::ui_theme::rgb(TEXT))
 			.child(self.0.clone())
 	}
 }
@@ -708,14 +703,16 @@ impl AgentSurface {
 						anchor.top(),
 					))
 					.child(
-						gpui::div().w(gpui::px(composer_menu_width(menu))).child(
-							ui_motion::popover(
+						// Match the native panel's surface width; the arrival wrapper also
+						// reserves an outer gutter for its shadow.
+						gpui::div()
+							.w(gpui::px(composer_menu_width(menu) + ui_theme::POPOVER_PADDING * 2.))
+							.child(ui_motion::popover(
 								"composer-popover-motion",
 								self.composer_menu.is_some(),
 								self.composer_options(cx)
 									.unwrap_or_else(|| gpui::div().into_any_element()),
-							),
-						),
+							)),
 					),
 			)
 			.priority(2),
@@ -729,7 +726,7 @@ impl AgentSurface {
 		gpui::div()
 			.flex()
 			.flex_col()
-			.gap(gpui::px(3.))
+			.gap(gpui::px(2.))
 			.child(self.composer_control(
 				"attachment-item",
 				"Add attachments…".into(),
@@ -827,9 +824,7 @@ impl AgentSurface {
 								let permissions = permission_mode
 									.map_or("Permissions not reported", |mode| mode.label());
 								let speed = match service_tier.as_deref() {
-									Some("priority") => "Fast",
-									Some("default") => "Standard",
-									Some(tier) => tier,
+									Some(tier) => crate::session_settings::speed_label(tier),
 									None => "Speed not reported",
 								};
 								format!(
@@ -1296,11 +1291,11 @@ impl AgentSurface {
 
 					s.dismiss_composer_menu(cx);
 				}))
-				.p(gpui::px(ui_theme::POPOVER_PADDING))
+				.p(gpui::px(ui_theme::POPOVER_CONTENT_PADDING))
 				.w_full()
 				.flex()
 				.flex_col()
-				.gap(gpui::px(10.))
+				.gap(gpui::px(6.))
 				.child(if menu == "tasks" {
 					self.task_reference_options(cx)
 				} else if menu == "skills" {
@@ -1329,7 +1324,7 @@ impl AgentSurface {
 			.debug_selector(|| "model-options".into())
 			.flex()
 			.flex_col()
-			.gap(gpui::px(4.))
+			.gap(gpui::px(2.))
 			.child(self.model_palette(cx))
 			.child(ui_theme::menu_separator())
 			.child(ui_theme::menu_section("Speed", self.service_tier_picker(cx)))
@@ -1769,6 +1764,7 @@ mod tests {
 		] {
 			let row = visual.debug_bounds(id).unwrap();
 			assert!(f32::from(row.size.width) >= 200., "{id} cannot inherit an icon button width");
+			assert_eq!(row.size.height, gpui::px(crate::ui_theme::CONTROL_SIZE));
 			if let Some(previous) = previous {
 				assert_eq!(row.left(), previous.left());
 				assert_eq!(row.right(), previous.right());
@@ -1942,6 +1938,7 @@ mod tests {
 		let gap = f32::from(trigger.top() - menu.bottom());
 
 		assert!((4. ..=16.).contains(&gap), "menu gap: {gap}");
+		assert_eq!(menu.size.width, gpui::px(super::composer_menu_width(Some("model"))));
 		assert!(menu.bottom() > composer.top() + gpui::px(50.));
 	}
 
@@ -1966,7 +1963,7 @@ mod tests {
 		surface.update(visual, |s, cx| s.toggle_composer_menu("model", cx));
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("tier-default").is_some());
-		assert!(visual.debug_bounds("tier-priority").is_some());
+		assert!(visual.debug_bounds("tier-priority").is_none(), "no unadvertised speed choices");
 	}
 
 	#[gpui::test]

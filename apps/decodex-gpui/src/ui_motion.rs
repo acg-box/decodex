@@ -1,5 +1,8 @@
 //! Interruptible motion shared by native controls and workspace panels.
 
+#[cfg(all(target_os = "macos", not(test)))]
+#[path = "ui_native_popover.rs"]
+mod native_popover;
 #[path = "ui_overflow_label.rs"] mod overflow_label;
 #[path = "ui_segmented.rs"] mod segmented;
 #[path = "ui_text_reveal.rs"] mod text_reveal;
@@ -288,11 +291,135 @@ impl RenderOnce for Arrival {
 pub(crate) struct Popover {
 	id: ElementId,
 	visible: bool,
-	child: AnyElement,
+	child: Option<AnyElement>,
+	content: Option<std::rc::Rc<PopoverContent>>,
+	dismiss: std::rc::Rc<dyn Fn(&mut App)>,
+	trigger: std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
+	above: bool,
+	preview: bool,
+	focus: Option<gpui::FocusHandle>,
+}
+
+type PopoverContent = dyn Fn(&mut Window, &mut App) -> AnyElement;
+
+/// A persistent floating control reuses the same native material as transient menus.
+#[derive(IntoElement)]
+pub(crate) struct MaterialSurface {
+	id: ElementId,
+	radius: f64,
+	content: std::rc::Rc<PopoverContent>,
+	dismiss: std::rc::Rc<dyn Fn(&mut App)>,
+}
+impl RenderOnce for MaterialSurface {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		#[cfg(all(target_os = "macos", not(test)))]
+		if native_popover::available() {
+			return native_popover::render_surface(
+				self.id,
+				self.radius,
+				self.content,
+				self.dismiss,
+				window,
+				cx,
+			);
+		}
+		let _ = (&self.id, &self.dismiss);
+		gpui::div()
+			.size_full()
+			.rounded(gpui::px(self.radius as f32))
+			.bg(ui_theme::popover_surface())
+			.child((self.content)(window, cx))
+			.into_any_element()
+	}
+}
+
+pub(crate) fn material_surface(
+	id: impl Into<ElementId>,
+	radius: f64,
+	content: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
+	dismiss: impl Fn(&mut App) + 'static,
+) -> MaterialSurface {
+	MaterialSurface {
+		id: id.into(),
+		radius,
+		content: std::rc::Rc::new(content),
+		dismiss: std::rc::Rc::new(dismiss),
+	}
+}
+
+pub(crate) fn hide_material_surface(id: impl Into<ElementId>, window: &Window, cx: &mut App) {
+	let parent = window.window_handle();
+	let id = id.into();
+	#[cfg(all(target_os = "macos", not(test)))]
+	cx.defer(move |cx| native_popover::hide_surface(parent, id, cx));
+	#[cfg(not(all(target_os = "macos", not(test))))]
+	let _ = (parent, id, cx);
+}
+
+#[cfg(all(target_os = "macos", not(test)))]
+pub(crate) fn claim_popover(
+	parent: gpui::AnyWindowHandle,
+	popup: gpui::AnyWindowHandle,
+	dismiss: impl Fn(&mut App) + 'static,
+	cx: &mut App,
+) {
+	native_popover::claim(parent, popup, std::rc::Rc::new(dismiss), cx);
+}
+
+#[cfg(all(target_os = "macos", not(test)))]
+pub(crate) fn dismiss_shared_popover(parent: gpui::AnyWindowHandle, cx: &mut App) {
+	native_popover::dismiss_host(parent, cx);
+}
+
+/// A hover owner's release closes only its own native preview.
+pub(crate) fn dismiss_popover(parent: gpui::AnyWindowHandle, id: ElementId, cx: &mut App) {
+	#[cfg(all(target_os = "macos", not(test)))]
+	native_popover::dismiss(parent, id, cx);
+	#[cfg(not(all(target_os = "macos", not(test))))]
+	let _ = (parent, id, cx);
+}
+
+impl Popover {
+	pub(crate) fn on_dismiss(mut self, dismiss: impl Fn(&mut App) + 'static) -> Self {
+		self.dismiss = std::rc::Rc::new(dismiss);
+		self
+	}
+
+	pub(crate) fn trigger(
+		mut self,
+		bounds: std::rc::Rc<std::cell::Cell<Option<gpui::Bounds<gpui::Pixels>>>>,
+	) -> Self {
+		self.trigger = bounds;
+		self
+	}
+
+	pub(crate) fn above(mut self) -> Self {
+		self.above = true;
+		self
+	}
+
+	pub(crate) fn preview(mut self) -> Self {
+		self.preview = true;
+		self
+	}
+
+	pub(crate) fn focus(mut self, focus: Option<gpui::FocusHandle>) -> Self {
+		self.focus = focus;
+		self
+	}
 }
 
 impl RenderOnce for Popover {
-	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+	fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		#[cfg(all(target_os = "macos", not(test)))]
+		if self.content.is_some() && native_popover::available() {
+			return native_popover::render(self, window, cx);
+		}
+		let child = if let Some(content) = self.content.take() {
+			content(window, cx)
+		} else {
+			self.child.take().expect("popover content")
+		};
 		let arrival = window.use_keyed_state(self.id.clone(), cx, |_, _| {
 			Tween::new(0.).duration(ui_theme::POPOVER_ARRIVAL)
 		});
@@ -309,18 +436,25 @@ impl RenderOnce for Popover {
 			request_frame(window, cx);
 		}
 		// The complete surface arrives together; its size and text scale stay fixed.
-		gpui::div().id(self.id).w_full().when(self.visible, |slot| {
-			slot.px(gpui::px(ui_theme::POPOVER_PADDING)).py(gpui::px(ui_theme::POPOVER_GAP)).child(
-				gpui::div()
-					.w_full()
-					.relative()
-					.top(gpui::px(ui_theme::POPOVER_OFFSET * (1. - opacity)))
-					.opacity(opacity)
-					.debug_selector(|| "popover-surface".into())
-					.map(menu_surface)
-					.child(self.child),
-			)
-		})
+		gpui::div()
+			.id(self.id)
+			.w_full()
+			.when(self.visible, |slot| {
+				slot.when(!self.preview, |slot| {
+					slot.px(gpui::px(ui_theme::POPOVER_PADDING)).py(gpui::px(ui_theme::POPOVER_GAP))
+				})
+				.child(
+					gpui::div()
+						.w_full()
+						.relative()
+						.top(gpui::px(ui_theme::POPOVER_OFFSET * (1. - opacity)))
+						.opacity(opacity)
+						.debug_selector(|| "popover-surface".into())
+						.map(menu_surface)
+						.child(child),
+				)
+			})
+			.into_any_element()
 	}
 }
 
@@ -534,9 +668,12 @@ impl SmoothControl for Stateful<Div> {
 pub(crate) fn tooltip_surface(surface: Div) -> Div {
 	surface
 		.rounded(gpui::px(8.))
-		.border_1()
-		.border_color(ui_theme::rgba(0xffffff24))
-		.bg(ui_theme::rgb(0x24242a))
+		.border(gpui::px(0.5))
+		.border_color(ui_theme::rgb(TEXT).opacity(0.1))
+		.bg(ui_theme::popover_surface())
+		.px(gpui::px(8.))
+		.py(gpui::px(6.))
+		.map(popover_elevation)
 		.text_color(ui_theme::rgb(TEXT))
 		.text_size(gpui::px(11.))
 		.line_height(gpui::px(16.))
@@ -548,12 +685,16 @@ pub(crate) fn menu_surface<T>(surface: T) -> T
 where
 	T: Styled,
 {
-	ui_theme::menu_outline(surface).bg(ui_theme::popover_surface()).shadow(vec![gpui::BoxShadow {
+	popover_elevation(ui_theme::menu_outline(surface).bg(ui_theme::popover_surface()))
+}
+
+fn popover_elevation<T: Styled>(surface: T) -> T {
+	surface.shadow(vec![gpui::BoxShadow {
 		inset: false,
-		color: ui_theme::rgba(0x00000028).into(),
-		offset: gpui::point(gpui::px(0.), gpui::px(3.)),
-		blur_radius: gpui::px(8.),
-		spread_radius: gpui::px(-2.),
+		color: ui_theme::rgba(0x00000020).into(),
+		offset: gpui::point(gpui::px(0.), gpui::px(2.)),
+		blur_radius: gpui::px(10.),
+		spread_radius: gpui::px(-1.),
 	}])
 }
 
@@ -617,7 +758,36 @@ pub(crate) fn arrival(route: String, child: impl IntoElement) -> Arrival {
 }
 
 pub(crate) fn popover(id: impl Into<ElementId>, visible: bool, child: impl IntoElement) -> Popover {
-	Popover { id: id.into(), visible, child: child.into_any_element() }
+	Popover {
+		id: id.into(),
+		visible,
+		child: Some(child.into_any_element()),
+		content: None,
+		dismiss: std::rc::Rc::new(|_| {}),
+		trigger: Default::default(),
+		above: false,
+		preview: false,
+		focus: None,
+	}
+}
+
+/// Rebuild foreground in the material-owning window, with one retained host per parent.
+pub(crate) fn popover_lazy(
+	id: impl Into<ElementId>,
+	visible: bool,
+	content: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
+) -> Popover {
+	Popover {
+		id: id.into(),
+		visible,
+		child: None,
+		content: Some(std::rc::Rc::new(content)),
+		dismiss: std::rc::Rc::new(|_| {}),
+		trigger: Default::default(),
+		above: false,
+		preview: false,
+		focus: None,
+	}
 }
 
 #[cfg(test)]

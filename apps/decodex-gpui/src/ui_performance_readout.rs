@@ -1,9 +1,9 @@
 //! Content owns its measured footprint; the activity host owns allocation and motion.
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use gpui::{
-	AnyElement, App, Div, Font, FontFeatures, FontWeight, IntoElement, Role, SharedString,
-	Stateful, TextRun, UniformListScrollHandle, Window,
+	AnyElement, App, Div, Font, FontWeight, IntoElement, Role, SharedString, Stateful, TextRun,
+	UniformListScrollHandle, Window,
 	prelude::{
 		FluentBuilder as _, InteractiveElement as _, ParentElement as _,
 		StatefulInteractiveElement as _, Styled as _,
@@ -369,12 +369,6 @@ impl Content {
 	}
 }
 
-pub(super) fn figures() -> FontFeatures {
-	static FEATURES: OnceLock<FontFeatures> = OnceLock::new();
-
-	FEATURES.get_or_init(|| FontFeatures(Arc::new(vec![("tnum".into(), 1)]))).clone()
-}
-
 // One entry per field, not a growing cache of sampled numbers. Chart frames do
 // not shape the same text again. Measure with the font and figures we render.
 fn measure(
@@ -388,7 +382,7 @@ fn measure(
 	let mut font = window.text_style().font();
 
 	font.weight = weight;
-	font.features = figures();
+	font.features = ui_theme::tabular_figures();
 
 	let state = window.use_keyed_state(id, cx, |_, _| None::<Measured>);
 

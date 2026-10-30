@@ -319,7 +319,7 @@ impl SettingsSurface {
 		let description = match surface {
 			Surface::Window => "Thin uses a flat tint; Liquid Glass uses macOS glass.",
 			Surface::InputBar => "Set the message input material separately from the window.",
-			Surface::Popover => "Shared by model, Guardian, permissions and other selection menus.",
+			Surface::Popover => "Menus, hover previews and activity capsules.",
 		};
 
 		ui_theme::settings_row()
@@ -452,6 +452,7 @@ impl SettingsSurface {
 			self.session_defaults.speed.as_ref().map_or("Codex default", |s| match s.as_str() {
 				"default" => "Standard",
 				"priority" => "Fast",
+				"ultrafast" => "Ultrafast",
 				_ => "Custom speed",
 			});
 		gpui::div()
@@ -494,7 +495,7 @@ impl SettingsSurface {
 				ui_theme::settings_row()
 					.child(ui_theme::settings_label(
 						"Default speed",
-						"Fast can use more of your allowance. Availability depends on the model.",
+						"Higher speeds use more of your allowance. Availability depends on the account and model.",
 					))
 					.child(ui_theme::settings_button("default-speed", speed).on_click(
 						cx.listener(|s, _, _, cx| {
@@ -512,7 +513,13 @@ impl SettingsSurface {
 						.gap_2()
 						.child(crate::session_settings::speed_choices(
 							self.session_defaults.speed.as_ref(),
-							true,
+							["priority", "ultrafast"].map(|id| {
+								(
+									decodex_protocol::ServiceTier::new(id)
+										.expect("built-in speed tier"),
+									crate::session_settings::speed_label(id).to_owned(),
+								)
+							}),
 							Self::choose_default_speed,
 							cx,
 						))

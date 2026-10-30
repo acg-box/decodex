@@ -192,6 +192,8 @@ impl AgentSurface {
 			&& composer::selection_menu(self.composer_menu)
 			&& anchor.is_some();
 		if let Some(child) = self.native_controls.menu.child {
+			let parent = window.window_handle();
+			let close = cx.entity().downgrade();
 			let placement = anchor.map(|anchor| Placement {
 				anchor,
 				viewport: window.viewport_size(),
@@ -199,6 +201,16 @@ impl AgentSurface {
 			});
 
 			cx.defer(move |cx| {
+				if open {
+					ui_motion::claim_popover(
+						parent,
+						child.into(),
+						move |cx| {
+							let _ = close.update(cx, |s, cx| s.dismiss_composer_menu(cx));
+						},
+						cx,
+					);
+				}
 				let _ = child.update(cx, |panel, window, cx| {
 					let selection = if open { menu } else { None };
 					if panel.open_menu != selection {

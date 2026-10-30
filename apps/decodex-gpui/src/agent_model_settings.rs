@@ -160,9 +160,7 @@ impl AgentSurface {
 
 	pub(super) fn composer_speed_label(&self) -> String {
 		match self.composer_service_tier().as_ref().map(|s| s.as_str()) {
-			Some("default") => "Standard".into(),
-			Some("priority") => "Fast".into(),
-			Some(value) => value.into(),
+			Some(value) => crate::session_settings::speed_label(value).into(),
 			None if self.is_new_conversation()
 				|| (self.composer_manager.is_none() && self.root_id().is_none()) =>
 				"Codex default".into(),

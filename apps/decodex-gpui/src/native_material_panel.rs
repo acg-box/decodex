@@ -47,6 +47,7 @@ pub(crate) struct MaterialPanel {
 	frame: Option<NSRect>,
 	visible: bool,
 	presented: bool,
+	shadow_dirty: bool,
 	opacity: Cell<f32>,
 	window_observer: Retained<AnyObject>,
 }
@@ -61,6 +62,17 @@ impl MaterialPanel {
 
 	pub(crate) fn install_popover(parent: &Window, window: &mut Window) -> Option<Self> {
 		Self::install_surface(parent, window, Surface::Popover, f64::from(ui_theme::POPOVER_RADIUS))
+	}
+
+	pub(crate) fn set_radius(&mut self, radius: f64) {
+		if self.radius == radius {
+			return;
+		}
+		self.radius = radius;
+		unsafe {
+			let _: () = objc2::msg_send![&*self.material_view, setCornerRadius: radius];
+		}
+		self.shadow_dirty = true;
 	}
 
 	fn install_surface(
@@ -164,6 +176,7 @@ impl MaterialPanel {
 				frame: None,
 				visible: false,
 				presented: false,
+				shadow_dirty: true,
 				opacity: Cell::new(0.),
 				window_observer,
 			})
@@ -177,7 +190,8 @@ impl MaterialPanel {
 
 		if self.material == material {
 			if material == Material::LiquidGlass {
-				apply_glass_style(&self.material_view, surface, self.native.isKeyWindow());
+				self.shadow_dirty |=
+					apply_glass_style(&self.material_view, surface, self.native.isKeyWindow());
 			}
 			apply_popover_tint(&self.material_view, surface, material);
 			return;
@@ -206,6 +220,7 @@ impl MaterialPanel {
 
 		self.material_view = replacement;
 		self.material = material;
+		self.shadow_dirty = true;
 
 		if had_focus {
 			self.focus_text();
@@ -241,6 +256,7 @@ impl MaterialPanel {
 				self.native.setFrame_display(frame, false);
 			}
 			if resize && let Some(content) = self.native.contentView() {
+				self.shadow_dirty = true;
 				self.material_view.setFrame(content.bounds());
 				// Call the resize hook, not setFrame:, so the drawable and GPUI
 				// viewport use the same size. The foreground has one layout owner.
@@ -308,6 +324,7 @@ impl MaterialPanel {
 		if !self.presented {
 			self.presented = true;
 			self.material_view.setAlphaValue(1.);
+			self.refresh_shadow();
 			if crate::ui_frame::reduced() {
 				return;
 			}
@@ -335,6 +352,16 @@ impl MaterialPanel {
 					let _: () = objc2::msg_send![&*layer, addAnimation: &*animation, forKey: &*key];
 				}
 			}
+		}
+		self.refresh_shadow();
+	}
+
+	fn refresh_shadow(&mut self) {
+		if self.surface == Surface::Popover && self.shadow_dirty {
+			// Reused popup windows change their rounded contour after Metal resizes.
+			// Rebuild the system shadow once the final foreground has been painted.
+			self.native.invalidateShadow();
+			self.shadow_dirty = false;
 		}
 	}
 
@@ -449,6 +476,19 @@ pub(crate) fn observed_style(window: &Window) -> Option<isize> {
 	})
 }
 
+/// Read the applied tint for opt-in material qualification.
+pub(crate) fn observed_tint(window: &Window) -> Option<bool> {
+	let content = native(window)?.contentView()?;
+	let class = AnyClass::get(c"NSGlassEffectView")?;
+	content.subviews().iter().find_map(|view| unsafe {
+		let glass: bool = objc2::msg_send![&*view, isKindOfClass: class];
+		glass.then(|| {
+			let tint: Option<Retained<AnyObject>> = objc2::msg_send![&*view, tintColor];
+			tint.is_some()
+		})
+	})
+}
+
 /// Inspect this window's render backing only while the user enables frame diagnostics.
 pub(crate) fn observed_rendering(window: &Window) -> Option<Value> {
 	let gpu = view(window)?;
@@ -547,22 +587,22 @@ pub(crate) fn available(surface: Surface) -> bool {
 	material_class(surface.material()).is_some()
 }
 
-pub(crate) fn apply_glass_style(glass: &NSView, surface: Surface, key: bool) {
+pub(crate) fn apply_glass_style(glass: &NSView, surface: Surface, key: bool) -> bool {
 	let clear = match surface {
 		Surface::Window => GlassScope::Window.configured() == GlassStyle::Clear,
 		Surface::InputBar => key,
 		Surface::Popover => GlassScope::Popover.configured() == GlassStyle::Clear,
 	};
 
-	set_glass_style(glass, clear, surface == Surface::InputBar);
+	set_glass_style(glass, clear, surface == Surface::InputBar)
 }
 
-fn set_glass_style(glass: &NSView, clear: bool, input_bar: bool) {
+fn set_glass_style(glass: &NSView, clear: bool, input_bar: bool) -> bool {
 	unsafe {
 		let style: isize = objc2::msg_send![glass, style];
 
 		if style == isize::from(clear) {
-			return;
+			return false;
 		}
 
 		let _: () = objc2::msg_send![glass, setStyle: isize::from(clear)];
@@ -570,6 +610,7 @@ fn set_glass_style(glass: &NSView, clear: bool, input_bar: bool) {
 			objc2::msg_send![AnyClass::get(c"NSColor").expect("AppKit"), colorWithSRGBRed: 0.10_f64, green: 0.11_f64, blue: 0.13_f64, alpha: 0.18_f64]
 		});
 		let _: () = objc2::msg_send![glass, setTintColor: tint.as_deref()];
+		true
 	}
 }
 
@@ -579,10 +620,18 @@ fn apply_popover_tint(view: &NSView, surface: Surface, material: Material) {
 	}
 	let color = ui_theme::popover_tint(material, GlassScope::Popover.configured());
 	unsafe {
-		let tint: Retained<AnyObject> = objc2::msg_send![AnyClass::get(c"NSColor").expect("AppKit"), colorWithSRGBRed: f64::from(color.r), green: f64::from(color.g), blue: f64::from(color.b), alpha: f64::from(color.a)];
+		let tint: Option<Retained<AnyObject>> = color.map(|color| objc2::msg_send![AnyClass::get(c"NSColor").expect("AppKit"), colorWithSRGBRed: f64::from(color.r), green: f64::from(color.g), blue: f64::from(color.b), alpha: f64::from(color.a)]);
 		let previous: Option<Retained<AnyObject>> = objc2::msg_send![view, tintColor];
-		if !previous.is_some_and(|previous| objc2::msg_send![&*previous, isEqual: &*tint]) {
-			let _: () = objc2::msg_send![view, setTintColor: &*tint];
+		let changed = match (previous.as_deref(), tint.as_deref()) {
+			(Some(previous), Some(tint)) => {
+				let equal: bool = objc2::msg_send![previous, isEqual: tint];
+				!equal
+			},
+			(None, None) => false,
+			_ => true,
+		};
+		if changed {
+			let _: () = objc2::msg_send![view, setTintColor: tint.as_deref()];
 		}
 	}
 }

@@ -825,7 +825,9 @@ impl AgentSurface {
 					// Navigation previews already have their text; do not use the
 					// generic tooltip's 500 ms discovery delay.
 					.tooltip_show_delay(Duration::ZERO)
-					.tooltip(move |_, cx| cx.new(|_| HistoryPreview { mark: tip.clone() }).into())
+					.tooltip(move |window, cx| {
+						cx.new(|cx| HistoryPreview::new(tip.clone(), window, cx)).into()
+					})
 					.on_click(cx.listener(move |s, _, _, cx| {
 						s.jump_to_history(id.clone(), cx);
 					}))
@@ -927,41 +929,66 @@ pub(super) struct WheelScroll {
 
 struct HistoryPreview {
 	mark: HistoryMark,
+	id: SharedString,
+	dismissed: bool,
+}
+impl HistoryPreview {
+	fn new(mark: HistoryMark, window: &Window, cx: &mut Context<Self>) -> Self {
+		let id = SharedString::from(format!("history-preview-{}", cx.entity_id()));
+		let released = id.clone();
+		let parent = window.window_handle();
+		cx.on_release(move |_, cx| {
+			ui_motion::dismiss_popover(parent, released.into(), cx);
+		})
+		.detach();
+		Self { mark, id, dismissed: false }
+	}
 }
 impl Render for HistoryPreview {
-	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-		ui_motion::tooltip_surface(gpui::div())
-			.debug_selector(|| "history-hover-preview".into())
-			.w(gpui::px(320.0))
-			.p_3()
-			.flex()
-			.flex_col()
-			.gap_2()
-			.text_size(gpui::px(12.0))
-			.line_height(gpui::px(18.0))
-			.child(
-				gpui::div()
-					.text_size(gpui::px(10.0))
-					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-					.child(self.mark.time.clone()),
-			)
-			.child(
-				gpui::div()
-					.font_weight(FontWeight::MEDIUM)
-					.text_color(crate::ui_theme::rgb(TEXT))
-					.child(self.mark.question.clone()),
-			)
-			.when(!self.mark.answer.is_empty(), |panel| {
-				panel.child(
-					gpui::div()
-						.pt_2()
-						.border_t_1()
-						.border_color(crate::ui_theme::rgba(0xffffff14))
-						.text_color(crate::ui_theme::rgb(0xc4c4ce))
-						.child(self.mark.answer.clone()),
-				)
+	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let mark = self.mark.clone();
+		let owner = cx.entity().downgrade();
+		gpui::div().w(gpui::px(320.)).child(
+			ui_motion::popover_lazy(self.id.clone(), !self.dismissed, move |_, _| {
+				history_preview_content(&mark).into_any_element()
 			})
+			.preview()
+			.on_dismiss(move |cx| {
+				let _ = owner.update(cx, |preview, cx| {
+					preview.dismissed = true;
+					cx.notify();
+				});
+			}),
+		)
 	}
+}
+
+fn history_preview_content(mark: &HistoryMark) -> Div {
+	gpui::div()
+		.debug_selector(|| "history-hover-preview".into())
+		.p(gpui::px(10.))
+		.flex()
+		.flex_col()
+		.gap(gpui::px(6.))
+		.text_size(gpui::px(12.0))
+		.line_height(gpui::px(18.0))
+		.child(
+			gpui::div()
+				.text_size(gpui::px(11.0))
+				.text_color(crate::ui_theme::rgb(TEXT_MUTED))
+				.child(mark.time.clone()),
+		)
+		.child(
+			gpui::div()
+				.font_weight(FontWeight::MEDIUM)
+				.text_color(crate::ui_theme::rgb(TEXT))
+				.child(mark.question.clone()),
+		)
+		.when(!mark.answer.is_empty(), |panel| {
+			panel.child(
+				gpui::div().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child(mark.answer.clone()),
+			)
+		})
 }
 
 fn navigation_offset(position: f32, maximum: f32) -> f32 {

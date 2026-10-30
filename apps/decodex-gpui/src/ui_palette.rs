@@ -244,7 +244,7 @@ mod tests {
 	};
 
 	#[gpui::test]
-	fn popover_tints_follow_every_theme_and_keep_clear_lighter(cx: &mut gpui::TestAppContext) {
+	fn overlay_tints_follow_every_theme_and_leave_clear_untinted(cx: &mut gpui::TestAppContext) {
 		use crate::ui_theme::{appearance::Appearance, material::GlassStyle};
 		cx.update(|cx| {
 			let before = (Appearance::current(), ColorTheme::configured());
@@ -252,15 +252,15 @@ mod tests {
 				theme.select(cx);
 				for appearance in [Appearance::Dark, Appearance::Light] {
 					appearance.select(cx);
-					let thin = ui_theme::popover_tint(Material::Thin, GlassStyle::Regular);
+					let thin = ui_theme::popover_tint(Material::Thin, GlassStyle::Regular).unwrap();
 					let regular =
-						ui_theme::popover_tint(Material::LiquidGlass, GlassStyle::Regular);
+						ui_theme::popover_tint(Material::LiquidGlass, GlassStyle::Regular).unwrap();
 					let clear = ui_theme::popover_tint(Material::LiquidGlass, GlassStyle::Clear);
 					assert_eq!(thin, ui_theme::popover_surface());
-					assert_eq!((thin.r, thin.g, thin.b), (clear.r, clear.g, clear.b));
+					assert_eq!(clear, None);
 					assert_eq!((thin.r, thin.g, thin.b), (regular.r, regular.g, regular.b));
 					assert_eq!(thin.a, 1.);
-					assert!(clear.a < regular.a && regular.a < thin.a);
+					assert!(regular.a < thin.a);
 				}
 			}
 			before.1.select(cx);

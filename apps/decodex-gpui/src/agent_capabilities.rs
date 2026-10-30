@@ -20,11 +20,15 @@ pub(super) struct CatalogContext {
 
 impl AgentSurface {
 	pub(super) fn service_tier_picker(&self, cx: &Context<Self>) -> AnyElement {
-		let supports_fast = self.selected_model(cx).is_some_and(|model| model.supports_fast);
+		let tiers = self
+			.selected_model(cx)
+			.into_iter()
+			.flat_map(|model| &model.service_tiers)
+			.map(|tier| (tier.id.clone(), tier.name.clone()));
 		let selected = self.composer_service_tier();
 		crate::session_settings::speed_choices(
 			selected.as_ref(),
-			supports_fast,
+			tiers,
 			Self::choose_service_tier,
 			cx,
 		)
@@ -464,7 +468,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn speed_picker_only_offers_standard_and_fast_and_rechecks_catalog(
+	fn speed_picker_follows_advertised_tiers_without_adopting_native_default(
 		cx: &mut gpui::TestAppContext,
 	) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
@@ -524,6 +528,31 @@ mod tests {
 
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "priority");
+			assert!(s.composer_capability_error(cx).is_none());
+			if let Some(AgentCapabilitiesResult::Available { models, .. }) = &mut s.capabilities {
+				models[0].service_tiers.push(decodex_protocol::AgentServiceTierDto {
+					id: decodex_protocol::ServiceTier::new("ultrafast").unwrap(),
+					name: "Ultrafast".into(),
+					description: "Higher usage".into(),
+				});
+			}
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let standard = visual.debug_bounds("tier-default").unwrap();
+		let fast = visual.debug_bounds("tier-priority").unwrap();
+		let ultrafast = visual.debug_bounds("tier-ultrafast").unwrap();
+		for choice in [standard, fast, ultrafast] {
+			assert_eq!(choice.size.height, gpui::px(24.));
+			assert!(choice.size.width < gpui::px(80.), "speed bounds: {choice:?}");
+			assert_eq!(choice.top(), standard.top(), "all three speeds fit on one line");
+		}
+		assert!(ultrafast.right() <= visual.debug_bounds("model-options").unwrap().right());
+		visual.simulate_click(ultrafast.center(), gpui::Modifiers::default());
+		surface.update(visual, |s, cx| {
+			assert_eq!(s.composer_service_tier().unwrap().as_str(), "ultrafast");
+			assert_eq!(s.composer_speed_label(), "Ultrafast");
+			assert!(!s.fast, "the exact tier takes precedence over the legacy Fast flag");
 			assert!(s.composer_capability_error(cx).is_none());
 
 			if let Some(AgentCapabilitiesResult::Available { models, .. }) = &mut s.capabilities {

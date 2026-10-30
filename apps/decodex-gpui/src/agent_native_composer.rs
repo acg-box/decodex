@@ -118,6 +118,7 @@ impl Render for ComposerPanel {
 			})
 			.id("native-composer-focus-panel")
 			.capture_any_mouse_down(move |event, _, cx| {
+				ui_motion::dismiss_shared_popover(parent, cx);
 				focus_owner.update(cx, |s, cx| {
 					if let Some((name, _)) =
 						s.menu_trigger_bounds.iter().find(|(_, b)| b.contains(&event.position))
