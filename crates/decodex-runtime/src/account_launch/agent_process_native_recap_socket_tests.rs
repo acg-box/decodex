@@ -123,12 +123,10 @@ fn start_recap_parent(work: &EntityId, directory: &Path, account: &AccountId) ->
 	})
 }
 
-fn fixture_working_directory(home: &Path, sampling: bool) -> PathBuf {
-	if sampling || env::var_os("DECODEX_TEST_NATIVE_FORK").is_some() {
-		env::current_dir().expect("owned test checkout")
-	} else {
-		home.to_owned()
-	}
+fn fixture_working_directory() -> PathBuf {
+	// Account/config fixtures stay temporary. Execution authority follows the OS account,
+	// so every service mode uses the owned checkout instead of the overridden HOME.
+	env::current_dir().expect("owned test checkout")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -337,9 +335,7 @@ async fn check(
 	}
 
 	let sampling = env::var_os("DECODEX_TEST_NATIVE_SAMPLE").is_some();
-	// Account/config fixtures stay temporary. Production cwd authority follows the OS account,
-	// not an overridden HOME, so sampling uses the test runner's owned checkout.
-	let directory = fixture_working_directory(home, sampling);
+	let directory = fixture_working_directory();
 	let work = EntityId::new("recap-root").expect("work");
 
 	assert_eq!(client.recap(work.clone()).await.expect("cold query").phase, TaskRecapPhase::Idle);
