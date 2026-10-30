@@ -2562,7 +2562,7 @@
       "fresh_native_tests_executed": 0
     },
     "validation_limits": [
-      "Default build cannot compile Metal shaders because the host Metal Toolchain is uninstalled. Existing gpui_platform/runtime_shaders was enabled only on validation commands.",
+      "At the original UI qualification, the host Metal Toolchain was uninstalled and validation used gpui_platform/runtime_shaders. The build_and_lint_follow_up records the later default-build repair.",
       "GPUI TestPlatform and loopback protocol fixtures only. No live-provider, installed-app, native popover material, physical-keyboard, latency or performance acceptance.",
       "The test linker reported an existing large unwind-section warning.",
       "No runtime migration, installation, release, schedule change or upstream review cursor advance."
@@ -2574,6 +2574,56 @@
       "status": "incomplete",
       "reason": "OpenWiki requires unrelated stale-page repairs outside this change. The targeted page submissions are retained locally; no global wiki completion is claimed.",
       "owner": "Repository documentation maintenance"
+    },
+    "build_and_lint_follow_up": {
+      "source_revision": "7428f4227bd8829f0cda51795c2431c37f0794c3",
+      "main_baseline": "c6867f3de52dc4ca924422f611b17f5c44d316af",
+      "source_sha256": {
+        "apps/decodex-gpui/src/agent_archive_catalog.rs": "193d300d0e619b4ab07b0b1a0f28ebfee90b733d1cc67023802ecad4e204a9e4"
+      },
+      "behavior": "Move archive filtering and ordering into Catalog::matching_items. Preserve agent/project search, newest-first ordering, read-only opening and exact-thread restoration.",
+      "metal_preparation_command": "xcodebuild -downloadComponent MetalToolchain",
+      "default_build": {
+        "command": "cargo +stable build --locked -p decodex-gpui --bin decodex-gpui",
+        "result": "passed",
+        "runtime_shaders_override": false,
+        "artifact_sha256": "eb1d056038d6fe6dfb66871ef044b260f4947bbd7666f43d2c951fe83d3527b1"
+      },
+      "strict_clippy": {
+        "command": "cargo +stable make lint-rust",
+        "passed_packages": 13,
+        "failed_packages": 0,
+        "rules_changed": false
+      },
+      "tests_read": [
+        "shell::agent_surface::archive::catalog::tests::archive_search_matches_visible_project_and_agent_names",
+        "shell::agent_surface::archive::catalog::tests::opening_archive_is_read_only_and_retains_the_active_draft",
+        "shell::agent_surface::archive::catalog::tests::archive_browser_restores_the_exact_thread_after_a_lost_reply_and_keeps_main"
+      ],
+      "tests_executed": {
+        "command": "cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui -E 'test(archive::catalog::tests::)' --no-fail-fast --status-level pass --final-status-level fail",
+        "identities": [
+          "shell::agent_surface::archive::catalog::tests::archive_browser_restores_the_exact_thread_after_a_lost_reply_and_keeps_main",
+          "shell::agent_surface::archive::catalog::tests::archive_search_matches_visible_project_and_agent_names",
+          "shell::agent_surface::archive::catalog::tests::opening_archive_is_read_only_and_retains_the_active_draft"
+        ],
+        "passed": 3,
+        "failed": 0,
+        "skipped": 1201,
+        "unmatched_selectors": [],
+        "binary_id": "decodex-gpui::bin/decodex-gpui",
+        "binary_sha256": "88e50674e4d85072e567f4d518fb9d71aece8a826b64222e284a53752cdd4c62"
+      },
+      "format": "cargo make fmt-rust-check passed",
+      "whitespace": "git diff --check passed",
+      "limits": [
+        "GPUI TestPlatform and local protocol fixtures only; no installed-app or live-provider acceptance.",
+        "The existing linker warning about the large unwind section remains; no runtime exception-handling performance test was run.",
+        "No Codex runtime, schema, schedule or upstream review cursor change."
+      ],
+      "delivery_references": [
+        "https://github.com/acg-box/decodex/commit/7428f4227bd8829f0cda51795c2431c37f0794c3"
+      ]
     }
   }
 }
