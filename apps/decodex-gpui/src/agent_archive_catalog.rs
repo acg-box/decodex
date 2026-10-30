@@ -3,6 +3,7 @@ use gpui::{
 	AnyElement, AppContext as _, Entity, IntoElement as _, KeyDownEvent, Role, Task, prelude::*,
 };
 use std::{
+	collections::BTreeSet,
 	rc::Rc,
 	time::{Duration, Instant},
 };
@@ -40,9 +41,11 @@ pub(in crate::shell::agent_surface) struct Catalog {
 	rows: Rc<[Row]>,
 	prepared: Option<(String, Sort, u64)>,
 	revision: u64,
-	confirmation: Option<(String, Instant)>,
+	confirmation: Option<(Vec<String>, Instant)>,
 	confirmation_task: Option<Task<()>>,
 	deleting: bool,
+	selecting: bool,
+	selected: BTreeSet<String>,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -103,13 +106,49 @@ impl Catalog {
 			Sort::Name => a.title.to_lowercase().cmp(&b.title.to_lowercase()).then(a.id.cmp(&b.id)),
 		});
 		self.rows = rows.into();
+		self.selected.retain(|id| self.rows.iter().any(|row| &row.id == id));
 		self.prepared = Some(key);
 	}
 
 	fn confirming(&self, id: &str) -> bool {
-		self.confirmation
-			.as_ref()
-			.is_some_and(|(owner, at)| owner == id && at.elapsed() < Duration::from_secs(5))
+		self.confirmation.as_ref().is_some_and(|(owners, at)| {
+			owners.len() == 1 && owners[0] == id && at.elapsed() < Duration::from_secs(5)
+		})
+	}
+
+	fn confirming_selection(&self) -> bool {
+		self.confirmation.as_ref().is_some_and(|(owners, at)| {
+			!owners.is_empty()
+				&& owners.len() == self.selected.len()
+				&& owners.iter().all(|id| self.selected.contains(id))
+				&& at.elapsed() < Duration::from_secs(5)
+		})
+	}
+
+	fn cancel_confirmation(&mut self) {
+		self.confirmation = None;
+		self.confirmation_task = None;
+	}
+
+	fn toggle_selected(&mut self, id: &str) {
+		self.cancel_confirmation();
+		if !self.selected.remove(id) {
+			self.selected.insert(id.into());
+		}
+	}
+
+	fn parent_depth(&self, id: &str) -> usize {
+		let mut seen = BTreeSet::new();
+		let mut parent = Some(id);
+		while let Some(id) = parent {
+			if !seen.insert(id) {
+				break;
+			}
+			parent = self.data.as_ref().and_then(|data| {
+				data.work_items.iter().find(|work| work.id == id)?.parent_goal_id.as_deref()
+			});
+		}
+		seen.len()
 	}
 
 	pub(in crate::shell::agent_surface) fn archived_work(
@@ -153,6 +192,9 @@ impl AgentSurface {
 
 	pub(in crate::shell::agent_surface) fn open_archive_catalog(&mut self, cx: &mut Context<Self>) {
 		self.cancel_dictation(cx);
+		self.workspace.archives.cancel_confirmation();
+		self.workspace.archives.selecting = false;
+		self.workspace.archives.selected.clear();
 		self.workspace.browsing = true;
 		self.workspace.archives.open = true;
 		if self.workspace.archives.search.is_none() {
@@ -165,8 +207,8 @@ impl AgentSurface {
 				)
 			});
 			cx.observe(&search, |s, _, cx| {
-				s.workspace.archives.confirmation = None;
-				s.workspace.archives.confirmation_task = None;
+				s.workspace.archives.cancel_confirmation();
+				s.workspace.archives.selected.clear();
 				cx.notify();
 			})
 			.detach();
@@ -274,19 +316,32 @@ impl AgentSurface {
 	}
 
 	fn delete_archive_item(&mut self, id: &str, cx: &mut Context<Self>) {
+		self.delete_archive_items(vec![id.into()], cx);
+	}
+
+	fn delete_archive_items(&mut self, mut ids: Vec<String>, cx: &mut Context<Self>) {
 		if self.workspace.archives.mutation.is_some()
-			|| self.workspace.archives.archived_work(id).is_none()
+			|| ids.is_empty()
+			|| ids.iter().any(|id| self.workspace.archives.archived_work(id).is_none())
 		{
 			return;
 		}
-		if !self.workspace.archives.confirming(id) {
+		// Native deletion includes descendants. Delete selected children first so
+		// their individual receipts do not race an earlier parent deletion.
+		ids.sort_by_cached_key(|id| std::cmp::Reverse(self.workspace.archives.parent_depth(id)));
+		if !self
+			.workspace
+			.archives
+			.confirmation
+			.as_ref()
+			.is_some_and(|(owners, at)| owners == &ids && at.elapsed() < Duration::from_secs(5))
+		{
 			let now = Instant::now();
-			self.workspace.archives.confirmation = Some((id.into(), now));
-			let id = id.to_owned();
+			self.workspace.archives.confirmation = Some((ids.clone(), now));
 			self.workspace.archives.confirmation_task = Some(cx.spawn(async move |surface, cx| {
 				cx.background_executor().timer(Duration::from_secs(5)).await;
 				let _ = surface.update(cx, |s, cx| {
-					if s.workspace.archives.confirmation.as_ref() == Some(&(id, now)) {
+					if s.workspace.archives.confirmation.as_ref() == Some(&(ids, now)) {
 						s.workspace.archives.confirmation = None;
 						cx.notify();
 					}
@@ -295,37 +350,42 @@ impl AgentSurface {
 			cx.notify();
 			return;
 		}
-		let (Some(profile), Some(thread), Ok(work_id)) = (
-			self.profile.clone(),
-			self.workspace.archives.archived_work(id).and_then(|w| w.codex_thread_id.clone()),
-			EntityId::new(id.to_owned()),
-		) else {
+		let Some(profile) = self.profile.clone() else {
 			return;
 		};
-		let Ok(thread_id) = WireText::new(thread) else {
+		let targets: Vec<_> = ids
+			.iter()
+			.filter_map(|id| {
+				let thread = self.workspace.archives.archived_work(id)?.codex_thread_id.clone()?;
+				Some((id.clone(), EntityId::new(id.clone()).ok()?, WireText::new(thread).ok()?))
+			})
+			.collect();
+		if targets.len() != ids.len() {
 			return;
-		};
-		let id = id.to_owned();
-		self.workspace.archives.confirmation = None;
-		self.workspace.archives.confirmation_task = None;
-		self.workspace.archives.busy = Some(id.clone());
+		}
+		self.workspace.archives.cancel_confirmation();
+		self.workspace.archives.busy = ids.first().cloned();
 		self.workspace.archives.deleting = true;
 		self.workspace.archives.read = None;
 		self.workspace.archives.feedback = None;
 		let request = cx.background_executor().spawn(async move {
 			let runtime = Builder::new_current_thread().enable_all().build().ok()?;
 			let client = AgentClient::new(profile);
-			let key = IdempotencyKey::new(super::super::unique_command()).ok()?;
-			let response = runtime
-				.block_on(
+			let mut deleted = Vec::new();
+			for (id, work_id, thread_id) in targets {
+				let key = IdempotencyKey::new(super::super::unique_command()).ok()?;
+				let response = runtime.block_on(
 					client
 						.execute(AgentActionDto::DeleteArchivedThread { work_id, thread_id }, key),
-				)
-				.ok()?;
-			if !matches!(response, decodex_protocol::AgentCommandResponse::Accepted { .. }) {
-				return None;
+				);
+				match response {
+					Ok(decodex_protocol::AgentCommandResponse::Accepted { .. }) => deleted.push(id),
+					Ok(_) => {},
+					Err(_) => break,
+				}
 			}
 			Some((
+				deleted,
 				runtime.block_on(client.archive_catalog()).ok(),
 				runtime.block_on(client.query()).ok(),
 			))
@@ -335,16 +395,26 @@ impl AgentSurface {
 			let _ = surface.update(cx, |s, cx| {
 				s.workspace.archives.mutation = None;
 				s.workspace.archives.busy = None;
-				if let Some((catalog, active)) = result {
+				if let Some((deleted, catalog, active)) = result {
 					if let Some(AgentSnapshotResult::Available(data)) = catalog {
 						s.workspace.archives.data = Some(data);
 					} else if let Some(data) = &mut s.workspace.archives.data {
-						data.work_items.retain(|w| w.id != id);
-						data.archived_work_ids.remove(&id);
+						data.work_items.retain(|w| !deleted.contains(&w.id));
+						data.archived_work_ids.retain(|id| !deleted.contains(id));
 					}
 					s.workspace.archives.revision += 1;
-					if s.workspace.archives.viewed.as_ref() == Some(&id) {
+					s.workspace.archives.selected.retain(|id| !deleted.contains(id));
+					if s.workspace.archives.selected.is_empty() {
+						s.workspace.archives.selecting = false;
+					}
+					if s.workspace.archives.viewed.as_ref().is_some_and(|id| deleted.contains(id)) {
 						s.workspace.archives.viewed = None;
+					}
+					let remaining = ids.len() - deleted.len();
+					if remaining > 0 {
+						s.workspace.archives.feedback = Some(format!(
+							"{remaining} not deleted. Check the selection before retrying."
+						));
 					}
 					if let Some(active) = active {
 						s.apply_refreshed_snapshot(Ok(active), cx);
@@ -403,6 +473,8 @@ impl AgentSurface {
 				let delete_id = id.clone();
 				let delete_key = id.clone();
 				let confirming = catalog.confirming(&id);
+				let selecting = catalog.selecting;
+				let selected = catalog.selected.contains(&id);
 				let busy = catalog.busy.as_ref() == Some(&id);
 				let unavailable = catalog.mutation.is_some();
 				let restore = archive_action(
@@ -436,7 +508,7 @@ impl AgentSurface {
 					catalog
 						.confirmation
 						.as_ref()
-						.filter(|(owner, _)| owner == &item.id)
+						.filter(|(owners, _)| owners.as_slice() == [item.id.as_str()])
 						.map(|(_, at)| *at),
 				)
 				.aria_label(format!(
@@ -465,8 +537,19 @@ impl AgentSurface {
 					gpui::div()
 						.id(gpui::SharedString::from(format!("archived-{id}")))
 						.debug_selector(move || format!("archived-{id}"))
-						.role(Role::Button)
-						.aria_label(format!("Open archived {}", item.title))
+						.role(if selecting { Role::CheckBox } else { Role::Button })
+						.aria_label(format!(
+							"{} {}",
+							if selecting { "Select" } else { "Open archived" },
+							item.title
+						))
+						.when(selecting, |row| {
+							row.aria_toggled(if selected {
+								gpui::Toggled::True
+							} else {
+								gpui::Toggled::False
+							})
+						})
 						.aria_description(item.metadata.clone())
 						.tab_index(0)
 						.flex_none()
@@ -479,20 +562,66 @@ impl AgentSurface {
 						.gap(gpui::px(12.))
 						.rounded(gpui::px(ui_theme::CONTROL_RADIUS))
 						.bg(ui_theme::rgb(ui_theme::TEXT).opacity(0.035))
+						.when(selected, |row| row.bg(ui_theme::rgb(ui_theme::ACCENT).opacity(0.12)))
 						.cursor_pointer()
-						.hover(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+						.hover(move |d| {
+							d.bg(if selected {
+								ui_theme::rgb(ui_theme::ACCENT).opacity(0.18)
+							} else {
+								ui_theme::rgba(ui_theme::HOVER_FILL)
+							})
+						})
 						.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
 						.focus_visible(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 						.on_click(cx.listener(move |s, _, _, cx| {
-							s.open_archived_conversation(&open_id, cx)
+							if s.workspace.archives.selecting {
+								if s.workspace.archives.mutation.is_none() {
+									s.workspace.archives.toggle_selected(&open_id);
+									cx.notify();
+								}
+							} else {
+								s.open_archived_conversation(&open_id, cx);
+							}
 						}))
 						.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 							if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str())
 							{
 								cx.stop_propagation();
-								s.open_archived_conversation(&open_key, cx);
+								if s.workspace.archives.selecting {
+									if s.workspace.archives.mutation.is_none() {
+										s.workspace.archives.toggle_selected(&open_key);
+										cx.notify();
+									}
+								} else {
+									s.open_archived_conversation(&open_key, cx);
+								}
 							}
 						}))
+						.when(selecting, |row| {
+							row.child(
+								gpui::div()
+									.flex_none()
+									.size(gpui::px(16.))
+									.rounded(gpui::px(4.))
+									.border_1()
+									.border_color(
+										ui_theme::rgb(if selected {
+											ui_theme::ACCENT
+										} else {
+											ui_theme::TEXT_MUTED
+										})
+										.opacity(0.6),
+									)
+									.flex()
+									.items_center()
+									.justify_center()
+									.when(selected, |d| {
+										d.bg(ui_theme::rgb(ui_theme::ACCENT).opacity(0.25)).child(
+											workspace_symbols::icon_sized(Symbol::Confirm, 12.),
+										)
+									}),
+							)
+						})
 						.child(
 							gpui::div()
 								.min_w_0()
@@ -551,24 +680,26 @@ impl AgentSurface {
 									item.clock.clone()
 								}),
 						)
-						.child(
-							gpui::div()
-								.debug_selector({
-									let id = item.id.clone();
-									move || format!("archive-actions-{id}")
-								})
-								.flex_none()
-								.flex()
-								.items_center()
-								.gap(gpui::px(2.))
-								.p(gpui::px(1.))
-								.rounded(gpui::px(6.))
-								.border(gpui::px(0.5))
-								.border_color(ui_theme::rgb(ui_theme::TEXT).opacity(0.10))
-								.bg(ui_theme::rgb(ui_theme::TEXT).opacity(0.025))
-								.child(restore.smooth().enabled(!unavailable))
-								.child(delete.smooth().enabled(!unavailable)),
-						),
+						.when(!selecting, |row| {
+							row.child(
+								gpui::div()
+									.debug_selector({
+										let id = item.id.clone();
+										move || format!("archive-actions-{id}")
+									})
+									.flex_none()
+									.flex()
+									.items_center()
+									.gap(gpui::px(2.))
+									.p(gpui::px(1.))
+									.rounded(gpui::px(6.))
+									.border(gpui::px(0.5))
+									.border_color(ui_theme::rgb(ui_theme::TEXT).opacity(0.10))
+									.bg(ui_theme::rgb(ui_theme::TEXT).opacity(0.025))
+									.child(restore.smooth().enabled(!unavailable))
+									.child(delete.smooth().enabled(!unavailable)),
+							)
+						}),
 				);
 			}
 			let heading_id = first.id.clone();
@@ -625,9 +756,16 @@ impl AgentSurface {
 			.p_3()
 			.gap_2()
 			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
-				if e.keystroke.key == "escape" && s.workspace.archives.confirmation.is_some() {
-					s.workspace.archives.confirmation = None;
-					s.workspace.archives.confirmation_task = None;
+				if e.keystroke.key == "escape"
+					&& (s.workspace.archives.confirmation.is_some()
+						|| s.workspace.archives.selecting)
+				{
+					if s.workspace.archives.confirmation.is_some() {
+						s.workspace.archives.cancel_confirmation();
+					} else if s.workspace.archives.mutation.is_none() {
+						s.workspace.archives.selecting = false;
+						s.workspace.archives.selected.clear();
+					}
 					cx.stop_propagation();
 					cx.notify();
 				}
@@ -662,42 +800,174 @@ impl AgentSurface {
 			.into_any_element()
 	}
 
+	fn toggle_archive_selection(&mut self, cx: &mut Context<Self>) {
+		if self.workspace.archives.mutation.is_none() {
+			let catalog = &mut self.workspace.archives;
+			catalog.selecting = !catalog.selecting;
+			catalog.selected.clear();
+			catalog.cancel_confirmation();
+			cx.notify();
+		}
+	}
+
+	fn select_all_archived(&mut self, cx: &mut Context<Self>) {
+		let catalog = &mut self.workspace.archives;
+		if catalog.mutation.is_none() {
+			catalog.cancel_confirmation();
+			if catalog.selected.len() == catalog.rows.len() {
+				catalog.selected.clear();
+			} else {
+				catalog.selected = catalog.rows.iter().map(|row| row.id.clone()).collect();
+			}
+			cx.notify();
+		}
+	}
+
+	fn delete_selected_archives(&mut self, cx: &mut Context<Self>) {
+		self.delete_archive_items(self.workspace.archives.selected.iter().cloned().collect(), cx);
+	}
+
 	fn archive_catalog_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		let catalog = &self.workspace.archives;
+		let confirming = catalog.confirming_selection();
+		let unavailable = catalog.mutation.is_some();
+		let delete = archive_action(
+			"delete-archive-selection",
+			Symbol::Trash,
+			"Delete selected agents and their subagents",
+			catalog.confirmation.as_ref().filter(|_| confirming).map(|(_, at)| *at),
+		)
+		.aria_label(if confirming {
+			"Confirm deletion of selected agents"
+		} else {
+			"Delete selected agents"
+		})
+		.when(confirming, |d| {
+			d.text_color(ui_theme::rgb(ui_theme::ERROR))
+				.bg(ui_theme::rgb(ui_theme::ERROR).opacity(0.12))
+				.border_color(ui_theme::rgb(ui_theme::ERROR).opacity(0.35))
+		})
+		.on_click(cx.listener(|s, _, _, cx| s.delete_selected_archives(cx)))
+		.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
+			if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+				cx.stop_propagation();
+				s.delete_selected_archives(cx);
+			}
+		}));
 		gpui::div()
 			.flex()
+			.flex_wrap()
 			.items_center()
-			.gap_3()
+			.gap(gpui::px(8.))
 			.child(
 				gpui::div()
 					.flex_1()
+					.flex_basis(gpui::px(200.))
 					.min_w_0()
 					.h(gpui::px(ui_theme::CONTROL_SIZE))
 					.children(self.workspace.archives.search.clone()),
 			)
-			.child(Segmented::new(
-				"archive-sort",
-				"Sort archive",
-				[
-					("Recent", "Newest updates first"),
-					("Oldest", "Oldest updates first"),
-					("Name", "Sort by name"),
-				]
-				.map(|(label, description)| {
-					Choice::new(format!("archive-sort-{label}"), label, description)
-				}),
-				match self.workspace.archives.sort {
-					Sort::Recent => 0,
-					Sort::Oldest => 1,
-					Sort::Name => 2,
-				},
-				cx.listener(|s, index: &usize, _, cx| {
-					s.workspace.archives.sort = [Sort::Recent, Sort::Oldest, Sort::Name][*index];
-					s.workspace.archives.confirmation = None;
-					s.workspace.archives.confirmation_task = None;
-					cx.notify();
-				}),
-			))
+			.when(!catalog.selecting, |toolbar| {
+				toolbar.child(Segmented::new(
+					"archive-sort",
+					"Sort archive",
+					[
+						("Recent", "Newest updates first"),
+						("Oldest", "Oldest updates first"),
+						("Name", "Sort by name"),
+					]
+					.map(|(label, description)| {
+						Choice::new(format!("archive-sort-{label}"), label, description)
+					}),
+					match self.workspace.archives.sort {
+						Sort::Recent => 0,
+						Sort::Oldest => 1,
+						Sort::Name => 2,
+					},
+					cx.listener(|s, index: &usize, _, cx| {
+						s.workspace.archives.sort =
+							[Sort::Recent, Sort::Oldest, Sort::Name][*index];
+						s.workspace.archives.cancel_confirmation();
+						cx.notify();
+					}),
+				))
+			})
+			.when(catalog.selecting, |toolbar| {
+				toolbar
+					.child(
+						gpui::div()
+							.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+							.text_color(ui_theme::rgb(ui_theme::TEXT))
+							.font_features(ui_theme::tabular_figures())
+							.child(format!(
+								"{} {}",
+								catalog.selected.len(),
+								if unavailable { "deleting…" } else { "selected" }
+							)),
+					)
+					.child(
+						archive_toolbar_action(
+							"select-all-archives",
+							if catalog.selected.len() == catalog.rows.len()
+								&& !catalog.rows.is_empty()
+							{
+								"Clear"
+							} else {
+								"Select all"
+							},
+							Self::select_all_archived,
+							cx,
+						)
+						.smooth()
+						.enabled(!unavailable),
+					)
+					.child(delete.smooth().enabled(!unavailable && !catalog.selected.is_empty()))
+			})
+			.child(
+				archive_toolbar_action(
+					"toggle-archive-selection",
+					if catalog.selecting { "Done" } else { "Select" },
+					Self::toggle_archive_selection,
+					cx,
+				)
+				.smooth()
+				.enabled(!unavailable),
+			)
 	}
+}
+
+fn archive_toolbar_action(
+	id: &'static str,
+	label: &'static str,
+	action: fn(&mut AgentSurface, &mut Context<AgentSurface>),
+	cx: &mut Context<AgentSurface>,
+) -> gpui::Stateful<gpui::Div> {
+	gpui::div()
+		.id(id)
+		.debug_selector(move || id.into())
+		.role(Role::Button)
+		.aria_label(label)
+		.tab_index(0)
+		.flex_none()
+		.h(gpui::px(ui_theme::CHROME_CONTROL_SIZE))
+		.px(gpui::px(7.))
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded(gpui::px(4.))
+		.text_size(gpui::px(ui_theme::BODY_SIZE))
+		.text_color(ui_theme::rgb(ui_theme::TEXT))
+		.cursor_pointer()
+		.hover(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+		.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
+		.on_click(cx.listener(move |s, _, _, cx| action(s, cx)))
+		.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+			if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+				cx.stop_propagation();
+				action(s, cx);
+			}
+		}))
+		.child(label)
 }
 
 fn archive_action(
@@ -772,6 +1042,163 @@ mod tests {
 		fn render(&mut self, _: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
 			self.0.update(cx, |s, cx| s.render_archive_catalog(cx))
 		}
+	}
+
+	#[gpui::test]
+	fn archive_bulk_delete_confirms_exact_filtered_selection_and_keeps_failures_selected(
+		cx: &mut gpui::TestAppContext,
+	) {
+		cx.background_executor.allow_parking();
+		let (view, visual) = cx.add_window_view(|_, cx| {
+			let surface = cx.new(AgentSurface::new);
+			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+			surface.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				s.composer.update(cx, |i, cx| i.set_content("Keep Main draft", cx));
+				s.open_archive_catalog(cx);
+				s.workspace.archives.feedback = None;
+				let mut data = s.snapshot.clone().unwrap();
+				for (id, title, parent) in [
+					("parent", "Remove parent", None),
+					("child", "Remove child", Some("parent")),
+					("keep", "Keep this one", None),
+				] {
+					let mut item = data.work_items[0].clone();
+					item.id = id.into();
+					item.title = title.into();
+					item.parent_goal_id = parent.map(str::to_owned);
+					item.codex_thread_id = Some(format!("native-{id}"));
+					data.work_items.push(item);
+					data.archived_work_ids.insert(id.into());
+				}
+				s.workspace.archives.data = Some(data);
+			});
+			ArchiveView(surface)
+		});
+		let surface = view.read_with(visual, |v, _| v.0.clone());
+		let active = surface.read_with(visual, |s, _| s.snapshot.clone().unwrap());
+		let expected = active.clone();
+		let mut remaining =
+			surface.read_with(visual, |s, _| s.workspace.archives.data.clone().unwrap());
+		remaining.work_items.retain(|w| w.id != "parent");
+		remaining.archived_work_ids.remove("parent");
+		let (_root, profile, server) = wire_test_support::fixture(move |listener| async move {
+			for (id, accepted) in [("child", false), ("parent", true)] {
+				let mut socket = wire_test_support::accept(&listener).await;
+				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+					panic!("command")
+				};
+				let ClientMessage::Command(command) = serde_json::from_str(&text).unwrap() else {
+					panic!("delete")
+				};
+				assert!(
+					matches!(&command.payload, CommandPayload::Agent {action} if matches!(&**action, AgentActionDto::DeleteArchivedThread {work_id,thread_id} if work_id.as_str()==id && thread_id.as_str()==format!("native-{id}")))
+				);
+				let receipt = ServerMessage::CommandReceipt(decodex_protocol::CommandReceipt {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER).unwrap(),
+					client_command_id: command.client_command_id.clone(),
+					idempotency_key: command.idempotency_key.clone(),
+					disposition: decodex_protocol::ReceiptDisposition::Executed,
+					original_client_command_id: command.client_command_id.clone(),
+				});
+				let result =
+					ServerMessage::CommandResult(decodex_protocol::CommandResultEnvelope {
+						version: CURRENT_VERSION,
+						server_id: ServerId::new(SERVER).unwrap(),
+						client_command_id: command.client_command_id,
+						idempotency_key: command.idempotency_key,
+						outcome: if accepted {
+							decodex_protocol::CommandOutcome::Succeeded
+						} else {
+							decodex_protocol::CommandOutcome::Rejected
+						},
+						entity_revision: accepted.then_some(decodex_protocol::EntityRevision(0)),
+						payload: accepted.then(|| decodex_protocol::ResultPayload::AgentAccepted {
+							work_id: EntityId::new(id).unwrap(),
+						}),
+						error: (!accepted).then(|| {
+							decodex_protocol::CommandError::ApplicationUnavailable {
+								message: WireText::new("Still in use").unwrap(),
+							}
+						}),
+					});
+				for message in [receipt, result] {
+					socket
+						.send(Message::Text(serde_json::to_string(&message).unwrap().into()))
+						.await
+						.unwrap();
+				}
+			}
+			for (kind, data) in [(0, remaining), (1, active)] {
+				let mut socket = wire_test_support::accept(&listener).await;
+				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+					panic!("query")
+				};
+				let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
+					panic!("refresh")
+				};
+				assert!(matches!(
+					(kind, &query.payload),
+					(0, QueryPayload::GetAgentArchiveCatalog) | (1, QueryPayload::GetAgentSnapshot)
+				));
+				wire_test_support::answer_query(
+					&mut socket,
+					query.query_id,
+					QueryResultPayload::AgentSnapshot(AgentSnapshotResult::Available(data)),
+				)
+				.await;
+			}
+		});
+		surface.update(visual, |s, _| s.profile = Some(profile));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let select = visual.debug_bounds("toggle-archive-selection").unwrap();
+		visual.simulate_click(select.center(), Default::default());
+		let search = surface.read_with(visual, |s, _| s.workspace.archives.search.clone().unwrap());
+		search.update(visual, |input, cx| input.set_content("Remove", cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let all = visual.debug_bounds("select-all-archives").unwrap();
+		visual.simulate_click(all.center(), Default::default());
+		surface.read_with(visual, |s, _| {
+			assert_eq!(
+				s.workspace.archives.selected,
+				BTreeSet::from(["child".into(), "parent".into()])
+			)
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let delete = visual.debug_bounds("delete-archive-selection").unwrap();
+		visual.simulate_click(delete.center(), Default::default());
+		surface.read_with(visual, |s, _| {
+			assert!(s.workspace.archives.confirming_selection());
+			assert!(s.workspace.archives.mutation.is_none());
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let child = visual.debug_bounds("archived-child").unwrap();
+		visual.simulate_click(child.center(), Default::default());
+		surface.read_with(visual, |s, _| assert!(s.workspace.archives.confirmation.is_none()));
+		visual.update(crate::ui_frame::draw_current_frame);
+		visual.simulate_click(child.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		visual.simulate_click(delete.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		visual.simulate_click(delete.center(), Default::default());
+		let until = Instant::now() + Duration::from_secs(5);
+		while surface.read_with(visual, |s, _| s.workspace.archives.mutation.is_some()) {
+			visual.run_until_parked();
+			assert!(Instant::now() < until, "batch timed out");
+			thread::sleep(Duration::from_millis(5));
+		}
+		server.join().unwrap();
+		visual.update(crate::ui_frame::draw_current_frame);
+		surface.read_with(visual, |s, cx| {
+			assert_eq!(s.workspace.archives.selected, BTreeSet::from(["child".into()]));
+			assert!(s.workspace.archives.selecting);
+			assert!(s.workspace.archives.feedback.as_ref().unwrap().starts_with("1 not deleted"));
+			assert_eq!(s.snapshot.as_ref(), Some(&expected));
+			assert_eq!(s.composer.read(cx).content(), "Keep Main draft");
+			assert!(s.workspace.archives.archived_work("keep").is_some());
+		});
+		assert!(visual.debug_bounds("archived-parent").is_none());
 	}
 
 	#[gpui::test]
