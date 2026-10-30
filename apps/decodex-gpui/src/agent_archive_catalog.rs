@@ -185,7 +185,7 @@ impl AgentSurface {
 					},
 					_ =>
 						s.workspace.archives.feedback =
-							Some("Could not read the archive. Try again.".into()),
+							Some("Could not load the archive. Reopen Archive to retry.".into()),
 				}
 				cx.notify();
 			});
@@ -249,7 +249,7 @@ impl AgentSurface {
 					}
 				} else {
 					s.workspace.archives.feedback =
-						Some("Could not confirm unarchive. Refresh before trying again.".into());
+						Some("Unarchive not confirmed. Reopen Archive to check.".into());
 				}
 				cx.notify();
 			});
@@ -335,7 +335,7 @@ impl AgentSurface {
 					}
 				} else {
 					s.workspace.archives.feedback =
-						Some("Deletion not confirmed. Refresh before trying again.".into());
+						Some("Deletion not confirmed. Reopen Archive to check.".into());
 				}
 				cx.notify();
 			});
@@ -377,12 +377,10 @@ impl AgentSurface {
 			let confirming = catalog.confirming(&id);
 			let busy = catalog.busy.as_ref() == Some(&id);
 			let unavailable = catalog.mutation.is_some();
-			let restore = ui_theme::settings_button(
+			let restore = archive_action(
 				format!("unarchive-{id}"),
 				if busy && !catalog.deleting { "Restoring…" } else { "Unarchive" },
 			)
-			.w(gpui::px(90.))
-			.h(gpui::px(28.))
 			.aria_label(format!("Unarchive {}", item.title))
 			.when(unavailable, |d| d.opacity(0.45))
 			.on_click(cx.listener(move |s, _, _, cx| {
@@ -395,7 +393,7 @@ impl AgentSurface {
 					s.unarchive_catalog_item(&restore_key, cx);
 				}
 			}));
-			let delete = ui_theme::settings_button(
+			let delete = archive_action(
 				format!("delete-archive-{id}"),
 				if busy && catalog.deleting {
 					"Deleting…"
@@ -405,8 +403,7 @@ impl AgentSurface {
 					"Delete"
 				},
 			)
-			.w(gpui::px(82.))
-			.h(gpui::px(28.))
+			.w(gpui::px(68.))
 			.aria_label(format!(
 				"{} {}",
 				if confirming { "Confirm permanent deletion of" } else { "Delete" },
@@ -415,7 +412,6 @@ impl AgentSurface {
 			.when(unavailable, |d| d.opacity(0.45))
 			.when(confirming, |d| {
 				d.text_color(ui_theme::rgb(ui_theme::ERROR))
-					.border_color(ui_theme::rgb(ui_theme::ERROR).opacity(0.4))
 					.bg(ui_theme::rgb(ui_theme::ERROR).opacity(0.1))
 			})
 			.on_click(cx.listener(move |s, _, _, cx| {
@@ -443,11 +439,11 @@ impl AgentSurface {
 					.tab_index(0)
 					.flex_none()
 					.min_w_0()
-					.h(gpui::px(64.))
-					.px(gpui::px(12.))
+					.h(gpui::px(40.))
+					.px(gpui::px(8.))
 					.flex()
 					.items_center()
-					.gap(gpui::px(20.))
+					.gap(gpui::px(12.))
 					.border_b_1()
 					.border_color(ui_theme::rgb(ui_theme::TEXT).opacity(0.08))
 					.cursor_pointer()
@@ -469,17 +465,19 @@ impl AgentSurface {
 							.flex_1()
 							.flex()
 							.flex_col()
-							.gap(gpui::px(4.))
+							.gap(gpui::px(1.))
 							.child(
 								gpui::div()
 									.text_size(gpui::px(ui_theme::BODY_SIZE))
+									.line_height(gpui::px(16.))
 									.text_color(ui_theme::rgb(ui_theme::TEXT))
 									.truncate()
 									.child(item.title.clone()),
 							)
 							.child(
 								gpui::div()
-									.text_size(gpui::px(11.5))
+									.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+									.line_height(gpui::px(12.))
 									.text_color(ui_theme::rgb(if confirming {
 										ui_theme::ERROR
 									} else {
@@ -494,7 +492,7 @@ impl AgentSurface {
 							.flex_none()
 							.flex()
 							.items_center()
-							.gap(gpui::px(8.))
+							.gap(gpui::px(4.))
 							.child(restore)
 							.child(delete),
 					),
@@ -521,8 +519,8 @@ impl AgentSurface {
 			.min_h_0()
 			.flex()
 			.flex_col()
-			.p_4()
-			.gap_3()
+			.p_3()
+			.gap_2()
 			.on_key_down(cx.listener(|s, e: &KeyDownEvent, _, cx| {
 				if e.keystroke.key == "escape" && s.workspace.archives.confirmation.is_some() {
 					s.workspace.archives.confirmation = None;
@@ -579,11 +577,18 @@ impl AgentSurface {
 					cx.notify();
 				}),
 			))
-			.child(
-				ui_theme::settings_button("refresh-archive", "Refresh")
-					.on_click(cx.listener(|s, _, _, cx| s.load_archive_catalog(cx))),
-			)
 	}
+}
+
+fn archive_action(
+	id: impl Into<gpui::SharedString>,
+	label: impl Into<gpui::SharedString>,
+) -> gpui::Stateful<gpui::Div> {
+	ui_theme::settings_button(id, label)
+		.border_0()
+		.bg(gpui::transparent_black())
+		.px(gpui::px(6.))
+		.focus_visible(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 }
 
 fn archive_metadata(project: Option<&str>, micros: i64) -> String {
@@ -884,7 +889,7 @@ mod tests {
 			surface.update(cx, |s, cx| {
 				s.visual_workspace_fixture(cx);
 				let mut data = s.snapshot.clone().unwrap();
-				for index in 0..40 {
+				for index in 0..100 {
 					let mut item = data.work_items[0].clone();
 					item.id = format!("scroll-{index:02}");
 					item.title = item.id.clone();
@@ -898,10 +903,15 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 		let before = visual.debug_bounds("archived-scroll-00").unwrap();
 		let bar = visual.debug_bounds("archive-scrollbar").unwrap();
+		// Keep enough compact rows to exercise scrolling, rather than grabbing a large thumb.
+		assert!(visual.debug_bounds("archived-scroll-99").unwrap().bottom() > bar.bottom());
 		visual.simulate_click(bar.center(), Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
 		let after = visual.debug_bounds("archived-scroll-00").unwrap();
-		assert!(after.top() < before.top(), "scrollbar must move overflowing archive rows");
+		assert!(
+			after.top() < before.top(),
+			"scrollbar must move overflowing archive rows: bar={bar:?}, before={before:?}, after={after:?}"
+		);
 	}
 
 	#[gpui::test]
