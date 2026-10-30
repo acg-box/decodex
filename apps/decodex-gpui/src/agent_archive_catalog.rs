@@ -17,7 +17,7 @@ use crate::{
 	},
 	ui_feedback::{self, Feedback},
 	ui_loading,
-	ui_motion::{Choice, Segmented, SmoothControl as _},
+	ui_motion::{Choice, ConfirmationNudge, Segmented, SmoothControl as _},
 	ui_scroll::SmoothScrollArea as _,
 	ui_theme,
 };
@@ -408,6 +408,7 @@ impl AgentSurface {
 					format!("unarchive-{id}"),
 					Symbol::Unarchive,
 					if busy && !catalog.deleting { "Restoring…" } else { "Unarchive" },
+					None,
 				)
 				.aria_label(format!("Unarchive {}", item.title))
 				.when(unavailable, |d| d.opacity(0.45))
@@ -427,10 +428,15 @@ impl AgentSurface {
 					if busy && catalog.deleting {
 						"Deleting…"
 					} else if confirming {
-						"Click again to delete permanently"
+						"Delete permanently"
 					} else {
 						"Delete"
 					},
+					catalog
+						.confirmation
+						.as_ref()
+						.filter(|(owner, _)| owner == &item.id)
+						.map(|(_, at)| *at),
 				)
 				.aria_label(format!(
 					"{} {}",
@@ -509,61 +515,38 @@ impl AgentSurface {
 										.truncate()
 										.child(item.title.clone()),
 								)
-								.children(item.project.as_ref().filter(|_| !confirming).map(
-									|project| {
-										gpui::div()
-											.debug_selector({
-												let id = item.id.clone();
-												move || format!("archive-project-{id}")
-											})
-											.flex_none()
-											.max_w(gpui::px(100.))
-											.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-											.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
-											.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-											.truncate()
-											.child(project.clone())
-									},
-								)),
+								.children(item.project.as_ref().map(|project| {
+									gpui::div()
+										.debug_selector({
+											let id = item.id.clone();
+											move || format!("archive-project-{id}")
+										})
+										.flex_none()
+										.max_w(gpui::px(100.))
+										.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+										.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
+										.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+										.truncate()
+										.child(project.clone())
+								})),
 						)
 						.child(
 							gpui::div()
+								.id(gpui::SharedString::from(format!("archive-time-{}", item.id)))
 								.flex_none()
-								.flex()
-								.items_center()
-								.gap(gpui::px(12.))
+								.min_w(gpui::px(if catalog.sort == Sort::Name { 78. } else { 36. }))
+								.text_right()
+								.font_features(ui_theme::tabular_figures())
 								.text_size(gpui::px(ui_theme::CAPTION_SIZE))
 								.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
 								.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-								.when(confirming, |d| d.text_color(ui_theme::rgb(ui_theme::ERROR)))
-								.children(if confirming {
-									Some(gpui::div().child("Click again to delete"))
-								} else {
-									None
+								.tooltip(move |_, cx| {
+									cx.new(|_| ControlTooltip(detail.clone())).into()
 								})
-								.when(!confirming, |d| {
-									d.child(
-										gpui::div()
-											.id(gpui::SharedString::from(format!(
-												"archive-time-{}",
-												item.id
-											)))
-											.min_w(gpui::px(if catalog.sort == Sort::Name {
-												78.
-											} else {
-												36.
-											}))
-											.text_right()
-											.font_features(ui_theme::tabular_figures())
-											.tooltip(move |_, cx| {
-												cx.new(|_| ControlTooltip(detail.clone())).into()
-											})
-											.child(if catalog.sort == Sort::Name {
-												item.day.clone()
-											} else {
-												item.clock.clone()
-											}),
-									)
+								.child(if catalog.sort == Sort::Name {
+									item.day.clone()
+								} else {
+									item.clock.clone()
 								}),
 						)
 						.child(
@@ -710,6 +693,7 @@ fn archive_action(
 	id: impl Into<gpui::SharedString>,
 	symbol: Symbol,
 	label: &'static str,
+	confirmation_started: Option<Instant>,
 ) -> gpui::Stateful<gpui::Div> {
 	let id = id.into();
 	gpui::div()
@@ -734,7 +718,10 @@ fn archive_action(
 			d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)).border_color(ui_theme::rgb(ui_theme::ACCENT))
 		})
 		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
-		.child(workspace_symbols::icon_sized(symbol, 16.))
+		.child(ConfirmationNudge {
+			started: confirmation_started,
+			child: workspace_symbols::icon_sized(symbol, 16.),
+		})
 }
 
 fn archive_timestamp(micros: i64) -> (String, String) {

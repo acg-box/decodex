@@ -39,6 +39,28 @@ pub(crate) trait SmoothControl {
 	fn smooth(self) -> Control;
 }
 
+/// Draw confirmation feedback inside a control without moving its click target.
+#[derive(IntoElement)]
+pub(crate) struct ConfirmationNudge {
+	pub started: Option<Instant>,
+	pub child: AnyElement,
+}
+
+impl RenderOnce for ConfirmationNudge {
+	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let progress = self.started.map(|start| start.elapsed().as_secs_f32() / 0.24);
+		let offset = if !reduced()
+			&& let Some(progress) = progress.filter(|p| *p < 1.)
+		{
+			request_frame(window, cx);
+			(progress * TAU * 3.).sin() * (1. - progress) * 3.
+		} else {
+			0.
+		};
+		gpui::div().relative().left(gpui::px(offset)).child(self.child)
+	}
+}
+
 /// Collapse the whole tab footprint, including its gutter, without squeezing its label.
 #[derive(IntoElement)]
 pub(crate) struct TabReveal {
