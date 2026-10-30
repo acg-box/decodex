@@ -1979,6 +1979,11 @@ impl Render for Shell {
 			.text_color(ui_theme::rgb(WB_TEXT));
 
 		#[cfg(all(target_os = "macos", not(test)))]
+		let root = root.capture_any_mouse_down(cx.listener(|s, _, _, cx| {
+			s.agent.update(cx, |agent, cx| agent.dismiss_native_menu(cx));
+		}));
+
+		#[cfg(all(target_os = "macos", not(test)))]
 		self.agent.update(cx, |agent, cx| {
 			agent.prepare_native_composer(self.selected == Destination::Agent, window, cx);
 			agent.prepare_native_menu(window, cx);

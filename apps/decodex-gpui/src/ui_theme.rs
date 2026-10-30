@@ -63,6 +63,8 @@ pub(crate) const CONTROL_RADIUS: f32 = 8.0;
 pub(crate) const POPOVER_RADIUS: f32 = 10.;
 pub(crate) const POPOVER_PADDING: f32 = 8.;
 pub(crate) const POPOVER_GAP: f32 = 8.;
+pub(crate) const POPOVER_ARRIVAL: Duration = Duration::from_millis(160);
+pub(crate) const POPOVER_OFFSET: f32 = 4.;
 pub(crate) const WORKSPACE_GUTTER: f32 = 8.0;
 pub(crate) const WORKSPACE_RADIUS: f32 = 16.0;
 pub(crate) const CONVERSATION_HEADER_HEIGHT: f32 = 28.0;
@@ -188,6 +190,33 @@ pub(crate) fn menu_row(id: impl Into<gpui::SharedString>, enabled: bool) -> Stat
 				.active(|s| s.bg(rgba(PRESSED_FILL)))
 				.focus_visible(|s| s.bg(rgba(HOVER_FILL)))
 		})
+}
+
+/// A restrained edge separates the foreground from either native material.
+pub(crate) fn menu_outline<T: gpui::Styled>(surface: T) -> T {
+	surface
+		.rounded(gpui::px(POPOVER_RADIUS))
+		.border(gpui::px(0.5))
+		.border_color(rgb(TEXT).opacity(0.1))
+}
+
+pub(crate) fn menu_separator() -> Div {
+	gpui::div().h(gpui::px(0.5)).mx(gpui::px(8.)).my(gpui::px(4.)).bg(rgb(TEXT).opacity(0.1))
+}
+
+pub(crate) fn menu_section(label: &'static str, content: impl IntoElement) -> Div {
+	gpui::div()
+		.flex()
+		.flex_col()
+		.gap(gpui::px(4.))
+		.child(
+			gpui::div()
+				.px(gpui::px(8.))
+				.text_size(gpui::px(CAPTION_SIZE))
+				.text_color(rgb(TEXT_MUTED))
+				.child(label),
+		)
+		.child(content)
 }
 
 pub(crate) fn rgba(token: u32) -> Rgba {

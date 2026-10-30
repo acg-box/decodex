@@ -986,6 +986,7 @@ impl AgentSurface {
 					reasoning_effort: self.creation_effort(),
 					fast: Some(self.fast),
 					service_tier: self.service_tier.clone(),
+					permission_mode: None,
 				};
 				let attachments = self.attachments.clone();
 				let action = match action {
@@ -2513,18 +2514,22 @@ impl AgentSurface {
 			))
 			.when_some(self.selected.as_ref(), |panel, work| {
 				panel
+					.child(ui_theme::menu_separator())
 					.child(self.resources_panel(work, cx))
 					.child(self.integrations_panel(work, cx))
 					.child(self.voice_settings_panel(work, cx))
 					.child(self.search_settings_panel(work, cx))
 					.child(self.context_settings_panel(work, cx))
+					.child(ui_theme::menu_separator())
 					.child(self.memory_summary_panel(work, cx))
 					.child(self.attached_branches_panel(work, cx))
+					.child(self.transcript_panel(cx))
+					.child(ui_theme::menu_separator())
 					.child(self.agent_usage_panel(work, cx))
 					.child(self.usage_estimate_panel(work, cx))
+					.child(ui_theme::menu_separator())
 					.child(self.read_state_panel(cx))
 					.child(self.native_goal_panel(cx))
-					.child(self.transcript_panel(cx))
 					.children(
 						self.snapshot
 							.as_ref()
@@ -2554,7 +2559,6 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap_2()
-			.child(muted("Applies when starting a new agent."))
 			.child(
 				gpui::div()
 					.flex()

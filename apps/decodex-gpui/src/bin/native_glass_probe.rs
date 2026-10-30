@@ -11,6 +11,9 @@ mod native_quit;
 #[cfg(target_os = "macos")]
 #[path = "../native_reopen.rs"]
 mod native_reopen;
+#[cfg(target_os = "macos")]
+#[path = "probes/native_popover.rs"]
+mod popover_probe;
 #[path = "../ui_frame.rs"] mod ui_frame;
 #[allow(unused_imports)]
 #[path = "../ui_motion.rs"]
@@ -668,6 +671,11 @@ fn main() {
 
 #[cfg(target_os = "macos")]
 fn main() {
+	if std::env::args().any(|arg| arg == "--popover-first-frame") {
+		popover_probe::run();
+
+		return;
+	}
 	if std::env::args().any(|arg| arg == "--window-reopen") {
 		probe::run_window_reopen();
 

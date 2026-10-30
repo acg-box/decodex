@@ -457,6 +457,7 @@ mod tests {
 				4,
 				AgentExecutionOverrides {
 					reasoning_effort: Some(crate::ConversationReasoningEffort::High),
+					permission_mode: Some(crate::PermissionMode::ReadOnly),
 					..Default::default()
 				},
 			),

@@ -46,6 +46,7 @@ pub(crate) struct MaterialPanel {
 	parent: Retained<NSWindow>,
 	frame: Option<NSRect>,
 	visible: bool,
+	presented: bool,
 	opacity: Cell<f32>,
 	window_observer: Retained<AnyObject>,
 }
@@ -162,6 +163,7 @@ impl MaterialPanel {
 				parent,
 				frame: None,
 				visible: false,
+				presented: false,
 				opacity: Cell::new(0.),
 				window_observer,
 			})
@@ -185,6 +187,7 @@ impl MaterialPanel {
 		let Some(content) = self.native.contentView() else { return };
 
 		replacement.setFrame(content.bounds());
+		replacement.setAlphaValue(self.material_view.alphaValue());
 
 		let had_focus = self.native.firstResponder().is_some_and(|first| {
 			ptr::eq(
@@ -270,6 +273,50 @@ impl MaterialPanel {
 
 		unsafe {
 			let _: () = objc2::msg_send![&*self.native, setAlphaValue: f64::from(opacity)];
+		}
+	}
+
+	/// Order the native window before asking GPUI for a frame. AppKit stops the
+	/// display link of hidden windows; only the content stays transparent here.
+	pub(crate) fn prepare_open(&mut self) {
+		if !self.visible || !self.native.isVisible() {
+			self.material_view.setAlphaValue(0.);
+			self.material_view.setFrameOrigin(NSPoint::new(0., 0.));
+			self.presented = false;
+			self.set_opacity(1.);
+		}
+		self.set_visible(true);
+	}
+
+	/// Reveal the prepared content as one surface, without resizing its texture.
+	pub(crate) fn set_open(&mut self, open: bool) {
+		if !open {
+			self.set_visible(false);
+			self.presented = false;
+			return;
+		}
+		self.prepare_open();
+		if !self.presented {
+			self.presented = true;
+			if crate::ui_frame::reduced() {
+				self.material_view.setAlphaValue(1.);
+				return;
+			}
+			self.material_view
+				.setFrameOrigin(NSPoint::new(0., -f64::from(ui_theme::POPOVER_OFFSET)));
+			unsafe {
+				let context = AnyClass::get(c"NSAnimationContext").expect("AppKit");
+				let _: () = objc2::msg_send![context, beginGrouping];
+				let animation: Retained<AnyObject> = objc2::msg_send![context, currentContext];
+				let _: () = objc2::msg_send![&*animation, setDuration: ui_theme::POPOVER_ARRIVAL.as_secs_f64()];
+				let timing: Retained<AnyObject> = objc2::msg_send![AnyClass::get(c"CAMediaTimingFunction").expect("QuartzCore"), functionWithName: &*NSString::from_str("easeOut")];
+				let _: () = objc2::msg_send![&*animation, setTimingFunction: &*timing];
+				let animator: Retained<AnyObject> =
+					objc2::msg_send![&*self.material_view, animator];
+				let _: () = objc2::msg_send![&*animator, setFrameOrigin: NSPoint::new(0., 0.)];
+				let _: () = objc2::msg_send![&*animator, setAlphaValue: 1.0_f64];
+				let _: () = objc2::msg_send![context, endGrouping];
+			}
 		}
 	}
 

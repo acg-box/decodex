@@ -912,7 +912,9 @@ impl AgentSurface {
 			.rounded(gpui::px(8.))
 			.cursor_pointer()
 			.hover(|d| d.bg(ui_theme::rgba(0xffffff10)))
-			.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
+			.when(id != "usage" || !self.work_board.view.usage_menu, |d| {
+				d.tooltip(move |_, cx| cx.new(|_| RelationTip(tip.clone())).into())
+			})
 			.child(label)
 			.on_click(cx.listener(move |s, _, window, cx| {
 				action(s, cx);
@@ -1599,16 +1601,7 @@ impl AgentSurface {
 			let title_gap = labels
 				.iter()
 				.find(|(label_scope, _, _)| label_scope.id == scope.id)
-				.map(|(_, rect, _)| rect)
-				.filter(|rect| {
-					(rect.y + scopes::HEADER_HEIGHT / 2. - (top * scale + pan.1)).abs() < 0.1
-				})
-				.map(|rect| {
-					(
-						rect.x - (left * scale + pan.0) - 5.,
-						rect.x + rect.width - (left * scale + pan.0) + 5.,
-					)
-				});
+				.and_then(|(_, rect, _)| scope.title_gap(*rect, scale, pan));
 
 			canvas = canvas.child(
 				gpui::div()

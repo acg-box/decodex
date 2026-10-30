@@ -3,7 +3,9 @@ use gpui::{
 	AnyWindowHandle, App, AppContext as _, Bounds, Context, Entity, FocusHandle, Pixels, Render,
 	Size, Subscription, Window, WindowBackgroundAppearance, WindowBounds, WindowHandle,
 	WindowOptions,
-	prelude::{InteractiveElement as _, IntoElement, ParentElement as _, Styled as _},
+	prelude::{
+		FluentBuilder as _, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _,
+	},
 };
 
 use crate::{
@@ -24,8 +26,24 @@ pub(super) struct NativeMenu {
 	creating: bool,
 	pub(super) failed: bool,
 }
+impl NativeMenu {
+	pub(super) fn notify(&self, cx: &mut App) {
+		if let Some(child) = self.child {
+			cx.defer(move |cx| {
+				let _ = child.update(cx, |_, _, cx| cx.notify());
+			});
+		}
+	}
+}
 
-#[derive(Clone, Copy)]
+fn content_surface(menu: Option<&str>) -> Option<&str> {
+	match menu {
+		Some("microphone") => Some("attachments"),
+		other => other,
+	}
+}
+
+#[derive(Clone, Copy, PartialEq)]
 struct Placement {
 	anchor: Bounds<Pixels>,
 	viewport: Size<Pixels>,
@@ -38,6 +56,7 @@ struct ComposerMenu {
 	surface: Option<MaterialPanel>,
 	focus: FocusHandle,
 	open_menu: Option<&'static str>,
+	focus_pending: bool,
 	placement: Option<Placement>,
 	height: f32,
 	_observation: Subscription,
@@ -58,6 +77,13 @@ impl ComposerMenu {
 }
 impl Render for ComposerMenu {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let active = ui_motion::application_active();
+		let available = self.owner.read(cx).composer_unavailable_reason().is_none();
+		let open = active && available && self.open_menu.is_some();
+		crate::frame_trace::popup_event("render", self.open_menu, open);
+		if !open && let Some(surface) = &mut self.surface {
+			surface.set_open(false);
+		}
 		let owner = self.owner.clone();
 		let parent = self.parent;
 		let menu = cx.entity().downgrade();
@@ -65,8 +91,9 @@ impl Render for ComposerMenu {
 			s.composer_options(cx).unwrap_or_else(|| gpui::div().into_any_element())
 		});
 
-		gpui::div()
+		let content = gpui::div()
 			.w_full()
+			.map(ui_theme::menu_outline)
 			.font_family(FONT_FAMILY)
 			.text_size(gpui::px(BODY_SIZE))
 			.text_color(ui_theme::rgb(TEXT))
@@ -102,25 +129,48 @@ impl Render for ComposerMenu {
 					}
 				}
 			})
-			.on_children_prepainted(move |bounds, window, cx| {
-				if let Some(bounds) = bounds.first() {
-					let height = f32::from(bounds.size.height).max(48.);
-					let _ = menu.update(cx, |panel, cx| {
-						if (panel.height - height).abs() > 0.5 {
-							panel.height = height;
-							// Resize after paint without invalidating the workspace model.
-							cx.defer_in(window, |panel, window, cx| panel.place(window, cx));
-						}
-					});
-				}
-			})
 			.id("native-composer-menu")
 			.track_focus(&self.focus)
-			.child(content)
+			.child(content);
+		let width = self.placement.map_or(248., |placement| placement.width);
+		crate::ui_layout::intrinsic(gpui::px(width), content, move |size, window, cx| {
+			let _ = menu.update(cx, |panel, cx| {
+				panel.height = f32::from(size.height).max(48.);
+				panel.place(window, cx);
+				if open && let Some(surface) = &mut panel.surface {
+					surface.refresh_material();
+				}
+				crate::frame_trace::popup_event("prepared", panel.open_menu, open);
+				// The frame now has its final drawable size. Reveal it after paint,
+				// so a retained menu never stretches the previous menu's texture.
+				cx.defer_in(window, move |panel, window, cx| {
+					let open = open
+						&& ui_motion::application_active()
+						&& panel.open_menu.is_some()
+						&& panel.placement.is_some();
+					if let Some(surface) = &mut panel.surface {
+						surface.set_open(open);
+						crate::frame_trace::popup_event("present", panel.open_menu, open);
+						if open && panel.focus_pending {
+							panel.focus_pending = false;
+							surface.focus_text();
+							window.focus(&panel.focus, cx);
+							window.activate_window();
+						}
+					}
+				});
+			});
+		})
 	}
 }
 
 impl AgentSurface {
+	pub(crate) fn dismiss_native_menu(&mut self, cx: &mut Context<Self>) {
+		if self.native_controls.composer.enabled && self.composer_menu.is_some() {
+			self.dismiss_composer_menu(cx);
+		}
+	}
+
 	pub(crate) fn prepare_native_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		let menu = self.composer_menu.or(self.composer_menu_content);
 		let anchor = self
@@ -141,9 +191,6 @@ impl AgentSurface {
 			&& self.native_controls.composer.enabled
 			&& composer::selection_menu(self.composer_menu)
 			&& anchor.is_some();
-		let opacity = ui_motion::native_presence("model-menu-native-opacity", open, window, cx);
-		let opacity = if active && available { opacity } else { 0. };
-
 		if let Some(child) = self.native_controls.menu.child {
 			let placement = anchor.map(|anchor| Placement {
 				anchor,
@@ -153,20 +200,27 @@ impl AgentSurface {
 
 			cx.defer(move |cx| {
 				let _ = child.update(cx, |panel, window, cx| {
-					let selection = if open && opacity > 0.001 { menu } else { None };
-					let opening = selection.is_some() && panel.open_menu != selection;
+					let selection = if open { menu } else { None };
+					if panel.open_menu != selection {
+						let changed_surface =
+							content_surface(panel.open_menu) != content_surface(selection);
+						if changed_surface && let Some(surface) = &mut panel.surface {
+							surface.set_open(false);
+						}
+						panel.focus_pending = changed_surface && selection.is_some();
+						cx.notify();
+					}
 					panel.open_menu = selection;
+					if panel.placement != placement {
+						cx.notify();
+					}
 					panel.placement = placement;
-					panel.place(window, cx);
-
-					if let Some(surface) = &mut panel.surface {
-						surface.refresh_material();
-						surface.set_opacity(opacity);
-						surface.set_visible(placement.is_some() && opacity > 0.001);
-						if opening {
-							surface.focus_text();
-							window.focus(&panel.focus, cx);
-							window.activate_window();
+					if open {
+						// The native window must be on-screen to receive its layout
+						// frame. Its content remains transparent until that frame is ready.
+						panel.place(window, cx);
+						if let Some(surface) = &mut panel.surface {
+							surface.prepare_open();
 						}
 					}
 				});
@@ -195,7 +249,7 @@ impl AgentSurface {
 				s.native_controls.menu.creating = false;
 				s.native_controls.menu.failed = child.is_none();
 
-				cx.notify();
+				s.notify_composer_controls(cx);
 			});
 		});
 	}
@@ -247,6 +301,7 @@ fn create(
 						surface: None,
 						focus,
 						open_menu: None,
+						focus_pending: false,
 						placement: None,
 						height: 240.,
 						_observation: observation,

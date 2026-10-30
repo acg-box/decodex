@@ -1121,12 +1121,12 @@ impl AgentCoordinator {
 			return Err(AgentError::Busy);
 		}
 
-		// Resume is idempotent hydration of the exact thread, never a turn retry.
-		self.hydrate_dispatch_thread(thread).await?;
-		self.sync_native_project(&item).await?;
-
 		let (mut params, external) =
 			self.dispatch_input(&item, prompt, &events, retry.is_some()).await?;
+		// Apply the user's permission choice during cold hydration as well as
+		// turn start, before a resumed native Goal can continue under old settings.
+		self.hydrate_dispatch_thread(thread, &params).await?;
+		self.sync_native_project(&item).await?;
 		let question_guard = history_guard.is_some();
 		let history_guard = match history_guard {
 			Some(guard) => self.client.with_thread_settings_guard(thread, guard),

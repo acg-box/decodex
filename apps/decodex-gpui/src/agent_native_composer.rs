@@ -119,6 +119,11 @@ impl Render for ComposerPanel {
 			.id("native-composer-focus-panel")
 			.capture_any_mouse_down(move |event, _, cx| {
 				focus_owner.update(cx, |s, cx| {
+					if let Some((name, _)) =
+						s.menu_trigger_bounds.iter().find(|(_, b)| b.contains(&event.position))
+					{
+						crate::frame_trace::popup_event("pointer_down", Some(*name), true);
+					}
 					s.workspace.focused_panel = None;
 
 					if composer::selection_menu(s.composer_menu)
@@ -151,6 +156,27 @@ impl Render for ComposerPanel {
 }
 
 impl AgentSurface {
+	pub(super) fn notify_native_composer_controls(&self, cx: &mut Context<Self>) -> bool {
+		let Some(child) =
+			self.native_controls.composer.child.filter(|_| {
+				self.native_controls.composer.enabled && !self.native_controls.menu.failed
+			})
+		else {
+			return false;
+		};
+		self.native_controls.menu.notify(cx);
+		cx.defer(move |cx| {
+			let _ = child.update(cx, |panel, _, cx| {
+				cx.notify();
+				let owner = panel.owner.clone();
+				let _ = panel.parent.update(cx, |_, window, cx| {
+					owner.update(cx, |surface, cx| surface.prepare_native_menu(window, cx));
+				});
+			});
+		});
+		true
+	}
+
 	pub(super) fn retry_native_composer(&mut self) {
 		// An explicit reload can recover a failed initial native-window creation.
 		// Keep an existing panel and its focus intact.

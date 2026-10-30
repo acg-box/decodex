@@ -139,13 +139,8 @@ impl AgentSurface {
 			return;
 		};
 		let saving = matches!(request, Request::Select { .. });
-		let connecting = matches!(request, Request::Connect);
 		let action = match request {
 			Request::Read => None,
-			Request::Connect => Some(AgentActionDto::PrepareNativeAgent {
-				work_id: work_id.clone(),
-				thread_id: WireText::new(thread.clone()).expect("native thread"),
-			}),
 			Request::Select { profile, mode } => {
 				let Some(action) = self.permission_selection(&work_id, &thread, profile, mode)
 				else {
@@ -154,10 +149,13 @@ impl AgentSurface {
 				Some(action)
 			},
 		};
-		let epoch = self.begin_permission_read(&work, saving);
-		if connecting {
-			self.permission_profiles.feedback = Feedback::loading("Connecting…");
+		if saving && self.next_permission_mode().is_some() {
+			self.draft_profiles
+				.execution
+				.change(work.clone(), |choice| choice.permission_mode = None);
+			self.save_draft_document(cx);
 		}
+		let epoch = self.begin_permission_read(&work, saving);
 		let key =
 			IdempotencyKey::new(agent_surface::unique_command()).expect("bounded command identity");
 		let future = cx.background_executor().spawn(async move {
@@ -194,7 +192,7 @@ impl AgentSurface {
 
 				if !current {
 					s.reset_permission_profiles();
-					cx.notify();
+					s.notify_composer_controls(cx);
 
 					return;
 				}
@@ -204,7 +202,7 @@ impl AgentSurface {
 				s.permission_profiles.reviewed =
 					matches!(state, AgentPermissionState::Available { .. });
 				s.permission_profiles.feedback =
-					permission_feedback(outcome.as_ref(), &state, saving, connecting);
+					permission_feedback(outcome.as_ref(), &state, saving);
 				s.permission_profiles.state = Some(match state {
 					AgentPermissionState::Available { ref work_id, ref thread_id, .. }
 						if work_id.as_str() != work || thread_id.as_str() != thread =>
@@ -212,11 +210,11 @@ impl AgentSurface {
 					other => other,
 				});
 
-				cx.notify();
+				s.notify_composer_controls(cx);
 			});
 		}));
 
-		cx.notify();
+		self.notify_composer_controls(cx);
 	}
 
 	fn begin_permission_read(&mut self, work: &str, saving: bool) -> u64 {
@@ -263,6 +261,9 @@ impl AgentSurface {
 	}
 
 	pub(super) fn permission_label(&self) -> String {
+		if let Some(mode) = self.next_permission_mode() {
+			return mode.label().into();
+		}
 		if self.permission_owner().is_none() {
 			return self.creation_permission_mode().label().into();
 		}
@@ -273,23 +274,24 @@ impl AgentSurface {
 			Some(AgentPermissionState::Available { mode: Some(mode), .. }) => mode.label().into(),
 			Some(AgentPermissionState::Available { .. }) => "Custom permissions".into(),
 			Some(AgentPermissionState::Pending { .. }) => "Updating permissions…".into(),
-			Some(AgentPermissionState::NotConnected) => "Conversation not connected".into(),
 			_ => "Permissions".into(),
 		}
 	}
 
 	pub(super) fn permission_symbol(&self) -> crate::shell::workspace_symbols::Symbol {
 		use crate::shell::workspace_symbols::Symbol;
-		let mode = if self.permission_owner().is_none() {
-			Some(self.creation_permission_mode())
-		} else if self.permission_profiles.work == self.permission_owner() {
-			match &self.permission_profiles.state {
-				Some(AgentPermissionState::Available { mode, .. }) => *mode,
-				_ => None,
+		let mode = self.next_permission_mode().or_else(|| {
+			if self.permission_owner().is_none() {
+				Some(self.creation_permission_mode())
+			} else if self.permission_profiles.work == self.permission_owner() {
+				match &self.permission_profiles.state {
+					Some(AgentPermissionState::Available { mode, .. }) => *mode,
+					_ => None,
+				}
+			} else {
+				None
 			}
-		} else {
-			None
-		};
+		});
 		match mode {
 			Some(PermissionMode::ApproveForMe) => Symbol::ShieldCheck,
 			Some(PermissionMode::FullAccess) => Symbol::ShieldSlash,
@@ -299,6 +301,8 @@ impl AgentSurface {
 	}
 
 	pub(super) fn refresh_composer_permissions(&mut self, force: bool, cx: &mut Context<Self>) {
+		let force = force
+			&& !matches!(self.permission_profiles.state, Some(AgentPermissionState::NotConnected));
 		if let Some(work) = self.permission_owner()
 			&& self.native_agents.selected.is_none()
 			&& (force || self.permission_profiles.work.as_ref() != Some(&work))
@@ -309,13 +313,25 @@ impl AgentSurface {
 	}
 
 	fn choose_permission_mode(&mut self, mode: PermissionMode, cx: &mut Context<Self>) {
+		if self.native_agents.selected.is_some() {
+			return;
+		}
 		if let Some(work) = self.permission_owner() {
-			self.update_permission_profiles(
-				work,
-				Some(WireText::new(mode.profile()).expect("native preset")),
-				Some(mode),
-				cx,
-			);
+			let deferred = self.permissions_deferred();
+			if deferred {
+				self.draft_profiles
+					.execution
+					.change(work.clone(), |choice| choice.permission_mode = Some(mode));
+				self.save_draft_document(cx);
+			}
+			if !deferred {
+				self.update_permission_profiles(
+					work,
+					Some(WireText::new(mode.profile()).expect("native preset")),
+					Some(mode),
+					cx,
+				);
+			}
 		} else {
 			if self.is_new_conversation() {
 				self.workspace.new_conversation_permissions = Some(mode);
@@ -324,21 +340,40 @@ impl AgentSurface {
 			}
 			self.save_draft_document(cx);
 		}
-		cx.notify();
+		self.notify_composer_controls(cx);
+	}
+
+	fn next_permission_mode(&self) -> Option<PermissionMode> {
+		if self.native_agents.selected.is_some() {
+			return None;
+		}
+		self.permission_owner()
+			.and_then(|owner| self.draft_profiles.execution.choice(&owner).permission_mode)
+	}
+
+	fn permissions_deferred(&self) -> bool {
+		self.native_agents.selected.is_none()
+			&& self.permission_owner().is_some()
+			&& self.permission_profiles.work == self.permission_owner()
+			&& matches!(self.permission_profiles.state, Some(AgentPermissionState::NotConnected))
 	}
 
 	pub(super) fn permission_options(&self, cx: &mut Context<Self>) -> AnyElement {
 		let creating = self.permission_owner().is_none();
-		let current = if creating {
-			Some(self.creation_permission_mode())
-		} else {
-			match &self.permission_profiles.state {
-				Some(AgentPermissionState::Available { mode, .. }) => *mode,
-				_ => None,
+		let deferred = self.permissions_deferred();
+		let current = self.next_permission_mode().or_else(|| {
+			if creating {
+				Some(self.creation_permission_mode())
+			} else {
+				match &self.permission_profiles.state {
+					Some(AgentPermissionState::Available { mode, .. }) => *mode,
+					_ => None,
+				}
 			}
-		};
+		});
 		let available = |mode: PermissionMode| {
 			creating
+				|| deferred
 				|| (self.permission_profiles.task.is_none()
 					&& matches!(&self.permission_profiles.state,
 			Some(AgentPermissionState::Available { profiles, can_update: true, .. })
@@ -358,19 +393,6 @@ impl AgentSurface {
 				"",
 				&self.permission_profiles.feedback,
 			));
-			if matches!(self.permission_profiles.state, Some(AgentPermissionState::NotConnected))
-				&& let Some(work) = self.permission_owner()
-			{
-				menu = menu.child(permission_action(
-					"permission-connect".into(),
-					"Connect conversation".into(),
-					self.permission_profiles.task.is_none(),
-					cx,
-					move |s, cx| {
-						s.request_permission_profiles(work.clone(), Request::Connect, cx);
-					},
-				));
-			}
 			if let Some(AgentPermissionState::Available { profiles, can_update, .. }) =
 				&self.permission_profiles.state
 			{
@@ -452,7 +474,6 @@ fn permission_action(
 
 enum Request {
 	Read,
-	Connect,
 	Select { profile: WireText, mode: Option<PermissionMode> },
 }
 
@@ -460,16 +481,8 @@ fn permission_feedback(
 	outcome: Option<&Result<AgentCommandResponse, ClientFailure>>,
 	state: &AgentPermissionState,
 	saving: bool,
-	connecting: bool,
 ) -> Feedback {
 	match outcome {
-		_ if connecting && matches!(state, AgentPermissionState::Available { .. }) =>
-			Feedback::default(),
-		Some(Ok(AgentCommandResponse::Rejected {
-			error: decodex_protocol::CommandError::ApplicationUnavailable { message },
-		})) if connecting => Feedback::error(message.as_str()),
-		Some(_) if connecting =>
-			Feedback::warning("Connection unconfirmed. Reopen this menu to check."),
 		Some(Ok(AgentCommandResponse::Accepted { .. }))
 			if matches!(
 				state,
@@ -489,8 +502,6 @@ fn permission_feedback(
 			Feedback::error("Couldn't load permissions."),
 		None if matches!(state, AgentPermissionState::Unsupported) =>
 			Feedback::neutral("Permissions aren't available for this conversation."),
-		None if matches!(state, AgentPermissionState::NotConnected) =>
-			Feedback::neutral("Connect to change permissions. Saved work may resume."),
 		None => Feedback::default(),
 	}
 }

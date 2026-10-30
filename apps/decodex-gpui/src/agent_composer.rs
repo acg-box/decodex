@@ -76,6 +76,7 @@ pub(super) fn composer_menu_trigger(menu: &str) -> &str {
 
 pub(super) fn composer_menu_width(menu: Option<&str>) -> f32 {
 	match menu {
+		Some("permissions") => 192.,
 		Some("agent-settings" | "skills") => 380.,
 		Some("attachments" | "microphone" | "tasks") => 280.,
 		_ => 248.,
@@ -86,6 +87,7 @@ pub(super) struct ComposerTip(pub(super) String);
 impl Render for ComposerTip {
 	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
 		ui_motion::tooltip_surface(gpui::div())
+			.debug_selector(|| "composer-hover-tip".into())
 			.px_3()
 			.py_2()
 			.text_size(gpui::px(11.0))
@@ -657,19 +659,21 @@ impl AgentSurface {
 		if self.workspace_connecting() || self.composer_unavailable_reason().is_some() {
 			return gpui::div().absolute();
 		}
-		let menu = self.composer_menu.or(self.composer_menu_content);
-		if !selection_menu(menu) {
-			return gpui::div().absolute();
-		}
-
 		#[cfg(all(target_os = "macos", not(test)))]
 		if self.native_controls.composer.enabled && !self.native_controls.menu.failed {
 			// The attached menu owns composition above the native composer.
+			// Keep the outside-click listener mounted while menu state stays local.
 			return gpui::div().absolute().inset_0().on_mouse_down_out(cx.listener(
 				|s, _, _, cx| {
-					s.dismiss_composer_menu(cx);
+					if selection_menu(s.composer_menu) {
+						s.dismiss_composer_menu(cx);
+					}
 				},
 			));
+		}
+		let menu = self.composer_menu.or(self.composer_menu_content);
+		if !selection_menu(menu) {
+			return gpui::div().absolute();
 		}
 		let Some(anchor) =
 			menu.and_then(|key| self.menu_trigger_bounds.get(composer_menu_trigger(key)))
@@ -726,6 +730,7 @@ impl AgentSurface {
 				|s, cx| s.open_skill_picker(cx),
 				cx,
 			))
+			.child(ui_theme::menu_separator())
 			.when(self.can_open_sample(), |options| {
 				options
 					.child(self.composer_control(
@@ -775,6 +780,7 @@ impl AgentSurface {
 				},
 				cx,
 			))
+			.child(ui_theme::menu_separator())
 			.child(
 				gpui::div()
 					.flex()
@@ -803,6 +809,7 @@ impl AgentSurface {
 				},
 				cx,
 			))
+			.child(ui_theme::menu_separator())
 			.child(self.composer_control(
 				"delivery",
 				if self.steer { "Steer" } else { "Queue" }.into(),
@@ -1082,7 +1089,7 @@ impl AgentSurface {
 				d.bg(composer_hover_fill(send))
 			})
 			.focus_visible(move |d| d.bg(composer_hover_fill(send)))
-			.when(!["model", "effort"].contains(&id), |d| {
+			.when(!menu_active && !["model", "effort"].contains(&id), |d| {
 				d.tooltip(move |_, cx| cx.new(|_| ComposerTip(tooltip.clone())).into())
 			})
 			.on_click(cx.listener(move |s, _, window, cx| {
@@ -1250,6 +1257,11 @@ impl AgentSurface {
 			|| (name == "attachments" && self.composer_menu == Some("microphone"));
 
 		self.composer_menu = if same_menu { None } else { Some(name) };
+		crate::frame_trace::popup_event(
+			"selection",
+			self.composer_menu,
+			self.composer_menu.is_some(),
+		);
 
 		if self.composer_menu.is_some() {
 			self.composer_menu_content = self.composer_menu;
@@ -1263,7 +1275,7 @@ impl AgentSurface {
 			}
 		}
 
-		cx.notify();
+		self.notify_composer_controls(cx);
 	}
 
 	pub(super) fn dismiss_composer_menu(&mut self, cx: &mut Context<Self>) {
@@ -1271,11 +1283,19 @@ impl AgentSurface {
 		self.effort_drag = None;
 		self.effort_pointer = None;
 
+		self.notify_composer_controls(cx);
+	}
+
+	pub(super) fn notify_composer_controls(&self, cx: &mut Context<Self>) {
+		#[cfg(all(target_os = "macos", not(test)))]
+		if self.notify_native_composer_controls(cx) {
+			return;
+		}
 		cx.notify();
 	}
 
 	pub(super) fn composer_options(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-		// Keep content mounted while the disclosure animates closed.
+		// Retain the last content for reuse by the hidden native panel.
 		let menu = self.composer_menu.or(self.composer_menu_content)?;
 		let anchor = self.menu_trigger_bounds.get("attach").copied();
 		#[cfg(all(target_os = "macos", not(test)))]
@@ -1354,13 +1374,10 @@ impl AgentSurface {
 			.flex_col()
 			.gap(gpui::px(8.))
 			.child(self.model_palette(cx))
-			.child(self.service_tier_picker(cx))
-			.child(
-				gpui::div()
-					.flex()
-					.items_center()
-					.child(gpui::div().flex_1().min_w_0().child(self.effort_scale(cx))),
-			)
+			.child(ui_theme::menu_separator())
+			.child(ui_theme::menu_section("Speed", self.service_tier_picker(cx)))
+			.child(ui_theme::menu_separator())
+			.child(ui_theme::menu_section("Reasoning", self.effort_scale(cx)))
 			.into_any_element()
 	}
 
@@ -1712,6 +1729,35 @@ mod tests {
 		native_timeline::Binding,
 	};
 	use decodex_protocol::{AgentTimelineContent, AgentTimelineEntry};
+
+	#[gpui::test]
+	fn expanded_composer_menu_suppresses_its_trigger_tooltip(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		visual.simulate_resize(gpui::size(gpui::px(1_400.), gpui::px(1_000.)));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			cx.notify();
+		});
+		for open in [false, true, false] {
+			surface.update(visual, |s, cx| {
+				s.composer_menu = open.then_some("attachments");
+				s.composer_menu_content = Some("attachments");
+				cx.notify();
+			});
+			visual.update(crate::ui_frame::draw_frame);
+			let trigger = visual.debug_bounds("composer-attach").expect("plus menu trigger");
+			visual.simulate_mouse_move(
+				gpui::point(gpui::px(2.), gpui::px(2.)),
+				None,
+				Default::default(),
+			);
+			visual.simulate_mouse_move(trigger.center(), None, Default::default());
+			visual.executor().advance_clock(std::time::Duration::from_secs(1));
+			visual.run_until_parked();
+			visual.update(crate::ui_frame::draw_frame);
+			assert_eq!(visual.debug_bounds("composer-hover-tip").is_some(), !open);
+		}
+	}
 
 	#[gpui::test]
 	fn plus_menu_rows_use_the_available_width_and_one_alignment(cx: &mut gpui::TestAppContext) {
@@ -2239,6 +2285,13 @@ mod tests {
 			assert_eq!(s.composer_model_value(cx).as_deref(), Some("other-model"));
 
 			s.capabilities = None;
+			s.capability_task = Some(gpui::Task::ready(()));
+
+			assert_eq!(s.composer_model_label(cx), "Loading model…");
+			assert_eq!(s.composer_model_value(cx).as_deref(), Some("other-model"));
+
+			s.capability_task = None;
+			s.capabilities = Some(decodex_protocol::AgentCapabilitiesResult::Unavailable);
 
 			assert_eq!(s.composer_model_label(cx), "other-model");
 		});

@@ -82,8 +82,11 @@ impl AgentSurface {
 			.into();
 		};
 
-		if let Some(AgentCapabilitiesResult::Available { models, .. }) =
-			self.current_model_catalog(cx)
+		let catalog = self.current_model_catalog(cx);
+		if catalog.is_none() && self.capability_task.is_some() {
+			return "Loading model…".into();
+		}
+		if let Some(AgentCapabilitiesResult::Available { models, .. }) = catalog
 			&& let Some(entry) = models.iter().find(|entry| entry.model.as_str() == model)
 		{
 			return entry.name.clone();

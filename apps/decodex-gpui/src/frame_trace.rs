@@ -24,6 +24,13 @@ pub(crate) fn surface_render(surface: &'static str) {
 	);
 }
 
+/// Link a menu's pointer, selection and presentation without recording user input.
+pub(crate) fn popup_event(event: &'static str, menu: Option<&'static str>, visible: bool) {
+	record(
+		|at_ms| serde_json::json!({"at_ms":at_ms,"phase":"popup","event":event,"menu":menu,"visible":visible}),
+	);
+}
+
 pub(crate) fn mermaid_prepared(duration: Duration, width: f32, height: f32) {
 	record(|at_ms| {
 		serde_json::json!({
@@ -139,7 +146,9 @@ pub(crate) fn start(cx: &mut App) {
 			recorded_rows.into_iter().partition(|row| row["phase"] == "graph");
 		let (viewport, arrivals): (Vec<_>, Vec<_>) =
 			recorded_rows.into_iter().partition(|row| row["phase"] == "viewport");
-		let report = serde_json::json!({"schema": 5, "started_at_ms": started_at_ms, "note": "CPU draw and platform submission timing; excludes GPU completion and screen scanout. Activity samples distinguish foreground from hidden or inactive windows. Native glass styles: 0 regular, 1 clear. Row arrivals record presentation progress without message content. Viewport height is the scroll maximum after layout. Graph frames record only camera geometry and reveal opacity. Surface renders count region rebuilds without identifiers or content.", "frames": rows, "presentations": presentations, "activity": *activity.lock().expect("frame activity"), "row_arrivals": arrivals, "viewport": viewport, "graph_frames": graph, "surface_renders": surfaces});
+		let (popups, arrivals): (Vec<_>, Vec<_>) =
+			arrivals.into_iter().partition(|row| row["phase"] == "popup");
+		let report = serde_json::json!({"schema": 6, "started_at_ms": started_at_ms, "note": "CPU draw and platform submission timing; excludes GPU completion and screen scanout. Activity samples distinguish foreground from hidden or inactive windows. Native glass styles: 0 regular, 1 clear. Row arrivals record presentation progress without message content. Viewport height is the scroll maximum after layout. Graph frames record only camera geometry and reveal opacity. Surface renders count region rebuilds without identifiers or content. Popup events link pointer, selection and native presentation without user text.", "frames": rows, "presentations": presentations, "activity": *activity.lock().expect("frame activity"), "row_arrivals": arrivals, "viewport": viewport, "graph_frames": graph, "surface_renders": surfaces, "popup_events": popups});
 
 		if let Err(error) = fs::write(path, report.to_string()) {
 			eprintln!("Could not write frame measurements: {error}");

@@ -59,14 +59,14 @@ where
 	T: 'static,
 {
 	let _ = cx.default_global::<Activation>();
-	cx.observe_window_activation(window, |_, window, cx| {
+	cx.observe_window_activation(window, |_, _, cx| {
 		let active = application_active();
 		if std::mem::replace(&mut cx.default_global::<Activation>().0, active) != active {
 			// App departure and return change every surface's animation policy.
 			cx.refresh_windows();
 		} else {
 			// A menu taking keyboard focus does not invalidate the transcript cache.
-			window.refresh();
+			cx.notify();
 		}
 	})
 	.detach();
@@ -102,6 +102,30 @@ pub(crate) fn background_rendering(value: Option<bool>) -> bool {
 /// Rendering policy is separate from keyboard focus and application activation.
 pub(crate) fn animations_active() -> bool {
 	application_active() || background_rendering(None)
+}
+
+/// Respect system accessibility preferences and the application rendering policy.
+pub(crate) fn reduced() -> bool {
+	if !animations_active() {
+		return true;
+	}
+
+	#[cfg(all(target_os = "macos", not(test)))]
+	{
+		// AppKit owns this process-wide preference; called from UI rendering.
+		unsafe {
+			let workspace: Retained<AnyObject> =
+				objc2::msg_send![AnyClass::get(c"NSWorkspace").expect("AppKit"), sharedWorkspace];
+			let reduce_motion: bool =
+				objc2::msg_send![&*workspace, accessibilityDisplayShouldReduceMotion];
+			let voice_over: bool = objc2::msg_send![&*workspace, isVoiceOverEnabled];
+
+			reduce_motion || voice_over
+		}
+	}
+
+	#[cfg(any(not(target_os = "macos"), test))]
+	false
 }
 
 /// Request the display cadence whenever the user permits animation.

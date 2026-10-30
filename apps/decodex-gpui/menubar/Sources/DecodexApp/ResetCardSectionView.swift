@@ -19,7 +19,7 @@ struct InlineAccountFeedback: View {
 				.contentShape(Rectangle())
 		}
 		.buttonStyle(PanelPressButtonStyle(pressedScale: 0.94))
-		.help(text)
+		.help(expanded ? "" : text)
 		.accessibilityLabel(text)
 		.popover(isPresented: $expanded, arrowEdge: .bottom) {
 			VStack(alignment: .leading, spacing: 10) {

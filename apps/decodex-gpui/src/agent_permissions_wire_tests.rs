@@ -193,22 +193,20 @@ fn permission_read_keeps_the_current_choice_and_menu_geometry(cx: &mut TestAppCo
 }
 
 #[gpui::test]
-fn disconnected_conversation_keeps_the_choices_and_offers_a_real_connection(
-	cx: &mut TestAppContext,
-) {
+fn dormant_conversation_keeps_choices_without_a_connect_action(cx: &mut TestAppContext) {
 	let (_view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
 		surface.update(cx, |s, _| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
 			s.permission_profiles.work = Some("root".into());
 			s.permission_profiles.state = Some(AgentPermissionState::NotConnected);
-			assert_eq!(s.permission_label(), "Conversation not connected");
+			assert_eq!(s.permission_label(), "Permissions");
 		});
 		PermissionView { surface }
 	});
 	visual.update(crate::ui_frame::draw_current_frame);
 	assert!(visual.debug_bounds("permission-profiles-read").is_none());
-	assert!(visual.debug_bounds("permission-connect").is_some());
+	assert!(visual.debug_bounds("permission-connect").is_none());
 	for id in
 		["permission-choice-0", "permission-choice-1", "permission-choice-2", "permission-choice-3"]
 	{
@@ -217,83 +215,54 @@ fn disconnected_conversation_keeps_the_choices_and_offers_a_real_connection(
 }
 
 #[gpui::test]
-fn permission_connect_sends_once_then_reads_current_settings(cx: &mut TestAppContext) {
-	let (_dir, profile, server) = wire_test_support::fixture(|listener| async move {
-		let mut actions = Vec::new();
-		for step in 0..3 {
-			let mut socket = wire_test_support::accept(&listener).await;
-			let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-				panic!("request");
-			};
-			match serde_json::from_str::<ClientMessage>(&text).unwrap() {
-				ClientMessage::Command(command) if step == 1 => {
-					let CommandPayload::Agent { action } = command.payload else {
-						panic!("Agent command")
-					};
-					assert!(
-						matches!(&*action, AgentActionDto::PrepareNativeAgent { work_id, thread_id }
-						if work_id.as_str() == "root" && thread_id.as_str() == "thread")
-					);
-					actions.push(*action);
-					// The connection may succeed even if its reply is lost. Read; do not reconnect.
-					socket.close(None).await.unwrap();
-				},
-				ClientMessage::Query(query) if step != 1 => {
-					assert!(
-						matches!(query.payload, QueryPayload::GetAgentPermissionProfiles { work_id }
-						if work_id.as_str() == "root")
-					);
-					let result = ServerMessage::QueryResult(QueryResultEnvelope {
-						version: CURRENT_VERSION,
-						server_id: ServerId::new(SERVER).unwrap(),
-						query_id: query.query_id,
-						payload: QueryResultPayload::AgentPermissionProfiles(if step == 0 {
-							AgentPermissionState::NotConnected
-						} else {
-							available()
-						}),
-					});
-					socket
-						.send(Message::Text(serde_json::to_string(&result).unwrap().into()))
-						.await
-						.unwrap();
-				},
-				_ => panic!("unexpected request"),
-			}
-		}
-		actions
-	});
+fn dormant_permission_choice_is_local_and_carried_by_the_next_message(cx: &mut TestAppContext) {
+	use decodex_protocol::PermissionMode;
 	let (view, visual) = cx.add_window_view(|_, cx| {
 		let surface = cx.new(AgentSurface::new);
 		cx.observe(&surface, |_, _, cx| cx.notify()).detach();
 		surface.update(cx, |s, cx| {
 			s.apply_result(Ok(AgentSnapshotResult::Available(snapshot())));
-			s.profile = Some(profile);
+			s.permission_profiles.work = Some("root".into());
+			s.permission_profiles.state = Some(AgentPermissionState::NotConnected);
 			s.composer.update(cx, |input, cx| input.set_content("Keep this draft", cx));
-			s.refresh_composer_permissions(true, cx);
 		});
 		PermissionView { surface }
 	});
-	visual.run_until_parked();
 	visual.update(crate::ui_frame::draw_current_frame);
-	let before = visual.debug_bounds("permission-choice-0").unwrap();
-	let connect = visual.debug_bounds("permission-connect").unwrap().center();
-	visual.simulate_click(connect, Default::default());
+	let choice = visual.debug_bounds("permission-choice-1").unwrap().center();
+	visual.simulate_click(choice, Default::default());
 	visual.run_until_parked();
-	assert_eq!(server.join().unwrap().len(), 1);
-	visual.update(crate::ui_frame::draw_current_frame);
-	assert_eq!(visual.debug_bounds("permission-choice-0"), Some(before));
-	assert!(visual.debug_bounds("permission-connect").is_none());
-	let surface = view.read_with(visual, |v, _| v.surface.clone());
+	let surface = view.read_with(visual, |view, _| view.surface.clone());
 	surface.read_with(visual, |s, cx| {
-		assert!(s.permission_profiles.reviewed);
-		assert!(matches!(
-			s.permission_profiles.state,
-			Some(AgentPermissionState::Available { .. })
-		));
+		assert!(matches!(s.permission_profiles.state, Some(AgentPermissionState::NotConnected)));
+		assert!(
+			s.permission_profiles.task.is_none(),
+			"choosing a preset must not connect or send a request"
+		);
+		assert_eq!(s.permission_label(), "Approve for me");
 		assert_eq!(s.composer.read(cx).content(), "Keep this draft");
-		assert!(s.permission_profiles.feedback.is_empty());
+		let action = s.configured_send(
+			EntityId::new("root").unwrap(),
+			decodex_protocol::HistoryText::new("Continue").unwrap(),
+			vec![],
+		);
+		let AgentActionDto::SendConfigured { execution, .. } = action else {
+			panic!("configured send")
+		};
+		assert_eq!(execution.permission_mode, Some(PermissionMode::ApproveForMe));
+		assert!(
+			execution.model.is_none()
+				&& execution.reasoning_effort.is_none()
+				&& execution.selected_service_tier().is_none()
+		);
 	});
+	assert!(
+		surface.read_with(visual, |s, _| s
+			.draft_profiles
+			.execution
+			.choice("other-agent")
+			.is_empty())
+	);
 }
 
 #[gpui::test]
@@ -480,9 +449,21 @@ fn ordinary_refresh_keeps_permission_read_and_unknown_selection(cx: &mut TestApp
 		let saving = selection.is_some();
 
 		surface.update(cx, |s, cx| {
+			if saving {
+				s.draft_profiles.execution.change("root".into(), |choice| {
+					choice.permission_mode = Some(decodex_protocol::PermissionMode::ReadOnly);
+					choice.reasoning_effort =
+						Some(decodex_protocol::ConversationReasoningEffort::High);
+				});
+			}
 			s.update_permission_profiles("root".into(), selection, None, cx);
 
 			assert!(s.permission_profiles.task.is_some());
+			if saving {
+				let next = s.draft_profiles.execution.choice("root");
+				assert!(next.permission_mode.is_none(), "a live choice supersedes the dormant one");
+				assert!(next.reasoning_effort.is_some(), "other next-message choices are retained");
+			}
 
 			// Advance the snapshot generation before this operation can complete.
 			s.generation += 1;

@@ -23,10 +23,19 @@ pub struct AgentExecutionOverrides {
 	/// Explicit service tier, including standard. This takes precedence over legacy Fast.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub service_tier: Option<ServiceTier>,
+	/// An explicit permission preset for the next user message.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub permission_mode: Option<crate::PermissionMode>,
 }
 impl AgentExecutionOverrides {
 	/// Apply explicit per-message settings to native turn parameters.
 	pub fn apply_to_native_turn(&self, params: &mut Value) {
+		if let Some(mode) = self.permission_mode {
+			params.as_object_mut().expect("native turn parameters").remove("sandboxPolicy");
+			params["permissions"] = serde_json::json!(mode.profile());
+			params["approvalPolicy"] = serde_json::json!(mode.approval_policy());
+			params["approvalsReviewer"] = serde_json::json!(mode.reviewer());
+		}
 		if let Some(model) = &self.model {
 			params["model"] = serde_json::json!(model.as_str());
 		}
@@ -45,6 +54,7 @@ impl AgentExecutionOverrides {
 			&& self.reasoning_effort.is_none()
 			&& self.fast.is_none()
 			&& self.service_tier.is_none()
+			&& self.permission_mode.is_none()
 	}
 
 	/// A deliberate tier change, absent when the message inherits the current task tier.
@@ -60,6 +70,7 @@ impl From<ConversationExecutionSettings> for AgentExecutionOverrides {
 			reasoning_effort: value.reasoning_effort,
 			fast: Some(value.fast),
 			service_tier: value.service_tier,
+			permission_mode: None,
 		}
 	}
 }
@@ -70,6 +81,29 @@ mod tests {
 		AgentActionDto, AgentExecutionOverrides, AgentTaskReferenceDto,
 		ConversationReasoningEffort, EntityId, HistoryText, WireText,
 	};
+	#[test]
+	fn permission_choices_are_explicit_native_overrides_and_do_not_replace_other_settings() {
+		for mode in crate::PermissionMode::ALL {
+			let choice =
+				AgentExecutionOverrides { permission_mode: Some(mode), ..Default::default() };
+			let mut params = serde_json::json!({"model":"native-model","effort":"high","sandboxPolicy":{"type":"readOnly"}});
+			assert!(!choice.is_empty());
+			choice.apply_to_native_turn(&mut params);
+			assert_eq!(params["permissions"], mode.profile());
+			assert_eq!(params["approvalPolicy"], mode.approval_policy());
+			assert_eq!(params["approvalsReviewer"], mode.reviewer());
+			assert_eq!(params["model"], "native-model");
+			assert_eq!(params["effort"], "high");
+			assert!(params.get("sandboxPolicy").is_none());
+			assert_eq!(
+				serde_json::from_value::<AgentExecutionOverrides>(
+					serde_json::to_value(&choice).unwrap()
+				)
+				.unwrap(),
+				choice
+			);
+		}
+	}
 	#[test]
 	fn partial_changes_and_legacy_full_selections_have_distinct_inheritance() {
 		let inherited: AgentExecutionOverrides =

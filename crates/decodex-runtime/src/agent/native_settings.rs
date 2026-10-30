@@ -5,12 +5,22 @@ use crate::{
 };
 
 impl AgentCoordinator {
-	pub(super) async fn hydrate_dispatch_thread(&mut self, thread: &str) -> Result<(), AgentError> {
+	pub(super) async fn hydrate_dispatch_thread(
+		&mut self,
+		thread: &str,
+		turn: &Value,
+	) -> Result<(), AgentError> {
 		if !self.loaded_threads.contains(thread) {
+			let mut params = self.resume_observer_params(thread, true).await?;
+			for field in ["permissions", "approvalPolicy", "approvalsReviewer"] {
+				if let Some(value) = turn.get(field) {
+					params[field] = value.clone();
+				}
+			}
 			let revision = self.client.history_revision();
 			let response = self
 				.client
-				.thread_resume(self.resume_observer_params(thread, true).await?)
+				.thread_resume(params)
 				.await
 				.map_err(|error| super::resume_error(error, thread))?;
 

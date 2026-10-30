@@ -18,9 +18,18 @@ const TITLE_SIZE: f32 = 12.;
 const COUNT_SIZE: f32 = 11.;
 const LABEL_PADDING: f32 = 6.;
 const LABEL_GAP: f32 = 8.;
+const TITLE_CLEARANCE: f32 = 4.;
 
 fn corner_radius(scale: f32) -> f32 {
 	(16. * scale).clamp(4., 16.)
+}
+
+/// Fit full dashes at both ends of a caption gap; closed outlines keep one full period.
+fn dash_pattern(length: f32, open: bool) -> [gpui::Pixels; 2] {
+	let dashes = (length / 9.).round().max(1.);
+	let spaces = dashes - f32::from(open);
+	let unit = length / (5. * dashes + 4. * spaces);
+	[gpui::px(5. * unit), gpui::px(4. * unit)]
 }
 
 pub(super) struct Scope {
@@ -59,10 +68,10 @@ impl Scope {
 				)
 				.width,
 			)
+			.ceil()
 		};
 
 		2. * LABEL_PADDING
-			+ 4.
 			+ measure(self.title.clone(), TITLE_SIZE, false)
 			+ if show_count {
 				LABEL_GAP + measure(self.count_label(), COUNT_SIZE, true)
@@ -91,9 +100,7 @@ impl Scope {
 			return None;
 		}
 
-		let inset = corner_radius(scale) + 12.;
-		let start = (left + inset).max(4.);
-		let end = (right - inset).min(viewport.0 - 4.);
+		let (start, end) = self.header_range(scale, pan.0, viewport.0);
 
 		if end - start < width
 			|| top < HEADER_HEIGHT / 2. + 4.
@@ -102,7 +109,35 @@ impl Scope {
 			return None;
 		}
 
-		Some(card::Rect { x: start, y: top - HEADER_HEIGHT / 2., width, height: HEADER_HEIGHT })
+		let preferred = left + corner_radius(scale) + 12.;
+		Some(card::Rect {
+			x: preferred.max(start).min(end - width),
+			y: top - HEADER_HEIGHT / 2.,
+			width,
+			height: HEADER_HEIGHT,
+		})
+	}
+
+	fn header_range(&self, scale: f32, pan: f32, viewport: f32) -> (f32, f32) {
+		let inset = corner_radius(scale) + 4.;
+		(
+			(self.bounds[0] * scale + pan + inset).max(4.),
+			(self.bounds[2] * scale + pan - inset).min(viewport - 4.),
+		)
+	}
+
+	pub(super) fn title_gap(
+		&self,
+		rect: card::Rect,
+		scale: f32,
+		pan: (f32, f32),
+	) -> Option<(f32, f32)> {
+		let left = self.bounds[0] * scale + pan.0;
+		let top = self.bounds[1] * scale + pan.1;
+		((rect.y + HEADER_HEIGHT / 2. - top).abs() < 0.1).then_some((
+			rect.x + LABEL_PADDING - TITLE_CLEARANCE - left,
+			rect.x + rect.width - LABEL_PADDING + TITLE_CLEARANCE - left,
+		))
 	}
 
 	/// A quiet dashed boundary keeps membership visible without enclosing a card.
@@ -124,37 +159,43 @@ impl Scope {
 					gpui::px(snap(f32::from(bounds.left()))),
 					gpui::px(snap(f32::from(bounds.top()))),
 				);
-				let radius = snap(corner_radius(scale));
 				let stroke = snap(1.5);
 				let left = stroke / 2.;
 				let top = stroke / 2.;
 				let right = snap(f32::from(bounds.right())) - f32::from(origin.x) - stroke / 2.;
 				let bottom = snap(f32::from(bounds.bottom())) - f32::from(origin.y) - stroke / 2.;
+				let radius =
+					snap(corner_radius(scale)).min((right - left) / 2.).min((bottom - top) / 2.);
 				let point = |x, y| origin + gpui::point(gpui::px(x), gpui::px(y));
-				let dashed = || {
-					PathBuilder::stroke(gpui::px(stroke)).dash_array(&[gpui::px(5.), gpui::px(4.)])
-				};
 				let gap = title_gap.map(|(start, end)| {
 					(
 						snap(start).clamp(left + radius, right - radius),
 						snap(end).clamp(left + radius, right - radius),
 					)
 				});
+				let length = 2. * (right - left + bottom - top - 4. * radius)
+					+ std::f32::consts::TAU * radius
+					- gap.map_or(0., |(start, end)| end - start);
+				let pattern = dash_pattern(length, gap.is_some());
+				let dashed = || PathBuilder::stroke(gpui::px(stroke)).dash_array(&pattern);
 				let mut path = dashed();
 
-				path.move_to(point(left + radius, top));
-				if let Some((start, end)) = gap {
-					path.line_to(point(start, top));
-					path.move_to(point(end, top));
-				}
+				// One continuous path avoids independent fragments beside the title.
+				path.move_to(point(gap.map_or(left + radius, |(_, end)| end), top));
 				path.line_to(point(right - radius, top));
-				path.curve_to(point(right, top + radius), point(right, top));
+				let radii = gpui::point(gpui::px(radius), gpui::px(radius));
+				path.arc_to(radii, gpui::px(0.), false, true, point(right, top + radius));
 				path.line_to(point(right, bottom - radius));
-				path.curve_to(point(right - radius, bottom), point(right, bottom));
+				path.arc_to(radii, gpui::px(0.), false, true, point(right - radius, bottom));
 				path.line_to(point(left + radius, bottom));
-				path.curve_to(point(left, bottom - radius), point(left, bottom));
+				path.arc_to(radii, gpui::px(0.), false, true, point(left, bottom - radius));
 				path.line_to(point(left, top + radius));
-				path.curve_to(point(left + radius, top), point(left, top));
+				path.arc_to(radii, gpui::px(0.), false, true, point(left + radius, top));
+				if let Some((start, _)) = gap {
+					path.line_to(point(start, top));
+				} else {
+					path.close();
+				}
 
 				if let Ok(path) = path.build() {
 					window.paint_path(
@@ -375,9 +416,7 @@ fn clear_header_routes(
 		return Some(rect);
 	}
 
-	let right = (scope.bounds[2] * zoom + pan.0 - corner_radius(zoom) - 12.)
-		.min(viewport_width - 4.)
-		- rect.width;
+	let right = scope.header_range(zoom, pan.0, viewport_width).1 - rect.width;
 	let steps = ((right - rect.x) / 16.).floor().max(0.) as usize;
 
 	(1..=steps)
@@ -445,6 +484,49 @@ mod tests {
 		assert_eq!(rect.y + HEADER_HEIGHT / 2., 80.);
 		let rect = scope.header_rect(0.4, (40., 80.), (500., 400.), 100.).unwrap();
 		assert_eq!(rect.y + HEADER_HEIGHT / 2., 80.);
+	}
+
+	#[test]
+	fn narrow_border_uses_the_space_beside_its_corners_before_hiding_the_title() {
+		let scope = Scope {
+			id: "project".into(),
+			title: "work".into(),
+			members: BTreeSet::new(),
+			bounds: [0., 0., 600., 300.],
+		};
+		let rect = scope.header_rect(0.1, (40., 80.), (500., 400.), 42.).unwrap();
+		assert!(rect.x >= 48.);
+		assert!(rect.x + rect.width <= 92.);
+		let (start, end) = scope.title_gap(rect, 0.1, (40., 80.)).unwrap();
+		assert_eq!(end - start, 38., "only text and two 4 pt clearances interrupt the border");
+		assert!(scope.header_rect(0.1, (40., 80.), (500., 400.), 45.).is_none());
+	}
+
+	#[gpui::test]
+	fn caption_gap_follows_shaped_text_including_the_selected_count(cx: &mut gpui::TestAppContext) {
+		let surface = cx.new(fixture);
+		surface.read_with(cx, |s, _| {
+			let text = WindowTextSystem::new(s.work_board.text_system.clone());
+			for title in ["work", "Design tools", "项目工作区"] {
+				let scope = Scope {
+					id: "project".into(),
+					title: title.into(),
+					members: BTreeSet::from(["one".into(), "two".into()]),
+					bounds: [0., 0., 2_000., 300.],
+				};
+				for show_count in [false, true] {
+					let width = scope.header_width(&text, show_count);
+					let rect = scope.header_rect(0.23, (40., 80.), (700., 400.), width).unwrap();
+					let (start, end) = scope.title_gap(rect, 0.23, (40., 80.)).unwrap();
+					assert_eq!(start + 40., rect.x + 2.);
+					assert_eq!(end + 40., rect.x + rect.width - 2.);
+					assert_eq!(
+						rect.height, HEADER_HEIGHT,
+						"title font and hit height do not shrink"
+					);
+				}
+			}
+		});
 	}
 
 	#[test]
