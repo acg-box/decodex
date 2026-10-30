@@ -23,7 +23,7 @@ use crate::{
 	ui_feedback::{Feedback, Tone},
 	ui_loading,
 	ui_motion::SmoothControl as _,
-	ui_theme::{self, BLUE, HOVER_FILL, TEXT, USER_MESSAGE_ACTION_SIZE, USER_MESSAGE_INSET},
+	ui_theme::{self, CAPTION_LINE_HEIGHT, CAPTION_SIZE, HOVER_FILL, USER_MESSAGE_INSET},
 };
 use decodex_protocol::{
 	AgentActionDto, AgentCommandResponse, AgentDispatchStateDto, AgentHistoryEntryDto,
@@ -95,14 +95,18 @@ impl AgentSurface {
 				let action = if can_retry {
 					Some(self.message_receipt_action(
 						format!("{id}-retry"),
+						title,
 						"Resend",
+						tone,
 						move |s, cx| s.retry_local_message(&target, &original, cx),
 						cx,
 					))
 				} else if !failed && self.read_connection_ready() {
 					Some(self.message_receipt_action(
 						format!("{id}-check"),
+						title,
 						"Check status",
+						tone,
 						move |s, cx| s.check_local_message(&target, &original, cx),
 						cx,
 					))
@@ -244,20 +248,25 @@ impl AgentSurface {
 		let key = format!("saved-input-{work}-{}", entry.id);
 		let failed = entry.kind == "unsent_input";
 		let tone = if failed { Tone::Error } else { Tone::Warning };
+		let title = if failed { "Not sent" } else { "Delivery unconfirmed" };
 		let target = work.to_owned();
 		let saved = entry.clone();
 		let can_retry = self.can_retry_saved_input(work, entry);
 		let action = if can_retry {
 			Some(self.message_receipt_action(
 				format!("{key}-retry"),
+				title,
 				"Resend",
+				tone,
 				move |s, cx| s.retry_saved_input(&target, &saved, cx),
 				cx,
 			))
 		} else if !failed && self.read_connection_ready() {
 			Some(self.message_receipt_action(
 				format!("{key}-refresh"),
+				title,
 				"Check status",
+				tone,
 				|s, cx| {
 					s.refresh_steer_receipt(cx);
 					s.refresh_native_input_receipts(cx);
@@ -271,7 +280,7 @@ impl AgentSurface {
 
 		Self::message_card(MessageCard {
 			key,
-			title: if failed { "Not sent" } else { "Delivery unconfirmed" },
+			title,
 			tone,
 			text: entry.text.clone(),
 			reason: message_reason(entry.receipt.as_ref().and_then(|r| r.unsent_reason.as_deref())),
@@ -282,7 +291,9 @@ impl AgentSurface {
 	fn message_receipt_action(
 		&self,
 		key: String,
+		caption: &'static str,
 		label: &'static str,
+		tone: Tone,
 		action: impl Fn(&mut Self, &mut Context<Self>) + 'static,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
@@ -297,15 +308,15 @@ impl AgentSurface {
 			.role(Role::Button)
 			.aria_label(label)
 			.tab_index(0)
-			.h(gpui::px(USER_MESSAGE_ACTION_SIZE))
+			.h(gpui::px(CAPTION_LINE_HEIGHT + 4.))
 			.flex_none()
 			.flex()
 			.items_center()
+			.gap(gpui::px(4.))
 			.whitespace_nowrap()
-			.text_color(ui_theme::rgb(TEXT))
 			.cursor_pointer()
 			.rounded(gpui::px(4.))
-			.hover(|s| s.text_color(ui_theme::rgb(BLUE)))
+			.hover(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
 			.focus_visible(|s| s.bg(ui_theme::rgba(HOVER_FILL)))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				action(s, cx);
@@ -319,7 +330,14 @@ impl AgentSurface {
 					cx.stop_propagation();
 				}
 			}))
-			.child(gpui::div().debug_selector(move || label_key.clone()).child(label))
+			.child(
+				gpui::svg()
+					.data(br#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g fill="none" stroke="white" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12.8 5.9A5 5 0 1 0 13 9M13 2.5V6H9.5"/></g></svg>"#)
+					.size(gpui::px(12.))
+					.text_color(ui_theme::rgb(tone.color()))
+					.flex_none(),
+			)
+			.child(gpui::div().debug_selector(move || label_key.clone()).child(caption))
 			.smooth()
 			.into_any_element()
 	}
@@ -327,12 +345,23 @@ impl AgentSurface {
 	fn message_card(card: MessageCard) -> Div {
 		let MessageCard { key, title, tone, text, reason, action } = card;
 		let status_key = format!("{key}-status");
+		let status_text_key = format!("{status_key}-text");
 		let message_key = format!("{key}-message");
-		let status = tone
-			.row(status_key.clone(), title)
-			.h(gpui::px(USER_MESSAGE_ACTION_SIZE))
+		let status = gpui::div()
+			.id(status_key.clone())
+			.role(Role::Status)
+			.aria_label(format!("{}: {title}", tone.label()))
+			.h(gpui::px(CAPTION_LINE_HEIGHT + 4.))
+			.flex_none()
+			.flex()
 			.items_center()
 			.debug_selector(move || status_key.clone())
+			.child(action.unwrap_or_else(|| {
+				gpui::div()
+					.debug_selector(move || status_text_key.clone())
+					.child(title)
+					.into_any_element()
+			}))
 			.when_some(reason, |status, reason| {
 				status
 					.aria_description(reason.clone())
@@ -346,7 +375,7 @@ impl AgentSurface {
 			.flex_none()
 			.flex()
 			.flex_col()
-			.gap_1()
+			.gap(gpui::px(2.))
 			.child(
 				gpui::div()
 					.id(format!("{key}-content"))
@@ -376,11 +405,10 @@ impl AgentSurface {
 					.flex()
 					.justify_end()
 					.items_center()
-					.gap(gpui::px(12.))
-					.text_size(gpui::px(12.))
-					.line_height(gpui::px(18.))
-					.child(status)
-					.children(action),
+					.text_size(gpui::px(CAPTION_SIZE))
+					.line_height(gpui::px(CAPTION_LINE_HEIGHT))
+					.text_color(ui_theme::rgb(tone.color()))
+					.child(status),
 			)
 	}
 
@@ -682,21 +710,17 @@ mod tests {
 			visual.update(crate::ui_frame::draw_frame);
 
 			let message = visual.debug_bounds("saved-input-agent-7-message").unwrap();
-			let status = visual.debug_bounds("saved-input-agent-7-status-text").unwrap();
+			let status = visual.debug_bounds("saved-input-agent-7-status").unwrap();
 			let action = visual.debug_bounds("saved-input-agent-7-retry-text");
 
 			assert_eq!(action.is_some(), retry);
 			assert!(status.top() >= message.bottom(), "receipt belongs below its message");
 
-			let trailing = if let Some(action) = action {
-				assert!((status.top() - action.top()).abs() < gpui::px(0.5));
-				assert_eq!(status.size.height, action.size.height);
-				assert!(action.left() > status.right() + gpui::px(7.));
+			let trailing = action
+				.unwrap_or_else(|| visual.debug_bounds("saved-input-agent-7-status-text").unwrap());
 
-				action
-			} else {
-				status
-			};
+			assert_eq!(status.size.height, gpui::px(crate::ui_theme::CAPTION_LINE_HEIGHT + 4.));
+			assert!(status.size.width < gpui::px(90.), "one compact receipt, not two labels");
 
 			assert!(
 				(trailing.right() - message.right()).abs() < gpui::px(0.5),
@@ -866,21 +890,13 @@ mod tests {
 
 		let status = visual.debug_bounds("saved-input-agent-7-status").unwrap();
 
-		visual.simulate_click(status.center(), Default::default());
-		visual.update(crate::ui_frame::draw_frame);
-
-		assert!(
-			visual.debug_bounds("saved-input-agent-7-message").is_some(),
-			"clicking the status never hides the original message"
-		);
-
 		let retry =
 			visual.debug_bounds("saved-input-agent-7-retry").expect("visible one-click resend");
 
 		assert!((status.center().y - retry.center().y).abs() < gpui::px(1.));
-		assert_eq!(status.size.height, retry.size.height);
+		assert_eq!(status.size, retry.size, "the status and resend share one hit target");
 
-		visual.simulate_click(retry.center(), Default::default());
+		visual.simulate_click(status.center(), Default::default());
 		visual.run_until_parked();
 
 		let action = server.join().unwrap();

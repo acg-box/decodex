@@ -87,43 +87,6 @@ impl Tone {
 			.flex_none()
 			.text_color(ui_theme::rgb(self.color()))
 	}
-
-	pub(crate) fn row(self, id: impl Into<ElementId>, message: &str) -> Stateful<Div> {
-		self.row_with_icon(id, message, self.icon())
-	}
-
-	pub(crate) fn row_with_icon(
-		self,
-		id: impl Into<ElementId>,
-		message: &str,
-		icon: impl IntoElement,
-	) -> Stateful<Div> {
-		let id = id.into();
-		let text_selector = format!("{id}-text");
-		let prose_key = format!("{id}-prose");
-
-		gpui::div()
-			.id(id)
-			.role(Role::Status)
-			.aria_label(format!("{}: {message}", self.label()))
-			.flex()
-			.items_start()
-			.gap(gpui::px(7.))
-			.text_size(gpui::px(NOTICE_TEXT_SIZE))
-			.line_height(gpui::px(NOTICE_LINE_HEIGHT))
-			.text_color(ui_theme::rgb(self.color()))
-			.child(
-				gpui::div()
-					.h(gpui::px(NOTICE_LINE_HEIGHT))
-					.flex_none()
-					.flex()
-					.items_center()
-					.child(icon),
-			)
-			.child(gpui::div().debug_selector(move || text_selector.clone()).min_w_0().child(
-				crate::shell::agent_surface::selectable_prose(prose_key, message.to_owned()),
-			))
-	}
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
