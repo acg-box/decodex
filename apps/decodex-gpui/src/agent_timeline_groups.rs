@@ -19,6 +19,8 @@ use crate::{
 	ui_theme::{self, TEXT, TEXT_MUTED},
 };
 
+pub(super) const HEADER_HEIGHT: f32 = 20.;
+
 pub(super) struct Group {
 	pub turn: String,
 	pub turns: BTreeSet<String>,
@@ -55,18 +57,20 @@ impl AgentSurface {
 			.cursor_pointer()
 			.flex()
 			.items_center()
+			.flex_none()
 			.gap(gpui::px(6.))
-			.py(gpui::px(5.))
-			.text_size(gpui::px(13.))
+			.py(gpui::px(3.))
+			.text_size(gpui::px(ui_theme::foreground::METRIC_SIZE))
 			.font_weight(FontWeight::NORMAL)
-			.line_height(gpui::px(18.))
+			.line_height(gpui::px(14.))
+			.whitespace_nowrap()
 			.text_color(ui_theme::rgb(TEXT_MUTED))
 			.hover(|s| s.text_color(ui_theme::rgb(TEXT)))
-			.child(process_label(group.count))
 			.child(workspace_symbols::process_chevron(
 				SharedString::from(format!("turn-chevron-{identity}")),
 				expanded,
 			))
+			.child(process_label(group.count))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				s.anchor_process_toggle(&work_id, &entry);
 				s.timeline.native.expanded_turns.retain(|id| !turns.contains(id));
@@ -92,7 +96,22 @@ impl AgentSurface {
 			}))
 			.into_any_element();
 
-		gpui::div().flex().child(control).into_any_element()
+		gpui::div()
+			.w_full()
+			.min_w_0()
+			.h(gpui::px(HEADER_HEIGHT))
+			.flex()
+			.items_center()
+			.gap(gpui::px(12.))
+			.child(control)
+			.child(gpui::div().min_w_0().flex_1().max_w(gpui::px(160.)).h(gpui::px(1.)).bg(
+				gpui::linear_gradient(
+					90.,
+					gpui::linear_color_stop(ui_theme::rgb(TEXT).opacity(0.17), 0.),
+					gpui::linear_color_stop(ui_theme::rgb(TEXT).opacity(0.), 1.),
+				),
+			))
+			.into_any_element()
 	}
 }
 
