@@ -43,6 +43,8 @@ let symbols = [
     "expand": "arrow.up.left.and.arrow.down.right",
     "restore": "arrow.down.right.and.arrow.up.left",
     "archive": "archivebox",
+    "unarchive": "tray.and.arrow.up",
+    "trash": "trash",
     "settings": "gearshape",
     "close": "xmark",
     "plus": "plus",

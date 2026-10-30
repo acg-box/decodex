@@ -10,7 +10,11 @@ use tokio::runtime::Builder;
 
 use crate::{
 	composer_input::ComposerInput,
-	shell::agent_surface::{AgentSurface, Context},
+	shell::{
+		ControlTooltip,
+		agent_surface::{AgentSurface, Context},
+		workspace_symbols::{self, Symbol},
+	},
 	ui_feedback::{self, Feedback},
 	ui_loading,
 	ui_motion::{Choice, Segmented, SmoothControl as _},
@@ -379,6 +383,7 @@ impl AgentSurface {
 			let unavailable = catalog.mutation.is_some();
 			let restore = archive_action(
 				format!("unarchive-{id}"),
+				Symbol::Unarchive,
 				if busy && !catalog.deleting { "Restoring…" } else { "Unarchive" },
 			)
 			.aria_label(format!("Unarchive {}", item.title))
@@ -395,15 +400,15 @@ impl AgentSurface {
 			}));
 			let delete = archive_action(
 				format!("delete-archive-{id}"),
+				Symbol::Trash,
 				if busy && catalog.deleting {
 					"Deleting…"
 				} else if confirming {
-					"Delete now"
+					"Click again to delete permanently"
 				} else {
 					"Delete"
 				},
 			)
-			.w(gpui::px(68.))
 			.aria_label(format!(
 				"{} {}",
 				if confirming { "Confirm permanent deletion of" } else { "Delete" },
@@ -412,7 +417,8 @@ impl AgentSurface {
 			.when(unavailable, |d| d.opacity(0.45))
 			.when(confirming, |d| {
 				d.text_color(ui_theme::rgb(ui_theme::ERROR))
-					.bg(ui_theme::rgb(ui_theme::ERROR).opacity(0.1))
+					.bg(ui_theme::rgb(ui_theme::ERROR).opacity(0.12))
+					.border_color(ui_theme::rgb(ui_theme::ERROR).opacity(0.35))
 			})
 			.on_click(cx.listener(move |s, _, _, cx| {
 				cx.stop_propagation();
@@ -426,7 +432,7 @@ impl AgentSurface {
 			}));
 			let delete = delete.smooth();
 			let metadata = if confirming {
-				"Permanent deletion · includes subagents".into()
+				"Click again to delete this agent and its subagents".into()
 			} else {
 				item.metadata.clone()
 			};
@@ -439,8 +445,8 @@ impl AgentSurface {
 					.tab_index(0)
 					.flex_none()
 					.min_w_0()
-					.h(gpui::px(40.))
-					.px(gpui::px(8.))
+					.h(gpui::px(48.))
+					.px(gpui::px(10.))
 					.flex()
 					.items_center()
 					.gap(gpui::px(12.))
@@ -465,7 +471,7 @@ impl AgentSurface {
 							.flex_1()
 							.flex()
 							.flex_col()
-							.gap(gpui::px(1.))
+							.gap(gpui::px(2.))
 							.child(
 								gpui::div()
 									.text_size(gpui::px(ui_theme::BODY_SIZE))
@@ -477,7 +483,7 @@ impl AgentSurface {
 							.child(
 								gpui::div()
 									.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-									.line_height(gpui::px(12.))
+									.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
 									.text_color(ui_theme::rgb(if confirming {
 										ui_theme::ERROR
 									} else {
@@ -492,8 +498,8 @@ impl AgentSurface {
 							.flex_none()
 							.flex()
 							.items_center()
-							.gap(gpui::px(4.))
-							.child(restore)
+							.gap(gpui::px(6.))
+							.child(restore.smooth())
 							.child(delete),
 					),
 			);
@@ -582,13 +588,31 @@ impl AgentSurface {
 
 fn archive_action(
 	id: impl Into<gpui::SharedString>,
-	label: impl Into<gpui::SharedString>,
+	symbol: Symbol,
+	label: &'static str,
 ) -> gpui::Stateful<gpui::Div> {
-	ui_theme::settings_button(id, label)
-		.border_0()
-		.bg(gpui::transparent_black())
-		.px(gpui::px(6.))
+	let id = id.into();
+	gpui::div()
+		.id(id.clone())
+		.debug_selector(move || id.to_string())
+		.role(Role::Button)
+		.tab_index(0)
+		.size(gpui::px(ui_theme::CHROME_CONTROL_SIZE))
+		.flex_none()
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded(gpui::px(ui_theme::SETTINGS_CONTROL_RADIUS))
+		.border(gpui::px(0.5))
+		.border_color(ui_theme::rgb(ui_theme::TEXT).opacity(0.10))
+		.bg(ui_theme::rgb(ui_theme::TEXT).opacity(0.035))
+		.text_color(ui_theme::rgb(ui_theme::TEXT))
+		.cursor_pointer()
+		.hover(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+		.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
 		.focus_visible(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+		.tooltip(move |_, cx| cx.new(|_| ControlTooltip(label)).into())
+		.child(workspace_symbols::icon_sized(symbol, 16.))
 }
 
 fn archive_metadata(project: Option<&str>, micros: i64) -> String {
