@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:24476bd20d7fd0b9057c6bbe278738bd9dad724d10a4dc4b1c509d83bf3a5342",
+  "pageVersion": "sha256:9d235733fe7d39eb183986697bf4ef5cbe2ef126043e00c56e99e3a4bdd23b90",
   "claims": [
     {
       "id": "claim_8fa9284d970947ab9981d4144ecb9648",
@@ -176,7 +176,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
+          "version": "repo-file-v1:sha256:d85ab12f4fe6a67a0b13cb507d4c97ff21b456fc0712e3a1015cd79f1c4369b8"
         }
       ]
     },
@@ -266,11 +266,11 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs",
-          "version": "repo-file-v1:sha256:cb9e21ef8159ab651097e1b378408596d451f2f51dba67fc8a0cc9d916dc398a"
+          "version": "repo-file-v1:sha256:bdc7b2bcbc94f5258c5390cbb2ec4d5839f1e90000d89db635dd4a743e2e9b60"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs",
-          "version": "repo-file-v1:sha256:d996c8df664bda91161650fc3b9cd74d5477eb9d445cc3de10d8590776477619"
+          "version": "repo-file-v1:sha256:8f1ed3896490e13e4aa95b1939bbdfb82bbb8ef847f3aefce58ada7264232b2f"
         }
       ]
     },
@@ -314,11 +314,11 @@
     },
     {
       "id": "claim_dc6260153c0041eaae31a9b41d6aaf3f",
-      "statement": "The portable native fixture runner uses one short system-temporary HOME per invocation, preserves host tool locations, explicitly prepares the selected component under a separate native home and cleans the fixture afterward. The public-socket fork case uses the owned checkout and retains product directory checks.",
+      "statement": "The portable native fixture runner uses one short system-temporary HOME per invocation, preserves host tool locations, prepares the selected component under a separate native home and cleans the fixture afterward. Every Recap service mode uses the owned checkout under actual OS-account working-directory authority while product directory checks stay active.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs",
-          "version": "repo-file-v1:sha256:1bd69b1df433b544d7847e14a884574e7e9a4e4fac3f67e6b305b5f3793036ce"
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_recap_socket_tests.rs#L126-L131",
+          "version": "repo-lines-v1:sha256:30171dce1b61bf81bb3f86fa8124f3755fc42025a9662a0ef0ad519c38068b3b:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjY0MmIyMzFiNmVhOTE4ZTkzMDI3NTczMGQ3OTNiZTA0YzNkMWY1OWVlNTJlODk1MjkyNWU2MzM2NTQ1ZDk3YyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTNjOGM4N2U1Nzg0ZjdiYzZkNGE1MmQ1NDlhN2RmNDcwZjkyYTE0Y2JhN2Q3OTE1YjllYWNlYzkzZjY2NTE3MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzk1YWJkMWU3OTQ0NGY1MDc2ZTFmN2NhYzJmMzA0MmI5MDQxMWQxNjkwYmU3NjNkYTY2NjAxM2IyNmY4ZWRlYyJ9"
         },
         {
           "resource": "repo://scripts/vnext/run_native_regression.py",
@@ -342,7 +342,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
+          "version": "repo-file-v1:sha256:d85ab12f4fe6a67a0b13cb507d4c97ff21b456fc0712e3a1015cd79f1c4369b8"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/command_hooks.py",
@@ -442,7 +442,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
+          "version": "repo-file-v1:sha256:d85ab12f4fe6a67a0b13cb507d4c97ff21b456fc0712e3a1015cd79f1c4369b8"
         },
         {
           "resource": "repo://scripts/vstyle_audit.py",
@@ -459,10 +459,34 @@
           "version": "repo-file-v1:sha256:97d65bc9f995cda36154a493ea726a9ff4568a3571b29f21e75f247785ece7e2"
         }
       ]
+    },
+    {
+      "id": "claim_78eec0242da74491a5e4200f9b7e1889",
+      "statement": "Retained named-permission fixtures set an explicit read-only default before selecting a scoped profile, preserving their original permission, directory and restart assertions.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_permission_tests.rs#L85-L100",
+          "version": "repo-lines-v1:sha256:135c34e5c1bda134deeb9a93d73f5686d3b374fa7a7c5d60edea47e7eca9dd0b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmYTUzNmUyYTRjOGFlOGEyZmY2ODY5ODlmOTY4Y2JlZjgwMDRhZGU5NDI0OTUxY2NkZGNkZjU0MTJjMzE5ZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMxODhiMTY1ZmRlY2Q3ZDc4NjQ4MjYxNTkwMDdiYTdmZDc3M2Q2MjA4OTc0YjZiZDI4Y2I1ZjUzY2M5MGFiNDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE5MjVmNTI1YjRiZGRmMTYyYzNlNzcwNGFkYzFkZmZlZDZiNzI3YmVmOWI3NTliYjUyY2NjNjIyYjIzNjZmOTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBmYmM1ODEwNDM1MGQ1MWM5YjUyNmZlZjNhMjU0NzAxMjk4OGU3NWFmNmY2NzczNTY0MzI4MzMyMjgyODU3MDYifQ"
+        },
+        {
+          "resource": "repo://crates/decodex-runtime/src/agent/tests/native_permissions.rs#L38-L45",
+          "version": "repo-lines-v1:sha256:8ac5f27cc0be3be638793cbf1d528ffaf829a5b229183f594f64c87d24ca7c14:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGFjYmVkNWJiZDFmYWM0NzA2ODg1NDRjYzYyOTA3YmE0YmU1MWVhZjczMWI2NTIxMDE1ODgzMTI2NmJiNzc0MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNTE5NDg0ZWVkZjM2NGZiOGMxMmYxZWI5OGZiZjZhOWI0ZjY1MGY0Mjc4NzRhOGQ3MzU5MDEwYWFkZTQzMWJjOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZjkwYjhkMDQ5NTcwMGFkMzEzOTUyMWY2NTE3MmY5M2E5NmRjYTEwM2ViMDM1YTVjOWY2YzE5NGZlYWU1OGI0ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTE5Zjc2ZmY5NmVkNDk3MzQyYWQ5NmJkNWY5Y2UxOGRmZjg3YWU5YjBlMzRlM2M1ZDkwNGRmZWQ2ZDM2NjNmOSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b8b6d7700d024927aaf008e863ac291a",
+      "statement": "The current retained-consumer router excludes the explicitly retired startup-configuration diagnostic while preserving its historical execution evidence.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/retained-evidence.json#L675-L690",
+          "version": "repo-lines-v1:sha256:566ec42c45789ac6bf037b37da9f6bc94491149271007f65a22be7a68aba6cb3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVlYThlYmFiOGY0ZWI1Njg5MmE2NTUzYjc5YzA3ZTRlODI2ZWIyZmVhMjE1MzQ3OTk3MTA0ODlmM2JhMTA4ODMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkZDI0NDU4MmI2ZmIwM2QyM2I4NDE1YWJlY2QzNDZiMGM5ZjQ2NmI2Zjc1MmIwNjgxODljZTdlOWEyZGMzNTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgyZDY1ZTFiMzc2ZjY0ZGQ1MDY5ZDcyZDJmODBiYzI3MmE4YTg5YjU3N2Y0NzRkNDAzMDc5MDY4NzZlMDQ5OTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEzMDVhZjE2MWRhOWRkYTlkZGJmNjJjOWFmZDBiZjUzMzU3MDYzM2U5MWIxNTJjM2I0OTM2MDRhZTcxNjliMDMifQ"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T17:36:00.319Z"
+    "at": "2026-10-30T20:07:24.899Z"
   }
 }

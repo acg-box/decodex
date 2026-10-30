@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:5ebb24fd3cb69116978dc43edddc6e443efe3bd4224f23ae0c563e8f4a77435a",
+  "pageVersion": "sha256:1d14d59b0622ad8a14c54d2113b8fa1d062417d160351d9c4859ce74651fda20",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -54,7 +54,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
+          "version": "repo-file-v1:sha256:d85ab12f4fe6a67a0b13cb507d4c97ff21b456fc0712e3a1015cd79f1c4369b8"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
@@ -82,17 +82,17 @@
         },
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
-          "version": "repo-file-v1:sha256:7ebebce9c4affc63a9bd8bd979e56fd5f05670a48db6b9c3922f8e5f612fc061"
+          "version": "repo-file-v1:sha256:0f7b2aff625be8681a0e67ba70526e044d96a59e7fb050350db5cd2dac057b01"
         }
       ]
     },
     {
       "id": "claim_be7994f18d1240d19737fb9c76631ca7",
-      "statement": "The source-runtime builder packages and signs CodexCLI.app, the Code Mode helper and rg, then verifies their strict signatures.",
+      "statement": "The source-runtime builder signs CodexCLI.app, the Code Mode helper, rg and any advertised standalone executor, then verifies their strict signatures.",
       "evidence": [
         {
-          "resource": "repo://scripts/macos/build_codex_source.mts#L68-L97",
-          "version": "repo-lines-v1:sha256:8a204d821243396d162a31ae18b074bb39e60f3238efe057e9256ae39258ec29:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJmNTk4ZDVjMjAyZWYzNDdhNTZjOTk1NDk2YTQxMjJjN2FjNjI5N2U2OTJlOTdiN2FmYjIzZDA4YzE3ODhiYzQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4OGMxY2FhMmViN2YzZjMxMzc1MTU3ZDJhZmVmNjRlNWUzZWIzOTllY2IzMWYxZWMzN2IxZGU3YzIwOTNlNTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+          "resource": "repo://scripts/macos/build_codex_source.mts",
+          "version": "repo-file-v1:sha256:0f7b2aff625be8681a0e67ba70526e044d96a59e7fb050350db5cd2dac057b01"
         }
       ]
     },
@@ -102,7 +102,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-components/src/install.rs",
-          "version": "repo-file-v1:sha256:1c36bd38f86efc5ffc9e8fa13006d7abef050209189ec8a81d56cb9751837984"
+          "version": "repo-file-v1:sha256:6c1780a78d4023e27277d7275780db7e8c567c2ef1526e82385ce4dea4155c5f"
         }
       ]
     },
@@ -112,7 +112,7 @@
       "evidence": [
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
-          "version": "repo-file-v1:sha256:7ebebce9c4affc63a9bd8bd979e56fd5f05670a48db6b9c3922f8e5f612fc061"
+          "version": "repo-file-v1:sha256:0f7b2aff625be8681a0e67ba70526e044d96a59e7fb050350db5cd2dac057b01"
         },
         {
           "resource": "repo://scripts/macos/build_codex_source.test.mts",
@@ -144,7 +144,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-components/src/install.rs",
-          "version": "repo-file-v1:sha256:1c36bd38f86efc5ffc9e8fa13006d7abef050209189ec8a81d56cb9751837984"
+          "version": "repo-file-v1:sha256:6c1780a78d4023e27277d7275780db7e8c567c2ef1526e82385ce4dea4155c5f"
         }
       ]
     },
@@ -290,7 +290,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
+          "version": "repo-file-v1:sha256:d85ab12f4fe6a67a0b13cb507d4c97ff21b456fc0712e3a1015cd79f1c4369b8"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs",
@@ -490,7 +490,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
+          "version": "repo-file-v1:sha256:d85ab12f4fe6a67a0b13cb507d4c97ff21b456fc0712e3a1015cd79f1c4369b8"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs",
@@ -589,10 +589,34 @@
           "version": "repo-lines-v1:sha256:9c615bce385512fe7fc2d7efd2dbc18a9e2b06b3cd81a336e6f64715a7902c58:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZjY2MzZWI5ZWJhZDdjMDlkYjU5ZDc1OTcyZjlmZjk5OTNjNDU3ZGM1MTIwZTQ1N2U3OGU0Mjk3NDg1NDNkN2YiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyNmY5MmU4NWQyYzE0NWUyZTU2MmUzOWU4NWY2YTA0YzYyZTljYjVmODc3YTU2NWI2ZWFkOTI2NmU5MDQyNGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4ODlhYTk4NWMzMzUxNDdhZmE4YWVlZTljYmQ3NWY1Zjk3Y2ZiZWQzOTMzNTc3NDIzYTAzNjNmNGI0N2U0NTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjNTRlOTQyNzQ2YTNhMzJlYTA1ZDAyNTVjYTM4MWYwM2VmNWY0NzQzNTNiMGU5YzY1YjBkYWFiNmFiNzQ1MjUifQ"
         }
       ]
+    },
+    {
+      "id": "claim_5d3bf16e6b1b4feba25f369633c2ef09",
+      "statement": "Shared component verification requires the exact advertised executor path, verifies its signature and fixed development commit, and preserves legacy packages without execServer metadata.",
+      "evidence": [
+        {
+          "resource": "repo://crates/decodex-components/src/install.rs#L407-L499",
+          "version": "repo-lines-v1:sha256:5f4b3ad3b70af209e6342c06ca4e3f8ac9702f49d74cba6b6010e61bd61c1611:eyJzZWxlY3RlZExpbmVDb3VudCI6OTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0OTQzNjZjYzg3NzM5YzA4MGQxMGEwNTAwZmRjNGI0NzNmNzZmY2Y2ZGU1NGViYjEwOTRkNzk4MGZkMWJjMzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRlMjk5YTEwNTk5MjcyMjk5MTMzZjNiMDFhYjViODQwMWQ0MGQwMzQwMGI4MmFjYTk1MTJkM2FjMWJiNDdiODAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxYmUzNWQzZWU5ZGFiM2Y3ZGFhOTkxY2RkN2ViYzNjYmJjYjQzYzIxYTFiNTE0ZmM3MDQ5NDNiZTFjOTY3ZWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI5NmI3NmJmNTFiNzBjZDc4NGZmZGMwM2NiYjBiM2M1MjBmZTkxOWU5NjFjYjA5MzA3N2VhYThiNDFiY2Y4NDcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_c2c3fcb6cbf548539ff3fd6004769e9f",
+      "statement": "Selected runtime 33d306d4 remains qualified within its recorded limits; candidate 5be57bedd0 passes 49 of 50 retained native contracts but fails saved-provider cold fork resume, so completed source review does not authorize its runtime pin.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/qualification.json",
+          "version": "repo-file-v1:sha256:d85ab12f4fe6a67a0b13cb507d4c97ff21b456fc0712e3a1015cd79f1c4369b8"
+        },
+        {
+          "resource": "repo://codex-runtime.lock.json",
+          "version": "repo-file-v1:sha256:cc5ad01847aeedd94f3fad7d425b5f4eaf9011dc440c448a42d6943bbe215ac8"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T17:36:00.319Z"
+    "at": "2026-10-30T20:00:55.995Z"
   }
 }

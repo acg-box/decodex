@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c9f66dfd70c238ba242b0be0b0374fe0db4132f9382d3c1bf0108d764d389cbd",
+  "pageVersion": "sha256:501cadfa074cb15d8ce4905edc7400556dc20a373c5e61a915b03443033f15ad",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -60,7 +60,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
+          "version": "repo-file-v1:sha256:d85ab12f4fe6a67a0b13cb507d4c97ff21b456fc0712e3a1015cd79f1c4369b8"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
@@ -96,7 +96,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
+          "version": "repo-file-v1:sha256:d85ab12f4fe6a67a0b13cb507d4c97ff21b456fc0712e3a1015cd79f1c4369b8"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
@@ -110,7 +110,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_capabilities.rs",
-          "version": "repo-file-v1:sha256:9bd355ed15c6b6e9c7a92e4bb46e71514396051387ac7d1237d0a5b2dcb527fd"
+          "version": "repo-file-v1:sha256:8cb2ba5bde6398afd93f36318776df16eaaa62b9fabc10285f3d431a8e35fdd9"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_permissions.rs",
@@ -118,7 +118,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
-          "version": "repo-file-v1:sha256:3825776ca7840f37ac2ee668951220444913d791d25bb626b0c69c1ad9328669"
+          "version": "repo-file-v1:sha256:839774c9ea84c4c08526203d98e0bd82e7f2ed5d7e72e009a44e39e5145ece67"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_permissions.rs",
@@ -178,11 +178,15 @@
     },
     {
       "id": "claim_9815b02e2bec42e2972b00e7894ad1f4",
-      "statement": "Attached branches preserve source provider and Goal ownership and create no model input. Current qualification covers paginated attachment, native legacy-attachment refusal, ordinary forks in both history modes and restart; installed desktop acceptance remains separate.",
+      "statement": "Attached branches preserve source provider and Goal ownership and create no model input. Selected runtime qualification covers paginated attachment, legacy-attachment refusal, ordinary forks and restart. A newer candidate that fails saved-provider cold resume remains unselected; installed desktop acceptance stays separate.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:33c98bcc9b908366adb8043a086c26c005a88c010f031b16cac5d0fef1f00602"
+          "version": "repo-file-v1:sha256:d85ab12f4fe6a67a0b13cb507d4c97ff21b456fc0712e3a1015cd79f1c4369b8"
+        },
+        {
+          "resource": "repo://codex-runtime.lock.json",
+          "version": "repo-file-v1:sha256:cc5ad01847aeedd94f3fad7d425b5f4eaf9011dc440c448a42d6943bbe215ac8"
         },
         {
           "resource": "repo://crates/decodex-codex/src/app_server_client/thread_fork.rs",
@@ -190,7 +194,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs#L254-L367",
-          "version": "repo-lines-v1:sha256:c6bc095fb9b38d4f88a01ac5f067ff34b13a1371d8d289306a46cd442cd7fa4e:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5ODAxNTU2ZDk3YWRiYjgyZGY5NTMzYjFiYWEwNmE2NzE4ZTc4MzFiYzVjMGNhYmY3NDM5MjBhOWQ1NmRlMjQzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2Nzc3Y2JkNWZmMjUyMDg5M2YzNzM0ZGExZjFkYmExMTM4OTdjMDhhODk4NTY1NDIwOTAzMzcyNGE4MjkwZTM0IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhZTFlOTVhNDBjYzVkMDg4NTEwNDQzYjY4NDk1MzNkNWUwMTQwYjE0OWU2NzkzZGE2ODMzNTczNjUzZGFiNTEyIn0"
+          "version": "repo-lines-v1:sha256:81ddd1f7b67f7532b1f28a927d31a2fd52770eb47786e31cd9ee2c81f3d95ef3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5ODAxNTU2ZDk3YWRiYjgyZGY5NTMzYjFiYWEwNmE2NzE4ZTc4MzFiYzVjMGNhYmY3NDM5MjBhOWQ1NmRlMjQzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJmMmE4NThjOTc2ZmM3YTJiMzBlMGY0OWI3MGUwNmIzMTNjNGQzMmU1ZjA3YmE4NGU0MGQyYzg5OTRjMWQ4MzYzIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmMjk2NDA3OWMzYzVjODE1MjBlZjMzYTJiOWQyZTE1YTFiODRkNzI4MGRiODU5MGRjZDY1NzQ3ZTNlMDEyYTQwIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI1MGE1ZTE2NjZjNDQwNjZiZGIzZDk3NDY1MDEyMmE1MzZiZTA3NWU4ZWJlZTdkMGQ1MmMyOTcyOWQ5YTAyZjM2In0"
         }
       ]
     },
@@ -218,7 +222,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:108fe2e6147d55ba9c0b285eb3ad33def48e3d017b9a4986ad812fcd0616b457"
+          "version": "repo-file-v1:sha256:1b1d46266e71ee0e531979bdbb08afb607500c619f85a9f994e72f880663cb8b"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -270,7 +274,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:8e7460c3600d71686bf62d9cd82ecf223cb3b5adcc9306d1b3caa4e29a9bbb57"
+          "version": "repo-file-v1:sha256:fc331a11fc4501aa52252008b619d6a6a86bf646320cebc519cff6a3b688d015"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
@@ -299,6 +303,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T17:36:00.319Z"
+    "at": "2026-10-30T20:00:55.995Z"
   }
 }

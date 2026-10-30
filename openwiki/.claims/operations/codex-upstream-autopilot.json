@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:542504c01e8ed8f9dfa4048c55936f1433111634f39e3ac40e53b18764187b31",
+  "pageVersion": "sha256:ceb04a48490b902f11c04fcae1fbc4307b02ebe1a53b8c5efdcd0940e8eb5a86",
   "claims": [
     {
       "id": "claim_b6c6b65984924f69970e7f0410d50903",
@@ -76,7 +76,7 @@
       "evidence": [
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
-          "version": "repo-file-v1:sha256:7ebebce9c4affc63a9bd8bd979e56fd5f05670a48db6b9c3922f8e5f612fc061"
+          "version": "repo-file-v1:sha256:0f7b2aff625be8681a0e67ba70526e044d96a59e7fb050350db5cd2dac057b01"
         }
       ]
     },
@@ -90,7 +90,7 @@
         },
         {
           "resource": "repo://crates/decodex-components/src/install.rs",
-          "version": "repo-file-v1:sha256:1c36bd38f86efc5ffc9e8fa13006d7abef050209189ec8a81d56cb9751837984"
+          "version": "repo-file-v1:sha256:6c1780a78d4023e27277d7275780db7e8c567c2ef1526e82385ce4dea4155c5f"
         }
       ]
     },
@@ -269,8 +269,8 @@
           "version": "repo-file-v1:sha256:d5ec8ffce5d7e254c0d6d4ad26dd453159a7f55214bbd6356a6f244e6cc72941"
         },
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L23-L23",
-          "version": "repo-lines-v1:sha256:1675e3763d403830b46715830d9524142470c718ebc67c53099f966d73f62308:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTY3NWUzNzYzZDQwMzgzMGI0NjcxNTgzMGQ5NTI0MTQyNDcwYzcxOGViYzY3YzUzMDk5Zjk2NmQ3M2Y2MjMwOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMTY3NWUzNzYzZDQwMzgzMGI0NjcxNTgzMGQ5NTI0MTQyNDcwYzcxOGViYzY3YzUzMDk5Zjk2NmQ3M2Y2MjMwOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2NiYTQxMTkyZjEwYTM1ODdkMTNlZmJkZWUzNDdiMjkyMDE1OTRmYTlhN2Y5YThhMjMyODIzYzk4ZmI5OWEyZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGE2YTlhYjlkOGExMmM3Mzg5ODdmZjI1ZTEwMDc2ZjJiODgzYzZmODNlMjg4MWE3NTE1N2JkMDI3ODMzMzc3NCJ9"
+          "resource": "repo://automations/upstream/prompts/maintainer.md#L33-L33",
+          "version": "repo-lines-v1:sha256:410986db07e2563569c0a8516d497fa00e78b007156660babeecaf6d90845267:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEwOTg2ZGIwN2UyNTYzNTY5YzBhODUxNmQ0OTdmYTAwZTc4YjAwNzE1NjY2MGJhYmVlY2FmNmQ5MDg0NTI2NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEwOTg2ZGIwN2UyNTYzNTY5YzBhODUxNmQ0OTdmYTAwZTc4YjAwNzE1NjY2MGJhYmVlY2FmNmQ5MDg0NTI2NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWY5OWY0Mzk1MTg0N2FmZGMxNjQ4M2MzMzVkOGIwNzE1ZTJjOTAyYjk3MWU3NzlkNjJiYjFiNjk0NGNhNzY3NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGY4Y2ViNzI5MmIwMDczMDY3YTQxNDVkYTIwMTc3MjY4NDIzNGVjNjkxZWY5M2JiNjRlOWI4YzI1NzRlNWMxMSJ9"
         }
       ]
     },
@@ -287,10 +287,24 @@
           "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
         }
       ]
+    },
+    {
+      "id": "claim_902b391431a84a26a82281d6599474d4",
+      "statement": "An exact candidate that fails a retained saved-provider resume contract stays unselected even after completed source review; the selected artifact comparison and independent helper or fixture delivery remain separate evidence.",
+      "evidence": [
+        {
+          "resource": "repo://automations/upstream/qualification.json#L3344-L3357",
+          "version": "repo-lines-v1:sha256:980c4c400b6cab5be5d0f051f721a427db8a17236f17a4d9e3b325e450f32aaa:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyOTNjM2Y0NDc3NzA1NjMzYzBlNmZlYzIxODhmYjdlYzlmYWVjOTRkMDMxNjk5OWI5MDcyZDJlNmYyNzdlMmEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc5OWRlODA0ZTk3MWRhZDY3ODVhMGU2MDZlYTVmMmI5ODdiOGIzZTZlYjllMDlkNGVlNDFkNGVlNzFmZTUzZDIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM1ZmYyOWY5NDM1ZGQzY2RmNjdhMDE0Y2MxMjhhNzBhNDdiYjQ5ZjhmODYyZDhmYThhODQ0OWE1M2M5NzI0NmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2NDUwMmYwMTM0ZGViMWE3YTViMWIxMDUxMzI1ZGQ5N2IzZDdjMTZlMTU4YzE5MmY0NDE1NjFiZGVmYzY0Y2QifQ"
+        },
+        {
+          "resource": "repo://codex-runtime.lock.json",
+          "version": "repo-file-v1:sha256:cc5ad01847aeedd94f3fad7d425b5f4eaf9011dc440c448a42d6943bbe215ac8"
+        }
+      ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T17:36:00.319Z"
+    "at": "2026-10-30T20:00:55.995Z"
   }
 }
