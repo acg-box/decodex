@@ -448,7 +448,7 @@ impl AgentSurface {
 }
 
 impl AgentSurface {
-	fn load_work_detail(&mut self, id: String, cx: &mut Context<Self>) {
+	pub(super) fn load_work_detail(&mut self, id: String, cx: &mut Context<Self>) {
 		let Some(profile) = self.profile.clone() else { return };
 		let captured = profile.clone();
 

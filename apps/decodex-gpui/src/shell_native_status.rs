@@ -38,6 +38,14 @@ pub(super) struct StatusPanel {
 }
 
 impl StatusPanel {
+	fn forward_navigation(&self, action: &dyn gpui::Action, cx: &mut App) {
+		self.owner.update(cx, |s, cx| {
+			s.status_open = false;
+			cx.notify();
+		});
+		forward_shell_action(self.parent, action, cx);
+	}
+
 	fn place(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		if let Some(origin) = self.origin
 			&& let Some(surface) = &mut self.surface
@@ -64,6 +72,20 @@ impl Render for StatusPanel {
 			.font_family(FONT_FAMILY)
 			.text_color(ui_theme::rgb(TEXT))
 			.track_focus(&self.focus)
+			.capture_any_mouse_down(cx.listener(|panel, event, window, cx| {
+				if shell::navigation::forward_mouse_navigation(panel.parent, event, window, cx) {
+					panel.owner.update(cx, |s, cx| {
+						s.status_open = false;
+						cx.notify();
+					});
+				}
+			}))
+			.on_action(cx.listener(|panel, action: &shell::NavigateBack, _, cx| {
+				panel.forward_navigation(action, cx);
+			}))
+			.on_action(cx.listener(|panel, action: &shell::NavigateForward, _, cx| {
+				panel.forward_navigation(action, cx);
+			}))
 			.on_action({
 				let owner = owner.clone();
 

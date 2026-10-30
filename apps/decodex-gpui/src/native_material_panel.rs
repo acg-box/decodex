@@ -1,14 +1,17 @@
 //! Native material views and foreground-owning GPUI child windows.
-//! UI state and event handlers remain in GPUI; AppKit owns only composition.
+//! GPUI owns UI state and navigation; AppKit composes surfaces and relays side buttons.
 use std::{cell::Cell, env, ptr};
 
+use block2::RcBlock;
 use gpui::{AnyWindowHandle, Bounds, Pixels, Window, WindowBackgroundAppearance};
 use objc2::{
 	self,
 	rc::{Allocated, Retained},
 	runtime::{AnyClass, AnyObject, ClassBuilder, Sel},
 };
-use objc2_app_kit::{NSResponder, NSView, NSWindow, NSWindowCollectionBehavior};
+use objc2_app_kit::{
+	NSEventMask, NSEventType, NSResponder, NSView, NSWindow, NSWindowCollectionBehavior,
+};
 use objc2_core_foundation::CGAffineTransform;
 use objc2_foundation::{NSArray, NSPoint, NSRect, NSSize, NSString};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
@@ -50,6 +53,7 @@ pub(crate) struct MaterialPanel {
 	shadow_dirty: bool,
 	opacity: Cell<f32>,
 	window_observer: Retained<AnyObject>,
+	side_buttons: Retained<AnyObject>,
 }
 impl MaterialPanel {
 	pub(crate) fn install_input_bar(
@@ -151,6 +155,7 @@ impl MaterialPanel {
 			let _: () = objc2::msg_send![&*native, setAlphaValue: 0.0_f64];
 			let _: () = objc2::msg_send![&*parent, addChildWindow: &*native, ordered: 1_isize];
 			let window_observer = observe_panel_window(&native)?;
+			let side_buttons = route_side_buttons(&native, &gpu)?;
 
 			ATTACHED_WINDOWS.with(|windows| {
 				windows.borrow_mut().insert(
@@ -179,6 +184,7 @@ impl MaterialPanel {
 				shadow_dirty: true,
 				opacity: Cell::new(0.),
 				window_observer,
+				side_buttons,
 			})
 		}
 	}
@@ -401,6 +407,9 @@ impl Drop for MaterialPanel {
 		});
 
 		unsafe {
+			let _: () = objc2::msg_send![
+				AnyClass::get(c"NSEvent").expect("AppKit"), removeMonitor: &*self.side_buttons
+			];
 			let center: Retained<AnyObject> = objc2::msg_send![
 				AnyClass::get(c"NSNotificationCenter").expect("Foundation"),
 				defaultCenter
@@ -413,6 +422,39 @@ impl Drop for MaterialPanel {
 		unsafe {
 			let _: () = objc2::msg_send![&*self.parent, removeChildWindow: &*self.native];
 		}
+	}
+}
+
+fn route_side_buttons(
+	window: &NSWindow,
+	foreground: &Retained<NSView>,
+) -> Option<Retained<AnyObject>> {
+	let number = window.windowNumber();
+	let foreground = foreground.clone();
+	let handler = RcBlock::new(move |event: *mut AnyObject| -> *mut AnyObject {
+		unsafe {
+			let target: isize = objc2::msg_send![event, windowNumber];
+			let button: isize = objc2::msg_send![event, buttonNumber];
+			if target != number || ![3, 4].contains(&button) {
+				return event;
+			}
+			let kind: NSEventType = objc2::msg_send![event, type];
+			// Deliver to GPUI before the material's native responder chain. GPUI
+			// keeps the navigation policy; consuming here prevents a second delivery.
+			if kind == NSEventType::OtherMouseDown {
+				let _: () = objc2::msg_send![&*foreground, otherMouseDown: event];
+			} else {
+				let _: () = objc2::msg_send![&*foreground, otherMouseUp: event];
+			}
+			ptr::null_mut()
+		}
+	});
+	unsafe {
+		Some(objc2::msg_send![
+			AnyClass::get(c"NSEvent")?,
+			addLocalMonitorForEventsMatchingMask: (NSEventMask::OtherMouseDown | NSEventMask::OtherMouseUp),
+			handler: &*handler
+		])
 	}
 }
 

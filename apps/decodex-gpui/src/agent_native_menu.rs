@@ -62,6 +62,11 @@ struct ComposerMenu {
 	_observation: Subscription,
 }
 impl ComposerMenu {
+	fn forward_navigation(&self, action: &dyn gpui::Action, cx: &mut App) {
+		self.owner.update(cx, |s, cx| s.dismiss_composer_menu(cx));
+		forward_shell_action(self.parent, action, cx);
+	}
+
 	fn place(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		if let Some(placement) = self.placement
 			&& let Some(surface) = &mut self.surface
@@ -97,6 +102,22 @@ impl Render for ComposerMenu {
 			.font_family(FONT_FAMILY)
 			.text_size(gpui::px(BODY_SIZE))
 			.text_color(ui_theme::rgb(TEXT))
+			.capture_any_mouse_down(cx.listener(|menu, event, window, cx| {
+				if crate::shell::navigation::forward_mouse_navigation(
+					menu.parent,
+					event,
+					window,
+					cx,
+				) {
+					menu.owner.update(cx, |s, cx| s.dismiss_composer_menu(cx));
+				}
+			}))
+			.on_action(cx.listener(|menu, action: &crate::shell::NavigateBack, _, cx| {
+				menu.forward_navigation(action, cx);
+			}))
+			.on_action(cx.listener(|menu, action: &crate::shell::NavigateForward, _, cx| {
+				menu.forward_navigation(action, cx);
+			}))
 			.on_action(|_: &FocusNext, window, cx| window.focus_next(cx))
 			.on_action(|_: &FocusPrevious, window, cx| window.focus_prev(cx))
 			.on_action({

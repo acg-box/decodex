@@ -861,6 +861,8 @@ impl Shell {
 		if self.selected == destination {
 			return;
 		}
+		self.record_navigation(cx);
+
 		if self.selected == Destination::Health {
 			self.health_query.deactivate();
 		}
@@ -1609,6 +1611,7 @@ impl Shell {
 	}
 
 	fn start_new_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		self.record_navigation(cx);
 		self.conversations.begin_new();
 
 		self.deferred_provider_refresh = None;
@@ -1622,6 +1625,7 @@ impl Shell {
 		self.input_status = None;
 
 		self.synchronize_conversations(cx);
+		self.record_navigation(cx);
 		window.focus(&self.composer.focus_handle(cx), cx);
 		cx.notify();
 	}
@@ -1632,6 +1636,7 @@ impl Shell {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) {
+		self.record_navigation(cx);
 		if self.conversations.select(conversation_id.clone()) {
 			// The same retained connection serializes provider commands before later queries.
 			// Show daemon-owned SQLite history first, then reconcile the provider in background.
@@ -1641,6 +1646,7 @@ impl Shell {
 			self.input_status = None;
 
 			self.synchronize_conversations(cx);
+			self.record_navigation(cx);
 			window.focus(&self.composer.focus_handle(cx), cx);
 			cx.notify();
 		}
@@ -1659,6 +1665,7 @@ impl Shell {
 		};
 		let conversation_id = self.quick.tasks[next].conversation_id.clone();
 
+		self.record_navigation(cx);
 		if self.conversations.select(conversation_id.clone()) {
 			self.deferred_provider_refresh = Some(conversation_id);
 			self.creating_new = false;
@@ -1666,6 +1673,7 @@ impl Shell {
 			self.input_status = None;
 
 			self.synchronize_conversations(cx);
+			self.record_navigation(cx);
 			cx.notify();
 		}
 	}
@@ -1870,6 +1878,8 @@ impl Shell {
 			self.select_settings_section(destination, cx);
 		} else {
 			self.select_destination(destination, cx);
+			self.record_navigation(cx);
+			cx.notify();
 		}
 	}
 
@@ -1909,6 +1919,7 @@ impl Drop for Shell {
 
 impl Render for Shell {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.navigation.repair_focus(&self.root_focus, window);
 		let presentation = connection_presentation(self.connection);
 		let root = gpui::div()
 			.id("decodex-shell")
@@ -1918,6 +1929,13 @@ impl Render for Shell {
 			.text_size(gpui::px(13.0))
 			.key_context("Conversations")
 			.track_focus(&self.root_focus)
+			.capture_any_mouse_down(cx.listener(|s, event: &gpui::MouseDownEvent, window, cx| {
+				if let Some(forward) = navigation::mouse_direction(event.button) {
+					window.prevent_default();
+					s.navigate_history(forward, window, cx);
+					cx.stop_propagation();
+				}
+			}))
 			.on_action(cx.listener(Self::focus_next))
 			.on_action(cx.listener(Self::focus_previous))
 			.on_action(cx.listener(Self::activate_conversations))
@@ -1972,8 +1990,14 @@ impl Render for Shell {
 				}
 			}))
 			.on_key_down(cx.listener(Self::interrupt_reply))
-			.on_action(cx.listener(|s, _: &NavigateBack, _, cx| s.navigate_history(false, cx)))
-			.on_action(cx.listener(|s, _: &NavigateForward, _, cx| s.navigate_history(true, cx)))
+			.on_action(
+				cx.listener(|s, _: &NavigateBack, window, cx| {
+					s.navigate_history(false, window, cx)
+				}),
+			)
+			.on_action(cx.listener(|s, _: &NavigateForward, window, cx| {
+				s.navigate_history(true, window, cx)
+			}))
 			.on_action(cx.listener(Self::select_previous_conversation))
 			.on_action(cx.listener(Self::select_next_conversation))
 			.on_action(cx.listener(Self::submit_composer))
@@ -2088,6 +2112,7 @@ impl LifecycleOwner {
 pub(crate) struct SettingsWindow {
 	owner: Entity<Shell>,
 	focus: FocusHandle,
+	navigation: navigation::NavigationHistory,
 	_observation: Subscription,
 }
 impl SettingsWindow {
@@ -2096,14 +2121,19 @@ impl SettingsWindow {
 
 		window.focus(&focus, cx);
 
-		let observation = cx.observe(&owner, |_, _, cx| cx.notify());
+		let navigation = navigation::NavigationHistory::for_settings(owner.read(cx), cx);
+		let observation = cx.observe(&owner, |settings, _, cx| {
+			settings.record_navigation(cx);
+			cx.notify();
+		});
 
-		Self { owner, focus, _observation: observation }
+		Self { owner, focus, navigation, _observation: observation }
 	}
 }
 
 impl Render for SettingsWindow {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.navigation.repair_focus(&self.focus, window);
 		let content = self.owner.update(cx, |s, cx| {
 			settings_workspace_content(s, true, s.refresh_focus.clone(), window, cx)
 		});
@@ -2117,6 +2147,15 @@ impl Render for SettingsWindow {
 			.bg(ui_theme::rgba(SHELL_MATERIAL))
 			.key_context("SettingsWindow")
 			.track_focus(&self.focus)
+			.capture_any_mouse_down(cx.listener(
+				|settings, event: &gpui::MouseDownEvent, window, cx| {
+					if let Some(forward) = navigation::mouse_direction(event.button) {
+						window.prevent_default();
+						settings.navigate_history(forward, window, cx);
+						cx.stop_propagation();
+					}
+				},
+			))
 			.on_action(cx.listener(|_, _: &CloseWindow, window, cx| {
 				window.remove_window();
 				cx.stop_propagation();
@@ -2124,6 +2163,14 @@ impl Render for SettingsWindow {
 			.on_action(cx.listener(|_, _: &ActivateSettings, _, cx| cx.stop_propagation()))
 			.on_action(cx.listener(|_, _: &FocusNext, window, cx| window.focus_next(cx)))
 			.on_action(cx.listener(|_, _: &FocusPrevious, window, cx| window.focus_prev(cx)))
+			.on_action(cx.listener(|settings, _: &NavigateBack, window, cx| {
+				settings.navigate_history(false, window, cx);
+				cx.stop_propagation();
+			}))
+			.on_action(cx.listener(|settings, _: &NavigateForward, window, cx| {
+				settings.navigate_history(true, window, cx);
+				cx.stop_propagation();
+			}))
 			.relative()
 			.child(content)
 	}
@@ -6792,7 +6839,9 @@ mod tests {
 		}
 	}
 
-	fn open_shell(cx: &mut TestAppContext) -> (gpui::Entity<Shell>, &mut VisualTestContext) {
+	pub(super) fn open_shell(
+		cx: &mut TestAppContext,
+	) -> (gpui::Entity<Shell>, &mut VisualTestContext) {
 		cx.update(bind_keys);
 
 		cx.add_window_view(|window, cx| Shell::new(window, cx, ConnectionView::Stopped))
@@ -8157,29 +8206,62 @@ mod tests {
 			s.agent.update(cx, |agent, cx| agent.visual_workspace_fixture(cx))
 		});
 		shell.update(visual, |s, cx| {
-			s.agent.update(cx, |agent, cx| agent.restore_work(Some("verify"), cx));
+			s.agent.update(cx, |agent, cx| {
+				assert!(agent.restore_location(
+					&shell::agent_surface::AgentLocation::Conversation {
+						work: Some("verify".into()),
+						thread: None,
+					},
+					cx
+				));
+			});
 			s.record_navigation(cx);
 		});
 		shell.update(visual, |s, cx| s.select_destination(Destination::Settings, cx));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let appearance = visual.debug_bounds("settings-section-Appearance").unwrap();
+
+		visual.simulate_click(appearance.center(), Default::default());
+		visual.simulate_keystrokes("cmd-[");
+		shell.read_with(visual, |s, cx| {
+			assert_eq!(s.selected, Destination::Settings);
+			assert_eq!(s.settings.read(cx).category, super::SettingsCategory::General);
+		});
 		visual.simulate_keystrokes("cmd-[");
 		shell.read_with(visual, |s, cx| {
 			assert_eq!(s.selected, Destination::Agent);
-			assert_eq!(s.agent.read(cx).navigation_work().as_deref(), Some("verify"));
+			assert_eq!(
+				s.agent.read(cx).navigation_location(),
+				shell::agent_surface::AgentLocation::Conversation {
+					work: Some("verify".into()),
+					thread: None,
+				}
+			);
 		});
 		visual.simulate_keystrokes("cmd-[");
 
-		assert_eq!(shell.read_with(visual, |s, cx| s.agent.read(cx).navigation_work()), None);
+		assert_eq!(
+			shell.read_with(visual, |s, cx| s.agent.read(cx).navigation_location()),
+			shell::agent_surface::AgentLocation::Root
+		);
 
 		visual.simulate_keystrokes("cmd-]");
 
 		assert_eq!(
-			shell.read_with(visual, |s, cx| s.agent.read(cx).navigation_work()),
-			Some("verify".into())
+			shell.read_with(visual, |s, cx| s.agent.read(cx).navigation_location()),
+			shell::agent_surface::AgentLocation::Conversation {
+				work: Some("verify".into()),
+				thread: None
+			}
 		);
 
 		visual.simulate_keystrokes("cmd-]");
 
 		assert_eq!(shell.read_with(visual, |s, _| s.selected), Destination::Settings);
+		visual.simulate_keystrokes("cmd-]");
+		shell.read_with(visual, |s, cx| {
+			assert_eq!(s.settings.read(cx).category, super::SettingsCategory::Appearance);
+		});
 	}
 
 	#[gpui::test]

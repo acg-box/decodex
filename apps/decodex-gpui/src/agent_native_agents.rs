@@ -511,13 +511,18 @@ impl AgentSurface {
 		}
 	}
 
-	pub(super) fn open_native_agent(&mut self, owner: &str, thread: &str, cx: &mut Context<Self>) {
-		self.workspace.browsing = false;
+	pub(super) fn can_open_native_agent(&self, owner: &str, thread: &str) -> bool {
+		self.native_agents.pending.is_none()
+			&& self.command_connection_ready()
+			&& self.native_agent_target(owner, thread).is_some()
+	}
 
-		if self.native_agents.pending.is_some() || !self.command_connection_ready() {
+	pub(super) fn open_native_agent(&mut self, owner: &str, thread: &str, cx: &mut Context<Self>) {
+		if !self.can_open_native_agent(owner, thread) {
 			return;
 		}
 
+		self.workspace.browsing = false;
 		self.open_work_conversation(owner, Some(thread), cx);
 	}
 
@@ -1042,8 +1047,19 @@ mod tests {
 
 			assert_eq!(s.conversation_work().unwrap().codex_thread_id.as_deref(), Some("child-a"));
 			assert_eq!(s.conversation_page().as_deref(), Some("native:agent:child-a"));
-			assert_eq!(s.navigation_work().as_deref(), Some("native:agent:child-a"));
-			assert!(s.can_restore_work(s.navigation_work().as_deref()));
+			let location = s.navigation_location();
+
+			assert_eq!(
+				location,
+				crate::shell::agent_surface::AgentLocation::Conversation {
+					work: None,
+					thread: Some("child-a".into()),
+				}
+			);
+			let aliases = std::mem::take(&mut s.native_agents.pages);
+
+			assert!(s.can_restore_location(&location));
+			s.native_agents.pages = aliases;
 			assert!(!s.timeline.follow_paused.contains("parent-marker"));
 
 			s.conversation_composer()

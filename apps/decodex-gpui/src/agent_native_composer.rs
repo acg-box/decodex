@@ -117,7 +117,11 @@ impl Render for ComposerPanel {
 				}
 			})
 			.id("native-composer-focus-panel")
-			.capture_any_mouse_down(move |event, _, cx| {
+			.capture_any_mouse_down(move |event, window, cx| {
+				if crate::shell::navigation::forward_mouse_navigation(parent, event, window, cx) {
+					return;
+				}
+
 				ui_motion::dismiss_shared_popover(parent, cx);
 				focus_owner.update(cx, |s, cx| {
 					if let Some((name, _)) =

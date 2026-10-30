@@ -45,6 +45,7 @@ mod native_composer;
 #[path = "agent_native_menu.rs"]
 mod native_menu;
 #[path = "agent_timeline.rs"] mod native_timeline;
+#[path = "agent_navigation.rs"] mod navigation;
 #[path = "agent_output_stream.rs"] mod output_stream;
 #[path = "agent_panel_controls.rs"] mod panel_controls;
 #[path = "agent_permissions.rs"] mod permissions;
@@ -134,6 +135,7 @@ use drafts::{Profiles, SubmissionState};
 use handoffs::Handoffs;
 use native_agents::NativeAgents;
 use native_timeline::Timeline;
+pub(crate) use navigation::AgentLocation;
 use output_stream::OutputStream;
 use question_notices::QuestionNotices;
 use recap::Automatic;
