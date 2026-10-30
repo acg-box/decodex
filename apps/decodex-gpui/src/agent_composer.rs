@@ -519,7 +519,8 @@ impl AgentSurface {
 										cx,
 									))
 								},
-							);
+							)
+							.children(self.sample_toolbar_action(cx));
 
 						if self.voice_on_current_conversation() {
 							capsule.child(

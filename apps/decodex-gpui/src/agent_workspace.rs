@@ -1291,6 +1291,7 @@ impl AgentSurface {
 		}
 
 		let chat = self.workspace_details_overlay(chat, selected.as_ref(), window, cx);
+		let chat = chat.child(self.sample_popover(window, cx));
 
 		self.workspace_frame(chat.into_any_element(), wide, window, cx)
 	}

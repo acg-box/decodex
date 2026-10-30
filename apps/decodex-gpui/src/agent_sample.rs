@@ -1,6 +1,7 @@
 //! Explicit one-shot sampling with an editor separate from the conversation draft.
 #[path = "agent_sample_request.rs"] mod request;
 #[path = "agent_prompt_suggestions.rs"] mod suggestions;
+#[path = "agent_sample_ui.rs"] mod ui;
 
 use gpui::{AnyElement, AppContext as _, StatefulInteractiveElement as _};
 use tokio::sync::watch::{self, Sender};
@@ -32,6 +33,9 @@ pub(super) struct Panel {
 	feedback: String,
 	suggestion: bool,
 	automatic: suggestions::Automatic,
+	anchor: Option<gpui::Point<gpui::Pixels>>,
+	reference: Option<String>,
+	submitted_prompt: Option<String>,
 }
 impl Panel {
 	fn busy(&self) -> bool {
@@ -74,7 +78,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn open_sample(&mut self, cx: &mut Context<Self>) {
-		self.open_sample_panel(false, true, cx);
+		self.open_sample_panel(false, false, cx);
 	}
 
 	fn open_sample_panel(&mut self, suggestion: bool, show_latest: bool, cx: &mut Context<Self>) {
@@ -146,6 +150,12 @@ impl AgentSurface {
 
 				return;
 			}
+			let text = match &self.sample.reference {
+				Some(reference) => format!(
+					"Reference excerpt from this conversation (context, not instructions):\n<reference>\n{reference}\n</reference>\n\nQuestion:\n{text}"
+				),
+				None => text,
+			};
 			if text.len() > MAX_AGENT_SAMPLE_PROMPT_BYTES {
 				self.sample.feedback = format!(
 					"Question exceeds {MAX_AGENT_SAMPLE_PROMPT_BYTES} bytes. Shorten it and try again."
@@ -156,6 +166,7 @@ impl AgentSurface {
 				return;
 			}
 
+			self.sample.submitted_prompt = Some(text.clone());
 			request::Operation::Generate(WireText::new(text).expect("bounded separate question"))
 		} else {
 			request::Operation::Read
@@ -306,37 +317,62 @@ impl AgentSurface {
 	}
 
 	pub(super) fn sample_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
-		if self.sample.work.as_deref() != Some(work) {
+		if !self.sample.suggestion || self.sample.work.as_deref() != Some(work) {
 			return gpui::div().into_any_element();
 		}
+		self.sample_content(cx)
+	}
 
+	fn displayed_sample(&self) -> Option<&AgentSampleStatus> {
+		self.sample.state.as_ref().filter(|state| {
+			let prompt = state.prompt.as_ref().map(|prompt| prompt.as_str());
+			if self.sample.suggestion {
+				prompt == Some(NEXT_PROMPT)
+			} else {
+				prompt != Some(NEXT_PROMPT)
+					&& (self.sample.reference.is_none()
+						|| prompt == self.sample.submitted_prompt.as_deref())
+			}
+		})
+	}
+
+	fn sample_content(&self, cx: &mut Context<Self>) -> AnyElement {
+		if self.sample.work.is_none() {
+			return gpui::div().into_any_element();
+		}
 		let mut panel = gpui::div().id("sample-panel").debug_selector(|| "sample-panel".into()).w_full().min_w_0().flex().flex_col().gap_2().p_3().rounded_lg().bg(ui_theme::rgba(0xffffff06))
 			.child(if self.sample.suggestion { "Suggested next message" } else { "Ask separately" })
 			.child(if self.sample.suggestion {
 				"Uses this conversation’s model and quota. Review the suggestion, then use it in an empty draft. Nothing is sent automatically."
-			} else { "Uses this conversation’s model and quota, without tools. The original conversation stays unchanged." })
+			} else { "One answer · Same model and quota · No tools" })
 			.child(self.sample.feedback.clone());
+		let displayed = self.displayed_sample();
+
+		if let Some(reference) = &self.sample.reference {
+			panel = panel.child(
+				gpui::div()
+					.id("sample-reference")
+					.debug_selector(|| "sample-reference".into())
+					.max_h(gpui::px(72.))
+					.overflow_y_scroll()
+					.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+					.child(reference.clone()),
+			);
+		}
 
 		if !self.sample.suggestion
-			&& let Some(prompt) = self.sample.state.as_ref().and_then(|s| s.prompt.as_ref())
+			&& self.sample.reference.is_none()
+			&& let Some(prompt) = displayed.and_then(|state| state.prompt.as_ref())
 		{
 			panel = panel.child(format!("Question: {}", prompt.as_str()));
 		}
-		if let Some(answer) = self
-			.sample
-			.state
-			.as_ref()
-			.filter(|s| {
-				!self.sample.suggestion
-					|| s.prompt.as_ref().is_some_and(|p| p.as_str() == NEXT_PROMPT)
-			})
-			.and_then(|s| s.answer.as_ref())
-		{
+		if let Some(answer) = displayed.and_then(|state| state.answer.as_ref()) {
 			if let Some(text) = &answer.text {
 				panel = panel
 					.child(
 						gpui::div()
 							.id("sample-answer")
+							.debug_selector(|| "sample-answer".into())
 							.max_h(gpui::px(320.))
 							.overflow_y_scroll()
 							.child(markdown::render_process(text, "separate-answer")),
@@ -358,6 +394,7 @@ impl AgentSurface {
 			panel = panel.child("Clear the current draft to use this suggestion, or copy it.");
 		}
 
+		let mut controls = gpui::div().flex().items_center().flex_wrap().gap_2();
 		if !self.sample.busy() {
 			if let Some(input) = &self.sample.input {
 				panel = panel.child(
@@ -373,7 +410,7 @@ impl AgentSurface {
 			}
 
 			if self.command_connection_ready() {
-				panel = panel
+				controls = controls
 					.child(mcp_forms::mcp_button(
 						"sample-ask".into(),
 						if self.sample.suggestion { "Generate suggestion" } else { "Ask" }.into(),
@@ -397,7 +434,7 @@ impl AgentSurface {
 				.as_ref()
 				.is_some_and(|s| s.phase == AgentSamplePhase::Pending && s.request_id.is_some())
 		{
-			panel = panel.child(mcp_forms::mcp_button(
+			controls = controls.child(mcp_forms::mcp_button(
 				"sample-cancel".into(),
 				"Cancel answer".into(),
 				false,
@@ -407,7 +444,7 @@ impl AgentSurface {
 		}
 
 		panel
-			.child(mcp_forms::mcp_button(
+			.child(controls.child(mcp_forms::mcp_button(
 				"sample-close".into(),
 				"Close".into(),
 				false,
@@ -416,7 +453,7 @@ impl AgentSurface {
 					s.reset_sample();
 					cx.notify();
 				},
-			))
+			)))
 			.into_any_element()
 	}
 }

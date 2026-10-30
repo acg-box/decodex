@@ -12,13 +12,16 @@ use std::{
 
 use gpui::{
 	AnyElement, App, DispatchPhase, Div, Entity, IntoElement, KeyDownEvent, MouseButton,
-	MouseDownEvent, MouseMoveEvent, Pixels, Point, RenderOnce, TextLayout,
+	MouseDownEvent, MouseMoveEvent, Pixels, Point, RenderOnce, StatefulInteractiveElement as _,
+	TextLayout,
 };
 
 use crate::shell::agent_surface::selectable_text::{
 	ClipboardItem, FocusHandle, InteractiveElement, ParentElement, SelectableText, SharedString,
 	Styled, TextBlock, Window,
 };
+
+pub(in crate::shell::agent_surface) type AskSelection = Rc<dyn Fn(String, &mut Window, &mut App)>;
 
 #[derive(Default)]
 pub(in crate::shell::agent_surface) struct Document {
@@ -27,8 +30,14 @@ pub(in crate::shell::agent_surface) struct Document {
 	separator: Option<&'static str>,
 	scope: Rc<OnceCell<Scope>>,
 	source: source::Source,
+	ask: Option<AskSelection>,
 }
 impl Document {
+	pub(in crate::shell::agent_surface) fn on_ask(mut self, ask: Option<AskSelection>) -> Self {
+		self.ask = ask;
+		self
+	}
+
 	pub(in crate::shell::agent_surface) fn push(
 		&mut self,
 		text: SelectableText,
@@ -150,6 +159,7 @@ pub(super) struct Selection {
 	pub head: usize,
 	pub dragging: bool,
 	pub focus: FocusHandle,
+	pub action_position: Option<Point<Pixels>>,
 }
 impl Selection {
 	pub fn range(&self, text: &str) -> Range<usize> {
@@ -169,9 +179,57 @@ impl RenderOnce for DocumentView {
 		let state = window.use_keyed_state(
 			SharedString::from(format!("selection-{}", self.key)),
 			cx,
-			|_, cx| Selection { anchor: 0, head: 0, dragging: false, focus: cx.focus_handle() },
+			|_, cx| Selection {
+				anchor: 0,
+				head: 0,
+				dragging: false,
+				focus: cx.focus_handle(),
+				action_position: None,
+			},
 		);
 		let focus = state.read(cx).focus.clone();
+		let range = state.read(cx).range(&self.document.text);
+		let has_ask = self.document.ask.is_some();
+		let action = self.document.ask.and_then(|ask| {
+			if range.is_empty() || state.read(cx).dragging {
+				return None;
+			}
+			let position = state.read(cx).action_position?;
+			let quote = self.document.text[range].to_owned();
+			let keys = ask.clone();
+			let key_quote = quote.clone();
+			Some(
+				gpui::deferred(
+					gpui::anchored()
+						.position(position)
+						.offset(gpui::point(gpui::px(0.), gpui::px(8.)))
+						.snap_to_window_with_margin(gpui::px(8.))
+						.child(
+							crate::ui_motion::menu_surface(gpui::div())
+								.id("ask-selected-text")
+								.debug_selector(|| "ask-selected-text".into())
+								.role(gpui::Role::Button)
+								.aria_label("Ask about selection")
+								.tab_index(0)
+								.px_2()
+								.py_1()
+								.cursor_pointer()
+								.child("Ask about selection")
+								.on_mouse_down(MouseButton::Left, move |_, window, cx| {
+									ask(quote.clone(), window, cx);
+									cx.stop_propagation();
+								})
+								.on_key_down(move |event: &KeyDownEvent, window, cx| {
+									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+										keys(key_quote.clone(), window, cx);
+										cx.stop_propagation();
+									}
+								}),
+						),
+				)
+				.with_priority(4),
+			)
+		});
 		let text: SharedString = self.document.text.into();
 		let scope = self.document.scope;
 		let _ = scope.set(Scope {
@@ -189,11 +247,27 @@ impl RenderOnce for DocumentView {
 			.id(SharedString::from(format!("text-document-{}", self.key)))
 			.relative()
 			.track_focus(&focus)
-			.on_mouse_up(MouseButton::Left, move |_, _, cx| {
-				up.update(cx, |s, _| s.dragging = false)
+			.on_mouse_up(MouseButton::Left, move |event, _, cx| {
+				up.update(cx, |s, cx| {
+					if s.dragging {
+						s.dragging = false;
+						if has_ask {
+							s.action_position = Some(event.position);
+							cx.notify();
+						}
+					}
+				})
 			})
-			.on_mouse_up_out(MouseButton::Left, move |_, _, cx| {
-				outside.update(cx, |s, _| s.dragging = false)
+			.on_mouse_up_out(MouseButton::Left, move |event, _, cx| {
+				outside.update(cx, |s, cx| {
+					if s.dragging {
+						s.dragging = false;
+						if has_ask {
+							s.action_position = Some(event.position);
+							cx.notify();
+						}
+					}
+				})
 			})
 			.on_mouse_down(MouseButton::Right, move |_, window, cx| {
 				menu.get().expect("selection scope").context_menu(window, cx);
@@ -218,6 +292,7 @@ impl RenderOnce for DocumentView {
 				cx.stop_propagation();
 			})
 			.child(drag(scope))
+			.children(action)
 	}
 }
 

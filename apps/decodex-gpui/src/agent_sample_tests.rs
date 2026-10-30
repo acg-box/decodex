@@ -24,7 +24,7 @@ use decodex_protocol::{
 struct SamplePanel(Entity<AgentSurface>);
 impl Render for SamplePanel {
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		self.0.update(cx, |s, cx| s.sample_panel(&s.selected.clone().unwrap(), cx))
+		self.0.update(cx, |s, cx| s.sample_content(cx))
 	}
 }
 

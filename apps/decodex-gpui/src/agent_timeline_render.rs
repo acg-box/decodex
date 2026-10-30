@@ -229,12 +229,13 @@ impl AgentSurface {
 		}
 
 		let user = kind == "userMessage";
-		let mut body = gpui::div()
-			.min_w_0()
-			.flex()
-			.flex_col()
-			.gap(gpui::px(METADATA_GAP))
-			.child(markdown::render(text, &identity));
+		let mut body = gpui::div().min_w_0().flex().flex_col().gap(gpui::px(METADATA_GAP)).child(
+			markdown::render_with_selection_action(
+				text,
+				&identity,
+				if kind == "agentMessage" { self.sample_selection_action(cx) } else { None },
+			),
+		);
 
 		for attachment in attachments {
 			body = body.child(self.native_attachment(work, turn_id, item_id, attachment, cx));
@@ -244,11 +245,18 @@ impl AgentSurface {
 			body = body.child(agent_surface::muted("History preview shortened."));
 		}
 		if kind == "agentMessage" && !text.is_empty() {
-			body = body.child(markdown::response_copy_button(
-				&format!("copy-{identity}"),
-				"Copy response",
-				text.clone(),
-			));
+			body = body.child(
+				gpui::div()
+					.flex()
+					.items_center()
+					.gap_1()
+					.child(markdown::response_copy_button(
+						&format!("copy-{identity}"),
+						"Copy response",
+						text.clone(),
+					))
+					.children(self.sample_response_action(text, &identity, cx)),
+			);
 		}
 		if kind == "agentMessage"
 			&& let Some(action) = self.voice_read_action(&work.id, &identity, text, *truncated, cx)
@@ -645,6 +653,7 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 					draft.is_none(),
 				)
 				.settled(self.timeline.native.completions.output(item_id))
+				.on_ask(self.sample_selection_action(cx))
 				.into_any_element()
 			});
 
@@ -655,9 +664,13 @@ turn_id: turn, kind, .. } if turn == turn_id && kind == "agentMessage")
 				streamed,
 				complete,
 				(kind == "agentMessage").then(|| self.timeline.native.completions.output(item_id)),
-				(kind == "userMessage")
-					.then(|| self.native_prompt_action(work, content, identity, cx))
-					.flatten(),
+				if kind == "userMessage" {
+					self.native_prompt_action(work, content, identity, cx)
+				} else if complete {
+					self.sample_response_action(text, identity, cx)
+				} else {
+					None
+				},
 			));
 
 			if kind == "agentMessage"

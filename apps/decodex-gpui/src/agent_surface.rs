@@ -3166,6 +3166,7 @@ fn history_entry_presented(
 		.min_w_0()
 		.flex_none()
 		.flex()
+		.when(!user, |row| row.group(SharedString::from(format!("history-response-{identity}"))))
 		.when(user, |row| {
 			row.group(SharedString::from(format!("history-input-{identity}"))).child(
 				gpui::div().flex_1().min_w_0().relative().children(input_action.map(|action| {
