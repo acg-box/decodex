@@ -83,6 +83,7 @@ pub(super) fn run() {
 
 		cx.spawn(async move |cx| {
 			cx.background_executor().timer(Duration::from_secs(1)).await;
+			cx.update(verify_viewports);
 
 			for step in 0..20 {
 				let debug = (step / 2) % 2 == 0;
@@ -109,6 +110,22 @@ pub(super) fn run() {
 		})
 		.detach();
 	});
+}
+
+fn verify_viewports(cx: &mut gpui::App) {
+	for handle in cx.windows() {
+		handle
+			.update(cx, |_, window, _| {
+				let rendering = crate::ui_theme::native_material_panel::observed_rendering(window)
+					.expect("native display geometry");
+
+				assert_eq!(
+					rendering["gpui_viewport"], rendering["view_bounds"],
+					"native foreground bounds must match the GPUI viewport"
+				);
+			})
+			.expect("inspect isolated native window");
+	}
 }
 
 // NSArgumentDomain is process-local. Qualification never writes appearance preferences.

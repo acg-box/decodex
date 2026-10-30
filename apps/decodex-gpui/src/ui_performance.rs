@@ -538,21 +538,33 @@ impl Render for PerformanceIsland {
 				ui_motion::value(activity.ids().3, allocation.width, window, cx)
 			})
 			.collect();
-		// Counter the centered row's movement so each pill expands away from its neighbor.
-		let shift = if let ([left, right], [left_rest, right_rest]) =
-			(widths.as_slice(), resting.as_slice())
-		{
-			((right - right_rest.width) - (left - left_rest.width)) / 2.
-		} else {
-			0.
-		};
-		let mut islands =
-			gpui::div().relative().left(gpui::px(shift)).flex().items_start().gap(gpui::px(6.));
+		let paired = activities.len() == 2;
+		let mut islands = gpui::div().relative().flex().items_start().gap(gpui::px(6.));
 
-		for (((activity, content), allocation), width) in
-			activities.iter().zip(allocations).zip(widths)
+		for (index, (((activity, content), allocation), width)) in
+			activities.iter().zip(allocations).zip(widths).enumerate()
 		{
-			islands = islands.child(self.pill(*activity, allocation, width, content, window, cx));
+			let pill = self.pill(*activity, allocation, width, content, window, cx);
+			islands = islands.child(if paired {
+				// Fixed resting slots keep the inner edges stable through pixel rounding.
+				gpui::div()
+					.relative()
+					.w(gpui::px(resting[index].width))
+					.h(gpui::px(CAPSULE_HEIGHT))
+					.flex_none()
+					.child(
+						gpui::div()
+							.absolute()
+							.top_0()
+							.when(index == 0, |d| d.right_0())
+							.when(index != 0, |d| d.left_0())
+							.w(gpui::px(width))
+							.child(pill),
+					)
+					.into_any_element()
+			} else {
+				pill
+			});
 		}
 
 		islands.into_any_element()

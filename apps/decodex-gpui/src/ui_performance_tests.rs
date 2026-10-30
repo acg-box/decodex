@@ -53,8 +53,14 @@ fn expanding_either_capsule_keeps_the_other_in_place(cx: &mut TestAppContext) {
 	let moving_work = visual.debug_bounds("activity-work-control").unwrap();
 	let moving_debug = visual.debug_bounds("activity-debug-control").unwrap();
 
-	assert!((work.right() - moving_work.right()).abs() < gpui::px(0.5));
-	assert!((debug.left() - moving_debug.left()).abs() < gpui::px(0.5));
+	assert!(
+		(work.right() - moving_work.right()).abs() < gpui::px(0.5),
+		"work anchor: {work:?} -> {moving_work:?}"
+	);
+	assert!(
+		(debug.left() - moving_debug.left()).abs() < gpui::px(0.5),
+		"debug anchor: {debug:?} -> {moving_debug:?}"
+	);
 
 	thread::sleep(Duration::from_millis(180));
 	visual.update(crate::ui_frame::draw_frame);
