@@ -194,7 +194,9 @@ async fn installed_native_archive_roundtrip_refreshes_without_restarting_either_
 
 		if archived {
 			assert_eq!(visible.work_items.len(), 2);
-			assert_eq!(visible.work_items[1].parent_goal_id.as_deref(), Some("main"));
+			assert_eq!(visible.work_items[1].id, "child");
+			// Active children become independent roots until their retained parent returns.
+			assert_eq!(visible.work_items[1].parent_goal_id, None);
 		} else {
 			assert_eq!(visible, original, "restore original identities and hierarchy");
 		}
