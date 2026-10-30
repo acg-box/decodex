@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "45358875cb823daef213c47ee283a2c916913195115c8c18de2c37dd3c850b67",
+    "sha256": "f024f940a4ac63e2ad2f65122a7f7e2641d01980074fcb4a580dc6bd0ce80459",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
