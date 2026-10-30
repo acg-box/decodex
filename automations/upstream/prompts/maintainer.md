@@ -30,6 +30,8 @@ This read-only form returns a compact current summary and state digest. Prepare 
 
 Use the same publisher for pending work, runtime and delivery observations. Keep source review, runtime qualification, PR delivery and installed-app acceptance separate. Reconcile finished historical blocks before explicitly archiving them. Preserve unresolved work in pending lists or followups and preserve certified ranges. Do not keep duplicate current counters or append new historical status blocks to the current state. A missing receipt is an evidence gap, not a regression or permission to move a cursor.
 
+After manual product work or a catch-up, reconcile every later merged delivery with current main and its native receipts before resuming daily work. Replace the current continuation with one accurate next action; remove superseded instructions such as an already-finished proposal review. Preserve deferred decisions in their issues and pending indexes without treating them as approved implementation or daily backlog. Record the fixed target, certified prefix, remaining count, pending delivery and verification limits together. A complete fixed target does not mean that a later upstream main is reviewed.
+
 ## Review a fixed upstream delta
 
 Fetch official upstream main once and record its exact SHA and observation time as this run's fixed target. Generate a consecutive inventory after the certified cursor. Review it in bounded batches and continue through the fixed target within the same run. Keep screened count separate from completed review count.
@@ -61,6 +63,8 @@ Keep earlier coverage uncertainty in a separate baseline-audit queue. Check curr
 ## Deliver one completed batch
 
 Prepare code, reusable tests, portable evidence and relevant OpenWiki updates before the first push when practical. Use small signed local commits and a focused PR. Public code commit references are sufficient in tracked evidence; keep the PR number, live CI and merge receipt native. Do not create a commit solely to backfill a PR link. Attach each created PR to the chat and use codex plus codex-automation labels when available.
+
+Finish source and portable evidence edits, verify the contract-catalog digest, then freeze those inputs before starting Wiki page jobs. Keep live PR, CI and merge observations in native receipts so delivery bookkeeping does not repeatedly invalidate Wiki claims. A source change during generation requires the supported lifecycle to reconcile the affected pages; it does not authorize unrelated runtime tests.
 
 Use the supported OpenWiki page-job lifecycle. Keep stable behavior, ownership and procedures in Wiki. Prefer narrow source/test or stable-contract evidence; link current qualification instead of copying each run's counts, hashes and status into several pages. If unrelated stale work expands the job queue, record its incomplete lifecycle and owner instead of silently claiming completion or hand-editing generated state.
 
