@@ -271,6 +271,8 @@ impl AgentSurface {
 
 	pub(super) fn work_is_archived(&self, id: &str) -> bool {
 		self.snapshot.as_ref().is_some_and(|s| s.archived_work_ids.contains(id))
+			|| self.workspace.archives.viewed_work().is_some_and(|work| work.id == id)
+				&& !self.snapshot.as_ref().is_some_and(|s| s.work_items.iter().any(|w| w.id == id))
 	}
 
 	pub(super) fn selected_is_archived(&self) -> bool {

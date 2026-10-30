@@ -164,7 +164,11 @@ impl AgentSurface {
 	pub(super) fn root_id(&self) -> Option<String> {
 		let snapshot = self.snapshot.as_ref()?;
 
-		if let Some(agent) = snapshot.agents.iter().find(|a| a.assistant) {
+		if let Some(agent) = snapshot
+			.agents
+			.iter()
+			.find(|a| a.assistant && snapshot.work_items.iter().any(|work| work.id == a.id))
+		{
 			return Some(agent.id.clone());
 		}
 
@@ -187,14 +191,22 @@ impl AgentSurface {
 		thread: Option<&str>,
 		cx: &mut Context<Self>,
 	) {
-		let Some(work) =
-			self.snapshot.as_ref().and_then(|s| s.work_items.iter().find(|w| w.id == id))
-		else {
+		let Some(work) = self.conversation_record(id).cloned() else {
 			return;
 		};
-		let thread = thread.map(str::to_owned).or_else(|| {
-			(work.kind == AgentWorkKindDto::Task).then(|| work.codex_thread_id.clone()).flatten()
-		});
+		let archived = self.work_is_archived(id);
+		if !archived {
+			self.workspace.archives.viewed = None;
+		}
+		let thread = (!archived)
+			.then(|| {
+				thread.map(str::to_owned).or_else(|| {
+					(work.kind == AgentWorkKindDto::Task)
+						.then(|| work.codex_thread_id.clone())
+						.flatten()
+				})
+			})
+			.flatten();
 		let editor_ready = thread.is_some()
 			|| work.parent_goal_id.is_some() && work.kind != AgentWorkKindDto::Manager
 			|| self.composer_manager.as_deref() == Some(id);
@@ -298,7 +310,9 @@ impl AgentSurface {
 			self.enter_native_conversation(id, &thread, cx);
 		} else {
 			self.load_history(cx);
-			self.sync_request(cx);
+			if !archived {
+				self.sync_request(cx);
+			}
 		}
 
 		cx.notify();
@@ -319,11 +333,8 @@ impl AgentSurface {
 
 	pub(super) fn restore_manager_composer(&mut self, id: &str, cx: &mut Context<Self>) {
 		let is_manager = self.workspace.new_conversation.as_deref() == Some(id)
-			|| self.snapshot.as_ref().is_some_and(|snapshot| {
-				snapshot.work_items.iter().any(|work| {
-					work.id == id
-						&& (work.parent_goal_id.is_none() || work.kind == AgentWorkKindDto::Manager)
-				})
+			|| self.conversation_record(id).is_some_and(|work| {
+				work.parent_goal_id.is_none() || work.kind == AgentWorkKindDto::Manager
 			});
 
 		if is_manager {

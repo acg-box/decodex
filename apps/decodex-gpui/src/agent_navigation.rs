@@ -71,10 +71,8 @@ impl AgentSurface {
 				self.workspace.new_conversation.as_ref() == Some(id)
 					&& !self.sending
 					&& !self.uncertain
-					|| self
-						.snapshot
-						.as_ref()
-						.is_some_and(|s| s.work_items.iter().any(|w| &w.id == id)),
+					|| self.conversation_record(id).is_some()
+					|| self.workspace.archives.archived_work(id).is_some(),
 			_ => true,
 		}
 	}
@@ -106,6 +104,13 @@ impl AgentSurface {
 					self.open_native_agent(&work, thread, cx);
 				} else if self.workspace.new_conversation.as_ref() == Some(&work) {
 					self.new_work_conversation(cx);
+				} else if !self
+					.snapshot
+					.as_ref()
+					.is_some_and(|snapshot| snapshot.work_items.iter().any(|item| item.id == work))
+					&& self.workspace.archives.archived_work(&work).is_some()
+				{
+					self.open_archived_conversation(&work, cx);
 				} else {
 					self.open_work_conversation(&work, thread, cx);
 				}

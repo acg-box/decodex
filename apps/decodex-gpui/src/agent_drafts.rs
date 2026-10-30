@@ -242,6 +242,79 @@ pub(super) mod tests {
 	}
 
 	#[gpui::test]
+	fn startup_restores_the_saved_conversation_and_keeps_its_draft(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let mut snapshot = s.snapshot.clone().unwrap();
+			let work =
+				snapshot.work_items.iter_mut().find(|work| work.parent_goal_id.is_some()).unwrap();
+			work.parent_goal_id = None;
+			let saved = work.id.clone();
+			s.apply_drafts(
+				super::Drafts {
+					manager: Some(saved.clone()),
+					text: "Saved conversation draft".into(),
+					..Default::default()
+				},
+				cx,
+			);
+			s.selected = None;
+			s.apply_refreshed_snapshot(
+				Ok(decodex_protocol::AgentSnapshotResult::Available(snapshot)),
+				cx,
+			);
+			assert_eq!(s.selected.as_ref(), Some(&saved));
+			assert_eq!(s.composer_manager.as_ref(), Some(&saved));
+			assert_eq!(s.composer.read(cx).content(), "Saved conversation draft");
+		});
+	}
+
+	#[gpui::test]
+	fn startup_skips_an_archived_saved_owner_without_moving_its_draft(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let mut snapshot = s.snapshot.clone().unwrap();
+			let archived = snapshot
+				.work_items
+				.iter()
+				.find(|work| work.parent_goal_id.is_none())
+				.unwrap()
+				.id
+				.clone();
+			let next = snapshot.work_items.iter_mut().find(|work| work.id != archived).unwrap();
+			next.parent_goal_id = None;
+			let next = next.id.clone();
+			s.apply_drafts(
+				super::Drafts {
+					manager: Some(archived.clone()),
+					text: "Keep with archived owner".into(),
+					..Default::default()
+				},
+				cx,
+			);
+			s.selected = Some(archived.clone());
+			snapshot.work_items.retain(|work| work.id != archived);
+			for work in &mut snapshot.work_items {
+				if work.parent_goal_id.as_ref() == Some(&archived) {
+					work.parent_goal_id = None;
+				}
+			}
+			s.apply_refreshed_snapshot(
+				Ok(decodex_protocol::AgentSnapshotResult::Available(snapshot)),
+				cx,
+			);
+			assert_eq!(s.selected.as_ref(), Some(&next));
+			assert_eq!(s.composer_manager.as_ref(), Some(&next));
+			assert!(s.composer.read(cx).content().is_empty());
+			assert_eq!(s.draft_profiles.texts[&archived], "Keep with archived owner");
+		});
+	}
+
+	#[gpui::test]
 	fn profile_round_trip_restores_drafts_without_cross_service_input(
 		cx: &mut gpui::TestAppContext,
 	) {

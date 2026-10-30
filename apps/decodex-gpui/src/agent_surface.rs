@@ -856,6 +856,9 @@ impl AgentSurface {
 	}
 
 	fn build_submission(&self, text: &str, cx: &Context<Self>) -> Result<AgentActionDto, String> {
+		if self.selected_is_archived() {
+			return Err("This conversation is archived. Unarchive it to continue.".into());
+		}
 		let prompt = HistoryText::new(if text.trim().is_empty() {
 			"Please use the selected skills and inspect the selected tasks and files.".into()
 		} else {
@@ -1410,6 +1413,7 @@ impl AgentSurface {
 	}
 
 	fn reset_profile_panels(&mut self, cx: &mut Context<Self>) {
+		self.workspace.archives = Default::default();
 		self.work_board.clear(cx);
 		self.clear_activity_detail();
 		self.reset_resources();
@@ -1739,9 +1743,7 @@ impl AgentSurface {
 
 		self.apply_result(result);
 
-		let recovered_selection = previous_selection.is_none()
-			&& self.selected.is_some()
-			&& owner.as_ref().is_some_and(|owner| self.selected.as_ref() != Some(owner));
+		let recovered_selection = previous_selection != self.selected;
 
 		if removed || recovered_selection {
 			if let Some(selected) = self.selected.clone() {
@@ -1807,16 +1809,39 @@ impl AgentSurface {
 				self.invalidate_native_timeline(&snapshot);
 
 				if !self.is_new_conversation()
+					&& !snapshot.connection_initializing
+					&& !self.selected.as_ref().is_some_and(|id| {
+						!snapshot.archived_work_ids.contains(id)
+							&& snapshot.work_items.iter().any(|work| &work.id == id)
+					})
 					&& !self
-						.selected
-						.as_ref()
-						.is_some_and(|id| snapshot.work_items.iter().any(|work| &work.id == id))
+						.workspace
+						.archives
+						.viewed_work()
+						.is_some_and(|work| self.selected.as_ref() == Some(&work.id))
 				{
-					self.selected = snapshot
-						.work_items
-						.iter()
-						.find(|work| work.parent_goal_id.is_none())
-						.map(|work| work.id.clone());
+					self.selected = self
+						.composer_manager
+						.as_ref()
+						.and_then(|owner| {
+							snapshot
+								.work_items
+								.iter()
+								.find(|work| {
+									&work.id == owner && !snapshot.archived_work_ids.contains(owner)
+								})
+								.map(|work| work.id.clone())
+						})
+						.or_else(|| {
+							snapshot
+								.work_items
+								.iter()
+								.find(|work| {
+									work.parent_goal_id.is_none()
+										&& !snapshot.archived_work_ids.contains(&work.id)
+								})
+								.map(|work| work.id.clone())
+						});
 				}
 				// A saved first message promotes the local editor to a real conversation,
 				// including when acceptance was recovered after restarting the app.
