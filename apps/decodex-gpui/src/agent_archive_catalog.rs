@@ -17,7 +17,7 @@ use crate::{
 	},
 	ui_feedback::{self, Feedback},
 	ui_loading,
-	ui_motion::{Choice, Segmented, SmoothControl as _},
+	ui_motion::{Choice, Segmented},
 	ui_scroll::SmoothScrollArea as _,
 	ui_theme,
 };
@@ -58,6 +58,9 @@ struct Row {
 	id: String,
 	title: String,
 	metadata: String,
+	project: Option<String>,
+	day: String,
+	clock: String,
 	updated: i64,
 }
 
@@ -77,11 +80,20 @@ impl Catalog {
 				let project = self.project_name(&item.id).map(str::to_owned);
 				let text = format!("{} {}", item.title, project.as_deref().unwrap_or_default())
 					.to_lowercase();
-				query.split_whitespace().all(|word| text.contains(word)).then(|| Row {
-					id: item.id.clone(),
-					title: item.title.clone(),
-					metadata: archive_metadata(project.as_deref(), item.updated_at_micros),
-					updated: item.updated_at_micros,
+				query.split_whitespace().all(|word| text.contains(word)).then(|| {
+					let (day, clock) = archive_timestamp(item.updated_at_micros);
+					let date = format!("{day} · {clock}");
+					Row {
+						id: item.id.clone(),
+						title: item.title.clone(),
+						metadata: project
+							.as_ref()
+							.map_or_else(|| date.clone(), |name| format!("{name} · {date}")),
+						project,
+						day,
+						clock,
+						updated: item.updated_at_micros,
+					}
 				})
 			})
 			.collect();
@@ -370,8 +382,28 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.pr(gpui::px(10.));
+		let mut previous_day = None;
 		for item in rows.iter() {
 			let id = item.id.clone();
+			let group = gpui::SharedString::from(format!("archive-row-{id}"));
+			if catalog.sort != Sort::Name && previous_day != Some(item.day.as_str()) {
+				let heading_id = id.clone();
+				list = list.child(
+					gpui::div()
+						.id(gpui::SharedString::from(format!("archive-date-{id}")))
+						.debug_selector(move || format!("archive-date-{heading_id}"))
+						.role(Role::Heading)
+						.flex_none()
+						.px(gpui::px(10.))
+						.pt(gpui::px(if previous_day.is_some() { 18. } else { 6. }))
+						.pb(gpui::px(6.))
+						.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+						.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
+						.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+						.child(item.day.clone()),
+				);
+				previous_day = Some(item.day.as_str());
+			}
 			let open_id = id.clone();
 			let open_key = id.clone();
 			let restore_id = id.clone();
@@ -385,8 +417,10 @@ impl AgentSurface {
 				format!("unarchive-{id}"),
 				Symbol::Unarchive,
 				if busy && !catalog.deleting { "Restoring…" } else { "Unarchive" },
+				group.clone(),
 			)
 			.aria_label(format!("Unarchive {}", item.title))
+			.when(confirming || busy, |d| d.opacity(1.))
 			.when(unavailable, |d| d.opacity(0.45))
 			.on_click(cx.listener(move |s, _, _, cx| {
 				cx.stop_propagation();
@@ -408,6 +442,7 @@ impl AgentSurface {
 				} else {
 					"Delete"
 				},
+				group.clone(),
 			)
 			.aria_label(format!(
 				"{} {}",
@@ -415,8 +450,10 @@ impl AgentSurface {
 				item.title
 			))
 			.when(unavailable, |d| d.opacity(0.45))
+			.when(busy, |d| d.opacity(1.))
 			.when(confirming, |d| {
-				d.text_color(ui_theme::rgb(ui_theme::ERROR))
+				d.opacity(1.)
+					.text_color(ui_theme::rgb(ui_theme::ERROR))
 					.bg(ui_theme::rgb(ui_theme::ERROR).opacity(0.12))
 					.border_color(ui_theme::rgb(ui_theme::ERROR).opacity(0.35))
 			})
@@ -430,28 +467,24 @@ impl AgentSurface {
 					s.delete_archive_item(&delete_key, cx);
 				}
 			}));
-			let delete = delete.smooth();
-			let metadata = if confirming {
-				"Click again to delete this agent and its subagents".into()
-			} else {
-				item.metadata.clone()
-			};
+			let detail = item.metadata.clone();
 			list = list.child(
 				gpui::div()
 					.id(gpui::SharedString::from(format!("archived-{id}")))
 					.debug_selector(move || format!("archived-{id}"))
+					.group(group)
 					.role(Role::Button)
 					.aria_label(format!("Open archived {}", item.title))
+					.aria_description(item.metadata.clone())
 					.tab_index(0)
 					.flex_none()
 					.min_w_0()
-					.h(gpui::px(48.))
+					.h(gpui::px(40.))
 					.px(gpui::px(10.))
 					.flex()
 					.items_center()
 					.gap(gpui::px(12.))
-					.border_b_1()
-					.border_color(ui_theme::rgb(ui_theme::TEXT).opacity(0.08))
+					.rounded(gpui::px(6.))
 					.cursor_pointer()
 					.hover(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 					.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
@@ -469,29 +502,49 @@ impl AgentSurface {
 						gpui::div()
 							.min_w_0()
 							.flex_1()
+							.text_size(gpui::px(ui_theme::BODY_SIZE))
+							.line_height(gpui::px(ui_theme::BODY_LINE_HEIGHT))
+							.text_color(ui_theme::rgb(ui_theme::TEXT))
+							.truncate()
+							.child(item.title.clone()),
+					)
+					.child(
+						gpui::div()
+							.flex_none()
 							.flex()
-							.flex_col()
-							.gap(gpui::px(2.))
-							.child(
-								gpui::div()
-									.text_size(gpui::px(ui_theme::BODY_SIZE))
-									.line_height(gpui::px(16.))
-									.text_color(ui_theme::rgb(ui_theme::TEXT))
-									.truncate()
-									.child(item.title.clone()),
-							)
-							.child(
-								gpui::div()
-									.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-									.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
-									.text_color(ui_theme::rgb(if confirming {
-										ui_theme::ERROR
-									} else {
-										ui_theme::TEXT_MUTED
-									}))
-									.truncate()
-									.child(metadata),
-							),
+							.items_center()
+							.gap(gpui::px(12.))
+							.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+							.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
+							.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+							.when(confirming, |d| d.text_color(ui_theme::rgb(ui_theme::ERROR)))
+							.children(if confirming {
+								Some(gpui::div().child("Click again to delete"))
+							} else {
+								item.project.as_ref().map(|project| {
+									gpui::div()
+										.max_w(gpui::px(100.))
+										.truncate()
+										.child(project.clone())
+								})
+							})
+							.when(!confirming, |d| {
+								d.child(
+									gpui::div()
+										.id(gpui::SharedString::from(format!(
+											"archive-time-{}",
+											item.id
+										)))
+										.tooltip(move |_, cx| {
+											cx.new(|_| ControlTooltip(detail.clone())).into()
+										})
+										.child(if catalog.sort == Sort::Name {
+											item.day.clone()
+										} else {
+											item.clock.clone()
+										}),
+								)
+							}),
 					)
 					.child(
 						gpui::div()
@@ -499,7 +552,7 @@ impl AgentSurface {
 							.flex()
 							.items_center()
 							.gap(gpui::px(6.))
-							.child(restore.smooth())
+							.child(restore)
 							.child(delete),
 					),
 			);
@@ -590,6 +643,7 @@ fn archive_action(
 	id: impl Into<gpui::SharedString>,
 	symbol: Symbol,
 	label: &'static str,
+	group: gpui::SharedString,
 ) -> gpui::Stateful<gpui::Div> {
 	let id = id.into();
 	gpui::div()
@@ -607,6 +661,10 @@ fn archive_action(
 		.border_color(ui_theme::rgb(ui_theme::TEXT).opacity(0.10))
 		.bg(ui_theme::rgb(ui_theme::TEXT).opacity(0.035))
 		.text_color(ui_theme::rgb(ui_theme::TEXT))
+		.opacity(0.)
+		.group_hover(group, |d| d.opacity(1.))
+		.in_focus(|d| d.opacity(1.))
+		.focus(|d| d.opacity(1.))
 		.cursor_pointer()
 		.hover(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 		.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
@@ -615,7 +673,7 @@ fn archive_action(
 		.child(workspace_symbols::icon_sized(symbol, 16.))
 }
 
-fn archive_metadata(project: Option<&str>, micros: i64) -> String {
+fn archive_timestamp(micros: i64) -> (String, String) {
 	let seconds = (micros / 1_000_000) as libc::time_t;
 	let mut local = std::mem::MaybeUninit::<libc::tm>::zeroed();
 	// SAFETY: localtime_r writes a tm into valid storage for the supplied timestamp.
@@ -623,15 +681,13 @@ fn archive_metadata(project: Option<&str>, micros: i64) -> String {
 		libc::localtime_r(&seconds, local.as_mut_ptr());
 		local.assume_init()
 	};
-	let date = format!(
-		"Updated {:04}-{:02}-{:02} · {:02}:{:02}",
-		local.tm_year + 1900,
-		local.tm_mon + 1,
-		local.tm_mday,
-		local.tm_hour,
-		local.tm_min
-	);
-	project.map_or_else(|| date.clone(), |name| format!("{name} · {date}"))
+	let month =
+		["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+			[local.tm_mon as usize];
+	(
+		format!("{month} {}, {}", local.tm_mday, local.tm_year + 1900),
+		format!("{:02}:{:02}", local.tm_hour, local.tm_min),
+	)
 }
 
 #[cfg(test)]
@@ -732,7 +788,9 @@ mod tests {
 				s.visual_workspace_fixture(cx);
 				s.composer.update(cx, |i, cx| i.set_content("Keep the draft", cx));
 				let mut data = s.snapshot.clone().unwrap();
-				for (id, title, time) in [("z", "Zeta", 3), ("a", "Alpha", 2), ("b", "Beta", 1)] {
+				for (id, title, time) in
+					[("z", "Zeta", 3), ("a", "Alpha", 2), ("b", "Beta", -86_400_000_000)]
+				{
 					let mut item = data.work_items[0].clone();
 					item.id = id.into();
 					item.title = title.into();
@@ -747,6 +805,9 @@ mod tests {
 		let surface = view.read_with(visual, |v, _| v.0.clone());
 		visual.update(crate::ui_frame::draw_current_frame);
 		assert!(visual.debug_bounds("open-archive-z").is_none());
+		assert!(visual.debug_bounds("archive-date-z").is_some());
+		assert!(visual.debug_bounds("archive-date-a").is_none());
+		assert!(visual.debug_bounds("archive-date-b").is_some());
 		let button = visual.debug_bounds("delete-archive-z").unwrap();
 		visual.simulate_click(button.center(), Default::default());
 		surface.read_with(visual, |s, cx| {
@@ -759,6 +820,8 @@ mod tests {
 		let name = visual.debug_bounds("archive-sort-Name").unwrap();
 		visual.simulate_click(name.center(), Default::default());
 		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("archive-date-z").is_none());
+		assert!(visual.debug_bounds("archive-date-b").is_none());
 		surface.read_with(visual, |s, _| {
 			assert!(s.workspace.archives.confirmation.is_none());
 			assert_eq!(
