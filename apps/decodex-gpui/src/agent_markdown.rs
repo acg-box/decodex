@@ -304,8 +304,16 @@ pub(super) fn render_process(text: &str, key: &str) -> AnyElement {
 }
 
 pub(super) fn render(text: &str, key: &str) -> AnyElement {
+	render_with_selection_action(text, key, None)
+}
+
+pub(super) fn render_with_selection_action(
+	text: &str,
+	key: &str,
+	ask: Option<selectable_text::AskSelection>,
+) -> AnyElement {
 	let document = cache::document(text);
-	let mut selection = selectable_text::Document::markdown(document.source.clone());
+	let mut selection = selectable_text::Document::markdown(document.source.clone()).on_ask(ask);
 	let content = gpui::div()
 		.flex()
 		.flex_col()

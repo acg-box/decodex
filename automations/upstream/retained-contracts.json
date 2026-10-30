@@ -441,7 +441,25 @@
       ],
       "limits": "The existing qualified development runtime and helpers are unchanged. Source review remains at 66d0de9983e82b266e89ee29523324c9d08a5472; this adoption advances no review cursor. Synthetic loopback providers, temporary account/config homes, private stdio, the public local service and automated GPUI fixtures. No real account, live provider, authenticated remote transport, installed-app interaction, latency or cost acceptance. Cancellation is user-invoked for the exact existing root-only Ask separately request. Ordinary child agents retain native collaboration ownership; no parent-callable sampling tool or automatic cancellation policy is added. Close still stops display polling. Only the original native cancellation error confirms cleanup; acknowledgement, timeout or lost reply does not count as successful cancellation. A completed answer wins. The current documentation lifecycle status is recorded in documentation_lifecycle; historical run receipts retain the earlier delivery boundary.",
       "current_native_qualification": "automations/upstream/qualification.json#retained_consumers",
-      "finished_source_contract": "Latest finished completed, failed or interrupted turn; the source must be idle. Qualification is the four-case finished_sample.py probe."
+      "finished_source_contract": "Latest finished completed, failed or interrupted turn; the source must be idle. Qualification is the four-case finished_sample.py probe.",
+      "presentation": {
+        "entrypoints": [
+          "Composer toolbar > Ask separately",
+          "Completed response > Ask about this response",
+          "Selected response text > Ask about selection"
+        ],
+        "contract": "Open the existing native sampler in a shared anchored popover without jumping the transcript or changing the main draft. Response actions appear on hover or keyboard focus. Selection actions use displayed text. Include an explicit UTF-8-safe reference excerpt of at most half the native prompt byte limit, with a visible excerpt marker when shortened. The complete reference and question must fit the existing native request limit. Escape, outside click and Close dismiss presentation; Cancel answer retains exact native cancellation ownership. Source-bound actions reject a replaced conversation. Keep automatic next-message suggestions separate and do not display a cached suggestion as a manual answer.",
+        "source_symbols": [
+          "apps/decodex-gpui/src/agent_sample_ui.rs#AgentSurface::sample_selection_action,#sample_response_action,#sample_toolbar_action,#sample_popover",
+          "apps/decodex-gpui/src/agent_sample.rs#AgentSurface::request_sample,#displayed_sample,#sample_content",
+          "apps/decodex-gpui/src/agent_text_selection.rs#DocumentView::render",
+          "apps/decodex-gpui/src/agent_text_reveal.rs#StreamingText::on_ask"
+        ],
+        "qualification": "automations/upstream/retained-evidence.json#quick_separate_questions",
+        "delivery_references": [
+          "https://github.com/acg-box/decodex/commit/b26ecc90d27116263afd8312ac1b8f54efe97699"
+        ]
+      }
     },
     "parent_questions": {
       "status": "qualified_for_bounded_question_routing_and_completion",

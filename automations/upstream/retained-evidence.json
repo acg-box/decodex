@@ -2460,5 +2460,120 @@
     "delivery_commits": [
       "https://github.com/acg-box/decodex/commit/af989d83632b50adc83c420ddc60778cfd7b0885"
     ]
+  },
+  "quick_separate_questions": {
+    "contracts": "automations/upstream/retained-contracts.json#retained_native_coordination.separate_answers.presentation",
+    "source_revision": "b26ecc90d27116263afd8312ac1b8f54efe97699",
+    "main_baseline": "016f57db79e058c9fb05a0aa1a13978a34b8fb5a",
+    "source_sha256": {
+      "apps/decodex-gpui/src/agent_composer.rs": "85f83c842a671e6479da10ef20431e47d37c5db400119170d6d312bcf5632f0b",
+      "apps/decodex-gpui/src/agent_markdown.rs": "ac91fe4548a3ed7974fdc0e9058a67d58f0e6145bf02aa01fe8abdafa823cca4",
+      "apps/decodex-gpui/src/agent_sample.rs": "19c1cc091a0383d3ec201112025be51f56d71962012ff393b03345deddc5fe00",
+      "apps/decodex-gpui/src/agent_sample_tests.rs": "1bb662232bb2f3fc01c6d3ab2ea9346641cecdb36c40adeb35a7116bc4e55368",
+      "apps/decodex-gpui/src/agent_sample_ui.rs": "d225f3c61b25a5885330001048fa28e4d051a314c017255c7cd8c8249b98e4ef",
+      "apps/decodex-gpui/src/agent_sample_ui_tests.rs": "972881896383e514fe56ad3b1faf0ce16ee401f1e2a064340a5e105d58d6a1cd",
+      "apps/decodex-gpui/src/agent_selectable_text.rs": "e437453f3dd256b52e86456a0a5937bb85676f8289c14832371c9e224ee847eb",
+      "apps/decodex-gpui/src/agent_surface.rs": "9926b899a3c8dbcdd3d9ddede49787484a073334b541746151f5fc6d71578c79",
+      "apps/decodex-gpui/src/agent_text_reveal.rs": "9ae9aea8b24527fbf47f20b7b37f444a89211c383ac9097c225cf084e2c5e466",
+      "apps/decodex-gpui/src/agent_text_selection.rs": "1516fd9016b77208974b43599c8057888550a242ffaf892aa08dce0d5522cbff",
+      "apps/decodex-gpui/src/agent_timeline_render.rs": "e2321d45477ba2005424026f4f72220b40a3c339e359cd929af2139013392432",
+      "apps/decodex-gpui/src/agent_workspace.rs": "7e73bd0f1a879d057181628797acb4ab2cce65b25d9eca1a23517711bf9d65ce"
+    },
+    "tests_read": {
+      "new_ui_tests": [
+        "shell::agent_surface::sample::ui::tests::direct_question_opens_a_popover_without_moving_the_transcript_or_sending_the_draft",
+        "shell::agent_surface::sample::ui::tests::manual_question_ignores_cached_next_message_suggestions",
+        "shell::agent_surface::sample::ui::tests::quoted_question_sends_one_sample_and_reads_back_the_same_answer",
+        "shell::agent_surface::sample::ui::tests::response_question_quotes_the_clicked_answer_and_never_adds_an_inline_panel",
+        "shell::agent_surface::sample::ui::tests::retained_question_action_rejects_a_changed_source_and_bounds_unicode_excerpts",
+        "shell::agent_surface::sample::ui::tests::selected_text_opens_a_question_with_only_the_selected_excerpt"
+      ],
+      "retained_test_sources": [
+        "apps/decodex-gpui/src/agent_sample_tests.rs",
+        "apps/decodex-gpui/src/agent_markdown_selection_tests.rs"
+      ],
+      "limit": "New UI test bodies and relevant existing sampling, cancellation and selection bodies were read; execution below records the full selected set."
+    },
+    "tests_executed": {
+      "package": "decodex-gpui",
+      "binary": "decodex-gpui",
+      "identities": [
+        "shell::agent_surface::markdown::selection_tests::a_diagram_shares_selection_with_the_surrounding_paragraphs",
+        "shell::agent_surface::markdown::selection_tests::bare_urls_open_from_their_visible_text_without_changing_copy",
+        "shell::agent_surface::markdown::selection_tests::clicking_blank_space_clears_the_whole_selection",
+        "shell::agent_surface::markdown::selection_tests::links_still_open_on_click_but_never_during_cross_paragraph_selection",
+        "shell::agent_surface::markdown::selection_tests::list_markers_stay_close_and_wrapped_items_share_the_text_edge",
+        "shell::agent_surface::markdown::selection_tests::one_drag_selects_multiple_paragraphs_in_both_directions",
+        "shell::agent_surface::markdown::selection_tests::selected_words_copy_their_original_markdown_and_right_click_keeps_selection",
+        "shell::agent_surface::markdown::selection_tests::selection_crosses_lists_and_code_without_copying_controls",
+        "shell::agent_surface::markdown::selection_tests::selection_preserves_table_cells_and_quote_paragraphs",
+        "shell::agent_surface::markdown::selection_tests::shared_selection_survives_appends_and_stops_at_mouse_up",
+        "shell::agent_surface::markdown::selection_tests::whole_blocks_keep_markers_after_another_paragraph",
+        "shell::agent_surface::sample::suggestions::tests::disabling_suggestions_consumes_turn_boundaries_without_replaying_them_on_enable",
+        "shell::agent_surface::sample::tests::a_lost_cancellation_acknowledgement_reads_back_the_exact_sample_without_replay",
+        "shell::agent_surface::sample::tests::a_lost_sample_acknowledgement_is_read_back_without_another_model_command",
+        "shell::agent_surface::sample::tests::automatic_suggestion_sends_once_after_a_new_answer_and_never_sends_the_draft",
+        "shell::agent_surface::sample::tests::automatic_suggestion_skips_old_history_failed_turns_and_replaced_sources",
+        "shell::agent_surface::sample::tests::cancellation_controls_wait_for_native_completion_and_preserve_the_draft",
+        "shell::agent_surface::sample::tests::enter_in_a_separate_question_does_not_reach_the_main_send_action",
+        "shell::agent_surface::sample::tests::prompt_suggestion_preserves_later_edits_and_rejects_stale_or_unrelated_results",
+        "shell::agent_surface::sample::tests::separate_answer_preserves_the_composer_and_hides_a_replaced_source",
+        "shell::agent_surface::sample::tests::tab_accepts_prompt_suggestion_as_an_undoable_unsent_draft",
+        "shell::agent_surface::sample::tests::tab_preserves_normal_focus_navigation_without_a_current_empty_draft_suggestion",
+        "shell::agent_surface::sample::ui::tests::direct_question_opens_a_popover_without_moving_the_transcript_or_sending_the_draft",
+        "shell::agent_surface::sample::ui::tests::manual_question_ignores_cached_next_message_suggestions",
+        "shell::agent_surface::sample::ui::tests::quoted_question_sends_one_sample_and_reads_back_the_same_answer",
+        "shell::agent_surface::sample::ui::tests::response_question_quotes_the_clicked_answer_and_never_adds_an_inline_panel",
+        "shell::agent_surface::sample::ui::tests::retained_question_action_rejects_a_changed_source_and_bounds_unicode_excerpts",
+        "shell::agent_surface::sample::ui::tests::selected_text_opens_a_question_with_only_the_selected_excerpt"
+      ],
+      "passed": 28,
+      "failed": 0,
+      "skipped": 1176,
+      "unmatched_selectors": [],
+      "selector_counts": {
+        "test(sample::)": 17,
+        "test(markdown::selection_tests::)": 11
+      },
+      "command": "cargo +stable nextest run --locked -p decodex-gpui --bin decodex-gpui --features gpui_platform/runtime_shaders -E 'test(sample::) | test(markdown::selection_tests::)' --no-fail-fast --status-level fail --final-status-level fail"
+    },
+    "test_artifact": {
+      "binary_id": "decodex-gpui::bin/decodex-gpui",
+      "sha256": "0b8fc13b435c775ab257b92fee1819c33f806ce97ee9ec3f0599ff59582737a2",
+      "scope": "GPUI TestPlatform and loopback wire tests; not an installed app or a Codex runtime qualification."
+    },
+    "static_checks": {
+      "format": "cargo make fmt-rust-check passed",
+      "whitespace": "git diff --check passed",
+      "strict_clippy": {
+        "result": "baseline_failure",
+        "changed_code_diagnostics": 0,
+        "unchanged_source": "apps/decodex-gpui/src/agent_archive_catalog.rs",
+        "symbol": "render_archive_catalog",
+        "lines": 136,
+        "maximum": 120
+      }
+    },
+    "runtime_qualification_reuse": {
+      "reference": "retained_native_coordination.separate_answers in retained-contracts.json and history_resource_cost.selected_runtime in this index",
+      "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+      "artifact_or_helpers_changed": false,
+      "schema_changed": false,
+      "fresh_native_tests_executed": 0
+    },
+    "validation_limits": [
+      "Default build cannot compile Metal shaders because the host Metal Toolchain is uninstalled. Existing gpui_platform/runtime_shaders was enabled only on validation commands.",
+      "GPUI TestPlatform and loopback protocol fixtures only. No live-provider, installed-app, native popover material, physical-keyboard, latency or performance acceptance.",
+      "The test linker reported an existing large unwind-section warning.",
+      "No runtime migration, installation, release, schedule change or upstream review cursor advance."
+    ],
+    "delivery_references": [
+      "https://github.com/acg-box/decodex/commit/b26ecc90d27116263afd8312ac1b8f54efe97699"
+    ],
+    "documentation": {
+      "status": "incomplete",
+      "reason": "OpenWiki requires unrelated stale-page repairs outside this change. The targeted page submissions are retained locally; no global wiki completion is claimed.",
+      "owner": "Repository documentation maintenance"
+    }
   }
 }

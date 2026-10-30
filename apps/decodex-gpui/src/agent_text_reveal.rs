@@ -20,14 +20,23 @@ pub(super) struct StreamingText {
 	output: bool,
 	complete: bool,
 	settled: Option<Rc<Cell<bool>>>,
+	ask: Option<crate::shell::agent_surface::selectable_text::AskSelection>,
 }
 impl StreamingText {
 	pub(super) fn output(text: String, key: String, complete: bool) -> Self {
-		Self { text, key, output: true, complete, settled: None }
+		Self { text, key, output: true, complete, settled: None, ask: None }
 	}
 
 	pub(super) fn caption(text: String, key: String) -> Self {
-		Self { text, key, output: false, complete: false, settled: None }
+		Self { text, key, output: false, complete: false, settled: None, ask: None }
+	}
+
+	pub(super) fn on_ask(
+		mut self,
+		ask: Option<crate::shell::agent_surface::selectable_text::AskSelection>,
+	) -> Self {
+		self.ask = ask;
+		self
 	}
 
 	pub(super) fn settled(mut self, signal: Rc<Cell<bool>>) -> Self {
@@ -65,7 +74,7 @@ impl RenderOnce for StreamingText {
 		} else {
 			&self.text[..end]
 		};
-		let content = markdown::render(visible, &self.key);
+		let content = markdown::render_with_selection_action(visible, &self.key, self.ask);
 		let flow = window.use_keyed_state(
 			SharedString::from(format!("text-flow-{}", self.key)),
 			cx,

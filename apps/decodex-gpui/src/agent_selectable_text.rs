@@ -4,7 +4,7 @@
 
 pub(super) use links::web_links;
 
-pub(super) use selection::Document;
+pub(super) use selection::{AskSelection, Document};
 
 use std::{cell::OnceCell, ops::Range, panic::Location, path::Path, rc::Rc};
 
