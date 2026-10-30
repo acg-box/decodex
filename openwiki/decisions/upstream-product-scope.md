@@ -10,6 +10,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration_cases.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
+  - id: openwiki-source-1bf529ea3f1649ac9a28334a
+    resource: repo://apps/decodex-gpui/src/agent_conversation_tabs.rs
   - id: openwiki-source-77ad5024b567271a0f618fd7
     resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
   - id: openwiki-source-89a6e0bcef9377afc01425eb
@@ -28,6 +30,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-296a92a9cefecb19f0fc1f95
     resource: repo://apps/decodex-gpui/src/agent_sample_tests.rs
+  - id: openwiki-source-309d7ec654ab4d531c906212
+    resource: repo://apps/decodex-gpui/src/agent_sample_ui.rs
   - id: openwiki-source-01379a7fb49ab2d638863891
     resource: repo://apps/decodex-gpui/src/agent_skills.rs
   - id: openwiki-source-5606e779f593d160176b0a27
@@ -116,10 +120,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-30T06:46:27.597Z" }
+generated: { by: "codex", at: "2026-10-30T15:17:49.972Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T06:46:27.597Z
+    at: 2026-10-30T15:27:42.105Z
 ---
 
 # Product scope and native ownership
@@ -136,7 +140,7 @@ The default coordination surface uses `work_read` and `work_manage`. Only users 
 
 Permission changes use the selected native conversation's supported profile and reviewer settings. Existing child captures and pending human approvals retain native ownership. Optional private details retain bounded assistant output and terminal metadata without raw reasoning. Exact action associations are unavailable in the selected runtime and remain explicit. This does not select the separate native Guardian V3 experiment.
 
-The current schema and protocol 4.2 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
+The current schema and protocol 4.3 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
 
 The retained-conversation repair reconciles unassigned native Project membership before input and preserves conflicts for inspection. The current schema retains actual native child-input receipts for Work attribution when native configuration permits nested V2 Code Mode. Recovery joins exact evidence without replay. V1 nesting remains supported; V2 keeps its direct-only default. These are repairs to retained integration contracts. Native Project identity and membership and Decodex Project presentation passed in the separate installed qualification. Official desktop saved-Project/sidebar presentation remains unobserved. See the [canonical contract](project-agent-work.md#qualification-and-evidence-limits).
 
@@ -150,11 +154,15 @@ The selected scope includes three views in the existing desktop:
 - **Collaboration history:** Retain exact local question replies, their delivery and receiving-turn outcome, plus independent contribution cycles and explicit owner assessments. A reply or returned contribution does not establish resolution or complete Work. Missing external reply bodies remain unknown.
 - **Actual usage:** Read known whole-turn token deltas and recorded duration for a persistent Agent or retained Work references. Shared Work references, missing counters and unobserved child usage remain explicit. Linked turns can contain other activity; recorded duration is not Work elapsed time and these values are not a bill.
 
-These views are available through local protocol 4.2 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
+These views are available through local protocol 4.3 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
 
 ## Current optional decisions
 
 In the earlier six-item review, items 1–3 are delivered through the selected read-only views above. The user selected **item 4, persistent attached branches**. An explicit completed-turn branch uses native attachment, retains the exact source relationship and can be reopened from Agent preferences. Creation sends no input and copies no native Goal. The child-visible history starts empty, while native inference retains the reviewed parent context. Source turn IDs preserve boundary provenance. Native attachment requires paginated source history; the public branch flow already checks this. It adds no automatic follow-up, scheduling, result merge or deletion policy. The retained `retained_attached_forks` evidence identifies its regressions and qualification limits.
+
+The user also selected multiple Side chats in the conversation header. The source and open Side chats share a horizontal tab strip. **+** reviews the latest completed source turn before **Create side chat** confirms an attached fork. Switching retains each draft and history position. Closing hides a tab without deleting the native branch; Agent preferences can reopen it. This presentation reuses the selected attachment boundary and adds no runtime or scheduling policy.
+
+**Ask separately** remains a one-shot question. Direct composer, completed-response and text-selection actions open its shared popover. It preserves the main draft and reading position and does not create a Side chat. See [conversation presentation](../architecture/conversation-presentation.md).
 
 **Item 5, the native Guardian V3 experiment, waits for upstream maturity** ([issue #2563](https://github.com/acg-box/decodex/issues/2563)). **Item 6, a custom managed configuration server, is deferred by the user** ([issue #2564](https://github.com/acg-box/decodex/issues/2564)). Neither is selected for implementation. Existing global Guardian and native managed requirements keep their current scope. There is no outstanding new decision in this six-item list.
 

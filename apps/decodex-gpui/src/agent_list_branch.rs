@@ -24,7 +24,7 @@ impl AgentSurface {
 			return;
 		}
 		self.begin_prompt_review(&profile, work, &thread);
-		self.prompt_edit.branch_only = true;
+		self.prompt_edit.branch_choice = Some(decodex_protocol::PromptForkBoundary::AfterTurn);
 		self.prompt_edit.list_branch_pending = true;
 		self.prompt_edit.feedback = "Reading the latest completed turn…".into();
 		self.refresh_open_native_history(cx);
@@ -54,7 +54,12 @@ impl AgentSurface {
 			if let Some((turn, item)) = latest_completed_input(&self.timeline.native.entries) {
 				let (turn, item) = (turn.to_owned(), item.to_owned());
 				self.prompt_edit.list_branch_pending = false;
-				self.request_prompt_review((&work, &thread, &turn, &item), None, true, cx);
+				self.request_prompt_review(
+					(&work, &thread, &turn, &item),
+					None,
+					self.prompt_edit.branch_choice,
+					cx,
+				);
 				return;
 			}
 			if self.timeline.native.older_cursor.is_some() {
@@ -162,7 +167,7 @@ mod tests {
 			assert_eq!(s.selected.as_deref(), Some("verify"));
 			assert_eq!(s.prompt_edit.work, "verify");
 			assert_eq!(s.prompt_edit.thread, "verify-thread");
-			assert!(s.prompt_edit.branch_only);
+			assert!(s.prompt_edit.branch_choice.is_some());
 			assert!(s.prompt_edit.draft.is_none());
 			s.close_prompt_editor(cx);
 			assert!(s.prompt_edit.work.is_empty());

@@ -4589,6 +4589,37 @@
       ],
       "evidence": "automations/upstream/qualification.json",
       "limits": "Original feature-selection qualification below retains its own source/artifact and delivery limits. Current qualification supersedes its child-visible prefix expectation."
+    },
+    "tab_presentation": {
+      "scope": "User-approved conversation header tabs for the source conversation and multiple retained Side chats.",
+      "entrypoints": [
+        "Conversation header > New side chat > Review latest completed turn > Create side chat",
+        "Conversation header > Side chat tab",
+        "Agent preferences > Attached branches > Open branch"
+      ],
+      "contracts": [
+        "Use confirmed native attached-fork receipts to group open tabs. Local parent links are lookup candidates only; a fresh miss keeps an independent Agent independent.",
+        "Switch through the existing conversation, draft and native-history owners. Closing a tab returns to its exact source and preserves the native conversation.",
+        "Keep the source tab fixed; scroll overflow tabs into view and retain existing cost and panel controls. Present active Side chats in the header without duplicate sidebar rows.",
+        "Create through the retained source-bound review and durable attached-fork confirmation. Opening the review or switching tabs sends no input.",
+        "Clear the workspace attachment index on profile/runtime identity changes. Uncertain or replaced native bindings cannot supply a Side chat tab."
+      ],
+      "source_symbols": [
+        "apps/decodex-gpui/src/agent_conversation_tabs.rs#AgentSurface::conversation_tab_bar,#Panel::lookup_root,#Panel::family_root",
+        "apps/decodex-gpui/src/agent_attached_branches.rs#AgentSurface::load_attached_branches",
+        "apps/decodex-gpui/src/agent_prompt_edit.rs#AgentSurface::branch_confirmation_action",
+        "apps/decodex-gpui/src/agent_workspace.rs#AgentSurface::close_page,#AgentSurface::open_work_conversation"
+      ],
+      "new_regressions": [
+        "shell::agent_surface::attached_branches::tabs::tests::closing_a_side_chat_returns_to_its_source_and_keeps_the_native_record",
+        "shell::agent_surface::attached_branches::tabs::tests::narrow_tab_bar_reveals_the_selected_side_chat_and_keeps_add_visible",
+        "shell::agent_surface::attached_branches::tabs::tests::side_chat_lookup_uses_a_fresh_receipt_before_grouping_a_local_child",
+        "shell::agent_surface::attached_branches::tabs::tests::side_chat_tabs_require_current_confirmed_native_attachments",
+        "shell::agent_surface::attached_branches::tabs::tests::side_chat_tabs_share_one_header_and_keep_each_draft",
+        "shell::agent_surface::drafts::storage::prompt_confirm_tests::side_chat_confirmation_keeps_the_attached_boundary"
+      ],
+      "runtime_qualification": "Reuse retained_attached_forks.qualification within its recorded limits. No native artifact, helper or schema change; no fresh native execution claim.",
+      "delivery_reference": "https://github.com/acg-box/decodex/commit/84349473fc6cb1402f6962d49b86d3eeeacd097f"
     }
   },
   "retained_model_retirement_defaults": {

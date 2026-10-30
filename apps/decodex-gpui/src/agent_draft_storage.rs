@@ -116,6 +116,10 @@ impl Default for Storage {
 	fn default() -> Self {
 		#[cfg(not(test))]
 		{
+			#[cfg(feature = "visual-capture")]
+			if let Some(root) = std::env::var_os("DECODEX_VISUAL_DRAFT_ROOT") {
+				return Self::open(ClientDraftStore::open_at(std::path::Path::new(&root)));
+			}
 			Self::open(ClientDraftStore::open_default())
 		}
 		#[cfg(test)]

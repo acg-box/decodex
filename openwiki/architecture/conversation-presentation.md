@@ -6,10 +6,16 @@ tags: [desktop, conversation, motion]
 sources:
   - id: openwiki-source-ca9ad15cc8ba4a0657d1c24d
     resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/BrandLoading.swift
+  - id: openwiki-source-bf03f317e64cfefd11f6ea83
+    resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
   - id: openwiki-source-0a61b25348131fe1bb6e1d12
     resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
+  - id: openwiki-source-d56ea7499f2ed784b1b6c970
+    resource: repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs
+  - id: openwiki-source-1bf529ea3f1649ac9a28334a
+    resource: repo://apps/decodex-gpui/src/agent_conversation_tabs.rs
   - id: openwiki-source-d701c906e7fcc9ab2d0917bc
     resource: repo://apps/decodex-gpui/src/agent_inspection.rs
   - id: openwiki-source-85ab533d66ee904d83d8a21a
@@ -44,6 +50,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_read_state.rs
   - id: openwiki-source-15d320ea458ddf705d950ba9
     resource: repo://apps/decodex-gpui/src/agent_response_metrics.rs
+  - id: openwiki-source-309d7ec654ab4d531c906212
+    resource: repo://apps/decodex-gpui/src/agent_sample_ui.rs
+  - id: openwiki-source-912dbe8f46e7ec6026887bbe
+    resource: repo://apps/decodex-gpui/src/agent_sample.rs
   - id: openwiki-source-77f7f96f348908c8779b5df6
     resource: repo://apps/decodex-gpui/src/agent_selectable_text.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
@@ -86,6 +96,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/ui_material.rs
   - id: openwiki-source-afbf2d30c0979a844373d8e5
     resource: repo://apps/decodex-gpui/src/ui_motion.rs
+  - id: openwiki-source-79f9e926ceb3e6b2643c73a5
+    resource: repo://apps/decodex-gpui/src/ui_native_popover.rs
   - id: openwiki-source-1b1f8653954117c3fd5fc77c
     resource: repo://apps/decodex-gpui/src/ui_palette.rs
   - id: openwiki-source-23959670579000a30234423d
@@ -120,10 +132,10 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/timeline/metrics.rs
   - id: openwiki-source-6197a876b2effbe992b1e2ec
     resource: repo://database/src/agent.rs
-generated: { by: "codex", at: "2026-10-30T06:46:27.597Z" }
+generated: { by: "codex", at: "2026-10-30T15:17:49.972Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T06:46:27.597Z
+    at: 2026-10-30T15:17:49.972Z
 ---
 
 
@@ -138,6 +150,8 @@ The transcript is the primary reading surface. Intermediate work, response stati
 Interleaved user input remains in source order. A native turn can contain several user messages, including steering input; grouping uses the native turn identity rather than assuming that each input starts another turn. The disclosure shows a count of earlier messages and lets the reader inspect the underlying process.
 
 Response metadata stays compact at the end of the answer: duration and abbreviated input/output amounts. Hover reveals grouped details in a window-anchored overlay. It does not insert a large block into the transcript. Copy controls are separate actions, not part of the statistics disclosure.
+
+A completed response also has a question action on hover or keyboard focus. Selected response text offers **Ask about selection**, and the composer toolbar provides **Ask separately** without a quote. All three use the same bounded, one-shot sampler and a shared anchored popover. The question and answer stay outside the transcript, and opening the popover preserves the main draft and reading position. Selection callbacks carry the visible excerpt and reject a replaced source; native sampling still owns execution and cancellation. See [separate questions](../workflows/conversations-and-recovery.md#ask-a-separate-question).
 
 A collapsed command row shows the number of native-retained output lines when that count is available. Opening the output removes the count label. The count excludes command text and discarded output; it does not claim terminal wrapping or recovery of truncated bytes.
 
@@ -170,6 +184,16 @@ Choose **Show in conversation** in an existing tool detail to locate its exact n
 For an unloaded item, the main transcript displays a bounded same-turn native history window through the existing item reader. **Earlier messages** and **Later messages** replace that window through native cursors. A fixed **Return to conversation** action stays below the conversation header and restores the earlier reading position. The composer draft stays intact. Failed page reads retain the current window.
 
 Item pages have no canonical timeline ordinals. They remain separate from the cached ordinary page and use exact thread, turn and item identities for presentation anchors. Background history refresh does not replace an active location. Find and Latest return to the ordinary conversation. See [history navigation](../workflows/conversations-and-recovery.md#read-items-near-a-known-message).
+
+## Side chat tabs
+
+The conversation header contains the source conversation and its open Side chats. Each tab shows the existing activity state. The tab strip scrolls horizontally and brings the selected tab into view. The adjacent **+** action reviews a branch from the source conversation's latest completed turn. **Create side chat** confirms that review; it does not send a message.
+
+A Side chat uses the existing native attached fork. Its visible history starts empty, while its model context includes the reviewed source prefix. Later messages in the source do not automatically enter the Side chat. Each conversation keeps its own draft and history position through the existing workspace navigation.
+
+Only confirmed native attachments with matching source, target and runtime identities belong to the tab family. A local parent link is a lookup hint, not evidence of an attachment. The workspace owns this attachment cache independently of the prompt editor and clears it when the relevant source or runtime changes. Current-family Side chats do not also appear as duplicate sidebar rows.
+
+Close hides a tab and returns to its exact source conversation. It does not archive or delete the native branch. Use **Agent preferences → Attached branches** to reopen it. The source remains available in the tab strip.
 
 ## Conversation layout
 
@@ -217,7 +241,7 @@ These defaults apply to new conversations. Saving them does not restart a loaded
 
 ## Floating controls and motion
 
-The shared GPUI popover moves into place by four points as one opaque surface. Its background, shadow and content move together, without a height clip or separate primitive fades. The menu overlays the page so the layout does not clip its blur and shadow.
+Lazy shared popovers use one native material host per parent window when that host is available. The host places and focuses its content outside the transcript layout. The GPUI fallback moves and fades the complete surface by four points, with its background, shadow and content together. It does not animate the height or fade primitives separately.
 
 Presentation entities request GPUI animation frames while application policy permits animation. Keyboard focus does not set the cadence of sibling windows. Native glass surfaces have their own host integration. Transcript expansion must not recreate or change the composer's material.
 

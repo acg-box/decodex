@@ -32,10 +32,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+generated: { by: "codex", at: "2026-10-30T15:17:49.972Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-28T18:12:33.127Z
+    at: 2026-10-30T15:17:49.972Z
 ---
 
 # Local database operations
@@ -60,7 +60,7 @@ Ordinary input resumes its original native context and recorded tool declaration
 
 Global Guardian stores the Review Details opt-in and private review records. Conversation permission settings have a separate owner. Private records are deduplicated by reviewer thread, turn and item. Records are bounded to 64 KiB and the newest 128; small snapshot previews and exact selected reads stay separate. These records do not grant execution authority or complete Work.
 
-Local clients and service must agree on exact protocol 4.2. Publication-instance and command receipts preserve reconnect and idempotent recovery. Exact native bundle ABI checks remain a separate verification boundary. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
+Local clients and service must agree on exact protocol 4.3. Publication-instance and command receipts preserve reconnect and idempotent recovery. Exact native bundle ABI checks remain a separate verification boundary. See [commands](commands-and-validation.md) and [the canonical contract](../decisions/project-agent-work.md).
 
 ## Authority and paths
 

@@ -71,7 +71,7 @@ pub(crate) const POPOVER_ARRIVAL: Duration = Duration::from_millis(160);
 pub(crate) const POPOVER_OFFSET: f32 = 4.;
 pub(crate) const WORKSPACE_GUTTER: f32 = 8.0;
 pub(crate) const WORKSPACE_RADIUS: f32 = 16.0;
-pub(crate) const CONVERSATION_HEADER_HEIGHT: f32 = 28.0;
+pub(crate) const CONVERSATION_HEADER_HEIGHT: f32 = 36.0;
 // Conversation text and composer share a bounded, responsive reading column.
 pub(crate) const CONVERSATION_WIDTH: f32 = 880.0;
 pub(crate) const CONVERSATION_INSET: f32 = 16.0;

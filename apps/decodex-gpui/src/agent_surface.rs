@@ -1444,6 +1444,7 @@ impl AgentSurface {
 		self.reset_recap();
 		self.reset_sample();
 		self.reset_prompt_edit();
+		self.reset_attached_branches();
 		self.reset_native_goal();
 		self.reset_read_state();
 	}
@@ -1585,6 +1586,7 @@ impl AgentSurface {
 		self.reset_recap();
 		self.reset_sample();
 		self.reset_prompt_edit();
+		self.reset_attached_branches();
 		self.reset_native_goal();
 		self.reset_read_state();
 
@@ -2718,6 +2720,7 @@ impl SurfacePresentations {
 }
 
 struct WorkspaceView {
+	attached: attached_branches::Panel,
 	archives: archive::Catalog,
 	portfolio_mode: bool,
 	work_detail: Option<String>,
@@ -2775,6 +2778,7 @@ struct WorkspaceView {
 impl Default for WorkspaceView {
 	fn default() -> Self {
 		Self {
+			attached: Default::default(),
 			archives: Default::default(),
 			arrival: Default::default(),
 			portfolio_mode: false,

@@ -65,6 +65,11 @@ fn list_branch_confirmation_uses_native_after_turn_without_sending(cx: &mut Test
 	run_confirmation(cx, Some(PromptForkBoundary::AfterTurn), true);
 }
 
+#[gpui::test]
+fn side_chat_confirmation_keeps_the_attached_boundary(cx: &mut TestAppContext) {
+	run_confirmation(cx, Some(PromptForkBoundary::AttachedAfterTurn), true);
+}
+
 fn run_confirmation(
 	cx: &mut TestAppContext,
 	boundary: Option<PromptForkBoundary>,
@@ -93,7 +98,9 @@ fn run_confirmation(
 
 	let buttons = if from_list {
 		let surface = view.read_with(visual, |v, _| v.surface.clone());
-		surface.update(visual, |s, _| s.prompt_edit.branch_only = true);
+		surface.update(visual, |s, _| {
+			s.prompt_edit.branch_choice = boundary.or(Some(PromptForkBoundary::AfterTurn))
+		});
 		vec!["locked-branch-confirm"]
 	} else {
 		vec![

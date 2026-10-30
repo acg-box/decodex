@@ -943,7 +943,7 @@
   },
   "retained_contracts": {
     "path": "automations/upstream/retained-contracts.json",
-    "sha256": "c9450247a541f27e3e9cfbc9e99541d603160d7bd698f2493f88c204fb358ab4",
+    "sha256": "36617ee9e47944cf5637795bbc48f42227b2967c37b2bb97bfc64c44a5b16ac3",
     "scope": "Retained requirements, selected product decisions and original feature qualification; stable across routine runtime rolls."
   },
   "workspace_dependencies": {
@@ -2571,8 +2571,8 @@
       "https://github.com/acg-box/decodex/commit/b26ecc90d27116263afd8312ac1b8f54efe97699"
     ],
     "documentation": {
-      "status": "incomplete",
-      "reason": "OpenWiki requires unrelated stale-page repairs outside this change. The targeted page submissions are retained locally; no global wiki completion is claimed.",
+      "status": "historical_delivery_limit",
+      "reason": "The original UI delivery preceded wiki closeout. Current OpenWiki provenance owns the documentation completion state.",
       "owner": "Repository documentation maintenance"
     },
     "build_and_lint_follow_up": {
@@ -2625,5 +2625,177 @@
         "https://github.com/acg-box/decodex/commit/7428f4227bd8829f0cda51795c2431c37f0794c3"
       ]
     }
+  },
+  "side_chat_tabs": {
+    "contracts": "automations/upstream/retained-contracts.json#retained_attached_forks.tab_presentation",
+    "source_revision": "84349473fc6cb1402f6962d49b86d3eeeacd097f",
+    "main_baseline": "5cc2c2462f4d5e1b324c9426c45f1999a1f99b14",
+    "source_sha256": {
+      "apps/decodex-gpui/src/agent_attached_branches.rs": "f7048fbc6b62e0af24c150ded4e5a5fbb00aed5b93d2afffec6d0039466062f6",
+      "apps/decodex-gpui/src/agent_conversation_tab_tests.rs": "d6626000e231a9084835abc25ec73607bf5af3afaede1bdf60cef54b565d2de8",
+      "apps/decodex-gpui/src/agent_conversation_tabs.rs": "748347f9acfdea6e3685caf1a6b98df00296a40670ba50a73e5880965c40b5af",
+      "apps/decodex-gpui/src/agent_draft_storage.rs": "3dfc8fb9ce32e8dd71f7e22f3f9750ad8f85137e537d8ce5daac56f6eacf0180",
+      "apps/decodex-gpui/src/agent_list_branch.rs": "39c625dc17dfa39b71d3e986404d55f1f044be0f6526db55fe6639da2c875f3b",
+      "apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs": "97ea227c58905de63378a91d465b69afbc917ee0ae4feface5221dc9f9d57ef2",
+      "apps/decodex-gpui/src/agent_prompt_edit.rs": "366f98b8068f5aab76d45ced8a174f14835d056079ac2a45bc2772a9053ddef3",
+      "apps/decodex-gpui/src/agent_surface.rs": "b1963258a0f256352e5c495cd1062ed6b3e6f5435bd233dd336ae0e299ecc309",
+      "apps/decodex-gpui/src/agent_workspace.rs": "4996bb1d28f07f324294999fb35b95db350532b7c59e45782038014c388ffaba",
+      "apps/decodex-gpui/src/ui_motion.rs": "d6b830b2c162f50c2def7408e8986495dbb0a427d2d66c8abf99f5505158d480",
+      "apps/decodex-gpui/src/ui_theme.rs": "f6be0e451b5af6d10cc8516ad23a81b1f95c2735e9ee8a7c3095ec8a2f3364e6"
+    },
+    "tests_read": {
+      "new_identities": [
+        "shell::agent_surface::attached_branches::tabs::tests::closing_a_side_chat_returns_to_its_source_and_keeps_the_native_record",
+        "shell::agent_surface::attached_branches::tabs::tests::narrow_tab_bar_reveals_the_selected_side_chat_and_keeps_add_visible",
+        "shell::agent_surface::attached_branches::tabs::tests::side_chat_lookup_uses_a_fresh_receipt_before_grouping_a_local_child",
+        "shell::agent_surface::attached_branches::tabs::tests::side_chat_tabs_require_current_confirmed_native_attachments",
+        "shell::agent_surface::attached_branches::tabs::tests::side_chat_tabs_share_one_header_and_keep_each_draft",
+        "shell::agent_surface::drafts::storage::prompt_confirm_tests::side_chat_confirmation_keeps_the_attached_boundary"
+      ],
+      "retained_sources": [
+        "apps/decodex-gpui/src/agent_attached_branches.rs",
+        "apps/decodex-gpui/src/agent_prompt_fork_wire_tests.rs",
+        "apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs",
+        "apps/decodex-gpui/src/agent_list_branch.rs",
+        "apps/decodex-gpui/src/agent_native_agents.rs",
+        "apps/decodex-gpui/src/agent_workspace.rs"
+      ],
+      "limit": "Relevant retained navigation, draft, viewport and confirmation bodies were inspected. Execution below records the complete selected cohort."
+    },
+    "tests_executed": {
+      "identities": [
+        "shell::agent_surface::attached_branches::tabs::tests::closing_a_side_chat_returns_to_its_source_and_keeps_the_native_record",
+        "shell::agent_surface::attached_branches::tabs::tests::narrow_tab_bar_reveals_the_selected_side_chat_and_keeps_add_visible",
+        "shell::agent_surface::attached_branches::tabs::tests::side_chat_lookup_uses_a_fresh_receipt_before_grouping_a_local_child",
+        "shell::agent_surface::attached_branches::tabs::tests::side_chat_tabs_require_current_confirmed_native_attachments",
+        "shell::agent_surface::attached_branches::tabs::tests::side_chat_tabs_share_one_header_and_keep_each_draft",
+        "shell::agent_surface::attached_branches::tests::attached_branch_navigation_keeps_the_source_draft_and_requires_current_identity",
+        "shell::agent_surface::drafts::storage::prompt_confirm_tests::attached_branch_confirmation_is_saved_and_skips_unsent_input_preflight",
+        "shell::agent_surface::drafts::storage::prompt_confirm_tests::list_branch_confirmation_uses_native_after_turn_without_sending",
+        "shell::agent_surface::drafts::storage::prompt_confirm_tests::side_chat_confirmation_keeps_the_attached_boundary",
+        "shell::agent_surface::native_agents::tests::unified_conversations_keep_parent_and_child_drafts_and_viewports_separate",
+        "shell::agent_surface::prompt_edit::fork::tests::fork_recovery_opens_verified_target_and_keeps_edited_input",
+        "shell::agent_surface::prompt_edit::fork::tests::fork_recovery_retains_uncertainty_and_releases_only_matching_rejection",
+        "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_entry_preserves_drafts_and_cancellation",
+        "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_rejects_changed_source_and_unmanaged_rows",
+        "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_requires_the_completed_turns_own_input",
+        "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_selects_the_latest_completed_turn_not_live_input",
+        "shell::agent_surface::workspace::tests::manager_switches_keep_drafts_with_their_recipient",
+        "shell::agent_surface::workspace::tests::pages_reuse_identity_preserve_draft_and_return_to_agent",
+        "shell::agent_surface::workspace::tests::reopening_a_closing_tab_keeps_it_and_close_returns_to_main"
+      ],
+      "passed": 19,
+      "failed": 0,
+      "skipped": 1191,
+      "unmatched_selectors": [],
+      "selector_counts": {
+        "attached_branch": 7,
+        "side_chat": 6,
+        "fork_recovery": 2,
+        "list_branch": 5,
+        "pages_reuse_identity": 1,
+        "reopening_a_closing_tab": 1,
+        "manager_switches_keep_drafts": 1,
+        "unified_conversations_keep_parent_and_child_drafts_and_viewports_separate": 1
+      },
+      "command": [
+        "cargo",
+        "+stable",
+        "nextest",
+        "run",
+        "--locked",
+        "-p",
+        "decodex-gpui",
+        "--bin",
+        "decodex-gpui",
+        "-E",
+        "test(attached_branch) | test(side_chat) | test(fork_recovery) | test(list_branch) | test(pages_reuse_identity) | test(reopening_a_closing_tab) | test(manager_switches_keep_drafts) | test(unified_conversations_keep_parent_and_child_drafts_and_viewports_separate)",
+        "--test-threads",
+        "1",
+        "--no-fail-fast",
+        "--status-level",
+        "pass",
+        "--final-status-level",
+        "fail"
+      ],
+      "binary_id": "decodex-gpui::bin/decodex-gpui",
+      "binary_sha256": "c3669f300c1388225e1efcc250058452dc8f664333e6675787a318c5d6afcb25"
+    },
+    "checks": {
+      "default_build": "cargo +stable build --locked -p decodex-gpui --bin decodex-gpui passed",
+      "strict_clippy": "GPUI all-targets/all-features Clippy passed with the repository deny flags; rules unchanged.",
+      "format": "cargo make fmt-rust-check passed",
+      "whitespace": "git diff --check passed"
+    },
+    "artifacts": {
+      "default_app_sha256": "d267eb0ec841f05904f0ad4ee3f4deacfd5af4f3dc4d34000b4e13c066050b1e",
+      "visual_helper_sha256": "846306ed95e620b0b21f5af14958ca3ce3dc64dc01ae52912d44bef493c801e4"
+    },
+    "visual_checks": {
+      "fixture": "AgentSurface::visual_side_chat_tabs",
+      "build": "cargo +stable build --locked -p decodex-gpui --bin decodex-gpui-workbench-visual-capture --features visual-capture",
+      "environment": {
+        "DECODEX_VISUAL_DESTINATION": "agent",
+        "DECODEX_VISUAL_WORKSPACE_PAGE": "side-chat-tabs",
+        "DECODEX_VISUAL_CONTEXT": "hidden",
+        "DECODEX_VISUAL_DRAFT_ROOT": "a private system-temporary directory",
+        "DECODEX_VISUAL_OUTPUT": "an explicit PNG output path"
+      },
+      "cases": [
+        {
+          "name": "tabs-dark-final",
+          "appearance": "dark",
+          "size": "1248x840",
+          "exit_code": 0,
+          "sha256": "cb72c7355f9f3a3da2b66a2b29fe33525d13f6853144036f57114fd0d4c1b0ae",
+          "temporary_draft_store": true,
+          "temporary_removed": true
+        },
+        {
+          "name": "tabs-light-final",
+          "appearance": "light",
+          "size": "1248x840",
+          "exit_code": 0,
+          "sha256": "f02ee7c7f0e4eab8f9a8c84b068f1a8ae6f6464bc16f4a1cd1ed4dfd15f64cd3",
+          "temporary_draft_store": true,
+          "temporary_removed": true
+        },
+        {
+          "name": "tabs-narrow-final",
+          "appearance": "dark",
+          "size": "760x700",
+          "exit_code": 0,
+          "sha256": "205ef9e6594a57d4a8283ae017b9378231844c88b6328e71f7324a10ca0a9af4",
+          "temporary_draft_store": true,
+          "temporary_removed": true
+        }
+      ],
+      "limit": "Synthetic offscreen header and layout only. No installed-app acceptance; the disconnected fixture storage warning is outside the selected header checks."
+    },
+    "upstream_source_review": {
+      "revision": "970111f6cb62cc02fe36a82ea7d71b37a2889c97",
+      "reference": "retained_attached_forks.upstream_source_review in retained-contracts.json",
+      "tests_read": [
+        "saved_attached_thread_upgrade_restart_and_delete",
+        "saved_attached_thread_rejects_conflicting_fork_and_discovery_filters"
+      ],
+      "tests_executed": 0
+    },
+    "runtime_qualification_reuse": {
+      "reference": "retained_attached_forks.qualification in retained-contracts.json",
+      "artifact_or_helpers_changed": false,
+      "schema_changed": false,
+      "fresh_native_tests_executed": 0
+    },
+    "validation_limits": [
+      "GPUI TestPlatform, local protocol fixtures, and synthetic offscreen header/layout only. No installed-app or live-provider acceptance.",
+      "No native runtime migration or schema change; the existing attached-fork qualification remains limited to its recorded source and behavior.",
+      "The existing test-linker large unwind-section warning remains.",
+      "An earlier parallel run had one existing viewport test report a leaked child handle. An isolated run and the final serial run passed without the marker.",
+      "The offscreen fixture has no connected draft profile; its storage warning is excluded from header/layout qualification."
+    ],
+    "delivery_references": [
+      "https://github.com/acg-box/decodex/commit/84349473fc6cb1402f6962d49b86d3eeeacd097f"
+    ]
   }
 }

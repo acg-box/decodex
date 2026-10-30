@@ -1,4 +1,5 @@
 //! Find retained attached conversations through the existing branch and navigation owners.
+#[path = "agent_conversation_tabs.rs"] mod tabs;
 use gpui::AnyElement;
 use tokio::runtime::Builder;
 
@@ -10,6 +11,10 @@ use decodex_protocol::{AttachedBranchesResult, PromptForkPhase, PromptForkStatus
 
 #[derive(Default)]
 pub(super) struct Panel {
+	expanded: bool,
+	scroll: gpui::ScrollHandle,
+	visible_tab: std::cell::RefCell<Option<String>>,
+	lookup_for: Option<(String, Option<String>)>,
 	owner: Option<(String, EntityId)>,
 	result: Option<AttachedBranchesResult>,
 	task: Option<Task<()>>,
@@ -18,7 +23,7 @@ pub(super) struct Panel {
 
 impl AgentSurface {
 	pub(super) fn invalidate_attached_branches(&mut self, next: &AgentSnapshotDto) {
-		if self.prompt_edit.attached.owner.as_ref().is_some_and(|(work, source)| {
+		if self.workspace.attached.owner.as_ref().is_some_and(|(work, source)| {
 			next.runtime_source.as_ref() != Some(source)
 				|| !next.work_items.iter().any(|w| {
 					&w.id == work
@@ -34,21 +39,20 @@ impl AgentSurface {
 	}
 
 	pub(super) fn reset_attached_branches(&mut self) {
-		self.prompt_edit.attached =
-			Panel { epoch: self.prompt_edit.attached.epoch.wrapping_add(1), ..Default::default() };
+		self.workspace.attached =
+			Panel { epoch: self.workspace.attached.epoch.wrapping_add(1), ..Default::default() };
 	}
 
-	fn load_attached_branches(&mut self, work: &str, cx: &mut Context<Self>) {
+	pub(super) fn load_attached_branches(&mut self, work: &str, cx: &mut Context<Self>) {
 		let (Some(profile), Some(source)) =
 			(self.profile.clone(), self.snapshot.as_ref().and_then(|s| s.runtime_source.clone()))
 		else {
 			return;
 		};
 
-		if self.selected.as_deref() != Some(work)
-			|| self.native_agents.selected.is_some()
-			|| (self.prompt_edit.attached.task.is_some()
-				&& self.prompt_edit.attached.owner.as_ref().is_some_and(|(owner, _)| owner == work))
+		if self.native_agents.selected.is_some()
+			|| (self.workspace.attached.task.is_some()
+				&& self.workspace.attached.owner.as_ref().is_some_and(|(owner, _)| owner == work))
 		{
 			return;
 		}
@@ -57,13 +61,21 @@ impl AgentSurface {
 			return;
 		};
 
+		let expanded = self.workspace.attached.expanded
+			&& self.workspace.attached.owner.as_ref().is_some_and(|(owner, _)| owner == work);
 		self.reset_attached_branches();
+		self.workspace.attached.expanded = expanded;
 
 		let key = (work.to_owned(), source);
 
-		self.prompt_edit.attached.owner = Some(key.clone());
+		self.workspace.attached.owner = Some(key.clone());
+		self.workspace.attached.lookup_for = self
+			.selected
+			.as_ref()
+			.and_then(|id| self.conversation_record(id))
+			.map(|work| (work.id.clone(), work.codex_thread_id.clone()));
 
-		let epoch = self.prompt_edit.attached.epoch;
+		let epoch = self.workspace.attached.epoch;
 		let read = cx.background_executor().spawn(async move {
 			let Ok(runtime) = Builder::new_current_thread().enable_all().build() else {
 				return AttachedBranchesResult::Unavailable;
@@ -74,15 +86,15 @@ impl AgentSurface {
 				.unwrap_or(AttachedBranchesResult::Unavailable)
 		});
 
-		self.prompt_edit.attached.task = Some(cx.spawn(async move |surface, cx| {
+		self.workspace.attached.task = Some(cx.spawn(async move |surface, cx| {
 			let result = read.await;
 			let _ = surface.update(cx, |s, cx| {
-				if s.prompt_edit.attached.epoch == epoch
-					&& s.prompt_edit.attached.owner.as_ref() == Some(&key)
+				if s.workspace.attached.epoch == epoch
+					&& s.workspace.attached.owner.as_ref() == Some(&key)
 					&& s.snapshot.as_ref().and_then(|v| v.runtime_source.as_ref()) == Some(&key.1)
 				{
-					s.prompt_edit.attached.task = None;
-					s.prompt_edit.attached.result = Some(result);
+					s.workspace.attached.task = None;
+					s.workspace.attached.result = Some(result);
 
 					cx.notify();
 				}
@@ -97,20 +109,23 @@ impl AgentSurface {
 			return gpui::div().into_any_element();
 		}
 
-		let opened = self.prompt_edit.attached.owner.as_ref().is_some_and(|(owner, source)| {
-			owner == work
-				&& self.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref()) == Some(source)
-		});
+		let opened = self.workspace.attached.expanded
+			&& self.workspace.attached.owner.as_ref().is_some_and(|(owner, source)| {
+				owner == work
+					&& self.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref())
+						== Some(source)
+			});
 		let owner = work.to_owned();
 		let mut panel = gpui::div().flex().flex_col().gap_2().child(self.workspace_action(
 			"attached-branches-toggle".into(),
 			"Attached branches".into(),
 			move |s, cx| {
 				if opened {
-					s.reset_attached_branches();
+					s.workspace.attached.expanded = false;
 					cx.notify();
 				} else {
 					s.load_attached_branches(&owner, cx);
+					s.workspace.attached.expanded = true;
 				}
 			},
 			cx,
@@ -122,7 +137,7 @@ impl AgentSurface {
 
 		panel=panel.child("Choose ‘Attached branch after this turn’ when reviewing an earlier message. Open a branch here to continue it.");
 
-		match &self.prompt_edit.attached.result {
+		match &self.workspace.attached.result {
 			Some(AttachedBranchesResult::Available { branches, truncated }) => {
 				if branches.is_empty() {
 					panel = panel.child("No attached branches are recorded for this conversation.");
@@ -141,7 +156,7 @@ impl AgentSurface {
 			None => panel = panel.child("Reading attached branches…"),
 		}
 
-		if self.prompt_edit.attached.task.is_none() {
+		if self.workspace.attached.task.is_none() {
 			let owner = work.to_owned();
 
 			panel = panel.child(self.workspace_action(
@@ -172,13 +187,13 @@ impl AgentSurface {
 
 		if branch.phase == PromptForkPhase::Forked && target.is_some() {
 			let expected = branch.clone();
-			let owner = self.prompt_edit.attached.owner.clone();
+			let owner = self.workspace.attached.owner.clone();
 
 			row = row.child(self.workspace_action(
 				format!("attached-branch-open-{}", branch.target_work_id.as_str()),
 				"Open branch".into(),
 				move |s, cx| {
-					if s.prompt_edit.attached.owner == owner
+					if s.workspace.attached.owner == owner
 						&& owner.as_ref().is_some_and(|(work, source)| {
 							s.selected.as_ref() == Some(work)
 								&& s.snapshot.as_ref().and_then(|v| v.runtime_source.as_ref())
@@ -260,7 +275,8 @@ mod tests {
 				let runtime = EntityId::new("runtime-source").unwrap();
 
 				snapshot.runtime_source = Some(runtime.clone());
-				s.prompt_edit.attached = Panel {
+				s.workspace.attached = Panel {
+					expanded: true,
 					owner: Some((source.id.clone(), runtime)),
 					result: Some(AttachedBranchesResult::Available {
 						branches: vec![PromptForkStatus {
@@ -291,7 +307,7 @@ mod tests {
 			visual.debug_bounds("attached-branch-open-branch").expect("open retained branch");
 		let surface = view.read_with(visual, |v, _| v.surface.clone());
 		let (owner, result) = surface.read_with(visual, |s, _| {
-			(s.prompt_edit.attached.owner.clone(), s.prompt_edit.attached.result.clone())
+			(s.workspace.attached.owner.clone(), s.workspace.attached.result.clone())
 		});
 
 		visual.simulate_click(open.center(), Default::default());
@@ -304,9 +320,9 @@ mod tests {
 
 			assert_eq!(s.composer.read(cx).content(), "Keep the source draft");
 
-			s.prompt_edit.attached = Panel { owner, result, ..Default::default() };
+			s.workspace.attached = Panel { owner, result, expanded: true, ..Default::default() };
 
-			set_phase(&mut s.prompt_edit.attached, PromptForkPhase::Uncertain);
+			set_phase(&mut s.workspace.attached, PromptForkPhase::Uncertain);
 
 			cx.notify();
 		});
@@ -316,7 +332,7 @@ mod tests {
 		assert!(visual.debug_bounds("attached-branch-open-branch").is_none());
 
 		surface.update(visual, |s, cx| {
-			set_phase(&mut s.prompt_edit.attached, PromptForkPhase::Forked);
+			set_phase(&mut s.workspace.attached, PromptForkPhase::Forked);
 
 			s.snapshot
 				.as_mut()
@@ -341,7 +357,7 @@ mod tests {
 
 			s.invalidate_attached_branches(&next);
 
-			assert!(s.prompt_edit.attached.result.is_none());
+			assert!(s.workspace.attached.result.is_none());
 			assert_eq!(s.composer.read(cx).content(), "Keep the source draft");
 
 			cx.notify();

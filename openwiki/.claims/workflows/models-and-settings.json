@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:275ffe46bbb3ce4f0e063d8bddd799f5066a40618f0ee13c9335ef177c89c23e",
+  "pageVersion": "sha256:bc8d565ede70195088b85bcdfa996fae60b6b222b74c0fb2806e7b421cd0259a",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -110,19 +110,19 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_capabilities.rs",
-          "version": "repo-file-v1:sha256:0e8818a788e7d41ed8761622443b3ad03ce632ef54d354ca32102ce6a6fa489d"
+          "version": "repo-file-v1:sha256:9bd355ed15c6b6e9c7a92e4bb46e71514396051387ac7d1237d0a5b2dcb527fd"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_permissions.rs",
-          "version": "repo-file-v1:sha256:6cfdf89ff83453377e58af615d3409d083677a92be3945c9859d56f00bac59b0"
+          "version": "repo-file-v1:sha256:9be815a8a8a738c81edaeff7a7002ef809624ce248ef99c177bb035b7d993769"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/session_settings.rs",
-          "version": "repo-file-v1:sha256:c5f3946b5c4a5d78d6c4a7f51bbe6711878997feea541d2f37911fc6ee61671d"
+          "version": "repo-file-v1:sha256:3825776ca7840f37ac2ee668951220444913d791d25bb626b0c69c1ad9328669"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_permissions.rs",
-          "version": "repo-file-v1:sha256:32b59c5f26a9d009d71536689d3d377e3ef8b2ca518bd896678ad543bc5c46b4"
+          "version": "repo-file-v1:sha256:3c9d361b11ddd6e074187cf26cddf5100fdcd569801fbfcb74a01ecb50c6918f"
         }
       ]
     },
@@ -131,7 +131,7 @@
       "statement": "Native model metadata and configuration determine the helper backend; the qualified synthetic matrix uses V1 and V2 at Medium without Ultra and leaves model judgment unmeasured.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2757-L2764",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2775-L2782",
           "version": "repo-lines-v1:sha256:8e6e3bdd228d54f00f8683d30913924cbf52ba99ba0384b2584ed81b2906292e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjVlMGNmNTA1M2U5YmRiZTc5ZmVlY2E5NWUzZjk4YTJjOGY2ZDZhYWRlZjhjNGIwZWU1ODk0ZTBjY2ExYTBiNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzVlZWJkNGIwMjc1ZTcxYmRjNDUwNGIwZDc1MzM2NmQ3ZDhlZGUwNzYyOGMwMDViZTg2Njc2NTNhY2UxYjcwMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTM5NGU3YTZlMWU4MGJjNGQ4Y2YzNTVjYjI1ZWU4ZDg0ZGM0NDZhNDkwMThlMjgyNGY1ZTNiZWY1M2ZmM2U0NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzYzOTQyY2VjMGEwMGQ0YzE3NDRiOTU5YzA4NTQ3M2Q5ZjlhN2NkY2NhODY0ZTJiYTQ4MjE2ZmJmNTBhMWQyOCJ9"
         },
         {
@@ -199,7 +199,7 @@
       "statement": "The Agent model catalog refreshes through native model/list every 60 seconds, with account, directory and process binding. Model and effort cycling have no fixed fallback list when the catalog is unavailable.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1679-L1685",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L1689-L1695",
           "version": "repo-lines-v1:sha256:94822da03cc24717c86a1aa5781a22c5c4fb39bb3eba280843acf0a8d9a36fb4:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzhhZThkZGM3MTdhMDlmMzU0ZmUzMWU4ZWI3YTU3MWNkZDQwZGQ3NmU0MjVhZjliYjU2MTM3ZTVhZDlkZTEzNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTdhZjQ0ZjllMmU0MDU4YzAyNDA0YTJhMDI0M2JjNTk1ZWE2ZmIxOGUxNzdmMjJiOWEyOWMzZDQ3ZjAwZTExOSJ9"
         },
         {
@@ -218,7 +218,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:6d12e8fccce15a70a992244c8518aac6ce395f124dd335e8368a6c2e0d2ee7f7"
+          "version": "repo-file-v1:sha256:47eb3d07feda113d08ad4ae5f9558e4d5d24a81977c97e9a35f81526e8584e12"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -262,15 +262,15 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_prompt_suggestions.rs",
-          "version": "repo-file-v1:sha256:b71437e4b1b4211fead0e9c486ff29d70d33f53da233109de147edcb5424d9a1"
+          "version": "repo-file-v1:sha256:013e88dab474927c5746040de92b86a07f459ed2989df13012cea1cc26fd2dae"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_sample_tests.rs",
-          "version": "repo-file-v1:sha256:d70c02ddeef5a2d26610464f45a39f430accf387a4c73ecfcb289b9300b62988"
+          "version": "repo-file-v1:sha256:1bb662232bb2f3fc01c6d3ab2ea9346641cecdb36c40adeb35a7116bc4e55368"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/settings_surface.rs",
-          "version": "repo-file-v1:sha256:dd412044199decb99c9f88c1d642c0bd9b90cf4a1e86c81ca006e7b37a49afdd"
+          "version": "repo-file-v1:sha256:8e7460c3600d71686bf62d9cd82ecf223cb3b5adcc9306d1b3caa4e29a9bbb57"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/ui_preferences.rs",
@@ -299,6 +299,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T06:46:27.597Z"
+    "at": "2026-10-30T15:27:42.105Z"
   }
 }
