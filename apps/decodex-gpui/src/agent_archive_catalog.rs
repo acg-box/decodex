@@ -360,7 +360,7 @@ impl AgentSurface {
 		let mut list = gpui::div()
 			.id("archive-list")
 			.debug_selector(|| "archive-list".into())
-			.flex_1()
+			.size_full()
 			.min_h_0()
 			.overflow_y_scroll()
 			.flex()
@@ -874,6 +874,34 @@ mod tests {
 			assert!(s.workspace.archives.viewed.is_none());
 			assert!(s.workspace.archives.feedback.is_none());
 		});
+	}
+
+	#[gpui::test]
+	fn archive_scrollbar_moves_rows_within_the_bounded_viewport(cx: &mut gpui::TestAppContext) {
+		let (_view, visual) = cx.add_window_view(|_, cx| {
+			let surface = cx.new(AgentSurface::new);
+			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
+			surface.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				let mut data = s.snapshot.clone().unwrap();
+				for index in 0..40 {
+					let mut item = data.work_items[0].clone();
+					item.id = format!("scroll-{index:02}");
+					item.title = item.id.clone();
+					data.archived_work_ids.insert(item.id.clone());
+					data.work_items.push(item);
+				}
+				s.workspace.archives.data = Some(data);
+			});
+			ArchiveView(surface)
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let before = visual.debug_bounds("archived-scroll-00").unwrap();
+		let bar = visual.debug_bounds("archive-scrollbar").unwrap();
+		visual.simulate_click(bar.center(), Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		let after = visual.debug_bounds("archived-scroll-00").unwrap();
+		assert!(after.top() < before.top(), "scrollbar must move overflowing archive rows");
 	}
 
 	#[gpui::test]
