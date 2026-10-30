@@ -382,7 +382,8 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap(gpui::px(16.))
-			.pr(gpui::px(10.));
+			.pr(gpui::px(10.))
+			.pb(gpui::px(6.));
 		for group in rows.chunk_by(|a, b| catalog.sort == Sort::Name || a.day == b.day) {
 			let first = &group[0];
 			let mut column = gpui::div()
@@ -392,7 +393,7 @@ impl AgentSurface {
 				.min_w_0()
 				.flex()
 				.flex_col()
-				.gap(gpui::px(2.));
+				.gap(gpui::px(4.));
 			for item in group {
 				let id = item.id.clone();
 				let open_id = id.clone();
@@ -477,6 +478,7 @@ impl AgentSurface {
 						.items_center()
 						.gap(gpui::px(12.))
 						.rounded(gpui::px(ui_theme::CONTROL_RADIUS))
+						.bg(ui_theme::rgb(ui_theme::TEXT).opacity(0.035))
 						.cursor_pointer()
 						.hover(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 						.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
@@ -636,9 +638,18 @@ impl AgentSurface {
 			}))
 			.children(initial_read.then(|| ui_loading::loading("Reading archive…")))
 			.child(
-				list.smooth_scroll("archive-list-motion")
-					.contain_scroll()
-					.with_scrollbar("archive-scrollbar", "Scroll archive"),
+				gpui::div()
+					.id("archive-viewport")
+					.debug_selector(|| "archive-viewport".into())
+					.flex_1()
+					.min_h_0()
+					.w_full()
+					.overflow_hidden()
+					.child(
+						list.smooth_scroll("archive-list-motion")
+							.contain_scroll()
+							.with_scrollbar("archive-scrollbar", "Scroll archive"),
+					),
 			);
 		gpui::div()
 			.size_full()
@@ -1097,6 +1108,11 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 		let before = visual.debug_bounds("archived-scroll-00").unwrap();
 		let bar = visual.debug_bounds("archive-scrollbar").unwrap();
+		let body = visual.debug_bounds("archive-browser-content").unwrap();
+		assert!(
+			bar.bottom() <= body.bottom(),
+			"scroll viewport must fit below the toolbar: {bar:?} {body:?}"
+		);
 		// Keep enough compact rows to exercise scrolling, rather than grabbing a large thumb.
 		assert!(visual.debug_bounds("archived-scroll-99").unwrap().bottom() > bar.bottom());
 		visual.simulate_click(bar.center(), Default::default());
@@ -1105,6 +1121,16 @@ mod tests {
 		assert!(
 			after.top() < before.top(),
 			"scrollbar must move overflowing archive rows: bar={bar:?}, before={before:?}, after={after:?}"
+		);
+		visual.simulate_click(
+			gpui::point(bar.center().x, bar.bottom() - gpui::px(1.)),
+			Default::default(),
+		);
+		visual.update(crate::ui_frame::draw_current_frame);
+		let last = visual.debug_bounds("archived-scroll-99").unwrap();
+		assert!(
+			last.bottom() <= body.bottom(),
+			"last row must be fully visible at the end: {last:?} {body:?}"
 		);
 	}
 
