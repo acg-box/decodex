@@ -454,12 +454,12 @@ impl AgentSurface {
 			let first = &group[0];
 			let mut column = gpui::div()
 				.id(gpui::SharedString::from(format!("archive-section-{}", first.id)))
-				.flex_1()
-				.flex_basis(gpui::px(540.))
+				.w_full()
+				.flex_none()
 				.min_w_0()
 				.flex()
 				.flex_col()
-				.gap(gpui::px(4.));
+				.gap(gpui::px(0.));
 			for (index, item) in group.iter().enumerate() {
 				let id = item.id.clone();
 				let open_id = id.clone();
@@ -470,7 +470,7 @@ impl AgentSurface {
 				let delete_key = id.clone();
 				let confirming = catalog.confirming(&id);
 				let selected = catalog.selected.contains(&id);
-				let check_reveal_id = format!("archive-select-{id}");
+				let check_reveal_id: gpui::SharedString = format!("archive-select-{id}").into();
 				let check_id = id.clone();
 				let check_key = id.clone();
 				let check = archive_checkbox(
@@ -552,23 +552,116 @@ impl AgentSurface {
 						s.delete_archive_item(&delete_key, cx);
 					}
 				}));
+				let open = archive_action(
+					format!("open-archive-{id}"),
+					Symbol::Forward,
+					"Open conversation",
+					None,
+				)
+				.aria_label(format!("Open archived {}", item.title))
+				.on_click(cx.listener(move |s, _, _, cx| {
+					cx.stop_propagation();
+					s.open_archived_conversation(&open_id, cx);
+				}))
+				.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+					if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+						cx.stop_propagation();
+						s.open_archived_conversation(&open_key, cx);
+					}
+				}));
+				let row_id = id.clone();
+				let row_key = id.clone();
 				let detail = item.metadata.clone();
-				column = column.child(
-					gpui::div()
+				let content = gpui::div()
+					.min_w_0()
+					.flex_1()
+					.flex()
+					.items_center()
+					.gap(gpui::px(8.))
+					.child(
+						gpui::div()
+							.min_w_0()
+							.flex_1()
+							.flex()
+							.flex_wrap()
+							.items_baseline()
+							.gap_x(gpui::px(8.))
+							.child(
+								gpui::div()
+									.debug_selector({
+										let id = item.id.clone();
+										move || format!("archive-title-{id}")
+									})
+									.flex_1()
+									.flex_basis(gpui::px(280.))
+									.min_w_0()
+									.text_size(gpui::px(ui_theme::BODY_SIZE))
+									.line_height(gpui::px(ui_theme::BODY_LINE_HEIGHT))
+									.font_weight(gpui::FontWeight::NORMAL)
+									.text_color(ui_theme::rgb(ui_theme::TEXT))
+									.truncate()
+									.child(item.title.clone()),
+							)
+							.children(item.project.as_ref().map(|project| {
+								gpui::div()
+									.debug_selector({
+										let id = item.id.clone();
+										move || format!("archive-project-{id}")
+									})
+									.flex_none()
+									.max_w(gpui::px(100.))
+									.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+									.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
+									.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+									.truncate()
+									.child(project.clone())
+							})),
+					)
+					.child(
+						gpui::div()
+							.id(gpui::SharedString::from(format!("archive-time-{}", item.id)))
+							.flex_none()
+							.min_w(gpui::px(if catalog.sort == Sort::Name { 78. } else { 36. }))
+							.text_right()
+							.font_features(ui_theme::tabular_figures())
+							.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+							.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
+							.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+							.tooltip(move |_, cx| cx.new(|_| ControlTooltip(detail.clone())).into())
+							.child(if catalog.sort == Sort::Name {
+								item.day.clone()
+							} else {
+								item.clock.clone()
+							}),
+					)
+					.child(
+						gpui::div()
+							.debug_selector({
+								let id = item.id.clone();
+								move || format!("archive-actions-{id}")
+							})
+							.flex_none()
+							.flex()
+							.items_center()
+							.gap(gpui::px(4.))
+							.children((!selecting).then(|| restore.smooth().enabled(!unavailable)))
+							.children((!selecting).then(|| delete.smooth().enabled(!unavailable)))
+							.child(open.smooth().enabled(!unavailable)),
+					);
+				column = column.child(ArchiveRow {
+					id: check_reveal_id,
+					active: selecting,
+					checkbox: check.smooth().enabled(!unavailable).into_any_element(),
+					content: content.into_any_element(),
+					row: gpui::div()
 						.id(gpui::SharedString::from(format!("archived-{id}")))
 						.debug_selector(move || format!("archived-{id}"))
-						.role(if selecting { Role::CheckBox } else { Role::Button })
-						.aria_label(format!(
-							"{} {}",
-							if selecting { "Select" } else { "Open archived" },
-							item.title
-						))
-						.when(selecting, |row| {
-							row.aria_toggled(if selected {
-								gpui::Toggled::True
-							} else {
-								gpui::Toggled::False
-							})
+						.role(Role::CheckBox)
+						.aria_label(format!("Select {}", item.title))
+						.aria_toggled(if selected {
+							gpui::Toggled::True
+						} else {
+							gpui::Toggled::False
 						})
 						.aria_description(item.metadata.clone())
 						.tab_index(0)
@@ -579,8 +672,13 @@ impl AgentSurface {
 						.py(gpui::px(7.))
 						.flex()
 						.items_center()
-						.gap(gpui::px(12.))
-						.rounded(gpui::px(ui_theme::CONTROL_RADIUS))
+						.gap(gpui::px(8.))
+						.rounded(gpui::px(4.))
+						.bg(ui_theme::rgb(ui_theme::TEXT).opacity(if index % 2 == 0 {
+							0.025
+						} else {
+							0.
+						}))
 						.relative()
 						.when(selected, |row| row.bg(ui_theme::rgb(ui_theme::ACCENT).opacity(0.12)))
 						.cursor_pointer()
@@ -593,118 +691,17 @@ impl AgentSurface {
 						})
 						.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
 						.focus_visible(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
-						.on_click(cx.listener(move |s, event: &gpui::ClickEvent, _, cx| {
-							s.activate_archive_row(&open_id, event.modifiers().platform, cx);
+						.on_click(cx.listener(move |s, _, _, cx| {
+							s.select_archive_row(&row_id, cx);
 						}))
 						.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
 							if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str())
 							{
 								cx.stop_propagation();
-								s.activate_archive_row(&open_key, false, cx);
+								s.select_archive_row(&row_key, cx);
 							}
-						}))
-						.child(ArchiveSelectionControl {
-							id: check_reveal_id.into(),
-							active: selecting,
-							child: check.smooth().enabled(!unavailable).into_any_element(),
-						})
-						.child(
-							gpui::div()
-								.min_w_0()
-								.flex_1()
-								.flex()
-								.flex_wrap()
-								.items_baseline()
-								.gap_x(gpui::px(8.))
-								.child(
-									gpui::div()
-										.debug_selector({
-											let id = item.id.clone();
-											move || format!("archive-title-{id}")
-										})
-										.flex_1()
-										.flex_basis(gpui::px(280.))
-										.min_w_0()
-										.text_size(gpui::px(ui_theme::BODY_SIZE))
-										.line_height(gpui::px(ui_theme::BODY_LINE_HEIGHT))
-										.font_weight(gpui::FontWeight::NORMAL)
-										.text_color(ui_theme::rgb(ui_theme::TEXT))
-										.truncate()
-										.child(item.title.clone()),
-								)
-								.children(item.project.as_ref().map(|project| {
-									gpui::div()
-										.debug_selector({
-											let id = item.id.clone();
-											move || format!("archive-project-{id}")
-										})
-										.flex_none()
-										.max_w(gpui::px(100.))
-										.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-										.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
-										.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-										.truncate()
-										.child(project.clone())
-								})),
-						)
-						.child(
-							gpui::div()
-								.id(gpui::SharedString::from(format!("archive-time-{}", item.id)))
-								.flex_none()
-								.min_w(gpui::px(if catalog.sort == Sort::Name { 78. } else { 36. }))
-								.text_right()
-								.font_features(ui_theme::tabular_figures())
-								.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-								.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
-								.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-								.tooltip(move |_, cx| {
-									cx.new(|_| ControlTooltip(detail.clone())).into()
-								})
-								.child(if catalog.sort == Sort::Name {
-									item.day.clone()
-								} else {
-									item.clock.clone()
-								}),
-						)
-						.child(
-							gpui::div()
-								.debug_selector({
-									let id = item.id.clone();
-									move || format!("archive-actions-{id}")
-								})
-								.flex_none()
-								.flex()
-								.items_center()
-								.gap(gpui::px(4.))
-								.children(
-									(!selecting).then(|| restore.smooth().enabled(!unavailable)),
-								)
-								.children(
-									(!selecting).then(|| delete.smooth().enabled(!unavailable)),
-								),
-						)
-						.when(index + 1 < group.len(), |row| {
-							row.child(
-								gpui::div()
-									.absolute()
-									.left(gpui::px(8.))
-									.right(gpui::px(8.))
-									.bottom_0()
-									.h(gpui::px(1.))
-									.bg(gpui::linear_gradient(
-										90.,
-										gpui::linear_color_stop(
-											ui_theme::rgb(ui_theme::TEXT).opacity(0.085),
-											0.,
-										),
-										gpui::linear_color_stop(
-											ui_theme::rgb(ui_theme::TEXT).opacity(0.),
-											1.,
-										),
-									)),
-							)
-						}),
-				);
+						})),
+				});
 			}
 			let heading_id = first.id.clone();
 			list = list.child(
@@ -712,9 +709,8 @@ impl AgentSurface {
 					.w_full()
 					.flex_none()
 					.flex()
-					.flex_wrap()
-					.gap_x(gpui::px(16.))
-					.gap_y(gpui::px(6.))
+					.flex_col()
+					.gap(gpui::px(6.))
 					.when(catalog.sort != Sort::Name, |section| {
 						section.child(
 							gpui::div()
@@ -722,9 +718,10 @@ impl AgentSurface {
 								.debug_selector(move || format!("archive-date-{heading_id}"))
 								.role(Role::Heading)
 								.aria_label(first.day.clone())
-								.w(gpui::px(92.))
+								.w_full()
 								.flex_none()
-								.pt(gpui::px(10.))
+								.pl(gpui::px(40.))
+								.pt(gpui::px(6.))
 								.text_size(gpui::px(ui_theme::CAPTION_SIZE))
 								.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
 								.text_color(ui_theme::rgb(ui_theme::TEXT).opacity(0.78))
@@ -791,7 +788,8 @@ impl AgentSurface {
 							.contain_scroll()
 							.with_scrollbar("archive-scrollbar", "Scroll archive"),
 					),
-			);
+			)
+			.child(self.archive_selection_bar(cx));
 		gpui::div()
 			.size_full()
 			.min_w_0()
@@ -820,14 +818,10 @@ impl AgentSurface {
 		self.delete_archive_items(self.workspace.archives.selected.iter().cloned().collect(), cx);
 	}
 
-	fn activate_archive_row(&mut self, id: &str, select: bool, cx: &mut Context<Self>) {
-		if select || !self.workspace.archives.selected.is_empty() {
-			if self.workspace.archives.mutation.is_none() {
-				self.workspace.archives.toggle_selected(id);
-				cx.notify();
-			}
-		} else {
-			self.open_archived_conversation(id, cx);
+	fn select_archive_row(&mut self, id: &str, cx: &mut Context<Self>) {
+		if self.workspace.archives.mutation.is_none() {
+			self.workspace.archives.toggle_selected(id);
+			cx.notify();
 		}
 	}
 
@@ -839,7 +833,7 @@ impl AgentSurface {
 		}
 	}
 
-	fn archive_catalog_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+	fn archive_selection_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
 		let catalog = &self.workspace.archives;
 		let confirming = catalog.confirming_selection();
 		let unavailable = catalog.mutation.is_some();
@@ -891,16 +885,28 @@ impl AgentSurface {
 						s.clear_archive_selection(cx);
 					}
 				}));
-		let selection = gpui::div()
-			.flex()
-			.items_center()
-			.gap(gpui::px(4.))
-			.w(gpui::px(160.))
-			.flex_none()
-			.child(check.smooth().enabled(!unavailable))
+		let selection = ui_theme::canvas_control_group()
+			.id("archive-batch-bar")
+			.debug_selector(|| "archive-batch-bar".into())
+			.h(gpui::px(38.))
+			.px(gpui::px(10.))
+			.gap(gpui::px(10.))
+			.text_color(ui_theme::rgb(ui_theme::TEXT))
+			.child(
+				check
+					.w_auto()
+					.gap(gpui::px(6.))
+					.px(gpui::px(4.))
+					.hover(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+					.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
+					.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+					.child(if all { "Clear all" } else { "Select all" })
+					.smooth()
+					.enabled(!unavailable),
+			)
 			.child(
 				gpui::div()
-					.flex_1()
+					.min_w(gpui::px(66.))
 					.text_size(gpui::px(ui_theme::CAPTION_SIZE))
 					.text_color(ui_theme::rgb(ui_theme::TEXT))
 					.font_features(ui_theme::tabular_figures())
@@ -911,23 +917,28 @@ impl AgentSurface {
 			)
 			.child(delete.smooth().enabled(!unavailable))
 			.child(clear.smooth().enabled(!unavailable));
+		ArchiveSelectionActions { visible: selected_count > 0, child: selection.into_any_element() }
+	}
+
+	fn archive_catalog_toolbar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+		let catalog = &self.workspace.archives;
 		gpui::div()
+			.id("archive-toolbar")
+			.debug_selector(|| "archive-toolbar".into())
 			.flex()
 			.flex_wrap()
 			.items_center()
 			.gap(gpui::px(8.))
 			.child(
 				gpui::div()
+					.id("archive-search")
+					.debug_selector(|| "archive-search".into())
 					.flex_1()
 					.flex_basis(gpui::px(200.))
 					.min_w_0()
 					.h(gpui::px(ui_theme::CONTROL_SIZE))
 					.children(catalog.search.clone()),
 			)
-			.child(ArchiveSelectionActions {
-				visible: selected_count > 0,
-				child: selection.into_any_element(),
-			})
 			.child(Segmented::new(
 				"archive-sort",
 				"Sort archive",
@@ -963,9 +974,14 @@ impl gpui::RenderOnce for ArchiveSelectionActions {
 		let progress =
 			ui_motion::value("archive-selection-actions", f32::from(self.visible), window, cx);
 		gpui::div()
-			.w(gpui::px(160. * progress))
-			.h(gpui::px(ui_theme::CHROME_CONTROL_SIZE))
+			.id("archive-batch-footer")
+			.debug_selector(|| "archive-batch-footer".into())
+			.w_full()
+			.h(gpui::px(48. * progress))
 			.flex_none()
+			.flex()
+			.items_center()
+			.justify_center()
 			.overflow_hidden()
 			.opacity(progress)
 			.children(self.visible.then_some(self.child))
@@ -973,28 +989,29 @@ impl gpui::RenderOnce for ArchiveSelectionActions {
 }
 
 #[derive(gpui::IntoElement)]
-struct ArchiveSelectionControl {
+struct ArchiveRow {
 	id: gpui::SharedString,
 	active: bool,
-	child: AnyElement,
+	row: gpui::Stateful<gpui::Div>,
+	checkbox: AnyElement,
+	content: AnyElement,
 }
-impl gpui::RenderOnce for ArchiveSelectionControl {
+impl gpui::RenderOnce for ArchiveRow {
 	fn render(self, window: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
 		let state = window.use_keyed_state(self.id.clone(), cx, |_, cx| (false, cx.focus_handle()));
 		let (hovered, focus) = {
 			let (hovered, focus) = state.read(cx);
 			(*hovered, focus.clone())
 		};
+		let visible = self.active || hovered || focus.contains_focused(window, cx);
+		let selector = format!("{}-{}", self.id, if visible { "visible" } else { "hidden" });
 		let progress = ui_motion::value(
 			gpui::SharedString::from(format!("{}-reveal", self.id)),
-			f32::from(self.active || hovered || focus.contains_focused(window, cx)),
+			f32::from(visible),
 			window,
 			cx,
 		);
-		gpui::div()
-			.id(self.id)
-			.size(gpui::px(ui_theme::CHROME_CONTROL_SIZE))
-			.flex_none()
+		self.row
 			.track_focus(&focus)
 			.on_hover(move |hovered, _, cx| {
 				state.update(cx, |s, cx| {
@@ -1002,7 +1019,16 @@ impl gpui::RenderOnce for ArchiveSelectionControl {
 					cx.notify();
 				});
 			})
-			.child(gpui::div().opacity(progress).child(self.child))
+			.child(
+				gpui::div()
+					.id(self.id)
+					.debug_selector(move || selector.clone())
+					.size(gpui::px(ui_theme::CHROME_CONTROL_SIZE))
+					.flex_none()
+					.opacity(progress)
+					.child(self.checkbox),
+			)
+			.child(self.content)
 	}
 }
 
@@ -1257,6 +1283,7 @@ mod tests {
 		surface.update(visual, |s, _| s.profile = Some(profile));
 		visual.update(crate::ui_frame::draw_current_frame);
 		let sort_before = visual.debug_bounds("archive-sort-Name").unwrap();
+		let search_before = visual.debug_bounds("archive-search").unwrap();
 		let search = surface.read_with(visual, |s, _| s.workspace.archives.search.clone().unwrap());
 		search.update(visual, |input, cx| input.set_content("Remove", cx));
 		visual.update(crate::ui_frame::draw_current_frame);
@@ -1294,6 +1321,10 @@ mod tests {
 			sort_before,
 			"selection must not move the toolbar"
 		);
+		assert_eq!(visual.debug_bounds("archive-search").unwrap(), search_before);
+		let footer = visual.debug_bounds("archive-batch-footer").unwrap();
+		let viewport = visual.debug_bounds("archive-viewport").unwrap();
+		assert!(footer.top() >= viewport.bottom(), "batch controls do not cover the list");
 		let delete = visual.debug_bounds("delete-archive-selection").unwrap();
 		visual.simulate_click(delete.center(), Default::default());
 		surface.read_with(visual, |s, _| {
@@ -1360,6 +1391,12 @@ mod tests {
 			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(720.)));
 			visual.update(crate::ui_frame::draw_current_frame);
 			let body = visual.debug_bounds("archive-browser-content").unwrap();
+			let search = visual.debug_bounds("archive-search").unwrap();
+			let sort = visual.debug_bounds("archive-sort").unwrap();
+			assert_eq!(search.size.height, sort.size.height, "matching control heights");
+			if width >= 500. {
+				assert_eq!(search.center().y, sort.center().y, "aligned search and sorting");
+			}
 			let row = visual.debug_bounds("archived-layout").unwrap();
 			let heading = visual.debug_bounds("archive-date-layout").unwrap();
 			let title = visual.debug_bounds("archive-title-layout").unwrap();
@@ -1373,11 +1410,8 @@ mod tests {
 			assert!(project.bottom() <= row.bottom(), "metadata remains inside the row at {width}");
 			assert!(restore.left() >= actions.left() && delete.right() <= actions.right());
 			assert!(delete.left() - restore.right() <= gpui::px(4.));
-			if width >= 900. {
-				assert!(heading.right() < row.left(), "wide view puts the date beside its group");
-			} else {
-				assert!(heading.bottom() <= row.top(), "narrow view puts the date above its group");
-			}
+			assert!(heading.bottom() <= row.top(), "date labels stay above their group");
+			assert!(title.left() - body.left() <= gpui::px(54.), "no separate left date column");
 			if width == 1600. {
 				assert!((body.left() - gpui::px((width - 960.) / 2.)).abs() < gpui::px(1.));
 			}
@@ -1453,9 +1487,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	fn archive_rows_open_directly_and_delete_confirmation_does_not_open_the_row(
-		cx: &mut gpui::TestAppContext,
-	) {
+	fn archive_rows_select_and_open_only_from_the_explicit_button(cx: &mut gpui::TestAppContext) {
 		let (view, visual) = cx.add_window_view(|_, cx| {
 			let surface = cx.new(AgentSurface::new);
 			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
@@ -1479,7 +1511,7 @@ mod tests {
 		});
 		let surface = view.read_with(visual, |v, _| v.0.clone());
 		visual.update(crate::ui_frame::draw_current_frame);
-		assert!(visual.debug_bounds("open-archive-z").is_none());
+		assert!(visual.debug_bounds("open-archive-z").is_some());
 		assert!(visual.debug_bounds("archive-date-z").is_some());
 		assert!(visual.debug_bounds("archive-date-a").is_none());
 		assert!(visual.debug_bounds("archive-date-b").is_some());
@@ -1505,9 +1537,26 @@ mod tests {
 			);
 		});
 		let title = visual.debug_bounds("archive-title-a").unwrap();
+		visual.simulate_mouse_move(title.center(), None, Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(
+			visual.debug_bounds("archive-select-a-visible").is_some(),
+			"hovering the title reveals its row checkbox"
+		);
 		visual.simulate_click(title.center(), Default::default());
 		surface.read_with(visual, |s, _| {
-			assert_eq!(s.workspace.archives.viewed.as_deref(), Some("a"))
+			assert!(s.workspace.archives.selected.contains("a"));
+			assert!(s.workspace.archives.viewed.is_none(), "row activation only selects");
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		let open = visual.debug_bounds("open-archive-a").unwrap();
+		visual.simulate_click(open.center(), Default::default());
+		surface.read_with(visual, |s, _| {
+			assert_eq!(s.workspace.archives.viewed.as_deref(), Some("a"));
+			assert!(
+				s.workspace.archives.selected.contains("a"),
+				"opening does not toggle selection"
+			);
 		});
 	}
 
@@ -1686,6 +1735,20 @@ mod tests {
 			last.bottom() <= body.bottom(),
 			"last row must be fully visible at the end: {last:?} {body:?}"
 		);
+		visual.simulate_click(last.center(), Default::default());
+		thread::sleep(Duration::from_millis(240));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let viewport = visual.debug_bounds("archive-viewport").unwrap();
+		let footer = visual.debug_bounds("archive-batch-footer").unwrap();
+		assert!(footer.top() >= viewport.bottom(), "selection bar has its own space");
+		let bar = visual.debug_bounds("archive-scrollbar").unwrap();
+		visual.simulate_click(
+			gpui::point(bar.center().x, bar.bottom() - gpui::px(1.)),
+			Default::default(),
+		);
+		visual.update(crate::ui_frame::draw_current_frame);
+		let last = visual.debug_bounds("archived-scroll-99").unwrap();
+		assert!(last.bottom() <= viewport.bottom(), "batch actions must not cover the last row");
 	}
 
 	#[gpui::test]
