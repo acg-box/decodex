@@ -46,6 +46,9 @@ fn expanding_either_capsule_keeps_the_other_in_place(cx: &mut TestAppContext) {
 	let toggle = visual.debug_bounds("performance-island-toggle").unwrap();
 
 	visual.simulate_mouse_move(toggle.center(), None, Default::default());
+	visual.run_until_parked();
+	visual.executor().advance_clock(crate::ui_motion::HOVER_OPEN_DELAY);
+	visual.run_until_parked();
 	visual.update(crate::ui_frame::draw_frame);
 	thread::sleep(Duration::from_millis(70));
 	visual.update(crate::ui_frame::draw_frame);
@@ -81,6 +84,9 @@ fn expanding_either_capsule_keeps_the_other_in_place(cx: &mut TestAppContext) {
 	let work_toggle = visual.debug_bounds("activity-island-toggle").unwrap();
 
 	visual.simulate_mouse_move(work_toggle.center(), None, Default::default());
+	visual.run_until_parked();
+	visual.executor().advance_clock(crate::ui_motion::HOVER_OPEN_DELAY);
+	visual.run_until_parked();
 	visual.update(crate::ui_frame::draw_frame);
 	thread::sleep(Duration::from_millis(250));
 	visual.update(crate::ui_frame::draw_frame);
@@ -362,7 +368,7 @@ fn work_statistics_fit_with_debug_and_with_more_than_ninety_agents(cx: &mut Test
 }
 
 #[gpui::test]
-fn hover_expands_and_leaving_closes_without_a_tooltip(cx: &mut TestAppContext) {
+fn hover_waits_for_dwell_cancels_on_exit_and_keeps_click_pinning(cx: &mut TestAppContext) {
 	ui_performance::preference(Some(true));
 
 	let (island, visual) = cx.add_window_view(|_, cx| {
@@ -388,6 +394,38 @@ fn hover_expands_and_leaving_closes_without_a_tooltip(cx: &mut TestAppContext) {
 	assert!(visual.debug_bounds("performance-gpu-label").is_none());
 
 	visual.simulate_mouse_move(toggle.center(), None, Default::default());
+	visual.run_until_parked();
+	visual.executor().advance_clock(Duration::from_millis(90));
+	visual.run_until_parked();
+	assert!(!island.read_with(visual, |s, _| s.expansion.is_open()));
+
+	// Crossing the capsule briefly must not open it after the pointer leaves.
+	visual.simulate_event(gpui::MouseExitEvent {
+		position: gpui::point(gpui::px(600.), gpui::px(400.)),
+		pressed_button: None,
+		modifiers: Default::default(),
+	});
+	visual.update(crate::ui_frame::draw_current_frame);
+	visual.executor().advance_clock(crate::ui_motion::HOVER_OPEN_DELAY);
+	visual.run_until_parked();
+	assert!(!island.read_with(visual, |s, _| s.expansion.is_open()));
+
+	visual.simulate_mouse_move(toggle.center(), None, Default::default());
+	visual.run_until_parked();
+	visual.executor().advance_clock(Duration::from_millis(90));
+	visual.run_until_parked();
+	// Moving inside must not restart the timer; a stationary pointer also opens.
+	visual.simulate_mouse_move(
+		toggle.center() + gpui::point(gpui::px(1.), gpui::px(0.)),
+		None,
+		Default::default(),
+	);
+	visual.run_until_parked();
+	visual.executor().advance_clock(Duration::from_millis(89));
+	visual.run_until_parked();
+	assert!(!island.read_with(visual, |s, _| s.expansion.is_open()));
+	visual.executor().advance_clock(Duration::from_millis(1));
+	visual.run_until_parked();
 	visual.update(crate::ui_frame::draw_current_frame);
 
 	assert!(island.read_with(visual, |s, _| s.expansion.is_open()));
@@ -415,6 +453,10 @@ fn hover_expands_and_leaving_closes_without_a_tooltip(cx: &mut TestAppContext) {
 
 	visual.simulate_mouse_move(toggle.center(), None, Default::default());
 	visual.simulate_click(toggle.center(), Default::default());
+	assert_eq!(island.read_with(visual, |s, _| s.expansion), Expansion::Clicked);
+	visual.run_until_parked();
+	visual.executor().advance_clock(crate::ui_motion::HOVER_OPEN_DELAY);
+	visual.run_until_parked();
 	visual.simulate_mouse_move(
 		gpui::point(gpui::px(600.), gpui::px(400.)),
 		None,

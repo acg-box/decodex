@@ -220,6 +220,22 @@ impl AgentSurface {
 		true
 	}
 
+	/// Find temporarily renders the composer in the main window; retain its real focus first.
+	pub(super) fn active_native_composer_focus(
+		&self,
+		cx: &mut Context<Self>,
+	) -> Option<FocusHandle> {
+		self.native_controls
+			.composer
+			.child
+			.filter(|_| self.native_controls.composer.enabled)?
+			.update(cx, |_, window, cx| {
+				window.is_window_active().then(|| window.focused(cx)).flatten()
+			})
+			.ok()
+			.flatten()
+	}
+
 	/// Called by the main shell; settings and other windows must not create composers.
 	pub(crate) fn prepare_native_composer(
 		&mut self,

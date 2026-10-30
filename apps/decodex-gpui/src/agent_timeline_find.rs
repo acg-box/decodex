@@ -1,5 +1,8 @@
 //! Find in retained conversation pages without a second history store.
-use gpui::{AnyElement, AppContext as _, Entity, Focusable as _, KeyDownEvent, SharedString};
+use gpui::{
+	AnyElement, AnyWindowHandle, AppContext as _, Entity, FocusHandle, Focusable as _,
+	KeyDownEvent, SharedString,
+};
 
 use crate::{
 	composer_input::{ComposerEvent, ComposerInput, SubmitComposer},
@@ -20,6 +23,13 @@ pub(super) struct Panel {
 	pub current: Option<Key>,
 	pub searching_earlier: bool,
 	retained: Option<Retained>,
+	return_focus: Option<ReturnFocus>,
+}
+
+struct ReturnFocus {
+	window: AnyWindowHandle,
+	handle: Option<FocusHandle>,
+	panel: Option<crate::shell::agent_surface::workspace_size::Panel>,
 }
 
 struct Retained {
@@ -81,10 +91,42 @@ impl AgentSurface {
 			.detach();
 			self.timeline.native.find.input = Some(input);
 		}
+		if !self.timeline.native.find.open {
+			#[cfg(all(target_os = "macos", not(test)))]
+			let handle = self.active_native_composer_focus(cx).or_else(|| window.focused(cx));
+			#[cfg(not(all(target_os = "macos", not(test))))]
+			let handle = window.focused(cx);
+			self.timeline.native.find.return_focus = Some(ReturnFocus {
+				window: window.window_handle(),
+				handle,
+				panel: self.workspace.focused_panel,
+			});
+		}
 		self.timeline.native.find.open = true;
 		if let Some(input) = &self.timeline.native.find.input {
 			window.activate_window();
 			window.focus(&input.focus_handle(cx), cx);
+		}
+		cx.notify();
+	}
+
+	fn close_conversation_find(&mut self, cx: &mut Context<Self>) {
+		let find = &mut self.timeline.native.find;
+		find.open = false;
+		find.current = None;
+		find.retained = None;
+		find.searching_earlier = false;
+		if let Some(origin) = find.return_focus.take() {
+			self.workspace.focused_panel = origin.panel;
+			cx.defer(move |cx| {
+				let _ = origin.window.update(cx, |_, window, cx| {
+					if let Some(handle) = origin.handle {
+						window.focus(&handle, cx);
+					} else {
+						window.blur(cx);
+					}
+				});
+			});
 		}
 		cx.notify();
 	}
@@ -121,15 +163,10 @@ impl AgentSurface {
 				.flex()
 				.flex_col()
 				.gap_1()
-				.capture_key_down(cx.listener(|s, event: &KeyDownEvent, window, cx| {
+				.capture_key_down(cx.listener(|s, event: &KeyDownEvent, _, cx| {
 					if event.keystroke.key == "escape" {
 						if !event.is_held {
-							s.timeline.native.find.open = false;
-							s.timeline.native.find.current = None;
-							s.timeline.native.find.retained = None;
-							s.timeline.native.find.searching_earlier = false;
-							s.focus_message(window, cx);
-							cx.notify();
+							s.close_conversation_find(cx);
 						}
 						cx.stop_propagation();
 					} else if event.keystroke.key == "enter" {
@@ -166,13 +203,7 @@ impl AgentSurface {
 						.child(self.workspace_action(
 							"find-close".into(),
 							"Close".into(),
-							|s, cx| {
-								s.timeline.native.find.open = false;
-								s.timeline.native.find.current = None;
-								s.timeline.native.find.retained = None;
-								s.timeline.native.find.searching_earlier = false;
-								cx.notify();
-							},
+							Self::close_conversation_find,
 							cx,
 						)),
 				)
@@ -392,6 +423,85 @@ mod tests {
 	use super::{AgentSurface, AgentTimelineContent, AgentTimelineEntry, entry_key, match_excerpt};
 	use crate::shell::agent_surface::native_timeline::{Binding, Timeline};
 	use decodex_protocol::AgentTimelinePage;
+	use gpui::{
+		AppContext as _, Focusable as _, InteractiveElement as _, ParentElement as _, Styled as _,
+	};
+
+	struct FocusFixture {
+		surface: gpui::Entity<AgentSurface>,
+		pane: gpui::FocusHandle,
+	}
+	impl gpui::Render for FocusFixture {
+		fn render(
+			&mut self,
+			_: &mut gpui::Window,
+			_: &mut gpui::Context<Self>,
+		) -> impl gpui::IntoElement {
+			gpui::div().size_full().track_focus(&self.pane).child(self.surface.clone())
+		}
+	}
+
+	#[derive(Clone, Copy)]
+	enum FocusSource {
+		Unfocused,
+		Pane,
+		Composer,
+	}
+
+	#[gpui::test]
+	fn find_escape_and_close_restore_the_original_focus_even_after_reopening(
+		cx: &mut gpui::TestAppContext,
+	) {
+		cx.update(crate::shell::bind_keys);
+		for source in [FocusSource::Unfocused, FocusSource::Pane, FocusSource::Composer] {
+			for close_button in [false, true] {
+				let (fixture, visual) = cx.add_window_view(|_, cx| {
+					let surface = cx.new(AgentSurface::new);
+					surface.update(cx, prepare);
+					FocusFixture { surface, pane: cx.focus_handle() }
+				});
+				let (surface, pane) =
+					fixture.read_with(visual, |f, _| (f.surface.clone(), f.pane.clone()));
+				let original = match source {
+					FocusSource::Unfocused => None,
+					FocusSource::Pane => Some(pane),
+					FocusSource::Composer =>
+						Some(surface.read_with(visual, |s, cx| s.composer.focus_handle(cx))),
+				};
+				visual.update(|window, cx| {
+					if let Some(focus) = &original {
+						window.focus(focus, cx);
+					} else {
+						window.blur(cx);
+					}
+					surface.update(cx, |s, cx| {
+						s.workspace.focused_panel =
+							Some(crate::shell::agent_surface::workspace_size::Panel::Right);
+						s.open_conversation_find(window, cx);
+						s.open_conversation_find(window, cx);
+					});
+				});
+				visual.run_until_parked();
+				visual.update(crate::ui_frame::draw_current_frame);
+				if close_button {
+					let close = visual.debug_bounds("find-close").expect("find close button");
+					visual.simulate_click(close.center(), Default::default());
+				} else {
+					visual.simulate_keystrokes("escape");
+				}
+				visual.run_until_parked();
+				assert_eq!(visual.update(|window, cx| window.focused(cx)), original);
+				surface.read_with(visual, |s, cx| {
+					assert!(!s.conversation_find_open());
+					assert_eq!(s.composer.read(cx).content(), "Keep this draft");
+					assert_eq!(
+						s.workspace.focused_panel,
+						Some(crate::shell::agent_surface::workspace_size::Panel::Right)
+					);
+				});
+			}
+		}
+	}
 
 	fn item(position: u64, kind: &str, text: &str) -> AgentTimelineEntry {
 		AgentTimelineEntry {

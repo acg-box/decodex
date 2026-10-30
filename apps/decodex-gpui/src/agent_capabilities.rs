@@ -522,6 +522,9 @@ mod tests {
 		assert!(visual.debug_bounds("tier-inherited").is_none());
 		assert!(visual.debug_bounds("tier-default").is_some());
 		assert!(visual.debug_bounds("tier-ultrafast").is_none());
+		if surface.read_with(visual, |s, _| s.composer_service_tier().is_none()) {
+			assert!(visual.debug_bounds("service-tier-picker-thumb").is_none());
+		}
 
 		let bounds = visual.debug_bounds("tier-priority").expect("Fast tier visible");
 
@@ -531,11 +534,14 @@ mod tests {
 			assert_eq!(s.service_tier.as_ref().unwrap().as_str(), "priority");
 			assert!(s.composer_capability_error(cx).is_none());
 			if let Some(AgentCapabilitiesResult::Available { models, .. }) = &mut s.capabilities {
-				models[0].service_tiers.push(decodex_protocol::AgentServiceTierDto {
-					id: decodex_protocol::ServiceTier::new("ultrafast").unwrap(),
-					name: "Ultrafast".into(),
-					description: "Higher usage".into(),
-				});
+				models[0].service_tiers.insert(
+					0,
+					decodex_protocol::AgentServiceTierDto {
+						id: decodex_protocol::ServiceTier::new("ultrafast").unwrap(),
+						name: "Ultrafast".into(),
+						description: "Higher usage".into(),
+					},
+				);
 			}
 			cx.notify();
 		});
@@ -544,12 +550,27 @@ mod tests {
 		let fast = visual.debug_bounds("tier-priority").unwrap();
 		let ultrafast = visual.debug_bounds("tier-ultrafast").unwrap();
 		for choice in [standard, fast, ultrafast] {
-			assert_eq!(choice.size.height, gpui::px(24.));
+			assert_eq!(choice.size.height, gpui::px(crate::ui_theme::CONTROL_GROUP_HEIGHT - 6.));
 			assert!(choice.size.width < gpui::px(80.), "speed bounds: {choice:?}");
 			assert_eq!(choice.top(), standard.top(), "all three speeds fit on one line");
 		}
-		assert!(ultrafast.right() <= visual.debug_bounds("model-options").unwrap().right());
-		visual.simulate_click(ultrafast.center(), gpui::Modifiers::default());
+		assert!(standard.left() < fast.left() && fast.left() < ultrafast.left());
+		let options = visual.debug_bounds("model-options").unwrap();
+		assert!(
+			ultrafast.right() <= options.right(),
+			"speed bounds: {ultrafast:?}; menu: {options:?}"
+		);
+		assert!(visual.debug_bounds("model-speed-priority").is_some());
+		visual.simulate_mouse_down(fast.center(), gpui::MouseButton::Left, Default::default());
+		visual.simulate_mouse_move(
+			ultrafast.center(),
+			Some(gpui::MouseButton::Left),
+			Default::default(),
+		);
+		visual.simulate_mouse_up(ultrafast.center(), gpui::MouseButton::Left, Default::default());
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("model-speed-ultrafast").is_some());
+		assert!(visual.debug_bounds("model-speed-priority").is_none());
 		surface.update(visual, |s, cx| {
 			assert_eq!(s.composer_service_tier().unwrap().as_str(), "ultrafast");
 			assert_eq!(s.composer_speed_label(), "Ultrafast");

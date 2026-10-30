@@ -176,15 +176,24 @@ struct DocumentView {
 }
 impl RenderOnce for DocumentView {
 	fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+		let parent = window.window_handle();
+		let popup_id = SharedString::from(format!("selection-action-{}", self.key));
+		let release_id = popup_id.clone();
 		let state = window.use_keyed_state(
 			SharedString::from(format!("selection-{}", self.key)),
 			cx,
-			|_, cx| Selection {
-				anchor: 0,
-				head: 0,
-				dragging: false,
-				focus: cx.focus_handle(),
-				action_position: None,
+			|_, cx| {
+				cx.on_release(move |_: &mut Selection, cx| {
+					crate::ui_motion::dismiss_popover(parent, release_id.into(), cx);
+				})
+				.detach();
+				Selection {
+					anchor: 0,
+					head: 0,
+					dragging: false,
+					focus: cx.focus_handle(),
+					action_position: None,
+				}
 			},
 		);
 		let focus = state.read(cx).focus.clone();
@@ -196,40 +205,9 @@ impl RenderOnce for DocumentView {
 			}
 			let position = state.read(cx).action_position?;
 			let quote = self.document.text[range].to_owned();
-			let keys = ask.clone();
-			let key_quote = quote.clone();
-			Some(
-				gpui::deferred(
-					gpui::anchored()
-						.position(position)
-						.offset(gpui::point(gpui::px(0.), gpui::px(8.)))
-						.snap_to_window_with_margin(gpui::px(8.))
-						.child(
-							crate::ui_motion::menu_surface(gpui::div())
-								.id("ask-selected-text")
-								.debug_selector(|| "ask-selected-text".into())
-								.role(gpui::Role::Button)
-								.aria_label("Ask about selection")
-								.tab_index(0)
-								.px_2()
-								.py_1()
-								.cursor_pointer()
-								.child("Ask about selection")
-								.on_mouse_down(MouseButton::Left, move |_, window, cx| {
-									ask(quote.clone(), window, cx);
-									cx.stop_propagation();
-								})
-								.on_key_down(move |event: &KeyDownEvent, window, cx| {
-									if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
-										keys(key_quote.clone(), window, cx);
-										cx.stop_propagation();
-									}
-								}),
-						),
-				)
-				.with_priority(4),
-			)
+			Some((position, quote, ask))
 		});
+		let action = selection_action(popup_id, action, parent, state.clone());
 		let text: SharedString = self.document.text.into();
 		let scope = self.document.scope;
 		let _ = scope.set(Scope {
@@ -292,7 +270,73 @@ impl RenderOnce for DocumentView {
 				cx.stop_propagation();
 			})
 			.child(drag(scope))
-			.children(action)
+			.child(action)
+	}
+}
+
+fn selection_action(
+	id: SharedString,
+	action: Option<(Point<Pixels>, String, AskSelection)>,
+	parent: gpui::AnyWindowHandle,
+	state: Entity<Selection>,
+) -> impl IntoElement {
+	let visible = action.is_some();
+	let position = action.as_ref().map(|(position, _, _)| *position).unwrap_or_default();
+	let dismiss = state.downgrade();
+	gpui::deferred(
+		gpui::anchored()
+			.position(position)
+			.offset(gpui::point(gpui::px(0.), gpui::px(8.)))
+			.snap_to_window_with_margin(gpui::px(8.))
+			.child(
+				gpui::div().w(gpui::px(168.)).child(
+					crate::ui_motion::popover_lazy(id, visible, move |_, _| {
+						let Some((_, quote, ask)) = &action else {
+							return gpui::div().into_any_element();
+						};
+						let mouse_ask = ask.clone();
+						let mouse_quote = quote.clone();
+						let key_ask = ask.clone();
+						let key_quote = quote.clone();
+						crate::ui_theme::menu_row("ask-selected-text", true)
+							.debug_selector(|| "ask-selected-text".into())
+							.aria_label("Ask about selection")
+							.child("Ask about selection")
+							.on_mouse_down(MouseButton::Left, move |_, window, cx| {
+								ask_from_selection(&mouse_ask, &mouse_quote, parent, window, cx);
+								cx.stop_propagation();
+							})
+							.on_key_down(move |event: &KeyDownEvent, window, cx| {
+								if ["enter", "space"].contains(&event.keystroke.key.as_str()) {
+									ask_from_selection(&key_ask, &key_quote, parent, window, cx);
+									cx.stop_propagation();
+								}
+							})
+							.into_any_element()
+					})
+					.on_dismiss(move |cx| {
+						let _ = dismiss.update(cx, |state, cx| {
+							state.action_position = None;
+							cx.notify();
+						});
+					}),
+				),
+			),
+	)
+	.with_priority(4)
+}
+
+fn ask_from_selection(
+	ask: &AskSelection,
+	quote: &str,
+	parent: gpui::AnyWindowHandle,
+	window: &mut Window,
+	cx: &mut App,
+) {
+	if parent == window.window_handle() {
+		ask(quote.to_owned(), window, cx);
+	} else {
+		let _ = parent.update(cx, |_, window, cx| ask(quote.to_owned(), window, cx));
 	}
 }
 
@@ -348,4 +392,41 @@ fn drag(scope: Rc<OnceCell<Scope>>) -> impl IntoElement {
 	)
 	.absolute()
 	.inset_0()
+}
+
+#[cfg(test)]
+mod tests {
+	use std::cell::Cell;
+
+	use gpui::{AppContext as _, Context, Render};
+
+	use super::*;
+
+	struct Empty;
+	impl Render for Empty {
+		fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+			gpui::div()
+		}
+	}
+
+	#[gpui::test]
+	fn selection_popup_runs_the_question_in_its_source_window(cx: &mut gpui::TestAppContext) {
+		let parent =
+			cx.update(|cx| cx.open_window(Default::default(), |_, cx| cx.new(|_| Empty))).unwrap();
+		let popup =
+			cx.update(|cx| cx.open_window(Default::default(), |_, cx| cx.new(|_| Empty))).unwrap();
+		let observed = Rc::new(Cell::new(None));
+		let observed_window = observed.clone();
+		let ask: AskSelection = Rc::new(move |quote, window, _| {
+			assert_eq!(quote, "selected excerpt");
+			observed_window.set(Some(window.window_handle().window_id()));
+		});
+		cx.update(|cx| {
+			popup.update(cx, |_, window, cx| {
+				ask_from_selection(&ask, "selected excerpt", parent.into(), window, cx);
+			})
+		})
+		.unwrap();
+		assert_eq!(observed.get(), Some(parent.window_id()));
+	}
 }

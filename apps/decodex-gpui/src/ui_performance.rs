@@ -92,6 +92,7 @@ struct PillFrame {
 pub(crate) struct PerformanceIsland {
 	expansion: Expansion,
 	activity: Activity,
+	pending_hover: Option<(Activity, Task<()>)>,
 	titlebar: Option<Titlebar>,
 	task: Option<Task<()>>,
 	live_clock: Option<Task<()>>,
@@ -107,6 +108,7 @@ impl PerformanceIsland {
 	#[cfg(feature = "visual-capture")]
 	#[allow(dead_code)] // Used only by the isolated native frame qualification binary.
 	pub(crate) fn visual_expansion(&mut self, debug: bool, open: bool, cx: &mut Context<Self>) {
+		self.pending_hover = None;
 		self.activity = if debug { Activity::Debug } else { Activity::Work };
 		self.expansion = if open { Expansion::Clicked } else { Expansion::Closed };
 		cx.notify();
@@ -116,6 +118,7 @@ impl PerformanceIsland {
 		Self {
 			expansion: Expansion::Closed,
 			activity: Activity::Work,
+			pending_hover: None,
 			titlebar: None,
 			task: None,
 			live_clock: None,
@@ -156,7 +159,7 @@ impl PerformanceIsland {
 			self.task = None;
 
 			if self.work.is_none() || self.activity == Activity::Debug {
-				self.expansion = Expansion::Closed;
+				self.close();
 			}
 
 			self.activity = Activity::Work;
@@ -272,9 +275,15 @@ impl PerformanceIsland {
 	}
 
 	fn toggle(&mut self, activity: Activity) {
+		self.pending_hover = None;
 		self.expansion =
 			if self.activity == activity { self.expansion.clicked() } else { Expansion::Clicked };
 		self.activity = activity;
+	}
+
+	fn close(&mut self) {
+		self.pending_hover = None;
+		self.expansion = Expansion::Closed;
 	}
 
 	fn hover_pill(
@@ -288,23 +297,35 @@ impl PerformanceIsland {
 			return;
 		}
 
-		let next = if hovered {
-			Expansion::Hover
-		} else if self.activity == activity {
-			Expansion::Closed
-		} else {
-			self.expansion
-		};
-
-		if self.expansion != next || (hovered && self.activity != activity) {
-			if hovered {
-				self.activity = activity;
+		if !hovered {
+			if self.pending_hover.as_ref().is_some_and(|(pending, _)| *pending == activity) {
+				self.pending_hover = None;
 			}
-
-			self.expansion = next;
-
-			cx.notify();
+			if self.activity == activity && self.expansion == Expansion::Hover {
+				self.expansion = Expansion::Closed;
+				cx.notify();
+			}
+			return;
 		}
+		if self.expanded(activity)
+			|| self.pending_hover.as_ref().is_some_and(|(pending, _)| *pending == activity)
+		{
+			return;
+		}
+
+		// Movement within the capsule must not restart the dwell timer.
+		self.pending_hover = Some((
+			activity,
+			cx.spawn(async move |island, cx| {
+				cx.background_executor().timer(ui_motion::HOVER_OPEN_DELAY).await;
+				let _ = island.update(cx, |island, cx| {
+					island.pending_hover = None;
+					island.activity = activity;
+					island.expansion = Expansion::Hover;
+					cx.notify();
+				});
+			}),
+		));
 	}
 
 	fn pill(
@@ -357,8 +378,15 @@ impl PerformanceIsland {
 						},
 						move |cx| {
 							let _ = dismiss.update(cx, |island, cx| {
+								if island
+									.pending_hover
+									.as_ref()
+									.is_some_and(|(pending, _)| *pending == activity)
+								{
+									island.pending_hover = None;
+								}
 								if island.activity == activity && island.expansion.is_open() {
-									island.expansion = Expansion::Closed;
+									island.close();
 									cx.notify();
 								}
 							});
@@ -419,7 +447,7 @@ impl PerformanceIsland {
 			.when(expanded, |d| {
 				d.on_mouse_down_out(cx.listener(move |s, _, _, cx| {
 					if s.activity == activity {
-						s.expansion = Expansion::Closed;
+						s.close();
 						cx.notify();
 					}
 				}))
@@ -448,7 +476,7 @@ impl PerformanceIsland {
 								if ["enter", "space"].contains(&e.keystroke.key.as_str()) {
 									s.toggle(activity);
 								} else if e.keystroke.key == "escape" {
-									s.expansion = Expansion::Closed;
+									s.close();
 								} else {
 									return;
 								}
@@ -494,6 +522,12 @@ impl Render for PerformanceIsland {
 		self.reconcile_live_clock(cx);
 
 		let work = self.work.clone();
+		if self.pending_hover.as_ref().is_some_and(|(activity, _)| match activity {
+			Activity::Work => work.is_none(),
+			Activity::Debug => !debug,
+		}) {
+			self.pending_hover = None;
+		}
 		if !debug {
 			ui_motion::hide_material_surface(Activity::Debug.ids().1, window, cx);
 		}

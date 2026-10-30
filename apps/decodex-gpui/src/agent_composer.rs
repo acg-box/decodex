@@ -1186,13 +1186,20 @@ impl AgentSurface {
 				.gap(gpui::px(2.))
 				.whitespace_nowrap()
 				.text_color(crate::ui_theme::rgb(TEXT))
-				.when(self.fast, |d| {
-					d.child(
-						gpui::div()
-							.text_color(crate::ui_theme::rgb(BLUE))
-							.child(workspace_symbols::icon(Symbol::Fast)),
-					)
-				})
+				.when_some(
+					self.composer_service_tier().and_then(|tier| {
+						crate::session_settings::speed_symbol(tier.as_str())
+							.map(|symbol| (tier, symbol))
+					}),
+					|d, (tier, symbol)| {
+						d.child(
+							gpui::div()
+								.debug_selector(move || format!("model-speed-{}", tier.as_str()))
+								.text_color(crate::ui_theme::rgb(BLUE))
+								.child(workspace_symbols::icon(symbol)),
+						)
+					},
+				)
 				.child(gpui::div().max_w(gpui::px(180.)).text_ellipsis().child(label))
 				.when_some(self.composer_effort_value(cx), |row, effort| {
 					row.child(gpui::div().text_color(crate::ui_theme::rgb(TEXT_MUTED)).child("·"))

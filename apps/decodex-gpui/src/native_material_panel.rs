@@ -76,6 +76,11 @@ impl MaterialPanel {
 		unsafe {
 			let _: () = objc2::msg_send![&*self.material_view, setCornerRadius: radius];
 		}
+		if self.surface == Surface::Popover
+			&& let Some(content) = self.native.contentView()
+		{
+			clip_popover_content(&content, radius);
+		}
 		self.shadow_dirty = true;
 	}
 
@@ -109,6 +114,13 @@ impl MaterialPanel {
 			// would blur or tint the same pixels twice.
 			if surface == Surface::Popover {
 				ui_theme::window_material::remove_backdrop(window);
+				// GPUI gives transparent Metal windows a tiny black background so
+				// AppKit can infer a shadow. Our material already supplies that shape;
+				// the workaround instead leaves a rectangular rim outside its corners.
+				let clear: Retained<AnyObject> =
+					objc2::msg_send![AnyClass::get(c"NSColor")?, clearColor];
+				let _: () = objc2::msg_send![&*native, setBackgroundColor: &*clear];
+				clip_popover_content(&content, radius);
 			}
 
 			material_view.setFrame(content.bounds());
@@ -460,6 +472,17 @@ fn route_side_buttons(
 	}
 }
 
+// AppKit derives the window shadow from the outer content view, not from its
+// rounded material child. Keep both contours identical, including island resizing.
+fn clip_popover_content(content: &NSView, radius: f64) {
+	content.setWantsLayer(true);
+	unsafe {
+		let layer: Retained<AnyObject> = objc2::msg_send![content, layer];
+		let _: () = objc2::msg_send![&*layer, setCornerRadius: radius];
+		let _: () = objc2::msg_send![&*layer, setMasksToBounds: true];
+	}
+}
+
 struct Attachment {
 	handle: AnyWindowHandle,
 	surface: Surface,
@@ -542,6 +565,8 @@ pub(crate) fn observed_rendering(window: &Window) -> Option<Value> {
 	let backing = gpu.convertRectToBacking(bounds);
 
 	unsafe {
+		let background: Retained<AnyObject> = objc2::msg_send![&*native, backgroundColor];
+		let background_alpha: f64 = objc2::msg_send![&*background, alphaComponent];
 		let layer: Option<Retained<AnyObject>> = objc2::msg_send![&*gpu, layer];
 		let layer = layer?;
 		let contents_scale: f64 = objc2::msg_send![&*layer, contentsScale];
@@ -557,6 +582,14 @@ pub(crate) fn observed_rendering(window: &Window) -> Option<Value> {
 				let bounds: NSRect = objc2::msg_send![&*layer, bounds];
 				let affine: CGAffineTransform = objc2::msg_send![&*layer, affineTransform];
 				let opacity: f32 = objc2::msg_send![&*layer, opacity];
+				let shadow_opacity: f32 = objc2::msg_send![&*layer, shadowOpacity];
+				let presentation: Option<Retained<AnyObject>> =
+					objc2::msg_send![&*layer, presentationLayer];
+				let presentation_opacity: Option<f32> = presentation
+					.as_ref()
+					.map(|layer| objc2::msg_send![&**layer, opacity]);
+				let animations: Option<Retained<NSArray<NSString>>> =
+					objc2::msg_send![&*layer, animationKeys];
 				let rasterized: bool = objc2::msg_send![&*layer, shouldRasterize];
 				let filters: Option<Retained<NSArray<AnyObject>>> = objc2::msg_send![&*layer, filters];
 
@@ -566,6 +599,9 @@ pub(crate) fn observed_rendering(window: &Window) -> Option<Value> {
 					"bounds": [bounds.origin.x, bounds.origin.y, bounds.size.width, bounds.size.height],
 					"affine": [affine.a, affine.b, affine.c, affine.d, affine.tx, affine.ty],
 					"opacity": opacity,
+					"shadow_opacity": shadow_opacity,
+					"presentation_opacity": presentation_opacity,
+					"animations": animations.map(|keys| keys.iter().map(|key| key.to_string()).collect::<Vec<_>>()).unwrap_or_default(),
 					"rasterized": rasterized,
 					"filters": filters.map(|filters| filters.iter().map(|filter| filter.class().name().to_string_lossy().into_owned()).collect::<Vec<_>>()).unwrap_or_default(),
 				})
@@ -605,6 +641,8 @@ pub(crate) fn observed_rendering(window: &Window) -> Option<Value> {
 		});
 
 		Some(serde_json::json!({
+			"window_shadow": native.hasShadow(),
+			"window_background_alpha": background_alpha,
 			"gpui_scale": window.scale_factor(),
 			"gpui_viewport": [f32::from(viewport.width), f32::from(viewport.height)],
 			"window_backing_scale": native.backingScaleFactor(),

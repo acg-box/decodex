@@ -240,7 +240,7 @@ impl MetricsPopover {
 		if self.pinned || inside == self.open {
 			return;
 		}
-		let delay = Duration::from_millis(if inside { 180 } else { 100 });
+		let delay = if inside { ui_motion::HOVER_OPEN_DELAY } else { Duration::from_millis(100) };
 		self.pending = Some(cx.spawn(async move |popover, cx| {
 			cx.background_executor().timer(delay).await;
 			let _ = popover.update(cx, |state, cx| state.set_open(inside, false, cx));

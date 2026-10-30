@@ -463,7 +463,6 @@ impl SettingsSurface {
 		}
 		self.default_speed = Some(tier);
 		self.preference_error = None;
-		self.session_menu = None;
 		cx.refresh_windows();
 	}
 
@@ -1286,6 +1285,40 @@ mod tests {
 		visual.update(crate::ui_frame::draw_current_frame);
 
 		assert!(viewport.contains(&visual.debug_bounds(selector).unwrap().center()));
+	}
+
+	#[gpui::test]
+	fn default_speed_drag_keeps_the_picker_open_until_release(cx: &mut TestAppContext) {
+		let (settings, visual) = cx.add_window_view(|_, cx| {
+			let mut surface = SettingsSurface::new(DesktopSettingsController::production(), cx);
+			surface.category = SettingsCategory::Agents;
+			surface.session_menu = Some("speed");
+			surface.default_speed = Some(decodex_protocol::ServiceTier::standard());
+			surface
+		});
+		visual.simulate_resize(gpui::size(gpui::px(920.), gpui::px(900.)));
+		visual.update(crate::ui_frame::draw_current_frame);
+		let standard = visual.debug_bounds("tier-default").unwrap();
+		let fast = visual.debug_bounds("tier-priority").unwrap();
+		visual.simulate_mouse_down(standard.center(), gpui::MouseButton::Left, Default::default());
+		visual.simulate_mouse_move(
+			fast.center(),
+			Some(gpui::MouseButton::Left),
+			Default::default(),
+		);
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert_eq!(settings.read_with(visual, |s, _| s.session_menu), Some("speed"));
+		let ultrafast = visual.debug_bounds("tier-ultrafast").unwrap();
+		visual.simulate_mouse_move(
+			ultrafast.center(),
+			Some(gpui::MouseButton::Left),
+			Default::default(),
+		);
+		visual.simulate_mouse_up(ultrafast.center(), gpui::MouseButton::Left, Default::default());
+		settings.read_with(visual, |s, _| {
+			assert_eq!(s.session_menu, Some("speed"));
+			assert_eq!(s.default_speed.as_ref().unwrap().as_str(), "ultrafast");
+		});
 	}
 
 	#[gpui::test]
