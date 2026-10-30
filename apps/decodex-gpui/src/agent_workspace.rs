@@ -369,7 +369,7 @@ impl AgentSurface {
 		}
 	}
 
-	fn close_page(&mut self, id: &str, cx: &mut Context<Self>) {
+	pub(super) fn close_page(&mut self, id: &str, cx: &mut Context<Self>) {
 		if self.workspace.preview_page.as_deref() == Some(id) {
 			self.workspace.preview_page = None;
 		}
@@ -377,7 +377,12 @@ impl AgentSurface {
 		self.workspace.closing_pages.insert(id.to_owned());
 
 		if self.conversation_page().as_deref() == Some(id)
-			&& let Some(root) = self.root_id()
+			&& let Some(root) = self
+				.snapshot
+				.as_ref()
+				.and_then(|snapshot| self.workspace.attached.family_root(id, snapshot))
+				.map(str::to_owned)
+				.or_else(|| self.root_id())
 		{
 			self.open_page(&root, cx);
 		}
@@ -649,6 +654,11 @@ impl AgentSurface {
 		let mut list = Self::conversation_tab_list();
 
 		for (id, label, closable) in self.conversation_pages() {
+			if self.snapshot.as_ref().is_some_and(|snapshot| {
+				self.workspace.attached.family_root(&id, snapshot).is_some_and(|root| root != id)
+			}) {
+				continue;
+			}
 			let active = !self.workspace.browsing
 				&& (self.conversation_page().as_ref() == Some(&id)
 					|| (!closable && self.selected.is_none()));
@@ -700,6 +710,7 @@ impl AgentSurface {
 					}
 				}))
 				.child(AgentRailStatus {
+					compact: false,
 					id: id.clone(),
 					state: self.conversation_status(&id),
 					label: label.clone(),
@@ -749,6 +760,7 @@ impl AgentSurface {
 				list = list.child(TabReveal {
 					id: SharedString::from(format!("tab-reveal-{id}")).into(),
 					visible,
+					width: None,
 					child: tab.into_any_element(),
 					closed: Box::new(move |cx| {
 						let _ = surface.update(cx, |s, cx| {
@@ -1251,6 +1263,7 @@ impl AgentSurface {
 
 		self.observe_visible_output(cx);
 		self.prepare_workspace_history(window, cx);
+		self.sync_side_chat_family(cx);
 
 		let is_agent = self.native_agents.selected.is_some() || self.selected_is_agent();
 		let selected = self.conversation_work();
@@ -1311,6 +1324,9 @@ impl AgentSurface {
 			.child(
 				gpui::div()
 					.debug_selector(|| "conversation-header".into())
+					.border_b_1()
+					.border_color(ui_theme::rgba(ui_theme::PANEL_DIVIDER))
+					.gap_2()
 					.h(gpui::px(CONVERSATION_HEADER_HEIGHT))
 					.flex_none()
 					.px(gpui::px(CONVERSATION_INSET))
@@ -1319,14 +1335,7 @@ impl AgentSurface {
 					.justify_between()
 					.text_size(gpui::px(CAPTION_SIZE))
 					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
-					.child(
-						gpui::div()
-							.id("conversation-heading")
-							.role(Role::Heading)
-							.aria_level(2)
-							.aria_label("Conversation")
-							.child("Conversation"),
-					)
+					.child(self.conversation_tab_bar(cx))
 					.child(
 						gpui::div()
 							.flex()
@@ -2170,6 +2179,7 @@ impl AgentSurface {
 		}
 
 		match page {
+			"side-chat-tabs" => self.visual_side_chat_tabs("agent", cx),
 			"workbench" | "workbench-agent" | "workbench-history" | "workbench-split" =>
 				self.visual_workbench_page(page, cx),
 			"factory" | "relations" | "relations-resource" => {

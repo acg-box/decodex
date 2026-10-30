@@ -44,6 +44,7 @@ pub(crate) trait SmoothControl {
 pub(crate) struct TabReveal {
 	pub id: ElementId,
 	pub visible: bool,
+	pub width: Option<f32>,
 	pub child: AnyElement,
 	pub closed: Box<dyn FnOnce(&mut App)>,
 }
@@ -53,7 +54,11 @@ impl RenderOnce for TabReveal {
 		let now = Instant::now();
 		let (height, moving) = state.update(cx, |s, _| {
 			s.target(
-				if self.visible { CONVERSATION_TAB_SIZE + CONVERSATION_TAB_GAP } else { 0. },
+				if self.visible {
+					self.width.unwrap_or(CONVERSATION_TAB_SIZE + CONVERSATION_TAB_GAP)
+				} else {
+					0.
+				},
 				now,
 			);
 
@@ -67,7 +72,12 @@ impl RenderOnce for TabReveal {
 			cx.defer(self.closed);
 		}
 
-		gpui::div().w_full().h(gpui::px(height)).flex_none().overflow_hidden().child(self.child)
+		gpui::div()
+			.when(self.width.is_some(), |d| d.w(gpui::px(height)).h_full().flex().items_center())
+			.when(self.width.is_none(), |d| d.w_full().h(gpui::px(height)))
+			.flex_none()
+			.overflow_hidden()
+			.child(self.child)
 	}
 }
 
@@ -530,6 +540,7 @@ impl Tween {
 /// The title's first grapheme carries state without adding a badge or changing layout.
 #[derive(IntoElement)]
 pub(crate) struct AgentRailStatus {
+	pub compact: bool,
 	pub id: String,
 	pub state: String,
 	pub label: String,
@@ -596,12 +607,13 @@ impl RenderOnce for AgentRailStatus {
 				.shape_line(initial.clone().into(), gpui::px(12.5), &[run], None)
 				.width,
 		);
-		let inset = ((CONVERSATION_TAB_SIZE - initial_width) * 0.5).max(0.);
+		let inset =
+			if self.compact { 0. } else { ((CONVERSATION_TAB_SIZE - initial_width) * 0.5).max(0.) };
 		let title_id = SharedString::from(format!("left-title-{}", self.id));
 
 		gpui::div()
 			.debug_selector(|| "conversation-name".into())
-			.min_w(gpui::px(CONVERSATION_TAB_SIZE))
+			.min_w(gpui::px(if self.compact { 0. } else { CONVERSATION_TAB_SIZE }))
 			.h_full()
 			.flex_1()
 			.relative()

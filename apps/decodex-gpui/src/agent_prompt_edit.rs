@@ -19,9 +19,8 @@ use removal::Removal;
 
 #[derive(Default)]
 pub(super) struct Panel {
-	pub(super) branch_only: bool,
+	pub(super) branch_choice: Option<PromptForkBoundary>,
 	list_branch_pending: bool,
-	pub(super) attached: agent_surface::attached_branches::Panel,
 	key: String,
 	profile: Option<ClientProfile>,
 	work: String,
@@ -460,7 +459,7 @@ impl AgentSurface {
 		item: &str,
 		cx: &mut Context<Self>,
 	) {
-		self.request_prompt_review((work, thread, turn, item), None, false, cx);
+		self.request_prompt_review((work, thread, turn, item), None, None, cx);
 	}
 
 	fn begin_prompt_review(&mut self, profile: &ClientProfile, work: &str, thread: &str) -> String {
@@ -469,7 +468,7 @@ impl AgentSurface {
 		self.reset_prompt_edit();
 
 		self.prompt_edit = Panel {
-			branch_only: self.locked_branch_source().is_some(),
+			branch_choice: self.locked_branch_source().map(|_| PromptForkBoundary::AfterTurn),
 			key: key.clone(),
 			profile: Some(profile.clone()),
 			work: work.into(),
@@ -485,7 +484,7 @@ impl AgentSurface {
 		&mut self,
 		source: (&str, &str, &str, &str),
 		previous: Option<DesktopPromptEditDraft>,
-		branch_only: bool,
+		branch_choice: Option<PromptForkBoundary>,
 		cx: &mut Context<Self>,
 	) {
 		let (work, thread, turn, item) = source;
@@ -501,7 +500,7 @@ impl AgentSurface {
 			return;
 		};
 		let key = self.begin_prompt_review(&profile, work, thread);
-		self.prompt_edit.branch_only |= branch_only;
+		self.prompt_edit.branch_choice = branch_choice.or(self.prompt_edit.branch_choice);
 		let (send, receive) = oneshot::channel();
 		let request_key = key.clone();
 		let started =
@@ -589,7 +588,8 @@ impl AgentSurface {
 					Ok((draft, turns)) => {
 						s.prompt_edit.feedback =
 							match s.apply_prompt_review(previous.as_ref(), draft, cx) {
-								Ok(()) if s.prompt_edit.branch_only => "Create an editable branch after this prompt's turn. The original conversation and draft stay saved.".into(),
+								Ok(()) if s.prompt_edit.branch_choice == Some(PromptForkBoundary::AttachedAfterTurn) => "Open a side chat from this completed turn. Its replies stay separate; the original conversation and draft stay saved.".into(),
+								Ok(()) if s.prompt_edit.branch_choice.is_some() => "Create an editable branch after this prompt's turn. The original conversation and draft stay saved.".into(),
                                 Ok(()) => format!("Removes {turns} turns, including this one. File changes remain. Confirmation required."),
 								Err(message) => message.into(),
 							};
@@ -803,7 +803,7 @@ impl AgentSurface {
 			.gap_2()
 			.child(self.prompt_edit.feedback.clone());
 
-		if !self.prompt_edit.branch_only {
+		if self.prompt_edit.branch_choice.is_none() {
 			for (_, editor) in &self.prompt_edit.editors {
 				panel = panel.child(editor.clone());
 			}
@@ -827,7 +827,7 @@ impl AgentSurface {
 							|| draft.pending_send.is_some()
 					}) {
 						"Close"
-					} else if self.prompt_edit.branch_only {
+					} else if self.prompt_edit.branch_choice.is_some() {
 						"Cancel branch"
 					} else {
 						"Cancel edit"
@@ -846,21 +846,35 @@ impl AgentSurface {
 		draft: &DesktopPromptEditDraft,
 		cx: &mut Context<Self>,
 	) -> Div {
+		let Some(boundary) = self.prompt_edit.branch_choice else { return panel };
 		let expected = draft.clone();
 		let pending = draft.fork.is_some();
-		panel.child(self.workspace_action(
-			"locked-branch-confirm".into(),
-			if pending { "Check branch status" } else { "Create new branch" }.into(),
-			move |s, cx| {
+		let side_chat = boundary == PromptForkBoundary::AttachedAfterTurn;
+		panel.child(
+			self.workspace_action(
+				"locked-branch-confirm".into(),
 				if pending {
-					s.recover_prompt_branch(expected.clone(), cx);
-				} else if s.prompt_editor_source_current() && s.prompt_edit.task.is_none() {
-					s.prompt_edit.confirmation = Some(expected.clone());
-					s.confirm_prompt_branch(expected.clone(), PromptForkBoundary::AfterTurn, cx);
+					"Check branch status"
+				} else if side_chat {
+					"Create side chat"
+				} else {
+					"Create new branch"
 				}
-			},
-			cx,
-		))
+				.into(),
+				move |s, cx| {
+					if pending {
+						s.recover_prompt_branch(expected.clone(), cx);
+					} else if s.prompt_editor_source_current()
+						&& s.prompt_edit.task.is_none()
+						&& s.prompt_edit.branch_choice == Some(boundary)
+					{
+						s.prompt_edit.confirmation = Some(expected.clone());
+						s.confirm_prompt_branch(expected.clone(), boundary, cx);
+					}
+				},
+				cx,
+			),
+		)
 	}
 
 	fn prompt_edit_actions(
@@ -869,7 +883,7 @@ impl AgentSurface {
 		draft: &DesktopPromptEditDraft,
 		cx: &mut Context<Self>,
 	) -> Div {
-		if self.prompt_edit.branch_only {
+		if self.prompt_edit.branch_choice.is_some() {
 			return self.branch_confirmation_action(panel, draft, cx);
 		}
 
@@ -963,7 +977,7 @@ impl AgentSurface {
 					s.request_prompt_review(
 						source,
 						Some(original.clone()),
-						s.prompt_edit.branch_only,
+						s.prompt_edit.branch_choice,
 						cx,
 					);
 				},
@@ -1137,7 +1151,7 @@ mod tests {
 			s.timeline.native.binding.as_mut().unwrap().thread = "thread".into();
 
 			s.begin_prompt_review(&profile, &work, "thread");
-			assert!(s.prompt_edit.branch_only);
+			assert!(s.prompt_edit.branch_choice.is_some());
 			assert_eq!(s.composer.read(cx).content(), "Unrelated unsent input");
 		});
 	}
