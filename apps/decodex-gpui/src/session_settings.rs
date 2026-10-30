@@ -17,7 +17,6 @@ const DEFAULTS_KEY: &str = "DecodexSessionDefaults";
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct Defaults {
 	pub permissions: PermissionMode,
-	pub speed: Option<ServiceTier>,
 }
 impl Defaults {
 	pub(crate) fn load() -> Self {
@@ -30,6 +29,29 @@ impl Defaults {
 		let value = serde_json::to_string(self).expect("session defaults");
 		ui_preferences::string(DEFAULTS_KEY, Some(&value));
 	}
+}
+
+#[cfg(not(test))]
+pub(crate) use decodex_protocol::{
+	codex_default_service_tier as default_speed,
+	set_codex_default_service_tier as set_default_speed,
+};
+
+#[cfg(test)]
+pub(crate) fn default_speed() -> Result<ServiceTier, decodex_protocol::CodexConfigError> {
+	let value = ui_preferences::string("test-shared-codex-speed", None);
+	value.map_or_else(
+		|| Ok(ServiceTier::standard()),
+		|s| ServiceTier::new(s).map_err(|_| decodex_protocol::CodexConfigError::ServiceTierInvalid),
+	)
+}
+
+#[cfg(test)]
+pub(crate) fn set_default_speed(
+	tier: &ServiceTier,
+) -> Result<(), decodex_protocol::CodexConfigError> {
+	ui_preferences::string("test-shared-codex-speed", Some(tier.as_str()));
+	Ok(())
 }
 
 pub(crate) fn permission_choices<T: 'static>(

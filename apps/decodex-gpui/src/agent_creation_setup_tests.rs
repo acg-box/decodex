@@ -11,6 +11,21 @@ use decodex_protocol::{
 	PermissionMode, ServiceTier,
 };
 
+#[gpui::test]
+fn shared_speed_stays_an_observation_until_the_user_selects_it(cx: &mut TestAppContext) {
+	let surface = cx.new(AgentSurface::new);
+	surface.update(cx, |s, cx| {
+		s.service_tier = Some(ServiceTier::new("ultrafast").unwrap());
+		s.fast = false;
+		assert!(!s.creation_intent.service_tier);
+		assert!(s.creation_setup(cx).is_none(), "a shared default is not a saved override");
+		s.mark_tier_intent();
+		let setup = s.creation_setup(cx).unwrap();
+		assert!(setup.intent.unwrap().service_tier);
+		assert_eq!(setup.service_tier.unwrap().as_str(), "ultrafast");
+	});
+}
+
 fn choose(
 	surface: &mut AgentSurface,
 	cx: &mut Context<AgentSurface>,

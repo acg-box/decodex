@@ -142,7 +142,8 @@ impl AgentSurface {
 				.draft_profiles
 				.execution
 				.choice(self.selected.as_deref()?)
-				.selected_service_tier();
+				.selected_service_tier()
+				.or_else(|| self.service_tier.clone());
 		}
 		if let Some(owner) = self.composer_manager.clone().or_else(|| self.root_id()) {
 			self.draft_profiles.execution.choice(&owner).selected_service_tier().or_else(|| {
@@ -163,7 +164,7 @@ impl AgentSurface {
 			Some(value) => crate::session_settings::speed_label(value).into(),
 			None if self.is_new_conversation()
 				|| (self.composer_manager.is_none() && self.root_id().is_none()) =>
-				"Codex default".into(),
+				"Standard".into(),
 			None => "Not reported".into(),
 		}
 	}

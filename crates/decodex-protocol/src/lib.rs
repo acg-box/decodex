@@ -275,7 +275,10 @@ pub use decodex_core::{
 	ClientDraftError, ClientDraftSnapshot, ClientDraftStore, MAX_CLIENT_DRAFT_BYTES, guardian, work,
 };
 /// Shared global client settings; these do not change thread execution settings.
-pub use decodex_core::{FastModeFailure, global_fast_mode_enabled, set_global_fast_mode_enabled};
+pub use decodex_core::{
+	CodexConfigError, codex_default_service_tier, global_fast_mode_enabled,
+	set_codex_default_service_tier, set_global_fast_mode_enabled,
+};
 pub use usage_evidence::{
 	UsageEvidenceResult, UsageEvidenceScope, UsageEvidenceSource, UsageEvidenceTotals,
 };

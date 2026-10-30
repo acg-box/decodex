@@ -9,7 +9,6 @@
 #[path = "ui_switch.rs"] mod switch;
 #[path = "settings_themes.rs"] mod themes;
 #[path = "settings_updates.rs"] mod updates;
-pub(crate) use switch::settings_switch;
 
 use gpui::{
 	AnyElement, ClickEvent, Context, Entity, KeyDownEvent, Render, Role, SharedString, Window,
@@ -94,6 +93,7 @@ pub(crate) struct SettingsSurface {
 	launch_at_login: LaunchAtLoginState,
 	launch_at_login_detail: SharedString,
 	session_defaults: crate::session_settings::Defaults,
+	default_speed: Option<decodex_protocol::ServiceTier>,
 	session_menu: Option<&'static str>,
 	guardian: Option<Entity<crate::ui_frame::Presentation<AgentSurface>>>,
 }
@@ -417,6 +417,21 @@ impl SettingsSurface {
 					"New conversations",
 					vec![self.agent_defaults_content(cx)],
 				))
+				.child(ui_theme::settings_group(
+					"Conversation assistance",
+					vec![
+						self.preference_control(
+							"automatic-prompt-suggestions",
+							"automatic-prompt-suggestions-knob",
+							"Automatic next-message suggestions",
+							"Suggest after each reply. Uses quota; never sends automatically.",
+							crate::ui_preferences::automatic_prompt_suggestions,
+							cx,
+						)
+						.into_any_element(),
+					],
+				))
+				.child(ui_theme::settings_group("Native defaults", vec![self.native_defaults(cx)]))
 				.children(self.guardian.clone())
 				.into_any_element(),
 			SettingsCategory::Appearance => self.appearance_content(cx),
@@ -441,20 +456,24 @@ impl SettingsSurface {
 		tier: decodex_protocol::ServiceTier,
 		cx: &mut Context<Self>,
 	) {
-		self.session_defaults.speed = Some(tier);
-		self.session_defaults.save();
+		if let Err(error) = crate::session_settings::set_default_speed(&tier) {
+			self.preference_error = Some(format!("Could not save speed: {error}.").into());
+			cx.notify();
+			return;
+		}
+		self.default_speed = Some(tier);
+		self.preference_error = None;
 		self.session_menu = None;
 		cx.refresh_windows();
 	}
 
 	fn agent_defaults_content(&self, cx: &mut Context<Self>) -> AnyElement {
-		let speed =
-			self.session_defaults.speed.as_ref().map_or("Codex default", |s| match s.as_str() {
-				"default" => "Standard",
-				"priority" => "Fast",
-				"ultrafast" => "Ultrafast",
-				_ => "Custom speed",
-			});
+		let speed = self.default_speed.as_ref().map_or("Unavailable", |s| match s.as_str() {
+			"default" => "Standard",
+			"priority" => "Fast",
+			"ultrafast" => "Ultrafast",
+			_ => s.as_str(),
+		});
 		gpui::div()
 			.flex()
 			.flex_col()
@@ -495,10 +514,11 @@ impl SettingsSurface {
 				ui_theme::settings_row()
 					.child(ui_theme::settings_label(
 						"Default speed",
-						"Higher speeds use more of your allowance. Availability depends on the account and model.",
+						"Shared with Codex. Applies to new conversations; account and model availability still apply.",
 					))
-					.child(ui_theme::settings_button("default-speed", speed).on_click(
+			.child(ui_theme::settings_button("default-speed", speed.to_owned()).on_click(
 						cx.listener(|s, _, _, cx| {
+							s.default_speed = crate::session_settings::default_speed().ok();
 							s.session_menu =
 								if s.session_menu == Some("speed") { None } else { Some("speed") };
 							cx.notify();
@@ -512,7 +532,7 @@ impl SettingsSurface {
 						.items_center()
 						.gap_2()
 						.child(crate::session_settings::speed_choices(
-							self.session_defaults.speed.as_ref(),
+							self.default_speed.as_ref(),
 							["priority", "ultrafast"].map(|id| {
 								(
 									decodex_protocol::ServiceTier::new(id)
@@ -523,23 +543,8 @@ impl SettingsSurface {
 							Self::choose_default_speed,
 							cx,
 						))
-						.child(
-							ui_theme::settings_button("default-speed-inherit", "Use Codex default")
-								.on_click(cx.listener(|s, _, _, cx| {
-									s.session_defaults.speed = None;
-									s.session_defaults.save();
-									s.session_menu = None;
-									cx.refresh_windows();
-								})),
-						),
 				)
 			})
-			.child(ui_theme::settings_group("Conversation assistance", vec![self.preference_control(
-				"automatic-prompt-suggestions", "automatic-prompt-suggestions-knob", "Automatic next-message suggestions",
-				"Suggest after each reply. Uses quota; never sends automatically.",
-				crate::ui_preferences::automatic_prompt_suggestions, cx,
-			).into_any_element()]))
-			.child(ui_theme::settings_group("Native defaults", vec![self.native_defaults(cx)]))
 			.into_any_element()
 	}
 
@@ -712,6 +717,7 @@ impl SettingsSurface {
 			launch_at_login,
 			launch_at_login_detail: launch_at_login_detail(launch_at_login).into(),
 			session_defaults: crate::session_settings::Defaults::load(),
+			default_speed: crate::session_settings::default_speed().ok(),
 			session_menu: None,
 			guardian: None,
 		};
@@ -1601,9 +1607,17 @@ mod tests {
 		assert!(visual.debug_bounds("menubar-surface-toggle").is_some());
 		assert!(visual.debug_bounds("menubar-loading").is_none());
 		assert!(visual.debug_bounds("automatic-recap-toggle").is_some());
-		assert!(visual.debug_bounds("prompt-suggestions").is_some());
+		assert!(visual.debug_bounds("automatic-prompt-suggestions").is_none());
 		assert!(visual.debug_bounds("recap-loading").is_none());
 		assert!(visual.debug_bounds("loading-feedback-").is_none());
+		surface.update(visual, |s, cx| {
+			s.category = SettingsCategory::Agents;
+			cx.notify();
+		});
+		visual.update(crate::ui_frame::draw_current_frame);
+		assert!(visual.debug_bounds("automatic-prompt-suggestions").is_some());
+		assert!(visual.debug_bounds("default-speed").is_some());
+		assert!(visual.debug_bounds("prompt-suggestions").is_none());
 	}
 
 	#[gpui::test]

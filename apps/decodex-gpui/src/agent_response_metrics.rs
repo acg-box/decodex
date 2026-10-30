@@ -257,6 +257,7 @@ pub(super) fn footer(
 	entry: &AgentHistoryEntryDto,
 	identity: &str,
 	metrics: Option<AnyElement>,
+	action: Option<AnyElement>,
 ) -> AnyElement {
 	let text = markdown::response_text(&entry.text);
 	let text = if entry.weather.is_empty() {
@@ -282,6 +283,7 @@ pub(super) fn footer(
 				text,
 			))
 		})
+		.children(action)
 		.into_any_element()
 }
 

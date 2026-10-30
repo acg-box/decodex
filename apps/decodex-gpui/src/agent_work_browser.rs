@@ -95,11 +95,8 @@ impl AgentSurface {
 		}
 		if let Some(defaults) = defaults {
 			self.workspace.new_conversation_permissions = Some(defaults.permissions);
-			self.service_tier = defaults.speed.clone();
-			self.fast = defaults.speed.as_ref().is_some_and(|tier| tier.as_str() == "priority");
-			self.draft_profiles.execution.change(id.clone(), |choice| {
-				choice.service_tier = defaults.speed;
-			});
+			self.service_tier = crate::session_settings::default_speed().ok();
+			self.fast = self.service_tier.as_ref().is_some_and(|tier| tier.as_str() == "priority");
 		}
 
 		self.restore_manager_composer(&id, cx);

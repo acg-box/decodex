@@ -111,7 +111,11 @@ impl Render for Panel {
 			.on_key_down(cx.listener(|panel, event: &gpui::KeyDownEvent, window, cx| {
 				match event.keystroke.key.as_str() {
 					"escape" => {
-						panel.close(cx);
+						if let Some(content) = panel.content.as_ref().filter(|c| c.attached) {
+							(content.dismiss)(cx);
+						} else {
+							panel.close(cx);
+						}
 						let parent = panel.parent;
 						cx.defer(move |cx| {
 							let _ = parent.update(cx, |_, window, _| window.activate_window());

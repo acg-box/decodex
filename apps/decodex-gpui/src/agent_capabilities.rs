@@ -478,6 +478,7 @@ mod tests {
 			s.model.update(cx, |input, cx| input.set_content("custom", cx));
 			s.mark_model_intent(cx);
 
+			let configured_tier = s.service_tier.clone();
 			s.capabilities = Some(AgentCapabilitiesResult::Available {
 				memory_enabled: None,
 				models: vec![AgentModelDto {
@@ -504,8 +505,8 @@ mod tests {
 
 			s.reconcile_model_options(cx);
 
-			assert!(
-				s.service_tier.is_none(),
+			assert_eq!(
+				s.service_tier, configured_tier,
 				"catalog default must not silently opt into a paid tier"
 			);
 

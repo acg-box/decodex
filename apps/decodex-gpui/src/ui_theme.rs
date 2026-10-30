@@ -377,7 +377,7 @@ pub(crate) fn settings_group(title: &'static str, rows: Vec<AnyElement>) -> Div 
 
 pub(crate) fn settings_button(
 	id: impl Into<gpui::SharedString>,
-	label: &'static str,
+	label: impl Into<gpui::SharedString>,
 ) -> Stateful<Div> {
 	settings_button_base(id, label)
 		.cursor_pointer()
@@ -388,15 +388,16 @@ pub(crate) fn settings_button(
 
 pub(crate) fn settings_button_base(
 	id: impl Into<gpui::SharedString>,
-	label: &'static str,
+	label: impl Into<gpui::SharedString>,
 ) -> Stateful<Div> {
 	let id = id.into();
+	let label = label.into();
 
 	gpui::div()
 		.id(id.clone())
 		.debug_selector(move || id.to_string())
 		.role(Role::Button)
-		.aria_label(label)
+		.aria_label(label.clone())
 		.tab_index(0)
 		.h(gpui::px(SETTINGS_CONTROL_HEIGHT))
 		.px(gpui::px(8.0))

@@ -11,10 +11,10 @@ use gpui::{
 
 use crate::{
 	shell::{
-		ActivateAgent, ActivateHealth, ActivateSettings, DismissStatus, FindConversation, FocusNext,
-		FocusPrevious,
-		GrowPanel, GrowPanels, NavigateBack, NavigateForward, ResetPanel, ResetPanels, ShrinkPanel,
-		ShrinkPanels, ToggleContentFullscreen, ToggleGraph, ToggleInspector, ToggleSidebar,
+		ActivateAgent, ActivateHealth, ActivateSettings, DismissStatus, FindConversation,
+		FocusNext, FocusPrevious, GrowPanel, GrowPanels, NavigateBack, NavigateForward, ResetPanel,
+		ResetPanels, ShrinkPanel, ShrinkPanels, ToggleContentFullscreen, ToggleGraph,
+		ToggleInspector, ToggleSidebar,
 		agent_surface::{AgentSurface, composer, voice::Media, workspace::ARCHIVED_MESSAGE},
 		forward_shell_action as forward,
 	},

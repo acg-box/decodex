@@ -355,9 +355,10 @@ impl AgentSurface {
 		let mut surface = Self::initial_state(inputs, presentations, deliveries, cx);
 		let defaults = crate::session_settings::Defaults::load();
 		surface.permission_mode = defaults.permissions;
-		surface.fast = defaults.speed.as_ref().is_some_and(|tier| tier.as_str() == "priority");
-		surface.creation_intent.service_tier = defaults.speed.is_some();
-		surface.service_tier = defaults.speed;
+		let speed = crate::session_settings::default_speed().ok();
+		surface.fast = speed.as_ref().is_some_and(|tier| tier.as_str() == "priority");
+		surface.creation_intent.service_tier = false;
+		surface.service_tier = speed;
 		surface
 	}
 
@@ -3086,7 +3087,7 @@ fn history_entry_presented(
 	streamed_body: Option<AnyElement>,
 	show_metadata: bool,
 	metadata_ready: Option<Rc<Cell<bool>>>,
-	input_action: Option<AnyElement>,
+	message_action: Option<AnyElement>,
 ) -> Div {
 	if matches!(entry.kind.as_str(), "partial_plan" | "partial_answer") {
 		return gpui::div()
@@ -3111,6 +3112,8 @@ fn history_entry_presented(
 	}
 
 	let user = matches!(entry.kind.as_str(), "user" | "instruction");
+	let (input_action, footer_action) =
+		if user { (message_action, None) } else { (None, message_action) };
 	let visible_text = if entry.kind == "assistant" {
 		markdown::response_text(&entry.text)
 	} else {
@@ -3175,8 +3178,9 @@ fn history_entry_presented(
 					body.child(FinishedFooter {
 						visible: show_metadata,
 						ready: metadata_ready,
-						child: show_metadata
-							.then(|| response_metrics::footer(entry, identity, metrics)),
+						child: show_metadata.then(|| {
+							response_metrics::footer(entry, identity, metrics, footer_action)
+						}),
 					})
 				}),
 		)
