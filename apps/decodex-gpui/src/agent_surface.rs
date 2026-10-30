@@ -2176,6 +2176,9 @@ impl AgentSurface {
 	}
 
 	fn history_panel(&self, work: &AgentWorkItemDto, cx: &mut Context<Self>) -> impl IntoElement {
+		if let Some(history) = self.item_context_history(work, cx) {
+			return history;
+		}
 		if self.native_agents.selected.is_some() {
 			return self.history_activity(
 				gpui::div().w_full().min_w_0().children(self.native_timeline_panel(work, cx)),

@@ -57,6 +57,11 @@ impl Display for HistoryKey {
 
 impl AgentSurface {
 	pub(super) fn prepare_history_marks(&mut self) {
+		if self.item_context_window_active() {
+			self.timeline.marks.clear();
+			self.timeline.marks_revision = None;
+			return;
+		}
 		let native = self.conversation_work().is_some_and(|work| self.native_history_active(&work));
 		let work = self.selected.clone().map(|work| (work, native));
 
@@ -406,7 +411,8 @@ impl AgentSurface {
 				scroll.set_offset(gpui::point(gpui::px(0.), offset));
 			}
 
-			let following = !smooth
+			let following = !self.item_context_window_active()
+				&& !smooth
 				&& delta.y < gpui::px(0.)
 				&& (scroll.offset().y + scroll.max_offset().y).abs() < gpui::px(1.);
 
@@ -453,7 +459,8 @@ impl AgentSurface {
 				if moving {
 					ui_motion::request_frame(window, cx);
 				} else {
-					let following = wheel.motion.to < wheel.motion.from
+					let following = !self.item_context_window_active()
+						&& wheel.motion.to < wheel.motion.from
 						&& (offset + f32::from(scroll.max_offset().y)).abs() < 1.;
 
 					if following {
@@ -582,6 +589,7 @@ impl AgentSurface {
 	}
 
 	pub(super) fn jump_to_latest(&mut self, cx: &mut Context<Self>) {
+		self.reset_item_context();
 		self.clear_voice_reading_space();
 
 		let Some(work) = self.selected.clone() else {
@@ -614,7 +622,8 @@ impl AgentSurface {
 			.and_then(|work| self.timeline.voice_min_height.get(work))
 			.is_some_and(|height| height.get() > 0.);
 		let visible =
-			voice_space
+			self.item_context_window_active()
+				|| voice_space
 				|| self.selected.as_ref().and_then(|id| self.timeline.scroll.get(id)).is_some_and(
 					|scroll| scroll.max_offset().y + scroll.offset().y > gpui::px(48.),
 				);

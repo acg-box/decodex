@@ -35,6 +35,7 @@ impl AgentSurface {
 		window: &mut gpui::Window,
 		cx: &mut Context<Self>,
 	) {
+		self.reset_item_context();
 		if !self.conversation_work().is_some_and(|work| self.native_history_active(&work))
 			|| self.timeline.native.summary_only()
 		{

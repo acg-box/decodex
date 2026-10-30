@@ -1339,6 +1339,7 @@ impl AgentSurface {
 					),
 			)
 			.children(self.conversation_cost_details(cx))
+			.children(self.item_context_navigation(cx))
 			.children(self.conversation_find_bar(cx))
 	}
 

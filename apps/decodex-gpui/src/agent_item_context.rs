@@ -1,10 +1,10 @@
-//! Nearby native item history in the existing evidence detail area.
-use gpui::AnyElement;
+//! Locate native items in the conversation, reading an anchor only when needed.
+use gpui::{AnyElement, Div, InteractiveElement as _, Pixels, Point};
 use tokio::runtime::Builder;
 
 use crate::shell::agent_surface::{
-	AgentClient, AgentSurface, Context, EntityId, IntoElement, ParentElement, Styled, Task,
-	WireText, markdown,
+	AgentClient, AgentSurface, AgentWorkItemDto, Context, EntityId, IntoElement, ParentElement,
+	Styled, Task, WireText,
 };
 use decodex_protocol::{AgentTimelineContent, ItemContextRequest, ItemContextResult};
 
@@ -12,16 +12,26 @@ use decodex_protocol::{AgentTimelineContent, ItemContextRequest, ItemContextResu
 pub(super) struct Panel {
 	request: Option<ItemContextRequest>,
 	result: Option<ItemContextResult>,
+	source: Option<EntityId>,
+	return_offset: Option<Point<Pixels>>,
 	task: Option<Task<()>>,
 	epoch: u64,
 }
 
 impl AgentSurface {
 	pub(super) fn reset_item_context(&mut self) {
+		if self.item_context_matches_source()
+			&& let Some(offset) = self.nearby_history.return_offset
+			&& let Some(scroll) = self.selected.as_ref().and_then(|id| self.timeline.scroll.get(id))
+		{
+			scroll.set_offset(offset);
+			self.clear_item_history_viewport();
+		}
 		self.nearby_history =
 			Panel { epoch: self.nearby_history.epoch.wrapping_add(1), ..Default::default() };
 	}
 
+	/// This action belongs to an existing evidence/reference detail, not each message.
 	pub(super) fn item_context_panel(
 		&self,
 		ids: &(String, String, String),
@@ -42,98 +52,171 @@ impl AgentSurface {
 			cursor: None,
 			before: false,
 		};
-		let open = self.nearby_history.request.as_ref().is_some_and(|current| {
-			current.work_id == request.work_id
-				&& current.thread_id == request.thread_id
-				&& current.turn_id == request.turn_id
-				&& current.item_id == request.item_id
-		});
-		let initial = request.clone();
-		let action = self.workspace_action(
+		self.workspace_action(
 			format!("item-context-{}", ids.2),
-			if open { "Close nearby history" } else { "Nearby history" }.into(),
-			move |s, cx| {
-				if open {
-					s.reset_item_context();
-					cx.notify();
-				} else {
-					s.load_item_context(initial.clone(), cx);
-				}
-			},
+			"Show in conversation".into(),
+			move |s, cx| s.locate_item_context(request.clone(), cx),
 			cx,
-		);
-		let mut panel = gpui::div().flex().flex_col().gap_2().child(action);
-		if !open {
-			return panel.into_any_element();
+		)
+	}
+
+	fn item_context_matches_source(&self) -> bool {
+		self.nearby_history.source.is_some()
+			&& self.snapshot.as_ref().and_then(|s| s.runtime_source.as_ref())
+				== self.nearby_history.source.as_ref()
+			&& self.nearby_history.request.as_ref().is_some_and(|request| {
+				self.conversation_work().is_some_and(|work| {
+					work.id == request.work_id.as_str()
+						&& work.codex_thread_id.as_deref() == Some(request.thread_id.as_str())
+				})
+			})
+	}
+
+	pub(super) fn item_context_window_active(&self) -> bool {
+		self.item_context_matches_source()
+			&& matches!(&self.nearby_history.result,
+				Some(ItemContextResult::Available { items, .. }) if !items.is_empty())
+	}
+
+	pub(super) fn item_history_location_active(&self) -> bool {
+		self.item_context_matches_source()
+			&& !matches!(
+				self.nearby_history.result,
+				Some(ItemContextResult::Unavailable | ItemContextResult::Unsupported)
+			)
+	}
+
+	pub(super) fn is_located_item(&self, content: &AgentTimelineContent) -> bool {
+		self.item_context_matches_source()
+			&& matches!(content, AgentTimelineContent::Item { turn_id, item_id, .. }
+				if self.nearby_history.request.as_ref().is_some_and(|r|
+					r.turn_id.as_str() == turn_id && r.item_id.as_str() == item_id))
+	}
+
+	pub(super) fn located_item_row(
+		&self,
+		content: &AgentTimelineContent,
+		body: AnyElement,
+	) -> AnyElement {
+		if !self.is_located_item(content) {
+			return body;
 		}
-		match &self.nearby_history.result {
-			Some(ItemContextResult::Available { items, previous_cursor, next_cursor, .. }) => {
-				panel = panel.child(
-					"Nearby items in this turn · earlier and later pages keep the exact source",
-				);
-				for (index, item) in items.iter().enumerate() {
-					if let AgentTimelineContent::Item {
-						item_id,
-						kind,
-						text,
-						truncated,
-						activity,
-						..
-					} = item
-					{
-						let label = match kind.as_str() {
-							"userMessage" => "You",
-							"agentMessage" => "Assistant",
-							_ => activity
-								.as_ref()
-								.map_or(kind.as_str(), |activity| activity.label.as_str()),
-						};
-						panel = panel.child(
-							gpui::div()
-								.flex()
-								.flex_col()
-								.gap_1()
-								.child(format!(
-									"{label}{}",
-									if item_id == request.item_id.as_str() {
-										" · Selected item"
-									} else {
-										""
-									}
-								))
-								.child(markdown::render(
-									text,
-									&format!("item-context-text-{index}"),
-								))
-								.children(truncated.then(|| {
-									crate::shell::agent_surface::muted("Retained text shortened.")
-								})),
-						);
-					}
-				}
-				for (before, cursor, label) in
-					[(true, previous_cursor, "Earlier items"), (false, next_cursor, "Later items")]
-				{
-					if let Some(cursor) = cursor {
-						let mut next = request.clone();
-						next.before = before;
-						next.cursor = Some(cursor.clone());
-						panel = panel.child(self.workspace_action(
-							format!("item-context-page-{before}"),
-							label.into(),
-							move |s, cx| s.load_item_context(next.clone(), cx),
-							cx,
-						));
-					}
-				}
-			},
-			Some(ItemContextResult::Unsupported) =>
-				panel = panel.child("This native server does not support item anchors."),
-			Some(ItemContextResult::Unavailable) =>
-				panel = panel.child("Nearby history unavailable. Reopen to retry."),
-			None => panel = panel.child(crate::ui_loading::loading("Loading nearby history")),
+		gpui::div()
+			.debug_selector(|| "conversation-located-item".into())
+			.w_full()
+			.min_w_0()
+			.border_l_2()
+			.pl_2()
+			.border_color(crate::ui_theme::rgb(crate::ui_theme::BLUE))
+			.child(body)
+			.into_any_element()
+	}
+
+	pub(super) fn item_context_history(
+		&self,
+		work: &AgentWorkItemDto,
+		cx: &mut Context<Self>,
+	) -> Option<Div> {
+		if !self.item_context_window_active() {
+			return None;
 		}
-		panel.into_any_element()
+		let ItemContextResult::Available { items, previous_cursor, next_cursor, .. } =
+			self.nearby_history.result.as_ref()?
+		else {
+			return None;
+		};
+		let mut body = gpui::div()
+			.debug_selector(|| "conversation-item-history".into())
+			.w_full()
+			.min_w_0()
+			.flex()
+			.flex_col()
+			.gap_4();
+		body = body.children(self.item_history_page_action(true, previous_cursor.as_ref(), cx));
+		for content in items {
+			let AgentTimelineContent::Item { turn_id, item_id, .. } = content else {
+				continue;
+			};
+			let identity =
+				serde_json::json!([work.id, work.codex_thread_id, turn_id, item_id]).to_string();
+			let row = self.native_item_content(work, content, &identity, false, cx);
+			let row = self.located_item_row(content, row);
+			body = body.child(self.item_history_scroll_row(work, turn_id, item_id, row, cx));
+		}
+		body = body.children(self.item_history_page_action(false, next_cursor.as_ref(), cx));
+		if self.nearby_history.task.is_some() {
+			body = body.child(crate::ui_loading::loading("Loading conversation history"));
+		}
+		Some(body)
+	}
+
+	pub(super) fn item_context_navigation(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+		self.item_context_window_active().then(|| {
+			gpui::div()
+				.flex_none()
+				.px(gpui::px(16.))
+				.pb(gpui::px(8.))
+				.flex()
+				.items_center()
+				.justify_between()
+				.child(crate::shell::agent_surface::muted("Conversation history · This turn"))
+				.child(self.workspace_action(
+					"item-history-return".into(),
+					"Return to conversation".into(),
+					|s, cx| {
+						s.reset_item_context();
+						cx.notify();
+					},
+					cx,
+				))
+				.into_any_element()
+		})
+	}
+
+	fn item_history_page_action(
+		&self,
+		before: bool,
+		cursor: Option<&WireText>,
+		cx: &mut Context<Self>,
+	) -> Option<AnyElement> {
+		let mut request = self.nearby_history.request.clone()?;
+		request.cursor = Some(cursor?.clone());
+		request.before = before;
+		Some(self.workspace_action(
+			format!("item-context-page-{before}"),
+			if before { "Earlier messages" } else { "Later messages" }.into(),
+			move |s, cx| s.load_item_context(request.clone(), cx),
+			cx,
+		))
+	}
+
+	fn locate_item_context(&mut self, request: ItemContextRequest, cx: &mut Context<Self>) {
+		let in_window = self.item_context_window_active()
+			&& matches!(&self.nearby_history.result,
+				Some(ItemContextResult::Available { items, .. }) if items.iter().any(|item|
+					matches!(item, AgentTimelineContent::Item { turn_id, item_id, .. }
+						if turn_id == request.turn_id.as_str() && item_id == request.item_id.as_str())));
+		if in_window {
+			self.nearby_history.task = None;
+			self.nearby_history.epoch = self.nearby_history.epoch.wrapping_add(1);
+			self.nearby_history.request = Some(request.clone());
+			self.focus_item_history(request.turn_id.as_str(), request.item_id.as_str());
+		} else {
+			self.reset_item_context();
+			self.nearby_history.source =
+				self.snapshot.as_ref().and_then(|s| s.runtime_source.clone());
+			self.nearby_history.request = Some(request.clone());
+			if !self.item_context_matches_source() {
+				return;
+			}
+			if !self.locate_loaded_history_item(&request) {
+				self.feedback = crate::ui_feedback::Feedback::neutral("Locating message…");
+				self.load_item_context(request, cx);
+			}
+		}
+		self.pause_item_history_navigation();
+		self.workspace.details_visible = false;
+		cx.notify();
 	}
 
 	fn load_item_context(&mut self, request: ItemContextRequest, cx: &mut Context<Self>) {
@@ -141,11 +224,20 @@ impl AgentSurface {
 			return;
 		};
 		let source = self.snapshot.as_ref().and_then(|snapshot| snapshot.runtime_source.clone());
-		if source.is_none() || self.selected.as_deref() != Some(request.work_id.as_str()) {
+		if source.is_none()
+			|| self.selected.as_deref() != Some(request.work_id.as_str())
+			|| self.nearby_history.task.is_some()
+		{
 			return;
 		}
-		self.reset_item_context();
+		if request.cursor.is_none() {
+			self.reset_item_context();
+			self.nearby_history.return_offset =
+				self.timeline.scroll.get(request.work_id.as_str()).map(gpui::ScrollHandle::offset);
+		}
+		self.nearby_history.epoch = self.nearby_history.epoch.wrapping_add(1);
 		let epoch = self.nearby_history.epoch;
+		self.nearby_history.source = source.clone();
 		self.nearby_history.request = Some(request.clone());
 		let expected = request.clone();
 		let future = cx.background_executor().spawn(async move {
@@ -155,158 +247,50 @@ impl AgentSurface {
 		self.nearby_history.task = Some(cx.spawn(async move |s, cx| {
 			let result = future.await.unwrap_or(ItemContextResult::Unavailable);
 			let _ = s.update(cx, |s, cx| {
-				if s.selected.as_deref() != Some(expected.work_id.as_str())
-					|| s.nearby_history.epoch != epoch
+				if s.nearby_history.epoch != epoch
 					|| s.nearby_history.request.as_ref() != Some(&expected)
-					|| s.snapshot.as_ref().and_then(|snapshot| snapshot.runtime_source.as_ref())
-						!= source.as_ref()
+					|| !s.item_context_matches_source()
 				{
 					return;
 				}
 				s.nearby_history.task = None;
-				s.nearby_history.result = Some(result);
+				s.accept_item_history(result, &expected);
 				cx.notify();
 			});
 		}));
 		cx.notify();
 	}
+
+	fn accept_item_history(&mut self, result: ItemContextResult, request: &ItemContextRequest) {
+		if let ItemContextResult::Available { items, .. } = &result
+			&& let Some(AgentTimelineContent::Item { turn_id, item_id, .. }) =
+				if request.cursor.is_none() {
+					items.iter().find(|item| {
+						matches!(item,
+						AgentTimelineContent::Item { turn_id, item_id, .. }
+						if turn_id == request.turn_id.as_str() && item_id == request.item_id.as_str())
+					})
+				} else if request.before {
+					items.last()
+				} else {
+					items.first()
+				} {
+			let (turn, item) = (turn_id.clone(), item_id.clone());
+			self.nearby_history.result = Some(result);
+			self.focus_item_history(&turn, &item);
+			self.feedback = crate::ui_feedback::Feedback::neutral("History loaded.");
+			return;
+		}
+		self.feedback = crate::ui_feedback::Feedback::neutral(match result {
+			ItemContextResult::Unsupported => "This Codex version cannot locate unloaded messages.",
+			_ => "Could not load that history. The current conversation is unchanged.",
+		});
+		if !self.item_context_window_active() {
+			self.nearby_history.result = Some(ItemContextResult::Unavailable);
+		}
+	}
 }
 
 #[cfg(test)]
-mod tests {
-	use super::{AgentSurface, EntityId, ItemContextRequest, ItemContextResult, WireText};
-	use crate::shell::agent_surface::wire_test_support;
-	use decodex_protocol::{ClientMessage, QueryPayload, QueryResultPayload};
-	use futures_util::StreamExt as _;
-	use gpui::AppContext as _;
-	use tokio_tungstenite::tungstenite::Message;
-
-	struct Quiet(gpui::Entity<AgentSurface>);
-	impl gpui::Render for Quiet {
-		fn render(
-			&mut self,
-			_: &mut gpui::Window,
-			_: &mut gpui::Context<Self>,
-		) -> impl gpui::IntoElement {
-			gpui::div()
-		}
-	}
-	struct AnchorView(gpui::Entity<AgentSurface>);
-	impl gpui::Render for AnchorView {
-		fn render(
-			&mut self,
-			_: &mut gpui::Window,
-			cx: &mut gpui::Context<Self>,
-		) -> impl gpui::IntoElement {
-			self.0.update(cx, |s, cx| {
-				s.item_context_panel(&("agent".into(), "turn".into(), "item".into()), cx)
-			})
-		}
-	}
-
-	#[gpui::test]
-	fn nearby_history_action_reads_the_selected_native_child(cx: &mut gpui::TestAppContext) {
-		let (_home, profile, server) = wire_test_support::fixture(|listener| async move {
-			let mut socket = wire_test_support::accept(&listener).await;
-			let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-				panic!("query")
-			};
-			let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
-				panic!("query")
-			};
-			let QueryPayload::GetItemContext { request } = query.payload else { panic!("context") };
-			assert_eq!(request.thread_id.as_str(), "native-child");
-			wire_test_support::answer_query(
-				&mut socket,
-				query.query_id,
-				QueryResultPayload::ItemContext(ItemContextResult::Available {
-					request,
-					items: vec![],
-					previous_cursor: None,
-					next_cursor: None,
-				}),
-			)
-			.await;
-		});
-		let (view, visual) = cx.add_window_view(|_, cx| {
-			let surface = cx.new(AgentSurface::new);
-			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
-			surface.update(cx, |s, cx| {
-				s.visual_workspace_fixture(cx);
-				s.profile = Some(profile);
-				s.snapshot.as_mut().unwrap().runtime_source =
-					Some(EntityId::new("source").unwrap());
-				s.native_agents.selected = Some(("agent".into(), "native-child".into()));
-			});
-			AnchorView(surface)
-		});
-		visual.update(crate::ui_frame::draw_frame);
-		let button = visual.debug_bounds("item-context-item").expect("nearby history action");
-		visual.simulate_click(button.center(), Default::default());
-		visual.run_until_parked();
-		server.join().unwrap();
-		view.read_with(visual, |v, cx| {
-			v.0.read_with(cx, |s, _| assert!(s.nearby_history.result.is_some()))
-		});
-	}
-
-	#[gpui::test]
-	fn nearby_history_query_keeps_identity_and_discards_a_changed_source(
-		cx: &mut gpui::TestAppContext,
-	) {
-		for changed in [false, true] {
-			let (_home, profile, server) = wire_test_support::fixture(|listener| async move {
-				let mut socket = wire_test_support::accept(&listener).await;
-				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-					panic!("query")
-				};
-				let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
-					panic!("query")
-				};
-				let QueryPayload::GetItemContext { request } = query.payload else {
-					panic!("item context")
-				};
-				assert_eq!(request.turn_id.as_str(), "turn");
-				assert_eq!(request.item_id.as_str(), "item");
-				wire_test_support::answer_query(
-					&mut socket,
-					query.query_id,
-					QueryResultPayload::ItemContext(ItemContextResult::Available {
-						request,
-						items: vec![],
-						previous_cursor: None,
-						next_cursor: None,
-					}),
-				)
-				.await;
-			});
-			let (view, visual) = cx.add_window_view(|_, cx| Quiet(cx.new(AgentSurface::new)));
-			let surface = view.read_with(visual, |view, _| view.0.clone());
-			surface.update(visual, |s, cx| {
-				s.visual_workspace_fixture(cx);
-				s.profile = Some(profile);
-				s.snapshot.as_mut().unwrap().runtime_source =
-					Some(EntityId::new("source").unwrap());
-				s.load_item_context(
-					ItemContextRequest {
-						work_id: EntityId::new("agent").unwrap(),
-						thread_id: EntityId::new("thread").unwrap(),
-						turn_id: WireText::new("turn").unwrap(),
-						item_id: WireText::new("item").unwrap(),
-						cursor: None,
-						before: false,
-					},
-					cx,
-				);
-				if changed {
-					s.snapshot.as_mut().unwrap().runtime_source =
-						Some(EntityId::new("other").unwrap());
-				}
-			});
-			visual.run_until_parked();
-			server.join().unwrap();
-			surface
-				.read_with(visual, |s, _| assert_eq!(s.nearby_history.result.is_some(), !changed));
-		}
-	}
-}
+#[path = "agent_item_context_tests.rs"]
+mod tests;
