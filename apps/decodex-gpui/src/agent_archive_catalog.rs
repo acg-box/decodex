@@ -17,7 +17,7 @@ use crate::{
 	},
 	ui_feedback::{self, Feedback},
 	ui_loading,
-	ui_motion::{Choice, Segmented},
+	ui_motion::{Choice, Segmented, SmoothControl as _},
 	ui_scroll::SmoothScrollArea as _,
 	ui_theme,
 };
@@ -381,188 +381,237 @@ impl AgentSurface {
 			.overflow_y_scroll()
 			.flex()
 			.flex_col()
+			.gap(gpui::px(16.))
 			.pr(gpui::px(10.));
-		let mut previous_day = None;
-		for item in rows.iter() {
-			let id = item.id.clone();
-			let group = gpui::SharedString::from(format!("archive-row-{id}"));
-			if catalog.sort != Sort::Name && previous_day != Some(item.day.as_str()) {
-				let heading_id = id.clone();
-				list = list.child(
+		for group in rows.chunk_by(|a, b| catalog.sort == Sort::Name || a.day == b.day) {
+			let first = &group[0];
+			let mut column = gpui::div()
+				.id(gpui::SharedString::from(format!("archive-section-{}", first.id)))
+				.flex_1()
+				.flex_basis(gpui::px(540.))
+				.min_w_0()
+				.flex()
+				.flex_col()
+				.gap(gpui::px(2.));
+			for item in group {
+				let id = item.id.clone();
+				let open_id = id.clone();
+				let open_key = id.clone();
+				let restore_id = id.clone();
+				let restore_key = id.clone();
+				let delete_id = id.clone();
+				let delete_key = id.clone();
+				let confirming = catalog.confirming(&id);
+				let busy = catalog.busy.as_ref() == Some(&id);
+				let unavailable = catalog.mutation.is_some();
+				let restore = archive_action(
+					format!("unarchive-{id}"),
+					Symbol::Unarchive,
+					if busy && !catalog.deleting { "Restoring…" } else { "Unarchive" },
+				)
+				.aria_label(format!("Unarchive {}", item.title))
+				.when(unavailable, |d| d.opacity(0.45))
+				.on_click(cx.listener(move |s, _, _, cx| {
+					cx.stop_propagation();
+					s.unarchive_catalog_item(&restore_id, cx);
+				}))
+				.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+					if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+						cx.stop_propagation();
+						s.unarchive_catalog_item(&restore_key, cx);
+					}
+				}));
+				let delete = archive_action(
+					format!("delete-archive-{id}"),
+					Symbol::Trash,
+					if busy && catalog.deleting {
+						"Deleting…"
+					} else if confirming {
+						"Click again to delete permanently"
+					} else {
+						"Delete"
+					},
+				)
+				.aria_label(format!(
+					"{} {}",
+					if confirming { "Confirm permanent deletion of" } else { "Delete" },
+					item.title
+				))
+				.when(unavailable, |d| d.opacity(0.45))
+				.when(confirming, |d| {
+					d.text_color(ui_theme::rgb(ui_theme::ERROR))
+						.bg(ui_theme::rgb(ui_theme::ERROR).opacity(0.12))
+						.border_color(ui_theme::rgb(ui_theme::ERROR).opacity(0.35))
+				})
+				.on_click(cx.listener(move |s, _, _, cx| {
+					cx.stop_propagation();
+					s.delete_archive_item(&delete_id, cx);
+				}))
+				.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+					if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
+						cx.stop_propagation();
+						s.delete_archive_item(&delete_key, cx);
+					}
+				}));
+				let detail = item.metadata.clone();
+				column = column.child(
 					gpui::div()
-						.id(gpui::SharedString::from(format!("archive-date-{id}")))
-						.debug_selector(move || format!("archive-date-{heading_id}"))
-						.role(Role::Heading)
-						.aria_label(item.day.clone())
+						.id(gpui::SharedString::from(format!("archived-{id}")))
+						.debug_selector(move || format!("archived-{id}"))
+						.role(Role::Button)
+						.aria_label(format!("Open archived {}", item.title))
+						.aria_description(item.metadata.clone())
+						.tab_index(0)
 						.flex_none()
-						.px(gpui::px(10.))
-						.pt(gpui::px(if previous_day.is_some() { 18. } else { 6. }))
-						.pb(gpui::px(6.))
-						.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-						.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
-						.text_color(ui_theme::rgb(ui_theme::TEXT).opacity(0.78))
-						.child(item.day.clone()),
+						.min_w_0()
+						.min_h(gpui::px(40.))
+						.px(gpui::px(8.))
+						.py(gpui::px(7.))
+						.flex()
+						.items_center()
+						.gap(gpui::px(12.))
+						.rounded(gpui::px(ui_theme::CONTROL_RADIUS))
+						.cursor_pointer()
+						.hover(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+						.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
+						.focus_visible(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+						.on_click(cx.listener(move |s, _, _, cx| {
+							s.open_archived_conversation(&open_id, cx)
+						}))
+						.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+							if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str())
+							{
+								cx.stop_propagation();
+								s.open_archived_conversation(&open_key, cx);
+							}
+						}))
+						.child(
+							gpui::div()
+								.min_w_0()
+								.flex_1()
+								.flex()
+								.flex_wrap()
+								.items_baseline()
+								.gap_x(gpui::px(8.))
+								.child(
+									gpui::div()
+										.debug_selector({
+											let id = item.id.clone();
+											move || format!("archive-title-{id}")
+										})
+										.flex_1()
+										.flex_basis(gpui::px(280.))
+										.min_w_0()
+										.text_size(gpui::px(ui_theme::BODY_SIZE))
+										.line_height(gpui::px(ui_theme::BODY_LINE_HEIGHT))
+										.font_weight(gpui::FontWeight::NORMAL)
+										.text_color(ui_theme::rgb(ui_theme::TEXT))
+										.truncate()
+										.child(item.title.clone()),
+								)
+								.children(item.project.as_ref().filter(|_| !confirming).map(
+									|project| {
+										gpui::div()
+											.debug_selector({
+												let id = item.id.clone();
+												move || format!("archive-project-{id}")
+											})
+											.flex_none()
+											.max_w(gpui::px(100.))
+											.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+											.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
+											.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+											.truncate()
+											.child(project.clone())
+									},
+								)),
+						)
+						.child(
+							gpui::div()
+								.flex_none()
+								.flex()
+								.items_center()
+								.gap(gpui::px(12.))
+								.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+								.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
+								.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
+								.when(confirming, |d| d.text_color(ui_theme::rgb(ui_theme::ERROR)))
+								.children(if confirming {
+									Some(gpui::div().child("Click again to delete"))
+								} else {
+									None
+								})
+								.when(!confirming, |d| {
+									d.child(
+										gpui::div()
+											.id(gpui::SharedString::from(format!(
+												"archive-time-{}",
+												item.id
+											)))
+											.min_w(gpui::px(if catalog.sort == Sort::Name {
+												78.
+											} else {
+												36.
+											}))
+											.text_right()
+											.font_features(ui_theme::tabular_figures())
+											.tooltip(move |_, cx| {
+												cx.new(|_| ControlTooltip(detail.clone())).into()
+											})
+											.child(if catalog.sort == Sort::Name {
+												item.day.clone()
+											} else {
+												item.clock.clone()
+											}),
+									)
+								}),
+						)
+						.child(
+							gpui::div()
+								.debug_selector({
+									let id = item.id.clone();
+									move || format!("archive-actions-{id}")
+								})
+								.flex_none()
+								.flex()
+								.items_center()
+								.gap(gpui::px(2.))
+								.p(gpui::px(1.))
+								.rounded(gpui::px(6.))
+								.border(gpui::px(0.5))
+								.border_color(ui_theme::rgb(ui_theme::TEXT).opacity(0.10))
+								.bg(ui_theme::rgb(ui_theme::TEXT).opacity(0.025))
+								.child(restore.smooth().enabled(!unavailable))
+								.child(delete.smooth().enabled(!unavailable)),
+						),
 				);
-				previous_day = Some(item.day.as_str());
 			}
-			let open_id = id.clone();
-			let open_key = id.clone();
-			let restore_id = id.clone();
-			let restore_key = id.clone();
-			let delete_id = id.clone();
-			let delete_key = id.clone();
-			let confirming = catalog.confirming(&id);
-			let busy = catalog.busy.as_ref() == Some(&id);
-			let unavailable = catalog.mutation.is_some();
-			let restore = archive_action(
-				format!("unarchive-{id}"),
-				Symbol::Unarchive,
-				if busy && !catalog.deleting { "Restoring…" } else { "Unarchive" },
-				group.clone(),
-			)
-			.aria_label(format!("Unarchive {}", item.title))
-			.when(confirming || busy, |d| d.opacity(1.))
-			.when(unavailable, |d| d.opacity(0.45))
-			.on_click(cx.listener(move |s, _, _, cx| {
-				cx.stop_propagation();
-				s.unarchive_catalog_item(&restore_id, cx);
-			}))
-			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
-				if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-					cx.stop_propagation();
-					s.unarchive_catalog_item(&restore_key, cx);
-				}
-			}));
-			let delete = archive_action(
-				format!("delete-archive-{id}"),
-				Symbol::Trash,
-				if busy && catalog.deleting {
-					"Deleting…"
-				} else if confirming {
-					"Click again to delete permanently"
-				} else {
-					"Delete"
-				},
-				group.clone(),
-			)
-			.aria_label(format!(
-				"{} {}",
-				if confirming { "Confirm permanent deletion of" } else { "Delete" },
-				item.title
-			))
-			.when(unavailable, |d| d.opacity(0.45))
-			.when(busy, |d| d.opacity(1.))
-			.when(confirming, |d| {
-				d.opacity(1.)
-					.text_color(ui_theme::rgb(ui_theme::ERROR))
-					.bg(ui_theme::rgb(ui_theme::ERROR).opacity(0.12))
-					.border_color(ui_theme::rgb(ui_theme::ERROR).opacity(0.35))
-			})
-			.on_click(cx.listener(move |s, _, _, cx| {
-				cx.stop_propagation();
-				s.delete_archive_item(&delete_id, cx);
-			}))
-			.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
-				if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-					cx.stop_propagation();
-					s.delete_archive_item(&delete_key, cx);
-				}
-			}));
-			let detail = item.metadata.clone();
+			let heading_id = first.id.clone();
 			list = list.child(
 				gpui::div()
-					.id(gpui::SharedString::from(format!("archived-{id}")))
-					.debug_selector(move || format!("archived-{id}"))
-					.group(group)
-					.role(Role::Button)
-					.aria_label(format!("Open archived {}", item.title))
-					.aria_description(item.metadata.clone())
-					.tab_index(0)
+					.w_full()
 					.flex_none()
-					.min_w_0()
-					.h(gpui::px(40.))
-					.px(gpui::px(10.))
 					.flex()
-					.items_center()
-					.gap(gpui::px(12.))
-					.rounded(gpui::px(6.))
-					.cursor_pointer()
-					.hover(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
-					.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
-					.focus_visible(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
-					.on_click(
-						cx.listener(move |s, _, _, cx| s.open_archived_conversation(&open_id, cx)),
-					)
-					.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
-						if !e.is_held && ["enter", "space"].contains(&e.keystroke.key.as_str()) {
-							cx.stop_propagation();
-							s.open_archived_conversation(&open_key, cx);
-						}
-					}))
-					.child(
-						gpui::div()
-							.min_w_0()
-							.flex_1()
-							.text_size(gpui::px(ui_theme::BODY_SIZE))
-							.line_height(gpui::px(ui_theme::BODY_LINE_HEIGHT))
-							.text_color(ui_theme::rgb(ui_theme::TEXT))
-							.truncate()
-							.child(item.title.clone()),
-					)
-					.child(
-						gpui::div()
-							.flex_none()
-							.flex()
-							.items_center()
-							.gap(gpui::px(12.))
-							.text_size(gpui::px(ui_theme::CAPTION_SIZE))
-							.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
-							.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
-							.when(confirming, |d| d.text_color(ui_theme::rgb(ui_theme::ERROR)))
-							.children(if confirming {
-								Some(gpui::div().child("Click again to delete"))
-							} else {
-								item.project.as_ref().map(|project| {
-									gpui::div()
-										.max_w(gpui::px(100.))
-										.truncate()
-										.child(project.clone())
-								})
-							})
-							.when(!confirming, |d| {
-								d.child(
-									gpui::div()
-										.id(gpui::SharedString::from(format!(
-											"archive-time-{}",
-											item.id
-										)))
-										.min_w(gpui::px(if catalog.sort == Sort::Name {
-											78.
-										} else {
-											36.
-										}))
-										.text_right()
-										.font_features(ui_theme::tabular_figures())
-										.tooltip(move |_, cx| {
-											cx.new(|_| ControlTooltip(detail.clone())).into()
-										})
-										.child(if catalog.sort == Sort::Name {
-											item.day.clone()
-										} else {
-											item.clock.clone()
-										}),
-								)
-							}),
-					)
-					.child(
-						gpui::div()
-							.flex_none()
-							.flex()
-							.items_center()
-							.gap(gpui::px(6.))
-							.child(restore)
-							.child(delete),
-					),
+					.flex_wrap()
+					.gap_x(gpui::px(16.))
+					.gap_y(gpui::px(6.))
+					.when(catalog.sort != Sort::Name, |section| {
+						section.child(
+							gpui::div()
+								.id(gpui::SharedString::from(format!("archive-date-{}", first.id)))
+								.debug_selector(move || format!("archive-date-{heading_id}"))
+								.role(Role::Heading)
+								.aria_label(first.day.clone())
+								.w(gpui::px(92.))
+								.flex_none()
+								.pt(gpui::px(10.))
+								.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+								.line_height(gpui::px(ui_theme::CAPTION_LINE_HEIGHT))
+								.text_color(ui_theme::rgb(ui_theme::TEXT).opacity(0.78))
+								.child(first.day.clone()),
+						)
+					})
+					.child(column),
 			);
 		}
 		if rows.is_empty() && catalog.read.is_none() && catalog.feedback.is_none() {
@@ -578,10 +627,12 @@ impl AgentSurface {
 		}
 		let feedback = catalog.feedback.clone();
 		let initial_read = catalog.read.is_some() && catalog.data.is_none();
-		gpui::div()
+		let body = gpui::div()
 			.id("archive-browser-content")
 			.debug_selector(|| "archive-browser-content".into())
 			.flex_1()
+			.w_full()
+			.max_w(gpui::px(960.))
 			.min_w_0()
 			.min_h_0()
 			.flex()
@@ -605,7 +656,15 @@ impl AgentSurface {
 				list.smooth_scroll("archive-list-motion")
 					.contain_scroll()
 					.with_scrollbar("archive-scrollbar", "Scroll archive"),
-			)
+			);
+		gpui::div()
+			.size_full()
+			.min_w_0()
+			.min_h_0()
+			.flex()
+			.flex_col()
+			.items_center()
+			.child(body)
 			.into_any_element()
 	}
 
@@ -651,7 +710,6 @@ fn archive_action(
 	id: impl Into<gpui::SharedString>,
 	symbol: Symbol,
 	label: &'static str,
-	group: gpui::SharedString,
 ) -> gpui::Stateful<gpui::Div> {
 	let id = id.into();
 	gpui::div()
@@ -664,15 +722,11 @@ fn archive_action(
 		.flex()
 		.items_center()
 		.justify_center()
-		.rounded(gpui::px(ui_theme::SETTINGS_CONTROL_RADIUS))
+		.rounded(gpui::px(4.))
 		.border(gpui::px(0.5))
-		.border_color(ui_theme::rgb(ui_theme::TEXT).opacity(0.10))
-		.bg(ui_theme::rgb(ui_theme::TEXT).opacity(0.035))
+		.border_color(gpui::transparent_black())
+		.bg(gpui::transparent_black())
 		.text_color(ui_theme::rgb(ui_theme::TEXT))
-		.opacity(0.)
-		.group_hover(group, |d| d.opacity(1.))
-		.in_focus(|d| d.opacity(1.))
-		.focus(|d| d.opacity(1.))
 		.cursor_pointer()
 		.hover(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 		.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
@@ -719,6 +773,62 @@ mod tests {
 	impl gpui::Render for ArchiveView {
 		fn render(&mut self, _: &mut gpui::Window, cx: &mut Context<Self>) -> impl IntoElement {
 			self.0.update(cx, |s, cx| s.render_archive_catalog(cx))
+		}
+	}
+
+	#[gpui::test]
+	fn archive_layout_adapts_without_hiding_or_separating_actions(cx: &mut gpui::TestAppContext) {
+		let (_view, visual) = cx.add_window_view(|_, cx| {
+			let surface = cx.new(AgentSurface::new);
+			surface.update(cx, |s, cx| {
+				s.visual_workspace_fixture(cx);
+				let mut data = s.snapshot.clone().unwrap();
+				let mut item = data.work_items[0].clone();
+				item.id = "layout".into();
+				item.title =
+					"Review the release plan and check the remaining acceptance work".into();
+				data.work_items.push(item);
+				data.archived_work_ids.insert("layout".into());
+				data.projects = vec![decodex_protocol::ProjectDto {
+					id: "books".into(),
+					name: "Reading corner".into(),
+					native_project_id: None,
+					lead_agent_id: None,
+					directory: "/tmp/books".into(),
+					agent_ids: vec!["layout".into()],
+				}];
+				s.workspace.archives.data = Some(data);
+			});
+			ArchiveView(surface)
+		});
+		for width in [1600., 900., 500., 360.] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(720.)));
+			visual.update(crate::ui_frame::draw_current_frame);
+			let body = visual.debug_bounds("archive-browser-content").unwrap();
+			let row = visual.debug_bounds("archived-layout").unwrap();
+			let heading = visual.debug_bounds("archive-date-layout").unwrap();
+			let title = visual.debug_bounds("archive-title-layout").unwrap();
+			let project = visual.debug_bounds("archive-project-layout").unwrap();
+			let actions = visual.debug_bounds("archive-actions-layout").unwrap();
+			let restore = visual.debug_bounds("unarchive-layout").unwrap();
+			let delete = visual.debug_bounds("delete-archive-layout").unwrap();
+			assert!(body.size.width <= gpui::px(960.), "bounded reading column at {width}");
+			assert!(row.left() >= body.left() && row.right() <= body.right());
+			assert!(title.right() < actions.left(), "text does not cross actions at {width}");
+			assert!(project.bottom() <= row.bottom(), "metadata remains inside the row at {width}");
+			assert!(restore.left() >= actions.left() && delete.right() <= actions.right());
+			assert!(delete.left() - restore.right() <= gpui::px(4.));
+			if width >= 900. {
+				assert!(heading.right() < row.left(), "wide view puts the date beside its group");
+			} else {
+				assert!(heading.bottom() <= row.top(), "narrow view puts the date above its group");
+			}
+			if width == 1600. {
+				assert!((body.left() - gpui::px((width - 960.) / 2.)).abs() < gpui::px(1.));
+			}
+			if width == 360. {
+				assert!(project.top() >= title.bottom(), "narrow rows wrap project metadata");
+			}
 		}
 	}
 
