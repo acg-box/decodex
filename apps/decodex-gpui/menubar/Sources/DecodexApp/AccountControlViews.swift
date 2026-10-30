@@ -207,7 +207,7 @@ private struct CompactAccountActionButton: View {
 				.opacity(hovered ? 1 : 0.85)
 				.contentShape(RoundedRectangle(cornerRadius: 7))
 				.symbolEffect(.pulse, options: .repeating, isActive: isBusy && !reduceMotion)
-				.keyframeAnimator(initialValue: CGFloat.zero, trigger: confirmationTrigger) { content, offset in
+				.keyframeAnimator(initialValue: CGFloat.zero, trigger: confirmationTrigger) { [reduceMotion] content, offset in
 					content.offset(x: reduceMotion ? 0 : offset)
 				} keyframes: { _ in
 					LinearKeyframe(-3, duration: 0.04)
