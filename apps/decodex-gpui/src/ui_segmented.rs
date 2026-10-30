@@ -95,7 +95,7 @@ impl RenderOnce for Segmented {
 		let last = choices.len().saturating_sub(1);
 		let selected = selected.min(last);
 		let height = ui_theme::CONTROL_GROUP_HEIGHT - 2.;
-		let font_size = ui_theme::BODY_SIZE;
+		let font_size = ui_theme::CONTROL_LABEL_SIZE;
 		let width = fixed_width.unwrap_or_else(|| choice_width(&choices, font_size, window));
 		let state =
 			window.use_keyed_state(SharedString::from(format!("{id}-gesture")), cx, |_, _| {

@@ -675,22 +675,22 @@ impl AgentSurface {
 						.gap(gpui::px(8.))
 						.rounded(gpui::px(4.))
 						.bg(ui_theme::rgb(ui_theme::TEXT).opacity(if index % 2 == 0 {
-							0.025
+							0.018
 						} else {
 							0.
 						}))
 						.relative()
-						.when(selected, |row| row.bg(ui_theme::rgb(ui_theme::ACCENT).opacity(0.12)))
+						.when(selected, |row| row.bg(ui_theme::rgb(ui_theme::ACCENT).opacity(0.18)))
 						.cursor_pointer()
 						.hover(move |d| {
 							d.bg(if selected {
-								ui_theme::rgb(ui_theme::ACCENT).opacity(0.18)
+								ui_theme::rgb(ui_theme::ACCENT).opacity(0.24)
 							} else {
-								ui_theme::rgba(ui_theme::HOVER_FILL)
+								ui_theme::rgb(ui_theme::ACCENT).opacity(0.075)
 							})
 						})
-						.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
-						.focus_visible(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
+						.active(|d| d.bg(ui_theme::rgb(ui_theme::ACCENT).opacity(0.24)))
+						.focus_visible(|d| d.bg(ui_theme::rgb(ui_theme::ACCENT).opacity(0.075)))
 						.on_click(cx.listener(move |s, _, _, cx| {
 							s.select_archive_row(&row_id, cx);
 						}))
@@ -899,7 +899,7 @@ impl AgentSurface {
 					.px(gpui::px(4.))
 					.hover(|d| d.bg(ui_theme::rgba(ui_theme::HOVER_FILL)))
 					.active(|d| d.bg(ui_theme::rgba(ui_theme::PRESSED_FILL)))
-					.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+					.text_size(gpui::px(ui_theme::CONTROL_LABEL_SIZE))
 					.child(if all { "Clear all" } else { "Select all" })
 					.smooth()
 					.enabled(!unavailable),
@@ -907,7 +907,7 @@ impl AgentSurface {
 			.child(
 				gpui::div()
 					.min_w(gpui::px(66.))
-					.text_size(gpui::px(ui_theme::CAPTION_SIZE))
+					.text_size(gpui::px(ui_theme::CONTROL_LABEL_SIZE))
 					.text_color(ui_theme::rgb(ui_theme::TEXT))
 					.font_features(ui_theme::tabular_figures())
 					.child(format!(
