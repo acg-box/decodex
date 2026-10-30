@@ -46,6 +46,24 @@ impl Catalog {
 			.find(|project| project.agent_ids.iter().any(|agent| agent == id))
 			.map(|project| project.name.as_str())
 	}
+
+	fn matching_items(&self, query: &str) -> Vec<&AgentWorkItemDto> {
+		let mut items: Vec<_> = self
+			.data
+			.iter()
+			.flat_map(|data| {
+				data.work_items.iter().filter(|item| data.archived_work_ids.contains(&item.id))
+			})
+			.filter(|item| {
+				let terms =
+					format!("{} {}", item.title, self.project_name(&item.id).unwrap_or_default())
+						.to_lowercase();
+				query.split_whitespace().all(|word| terms.contains(word))
+			})
+			.collect();
+		items.sort_by_key(|item| std::cmp::Reverse(item.updated_at_micros));
+		items
+	}
 }
 
 impl AgentSurface {
@@ -185,23 +203,7 @@ impl AgentSurface {
 			.as_ref()
 			.map(|s| s.read(cx).content().trim().to_lowercase())
 			.unwrap_or_default();
-		let mut items: Vec<_> = catalog
-			.data
-			.iter()
-			.flat_map(|data| {
-				data.work_items.iter().filter(|item| data.archived_work_ids.contains(&item.id))
-			})
-			.filter(|item| {
-				let terms = format!(
-					"{} {}",
-					item.title,
-					catalog.project_name(&item.id).unwrap_or_default()
-				)
-				.to_lowercase();
-				query.split_whitespace().all(|word| terms.contains(word))
-			})
-			.collect();
-		items.sort_by_key(|item| std::cmp::Reverse(item.updated_at_micros));
+		let items = catalog.matching_items(&query);
 		let count = items.len();
 		let mut list = gpui::div()
 			.id("archive-list")
