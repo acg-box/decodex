@@ -14,6 +14,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
   - id: openwiki-source-c76550e85b25876b339f9255
     resource: repo://apps/decodex-gpui/src/agent_context_settings.rs
+  - id: openwiki-source-1bf529ea3f1649ac9a28334a
+    resource: repo://apps/decodex-gpui/src/agent_conversation_tabs.rs
   - id: openwiki-source-77ad5024b567271a0f618fd7
     resource: repo://apps/decodex-gpui/src/agent_list_branch.rs
   - id: openwiki-source-02f8a02cdfa0616877cdad62
@@ -24,6 +26,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
+  - id: openwiki-source-309d7ec654ab4d531c906212
+    resource: repo://apps/decodex-gpui/src/agent_sample_ui.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
     resource: repo://apps/decodex-gpui/src/agent_surface.rs
   - id: openwiki-source-2fb9e466c6aafdf4f4950bc1
@@ -64,10 +68,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-30T06:46:27.597Z" }
+generated: { by: "codex", at: "2026-10-30T15:17:49.972Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T06:46:27.597Z
+    at: 2026-10-30T15:17:49.972Z
 ---
 
 # OpenWiki quickstart
@@ -95,6 +99,12 @@ The current SQLite schema preserves native input receipts, independent process o
 These views preserve unknown coverage and resolution limits. Their retained qualification is in [the acceptance boundary](testing/upstream-acceptance-boundaries.md#selected-read-only-views). Runtime selection, source-review state, installed artifacts and schedules remain separate.
 
 The conversation browser and Work list have independent saved **status filters**, combined with the existing Project and search filters. Choose **All statuses** to clear a status choice without changing a draft or Work state. See [list filtering](workflows/conversations-and-recovery.md#filter-existing-lists-by-status).
+
+## Side chats and separate questions
+
+The conversation header holds the source and its open Side chats as tabs. Use **+** to review a Side chat from the latest completed source turn, then confirm **Create side chat**. Each tab keeps its own draft and reading position. Closing a tab retains the native branch; reopen it from **Agent preferences → Attached branches**.
+
+For one quick question, use **Ask separately** in the composer toolbar, the question action beside a completed response, or **Ask about selection**. The popover preserves the main draft. See [the conversation workflow](workflows/conversations-and-recovery.md#open-side-chats-in-tabs) for both forms and their native boundaries.
 
 ## Find and reconnect
 

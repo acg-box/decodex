@@ -134,10 +134,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-30T06:52:31.470Z" }
+generated: { by: "codex", at: "2026-10-30T15:17:49.972Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T06:52:31.470Z
+    at: 2026-10-30T15:17:49.972Z
 ---
 
 # Runtime Architecture
@@ -273,7 +273,7 @@ Production staging selects a separate official Release requirement. Release pinn
 
 ## Protocol and safety
 
-Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.2 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
+Clients use same-UID local transport and exact protocol/artifact compatibility. Protocol 4.3 exposes current Project, Agent, Work, Guardian and attached-branch operations. An incompatible client fails explicitly; there is no parallel alias rollout. Publication-instance receipts remain enabled for this generation, including reconnect and idempotent command recovery. Credentials do not enter normal product projections. Revisions and stable command identities guard mutations. An unknown outcome requires authoritative readback, not blind retry.
 
 Diagnostics covers Decodex product storage, local transport and integration failures. The standalone Codex startup-configuration check, its local query and its dedicated qualification helper are retired. Codex owns its app-server self-diagnostics. Ordinary error and warning presentation and user-requested conversation Markdown export remain supported. This retirement does not qualify an installed protocol 4.0 application against the current service.
 

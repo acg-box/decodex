@@ -82,8 +82,6 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/work.rs
   - id: openwiki-source-3c62f617dc1d15daed2c93e4
     resource: repo://crates/decodex-runtime/src/application_collaboration.rs
-  - id: openwiki-source-a09c082db4ad1473c4d1e557
-    resource: repo://crates/decodex-runtime/src/application.rs
   - id: openwiki-source-c29d70b5569f29b7122f2f6b
     resource: repo://crates/decodex-runtime/src/native_agents.rs
   - id: openwiki-source-58c0167d31c3e40dc89591ab
@@ -110,10 +108,10 @@ sources:
     resource: repo://database/src/works/collaboration.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-28T08:28:06.287Z" }
+generated: { by: "codex", at: "2026-10-30T15:17:49.972Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T06:46:27.597Z
+    at: 2026-10-30T15:17:49.972Z
 ---
 
 # Project, Agent and Work coordination
@@ -194,13 +192,13 @@ The native context preference panel still edits `features.retain_client_tool_out
 
 ## Archive synchronization
 
-Codex owns the archive state. The service observes the exact native thread IDs bound to retained local work. It searches active threads first, then searches archived threads for the remaining IDs. Both lists include every provider and source kind. A positive archived observation hides non-root work; a positive active observation restores it. The personal Agent entry remains present. An absent ID, an empty title or a completed status does not authorize deletion.
+Codex owns the archive state. The service observes the exact native thread IDs bound to retained local work. It searches active threads first, then searches archived threads for the remaining IDs. Both lists include every provider and source kind. A positive archived observation hides the exact conversation, including a root Agent; a positive active observation restores it. An absent ID, an empty title or a completed status does not authorize deletion.
 
 The reader orders native pages by update time and stops when it finds every requested ID. It does not need to read the entire archive. Native thread metadata supplies working-directory filters when every binding can be read. Otherwise, the reader scans the complete catalogs. Transport frame limits, per-page deadlines, and retained-ID and cursor budgets bound the operation. Valid positive observations remain usable if a later page fails or times out. IDs without positive evidence retain their previous visibility. Attached native threads are hidden from ordinary `thread/list`. Their exact `attachedToThreadId` query supplies archive membership, including empty forks. A failed metadata or attachment-filter read leaves the observation unknown.
 
 Archive observations refresh in the background on a five-second interval. Only one refresh runs at a time within a native process generation; a changed set of bindings can request an earlier refresh. Work snapshots use confirmed observations without waiting for the native read. A new process starts with no inherited observations, and a late result from an earlier process cannot replace them. The service does not write a second archive flag into SQLite.
 
-The active snapshot supplies the work list and relationship graph. Archived non-root work is hidden. The personal Agent remains as the coordination entry point, with its archive state available to the input gate. Filtering removes incident relationships, pending-event entries and context references from the view. Hidden conversation records leave the active Project view. Live descendants remain visible under their nearest visible ancestor. Stored work and the original hierarchy remain intact. A later positive active observation restores visibility without an application restart.
+The active snapshot supplies the work list and relationship graph. Every positively confirmed archived conversation is hidden, including root Agents. Filtering removes incident relationships, pending-event entries and context references from the view. Hidden conversation records leave the active Project view. Live children of a hidden parent remain visible as independent roots in this projection. Stored work and the original hierarchy remain intact. A later positive active observation restores visibility without an application restart.
 
 A confirmed archive also ends local pending interactions. The service discards user input that never reached native dispatch, cancels pending capacity retries, retires old questions and request notices, and clears scheduled checks. It retains sent history, claimed delivery receipts and Work records. Native archive notifications, positive catalog observations and an archived resume rejection use the same cleanup. Restoration does not revive the discarded input. The desktop removes failed-message retry records for that exact conversation and stops voice input when the archived conversation owns the call while keeping the current editor.
 

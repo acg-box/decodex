@@ -18,6 +18,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_archive.rs
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
+  - id: openwiki-source-b243cfb8ae3053f8047fdab0
+    resource: repo://apps/decodex-gpui/src/agent_capabilities.rs
   - id: openwiki-source-d9c9b48c73ee4a2adc90f01c
     resource: repo://apps/decodex-gpui/src/agent_collaboration_cases.rs
   - id: openwiki-source-3708e6cf9324a8ff1f6c39ae
@@ -26,6 +28,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_collaboration.rs
   - id: openwiki-source-48758ba7d154c82885281d2c
     resource: repo://apps/decodex-gpui/src/agent_composer.rs
+  - id: openwiki-source-d56ea7499f2ed784b1b6c970
+    resource: repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs
+  - id: openwiki-source-1bf529ea3f1649ac9a28334a
+    resource: repo://apps/decodex-gpui/src/agent_conversation_tabs.rs
   - id: openwiki-source-02f8a02cdfa0616877cdad62
     resource: repo://apps/decodex-gpui/src/agent_list_status.rs
   - id: openwiki-source-2ee1164d01a09b38a208f1ac
@@ -34,8 +40,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_memory.rs
   - id: openwiki-source-ae2ce5cda718ede63f50be9b
     resource: repo://apps/decodex-gpui/src/agent_native_composer.rs
-  - id: openwiki-source-93bd8c5fcf58e2a9c861da67
-    resource: repo://apps/decodex-gpui/src/agent_native_model_menu.rs
+  - id: openwiki-source-e59b6fade5576eca54cd30f7
+    resource: repo://apps/decodex-gpui/src/agent_native_menu.rs
   - id: openwiki-source-c6ac7d6b2fdeb458faab2c3a
     resource: repo://apps/decodex-gpui/src/agent_permissions.rs
   - id: openwiki-source-1b7747f8ae67c32e5670817d
@@ -88,10 +94,10 @@ sources:
     resource: repo://database/src/guardian_settings.rs
   - id: openwiki-source-c0eb738b42368debe7ef7545
     resource: repo://database/src/works/commands.rs
-generated: { by: "codex", at: "2026-10-30T02:31:10.035Z" }
+generated: { by: "codex", at: "2026-10-30T15:17:49.972Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T06:46:27.597Z
+    at: 2026-10-30T15:17:49.972Z
 ---
 
 # Desktop workspace and native glass
@@ -112,6 +118,8 @@ Settings > Agents supplies permission and speed defaults for new independent con
 
 Shift-Esc toggles Graph or conversation fullscreen according to the active pane. Pane capture tracks clicks across cached Graph layers, and the native composer forwards actions to the persistent shell. Graph fullscreen hides both sidebars and restores their saved visibility and width preferences on exit.
 
+The conversation header groups each source with its open Side chats. Use **+** to review and create another native attached branch. Switching tabs preserves each conversation's draft and reading position; closing a tab retains the native branch. See [Side chat tabs](conversation-presentation.md#side-chat-tabs).
+
 ## Project Work and Guardian
 
 Work and Guardian are entries in the existing sidebar. Work groups outcomes by Project and can show the same accountable Agent on several rows. Assistant and Project Lead selectors choose existing Agents; they do not create role-specific conversations. The existing conversation, Collaboration panel and Dock remain available.
@@ -122,7 +130,7 @@ The overview carries headers; selected Work evidence loads separately. Reads are
 
 Pause Work prevents new Decodex contributions and completion. It cannot roll back already-running actions and does not replace native interruption. Work association with a Project does not change the native conversation's working directory or execution permission.
 
-Guardian shows review records across Agents and Projects. Its global Review Details switch controls optional bounded observation, not conversation permissions. The selected runtime does not provide exact action Review IDs for private reviewer records, so the UI displays Action association unavailable. It does not infer a link to the latest action. Turning details off stops new records; it does not approve requests or erase retained history.
+Guardian shows review records across Agents and Projects. Its global **Save review details** switch controls optional bounded observation, not conversation permissions. The selected runtime does not provide exact action Review IDs for private reviewer records, so the UI displays Action association unavailable. It does not infer a link to the latest action. Turning details off stops new records; it does not approve requests or erase retained history.
 
 Only native assistant output and item-free terminal metadata enter retained private records. Raw reasoning frames are excluded. The store retains at most 128 records of 64 KiB each; the snapshot previews the newest 32 and loads the exact selected record on demand. This is not a complete reviewer transcript or proof of a live approval decision.
 

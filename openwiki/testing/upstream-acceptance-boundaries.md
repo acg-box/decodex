@@ -8,6 +8,8 @@ sources:
     resource: repo://.config/nextest.toml
   - id: openwiki-source-0a61b25348131fe1bb6e1d12
     resource: repo://apps/decodex-gpui/src/agent_context_settings_wire_tests.rs
+  - id: openwiki-source-d56ea7499f2ed784b1b6c970
+    resource: repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs
   - id: openwiki-source-85ab533d66ee904d83d8a21a
     resource: repo://apps/decodex-gpui/src/agent_item_context_tests.rs
   - id: openwiki-source-77ad5024b567271a0f618fd7
@@ -154,10 +156,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-30T06:46:27.597Z" }
+generated: { by: "codex", at: "2026-10-30T15:17:49.972Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T06:46:27.597Z
+    at: 2026-10-30T15:27:42.105Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -247,6 +249,22 @@ The full workspace run passed 2,998 tests and skipped 1,222. It preceded one add
 The full vstyle audit failed with 16,517 findings at implementation commit `1beae0c0415c28ef45d8afaa1bd8117832c62c25`. This qualification does not exempt those findings or classify them all as inherited. The independent repository-wide style cleanup retains that work. Exact selectors, entrypoints, commands and selected source digests remain in the portable index after local products are removed.
 
 A Work result or delivery identifies a linked native turn; it does not prove that every action in the turn belongs to that Work. Input includes cached input, and output includes reasoning. Missing historical or child receipts remain unknown. Summed native duration can overlap and is not Work elapsed time. No complete Work cost, monetary allocation, installed-app interaction, real-provider acceptance, app installation or release is claimed. The selected runtime baseline, upstream review cursor and automation schedule do not change. The user later selected attached branches; Guardian V3 waits for upstream maturity and custom managed configuration is deferred. A rebuilt runtime requires new artifact/helper/schema observations and affected regressions; it is not the original deleted artifact.
+
+## Separate-question popover qualification
+
+The [portable separate-question record](../../automations/upstream/retained-evidence.json#quick_separate_questions) identifies source `b26ecc90d27116263afd8312ac1b8f54efe97699`, the retained UI contract, exact test names, commands and source/test-artifact digests.
+
+The focused cohort passed 28 tests: 17 sampling and suggestion checks plus 11 rich-text selection checks, with 1,176 skipped and no unmatched selector. It covers direct toolbar and response entry, selected excerpts, draft and reading-position preservation, Escape, stale-source rejection, Unicode excerpt bounds, separate suggestion results and one-request readback. These are GPUI TestPlatform and loopback-wire checks.
+
+That historical build used `gpui_platform/runtime_shaders` because the host lacked the Metal Toolchain. The default-build gap and the existing archive-renderer Clippy violation were resolved in [PR 2570](https://github.com/acg-box/decodex/pull/2570). The Side chat check below also passed the default build and strict GPUI Clippy. This does not turn the historical run into a default-build result.
+
+## Side chat tab qualification
+
+The [Side chat record](../../automations/upstream/retained-evidence.json#side_chat_tabs) binds source `84349473fc6cb1402f6962d49b86d3eeeacd097f` to exact source and artifact hashes, commands, test identities and limits. Nineteen selected GPUI checks passed, with 1,191 skipped and no unmatched selector. The checks cover confirmed attachment grouping, source changes, draft and viewport preservation, close and reopen behavior, narrow-header geometry and the attached confirmation boundary.
+
+The default application build, strict GPUI Clippy across all targets and features, Rust formatting and whitespace checks passed. Offscreen synthetic captures cover dark, light and narrow header layouts. Each capture uses an explicit system-temporary draft root that is removed afterward. The fixture has no connected profile; its storage warning and clipped full-content capture do not qualify ordinary conversation storage or complete responsive layout. A separate GPUI assertion checks the header at a 650-point viewport.
+
+This presentation reuses the retained attached-fork runtime qualification. No native or upstream test was executed for this batch, and no runtime artifact, helper, schema or review cursor changed. The selected upstream protocol, processor and two attached-thread test bodies were read. Neither these reads nor the offscreen captures establish live-provider, physical-keyboard, installed-app, latency or performance acceptance. No application installation or release was performed.
 
 ## Current desktop feedback qualification
 

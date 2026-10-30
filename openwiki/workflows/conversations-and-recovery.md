@@ -10,6 +10,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_async_questions.rs
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
+  - id: openwiki-source-d56ea7499f2ed784b1b6c970
+    resource: repo://apps/decodex-gpui/src/agent_conversation_tab_tests.rs
+  - id: openwiki-source-1bf529ea3f1649ac9a28334a
+    resource: repo://apps/decodex-gpui/src/agent_conversation_tabs.rs
   - id: openwiki-source-258277a596f7d23ef310055b
     resource: repo://apps/decodex-gpui/src/agent_draft_merge.rs
   - id: openwiki-source-5eddd1d872eed61f8ba7e703
@@ -48,8 +52,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_reconnect_queue_tests.rs
   - id: openwiki-source-833f63423276cad9a26295cf
     resource: repo://apps/decodex-gpui/src/agent_resource_owners.rs
-  - id: openwiki-source-296a92a9cefecb19f0fc1f95
-    resource: repo://apps/decodex-gpui/src/agent_sample_tests.rs
+  - id: openwiki-source-309d7ec654ab4d531c906212
+    resource: repo://apps/decodex-gpui/src/agent_sample_ui.rs
   - id: openwiki-source-912dbe8f46e7ec6026887bbe
     resource: repo://apps/decodex-gpui/src/agent_sample.rs
   - id: openwiki-source-5da2f5dd568514f1f464d177
@@ -134,10 +138,10 @@ sources:
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-30T06:46:27.597Z" }
+generated: { by: "codex", at: "2026-10-30T15:17:49.972Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T06:46:27.597Z
+    at: 2026-10-30T15:17:49.972Z
 ---
 
 # Conversation input, history and recovery
@@ -174,7 +178,7 @@ A changed source or target refuses that intent and keeps the draft. Cancel send 
 
 ## Native archive changes
 
-Codex owns archive state. A confirmed archive removes non-root bound work from the active list and graph, while the service keeps its stored history and original relationships. The Assistant entry remains present and carries its archive state. Active descendants stay visible under their nearest visible ancestor. See [archive synchronization](../architecture/chief-coordination.md#archive-synchronization).
+Codex owns archive state. A confirmed archive removes every bound archived conversation, including the Assistant, from the active list and graph. The service keeps stored history and original relationships. Active descendants remain visible as independent roots in the active projection. See [archive synchronization](../architecture/chief-coordination.md#archive-synchronization).
 
 When a refreshed active snapshot removes the selected conversation or its composer owner, the desktop cancels dictation and saves the draft under its original work and thread identity. It stops a Live call only when that call's own conversation is removed or archived. Normal navigation restores the next conversation's own draft. If no conversation remains active, sending stays unavailable; a retained draft cannot start a replacement conversation or move to the Assistant. A failed snapshot read does not trigger this transition.
 
@@ -218,6 +222,14 @@ An attached branch retains the exact source Agent as its local parent and keeps 
 An uncertain creation stays unconfirmed. Keep the saved choice and recover it instead of creating another branch. An acknowledged identity can require saved-choice recovery before history is ready. If a branch is archived, restore it in Codex and refresh the list. Native archive and parent-deletion rules remain authoritative. This workflow adds no automatic follow-up, scheduling, result merge or deletion control. The [attached-branch acceptance record](../testing/upstream-acceptance-boundaries.md#persistent-attached-branches) separates executed fixtures from installed-app acceptance.
 
 For a before-input branch or same-thread edit, projection refresh and durable draft handback must finish before that destination can accept normal input. Images and skill references stay in the canonical input path. **Send edited input** remains a separate explicit action. Ordinary composer drafts remain independent. Resuming a saved confirmation retains its original choice rather than asking for a new destination.
+
+## Open Side chats in tabs
+
+The conversation header keeps the source conversation and multiple Side chats in one tab strip. Use **+** beside the tabs to review a Side chat from the source's latest completed turn, then choose **Create side chat**. The source must have readable full native history for that completed turn. Creation uses native attachment and sends no message.
+
+Each Side chat starts with an empty visible history and the reviewed source prefix in its model context. Later source messages do not automatically enter an existing Side chat. Continue the Side chat with its own composer. Switching tabs restores each conversation's draft and reading position. The strip scrolls horizontally and reveals the selected tab; existing activity indicators and header controls remain available.
+
+Close hides a Side chat tab and returns to its exact source. It does not delete or archive the native conversation. To reopen it, use the source's **Agent preferences → Attached branches → Open branch**. Only verified native attachments belong to a source's tabs; a local parent relationship alone does not establish that membership. Open Side chats in this family do not also appear as duplicate sidebar rows.
 
 ## Finish or cancel an edit
 
@@ -283,15 +295,25 @@ An exact native `completed`, `interrupted` or `failed` turn receipt retires that
 
 A pending submission is not recovered as a new answer. Replayed historical questions and a current misalignment finding do not trigger this append. If the composer has no room, the answer remains saved and the UI explains how to make room; an existing history refresh can retry restoration. Thread binding, recovery state and bounded identity reads still apply. This does not interpret an unavailable history read as completion.
 
-For parent escalation and exact event receipts, use [Agent coordination](../architecture/chief-coordination.md#native-contributions-and-independent-collaboration). In Ask separately, **Close** hides the panel; **Cancel answer** requests cancellation of its exact native sampling request. A late result or uncertain cancellation keeps its original request identity. This does not cancel the parent conversation.
+For parent escalation and exact event receipts, use [Agent coordination](../architecture/chief-coordination.md#native-contributions-and-independent-collaboration).
+
+## Ask a separate question
+
+In an idle root conversation, use **Ask separately** in the composer toolbar, the question icon beside a completed response, or **Ask about selection** after selecting response text. The response icon appears on hover or keyboard focus. The existing composer-menu entry remains available.
+
+A compact popover holds its own question field and answer. Press **Enter** to ask. Opening the popover preserves the main draft and reading position. A response action includes the response text; a selection action includes only the displayed selection. A long reference is marked as an excerpt and bounded to half the native prompt limit. The complete reference and question must still fit the native request limit.
+
+The request uses the current conversation context and an explicit reference. It does not rewind history to the selected message or create a multi-turn side chat. A cached next-message suggestion is not presented as a manual answer.
+
+**Escape**, an outside click, or **Close** hides the popover. Closing does not cancel native generation. **Cancel answer** requests cancellation of the exact original sampling request. Late results and uncertain cancellation keep that request identity; the parent conversation is not cancelled. The existing idle-root, no-tools and source-invalidation rules still apply.
 
 ## Next-message suggestions
 
-With **Settings > Agents > Conversation assistance > Automatic next-message suggestions** enabled, a newly completed answer in the selected independent root conversation triggers one native suggestion request when its composer is empty. The preference defaults on. Turning it off prevents new automatic requests; turning it back on does not replay completions observed while it was off. It uses the conversation's model and quota. It does not run tools or send input to the parent conversation. The composer menu retains **Suggest next message…** for an explicit request.
+With **Settings > Agents > Conversation assistance > Automatic next-message suggestions** enabled, a newly completed answer in the selected independent root conversation can trigger one native suggestion request when the conversation is idle and no separate request is active. The preference defaults on. Turning it off prevents new automatic requests; turning it back on does not replay completions observed while it was off. It uses the conversation's model and quota. It does not run tools or send input to the parent conversation. The composer menu retains **Suggest next message…** for an explicit request.
 
 Review the result in **Suggested next message**. Focus the same idle conversation's empty message field and press **Tab** to insert the current suggestion as one undoable edit. Send it separately after review. Other fields, Shift-Tab and a nonempty draft keep normal focus navigation. Text entered while the suggestion is generated stays in place. Copy the suggestion or clear the current draft before accepting it. A replaced thread or stale sample cannot supply a new draft.
 
-Existing history and snapshot refreshes observe the new completed answer. Opening saved history, repeated refreshes, failed turns and an existing draft do not trigger generation. Attachments, task references and active voice input also keep the current draft in place. A skipped trigger does not run later when the editor is cleared. Automatic generation does not move the scroll position.
+Existing history and snapshot refreshes observe the new completed answer. Opening saved history, repeated refreshes and failed turns do not trigger generation. Generation can finish while the user edits a draft; it does not replace that draft. Attachments, task references and active voice input also keep the current draft in place. A skipped trigger does not run later when the editor is cleared. Automatic generation does not move the scroll position.
 
 The panel shares the existing separate-answer lifecycle. **Cancel answer** targets its original request; **Close** hides the panel. Status refresh does not generate another suggestion. A native tool attempt can return no text, and an unsupported or unavailable sampler remains visible as a failure. There is no automatic fallback to a tool-enabled prediction fork or separate polling timer.
 

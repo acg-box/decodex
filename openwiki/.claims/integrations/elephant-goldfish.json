@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b272aa7bbd434f12a473acdea17f6ddfab6a419209a3c365feb39fbf7d63dabb",
+  "pageVersion": "sha256:6cde022f61724eb74e31b373fd776a94582ee3e472abfc3aa9fc36e93a56cf1e",
   "claims": [
     {
       "id": "claim_95da7355536d42fb9ba017dae9558113",
@@ -25,8 +25,8 @@
           "version": "repo-lines-v1:sha256:cab1baff18df605fb2049a0acd7cabcc41cb92f91bacb7bc3603c4ddbf4248c5:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgxOTdiY2M5ZTFlY2Q2YzQwNDVjMTBjYmY4NTc1ZWVhNTBhYWVhYzUyYmY2MmM4MWY1MjdjYzcxODY0YmEzZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY0YTUyMmU2MTFmNGFiNGQ2ZWE3NGI0MGExZDg5MGFiMGVmNjc0ZmVjM2Q0ZmFiZmE4NTlmZWRiODVhMGEyYTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxNTliYmEzMTAxMGIyYjJhMzE4NDljZGRkZWU0YmQ3ZTE4NTAxN2E1M2RiMDMzNDU2NWQzYmEyMTQ0NTM5MjMifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L190-L250",
-          "version": "repo-lines-v1:sha256:0d5f9ce5106308cc7549cfe4342f255e1ca8456cb963ffba3fed6edcf98f354c:eyJzZWxlY3RlZExpbmVDb3VudCI6NjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2ZWQ3OTM0NmE1YjQ4MTZiODEyMzQyMzNkNWMzMzE3MmQ5YTE0ZjUyODE2ZWQ0NWQ0NzFmNmFkZDNkOGM0OWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyMDAxM2E4MjU1ODYxYmI1Y2ZkNTRlOTViMTg5MjkyOTliOWU5MWI3MTAxZDYzM2EyZmVmOWQ1MmIwNjc2NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlmYjA5ZWEyZWIwZWFlYjNjNzZhZThiZDY0NDBjMGFjYWNmNDU2ZDY1ODVkMzMzNmIwOWRjMmE4ZGNjNWRhN2QifQ"
+          "resource": "repo://apps/decodex-gpui/src/settings_components.rs#L207-L266",
+          "version": "repo-lines-v1:sha256:a0c55508bd650a8557718a48af3ed2b4833c8d5c3991c2b94b3484eac4ab4ea0:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2ZWQ3OTM0NmE1YjQ4MTZiODEyMzQyMzNkNWMzMzE3MmQ5YTE0ZjUyODE2ZWQ0NWQ0NzFmNmFkZDNkOGM0OWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyMDAxM2E4MjU1ODYxYmI1Y2ZkNTRlOTViMTg5MjkyOTliOWU5MWI3MTAxZDYzM2EyZmVmOWQ1MmIwNjc2NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlmYjA5ZWEyZWIwZWFlYjNjNzZhZThiZDY0NDBjMGFjYWNmNDU2ZDY1ODVkMzMzNmIwOWRjMmE4ZGNjNWRhN2QifQ"
         }
       ]
     },
@@ -35,8 +35,8 @@
       "statement": "PluginOperations coalesces actions while busy and retains action errors separately from installed state read back from native Codex, including after an action fails.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-gpui/src/component_plugins.rs#L47-L89",
-          "version": "repo-lines-v1:sha256:c3b2d81d812ad8daf51da8b7f3bcc4c63b2844a87f660dbd23930d6076c55ff5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjYWEyMDM3ZjBjZjllZGVjNTM2OTAzMzRkNjNkYjk1OTZiMDU0MGMxODVhN2JjYmU3ZTgxMmE4NjA2YjVkNzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4OWNjZjNlODY4NjkzMGE5ZTUzOGQ5MTQ1Yjk3NTM5MmNiZGY1YTNhOGUxZWQ5OTlhNWRhY2Q5YjY1YThhZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAifQ"
+          "resource": "repo://apps/decodex-gpui/src/component_plugins.rs#L47-L105",
+          "version": "repo-lines-v1:sha256:d68dd892362cacd5a06e823ad6451311ec88480273e8c0330a415e64f5a34df0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUwNzcwZmNjYzcxY2RiOWZmYWI1Y2I2MmJkZmI0YTA4YjU4ODc3Yjk5NmUxOGY3OWEyM2QxZTJhMDdjMTllMGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4OWNjZjNlODY4NjkzMGE5ZTUzOGQ5MTQ1Yjk3NTM5MmNiZGY1YTNhOGUxZWQ5OTlhNWRhY2Q5YjY1YThhZGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAifQ"
         }
       ]
     },
@@ -102,7 +102,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/agent_relation_header.rs",
-          "version": "repo-file-v1:sha256:b78a33ee0c5c83f180c204498e5786821c677637192e06dbeb87e4f1511ee671"
+          "version": "repo-file-v1:sha256:f72bb9b4a0ea5305e3db38ca9aaece0c5205597eecdcbcbac12dd3f68211e3aa"
         }
       ]
     },
@@ -127,6 +127,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-29T18:53:39.584Z"
+    "at": "2026-10-30T15:17:49.972Z"
   }
 }

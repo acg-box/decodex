@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:8f6e80a785ec8f09bbb8a96302ddd6455b1123b03fd0fffb9620f7da22d54ace",
+  "pageVersion": "sha256:38478d1a11deede4d6859cc5290f197b2cbc3ed9e7f79708d5ec78d298b93147",
   "claims": [
     {
       "id": "claim_180212e57d1d44369eb0d24fc94defa4",
@@ -32,7 +32,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_permissions.rs",
-          "version": "repo-file-v1:sha256:32b59c5f26a9d009d71536689d3d377e3ef8b2ca518bd896678ad543bc5c46b4"
+          "version": "repo-file-v1:sha256:3c9d361b11ddd6e074187cf26cddf5100fdcd569801fbfcb74a01ecb50c6918f"
         }
       ]
     },
@@ -42,19 +42,19 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_permissions.rs",
-          "version": "repo-file-v1:sha256:6cfdf89ff83453377e58af615d3409d083677a92be3945c9859d56f00bac59b0"
+          "version": "repo-file-v1:sha256:9be815a8a8a738c81edaeff7a7002ef809624ce248ef99c177bb035b7d993769"
         },
         {
           "resource": "repo://crates/decodex-core/src/permissions.rs",
-          "version": "repo-file-v1:sha256:263f2b7b4c82f13d9bf293c2be98238b2616f85e2fdbc30f827d5a85fdb27057"
+          "version": "repo-file-v1:sha256:961269023446dc457c9b9b2c4bbbbdf3617a64bf3eb97289c89439a80a17a596"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/agent.rs",
-          "version": "repo-file-v1:sha256:692dba73a26272b7d95ca91b598dee5c975ae437723c16150101569243b17dbe"
+          "version": "repo-file-v1:sha256:2a46b1b235b160ee7c66f3038ded3e6638a2b87c5ae3a948e432046e8b0f13df"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:8948624703d6f76b17fb7c768076868f9dff3085012c305122dba764b4c2b0cc"
+          "version": "repo-file-v1:sha256:605a08330fcd996ee9b39b218c13d6b802f583961107d528ff27601227e37017"
         }
       ]
     },
@@ -74,7 +74,7 @@
       "evidence": [
         {
           "resource": "repo://apps/decodex-gpui/src/agent_portfolio.rs",
-          "version": "repo-file-v1:sha256:4db656a896ef6af12aa2857ddac38cdd5e778f6b59ba48126ee5805336a873db"
+          "version": "repo-file-v1:sha256:f7958a7151143ec4e0149912a9efb988b0262d8626137da558d3d88c14264230"
         },
         {
           "resource": "repo://database/src/guardian_settings.rs",
@@ -92,7 +92,7 @@
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/native_settings.rs",
-          "version": "repo-file-v1:sha256:13d55743e1fa204d609b465bc1ff522f8e036cdca04c31ba86d72c153cd35af6"
+          "version": "repo-file-v1:sha256:05c2b0ca84dbd894de8d8865455125e4b4cac47cfc76ab1421865b7c67613968"
         },
         {
           "resource": "repo://database/src/guardian_settings.rs",
@@ -103,6 +103,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T02:31:10.035Z"
+    "at": "2026-10-30T15:17:49.972Z"
   }
 }
