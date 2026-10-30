@@ -67,19 +67,20 @@ struct NativeAgentTarget {
 }
 
 impl AgentSurface {
+	pub(super) fn conversation_record(&self, id: &str) -> Option<&AgentWorkItemDto> {
+		self.snapshot
+			.as_ref()
+			.and_then(|snapshot| snapshot.work_items.iter().find(|work| work.id == id))
+			.or_else(|| self.workspace.archives.viewed_work().filter(|work| work.id == id))
+	}
+
 	pub(super) fn native_agent_discovery_pending(&self) -> bool {
 		self.native_agents.task.is_some() && self.native_agents.last_poll.is_none()
 	}
 
 	/// A conversation has one presentation regardless of which agent owns execution.
 	pub(super) fn conversation_work(&self) -> Option<AgentWorkItemDto> {
-		let mut work = self
-			.snapshot
-			.as_ref()?
-			.work_items
-			.iter()
-			.find(|w| Some(&w.id) == self.selected.as_ref())?
-			.clone();
+		let mut work = self.conversation_record(self.selected.as_deref()?)?.clone();
 
 		if let Some((owner, thread)) = &self.native_agents.selected {
 			if &work.id != owner {

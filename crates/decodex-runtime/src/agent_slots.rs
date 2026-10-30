@@ -16,7 +16,14 @@ pub(crate) async fn synchronize(
 		return Ok(());
 	}
 
-	let retained: HashSet<_> = snapshot.work_items.iter().map(|work| work.id.as_str()).collect();
+	let active_work: Vec<_> = snapshot
+		.work_items
+		.iter()
+		.filter(|work| {
+			!work.codex_thread_id.as_ref().is_some_and(|thread| archived.contains(thread))
+		})
+		.collect();
+	let retained: HashSet<_> = active_work.iter().map(|work| work.id.as_str()).collect();
 	let retired = previous
 		.iter()
 		.filter(|slot| {
@@ -25,9 +32,8 @@ pub(crate) async fn synchronize(
 		})
 		.map(|slot| slot.key.clone())
 		.collect();
-	let active = snapshot
-		.work_items
-		.iter()
+	let active = active_work
+		.into_iter()
 		.map(|work| (work.id.clone(), work.id.clone(), work.codex_thread_id.clone()))
 		.collect();
 

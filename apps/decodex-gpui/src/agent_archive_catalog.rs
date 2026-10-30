@@ -10,12 +10,13 @@ use crate::{
 };
 use decodex_protocol::{
 	AgentActionDto, AgentArchiveResult, AgentClient, AgentSnapshotDto, AgentSnapshotResult,
-	EntityId, IdempotencyKey, WireText,
+	AgentWorkItemDto, EntityId, IdempotencyKey, WireText,
 };
 
 #[derive(Default)]
 pub(in crate::shell::agent_surface) struct Catalog {
 	pub open: bool,
+	pub viewed: Option<String>,
 	data: Option<AgentSnapshotDto>,
 	search: Option<Entity<ComposerInput>>,
 	read: Option<Task<()>>,
@@ -25,6 +26,18 @@ pub(in crate::shell::agent_surface) struct Catalog {
 }
 
 impl Catalog {
+	pub(in crate::shell::agent_surface) fn archived_work(
+		&self,
+		id: &str,
+	) -> Option<&AgentWorkItemDto> {
+		let data = self.data.as_ref()?;
+		data.work_items.iter().find(|work| work.id == id && data.archived_work_ids.contains(id))
+	}
+
+	pub(in crate::shell::agent_surface) fn viewed_work(&self) -> Option<&AgentWorkItemDto> {
+		self.archived_work(self.viewed.as_deref()?)
+	}
+
 	fn project_name(&self, id: &str) -> Option<&str> {
 		self.data
 			.as_ref()?
@@ -36,6 +49,19 @@ impl Catalog {
 }
 
 impl AgentSurface {
+	pub(in crate::shell::agent_surface) fn open_archived_conversation(
+		&mut self,
+		id: &str,
+		cx: &mut Context<Self>,
+	) {
+		if self.workspace.archives.archived_work(id).is_none() {
+			return;
+		}
+		self.workspace.archives.viewed = Some(id.into());
+		self.workspace.archives.open = false;
+		self.open_work_conversation(id, None, cx);
+	}
+
 	pub(in crate::shell::agent_surface) fn open_archive_catalog(&mut self, cx: &mut Context<Self>) {
 		self.cancel_dictation(cx);
 		self.workspace.browsing = true;
@@ -74,8 +100,10 @@ impl AgentSurface {
 			let _ = surface.update(cx, |s, cx| {
 				s.workspace.archives.read = None;
 				match result {
-					Some(AgentSnapshotResult::Available(data)) if !data.connection_initializing =>
-						s.workspace.archives.data = Some(data),
+					Some(AgentSnapshotResult::Available(data)) if !data.connection_initializing => {
+						s.retire_archived_messages(&data, cx);
+						s.workspace.archives.data = Some(data);
+					},
 					_ =>
 						s.workspace.archives.feedback =
 							Some("Could not read the archive. Try again.".into()),
@@ -187,6 +215,8 @@ impl AgentSurface {
 		for item in items {
 			let id = item.id.clone();
 			let key_id = id.clone();
+			let open_id = id.clone();
+			let key_open_id = id.clone();
 			let project = catalog.project_name(&id).map(str::to_owned);
 			let busy = catalog.busy.as_ref() == Some(&id);
 			list = list.child(
@@ -221,6 +251,20 @@ impl AgentSurface {
 									.text_size(gpui::px(11.))
 									.text_color(ui_theme::rgb(ui_theme::TEXT_MUTED))
 									.child(project)
+							})),
+					)
+					.child(
+						ui_theme::settings_button(format!("open-archive-{id}"), "Open")
+							.on_click(cx.listener(move |s, _, _, cx| {
+								s.open_archived_conversation(&open_id, cx);
+							}))
+							.on_key_down(cx.listener(move |s, e: &KeyDownEvent, _, cx| {
+								if !e.is_held
+									&& ["enter", "space"].contains(&e.keystroke.key.as_str())
+								{
+									s.open_archived_conversation(&key_open_id, cx);
+									cx.stop_propagation();
+								}
 							})),
 					)
 					.child(
@@ -378,6 +422,50 @@ mod tests {
 		surface.read_with(visual, |s, cx| {
 			assert_eq!(s.composer.read(cx).content(), "Keep this draft");
 			assert!(s.workspace.archives.mutation.is_none());
+		});
+	}
+
+	#[gpui::test]
+	fn opening_archive_is_read_only_and_retains_the_active_draft(cx: &mut gpui::TestAppContext) {
+		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
+		surface.update(visual, |s, cx| {
+			s.visual_workspace_fixture(cx);
+			let active = s.snapshot.clone().unwrap();
+			let selected = s.selected.clone().unwrap();
+			s.open_page(&selected, cx);
+			s.composer.update(cx, |input, cx| input.set_content("Keep the active draft", cx));
+			let mut catalog = active.clone();
+			let mut archived = catalog.work_items[0].clone();
+			archived.id = "archived-test".into();
+			archived.codex_thread_id = Some("native-archived-test".into());
+			archived.parent_goal_id = None;
+			catalog.work_items.push(archived);
+			catalog.archived_work_ids.insert("archived-test".into());
+			s.workspace.archives.data = Some(catalog);
+
+			s.open_archived_conversation("archived-test", cx);
+			assert_eq!(s.selected.as_deref(), Some("archived-test"));
+			assert!(s.selected_is_archived());
+			assert_eq!(
+				s.conversation_work().unwrap().codex_thread_id.as_deref(),
+				Some("native-archived-test")
+			);
+			assert!(s.build_submission("Do not send this", cx).is_err());
+			assert_eq!(s.snapshot.as_ref(), Some(&active));
+			assert!(s.workspace.archives.mutation.is_none());
+
+			s.apply_refreshed_snapshot(Ok(AgentSnapshotResult::Available(active)), cx);
+			assert_eq!(s.selected.as_deref(), Some("archived-test"));
+			assert!(
+				s.selected_is_archived(),
+				"background refresh must preserve an explicit archive read"
+			);
+			let location = s.navigation_location();
+			s.open_page(&selected, cx);
+			assert!(!s.selected_is_archived());
+			assert_eq!(s.composer.read(cx).content(), "Keep the active draft");
+			assert!(s.restore_location(&location, cx));
+			assert!(s.selected_is_archived(), "navigation restores the read-only archive view");
 		});
 	}
 

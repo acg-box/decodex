@@ -35,7 +35,7 @@ impl SqliteStore {
 			let tx = c.transaction_with_behavior(TransactionBehavior::Immediate).map_err(error::sqlite_error)?;
 
 			for key in retired {
-				tx.execute("DELETE FROM agent_slots WHERE agent_key=?1 AND slot<>0", [key]).map_err(error::sqlite_error)?;
+				tx.execute("DELETE FROM agent_slots WHERE agent_key=?1", [key]).map_err(error::sqlite_error)?;
 			}
 
 			let root: Option<String> = tx.query_row(
@@ -43,7 +43,7 @@ impl SqliteStore {
 				[], |row| row.get(0),
 			).optional().map_err(error::sqlite_error)?;
 
-			if let Some(root) = &root {
+			if let Some(root) = &root.filter(|id| active.iter().any(|(_, work, _)| work == id)) {
 				tx.execute("INSERT OR IGNORE INTO agent_slots(agent_key,work_id,thread_id,slot) SELECT id,id,codex_thread_id,0 FROM agent_work_items WHERE id=?1", [root]).map_err(error::sqlite_error)?;
 			}
 
@@ -159,8 +159,10 @@ mod tests {
 		}).unwrap();
 
 		let target = |id: &str| (id.to_owned(), id.to_owned(), Some(format!("thread-{id}")));
-		let slots =
-			store.reconcile_agent_slots(vec![target("a"), target("b")], vec![]).await.unwrap();
+		let slots = store
+			.reconcile_agent_slots(vec![target("main"), target("a"), target("b")], vec![])
+			.await
+			.unwrap();
 
 		assert_eq!(
 			slots.iter().map(|s| (s.key.as_str(), s.number)).collect::<Vec<_>>(),
@@ -232,5 +234,21 @@ mod tests {
 		assert!(ended.iter().all(|s| s.key != "c"));
 		assert_eq!(ended.iter().find(|s| s.key == "b").unwrap().number, 2);
 		assert_eq!(ended.iter().find(|s| s.key == "a").unwrap().number, 3);
+	}
+
+	#[tokio::test]
+	async fn archived_root_slot_stays_released_until_explicit_restoration() {
+		let directory = tempfile::tempdir().unwrap();
+		let store = SqliteStore::open_test(&directory.path().join("slots.sqlite3")).unwrap();
+		store.with_connection(|c| {
+			c.execute("INSERT INTO agent_work_items(id,kind,title,instructions,status,created_at_micros,updated_at_micros) VALUES('main','goal','Main','Keep context','open',1,1)", []).map_err(error::sqlite_error)?;
+			Ok(())
+		}).unwrap();
+		let root = ("main".into(), "main".into(), Some("thread-main".into()));
+		let active = store.reconcile_agent_slots(vec![root.clone()], vec![]).await.unwrap();
+		assert_eq!(active[0].number, 0);
+		assert!(store.reconcile_agent_slots(vec![], vec!["main".into()]).await.unwrap().is_empty());
+		assert!(store.reconcile_agent_slots(vec![], vec![]).await.unwrap().is_empty());
+		assert_eq!(store.reconcile_agent_slots(vec![root], vec![]).await.unwrap(), active);
 	}
 }
