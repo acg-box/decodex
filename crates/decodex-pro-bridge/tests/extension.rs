@@ -1,4 +1,5 @@
 //! Execute the Chrome boundary checks without installing Node or using a live account.
+#![allow(unused_crate_dependencies)]
 
 #[test]
 #[cfg(target_os = "macos")]

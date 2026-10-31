@@ -45,7 +45,7 @@ async fn serve_io(
 	write: impl AsyncWrite + Unpin + Send + 'static,
 ) -> Result<()> {
 	let store = Store::open(root)?;
-	let _lease = store.browser_lease()?.ok_or("Another research browser profile is connected.")?;
+	let _lease = store.browser_lease()?.ok_or("Another research host is connected.")?;
 	let path = socket_path(root);
 	match std::fs::remove_file(&path) {
 		Ok(()) => {},

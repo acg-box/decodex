@@ -1,4 +1,5 @@
 //! The caller can exit while an independent worker publishes a durable result.
+#![allow(unused_crate_dependencies)]
 
 use std::{
 	fs,

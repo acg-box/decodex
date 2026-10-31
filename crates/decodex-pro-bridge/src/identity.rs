@@ -5,6 +5,7 @@ use serde_json::Value;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Execution identity reported for one observed assistant response.
 pub struct ExecutionIdentity {
 	/// Actual assistant message ID returned by ChatGPT.
 	pub message_id: String,

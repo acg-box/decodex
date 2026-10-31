@@ -15,7 +15,7 @@ visual-capture     = ["gpui/leak-detection", "gpui/test-support", "gpui_platform
 [dependencies]
 base64               = { workspace = true }
 decodex-components   = { workspace = true }
-decodex-pro-bridge    = { workspace = true }
+decodex-pro-bridge   = { workspace = true }
 decodex-protocol     = { workspace = true }
 gpui                 = { workspace = true }
 gpui_platform        = { workspace = true }

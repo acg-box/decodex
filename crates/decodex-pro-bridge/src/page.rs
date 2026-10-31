@@ -404,7 +404,7 @@ fn markdown_code_blocks(markdown: &str) -> Vec<String> {
 				content.push_str(line);
 			}
 		} else if delimiter && (marker != Some(b'`') || !trimmed[length..].contains('`')) {
-			fence = Some((marker.unwrap(), length));
+			fence = marker.map(|kind| (kind, length));
 		}
 	}
 	if fence.is_some() {

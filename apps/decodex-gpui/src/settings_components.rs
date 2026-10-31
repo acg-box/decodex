@@ -260,15 +260,15 @@ impl SettingsSurface {
 		let feedback = state.error.as_ref().map(|error| Feedback::error(error.clone())).or_else(
 			|| match state.busy {
 				Some(ResearchAction::Connect) =>
-					Some(Feedback::loading("Opening the research login window…")),
+					Some(Feedback::loading("Opening the ChatGPT setup tab…")),
 				Some(ResearchAction::Disconnect) =>
-					Some(Feedback::loading("Disconnecting the research browser…")),
+					Some(Feedback::loading("Closing the ChatGPT setup tab…")),
 				_ => None,
 			},
 		);
 		gpui::div().debug_selector(|| "components-pro-research".into()).w_full().flex().flex_col()
 			.child(ui_theme::settings_row()
-				.child(ui_theme::settings_label("Pro Research · Experimental", format!("{}\nUses your ChatGPT subscription through the Decodex Research Chrome extension. No API key.\nAgent access stays off until live Pro verification is complete.", state.status_text())))
+				.child(ui_theme::settings_label("Pro Research · Experimental", format!("{}\nUses your ChatGPT subscription through the Decodex Research Chrome extension. No API key.\nAgent access requires the optional Decodex Research plugin. Each answer verifies its actual model.", state.status_text())))
 				.child(controls))
 			.child(ui_feedback::notice("components-research-feedback", "research", feedback).inline())
 	}

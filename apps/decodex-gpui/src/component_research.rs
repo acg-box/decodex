@@ -32,8 +32,7 @@ impl Snapshot {
 			Some(ConnectionState::SignInRequired) => "Sign in to ChatGPT in the research tab",
 			Some(ConnectionState::VerificationRequired) =>
 				"Waiting for ChatGPT security verification",
-			Some(ConnectionState::AttentionRequired) =>
-				"Open the research tab to continue setup",
+			Some(ConnectionState::AttentionRequired) => "Open the research tab to continue setup",
 			None => "Not connected",
 		}
 	}
@@ -152,7 +151,7 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn visiting_components_does_not_create_a_browser_profile() {
+	fn visiting_components_does_not_create_component_data() {
 		let root = tempfile::tempdir().unwrap();
 		let directory = root.path().join("pro-research");
 		let setup = ResearchOperations { directory: Some(directory.clone()), ..Default::default() };
