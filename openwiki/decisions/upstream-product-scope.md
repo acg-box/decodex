@@ -50,6 +50,10 @@ sources:
     resource: repo://apps/decodex-gpui/src/shell_diagnostics.rs
   - id: openwiki-source-2986b39185cca5c00a29ad1d
     resource: repo://apps/decodex-gpui/src/shell_status.rs
+  - id: openwiki-source-14193a66abfb7d3230f476bf
+    resource: repo://automations/portfolio.toml
+  - id: openwiki-source-7dcbb082d2502f1ec4386c39
+    resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-f580b10e16f1d25ebfea3bf8
     resource: repo://automations/upstream/qualification.json
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
@@ -120,10 +124,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-31T15:31:25.411Z" }
+generated: { by: "codex", at: "2026-10-31T16:42:36.938Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T16:06:25.983Z
+    at: 2026-10-31T16:42:36.938Z
 ---
 
 # Product scope and native ownership
@@ -228,7 +232,7 @@ Item 67 uses the current shared native store. Exact current local conversations 
 
 **Items 32, 33, 37, 40, 52, 54, 56 and 81 are excluded.** Codex owns its app-server self-diagnostics. Decodex diagnoses its own product and integration failures. The standalone Codex startup-configuration UI, query and dedicated qualification helper are retired. Diagnostic export and upload capabilities are not selected. Ordinary conversation Markdown export and normal error or warning presentation remain retained.
 
-The manual proposal records have current dispositions. Deferred research does not authorize implementation, experimental activation, a new setting or daily maintenance debt. Microphone selection does not select independent output-device or input-channel controls. The [current contracts](../../automations/upstream/retained-contracts.json) retain approvals, deferrals, exclusions and duplicates. The [qualification index](../../automations/upstream/retained-evidence.json) separates executed Decodex tests, source inspection, unchanged runtime identities and installed-app limits. The automation remains paused until explicit user authorization resumes it.
+The manual proposal records have current dispositions. Deferred research does not authorize implementation, experimental activation, a new setting or daily maintenance debt. Microphone selection does not select independent output-device or input-channel controls. The [current contracts](../../automations/upstream/retained-contracts.json) retain approvals, deferrals, exclusions and duplicates. The [qualification index](../../automations/upstream/retained-evidence.json) separates executed Decodex tests, source inspection, unchanged runtime identities and installed-app limits. Pause the automation during manual catch-up. Resume it only with explicit user authorization through the supported native tools.
 
 ## Conversation list and remaining manual scope
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:b6c9234d5050640c5aa97c211b0c3cd8fb331a6fce2ac1cbc25aac64236ba6f5",
+  "pageVersion": "sha256:a3d941841c6dde6c31786b6894c5ab5b67c94244c0e902082886d40e50bb676d",
   "claims": [
     {
       "id": "claim_ebacb67e562646d8af9fccd8e644cb32",
@@ -14,25 +14,21 @@
     },
     {
       "id": "claim_58efa26b5e4e42c4b7f8a05763ec1de2",
-      "statement": "The portfolio defines three native tasks: the upstream Maintainer has an explicit PAUSED override and retains its daily cadence, while Content Manager and Xurl Publisher inherit ACTIVE. Radar and Publisher remain separate auxiliary tools, and repository configuration does not establish live scheduler status or resume authority.",
+      "statement": "The portfolio defines three native tasks: the upstream Maintainer explicitly selects ACTIVE with the existing daily cadence; Content Manager and Xurl Publisher inherit ACTIVE. Manual catch-up requires a pause and explicit resume authorization. Repository configuration does not establish live scheduler status.",
       "evidence": [
         {
-          "resource": "repo://apps/decodex-publisher/src/lib.rs",
-          "version": "repo-file-v1:sha256:b3498c65c7bf3e567078bc1f246f83b03d00b2f86e37487c7a422ff214e7828f"
-        },
-        {
-          "resource": "repo://apps/radar/src/lib.rs",
-          "version": "repo-file-v1:sha256:7f6662cabd8836e41665c673700d24b91c1a9d7c3f28e7ba77aad02adcd529af"
-        },
-        {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:f12d49a70146b60d4e2230e7cc30c77eff56fc36eeccbc1b321df455abb49210"
+          "version": "repo-file-v1:sha256:4516f1b1a314f734812ae1e2516c223723945f99d0bcd3899428c5bb068957f5"
+        },
+        {
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T17:36:00.319Z"
+    "at": "2026-10-31T16:42:36.938Z"
   }
 }

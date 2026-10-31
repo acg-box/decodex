@@ -4,18 +4,16 @@ title: "Native integrations, automations and auxiliary tools"
 description: "Native integrations, automations and auxiliary tools"
 tags: ["decodex", "architecture"]
 sources:
-  - id: openwiki-source-c03bc4468425d8e7887133da
-    resource: repo://apps/decodex-publisher/src/lib.rs
-  - id: openwiki-source-140806c6bf93492d2e78b1df
-    resource: repo://apps/radar/src/lib.rs
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
+  - id: openwiki-source-7dcbb082d2502f1ec4386c39
+    resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-e9d609e612bb7e44111ec4b1
     resource: repo://crates/decodex-runtime/src/agent_integrations.rs
-generated: { by: "codex", at: "2026-10-29T18:53:39.584Z" }
+generated: { by: "codex", at: "2026-10-31T16:42:36.938Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T17:36:00.319Z
+    at: 2026-10-31T16:42:36.938Z
 ---
 
 
@@ -29,7 +27,7 @@ Plugin installation and connection configuration belong to Codex. Decodex retain
 
 ## Automation boundary
 
-`automations/portfolio.toml` defines desired configuration for three managed native roles: upstream Maintainer, Content Manager and Xurl Publisher. The upstream Maintainer has an explicit `PAUSED` override and retains its daily cadence. The Content Manager and Xurl Publisher inherit the `ACTIVE` repository default. These values do not establish live scheduler status. Desired configuration does not prove host registration or execution, and a documentation refresh must not resume a paused host task. The retired upstream Reviewer and Health roles are not active requirements. Agent follow-up events are a separate service behavior.
+`automations/portfolio.toml` defines desired configuration for three managed native roles: upstream Maintainer, Content Manager and Xurl Publisher. The upstream Maintainer has an explicit `ACTIVE` override and retains its daily cadence. Pause it during manual catch-up; resume it only with explicit user authorization. The Content Manager and Xurl Publisher inherit the `ACTIVE` repository default. These values do not establish live scheduler status. Desired configuration does not prove host registration or execution, and a documentation refresh must not resume a paused host task. The retired upstream Reviewer and Health roles are not active requirements. Agent follow-up events are a separate service behavior.
 
 ```sh
 python3 automations/decodex/scripts/config/render_automation_plan.py --json

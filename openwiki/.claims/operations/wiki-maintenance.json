@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:3066d5ed19cbde8b38cc659a5971b71daa36075460e7706a9d917e53fb02bd98",
+  "pageVersion": "sha256:c0768c8b64e51a8803e5858c4dbbef8a2c401ab39fc7b3ad8fe0256b765f6d19",
   "claims": [
     {
       "id": "claim_07eac3dd8c6142068d996cdae3e4884c",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:f12d49a70146b60d4e2230e7cc30c77eff56fc36eeccbc1b321df455abb49210"
+          "version": "repo-file-v1:sha256:4516f1b1a314f734812ae1e2516c223723945f99d0bcd3899428c5bb068957f5"
         }
       ]
     },
@@ -35,6 +35,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T17:36:00.319Z"
+    "at": "2026-10-31T16:42:36.938Z"
   }
 }

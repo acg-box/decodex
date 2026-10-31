@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:4d3c7c09211c29cfbe39d849ddac5f9f904386b55e751dc6973691144bd84145",
+  "pageVersion": "sha256:5f38b87af484f22e7380c90a60340472031e3b3a8f26f66a0d7afea57d44d745",
   "claims": [
     {
       "id": "claim_b34298a8647a4e0b8653926b7568c5d4",
@@ -82,15 +82,15 @@
     },
     {
       "id": "claim_ff1c469c90a84778af3fc5cc4d53d84b",
-      "statement": "The checked-in portfolio keeps the upstream Maintainer PAUSED during manual catch-up and until explicit resume approval while preserving its daily cadence. Native scheduler readback and control remain separate from repository configuration and documentation.",
+      "statement": "The portfolio enables the upstream Maintainer with its existing daily cadence. Manual catch-up requires a pause and explicit resume authorization through supported native tools; repository configuration and documentation do not establish scheduler state.",
       "evidence": [
         {
           "resource": "repo://automations/portfolio.toml",
-          "version": "repo-file-v1:sha256:f12d49a70146b60d4e2230e7cc30c77eff56fc36eeccbc1b321df455abb49210"
+          "version": "repo-file-v1:sha256:4516f1b1a314f734812ae1e2516c223723945f99d0bcd3899428c5bb068957f5"
         },
         {
-          "resource": "repo://automations/upstream/prompts/maintainer.md#L1-L3",
-          "version": "repo-lines-v1:sha256:5ee9f284ed180ea5076618b07373423b1617c3d133f68e6495a64e5bdd684166:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGNlMGVlMTJiZDEyMzEzZmVkMDMzMDllYjEzYWNmODQwOTBlZTI0NTVjMThlNGE2NWRlNjViZjRjMzBiNjdmNiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjIxNjdmODRlNzNiMzVkYWE0NjRhYWE2YmIwNGU2ZmYzNGU4OGU2MDkyMTliNWYyYWJjNTRkMGMyNzkyZmUzOSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzU0ZTU4YjM0MDk1Mzg5ODJiMjY5YTc5NjcyZDliOTBmYmU2MTRjZjViZjcxNzkyZDVhYjViOWEzMjY2YzI0ZSJ9"
+          "resource": "repo://automations/upstream/prompts/maintainer.md",
+          "version": "repo-file-v1:sha256:01bebe4274c10a0d25c17ca9181cb005c26d18abaccde7e780505064f5189b3f"
         }
       ]
     },
@@ -297,6 +297,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:31:25.411Z"
+    "at": "2026-10-31T16:42:36.938Z"
   }
 }

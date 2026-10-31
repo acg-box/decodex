@@ -5,20 +5,18 @@ description: "Decodex content automation"
 tags: ["decodex", "architecture"]
 openwiki_generated: true
 sources:
-  - id: openwiki-source-100fa03c93c368ebc1fbbd5a
-    resource: repo://automations/decodex/prompts/content-manager.md
-  - id: openwiki-source-ae9adef29a9c7df71fb7fd1a
-    resource: repo://automations/decodex/prompts/xurl-publisher.md
   - id: openwiki-source-14193a66abfb7d3230f476bf
     resource: repo://automations/portfolio.toml
-generated: { by: "codex", at: "2026-10-29T18:53:39.584Z" }
+  - id: openwiki-source-7dcbb082d2502f1ec4386c39
+    resource: repo://automations/upstream/prompts/maintainer.md
+generated: { by: "codex", at: "2026-10-31T16:42:36.938Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T17:36:00.319Z
+    at: 2026-10-31T16:42:36.938Z
 ---
 
 
-> Repository configuration: `automations/portfolio.toml` declares ACTIVE defaults for the content roles and an explicit PAUSED setting for the upstream Maintainer. The Maintainer retains its daily cadence and requires explicit user approval before it resumes. The content roles' PAUSED-first sequence below is historical activation procedure, not a report that today's host is paused. Verify native task definitions separately; repository configuration does not prove execution. This documentation refresh publishes nothing and changes no schedule.
+> Repository configuration: `automations/portfolio.toml` declares ACTIVE defaults for the content roles and an explicit ACTIVE setting for the upstream Maintainer. The Maintainer retains its daily cadence; manual catch-up pauses it and explicit user approval is required to resume it. The content roles' PAUSED-first sequence below is historical activation procedure, not a report that today's host is paused. Verify native task definitions separately; repository configuration does not prove execution. This documentation refresh publishes nothing and changes no schedule.
 
 # Decodex Content Automation
 
