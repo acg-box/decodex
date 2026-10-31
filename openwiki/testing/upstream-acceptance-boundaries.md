@@ -166,10 +166,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
+generated: { by: "codex", at: "2026-10-31T15:31:25.411Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:20:06.142Z
+    at: 2026-10-31T15:31:25.411Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -197,7 +197,7 @@ Workflow-only maintenance uses the checkpoint and portfolio checks in `cargo +st
 
 Read the development lock, [current source review](../../automations/upstream/current-review.json) and [current qualification](../../automations/upstream/qualification.json) for the fixed target, exact CLI/helpers/schema, executed identities and limits. Keep source review, source-test execution, exact production-artifact tests, delivery and installed acceptance separate. Current run counts and hashes belong in those records, not repeated across Wiki pages.
 
-The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. Source review is complete through the fixed target, but the runtime lock remains on the qualified baseline. HumanCommand compatibility and its affected qualification remain pending. No upstream test suite was executed for this follow-up.
+The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. Source review is complete through the fixed target, but the runtime lock remains on the qualified baseline. HumanCommand support is [user-deferred](https://github.com/acg-box/decodex/issues/2585), not delivered or qualified. Keep it unadvertised; qualify the retained scope before a future runtime migration. No upstream test suite was executed for this follow-up.
 
 The retired Codex startup-configuration diagnostic is absent from the current router. Its earlier execution remains historical proof. Valid named-permission defaults and an owned Recap working directory repair fixture admission without weakening existing behavior assertions. The exact-artifact development cache test also corrupts and repairs any advertised standalone executor.
 

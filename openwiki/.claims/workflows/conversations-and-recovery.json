@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:f362b6c62c1c2dee5ac450b5c4d8930a3608ab4b536c10a93220f3f7fed043ff",
+  "pageVersion": "sha256:69e3042a312e0ff64ca2873a0d761aa241fb59d75ada0f8d1922ab4e7132b1a9",
   "claims": [
     {
       "id": "claim_3881a280a4044cdca9e8599100f0a4f0",
@@ -182,7 +182,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:5d7708b4a83f830538f9eca55e7efeff23ddd7c92eb5e79a94766a527980c772"
+          "version": "repo-file-v1:sha256:3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b"
         }
       ]
     },
@@ -196,7 +196,7 @@
         },
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:5d7708b4a83f830538f9eca55e7efeff23ddd7c92eb5e79a94766a527980c772"
+          "version": "repo-file-v1:sha256:3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent_sample.rs",
@@ -210,7 +210,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:5d7708b4a83f830538f9eca55e7efeff23ddd7c92eb5e79a94766a527980c772"
+          "version": "repo-file-v1:sha256:3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs",
@@ -651,6 +651,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:20:06.142Z"
+    "at": "2026-10-31T15:31:25.411Z"
   }
 }

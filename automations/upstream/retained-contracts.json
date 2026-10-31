@@ -35,6 +35,20 @@
       "decision_status": "User approved observed metrics and asked to continue research on complete critical path.",
       "delivery_reference": "https://github.com/acg-box/decodex/pull/2518",
       "research_issue": "https://github.com/acg-box/decodex/issues/2525"
+    },
+    {
+      "id": "managed-human-command-approval-compatibility",
+      "upstream_commits": [
+        "9cc14e79882ff8885cd5d33b4adadae014045aef"
+      ],
+      "status": "user_deferred",
+      "value": "Fresh one-time human decisions for managed command checkpoints. No current product need.",
+      "maintenance_cost": "Capability negotiation, request projection, exact-owner response and reconnect regression coverage.",
+      "recommendation": "Keep this unimplemented unless a retained workflow needs it and the user renews the decision.",
+      "decision_status": "User deferred on 2026-10-31; not daily maintenance implementation debt.",
+      "implementation_enabled": false,
+      "tracking_issue": "https://github.com/acg-box/decodex/issues/2585",
+      "limits": "Do not advertise unsupported requiredHumanApproval, fabricate decisions or mark the capability delivered. Runtime qualification and selection remain separate."
     }
   ],
   "retained_presentation": {
@@ -4686,7 +4700,7 @@
     "manual_review_item": 28,
     "behavior": [
       "Read the current source-bound native model catalog, including its explicit default and retirement deadlines. Keep the existing automatic catalog refresh.",
-      "After an explicit retirement deadline, choose the same complete catalog’s current default for new Agent settings and loaded idle Agent recovery. Reuse the existing settings journal, source checks and readback.",
+      "After an explicit retirement deadline, choose the same complete catalog\u2019s current default for new Agent settings and loaded idle Agent recovery. Reuse the existing settings journal, source checks and readback.",
       "Keep an available model and preserve compatible reasoning/service-tier choices. Do not infer retirement from a missing catalog entry, an upgrade suggestion, a quota response or a network error.",
       "Desktop model and effort cycling requires a current native catalog; it does not fall back to a fixed list. Restored unsent drafts are not sent by this change."
     ],

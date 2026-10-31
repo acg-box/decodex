@@ -136,10 +136,10 @@ sources:
     resource: repo://scripts/macos/stage_decodex_app.sh
   - id: openwiki-source-76081c1a47ca8cf32593de34
     resource: repo://scripts/macos/test_decodex_app_stage.sh
-generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
+generated: { by: "codex", at: "2026-10-31T15:31:25.411Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:20:06.142Z
+    at: 2026-10-31T15:31:25.411Z
 ---
 
 # Runtime Architecture
@@ -265,7 +265,7 @@ The [portable qualification record](../../automations/upstream/qualification.jso
 
 Read the development lock and current qualification for the selected source, artifact and synthetic consumer limits. Keep the selected runtime, source-review cursor and installed binary as separate identities. A workflow or evidence update does not change those identities.
 
-The selected development runtime remains `33d306d4`, and source review through `5be57bedd0` remains complete. The provider-refusal follow-up resolves [the compatibility issue](https://github.com/acg-box/decodex/issues/2575): ordinary forks keep the original provider and resume after that provider is restored. A user can explicitly create a separate native fork on the current provider. The service rechecks the observed refusal and current configuration before the existing fork write; it preserves the source, draft and uncertain-result receipt and sends no input. Targeted native checks pass on the exact candidate and selected baseline. The earlier cohort remains historical evidence. HumanCommand compatibility and its affected qualification remain pending before a runtime migration; this change does not select or install the candidate.
+The selected development runtime remains `33d306d4`, and source review through `5be57bedd0` remains complete. The provider-refusal follow-up resolves [the compatibility issue](https://github.com/acg-box/decodex/issues/2575): ordinary forks keep the original provider and resume after that provider is restored. A user can explicitly create a separate native fork on the current provider. The service rechecks the observed refusal and current configuration before the existing fork write; it preserves the source, draft and uncertain-result receipt and sends no input. Targeted native checks pass on the exact candidate and selected baseline. The earlier cohort remains historical evidence. The user deferred HumanCommand support in [issue 2585](https://github.com/acg-box/decodex/issues/2585); it is not daily implementation debt. The capability stays unsupported and unadvertised. Runtime migration still requires applicable retained-scope qualification; this decision does not select or install the candidate.
 
 The separate `retained_project_agent_work.installed_acceptance` entry records the local installed development app, its executable identities and observed behavior. It includes the independent-Agent composer and input-routing repairs. It retains its own limits and does not extend the earlier synthetic native qualification. See [acceptance boundaries](../testing/upstream-acceptance-boundaries.md#project-agent-work-and-global-guardian).
 
