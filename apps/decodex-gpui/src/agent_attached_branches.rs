@@ -118,7 +118,7 @@ impl AgentSurface {
 		let owner = work.to_owned();
 		let mut panel = gpui::div().flex().flex_col().gap_2().child(self.workspace_action(
 			"attached-branches-toggle".into(),
-			"Attached branches".into(),
+			"Side chats".into(),
 			move |s, cx| {
 				if opened {
 					s.workspace.attached.expanded = false;
@@ -135,12 +135,14 @@ impl AgentSurface {
 			return panel.into_any_element();
 		}
 
-		panel=panel.child("Choose ‘Attached branch after this turn’ when reviewing an earlier message. Open a branch here to continue it.");
+		panel = panel.child(
+			"Choose ‘Side chat’ when reviewing an earlier message. Open a side chat here to continue it.",
+		);
 
 		match &self.workspace.attached.result {
 			Some(AttachedBranchesResult::Available { branches, truncated }) => {
 				if branches.is_empty() {
-					panel = panel.child("No attached branches are recorded for this conversation.");
+					panel = panel.child("No side chats are recorded for this conversation.");
 				}
 
 				for branch in branches {
@@ -148,12 +150,12 @@ impl AgentSurface {
 				}
 
 				if *truncated {
-					panel = panel.child("Showing the newest 100 attached branches.");
+					panel = panel.child("Showing the newest 100 side chats.");
 				}
 			},
 			Some(AttachedBranchesResult::Unavailable) =>
-				panel = panel.child("Attached branches could not be read. Refresh to try again."),
-			None => panel = panel.child("Reading attached branches…"),
+				panel = panel.child("Side chats could not be read. Refresh to try again."),
+			None => panel = panel.child("Reading side chats…"),
 		}
 
 		if self.workspace.attached.task.is_none() {
@@ -161,7 +163,7 @@ impl AgentSurface {
 
 			panel = panel.child(self.workspace_action(
 				"attached-branches-refresh".into(),
-				"Refresh attached branches".into(),
+				"Refresh".into(),
 				move |s, cx| s.load_attached_branches(&owner, cx),
 				cx,
 			));
@@ -183,7 +185,7 @@ impl AgentSurface {
 			.flex()
 			.flex_col()
 			.gap_1()
-			.child(target.map_or_else(|| "Attached branch".to_owned(), |w| w.title.clone()));
+			.child(target.map_or_else(|| "Side chat".to_owned(), |w| w.title.clone()));
 
 		if branch.phase == PromptForkPhase::Forked && target.is_some() {
 			let expected = branch.clone();
@@ -191,7 +193,7 @@ impl AgentSurface {
 
 			row = row.child(self.workspace_action(
 				format!("attached-branch-open-{}", branch.target_work_id.as_str()),
-				"Open branch".into(),
+				"Open".into(),
 				move |s, cx| {
 					if s.workspace.attached.owner == owner
 						&& owner.as_ref().is_some_and(|(work, source)| {
@@ -216,7 +218,7 @@ impl AgentSurface {
 				PromptForkPhase::Uncertain =>
 					"Creation is unconfirmed. Keep the saved choice; do not create it again.",
 				PromptForkPhase::Acknowledged =>
-					"Native identity is saved. Recover the saved branch choice to finish loading history.",
+					"Native identity is saved. Recover the saved Side chat choice to finish loading history.",
 				PromptForkPhase::Rejected =>
 					"Creation was rejected. The original conversation is retained.",
 				PromptForkPhase::Forked =>

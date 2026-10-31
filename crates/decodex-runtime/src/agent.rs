@@ -2620,7 +2620,7 @@ impl AgentCoordinator {
 					},
 				Err(AgentError::ProjectPending(_)) => {},
 				Err(AgentError::ProviderMismatch { .. }) => {
-					self.store.hold_agent_unsent_input_with_reason(agent.id.clone(), "Not sent: this conversation uses a different provider. Restore that provider or create a new branch before sending again.".into()).await?;
+					self.store.hold_agent_unsent_input_with_reason(agent.id.clone(), "Not sent: this conversation uses a different provider. Switch back to that provider or Fork before sending again.".into()).await?;
 				},
 				Err(error @ AgentError::ThreadOwnedElsewhere { .. }) => {
 					self.store.hold_agent_unsent_input(agent.id.clone()).await?;

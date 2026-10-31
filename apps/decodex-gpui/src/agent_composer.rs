@@ -653,7 +653,7 @@ impl AgentSurface {
 				.when(self.locked_branch_source().is_some(), |d| {
 					d.child(self.workspace_action(
 						"locked-thread-branch".into(),
-						"Continue in a new branch…".into(),
+						"Fork".into(),
 						|s, cx| s.review_locked_branch(cx),
 						cx,
 					))

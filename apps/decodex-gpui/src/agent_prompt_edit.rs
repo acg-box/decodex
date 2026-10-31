@@ -595,7 +595,7 @@ impl AgentSurface {
 						s.prompt_edit.feedback =
 							match s.apply_prompt_review(previous.as_ref(), draft, cx) {
 								Ok(()) if s.prompt_edit.branch_choice == Some(PromptForkBoundary::AttachedAfterTurn) => "Open a side chat from this completed turn. Its replies stay separate; the original conversation and draft stay saved.".into(),
-								Ok(()) if s.prompt_edit.branch_choice.is_some() => "Create an editable branch after this prompt's turn. The original conversation and draft stay saved.".into(),
+								Ok(()) if s.prompt_edit.branch_choice.is_some() => "Fork after this turn to continue in a new conversation. The original conversation and draft stay saved. Nothing is sent.".into(),
                                 Ok(()) => format!("Removes {turns} turns, including this one. File changes remain. Confirmation required."),
 								Err(message) => message.into(),
 							};
@@ -834,7 +834,7 @@ impl AgentSurface {
 					}) {
 						"Close"
 					} else if self.prompt_edit.branch_choice.is_some() {
-						"Cancel branch"
+						"Cancel"
 					} else {
 						"Cancel edit"
 					}
@@ -856,23 +856,20 @@ impl AgentSurface {
 		let expected = draft.clone();
 		let pending = draft.fork.is_some();
 		let side_chat = boundary == PromptForkBoundary::AttachedAfterTurn;
-		let provider_change = self.prompt_edit.branch_provider.is_some();
 		if let Some((original, current)) = &self.prompt_edit.branch_provider {
 			panel = panel.child(agent_surface::muted(&format!(
-				"The new branch will use {}. Sending its next message shares the inherited context with that provider. The original conversation remains on {}.", current.as_str(), original.as_str()
+				"This fork will use {}. Nothing is sent until you send a message, which shares the inherited context with that provider. The original conversation stays on {}.", current.as_str(), original.as_str()
 			)));
 		}
 		panel.child(
 			self.workspace_action(
 				"locked-branch-confirm".into(),
 				if pending {
-					"Check branch status"
-				} else if provider_change {
-					"Create branch with current provider"
+					"Check status"
 				} else if side_chat {
-					"Create side chat"
+					"Side chat"
 				} else {
-					"Create new branch"
+					"Fork"
 				}
 				.into(),
 				move |s, cx| {
@@ -931,7 +928,7 @@ impl AgentSurface {
 					if draft.confirmation_key.is_some() {
 						"Continue saved confirmation…"
 					} else {
-						"Choose edit or branch…"
+						"Choose Edit or Fork…"
 					}
 					.into(),
 					move |s, cx| {
@@ -1026,13 +1023,14 @@ impl AgentSurface {
 			let after = expected.clone();
 			let attached = expected.clone();
 
-			panel = panel.child("A new branch preserves the original. Editing the original removes this turn and all later turns; file changes remain. Sending is a separate step.");
+			panel = panel.child("Fork keeps the original conversation and draft. Editing the original removes this turn and all later turns; file changes remain. Neither action sends a message.");
 
 			if expected.confirmation_key.is_none() {
 				panel = panel
+					.child(agent_surface::muted("Fork before this prompt to edit it in a new conversation."))
 					.child(self.workspace_action(
 						"prompt-confirm-branch".into(),
-						"Edit in new branch".into(),
+						"Fork".into(),
 						move |s, cx| {
 							s.confirm_prompt_branch(
 								branch.clone(),
@@ -1042,9 +1040,10 @@ impl AgentSurface {
 						},
 						cx,
 					))
+					.child(agent_surface::muted("Fork after this turn to continue from its reply."))
 					.child(self.workspace_action(
 						"prompt-confirm-after".into(),
-						"Branch after this turn".into(),
+						"Fork".into(),
 						move |s, cx| {
 							s.confirm_prompt_branch(
 								after.clone(),
@@ -1054,9 +1053,10 @@ impl AgentSurface {
 						},
 						cx,
 					))
+					.child(agent_surface::muted("Open a side chat after this turn."))
 					.child(self.workspace_action(
 						"prompt-confirm-attached".into(),
-						"Attached branch after this turn".into(),
+						"Side chat".into(),
 						move |s, cx| {
 							s.confirm_prompt_branch(
 								attached.clone(),
@@ -1066,7 +1066,7 @@ impl AgentSurface {
 						},
 						cx,
 					))
-					.child("An attached branch stays linked to this conversation. It starts without a Goal; the original keeps its Goal.");
+					.child("A side chat stays linked to this conversation. It starts without a Goal; the original keeps its Goal.");
 			}
 
 			panel = panel

@@ -41,7 +41,7 @@ impl AgentSurface {
 					let runtime = tokio::runtime::Builder::new_current_thread()
 						.enable_all()
 						.build()
-						.map_err(|_| "Could not start branch recovery")?;
+						.map_err(|_| "Could not start fork recovery")?;
 
 					runtime.block_on(recover_branch(AgentClient::new(profile), original))
 				})();
@@ -49,16 +49,16 @@ impl AgentSurface {
 			});
 
 		if started.is_err() {
-			self.prompt_edit.feedback = "Could not start branch recovery".into();
+			self.prompt_edit.feedback = "Could not start fork recovery".into();
 
 			cx.notify();
 
 			return;
 		}
 
-		self.prompt_edit.feedback = "Reading branch identity and history…".into();
+		self.prompt_edit.feedback = "Reading fork identity and history…".into();
 		self.prompt_edit.task = Some(cx.spawn(async move |surface, cx| {
-			let result = receive.await.unwrap_or(Err("Branch recovery stopped"));
+			let result = receive.await.unwrap_or(Err("Fork recovery stopped"));
 			let _ = surface.update(cx, |s, cx| {
 				if s.prompt_edit.key != key || !s.prompt_editor_source_current() {
 					return;
@@ -89,7 +89,7 @@ impl AgentSurface {
 							None => {
 								s.prompt_edit.draft = Some(retained);
 								s.prompt_edit.feedback =
-									"Branch rejected. Original and draft kept.".into();
+									"Fork rejected. Original and draft kept.".into();
 							},
 							Some((work, thread, boundary, snapshot)) => {
 								if boundary != PromptForkBoundary::BeforeInput
@@ -129,13 +129,13 @@ impl AgentSurface {
 										profile: s.profile.clone(),
 										..Default::default()
 									};
-									s.prompt_edit.feedback =
-										match s.install_prompt_editors(retained, cx) {
-											Ok(()) =>
-												"Branch created. Restore the draft before sending.",
-											Err(message) => message,
-										}
-										.into();
+									s.prompt_edit.feedback = match s
+										.install_prompt_editors(retained, cx)
+									{
+										Ok(()) => "Fork created. Restore the draft before sending.",
+										Err(message) => message,
+									}
+									.into();
 								}
 							},
 						}
@@ -169,19 +169,19 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 	let PromptForkResult::Available(Some(status)) = result else {
 		return Err("New conversation unavailable. Keep your draft and check again.");
 	};
-	let intent = original.fork.as_ref().ok_or("Branch intent is missing")?;
+	let intent = original.fork.as_ref().ok_or("Fork intent is missing")?;
 
 	if status.thread_id != original.thread_id
 		|| status.target_work_id != intent.target_work_id
 		|| status.boundary != intent.boundary
 		|| status.model_provider != intent.model_provider
 	{
-		return Err("Saved branch does not match this draft");
+		return Err("Saved fork does not match this draft");
 	}
 
 	match status.phase {
 		PromptForkPhase::Uncertain =>
-			return Err("Branch unconfirmed. Keep the draft; do not create the branch again."),
+			return Err("Fork unconfirmed. Keep the draft; do not create the fork again."),
 		PromptForkPhase::Acknowledged =>
 			return Err("New conversation saved. Check status to finish restoring history."),
 		PromptForkPhase::Rejected => {
@@ -196,7 +196,7 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 		PromptForkPhase::Forked => {},
 	}
 
-	let target_thread = status.target_thread_id.ok_or("Branch identity is missing")?;
+	let target_thread = status.target_thread_id.ok_or("Fork identity is missing")?;
 	let mut retained = original;
 
 	retained.fork = None;
@@ -208,7 +208,7 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 			.prompt_edit(status.target_work_id.clone(), target_thread.clone())
 			.await
 			.map_err(|_| "Copied message status unavailable")?;
-		let input = PromptDraft::new(content.ok_or("Branch input is unavailable")?)?;
+		let input = PromptDraft::new(content.ok_or("Fork input is unavailable")?)?;
 
 		retained.work_id = status.target_work_id.clone();
 		retained.thread_id = target_thread.clone();
@@ -219,16 +219,16 @@ async fn recover_branch(client: AgentClient, original: DesktopPromptEditDraft) -
 		}
 	}
 
-	let snapshot = client.query().await.map_err(|_| "Branch task list is unavailable")?;
+	let snapshot = client.query().await.map_err(|_| "Fork task list is unavailable")?;
 	let AgentSnapshotResult::Available(ref available) = snapshot else {
-		return Err("Branch task list is unavailable");
+		return Err("Fork task list is unavailable");
 	};
 
 	if !available.work_items.iter().any(|w| {
 		w.id == status.target_work_id.as_str()
 			&& w.codex_thread_id.as_deref() == Some(target_thread.as_str())
 	}) {
-		return Err("Branch task is not ready");
+		return Err("Fork task is not ready");
 	}
 
 	Ok((retained, Some((status.target_work_id, target_thread, status.boundary, snapshot))))

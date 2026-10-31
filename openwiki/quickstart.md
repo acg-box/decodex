@@ -78,10 +78,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
+generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T13:17:02.524Z
+    at: 2026-10-31T14:39:55.131Z
 ---
 
 # OpenWiki quickstart
@@ -112,7 +112,7 @@ The conversation browser and Work list have independent saved **status filters**
 
 ## Side chats and separate questions
 
-The conversation header holds the source and its open Side chats as tabs. Use **+** to review a Side chat from the latest completed source turn, then confirm **Create side chat**. Each tab keeps its own draft and reading position. Closing a tab retains the native branch; reopen it from **Agent preferences → Attached branches**.
+The conversation header holds the source and its open Side chats as tabs. Use **+** to review a Side chat from the latest completed source turn, then confirm **Side chat**. Each tab keeps its own draft and reading position. Closing a tab retains the native branch; reopen it from **Agent preferences → Side chats**.
 
 For one quick question, use **Ask separately** in the composer toolbar, the question action beside a completed response, or **Ask about selection**. The popover preserves the main draft. See [the conversation workflow](workflows/conversations-and-recovery.md#open-side-chats-in-tabs) for both forms and their native boundaries.
 
@@ -126,13 +126,13 @@ Reported dollars appear beside **Context** in the composer; **Conversation estim
 
 ## Branch from a list row
 
-Choose **Branch…** on an existing locally managed conversation row to review its latest completed native turn. Confirm **Create new branch** to use the ordinary after-turn branch path. Source drafts stay preserved, and creation sends no input. Unavailable native history and unmanaged rows cannot provide this shortcut. See [the list workflow](workflows/conversations-and-recovery.md#branch-from-the-conversation-list) and [its qualification](testing/upstream-acceptance-boundaries.md#conversation-list-branch-qualification).
+Choose **Fork** on an existing locally managed conversation row to review its latest completed native turn. Confirm **Fork** to use the ordinary after-turn branch path. Source drafts stay preserved, and creation sends no input. Unavailable native history and unmanaged rows cannot provide this shortcut. See [the list workflow](workflows/conversations-and-recovery.md#branch-from-the-conversation-list) and [its qualification](testing/upstream-acceptance-boundaries.md#conversation-list-branch-qualification).
 
-If a conversation uses a different provider from the current configuration, **Create branch…** reviews a new branch on the current provider. The original history and draft remain, and creation sends no input. See [provider recovery](workflows/conversations-and-recovery.md#continue-after-a-provider-change).
+If a conversation uses a different provider from the current configuration, **Fork** reviews a new branch on the current provider. The original history and draft remain, and creation sends no input. See [provider recovery](workflows/conversations-and-recovery.md#continue-after-a-provider-change).
 
 ## Persistent attached branches
 
-When reviewing an earlier message, choose **Attached branch after this turn** to create a persistent native branch from its completed-turn prefix. The source history, draft and Goal remain unchanged. The child view starts empty while native inference retains the parent context. Creation requires paginated source history, sends no input and copies no native Goal. Reopen a verified branch through **Agent preferences > Attached branches > Open branch**. See [conversation recovery](workflows/conversations-and-recovery.md#edit-or-branch-at-an-earlier-input) and the [exact-artifact qualification](testing/upstream-acceptance-boundaries.md#persistent-attached-branches).
+When reviewing an earlier message, choose **Side chat** to create a persistent native branch from its completed-turn prefix. The source history, draft and Goal remain unchanged. The child view starts empty while native inference retains the parent context. Creation requires paginated source history, sends no input and copies no native Goal. Reopen a verified branch through **Agent preferences > Side chats > Open**. See [conversation recovery](workflows/conversations-and-recovery.md#edit-or-branch-at-an-earlier-input) and the [exact-artifact qualification](testing/upstream-acceptance-boundaries.md#persistent-attached-branches).
 
 ## Start by task
 

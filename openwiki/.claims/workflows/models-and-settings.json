@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:c99ed2fc5ed2d2b5f8bd06271d7943f829c219e933c69a937d15d3e9c9267c61",
+  "pageVersion": "sha256:a5c9f44dda7845a43afee37a7f1d82ac991b13d9bbaf4995cf79700208bfa76c",
   "claims": [
     {
       "id": "claim_f0c37462522f4442acd94d53819ef75c",
@@ -60,7 +60,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:ecaa9f3bfc2cacc6ae4c51dc69084930f7d6728656c434b507a7ff49ca1d6426"
+          "version": "repo-file-v1:sha256:5d7708b4a83f830538f9eca55e7efeff23ddd7c92eb5e79a94766a527980c772"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
@@ -96,7 +96,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:ecaa9f3bfc2cacc6ae4c51dc69084930f7d6728656c434b507a7ff49ca1d6426"
+          "version": "repo-file-v1:sha256:5d7708b4a83f830538f9eca55e7efeff23ddd7c92eb5e79a94766a527980c772"
         },
         {
           "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
@@ -131,7 +131,7 @@
       "statement": "Native model metadata and configuration determine the helper backend; the qualified synthetic matrix uses V1 and V2 at Medium without Ultra and leaves model judgment unmeasured.",
       "evidence": [
         {
-          "resource": "repo://automations/upstream/retained-contracts.json#L2775-L2782",
+          "resource": "repo://automations/upstream/retained-contracts.json#L2814-L2821",
           "version": "repo-lines-v1:sha256:8e6e3bdd228d54f00f8683d30913924cbf52ba99ba0384b2584ed81b2906292e:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjVlMGNmNTA1M2U5YmRiZTc5ZmVlY2E5NWUzZjk4YTJjOGY2ZDZhYWRlZjhjNGIwZWU1ODk0ZTBjY2ExYTBiNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzVlZWJkNGIwMjc1ZTcxYmRjNDUwNGIwZDc1MzM2NmQ3ZDhlZGUwNzYyOGMwMDViZTg2Njc2NTNhY2UxYjcwMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTM5NGU3YTZlMWU4MGJjNGQ4Y2YzNTVjYjI1ZWU4ZDg0ZGM0NDZhNDkwMThlMjgyNGY1ZTNiZWY1M2ZmM2U0NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNzYzOTQyY2VjMGEwMGQ0YzE3NDRiOTU5YzA4NTQ3M2Q5ZjlhN2NkY2NhODY0ZTJiYTQ4MjE2ZmJmNTBhMWQyOCJ9"
         },
         {
@@ -178,11 +178,11 @@
     },
     {
       "id": "claim_9815b02e2bec42e2972b00e7894ad1f4",
-      "statement": "Attached branches preserve source provider and Goal ownership without sending. Native cold resume can require restoring that provider; the separate approved current-provider fork has targeted qualification while the runtime pin and pending HumanCommand adaptation remain unchanged.",
+      "statement": "Side chats preserve source provider and Goal ownership without sending. Native cold resume can require restoring that provider; the separate approved current-provider fork has targeted qualification while the runtime pin and pending HumanCommand adaptation remain unchanged.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:ecaa9f3bfc2cacc6ae4c51dc69084930f7d6728656c434b507a7ff49ca1d6426"
+          "version": "repo-file-v1:sha256:5d7708b4a83f830538f9eca55e7efeff23ddd7c92eb5e79a94766a527980c772"
         },
         {
           "resource": "repo://codex-runtime.lock.json",
@@ -218,7 +218,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/retained-evidence.json",
-          "version": "repo-file-v1:sha256:5ba4c7a7e8cc51e15f89e5a0eee89c3562150d2e4e27ac12a92dbfd43bf49aee"
+          "version": "repo-file-v1:sha256:4128c85992b2318fac5848f708cae3e8c0b51b4e815d177e4b3c28bef3eb5a37"
         },
         {
           "resource": "repo://crates/decodex-protocol/src/model_catalog.rs#L77-L105",
@@ -317,6 +317,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T13:17:02.524Z"
+    "at": "2026-10-31T14:39:55.131Z"
   }
 }

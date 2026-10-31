@@ -78,7 +78,7 @@ impl AgentHost {
 					.store
 					.agent_fork_receipt(work_id.as_str().into(), review_token.as_str().into())
 					.await
-					.map_err(|_| "Branch receipt is unavailable")?
+					.map_err(|_| "Fork receipt is unavailable")?
 				{
 					if receipt.attempt.source.thread != thread_id.as_str()
 						|| receipt.attempt.target_work != target_work_id.as_str()
@@ -86,7 +86,7 @@ impl AgentHost {
 						|| receipt.attempt.model_provider.as_deref()
 							!= model_provider.as_ref().map(WireText::as_str)
 					{
-						return Err("Branch intent changed".into());
+						return Err("Fork intent changed".into());
 					}
 
 					return Ok(target_work_id.as_str().into());
@@ -104,7 +104,7 @@ impl AgentHost {
 					.await
 					.map_err(|_| {
 						AgentHostError::Unknown(
-							"Branch creation could not be confirmed; read its receipt",
+							"Fork creation could not be confirmed; read its receipt",
 						)
 					})?;
 
@@ -114,7 +114,7 @@ impl AgentHost {
 				agent
 					.recover_prompt_fork(work_id.as_str(), review_token.as_str())
 					.await
-					.map_err(|_| AgentHostError::Unknown("Branch history could not be reloaded"))?;
+					.map_err(|_| AgentHostError::Unknown("Fork history could not be reloaded"))?;
 
 				Ok(work_id.as_str().into())
 			},

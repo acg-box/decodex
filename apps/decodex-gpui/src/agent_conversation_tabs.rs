@@ -142,7 +142,12 @@ impl AgentSurface {
 			}
 			let work =
 				snapshot.work_items.iter().find(|work| work.id == id).expect("validated branch");
-			let label = if work.title == format!("{source_title} (attached branch)") {
+			let label = if [
+				format!("{source_title} (attached branch)"),
+				format!("{source_title} (Side chat)"),
+			]
+			.contains(&work.title)
+			{
 				format!("Side chat {}", index + 1)
 			} else {
 				self.work_label(work)

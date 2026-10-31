@@ -102,10 +102,10 @@ sources:
     resource: repo://scripts/vnext/run_native_regression.py
   - id: openwiki-source-d45a647d565211cf9b5cb067
     resource: repo://scripts/vstyle_audit.py
-generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
+generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T13:17:02.524Z
+    at: 2026-10-31T14:39:55.131Z
 ---
 
 
@@ -399,7 +399,7 @@ python3 scripts/vnext/run_native_regression.py \
 
 Use absolute paths for the three inputs. The runner verifies the supplied components in temporary storage and uses the existing native executable attestation. It starts a real Decodex window and service with synthetic account data, creates history under one provider, then selects another provider and exposes the native mismatch. The two provider names share a loopback backend for this UI rehearsal. The separate native fork regression uses two servers to check routing.
 
-Choose **Create branch…**, inspect the destination provider, then confirm or cancel. Creation sends no input. Send a message only when ready to continue the branch. Quit the rehearsal window to end the fixture and remove its temporary profile. The runner does not install the app, select a runtime for the normal profile, or modify the automation schedule. Passing this fixture's setup is separate from a user's UI acceptance.
+Choose **Fork**, inspect the destination provider, then confirm or cancel. Creation sends no input. Send a message only when ready to continue the branch. Quit the rehearsal window to end the fixture and remove its temporary profile. The runner does not install the app, select a runtime for the normal profile, or modify the automation schedule. Passing this fixture's setup is separate from a user's UI acceptance.
 
 ## Prepare Codex components
 
@@ -480,3 +480,5 @@ A `LEAK` marker can accompany a passed test when its captured output remains ope
 ## Documentation-only work
 
 For documentation consolidation, validate page Claims, retained subject coverage, relative links and source paths. Do not rebuild the desktop or launch provider fixtures solely for a Markdown move. Keep historical test counts attached to their original revision. System-temporary fixtures must be cleaned after use; HOME is not a test-output directory.
+
+The current Fork wording and routing-symbol update passed 18 focused GPUI checks, 5 database/runtime checks and 3 Menu Bar checks. Strict Clippy passed for the three affected Rust packages; nightly formatting passed. These are local presentation and compatibility checks, not a fresh upstream or native-artifact qualification. Exact selectors and source/asset digests are in `candidate_qualification.provider_recovery.presentation` in the [qualification index](../../automations/upstream/qualification.json).

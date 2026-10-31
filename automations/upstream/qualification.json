@@ -3970,6 +3970,401 @@
         "prerequisite": "Explicitly prepare the exact artifact from candidate_lock and build the desktop executable. The command verifies candidate components in temporary storage.",
         "behavior": "Starts the actual desktop against its own public socket and temporary HOME with an old-provider conversation and a current-provider mismatch. Quit that window to end the fixture and remove its temporary profile.",
         "limit": "The two provider names share one loopback backend for UI rehearsal. The separate native regression proves routing with two distinct servers."
+      },
+      "presentation": {
+        "decodex_source_revision": "1871f4b900e6acdfddf454c42ada8c43f6c70260",
+        "main_baseline": "e62e5e81a91ca0501b2174766002bddee9f76e49",
+        "scope": "Conversation Fork captions, explanatory text, default titles, legacy Side chat title presentation and distinct account-routing symbols. Native execution and provider policy are unchanged.",
+        "source_and_assets_sha256": {
+          "apps/decodex-gpui/menubar/Sources/DecodexApp/AccountControlViews.swift": "f3a399a69b8cef0bbe483b5fe562b444680dbb3ab480b262276c1a20522e3713",
+          "apps/decodex-gpui/src/agent_attached_branches.rs": "56e16cc761ecfa446826572dcb227e828029937017d66c5b88f913ce10cb2ba6",
+          "apps/decodex-gpui/src/agent_composer.rs": "a3a22943688a5f016b7342f7cfa2ce5aa6f65677c0783012cc31c0a6920ed598",
+          "apps/decodex-gpui/src/agent_conversation_tab_tests.rs": "69ec8f3bd6ea77495955715740034a251b2893196f0f7a974f7b635eb5470797",
+          "apps/decodex-gpui/src/agent_conversation_tabs.rs": "37e8422d2942da071d326797f754fe648d05ab8738ef1fedc5054b8684051810",
+          "apps/decodex-gpui/src/agent_model_settings.rs": "46a4d9edac2114a04873d6c4deb803f8144063811ab0ad21cae72eaafb35ebed",
+          "apps/decodex-gpui/src/agent_prompt_edit.rs": "2d77f0280977cd82d0ae3a4d15449301a158466df044f03bd7aa1855daa0e7ce",
+          "apps/decodex-gpui/src/agent_prompt_fork.rs": "e6d232db1e39c17d65fd739c9443677f86d1e244746cd3b220d0c26821cbc798",
+          "apps/decodex-gpui/src/agent_work_browser.rs": "60091e8fc5974cd4b39f7110a3bfee7ddec18c125cb8d4ef67afaf25e0c7cf49",
+          "apps/decodex-gpui/src/agent_workspace.rs": "96e4002e73e0d85b34c579f5c78c2546228fe8b34428a3bcab6da0f52eaf68db",
+          "apps/decodex-gpui/src/workspace_symbols.rs": "9a49de476abaa2be2d9169f34c69417e1108a655f37ea3f9f141844775534c31",
+          "assets/workspace-symbols/account-route-active.png": "9b0e30923cb02b755c4331e91fcabe42b5b6ef637a419bcfc3ee0f016ddf0183",
+          "assets/workspace-symbols/account-route.png": "9e2a24892248fd80538a7cd821f1a6d25d3ac8795781d6b53818949a0a2ae099",
+          "assets/workspace-symbols/fork.png": "fb01fec2bc6d2ead1afd1e7d844860a432318c291e4e1ee30dcf5126c232e6a4",
+          "assets/workspace-symbols/light/account-route-active.png": "169eb7d176ba124273c00e104a67249ef5a230b9586d147053e106015696d31f",
+          "assets/workspace-symbols/light/account-route.png": "cc9040bebe2769c21febdf6a2b5aecaaae11da86ca592fe9e018e2e4012e356b",
+          "assets/workspace-symbols/light/fork.png": "5bce23cda73d9694b972e6ebdb02b2a395dd52c55bc565ecac1abe8d849f617b",
+          "crates/decodex-runtime/src/agent.rs": "23720f5a11d7b2b707cfe1ec8e757845d1f4f887c276dd699a9ca2b55c0f965b",
+          "crates/decodex-runtime/src/agent_prompt_edit_host.rs": "accdbfb680122794601a5b3a4600201e8070c1e1f2f68b0cd2d4b59c12bfc5e3",
+          "database/src/agent_dispatch_rejection.rs": "e084b2e18d4251557f4fd02849aaec52a9cb78ce2155da5f7c4fe598741bff4c",
+          "database/src/agent_fork.rs": "8c3db3442ab83bd8b9182349ab200e70289444b48b90fc424d8aa90eaf2a095c",
+          "database/src/agent_fork/tests.rs": "1cdb7e8979866b0b27d406db6b1eb1b2263a653d112e31f565569c24329f9faf",
+          "scripts/macos/generate_workspace_symbols.swift": "ea22b64bce4e6024c00ba3d62bb7a629588903bb3831353799d1b0591608fce8"
+        },
+        "tests_read": [
+          {
+            "entrypoint": "database/src/agent_fork/tests.rs",
+            "tests": [
+              "fork_receipt_survives_restart_without_repeating_creation_or_changing_source"
+            ]
+          },
+          {
+            "entrypoint": "apps/decodex-gpui/src/agent_conversation_tab_tests.rs",
+            "tests": [
+              "side_chat_tabs_require_current_confirmed_native_attachments",
+              "side_chat_tabs_share_one_header_and_keep_each_draft"
+            ]
+          },
+          {
+            "entrypoint": "apps/decodex-gpui/src/agent_model_settings_wire_tests.rs",
+            "tests": [
+              "provider_recovery_banner_is_source_bound_and_cancellation_keeps_the_draft"
+            ]
+          },
+          {
+            "entrypoint": "apps/decodex-gpui/src/workspace_symbols.rs",
+            "tests": [
+              "native_symbol_templates_preserve_visible_alpha"
+            ]
+          }
+        ],
+        "tests_executed": {
+          "gpui": {
+            "command": [
+              "cargo",
+              "+stable",
+              "nextest",
+              "run",
+              "--locked",
+              "--all-features",
+              "-p",
+              "decodex-gpui",
+              "--bin",
+              "decodex-gpui",
+              "-E",
+              "test(list_branch) | test(prompt_confirm_tests) | test(fork_recovery) | test(side_chat_tabs) | test(attached_branch_navigation) | test(provider_mismatch) | test(workspace_symbols)",
+              "--test-threads",
+              "1",
+              "--retries",
+              "0",
+              "--no-fail-fast",
+              "--status-level",
+              "pass"
+            ],
+            "passed": 17,
+            "tests": [
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::attached_branches::tabs::tests::side_chat_tabs_require_current_confirmed_native_attachments"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::attached_branches::tabs::tests::side_chat_tabs_share_one_header_and_keep_each_draft"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::attached_branches::tests::attached_branch_navigation_keeps_the_source_draft_and_requires_current_identity"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::attached_branch_confirmation_is_saved_and_skips_unsent_input_preflight"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::branch_after_turn_needs_no_input_preflight"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::branch_confirmation_saves_choice_before_native_dispatch"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::confirmation_waits_for_disk_and_keeps_the_main_composer"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::list_branch_confirmation_uses_native_after_turn_without_sending"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::provider_branch_confirmation_persists_destination_without_sending"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::drafts::storage::prompt_confirm_tests::side_chat_confirmation_keeps_the_attached_boundary"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::prompt_edit::fork::tests::fork_recovery_opens_verified_target_and_keeps_edited_input"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::prompt_edit::fork::tests::fork_recovery_retains_uncertainty_and_releases_only_matching_rejection"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_entry_preserves_drafts_and_cancellation"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_rejects_changed_source_and_unmanaged_rows"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_requires_the_completed_turns_own_input"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::prompt_edit::list_branch::tests::list_branch_selects_the_latest_completed_turn_not_live_input"
+              },
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::workspace_symbols::tests::native_symbol_templates_preserve_visible_alpha"
+              }
+            ],
+            "unmatched_selectors": [
+              "test(provider_mismatch)"
+            ],
+            "resolution": "The source-bound provider banner test was then selected by its exact identity and passed."
+          },
+          "provider_banner": {
+            "command": [
+              "cargo",
+              "+stable",
+              "nextest",
+              "run",
+              "--locked",
+              "-p",
+              "decodex-gpui",
+              "--bin",
+              "decodex-gpui",
+              "--all-features",
+              "-E",
+              "test(=shell::agent_surface::model_settings::tests::provider_recovery_banner_is_source_bound_and_cancellation_keeps_the_draft)",
+              "--test-threads",
+              "1",
+              "--retries",
+              "0"
+            ],
+            "passed": 1,
+            "tests": [
+              {
+                "suite": "decodex-gpui::bin/decodex-gpui",
+                "test": "shell::agent_surface::model_settings::tests::provider_recovery_banner_is_source_bound_and_cancellation_keeps_the_draft"
+              }
+            ],
+            "unmatched_selectors": []
+          },
+          "backend": {
+            "command": [
+              "cargo",
+              "+stable",
+              "nextest",
+              "run",
+              "--locked",
+              "--all-features",
+              "-p",
+              "decodex-database",
+              "-p",
+              "decodex-runtime",
+              "--lib",
+              "-E",
+              "test(agent_fork::tests::) | test(=agent::tests::prompt_edit::prompt_fork_preserves_source_and_recovers_acknowledged_identity_without_replay) | test(=agent::tests::prompt_edit::provider_fork_uses_the_existing_receipt_and_rejects_changed_configuration)",
+              "--test-threads",
+              "1",
+              "--retries",
+              "0",
+              "--no-fail-fast",
+              "--status-level",
+              "pass"
+            ],
+            "passed": 5,
+            "tests": [
+              {
+                "suite": "decodex-database",
+                "test": "agent_fork::tests::attached_branch_retains_its_exact_source_instead_of_becoming_a_sibling"
+              },
+              {
+                "suite": "decodex-database",
+                "test": "agent_fork::tests::definite_fork_refusal_resolves_only_the_new_unbound_work"
+              },
+              {
+                "suite": "decodex-database",
+                "test": "agent_fork::tests::fork_receipt_survives_restart_without_repeating_creation_or_changing_source"
+              },
+              {
+                "suite": "decodex-runtime",
+                "test": "agent::tests::prompt_edit::prompt_fork_preserves_source_and_recovers_acknowledged_identity_without_replay"
+              },
+              {
+                "suite": "decodex-runtime",
+                "test": "agent::tests::prompt_edit::provider_fork_uses_the_existing_receipt_and_rejects_changed_configuration"
+              }
+            ],
+            "unmatched_selectors": []
+          },
+          "native_menu_bar": {
+            "command": [
+              "swift",
+              "test",
+              "--package-path",
+              "apps/decodex-gpui/menubar",
+              "--filter",
+              "AccountPanelPresentationTests/(testSharedRouteOperationBlocksWithoutDimmingOtherAvailableRoutes|testUnavailableRouteRemainsVisiblyDisabled|testPinnedRouteCanReturnToAutomaticAndNativeRecoveryUsesRestart)"
+            ],
+            "passed": 3,
+            "tests": [
+              "testSharedRouteOperationBlocksWithoutDimmingOtherAvailableRoutes",
+              "testUnavailableRouteRemainsVisiblyDisabled",
+              "testPinnedRouteCanReturnToAutomaticAndNativeRecoveryUsesRestart"
+            ],
+            "unmatched_selectors": []
+          },
+          "total": 26,
+          "remaining_unmatched_selectors": [],
+          "upstream": 0,
+          "exact_native_artifact": 0
+        },
+        "other_checks": {
+          "clippy-decodex-database": {
+            "command": [
+              "cargo",
+              "+stable",
+              "clippy",
+              "--package",
+              "decodex-database",
+              "--all-features",
+              "--all-targets",
+              "--keep-going",
+              "--locked",
+              "--",
+              "--no-deps",
+              "-D",
+              "clippy::all",
+              "-D",
+              "clippy::too_many_lines",
+              "-D",
+              "clippy::unwrap_used",
+              "-D",
+              "clippy::use_self",
+              "-D",
+              "clippy::wildcard_imports",
+              "-D",
+              "missing-docs",
+              "-D",
+              "unused-crate-dependencies",
+              "-D",
+              "warnings"
+            ],
+            "exit_code": 0
+          },
+          "clippy-decodex-runtime": {
+            "command": [
+              "cargo",
+              "+stable",
+              "clippy",
+              "--package",
+              "decodex-runtime",
+              "--all-features",
+              "--all-targets",
+              "--keep-going",
+              "--locked",
+              "--",
+              "--no-deps",
+              "-D",
+              "clippy::all",
+              "-D",
+              "clippy::too_many_lines",
+              "-D",
+              "clippy::unwrap_used",
+              "-D",
+              "clippy::use_self",
+              "-D",
+              "clippy::wildcard_imports",
+              "-D",
+              "missing-docs",
+              "-D",
+              "unused-crate-dependencies",
+              "-D",
+              "warnings"
+            ],
+            "exit_code": 0
+          },
+          "clippy-decodex-gpui": {
+            "command": [
+              "cargo",
+              "+stable",
+              "clippy",
+              "--package",
+              "decodex-gpui",
+              "--all-features",
+              "--all-targets",
+              "--keep-going",
+              "--locked",
+              "--",
+              "--no-deps",
+              "-D",
+              "clippy::all",
+              "-D",
+              "clippy::too_many_lines",
+              "-D",
+              "clippy::unwrap_used",
+              "-D",
+              "clippy::use_self",
+              "-D",
+              "clippy::wildcard_imports",
+              "-D",
+              "missing-docs",
+              "-D",
+              "unused-crate-dependencies",
+              "-D",
+              "warnings"
+            ],
+            "exit_code": 0
+          },
+          "format": {
+            "command": [
+              "cargo",
+              "+nightly",
+              "fmt",
+              "--all",
+              "--",
+              "--check"
+            ],
+            "exit_code": 0
+          },
+          "diff-check": {
+            "command": [
+              "git",
+              "diff",
+              "--check"
+            ],
+            "exit_code": 0
+          }
+        },
+        "symbol_generation": {
+          "command": [
+            "swift scripts/macos/generate_workspace_symbols.swift <temporary-output>",
+            "swift scripts/macos/generate_workspace_symbols.swift <temporary-output>/light --light"
+          ],
+          "retained_outputs": [
+            "fork",
+            "account-route",
+            "account-route-active"
+          ],
+          "dimensions": [
+            48,
+            48
+          ],
+          "visual_check": "Inspected the generated Fork and account-route shapes. Existing active-state tint and disabled-state behavior remain."
+        },
+        "limits": [
+          "No full workspace or upstream test run. Existing native Fork qualification remains subject to its original source, artifact and behavior limits.",
+          "No selected-runtime migration, installed-app acceptance, application installation, release or automation activation. The earlier isolated preview remains a separate frozen build.",
+          "Swift compilation retains unrelated existing actor-isolation warnings; the debug Rust test linker reports its existing large unwind-section warning. These do not replace or weaken the passed checks."
+        ],
+        "delivery": [
+          "https://github.com/acg-box/decodex/commit/1871f4b900e6acdfddf454c42ada8c43f6c70260"
+        ]
       }
     }
   },

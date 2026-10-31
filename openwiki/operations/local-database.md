@@ -32,10 +32,10 @@ sources:
     resource: repo://database/src/works/commands.rs
   - id: openwiki-source-960cb6b925f1fa45c737a735
     resource: repo://scripts/macos/verify_decodex_bundle_contracts.py
-generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
+generated: { by: "codex", at: "2026-10-31T14:39:55.131Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T13:17:02.524Z
+    at: 2026-10-31T14:39:55.131Z
 ---
 
 # Local database operations
@@ -109,4 +109,4 @@ The embedded schema defines one current layout. The application has no ordered u
 
 OAuth credentials use their current version-1 payload and fingerprint representation. PAT credentials use version 2 and retain verified user identity without fabricated OAuth refresh or expiry values. These are distinct supported credential kinds. The current schema accepts both and enforces their dependent authority directly; no old credential migration runs at startup.
 
-Explicit conversation branches reuse durable inbox event records for their intent, native acknowledgement and expected visible history. Ordinary branches expose their reviewed source prefix. Attached children expose only their own turns, so creation is acknowledged against an empty child view while the saved source IDs retain the reviewed boundary. Native inference keeps the parent context. Each target has its own work and native thread identity. Attached branches retain the exact source Agent as parent and keep its Project, role and tool revision. The read-only list selects the newest 100 saved attached receipts for that exact source; it adds no schema migration. Before-input branches reuse the existing canonical prompt-edit draft and upload records. Unknown creation does not authorize a second request. See [conversation recovery](../workflows/conversations-and-recovery.md).
+Explicit conversation branches reuse durable inbox event records for their intent, native acknowledgement and expected visible history. Ordinary branches expose their reviewed source prefix. Attached children expose only their own turns, so creation is acknowledged against an empty child view while the saved source IDs retain the reviewed boundary. Native inference keeps the parent context. Each target has its own work and native thread identity. Side chats retain the exact source Agent as parent and keep its Project, role and tool revision. The read-only list selects the newest 100 saved attached receipts for that exact source; it adds no schema migration. Before-input branches reuse the existing canonical prompt-edit draft and upload records. Unknown creation does not authorize a second request. See [conversation recovery](../workflows/conversations-and-recovery.md).
