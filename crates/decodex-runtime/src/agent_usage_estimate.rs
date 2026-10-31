@@ -110,7 +110,7 @@ mod tests {
 
 				assert_eq!(request["params"]["threadId"], "thread");
 
-				writer.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"result":{"threadUsage":{"threadId":"thread","estimatedUsageCreditsMicros":1,"groups":[]}}})).as_bytes()).await.unwrap();
+				writer.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"result":{"threadUsage":{"threadId":"thread","estimatedUsageCreditsMicros":1,"nativeUsageUsdMicros":1_234_567,"groups":[]}}})).as_bytes()).await.unwrap();
 			});
 			let calls = Arc::new(AtomicUsize::new(0));
 			let result = agent_usage_estimate::read(|| {
@@ -151,7 +151,10 @@ mod tests {
 			server.await.unwrap();
 
 			if change == "none" {
-				assert!(matches!(result, AgentUsageEstimateResult::Available { .. }));
+				let AgentUsageEstimateResult::Available { estimate, .. } = result else {
+					panic!("available estimate")
+				};
+				assert_eq!(estimate.native_usage_usd_micros, Some(1_234_567));
 			} else {
 				assert_eq!(result, AgentUsageEstimateResult::Unavailable, "{change}");
 			}

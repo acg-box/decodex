@@ -5713,6 +5713,7 @@ max_entry_bytes = 0
 						thread_id: "thread".into(),
 						estimated_usage_credits_micros: 9_007_199_254_740_993,
 						estimated_usage_usd_micros: None,
+						native_usage_usd_micros: Some(1_234_567),
 						groups: vec![],
 					},
 				};
@@ -5744,6 +5745,7 @@ max_entry_bytes = 0
 
 				assert_eq!(estimate.estimated_usage_credits_micros, 9_007_199_254_740_993);
 				assert_eq!(estimate.estimated_usage_usd_micros, None);
+				assert_eq!(estimate.native_usage_usd_micros, Some(1_234_567));
 			} else {
 				assert_eq!(response.unwrap_err(), ClientFailure::ProtocolMalformed);
 			}

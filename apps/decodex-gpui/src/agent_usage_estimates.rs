@@ -1,10 +1,9 @@
-//! Read native account-scoped task estimates on explicit user request.
+//! Source-bound conversation dollars, read in the background without model inference.
 use gpui::AnyElement;
-use time::OffsetDateTime;
 use tokio::runtime::Builder;
 
 use crate::shell::agent_surface::{
-	self, AgentClient, AgentSnapshotDto, AgentSurface, Context, EntityId, InteractiveElement,
+	AgentClient, AgentSnapshotDto, AgentSurface, Context, EntityId, InteractiveElement,
 	IntoElement, ParentElement, StatefulInteractiveElement, Styled,
 };
 #[cfg(test)]
@@ -14,117 +13,57 @@ use crate::shell::agent_surface::{
 use decodex_protocol::AgentUsageEstimateResult;
 
 impl AgentSurface {
-	pub(super) fn usage_estimate_panel(&self, work: &str, cx: &mut Context<Self>) -> AnyElement {
-		let owner = work.to_owned();
-		let mut panel = gpui::div().flex().flex_col().gap_2().child(
-			gpui::div().debug_selector(|| "task-usage-toggle".into()).child(self.workspace_action(
-				"task-usage-toggle".into(),
-				"Usage estimate".into(),
-				move |s, cx| {
-					if s.usage_estimate.as_ref().is_some_and(|(work, _)| work == &owner) {
-						s.clear_usage_estimate();
-						cx.notify();
-					} else {
-						s.load_usage_estimate(&owner, cx);
-					}
-				},
-				cx,
-			)),
-		);
-
-		if let Some((_, result)) = self.usage_estimate.as_ref().filter(|(owner, _)| owner == work) {
-			let refresh = work.to_owned();
-
-			panel = panel
-				.child(self.workspace_action(
-					"task-usage-refresh".into(),
-					"Refresh estimate".into(),
-					move |s, cx| s.load_usage_estimate(&refresh, cx),
-					cx,
-				))
-				.child(agent_surface::muted(
-					"Account estimate; may lag activity. Final bill and remaining quota can differ.",
-				))
-				.child(
-					gpui::div()
-						.id("task-usage-details")
-						.debug_selector(|| "task-usage-details".into())
-						.max_h(gpui::px(320.))
-						.overflow_y_scroll()
-						.child(
-							result
-								.as_ref()
-								.map(estimate_text)
-								.unwrap_or_else(|| "Reading estimate…".into()),
-						),
-				);
-		}
-
-		panel.into_any_element()
-	}
-
-	pub(super) fn conversation_cost_control(&self, cx: &mut Context<Self>) -> AnyElement {
-		let Some(work) = self.conversation_work().filter(|_| self.native_agents.selected.is_none())
-		else {
-			return gpui::div().into_any_element();
-		};
-		let label = self
-			.usage_estimate
-			.as_ref()
-			.filter(|(id, _)| id == &work.id)
-			.and_then(|(_, result)| result.as_ref())
-			.map_or_else(|| "Cost estimate".into(), compact_estimate);
-		self.workspace_action(
-			"conversation-cost-estimate".into(),
-			label,
-			move |s, cx| {
-				if s.usage_estimate.as_ref().is_some_and(|(id, _)| id == &work.id) {
-					s.workspace.cost_estimate_open = !s.workspace.cost_estimate_open;
-					cx.notify();
-				} else {
-					s.load_usage_estimate(&work.id, cx);
-				}
-			},
-			cx,
-		)
-	}
-
-	pub(super) fn conversation_cost_details(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+	pub(super) fn conversation_cost(&self) -> Option<AnyElement> {
 		let work = self.conversation_work()?;
-		let (_, result) = self
-			.usage_estimate
-			.as_ref()
-			.filter(|(id, _)| id == &work.id && self.workspace.cost_estimate_open)?;
-		let owner = work.id;
+		let (_, Some(AgentUsageEstimateResult::Available { estimate, .. })) =
+			self.usage_estimate.as_ref().filter(|(id, _)| id == &work.id)?
+		else {
+			return None;
+		};
+		if work.codex_thread_id.as_deref() != Some(&estimate.thread_id) {
+			return None;
+		}
+		let label = amount_label(estimate)?;
 		Some(
 			gpui::div()
-				.id("conversation-cost-details")
-				.debug_selector(|| "conversation-cost-details".into())
-				.px(gpui::px(16.))
-				.pb(gpui::px(8.))
-				.max_h(gpui::px(180.))
-				.overflow_y_scroll()
-				.child("Conversation estimate · may lag activity")
-				.child(
-					result
-						.as_ref()
-						.map(estimate_text)
-						.unwrap_or_else(|| "Reading estimate…".into()),
-				)
-				.child(self.workspace_action(
-					"conversation-cost-refresh".into(),
-					"Refresh estimate".into(),
-					move |s, cx| s.load_usage_estimate(&owner, cx),
-					cx,
-				))
+				.id("composer-conversation-cost")
+				.debug_selector(|| "composer-conversation-cost".into())
+				.aria_label(format!("Conversation cost: {label} USD"))
+				.flex_shrink_0()
+				.whitespace_nowrap()
+				.text_size(gpui::px(11.))
+				.line_height(gpui::px(16.))
+				.text_color(crate::ui_theme::rgb(crate::ui_theme::TEXT))
+				.child(label)
 				.into_any_element(),
 		)
+	}
+
+	pub(super) fn refresh_conversation_cost(&mut self, cx: &mut Context<Self>) {
+		if !self.read_connection_ready() {
+			return;
+		}
+		let Some(work) = self.conversation_work() else { return };
+		let Some((_, thread)) = self.usage_estimate_binding(&work.id) else { return };
+		// A side chat must not inherit its parent's amount. Read once during a turn,
+		// then refresh its total after completion, without polling while it streams.
+		if work.codex_thread_id.as_ref() != Some(&thread) {
+			return;
+		}
+		let observed = self.usage_estimate.as_ref().is_some_and(|(id, _)| id == &work.id);
+		if observed
+			&& (work.active_turn_id.is_some()
+				|| self.usage_estimate_updated_at == Some(work.updated_at_micros))
+		{
+			return;
+		}
+		self.load_usage_estimate(&work.id, cx);
 	}
 
 	pub(super) fn clear_usage_estimate(&mut self) {
 		self.usage_estimate_epoch = self.usage_estimate_epoch.wrapping_add(1);
 		self.usage_estimate = None;
-		self.workspace.cost_estimate_open = false;
+		self.usage_estimate_updated_at = None;
 		self.usage_estimate_task = None;
 	}
 
@@ -189,8 +128,11 @@ impl AgentSurface {
 
 		let epoch = self.usage_estimate_epoch;
 
-		self.usage_estimate = Some((work.into(), None));
-		self.workspace.cost_estimate_open = true;
+		if self.usage_estimate.as_ref().is_none_or(|(id, _)| id != work) {
+			self.usage_estimate = Some((work.into(), None));
+		}
+		self.usage_estimate_updated_at =
+			self.conversation_record(work).map(|work| work.updated_at_micros);
 
 		let work = work.to_owned();
 		let request = cx.background_executor().spawn(async move {
@@ -211,6 +153,45 @@ impl AgentSurface {
 	}
 }
 
+fn amount_label(estimate: &decodex_protocol::ThreadUsageEstimate) -> Option<String> {
+	let amount = micros(estimate.reported_usd_micros()?);
+	Some(if estimate.native_usage_usd_micros.is_some() {
+		format!("${amount}")
+	} else {
+		format!("≈ ${amount}")
+	})
+}
+
+#[cfg(any(test, feature = "visual-capture"))]
+impl AgentSurface {
+	pub(crate) fn visual_conversation_cost(&mut self, page: &str) {
+		let id = self.selected.clone().expect("selected fixture conversation");
+		self.snapshot
+			.as_mut()
+			.unwrap()
+			.work_items
+			.iter_mut()
+			.find(|work| work.id == id)
+			.unwrap()
+			.codex_thread_id = Some("cost-fixture-thread".into());
+		self.usage_estimate = Some((
+			id.clone(),
+			Some(AgentUsageEstimateResult::Available {
+				work_id: EntityId::new(id).unwrap(),
+				account_id: EntityId::new("cost-fixture-account").unwrap(),
+				observed_at_micros: 1,
+				estimate: decodex_protocol::ThreadUsageEstimate {
+					thread_id: "cost-fixture-thread".into(),
+					estimated_usage_credits_micros: 46_000_000,
+					estimated_usage_usd_micros: (page == "cost-estimated").then_some(1_234_567),
+					native_usage_usd_micros: (page == "cost").then_some(1_234_567),
+					groups: vec![],
+				},
+			}),
+		));
+	}
+}
+
 fn micros(value: u64) -> String {
 	let fraction = format!("{:06}", value % 1_000_000);
 	let fraction = fraction.trim_end_matches('0');
@@ -221,72 +202,9 @@ fn micros(value: u64) -> String {
 		format!("{}.{fraction}", value / 1_000_000)
 	}
 }
-fn estimate_text(result: &AgentUsageEstimateResult) -> String {
-	let AgentUsageEstimateResult::Available { account_id, observed_at_micros, estimate, .. } =
-		result
-	else {
-		return match result {
-			AgentUsageEstimateResult::NotReported =>
-				"No estimate reported for this task and account.",
-			AgentUsageEstimateResult::Unsupported =>
-				"Usage estimates unsupported by this provider.",
-			AgentUsageEstimateResult::CapacityExceeded => "Estimate too large to display.",
-			_ => "Estimate unavailable or account changed. Refresh to retry.",
-		}
-		.into();
-	};
-	let observed = OffsetDateTime::from_unix_timestamp(*observed_at_micros / 1_000_000)
-		.ok()
-		.map(|t| {
-			format!(
-				"{}-{:02}-{:02} {:02}:{:02}:{:02} UTC",
-				t.year(),
-				t.month() as u8,
-				t.day(),
-				t.hour(),
-				t.minute(),
-				t.second()
-			)
-		})
-		.unwrap_or_else(|| "Unknown".into());
-	let mut lines = vec![
-		format!("Account: {}\nObserved: {observed}", account_id.as_str()),
-		format!("Estimated credits: {}", micros(estimate.estimated_usage_credits_micros)),
-		format!(
-			"Estimated USD: {}",
-			estimate
-				.estimated_usage_usd_micros
-				.map(micros)
-				.unwrap_or_else(|| "Not reported".into())
-		),
-	];
-
-	for group in &estimate.groups {
-		let unknown =
-			|v: Option<u64>| v.map(|v| v.to_string()).unwrap_or_else(|| "Not reported".into());
-
-		lines.push(format!("{} · effort: {} · speed: {}\nEstimated credits: {}\nInput: {} · cached input: {} · new input: {}\nOutput: {} · total: {}",
-		group.model.as_deref().unwrap_or("Model not reported"),group.reasoning_effort.as_deref().unwrap_or("Not reported"),group.speed.as_deref().unwrap_or("Not reported"),micros(group.estimated_usage_credits_micros),unknown(group.input_tokens),unknown(group.cached_input_tokens),unknown(group.net_new_input_tokens),unknown(group.output_tokens),unknown(group.total_tokens)));
-	}
-
-	lines.join("\n\n")
-}
-
-fn compact_estimate(result: &AgentUsageEstimateResult) -> String {
-	match result {
-		AgentUsageEstimateResult::Available { estimate, .. } =>
-			estimate.estimated_usage_usd_micros.map_or_else(
-				|| format!("≈ {} credits", micros(estimate.estimated_usage_credits_micros)),
-				|usd| format!("≈ ${}", micros(usd)),
-			),
-		_ => "Cost unavailable".into(),
-	}
-}
 
 #[cfg(test)]
 mod tests {
-	use gpui::ParentElement as _;
-	use std::thread;
 
 	use futures_util::{SinkExt as _, StreamExt as _};
 	#[cfg(test)] use gpui::AppContext as _;
@@ -307,133 +225,73 @@ mod tests {
 		ServerId, ServerMessage,
 	};
 
-	struct CostView(gpui::Entity<AgentSurface>);
-	impl gpui::Render for CostView {
-		fn render(
-			&mut self,
-			_: &mut gpui::Window,
-			cx: &mut gpui::Context<Self>,
-		) -> impl gpui::IntoElement {
-			self.0.update(cx, |s, cx| {
-				gpui::div()
-					.child(s.conversation_cost_control(cx))
-					.children(s.conversation_cost_details(cx))
-			})
-		}
-	}
-
 	#[gpui::test]
-	fn conversation_cost_toggle_keeps_estimate_until_its_source_changes(
+	fn conversation_dollars_follow_context_keep_zero_and_hide_unknowns(
 		cx: &mut gpui::TestAppContext,
 	) {
-		let (view, visual) = cx.add_window_view(|_, cx| {
-			let surface = cx.new(AgentSurface::new);
-			cx.observe(&surface, |_, _, cx| cx.notify()).detach();
-			surface.update(cx, |s, cx| {
-				s.visual_workspace_fixture(cx);
-				s.usage_estimate = Some((
-					"agent".into(),
-					Some(AgentUsageEstimateResult::Available {
-						work_id: EntityId::new("agent").unwrap(),
-						account_id: EntityId::new("account").unwrap(),
-						observed_at_micros: 1,
-						estimate: decodex_protocol::ThreadUsageEstimate {
-							thread_id: "thread".into(),
-							estimated_usage_credits_micros: 46_000_000,
-							estimated_usage_usd_micros: None,
-							groups: vec![],
-						},
-					}),
-				));
-			});
-			CostView(surface)
-		});
-		let surface = view.read_with(visual, |view, _| view.0.clone());
-		visual.update(crate::ui_frame::draw_frame);
-		for open in [true, false] {
-			let button = visual.debug_bounds("conversation-cost-estimate").unwrap();
-			visual.simulate_click(button.center(), Default::default());
-			visual.update(crate::ui_frame::draw_frame);
-			assert_eq!(visual.debug_bounds("conversation-cost-details").is_some(), open);
-			surface.read_with(visual, |s, _| {
-				assert!(s.usage_estimate_task.is_none(), "cached toggle must not start a read");
-				assert_eq!(
-					usage_estimates::compact_estimate(
-						s.usage_estimate.as_ref().unwrap().1.as_ref().unwrap()
-					),
-					"≈ 46 credits"
-				);
-			});
-		}
-		view.update(visual, |view, cx| view.0.update(cx, |s, _| s.clear_usage_estimate()));
-		surface.read_with(visual, |s, _| {
-			assert!(s.usage_estimate.is_none());
-			assert!(!s.workspace.cost_estimate_open);
-		});
-	}
-
-	#[gpui::test]
-	fn task_usage_estimate_is_explicit_and_clears_when_task_changes(cx: &mut gpui::TestAppContext) {
 		let (surface, visual) = cx.add_window_view(|_, cx| AgentSurface::new(cx));
-
-		surface.update(visual, |s, _| {
-			let work = |id: &str| AgentWorkItemDto {
-				id: id.into(),
-				parent_goal_id: None,
-				kind: decodex_protocol::AgentWorkKindDto::Goal,
-				title: id.into(),
-				codex_thread_id: Some(format!("thread-{id}")),
-				active_turn_id: None,
-				dispatch_state: AgentDispatchStateDto::Idle,
-				status: AgentWorkStatusDto::Open,
-				next_check_at_micros: None,
-				created_at_micros: 1,
-				updated_at_micros: 1,
-			};
-
-			s.apply_result(Ok(AgentSnapshotResult::Available(AgentSnapshotDto {
-				agents: Default::default(),
-				guardian: Default::default(),
-				portfolio: Default::default(),
-				archived_work_ids: Default::default(),
-				agent_slots: Default::default(),
-				context_references: vec![],
-				connection_initializing: false,
-				runtime_source: None,
-				projects: vec![],
-				work_items: vec![work("root"), work("other")],
-				dependencies: vec![],
-				pending_events: vec![],
-			})));
-
-			assert!(s.usage_estimate.is_none());
-
-			s.composer_menu = Some("agent-settings");
-			s.composer_menu_content = Some("agent-settings");
-		});
-
-		visual.update(|window, cx| {
-			window.resize(gpui::size(gpui::px(1_180.), gpui::px(1_400.)));
-			window.draw(cx).clear(cx);
-		});
-
-		thread::sleep(std::time::Duration::from_millis(220));
-
-		visual.update(crate::ui_frame::draw_current_frame);
-
-		let bounds = visual.debug_bounds("task-usage-toggle").expect("usage toggle");
-
-		visual.simulate_click(bounds.center(), gpui::Modifiers::default());
 		surface.update(visual, |s, cx| {
-			assert!(
-				matches!(&s.usage_estimate,Some((id,Some(AgentUsageEstimateResult::Unavailable))) if id=="root")
-			);
-			assert!(s.usage_estimate_task.is_none());
-
-			s.open_page("other", cx);
-
-			assert!(s.usage_estimate.is_none());
-			assert!(s.usage_estimate_task.is_none());
+			s.visual_workspace_fixture(cx);
+			s.visual_workspace_page("markdown", cx);
+			s.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|w| w.id == "agent")
+				.unwrap()
+				.codex_thread_id = Some("thread".into());
+		});
+		for width in [640., 1_400.] {
+			visual.simulate_resize(gpui::size(gpui::px(width), gpui::px(1_000.)));
+			for (native, estimated, expected) in [
+				(None, None, None),
+				(None, Some(0), Some("≈ $0")),
+				(Some(0), Some(9_000_000), Some("$0")),
+				(Some(1_234_567), None, Some("$1.234567")),
+			] {
+				surface.update(visual, |s, cx| {
+					s.usage_estimate = Some((
+						"agent".into(),
+						Some(AgentUsageEstimateResult::Available {
+							work_id: EntityId::new("agent").unwrap(),
+							account_id: EntityId::new("account").unwrap(),
+							observed_at_micros: 1,
+							estimate: decodex_protocol::ThreadUsageEstimate {
+								thread_id: "thread".into(),
+								estimated_usage_credits_micros: 46_000_000,
+								estimated_usage_usd_micros: estimated,
+								native_usage_usd_micros: native,
+								groups: vec![],
+							},
+						}),
+					));
+					let estimate = match &s.usage_estimate.as_ref().unwrap().1 {
+						Some(AgentUsageEstimateResult::Available { estimate, .. }) => estimate,
+						_ => unreachable!(),
+					};
+					assert_eq!(super::amount_label(estimate).as_deref(), expected);
+					cx.notify();
+				});
+				visual.update(crate::ui_frame::draw_current_frame);
+				let cost = visual.debug_bounds("composer-conversation-cost");
+				assert_eq!(cost.is_some(), expected.is_some());
+				if let Some(cost) = cost {
+					let context = visual.debug_bounds("composer-context-detail").unwrap();
+					let send = visual.debug_bounds("composer-send").unwrap();
+					assert!(cost.left() >= context.right(), "cost follows Context at {width}");
+					assert!(
+						cost.right() <= send.left(),
+						"cost stays inside the toolbar at {width}"
+					);
+					assert!((cost.center().y - context.center().y).abs() <= gpui::px(1.));
+				}
+				assert!(visual.debug_bounds("conversation-cost-estimate").is_none());
+			}
+		}
+		surface.update(visual, |s, _| {
+			s.native_agents.selected = Some(("agent".into(), "other-thread".into()));
+			assert!(s.conversation_cost().is_none(), "a side chat cannot show its parent's cost");
 		});
 	}
 
@@ -474,6 +332,7 @@ mod tests {
 				thread_id: "thread-a".into(),
 				estimated_usage_credits_micros: 5_000_000,
 				estimated_usage_usd_micros: Some(100_000),
+				native_usage_usd_micros: None,
 				groups: vec![],
 			},
 		};
@@ -534,44 +393,38 @@ mod tests {
 		assert_eq!(usage_estimates::micros(9_007_199_254_740_993), "9007199254.740993");
 		assert_eq!(usage_estimates::micros(0), "0");
 		assert_eq!(usage_estimates::micros(1), "0.000001");
-		assert!(
-			usage_estimates::estimate_text(&AgentUsageEstimateResult::NotReported)
-				.contains("No estimate reported")
-		);
-		assert!(
-			usage_estimates::estimate_text(&AgentUsageEstimateResult::Unavailable)
-				.contains("Estimate unavailable")
-		);
 	}
 
 	#[gpui::test]
 	fn unrelated_refresh_does_not_strand_an_estimate_read(cx: &mut gpui::TestAppContext) {
 		let (_directory, profile, server) = wire_test_support::fixture(|listener| async move {
-			let mut socket = wire_test_support::accept(&listener).await;
-			let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
-				panic!("query")
-			};
-			let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
-				panic!("read only")
-			};
+			for _ in 0..2 {
+				let mut socket = wire_test_support::accept(&listener).await;
+				let Message::Text(text) = socket.next().await.unwrap().unwrap() else {
+					panic!("query")
+				};
+				let ClientMessage::Query(query) = serde_json::from_str(&text).unwrap() else {
+					panic!("read only")
+				};
 
-			assert!(
-				matches!(query.payload, QueryPayload::GetAgentUsageEstimate { work_id } if work_id.as_str() == "agent")
-			);
+				assert!(
+					matches!(query.payload, QueryPayload::GetAgentUsageEstimate { work_id } if work_id.as_str() == "agent")
+				);
 
-			let reply = ServerMessage::QueryResult(QueryResultEnvelope {
-				version: CURRENT_VERSION,
-				server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
-				query_id: query.query_id,
-				payload: QueryResultPayload::AgentUsageEstimate(
-					AgentUsageEstimateResult::NotReported,
-				),
-			});
+				let reply = ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(super::super::wire_test_support::SERVER).unwrap(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::AgentUsageEstimate(
+						AgentUsageEstimateResult::NotReported,
+					),
+				});
 
-			socket
-				.send(Message::Text(serde_json::to_string(&reply).unwrap().into()))
-				.await
-				.unwrap();
+				socket
+					.send(Message::Text(serde_json::to_string(&reply).unwrap().into()))
+					.await
+					.unwrap();
+			}
 		});
 		let surface = cx.new(AgentSurface::new);
 
@@ -586,7 +439,7 @@ mod tests {
 			snapshot.work_items.iter_mut().find(|w| w.id == "agent").unwrap().codex_thread_id =
 				Some("thread".into());
 
-			s.load_usage_estimate("agent", cx);
+			s.refresh_conversation_cost(cx);
 
 			assert!(s.usage_estimate_task.is_some());
 
@@ -594,7 +447,6 @@ mod tests {
 		});
 
 		cx.run_until_parked();
-		server.join().unwrap();
 		surface.read_with(cx, |s, _| {
 			assert!(
 				s.usage_estimate_task.is_none(),
@@ -606,6 +458,42 @@ mod tests {
 			));
 		});
 		surface.update(cx, |s, cx| {
+			let epoch = s.usage_estimate_epoch;
+			for _ in 0..20 {
+				s.refresh_conversation_cost(cx);
+			}
+			assert_eq!(
+				s.usage_estimate_epoch, epoch,
+				"an unchanged idle conversation must not poll billing"
+			);
+			assert!(s.usage_estimate_task.is_none());
+			let work = s
+				.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| work.id == "agent")
+				.unwrap();
+			work.updated_at_micros += 1;
+			work.active_turn_id = Some("running-turn".into());
+			s.refresh_conversation_cost(cx);
+			assert!(s.usage_estimate_task.is_none(), "streaming must not poll billing");
+			s.snapshot
+				.as_mut()
+				.unwrap()
+				.work_items
+				.iter_mut()
+				.find(|work| work.id == "agent")
+				.unwrap()
+				.active_turn_id = None;
+			s.refresh_conversation_cost(cx);
+			assert!(s.usage_estimate_task.is_some(), "completion refreshes the conversation total");
+		});
+		cx.run_until_parked();
+		server.join().unwrap();
+		surface.update(cx, |s, cx| {
+			assert!(s.usage_estimate_task.is_none());
 			s.mark_stale(cx);
 
 			assert!(s.usage_estimate.is_none());

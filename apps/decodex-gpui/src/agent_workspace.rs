@@ -315,6 +315,7 @@ impl AgentSurface {
 			}
 		}
 
+		self.refresh_conversation_cost(cx);
 		cx.notify();
 	}
 
@@ -1342,18 +1343,10 @@ impl AgentSurface {
 					.text_size(gpui::px(CAPTION_SIZE))
 					.text_color(crate::ui_theme::rgb(TEXT_MUTED))
 					.child(self.conversation_tab_bar(cx))
-					.child(
-						gpui::div()
-							.flex()
-							.items_center()
-							.gap_2()
-							.child(self.conversation_cost_control(cx))
-							.child(
-								self.panel_controls(super::panel_controls::Panel::Conversation, cx),
-							),
-					),
+					.child(gpui::div().flex().items_center().gap_2().child(
+						self.panel_controls(super::panel_controls::Panel::Conversation, cx),
+					)),
 			)
-			.children(self.conversation_cost_details(cx))
 			.children(self.item_context_navigation(cx))
 			.children(self.conversation_find_bar(cx))
 	}
@@ -2153,6 +2146,11 @@ impl AgentSurface {
 #[cfg(any(test, feature = "visual-capture"))]
 impl AgentSurface {
 	pub(crate) fn visual_workspace_page(&mut self, page: &str, cx: &mut Context<Self>) {
+		if matches!(page, "cost" | "cost-estimated" | "cost-unknown") {
+			self.visual_workspace_page("markdown", cx);
+			self.visual_conversation_cost(page);
+			return;
+		}
 		if page == "deliveries" {
 			self.visual_delivery_fixture(cx);
 

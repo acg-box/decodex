@@ -192,6 +192,7 @@ pub(crate) struct AgentSurface {
 	usage_estimate: Option<(String, Option<AgentUsageEstimateResult>)>,
 	usage_estimate_task: Option<Task<()>>,
 	usage_estimate_epoch: u64,
+	usage_estimate_updated_at: Option<i64>,
 	timeline: TimelineView,
 	integrations: Option<(String, Option<AgentIntegrationsResult>)>,
 	integrations_task: Option<Task<()>>,
@@ -400,6 +401,7 @@ impl AgentSurface {
 			usage_estimate: None,
 			usage_estimate_task: None,
 			usage_estimate_epoch: 0,
+			usage_estimate_updated_at: None,
 			timeline: TimelineView::default(),
 			integrations: None,
 			integrations_task: None,
@@ -1695,6 +1697,7 @@ impl AgentSurface {
 
 			self.sync_request(cx);
 			self.refresh_composer_model_settings(cx);
+			self.refresh_conversation_cost(cx);
 			self.tick_question_timeout(cx);
 		}
 		self.observe_prompt_completion(cx);
@@ -2556,7 +2559,6 @@ impl AgentSurface {
 					.child(self.transcript_panel(cx))
 					.child(ui_theme::menu_separator())
 					.child(self.agent_usage_panel(work, cx))
-					.child(self.usage_estimate_panel(work, cx))
 					.child(ui_theme::menu_separator())
 					.child(self.read_state_panel(cx))
 					.child(self.native_goal_panel(cx))
@@ -2773,7 +2775,6 @@ struct WorkspaceView {
 	connection_details_expanded: bool,
 	details_visible: bool,
 	setup_expanded: bool,
-	cost_estimate_open: bool,
 }
 impl Default for WorkspaceView {
 	fn default() -> Self {
@@ -2831,7 +2832,6 @@ impl Default for WorkspaceView {
 			connection_details_expanded: false,
 			details_visible: false,
 			setup_expanded: false,
-			cost_estimate_open: false,
 		}
 	}
 }

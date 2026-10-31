@@ -14,6 +14,8 @@ pub struct ThreadUsageEstimate {
 	pub estimated_usage_credits_micros: u64,
 	/// Provider-reported estimated USD in millionths, absent when not reported.
 	pub estimated_usage_usd_micros: Option<u64>,
+	/// Native dollar usage, independent of credit estimates. None means unknown.
+	pub native_usage_usd_micros: Option<u64>,
 	/// Provider groups; do not reconstruct a total from overlapping token subtotals.
 	pub groups: Vec<ThreadUsageEstimateGroup>,
 }
@@ -82,6 +84,7 @@ fn decode(raw: &Value, thread: &str) -> Result<ThreadUsageEstimate, ClientError>
 
 	if !valid(result.estimated_usage_credits_micros)
 		|| !result.estimated_usage_usd_micros.is_none_or(valid)
+		|| !result.native_usage_usd_micros.is_none_or(valid)
 		|| result.groups.iter().any(|group| {
 			!valid(group.estimated_usage_credits_micros)
 				|| [
@@ -124,6 +127,23 @@ mod tests {
 		}
 	}
 
+	#[test]
+	fn native_dollars_preserve_absence_zero_and_integer_limits() {
+		for (value, expected) in [
+			(serde_json::json!({}), Some(None)),
+			(serde_json::json!({"nativeUsageUsdMicros":null}), Some(None)),
+			(serde_json::json!({"nativeUsageUsdMicros":0}), Some(Some(0))),
+			(serde_json::json!({"nativeUsageUsdMicros":-1}), None),
+			(serde_json::json!({"nativeUsageUsdMicros":u64::MAX}), None),
+		] {
+			let mut raw = serde_json::json!({"threadId":"thread","estimatedUsageCreditsMicros":0,"groups":[]});
+			raw.as_object_mut().unwrap().extend(value.as_object().unwrap().clone());
+			let decoded =
+				usage::decode(&raw, "thread").ok().map(|usage| usage.native_usage_usd_micros);
+			assert_eq!(decoded, expected);
+		}
+	}
+
 	#[tokio::test]
 	async fn native_thread_usage_retains_precision_unknowns_and_exact_identity() {
 		for (returned, accepted) in [("thread", true), ("another-thread", false)] {
@@ -140,7 +160,7 @@ mod tests {
 				assert_eq!(request["method"], "account/usage/read");
 				assert_eq!(request["params"], serde_json::json!({"threadId":"thread"}));
 
-				write.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"result":{"threadUsage":{"threadId":returned,"estimatedUsageCreditsMicros":9_007_199_254_740_993_u64,"estimatedUsageUsdMicros":null,"groups":[{"estimatedUsageCreditsMicros":0,"inputTokens":0,"cachedInputTokens":null}]}}})).as_bytes()).await.unwrap();
+				write.write_all(format!("{}\n",serde_json::json!({"id":request["id"],"result":{"threadUsage":{"threadId":returned,"estimatedUsageCreditsMicros":9_007_199_254_740_993_u64,"estimatedUsageUsdMicros":null,"nativeUsageUsdMicros":9_007_199_254_740_993_u64,"groups":[{"estimatedUsageCreditsMicros":0,"inputTokens":0,"cachedInputTokens":null}]}}})).as_bytes()).await.unwrap();
 			});
 			let result = client.thread_usage_estimate("thread").await;
 
@@ -151,6 +171,7 @@ mod tests {
 
 				assert_eq!(usage.estimated_usage_credits_micros, 9_007_199_254_740_993);
 				assert_eq!(usage.estimated_usage_usd_micros, None);
+				assert_eq!(usage.native_usage_usd_micros, Some(9_007_199_254_740_993));
 				assert_eq!(usage.groups[0].input_tokens, Some(0));
 				assert_eq!(usage.groups[0].cached_input_tokens, None);
 			} else {
