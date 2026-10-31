@@ -13,8 +13,18 @@ pub struct ThreadUsageEstimate {
 	pub estimated_usage_credits_micros: u64,
 	/// Provider-reported estimated USD in millionths, absent when not reported.
 	pub estimated_usage_usd_micros: Option<u64>,
+	/// Native dollar usage, independent of credit estimates. None means unknown.
+	pub native_usage_usd_micros: Option<u64>,
 	/// Provider groups; do not reconstruct a total from overlapping token subtotals.
 	pub groups: Vec<ThreadUsageEstimateGroup>,
+}
+
+impl ThreadUsageEstimate {
+	/// Prefer native dollars. Use the provider's dollar estimate only when native dollars are
+	/// absent.
+	pub fn reported_usd_micros(&self) -> Option<u64> {
+		self.native_usage_usd_micros.or(self.estimated_usage_usd_micros)
+	}
 }
 
 /// A model, effort and speed group, retaining missing counts as unknown.
