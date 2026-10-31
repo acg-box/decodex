@@ -68,13 +68,13 @@ pub(crate) async fn connection(
 				selected_model: state["model"].as_str().map(str::to_owned),
 			});
 		}
-		if state["verification"] == true {
+		if state["verification"] == true && Instant::now() >= deadline {
 			return Ok(Connection {
 				state: ConnectionState::VerificationRequired,
 				selected_model: None,
 			});
 		}
-		if state["login"] == true {
+		if state["login"] == true && state["verification"] != true {
 			return Ok(Connection { state: ConnectionState::SignInRequired, selected_model: None });
 		}
 		if Instant::now() >= deadline {

@@ -1,4 +1,5 @@
-//! One private Chrome profile. CDP never attaches to a user's ordinary browser.
+//! Private Chrome launch and explicit, user-authorized attachment.
+//! Borrowed browsers are disconnected, never terminated.
 
 use std::{
 	collections::BTreeSet,
@@ -490,12 +491,16 @@ mod tests {
 			second.evaluate(r#"document.querySelector('[data-testid="send-button"]').onclick=()=>{globalThis.sends=(globalThis.sends??0)+1};true"#).await?;
 			crate::page::send(&mut second).await?;
 			if second.evaluate("globalThis.sends").await? != 1 { return Err("Send was not dispatched exactly once.".into()); }
+			second.evaluate("document.title='Just a moment...';document.body.innerHTML='<p>Cloudflare</p>';setTimeout(()=>{document.title='ChatGPT';document.body.innerHTML='<div id=prompt-textarea contenteditable=true></div><button data-testid=model-switcher-dropdown-button>Pro</button>'},50);true").await?;
+			if crate::page::connection(&mut second, Duration::from_secs(1)).await?.state != crate::ConnectionState::Connected {
+				return Err("A temporary verification page was treated as a permanent block.".into());
+			}
 			second.evaluate("document.title='Just a moment...';document.body.innerHTML='<h1>Performing security verification</h1><p>Cloudflare</p>';true").await?;
 			let challenged = crate::page::connection(&mut second, Duration::ZERO).await?;
 			if challenged.state != crate::ConnectionState::VerificationRequired {
 				return Err("Provider verification was reported as login readiness.".into());
 			}
-			if crate::page::ready(&mut second).await.is_ok() || second.evaluate("globalThis.sends").await? != 1 {
+			if crate::page::connection(&mut second, Duration::from_millis(250)).await?.state != crate::ConnectionState::VerificationRequired || second.evaluate("globalThis.sends").await? != 1 {
 				return Err("A challenged page must remain blocked without another Send.".into());
 			}
 			// A vanished target without a saved conversation must not open a blank
