@@ -116,10 +116,13 @@ pub(crate) async fn select_pro(browser: &mut Chrome) -> Result<()> {
         if(choices.length===1){choices[0].click();return {selected:true};}
         const power=Array.from(document.querySelectorAll('[role="menuitem"],[role="slider"]'))
           .find(e=>visible(e)&&/Power/i.test(e.getAttribute('aria-label')??e.innerText));
-        return {selected:false,power:!!power};
+        return {selected:false,power:!!power,options:Array.from(document.querySelectorAll('[role="menuitem"],[role="radio"],[role="option"]')).filter(visible).map(e=>(e.innerText||e.getAttribute('aria-label')||'').slice(0,160)).slice(0,16)};
     })()"#).await?;
 	if result["selected"] != true {
-		return Err("The visible ChatGPT model menu does not expose one unambiguous Pro option. No message was sent.".into());
+		return Err(format!(
+			"The visible ChatGPT model menu does not expose one unambiguous Pro option. No message was sent. Visible options: {}",
+			result["options"]
+		));
 	}
 	browser.evaluate("document.activeElement?.blur();true").await?;
 	sleep(std::time::Duration::from_millis(100)).await;

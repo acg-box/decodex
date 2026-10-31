@@ -13,7 +13,7 @@ use futures_util::{SinkExt as _, StreamExt as _};
 use serde_json::{Value, json};
 use tokio::{
 	net::TcpStream,
-	time::{Instant, sleep, timeout},
+	time::{Instant, sleep, timeout, timeout_at},
 };
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, tungstenite::Message};
 
@@ -35,14 +35,19 @@ impl Chrome {
 	/// change its launch options, profile settings, cookies or automation signals.
 	pub async fn attach_existing(profile: &Path) -> Result<Self> {
 		let endpoint = endpoint(profile).map_err(|_| "Open Chrome and enable Remote Debugging at chrome://inspect/#remote-debugging before requesting a connection.")?;
-		let mut browser = timeout(Duration::from_secs(90), Self::attach(&endpoint))
-			.await
-			.map_err(|_| "Chrome did not approve the connection in time.")??;
+		let deadline = Instant::now() + Duration::from_secs(5 * 60);
+		let mut browser = timeout_at(deadline, Self::attach(&endpoint)).await.map_err(
+			|_| "Timed out waiting for Chrome connection approval. No page was opened.",
+		)??;
 		browser.owned = false;
 		// Some Chrome versions accept the socket before resolving the approval UI.
 		// Keep the same connection and let Chrome allow or refuse the first command.
 		browser
-			.command_with_timeout("Browser.getVersion", json!({}), Duration::from_secs(90))
+			.command_with_timeout(
+				"Browser.getVersion",
+				json!({}),
+				deadline.saturating_duration_since(Instant::now()),
+			)
 			.await?;
 		Ok(browser)
 	}
