@@ -279,9 +279,9 @@ fn reconcile(record: &mut Record, observed: &Observation) -> Result<bool> {
 		.enumerate()
 		.filter(|(_, message)| {
 			message.role == "user"
-				&& message.text_sha256.as_deref().is_some_and(|hash| {
+				&& (message.text_sha256.as_deref().is_some_and(|hash| {
 					hash == prompt_sha256 || Some(hash) == hard_break_sha256.as_deref()
-				})
+				}) || message.markdown_text_sha256.as_deref() == Some(prompt_sha256.as_str()))
 		})
 		.collect();
 	if matches.len() > 1 {
@@ -314,6 +314,16 @@ fn reconcile(record: &mut Record, observed: &Observation) -> Result<bool> {
 	}
 	record.receipt.conversation_url = Some(url);
 	record.receipt.user_message_id = Some(user.id.clone());
+	record.receipt.input_binding = Some(
+		if user.text_sha256.as_deref() == Some(prompt_sha256.as_str()) {
+			"verbatim"
+		} else if user.markdown_text_sha256.as_deref() == Some(prompt_sha256.as_str()) {
+			"markdown_text"
+		} else {
+			"terminal_hard_break"
+		}
+		.into(),
+	);
 	record.receipt.phase = Phase::Submitted;
 	record.receipt.last_error = None;
 	let answer =

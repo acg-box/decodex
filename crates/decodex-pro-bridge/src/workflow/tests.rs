@@ -12,6 +12,7 @@ fn message(role: &str, id: &str, text: &str, complete: bool) -> Message {
 		id: id.into(),
 		text: if role == "user" { String::new() } else { text.into() },
 		text_sha256: (role == "user").then(|| crate::store::digest(text.trim().as_bytes())),
+		markdown_text_sha256: None,
 		complete,
 		code_blocks: vec![],
 		links: vec![],
@@ -51,21 +52,25 @@ fn recovery_binds_the_exact_prompt_and_does_not_complete_from_a_stale_or_streami
 	assert_eq!(record.receipt.phase, Phase::Sending);
 	// A URL saved before a large DOM read is only a recovery candidate.
 	record.receipt.conversation_url = Some("https://chatgpt.com/c/owned".into());
-	let user = message("user", "user-one", &record.wire_prompt(), true);
+	let mut user = message("user", "user-one", "Provider Markdown representation", true);
+	user.markdown_text_sha256 = Some(crate::store::digest(record.wire_prompt().trim().as_bytes()));
 	let mut truncated = user.clone();
 	truncated.text_sha256 = Some(crate::store::digest(b"truncated question"));
+	truncated.markdown_text_sha256 = Some(crate::store::digest(b"truncated question"));
 	assert!(
 		!reconcile(&mut record, &observation(vec![truncated], false))
 			.expect("wrong full-text hash stays fenced")
 	);
 	assert_eq!(record.receipt.phase, Phase::Sending);
 	assert!(record.receipt.user_message_id.is_none());
+	assert!(record.receipt.input_binding.is_none());
 	let assistant = message("assistant", "assistant-one", "complete answer", true);
 	assert!(
 		!reconcile(&mut record, &observation(vec![user.clone(), assistant.clone()], true))
 			.expect("streaming")
 	);
 	assert_eq!(record.receipt.phase, Phase::Submitted);
+	assert_eq!(record.receipt.input_binding.as_deref(), Some("markdown_text"));
 	assert!(reconcile(&mut record, &observation(vec![user, assistant], false)).expect("completed"));
 	assert_eq!(record.answer.expect("answer").text, "complete answer");
 }

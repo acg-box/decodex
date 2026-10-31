@@ -23,6 +23,8 @@ pub(crate) struct Message {
 	pub text: String,
 	#[serde(default)]
 	pub text_sha256: Option<String>,
+	#[serde(default)]
+	pub markdown_text_sha256: Option<String>,
 	pub complete: bool,
 	pub code_blocks: Vec<String>,
 	pub links: Vec<Link>,
@@ -329,9 +331,53 @@ fn apply_native_message(message: &mut Message, native: &crate::identity::NativeM
 		return;
 	}
 	message.text.clone_from(&native.text);
+	if message.role == "user" && native.markdown {
+		message.markdown_text_sha256 = markdown_user_text(&native.text)
+			.map(|text| crate::store::digest(text.trim().as_bytes()));
+	}
 	if message.role == "assistant" {
 		message.code_blocks = markdown_code_blocks(&native.text);
 	}
+}
+
+/// Decode the provider's declared user-text representation. Only paragraphs and
+/// inline presentation are accepted. Links must show their complete destination;
+/// hidden destinations, titles, images and HTML cannot disappear from verification.
+fn markdown_user_text(markdown: &str) -> Option<String> {
+	use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+	let mut text = String::new();
+	let mut paragraph = false;
+	let mut link: Option<(String, usize)> = None;
+	for event in Parser::new(markdown) {
+		match event {
+			Event::Start(Tag::Paragraph) => {
+				if paragraph {
+					text.push_str("\n\n");
+				}
+				paragraph = true;
+			},
+			Event::Start(Tag::Link { dest_url, title, .. }) => {
+				if link.is_some() || !title.is_empty() {
+					return None;
+				}
+				link = Some((dest_url.into_string(), text.len()));
+			},
+			Event::End(TagEnd::Link) => {
+				let (destination, start) = link.take()?;
+				if text[start..] != destination {
+					return None;
+				}
+			},
+			Event::Text(value) | Event::Code(value) => text.push_str(&value),
+			Event::SoftBreak | Event::HardBreak => text.push('\n'),
+			Event::Start(Tag::Emphasis | Tag::Strong | Tag::Strikethrough)
+			| Event::End(
+				TagEnd::Paragraph | TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough,
+			) => {},
+			_ => return None,
+		}
+	}
+	link.is_none().then_some(text)
 }
 
 fn markdown_code_blocks(markdown: &str) -> Vec<String> {

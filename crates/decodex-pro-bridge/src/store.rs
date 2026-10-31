@@ -119,6 +119,7 @@ impl Store {
 				model: None,
 				execution: None,
 				user_message_id: None,
+				input_binding: None,
 				baseline_messages: 0,
 				last_error: None,
 			},

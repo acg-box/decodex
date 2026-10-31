@@ -5,6 +5,7 @@ use std::{fs, path::PathBuf, process::ExitCode, time::Duration};
 use clap::{Parser, Subcommand};
 use decodex_pro_bridge::{Config, ProBridge, Request, Result, install, mcp, native_host};
 use futures_util as _;
+use pulldown_cmark as _;
 use serde as _;
 use sha2 as _;
 use tempfile as _;

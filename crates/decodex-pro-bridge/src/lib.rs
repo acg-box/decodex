@@ -106,6 +106,8 @@ pub struct Receipt {
 	pub execution: Option<ExecutionIdentity>,
 	/// Exact matching user message identity.
 	pub user_message_id: Option<String>,
+	/// Whether the full input matched verbatim or through declared Markdown encoding.
+	pub input_binding: Option<String>,
 	/// Number of messages observed before this request was submitted.
 	pub baseline_messages: usize,
 	/// Most recent recoverable failure. It can include rendered UI diagnostics.

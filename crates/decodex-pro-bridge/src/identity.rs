@@ -28,6 +28,8 @@ pub(crate) struct NativeMessage {
 	pub role: String,
 	pub text: String,
 	pub complete: bool,
+	/// The provider explicitly declares the user body's wire representation.
+	pub markdown: bool,
 }
 
 #[derive(Debug, Default, Eq, PartialEq)]
@@ -83,6 +85,7 @@ fn collect(value: &Value, data: &mut ObservedData) {
 			complete: role == "user"
 				|| value["end_turn"] == true
 				|| value["status"] == "finished_successfully",
+			markdown: value["metadata"]["serialization_metadata"]["render_format"] == "markdown",
 		});
 	}
 	match value {
