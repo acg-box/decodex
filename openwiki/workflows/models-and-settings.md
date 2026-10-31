@@ -92,10 +92,10 @@ sources:
     resource: repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py
   - id: openwiki-source-8c78df4b382026886ac50894
     resource: repo://database/src/usage_evidence.rs
-generated: { by: "codex", at: "2026-10-31T15:31:25.411Z" }
+generated: { by: "codex", at: "2026-10-31T15:40:55.377Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:31:25.411Z
+    at: 2026-10-31T15:40:55.377Z
 ---
 
 # Model selection and settings ownership
@@ -174,7 +174,7 @@ The Goal panel reads and edits the Goal attached to the exact owned native threa
 
 The reviewed source, thread and Goal identity must still match before a write. Long objectives use a native objective attachment instead of silently truncating the submitted objective. Display truncation is marked separately. An uncertain save requires a fresh native read; it is not permission to repeat the mutation.
 
-**Side chat** keeps the source provider even when the configured default changes. It starts without a copied native Goal and leaves the source Goal unchanged. Creating or opening the branch sends no input. Continue it with a separate explicit message, or use its normal Goal controls after selecting that branch. The selected runtime qualification checks ordinary forks in both history modes, attached creation in paginated history and explicit native rejection of legacy attachment. It checks restart separately and does not certify the installed desktop. When the configured provider differs, native admission can refuse cold resume. Restore the original provider to continue that conversation, or use the separate explicit current-provider branch flow. Its targeted qualification does not select a newer runtime. HumanCommand support is user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), remains unsupported, and is not daily implementation debt. See [conversation branches](conversations-and-recovery.md#edit-or-branch-at-an-earlier-input).
+**Side chat** keeps the source provider even when the configured default changes. It starts without a copied native Goal and leaves the source Goal unchanged. Creating or opening the branch sends no input. Continue it with a separate explicit message, or use its normal Goal controls after selecting that branch. The selected runtime qualification checks ordinary forks in both history modes, attached creation in paginated history and explicit native rejection of legacy attachment. It checks restart separately and does not certify the installed desktop. When the configured provider differs, native admission can refuse cold resume. Restore the original provider to continue that conversation, or use the separate explicit current-provider branch flow. The current development lock selects the qualified candidate after separate current-main provider and component checks. HumanCommand support is user-deferred in [issue 2585](https://github.com/acg-box/decodex/issues/2585), remains unsupported, and is not daily implementation debt. See [conversation branches](conversations-and-recovery.md#edit-or-branch-at-an-earlier-input).
 
 ## Search defaults and memory observation
 
@@ -208,7 +208,7 @@ Native Codex retains transport selection. The integration does not force shared 
 
 ## Explicit model catalogs
 
-Native model discovery accepts an explicitly configured catalog larger than 1 MiB in the current qualified runtime. The reusable `large_catalog.py` fixture checks that its selected model reaches `model/list`. This is a compatibility contract for native configuration; it does not add a provider or account setup control. The existing account-plan boundary remains unchanged.
+The historical `large_catalog.py` probe verifies that a configured catalog larger than 1 MiB reaches native `model/list` within its recorded artifact limits. It was not rerun for the current migration. This is a compatibility contract for native configuration; it does not add a provider or account setup control. The existing account-plan boundary remains unchanged.
 
 ## Known native limits
 

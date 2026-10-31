@@ -9,15 +9,16 @@
   "fixed_target_remaining": 0,
   "source_review_complete": true,
   "decodex_consumer_baseline": "594c71c98e0719662e5847ff0360921b61b863fa",
-  "current_main_reconciliation": "0124198ac97fd63c7855c95822e2d7c0855b597e",
-  "main_delta_limit": "Provider recovery is based on current main. Earlier certified source ranges are unchanged; this follow-up reviews and validates only the provider boundary, durable fork flow and related presentation.",
-  "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+  "current_main_reconciliation": "c75adc57a5c6ac33423cc3aef7d701613eb4e488",
+  "main_delta_limit": "Current-main provider and component requalification selects the original candidate artifact. Source-review coverage, retained test scope and installed-app acceptance remain separate.",
+  "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
   "selected_runtime_qualification": "automations/upstream/qualification.json",
   "classification_counts": {
     "native_owned": 92,
     "not_applicable": 52,
-    "necessary_repair": 3,
+    "necessary_repair": 2,
     "already_covered": 10,
+    "deferred": 1,
     "optional_decision": 1
   },
   "review_summary": {
@@ -26,7 +27,13 @@
     "decodex_native_contracts_selected": 50,
     "candidate_passed": 49,
     "candidate_failed": 1,
-    "original_selected_artifact_comparisons_passed": 5
+    "original_selected_artifact_comparisons_passed": 5,
+    "migration_recheck": {
+      "fresh_native_passed": 2,
+      "fresh_component_passed": 1,
+      "upstream_executed": 0,
+      "reused_candidate_native_passed": 49
+    }
   },
   "scope": "Current fixed-target relevant source, implementation/test-body and concrete-consumer review. Keep historical certified ranges and limits in native state. This file does not certify unexecuted upstream tests or runtime delivery.",
   "previous_source_review": "https://github.com/acg-box/decodex/blob/69ef0e38d74d407a1cbe84ab06ba802adc786a8a/automations/upstream/current-review.json",
@@ -92,8 +99,8 @@
       },
       "patch_sha256": "3c744e58a4c75da21c503c19367369dde0ae1d9b8cd2dbfea97262a5f41cd724",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T20:42:47Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -224,8 +231,8 @@
       },
       "patch_sha256": "93e319dc5285c0f7511825f49d2c3ca2c7d3e4ed7c5a383377003c8fc9daa7af",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T21:13:45Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -294,8 +301,8 @@
       },
       "patch_sha256": "e093e6c1a7d77c750a10d574d4a6cdb7e342d2a8445ae98524b95b3244c888c1",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T21:50:08Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -349,8 +356,8 @@
       },
       "patch_sha256": "d20723fd949283de987bba11ed05c25d2a12e1a67b52e107176ad4bf6f659ad3",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T21:51:26Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -459,8 +466,8 @@
       },
       "patch_sha256": "dce6c6dfdbe881f0561ac5f76a334d1e307f2ef90ddc89f57adc7de8d0c4f081",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required.",
       "commit_time": "2026-10-27T21:51:50Z",
       "status": "source_review_complete",
@@ -512,8 +519,8 @@
       },
       "patch_sha256": "15c0388095be8926a72c74f1c02f0ff0a8053837c89373a7fd8e4be7b1d6d659",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T22:01:13Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -551,8 +558,8 @@
       },
       "patch_sha256": "99ba5d2bb6252bc5f8f06ca1a3ea5c550fad2691c8722bf9a27c325220be4586",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T22:02:35Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -600,8 +607,8 @@
       },
       "patch_sha256": "39444d402cf1df5fde31d4e422a036a90b95af61ade65d6502189662767decbd",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T22:03:01Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -677,8 +684,8 @@
       },
       "patch_sha256": "23841fb735e961e74bf64048edf5e597aa70ff851d94cc9912cd705147e0be56",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T22:26:12Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -751,8 +758,8 @@
       },
       "patch_sha256": "43ce64a27c1437803fddf572aa6c45acf78872842f02d31b87ea7f00ef0c32bb",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T22:56:23Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -812,8 +819,8 @@
       },
       "patch_sha256": "45171e9907a372a3d25b027a2c946526d03b60efe1427593dc08ac9a59b06c7a",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T22:59:22Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -882,8 +889,8 @@
       },
       "patch_sha256": "b65cc0b38dd40361b2c4aa66e4295ff3677b0046a2be927702d85d180fa419d8",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T23:02:27Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -972,8 +979,8 @@
       },
       "patch_sha256": "930b695c63dde9aa5dac3e4d625bc036b023d6d695cf88e8b9d871e6ed395757",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T23:13:53Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1021,11 +1028,11 @@
       },
       "patch_sha256": "9c6e774966940e7f6daad7d5c2b14fe779e707a6ecbb1f96d116ba91144fd9e5",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T23:14:18Z",
       "status": "source_review_complete",
-      "delivery_disposition": "Independent component verification is implemented in 768690c268e679df140b0c588f02f3d91c633eec; HumanCommand support is user-deferred in issue 2585; runtime qualification is separate. See qualification.json#candidate_qualification.",
+      "delivery_disposition": "Independent executor component verification is implemented and passed import/cache-repair qualification on the selected artifact. HumanCommand is separately user-deferred in issue 2585.",
       "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required."
     },
     {
@@ -1048,8 +1055,8 @@
       },
       "patch_sha256": "c094ffa5242458dd1f72c1074d92b04ded86f5109360611c4b77f655b0ddbd07",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "no_changed_test_body_reason": "Both complete deletion diffs and the current module declarations read. The deleted test file contains no test body; zero tests executed. This cleanup has no standalone runtime behavior.",
       "commit_time": "2026-10-27T23:27:28Z",
       "status": "source_review_complete",
@@ -1107,8 +1114,8 @@
       },
       "patch_sha256": "abb571fd073928437a06d7b39d13410688a21580ece5e2dd92910a5a93a222bb",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T23:51:43Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1155,8 +1162,8 @@
       },
       "patch_sha256": "165f4e76126758a528b17ff0376403fb720898e0b69751abf2be9f5db86828b4",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T23:53:09Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1218,8 +1225,8 @@
       },
       "patch_sha256": "337b6f77d7ccc50f66b2eb93aa3ba21ccb9e6b54a4b13c5848f7ad7a608f38cd",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-27T23:53:34Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1260,8 +1267,8 @@
       },
       "patch_sha256": "3ca32f8ef0180314abe2c6056436b4b66e4dd070a89892f88a75eb91920f7462",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T00:37:15Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1354,8 +1361,8 @@
       },
       "patch_sha256": "51fb1ec03f916c36c1e7bee8da7dbe42d7a8273504fe0b82b7e815f6983a3491",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T00:51:29Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1403,8 +1410,8 @@
       },
       "patch_sha256": "c03a6dab2774a456d165686de62dab21a5e2aa3374c932172537868aaaace6c6",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T01:04:30Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1452,8 +1459,8 @@
       },
       "patch_sha256": "fcce5d398a33a9561b37ad7821d252de45b58b171026c0f393374831f3bb5654",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T01:29:34Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1488,8 +1495,8 @@
       },
       "patch_sha256": "b4d0196ad086b5b2b8868a5db29728e44d9594554a615450f0ce2357e2f92c6b",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T02:00:30Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1530,8 +1537,8 @@
       },
       "patch_sha256": "440fe91246b34168d3ed642879e81e76d585a38be0318f5beea984338e3fad8f",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T02:40:06Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1570,8 +1577,8 @@
       },
       "patch_sha256": "241e047666663612ecf94a8690565a3edb79775d8cc9e0db348c8a0eaa69ff3b",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T02:54:18Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1614,8 +1621,8 @@
       },
       "patch_sha256": "d45c3b80d715e067e98f24cbfc58b93adab161eb6a4dffd663030dc3ca148ef9",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T04:05:31Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1650,8 +1657,8 @@
       },
       "patch_sha256": "166036a2ce45ecff11dd446970cd55c28d21d0e1f49daa5caa471da27a433ebe",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T04:29:58Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1720,8 +1727,8 @@
       },
       "patch_sha256": "c7969acf6dba02ce3fbc7a911a281f766c25af51849bd2de240f4a2ef8980ab0",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T04:48:23Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1795,8 +1802,8 @@
       },
       "patch_sha256": "d0cad66353fd54e26c9e3ccd26b33f50db4af90f6dfec61353aa12a62c489cc4",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T05:11:45Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1842,8 +1849,8 @@
       },
       "patch_sha256": "3f5ed51ae7a803ff024c50d702c1bb913d55bd81777c2bb9544597be259ca7dc",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required.",
       "commit_time": "2026-10-28T05:46:04Z",
       "status": "source_review_complete",
@@ -1885,8 +1892,8 @@
       },
       "patch_sha256": "50ddf60581b1770d789b761872b30da151089192f48d921c18688787602e76b1",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T06:22:58Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -1950,8 +1957,8 @@
       },
       "patch_sha256": "a02e7ae580180ba8667ca669e41f7c98305691d88be627c1654dd00f8a6c20f8",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T06:24:24Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2001,8 +2008,8 @@
       },
       "patch_sha256": "afe6ae0c9fd301fba1bf405e0ad568978fff40bc33632977b681791e2ffdc0e1",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T07:12:32Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2034,8 +2041,8 @@
       },
       "patch_sha256": "724d9066e79e4fd04a2915bd1b4b58ac9b66ee22d29b397b4866d4b5147a6df3",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T10:13:29Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2078,8 +2085,8 @@
       },
       "patch_sha256": "9934776cd3d3c56167cc4f5f64d9e082fdbb662fcbec3449b163b81f51e11b4b",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T11:01:32Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2126,8 +2133,8 @@
       },
       "patch_sha256": "8056ba41a36af89b94c63ec5d1095b3b33e6830369493a92885a6dcd2e189be4",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T11:02:51Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2187,8 +2194,8 @@
       },
       "patch_sha256": "bdd93219c97241f9b9986bd90e72cf4d65e1ef408f315385fb9092a3566067f4",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T11:25:13Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2245,8 +2252,8 @@
       },
       "patch_sha256": "3dc89632aa88703c959aa8e3ad274860c6fb28d53b9d7936abf136f96bd1ca68",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T11:48:00Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2283,8 +2290,8 @@
       },
       "patch_sha256": "5368515bfd631e5ef3a76eca052ad4d51ab886acaf95377bfff510d713c0269e",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T12:31:24Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2309,8 +2316,8 @@
       },
       "patch_sha256": "ef1a76757d4c7b2499fc2f1f7e205e5bfe695cc53aa8fa17ad4fc3cb0f2447a3",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "no_changed_test_body_reason": "Complete changed build rule read. No test body is changed or added; no Bazel build/test executed. Actual binary schema qualification remains separate.",
       "commit_time": "2026-10-28T12:49:59Z",
       "status": "source_review_complete",
@@ -2355,8 +2362,8 @@
       },
       "patch_sha256": "f77ab08094ad379ff9490473ac851efcb3bf1a752556149973fd75ab7ffeca50",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T13:16:05Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2385,8 +2392,8 @@
       },
       "patch_sha256": "3b6fe88b366dc471efe89bace5d26a8846f4d9041d80446df61095793433bf3f",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "no_changed_test_body_reason": "Complete macro body and relevant Core/TUI build-rule diffs read, including unit/integration/Windows/Wine test target construction. No test function is changed or added; no Bazel tests/builds executed.",
       "commit_time": "2026-10-28T13:53:43Z",
       "status": "source_review_complete",
@@ -2416,8 +2423,8 @@
       },
       "patch_sha256": "bb7ee0b415269c485fbadd3668c54b243a074eb7d0e8e6cf7a5b89173facfaf6",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "no_changed_test_body_reason": "Read the complete macro body at predecessor 42 and all changes in 43, including each affected test-target shape and embedded fixture declarations. No test body changed or added; no Bazel tests executed. Build dependency classification only.",
       "commit_time": "2026-10-28T13:55:51Z",
       "status": "source_review_complete",
@@ -2471,8 +2478,8 @@
       },
       "patch_sha256": "e31a5033ece906dcab709d10fc2c8ccbf7f5b287e4b10a1b86019ac743a73b1c",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T13:56:17Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2538,8 +2545,8 @@
       },
       "patch_sha256": "dd54136bd862dde858c6ae773b4676f37a932f90c834b5bbbbb1d4ab3e889e36",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T15:04:29Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2585,8 +2592,8 @@
       },
       "patch_sha256": "f277f571160e16c20f33d5f7911f0775be4d5ee0d3a74e0f3fd6177b14cdcd34",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T15:10:52Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2642,8 +2649,8 @@
       },
       "patch_sha256": "a33cc8bb148cefaca898bd00048b8f669e1aa4ab6f63b316225d9864c4ce39f9",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T16:00:30Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2676,8 +2683,8 @@
       },
       "patch_sha256": "91b8ef485032e5ecb85e926715f9a5a05ab32a9ceb6010d8bb3987d432aa1778",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T16:15:21Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2734,8 +2741,8 @@
       },
       "patch_sha256": "61ce13ce686477fea7b2e65f6903a67cc17459eb637623482630063e22aefe5f",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T16:46:41Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2760,8 +2767,8 @@
       },
       "patch_sha256": "ac72db08f9482955a0b70aa8a2c19e1cd7f75e5e8e9ca0acb61f2b3181a3db14",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "no_changed_test_body_reason": "Relevant complete Windows function and diff read. No test body is added or changed for this predicate; no Windows/MXC runtime validation executed. Scope is not applicable to the current macOS integration.",
       "commit_time": "2026-10-28T16:48:02Z",
       "status": "source_review_complete",
@@ -2815,8 +2822,8 @@
       },
       "patch_sha256": "3eea5df54de07d77f1ee8da3d7bf03fec2a32710d7e4cd5cb91e7741266f20d2",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T16:53:55Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2861,8 +2868,8 @@
       },
       "patch_sha256": "faba7a200cbeacd4b097ef58a89607a1474005e7352431c9dc7220bf9b2c2ada",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T16:55:57Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2901,8 +2908,8 @@
       },
       "patch_sha256": "3f970c3bf3ef6b070e0dadfc22da3555af78031a78046f78e45bcd3d704641b3",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T17:04:31Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2957,8 +2964,8 @@
       },
       "patch_sha256": "f1000b69fe13cd334258ea4de7651b3f42c21ebb2bb9559ec4d73c9f28eef185",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T17:13:33Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -2991,8 +2998,8 @@
       },
       "patch_sha256": "50054e5db9f7db9756e8b2c53fbdae5bc1291aaff548244f98e8b9c8de167991",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T17:50:33Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3031,8 +3038,8 @@
       },
       "patch_sha256": "ff6bc34339e8da76d65d6357e8f2085a140119d5ddc5cede87e0d1c45c7347ff",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T18:03:57Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3084,8 +3091,8 @@
       },
       "patch_sha256": "7e2ccfc1cd5f5a5204413a8ee534059314bbe916a090ff409a8f5f9f084ea711",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T20:10:15Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3120,8 +3127,8 @@
       },
       "patch_sha256": "48ae9791678fe9e1e4d37a9c5ef0d1f76e36b8a2069b00afda67945710ff11af",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T20:11:51Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3160,8 +3167,8 @@
       },
       "patch_sha256": "1eedb006e8a790cc1c265b58dfecd4fc3d60f5a4262e3fcfeefba694f960e369",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T20:12:18Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3205,8 +3212,8 @@
       },
       "patch_sha256": "e132f98a428e516f8e337e49828212b05a94d714fd32d78c62561aef380918c2",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T20:12:44Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3241,8 +3248,8 @@
       },
       "patch_sha256": "2e2e4c146c350a35cfcf5eb5c89ef76843d3ba6795ab900bf25673998acb1276",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T20:21:30Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3267,8 +3274,8 @@
       },
       "patch_sha256": "361b6228a353c2bcf41c44e7456e6a65dfdb043c068bfee030369d5209ee8bf0",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "no_changed_test_body_reason": "Complete changed action declaration and surrounding environment read; no test body changes or executions. No host tool installation or reconfiguration.",
       "commit_time": "2026-10-28T20:23:39Z",
       "status": "source_review_complete",
@@ -3334,8 +3341,8 @@
       },
       "patch_sha256": "14aa17bc40216688a5678339bc89554c41ea6111e0cde7a660427c1ef92f47d4",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T20:57:54Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3374,8 +3381,8 @@
       },
       "patch_sha256": "d38f646a9ff11d7a53a44f9f5cb099a9b5de9a427ee525049891ab152e784a30",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required.",
       "commit_time": "2026-10-28T21:07:36Z",
       "status": "source_review_complete",
@@ -3415,8 +3422,8 @@
       },
       "patch_sha256": "9a68f0d4247f5e29ea5d41ad1593ef68e8266fca0bc64ff53c4964e3989080a1",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T21:08:10Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3468,8 +3475,8 @@
       },
       "patch_sha256": "4e9014946a731b5ffc1d8f5da5d8bc044fee3e82c72573eba724ef8580043623",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T21:08:39Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3524,11 +3531,11 @@
       },
       "patch_sha256": "a9011f8376451076c3b5747170acdae9f7df0c03feddfd0cbe9f16c8f767de23",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T21:09:05Z",
       "status": "source_review_complete",
-      "delivery_disposition": "Independent component verification is implemented in 768690c268e679df140b0c588f02f3d91c633eec; HumanCommand support is user-deferred in issue 2585; runtime qualification is separate. See qualification.json#candidate_qualification.",
+      "delivery_disposition": "Independent executor component verification is implemented and passed import/cache-repair qualification on the selected artifact. HumanCommand is separately user-deferred in issue 2585.",
       "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required."
     },
     {
@@ -3574,8 +3581,8 @@
       },
       "patch_sha256": "23e04790c54bb5f259015abb6f8c0adac1840cd3c86589f83b0c3e56d5b613a1",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required.",
       "commit_time": "2026-10-28T21:22:06Z",
       "status": "source_review_complete",
@@ -3632,8 +3639,8 @@
       },
       "patch_sha256": "541f884de1db6ec32129fcbbd2948b0d4c255d1c7421659edace2e3ef2c06bd5",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T21:33:02Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate.",
@@ -3686,8 +3693,8 @@
       },
       "patch_sha256": "6c6b51d15b39a44eceecc5990ea545d170770726503799629680ef837d712ec8",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T21:34:25Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3749,8 +3756,8 @@
       },
       "patch_sha256": "1ba8ca2f0a1256a00ff5fece6ecab3bb57014e95449954e9125ccf2ad95cf35f",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T22:31:05Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3769,7 +3776,7 @@
         "codex-rs/code-mode-runtime/src/service.rs::runtime_response"
       ],
       "validation_limits": [
-        "Complete cell preparation and full run_cell loop, new channel, completion/delivery helpers and four complete test bodies read, with type/callback/service propagation diffs. Previously truncated runtime and actor diffs were recovered with bounded complete reads. Zero upstream tests executed. Actual helper/cancellation qualification remains pending; no process or memory stress claim."
+        "Complete cell preparation and full run_cell loop, new channel, completion/delivery helpers and four complete test bodies read, with type/callback/service propagation diffs. Previously truncated runtime and actor diffs were recovered with bounded complete reads. Zero upstream tests executed. The named CodeMode yield/parallel-tool contracts passed on the selected artifact; cancellation coverage is limited to the retained cohort; no process or memory stress claim."
       ],
       "commit": "92e802fb613674a50b82942c4fb11a768c5f5451",
       "source_review_complete": true,
@@ -3812,8 +3819,8 @@
       },
       "patch_sha256": "77a55ffb23a37f491745628d002cf03c519722d9699411efb10a0736f18ff0d7",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T22:33:13Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3845,8 +3852,8 @@
       },
       "patch_sha256": "ea69414e1727a268af72a10c0cc8b6a60c5a65ce07533c4869ddca0c02ce9e1b",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T22:53:11Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3885,8 +3892,8 @@
       },
       "patch_sha256": "2cc1d73359bb960547635acabde9109c4adfbdd9cdcacdb62af0e733a799c561",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T23:06:34Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3919,8 +3926,8 @@
       },
       "patch_sha256": "6dd17c476db520b036e9810715d568aeac0f4fb703b1a5ffddd16de80f4677d8",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T23:14:37Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -3935,7 +3942,7 @@
         "codex-rs/codex-mcp/src/connection_manager/resources.rs::list_all_resource_templates/skips_resource_template_listing"
       ],
       "validation_limits": [
-        "Full relevant binding/connection implementation, ownership predicate and both complete selected regression bodies read. Zero upstream tests executed. Actual retained MCP capability/discovery checks remain pending exact artifact; no shared-MCP gate change."
+        "Full relevant binding/connection implementation, ownership predicate and both complete selected regression bodies read. Zero upstream tests executed. Named retained MCP capability/discovery checks passed on the selected artifact; no shared-MCP gate change."
       ],
       "commit": "bd2e9bf0f4c13688f34c3c03629216f287445a8d",
       "source_review_complete": true,
@@ -3962,8 +3969,8 @@
       },
       "patch_sha256": "2589d0b4213201adb476ffeab066808d798d6ed27aab68e873905b474db3f821",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T23:21:04Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4012,8 +4019,8 @@
       },
       "patch_sha256": "722285406639333655c80f2bf4e41351768f406f8b4af87620c40f487534074e",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-28T23:27:31Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4052,8 +4059,8 @@
       },
       "patch_sha256": "4b2a44c49490d9de2f48a8b8c023e0dd374aa9f0b0abfb90cc1fab98a92dc358",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T00:03:28Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4088,8 +4095,8 @@
       },
       "patch_sha256": "d6f9893ca9ccacf4708427672572e50462f4a131cc09669b5044f94b45d6e0fe",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T00:42:21Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4107,7 +4114,7 @@
         "codex-rs/utils/audio/src/lib.rs::estimate_audio_token_count_without_cache"
       ],
       "validation_limits": [
-        "Full affected service/renderer/admission bodies and five selected complete regression bodies read, with stdio/gRPC option propagation diffs. Truncated service diff was recovered with complete body reads; the initially unmatched guessed admission symbol was corrected to open_session_request. Zero upstream tests executed. Candidate helper behavior qualification remains pending; no flood/memory benchmark claimed."
+        "Full affected service/renderer/admission bodies and five selected complete regression bodies read, with stdio/gRPC option propagation diffs. Truncated service diff was recovered with complete body reads; the initially unmatched guessed admission symbol was corrected to open_session_request. Zero upstream tests executed. Named CodeMode helper contracts passed on the selected artifact; no flood/memory benchmark claimed."
       ],
       "commit": "edd1ae37ec82650e8d7a97a7e84db39fd5722441",
       "source_review_complete": true,
@@ -4155,8 +4162,8 @@
       },
       "patch_sha256": "377c3502bd25073d1356cb6405ee7711c4cb58c17ceef5890795db33d17cb09c",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T01:04:48Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4189,8 +4196,8 @@
       },
       "patch_sha256": "9fb2a3aeecc6662536b44ee0c2dca21337fadc64a046f3f74880e246ebff8009",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T01:30:00Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4237,8 +4244,8 @@
       },
       "patch_sha256": "abb539fe0f29c9012ecc400cbaef70c3a984f97bca92484b3c7f70a011d31c43",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T02:10:32Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4301,8 +4308,8 @@
       },
       "patch_sha256": "fd879cc9d0e342659cb836454a2baf8492553fa0f276c67705bf316784d28769",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T03:07:15Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4353,8 +4360,8 @@
       },
       "patch_sha256": "4eefaef01a1df1f94cadef551aa166198a0e974fda060d67a89b075cc0363dda",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required.",
       "commit_time": "2026-10-29T03:14:13Z",
       "status": "source_review_complete",
@@ -4413,8 +4420,8 @@
       },
       "patch_sha256": "0dbfc89969dfc82c16d331a79a5cefd964c9061de26a787d65134195ac55473e",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T03:47:52Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4447,8 +4454,8 @@
       },
       "patch_sha256": "0b79ad997c3eb230c327786e95458ab680646e0da164de461fde3c79431973bd",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T04:28:05Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4477,8 +4484,8 @@
       },
       "patch_sha256": "b24dbe7faa4857959346b5cf6e5cf1bd5244d736247c8e5411471b9d69b886f9",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "no_changed_test_body_reason": "Complete script and both workflow changes read. No affected Rust test bodies are changed; zero upstream tests or script executions. Existing Decodex stable Clippy requirements remain separate.",
       "commit_time": "2026-10-29T07:41:19Z",
       "status": "source_review_complete",
@@ -4524,8 +4531,8 @@
       },
       "patch_sha256": "c86858fca29e105e669fe590cf84adb96027f22408f838d3ff13cc5209faa638",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T08:51:18Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4564,8 +4571,8 @@
       },
       "patch_sha256": "09369f2699af4ad1bedfe86a04382b11215fbafa9a62cb5e5b963d6086d0b19f",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T09:48:55Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4604,8 +4611,8 @@
       },
       "patch_sha256": "6d0ee92e420cd491131f6197a6f2a3443ba3cfed4cc6f6fb3f1c3fc7881029f3",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T10:34:17Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4658,8 +4665,8 @@
       },
       "patch_sha256": "48a861e2c1a9d291fb4d837236f7d2520585fd1d32ff8e25399a1757f96e188f",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required.",
       "commit_time": "2026-10-29T11:15:52Z",
       "status": "source_review_complete",
@@ -4680,7 +4687,7 @@
         "codex-rs/core/src/tools/orchestrator.rs::human_once retry routing"
       ],
       "validation_limits": [
-        "Relevant policy, command approval, pending validation and transport capability/routing implementations read, including complete changed request/reviewer/recipient functions and both full selected regression bodies. Current Decodex capability/projection/panel and guarded-response source read. Zero upstream tests executed. Necessary local compatibility repair, before/after reproduction and exact-artifact verification remain pending; policy UI and human-origin attestation are not invented."
+        "Relevant policy, command approval, pending validation and transport capability/routing implementations read, including complete changed request/reviewer/recipient functions and both full selected regression bodies. Current Decodex capability/projection/panel and guarded-response source read. Zero upstream tests executed. HumanCommand support is user-deferred in issue 2585, unsupported and unadvertised; policy UI and human-origin attestation are not invented."
       ],
       "commit": "9cc14e79882ff8885cd5d33b4adadae014045aef",
       "source_review_complete": true,
@@ -4712,8 +4719,8 @@
       },
       "patch_sha256": "2df287552602c280f5c9904a9dbd851fbc87c8ed11016b5c1bae9215d5df21ab",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "qualification_reconciliation": "Provider follow-up: ordinary forks retain provider A and cold-resume after A is restored; explicit user-approved recovery forks to current provider B without sending. Candidate 2/2 and selected baseline 1/1 pass. Prior 49/50 is historical, not a current blocker. The candidate remains unselected. HumanCommand support is user-deferred in issue 2585; applicable retained-scope qualification remains required.",
       "commit_time": "2026-10-29T11:23:51Z",
       "status": "source_review_complete",
@@ -4755,8 +4762,8 @@
       },
       "patch_sha256": "07db06b6a4f4c77c3637cce738fcbaa2c171f0209a2702851d45d2600a1ad1bc",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T12:06:40Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4793,8 +4800,8 @@
       },
       "patch_sha256": "efbeb2e8636faeb9586897d66bd7ea9adcc0f2a2be2e456a571328923b70098d",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T12:37:59Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4813,7 +4820,7 @@
         "codex-rs/ext/guardian-v2/src/async_scorer/observation.rs::serving assessment observation"
       ],
       "validation_limits": [
-        "Complete authorization snapshot and both reviewer routing bodies, all relevant serving capture/dispatch/observation diffs and full 264-line parameterized direct/CodeMode regression body read. Zero upstream tests executed. Existing exact-artifact Guardian/CodeMode boundary tests passed in the initial candidate cohort; new serving-value scenarios were read, not executed. Whole runtime migration remains unqualified for independent retained failures."
+        "Complete authorization snapshot and both reviewer routing bodies, all relevant serving capture/dispatch/observation diffs and full 264-line parameterized direct/CodeMode regression body read. Zero upstream tests executed. Existing exact-artifact Guardian/CodeMode boundary tests passed in the initial candidate cohort; new serving-value scenarios were read, not executed. The selected runtime migration is qualified only within the named retained contracts."
       ],
       "commit": "9def09afa71e1443a1028866ac22dc82aedea00e",
       "source_review_complete": true,
@@ -4837,8 +4844,8 @@
       },
       "patch_sha256": "3af41f51f9d3e3078cbdffc833c0d7be9417012d0b70b3e9349fb30773e0bfcc",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T12:54:39Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4881,8 +4888,8 @@
       },
       "patch_sha256": "afdf5e1e7d82cc2e5468c89876e5a5de617e42c8590916b36dacc477549939b8",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T13:37:06Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4921,8 +4928,8 @@
       },
       "patch_sha256": "784f5d3dbe824e4fb9ccbafc063f1dbf45213c102eef7afa7ea6cd229d1ae158",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T14:30:02Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -4951,8 +4958,8 @@
       },
       "patch_sha256": "c38d11c60457ee7de3f59786589baa9266fcb04380bf18c9d66f2230319e23a3",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "no_changed_test_body_reason": "Complete policy diff and actual target-conditioned dependency declaration read. No implementation or test body changes in this commit; zero upstream audit/test executions. No Windows or general security qualification claim, and no Decodex ignore added.",
       "commit_time": "2026-10-29T15:55:50Z",
       "status": "source_review_complete",
@@ -4999,8 +5006,8 @@
       },
       "patch_sha256": "53b66a850dfdc73157d5c5cfebfe316f9dd7df6299e9b9fd1525254be6585e76",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T16:30:06Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5037,8 +5044,8 @@
       },
       "patch_sha256": "4f9d2f54f88ea6d787159c8cf87d275549a9ef3c9400db32f865dbb0c22555e0",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T16:39:38Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5063,8 +5070,8 @@
       },
       "patch_sha256": "cf9963e50c691e2f6636dfe16693f493e5312425ef06699f0144a8a14c2f308e",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "no_changed_test_body_reason": "Complete feature and generated schema diff, registry lookup and default construction read. No tests changed or upstream tests executed. No feature enabled.",
       "commit_time": "2026-10-29T16:41:12Z",
       "status": "source_review_complete",
@@ -5098,8 +5105,8 @@
       },
       "patch_sha256": "62c27ee327c81a0f020c694c98817802aee1d8663f773d414fc9895d739e087b",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T16:46:01Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5158,8 +5165,8 @@
       },
       "patch_sha256": "f46a6f7ac4bbc20540b30d9251586e0473a91bc74204e1dc41dbd97b2e863210",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T16:57:12Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5192,8 +5199,8 @@
       },
       "patch_sha256": "a590d0af52572d7bb0f3122f5e08057dd27844c708b91398e8504ef575a3dfe3",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T17:18:43Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5257,8 +5264,8 @@
       },
       "patch_sha256": "b621e588d5b6598c23e017eed3165f6c5b4e766ba0451ff8d862fc5f83a59298",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T17:25:51Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5290,8 +5297,8 @@
       },
       "patch_sha256": "76122261c3faba336ad241da8b50df3ca2bcef0c63a05d8ac2c829c983730cea",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T17:35:44Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5316,8 +5323,8 @@
       },
       "patch_sha256": "1a14f68da4ab7dcf0143ddb4f7b811d52be843c76453c1e7cb43e4f79c0adc20",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "no_changed_test_body_reason": "Complete documentation diff and current document read. No executable or test changes; zero upstream tests executed.",
       "commit_time": "2026-10-29T17:49:51Z",
       "status": "source_review_complete",
@@ -5353,8 +5360,8 @@
       },
       "patch_sha256": "6a99eded6c767416b6cef2de2627b27935fd9ec76014d4f028284d6da7070938",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T18:09:55Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5391,8 +5398,8 @@
       },
       "patch_sha256": "f3c4c7ea6310febafc33c6f558241e8eee4d7906615ed93d7d120d17582687f6",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T18:24:34Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5439,8 +5446,8 @@
       },
       "patch_sha256": "0c64373770d7f07d5c8a53286c136cdf908329c51f14c79def1cd8e1bfd30483",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T18:41:17Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5482,8 +5489,8 @@
       },
       "patch_sha256": "98699c927c899e43194c0942eedd82f21e0de5da312689e1bf8324fdcdeab721",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T19:16:28Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5527,8 +5534,8 @@
       },
       "patch_sha256": "040086c9539aa8957212b273f558465d379eecaace8434763d51ab4df91c9680",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T19:29:05Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5563,8 +5570,8 @@
       },
       "patch_sha256": "3a0e1888cc84a4ce85cc8e8e74fc8da7e01e5b54ddbeb29c7904a204dba9582f",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T19:34:46Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5602,8 +5609,8 @@
       },
       "patch_sha256": "84ea5f838ed569774e02694c37ad0265e8a32a54357269ea1db75d9ae7c6a0b4",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T19:49:03Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5667,8 +5674,8 @@
       },
       "patch_sha256": "f358efebde2764614bb4ded2eda3ba3c07b507428f0f74a5096a7282ac8e23d5",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T19:56:26Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5701,8 +5708,8 @@
       },
       "patch_sha256": "2d0387f6db2a3bdbd6f7e34d098eeef560f91b7d84e71930d119fd249158d213",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T20:17:58Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5762,8 +5769,8 @@
       },
       "patch_sha256": "83f221dc7c830feb47dfaa73901da7e1b149e04e75833fdcf515cdaac547a324",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T20:39:04Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5796,8 +5803,8 @@
       },
       "patch_sha256": "34b74aee8fe5317e5e3b93c60c00ee488a384da4670b108d0511ad2332957c6b",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T20:44:09Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5855,8 +5862,8 @@
       },
       "patch_sha256": "c413b0b0a97598eed0f1065cfa42c53fb8947b6b775defe213945f3dfe78a934",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T22:36:06Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5891,8 +5898,8 @@
       },
       "patch_sha256": "4282f99ab3a0de70ca77eea579cffb88772c62a80de9d89beab99c803031f399",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T23:24:28Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5942,8 +5949,8 @@
       },
       "patch_sha256": "4832cc95383561ba44cddce9095ae440341ba37bb6f860a1f5ee499d7f9fafec",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T23:24:52Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -5980,8 +5987,8 @@
       },
       "patch_sha256": "3f69fcbdde763c026c88d9eb81b28e72e2025104a610c0b479597207ee2811fb",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-29T23:56:17Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6010,8 +6017,8 @@
       },
       "patch_sha256": "7d7c9f7e0dc994a4a89db3420930d3f1430ffcee5e073289a766fe35d31b9589",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "no_changed_test_body_reason": "Complete changed release declarations and provisioned workflow diff read, recovering the initially truncated segment. No executable/test bodies changed in this commit; zero upstream release workflows/tests executed. No release asset selection change.",
       "commit_time": "2026-10-30T00:08:25Z",
       "status": "source_review_complete",
@@ -6047,8 +6054,8 @@
       },
       "patch_sha256": "294b065e8596983577f06cb2797a69021ca18b7ae8e69329e5163c497c180ecb",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T00:36:00Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6092,8 +6099,8 @@
       },
       "patch_sha256": "c6ac4eb212cdd4afe7c344dd143b49365cc62347bc6c7edbf793b8db2fe8e2f3",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T00:45:30Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate.",
@@ -6131,8 +6138,8 @@
       },
       "patch_sha256": "2a2a54d6dd75ccce507746f40cc8200ac374c29dbc9bd25a1e8651d522359b10",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T02:28:51Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6181,8 +6188,8 @@
       },
       "patch_sha256": "81dc324f0ff57113a93730e32c59bd06a47f821160b0eda9a3dfde11686d31d0",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T02:43:02Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6217,8 +6224,8 @@
       },
       "patch_sha256": "05743dd865d4d108a1788d5a74074c3ff07157b8c6ad46b9fa72745370d83009",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T04:00:20Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6262,8 +6269,8 @@
       },
       "patch_sha256": "139f25b7a68405aa0819603aac7366d3b57086088bc0b70858e82405f37d4b19",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T04:00:47Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6300,8 +6307,8 @@
       },
       "patch_sha256": "ee2a27b225633363c72f0803cf4dbe1064b383e44d1a31c2ca7751de1090c914",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T04:01:11Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6336,8 +6343,8 @@
       },
       "patch_sha256": "9cbf1b1c38e5143033ede5dc5cdee7fc56bb25cca990eb8d69c4e0416d9b85cf",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T04:01:34Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6352,7 +6359,7 @@
         "MODULE.bazel.lock::mio_1.2.4"
       ],
       "validation_limits": [
-        "Changed lock/version/checksum and matching registry dependency/feature record read. Zero dependency test bodies changed, upstream tests executed or general mio audit claims. Existing candidate boundary checks passed within their limits; whole artifact remains unqualified."
+        "Changed lock/version/checksum and matching registry dependency/feature record read. Zero dependency test bodies changed, upstream tests executed or general mio audit claims. Existing candidate boundary checks passed within their limits; selected artifact qualification is limited to the named retained contracts."
       ],
       "commit": "c15d0ce323f2197da865871502dc6ea7ef5b8ddb",
       "source_review_complete": true,
@@ -6364,8 +6371,8 @@
       },
       "patch_sha256": "bf51570b57c451f8998676aeb18db5825a0b5b1e84bea4ad80b435eaa3228280",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "no_changed_test_body_reason": "Changed lock/version/checksum and matching registry dependency/feature record read. Zero dependency test bodies changed, upstream tests executed or general mio audit claims. Existing candidate boundary checks passed within their limits; whole artifact remains unqualified.",
       "commit_time": "2026-10-30T04:09:03Z",
       "status": "source_review_complete",
@@ -6430,8 +6437,8 @@
       },
       "patch_sha256": "94284f6879600b5a795e499596bb811f046ccc5c761ef7e6d5ab6f8be5004015",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T05:30:20Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6465,8 +6472,8 @@
       },
       "patch_sha256": "7b5599c2dbf14e49e37d8e8123e7ef533275986bbc104d9b82317c0293685f8e",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T06:36:20Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6499,8 +6506,8 @@
       },
       "patch_sha256": "72156816a11da79c6d1de5c23802b46e744ccf5148a5d651e6c0facf16629a48",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T06:37:32Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6537,8 +6544,8 @@
       },
       "patch_sha256": "4b8c230fe2633faf53381070880426250ca71e894104de9f75b8bf96d5f75681",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T06:43:51Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6572,8 +6579,8 @@
       },
       "patch_sha256": "6d03157cb57b6b7418c15992db155132a4ab0940bf0445a9586adc44005238d8",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T06:45:04Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6610,8 +6617,8 @@
       },
       "patch_sha256": "1d9cc2c2c6868342fac612d5e70cd3c24a6223f8c727ac501ea0504cd96adb36",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T06:54:13Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6646,8 +6653,8 @@
       },
       "patch_sha256": "3d6f6437a1ec5c5182dd516d872d6a10e29aaa70d485f97eb44466335e58c13b",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T07:11:56Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6687,8 +6694,8 @@
       },
       "patch_sha256": "0920a8f619d2745845f8d3a666f3b023b77e0cb79a95584095e9f0fcc7fa1db2",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T07:57:06Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6725,8 +6732,8 @@
       },
       "patch_sha256": "ab0e307ad67456832403b822ba770d081858007663f048c935192238d133a0d0",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T08:03:51Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6761,8 +6768,8 @@
       },
       "patch_sha256": "2247d3b99fa5e75943965293c47df71eb39eac0e8362239699adc38e47698c91",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T11:39:43Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6801,8 +6808,8 @@
       },
       "patch_sha256": "8f9756b325ef861e1bbb4f9688352b64c92a368d4894ed648a173106e5b9eaa0",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T13:33:02Z",
       "status": "source_review_complete",
       "delivery_disposition": "Existing user-deferred issue remains pending; no new product capability selected."
@@ -6850,8 +6857,8 @@
       },
       "patch_sha256": "6c57a31fd9e431159cfd4aa07dccff74ea9fa4d0222331e8b93c9d551170587e",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T13:59:25Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6868,7 +6875,7 @@
         "codex-rs/app-server/src/outgoing_message.rs::resolve_server_request"
       ],
       "validation_limits": [
-        "Relevant core and app-server diffs, complete affected approval/guard bodies and both selected native test bodies read. Existing local resolved-request test assertions read; no new native network cancellation scenario executed. Zero upstream tests executed; selected runtime remains 33d306d4."
+        "Relevant core and app-server diffs, complete affected approval/guard bodies and both selected native test bodies read. Existing local resolved-request test assertions read; no new native network cancellation scenario executed. Zero upstream tests executed; selected 5be57bedd0 qualification is limited to the named retained contracts."
       ],
       "commit": "4969675f0120bbd1052998b2669094496bdc97e0",
       "source_review_complete": true,
@@ -6897,8 +6904,8 @@
       },
       "patch_sha256": "20bec3a47ba0fec03d77f3563c59717b38f40c29733ef4f66082996e8868e717",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T14:40:32Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6913,7 +6920,7 @@
         "codex-rs/core/src/tools/approvals.rs::request_approval_with_user_prompt"
       ],
       "validation_limits": [
-        "Complete new queue/commit helpers, full affected request handler and selected unit/integration bodies read. No Decodex queue or network policy was introduced. Zero upstream tests executed; selected runtime remains 33d306d4."
+        "Complete new queue/commit helpers, full affected request handler and selected unit/integration bodies read. No Decodex queue or network policy was introduced. Zero upstream tests executed; selected 5be57bedd0 qualification is limited to the named retained contracts."
       ],
       "commit": "80f469ce8aeadcdb0b79b1a1daf6b88d92ff8799",
       "source_review_complete": true,
@@ -6946,8 +6953,8 @@
       },
       "patch_sha256": "f8ef7af271091641f4270fc21aaae30f20b4016a5c6a67203fe3ba1a2e3250b8",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T14:40:59Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -6964,7 +6971,7 @@
         "codex-rs/features/src/lib.rs::AppsEarlyResourceDiscovery"
       ],
       "validation_limits": [
-        "Full new early-client helpers, changed request/startup paths and complete selected timeout/account-scope test bodies read. This is not proof that legacy shared MCP discovery is repaired. Zero upstream tests executed; selected runtime remains 33d306d4."
+        "Full new early-client helpers, changed request/startup paths and complete selected timeout/account-scope test bodies read. This is not proof that legacy shared MCP discovery is repaired. Zero upstream tests executed; selected 5be57bedd0 qualification is limited to the named retained contracts."
       ],
       "commit": "9630b2e0193e596b2505316f794e74ee1143e069",
       "source_review_complete": true,
@@ -6999,8 +7006,8 @@
       },
       "patch_sha256": "920f92f7cd249e3b02bc6c7b7d802fd1158ba860e6f404195e12193a3e4bcd35",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T14:47:56Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -7016,7 +7023,7 @@
         "codex-rs/exec-server/src/remote/auth.rs::send_authenticated"
       ],
       "validation_limits": [
-        "Full exchange/persistence and executor-resolution bodies, authenticated-send diff and full selected cancellation/deadline tests read. No remote executor or real credential mutation executed. Zero upstream tests executed; selected runtime remains 33d306d4."
+        "Full exchange/persistence and executor-resolution bodies, authenticated-send diff and full selected cancellation/deadline tests read. No remote executor or real credential mutation executed. Zero upstream tests executed; selected 5be57bedd0 qualification is limited to the named retained contracts."
       ],
       "commit": "9b8c2bb50b4baee873ef1baa41a7136cc3e2c04a",
       "source_review_complete": true,
@@ -7044,8 +7051,8 @@
       },
       "patch_sha256": "701117eeae72c91d853c38a0262b0f6f8757eeb315f1d8098ba5e3cfd950587f",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T14:56:08Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -7059,7 +7066,7 @@
         "codex-rs/core/src/tools/registry.rs::apply_pre_tool_use/handle_any_tool"
       ],
       "validation_limits": [
-        "Complete relevant refactor diff, full extracted helper and full existing rewrite regression read. Test-only helper extraction introduces no product capability. Zero upstream tests executed; selected runtime remains 33d306d4."
+        "Complete relevant refactor diff, full extracted helper and full existing rewrite regression read. Test-only helper extraction introduces no product capability. Zero upstream tests executed; selected 5be57bedd0 qualification is limited to the named retained contracts."
       ],
       "commit": "85d042c71aef6b04e8f2acb24dc3da08e74bc95d",
       "source_review_complete": true,
@@ -7078,8 +7085,8 @@
       },
       "patch_sha256": "54ad05b0737bea775b956b82b9d0ff59d95471e5114b81f424602ef0f4916a23",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T15:02:16Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -7097,7 +7104,7 @@
         "codex-rs/core/src/guardian/reviewer_config.rs::resolve_review_model_from_catalog"
       ],
       "validation_limits": [
-        "Relevant behavioral diffs, complete resolution helpers and selected origin/safety tests read. Mechanical type/import/fixture updates do not establish live custom-provider qualification; the existing synthetic catalog consumer is the runtime boundary. Zero upstream tests executed; selected runtime remains 33d306d4."
+        "Relevant behavioral diffs, complete resolution helpers and selected origin/safety tests read. Mechanical type/import/fixture updates do not establish live custom-provider qualification; the existing synthetic catalog consumer is the runtime boundary. Zero upstream tests executed; selected 5be57bedd0 qualification is limited to the named retained contracts."
       ],
       "commit": "dc40446064cc0896851a5f2ef69f10f62d2206a1",
       "source_review_complete": true,
@@ -7133,8 +7140,8 @@
       },
       "patch_sha256": "165b08e9c9216fc470c93bf29dc69617ea24fb61bcb01e981d1ae02f1930a2a4",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T15:11:02Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -7149,7 +7156,7 @@
         "codex-rs/core/src/tools/registry.rs::apply_pre_tool_use"
       ],
       "validation_limits": [
-        "Complete relevant direct-review implementation diff and both full new regression bodies read. No native direct-review execution or policy change performed. Zero upstream tests executed; selected runtime remains 33d306d4."
+        "Complete relevant direct-review implementation diff and both full new regression bodies read. No native direct-review execution or policy change performed. Zero upstream tests executed; selected 5be57bedd0 qualification is limited to the named retained contracts."
       ],
       "commit": "a4b4082b5f14a8a037386d823ddb96a85fd25975",
       "source_review_complete": true,
@@ -7175,8 +7182,8 @@
       },
       "patch_sha256": "a52460c96f7d032d1f661ce54eb5dbc30167c91c14324da12707e18124f9f95a",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T15:28:20Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -7191,7 +7198,7 @@
         "codex-rs/core/src/mcp_tool_call.rs::handle_approved_mcp_tool_call"
       ],
       "validation_limits": [
-        "Entire new binding implementation and unit test, affected dispatch diff and full native integration test read. No metadata collection or new Decodex capability enabled. Zero upstream tests executed; selected runtime remains 33d306d4."
+        "Entire new binding implementation and unit test, affected dispatch diff and full native integration test read. No metadata collection or new Decodex capability enabled. Zero upstream tests executed; selected 5be57bedd0 qualification is limited to the named retained contracts."
       ],
       "commit": "483d98a441ee21e05fa81b07048040c6b1f1f234",
       "source_review_complete": true,
@@ -7218,8 +7225,8 @@
       },
       "patch_sha256": "a425f4a0781068262ef7502379d459eeffaf11979daee716878d64b093bd94f8",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T16:00:24Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -7234,7 +7241,7 @@
         "codex-rs/app-server-protocol/src/protocol/v2/thread.rs::ThreadSectionChangedNotification"
       ],
       "validation_limits": [
-        "Complete changed move handler, notification definition and full websocket regression read. Generated schemas are supporting evidence only; no new section UX proposed. Zero upstream tests executed; selected runtime remains 33d306d4."
+        "Complete changed move handler, notification definition and full websocket regression read. Generated schemas are supporting evidence only; no new section UX proposed. Zero upstream tests executed; selected 5be57bedd0 qualification is limited to the named retained contracts."
       ],
       "commit": "1f0290c6073762085ed50a10aab0ff8337e3b4c0",
       "source_review_complete": true,
@@ -7254,8 +7261,8 @@
       },
       "patch_sha256": "0d6f009fbdf9947962a3f2f6169889bb26040bb63df93e45c873f230a126f56e",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T16:09:46Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -7269,7 +7276,7 @@
         "codex-rs/login/src/auth/manager.rs::is_chatgpt_refresh_unsettled"
       ],
       "validation_limits": [
-        "Complete changed predicate and full updated 114-line cancellation/workspace regression read. No real workspace/account switch or OAuth request executed. Zero upstream tests executed; selected runtime remains 33d306d4."
+        "Complete changed predicate and full updated 114-line cancellation/workspace regression read. No real workspace/account switch or OAuth request executed. Zero upstream tests executed; selected 5be57bedd0 qualification is limited to the named retained contracts."
       ],
       "commit": "b0f977c3a9c2e68e46e58e589e98f5297d2c8c10",
       "source_review_complete": true,
@@ -7288,8 +7295,8 @@
       },
       "patch_sha256": "350af042d500d94fbb9b39703b5307c8f711ba65f1ea15c9193fb437cad2c822",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T16:16:57Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -7303,7 +7310,7 @@
         "codex-rs/v8-poc/src/lib.rs::uses_inline_typed_array_storage"
       ],
       "validation_limits": [
-        "Entire small test-only diff and both complete affected test bodies read. Existing CodeMode integration passes do not qualify every V8 array layout. Zero upstream tests executed; selected runtime remains 33d306d4."
+        "Entire small test-only diff and both complete affected test bodies read. Existing CodeMode integration passes do not qualify every V8 array layout. Zero upstream tests executed; selected 5be57bedd0 qualification is limited to the named retained contracts."
       ],
       "commit": "a727f1f11ae06dcb196cd028a31900dbfd2f68ed",
       "source_review_complete": true,
@@ -7327,8 +7334,8 @@
       },
       "patch_sha256": "67873ed13f3edec4692604f96efa3ed7d36ddeb8c3fe735f5c887cb8abd247b7",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T16:35:54Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -7343,7 +7350,7 @@
         "codex-rs/guardian-context/src/budget.rs::ElasticBudgetConfig::section_limits"
       ],
       "validation_limits": [
-        "Entire new 327-line allocator, changed cap/default implementation and both complete new tests read. No Decodex budget control or automatic policy added. Zero upstream tests executed; selected runtime remains 33d306d4."
+        "Entire new 327-line allocator, changed cap/default implementation and both complete new tests read. No Decodex budget control or automatic policy added. Zero upstream tests executed; selected 5be57bedd0 qualification is limited to the named retained contracts."
       ],
       "commit": "4c8f6971cb12b6ce859c0551d0172fd1ad53efe3",
       "source_review_complete": true,
@@ -7369,8 +7376,8 @@
       },
       "patch_sha256": "adba1d716fab5e45ffb9def4e0888ff9da560d8a93d97b397053d98e6029b6f7",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T16:45:41Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -7387,7 +7394,7 @@
         "codex-rs/core/src/exec_policy.rs::ExecPolicyManager::snapshot"
       ],
       "validation_limits": [
-        "Full affected preparation/startup helpers, removed detached route, policy-snapshot changes and all three selected complete tests read. No new Decodex cross-process child-start route implemented. Zero upstream tests executed; selected runtime remains 33d306d4."
+        "Full affected preparation/startup helpers, removed detached route, policy-snapshot changes and all three selected complete tests read. No new Decodex cross-process child-start route implemented. Zero upstream tests executed; selected 5be57bedd0 qualification is limited to the named retained contracts."
       ],
       "commit": "cbe16d525c2d7362fc3d4726143288e932905daa",
       "source_review_complete": true,
@@ -7422,8 +7429,8 @@
       },
       "patch_sha256": "5d789109a273d703228cdb5c855d24bd59a8f7ccf7d0416326b37c64131e6812",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T17:08:41Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
@@ -7438,7 +7445,7 @@
         "codex-rs/core/src/mcp_tool_call.rs::handle_approved_mcp_tool_call"
       ],
       "validation_limits": [
-        "Entire new 70-line hook, affected native dispatch diff and full parameterized 125-line integration/provider bodies read. No Decodex metadata hook, telemetry or new product scope added. Zero upstream tests executed; selected runtime remains 33d306d4."
+        "Entire new 70-line hook, affected native dispatch diff and full parameterized 125-line integration/provider bodies read. No Decodex metadata hook, telemetry or new product scope added. Zero upstream tests executed; selected 5be57bedd0 qualification is limited to the named retained contracts."
       ],
       "commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
       "source_review_complete": true,
@@ -7464,14 +7471,14 @@
       },
       "patch_sha256": "03ed62944095cdf0703adf581f87c9c3ecc710790d1f166294a25dc06da92152",
       "decodex_source_revision": "594c71c98e0719662e5847ff0360921b61b863fa",
-      "selected_runtime_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "selected_runtime_contains_commit": false,
+      "selected_runtime_source": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+      "selected_runtime_contains_commit": true,
       "commit_time": "2026-10-30T17:32:09Z",
       "status": "source_review_complete",
       "delivery_disposition": "Reviewed source; selected runtime does not contain this change. Artifact and delivery limits are separate."
     }
   ],
-  "delivery_status": "Source review remains complete through the unchanged fixed target. Provider recovery is delivered. HumanCommand support is user-deferred in issue 2585 and is not daily implementation debt. The selected runtime remains unchanged pending applicable retained-scope qualification.",
+  "delivery_status": "Selected 5be57bedd0 after current-main provider and component verification. HumanCommand remains user-deferred and unadvertised; shared MCP remains separately deferred. See selected_runtime_recheck in qualification.json.",
   "implementation_commits": [
     "https://github.com/acg-box/decodex/commit/768690c268e679df140b0c588f02f3d91c633eec",
     "https://github.com/acg-box/decodex/commit/283741d89b57346bd25ac91283ef682da0a2d327",

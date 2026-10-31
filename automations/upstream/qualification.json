@@ -4,794 +4,859 @@
     "unrecovered": "Older exact 153-test manifest remains unknown.",
     "conditional_remote_credential_snapshot": "Earlier qualification could not qualify conditional remote credential snapshots because fixture DNS failed or returned a reserved address. Native address protection stays enabled. Current consumers use private stdio; reopen only with a concrete retained remote consumer. Original source assertions and historical delivery evidence remain in Git.",
     "prior_public_evidence": "https://github.com/acg-box/decodex/blob/69fe45a5d2d2a6e093568ce69bff50415378cc41/automations/upstream/qualification.json",
-    "current_review_replaced_by": "https://github.com/acg-box/decodex/blob/69ef0e38d74d407a1cbe84ab06ba802adc786a8a/automations/upstream/current-review.json"
+    "current_review_replaced_by": "https://github.com/acg-box/decodex/blob/69ef0e38d74d407a1cbe84ab06ba802adc786a8a/automations/upstream/current-review.json",
+    "previous_selected_runtime": {
+      "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+      "qualification": "https://github.com/acg-box/decodex/blob/c75adc57a5c6ac33423cc3aef7d701613eb4e488/automations/upstream/qualification.json",
+      "scope": "Original artifact, source-suite, dependency and probe receipts retain their recorded limits."
+    }
   },
-  "consumer_limits": "Selected 33d306d4 retains its original qualification. The reconstruction router has 51 native and two local history selections. Historical candidate cohort: 49/50. Targeted provider follow-up: 2/2 on the same candidate and 1/1 on the selected baseline. HumanCommand support is user-deferred in issue 2585, not daily implementation debt. Candidate runtime selection still requires applicable retained-scope qualification.",
+  "consumer_limits": "Selected 5be57bedd0 reuses 49 passing native contracts on the identical artifact plus the qualified provider follow-up. This migration freshly passed two native provider tests and one component test on current main. Source, artifact, test and installed-app evidence remain separate.",
   "limits": [
     "Source review, tests, artifact qualification, merge and installed acceptance are separate.",
     "Only macOS arm64 private stdio and named native consumers/helpers are qualified. Linux, Windows, remote production execution, live accounts/providers, physical audio and installation/release remain unmeasured.",
     "No latency, throughput, memory, billing or cost benchmark.",
-    "All nine inherited dependency findings remain visible; no audit ignore or broad safety claim added.",
-    "Earlier certified ranges retain their original limits; the missing historical 153-test manifest remains unknown.",
-    "New native MCP/Guardian/history experiments and critical-path capture remain unselected; native prediction tool preservation stays enabled without a new product workflow.",
-    "One named-executor cloud-skills source fixture remains unresolved; seven host-skill snapshot failures recovered in isolated HOME. Source execution does not qualify cloud/remote consumers."
+    "Historical dependency findings retain their recorded sources and dates; no new security audit or ignored advisory.",
+    "Earlier certified ranges and missing historical 153-test manifest remain unchanged.",
+    "HumanCommand is user-deferred and unadvertised. Shared MCP, remote production execution and optional product experiments are outside this qualification."
   ],
   "version": 1,
-  "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-  "source_archive_sha256": "b93e82b67ca9de55fb1cbcf74be03567f529a03d23b4785de02f966f39f1c4b5",
-  "cargo_lock_sha256": "245872ff2fcc2f946e37149f1947f98f32521303294568eca68a44037ed1a430",
-  "schema_sha256": "86c27115a28bf905f4c25ee204b218b2ba9598ef664787efddd30e2d0c20f2d9",
+  "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+  "source_archive_sha256": "a97ffa43d05f3451dd1b55d50eeac43f283222e9f0a9751a3d5345daed0bbd40",
+  "cargo_lock_sha256": "d8e759f9b0417d2edc5edaa5d8efb1d6b78f16b5023d03bafa0a72d61af9540e",
+  "schema_sha256": "8eb9c847ea19633cbdd4b943ec53515037723020006a8952d3c7bafb1fde903a",
   "components": [
     {
       "path": "CodexCLI.app/Contents/MacOS/codex",
-      "sha256": "cb933d4981df419760215afba381372b400d0906bd3c2bc5d29186b200740986",
+      "sha256": "7403fcc802a5bf9afc4b41e07fb99429db0c495976e6a4dd5ab233f0945fe759",
+      "bytes": 264506272,
       "strict_signature_exit": 0,
-      "architecture": "Mach-O 64-bit executable arm64",
-      "bytes": 263862032
+      "verification": "Common component import and installed-cache verification; development executables also contain the fixed source commit."
     },
     {
       "path": "bin/codex-code-mode-host",
-      "sha256": "aed64fd191c96a7b9aefe581b01b3f02a28f6938958667424a457c59309614bd",
+      "sha256": "1a21f6b9cd87227a35335904f183ad3fb4d2d1c79dc479a806254ac8db0c21bb",
+      "bytes": 69981328,
       "strict_signature_exit": 0,
-      "architecture": "Mach-O 64-bit executable arm64",
-      "bytes": 68979184
+      "verification": "Common component import and installed-cache verification; development executables also contain the fixed source commit."
+    },
+    {
+      "path": "bin/codex-exec-server",
+      "sha256": "7fc43fc7b75347d945953b783b8e2808ca1cc3d98beb27011ef02576e6c415ea",
+      "bytes": 60038528,
+      "strict_signature_exit": 0,
+      "verification": "Common component import and installed-cache verification; development executables also contain the fixed source commit."
     },
     {
       "path": "codex-path/rg",
-      "sha256": "8c8aef5fb93e91174cc49abd7847eee15a8996d336ac29147ba66f8b87134cf4",
+      "sha256": "9e471bfc08a71af5b96f6781bafa043b622c55b6e0c090931d7b3ac2466d2d8e",
+      "bytes": 4009552,
       "strict_signature_exit": 0,
-      "architecture": "Mach-O 64-bit executable arm64",
-      "bytes": 4009552
+      "verification": "Common component import and installed-cache verification; development executables also contain the fixed source commit."
     }
   ],
   "status": "qualified_fixed_development_artifact",
-  "decodex_source_revision": "15f7c5a9168ddd76bc9dc0cd9f0dffef13a3d3c3",
-  "qualified_scope": "macOS arm64 production-profile fixed-source CLI, Code Mode and rg helpers; private-stdio retained consumers and synthetic provider fixtures",
+  "decodex_source_revision": "c75adc57a5c6ac33423cc3aef7d701613eb4e488",
+  "qualified_scope": "macOS arm64 signed fixed-source CLI and three packaged helpers; retained private-stdio consumers and synthetic provider fixtures",
   "source_integrity": {
-    "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-    "verified_blob_count": 9652,
-    "mismatches": [],
-    "git_tree_listing_sha256": "1421df118fd429cb75eff33c74b880de75d90d5493d2bd80323a8a646bca3ab6",
-    "cargo_lock_sha256": "245872ff2fcc2f946e37149f1947f98f32521303294568eca68a44037ed1a430",
-    "source_archive_sha256": "b93e82b67ca9de55fb1cbcf74be03567f529a03d23b4785de02f966f39f1c4b5",
-    "actual_build_source_verified_blob_count": 9652,
-    "actual_build_source_mismatches": [],
-    "role": "Every official Git blob matches both the source archive and actual unpatched build source. Generated test .snap.new files are not source inputs."
+    "archive_sha256": "a97ffa43d05f3451dd1b55d50eeac43f283222e9f0a9751a3d5345daed0bbd40",
+    "source_archive_url": "https://codeload.github.com/openai/codex/tar.gz/5be57bedd04d717cdde3a768ea7b71e97733736b",
+    "build_owner": "scripts/macos/build_codex_source.mts::buildSource",
+    "upstream_entrypoint": "scripts/build_codex_package.py",
+    "compiler": "stable, locked upstream Cargo dependency graph",
+    "source_modifications": false,
+    "build_commit_env": "STABLE_GIT_COMMIT=5be57bedd04d717cdde3a768ea7b71e97733736b",
+    "limit": "Official fixed source archive and unchanged Cargo.lock were used. Artifact/helper integrity does not prove retained behavior compatibility.",
+    "identity_recheck": "All four component digests match the original candidate; explicit import verifies signatures, fixed commit, helpers and regenerated schema."
   },
   "retained_source_inclusion": {
-    "baseline": "abf4bb91ec49fbf443ccec0069f9cab5dd1462d8",
-    "candidate": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+    "selected": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+    "candidate": "5be57bedd04d717cdde3a768ea7b71e97733736b",
     "records": [
       {
         "source": "codex-rs/app-server-protocol/src/protocol/thread_history.rs",
-        "baseline_sha256": "e4283b6055811c4ec43b239ef63d31c2a7420a249181bf8787326f69399e99e6",
+        "candidate_source": "codex-rs/app-server-protocol/src/protocol/thread_history.rs",
+        "selected_sha256": "6fa206f5ed76b79504281e433ea581c7b1761dac53c4e85be00af361d1291223",
         "candidate_sha256": "6fa206f5ed76b79504281e433ea581c7b1761dac53c4e85be00af361d1291223",
-        "byte_identical": false,
-        "review_records": [
-          94,
-          125,
-          126
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "byte_identical": true,
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/app-server-protocol/src/protocol/v2/mcp.rs",
-        "baseline_sha256": "71ff45af71302857a5637dee47d8f24b85e8660e145ceb8012d39db432944b12",
+        "candidate_source": "codex-rs/app-server-protocol/src/protocol/v2/mcp.rs",
+        "selected_sha256": "71ff45af71302857a5637dee47d8f24b85e8660e145ceb8012d39db432944b12",
         "candidate_sha256": "71ff45af71302857a5637dee47d8f24b85e8660e145ceb8012d39db432944b12",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/app-server-protocol/src/protocol/v2/thread.rs",
-        "baseline_sha256": "2b8672407ca960f83b126eab342192f88f628b7acf24b65508c2f999dd511a54",
-        "candidate_sha256": "edc34b2b8cdbeefd48756f7f540b96ab7c4dc4580b9a17c0b8e3aa4f686ae7ce",
+        "candidate_source": "codex-rs/app-server-protocol/src/protocol/v2/thread.rs",
+        "selected_sha256": "edc34b2b8cdbeefd48756f7f540b96ab7c4dc4580b9a17c0b8e3aa4f686ae7ce",
+        "candidate_sha256": "f5a99bd250950ddaa3a07a8cae84e434c77d645650c11ec037e140945fa2c500",
         "byte_identical": false,
-        "review_records": [
-          27
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          99,
+          153
+        ]
       },
       {
         "source": "codex-rs/app-server-protocol/src/protocol/v2/thread_sample.rs",
-        "baseline_sha256": "d38886e79ad7f44a5a9d686b48e204251a7a8af59596e631d1b581f150315f5f",
-        "candidate_sha256": "d38886e79ad7f44a5a9d686b48e204251a7a8af59596e631d1b581f150315f5f",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/app-server-protocol/src/protocol/v2/thread_sample.rs",
+        "selected_sha256": "d38886e79ad7f44a5a9d686b48e204251a7a8af59596e631d1b581f150315f5f",
+        "candidate_sha256": "eb0ab21863171071d4da4084cd71816cfe402989dc067a05b4e8cb19d78be0ae",
+        "byte_identical": false,
+        "certified_review_records": [
+          78
+        ]
       },
       {
         "source": "codex-rs/app-server-protocol/src/protocol/v2/turn.rs",
-        "baseline_sha256": "fbf1d95b1ee6a24d06e86955a17e45957448622b9128b3a11fe5fa36bc1fa8f8",
+        "candidate_source": "codex-rs/app-server-protocol/src/protocol/v2/turn.rs",
+        "selected_sha256": "fbf1d95b1ee6a24d06e86955a17e45957448622b9128b3a11fe5fa36bc1fa8f8",
         "candidate_sha256": "fbf1d95b1ee6a24d06e86955a17e45957448622b9128b3a11fe5fa36bc1fa8f8",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/app-server/src/bespoke_event_handling.rs",
-        "baseline_sha256": "531b92861dd130a29b240eebcea4417a48aa5aa1b7e2dbef71e113b11cdc29a1",
-        "candidate_sha256": "531b92861dd130a29b240eebcea4417a48aa5aa1b7e2dbef71e113b11cdc29a1",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/app-server/src/bespoke_event_handling.rs",
+        "selected_sha256": "531b92861dd130a29b240eebcea4417a48aa5aa1b7e2dbef71e113b11cdc29a1",
+        "candidate_sha256": "be97e0152518ba89d99324b3d194bb487349c0d84ecbc6947fc950cc5c111b2d",
+        "byte_identical": false,
+        "certified_review_records": [
+          68,
+          92,
+          145
+        ]
       },
       {
         "source": "codex-rs/app-server/src/config_manager_service.rs",
-        "baseline_sha256": "75ff0c8a553c2cdeca5aa7eeaa340657e11b7388daec31da0bb4972e3de63a62",
-        "candidate_sha256": "a28a32e361506d96b97452432223954b3bf4bed802ce69b5ec404288a6a99700",
+        "candidate_source": "codex-rs/app-server/src/config_manager_service.rs",
+        "selected_sha256": "a28a32e361506d96b97452432223954b3bf4bed802ce69b5ec404288a6a99700",
+        "candidate_sha256": "df592530732f148a0042408159379481da9d52680cc41ee77f045d59e25b35ac",
         "byte_identical": false,
-        "review_records": [
-          83
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          30,
+          124
+        ]
       },
       {
         "source": "codex-rs/app-server/src/request_processors/catalog_processor.rs",
-        "baseline_sha256": "a0beba234ce4e90dbd11d6f290bb91a35ce1975be4fddf18473de8f0b630a5d8",
+        "candidate_source": "codex-rs/app-server/src/request_processors/catalog_processor.rs",
+        "selected_sha256": "a0beba234ce4e90dbd11d6f290bb91a35ce1975be4fddf18473de8f0b630a5d8",
         "candidate_sha256": "a0beba234ce4e90dbd11d6f290bb91a35ce1975be4fddf18473de8f0b630a5d8",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/app-server/src/request_processors/thread_attachments.rs",
-        "baseline_sha256": "68e6225863604c923de96d5a6eb4c527e8204d4a53069ac776f4917e20f89e7d",
+        "candidate_source": "codex-rs/app-server/src/request_processors/thread_attachments.rs",
+        "selected_sha256": "68e6225863604c923de96d5a6eb4c527e8204d4a53069ac776f4917e20f89e7d",
         "candidate_sha256": "68e6225863604c923de96d5a6eb4c527e8204d4a53069ac776f4917e20f89e7d",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/app-server/src/request_processors/thread_processor.rs",
-        "baseline_sha256": "4bcab5510e4b8a5c436a125e6bad011696b192573571fa58eed17ac1762b40c1",
-        "candidate_sha256": "a900593607dc90862983b3e999f3408118b09051b1831c92d43025e084db4305",
+        "candidate_source": "codex-rs/app-server/src/request_processors/thread_processor.rs",
+        "selected_sha256": "a900593607dc90862983b3e999f3408118b09051b1831c92d43025e084db4305",
+        "candidate_sha256": "269b0f282c95c4b4345cd421c9477f0b492f2b424a2659ed70efb9be3768a372",
         "byte_identical": false,
-        "review_records": [
-          6,
-          27,
-          117
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          26,
+          33,
+          51,
+          52,
+          69,
+          153
+        ]
       },
       {
         "source": "codex-rs/app-server/src/request_processors/turn_processor.rs",
-        "baseline_sha256": "e498b088033ad5a107328b3245da3d4eee2e083a6a675383ae3f52f90b710829",
-        "candidate_sha256": "e498b088033ad5a107328b3245da3d4eee2e083a6a675383ae3f52f90b710829",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/app-server/src/request_processors/turn_processor.rs",
+        "selected_sha256": "e498b088033ad5a107328b3245da3d4eee2e083a6a675383ae3f52f90b710829",
+        "candidate_sha256": "63293d7e2073442d9d5df8c2c146041b28f8ab363c28a4304057ded7c179afb5",
+        "byte_identical": false,
+        "certified_review_records": [
+          29,
+          33,
+          57,
+          69,
+          99
+        ]
       },
       {
         "source": "codex-rs/app-server/src/startup_config.rs",
-        "baseline_sha256": "fda9fa408bc2870ea1519f025cf37220a6e15f62767866da107da5b04385790a",
+        "candidate_source": "codex-rs/app-server/src/startup_config.rs",
+        "selected_sha256": "fda9fa408bc2870ea1519f025cf37220a6e15f62767866da107da5b04385790a",
         "candidate_sha256": "fda9fa408bc2870ea1519f025cf37220a6e15f62767866da107da5b04385790a",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/app-server/src/thread_sample.rs",
-        "baseline_sha256": "31715993e2bf14bba52f6b3806b62fd02a5c686c5ac8aed58dbf28ca6b38a245",
-        "candidate_sha256": "31715993e2bf14bba52f6b3806b62fd02a5c686c5ac8aed58dbf28ca6b38a245",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/app-server/src/thread_sample.rs",
+        "selected_sha256": "31715993e2bf14bba52f6b3806b62fd02a5c686c5ac8aed58dbf28ca6b38a245",
+        "candidate_sha256": "57e8c99a79c9e7f1fbc513d15947095fc11b12c62c2b1f4cf767c0bc519ea145",
+        "byte_identical": false,
+        "certified_review_records": [
+          78
+        ]
       },
       {
         "source": "codex-rs/app-server/tests/suite/v2/thread_inject_items.rs",
-        "baseline_sha256": "cbced5b49c97e6a89fab7f671b4902b754ab1549b7c5bccf869cfeed90b50a14",
-        "candidate_sha256": "cbced5b49c97e6a89fab7f671b4902b754ab1549b7c5bccf869cfeed90b50a14",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/app-server/tests/suite/v2/thread_inject_items.rs",
+        "selected_sha256": "cbced5b49c97e6a89fab7f671b4902b754ab1549b7c5bccf869cfeed90b50a14",
+        "candidate_sha256": "ab9e8b6c9a56fef4ae6c6766610c35c0d4383ca733a309e1d390066454c4a5f3",
+        "byte_identical": false,
+        "certified_review_records": [
+          99
+        ]
       },
       {
         "source": "codex-rs/app-server/tests/suite/v2/turn_start.rs",
-        "baseline_sha256": "70a231118f7964ab7d9b98c48888a2ca39d2360ff3f4c87e19e10f0b1118a2c7",
-        "candidate_sha256": "6561990faadfd4d02aed626d38a7dbfe2cda30ccf3a91dc5bcb60ed01b04ab49",
+        "candidate_source": "codex-rs/app-server/tests/suite/v2/turn_start.rs",
+        "selected_sha256": "6561990faadfd4d02aed626d38a7dbfe2cda30ccf3a91dc5bcb60ed01b04ab49",
+        "candidate_sha256": "9d585679984f7d1b7a567e15e2ddfacbbc9f3538c0579b374b1c5a0c37d9f5f1",
         "byte_identical": false,
-        "review_records": [
-          48
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          33,
+          145
+        ]
       },
       {
         "source": "codex-rs/app-server/tests/suite/v2/turn_steer.rs",
-        "baseline_sha256": "aeb6bab8a193f4f43d214ebb2464082a04dda5ab347d0c574d0b8ec1e0aa60bb",
+        "candidate_source": "codex-rs/app-server/tests/suite/v2/turn_steer.rs",
+        "selected_sha256": "165e2792da6556b41d303486bc652463560413943b0f90c56217da1cbcad980b",
         "candidate_sha256": "165e2792da6556b41d303486bc652463560413943b0f90c56217da1cbcad980b",
-        "byte_identical": false,
-        "review_records": [
-          48
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "byte_identical": true,
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/cli/src/exec_server_command.rs",
-        "baseline_sha256": "81ea8bda0e47748611278aa3c533d3a7bbfe936a1ff2779ec517f96e72663e5b",
-        "candidate_sha256": "09bb38a73075ac6941f781c94cb6ebacec8d70032ea2e5fd37aa749b94a4039b",
+        "candidate_source": "codex-rs/exec-server-cli/src/command.rs",
+        "selected_sha256": "09bb38a73075ac6941f781c94cb6ebacec8d70032ea2e5fd37aa749b94a4039b",
+        "candidate_sha256": "770abee73a95c63b83f86c28e975881270b033b0e07fc0b718e6b186b1f87d01",
         "byte_identical": false,
-        "review_records": [
-          39
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          13
+        ]
       },
       {
         "source": "codex-rs/cli/src/exec_server_credential.rs",
-        "baseline_sha256": "8b81f34bd61b4d2f062ce8bc731da34dcc5e6fb39aa62c5dbbb787feb322381f",
+        "candidate_source": "codex-rs/exec-server-cli/src/exec_server_credential.rs",
+        "selected_sha256": "8b81f34bd61b4d2f062ce8bc731da34dcc5e6fb39aa62c5dbbb787feb322381f",
         "candidate_sha256": "8b81f34bd61b4d2f062ce8bc731da34dcc5e6fb39aa62c5dbbb787feb322381f",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/cli/src/exec_server_telemetry.rs",
-        "baseline_sha256": "50403d543b390163236a1d853cfa0dff0e66855849591b9b59280d45e865463a",
-        "candidate_sha256": "50403d543b390163236a1d853cfa0dff0e66855849591b9b59280d45e865463a",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/exec-server-cli/src/exec_server_telemetry.rs",
+        "selected_sha256": "50403d543b390163236a1d853cfa0dff0e66855849591b9b59280d45e865463a",
+        "candidate_sha256": "657944a07c562258e51a2ac52c1ed021d00d1047767221dec4e5a74d574d298d",
+        "byte_identical": false,
+        "certified_review_records": [
+          13
+        ]
       },
       {
         "source": "codex-rs/code-mode-runtime/src/lib.rs",
-        "baseline_sha256": "30c6333abb1345a9befd15a32312e5e48329db66756fbcfca1ab9e3fbdba7c6f",
-        "candidate_sha256": "fc3771ce78308735df18117a02f0862b7edef31ae4efda0df86149594769e265",
+        "candidate_source": "codex-rs/code-mode-runtime/src/lib.rs",
+        "selected_sha256": "fc3771ce78308735df18117a02f0862b7edef31ae4efda0df86149594769e265",
+        "candidate_sha256": "3c6973ff5328c76d71f9be7d029fdaca364cfb5b3db4b1367d51ebc7a54069eb",
         "byte_identical": false,
-        "review_records": [
-          113
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          71,
+          72
+        ]
       },
       {
         "source": "codex-rs/code-mode-runtime/src/v8_init.rs",
-        "baseline_sha256": "d923e9be4ac679c0f3b09e3c0f84bf381eb2a0de81a8a88838aea64ac6d34ff7",
+        "candidate_source": "codex-rs/code-mode-runtime/src/v8_init.rs",
+        "selected_sha256": "d923e9be4ac679c0f3b09e3c0f84bf381eb2a0de81a8a88838aea64ac6d34ff7",
         "candidate_sha256": "d923e9be4ac679c0f3b09e3c0f84bf381eb2a0de81a8a88838aea64ac6d34ff7",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/codex-api/src/api_bridge.rs",
-        "baseline_sha256": "68f411a2c3d762f6408a4c15c8c3a4dbcffcecd3501fb3f7281689d163f2bc5a",
+        "candidate_source": "codex-rs/codex-api/src/api_bridge.rs",
+        "selected_sha256": "c169f92948739d2e89c12f68d97846d4985972668850c7cdce5b2ff7a2952f2e",
         "candidate_sha256": "c169f92948739d2e89c12f68d97846d4985972668850c7cdce5b2ff7a2952f2e",
-        "byte_identical": false,
-        "review_records": [
-          94
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "byte_identical": true,
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/codex-api/src/error.rs",
-        "baseline_sha256": "dbb3dde2968c4aa02d45e9529c17d1e6cfd1b80791f61448b7c6414d3f808c73",
+        "candidate_source": "codex-rs/codex-api/src/error.rs",
+        "selected_sha256": "66246271de1f66146cb74c3dc3462e93c6faeaa993baf71c377af592b25c7f4d",
         "candidate_sha256": "66246271de1f66146cb74c3dc3462e93c6faeaa993baf71c377af592b25c7f4d",
-        "byte_identical": false,
-        "review_records": [
-          94
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "byte_identical": true,
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/codex-mcp/src/client_tool_catalog.rs",
-        "baseline_sha256": "f2e897412330005b7eb60e4e7cc3864d3240ea459ddba3f315af02c101fb47e9",
+        "candidate_source": "codex-rs/codex-mcp/src/client_tool_catalog.rs",
+        "selected_sha256": "f2e897412330005b7eb60e4e7cc3864d3240ea459ddba3f315af02c101fb47e9",
         "candidate_sha256": "f2e897412330005b7eb60e4e7cc3864d3240ea459ddba3f315af02c101fb47e9",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/codex-mcp/src/connection_manager.rs",
-        "baseline_sha256": "b226c90ffe1b5daea7b6816408fe50c48ef7d3a8cec95aece29bbbea608316b2",
-        "candidate_sha256": "b226c90ffe1b5daea7b6816408fe50c48ef7d3a8cec95aece29bbbea608316b2",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/codex-mcp/src/connection_manager.rs",
+        "selected_sha256": "b226c90ffe1b5daea7b6816408fe50c48ef7d3a8cec95aece29bbbea608316b2",
+        "candidate_sha256": "968b726959997b7fe8b89612bf31e4a7fc901e5bc0a4ff4dedf9de4c6f8b03fd",
+        "byte_identical": false,
+        "certified_review_records": [
+          6,
+          147
+        ]
       },
       {
         "source": "codex-rs/codex-mcp/src/connection_manager/tool_catalog.rs",
-        "baseline_sha256": "939ebf1a661cc19af5490112a860233d99eb7d12a7e21f822e5ad6c6e893d444",
-        "candidate_sha256": "939ebf1a661cc19af5490112a860233d99eb7d12a7e21f822e5ad6c6e893d444",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/codex-mcp/src/connection_manager/tool_catalog.rs",
+        "selected_sha256": "939ebf1a661cc19af5490112a860233d99eb7d12a7e21f822e5ad6c6e893d444",
+        "candidate_sha256": "24ace696aeec69aed8099059ae3a5632c6d4f2793831d9bc3c0e8d64bb808d5a",
+        "byte_identical": false,
+        "certified_review_records": [
+          6
+        ]
       },
       {
         "source": "codex-rs/codex-mcp/src/mcp/mod.rs",
-        "baseline_sha256": "7d4e3a5796a9d557d2130acdb8c5d2dc9d6b6241926018a422ff5550d095cccc",
-        "candidate_sha256": "7d4e3a5796a9d557d2130acdb8c5d2dc9d6b6241926018a422ff5550d095cccc",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/codex-mcp/src/mcp/mod.rs",
+        "selected_sha256": "7d4e3a5796a9d557d2130acdb8c5d2dc9d6b6241926018a422ff5550d095cccc",
+        "candidate_sha256": "79a8900bdbf4810f5e894325a8f033e6993a5935f7432d875585835f13ea45bf",
+        "byte_identical": false,
+        "certified_review_records": [
+          147
+        ]
       },
       {
         "source": "codex-rs/codex-mcp/src/rmcp_client.rs",
-        "baseline_sha256": "096694dd52c0bbd4134de487f74f3e0d018cddc20adacfca46048ca2ddf191fd",
-        "candidate_sha256": "096694dd52c0bbd4134de487f74f3e0d018cddc20adacfca46048ca2ddf191fd",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/codex-mcp/src/rmcp_client.rs",
+        "selected_sha256": "096694dd52c0bbd4134de487f74f3e0d018cddc20adacfca46048ca2ddf191fd",
+        "candidate_sha256": "441575e72e8a8ceeba7fac4513792f3b4b6e23c21515b55a380fc5f99afcf94c",
+        "byte_identical": false,
+        "certified_review_records": [
+          85,
+          147
+        ]
       },
       {
         "source": "codex-rs/codex-mcp/src/tool_catalog_cache.rs",
-        "baseline_sha256": "3abb0785975e5c262df255e8119acac430d2cafc717db93b0a87157caa8bd80e",
+        "candidate_source": "codex-rs/codex-mcp/src/tool_catalog_cache.rs",
+        "selected_sha256": "3abb0785975e5c262df255e8119acac430d2cafc717db93b0a87157caa8bd80e",
         "candidate_sha256": "3abb0785975e5c262df255e8119acac430d2cafc717db93b0a87157caa8bd80e",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/config/src/types.rs",
-        "baseline_sha256": "1245e595fd1be62e2f8ec4a8510d29efae1f2be5f12b3db892e1cfe2d16c3530",
-        "candidate_sha256": "1245e595fd1be62e2f8ec4a8510d29efae1f2be5f12b3db892e1cfe2d16c3530",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/config/src/types.rs",
+        "selected_sha256": "1245e595fd1be62e2f8ec4a8510d29efae1f2be5f12b3db892e1cfe2d16c3530",
+        "candidate_sha256": "3524a2be1e24af0494ced0e1660207d5a8de39e44f92a42d771295b7ed2d7ac6",
+        "byte_identical": false,
+        "certified_review_records": [
+          4,
+          29,
+          30,
+          32,
+          90
+        ]
       },
       {
         "source": "codex-rs/connectors/src/connector_runtime/mod.rs",
-        "baseline_sha256": "97c6c191db8c54458db3c2a27d2418dc3e6f639f897d6f4257dc0f0bd17ab358",
-        "candidate_sha256": "97c6c191db8c54458db3c2a27d2418dc3e6f639f897d6f4257dc0f0bd17ab358",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/connectors/src/connector_runtime/mod.rs",
+        "selected_sha256": "97c6c191db8c54458db3c2a27d2418dc3e6f639f897d6f4257dc0f0bd17ab358",
+        "candidate_sha256": "bad1272e99926f3672f1f9047ed8b12fb14ec3df71a37effa4c68c683bfa86ea",
+        "byte_identical": false,
+        "certified_review_records": [
+          6
+        ]
       },
       {
         "source": "codex-rs/core-plugins/src/loader.rs",
-        "baseline_sha256": "4563a09ab7ad1f2400cfc71a1d0640d165f321f8c0f8c97e0a24c6494a74aaa7",
-        "candidate_sha256": "4563a09ab7ad1f2400cfc71a1d0640d165f321f8c0f8c97e0a24c6494a74aaa7",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/core-plugins/src/loader.rs",
+        "selected_sha256": "4563a09ab7ad1f2400cfc71a1d0640d165f321f8c0f8c97e0a24c6494a74aaa7",
+        "candidate_sha256": "a3842709f53e8d1c6604d0e278f6f7afc309bc3451db8e61267aa0a794501802",
+        "byte_identical": false,
+        "certified_review_records": [
+          59
+        ]
       },
       {
         "source": "codex-rs/core/src/agent/agent_resolver.rs",
-        "baseline_sha256": "937b7e27ea39a5970ee0ad9696aad8db8d118a118313d83fb4ea0bc8b632946a",
+        "candidate_source": "codex-rs/core/src/agent/agent_resolver.rs",
+        "selected_sha256": "937b7e27ea39a5970ee0ad9696aad8db8d118a118313d83fb4ea0bc8b632946a",
         "candidate_sha256": "937b7e27ea39a5970ee0ad9696aad8db8d118a118313d83fb4ea0bc8b632946a",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/core/src/agent/child_config.rs",
-        "baseline_sha256": "ca8257ec568bc97f85c84f3ed54b38d9e3b43a96f252492ebba38cddb0aec232",
-        "candidate_sha256": "ca8257ec568bc97f85c84f3ed54b38d9e3b43a96f252492ebba38cddb0aec232",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/core/src/agent/child_config.rs",
+        "selected_sha256": "ca8257ec568bc97f85c84f3ed54b38d9e3b43a96f252492ebba38cddb0aec232",
+        "candidate_sha256": "e41280fdf7e69dedc98dd1f4f66db56d6ea22cda3525e96e0480dabae3b49f51",
+        "byte_identical": false,
+        "certified_review_records": [
+          150
+        ]
       },
       {
         "source": "codex-rs/core/src/agent/control/api.rs",
-        "baseline_sha256": "64184e5f2927f5befbc3f08baefb8dc4ed6d750b541b16d68a5dab2c4225dd46",
+        "candidate_source": "codex-rs/core/src/agent/control/api.rs",
+        "selected_sha256": "64184e5f2927f5befbc3f08baefb8dc4ed6d750b541b16d68a5dab2c4225dd46",
         "candidate_sha256": "64184e5f2927f5befbc3f08baefb8dc4ed6d750b541b16d68a5dab2c4225dd46",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/core/src/agent/control/spawn.rs",
-        "baseline_sha256": "ef28e41960381a4c789904d8dec9cd6a1f3cf1baf7772d444c4061f731badc23",
-        "candidate_sha256": "f05a36b52713f752b1734cafa07eed5dccc9816dc05cba767c1853bf952db770",
+        "candidate_source": "codex-rs/core/src/agent/control/spawn.rs",
+        "selected_sha256": "f05a36b52713f752b1734cafa07eed5dccc9816dc05cba767c1853bf952db770",
+        "candidate_sha256": "5e1ee008a227c0923ff8f69337e76823d73e40a8e402425c34e883bc7f3368e3",
         "byte_identical": false,
-        "review_records": [
-          47,
-          126
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          12,
+          105,
+          157
+        ]
       },
       {
         "source": "codex-rs/core/src/agent/control/spawn_guard.rs",
-        "baseline_sha256": "0158338ab49f5a42a83abef6a3ef412f4b7e60a443d48a8df553768663579f36",
-        "candidate_sha256": "0158338ab49f5a42a83abef6a3ef412f4b7e60a443d48a8df553768663579f36",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/core/src/agent/control/spawn_guard.rs",
+        "selected_sha256": "0158338ab49f5a42a83abef6a3ef412f4b7e60a443d48a8df553768663579f36",
+        "candidate_sha256": "184d302e8507153c48eaee0b0ef52582180b692577f3bb7df444d833beb119d4",
+        "byte_identical": false,
+        "certified_review_records": [
+          12,
+          105
+        ]
       },
       {
         "source": "codex-rs/core/src/agent/control_tests.rs",
-        "baseline_sha256": "2dc6f77e98ee343f3c669a94227c4a0f281e8d4ae31607ba831353ddeb76c5bf",
-        "candidate_sha256": "9e60cbd44abce5a1fabf950c959041a9cd06b0b78ece17d7a6717dc8b1f175f6",
+        "candidate_source": "codex-rs/core/src/agent/control_tests.rs",
+        "selected_sha256": "9e60cbd44abce5a1fabf950c959041a9cd06b0b78ece17d7a6717dc8b1f175f6",
+        "candidate_sha256": "37700e5581e69f54e20470e39859bb7848f6b5c55ac365a639a361a20d549352",
         "byte_identical": false,
-        "review_records": [
-          126
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          11,
+          105
+        ]
       },
       {
         "source": "codex-rs/core/src/mcp_tool_call.rs",
-        "baseline_sha256": "016b00c17bc4a6dc0090d4c8237ecf967a8b78be4ad72798d76a632ae2d5a2cd",
-        "candidate_sha256": "0bc2f4195173de6b2142d3e24d3bb344ce86e98f70d7441c35d3b494dec2716b",
+        "candidate_source": "codex-rs/core/src/mcp_tool_call.rs",
+        "selected_sha256": "0bc2f4195173de6b2142d3e24d3bb344ce86e98f70d7441c35d3b494dec2716b",
+        "candidate_sha256": "7dcde75d8d18649d9b6fc3f4f14bd67f1ca065488da7a71d11cfb536fdd567c0",
         "byte_identical": false,
-        "review_records": [
-          49
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          92,
+          113,
+          152,
+          158
+        ]
       },
       {
         "source": "codex-rs/core/src/session_rollout_init_error.rs",
-        "baseline_sha256": "10a50d445e53527f048c7709b00766d973382eaf0420397b1c1c6eb48132a91e",
+        "candidate_source": "codex-rs/core/src/session_rollout_init_error.rs",
+        "selected_sha256": "10a50d445e53527f048c7709b00766d973382eaf0420397b1c1c6eb48132a91e",
         "candidate_sha256": "10a50d445e53527f048c7709b00766d973382eaf0420397b1c1c6eb48132a91e",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/core/src/thread_manager/shutdown.rs",
-        "baseline_sha256": "9cc938d0f4c55e40d954a1e7b793e3fad19321b48983f0966420c47ef06afdbe",
+        "candidate_source": "codex-rs/core/src/thread_manager/shutdown.rs",
+        "selected_sha256": "9cc938d0f4c55e40d954a1e7b793e3fad19321b48983f0966420c47ef06afdbe",
         "candidate_sha256": "9cc938d0f4c55e40d954a1e7b793e3fad19321b48983f0966420c47ef06afdbe",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/core/src/thread_spawn.rs",
-        "baseline_sha256": "05af9b27acef71577a3c9a26765a37123d84d8346884b6fcb16dbbad7054e321",
-        "candidate_sha256": "d922b962b03345e39a357727468816852bb1d99fc24eb08496147d65d2e24306",
+        "candidate_source": "codex-rs/core/src/thread_spawn.rs",
+        "selected_sha256": "d922b962b03345e39a357727468816852bb1d99fc24eb08496147d65d2e24306",
+        "candidate_sha256": "32d0a382e893a6103631f01f2c74b1da56a3119d068966c77691fdc30438c7dd",
         "byte_identical": false,
-        "review_records": [
-          47
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          12
+        ]
       },
       {
         "source": "codex-rs/core/src/tools/approvals.rs",
-        "baseline_sha256": "c3092174939229bb7952eceb9f38e8b640df67cd22e32258c8d133223f6c1288",
-        "candidate_sha256": "611c88a6525db2e40a9c2136ec333b41942f85634ab0ab619359e0669681375a",
+        "candidate_source": "codex-rs/core/src/tools/approvals.rs",
+        "selected_sha256": "611c88a6525db2e40a9c2136ec333b41942f85634ab0ab619359e0669681375a",
+        "candidate_sha256": "0ec12637d65ac587b0e42509a606e6e7e1a054a09841c4259c26bbad75504d43",
         "byte_identical": false,
-        "review_records": [
-          112
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          39,
+          46,
+          92,
+          145,
+          146
+        ]
       },
       {
         "source": "codex-rs/core/src/tools/handlers/dynamic.rs",
-        "baseline_sha256": "97986c9a4af552ff6f069781f7c3356d0ad671596376f6084c3d3d871870eb94",
+        "candidate_source": "codex-rs/core/src/tools/handlers/dynamic.rs",
+        "selected_sha256": "97986c9a4af552ff6f069781f7c3356d0ad671596376f6084c3d3d871870eb94",
         "candidate_sha256": "97986c9a4af552ff6f069781f7c3356d0ad671596376f6084c3d3d871870eb94",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/core/src/tools/handlers/mcp.rs",
-        "baseline_sha256": "e4c87696d1e7668b69799526d5c226d23f6fde0b0ae8f5681e645f86760d4406",
-        "candidate_sha256": "acfad4a1b3627e83bee7950cbaf7fa122412a9416539d07ea126c069087cb872",
+        "candidate_source": "codex-rs/core/src/tools/handlers/mcp.rs",
+        "selected_sha256": "acfad4a1b3627e83bee7950cbaf7fa122412a9416539d07ea126c069087cb872",
+        "candidate_sha256": "d2685131da1da1402fd7a2282d06a7ab13cbc8087a2c96719b044305983ac1f9",
         "byte_identical": false,
-        "review_records": [
-          80,
-          97
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          91
+        ]
       },
       {
         "source": "codex-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs",
-        "baseline_sha256": "bcd9b05f785196f211f7e36a072b99c6ec7c332702b677d6ba64f12a675cd27f",
+        "candidate_source": "codex-rs/core/src/tools/handlers/multi_agents_v2/message_tool.rs",
+        "selected_sha256": "bcd9b05f785196f211f7e36a072b99c6ec7c332702b677d6ba64f12a675cd27f",
         "candidate_sha256": "bcd9b05f785196f211f7e36a072b99c6ec7c332702b677d6ba64f12a675cd27f",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/core/src/tools/handlers/request_user_input.rs",
-        "baseline_sha256": "f4975978234d0ff7c143e6a5616d5523b9bddac044a6e39f8a0a32dcf0f56a38",
+        "candidate_source": "codex-rs/core/src/tools/handlers/request_user_input.rs",
+        "selected_sha256": "f4975978234d0ff7c143e6a5616d5523b9bddac044a6e39f8a0a32dcf0f56a38",
         "candidate_sha256": "f4975978234d0ff7c143e6a5616d5523b9bddac044a6e39f8a0a32dcf0f56a38",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/core/src/tools/handlers/request_user_input_tests.rs",
-        "baseline_sha256": "f903e179ccf39a849492a039dcb65f858e8c0e0ee4ea1d2bc676ad3c691795e6",
-        "candidate_sha256": "f903e179ccf39a849492a039dcb65f858e8c0e0ee4ea1d2bc676ad3c691795e6",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/core/src/tools/handlers/request_user_input_tests.rs",
+        "selected_sha256": "f903e179ccf39a849492a039dcb65f858e8c0e0ee4ea1d2bc676ad3c691795e6",
+        "candidate_sha256": "7ba46eda1f8eb96886be6894cf19f1ddce5b7022c267df36882e9462e62cd095",
+        "byte_identical": false,
+        "certified_review_records": [
+          91
+        ]
       },
       {
         "source": "codex-rs/core/src/tools/spec_plan.rs",
-        "baseline_sha256": "83a7601984e2c5723c938588a704e68fd9f36ccdac607804517ec18de66155bd",
-        "candidate_sha256": "d97205602296e4e27c9f3183b7126fe2d5ca4cf6f4d79ea1ae5761f1da266e6f",
+        "candidate_source": "codex-rs/core/src/tools/spec_plan.rs",
+        "selected_sha256": "d97205602296e4e27c9f3183b7126fe2d5ca4cf6f4d79ea1ae5761f1da266e6f",
+        "candidate_sha256": "d2bc16c3fb57c9cb7459efff6723f8bd14fa079ab531de2afe0616d28a5bc2ce",
         "byte_identical": false,
-        "review_records": [
-          126
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          91
+        ]
       },
       {
         "source": "codex-rs/core/tests/suite/request_user_input_async.rs",
-        "baseline_sha256": "4fac245ea53486672d8b4902369fec80adf9571c171cafde541095063fdbd722",
+        "candidate_source": "codex-rs/core/tests/suite/request_user_input_async.rs",
+        "selected_sha256": "4fac245ea53486672d8b4902369fec80adf9571c171cafde541095063fdbd722",
         "candidate_sha256": "4fac245ea53486672d8b4902369fec80adf9571c171cafde541095063fdbd722",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/exec-server/src/client.rs",
-        "baseline_sha256": "401ac4a862e03257034bdf1f2aa59450aca77aeb2430fec13cdcd16cf833db65",
-        "candidate_sha256": "401ac4a862e03257034bdf1f2aa59450aca77aeb2430fec13cdcd16cf833db65",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/exec-server/src/client.rs",
+        "selected_sha256": "401ac4a862e03257034bdf1f2aa59450aca77aeb2430fec13cdcd16cf833db65",
+        "candidate_sha256": "2de6e42219fc783d55b5380b9cb841301085d53e9dc48819c447b9402a33201f",
+        "byte_identical": false,
+        "certified_review_records": [
+          17,
+          133
+        ]
       },
       {
         "source": "codex-rs/exec-server/src/client_transport.rs",
-        "baseline_sha256": "9a3cd08249b20665bba2a0f5734fd35158d438a7e99259aeea1064e489e57bef",
+        "candidate_source": "codex-rs/exec-server/src/client_transport.rs",
+        "selected_sha256": "9a3cd08249b20665bba2a0f5734fd35158d438a7e99259aeea1064e489e57bef",
         "candidate_sha256": "9a3cd08249b20665bba2a0f5734fd35158d438a7e99259aeea1064e489e57bef",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/exec-server/src/local_file_system.rs",
-        "baseline_sha256": "cdde849d2bd265cf199bb01bd9051060d3c9576d2b6757104d52324bf6dcaea2",
+        "candidate_source": "codex-rs/exec-server/src/local_file_system.rs",
+        "selected_sha256": "cdde849d2bd265cf199bb01bd9051060d3c9576d2b6757104d52324bf6dcaea2",
         "candidate_sha256": "cdde849d2bd265cf199bb01bd9051060d3c9576d2b6757104d52324bf6dcaea2",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/exec-server/src/process_sandbox.rs",
-        "baseline_sha256": "e66a8116655beeef5ccb9070f43b9945f9688adf8277ed6a7a91b0a04969aebe",
+        "candidate_source": "codex-rs/exec-server/src/process_sandbox.rs",
+        "selected_sha256": "e66a8116655beeef5ccb9070f43b9945f9688adf8277ed6a7a91b0a04969aebe",
         "candidate_sha256": "e66a8116655beeef5ccb9070f43b9945f9688adf8277ed6a7a91b0a04969aebe",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/exec-server/src/remote_file_system.rs",
-        "baseline_sha256": "bc601a0341ef3c552672147c74179878e233a3a03fff9f0cdc9673011a85b1fb",
-        "candidate_sha256": "bc601a0341ef3c552672147c74179878e233a3a03fff9f0cdc9673011a85b1fb",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/exec-server/src/remote_file_system.rs",
+        "selected_sha256": "bc601a0341ef3c552672147c74179878e233a3a03fff9f0cdc9673011a85b1fb",
+        "candidate_sha256": "95bda4ecd1e85c50bcca88eca730dbaf60174da57a838b6e02dc832e16a0f1ff",
+        "byte_identical": false,
+        "certified_review_records": [
+          17,
+          122
+        ]
       },
       {
         "source": "codex-rs/exec-server/src/shell_snapshot.rs",
-        "baseline_sha256": "911a6ac4e5e5cc3132323a4a44a51479dfdf915b79fa6c275e7ab25d64b96af5",
+        "candidate_source": "codex-rs/exec-server/src/shell_snapshot.rs",
+        "selected_sha256": "911a6ac4e5e5cc3132323a4a44a51479dfdf915b79fa6c275e7ab25d64b96af5",
         "candidate_sha256": "911a6ac4e5e5cc3132323a4a44a51479dfdf915b79fa6c275e7ab25d64b96af5",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/exec-server/src/shell_snapshot_credentials.rs",
-        "baseline_sha256": "b755489fd98ee23fe99781343c1d4d6a2a31e4a4c9556b63385013de4f5b9a26",
+        "candidate_source": "codex-rs/exec-server/src/shell_snapshot_credentials.rs",
+        "selected_sha256": "b755489fd98ee23fe99781343c1d4d6a2a31e4a4c9556b63385013de4f5b9a26",
         "candidate_sha256": "b755489fd98ee23fe99781343c1d4d6a2a31e4a4c9556b63385013de4f5b9a26",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/exec/src/lib.rs",
-        "baseline_sha256": "4c8c94faec363b0c63b8a0ba5d330a8015a014ba6724473ee253ebeb8ad1446d",
-        "candidate_sha256": "e1860499175b5c8d37e061773621f41aa4098fced7c83a7bbb3bfd6c735b497e",
+        "candidate_source": "codex-rs/exec/src/lib.rs",
+        "selected_sha256": "e1860499175b5c8d37e061773621f41aa4098fced7c83a7bbb3bfd6c735b497e",
+        "candidate_sha256": "53e0d7cac90466dc088dd5457c72813ef8c0a8c56fe6466eb602c85b8f45a6f3",
         "byte_identical": false,
-        "review_records": [
-          80
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          56,
+          92,
+          121
+        ]
       },
       {
         "source": "codex-rs/ext/guardian-v2/src/async_scorer/decisions.rs",
-        "baseline_sha256": "52a082dd3f4c4f17e150aca46218182ca5460074f464afe509da97b940d2ca45",
+        "candidate_source": "codex-rs/ext/guardian-v2/src/async_scorer/decisions.rs",
+        "selected_sha256": "52a082dd3f4c4f17e150aca46218182ca5460074f464afe509da97b940d2ca45",
         "candidate_sha256": "52a082dd3f4c4f17e150aca46218182ca5460074f464afe509da97b940d2ca45",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/ext/guardian-v2/src/async_scorer/metrics.rs",
-        "baseline_sha256": "ad6fd33cf2ecaa36b80271e869fd4bab1cd73ddeb0fa5c60332186888a0b939e",
+        "candidate_source": "codex-rs/ext/guardian-v2/src/async_scorer/metrics.rs",
+        "selected_sha256": "1fb41ceb64f28592126e7f80d95ad573e07362c2db5376208346d825fe69ddb7",
         "candidate_sha256": "1fb41ceb64f28592126e7f80d95ad573e07362c2db5376208346d825fe69ddb7",
-        "byte_identical": false,
-        "review_records": [
-          94
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "byte_identical": true,
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/ext/image-generation/src/tool.rs",
-        "baseline_sha256": "fd509b6d5cb6d36e54fa05e5b1f5e746a8bd9c49fda9c3addf77dd112bb7f5b2",
-        "candidate_sha256": "5fa72d1a315eee33f17ed33e506f8ebc6f01fd3d84dbeafacec2be82d67a6e6f",
+        "candidate_source": "codex-rs/ext/image-generation/src/tool.rs",
+        "selected_sha256": "5fa72d1a315eee33f17ed33e506f8ebc6f01fd3d84dbeafacec2be82d67a6e6f",
+        "candidate_sha256": "498d8a9504df3ee7a6a696ad92c8521e9bd66b7189edcef77b94ea85ae08fe58",
         "byte_identical": false,
-        "review_records": [
-          44,
-          125
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          66
+        ]
       },
       {
         "source": "codex-rs/ext/items/src/image_generation.rs",
-        "baseline_sha256": "58bc3f9b59132595e2fb0043561838c6ad5ef5fcad762b8255b762c66434c1fa",
+        "candidate_source": "codex-rs/ext/items/src/image_generation.rs",
+        "selected_sha256": "95cf9912f208a98c580a6c05eb7033d67ee485d83e7edf460c3b1a904a793978",
         "candidate_sha256": "95cf9912f208a98c580a6c05eb7033d67ee485d83e7edf460c3b1a904a793978",
-        "byte_identical": false,
-        "review_records": [
-          125
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "byte_identical": true,
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/features/src/lib.rs",
-        "baseline_sha256": "1a414c7d21e59fc99c65e23496b125d9f5561a9bc002dd9a6b3e118503f9282c",
-        "candidate_sha256": "092fa6e9bd6b53d4a63aec2130fdfb90b74b28f222135ff34c499b58a53dc963",
+        "candidate_source": "codex-rs/features/src/lib.rs",
+        "selected_sha256": "092fa6e9bd6b53d4a63aec2130fdfb90b74b28f222135ff34c499b58a53dc963",
+        "candidate_sha256": "c29e2b1a8def4b973788a4bc41044561cc49e062da678a9298e4e6abbae595af",
         "byte_identical": false,
-        "review_records": [
-          23,
-          33,
-          55,
-          69,
-          91,
-          93,
-          97,
-          106
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "certified_review_records": [
+          74,
+          78,
+          83,
+          101,
+          111,
+          112,
+          147
+        ]
       },
       {
         "source": "codex-rs/file-system/src/environment_accessor.rs",
-        "baseline_sha256": "9654519862cea3002ea18d3a0fa145716f18b85f925eec62c5ed64c557de7164",
+        "candidate_source": "codex-rs/file-system/src/environment_accessor.rs",
+        "selected_sha256": "9654519862cea3002ea18d3a0fa145716f18b85f925eec62c5ed64c557de7164",
         "candidate_sha256": "9654519862cea3002ea18d3a0fa145716f18b85f925eec62c5ed64c557de7164",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/file-system/src/lib.rs",
-        "baseline_sha256": "a993aeb0a31859d50256444a70092f7582bb9ae60fcb44ed4fb5ef2e6fc9c603",
-        "candidate_sha256": "a993aeb0a31859d50256444a70092f7582bb9ae60fcb44ed4fb5ef2e6fc9c603",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/file-system/src/lib.rs",
+        "selected_sha256": "a993aeb0a31859d50256444a70092f7582bb9ae60fcb44ed4fb5ef2e6fc9c603",
+        "candidate_sha256": "0d33b04bdc0d2494352cfa403df50b3e4a6e918c99e1aee0a6222e06a58f5f22",
+        "byte_identical": false,
+        "certified_review_records": [
+          17
+        ]
       },
       {
         "source": "codex-rs/file-system/src/nfs.rs",
-        "baseline_sha256": "ebd4950d3bcbdf287485cfdcfd45910167e1717923f47ac5a42cf2831fd977da",
+        "candidate_source": "codex-rs/file-system/src/nfs.rs",
+        "selected_sha256": "ebd4950d3bcbdf287485cfdcfd45910167e1717923f47ac5a42cf2831fd977da",
         "candidate_sha256": "ebd4950d3bcbdf287485cfdcfd45910167e1717923f47ac5a42cf2831fd977da",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/hooks/src/engine/command_runner.rs",
-        "baseline_sha256": "8f30ad4d5f31633822b3718dd3e967df98a17b1b0fd42c9a12f8cb52973c3166",
+        "candidate_source": "codex-rs/hooks/src/engine/command_runner.rs",
+        "selected_sha256": "8f30ad4d5f31633822b3718dd3e967df98a17b1b0fd42c9a12f8cb52973c3166",
         "candidate_sha256": "8f30ad4d5f31633822b3718dd3e967df98a17b1b0fd42c9a12f8cb52973c3166",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/hooks/src/engine/discovery.rs",
-        "baseline_sha256": "b61b90060075bf60ecad8fea012cfa332526a5badc5c2f541fda61446513d094",
+        "candidate_source": "codex-rs/hooks/src/engine/discovery.rs",
+        "selected_sha256": "b61b90060075bf60ecad8fea012cfa332526a5badc5c2f541fda61446513d094",
         "candidate_sha256": "b61b90060075bf60ecad8fea012cfa332526a5badc5c2f541fda61446513d094",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/hooks/src/engine/mcp_runner.rs",
-        "baseline_sha256": "40543c670568ca7ae64110f86f5cd3cdf2c27208c02c6892796516fb96c6f8b7",
+        "candidate_source": "codex-rs/hooks/src/engine/mcp_runner.rs",
+        "selected_sha256": "40543c670568ca7ae64110f86f5cd3cdf2c27208c02c6892796516fb96c6f8b7",
         "candidate_sha256": "40543c670568ca7ae64110f86f5cd3cdf2c27208c02c6892796516fb96c6f8b7",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/hooks/src/engine/plugin_fingerprint.rs",
-        "baseline_sha256": "66ab09a229f4c0230f1dd012692102e5fd3b1aad21c915ec05b4d9f529911dbf",
+        "candidate_source": "codex-rs/hooks/src/engine/plugin_fingerprint.rs",
+        "selected_sha256": "66ab09a229f4c0230f1dd012692102e5fd3b1aad21c915ec05b4d9f529911dbf",
         "candidate_sha256": "66ab09a229f4c0230f1dd012692102e5fd3b1aad21c915ec05b4d9f529911dbf",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/hooks/src/engine/plugin_trust.rs",
-        "baseline_sha256": "75e15014d76f19da6d932ac297a6d9df79fe2c6320933f9cb00b176235e7facf",
+        "candidate_source": "codex-rs/hooks/src/engine/plugin_trust.rs",
+        "selected_sha256": "75e15014d76f19da6d932ac297a6d9df79fe2c6320933f9cb00b176235e7facf",
         "candidate_sha256": "75e15014d76f19da6d932ac297a6d9df79fe2c6320933f9cb00b176235e7facf",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/network-proxy/src/runtime.rs",
-        "baseline_sha256": "3356c23eada6bc5f79fec7a89535f651343509a672c10ee93b252254983a2dc7",
+        "candidate_source": "codex-rs/network-proxy/src/runtime.rs",
+        "selected_sha256": "3356c23eada6bc5f79fec7a89535f651343509a672c10ee93b252254983a2dc7",
         "candidate_sha256": "3356c23eada6bc5f79fec7a89535f651343509a672c10ee93b252254983a2dc7",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/protocol/src/mcp_approval_meta.rs",
-        "baseline_sha256": "4fe90ba0e5c0e2dfc83f2deadcb57261a47913d6dd6d9276659507c31f1ec6a0",
-        "candidate_sha256": "4fe90ba0e5c0e2dfc83f2deadcb57261a47913d6dd6d9276659507c31f1ec6a0",
-        "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "candidate_source": "codex-rs/protocol/src/mcp_approval_meta.rs",
+        "selected_sha256": "4fe90ba0e5c0e2dfc83f2deadcb57261a47913d6dd6d9276659507c31f1ec6a0",
+        "candidate_sha256": "d5acc7ac1ea70e399941852e6364b369976be19f610fe8f257c44d35d599cce6",
+        "byte_identical": false,
+        "certified_review_records": [
+          113
+        ]
       },
       {
         "source": "codex-rs/responses-api-proxy/src/lib.rs",
-        "baseline_sha256": "e080ce9ef9b8e858ceee145842ad8b84ce3b38056c892e3f2115d5caeae71b71",
+        "candidate_source": "codex-rs/responses-api-proxy/src/lib.rs",
+        "selected_sha256": "e080ce9ef9b8e858ceee145842ad8b84ce3b38056c892e3f2115d5caeae71b71",
         "candidate_sha256": "e080ce9ef9b8e858ceee145842ad8b84ce3b38056c892e3f2115d5caeae71b71",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/rmcp-client/src/auth_status.rs",
-        "baseline_sha256": "c63ae45d67cd71988e6414b6c6136fc9c74da203d334932d19cc96073ef40ed6",
+        "candidate_source": "codex-rs/rmcp-client/src/auth_status.rs",
+        "selected_sha256": "c63ae45d67cd71988e6414b6c6136fc9c74da203d334932d19cc96073ef40ed6",
         "candidate_sha256": "c63ae45d67cd71988e6414b6c6136fc9c74da203d334932d19cc96073ef40ed6",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/rmcp-client/src/tool_list_changes.rs",
-        "baseline_sha256": "608ce48fe2457addf6c2de1e3bd4d914ff8308fd657c4b5f440383983ec0ac74",
+        "candidate_source": "codex-rs/rmcp-client/src/tool_list_changes.rs",
+        "selected_sha256": "608ce48fe2457addf6c2de1e3bd4d914ff8308fd657c4b5f440383983ec0ac74",
         "candidate_sha256": "608ce48fe2457addf6c2de1e3bd4d914ff8308fd657c4b5f440383983ec0ac74",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/shell-command/src/shell_snapshot_restore.rs",
-        "baseline_sha256": "90a6188a126a0be1e2e5b0e5e2193c879b8d5d9e3443650285bfdfdd29025a29",
+        "candidate_source": "codex-rs/shell-command/src/shell_snapshot_restore.rs",
+        "selected_sha256": "90a6188a126a0be1e2e5b0e5e2193c879b8d5d9e3443650285bfdfdd29025a29",
         "candidate_sha256": "90a6188a126a0be1e2e5b0e5e2193c879b8d5d9e3443650285bfdfdd29025a29",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/state/src/runtime/reclamation.rs",
-        "baseline_sha256": "833104f1e57768ae96c58f5df71d2ae3d658b3c3aeea7141ce960f68ef660650",
+        "candidate_source": "codex-rs/state/src/runtime/reclamation.rs",
+        "selected_sha256": "833104f1e57768ae96c58f5df71d2ae3d658b3c3aeea7141ce960f68ef660650",
         "candidate_sha256": "833104f1e57768ae96c58f5df71d2ae3d658b3c3aeea7141ce960f68ef660650",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/state/src/sqlite.rs",
-        "baseline_sha256": "68259b7eb86dba9590a01e00df8d22e855bfe3efb7bb1c4ed8aa959fea3484d5",
+        "candidate_source": "codex-rs/state/src/sqlite.rs",
+        "selected_sha256": "b388a260007fa8036c1007b63f44a20f7611536c66244e5e5393484ee387bfe9",
         "candidate_sha256": "b388a260007fa8036c1007b63f44a20f7611536c66244e5e5393484ee387bfe9",
-        "byte_identical": false,
-        "review_records": [
-          4,
-          5
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "byte_identical": true,
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/thread-store/src/error.rs",
-        "baseline_sha256": "d45eccd31e1c13db7d85cae513644dec5cd812a6c324a08218f3ad74120ce105",
+        "candidate_source": "codex-rs/thread-store/src/error.rs",
+        "selected_sha256": "d45eccd31e1c13db7d85cae513644dec5cd812a6c324a08218f3ad74120ce105",
         "candidate_sha256": "d45eccd31e1c13db7d85cae513644dec5cd812a6c324a08218f3ad74120ce105",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/thread-store/src/local/thread_history_materialization.rs",
-        "baseline_sha256": "47f5225cbe581f14debfc3ac197152005ed81b66d4b5c1fb993febf174dcf430",
+        "candidate_source": "codex-rs/thread-store/src/local/thread_history_materialization.rs",
+        "selected_sha256": "47f5225cbe581f14debfc3ac197152005ed81b66d4b5c1fb993febf174dcf430",
         "candidate_sha256": "47f5225cbe581f14debfc3ac197152005ed81b66d4b5c1fb993febf174dcf430",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/app-server/tests/suite/v2/attached_thread_tests.rs",
-        "baseline_sha256": "e05997e36b242475093399a6c382824af04e81c95f76158da9fc14a7cdddc9dc",
+        "candidate_source": "codex-rs/app-server/tests/suite/v2/attached_thread_tests.rs",
+        "selected_sha256": "ee073d7c9d54f79b750b9f4b00fdb2303c1f4fd26f47407ac4cd66650e3590ca",
         "candidate_sha256": "ee073d7c9d54f79b750b9f4b00fdb2303c1f4fd26f47407ac4cd66650e3590ca",
-        "byte_identical": false,
-        "review_records": [
-          27
-        ],
-        "equivalence": "Relevant implementation changes read in the listed commit records; exact-artifact retained-consumer regressions re-executed."
+        "byte_identical": true,
+        "certified_review_records": []
       },
       {
         "source": "codex-rs/app-server/tests/suite/v2/memory_read.rs",
-        "baseline_sha256": "5984fa0788103a81ce37d61aba61ef00dfb71ca61be2cb6b4a3df05864d3aada",
+        "candidate_source": "codex-rs/app-server/tests/suite/v2/memory_read.rs",
+        "selected_sha256": "5984fa0788103a81ce37d61aba61ef00dfb71ca61be2cb6b4a3df05864d3aada",
         "candidate_sha256": "5984fa0788103a81ce37d61aba61ef00dfb71ca61be2cb6b4a3df05864d3aada",
         "byte_identical": true,
-        "review_records": [],
-        "equivalence": "Byte-identical retained implementation; exact-artifact regressions re-executed."
+        "certified_review_records": []
       }
     ],
-    "unresolved_source_paths": [],
-    "review_evidence": "https://github.com/acg-box/decodex/blob/69ef0e38d74d407a1cbe84ab06ba802adc786a8a/automations/upstream/current-review.json"
+    "review_evidence": "https://github.com/acg-box/decodex/blob/c75adc57a5c6ac33423cc3aef7d701613eb4e488/automations/upstream/current-review.json",
+    "previous_qualification": "https://github.com/acg-box/decodex/blob/c75adc57a5c6ac33423cc3aef7d701613eb4e488/automations/upstream/qualification.json#retained_source_inclusion",
+    "identical_boundaries": 47,
+    "changed_boundaries_with_certified_review": 36,
+    "limit": "Source inclusion supplements the exact-artifact consumer receipts; it does not replace them."
   },
   "source_validation": {
     "role": "Fixed-source dev-small test cohort. Nextest may select its own dev-small CARGO_BIN_EXE helpers. Do not infer exact production CLI coverage from requested environment variables. Exact production behavior is recorded under retained_consumers/artifact_probes and the direct signed Code Mode helper check.",
@@ -1033,7 +1098,8 @@
     },
     "historical_only": true,
     "evidence": "https://github.com/acg-box/decodex/blob/69ef0e38d74d407a1cbe84ab06ba802adc786a8a/automations/upstream/qualification.json#source_validation",
-    "current_maintenance_scope": "Historical upstream source-suite evidence only. No upstream tests executed in the current 158-commit catch-up; routine validation selects retained Decodex consumers."
+    "current_maintenance_scope": "No upstream tests executed for this migration. Reuse the certified 158-commit source review and qualified candidate consumer receipts.",
+    "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8"
   },
   "retained_consumers": {
     "tests": [
@@ -1046,7 +1112,9 @@
           "test": "account_launch::agent_process::native_tests::archive::installed_native_archive_roundtrip_refreshes_without_restarting_either_process"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_model_not_found_does_not_schedule_capacity_retries",
@@ -1057,7 +1125,9 @@
           "test": "account_launch::agent_process::native_tests::capacity::installed_model_not_found_does_not_schedule_capacity_retries"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_code_mode_yielded_cells_keep_their_outputs",
@@ -1068,7 +1138,9 @@
           "test": "account_launch::agent_process::native_tests::code_mode::installed_native_code_mode_yielded_cells_keep_their_outputs"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_parallel_dynamic_tools_preserve_ids_and_result_order",
@@ -1079,7 +1151,9 @@
           "test": "account_launch::agent_process::native_tests::code_mode::installed_native_parallel_dynamic_tools_preserve_ids_and_result_order"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_fork_preserves_source_provider_after_default_changes",
@@ -1090,7 +1164,9 @@
           "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "fresh_execution"
       },
       {
         "test": "installed_recap_public_socket_preserves_parent_and_exact_request_identity",
@@ -1101,7 +1177,9 @@
           "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_discards_partial_compaction_output_after_restart",
@@ -1112,7 +1190,9 @@
           "test": "account_launch::agent_process::native_tests::compaction::installed_native_discards_partial_compaction_output_after_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_preserves_prompt_before_compaction_error_and_after_restart",
@@ -1123,7 +1203,9 @@
           "test": "account_launch::agent_process::native_tests::compaction::installed_native_preserves_prompt_before_compaction_error_and_after_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_streams_auto_compaction_and_resumes_its_checkpoint",
@@ -1134,7 +1216,9 @@
           "test": "account_launch::agent_process::native_tests::compaction::installed_native_streams_auto_compaction_and_resumes_its_checkpoint"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_daybreak_preference_is_staged_without_selecting_access",
@@ -1145,7 +1229,9 @@
           "test": "account_launch::agent_process::native_tests::config_recovery::installed_native_daybreak_preference_is_staged_without_selecting_access"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_patch_pages_survive_cold_restart_without_replay",
@@ -1156,7 +1242,9 @@
           "test": "account_launch::agent_process::native_tests::detail::installed_native_patch_pages_survive_cold_restart_without_replay"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade",
@@ -1167,7 +1255,9 @@
           "test": "account_launch::agent_process::native_tests::discovery::installed_native_enterprise_mcp_requires_thread_and_rejects_project_downgrade"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_mcp_capabilities_survive_tool_discovery_failure",
@@ -1178,7 +1268,9 @@
           "test": "account_launch::agent_process::native_tests::discovery::installed_native_mcp_capabilities_survive_tool_discovery_failure"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_configured_flex_survives_cold_resume",
@@ -1189,7 +1281,9 @@
           "test": "account_launch::agent_process::native_tests::flex::installed_native_configured_flex_survives_cold_resume"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_flex_survives_settings_and_cold_resume",
@@ -1200,7 +1294,9 @@
           "test": "account_launch::agent_process::native_tests::flex::installed_native_flex_survives_settings_and_cold_resume"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_active_goal_preserves_native_budget_and_elapsed_accounting",
@@ -1211,7 +1307,9 @@
           "test": "account_launch::agent_process::native_tests::goals::installed_active_goal_preserves_native_budget_and_elapsed_accounting"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_goal_reads_preserve_native_state_after_restart",
@@ -1222,7 +1320,9 @@
           "test": "account_launch::agent_process::native_tests::goals::installed_native_goal_reads_preserve_native_state_after_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_hook_trust_enablement_and_modified_content_are_independent",
@@ -1233,7 +1333,9 @@
           "test": "account_launch::agent_process::native_tests::hook_settings::installed_hook_trust_enablement_and_modified_content_are_independent"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_memory_view_selects_versions_without_model_calls_or_fallback",
@@ -1244,7 +1346,9 @@
           "test": "account_launch::agent_process::native_tests::memory::installed_native_memory_view_selects_versions_without_model_calls_or_fallback"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_continuation_uses_live_details_and_rejects_restart_authority",
@@ -1255,7 +1359,9 @@
           "test": "account_launch::agent_process::native_tests::misalignment::installed_native_continuation_uses_live_details_and_rejects_restart_authority"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_model_access_metadata_refreshes_after_cold_restart",
@@ -1266,7 +1372,9 @@
           "test": "account_launch::agent_process::native_tests::model_access::installed_native_model_access_metadata_refreshes_after_cold_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_named_permission_selection_during_active_turn_survives_restart",
@@ -1277,7 +1385,9 @@
           "test": "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_permission_selection_publishes_and_survives_native_restart",
@@ -1288,7 +1398,9 @@
           "test": "account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay",
@@ -1299,7 +1411,9 @@
           "test": "account_launch::agent_process::native_tests::prediction::installed_prediction_fork_inherits_context_and_cleans_up_without_parent_replay"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "native_new_project_conversations_materialize_before_first_input",
@@ -1310,7 +1424,9 @@
           "test": "account_launch::agent_process::native_tests::project_sync::native_new_project_conversations_materialize_before_first_input"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "native_project_reconciles_retained_conversation_and_survives_restart",
@@ -1321,7 +1437,9 @@
           "test": "account_launch::agent_process::native_tests::project_sync::native_project_reconciles_retained_conversation_and_survives_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "native_guardian_details_survive_cold_resume_without_raw_subscription",
@@ -1332,7 +1450,9 @@
           "test": "account_launch::agent_process::native_tests::project_work::native_guardian_details_survive_cold_resume_without_raw_subscription"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "native_legacy_continuation_preserves_history_and_permissions_after_restart",
@@ -1343,7 +1463,9 @@
           "test": "account_launch::agent_process::native_tests::project_work::native_legacy_continuation_preserves_history_and_permissions_after_restart"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "native_project_global_review_and_private_records_cross_retained_bridge",
@@ -1354,7 +1476,9 @@
           "test": "account_launch::agent_process::native_tests::project_work::native_project_global_review_and_private_records_cross_retained_bridge"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_read_state_preserves_new_results_and_cold_marks",
@@ -1365,7 +1489,9 @@
           "test": "account_launch::agent_process::native_tests::read_state::installed_native_read_state_preserves_new_results_and_cold_marks"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_realtime_history_survives_agent_and_cold_bridge",
@@ -1376,7 +1502,9 @@
           "test": "account_launch::agent_process::native_tests::realtime::installed_native_realtime_history_survives_agent_and_cold_bridge"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_recap_uses_native_history_and_invalidates_after_new_input",
@@ -1387,7 +1515,9 @@
           "test": "account_launch::agent_process::native_tests::recap_service::installed_recap_uses_native_history_and_invalidates_after_new_input"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_guardian_preserves_large_action",
@@ -1398,7 +1528,9 @@
           "test": "account_launch::agent_process::native_tests::reviewer::installed_native_guardian_preserves_large_action"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_child_inherits_updated_step_model",
@@ -1409,7 +1541,9 @@
           "test": "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_child_inherits_updated_step_model"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_spawn_description_follows_updated_step_model",
@@ -1420,7 +1554,9 @@
           "test": "account_launch::agent_process::native_tests::reviewer::store::live_model::child_model::installed_native_spawn_description_follows_updated_step_model"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_voice_policy_read_does_not_use_user_feature_flags",
@@ -1431,7 +1567,9 @@
           "test": "account_launch::agent_process::native_tests::reviewer::store::voice_settings_start::installed_native_voice_policy_read_does_not_use_user_feature_flags"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_warning_crosses_bridge_owner_history_and_reopen",
@@ -1442,7 +1580,9 @@
           "test": "account_launch::agent_process::native_tests::reviewer::store::warning_tests::installed_native_warning_crosses_bridge_owner_history_and_reopen"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_sampling_preserves_parent_and_blocks_tools_without_replay",
@@ -1453,7 +1593,9 @@
           "test": "account_launch::agent_process::native_tests::sample::installed_native_sampling_preserves_parent_and_blocks_tools_without_replay"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_skill_picker_inventory_and_exact_input_use_native_skill_owner",
@@ -1464,7 +1606,9 @@
           "test": "account_launch::agent_process::native_tests::skills::installed_skill_picker_inventory_and_exact_input_use_native_skill_owner"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_temporary_requests_isolate_environment_and_preserve_custom_permissions",
@@ -1475,7 +1619,9 @@
           "test": "account_launch::agent_process::native_tests::structured::installed_temporary_requests_isolate_environment_and_preserve_custom_permissions"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_usage_restores_agent_baseline_after_cold_resume",
@@ -1486,7 +1632,9 @@
           "test": "account_launch::agent_process::native_tests::usage::installed_native_usage_restores_agent_baseline_after_cold_resume"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_context_preferences_share_config_and_preserve_thresholds",
@@ -1497,7 +1645,9 @@
           "test": "account_launch::process::context_preferences_native_tests::installed_native_context_preferences_share_config_and_preserve_thresholds"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "installed_native_qualified_defaults_preserve_multi_agent_selection",
@@ -1508,7 +1658,9 @@
           "test": "account_launch::process::native_control_tests::installed_native_qualified_defaults_preserve_multi_agent_selection"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "native_child_completion_wakes_idle_root_once",
@@ -1519,7 +1671,9 @@
           "test": "agent::tests::native_agent_wake::native_child_completion_wakes_idle_root_once"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "native_nested_code_mode_work_attribution_survives_store_reopen",
@@ -1530,7 +1684,9 @@
           "test": "agent::tests::native_agent_wake::native_nested_code_mode_work_attribution_survives_store_reopen"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "native_v1_nested_code_mode_keeps_exact_work_attribution",
@@ -1541,7 +1697,9 @@
           "test": "agent::tests::native_agent_wake::native_v1_nested_code_mode_keeps_exact_work_attribution"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "native_v1_work_attribution_uses_the_native_executor",
@@ -1552,7 +1710,9 @@
           "test": "agent::tests::native_agent_wake::native_v1_work_attribution_uses_the_native_executor"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "native_agent_resume_preserves_selected_profile_policy_and_cwd",
@@ -1563,7 +1723,9 @@
           "test": "agent::tests::native_permissions::native_agent_resume_preserves_selected_profile_policy_and_cwd"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "native_child_mcp_input_preserves_policy_and_exact_request",
@@ -1574,7 +1736,9 @@
           "test": "agent::tests::native_subagent_live::mcp::native_child_mcp_input_preserves_policy_and_exact_request"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "native_child_approval_round_trip",
@@ -1585,7 +1749,9 @@
           "test": "agent::tests::native_subagent_live::native_child_approval_round_trip"
         },
         "uses_exact_native_artifact": true,
-        "passed": true
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "evidence_kind": "reused_identical_artifact_execution"
       },
       {
         "test": "native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources",
@@ -1596,7 +1762,8 @@
           "test": "agent::tests::task_history::native_search_filters_foreign_work_and_preserves_cursor_and_exact_sources"
         },
         "uses_exact_native_artifact": false,
-        "passed": true
+        "passed": true,
+        "evidence_kind": "historical_local_execution_not_rerun"
       },
       {
         "test": "native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors",
@@ -1607,10 +1774,25 @@
           "test": "agent::tests::task_history::native_search_keeps_empty_filtered_pages_and_rejects_repeated_cursors"
         },
         "uses_exact_native_artifact": false,
-        "passed": true
+        "passed": true,
+        "evidence_kind": "historical_local_execution_not_rerun"
+      },
+      {
+        "test": "installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider",
+        "package": "decodex-runtime",
+        "source": "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
+        "executed_identity": {
+          "binary_id": "decodex-runtime",
+          "test": "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider"
+        },
+        "uses_exact_native_artifact": true,
+        "passed": true,
+        "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+        "qualification": "automations/upstream/qualification.json#candidate_qualification/provider_recovery",
+        "evidence_kind": "fresh_execution"
       }
     ],
-    "exact_artifact_test_count": 50,
+    "exact_artifact_test_count": 51,
     "local_history_test_count": 2,
     "unmatched_selectors": [],
     "command": [
@@ -1657,6 +1839,22 @@
         "--no-fail-fast",
         "--status-level",
         "fail"
+      ],
+      [
+        "cargo",
+        "+stable",
+        "nextest",
+        "run",
+        "--locked",
+        "-p",
+        "decodex-runtime",
+        "--lib",
+        "--run-ignored",
+        "only",
+        "--test-threads",
+        "1",
+        "-E",
+        "test(=account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes) | test(=account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider)"
       ]
     ],
     "managed_commands": [
@@ -1680,16 +1878,20 @@
       "reason": "Current source retires automatic native context replacement; retained legacy conversations continue original context. Source and current test body verified. Historical migration test remains a historical delivery claim only.",
       "counted_as_executed": false
     },
-    "limits": "Current reconstruction router: 50 exact-artifact native tests and two local history projections. Historical passes refer to selected 33d306d4 only. Current candidate results are under candidate_qualification; no new run of the two local projections or historical artifact probes.",
-    "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+    "limits": "51 current native contract selectors and two local history selectors form the reconstruction router. This migration freshly executes two native provider contracts and one component contract. Reuse 49 passed native contracts from the identical candidate artifact; do not count the two local history selectors as rerun.",
+    "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
     "historical_execution": {
-      "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "exact_artifact_tests": 51,
-      "local_history_tests": 2,
-      "evidence": "https://github.com/acg-box/decodex/blob/69ef0e38d74d407a1cbe84ab06ba802adc786a8a/automations/upstream/qualification.json#retained_consumers",
-      "limit": "These are historical executed counts, including one now-retired diagnostic. Do not relabel them as current-run executions."
+      "candidate_revision": "fc3933c1fd1d831a10d5fd630ea22070874bc72b",
+      "candidate_executed": 50,
+      "candidate_passed": 49,
+      "candidate_failed": 1,
+      "candidate_evidence": "https://github.com/acg-box/decodex/blob/c75adc57a5c6ac33423cc3aef7d701613eb4e488/automations/upstream/qualification.json#candidate_qualification",
+      "provider_followup_revision": "20be50137551a46a4ffde709ccfafbfe56ccc6b9",
+      "provider_candidate_passed": 2,
+      "selected_baseline_passed": 1,
+      "provider_evidence": "https://github.com/acg-box/decodex/blob/c75adc57a5c6ac33423cc3aef7d701613eb4e488/automations/upstream/qualification.json#candidate_qualification/provider_recovery"
     },
-    "selected_count": 52,
+    "selected_count": 53,
     "retired_selectors": [
       {
         "selector": "account_launch::process::startup_config::tests::installed_native_startup_configuration_preserves_auth_config_and_locked_history",
@@ -1846,21 +2048,24 @@
         "passed_cases": 5,
         "contract": "Three modelNotFound transports and HTTP 503/SSE response.failed policy-capacity classification persist across cold reopen. HTTP request_max_retries=2 gives three attempts; SSE failed gives one. No Decodex automatic retry added. Bare SSE error policy classification is outside the upstream change."
       }
-    }
+    },
+    "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+    "historical_only": true,
+    "current_scope": "Original 33d306d4 probe receipts only. Current retained behavior is covered by named candidate native contracts; these probes were not rerun."
   },
   "fixture_sources": {
-    "crates/decodex-components/tests/development.rs": "6af9cc52ec42bed27751ce1ea69be8c65ef3bc388db3fb4095df1b670610ad74",
+    "crates/decodex-components/tests/development.rs": "fcb52ee9d2f333ed24c123a5cf681dda190652e4704ea0bb626f689389fbcead",
     "crates/decodex-runtime/src/account_launch/agent_process_native_archive_tests.rs": "9c109166fb8e8b6b31ff1dd06cd4fdb46f34dc36324f8bd3100a120f5f0ed89b",
     "crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs": "133a9d76582029e3f1857870f6bba1f8b62cc45f7047c814e82df88feb66df7d",
     "crates/decodex-runtime/src/account_launch/agent_process_native_child_model_tests.rs": "f6e20a8e09dc9c4163d29bc89232ea3ef5cfc7300684eeae30fa036de8c8e6d6",
     "crates/decodex-runtime/src/account_launch/agent_process_native_code_mode_tests.rs": "9ee4e9dd6b4867a2c57c4f775549f397352303f478a118d98d55841ba8afd539",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_cold_settings_tests.rs": "6f7c8b9bbd414654395a3879e47cc7c22ff98edf7d3cabadbf725657990acfb6",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_cold_settings_tests.rs": "ea630bfd960dfec589f37892d5e44e5c19b9205698add26f5853756a7d560ef7",
     "crates/decodex-runtime/src/account_launch/agent_process_native_compaction_tests.rs": "7c852c3e9e2b29caeaf56038127f39b6b3492328e848b6f34697f6eac8617eca",
     "crates/decodex-runtime/src/account_launch/agent_process_native_config_recovery_tests.rs": "cbe3b6a9adb0379fa928e95e054232a4b7299e5408e26b282d9b617842199d55",
     "crates/decodex-runtime/src/account_launch/agent_process_native_detail_tests.rs": "babf991fd3ccb68129da322952fb14bc2deb405bfdb0f0828a4a24bda7e798e5",
     "crates/decodex-runtime/src/account_launch/agent_process_native_discovery_tests.rs": "15b4e78d98177e4501c8c66f6b6fbebcfca1fde2c07e7792a8e18373ef47d57c",
     "crates/decodex-runtime/src/account_launch/agent_process_native_flex_tests.rs": "ec84ab99ccc092e75d640483c4bce7efbc77e5968d2fb4b81c8ad274d8af4b8c",
-    "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs": "b2dfd71c5787b88f014ce587f27b8c7be9515efcd85865db739c09d590f497ef",
+    "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs": "506df593d904b45fa360604bd865aacefece4d5fec1bedc570181e4f0f775af9",
     "crates/decodex-runtime/src/account_launch/agent_process_native_goal_tests.rs": "1452e604875a374cef96a3cdbf74c36584820743824b7d22e570c71ed9cd621e",
     "crates/decodex-runtime/src/account_launch/agent_process_native_hook_settings_tests.rs": "3312a30bd4596fb634e4207cc6fb91adf696ce26ba9ae0cf5e935102084bafb0",
     "crates/decodex-runtime/src/account_launch/agent_process_native_memory_tests.rs": "d0dcc4ab8fbacc3960a5f4a60a8c6763a79ea1bbd228d8fced2986272d4ef88f",
@@ -1918,48 +2123,27 @@
     "scripts/macos/build_codex_source.mts": "7ebebce9c4affc63a9bd8bd979e56fd5f05670a48db6b9c3922f8e5f612fc061",
     "scripts/macos/build_codex_source.test.mts": "ef9f82467f6b594ec71c610c52af333a158715d454f342b270f794b427dc14b2",
     "scripts/macos/prepare_codex.mts": "4d85b6503324c5e81366b10eeaa7f6e41e2c92a9864bb7d61bb90fe34afc4f4b",
-    "scripts/vnext/run_native_regression.py": "5399e5ab4f636e04d754c3c2f80632e052f62679fe380e50958d6bb24e9b0bec"
+    "scripts/vnext/run_native_regression.py": "5399e5ab4f636e04d754c3c2f80632e052f62679fe380e50958d6bb24e9b0bec",
+    "crates/decodex-codex/src/app_server_client/initialize.rs": "7f8a76346fa704e698570e19b5d4f7d5d35539bcecc441acf496e73160cbf327"
   },
   "prepared_development_package": {
     "entrypoint": "cargo +stable make prepare-codex",
     "build_owner": "scripts/macos/build_codex_source.mts::buildSource",
-    "source": {
-      "url": "https://codeload.github.com/openai/codex/tar.gz/33d306d457a4632b22bebf214e0c25d91f90f6e8",
-      "sha256": "b93e82b67ca9de55fb1cbcf74be03567f529a03d23b4785de02f966f39f1c4b5"
-    },
     "source_patched": false,
-    "fresh_archive_extraction": true,
     "profile": "release",
     "compiler_channel": "stable",
     "cargo_locked": true,
-    "elapsed_seconds": 846.3608577089981,
-    "verification": "Actual signed CLI, both helpers, arm64 architecture, generated schema and component import were checked. A commit string or cache reuse alone is not qualification."
+    "qualification": "https://github.com/acg-box/decodex/blob/c75adc57a5c6ac33423cc3aef7d701613eb4e488/automations/upstream/qualification.json#candidate_qualification/source_provenance",
+    "current_action": "Reimport the original qualified artifact into an isolated system-temporary component store; no rebuild or application installation."
   },
   "development_preparation": {
-    "command": [
-      "cargo",
-      "+stable",
-      "make",
-      "prepare-codex"
-    ],
+    "command": "DECODEX_CODEX_DEVELOPMENT_RUNTIME=\"<exact-runtime>\" cargo +stable make prepare-codex",
     "exit_code": 0,
-    "environment": {
-      "DECODEX_CODEX_DEVELOPMENT_RUNTIME": "Exact newly built candidate runtime root; component acquisition validates the fixed source and generated schema."
-    },
-    "rebuild_command": [
-      "cargo",
-      "+stable",
-      "make",
-      "prepare-codex"
-    ],
-    "limit": "A rebuild is a new artifact. Re-observe hashes/schema and rerun affected regressions; do not identify it as the deleted original.",
-    "elapsed_seconds": 24.7
+    "scope": "Original signed candidate artifact; isolated component store; fresh common signature, commit, helper and generated-schema verification."
   },
   "component_cache_repair": {
     "source": "crates/decodex-components/tests/development.rs",
     "test": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
-    "executed": 1,
-    "passed": 1,
     "command": [
       "cargo",
       "+stable",
@@ -1974,14 +2158,17 @@
       "only",
       "-E",
       "test(=fixed_commit_import_offline_repair_and_wrong_commit_rejection)",
-      "--status-level",
-      "all"
+      "--test-threads",
+      "1",
+      "--retries",
+      "0"
     ],
-    "environment": {
-      "DECODEX_TEST_DEVELOPMENT_RUNTIME": "Exact candidate runtime root"
-    },
-    "contract": "Import fixed source, reject wrong/missing source, repair damaged CLI/schema/both helpers offline from verified archive; preserve unrelated cached version and selection after failed import.",
-    "elapsed_seconds": 85.33
+    "executed": 1,
+    "passed": 1,
+    "failed": 0,
+    "unmatched": [],
+    "elapsed_seconds": 130.33,
+    "contract": "Import the fixed artifact, repair corrupt CLI/schema/three helpers offline, reject missing/wrong sources and preserve unrelated cached versions."
   },
   "v8": {
     "crate_version": "152.2.0",
@@ -2001,13 +2188,14 @@
       }
     },
     "limits": "Official pinned archive/binding pair. No Bazel source-producer/canary matrix or standalone optimized d8 security regression executed.",
-    "verification_scope": "Both actual archive/binding inputs and the trusted manifest were hashed again for this exact build."
+    "verification_scope": "Both actual archive/binding inputs and the trusted manifest were hashed again for this exact build.",
+    "historical_source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+    "historical_only": true,
+    "current_limit": "Prior scoped evidence retained, not rerun for this migration. Current artifact/consumer evidence is separate."
   },
   "rg_helper": {
-    "version": "ripgrep 15.2.0 (rev e89fff89ac)",
-    "marker_probe_exit": 0,
-    "scope": "Exact signed packaged helper; system-temporary marker fixture removed.",
-    "sha256": "8c8aef5fb93e91174cc49abd7847eee15a8996d336ac29147ba66f8b87134cf4"
+    "sha256": "9e471bfc08a71af5b96f6781bafa043b622c55b6e0c090931d7b3ac2466d2d8e",
+    "verification": "Original signed packaged helper; fresh component import and corruption/repair check. No new performance claim."
   },
   "dependency_risk": {
     "observed_at": "2026-10-27",
@@ -2182,7 +2370,10 @@
         "candidate_count": 2,
         "unchanged": true
       }
-    }
+    },
+    "historical_source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+    "historical_only": true,
+    "current_limit": "Prior scoped evidence retained, not rerun for this migration. Current artifact/consumer evidence is separate."
   },
   "decodex_validation": {
     "headless_workspace": {
@@ -2275,7 +2466,10 @@
       "executed": 1,
       "passed": 1,
       "contract": "Policy-capacity failure does not enter Decodex overload automatic retry."
-    }
+    },
+    "historical_source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+    "historical_only": true,
+    "current_limit": "Prior scoped evidence retained, not rerun for this migration. Current artifact/consumer evidence is separate."
   },
   "installed_application": {
     "installed": false,
@@ -2296,16 +2490,15 @@
     "state_source": "OpenWiki-managed metadata and the public delivery reference identify lifecycle and delivery status.",
     "limits": "Documentation reconciliation does not requalify the artifact or establish installation/release."
   },
-  "delivery_reference": "https://github.com/acg-box/decodex/pull/2532",
+  "delivery_reference": "https://github.com/acg-box/decodex/commit/ef68f8360488ae9f4e58e36cb9b382631715d720",
   "schema_identity": {
-    "generator": "Exact candidate codex app-server generate-json-schema --experimental --out <directory>",
-    "observed_cli_version": "codex-cli 0.0.0",
-    "fingerprint": "86c27115a28bf905f4c25ee204b218b2ba9598ef664787efddd30e2d0c20f2d9",
+    "fingerprint": "8eb9c847ea19633cbdd4b943ec53515037723020006a8952d3c7bafb1fde903a",
+    "binary_sha256": "7403fcc802a5bf9afc4b41e07fb99429db0c495976e6a4dd5ab233f0945fe759",
     "canonical_document_sha256": {
-      "ClientRequest.json": "c1b15e7ddaee46bdbada7bdea936ede29f9f744d579bfbd0583c7024ee43bec7",
-      "ServerRequest.json": "6b13a0e1ad8ed419f6ac611c07adbcca6bede37ef2fe60d65b54c333b4d66ced",
-      "ServerNotification.json": "361c11971a8bffa75cb827e4e0599a2c4e724a520d03c773e04fc3e9ae022356",
-      "codex_app_server_protocol.v2.schemas.json": "2b5514c533e3f1cee7df56d2df718bb275604b37f376840b010803a02b1ebfe5",
+      "ClientRequest.json": "ee8af5b25a84f6b6b02bc283d44bc95293cadd2cbcc869845b7f99a2bb760ab4",
+      "ServerRequest.json": "e0ea4e3d53092e699637271b9eed4d2a177db64fca6440091204ea6538c4099e",
+      "ServerNotification.json": "e3c3e8ba8cdccba2b0f09e7eeb90a9cfad39df0f379a450953fca1e6efece482",
+      "codex_app_server_protocol.v2.schemas.json": "878e4f5fb64f2e6819756a8f2171e293e5848c39d0a40f282d58d5ecb4003113",
       "v2/LoginAccountParams.json": "7b41b6881d98b4ec6872d73d7981f5ab61e5960e4296510728d08d4abbfaebf2",
       "ChatgptAuthTokensRefreshParams.json": "74d490082dab616ac01c94d388c9a836304c96092db37290cfdd10a46b0f3ef9",
       "ChatgptAuthTokensRefreshResponse.json": "ff76f5cc58bff40216f9d5f3c5be921268059f6d66d6c034970cddf0e08f0ced",
@@ -2313,13 +2506,8 @@
       "v2/ThreadStartParams.json": "44a122637f6208314268b9d58c395b8fe7e9277f05af11f9d199b327db7d71e5",
       "v2/TurnStartParams.json": "42c4c7873732896ce902bfe2d259c3b7bb659560be7571f2712bb664f852918e"
     },
-    "algorithm": "Canonical sorted compact UTF-8 JSON per document; hash the canonical digest map, matching GeneratedSchemaEvidence::load.",
-    "changed_documents": [
-      "ClientRequest.json",
-      "ServerNotification.json",
-      "codex_app_server_protocol.v2.schemas.json",
-      "v2/ThreadReadResponse.json"
-    ]
+    "generator": "codex app-server generate-json-schema --experimental --out <temporary-directory>",
+    "limit": "Measured from the actual signed CLI. The checked-in precomputed expectation differed; common Rust import verified the measured fingerprint."
   },
   "feature_observation": {
     "command": [
@@ -2343,8 +2531,8 @@
     "environment": "Empty system-temporary HOME/CODEX_HOME; removed after observation.",
     "scope": "Exact signed candidate default feature state. Decodex startup keeps its existing admitted flags and does not enable the new experiments."
   },
-  "delivery_status": "Public PR reference; inspect linked PR for exact-head checks and merge state. Bounded qualification does not establish installed-app acceptance.",
-  "decodex_main_baseline": "7ce7d8a88dd1c054f358a64cd5429a7442da1523",
+  "delivery_status": "Qualified development lock commit; PR, exact-head checks and merge readback are recorded in native delivery state.",
+  "decodex_main_baseline": "c75adc57a5c6ac33423cc3aef7d701613eb4e488",
   "workspace_dependencies": {
     "version": 1,
     "status": "qualified_workspace_dependency_batch",
@@ -2766,9 +2954,9 @@
     }
   },
   "candidate_qualification": {
-    "status": "provider_recovery_passed_pending_runtime_adaptation",
+    "status": "qualified_selected",
     "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
-    "selected": false,
+    "selected": true,
     "candidate_lock": {
       "version": "0.0.0",
       "upstreamCommit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
@@ -3143,7 +3331,8 @@
       "local_history_projections_executed": 0,
       "upstream_tests_executed": 0,
       "evidence_scope": "Historical pre-recovery cohort, retained at the original source revision. Current targeted follow-up is provider_recovery; these 50 were not all rerun.",
-      "historical_revision": "fc3933c1fd1d831a10d5fd630ea22070874bc72b"
+      "historical_revision": "fc3933c1fd1d831a10d5fd630ea22070874bc72b",
+      "scope": "Historical initial candidate cohort; its one obsolete provider-resume expectation is superseded by provider_recovery and the current selected_runtime_recheck."
     },
     "reproduce": {
       "environment": {
@@ -3363,7 +3552,7 @@
       "status": "user_deferred",
       "reason": "The user has no current need for mandatory one-time human-command approval. Do not implement without a new decision. Keep this capability unadvertised and preserve native rejection when no capable client is present; do not fabricate approval.",
       "issue": "https://github.com/acg-box/decodex/issues/2585",
-      "qualification_limit": "Deferral is not delivered compatibility or runtime qualification. The selected runtime remains unchanged; verify the retained scope before any migration."
+      "qualification_limit": "User-deferred capability, not a blocker for the independently qualified retained scope. No HumanCommand support or acceptance claimed."
     },
     "source_and_fixture_sha256": {
       "crates/decodex-components/src/install.rs": "6c1780a78d4023e27277d7275780db7e8c567c2ef1526e82385ce4dea4155c5f",
@@ -3464,9 +3653,9 @@
     },
     "limits": [
       "macOS arm64, system-temporary synthetic accounts/providers and local transports only.",
-      "Provider recovery is qualified only by the targeted follow-up below. Runtime migration still requires HumanCommand compatibility and applicable retained qualification. Selected runtime remains unchanged.",
       "No live account/provider, physical audio, remote production execution, billing, performance or installed-app acceptance.",
-      "Historical certified source ranges and coverage uncertainty remain unchanged; retired Codex diagnostic is excluded from current maintenance."
+      "Historical certified source ranges and coverage uncertainty remain unchanged; retired Codex diagnostic is excluded from current maintenance.",
+      "Selected after current-main provider and component requalification. HumanCommand remains user-deferred, unsupported and unadvertised; no shared-MCP enablement."
     ],
     "implementation_commits": [
       "https://github.com/acg-box/decodex/commit/768690c268e679df140b0c588f02f3d91c633eec",
@@ -4371,22 +4560,146 @@
     }
   },
   "selected_runtime_recheck": {
-    "source_commit": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
-    "binary_sha256": "cb933d4981df419760215afba381372b400d0906bd3c2bc5d29186b200740986",
-    "schema_sha256": "86c27115a28bf905f4c25ee204b218b2ba9598ef664787efddd30e2d0c20f2d9",
-    "original_cached_artifact": true,
-    "rebuild": false,
-    "common_component_verification_exit": 0,
-    "unique_tests_executed": 5,
-    "passed": 5,
-    "failed": 0,
-    "selectors": [
-      "account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes",
-      "account_launch::agent_process::native_tests::permissions::installed_named_permission_selection_during_active_turn_survives_restart",
-      "account_launch::agent_process::native_tests::permissions::installed_permission_selection_publishes_and_survives_native_restart",
-      "agent::tests::native_permissions::native_agent_resume_preserves_selected_profile_policy_and_cwd",
-      "account_launch::agent_process::native_tests::cold_settings::recap_socket::installed_recap_public_socket_preserves_parent_and_exact_request_identity"
+    "source_commit": "5be57bedd04d717cdde3a768ea7b71e97733736b",
+    "previous_selected_source": "33d306d457a4632b22bebf214e0c25d91f90f6e8",
+    "decodex_source_revision": "c75adc57a5c6ac33423cc3aef7d701613eb4e488",
+    "components_reused": true,
+    "components_match_original_candidate": true,
+    "fresh_prepare_exit": 0,
+    "fresh_native_tests": {
+      "executed": 2,
+      "passed": 2,
+      "failed": 0,
+      "unmatched": [],
+      "command": [
+        "cargo",
+        "+stable",
+        "nextest",
+        "run",
+        "--locked",
+        "-p",
+        "decodex-runtime",
+        "--lib",
+        "--all-features",
+        "--run-ignored",
+        "only",
+        "-E",
+        "test(=account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_fork_preserves_source_provider_after_default_changes) | test(=account_launch::agent_process::native_tests::cold_settings::recap_socket::fork::installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider)",
+        "--test-threads",
+        "1",
+        "--retries",
+        "0",
+        "--no-fail-fast"
+      ]
+    },
+    "fresh_component_tests": {
+      "source": "crates/decodex-components/tests/development.rs",
+      "test": "fixed_commit_import_offline_repair_and_wrong_commit_rejection",
+      "command": [
+        "cargo",
+        "+stable",
+        "nextest",
+        "run",
+        "--locked",
+        "-p",
+        "decodex-components",
+        "--test",
+        "development",
+        "--run-ignored",
+        "only",
+        "-E",
+        "test(=fixed_commit_import_offline_repair_and_wrong_commit_rejection)",
+        "--test-threads",
+        "1",
+        "--retries",
+        "0"
+      ],
+      "executed": 1,
+      "passed": 1,
+      "failed": 0,
+      "unmatched": [],
+      "elapsed_seconds": 130.33,
+      "contract": "Import the fixed artifact, repair corrupt CLI/schema/three helpers offline, reject missing/wrong sources and preserve unrelated cached versions."
+    },
+    "reused_native_tests": {
+      "executed_in_original_receipt": 50,
+      "passed": 49,
+      "superseded_provider_failure": 1,
+      "qualification": "https://github.com/acg-box/decodex/blob/c75adc57a5c6ac33423cc3aef7d701613eb4e488/automations/upstream/qualification.json#candidate_qualification"
+    },
+    "source_reconciliation": {
+      "provider_followup_revision": "20be50137551a46a4ffde709ccfafbfe56ccc6b9",
+      "checked_files": 19,
+      "identical_files": 13,
+      "changed_files": 6,
+      "changes": "Fork wording, input presentation and optional fixture metadata only. Provider admission and fork-client implementation are unchanged."
+    },
+    "limits": [
+      "Fresh executions total three tests, not a new full-suite run.",
+      "No upstream suite, live provider/account, physical audio, remote production execution, performance, installed desktop or release acceptance.",
+      "HumanCommand remains unsupported and unadvertised under issue 2585; shared MCP remains separately deferred under issue 2522."
+    ]
+  },
+  "dependency_identity_delta": {
+    "removed": [
+      [
+        "mio",
+        "1.2.0",
+        "registry+https://github.com/rust-lang/crates.io-index",
+        "50b7e5b27aa02a74bac8c3f23f448f8d87ff11f92d3aac1a6ed369ee08cc56c1"
+      ],
+      [
+        "v8",
+        "152.2.0",
+        "registry+https://github.com/rust-lang/crates.io-index",
+        "a10fe1a92da5c32c7c7f838ce36c0ccfcfd5edf0865b58bdde820aa64cea9888"
+      ]
     ],
-    "limits": "Original bytes match the existing retained digest. Five affected comparisons ran; this does not claim the whole selected-runtime historical suite was re-executed."
-  }
+    "added": [
+      [
+        "mio",
+        "1.2.4",
+        "registry+https://github.com/rust-lang/crates.io-index",
+        "1788edb87fdc09c7e26304471e2f5be8cdefb1b6930d6e3985fc02ff53bf86ee"
+      ],
+      [
+        "v8",
+        "152.2.0",
+        "git+https://github.com/seanh-oai/rusty_v8.git?rev=350c5a859a9b3c84ab8701b3ad51e3b7699b30c0#350c5a859a9b3c84ab8701b3ad51e3b7699b30c0",
+        null
+      ]
+    ],
+    "limit": "Resolved identity comparison only; not a new security audit.",
+    "source_review_records": [
+      28,
+      63,
+      132
+    ],
+    "review_evidence": "https://github.com/acg-box/decodex/blob/c75adc57a5c6ac33423cc3aef7d701613eb4e488/automations/upstream/current-review.json"
+  },
+  "tests_read_current": [
+    {
+      "source": "crates/decodex-components/tests/development.rs",
+      "symbols": [
+        "fixed_commit_import_offline_repair_and_wrong_commit_rejection"
+      ],
+      "body_read": true
+    },
+    {
+      "source": "crates/decodex-runtime/src/account_launch/agent_process_native_fork_tests.rs",
+      "symbols": [
+        "installed_fork_preserves_source_provider_after_default_changes",
+        "installed_provider_recovery_fork_preserves_context_and_restarts_on_current_provider"
+      ],
+      "body_read": true
+    },
+    {
+      "source": "crates/decodex-codex/src/app_server_client/initialize.rs",
+      "symbols": [
+        "only_agent_advertises_the_supported_form_extension"
+      ],
+      "body_read": true,
+      "executed": false
+    }
+  ]
 }

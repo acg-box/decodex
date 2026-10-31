@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:20105475405722795fbde200fac828e97ac0c867d847d5026923d4213767db1b",
+  "pageVersion": "sha256:7542db3db23f0116fb59a63c8479a8c9ccaad4af315db299c54ef44b3db862b3",
   "claims": [
     {
       "id": "claim_613df7e7c10d49d28b26d6db94c525e5",
@@ -54,7 +54,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b"
+          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/process.rs#L133-L153",
@@ -78,7 +78,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:cc5ad01847aeedd94f3fad7d425b5f4eaf9011dc440c448a42d6943bbe215ac8"
+          "version": "repo-file-v1:sha256:e0f74bd6932ecc942a37423c470da4a104713f5709db3bd4b1f030cda0632738"
         },
         {
           "resource": "repo://scripts/macos/build_codex_source.mts",
@@ -176,7 +176,7 @@
       "evidence": [
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:cc5ad01847aeedd94f3fad7d425b5f4eaf9011dc440c448a42d6943bbe215ac8"
+          "version": "repo-file-v1:sha256:e0f74bd6932ecc942a37423c470da4a104713f5709db3bd4b1f030cda0632738"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/agent/native_subagents.rs",
@@ -286,23 +286,15 @@
     },
     {
       "id": "claim_6bfb17e436074d049d25cc3621f2101e",
-      "statement": "The current fixed native qualification preserves terminal modelNotFound classification across live, stored and cold history without native or Decodex capacity retries, and verifies a configured model catalog larger than 1 MiB using reusable synthetic fixtures.",
+      "statement": "The selected candidate's retained native tests cover terminal modelNotFound classification. Historical large-catalog probes retain their original artifact scope and are not a fresh migration execution.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b"
+          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
         },
         {
           "resource": "repo://crates/decodex-runtime/src/account_launch/agent_process_native_capacity_tests.rs",
           "version": "repo-file-v1:sha256:133a9d76582029e3f1857870f6bba1f8b62cc45f7047c814e82df88feb66df7d"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/tests/native_qualification/large_catalog.py",
-          "version": "repo-file-v1:sha256:a471440d6c494a5abd9f72346901fe14aeb8ee432f8e8fd3ef73373e174d645a"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/tests/native_qualification/model_errors.py",
-          "version": "repo-file-v1:sha256:cfd01bd9f8a1d9d4f9f14e410955f82fd0ff49163027b086e407b16a0b5f23f0"
         }
       ]
     },
@@ -482,27 +474,11 @@
     },
     {
       "id": "claim_a3e3fb1d047b420a919a3d585770d64e",
-      "statement": "The exact native artifact preserves acknowledged permission checkpoints across fork and cold resume, starts with a directory at .env, and persists policyCapacityUnavailable without selecting Decodex overload retries.",
+      "statement": "Permission, dotenv startup and policyCapacityUnavailable requirements retain their historical fixture and source-inclusion evidence; the current migration separately records reused candidate tests and fresh affected checks without claiming every old probe was rerun.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/src/agent/tests/capacity.rs",
-          "version": "repo-file-v1:sha256:1de3ca45c57477c7bd58b4d66b5c5cc863d97ebf796125f864dae30c013dce9c"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/tests/native_qualification/dotenv_startup.py",
-          "version": "repo-file-v1:sha256:f6a0a6294eff68dece725d15ebc189e23c322ab7166ce76eddc2a7e94f9b6b33"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/tests/native_qualification/model_errors.py",
-          "version": "repo-file-v1:sha256:cfd01bd9f8a1d9d4f9f14e410955f82fd0ff49163027b086e407b16a0b5f23f0"
-        },
-        {
-          "resource": "repo://crates/decodex-runtime/tests/native_qualification/thread_settings.py",
-          "version": "repo-file-v1:sha256:cf4bb4274aac52b69ebd3936204a2f1570753e2e38c2afc4fd9796deaa278049"
+          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
         }
       ]
     },
@@ -598,19 +574,15 @@
     },
     {
       "id": "claim_c2c3fcb6cbf548539ff3fd6004769e9f",
-      "statement": "Selected runtime 33d306d4 remains unchanged. Targeted provider-fork checks pass on candidate 5be57bedd0 and the selected baseline. HumanCommand support is user-deferred in issue 2585, remains unsupported and unadvertised, and is not daily implementation debt. Applicable retained-scope qualification remains required before runtime migration.",
+      "statement": "The development lock selects qualified 5be57bedd0 after fresh provider and component checks and reuse of the identical candidate's retained-consumer receipts. HumanCommand remains user-deferred, unsupported and unadvertised; runtime selection does not install the app or resume the automation.",
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:3dc98c767c1bad34071dd8c4ce33804b9dd86502e0678e8e8fe68978f447ef7b"
-        },
-        {
-          "resource": "repo://automations/upstream/retained-contracts.json",
-          "version": "repo-file-v1:sha256:b7dc0456127348fc734fc70c1e4a07842ddbcc64cea677c320dc52c8b0de2ec9"
+          "version": "repo-file-v1:sha256:28076d4133414ca914885979826c6f67929f1ed882fc4953393a2ec2f2865424"
         },
         {
           "resource": "repo://codex-runtime.lock.json",
-          "version": "repo-file-v1:sha256:cc5ad01847aeedd94f3fad7d425b5f4eaf9011dc440c448a42d6943bbe215ac8"
+          "version": "repo-file-v1:sha256:e0f74bd6932ecc942a37423c470da4a104713f5709db3bd4b1f030cda0632738"
         }
       ]
     },
@@ -635,6 +607,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-31T15:31:25.411Z"
+    "at": "2026-10-31T15:39:59.714Z"
   }
 }

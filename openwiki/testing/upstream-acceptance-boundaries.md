@@ -166,10 +166,10 @@ sources:
     resource: repo://scripts/macos/test_decodex_app_stage.sh
   - id: openwiki-source-e201f60894c32a914dac99ee
     resource: repo://scripts/vnext/run_native_regression.py
-generated: { by: "codex", at: "2026-10-31T15:31:25.411Z" }
+generated: { by: "codex", at: "2026-10-31T15:39:59.714Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-31T15:31:25.411Z
+    at: 2026-10-31T15:39:59.714Z
 ---
 
 # Upstream integration acceptance boundaries
@@ -197,7 +197,7 @@ Workflow-only maintenance uses the checkpoint and portfolio checks in `cargo +st
 
 Read the development lock, [current source review](../../automations/upstream/current-review.json) and [current qualification](../../automations/upstream/qualification.json) for the fixed target, exact CLI/helpers/schema, executed identities and limits. Keep source review, source-test execution, exact production-artifact tests, delivery and installed acceptance separate. Current run counts and hashes belong in those records, not repeated across Wiki pages.
 
-The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. Source review is complete through the fixed target, but the runtime lock remains on the qualified baseline. HumanCommand support is [user-deferred](https://github.com/acg-box/decodex/issues/2585), not delivered or qualified. Keep it unadvertised; qualify the retained scope before a future runtime migration. No upstream test suite was executed for this follow-up.
+The provider-refusal follow-up resolves [the former compatibility blocker](https://github.com/acg-box/decodex/issues/2575) through the supported native fork. The original cohort remains historical evidence; it is not a freshly rerun matrix. The runtime lock now selects the qualified candidate after fresh affected provider and component checks, with unchanged-artifact cohort evidence reused within its source and behavior limits. Source review continues independently toward each fixed target. HumanCommand support is [user-deferred](https://github.com/acg-box/decodex/issues/2585), unsupported and unadvertised. No upstream test suite was executed for this migration.
 
 The retired Codex startup-configuration diagnostic is absent from the current router. Its earlier execution remains historical proof. Valid named-permission defaults and an owned Recap working directory repair fixture admission without weakening existing behavior assertions. The exact-artifact development cache test also corrupts and repairs any advertised standalone executor.
 
@@ -207,7 +207,7 @@ The default execution scope is affected Decodex consumers against the prepared a
 
 The `provider_recovery` entry under `candidate_qualification` in the [qualification record](../../automations/upstream/qualification.json) binds the focused local tests, exact candidate and baseline native tests, component signatures and regenerated schemas to the implementation commit. Ordinary forks retain the source provider; cold resume follows native admission after that provider is restored. The new regression uses two loopback providers and verifies an explicit current-provider fork, preserved context after restart, unchanged source history and no inference until a separate send.
 
-The UI and receipt tests cover source identity, configuration changes, cancellation, the durable destination choice and preservation of unsent input. The real public-socket fixture also prepares the mismatch before desktop launch. Its setup check substitutes `/usr/bin/true` for the desktop and is not UI acceptance. The [interactive rehearsal command](../operations/commands-and-validation.md#rehearse-provider-recovery) uses a real desktop window and an isolated temporary profile; its two provider names share one local backend. Neither fixture qualifies live accounts, provider policy migration, installed-app behavior or performance. No runtime pin, installation, release or schedule activation follows from these results.
+The UI and receipt tests cover source identity, configuration changes, cancellation, the durable destination choice and preservation of unsent input. The real public-socket fixture also prepares the mismatch before desktop launch. Its setup check substitutes `/usr/bin/true` for the desktop and is not UI acceptance. The [interactive rehearsal command](../operations/commands-and-validation.md#rehearse-provider-recovery) uses a real desktop window and an isolated temporary profile; its two provider names share one local backend. Neither fixture qualifies live accounts, provider policy migration, installed-app behavior or performance. The provider follow-up alone did not change the runtime pin; the later migration has its own qualification. Neither result authorizes installation, release or schedule activation.
 
 ## Observed turn timings
 
