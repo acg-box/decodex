@@ -120,10 +120,10 @@ sources:
     resource: repo://database/src/agent_fork.rs
   - id: openwiki-source-fc5ad70343bb20c4e9d12540
     resource: repo://database/src/agent_process/attachments.rs
-generated: { by: "codex", at: "2026-10-30T15:17:49.972Z" }
+generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T20:00:55.995Z
+    at: 2026-10-31T13:17:02.524Z
 ---
 
 # Product scope and native ownership
@@ -140,7 +140,7 @@ The default coordination surface uses `work_read` and `work_manage`. Only users 
 
 Permission changes use the selected native conversation's supported profile and reviewer settings. Existing child captures and pending human approvals retain native ownership. Optional private details retain bounded assistant output and terminal metadata without raw reasoning. Exact action associations are unavailable in the selected runtime and remain explicit. This does not select the separate native Guardian V3 experiment.
 
-The current schema and protocol 4.3 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
+The current schema and protocol 4.4 store the business model directly. Native Projects provide catalog identity and directory context; Decodex retains Work and responsibility associations. A native Project entry does not prove synchronization with desktop saved Projects. Work association is not a new execution sandbox or automatic directory switch.
 
 The retained-conversation repair reconciles unassigned native Project membership before input and preserves conflicts for inspection. The current schema retains actual native child-input receipts for Work attribution when native configuration permits nested V2 Code Mode. Recovery joins exact evidence without replay. V1 nesting remains supported; V2 keeps its direct-only default. These are repairs to retained integration contracts. Native Project identity and membership and Decodex Project presentation passed in the separate installed qualification. Official desktop saved-Project/sidebar presentation remains unobserved. See the [canonical contract](project-agent-work.md#qualification-and-evidence-limits).
 
@@ -154,7 +154,7 @@ The selected scope includes three views in the existing desktop:
 - **Collaboration history:** Retain exact local question replies, their delivery and receiving-turn outcome, plus independent contribution cycles and explicit owner assessments. A reply or returned contribution does not establish resolution or complete Work. Missing external reply bodies remain unknown.
 - **Actual usage:** Read known whole-turn token deltas and recorded duration for a persistent Agent or retained Work references. Shared Work references, missing counters and unobserved child usage remain explicit. Linked turns can contain other activity; recorded duration is not Work elapsed time and these values are not a bill.
 
-These views are available through local protocol 4.3 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
+These views are available through local protocol 4.4 and the same source owners. Their reusable regression identities, exact-artifact checks and limits are in `selected_read_views` in the [stable retained contract catalog](../../automations/upstream/retained-contracts.json). Installed-app acceptance remains separate.
 
 ## Current optional decisions
 
@@ -265,6 +265,8 @@ Keep native execution, enforcement and algorithms in Codex. Decodex maintains it
 Items 45 and 48 also retain native ownership. These decisions select no replacement executor or search algorithm and enable no experiment. Source inspection has not reproduced an item-76 defect; retain the narrow caller-attribution check without claiming scenario qualification. Run affected Decodex checks when a concrete integration change requires proof.
 
 ## Current integration boundary
+
+The user approved explicit recovery when native Codex reports that a saved conversation and current configuration use different providers. Decodex reuses the existing completed-turn branch review and durable fork receipt. The user can choose **Create branch with current provider**; creation keeps the original conversation and draft and sends no input. The next explicit send shares inherited context with that provider. Ordinary branches and Side chats still retain their source provider. This decision adds no automatic service switch or native policy bypass. See [provider recovery](../workflows/conversations-and-recovery.md#continue-after-a-provider-change) and the [retained contract](../../automations/upstream/retained-contracts.json).
 
 | Area | Decodex responsibility |
 | --- | --- |

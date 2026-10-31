@@ -39,10 +39,10 @@ sources:
     resource: repo://scripts/macos/build_codex_source.mts
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-30T20:00:55.995Z" }
+generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T20:00:55.995Z
+    at: 2026-10-31T13:17:02.524Z
 ---
 
 
@@ -121,6 +121,8 @@ The runtime lock can select an exact official source archive. Use the explicit d
 3. Exercise the affected native behavior and current local consumer before delivering a lock update. A matching schema establishes protocol structure. It does not establish saved-permission behavior, compaction, transport lifecycle or desktop acceptance. Keep source review, artifact qualification, merge, installed identity and live acceptance as separate evidence. If a retained contract fails on the candidate and passes on the selected artifact, keep the runtime lock unchanged. Save the exact failure, original-artifact comparison and supported next action; deliver independent component or fixture repairs separately. A completed source-review prefix does not deliver native fixes in an unselected artifact.
 
 Read the development lock and linked current qualification for the selected source, component identities, executed identities and limits. Do not copy each daily target or cohort count into this procedure. A source test can select its own helpers; that result does not establish execution of the signed production artifact.
+
+The provider-recovery follow-up distinguishes native admission from an obsolete fixture expectation. A saved-provider conversation resumes after its provider is restored. The approved alternative creates a new native fork on the current provider through the existing review and receipt flow. Keep source-provider and history assertions, test both routes against the exact artifact, and record the revised contract separately from the earlier failure. This resolves the provider gate without selecting the candidate; the existing HumanCommand adaptation and its affected qualification remain pending. Automation stays paused.
 
 ## Retain evidence after artifact cleanup
 

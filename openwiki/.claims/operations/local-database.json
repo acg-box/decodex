@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:ef3091f608b3c94ba7306a5cc4496bfe21e78f8eacf9587f96c1dc6e45539e75",
+  "pageVersion": "sha256:f0c8eab7a06719078b30da1211f95a1f8b849302ccb91021df58f2ef04ac4df0",
   "claims": [
     {
       "id": "claim_e8d1527490f540cdafcbe921403c8c3c",
@@ -46,7 +46,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs#L287-L330",
-          "version": "repo-lines-v1:sha256:0abe2eaa85649d52e913b516cef5ca8b9939509eae2b14000e974f51f741af9a:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2M2NhYzIyNmZhN2FjOTE1MGUwMTZlODZiODM2YTViMjg5Y2MxNjU4YzNmYTA3YjI1YTdhY2Q5NDMxNTY5YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzNTJlMTRhMTgxNzhiOWVkNzc1ODJhOTkzZjI0MWY3YWRhMDM5NzA2YWY2YmMxMzZjZjM1MjFmYmIyZTY3YTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlNzAxMzc5NDEwYzhjZjM0ODQ3MWNkYTNmMzA0YjA2YzRmZWNjZjI4ZDM5YTZmYzliOWFjM2JhYTQ0YmVhZDUifQ"
+          "version": "repo-lines-v1:sha256:8f39b074c14ddc7b428c52911a9de100e4cb58e6c8428d1347df5cb0babc8a15:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE2M2NhYzIyNmZhN2FjOTE1MGUwMTZlODZiODM2YTViMjg5Y2MxNjU4YzNmYTA3YjI1YTdhY2Q5NDMxNTY5YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIzNTJlMTRhMTgxNzhiOWVkNzc1ODJhOTkzZjI0MWY3YWRhMDM5NzA2YWY2YmMxMzZjZjM1MjFmYmIyZTY3YTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlNzAxMzc5NDEwYzhjZjM0ODQ3MWNkYTNmMzA0YjA2YzRmZWNjZjI4ZDM5YTZmYzliOWFjM2JhYTQ0YmVhZDUifQ"
         },
         {
           "resource": "repo://scripts/macos/verify_decodex_bundle_contracts.py",
@@ -74,7 +74,7 @@
       "evidence": [
         {
           "resource": "repo://database/src/agent_fork.rs",
-          "version": "repo-file-v1:sha256:b07b1a16c8648a9a6ce3d31d532cec93e59decf3aa8b32711ea572952ac04c19"
+          "version": "repo-file-v1:sha256:1dcdfc3171e3592a550063154aeb70c404ef5c035674f3da51e31ba3ca8668ab"
         }
       ]
     },
@@ -156,11 +156,11 @@
     },
     {
       "id": "claim_968638910f4c42cbbee88d97feb202cd",
-      "statement": "Current local protocol 4.3 exposes selected read-only views and retained attached branches and rejects any different major or minor version.",
+      "statement": "Current local protocol 4.4 exposes selected read-only views and retained attached branches and rejects any different major or minor version.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:cffc582eea87de51a7bee59398f3234dfb70118ff0c6fb8913e581acf9d47091"
+          "version": "repo-file-v1:sha256:c1fb042773fbb607c6058a31fb7d17b8004f3a7e4c1c69ca7eafa377f8616faf"
         }
       ]
     },
@@ -169,7 +169,7 @@
       "statement": "Attached branches reuse the existing inbox-event journal without a schema migration, retain the exact source Agent as parent with Project, role and tool revision, and expose only the newest 100 saved exact-source attached receipts.",
       "evidence": [
         {
-          "resource": "repo://database/src/agent_fork.rs#L131-L211",
+          "resource": "repo://database/src/agent_fork.rs#L141-L221",
           "version": "repo-lines-v1:sha256:ed8cdba45bac16ea42076b6d5ca6753698ae0a2ab4f46bdd8d1b438fef0f125c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI2NTg2ZjkwNjg5YmVhZDM4MWVlYzVhYmFmZTYxYmY3MWU4MWI5MDZiNGM1Mzc2MzM2ZWFmYzg3OWY2YzQ2NmUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE0MzNlNGRjNDFhNTIxNGEzYzM1YmU5YzQxY2E4N2UzMWZiMjg1MDVlY2YwNTg4MmVhYjY1MDU1ODIyMzkzMGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhM2I2MjJkNjZiNzljYThlZTgwNGI4YTE5YTMzYzVlZGZlNWNlMmM0ZWUyODU3ZDM4MTgyNzAwNmIyNWM0MTIifQ"
         }
       ]
@@ -177,6 +177,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T15:17:49.972Z"
+    "at": "2026-10-31T13:17:02.524Z"
   }
 }

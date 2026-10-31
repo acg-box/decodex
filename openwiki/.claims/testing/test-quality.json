@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:1bee1335470dbedb4f9ea73afb51a46ab6ce9e0a698df39f9652aef10780a76c",
+  "pageVersion": "sha256:7e35a0053ebb2de20a58e89d4693de73dd4d5de3d9e037a4a4c876499866c74f",
   "claims": [
     {
       "id": "claim_070657bf065541118dc7ae41cdeffc2c",
@@ -24,7 +24,7 @@
         },
         {
           "resource": "repo://apps/decodex-gpui/src/bin/workbench_visual_capture.rs",
-          "version": "repo-file-v1:sha256:c8f68891c57a4eafd703d38f5f9e267e6170000826e80070cc2f6b8cf6286fc0"
+          "version": "repo-file-v1:sha256:1fcb9790b9083d26abec8261b706cf2f1deb5dc325694260d5c4cddca1216e26"
         },
         {
           "resource": "repo://apps/decodex-gpui/src/bin/workbench_visual_capture/send.rs",
@@ -145,6 +145,6 @@
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T20:00:55.995Z"
+    "at": "2026-10-31T13:17:02.524Z"
   }
 }

@@ -124,6 +124,8 @@ sources:
     resource: repo://crates/decodex-runtime/src/agent/prompt_edit.rs
   - id: openwiki-source-5af40fd50adccf5d93ff82a0
     resource: repo://crates/decodex-runtime/src/agent/tests/capacity.rs
+  - id: openwiki-source-a4c75938a6b0995e02960ba0
+    resource: repo://crates/decodex-runtime/src/agent/tests/unsent_input.rs
   - id: openwiki-source-88b81a215b1bac061dad80ec
     resource: repo://crates/decodex-runtime/tests/native_qualification/model_errors.py
   - id: openwiki-source-c6bea677adcde563202b65b9
@@ -138,10 +140,10 @@ sources:
     resource: repo://database/src/agent/tests/input_retry.rs
   - id: openwiki-source-28af4781ad8d9558410630da
     resource: repo://database/src/works.rs
-generated: { by: "codex", at: "2026-10-30T15:17:49.972Z" }
+generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T20:00:55.995Z
+    at: 2026-10-31T13:17:02.524Z
 ---
 
 # Conversation input, history and recovery
@@ -191,6 +193,16 @@ After Codex restores the original thread, a positive active-list observation res
 For an existing locally managed conversation, choose **Branch…** on its list row. Decodex opens that exact source, preserves the current drafts, and reads the latest completed native turn and its own user input. If needed, it uses the existing bounded earlier-history pages. An active turn is not selected. Incomplete, unavailable or summary-only history cannot supply a branch boundary.
 
 Review the source, then choose **Create new branch**. This uses the existing **Branch after this turn** path; creation sends no input. **Cancel branch** closes the review without changing the source draft. A profile, thread, selected source or history change cancels the pending review. A native-only inventory row without a local source does not offer this shortcut and is not adopted. The [qualification](../testing/upstream-acceptance-boundaries.md#conversation-list-branch-qualification) records the focused checks and limits.
+
+## Continue after a provider change
+
+If native Codex refuses to resume a conversation because its saved provider differs from the current provider, Decodex keeps its history readable and preserves the original draft. The notice names both providers. Restore the original provider to continue that conversation, or choose **Create branch…** to use the current provider.
+
+The branch action reuses the review of the latest completed native turn. Inspect the boundary and the destination provider, then choose **Create branch with current provider**. Decodex checks the current native configuration again and creates one ordinary native fork. If the source or configuration changed, review the current state again. It does not change the original conversation, send input, or bypass native policy.
+
+The new branch receives the reviewed history prefix and the ordinary composer draft through the existing branch flow. The next explicit send shares that inherited context with the chosen provider. **Cancel branch** preserves the source draft and creates nothing. Unsent source messages are not retried automatically. Ordinary branching and Side chats retain their source provider; changing providers is this separate explicit choice.
+
+The [qualification record](../testing/upstream-acceptance-boundaries.md#provider-recovery-qualification) distinguishes the exact native tests from a user's experience. Use the [isolated rehearsal](../operations/commands-and-validation.md#rehearse-provider-recovery) to try the real desktop flow without using account data or changing the normal runtime selection.
 
 ## Filter existing lists by status
 

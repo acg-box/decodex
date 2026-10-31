@@ -6,6 +6,8 @@ tags: ["decodex", "architecture"]
 sources:
   - id: openwiki-source-d700ef551f46158044378d8f
     resource: repo://apps/decodex-cli/src/lib.rs
+  - id: openwiki-source-4e2d2760a1fe5d904918afb7
+    resource: repo://apps/decodex-gpui/menubar/Sources/DecodexApp/ConversationEstimatesView.swift
   - id: openwiki-source-bf03f317e64cfefd11f6ea83
     resource: repo://apps/decodex-gpui/src/agent_attached_branches.rs
   - id: openwiki-source-3708e6cf9324a8ff1f6c39ae
@@ -24,6 +26,8 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_permissions.rs
   - id: openwiki-source-6a1c55b61be8ac251a493046
     resource: repo://apps/decodex-gpui/src/agent_portfolio.rs
+  - id: openwiki-source-0eea3c2bab20e4a9d8e3d80a
+    resource: repo://apps/decodex-gpui/src/agent_prompt_confirm_wire_tests.rs
   - id: openwiki-source-b2084dffd07b4229957a0f94
     resource: repo://apps/decodex-gpui/src/agent_prompt_edit.rs
   - id: openwiki-source-309d7ec654ab4d531c906212
@@ -34,8 +38,12 @@ sources:
     resource: repo://apps/decodex-gpui/src/agent_timeline_find.rs
   - id: openwiki-source-51a4755f3c4ddd78511e5c8e
     resource: repo://apps/decodex-gpui/src/agent_tree.rs
+  - id: openwiki-source-40c9c6a55485557343853517
+    resource: repo://apps/decodex-gpui/src/agent_usage_estimates.rs
   - id: openwiki-source-3fa6d6c49e3542409542045b
     resource: repo://apps/decodex-gpui/src/agent_work_browser.rs
+  - id: openwiki-source-5d032c6be684964aa2c401fa
+    resource: repo://apps/decodex-gpui/src/agent_workspace.rs
   - id: openwiki-source-a2f254020dd8eaabd6366c91
     resource: repo://apps/decodex-gpui/src/session_settings.rs
   - id: openwiki-source-0813b2e35e2133631c0aa4db
@@ -50,6 +58,8 @@ sources:
     resource: repo://automations/upstream/prompts/maintainer.md
   - id: openwiki-source-3127fd4c7b2aefcc9cea7961
     resource: repo://automations/upstream/retained-contracts.json
+  - id: openwiki-source-787f8ad27b8519fbed2bd039
+    resource: repo://crates/decodex-codex/src/app_server_client/thread_fork.rs
   - id: openwiki-source-cc0439b23243c3697ba49199
     resource: repo://crates/decodex-protocol/src/lib.rs
   - id: openwiki-source-4a57fba4bea69171318c6323
@@ -68,10 +78,10 @@ sources:
     resource: repo://database/src/schema.rs
   - id: openwiki-source-3b57179b92b257bc3fff51a1
     resource: repo://scripts/macos/stage_decodex_app.sh
-generated: { by: "codex", at: "2026-10-30T17:36:00.319Z" }
+generated: { by: "codex", at: "2026-10-31T13:17:02.524Z" }
 verified:
   - by: openwiki/0.7.2
-    at: 2026-10-30T20:00:55.995Z
+    at: 2026-10-31T13:17:02.524Z
 ---
 
 # OpenWiki quickstart
@@ -112,11 +122,13 @@ Use **Cmd-F** or the conversation header's search control to find loaded convers
 
 Choose **Show in conversation** in a tool detail to locate a loaded message or read its unloaded native history in the main transcript. The history window has native earlier/later pages and a fixed **Return to conversation** action. **Related conversations** in Resources uses registered resource identities, archive filtering and native paging. It opens existing local conversations or copies an unmanaged native reference. It does not scan historical uploads. See [history and resource lookup](workflows/conversations-and-recovery.md#read-items-near-a-known-message).
 
-**Cost estimate** in the conversation header and **Conversation estimates** in Menu Bar expose existing provider estimates, with explicit refresh, source-account labels and unknown values. The Menu Bar list covers up to eight recent locally managed conversations, not account-wide spending. See [estimate scope](workflows/models-and-settings.md#conversation-cost-estimates).
+Reported dollars appear beside **Context** in the composer; **Conversation estimates** in Menu Bar retains explicit refresh and source-account labels. Missing dollar values stay hidden. The Menu Bar list covers up to eight recent locally managed conversations, not account-wide spending. See [estimate scope](workflows/models-and-settings.md#conversation-cost-estimates).
 
 ## Branch from a list row
 
 Choose **Branch…** on an existing locally managed conversation row to review its latest completed native turn. Confirm **Create new branch** to use the ordinary after-turn branch path. Source drafts stay preserved, and creation sends no input. Unavailable native history and unmanaged rows cannot provide this shortcut. See [the list workflow](workflows/conversations-and-recovery.md#branch-from-the-conversation-list) and [its qualification](testing/upstream-acceptance-boundaries.md#conversation-list-branch-qualification).
+
+If a conversation uses a different provider from the current configuration, **Create branch…** reviews a new branch on the current provider. The original history and draft remain, and creation sends no input. See [provider recovery](workflows/conversations-and-recovery.md#continue-after-a-provider-change).
 
 ## Persistent attached branches
 

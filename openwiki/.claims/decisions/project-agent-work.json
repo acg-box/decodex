@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "pageVersion": "sha256:57524aaf6bd3e5160449b8d4984ec943149f310484cf6921851954158176c6b2",
+  "pageVersion": "sha256:3c6e931fdb134691704d5e7527fa9945c38b705b3dc7048b1c05e792baf4e71b",
   "claims": [
     {
       "id": "claim_820ae47a5a5d49aab10b5f306ac24685",
@@ -8,7 +8,7 @@
       "evidence": [
         {
           "resource": "repo://crates/decodex-runtime/src/agent.rs",
-          "version": "repo-file-v1:sha256:8494452f2ec20ec04bf1a44ceeac15e5bddfc5b11e3172edd1c9d2fe13c20f1a"
+          "version": "repo-file-v1:sha256:6b4aa27874903e180c7f6f6b51f727bbe87c35815de7a39b3c9a14eec33ec881"
         },
         {
           "resource": "repo://database/schema.sql",
@@ -21,7 +21,7 @@
       "statement": "Delegation, Collaboration and current Work context retain application-evidence authority instead of becoming user authorization; authoritative Work changes require the actual delivered user decision.",
       "evidence": [
         {
-          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1319-L1429",
+          "resource": "repo://crates/decodex-runtime/src/agent.rs#L1321-L1431",
           "version": "repo-lines-v1:sha256:34c154ed0b2a955952269ea2ba86b94de26fe029840005eeab4bd317d355ae33:eyJzZWxlY3RlZExpbmVDb3VudCI6MTExLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIyOGQxNzA3MzAyMTQ3ODBhMjkyOWE2YzI3YWJmOTBjMDhhMTQ5MGY1ZWM3MmFmZWU2MzUzYWQ1NzU3ZjlmYTcxIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJiMGZkMGFlODRiNmE3ODM5NWNmODYwOTg4ZWQzMWJjNDQ5ZTI1ZDNlYWU5YWE3NjhlYTA1ODVkY2Q4NzE4MjQ3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIyMmYyZmY1ZmVlYzYwZjU4N2M4ZmFlNGU4N2Y4MDlhNjYxY2ZmZWQ2YjQ3YWFlNWY2ZDZhMjY1M2FhODk1MmVmIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIxNDNkNzMzM2UzYTVmMGUzMjQ1MGI0ZjY1YjI3NWEwMzhmMzI5MzU2MjY1YmI2YzRlYjZkZDkzZThhZGFjNTY0In0"
         },
         {
@@ -269,7 +269,7 @@
           "version": "repo-lines-v1:sha256:f826c16639548bea4feac5128e1c977361fa0672bad2c2cd21eb940497919af1:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2ZDM3NDI5MTRmZTFkODY2ZTY2NGE4NDMzM2FhZWI0Nzk1NDE2ZmZjNDc0NTczYjVhMDU2OWI1ZjEzODQ0ZDMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1YWEwZjkzOTQ4YjU2ZWM5MTljZjNmNDM5MDEzNGQ2YTFmMGYyODgzYzI1OTdkNjU1OWM1ODYwMzU4NDIzOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMwMTJhNDJhNmNmMTg3ZTMzNzAwNDBjMDk5ZjMyNjMxOTBhYWQyNWRlNzMwYzc5OGJlNDU4NDU0YzFiYmMwNWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVmMDg3ZDQzOWMwNWQ3MjIwNWI1ZGFiMGUyMDUyYWVlOGE5ZjM2YjVmNTk3MDZhNWNkODI4Yzk3ZjQzYTZkOTYifQ"
         },
         {
-          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L936-L987",
+          "resource": "repo://apps/decodex-gpui/src/agent_surface.rs#L942-L993",
           "version": "repo-lines-v1:sha256:767972a08dac70d0d177bbfbadbb3b9ebf0a7b452dc8d3b6f16386e7c62277fe:eyJzZWxlY3RlZExpbmVDb3VudCI6NTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzMDQwMDA0N2UzY2U2NjI0Yzk5MTgxNGY5MzRiNDgzNTQ4NWIxNDg0ODFjNTI3MGRlZjE3MjA3ZjE4YzQzNjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRjYzE1MDQ0YzQ1YzEwMmJjMWNlMTZmMmQwMWQwZjk0MjI3N2MzZDcwMTUyZTAyM2Y2OTAyM2IwY2E0YTA4MmMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjMmI1MGY2ZTAyZmY5MGU2ODBjNTE0YzE2Zjc0YzUwNmU4Y2RiZTUxZmVjYWUyMzY1NDhkZGRiOWY5ODFkZjEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNkMTVjYWViZTcyZDQxMjNkZDYzNTRjY2M4ZDZkOTBiYjk0ZjcwZDcwYTAyOTc3MzNkN2UxNDA0ZWI4ZmM4ZTYifQ"
         },
         {
@@ -298,7 +298,7 @@
       "evidence": [
         {
           "resource": "repo://automations/upstream/qualification.json",
-          "version": "repo-file-v1:sha256:d85ab12f4fe6a67a0b13cb507d4c97ff21b456fc0712e3a1015cd79f1c4369b8"
+          "version": "repo-file-v1:sha256:ecaa9f3bfc2cacc6ae4c51dc69084930f7d6728656c434b507a7ff49ca1d6426"
         },
         {
           "resource": "repo://automations/upstream/retained-contracts.json#L2578-L4065",
@@ -312,17 +312,17 @@
     },
     {
       "id": "claim_9292d25fb8e34952a893358d0d64f3db",
-      "statement": "The current local protocol accepts exactly version 4.3 and rejects a different major or minor revision.",
+      "statement": "The current local protocol accepts exactly version 4.4 and rejects a different major or minor revision.",
       "evidence": [
         {
           "resource": "repo://crates/decodex-protocol/src/lib.rs",
-          "version": "repo-file-v1:sha256:cffc582eea87de51a7bee59398f3234dfb70118ff0c6fb8913e581acf9d47091"
+          "version": "repo-file-v1:sha256:c1fb042773fbb607c6058a31fb7d17b8004f3a7e4c1c69ca7eafa377f8616faf"
         }
       ]
     }
   ],
   "verification": {
     "by": "openwiki/0.7.2",
-    "at": "2026-10-30T20:00:55.995Z"
+    "at": "2026-10-31T13:17:02.524Z"
   }
 }
