@@ -1454,6 +1454,7 @@ dependencies = [
  "block2 0.6.2",
  "compiler",
  "decodex-components",
+ "decodex-pro-bridge",
  "decodex-protocol",
  "futures-util",
  "gpui",
@@ -1480,6 +1481,22 @@ dependencies = [
  "tokio-tungstenite",
  "unicode-segmentation",
  "unicode-width",
+]
+
+[[package]]
+name = "decodex-pro-bridge"
+version = "0.2.0"
+dependencies = [
+ "clap",
+ "futures-util",
+ "pulldown-cmark",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite",
+ "url",
 ]
 
 [[package]]

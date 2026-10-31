@@ -1,0 +1,21 @@
+[package]
+authors.workspace    = true
+description          = "Isolated ChatGPT research through the Decodex Chrome extension."
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "decodex-pro-bridge"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+clap              = { workspace = true }
+futures-util      = { workspace = true }
+pulldown-cmark    = { workspace = true }
+serde             = { workspace = true }
+serde_json        = { workspace = true }
+sha2              = { workspace = true }
+tempfile          = { workspace = true }
+tokio             = { workspace = true, features = ["io-std", "io-util", "process"] }
+tokio-tungstenite = { workspace = true }
+url               = { workspace = true }

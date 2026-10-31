@@ -62,6 +62,12 @@ impl ComponentStore {
 		Self { root }
 	}
 
+	/// Private state for the built-in, opt-in research bridge. Reading this path
+	/// does not create a profile or start a browser.
+	pub fn research_directory(&self) -> PathBuf {
+		self.root.join("pro-research")
+	}
+
 	/// Use the user's application-data directory without modifying the app bundle.
 	pub fn for_user() -> Result<Self> {
 		let home = env::var_os("HOME")
